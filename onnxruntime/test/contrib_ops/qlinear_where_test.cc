@@ -41,9 +41,18 @@ void QLinearWhereScalarAll() {
   test.AddInput<bool>("condition", {1}, {true}, true);
   RunQLinearWhere<T>(
       test,
-      {1}, {2}, {1},                    // x ,y ,z
-      scale, zp, scale, zp, scale, zp,  // x_scale, x_zp, y_scale, y_zp, z_scale, z_zp
-      {1}, {1}, {1});
+      {1},
+      {2},
+      {1},  // x ,y ,z
+      scale,
+      zp,
+      scale,
+      zp,
+      scale,
+      zp,  // x_scale, x_zp, y_scale, y_zp, z_scale, z_zp
+      {1},
+      {1},
+      {1});
 }
 
 TEST(QLinearWhereTest, QLinearWhereScalarAll) {
@@ -59,9 +68,18 @@ void QLinearWhereVectorAll() {
   test.AddInput<bool>("condition", {4}, {true, false, false, true}, true);
   RunQLinearWhere<T>(
       test,
-      {1, 1, 1, 1}, {2, 2, 2, 2}, {1, 2, 2, 1},  // x ,y ,z
-      scale, zp, scale, zp, scale, zp,           // x_scale, x_zp, y_scale, y_zp, z_scale, z_zp
-      {4}, {4}, {4});
+      {1, 1, 1, 1},
+      {2, 2, 2, 2},
+      {1, 2, 2, 1},  // x ,y ,z
+      scale,
+      zp,
+      scale,
+      zp,
+      scale,
+      zp,  // x_scale, x_zp, y_scale, y_zp, z_scale, z_zp
+      {4},
+      {4},
+      {4});
 }
 
 TEST(QLinearWhereTest, QLinearWhereVectorAll) {
@@ -76,9 +94,18 @@ void QLinearWhereMatrixAll() {
   test.AddInput<bool>("condition", {2, 2}, {true, false, false, true}, true);
   RunQLinearWhere<T>(
       test,
-      {1, 1, 1, 1}, {2, 2, 2, 2}, {1, 2, 2, 1},  // x ,y ,z
-      scale, zp, scale, zp, scale, zp,           // x_scale, x_zp, y_scale, y_zp, z_scale, z_zp
-      {2, 2}, {2, 2}, {2, 2});
+      {1, 1, 1, 1},
+      {2, 2, 2, 2},
+      {1, 2, 2, 1},  // x ,y ,z
+      scale,
+      zp,
+      scale,
+      zp,
+      scale,
+      zp,  // x_scale, x_zp, y_scale, y_zp, z_scale, z_zp
+      {2, 2},
+      {2, 2},
+      {2, 2});
 }
 
 TEST(QLinearWhereTest, QLinearWhereMatrixAll) {
@@ -93,9 +120,18 @@ void QLinearWhereScalarX_VectorY_MatrixCondition() {
   test.AddInput<bool>("condition", {2, 2}, {true, false, false, true}, true);
   RunQLinearWhere<T>(
       test,
-      {1}, {2, 2}, {1, 2, 2, 1},        // x ,y ,z
-      scale, zp, scale, zp, scale, zp,  // x_scale, x_zp, y_scale, y_zp, z_scale, z_zp
-      {1}, {2}, {2, 2});
+      {1},
+      {2, 2},
+      {1, 2, 2, 1},  // x ,y ,z
+      scale,
+      zp,
+      scale,
+      zp,
+      scale,
+      zp,  // x_scale, x_zp, y_scale, y_zp, z_scale, z_zp
+      {1},
+      {2},
+      {2, 2});
 }
 
 TEST(QLinearWhereTest, QLinearWhereScalarX_VectorY_MatrixCondition) {
@@ -111,9 +147,18 @@ void QLinearWhereVectorX_VectorY_MatrixCondition() {
   test.AddInput<bool>("condition", {2, 2}, {true, false, false, true}, true);
   RunQLinearWhere<T>(
       test,
-      {1, 1}, {2, 2}, {1, 2, 2, 1},     // x ,y ,z
-      scale, zp, scale, zp, scale, zp,  // x_scale, x_zp, y_scale, y_zp, z_scale, z_zp
-      {2}, {2}, {2, 2});
+      {1, 1},
+      {2, 2},
+      {1, 2, 2, 1},  // x ,y ,z
+      scale,
+      zp,
+      scale,
+      zp,
+      scale,
+      zp,  // x_scale, x_zp, y_scale, y_zp, z_scale, z_zp
+      {2},
+      {2},
+      {2, 2});
 }
 
 TEST(QLinearWhereTest, QLinearWhereVectorX_VectorY_MatrixCondition) {

@@ -30,21 +30,11 @@ class Logger;
 }
 
 namespace session_state_utils {
-using SaveTensorFunction = std::function<Status(const std::string& name, int idx, const OrtValue& value,
-                                                const OrtCallback& d, bool constant, bool sparse)>;
+using SaveTensorFunction = std::function<Status(const std::string& name, int idx, const OrtValue& value, const OrtCallback& d, bool constant, bool sparse)>;
 using MemoryProfileFunction = std::function<void(ITensorAllocator& planner)>;
 
 common::Status SaveInitializedTensors(
-    const Env& env, const std::basic_string<PATH_CHAR_TYPE>& graph_loc,
-    const GraphViewer& graph, const AllocatorPtr& default_cpu_memory_info,
-    const OrtValueNameIdxMap& ort_value_name_idx_map, const std::vector<OrtValueIndex>& initializer_allocation_order,
-    ITensorAllocator& planner,
-    const SaveTensorFunction& save_tensor_func,
-    const logging::Logger& logger,
-    const DataTransferManager& data_transfer_mgr,
-    const ExecutionPlanBase& exec_plan,
-    const SessionOptions& session_options,
-    const MemoryProfileFunction& memory_profile_func);
+    const Env& env, const std::basic_string<PATH_CHAR_TYPE>& graph_loc, const GraphViewer& graph, const AllocatorPtr& default_cpu_memory_info, const OrtValueNameIdxMap& ort_value_name_idx_map, const std::vector<OrtValueIndex>& initializer_allocation_order, ITensorAllocator& planner, const SaveTensorFunction& save_tensor_func, const logging::Logger& logger, const DataTransferManager& data_transfer_mgr, const ExecutionPlanBase& exec_plan, const SessionOptions& session_options, const MemoryProfileFunction& memory_profile_func);
 
 common::Status SaveInputOutputNamesToNodeMapping(const GraphViewer& graph,
                                                  SessionState& session_state,

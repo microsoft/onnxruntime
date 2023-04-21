@@ -90,18 +90,11 @@ void QLinearConcat3InputsU8(std::vector<bool> is_const_inputs, QLinearConcatFail
   float y_scale = 0.25;
   uint8_t y_zero_point = 128;
   std::vector<uint8_t> y_vec = {
-      128, 120, 140,
-      128, 126, 130, 122, 134, 120,
-      128, 127, 129, 126, 130, 125, 131, 124, 132,
-      108, 255, 0,
-      136, 116, 142, 112, 255, 0,
-      123, 133, 122, 134, 121, 135, 120, 255, 0};
+      128, 120, 140, 128, 126, 130, 122, 134, 120, 128, 127, 129, 126, 130, 125, 131, 124, 132, 108, 255, 0, 136, 116, 142, 112, 255, 0, 123, 133, 122, 134, 121, 135, 120, 255, 0};
 
-  RunQLinearConcat<uint8_t>(x_shapes, x_vecs, 1, x_scales, x_zero_points, y_shape, y_vec, y_scale, y_zero_point,
-                            is_const_inputs, fail_by);
+  RunQLinearConcat<uint8_t>(x_shapes, x_vecs, 1, x_scales, x_zero_points, y_shape, y_vec, y_scale, y_zero_point, is_const_inputs, fail_by);
 
-  RunQLinearConcat<uint8_t>(x_shapes, x_vecs, -2, x_scales, x_zero_points, y_shape, y_vec, y_scale, y_zero_point,
-                            is_const_inputs, fail_by);
+  RunQLinearConcat<uint8_t>(x_shapes, x_vecs, -2, x_scales, x_zero_points, y_shape, y_vec, y_scale, y_zero_point, is_const_inputs, fail_by);
 }
 
 TEST(QLinearConcatU8, Input3_DynamicDynamicDynamic) {
@@ -159,18 +152,11 @@ void QLinearConcat3InputsS8(std::vector<bool> is_const_inputs, QLinearConcatFail
   float y_scale = 0.25;
   int8_t y_zero_point = 0;
   std::vector<int8_t> y_vec = {
-      0, -8, 12,
-      0, -2, 4, -6, 6, -8,
-      0, -1, 2, -2, 2, -3, 3, -4, 4,
-      -20, 127, -128,
-      8, -12, 14, -16, 127, -128,
-      -5, 5, -6, 6, -7, 7, -8, 127, -128};
+      0, -8, 12, 0, -2, 4, -6, 6, -8, 0, -1, 2, -2, 2, -3, 3, -4, 4, -20, 127, -128, 8, -12, 14, -16, 127, -128, -5, 5, -6, 6, -7, 7, -8, 127, -128};
 
-  RunQLinearConcat<int8_t>(x_shapes, x_vecs, 1, x_scales, x_zero_points, y_shape, y_vec, y_scale, y_zero_point,
-                           is_const_inputs, fail_by);
+  RunQLinearConcat<int8_t>(x_shapes, x_vecs, 1, x_scales, x_zero_points, y_shape, y_vec, y_scale, y_zero_point, is_const_inputs, fail_by);
 
-  RunQLinearConcat<int8_t>(x_shapes, x_vecs, -2, x_scales, x_zero_points, y_shape, y_vec, y_scale, y_zero_point,
-                           is_const_inputs, fail_by);
+  RunQLinearConcat<int8_t>(x_shapes, x_vecs, -2, x_scales, x_zero_points, y_shape, y_vec, y_scale, y_zero_point, is_const_inputs, fail_by);
 }
 
 TEST(QLinearConcatS8, Input3_DynamicDynamicDynamic) {
@@ -223,11 +209,9 @@ void QLinearConcatOneInputS8(std::vector<bool> is_const_inputs, QLinearConcatFai
   int8_t y_zero_point = 0;
   std::vector<int8_t> y_vec = {0, -8, 12, -20, 127, -128};
 
-  RunQLinearConcat<int8_t>(x_shapes, x_vecs, 1, x_scales, x_zero_points, y_shape, y_vec, y_scale, y_zero_point,
-                           is_const_inputs, fail_by);
+  RunQLinearConcat<int8_t>(x_shapes, x_vecs, 1, x_scales, x_zero_points, y_shape, y_vec, y_scale, y_zero_point, is_const_inputs, fail_by);
 
-  RunQLinearConcat<int8_t>(x_shapes, x_vecs, -2, x_scales, x_zero_points, y_shape, y_vec, y_scale, y_zero_point,
-                           is_const_inputs, fail_by);
+  RunQLinearConcat<int8_t>(x_shapes, x_vecs, -2, x_scales, x_zero_points, y_shape, y_vec, y_scale, y_zero_point, is_const_inputs, fail_by);
 }
 
 TEST(QLinearConcatS8, InputOne_Dynamic) {

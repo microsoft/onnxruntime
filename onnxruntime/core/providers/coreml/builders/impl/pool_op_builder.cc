@@ -19,13 +19,11 @@ class PoolOpBuilder : public BaseOpBuilder {
   // Add operator related
  private:
 #ifdef __APPLE__
-  [[nodiscard]] Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
-                                             const logging::Logger& logger) const override;
+  [[nodiscard]] Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node, const logging::Logger& logger) const override;
 #endif
 
   // Operator support related
-  bool IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params,
-                         const logging::Logger& logger) const override;
+  bool IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params, const logging::Logger& logger) const override;
 };
 
 // Add operator related
@@ -77,10 +75,7 @@ Status PoolOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
     std::vector<int64_t> input_shape;
     ORT_RETURN_IF_NOT(GetShape(*input_defs[0], input_shape, logger), "Cannot get shape");
     AutoPadType auto_pad_type;
-    ORT_RETURN_IF_ERROR(HandleAutoPad(input_shape, kernel_shape[0], kernel_shape[1],
-                                      onnx_pads, strides, {1, 1} /* dilations */,
-                                      StringToAutoPadType(helper.Get("auto_pad", "NOTSET")),
-                                      auto_pad_type));
+    ORT_RETURN_IF_ERROR(HandleAutoPad(input_shape, kernel_shape[0], kernel_shape[1], onnx_pads, strides, {1, 1} /* dilations */, StringToAutoPadType(helper.Get("auto_pad", "NOTSET")), auto_pad_type));
 
     if (AutoPadType::SAME_UPPER == auto_pad_type || AutoPadType::SAME_LOWER == auto_pad_type) {
       auto* padding_type = coreml_pool->mutable_same();
@@ -110,8 +105,7 @@ Status PoolOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 #endif
 
 // Operator support related
-bool PoolOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& /* input_params */,
-                                      const logging::Logger& logger) const {
+bool PoolOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& /* input_params */, const logging::Logger& logger) const {
   const auto& op_type = node.OpType();
   const auto& input_defs = node.InputDefs();
 

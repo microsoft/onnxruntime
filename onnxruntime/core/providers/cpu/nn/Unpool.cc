@@ -17,7 +17,8 @@ namespace onnxruntime {
 
 ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     MaxUnpool,
-    9, 10,
+    9,
+    10,
     KernelDefBuilder()
         .TypeConstraint("T1", DataTypeImpl::GetTensorType<float>())
         .TypeConstraint("T2", DataTypeImpl::GetTensorType<int64_t>()),
@@ -81,8 +82,10 @@ Status MaxUnpool::Compute(OpKernelContext* context) const {
     TensorShape given_shape(given_output_dims);
 
     ORT_RETURN_IF_NOT(given_shape.Size() >= shape.Size(),
-                      "output_shape is smaller than minimum required. output_shape:", given_shape,
-                      " inferred output shape:", shape);
+                      "output_shape is smaller than minimum required. output_shape:",
+                      given_shape,
+                      " inferred output shape:",
+                      shape);
 
     shape = std::move(given_shape);
   }

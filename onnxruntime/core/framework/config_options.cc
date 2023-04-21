@@ -36,9 +36,7 @@ Status ConfigOptions::AddConfigEntry(const char* config_key, const char* config_
 
   std::string val(config_value);
   if (val.length() > onnxruntime::kMaxStrLen)
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Config value is longer than maximum length: ",
-                           onnxruntime::kMaxStrLen);
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Config value is longer than maximum length: ", onnxruntime::kMaxStrLen);
 
   auto iter = configurations.find(config_key);
   if (iter != configurations.cend()) {

@@ -7,8 +7,7 @@
 
 namespace onnxruntime {
 
-Status BitmaskDropoutReplacement::ApplyImpl(Graph& graph, bool& modified, int graph_level,
-                                            const logging::Logger& logger) const {
+Status BitmaskDropoutReplacement::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
   GraphViewer graph_viewer(graph);
   const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
 
@@ -49,8 +48,7 @@ Status BitmaskDropoutReplacement::ApplyImpl(Graph& graph, bool& modified, int gr
     dropout_output.emplace_back(&bitmask_output_def);
     const std::string op_type = node.OpType() == "Dropout" ? "BitmaskDropout" : "BitmaskBiasDropout";
     Node& bitmask_dropout_node =
-        graph.AddNode(graph.GenerateNodeName(op_type), op_type, "Bitmask Dropout replace for " + node.Name(),
-                      node.MutableInputDefs(), dropout_output, &node.GetAttributes(), kMSDomain);
+        graph.AddNode(graph.GenerateNodeName(op_type), op_type, "Bitmask Dropout replace for " + node.Name(), node.MutableInputDefs(), dropout_output, &node.GetAttributes(), kMSDomain);
     bitmask_dropout_node.SetExecutionProviderType(node.GetExecutionProviderType());
 
     InlinedVector<NodeArg*> dropoutgrad_input;
@@ -61,8 +59,7 @@ Status BitmaskDropoutReplacement::ApplyImpl(Graph& graph, bool& modified, int gr
     }
     const std::string grad_op_type = "BitmaskDropoutGrad";
     Node& bitmask_dropout_grad_node = graph.AddNode(
-        graph.GenerateNodeName(grad_op_type), grad_op_type, "BitmaskDropoutGrad replace for " + dropoutgrad_node.Name(),
-        dropoutgrad_input, dropoutgrad_node.MutableOutputDefs(), &dropoutgrad_node.GetAttributes(), kMSDomain);
+        graph.GenerateNodeName(grad_op_type), grad_op_type, "BitmaskDropoutGrad replace for " + dropoutgrad_node.Name(), dropoutgrad_input, dropoutgrad_node.MutableOutputDefs(), &dropoutgrad_node.GetAttributes(), kMSDomain);
     bitmask_dropout_grad_node.SetExecutionProviderType(dropoutgrad_node.GetExecutionProviderType());
 
     graph_utils::RemoveNodeOutputEdges(graph, node);

@@ -21,9 +21,7 @@ ONNX_OPERATOR_KERNEL_EX(
         .TypeConstraint("T", DataTypeImpl::AllTensorTypes()),
     SplitTraining);
 
-Status PrepareForTrainingCompute(const TensorShape& input_shape, int num_outputs, int64_t& axis, int& before_dims,
-                                 int& after_dims_including_split_axis, int& after_dims_excluding_split,
-                                 std::vector<int64_t>& split_sizes) {
+Status PrepareForTrainingCompute(const TensorShape& input_shape, int num_outputs, int64_t& axis, int& before_dims, int& after_dims_including_split_axis, int& after_dims_excluding_split, std::vector<int64_t>& split_sizes) {
   auto input_dims = input_shape.GetDims();
   const auto num_dimensions = gsl::narrow_cast<int64_t>(input_shape.NumDimensions());
   int64_t axis_value = axis;
@@ -43,20 +41,14 @@ Status PrepareForTrainingCompute(const TensorShape& input_shape, int num_outputs
   if (split_sizes_values.empty()) {
     // equal split based on number of outputs
     if (split_dim_size % static_cast<size_t>(num_outputs) != 0) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Input cannot be split evenly on selected axis. Input shape=", input_shape,
-                             " Axis=", axis_value, " NumOutputs=", num_outputs);
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Input cannot be split evenly on selected axis. Input shape=", input_shape, " Axis=", axis_value, " NumOutputs=", num_outputs);
     }
 
     // populate split_sizes with the same size for each output
     split_sizes = std::vector<int64_t>(static_cast<size_t>(num_outputs), split_dim_size / num_outputs);
   } else {
     if (split_sizes_values.size() != static_cast<size_t>(num_outputs) || split_size_sum != split_dim_size) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                             "Cannot split using values in 'split' input. Axis=", axis_value,
-                             " Input shape=", input_shape,
-                             " NumOutputs=", num_outputs,
-                             " Num entries in 'split' (must equal number of outputs) was ", split_sizes_values.size(),
-                             " Sum of sizes in 'split' (must equal size of selected axis) was ", split_size_sum);
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Cannot split using values in 'split' input. Axis=", axis_value, " Input shape=", input_shape, " NumOutputs=", num_outputs, " Num entries in 'split' (must equal number of outputs) was ", split_sizes_values.size(), " Sum of sizes in 'split' (must equal size of selected axis) was ", split_size_sum);
     }
     split_sizes = split_sizes_values;
   }

@@ -70,7 +70,9 @@ GraphAugmenter::GraphDefs BertLoss::operator()(const Graph& graph, const LossFun
   {
     const NodeArg* prediction_arg = graph.GetNodeArg(prediction_masked_lm);
     ORT_ENFORCE(prediction_arg != nullptr,
-                "Masked_ML prediction arg ", prediction_masked_lm, " is not found in the graph.");
+                "Masked_ML prediction arg ",
+                prediction_masked_lm,
+                " is not found in the graph.");
     TypeProto* masked_lm_int64_type_proto = GetMaskedLMTypeProto(prediction_arg,
                                                                  ONNX_NAMESPACE::TensorProto_DataType_INT64,
                                                                  graph_defs);
@@ -159,7 +161,9 @@ GraphAugmenter::GraphDefs BertLoss::operator()(const Graph& graph, const LossFun
   {
     const NodeArg* ns_prediction_arg = graph.GetNodeArg(prediction_next_sentence);
     ORT_ENFORCE(ns_prediction_arg != nullptr,
-                "Next sentence prediction arg ", prediction_next_sentence, " is not found in the graph.");
+                "Next sentence prediction arg ",
+                prediction_next_sentence,
+                " is not found in the graph.");
     TypeProto* next_sentence_labels_type_proto = GetSparseTypeProto(ns_prediction_arg,
                                                                     ONNX_NAMESPACE::TensorProto_DataType_INT64,
                                                                     graph_defs);

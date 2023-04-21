@@ -70,7 +70,8 @@ class GraphTransformerRegisterOnce final {
           #name, [](const InlinedHashSet<std::string_view>& eps) {                \
             return std::make_unique<name>(eps);                                   \
           },                                                                      \
-          TransformerLevel::level, flag);
+          TransformerLevel::level,                                                \
+          flag);
 
 #define ONNX_REGISTER_EXTERNAL_REWRITE_RULE(name, level, flag) \
   ONNX_REGISTER_EXTERNAL_REWRITE_RULE_UNIQ(__COUNTER__, name, level, flag)
@@ -82,7 +83,8 @@ class GraphTransformerRegisterOnce final {
             ORT_THROW_IF_ERROR(rule_base_transformer->Register(std::make_unique<name>()));        \
             return rule_base_transformer;                                                         \
           },                                                                                      \
-          TransformerLevel::level, flag);
+          TransformerLevel::level,                                                                \
+          flag);
 
 void GenerateExternalTransformers(
     TransformerLevel level,

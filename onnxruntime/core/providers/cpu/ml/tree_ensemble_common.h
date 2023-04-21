@@ -355,7 +355,8 @@ Status TreeEnsembleCommon<InputType, ThresholdType, OutputType>::Init(
   n_trees_ = roots_.size();
   has_missing_tracks_ = false;
   for (auto itm = nodes_missing_value_tracks_true.begin();
-       itm != nodes_missing_value_tracks_true.end(); ++itm) {
+       itm != nodes_missing_value_tracks_true.end();
+       ++itm) {
     if (*itm) {
       has_missing_tracks_ = true;
       break;
@@ -372,31 +373,19 @@ Status TreeEnsembleCommon<InputType, ThresholdType, OutputType>::compute(OpKerne
   switch (aggregate_function_) {
     case AGGREGATE_FUNCTION::AVERAGE:
       ComputeAgg(
-          ctx->GetOperatorThreadPool(), X, Y, label,
-          TreeAggregatorAverage<InputType, ThresholdType, OutputType>(
-              roots_.size(), n_targets_or_classes_,
-              post_transform_, base_values_));
+          ctx->GetOperatorThreadPool(), X, Y, label, TreeAggregatorAverage<InputType, ThresholdType, OutputType>(roots_.size(), n_targets_or_classes_, post_transform_, base_values_));
       return Status::OK();
     case AGGREGATE_FUNCTION::SUM:
       ComputeAgg(
-          ctx->GetOperatorThreadPool(), X, Y, label,
-          TreeAggregatorSum<InputType, ThresholdType, OutputType>(
-              roots_.size(), n_targets_or_classes_,
-              post_transform_, base_values_));
+          ctx->GetOperatorThreadPool(), X, Y, label, TreeAggregatorSum<InputType, ThresholdType, OutputType>(roots_.size(), n_targets_or_classes_, post_transform_, base_values_));
       return Status::OK();
     case AGGREGATE_FUNCTION::MIN:
       ComputeAgg(
-          ctx->GetOperatorThreadPool(), X, Y, label,
-          TreeAggregatorMin<InputType, ThresholdType, OutputType>(
-              roots_.size(), n_targets_or_classes_,
-              post_transform_, base_values_));
+          ctx->GetOperatorThreadPool(), X, Y, label, TreeAggregatorMin<InputType, ThresholdType, OutputType>(roots_.size(), n_targets_or_classes_, post_transform_, base_values_));
       return Status::OK();
     case AGGREGATE_FUNCTION::MAX:
       ComputeAgg(
-          ctx->GetOperatorThreadPool(), X, Y, label,
-          TreeAggregatorMax<InputType, ThresholdType, OutputType>(
-              roots_.size(), n_targets_or_classes_,
-              post_transform_, base_values_));
+          ctx->GetOperatorThreadPool(), X, Y, label, TreeAggregatorMax<InputType, ThresholdType, OutputType>(roots_.size(), n_targets_or_classes_, post_transform_, base_values_));
       return Status::OK();
     default:
       ORT_THROW("Unknown aggregation function in TreeEnsemble.");
@@ -406,8 +395,10 @@ Status TreeEnsembleCommon<InputType, ThresholdType, OutputType>::compute(OpKerne
 template <typename InputType, typename ThresholdType, typename OutputType>
 template <typename AGG>
 void TreeEnsembleCommon<InputType, ThresholdType, OutputType>::ComputeAgg(concurrency::ThreadPool* ttp,
-                                                                          const Tensor* X, Tensor* Z,
-                                                                          Tensor* label, const AGG& agg) const {
+                                                                          const Tensor* X,
+                                                                          Tensor* Z,
+                                                                          Tensor* label,
+                                                                          const AGG& agg) const {
   if (X->Shape().NumDimensions() > 2) {
     ORT_THROW("TreeEnsemble only works on 1D, 2D tensors.");
   }
@@ -471,8 +462,7 @@ void TreeEnsembleCommon<InputType, ThresholdType, OutputType>::ComputeAgg(concur
           }
         }
         for (i = batch; i < batch_end; ++i) {
-          agg.FinalizeScores1(z_data + i, scores[SafeInt<ptrdiff_t>(i - batch)],
-                              label_data == nullptr ? nullptr : (label_data + i));
+          agg.FinalizeScores1(z_data + i, scores[SafeInt<ptrdiff_t>(i - batch)], label_data == nullptr ? nullptr : (label_data + i));
         }
       }
     } else if (n_trees_ > max_num_threads) { /* section D: 1 output, 2+ rows and enough trees to parallelize */
@@ -507,8 +497,7 @@ void TreeEnsembleCommon<InputType, ThresholdType, OutputType>::ComputeAgg(concur
               for (int64_t j = 1; j < num_threads; ++j) {
                 agg.MergePrediction1(scores[i], scores[j * SafeInt<ptrdiff_t>(N) + i]);
               }
-              agg.FinalizeScores1(z_data + i, scores[i],
-                                  label_data == nullptr ? nullptr : (label_data + i));
+              agg.FinalizeScores1(z_data + i, scores[i], label_data == nullptr ? nullptr : (label_data + i));
             }
           });
     } else { /* section E: 1 output, 2+ rows, parallelization by rows */
@@ -521,8 +510,7 @@ void TreeEnsembleCommon<InputType, ThresholdType, OutputType>::ComputeAgg(concur
               agg.ProcessTreeNodePrediction1(score, *ProcessTreeNodeLeave(roots_[j], x_data + i * stride));
             }
 
-            agg.FinalizeScores1(z_data + i, score,
-                                label_data == nullptr ? nullptr : (label_data + i));
+            agg.FinalizeScores1(z_data + i, score, label_data == nullptr ? nullptr : (label_data + i));
           },
           max_num_threads);
     }
@@ -571,8 +559,7 @@ void TreeEnsembleCommon<InputType, ThresholdType, OutputType>::ComputeAgg(concur
           }
         }
         for (i = batch; i < batch_end; ++i) {
-          agg.FinalizeScores(scores[SafeInt<ptrdiff_t>(i - batch)], z_data + i * n_targets_or_classes_, -1,
-                             label_data == nullptr ? nullptr : (label_data + i));
+          agg.FinalizeScores(scores[SafeInt<ptrdiff_t>(i - batch)], z_data + i * n_targets_or_classes_, -1, label_data == nullptr ? nullptr : (label_data + i));
         }
       }
 
@@ -593,7 +580,8 @@ void TreeEnsembleCommon<InputType, ThresholdType, OutputType>::ComputeAgg(concur
               for (auto j = work.start; j < work.end; ++j) {
                 for (int64_t i = begin_n; i < end_n; ++i) {
                   agg.ProcessTreeNodePrediction(scores[batch_num * SafeInt<ptrdiff_t>(N) + i],
-                                                *ProcessTreeNodeLeave(roots_[j], x_data + i * stride), weights_);
+                                                *ProcessTreeNodeLeave(roots_[j], x_data + i * stride),
+                                                weights_);
                 }
               }
             });
@@ -608,8 +596,7 @@ void TreeEnsembleCommon<InputType, ThresholdType, OutputType>::ComputeAgg(concur
               for (int64_t j = 1; j < num_threads; ++j) {
                 agg.MergePrediction(scores[i], scores[j * SafeInt<ptrdiff_t>(N) + i]);
               }
-              agg.FinalizeScores(scores[i], z_data + i * this->n_targets_or_classes_, -1,
-                                 label_data == nullptr ? nullptr : (label_data + i));
+              agg.FinalizeScores(scores[i], z_data + i * this->n_targets_or_classes_, -1, label_data == nullptr ? nullptr : (label_data + i));
             }
           });
     } else { /* section E2: 2+ outputs, 2+ rows, parallelization by rows */
@@ -629,7 +616,8 @@ void TreeEnsembleCommon<InputType, ThresholdType, OutputType>::ComputeAgg(concur
               }
 
               agg.FinalizeScores(scores,
-                                 z_data + i * n_targets_or_classes_, -1,
+                                 z_data + i * n_targets_or_classes_,
+                                 -1,
                                  label_data == nullptr ? nullptr : (label_data + i));
             }
           });
@@ -909,24 +897,14 @@ Status TreeEnsembleCommonClassifier<InputType, ThresholdType, OutputType>::compu
                                                                                    Tensor* label) const {
   if (classlabels_strings_.empty()) {
     this->ComputeAgg(
-        ctx->GetOperatorThreadPool(), X, Z, label,
-        TreeAggregatorClassifier<InputType, ThresholdType, OutputType>(
-            this->roots_.size(), this->n_targets_or_classes_,
-            this->post_transform_, this->base_values_,
-            classlabels_int64s_, binary_case_,
-            weights_are_all_positive_));
+        ctx->GetOperatorThreadPool(), X, Z, label, TreeAggregatorClassifier<InputType, ThresholdType, OutputType>(this->roots_.size(), this->n_targets_or_classes_, this->post_transform_, this->base_values_, classlabels_int64s_, binary_case_, weights_are_all_positive_));
   } else {
     int64_t N = X->Shape().NumDimensions() == 1 ? 1 : X->Shape()[0];
     AllocatorPtr alloc;
     ORT_THROW_IF_ERROR(ctx->GetTempSpaceAllocator(&alloc));
     Tensor label_int64(DataTypeImpl::GetType<int64_t>(), TensorShape({N}), std::move(alloc));
     this->ComputeAgg(
-        ctx->GetOperatorThreadPool(), X, Z, &label_int64,
-        TreeAggregatorClassifier<InputType, ThresholdType, OutputType>(
-            this->roots_.size(), this->n_targets_or_classes_,
-            this->post_transform_, this->base_values_,
-            class_labels_, binary_case_,
-            weights_are_all_positive_));
+        ctx->GetOperatorThreadPool(), X, Z, &label_int64, TreeAggregatorClassifier<InputType, ThresholdType, OutputType>(this->roots_.size(), this->n_targets_or_classes_, this->post_transform_, this->base_values_, class_labels_, binary_case_, weights_are_all_positive_));
     const int64_t* plabel = label_int64.Data<int64_t>();
     std::string* labels = label->MutableData<std::string>();
     for (size_t i = 0; i < (size_t)N; ++i)

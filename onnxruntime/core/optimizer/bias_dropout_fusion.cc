@@ -22,9 +22,7 @@ static bool IsSameShape(const TensorShapeProto& shape1, const TensorShapeProto& 
   return same_shape;
 }
 
-void FuseResidualAddIfAny(Graph& graph, const Node& dropout_node, InlinedVector<NodeArg*>& dropout_input,
-                          InlinedVector<NodeArg*>& dropout_output,
-                          InlinedVector<std::reference_wrapper<Node>>& nodes_to_fuse) {
+void FuseResidualAddIfAny(Graph& graph, const Node& dropout_node, InlinedVector<NodeArg*>& dropout_input, InlinedVector<NodeArg*>& dropout_output, InlinedVector<std::reference_wrapper<Node>>& nodes_to_fuse) {
   bool has_residual_add = false;
 
   int dropout_consumers_count = 0;
@@ -78,8 +76,7 @@ void FuseResidualAddIfAny(Graph& graph, const Node& dropout_node, InlinedVector<
   }
 }
 
-Status BiasDropoutFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
-                                    const logging::Logger& logger) const {
+Status BiasDropoutFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
   GraphViewer graph_viewer(graph);
   const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
 
@@ -166,8 +163,7 @@ Status BiasDropoutFusion::ApplyImpl(Graph& graph, bool& modified, int graph_leve
 
     std::string op_type = dropout_node.OpType() == "Dropout" ? "BiasDropout" : "BitmaskBiasDropout";
     Node& dropout_add_fusion_node =
-        graph.AddNode(graph.GenerateNodeName(op_type), op_type, "fused Add-Dropout-(Add) for " + dropout_node.Name(),
-                      dropout_input, dropout_output, &dropout_node.GetAttributes(), kMSDomain);
+        graph.AddNode(graph.GenerateNodeName(op_type), op_type, "fused Add-Dropout-(Add) for " + dropout_node.Name(), dropout_input, dropout_output, &dropout_node.GetAttributes(), kMSDomain);
 
     // Assign provider to this new node. Provider should be same as the provider for old node.
     dropout_add_fusion_node.SetExecutionProviderType(dropout_node.GetExecutionProviderType());

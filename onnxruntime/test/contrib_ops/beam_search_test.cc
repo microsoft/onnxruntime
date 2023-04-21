@@ -16,9 +16,7 @@ namespace test {
 TEST(BeamSearchTest, GptBeamSearchFp32) {
   std::vector<int64_t> input_ids_shape{3, 12};
   std::vector<int32_t> input_ids{
-      0, 0, 0, 0, 0, 52, 195, 731, 321, 301, 734, 620,
-      41, 554, 74, 622, 206, 222, 75, 223, 221, 198, 224, 572,
-      0, 0, 0, 52, 328, 219, 328, 206, 288, 227, 896, 328};
+      0, 0, 0, 0, 0, 52, 195, 731, 321, 301, 734, 620, 41, 554, 74, 622, 206, 222, 75, 223, 221, 198, 224, 572, 0, 0, 0, 52, 328, 219, 328, 206, 288, 227, 896, 328};
 
   std::vector<int64_t> parameter_shape{1};
   std::vector<int32_t> max_length{20};
@@ -30,9 +28,7 @@ TEST(BeamSearchTest, GptBeamSearchFp32) {
 
   std::vector<int64_t> expected_output_shape{input_ids_shape[0], num_return_sequences[0], max_length[0]};
   std::vector<int32_t> expected_output{
-      0, 0, 0, 0, 0, 52, 195, 731, 321, 301, 734, 620, 131, 131, 131, 181, 638, 638, 638, 638,
-      41, 554, 74, 622, 206, 222, 75, 223, 221, 198, 224, 572, 292, 292, 292, 292, 292, 292, 292, 292,
-      0, 0, 0, 52, 328, 219, 328, 206, 288, 227, 896, 328, 328, 669, 669, 669, 669, 669, 669, 669};
+      0, 0, 0, 0, 0, 52, 195, 731, 321, 301, 734, 620, 131, 131, 131, 181, 638, 638, 638, 638, 41, 554, 74, 622, 206, 222, 75, 223, 221, 198, 224, 572, 292, 292, 292, 292, 292, 292, 292, 292, 0, 0, 0, 52, 328, 219, 328, 206, 288, 227, 896, 328, 328, 669, 669, 669, 669, 669, 669, 669};
 
   Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
   auto input_ids_tensor = Ort::Value::CreateTensor(
@@ -64,8 +60,7 @@ TEST(BeamSearchTest, GptBeamSearchFp32) {
   ort_inputs.push_back(std::move(num_return_sequences_tensor));
   ort_inputs.push_back(std::move(length_penalty_tensor));
   ort_inputs.push_back(std::move(repetition_penalty_tensor));
-  const char* input_names[] = {"input_ids", "max_length", "min_length", "num_beams", "num_return_sequences",
-                               "length_penalty", "repetition_penalty"};
+  const char* input_names[] = {"input_ids", "max_length", "min_length", "num_beams", "num_return_sequences", "length_penalty", "repetition_penalty"};
   const char* const output_names[] = {"sequences"};
 
   Ort::SessionOptions session_options;
@@ -78,8 +73,7 @@ TEST(BeamSearchTest, GptBeamSearchFp32) {
   //        --output tiny_gpt2_beamsearch_fp16.onnx --use_gpu --max_length 20
   // (with separate_gpt2_decoder_for_init_run set to False as it is now set to True by default)
   Ort::Session session(*ort_env, ORT_TSTR("testdata/transformers/tiny_gpt2_beamsearch.onnx"), session_options);
-  auto ort_outputs = session.Run(Ort::RunOptions{}, input_names, ort_inputs.data(), ort_inputs.size(),
-                                 output_names, 1);
+  auto ort_outputs = session.Run(Ort::RunOptions{}, input_names, ort_inputs.data(), ort_inputs.size(), output_names, 1);
 
   ASSERT_EQ(ort_outputs.size(), 1U);
   const auto& sequences = ort_outputs[0];
@@ -97,9 +91,7 @@ TEST(BeamSearchTest, GptBeamSearchFp32) {
 TEST(BeamSearchTest, GptBeamSearchFp16) {
   std::vector<int64_t> input_ids_shape{3, 12};
   std::vector<int32_t> input_ids{
-      0, 0, 0, 0, 0, 52, 195, 731, 321, 301, 734, 620,
-      41, 554, 74, 622, 206, 222, 75, 223, 221, 198, 224, 572,
-      0, 0, 0, 52, 328, 219, 328, 206, 288, 227, 896, 328};
+      0, 0, 0, 0, 0, 52, 195, 731, 321, 301, 734, 620, 41, 554, 74, 622, 206, 222, 75, 223, 221, 198, 224, 572, 0, 0, 0, 52, 328, 219, 328, 206, 288, 227, 896, 328};
 
   std::vector<int64_t> parameter_shape{1};
   std::vector<int32_t> max_length{20};
@@ -112,9 +104,7 @@ TEST(BeamSearchTest, GptBeamSearchFp16) {
   std::vector<int64_t> expected_output_shape{input_ids_shape[0], num_return_sequences[0], max_length[0]};
 
   std::vector<int32_t> expected_output{
-      0, 0, 0, 0, 0, 52, 195, 731, 321, 301, 734, 620, 131, 131, 131, 181, 638, 638, 638, 638,
-      41, 554, 74, 622, 206, 222, 75, 223, 221, 198, 224, 572, 292, 292, 292, 292, 292, 292, 292, 292,
-      0, 0, 0, 52, 328, 219, 328, 206, 288, 227, 896, 328, 328, 669, 669, 669, 669, 669, 669, 669};
+      0, 0, 0, 0, 0, 52, 195, 731, 321, 301, 734, 620, 131, 131, 131, 181, 638, 638, 638, 638, 41, 554, 74, 622, 206, 222, 75, 223, 221, 198, 224, 572, 292, 292, 292, 292, 292, 292, 292, 292, 0, 0, 0, 52, 328, 219, 328, 206, 288, 227, 896, 328, 328, 669, 669, 669, 669, 669, 669, 669};
 
   Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
   auto input_ids_tensor = Ort::Value::CreateTensor(
@@ -146,8 +136,7 @@ TEST(BeamSearchTest, GptBeamSearchFp16) {
   ort_inputs.push_back(std::move(num_return_sequences_tensor));
   ort_inputs.push_back(std::move(length_penalty_tensor));
   ort_inputs.push_back(std::move(repetition_penalty_tensor));
-  const char* input_names[] = {"input_ids", "max_length", "min_length", "num_beams", "num_return_sequences",
-                               "length_penalty", "repetition_penalty"};
+  const char* input_names[] = {"input_ids", "max_length", "min_length", "num_beams", "num_return_sequences", "length_penalty", "repetition_penalty"};
   const char* const output_names[] = {"sequences"};
 
   constexpr int min_cuda_architecture = 530;
@@ -163,8 +152,7 @@ TEST(BeamSearchTest, GptBeamSearchFp16) {
     // (with separate_gpt2_decoder_for_init_run set to False as it is now set to True by default)
     Ort::Session session(*ort_env, ORT_TSTR("testdata/transformers/tiny_gpt2_beamsearch_fp16.onnx"), session_options);
 
-    auto ort_outputs = session.Run(Ort::RunOptions{}, input_names, ort_inputs.data(), ort_inputs.size(),
-                                   output_names, 1);
+    auto ort_outputs = session.Run(Ort::RunOptions{}, input_names, ort_inputs.data(), ort_inputs.size(), output_names, 1);
 
     ASSERT_EQ(ort_outputs.size(), 1U);
     const auto& sequences = ort_outputs[0];
@@ -183,9 +171,7 @@ TEST(BeamSearchTest, GptBeamSearchFp16) {
 TEST(BeamSearchTest, GptBeamSearchWithInitDecoderFp16) {
   std::vector<int64_t> input_ids_shape{3, 12};
   std::vector<int32_t> input_ids{
-      0, 0, 0, 0, 0, 52, 195, 731, 321, 301, 734, 620,
-      41, 554, 74, 622, 206, 222, 75, 223, 221, 198, 224, 572,
-      0, 0, 0, 52, 328, 219, 328, 206, 288, 227, 896, 328};
+      0, 0, 0, 0, 0, 52, 195, 731, 321, 301, 734, 620, 41, 554, 74, 622, 206, 222, 75, 223, 221, 198, 224, 572, 0, 0, 0, 52, 328, 219, 328, 206, 288, 227, 896, 328};
 
   std::vector<int64_t> parameter_shape{1};
   std::vector<int32_t> max_length{20};
@@ -198,9 +184,7 @@ TEST(BeamSearchTest, GptBeamSearchWithInitDecoderFp16) {
   std::vector<int64_t> expected_output_shape{input_ids_shape[0], num_return_sequences[0], max_length[0]};
 
   std::vector<int32_t> expected_output{
-      0, 0, 0, 0, 0, 52, 195, 731, 321, 301, 734, 620, 131, 131, 131, 181, 638, 638, 638, 638,
-      41, 554, 74, 622, 206, 222, 75, 223, 221, 198, 224, 572, 292, 292, 292, 292, 292, 292, 292, 292,
-      0, 0, 0, 52, 328, 219, 328, 206, 288, 227, 896, 328, 328, 669, 669, 669, 669, 669, 669, 669};
+      0, 0, 0, 0, 0, 52, 195, 731, 321, 301, 734, 620, 131, 131, 131, 181, 638, 638, 638, 638, 41, 554, 74, 622, 206, 222, 75, 223, 221, 198, 224, 572, 292, 292, 292, 292, 292, 292, 292, 292, 0, 0, 0, 52, 328, 219, 328, 206, 288, 227, 896, 328, 328, 669, 669, 669, 669, 669, 669, 669};
 
   Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
   auto input_ids_tensor = Ort::Value::CreateTensor(
@@ -232,8 +216,7 @@ TEST(BeamSearchTest, GptBeamSearchWithInitDecoderFp16) {
   ort_inputs.push_back(std::move(num_return_sequences_tensor));
   ort_inputs.push_back(std::move(length_penalty_tensor));
   ort_inputs.push_back(std::move(repetition_penalty_tensor));
-  const char* input_names[] = {"input_ids", "max_length", "min_length", "num_beams", "num_return_sequences",
-                               "length_penalty", "repetition_penalty"};
+  const char* input_names[] = {"input_ids", "max_length", "min_length", "num_beams", "num_return_sequences", "length_penalty", "repetition_penalty"};
   const char* const output_names[] = {"sequences"};
 
   constexpr int min_cuda_architecture = 530;
@@ -249,8 +232,7 @@ TEST(BeamSearchTest, GptBeamSearchWithInitDecoderFp16) {
     // (with separate_gpt2_decoder_for_init_run set to True as is the default option)
     Ort::Session session(*ort_env, ORT_TSTR("testdata/transformers/tiny_gpt2_beamsearch_with_init_decoder_fp16.onnx"), session_options);
 
-    auto ort_outputs = session.Run(Ort::RunOptions{}, input_names, ort_inputs.data(), ort_inputs.size(),
-                                   output_names, 1);
+    auto ort_outputs = session.Run(Ort::RunOptions{}, input_names, ort_inputs.data(), ort_inputs.size(), output_names, 1);
 
     ASSERT_EQ(ort_outputs.size(), 1U);
     const auto& sequences = ort_outputs[0];
@@ -268,9 +250,7 @@ TEST(BeamSearchTest, GptBeamSearchWithInitDecoderFp16) {
 TEST(BeamSearchTest, GptBeamSearchFp16_VocabPadded) {
   std::vector<int64_t> input_ids_shape{3, 12};
   std::vector<int32_t> input_ids{
-      0, 0, 0, 0, 0, 52, 195, 731, 321, 301, 734, 620,
-      41, 554, 74, 622, 206, 222, 75, 223, 221, 198, 224, 572,
-      0, 0, 0, 52, 328, 219, 328, 206, 288, 227, 896, 328};
+      0, 0, 0, 0, 0, 52, 195, 731, 321, 301, 734, 620, 41, 554, 74, 622, 206, 222, 75, 223, 221, 198, 224, 572, 0, 0, 0, 52, 328, 219, 328, 206, 288, 227, 896, 328};
 
   std::vector<int64_t> parameter_shape{1};
   std::vector<int32_t> max_length{20};
@@ -283,9 +263,7 @@ TEST(BeamSearchTest, GptBeamSearchFp16_VocabPadded) {
   std::vector<int64_t> expected_output_shape{input_ids_shape[0], num_return_sequences[0], max_length[0]};
 
   std::vector<int32_t> expected_output{
-      0, 0, 0, 0, 0, 52, 195, 731, 321, 301, 734, 620, 131, 131, 131, 181, 638, 638, 638, 638,
-      41, 554, 74, 622, 206, 222, 75, 223, 221, 198, 224, 572, 292, 292, 292, 292, 292, 292, 292, 292,
-      0, 0, 0, 52, 328, 219, 328, 206, 288, 227, 896, 328, 328, 669, 669, 669, 669, 669, 669, 669};
+      0, 0, 0, 0, 0, 52, 195, 731, 321, 301, 734, 620, 131, 131, 131, 181, 638, 638, 638, 638, 41, 554, 74, 622, 206, 222, 75, 223, 221, 198, 224, 572, 292, 292, 292, 292, 292, 292, 292, 292, 0, 0, 0, 52, 328, 219, 328, 206, 288, 227, 896, 328, 328, 669, 669, 669, 669, 669, 669, 669};
 
   Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
   auto input_ids_tensor = Ort::Value::CreateTensor(
@@ -317,8 +295,7 @@ TEST(BeamSearchTest, GptBeamSearchFp16_VocabPadded) {
   ort_inputs.push_back(std::move(num_return_sequences_tensor));
   ort_inputs.push_back(std::move(length_penalty_tensor));
   ort_inputs.push_back(std::move(repetition_penalty_tensor));
-  const char* input_names[] = {"input_ids", "max_length", "min_length", "num_beams", "num_return_sequences",
-                               "length_penalty", "repetition_penalty"};
+  const char* input_names[] = {"input_ids", "max_length", "min_length", "num_beams", "num_return_sequences", "length_penalty", "repetition_penalty"};
   const char* const output_names[] = {"sequences"};
 
   constexpr int min_cuda_architecture = 530;
@@ -333,8 +310,7 @@ TEST(BeamSearchTest, GptBeamSearchFp16_VocabPadded) {
     // such a scenario
     Ort::Session session(*ort_env, ORT_TSTR("testdata/transformers/tiny_gpt2_beamsearch_fp16_padded_vocab.onnx"), session_options);
 
-    auto ort_outputs = session.Run(Ort::RunOptions{}, input_names, ort_inputs.data(), ort_inputs.size(),
-                                   output_names, 1);
+    auto ort_outputs = session.Run(Ort::RunOptions{}, input_names, ort_inputs.data(), ort_inputs.size(), output_names, 1);
 
     ASSERT_EQ(ort_outputs.size(), 1U);
     const auto& sequences = ort_outputs[0];

@@ -30,8 +30,7 @@ TEST(CApiTensorTest, load_simple_float_tensor_not_enough_space) {
   std::vector<float> output(1);
   OrtValue value;
   OrtMemoryInfo cpu_memory_info(onnxruntime::CPU, OrtDeviceAllocator, OrtDevice(), 0, OrtMemTypeDefault);
-  auto st = utils::TensorProtoToMLValue(Env::Default(), nullptr, p,
-                                        MemBuffer(output.data(), output.size() * sizeof(float), cpu_memory_info), value);
+  auto st = utils::TensorProtoToMLValue(Env::Default(), nullptr, p, MemBuffer(output.data(), output.size() * sizeof(float), cpu_memory_info), value);
   // check the result
   ASSERT_FALSE(st.IsOK());
 }
@@ -51,8 +50,7 @@ TEST(CApiTensorTest, load_simple_float_tensor) {
   std::vector<float> output(3);
   OrtValue value;
   OrtMemoryInfo cpu_memory_info(onnxruntime::CPU, OrtDeviceAllocator, OrtDevice(), 0, OrtMemTypeDefault);
-  auto st = utils::TensorProtoToMLValue(Env::Default(), nullptr, p,
-                                        MemBuffer(output.data(), output.size() * sizeof(float), cpu_memory_info), value);
+  auto st = utils::TensorProtoToMLValue(Env::Default(), nullptr, p, MemBuffer(output.data(), output.size() * sizeof(float), cpu_memory_info), value);
   ASSERT_TRUE(st.IsOK()) << st.ErrorMessage();
   float* real_output;
   auto ort_st = g_ort->GetTensorMutableData(&value, (void**)&real_output);
@@ -106,8 +104,7 @@ static void run_external_data_test() {
   }
   OrtValue value;
   OrtMemoryInfo cpu_memory_info(onnxruntime::CPU, OrtDeviceAllocator, OrtDevice(), 0, OrtMemTypeDefault);
-  auto st = utils::TensorProtoToMLValue(Env::Default(), nullptr, p,
-                                        MemBuffer(output.data(), output.size() * sizeof(float), cpu_memory_info), value);
+  auto st = utils::TensorProtoToMLValue(Env::Default(), nullptr, p, MemBuffer(output.data(), output.size() * sizeof(float), cpu_memory_info), value);
   ASSERT_TRUE(st.IsOK()) << st.ErrorMessage();
   float* real_output;
   auto ort_st = g_ort->GetTensorMutableData(&value, (void**)&real_output);
@@ -156,8 +153,7 @@ TEST(CApiTensorTest, load_huge_tensor_with_external_data) {
   std::vector<int> output(total_ele_count);
   OrtValue value;
   OrtMemoryInfo cpu_memory_info(onnxruntime::CPU, OrtDeviceAllocator, OrtDevice(), 0, OrtMemTypeDefault);
-  auto st = utils::TensorProtoToMLValue(Env::Default(), nullptr, p,
-                                        MemBuffer(output.data(), output.size() * sizeof(int), cpu_memory_info), value);
+  auto st = utils::TensorProtoToMLValue(Env::Default(), nullptr, p, MemBuffer(output.data(), output.size() * sizeof(int), cpu_memory_info), value);
 
   // check the result
   ASSERT_TRUE(st.IsOK()) << "Error from TensorProtoToMLValue: " << st.ErrorMessage();

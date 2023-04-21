@@ -41,7 +41,8 @@ class SequenceAt final : public CudaKernel {
       CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(target_addr,
                                            source_addr,
                                            source_tensor.SizeInBytes(),
-                                           cudaMemcpyDeviceToDevice, Stream(context)));
+                                           cudaMemcpyDeviceToDevice,
+                                           Stream(context)));
     }
     return Status::OK();
   }
@@ -68,12 +69,14 @@ class SequenceConstruct final : public CudaKernel {
       const auto* source_tensor = context->Input<Tensor>(input_idx);
 
       std::unique_ptr<Tensor> target_tensor = Tensor::Create(source_tensor->DataType(),
-                                                             source_tensor->Shape(), alloc);
+                                                             source_tensor->Shape(),
+                                                             alloc);
 
       CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(target_tensor->MutableDataRaw(),
                                            source_tensor->DataRaw(),
                                            source_tensor->SizeInBytes(),
-                                           cudaMemcpyDeviceToDevice, Stream(context)));
+                                           cudaMemcpyDeviceToDevice,
+                                           Stream(context)));
 
       Y->Add(std::move(*target_tensor));  // Add will check for type consistency
     }
@@ -148,8 +151,10 @@ class ConcatFromSequence final : public CudaKernel, public ConcatBase {
       for (size_t idx_copy = 0, end = input_size / input_axis_pitch; idx_copy < end; ++idx_copy) {
         CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(
             output + (initial_output_offset + cur_out_offset) * element_bytes,
-            input + cur_in_offset * element_bytes, input_axis_pitch * element_bytes,
-            cudaMemcpyDeviceToDevice, Stream(context)));
+            input + cur_in_offset * element_bytes,
+            input_axis_pitch * element_bytes,
+            cudaMemcpyDeviceToDevice,
+            Stream(context)));
         cur_out_offset += p.output_axis_pitch;
         cur_in_offset += input_axis_pitch;
       }
@@ -195,12 +200,14 @@ class SequenceErase final : public CudaKernel {
       }
       const Tensor& source_tensor = X->Get(i);
       std::unique_ptr<Tensor> target_tensor = Tensor::Create(source_tensor.DataType(),
-                                                             source_tensor.Shape(), alloc);
+                                                             source_tensor.Shape(),
+                                                             alloc);
 
       CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(target_tensor->MutableDataRaw(),
                                            source_tensor.DataRaw(),
                                            source_tensor.SizeInBytes(),
-                                           cudaMemcpyDeviceToDevice, Stream(context)));
+                                           cudaMemcpyDeviceToDevice,
+                                           Stream(context)));
       Y->Add(std::move(*target_tensor));  // Add will check for type consistency
     }
 
@@ -236,10 +243,13 @@ class SequenceInsert final : public CudaKernel {
                 "SequenceInsert GPU: Unable to get an allocator.");
 
     std::unique_ptr<Tensor> tensor_to_be_inserted = Tensor::Create(X->DataType(),
-                                                                   X->Shape(), alloc);
+                                                                   X->Shape(),
+                                                                   alloc);
     CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(tensor_to_be_inserted->MutableDataRaw(),
-                                         X->DataRaw(), X->SizeInBytes(),
-                                         cudaMemcpyDeviceToDevice, Stream(context)));
+                                         X->DataRaw(),
+                                         X->SizeInBytes(),
+                                         cudaMemcpyDeviceToDevice,
+                                         Stream(context)));
 
     TensorSeq* Y = context->Output<TensorSeq>(0);
     Y->SetType(S->DataType());
@@ -251,11 +261,13 @@ class SequenceInsert final : public CudaKernel {
       }
       const Tensor& source_tensor = S->Get(i);
       std::unique_ptr<Tensor> target_tensor = Tensor::Create(source_tensor.DataType(),
-                                                             source_tensor.Shape(), alloc);
+                                                             source_tensor.Shape(),
+                                                             alloc);
       CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(target_tensor->MutableDataRaw(),
                                            source_tensor.DataRaw(),
                                            source_tensor.SizeInBytes(),
-                                           cudaMemcpyDeviceToDevice, Stream(context)));
+                                           cudaMemcpyDeviceToDevice,
+                                           Stream(context)));
       Y->Add(std::move(*target_tensor));  // Add will check for type consistency
     }
 

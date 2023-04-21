@@ -30,8 +30,11 @@ MIGraphXExecutionProviderInfo MIGraphXExecutionProviderInfo::FromProviderOptions
                 ORT_RETURN_IF_ERROR(HIP_CALL(hipGetDeviceCount(&num_devices)));
                 ORT_RETURN_IF_NOT(
                     0 <= info.device_id && info.device_id < num_devices,
-                    "Invalid device ID: ", info.device_id,
-                    ", must be between 0 (inclusive) and ", num_devices, " (exclusive).");
+                    "Invalid device ID: ",
+                    info.device_id,
+                    ", must be between 0 (inclusive) and ",
+                    num_devices,
+                    " (exclusive).");
                 return Status::OK();
               })
           .AddAssignmentToReference(migraphx::provider_option_names::kFp16Enable, info.fp16_enable)

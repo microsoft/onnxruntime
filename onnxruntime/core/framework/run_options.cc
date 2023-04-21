@@ -56,7 +56,6 @@ ORT_API_STATUS_IMPL(OrtApis::RunOptionsUnsetTerminate, _Inout_ OrtRunOptions* op
   return nullptr;
 }
 
-ORT_API_STATUS_IMPL(OrtApis::AddRunConfigEntry, _Inout_ OrtRunOptions* options,
-                    _In_z_ const char* config_key, _In_z_ const char* config_value) {
+ORT_API_STATUS_IMPL(OrtApis::AddRunConfigEntry, _Inout_ OrtRunOptions* options, _In_z_ const char* config_key, _In_z_ const char* config_value) {
   return onnxruntime::ToOrtStatus(options->config_options.AddConfigEntry(config_key, config_value));
 }

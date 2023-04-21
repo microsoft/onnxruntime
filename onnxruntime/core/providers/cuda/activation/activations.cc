@@ -41,7 +41,8 @@ namespace cuda {
         Stream(context),                                                                          \
         reinterpret_cast<const typename ToCudaType<T>::MappedType*>(p.input_tensor->Data<T>()),   \
         reinterpret_cast<typename ToCudaType<T>::MappedType*>(p.output_tensor->MutableData<T>()), \
-        &func_ctx, p.output_tensor->Shape().Size());                                              \
+        &func_ctx,                                                                                \
+        p.output_tensor->Shape().Size());                                                         \
                                                                                                   \
     return Status::OK();                                                                          \
   }

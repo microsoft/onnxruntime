@@ -100,7 +100,8 @@ ONNX_OPERATOR_SET_SCHEMA(
 */
 
 ONNX_CPU_OPERATOR_VERSIONED_KERNEL(Loop,
-                                   1, 10,
+                                   1,
+                                   10,
                                    KernelDefBuilder()
                                        .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
                                        .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>())
@@ -108,7 +109,8 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(Loop,
                                    Loop);
 
 ONNX_CPU_OPERATOR_VERSIONED_KERNEL(Loop,
-                                   11, 12,
+                                   11,
+                                   12,
                                    KernelDefBuilder()
                                        .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
                                        .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>())
@@ -116,7 +118,8 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(Loop,
                                    Loop);
 
 ONNX_CPU_OPERATOR_VERSIONED_KERNEL(Loop,
-                                   13, 15,
+                                   13,
+                                   15,
                                    KernelDefBuilder()
                                        .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
                                        .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>())
@@ -152,14 +155,20 @@ Loop::Info::Info(const onnxruntime::Node& node, const GraphViewer& subgraph_in)
   // and that value is in num_subgraph_inputs.
   // validate that the subgraph has that many inputs.
   ORT_ENFORCE(static_cast<size_t>(num_subgraph_inputs) == subgraph_inputs.size(),
-              "Graph in 'body' attribute of Loop should have ", num_subgraph_inputs, " inputs. Found:",
+              "Graph in 'body' attribute of Loop should have ",
+              num_subgraph_inputs,
+              " inputs. Found:",
               subgraph_inputs.size());
 
   // check num outputs are correct. the 'cond' output from the subgraph is not a Loop output, so diff is 1
   num_subgraph_outputs = static_cast<int>(subgraph_outputs.size());
   ORT_ENFORCE(num_subgraph_outputs - 1 == num_outputs,
-              "'Loop' node has ", num_outputs, " outputs so the subgraph requires ", num_outputs + 1,
-              " but has ", num_subgraph_outputs);
+              "'Loop' node has ",
+              num_outputs,
+              " outputs so the subgraph requires ",
+              num_outputs + 1,
+              " but has ",
+              num_subgraph_outputs);
 
   subgraph_input_names.reserve(num_subgraph_inputs);
   for (int i = 0; i < num_subgraph_inputs; ++i) {
@@ -217,7 +226,8 @@ class LoopImpl {
 
 static Status ConcatenateCpuOutput(void* /*stream*/,
                                    std::vector<OrtValue>& per_iteration_output,
-                                   void* output, size_t output_size_in_bytes) {
+                                   void* output,
+                                   size_t output_size_in_bytes) {
   const auto& first_output = per_iteration_output.front().Get<Tensor>();
   const auto& per_iteration_shape = first_output.Shape();
   size_t bytes_per_iteration = first_output.SizeInBytes();
@@ -233,8 +243,7 @@ static Status ConcatenateCpuOutput(void* /*stream*/,
 
     // sanity check
     if (bytes_per_iteration != iteration_data.SizeInBytes()) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Inconsistent shape in loop output for output. ",
-                             " Expected:", per_iteration_shape, " Got:", iteration_data.Shape());
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Inconsistent shape in loop output for output. ", " Expected:", per_iteration_shape, " Got:", iteration_data.Shape());
     }
 
     auto src = gsl::make_span<const gsl::byte>(static_cast<const gsl::byte*>(iteration_data.DataRaw()),
@@ -308,8 +317,7 @@ common::Status Loop::SetupSubgraphExecutionInfo(const SessionState& session_stat
   }
 
   std::unique_ptr<FeedsFetchesManager> ffm;
-  ORT_RETURN_IF_ERROR(FeedsFetchesManager::Create(feed_names, info_->subgraph_output_names,
-                                                  subgraph_session_state.GetOrtValueNameIdxMap(), ffm));
+  ORT_RETURN_IF_ERROR(FeedsFetchesManager::Create(feed_names, info_->subgraph_output_names, subgraph_session_state.GetOrtValueNameIdxMap(), ffm));
   ORT_RETURN_IF_ERROR(utils::InitializeFeedFetchCopyInfo(subgraph_session_state, *ffm));
 
   // setup the locations where we want the subgraph output to end up on
@@ -385,25 +393,21 @@ Status LoopImpl::Initialize() {
 
   if (max_trip_count_tensor) {
     if (max_trip_count_tensor->Shape().Size() != 1) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "'Loop' input 'M' should be a scalar tensor. Got shape of ",
-                             max_trip_count_tensor->Shape());
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "'Loop' input 'M' should be a scalar tensor. Got shape of ", max_trip_count_tensor->Shape());
     }
   }
 
   if (cond_tensor) {
     if (cond_tensor->Shape().Size() != 1) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "'Loop' input 'cond' should be a scalar tensor. Got shape of ",
-                             cond_tensor->Shape());
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "'Loop' input 'cond' should be a scalar tensor. Got shape of ", cond_tensor->Shape());
     }
   }
 
   auto& subgraph_inputs = info_.subgraph.GetInputs();
 
   // we need to know if the subgraph expects a rank 0 or rank 1 value for these, so a shape is required.
-  ORT_RETURN_IF(subgraph_inputs[0]->Shape() == nullptr, "Loop subgraph input 0 has unknown shape: ",
-                subgraph_inputs[0]->Name());
-  ORT_RETURN_IF(subgraph_inputs[1]->Shape() == nullptr, "Loop subgraph input 1 has unknown shape: ",
-                subgraph_inputs[1]->Name());
+  ORT_RETURN_IF(subgraph_inputs[0]->Shape() == nullptr, "Loop subgraph input 0 has unknown shape: ", subgraph_inputs[0]->Name());
+  ORT_RETURN_IF(subgraph_inputs[1]->Shape() == nullptr, "Loop subgraph input 1 has unknown shape: ", subgraph_inputs[1]->Name());
 
   auto iter_num_rank = subgraph_inputs[0]->Shape()->dim_size();
   auto condition_rank = subgraph_inputs[1]->Shape()->dim_size();
@@ -491,9 +495,7 @@ Status LoopImpl::Execute(const FeedsFetchesManager& ffm) {
       fetches.clear();
     }
 
-    status = utils::ExecuteSubgraph(session_state_, ffm, feeds, fetches, {},
-                                    ExecutionMode::ORT_SEQUENTIAL, context_.GetTerminateFlag(), context_.Logger(),
-                                    context_.GetComputeStream(),
+    status = utils::ExecuteSubgraph(session_state_, ffm, feeds, fetches, {}, ExecutionMode::ORT_SEQUENTIAL, context_.GetTerminateFlag(), context_.Logger(), context_.GetComputeStream(),
                                     // because the fetch[0] is the loop condition which we need to access on CPU,
                                     // have to perofrm a stream sync to make sure the data arrived.
                                     true);
@@ -506,8 +508,7 @@ Status LoopImpl::Execute(const FeedsFetchesManager& ffm) {
 
   // As the loop carried variables may change shape across iterations there's no way to avoid a copy
   // as we need the final shape.
-  auto copy_mlvalue_to_output = [this](OrtValue& input, int output_idx,
-                                       int64_t iter_num_value, const TypeProto& tp) {
+  auto copy_mlvalue_to_output = [this](OrtValue& input, int output_idx, int64_t iter_num_value, const TypeProto& tp) {
 #if !defined(DISABLE_OPTIONAL_TYPE)
     // Only Optional type can be None (i.e.) not have data
     if (tp.has_optional_type() && !input.IsAllocated()) {
@@ -607,8 +608,7 @@ Status LoopImpl::Execute(const FeedsFetchesManager& ffm) {
         const auto& dims = tensor_shape.GetDims();
 
         // copy to output dims and use 0 for any symbolic dim
-        std::for_each(dims.begin(), dims.end(),
-                      [&output_dims](const int64_t dim) { output_dims.push_back(dim < 0 ? 0 : dim); });
+        std::for_each(dims.begin(), dims.end(), [&output_dims](const int64_t dim) { output_dims.push_back(dim < 0 ? 0 : dim); });
       } else {
         // TODO: We could try and call ExecuteGraph to get the output shape from fetches so the rank is correct,
         // however that could still fail as we would potentially be passing in invalid data.

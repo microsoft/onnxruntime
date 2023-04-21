@@ -20,15 +20,13 @@ class CropBase {
 
   Status ValidateInput(const Tensor* X) const {
     if (border_.size() != 4) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Attribute border needs to be specified with four border elements, got ", border_.size());
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Attribute border needs to be specified with four border elements, got ", border_.size());
     }
 
     const auto& dims = X->Shape().GetDims();
 
     if (dims.size() != 4) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input is expected to have four dimensions corresponding to [N,C,H,W], got ", dims.size(), " input dimensions instead");
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input is expected to have four dimensions corresponding to [N,C,H,W], got ", dims.size(), " input dimensions instead");
     }
 
     const int64_t H = dims[2];
@@ -54,8 +52,7 @@ class CropBase {
       int64_t rightLimit = leftBorder + scale_[1];
 
       if (H < bottomLimit) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                               "Input's height (", H, ") needs to be greater than or equal to the topBorder (", topBorder, ") + scale_[0] (", scale_[0], ")");
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input's height (", H, ") needs to be greater than or equal to the topBorder (", topBorder, ") + scale_[0] (", scale_[0], ")");
       }
 
       if (W < rightLimit) {

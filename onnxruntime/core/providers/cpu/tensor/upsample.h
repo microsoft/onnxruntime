@@ -66,8 +66,7 @@ class Upsample : public UpsampleBase, public OpKernel {
 
   Status Compute(OpKernelContext* context) const override;
 
-  Status BaseCompute(OpKernelContext* context, const std::vector<float>& roi, const std::vector<float>& scales,
-                     const gsl::span<const int64_t>& output_dims) const;
+  Status BaseCompute(OpKernelContext* context, const std::vector<float>& roi, const std::vector<float>& scales, const gsl::span<const int64_t>& output_dims) const;
 };
 
 BilinearParams SetupUpsampleBilinear(const int32_t input_height,
@@ -98,13 +97,10 @@ void UpsampleBilinear(const int32_t batch_size,
                       AllocatorPtr& alloc,
                       const GetOriginalCoordinateFunc& get_original_coordinate,
                       concurrency::ThreadPool* tp) {
-  BilinearParams p = SetupUpsampleBilinear(input_height, input_width, output_height, output_width,
-                                           height_scale, width_scale, roi,
-                                           alloc, get_original_coordinate, true);
+  BilinearParams p = SetupUpsampleBilinear(input_height, input_width, output_height, output_width, height_scale, width_scale, roi, alloc, get_original_coordinate, true);
   for (int32_t n = 0; n < batch_size; ++n) {
     concurrency::ThreadPool::TrySimpleParallelFor(
-        tp, num_channels,
-        [&](std::ptrdiff_t c) {
+        tp, num_channels, [&](std::ptrdiff_t c) {
           const T* const Xdata =
               XdataBase + (n * num_channels + static_cast<int32_t>(c)) * (input_height * input_width);
           T* const Ydata = YdataBase + (n * num_channels + static_cast<int32_t>(c)) * (output_height * output_width);
@@ -151,16 +147,12 @@ void NhwcUpsampleBilinear(const int32_t batch_size,
                           AllocatorPtr& alloc,
                           const GetOriginalCoordinateFunc& get_original_coordinate,
                           concurrency::ThreadPool* tp) {
-  BilinearParams p = SetupUpsampleBilinear(input_height, input_width, output_height, output_width,
-                                           height_scale, width_scale, roi,
-                                           alloc, get_original_coordinate, false);
+  BilinearParams p = SetupUpsampleBilinear(input_height, input_width, output_height, output_width, height_scale, width_scale, roi, alloc, get_original_coordinate, false);
   for (int32_t n = 0; n < batch_size; ++n) {
     const T* const Xdata = XdataBase + n * (input_height * input_width) * num_channels;
     T* const Ydata = YdataBase + n * (output_height * output_width) * num_channels;
     concurrency::ThreadPool::TryParallelFor(
-        tp, static_cast<std::ptrdiff_t>(output_height) * output_width,
-        static_cast<double>(num_channels * 2),
-        [&](std::ptrdiff_t first, std::ptrdiff_t last) {
+        tp, static_cast<std::ptrdiff_t>(output_height) * output_width, static_cast<double>(num_channels * 2), [&](std::ptrdiff_t first, std::ptrdiff_t last) {
           for (std::ptrdiff_t i = first; i < last; ++i) {
             const int32_t x = static_cast<int32_t>(i % output_width);
             const int32_t y = static_cast<int32_t>(i / output_width);
@@ -248,16 +240,12 @@ void NhwcUpsampleBilinearInteger(const int32_t batch_size,
                                  AllocatorPtr& alloc,
                                  const GetOriginalCoordinateFunc& get_original_coordinate,
                                  concurrency::ThreadPool* tp) {
-  BilinearParamsInteger p = SetupUpsampleBilinearInteger(input_height, input_width, output_height, output_width,
-                                                         height_scale, width_scale, roi,
-                                                         alloc, get_original_coordinate, false);
+  BilinearParamsInteger p = SetupUpsampleBilinearInteger(input_height, input_width, output_height, output_width, height_scale, width_scale, roi, alloc, get_original_coordinate, false);
   for (int32_t n = 0; n < batch_size; ++n) {
     const T* const Xdata = XdataBase + n * (input_height * input_width) * num_channels;
     T* const Ydata = YdataBase + n * (output_height * output_width) * num_channels;
     concurrency::ThreadPool::TryParallelFor(
-        tp, static_cast<std::ptrdiff_t>(output_height) * output_width,
-        static_cast<double>(num_channels * 2),
-        [&](std::ptrdiff_t first, std::ptrdiff_t last) {
+        tp, static_cast<std::ptrdiff_t>(output_height) * output_width, static_cast<double>(num_channels * 2), [&](std::ptrdiff_t first, std::ptrdiff_t last) {
           for (std::ptrdiff_t i = first; i < last; ++i) {
             const int32_t x = static_cast<int32_t>(i % output_width);
             const int32_t y = static_cast<int32_t>(i / output_width);

@@ -30,19 +30,15 @@ Status SoftMaxComputeHelper(
 
   if (D <= 1024 && D * sizeof(T) <= 4096) {
     return dispatch_warpwise_softmax_forward<HipT_IN, HipT_OUT, AccumulationType_t<HipT_ACCUM>, IsLogSoftmax>(
-        stream, Y_data, X_data, gsl::narrow_cast<int>(D),
-        gsl::narrow_cast<int>(D), gsl::narrow_cast<int>(N), tuning_ctx);
+        stream, Y_data, X_data, gsl::narrow_cast<int>(D), gsl::narrow_cast<int>(D), gsl::narrow_cast<int>(N), tuning_ctx);
   }
   return dispatch_blockwise_softmax_forward<HipT_IN, HipT_OUT, AccumulationType_t<HipT_ACCUM>, IsLogSoftmax>(
-      stream, Y_data, X_data, gsl::narrow_cast<int>(D), gsl::narrow_cast<int>(D),
-      gsl::narrow_cast<int>(D), gsl::narrow_cast<int>(N), tuning_ctx);
+      stream, Y_data, X_data, gsl::narrow_cast<int>(D), gsl::narrow_cast<int>(D), gsl::narrow_cast<int>(D), gsl::narrow_cast<int>(N), tuning_ctx);
 }
 
-#define SPECIALIZED_SOFTMAX_HELPER_IMPL(T, TOut)                                                                              \
-  template Status SoftMaxComputeHelper<T, TOut, false>(hipStream_t stream, const T* input, const TensorShape& shape, TOut* Y, \
-                                                       int64_t axis, RocmTuningContext* tuning_ctx);                          \
-  template Status SoftMaxComputeHelper<T, TOut, true>(hipStream_t stream, const T* input, const TensorShape& shape, TOut* Y,  \
-                                                      int64_t axis, RocmTuningContext* tuning_ctx);
+#define SPECIALIZED_SOFTMAX_HELPER_IMPL(T, TOut)                                                                                                                            \
+  template Status SoftMaxComputeHelper<T, TOut, false>(hipStream_t stream, const T* input, const TensorShape& shape, TOut* Y, int64_t axis, RocmTuningContext* tuning_ctx); \
+  template Status SoftMaxComputeHelper<T, TOut, true>(hipStream_t stream, const T* input, const TensorShape& shape, TOut* Y, int64_t axis, RocmTuningContext* tuning_ctx);
 
 SPECIALIZED_SOFTMAX_HELPER_IMPL(MLFloat16, float)
 SPECIALIZED_SOFTMAX_HELPER_IMPL(float, float)
@@ -55,7 +51,8 @@ SPECIALIZED_SOFTMAX_HELPER_IMPL(BFloat16, BFloat16)
   ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                 \
       Softmax,                                                                             \
       kOnnxDomain,                                                                         \
-      1, 10,                                                                               \
+      1,                                                                                   \
+      10,                                                                                  \
       T,                                                                                   \
       kRocmExecutionProvider,                                                              \
       (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
@@ -63,7 +60,8 @@ SPECIALIZED_SOFTMAX_HELPER_IMPL(BFloat16, BFloat16)
   ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                 \
       Softmax,                                                                             \
       kOnnxDomain,                                                                         \
-      11, 12,                                                                              \
+      11,                                                                                  \
+      12,                                                                                  \
       T,                                                                                   \
       kRocmExecutionProvider,                                                              \
       (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
@@ -79,7 +77,8 @@ SPECIALIZED_SOFTMAX_HELPER_IMPL(BFloat16, BFloat16)
   ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                 \
       LogSoftmax,                                                                          \
       kOnnxDomain,                                                                         \
-      1, 10,                                                                               \
+      1,                                                                                   \
+      10,                                                                                  \
       T,                                                                                   \
       kRocmExecutionProvider,                                                              \
       (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
@@ -87,7 +86,8 @@ SPECIALIZED_SOFTMAX_HELPER_IMPL(BFloat16, BFloat16)
   ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                 \
       LogSoftmax,                                                                          \
       kOnnxDomain,                                                                         \
-      11, 12,                                                                              \
+      11,                                                                                  \
+      12,                                                                                  \
       T,                                                                                   \
       kRocmExecutionProvider,                                                              \
       (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
@@ -155,7 +155,9 @@ Status Softmax<T>::ComputeInternal(OpKernelContext* ctx) const {
     ORT_RETURN_IF_ERROR(Transpose::DoTranspose(rocm_ep_->GetDeviceProp(),
                                                Stream(ctx),
                                                GetRocblasHandle(ctx),
-                                               permutation, *X, *temp_input));
+                                               permutation,
+                                               *X,
+                                               *temp_input));
     transposed_input = std::move(temp_input);
 
     // Allocate memory for the intermediate output
@@ -178,15 +180,9 @@ Status Softmax<T>::ComputeInternal(OpKernelContext* ctx) const {
 
   Status status;
   if (log_softmax_) {
-    status = SoftMaxComputeHelper<T, T, true>(Stream(ctx), X_data, *compute_input_shape, Y_data,
-                                              is_transpose_required ? static_cast<int64_t>(rank) - 1
-                                                                    : static_cast<int64_t>(axis),
-                                              GetTuningContext());
+    status = SoftMaxComputeHelper<T, T, true>(Stream(ctx), X_data, *compute_input_shape, Y_data, is_transpose_required ? static_cast<int64_t>(rank) - 1 : static_cast<int64_t>(axis), GetTuningContext());
   } else {
-    status = SoftMaxComputeHelper<T, T, false>(Stream(ctx), X_data, *compute_input_shape, Y_data,
-                                               is_transpose_required ? static_cast<int64_t>(rank) - 1
-                                                                     : static_cast<int64_t>(axis),
-                                               GetTuningContext());
+    status = SoftMaxComputeHelper<T, T, false>(Stream(ctx), X_data, *compute_input_shape, Y_data, is_transpose_required ? static_cast<int64_t>(rank) - 1 : static_cast<int64_t>(axis), GetTuningContext());
   }
 
   if (!status.IsOK())
@@ -197,7 +193,9 @@ Status Softmax<T>::ComputeInternal(OpKernelContext* ctx) const {
     ORT_RETURN_IF_ERROR(Transpose::DoTranspose(rocm_ep_->GetDeviceProp(),
                                                Stream(ctx),
                                                GetRocblasHandle(ctx),
-                                               permutation, *intermediate_output, *Y));
+                                               permutation,
+                                               *intermediate_output,
+                                               *Y));
   }
 
   return Status::OK();

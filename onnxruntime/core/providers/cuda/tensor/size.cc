@@ -11,7 +11,8 @@ namespace cuda {
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     Size,
     kOnnxDomain,
-    1, 12,
+    1,
+    12,
     kCudaExecutionProvider,
     (*KernelDefBuilder::Create())
         .OutputMemoryType(OrtMemTypeCPUInput, 0)

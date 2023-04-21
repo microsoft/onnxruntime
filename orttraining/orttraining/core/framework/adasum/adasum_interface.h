@@ -30,23 +30,13 @@ static inline bool IsPowerOfTwo(unsigned x) {
 template <typename Communicator_type>
 class AdasumInterface {
  public:
-  Status DispatchFusedAllreduce(void* grad_buffer, void* recv_buffer,
-                                std::vector<int>& tensor_counts, int start_level,
-                                Communicator_type communicator, int tag,
-                                const Communicator_type* reduction_comms,
-                                MLDataType data_type) {
+  Status DispatchFusedAllreduce(void* grad_buffer, void* recv_buffer, std::vector<int>& tensor_counts, int start_level, Communicator_type communicator, int tag, const Communicator_type* reduction_comms, MLDataType data_type) {
     if (data_type == DataTypeImpl::GetType<MLFloat16>()) {
-      FusedAllreduce((uint16_t*)grad_buffer, (uint16_t*)recv_buffer,
-                     data_type, tensor_counts, start_level, communicator, tag,
-                     reduction_comms);
+      FusedAllreduce((uint16_t*)grad_buffer, (uint16_t*)recv_buffer, data_type, tensor_counts, start_level, communicator, tag, reduction_comms);
     } else if (data_type == DataTypeImpl::GetType<float>()) {
-      FusedAllreduce((float*)grad_buffer, (float*)recv_buffer,
-                     data_type, tensor_counts, start_level, communicator, tag,
-                     reduction_comms);
+      FusedAllreduce((float*)grad_buffer, (float*)recv_buffer, data_type, tensor_counts, start_level, communicator, tag, reduction_comms);
     } else if (data_type == DataTypeImpl::GetType<double>()) {
-      FusedAllreduce((double*)grad_buffer, (double*)recv_buffer,
-                     data_type, tensor_counts, start_level, communicator, tag,
-                     reduction_comms);
+      FusedAllreduce((double*)grad_buffer, (double*)recv_buffer, data_type, tensor_counts, start_level, communicator, tag, reduction_comms);
     } else {
       // Shouldn't reach here
       ORT_THROW("Unsupported datatype for Adasum allreduce.");
@@ -68,12 +58,12 @@ class AdasumInterface {
                                     int64_t input_buffer_bytes,
                                     void* output_data_buffer,
                                     int64_t output_buffer_bytes,
-                                    MLDataType data_type, int dst_src_rank,
-                                    int tag, Communicator_type communicator) = 0;
-
-  virtual void SumAllreduceWithComm(void* data, int num_elements,
                                     MLDataType data_type,
-                                    Communicator_type comm) = 0;
+                                    int dst_src_rank,
+                                    int tag,
+                                    Communicator_type communicator) = 0;
+
+  virtual void SumAllreduceWithComm(void* data, int num_elements, MLDataType data_type, Communicator_type comm) = 0;
 
   virtual int GetRankWithComm(Communicator_type communicator) = 0;
 
@@ -82,26 +72,23 @@ class AdasumInterface {
   virtual void DispatchComputeDotAndNormSqrds(const void* __restrict__ a,
                                               const void* __restrict__ b,
                                               MLDataType data_type,
-                                              int count, double& dotProduct,
-                                              double& anormsq, double& bnormsq) {
+                                              int count,
+                                              double& dotProduct,
+                                              double& anormsq,
+                                              double& bnormsq) {
     if (data_type == DataTypeImpl::GetType<MLFloat16>()) {
-      ComputeDotAndNormSqrdsfp16((uint16_t*)a, (uint16_t*)b, count, dotProduct,
-                                 anormsq, bnormsq);
+      ComputeDotAndNormSqrdsfp16((uint16_t*)a, (uint16_t*)b, count, dotProduct, anormsq, bnormsq);
     } else if (data_type == DataTypeImpl::GetType<float>()) {
-      ComputeDotAndNormSqrds((float*)a, (float*)b, count, dotProduct, anormsq,
-                             bnormsq);
+      ComputeDotAndNormSqrds((float*)a, (float*)b, count, dotProduct, anormsq, bnormsq);
     } else if (data_type == DataTypeImpl::GetType<double>()) {
-      ComputeDotAndNormSqrds((double*)a, (double*)b, count, dotProduct, anormsq,
-                             bnormsq);
+      ComputeDotAndNormSqrds((double*)a, (double*)b, count, dotProduct, anormsq, bnormsq);
     } else {
       // Shouldn't reach here
       ORT_THROW("Unsupported datatype for Adasum allreduce.");
     }
   }
 
-  virtual void DispatchScaledAdd(MLDataType data_type, int count,
-                                 double acoeff, void* __restrict__ a,
-                                 double bcoeff, void* __restrict__ b) {
+  virtual void DispatchScaledAdd(MLDataType data_type, int count, double acoeff, void* __restrict__ a, double bcoeff, void* __restrict__ b) {
     if (data_type == DataTypeImpl::GetType<MLFloat16>()) {
       ScaledAddfp16(count, acoeff, (uint16_t*)a, bcoeff, (uint16_t*)b);
     } else if (data_type == DataTypeImpl::GetType<float>()) {
@@ -152,10 +139,7 @@ class AdasumInterface {
   //                  the ranks that this rank has either directly or indirectly
   //                  communicated with after each level of VHDD.
   template <typename T>
-  void FusedAllreduce(T* grad_buffer, T* recv_buffer, MLDataType data_type,
-                      std::vector<int>& tensor_counts, int start_level,
-                      Communicator_type communicator, int tag,
-                      const Communicator_type* reduction_comms) {
+  void FusedAllreduce(T* grad_buffer, T* recv_buffer, MLDataType data_type, std::vector<int>& tensor_counts, int start_level, Communicator_type communicator, int tag, const Communicator_type* reduction_comms) {
     int per_element_size = data_type->Size();
     int rank = GetRankWithComm(communicator);
     int size = GetSizeWithComm(communicator);
@@ -256,16 +240,12 @@ class AdasumInterface {
       nghrCountVec_index++;
 
       this->PointToPointSendRecv(
-          (uint8_t*)(&grad_buffer[sendOffset]), nghrCount * per_element_size,
-          (uint8_t*)(&recv_buffer[recvOffset]), myCount * per_element_size,
-          data_type, neighbor_rank, tag, communicator);
+          (uint8_t*)(&grad_buffer[sendOffset]), nghrCount * per_element_size, (uint8_t*)(&recv_buffer[recvOffset]), myCount * per_element_size, data_type, neighbor_rank, tag, communicator);
       if ((rank & level) != 0) {
         grad_buffer = &grad_buffer[nghrCount];
         recv_buffer = &recv_buffer[nghrCount];
       }
-      FusedPairwiseReduceWithComm((uint8_t*)grad_buffer, (uint8_t*)recv_buffer,
-                                  data_type, tensor_counts, reduction_comms[comm_index],
-                                  (rank & level) == 0, normAndDots);
+      FusedPairwiseReduceWithComm((uint8_t*)grad_buffer, (uint8_t*)recv_buffer, data_type, tensor_counts, reduction_comms[comm_index], (rank & level) == 0, normAndDots);
     }
 
     for (level = (size >> 1); level > 0; level = (level >> 1)) {
@@ -286,10 +266,7 @@ class AdasumInterface {
       } else {
         recv_buffer = &grad_buffer[-nghrCount];
       }
-      this->PointToPointSendRecv(grad_buffer, myCount * per_element_size,
-                                 recv_buffer, nghrCount * per_element_size,
-                                 data_type, neighbor_rank, tag,
-                                 communicator);
+      this->PointToPointSendRecv(grad_buffer, myCount * per_element_size, recv_buffer, nghrCount * per_element_size, data_type, neighbor_rank, tag, communicator);
       if ((rank & level) != 0) {
         grad_buffer = &grad_buffer[-nghrCount];
       }
@@ -298,11 +275,7 @@ class AdasumInterface {
     size = orgSize;
   }
 
-  void FusedPairwiseReduceWithComm(uint8_t* a, uint8_t* b,
-                                   MLDataType data_type,
-                                   std::vector<int>& tensor_counts,
-                                   const Communicator_type& comm, bool isLeftNeighbor,
-                                   std::vector<double>& normAndDots) {
+  void FusedPairwiseReduceWithComm(uint8_t* a, uint8_t* b, MLDataType data_type, std::vector<int>& tensor_counts, const Communicator_type& comm, bool isLeftNeighbor, std::vector<double>& normAndDots) {
     static double sqrt_double_min = std::sqrt(DBL_MIN);
     int per_element_size = data_type->Size();
     int bytesSoFar = 0;
@@ -311,9 +284,7 @@ class AdasumInterface {
       double anormsq = 0.;
       double bnormsq = 0.;
 
-      DispatchComputeDotAndNormSqrds(&a[bytesSoFar], &b[bytesSoFar],
-                                     data_type, tensor_counts[i],
-                                     dotProduct, anormsq, bnormsq);
+      DispatchComputeDotAndNormSqrds(&a[bytesSoFar], &b[bytesSoFar], data_type, tensor_counts[i], dotProduct, anormsq, bnormsq);
       normAndDots[i * 3] = dotProduct;
       if (isLeftNeighbor) {
         normAndDots[i * 3 + 1] = anormsq;
@@ -326,7 +297,8 @@ class AdasumInterface {
     }
 
     SumAllreduceWithComm((void*)normAndDots.data(),
-                         3 * tensor_counts.size(), DataTypeImpl::GetType<double>(),
+                         3 * tensor_counts.size(),
+                         DataTypeImpl::GetType<double>(),
                          comm);
 
     bytesSoFar = 0;
@@ -351,17 +323,14 @@ class AdasumInterface {
         bcoeff = 1.0 - dotProduct / bnormsq * 0.5;
       }
 
-      DispatchScaledAdd(data_type, tensor_counts[i], acoeff,
-                        &a[bytesSoFar], bcoeff, &b[bytesSoFar]);
+      DispatchScaledAdd(data_type, tensor_counts[i], acoeff, &a[bytesSoFar], bcoeff, &b[bytesSoFar]);
       bytesSoFar += tensor_counts[i] * per_element_size;
     }
   }
 
   // Given two vectors compute their dot product and the squared norm for each.
   template <typename T>
-  void ComputeDotAndNormSqrds(const T* __restrict__ a, const T* __restrict__ b,
-                              int count, double& dotProduct, double& anormsq,
-                              double& bnormsq) {
+  void ComputeDotAndNormSqrds(const T* __restrict__ a, const T* __restrict__ b, int count, double& dotProduct, double& anormsq, double& bnormsq) {
     dotProduct = 0.;
     anormsq = 0.;
     bnormsq = 0.;
@@ -375,8 +344,7 @@ class AdasumInterface {
 
   // Update a vector to a linear combination of itself and another vector.
   template <typename T>
-  void ScaledAdd(int n, double acoeff, T* __restrict__ a, double bcoeff,
-                 T* __restrict__ b) {
+  void ScaledAdd(int n, double acoeff, T* __restrict__ a, double bcoeff, T* __restrict__ b) {
     for (int i = 0; i < n; i++) {
       a[i] = acoeff * a[i] + bcoeff * b[i];
     }

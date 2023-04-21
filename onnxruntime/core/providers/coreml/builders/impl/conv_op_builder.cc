@@ -22,14 +22,12 @@ class ConvOpBuilder : public BaseOpBuilder {
   void AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const override;
 
  private:
-  [[nodiscard]] Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
-                                             const logging::Logger& logger) const override;
+  [[nodiscard]] Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node, const logging::Logger& logger) const override;
 #endif
 
   // Operator support related
  private:
-  bool IsOpSupportedImpl(const Node& /* node */, const OpBuilderInputParams& /* input_params */,
-                         const logging::Logger& /* logger */) const override;
+  bool IsOpSupportedImpl(const Node& /* node */, const OpBuilderInputParams& /* input_params */, const logging::Logger& /* logger */) const override;
 };
 
 // Add operator related
@@ -46,8 +44,7 @@ void ConvOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Nod
   }
 }
 
-Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
-                                            const logging::Logger& logger) const {
+Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node, const logging::Logger& logger) const {
   std::unique_ptr<COREML_SPEC::NeuralNetworkLayer> layer = CreateNNLayer(model_builder, node);
 
   const auto& input_defs = node.InputDefs();
@@ -120,10 +117,7 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   std::vector<int64_t> input_shape;
   ORT_RETURN_IF_NOT(GetShape(*input_defs[0], input_shape, logger), "Cannot get shape");
   AutoPadType auto_pad_type;
-  ORT_RETURN_IF_ERROR(HandleAutoPad(input_shape, weight_shape[2], weight_shape[3],
-                                    onnx_pads, strides, dilations,
-                                    StringToAutoPadType(helper.Get("auto_pad", "NOTSET")),
-                                    auto_pad_type));
+  ORT_RETURN_IF_ERROR(HandleAutoPad(input_shape, weight_shape[2], weight_shape[3], onnx_pads, strides, dilations, StringToAutoPadType(helper.Get("auto_pad", "NOTSET")), auto_pad_type));
 
   if (AutoPadType::SAME_UPPER == auto_pad_type || AutoPadType::SAME_LOWER == auto_pad_type) {
     auto* padding_type = coreml_conv->mutable_same();
@@ -179,8 +173,7 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
 
 // Operator support related
 
-bool ConvOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params,
-                                      const logging::Logger& logger) const {
+bool ConvOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params, const logging::Logger& logger) const {
   const auto& name = node.Name();
   const auto& input_defs = node.InputDefs();
 

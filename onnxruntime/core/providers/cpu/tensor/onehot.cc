@@ -32,7 +32,8 @@ namespace onnxruntime {
 #define REG_TYPED_ONE_HOT_OP_V9_10(types_str, in_type, out_type, depth_type) \
   ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(                                  \
       OneHot,                                                                \
-      9, 10,                                                                 \
+      9,                                                                     \
+      10,                                                                    \
       types_str,                                                             \
       KernelDefBuilder()                                                     \
           .TypeConstraint("T1", DataTypeImpl::GetTensorType<in_type>())      \
@@ -85,9 +86,7 @@ Status ValidateInputs(const Tensor* depth, const Tensor* values) {
   return Status::OK();
 }
 
-Status PrepareOutputShape(const Tensor* indices, const int64_t depth_val, const int64_t axis,
-                          int64_t& prefix_dim_size, int64_t& suffix_dim_size,
-                          TensorShapeVector& output_shape) {
+Status PrepareOutputShape(const Tensor* indices, const int64_t depth_val, const int64_t axis, int64_t& prefix_dim_size, int64_t& suffix_dim_size, TensorShapeVector& output_shape) {
   const auto& indices_shape = indices->Shape();
   const auto indices_dims = indices_shape.GetDims();
   const auto indices_num_dims = indices_shape.NumDimensions();

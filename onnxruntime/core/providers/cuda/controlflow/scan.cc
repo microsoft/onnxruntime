@@ -70,7 +70,8 @@ Status Scan<9>::Compute(OpKernelContext* ctx) const {
 
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(Scan,
                                   kOnnxDomain,
-                                  8, 8,
+                                  8,
+                                  8,
                                   kCudaExecutionProvider,
                                   (*KernelDefBuilder::Create())
                                       .InputMemoryType(OrtMemTypeCPUInput, 0)  // 'sequence_lens' needs to be on CPU
@@ -80,7 +81,8 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(Scan,
 
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(Scan,
                                   kOnnxDomain,
-                                  9, 10,
+                                  9,
+                                  10,
                                   kCudaExecutionProvider,
                                   (*KernelDefBuilder::Create())
                                       // 'I' is in the ONNX spec but is not used for any inputs or outputs

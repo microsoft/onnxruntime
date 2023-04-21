@@ -316,9 +316,14 @@ class GradientBuilderBase {
 
   std::vector<NodeDef> GetBiasGeluGradNodes(
       bool use_approximation,
-      const ArgDef& dY, const ArgDef& X, const ArgDef& B,                  // inputs
-      const ArgDef& dX, const ArgDef& dB,                                  // outputs
-      const ArgDef& b_axes, const ArgDef& b_shape, const ArgDef& x_shape,  // intermediate args
+      const ArgDef& dY,
+      const ArgDef& X,
+      const ArgDef& B,  // inputs
+      const ArgDef& dX,
+      const ArgDef& dB,  // outputs
+      const ArgDef& b_axes,
+      const ArgDef& b_shape,
+      const ArgDef& x_shape,  // intermediate args
       const std::string& node_name) const;
 
   const std::string& NodeName() const { return node_->Name(); }

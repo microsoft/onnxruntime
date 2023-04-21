@@ -202,62 +202,52 @@ Status CheckQuantizedInputs(OpKernelContext* context, bool* is_signed_inputs) {
   bool has_segment_embedding = context->Input<Tensor>(1) != nullptr;
 
   if (!IsScalarOr1ElementVector(word_embedding_scale_tensor)) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Word embedding scale must be a scalar or 1D tensor of size 1");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Word embedding scale must be a scalar or 1D tensor of size 1");
   }
 
   if (!IsScalarOr1ElementVector(position_embedding_scale_tensor) &&
       position_embedding_scale_tensor->IsDataType<int8_t>() == word_embedding_is_signed_inputs) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Position embedding scale must be a scalar or 1D tensor of size 1");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Position embedding scale must be a scalar or 1D tensor of size 1");
   }
 
   if (has_segment_embedding && !IsScalarOr1ElementVector(segment_embedding_scale_tensor) &&
       segment_embedding_scale_tensor->IsDataType<int8_t>() == word_embedding_is_signed_inputs) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Segment embedding scale must be a scalar or 1D tensor of size 1");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Segment embedding scale must be a scalar or 1D tensor of size 1");
   }
 
   if (!IsScalarOr1ElementVector(gamma_scale_tensor) &&
       gamma_scale_tensor->IsDataType<int8_t>() == word_embedding_is_signed_inputs) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Gamma scale must be a scalar or 1D tensor of size 1");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Gamma scale must be a scalar or 1D tensor of size 1");
   }
 
   if (!IsScalarOr1ElementVector(beta_scale_tensor) &&
       beta_scale_tensor->IsDataType<int8_t>() == word_embedding_is_signed_inputs) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Beta scale must be a scalar or 1D tensor of size 1");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Beta scale must be a scalar or 1D tensor of size 1");
   }
 
   if (!IsScalarOr1ElementVector(word_embedding_zero_point_tensor) &&
       word_embedding_zero_point_tensor->IsDataType<int8_t>() == word_embedding_is_signed_inputs) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Word embedding zero point must be a scalar or 1D tensor of size 1");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Word embedding zero point must be a scalar or 1D tensor of size 1");
   }
 
   if (!IsScalarOr1ElementVector(position_embedding_zero_point_tensor) &&
       position_embedding_zero_point_tensor->IsDataType<int8_t>() == word_embedding_is_signed_inputs) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Position embedding zero point must be a scalar or 1D tensor of size 1");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Position embedding zero point must be a scalar or 1D tensor of size 1");
   }
 
   if (has_segment_embedding && !IsScalarOr1ElementVector(segment_embedding_zero_point_tensor) &&
       segment_embedding_zero_point_tensor->IsDataType<int8_t>() == word_embedding_is_signed_inputs) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Segment embedding zero point must be a scalar or 1D tensor of size 1");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Segment embedding zero point must be a scalar or 1D tensor of size 1");
   }
 
   if (!IsScalarOr1ElementVector(gamma_zero_point_tensor) &&
       gamma_zero_point_tensor->IsDataType<int8_t>() == word_embedding_is_signed_inputs) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Gamma zero point must be a scalar or 1D tensor of size 1");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Gamma zero point must be a scalar or 1D tensor of size 1");
   }
 
   if (!IsScalarOr1ElementVector(beta_zero_point_tensor) &&
       beta_zero_point_tensor->IsDataType<int8_t>() == word_embedding_is_signed_inputs) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Beta zero point must be a scalar or 1D tensor of size 1");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Beta zero point must be a scalar or 1D tensor of size 1");
   }
 
   *is_signed_inputs = word_embedding_is_signed_inputs;

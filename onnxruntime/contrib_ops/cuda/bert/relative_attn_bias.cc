@@ -153,12 +153,7 @@ Status GatedRelativePositionBias<T>::ComputeInternal(OpKernelContext* context) c
   constexpr int format = 1;
   constexpr int total_maxtrix = 1;
   constexpr int num_matrix_to_transpose = 1;
-  LaunchAddBiasTranspose(Stream(context), num_matrix_to_transpose, format, device_prop.maxThreadsPerBlock,
-                         batch_size, seq_len, num_heads_, head_size,
-                         reinterpret_cast<const CudaT*>(query_tensor.template Data<T>()),
-                         reinterpret_cast<const CudaT*>(query_bias_tensor.template Data<T>()),
-                         reinterpret_cast<CudaT*>(workspace.get()),
-                         false, head_size, reinterpret_cast<CudaT*>(static_cast<CudaT*>(nullptr)), total_maxtrix);
+  LaunchAddBiasTranspose(Stream(context), num_matrix_to_transpose, format, device_prop.maxThreadsPerBlock, batch_size, seq_len, num_heads_, head_size, reinterpret_cast<const CudaT*>(query_tensor.template Data<T>()), reinterpret_cast<const CudaT*>(query_bias_tensor.template Data<T>()), reinterpret_cast<CudaT*>(workspace.get()), false, head_size, reinterpret_cast<CudaT*>(static_cast<CudaT*>(nullptr)), total_maxtrix);
 
   // reuse output if possible
   CudaT* gemm_output = reuse_output ? reinterpret_cast<CudaT*>(output->template MutableData<T>())
@@ -170,20 +165,10 @@ Status GatedRelativePositionBias<T>::ComputeInternal(OpKernelContext* context) c
 
   // ([b*n*s, h] * [h, D]), CUDA assumes col-major
   CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
-      cublas, CUBLAS_OP_N, CUBLAS_OP_N,
-      D, BNS, head_size, &one,
-      reinterpret_cast<const CudaT*>(weight_tensor.template Data<T>()), (int)D,
-      reinterpret_cast<const CudaT*>(workspace.get()), (int)head_size,
-      &zero, gemm_output, ld_gemm_output, device_prop));
+      cublas, CUBLAS_OP_N, CUBLAS_OP_N, D, BNS, head_size, &one, reinterpret_cast<const CudaT*>(weight_tensor.template Data<T>()), (int)D, reinterpret_cast<const CudaT*>(workspace.get()), (int)head_size, &zero, gemm_output, ld_gemm_output, device_prop));
 
   auto status = LaunchGatedRelativePositionBiasKernel<CudaT>(
-      device_prop, Stream(context),
-      reinterpret_cast<CudaT*>(output->template MutableData<T>()),
-      reinterpret_cast<const CudaT*>(rel_pos_tensor.template Data<T>()),
-      reinterpret_cast<const CudaT*>(gemm_output),
-      reinterpret_cast<const CudaT*>(bias_tensor.template Data<T>()),
-      reinterpret_cast<const CudaT*>(eco_a_tensor.template Data<T>()),
-      batch_size, num_heads_, seq_len, D, ld_gemm_output);
+      device_prop, Stream(context), reinterpret_cast<CudaT*>(output->template MutableData<T>()), reinterpret_cast<const CudaT*>(rel_pos_tensor.template Data<T>()), reinterpret_cast<const CudaT*>(gemm_output), reinterpret_cast<const CudaT*>(bias_tensor.template Data<T>()), reinterpret_cast<const CudaT*>(eco_a_tensor.template Data<T>()), batch_size, num_heads_, seq_len, D, ld_gemm_output);
 
   return status;
 }

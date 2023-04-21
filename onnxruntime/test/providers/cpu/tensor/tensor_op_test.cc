@@ -266,7 +266,10 @@ TEST(TensorOpTest, Reshape_WithAllowZero_bfloat16) {
   execution_providers.push_back(DefaultDnnlExecutionProvider());
 #endif  //  USE_DNNL
   test.Run(OpTester::ExpectResult::kExpectFailure,
-           "The input tensor cannot be reshaped to the requested shape", {kTensorrtExecutionProvider}, nullptr, &execution_providers);
+           "The input tensor cannot be reshaped to the requested shape",
+           {kTensorrtExecutionProvider},
+           nullptr,
+           &execution_providers);
 }
 
 TEST(TensorOpTest, ReshapeWithInitializer_bfloat16) {
@@ -306,7 +309,10 @@ TEST(TensorOpTest, ReshapeWithEmptyInputAndDynamicShape_bfloat16) {
     execution_providers.push_back(DefaultDnnlExecutionProvider());
 #endif  //  USE_DNNL
     test.Run(OpTester::ExpectResult::kExpectFailure,
-             "The input tensor cannot be reshaped to the requested shape", {kTensorrtExecutionProvider}, nullptr, &execution_providers);
+             "The input tensor cannot be reshaped to the requested shape",
+             {kTensorrtExecutionProvider},
+             nullptr,
+             &execution_providers);
   }
 
   {
@@ -342,7 +348,10 @@ TEST(TensorOpTest, Reshape_EmptyInputWithoutAllowZero_bfloat16) {
   execution_providers.push_back(DefaultDnnlExecutionProvider());
 #endif  //  USE_DNNL
   test.Run(OpTester::ExpectResult::kExpectFailure,
-           "The input tensor cannot be reshaped to the requested shape", {kTensorrtExecutionProvider}, nullptr, &execution_providers);
+           "The input tensor cannot be reshaped to the requested shape",
+           {kTensorrtExecutionProvider},
+           nullptr,
+           &execution_providers);
 }
 
 TEST(TensorOpTest, Reshape_EmptyInputWithAllowZero_bfloat16) {
@@ -429,10 +438,8 @@ TEST(TensorOpTest, ShapeTest3D) {
 void MeanVarianceNormalizationFunctionDefaultPerChannel() {
   constexpr int64_t N = 2, C = 2, H = 2, W = 3;
 
-  std::vector<float> N1C1 = {3.0f, -3.0f, -1.0f,
-                             1.0f, 2.0f, -1.0f};
-  std::vector<float> N1C2 = {-2.0f, -2.0f, -2.0f,
-                             4.0f, 1.0f, 4.0f};
+  std::vector<float> N1C1 = {3.0f, -3.0f, -1.0f, 1.0f, 2.0f, -1.0f};
+  std::vector<float> N1C2 = {-2.0f, -2.0f, -2.0f, 4.0f, 1.0f, 4.0f};
   std::vector<float> N2C1 = {
       0.0f,
       -2.0f,
@@ -496,14 +503,7 @@ void MeanVarianceNormalizationFunctionDefaultPerChannel() {
 void MeanVarianceNormalizationFunctionAcrossChannels(std::vector<int64_t> axes) {
   constexpr int64_t N = 2, C = 2, H = 2, W = 3;
 
-  std::vector<float> X = {3.0f, -3.0f, -1.0f,
-                          1.0f, 2.0f, -1.0f,
-                          -2.0f, -2.0f, -2.0f,
-                          4.0f, 1.0f, 4.0f,
-                          0.0f, -2.0f, -2.0f,
-                          -4.0f, 5.0f, 7.0f,
-                          5.0f, -5.0f, -5.0f,
-                          3.0f, 4.0f, 4.0f};
+  std::vector<float> X = {3.0f, -3.0f, -1.0f, 1.0f, 2.0f, -1.0f, -2.0f, -2.0f, -2.0f, 4.0f, 1.0f, 4.0f, 0.0f, -2.0f, -2.0f, -4.0f, 5.0f, 7.0f, 5.0f, -5.0f, -5.0f, 3.0f, 4.0f, 4.0f};
   auto mean_stdev = MeanStdev(X);
 
   std::vector<float> result(X);

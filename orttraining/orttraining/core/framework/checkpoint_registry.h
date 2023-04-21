@@ -55,7 +55,8 @@ class CheckpointRegistry {
   Status AddCheckpoint(
       CheckpointId id,
       PathString& new_checkpoint_path,
-      bool& should_remove_old_checkpoint, PathString& old_checkpoint_path);
+      bool& should_remove_old_checkpoint,
+      PathString& old_checkpoint_path);
 
   /**
    * Attempts to get the latest checkpoint.

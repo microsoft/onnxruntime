@@ -12,7 +12,8 @@ namespace cuda {
   ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                        \
       Pad,                                                        \
       kOnnxDomain,                                                \
-      2, 10,                                                      \
+      2,                                                          \
+      10,                                                         \
       T,                                                          \
       kCudaExecutionProvider,                                     \
       (*KernelDefBuilder::Create())                               \
@@ -21,7 +22,8 @@ namespace cuda {
   ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                        \
       Pad,                                                        \
       kOnnxDomain,                                                \
-      11, 12,                                                     \
+      11,                                                         \
+      12,                                                         \
       T,                                                          \
       kCudaExecutionProvider,                                     \
       (*KernelDefBuilder::Create())                               \
@@ -159,9 +161,7 @@ Status Pad<T>::ComputeInternal(OpKernelContext* ctx) const {
       std::all_of(p_slices->begin(), p_slices->end(), [](const int64_t v) { return v == 0; }) &&
       output_shape.Size() > 0) {
     CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(
-        output_tensor.MutableData<T>(), input_tensor.Data<T>(),
-        sizeof(typename ToCudaType<T>::MappedType) * output_shape.Size(),
-        cudaMemcpyDeviceToDevice, Stream(ctx)));
+        output_tensor.MutableData<T>(), input_tensor.Data<T>(), sizeof(typename ToCudaType<T>::MappedType) * output_shape.Size(), cudaMemcpyDeviceToDevice, Stream(ctx)));
     return Status::OK();
   }
 

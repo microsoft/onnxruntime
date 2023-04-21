@@ -157,11 +157,7 @@ void RegisterRocmStreamHandles(IStreamCommandHandleRegistry& stream_handle_regis
       return std::make_unique<RocmStream>(stream, device, cpu_allocator, release_cpu_buffer_on_rocm_stream, true, nullptr, nullptr);
     });
   else
-    stream_handle_registry.RegisterCreateStreamFn(device_type, [cpu_allocator,
-                                                                release_cpu_buffer_on_rocm_stream,
-                                                                external_stream,
-                                                                external_miopen_handle,
-                                                                external_rocblas_handle](const OrtDevice& device) {
+    stream_handle_registry.RegisterCreateStreamFn(device_type, [cpu_allocator, release_cpu_buffer_on_rocm_stream, external_stream, external_miopen_handle, external_rocblas_handle](const OrtDevice& device) {
       return std::make_unique<RocmStream>(external_stream, device, cpu_allocator, release_cpu_buffer_on_rocm_stream, false, external_miopen_handle, external_rocblas_handle);
     });
 }

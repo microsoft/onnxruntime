@@ -22,8 +22,7 @@ int ReplaceOrCreateZeroPointInitializer(Graph& graph, Node& quantize_node) {
   if (quant_node_input_defs.size() >= 3) {
     // The quantize node has the zero point input
     auto zero_point_tensor_int = graph.GetInitializer(quant_node_input_defs[2]->Name(), true);
-    ORT_ENFORCE(zero_point_tensor_int != nullptr, "Expected: zero point initializer with name ",
-                quant_node_input_defs[2]->Name(), " to be present in the graph. Actual: not found.");
+    ORT_ENFORCE(zero_point_tensor_int != nullptr, "Expected: zero point initializer with name ", quant_node_input_defs[2]->Name(), " to be present in the graph. Actual: not found.");
     zero_point_type = zero_point_tensor_int->data_type();
     zero_point_tensor_float.set_name(graph.GenerateNodeArgName(zero_point_tensor_int->name()));
     zero_point_tensor_float.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
@@ -53,10 +52,7 @@ int ReplaceOrCreateZeroPointInitializer(Graph& graph, Node& quantize_node) {
 
 void FuseQDQNodes(Graph& graph, Node& quantize_node, Node& dequantize_node, int quant_type) {
   // Prepare the FakeQuant node that will be the replacement node during fusion.
-  Node& fake_quant_node = graph.AddNode(graph.GenerateNodeName("FakeQuant"), "FakeQuant",
-                                        "FakeQuant after fusion of " + quantize_node.Name() + " and " +
-                                            dequantize_node.Name(),
-                                        quantize_node.MutableInputDefs(), {}, {}, kMSDomain);
+  Node& fake_quant_node = graph.AddNode(graph.GenerateNodeName("FakeQuant"), "FakeQuant", "FakeQuant after fusion of " + quantize_node.Name() + " and " + dequantize_node.Name(), quantize_node.MutableInputDefs(), {}, {}, kMSDomain);
 
   // The quant_min and quant_max attribute values are set based on the elem_type of the zero point tensor.
   // If the type is INT8, the quant_min and quant_max are set to -128 and 127 respectively. Else UINT8 is
@@ -79,8 +75,7 @@ void FuseQDQNodes(Graph& graph, Node& quantize_node, Node& dequantize_node, int 
   fake_quant_node.MutableOutputDefs().emplace_back(&fake_quant_gradient_mask);
 }
 
-std::pair<bool, Node*> CheckForQDQPatternMatch(Graph& graph, Node& quantize_node,
-                                               const InlinedHashSet<std::string_view>& compatible_execution_providers) {
+std::pair<bool, Node*> CheckForQDQPatternMatch(Graph& graph, Node& quantize_node, const InlinedHashSet<std::string_view>& compatible_execution_providers) {
   // Try to match the current node with QuantizeLinear in the effort of searching for the pattern
   // QuantizeLinear -> DequantizeLinear.
   if (!graph_utils::IsSupportedOptypeVersionAndDomain(quantize_node, "QuantizeLinear", {10, 13}) ||
@@ -89,9 +84,7 @@ std::pair<bool, Node*> CheckForQDQPatternMatch(Graph& graph, Node& quantize_node
   }
 
   // QuantizeLinear node found. Assert that there is only one node consuming the output of the QuantizeLinear node.
-  ORT_ENFORCE(quantize_node.GetOutputEdgesCount() == 1, "There must only be a single node consuming the output of ",
-              "QuantizeLinear node. Actual: The output of QuantizeLinear (", quantize_node.Name(),
-              ") is being consumed by ", quantize_node.GetOutputEdgesCount(), " nodes.");
+  ORT_ENFORCE(quantize_node.GetOutputEdgesCount() == 1, "There must only be a single node consuming the output of ", "QuantizeLinear node. Actual: The output of QuantizeLinear (", quantize_node.Name(), ") is being consumed by ", quantize_node.GetOutputEdgesCount(), " nodes.");
 
   // Now try to match the succeeding node with DequantizeLinear to ascertain QuantizeLinear -> DequantizeLinear
   // pattern.
@@ -104,8 +97,13 @@ std::pair<bool, Node*> CheckForQDQPatternMatch(Graph& graph, Node& quantize_node
   ORT_ENFORCE(graph_utils::IsSupportedOptypeVersionAndDomain(*dequantize_node_ptr, "DequantizeLinear", {10, 13}) &&
                   graph_utils::IsSupportedProvider(*dequantize_node_ptr, compatible_execution_providers),
               "Expected that every QuantizeLinear node be followed by a unique DequantizeLinear node. ",
-              "Actual: QuantizeLinear (", quantize_node.Name(), ") is followed by ", dequantize_node_ptr->OpType(), "(",
-              dequantize_node_ptr->Name(), ").");
+              "Actual: QuantizeLinear (",
+              quantize_node.Name(),
+              ") is followed by ",
+              dequantize_node_ptr->OpType(),
+              "(",
+              dequantize_node_ptr->Name(),
+              ").");
 
   return {true, dequantize_node_ptr};
 }

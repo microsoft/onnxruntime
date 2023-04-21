@@ -88,12 +88,10 @@ Status LRN<float>::Compute(OpKernelContext* context) const {
   // go through the images
   for (int n = 0; n < N; ++n) {
     // compute the padded square
-    math::Sqr<float, CPUMathUtil>(image_size, Xdata + image_size * n, padded_square_data + pre_pad * H * W,
-                                  &CPUMathUtil::Instance());
+    math::Sqr<float, CPUMathUtil>(image_size, Xdata + image_size * n, padded_square_data + pre_pad * H * W, &CPUMathUtil::Instance());
     // Create the first channel scale
     for (int c = 0; c < size_; ++c) {
-      math::Axpy<float, CPUMathUtil>(H * W, alpha_over_size, padded_square_data + c * H * W,
-                                     scale_data + image_size * n, &CPUMathUtil::Instance());
+      math::Axpy<float, CPUMathUtil>(H * W, alpha_over_size, padded_square_data + c * H * W, scale_data + image_size * n, &CPUMathUtil::Instance());
     }
 
     for (int c = 1; c < C; ++c) {
@@ -101,11 +99,9 @@ Status LRN<float>::Compute(OpKernelContext* context) const {
       // copy previous scale
       memcpy(this_scale_slice, this_scale_slice - H * W, H * W * sizeof(float));
       // add head
-      math::Axpy<float, CPUMathUtil>(H * W, alpha_over_size, padded_square_data + (c + size_ - 1) * H * W,
-                                     this_scale_slice, &CPUMathUtil::Instance());
+      math::Axpy<float, CPUMathUtil>(H * W, alpha_over_size, padded_square_data + (c + size_ - 1) * H * W, this_scale_slice, &CPUMathUtil::Instance());
       // subtract tail
-      math::Axpy<float, CPUMathUtil>(H * W, -alpha_over_size, padded_square_data + (c - 1) * H * W, this_scale_slice,
-                                     &CPUMathUtil::Instance());
+      math::Axpy<float, CPUMathUtil>(H * W, -alpha_over_size, padded_square_data + (c - 1) * H * W, this_scale_slice, &CPUMathUtil::Instance());
     }
   }
   concurrency::ThreadPool* tp = context->GetOperatorThreadPool();
@@ -115,14 +111,11 @@ Status LRN<float>::Compute(OpKernelContext* context) const {
   f.input2 = Xdata;
   f.b = -beta_;
   f.output = Ydata;
-  concurrency::ThreadPool::TryParallelFor(tp, static_cast<std::ptrdiff_t>(Xsize),
-                                          {static_cast<float>(sizeof(T)), static_cast<float>(sizeof(T)), f.Cost()}, f);
+  concurrency::ThreadPool::TryParallelFor(tp, static_cast<std::ptrdiff_t>(Xsize), {static_cast<float>(sizeof(T)), static_cast<float>(sizeof(T)), f.Cost()}, f);
   return Status::OK();
 }
 
-ONNX_CPU_OPERATOR_VERSIONED_KERNEL(LRN, 1, 12, KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
-                                   LRN<float>);
-ONNX_CPU_OPERATOR_KERNEL(LRN, 13, KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
-                         LRN<float>);
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(LRN, 1, 12, KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()), LRN<float>);
+ONNX_CPU_OPERATOR_KERNEL(LRN, 13, KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()), LRN<float>);
 
 }  // namespace onnxruntime

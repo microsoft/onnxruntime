@@ -67,10 +67,7 @@ struct InputContainer {
   }
 
   template <typename T>
-  TestInputData& AddInput(const std::string& name, TensorShapeVector dims,
-                          std::function<
-                              void(const TensorShapeVector& shape, std::vector<T>& data)>
-                              func = nullptr) {
+  TestInputData& AddInput(const std::string& name, TensorShapeVector dims, std::function<void(const TensorShapeVector& shape, std::vector<T>& data)> func = nullptr) {
     std::vector<T> values(TensorShape(dims).Size());
     if (func) {
       func(dims, values);
@@ -96,9 +93,6 @@ void RandomFillHalfVector(const TensorShapeVector& shape, std::vector<MLFloat16>
 
 void RandomMasks(int64_t batch, int64_t sequence_length, std::vector<int64_t>& data);
 
-void RunModelWithData(const PathString& model_uri, const std::string session_log_id,
-                      const std::string& provider_type, const InputContainer& input_container,
-                      const std::vector<std::string>& output_names,
-                      std::vector<OrtValue>& run_results);
+void RunModelWithData(const PathString& model_uri, const std::string session_log_id, const std::string& provider_type, const InputContainer& input_container, const std::vector<std::string>& output_names, std::vector<OrtValue>& run_results);
 }  // namespace test
 }  // namespace onnxruntime

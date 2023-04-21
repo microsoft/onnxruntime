@@ -43,13 +43,11 @@ Status Dropout<T1, T2>::ComputeInternal(OpKernelContext* ctx) const {
     void* Y_data = Y->MutableDataRaw();
 
     if (Y_data != X_data) {
-      CANN_RETURN_IF_ERROR(aclrtMemcpyAsync(Y_data, Y->SizeInBytes(), X_data, Y->SizeInBytes(),
-                                            ACL_MEMCPY_DEVICE_TO_DEVICE, Stream(ctx)));
+      CANN_RETURN_IF_ERROR(aclrtMemcpyAsync(Y_data, Y->SizeInBytes(), X_data, Y->SizeInBytes(), ACL_MEMCPY_DEVICE_TO_DEVICE, Stream(ctx)));
     }
 
     if (mask) {
-      CANN_RETURN_IF_ERROR(aclrtMemsetAsync(mask->MutableData<bool>(), mask->SizeInBytes(), true,
-                                            mask->SizeInBytes(), Stream(ctx)));
+      CANN_RETURN_IF_ERROR(aclrtMemsetAsync(mask->MutableData<bool>(), mask->SizeInBytes(), true, mask->SizeInBytes(), Stream(ctx)));
     }
   } else {
     IAllocatorUniquePtr<void> pmask{};

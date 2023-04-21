@@ -46,10 +46,7 @@ TEST(AllreduceTest, CPUAdasumAllreduceTestReduceTwoTensors) {
   std::vector<std::unique_ptr<IExecutionProvider>> providers;
   providers.push_back(DefaultCpuExecutionProvider());
 
-  allreduce_test.Run(OpTester::ExpectResult::kExpectSuccess /*expect_result*/, "" /*expected_failure_string*/,
-                     {} /*excluded_provider_types*/, nullptr /*run_options*/, &providers /*execution_providers*/,
-                     ExecutionMode::ORT_SEQUENTIAL /*execution_mode*/,
-                     {} /*resolve_options*/);
+  allreduce_test.Run(OpTester::ExpectResult::kExpectSuccess /*expect_result*/, "" /*expected_failure_string*/, {} /*excluded_provider_types*/, nullptr /*run_options*/, &providers /*execution_providers*/, ExecutionMode::ORT_SEQUENTIAL /*execution_mode*/, {} /*resolve_options*/);
 }
 
 TEST(AllreduceTest, CPUAdasumAllreduceTestReduceTwoTensorsFP16) {
@@ -89,10 +86,7 @@ TEST(AllreduceTest, CPUAdasumAllreduceTestReduceTwoTensorsFP16) {
   std::vector<std::unique_ptr<IExecutionProvider>> providers;
   providers.push_back(DefaultCpuExecutionProvider());
 
-  allreduce_test.Run(OpTester::ExpectResult::kExpectSuccess /*expect_result*/, "" /*expected_failure_string*/,
-                     {} /*excluded_provider_types*/, nullptr /*run_options*/, &providers /*execution_providers*/,
-                     ExecutionMode::ORT_SEQUENTIAL /*execution_mode*/,
-                     {} /*resolve_options*/);
+  allreduce_test.Run(OpTester::ExpectResult::kExpectSuccess /*expect_result*/, "" /*expected_failure_string*/, {} /*excluded_provider_types*/, nullptr /*run_options*/, &providers /*execution_providers*/, ExecutionMode::ORT_SEQUENTIAL /*execution_mode*/, {} /*resolve_options*/);
 }
 
 TEST(AllreduceTest, CPUAdasumAllreduceTestFailTensorCountMismatch) {
@@ -115,10 +109,7 @@ TEST(AllreduceTest, CPUAdasumAllreduceTestFailTensorCountMismatch) {
   std::vector<std::unique_ptr<IExecutionProvider>> providers;
   providers.push_back(DefaultCpuExecutionProvider());
 
-  allreduce_test.Run(OpTester::ExpectResult::kExpectFailure /*expect_result*/, "" /*expected_failure_string*/,
-                     {} /*excluded_provider_types*/, nullptr /*run_options*/, &providers /*execution_providers*/,
-                     ExecutionMode::ORT_SEQUENTIAL /*execution_mode*/,
-                     {} /*resolve_options*/);
+  allreduce_test.Run(OpTester::ExpectResult::kExpectFailure /*expect_result*/, "" /*expected_failure_string*/, {} /*excluded_provider_types*/, nullptr /*run_options*/, &providers /*execution_providers*/, ExecutionMode::ORT_SEQUENTIAL /*execution_mode*/, {} /*resolve_options*/);
 }
 
 const std::string lr_string = "ETA";
@@ -219,8 +210,7 @@ void build_optimizer_node(Graph& graph,
     optimizer_outputs.push_back(&gradient_out_arg);
   }
 
-  auto& optimizer_node = graph.AddNode(input_gradient->Name() + "_adam_optimizer", "AdamOptimizer", "Adam optimizer.", optimizer_inputs, optimizer_outputs,
-                                       nullptr /*attributes*/, kMSDomain);
+  auto& optimizer_node = graph.AddNode(input_gradient->Name() + "_adam_optimizer", "AdamOptimizer", "Adam optimizer.", optimizer_inputs, optimizer_outputs, nullptr /*attributes*/, kMSDomain);
 
   optimizer_node.AddAttribute("do_bias_correction", int64_t{0});
   optimizer_node.AddAttribute("weight_decay_mode", int64_t{0});
@@ -230,10 +220,7 @@ using AllreduceGraphConfigVector = std::vector<std::tuple<std::string /*input na
                                                           std::string /*output name*/,
                                                           int /*number of elements*/>>;
 
-void build_allreduce_graph(Graph& graph, AllreduceGraphConfigVector& config,
-                           training::AdasumReductionType adasum_reduce_type = training::AdasumReductionType::None,
-                           bool build_optimizer = false,
-                           bool half_precision = false) {
+void build_allreduce_graph(Graph& graph, AllreduceGraphConfigVector& config, training::AdasumReductionType adasum_reduce_type = training::AdasumReductionType::None, bool build_optimizer = false, bool half_precision = false) {
   std::vector<onnxruntime::NodeArg*> inputs;
   std::vector<onnxruntime::NodeArg*> outputs;
 
@@ -273,9 +260,7 @@ void build_allreduce_graph(Graph& graph, AllreduceGraphConfigVector& config,
 
       level_1_outputs.push_back(&level_1_output_arg);
     }
-    auto& level_1_allreduce_node = graph.AddNode("node_level_1", level_1_allreduce,
-                                                 "level 1 allreduce.", level_1_inputs, level_1_outputs,
-                                                 nullptr /*attributes*/, kMSDomain);
+    auto& level_1_allreduce_node = graph.AddNode("node_level_1", level_1_allreduce, "level 1 allreduce.", level_1_inputs, level_1_outputs, nullptr /*attributes*/, kMSDomain);
     level_1_allreduce_node.AddAttribute("group_type", int64_t{2} /*node local data parallel*/);
     // Set inputs of next node to be outputs of level 1 reduction node.
     inputs.clear();
@@ -297,9 +282,7 @@ void build_allreduce_graph(Graph& graph, AllreduceGraphConfigVector& config,
         // Output tensor
         auto& scale_grad_output_arg = graph.GetOrCreateNodeArg(inputs[i]->Name() + "_scaled", &float_tensor);
         scale_grad_outputs.push_back(&scale_grad_output_arg);
-        auto& scaled_grad_node = graph.AddNode(std::get<0>(config[i]) + "_scaled_grad", "MixedPrecisionScale",
-                                               "scale grad", scale_grad_inputs, {&scale_grad_output_arg},
-                                               nullptr /*attributes*/, kMSDomain);
+        auto& scaled_grad_node = graph.AddNode(std::get<0>(config[i]) + "_scaled_grad", "MixedPrecisionScale", "scale grad", scale_grad_inputs, {&scale_grad_output_arg}, nullptr /*attributes*/, kMSDomain);
         scaled_grad_node.AddAttribute("to", int64_t{element_type});
       }
       // Set inputs of next node to be outputs of scale node.
@@ -314,8 +297,7 @@ void build_allreduce_graph(Graph& graph, AllreduceGraphConfigVector& config,
     for (size_t i = 0; i < config.size(); i++) {
       // Adasum computes on the updated gradients of optimizer, so suffix tensor name with gradient out.
       auto& optimizer_output_arg = graph.GetOrCreateNodeArg(std::get<0>(config[i]) + gradient_out_suffix_string, &float_tensor);
-      build_optimizer_node(graph, element_type, std::get<2>(config[i]), std::get<0>(config[i]),
-                           inputs[i], &optimizer_output_arg, adasum_reduce_type);
+      build_optimizer_node(graph, element_type, std::get<2>(config[i]), std::get<0>(config[i]), inputs[i], &optimizer_output_arg, adasum_reduce_type);
       intermediate_output.push_back(&optimizer_output_arg);
     }
     // Set inputs to next node to be outputs of optimizer.
@@ -335,8 +317,7 @@ void build_allreduce_graph(Graph& graph, AllreduceGraphConfigVector& config,
     allreduce_outputs = std::move(outputs);
   }
 
-  auto& allreduce_node = graph.AddNode("node_allreduce", allreduce_op_name, "node allreduce.", inputs, allreduce_outputs,
-                                       nullptr /*attributes*/, kMSDomain);
+  auto& allreduce_node = graph.AddNode("node_allreduce", allreduce_op_name, "node allreduce.", inputs, allreduce_outputs, nullptr /*attributes*/, kMSDomain);
   if (adasum_reduce_type != training::AdasumReductionType::None) {
     allreduce_node.AddAttribute("reduce_algo", static_cast<int64_t>(adasum_reduce_type));
   } else {
@@ -349,8 +330,7 @@ void build_allreduce_graph(Graph& graph, AllreduceGraphConfigVector& config,
       inputs.clear();
       inputs = std::move(allreduce_outputs);
       for (size_t i = 0; i < config.size(); i++) {
-        build_optimizer_node(graph, element_type, std::get<2>(config[i]), std::get<0>(config[i]),
-                             inputs[i], outputs[i], adasum_reduce_type);
+        build_optimizer_node(graph, element_type, std::get<2>(config[i]), std::get<0>(config[i]), inputs[i], outputs[i], adasum_reduce_type);
       }
     } else {
       // If build_optimizer and Adasum allreduce, outputs of Adasum nodes need to be added back to original weights.
@@ -377,9 +357,7 @@ void build_allreduce_graph(Graph& graph, AllreduceGraphConfigVector& config,
         auto& updated_weight_out_arg = graph.GetOrCreateNodeArg(std::get<1>(config[i]), &updated_weight_out_tensor);
         weight_update_output_args.push_back(&updated_weight_out_arg);
 
-        graph.AddNode(std::get<0>(config[i]) + "_node_update_weight", accumulator_op, "node update weight.",
-                      weight_update_input_args, {&updated_weight_out_arg},
-                      nullptr /*attributes*/, kMSDomain);
+        graph.AddNode(std::get<0>(config[i]) + "_node_update_weight", accumulator_op, "node update weight.", weight_update_input_args, {&updated_weight_out_arg}, nullptr /*attributes*/, kMSDomain);
       }
     }
   }
@@ -469,8 +447,7 @@ TEST(AllreduceTest, GPUHierarchicalAdasumAllreduceOptimizerTest) {
                                                                        dims_allreduce_input[0]);
   adasum_graph_configs.push_back(adasum_graph_config);
 
-  build_allreduce_graph(graph, adasum_graph_configs, training::AdasumReductionType::GpuHierarchicalReduction, true /*build_optimizer*/,
-                        false /*half_precision*/);
+  build_allreduce_graph(graph, adasum_graph_configs, training::AdasumReductionType::GpuHierarchicalReduction, true /*build_optimizer*/, false /*half_precision*/);
 
   std::string model_file_name = "GPUHierarchicalAdasumAllreduceOptimizerTest.onnx";
   auto status = onnxruntime::Model::Save(model, model_file_name);
@@ -646,8 +623,7 @@ TEST(AllreduceTest, GPUHierarchicalAdasumAllreduceOptimizerFP16Test) {
                                                                        dims_allreduce_input[0]);
   adasum_graph_configs.push_back(adasum_graph_config);
 
-  build_allreduce_graph(graph, adasum_graph_configs, training::AdasumReductionType::GpuHierarchicalReduction, true /*build_optimizer*/,
-                        true /*half_precision*/);
+  build_allreduce_graph(graph, adasum_graph_configs, training::AdasumReductionType::GpuHierarchicalReduction, true /*build_optimizer*/, true /*half_precision*/);
 
   std::string model_file_name = "GPUHierarchicalAdasumAllreduceOptimizerFP16Test.onnx";
   auto status = onnxruntime::Model::Save(model, model_file_name);
@@ -892,9 +868,7 @@ TEST(AllreduceTest, GPUHierarchicalAdasumFP16AllreduceTest) {
                                                                        output_gradient_string,
                                                                        dims_allreduce_input[0]);
   adasum_graph_configs.push_back(adasum_graph_config);
-  build_allreduce_graph(graph, adasum_graph_configs, training::AdasumReductionType::GpuHierarchicalReduction,
-                        false /*build_optimizer*/,
-                        true /*half_precision*/);
+  build_allreduce_graph(graph, adasum_graph_configs, training::AdasumReductionType::GpuHierarchicalReduction, false /*build_optimizer*/, true /*half_precision*/);
 
   std::string model_file_name = "GPUHierarchicalAdasumFP16AllreduceTest.onnx";
   auto status = onnxruntime::Model::Save(model, model_file_name);
@@ -919,7 +893,9 @@ TEST(AllreduceTest, GPUHierarchicalAdasumFP16AllreduceTest) {
   ASSERT_TRUE(status.IsOK());
   OrtValue ml_value_input_t;
   CreateMLValue<MLFloat16>(testCPUExecutionProvider->GetAllocator(OrtMemTypeDefault),
-                           dims_allreduce_input, values_allreduce_input_half, &ml_value_input_t);
+                           dims_allreduce_input,
+                           values_allreduce_input_half,
+                           &ml_value_input_t);
 
   NameMLValMap feeds;
   feeds.insert(std::make_pair(input_gradient_string, ml_value_input_t));
@@ -1133,7 +1109,9 @@ TEST(AllreduceTest, GPUAdasumFP16AllreduceTest) {
   ASSERT_TRUE(status.IsOK());
   OrtValue ml_value_input_t;
   CreateMLValue<MLFloat16>(testCPUExecutionProvider->GetAllocator(OrtMemTypeDefault),
-                           dims_allreduce_input, values_allreduce_input_half, &ml_value_input_t);
+                           dims_allreduce_input,
+                           values_allreduce_input_half,
+                           &ml_value_input_t);
 
   NameMLValMap feeds;
   feeds.insert(std::make_pair(input_gradient_string, ml_value_input_t));

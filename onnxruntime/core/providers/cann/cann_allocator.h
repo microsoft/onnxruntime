@@ -14,9 +14,7 @@ class CANNAllocator : public IAllocator {
  public:
   CANNAllocator(OrtDevice::DeviceId device_id, const char* name)
       : IAllocator(
-            OrtMemoryInfo(name, OrtAllocatorType::OrtDeviceAllocator,
-                          OrtDevice(OrtDevice::NPU, OrtDevice::MemType::DEFAULT, device_id),
-                          device_id, OrtMemTypeDefault)) {}
+            OrtMemoryInfo(name, OrtAllocatorType::OrtDeviceAllocator, OrtDevice(OrtDevice::NPU, OrtDevice::MemType::DEFAULT, device_id), device_id, OrtMemTypeDefault)) {}
   void* Alloc(size_t size) override;
   void Free(void* p) override;
 };
@@ -25,9 +23,7 @@ class CANNPinnedAllocator : public IAllocator {
  public:
   CANNPinnedAllocator(OrtDevice::DeviceId device_id, const char* name)
       : IAllocator(
-            OrtMemoryInfo(name, OrtAllocatorType::OrtDeviceAllocator,
-                          OrtDevice(OrtDevice::CPU, OrtDevice::MemType::CANN_PINNED, device_id),
-                          device_id, OrtMemTypeCPUOutput)) {}
+            OrtMemoryInfo(name, OrtAllocatorType::OrtDeviceAllocator, OrtDevice(OrtDevice::CPU, OrtDevice::MemType::CANN_PINNED, device_id), device_id, OrtMemTypeCPUOutput)) {}
 
   void* Alloc(size_t size) override;
   void Free(void* p) override;

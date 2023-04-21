@@ -180,10 +180,8 @@ Status Pool<T, PoolType>::Compute(OpKernelContext* context) const {
     pNetworkId = &it->second;
   }
 
-  armnn::InputTensors inputTensors{{0, armnn::ConstTensor(Pool::run->GetInputTensorInfo(*pNetworkId, 0),
-                                                          x_data)}};
-  armnn::OutputTensors outputTensors{{0, armnn::Tensor(Pool::run->GetOutputTensorInfo(*pNetworkId, 0),
-                                                       y_data)}};
+  armnn::InputTensors inputTensors{{0, armnn::ConstTensor(Pool::run->GetInputTensorInfo(*pNetworkId, 0), x_data)}};
+  armnn::OutputTensors outputTensors{{0, armnn::Tensor(Pool::run->GetOutputTensorInfo(*pNetworkId, 0), y_data)}};
 
   // Execute network
   Pool::run->EnqueueWorkload(*pNetworkId, inputTensors, outputTensors);
@@ -269,10 +267,8 @@ Status MaxPoolV8<T>::Compute(OpKernelContext* context) const {
     pNetworkId = &it->second;
   }
 
-  armnn::InputTensors inputTensors{{0, armnn::ConstTensor(MaxPoolV8::run->GetInputTensorInfo(*pNetworkId, 0),
-                                                          x_data)}};
-  armnn::OutputTensors outputTensors{{0, armnn::Tensor(MaxPoolV8::run->GetOutputTensorInfo(*pNetworkId, 0),
-                                                       y_data)}};
+  armnn::InputTensors inputTensors{{0, armnn::ConstTensor(MaxPoolV8::run->GetInputTensorInfo(*pNetworkId, 0), x_data)}};
+  armnn::OutputTensors outputTensors{{0, armnn::Tensor(MaxPoolV8::run->GetOutputTensorInfo(*pNetworkId, 0), y_data)}};
 
   // Execute network
   MaxPoolV8::run->EnqueueWorkload(*pNetworkId, inputTensors, outputTensors);

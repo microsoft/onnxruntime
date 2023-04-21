@@ -32,8 +32,7 @@ class UnsqueezeOpBuilder : public BaseOpBuilder {
 
   // Operator support related
  private:
-  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
-                         const OpSupportCheckParams& params) const override;
+  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit, const OpSupportCheckParams& params) const override;
 };
 
 // Add operator related
@@ -74,8 +73,7 @@ Status UnsqueezeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, co
 
 // Operator support related
 
-bool UnsqueezeOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
-                                           const OpSupportCheckParams& /* params */) const {
+bool UnsqueezeOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit, const OpSupportCheckParams& /* params */) const {
   const auto& inputs = node_unit.Inputs();
   Shape input_shape;
   if (!GetShape(inputs[0].node_arg, input_shape))

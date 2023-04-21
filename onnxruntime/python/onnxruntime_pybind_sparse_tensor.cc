@@ -156,8 +156,7 @@ void addSparseTensorMethods(pybind11::module& m) {
                       std::vector<py::object> reference_holders = {py_values, py_indices};
                       OrtMemoryInfo mem_info = GetMemoryInfoPerDeviceType(ort_device);
                       TensorShape values_shape{py_values.size()};
-                      auto sparse_tensor = std::make_unique<SparseTensor>(ml_type, dense_shape, values_shape,
-                                                                          const_cast<void*>(py_values.data()), mem_info);
+                      auto sparse_tensor = std::make_unique<SparseTensor>(ml_type, dense_shape, values_shape, const_cast<void*>(py_values.data()), mem_info);
                       auto index_span = gsl::make_span(const_cast<int64_t*>(py_indices.data()), py_indices.size());
                       ORT_THROW_IF_ERROR(sparse_tensor->UseCooIndices(index_span));
                       result = std::make_unique<PySparseTensor>(std::move(sparse_tensor), std::move(reference_holders));
@@ -219,8 +218,7 @@ void addSparseTensorMethods(pybind11::module& m) {
               std::vector<py::object> reference_holders = {py_values, py_inner_indices, py_outer_indices};
               OrtMemoryInfo mem_info = GetMemoryInfoPerDeviceType(ort_device);
               TensorShape values_shape{py_values.size()};
-              auto sparse_tensor = std::make_unique<SparseTensor>(ml_type, dense_shape, values_shape,
-                                                                  const_cast<void*>(py_values.data()), mem_info);
+              auto sparse_tensor = std::make_unique<SparseTensor>(ml_type, dense_shape, values_shape, const_cast<void*>(py_values.data()), mem_info);
               auto inner_span = gsl::make_span<int64_t>(const_cast<int64_t*>(py_inner_indices.data()), py_inner_indices.size());
               auto outer_span = gsl::make_span<int64_t>(const_cast<int64_t*>(py_outer_indices.data()), py_outer_indices.size());
               ORT_THROW_IF_ERROR(sparse_tensor->UseCsrIndices(inner_span, outer_span));
@@ -277,8 +275,7 @@ void addSparseTensorMethods(pybind11::module& m) {
               // create references to make sure storage does not disappear
               std::vector<py::object> reference_holders = {py_values, py_indices};
               OrtMemoryInfo mem_info = GetMemoryInfoPerDeviceType(ort_device);
-              auto sparse_tensor = std::make_unique<SparseTensor>(ml_type, dense_shape, values_shape,
-                                                                  const_cast<void*>(py_values.data()), mem_info);
+              auto sparse_tensor = std::make_unique<SparseTensor>(ml_type, dense_shape, values_shape, const_cast<void*>(py_values.data()), mem_info);
               ORT_THROW_IF_ERROR(sparse_tensor->UseBlockSparseIndices(index_shape, const_cast<int32_t*>(py_indices.data())));
               result = std::make_unique<PySparseTensor>(std::move(sparse_tensor), std::move(reference_holders));
             } else if (values_type == NPY_UNICODE || values_type == NPY_STRING) {
@@ -374,8 +371,7 @@ void addSparseTensorMethods(pybind11::module& m) {
         }
         auto cuda_allocator = GetCudaAllocator(ort_device.Id());
         auto gpu_transfer = GetGPUDataTransfer();
-        auto dest_tensor = std::make_unique<SparseTensor>(sparse_tensor.DataType(), sparse_tensor.DenseShape(),
-                                                          std::move(cuda_allocator));
+        auto dest_tensor = std::make_unique<SparseTensor>(sparse_tensor.DataType(), sparse_tensor.DenseShape(), std::move(cuda_allocator));
         ORT_THROW_IF_ERROR(sparse_tensor.Copy(*gpu_transfer, *dest_tensor));
         auto result = std::make_unique<PySparseTensor>(std::move(dest_tensor));
         return result;

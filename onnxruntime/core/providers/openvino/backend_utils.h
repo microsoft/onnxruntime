@@ -47,24 +47,18 @@ InferenceEngine::Precision
 ConvertPrecisionONNXToOpenVINO(const ONNX_NAMESPACE::TypeProto& onnx_type, std::string device);
 
 Ort::UnownedValue
-GetOutputTensor(Ort::KernelContext& context, size_t batch_size,
-                OVInferRequestPtr infer_request,
-                std::string output_name,
-                std::unordered_map<std::string, int> output_names);
+GetOutputTensor(Ort::KernelContext& context, size_t batch_size, OVInferRequestPtr infer_request, std::string output_name, std::unordered_map<std::string, int> output_names);
 
-void FillInputBlob(OVTensorPtr inputBlob, size_t batch_slice_idx,
-                   std::string input_name, Ort::KernelContext& context,
-                   const SubGraphContext& subgraph_context);
+void FillInputBlob(OVTensorPtr inputBlob, size_t batch_slice_idx, std::string input_name, Ort::KernelContext& context, const SubGraphContext& subgraph_context);
 
-void FillOutputBlob(OVTensorPtr outputBlob, Ort::UnownedValue& output_tensor,
-                    size_t batch_slice_idx);
+void FillOutputBlob(OVTensorPtr outputBlob, Ort::UnownedValue& output_tensor, size_t batch_slice_idx);
 
 std::shared_ptr<OVNetwork>
-CreateOVModel(const ONNX_NAMESPACE::ModelProto& model_proto, const GlobalContext& global_context, const SubGraphContext& subgraph_context,
-              std::map<std::string, std::shared_ptr<ngraph::Node>>& const_outputs_map);
+CreateOVModel(const ONNX_NAMESPACE::ModelProto& model_proto, const GlobalContext& global_context, const SubGraphContext& subgraph_context, std::map<std::string, std::shared_ptr<ngraph::Node>>& const_outputs_map);
 
 void printPerformanceCounts(const std::vector<OVProfilingInfo>& performanceMap,
-                            std::ostream& stream, std::string deviceName);
+                            std::ostream& stream,
+                            std::string deviceName);
 
 void printPerformanceCounts(OVInferRequestPtr request, std::ostream& stream, std::string deviceName);
 

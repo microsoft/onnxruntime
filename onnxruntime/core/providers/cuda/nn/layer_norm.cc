@@ -9,12 +9,8 @@
 namespace onnxruntime {
 namespace cuda {
 
-#define REGISTER_KERNEL_TYPED(T, U)                                                             \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(LayerNormalization, kOnnxDomain, 17, T, kCudaExecutionProvider, \
-                                (*KernelDefBuilder::Create())                                   \
-                                    .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())      \
-                                    .TypeConstraint("U", DataTypeImpl::GetTensorType<U>()),     \
-                                LayerNorm<T, U, T, false>);
+#define REGISTER_KERNEL_TYPED(T, U) \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(LayerNormalization, kOnnxDomain, 17, T, kCudaExecutionProvider, (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()).TypeConstraint("U", DataTypeImpl::GetTensorType<U>()), LayerNorm<T, U, T, false>);
 
 REGISTER_KERNEL_TYPED(float, float)
 REGISTER_KERNEL_TYPED(double, float)
@@ -52,11 +48,12 @@ Status LayerNorm<T, U, V, simplified>::ComputeInternal(OpKernelContext* ctx) con
   const auto scale_size = scale->Shape().Size();
   const auto bias_size = (bias_data) ? bias->Shape().Size() : 0;
   if (n2 == 1 || scale_size != n2 || (bias_data && bias_size != n2)) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Size of X.shape()[axis:] == ", n2,
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Size of X.shape()[axis:] == ", n2,
                            ". Size of scale and bias (if provided) must match this "
                            "and the size must not be 1. Got scale size of ",
-                           scale_size, " and bias size of ", bias_size);
+                           scale_size,
+                           " and bias size of ",
+                           bias_size);
   }
 
   // Outputs
@@ -93,8 +90,7 @@ Status LayerNorm<T, U, V, simplified>::ComputeInternal(OpKernelContext* ctx) con
     return Status::OK();
   }
 
-  HostApplyLayerNorm<CudaT, CudaU, CudaV, simplified>(GetDeviceProp(), Stream(ctx), Y_data, mean_data, inv_var_data,
-                                                      X_data, n1, n2, epsilon_, scale_data, bias_data);
+  HostApplyLayerNorm<CudaT, CudaU, CudaV, simplified>(GetDeviceProp(), Stream(ctx), Y_data, mean_data, inv_var_data, X_data, n1, n2, epsilon_, scale_data, bias_data);
   CUDA_RETURN_IF_ERROR(cudaGetLastError());
   return Status::OK();
 }

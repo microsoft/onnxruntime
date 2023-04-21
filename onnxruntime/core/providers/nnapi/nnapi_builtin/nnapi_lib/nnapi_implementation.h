@@ -54,9 +54,7 @@ struct NnApi {
    *
    * @return ANEURALNETWORKS_NO_ERROR if the request completed normally.
    */
-  int (*ANeuralNetworksMemory_createFromFd)(size_t size, int protect, int fd,
-                                            size_t offset,
-                                            ANeuralNetworksMemory** memory);
+  int (*ANeuralNetworksMemory_createFromFd)(size_t size, int protect, int fd, size_t offset, ANeuralNetworksMemory** memory);
 
   /**
    * Delete a memory object.
@@ -177,7 +175,8 @@ struct NnApi {
    * @return ANEURALNETWORKS_NO_ERROR if successful.
    */
   int (*ANeuralNetworksModel_setOperandValue)(ANeuralNetworksModel* model,
-                                              int32_t index, const void* buffer,
+                                              int32_t index,
+                                              const void* buffer,
                                               size_t length);
 
   /**
@@ -200,8 +199,7 @@ struct NnApi {
    * @return ANEURALNETWORKS_NO_ERROR if successful.
    */
   int (*ANeuralNetworksModel_setOperandSymmPerChannelQuantParams)(
-      ANeuralNetworksModel* model, int32_t index,
-      const ANeuralNetworksSymmPerChannelQuantParams* channelQuant);
+      ANeuralNetworksModel* model, int32_t index, const ANeuralNetworksSymmPerChannelQuantParams* channelQuant);
 
   /**
    * Sets an operand to a value stored in a memory object.
@@ -229,8 +227,7 @@ struct NnApi {
    * @return ANEURALNETWORKS_NO_ERROR if successful.
    */
   int (*ANeuralNetworksModel_setOperandValueFromMemory)(
-      ANeuralNetworksModel* model, int32_t index,
-      const ANeuralNetworksMemory* memory, size_t offset, size_t length);
+      ANeuralNetworksModel* model, int32_t index, const ANeuralNetworksMemory* memory, size_t offset, size_t length);
 
   /**
    * Add an operation to a model.
@@ -282,8 +279,7 @@ struct NnApi {
    * @return ANEURALNETWORKS_NO_ERROR if successful.
    */
   int (*ANeuralNetworksModel_identifyInputsAndOutputs)(
-      ANeuralNetworksModel* model, uint32_t inputCount, const uint32_t* inputs,
-      uint32_t outputCount, const uint32_t* outputs);
+      ANeuralNetworksModel* model, uint32_t inputCount, const uint32_t* inputs, uint32_t outputCount, const uint32_t* outputs);
 
   /**
    * Specifies whether {@link ANEURALNETWORKS_TENSOR_FLOAT32} is allowed to be
@@ -448,9 +444,7 @@ struct NnApi {
    * the name is not recognized or the buffer is too small for the input.
    */
   int (*ANeuralNetworksExecution_setInput)(
-      ANeuralNetworksExecution* execution, int32_t index,
-      const ANeuralNetworksOperandType* type, const void* buffer,
-      size_t length);
+      ANeuralNetworksExecution* execution, int32_t index, const ANeuralNetworksOperandType* type, const void* buffer, size_t length);
 
   /**
    * Associate part of a memory object with an input of the model of the
@@ -481,9 +475,7 @@ struct NnApi {
    * the name is not recognized or the buffer is too small for the input.
    */
   int (*ANeuralNetworksExecution_setInputFromMemory)(
-      ANeuralNetworksExecution* execution, int32_t index,
-      const ANeuralNetworksOperandType* type,
-      const ANeuralNetworksMemory* memory, size_t offset, size_t length);
+      ANeuralNetworksExecution* execution, int32_t index, const ANeuralNetworksOperandType* type, const ANeuralNetworksMemory* memory, size_t offset, size_t length);
 
   /**
    * Associate a user buffer with an output of the model of the
@@ -512,8 +504,7 @@ struct NnApi {
    * the name is not recognized or the buffer is too small for the output.
    */
   int (*ANeuralNetworksExecution_setOutput)(
-      ANeuralNetworksExecution* execution, int32_t index,
-      const ANeuralNetworksOperandType* type, void* buffer, size_t length);
+      ANeuralNetworksExecution* execution, int32_t index, const ANeuralNetworksOperandType* type, void* buffer, size_t length);
 
   /**
    * Associate part of a memory object with an output of the model of the
@@ -544,9 +535,7 @@ struct NnApi {
    * the name is not recognized or the buffer is too small for the output.
    */
   int (*ANeuralNetworksExecution_setOutputFromMemory)(
-      ANeuralNetworksExecution* execution, int32_t index,
-      const ANeuralNetworksOperandType* type,
-      const ANeuralNetworksMemory* memory, size_t offset, size_t length);
+      ANeuralNetworksExecution* execution, int32_t index, const ANeuralNetworksOperandType* type, const ANeuralNetworksMemory* memory, size_t offset, size_t length);
 
   /**
    * Schedule evaluation of the execution.
@@ -744,7 +733,8 @@ struct NnApi {
    */
   int (*ANeuralNetworksModel_getSupportedOperationsForDevices)(
       const ANeuralNetworksModel* model,
-      const ANeuralNetworksDevice* const* devices, uint32_t numDevices,
+      const ANeuralNetworksDevice* const* devices,
+      uint32_t numDevices,
       bool* supportedOps);
 
   /**
@@ -766,8 +756,7 @@ struct NnApi {
    * Available since API level 29.
    */
   int (*ANeuralNetworksCompilation_createForDevices)(
-      ANeuralNetworksModel* model, const ANeuralNetworksDevice* const* devices,
-      uint32_t numDevices, ANeuralNetworksCompilation** compilation);
+      ANeuralNetworksModel* model, const ANeuralNetworksDevice* const* devices, uint32_t numDevices, ANeuralNetworksCompilation** compilation);
 
   /**
    * Sets the compilation caching signature and the cache directory.
@@ -796,8 +785,7 @@ struct NnApi {
    * Available since API level 29.
    */
   int (*ANeuralNetworksCompilation_setCaching)(
-      ANeuralNetworksCompilation* compilation, const char* cacheDir,
-      const uint8_t* token);
+      ANeuralNetworksCompilation* compilation, const char* cacheDir, const uint8_t* token);
 
   /**
    * Set the maximum expected duration for compiling the model.
@@ -1159,8 +1147,7 @@ struct NnApi {
    * @return ANEURALNETWORKS_NO_ERROR if successful.
    */
   int (*ANeuralNetworksExecution_getDuration)(
-      const ANeuralNetworksExecution* execution, int32_t durationCode,
-      uint64_t* duration);
+      const ANeuralNetworksExecution* execution, int32_t durationCode, uint64_t* duration);
 
   /**
    * Queries whether an extension is supported by the driver implementation of
@@ -1176,8 +1163,7 @@ struct NnApi {
    * Available since API level 29.
    */
   int (*ANeuralNetworksDevice_getExtensionSupport)(
-      const ANeuralNetworksDevice* device, const char* extensionName,
-      bool* isExtensionSupported);
+      const ANeuralNetworksDevice* device, const char* extensionName, bool* isExtensionSupported);
 
   /**
    * Creates an operand type from an extension name and an extension operand
@@ -1195,8 +1181,7 @@ struct NnApi {
    * @return ANEURALNETWORKS_NO_ERROR if successful.
    */
   int (*ANeuralNetworksModel_getExtensionOperandType)(
-      ANeuralNetworksModel* model, const char* extensionName,
-      uint16_t operandCodeWithinExtension, int32_t* type);
+      ANeuralNetworksModel* model, const char* extensionName, uint16_t operandCodeWithinExtension, int32_t* type);
 
   /**
    * Creates an operation type from an extension name and an extension operation
@@ -1214,9 +1199,7 @@ struct NnApi {
    * @return ANEURALNETWORKS_NO_ERROR if successful.
    */
   int (*ANeuralNetworksModel_getExtensionOperationType)(
-      ANeuralNetworksModel* model, const char* extensionName,
-      uint16_t operationCodeWithinExtension,
-      ANeuralNetworksOperationType* type);
+      ANeuralNetworksModel* model, const char* extensionName, uint16_t operationCodeWithinExtension, ANeuralNetworksOperationType* type);
 
   /**
    * Sets extension operand parameters.
@@ -1232,8 +1215,7 @@ struct NnApi {
    * @return ANEURALNETWORKS_NO_ERROR if successful.
    */
   int (*ANeuralNetworksModel_setOperandExtensionData)(
-      ANeuralNetworksModel* model, int32_t index, const void* data,
-      size_t length);
+      ANeuralNetworksModel* model, int32_t index, const void* data, size_t length);
 
   /**
    * Create a {@link ANeuralNetworksMemoryDesc} with no properties.
@@ -1323,7 +1305,8 @@ struct NnApi {
    */
   int (*ANeuralNetworksMemoryDesc_addInputRole)(
       ANeuralNetworksMemoryDesc* desc,
-      const ANeuralNetworksCompilation* compilation, uint32_t index,
+      const ANeuralNetworksCompilation* compilation,
+      uint32_t index,
       float frequency);
 
   /**
@@ -1374,7 +1357,8 @@ struct NnApi {
    */
   int (*ANeuralNetworksMemoryDesc_addOutputRole)(
       ANeuralNetworksMemoryDesc* desc,
-      const ANeuralNetworksCompilation* compilation, uint32_t index,
+      const ANeuralNetworksCompilation* compilation,
+      uint32_t index,
       float frequency);
 
   /**
@@ -1405,8 +1389,7 @@ struct NnApi {
    * @return ANEURALNETWORKS_NO_ERROR if successful.
    */
   int (*ANeuralNetworksMemoryDesc_setDimensions)(
-      ANeuralNetworksMemoryDesc* desc, uint32_t rank,
-      const uint32_t* dimensions);
+      ANeuralNetworksMemoryDesc* desc, uint32_t rank, const uint32_t* dimensions);
 
   /**
    * Indicate that we have finished modifying a memory descriptor. Required
@@ -1662,7 +1645,8 @@ struct NnApi {
   int (*ANeuralNetworksExecution_startComputeWithDependencies)(
       ANeuralNetworksExecution* execution,
       const ANeuralNetworksEvent* const* dependencies,
-      uint32_t num_dependencies, uint64_t duration,
+      uint32_t num_dependencies,
+      uint64_t duration,
       ANeuralNetworksEvent** event);
 
   /**

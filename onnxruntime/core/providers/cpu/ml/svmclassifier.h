@@ -31,11 +31,7 @@ class SVMCommon {
   KERNEL get_kernel_type() const { return kernel_type_; }
 
   template <typename T>
-  void batched_kernel_dot(const gsl::span<const T> a, const gsl::span<const T> b,
-                          int64_t m, int64_t n, int64_t k,
-                          float scalar_C,
-                          const gsl::span<T> out,
-                          concurrency::ThreadPool* threadpool) const {
+  void batched_kernel_dot(const gsl::span<const T> a, const gsl::span<const T> b, int64_t m, int64_t n, int64_t k, float scalar_C, const gsl::span<T> out, concurrency::ThreadPool* threadpool) const {
     assert(a.size() == size_t(m * k) && b.size() == size_t(k * n) && out.size() == size_t(m * n));
 
     if (kernel_type_ == KERNEL::RBF) {
@@ -73,12 +69,7 @@ class SVMCommon {
         c = coef0_;
       }
 
-      onnxruntime::Gemm<T>::ComputeGemm(CBLAS_TRANSPOSE::CblasNoTrans, CBLAS_TRANSPOSE::CblasTrans,
-                                        m, n, k,
-                                        alpha, a.data(), b.data(), beta,
-                                        c != 0.f ? &c : nullptr, &shape_C,
-                                        out.data(),
-                                        threadpool);
+      onnxruntime::Gemm<T>::ComputeGemm(CBLAS_TRANSPOSE::CblasNoTrans, CBLAS_TRANSPOSE::CblasTrans, m, n, k, alpha, a.data(), b.data(), beta, c != 0.f ? &c : nullptr, &shape_C, out.data(), threadpool);
 
       if (kernel_type_ == KERNEL::POLY) {
         auto map_out = EigenVectorArrayMap<T>(out.data(), out.size());

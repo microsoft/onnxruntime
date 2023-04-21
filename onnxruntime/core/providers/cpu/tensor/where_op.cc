@@ -118,20 +118,18 @@ ProcessBroadcastSpanFuncs CreateNonScalarBroadcastFuncs() {
         auto condition = per_iter_bh.SpanInput0<bool>();
         const T& value = per_iter_bh.ScalarInput1<T>();
         auto output = per_iter_bh.OutputSpan<T>();
-        std::transform(condition.begin(), condition.end(), output.begin(),
-                       [target, &value](bool condition_element) {
-                         return condition_element == target ? value : T{};
-                       });
+        std::transform(condition.begin(), condition.end(), output.begin(), [target, &value](bool condition_element) {
+          return condition_element == target ? value : T{};
+        });
       },
       [](BroadcastHelper& per_iter_bh) {
         bool target = (per_iter_bh.GetUserData() != nullptr);
         auto condition = per_iter_bh.SpanInput0<bool>();
         auto value = per_iter_bh.SpanInput1<T>();
         auto output = per_iter_bh.OutputSpan<T>();
-        std::transform(condition.begin(), condition.end(), value.begin(), output.begin(),
-                       [target](bool condition_element, const T& value_element) {
-                         return condition_element == target ? value_element : T{};
-                       });
+        std::transform(condition.begin(), condition.end(), value.begin(), output.begin(), [target](bool condition_element, const T& value_element) {
+          return condition_element == target ? value_element : T{};
+        });
       }};
 }
 
@@ -206,17 +204,14 @@ EnableIfEigenNotScalar<T, ProcessBroadcastSpanFuncs> MergeBroadcastFuncs() {
         auto X_selection = per_iter_bh.SpanInput0<T>();
         auto Y_selection = per_iter_bh.SpanInput1<T>();
         auto output = per_iter_bh.OutputSpan<T>();
-        std::transform(X_selection.begin(), X_selection.end(), Y_selection.begin(), output.begin(),
-                       [](const T& x, const T& y) { return !x.empty() ? x : y; });
+        std::transform(X_selection.begin(), X_selection.end(), Y_selection.begin(), output.begin(), [](const T& x, const T& y) { return !x.empty() ? x : y; });
       }};
 }
 
 // function pointer to create typed tensor from type agnostic code whilst avoiding the overhead of std::function
 using AllocTensorFunc = std::unique_ptr<Tensor> (*)(const TensorAllocator& allocator, const TensorShape& shape);
 
-static std::unique_ptr<Tensor> UntypedSelect(OpKernelContext& context, bool target,
-                                             const TensorAllocator& allocator, AllocTensorFunc allocate_tensor,
-                                             const ProcessBroadcastSpanFuncs& functors) {
+static std::unique_ptr<Tensor> UntypedSelect(OpKernelContext& context, bool target, const TensorAllocator& allocator, AllocTensorFunc allocate_tensor, const ProcessBroadcastSpanFuncs& functors) {
   const auto& condition = *context.Input<Tensor>(0);
   // select the X input (input 1) for 'true', and Y input (input 2) for 'false'
   const auto& values = *context.Input<Tensor>(target ? 1 : 2);
@@ -235,7 +230,8 @@ static std::unique_ptr<Tensor> UntypedSelect(OpKernelContext& context, bool targ
 }
 
 static void UntypedMerge(OpKernelContext& context,
-                         const Tensor& X_selection_tensor, const Tensor& Y_selection_tensor,
+                         const Tensor& X_selection_tensor,
+                         const Tensor& Y_selection_tensor,
                          const ProcessBroadcastSpanFuncs& functors) {
   InputBroadcaster merge_broadcaster{X_selection_tensor, Y_selection_tensor};
   Tensor& output = *context.Output(0, merge_broadcaster.GetOutputShape());

@@ -55,7 +55,8 @@ extern "C" {
 #endif
 
 ORT_EXPORT ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_Nnapi,
-                          _In_ OrtSessionOptions* options, uint32_t nnapi_flags);
+                          _In_ OrtSessionOptions* options,
+                          uint32_t nnapi_flags);
 
 #ifdef __cplusplus
 }

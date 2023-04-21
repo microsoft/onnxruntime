@@ -219,7 +219,8 @@ static Status CastNodeArg(onnxruntime::Graph& graph,
   } else {
     // Make sure it is not one of graph outputs, otherwise, graph outputs need to be updated.
     ORT_RETURN_IF_NOT(std::find(graph.GetOutputs().cbegin(), graph.GetOutputs().cend(), arg) == graph.GetOutputs().cend(),
-                      arg->Name(), " is a graph output");
+                      arg->Name(),
+                      " is a graph output");
   }
 
   // Update producer

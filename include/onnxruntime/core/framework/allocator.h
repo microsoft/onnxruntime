@@ -17,8 +17,7 @@ struct OrtArenaCfg {
                   initial_chunk_size_bytes(-1),
                   max_dead_bytes_per_chunk(-1),
                   initial_growth_chunk_size_bytes(-1) {}
-  OrtArenaCfg(size_t max_mem, int arena_extend_strategy, int initial_chunk_size_bytes,
-              int max_dead_bytes_per_chunk, int initial_growth_chunk_size_bytes)
+  OrtArenaCfg(size_t max_mem, int arena_extend_strategy, int initial_chunk_size_bytes, int max_dead_bytes_per_chunk, int initial_growth_chunk_size_bytes)
       : max_mem(max_mem),
         arena_extend_strategy(arena_extend_strategy),
         initial_chunk_size_bytes(initial_chunk_size_bytes),
@@ -141,9 +140,7 @@ class IAllocator {
      @returns std::unique_ptr with allocated memory and deleter.
   */
   template <typename T>
-  static IAllocatorUniquePtr<T> MakeUniquePtr(std::shared_ptr<IAllocator> allocator, size_t count_or_bytes,
-                                              bool use_reserve = false,
-                                              Stream* stream = nullptr, WaitNotificationFn wait_fn = nullptr) {
+  static IAllocatorUniquePtr<T> MakeUniquePtr(std::shared_ptr<IAllocator> allocator, size_t count_or_bytes, bool use_reserve = false, Stream* stream = nullptr, WaitNotificationFn wait_fn = nullptr) {
     if (allocator == nullptr) return nullptr;
     // for now limit to fundamental types. we could support others, but to do so either we or the caller
     // needs to call the dtor for the objects, for buffers allocated on device we don't have destructor

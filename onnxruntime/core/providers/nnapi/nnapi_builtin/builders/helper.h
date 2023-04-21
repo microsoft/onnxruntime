@@ -42,36 +42,44 @@ using Shape = InlinedVector<uint32_t>;
 class IOpSupportChecker;
 struct OpSupportCheckParams;
 
-#define THROW_ON_ERROR(val)                  \
-  {                                          \
-    const auto ret = (val);                  \
-    ORT_ENFORCE(                             \
-        ret == ANEURALNETWORKS_NO_ERROR,     \
-        "ResultCode: ", GetErrorCause(ret)); \
+#define THROW_ON_ERROR(val)              \
+  {                                      \
+    const auto ret = (val);              \
+    ORT_ENFORCE(                         \
+        ret == ANEURALNETWORKS_NO_ERROR, \
+        "ResultCode: ",                  \
+        GetErrorCause(ret));             \
   }
 
-#define THROW_ON_ERROR_WITH_NOTE(val, note)                \
-  {                                                        \
-    const auto ret = (val);                                \
-    ORT_ENFORCE(                                           \
-        ret == ANEURALNETWORKS_NO_ERROR,                   \
-        "ResultCode: ", GetErrorCause(ret), ", ", (note)); \
+#define THROW_ON_ERROR_WITH_NOTE(val, note) \
+  {                                         \
+    const auto ret = (val);                 \
+    ORT_ENFORCE(                            \
+        ret == ANEURALNETWORKS_NO_ERROR,    \
+        "ResultCode: ",                     \
+        GetErrorCause(ret),                 \
+        ", ",                               \
+        (note));                            \
   }
 
-#define RETURN_STATUS_ON_ERROR(val)          \
-  {                                          \
-    const auto ret = (val);                  \
-    ORT_RETURN_IF_NOT(                       \
-        ret == ANEURALNETWORKS_NO_ERROR,     \
-        "ResultCode: ", GetErrorCause(ret)); \
+#define RETURN_STATUS_ON_ERROR(val)      \
+  {                                      \
+    const auto ret = (val);              \
+    ORT_RETURN_IF_NOT(                   \
+        ret == ANEURALNETWORKS_NO_ERROR, \
+        "ResultCode: ",                  \
+        GetErrorCause(ret));             \
   }
 
-#define RETURN_STATUS_ON_ERROR_WITH_NOTE(val, note)        \
-  {                                                        \
-    const auto ret = (val);                                \
-    ORT_RETURN_IF_NOT(                                     \
-        ret == ANEURALNETWORKS_NO_ERROR,                   \
-        "ResultCode: ", GetErrorCause(ret), ", ", (note)); \
+#define RETURN_STATUS_ON_ERROR_WITH_NOTE(val, note) \
+  {                                                 \
+    const auto ret = (val);                         \
+    ORT_RETURN_IF_NOT(                              \
+        ret == ANEURALNETWORKS_NO_ERROR,            \
+        "ResultCode: ",                             \
+        GetErrorCause(ret),                         \
+        ", ",                                       \
+        (note));                                    \
   }
 
 std::string GetErrorCause(int error_code);
@@ -131,12 +139,10 @@ bool IsQuantizedBinaryOp(QuantizedOpType quant_op_type);
 bool HasValidBinaryOpQuantizedInputTypes(const NodeUnit& node_unit);
 
 common::Status GetQuantizationScaleAndZeroPoint(
-    const InitializedTensorSet& initializers, const NodeUnitIODef& io_def, const Path& model_path,
-    float& scale, int32_t& zero_point);
+    const InitializedTensorSet& initializers, const NodeUnitIODef& io_def, const Path& model_path, float& scale, int32_t& zero_point);
 
 common::Status GetQuantizationScaleAndZeroPoint(
-    const InitializedTensorSet& initializers, const NodeUnit& node_unit, const std::string& name,
-    float& scale, int32_t& zero_point, ArgType arg_type = ArgType::kInput);
+    const InitializedTensorSet& initializers, const NodeUnit& node_unit, const std::string& name, float& scale, int32_t& zero_point, ArgType arg_type = ArgType::kInput);
 
 // Get Shape/Type of a NodeArg
 // TODO, move to shared_utils
@@ -151,9 +157,7 @@ bool IsNodeSupported(const NodeUnit& node_unit, const GraphViewer& graph_viewer,
 
 // If a node is supported by NNAPI in a partition node group
 // `node_outputs_in_group` is the set of the output names of the nodes added to this group so far
-bool IsNodeSupportedInGroup(const NodeUnit& node_unit, const GraphViewer& graph_viewer,
-                            const OpSupportCheckParams& params,
-                            const std::unordered_set<std::string>& node_outputs_in_group);
+bool IsNodeSupportedInGroup(const NodeUnit& node_unit, const GraphViewer& graph_viewer, const OpSupportCheckParams& params, const std::unordered_set<std::string>& node_outputs_in_group);
 
 // If an NNAPI partition node group is valid
 bool IsValidSupportedNodeGroup(const std::vector<const Node*>& supported_node_group);
@@ -169,8 +173,7 @@ inline uint32_t ShapeSize(const Shape& shape) {
 // Check the given input is an initializer tensor
 // input_name is the name of the initializer
 // input_description is the string describing the input in the output message (if any)
-bool CheckIsInitializer(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
-                        const std::string& input_name, const char* input_description);
+bool CheckIsInitializer(const InitializedTensorSet& initializers, const NodeUnit& node_unit, const std::string& input_name, const char* input_description);
 
 }  // namespace nnapi
 }  // namespace onnxruntime

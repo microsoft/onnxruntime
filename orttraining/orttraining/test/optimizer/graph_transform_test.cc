@@ -41,8 +41,7 @@ namespace test {
 #define MODEL_FOLDER ORT_TSTR("testdata/transform/")
 
 TEST_F(GraphTransformationTests, BatchNormReplacement) {
-  Model model("BatchNormReplacement", true, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(), {{"", 14}, {"com.microsoft", 1}},
-              {}, *logger_);
+  Model model("BatchNormReplacement", true, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(), {{"", 14}, {"com.microsoft", 1}}, {}, *logger_);
   auto& graph = model.MainGraph();
 
   std::vector<NodeArg*> inputs;
@@ -85,8 +84,7 @@ TEST_F(GraphTransformationTests, BatchNormReplacement) {
 }
 
 TEST_F(GraphTransformationTests, BatchNormReplacementWithOptionalOutputPresentOpset14) {
-  Model model("BatchNormReplacement", true, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(), {{"", 14}, {"com.microsoft", 1}},
-              {}, *logger_);
+  Model model("BatchNormReplacement", true, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(), {{"", 14}, {"com.microsoft", 1}}, {}, *logger_);
   auto& graph = model.MainGraph();
 
   std::vector<NodeArg*> inputs;
@@ -113,8 +111,7 @@ TEST_F(GraphTransformationTests, BatchNormReplacementWithOptionalOutputPresentOp
   auto& output_Y = graph.GetOrCreateNodeArg("Y", &input_tensor_type);
   auto& output_running_mean = graph.GetOrCreateNodeArg("running_mean", &scale_tensor_type);
   auto& output_running_var = graph.GetOrCreateNodeArg("running_var", &scale_tensor_type);
-  auto& bn_node = graph.AddNode("BN", "BatchNormalization", "", {&input_X, &input_scale, &input_B, &input_mean, &input_var},
-                                {&output_Y, &output_running_mean, &output_running_var});
+  auto& bn_node = graph.AddNode("BN", "BatchNormalization", "", {&input_X, &input_scale, &input_B, &input_mean, &input_var}, {&output_Y, &output_running_mean, &output_running_var});
   bn_node.AddAttribute("training_mode", static_cast<int64_t>(1));
 
   auto status = graph.Resolve();
@@ -133,8 +130,7 @@ TEST_F(GraphTransformationTests, BatchNormReplacementWithOptionalOutputPresentOp
 }
 
 TEST_F(GraphTransformationTests, BatchNormReplacementWithOptionalOutputPresentOpset9) {
-  Model model("BatchNormReplacement", true, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(), {{"", 9}, {"com.microsoft", 1}},
-              {}, *logger_);
+  Model model("BatchNormReplacement", true, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(), {{"", 9}, {"com.microsoft", 1}}, {}, *logger_);
   auto& graph = model.MainGraph();
 
   std::vector<NodeArg*> inputs;
@@ -163,8 +159,7 @@ TEST_F(GraphTransformationTests, BatchNormReplacementWithOptionalOutputPresentOp
   auto& output_running_var = graph.GetOrCreateNodeArg("running_var", &scale_tensor_type);
   auto& saved_mean = graph.GetOrCreateNodeArg("saved_mean", &scale_tensor_type);
   auto& saved_var = graph.GetOrCreateNodeArg("saved_var", &scale_tensor_type);
-  graph.AddNode("BN", "BatchNormalization", "", {&input_X, &input_scale, &input_B, &input_mean, &input_var},
-                {&output_Y, &output_running_mean, &output_running_var, &saved_mean, &saved_var});
+  graph.AddNode("BN", "BatchNormalization", "", {&input_X, &input_scale, &input_B, &input_mean, &input_var}, {&output_Y, &output_running_mean, &output_running_var, &saved_mean, &saved_var});
 
   auto status = graph.Resolve();
   EXPECT_EQ(status, Status::OK());
@@ -203,8 +198,7 @@ TEST_F(GraphTransformationTests, DropoutWithZeroRatioElimination) {
 }
 
 template <typename T>
-void RunBiasSoftmaxDropoutFusionTest(bool is_bitmask_dropout, bool is_softmax_grad_13, int opset_version,
-                                     const logging::Logger& logger) {
+void RunBiasSoftmaxDropoutFusionTest(bool is_bitmask_dropout, bool is_softmax_grad_13, int opset_version, const logging::Logger& logger) {
   const std::string dropout_op_type = is_bitmask_dropout ? "BitmaskDropout" : "Dropout";
   const std::string dropout_grad_op_type = is_bitmask_dropout ? "BitmaskDropoutGrad" : "DropoutGrad";
   const std::string softmax_grad_op_typ = is_softmax_grad_13 ? "SoftmaxGrad_13" : "SoftmaxGrad";
@@ -226,11 +220,9 @@ void RunBiasSoftmaxDropoutFusionTest(bool is_bitmask_dropout, bool is_softmax_gr
     node.AddAttribute("axis", static_cast<int64_t>(6));
     node.AddAttribute("is_inner_broadcast", static_cast<int64_t>(0));
     builder
-        .AddNode(dropout_op_type, {bias_softmax_out, ratio_arg, training_mode_arg}, {dropout_out, dropout_mask_out},
-                 is_bitmask_dropout ? kMSDomain : kOnnxDomain)
+        .AddNode(dropout_op_type, {bias_softmax_out, ratio_arg, training_mode_arg}, {dropout_out, dropout_mask_out}, is_bitmask_dropout ? kMSDomain : kOnnxDomain)
         .AddAttribute("seed", static_cast<int64_t>(42));
-    builder.AddNode(dropout_grad_op_type, {dy_arg, dropout_mask_out, ratio_arg, training_mode_arg}, {dropout_grad_out},
-                    kMSDomain);
+    builder.AddNode(dropout_grad_op_type, {dy_arg, dropout_mask_out, ratio_arg, training_mode_arg}, {dropout_grad_out}, kMSDomain);
     builder.AddNode(softmax_grad_op_typ, {dropout_grad_out, bias_softmax_out}, {dx_out}, kMSDomain)
         .AddAttribute("axis", static_cast<int64_t>(6));
   };
@@ -269,8 +261,7 @@ void RunBiasSoftmaxDropoutFusionTest(bool is_bitmask_dropout, bool is_softmax_gr
   };
 
   std::unique_ptr<GraphTransformer> transformer = std::make_unique<BiasSoftmaxDropoutFusion>();
-  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, opset_version, logger, std::move(transformer), TransformerLevel::Level2, 1,
-                                        pre_graph_checker, post_graph_checker));
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, opset_version, logger, std::move(transformer), TransformerLevel::Level2, 1, pre_graph_checker, post_graph_checker));
 }
 
 TEST_F(GraphTransformationTests, BiasSoftmaxDropoutFusion) {
@@ -285,9 +276,7 @@ TEST_F(GraphTransformationTests, BiasSoftmaxDropoutFusion) {
 }
 
 template <typename T>
-void RunSceLossGradBiasFusionTest(bool has_reshape, bool is_add_op, bool is_bias_lhs_input, bool has_weight,
-                                  bool has_ignore_index, const std::string& reduction, int opset_version,
-                                  const logging::Logger& logger) {
+void RunSceLossGradBiasFusionTest(bool has_reshape, bool is_add_op, bool is_bias_lhs_input, bool has_weight, bool has_ignore_index, const std::string& reduction, int opset_version, const logging::Logger& logger) {
   std::string bias_op_type = is_add_op ? "Add" : "Sum";
   auto build_test_case = [&](ModelTestBuilder& builder) {
     auto* dY_arg = builder.MakeInput<T>(std::optional<std::vector<int64_t>>{std::vector<int64_t>{}});
@@ -361,8 +350,7 @@ void RunSceLossGradBiasFusionTest(bool has_reshape, bool is_add_op, bool is_bias
   };
 
   std::unique_ptr<GraphTransformer> transformer = std::make_unique<SceLossGradBiasFusion>();
-  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, opset_version, logger, std::move(transformer), TransformerLevel::Level2, 1,
-                                        pre_graph_checker, post_graph_checker));
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, opset_version, logger, std::move(transformer), TransformerLevel::Level2, 1, pre_graph_checker, post_graph_checker));
 }
 
 void RunSceLossGradBiasFusionTestWrapper(int opset_version, const logging::Logger& logger) {
@@ -416,8 +404,7 @@ TEST_F(GraphTransformationTests, SceLossGradBiasFusion_Invalid) {
     };
 
     std::unique_ptr<GraphTransformer> transformer = std::make_unique<SceLossGradBiasFusion>();
-    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer), TransformerLevel::Level2, 1,
-                                          pre_graph_checker, post_graph_checker));
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer), TransformerLevel::Level2, 1, pre_graph_checker, post_graph_checker));
   }
 
   // SceGrad has more than 1 consumers.
@@ -438,8 +425,7 @@ TEST_F(GraphTransformationTests, SceLossGradBiasFusion_Invalid) {
     };
 
     std::unique_ptr<GraphTransformer> transformer = std::make_unique<SceLossGradBiasFusion>();
-    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer), TransformerLevel::Level2, 1,
-                                          pre_graph_checker, post_graph_checker));
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer), TransformerLevel::Level2, 1, pre_graph_checker, post_graph_checker));
   }
 
   // Sum inputs shape mismatch.
@@ -458,8 +444,7 @@ TEST_F(GraphTransformationTests, SceLossGradBiasFusion_Invalid) {
     };
 
     std::unique_ptr<GraphTransformer> transformer = std::make_unique<SceLossGradBiasFusion>();
-    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer), TransformerLevel::Level2, 1,
-                                          pre_graph_checker, post_graph_checker));
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer), TransformerLevel::Level2, 1, pre_graph_checker, post_graph_checker));
   }
 
   // Sum inputs shape mismatch.
@@ -481,8 +466,7 @@ TEST_F(GraphTransformationTests, SceLossGradBiasFusion_Invalid) {
     };
 
     std::unique_ptr<GraphTransformer> transformer = std::make_unique<SceLossGradBiasFusion>();
-    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer), TransformerLevel::Level2, 1,
-                                          pre_graph_checker, post_graph_checker));
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer), TransformerLevel::Level2, 1, pre_graph_checker, post_graph_checker));
   }
 
   // Reshape output has more than 1 consumers.
@@ -506,8 +490,7 @@ TEST_F(GraphTransformationTests, SceLossGradBiasFusion_Invalid) {
     };
 
     std::unique_ptr<GraphTransformer> transformer = std::make_unique<SceLossGradBiasFusion>();
-    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer), TransformerLevel::Level2, 1,
-                                          pre_graph_checker, post_graph_checker));
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer), TransformerLevel::Level2, 1, pre_graph_checker, post_graph_checker));
   }
 }
 
@@ -558,8 +541,7 @@ TEST_F(GraphTransformationTests, MegatronMLPPartitionRank0) {
   training::TrainingSession::OptimizerState init_optim_state;
   IExecutionProvider* e = TestCPUExecutionProvider();
   ASSERT_STATUS_OK(graph_transformation_mgr.Register(
-      std::make_unique<MegatronTransformer>(0, 2, updated_weight_names, weights_to_train, weight_partition_info,
-                                            init_optim_state, *e),
+      std::make_unique<MegatronTransformer>(0, 2, updated_weight_names, weights_to_train, weight_partition_info, init_optim_state, *e),
       TransformerLevel::Level1));
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
 
@@ -568,17 +550,13 @@ TEST_F(GraphTransformationTests, MegatronMLPPartitionRank0) {
 
   {
     std::vector<float> expected_value = {
-        0.0f, 0.01f, 0.02f, 0.03f, 0.04f, 0.05f, 0.06f, 0.07f,
-        0.16f, 0.17f, 0.18f, 0.19f, 0.20f, 0.21f, 0.22f, 0.23f,
-        0.32f, 0.33f, 0.34f, 0.35f, 0.36f, 0.37f, 0.38f, 0.39f,
-        0.48f, 0.49f, 0.50f, 0.51f, 0.52f, 0.53f, 0.54f, 0.55f};
+        0.0f, 0.01f, 0.02f, 0.03f, 0.04f, 0.05f, 0.06f, 0.07f, 0.16f, 0.17f, 0.18f, 0.19f, 0.20f, 0.21f, 0.22f, 0.23f, 0.32f, 0.33f, 0.34f, 0.35f, 0.36f, 0.37f, 0.38f, 0.39f, 0.48f, 0.49f, 0.50f, 0.51f, 0.52f, 0.53f, 0.54f, 0.55f};
     auto a1_weight_arg = GetNodeByName(graph, "matmul")->MutableInputDefs()[1];
     ORT_ENFORCE(a1_weight_arg != nullptr);
     std::vector<int64_t> expected_shape = {4, 8};
     std::vector<float> actual_val;
     std::vector<int64_t> actual_shape;
-    ASSERT_STATUS_OK(horizontal_parallel_test_utils::GetDataAndShapeFromTensorProto(graph, a1_weight_arg, actual_val,
-                                                                                    actual_shape));
+    ASSERT_STATUS_OK(horizontal_parallel_test_utils::GetDataAndShapeFromTensorProto(graph, a1_weight_arg, actual_val, actual_shape));
     ASSERT_TRUE(std::equal(expected_shape.begin(), expected_shape.end(), actual_shape.begin()));
 
     horizontal_parallel_test_utils::VerifyOutputs(expected_value, actual_val, true);
@@ -591,8 +569,7 @@ TEST_F(GraphTransformationTests, MegatronMLPPartitionRank0) {
     std::vector<int64_t> expected_shape = {8};
     std::vector<float> actual_val;
     std::vector<int64_t> actual_shape;
-    ASSERT_STATUS_OK(horizontal_parallel_test_utils::GetDataAndShapeFromTensorProto(graph, input_arg, actual_val,
-                                                                                    actual_shape));
+    ASSERT_STATUS_OK(horizontal_parallel_test_utils::GetDataAndShapeFromTensorProto(graph, input_arg, actual_val, actual_shape));
     ASSERT_TRUE(std::equal(expected_shape.begin(), expected_shape.end(), actual_shape.begin()));
 
     horizontal_parallel_test_utils::VerifyOutputs(expected_value, actual_val, true);
@@ -600,21 +577,13 @@ TEST_F(GraphTransformationTests, MegatronMLPPartitionRank0) {
   }
   {
     std::vector<float> expected_value = {
-        0.0f, 0.01f, 0.02f, 0.03f,
-        0.04f, 0.05f, 0.06f, 0.07f,
-        0.08f, 0.09f, 0.10f, 0.11f,
-        0.12f, 0.13f, 0.14f, 0.15f,
-        0.16f, 0.17f, 0.18f, 0.19f,
-        0.20f, 0.21f, 0.22f, 0.23f,
-        0.24f, 0.25f, 0.26f, 0.27f,
-        0.28f, 0.29f, 0.30f, 0.31f};
+        0.0f, 0.01f, 0.02f, 0.03f, 0.04f, 0.05f, 0.06f, 0.07f, 0.08f, 0.09f, 0.10f, 0.11f, 0.12f, 0.13f, 0.14f, 0.15f, 0.16f, 0.17f, 0.18f, 0.19f, 0.20f, 0.21f, 0.22f, 0.23f, 0.24f, 0.25f, 0.26f, 0.27f, 0.28f, 0.29f, 0.30f, 0.31f};
     auto input_arg = GetNodeByName(graph, "matmul2")->MutableInputDefs()[1];
     ORT_ENFORCE(input_arg != nullptr);
     std::vector<int64_t> expected_shape = {8, 4};
     std::vector<float> actual_val;
     std::vector<int64_t> actual_shape;
-    ASSERT_STATUS_OK(horizontal_parallel_test_utils::GetDataAndShapeFromTensorProto(graph, input_arg, actual_val,
-                                                                                    actual_shape));
+    ASSERT_STATUS_OK(horizontal_parallel_test_utils::GetDataAndShapeFromTensorProto(graph, input_arg, actual_val, actual_shape));
     ASSERT_TRUE(std::equal(expected_shape.begin(), expected_shape.end(), actual_shape.begin()));
 
     horizontal_parallel_test_utils::VerifyOutputs(expected_value, actual_val, true);
@@ -634,10 +603,7 @@ TEST_F(GraphTransformationTests, MegatronMLPPartitionRank1) {
   std::unordered_map<std::string, training::TrainingSession::PartitionInfo> weight_partition_info;
   training::TrainingSession::OptimizerState init_optim_state;
   IExecutionProvider* e = TestCPUExecutionProvider();
-  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<MegatronTransformer>(1, 2, updated_weight_names,
-                                                                                           weights_to_train,
-                                                                                           weight_partition_info,
-                                                                                           init_optim_state, *e),
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<MegatronTransformer>(1, 2, updated_weight_names, weights_to_train, weight_partition_info, init_optim_state, *e),
                                                      TransformerLevel::Level1));
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
 
@@ -646,17 +612,13 @@ TEST_F(GraphTransformationTests, MegatronMLPPartitionRank1) {
 
   {
     std::vector<float> expected_value = {
-        0.08f, 0.09f, 0.10f, 0.11f, 0.12f, 0.13f, 0.14f, 0.15f,
-        0.24f, 0.25f, 0.26f, 0.27f, 0.28f, 0.29f, 0.30f, 0.31f,
-        0.40f, 0.41f, 0.42f, 0.43f, 0.44f, 0.45f, 0.46f, 0.47f,
-        0.56f, 0.57f, 0.58f, 0.59f, 0.60f, 0.61f, 0.62f, 0.63f};
+        0.08f, 0.09f, 0.10f, 0.11f, 0.12f, 0.13f, 0.14f, 0.15f, 0.24f, 0.25f, 0.26f, 0.27f, 0.28f, 0.29f, 0.30f, 0.31f, 0.40f, 0.41f, 0.42f, 0.43f, 0.44f, 0.45f, 0.46f, 0.47f, 0.56f, 0.57f, 0.58f, 0.59f, 0.60f, 0.61f, 0.62f, 0.63f};
     auto a1_weight_arg = GetNodeByName(graph, "matmul")->MutableInputDefs()[1];
     ORT_ENFORCE(a1_weight_arg != nullptr);
     std::vector<int64_t> expected_shape = {4, 8};
     std::vector<float> actual_val;
     std::vector<int64_t> actual_shape;
-    ASSERT_STATUS_OK(horizontal_parallel_test_utils::GetDataAndShapeFromTensorProto(graph, a1_weight_arg, actual_val,
-                                                                                    actual_shape));
+    ASSERT_STATUS_OK(horizontal_parallel_test_utils::GetDataAndShapeFromTensorProto(graph, a1_weight_arg, actual_val, actual_shape));
     ASSERT_TRUE(std::equal(expected_shape.begin(), expected_shape.end(), actual_shape.begin()));
 
     horizontal_parallel_test_utils::VerifyOutputs(expected_value, actual_val, true);
@@ -669,8 +631,7 @@ TEST_F(GraphTransformationTests, MegatronMLPPartitionRank1) {
     std::vector<int64_t> expected_shape = {8};
     std::vector<float> actual_val;
     std::vector<int64_t> actual_shape;
-    ASSERT_STATUS_OK(horizontal_parallel_test_utils::GetDataAndShapeFromTensorProto(graph, a1_bias_arg, actual_val,
-                                                                                    actual_shape));
+    ASSERT_STATUS_OK(horizontal_parallel_test_utils::GetDataAndShapeFromTensorProto(graph, a1_bias_arg, actual_val, actual_shape));
     ASSERT_TRUE(std::equal(expected_shape.begin(), expected_shape.end(), actual_shape.begin()));
 
     horizontal_parallel_test_utils::VerifyOutputs(expected_value, actual_val, true);
@@ -678,21 +639,13 @@ TEST_F(GraphTransformationTests, MegatronMLPPartitionRank1) {
   }
   {
     std::vector<float> expected_value = {
-        0.32f, 0.33f, 0.34f, 0.35f,
-        0.36f, 0.37f, 0.38f, 0.39f,
-        0.40f, 0.41f, 0.42f, 0.43f,
-        0.44f, 0.45f, 0.46f, 0.47f,
-        0.48f, 0.49f, 0.50f, 0.51f,
-        0.52f, 0.53f, 0.54f, 0.55f,
-        0.56f, 0.57f, 0.58f, 0.59f,
-        0.60f, 0.61f, 0.62f, 0.63f};
+        0.32f, 0.33f, 0.34f, 0.35f, 0.36f, 0.37f, 0.38f, 0.39f, 0.40f, 0.41f, 0.42f, 0.43f, 0.44f, 0.45f, 0.46f, 0.47f, 0.48f, 0.49f, 0.50f, 0.51f, 0.52f, 0.53f, 0.54f, 0.55f, 0.56f, 0.57f, 0.58f, 0.59f, 0.60f, 0.61f, 0.62f, 0.63f};
     auto input_arg = GetNodeByName(graph, "matmul2")->MutableInputDefs()[1];
     ORT_ENFORCE(input_arg != nullptr);
     std::vector<int64_t> expected_shape = {8, 4};
     std::vector<float> actual_val;
     std::vector<int64_t> actual_shape;
-    ASSERT_STATUS_OK(horizontal_parallel_test_utils::GetDataAndShapeFromTensorProto(graph, input_arg, actual_val,
-                                                                                    actual_shape));
+    ASSERT_STATUS_OK(horizontal_parallel_test_utils::GetDataAndShapeFromTensorProto(graph, input_arg, actual_val, actual_shape));
     ASSERT_TRUE(std::equal(expected_shape.begin(), expected_shape.end(), actual_shape.begin()));
 
     horizontal_parallel_test_utils::VerifyOutputs(expected_value, actual_val, true);
@@ -712,8 +665,7 @@ TEST_F(GraphTransformationTests, MegatronSelfAttentionPartitionRank0) {
   training::TrainingSession::OptimizerState init_optim_state;
   IExecutionProvider* e = TestCPUExecutionProvider();
   ASSERT_STATUS_OK(graph_transformation_mgr.Register(
-      std::make_unique<MegatronTransformer>(0, 2, updated_weight_names, weights_to_train, weight_partition_info,
-                                            init_optim_state, *e),
+      std::make_unique<MegatronTransformer>(0, 2, updated_weight_names, weights_to_train, weight_partition_info, init_optim_state, *e),
       TransformerLevel::Level1));
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
 
@@ -722,17 +674,13 @@ TEST_F(GraphTransformationTests, MegatronSelfAttentionPartitionRank0) {
 
   {
     std::vector<float> expected_value = {
-        0.00f, 0.01f, 0.04f, 0.05f, 0.08f, 0.09f,
-        0.12f, 0.13f, 0.16f, 0.17f, 0.20f, 0.21f,
-        0.24f, 0.25f, 0.28f, 0.29f, 0.32f, 0.33f,
-        0.36f, 0.37f, 0.40f, 0.41f, 0.44f, 0.45f};
+        0.00f, 0.01f, 0.04f, 0.05f, 0.08f, 0.09f, 0.12f, 0.13f, 0.16f, 0.17f, 0.20f, 0.21f, 0.24f, 0.25f, 0.28f, 0.29f, 0.32f, 0.33f, 0.36f, 0.37f, 0.40f, 0.41f, 0.44f, 0.45f};
     auto qkv_weight_arg = GetNodeByName(graph, "matmul1")->MutableInputDefs()[1];
     ORT_ENFORCE(qkv_weight_arg != nullptr);
     std::vector<int64_t> expected_shape = {4, 6};
     std::vector<float> actual_val;
     std::vector<int64_t> actual_shape;
-    ASSERT_STATUS_OK(horizontal_parallel_test_utils::GetDataAndShapeFromTensorProto(graph, qkv_weight_arg, actual_val,
-                                                                                    actual_shape));
+    ASSERT_STATUS_OK(horizontal_parallel_test_utils::GetDataAndShapeFromTensorProto(graph, qkv_weight_arg, actual_val, actual_shape));
     ASSERT_TRUE(std::equal(expected_shape.begin(), expected_shape.end(), actual_shape.begin()));
     horizontal_parallel_test_utils::VerifyOutputs(expected_value, actual_val, true);
     horizontal_parallel_test_utils::VerifyOutputs(expected_value, actual_val, false);
@@ -744,23 +692,20 @@ TEST_F(GraphTransformationTests, MegatronSelfAttentionPartitionRank0) {
     std::vector<int64_t> expected_shape = {6};
     std::vector<float> actual_val;
     std::vector<int64_t> actual_shape;
-    ASSERT_STATUS_OK(horizontal_parallel_test_utils::GetDataAndShapeFromTensorProto(graph, qkv_bias_arg, actual_val,
-                                                                                    actual_shape));
+    ASSERT_STATUS_OK(horizontal_parallel_test_utils::GetDataAndShapeFromTensorProto(graph, qkv_bias_arg, actual_val, actual_shape));
     ASSERT_TRUE(std::equal(expected_shape.begin(), expected_shape.end(), actual_shape.begin()));
     horizontal_parallel_test_utils::VerifyOutputs(expected_value, actual_val, true);
     horizontal_parallel_test_utils::VerifyOutputs(expected_value, actual_val, false);
   }
   {
     std::vector<float> expected_value = {
-        0.00f, 0.01f, 0.02f, 0.03f,
-        0.04f, 0.05f, 0.06f, 0.07f};
+        0.00f, 0.01f, 0.02f, 0.03f, 0.04f, 0.05f, 0.06f, 0.07f};
     auto dense_weight_arg = GetNodeByName(graph, "matmul4")->MutableInputDefs()[1];
     ORT_ENFORCE(dense_weight_arg != nullptr);
     std::vector<int64_t> expected_shape = {2, 4};
     std::vector<float> actual_val;
     std::vector<int64_t> actual_shape;
-    ASSERT_STATUS_OK(horizontal_parallel_test_utils::GetDataAndShapeFromTensorProto(graph, dense_weight_arg, actual_val,
-                                                                                    actual_shape));
+    ASSERT_STATUS_OK(horizontal_parallel_test_utils::GetDataAndShapeFromTensorProto(graph, dense_weight_arg, actual_val, actual_shape));
     ASSERT_TRUE(std::equal(expected_shape.begin(), expected_shape.end(), actual_shape.begin()));
     horizontal_parallel_test_utils::VerifyOutputs(expected_value, actual_val, true);
     horizontal_parallel_test_utils::VerifyOutputs(expected_value, actual_val, false);
@@ -785,10 +730,7 @@ TEST_F(GraphTransformationTests, MegatronSelfAttentionPartitionRank1) {
   std::unordered_map<std::string, training::TrainingSession::PartitionInfo> weight_partition_info;
   training::TrainingSession::OptimizerState init_optim_state;
   IExecutionProvider* e = TestCPUExecutionProvider();
-  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<MegatronTransformer>(1, 2, updated_weight_names,
-                                                                                           weights_to_train,
-                                                                                           weight_partition_info,
-                                                                                           init_optim_state, *e),
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<MegatronTransformer>(1, 2, updated_weight_names, weights_to_train, weight_partition_info, init_optim_state, *e),
                                                      TransformerLevel::Level1));
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
 
@@ -797,17 +739,13 @@ TEST_F(GraphTransformationTests, MegatronSelfAttentionPartitionRank1) {
 
   {
     std::vector<float> expected_value = {
-        0.02f, 0.03f, 0.06f, 0.07f, 0.10f, 0.11f,
-        0.14f, 0.15f, 0.18f, 0.19f, 0.22f, 0.23f,
-        0.26f, 0.27f, 0.30f, 0.31f, 0.34f, 0.35f,
-        0.38f, 0.39f, 0.42f, 0.43f, 0.46f, 0.47f};
+        0.02f, 0.03f, 0.06f, 0.07f, 0.10f, 0.11f, 0.14f, 0.15f, 0.18f, 0.19f, 0.22f, 0.23f, 0.26f, 0.27f, 0.30f, 0.31f, 0.34f, 0.35f, 0.38f, 0.39f, 0.42f, 0.43f, 0.46f, 0.47f};
     auto qkv_weight_arg = GetNodeByName(graph, "matmul1")->MutableInputDefs()[1];
     ORT_ENFORCE(qkv_weight_arg != nullptr);
     std::vector<int64_t> expected_shape = {4, 6};
     std::vector<float> actual_val;
     std::vector<int64_t> actual_shape;
-    ASSERT_STATUS_OK(horizontal_parallel_test_utils::GetDataAndShapeFromTensorProto(graph, qkv_weight_arg, actual_val,
-                                                                                    actual_shape));
+    ASSERT_STATUS_OK(horizontal_parallel_test_utils::GetDataAndShapeFromTensorProto(graph, qkv_weight_arg, actual_val, actual_shape));
     ASSERT_TRUE(std::equal(expected_shape.begin(), expected_shape.end(), actual_shape.begin()));
     horizontal_parallel_test_utils::VerifyOutputs(expected_value, actual_val, true);
     horizontal_parallel_test_utils::VerifyOutputs(expected_value, actual_val, false);
@@ -819,23 +757,20 @@ TEST_F(GraphTransformationTests, MegatronSelfAttentionPartitionRank1) {
     std::vector<int64_t> expected_shape = {6};
     std::vector<float> actual_val;
     std::vector<int64_t> actual_shape;
-    ASSERT_STATUS_OK(horizontal_parallel_test_utils::GetDataAndShapeFromTensorProto(graph, qkv_bias_arg, actual_val,
-                                                                                    actual_shape));
+    ASSERT_STATUS_OK(horizontal_parallel_test_utils::GetDataAndShapeFromTensorProto(graph, qkv_bias_arg, actual_val, actual_shape));
     ASSERT_TRUE(std::equal(expected_shape.begin(), expected_shape.end(), actual_shape.begin()));
     horizontal_parallel_test_utils::VerifyOutputs(expected_value, actual_val, true);
     horizontal_parallel_test_utils::VerifyOutputs(expected_value, actual_val, false);
   }
   {
     std::vector<float> expected_value = {
-        0.08f, 0.09f, 0.10f, 0.11f,
-        0.12f, 0.13f, 0.14f, 0.15f};
+        0.08f, 0.09f, 0.10f, 0.11f, 0.12f, 0.13f, 0.14f, 0.15f};
     auto dense_weight_arg = GetNodeByName(graph, "matmul4")->MutableInputDefs()[1];
     ORT_ENFORCE(dense_weight_arg != nullptr);
     std::vector<int64_t> expected_shape = {2, 4};
     std::vector<float> actual_val;
     std::vector<int64_t> actual_shape;
-    ASSERT_STATUS_OK(horizontal_parallel_test_utils::GetDataAndShapeFromTensorProto(graph, dense_weight_arg,
-                                                                                    actual_val, actual_shape));
+    ASSERT_STATUS_OK(horizontal_parallel_test_utils::GetDataAndShapeFromTensorProto(graph, dense_weight_arg, actual_val, actual_shape));
     ASSERT_TRUE(std::equal(expected_shape.begin(), expected_shape.end(), actual_shape.begin()));
     horizontal_parallel_test_utils::VerifyOutputs(expected_value, actual_val, true);
     horizontal_parallel_test_utils::VerifyOutputs(expected_value, actual_val, false);
@@ -875,8 +810,7 @@ TEST_F(GraphTransformationTests, BiasGeluRecomputeTest) {
 }
 
 TEST_F(GraphTransformationTests, SoftmaxCrossEntropyLossInternalFusionWithoutCast) {
-  Model model("SoftmaxCrossEntropyLossInternalFusion", true, ModelMetaData(), PathString(),
-              IOnnxRuntimeOpSchemaRegistryList(), {{"", 12}, {"com.microsoft", 1}}, {}, *logger_);
+  Model model("SoftmaxCrossEntropyLossInternalFusion", true, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(), {{"", 12}, {"com.microsoft", 1}}, {}, *logger_);
   auto& graph = model.MainGraph();
 
   TypeProto tensor_float;
@@ -892,8 +826,7 @@ TEST_F(GraphTransformationTests, SoftmaxCrossEntropyLossInternalFusionWithoutCas
 
   graph.AddNode("ls", "LogSoftmax", "LogSoftmax operator", {&x_def}, {&ls_out_def});
   Node& nll_loss_node = graph.AddNode(
-      "nl_loss_internal", "NegativeLogLikelihoodLossInternal", "NegativeLogLikelihoodLossInternal operator",
-      {&ls_out_def, &target_def, &weight_def, &ignore_index_def}, {&y_def}, nullptr, onnxruntime::kMSDomain);
+      "nl_loss_internal", "NegativeLogLikelihoodLossInternal", "NegativeLogLikelihoodLossInternal operator", {&ls_out_def, &target_def, &weight_def, &ignore_index_def}, {&y_def}, nullptr, onnxruntime::kMSDomain);
   nll_loss_node.AddAttribute("reduction", "none");
 
   auto status = graph.Resolve();
@@ -911,8 +844,7 @@ TEST_F(GraphTransformationTests, SoftmaxCrossEntropyLossInternalFusionWithoutCas
 }
 
 TEST_F(GraphTransformationTests, SoftmaxCrossEntropyLossInternalFusionWithCast) {
-  Model model("SoftmaxCrossEntropyLossInternalFusion", true, ModelMetaData(), PathString(),
-              IOnnxRuntimeOpSchemaRegistryList(), {{"", 12}, {"com.microsoft", 1}}, {}, *logger_);
+  Model model("SoftmaxCrossEntropyLossInternalFusion", true, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(), {{"", 12}, {"com.microsoft", 1}}, {}, *logger_);
   auto& graph = model.MainGraph();
 
   TypeProto tensor_half;
@@ -933,8 +865,7 @@ TEST_F(GraphTransformationTests, SoftmaxCrossEntropyLossInternalFusionWithCast) 
   Node& cast_node = graph.AddNode("ct", "Cast", "Cast operator", {&ls_out_def}, {&ct_out_def});
   cast_node.AddAttribute("to", static_cast<int64_t>(1));
   Node& nll_loss_node = graph.AddNode(
-      "nl_loss_internal", "NegativeLogLikelihoodLossInternal", "NegativeLogLikelihoodLossInternal operator",
-      {&ct_out_def, &target_def, &weight_def, &ignore_index_def}, {&y_def}, nullptr, onnxruntime::kMSDomain);
+      "nl_loss_internal", "NegativeLogLikelihoodLossInternal", "NegativeLogLikelihoodLossInternal operator", {&ct_out_def, &target_def, &weight_def, &ignore_index_def}, {&y_def}, nullptr, onnxruntime::kMSDomain);
   nll_loss_node.AddAttribute("reduction", "mean");
 
   auto status = graph.Resolve();
@@ -957,8 +888,7 @@ class LSTMReplacementTestsParameterized : public GraphTransformationTests,
 };
 
 TEST_P(LSTMReplacementTestsParameterized, CheckLSTMReplacement) {
-  Model model("LSTMReplacement", true, ModelMetaData(), PathString(),
-              IOnnxRuntimeOpSchemaRegistryList(), {{"", 14}, {"com.microsoft", 1}}, {}, *logger_);
+  Model model("LSTMReplacement", true, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(), {{"", 14}, {"com.microsoft", 1}}, {}, *logger_);
   auto& graph = model.MainGraph();
 
   TypeProto tensor;
@@ -1011,8 +941,7 @@ TEST_P(LSTMReplacementTestsParameterized, CheckLSTMReplacement) {
   }
 
   Node& lstm_node = graph.AddNode(
-      "lstm", "LSTM", "LSTM operator",
-      {&X, &W, &R, &B, &SL, &H0, &C0, &P}, outputs, nullptr);
+      "lstm", "LSTM", "LSTM operator", {&X, &W, &R, &B, &SL, &H0, &C0, &P}, outputs, nullptr);
   lstm_node.AddAttribute("hidden_size", static_cast<int64_t>(128));
 
   auto status = graph.Resolve();
@@ -1101,8 +1030,7 @@ static void RunPartitionCorrectnessTest(std::string model_path,
     training::TrainingSession::OptimizerState init_optim_state;
     IExecutionProvider* e = TestCPUExecutionProvider();
     ASSERT_STATUS_OK(graph_transformation_mgr.Register(
-        std::make_unique<MegatronTransformer>(i, total_rank, updated_weight_names, weights_to_train,
-                                              weight_partition_info, init_optim_state, *e),
+        std::make_unique<MegatronTransformer>(i, total_rank, updated_weight_names, weights_to_train, weight_partition_info, init_optim_state, *e),
         TransformerLevel::Level1));
     ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, logger));
     graphs.push_back(&graph);
@@ -1129,8 +1057,7 @@ static void RunPartitionCorrectnessTest(std::string model_path,
   for (size_t i = 0; i < input_dims.size(); i++) {
     std::vector<int64_t> dims_X = input_dims[i];
     std::vector<float> values_X(TensorShape(dims_X).Size());
-    std::for_each(values_X.begin(), values_X.end(),
-                  [&generator, &distribution](float& value) { value = distribution(generator); });
+    std::for_each(values_X.begin(), values_X.end(), [&generator, &distribution](float& value) { value = distribution(generator); });
 
     OrtValue ml_value;
     CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault), dims_X, values_X, &ml_value);

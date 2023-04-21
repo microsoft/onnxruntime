@@ -15,8 +15,7 @@ namespace test {
 namespace {
 
 template <typename T, typename TIndex>
-void RunTest(const std::vector<int64_t>& input_dims, const std::vector<int64_t>& indices_dims, bool has_axis = false,
-             int64_t axis = 0LL) {
+void RunTest(const std::vector<int64_t>& input_dims, const std::vector<int64_t>& indices_dims, bool has_axis = false, int64_t axis = 0LL) {
   size_t input_size =
       static_cast<size_t>(std::accumulate(input_dims.begin(), input_dims.end(), 1LL, std::multiplies<int64_t>()));
   size_t indices_size =
@@ -244,8 +243,7 @@ static void scatter_indices_updates_dont_match(const char* op_name, int op_versi
   test.AddInput<int64_t>("indices", {1, 3}, {1, 3, 3});
   test.AddInput<float>("updates", {1, 2}, {1.1f, 2.1f});
   test.AddOutput<float>("y", {1, 5}, {1.0f, 1.1f, 3.0f, 2.1f, 5.0f});
-  test.Run(OpTester::ExpectResult::kExpectFailure, "Indices vs updates dimensions differs at position=1 3 vs 2",
-           {kTensorrtExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectFailure, "Indices vs updates dimensions differs at position=1 3 vs 2", {kTensorrtExecutionProvider});
 }
 
 TEST(Scatter, IndicesUpdatesDontMatch) {
@@ -290,8 +288,7 @@ static void scatter_bool_with_axis_tests(const char* op_name, int op_version) {
   test.AddInput<bool>("updates", {1, 2}, {true, false});
   test.AddOutput<bool>("y", {1, 5}, {false, true, false, false, false});
 #if defined(OPENVINO_CONFIG_GPU_FP32) || defined(OPENVINO_CONFIG_GPU_FP16)
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kOpenVINOExecutionProvider});  // OpenVINO: Disabled due to failure for GPU
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});  // OpenVINO: Disabled due to failure for GPU
 #else
   test.Run();
 #endif

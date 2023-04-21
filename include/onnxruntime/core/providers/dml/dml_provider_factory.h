@@ -55,8 +55,7 @@ ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_DML, _In_ OrtSessionOpti
  * See also: DMLCreateDevice
  * See also: ID3D12Device::CreateCommandQueue
  */
-ORT_API_STATUS(OrtSessionOptionsAppendExecutionProviderEx_DML, _In_ OrtSessionOptions* options,
-               _In_ IDMLDevice* dml_device, _In_ ID3D12CommandQueue* cmd_queue);
+ORT_API_STATUS(OrtSessionOptionsAppendExecutionProviderEx_DML, _In_ OrtSessionOptions* options, _In_ IDMLDevice* dml_device, _In_ ID3D12CommandQueue* cmd_queue);
 
 struct OrtDmlApi;
 typedef struct OrtDmlApi OrtDmlApi;
@@ -79,8 +78,7 @@ struct OrtDmlApi {
    * See also: DMLCreateDevice
    * See also: ID3D12Device::CreateCommandQueue
    */
-  ORT_API2_STATUS(SessionOptionsAppendExecutionProvider_DML1, _In_ OrtSessionOptions* options,
-                  _In_ IDMLDevice* dml_device, _In_ ID3D12CommandQueue* cmd_queue);
+  ORT_API2_STATUS(SessionOptionsAppendExecutionProvider_DML1, _In_ OrtSessionOptions* options, _In_ IDMLDevice* dml_device, _In_ ID3D12CommandQueue* cmd_queue);
 
   /**
    * CreateGPUAllocationFromD3DResource

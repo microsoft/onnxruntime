@@ -180,16 +180,14 @@ std::vector<std::vector<const Node*>> CreateSupportedPartitionNodeGroups(
       supported_group_border.erase(&node);
 
       std::for_each(
-          node.OutputNodesBegin(), node.OutputNodesEnd(),
-          [&supported_group_border](const Node& output) {
+          node.OutputNodesBegin(), node.OutputNodesEnd(), [&supported_group_border](const Node& output) {
             supported_group_border.insert(&output);
           });
     }
 
     // adjust in-degrees of the node outputs and add any new nodes to process
     std::for_each(
-        node.OutputNodesBegin(), node.OutputNodesEnd(),
-        [&](const Node& output) {
+        node.OutputNodesBegin(), node.OutputNodesEnd(), [&](const Node& output) {
           auto& output_node_in_degree = in_degree[output.Index()];
           --output_node_in_degree;
 
@@ -221,11 +219,10 @@ InlinedHashSet<const Node*> CreateExcludedNodeSet(const GraphViewer& graph_viewe
         const Node* cur_node = nodes_to_process.front();
         nodes_to_process.pop();
 
-        std::for_each(cur_node->OutputNodesBegin(), cur_node->OutputNodesEnd(),
-                      [&nodes_to_process, &excluded_nodes](const Node& output_node) {
-                        nodes_to_process.push(&output_node);
-                        excluded_nodes.insert(&output_node);
-                      });
+        std::for_each(cur_node->OutputNodesBegin(), cur_node->OutputNodesEnd(), [&nodes_to_process, &excluded_nodes](const Node& output_node) {
+          nodes_to_process.push(&output_node);
+          excluded_nodes.insert(&output_node);
+        });
       }
     }
   }
@@ -329,11 +326,8 @@ CreateSupportedPartitions(const GraphViewer& graph_viewer,
   partitions.reserve(groups.size());
 
   std::transform(
-      groups.begin(), groups.end(),
-      std::back_inserter(partitions),
-      [&](const auto& supported_partition) {
-        return MakeComputeCapability(graph_viewer, supported_partition, generate_metadef_name_fn,
-                                     execution_provider_name);
+      groups.begin(), groups.end(), std::back_inserter(partitions), [&](const auto& supported_partition) {
+        return MakeComputeCapability(graph_viewer, supported_partition, generate_metadef_name_fn, execution_provider_name);
       });
 
   return partitions;

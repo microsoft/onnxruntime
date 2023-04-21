@@ -119,8 +119,7 @@ class ScanImpl {
   // validate inputs and setup batch size and max sequence length.
   Status ValidateInput();
 
-  Status ValidateSubgraphInput(int start_input, int end_input,
-                               const std::vector<const NodeArg*>& graph_inputs);
+  Status ValidateSubgraphInput(int start_input, int end_input, const std::vector<const NodeArg*>& graph_inputs);
 
   // setup inputs to subgraph, transposing if necessary
   Status SetupInputs();
@@ -172,21 +171,25 @@ void Scan<9>::Init(const OpKernelInfo& info) {
 
   if (info.GetAttrs("scan_input_axes", input_axes_).IsOK()) {
     ORT_ENFORCE(gsl::narrow_cast<int64_t>(input_axes_.size()) == num_scan_inputs_,
-                "Number of entries in 'scan_input_axes' was ", input_axes_.size(), " but expected ", num_scan_inputs_);
+                "Number of entries in 'scan_input_axes' was ",
+                input_axes_.size(),
+                " but expected ",
+                num_scan_inputs_);
   } else {
     input_axes_.resize(onnxruntime::narrow<size_t>(num_scan_inputs_), 0);
   }
 
   if (info.GetAttrs("scan_output_axes", output_axes_).IsOK()) {
     ORT_ENFORCE(gsl::narrow_cast<int64_t>(output_axes_.size()) == num_scan_outputs,
-                "Number of entries in 'scan_output_axes' was ", output_axes_.size(), " but expected ",
+                "Number of entries in 'scan_output_axes' was ",
+                output_axes_.size(),
+                " but expected ",
                 num_scan_outputs);
   } else {
     output_axes_.resize(onnxruntime::narrow<size_t>(num_scan_outputs), 0);
   }
 
-  device_helpers_.transpose_func = [](const gsl::span<const size_t>& permutations, const Tensor& input,
-                                      Tensor& output, Stream* /*no stream needed for cpu*/) -> Status {
+  device_helpers_.transpose_func = [](const gsl::span<const size_t>& permutations, const Tensor& input, Tensor& output, Stream* /*no stream needed for cpu*/) -> Status {
     return TransposeBase::DoTranspose(permutations, input, output);
   };
 
@@ -204,11 +207,11 @@ Status Scan<9>::SetupSubgraphExecutionInfo(const SessionState& session_state,
   ORT_UNUSED_PARAMETER(attribute_name);
 
   const auto& node = Node();
-  info_ = std::make_unique<Scan<9>::Info>(node, subgraph_session_state.GetGraphViewer(),
-                                          static_cast<int>(num_scan_inputs_));
+  info_ = std::make_unique<Scan<9>::Info>(node, subgraph_session_state.GetGraphViewer(), static_cast<int>(num_scan_inputs_));
 
   auto status = scan::detail::CreateFeedsFetchesManager(node, *info_, session_state, subgraph_session_state,
-                                                        /* is_v8 */ false, feeds_fetches_manager_);
+                                                        /* is_v8 */ false,
+                                                        feeds_fetches_manager_);
 
   return status;
 }
@@ -222,8 +225,7 @@ Status Scan<9>::Compute(OpKernelContext* ctx) const {
   auto* session_state = ctx_internal->SubgraphSessionState("body");
   ORT_ENFORCE(session_state, "Subgraph SessionState was not found for 'body' attribute.");
 
-  ScanImpl scan_impl{*ctx_internal, *session_state, *info_, input_directions_, output_directions_,
-                     input_axes_, output_axes_, device_helpers_};
+  ScanImpl scan_impl{*ctx_internal, *session_state, *info_, input_directions_, output_directions_, input_axes_, output_axes_, device_helpers_};
 
   auto status = scan_impl.Initialize();
   ORT_RETURN_IF_ERROR(status);
@@ -267,8 +269,7 @@ Status ScanImpl::Initialize() {
   return Status::OK();
 }
 
-Status ScanImpl::ValidateSubgraphInput(int start_input, int end_input,
-                                       const std::vector<const NodeArg*>& graph_inputs) {
+Status ScanImpl::ValidateSubgraphInput(int start_input, int end_input, const std::vector<const NodeArg*>& graph_inputs) {
   // sequence dim is all that's required as a scalar input will only have that
   auto min_dims_required = 1;
 
@@ -277,9 +278,7 @@ Status ScanImpl::ValidateSubgraphInput(int start_input, int end_input,
     const auto& input_shape = input_tensor.Shape();
 
     if (input_shape.NumDimensions() < static_cast<size_t>(min_dims_required))
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Invalid scan input:", graph_inputs[i]->Name(),
-                             " Expected ", min_dims_required,
-                             " dimensions or more but input had shape of ", input_shape);
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Invalid scan input:", graph_inputs[i]->Name(), " Expected ", min_dims_required, " dimensions or more but input had shape of ", input_shape);
 
     auto seq_len_dim = input_axes_[static_cast<ptrdiff_t>(i) - info_.num_loop_state_variables];
     auto this_seq_len = input_shape[onnxruntime::narrow<size_t>(seq_len_dim)];
@@ -288,10 +287,7 @@ Status ScanImpl::ValidateSubgraphInput(int start_input, int end_input,
       sequence_len_ = this_seq_len;
     } else {
       if (sequence_len_ != this_seq_len) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                               "Scan inputs have inconsistent sequence lengths. Previous value was ",
-                               sequence_len_, " but input '", graph_inputs[i]->Name(),
-                               "' dimension ", seq_len_dim, " has length of ", this_seq_len);
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Scan inputs have inconsistent sequence lengths. Previous value was ", sequence_len_, " but input '", graph_inputs[i]->Name(), "' dimension ", seq_len_dim, " has length of ", this_seq_len);
       }
     }
   }
@@ -312,8 +308,7 @@ Status ScanImpl::ValidateInput() {
       if (axis >= -input_rank && axis < input_rank)
         axis = HandleNegativeAxis(axis, input_rank);
       else
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid value in scan_input_axes for input ", i,
-                               " of ", axis, ". Input tensor rank was ", input_rank);
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid value in scan_input_axes for input ", i, " of ", axis, ". Input tensor rank was ", input_rank);
     }
 
     input_axes_.push_back(axis);
@@ -356,8 +351,7 @@ Status ScanImpl::SetupInputs() {
 
       OrtValue transpose_output = scan::detail::AllocateTensorInMLValue(input_tensor.DataType(), new_shape, alloc);
 
-      status = device_helpers_.transpose_func(permutations, input_tensor, *transpose_output.GetMutable<Tensor>(),
-                                              context_.GetComputeStream());
+      status = device_helpers_.transpose_func(permutations, input_tensor, *transpose_output.GetMutable<Tensor>(), context_.GetComputeStream());
       ORT_RETURN_IF_ERROR(status);
 
       inputs_.push_back(transpose_output);
@@ -372,15 +366,13 @@ Status ScanImpl::AllocateOutputTensors() {
   auto& graph_outputs = info_.subgraph.GetOutputs();
 
   if (graph_outputs.size() != static_cast<size_t>(info_.num_outputs)) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Subgraph in 'body' produces ", graph_outputs.size(),
-                           " outputs but Scan expects ", info_.num_outputs);
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Subgraph in 'body' produces ", graph_outputs.size(), " outputs but Scan expects ", info_.num_outputs);
   }
 
   std::unique_ptr<OutputIterator> output_iter;
 
   for (int i = 0; i < info_.num_loop_state_variables; ++i) {
-    status = AllocateOutput(context_, info_.subgraph, i, true, -1, sequence_len_, output_iter,
-                            device_helpers_.create_mutable_slicer_func, device_helpers_.set_data_to_zero_func);
+    status = AllocateOutput(context_, info_.subgraph, i, true, -1, sequence_len_, output_iter, device_helpers_.create_mutable_slicer_func, device_helpers_.set_data_to_zero_func);
     ORT_RETURN_IF_ERROR(status);
     output_iterators_.push_back(std::move(output_iter));
   }
@@ -395,9 +387,7 @@ Status ScanImpl::AllocateOutputTensors() {
     // if we need to transpose later, we need to use a temporary output buffer when executing the subgraph
     bool temporary = output_axes_from_attribute_[scan_output_index] != 0;
 
-    status = AllocateOutput(context_, info_.subgraph, i, false, -1, sequence_len_, output_iter,
-                            device_helpers_.create_mutable_slicer_func, device_helpers_.set_data_to_zero_func,
-                            direction, temporary);
+    status = AllocateOutput(context_, info_.subgraph, i, false, -1, sequence_len_, output_iter, device_helpers_.create_mutable_slicer_func, device_helpers_.set_data_to_zero_func, direction, temporary);
     ORT_RETURN_IF_ERROR(status);
 
     output_iterators_.push_back(std::move(output_iter));
@@ -448,9 +438,7 @@ Status ScanImpl::Execute(const FeedsFetchesManager& ffm) {
   }
 
   // Call the subgraph for each item in the sequence
-  status = IterateSequence(context_, session_state_, loop_state_variables, scan_input_stream_iterators,
-                           sequence_len_, info_.num_loop_state_variables, info_.num_inputs, info_.num_outputs,
-                           implicit_inputs_, output_iterators_, ffm);
+  status = IterateSequence(context_, session_state_, loop_state_variables, scan_input_stream_iterators, sequence_len_, info_.num_loop_state_variables, info_.num_inputs, info_.num_outputs, implicit_inputs_, output_iterators_, ffm);
 
   ORT_RETURN_IF_ERROR(status);
 
@@ -476,8 +464,7 @@ Status ScanImpl::TransposeOutput() {
       if (axis >= -output_rank && axis < output_rank)
         axis = HandleNegativeAxis(axis, output_rank);
       else
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid value in scan_output_axes for output ", i,
-                               " of ", axis, ". Output tensor rank was ", output_rank);
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid value in scan_output_axes for output ", i, " of ", axis, ". Output tensor rank was ", output_rank);
 
       InlinedVector<size_t> permutations;
       TensorShapeVector new_shape;
@@ -486,8 +473,7 @@ Status ScanImpl::TransposeOutput() {
       Tensor* output = context_.Output(output_index, new_shape);
       ORT_ENFORCE(output, "Outputs from Scan are not optional and should never be null.");
 
-      status = device_helpers_.transpose_func(permutations, temporary_output_tensor, *output,
-                                              context_.GetComputeStream());
+      status = device_helpers_.transpose_func(permutations, temporary_output_tensor, *output, context_.GetComputeStream());
       ORT_RETURN_IF_ERROR(status);
     }
   }

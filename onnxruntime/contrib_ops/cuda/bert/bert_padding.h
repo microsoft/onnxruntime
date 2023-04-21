@@ -22,15 +22,12 @@ void LaunchGetTokenOffset(int* token_count_buffer,
 // Remove paddings from input.
 template <typename T>
 void LaunchRemovePadding(
-    T* output, const T* input, const int* token_offset, const int token_count, const int hidden_size,
-    cudaStream_t stream);
+    T* output, const T* input, const int* token_offset, const int token_count, const int hidden_size, cudaStream_t stream);
 
 // Rebuild paddings to restore output shape.
 template <typename T>
 void LaunchRestorePadding(
-    T* output, const T* input, const int* token_offset, const int token_count, const int hidden_size,
-    const int batch_size, const int sequence_length,
-    cudaStream_t stream);
+    T* output, const T* input, const int* token_offset, const int token_count, const int hidden_size, const int batch_size, const int sequence_length, cudaStream_t stream);
 
 // Padding offset for TensorRT fused attention kernel
 void LaunchTrtSequenceOffset(int* trt_mha_padding_offset,

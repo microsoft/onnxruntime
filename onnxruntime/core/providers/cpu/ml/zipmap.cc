@@ -31,8 +31,7 @@ namespace ml {
 ONNX_CPU_OPERATOR_ML_KERNEL(
     ZipMap,
     1,
-    KernelDefBuilder().TypeConstraint("T", {DataTypeImpl::GetType<std::vector<std::map<std::string, float>>>(),
-                                            DataTypeImpl::GetType<std::vector<std::map<std::int64_t, float>>>()}),
+    KernelDefBuilder().TypeConstraint("T", {DataTypeImpl::GetType<std::vector<std::map<std::string, float>>>(), DataTypeImpl::GetType<std::vector<std::map<std::int64_t, float>>>()}),
     ZipMapOp);
 
 ZipMapOp::ZipMapOp(const OpKernelInfo& info)

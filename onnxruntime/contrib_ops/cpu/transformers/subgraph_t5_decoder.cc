@@ -59,22 +59,27 @@ Status T5DecoderSubgraph::Validate(const std::vector<const NodeArg*>& subgraph_i
     ORT_RETURN_IF(has_decoder_masked_attention_, "decoder_masked_attention shall use with past_present_share_buffer");
     ORT_RETURN_IF(num_subgraph_inputs < 4 + first_past_input_index_ ||
                       (num_subgraph_inputs - first_past_input_index_) % 4 != 0,
-                  "number of inputs expected to be kFirstPastInputIndex + 4 * layers, got:", num_subgraph_inputs);
+                  "number of inputs expected to be kFirstPastInputIndex + 4 * layers, got:",
+                  num_subgraph_inputs);
   } else if (has_decoder_masked_attention_) {
     ORT_RETURN_IF(num_subgraph_inputs < 7 + first_past_input_index_ ||
                       (num_subgraph_inputs - first_past_input_index_ - 3) % 4 != 0,
-                  "number of inputs expected to be kFirstPastInputIndex + 4 * layers + 3, got:", num_subgraph_inputs);
+                  "number of inputs expected to be kFirstPastInputIndex + 4 * layers + 3, got:",
+                  num_subgraph_inputs);
   } else {
     ORT_RETURN_IF(num_subgraph_inputs < 5 + first_past_input_index_ ||
                       (num_subgraph_inputs - first_past_input_index_ - 1) % 4 != 0,
-                  "number of inputs expected to be kFirstPastInputIndex + 4 * layers + 1, got:", num_subgraph_inputs);
+                  "number of inputs expected to be kFirstPastInputIndex + 4 * layers + 1, got:",
+                  num_subgraph_inputs);
   }
 
   ORT_RETURN_IF(num_subgraph_outputs < 3 || (num_subgraph_outputs - first_present_output_index_) % 2 != 0,
-                "number of outputs expected to be 1 + 2 * layers, got:", num_subgraph_outputs);
+                "number of outputs expected to be 1 + 2 * layers, got:",
+                num_subgraph_outputs);
 
   ORT_RETURN_IF(subgraph_inputs[0]->Name() != "input_ids",
-                "decoder subgraph input 0 shall be named as input_ids, got: ", subgraph_inputs[0]->Name());
+                "decoder subgraph input 0 shall be named as input_ids, got: ",
+                subgraph_inputs[0]->Name());
   ORT_RETURN_IF(subgraph_inputs[1]->Name() != "encoder_attention_mask",
                 "decoder subgraph input 1 shall be named as encoder_attention_mask, got: ",
                 subgraph_inputs[1]->Name());
@@ -86,7 +91,8 @@ Status T5DecoderSubgraph::Validate(const std::vector<const NodeArg*>& subgraph_i
 
   // check subgraph outputs
   ORT_RETURN_IF(subgraph_outputs[0]->Name() != "logits",
-                "decoder subgraph output 0 shall be named as logits, got: ", subgraph_outputs[0]->Name());
+                "decoder subgraph output 0 shall be named as logits, got: ",
+                subgraph_outputs[0]->Name());
 
   const ONNX_NAMESPACE::TensorShapeProto* logits_shape = subgraph_outputs[0]->Shape();
   const ONNX_NAMESPACE::TensorShapeProto* past_shape = subgraph_outputs[first_present_output_index_]->Shape();
@@ -275,8 +281,7 @@ Status T5DecoderSubgraph::CreateInitialFeeds(
     // Add beam search specific inputs
     if (need_cache_indir) {
       const int64_t batch_size = static_cast<int64_t>(batch_beam_size / num_beam);
-      ORT_RETURN_IF_ERROR(AppendBeamWidthAndCacheIndir(decoder_feeds, cpu_allocator, allocator, batch_size, num_beam,
-                                                       past_present_share_buffer_max_seq_len));
+      ORT_RETURN_IF_ERROR(AppendBeamWidthAndCacheIndir(decoder_feeds, cpu_allocator, allocator, batch_size, num_beam, past_present_share_buffer_max_seq_len));
     }
   }
 

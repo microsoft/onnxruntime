@@ -72,28 +72,23 @@ NcclContext::NcclContext() {
   MPI_Comm_group(MPI_COMM_WORLD, &mpi_world_group);
 
   // Initialize global Parallel Group NCCL Communicator
-  auto ret = CreateNcclCommunicator(&mpi_world_group, training::WorkerGroupType::GlobalParallel,
-                                    &global_group_comm_);
+  auto ret = CreateNcclCommunicator(&mpi_world_group, training::WorkerGroupType::GlobalParallel, &global_group_comm_);
   ORT_ENFORCE(ret.IsOK());
 
   // Initialize Data Parallel Group NCCL Communicator
-  ret = CreateNcclCommunicator(&mpi_world_group, training::WorkerGroupType::DataParallel,
-                               &data_group_comm_);
+  ret = CreateNcclCommunicator(&mpi_world_group, training::WorkerGroupType::DataParallel, &data_group_comm_);
   ORT_ENFORCE(ret.IsOK());
 
   // Initialize Horizontal Model Parallel Group NCCL Communicator
-  ret = CreateNcclCommunicator(&mpi_world_group, training::WorkerGroupType::HorizontalParallel,
-                               &horizontal_group_comm_);
+  ret = CreateNcclCommunicator(&mpi_world_group, training::WorkerGroupType::HorizontalParallel, &horizontal_group_comm_);
   ORT_ENFORCE(ret.IsOK());
 
   // Initialize node local Parallel Group NCCL Communicator
-  ret = CreateNcclCommunicator(&mpi_world_group, training::WorkerGroupType::NodeLocalDataParallel,
-                               &node_local_comm_);
+  ret = CreateNcclCommunicator(&mpi_world_group, training::WorkerGroupType::NodeLocalDataParallel, &node_local_comm_);
   ORT_ENFORCE(ret.IsOK());
 
   // Initialize cross node Parallel Group NCCL Communicator
-  ret = CreateNcclCommunicator(&mpi_world_group, training::WorkerGroupType::CrossNodeDataParallel,
-                               &cross_node_comm_);
+  ret = CreateNcclCommunicator(&mpi_world_group, training::WorkerGroupType::CrossNodeDataParallel, &cross_node_comm_);
   ORT_ENFORCE(ret.IsOK());
 
   MPI_Group_free(&mpi_world_group);

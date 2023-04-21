@@ -14,9 +14,7 @@
 
 class MockSink : public ::onnxruntime::logging::ISink {
  public:
-  MOCK_METHOD3(SendImpl, void(const ::onnxruntime::logging::Timestamp& timestamp,
-                              const std::string& logger_id,
-                              const ::onnxruntime::logging::Capture& message));
+  MOCK_METHOD3(SendImpl, void(const ::onnxruntime::logging::Timestamp& timestamp, const std::string& logger_id, const ::onnxruntime::logging::Capture& message));
 };
 
 // The ACTION*() macros trigger warning C4100 (unreferenced formal

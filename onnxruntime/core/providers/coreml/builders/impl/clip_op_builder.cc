@@ -19,14 +19,12 @@ class ClipOpBuilder : public BaseOpBuilder {
   void AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const override;
 
  private:
-  [[nodiscard]] Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
-                                             const logging::Logger& logger) const override;
+  [[nodiscard]] Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node, const logging::Logger& logger) const override;
 #endif
 
   // Operator support related
  private:
-  bool IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params,
-                         const logging::Logger& logger) const override;
+  bool IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params, const logging::Logger& logger) const override;
 };
 
 // Add operator related
@@ -129,8 +127,7 @@ Status ClipOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 
 // Operator support related
 
-bool ClipOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params,
-                                      const logging::Logger& logger) const {
+bool ClipOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params, const logging::Logger& logger) const {
   float min, max;
   const auto& initializers = input_params.graph_viewer.GetAllInitializedTensors();
   return GetClipMinMax(initializers, node, min, max, logger);

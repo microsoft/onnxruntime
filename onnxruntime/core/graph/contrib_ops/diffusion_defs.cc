@@ -34,35 +34,7 @@ The activation attribute can be used to enable activation after group normalizat
 )DOC";
 
 ONNX_MS_OPERATOR_SET_SCHEMA(
-    GroupNorm, 1,
-    OpSchema()
-        .SetDoc(GroupNorm_ver1_doc)
-        .Attr("epsilon", "The epsilon value to use to avoid division by zero", AttributeProto::FLOAT, static_cast<float>(1e-5))
-        .Attr("groups",
-              "The number of groups of channels. It should be a divisor of the number of channels C",
-              AttributeProto::INT)
-        .Attr("activation",
-              "Activation after group normalization: 0 for None, 1 for Swish",
-              AttributeProto::INT)
-        .Input(0,
-               "X",
-               "Input data tensor. Dimensions are (N x H x W x C), where N is the batch size, C is the number of channels, and H and W are the height and width of the data",
-               "T")
-        .Input(1,
-               "gamma",
-               "1D gamma tensor for normalization with shape (C), where C is number of channels",
-               "M")
-        .Input(2,
-               "beta",
-               "1D beta tensor for normalization  with shape (C), where C is number of channels",
-               "M")
-        .Output(0,
-                "Y",
-                "The output tensor of the same shape as X",
-                "T")
-        .TypeConstraint("T", {"tensor(float16)", "tensor(float)"}, "Constrain input X and output Y types to float tensors.")
-        .TypeConstraint("M", {"tensor(float)"}, "Constrain gamma and beta to float tensors.")
-        .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput));
+    GroupNorm, 1, OpSchema().SetDoc(GroupNorm_ver1_doc).Attr("epsilon", "The epsilon value to use to avoid division by zero", AttributeProto::FLOAT, static_cast<float>(1e-5)).Attr("groups", "The number of groups of channels. It should be a divisor of the number of channels C", AttributeProto::INT).Attr("activation", "Activation after group normalization: 0 for None, 1 for Swish", AttributeProto::INT).Input(0, "X", "Input data tensor. Dimensions are (N x H x W x C), where N is the batch size, C is the number of channels, and H and W are the height and width of the data", "T").Input(1, "gamma", "1D gamma tensor for normalization with shape (C), where C is number of channels", "M").Input(2, "beta", "1D beta tensor for normalization  with shape (C), where C is number of channels", "M").Output(0, "Y", "The output tensor of the same shape as X", "T").TypeConstraint("T", {"tensor(float16)", "tensor(float)"}, "Constrain input X and output Y types to float tensors.").TypeConstraint("M", {"tensor(float)"}, "Constrain gamma and beta to float tensors.").TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput));
 
 constexpr const char* BiasSplitGelu_ver1_doc = R"DOC(
 A fusion used in diffusion model that after adding bias, hidden state is sliced into two tensors of same size, then left
@@ -70,73 +42,37 @@ tensor multiplies the Gelu activation result of right tensor.
 )DOC";
 
 ONNX_MS_OPERATOR_SET_SCHEMA(
-    BiasSplitGelu, 1,
-    OpSchema()
-        .SetDoc(BiasSplitGelu_ver1_doc)
-        .Input(0,
-               "X",
-               "Input tensor. Dimensions are (N, S, D), where N is the batch size, S are image size, and D is hidden dimension",
-               "T")
-        .Input(1,
-               "bias",
-               "Bias tensor. Dimensions are (D), where D is the same hidden dimension as input tensor",
-               "T")
-        .Output(0,
-                "Y",
-                "The output tensor with dimensions (N, S, D/2)",
-                "T")
-        .TypeConstraint("T", {"tensor(float16)", "tensor(float)"}, "Constrain input X and output Y types to float tensors.")
-        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-          propagateElemTypeFromInputToOutput(ctx, 0, 0);
-          if (hasInputShape(ctx, 0) && hasInputShape(ctx, 1)) {
-            auto& input_shape = getInputShape(ctx, 0);
-            if (input_shape.dim().size() != 3) {
-              fail_shape_inference("input shall be 3 dimensions");
-            }
+    BiasSplitGelu, 1, OpSchema().SetDoc(BiasSplitGelu_ver1_doc).Input(0, "X", "Input tensor. Dimensions are (N, S, D), where N is the batch size, S are image size, and D is hidden dimension", "T").Input(1, "bias", "Bias tensor. Dimensions are (D), where D is the same hidden dimension as input tensor", "T").Output(0, "Y", "The output tensor with dimensions (N, S, D/2)", "T").TypeConstraint("T", {"tensor(float16)", "tensor(float)"}, "Constrain input X and output Y types to float tensors.").TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+      propagateElemTypeFromInputToOutput(ctx, 0, 0);
+      if (hasInputShape(ctx, 0) && hasInputShape(ctx, 1)) {
+        auto& input_shape = getInputShape(ctx, 0);
+        if (input_shape.dim().size() != 3) {
+          fail_shape_inference("input shall be 3 dimensions");
+        }
 
-            auto& bias_shape = getInputShape(ctx, 1);
-            if (bias_shape.dim().size() != 1) {
-              fail_shape_inference("bias shall be 1 dimension");
-            }
+        auto& bias_shape = getInputShape(ctx, 1);
+        if (bias_shape.dim().size() != 1) {
+          fail_shape_inference("bias shall be 1 dimension");
+        }
 
-            TensorShapeProto output_shape;
-            *output_shape.add_dim() = input_shape.dim(0);
-            *output_shape.add_dim() = input_shape.dim(1);
-            if (bias_shape.dim(0).has_dim_value()) {
-              output_shape.add_dim()->set_dim_value(bias_shape.dim(0).dim_value() / 2);
-            } else {
-              output_shape.add_dim();
-            }
+        TensorShapeProto output_shape;
+        *output_shape.add_dim() = input_shape.dim(0);
+        *output_shape.add_dim() = input_shape.dim(1);
+        if (bias_shape.dim(0).has_dim_value()) {
+          output_shape.add_dim()->set_dim_value(bias_shape.dim(0).dim_value() / 2);
+        } else {
+          output_shape.add_dim();
+        }
 
-            updateOutputShape(ctx, 0, output_shape);
-          }
-        }));
+        updateOutputShape(ctx, 0, output_shape);
+      }
+    }));
 
 constexpr const char* BiasAdd_ver1_doc = R"DOC(
 Add input with bias, then add residual inputs.
 )DOC";
 
 ONNX_MS_OPERATOR_SET_SCHEMA(
-    BiasAdd, 1,
-    OpSchema()
-        .SetDoc(BiasAdd_ver1_doc)
-        .Input(0,
-               "X",
-               "Input tensor. Dimensions are (N, S, C), where N is the batch size, S is image size H*W, and C is number of channels",
-               "T")
-        .Input(1,
-               "bias",
-               "Bias tensor. Dimensions are (C)",
-               "T")
-        .Input(2,
-               "skip",
-               "Residual tensor. Dimensions are (N, S, C)",
-               "T")
-        .Output(0,
-                "Y",
-                "The output tensor with dimensions (N, S, C)",
-                "T")
-        .TypeConstraint("T", {"tensor(float16)", "tensor(float)"}, "Constrain input and output types to float tensors.")
-        .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput));
+    BiasAdd, 1, OpSchema().SetDoc(BiasAdd_ver1_doc).Input(0, "X", "Input tensor. Dimensions are (N, S, C), where N is the batch size, S is image size H*W, and C is number of channels", "T").Input(1, "bias", "Bias tensor. Dimensions are (C)", "T").Input(2, "skip", "Residual tensor. Dimensions are (N, S, C)", "T").Output(0, "Y", "The output tensor with dimensions (N, S, C)", "T").TypeConstraint("T", {"tensor(float16)", "tensor(float)"}, "Constrain input and output types to float tensors.").TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput));
 }  // namespace contrib
 }  // namespace onnxruntime

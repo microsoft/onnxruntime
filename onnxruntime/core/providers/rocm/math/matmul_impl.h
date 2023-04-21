@@ -11,11 +11,7 @@ namespace onnxruntime {
 namespace rocm {
 
 template <typename T>
-Status MatMulImpl(const RocmKernel* op, MatMulComputeHelper& helper,
-                  const T* left_x_data, const T* right_x_data, T* output_y_data,
-                  const TensorShape& left_shape, const TensorShape& right_shape,
-                  bool transa, bool transb, bool trans_batch_a, bool trans_batch_b,
-                  const float alpha, onnxruntime::Stream* stream);
+Status MatMulImpl(const RocmKernel* op, MatMulComputeHelper& helper, const T* left_x_data, const T* right_x_data, T* output_y_data, const TensorShape& left_shape, const TensorShape& right_shape, bool transa, bool transb, bool trans_batch_a, bool trans_batch_b, const float alpha, onnxruntime::Stream* stream);
 
 }  // namespace rocm
 }  // namespace onnxruntime

@@ -24,8 +24,7 @@ struct OrtTrainingApi {
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
    */
-  ORT_API2_STATUS(LoadCheckpoint, _In_ const ORTCHAR_T* checkpoint_path,
-                  _Outptr_ OrtCheckpointState** checkpoint_state);
+  ORT_API2_STATUS(LoadCheckpoint, _In_ const ORTCHAR_T* checkpoint_path, _Outptr_ OrtCheckpointState** checkpoint_state);
 
   /** \brief Save the training session states to a checkpoint directory on disk.
    *
@@ -40,8 +39,7 @@ struct OrtTrainingApi {
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
    */
-  ORT_API2_STATUS(SaveCheckpoint, _In_ const ORTCHAR_T* checkpoint_path, _In_ const OrtTrainingSession* session,
-                  bool save_optimizer_state);
+  ORT_API2_STATUS(SaveCheckpoint, _In_ const ORTCHAR_T* checkpoint_path, _In_ const OrtTrainingSession* session, bool save_optimizer_state);
 
   /** \brief Create a training session that can be used to begin or resume training.
    *
@@ -61,10 +59,7 @@ struct OrtTrainingApi {
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
    */
-  ORT_API2_STATUS(CreateTrainingSession, _In_ const OrtEnv* env, _In_ const OrtSessionOptions* options,
-                  _Inout_ OrtCheckpointState* checkpoint_state, _In_ const ORTCHAR_T* train_model_path,
-                  _In_ const ORTCHAR_T* eval_model_path, _In_ const ORTCHAR_T* optimizer_model_path,
-                  _Outptr_ OrtTrainingSession** out);
+  ORT_API2_STATUS(CreateTrainingSession, _In_ const OrtEnv* env, _In_ const OrtSessionOptions* options, _Inout_ OrtCheckpointState* checkpoint_state, _In_ const ORTCHAR_T* train_model_path, _In_ const ORTCHAR_T* eval_model_path, _In_ const ORTCHAR_T* optimizer_model_path, _Outptr_ OrtTrainingSession** out);
 
   /** \brief Retrieves the number of user outputs in the training model.
    *
@@ -127,9 +122,7 @@ struct OrtTrainingApi {
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
    */
-  ORT_API2_STATUS(TrainStep, _Inout_ OrtTrainingSession* sess, _In_opt_ const OrtRunOptions* run_options,
-                  _In_ size_t inputs_len, _In_reads_(inputs_len) const OrtValue* const* inputs,
-                  _In_ size_t outputs_len, _Inout_updates_all_(outputs_len) OrtValue** outputs);
+  ORT_API2_STATUS(TrainStep, _Inout_ OrtTrainingSession* sess, _In_opt_ const OrtRunOptions* run_options, _In_ size_t inputs_len, _In_reads_(inputs_len) const OrtValue* const* inputs, _In_ size_t outputs_len, _Inout_updates_all_(outputs_len) OrtValue** outputs);
 
   /** \brief Computes the outputs for the eval model for the given inputs
    *
@@ -146,9 +139,7 @@ struct OrtTrainingApi {
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
    */
-  ORT_API2_STATUS(EvalStep, _In_ const OrtTrainingSession* sess, _In_opt_ const OrtRunOptions* run_options,
-                  _In_ size_t inputs_len, _In_reads_(inputs_len) const OrtValue* const* inputs,
-                  _In_ size_t outputs_len, _Inout_updates_all_(outputs_len) OrtValue** outputs);
+  ORT_API2_STATUS(EvalStep, _In_ const OrtTrainingSession* sess, _In_opt_ const OrtRunOptions* run_options, _In_ size_t inputs_len, _In_reads_(inputs_len) const OrtValue* const* inputs, _In_ size_t outputs_len, _Inout_updates_all_(outputs_len) OrtValue** outputs);
 
   /** \brief Sets the learning rate for this training session.
    *
@@ -196,8 +187,7 @@ struct OrtTrainingApi {
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
    */
-  ORT_API2_STATUS(OptimizerStep, _Inout_ OrtTrainingSession* sess,
-                  _In_opt_ const OrtRunOptions* run_options);
+  ORT_API2_STATUS(OptimizerStep, _Inout_ OrtTrainingSession* sess, _In_opt_ const OrtRunOptions* run_options);
 
   /** \brief Registers a Linear learning rate scheduler for the training session.
    *
@@ -214,8 +204,7 @@ struct OrtTrainingApi {
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
    */
-  ORT_API2_STATUS(RegisterLinearLRScheduler, _Inout_ OrtTrainingSession* sess, _In_ const int64_t warmup_step_count,
-                  _In_ const int64_t total_step_count, _In_ const float initial_lr);
+  ORT_API2_STATUS(RegisterLinearLRScheduler, _Inout_ OrtTrainingSession* sess, _In_ const int64_t warmup_step_count, _In_ const int64_t total_step_count, _In_ const float initial_lr);
 
   /** \brief Update the learning rate based on the registered learing rate scheduler.
    *
@@ -243,8 +232,7 @@ struct OrtTrainingApi {
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
    */
-  ORT_API2_STATUS(GetParametersSize, _Inout_ OrtTrainingSession* sess,
-                  _Out_ size_t* out, bool trainable_only);
+  ORT_API2_STATUS(GetParametersSize, _Inout_ OrtTrainingSession* sess, _Out_ size_t* out, bool trainable_only);
 
   /** \brief Copy parameters onto contiguous buffer held by parameters_buffer
    *
@@ -262,8 +250,7 @@ struct OrtTrainingApi {
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
    */
-  ORT_API2_STATUS(CopyParametersToBuffer, _Inout_ OrtTrainingSession* sess,
-                  _Inout_ OrtValue* parameters_buffer, bool trainable_only);
+  ORT_API2_STATUS(CopyParametersToBuffer, _Inout_ OrtTrainingSession* sess, _Inout_ OrtValue* parameters_buffer, bool trainable_only);
 
   /** \brief Copy parameter values from contiguous buffer held by parameters_buffer onto parameters
    *
@@ -281,8 +268,7 @@ struct OrtTrainingApi {
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
    */
-  ORT_API2_STATUS(CopyBufferToParameters, _Inout_ OrtTrainingSession* sess,
-                  _Inout_ OrtValue* parameters_buffer, bool trainable_only);
+  ORT_API2_STATUS(CopyBufferToParameters, _Inout_ OrtTrainingSession* sess, _Inout_ OrtValue* parameters_buffer, bool trainable_only);
 
   /** \brief Frees up the memory used up by the training session.
    *
@@ -315,9 +301,7 @@ struct OrtTrainingApi {
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
    */
-  ORT_API2_STATUS(ExportModelForInferencing, _Inout_ OrtTrainingSession* sess,
-                  _In_ const ORTCHAR_T* inference_model_path, size_t graph_outputs_len,
-                  _In_reads_(graph_outputs_len) const char* const* graph_output_names);
+  ORT_API2_STATUS(ExportModelForInferencing, _Inout_ OrtTrainingSession* sess, _In_ const ORTCHAR_T* inference_model_path, size_t graph_outputs_len, _In_reads_(graph_outputs_len) const char* const* graph_output_names);
 
   /** \brief Sets the seed used for random number generation in Onnxruntime.
    *
@@ -358,8 +342,7 @@ struct OrtTrainingApi {
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
    */
-  ORT_API2_STATUS(TrainingSessionGetTrainingModelInputName, _In_ const OrtTrainingSession* sess, size_t index,
-                  _In_ OrtAllocator* allocator, _Outptr_ char** output);
+  ORT_API2_STATUS(TrainingSessionGetTrainingModelInputName, _In_ const OrtTrainingSession* sess, size_t index, _In_ OrtAllocator* allocator, _Outptr_ char** output);
 
   /** \brief Retrieves the name of the user input at given index in the eval model.
    *
@@ -369,8 +352,7 @@ struct OrtTrainingApi {
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
    */
-  ORT_API2_STATUS(TrainingSessionGetEvalModelInputName, _In_ const OrtTrainingSession* sess, size_t index,
-                  _In_ OrtAllocator* allocator, _Outptr_ char** output);
+  ORT_API2_STATUS(TrainingSessionGetEvalModelInputName, _In_ const OrtTrainingSession* sess, size_t index, _In_ OrtAllocator* allocator, _Outptr_ char** output);
 };
 
 typedef struct OrtTrainingApi OrtTrainingApi;

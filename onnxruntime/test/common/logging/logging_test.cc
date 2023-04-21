@@ -39,8 +39,7 @@ class LoggingTestsFixture : public ::testing::Test {
 #if !defined(SKIP_DEFAULT_LOGGER_TESTS)
     const bool filter_user_data = false;
     default_logging_manager_ = std::make_unique<LoggingManager>(
-        std::unique_ptr<ISink>{new CLogSink {}}, Severity::kWARNING, filter_user_data,
-        InstanceType::Default, &default_logger_id, /*default_max_vlog_level*/ -1);
+        std::unique_ptr<ISink>{new CLogSink {}}, Severity::kWARNING, filter_user_data, InstanceType::Default, &default_logger_id, /*default_max_vlog_level*/ -1);
 #endif
   }
 
@@ -69,12 +68,9 @@ TEST_F(LoggingTestsFixture, TestWhereMacro) {
 
   MockSink* sink_ptr = new MockSink();
 
-  EXPECT_CALL(*sink_ptr, SendImpl(testing::_, HasSubstr(logid),
-                                  Property(&Capture::Location,
-                                           AllOf(Field(&CodeLocation::line_num, Eq(std::ref(log_line))),
-                                                 Field(&CodeLocation::file_and_path, HasSubstr("onnxruntime")),      // path
-                                                 Field(&CodeLocation::file_and_path, HasSubstr("logging_test.cc")),  // filename
-                                                 Field(&CodeLocation::function, HasSubstr(function))))))
+  EXPECT_CALL(*sink_ptr, SendImpl(testing::_, HasSubstr(logid), Property(&Capture::Location, AllOf(Field(&CodeLocation::line_num, Eq(std::ref(log_line))), Field(&CodeLocation::file_and_path, HasSubstr("onnxruntime")),  // path
+                                                                                                   Field(&CodeLocation::file_and_path, HasSubstr("logging_test.cc")),                                                      // filename
+                                                                                                   Field(&CodeLocation::function, HasSubstr(function))))))
       .WillRepeatedly(PrintArgs());
 
   LoggingManager manager{std::unique_ptr<ISink>(sink_ptr), min_log_level, false, InstanceType::Temporal};
@@ -99,8 +95,7 @@ TEST_F(LoggingTestsFixture, TestDefaultFiltering) {
       .Times(1)
       .WillRepeatedly(PrintArgs());
 
-  LoggingManager manager{std::unique_ptr<ISink>(sink_ptr), min_log_level, filter_user_data,
-                         InstanceType::Temporal};
+  LoggingManager manager{std::unique_ptr<ISink>(sink_ptr), min_log_level, filter_user_data, InstanceType::Temporal};
 
   auto logger = manager.CreateLogger(logid);
 
@@ -133,8 +128,7 @@ TEST_F(LoggingTestsFixture, TestLoggerFiltering) {
       .Times(num_expected_calls)
       .WillRepeatedly(PrintArgs());
 
-  LoggingManager manager{std::unique_ptr<ISink>(sink_ptr), Severity::kERROR, default_filter_user_data,
-                         InstanceType::Temporal, nullptr, default_max_vlog_level};
+  LoggingManager manager{std::unique_ptr<ISink>(sink_ptr), Severity::kERROR, default_filter_user_data, InstanceType::Temporal, nullptr, default_max_vlog_level};
 
   bool filter_user_data = false;
   int max_vlog_level = 2;
@@ -151,14 +145,12 @@ TEST_F(LoggingTestsFixture, TestLoggerFiltering) {
 #if !defined(ORT_NO_EXCEPTIONS)
 TEST_F(LoggingTestsFixture, TestLoggingManagerCtor) {
   // throw if sink is null
-  EXPECT_THROW((LoggingManager{std::unique_ptr<ISink>{nullptr}, Severity::kINFO, false,
-                               InstanceType::Temporal}),
+  EXPECT_THROW((LoggingManager{std::unique_ptr<ISink>{nullptr}, Severity::kINFO, false, InstanceType::Temporal}),
                ::onnxruntime::OnnxRuntimeException);
 
   // can't have two logging managers with InstanceType of Default.
   // this should clash with LoggingTestsFixture::default_logging_manager_
-  EXPECT_THROW((LoggingManager{std::unique_ptr<ISink>{new MockSink{}}, Severity::kINFO, false,
-                               InstanceType::Default}),
+  EXPECT_THROW((LoggingManager{std::unique_ptr<ISink>{new MockSink{}}, Severity::kINFO, false, InstanceType::Default}),
                ::onnxruntime::OnnxRuntimeException);
 }
 #endif
@@ -180,8 +172,7 @@ TEST_F(LoggingTestsFixture, TestConditionalMacros) {
       .Times(2)
       .WillRepeatedly(PrintArgs());
 
-  LoggingManager manager{std::unique_ptr<ISink>(sink_ptr), min_log_level, filter_user_data,
-                         InstanceType::Temporal};
+  LoggingManager manager{std::unique_ptr<ISink>(sink_ptr), min_log_level, filter_user_data, InstanceType::Temporal};
 
   auto logger = manager.CreateLogger(logger_id);
 
@@ -254,8 +245,7 @@ TEST_F(LoggingTestsFixture, TestTruncation) {
   std::ostringstream out;
   auto* sink_ptr = new CTestSink{out};
 
-  LoggingManager manager{std::unique_ptr<ISink>(sink_ptr), min_log_level, filter_user_data,
-                         InstanceType::Temporal};
+  LoggingManager manager{std::unique_ptr<ISink>(sink_ptr), min_log_level, filter_user_data, InstanceType::Temporal};
 
   auto logger = manager.CreateLogger(logger_id);
 
@@ -275,13 +265,9 @@ TEST_F(LoggingTestsFixture, TestStreamMacroFromConditionalWithoutCompoundStateme
   auto sink = std::make_unique<MockSink>();
   {
     testing::InSequence s{};
-    EXPECT_CALL(*sink, SendImpl(testing::_,
-                                HasSubstr(logger_id),
-                                testing::Property(&Capture::Message, Eq(true_message))))
+    EXPECT_CALL(*sink, SendImpl(testing::_, HasSubstr(logger_id), testing::Property(&Capture::Message, Eq(true_message))))
         .WillOnce(PrintArgs());
-    EXPECT_CALL(*sink, SendImpl(testing::_,
-                                HasSubstr(logger_id),
-                                testing::Property(&Capture::Message, Eq(false_message))))
+    EXPECT_CALL(*sink, SendImpl(testing::_, HasSubstr(logger_id), testing::Property(&Capture::Message, Eq(false_message))))
         .WillOnce(PrintArgs());
   }
 

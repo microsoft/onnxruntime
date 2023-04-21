@@ -107,10 +107,8 @@ Status BatchNorm<T>::Compute(OpKernelContext* context) const {
     pNetworkId = &it->second;
   }
 
-  armnn::InputTensors inputTensors{{0, armnn::ConstTensor(BatchNorm::run->GetInputTensorInfo(*pNetworkId, 0),
-                                                          x_data)}};
-  armnn::OutputTensors outputTensors{{0, armnn::Tensor(BatchNorm::run->GetOutputTensorInfo(*pNetworkId, 0),
-                                                       y_data)}};
+  armnn::InputTensors inputTensors{{0, armnn::ConstTensor(BatchNorm::run->GetInputTensorInfo(*pNetworkId, 0), x_data)}};
+  armnn::OutputTensors outputTensors{{0, armnn::Tensor(BatchNorm::run->GetOutputTensorInfo(*pNetworkId, 0), y_data)}};
 
   BatchNorm::run->EnqueueWorkload(*pNetworkId, inputTensors, outputTensors);
 
@@ -120,7 +118,8 @@ Status BatchNorm<T>::Compute(OpKernelContext* context) const {
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     BatchNormalization,
     kOnnxDomain,
-    7, 9,
+    7,
+    9,
     kArmNNExecutionProvider,
     KernelDefBuilder()
         .TypeConstraint("X", DataTypeImpl::GetTensorType<float>())

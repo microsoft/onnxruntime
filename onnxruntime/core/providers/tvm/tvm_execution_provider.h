@@ -54,7 +54,8 @@ class TvmExecutionProvider : public IExecutionProvider {
   TensorShapeVector getInputShape(const NodeArg* node);
   TensorShapeVector convertTensorShape(const ONNX_NAMESPACE::TensorShapeProto& shape_proto);
   void prepareOutputTensors(const std::shared_ptr<TvmModule>& mod,
-                            std::vector<DLTensor>& output_tensors, size_t num);  // NOLINT
+                            std::vector<DLTensor>& output_tensors,
+                            size_t num);  // NOLINT
   NodeComputeInfo prepareComputeInfo(const std::string& func_name);
   int createStateFunc(ComputeContext*, FunctionState*);
 

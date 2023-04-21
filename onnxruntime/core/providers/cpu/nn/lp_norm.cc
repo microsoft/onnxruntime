@@ -7,11 +7,9 @@
 #include "core/providers/common.h"
 
 namespace onnxruntime {
-#define REGISTER_LPNORMALISATION_KERNEL(type, sinceVersion)                        \
-  ONNX_CPU_OPERATOR_TYPED_KERNEL(                                                  \
-      LpNormalization, sinceVersion, type,                                         \
-      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<type>()), \
-      LpNorm<type>);
+#define REGISTER_LPNORMALISATION_KERNEL(type, sinceVersion) \
+  ONNX_CPU_OPERATOR_TYPED_KERNEL(                           \
+      LpNormalization, sinceVersion, type, KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<type>()), LpNorm<type>);
 
 REGISTER_LPNORMALISATION_KERNEL(float, 1)
 REGISTER_LPNORMALISATION_KERNEL(double, 1)

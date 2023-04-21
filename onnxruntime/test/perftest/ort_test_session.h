@@ -11,8 +11,7 @@ namespace onnxruntime {
 namespace perftest {
 class OnnxRuntimeTestSession : public TestSession {
  public:
-  OnnxRuntimeTestSession(Ort::Env& env, std::random_device& rd, const PerformanceTestConfig& performance_test_config,
-                         const TestModelInfo& m);
+  OnnxRuntimeTestSession(Ort::Env& env, std::random_device& rd, const PerformanceTestConfig& performance_test_config, const TestModelInfo& m);
 
   void PreLoadTestData(size_t test_data_id, size_t input_id, Ort::Value&& value) override {
     if (test_inputs_.size() < test_data_id + 1) {

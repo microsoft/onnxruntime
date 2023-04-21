@@ -24,10 +24,7 @@ class MatMulComputeHelper {
  public:
   // fill_offsets is to control if to fill offsets here.
   // For CUDA/ROCM kernel when we can use GemmStridedBatched, we don't need to fill the offsets.
-  Status Compute(const TensorShape& orig_left_shape, const TensorShape& orig_right_shape,
-                 bool transa = false, bool transb = false,
-                 bool trans_batch_a = false, bool trans_batch_b = false,
-                 bool fill_offsets = true) {
+  Status Compute(const TensorShape& orig_left_shape, const TensorShape& orig_right_shape, bool transa = false, bool transb = false, bool trans_batch_a = false, bool trans_batch_b = false, bool fill_offsets = true) {
     // Following numpy.matmul for shape inference:
     // https://docs.scipy.org/doc/numpy/reference/generated/numpy.matmul.html
     // The behavior depends on the arguments in the following way.
@@ -192,9 +189,7 @@ class MatMulComputeHelper {
     return Status::OK();
   }
 
-  Status Compute(const TensorShape& left_shape, const TensorShape& right_shape,
-                 const TensorShape* right_scale_shape, const TensorShape* right_zp_shape,
-                 bool transa = false, bool transb = false) {
+  Status Compute(const TensorShape& left_shape, const TensorShape& right_shape, const TensorShape* right_scale_shape, const TensorShape* right_zp_shape, bool transa = false, bool transb = false) {
     ORT_RETURN_IF_ERROR(Compute(left_shape, right_shape, transa, transb));
     right_zp_offsets_.clear();
     right_scale_offsets_.clear();

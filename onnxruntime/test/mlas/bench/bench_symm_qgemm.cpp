@@ -33,7 +33,8 @@ void SYMMQGEMM(benchmark::State& state, bool a_signed) {
   tpo.auto_set_affinity = true;
   std::unique_ptr<onnxruntime::concurrency::ThreadPool> tp(
       onnxruntime::concurrency::CreateThreadPool(&onnxruntime::Env::Default(),
-                                                 tpo, onnxruntime::concurrency::ThreadPoolType::INTRA_OP));
+                                                 tpo,
+                                                 onnxruntime::concurrency::ThreadPoolType::INTRA_OP));
 
   auto A_holder = RandomVectorUniform<int8_t>(static_cast<size_t>(M * K * batch) + 16, int8_t(-120), int8_t(120));
   auto B_holder = RandomVectorUniform<int8_t>(static_cast<size_t>(N * K * batch), int8_t(-122), int8_t(122));

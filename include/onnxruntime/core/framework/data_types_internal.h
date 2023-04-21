@@ -260,7 +260,8 @@ class MLTypeCallDispatcher {
   using SupportedTypeList = TypeList<Types...>;
   using SupportedTensorProtoElementTypeList =
       boost::mp11::mp_transform<
-          mltype_dispatcher_internal::TensorProtoElementTypeConstant, SupportedTypeList>;
+          mltype_dispatcher_internal::TensorProtoElementTypeConstant,
+          SupportedTypeList>;
 
   static_assert(
       boost::mp11::mp_and<
@@ -334,7 +335,9 @@ class MLTypeCallDispatcher {
   template <class Ret, template <typename...> class Fn, typename... Args>
   Ret InvokeRet(Args&&... args) const {
     return InvokeRetWithUnsupportedPolicy<
-        Ret, Fn, mltype_dispatcher_internal::UnsupportedTypeDefaultPolicy<Ret>>(
+        Ret,
+        Fn,
+        mltype_dispatcher_internal::UnsupportedTypeDefaultPolicy<Ret>>(
         std::forward<Args>(args)...);
   }
 
@@ -351,7 +354,10 @@ class MLTypeCallDispatcher {
   template <class Ret, template <typename...> class Fn, class UnsupportedPolicy, typename... Args>
   Ret InvokeRetWithUnsupportedPolicy(Args&&... args) const {
     return InvokeRetWithUnsupportedPolicyAndLeadingTemplateArgs<
-        Ret, Fn, UnsupportedPolicy, TypeList<>>(
+        Ret,
+        Fn,
+        UnsupportedPolicy,
+        TypeList<>>(
         std::forward<Args>(args)...);
   }
 
@@ -368,7 +374,10 @@ class MLTypeCallDispatcher {
   template <class Ret, template <typename...> class Fn, typename LeadingTemplateArgTypeList, typename... Args>
   Ret InvokeRetWithLeadingTemplateArgs(Args&&... args) const {
     return InvokeRetWithUnsupportedPolicyAndLeadingTemplateArgs<
-        Ret, Fn, mltype_dispatcher_internal::UnsupportedTypeDefaultPolicy<Ret>, LeadingTemplateArgTypeList>(
+        Ret,
+        Fn,
+        mltype_dispatcher_internal::UnsupportedTypeDefaultPolicy<Ret>,
+        LeadingTemplateArgTypeList>(
         std::forward<Args>(args)...);
   }
 
@@ -386,7 +395,8 @@ class MLTypeCallDispatcher {
    * @tparam Args The argument types.
    */
   template <class Ret,
-            template <typename...> class Fn,
+            template <typename...>
+            class Fn,
             class UnsupportedPolicy,
             typename LeadingTemplateArgTypeList,
             typename... Args>

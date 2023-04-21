@@ -11,8 +11,7 @@ namespace onnxruntime {
 // Both BiasSoftmax and BiasSoftmaxDropout follow the axis attribute definition from Softmax Op before OpSet-11,
 // that it, no extra transpose if axis is not rank-1. So if BiasSoftmax is found in the graph, it's safe to
 // fuse matched sub-graph to BiasSoftmaxDropout without checking the axis attribute.
-Status BiasSoftmaxDropoutFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
-                                           const logging::Logger& logger) const {
+Status BiasSoftmaxDropoutFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
   GraphViewer graph_viewer(graph);
   const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
 
@@ -70,13 +69,12 @@ Status BiasSoftmaxDropoutFusion::ApplyImpl(Graph& graph, bool& modified, int gra
     if (!p_dropout_grad) continue;
     Node& dropout_grad_node = *p_dropout_grad;
 
-    InlinedVector<NodeArg*> bias_softmax_dropout_inputs{node.MutableInputDefs()[0], node.MutableInputDefs()[1],
-                                                        dropout_node.MutableInputDefs()[1]};         // [input, bias, ratio]
-    InlinedVector<NodeArg*> bias_softmax_dropout_outputs;                                            // [y, dropout_mask, softmax_y]
-    InlinedVector<NodeArg*> softmax_dropout_grad_inputs;                                             // [dy, dropout_mask, softmax_y, ratio]
-    InlinedVector<NodeArg*> softmax_dropout_grad_outputs{softmax_grad_node.MutableOutputDefs()[0]};  // [dx]
-    bias_softmax_dropout_outputs.emplace_back(dropout_node.MutableOutputDefs()[0]);                  // y
-    softmax_dropout_grad_inputs.emplace_back(dropout_grad_node.MutableInputDefs()[0]);               // dy
+    InlinedVector<NodeArg*> bias_softmax_dropout_inputs{node.MutableInputDefs()[0], node.MutableInputDefs()[1], dropout_node.MutableInputDefs()[1]};  // [input, bias, ratio]
+    InlinedVector<NodeArg*> bias_softmax_dropout_outputs;                                                                                             // [y, dropout_mask, softmax_y]
+    InlinedVector<NodeArg*> softmax_dropout_grad_inputs;                                                                                              // [dy, dropout_mask, softmax_y, ratio]
+    InlinedVector<NodeArg*> softmax_dropout_grad_outputs{softmax_grad_node.MutableOutputDefs()[0]};                                                   // [dx]
+    bias_softmax_dropout_outputs.emplace_back(dropout_node.MutableOutputDefs()[0]);                                                                   // y
+    softmax_dropout_grad_inputs.emplace_back(dropout_grad_node.MutableInputDefs()[0]);                                                                // dy
     if (dropout_node.OpType() == "BitmaskDropout") {
       // BiasSoftmaxDropout supports bool mask only. If it's BitmaskDropout, need to create a new bool NodeArg.
       ONNX_NAMESPACE::TypeProto tensor_bool;
@@ -100,11 +98,9 @@ Status BiasSoftmaxDropoutFusion::ApplyImpl(Graph& graph, bool& modified, int gra
       bias_softmax_dropout_attrs[pair.first] = pair.second;
     }
     Node& bias_softmax_dropout_node = graph.AddNode(
-        graph.GenerateNodeName("BiasSoftmaxDropout"), "BiasSoftmaxDropout", "BiasSoftmaxDropout",
-        bias_softmax_dropout_inputs, bias_softmax_dropout_outputs, &bias_softmax_dropout_attrs, kMSDomain);
+        graph.GenerateNodeName("BiasSoftmaxDropout"), "BiasSoftmaxDropout", "BiasSoftmaxDropout", bias_softmax_dropout_inputs, bias_softmax_dropout_outputs, &bias_softmax_dropout_attrs, kMSDomain);
     Node& softmax_droput_grad_node = graph.AddNode(
-        graph.GenerateNodeName("SoftmaxDropoutGrad"), "SoftmaxDropoutGrad", "SoftmaxDropoutGrad",
-        softmax_dropout_grad_inputs, softmax_dropout_grad_outputs, &softmax_grad_node.GetAttributes(), kMSDomain);
+        graph.GenerateNodeName("SoftmaxDropoutGrad"), "SoftmaxDropoutGrad", "SoftmaxDropoutGrad", softmax_dropout_grad_inputs, softmax_dropout_grad_outputs, &softmax_grad_node.GetAttributes(), kMSDomain);
     bias_softmax_dropout_node.SetExecutionProviderType(node.GetExecutionProviderType());
     softmax_droput_grad_node.SetExecutionProviderType(node.GetExecutionProviderType());
 

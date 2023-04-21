@@ -14,11 +14,7 @@ constexpr const char* kGpuExecutionProvider = kCudaExecutionProvider;
 constexpr const char* kGpuExecutionProvider = kRocmExecutionProvider;
 #endif
 
-static void TestNegativeLogLikelihoodLoss(CompareOpTester& test, const std::vector<int64_t>* X_dims,
-                                          const std::vector<int64_t>* index_dims,
-                                          const std::vector<int64_t>* weight_dims, const std::vector<int64_t>* Y_dims,
-                                          const std::string& reduction, const std::int64_t ignore_index,
-                                          const bool is_internal_op) {
+static void TestNegativeLogLikelihoodLoss(CompareOpTester& test, const std::vector<int64_t>* X_dims, const std::vector<int64_t>* index_dims, const std::vector<int64_t>* weight_dims, const std::vector<int64_t>* Y_dims, const std::string& reduction, const std::int64_t ignore_index, const bool is_internal_op) {
   test.AddAttribute("reduction", reduction);
   if (!is_internal_op) {
     test.AddAttribute("ignore_index", ignore_index);
@@ -56,17 +52,14 @@ static void TestNegativeLogLikelihoodLoss(CompareOpTester& test, const std::vect
   test.CompareWithCPU(kGpuExecutionProvider, 1e-4, 1e-4, false, extra_domain_to_version);
 }
 
-static void TestNegativeLogLikelihoodLoss(const std::vector<int64_t>* X_dims, const std::vector<int64_t>* index_dims,
-                                          const std::vector<int64_t>* weight_dims, const std::vector<int64_t>* Y_dims,
-                                          const std::string& reduction, const std::int64_t ignore_index = -1) {
+static void TestNegativeLogLikelihoodLoss(const std::vector<int64_t>* X_dims, const std::vector<int64_t>* index_dims, const std::vector<int64_t>* weight_dims, const std::vector<int64_t>* Y_dims, const std::string& reduction, const std::int64_t ignore_index = -1) {
   CompareOpTester test("NegativeLogLikelihoodLoss", 12, onnxruntime::kOnnxDomain);
   TestNegativeLogLikelihoodLoss(test, X_dims, index_dims, weight_dims, Y_dims, reduction, ignore_index, false);
 
   // Can we add a empty optional input before a non-empty input?
   if (weight_dims || ignore_index == -1) {
     CompareOpTester test_internal("NegativeLogLikelihoodLossInternal", 1, onnxruntime::kMSDomain);
-    TestNegativeLogLikelihoodLoss(test_internal, X_dims, index_dims, weight_dims, Y_dims, reduction, ignore_index,
-                                  true);
+    TestNegativeLogLikelihoodLoss(test_internal, X_dims, index_dims, weight_dims, Y_dims, reduction, ignore_index, true);
   }
 }
 

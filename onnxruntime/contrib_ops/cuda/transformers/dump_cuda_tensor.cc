@@ -79,8 +79,7 @@ void DumpGpuTensor(const char* name, const T* tensor, int dim0, int dim1, bool i
   int num_items = dim0 * dim1;
   auto data = std::make_shared<PinnedHostBuffer<T>>(num_items);
   CUDA_CALL_THROW(cudaDeviceSynchronize());
-  CUDA_CALL_THROW(cudaMemcpy(*data, tensor, num_items * sizeof(T),
-                             is_gpu_tensor ? cudaMemcpyDeviceToHost : cudaMemcpyHostToHost));
+  CUDA_CALL_THROW(cudaMemcpy(*data, tensor, num_items * sizeof(T), is_gpu_tensor ? cudaMemcpyDeviceToHost : cudaMemcpyHostToHost));
 
   if (nullptr != name) {
     std::cout << std::string(name) << std::endl;
@@ -100,8 +99,7 @@ void DumpGpuTensor(const char* name, const T* tensor, int dim0, int dim1, int di
   int num_items = dim0 * dim1 * dim2;
   auto data = std::make_shared<PinnedHostBuffer<T>>(num_items);
   CUDA_CALL_THROW(cudaDeviceSynchronize());
-  CUDA_CALL_THROW(cudaMemcpy(*data, tensor, num_items * sizeof(T),
-                             is_gpu_tensor ? cudaMemcpyDeviceToHost : cudaMemcpyHostToHost));
+  CUDA_CALL_THROW(cudaMemcpy(*data, tensor, num_items * sizeof(T), is_gpu_tensor ? cudaMemcpyDeviceToHost : cudaMemcpyHostToHost));
 
   if (nullptr != name) {
     std::cout << std::string(name) << std::endl;
@@ -121,8 +119,7 @@ void DumpGpuTensor(const char* name, const T* tensor, int dim0, int dim1, int di
   int num_items = dim0 * dim1 * dim2 * dim3;
   auto data = std::make_shared<PinnedHostBuffer<T>>(num_items);
   CUDA_CALL_THROW(cudaDeviceSynchronize());
-  CUDA_CALL_THROW(cudaMemcpy(*data, tensor, num_items * sizeof(T),
-                             is_gpu_tensor ? cudaMemcpyDeviceToHost : cudaMemcpyHostToHost));
+  CUDA_CALL_THROW(cudaMemcpy(*data, tensor, num_items * sizeof(T), is_gpu_tensor ? cudaMemcpyDeviceToHost : cudaMemcpyHostToHost));
 
   if (nullptr != name) {
     std::cout << std::string(name) << std::endl;
@@ -133,8 +130,7 @@ void DumpGpuTensor(const char* name, const T* tensor, int dim0, int dim1, int di
   if (snippet_threshold > 0 && snippet_threshold < num_items) {
     for (int i = 0; i < dim0; i++) {
       std::cout << "[" << i << "]:" << std::endl;
-      onnxruntime::utils::PrintCpuTensorSnippet<T>((*data) + i * dim1 * dim2 * dim3, dim1, dim2, dim3,
-                                                   snippet_edge_items);
+      onnxruntime::utils::PrintCpuTensorSnippet<T>((*data) + i * dim1 * dim2 * dim3, dim1, dim2, dim3, snippet_edge_items);
     }
   } else {
     for (int i = 0; i < dim0; i++) {

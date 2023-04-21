@@ -29,14 +29,9 @@ class Slice : public CudaKernel, public SliceBase {
 
  private:
   virtual const Tensor* GetSlicedOrUnslicedTensor(OpKernelContext* ctx) const;
-  virtual Status FillInputVectors(OpKernelContext* ctx, TensorShapeVector& input_starts,
-                                  TensorShapeVector& input_ends, TensorShapeVector& input_axes,
-                                  TensorShapeVector& input_steps) const;
+  virtual Status FillInputVectors(OpKernelContext* ctx, TensorShapeVector& input_starts, TensorShapeVector& input_ends, TensorShapeVector& input_axes, TensorShapeVector& input_steps) const;
 
-  virtual Status CallSliceImp(size_t element_size, size_t dimension_count, const TArray<int64_t>& starts_buffer,
-                              const TArray<int64_t>& steps_buffer, const TArray<int64_t>& input_strides,
-                              const TArray<fast_divmod>& output_strides, OpKernelContext* ctx,
-                              const TensorShape& output_shape) const;
+  virtual Status CallSliceImp(size_t element_size, size_t dimension_count, const TArray<int64_t>& starts_buffer, const TArray<int64_t>& steps_buffer, const TArray<int64_t>& input_strides, const TArray<fast_divmod>& output_strides, OpKernelContext* ctx, const TensorShape& output_shape) const;
 };
 }  // namespace cuda
 }  // namespace onnxruntime

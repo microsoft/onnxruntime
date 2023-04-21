@@ -59,8 +59,7 @@ static void CalcEffectiveDims(TensorShapeVector& x_dims, TensorShapeVector& y_di
 }
 
 #ifdef ENABLE_STRIDED_TENSORS
-TensorShapeVector ComputeOutputStrides(const TensorShape& input_shapes, const gsl::span<const int64_t>& input_strides,
-                                       const TensorShape& output_shapes) {
+TensorShapeVector ComputeOutputStrides(const TensorShape& input_shapes, const gsl::span<const int64_t>& input_strides, const TensorShape& output_shapes) {
   const size_t rank = output_shapes.NumDimensions();
   const size_t input_rank = input_shapes.NumDimensions();
 
@@ -148,15 +147,9 @@ Status Expand::ComputeInternal(OpKernelContext* ctx) const {
 #define CREATE_EXPAND_KERNEL_DEF (*KernelDefBuilder::Create())
 #endif
 
-ONNX_OPERATOR_VERSIONED_KERNEL_EX(Expand, kOnnxDomain, 8, 12, kCudaExecutionProvider,
-                                  CREATE_EXPAND_KERNEL_DEF.TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
-                                      .InputMemoryType(OrtMemTypeCPUInput, 1),
-                                  Expand);
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(Expand, kOnnxDomain, 8, 12, kCudaExecutionProvider, CREATE_EXPAND_KERNEL_DEF.TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()).InputMemoryType(OrtMemTypeCPUInput, 1), Expand);
 
-ONNX_OPERATOR_KERNEL_EX(Expand, kOnnxDomain, 13, kCudaExecutionProvider,
-                        CREATE_EXPAND_KERNEL_DEF.TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
-                            .InputMemoryType(OrtMemTypeCPUInput, 1),
-                        Expand);
+ONNX_OPERATOR_KERNEL_EX(Expand, kOnnxDomain, 13, kCudaExecutionProvider, CREATE_EXPAND_KERNEL_DEF.TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()).InputMemoryType(OrtMemTypeCPUInput, 1), Expand);
 
 #undef CREATE_EXPAND_KERNEL_DEF
 

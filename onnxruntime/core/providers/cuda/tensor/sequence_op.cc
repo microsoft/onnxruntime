@@ -15,9 +15,7 @@ ONNX_OPERATOR_KERNEL_EX(
         .InputMemoryType(OrtMemTypeCPUInput, 1)
         .TypeConstraint("S", DataTypeImpl::AllFixedSizeSequenceTensorTypes())
         .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
-        .TypeConstraint("I", std::vector<MLDataType>{
-                                 DataTypeImpl::GetTensorType<int32_t>(),
-                                 DataTypeImpl::GetTensorType<int64_t>()}),
+        .TypeConstraint("I", std::vector<MLDataType>{DataTypeImpl::GetTensorType<int32_t>(), DataTypeImpl::GetTensorType<int64_t>()}),
     SequenceAt);
 
 ONNX_OPERATOR_KERNEL_EX(
@@ -67,9 +65,7 @@ ONNX_OPERATOR_KERNEL_EX(
     (*KernelDefBuilder::Create())
         .InputMemoryType(OrtMemTypeCPUInput, 1)
         .TypeConstraint("S", DataTypeImpl::AllFixedSizeSequenceTensorTypes())
-        .TypeConstraint("I", std::vector<MLDataType>{
-                                 DataTypeImpl::GetTensorType<int32_t>(),
-                                 DataTypeImpl::GetTensorType<int64_t>()}),
+        .TypeConstraint("I", std::vector<MLDataType>{DataTypeImpl::GetTensorType<int32_t>(), DataTypeImpl::GetTensorType<int64_t>()}),
     SequenceErase);
 
 ONNX_OPERATOR_KERNEL_EX(
@@ -80,9 +76,7 @@ ONNX_OPERATOR_KERNEL_EX(
     (*KernelDefBuilder::Create())
         .InputMemoryType(OrtMemTypeCPUInput, 2)
         .TypeConstraint("S", DataTypeImpl::AllFixedSizeSequenceTensorTypes())
-        .TypeConstraint("I", std::vector<MLDataType>{
-                                 DataTypeImpl::GetTensorType<int32_t>(),
-                                 DataTypeImpl::GetTensorType<int64_t>()}),
+        .TypeConstraint("I", std::vector<MLDataType>{DataTypeImpl::GetTensorType<int32_t>(), DataTypeImpl::GetTensorType<int64_t>()}),
     SequenceInsert);
 
 }  // namespace cuda

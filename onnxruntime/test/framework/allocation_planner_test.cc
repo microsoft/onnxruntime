@@ -62,8 +62,7 @@ struct UnaryNode {
   std::vector<onnxruntime::NodeArg*> output_args;
   onnxruntime::Node* p_node;
 
-  UnaryNode(onnxruntime::Graph& graph, const std::string& op, onnxruntime::NodeArg* p_input_arg,
-            onnxruntime::NodeArg* p_output_arg)
+  UnaryNode(onnxruntime::Graph& graph, const std::string& op, onnxruntime::NodeArg* p_input_arg, onnxruntime::NodeArg* p_output_arg)
       : input_args({p_input_arg}), output_args({p_output_arg}) {
     int num = NodeCounter::Next();
     p_node = &graph.AddNode("node" + std::to_string(num), op, "test op", input_args, output_args);
@@ -72,8 +71,7 @@ struct UnaryNode {
   UnaryNode(onnxruntime::Graph& graph, onnxruntime::NodeArg* p_input_arg, onnxruntime::NodeArg* p_output_arg)
       : UnaryNode(graph, "Transpose", p_input_arg, p_output_arg) {}
 
-  UnaryNode(onnxruntime::Graph& graph, std::string& node_name, const std::string& op, std::vector<onnxruntime::NodeArg*>& inputs,
-            std::vector<onnxruntime::NodeArg*>& outputs) : input_args(inputs), output_args(outputs) {
+  UnaryNode(onnxruntime::Graph& graph, std::string& node_name, const std::string& op, std::vector<onnxruntime::NodeArg*>& inputs, std::vector<onnxruntime::NodeArg*>& outputs) : input_args(inputs), output_args(outputs) {
     p_node = &graph.AddNode(node_name, op, "test op", input_args, output_args);
   }
 };
@@ -170,8 +168,7 @@ class PlannerTest : public ::testing::Test {
   PlannerTest()
       : model_("test", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(), {{kOnnxDomain, 10}}, {}, DefaultLoggingManager().DefaultLogger()),
         graph_(model_.MainGraph()),
-        tp_(concurrency::CreateThreadPool(&onnxruntime::Env::Default(), OrtThreadPoolParams(),
-                                          concurrency::ThreadPoolType::INTRA_OP)) {
+        tp_(concurrency::CreateThreadPool(&onnxruntime::Env::Default(), OrtThreadPoolParams(), concurrency::ThreadPoolType::INTRA_OP)) {
     std_kernel_ = KernelDefBuilder().SetName("Transpose").Provider(kCpuExecutionProvider).SinceVersion(1, 10).Build();
     in_place_kernel_ =
         KernelDefBuilder().SetName("Relu").Provider(kCpuExecutionProvider).SinceVersion(1, 10).MayInplace(0, 0).Build();
@@ -198,8 +195,7 @@ class PlannerTest : public ::testing::Test {
     sess_options_->enable_mem_pattern = false;
     sess_options_->use_deterministic_compute = false;
     sess_options_->enable_mem_reuse = true;
-    state_.reset(new SessionState(graph_, execution_providers_, tp_.get(), nullptr, dtm_,
-                                  DefaultLoggingManager().DefaultLogger(), profiler_, *sess_options_));
+    state_.reset(new SessionState(graph_, execution_providers_, tp_.get(), nullptr, dtm_, DefaultLoggingManager().DefaultLogger(), profiler_, *sess_options_));
   }
 
   onnxruntime::NodeArg* Arg(const std::string& name) {
@@ -248,18 +244,15 @@ class PlannerTest : public ::testing::Test {
   }
 #endif
 
-  void BindKernel(onnxruntime::Node* p_node, ::onnxruntime::KernelDef& kernel_def, KernelRegistry* reg,
-                  std::unordered_map<NodeIndex, gsl::not_null<const KernelCreateInfo*>>& kernel_create_info_map) {
+  void BindKernel(onnxruntime::Node* p_node, ::onnxruntime::KernelDef& kernel_def, KernelRegistry* reg, std::unordered_map<NodeIndex, gsl::not_null<const KernelCreateInfo*>>& kernel_create_info_map) {
     const IExecutionProvider* ep = execution_providers_.Get(*p_node);
     ASSERT_NE(ep, nullptr);
     auto info = std::make_unique<OpKernelInfo>(
-        *p_node, kernel_def, *ep, state_->GetInitializedTensors(), state_->GetOrtValueNameIdxMap(),
-        state_->GetDataTransferMgr());
+        *p_node, kernel_def, *ep, state_->GetInitializedTensors(), state_->GetOrtValueNameIdxMap(), state_->GetDataTransferMgr());
 
     op_kernel_infos_.push_back(std::move(info));
     const auto kernel_type_str_resolver = OpSchemaKernelTypeStrResolver{};
-    if (!KernelRegistry::HasImplementationOf(*reg, *p_node, onnxruntime::kCpuExecutionProvider,
-                                             kernel_type_str_resolver)) {
+    if (!KernelRegistry::HasImplementationOf(*reg, *p_node, onnxruntime::kCpuExecutionProvider, kernel_type_str_resolver)) {
       ASSERT_STATUS_OK(reg->Register(
           KernelCreateInfo(std::make_unique<KernelDef>(kernel_def),
                            [](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {
@@ -282,8 +275,7 @@ class PlannerTest : public ::testing::Test {
   }
 
   void CreatePlan(const std::vector<const NodeArg*>& outer_scope_node_args = {}, bool invoke_createPlan_explicityly = true) {
-    state_.reset(new SessionState(graph_, execution_providers_, tp_.get(), nullptr, dtm_,
-                                  DefaultLoggingManager().DefaultLogger(), profiler_, *sess_options_));
+    state_.reset(new SessionState(graph_, execution_providers_, tp_.get(), nullptr, dtm_, DefaultLoggingManager().DefaultLogger(), profiler_, *sess_options_));
     EXPECT_EQ(graph_.Resolve(), Status::OK());
 
     std::shared_ptr<KernelRegistry> reg = std::make_shared<KernelRegistry>();
@@ -327,10 +319,10 @@ class PlannerTest : public ::testing::Test {
 
     if (invoke_createPlan_explicityly) {
       onnxruntime::GraphViewer graph_viewer{graph_};
-      status = SequentialPlanner::CreatePlan(nullptr, graph_viewer, outer_scope_node_args, execution_providers_,
-                                             kernel_create_info_map, {}, {}, state_->GetOrtValueNameIdxMap(), test_context,
-                                             MockStreamHandleRegsitry(), /* {{kCpuExecutionProvider, 1}}, {},*/
-                                             ORT_TSTR(""), DefaultLoggingManager().DefaultLogger(), plan_);
+      status = SequentialPlanner::CreatePlan(nullptr, graph_viewer, outer_scope_node_args, execution_providers_, kernel_create_info_map, {}, {}, state_->GetOrtValueNameIdxMap(), test_context, MockStreamHandleRegsitry(), /* {{kCpuExecutionProvider, 1}}, {},*/
+                                             ORT_TSTR(""),
+                                             DefaultLoggingManager().DefaultLogger(),
+                                             plan_);
 
       EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
       // AllocationPlanTestUtility::BasicIntegrityCheck(*plan_, name_to_arg_.size());
@@ -790,9 +782,7 @@ TEST_F(PlannerTest, LocationPlanningForPassThroughExplicitAndImplicitSubgraphInp
       return graph.ToGraphProto();
     };
 
-    onnxruntime::Model model("main_graph", false, ModelMetaData(),
-                             PathString(), IOnnxRuntimeOpSchemaRegistryList(),
-                             {{kOnnxDomain, 12}}, {}, DefaultLoggingManager().DefaultLogger());
+    onnxruntime::Model model("main_graph", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(), {{kOnnxDomain, 12}}, {}, DefaultLoggingManager().DefaultLogger());
     auto& main_graph = model.MainGraph();
 
     // Abs-0
@@ -814,9 +804,7 @@ TEST_F(PlannerTest, LocationPlanningForPassThroughExplicitAndImplicitSubgraphInp
     auto& cond_in = main_graph.GetOrCreateNodeArg("cond_in", &bool_scalar);
     auto& loop_state_out_var = main_graph.GetOrCreateNodeArg("loop_state_out_var", &float_tensor);
 
-    auto& loop_node = main_graph.AddNode("loop", "Loop", "Loop node",
-                                         {&iter_num_in, &cond_in, &abs_data_1_out},
-                                         {&loop_state_out_var});
+    auto& loop_node = main_graph.AddNode("loop", "Loop", "Loop node", {&iter_num_in, &cond_in, &abs_data_1_out}, {&loop_state_out_var});
     loop_node.AddAttribute("body", create_loop_subgraph());
 
     main_graph.SetInputs({&abs_data_0_in, &abs_data_1_in, &iter_num_in, &cond_in});
@@ -935,9 +923,7 @@ TEST_F(PlannerTest, LocationPlanningForInitializersOnlyUsedInANestedSubgraph) {
       return graph.ToGraphProto();
     };
 
-    onnxruntime::Model model("main_graph", false, ModelMetaData(),
-                             PathString(), IOnnxRuntimeOpSchemaRegistryList(),
-                             {{kOnnxDomain, 12}}, {}, DefaultLoggingManager().DefaultLogger());
+    onnxruntime::Model model("main_graph", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(), {{kOnnxDomain, 12}}, {}, DefaultLoggingManager().DefaultLogger());
     auto& main_graph = model.MainGraph();
 
     // Abs-0
@@ -1034,9 +1020,7 @@ TEST_F(PlannerTest, LocationPlanningForInitializersUsedOnDifferentDevicesInMainG
       return graph.ToGraphProto();
     };
 
-    onnxruntime::Model model("main_graph", false, ModelMetaData(),
-                             PathString(), IOnnxRuntimeOpSchemaRegistryList(),
-                             {{kOnnxDomain, 12}}, {}, DefaultLoggingManager().DefaultLogger());
+    onnxruntime::Model model("main_graph", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(), {{kOnnxDomain, 12}}, {}, DefaultLoggingManager().DefaultLogger());
     auto& main_graph = model.MainGraph();
 
     // Abs-0
@@ -1056,8 +1040,7 @@ TEST_F(PlannerTest, LocationPlanningForInitializersUsedOnDifferentDevicesInMainG
     auto& topk_data_in_1 = main_graph.GetOrCreateNodeArg("init_data", &int_tensor);
     auto& topk_data_out_0 = main_graph.GetOrCreateNodeArg("topk_data_out_0", &int_tensor);
     auto& topk_data_out_1 = main_graph.GetOrCreateNodeArg("topk_data_out_1", &int_tensor);
-    main_graph.AddNode("topk_0", "TopK", "node topk", {&topk_data_in_0, &topk_data_in_1},
-                       {&topk_data_out_0, &topk_data_out_1});
+    main_graph.AddNode("topk_0", "TopK", "node topk", {&topk_data_in_0, &topk_data_in_1}, {&topk_data_out_0, &topk_data_out_1});
 
     // Add initializer to the graph
     ONNX_NAMESPACE::TensorProto tensor;
@@ -1146,9 +1129,7 @@ TEST_F(PlannerTest, LocationPlanningForImplicitInputsWithoutExplicitConsumersInM
       return graph.ToGraphProto();
     };
 
-    onnxruntime::Model model("main_graph", false, ModelMetaData(),
-                             PathString(), IOnnxRuntimeOpSchemaRegistryList(),
-                             {{kOnnxDomain, 12}}, {}, DefaultLoggingManager().DefaultLogger());
+    onnxruntime::Model model("main_graph", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(), {{kOnnxDomain, 12}}, {}, DefaultLoggingManager().DefaultLogger());
     auto& main_graph = model.MainGraph();
     auto& image_data_in = main_graph.GetOrCreateNodeArg("image_data_in", &float_tensor);
 
@@ -1479,9 +1460,7 @@ TEST_F(PlannerTest, ParaPlanCreation) {
   TypeProto graph_out_type;
   graph_out_type.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
 
-  onnxruntime::Model model("main_graph", false, ModelMetaData(),
-                           PathString(), IOnnxRuntimeOpSchemaRegistryList(),
-                           {{kOnnxDomain, 14}}, {}, DefaultLoggingManager().DefaultLogger());
+  onnxruntime::Model model("main_graph", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(), {{kOnnxDomain, 14}}, {}, DefaultLoggingManager().DefaultLogger());
   auto& main_graph = model.MainGraph();
 
   auto& graph_in = main_graph.GetOrCreateNodeArg("graph_in", &graph_in_type);

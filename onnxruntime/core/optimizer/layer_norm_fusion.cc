@@ -23,8 +23,7 @@ static bool IsSupportedDataType(const Node& node, int first_n_inputs = -1) {
     if (first_n_inputs != -1 && input_index >= first_n_inputs) {
       return true;
     }
-    if (std::find(supported_data_types.begin(), supported_data_types.end(),
-                  *(input_arg->Type())) == supported_data_types.end()) {
+    if (std::find(supported_data_types.begin(), supported_data_types.end(), *(input_arg->Type())) == supported_data_types.end()) {
       return false;
     }
     ++input_index;
@@ -411,7 +410,9 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
                                           "LayerNormalization",
                                           "fused LayerNorm subgraphs ",
                                           layer_norm_input_defs,
-                                          {}, {}, kOnnxDomain);
+                                          {},
+                                          {},
+                                          kOnnxDomain);
 
     // Get constant "epsilon" from "Add2" node if available. Else, default value will be used.
     const ONNX_NAMESPACE::TensorProto* tensor_proto = graph_utils::GetConstantInitializer(graph, add2_node.MutableInputDefs()[1]->Name());
@@ -471,8 +472,7 @@ X ------> SimplifiedLayerNormalization
               ^
 Scale --------|
 */
-Status SimplifiedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
-                                            const logging::Logger& logger) const {
+Status SimplifiedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
   GraphViewer graph_viewer(graph);
   const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
   InlinedVector<std::reference_wrapper<Node>> nodes_to_remove;
@@ -640,8 +640,7 @@ Status SimplifiedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int gr
                                         : pow_node.MutableInputDefs()[0];
     InlinedVector<NodeArg*> layer_norm_input_defs{x_input, scale};
     Node& layer_norm_node =
-        graph.AddNode(graph.GenerateNodeName("SimplifiedLayerNormalization"), "SimplifiedLayerNormalization",
-                      "fused LayerNorm subgraphs ", layer_norm_input_defs, {}, {}, kOnnxDomain);
+        graph.AddNode(graph.GenerateNodeName("SimplifiedLayerNormalization"), "SimplifiedLayerNormalization", "fused LayerNorm subgraphs ", layer_norm_input_defs, {}, {}, kOnnxDomain);
 
     // Get constant "epsilon" from "Add" node if available. Else, default value will be used.
     const ONNX_NAMESPACE::TensorProto* tensor_proto =

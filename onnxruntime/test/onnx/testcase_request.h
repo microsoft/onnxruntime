@@ -48,9 +48,11 @@ class TestCaseRequestContext {
   /// <param name="repeat_count">Repeat count for sequential execution</param>
   /// <returns>Test case result</returns>
   static std::shared_ptr<TestCaseResult> Run(PThreadPool tpool,
-                                             const ITestCase& c, Ort::Env& env,
+                                             const ITestCase& c,
+                                             Ort::Env& env,
                                              const Ort::SessionOptions& sf,
-                                             size_t concurrent_runs, size_t repeat_count);
+                                             size_t concurrent_runs,
+                                             size_t repeat_count);
 
   /// <summary>
   /// Schedules a TestCase to asynchronously on a TP. The function returns immediately.
@@ -62,9 +64,7 @@ class TestCaseRequestContext {
   /// <param name="env"></param>
   /// <param name="sf"></param>
   /// <param name="concurrent_runs"></param>
-  static void Request(const Callback& cb, PThreadPool tpool, const ITestCase& c,
-                      Ort::Env& env, const Ort::SessionOptions& sf,
-                      size_t test_case_id, size_t concurrent_runs);
+  static void Request(const Callback& cb, PThreadPool tpool, const ITestCase& c, Ort::Env& env, const Ort::SessionOptions& sf, size_t test_case_id, size_t concurrent_runs);
 
   const TIME_SPEC& GetTimeSpend() const {
     return test_case_time_;
@@ -78,8 +78,7 @@ class TestCaseRequestContext {
   /// The impact is mitigated by the fact that __Ctor is still private.
   ~TestCaseRequestContext() = default;
 
-  TestCaseRequestContext(const Callback& cb, PThreadPool tp, const ITestCase& test_case, Ort::Env& env,
-                         const Ort::SessionOptions& session_opts, size_t test_case_id);
+  TestCaseRequestContext(const Callback& cb, PThreadPool tp, const ITestCase& test_case, Ort::Env& env, const Ort::SessionOptions& session_opts, size_t test_case_id);
 
  private:
   bool SetupSession();

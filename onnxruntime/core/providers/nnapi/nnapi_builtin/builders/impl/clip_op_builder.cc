@@ -32,8 +32,7 @@ class ClipOpBuilder : public BaseOpBuilder {
 
   // Operator support related
  private:
-  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
-                         const OpSupportCheckParams& params) const override;
+  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit, const OpSupportCheckParams& params) const override;
 };
 
 // Add operator related
@@ -64,8 +63,7 @@ Status ClipOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   }
 
   float min, max;
-  GetClipMinMax(model_builder.GetInitializerTensors(), node_unit.GetNode(), min, max,
-                logging::LoggingManager::DefaultLogger());
+  GetClipMinMax(model_builder.GetInitializerTensors(), node_unit.GetNode(), min, max, logging::LoggingManager::DefaultLogger());
 
   int32_t op_code;
   if (min == 0.0f && max == 6.0f)
@@ -73,20 +71,17 @@ Status ClipOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   else if (min == -1.0f && max == 1.0f)
     op_code = ANEURALNETWORKS_RELU1;
   else
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "ClipOpBuilder, unsupported input [", min, ", ", max, "].",
-                           "We should not reach here, ClipOpBuilder::IsOpSupportedImpl should have caught this.");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "ClipOpBuilder, unsupported input [", min, ", ", max, "].", "We should not reach here, ClipOpBuilder::IsOpSupportedImpl should have caught this.");
 
   InlinedVector<uint32_t> input_indices;
   input_indices.push_back(operand_indices.at(input));
-  ORT_RETURN_IF_ERROR(model_builder.AddOperation(op_code, input_indices,
-                                                 {output}, {output_operand_type}));
+  ORT_RETURN_IF_ERROR(model_builder.AddOperation(op_code, input_indices, {output}, {output_operand_type}));
   return Status::OK();
 }
 
 // Operator support related
 
-bool ClipOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
-                                      const OpSupportCheckParams& /* params */) const {
+bool ClipOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit, const OpSupportCheckParams& /* params */) const {
   float min, max;
   if (!GetClipMinMax(initializers, node_unit.GetNode(), min, max, logging::LoggingManager::DefaultLogger()))
     return false;

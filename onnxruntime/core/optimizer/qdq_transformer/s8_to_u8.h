@@ -21,7 +21,8 @@ namespace onnxruntime::QDQ {
 inline bool Int8TensorProto2Uint8(
     const ONNX_NAMESPACE::TensorProto* src,
     ONNX_NAMESPACE::TensorProto& dst,
-    Graph& graph, bool force = false) {
+    Graph& graph,
+    bool force = false) {
   dst.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_UINT8);
 
   if (nullptr == src) {
@@ -72,7 +73,6 @@ inline bool Int8TensorProto2Uint8(
  * @param weight_zp_idx   input index of the weight zero point tensor
  * @return true when conversion happened.
  */
-extern bool ConvertS8WeightToU8(Graph& graph, Node& op_node,
-                                size_t weights_idx, size_t weight_zp_idx);
+extern bool ConvertS8WeightToU8(Graph& graph, Node& op_node, size_t weights_idx, size_t weight_zp_idx);
 
 }  // namespace onnxruntime::QDQ

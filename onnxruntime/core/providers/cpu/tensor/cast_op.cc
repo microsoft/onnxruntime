@@ -32,27 +32,21 @@ namespace onnxruntime {
 namespace op_kernel_type_control {
 // we're using one set of types for all opsets of Cast
 ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPE_LIST_ALL_OPSETS(
-    kCpuExecutionProvider, kOnnxDomain, Cast, Input, 0,
-    element_type_lists::All);
+    kCpuExecutionProvider, kOnnxDomain, Cast, Input, 0, element_type_lists::All);
 
 ORT_SPECIFY_OP_KERNEL_ARG_REQUIRED_TYPES_ALL_OPSETS(
-    kCpuExecutionProvider, kOnnxDomain, Cast, Input, 0,
-    bool, int32_t, int64_t);
+    kCpuExecutionProvider, kOnnxDomain, Cast, Input, 0, bool, int32_t, int64_t);
 
 ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPE_LIST_ALL_OPSETS(
-    kCpuExecutionProvider, kOnnxDomain, Cast, Output, 0,
-    element_type_lists::All);
+    kCpuExecutionProvider, kOnnxDomain, Cast, Output, 0, element_type_lists::All);
 
 ORT_SPECIFY_OP_KERNEL_ARG_REQUIRED_TYPES_ALL_OPSETS(
-    kCpuExecutionProvider, kOnnxDomain, Cast, Output, 0,
-    bool, int32_t, int64_t);
+    kCpuExecutionProvider, kOnnxDomain, Cast, Output, 0, bool, int32_t, int64_t);
 }  // namespace op_kernel_type_control
 
 namespace {
-using EnabledSrcTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(kCpuExecutionProvider, kOnnxDomain,
-                                                                       Cast, Input, 0);
-using EnabledDstTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(kCpuExecutionProvider, kOnnxDomain,
-                                                                       Cast, Output, 0);
+using EnabledSrcTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(kCpuExecutionProvider, kOnnxDomain, Cast, Input, 0);
+using EnabledDstTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(kCpuExecutionProvider, kOnnxDomain, Cast, Output, 0);
 
 template <typename T>
 using IsOrtFloat16Type = boost::mp11::mp_contains<TypeList<BFloat16, MLFloat16>, T>;

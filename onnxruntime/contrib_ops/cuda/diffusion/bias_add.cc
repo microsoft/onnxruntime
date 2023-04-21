@@ -40,41 +40,32 @@ Status BiasAdd<T>::ComputeInternal(OpKernelContext* context) const {
 
   const auto& input_dims = input->Shape().GetDims();
   if (input_dims.size() != 3) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "The input is expected to have 3 dimensions, got ", input_dims.size());
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "The input is expected to have 3 dimensions, got ", input_dims.size());
   }
 
   if (input_dims[2] != 320 && input_dims[2] != 640 && input_dims[2] != 1280) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Number of channels should be 320, 640 or 1280, got ", input_dims[2]);
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Number of channels should be 320, 640 or 1280, got ", input_dims[2]);
   }
 
   const Tensor* bias = context->Input<Tensor>(1);
   const auto& bias_dims = bias->Shape().GetDims();
   if (bias_dims.size() != 1) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "The bias is expected to have 1 dimensions, got ", bias_dims.size());
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "The bias is expected to have 1 dimensions, got ", bias_dims.size());
   }
   if (bias_dims[0] != input_dims[2]) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Number of channels in the last dimension of input and bias are not the same");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Number of channels in the last dimension of input and bias are not the same");
   }
 
   const Tensor* skip = context->Input<Tensor>(2);
   if (skip->Shape() != input->Shape()) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Shape of input and skip (residual) shall be the same");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Shape of input and skip (residual) shall be the same");
   }
 
   Tensor* output = context->Output(0, input->Shape());
 
   typedef typename ToCudaType<T>::MappedType CudaT;
   const int32_t grid_size = static_cast<int32_t>(input_dims[0] * input_dims[1]);
-  LaunchBiasAddKernel<CudaT>(Stream(context), grid_size, static_cast<int32_t>(input_dims[2]),
-                             reinterpret_cast<const CudaT*>(input->Data<T>()),
-                             reinterpret_cast<const CudaT*>(bias->Data<T>()),
-                             reinterpret_cast<const CudaT*>(skip->Data<T>()),
-                             reinterpret_cast<CudaT*>(output->MutableData<T>()));
+  LaunchBiasAddKernel<CudaT>(Stream(context), grid_size, static_cast<int32_t>(input_dims[2]), reinterpret_cast<const CudaT*>(input->Data<T>()), reinterpret_cast<const CudaT*>(bias->Data<T>()), reinterpret_cast<const CudaT*>(skip->Data<T>()), reinterpret_cast<CudaT*>(output->MutableData<T>()));
 
   CUDA_RETURN_IF_ERROR(cudaPeekAtLastError());
   return Status::OK();

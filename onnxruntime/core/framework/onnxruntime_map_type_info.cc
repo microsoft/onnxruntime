@@ -95,8 +95,7 @@ std::unique_ptr<OrtMapTypeInfo> OrtMapTypeInfo::Clone() const {
 }
 
 // OrtMapTypeInfo Accessors
-ORT_API_STATUS_IMPL(OrtApis::GetMapKeyType, _In_ const OrtMapTypeInfo* map_type_info,
-                    _Out_ enum ONNXTensorElementDataType* out) {
+ORT_API_STATUS_IMPL(OrtApis::GetMapKeyType, _In_ const OrtMapTypeInfo* map_type_info, _Out_ enum ONNXTensorElementDataType* out) {
   API_IMPL_BEGIN
   *out = map_type_info->map_key_type_;
   return nullptr;
@@ -104,7 +103,8 @@ ORT_API_STATUS_IMPL(OrtApis::GetMapKeyType, _In_ const OrtMapTypeInfo* map_type_
 }
 
 ORT_API_STATUS_IMPL(OrtApis::GetMapValueType,
-                    _In_ const OrtMapTypeInfo* map_type_info, _Outptr_ OrtTypeInfo** out) {
+                    _In_ const OrtMapTypeInfo* map_type_info,
+                    _Outptr_ OrtTypeInfo** out) {
   API_IMPL_BEGIN
   auto clone = map_type_info->map_value_type_->Clone();
   *out = clone.release();

@@ -34,11 +34,9 @@ void groupNormNHWCSum(const GroupNormNHWCParams<T>* params) {
   // The number of instances.
   grid.z = params->n;
 
-#define LAUNCH_GROUPNORM_SUM(ThreadsPerBlock, VecSize)                                                           \
-  groupNormNHWCSumKernel<T, ThreadsPerBlock, VecSize>                                                            \
-      <<<grid, ThreadsPerBlock, 0, params->stream>>>(params->src, params->redBuffer, params->cPerBlock,          \
-                                                     params->hwPerBlock, params->hw, params->hwc, params->c,     \
-                                                     params->cPerGroup, params->groups, params->groupsPerBlock); \
+#define LAUNCH_GROUPNORM_SUM(ThreadsPerBlock, VecSize)                                                                                                                                                                      \
+  groupNormNHWCSumKernel<T, ThreadsPerBlock, VecSize>                                                                                                                                                                       \
+      <<<grid, ThreadsPerBlock, 0, params->stream>>>(params->src, params->redBuffer, params->cPerBlock, params->hwPerBlock, params->hw, params->hwc, params->c, params->cPerGroup, params->groups, params->groupsPerBlock); \
   break;
 
   switch (params->cPerBlock) {
@@ -64,8 +62,7 @@ Status GroupNormNHWCSumOp(const GroupNormNHWCParams<T>* params) {
 
   groupNormNHWCSumKernel<T, ThreadsPerBlock, VecSize>
       <<<grid, ThreadsPerBlock, 0, params->stream>>>(
-          params->src, params->redBuffer, params->cPerBlock, params->hwPerBlock,
-          params->hw, params->hwc, params->c, params->cPerGroup, params->groups, params->groupsPerBlock);
+          params->src, params->redBuffer, params->cPerBlock, params->hwPerBlock, params->hw, params->hwc, params->c, params->cPerGroup, params->groups, params->groupsPerBlock);
   return HIP_CALL(hipGetLastError());
 }
 
@@ -85,12 +82,9 @@ void groupNormNHWCScale(const GroupNormNHWCParams<T>* params) {
   // The number of instances.
   grid.z = params->n;
 
-#define LAUNCH_GROUPNORM_SCALE(ThreadsPerBlock, VecSize)                                                               \
-  groupNormNHWCScaleKernel<T, ThreadsPerBlock, VecSize>                                                                \
-      <<<grid, ThreadsPerBlock, 0, params->stream>>>(params->dst, params->src, params->gamma, params->beta,            \
-                                                     params->redBuffer, params->epsilon, params->c, params->cPerBlock, \
-                                                     params->cPerGroup, params->groups, params->hwc, params->invHWC,   \
-                                                     params->hw, params->hwPerBlock, params->withSwish);               \
+#define LAUNCH_GROUPNORM_SCALE(ThreadsPerBlock, VecSize)                                                                                                                                                                                                                                          \
+  groupNormNHWCScaleKernel<T, ThreadsPerBlock, VecSize>                                                                                                                                                                                                                                           \
+      <<<grid, ThreadsPerBlock, 0, params->stream>>>(params->dst, params->src, params->gamma, params->beta, params->redBuffer, params->epsilon, params->c, params->cPerBlock, params->cPerGroup, params->groups, params->hwc, params->invHWC, params->hw, params->hwPerBlock, params->withSwish); \
   break;
 
   switch (params->cPerBlock) {
@@ -116,8 +110,7 @@ Status GroupNormNHWCScaleOp(const GroupNormNHWCParams<T>* params) {
 
   groupNormNHWCScaleKernel<T, ThreadsPerBlock, VecSize>
       <<<grid, ThreadsPerBlock, 0, params->stream>>>(
-          params->dst, params->src, params->gamma, params->beta, params->redBuffer, params->epsilon, params->c, params->cPerBlock,
-          params->cPerGroup, params->groups, params->hwc, params->invHWC, params->hw, params->hwPerBlock, params->withSwish);
+          params->dst, params->src, params->gamma, params->beta, params->redBuffer, params->epsilon, params->c, params->cPerBlock, params->cPerGroup, params->groups, params->hwc, params->invHWC, params->hw, params->hwPerBlock, params->withSwish);
   return HIP_CALL(hipGetLastError());
 }
 
@@ -138,15 +131,23 @@ class GroupNormNHWCOp {
   Status IsSupported(const GroupNormNHWCParams<T>* params) {
     TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(
         !(params->c % VecSize == 0 && params->cPerGroup % VecSize == 0),
-        "The number of channels (", params->c, ") or the number of channels per group (", params->cPerGroup,
-        ") isn't divisible by the number of vector size: ", VecSize);
+        "The number of channels (",
+        params->c,
+        ") or the number of channels per group (",
+        params->cPerGroup,
+        ") isn't divisible by the number of vector size: ",
+        VecSize);
     TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(!(params->cPerBlock % params->cPerGroup == 0 &&
                                                 params->c % params->cPerBlock == 0 && params->hw % params->hwPerBlock == 0),
                                               "The value of attributes don't meet the requirements.");
     TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(!(params->cPerBlock <= ThreadsPerBlock * VecSize &&
                                                 params->cPerBlock > (ThreadsPerBlock - GPU_WARP_SIZE) * VecSize),
-                                              "Configuration: Threads (", ThreadsPerBlock, "), vector size (",
-                                              VecSize, ") is redundant for the number of channels per group: ", params->cPerBlock);
+                                              "Configuration: Threads (",
+                                              ThreadsPerBlock,
+                                              "), vector size (",
+                                              VecSize,
+                                              ") is redundant for the number of channels per group: ",
+                                              params->cPerBlock);
 
     return Status::OK();
   }

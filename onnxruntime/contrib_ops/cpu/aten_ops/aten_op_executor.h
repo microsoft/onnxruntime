@@ -11,9 +11,7 @@ namespace contrib {
 namespace aten_ops {
 
 typedef bool (*IsTensorArgumentFunc)(const char* op_name, const char* overload_name, size_t index);
-typedef void (*ExecuteATenOperatorFunc)(const char* op_name, const char* overload_name, size_t input_size,
-                                        DLManagedTensor** dlpack_inputs, size_t output_size,
-                                        DLManagedTensor** dlpack_outputs);
+typedef void (*ExecuteATenOperatorFunc)(const char* op_name, const char* overload_name, size_t input_size, DLManagedTensor** dlpack_inputs, size_t output_size, DLManagedTensor** dlpack_outputs);
 
 class ATenOperatorExecutor {
  public:
@@ -35,11 +33,9 @@ class ATenOperatorExecutor {
     return p_is_tensor_argument_func_(op_name.c_str(), overload_name.c_str(), index);
   }
 
-  void operator()(const std::string& op_name, const std::string& overload_name, size_t input_size,
-                  DLManagedTensor** dlpack_inputs, size_t output_size, DLManagedTensor** dlpack_outputs) {
+  void operator()(const std::string& op_name, const std::string& overload_name, size_t input_size, DLManagedTensor** dlpack_inputs, size_t output_size, DLManagedTensor** dlpack_outputs) {
     ORT_ENFORCE(p_execute_aten_op_func_, "ATenOperatorExecutor is not initialized.");
-    p_execute_aten_op_func_(op_name.c_str(), overload_name.c_str(), input_size, dlpack_inputs, output_size,
-                            dlpack_outputs);
+    p_execute_aten_op_func_(op_name.c_str(), overload_name.c_str(), input_size, dlpack_inputs, output_size, dlpack_outputs);
   }
 
  private:

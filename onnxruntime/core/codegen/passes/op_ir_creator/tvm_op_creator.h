@@ -64,13 +64,8 @@ DECLARE_OP_IR_DISPATCHER_CLASS(NodeName)
 using OpIRRegistry = codegen::RegistryBase<OpIRCreator>;
 
 // Macro declares an OpIRCreator
-#define DECLARE_OP_IR_CREATOR_CLASS(OP, PREFIX)         \
-  DECLARE_CREATOR_CLASS(OP, PREFIX##IRCreator,          \
-                        const tvm::Array<tvm::Tensor>&, \
-                        const Node&,                    \
-                        tvm_codegen::CodeGenContext&,   \
-                        tvm::Array<tvm::Tensor>&,       \
-                        Status)
+#define DECLARE_OP_IR_CREATOR_CLASS(OP, PREFIX) \
+  DECLARE_CREATOR_CLASS(OP, PREFIX##IRCreator, const tvm::Array<tvm::Tensor>&, const Node&, tvm_codegen::CodeGenContext&, tvm::Array<tvm::Tensor>&, Status)
 
 // Macro returns an OpIRCreator's name  with prefix
 #define OP_IR_CREATOR_CLASS_EX(OP, PREFIX, ARCH) \

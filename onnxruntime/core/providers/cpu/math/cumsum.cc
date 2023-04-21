@@ -17,8 +17,7 @@ std::vector<int64_t> GetStarts(int64_t rank, int64_t axis, int64_t index) {
   return starts;
 }
 template <typename T>
-void ZeroOutSliceAtIndex(Tensor& output, int64_t rank, int64_t axis, int64_t index,
-                         gsl::span<const int64_t> slice_dims, const std::vector<int64_t>& steps, const int64_t slice_size) {
+void ZeroOutSliceAtIndex(Tensor& output, int64_t rank, int64_t axis, int64_t index, gsl::span<const int64_t> slice_dims, const std::vector<int64_t>& steps, const int64_t slice_size) {
   T zero{};
   auto output_starts(GetStarts(rank, axis, index));
   WritableSliceIterator<T> output_iterator(output, output_starts, slice_dims, steps);
@@ -27,9 +26,7 @@ void ZeroOutSliceAtIndex(Tensor& output, int64_t rank, int64_t axis, int64_t ind
   }
 }
 template <typename T>
-void CopySlices(const Tensor& input, Tensor& output,
-                const std::vector<int64_t>& input_starts, const std::vector<int64_t>& output_starts,
-                gsl::span<const int64_t> slice_dims, const std::vector<int64_t>& steps, const int64_t slice_size) {
+void CopySlices(const Tensor& input, Tensor& output, const std::vector<int64_t>& input_starts, const std::vector<int64_t>& output_starts, gsl::span<const int64_t> slice_dims, const std::vector<int64_t>& steps, const int64_t slice_size) {
   SliceIterator<T> input_iterator(input, input_starts, slice_dims, steps);
   WritableSliceIterator<T> output_iterator(output, output_starts, slice_dims, steps);
   for (int64_t k = 0; k < slice_size; ++k, ++output_iterator, ++input_iterator) {
@@ -37,9 +34,7 @@ void CopySlices(const Tensor& input, Tensor& output,
   }
 }
 template <typename T>
-void SumSlices(const Tensor& input, Tensor& output,
-               const std::vector<int64_t>& input_starts, const std::vector<int64_t>& output_starts, const std::vector<int64_t>& previous_output_starts,
-               gsl::span<const int64_t> slice_dims, const std::vector<int64_t>& steps, const int64_t slice_size) {
+void SumSlices(const Tensor& input, Tensor& output, const std::vector<int64_t>& input_starts, const std::vector<int64_t>& output_starts, const std::vector<int64_t>& previous_output_starts, gsl::span<const int64_t> slice_dims, const std::vector<int64_t>& steps, const int64_t slice_size) {
   SliceIterator<T> input_iterator(input, input_starts, slice_dims, steps);
   WritableSliceIterator<T> output_iterator(output, output_starts, slice_dims, steps);
   SliceIterator<T> previous_output_iterator(output, previous_output_starts, slice_dims, steps);
@@ -81,8 +76,7 @@ ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(
     float,
     KernelDefBuilder()
         .TypeConstraint("T", DataTypeImpl::GetTensorType<float>())
-        .TypeConstraint("T2", std::vector<MLDataType>{DataTypeImpl::GetTensorType<int32_t>(),
-                                                      DataTypeImpl::GetTensorType<int64_t>()}),
+        .TypeConstraint("T2", std::vector<MLDataType>{DataTypeImpl::GetTensorType<int32_t>(), DataTypeImpl::GetTensorType<int64_t>()}),
     CumSum<float>);
 
 ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(
@@ -92,8 +86,7 @@ ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(
     double,
     KernelDefBuilder()
         .TypeConstraint("T", DataTypeImpl::GetTensorType<double>())
-        .TypeConstraint("T2", std::vector<MLDataType>{DataTypeImpl::GetTensorType<int32_t>(),
-                                                      DataTypeImpl::GetTensorType<int64_t>()}),
+        .TypeConstraint("T2", std::vector<MLDataType>{DataTypeImpl::GetTensorType<int32_t>(), DataTypeImpl::GetTensorType<int64_t>()}),
     CumSum<double>);
 
 ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(
@@ -103,8 +96,7 @@ ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(
     int32_t,
     KernelDefBuilder()
         .TypeConstraint("T", DataTypeImpl::GetTensorType<int32_t>())
-        .TypeConstraint("T2", std::vector<MLDataType>{DataTypeImpl::GetTensorType<int32_t>(),
-                                                      DataTypeImpl::GetTensorType<int64_t>()}),
+        .TypeConstraint("T2", std::vector<MLDataType>{DataTypeImpl::GetTensorType<int32_t>(), DataTypeImpl::GetTensorType<int64_t>()}),
     CumSum<int32_t>);
 
 ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(
@@ -114,8 +106,7 @@ ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(
     int64_t,
     KernelDefBuilder()
         .TypeConstraint("T", DataTypeImpl::GetTensorType<int64_t>())
-        .TypeConstraint("T2", std::vector<MLDataType>{DataTypeImpl::GetTensorType<int32_t>(),
-                                                      DataTypeImpl::GetTensorType<int64_t>()}),
+        .TypeConstraint("T2", std::vector<MLDataType>{DataTypeImpl::GetTensorType<int32_t>(), DataTypeImpl::GetTensorType<int64_t>()}),
     CumSum<int64_t>);
 
 // Opset 14 kernels
@@ -125,8 +116,7 @@ ONNX_CPU_OPERATOR_TYPED_KERNEL(
     float,
     KernelDefBuilder()
         .TypeConstraint("T", DataTypeImpl::GetTensorType<float>())
-        .TypeConstraint("T2", std::vector<MLDataType>{DataTypeImpl::GetTensorType<int32_t>(),
-                                                      DataTypeImpl::GetTensorType<int64_t>()}),
+        .TypeConstraint("T2", std::vector<MLDataType>{DataTypeImpl::GetTensorType<int32_t>(), DataTypeImpl::GetTensorType<int64_t>()}),
     CumSum<float>);
 
 ONNX_CPU_OPERATOR_TYPED_KERNEL(
@@ -135,8 +125,7 @@ ONNX_CPU_OPERATOR_TYPED_KERNEL(
     double,
     KernelDefBuilder()
         .TypeConstraint("T", DataTypeImpl::GetTensorType<double>())
-        .TypeConstraint("T2", std::vector<MLDataType>{DataTypeImpl::GetTensorType<int32_t>(),
-                                                      DataTypeImpl::GetTensorType<int64_t>()}),
+        .TypeConstraint("T2", std::vector<MLDataType>{DataTypeImpl::GetTensorType<int32_t>(), DataTypeImpl::GetTensorType<int64_t>()}),
     CumSum<double>);
 
 ONNX_CPU_OPERATOR_TYPED_KERNEL(
@@ -145,8 +134,7 @@ ONNX_CPU_OPERATOR_TYPED_KERNEL(
     int32_t,
     KernelDefBuilder()
         .TypeConstraint("T", DataTypeImpl::GetTensorType<int32_t>())
-        .TypeConstraint("T2", std::vector<MLDataType>{DataTypeImpl::GetTensorType<int32_t>(),
-                                                      DataTypeImpl::GetTensorType<int64_t>()}),
+        .TypeConstraint("T2", std::vector<MLDataType>{DataTypeImpl::GetTensorType<int32_t>(), DataTypeImpl::GetTensorType<int64_t>()}),
     CumSum<int32_t>);
 
 ONNX_CPU_OPERATOR_TYPED_KERNEL(
@@ -155,8 +143,7 @@ ONNX_CPU_OPERATOR_TYPED_KERNEL(
     int64_t,
     KernelDefBuilder()
         .TypeConstraint("T", DataTypeImpl::GetTensorType<int64_t>())
-        .TypeConstraint("T2", std::vector<MLDataType>{DataTypeImpl::GetTensorType<int32_t>(),
-                                                      DataTypeImpl::GetTensorType<int64_t>()}),
+        .TypeConstraint("T2", std::vector<MLDataType>{DataTypeImpl::GetTensorType<int32_t>(), DataTypeImpl::GetTensorType<int64_t>()}),
     CumSum<int64_t>);
 
 template <typename T>
@@ -229,8 +216,7 @@ Status CumSum<T>::Compute(OpKernelContext* ctx) const {
       auto input_starts(::GetStarts(rank, axis, exclusive_ ? index - 1 : index));
       auto output_starts(::GetStarts(rank, axis, index));
       auto previous_starts(::GetStarts(rank, axis, index - 1));
-      ::SumSlices<T>(*input, output_tensor, input_starts, output_starts, previous_starts,
-                     slice_dims, steps, slice_size);
+      ::SumSlices<T>(*input, output_tensor, input_starts, output_starts, previous_starts, slice_dims, steps, slice_size);
     }
   } else {
     //_reverse == true
@@ -254,8 +240,7 @@ Status CumSum<T>::Compute(OpKernelContext* ctx) const {
       auto input_starts(::GetStarts(rank, axis, exclusive_ ? index + 1 : index));
       auto output_starts(::GetStarts(rank, axis, index));
       auto previous_starts(::GetStarts(rank, axis, index + 1));
-      ::SumSlices<T>(*input, output_tensor, input_starts, output_starts, previous_starts,
-                     slice_dims, steps, slice_size);
+      ::SumSlices<T>(*input, output_tensor, input_starts, output_starts, previous_starts, slice_dims, steps, slice_size);
     }
   }
 

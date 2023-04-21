@@ -9,8 +9,7 @@
 
 namespace onnxruntime {
 namespace test {
-static void CheckStats(BFCArena* a, int64_t num_allocs, int64_t bytes_in_use,
-                       int64_t max_bytes_in_use, int64_t max_alloc_size) {
+static void CheckStats(BFCArena* a, int64_t num_allocs, int64_t bytes_in_use, int64_t max_bytes_in_use, int64_t max_alloc_size) {
   AllocatorStats stats;
   a->GetStats(&stats);
   EXPECT_EQ(stats.bytes_in_use, bytes_in_use);
@@ -126,10 +125,7 @@ TEST(BFCArenaTest, ExerciseCoalescing) {
     a.Free(t3);
     a.Free(t4);
   }
-  CheckStats(&a, 4097, 0,
-             1024 * sizeof(float) + 1048576 * sizeof(int64_t) +
-                 2048 * sizeof(double) + 1048576 * sizeof(int64_t) * sizeof(float),
-             1048576 * sizeof(int64_t) * sizeof(float));
+  CheckStats(&a, 4097, 0, 1024 * sizeof(float) + 1048576 * sizeof(int64_t) + 2048 * sizeof(double) + 1048576 * sizeof(int64_t) * sizeof(float), 1048576 * sizeof(int64_t) * sizeof(float));
 
   // At the end, we should have coalesced all memory into one region
   // starting at the beginning, so validate that allocating a pointer
@@ -399,8 +395,7 @@ TEST(StreamAwareArenaTest, TestSecureTheChunk) {
   a.Free(p1);
 
   bool waitFunctionInvoked = false;
-  void* p2 = a.AllocOnStream(BFCArena::DEFAULT_INITIAL_CHUNK_SIZE_BYTES, &stream2,
-                             [&waitFunctionInvoked](Stream&, synchronize::Notification&) { waitFunctionInvoked = true; });
+  void* p2 = a.AllocOnStream(BFCArena::DEFAULT_INITIAL_CHUNK_SIZE_BYTES, &stream2, [&waitFunctionInvoked](Stream&, synchronize::Notification&) { waitFunctionInvoked = true; });
 
   std::unordered_map<Stream*, uint64_t> syncTable;
   stream2.CloneCurrentStreamSyncTable(syncTable);

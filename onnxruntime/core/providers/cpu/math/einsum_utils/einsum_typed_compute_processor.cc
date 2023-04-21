@@ -52,23 +52,19 @@ void EinsumTypedComputeProcessor<T>::FinalizeOutput(const Tensor& candidate_outp
   // Transpose to the required final output order
   // (Identify no-op transposes and prevent triggering the transpose)
   if (EinsumOp::IsTransposeRequired(candidate_output_shape_without_reduced_dims.size(), output_permutation)) {
-    auto candidate_output_transposed = EinsumOp::Transpose(candidate_output, candidate_output_shape_without_reduced_dims,
-                                                           output_permutation,
-                                                           allocator_, einsum_ep_assets_, device_transpose_func_);
+    auto candidate_output_transposed = EinsumOp::Transpose(candidate_output, candidate_output_shape_without_reduced_dims, output_permutation, allocator_, einsum_ep_assets_, device_transpose_func_);
 
     // We have the result in an output "candidate". Now we have to copy the contents in its buffer
     // into the buffer of the actual output given to us by the execution frame
     // We need to do this because the buffer owned by the output tensor of the op could be user provided buffer
 
     auto status = device_data_copy_func_(*candidate_output_transposed, output, einsum_ep_assets_);
-    ORT_ENFORCE(status.IsOK(), "Einsum op: Could not copy the intermediate output's buffer into the op's output buffer. Error: ",
-                status.ErrorMessage());
+    ORT_ENFORCE(status.IsOK(), "Einsum op: Could not copy the intermediate output's buffer into the op's output buffer. Error: ", status.ErrorMessage());
 
   } else {
     // Copy the output candidate into the op's output
     auto status = device_data_copy_func_(candidate_output, output, einsum_ep_assets_);
-    ORT_ENFORCE(status.IsOK(), "Einsum op: Could not copy the intermediate output's buffer into the op's output buffer. Error: ",
-                status.ErrorMessage());
+    ORT_ENFORCE(status.IsOK(), "Einsum op: Could not copy the intermediate output's buffer into the op's output buffer. Error: ", status.ErrorMessage());
   }
 }
 
@@ -102,9 +98,15 @@ std::unique_ptr<Tensor> EinsumTypedComputeProcessor<T>::PairwiseOperandProcess(c
   // Use the provided dim overrides instead of the actual shapes of the operands
   ORT_ENFORCE(left.Shape().Size() == left_shape_override.Size(),
               "The override dims are not compatible with given tensor's shape. ",
-              "Left shape: ", left.Shape(), " Left shape override: ", left_shape_override.Size());
+              "Left shape: ",
+              left.Shape(),
+              " Left shape override: ",
+              left_shape_override.Size());
   ORT_ENFORCE(right.Shape().Size() == right_shape_override.Size(),
-              "Right shape: ", right.Shape(), " Right shape override: ", right_shape_override.Size());
+              "Right shape: ",
+              right.Shape(),
+              " Right shape override: ",
+              right_shape_override.Size());
 
   // Make copy as this may be overridden downstream
   const auto& left_dims = left_shape_override.GetDims();
@@ -119,7 +121,10 @@ std::unique_ptr<Tensor> EinsumTypedComputeProcessor<T>::PairwiseOperandProcess(c
   // If the following error condition is hit, it is most likely a pre-processing bug
   ORT_ENFORCE(left_rank == right_rank,
               "Ranks of pair-wise operands must be equal. ",
-              "Left shape: ", left.Shape(), " Right shape: ", right.Shape());
+              "Left shape: ",
+              left.Shape(),
+              " Right shape: ",
+              right.Shape());
 
   // Following vectors hold:
   // lro: dim indices that are present in left, right, and reduce_dims
@@ -218,7 +223,9 @@ std::unique_ptr<Tensor> EinsumTypedComputeProcessor<T>::PairwiseOperandProcess(c
       // Covered by ExplicitEinsumAsTensorContraction, DiagonalWithMatmul, ...
       current_left = EinsumOp::Transpose(current_left ? *current_left : left,
                                          current_left ? current_left->Shape().GetDims() : left_dims,
-                                         left_permutation, allocator_, einsum_ep_assets_,
+                                         left_permutation,
+                                         allocator_,
+                                         einsum_ep_assets_,
                                          device_transpose_func_);
     }
   }
@@ -245,7 +252,9 @@ std::unique_ptr<Tensor> EinsumTypedComputeProcessor<T>::PairwiseOperandProcess(c
       // Covered by DiagonalWithMatmul, ExplicitEinsumAsBatchedMatmul, ...
       current_right = EinsumOp::Transpose(current_right ? *current_right : right,
                                           current_right ? current_right->Shape().GetDims() : right_dims,
-                                          right_permutation, allocator_, einsum_ep_assets_,
+                                          right_permutation,
+                                          allocator_,
+                                          einsum_ep_assets_,
                                           device_transpose_func_);
     }
   }
@@ -306,9 +315,7 @@ std::unique_ptr<Tensor> EinsumTypedComputeProcessor<T>::PairwiseOperandProcess(c
   }
 
   // Multiply the mutated inputs
-  auto output = EinsumOp::MatMul<T>(current_left ? *current_left : left, TensorShapeVector{lro_size, lo_size, reduced_size},
-                                    current_right ? *current_right : right, TensorShapeVector{lro_size, reduced_size, ro_size},
-                                    allocator_, tp_, einsum_ep_assets_, device_matmul_func_);
+  auto output = EinsumOp::MatMul<T>(current_left ? *current_left : left, TensorShapeVector{lro_size, lo_size, reduced_size}, current_right ? *current_right : right, TensorShapeVector{lro_size, reduced_size, ro_size}, allocator_, tp_, einsum_ep_assets_, device_matmul_func_);
 
   output->Reshape(output_dims);
 
@@ -321,8 +328,7 @@ std::unique_ptr<Tensor> EinsumTypedComputeProcessor<T>::PairwiseOperandProcess(c
         // Covered by ExplicitEinsumAsTensorContractionReshapeFinal.
         output->Reshape(reshaped_dims);
       } else {
-        output = EinsumOp::Transpose(*output, output_dims, output_permutation, allocator_,
-                                     einsum_ep_assets_, device_transpose_func_);
+        output = EinsumOp::Transpose(*output, output_dims, output_permutation, allocator_, einsum_ep_assets_, device_transpose_func_);
       }
     }
   } else {  // This is the final pair - Transpose directly to the output ordering required and copy the contents to the op's output
@@ -378,8 +384,12 @@ Status EinsumTypedComputeProcessor<T>::Run() {
     // Reduce the dims that are last seen in the first input alone
     if (reduced_dims.size() != 0) {
       result = EinsumOp::ReduceSum<T>(preprocessed_inputs[0] ? *preprocessed_inputs[0] : *raw_inputs[0],
-                                      homogenized_input_dims[0].GetDims(), reduced_dims, allocator_, tp_,
-                                      einsum_ep_assets_, device_reduce_sum_func_);
+                                      homogenized_input_dims[0].GetDims(),
+                                      reduced_dims,
+                                      allocator_,
+                                      tp_,
+                                      einsum_ep_assets_,
+                                      device_reduce_sum_func_);
     } else {
       // Check if there is a pre-processed version of this input
       // If so assign it to result
@@ -419,7 +429,8 @@ Status EinsumTypedComputeProcessor<T>::Run() {
                                       result ? result->Shape() : homogenized_input_dims[0],
                                       preprocessed_inputs[input] ? *preprocessed_inputs[input] : *raw_inputs[input],
                                       homogenized_input_dims[input],
-                                      reduced_dims, is_final_pair);
+                                      reduced_dims,
+                                      is_final_pair);
     }
   }
 

@@ -133,9 +133,7 @@ Status GemmOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
       const std::string& node_input_name(input_name);
       input_tensor_name = input_tensor_name + "_trans";
       std::vector<uint32_t> perm{1, 0};
-      ORT_RETURN_IF_ERROR(qnn_model_wrapper.AddTransposeNode(node_unit.Index(), node_input_name, input_tensor_name,
-                                                             old_input_shape, perm, input_shape,
-                                                             qnn_data_type, quantize_param));
+      ORT_RETURN_IF_ERROR(qnn_model_wrapper.AddTransposeNode(node_unit.Index(), node_input_name, input_tensor_name, old_input_shape, perm, input_shape, qnn_data_type, quantize_param));
     }
 
     if (2 == input_i && 2 == input_shape.size()) {
@@ -145,8 +143,7 @@ Status GemmOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
 
     input_names.push_back(input_tensor_name);
     Qnn_TensorType_t tensor_type = GetInputTensorType(qnn_model_wrapper, input_tensor_name);
-    QnnTensorWrapper input_tensorwrapper(input_tensor_name, tensor_type, qnn_data_type, quantize_param,
-                                         std::move(input_shape), std::move(unpacked_tensor));
+    QnnTensorWrapper input_tensorwrapper(input_tensor_name, tensor_type, qnn_data_type, quantize_param, std::move(input_shape), std::move(unpacked_tensor));
     ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(input_tensorwrapper)), "Failed to add tensor.");
   }
 
@@ -159,8 +156,7 @@ Status GemmOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
                                                   const logging::Logger& logger,
                                                   bool is_quantized_model,
                                                   bool do_op_validation) const {
-  ORT_RETURN_IF_ERROR(ProcessOutputs(qnn_model_wrapper, node_unit, std::move(input_names), {},
-                                     logger, is_quantized_model, do_op_validation));
+  ORT_RETURN_IF_ERROR(ProcessOutputs(qnn_model_wrapper, node_unit, std::move(input_names), {}, logger, is_quantized_model, do_op_validation));
   return Status::OK();
 }
 

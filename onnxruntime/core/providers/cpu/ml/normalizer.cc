@@ -35,10 +35,7 @@ ONNX_CPU_OPERATOR_ML_KERNEL(
     Normalizer,
     1,
     KernelDefBuilder().MayInplace(0, 0)  // input is 4 or 8 byte, output is 4 byte
-        .TypeConstraint("T", std::vector<MLDataType>{DataTypeImpl::GetTensorType<float>(),
-                                                     DataTypeImpl::GetTensorType<double>(),
-                                                     DataTypeImpl::GetTensorType<int32_t>(),
-                                                     DataTypeImpl::GetTensorType<int64_t>()}),
+        .TypeConstraint("T", std::vector<MLDataType>{DataTypeImpl::GetTensorType<float>(), DataTypeImpl::GetTensorType<double>(), DataTypeImpl::GetTensorType<int32_t>(), DataTypeImpl::GetTensorType<int64_t>()}),
     Normalizer);
 
 template <typename T>
@@ -123,8 +120,7 @@ Status Normalizer::Normalize(OpKernelContext* context) const {
   const TensorShape& x_shape = X.Shape();
 
   if (x_shape.NumDimensions() > 2) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Rank of input to Normalized must be less than 2. Got ",
-                           x_shape.NumDimensions());
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Rank of input to Normalized must be less than 2. Got ", x_shape.NumDimensions());
   }
 
   const auto& x_dims = x_shape.GetDims();

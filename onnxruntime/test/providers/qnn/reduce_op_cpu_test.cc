@@ -32,15 +32,15 @@ namespace test {
 template <typename DataType>
 static GetTestModelFn BuildReduceOpTestCase(const std::string& reduce_op_type,
                                             const std::vector<int64_t>& input_shape,
-                                            bool axes_as_input, std::vector<int64_t> axes, bool keepdims,
+                                            bool axes_as_input,
+                                            std::vector<int64_t> axes,
+                                            bool keepdims,
                                             bool noop_with_empty_axes) {
-  return [reduce_op_type, input_shape, axes_as_input, axes, keepdims,
-          noop_with_empty_axes](ModelTestBuilder& builder) {
+  return [reduce_op_type, input_shape, axes_as_input, axes, keepdims, noop_with_empty_axes](ModelTestBuilder& builder) {
     std::vector<NodeArg*> input_args;
 
     // Input data arg
-    input_args.push_back(builder.MakeInput<DataType>(input_shape, static_cast<DataType>(0),
-                                                     static_cast<DataType>(20)));
+    input_args.push_back(builder.MakeInput<DataType>(input_shape, static_cast<DataType>(0), static_cast<DataType>(20)));
 
     // Axes input (initializer) for newer opsets.
     if (axes_as_input) {
@@ -71,9 +71,7 @@ static GetTestModelFn BuildReduceOpTestCase(const std::string& reduce_op_type,
  * \param keepdims Common attribute for all reduce operations.
  */
 template <typename DataType>
-static void RunReduceOpCpuTest(const std::string& op_type, int opset, const char* test_description,
-                               ExpectedEPNodeAssignment expected_ep_assignment = ExpectedEPNodeAssignment::All,
-                               bool keepdims = true) {
+static void RunReduceOpCpuTest(const std::string& op_type, int opset, const char* test_description, ExpectedEPNodeAssignment expected_ep_assignment = ExpectedEPNodeAssignment::All, bool keepdims = true) {
   ProviderOptions provider_options;
 #if defined(_WIN32)
   provider_options["backend_path"] = "QnnCpu.dll";

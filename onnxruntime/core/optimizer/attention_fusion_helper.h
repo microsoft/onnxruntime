@@ -728,8 +728,7 @@ bool MatchInputMaskSubgraph(const Graph& graph, const Node& qkv_matmul, Attentio
   return true;
 }
 
-bool MatchInputMaskSubgraph(const Graph& graph, const Node& layer_norm, const Node& qkv_matmul,
-                            AttentionMaskNodesDistilBert& result, NodeIndex& record_node_idx, const logging::Logger& logger) {
+bool MatchInputMaskSubgraph(const Graph& graph, const Node& layer_norm, const Node& qkv_matmul, AttentionMaskNodesDistilBert& result, NodeIndex& record_node_idx, const logging::Logger& logger) {
   DEBUG_LOG("Start MatchInputMaskSubgraphDistilBert");
 
   std::vector<graph_utils::EdgeEndToMatch> mask_path{
@@ -890,8 +889,7 @@ struct MatchPastResult {
        [Past] --> Gather (indices=0) --> Transpose (perm=0,1,3,2) --> k_Concat(*, )--> Transpose(perm=0,1,3,2) --> Unsqueeze(axes=0)-->Concat(*, ) --> [Present]
       OR**    ... Gather (indices=0) --> k_Concat(*, ) --> Unsqueeze(axes=0) --> Concat(*, ) --> [Present]   **if transpose optimized
 */
-bool MatchPastSubgraph(Graph& graph, const Node& k_concat, const Node& v_concat, bool transpose_optimized_pattern,
-                       MatchPastResult& result, const logging::Logger& logger) {
+bool MatchPastSubgraph(Graph& graph, const Node& k_concat, const Node& v_concat, bool transpose_optimized_pattern, MatchPastResult& result, const logging::Logger& logger) {
   DEBUG_LOG("Start MatchPastSubgraph");
   std::vector<graph_utils::EdgeEndToMatch> past_k_path{
       {0, 0, "Transpose", {1, 13}, kOnnxDomain},
@@ -1071,8 +1069,7 @@ bool CheckDistilBertReshapeShape(const Graph& graph, const Node& reshape, int64_
                               |
                            Reshape---[shape=0,0,-1]
 */
-bool CheckNodesInPathV(const Graph& graph, const Node& reshape, const Node& transpose, const Node& qkv_matmul, const Node& v_transpose, const Node& v_reshape,
-                       int64_t& num_heads, int64_t& head_size, int64_t hidden_size, NodeIndex& record_node_idx, const logging::Logger& logger) {
+bool CheckNodesInPathV(const Graph& graph, const Node& reshape, const Node& transpose, const Node& qkv_matmul, const Node& v_transpose, const Node& v_reshape, int64_t& num_heads, int64_t& head_size, int64_t hidden_size, NodeIndex& record_node_idx, const logging::Logger& logger) {
   DEBUG_LOG("Start CheckNodesInPathV");
   // Internal nodes of attention subgraph only allow edges within the subgraph, and no graph output is allowed.
   // No constraints for reshape node since it is the last node of Attention.
@@ -1140,8 +1137,7 @@ bool CheckNodesInPathV(const Graph& graph, const Node& reshape, const Node& tran
   return true;
 }
 
-bool CheckNodesInPathV(const Graph& graph, const Node& reshape, const Node& transpose, const Node& qkv_matmul, const Node& v_transpose, const Node& v_reshape,
-                       int64_t& num_heads, int64_t& head_size, int64_t hidden_size, const logging::Logger& logger) {
+bool CheckNodesInPathV(const Graph& graph, const Node& reshape, const Node& transpose, const Node& qkv_matmul, const Node& v_transpose, const Node& v_reshape, int64_t& num_heads, int64_t& head_size, int64_t hidden_size, const logging::Logger& logger) {
   NodeIndex dummy_idx(0);
   if (!CheckNodesInPathV(graph, reshape, transpose, qkv_matmul, v_transpose, v_reshape, num_heads, head_size, hidden_size, dummy_idx, logger)) {
     return false;
@@ -1177,8 +1173,7 @@ bool CheckNodesInPathQ(const Graph& graph, const Node& qk_div, const Node& q_res
   return true;
 }
 
-bool CheckNodesInPathK(const Graph& graph, const Node& k_reshape, const Node& k_transpose, int64_t num_heads,
-                       int64_t head_size, bool tranpose_optimized_pattern, const logging::Logger& logger) {
+bool CheckNodesInPathK(const Graph& graph, const Node& k_reshape, const Node& k_transpose, int64_t num_heads, int64_t head_size, bool tranpose_optimized_pattern, const logging::Logger& logger) {
   DEBUG_LOG("Start CheckNodesInPathK");
   InlinedVector<int64_t> perm;
 

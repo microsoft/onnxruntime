@@ -37,23 +37,20 @@ void SetNodeArgShape(NodeArg* node_arg, const std::optional<std::vector<int64_t>
 }
 
 template <typename T>
-NodeArg* MakeInput(ModelTestBuilder& builder, const std::optional<std::vector<int64_t>>& input_shape,
-                   const std::vector<int64_t>& value_shape, T min, T max) {
+NodeArg* MakeInput(ModelTestBuilder& builder, const std::optional<std::vector<int64_t>>& input_shape, const std::vector<int64_t>& value_shape, T min, T max) {
   auto node_arg = builder.MakeInput<T>(value_shape, min, max);
   SetNodeArgShape(node_arg, input_shape);
   return node_arg;
 }
 
-NodeArg* MakeInputBool(ModelTestBuilder& builder, const std::optional<std::vector<int64_t>>& input_shape,
-                       const std::vector<int64_t>& value_shape) {
+NodeArg* MakeInputBool(ModelTestBuilder& builder, const std::optional<std::vector<int64_t>>& input_shape, const std::vector<int64_t>& value_shape) {
   auto node_arg = builder.MakeInputBool(value_shape);
   SetNodeArgShape(node_arg, input_shape);
   return node_arg;
 }
 
 template <typename T>
-NodeArg* MakeInput(ModelTestBuilder& builder, const std::optional<std::vector<int64_t>>& input_shape,
-                   const std::vector<int64_t>& value_shape, const std::vector<T>& data) {
+NodeArg* MakeInput(ModelTestBuilder& builder, const std::optional<std::vector<int64_t>>& input_shape, const std::vector<int64_t>& value_shape, const std::vector<T>& data) {
   auto node_arg = builder.MakeInput<T>(value_shape, data);
   SetNodeArgShape(node_arg, input_shape);
   return node_arg;
@@ -3960,8 +3957,7 @@ static void TestTransposeReshape(const std::vector<int64_t>& input_shape,    // 
 
       // find Transpose node and check perms
       const auto& nodes = graph.Nodes();
-      const Node& transpose = *std::find_if(nodes.begin(), nodes.end(),
-                                            [](const auto& node) { return node.OpType() == "Transpose"; });
+      const Node& transpose = *std::find_if(nodes.begin(), nodes.end(), [](const auto& node) { return node.OpType() == "Transpose"; });
 
       ProtoHelperNodeContext proto_helper_ctx(transpose);
       OpNodeProtoHelper<ProtoHelperNodeContext> proto_helper(&proto_helper_ctx);

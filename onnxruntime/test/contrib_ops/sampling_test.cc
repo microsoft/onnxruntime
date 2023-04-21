@@ -17,18 +17,14 @@ namespace test {
 #if defined(USE_CUDA) || defined(USE_ROCM)
 TEST(SamplingTest, Gpt2Sampling_GPU) {
   std::vector<int32_t> input_ids{
-      0, 0, 0, 0, 0, 52, 195, 731, 321, 301, 734, 620,
-      41, 554, 74, 622, 206, 222, 75, 223, 221, 198, 224, 572,
-      0, 0, 0, 52, 328, 219, 328, 206, 288, 227, 896, 328};
+      0, 0, 0, 0, 0, 52, 195, 731, 321, 301, 734, 620, 41, 554, 74, 622, 206, 222, 75, 223, 221, 198, 224, 572, 0, 0, 0, 52, 328, 219, 328, 206, 288, 227, 896, 328};
 
   std::vector<int32_t> max_length{15};
   std::vector<int32_t> min_length{1};
   std::vector<float> repetition_penalty{1.0f};
 
   std::vector<int32_t> expected_output{
-      0, 0, 0, 0, 0, 52, 195, 731, 321, 301, 734, 620, 125, 543, 668,
-      41, 554, 74, 622, 206, 222, 75, 223, 221, 198, 224, 572, 776, 213, 697,
-      0, 0, 0, 52, 328, 219, 328, 206, 288, 227, 896, 328, 450};
+      0, 0, 0, 0, 0, 52, 195, 731, 321, 301, 734, 620, 125, 543, 668, 41, 554, 74, 622, 206, 222, 75, 223, 221, 198, 224, 572, 776, 213, 697, 0, 0, 0, 52, 328, 219, 328, 206, 288, 227, 896, 328, 450};
 
   const int64_t batch_size = 3;
   const int64_t sequence_length = 12;
@@ -74,8 +70,7 @@ TEST(SamplingTest, Gpt2Sampling_GPU) {
 
   Ort::Session session(*ort_env, ORT_TSTR("testdata/transformers/tiny_gpt2_sampling.onnx"), session_options);
 
-  auto ort_outputs = session.Run(Ort::RunOptions{}, input_names, ort_inputs.data(), ort_inputs.size(),
-                                 output_names, 1);
+  auto ort_outputs = session.Run(Ort::RunOptions{}, input_names, ort_inputs.data(), ort_inputs.size(), output_names, 1);
 
   ASSERT_EQ(ort_outputs.size(), 1U);
   const auto& sequences = ort_outputs[0];
@@ -94,18 +89,14 @@ TEST(SamplingTest, Gpt2Sampling_GPU) {
 
 TEST(SamplingTest, Gpt2Sampling_CPU) {
   std::vector<int32_t> input_ids{
-      0, 0, 0, 0, 0, 52, 195, 731, 321, 301, 734, 620,
-      41, 554, 74, 622, 206, 222, 75, 223, 221, 198, 224, 572,
-      0, 0, 0, 52, 328, 219, 328, 206, 288, 227, 896, 328};
+      0, 0, 0, 0, 0, 52, 195, 731, 321, 301, 734, 620, 41, 554, 74, 622, 206, 222, 75, 223, 221, 198, 224, 572, 0, 0, 0, 52, 328, 219, 328, 206, 288, 227, 896, 328};
 
   std::vector<int32_t> max_length{15};
   std::vector<int32_t> min_length{1};
   std::vector<float> repetition_penalty{1.0f};
 
   std::vector<int32_t> expected_output{
-      0, 0, 0, 0, 0, 52, 195, 731, 321, 301, 734, 620, 125, 669, 28,
-      41, 554, 74, 622, 206, 222, 75, 223, 221, 198, 224, 572, 475, 944, 527,
-      0, 0, 0, 52, 328, 219, 328, 206, 288, 227, 896, 328, 210};
+      0, 0, 0, 0, 0, 52, 195, 731, 321, 301, 734, 620, 125, 669, 28, 41, 554, 74, 622, 206, 222, 75, 223, 221, 198, 224, 572, 475, 944, 527, 0, 0, 0, 52, 328, 219, 328, 206, 288, 227, 896, 328, 210};
 
   const int64_t batch_size = 3;
   const int64_t sequence_length = 12;
@@ -139,8 +130,7 @@ TEST(SamplingTest, Gpt2Sampling_CPU) {
   Ort::SessionOptions session_options;
   Ort::Session session(*ort_env, ORT_TSTR("testdata/transformers/tiny_gpt2_sampling.onnx"), session_options);
 
-  auto ort_outputs = session.Run(Ort::RunOptions{}, input_names, ort_inputs.data(), ort_inputs.size(),
-                                 output_names, 1);
+  auto ort_outputs = session.Run(Ort::RunOptions{}, input_names, ort_inputs.data(), ort_inputs.size(), output_names, 1);
 
   ASSERT_EQ(ort_outputs.size(), 1U);
   const auto& sequences = ort_outputs[0];

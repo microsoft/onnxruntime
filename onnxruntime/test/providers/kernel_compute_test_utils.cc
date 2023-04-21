@@ -39,8 +39,7 @@ void KernelComputeTester::Run(std::unordered_set<int> strided_outputs) {
   }
 #endif
 
-  Model model("test", false, ModelMetaData(), ORT_TSTR(""), IOnnxRuntimeOpSchemaRegistryList(),
-              {{domain_, opset_version_}}, {}, DefaultLoggingManager().DefaultLogger());
+  Model model("test", false, ModelMetaData(), ORT_TSTR(""), IOnnxRuntimeOpSchemaRegistryList(), {{domain_, opset_version_}}, {}, DefaultLoggingManager().DefaultLogger());
 
   std::vector<NodeArg*> input_args;
   std::unordered_map<std::string, OrtValue> initializer_map;
@@ -56,9 +55,7 @@ void KernelComputeTester::Run(std::unordered_set<int> strided_outputs) {
     if ((provider_ == kCudaExecutionProvider || provider_ == kRocmExecutionProvider) && !data.is_cpu_data_) {
       OrtValue gpu_value;
       const Tensor& tensor = data.value_.Get<Tensor>();
-      Tensor::InitOrtValue(tensor.DataType(), tensor.Shape(),
-                           execution_providers.Get(ep_type)->GetAllocator(OrtMemTypeDefault), gpu_value,
-                           tensor.Strides());
+      Tensor::InitOrtValue(tensor.DataType(), tensor.Shape(), execution_providers.Get(ep_type)->GetAllocator(OrtMemTypeDefault), gpu_value, tensor.Strides());
       ASSERT_STATUS_OK(dtm.CopyTensor(tensor, *gpu_value.GetMutable<Tensor>()));
       initializer_map[name] = gpu_value;
     }
@@ -78,8 +75,7 @@ void KernelComputeTester::Run(std::unordered_set<int> strided_outputs) {
   ASSERT_STATUS_OK(graph.Resolve());
 
   node.SetExecutionProviderType(ep_type);
-  OptimizerExecutionFrame::Info info({&node}, initializer_map, graph.ModelPath(), *execution_providers.Get(ep_type),
-                                     [](std::string const&) { return false; });
+  OptimizerExecutionFrame::Info info({&node}, initializer_map, graph.ModelPath(), *execution_providers.Get(ep_type), [](std::string const&) { return false; });
   const KernelCreateInfo* kernel_create_info = nullptr;
   ASSERT_STATUS_OK(info.TryFindKernel(&node, &kernel_create_info));
   ASSERT_TRUE(kernel_create_info);
@@ -96,19 +92,14 @@ void KernelComputeTester::Run(std::unordered_set<int> strided_outputs) {
       bool is_may_strided_output = false;
       for (auto& pair : may_strided_outputs_map) {
         if (pair.second == static_cast<int>(i)) {
-          Tensor::InitOrtValue(tensor.DataType(), tensor.Shape(),
-                               initializer_map[input_data_[static_cast<size_t>(pair.first)].def_.Name()]
-                                   .GetMutable<Tensor>()
-                                   ->MutableDataRaw(),
-                               execution_providers.Get(ep_type)->GetAllocator(OrtMemTypeDefault)->Info(), output);
+          Tensor::InitOrtValue(tensor.DataType(), tensor.Shape(), initializer_map[input_data_[static_cast<size_t>(pair.first)].def_.Name()].GetMutable<Tensor>()->MutableDataRaw(), execution_providers.Get(ep_type)->GetAllocator(OrtMemTypeDefault)->Info(), output);
           is_may_strided_output = true;
           break;
         }
       }
       ASSERT_TRUE(is_may_strided_output);
     } else {
-      Tensor::InitOrtValue(tensor.DataType(), tensor.Shape(),
-                           execution_providers.Get(ep_type)->GetAllocator(OrtMemTypeDefault), output);
+      Tensor::InitOrtValue(tensor.DataType(), tensor.Shape(), execution_providers.Get(ep_type)->GetAllocator(OrtMemTypeDefault), output);
     }
     outputs.emplace_back(output);
   }
@@ -159,15 +150,12 @@ void KernelComputeTester::Run(std::unordered_set<int> strided_outputs) {
         cpu_value = outputs[i];
       } else {
         const Tensor& tensor = outputs[i].Get<Tensor>();
-        Tensor::InitOrtValue(tensor.DataType(), tensor.Shape(),
-                             execution_providers.Get(cpu_ep_type)->GetAllocator(OrtMemTypeDefault), cpu_value,
-                             tensor.Strides());
+        Tensor::InitOrtValue(tensor.DataType(), tensor.Shape(), execution_providers.Get(cpu_ep_type)->GetAllocator(OrtMemTypeDefault), cpu_value, tensor.Strides());
         ASSERT_STATUS_OK(dtm.CopyTensor(tensor, *cpu_value.GetMutable<Tensor>()));
       }
       optional<float> rel;
       optional<float> abs;
-      OpTester::Data expected(std::move(output_data_[i].def_), std::move(output_data_[i].value_), std::move(rel),
-                              std::move(abs));
+      OpTester::Data expected(std::move(output_data_[i].def_), std::move(output_data_[i].value_), std::move(rel), std::move(abs));
       Check(expected, cpu_value.Get<Tensor>(), provider_);
     }
   }

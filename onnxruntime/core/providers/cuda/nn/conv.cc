@@ -16,7 +16,8 @@ namespace cuda {
   ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                 \
       Conv,                                                                                \
       kOnnxDomain,                                                                         \
-      1, 10,                                                                               \
+      1,                                                                                   \
+      10,                                                                                  \
       T,                                                                                   \
       kCudaExecutionProvider,                                                              \
       (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
@@ -50,8 +51,7 @@ cudnnStatus_t GetWorkspaceSize(cudnnHandle_t handle, const CudnnConvState<cudnnC
   return cudnnGetConvolutionForwardWorkspaceSize(handle, s.x_tensor, s.w_desc, s.conv_desc, s.y_tensor, algo, sz);
 }
 
-size_t GetMaxWorkspaceSize(cudnnHandle_t handle, const CudnnConvState<cudnnConvolutionFwdAlgoPerf_t>& s,
-                           const cudnnConvolutionFwdAlgo_t* algo, int n_algo) {
+size_t GetMaxWorkspaceSize(cudnnHandle_t handle, const CudnnConvState<cudnnConvolutionFwdAlgoPerf_t>& s, const cudnnConvolutionFwdAlgo_t* algo, int n_algo) {
   // TODO: get maximum available size from memory arena
   size_t free, total;
   CUDA_CALL_THROW(cudaMemGetInfo(&free, &total));
@@ -69,7 +69,8 @@ size_t GetMaxWorkspaceSize(cudnnHandle_t handle, const CudnnConvState<cudnnConvo
 }
 
 Status SliceOutUnwantedOutputSection(cudaStream_t stream,
-                                     const void* input_data, gsl::span<const int64_t> input_dims,
+                                     const void* input_data,
+                                     gsl::span<const int64_t> input_dims,
                                      void* output_data,
                                      const gsl::span<const int64_t>& output_dims,
                                      const gsl::span<const int64_t>& starts,
@@ -178,10 +179,7 @@ Status Conv<T, NHWC>::UpdateState(OpKernelContext* context, bool bias_expected) 
     TensorShape spatial_shape = X->Shape().Slice(spatial_dim_start, spatial_dim_end);
 
     TensorShapeVector y_dims_with_adjusted_pads(y_dims);
-    ORT_RETURN_IF_ERROR(conv_attrs_.InferOutputShapeWithAdjustedPads(spatial_shape, kernel_shape,
-                                                                     strides, dilations, pads, y_dims, y_dims_with_adjusted_pads,
-                                                                     post_slicing_required, slice_starts, slice_ends, slice_axes,
-                                                                     channels_last));
+    ORT_RETURN_IF_ERROR(conv_attrs_.InferOutputShapeWithAdjustedPads(spatial_shape, kernel_shape, strides, dilations, pads, y_dims, y_dims_with_adjusted_pads, post_slicing_required, slice_starts, slice_ends, slice_axes, channels_last));
     if (channels_last) {
       y_dims.push_back(M);
       y_dims_with_adjusted_pads.push_back(M);
@@ -277,9 +275,7 @@ Status Conv<T, NHWC>::UpdateState(OpKernelContext* context, bool bias_expected) 
       ORT_RETURN_IF_ERROR(s_.y_tensor.Set(y_dims_cudnn, CudnnTensor::GetDataType<CudaT>()));
     }
 
-    ORT_RETURN_IF_ERROR(s_.conv_desc.Set(kernel_shape.size(), pads, strides, dilations,
-                                         gsl::narrow_cast<int>(conv_attrs_.group),
-                                         CUDNN_CROSS_CORRELATION, CudnnTensor::GetDataType<CudaT>()));
+    ORT_RETURN_IF_ERROR(s_.conv_desc.Set(kernel_shape.size(), pads, strides, dilations, gsl::narrow_cast<int>(conv_attrs_.group), CUDNN_CROSS_CORRELATION, CudnnTensor::GetDataType<CudaT>()));
 
     if (context->InputCount() >= 3) {
       const Tensor* B = context->Input<Tensor>(2);
@@ -403,15 +399,12 @@ Status Conv<T, NHWC>::ComputeInternal(OpKernelContext* context) const {
                                                 s_.y_tensor,
                                                 s_.y_data));
   if (nullptr != s_.b_data) {
-    CUDNN_RETURN_IF_ERROR(cudnnAddTensor(cudnn_handle, &alpha, s_.b_tensor, s_.b_data,
-                                         &alpha, s_.y_tensor, s_.y_data));
+    CUDNN_RETURN_IF_ERROR(cudnnAddTensor(cudnn_handle, &alpha, s_.b_tensor, s_.b_data, &alpha, s_.y_tensor, s_.y_data));
   }
   // To deal with asymmetric padding, we may have over-padded on one or both sides of the spatial dimensions
   // This may have lead to extra results that are unnecessary and hence we slice that off here
   if (s_.post_slicing_required) {
-    ORT_RETURN_IF_ERROR(SliceOutUnwantedOutputSection(Stream(context), s_.y_data, gsl::make_span(s_.y_dims_with_adjusted_pads),
-                                                      s_.Y->MutableDataRaw(), s_.y_dims.GetDims(), s_.slice_starts,
-                                                      s_.slice_ends, s_.slice_axes, s_.element_size));
+    ORT_RETURN_IF_ERROR(SliceOutUnwantedOutputSection(Stream(context), s_.y_data, gsl::make_span(s_.y_dims_with_adjusted_pads), s_.Y->MutableDataRaw(), s_.y_dims.GetDims(), s_.slice_starts, s_.slice_ends, s_.slice_axes, s_.element_size));
   }
   return Status::OK();
 }

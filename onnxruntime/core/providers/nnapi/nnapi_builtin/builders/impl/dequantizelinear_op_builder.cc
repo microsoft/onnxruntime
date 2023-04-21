@@ -38,8 +38,7 @@ class DequantizeLinearOpBuilder : public BaseOpBuilder {
   }
 
   bool HasSupportedInputOutputsImpl(
-      const InitializedTensorSet& initializers, const NodeUnit& node_unit,
-      const OpSupportCheckParams& params) const override {
+      const InitializedTensorSet& initializers, const NodeUnit& node_unit, const OpSupportCheckParams& params) const override {
     return IsQuantizedIOSupported(initializers, node_unit, {0}, params, ArgType::kInput);
   }
 };
@@ -69,8 +68,7 @@ Status DequantizeLinearOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_buil
 
   InlinedVector<uint32_t> input_indices;
   input_indices.push_back(operand_indices.at(input));
-  ORT_RETURN_IF_ERROR(model_builder.AddOperation(ANEURALNETWORKS_DEQUANTIZE, input_indices,
-                                                 {output}, {output_operand_type}));
+  ORT_RETURN_IF_ERROR(model_builder.AddOperation(ANEURALNETWORKS_DEQUANTIZE, input_indices, {output}, {output_operand_type}));
   return Status::OK();
 }
 

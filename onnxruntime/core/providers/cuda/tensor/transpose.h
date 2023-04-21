@@ -20,7 +20,9 @@ class Transpose final : public CudaKernel, public TransposeBase {
 
   static Status DoTranspose(const Transpose& transpose_kernel,
                             onnxruntime::Stream* ort_stream,
-                            const gsl::span<const size_t>& permutations, const Tensor& input, Tensor& output);
+                            const gsl::span<const size_t>& permutations,
+                            const Tensor& input,
+                            Tensor& output);
 
   //  `input_shape_override` (if provided) overrides the shape of `input` for compute purposes
   //  `output_shape_override` (if provided) overrides the shape of `output` for compute purposes
@@ -28,7 +30,8 @@ class Transpose final : public CudaKernel, public TransposeBase {
                             cudaStream_t stream,
                             const cublasHandle_t cublas_handle,
                             const gsl::span<const size_t>& permutations,
-                            const Tensor& input, Tensor& output,
+                            const Tensor& input,
+                            Tensor& output,
                             const TensorShape* input_shape_override = nullptr,
                             const TensorShape* output_shape_override = nullptr);
 };

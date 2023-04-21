@@ -126,8 +126,7 @@ static Status CopyDataFromVectorToMemory(const std::vector<T>& values, T* out, s
   return Status::OK();
 }
 
-ORT_API_STATUS_IMPL(OrtApis::KernelInfoGetAttributeArray_float, _In_ const OrtKernelInfo* info, _In_ const char* name,
-                    _Out_ float* out, _Inout_ size_t* size) {
+ORT_API_STATUS_IMPL(OrtApis::KernelInfoGetAttributeArray_float, _In_ const OrtKernelInfo* info, _In_ const char* name, _Out_ float* out, _Inout_ size_t* size) {
   API_IMPL_BEGIN
   std::vector<float> values;
   auto status = reinterpret_cast<const onnxruntime::OpKernelInfo*>(info)->GetAttrs<float>(name, values);
@@ -138,8 +137,7 @@ ORT_API_STATUS_IMPL(OrtApis::KernelInfoGetAttributeArray_float, _In_ const OrtKe
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::KernelInfoGetAttributeArray_int64, _In_ const OrtKernelInfo* info, _In_ const char* name,
-                    _Out_ int64_t* out, _Inout_ size_t* size) {
+ORT_API_STATUS_IMPL(OrtApis::KernelInfoGetAttributeArray_int64, _In_ const OrtKernelInfo* info, _In_ const char* name, _Out_ int64_t* out, _Inout_ size_t* size) {
   API_IMPL_BEGIN
   std::vector<int64_t> values;
   auto status = reinterpret_cast<const onnxruntime::OpKernelInfo*>(info)->GetAttrs<int64_t>(name, values);
@@ -150,8 +148,7 @@ ORT_API_STATUS_IMPL(OrtApis::KernelInfoGetAttributeArray_int64, _In_ const OrtKe
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::KernelInfoGetAttribute_tensor, _In_ const OrtKernelInfo* info, _In_z_ const char* name,
-                    _Inout_ OrtAllocator* allocator, _Outptr_ OrtValue** out) {
+ORT_API_STATUS_IMPL(OrtApis::KernelInfoGetAttribute_tensor, _In_ const OrtKernelInfo* info, _In_z_ const char* name, _Inout_ OrtAllocator* allocator, _Outptr_ OrtValue** out) {
   API_IMPL_BEGIN
   const auto* op_kinfo = reinterpret_cast<const onnxruntime::OpKernelInfo*>(info);
 
@@ -205,8 +202,7 @@ ORT_API_STATUS_IMPL(OrtApis::KernelInfo_GetOutputCount, _In_ const OrtKernelInfo
   API_IMPL_END
 };
 
-ORT_API_STATUS_IMPL(OrtApis::KernelInfo_GetInputName, _In_ const OrtKernelInfo* info, size_t index, _Out_ char* out,
-                    _Inout_ size_t* size) {
+ORT_API_STATUS_IMPL(OrtApis::KernelInfo_GetInputName, _In_ const OrtKernelInfo* info, size_t index, _Out_ char* out, _Inout_ size_t* size) {
   API_IMPL_BEGIN
   const auto* op_info = reinterpret_cast<const onnxruntime::OpKernelInfo*>(info);
   const auto input_defs = op_info->node().InputDefs();
@@ -216,14 +212,15 @@ ORT_API_STATUS_IMPL(OrtApis::KernelInfo_GetInputName, _In_ const OrtKernelInfo* 
   }
 
   auto status = CopyStringToOutputArg(input_defs[index]->Name(),
-                                      "Output buffer is not large enough for ::OrtKernelInfo input name", out, size);
+                                      "Output buffer is not large enough for ::OrtKernelInfo input name",
+                                      out,
+                                      size);
 
   return onnxruntime::ToOrtStatus(status);
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::KernelInfo_GetOutputName, _In_ const OrtKernelInfo* info, size_t index, _Out_ char* out,
-                    _Inout_ size_t* size) {
+ORT_API_STATUS_IMPL(OrtApis::KernelInfo_GetOutputName, _In_ const OrtKernelInfo* info, size_t index, _Out_ char* out, _Inout_ size_t* size) {
   API_IMPL_BEGIN
   const auto* op_info = reinterpret_cast<const onnxruntime::OpKernelInfo*>(info);
   const auto output_defs = op_info->node().OutputDefs();
@@ -233,14 +230,15 @@ ORT_API_STATUS_IMPL(OrtApis::KernelInfo_GetOutputName, _In_ const OrtKernelInfo*
   }
 
   auto status = CopyStringToOutputArg(output_defs[index]->Name(),
-                                      "Output buffer is not large enough for ::OrtKernelInfo output name", out, size);
+                                      "Output buffer is not large enough for ::OrtKernelInfo output name",
+                                      out,
+                                      size);
 
   return onnxruntime::ToOrtStatus(status);
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::KernelInfo_GetInputTypeInfo, _In_ const OrtKernelInfo* info, size_t index,
-                    _Outptr_ OrtTypeInfo** type_info) {
+ORT_API_STATUS_IMPL(OrtApis::KernelInfo_GetInputTypeInfo, _In_ const OrtKernelInfo* info, size_t index, _Outptr_ OrtTypeInfo** type_info) {
   API_IMPL_BEGIN
   const auto* op_info = reinterpret_cast<const onnxruntime::OpKernelInfo*>(info);
   const auto input_defs = op_info->node().InputDefs();
@@ -262,8 +260,7 @@ ORT_API_STATUS_IMPL(OrtApis::KernelInfo_GetInputTypeInfo, _In_ const OrtKernelIn
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::KernelInfo_GetOutputTypeInfo, _In_ const OrtKernelInfo* info, size_t index,
-                    _Outptr_ OrtTypeInfo** type_info) {
+ORT_API_STATUS_IMPL(OrtApis::KernelInfo_GetOutputTypeInfo, _In_ const OrtKernelInfo* info, size_t index, _Outptr_ OrtTypeInfo** type_info) {
   API_IMPL_BEGIN
   const auto* op_info = reinterpret_cast<const onnxruntime::OpKernelInfo*>(info);
   const auto output_defs = op_info->node().OutputDefs();
@@ -285,8 +282,7 @@ ORT_API_STATUS_IMPL(OrtApis::KernelInfo_GetOutputTypeInfo, _In_ const OrtKernelI
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::KernelInfoGetConstantInput_tensor, _In_ const OrtKernelInfo* info, _In_ size_t index,
-                    _Out_ int* is_constant, _Outptr_ const OrtValue** out) {
+ORT_API_STATUS_IMPL(OrtApis::KernelInfoGetConstantInput_tensor, _In_ const OrtKernelInfo* info, _In_ size_t index, _Out_ int* is_constant, _Outptr_ const OrtValue** out) {
   API_IMPL_BEGIN
   const auto* op_info = reinterpret_cast<const onnxruntime::OpKernelInfo*>(info);
   *is_constant = static_cast<int>(op_info->TryGetConstantInput(index, out));
@@ -294,13 +290,14 @@ ORT_API_STATUS_IMPL(OrtApis::KernelInfoGetConstantInput_tensor, _In_ const OrtKe
   API_IMPL_END
 };
 
-ORT_API_STATUS_IMPL(OrtApis::KernelInfo_GetNodeName, _In_ const OrtKernelInfo* info, _Out_ char* out,
-                    _Inout_ size_t* size) {
+ORT_API_STATUS_IMPL(OrtApis::KernelInfo_GetNodeName, _In_ const OrtKernelInfo* info, _Out_ char* out, _Inout_ size_t* size) {
   API_IMPL_BEGIN
   const auto* op_info = reinterpret_cast<const onnxruntime::OpKernelInfo*>(info);
 
   auto status = CopyStringToOutputArg(op_info->node().Name(),
-                                      "Output buffer is not large enough for ::OrtKernelInfo node name", out, size);
+                                      "Output buffer is not large enough for ::OrtKernelInfo node name",
+                                      out,
+                                      size);
 
   return onnxruntime::ToOrtStatus(status);
   API_IMPL_END
@@ -336,9 +333,7 @@ ORT_API_STATUS_IMPL(OrtApis::KernelContext_GetLogger, _In_ const OrtKernelContex
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::Logger_LogMessage, _In_ const OrtLogger* logger, OrtLoggingLevel log_severity_level,
-                    _In_z_ const char* message, _In_z_ const ORTCHAR_T* file_path, int line_number,
-                    _In_z_ const char* func_name) {
+ORT_API_STATUS_IMPL(OrtApis::Logger_LogMessage, _In_ const OrtLogger* logger, OrtLoggingLevel log_severity_level, _In_z_ const char* message, _In_z_ const ORTCHAR_T* file_path, int line_number, _In_z_ const char* func_name) {
   API_IMPL_BEGIN
   const auto& actual_logger = *reinterpret_cast<const onnxruntime::logging::Logger*>(logger);
   const auto severity = static_cast<onnxruntime::logging::Severity>(log_severity_level);
@@ -384,8 +379,7 @@ struct CustomOpKernel : OpKernel {
       ORT_THROW("Unsupported version '" + std::to_string(op_.version) + "' in custom op '" + op.GetName(&op));
     }
 
-    op_kernel_ = op_.CreateKernel(&op_, OrtGetApiBase()->GetApi(op_.version),
-                                  reinterpret_cast<const OrtKernelInfo*>(&info));
+    op_kernel_ = op_.CreateKernel(&op_, OrtGetApiBase()->GetApi(op_.version), reinterpret_cast<const OrtKernelInfo*>(&info));
   }
 
   ~CustomOpKernel() override { op_.KernelDestroy(op_kernel_); }
@@ -459,14 +453,11 @@ common::Status CreateCustomRegistry(gsl::span<OrtCustomOpDomain* const> op_domai
 
         const auto type = op->GetInputType(op, i);
         if (ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED == type) {  // Dynamic typed input
-          schema.Input(i, "Input" + std::to_string(i), "", "T" + std::to_string(type_id_counter), option,
-                       is_homogeneous, min_arity);
+          schema.Input(i, "Input" + std::to_string(i), "", "T" + std::to_string(type_id_counter), option, is_homogeneous, min_arity);
           schema.TypeConstraint("T" + std::to_string(type_id_counter), DataTypeImpl::ToString(DataTypeImpl::AllTensorTypes()), "all types");
           type_constraint_ids[op].push_back("T" + std::to_string(type_id_counter++));
         } else {
-          schema.Input(i, "Input" + std::to_string(i), "",
-                       DataTypeImpl::ToString(onnxruntime::DataTypeImpl::TensorTypeFromONNXEnum(type)), option,
-                       is_homogeneous, min_arity);
+          schema.Input(i, "Input" + std::to_string(i), "", DataTypeImpl::ToString(onnxruntime::DataTypeImpl::TensorTypeFromONNXEnum(type)), option, is_homogeneous, min_arity);
         }
       }
 
@@ -506,9 +497,7 @@ common::Status CreateCustomRegistry(gsl::span<OrtCustomOpDomain* const> op_domai
 
           schema.Output(i, "Output" + std::to_string(i), "", "T0", option, is_homogeneous, min_arity);
         } else {
-          schema.Output(i, "Output" + std::to_string(i), "",
-                        DataTypeImpl::ToString(onnxruntime::DataTypeImpl::TensorTypeFromONNXEnum(type)), option,
-                        is_homogeneous, min_arity);
+          schema.Output(i, "Output" + std::to_string(i), "", DataTypeImpl::ToString(onnxruntime::DataTypeImpl::TensorTypeFromONNXEnum(type)), option, is_homogeneous, min_arity);
         }
       }
 

@@ -84,8 +84,7 @@ void QlinearBuildLookupTable(uint8_t* table,
           *output++ = value_transformer(*input++);
         }
       };
-  return QlinearBuildLookupTable<T>(table, tensor_x_scale, tensor_x_zero_point,
-                                    tensor_y_scale, tensor_y_zero_point, array_values_transformer);
+  return QlinearBuildLookupTable<T>(table, tensor_x_scale, tensor_x_zero_point, tensor_y_scale, tensor_y_zero_point, array_values_transformer);
 }
 
 template void QlinearBuildLookupTable<uint8_t>(uint8_t* table,

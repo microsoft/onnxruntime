@@ -17,7 +17,8 @@ void TestElementwiseGradientOp(
     const std::vector<std::pair<std::string, std::vector<float>>>& inputs,
     std::function<float(const std::vector<float>&)> expected_func,
     const std::unordered_map<std::string, float> attrs = {},
-    int opset_version = 7, const char* domain = kOnnxDomain) {
+    int opset_version = 7,
+    const char* domain = kOnnxDomain) {
   const auto first_input = inputs.begin();
   ASSERT_NE(first_input, inputs.end());
   for (auto input = first_input; input != inputs.end(); ++input) {
@@ -38,8 +39,7 @@ void TestElementwiseGradientOp(
   for (size_t i = 0; i < input_size; i++) {
     std::vector<float> params(inputs.size());
     std::transform(
-        inputs.begin(), inputs.end(), params.begin(),
-        [i](const std::pair<std::string, std::vector<float>>& input) {
+        inputs.begin(), inputs.end(), params.begin(), [i](const std::pair<std::string, std::vector<float>>& input) {
           return input.second[i];
         });
     expected_vals.push_back(expected_func(params));
@@ -386,7 +386,9 @@ TEST_F(ActivationOpTest, Celu) {
       // TODO: Investigate why gcc 4 fails to compile without the explicit cast
       [alpha](float x) { return std::max(0.0f, x) + std::min(0.0f, alpha * (static_cast<float>(exp(x / alpha)) - 1)); },
       // Disable on TensorRT as it seems like it doesn't yet support Celu
-      {{"alpha", alpha}}, false, 12);
+      {{"alpha", alpha}},
+      false,
+      12);
 }
 TEST_F(ActivationOpTest, LeakyRelu) {
   float alpha = 0.1f;
@@ -402,7 +404,9 @@ TEST_F(ActivationOpTest, ThresholdedRelu) {
       "ThresholdedRelu",
       input_values,
       [alpha](float x) { return (x >= alpha) ? x : 0; },
-      {{"alpha", alpha}}, true, 10);
+      {{"alpha", alpha}},
+      true,
+      10);
 }
 
 TEST_F(ActivationOpTest, Selu) {
@@ -505,9 +509,11 @@ TEST_F(ActivationOpTest, PRelu_MultiChannel4D) {
   RandomValueGenerator random{2345};
 
   auto test = [&](bool slope_is_initializer,
-                  int64_t n, int64_t c, int64_t h, int64_t w) {
-    SCOPED_TRACE(MakeString("slope_is_initializer: ", slope_is_initializer,
-                            ", n: ", n, ", c: ", c, ", h: ", h, ", w: ", w));
+                  int64_t n,
+                  int64_t c,
+                  int64_t h,
+                  int64_t w) {
+    SCOPED_TRACE(MakeString("slope_is_initializer: ", slope_is_initializer, ", n: ", n, ", c: ", c, ", h: ", h, ", w: ", w));
 
     OpTester test("PRelu");
 
@@ -582,7 +588,8 @@ TEST_F(ActivationOpNoInfTest, Softsign) {
 
         return result;
       },
-      {}, false);  // Disable TensorRT because result mismatches
+      {},
+      false);  // Disable TensorRT because result mismatches
 }
 
 #if defined(ENABLE_TRAINING_OPS)
@@ -599,7 +606,9 @@ TEST(ReluGradInferenceTest, Basic) {
 
         return ReluGrad(dy, x);
       },
-      {}, 1, kMSDomain);
+      {},
+      1,
+      kMSDomain);
 }
 
 TEST(SigmoidGradInferenceTest, Basic) {
@@ -615,7 +624,9 @@ TEST(SigmoidGradInferenceTest, Basic) {
 
         return SigmoidGrad(dy, y);
       },
-      {}, 1, kMSDomain);
+      {},
+      1,
+      kMSDomain);
 }
 
 TEST(TanhGradInferenceTest, Basic) {
@@ -631,7 +642,9 @@ TEST(TanhGradInferenceTest, Basic) {
 
         return TanhGrad(dy, y);
       },
-      {}, 1, kMSDomain);
+      {},
+      1,
+      kMSDomain);
 }
 #endif
 

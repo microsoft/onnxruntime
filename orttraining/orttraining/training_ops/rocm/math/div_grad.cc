@@ -57,7 +57,8 @@ Status DivGrad<T>::ComputeInternal(OpKernelContext* context) const {
   BinaryElementwisePreparation prepare;
   ORT_RETURN_IF_ERROR(BinaryElementwiseBroadcastPrepare(a_tensor, b_tensor,
                                                         // TODO: BinaryElementwiseBroadcastPrepare shall take dy_tensor as const Tensor*.
-                                                        const_cast<Tensor*>(dy_tensor), &prepare));
+                                                        const_cast<Tensor*>(dy_tensor),
+                                                        &prepare));
   const HipT* prepare_a_data = reinterpret_cast<const HipT*>(prepare.lhs_tensor->template Data<T>());
   const HipT* prepare_b_data = reinterpret_cast<const HipT*>(prepare.rhs_tensor->template Data<T>());
   const HipT* prepare_dy_data = reinterpret_cast<const HipT*>(prepare.output_tensor->template Data<T>());

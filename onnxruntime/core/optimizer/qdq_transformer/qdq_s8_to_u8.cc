@@ -74,8 +74,7 @@ static bool QDQ_S8_to_U8(Graph& graph, Node& q_node, Node& dq_node) {
 }
 
 // Convert QuantizeLinear and DequantizeLinear pair with type int8_t to type uint8_t
-Status QDQS8ToU8Transformer::ApplyImpl(Graph& graph, bool& modified, int graph_level,
-                                       const logging::Logger& logger) const {
+Status QDQS8ToU8Transformer::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
   GraphViewer graph_viewer(graph);
   const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
 

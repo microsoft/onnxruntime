@@ -204,8 +204,7 @@ bool QnnModelWrapper::CreateQnnNode(const std::string& qnn_node_name,
     }
     return rt;
   } else {
-    QnnOpProperty qnn_op(qnn_node_name, package_name, qnn_node_type,
-                         std::move(input_names), std::move(output_names), std::move(param_tensor_names));
+    QnnOpProperty qnn_op(qnn_node_name, package_name, qnn_node_type, std::move(input_names), std::move(output_names), std::move(param_tensor_names));
     qnn_op_property_list_.push_back(std::move(qnn_op));
     return true;
   }

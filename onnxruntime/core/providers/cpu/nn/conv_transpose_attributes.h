@@ -43,8 +43,7 @@ struct ConvTransposeAttributes : public ConvAttributes {
     TensorShapeVector strides;
   };
 
-  Status PrepareForCompute(OpKernelContext* context, bool has_bias, Prepare& p,
-                           bool dynamic_padding = false, const TensorShape* filter_shape = nullptr) const {
+  Status PrepareForCompute(OpKernelContext* context, bool has_bias, Prepare& p, bool dynamic_padding = false, const TensorShape* filter_shape = nullptr) const {
     const Tensor* X = context->Input<Tensor>(0);
     const Tensor* F = (filter_shape != nullptr) ? nullptr : context->Input<Tensor>(1);
     const TensorShape& F_Shape = (filter_shape != nullptr) ? *filter_shape : F->Shape();
@@ -59,29 +58,22 @@ struct ConvTransposeAttributes : public ConvAttributes {
 
     // input validations
     if (group <= 0) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "group count is <= 0",
-                             " group: ", group);
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "group count is <= 0", " group: ", group);
     }
 
     if (X->Shape().NumDimensions() != F_Shape.NumDimensions()) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "X num_dims does not match W num_dims.",
-                             " X: ", X->Shape().ToString().c_str(),
-                             " W: ", F_Shape.ToString().c_str());
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "X num_dims does not match W num_dims.", " X: ", X->Shape().ToString().c_str(), " W: ", F_Shape.ToString().c_str());
     }
 
     if (F_Shape[0] != num_input_channels) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "filter number not equal to input channel number.",
-                             " filter_number: ", F_Shape[0],
-                             " num_input_channels: ", num_input_channels);
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "filter number not equal to input channel number.", " filter_number: ", F_Shape[0], " num_input_channels: ", num_input_channels);
     }
 
     // it looks like num_output_channels is really k*group similar to how in the conv case
     // num_input_channels is k*group. hence removing the check for num_output_channels here.
 
     if (num_input_channels % group != 0) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input channels is not divisible by group.",
-                             " num_input_channels: ", num_input_channels,
-                             " group: ", group);
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input channels is not divisible by group.", " num_input_channels: ", num_input_channels, " group: ", group);
     }
 
     TensorShapeVector kernel_shape;
@@ -114,8 +106,7 @@ struct ConvTransposeAttributes : public ConvAttributes {
 
     TensorShapeVector Y_dims;
 
-    ComputePadsAndOutputShape(input_shape, num_output_channels, kernel_shape,
-                              local_strides, local_dilations, local_output_padding, N, &local_pads, &Y_dims);
+    ComputePadsAndOutputShape(input_shape, num_output_channels, kernel_shape, local_strides, local_dilations, local_output_padding, N, &local_pads, &Y_dims);
     TensorShape Yshape(Y_dims);
     Tensor* Y = context->Output(0, Yshape);
 
@@ -134,10 +125,7 @@ struct ConvTransposeAttributes : public ConvAttributes {
     return Status::OK();
   }
 
-  void ComputePadsAndOutputShape(TensorShape input_shape, int64_t output_channel,
-                                 const TensorShapeVector& kernel_shape, const TensorShapeVector& p_strides,
-                                 const TensorShapeVector& p_dilations, const TensorShapeVector& p_output_padding, const int64_t N,
-                                 ConvPadVector* p_pads, TensorShapeVector* output_shape_p) const {
+  void ComputePadsAndOutputShape(TensorShape input_shape, int64_t output_channel, const TensorShapeVector& kernel_shape, const TensorShapeVector& p_strides, const TensorShapeVector& p_dilations, const TensorShapeVector& p_output_padding, const int64_t N, ConvPadVector* p_pads, TensorShapeVector* output_shape_p) const {
     size_t output_shape_size = output_shape.size();
     output_shape_p->insert(output_shape_p->begin(), {N, output_channel});
 
@@ -169,13 +157,11 @@ struct ConvTransposeAttributes : public ConvAttributes {
   TensorShapeVector output_shape;
 
  private:
-  int64_t ComputeTotalPad(int64_t in_size, int64_t stride, int64_t adj,
-                          int64_t kernel, int64_t dilation, int64_t out_size) const {
+  int64_t ComputeTotalPad(int64_t in_size, int64_t stride, int64_t adj, int64_t kernel, int64_t dilation, int64_t out_size) const {
     return std::max<int64_t>(0, (in_size - 1) * stride + adj + (kernel - 1) * dilation + 1 - out_size);
   }
 
-  void DistributePadding(AutoPadType pad_type, const int64_t& total_pad,
-                         int64_t& pad_head, int64_t& pad_tail) const {
+  void DistributePadding(AutoPadType pad_type, const int64_t& total_pad, int64_t& pad_head, int64_t& pad_tail) const {
     if (pad_type == AutoPadType::SAME_UPPER) {
       // pad more on tail when total_pad is odd.
       pad_head = total_pad / 2;
@@ -202,8 +188,7 @@ struct ConvTransposeAttributes : public ConvAttributes {
     if (*out_size != -1) {
       ORT_ENFORCE(*out_size >= 0);
       // total pad
-      auto total_pad = ComputeTotalPad(in_size, stride, adj,
-                                       kernel, dilation, *out_size);
+      auto total_pad = ComputeTotalPad(in_size, stride, adj, kernel, dilation, *out_size);
       DistributePadding(pad_type, total_pad, *pad_head, *pad_tail);
       return;
     }
@@ -214,8 +199,7 @@ struct ConvTransposeAttributes : public ConvAttributes {
     if (pad_type == AutoPadType::SAME_UPPER || pad_type == AutoPadType::SAME_LOWER) {
       // The ONNX spec says if `auto_pad` attribute is set, pad until the `out_size`
       // is `in_size * stride`
-      auto total_pad = ComputeTotalPad(in_size, stride, adj,
-                                       kernel, dilation, /*out_size = */ in_size * stride);
+      auto total_pad = ComputeTotalPad(in_size, stride, adj, kernel, dilation, /*out_size = */ in_size * stride);
       DistributePadding(pad_type, total_pad, *pad_head, *pad_tail);
     }
 

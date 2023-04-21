@@ -77,13 +77,9 @@ struct MLValueCopyInfo {
 
 class FeedsFetchesManager {
  public:
-  static Status Create(gsl::span<const std::string> feed_names, gsl::span<const std::string> output_names,
-                       const OrtValueNameIdxMap& ort_value_name_idx_map,
-                       std::unique_ptr<FeedsFetchesManager>& feeds_fetches_manager);
+  static Status Create(gsl::span<const std::string> feed_names, gsl::span<const std::string> output_names, const OrtValueNameIdxMap& ort_value_name_idx_map, std::unique_ptr<FeedsFetchesManager>& feeds_fetches_manager);
 
-  static Status Create(gsl::span<const std::string_view> feed_names, gsl::span<const std::string> output_names,
-                       const OrtValueNameIdxMap& ort_value_name_idx_map,
-                       std::optional<FeedsFetchesManager>& feeds_fetches_manager);
+  static Status Create(gsl::span<const std::string_view> feed_names, gsl::span<const std::string> output_names, const OrtValueNameIdxMap& ort_value_name_idx_map, std::optional<FeedsFetchesManager>& feeds_fetches_manager);
 
   FeedsFetchesManager(FeedsFetchesInfo&& info);
 

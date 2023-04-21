@@ -25,7 +25,8 @@ struct PoolAttributes {
 #else
   PoolAttributes(const OpNodeProtoHelper<ProtoHelperNodeContext>& info,
 #endif
-                 const std::string& op_name, int start_version)
+                 const std::string& op_name,
+                 int start_version)
       : global_pooling(IsGlobalPooling(op_name)) {
     if (global_pooling) {
       return;
@@ -100,7 +101,8 @@ struct PoolAttributes {
                                   int64_t output_channel,
                                   TensorShapeVector* actual_pads) const {
     ORT_ENFORCE(input_shape.Size() > 0 || input_shape[0] == 0,
-                "Invalid input shape. Only N can be zero. Got:", input_shape);
+                "Invalid input shape. Only N can be zero. Got:",
+                input_shape);
     TensorShapeVector output_dims;
     int64_t N = input_shape[0];
     InferOutputSize(input_shape.GetDims(), &output_dims, actual_pads);

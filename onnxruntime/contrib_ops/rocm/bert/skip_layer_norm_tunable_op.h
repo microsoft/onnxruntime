@@ -20,9 +20,7 @@ namespace rocm {
 
 template <typename T, typename V>
 struct SkipLayerNormParams : OpParams {
-  SkipLayerNormParams(RocmTuningContext* tuning_ctx, hipStream_t stream, V* output, T* skip_input_bias_add_output, const T* input,
-                      const T* skip, const V* gamma, const V* beta,
-                      const T* bias, float epsilon, int ld, int element_count)
+  SkipLayerNormParams(RocmTuningContext* tuning_ctx, hipStream_t stream, V* output, T* skip_input_bias_add_output, const T* input, const T* skip, const V* gamma, const V* beta, const T* bias, float epsilon, int ld, int element_count)
       : OpParams(tuning_ctx, stream), output(output), skip_input_bias_add_output(skip_input_bias_add_output), input(input), skip(skip), gamma(gamma), beta(beta), bias(bias), epsilon(epsilon), ld(ld), element_count(element_count) {}
 
   std::string Signature() const override {
@@ -51,10 +49,9 @@ Status SkipLayerNormSmallOp(const SkipLayerNormParams<T, V>* params) {
          params->ld <= ThreadsPerBlock * VecSize && params->ld > (ThreadsPerBlock - GPU_WARP_SIZE) * VecSize)));
   SkipLayerNormKernelSmall<T, U, V, ThreadsPerBlock, VecSize><<<dim3(CeilDiv(params->element_count, params->ld)),
                                                                 dim3(ThreadsPerBlock),
-                                                                0, params->stream>>>(
-      params->ld, params->input, params->skip,
-      params->beta, params->gamma, params->bias, static_cast<U>(params->epsilon), params->output, params->skip_input_bias_add_output,
-      (params->bias == nullptr) ? false : true, (params->skip_input_bias_add_output == nullptr) ? false : true);
+                                                                0,
+                                                                params->stream>>>(
+      params->ld, params->input, params->skip, params->beta, params->gamma, params->bias, static_cast<U>(params->epsilon), params->output, params->skip_input_bias_add_output, (params->bias == nullptr) ? false : true, (params->skip_input_bias_add_output == nullptr) ? false : true);
   return HIP_CALL(hipGetLastError());
 }
 
@@ -66,10 +63,9 @@ Status SkipLayerNormRegularOp(const SkipLayerNormParams<T, V>* params) {
           (params->ld < GPU_WARP_SIZE && params->ld > (ThreadsPerBlock - GPU_WARP_SIZE) * VecSize)))));
   SkipLayerNormKernelVec<T, U, V, ThreadsPerBlock, VecSize><<<dim3(CeilDiv(params->element_count, params->ld)),
                                                               dim3(ThreadsPerBlock),
-                                                              0, params->stream>>>(
-      params->ld, params->input, params->skip,
-      params->beta, params->gamma, params->bias, static_cast<U>(params->epsilon), params->output, params->skip_input_bias_add_output,
-      (params->bias == nullptr) ? false : true, (params->skip_input_bias_add_output == nullptr) ? false : true);
+                                                              0,
+                                                              params->stream>>>(
+      params->ld, params->input, params->skip, params->beta, params->gamma, params->bias, static_cast<U>(params->epsilon), params->output, params->skip_input_bias_add_output, (params->bias == nullptr) ? false : true, (params->skip_input_bias_add_output == nullptr) ? false : true);
   return HIP_CALL(hipGetLastError());
 }
 
@@ -80,13 +76,11 @@ Status SkipLayerNormStaticSelection(const SkipLayerNormParams<T, V>* params) {
   const int grid_size = params->element_count / params->ld;
   const int block_size = 256;
 
-#define LAUNCH_SKIPLAYERNORM_SMALL_FORWARD(ELEMENTS, TPB, ILP)                               \
-  if (params->ld <= ELEMENTS) {                                                              \
-    SkipLayerNormKernelSmall<T, U, V, TPB, ILP><<<grid_size, TPB, 0, params->stream>>>(      \
-        params->ld, params->input, params->skip, params->beta, params->gamma, params->bias,  \
-        static_cast<U>(params->epsilon), params->output, params->skip_input_bias_add_output, \
-        hasBias, hasSkipInputBiasAdditionOutput);                                            \
-    break;                                                                                   \
+#define LAUNCH_SKIPLAYERNORM_SMALL_FORWARD(ELEMENTS, TPB, ILP)                                                                                                                                                             \
+  if (params->ld <= ELEMENTS) {                                                                                                                                                                                            \
+    SkipLayerNormKernelSmall<T, U, V, TPB, ILP><<<grid_size, TPB, 0, params->stream>>>(                                                                                                                                    \
+        params->ld, params->input, params->skip, params->beta, params->gamma, params->bias, static_cast<U>(params->epsilon), params->output, params->skip_input_bias_add_output, hasBias, hasSkipInputBiasAdditionOutput); \
+    break;                                                                                                                                                                                                                 \
   }
   if (0 == (params->ld % 4)) {
     do {
@@ -98,8 +92,7 @@ Status SkipLayerNormStaticSelection(const SkipLayerNormParams<T, V>* params) {
       LAUNCH_SKIPLAYERNORM_SMALL_FORWARD(1024, 256, 4)
 
       SkipLayerNormKernel<T, U, V, block_size><<<grid_size, block_size, 0, params->stream>>>(
-          params->ld, params->input, params->skip, params->beta, params->gamma, params->bias,
-          static_cast<U>(params->epsilon), params->output, params->skip_input_bias_add_output);
+          params->ld, params->input, params->skip, params->beta, params->gamma, params->bias, static_cast<U>(params->epsilon), params->output, params->skip_input_bias_add_output);
     } while (0);
   } else {
     do {
@@ -109,8 +102,7 @@ Status SkipLayerNormStaticSelection(const SkipLayerNormParams<T, V>* params) {
       LAUNCH_SKIPLAYERNORM_SMALL_FORWARD(384, 384, 1)
 
       SkipLayerNormKernel<T, U, V, block_size><<<grid_size, block_size, 0, params->stream>>>(
-          params->ld, params->input, params->skip, params->beta, params->gamma, params->bias,
-          static_cast<U>(params->epsilon), params->output, params->skip_input_bias_add_output);
+          params->ld, params->input, params->skip, params->beta, params->gamma, params->bias, static_cast<U>(params->epsilon), params->output, params->skip_input_bias_add_output);
     } while (0);
   }
   return HIP_CALL(hipPeekAtLastError());

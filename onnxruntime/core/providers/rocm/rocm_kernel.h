@@ -118,8 +118,7 @@ class RocmKernel : public OpKernel {
       if (cpu_pinned_copy_) {
         gpu_copy_ = op_kernel_->GetScratchBuffer<T>(count_, stream);
         hipStream_t rocm_stream = stream ? static_cast<hipStream_t>(stream->GetHandle()) : nullptr;
-        HIP_RETURN_IF_ERROR(hipMemcpyAsync(gpu_copy_.get(), cpu_pinned_copy_.get(), count_ * sizeof(T), hipMemcpyHostToDevice,
-                                           rocm_stream));
+        HIP_RETURN_IF_ERROR(hipMemcpyAsync(gpu_copy_.get(), cpu_pinned_copy_.get(), count_ * sizeof(T), hipMemcpyHostToDevice, rocm_stream));
         op_kernel_->AddDeferredReleaseCPUPtr(cpu_pinned_copy_.release(), stream);
       }
       return Status::OK();

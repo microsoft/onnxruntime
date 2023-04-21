@@ -22,8 +22,7 @@ cudaError_t NonZeroCountEachBlock(cudaStream_t stream, const InputT* x, int64_t 
 // output nonzero positions using input x and prefix_counts for each blocks
 template <typename InputT>
 cudaError_t NonZeroOutputPositions(
-    cudaStream_t stream, const InputT* x, int64_t x_size, int x_rank, const TArray<fast_divmod>& x_strides,
-    const int* prefix_counts, int nonzero_elements, int64_t* results);
+    cudaStream_t stream, const InputT* x, int64_t x_size, int x_rank, const TArray<fast_divmod>& x_strides, const int* prefix_counts, int nonzero_elements, int64_t* results);
 
 }  // namespace cuda
 }  // namespace onnxruntime

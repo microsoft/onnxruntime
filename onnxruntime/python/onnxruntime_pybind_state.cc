@@ -82,9 +82,7 @@ static py::object AddNonTensor(const OrtValue& val,
 
 // In all cases, we may not have access to a DataTransferManager, hence the user may specify functions that
 // pretty much does what a DataTransferManager does - copy data from device(s) to the host
-void GetPyObjFromTensor(const Tensor& rtensor, py::object& obj,
-                        const DataTransferManager* data_transfer_manager,
-                        const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* mem_cpy_to_host_functions) {
+void GetPyObjFromTensor(const Tensor& rtensor, py::object& obj, const DataTransferManager* data_transfer_manager, const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* mem_cpy_to_host_functions) {
   std::vector<npy_intp> npy_dims;
   const TensorShape& shape = rtensor.Shape();
 
@@ -251,8 +249,7 @@ py::object AddNonTensorAsPyObj(const OrtValue& val,
   ORT_THROW("Non-tensor type is not supported in this build: ", val_type);
 }
 
-py::object AddTensorAsPyObj(const OrtValue& val, const DataTransferManager* data_transfer_manager,
-                            const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* mem_cpy_to_host_functions) {
+py::object AddTensorAsPyObj(const OrtValue& val, const DataTransferManager* data_transfer_manager, const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* mem_cpy_to_host_functions) {
   const Tensor& rtensor = val.Get<Tensor>();
   py::object obj;
   GetPyObjFromTensor(rtensor, obj, data_transfer_manager, mem_cpy_to_host_functions);
@@ -697,9 +694,7 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
         load_runtime_module = vai_options_it->second;
       }
     }
-    return onnxruntime::VitisAIProviderFactoryCreator::Create(target.c_str(), 0,
-                                                              export_runtime_module.c_str(),
-                                                              load_runtime_module.c_str())
+    return onnxruntime::VitisAIProviderFactoryCreator::Create(target.c_str(), 0, export_runtime_module.c_str(), load_runtime_module.c_str())
         ->CreateProvider();
 #endif
   } else if (type == kAclExecutionProvider) {
@@ -806,8 +801,7 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
 /*
  * Register execution provider with options.
  */
-static void RegisterExecutionProviders(InferenceSession* sess, const std::vector<std::string>& provider_types,
-                                       const ProviderOptionsMap& provider_options_map) {
+static void RegisterExecutionProviders(InferenceSession* sess, const std::vector<std::string>& provider_types, const ProviderOptionsMap& provider_options_map) {
   ORT_UNUSED_PARAMETER(provider_options_map);
 
   for (const std::string& type : provider_types) {
@@ -882,8 +876,7 @@ void InitializeSession(InferenceSession* sess,
 bool CheckIfTensor(const std::vector<const NodeArg*>& def_list,
                    const std::string& name,
                    /*out*/ onnx::TypeProto& type_proto) {
-  auto ret_it = std::find_if(std::begin(def_list), std::end(def_list),
-                             [&name](const NodeArg* node_arg) { return name == node_arg->Name(); });
+  auto ret_it = std::find_if(std::begin(def_list), std::end(def_list), [&name](const NodeArg* node_arg) { return name == node_arg->Name(); });
   if (ret_it == std::end(def_list)) {
     throw std::runtime_error("Failed to find NodeArg with name: " + name + " in the def list");
   }
@@ -912,11 +905,9 @@ void addGlobalMethods(py::module& m) {
   m.def("get_default_session_options", &GetDefaultCPUSessionOptions, "Return a default session_options instance.");
   m.def("get_session_initializer", &SessionObjectInitializer::Get, "Return a default session object initializer.");
   m.def(
-      "get_device", []() -> std::string { return BACKEND_DEVICE; },
-      "Return the device used to compute the prediction (CPU, MKL, ...)");
+      "get_device", []() -> std::string { return BACKEND_DEVICE; }, "Return the device used to compute the prediction (CPU, MKL, ...)");
   m.def(
-      "set_seed", [](const int64_t seed) { utils::SetRandomSeed(seed); },
-      "Sets the seed used for random number generation in Onnxruntime.");
+      "set_seed", [](const int64_t seed) { utils::SetRandomSeed(seed); }, "Sets the seed used for random number generation in Onnxruntime.");
   m.def(
       "set_default_logger_severity", [](int severity) {
         ORT_ENFORCE(severity >= 0 && severity <= 4,
@@ -940,11 +931,9 @@ void addGlobalMethods(py::module& m) {
       "The order of elements represents the default priority order of Execution Providers "
       "from highest to lowest.");
   m.def(
-      "enable_telemetry_events", []() -> void { platform_env.GetTelemetryProvider().EnableTelemetryEvents(); },
-      "Enables platform-specific telemetry collection where applicable.");
+      "enable_telemetry_events", []() -> void { platform_env.GetTelemetryProvider().EnableTelemetryEvents(); }, "Enables platform-specific telemetry collection where applicable.");
   m.def(
-      "disable_telemetry_events", []() -> void { platform_env.GetTelemetryProvider().DisableTelemetryEvents(); },
-      "Disables platform-specific telemetry collection.");
+      "disable_telemetry_events", []() -> void { platform_env.GetTelemetryProvider().DisableTelemetryEvents(); }, "Disables platform-specific telemetry collection.");
   m.def(
       "create_and_register_allocator", [](const OrtMemoryInfo& mem_info, const OrtArenaCfg* arena_cfg = nullptr) -> void {
         auto env = GetEnv();
@@ -1085,8 +1074,7 @@ void addObjectMethods(py::module& m, ExecutionProviderRegistrationFn ep_registra
   // backwards compatibility, key-value pair constructor overload exposes all options
   // There is a global var: arena_extend_strategy, which means we can't use that var name here
   // See docs/C_API.md for details on what the following parameters mean and how to choose these values
-  ort_arena_cfg_binding.def(py::init([](size_t max_mem, int arena_extend_strategy_local,
-                                        int initial_chunk_size_bytes, int max_dead_bytes_per_chunk) {
+  ort_arena_cfg_binding.def(py::init([](size_t max_mem, int arena_extend_strategy_local, int initial_chunk_size_bytes, int max_dead_bytes_per_chunk) {
                          auto ort_arena_cfg = std::make_unique<OrtArenaCfg>();
                          ort_arena_cfg->max_mem = max_mem;
                          ort_arena_cfg->arena_extend_strategy = arena_extend_strategy_local;
@@ -1126,12 +1114,10 @@ void addObjectMethods(py::module& m, ExecutionProviderRegistrationFn ep_registra
       return std::make_unique<OrtMemoryInfo>(onnxruntime::CPU, type, OrtDevice(), id, mem_type);
     } else if (strcmp(name, onnxruntime::CUDA) == 0) {
       return std::make_unique<OrtMemoryInfo>(
-          onnxruntime::CUDA, type, OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, static_cast<OrtDevice::DeviceId>(id)), id,
-          mem_type);
+          onnxruntime::CUDA, type, OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, static_cast<OrtDevice::DeviceId>(id)), id, mem_type);
     } else if (strcmp(name, onnxruntime::CUDA_PINNED) == 0) {
       return std::make_unique<OrtMemoryInfo>(
-          onnxruntime::CUDA_PINNED, type, OrtDevice(OrtDevice::CPU, OrtDevice::MemType::CUDA_PINNED, static_cast<OrtDevice::DeviceId>(id)),
-          id, mem_type);
+          onnxruntime::CUDA_PINNED, type, OrtDevice(OrtDevice::CPU, OrtDevice::MemType::CUDA_PINNED, static_cast<OrtDevice::DeviceId>(id)), id, mem_type);
     } else {
       throw std::runtime_error("Specified device is not supported.");
     }
@@ -1375,22 +1361,18 @@ Applies to session load, initialization, etc. Default is 0.)pbdoc")
 
   py::class_<RunOptions>(m, "RunOptions", R"pbdoc(Configuration information for a single Run.)pbdoc")
       .def(py::init())
-      .def_readwrite("log_severity_level", &RunOptions::run_log_severity_level,
-                     R"pbdoc(Log severity level for a particular Run() invocation. 0:Verbose, 1:Info, 2:Warning. 3:Error, 4:Fatal. Default is 2.)pbdoc")
+      .def_readwrite("log_severity_level", &RunOptions::run_log_severity_level, R"pbdoc(Log severity level for a particular Run() invocation. 0:Verbose, 1:Info, 2:Warning. 3:Error, 4:Fatal. Default is 2.)pbdoc")
       .def_readwrite("log_verbosity_level", &RunOptions::run_log_verbosity_level,
                      R"pbdoc(VLOG level if DEBUG build and run_log_severity_level is 0.
 Applies to a particular Run() invocation. Default is 0.)pbdoc")
-      .def_readwrite("logid", &RunOptions::run_tag,
-                     "To identify logs generated by a particular Run() invocation.")
+      .def_readwrite("logid", &RunOptions::run_tag, "To identify logs generated by a particular Run() invocation.")
       .def_readwrite("terminate", &RunOptions::terminate,
                      R"pbdoc(Set to True to terminate any currently executing calls that are using this
 RunOptions instance. The individual calls will exit gracefully and return an error status.)pbdoc")
 #ifdef ENABLE_TRAINING
-      .def_readwrite("training_mode", &RunOptions::training_mode,
-                     R"pbdoc(Choose to run in training or inferencing mode)pbdoc")
+      .def_readwrite("training_mode", &RunOptions::training_mode, R"pbdoc(Choose to run in training or inferencing mode)pbdoc")
 #endif
-      .def_readwrite("only_execute_path_to_fetches", &RunOptions::only_execute_path_to_fetches,
-                     R"pbdoc(Only execute the nodes needed by fetch list)pbdoc")
+      .def_readwrite("only_execute_path_to_fetches", &RunOptions::only_execute_path_to_fetches, R"pbdoc(Only execute the nodes needed by fetch list)pbdoc")
       .def(
           "add_run_config_entry",
           [](RunOptions* options, const char* config_key, const char* config_value) -> void {
@@ -1487,8 +1469,7 @@ including arg name, arg type (contains both type and shape).)pbdoc")
   py::class_<PyInferenceSession>(m, "InferenceSession", R"pbdoc(This is the main class used to run a model.)pbdoc")
       // In Python3, a Python bytes object will be passed to C++ functions that accept std::string or char*
       // without any conversion. So this init method can be used for model file path (string) and model content (bytes)
-      .def(py::init([](const PySessionOptions& so, const std::string arg, bool is_arg_file_name,
-                       bool load_config_from_model = false) {
+      .def(py::init([](const PySessionOptions& so, const std::string arg, bool is_arg_file_name, bool load_config_from_model = false) {
         auto env = GetEnv();
         std::unique_ptr<PyInferenceSession> sess;
 
@@ -1533,8 +1514,7 @@ including arg name, arg type (contains both type and shape).)pbdoc")
           },
           R"pbdoc(Load a model saved in ONNX or ORT format.)pbdoc")
       .def("run",
-           [](PyInferenceSession* sess, std::vector<std::string> output_names,
-              std::map<std::string, py::object> pyfeeds, RunOptions* run_options = nullptr)
+           [](PyInferenceSession* sess, std::vector<std::string> output_names, std::map<std::string, py::object> pyfeeds, RunOptions* run_options = nullptr)
                -> std::vector<py::object> {
              NameMLValMap feeds;
              for (auto feed : pyfeeds) {
@@ -1821,7 +1801,9 @@ class EnvInitializer {
     Env::Default().GetTelemetryProvider().SetLanguageProjection(OrtLanguageProjection::ORT_PROJECTION_PYTHON);
     OrtPybindThrowIfError(Environment::Create(std::make_unique<LoggingManager>(
                                                   std::make_unique<CLogSink>(),
-                                                  Severity::kWARNING, false, LoggingManager::InstanceType::Default,
+                                                  Severity::kWARNING,
+                                                  false,
+                                                  LoggingManager::InstanceType::Default,
                                                   &SessionObjectInitializer::default_logger_id),
                                               env_ptr));
     session_env_ = std::shared_ptr<Environment>(env_ptr.release());

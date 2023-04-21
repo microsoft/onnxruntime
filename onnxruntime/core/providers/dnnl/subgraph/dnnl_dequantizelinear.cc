@@ -92,32 +92,25 @@ void DnnlDequantizeLinear::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& 
       binary_attr.set_post_ops(binary_ops);
     }
     // Add post op to scale result
-    auto binary_pd = dnnl::binary::primitive_desc(dnnl_engine, dnnl::algorithm::binary_sub,
-                                                  x_md, x_zp_md, dst_md, binary_attr);
+    auto binary_pd = dnnl::binary::primitive_desc(dnnl_engine, dnnl::algorithm::binary_sub, x_md, x_zp_md, dst_md, binary_attr);
     // Move to GPU if available
     x_zp_mem = sp.GetMemoryAndReshape(node.Input(IN_X_ZERO_POINT), x_zp_md, dnnl_engine);
     // Create primitive and set dst mem
     dst_mem = dnnl::memory(binary_pd.dst_desc(), dnnl_engine);
     auto binary_prim = dnnl::binary(binary_pd);
 
-    sp.AddPrimitive(binary_prim, {{DNNL_ARG_SRC_0, x_mem},
-                                  {DNNL_ARG_SRC_1, x_zp_mem},
-                                  {DNNL_ARG_ATTR_MULTIPLE_POST_OP(0) | DNNL_ARG_SRC_1, x_scale_mem},
-                                  {DNNL_ARG_DST, dst_mem}});
+    sp.AddPrimitive(binary_prim, {{DNNL_ARG_SRC_0, x_mem}, {DNNL_ARG_SRC_1, x_zp_mem}, {DNNL_ARG_ATTR_MULTIPLE_POST_OP(0) | DNNL_ARG_SRC_1, x_scale_mem}, {DNNL_ARG_DST, dst_mem}});
 
     // If zp doesn't exists or we are dequantizing from int32, only need to scale
   } else {
     // Create binary primitive desc
-    auto binary_pd = dnnl::binary::primitive_desc(dnnl_engine, dnnl::algorithm::binary_mul,
-                                                  x_md, x_scale_md, dst_md);
+    auto binary_pd = dnnl::binary::primitive_desc(dnnl_engine, dnnl::algorithm::binary_mul, x_md, x_scale_md, dst_md);
 
     // Create primitive
     dst_mem = dnnl::memory(binary_pd.dst_desc(), dnnl_engine);
     auto binary_prim = dnnl::binary(binary_pd);
 
-    sp.AddPrimitive(binary_prim, {{DNNL_ARG_SRC_0, x_mem},
-                                  {DNNL_ARG_SRC_1, x_scale_mem},
-                                  {DNNL_ARG_DST, dst_mem}});
+    sp.AddPrimitive(binary_prim, {{DNNL_ARG_SRC_0, x_mem}, {DNNL_ARG_SRC_1, x_scale_mem}, {DNNL_ARG_DST, dst_mem}});
   }
 
   // Set the output mem

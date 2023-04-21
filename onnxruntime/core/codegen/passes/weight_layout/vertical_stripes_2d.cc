@@ -15,7 +15,9 @@ const std::string WeightLayoutVerticalStripe2D::GetKey(
     int stripe_width) {
   return WeightLayout::GetKey(
       local_name_prefix + std::to_string(stripe_width),
-      proto_type, 2, 0.0f);
+      proto_type,
+      2,
+      0.0f);
 }
 
 WeightLayoutVerticalStripe2D::WeightLayoutVerticalStripe2D(
@@ -23,7 +25,9 @@ WeightLayoutVerticalStripe2D::WeightLayoutVerticalStripe2D(
     int stripe_width)
     : WeightLayout(
           local_name_prefix + std::to_string(stripe_width),
-          proto_type, 2, 0.0f),
+          proto_type,
+          2,
+          0.0f),
       stripe_width_(stripe_width) {
 }
 

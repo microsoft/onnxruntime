@@ -19,12 +19,10 @@ class BaseOpBuilder : public IOpBuilder {
 #ifdef __APPLE__
  public:
   virtual void AddInitializersToSkip(ModelBuilder& /* model_builder */, const Node& /* node */) const override {}
-  [[nodiscard]] Status AddToModelBuilder(ModelBuilder& model_builder, const Node& node,
-                                         const logging::Logger& logger) const override final;
+  [[nodiscard]] Status AddToModelBuilder(ModelBuilder& model_builder, const Node& node, const logging::Logger& logger) const override final;
 
  protected:
-  [[nodiscard]] virtual Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
-                                                     const logging::Logger& logger) const = 0;
+  [[nodiscard]] virtual Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node, const logging::Logger& logger) const = 0;
 
   static std::unique_ptr<COREML_SPEC::NeuralNetworkLayer>
   CreateNNLayer(ModelBuilder& model_builder, const Node& node);
@@ -34,12 +32,10 @@ class BaseOpBuilder : public IOpBuilder {
 
   // Operator support related
  public:
-  bool IsOpSupported(const Node& node, const OpBuilderInputParams& input_params,
-                     const logging::Logger& logger) const override;
+  bool IsOpSupported(const Node& node, const OpBuilderInputParams& input_params, const logging::Logger& logger) const override;
 
  protected:
-  virtual bool IsOpSupportedImpl(const Node& /* node */, const OpBuilderInputParams& /* input_params */,
-                                 const logging::Logger& /* logger */) const {
+  virtual bool IsOpSupportedImpl(const Node& /* node */, const OpBuilderInputParams& /* input_params */, const logging::Logger& /* logger */) const {
     return true;
   }
 

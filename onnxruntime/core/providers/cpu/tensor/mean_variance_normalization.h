@@ -26,8 +26,7 @@ class MeanVarianceNormalization_0 : public OpKernel {
     const auto dims = X->Shape().GetDims();
 
     if (dims.size() < 4) {
-      return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                    "Input is expected to have four dimensions corresponding to [N,C,H,W]");
+      return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Input is expected to have four dimensions corresponding to [N,C,H,W]");
     }
 
     const int64_t N = dims[0];

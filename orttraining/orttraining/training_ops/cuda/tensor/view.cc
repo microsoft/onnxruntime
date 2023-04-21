@@ -51,8 +51,7 @@ Status View::ComputeInternal(OpKernelContext* context) const {
   for (int i = 0; i < view_count; ++i) {
     const Tensor* shape_tensor = context->Input<Tensor>(i + 1);
     if (shape_tensor->Shape().NumDimensions() != 1) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                             "A shape tensor must be a vector tensor, got ", shape_tensor->Shape().NumDimensions(), " dimensions");
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "A shape tensor must be a vector tensor, got ", shape_tensor->Shape().NumDimensions(), " dimensions");
     }
 
     size_t n_dims = static_cast<size_t>(shape_tensor->Shape()[0]);

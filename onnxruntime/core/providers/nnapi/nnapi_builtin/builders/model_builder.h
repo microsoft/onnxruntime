@@ -30,15 +30,12 @@ class ModelBuilder {
  public:
   using Shape = Shaper::Shape;
 
-  ModelBuilder(const GraphViewer& graph_viewer, const NnApi& nnapi_handle,
-               gsl::span<const DeviceWrapper> nnapi_target_devices, TargetDeviceOption target_device_option);
+  ModelBuilder(const GraphViewer& graph_viewer, const NnApi& nnapi_handle, gsl::span<const DeviceWrapper> nnapi_target_devices, TargetDeviceOption target_device_option);
 
   common::Status Compile(std::unique_ptr<Model>& model);
 
   // Add an NNAPI operation (operator)
-  common::Status AddOperation(int op, const InlinedVector<uint32_t>& input_indices,
-                              const std::vector<std::string>& output_names,
-                              const std::vector<android::nn::wrapper::OperandType>& output_types);
+  common::Status AddOperation(int op, const InlinedVector<uint32_t>& input_indices, const std::vector<std::string>& output_names, const std::vector<android::nn::wrapper::OperandType>& output_types);
 
   // Find if the given node_unit has a fuseable activation (Relu/Relu1/Relu6)
   // For now we only support node_unit with a single output
@@ -51,15 +48,13 @@ class ModelBuilder {
 
   // Add an NNAPI tensor operand (and allocate persist buffer)
   common::Status AddOperandFromPersistMemoryBuffer(
-      const std::string& name, const void* buffer,
-      const android::nn::wrapper::OperandType& operand_type);
+      const std::string& name, const void* buffer, const android::nn::wrapper::OperandType& operand_type);
 
   // The initializer will be processed separately, skip it as an initializer
   void AddInitializerToSkip(const std::string& tensor_name);
 
   // Register informations for a particular operand
-  void RegisterOperand(const std::string& name, uint32_t index,
-                       const android::nn::wrapper::OperandType& operand_type);
+  void RegisterOperand(const std::string& name, uint32_t index, const android::nn::wrapper::OperandType& operand_type);
 
   // Generate an unique name for intermediate result
   std::string GetUniqueName(const std::string& base_name);

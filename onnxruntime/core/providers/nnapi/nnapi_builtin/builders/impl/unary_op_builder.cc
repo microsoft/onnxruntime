@@ -32,20 +32,17 @@ class UnaryOpBuilder : public BaseOpBuilder {
 
   // Operator support related
  private:
-  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
-                         const OpSupportCheckParams& params) const override;
+  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit, const OpSupportCheckParams& params) const override;
 
   int32_t GetMinSupportedNNAPIFeatureLevel(const NodeUnit& /* node_unit */,
                                            const OpSupportCheckParams& params) const override;
 
   bool HasSupportedInputOutputsImpl(
-      const InitializedTensorSet& /* initializers */, const NodeUnit& node_unit,
-      const OpSupportCheckParams& /* params */) const override;
+      const InitializedTensorSet& /* initializers */, const NodeUnit& node_unit, const OpSupportCheckParams& /* params */) const override;
 
   int GetMinSupportedOpSet(const NodeUnit& node_unit) const override;
 
-  static bool IsQuantizedOpSupported(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
-                                     const OpSupportCheckParams& params);
+  static bool IsQuantizedOpSupported(const InitializedTensorSet& initializers, const NodeUnit& node_unit, const OpSupportCheckParams& params);
 };
 
 // Add operator related
@@ -65,19 +62,18 @@ void UnaryOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const No
 
 void CreateUnaryOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {
   CreateSharedOpBuilderImpl<UnaryOpBuilder>(
-      op_type, op_registrations,
-      {
-          "Abs",
-          "Exp",
-          "Floor",
-          "Log",
-          "Sigmoid",
-          "Neg",
-          "Sin",
-          "Sqrt",
-          "Tanh",
-          "QLinearSigmoid",
-      });
+      op_type, op_registrations, {
+                                     "Abs",
+                                     "Exp",
+                                     "Floor",
+                                     "Log",
+                                     "Sigmoid",
+                                     "Neg",
+                                     "Sin",
+                                     "Sqrt",
+                                     "Tanh",
+                                     "QLinearSigmoid",
+                                 });
 }
 
 Status UnaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
@@ -134,15 +130,13 @@ Status UnaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
   InlinedVector<uint32_t> input_indices;
   input_indices.push_back(operand_indices.at(input));
   const OperandType output_operand_type(operand_types.at(input).type, shaper[output], y_scale, y_zero_point);
-  ORT_RETURN_IF_ERROR(model_builder.AddOperation(op_code, input_indices,
-                                                 {output}, {output_operand_type}));
+  ORT_RETURN_IF_ERROR(model_builder.AddOperation(op_code, input_indices, {output}, {output_operand_type}));
   return Status::OK();
 }
 
 // Operator support related
 
-bool UnaryOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
-                                       const OpSupportCheckParams& params) const {
+bool UnaryOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit, const OpSupportCheckParams& params) const {
   if (node_unit.OpType() == "QLinearSigmoid") {
     return IsQuantizedOpSupported(initializers, node_unit, params);
   } else if (node_unit.OpType() == "Sigmoid") {
@@ -178,8 +172,7 @@ int32_t UnaryOpBuilder::GetMinSupportedNNAPIFeatureLevel(const NodeUnit& node_un
 }
 
 bool UnaryOpBuilder::HasSupportedInputOutputsImpl(
-    const InitializedTensorSet& initializers, const NodeUnit& node_unit,
-    const OpSupportCheckParams& params) const {
+    const InitializedTensorSet& initializers, const NodeUnit& node_unit, const OpSupportCheckParams& params) const {
   // We only need to override input check for QLinearSigmoid
   if (node_unit.OpType() != "QLinearSigmoid")
     return BaseOpBuilder::HasSupportedInputOutputsImpl(initializers, node_unit, params);
@@ -212,8 +205,10 @@ int UnaryOpBuilder::GetMinSupportedOpSet(const NodeUnit& node_unit) const {
   // See https://android.googlesource.com/platform/frameworks/ml/+/refs/heads/android10-c2f2-release/nn/common/operations/Activation.cpp#180
   if (!HasRequiredScaleAndZeroPoint(initializers,
                                     MakeString("Op [", op_type, "] name [", node_unit.Name(), "]'s output 0 "),
-                                    node_unit.Outputs()[0], node_unit.ModelPath(),
-                                    1.f / 256 /* required_scale */, 0 /* required_zp */)) {
+                                    node_unit.Outputs()[0],
+                                    node_unit.ModelPath(),
+                                    1.f / 256 /* required_scale */,
+                                    0 /* required_zp */)) {
     return false;
   }
 

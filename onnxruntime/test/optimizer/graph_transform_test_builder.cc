@@ -56,8 +56,7 @@ void TransformerTester(const std::function<void(ModelTestBuilder& helper)>& buil
   std::unordered_map<std::string, int> domain_to_version;
   domain_to_version[kOnnxDomain] = opset_version;
   domain_to_version[kMSDomain] = 1;
-  Model model("TransformerTester", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
-              domain_to_version, {}, DefaultLoggingManager().DefaultLogger());
+  Model model("TransformerTester", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {}, DefaultLoggingManager().DefaultLogger());
   Graph& graph = model.MainGraph();
   ModelTestBuilder helper(graph);
   ASSERT_TRUE(build_test_case);
@@ -69,8 +68,7 @@ void TransformerTester(const std::function<void(ModelTestBuilder& helper)>& buil
   std::string model_data;
   model.ToProto().SerializeToString(&model_data);
 
-  auto run_model = [&](TransformerLevel level, std::vector<OrtValue>& fetches,
-                       std::unique_ptr<GraphTransformer> transformer = nullptr) {
+  auto run_model = [&](TransformerLevel level, std::vector<OrtValue>& fetches, std::unique_ptr<GraphTransformer> transformer = nullptr) {
     SessionOptions session_options;
     session_options.graph_optimization_level = transformer ? baseline_level : level;
 #if 0  // enable to dump model for debugging
@@ -123,19 +121,18 @@ void TransformerTester(const std::function<void(ModelTestBuilder& helper)>& buil
   }
 }
 
-Status TestGraphTransformer(const std::function<void(ModelTestBuilder& helper)>& build_test_case, int opset_version,
-                            const logging::Logger& logger, std::unique_ptr<GraphTransformer> transformer,
-                            TransformerLevel level, unsigned steps, const std::function<Status(Graph&)>& pre_graph_checker,
-                            const std::function<Status(Graph&)>& post_graph_checker) {
+Status TestGraphTransformer(const std::function<void(ModelTestBuilder& helper)>& build_test_case, int opset_version, const logging::Logger& logger, std::unique_ptr<GraphTransformer> transformer, TransformerLevel level, unsigned steps, const std::function<Status(Graph&)>& pre_graph_checker, const std::function<Status(Graph&)>& post_graph_checker) {
   const std::vector<int64_t> opset_versions{opset_version};
-  return TestGraphTransformer(build_test_case, opset_versions, logger, std::move(transformer),
-                              level, steps, pre_graph_checker, post_graph_checker);
+  return TestGraphTransformer(build_test_case, opset_versions, logger, std::move(transformer), level, steps, pre_graph_checker, post_graph_checker);
 }
 
 Status TestGraphTransformer(const std::function<void(ModelTestBuilder& helper)>& build_test_case,
                             const std::vector<int64_t>& opset_versions,
-                            const logging::Logger& logger, std::unique_ptr<GraphTransformer> transformer,
-                            TransformerLevel level, unsigned steps, const std::function<Status(Graph&)>& pre_graph_checker,
+                            const logging::Logger& logger,
+                            std::unique_ptr<GraphTransformer> transformer,
+                            TransformerLevel level,
+                            unsigned steps,
+                            const std::function<Status(Graph&)>& pre_graph_checker,
                             const std::function<Status(Graph&)>& post_graph_checker) {
   onnxruntime::GraphTransformerManager graph_transformation_mgr{steps};
   ORT_RETURN_IF_ERROR(graph_transformation_mgr.Register(std::move(transformer), level));
@@ -145,8 +142,7 @@ Status TestGraphTransformer(const std::function<void(ModelTestBuilder& helper)>&
     std::unordered_map<std::string, int> domain_to_version;
     domain_to_version[kOnnxDomain] = opset;
     domain_to_version[kMSDomain] = 1;
-    Model model("TransformerTester", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
-                domain_to_version, {}, logger);
+    Model model("TransformerTester", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {}, logger);
     Graph& graph = model.MainGraph();
     ModelTestBuilder helper(graph);
     ORT_RETURN_IF_NOT(build_test_case, "build_test_case must be provided");

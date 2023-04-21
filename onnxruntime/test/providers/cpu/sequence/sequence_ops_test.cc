@@ -390,21 +390,24 @@ TEST(SequenceOpsTest, SplitToSequence_PositiveAxisScalarSplit) {
   test.AddAttribute("axis", axis);
   test.AddInput<int64_t>("split", {}, {2});
   SeqTensors<float> output;
-  output.AddTensor({2, 2, 2}, {1.f, 2.f,
-                               7.f, 8.f,
+  output.AddTensor({2, 2, 2}, {1.f, 2.f, 7.f, 8.f,
 
-                               13.f, 14.f,
-                               19.f, 20.f});
-  output.AddTensor({2, 2, 2}, {3.f, 4.f,
-                               9.f, 10.f,
+                               13.f,
+                               14.f,
+                               19.f,
+                               20.f});
+  output.AddTensor({2, 2, 2}, {3.f, 4.f, 9.f, 10.f,
 
-                               15.f, 16.f,
-                               21.f, 22.f});
-  output.AddTensor({2, 2, 2}, {5.f, 6.f,
-                               11.f, 12.f,
+                               15.f,
+                               16.f,
+                               21.f,
+                               22.f});
+  output.AddTensor({2, 2, 2}, {5.f, 6.f, 11.f, 12.f,
 
-                               17.f, 18.f,
-                               23.f, 24.f});
+                               17.f,
+                               18.f,
+                               23.f,
+                               24.f});
   test.AddSeqOutput("S2", output);
   test.Run();
 }

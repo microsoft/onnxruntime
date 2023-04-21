@@ -17,14 +17,12 @@ namespace {
 
 template <typename T>
 struct DispatchSoftmaxGradImpl {
-  Status operator()(cudaStream_t stream, cudnnHandle_t cudnn_handle, Tensor* dX, const Tensor* dY, const Tensor* Y,
-                    int element_count, int batch_count, bool is_log_softmax) {
+  Status operator()(cudaStream_t stream, cudnnHandle_t cudnn_handle, Tensor* dX, const Tensor* dY, const Tensor* Y, int element_count, int batch_count, bool is_log_softmax) {
     typedef typename ToCudaType<T>::MappedType CudaT;
     CudaT* input_grad_data = reinterpret_cast<CudaT*>(dX->MutableData<T>());
     const CudaT* output_grad_data = reinterpret_cast<const CudaT*>(dY->Data<T>());
     const CudaT* softmax_output_data = reinterpret_cast<const CudaT*>(Y->Data<T>());
-    return SoftmaxGradImpl<CudaT>(stream, cudnn_handle, input_grad_data, output_grad_data, softmax_output_data,
-                                  element_count, batch_count, is_log_softmax);
+    return SoftmaxGradImpl<CudaT>(stream, cudnn_handle, input_grad_data, output_grad_data, softmax_output_data, element_count, batch_count, is_log_softmax);
   }
 };
 
@@ -37,11 +35,9 @@ struct DispatchSoftmaxGradImpl {
 #define SOFTMAX_GRAD_TYPES float, double, MLFloat16, BFloat16
 #endif
 
-#define REGISTER_SOFTMAX_GRAD_KERNEL(name)                                                                \
-  ONNX_OPERATOR_KERNEL_EX(                                                                                \
-      name, kMSDomain, 1, kCudaExecutionProvider,                                                         \
-      (*KernelDefBuilder::Create()).TypeConstraint("T", BuildKernelDefConstraints<SOFTMAX_GRAD_TYPES>()), \
-      SoftmaxGrad);
+#define REGISTER_SOFTMAX_GRAD_KERNEL(name) \
+  ONNX_OPERATOR_KERNEL_EX(                 \
+      name, kMSDomain, 1, kCudaExecutionProvider, (*KernelDefBuilder::Create()).TypeConstraint("T", BuildKernelDefConstraints<SOFTMAX_GRAD_TYPES>()), SoftmaxGrad);
 
 REGISTER_SOFTMAX_GRAD_KERNEL(SoftmaxGrad)
 REGISTER_SOFTMAX_GRAD_KERNEL(SoftmaxGrad_13)
@@ -103,9 +99,7 @@ Status SoftmaxGrad::ComputeInternal(OpKernelContext* ctx) const {
 
   utils::MLTypeCallDispatcher<SOFTMAX_GRAD_TYPES> t_disp(dY->GetElementType());
   Status status = t_disp.InvokeRet<Status, DispatchSoftmaxGradImpl>(
-      Stream(ctx), GetCudnnHandle(ctx), is_transpose_required ? transposed_dX.get() : dX,
-      is_transpose_required ? transposed_dY.get() : dY, is_transpose_required ? transposed_Y.get() : Y, element_count,
-      batch_count, is_log_softmax_);
+      Stream(ctx), GetCudnnHandle(ctx), is_transpose_required ? transposed_dX.get() : dX, is_transpose_required ? transposed_dY.get() : dY, is_transpose_required ? transposed_Y.get() : Y, element_count, batch_count, is_log_softmax_);
   ORT_RETURN_IF_ERROR(status);
 
   if (is_transpose_required) {

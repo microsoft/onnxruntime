@@ -74,10 +74,11 @@ class UniDirectionalAttnLstm {
 
   void SetNumThreads();
 
-  void GateComputations(span_T_iter& out, span_T_iter& out_end,
-                        span_T_iter& C_prev, span_T_iter& C_prev_end,  // Ct-1 value not 'ct'. using 'C' for clarity
-                        span_T_iter& C_prev_clipped, span_T_iter& C_prev_clipped_end,
-                        span_T_iter& batched_output, span_T_iter& batched_output_end,
+  void GateComputations(span_T_iter& out, span_T_iter& out_end, span_T_iter& C_prev, span_T_iter& C_prev_end,  // Ct-1 value not 'ct'. using 'C' for clarity
+                        span_T_iter& C_prev_clipped,
+                        span_T_iter& C_prev_clipped_end,
+                        span_T_iter& batched_output,
+                        span_T_iter& batched_output_end,
                         const gsl::span<const int>& seq_lengths,
                         const int min_sequence_length,
                         const int step,

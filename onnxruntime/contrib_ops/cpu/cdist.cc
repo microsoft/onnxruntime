@@ -11,10 +11,8 @@
 using onnxruntime::narrow;
 namespace onnxruntime {
 namespace contrib {
-#define DEFINE_KERNEL(data_type)                                                                                  \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(CDist, kMSDomain, 1, data_type, kCpuExecutionProvider,                            \
-                                KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<data_type>()), \
-                                CDist<data_type>);
+#define DEFINE_KERNEL(data_type) \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(CDist, kMSDomain, 1, data_type, kCpuExecutionProvider, KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<data_type>()), CDist<data_type>);
 DEFINE_KERNEL(float);
 DEFINE_KERNEL(double);
 
@@ -60,11 +58,7 @@ static void CalculateSqeuclidean(const Tensor& a, const Tensor& b, Tensor& c, co
 // use MLAS on 64-bit (no 32-bit dgemm)
 #if defined(_M_AMD64) || defined(__x86_64__)
   // Use GEMM of A and B^T with -2 as alpha to calculate -2*sum_k(Xik*Yjk)
-  math::Gemm<T>(CBLAS_TRANSPOSE::CblasNoTrans, CBLAS_TRANSPOSE::CblasTrans,
-                m, n, k,
-                static_cast<T>(-2.), a_data, b_data, static_cast<T>(0.),
-                c_data,
-                threadpool);
+  math::Gemm<T>(CBLAS_TRANSPOSE::CblasNoTrans, CBLAS_TRANSPOSE::CblasTrans, m, n, k, static_cast<T>(-2.), a_data, b_data, static_cast<T>(0.), c_data, threadpool);
 #else
   // the performance of this isn't great as the eigen matmul is single threaded by default
   // if you're on x86 and care about performance try MKL first. if there's a good enough argument for optimising this

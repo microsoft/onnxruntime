@@ -67,7 +67,10 @@ struct TArray {
   TArray(int32_t size) : size_(size), data_() {
     ORT_ENFORCE(
         0 <= size && size <= capacity,
-        "TArray size must be within range [0, ", capacity, "]. Actual: ", size);
+        "TArray size must be within range [0, ",
+        capacity,
+        "]. Actual: ",
+        size);
   }
 
   TArray(const std::vector<T>& vec) : TArray(static_cast<int32_t>(vec.size())) {
@@ -83,7 +86,10 @@ struct TArray {
   void SetSize(int32_t size) {
     ORT_ENFORCE(
         0 <= size && size <= capacity,
-        "TArray size must be within range [0, ", capacity, "]. Actual: ", size);
+        "TArray size must be within range [0, ",
+        capacity,
+        "]. Actual: ",
+        size);
     size_ = size;
   }
 

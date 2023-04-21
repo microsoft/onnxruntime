@@ -116,8 +116,7 @@ static void RunNHWCResizeModel(const ORTCHAR_T* ort_model_path, bool use_htp) {
 
   // Run session and get outputs
   std::array<const char*, 2> output_names{"output0", "output1"};
-  std::vector<Ort::Value> ort_outputs = session.Run(Ort::RunOptions{nullptr}, ort_input_names.data(), ort_inputs.data(),
-                                                    ort_inputs.size(), output_names.data(), output_names.size());
+  std::vector<Ort::Value> ort_outputs = session.Run(Ort::RunOptions{nullptr}, ort_input_names.data(), ort_inputs.data(), ort_inputs.size(), output_names.data(), output_names.size());
 
   // Check output shape.
   Ort::Value& ort_output = ort_outputs[1];

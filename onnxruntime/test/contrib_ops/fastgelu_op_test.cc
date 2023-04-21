@@ -42,10 +42,7 @@ const std::vector<float> GetExpectedResult(const std::vector<float>& input_data,
 }
 
 #if defined(USE_CUDA) || defined(USE_ROCM)
-static void RunFastGeluGpuTest(const std::vector<float>& input_data, const std::vector<float>& bias_data,
-                               const std::vector<float>& output_data, const std::vector<int64_t>& input_dims,
-                               const std::vector<int64_t>& bias_dims, const std::vector<int64_t>& output_dims,
-                               bool has_bias = true, bool use_float16 = false) {
+static void RunFastGeluGpuTest(const std::vector<float>& input_data, const std::vector<float>& bias_data, const std::vector<float>& output_data, const std::vector<int64_t>& input_dims, const std::vector<int64_t>& bias_dims, const std::vector<int64_t>& output_dims, bool has_bias = true, bool use_float16 = false) {
 #ifdef USE_CUDA
   // Test CUDA operator.
   int min_cuda_architecture = use_float16 ? 530 : 0;
@@ -81,10 +78,7 @@ static void RunFastGeluGpuTest(const std::vector<float>& input_data, const std::
 #endif
 
 #if defined(USE_DNNL)
-static void RunFastGeluTest_bf16(const std::vector<float>& input_data, const std::vector<float>& bias_data,
-                                 const std::vector<float>& output_data, const std::vector<int64_t>& input_dims,
-                                 const std::vector<int64_t>& bias_dims, const std::vector<int64_t>& output_dims,
-                                 bool has_bias = true) {
+static void RunFastGeluTest_bf16(const std::vector<float>& input_data, const std::vector<float>& bias_data, const std::vector<float>& output_data, const std::vector<int64_t>& input_dims, const std::vector<int64_t>& bias_dims, const std::vector<int64_t>& output_dims, bool has_bias = true) {
   OpTester tester("FastGelu", 1, onnxruntime::kMSDomain);
 
   tester.AddInput<BFloat16>("X", input_dims, FloatsToBFloat16s(input_data));
@@ -101,10 +95,7 @@ static void RunFastGeluTest_bf16(const std::vector<float>& input_data, const std
 }
 #endif  //  USE_DNNL
 
-static void RunFastGeluCpuTest(const std::vector<float>& input_data, const std::vector<float>& bias_data,
-                               const std::vector<float>& output_data, const std::vector<int64_t>& input_dims,
-                               const std::vector<int64_t>& bias_dims, const std::vector<int64_t>& output_dims,
-                               bool has_bias = true) {
+static void RunFastGeluCpuTest(const std::vector<float>& input_data, const std::vector<float>& bias_data, const std::vector<float>& output_data, const std::vector<int64_t>& input_dims, const std::vector<int64_t>& bias_dims, const std::vector<int64_t>& output_dims, bool has_bias = true) {
   // Test CPU operator: only float32 is implemented for FastGelu CPU.
   if (nullptr != DefaultCpuExecutionProvider().get()) {
     OpTester tester("FastGelu", 1, onnxruntime::kMSDomain);
@@ -173,8 +164,7 @@ TEST(FastGeluTest, FastGeluWithBias_bfloat16) {
   int hidden_size = 4;
 
   std::vector<float> input_data = {
-      0.8f, -0.5f, 0.0f, 1.f,
-      0.5f, 0.2f, 0.3f, -0.6f};
+      0.8f, -0.5f, 0.0f, 1.f, 0.5f, 0.2f, 0.3f, -0.6f};
 
   std::vector<float> bias_data = {
       -0.5f, 0.6f, 1.2f, 2.1f};
@@ -200,8 +190,7 @@ TEST(FastGeluTest, FastGeluWithoutBias_bfloat16) {
   int hidden_size = 4;
 
   std::vector<float> input_data = {
-      0.8f, -0.5f, 0.0f, 1.f,
-      0.5f, 0.2f, 0.3f, -0.6f};
+      0.8f, -0.5f, 0.0f, 1.f, 0.5f, 0.2f, 0.3f, -0.6f};
 
   std::vector<float> bias_data = {
       -0.5f, 0.6f, 1.2f, 2.1f};
@@ -222,8 +211,7 @@ TEST(FastGeluTest, FastGeluWithBiasFloat32) {
   int hidden_size = 4;
 
   std::vector<float> input_data = {
-      0.8f, -0.5f, 0.0f, 1.f,
-      0.5f, 0.2f, 0.3f, -0.6f};
+      0.8f, -0.5f, 0.0f, 1.f, 0.5f, 0.2f, 0.3f, -0.6f};
 
   std::vector<float> bias_data = {
       -0.5f, 0.6f, 1.2f, 2.1f};
@@ -237,8 +225,7 @@ TEST(FastGeluTest, FastGeluWithoutBiasFloat32) {
   int hidden_size = 4;
 
   std::vector<float> input_data = {
-      0.8f, -0.5f, 0.0f, 1.f,
-      0.5f, 0.2f, 0.3f, -0.6f};
+      0.8f, -0.5f, 0.0f, 1.f, 0.5f, 0.2f, 0.3f, -0.6f};
 
   std::vector<float> bias_data = {};
 
@@ -253,15 +240,13 @@ TEST(FastGeluTest, FastGeluWithBiasFloat16_2) {
   int hidden_size = 2;
 
   std::vector<float> input_data = {
-      0.8f, -0.5f,
-      0.5f, 0.2f};
+      0.8f, -0.5f, 0.5f, 0.2f};
 
   std::vector<float> bias_data = {
       -0.5f, 0.6f};
 
   std::vector<float> output_data = {
-      0.1851806640625f, 0.054046630859375f,
-      0, 0.63037109375f};
+      0.1851806640625f, 0.054046630859375f, 0, 0.63037109375f};
 
   std::vector<int64_t> input_dims = {batch_size, sequence_length, hidden_size};
   std::vector<int64_t> bias_dims = {hidden_size};
@@ -276,14 +261,12 @@ TEST(FastGeluTest, FastGeluWithoutBiasFloat16_2) {
   int hidden_size = 2;
 
   std::vector<float> input_data = {
-      0.8f, -0.5f,
-      0.5f, 0.2f};
+      0.8f, -0.5f, 0.5f, 0.2f};
 
   std::vector<float> bias_data = {};
 
   std::vector<float> output_data = {
-      0.63037109375f, -0.154296875f,
-      0.345703125f, 0.11578369140625f};
+      0.63037109375f, -0.154296875f, 0.345703125f, 0.11578369140625f};
 
   std::vector<int64_t> input_dims = {batch_size, sequence_length, hidden_size};
   std::vector<int64_t> bias_dims = {};
@@ -298,15 +281,13 @@ TEST(FastGeluTest, FastGeluWithBiasFloat16_4) {
   int hidden_size = 4;
 
   std::vector<float> input_data = {
-      0.8f, -0.5f, 0.0f, 1.f,
-      0.5f, 0.2f, 0.3f, -0.6f};
+      0.8f, -0.5f, 0.0f, 1.f, 0.5f, 0.2f, 0.3f, -0.6f};
 
   std::vector<float> bias_data = {
       -0.5f, 0.6f, 1.2f, 2.1f};
 
   std::vector<float> output_data = {
-      0.1851806640625f, 0.054046630859375f, 1.0615234375f, 3.095703125f,
-      0, 0.63037109375f, 1.3984375f, 1.3984375f};
+      0.1851806640625f, 0.054046630859375f, 1.0615234375f, 3.095703125f, 0, 0.63037109375f, 1.3984375f, 1.3984375f};
 
   std::vector<int64_t> input_dims = {batch_size, sequence_length, hidden_size};
   std::vector<int64_t> bias_dims = {hidden_size};
@@ -321,14 +302,12 @@ TEST(FastGeluTest, FastGeluWithoutBiasFloat16_4) {
   int hidden_size = 4;
 
   std::vector<float> input_data = {
-      0.8f, -0.5f, 0.0f, 1.f,
-      0.5f, 0.2f, 0.3f, -0.6f};
+      0.8f, -0.5f, 0.0f, 1.f, 0.5f, 0.2f, 0.3f, -0.6f};
 
   std::vector<float> bias_data = {};
 
   std::vector<float> output_data = {
-      0.63037109375f, -0.154296875f, 0.0f, 0.8408203125f,
-      0.345703125f, 0.11578369140625f, 0.1854248046875f, -0.1646728515625f};
+      0.63037109375f, -0.154296875f, 0.0f, 0.8408203125f, 0.345703125f, 0.11578369140625f, 0.1854248046875f, -0.1646728515625f};
 
   std::vector<int64_t> input_dims = {batch_size, sequence_length, hidden_size};
   std::vector<int64_t> bias_dims = {};
@@ -343,15 +322,13 @@ TEST(FastGeluTest, FastGeluWithBiasFloat16_8) {
   int hidden_size = 8;
 
   std::vector<float> input_data = {
-      0.8f, -0.5f, 0.0f, 1.f, 1.3f, 2.1f, -0.2f, 1.1f,
-      0.5f, 0.2f, 0.3f, -0.6f, 3.1f, 2.2f, -1.1f, 0.0f};
+      0.8f, -0.5f, 0.0f, 1.f, 1.3f, 2.1f, -0.2f, 1.1f, 0.5f, 0.2f, 0.3f, -0.6f, 3.1f, 2.2f, -1.1f, 0.0f};
 
   std::vector<float> bias_data = {
       -0.5f, 0.6f, 1.2f, 2.1f, 1.3f, -1.0f, 0.0f, 3.1f};
 
   std::vector<float> output_data = {
-      0.18537094f, 0.053982764f, 1.061703f, 3.0973732f, 2.5883462f, 0.95058095f, -0.084148578f, 4.1999736f,
-      0.0f, 0.63043171f, 1.3995714f, 1.3995714f, 4.3999906f, 1.061703f, -0.14941895f, 3.0973732f};
+      0.18537094f, 0.053982764f, 1.061703f, 3.0973732f, 2.5883462f, 0.95058095f, -0.084148578f, 4.1999736f, 0.0f, 0.63043171f, 1.3995714f, 1.3995714f, 4.3999906f, 1.061703f, -0.14941895f, 3.0973732f};
 
   std::vector<int64_t> input_dims = {batch_size, sequence_length, hidden_size};
   std::vector<int64_t> bias_dims = {hidden_size};
@@ -366,14 +343,12 @@ TEST(FastGeluTest, FastGeluWithoutBiasFloat16_8) {
   int hidden_size = 8;
 
   std::vector<float> input_data = {
-      0.8f, -0.5f, 0.0f, 1.f, 1.3f, 2.1f, -0.2f, 1.1f,
-      0.5f, 0.2f, 0.3f, -0.6f, 3.1f, 2.2f, -1.1f, 0.0f};
+      0.8f, -0.5f, 0.0f, 1.f, 1.3f, 2.1f, -0.2f, 1.1f, 0.5f, 0.2f, 0.3f, -0.6f, 3.1f, 2.2f, -1.1f, 0.0f};
 
   std::vector<float> bias_data = {};
 
   std::vector<float> output_data = {
-      0.63043171f, -0.15428598f, 0.0f, 0.84119201f, 1.173929f, 2.062669f, -0.084148578f, 0.95058107f,
-      0.345714f, 0.11585142f, 0.18537094f, -0.1645848f, 3.0973732f, 2.1696784f, -0.14941895f, 0.0f};
+      0.63043171f, -0.15428598f, 0.0f, 0.84119201f, 1.173929f, 2.062669f, -0.084148578f, 0.95058107f, 0.345714f, 0.11585142f, 0.18537094f, -0.1645848f, 3.0973732f, 2.1696784f, -0.14941895f, 0.0f};
 
   std::vector<int64_t> input_dims = {batch_size, sequence_length, hidden_size};
   std::vector<int64_t> bias_dims = {hidden_size};
@@ -403,15 +378,13 @@ TEST(FastGeluTest, FastGeluWithBias_BFloat16) {
   int hidden_size = 4;
 
   std::vector<float> X = {
-      0.8f, -0.5f, 0.0f, 1.f,
-      0.5f, 0.2f, 0.3f, -0.6f};
+      0.8f, -0.5f, 0.0f, 1.f, 0.5f, 0.2f, 0.3f, -0.6f};
 
   std::vector<float> B = {
       -0.5f, 0.6f, 1.2f, 2.1f};
 
   std::vector<float> Y = {
-      0.1851806640625f, 0.054046630859375f, 1.0615234375f, 3.095703125f,
-      0, 0.63037109375f, 1.3984375f, 1.3984375f};
+      0.1851806640625f, 0.054046630859375f, 1.0615234375f, 3.095703125f, 0, 0.63037109375f, 1.3984375f, 1.3984375f};
 
   std::vector<int64_t> input_dims = {batch_size, sequence_length, hidden_size};
   std::vector<int64_t> bias_dims = {hidden_size};

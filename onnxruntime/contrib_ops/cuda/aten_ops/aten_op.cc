@@ -9,9 +9,7 @@ namespace contrib {
 namespace cuda {
 
 ONNX_OPERATOR_KERNEL_EX(
-    ATen, kPytorchAtenDomain, 1, kCudaExecutionProvider,
-    (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::AllTensorAndSequenceTensorTypes()),
-    onnxruntime::contrib::ATen);
+    ATen, kPytorchAtenDomain, 1, kCudaExecutionProvider, (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::AllTensorAndSequenceTensorTypes()), onnxruntime::contrib::ATen);
 
 }  // namespace cuda
 }  // namespace contrib

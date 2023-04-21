@@ -181,12 +181,7 @@ Status QOrderedMatMul::ComputeInternal(OpKernelContext* context) const {
     alpha_value = const_scale_A_ * const_scale_B_ / const_scale_Y_;
   }
   const float beta = *scaleC / const_scale_Y_;
-  ORT_RETURN_IF_ERROR(QOrdered_MatMul(cublasLt, stream, device_prop,
-                                      gsl::narrow<int32_t>(batchA), rowsA, colsB, colsA,
-                                      alpha, tensor_A.Data<int8_t>(), tensor_B.Data<int8_t>(), gsl::narrow<int32_t>(batchB),
-                                      bias, &beta, C, gsl::narrow<int32_t>(batchC),
-                                      tensor_Y->MutableData<int8_t>(), (cublasLtOrder_t)order_B_,
-                                      pointer_mode));
+  ORT_RETURN_IF_ERROR(QOrdered_MatMul(cublasLt, stream, device_prop, gsl::narrow<int32_t>(batchA), rowsA, colsB, colsA, alpha, tensor_A.Data<int8_t>(), tensor_B.Data<int8_t>(), gsl::narrow<int32_t>(batchB), bias, &beta, C, gsl::narrow<int32_t>(batchC), tensor_Y->MutableData<int8_t>(), (cublasLtOrder_t)order_B_, pointer_mode));
 
 #else
 

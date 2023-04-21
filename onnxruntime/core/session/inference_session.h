@@ -300,10 +300,7 @@ class InferenceSession {
    */
   [[nodiscard]] common::Status Initialize();
 
-  [[nodiscard]] common::Status Run(const RunOptions& run_options, gsl::span<const std::string> feed_names,
-                                   gsl::span<const OrtValue> feeds, gsl::span<const std::string> output_names,
-                                   std::vector<OrtValue>* p_fetches,
-                                   const std::vector<OrtDevice>* p_fetches_device_info = nullptr);
+  [[nodiscard]] common::Status Run(const RunOptions& run_options, gsl::span<const std::string> feed_names, gsl::span<const OrtValue> feeds, gsl::span<const std::string> output_names, std::vector<OrtValue>* p_fetches, const std::vector<OrtDevice>* p_fetches_device_info = nullptr);
 
   /**
    * Run a pre-loaded and pre-intialized model.
@@ -315,17 +312,14 @@ class InferenceSession {
    *        This should not be changed during execution of this function.
    * @return OK if success.
    */
-  [[nodiscard]] common::Status Run(const NameMLValMap& feeds, gsl::span<const std::string> output_names,
-                                   std::vector<OrtValue>* p_fetches);
+  [[nodiscard]] common::Status Run(const NameMLValMap& feeds, gsl::span<const std::string> output_names, std::vector<OrtValue>* p_fetches);
 
   /**
    * See Run(const NameMLValMap& feeds, const std::vector<std::string>& output_names, std::vector<OrtValue>* p_fetches)
    * for details.
    * @param run_options use this to tune the Run call to your needs.
    */
-  [[nodiscard]] common::Status Run(const RunOptions& run_options, const NameMLValMap& feeds,
-                                   gsl::span<const std::string> output_names,
-                                   std::vector<OrtValue>* p_fetches);
+  [[nodiscard]] common::Status Run(const RunOptions& run_options, const NameMLValMap& feeds, gsl::span<const std::string> output_names, std::vector<OrtValue>* p_fetches);
 
   /**
    * Creates a new binding object for binding inputs and outputs.
@@ -458,8 +452,7 @@ class InferenceSession {
                         correctly loaded
    * @return OK if success.
    */
-  Status SetTuningResults(const std::vector<TuningResults>& trs, bool error_on_invalid = false,
-                          bool auto_enable = false);
+  Status SetTuningResults(const std::vector<TuningResults>& trs, bool error_on_invalid = false, bool auto_enable = false);
 #endif
 
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
@@ -613,8 +606,7 @@ class InferenceSession {
 
   void InitLogger(logging::LoggingManager* logging_manager);
 
-  [[nodiscard]] common::Status CheckShapes(const std::string& input_name, const TensorShape& input_shape,
-                                           const TensorShape& expected_shape) const;
+  [[nodiscard]] common::Status CheckShapes(const std::string& input_name, const TensorShape& input_shape, const TensorShape& expected_shape) const;
 
   [[nodiscard]] common::Status ValidateInputs(gsl::span<const std::string> feed_names,
                                               gsl::span<const OrtValue> feeds) const;

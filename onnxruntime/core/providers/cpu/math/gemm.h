@@ -28,14 +28,7 @@ class Gemm : protected GemmBase, public OpKernel {
                                    int input_idx,
                                    /*out*/ bool& used_shared_buffers) override;
 
-  static void ComputeGemm(CBLAS_TRANSPOSE trans_a, CBLAS_TRANSPOSE trans_b,
-                          int64_t M, int64_t N, int64_t K,
-                          float alpha,
-                          const T* a_data, const T* b_data,
-                          float beta,
-                          const T* c_data, const TensorShape* c_shape,
-                          T* y_data,
-                          concurrency::ThreadPool* thread_pool);
+  static void ComputeGemm(CBLAS_TRANSPOSE trans_a, CBLAS_TRANSPOSE trans_b, int64_t M, int64_t N, int64_t K, float alpha, const T* a_data, const T* b_data, float beta, const T* c_data, const TensorShape* c_shape, T* y_data, concurrency::ThreadPool* thread_pool);
 
  protected:
   TensorShape b_shape_;

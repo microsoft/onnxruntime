@@ -49,8 +49,7 @@ class OrtValueTensorSlicer {
     enum class Direction { kForward,
                            kReverse };
 
-    explicit Iterator(T& ort_value, size_t slice_dimension, size_t dim0_offset, int64_t position,
-                      Direction direction = Direction::kForward);
+    explicit Iterator(T& ort_value, size_t slice_dimension, size_t dim0_offset, int64_t position, Direction direction = Direction::kForward);
 
     bool operator==(const Iterator& other) const noexcept {
       return ort_value_ == other.ort_value_ && position_ == other.position_;
@@ -129,8 +128,7 @@ class OrtValueTensorSlicer {
   }
 
   Iterator rbegin() const noexcept {
-    return Iterator(*ort_value_, static_cast<size_t>(slice_dimension_), static_cast<size_t>(dim0_offset_), std::numeric_limits<int64_t>::max(),
-                    Iterator::Direction::kReverse);
+    return Iterator(*ort_value_, static_cast<size_t>(slice_dimension_), static_cast<size_t>(dim0_offset_), std::numeric_limits<int64_t>::max(), Iterator::Direction::kReverse);
   }
 
   Iterator rend() const noexcept {

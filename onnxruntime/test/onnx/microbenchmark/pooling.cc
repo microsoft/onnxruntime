@@ -43,8 +43,7 @@ static void RunMlasPool2D(const OrtThreadPoolParams& param, int64_t batch_size, 
     output[i] = dist(gen);
   }
   for (auto _ : state) {
-    MlasPool(MlasMaximumPooling, 2, input_shape, kernel_shape, padding, stride_shape, output_shape, input.data(),
-             output.data(), tp.get());
+    MlasPool(MlasMaximumPooling, 2, input_shape, kernel_shape, padding, stride_shape, output_shape, input.data(), output.data(), tp.get());
   }
 }
 

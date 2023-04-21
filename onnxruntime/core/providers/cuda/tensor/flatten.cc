@@ -9,7 +9,8 @@ namespace cuda {
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     Flatten,
     kOnnxDomain,
-    1, 8,
+    1,
+    8,
     kCudaExecutionProvider,
     (*KernelDefBuilder::Create())
         .Alias(0, 0)
@@ -19,7 +20,8 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     Flatten,
     kOnnxDomain,
-    9, 10,
+    9,
+    10,
     kCudaExecutionProvider,
     (*KernelDefBuilder::Create())
         .Alias(0, 0)
@@ -30,7 +32,8 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     Flatten,
     kOnnxDomain,
-    11, 12,
+    11,
+    12,
     kCudaExecutionProvider,
     (*KernelDefBuilder::Create())
         .Alias(0, 0)
@@ -64,8 +67,7 @@ Status Flatten::ComputeInternal(OpKernelContext* ctx) const {
   const void* source = X->DataRaw();
   void* target = Y->MutableDataRaw();
   if (target != source) {
-    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(target, source, X_shape.Size() * X->DataType()->Size(),
-                                         cudaMemcpyDeviceToDevice, Stream(ctx)));
+    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(target, source, X_shape.Size() * X->DataType()->Size(), cudaMemcpyDeviceToDevice, Stream(ctx)));
   }
 
   return Status::OK();

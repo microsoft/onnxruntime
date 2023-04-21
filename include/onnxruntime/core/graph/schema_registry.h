@@ -40,8 +40,7 @@ class IOnnxRuntimeOpSchemaCollection : public ONNX_NAMESPACE::ISchemaRegistry {
 
   using ISchemaRegistry::GetSchema;
 
-  const ONNX_NAMESPACE::OpSchema* GetSchema(const std::string& key, const int maxInclusiveVersion,
-                                            const std::string& domain) const final {
+  const ONNX_NAMESPACE::OpSchema* GetSchema(const std::string& key, const int maxInclusiveVersion, const std::string& domain) const final {
     const ONNX_NAMESPACE::OpSchema* latest_schema = nullptr;
     int earliest_opset_where_unchanged = std::numeric_limits<int>::max();
     GetSchemaAndHistory(key, maxInclusiveVersion, domain, &latest_schema, &earliest_opset_where_unchanged);
@@ -91,9 +90,7 @@ class OnnxRuntimeOpSchemaRegistry : public IOnnxRuntimeOpSchemaCollection {
 
   using IOnnxRuntimeOpSchemaCollection::GetSchema;
 
-  void GetSchemaAndHistory(const std::string& key, int maxInclusiveVersion, const std::string& domain,
-                           const ONNX_NAMESPACE::OpSchema** latest_schema,
-                           int* earliest_opset_where_unchanged) const override;
+  void GetSchemaAndHistory(const std::string& key, int maxInclusiveVersion, const std::string& domain, const ONNX_NAMESPACE::OpSchema** latest_schema, int* earliest_opset_where_unchanged) const override;
 
   bool empty() const {
     return map_.empty();
@@ -150,9 +147,7 @@ class SchemaRegistryManager : public onnxruntime::IOnnxRuntimeOpSchemaCollection
   @param[out] earliest_opset_where_unchanged The earliest opset version preceding max_inclusive_version where the
   operator is known to be unchanged.
   */
-  void GetSchemaAndHistory(const std::string& key, int max_inclusive_version, const std::string& domain,
-                           const ONNX_NAMESPACE::OpSchema** latest_schema,
-                           int* earliest_opset_where_unchanged) const override;
+  void GetSchemaAndHistory(const std::string& key, int max_inclusive_version, const std::string& domain, const ONNX_NAMESPACE::OpSchema** latest_schema, int* earliest_opset_where_unchanged) const override;
 
  private:
   void GetDomainToVersionMapForRegistries(DomainToVersionMap& domain_version_map, bool is_onnx_only) const;

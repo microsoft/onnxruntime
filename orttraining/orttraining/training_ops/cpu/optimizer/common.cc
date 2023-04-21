@@ -10,8 +10,7 @@
 namespace onnxruntime {
 namespace contrib {
 
-Status CopyIfNotSameCPUBuffer(OpKernelContext* ctx, size_t number_of_values,
-                              const TensorSeq* src_values, TensorSeq* dest_values) {
+Status CopyIfNotSameCPUBuffer(OpKernelContext* ctx, size_t number_of_values, const TensorSeq* src_values, TensorSeq* dest_values) {
   if (src_values != dest_values) {
     AllocatorPtr alloc;
     ORT_ENFORCE(ctx->GetTempSpaceAllocator(&alloc).IsOK(),

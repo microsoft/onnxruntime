@@ -520,10 +520,12 @@ void ThreadPool::RunInParallel(std::function<void(unsigned idx)> fn, unsigned n,
     if (current_parallel_section.has_value()) {
       underlying_threadpool_->RunInParallelSection(*current_parallel_section,
                                                    std::move(fn),
-                                                   n, block_size);
+                                                   n,
+                                                   block_size);
     } else {
       underlying_threadpool_->RunInParallel(std::move(fn),
-                                            n, block_size);
+                                            n,
+                                            block_size);
     }
   } else {
     fn(0);
@@ -556,8 +558,7 @@ using CostModel = Eigen::TensorCostModel<Eigen::ThreadPoolDevice>;
 // overheads; not too large to mitigate tail effect and potential load
 // imbalance and we also want number of blocks to be evenly dividable across
 // threads.
-static ptrdiff_t CalculateParallelForBlock(const ptrdiff_t n, const Eigen::TensorOpCost& cost,
-                                           std::function<ptrdiff_t(ptrdiff_t)> block_align, int num_threads) {
+static ptrdiff_t CalculateParallelForBlock(const ptrdiff_t n, const Eigen::TensorOpCost& cost, std::function<ptrdiff_t(ptrdiff_t)> block_align, int num_threads) {
   const double block_size_f = 1.0 / CostModel::taskSize(1, cost);
   constexpr ptrdiff_t max_oversharding_factor = 4;
   ptrdiff_t block_size = Eigen::numext::mini(
@@ -610,8 +611,7 @@ static ptrdiff_t CalculateParallelForBlock(const ptrdiff_t n, const Eigen::Tenso
   return block_size;
 }
 
-void ThreadPool::ParallelFor(std::ptrdiff_t n, const TensorOpCost& c,
-                             const std::function<void(std::ptrdiff_t first, std::ptrdiff_t)>& f) {
+void ThreadPool::ParallelFor(std::ptrdiff_t n, const TensorOpCost& c, const std::function<void(std::ptrdiff_t first, std::ptrdiff_t)>& f) {
   ORT_ENFORCE(n >= 0);
   Eigen::TensorOpCost cost{c.bytes_loaded, c.bytes_stored, c.compute_cycles};
   auto d_of_p = DegreeOfParallelism(this);
@@ -626,8 +626,7 @@ void ThreadPool::ParallelFor(std::ptrdiff_t n, const TensorOpCost& c,
   ParallelForFixedBlockSizeScheduling(n, block, f);
 }
 
-void ThreadPool::ParallelFor(std::ptrdiff_t total, double cost_per_unit,
-                             const std::function<void(std::ptrdiff_t first, std::ptrdiff_t)>& fn) {
+void ThreadPool::ParallelFor(std::ptrdiff_t total, double cost_per_unit, const std::function<void(std::ptrdiff_t first, std::ptrdiff_t)>& fn) {
   ParallelFor(total, TensorOpCost{0, 0, static_cast<double>(cost_per_unit)}, fn);
 }
 
@@ -694,8 +693,7 @@ int ThreadPool::CurrentThreadId() const {
   }
 }
 
-void ThreadPool::TryParallelFor(concurrency::ThreadPool* tp, std::ptrdiff_t total, const TensorOpCost& cost_per_unit,
-                                const std::function<void(std::ptrdiff_t first, std::ptrdiff_t last)>& fn) {
+void ThreadPool::TryParallelFor(concurrency::ThreadPool* tp, std::ptrdiff_t total, const TensorOpCost& cost_per_unit, const std::function<void(std::ptrdiff_t first, std::ptrdiff_t last)>& fn) {
   if (tp == nullptr) {
     fn(0, total);
     return;

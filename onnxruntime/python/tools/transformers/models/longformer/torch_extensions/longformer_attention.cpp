@@ -10,7 +10,9 @@ torch::Tensor longformer_attention(
     torch::Tensor mask,
     torch::Tensor global_weight,
     torch::Tensor global_bias,
-    torch::Tensor global, int64_t num_heads, int64_t window) {
+    torch::Tensor global,
+    int64_t num_heads,
+    int64_t window) {
   // Make sure the output shape is correct (same as input). The tensor value does not matter.
   torch::Tensor output = torch::ones(input.sizes(), torch::dtype(torch::kFloat32));
   return output;

@@ -37,7 +37,8 @@ std::vector<float> AddBias(const std::vector<float>& input_data, const std::vect
 
 void Split(const std::vector<float>& input_data,
            const std::vector<int64_t>& input_dims,
-           std::vector<float>& left_half_data, std::vector<float>& right_half_data) {
+           std::vector<float>& left_half_data,
+           std::vector<float>& right_half_data) {
   std::size_t length = input_data.size();
   left_half_data.reserve(length / 2);
   right_half_data.reserve(length / 2);

@@ -167,11 +167,7 @@ struct MyCustomStringLengthsKernel {
 // Utility function to be used when testing with MyCustomStringLengthsKernel.
 // Creates an input tensor from the provided input string and adds it to `ort_inputs`.
 // Also initializes the corresponding expected output and I/O names.
-void AddInputForCustomStringLengthsKernel(std::string input_str, OrtAllocator* allocator,
-                                          std::vector<Ort::Value>& ort_inputs, std::vector<std::string>& input_names,
-                                          std::vector<std::string>& output_names,
-                                          std::vector<std::vector<int64_t>>& expected_dims,
-                                          std::vector<std::vector<int64_t>>& expected_outputs);
+void AddInputForCustomStringLengthsKernel(std::string input_str, OrtAllocator* allocator, std::vector<Ort::Value>& ort_inputs, std::vector<std::string>& input_names, std::vector<std::string>& output_names, std::vector<std::vector<int64_t>>& expected_dims, std::vector<std::vector<int64_t>>& expected_outputs);
 
 // Custom kernel that echos input arguments (shape [1]) in reversed order.
 // Used to test variadic custom ops with heterogenous input types.
@@ -184,11 +180,7 @@ struct MyCustomEchoReversedArgsKernel {
 // configurations.
 template <typename T>
 struct TemplatedCustomOp : Ort::CustomOpBase<TemplatedCustomOp<T>, T> {
-  TemplatedCustomOp(const char* op_name, std::vector<ONNXTensorElementDataType> input_types,
-                    std::vector<OrtCustomOpInputOutputCharacteristic> input_characs, int input_min_arity,
-                    bool input_homogeneity, std::vector<ONNXTensorElementDataType> output_types,
-                    std::vector<OrtCustomOpInputOutputCharacteristic> output_characs, int output_min_arity,
-                    bool output_homogeneity)
+  TemplatedCustomOp(const char* op_name, std::vector<ONNXTensorElementDataType> input_types, std::vector<OrtCustomOpInputOutputCharacteristic> input_characs, int input_min_arity, bool input_homogeneity, std::vector<ONNXTensorElementDataType> output_types, std::vector<OrtCustomOpInputOutputCharacteristic> output_characs, int output_min_arity, bool output_homogeneity)
       : op_name_(op_name),
         input_types_(std::move(input_types)),
         input_characs_(std::move(input_characs)),

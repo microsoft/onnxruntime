@@ -30,8 +30,7 @@ void RandomFillFloatVector(const TensorShapeVector& shape, std::vector<float>& d
 void RandomFillHalfVector(const TensorShapeVector& shape, std::vector<MLFloat16>& data) {
   std::vector<float> data_float(TensorShape(shape).Size());
   RandomFillFloatVector(shape, data_float);
-  std::transform(data_float.begin(), data_float.end(), data.begin(),
-                 [](float value) { return MLFloat16(math::floatToHalf(value)); });
+  std::transform(data_float.begin(), data_float.end(), data.begin(), [](float value) { return MLFloat16(math::floatToHalf(value)); });
 }
 
 void RandomMasks(int64_t batch, int64_t sequence_length, std::vector<int64_t>& data) {
@@ -50,10 +49,7 @@ void RandomMasks(int64_t batch, int64_t sequence_length, std::vector<int64_t>& d
   }
 }
 
-void RunModelWithData(const PathString& model_uri, const std::string session_log_id,
-                      const std::string& provider_type, const InputContainer& input_container,
-                      const std::vector<std::string>& output_names,
-                      std::vector<OrtValue>& run_results) {
+void RunModelWithData(const PathString& model_uri, const std::string session_log_id, const std::string& provider_type, const InputContainer& input_container, const std::vector<std::string>& output_names, std::vector<OrtValue>& run_results) {
   SessionOptions so;
   // we don't want any transformation here.
   so.graph_optimization_level = TransformerLevel::Default;

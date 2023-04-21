@@ -417,24 +417,20 @@ float halfToFloat(uint16_t h) { return g_host->math__halfToFloat(h); }
 namespace sparse_utils {
 #if !defined(DISABLE_SPARSE_TENSORS)
 #if !defined(ORT_MINIMAL_BUILD)
-Status DenseTensorToSparseCsr(const DataTransferManager& data_manager, const Tensor& src, const AllocatorPtr& cpu_allocator,
-                              const AllocatorPtr& dst_allocator, SparseTensor& dst) {
+Status DenseTensorToSparseCsr(const DataTransferManager& data_manager, const Tensor& src, const AllocatorPtr& cpu_allocator, const AllocatorPtr& dst_allocator, SparseTensor& dst) {
   return g_host->sparse_utils__DenseTensorToSparseCsr(data_manager, src, cpu_allocator, dst_allocator, dst);
 }
 
-Status SparseCsrToDenseTensor(const DataTransferManager& data_manager, const SparseTensor& src, const AllocatorPtr& cpu_allocator,
-                              const AllocatorPtr& dst_allocator, Tensor& dst) {
+Status SparseCsrToDenseTensor(const DataTransferManager& data_manager, const SparseTensor& src, const AllocatorPtr& cpu_allocator, const AllocatorPtr& dst_allocator, Tensor& dst) {
   return g_host->sparse_utils__SparseCsrToDenseTensor(data_manager, src, cpu_allocator, dst_allocator, dst);
 }
 
-Status SparseCooToDenseTensor(const DataTransferManager& data_manager, const SparseTensor& src, const AllocatorPtr& cpu_allocator,
-                              const AllocatorPtr& dst_allocator, Tensor& dst) {
+Status SparseCooToDenseTensor(const DataTransferManager& data_manager, const SparseTensor& src, const AllocatorPtr& cpu_allocator, const AllocatorPtr& dst_allocator, Tensor& dst) {
   return g_host->sparse_utils__SparseCooToDenseTensor(data_manager, src, cpu_allocator, dst_allocator, dst);
 }
 #endif  // !ORT_MINIMAL_BUILD
 
-Status DenseTensorToSparseCoo(const DataTransferManager& data_manager, const Tensor& src, const AllocatorPtr& cpu_allocator,
-                              const AllocatorPtr& dst_allocator, bool linear_indexs, SparseTensor& dst) {
+Status DenseTensorToSparseCoo(const DataTransferManager& data_manager, const Tensor& src, const AllocatorPtr& cpu_allocator, const AllocatorPtr& dst_allocator, bool linear_indexs, SparseTensor& dst) {
   return g_host->sparse_utils__DenseTensorToSparseCoo(data_manager, src, cpu_allocator, dst_allocator, linear_indexs, dst);
 }
 #endif  // !defined(DISABLE_SPARSE_TENSORS)
@@ -447,8 +443,7 @@ float MLFloat16::ToFloat() const {
 
 std::vector<std::string> GetStackTrace() { return g_host->GetStackTrace(); }
 
-void LogRuntimeError(uint32_t session_id, const common::Status& status,
-                     const char* file, const char* function, uint32_t line) {
+void LogRuntimeError(uint32_t session_id, const common::Status& status, const char* file, const char* function, uint32_t line) {
   return g_host->LogRuntimeError(session_id, status, file, function, line);
 }
 
@@ -515,9 +510,7 @@ Status SliceBase::FillVectorsFromInput(const Tensor& start_tensor,
                                        TensorShapeVector& input_axes,
                                        TensorShapeVector& input_steps) { return g_host_cpu.SliceBase__FillVectorsFromInput(start_tensor, ends_tensor, axes_tensor, steps_tensor, input_starts, input_ends, input_axes, input_steps); }
 
-Status SplitBase::PrepareForCompute(const TensorShape& input_shape, int num_outputs, int64_t& axis, int& before_dims,
-                                    int& after_dims_including_split_axis, int& after_dims_excluding_split,
-                                    std::vector<int64_t>& split_sizes) const { return g_host_cpu.SplitBase__PrepareForCompute(this, input_shape, num_outputs, axis, before_dims, after_dims_including_split_axis, after_dims_excluding_split, split_sizes); }
+Status SplitBase::PrepareForCompute(const TensorShape& input_shape, int num_outputs, int64_t& axis, int& before_dims, int& after_dims_including_split_axis, int& after_dims_excluding_split, std::vector<int64_t>& split_sizes) const { return g_host_cpu.SplitBase__PrepareForCompute(this, input_shape, num_outputs, axis, before_dims, after_dims_including_split_axis, after_dims_excluding_split, split_sizes); }
 
 Status Size::Compute(OpKernelContext* context) const { return g_host_cpu.Size__Compute(this, context); }
 
@@ -527,8 +520,7 @@ Status ScatterND::ValidateShapes(const TensorShape& input_shape,
 
 Status PadBase::HandleDimValueZero(const Mode& mode, const TensorShape& input_shape, TensorShape& output_shape) { return g_host_cpu.PadBase__HandleDimValueZero(mode, input_shape, output_shape); }
 
-Status ConcatBase::PrepareForCompute(OpKernelContext* ctx, const ConcatBase::InlinedTensorsVector& input_tensors,
-                                     Prepare& p) const {
+Status ConcatBase::PrepareForCompute(OpKernelContext* ctx, const ConcatBase::InlinedTensorsVector& input_tensors, Prepare& p) const {
   return g_host_cpu.ConcatBase__PrepareForCompute(this, ctx, reinterpret_cast<const ConcatBase_InlinedTensorsVector&>(input_tensors), p);
 }
 
@@ -558,8 +550,7 @@ Status LongformerAttentionBase::CheckInputs(const TensorShape& input_shape,
                                             const TensorShape& global_weights_shape,
                                             const TensorShape& global_bias_shape,
                                             const TensorShape& global_shape) const {
-  return g_host_cpu.LongformerAttentionBase__CheckInputs(this, input_shape, weights_shape, bias_shape, mask_shape,
-                                                         global_weights_shape, global_bias_shape, global_shape);
+  return g_host_cpu.LongformerAttentionBase__CheckInputs(this, input_shape, weights_shape, bias_shape, mask_shape, global_weights_shape, global_bias_shape, global_shape);
 }
 
 Status AttentionBase::CheckInputs(const TensorShape& input_shape,
@@ -571,14 +562,10 @@ Status AttentionBase::CheckInputs(const TensorShape& input_shape,
                                   void* parameters,
                                   const int max_threads_per_block,
                                   const Tensor* past_seq_len) const {
-  return g_host_cpu.AttentionBase__CheckInputs(this, input_shape, weights_shape, bias_shape,
-                                               mask_index, past, relative_position_bias, parameters,
-                                               max_threads_per_block, past_seq_len);
+  return g_host_cpu.AttentionBase__CheckInputs(this, input_shape, weights_shape, bias_shape, mask_index, past, relative_position_bias, parameters, max_threads_per_block, past_seq_len);
 }
-Tensor* AttentionBase::GetPresent(OpKernelContext* context, const Tensor* past, int batch_size, int head_size,
-                                  int sequence_length, int& past_sequence_length) const {
-  return g_host_cpu.AttentionBase__GetPresent(this, context, past, batch_size, head_size,
-                                              sequence_length, past_sequence_length);
+Tensor* AttentionBase::GetPresent(OpKernelContext* context, const Tensor* past, int batch_size, int head_size, int sequence_length, int& past_sequence_length) const {
+  return g_host_cpu.AttentionBase__GetPresent(this, context, past, batch_size, head_size, sequence_length, past_sequence_length);
 }
 
 namespace transformers {
@@ -586,8 +573,7 @@ void BeamSearch::Init(const OpKernelInfo& info) { g_host_cpu.BeamSearch__Init(th
 
 Status BeamSearch::Compute(OpKernelContext* ctx) const { return g_host_cpu.BeamSearch__Compute(this, ctx); }
 
-Status BeamSearch::SetupSubgraphExecutionInfo(const SessionState& session_state, const std::string& attribute_name,
-                                              const SessionState& subgraph_session_state) {
+Status BeamSearch::SetupSubgraphExecutionInfo(const SessionState& session_state, const std::string& attribute_name, const SessionState& subgraph_session_state) {
   return g_host_cpu.BeamSearch__SetupSubgraphExecutionInfo(this, session_state, attribute_name, subgraph_session_state);
 }
 
@@ -595,18 +581,15 @@ void GreedySearch::Init(const OpKernelInfo& info) { g_host_cpu.GreedySearch__Ini
 
 Status GreedySearch::Compute(OpKernelContext* ctx) const { return g_host_cpu.GreedySearch__Compute(this, ctx); }
 
-Status GreedySearch::SetupSubgraphExecutionInfo(const SessionState& session_state, const std::string& attribute_name,
-                                                const SessionState& subgraph_session_state) {
-  return g_host_cpu.GreedySearch__SetupSubgraphExecutionInfo(this, session_state, attribute_name,
-                                                             subgraph_session_state);
+Status GreedySearch::SetupSubgraphExecutionInfo(const SessionState& session_state, const std::string& attribute_name, const SessionState& subgraph_session_state) {
+  return g_host_cpu.GreedySearch__SetupSubgraphExecutionInfo(this, session_state, attribute_name, subgraph_session_state);
 }
 
 void Sampling::Init(const OpKernelInfo& info) { g_host_cpu.Sampling__Init(this, info); }
 
 Status Sampling::Compute(OpKernelContext* ctx) const { return g_host_cpu.Sampling__Compute(this, ctx); }
 
-Status Sampling::SetupSubgraphExecutionInfo(const SessionState& session_state, const std::string& attribute_name,
-                                            const SessionState& subgraph_session_state) {
+Status Sampling::SetupSubgraphExecutionInfo(const SessionState& session_state, const std::string& attribute_name, const SessionState& subgraph_session_state) {
   return g_host_cpu.Sampling__SetupSubgraphExecutionInfo(this, session_state, attribute_name, subgraph_session_state);
 }
 
@@ -697,8 +680,7 @@ void RefCountTracker::DumpDetails(const std::string& phase_name) const {
 
 #if defined(USE_CANN)
 RandomGenerator& RandomGenerator::Default() { return g_host->RandomGenerator__Default(); }
-void* AllocateBufferWithOptions(IAllocator& allocator, size_t size, bool use_reserve, Stream* stream,
-                                WaitNotificationFn wait_fn) {
+void* AllocateBufferWithOptions(IAllocator& allocator, size_t size, bool use_reserve, Stream* stream, WaitNotificationFn wait_fn) {
   return g_host->Allocator__AllocateBufferWithOptions(allocator, size, use_reserve, stream, wait_fn);
 }
 

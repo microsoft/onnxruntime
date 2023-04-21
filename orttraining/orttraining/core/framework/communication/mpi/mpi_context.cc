@@ -84,8 +84,7 @@ MPIContext::MPIContext() : world_rank_(0),
   int local_size;
 
   MPI_Comm shmcomm;
-  MPI_CHECK(MPI_Comm_split_type(MPI_COMM_WORLD, MPI_COMM_TYPE_SHARED, 0,
-                                MPI_INFO_NULL, &shmcomm));
+  MPI_CHECK(MPI_Comm_split_type(MPI_COMM_WORLD, MPI_COMM_TYPE_SHARED, 0, MPI_INFO_NULL, &shmcomm));
   MPI_CHECK(MPI_Comm_rank(shmcomm, &local_rank));
   MPI_CHECK(MPI_Comm_size(shmcomm, &local_size));
 

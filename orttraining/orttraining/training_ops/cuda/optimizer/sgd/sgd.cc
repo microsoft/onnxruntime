@@ -41,8 +41,7 @@ Status SGDOptimizerV2::ComputeInternal(OpKernelContext* ctx) const {
     ORT_ENFORCE(lr_ptr);
 
     launch_multi_tensor_functor<MTA_SGD_GROUP_SIZE, TFunctor>(
-        Stream(ctx), MTA_SGD_CHUNK_SIZE, p.grouped_tensor_sizes, p.grouped_tensor_pointers, functor,
-        *lr_ptr);
+        Stream(ctx), MTA_SGD_CHUNK_SIZE, p.grouped_tensor_sizes, p.grouped_tensor_pointers, functor, *lr_ptr);
     *updated_flag_ptr = true;
   } else {
     *updated_flag_ptr = false;

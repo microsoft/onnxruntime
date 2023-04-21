@@ -31,7 +31,8 @@ class KernelRegistry {
 
   // Check if an execution provider can create kernel for a node and return the kernel if so.
   // Kernel matching uses the types from the node and the kernel_type_str_resolver.
-  Status TryFindKernel(const Node& node, ProviderType exec_provider,
+  Status TryFindKernel(const Node& node,
+                       ProviderType exec_provider,
                        const IKernelTypeStrResolver& kernel_type_str_resolver,
                        const KernelCreateInfo** out) const;
 
@@ -40,13 +41,9 @@ class KernelRegistry {
 
   // Check if an execution provider can create kernel for a node and return the kernel if so.
   // Kernel matching uses the explicit type constraint name to required type map in type_constraints.
-  Status TryFindKernel(const Node& node, ProviderType exec_provider,
-                       const TypeConstraintMap& type_constraints,
-                       const KernelCreateInfo** out) const;
+  Status TryFindKernel(const Node& node, ProviderType exec_provider, const TypeConstraintMap& type_constraints, const KernelCreateInfo** out) const;
 
-  static bool HasImplementationOf(const KernelRegistry& r, const Node& node,
-                                  ProviderType exec_provider,
-                                  const IKernelTypeStrResolver& kernel_type_str_resolver) {
+  static bool HasImplementationOf(const KernelRegistry& r, const Node& node, ProviderType exec_provider, const IKernelTypeStrResolver& kernel_type_str_resolver) {
     const KernelCreateInfo* info;
     Status st = r.TryFindKernel(node, exec_provider, kernel_type_str_resolver, &info);
     return st.IsOK();
@@ -63,10 +60,7 @@ class KernelRegistry {
 
  private:
   // TryFindKernel implementation. Either kernel_type_str_resolver or type_constraints is provided.
-  Status TryFindKernelImpl(const Node& node, ProviderType exec_provider,
-                           const IKernelTypeStrResolver* kernel_type_str_resolver,
-                           const TypeConstraintMap* type_constraints,
-                           const KernelCreateInfo** out) const;
+  Status TryFindKernelImpl(const Node& node, ProviderType exec_provider, const IKernelTypeStrResolver* kernel_type_str_resolver, const TypeConstraintMap* type_constraints, const KernelCreateInfo** out) const;
 
   // Check whether the types of inputs/outputs of the given node match the extra
   // type-constraints of the given kernel. This serves two purposes: first, to
@@ -86,10 +80,7 @@ class KernelRegistry {
   // type value for each type constraint is provided in type_constraints.
   //
   // Either kernel_type_str_resolver or type_constraints is provided and not both.
-  static bool VerifyKernelDef(const Node& node, const KernelDef& kernel_def,
-                              const IKernelTypeStrResolver* kernel_type_str_resolver,
-                              const TypeConstraintMap* type_constraints,
-                              std::string& error_str);
+  static bool VerifyKernelDef(const Node& node, const KernelDef& kernel_def, const IKernelTypeStrResolver* kernel_type_str_resolver, const TypeConstraintMap* type_constraints, std::string& error_str);
 
   static std::string GetMapKey(std::string_view op_name, std::string_view domain, std::string_view provider) {
     std::string key(op_name);

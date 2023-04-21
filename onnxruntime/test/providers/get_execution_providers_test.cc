@@ -29,9 +29,7 @@ TEST(GetExecutionProvidersTest, ConsistentOrdering) {
   const auto& available = GetAvailableExecutionProviderNames();
   std::vector<std::string> available_from_all{};
   std::copy_if(
-      all.begin(), all.end(),
-      std::back_inserter(available_from_all),
-      [&available](const std::string& value) {
+      all.begin(), all.end(), std::back_inserter(available_from_all), [&available](const std::string& value) {
         return std::find(available.begin(), available.end(), value) != available.end();
       });
 

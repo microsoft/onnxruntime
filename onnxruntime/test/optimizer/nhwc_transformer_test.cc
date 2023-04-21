@@ -41,9 +41,7 @@ TEST(NhwcTransformerTests, Conv) {
       auto* output_arg = builder.MakeOutput();
       auto* weight_arg = NhwcMakeInitializer<uint8_t>(builder, weights_shape);
 
-      builder.AddQLinearConvNode<uint8_t>(input_arg, .01f, 135,
-                                          weight_arg, .02f, 126,
-                                          output_arg, .37f, 131);
+      builder.AddQLinearConvNode<uint8_t>(input_arg, .01f, 135, weight_arg, .02f, 126, output_arg, .37f, 131);
     };
 
     auto check_nhwc_graph = [&](InferenceSessionWrapper& session) {
@@ -79,17 +77,19 @@ TEST(NhwcTransformerTests, ConvBlockBinary) {
                                                                 NhwcWeightsRange<uint8_t>::min_value,
                                                                 NhwcWeightsRange<uint8_t>::max_value);
 
-      Node& conv1_node = builder.AddQLinearConvNode<uint8_t>(input_arg, .01f, 135,
-                                                             conv1_weight_arg, .02f, 126,
-                                                             conv1_output_arg, .37f, 131);
+      Node& conv1_node = builder.AddQLinearConvNode<uint8_t>(input_arg, .01f, 135, conv1_weight_arg, .02f, 126, conv1_output_arg, .37f, 131);
       conv1_node.AddAttribute("pads", std::vector<int64_t>{1, 1, 1, 1});
-      builder.AddQLinearConvNode<uint8_t>(input_arg, .01f, 135,
-                                          conv2_weight_arg, .015f, 129,
-                                          conv2_output_arg, .37f, 131);
+      builder.AddQLinearConvNode<uint8_t>(input_arg, .01f, 135, conv2_weight_arg, .015f, 129, conv2_output_arg, .37f, 131);
       builder.AddQLinearBinaryNode(binary_op_type,
-                                   conv1_output_arg, .37f, 131,
-                                   conv2_output_arg, .37f, 131,
-                                   output_arg, .43f, 126);
+                                   conv1_output_arg,
+                                   .37f,
+                                   131,
+                                   conv2_output_arg,
+                                   .37f,
+                                   131,
+                                   output_arg,
+                                   .43f,
+                                   126);
     };
 
     auto check_nhwc_graph = [&](InferenceSessionWrapper& session) {
@@ -118,9 +118,7 @@ TEST(NhwcTransformerTests, ConvMaxPool) {
       auto* output_arg = builder.MakeOutput();
       auto* conv_weight_arg = NhwcMakeInitializer<uint8_t>(builder, weights_shape);
 
-      builder.AddQLinearConvNode<uint8_t>(input_arg, .01f, 135,
-                                          conv_weight_arg, .02f, 126,
-                                          conv_output_arg, .37f, 131);
+      builder.AddQLinearConvNode<uint8_t>(input_arg, .01f, 135, conv_weight_arg, .02f, 126, conv_output_arg, .37f, 131);
       Node& pool_node = builder.AddNode("MaxPool", {conv_output_arg}, {output_arg});
       std::vector<int64_t> pads((weights_shape.size() - 2) * 2, 1);
       pool_node.AddAttribute("pads", pads);
@@ -155,9 +153,7 @@ TEST(NhwcTransformerTests, ConvMaxPoolIndexTensor) {
     auto* output_arg = builder.MakeOutput();
     auto* conv_weight_arg = NhwcMakeInitializer<uint8_t>(builder, {16, 16, 3, 3});
 
-    builder.AddQLinearConvNode<uint8_t>(input_arg, .01f, 135,
-                                        conv_weight_arg, .02f, 126,
-                                        conv_output_arg, .37f, 131);
+    builder.AddQLinearConvNode<uint8_t>(input_arg, .01f, 135, conv_weight_arg, .02f, 126, conv_output_arg, .37f, 131);
     Node& pool_node = builder.AddNode("MaxPool", {conv_output_arg}, {output_arg, index_output_arg});
     pool_node.AddAttribute("kernel_shape", std::vector<int64_t>{3, 3});
   };
@@ -187,19 +183,23 @@ TEST(NhwcTransformerTests, ConvGlobalAveragePool) {
     auto* conv1_weight_arg = NhwcMakeInitializer<uint8_t>(builder, {30, 23, 3, 3});
     auto* conv2_weight_arg = NhwcMakeInitializer<uint8_t>(builder, {16, 30, 1, 1});
 
-    Node& conv1_node = builder.AddQLinearConvNode<uint8_t>(input_arg, .01f, 135,
-                                                           conv1_weight_arg, .02f, 126,
-                                                           conv1_output_arg, .37f, 131);
+    Node& conv1_node = builder.AddQLinearConvNode<uint8_t>(input_arg, .01f, 135, conv1_weight_arg, .02f, 126, conv1_output_arg, .37f, 131);
     conv1_node.AddAttribute("pads", std::vector<int64_t>{1, 1, 1, 1});
     builder.AddQLinearActivationNode("QLinearGlobalAveragePool",
-                                     conv1_output_arg, .37f, 131,
-                                     gavgpool1_output_arg, .43f, 111);
-    builder.AddQLinearConvNode<uint8_t>(gavgpool1_output_arg, .43f, 111,
-                                        conv2_weight_arg, .015f, 129,
-                                        conv2_output_arg, .37f, 131);
+                                     conv1_output_arg,
+                                     .37f,
+                                     131,
+                                     gavgpool1_output_arg,
+                                     .43f,
+                                     111);
+    builder.AddQLinearConvNode<uint8_t>(gavgpool1_output_arg, .43f, 111, conv2_weight_arg, .015f, 129, conv2_output_arg, .37f, 131);
     builder.AddQLinearActivationNode("QLinearGlobalAveragePool",
-                                     conv2_output_arg, .37f, 131,
-                                     gavgpool2_output_arg, .37f, 131);
+                                     conv2_output_arg,
+                                     .37f,
+                                     131,
+                                     gavgpool2_output_arg,
+                                     .37f,
+                                     131);
     builder.AddDequantizeLinearNode<uint8_t>(gavgpool2_output_arg, .37f, 131, output_arg);
   };
 
@@ -226,22 +226,26 @@ TEST(NhwcTransformerTests, ConvAveragePool) {
     auto* conv1_weight_arg = NhwcMakeInitializer<uint8_t>(builder, {30, 23, 3, 3});
     auto* conv2_weight_arg = NhwcMakeInitializer<uint8_t>(builder, {16, 30, 3, 3});
 
-    Node& conv1_node = builder.AddQLinearConvNode<uint8_t>(input_arg, .01f, 135,
-                                                           conv1_weight_arg, .02f, 126,
-                                                           conv1_output_arg, .37f, 131);
+    Node& conv1_node = builder.AddQLinearConvNode<uint8_t>(input_arg, .01f, 135, conv1_weight_arg, .02f, 126, conv1_output_arg, .37f, 131);
     conv1_node.AddAttribute("pads", std::vector<int64_t>{1, 1, 1, 1});
     Node& avgpool_node1 = builder.AddQLinearActivationNode("QLinearAveragePool",
-                                                           conv1_output_arg, .37f, 131,
-                                                           avgpool1_output_arg, .43f, 111);
+                                                           conv1_output_arg,
+                                                           .37f,
+                                                           131,
+                                                           avgpool1_output_arg,
+                                                           .43f,
+                                                           111);
     avgpool_node1.AddAttribute("kernel_shape", std::vector<int64_t>{3, 3});
     avgpool_node1.AddAttribute("pads", std::vector<int64_t>{1, 1, 1, 1});
 
-    builder.AddQLinearConvNode<uint8_t>(avgpool1_output_arg, .43f, 111,
-                                        conv2_weight_arg, .015f, 129,
-                                        conv2_output_arg, .37f, 131);
+    builder.AddQLinearConvNode<uint8_t>(avgpool1_output_arg, .43f, 111, conv2_weight_arg, .015f, 129, conv2_output_arg, .37f, 131);
     Node& avgpool_node2 = builder.AddQLinearActivationNode("QLinearAveragePool",
-                                                           conv2_output_arg, .37f, 131,
-                                                           avgpool2_output_arg, .37f, 131);
+                                                           conv2_output_arg,
+                                                           .37f,
+                                                           131,
+                                                           avgpool2_output_arg,
+                                                           .37f,
+                                                           131);
     avgpool_node2.AddAttribute("kernel_shape", std::vector<int64_t>{3, 3});
     avgpool_node2.AddAttribute("pads", std::vector<int64_t>{1, 1, 1, 1});
 
@@ -273,9 +277,7 @@ TEST(NhwcTransformerTests, ConvSplit) {
       constexpr int64_t conv1_output_channels = 32;
       auto* conv1_weight_arg = NhwcMakeInitializer<uint8_t>(builder, {conv1_output_channels, 23, 3, 3});
 
-      Node& conv_node = builder.AddQLinearConvNode<uint8_t>(input_arg, .01f, 135,
-                                                            conv1_weight_arg, .02f, 126,
-                                                            conv_output_arg, .37f, 131);
+      Node& conv_node = builder.AddQLinearConvNode<uint8_t>(input_arg, .01f, 135, conv1_weight_arg, .02f, 126, conv_output_arg, .37f, 131);
       conv_node.AddAttribute("pads", std::vector<int64_t>{1, 1, 1, 1});
       Node& split_node = builder.AddNode("Split", {conv_output_arg}, {split_output1_arg, split_output2_arg});
       if (builder.DomainToVersionMap().find(kOnnxDomain)->second >= 18) {
@@ -283,16 +285,20 @@ TEST(NhwcTransformerTests, ConvSplit) {
       }
       split_node.AddAttribute("axis", static_cast<int64_t>(axis));
       builder.AddQLinearBinaryNode("QLinearAdd",
-                                   split_output1_arg, .37f, 131,
-                                   split_output2_arg, .37f, 131,
-                                   qladd_output_arg, .43f, 126);
+                                   split_output1_arg,
+                                   .37f,
+                                   131,
+                                   split_output2_arg,
+                                   .37f,
+                                   131,
+                                   qladd_output_arg,
+                                   .43f,
+                                   126);
       const int64_t channels_after_split =
           (axis == 1 || axis == -3) ? conv1_output_channels / 2 : conv1_output_channels;
 
       auto* conv2_weight_arg = NhwcMakeInitializer<uint8_t>(builder, {17, channels_after_split, 3, 3});
-      builder.AddQLinearConvNode<uint8_t>(qladd_output_arg, .43f, 126,
-                                          conv2_weight_arg, .02f, 126,
-                                          output_arg, .37f, 131);
+      builder.AddQLinearConvNode<uint8_t>(qladd_output_arg, .43f, 126, conv2_weight_arg, .02f, 126, output_arg, .37f, 131);
     };
 
     auto check_nhwc_graph = [&](InferenceSessionWrapper& session) {
@@ -325,9 +331,7 @@ TEST(NhwcTransformerTests, ConvSplitQLinearConcat) {
 
       constexpr int64_t conv1_output_channels = 32;
       auto* conv1_weight_arg = NhwcMakeInitializer<uint8_t>(builder, {conv1_output_channels, 23, 3, 3});
-      Node& conv_node = builder.AddQLinearConvNode<uint8_t>(input_arg, .01f, 135,
-                                                            conv1_weight_arg, .02f, 126,
-                                                            conv_output_arg, .37f, 131);
+      Node& conv_node = builder.AddQLinearConvNode<uint8_t>(input_arg, .01f, 135, conv1_weight_arg, .02f, 126, conv_output_arg, .37f, 131);
       conv_node.AddAttribute("pads", std::vector<int64_t>{1, 1, 1, 1});
 
       Node& split_node = builder.AddNode("Split", {conv_output_arg}, {split_output1_arg, split_output2_arg});
@@ -337,14 +341,11 @@ TEST(NhwcTransformerTests, ConvSplitQLinearConcat) {
       split_node.AddAttribute("axis", static_cast<int64_t>(axis));
 
       Node& qlconcat_node = builder.AddQLinearConcatLike(
-          "QLinearConcat", qlconcat_output_arg, .37f, 131,
-          {std::make_tuple(split_output1_arg, .37f, uint8_t(131)), std::make_tuple(split_output2_arg, .37f, uint8_t(131))});
+          "QLinearConcat", qlconcat_output_arg, .37f, 131, {std::make_tuple(split_output1_arg, .37f, uint8_t(131)), std::make_tuple(split_output2_arg, .37f, uint8_t(131))});
       qlconcat_node.AddAttribute("axis", static_cast<int64_t>(axis));
 
       auto* conv2_weight_arg = NhwcMakeInitializer<uint8_t>(builder, {17, conv1_output_channels, 3, 3});
-      builder.AddQLinearConvNode<uint8_t>(qlconcat_output_arg, .43f, 126,
-                                          conv2_weight_arg, .02f, 126,
-                                          output_arg, .37f, 131);
+      builder.AddQLinearConvNode<uint8_t>(qlconcat_output_arg, .43f, 126, conv2_weight_arg, .02f, 126, output_arg, .37f, 131);
     };
 
     auto check_nhwc_graph = [&](InferenceSessionWrapper& session) {
@@ -378,17 +379,13 @@ TEST(NhwcTransformerTests, ConvPad) {
       auto* output_arg = builder.MakeOutput();
 
       auto* conv1_weight_arg = NhwcMakeInitializer<uint8_t>(builder, {30, 23, 3, 3});
-      Node& conv1_node = builder.AddQLinearConvNode<uint8_t>(input_arg, .01f, 135,
-                                                             conv1_weight_arg, .02f, 126,
-                                                             conv1_output_arg, .37f, 131);
+      Node& conv1_node = builder.AddQLinearConvNode<uint8_t>(input_arg, .01f, 135, conv1_weight_arg, .02f, 126, conv1_output_arg, .37f, 131);
       conv1_node.AddAttribute("pads", std::vector<int64_t>{1, 1, 1, 1});
       Node& pad_node = builder.AddNode("Pad", {conv1_output_arg, pads_arg, pads_const}, {pad_output_arg});
       pad_node.AddAttribute("mode", mode);
 
       auto* conv2_weight_arg = NhwcMakeInitializer<uint8_t>(builder, {16, 30, 3, 3});
-      builder.AddQLinearConvNode<uint8_t>(pad_output_arg, .37f, 131,
-                                          conv2_weight_arg, .015f, 129,
-                                          conv2_output_arg, .37f, 131);
+      builder.AddQLinearConvNode<uint8_t>(pad_output_arg, .37f, 131, conv2_weight_arg, .015f, 129, conv2_output_arg, .37f, 131);
       builder.AddDequantizeLinearNode<uint8_t>(conv2_output_arg, .37f, 131, output_arg);
     };
 
@@ -422,25 +419,35 @@ TEST(NhwcTransformerTests, ConvBlockActivation) {
       concat_node.AddAttribute("axis", static_cast<int64_t>(1));
 
       auto* conv1_weight_arg = NhwcMakeInitializer<uint8_t>(builder, {30, 23, 3, 3});
-      Node& conv1_node = builder.AddQLinearConvNode<uint8_t>(concat_arg, .01f, 135,
-                                                             conv1_weight_arg, .02f, 126,
-                                                             conv1_output_arg, .37f, 131);
+      Node& conv1_node = builder.AddQLinearConvNode<uint8_t>(concat_arg, .01f, 135, conv1_weight_arg, .02f, 126, conv1_output_arg, .37f, 131);
       conv1_node.AddAttribute("pads", std::vector<int64_t>{1, 1, 1, 1});
       builder.AddQLinearActivationNode("QLinearSigmoid",
-                                       conv1_output_arg, .37f, 131,
-                                       act1_output_arg, .37f, 131);
+                                       conv1_output_arg,
+                                       .37f,
+                                       131,
+                                       act1_output_arg,
+                                       .37f,
+                                       131);
 
       auto* conv2_weight_arg = NhwcMakeInitializer<uint8_t>(builder, {30, 23, 1, 1});
-      builder.AddQLinearConvNode<uint8_t>(concat_arg, .01f, 135,
-                                          conv2_weight_arg, .015f, 129,
-                                          conv2_output_arg, .37f, 131);
+      builder.AddQLinearConvNode<uint8_t>(concat_arg, .01f, 135, conv2_weight_arg, .015f, 129, conv2_output_arg, .37f, 131);
       builder.AddQLinearActivationNode("QLinearLeakyRelu",
-                                       conv2_output_arg, .37f, 131,
-                                       act2_output_arg, .37f, 131);
+                                       conv2_output_arg,
+                                       .37f,
+                                       131,
+                                       act2_output_arg,
+                                       .37f,
+                                       131);
       builder.AddQLinearBinaryNode("QLinearAdd",
-                                   act1_output_arg, .37f, 131,
-                                   act2_output_arg, .37f, 131,
-                                   output_arg, .39f, 126);
+                                   act1_output_arg,
+                                   .37f,
+                                   131,
+                                   act2_output_arg,
+                                   .37f,
+                                   131,
+                                   output_arg,
+                                   .39f,
+                                   126);
 
       // Create extra uses of the various NodeArgs to exercise the transformer.
       if ((extra_edges & 1) != 0) {
@@ -487,19 +494,21 @@ TEST(NhwcTransformerTests, ConvMixTensorRanks) {
     auto* output_arg = builder.MakeOutput();
 
     auto* conv1_weight_arg = NhwcMakeInitializer<uint8_t>(builder, {1, 10, 3});
-    builder.AddQLinearConvNode<uint8_t>(input1_arg, .01f, 135,
-                                        conv1_weight_arg, .02f, 126,
-                                        conv1_output_arg, .37f, 131);
+    builder.AddQLinearConvNode<uint8_t>(input1_arg, .01f, 135, conv1_weight_arg, .02f, 126, conv1_output_arg, .37f, 131);
 
     auto* conv2_weight_arg = NhwcMakeInitializer<uint8_t>(builder, {1, 12, 3, 3});
-    builder.AddQLinearConvNode<uint8_t>(input2_arg, .01f, 135,
-                                        conv2_weight_arg, .02f, 126,
-                                        conv2_output_arg, .37f, 131);
+    builder.AddQLinearConvNode<uint8_t>(input2_arg, .01f, 135, conv2_weight_arg, .02f, 126, conv2_output_arg, .37f, 131);
     // Broadcast add {1, 1, 5} to {1, 1, 5, 5}.
     builder.AddQLinearBinaryNode("QLinearAdd",
-                                 conv1_output_arg, .37f, 131,
-                                 conv2_output_arg, .37f, 131,
-                                 output_arg, .39f, 126);
+                                 conv1_output_arg,
+                                 .37f,
+                                 131,
+                                 conv2_output_arg,
+                                 .37f,
+                                 131,
+                                 output_arg,
+                                 .39f,
+                                 126);
   };
 
   auto check_nhwc_graph = [&](InferenceSessionWrapper& session) {

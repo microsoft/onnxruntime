@@ -21,9 +21,7 @@ ONNX_OPERATOR_KERNEL_EX(
     kCudaExecutionProvider,
     (*KernelDefBuilder::Create())
         .TypeConstraint("T", DataTypeImpl::AllTensorTypes())
-        .TypeConstraint("Tind", std::vector<MLDataType>{
-                                    DataTypeImpl::GetTensorType<int32_t>(),
-                                    DataTypeImpl::GetTensorType<int64_t>()}),
+        .TypeConstraint("Tind", std::vector<MLDataType>{DataTypeImpl::GetTensorType<int32_t>(), DataTypeImpl::GetTensorType<int64_t>()}),
     ShrunkenGather);
 
 Status ShrunkenGather::ComputeInternal(OpKernelContext* context) const {

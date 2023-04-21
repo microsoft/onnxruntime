@@ -85,9 +85,7 @@ Status SoftmaxCrossEntropy<T>::Compute(OpKernelContext* context) const {
   // probability = exp(shifted_logit) / sum(exp(shifted_logit))
   // where shifted_logit = logit - max_logit
   // along classes
-  ComputeShareSoftmaxCrossEntropyCPU(n, d, nd, logit_data,
-                                     shifted_logit.data(),
-                                     log_prob_data);
+  ComputeShareSoftmaxCrossEntropyCPU(n, d, nd, logit_data, shifted_logit.data(), log_prob_data);
 
   // loss = sum(label * log_prob)
   auto& mul = shifted_logit;
@@ -192,9 +190,7 @@ Status SparseSoftmaxCrossEntropy<T>::Compute(OpKernelContext* context) const {
 
   // computation begins here
   std::vector<float> shifted_logit(nd);
-  ComputeShareSoftmaxCrossEntropyCPU(n, d, nd, logit_data,
-                                     shifted_logit.data(),
-                                     log_prob_data);
+  ComputeShareSoftmaxCrossEntropyCPU(n, d, nd, logit_data, shifted_logit.data(), log_prob_data);
 
   std::vector<float> loss_sample(n);
 

@@ -308,8 +308,7 @@ bool QnnParamWrapper::CreateQnnGraphParam(const QNN_INTERFACE_VER_TYPE& qnn_inte
   std::stringstream ss;
   switch (qnn_param_.paramType) {
     case QNN_PARAMTYPE_TENSOR: {
-      return CreateTensorInQnnGraph(qnn_interface, graph, node_name, tensor_name_,
-                                    qnn_param_.tensorParam, tensors_created_table, error_msg);
+      return CreateTensorInQnnGraph(qnn_interface, graph, node_name, tensor_name_, qnn_param_.tensorParam, tensors_created_table, error_msg);
     }
     case QNN_PARAMTYPE_SCALAR: {
       ss << "Add scalar parameter: " << name_;

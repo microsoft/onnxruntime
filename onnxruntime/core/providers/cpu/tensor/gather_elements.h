@@ -24,11 +24,9 @@ class GatherElements final : public OpKernel {
                                     int64_t axis);  // axis might be different from the member axis_ based on the input being processed
 
  private:
-  Status CoreImplString(const Tensor* input_tensor, const Tensor* indices_tensor,
-                        Tensor* output_tensor, int64_t axis) const;
+  Status CoreImplString(const Tensor* input_tensor, const Tensor* indices_tensor, Tensor* output_tensor, int64_t axis) const;
 
-  Status CoreImpl(const Tensor* input_tensor, const Tensor* indices_tensor,
-                  Tensor* output_tensor, int64_t axis) const;
+  Status CoreImpl(const Tensor* input_tensor, const Tensor* indices_tensor, Tensor* output_tensor, int64_t axis) const;
 
   int64_t axis_;
 };

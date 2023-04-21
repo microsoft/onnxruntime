@@ -92,8 +92,7 @@ std::vector<std::unique_ptr<IExecutionProvider>> GetExecutionProviders(
 //     .
 // dy_1/dx_m dy_2/dx_m ... dy_n/dx_m
 template <typename X_T, typename Y_T, typename JAC_T>
-inline void GradientChecker<X_T, Y_T, JAC_T>::InitJacobians(size_t row_count, size_t col_count,
-                                                            std::vector<std::vector<JAC_T>>* jacobians) {
+inline void GradientChecker<X_T, Y_T, JAC_T>::InitJacobians(size_t row_count, size_t col_count, std::vector<std::vector<JAC_T>>* jacobians) {
   // the number of rows is equal to total number of scalar input values in all of input vectors
   jacobians->resize(row_count);
   // the number of cols is equal to total number of scalar output values in all of output vectors
@@ -104,9 +103,7 @@ inline void GradientChecker<X_T, Y_T, JAC_T>::InitJacobians(size_t row_count, si
 
 template <typename X_T, typename Y_T, typename JAC_T>
 inline std::vector<OrtValue> GradientChecker<X_T, Y_T, JAC_T>::EvaluateFunctionAtInput(
-    OpTester& op_session, const std::vector<TensorInfo>& x_infos, const std::vector<TensorInfo>& y_infos,
-    std::vector<std::vector<X_T>>* x_datas, std::vector<std::vector<Y_T>>* y_datas,
-    std::vector<std::unique_ptr<IExecutionProvider>>* execution_providers) {
+    OpTester& op_session, const std::vector<TensorInfo>& x_infos, const std::vector<TensorInfo>& y_infos, std::vector<std::vector<X_T>>* x_datas, std::vector<std::vector<Y_T>>* y_datas, std::vector<std::unique_ptr<IExecutionProvider>>* execution_providers) {
   AddDatas(op_session, x_infos, y_infos, x_datas, y_datas);
 
   // If EPs is not set, the OpTester will run over all possible EPs and keep the outputs of last run as the
@@ -118,10 +115,7 @@ inline std::vector<OrtValue> GradientChecker<X_T, Y_T, JAC_T>::EvaluateFunctionA
 }
 
 template <typename X_T, typename Y_T, typename JAC_T>
-inline void GradientChecker<X_T, Y_T, JAC_T>::AddDatas(OpTester& op_session, const std::vector<TensorInfo>& x_infos,
-                                                       const std::vector<TensorInfo>& y_infos,
-                                                       std::vector<std::vector<X_T>>* x_datas,
-                                                       std::vector<std::vector<Y_T>>* y_datas) {
+inline void GradientChecker<X_T, Y_T, JAC_T>::AddDatas(OpTester& op_session, const std::vector<TensorInfo>& x_infos, const std::vector<TensorInfo>& y_infos, std::vector<std::vector<X_T>>* x_datas, std::vector<std::vector<Y_T>>* y_datas) {
   op_session.ClearData();
   for (size_t data_index = 0; data_index < x_datas->size(); ++data_index) {
     std::string name = "input" + std::to_string(data_index);
@@ -130,23 +124,19 @@ inline void GradientChecker<X_T, Y_T, JAC_T>::AddDatas(OpTester& op_session, con
     if (x_infos[data_index].data_type == DataTypeImpl::GetTensorType<int64_t>()) {
       std::vector<int64_t> int64_data(data.size());
       std::transform(data.begin(), data.end(), int64_data.begin(), [](X_T x) { return static_cast<int64_t>(x); });
-      op_session.AddInput<int64_t>(name.c_str(), x_infos[data_index].shape.AsShapeVector(), int64_data, false,
-                                   &x_infos[data_index].dim_params);
+      op_session.AddInput<int64_t>(name.c_str(), x_infos[data_index].shape.AsShapeVector(), int64_data, false, &x_infos[data_index].dim_params);
     } else if (x_infos[data_index].data_type == DataTypeImpl::GetTensorType<int32_t>()) {
       std::vector<int32_t> int32_data(data.size());
       std::transform(data.begin(), data.end(), int32_data.begin(), [](X_T x) { return static_cast<int32_t>(x); });
-      op_session.AddInput<int32_t>(name.c_str(), x_infos[data_index].shape.AsShapeVector(), int32_data, false,
-                                   &x_infos[data_index].dim_params);
+      op_session.AddInput<int32_t>(name.c_str(), x_infos[data_index].shape.AsShapeVector(), int32_data, false, &x_infos[data_index].dim_params);
     } else if (x_infos[data_index].data_type == DataTypeImpl::GetTensorType<bool>()) {
       std::unique_ptr<bool[]> p_data(new bool[data.size()]);
       for (size_t i = 0; i < data.size(); ++i) {
         p_data[i] = static_cast<bool>(data[i]);
       }
-      op_session.AddInput<bool>(name.c_str(), x_infos[data_index].shape.AsShapeVector(), p_data.get(), data.size(),
-                                false, &x_infos[data_index].dim_params);
+      op_session.AddInput<bool>(name.c_str(), x_infos[data_index].shape.AsShapeVector(), p_data.get(), data.size(), false, &x_infos[data_index].dim_params);
     } else {
-      op_session.AddInput<X_T>(name.c_str(), x_infos[data_index].shape.AsShapeVector(), data, false,
-                               &x_infos[data_index].dim_params);
+      op_session.AddInput<X_T>(name.c_str(), x_infos[data_index].shape.AsShapeVector(), data, false, &x_infos[data_index].dim_params);
     }
   }
 
@@ -166,16 +156,11 @@ inline void GradientChecker<X_T, Y_T, JAC_T>::AddDatas(OpTester& op_session, con
 
 template <typename X_T, typename Y_T, typename JAC_T>
 inline Status GradientChecker<X_T, Y_T, JAC_T>::ComputeTheoreticalJacobianTranspose(
-    const OpDef& op_def, const std::vector<TensorInfo>& x_infos, const std::vector<TensorInfo>& y_infos,
-    std::vector<std::vector<X_T>>* x_datas, std::vector<std::vector<Y_T>>* y_datas,
-    std::vector<std::vector<JAC_T>>* jacobian_ts, const std::vector<size_t>& row_strides,
-    const std::vector<size_t>& col_strides, const std::vector<AttributeProto>& attributes, bool add_shape,
-    std::vector<std::unique_ptr<IExecutionProvider>>* execution_providers /* nullptr*/) {
+    const OpDef& op_def, const std::vector<TensorInfo>& x_infos, const std::vector<TensorInfo>& y_infos, std::vector<std::vector<X_T>>* x_datas, std::vector<std::vector<Y_T>>* y_datas, std::vector<std::vector<JAC_T>>* jacobian_ts, const std::vector<size_t>& row_strides, const std::vector<size_t>& col_strides, const std::vector<AttributeProto>& attributes, bool add_shape, std::vector<std::unique_ptr<IExecutionProvider>>* execution_providers /* nullptr*/) {
   size_t y_num = y_infos.size();
   size_t x_num = x_infos.size();
   // build the graph once and reuse it later in the looping logic
-  GradientOpTester op_session(op_def.type.c_str(), x_infos, y_infos, op_def.opset_version, op_def.domain.c_str(),
-                              false);
+  GradientOpTester op_session(op_def.type.c_str(), x_infos, y_infos, op_def.opset_version, op_def.domain.c_str(), false);
   op_session.AddShapeToTensorData(add_shape);
   ORT_RETURN_IF_ERROR(InitOpTesterWithGradGraph(op_session, x_infos, y_infos, x_datas, y_datas, attributes));
 
@@ -202,8 +187,7 @@ inline Status GradientChecker<X_T, Y_T, JAC_T>::ComputeTheoreticalJacobianTransp
       // actual output data, which is time wasting. So if caller doesn't pass in the EPs, we will use the default
       // EPs according to the environment.
       std::vector<std::unique_ptr<IExecutionProvider>> eps = GetExecutionProviders(execution_providers);
-      op_session.Run(static_cast<int>(y_idx), static_cast<int>(c), OpTester::ExpectResult::kExpectSuccess, "", {},
-                     nullptr, &eps);
+      op_session.Run(static_cast<int>(y_idx), static_cast<int>(c), OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &eps);
       auto gradients = op_session.GetFetches();
 
       for (size_t x_idx = 0, grad_idx = 0; x_idx < x_num; x_idx++) {
@@ -227,10 +211,7 @@ inline Status GradientChecker<X_T, Y_T, JAC_T>::ComputeTheoreticalJacobianTransp
 
 template <typename X_T, typename Y_T, typename JAC_T>
 inline Status GradientChecker<X_T, Y_T, JAC_T>::InitOpTesterWithGraph(
-    OpTester& op_session, const std::vector<TensorInfo>& x_infos, const std::vector<TensorInfo>& y_infos,
-    std::vector<std::vector<X_T>>* x_datas, std::vector<std::vector<Y_T>>* y_datas,
-    const std::vector<AttributeProto>& attributes,
-    const std::unordered_map<std::string, int>& extra_domain_to_version) {
+    OpTester& op_session, const std::vector<TensorInfo>& x_infos, const std::vector<TensorInfo>& y_infos, std::vector<std::vector<X_T>>* x_datas, std::vector<std::vector<Y_T>>* y_datas, const std::vector<AttributeProto>& attributes, const std::unordered_map<std::string, int>& extra_domain_to_version) {
   AddDatas(op_session, x_infos, y_infos, x_datas, y_datas);
   // Currently only allows setting int attributes to zero. TODO: Expand this
   for (auto attr : attributes) {
@@ -262,9 +243,7 @@ inline Status GradientChecker<X_T, Y_T, JAC_T>::InitOpTesterWithGraph(
 
 template <typename X_T, typename Y_T, typename JAC_T>
 inline Status GradientChecker<X_T, Y_T, JAC_T>::InitOpTesterWithGradGraph(
-    OpTester& op_session, const std::vector<TensorInfo>& x_infos, const std::vector<TensorInfo>& y_infos,
-    std::vector<std::vector<X_T>>* x_datas, std::vector<std::vector<Y_T>>* y_datas,
-    const std::vector<AttributeProto>& attributes) {
+    OpTester& op_session, const std::vector<TensorInfo>& x_infos, const std::vector<TensorInfo>& y_infos, std::vector<std::vector<X_T>>* x_datas, std::vector<std::vector<Y_T>>* y_datas, const std::vector<AttributeProto>& attributes) {
   std::unordered_map<std::string, int> extra_domain_to_version{{kMSDomain, 1}, {kOnnxDomain, 9}};
   ORT_RETURN_IF_ERROR(
       InitOpTesterWithGraph(op_session, x_infos, y_infos, x_datas, y_datas, attributes, extra_domain_to_version));
@@ -288,8 +267,7 @@ inline Status GradientChecker<X_T, Y_T, JAC_T>::InitOpTesterWithGradGraph(
 
   training::GradientGraphConfiguration gradient_graph_config;
   gradient_graph_config.set_gradients_as_graph_outputs = true;
-  training::GradientGraphBuilder grad_graph_builder(&graph, dy_values, weights_to_train, "", gradient_graph_config,
-                                                    logging::LoggingManager::DefaultLogger());
+  training::GradientGraphBuilder grad_graph_builder(&graph, dy_values, weights_to_train, "", gradient_graph_config, logging::LoggingManager::DefaultLogger());
   Status status = grad_graph_builder.Build();
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
 
@@ -298,11 +276,7 @@ inline Status GradientChecker<X_T, Y_T, JAC_T>::InitOpTesterWithGradGraph(
 
 template <typename X_T, typename Y_T, typename JAC_T>
 inline Status GradientChecker<X_T, Y_T, JAC_T>::ComputeNumericJacobianTranspose(
-    const OpDef& op_def, const std::vector<TensorInfo>& x_infos, const std::vector<TensorInfo>& y_infos,
-    const JAC_T delta, std::vector<std::vector<X_T>>* x_datas, std::vector<std::vector<Y_T>>* y_datas,
-    std::vector<std::vector<JAC_T>>* jacobian_ts, const std::vector<size_t>& row_strides,
-    const std::vector<size_t>& col_strides, const std::vector<AttributeProto>& attributes, bool add_shape,
-    std::vector<std::unique_ptr<IExecutionProvider>>* execution_providers) {
+    const OpDef& op_def, const std::vector<TensorInfo>& x_infos, const std::vector<TensorInfo>& y_infos, const JAC_T delta, std::vector<std::vector<X_T>>* x_datas, std::vector<std::vector<Y_T>>* y_datas, std::vector<std::vector<JAC_T>>* jacobian_ts, const std::vector<size_t>& row_strides, const std::vector<size_t>& col_strides, const std::vector<AttributeProto>& attributes, bool add_shape, std::vector<std::unique_ptr<IExecutionProvider>>* execution_providers) {
   size_t y_num = y_infos.size();
   size_t x_num = x_infos.size();
   X_T x_delta = static_cast<X_T>(delta);
@@ -360,10 +334,7 @@ inline Status GradientChecker<X_T, Y_T, JAC_T>::ComputeNumericJacobianTranspose(
 
 template <typename X_T, typename Y_T, typename JAC_T>
 inline Status GradientChecker<X_T, Y_T, JAC_T>::ComputeGradientErrorInternal(
-    const OpDef& op_def, const std::vector<TensorInfo>& x_infos, const std::vector<TensorInfo>& y_infos,
-    std::vector<std::vector<X_T>>* x_datas, std::vector<std::vector<Y_T>>* y_datas, JAC_T* max_error,
-    const std::vector<AttributeProto>& attributes, bool check_not_have_gradient, bool check_not_have_shape_inferencing,
-    std::vector<std::unique_ptr<IExecutionProvider>>* execution_providers /* nullptr */) {
+    const OpDef& op_def, const std::vector<TensorInfo>& x_infos, const std::vector<TensorInfo>& y_infos, std::vector<std::vector<X_T>>* x_datas, std::vector<std::vector<Y_T>>* y_datas, JAC_T* max_error, const std::vector<AttributeProto>& attributes, bool check_not_have_gradient, bool check_not_have_shape_inferencing, std::vector<std::unique_ptr<IExecutionProvider>>* execution_providers /* nullptr */) {
   std::vector<size_t> row_strides(x_infos.size());
   std::vector<size_t> col_strides(y_infos.size());
   size_t row_count = 0;
@@ -383,9 +354,7 @@ inline Status GradientChecker<X_T, Y_T, JAC_T>::ComputeGradientErrorInternal(
   InitJacobians(row_count, col_count, &jacobian_ns);
 
   // Compute numeric Jacobian.
-  ORT_RETURN_IF_ERROR(ComputeNumericJacobianTranspose(op_def, x_infos, y_infos, JAC_T{1e-3f}, x_datas, y_datas,
-                                                      &jacobian_ns, row_strides, col_strides, attributes, true,
-                                                      execution_providers));
+  ORT_RETURN_IF_ERROR(ComputeNumericJacobianTranspose(op_def, x_infos, y_infos, JAC_T{1e-3f}, x_datas, y_datas, &jacobian_ns, row_strides, col_strides, attributes, true, execution_providers));
 
   // Compute the maximum error between theoretical and numeric Jacobians.
   *max_error = 0.0;
@@ -408,15 +377,12 @@ inline Status GradientChecker<X_T, Y_T, JAC_T>::ComputeGradientErrorInternal(
       }
 
       // a gradient node cannot get created without any has_gradient node.
-      if (std::all_of(x_infos_gradient_variation.cbegin(), x_infos_gradient_variation.cend(),
-                      [](const TensorInfo& info) { return !info.has_gradient; })) {
+      if (std::all_of(x_infos_gradient_variation.cbegin(), x_infos_gradient_variation.cend(), [](const TensorInfo& info) { return !info.has_gradient; })) {
         continue;
       }
 
       // Compute theoretical Jacobian.
-      ORT_RETURN_IF_ERROR(ComputeTheoreticalJacobianTranspose(op_def, x_infos_gradient_variation, y_infos, x_datas,
-                                                              y_datas, &jacobian_ts, row_strides, col_strides,
-                                                              attributes, add_shape, execution_providers));
+      ORT_RETURN_IF_ERROR(ComputeTheoreticalJacobianTranspose(op_def, x_infos_gradient_variation, y_infos, x_datas, y_datas, &jacobian_ts, row_strides, col_strides, attributes, add_shape, execution_providers));
 
       // We have numeric jacobians regardless of has_gradient (computed once).
       // We only have theoretical jacobians for those has_gradient.
@@ -460,8 +426,7 @@ inline Status GradientChecker<X_T, Y_T, JAC_T>::ComputeGradientErrorInternal(
 
 template <typename X_T, typename Y_T, typename JAC_T>
 inline Status GradientChecker<X_T, Y_T, JAC_T>::ComputeGradientError(
-    const OpDef& op_def, const std::vector<TensorInfo>& x_infos, const std::vector<TensorInfo>& y_infos,
-    JAC_T* max_error, const std::vector<AttributeProto>& attributes, bool check_not_have_gradient, /* = true*/
+    const OpDef& op_def, const std::vector<TensorInfo>& x_infos, const std::vector<TensorInfo>& y_infos, JAC_T* max_error, const std::vector<AttributeProto>& attributes, bool check_not_have_gradient, /* = true*/
     bool check_not_have_shape_inferencing /* = false*/,
     std::vector<std::unique_ptr<IExecutionProvider>>* execution_providers /* = nullptr */) {
   // TODO: Consider varying mean and variance
@@ -479,22 +444,18 @@ inline Status GradientChecker<X_T, Y_T, JAC_T>::ComputeGradientError(
 
     if (x_infos[i].transformer) {
       auto transformer = *x_infos[i].transformer;
-      std::generate(x_datas[i].begin(), x_datas[i].end(),
-                    [&] { return transformer(static_cast<float>(distribution(generator))); });
+      std::generate(x_datas[i].begin(), x_datas[i].end(), [&] { return transformer(static_cast<float>(distribution(generator))); });
     } else {
       std::generate(x_datas[i].begin(), x_datas[i].end(), [&] { return distribution(generator); });
     }
   }
 
-  return ComputeGradientError(op_def, x_infos, y_infos, max_error, x_datas, attributes, check_not_have_gradient,
-                              check_not_have_shape_inferencing, execution_providers);
+  return ComputeGradientError(op_def, x_infos, y_infos, max_error, x_datas, attributes, check_not_have_gradient, check_not_have_shape_inferencing, execution_providers);
 }
 
 template <typename X_T, typename Y_T, typename JAC_T>
 inline Status GradientChecker<X_T, Y_T, JAC_T>::ComputeGradientError(
-    const OpDef& op_def, const std::vector<TensorInfo>& x_infos, const std::vector<TensorInfo>& y_infos,
-    JAC_T* max_error, std::vector<std::vector<X_T>> x_datas,
-    const std::vector<ONNX_NAMESPACE::AttributeProto>& attributes, bool check_not_have_gradient, /* = true*/
+    const OpDef& op_def, const std::vector<TensorInfo>& x_infos, const std::vector<TensorInfo>& y_infos, JAC_T* max_error, std::vector<std::vector<X_T>> x_datas, const std::vector<ONNX_NAMESPACE::AttributeProto>& attributes, bool check_not_have_gradient, /* = true*/
     bool check_not_have_shape_inferencing /* = false*/,
     std::vector<std::unique_ptr<IExecutionProvider>>* execution_providers /* = nullptr */) {
   // Generate dummy placeholders with zero for y_datas
@@ -504,8 +465,7 @@ inline Status GradientChecker<X_T, Y_T, JAC_T>::ComputeGradientError(
   }
 
   // Compute gradient error.
-  return ComputeGradientErrorInternal(op_def, x_infos, y_infos, &x_datas, &y_datas, max_error, attributes,
-                                      check_not_have_gradient, check_not_have_shape_inferencing, execution_providers);
+  return ComputeGradientErrorInternal(op_def, x_infos, y_infos, &x_datas, &y_datas, max_error, attributes, check_not_have_gradient, check_not_have_shape_inferencing, execution_providers);
 }
 
 #define INSTANTIATE_GRAD_ERR_TYPE(X_T, Y_T, JAC_T) template class GradientChecker<X_T, Y_T, JAC_T>;

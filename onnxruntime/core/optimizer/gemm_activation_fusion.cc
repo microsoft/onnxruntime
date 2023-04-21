@@ -11,9 +11,7 @@ namespace onnxruntime {
 
 namespace {
 // Don't check if the op is Deprecated. In ONNX Runtime's world, there is no deprecation.
-bool IsSupportedOptypeVersionAndDomain(const Node& node, const std::string& op_type,
-                                       std::initializer_list<ONNX_NAMESPACE::OperatorSetVersion> versions,
-                                       std::string_view domain) {
+bool IsSupportedOptypeVersionAndDomain(const Node& node, const std::string& op_type, std::initializer_list<ONNX_NAMESPACE::OperatorSetVersion> versions, std::string_view domain) {
   return (node.OpType() == op_type && graph_utils::MatchesOpSinceVersion(node, versions) &&
           graph_utils::MatchesOpSetDomain(node, domain));
 }
@@ -38,8 +36,7 @@ bool IsFusableActivation(const Node& node) {
 }
 }  // namespace
 
-Status GemmActivationFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
-                                       const logging::Logger& logger) const {
+Status GemmActivationFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
   GraphViewer graph_viewer(graph);
   const auto& order = graph_viewer.GetNodesInTopologicalOrder();
 
@@ -68,9 +65,7 @@ Status GemmActivationFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
     Node& gemm_node = node;
     Node& act_node = *graph.GetNode(next_node.Index());  // get mutable reference
 
-    Node& fused_gemm = graph.AddNode(graph.GenerateNodeName("fused " + gemm_node.Name()), "FusedGemm",
-                                     "fused Gemm " + gemm_node.Name() + "with activation " + act_node.OpType(),
-                                     gemm_node.MutableInputDefs(), {}, &gemm_node.GetAttributes(), kMSDomain);
+    Node& fused_gemm = graph.AddNode(graph.GenerateNodeName("fused " + gemm_node.Name()), "FusedGemm", "fused Gemm " + gemm_node.Name() + "with activation " + act_node.OpType(), gemm_node.MutableInputDefs(), {}, &gemm_node.GetAttributes(), kMSDomain);
 
     // Add a new attribute to specify the activation type
     fused_gemm.AddAttribute("activation", act_node.OpType());

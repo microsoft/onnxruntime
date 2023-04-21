@@ -110,8 +110,7 @@ Status ClipOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
     ORT_ENFORCE(input_i == 0, "QNN ReluMinMax operator expects only one input. Min and max are expected to be parameters, ie. initializer inputs in ONNX model");
 
     Qnn_TensorType_t tensor_type = GetInputTensorType(qnn_model_wrapper, input_name);
-    QnnTensorWrapper input_tensorwrapper(input_name, tensor_type, qnn_data_type, quantize_param,
-                                         std::move(input_shape), std::move(unpacked_tensor));
+    QnnTensorWrapper input_tensorwrapper(input_name, tensor_type, qnn_data_type, quantize_param, std::move(input_shape), std::move(unpacked_tensor));
     ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(input_tensorwrapper)), "Failed to add tensor.");
     input_names.push_back(input_name);
   }
@@ -140,10 +139,7 @@ Status ClipOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
   param_tensor_names.push_back(max_value_param.GetParamTensorName());
   qnn_model_wrapper.AddParamWrapper(std::move(max_value_param));
 
-  ORT_RETURN_IF_ERROR(ProcessOutputs(qnn_model_wrapper, node_unit,
-                                     std::move(input_names),
-                                     std::move(param_tensor_names),
-                                     logger, is_quantized_model, do_op_validation));
+  ORT_RETURN_IF_ERROR(ProcessOutputs(qnn_model_wrapper, node_unit, std::move(input_names), std::move(param_tensor_names), logger, is_quantized_model, do_op_validation));
 
   return Status::OK();
 }

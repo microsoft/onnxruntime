@@ -46,8 +46,7 @@ void Send::SendData(
                        static_cast<int>(tag_)};
 
   MPI_CHECK(MPI_Send(
-      info_data.buffer, info_data.size, MPI_CHAR,
-      info_data.rank, info_data.tag, MPI_COMM_WORLD));
+      info_data.buffer, info_data.size, MPI_CHAR, info_data.rank, info_data.tag, MPI_COMM_WORLD));
 }
 
 Status Send::Compute(OpKernelContext* ctx) const {

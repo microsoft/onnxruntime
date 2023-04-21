@@ -84,8 +84,7 @@ Model::Model(const std::string& graph_name,
   }
 
   for (const auto& [domain, version] : *p_domain_to_version) {
-    model_load_utils::ValidateOpsetForDomain(domain_to_version_static, logger, allow_released_opsets_only_final,
-                                             domain, version);
+    model_load_utils::ValidateOpsetForDomain(domain_to_version_static, logger, allow_released_opsets_only_final, domain, version);
     const gsl::not_null<OperatorSetIdProto*> opset_id_proto{model_proto_.add_opset_import()};
     opset_id_proto->set_domain(domain);
     opset_id_proto->set_version(version);
@@ -116,19 +115,14 @@ Model::Model(const std::string& graph_name,
 
   // need to call private ctor so can't use make_shared
   GSL_SUPPRESS(r .11)
-  graph_.reset(new Graph(*this, model_proto_.mutable_graph(), *p_domain_to_version, IrVersion(), schema_registry,
-                         logger, options.strict_shape_type_inference));
+  graph_.reset(new Graph(*this, model_proto_.mutable_graph(), *p_domain_to_version, IrVersion(), schema_registry, logger, options.strict_shape_type_inference));
 }
 
-Model::Model(const ModelProto& model_proto, const PathString& model_path,
-             const IOnnxRuntimeOpSchemaRegistryList* local_registries, const logging::Logger& logger,
-             const ModelOptions& options)
+Model::Model(const ModelProto& model_proto, const PathString& model_path, const IOnnxRuntimeOpSchemaRegistryList* local_registries, const logging::Logger& logger, const ModelOptions& options)
     : Model(ModelProto(model_proto), model_path, local_registries, logger, options) {
 }
 
-Model::Model(ModelProto&& model_proto, const PathString& model_path,
-             const IOnnxRuntimeOpSchemaRegistryList* local_registries,
-             const logging::Logger& logger, const ModelOptions& options)
+Model::Model(ModelProto&& model_proto, const PathString& model_path, const IOnnxRuntimeOpSchemaRegistryList* local_registries, const logging::Logger& logger, const ModelOptions& options)
     : model_path_(Path::Parse(model_path)) {
   if (!utils::HasGraph(model_proto)) {
     ORT_THROW("ModelProto does not have a graph.");
@@ -146,8 +140,7 @@ Model::Model(ModelProto&& model_proto, const PathString& model_path,
 
   if (const auto ir_version = model_proto.ir_version();
       ir_version > ONNX_NAMESPACE::Version::IR_VERSION) {
-    ORT_THROW("Unsupported model IR version: ", ir_version,
-              ", max supported IR version: ", ONNX_NAMESPACE::Version::IR_VERSION);
+    ORT_THROW("Unsupported model IR version: ", ir_version, ", max supported IR version: ", ONNX_NAMESPACE::Version::IR_VERSION);
   }
 
   model_proto_ = std::move(model_proto);
@@ -189,8 +182,7 @@ Model::Model(ModelProto&& model_proto, const PathString& model_path,
                                "of some older opset version operators.";
     }
 
-    model_load_utils::ValidateOpsetForDomain(onnx_released_versions, logger,
-                                             allow_official_onnx_release_only_final, domain, version);
+    model_load_utils::ValidateOpsetForDomain(onnx_released_versions, logger, allow_official_onnx_release_only_final, domain, version);
 
     // We need to overwrite the domain here with ("") or else the loop below will try to find ("")
     // in the map and if not found (when domain == kOnnxDomainAlias), adds an entry for ("", 11).
@@ -239,8 +231,7 @@ Model::Model(ModelProto&& model_proto, const PathString& model_path,
 
   // create instance. need to call private ctor so can't use make_unique
   GSL_SUPPRESS(r .11)
-  graph_.reset(new Graph(*this, model_proto_.mutable_graph(), domain_to_version, IrVersion(), schema_registry,
-                         logger, options.strict_shape_type_inference));
+  graph_.reset(new Graph(*this, model_proto_.mutable_graph(), domain_to_version, IrVersion(), schema_registry, logger, options.strict_shape_type_inference));
 }
 
 const InlinedHashMap<std::string, FunctionTemplate*>& Model::GetModelLocalFunctionTemplates() const {
@@ -455,8 +446,7 @@ static Status LoadModelHelper(const T& file_path, Loader loader) {
     if (status.Category() == common::SYSTEM) {
       switch (status.Code()) {
         case ENOENT:
-          return ORT_MAKE_STATUS(ONNXRUNTIME, NO_SUCHFILE, "Load model ", ToUTF8String(file_path),
-                                 " failed. File doesn't exist");
+          return ORT_MAKE_STATUS(ONNXRUNTIME, NO_SUCHFILE, "Load model ", ToUTF8String(file_path), " failed. File doesn't exist");
         case EINVAL:
           return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Load model ", ToUTF8String(file_path), " failed");
         default:
@@ -492,9 +482,7 @@ static Status LoadModel(const T& file_path, ONNX_NAMESPACE::ModelProto& model_pr
 }
 
 template <typename T>
-static Status LoadModel(const T& file_path, std::shared_ptr<Model>& p_model,
-                        const IOnnxRuntimeOpSchemaRegistryList* local_registries,
-                        const logging::Logger& logger, const ModelOptions& options) {
+static Status LoadModel(const T& file_path, std::shared_ptr<Model>& p_model, const IOnnxRuntimeOpSchemaRegistryList* local_registries, const logging::Logger& logger, const ModelOptions& options) {
   const auto loader = [&file_path, &p_model, local_registries, &logger, &options](int fd) {
     return Model::Load(fd, ToPathString(file_path), p_model, local_registries, logger, options);
   };
@@ -572,8 +560,7 @@ static Status SaveModelWithExternalInitializers(Model& model,
   ORT_RETURN_IF_ERROR(status);
 
   ORT_TRY {
-    status = Model::SaveWithExternalInitializers(model, fd, external_file_name,
-                                                 initializer_size_threshold);
+    status = Model::SaveWithExternalInitializers(model, fd, external_file_name, initializer_size_threshold);
   }
   ORT_CATCH(const std::exception& ex) {
     ORT_HANDLE_EXCEPTION([&]() {
@@ -595,9 +582,7 @@ Status Model::Load(const PathString& file_path,
 
 GSL_SUPPRESS(r .30)  // spurious warnings. p_model is potentially reset in the internal call to Load
 GSL_SUPPRESS(r .35)
-Status Model::Load(const PathString& file_path, std::shared_ptr<Model>& p_model,
-                   const IOnnxRuntimeOpSchemaRegistryList* local_registries,
-                   const logging::Logger& logger, const ModelOptions& options) {
+Status Model::Load(const PathString& file_path, std::shared_ptr<Model>& p_model, const IOnnxRuntimeOpSchemaRegistryList* local_registries, const logging::Logger& logger, const ModelOptions& options) {
   return LoadModel(file_path, p_model, local_registries, logger, options);
 }
 
@@ -605,9 +590,7 @@ Status Model::Save(Model& model, const std::string& file_path) {
   return SaveModel(model, file_path);
 }
 
-Status Model::SaveWithExternalInitializers(Model& model, const PathString& file_path,
-                                           const std::string& external_file_name,
-                                           size_t initializer_size_threshold) {
+Status Model::SaveWithExternalInitializers(Model& model, const PathString& file_path, const std::string& external_file_name, size_t initializer_size_threshold) {
   return SaveModelWithExternalInitializers(model, file_path, external_file_name, initializer_size_threshold);
 }
 
@@ -620,15 +603,11 @@ Status Model::LoadFromBytes(int count, void* p_bytes, /*out*/ ONNX_NAMESPACE::Mo
   return Status::OK();
 }
 
-Status Model::LoadFromBytes(int count, void* p_bytes, /*out*/ std::shared_ptr<Model>& p_model,
-                            const IOnnxRuntimeOpSchemaRegistryList* local_registries, const logging::Logger& logger,
-                            const ModelOptions& options) {
+Status Model::LoadFromBytes(int count, void* p_bytes, /*out*/ std::shared_ptr<Model>& p_model, const IOnnxRuntimeOpSchemaRegistryList* local_registries, const logging::Logger& logger, const ModelOptions& options) {
   return LoadFromBytes(count, p_bytes, PathString{}, p_model, local_registries, logger, options);
 }
 
-Status Model::LoadFromBytes(int count, void* p_bytes, const PathString& model_path,
-                            std::shared_ptr<Model>& p_model, const IOnnxRuntimeOpSchemaRegistryList* local_registries,
-                            const logging::Logger& logger, const ModelOptions& options) {
+Status Model::LoadFromBytes(int count, void* p_bytes, const PathString& model_path, std::shared_ptr<Model>& p_model, const IOnnxRuntimeOpSchemaRegistryList* local_registries, const logging::Logger& logger, const ModelOptions& options) {
   ModelProto model_proto;
 
   auto status = LoadFromBytes(count, p_bytes, model_proto);
@@ -683,14 +662,11 @@ Status Model::Load(int fd, ONNX_NAMESPACE::ModelProto& model_proto) {
   return Status::OK();
 }
 
-Status Model::Load(int fd, std::shared_ptr<Model>& p_model, const IOnnxRuntimeOpSchemaRegistryList* local_registries,
-                   const logging::Logger& logger, const ModelOptions& options) {
+Status Model::Load(int fd, std::shared_ptr<Model>& p_model, const IOnnxRuntimeOpSchemaRegistryList* local_registries, const logging::Logger& logger, const ModelOptions& options) {
   return Load(fd, PathString{}, p_model, local_registries, logger, options);
 }
 
-Status Model::Load(int fd, const PathString& model_path, std::shared_ptr<Model>& p_model,
-                   const IOnnxRuntimeOpSchemaRegistryList* local_registries, const logging::Logger& logger,
-                   const ModelOptions& options) {
+Status Model::Load(int fd, const PathString& model_path, std::shared_ptr<Model>& p_model, const IOnnxRuntimeOpSchemaRegistryList* local_registries, const logging::Logger& logger, const ModelOptions& options) {
   ModelProto model_proto;
 
   ORT_RETURN_IF_ERROR(Load(fd, model_proto));
@@ -873,11 +849,9 @@ common::Status Model::LoadFromOrtFormat(const fbs::Model& fbs_model,
     opset_id_proto->set_version(version);
   }
 
-  ORT_RETURN_IF_ERROR(Graph::LoadFromOrtFormat(*fbs_graph, *model, domain_to_version, schema_registry,
-                                               load_options, logger, model->graph_));
+  ORT_RETURN_IF_ERROR(Graph::LoadFromOrtFormat(*fbs_graph, *model, domain_to_version, schema_registry, load_options, logger, model->graph_));
 #else
-  ORT_RETURN_IF_ERROR(Graph::LoadFromOrtFormat(*fbs_graph, *model, domain_to_version,
-                                               load_options, logger, model->graph_));
+  ORT_RETURN_IF_ERROR(Graph::LoadFromOrtFormat(*fbs_graph, *model, domain_to_version, load_options, logger, model->graph_));
 #endif
   return Status::OK();
 }

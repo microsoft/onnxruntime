@@ -67,7 +67,9 @@ PrintTVMTensorExtern(const tvm::Tensor& X,
                                           topi::detail::pack_buffer(ins[0]),
                                           topi::detail::pack_buffer(outs[0])});
       },
-      name + "_print", "", {});
+      name + "_print",
+      "",
+      {});
 }
 
 tvm::Tensor PrintImmutable(const tvm::Tensor& X) {

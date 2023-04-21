@@ -120,16 +120,12 @@ class ApiGraph final : public api::GraphRef {
   std::unique_ptr<api::NodeRef> GetNodeProducingOutput(std::string_view name) const override;
   void TransposeInitializer(std::string_view name, const std::vector<int64_t>& perm) override;
   void ReshapeInitializer(std::string_view name, const std::vector<int64_t>& shape) override;
-  std::unique_ptr<api::NodeRef> AddNode(std::string_view op_type, const std::vector<std::string_view>& inputs,
-                                        size_t num_outputs = 1, std::string_view domain = "") override;
+  std::unique_ptr<api::NodeRef> AddNode(std::string_view op_type, const std::vector<std::string_view>& inputs, size_t num_outputs = 1, std::string_view domain = "") override;
 
-  std::unique_ptr<api::NodeRef> CopyNode(const api::NodeRef& source_node, std::string_view op_type,
-                                         std::string_view domain = "",
-                                         std::optional<int> since_version = std::nullopt) override;
+  std::unique_ptr<api::NodeRef> CopyNode(const api::NodeRef& source_node, std::string_view op_type, std::string_view domain = "", std::optional<int> since_version = std::nullopt) override;
   void RemoveNode(api::NodeRef& node) override;
   void RemoveInitializer(std::string_view name) override;
-  std::string_view AddInitializer(api::DataType dtype, const std::vector<int64_t>& shape,
-                                  const std::vector<uint8_t>& data) override;
+  std::string_view AddInitializer(api::DataType dtype, const std::vector<int64_t>& shape, const std::vector<uint8_t>& data) override;
   void MoveOutput(api::NodeRef& src_node, size_t src_idx, api::NodeRef& dst_node, size_t dst_idx) override;
   void CopyValueInfo(std::string_view src_name, std::string_view dst_name) override;
   bool HasValueConsumers(std::string_view name) const override;
@@ -207,12 +203,18 @@ void ApiValueInfo::PermuteDims(const std::vector<int64_t>& perm) {
   }
 
   ORT_ENFORCE(perm.size() == gsl::narrow_cast<size_t>(shape_proto->dim_size()),
-              "Permutation length ", perm.size(), " does not match rank ", shape_proto->dim_size());
+              "Permutation length ",
+              perm.size(),
+              " does not match rank ",
+              shape_proto->dim_size());
   TensorShapeProto new_shape;
   for (int64_t p : perm) {
     int p_int = gsl::narrow_cast<int>(p);
     ORT_ENFORCE(0 <= p && p_int < shape_proto->dim_size(),
-                "Permutation entry ", p, " out of bounds for shape ", shape_proto->dim_size());
+                "Permutation entry ",
+                p,
+                " out of bounds for shape ",
+                shape_proto->dim_size());
     auto& dim = *new_shape.add_dim();
     const auto& src_dim = shape_proto->dim(p_int);
     dim = src_dim;
@@ -272,8 +274,7 @@ std::vector<uint8_t> ApiTensor::Data() const {
   auto tensor_shape_dims = utils::GetTensorShapeFromTensorProto(tensor_proto_);
   TensorShape tensor_shape{std::move(tensor_shape_dims)};
   onnxruntime::Tensor tensor(tensor_dtype, tensor_shape, cpu_allocator_);
-  ORT_THROW_IF_ERROR(utils::TensorProtoToTensor(Env::Default(), model_path_.ToPathString().c_str(),
-                                                tensor_proto_, tensor));
+  ORT_THROW_IF_ERROR(utils::TensorProtoToTensor(Env::Default(), model_path_.ToPathString().c_str(), tensor_proto_, tensor));
   size_t num_bytes = gsl::narrow_cast<size_t>(tensor.SizeInBytes());
   const uint8_t* data = static_cast<const uint8_t*>(tensor.DataRaw());
   return std::vector<uint8_t>(data, data + num_bytes);
@@ -539,8 +540,7 @@ void ApiGraph::TransposeInitializer(std::string_view name, const std::vector<int
   TensorShape new_tensor_shape(new_tensor_shape_dims);
   Tensor out_tensor(tensor_dtype, new_tensor_shape, cpu_allocator_);
 
-  ORT_THROW_IF_ERROR(utils::TensorProtoToTensor(Env::Default(), graph_.ModelPath().ToPathString().c_str(),
-                                                *tensor_proto, in_tensor));
+  ORT_THROW_IF_ERROR(utils::TensorProtoToTensor(Env::Default(), graph_.ModelPath().ToPathString().c_str(), *tensor_proto, in_tensor));
 
   ORT_THROW_IF_ERROR(Transpose::DoTranspose(permutations, in_tensor, out_tensor));
 
@@ -572,8 +572,7 @@ void ApiGraph::ReshapeInitializer(std::string_view name, const std::vector<int64
     old_num_elts *= d;
   }
 
-  ORT_ENFORCE(new_num_elts == old_num_elts, "Cannot reshape initializer ", name,
-              " to have different number of elements");
+  ORT_ENFORCE(new_num_elts == old_num_elts, "Cannot reshape initializer ", name, " to have different number of elements");
 
   auto new_tensor_proto = ONNX_NAMESPACE::TensorProto(*tensor_proto);
   new_tensor_proto.clear_dims();
@@ -593,9 +592,7 @@ void ApiGraph::ReshapeInitializer(std::string_view name, const std::vector<int64
   node_arg->SetShape(new_shape);
 }
 
-static Node& CreateNodeHelper(onnxruntime::Graph& graph, std::string_view op_type,
-                              const std::vector<std::string_view>& inputs, size_t num_outputs,
-                              std::string_view domain, int since_version, std::string_view node_ep) {
+static Node& CreateNodeHelper(onnxruntime::Graph& graph, std::string_view op_type, const std::vector<std::string_view>& inputs, size_t num_outputs, std::string_view domain, int since_version, std::string_view node_ep) {
   const std::string op_type_str(op_type);
   std::string name = graph.GenerateNodeName(op_type_str);
   std::vector<NodeArg*> input_args;
@@ -620,8 +617,7 @@ static Node& CreateNodeHelper(onnxruntime::Graph& graph, std::string_view op_typ
   }
 
   std::vector<NodeArg*> outputs;
-  Node& node = graph.AddNode(name, op_type_str, "Added in transpose optimizer", input_args, output_args, nullptr,
-                             std::string(domain));
+  Node& node = graph.AddNode(name, op_type_str, "Added in transpose optimizer", input_args, output_args, nullptr, std::string(domain));
 
   if (node.SinceVersion() == -1) {
     node.SetSinceVersion(since_version);
@@ -676,10 +672,9 @@ static std::optional<int> GetLayoutTransformationPotentiallyAddedOpSinceVersion(
              range_rend = std::make_reverse_iterator(range_begin);
 
   const auto result =
-      std::find_if(range_rbegin, range_rend,
-                   [&opset_version](const OpIdentifierWithStringViews& a) {
-                     return a.since_version <= opset_version;
-                   });
+      std::find_if(range_rbegin, range_rend, [&opset_version](const OpIdentifierWithStringViews& a) {
+        return a.since_version <= opset_version;
+      });
 
   if (result != range_rend) {
     return result->since_version;
@@ -689,11 +684,9 @@ static std::optional<int> GetLayoutTransformationPotentiallyAddedOpSinceVersion(
 }
 
 // Based on the opset version imported for this model, returns the since version for the node.
-static int GetSinceVersionForNewOp(std::string_view op_type, std::string_view domain,
-                                   const std::unordered_map<std::string, int>& domain_to_version_map) {
+static int GetSinceVersionForNewOp(std::string_view op_type, std::string_view domain, const std::unordered_map<std::string, int>& domain_to_version_map) {
   // TODO do we need this check? we will also check kLayoutTransformationPotentiallyAddedOps
-  ORT_ENFORCE(domain == kOnnxDomain, "Transpose optimizer is expected to add only onnx domain ops. Domain: ",
-              domain, " provided for op: ", op_type);
+  ORT_ENFORCE(domain == kOnnxDomain, "Transpose optimizer is expected to add only onnx domain ops. Domain: ", domain, " provided for op: ", op_type);
 
   const auto opset_import_iter = domain_to_version_map.find(std::string(domain));
   ORT_ENFORCE(opset_import_iter != domain_to_version_map.end(), domain, " domain not found in opset imports.");
@@ -701,28 +694,26 @@ static int GetSinceVersionForNewOp(std::string_view op_type, std::string_view do
   const int opset_version = opset_import_iter->second;
   const auto since_version = GetLayoutTransformationPotentiallyAddedOpSinceVersion(domain, op_type, opset_version);
   ORT_ENFORCE(since_version.has_value(),
-              "Transpose Optimizer is adding an unexpected node: ", op_type,
+              "Transpose Optimizer is adding an unexpected node: ",
+              op_type,
               "An entry for this node should be added in kLayoutTransformationPotentiallyAddedOps.");
 
   return *since_version;
 }
 
 std::unique_ptr<api::NodeRef> ApiGraph::AddNode(std::string_view op_type,
-                                                const std::vector<std::string_view>& inputs, size_t num_outputs,
+                                                const std::vector<std::string_view>& inputs,
+                                                size_t num_outputs,
                                                 std::string_view domain) {
   int since_version = GetSinceVersionForNewOp(op_type, domain, graph_.DomainToVersionMap());
-  Node& node = CreateNodeHelper(graph_, op_type, inputs, num_outputs,
-                                domain, since_version, new_node_ep_ != nullptr ? new_node_ep_ : "");
+  Node& node = CreateNodeHelper(graph_, op_type, inputs, num_outputs, domain, since_version, new_node_ep_ != nullptr ? new_node_ep_ : "");
 
   return std::make_unique<ApiNode>(node, graph_);
 }
 
-std::unique_ptr<api::NodeRef> ApiGraph::CopyNode(const api::NodeRef& source_node, std::string_view op_type,
-                                                 std::string_view domain, std::optional<int> since_version) {
+std::unique_ptr<api::NodeRef> ApiGraph::CopyNode(const api::NodeRef& source_node, std::string_view op_type, std::string_view domain, std::optional<int> since_version) {
   const int new_node_since_version = since_version.has_value() ? *since_version : source_node.SinceVersion();
-  Node& node = CreateNodeHelper(graph_, op_type, source_node.Inputs(),
-                                source_node.Outputs().size(), domain, new_node_since_version,
-                                source_node.GetExecutionProviderType());
+  Node& node = CreateNodeHelper(graph_, op_type, source_node.Inputs(), source_node.Outputs().size(), domain, new_node_since_version, source_node.GetExecutionProviderType());
 
   std::unique_ptr<api::NodeRef> new_node = std::make_unique<ApiNode>(node, graph_);
   new_node->CopyAttributes(source_node);
@@ -745,8 +736,7 @@ void ApiGraph::RemoveInitializer(std::string_view name) {
   graph_.RemoveInitializedTensor(std::string(name));
 }
 
-std::string_view ApiGraph::AddInitializer(api::DataType dtype, const std::vector<int64_t>& shape,
-                                          const std::vector<uint8_t>& data) {
+std::string_view ApiGraph::AddInitializer(api::DataType dtype, const std::vector<int64_t>& shape, const std::vector<uint8_t>& data) {
   std::string name = graph_.GenerateNodeArgName("const_transpose_optimizer");
 
   ONNX_NAMESPACE::TensorProto tensor_proto;
@@ -814,8 +804,7 @@ void ApiGraph::CopyValueInfo(std::string_view src_name, std::string_view dst_nam
   graph_.SetNodeArgType(dst_arg, *src_type);
 }
 
-std::unique_ptr<api::GraphRef> MakeApiGraph(onnxruntime::Graph& graph, AllocatorPtr cpu_allocator,
-                                            const char* new_node_ep) {
+std::unique_ptr<api::GraphRef> MakeApiGraph(onnxruntime::Graph& graph, AllocatorPtr cpu_allocator, const char* new_node_ep) {
   return std::make_unique<ApiGraph>(graph, std::move(cpu_allocator), new_node_ep);
 }
 
@@ -831,9 +820,7 @@ onnxruntime::Node& NodeFromApiNode(onnx_layout_transformation::api::NodeRef& nod
   return static_cast<ApiNode&>(node).Node();
 }
 
-CostCheckResult OrtEPCostCheck(const api::GraphRef& graph, const api::NodeRef& node,
-                               const std::vector<int64_t>& /*perm*/,
-                               const std::unordered_set<std::string>& /*outputs_leading_to_transpose*/) {
+CostCheckResult OrtEPCostCheck(const api::GraphRef& graph, const api::NodeRef& node, const std::vector<int64_t>& /*perm*/, const std::unordered_set<std::string>& /*outputs_leading_to_transpose*/) {
   // special case some kernels based on the ORT implementation details
   if (node.GetExecutionProviderType() == kCpuExecutionProvider) {
     if (node.IsOp("MaxPool")) {
@@ -891,9 +878,7 @@ const std::unordered_set<std::string_view>& GetORTLayoutSensitiveOps() {
 
 // Cost check for aggressively pushing the Transpose nodes involved in the layout transformation further out.
 static CostCheckResult
-PostLayoutTransformCostCheck(const api::GraphRef& graph, const api::NodeRef& node,
-                             const std::vector<int64_t>& perm,
-                             const std::unordered_set<std::string>& outputs_leading_to_transpose) {
+PostLayoutTransformCostCheck(const api::GraphRef& graph, const api::NodeRef& node, const std::vector<int64_t>& perm, const std::unordered_set<std::string>& outputs_leading_to_transpose) {
   // we aggressively push the layout transpose nodes.
   // Exception: pushing through a Concat can result in Transpose nodes being added to multiple other inputs which
   // can potentially be worse for performance. Use the cost check in that case.
@@ -906,8 +891,7 @@ PostLayoutTransformCostCheck(const api::GraphRef& graph, const api::NodeRef& nod
   return OrtEPCostCheck(graph, node, perm, outputs_leading_to_transpose);
 }
 
-Status TransformLayoutForEP(Graph& graph, bool& modified, const IExecutionProvider& execution_provider,
-                            const DebugGraphFn& debug_graph_fn) {
+Status TransformLayoutForEP(Graph& graph, bool& modified, const IExecutionProvider& execution_provider, const DebugGraphFn& debug_graph_fn) {
   // sub graph recurse will be added later
   auto api_graph = MakeApiGraph(graph, execution_provider.GetAllocator(OrtMemTypeDefault), nullptr);
   const auto& layout_sensitive_ops = GetORTLayoutSensitiveOps();
@@ -986,13 +970,9 @@ Status TransformLayoutForEP(Graph& graph, bool& modified, const IExecutionProvid
     }
 
     OptimizeResult result =
-        onnx_layout_transformation::Optimize(*api_graph, /*allow_extended_ops*/ true, execution_provider.Type(),
-                                             onnx_layout_transformation::OptimizerMode::OPTIMIZE_LAYOUT_TRANSFORM,
-                                             PostLayoutTransformCostCheck,
-                                             layout_sensitive_ops);
+        onnx_layout_transformation::Optimize(*api_graph, /*allow_extended_ops*/ true, execution_provider.Type(), onnx_layout_transformation::OptimizerMode::OPTIMIZE_LAYOUT_TRANSFORM, PostLayoutTransformCostCheck, layout_sensitive_ops);
     if (result.error_msg) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Optimization after layout transformation failed: ",
-                             result.error_msg.value());
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Optimization after layout transformation failed: ", result.error_msg.value());
     }
 
     // debug optimization of the new Tranpose nodes using PostLayoutTransformCostCheck

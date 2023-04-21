@@ -15,7 +15,8 @@ namespace cuda {
 
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(Loop,
                                   kOnnxDomain,
-                                  1, 10,
+                                  1,
+                                  10,
                                   kCudaExecutionProvider,
                                   (*KernelDefBuilder::Create())
                                       .InputMemoryType(OrtMemTypeCPUInput, 0)  // 'M' needs to be on CPU
@@ -28,7 +29,8 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(Loop,
 // zero variadic argument support was added in opset 11. using same implementation as for previous version
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(Loop,
                                   kOnnxDomain,
-                                  11, 12,
+                                  11,
+                                  12,
                                   kCudaExecutionProvider,
                                   (*KernelDefBuilder::Create())
                                       .InputMemoryType(OrtMemTypeCPUInput, 0)  // 'M' needs to be on CPU
@@ -51,8 +53,7 @@ ONNX_OPERATOR_KERNEL_EX(Loop,
                             .TypeConstraint("V", DataTypeImpl::AllTensorAndSequenceTensorTypes()),
                         Loop);
 
-static Status ConcatenateGpuOutput(void* stream, std::vector<OrtValue>& per_iteration_output,
-                                   void* output, ptrdiff_t output_size_in_bytes) {
+static Status ConcatenateGpuOutput(void* stream, std::vector<OrtValue>& per_iteration_output, void* output, ptrdiff_t output_size_in_bytes) {
   const auto& first_output = per_iteration_output.front().Get<Tensor>();
   const auto& per_iteration_shape = first_output.Shape();
   size_t bytes_per_iteration = first_output.SizeInBytes();
@@ -64,12 +65,10 @@ static Status ConcatenateGpuOutput(void* stream, std::vector<OrtValue>& per_iter
 
     // sanity check
     if (bytes_per_iteration != iteration_data.SizeInBytes()) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Inconsistent shape in loop output for output. ",
-                             " Expected:", per_iteration_shape, " Got:", iteration_data.Shape());
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Inconsistent shape in loop output for output. ", " Expected:", per_iteration_shape, " Got:", iteration_data.Shape());
     }
 
-    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(cur_output, iteration_data.DataRaw(), bytes_per_iteration,
-                                         cudaMemcpyDeviceToDevice, static_cast<cudaStream_t>(stream)));
+    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(cur_output, iteration_data.DataRaw(), bytes_per_iteration, cudaMemcpyDeviceToDevice, static_cast<cudaStream_t>(stream)));
 
     cur_output = static_cast<void*>((static_cast<gsl::byte*>(cur_output) + bytes_per_iteration));
   }

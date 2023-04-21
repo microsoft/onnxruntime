@@ -25,9 +25,7 @@ const OrtMemoryInfo& OpKernel::Allocator(OrtMemType mem_type) const {
   return op_kernel_info_->GetMemoryInfo(mem_type);
 }
 
-OpKernelContext::OpKernelContext(_Inout_ IExecutionFrame* frame, _In_ const OpKernel* kernel,
-                                 _In_ Stream* stream,
-                                 _In_opt_ concurrency::ThreadPool* threadpool, _In_ const logging::Logger& logger)
+OpKernelContext::OpKernelContext(_Inout_ IExecutionFrame* frame, _In_ const OpKernel* kernel, _In_ Stream* stream, _In_opt_ concurrency::ThreadPool* threadpool, _In_ const logging::Logger& logger)
     : execution_frame_(frame), kernel_(kernel), threadpool_(threadpool), logger_(&logger), stream_(stream) {
   ORT_ENFORCE(frame != nullptr, "Execution frame was null");
   ORT_ENFORCE(kernel != nullptr, "OpKernel was null");
@@ -186,9 +184,7 @@ OrtValue* OpKernelContext::GetOutputMLValue(int index) {
 #ifdef ENABLE_ATEN
 Status OpKernelContext::SetOutputMLValue(int index, const OrtValue& ort_value) {
   if (index < 0 || index >= OutputCount()) {
-    return Status(common::ONNXRUNTIME, common::FAIL,
-                  "Index out of range. " + std::to_string(index) +
-                      " was specified, but " + "range is [0, " + std::to_string(OutputCount()) + ")");
+    return Status(common::ONNXRUNTIME, common::FAIL, "Index out of range. " + std::to_string(index) + " was specified, but " + "range is [0, " + std::to_string(OutputCount()) + ")");
   }
 
   auto output_arg_index = GetOutputArgIndex(index);

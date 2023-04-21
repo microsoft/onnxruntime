@@ -74,10 +74,8 @@ Status Relu<T>::Compute(OpKernelContext* context) const {
     pNetworkId = &it->second;
   }
 
-  armnn::InputTensors inputTensors{{0, armnn::ConstTensor(Relu::run->GetInputTensorInfo(*pNetworkId, 0),
-                                                          src_data)}};
-  armnn::OutputTensors outputTensors{{0, armnn::Tensor(Relu::run->GetOutputTensorInfo(*pNetworkId, 0),
-                                                       dst_data)}};
+  armnn::InputTensors inputTensors{{0, armnn::ConstTensor(Relu::run->GetInputTensorInfo(*pNetworkId, 0), src_data)}};
+  armnn::OutputTensors outputTensors{{0, armnn::Tensor(Relu::run->GetOutputTensorInfo(*pNetworkId, 0), dst_data)}};
 
   Relu::run->EnqueueWorkload(*pNetworkId, inputTensors, outputTensors);
 

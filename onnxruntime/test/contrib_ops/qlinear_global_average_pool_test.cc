@@ -12,8 +12,7 @@ namespace test {
 
 template <typename T8Bits>
 static void CalculateGlobalAvgPool(
-    const T8Bits* x, int64_t batch, int64_t hw, int64_t channel, bool channels_last, T8Bits* y,
-    int32_t x_zero_point, float x_scale, int32_t y_zero_point, float y_scale) {
+    const T8Bits* x, int64_t batch, int64_t hw, int64_t channel, bool channels_last, T8Bits* y, int32_t x_zero_point, float x_scale, int32_t y_zero_point, float y_scale) {
   int32_t bias = -x_zero_point * gsl::narrow_cast<int32_t>(hw);
   int64_t stride_image = channels_last ? channel : 1;
   int64_t stride_channel = channels_last ? 1 : hw;
@@ -40,8 +39,7 @@ static void CalculateGlobalAvgPool(
 
 template <typename T8Bits = uint8_t>
 void RunQLinearGlobalAveragePool(
-    bool channels_last, int64_t batch, int64_t channel, int64_t h, int64_t w,
-    T8Bits x_zero_point, float x_scale, T8Bits y_zero_point, float y_scale, int32_t seed = 0) {
+    bool channels_last, int64_t batch, int64_t channel, int64_t h, int64_t w, T8Bits x_zero_point, float x_scale, T8Bits y_zero_point, float y_scale, int32_t seed = 0) {
   std::vector<int64_t> x_dims = channels_last ? std::vector<int64_t>{batch, h, w, channel} : std::vector<int64_t>{batch, channel, h, w};
   std::vector<int64_t> y_dims = channels_last ? std::vector<int64_t>{batch, 1, 1, channel} : std::vector<int64_t>{batch, channel, 1, 1};
   int64_t x_size = batch * channel * h * w;
@@ -55,8 +53,7 @@ void RunQLinearGlobalAveragePool(
     return static_cast<T8Bits>(v);
   });
 
-  CalculateGlobalAvgPool(x_data.data(), batch, h * w, channel, channels_last, y_data.data(),
-                         x_zero_point, x_scale, y_zero_point, y_scale);
+  CalculateGlobalAvgPool(x_data.data(), batch, h * w, channel, channels_last, y_data.data(), x_zero_point, x_scale, y_zero_point, y_scale);
 
   OpTester test("QLinearGlobalAveragePool", 1, onnxruntime::kMSDomain);
   test.AddAttribute<int64_t>("channels_last", channels_last ? 1LL : 0LL);

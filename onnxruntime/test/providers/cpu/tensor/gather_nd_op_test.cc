@@ -10,9 +10,7 @@ namespace onnxruntime {
 namespace test {
 
 template <typename T>
-static void RunTest(const std::vector<int64_t>& input_dims, const std::initializer_list<T>& input,
-                    const std::vector<int64_t>& indices_dims, const std::initializer_list<int64_t>& indices,
-                    const std::vector<int64_t>& output_dims, const std::initializer_list<T>& output) {
+static void RunTest(const std::vector<int64_t>& input_dims, const std::initializer_list<T>& input, const std::vector<int64_t>& indices_dims, const std::initializer_list<int64_t>& indices, const std::vector<int64_t>& output_dims, const std::initializer_list<T>& output) {
   // ONNX domain opset-11
   OpTester test1("GatherND", 11);
   test1.AddInput<T>("data", input_dims, input);
@@ -60,11 +58,9 @@ TEST(GatherNDOpTest, string) {
 
   RunTest<std::string>({2, 2}, {"a", "b", "c", "d"}, {2, 2}, {0LL, 0LL, 1LL, 1LL}, {2}, {"a", "d"});
 
-  RunTest<std::string>({2, 2, 2}, {"egg", "dance", "air", "bob", "terry", "smart", "laugh", "kite"}, {2, 1, 2},
-                       {0LL, 1LL, 1LL, 0LL}, {2, 1, 2}, {"air", "bob", "terry", "smart"});
+  RunTest<std::string>({2, 2, 2}, {"egg", "dance", "air", "bob", "terry", "smart", "laugh", "kite"}, {2, 1, 2}, {0LL, 1LL, 1LL, 0LL}, {2, 1, 2}, {"air", "bob", "terry", "smart"});
 
-  RunTest<std::string>({3, 3}, {"egg", "dance", "air", "bob", "terry", "smart", "laugh", "kite", "hop"}, {3, 2},
-                       {2, 1, 1, 0, 0, 1}, {3}, {"kite", "bob", "dance"});
+  RunTest<std::string>({3, 3}, {"egg", "dance", "air", "bob", "terry", "smart", "laugh", "kite", "hop"}, {3, 2}, {2, 1, 1, 0, 0, 1}, {3}, {"kite", "bob", "dance"});
 
   RunTest<std::string>({2, 2}, {"ab", "cde", "f", "ghi"}, {2, 1, 1}, {1LL, 0LL}, {2, 1, 2}, {"f", "ghi", "ab", "cde"});
 
@@ -75,19 +71,16 @@ TEST(GatherNDOpTest, string) {
 TEST(GatherNDOpTest, int64_t) {
   RunTest<int64_t>({2, 2}, {0LL, 1LL, 2LL, 3LL}, {2, 2}, {0LL, 0LL, 1LL, 1LL}, {2}, {0LL, 3LL});
 
-  RunTest<int64_t>({2, 2, 2}, {0LL, 1LL, 2LL, 3LL, 4LL, 5LL, 6LL, 7LL}, {2, 2}, {0LL, 1LL, 1LL, 0LL}, {2, 2},
-                   {2LL, 3LL, 4LL, 5LL});
+  RunTest<int64_t>({2, 2, 2}, {0LL, 1LL, 2LL, 3LL, 4LL, 5LL, 6LL, 7LL}, {2, 2}, {0LL, 1LL, 1LL, 0LL}, {2, 2}, {2LL, 3LL, 4LL, 5LL});
 
   RunTest<int64_t>({2, 2}, {0LL, 1LL, 2LL, 3LL}, {2, 1, 2}, {0LL, 0LL, 0LL, 1LL}, {2, 1}, {0LL, 1LL});
 
   RunTest<int64_t>({2, 2}, {0LL, 1LL, 2LL, 3LL}, {2, 1, 1}, {1LL, 0LL}, {2, 1, 2}, {2LL, 3LL, 0LL, 1LL});
 
-  RunTest<int64_t>({2, 2, 2}, {0LL, 1LL, 2LL, 3LL, 4LL, 5LL, 6LL, 7LL}, {2, 1, 1}, {1, 0}, {2, 1, 2, 2},
-                   {4LL, 5LL, 6LL, 7LL, 0LL, 1LL, 2LL, 3LL});
+  RunTest<int64_t>({2, 2, 2}, {0LL, 1LL, 2LL, 3LL, 4LL, 5LL, 6LL, 7LL}, {2, 1, 1}, {1, 0}, {2, 1, 2, 2}, {4LL, 5LL, 6LL, 7LL, 0LL, 1LL, 2LL, 3LL});
 
   // with negative indices
-  RunTest<int64_t>({2, 2, 2}, {0LL, 1LL, 2LL, 3LL, 4LL, 5LL, 6LL, 7LL}, {2, 1, 1}, {-1, 0}, {2, 1, 2, 2},
-                   {4LL, 5LL, 6LL, 7LL, 0LL, 1LL, 2LL, 3LL});
+  RunTest<int64_t>({2, 2, 2}, {0LL, 1LL, 2LL, 3LL, 4LL, 5LL, 6LL, 7LL}, {2, 1, 1}, {-1, 0}, {2, 1, 2, 2}, {4LL, 5LL, 6LL, 7LL, 0LL, 1LL, 2LL, 3LL});
 }
 
 TEST(GatherNDOpTest, float) {
@@ -121,11 +114,9 @@ TEST(GatherNDOpTest, int16_t) {
 }
 
 TEST(GatherNDOpTest, uint32_t) {
-  RunTest<uint32_t>({2, 2, 2}, {0, 1, 2, 3, 4, 5, 6, 7}, {2, 2, 2}, {0LL, 1LL, 1LL, 0LL, 0LL, 0LL, 1LL, 1LL},
-                    {2, 2, 2}, {2, 3, 4, 5, 0, 1, 6, 7});
+  RunTest<uint32_t>({2, 2, 2}, {0, 1, 2, 3, 4, 5, 6, 7}, {2, 2, 2}, {0LL, 1LL, 1LL, 0LL, 0LL, 0LL, 1LL, 1LL}, {2, 2, 2}, {2, 3, 4, 5, 0, 1, 6, 7});
 
-  RunTest<uint32_t>({2, 2, 2}, {0, 1, 2, 3, 4, 5, 6, 7}, {2, 2, 3}, {0, 0, 1, 1, 0, 1, 0, 1, 1, 1, 1, 0}, {2, 2},
-                    {1, 5, 3, 6});
+  RunTest<uint32_t>({2, 2, 2}, {0, 1, 2, 3, 4, 5, 6, 7}, {2, 2, 3}, {0, 0, 1, 1, 0, 1, 0, 1, 1, 1, 1, 0}, {2, 2}, {1, 5, 3, 6});
 }
 
 TEST(GatherNDOpTest, bool) {
@@ -197,13 +188,7 @@ TEST(GatherNDOpTest, GatherND_slice_float_batch_dims_two) {
   OpTester test("GatherND", 12, kOnnxDomain);
   test.AddAttribute<int64_t>("batch_dims", 2);
   test.AddInput<float>("data", {2, 1, 3, 5}, ValueRange(30, 0.0f, 0.1f));
-  test.AddInput<int64_t>("indices", {2, 1, 3, 2},
-                         {0LL, 0LL,
-                          0LL, 1LL,
-                          1LL, 0LL,
-                          1LL, 1LL,
-                          0LL, 4LL,
-                          2LL, 4LL});
+  test.AddInput<int64_t>("indices", {2, 1, 3, 2}, {0LL, 0LL, 0LL, 1LL, 1LL, 0LL, 1LL, 1LL, 0LL, 4LL, 2LL, 4LL});
   test.AddOutput<float>("output", {2, 1, 3}, {0.0f, 0.1f, 0.5f, 2.1f, 1.9f, 2.9f});
   test.Run();
 }
@@ -221,13 +206,7 @@ TEST(GatherNDOpTest, GatherND_negative_slice_float_batch_dims_two) {
   OpTester test("GatherND", 12, kOnnxDomain);
   test.AddAttribute<int64_t>("batch_dims", 2);
   test.AddInput<float>("data", {2, 1, 3, 5}, ValueRange(30, 0.0f, 0.1f));
-  test.AddInput<int64_t>("indices", {2, 1, 3, 2},
-                         {0LL, -5LL,
-                          -3LL, 1LL,
-                          -2LL, 0LL,
-                          -2LL, -4LL,
-                          0LL, -1LL,
-                          2LL, -1LL});
+  test.AddInput<int64_t>("indices", {2, 1, 3, 2}, {0LL, -5LL, -3LL, 1LL, -2LL, 0LL, -2LL, -4LL, 0LL, -1LL, 2LL, -1LL});
   test.AddOutput<float>("output", {2, 1, 3}, {0.0f, 0.1f, 0.5f, 2.1f, 1.9f, 2.9f});
   test.Run();
 }
@@ -293,21 +272,28 @@ TEST(GatherNDOpTest, GatherND_batch_dims_of_2) {
   test.AddAttribute<int64_t>("batch_dims", 2);
   test.AddInput<int32_t>("data", {2, 2, 2, 2, 3}, ValueRange<int32_t>(48));
   test.AddInput<int64_t>(
-      "indices", {2, 2, 1, 2},
-      {
-          0, 0,  // batch 0
-          1, 0,  // batch 1
-          1, 1,  // batch 2
-          0, 1,  // batch 3
-      });
+      "indices", {2, 2, 1, 2}, {
+                                   0, 0,  // batch 0
+                                   1,
+                                   0,  // batch 1
+                                   1,
+                                   1,  // batch 2
+                                   0,
+                                   1,  // batch 3
+                               });
   test.AddOutput<int32_t>(
-      "output", {2, 2, 1, 3},
-      {
-          0, 1, 2,     // batch 0
-          18, 19, 20,  // batch 1
-          33, 34, 35,  // batch 2
-          39, 40, 41,  // batch 3
-      });
+      "output", {2, 2, 1, 3}, {
+                                  0, 1, 2,  // batch 0
+                                  18,
+                                  19,
+                                  20,  // batch 1
+                                  33,
+                                  34,
+                                  35,  // batch 2
+                                  39,
+                                  40,
+                                  41,  // batch 3
+                              });
   test.Run();
 }
 

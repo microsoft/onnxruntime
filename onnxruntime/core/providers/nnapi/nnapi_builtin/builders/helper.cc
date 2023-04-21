@@ -185,14 +185,12 @@ bool HasValidBinaryOpQuantizedInputTypes(const NodeUnit& node_unit) {
 }
 
 common::Status GetQuantizationScaleAndZeroPoint(
-    const InitializedTensorSet& initializers, const NodeUnitIODef& io_def, const Path& model_path,
-    float& scale, int32_t& zero_point) {
+    const InitializedTensorSet& initializers, const NodeUnitIODef& io_def, const Path& model_path, float& scale, int32_t& zero_point) {
   scale = 0.0f;
   zero_point = 0;
 
   if (!io_def.quant_param) {  // Not a quantized IO
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "NodeArg: ", io_def.node_arg.Name(), " is not quantized");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "NodeArg: ", io_def.node_arg.Name(), " is not quantized");
   }
 
   const auto& quant_param = *io_def.quant_param;
@@ -214,17 +212,14 @@ common::Status GetQuantizationScaleAndZeroPoint(
 }
 
 common::Status GetQuantizationScaleAndZeroPoint(
-    const InitializedTensorSet& initializers, const NodeUnit& node_unit, const std::string& name,
-    float& scale, int32_t& zero_point, ArgType arg_type) {
+    const InitializedTensorSet& initializers, const NodeUnit& node_unit, const std::string& name, float& scale, int32_t& zero_point, ArgType arg_type) {
   const auto& io_defs = arg_type == ArgType::kInput ? node_unit.Inputs() : node_unit.Outputs();
   for (const auto& io_def : io_defs) {
     if (io_def.node_arg.Name() == name)
-      return GetQuantizationScaleAndZeroPoint(initializers, io_def, node_unit.ModelPath(),
-                                              scale, zero_point);
+      return GetQuantizationScaleAndZeroPoint(initializers, io_def, node_unit.ModelPath(), scale, zero_point);
   }
 
-  return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                         "Unknown input: ", name, ", for NodeUnit with node index: ", node_unit.Index());
+  return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Unknown input: ", name, ", for NodeUnit with node index: ", node_unit.Index());
 }
 
 bool GetShape(const NodeArg& node_arg, Shape& shape) {
@@ -351,9 +346,7 @@ bool IsNodeSupported(const NodeUnit& node_unit, const GraphViewer& graph_viewer,
   return op_builder->IsOpSupported(graph_viewer.GetAllInitializedTensors(), node_unit, params);
 }
 
-bool IsNodeSupportedInGroup(const NodeUnit& node_unit, const GraphViewer& graph_viewer,
-                            const OpSupportCheckParams& params,
-                            const std::unordered_set<std::string>& node_outputs_in_group) {
+bool IsNodeSupportedInGroup(const NodeUnit& node_unit, const GraphViewer& graph_viewer, const OpSupportCheckParams& params, const std::unordered_set<std::string>& node_outputs_in_group) {
   if (!IsNodeSupported(node_unit, graph_viewer, params))
     return false;
 
@@ -376,13 +369,17 @@ std::string Shape2String(const Shape& shape) {
 
 uint32_t ShapeSize(const Shape& shape, size_t begin_idx, size_t end_idx) {
   ORT_ENFORCE(begin_idx <= end_idx && begin_idx <= shape.size(),
-              "Invalid indices: begin [", begin_idx, "], end [", end_idx, "], shape size [", shape.size(), "]");
-  return std::accumulate(shape.begin() + begin_idx, shape.begin() + end_idx,
-                         SafeInt<uint32_t>{1}, std::multiplies<SafeInt<uint32_t>>{});
+              "Invalid indices: begin [",
+              begin_idx,
+              "], end [",
+              end_idx,
+              "], shape size [",
+              shape.size(),
+              "]");
+  return std::accumulate(shape.begin() + begin_idx, shape.begin() + end_idx, SafeInt<uint32_t>{1}, std::multiplies<SafeInt<uint32_t>>{});
 }
 
-bool CheckIsInitializer(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
-                        const std::string& input_name, const char* input_description) {
+bool CheckIsInitializer(const InitializedTensorSet& initializers, const NodeUnit& node_unit, const std::string& input_name, const char* input_description) {
   if (!Contains(initializers, input_name)) {
     LOGS_DEFAULT(VERBOSE) << input_description << " of " << node_unit.Name() << "of type ["
                           << node_unit.OpType() << "] must be an initializer tensor";

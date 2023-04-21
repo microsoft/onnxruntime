@@ -7,12 +7,8 @@
 namespace onnxruntime {
 namespace contrib {
 
-#define REGISTER_REDUCEALLL2_KERNEL_TYPED(TIn, TOut)                                              \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(ReduceAllL2, kMSDomain, 1, TIn##_##TOut, kCpuExecutionProvider,   \
-                                KernelDefBuilder()                                                \
-                                    .TypeConstraint("TIn", DataTypeImpl::GetTensorType<TIn>())    \
-                                    .TypeConstraint("TOut", DataTypeImpl::GetTensorType<TOut>()), \
-                                ReduceAllL2<TIn, TOut>);
+#define REGISTER_REDUCEALLL2_KERNEL_TYPED(TIn, TOut) \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(ReduceAllL2, kMSDomain, 1, TIn##_##TOut, kCpuExecutionProvider, KernelDefBuilder().TypeConstraint("TIn", DataTypeImpl::GetTensorType<TIn>()).TypeConstraint("TOut", DataTypeImpl::GetTensorType<TOut>()), ReduceAllL2<TIn, TOut>);
 
 REGISTER_REDUCEALLL2_KERNEL_TYPED(float, float)
 
@@ -26,8 +22,7 @@ Status ReduceAllL2<TIn, TOut>::Compute(OpKernelContext* ctx) const {
   for (int i = 0; i < total_tensor_count; ++i) {
     const Tensor* input = ctx->Input<Tensor>(i);
     const auto size = input->Shape().Size();
-    ORT_ENFORCE(size <= std::numeric_limits<int>::max(), "Number of reduced elements (", size,
-                ") exceeds the max allowed value (", std::numeric_limits<int>::max(), ").");
+    ORT_ENFORCE(size <= std::numeric_limits<int>::max(), "Number of reduced elements (", size, ") exceeds the max allowed value (", std::numeric_limits<int>::max(), ").");
     tensor_pointers[i] = input->template Data<TIn>();
     tensor_sizes[i] = size;
   }

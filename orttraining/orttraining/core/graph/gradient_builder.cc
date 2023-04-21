@@ -1592,13 +1592,11 @@ IMPLEMENT_GRADIENT_BUILDER(GetTileGradient) {
     result.push_back(NodeDef("Unsqueeze", {IA("orig_shape")}, {IA("2d_orig_shape")}, {MakeAttribute("axes", axes_values)}));  // M, N, K
     result.push_back(NodeDef("Unsqueeze", {I(1)}, {IA("2d_repeats")}, {MakeAttribute("axes", axes_values)}));                 // a, b, c
   }
-  result.push_back(NodeDef("Concat", {IA("2d_repeats"), IA("2d_orig_shape")}, {IA("concated_dims_T")},
-                           {MakeAttribute("axis", int64_t(1))}));  // [[a, M], [b, N], [c, K]]
+  result.push_back(NodeDef("Concat", {IA("2d_repeats"), IA("2d_orig_shape")}, {IA("concated_dims_T")}, {MakeAttribute("axis", int64_t(1))}));  // [[a, M], [b, N], [c, K]]
   std::vector<int64_t> const_shape_minusone{-1};
   NodeDef const_shape_minusone_node = ConstantVectorNode(const_shape_minusone, Name("const_shape_minusone"));
   result.push_back(const_shape_minusone_node);
-  result.push_back(NodeDef("Reshape", {IA("concated_dims_T"), const_shape_minusone_node.output_args[0]},
-                           {IA("concated_dims_flatten")}));  // flatten [a, M, b, N, c, K]
+  result.push_back(NodeDef("Reshape", {IA("concated_dims_T"), const_shape_minusone_node.output_args[0]}, {IA("concated_dims_flatten")}));  // flatten [a, M, b, N, c, K]
 
   result.push_back(NodeDef("Reshape", {GO(0), IA("concated_dims_flatten")}, {IA("reshape_tile_grad_op")}));
 
@@ -1851,7 +1849,8 @@ IMPLEMENT_GRADIENT_BUILDER(GetPythonOpGradient) {
 
   result.push_back(NodeDef(OpDef{"PythonOpGrad", kMSDomain, 1},
                            input_args,
-                           output_args, attrs));
+                           output_args,
+                           attrs));
 
   return result;
 }
@@ -1875,8 +1874,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetScatterNDGradient) {
   std::vector<NodeDef> result;
   if (IsGradientRequiredForSrcNodeInput(0)) {
     result.emplace_back(NodeDef("Shape", {I(2)}, {IA("Shape_updates")}));
-    result.emplace_back(NodeDef("ConstantOfShape", {IA("Shape_updates")}, {IA("Zero_Shape_updates")},
-                                {MakeAttribute("value", ScalarTensorProtoByElemType(0.0f, IElemType(0)))}));
+    result.emplace_back(NodeDef("ConstantOfShape", {IA("Shape_updates")}, {IA("Zero_Shape_updates")}, {MakeAttribute("value", ScalarTensorProtoByElemType(0.0f, IElemType(0)))}));
     result.emplace_back(NodeDef("ScatterND", {GO(0), I(1), IA("Zero_Shape_updates")}, {GI(0)}));
   }
 
@@ -1893,15 +1891,12 @@ IMPLEMENT_GRADIENT_BUILDER(GetScatterElementsGradient) {
   std::vector<NodeDef> result;
   if (IsGradientRequiredForSrcNodeInput(0)) {
     result.emplace_back(NodeDef("Shape", {I(2)}, {IA("Shape_updates")}));
-    result.emplace_back(NodeDef("ConstantOfShape", {IA("Shape_updates")}, {IA("Zero_Shape_updates")},
-                                {MakeAttribute("value", ScalarTensorProtoByElemType(0.0f, IElemType(0)))}));
-    result.emplace_back(NodeDef("ScatterElements", {GO(0), I(1), IA("Zero_Shape_updates")}, {GI(0)},
-                                {MakeAttribute("axis", axis)}));
+    result.emplace_back(NodeDef("ConstantOfShape", {IA("Shape_updates")}, {IA("Zero_Shape_updates")}, {MakeAttribute("value", ScalarTensorProtoByElemType(0.0f, IElemType(0)))}));
+    result.emplace_back(NodeDef("ScatterElements", {GO(0), I(1), IA("Zero_Shape_updates")}, {GI(0)}, {MakeAttribute("axis", axis)}));
   }
 
   if (IsGradientRequiredForSrcNodeInput(2)) {
-    result.emplace_back(NodeDef("GatherElements", {GO(0), I(1)}, {GI(2)},
-                                {MakeAttribute("axis", axis)}));
+    result.emplace_back(NodeDef("GatherElements", {GO(0), I(1)}, {GI(2)}, {MakeAttribute("axis", axis)}));
   }
   return result;
 }

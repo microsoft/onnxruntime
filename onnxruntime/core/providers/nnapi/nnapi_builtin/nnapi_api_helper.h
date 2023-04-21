@@ -59,8 +59,7 @@ using DeviceWrapperVector = InlinedVector<DeviceWrapper>;
 /**
  * Get all target devices specified by target_device_option.
  */
-Status GetTargetDevices(const NnApi& nnapi_handle, TargetDeviceOption target_device_option,
-                        DeviceWrapperVector& nnapi_target_devices);
+Status GetTargetDevices(const NnApi& nnapi_handle, TargetDeviceOption target_device_option, DeviceWrapperVector& nnapi_target_devices);
 
 int32_t GetNNAPIEffectiveFeatureLevelFromTargetDeviceOption(const NnApi& nnapi_handle, TargetDeviceOption target_device_option);
 

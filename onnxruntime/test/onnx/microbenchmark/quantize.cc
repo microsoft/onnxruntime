@@ -35,7 +35,8 @@ static void BM_GetQuantParams(benchmark::State& state) {
   tpo.auto_set_affinity = true;
   std::unique_ptr<onnxruntime::concurrency::ThreadPool> tp(
       onnxruntime::concurrency::CreateThreadPool(&onnxruntime::Env::Default(),
-                                                 tpo, onnxruntime::concurrency::ThreadPoolType::INTRA_OP));
+                                                 tpo,
+                                                 onnxruntime::concurrency::ThreadPoolType::INTRA_OP));
 
   for (auto _ : state) {
     benchmark::DoNotOptimize(GetQuantParams(data, batch_size, tp.get()));
@@ -59,7 +60,8 @@ static void BM_Quantize(benchmark::State& state) {
   tpo.auto_set_affinity = true;
   std::unique_ptr<onnxruntime::concurrency::ThreadPool> tp(
       onnxruntime::concurrency::CreateThreadPool(&onnxruntime::Env::Default(),
-                                                 tpo, onnxruntime::concurrency::ThreadPoolType::INTRA_OP));
+                                                 tpo,
+                                                 onnxruntime::concurrency::ThreadPoolType::INTRA_OP));
 
   float scale = 1.23456f;
   uint8_t zero = 129;

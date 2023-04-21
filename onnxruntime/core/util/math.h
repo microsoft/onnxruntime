@@ -79,14 +79,12 @@ DECLARE_BINARY_OP(Div);
 // Compute the row-wise max of a N*D matrix X, and write it to a N
 // dimensional vector y.
 template <typename T, class Provider>
-void RowwiseMax(int N, int D, const T* x, T* y,
-                Provider* provider);
+void RowwiseMax(int N, int D, const T* x, T* y, Provider* provider);
 
 // Compute the row-wise sum of a N*D matrix X, and write it to a N
 // dimensional vector y.
 template <typename T, class Provider>
-void RowwiseSum(int N, int D, const T* x, T* y,
-                Provider* provider);
+void RowwiseSum(int N, int D, const T* x, T* y, Provider* provider);
 
 // Sum of vector x, and writes the result to a single value y.
 template <typename T, class Provider>
@@ -108,7 +106,8 @@ void MatMul(
     ptrdiff_t K,
     const T* A,
     const T* B,
-    T* C, concurrency::ThreadPool* threadpool);
+    T* C,
+    concurrency::ThreadPool* threadpool);
 
 // Decaf gemm provides a simpler interface to the gemm functions, with the
 // limitation that the data has to be contiguous in memory.

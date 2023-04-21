@@ -33,8 +33,7 @@ class GatherNDBase {
   };  // struct Prepare
 
   template <typename Tind>
-  Status PrepareForCompute(const TensorShape& input_shape, const Tensor* indices_tensor,
-                           const int64_t bytes_per_value, Prepare& p, concurrency::ThreadPool* tp) const;
+  Status PrepareForCompute(const TensorShape& input_shape, const Tensor* indices_tensor, const int64_t bytes_per_value, Prepare& p, concurrency::ThreadPool* tp) const;
   int64_t batch_dims_;
 };  // class GatherNDBase
 

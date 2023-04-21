@@ -12,28 +12,28 @@
 namespace onnxruntime::optimizer::compute_optimizer {
 
 Node* InsertIntermediateNodeOnDestInput(Graph& graph,
-                                        Node& dest_node, int dest_in_index,
+                                        Node& dest_node,
+                                        int dest_in_index,
                                         int new_node_input_index,
                                         int new_node_output_index,
-                                        const std::string& name, const std::string& op_type,
+                                        const std::string& name,
+                                        const std::string& op_type,
                                         const std::string& description,
                                         const InlinedVector<NodeArg*>& input_args,
                                         const InlinedVector<NodeArg*>& output_args,
                                         const onnxruntime::NodeAttributes& attributes,
                                         const std::string& domain,
                                         const logging::Logger& logger) {
-  LOG_DEBUG_INFO(logger, "Inserting " + op_type + " node on " + dest_node.Name() + " 's " +
-                             std::to_string(dest_in_index) + "th input " +
-                             dest_node.InputDefs()[dest_in_index]->Name() + ", and connect inserted node's " +
-                             std::to_string(new_node_output_index) + "th output to " + dest_node.Name() + " 's " +
-                             std::to_string(dest_in_index) + "th input.");
+  LOG_DEBUG_INFO(logger, "Inserting " + op_type + " node on " + dest_node.Name() + " 's " + std::to_string(dest_in_index) + "th input " + dest_node.InputDefs()[dest_in_index]->Name() + ", and connect inserted node's " + std::to_string(new_node_output_index) + "th output to " + dest_node.Name() + " 's " + std::to_string(dest_in_index) + "th input.");
 
   ORT_ENFORCE(dest_in_index < static_cast<int>(dest_node.InputDefs().size()));
   ORT_ENFORCE(new_node_input_index < static_cast<int>(input_args.size()), "new_node_input_index is out of range.");
   ORT_ENFORCE(new_node_output_index < static_cast<int>(output_args.size()), "new_node_output_index is out of range.");
   ORT_ENFORCE(dest_node.MutableInputDefs()[dest_in_index] == input_args[new_node_input_index],
               "input_args[new_node_input_index] is not the same as dest_node.MutableInputDefs()[dest_in_index].",
-              dest_node.MutableInputDefs()[dest_in_index]->Name(), " vs ", input_args[new_node_input_index]->Name());
+              dest_node.MutableInputDefs()[dest_in_index]->Name(),
+              " vs ",
+              input_args[new_node_input_index]->Name());
 
   // Prepare Input and Outputs for the duplicated Gather/GatherND node.
   NodeArg* src_node_arg = dest_node.MutableInputDefs()[dest_in_index];
@@ -64,9 +64,7 @@ Node* InsertIntermediateNodeOnDestInput(Graph& graph,
   std::vector<graph_utils::GraphEdge> input_edge_to_remove;
   input_edge_to_remove.reserve(1);
   for (auto it = dest_node.InputEdgesBegin(), end = dest_node.InputEdgesEnd(); it != end; ++it) {
-    LOG_DEBUG_INFO(logger, "dest_node " + dest_node.Name() + " input edge: " + it->GetNode().Name() +
-                               " output index: " + std::to_string(it->GetSrcArgIndex()) + " input index: " +
-                               std::to_string(it->GetDstArgIndex()));
+    LOG_DEBUG_INFO(logger, "dest_node " + dest_node.Name() + " input edge: " + it->GetNode().Name() + " output index: " + std::to_string(it->GetSrcArgIndex()) + " input index: " + std::to_string(it->GetDstArgIndex()));
     if (it->GetDstArgIndex() == dest_in_index) {
       input_edge_to_remove.push_back(graph_utils::GraphEdge::CreateGraphEdge(dest_node, *it, true));
       break;
@@ -97,9 +95,7 @@ Node* InsertIntermediateNodeOnDestInput(Graph& graph,
   // This also updates the destination node's input node args
   graph.AddEdge(new_node.Index(), dest_node.Index(), new_node_output_index, dest_in_index);
   graph.AddConsumerNode(new_node.MutableOutputDefs()[new_node_output_index]->Name(), &dest_node);
-  LOG_DEBUG_INFO(logger, "Inserted " + op_type + " node on " + dest_node.Name() + " 's " +
-                             std::to_string(dest_in_index) + "th input " +
-                             dest_node.InputDefs()[dest_in_index]->Name());
+  LOG_DEBUG_INFO(logger, "Inserted " + op_type + " node on " + dest_node.Name() + " 's " + std::to_string(dest_in_index) + "th input " + dest_node.InputDefs()[dest_in_index]->Name());
   return &new_node;
 }
 

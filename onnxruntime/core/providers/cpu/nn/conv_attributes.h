@@ -77,16 +77,11 @@ struct ConvAttributes {
     if (kernel_shape_specified) {
       kernel_shape = kernel_shape_;
       if (kernel_shape.size() + 2 != weight_shape.NumDimensions()) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "kernel_shape num_dims is not compatible with W num_dims.",
-                               " kernel_shape: ", TensorShape(kernel_shape).ToString().c_str(),
-                               " W: ", weight_shape.ToString().c_str());
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "kernel_shape num_dims is not compatible with W num_dims.", " kernel_shape: ", TensorShape(kernel_shape).ToString().c_str(), " W: ", weight_shape.ToString().c_str());
       }
       for (size_t i = 0; i < kernel_shape.size(); ++i) {
         if (kernel_shape[i] != weight_shape[i + (weight_channels_last ? 1 : 2)]) {
-          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "kernel_shape is not compatible with W shape.",
-                                 " kernel_shape: ", TensorShape(kernel_shape).ToString().c_str(),
-                                 " W: ", weight_shape.ToString().c_str(),
-                                 " channels_last: ", weight_channels_last);
+          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "kernel_shape is not compatible with W shape.", " kernel_shape: ", TensorShape(kernel_shape).ToString().c_str(), " W: ", weight_shape.ToString().c_str(), " channels_last: ", weight_channels_last);
         }
       }
     } else {
@@ -106,9 +101,7 @@ struct ConvAttributes {
                             bool input_channels_last = false,
                             bool weight_channels_last = false) const {
     if (input_shape.NumDimensions() != weight_shape.NumDimensions()) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "X num_dims does not match W num_dims.",
-                             " X: ", input_shape.ToString().c_str(),
-                             " W: ", weight_shape.ToString().c_str());
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "X num_dims does not match W num_dims.", " X: ", input_shape.ToString().c_str(), " W: ", weight_shape.ToString().c_str());
     }
 
     const int64_t M = weight_shape[0];
@@ -116,16 +109,11 @@ struct ConvAttributes {
     const int64_t weight_channels = weight_channels_last ? weight_shape.GetDims().back() : weight_shape[1];
 
     if (C != weight_channels * group) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Input channels C is not equal to kernel channels * group.",
-                             " C: ", C,
-                             " kernel channels: ", weight_channels,
-                             " group: ", group);
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Input channels C is not equal to kernel channels * group.", " C: ", C, " kernel channels: ", weight_channels, " group: ", group);
     }
 
     if (M % group != 0) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Output channels M is not divisible by group.",
-                             " M: ", M,
-                             " group: ", group);
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Output channels M is not divisible by group.", " M: ", M, " group: ", group);
     }
     return Status::OK();
   }
@@ -145,20 +133,16 @@ struct ConvAttributes {
 
     // Make sure all "metadata" containers have the right number of elements
     if (rank > strides_p.size())
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Not enough elements in strides. Expected: ", rank, " Got: ", strides_p.size());
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Not enough elements in strides. Expected: ", rank, " Got: ", strides_p.size());
 
     if (rank > kernel_shape.size())
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Not enough elements in kernel shape. Expected: ", rank, " Got: ", kernel_shape.size());
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Not enough elements in kernel shape. Expected: ", rank, " Got: ", kernel_shape.size());
 
     if (rank > dilations_p.size())
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Not enough elements in dilations. Expected: ", rank, " Got: ", dilations_p.size());
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Not enough elements in dilations. Expected: ", rank, " Got: ", dilations_p.size());
 
     if ((2 * rank) > pads_p.size())
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Not enough elements in pads. Expected: ", (2 * rank), " Got: ", pads_p.size());
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Not enough elements in pads. Expected: ", (2 * rank), " Got: ", pads_p.size());
 
     for (size_t dim = 0; dim < rank; ++dim) {
       int64_t output_dim_size = 0;
@@ -167,7 +151,8 @@ struct ConvAttributes {
                                                    kernel_shape[dim],
                                                    dilations_p[dim],
                                                    auto_pad,
-                                                   pads_p[dim], pads_p[rank + dim],
+                                                   pads_p[dim],
+                                                   pads_p[rank + dim],
                                                    output_dim_size,
                                                    force_symmetric_auto_padding));
       if (output_dim_size <= 0) {
@@ -196,20 +181,16 @@ struct ConvAttributes {
     size_t rank = input_shape.NumDimensions();
     // Make sure all "metadata" containers have the right number of elements
     if (rank > strides_p.size())
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Not enough elements in strides. Expected: ", rank, " Got: ", strides_p.size());
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Not enough elements in strides. Expected: ", rank, " Got: ", strides_p.size());
 
     if (rank > kernel_shape.size())
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Not enough elements in kernel shape. Expected: ", rank, " Got: ", kernel_shape.size());
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Not enough elements in kernel shape. Expected: ", rank, " Got: ", kernel_shape.size());
 
     if (rank > dilations_p.size())
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Not enough elements in dilations. Expected: ", rank, " Got: ", dilations_p.size());
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Not enough elements in dilations. Expected: ", rank, " Got: ", dilations_p.size());
 
     if ((2 * rank) > pads_p.size())
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Not enough elements in pads. Expected: ", (2 * rank), " Got: ", pads_p.size());
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Not enough elements in pads. Expected: ", (2 * rank), " Got: ", pads_p.size());
 
     for (size_t dim = 0; dim < rank; ++dim) {
       int64_t output_dim_size = 0;
@@ -273,9 +254,7 @@ struct ConvAttributes {
         // because we had to over-pad by multiples of 'stride', now `pad_head` might be > `pad_tail`
         if (pad_tail < pad_head) {
           pad_tail = pad_head;
-          auto revised_dim_size = ComputeOutputShape(input_shape[dim], strides_p[dim],
-                                                     kernel_shape[dim], dilations_p[dim],
-                                                     pad_head, pad_tail);
+          auto revised_dim_size = ComputeOutputShape(input_shape[dim], strides_p[dim], kernel_shape[dim], dilations_p[dim], pad_head, pad_tail);
 
           if (head_overpadded) {
             // Head has already been over-padded

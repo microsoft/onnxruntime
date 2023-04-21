@@ -21,8 +21,7 @@ namespace onnxruntime {
 namespace training {
 
 Status GetArgDefsFromGraph(
-    const Graph& graph, const std::vector<std::string>& node_arg_names,
-    std::vector<ArgDef>& argdefs) {
+    const Graph& graph, const std::vector<std::string>& node_arg_names, std::vector<ArgDef>& argdefs) {
   std::vector<ArgDef> result;
   result.reserve(node_arg_names.size());
   for (const auto& node_arg_name : node_arg_names) {
@@ -258,10 +257,7 @@ Status OptimizerGraphBuilder::BuildOptimizerNode(
   config.enable_grad_clipping = opt_graph_config_.enable_grad_norm_clip;
   config.shared_optimizer_states = opt_graph_config_.shared_optimizer_states;
   ORT_RETURN_IF_ERROR(opt_builder->Build(
-      config, graph_defs,
-      new_initializers,
-      weight_to_opt_mapping,
-      output_weight_argdefs, output_gradient_argdefs));
+      config, graph_defs, new_initializers, weight_to_opt_mapping, output_weight_argdefs, output_gradient_argdefs));
 
   return Status::OK();
 }
@@ -286,7 +282,9 @@ Status OptimizerGraphBuilder::AddDirectWeightUpdate(
     ORT_RETURN_IF_NOT(
         opt_configs[i].name == opt_configs[0].name,
         "All optimizers must be the same type, but the graph contains ",
-        opt_configs[0].name, " and ", opt_configs[i].name);
+        opt_configs[0].name,
+        " and ",
+        opt_configs[i].name);
   }
 
   auto opt_builder = opt_builder_registry.MakeUnique(opt_configs[0].name);
@@ -296,12 +294,16 @@ Status OptimizerGraphBuilder::AddDirectWeightUpdate(
   std::vector<TensorProto> new_initializers;
   ORT_RETURN_IF_ERROR(BuildOptimizerNode(
       opt_builder,
-      weight_argdefs, gradient_argdefs,
-      global_gradient_norm_argdef, global_gradient_norm_finite_argdef,
-      opt_configs, graph_defs,
+      weight_argdefs,
+      gradient_argdefs,
+      global_gradient_norm_argdef,
+      global_gradient_norm_finite_argdef,
+      opt_configs,
+      graph_defs,
       new_initializers,
       weight_to_opt_mapping,
-      output_weight_argdefs, output_gradient_argdefs));
+      output_weight_argdefs,
+      output_gradient_argdefs));
 
   graph_defs.AddInitializers(new_initializers);
 
@@ -321,16 +323,14 @@ Status OptimizerGraphBuilder::AddGradientNorm(
   if (grad_type != ONNX_NAMESPACE::TensorProto_DataType_FLOAT &&
       grad_type != ONNX_NAMESPACE::TensorProto_DataType_FLOAT16 &&
       grad_type != ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16) {
-    return Status(common::ONNXRUNTIME, common::FAIL,
-                  "Unsupport gradient type: it has to be either float, MLFloat16 or BFloat16.");
+    return Status(common::ONNXRUNTIME, common::FAIL, "Unsupport gradient type: it has to be either float, MLFloat16 or BFloat16.");
   }
 
   for (const auto& argdef : grad_argdefs) {
     ONNX_NAMESPACE::TensorProto_DataType elem_type =
         static_cast<ONNX_NAMESPACE::TensorProto_DataType>(argdef.type_proto->tensor_type().elem_type());
     if (elem_type != grad_type) {
-      return Status(common::ONNXRUNTIME, common::FAIL,
-                    "All gradient tensors' types must be the same.");
+      return Status(common::ONNXRUNTIME, common::FAIL, "All gradient tensors' types must be the same.");
     }
   }
 
@@ -383,9 +383,7 @@ OptimizerGraphBuilder::OptimizerGraphBuilder(
   // add weight names
   weight_names_.reserve(weight_names_to_opt_configs.size());
   std::transform(
-      weight_names_to_opt_configs.begin(), weight_names_to_opt_configs.end(),
-      std::back_inserter(weight_names_),
-      [](const std::pair<std::string, OptimizerNodeConfig>& name_and_info) {
+      weight_names_to_opt_configs.begin(), weight_names_to_opt_configs.end(), std::back_inserter(weight_names_), [](const std::pair<std::string, OptimizerNodeConfig>& name_and_info) {
         return name_and_info.first;
       });
 
@@ -395,16 +393,14 @@ OptimizerGraphBuilder::OptimizerGraphBuilder(
   // add gradient names
   gradient_names_.reserve(weight_names_.size());
   std::transform(
-      weight_names_.begin(), weight_names_.end(), std::back_inserter(gradient_names_),
-      [&weight_names_to_opt_configs](const std::string& weight_name) {
+      weight_names_.begin(), weight_names_.end(), std::back_inserter(gradient_names_), [&weight_names_to_opt_configs](const std::string& weight_name) {
         return GradientBuilderBase::GradientName(weight_names_to_opt_configs.at(weight_name).mixed_precision_weight_arg != nullptr ? weight_names_to_opt_configs.at(weight_name).mixed_precision_weight_arg->Name() : weight_name);
       });
 
   // add optimizer configurations
   opt_configs_.reserve(weight_names_.size());
   std::transform(
-      weight_names_.begin(), weight_names_.end(), std::back_inserter(opt_configs_),
-      [&weight_names_to_opt_configs](const std::string& weight_name) {
+      weight_names_.begin(), weight_names_.end(), std::back_inserter(opt_configs_), [&weight_names_to_opt_configs](const std::string& weight_name) {
         return weight_names_to_opt_configs.at(weight_name);
       });
 }
@@ -451,8 +447,7 @@ Status OptimizerGraphBuilder::Build(
 
   // add configuration-specific graph changes
   ORT_RETURN_IF_ERROR(BuildInternal(
-      should_add_gradient_norm, should_add_gradient_finite_check,
-      graph, graph_defs, weight_argdefs, gradient_argdefs, weight_to_opt_mapping, optimizer_graph_outputs));
+      should_add_gradient_norm, should_add_gradient_finite_check, graph, graph_defs, weight_argdefs, gradient_argdefs, weight_to_opt_mapping, optimizer_graph_outputs));
 
   // add zero gradient
   if (is_gradient_accumulation_enabled) {
@@ -482,8 +477,7 @@ Status OptimizerGraphBuilder::BuildInternal(
   ArgDef fused_gradient_argdef;
   if (is_gradient_accumulation_enabled) {
     const float scale = 1.0f / opt_graph_config_.gradient_accumulation_steps;
-    ORT_RETURN_IF_ERROR(AddGradientScalingNodes(nodearg_name_generator, scale, gradient_argdefs, fused_gradient_argdef, graph_defs,
-                                                opt_graph_config_.AllReduceDataType(), false));
+    ORT_RETURN_IF_ERROR(AddGradientScalingNodes(nodearg_name_generator, scale, gradient_argdefs, fused_gradient_argdef, graph_defs, opt_graph_config_.AllReduceDataType(), false));
   }
 
   // check if all gradients are finite
@@ -508,11 +502,7 @@ Status OptimizerGraphBuilder::BuildInternal(
 
   // add weight update
   ORT_RETURN_IF_ERROR(AddDirectWeightUpdate(
-      opt_builder_registry_, weight_argdefs, gradient_argdefs,
-      &global_grad_norm_argdef,
-      &global_grad_norm_finite_argdef,
-      opt_configs_, graph_defs,
-      weight_to_opt_mapping));
+      opt_builder_registry_, weight_argdefs, gradient_argdefs, &global_grad_norm_argdef, &global_grad_norm_finite_argdef, opt_configs_, graph_defs, weight_to_opt_mapping));
 
   return Status::OK();
 }

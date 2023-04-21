@@ -37,10 +37,7 @@ class IExecutionFrame {
                   const NodeIndexInfo& node_index_info,
                   gsl::span<const int> fetch_mlvalue_idxs);
 
-  void Init(gsl::span<const int> feed_mlvalue_idxs, gsl::span<const OrtValue> feeds,
-            const std::unordered_map<int, OrtValue>& initializers,
-            const std::function<bool(const std::string& name)>& is_initializer_sparse_func,
-            gsl::span<const OrtValue> fetches);
+  void Init(gsl::span<const int> feed_mlvalue_idxs, gsl::span<const OrtValue> feeds, const std::unordered_map<int, OrtValue>& initializers, const std::function<bool(const std::string& name)>& is_initializer_sparse_func, gsl::span<const OrtValue> fetches);
 
  public:
   virtual ~IExecutionFrame();
@@ -73,8 +70,7 @@ class IExecutionFrame {
   // This method is not thread safe!
   // Return S_OK and nullptr if index map to an value that is an unused optional input/output
   // Shape is required for tensors but not traditional ML values.
-  Status GetOrCreateNodeOutputMLValue(const int index, int output_arg_index, const TensorShape* shape,
-                                      OrtValue*& p_ort_value, const Node& node);
+  Status GetOrCreateNodeOutputMLValue(const int index, int output_arg_index, const TensorShape* shape, OrtValue*& p_ort_value, const Node& node);
 
   // This function try retrieve the inferred shapes for the given NodeArg index.
   // If the retrieval is successful, this function returns true and false otherwise.
@@ -137,8 +133,7 @@ class IExecutionFrame {
 
 class ExecutionFrame final : public IExecutionFrame {
  public:
-  ExecutionFrame(gsl::span<const int> feed_mlvalue_idxs, gsl::span<const OrtValue> feeds,
-                 gsl::span<const int> fetch_mlvalue_idxs, gsl::span<const OrtValue> fetches,
+  ExecutionFrame(gsl::span<const int> feed_mlvalue_idxs, gsl::span<const OrtValue> feeds, gsl::span<const int> fetch_mlvalue_idxs, gsl::span<const OrtValue> fetches,
                  // optional custom allocators. key is index in fetches
                  const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
 #ifdef ORT_ENABLE_STREAM
@@ -150,12 +145,9 @@ class ExecutionFrame final : public IExecutionFrame {
   // TODO: These two AllocateMLValue... methods are in the API purely for unit test usage.
   // Fix the unit tests so they set an execution plan that results in these methods being called by
   // GetOrCreateNodeOutputMLValue instead
-  Status AllocateMLValueTensorSelfOwnBuffer(OrtValue& ort_value, int ort_value_index, MLDataType element_type,
-                                            const OrtMemoryInfo& location, const TensorShape& shape);
+  Status AllocateMLValueTensorSelfOwnBuffer(OrtValue& ort_value, int ort_value_index, MLDataType element_type, const OrtMemoryInfo& location, const TensorShape& shape);
 
-  Status AllocateMLValueTensorPreAllocateBuffer(OrtValue& ort_value, int ort_value_index_reuse, MLDataType element_type,
-                                                const OrtMemoryInfo& location, const TensorShape& shape,
-                                                bool is_strided_tensor = false);
+  Status AllocateMLValueTensorPreAllocateBuffer(OrtValue& ort_value, int ort_value_index_reuse, MLDataType element_type, const OrtMemoryInfo& location, const TensorShape& shape, bool is_strided_tensor = false);
 
   // thread-safe
   Status GeneratePatterns(MemoryPatternGroup& out);
@@ -204,11 +196,9 @@ class ExecutionFrame final : public IExecutionFrame {
 
   common::Status AllocateAsPerAllocationPlan(OrtValue& ort_value, int ort_value_index, const TensorShape* shape);
 
-  Status AllocateMLValueTensorSelfOwnBufferHelper(OrtValue& ort_value, int ort_value_index, MLDataType element_type,
-                                                  const OrtMemoryInfo& location, const TensorShape& shape);
+  Status AllocateMLValueTensorSelfOwnBufferHelper(OrtValue& ort_value, int ort_value_index, MLDataType element_type, const OrtMemoryInfo& location, const TensorShape& shape);
 
-  Status AllocateTensorWithPreAllocateBufferHelper(OrtValue& ort_value, void* pBuffer, MLDataType element_type,
-                                                   const OrtMemoryInfo& location, const TensorShape& shape);
+  Status AllocateTensorWithPreAllocateBufferHelper(OrtValue& ort_value, void* pBuffer, MLDataType element_type, const OrtMemoryInfo& location, const TensorShape& shape);
 
   void TraceAllocate(int ort_value_idx, size_t size);
   void TraceFree(int ort_value_idx);

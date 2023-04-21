@@ -84,22 +84,14 @@ class AttentionCPUBase : public AttentionBase {
       relative_position_bias_data = relative_position_bias->Data<T>();
     }
 
-    ComputeAttentionProbs<T>(static_cast<T*>(attention_probs), Q, K,
-                             mask_index_data, mask_index_dims, static_cast<T*>(mask_data), has_unidirectional,
-                             batch_size, sequence_length, kv_sequence_length, past_sequence_length,
-                             qk_head_size == 0 ? v_head_size : qk_head_size, past_data, past_key_data,
-                             present_data, present_key_data, tp, relative_position_bias_data);
+    ComputeAttentionProbs<T>(static_cast<T*>(attention_probs), Q, K, mask_index_data, mask_index_dims, static_cast<T*>(mask_data), has_unidirectional, batch_size, sequence_length, kv_sequence_length, past_sequence_length, qk_head_size == 0 ? v_head_size : qk_head_size, past_data, past_key_data, present_data, present_key_data, tp, relative_position_bias_data);
 
     // Compute the attentionScore * Value: out_tmp(B, N, S, H_v) = attention_probs(B, N, S, T) x V(B, N, T, H_v)
     auto out_tmp_data =
         allocator->Alloc(SafeInt<size_t>(batch_size) * num_heads_ * sequence_length * v_head_size * sizeof(T));
     BufferUniquePtr out_tmp_buffer(out_tmp_data, BufferDeleter(std::move(allocator)));
 
-    ComputeVxAttentionScore(output->MutableData<T>(), static_cast<T*>(out_tmp_data),
-                            static_cast<T*>(attention_probs), V,
-                            batch_size, sequence_length, kv_sequence_length, past_sequence_length,
-                            v_head_size, v_hidden_size, past_data, past_value_data,
-                            present_data, present_value_data, tp);
+    ComputeVxAttentionScore(output->MutableData<T>(), static_cast<T*>(out_tmp_data), static_cast<T*>(attention_probs), V, batch_size, sequence_length, kv_sequence_length, past_sequence_length, v_head_size, v_hidden_size, past_data, past_value_data, present_data, present_value_data, tp);
 
     return Status::OK();
   }
@@ -138,8 +130,7 @@ class AttentionCPUBase : public AttentionBase {
     {
       // mask_data is nullptr when mask_index is nullptr and not unidirectional, otherwise its shape is BxSxT
       if (mask_data != nullptr) {
-        PrepareMask(mask_index, mask_index_dims, mask_data,
-                    has_unidirectional, batch_size, sequence_length, past_sequence_length, mask_filter_value_);
+        PrepareMask(mask_index, mask_index_dims, mask_data, has_unidirectional, batch_size, sequence_length, past_sequence_length, mask_filter_value_);
       } else {  // no any mask
         const int memset_loop_len = batch_size * num_heads_;
         const double memset_cost = static_cast<double>(sequence_length) * total_sequence_length;
@@ -187,9 +178,7 @@ class AttentionCPUBase : public AttentionBase {
           // A: Q                (B x N x) S x H          (B x N x) S x H        S x H
           // B: K'               (B x N x) T x H          (B x N x) H x T        H x T
           // C: attention_probs  (B x N x) S x T          (B x N x) S x T        S x T
-          math::Gemm<T, ThreadPool>(CblasNoTrans, CblasTrans, sequence_length, total_sequence_length, head_size, alpha,
-                                    Q + q_input_chunk_length * i, k, 1.0,
-                                    output, nullptr);
+          math::Gemm<T, ThreadPool>(CblasNoTrans, CblasTrans, sequence_length, total_sequence_length, head_size, alpha, Q + q_input_chunk_length * i, k, 1.0, output, nullptr);
 
           // Fix unidirectional mask to be parity with huggingface implementation.
           if (has_unidirectional && mask_data != nullptr) {
@@ -263,9 +252,7 @@ class AttentionCPUBase : public AttentionBase {
 
         T* current_tmp_data = reinterpret_cast<T*>(tmp_buffer) + q_input_chunk_length * i;
         ptrdiff_t attention_probs_offset = SafeInt<ptrdiff_t>(sequence_length) * total_sequence_length * i;
-        math::MatMul<T>(sequence_length, v_head_size, total_sequence_length,
-                        attention_probs + attention_probs_offset,
-                        v, current_tmp_data, nullptr);
+        math::MatMul<T>(sequence_length, v_head_size, total_sequence_length, attention_probs + attention_probs_offset, v, current_tmp_data, nullptr);
 
         // Transpose: out(B, S, N, H_v) -> out_tmp(B, N, S, H_v)
         const int batch_index = static_cast<int>(i / num_heads_);

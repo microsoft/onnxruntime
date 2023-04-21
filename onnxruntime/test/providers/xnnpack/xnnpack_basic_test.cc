@@ -185,14 +185,10 @@ static void RunModelTest(
   // Serialize the model to a string.
   std::string model_data;
   model.ToProto().SerializeToString(&model_data);
-  RunAndVerifyOutputsWithEP(model_data, "XnnpackEP.TestQDQModel",
-                            DefaultXnnpackExecutionProvider(),
-                            helper.feeds_, params);
+  RunAndVerifyOutputsWithEP(model_data, "XnnpackEP.TestQDQModel", DefaultXnnpackExecutionProvider(), helper.feeds_, params);
 }
 
-static void RunModelTestWithPath(const ORTCHAR_T* ort_model_path, const char* graph_name,
-                                 std::function<void(const Graph&)> graph_verifier = nullptr,
-                                 float abs_err_tolerance = .2f) {
+static void RunModelTestWithPath(const ORTCHAR_T* ort_model_path, const char* graph_name, std::function<void(const Graph&)> graph_verifier = nullptr, float abs_err_tolerance = .2f) {
   EPVerificationParams params;
   params.ep_node_assignment = ExpectedEPNodeAssignment::Some;
   // Xnnpack has higher precision than CPU_S8S8,
@@ -211,7 +207,8 @@ static void RunModelTestWithPath(const ORTCHAR_T* ort_model_path, const char* gr
   RandomValueGenerator generator;
   TensorShape input_shape_x{input_shape};
   std::vector<float> input_x = generator.Uniform<float>(input_shape_x.GetDims(),
-                                                        -64, 64);
+                                                        -64,
+                                                        64);
   OrtValue ml_value_x;
   CreateMLValue<float>(input_shape_x.GetDims(), input_x.data(), OrtMemoryInfo(), &ml_value_x);
   NameMLValMap feeds;
@@ -275,11 +272,10 @@ TEST(XnnpackEP, DISABLED_TestAveragePool) {  // [ONNXRuntimeError] : 9 : NOT_IMP
     std::vector<int64_t> kernel_shape(input_shape.size() - 2, 3);
     pool_node.AddAttribute("kernel_shape", kernel_shape);
   };
-  RunModelTest(modelBuilder, "xnnpack_test_graph_averagepool",
-               {
-                   ExpectedEPNodeAssignment::Some,
-                   1e-2f /* fp32_abs_err */,
-               });
+  RunModelTest(modelBuilder, "xnnpack_test_graph_averagepool", {
+                                                                   ExpectedEPNodeAssignment::Some,
+                                                                   1e-2f /* fp32_abs_err */,
+                                                               });
 }
 
 TEST(XnnpackEP, DISABLED_TestQDQAveragePool) {  //  [ONNXRuntimeError] : 9 : NOT_IMPLEMENTED : Could not find an implementation for AveragePool(19) node with name 'node_token_6'
@@ -304,11 +300,10 @@ TEST(XnnpackEP, TestMaxPool) {
     std::vector<int64_t> kernel_shape(input_shape.size() - 2, 3);
     pool_node.AddAttribute("kernel_shape", kernel_shape);
   };
-  RunModelTest(modelBuilder, "xnnpack_test_graph_maxpool",
-               {
-                   ExpectedEPNodeAssignment::Some,
-                   1e-2f /* fp32_abs_err */,
-               });
+  RunModelTest(modelBuilder, "xnnpack_test_graph_maxpool", {
+                                                               ExpectedEPNodeAssignment::Some,
+                                                               1e-2f /* fp32_abs_err */,
+                                                           });
 }
 
 TEST(XnnpackEP, DISABLED_TestQDQMaxPool_u8) {  //  [ONNXRuntimeError] : 9 : NOT_IMPLEMENTED : Could not find an implementation for QuantizeLinear(19) node with name 'node'
@@ -333,7 +328,8 @@ TEST(XnnpackEP, DISABLED_TestQDQMaxPool_s8) {  // [ONNXRuntimeError] : 9 : NOT_I
                    {1, 1, 30, 30} /* input_shape */, true),
                "xnnpack_qdq_test_graph_maxpool_s8",
                {ExpectedEPNodeAssignment::Some,
-                1e-2f /* fp32_abs_err */, &verify});
+                1e-2f /* fp32_abs_err */,
+                &verify});
   verify = [](const Graph& graph) -> void {
     ASSERT_EQ(graph.NumberOfNodes(), 7) << "Transpose *2 +dq*2 + q*2 +pool"
                                            " leaving 7 nodes.";
@@ -343,7 +339,8 @@ TEST(XnnpackEP, DISABLED_TestQDQMaxPool_s8) {  // [ONNXRuntimeError] : 9 : NOT_I
                    {1, 1, 30, 30} /* input_shape */, false),
                "xnnpack_qdq_test_graph_maxpool_s8",
                {ExpectedEPNodeAssignment::Some,
-                1e-2f /* fp32_abs_err */, &verify});
+                1e-2f /* fp32_abs_err */,
+                &verify});
 }
 
 // xnnpack only support the last dim as reduced axis,
@@ -406,11 +403,10 @@ TEST(XnnpackEP, TestConvTranspose_With_Outputpadding) {
     pool_node.AddAttribute("strides", std::vector<int64_t>{2, 2});
     pool_node.AddAttribute("group", int64_t(2));
   };
-  RunModelTest(modelBuilder, "xnnpack_test_graph_convtranpose_outpad",
-               {
-                   ExpectedEPNodeAssignment::Some,
-                   1e-2f /* fp32_abs_err */,
-               });
+  RunModelTest(modelBuilder, "xnnpack_test_graph_convtranpose_outpad", {
+                                                                           ExpectedEPNodeAssignment::Some,
+                                                                           1e-2f /* fp32_abs_err */,
+                                                                       });
 }
 
 TEST(XnnpackEP, TestConvTranspose_With_OutputShape) {
@@ -426,11 +422,10 @@ TEST(XnnpackEP, TestConvTranspose_With_OutputShape) {
     pool_node.AddAttribute("strides", std::vector<int64_t>{2, 2});
     pool_node.AddAttribute("group", int64_t(2));
   };
-  RunModelTest(modelBuilder, "xnnpack_test_graph_convtranpose_sp",
-               {
-                   ExpectedEPNodeAssignment::Some,
-                   1e-2f /* fp32_abs_err */,
-               });
+  RunModelTest(modelBuilder, "xnnpack_test_graph_convtranpose_sp", {
+                                                                       ExpectedEPNodeAssignment::Some,
+                                                                       1e-2f /* fp32_abs_err */,
+                                                                   });
 }
 
 TEST(XnnpackEP, TestConvTranspose_qdq) {

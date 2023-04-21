@@ -23,8 +23,7 @@ struct GetRatioDataImpl {
 
 template <typename T>
 struct DropoutGradComputeImpl {
-  void operator()(cudaStream_t stream, const int64_t N, const Tensor& dY, const void* mask_data, const float ratio_data,
-                  Tensor& dX, bool use_bitmask) const {
+  void operator()(cudaStream_t stream, const int64_t N, const Tensor& dY, const void* mask_data, const float ratio_data, Tensor& dX, bool use_bitmask) const {
     typedef typename ToCudaType<T>::MappedType CudaT;
 
     const CudaT* dY_data = reinterpret_cast<const CudaT*>(dY.template Data<T>());
@@ -35,23 +34,9 @@ struct DropoutGradComputeImpl {
 
 }  // namespace
 
-ONNX_OPERATOR_KERNEL_EX(DropoutGrad, kMSDomain, 1, kCudaExecutionProvider,
-                        (*KernelDefBuilder::Create())
-                            .TypeConstraint("T", BuildKernelDefConstraints<MLFloat16, float, double, BFloat16>())
-                            .TypeConstraint("T1", BuildKernelDefConstraints<MLFloat16, float, double, BFloat16>())
-                            .TypeConstraint("T2", DataTypeImpl::GetTensorType<bool>())
-                            .InputMemoryType(OrtMemTypeCPUInput, 2),
-                        DropoutGrad<false>);
+ONNX_OPERATOR_KERNEL_EX(DropoutGrad, kMSDomain, 1, kCudaExecutionProvider, (*KernelDefBuilder::Create()).TypeConstraint("T", BuildKernelDefConstraints<MLFloat16, float, double, BFloat16>()).TypeConstraint("T1", BuildKernelDefConstraints<MLFloat16, float, double, BFloat16>()).TypeConstraint("T2", DataTypeImpl::GetTensorType<bool>()).InputMemoryType(OrtMemTypeCPUInput, 2), DropoutGrad<false>);
 
-ONNX_OPERATOR_KERNEL_EX(BitmaskDropoutGrad, kMSDomain, 1, kCudaExecutionProvider,
-                        (*KernelDefBuilder::Create())
-                            .TypeConstraint("T", BuildKernelDefConstraints<MLFloat16, float, double, BFloat16>())
-                            .TypeConstraint("T1", BuildKernelDefConstraints<MLFloat16, float, double, BFloat16>())
-                            .TypeConstraint("T2", DataTypeImpl::GetTensorType<bool>())
-                            .TypeConstraint("T3", DataTypeImpl::GetTensorType<BitmaskElementType>())
-                            .InputMemoryType(OrtMemTypeCPUInput, 2)
-                            .InputMemoryType(OrtMemTypeCPUInput, 3),
-                        DropoutGrad<true>);
+ONNX_OPERATOR_KERNEL_EX(BitmaskDropoutGrad, kMSDomain, 1, kCudaExecutionProvider, (*KernelDefBuilder::Create()).TypeConstraint("T", BuildKernelDefConstraints<MLFloat16, float, double, BFloat16>()).TypeConstraint("T1", BuildKernelDefConstraints<MLFloat16, float, double, BFloat16>()).TypeConstraint("T2", DataTypeImpl::GetTensorType<bool>()).TypeConstraint("T3", DataTypeImpl::GetTensorType<BitmaskElementType>()).InputMemoryType(OrtMemTypeCPUInput, 2).InputMemoryType(OrtMemTypeCPUInput, 3), DropoutGrad<true>);
 
 template <bool UseBitmask>
 Status DropoutGrad<UseBitmask>::ComputeInternal(OpKernelContext* context) const {

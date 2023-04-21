@@ -37,7 +37,9 @@ static std::unique_ptr<KernelRegistry> RegisterKernels() {
 
   ORT_THROW_IF_ERROR(kernel_registry->Register(
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(internal_testing_ep,
-                                                            kMSInternalNHWCDomain, 11, Conv)>()));
+                                                            kMSInternalNHWCDomain,
+                                                            11,
+                                                            Conv)>()));
 
   return kernel_registry;
 }
@@ -55,8 +57,7 @@ class DummyKernel : public OpKernel {
   }
 };
 
-onnxruntime::common::Status DummyCreateKernel(FuncManager& /*func_mgr*/, const OpKernelInfo& info,
-                                              std::unique_ptr<OpKernel>& out) {
+onnxruntime::common::Status DummyCreateKernel(FuncManager& /*func_mgr*/, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) {
   auto kernel = std::make_unique<DummyKernel>(info);
   out = std::move(kernel);
   return Status::OK();
@@ -145,37 +146,36 @@ InternalTestingExecutionProvider::GetCapability(const onnxruntime::GraphViewer& 
   std::unordered_set<const Node*> supported_compiled_nodes;
 
   const auto& topo_nodes = graph_viewer.GetNodesInTopologicalOrder();
-  std::for_each(topo_nodes.cbegin(), topo_nodes.cend(),
-                [&, this](NodeIndex node_index) {
-                  const Node* node = graph_viewer.GetNode(node_index);
-                  if (take_all_nodes_) {
-                    if (enable_static_kernels_) {
+  std::for_each(topo_nodes.cbegin(), topo_nodes.cend(), [&, this](NodeIndex node_index) {
+    const Node* node = graph_viewer.GetNode(node_index);
+    if (take_all_nodes_) {
+      if (enable_static_kernels_) {
 #if !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_CONTRIB_OPS)
-                      supported_static_nodes.insert(node);
-                      if (kernel_lookup.LookUpKernel(*node) == nullptr) {
-                        RegisterDummyStaticKernel(*kernel_registry_, *node);
-                      }
+        supported_static_nodes.insert(node);
+        if (kernel_lookup.LookUpKernel(*node) == nullptr) {
+          RegisterDummyStaticKernel(*kernel_registry_, *node);
+        }
 #else
             ORT_UNUSED_PARAMETER(kernel_lookup);
 #endif
-                    } else {
-                      supported_compiled_nodes.insert(node);
-                    }
-                  } else {
-                    bool supported = ops_.count(node->OpType()) != 0;
-                    if (supported) {
-                      if (enable_static_kernels_) {
-                        // we have an explicit static kernel for Conv
-                        if (node->OpType() == "Conv") {
-                          supported_static_nodes.insert(node);
-                        }
-                      }
+      } else {
+        supported_compiled_nodes.insert(node);
+      }
+    } else {
+      bool supported = ops_.count(node->OpType()) != 0;
+      if (supported) {
+        if (enable_static_kernels_) {
+          // we have an explicit static kernel for Conv
+          if (node->OpType() == "Conv") {
+            supported_static_nodes.insert(node);
+          }
+        }
 
-                      // all kernels can potentially be compiled in this test setup
-                      supported_compiled_nodes.insert(node);
-                    }
-                  }
-                });
+        // all kernels can potentially be compiled in this test setup
+        supported_compiled_nodes.insert(node);
+      }
+    }
+  });
 
   if (supported_static_nodes.empty() && supported_compiled_nodes.empty()) {
     return {};
@@ -246,14 +246,10 @@ InternalTestingExecutionProvider::GetCapability(const onnxruntime::GraphViewer& 
     return ep_name_ + "_" + std::to_string(model_hash) + "_" + std::to_string(metadef_id);
   };
 
-  auto compile_capabilities = utils::CreateSupportedPartitions(graph_viewer, supported_compiled_nodes, stop_ops_,
-                                                               generate_metadef_name, ep_name_,
-                                                               onnxruntime::utils::kInternalTestingExecutionProvider,
-                                                               debug_output_);
+  auto compile_capabilities = utils::CreateSupportedPartitions(graph_viewer, supported_compiled_nodes, stop_ops_, generate_metadef_name, ep_name_, onnxruntime::utils::kInternalTestingExecutionProvider, debug_output_);
 
   if (!static_capabilities.empty()) {
-    std::move(std::begin(static_capabilities), std::end(static_capabilities),
-              std::back_inserter(compile_capabilities));
+    std::move(std::begin(static_capabilities), std::end(static_capabilities), std::back_inserter(compile_capabilities));
   }
 
   return compile_capabilities;
@@ -271,9 +267,7 @@ common::Status InternalTestingExecutionProvider::Compile(const std::vector<Fused
       auto layout_sensitive_ops = layout_transformer::GetORTLayoutSensitiveOps();
       for (const auto& unfused_node : graph_viewer.Nodes()) {
         if (layout_sensitive_ops.count(unfused_node.OpType()) && unfused_node.Domain() != kMSInternalNHWCDomain) {
-          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                                 "Found a layout sensitive op which is still in NCHW format. Node: ",
-                                 unfused_node.OpType(), " ", unfused_node.Name(),
+          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Found a layout sensitive op which is still in NCHW format. Node: ", unfused_node.OpType(), " ", unfused_node.Name(),
                                  " The preferred layout for this EP is NHWC. "
                                  "This is a possible bug in layout transformer.");
         }
@@ -287,8 +281,7 @@ common::Status InternalTestingExecutionProvider::Compile(const std::vector<Fused
     compute_info.release_state_func = [](FunctionState /*state*/) {
     };
 
-    compute_info.compute_func = [&node](FunctionState /*state*/, const OrtApi* /*c_api*/,
-                                        OrtKernelContext* context) -> Status {
+    compute_info.compute_func = [&node](FunctionState /*state*/, const OrtApi* /*c_api*/, OrtKernelContext* context) -> Status {
       Ort::KernelContext ctx(context);
 
       const auto outputs = node.OutputDefs();

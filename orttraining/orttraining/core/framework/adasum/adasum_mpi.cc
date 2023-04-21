@@ -52,8 +52,7 @@ void AdasumMPI::InitializeVHDDReductionComms(WorkerGroupType worker_group) {
     }
     MPI_Group red_group;
     MPI_Group_incl(world_group, (level << 1), node_rank.get()->data(), &red_group);
-    MPI_Comm_create_group(MPI_COMM_WORLD, red_group, 0,
-                          &reduction_comms_.get()->at(shift_val - 1));
+    MPI_Comm_create_group(MPI_COMM_WORLD, red_group, 0, &reduction_comms_.get()->at(shift_val - 1));
     MPI_Group_free(&red_group);
   }
   reduction_comms_initialized_ = true;
@@ -67,19 +66,14 @@ int AdasumMPI::GetSizeWithComm(MPI_Comm comm) {
   return GetMPISize(comm);
 }
 
-void AdasumMPI::SumAllreduceWithComm(void* data, int num_elements,
-                                     MLDataType data_type, MPI_Comm comm) {
+void AdasumMPI::SumAllreduceWithComm(void* data, int num_elements, MLDataType data_type, MPI_Comm comm) {
   int status;
-  status = MPI_Allreduce(MPI_IN_PLACE, data, num_elements,
-                         training::GetMPIDataType(data_type),
-                         MPI_SUM, comm);
+  status = MPI_Allreduce(MPI_IN_PLACE, data, num_elements, training::GetMPIDataType(data_type), MPI_SUM, comm);
   ORT_ENFORCE(status == MPI_SUCCESS, "MPI_Allreduce failed, see MPI output for details.");
 }
 
 void AdasumMPI::PointToPointSendRecv(
-    void* input_data_buffer, int64_t input_buffer_bytes,
-    void* output_data_buffer, int64_t output_buffer_bytes,
-    MLDataType data_type, int dst_src_rank, int tag, MPI_Comm communicator) {
+    void* input_data_buffer, int64_t input_buffer_bytes, void* output_data_buffer, int64_t output_buffer_bytes, MLDataType data_type, int dst_src_rank, int tag, MPI_Comm communicator) {
   int status;
   int element_size = data_type->Size();
   int input_count = input_buffer_bytes / element_size;
@@ -91,11 +85,15 @@ void AdasumMPI::PointToPointSendRecv(
     status = MPI_Sendrecv((char*)input_data_buffer + i * element_size,
                           std::min(chunk_count, std::max(0, input_count - i)),
                           GetMPIDataType(data_type),
-                          dst_src_rank, tag,
+                          dst_src_rank,
+                          tag,
                           (char*)output_data_buffer + i * element_size,
                           std::min(chunk_count, std::max(0, output_count - i)),
                           GetMPIDataType(data_type),
-                          dst_src_rank, tag, communicator, MPI_STATUS_IGNORE);
+                          dst_src_rank,
+                          tag,
+                          communicator,
+                          MPI_STATUS_IGNORE);
     if (status != MPI_SUCCESS) {
       ORT_THROW("MPI_SendRecv failed in Adasum reduction, see MPI output for details.");
     }

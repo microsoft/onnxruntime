@@ -129,10 +129,7 @@ bool CannCall(ERRTYPE retCode, const char* exprString, const char* libName, ERRT
       (void)aclrtGetDevice(&currentCannDevice);
       (void)aclGetRecentErrMsg();
       static char str[1024];
-      snprintf(str, sizeof(str), "%s failure %d: %s ; NPU=%d ; hostname=%s ; expr=%s; %s",
-               libName, static_cast<int>(retCode), CannErrString(retCode), currentCannDevice,
-               hostname,
-               exprString, msg);
+      snprintf(str, sizeof(str), "%s failure %d: %s ; NPU=%d ; hostname=%s ; expr=%s; %s", libName, static_cast<int>(retCode), CannErrString(retCode), currentCannDevice, hostname, exprString, msg);
       if (THRW) {
         ORT_THROW(str);
       } else {
@@ -150,14 +147,10 @@ bool CannCall(ERRTYPE retCode, const char* exprString, const char* libName, ERRT
   return true;
 }
 
-template bool CannCall<aclError, false>(aclError retCode, const char* exprString, const char* libName,
-                                        aclError successCode, const char* msg);
-template bool CannCall<aclError, true>(aclError retCode, const char* exprString, const char* libName,
-                                       aclError successCode, const char* msg);
+template bool CannCall<aclError, false>(aclError retCode, const char* exprString, const char* libName, aclError successCode, const char* msg);
+template bool CannCall<aclError, true>(aclError retCode, const char* exprString, const char* libName, aclError successCode, const char* msg);
 
-template bool CannCall<ge::graphStatus, false>(ge::graphStatus retCode, const char* exprString, const char* libName,
-                                               ge::graphStatus successCode, const char* msg);
-template bool CannCall<ge::graphStatus, true>(ge::graphStatus retCode, const char* exprString, const char* libName,
-                                              ge::graphStatus successCode, const char* msg);
+template bool CannCall<ge::graphStatus, false>(ge::graphStatus retCode, const char* exprString, const char* libName, ge::graphStatus successCode, const char* msg);
+template bool CannCall<ge::graphStatus, true>(ge::graphStatus retCode, const char* exprString, const char* libName, ge::graphStatus successCode, const char* msg);
 
 }  // namespace onnxruntime

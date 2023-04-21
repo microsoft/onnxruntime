@@ -48,14 +48,11 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
 
   ORT_ENFORCE(static_cast<int32_t>(output_dims.size()) == rank, "Rank of input and output tensor should be same.");
   if (rank == 0)
-    return Status(ONNXRUNTIME, INVALID_ARGUMENT,
-                  is_resize_ ? "Resize: input tensor cannot be scalar." : "Upsample: input tensor cannot be scalar.");
+    return Status(ONNXRUNTIME, INVALID_ARGUMENT, is_resize_ ? "Resize: input tensor cannot be scalar." : "Upsample: input tensor cannot be scalar.");
   if (rank != static_cast<int32_t>(scales.size()))
-    return Status(ONNXRUNTIME, INVALID_ARGUMENT,
-                  is_resize_ ? "Resize: input tensor's dimension does not match the scales." : "Upsample: input tensor's dimension does not match the scales.");
+    return Status(ONNXRUNTIME, INVALID_ARGUMENT, is_resize_ ? "Resize: input tensor's dimension does not match the scales." : "Upsample: input tensor's dimension does not match the scales.");
   if (roi.size() != 2 * X_dims.size())
-    return Status(ONNXRUNTIME, INVALID_ARGUMENT,
-                  "Resize: size of roi array should be 2 * N where N is the rank of input tensor X.");
+    return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Resize: size of roi array should be 2 * N where N is the rank of input tensor X.");
 
   Tensor* Y = context->Output(0, output_dims);
 
@@ -87,14 +84,7 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
     size_t temp_buffer_size = CalcResizeBufferSize(mode_, output_dims);
     auto dims_mapping_buffer = GetScratchBuffer<unsigned char>(temp_buffer_size, context->GetComputeStream());
     void* dims_mapping = reinterpret_cast<void*>(dims_mapping_buffer.get());
-    ResizeImpl(Stream(context), mode_, (int)rank, input_shape, output_shape,
-               input_strides, output_div_pitches, scales_vals, roi_vals,
-               reinterpret_cast<const CudaT*>(X->Data<T>()),
-               reinterpret_cast<CudaT*>(Y->MutableData<T>()),
-               output_count, use_extrapolation_, ToCudaType<T>::FromFloat(extrapolation_value_),
-               cubic_coeff_a_, exclude_outside_,
-               coordinate_transform_mode_, nearest_mode_,
-               dims_mapping);
+    ResizeImpl(Stream(context), mode_, (int)rank, input_shape, output_shape, input_strides, output_div_pitches, scales_vals, roi_vals, reinterpret_cast<const CudaT*>(X->Data<T>()), reinterpret_cast<CudaT*>(Y->MutableData<T>()), output_count, use_extrapolation_, ToCudaType<T>::FromFloat(extrapolation_value_), cubic_coeff_a_, exclude_outside_, coordinate_transform_mode_, nearest_mode_, dims_mapping);
   } else {
     TArray<fast_divmod> scales_div(rank);
 

@@ -47,9 +47,7 @@ Status BroadcastGradientArgs<T>::Compute(OpKernelContext* context) const {
       } else {
         TensorShape a(A_dims, a_size);
         TensorShape b(B_dims, b_size);
-        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                               "Broadcast is not possible between inputs of shapes: ",
-                               a, " and ", b);
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Broadcast is not possible between inputs of shapes: ", a, " and ", b);
       }
     }
     --i;

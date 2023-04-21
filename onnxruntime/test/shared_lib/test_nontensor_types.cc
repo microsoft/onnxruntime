@@ -44,11 +44,9 @@ TEST(CApiTest, CreateGetVectorOfMapsInt64Float) {  // support zipmap output type
   std::vector<float> values{3.0f, 1.0f, 2.f, 0.f};
   for (size_t i = 0; i < N; ++i) {
     // create key tensor
-    Ort::Value keys_tensor = Ort::Value::CreateTensor(info, keys.data(), keys.size() * sizeof(int64_t),
-                                                      dims.data(), dims.size(), ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64);
+    Ort::Value keys_tensor = Ort::Value::CreateTensor(info, keys.data(), keys.size() * sizeof(int64_t), dims.data(), dims.size(), ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64);
     // create value tensor
-    Ort::Value values_tensor = Ort::Value::CreateTensor(info, values.data(), values.size() * sizeof(float),
-                                                        dims.data(), dims.size(), ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT);
+    Ort::Value values_tensor = Ort::Value::CreateTensor(info, values.data(), values.size() * sizeof(float), dims.data(), dims.size(), ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT);
     // create map ort value
     in.emplace_back(Ort::Value::CreateMap(keys_tensor, values_tensor));
   }
@@ -107,11 +105,9 @@ TEST(CApiTest, CreateGetVectorOfMapsStringFloat) {  // support zipmap output typ
   std::vector<float> values{3.0f, 1.0f, 2.f, 0.f};
   for (size_t i = 0; i < N; ++i) {
     // create key tensor
-    Ort::Value keys_tensor = Ort::Value::CreateTensor(info, keys.data(), keys.size() * sizeof(std::string),
-                                                      dims.data(), dims.size(), ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING);
+    Ort::Value keys_tensor = Ort::Value::CreateTensor(info, keys.data(), keys.size() * sizeof(std::string), dims.data(), dims.size(), ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING);
     // create value tensor
-    Ort::Value values_tensor = Ort::Value::CreateTensor(info, values.data(), values.size() * sizeof(float),
-                                                        dims.data(), dims.size(), ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT);
+    Ort::Value values_tensor = Ort::Value::CreateTensor(info, values.data(), values.size() * sizeof(float), dims.data(), dims.size(), ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT);
 
     // create map ort value
     in.emplace_back(Ort::Value::CreateMap(keys_tensor, values_tensor));
@@ -169,11 +165,9 @@ TEST(CApiTest, TypeInfoMap) {
   std::vector<int64_t> dims = {NUM_KV_PAIRS};
   std::vector<float> values{3.0f, 1.0f, 2.f, 0.f};
   // create key tensor
-  Ort::Value keys_tensor = Ort::Value::CreateTensor(info, keys.data(), keys.size() * sizeof(int64_t),
-                                                    dims.data(), dims.size(), ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64);
+  Ort::Value keys_tensor = Ort::Value::CreateTensor(info, keys.data(), keys.size() * sizeof(int64_t), dims.data(), dims.size(), ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64);
   // create value tensor
-  Ort::Value values_tensor = Ort::Value::CreateTensor(info, values.data(), values.size() * sizeof(float),
-                                                      dims.data(), dims.size(), ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT);
+  Ort::Value values_tensor = Ort::Value::CreateTensor(info, values.data(), values.size() * sizeof(float), dims.data(), dims.size(), ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT);
 
 #if !defined(DISABLE_ML_OPS)
   Ort::Value map_ort = Ort::Value::CreateMap(keys_tensor, values_tensor);
@@ -221,8 +215,7 @@ TEST(CApiTest, CreateGetSeqTensors) {
   constexpr int N = 2;
   for (int i = 0; i < N; ++i) {
     // create tensor
-    Ort::Value tensor = Ort::Value::CreateTensor(info, vals.data(), vals.size() * sizeof(int64_t),
-                                                 dims.data(), dims.size(), ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64);
+    Ort::Value tensor = Ort::Value::CreateTensor(info, vals.data(), vals.size() * sizeof(int64_t), dims.data(), dims.size(), ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64);
     in.push_back(std::move(tensor));
   }
 
@@ -248,8 +241,7 @@ TEST(CApiTest, CreateGetSeqStringTensors) {
   for (int i = 0; i < N; ++i) {
     // create tensor
     std::vector<int64_t> shape{2};
-    auto value = Ort::Value::CreateTensor(Ort::AllocatorWithDefaultOptions(), shape.data(), shape.size(),
-                                          ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING);
+    auto value = Ort::Value::CreateTensor(Ort::AllocatorWithDefaultOptions(), shape.data(), shape.size(), ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING);
 
     Ort::ThrowOnError(Ort::GetApi().FillStringTensor(value, string_input_data, 2));
     in.push_back(std::move(value));
@@ -288,8 +280,7 @@ TEST(CApiTest, TypeInfoSequence) {
   constexpr int N = 2;
   for (int i = 0; i < N; ++i) {
     // create tensor
-    Ort::Value tensor = Ort::Value::CreateTensor(info, vals.data(), vals.size() * sizeof(int64_t),
-                                                 dims.data(), dims.size(), ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64);
+    Ort::Value tensor = Ort::Value::CreateTensor(info, vals.data(), vals.size() * sizeof(int64_t), dims.data(), dims.size(), ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64);
     in.push_back(std::move(tensor));
   }
 
@@ -509,8 +500,7 @@ TEST(CApiTest, SparseTensorFillSparseTensorFormatAPI) {
 
     Ort::Value::Shape ort_dense_shape{dense_shape.data(), dense_shape.size()};
     auto coo_st = Ort::Value::CreateSparseTensor<int32_t>(allocator, ort_dense_shape);
-    coo_st.FillSparseTensorCoo(info, {&values_len, 1U, {expected_values.data()}},
-                               expected_linear_indices.data(), expected_linear_indices.size());
+    coo_st.FillSparseTensorCoo(info, {&values_len, 1U, {expected_values.data()}}, expected_linear_indices.data(), expected_linear_indices.size());
     {
       auto ti = coo_st.GetTypeInfo();
       ASSERT_EQ(ONNX_TYPE_SPARSETENSOR, ti.GetONNXType());
@@ -565,9 +555,7 @@ TEST(CApiTest, SparseTensorFillSparseTensorFormatAPI) {
 
     Ort::Value::Shape ort_dense_shape{dense_shape.data(), dense_shape.size()};
     auto csr_st = Ort::Value::CreateSparseTensor<int32_t>(allocator, ort_dense_shape);
-    csr_st.FillSparseTensorCsr(info, {values_shape.data(), values_shape.size(), {expected_values.data()}},
-                               expected_inner.data(), expected_inner.size(),
-                               expected_outer.data(), expected_outer.size());
+    csr_st.FillSparseTensorCsr(info, {values_shape.data(), values_shape.size(), {expected_values.data()}}, expected_inner.data(), expected_inner.size(), expected_outer.data(), expected_outer.size());
     {
       auto ti = csr_st.GetTypeInfo();
       ASSERT_EQ(ONNX_TYPE_SPARSETENSOR, ti.GetONNXType());
@@ -637,8 +625,7 @@ TEST(CApiTest, SparseTensorFillSparseTensorFormatAPI) {
 
     Ort::Value::Shape ort_dense_shape{dense_shape.data(), dense_shape.size()};
     auto bsp_st = Ort::Value::CreateSparseTensor<int32_t>(allocator, ort_dense_shape);
-    bsp_st.FillSparseTensorBlockSparse(info, {values_shape.data(), values_shape.size(), {data_blocks.data()}},
-                                       {indices_shape.data(), indices_shape.size()}, blocksparse_indices.data());
+    bsp_st.FillSparseTensorBlockSparse(info, {values_shape.data(), values_shape.size(), {data_blocks.data()}}, {indices_shape.data(), indices_shape.size()}, blocksparse_indices.data());
     {
       auto ti = bsp_st.GetTypeInfo();
       ASSERT_EQ(ONNX_TYPE_SPARSETENSOR, ti.GetONNXType());
@@ -694,8 +681,7 @@ TEST(CApiTest, SparseTensorFillSparseFormatStringsAPI) {
 
     Ort::Value::Shape ort_dense_shape{dense_shape.data(), dense_shape.size()};
     auto coo_st = Ort::Value::CreateSparseTensor(allocator, ort_dense_shape, ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING);
-    coo_st.FillSparseTensorCoo(info, {&values_len, 1U, {strings}},
-                               expected_linear_indices.data(), expected_linear_indices.size());
+    coo_st.FillSparseTensorCoo(info, {&values_len, 1U, {strings}}, expected_linear_indices.data(), expected_linear_indices.size());
     {
       auto ti = coo_st.GetTypeInfo();
       ASSERT_EQ(ONNX_TYPE_SPARSETENSOR, ti.GetONNXType());
@@ -771,9 +757,7 @@ TEST(CApiTest, SparseTensorFillSparseFormatStringsAPI) {
     Ort::Value::Shape ort_dense_shape{dense_shape.data(), dense_shape.size()};
     const int64_t values_len = static_cast<int64_t>(expected_values.size());
     auto csr_st = Ort::Value::CreateSparseTensor(allocator, ort_dense_shape, ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING);
-    csr_st.FillSparseTensorCsr(info, {values_shape.data(), values_shape.size(), {strings}},
-                               expected_inner.data(), expected_inner.size(),
-                               expected_outer.data(), expected_outer.size());
+    csr_st.FillSparseTensorCsr(info, {values_shape.data(), values_shape.size(), {strings}}, expected_inner.data(), expected_inner.size(), expected_outer.data(), expected_outer.size());
     {
       auto ti = csr_st.GetTypeInfo();
       ASSERT_EQ(ONNX_TYPE_SPARSETENSOR, ti.GetONNXType());
@@ -861,8 +845,7 @@ TEST(CApiTest, SparseTensorFillSparseFormatStringsAPI) {
 
     Ort::Value::Shape ort_dense_shape{dense_shape.data(), dense_shape.size()};
     auto bsp_st = Ort::Value::CreateSparseTensor(allocator, ort_dense_shape, ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING);
-    bsp_st.FillSparseTensorBlockSparse(info, {values_shape.data(), values_shape.size(), {strings}},
-                                       {indices_shape.data(), indices_shape.size()}, blocksparse_indices.data());
+    bsp_st.FillSparseTensorBlockSparse(info, {values_shape.data(), values_shape.size(), {strings}}, {indices_shape.data(), indices_shape.size()}, blocksparse_indices.data());
     {
       auto ti = bsp_st.GetTypeInfo();
       ASSERT_EQ(ONNX_TYPE_SPARSETENSOR, ti.GetONNXType());

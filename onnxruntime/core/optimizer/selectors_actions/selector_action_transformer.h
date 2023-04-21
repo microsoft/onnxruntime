@@ -113,9 +113,7 @@ This setup allows optimizations to be captured and applied at runtime in a minim
 */
 class SelectorActionTransformer : public GraphTransformer {
  protected:
-  SelectorActionTransformer(const std::string& name, SelectorActionRegistry&& selector_action_registry,
-                            const SatApplyContextVariant& apply_context,
-                            const InlinedHashSet<std::string_view>& compatible_execution_providers);
+  SelectorActionTransformer(const std::string& name, SelectorActionRegistry&& selector_action_registry, const SatApplyContextVariant& apply_context, const InlinedHashSet<std::string_view>& compatible_execution_providers);
 
   // can't copy/assign selector_action_registry_
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(SelectorActionTransformer);
@@ -126,15 +124,13 @@ class SelectorActionTransformer : public GraphTransformer {
 #if !defined(ORT_MINIMAL_BUILD)
 
   // apply optimizations by selecting nodes from graph and running or saving the associated actions
-  Status ApplySelectorsAndActions(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger,
-                                  const SatRuntimeOptimizationSaveContext* save_context) const;
+  Status ApplySelectorsAndActions(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger, const SatRuntimeOptimizationSaveContext* save_context) const;
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   // apply optimizations by replaying saved runtime optimizations
-  Status ApplySavedRuntimeOptimizations(Graph& graph, bool& modified, int graph_level,
-                                        const logging::Logger& logger) const;
+  Status ApplySavedRuntimeOptimizations(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const;
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
   SelectorActionRegistry selector_action_registry_;

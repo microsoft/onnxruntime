@@ -86,12 +86,7 @@ RknpuExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
 
   // This method is based on that of TRT EP
   // Construct modelproto from graph_viewer
-  onnxruntime::Model model(graph_viewer.Name(), true, ModelMetaData(),
-                           PathString(),
-                           IOnnxRuntimeOpSchemaRegistryList(),
-                           graph_viewer.DomainToVersionMap(),
-                           std::vector<ONNX_NAMESPACE::FunctionProto>(),
-                           *GetLogger());
+  onnxruntime::Model model(graph_viewer.Name(), true, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(), graph_viewer.DomainToVersionMap(), std::vector<ONNX_NAMESPACE::FunctionProto>(), *GetLogger());
   onnxruntime::Graph& graph_build = model.MainGraph();
   const std::vector<NodeIndex>& node_index =
       graph_viewer.GetNodesInTopologicalOrder();
@@ -109,8 +104,7 @@ RknpuExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
           output->Name(), output->TypeAsProto());
       outputs.push_back(&n_output);
     }
-    graph_build.AddNode(node.Name(), node.OpType(), node.Description(),
-                        inputs, outputs, &node.GetAttributes(), node.Domain());
+    graph_build.AddNode(node.Name(), node.OpType(), node.Description(), inputs, outputs, &node.GetAttributes(), node.Domain());
   }
   const auto graph_outputs = graph_viewer.GetOutputs();
   // Add initializer to graph_viewer
@@ -169,7 +163,8 @@ RknpuExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
         if (node->GetOutputEdgesCount() > node->OutputDefs().size()) {
           for (auto it = node->OutputEdgesBegin(),
                     end = node->OutputEdgesEnd();
-               it != end; ++it) {
+               it != end;
+               ++it) {
             const auto& node_idx = it->GetNode().Index();
             const auto& output = (it->GetNode()).InputDefs()[it->GetDstArgIndex()];
 
@@ -211,13 +206,15 @@ RknpuExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
 
       for (auto it = fused_inputs.begin(),
                 end = fused_inputs.end();
-           it != end; ++it) {
+           it != end;
+           ++it) {
         inputs.insert(std::pair<int, const NodeArg*>(it->second, it->first));
       }
 
       for (auto it = fused_outputs.begin(),
                 end = fused_outputs.end();
-           it != end; ++it) {
+           it != end;
+           ++it) {
         for (const auto& x : all_node_inputs) {
           if (x->Name() == it->first->Name()) {
             outputs.insert(
@@ -226,7 +223,8 @@ RknpuExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
           }
         }
         if (std::find(graph_outputs.begin(),
-                      graph_outputs.end(), it->first) != graph_outputs.end()) {
+                      graph_outputs.end(),
+                      it->first) != graph_outputs.end()) {
           outputs.insert(std::pair<int, const NodeArg*>(it->second, it->first));
         }
       }
@@ -261,12 +259,7 @@ common::Status RknpuExecutionProvider::Compile(const std::vector<FusedNodeAndGra
   for (const auto& fused_node_graph : fused_nodes_and_graphs) {
     const GraphViewer& graph_body_viewer = fused_node_graph.filtered_graph;
     const Node& fused_node = fused_node_graph.fused_node;
-    onnxruntime::Model model(graph_body_viewer.Name(), true, ModelMetaData(),
-                             PathString(),
-                             IOnnxRuntimeOpSchemaRegistryList(),
-                             graph_body_viewer.DomainToVersionMap(),
-                             std::vector<ONNX_NAMESPACE::FunctionProto>(),
-                             *GetLogger());
+    onnxruntime::Model model(graph_body_viewer.Name(), true, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(), graph_body_viewer.DomainToVersionMap(), std::vector<ONNX_NAMESPACE::FunctionProto>(), *GetLogger());
     ONNX_NAMESPACE::ModelProto model_proto = model.ToProto();
     graph_body_viewer.ToProto(*model_proto->mutable_graph(), true, true);
     model_proto.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
@@ -297,10 +290,7 @@ common::Status RknpuExecutionProvider::Compile(const std::vector<FusedNodeAndGra
       std::unique_ptr<RknpuFuncState> p =
           std::make_unique<RknpuFuncState>();
       rk::nn::Graph* graph = new rk::nn::Graph();
-      *p = {"", std::unique_ptr<rk::nn::Exection>(new rk::nn::Exection(graph)),
-            model_proto_[context->node_name], input_info_[context->node_name],
-            output_info_[context->node_name],
-            std::vector<int>{}, std::vector<int>{}};
+      *p = {"", std::unique_ptr<rk::nn::Exection>(new rk::nn::Exection(graph)), model_proto_[context->node_name], input_info_[context->node_name], output_info_[context->node_name], std::vector<int>{}, std::vector<int>{}};
       *state = p.release();
       return 0;
     };
@@ -484,7 +474,8 @@ common::Status RknpuExecutionProvider::Compile(const std::vector<FusedNodeAndGra
         outputs[i].index = i;
         outputs[i].buf = (void*)output_buf;
         outputs[i].size = accumulate(output_shape.begin(),
-                                     output_shape.end(), 1,
+                                     output_shape.end(),
+                                     1,
                                      std::multiplies<uint32_t>()) *
                           type_size;
         outputs[i].type = type;

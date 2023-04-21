@@ -135,8 +135,7 @@ std::unique_ptr<Model> FunctionTestCase::CreateModel(bool inline_call) {
     opsets[kMSDomain] = 1;
   }
 
-  std::unique_ptr<Model> model(new Model("test", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
-                                         opsets, {}, DefaultLoggingManager().DefaultLogger()));
+  std::unique_ptr<Model> model(new Model("test", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(), opsets, {}, DefaultLoggingManager().DefaultLogger()));
 
   onnxruntime::Graph& graph = model->MainGraph();
   auto& call_node = AddCallNodeTo(graph);

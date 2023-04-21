@@ -72,8 +72,7 @@ void VerifyLogitWeightAndLabelShape(const TensorShape& logit_shape,
   }
 }
 
-void GetPermutationAndShape(bool ncd_to_ndc, const TensorShape& tensor_shape, TensorShapeVector& new_shape,
-                            std::vector<size_t>& permutations) {
+void GetPermutationAndShape(bool ncd_to_ndc, const TensorShape& tensor_shape, TensorShapeVector& new_shape, std::vector<size_t>& permutations) {
   if (ncd_to_ndc) {
     new_shape.emplace_back(tensor_shape[0]);
     permutations.emplace_back(0);
@@ -399,14 +398,8 @@ Status SoftmaxCrossEntropyLossGrad<T1, T2>::Compute(OpKernelContext* context) co
   return Status::OK();
 }
 
-#define REGISTER_KERNEL_INTERNAL_TYPED(OpName, ClassName, T1, T2)                                     \
-  ONNX_OPERATOR_TWO_TYPED_KERNEL_EX(OpName, kMSDomain, 1, T1, T2, kCpuExecutionProvider,              \
-                                    KernelDefBuilder()                                                \
-                                        .TypeConstraint("T", DataTypeImpl::GetTensorType<T1>())       \
-                                        .TypeConstraint("TOut", DataTypeImpl::GetTensorType<T1>())    \
-                                        .TypeConstraint("Tind", DataTypeImpl::GetTensorType<T2>())    \
-                                        .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>()), \
-                                    ClassName<T1, T2>);
+#define REGISTER_KERNEL_INTERNAL_TYPED(OpName, ClassName, T1, T2) \
+  ONNX_OPERATOR_TWO_TYPED_KERNEL_EX(OpName, kMSDomain, 1, T1, T2, kCpuExecutionProvider, KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T1>()).TypeConstraint("TOut", DataTypeImpl::GetTensorType<T1>()).TypeConstraint("Tind", DataTypeImpl::GetTensorType<T2>()).TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>()), ClassName<T1, T2>);
 
 REGISTER_KERNEL_INTERNAL_TYPED(SoftmaxCrossEntropyLossInternal, SoftmaxCrossEntropyLoss, float, int32_t)
 REGISTER_KERNEL_INTERNAL_TYPED(SoftmaxCrossEntropyLossInternal, SoftmaxCrossEntropyLoss, float, int64_t)

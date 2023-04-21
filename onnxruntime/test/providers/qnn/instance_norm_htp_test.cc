@@ -25,8 +25,7 @@ namespace test {
  * \param expected_ep_assignment How many nodes are expected to be assigned to QNN (All, Some, or None).
  * \param num_modes_in_graph The number of expected nodes in the graph.
  */
-static void RunInstanceNormQDQTest(const std::vector<int64_t>& input_shape, float epsilon, const char* test_description,
-                                   ExpectedEPNodeAssignment expected_ep_assignment, int num_nodes_in_graph) {
+static void RunInstanceNormQDQTest(const std::vector<int64_t>& input_shape, float epsilon, const char* test_description, ExpectedEPNodeAssignment expected_ep_assignment, int num_nodes_in_graph) {
   ProviderOptions provider_options;
 #if defined(_WIN32)
   provider_options["backend_path"] = "QnnHtp.dll";

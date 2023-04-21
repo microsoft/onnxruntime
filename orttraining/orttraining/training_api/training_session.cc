@@ -13,12 +13,10 @@ TrainingSession::TrainingSession(const Environment& session_env,
                                  const std::unordered_map<std::string, std::shared_ptr<Parameter>>& parameters,
                                  const ModelIdentifiers& model_identifiers)
     : named_parameters_{parameters},
-      module_{std::make_unique<Module>(model_identifiers.train_model, named_parameters_,
-                                       session_options, session_env, providers, model_identifiers.eval_model)},
+      module_{std::make_unique<Module>(model_identifiers.train_model, named_parameters_, session_options, session_env, providers, model_identifiers.eval_model)},
       optimizer_{model_identifiers.optim_model.has_value()
                      ? std::make_unique<Optimizer>(
-                           model_identifiers.optim_model.value(), named_parameters_,
-                           session_options, session_env, providers)
+                           model_identifiers.optim_model.value(), named_parameters_, session_options, session_env, providers)
                      : std::unique_ptr<Optimizer>()} {}
 
 Status TrainingSession::RegisterScheduler(

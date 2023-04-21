@@ -140,44 +140,21 @@ void RunQuantGemmTest(const int M,
 
 void RunQuantGemmTestBatch(const int M, const int N, const int K) {
   // No Trans
-  RunQuantGemmTest(M, N, K,
-                   false /*is_A_trans*/, false /*is_B_trans*/,
-                   false /*has_C*/, false /*B_is_initializer*/,
-                   false /*per_column*/);
-  RunQuantGemmTest(M, N, K,
-                   false /*is_A_trans*/, false /*is_B_trans*/,
-                   true /*has_C*/, true /*B_is_initializer*/,
-                   true /*per_column*/);
+  RunQuantGemmTest(M, N, K, false /*is_A_trans*/, false /*is_B_trans*/, false /*has_C*/, false /*B_is_initializer*/, false /*per_column*/);
+  RunQuantGemmTest(M, N, K, false /*is_A_trans*/, false /*is_B_trans*/, true /*has_C*/, true /*B_is_initializer*/, true /*per_column*/);
 
   // A Trans
-  RunQuantGemmTest(M, N, K,
-                   true /*is_A_trans*/, false /*is_B_trans*/,
-                   false /*has_C*/, true /*B_is_initializer*/,
-                   false /*per_column*/);
-  RunQuantGemmTest(M, N, K,
-                   true /*is_A_trans*/, false /*is_B_trans*/,
-                   true /*has_C*/, false /*B_is_initializer*/,
-                   true /*per_column*/);
+  RunQuantGemmTest(M, N, K, true /*is_A_trans*/, false /*is_B_trans*/, false /*has_C*/, true /*B_is_initializer*/, false /*per_column*/);
+  RunQuantGemmTest(M, N, K, true /*is_A_trans*/, false /*is_B_trans*/, true /*has_C*/, false /*B_is_initializer*/, true /*per_column*/);
 
   // B Trans
-  RunQuantGemmTest(M, N, K,
-                   false /*is_A_trans*/, true /*is_B_trans*/,
-                   false /*has_C*/, false /*B_is_initializer*/,
-                   false /*per_column*/);
-  RunQuantGemmTest(M, N, K,
-                   false /*is_A_trans*/, true /*is_B_trans*/,
-                   true /*has_C*/, true /*B_is_initializer*/,  // B uses prepacking
+  RunQuantGemmTest(M, N, K, false /*is_A_trans*/, true /*is_B_trans*/, false /*has_C*/, false /*B_is_initializer*/, false /*per_column*/);
+  RunQuantGemmTest(M, N, K, false /*is_A_trans*/, true /*is_B_trans*/, true /*has_C*/, true /*B_is_initializer*/,  // B uses prepacking
                    true /*per_column*/);
 
   // A and B Trans
-  RunQuantGemmTest(M, N, K,
-                   true /*is_A_trans*/, true /*is_B_trans*/,
-                   false /*has_C*/, true /*B_is_initializer*/,
-                   true /*per_column*/);
-  RunQuantGemmTest(M, N, K,
-                   true /*is_A_trans*/, true /*is_B_trans*/,
-                   true /*has_C*/, false /*B_is_initializer*/,
-                   false /*per_column*/);
+  RunQuantGemmTest(M, N, K, true /*is_A_trans*/, true /*is_B_trans*/, false /*has_C*/, true /*B_is_initializer*/, true /*per_column*/);
+  RunQuantGemmTest(M, N, K, true /*is_A_trans*/, true /*is_B_trans*/, true /*has_C*/, false /*B_is_initializer*/, false /*per_column*/);
 }
 
 TEST(QuantGemmTest, Scalar) {

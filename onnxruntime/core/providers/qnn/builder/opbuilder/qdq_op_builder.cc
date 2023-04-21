@@ -136,13 +136,11 @@ Status QdqOpBuilder::AddDequantizeNodeOnModelOutput(QnnModelWrapper& qnn_model_w
   quantize_params.scaleOffsetEncoding.offset = offset_value;
 
   std::vector<uint32_t> input_shape = output_shape;
-  QnnTensorWrapper input_tensorwrapper(input_name, input_tensor_type, qnn_data_type, quantize_params,
-                                       std::move(input_shape));
+  QnnTensorWrapper input_tensorwrapper(input_name, input_tensor_type, qnn_data_type, quantize_params, std::move(input_shape));
   ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(input_tensorwrapper)), "Failed to add tensor.");
   bool is_graph_output = qnn_model_wrapper.IsGraphOutput(output_name);
   Qnn_TensorType_t output_tensor_type = is_graph_output ? QNN_TENSOR_TYPE_APP_READ : QNN_TENSOR_TYPE_NATIVE;
-  QnnTensorWrapper output_tensorwrapper(output_name, output_tensor_type, QNN_DATATYPE_FLOAT_32,
-                                        QNN_QUANTIZE_PARAMS_INIT, std::move(output_shape));
+  QnnTensorWrapper output_tensorwrapper(output_name, output_tensor_type, QNN_DATATYPE_FLOAT_32, QNN_QUANTIZE_PARAMS_INIT, std::move(output_shape));
   ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(output_tensorwrapper)), "Failed to add tensor.");
   const static std::string qnn_op_type = "Dequantize";
 

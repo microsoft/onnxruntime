@@ -38,9 +38,7 @@ class CudnnRNN {
     }
   }
 
-  Status Set(const cudnnHandle_t& cudnnHandle, int64_t hidden_size, int num_layers,
-             cudnnDropoutDescriptor_t cudnn_dropout_desc, cudnnDirectionMode_t cudnn_direction_model,
-             cudnnRNNMode_t rnn_mode, cudnnDataType_t dataType, const cudaDeviceProp& prop) {
+  Status Set(const cudnnHandle_t& cudnnHandle, int64_t hidden_size, int num_layers, cudnnDropoutDescriptor_t cudnn_dropout_desc, cudnnDirectionMode_t cudnn_direction_model, cudnnRNNMode_t rnn_mode, cudnnDataType_t dataType, const cudaDeviceProp& prop) {
     if (!cudnn_rnn_desc_)
       CUDNN_RETURN_IF_ERROR(cudnnCreateRNNDescriptor(&cudnn_rnn_desc_));
 
@@ -127,11 +125,7 @@ class CudnnRnnBase : public CudaKernel {
                                const T* B_data,
                                cudaStream_t cuda_stream) const;
 
-  Status ReorganizeWeights(const Tensor* W, const Tensor* R, const Tensor* B,
-                           IAllocatorUniquePtr<void>& target_w_data,
-                           CudnnFilterDescriptor& target_w_desc,
-                           CudnnRNN& rnn_desc,
-                           onnxruntime::Stream* ort_stream) const;
+  Status ReorganizeWeights(const Tensor* W, const Tensor* R, const Tensor* B, IAllocatorUniquePtr<void>& target_w_data, CudnnFilterDescriptor& target_w_desc, CudnnRNN& rnn_desc, onnxruntime::Stream* ort_stream) const;
 
   void SetWeightBias(const cudnnHandle_t handle,
                      const cudnnRNNDescriptor_t rnn_desc,

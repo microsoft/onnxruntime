@@ -14,8 +14,7 @@ Status BinaryElementwise<ShouldNotBroadcast>::Prepare(OpKernelContext* context, 
   p->lhs_tensor = context->Input<Tensor>(0);
   p->rhs_tensor = context->Input<Tensor>(1);
   if (!(p->lhs_tensor->Shape() == p->rhs_tensor->Shape()))
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, Node().Name(), ": mismatching input shapes: ",
-                           p->lhs_tensor->Shape().ToString(), " != ", p->rhs_tensor->Shape().ToString());
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, Node().Name(), ": mismatching input shapes: ", p->lhs_tensor->Shape().ToString(), " != ", p->rhs_tensor->Shape().ToString());
   p->output_tensor = context->Output(0, p->lhs_tensor->Shape());
   p->output_rank_or_simple_broadcast = static_cast<int32_t>(SimpleBroadcast::NoBroadcast);
   return Status::OK();
@@ -38,11 +37,9 @@ Status ComputeOutputShape(const std::string& node_name, const TensorShape& lhs_s
     int64_t min = std::min(lhs_dim, rhs_dim);
     int64_t out_dim = (min == 0 ? min : max);  // special case a dim value of 0.
     if (lhs_dim != out_dim && lhs_dim != 1)
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, node_name, ": left operand cannot broadcast on dim ", lhs_rank - 1 - i,
-                             " LeftShape: ", lhs_shape.ToString(), ", RightShape: ", rhs_shape.ToString());
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, node_name, ": left operand cannot broadcast on dim ", lhs_rank - 1 - i, " LeftShape: ", lhs_shape.ToString(), ", RightShape: ", rhs_shape.ToString());
     if (rhs_dim != out_dim && rhs_dim != 1)
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, node_name, ": right operand cannot broadcast on dim ", rhs_rank - 1 - i,
-                             " LeftShape: ", lhs_shape.ToString(), ", RightShape: ", rhs_shape.ToString());
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, node_name, ": right operand cannot broadcast on dim ", rhs_rank - 1 - i, " LeftShape: ", lhs_shape.ToString(), ", RightShape: ", rhs_shape.ToString());
     output_dims[out_rank - 1 - i] = out_dim;
   }
   out_shape = TensorShape(output_dims);
@@ -323,7 +320,8 @@ BINARY_OP_HFD(PRelu, 16)
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     Pow,
     kOnnxDomain,
-    12, 12,
+    12,
+    12,
     kCudaExecutionProvider,
     (*KernelDefBuilder::Create())
         .TypeConstraint("T", BuildKernelDefConstraints<int32_t, int64_t, float, double, MLFloat16>())
@@ -333,7 +331,8 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     Pow,
     kOnnxDomain,
-    13, 14,
+    13,
+    14,
     kCudaExecutionProvider,
     (*KernelDefBuilder::Create())
         .TypeConstraint("T", BuildKernelDefConstraints<int32_t, int64_t, float, double, MLFloat16>())
@@ -427,8 +426,7 @@ Status DispatchOnFirstArg(cudaStream_t stream, const BinaryElementwisePreparatio
           prepare.output_tensor->Shape().Size());
       break;
     default:
-      s = ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Unsupported Y type: ",
-                          DataTypeImpl::ToString(prepare.rhs_tensor->DataType()));
+      s = ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Unsupported Y type: ", DataTypeImpl::ToString(prepare.rhs_tensor->DataType()));
   }
   return s;
 }
@@ -459,24 +457,15 @@ Status Pow::ComputeInternal(OpKernelContext* context) const {
       s = DispatchOnFirstArg<MLFloat16>(Stream(context), prepare);
       break;
     default:
-      s = ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Unsupported X type: ",
-                          DataTypeImpl::ToString(prepare.lhs_tensor->DataType()));
+      s = ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Unsupported X type: ", DataTypeImpl::ToString(prepare.lhs_tensor->DataType()));
   }
   return s;
 }
 
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(
-    Mod, kOnnxDomain, 10, 12, kCudaExecutionProvider,
-    (*KernelDefBuilder::Create())
-        .TypeConstraint("T",
-                        BuildKernelDefConstraints<int32_t, int64_t, uint32_t, uint64_t, float, double, MLFloat16>()),
-    Mod);
+    Mod, kOnnxDomain, 10, 12, kCudaExecutionProvider, (*KernelDefBuilder::Create()).TypeConstraint("T", BuildKernelDefConstraints<int32_t, int64_t, uint32_t, uint64_t, float, double, MLFloat16>()), Mod);
 
-ONNX_OPERATOR_KERNEL_EX(Mod, kOnnxDomain, 13, kCudaExecutionProvider,
-                        (*KernelDefBuilder::Create())
-                            .TypeConstraint("T", BuildKernelDefConstraints<int32_t, int64_t, uint32_t, uint64_t, float,
-                                                                           double, MLFloat16, BFloat16>()),
-                        Mod);
+ONNX_OPERATOR_KERNEL_EX(Mod, kOnnxDomain, 13, kCudaExecutionProvider, (*KernelDefBuilder::Create()).TypeConstraint("T", BuildKernelDefConstraints<int32_t, int64_t, uint32_t, uint64_t, float, double, MLFloat16, BFloat16>()), Mod);
 
 Status Mod::ComputeInternal(OpKernelContext* context) const {
   namespace on = ONNX_NAMESPACE;
@@ -487,17 +476,10 @@ Status Mod::ComputeInternal(OpKernelContext* context) const {
                   element_type == on::TensorProto_DataType_INT64 || element_type == on::TensorProto_DataType_UINT32 ||
                   element_type == on::TensorProto_DataType_UINT64,
               "Non-fmod can support integer types only.");
-#define CASE_MOD_ELEMENT_TYPE(name, onnx_type, data_type)                                                           \
-  case onnx_type: {                                                                                                 \
-    Impl_##name<typename ToCudaType<data_type>::MappedType>(                                                        \
-        Stream(context), prepare.output_rank_or_simple_broadcast, &prepare.lhs_padded_strides,                      \
-        reinterpret_cast<const typename ToCudaType<data_type>::MappedType*>(prepare.lhs_tensor->Data<data_type>()), \
-        &prepare.rhs_padded_strides,                                                                                \
-        reinterpret_cast<const typename ToCudaType<data_type>::MappedType*>(prepare.rhs_tensor->Data<data_type>()), \
-        &prepare.fdm_output_strides, prepare.fdm_H, prepare.fdm_C,                                                  \
-        reinterpret_cast<typename ToCudaType<data_type>::MappedType*>(                                              \
-            prepare.output_tensor->MutableData<data_type>()),                                                       \
-        prepare.output_tensor->Shape().Size());                                                                     \
+#define CASE_MOD_ELEMENT_TYPE(name, onnx_type, data_type)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              \
+  case onnx_type: {                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    \
+    Impl_##name<typename ToCudaType<data_type>::MappedType>(                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           \
+        Stream(context), prepare.output_rank_or_simple_broadcast, &prepare.lhs_padded_strides, reinterpret_cast<const typename ToCudaType<data_type>::MappedType*>(prepare.lhs_tensor->Data<data_type>()), &prepare.rhs_padded_strides, reinterpret_cast<const typename ToCudaType<data_type>::MappedType*>(prepare.rhs_tensor->Data<data_type>()), &prepare.fdm_output_strides, prepare.fdm_H, prepare.fdm_C, reinterpret_cast<typename ToCudaType<data_type>::MappedType*>(prepare.output_tensor->MutableData<data_type>()), prepare.output_tensor->Shape().Size()); \
   } break
   if (fmod_) {
     switch (element_type) {
@@ -510,8 +492,7 @@ Status Mod::ComputeInternal(OpKernelContext* context) const {
       CASE_MOD_ELEMENT_TYPE(Fmod, on::TensorProto_DataType_FLOAT16, MLFloat16);
       CASE_MOD_ELEMENT_TYPE(Fmod, on::TensorProto_DataType_BFLOAT16, BFloat16);
       default:
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                               "Unsupported element type: ", DataTypeImpl::ToString(prepare.lhs_tensor->DataType()));
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Unsupported element type: ", DataTypeImpl::ToString(prepare.lhs_tensor->DataType()));
     }
   } else {
     switch (element_type) {
@@ -520,8 +501,7 @@ Status Mod::ComputeInternal(OpKernelContext* context) const {
       CASE_MOD_ELEMENT_TYPE(Mod, on::TensorProto_DataType_UINT32, uint32_t);
       CASE_MOD_ELEMENT_TYPE(Mod, on::TensorProto_DataType_UINT64, uint64_t);
       default:
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                               "Unsupported element type: ", DataTypeImpl::ToString(prepare.lhs_tensor->DataType()));
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Unsupported element type: ", DataTypeImpl::ToString(prepare.lhs_tensor->DataType()));
     }
   }
 #undef CASE_MOD_ELEMENT_TYPE

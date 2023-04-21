@@ -116,8 +116,7 @@ TEST_F(ONNXModelsTest, bvlc_alexnet_1) {
   ASSERT_STATUS_OK(Env::Default().FileClose(fd));
 
   std::shared_ptr<Model> model;
-  ASSERT_STATUS_OK(Model::Load(ORT_TSTR("../models/opset8/test_bvlc_alexnet/model.onnx"), model, nullptr,
-                               *logger_));
+  ASSERT_STATUS_OK(Model::Load(ORT_TSTR("../models/opset8/test_bvlc_alexnet/model.onnx"), model, nullptr, *logger_));
 
   // Check the graph input/output/value_info should have the same size as specified in the model file.
   EXPECT_EQ(static_cast<size_t>(model_proto.graph().value_info_size()), model->MainGraph().GetValueInfo().size());
@@ -128,8 +127,7 @@ TEST_F(ONNXModelsTest, bvlc_alexnet_1) {
 
 TEST_P(ONNXModelsTest1, LoadFromFile) {
   std::shared_ptr<Model> model;
-  ASSERT_STATUS_OK(Model::Load(GetModelFileName(), model, nullptr,
-                               *logger_));
+  ASSERT_STATUS_OK(Model::Load(GetModelFileName(), model, nullptr, *logger_));
   TestResolve(model->MainGraph());
 }
 
@@ -150,8 +148,7 @@ TEST_P(ONNXModelsTest1, LoadFromProtobuf) {
   ASSERT_TRUE(result);
   ASSERT_STATUS_OK(Env::Default().FileClose(fd));
   std::shared_ptr<Model> model;
-  ASSERT_STATUS_OK(Model::Load(std::move(model_proto), model, nullptr,
-                               *logger_));
+  ASSERT_STATUS_OK(Model::Load(std::move(model_proto), model, nullptr, *logger_));
   TestResolve(model->MainGraph());
 }
 
@@ -173,8 +170,7 @@ INSTANTIATE_TEST_SUITE_P(ONNXModelsTests,
 // for Graph::Resolve to succeed when processing the subgraph.
 TEST_F(ONNXModelsTest, TestIRv4NonInputInitializers) {
   std::shared_ptr<Model> model;
-  ASSERT_STATUS_OK(Model::Load(ORT_TSTR("testdata/subgraph_implicit_input_from_initializer.onnx"), model, nullptr,
-                               *logger_));
+  ASSERT_STATUS_OK(Model::Load(ORT_TSTR("testdata/subgraph_implicit_input_from_initializer.onnx"), model, nullptr, *logger_));
   ASSERT_STATUS_OK(model->MainGraph().Resolve());
 }
 
@@ -184,8 +180,7 @@ TEST_F(ONNXModelsTest, TestIRv4NonInputInitializers) {
 // Graph::Resolve to succeed when processing the subgraph pertaining to the overall FunctionBody.
 TEST_F(ONNXModelsTest, TestModelsWithAnOpContainingAFunctionBody) {
   std::shared_ptr<Model> model;
-  ASSERT_STATUS_OK(Model::Load(ORT_TSTR("testdata/model_containing_op_with_function_body.onnx"), model, nullptr,
-                               *logger_));
+  ASSERT_STATUS_OK(Model::Load(ORT_TSTR("testdata/model_containing_op_with_function_body.onnx"), model, nullptr, *logger_));
   ASSERT_STATUS_OK(model->MainGraph().Resolve());
 }
 
@@ -193,7 +188,8 @@ TEST_F(ONNXModelsTest, TestModelsWithAnOpContainingAFunctionBody) {
 // present in the ModelProto aka model local functions. This feature was added to ONNX standard starting IRv8
 
 void BuildFunction(FunctionProto& function_proto,
-                   const std::string& name, const std::string& domain,
+                   const std::string& name,
+                   const std::string& domain,
                    const std::vector<NodeProto>& nodes,
                    const std::vector<std::string>& inputs,
                    const std::vector<std::string>& outputs,
@@ -240,8 +236,7 @@ void RunFunctionTests(ModelProto&& model_proto) {
   std::shared_ptr<Model> model;
   std::shared_ptr<onnxruntime::OnnxRuntimeOpSchemaRegistry> registry = std::make_shared<OnnxRuntimeOpSchemaRegistry>();
   std::list<std::shared_ptr<IOnnxRuntimeOpSchemaCollection>> regs = {registry};
-  ASSERT_STATUS_OK(Model::Load(std::move(model_proto), model, &regs,
-                               *(DefaultLoggingManager().CreateLogger("GraphTest"))));
+  ASSERT_STATUS_OK(Model::Load(std::move(model_proto), model, &regs, *(DefaultLoggingManager().CreateLogger("GraphTest"))));
 
   // Test function inline
   auto& graph = model->MainGraph();
@@ -324,8 +319,7 @@ agraph (float[N] x) => (float[N] out)
       {// nodes: {outputs, op, inputs, attributes, domain}
        {{"o2"}, "Identity", {"x"}},
        {{"o1"}, "Identity", {"o2"}}});
-  BuildFunction(*function_proto, "bar", "custom_domain",
-                func_body_nodes, {"x"}, {"o1", "o2"}, {{"", 13}});
+  BuildFunction(*function_proto, "bar", "custom_domain", func_body_nodes, {"x"}, {"o1", "o2"}, {{"", 13}});
 
   RunFunctionTests(std::move(model_proto));
 }
@@ -368,8 +362,7 @@ agraph (float[N] x) => (uint8[N] zp)
       {// nodes: {outputs, op, inputs, attributes, domain}
        {{"out"}, "foo", {"x"}, {}, "custom_domainA"},
        {{"s"}, "Identity", {"out"}}});
-  BuildFunction(*function_proto, "foo", "custom_domain",
-                func_body_nodes, {"x"}, {"s"}, {{"", 13}, {"custom_domainA", 1}});
+  BuildFunction(*function_proto, "foo", "custom_domain", func_body_nodes, {"x"}, {"s"}, {{"", 13}, {"custom_domainA", 1}});
 
   RunFunctionTests(std::move(model_proto));
 }
@@ -417,8 +410,7 @@ agraph (float[N] x, float[N] y) => (float[N] zp)
       {// nodes: {outputs, op, inputs, attributes, domain}
        {{"s"}, "foo", {"x"}, {}, "custom_domainA"},
        {{"out"}, "Identity", {"s"}}});
-  BuildFunction(*function_proto, "bar", "custom_domain", func_body_nodes,
-                {"x"}, {"out"}, {{"", 13}, {"custom_domainA", 1}});
+  BuildFunction(*function_proto, "bar", "custom_domain", func_body_nodes, {"x"}, {"out"}, {{"", 13}, {"custom_domainA", 1}});
 
   RunFunctionTests(std::move(model_proto));
 }

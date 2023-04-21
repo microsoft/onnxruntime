@@ -51,8 +51,7 @@ Status EluOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const No
   InlinedVector<uint32_t> input_indices;
   input_indices.push_back(operand_indices.at(input));
   ADD_SCALAR_OPERAND(model_builder, input_indices, alpha);
-  return model_builder.AddOperation(ANEURALNETWORKS_ELU, input_indices,
-                                    {output}, {output_operand_type});
+  return model_builder.AddOperation(ANEURALNETWORKS_ELU, input_indices, {output}, {output_operand_type});
 }
 
 void CreateEluOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {

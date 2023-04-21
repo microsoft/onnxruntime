@@ -31,7 +31,11 @@ optional<T> ParseEnvironmentVariable(const std::string& name) {
   T parsed_value;
   ORT_ENFORCE(
       TryParseStringWithClassicLocale(value_str, parsed_value),
-      "Failed to parse environment variable - name: \"", name, "\", value: \"", value_str, "\"");
+      "Failed to parse environment variable - name: \"",
+      name,
+      "\", value: \"",
+      value_str,
+      "\"");
 
   return parsed_value;
 }

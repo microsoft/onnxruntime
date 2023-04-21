@@ -139,7 +139,10 @@ ASharedMemory_create_fn getASharedMemory_create() {
   NNAPI_LOG(
       "nnapi error: unable to open both library %s (%s) and library %s "
       "(%s)",
-      "libandroid.so", libandroid_error.c_str(), "libcutils.so", dlerror());
+      "libandroid.so",
+      libandroid_error.c_str(),
+      "libcutils.so",
+      dlerror());
   return nullptr;
 }
 

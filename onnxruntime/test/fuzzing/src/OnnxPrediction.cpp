@@ -79,8 +79,11 @@ std::wostream& operator<<(std::wostream& out, OnnxPrediction& pred) {
 // Used to Generate data for predict
 //
 void GenerateDataForInputTypeTensor(OnnxPrediction& predict,
-                                    size_t input_index, const std::string& input_name,
-                                    ONNXTensorElementDataType elem_type, size_t elem_count, size_t seed) {
+                                    size_t input_index,
+                                    const std::string& input_name,
+                                    ONNXTensorElementDataType elem_type,
+                                    size_t elem_count,
+                                    size_t seed) {
   (void)input_name;
   (void)input_index;
 
@@ -117,8 +120,11 @@ void OnnxPrediction::RunInference() {
 
   try {
     ptr_session->Run(run_options,
-                     input_names.data(), input_values.data(),
-                     input_values.size(), output_names.data(), output_values.data(),
+                     input_names.data(),
+                     input_values.data(),
+                     input_values.size(),
+                     output_names.data(),
+                     output_values.data(),
                      output_names.size());
   } catch (...) {
     Logger::testLog << L"Something went wrong in inference " << Logger::endl;

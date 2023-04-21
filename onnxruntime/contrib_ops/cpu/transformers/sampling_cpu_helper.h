@@ -81,10 +81,9 @@ Status Sample(AllocatorPtr& allocator,
     auto indices_end = sorted_indices.begin() + (i + 1) * parameters->vocab_size;
     gsl::span<T> next_token_score = next_token_scores.subspan(i * parameters->vocab_size, parameters->vocab_size);
     std::iota(indices_begin, indices_end, 0);
-    std::sort(indices_begin, indices_end,
-              [&next_token_score, &predicator](size_t i1, size_t i2) {
-                return predicator(next_token_score[i1], next_token_score[i2]);
-              });
+    std::sort(indices_begin, indices_end, [&next_token_score, &predicator](size_t i1, size_t i2) {
+      return predicator(next_token_score[i1], next_token_score[i2]);
+    });
 
     std::sort(sorted_scores.begin() + i * parameters->vocab_size,
               sorted_scores.begin() + (i + 1) * parameters->vocab_size,

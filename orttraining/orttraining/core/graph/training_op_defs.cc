@@ -79,7 +79,10 @@ void AddRepeatedInputs(
       const int input_index = input_index_start + static_cast<int>(j);
       std::string modified_input_name = "__group_" + std::to_string(i) + "__" + names[j];
       ORT_ENFORCE(input_index >= static_cast<int>(op_schema.inputs().size()),
-                  "Invalid redefinition of input ", input_index, " for OpSchema ", op_schema.Name());
+                  "Invalid redefinition of input ",
+                  input_index,
+                  " for OpSchema ",
+                  op_schema.Name());
       op_schema.Input(input_index, modified_input_name, descriptions[j], type_strs[j], param_option, false);
     }
   }
@@ -108,7 +111,10 @@ void AddRepeatedOutputs(
       const int output_index = output_index_start + j;
       std::string modified_output_name = "__group_" + std::to_string(i) + "__" + names[j];
       ORT_ENFORCE(output_index >= static_cast<int>(op_schema.outputs().size()),
-                  "Invalid redefinition of output ", output_index, " for OpSchema ", op_schema.Name());
+                  "Invalid redefinition of output ",
+                  output_index,
+                  " for OpSchema ",
+                  op_schema.Name());
       op_schema.Output(output_index, modified_output_name, descriptions[j], type_strs[j], param_option, false);
     }
   }
@@ -709,8 +715,7 @@ bool BuildNllLossInternalFunctionHelper(
       body.push_back(
           {{"weight_gather"},
            "Where",
-           {"squeeze_mask", float_input ? "const_zero_float" : "const_zero_casted",
-            float_input ? "const_one_float" : "const_one_casted"}});
+           {"squeeze_mask", float_input ? "const_zero_float" : "const_zero_casted", float_input ? "const_one_float" : "const_one_casted"}});
 
     } else {
       body.push_back(
@@ -1305,7 +1310,8 @@ void RegisterTrainingOpSchemas() {
       .Input(3, "update_signal",
              "This signal indicates if weight needs to be updated, applicable to gradient infinity check"
              " in mixed precision training. If not provided or its value is True, weights will be updated.",
-             "T_BOOL", OpSchema::Optional)
+             "T_BOOL",
+             OpSchema::Optional)
       .Output(0, "update_completed", "Whether gradient is applied or not.", "T_BOOL")
       .Output(1, "updated_weights", "Sequence of weights after optimize.", "S_WEIGHT", OpSchema::Optional)
       .TypeConstraint(
@@ -1530,7 +1536,8 @@ void RegisterTrainingOpSchemas() {
       .Input(6, "update_signal",
              "This signal indicates if weight updates are skipped, applicable to gradient infinity check"
              " in mixed precision training. ",
-             "T_BOOL", OpSchema::Optional)
+             "T_BOOL",
+             OpSchema::Optional)
       .Output(0, "updated_flag", "Whether gradient is applied or not.", "T2")
       .Output(1, "updated_weights", "Sequence of weights after optimize.", "S_WEIGHT", OpSchema::Optional)
       .Output(2, "updated_momentums_1", "Sequence of momentum_1 after optimize.", "S_MOMENT", OpSchema::Optional)
@@ -1683,8 +1690,7 @@ void RegisterTrainingOpSchemas() {
           "(equivalent to reset grad + train step)")
       .Input(0, "accumulation_buffer", "historical result of accumulator", "T")
       .Input(1, "value", "the value that will be added to the accumulator", "T_GRAD")
-      .Input(2, "overwrite_flag", "Indicates if tensor should be overwritten. Default is accumulation",
-             "T_BOOL", OpSchema::Optional)
+      .Input(2, "overwrite_flag", "Indicates if tensor should be overwritten. Default is accumulation", "T_BOOL", OpSchema::Optional)
       .Output(0, "updated_flag", "Whether the update was completed", "T_BOOL")
       .Output(1, "accumulation_buffer_out", "updated result of accumulator", "T", OpSchema::Optional)
       .TypeConstraint(
@@ -1966,9 +1972,7 @@ Example 4:
   ONNX_CONTRIB_OPERATOR_SCHEMA(AdasumAllReduce)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
-      .Attr("reduce_algo", "Algorithms for Adasum. Valid values are: CpuReduction(1) or GpuHierarchicalReduction(2)",
-            AttributeProto::INT,
-            static_cast<int64_t>(0))
+      .Attr("reduce_algo", "Algorithms for Adasum. Valid values are: CpuReduction(1) or GpuHierarchicalReduction(2)", AttributeProto::INT, static_cast<int64_t>(0))
       .Input(0, "input", "tensors to be reduced", "T", OpSchema::Variadic)
       .Output(0, "output", "reduced tensors", "T", OpSchema::Variadic)
       .TypeConstraint(
@@ -2333,8 +2337,7 @@ Example 4:
       .SetDoc("DropoutGrad")
       .AllowUncheckedAttributes()
       .Input(0, "dy", "The gradient tensor from output.", "T")
-      .Input(1, "mask",
-             "The mask output of the dropout. ", "T2")
+      .Input(1, "mask", "The mask output of the dropout. ", "T2")
       .Input(2, "ratio",
              "Same value as the ratio input supplied to the dropout op with value in [0, 1). "
              "If this input is not specified, a default value of 0.5 is used.",
@@ -2409,16 +2412,16 @@ Example 4:
       .Input(2, "ratio",
              "Same value as the ratio input supplied to the dropout op with value in [0, 1). "
              "If this input is not specified, a default value of 0.5 is used.",
-             "T1", OpSchema::Optional)
+             "T1",
+             OpSchema::Optional)
       .Input(3, "training_mode",
              "Same value as the training_mode input supplied to the dropout op. "
              "If this input is not specified, a default value of false is used.",
-             "T2", OpSchema::Optional)
+             "T2",
+             OpSchema::Optional)
       .Output(0, "dx", "Gradient of the input.", "T")
-      .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
-                      "Constrain input and output types to float tensors.")
-      .TypeConstraint("T1", {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
-                      "Constrain input 'ratio' types to float tensors.")
+      .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"}, "Constrain input and output types to float tensors.")
+      .TypeConstraint("T1", {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"}, "Constrain input 'ratio' types to float tensors.")
       .TypeConstraint("T2", {"tensor(bool)"}, "Constrain 'training_mode' type to boolean tensor.")
       .TypeConstraint("T3", {"tensor(uint32)"}, "Constrain 'mask' type to bit-packed uint32 tensor.");
 
@@ -2428,14 +2431,12 @@ Example 4:
       .SetDoc(
           "dropout_output, mask, softmax_output = Dropout(Softmax(data + bias), ratio), "
           "Intended to specialize the Add + Softmax + Dropout pattern commonly found in transformer models.")
-      .Attr("axis", "apply softmax to elements for dimensions axis or higher", AttributeProto::INT,
-            static_cast<int64_t>(1))
+      .Attr("axis", "apply softmax to elements for dimensions axis or higher", AttributeProto::INT, static_cast<int64_t>(1))
       .Attr("is_inner_broadcast",
             "true if broadcast bias across input for dimensions broadcast_axis to axis-1, "
             "otherwise broadcast bias across input for dimensions 0 to broadcast_axis-1",
             AttributeProto::INT)
-      .Attr("seed", "(Optional) Seed to the random generator, if not specified we will auto generate one.",
-            AttributeProto::INT, OPTIONAL_VALUE)
+      .Attr("seed", "(Optional) Seed to the random generator, if not specified we will auto generate one.", AttributeProto::INT, OPTIONAL_VALUE)
       .AllowUncheckedAttributes()
       .Input(0, "data", "The input data as Tensor.", "T")
       .Input(1, "bias", "The bias (or mask) as Tensor.", "T")
@@ -2444,14 +2445,13 @@ Example 4:
              "or if it was set to 0, the output would be a simple copy of the input. "
              "If it's non-zero, output will be a random dropout of the scaled input, which is typically "
              "the case during training. It is an optional value, if not specified it will default to 0.5.",
-             "T1", OpSchema::Optional)
+             "T1",
+             OpSchema::Optional)
       .Output(0, "dropout_output", "The dropout output.", "T")
       .Output(1, "mask", "The output mask of dropout.", "tensor(bool)")
       .Output(2, "softmax_output", "The Softmax output for backward.", "T")
-      .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
-                      "Constrain input and output types to float tensors.")
-      .TypeConstraint("T1", {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
-                      "Constrain input 'ratio' types to float tensors.")
+      .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"}, "Constrain input and output types to float tensors.")
+      .TypeConstraint("T1", {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"}, "Constrain input 'ratio' types to float tensors.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         propagateShapeAndTypeFromFirstInput(ctx);
         updateOutputElemType(ctx, 1, ONNX_NAMESPACE::TensorProto::BOOL);
@@ -2474,12 +2474,11 @@ Example 4:
       .Input(3, "ratio",
              "Same value as the ratio input supplied to the dropout op with value in [0, 1). "
              "If this input is not specified, a default value of 0.5 is used.",
-             "T1", OpSchema::Optional)
+             "T1",
+             OpSchema::Optional)
       .Output(0, "dx", "Gradient of the input.", "T")
-      .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
-                      "Constrain input and output types to float tensors.")
-      .TypeConstraint("T1", {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
-                      "Constrain input 'ratio' types to float tensors.");
+      .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"}, "Constrain input and output types to float tensors.")
+      .TypeConstraint("T1", {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"}, "Constrain input 'ratio' types to float tensors.");
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(BroadcastGradientArgs)
       .SetDomain(kMSDomain)
@@ -2861,8 +2860,7 @@ Example 4:
       .Input(0, "dY", "The gradient tensor from output.", "T")
       .Input(1, "X", "The input tensor. ", "T")
       .Output(0, "dX", "Gradient of the input.", "T")
-      .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
-                      "Constrain input and output types to float tensors.")
+      .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"}, "Constrain input and output types to float tensors.")
       .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(TanhGrad)
@@ -2901,7 +2899,8 @@ Example 4:
       .SetDoc("LayerNormalizationGrad")
       .Attr("axis",
             "The first normalization dimension: normalization will be performed along dimensions axis : rank(inputs).",
-            AttributeProto::INT, static_cast<int64_t>(-1))
+            AttributeProto::INT,
+            static_cast<int64_t>(-1))
       .AllowUncheckedAttributes()
       .Input(0, "Y_grad", "The gradient tensor from output.", "V")
       .Input(1, "X", "Input data tensor from the forward path", "T")
@@ -3008,7 +3007,8 @@ Example 4:
       .SetDoc("SimplifiedLayerNormalizationGrad")
       .Attr("axis",
             "The first normalization dimension: normalization will be performed along dimensions axis : rank(inputs).",
-            AttributeProto::INT, static_cast<int64_t>(-1))
+            AttributeProto::INT,
+            static_cast<int64_t>(-1))
       .AllowUncheckedAttributes()
       .Input(0, "Y_grad", "The gradient tensor from output.", "V")
       .Input(1, "X", "Input data tensor from the forward path", "T")
@@ -3036,7 +3036,8 @@ Example 4:
       .SetDoc("LayerNormalizationGrad")
       .Attr("axis",
             "The first normalization dimension: normalization will be performed along dimensions axis : rank(inputs).",
-            AttributeProto::INT, static_cast<int64_t>(-1))
+            AttributeProto::INT,
+            static_cast<int64_t>(-1))
       .AllowUncheckedAttributes()
       .Input(0, "Y_grad", "The gradient tensor from output.", "V")
       .Input(1, "Y", "Output data tensor from the forward path", "V")
@@ -3242,12 +3243,8 @@ Return true if all elements are true and false otherwise.
       .SetDomain(kMSDomain)
       .SinceVersion(1)
       .Input(0, "input", "Input tensor.", "T")
-      .Input(1, "shapes", "Shapes of each view output. The shapes must adds up to the input buffer size.",
-             "tensor(int64)",
-             OpSchema::Variadic)
-      .Output(0, "outputs", "Output tensors viewed according the shapes input. It has a one to one mapping to the shapes input",
-              "T",
-              OpSchema::Variadic)
+      .Input(1, "shapes", "Shapes of each view output. The shapes must adds up to the input buffer size.", "tensor(int64)", OpSchema::Variadic)
+      .Output(0, "outputs", "Output tensors viewed according the shapes input. It has a one to one mapping to the shapes input", "T", OpSchema::Variadic)
       .TypeConstraint(
           "T",
           {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
@@ -3355,10 +3352,8 @@ Return true if all elements are true and false otherwise.
       .Input(1, "Remote", "Remote dst rank. It must be a scalar.", "TInt64")
       .Input(2, "Data", "Tensors to send.", "V", OpSchema::Variadic, false)
       .Output(0, "OutputSignal", "Output control signal. It must be a scalar.", "TBool")
-      .Attr("tag", "The tag of the message carrying Data.",
-            AttributeProto::INT)
-      .Attr("element_types", "Element types of the sent tensors.",
-            AttributeProto::INTS)
+      .Attr("tag", "The tag of the message carrying Data.", AttributeProto::INT)
+      .Attr("element_types", "Element types of the sent tensors.", AttributeProto::INTS)
       .TypeConstraint(
           "TInt64",
           {"tensor(int64)"},
@@ -3404,10 +3399,8 @@ Return true if all elements are true and false otherwise.
       .Input(1, "Remote", "Remote src rank. It must be a scalar.", "TInt64")
       .Output(0, "OutputSignal", "Output control signal. It must be a scalar.", "TBool")
       .Output(1, "Data", "The Received tensors.", "V", OpSchema::Variadic, false)
-      .Attr("tag", "The tag of the message carrying Data.",
-            AttributeProto::INT)
-      .Attr("element_types", "Element types of the received tensors.",
-            AttributeProto::INTS)
+      .Attr("tag", "The tag of the message carrying Data.", AttributeProto::INT)
+      .Attr("element_types", "Element types of the received tensors.", AttributeProto::INTS)
       .TypeConstraint(
           "TInt64",
           {"tensor(int64)"},
@@ -3456,9 +3449,7 @@ Return true if all elements are true and false otherwise.
   ONNX_CONTRIB_OPERATOR_SCHEMA(MegatronG)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
-      .Attr("group_type", "0 - data parallel group, 1 - horizontal parallel group",
-            AttributeProto::INT,
-            static_cast<int64_t>(0))
+      .Attr("group_type", "0 - data parallel group, 1 - horizontal parallel group", AttributeProto::INT, static_cast<int64_t>(0))
       .Input(0, "input", "The input data as Tensor.", "T")
       .Output(0, "output", "The output.", "T")
       .TypeConstraint(
@@ -3874,7 +3865,8 @@ Return true if all elements are true and false otherwise.
       .Attr(
           "comment",
           "comment only for debugging purposes.",
-          AttributeProto::STRING, false)
+          AttributeProto::STRING,
+          false)
       .TypeConstraint(
           "T",
           OpSchema::all_tensor_types(),
@@ -3897,10 +3889,15 @@ Return true if all elements are true and false otherwise.
           const auto inferred_input_type = ctx.getInputType(i);
           ORT_ENFORCE(inferred_input_type, "PythonOp's ", i, "-th input type is missing.");
           ORT_ENFORCE(inferred_input_type->value_case() == TypeProto::kTensorType,
-                      "PythonOp's ", i, "-th input type must be a tensor.");
+                      "PythonOp's ",
+                      i,
+                      "-th input type must be a tensor.");
           ORT_ENFORCE(inferred_input_type->tensor_type().elem_type() == input_tensor_types_proto->ints().at(i),
-                      "PythonOp's ", i, "-th input type must be ",
-                      TensorProto_DataType_Name(input_tensor_types_proto->ints().at(i)), " but got ",
+                      "PythonOp's ",
+                      i,
+                      "-th input type must be ",
+                      TensorProto_DataType_Name(input_tensor_types_proto->ints().at(i)),
+                      " but got ",
                       TensorProto_DataType_Name(inferred_input_type->tensor_type().elem_type()));
         }
 
@@ -4050,9 +4047,14 @@ Return true if all elements are true and false otherwise.
           const auto inferred_input_type = ctx.getInputType(i);
           ORT_ENFORCE(inferred_input_type, "PythonOpGrad's ", i, "-th input type is missing.");
           ORT_ENFORCE(inferred_input_type->value_case() == TypeProto::kTensorType,
-                      "PythonOpGrad's ", i, "-th input type must be a tensor.");
+                      "PythonOpGrad's ",
+                      i,
+                      "-th input type must be a tensor.");
           ORT_ENFORCE(inferred_input_type->tensor_type().elem_type() == input_tensor_types_proto->ints().at(i - 1),
-                      "PythonOpGrad's ", i, "-th input type must be ", input_tensor_types_proto->ints().at(i - 1));
+                      "PythonOpGrad's ",
+                      i,
+                      "-th input type must be ",
+                      input_tensor_types_proto->ints().at(i - 1));
         }
 
         // Load expected output types.
@@ -4102,7 +4104,8 @@ Return true if all elements are true and false otherwise.
             "(Optional) The data type for the output tensor. "
             "If not provided, output tensor has the same type as input tensor."
             "Strictly must be one of the types from DataType enum in TensorProto",
-            AttributeProto::INT, OPTIONAL_VALUE)
+            AttributeProto::INT,
+            OPTIONAL_VALUE)
       .Input(0, "scores",
              "The predicted outputs with shape [batch_size, class_size], or "
              "[batch_size, class_size, D1, D2 , ..., Dk], where K is the number of dimensions.",
@@ -4118,22 +4121,17 @@ Return true if all elements are true and false otherwise.
              "A manual rescaling weight given to each class. If given, it has to "
              "be a 1D Tensor assigning weight to each of the classes. Otherwise, "
              "it is treated as if having all ones.",
-             "T", OpSchema::Optional)
-      .Input(3, "ignore_index",
-             "Scalar tensor to specify a target value that is ignored and does not contribute to the input gradient.",
-             "I", OpSchema::Optional)
+             "T",
+             OpSchema::Optional)
+      .Input(3, "ignore_index", "Scalar tensor to specify a target value that is ignored and does not contribute to the input gradient.", "I", OpSchema::Optional)
       .Output(0, "output",
               "Weighted loss float Tensor. If reduction is 'none', this has the "
               "shape of [batch_size], or [batch_size, D1, D2, ..., Dk] in case of "
               "K-dimensional loss. Otherwise, it is a scalar.",
               "TOut")
-      .Output(1, "log_prob",
-              "Log probability tensor. If the output of softmax is prob, its value is log(prob).",
-              "TOut")
-      .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
-                      "Constrain input types to float tensors.")
-      .TypeConstraint("TOut", {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
-                      "Constrain input types to float tensors.")
+      .Output(1, "log_prob", "Log probability tensor. If the output of softmax is prob, its value is log(prob).", "TOut")
+      .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"}, "Constrain input types to float tensors.")
+      .TypeConstraint("TOut", {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"}, "Constrain input types to float tensors.")
       .TypeConstraint("Tind", {"tensor(int32)", "tensor(int64)"}, "Constrain target to integer types")
       .TypeConstraint("I", {"tensor(int64)"}, "Constrain ignore_index tensor to int64")
       .TypeAndShapeInferenceFunction([](InferenceContext& ctx) {
@@ -4167,7 +4165,8 @@ Return true if all elements are true and false otherwise.
             "(Optional) The data type for the output tensor. "
             "If not provided, output tensor has the same type as input tensor."
             "Strictly must be one of the types from DataType enum in TensorProto",
-            AttributeProto::INT, OPTIONAL_VALUE)
+            AttributeProto::INT,
+            OPTIONAL_VALUE)
       .Input(0, "dY", "gradient of Y", "T")
       .Input(1, "log_prob", "logsoftmax(logits), (N+1)-D input of shape (batch_size).", "T")
       .Input(2, "label",
@@ -4176,15 +4175,11 @@ Return true if all elements are true and false otherwise.
              "where each element is the nonnegative integer label for the element of the batch.",
              "Tind")
       .Input(3, "weight", "weight for each sample. The shape is 1-D tensor.", "T", OpSchema::Optional)
-      .Input(4, "ignore_index",
-             "Scalar tensor to specify a target value that is ignored and does not contribute to the input gradient.",
-             "I", OpSchema::Optional)
+      .Input(4, "ignore_index", "Scalar tensor to specify a target value that is ignored and does not contribute to the input gradient.", "I", OpSchema::Optional)
       .Input(5, "bias", "data to be non-broadcasting added to the gradient.", "TOut", OpSchema::Optional)
       .Output(0, "d_logits", "gradient of logits", "TOut")
-      .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
-                      "Constrain input types to float tensors.")
-      .TypeConstraint("TOut", {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
-                      "Constrain input types to float tensors.")
+      .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"}, "Constrain input types to float tensors.")
+      .TypeConstraint("TOut", {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"}, "Constrain input types to float tensors.")
       .TypeConstraint("Tind", {"tensor(int32)", "tensor(int64)"}, "Constrain indices to integer types")
       .TypeConstraint("I", {"tensor(int64)"}, "Constrain ignore_index tensor to int64")
       .TypeAndShapeInferenceFunction([](InferenceContext& ctx) {
@@ -4216,13 +4211,11 @@ Return true if all elements are true and false otherwise.
       .Input(2, "weight",
              "Optional rescaling weight tensor. "
              "If given, it has to be a tensor of size C. Otherwise, it is treated as if having all ones.",
-             "T", OpSchema::Optional)
-      .Input(3, "ignore_index",
-             "Scalar tensor to specify a target value that is ignored and does not contribute to the input gradient.",
-             "I", OpSchema::Optional)
+             "T",
+             OpSchema::Optional)
+      .Input(3, "ignore_index", "Scalar tensor to specify a target value that is ignored and does not contribute to the input gradient.", "I", OpSchema::Optional)
       .Output(0, "loss", "The negative log likelihood loss", "T")
-      .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
-                      "Constrain input and output types to float tensors.")
+      .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"}, "Constrain input and output types to float tensors.")
       .TypeConstraint("Tind", {"tensor(int32)", "tensor(int64)"}, "Constrain target to integer types")
       .TypeConstraint("I", {"tensor(int64)"}, "Constrain ignore_index tensor to int64")
       .SetContextDependentFunctionBodyBuilder(BuildNllLossInternalFunction<12>)
@@ -4242,13 +4235,11 @@ Return true if all elements are true and false otherwise.
       .Input(2, "weight",
              "Optional rescaling weight tensor. "
              "If given, it has to be a tensor of size C. Otherwise, it is treated as if having all ones.",
-             "T", OpSchema::Optional)
-      .Input(3, "ignore_index",
-             "Scalar tensor to specify a target value that is ignored and does not contribute to the input gradient.",
-             "I", OpSchema::Optional)
+             "T",
+             OpSchema::Optional)
+      .Input(3, "ignore_index", "Scalar tensor to specify a target value that is ignored and does not contribute to the input gradient.", "I", OpSchema::Optional)
       .Output(0, "loss", "The negative log likelihood loss", "T")
-      .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
-                      "Constrain input and output types to float tensors.")
+      .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"}, "Constrain input and output types to float tensors.")
       .TypeConstraint("Tind", {"tensor(int32)", "tensor(int64)"}, "Constrain target to integer types")
       .TypeConstraint("I", {"tensor(int64)"}, "Constrain ignore_index tensor to int64")
       .SetContextDependentFunctionBodyBuilder(BuildNllLossInternalFunction<13>)
@@ -4309,9 +4300,7 @@ Return true if all elements are true and false otherwise.
           "FakeQuantGrad op that computes the partial derivative of the loss with respect to the input tensor to "
           "the FakeQuant op.")
       .Input(0, "dY", "Gradient of loss with respect to the output Y of the FakeQuant op (fake quantized output)", "T")
-      .Input(1, "gradient_mask",
-             "Gradient mask that indicates whether the quantized value is within the quantization range.",
-             "T_BOOL")
+      .Input(1, "gradient_mask", "Gradient mask that indicates whether the quantized value is within the quantization range.", "T_BOOL")
       .Output(0, "dX", "Gradient of loss with respect to the input X (of the FakeQuant node).", "T")
       .TypeConstraint(
           "T",

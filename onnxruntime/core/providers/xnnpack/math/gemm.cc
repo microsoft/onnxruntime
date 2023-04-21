@@ -192,13 +192,9 @@ Status Gemm::Compute(OpKernelContext* context) const {
   return Status::OK();
 }
 
-ONNX_OPERATOR_VERSIONED_KERNEL_EX(Gemm, kOnnxDomain, 7, 12, kXnnpackExecutionProvider,
-                                  KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
-                                  Gemm);
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(Gemm, kOnnxDomain, 7, 12, kXnnpackExecutionProvider, KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()), Gemm);
 
-ONNX_OPERATOR_KERNEL_EX(Gemm, kOnnxDomain, 13, kXnnpackExecutionProvider,
-                        KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
-                        Gemm);
+ONNX_OPERATOR_KERNEL_EX(Gemm, kOnnxDomain, 13, kXnnpackExecutionProvider, KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()), Gemm);
 
 }  // namespace xnnpack
 }  // namespace onnxruntime

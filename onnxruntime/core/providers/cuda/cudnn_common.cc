@@ -81,12 +81,7 @@ Status CudnnDataTensor::Set(cudnnDataType_t dataType,
   // CUDNN_RNN_DATA_LAYOUT_SEQ_MAJOR_UNPACKED works with CUDNN_RNN_PADDED_IO_ENABLED, so that it will auto fill 0 for the shorter sequences
   cudnnRNNDataLayout_t layout = CUDNN_RNN_DATA_LAYOUT_SEQ_MAJOR_UNPACKED;
   float padding_fill = 0.0f;
-  CUDNN_RETURN_IF_ERROR(cudnnSetRNNDataDescriptor(tensor_, dataType, layout,
-                                                  static_cast<int>(max_seq_length),
-                                                  static_cast<int>(batch_size),
-                                                  static_cast<int>(data_size),
-                                                  seq_lengths,
-                                                  static_cast<void*>(&padding_fill)));
+  CUDNN_RETURN_IF_ERROR(cudnnSetRNNDataDescriptor(tensor_, dataType, layout, static_cast<int>(max_seq_length), static_cast<int>(batch_size), static_cast<int>(data_size), seq_lengths, static_cast<void*>(&padding_fill)));
   return Status::OK();
 }
 

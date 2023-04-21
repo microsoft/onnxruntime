@@ -97,13 +97,15 @@ VADMBackend::VADMBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
 // Starts an asynchronous inference request for data in slice indexed by batch_slice_idx on
 // an Infer Request indexed by infer_req_idx
 void VADMBackend::StartAsyncInference(Ort::KernelContext& context,
-                                      size_t batch_slice_idx, size_t infer_req_idx) {
+                                      size_t batch_slice_idx,
+                                      size_t infer_req_idx) {
   auto infer_request = infer_requests_[infer_req_idx];
 
   auto graph_input_info = ie_cnn_network_->inputs();
   int input_idx = 0;
   for (auto input_info_iter = graph_input_info.begin();
-       input_info_iter != graph_input_info.end(); ++input_info_iter) {
+       input_info_iter != graph_input_info.end();
+       ++input_info_iter) {
     auto input_names = input_info_iter->get_names();
     std::string onnx_input_name;
     std::string input_name;
@@ -133,7 +135,8 @@ void VADMBackend::StartAsyncInference(Ort::KernelContext& context,
 // Wait for asynchronous inference completion on an Infer Request object indexed by infer_req_idx
 // and copy the results into a slice location within the batched output buffer indexed by batch_slice_idx
 void VADMBackend::CompleteAsyncInference(Ort::KernelContext& context,
-                                         size_t batch_slice_idx, size_t infer_req_idx,
+                                         size_t batch_slice_idx,
+                                         size_t infer_req_idx,
                                          size_t batch_size) {
   auto infer_request = infer_requests_[infer_req_idx];
 
@@ -142,7 +145,8 @@ void VADMBackend::CompleteAsyncInference(Ort::KernelContext& context,
 
   auto graph_output_info = ie_cnn_network_->outputs();
   for (auto output_info_iter = graph_output_info.begin();
-       output_info_iter != graph_output_info.end(); ++output_info_iter) {
+       output_info_iter != graph_output_info.end();
+       ++output_info_iter) {
     OVTensorPtr graph_output_blob;
     auto output_names = output_info_iter->get_names();
     std::string onnx_output_name;

@@ -70,7 +70,9 @@ Status MergeGraph(Graph& graph, Graph& graph_to_merge, int rank, std::vector<Nod
                                    op_type,
                                    node.Description(),
                                    input_defs,
-                                   output_defs, &node.GetAttributes(), domain);
+                                   output_defs,
+                                   &node.GetAttributes(),
+                                   domain);
 
     if (op_type.compare("MegatronG") == 0) {
       megatronGs.push_back(&new_node);
@@ -123,8 +125,7 @@ Status MergeGraphsOnAllWorkers(std::vector<Graph*>& graphs, Graph& combine_graph
   return combine_graph.Resolve();
 }
 
-void VerifyOutputs(const Tensor& expected_tensor, const Tensor& actual_tensor, bool use_threshold_compare,
-                   float atol, float rtol, float threshold) {
+void VerifyOutputs(const Tensor& expected_tensor, const Tensor& actual_tensor, bool use_threshold_compare, float atol, float rtol, float threshold) {
   ASSERT_EQ(expected_tensor.Shape(), actual_tensor.Shape());
   auto size = expected_tensor.Shape().Size();
   if (expected_tensor.GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
@@ -141,14 +142,12 @@ void VerifyOutputs(const Tensor& expected_tensor, const Tensor& actual_tensor, b
     std::vector<float> f_actual(size);
     ConvertMLFloat16ToFloat(expected, f_expected.data(), static_cast<int>(size));
     ConvertMLFloat16ToFloat(actual, f_actual.data(), static_cast<int>(size));
-    VerifyOutputs(f_expected, f_actual, use_threshold_compare, math::halfToFloat(math::floatToHalf(atol)),
-                  math::halfToFloat(math::floatToHalf(rtol)), math::halfToFloat(math::floatToHalf(threshold)));
+    VerifyOutputs(f_expected, f_actual, use_threshold_compare, math::halfToFloat(math::floatToHalf(atol)), math::halfToFloat(math::floatToHalf(rtol)), math::halfToFloat(math::floatToHalf(threshold)));
   }
 #endif
 }
 
-void VerifyOutputs(const std::vector<float>& expected, const std::vector<float>& actual,
-                   bool use_threshold_compare, float atol, float rtol, float threshold) {
+void VerifyOutputs(const std::vector<float>& expected, const std::vector<float>& actual, bool use_threshold_compare, float atol, float rtol, float threshold) {
   auto size = expected.size();
   ORT_ENFORCE(size == actual.size());
   for (auto i = 0u; i < size; ++i) {
@@ -170,8 +169,7 @@ void VerifyOutputs(const std::vector<float>& expected, const std::vector<float>&
   }
 }
 
-Status GetDataAndShapeFromTensorProto(const Graph& graph, const NodeArg* input_arg,
-                                      std::vector<float>& data, std::vector<int64_t>& shape) {
+Status GetDataAndShapeFromTensorProto(const Graph& graph, const NodeArg* input_arg, std::vector<float>& data, std::vector<int64_t>& shape) {
   const ONNX_NAMESPACE::TensorShapeProto* tensor_shape = input_arg->Shape();
   size_t element_count = 1;
   int32_t rank = tensor_shape->dim_size();

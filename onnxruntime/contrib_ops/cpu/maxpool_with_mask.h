@@ -230,9 +230,7 @@ class MaxpoolWithMask : public OpKernel, public PoolBase {
         int64_t y_step = pooled_height;
         const int64_t total_channels = x_shape[0] * channels;
         const int64_t total_mask_channels = m_shape[0] * m_shape[1];
-        RunMaxpoolLoop<MaxpoolWithMask1DTask<float>>(tp, narrow<size_t>(total_channels),
-                                                     {X_data, M_data, Y_data, x_step, y_step, pooled_height, stride_h(),
-                                                      height, total_mask_channels, kernel_shape, pads});
+        RunMaxpoolLoop<MaxpoolWithMask1DTask<float>>(tp, narrow<size_t>(total_channels), {X_data, M_data, Y_data, x_step, y_step, pooled_height, stride_h(), height, total_mask_channels, kernel_shape, pads});
         break;
       }
 
@@ -242,9 +240,7 @@ class MaxpoolWithMask : public OpKernel, public PoolBase {
         const int64_t total_channels = x_shape[0] * channels;
         const int64_t total_mask_channels = m_shape[0] * m_shape[1];
         RunMaxpoolLoop<MaxpoolWithMask2DTask<float>>(
-            tp, narrow<size_t>(total_channels),
-            {X_data, M_data, Y_data, x_step, y_step, pooled_height, pooled_width, stride_h(), stride_w(), height, width,
-             total_mask_channels, kernel_shape, pads});
+            tp, narrow<size_t>(total_channels), {X_data, M_data, Y_data, x_step, y_step, pooled_height, pooled_width, stride_h(), stride_w(), height, width, total_mask_channels, kernel_shape, pads});
         break;
       }
       case 3: {
@@ -253,9 +249,7 @@ class MaxpoolWithMask : public OpKernel, public PoolBase {
         const int64_t total_channels = x_shape[0] * channels;
         const int64_t total_mask_channels = m_shape[0] * m_shape[1];
         RunMaxpoolLoop<MaxpoolWithMask3DTask<float>>(
-            tp, narrow<size_t>(total_channels),
-            {X_data, M_data, Y_data, x_step, y_step, pooled_height, pooled_width, pooled_depth, stride_h(), stride_w(),
-             stride_d(), height, width, depth, total_mask_channels, kernel_shape, pads});
+            tp, narrow<size_t>(total_channels), {X_data, M_data, Y_data, x_step, y_step, pooled_height, pooled_width, pooled_depth, stride_h(), stride_w(), stride_d(), height, width, depth, total_mask_channels, kernel_shape, pads});
         break;
       }
       default:

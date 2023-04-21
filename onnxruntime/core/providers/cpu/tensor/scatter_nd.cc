@@ -13,8 +13,7 @@ namespace onnxruntime {
 
 namespace op_kernel_type_control {
 ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPE_LIST_ALL_OPSETS(
-    kCpuExecutionProvider, kOnnxDomain, ScatterND, Input, 0,
-    element_type_lists::All);
+    kCpuExecutionProvider, kOnnxDomain, ScatterND, Input, 0, element_type_lists::All);
 }
 
 using EnabledScatterNDDataTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(
@@ -64,15 +63,12 @@ Status ScatterND::ValidateShapes(
   auto update_rank = update_shape.NumDimensions();
 
   if (input_rank == 0 || indice_rank == 0) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "input tensor and indices tensor must has rank larger than 0. ",
-                           "input shape: ", input_shape, ", indices shape: ", indice_shape);
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "input tensor and indices tensor must has rank larger than 0. ", "input shape: ", input_shape, ", indices shape: ", indice_shape);
   }
 
   auto last_indice_dimension = indice_shape[indice_rank - 1];
   if (last_indice_dimension > static_cast<int64_t>(input_rank)) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "last dimension of indices must not be larger than rank of input tensor");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "last dimension of indices must not be larger than rank of input tensor");
   }
 
   bool is_update_shape_invalid = [&]() {
@@ -100,9 +96,7 @@ Status ScatterND::ValidateShapes(
   }();
 
   if (is_update_shape_invalid) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "updates tensor should have shape equal to indices.shape[:-1] + data.shape[indices.shape[-1]:]. ",
-                           "updates shape: ", update_shape, ", indices shape: ", indice_shape, ", data shape: ", input_shape);
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "updates tensor should have shape equal to indices.shape[:-1] + data.shape[indices.shape[-1]:]. ", "updates shape: ", update_shape, ", indices shape: ", indice_shape, ", data shape: ", input_shape);
   }
 
   return Status::OK();
@@ -397,8 +391,7 @@ struct ScatterNDDispatchTarget {
       }
     };
     concurrency::ThreadPool::TryParallelFor(
-        tp, prepare.element_offsets.size(), static_cast<double>(prepare.element_to_copy),
-        [&lambda](ptrdiff_t first, ptrdiff_t last) {
+        tp, prepare.element_offsets.size(), static_cast<double>(prepare.element_to_copy), [&lambda](ptrdiff_t first, ptrdiff_t last) {
           for (int i = static_cast<int>(first), end = static_cast<int>(last); i < end; ++i) {
             lambda(i);
           }

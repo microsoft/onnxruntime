@@ -276,7 +276,15 @@ Status launch_lamb_compute_direction(
         tensor_sizes_in_buckets[key],
         buckets[key],
         lamb_stage1,
-        p_loss_scale, p_g_norm, lambda, alpha, beta, epsilon, max_norm, alpha_correction, beta_correction);
+        p_loss_scale,
+        p_g_norm,
+        lambda,
+        alpha,
+        beta,
+        epsilon,
+        max_norm,
+        alpha_correction,
+        beta_correction);
   }
 
   return Status::OK();
@@ -437,7 +445,10 @@ Status launch_lamb_update(
   // Only launch multi-tensor function if we have at least one tensor in the buckets.
   if (tensor_sizes_in_bucket.size() > 0 && buckets.size() > 0) {
     typedef LambMultiTensorUpdateFunctor<
-        CudaT1, CudaT2, CudaT3, CudaT_MIXED_PRECISION_FP>
+        CudaT1,
+        CudaT2,
+        CudaT3,
+        CudaT_MIXED_PRECISION_FP>
         LambStage2;
     LambStage2 lamb_stage2;
 
@@ -478,23 +489,33 @@ Status LambOptimizer<T1, T2, T3, T4, T_GRAD_NORM, T_MIXED_PRECISION_FP>::Compute
   // At least one variable group for updating one weight tensor.
   ORT_ENFORCE(
       ctx->InputCount() >= minimal_input_count,
-      "Expect at least ", minimal_input_count, " inputs but got ",
+      "Expect at least ",
+      minimal_input_count,
+      " inputs but got ",
       ctx->InputCount());
   // At least one variable group for updating one weight tensor.
   ORT_ENFORCE(
       ctx->OutputCount() >= minimal_output_count,
-      "Expect at least ", minimal_output_count, " outputs but got ",
+      "Expect at least ",
+      minimal_output_count,
+      " outputs but got ",
       ctx->OutputCount());
 
   // In addition to the first non_grouped_input_count inputs, all inputs are repeated sequence of [w, g, m1, m2, w_mixed_precision].
   ORT_ENFORCE(
       grouped_input_tensor_count % input_group_size == 0,
-      "Input count must be ", non_grouped_input_count, " + ", input_group_size,
+      "Input count must be ",
+      non_grouped_input_count,
+      " + ",
+      input_group_size,
       " x (number of weights to optimize).");
   // Outputs are repeated sequence of [w_new, g_new, m1_new, m2_new, w_mixed_precision_new].
   ORT_ENFORCE(
       grouped_output_tensor_count % output_group_size == 0,
-      "Output count must be ", non_grouped_output_count, " + ", output_group_size,
+      "Output count must be ",
+      non_grouped_output_count,
+      " + ",
+      output_group_size,
       " x (number of weights to optimize).");
   // Number of repeated [w, g, m1, m2, w_mixed_precision]'s should match number of repeated [w_new, g_new, m1_new, m2_new, w_mixed_precision_new].
   ORT_ENFORCE(
@@ -672,10 +693,18 @@ Status LambOptimizer<T1, T2, T3, T4, T_GRAD_NORM, T_MIXED_PRECISION_FP>::Compute
       loss_scale_data,
       g_norm_data,
       tensor_sizes,
-      p_ws, p_gs, p_m1s, p_m2s,
+      p_ws,
+      p_gs,
+      p_m1s,
+      p_m2s,
       p_ds,
-      p_m1_news, p_m2_news,
-      alpha_, beta_, lambda_, epsilon_, max_norm_clip_,
+      p_m1_news,
+      p_m2_news,
+      alpha_,
+      beta_,
+      lambda_,
+      epsilon_,
+      max_norm_clip_,
       do_bias_correction_));
 
   ORT_RETURN_IF_ERROR(launch_lamb_reduction(

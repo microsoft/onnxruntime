@@ -877,8 +877,7 @@ DnnlNode* DnnlGraphTransformer::FuseBinaryEltwisePostOps(DnnlSubgraph& subgraph,
                                                          std::vector<DnnlTensor*>& fused_node_inputs,
                                                          DnnlNode*& attr_node) {
   std::unordered_set<std::string> binary_ops = {"Add", "Div", "Mul", "Sub"};
-  std::unordered_set<std::string> elementwise_ops = {"Abs", "Elu", "Exp", "LeakyRelu", "Log", "Relu",
-                                                     "Round", "Sigmoid", "Softplus", "Sqrt", "Tanh"};
+  std::unordered_set<std::string> elementwise_ops = {"Abs", "Elu", "Exp", "LeakyRelu", "Log", "Relu", "Round", "Sigmoid", "Softplus", "Sqrt", "Tanh"};
   // Upto 32 post-ops are supported by oneDNN framework.
   const size_t MAX_POST_OP_COUNT = 32;
   bool attribute_flag = false;

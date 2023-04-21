@@ -28,9 +28,16 @@ void GreedySearchParameters::ParseFromInputs(OpKernelContext* context) {
   auto* max_length_tensor = context->Input<Tensor>(1);
   max_length = max_length_tensor ? static_cast<int>(*max_length_tensor->Data<int32_t>()) : kMaxSequenceLength;
   ORT_ENFORCE(max_length > sequence_length,
-              "max_length (", max_length, ") shall be greater than input sequence length (", sequence_length, ")");
+              "max_length (",
+              max_length,
+              ") shall be greater than input sequence length (",
+              sequence_length,
+              ")");
   ORT_ENFORCE(max_length <= kMaxSequenceLength,
-              "max_length (", max_length, ") shall be no more than ", kMaxSequenceLength);
+              "max_length (",
+              max_length,
+              ") shall be no more than ",
+              kMaxSequenceLength);
 
   auto* min_length_tensor = context->Input<Tensor>(2);
   min_length = min_length_tensor ? static_cast<int>(*min_length_tensor->Data<int32_t>()) : 0;

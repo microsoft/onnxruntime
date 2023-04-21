@@ -75,20 +75,14 @@ int CountAssignedNodes(const Graph& current_graph, const std::string& ep_type) {
   return count;
 }
 
-void RunAndVerifyOutputsWithEP(const ORTCHAR_T* model_path, const char* log_id,
-                               std::unique_ptr<IExecutionProvider> execution_provider,
-                               const NameMLValMap& feeds,
-                               const EPVerificationParams& params) {
+void RunAndVerifyOutputsWithEP(const ORTCHAR_T* model_path, const char* log_id, std::unique_ptr<IExecutionProvider> execution_provider, const NameMLValMap& feeds, const EPVerificationParams& params) {
   // read raw data from model provided by the model_path
   std::ifstream stream(model_path, std::ios::in | std::ios::binary);
   std::string model_data((std::istreambuf_iterator<char>(stream)), std::istreambuf_iterator<char>());
   RunAndVerifyOutputsWithEP(model_data, log_id, std::move(execution_provider), feeds, params);
 }
 
-void RunAndVerifyOutputsWithEP(const std::string& model_data, const char* log_id,
-                               std::unique_ptr<IExecutionProvider> execution_provider,
-                               const NameMLValMap& feeds,
-                               const EPVerificationParams& params) {
+void RunAndVerifyOutputsWithEP(const std::string& model_data, const char* log_id, std::unique_ptr<IExecutionProvider> execution_provider, const NameMLValMap& feeds, const EPVerificationParams& params) {
   SessionOptions so;
   so.session_logid = log_id;
   RunOptions run_options;

@@ -69,8 +69,7 @@ void EinsumComputePreprocessor::SetDeviceHelpers(const EinsumOp::DeviceHelpers::
 Status EinsumComputePreprocessor::ProcessSubscripts() {
   const auto& left_equation_split = einsum_equation_preprocessor_.left_equation_split_;
   if (left_equation_split.size() != inputs_.size()) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Number of subscripts in the input equation does not match number of input tensors");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Number of subscripts in the input equation does not match number of input tensors");
   }
 
   int64_t input_index = 0;
@@ -103,8 +102,7 @@ Status EinsumComputePreprocessor::ProcessSubscripts() {
         is_in_middle_of_ellipsis = true;
         // Make sure there aren't more than 3 '.'s in the current subscript
         if (++ellipsis_char_count > 3) {
-          return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                                 "Found a '.' not part of an ellipsis in input: ", input_index);
+          return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Found a '.' not part of an ellipsis in input: ", input_index);
         }
 
         // We have seen all 3 '.'s. We can safely process the ellipsis now.
@@ -116,8 +114,7 @@ Status EinsumComputePreprocessor::ProcessSubscripts() {
           // num_of_ellipsis_dims = 6 - 5 + 3 = 4
           int64_t current_num_of_ellipsis_dims = static_cast<int64_t>(rank) - subscript.length() + 3;
           if (current_num_of_ellipsis_dims < 0) {
-            return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                                   "Einsum subscripts string contains too many subscript labels when compared to the rank of the input");
+            return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Einsum subscripts string contains too many subscript labels when compared to the rank of the input");
           }
 
           // Theoretically, current_num_of_ellipsis_dims could be 0
@@ -127,8 +124,7 @@ Status EinsumComputePreprocessor::ProcessSubscripts() {
             // "Ellipsis must indicate a fixed number of dimensions."
             if (num_of_ellipsis_dims_ != 0) {
               if (num_of_ellipsis_dims_ != static_cast<size_t>(current_num_of_ellipsis_dims)) {
-                return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                                       "Ellipsis must indicate a fixed number of dimensions across all inputs");
+                return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Ellipsis must indicate a fixed number of dimensions across all inputs");
               }
             } else {
               num_of_ellipsis_dims_ = static_cast<size_t>(current_num_of_ellipsis_dims);
@@ -148,8 +144,7 @@ Status EinsumComputePreprocessor::ProcessSubscripts() {
         }
       } else {  // regular letter based dimension -> 'i', 'j', etc.
         if (is_in_middle_of_ellipsis) {
-          return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                                 "Found '.' not part of an ellipsis in input: ", input_index);
+          return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Found '.' not part of an ellipsis in input: ", input_index);
         }
 
         auto letter_index = EinsumOp::LetterToIndex(subscript_label);
@@ -183,9 +178,13 @@ Status EinsumComputePreprocessor::ProcessSubscripts() {
                                        "Einsum operands could not be broadcast together. "
                                        "Please check input shapes/equation provided."
                                        "Input shape of operand ",
-                                       input_index, " is incompatible in the dimension ", dim_counter,
-                                       ". The shape is: ", shape,
-                                       "Another operand has a dim value of ", subscript_indices_to_dim_value_[onnxruntime::narrow<size_t>(mapped_index)],
+                                       input_index,
+                                       " is incompatible in the dimension ",
+                                       dim_counter,
+                                       ". The shape is: ",
+                                       shape,
+                                       "Another operand has a dim value of ",
+                                       subscript_indices_to_dim_value_[onnxruntime::narrow<size_t>(mapped_index)],
                                        " in the same dimension");
               }
             }
@@ -196,9 +195,7 @@ Status EinsumComputePreprocessor::ProcessSubscripts() {
 
         current_subscript_indices.push_back(letter_to_index_[onnxruntime::narrow<size_t>(letter_index)]);
         if (++dim_counter > rank) {
-          return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                                 "Einsum subscripts string contains too many subscript labels when compared to the rank of the input ",
-                                 input_index);
+          return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Einsum subscripts string contains too many subscript labels when compared to the rank of the input ", input_index);
         }
       }
     }
@@ -206,9 +203,7 @@ Status EinsumComputePreprocessor::ProcessSubscripts() {
     // If no broadcasting is requested, the number of subscript labels (dim_counter) should match input rank
     if (num_of_ellipsis_dims_ == 0) {
       if (dim_counter != rank) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                               "Einsum subscripts does not contain enough subscript labels and there is no ellipsis for input ",
-                               input_index);
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Einsum subscripts does not contain enough subscript labels and there is no ellipsis for input ", input_index);
       }
     }
 
@@ -278,8 +273,7 @@ Status EinsumComputePreprocessor::PostProcessBroadcastedDims() {
                 subscript_indices_to_dim_value_[num_broadcasted_indices] = dims[dim_iter];
               } else {
                 if (dims[dim_iter] != 1) {
-                  return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                                         "The broadcasted dimensions of the inputs are incompatible");
+                  return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "The broadcasted dimensions of the inputs are incompatible");
                 }
               }
             }
@@ -305,8 +299,7 @@ Status EinsumComputePreprocessor::ParseOrCreateOutputSubscript() {
     // Make sure that the given explicit equation contains an ellipsis if the input contains ellipses in them
     if (num_of_ellipsis_dims_ > 0) {
       if (einsum_equation_preprocessor_.right_equation_.find("...") == std::string::npos) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                               "Inputs have ellipses in them but the provided output subscript does not contain an ellipsis");
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Inputs have ellipses in them but the provided output subscript does not contain an ellipsis");
       }
     }
     return Status::OK();
@@ -377,15 +370,13 @@ Status EinsumComputePreprocessor::CalculateOutputShape() {
       }
 
       if (output_letter_to_count[onnxruntime::narrow<size_t>(letter_index)] != 0) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                               "Output subscript contains repeated letters");
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Output subscript contains repeated letters");
       }
       ++output_letter_to_count[onnxruntime::narrow<size_t>(letter_index)];
 
       auto mapped_index = letter_to_index_[onnxruntime::narrow<size_t>(letter_index)];
       if (mapped_index == -1) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                               "Output subscript contains letters not seen in the inputs");
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Output subscript contains letters not seen in the inputs");
       }
 
       output_dims_.push_back(subscript_indices_to_dim_value_[onnxruntime::narrow<size_t>(mapped_index)]);
@@ -417,8 +408,7 @@ Status EinsumComputePreprocessor::PreprocessInputs() {
 
     // If all has gone well, we will have a subscript index (subscript label) for each dim of the input
     if (input_dims.size() != current_subscript_indices.size()) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Rank of the input must match number of subscript labels corresponding to the input");
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Rank of the input must match number of subscript labels corresponding to the input");
     }
 
     std::vector<int64_t> subscript_indices_to_input_index(onnxruntime::narrow<size_t>(num_subscript_indices_), -1);
@@ -440,7 +430,8 @@ Status EinsumComputePreprocessor::PreprocessInputs() {
         preprocessed = device_diagonal_func_(preprocessed ? *preprocessed : *inputs_[onnxruntime::narrow<size_t>(input_iter)],
                                              subscript_indices_to_input_index[onnxruntime::narrow<size_t>(subscript_index)],
                                              dim_index_in_preprocessed_input,
-                                             allocator_, einsum_ep_assets_);
+                                             allocator_,
+                                             einsum_ep_assets_);
       }
       ++dim_index_in_original_input;
     }
@@ -458,7 +449,10 @@ Status EinsumComputePreprocessor::PreprocessInputs() {
                                       permutation)) {
       preprocessed = EinsumOp::Transpose(preprocessed ? *preprocessed : *inputs_[onnxruntime::narrow<size_t>(input_iter)],
                                          preprocessed ? preprocessed->Shape().GetDims() : inputs_[onnxruntime::narrow<size_t>(input_iter)]->Shape().GetDims(),
-                                         permutation, allocator_, einsum_ep_assets_, device_transpose_func_);
+                                         permutation,
+                                         allocator_,
+                                         einsum_ep_assets_,
+                                         device_transpose_func_);
     }
 
     // pre-processed may be null if the input didn't have need diagonals parsed and didn't need transposing

@@ -16,10 +16,7 @@ namespace onnxruntime {
 template <typename T>
 class EinsumTypedComputeProcessor {
  public:
-  explicit EinsumTypedComputeProcessor(OpKernelContext* context, AllocatorPtr allocator,
-                                       concurrency::ThreadPool* tp,
-                                       EinsumComputePreprocessor& einsum_compute_preprocessor,
-                                       void* einsum_cuda_assets)
+  explicit EinsumTypedComputeProcessor(OpKernelContext* context, AllocatorPtr allocator, concurrency::ThreadPool* tp, EinsumComputePreprocessor& einsum_compute_preprocessor, void* einsum_cuda_assets)
       : context_(context),
         allocator_(allocator),
         tp_(tp),

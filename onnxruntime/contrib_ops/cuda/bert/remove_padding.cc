@@ -46,8 +46,7 @@ Status RemovePadding<T>::ComputeInternal(OpKernelContext* context) const {
 
   const auto& dims = input->Shape().GetDims();
   if (dims.size() != 3) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'input' is expected to have 3 dimensions, got ",
-                           dims.size());
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'input' is expected to have 3 dimensions, got ", dims.size());
   }
   int64_t batch_size = dims[0];
   int64_t sequence_length = dims[1];

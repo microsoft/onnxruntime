@@ -88,11 +88,10 @@ static void FilterTransformers(InlinedVector<std::unique_ptr<GraphTransformer>>&
   if (transformers_to_disable.empty()) return;
 
   transformers.erase(
-      std::remove_if(transformers.begin(), transformers.end(),
-                     [&, transformers_to_disable_end = transformers_to_disable.end()](const std::unique_ptr<GraphTransformer>& transformer) {
-                       return !transformer ||
-                              transformers_to_disable.find(transformer->Name()) != transformers_to_disable_end;
-                     }),
+      std::remove_if(transformers.begin(), transformers.end(), [&, transformers_to_disable_end = transformers_to_disable.end()](const std::unique_ptr<GraphTransformer>& transformer) {
+        return !transformer ||
+               transformers_to_disable.find(transformer->Name()) != transformers_to_disable_end;
+      }),
       transformers.end());
 }
 
@@ -143,12 +142,11 @@ InlinedVector<std::unique_ptr<RewriteRule>> GenerateRewriteRules(
   } else {
     InlinedVector<std::unique_ptr<RewriteRule>> filtered_list;
     const auto end = rules_to_disable.cend();
-    std::for_each(rules.begin(), rules.end(),
-                  [&](std::unique_ptr<RewriteRule>& item) {
-                    if ((item != nullptr) && (rules_to_disable.find(item->Name()) == end)) {
-                      filtered_list.push_back(std::move(item));
-                    }
-                  });
+    std::for_each(rules.begin(), rules.end(), [&](std::unique_ptr<RewriteRule>& item) {
+      if ((item != nullptr) && (rules_to_disable.find(item->Name()) == end)) {
+        filtered_list.push_back(std::move(item));
+      }
+    });
 
     return filtered_list;
   }

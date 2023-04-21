@@ -32,8 +32,7 @@ int real_main(int argc, TCHAR* argv[]) {
   for (auto& p : context.op_stat) {
     stat_array[i++] = &p.second;
   }
-  std::sort(stat_array.begin(), stat_array.end(),
-            [](const OpStat* left, const OpStat* right) { return left->total_time > right->total_time; });
+  std::sort(stat_array.begin(), stat_array.end(), [](const OpStat* left, const OpStat* right) { return left->total_time > right->total_time; });
   size_t iterations = context.time_per_run.size();
   ULONG64 total_time = std::accumulate(context.time_per_run.begin() + 1, context.time_per_run.end(), (ULONG64)0);
   // in microseconds

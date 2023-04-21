@@ -40,7 +40,8 @@ TvmSoExecutionProvider::TvmSoExecutionProvider(const TvmEPOptions& options)
   AllocatorCreationInfo default_memory_info = {[](int) {
                                                  return std::make_unique<TVMAllocator>();
                                                },
-                                               0, false};
+                                               0,
+                                               false};
   allocator_ = CreateAllocator(default_memory_info);
   InsertAllocator(allocator_);
 
@@ -236,8 +237,7 @@ TensorShapeVector TvmSoExecutionProvider::convertTensorShape(const TensorShapePr
   TensorShapeVector shape(dims);
   for (size_t j = 0; j < dims; ++j) {
     int64_t dim = int64_t(ort_shape[j]);
-    ORT_ENFORCE(dim > 0, "Input dimension is not positive value (dim = " + std::to_string(dim) + "). " +
-                             "Please use provider options to setup input_names and input_shapes");
+    ORT_ENFORCE(dim > 0, "Input dimension is not positive value (dim = " + std::to_string(dim) + "). " + "Please use provider options to setup input_names and input_shapes");
     shape[j] = dim;
   }
 

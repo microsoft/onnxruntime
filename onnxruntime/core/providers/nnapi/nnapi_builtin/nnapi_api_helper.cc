@@ -65,8 +65,7 @@ static int32_t GetDeviceFeatureLevelInternal(const NnApi& nnapi_handle, gsl::spa
  * @return Status of the operation.
  *
  */
-Status GetTargetDevices(const NnApi& nnapi_handle, TargetDeviceOption target_device_option,
-                        DeviceWrapperVector& devices) {
+Status GetTargetDevices(const NnApi& nnapi_handle, TargetDeviceOption target_device_option, DeviceWrapperVector& devices) {
   // GetTargetDevices is only supported when NNAPI runtime feature level >= ANEURALNETWORKS_FEATURE_LEVEL_3
   if (GetNNAPIRuntimeFeatureLevel(nnapi_handle) < ANEURALNETWORKS_FEATURE_LEVEL_3)
     return Status::OK();

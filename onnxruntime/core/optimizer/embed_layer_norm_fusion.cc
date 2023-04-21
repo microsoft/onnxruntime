@@ -516,7 +516,8 @@ static void CreateEmbedLayernormNode(Graph& graph,
                                               "fused EmbedLayerNorm subgraphs ",
                                               embed_layer_norm_input_defs,
                                               std::array{layer_norm_node.MutableOutputDefs()[0], &mask_index},
-                                              {}, kMSDomain);
+                                              {},
+                                              kMSDomain);
 
   // Get attribute "epsilon" from "LayerNormalization" node if available. Else, default value
   // will be used.
@@ -680,8 +681,7 @@ static bool FuseSubGraph(Graph& graph,
     return false;
   }
 
-  CreateEmbedLayernormNode(graph, input_ids, segment_ids, word_embedding, position_embedding, segment_embedding,
-                           layer_norm_node);
+  CreateEmbedLayernormNode(graph, input_ids, segment_ids, word_embedding, position_embedding, segment_embedding, layer_norm_node);
 
   if (!nodes_to_remove.empty()) {
     graph_utils::RemoveNodesWithOneOutputBottomUp(graph, *graph.GetNode(nodes_to_remove[0]));
@@ -776,8 +776,7 @@ static bool FuseSubGraphDistilBert(Graph& graph,
     return false;
   }
 
-  CreateEmbedLayernormNode(graph, input_ids, nullptr, word_embedding, position_embedding, nullptr,
-                           layer_norm_node);
+  CreateEmbedLayernormNode(graph, input_ids, nullptr, word_embedding, position_embedding, nullptr, layer_norm_node);
 
   if (!nodes_to_remove.empty()) {
     graph_utils::RemoveNodesWithOneOutputBottomUp(graph, *graph.GetNode(nodes_to_remove[0]));

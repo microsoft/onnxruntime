@@ -28,10 +28,7 @@ class GraphPartitioner {
   }
 
   // Run partitioning.
-  Status Partition(Graph& graph, FuncManager& func_mgr,
-                   const layout_transformer::TransformLayoutFunction& transform_layout_function,
-                   Mode mode = Mode::kNormal,
-                   const layout_transformer::DebugGraphFn& debug_graph_fn = {}) const;
+  Status Partition(Graph& graph, FuncManager& func_mgr, const layout_transformer::TransformLayoutFunction& transform_layout_function, Mode mode = Mode::kNormal, const layout_transformer::DebugGraphFn& debug_graph_fn = {}) const;
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(GraphPartitioner);

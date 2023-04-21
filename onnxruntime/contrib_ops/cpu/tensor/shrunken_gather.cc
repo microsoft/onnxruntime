@@ -27,19 +27,16 @@ void ShrunkenGatherCommon::CheckInput(const Tensor* input_tensor, const Tensor* 
   const auto& input_shape = input_tensor->Shape();
   const auto& indices_shape = indices_tensor->Shape();
 
-  ORT_ENFORCE(input_shape.NumDimensions() >= 1, "ShrunkenGather only support input with rank >= 1, got ",
-              input_shape.NumDimensions(), "-D input");
+  ORT_ENFORCE(input_shape.NumDimensions() >= 1, "ShrunkenGather only support input with rank >= 1, got ", input_shape.NumDimensions(), "-D input");
 
-  ORT_ENFORCE(indices_shape.NumDimensions() == 1, "ShrunkenGather only support 1D indices, got ",
-              indices_shape.NumDimensions(), "-D indices");
+  ORT_ENFORCE(indices_shape.NumDimensions() == 1, "ShrunkenGather only support 1D indices, got ", indices_shape.NumDimensions(), "-D indices");
 
   const auto input_rank = input_shape.NumDimensions();
   auto axis = HandleNegativeAxis(axis_in, narrow<int64_t>(input_rank));
 
   const int64_t N = indices_shape.Size();
   const int64_t indices_max = input_shape[axis];
-  ORT_ENFORCE(indices_max >= N, "ShrunkenGather indices elem count should <= input dim on axis: ", axis,
-              ", got indices elem count:", N, " input dim: ", indices_max);
+  ORT_ENFORCE(indices_max >= N, "ShrunkenGather indices elem count should <= input dim on axis: ", axis, ", got indices elem count:", N, " input dim: ", indices_max);
 }
 
 Status ShrunkenGather::Compute(OpKernelContext* context) const {

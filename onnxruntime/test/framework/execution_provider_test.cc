@@ -78,8 +78,7 @@ TEST(ExecutionProviderTest, MetadefIdGeneratorUsingModelHashing) {
   std::shared_ptr<Model> model2;
   ONNX_NAMESPACE::ModelProto model_proto;
   ASSERT_STATUS_OK(Model::Load(model_file_stream, &model_proto));
-  ASSERT_STATUS_OK(Model::Load(std::move(model_proto), PathString(), model2, nullptr,
-                               DefaultLoggingManager().DefaultLogger()));
+  ASSERT_STATUS_OK(Model::Load(std::move(model_proto), PathString(), model2, nullptr, DefaultLoggingManager().DefaultLogger()));
 
   Graph& graph2 = model2->MainGraph();
   GraphViewer viewer2(graph2);

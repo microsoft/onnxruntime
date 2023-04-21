@@ -156,19 +156,9 @@ Equations (Default: f=Sigmoid, g=Tanh, h=Tanh):
 namespace onnxruntime {
 
 /* LSTM operator */
-ONNX_CPU_OPERATOR_VERSIONED_KERNEL(LSTM, 7, 13,
-                                   KernelDefBuilder()
-                                       .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
-                                                             DataTypeImpl::GetTensorType<double>()})
-                                       .TypeConstraint("T1", DataTypeImpl::GetTensorType<int32_t>()),
-                                   DeepCpuLstmOp);
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(LSTM, 7, 13, KernelDefBuilder().TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(), DataTypeImpl::GetTensorType<double>()}).TypeConstraint("T1", DataTypeImpl::GetTensorType<int32_t>()), DeepCpuLstmOp);
 
-ONNX_CPU_OPERATOR_KERNEL(LSTM, 14,
-                         KernelDefBuilder()
-                             .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
-                                                   DataTypeImpl::GetTensorType<double>()})
-                             .TypeConstraint("T1", DataTypeImpl::GetTensorType<int32_t>()),
-                         DeepCpuLstmOp);
+ONNX_CPU_OPERATOR_KERNEL(LSTM, 14, KernelDefBuilder().TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(), DataTypeImpl::GetTensorType<double>()}).TypeConstraint("T1", DataTypeImpl::GetTensorType<int32_t>()), DeepCpuLstmOp);
 
 using namespace rnn::detail;
 
@@ -223,8 +213,7 @@ static void UseSharedPrePackedBuffersImpl(std::vector<BufferUniquePtr>& prepacke
   packed_tensor.buffer_ = std::move(prepacked_buffers[0]);
 }
 
-Status DeepCpuLstmOp::PrePack(const Tensor& tensor, int input_idx,
-                              AllocatorPtr alloc, /*out*/ bool& is_packed,
+Status DeepCpuLstmOp::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc, /*out*/ bool& is_packed,
                               /*out*/ PrePackedWeights* prepacked_weights) {
   is_packed = false;
 

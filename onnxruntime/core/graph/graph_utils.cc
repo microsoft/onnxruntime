@@ -20,10 +20,12 @@ namespace graph_utils {
 
 static int GetIndexFromName(const Node& node, const std::string& name, bool is_input) {
   const auto& node_args = is_input ? node.InputDefs() : node.OutputDefs();
-  auto itr = std::find_if(node_args.begin(), node_args.end(),
-                          [&name](const NodeArg* node_arg) { return node_arg->Name() == name; });
+  auto itr = std::find_if(node_args.begin(), node_args.end(), [&name](const NodeArg* node_arg) { return node_arg->Name() == name; });
   ORT_ENFORCE(itr != node_args.end(),
-              "Attempting to get index by a name which does not exist:", name, "for node: ", node.Name());
+              "Attempting to get index by a name which does not exist:",
+              name,
+              "for node: ",
+              node.Name());
   auto index = std::distance(node_args.begin(), itr);
   return static_cast<int>(index);
 }
@@ -61,10 +63,9 @@ static bool CanUpdateImplicitInputNameInSubgraph(const Node& node,
       const auto subgraph_node_implicit_inputs = subgraph_node.ImplicitInputDefs();
       if (!subgraph_node_implicit_inputs.empty()) {
         auto subgraph_node_also_consumes_nodearg_as_implicit_input =
-            std::find_if(subgraph_node_implicit_inputs.cbegin(), subgraph_node_implicit_inputs.cend(),
-                         [&removed_output_name](const NodeArg* input) {
-                           return input != nullptr && input->Name() == removed_output_name;
-                         });
+            std::find_if(subgraph_node_implicit_inputs.cbegin(), subgraph_node_implicit_inputs.cend(), [&removed_output_name](const NodeArg* input) {
+              return input != nullptr && input->Name() == removed_output_name;
+            });
 
         if (subgraph_node_also_consumes_nodearg_as_implicit_input != subgraph_node_implicit_inputs.cend()) {
           if (!CanUpdateImplicitInputNameInSubgraph(subgraph_node, removed_output_name, new_output_name))
@@ -91,10 +92,9 @@ static void UpdateImplicitInputNameInSubgraph(Node& node,
       const auto subgraph_node_implicit_inputs = subgraph_node.ImplicitInputDefs();
       if (!subgraph_node_implicit_inputs.empty()) {
         auto subgraph_node_also_consumes_nodearg_as_implicit_input =
-            std::find_if(subgraph_node_implicit_inputs.cbegin(), subgraph_node_implicit_inputs.cend(),
-                         [&removed_output_name](const NodeArg* input) {
-                           return input->Name() == removed_output_name;
-                         });
+            std::find_if(subgraph_node_implicit_inputs.cbegin(), subgraph_node_implicit_inputs.cend(), [&removed_output_name](const NodeArg* input) {
+              return input->Name() == removed_output_name;
+            });
 
         if (subgraph_node_also_consumes_nodearg_as_implicit_input != subgraph_node_implicit_inputs.cend()) {
           UpdateImplicitInputNameInSubgraph(subgraph_node, removed_output_name, new_output_name);
@@ -111,10 +111,9 @@ static void UpdateImplicitInputNameInSubgraph(Node& node,
           // if the input matches, replace the NodeArg with one using the new name
           if (input_arg->Exists() && input_arg->Name() == removed_output_name) {
             // sanity check there was no edge for this input. implicit inputs from outer scope do not have edges
-            ORT_ENFORCE(std::count_if(subgraph_node.InputEdgesBegin(), subgraph_node.InputEdgesEnd(),
-                                      [input_slot_index](const Node::EdgeEnd& entry) {
-                                        return entry.GetDstArgIndex() == input_slot_index;
-                                      }) == 0);
+            ORT_ENFORCE(std::count_if(subgraph_node.InputEdgesBegin(), subgraph_node.InputEdgesEnd(), [input_slot_index](const Node::EdgeEnd& entry) {
+                          return entry.GetDstArgIndex() == input_slot_index;
+                        }) == 0);
 
             // Create a new NodeArg with the new name
             input_args[input_slot_index] = &attr_subgraph_pair.second->GetOrCreateNodeArg(new_output_name,
@@ -131,7 +130,8 @@ static void UpdateImplicitInputNameInSubgraph(Node& node,
     This is important when removing a node with this NodeArg as input. */
 static bool CanUpdateImplicitInputNameInSubgraphs(const Graph& graph,
                                                   const std::vector<GraphEdge>& output_edges,
-                                                  const std::string& new_arg_name, const logging::Logger& logger) {
+                                                  const std::string& new_arg_name,
+                                                  const logging::Logger& logger) {
   for (const auto& output_edge : output_edges) {
     if (OutputEdgeProvidesImplicitInput(graph, output_edge)) {
       const Node& output_edge_node = *graph.GetNode(output_edge.dst_node);
@@ -157,10 +157,9 @@ static bool RemoveNodeWithSingleNodeInSingleUsedOutput(Graph& graph, Node& node)
     Node& incoming_node = *graph.GetNode(input_edge.GetNode().Index());
 
     auto src_idx = output_edges.front().src_arg_index;
-    ORT_ENFORCE(std::all_of(output_edges.cbegin(), output_edges.cend(),
-                            [&src_idx](const GraphEdge& edge) {
-                              return edge.src_arg_index == src_idx;
-                            }),
+    ORT_ENFORCE(std::all_of(output_edges.cbegin(), output_edges.cend(), [&src_idx](const GraphEdge& edge) {
+                  return edge.src_arg_index == src_idx;
+                }),
                 "Node must only have one used output");
 
     // replace the output edges from 'node' with an edge to node's incoming node
@@ -243,7 +242,8 @@ NodeArg& AddInitializer(Graph& graph, const ONNX_NAMESPACE::TensorProto& new_ini
   // sanity check as AddInitializedTensor silently ignores attempts to add a duplicate initializer
   const ONNX_NAMESPACE::TensorProto* existing = nullptr;
   ORT_ENFORCE(!graph.GetInitializedTensor(new_initializer.name(), existing),
-              "Initializer with same name exists. Name:", new_initializer.name());
+              "Initializer with same name exists. Name:",
+              new_initializer.name());
 
   graph.AddInitializedTensor(new_initializer);
 
@@ -327,8 +327,7 @@ size_t RemoveNodeOutputEdges(Graph& graph, Node& node, int output_idx) {
   return output_edges.size();
 }
 
-const ONNX_NAMESPACE::TensorProto* GetConstantInitializer(const Graph& graph, const std::string& initializer_name,
-                                                          bool check_outer_scope) {
+const ONNX_NAMESPACE::TensorProto* GetConstantInitializer(const Graph& graph, const std::string& initializer_name, bool check_outer_scope) {
   return graph.GetConstantInitializer(initializer_name, check_outer_scope);
 }
 
@@ -531,8 +530,7 @@ bool RemoveNode(Graph& graph, Node& node) {
   ORT_THROW("Should be unreachable if CanRemoveNodeAndMergeEdges is in sync with the logic here.");
 }
 
-bool CanReplaceNodeWithInitializer(const Graph& graph, const Node& node, const std::string& initializer_name,
-                                   const logging::Logger& logger) {
+bool CanReplaceNodeWithInitializer(const Graph& graph, const Node& node, const std::string& initializer_name, const logging::Logger& logger) {
   // we have no way to handle replacing multiple outputs so check only one is used
   const std::string* output_name = nullptr;
   if (!IsOnlyOneOutputUsed(graph, node, output_name) || output_name == nullptr) {
@@ -575,8 +573,7 @@ bool ReplaceNodeWithInitializer(Graph& graph, Node& node, NodeArg& replacement) 
     // Take care of subgraph inputs.
     if (OutputEdgeProvidesImplicitInput(graph, output_edge)) {
       Node& mutable_output_edge_node = *graph.GetNode(output_edge.dst_node);
-      UpdateImplicitInputNameInSubgraph(mutable_output_edge_node, output_edge.arg_name,
-                                        replacement.Name());
+      UpdateImplicitInputNameInSubgraph(mutable_output_edge_node, output_edge.arg_name, replacement.Name());
     }
 
     // Replace outgoing node's input.
@@ -613,8 +610,7 @@ bool NodeArgIsConstant(const Graph& graph, const NodeArg& node_arg) {
   return IsConstantInitializer(graph, node_arg.Name(), true);
 }
 
-bool AllNodeInputsAreConstant(const Graph& graph, const Node& node, InitializedTensorSet& constant_inputs,
-                              const InlinedHashSet<std::string>& excluded_initializers) {
+bool AllNodeInputsAreConstant(const Graph& graph, const Node& node, InitializedTensorSet& constant_inputs, const InlinedHashSet<std::string>& excluded_initializers) {
   // clear so we have a known state. if we fail part way through we go back to this state.
   constant_inputs.clear();
 
@@ -699,9 +695,7 @@ void ReplaceNodeInput(Node& target, int target_input_idx, NodeArg& new_input) {
     target.MutableImplicitInputDefs()[dst_arg_idx - num_explicit_inputs] = &new_input;
   } else {
     // logic error in our code
-    ORT_THROW("Invalid input index for node ", target.Name(), ". Index:", target_input_idx,
-              " ExplicitInputs:", num_explicit_inputs,
-              " ImplicitInputs:", target.ImplicitInputDefs().size());
+    ORT_THROW("Invalid input index for node ", target.Name(), ". Index:", target_input_idx, " ExplicitInputs:", num_explicit_inputs, " ImplicitInputs:", target.ImplicitInputDefs().size());
   }
 }
 
@@ -724,8 +718,7 @@ void FinalizeNodeFusion(Graph& graph, Node& first_node, Node& second_node) {
   graph.RemoveNode(second_node.Index());
 }
 
-void FinalizeNodeFusion(Graph& graph, gsl::span<const std::reference_wrapper<Node>> nodes, Node& replacement_node_start,
-                        Node& replacement_node_end) {
+void FinalizeNodeFusion(Graph& graph, gsl::span<const std::reference_wrapper<Node>> nodes, Node& replacement_node_start, Node& replacement_node_end) {
   MoveAllNodeInputEdges(graph, *nodes.begin(), replacement_node_start);
   MoveAllNodeOutputs(graph, nodes.back(), replacement_node_end);
 
@@ -747,16 +740,14 @@ inline std::string ToString(gsl::span<const ONNX_NAMESPACE::OperatorSetVersion> 
   std::ostringstream output;
   if (!versions.empty()) {
     // Convert all but the last element to avoid a trailing ";"
-    std::copy(versions.begin(), versions.end() - 1,
-              std::ostream_iterator<ONNX_NAMESPACE::OperatorSetVersion>(output, ";"));
+    std::copy(versions.begin(), versions.end() - 1, std::ostream_iterator<ONNX_NAMESPACE::OperatorSetVersion>(output, ";"));
     // Now add the last element with no delimiter
     output << versions.back();
   }
   return output.str();
 }
 
-bool FindPath(const Node& node, bool is_input_edge, gsl::span<const EdgeEndToMatch> edges_to_match,
-              std::vector<const Node::EdgeEnd*>& result, const logging::Logger& logger) {
+bool FindPath(const Node& node, bool is_input_edge, gsl::span<const EdgeEndToMatch> edges_to_match, std::vector<const Node::EdgeEnd*>& result, const logging::Logger& logger) {
   result.clear();
   result.reserve(edges_to_match.size());
 

@@ -139,14 +139,13 @@ static void BM_ScaledTanhParallelFor(benchmark::State& state) {
   const float alpha_ = 0.3f;
   const float beta_ = 0.6f;
   for (auto _ : state) {
-    ThreadPool::TryParallelFor(tp.get(), batch_size, cost,
-                               [alpha_, beta_, data, output](ptrdiff_t first, ptrdiff_t last) {
-                                 ptrdiff_t len = last - first;
-                                 float* output_ptr = output + first;
-                                 onnxruntime::ConstEigenVectorArrayMap<float> xm(data + first, len);
-                                 onnxruntime::EigenVectorArrayMap<float> ym(output_ptr, len);
-                                 ym = (xm >= 0).select(xm, alpha_ * (xm.exp() - 1));
-                               });
+    ThreadPool::TryParallelFor(tp.get(), batch_size, cost, [alpha_, beta_, data, output](ptrdiff_t first, ptrdiff_t last) {
+      ptrdiff_t len = last - first;
+      float* output_ptr = output + first;
+      onnxruntime::ConstEigenVectorArrayMap<float> xm(data + first, len);
+      onnxruntime::EigenVectorArrayMap<float> ym(output_ptr, len);
+      ym = (xm >= 0).select(xm, alpha_ * (xm.exp() - 1));
+    });
   }
   aligned_free(data);
   aligned_free(output);
@@ -184,8 +183,7 @@ BENCHMARK(BM_ScaledTanhParallelFor)
     ->Args({40000, 10})
     ->Args({40000, 40});
 
-static void TestPartitionWork(std::ptrdiff_t ThreadId, std::ptrdiff_t ThreadCount, std::ptrdiff_t TotalWork,
-                              std::ptrdiff_t* WorkIndex, std::ptrdiff_t* WorkRemaining) {
+static void TestPartitionWork(std::ptrdiff_t ThreadId, std::ptrdiff_t ThreadCount, std::ptrdiff_t TotalWork, std::ptrdiff_t* WorkIndex, std::ptrdiff_t* WorkRemaining) {
   const std::ptrdiff_t WorkPerThread = TotalWork / ThreadCount;
   const std::ptrdiff_t WorkPerThreadExtra = TotalWork % ThreadCount;
 
@@ -250,8 +248,7 @@ static void BM_GeluBatchParallelFor2(benchmark::State& state) {
   int64_t task_count = (elem_count + length_per_task - 1) / length_per_task;
   for (auto _ : state) {
     concurrency::ThreadPool::TryBatchParallelFor(
-        tp.get(), static_cast<int32_t>(task_count),
-        [&](ptrdiff_t task_idx) {
+        tp.get(), static_cast<int32_t>(task_count), [&](ptrdiff_t task_idx) {
           const auto start = task_idx * length_per_task;
           const T* p_input = input_data + start;
           T* p_output = output_data + start;

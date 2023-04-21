@@ -44,13 +44,11 @@ struct SparseTensor;
 namespace utils {
 
 Status SaveInitializerOrtFormat(
-    flatbuffers::FlatBufferBuilder& builder, const ONNX_NAMESPACE::TensorProto& initializer,
-    const Path& model_path, flatbuffers::Offset<fbs::Tensor>& fbs_tensor);
+    flatbuffers::FlatBufferBuilder& builder, const ONNX_NAMESPACE::TensorProto& initializer, const Path& model_path, flatbuffers::Offset<fbs::Tensor>& fbs_tensor);
 
 #if !defined(DISABLE_SPARSE_TENSORS)
 Status SaveSparseInitializerOrtFormat(
-    flatbuffers::FlatBufferBuilder& builder, const ONNX_NAMESPACE::SparseTensorProto& initializer,
-    const Path& model_path, flatbuffers::Offset<fbs::SparseTensor>& fbs_sparse_tensor);
+    flatbuffers::FlatBufferBuilder& builder, const ONNX_NAMESPACE::SparseTensorProto& initializer, const Path& model_path, flatbuffers::Offset<fbs::SparseTensor>& fbs_sparse_tensor);
 #endif  // !defined(DISABLE_SPARSE_TENSORS)
 
 // Convert a given AttributeProto into fbs::Attribute
@@ -58,9 +56,7 @@ Status SaveSparseInitializerOrtFormat(
 //       If the attribute type is a graph, we need to use the supplied Graph instance,
 //       instead of the GraphProto in attr_proto
 Status SaveAttributeOrtFormat(
-    flatbuffers::FlatBufferBuilder& builder, const ONNX_NAMESPACE::AttributeProto& attr_proto,
-    flatbuffers::Offset<fbs::Attribute>& fbs_attr, const Path& model_path,
-    const onnxruntime::Graph* subgraph);
+    flatbuffers::FlatBufferBuilder& builder, const ONNX_NAMESPACE::AttributeProto& attr_proto, flatbuffers::Offset<fbs::Attribute>& fbs_attr, const Path& model_path, const onnxruntime::Graph* subgraph);
 
 /// <summary>
 /// Load an initializer from an ORT format flatbuffer.
@@ -85,7 +81,8 @@ Status LoadSparseInitializerOrtFormat(const fbs::SparseTensor& fbs_sparse_tensor
 Status LoadAttributeOrtFormat(const fbs::Attribute& fbs_attr,
                               ONNX_NAMESPACE::AttributeProto& attr_proto,
                               std::unique_ptr<onnxruntime::Graph>& sub_graph,
-                              onnxruntime::Graph& graph, onnxruntime::Node& node,
+                              onnxruntime::Graph& graph,
+                              onnxruntime::Node& node,
                               const OrtFormatLoadOptions& load_options,
                               const logging::Logger& logger);
 

@@ -318,8 +318,7 @@ static void top_1_default_axis(int opset_version, int64_t sorted = 1) {
   std::vector<int64_t> expected_indices = {3, 1};
   std::vector<int64_t> expected_dimensions = {2, 1};
   int64_t axis = -1;
-  RunTest(opset_version, 1, input_vals, input_dimensions, expected_vals, expected_indices,
-          expected_dimensions, false, axis, 1, sorted);
+  RunTest(opset_version, 1, input_vals, input_dimensions, expected_vals, expected_indices, expected_dimensions, false, axis, 1, sorted);
 }
 
 TEST(TopKOperator, Top1DefaultAxisLargestElements) {
@@ -339,8 +338,7 @@ static void top_2_default_axis(int opset_version, int64_t sorted = 1) {
   std::vector<int64_t> expected_indices = {3, 1, 2, 1};
   std::vector<int64_t> expected_dimensions = {2, 2};
   int64_t axis = -1;
-  RunTest(opset_version, 2, input_vals, input_dimensions, expected_vals, expected_indices,
-          expected_dimensions, false, axis, 1, sorted);
+  RunTest(opset_version, 2, input_vals, input_dimensions, expected_vals, expected_indices, expected_dimensions, false, axis, 1, sorted);
 }
 
 TEST(TopKOperator, Top2DefaultAxisLargestElements) {
@@ -360,8 +358,7 @@ static void top_3_default_axis(int opset_version, int64_t sorted = 1) {
   std::vector<int64_t> expected_indices = {3, 1, 2, 2, 1, 3};
   std::vector<int64_t> expected_dimensions = {2, 3};
   int64_t axis = -1;
-  RunTest(opset_version, 3, input_vals, input_dimensions, expected_vals, expected_indices,
-          expected_dimensions, false, axis, 1, sorted);
+  RunTest(opset_version, 3, input_vals, input_dimensions, expected_vals, expected_indices, expected_dimensions, false, axis, 1, sorted);
 }
 
 TEST(TopKOperator, Top3DefaultAxisLargestElements) {
@@ -381,8 +378,7 @@ static void top_all_default_axis(int opset_version, int64_t sorted = 1) {
   std::vector<int64_t> expected_indices = {3, 1, 2, 0, 1, 2, 3, 0};
   std::vector<int64_t> expected_dimensions = {2, 4};
   int64_t axis = -1;
-  RunTest(opset_version, 4, input_vals, input_dimensions, expected_vals, expected_indices,
-          expected_dimensions, false, axis, 1, sorted);
+  RunTest(opset_version, 4, input_vals, input_dimensions, expected_vals, expected_indices, expected_dimensions, false, axis, 1, sorted);
 }
 
 TEST(TopKOperator, TopAllDefaultAxisLargestElements) {
@@ -402,8 +398,7 @@ static void top_1_explicit_axis(int opset_version, int64_t sorted = 1) {
   std::vector<int64_t> expected_indices = {3, 1};
   std::vector<int64_t> expected_dimensions = {1, 2};
   int64_t axis = 0;
-  RunTest(opset_version, 1, input_vals, input_dimensions, expected_vals, expected_indices,
-          expected_dimensions, false, axis, 1, sorted);
+  RunTest(opset_version, 1, input_vals, input_dimensions, expected_vals, expected_indices, expected_dimensions, false, axis, 1, sorted);
 }
 
 TEST(TopKOperator, Top1ExplicitAxisLargestElements) {
@@ -423,8 +418,7 @@ static void top_2_explicit_axis(int opset_version, int64_t sorted = 1) {
   std::vector<int64_t> expected_indices = {1, 2, 2, 0, 2, 1, 1, 1};
   std::vector<int64_t> expected_dimensions = {2, 4};
   int64_t axis = 0;
-  RunTest(opset_version, 2, input_vals, input_dimensions, expected_vals, expected_indices,
-          expected_dimensions, false, axis, 1, sorted);
+  RunTest(opset_version, 2, input_vals, input_dimensions, expected_vals, expected_indices, expected_dimensions, false, axis, 1, sorted);
 }
 
 TEST(TopKOperator, Top2ExplicitAxisLargestElements) {
@@ -498,16 +492,7 @@ TEST(TopKOperator, TopAllExplicitAxis1DInputLargestElements) {
 
 template <typename T>
 static void top_2_explicit_axis_1D_large_input(int opset_version, int64_t sorted = 1) {
-  std::vector<T> input_vals = {93.0f, 695.0f, 971.0f, 978.0f, 483.0f, 247.0f, 242.0f, 983.0f, 531.0f, 723.0f,
-                               93.0f, 695.0f, 971.0f, 978.0f, 483.0f, 247.0f, 242.0f, 983.0f, 531.0f, 723.0f,
-                               93.0f, 695.0f, 971.0f, 978.0f, 483.0f, 247.0f, 242.0f, 983.0f, 531.0f, 723.0f,
-                               93.0f, 695.0f, 971.0f, 978.0f, 483.0f, 247.0f, 242.0f, 983.0f, 531.0f, 723.0f,
-                               93.0f, 695.0f, 971.0f, 978.0f, 483.0f, 247.0f, 242.0f, 983.0f, 531.0f, 723.0f,
-                               93.0f, 695.0f, 971.0f, 978.0f, 483.0f, 247.0f, 242.0f, 983.0f, 531.0f, 723.0f,
-                               93.0f, 695.0f, 971.0f, 978.0f, 483.0f, 247.0f, 242.0f, 983.0f, 531.0f, 723.0f,
-                               93.0f, 695.0f, 971.0f, 978.0f, 483.0f, 247.0f, 242.0f, 983.0f, 531.0f, 723.0f,
-                               93.0f, 695.0f, 971.0f, 978.0f, 483.0f, 247.0f, 242.0f, 983.0f, 531.0f, 723.0f,
-                               93.0f, 695.0f, 971.0f, 978.0f, 483.0f, 247.0f, 242.0f, 983.0f, 531.0f, 723.0f};
+  std::vector<T> input_vals = {93.0f, 695.0f, 971.0f, 978.0f, 483.0f, 247.0f, 242.0f, 983.0f, 531.0f, 723.0f, 93.0f, 695.0f, 971.0f, 978.0f, 483.0f, 247.0f, 242.0f, 983.0f, 531.0f, 723.0f, 93.0f, 695.0f, 971.0f, 978.0f, 483.0f, 247.0f, 242.0f, 983.0f, 531.0f, 723.0f, 93.0f, 695.0f, 971.0f, 978.0f, 483.0f, 247.0f, 242.0f, 983.0f, 531.0f, 723.0f, 93.0f, 695.0f, 971.0f, 978.0f, 483.0f, 247.0f, 242.0f, 983.0f, 531.0f, 723.0f, 93.0f, 695.0f, 971.0f, 978.0f, 483.0f, 247.0f, 242.0f, 983.0f, 531.0f, 723.0f, 93.0f, 695.0f, 971.0f, 978.0f, 483.0f, 247.0f, 242.0f, 983.0f, 531.0f, 723.0f, 93.0f, 695.0f, 971.0f, 978.0f, 483.0f, 247.0f, 242.0f, 983.0f, 531.0f, 723.0f, 93.0f, 695.0f, 971.0f, 978.0f, 483.0f, 247.0f, 242.0f, 983.0f, 531.0f, 723.0f, 93.0f, 695.0f, 971.0f, 978.0f, 483.0f, 247.0f, 242.0f, 983.0f, 531.0f, 723.0f};
 
   std::vector<int64_t> input_dimensions = {100};
   std::vector<T> expected_vals = {983.0f, 983.0f};

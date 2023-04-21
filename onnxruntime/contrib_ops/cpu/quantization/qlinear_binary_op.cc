@@ -18,8 +18,12 @@ struct QLinearBroadcastHelper : public BroadcastHelper {
                          OutputBroadcaster& output_broadcaster,
                          ThreadPool* threadpool,
                          double unit_cost,
-                         float A_scale_in, float B_scale_in, float C_scale_in,
-                         uint8_t A_zero_point_in, uint8_t B_zero_point_in, uint8_t C_zero_point_in)
+                         float A_scale_in,
+                         float B_scale_in,
+                         float C_scale_in,
+                         uint8_t A_zero_point_in,
+                         uint8_t B_zero_point_in,
+                         uint8_t C_zero_point_in)
       : BroadcastHelper{input_broadcaster, output_broadcaster, nullptr, threadpool, unit_cost},
         A_scale{A_scale_in},
         B_scale{B_scale_in},
@@ -82,12 +86,7 @@ void QLinearImpl(OpKernelContext& context, double unit_cost, const ProcessBroadc
   OutputBroadcaster output_broadcaster{input_broadcaster.GetSpanSize(),
                                        *context.Output(0, input_broadcaster.GetOutputShape())};
 
-  QLinearBroadcastHelper broadcast_helper(input_broadcaster, output_broadcaster,
-                                          context.GetOperatorThreadPool(), unit_cost,
-                                          A_scale, B_scale, C_scale,
-                                          static_cast<uint8_t>(A_zero_point),
-                                          static_cast<uint8_t>(B_zero_point),
-                                          static_cast<uint8_t>(C_zero_point));
+  QLinearBroadcastHelper broadcast_helper(input_broadcaster, output_broadcaster, context.GetOperatorThreadPool(), unit_cost, A_scale, B_scale, C_scale, static_cast<uint8_t>(A_zero_point), static_cast<uint8_t>(B_zero_point), static_cast<uint8_t>(C_zero_point));
 
   BroadcastLooper(broadcast_helper, functors);
 }
@@ -103,11 +102,16 @@ Status QLinearAdd<T>::Compute(OpKernelContext* context) const {
         auto output = per_iter_bh.OutputSpan<T>();
 
         MlasQLinearAdd(input1.data(),
-                       qlbh.B_scale, static_cast<T>(qlbh.B_zero_point),
+                       qlbh.B_scale,
+                       static_cast<T>(qlbh.B_zero_point),
                        &input0,
-                       qlbh.A_scale, static_cast<T>(qlbh.A_zero_point),
-                       qlbh.C_scale, static_cast<T>(qlbh.C_zero_point),
-                       output.data(), output.size(), true);
+                       qlbh.A_scale,
+                       static_cast<T>(qlbh.A_zero_point),
+                       qlbh.C_scale,
+                       static_cast<T>(qlbh.C_zero_point),
+                       output.data(),
+                       output.size(),
+                       true);
       },
       [](BroadcastHelper& per_iter_bh) {
         QLinearBroadcastHelper& qlbh = static_cast<QLinearBroadcastHelper&>(per_iter_bh);
@@ -115,11 +119,16 @@ Status QLinearAdd<T>::Compute(OpKernelContext* context) const {
         const T input1 = per_iter_bh.ScalarInput1<T>();
         auto output = per_iter_bh.OutputSpan<T>();
         MlasQLinearAdd(input0.data(),
-                       qlbh.A_scale, static_cast<T>(qlbh.A_zero_point),
+                       qlbh.A_scale,
+                       static_cast<T>(qlbh.A_zero_point),
                        &input1,
-                       qlbh.B_scale, static_cast<T>(qlbh.B_zero_point),
-                       qlbh.C_scale, static_cast<T>(qlbh.C_zero_point),
-                       output.data(), output.size(), true);
+                       qlbh.B_scale,
+                       static_cast<T>(qlbh.B_zero_point),
+                       qlbh.C_scale,
+                       static_cast<T>(qlbh.C_zero_point),
+                       output.data(),
+                       output.size(),
+                       true);
       },
       [](BroadcastHelper& per_iter_bh) {
         QLinearBroadcastHelper& qlbh = static_cast<QLinearBroadcastHelper&>(per_iter_bh);
@@ -128,11 +137,16 @@ Status QLinearAdd<T>::Compute(OpKernelContext* context) const {
         auto output = per_iter_bh.OutputSpan<T>();
 
         MlasQLinearAdd(input0.data(),
-                       qlbh.A_scale, static_cast<T>(qlbh.A_zero_point),
+                       qlbh.A_scale,
+                       static_cast<T>(qlbh.A_zero_point),
                        input1.data(),
-                       qlbh.B_scale, static_cast<T>(qlbh.B_zero_point),
-                       qlbh.C_scale, static_cast<T>(qlbh.C_zero_point),
-                       output.data(), output.size(), false);
+                       qlbh.B_scale,
+                       static_cast<T>(qlbh.B_zero_point),
+                       qlbh.C_scale,
+                       static_cast<T>(qlbh.C_zero_point),
+                       output.data(),
+                       output.size(),
+                       false);
       }};
 
   QLinearImpl<T>(*context, 1.0, functors);
@@ -150,11 +164,16 @@ Status QLinearMul<T>::Compute(OpKernelContext* context) const {
         auto output = per_iter_bh.OutputSpan<T>();
 
         MlasQLinearMul(input1.data(),
-                       qlbh.B_scale, static_cast<T>(qlbh.B_zero_point),
+                       qlbh.B_scale,
+                       static_cast<T>(qlbh.B_zero_point),
                        &input0,
-                       qlbh.A_scale, static_cast<T>(qlbh.A_zero_point),
-                       qlbh.C_scale, static_cast<T>(qlbh.C_zero_point),
-                       output.data(), output.size(), true);
+                       qlbh.A_scale,
+                       static_cast<T>(qlbh.A_zero_point),
+                       qlbh.C_scale,
+                       static_cast<T>(qlbh.C_zero_point),
+                       output.data(),
+                       output.size(),
+                       true);
       },
       [](BroadcastHelper& per_iter_bh) {
         QLinearBroadcastHelper& qlbh = static_cast<QLinearBroadcastHelper&>(per_iter_bh);
@@ -162,11 +181,16 @@ Status QLinearMul<T>::Compute(OpKernelContext* context) const {
         const T input1 = per_iter_bh.ScalarInput1<T>();
         auto output = per_iter_bh.OutputSpan<T>();
         MlasQLinearMul(input0.data(),
-                       qlbh.A_scale, static_cast<T>(qlbh.A_zero_point),
+                       qlbh.A_scale,
+                       static_cast<T>(qlbh.A_zero_point),
                        &input1,
-                       qlbh.B_scale, static_cast<T>(qlbh.B_zero_point),
-                       qlbh.C_scale, static_cast<T>(qlbh.C_zero_point),
-                       output.data(), output.size(), true);
+                       qlbh.B_scale,
+                       static_cast<T>(qlbh.B_zero_point),
+                       qlbh.C_scale,
+                       static_cast<T>(qlbh.C_zero_point),
+                       output.data(),
+                       output.size(),
+                       true);
       },
       [](BroadcastHelper& per_iter_bh) {
         QLinearBroadcastHelper& qlbh = static_cast<QLinearBroadcastHelper&>(per_iter_bh);
@@ -175,11 +199,16 @@ Status QLinearMul<T>::Compute(OpKernelContext* context) const {
         auto output = per_iter_bh.OutputSpan<T>();
 
         MlasQLinearMul(input0.data(),
-                       qlbh.A_scale, static_cast<T>(qlbh.A_zero_point),
+                       qlbh.A_scale,
+                       static_cast<T>(qlbh.A_zero_point),
                        input1.data(),
-                       qlbh.B_scale, static_cast<T>(qlbh.B_zero_point),
-                       qlbh.C_scale, static_cast<T>(qlbh.C_zero_point),
-                       output.data(), output.size(), false);
+                       qlbh.B_scale,
+                       static_cast<T>(qlbh.B_zero_point),
+                       qlbh.C_scale,
+                       static_cast<T>(qlbh.C_zero_point),
+                       output.data(),
+                       output.size(),
+                       false);
       }};
 
   QLinearImpl<T>(*context, 1.0, functors);
@@ -189,10 +218,7 @@ Status QLinearMul<T>::Compute(OpKernelContext* context) const {
 
 #define REG_QLINEAR_ELEMENTWISE_TYPED_KERNEL(op_name, version, data_type, KERNEL_CLASS) \
   ONNX_CPU_OPERATOR_TYPED_MS_KERNEL(                                                    \
-      op_name, version, data_type,                                                      \
-      KernelDefBuilder()                                                                \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<data_type>()),               \
-      KERNEL_CLASS<data_type>);
+      op_name, version, data_type, KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<data_type>()), KERNEL_CLASS<data_type>);
 
 REG_QLINEAR_ELEMENTWISE_TYPED_KERNEL(QLinearAdd, 1, int8_t, QLinearAdd);
 REG_QLINEAR_ELEMENTWISE_TYPED_KERNEL(QLinearAdd, 1, uint8_t, QLinearAdd);

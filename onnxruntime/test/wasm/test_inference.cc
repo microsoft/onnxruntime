@@ -13,14 +13,18 @@ TEST(WebAssemblyTest, test) {
   std::array<float, 6> input_data{1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
   std::array<int64_t, 2> input_shape{3, 2};
   Ort::Value input_tensor = Ort::Value::CreateTensor<float>(memory_info,
-                                                            input_data.data(), input_data.size(),
-                                                            input_shape.data(), input_shape.size());
+                                                            input_data.data(),
+                                                            input_data.size(),
+                                                            input_shape.data(),
+                                                            input_shape.size());
 
   std::array<float, 6> output_data{};
   std::array<int64_t, 2> output_shape{3, 2};
   Ort::Value output_tensor = Ort::Value::CreateTensor<float>(memory_info,
-                                                             output_data.data(), output_data.size(),
-                                                             output_shape.data(), output_shape.size());
+                                                             output_data.data(),
+                                                             output_data.size(),
+                                                             output_shape.data(),
+                                                             output_shape.size());
 
   const char* input_names[] = {"X"};
   const char* output_names[] = {"Y"};

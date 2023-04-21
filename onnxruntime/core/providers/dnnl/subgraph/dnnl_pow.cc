@@ -47,16 +47,14 @@ void DnnlPow::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
   auto dst_md = dnnl::memory::desc(src_md.get_dims(), src_md.get_data_type(), dnnl::memory::format_tag::any);
 
   // DNNL eltwise_pow is defined as alpha*x^beta. We don't use alpha so it is hard coded to 1.0
-  dnnl::eltwise_forward::primitive_desc elementwise_pd(dnnl_engine, dnnl::prop_kind::forward_inference,
-                                                       dnnl::algorithm::eltwise_pow, src_md, dst_md, 1.0, beta);
+  dnnl::eltwise_forward::primitive_desc elementwise_pd(dnnl_engine, dnnl::prop_kind::forward_inference, dnnl::algorithm::eltwise_pow, src_md, dst_md, 1.0, beta);
 
   // If using GPU this will move the memory from the CPU to the GPU.
   elementwise_src_mem = sp.GetMemoryAndReshape(node.Input(IN_X), elementwise_pd.src_desc(), dnnl_engine);
   auto elementwise_dst_mem = dnnl::memory(elementwise_pd.dst_desc(), dnnl_engine);
 
   auto elemenwise_primitive = dnnl::eltwise_forward(elementwise_pd);
-  sp.AddPrimitive(elemenwise_primitive, {{DNNL_ARG_SRC, elementwise_src_mem},
-                                         {DNNL_ARG_DST, elementwise_dst_mem}});
+  sp.AddPrimitive(elemenwise_primitive, {{DNNL_ARG_SRC, elementwise_src_mem}, {DNNL_ARG_DST, elementwise_dst_mem}});
 
   sp.SetMemory(node.Output(OUT_Z), elementwise_dst_mem);
 }

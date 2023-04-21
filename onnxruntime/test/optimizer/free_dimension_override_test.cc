@@ -22,8 +22,7 @@ void TestFreeDimensions(FreeDimensionOverrideType overrideType) {
   auto model_uri = ORT_TSTR("testdata/abs_free_dimensions.onnx");
 
   std::shared_ptr<Model> model;
-  ASSERT_TRUE(Model::Load(model_uri, model, nullptr,
-                          DefaultLoggingManager().DefaultLogger())
+  ASSERT_TRUE(Model::Load(model_uri, model, nullptr, DefaultLoggingManager().DefaultLogger())
                   .IsOK());
   Graph& graph = model->MainGraph();
 
@@ -45,8 +44,7 @@ void TestFreeDimensions(FreeDimensionOverrideType overrideType) {
   onnxruntime::GraphTransformerManager graph_transformation_mgr(5);
   ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::move(graph_transformer), TransformerLevel::Level1));
 
-  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1,
-                                                              DefaultLoggingManager().DefaultLogger()));
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, DefaultLoggingManager().DefaultLogger()));
 
   // Verify that the shape of the input graph has the correct values
 
@@ -66,8 +64,7 @@ void TestFreeDimensions(FreeDimensionOverrideType overrideType) {
 
   graph_transformer = std::make_unique<FreeDimensionOverrideTransformer>(overrides);
   bool modified = false;
-  ASSERT_TRUE(graph_transformer->Apply(graph, modified,
-                                       DefaultLoggingManager().DefaultLogger())
+  ASSERT_TRUE(graph_transformer->Apply(graph, modified, DefaultLoggingManager().DefaultLogger())
                   .IsOK());
   ASSERT_FALSE(modified);  // no overrides apply anymore
 }

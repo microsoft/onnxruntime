@@ -23,23 +23,19 @@ class IdentityOp final : public CannKernel {
     if (X_ml_type->IsTensorType()) {
       const Tensor* X = ctx->Input<Tensor>(0);
       if (nullptr == X) {
-        return Status(common::ONNXRUNTIME, common::FAIL,
-                      "IdentityOp cann: input count mismatch.");
+        return Status(common::ONNXRUNTIME, common::FAIL, "IdentityOp cann: input count mismatch.");
       }
       const TensorShape& shape = X->Shape();
       Tensor* Y = ctx->Output(0, shape);
       if (nullptr == Y) {
-        return Status(common::ONNXRUNTIME, common::FAIL,
-                      "IdentityOp cann: failed to allocate output tensor.");
+        return Status(common::ONNXRUNTIME, common::FAIL, "IdentityOp cann: failed to allocate output tensor.");
       }
       auto X_type = X->DataType();
 
       const void* source = X->DataRaw(X_type);
       void* target = Y->MutableDataRaw(X_type);
       if (target != source) {
-        CANN_RETURN_IF_ERROR(aclrtMemcpyAsync(target, Y->SizeInBytes(), source,
-                                              X->Shape().Size() * X->DataType()->Size(),
-                                              ACL_MEMCPY_DEVICE_TO_DEVICE, Stream(ctx)));
+        CANN_RETURN_IF_ERROR(aclrtMemcpyAsync(target, Y->SizeInBytes(), source, X->Shape().Size() * X->DataType()->Size(), ACL_MEMCPY_DEVICE_TO_DEVICE, Stream(ctx)));
       }
 
       if (is_dropout) {
@@ -62,25 +58,25 @@ class IdentityOp final : public CannKernel {
       AllocatorPtr alloc;
       auto status = ctx->GetTempSpaceAllocator(&alloc);
       if (!status.IsOK()) {
-        return Status(common::ONNXRUNTIME, common::FAIL,
-                      "IdentityOp cann: unable to get an allocator.");
+        return Status(common::ONNXRUNTIME, common::FAIL, "IdentityOp cann: unable to get an allocator.");
       }
       auto X_size = X->Size();
       Y->Reserve(X_size);
       for (size_t i = 0; i < X_size; ++i) {
         const Tensor& source_tensor = X->Get(i);
         std::unique_ptr<Tensor> target_tensor = Tensor::Create(source_tensor.DataType(),
-                                                               source_tensor.Shape(), alloc);
+                                                               source_tensor.Shape(),
+                                                               alloc);
         CANN_RETURN_IF_ERROR(aclrtMemcpyAsync(target_tensor->MutableDataRaw(),
                                               target_tensor->SizeInBytes(),
                                               source_tensor.DataRaw(),
                                               source_tensor.SizeInBytes(),
-                                              ACL_MEMCPY_DEVICE_TO_DEVICE, Stream(ctx)));
+                                              ACL_MEMCPY_DEVICE_TO_DEVICE,
+                                              Stream(ctx)));
         Y->Add(std::move(*target_tensor));
       }
     } else {
-      return Status(common::ONNXRUNTIME, common::FAIL,
-                    "IdentityOp cann: unsupported input type.");
+      return Status(common::ONNXRUNTIME, common::FAIL, "IdentityOp cann: unsupported input type.");
     }
     return Status::OK();
   }

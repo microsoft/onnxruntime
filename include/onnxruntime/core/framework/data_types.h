@@ -253,9 +253,7 @@ struct IsAnyOf<T, H, Tail...> {
 /// We do not have raw fundamental types, rather a subset
 /// of fundamental types is contained within tensors.
 template <typename T>
-struct IsTensorContainedType : public IsAnyOf<T, float, uint8_t, int8_t, uint16_t, int16_t,
-                                              int32_t, int64_t, std::string, bool, MLFloat16,
-                                              double, uint32_t, uint64_t, BFloat16> {
+struct IsTensorContainedType : public IsAnyOf<T, float, uint8_t, int8_t, uint16_t, int16_t, int32_t, int64_t, std::string, bool, MLFloat16, double, uint32_t, uint64_t, BFloat16> {
 };
 
 #if !defined(DISABLE_SPARSE_TENSORS)
@@ -263,9 +261,7 @@ struct IsTensorContainedType : public IsAnyOf<T, float, uint8_t, int8_t, uint16_
 /// is permitted as the element-type of a sparse-tensor.
 
 template <typename T>
-struct IsSparseTensorContainedType : public IsAnyOf<T, float, uint8_t, int8_t, uint16_t, int16_t,
-                                                    int32_t, int64_t, std::string, bool, MLFloat16,
-                                                    double, uint32_t, uint64_t, BFloat16> {
+struct IsSparseTensorContainedType : public IsAnyOf<T, float, uint8_t, int8_t, uint16_t, int16_t, int32_t, int64_t, std::string, bool, MLFloat16, double, uint32_t, uint64_t, BFloat16> {
 };
 #endif
 
@@ -327,8 +323,7 @@ struct MapTypeHelper {
     return GetMLDataType<V, IsTensorContainedType<V>::value>::Get();
   }
 
-  static void Set(ONNX_NAMESPACE::TensorProto_DataType key_type, const ONNX_NAMESPACE::TypeProto* value_proto,
-                  ONNX_NAMESPACE::TypeProto& proto) {
+  static void Set(ONNX_NAMESPACE::TensorProto_DataType key_type, const ONNX_NAMESPACE::TypeProto* value_proto, ONNX_NAMESPACE::TypeProto& proto) {
     ORT_ENFORCE(value_proto != nullptr, "expected a registered ONNX type");
     proto.mutable_map_type()->set_key_type(key_type);
     CopyMutableMapValue(*value_proto, proto);
@@ -381,8 +376,7 @@ struct OptionalTypeHelper {
 
 /// OpaqueTypes helpers
 
-void AssignOpaqueDomainName(const char* domain, const char* name,
-                            ONNX_NAMESPACE::TypeProto& proto);
+void AssignOpaqueDomainName(const char* domain, const char* name, ONNX_NAMESPACE::TypeProto& proto);
 
 }  // namespace data_types_internal
 

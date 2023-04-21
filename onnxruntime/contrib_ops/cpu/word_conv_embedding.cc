@@ -46,7 +46,8 @@ void WordConvEmbedding::ComputeConvMaxPoolWithActivation(
     int64_t char_embedding_size,
     int64_t filter_width,
     int64_t num_filters,
-    float* output, concurrency::ThreadPool* tp) const {
+    float* output,
+    concurrency::ThreadPool* tp) const {
   int64_t input_word_size = word_len * char_embedding_size;
   int64_t unfolded_width = word_len - filter_width + 1;
   int64_t unfolded_kernal_size = filter_width * char_embedding_size;
@@ -84,11 +85,7 @@ void WordConvEmbedding::ComputeConvMaxPoolWithActivation(
     }
 
     math::GemmEx<float>(
-        CblasNoTrans, CblasTrans,
-        static_cast<int>(words_unfolded_width), static_cast<int>(num_filters), static_cast<int>(unfolded_kernal_size), 1.0f,
-        unfolded_buffer_p.get(), static_cast<int>(unfolded_kernal_size),
-        weights, static_cast<int>(unfolded_kernal_size), 0.0f,
-        conv_buf_p, static_cast<int>(num_filters), tp);
+        CblasNoTrans, CblasTrans, static_cast<int>(words_unfolded_width), static_cast<int>(num_filters), static_cast<int>(unfolded_kernal_size), 1.0f, unfolded_buffer_p.get(), static_cast<int>(unfolded_kernal_size), weights, static_cast<int>(unfolded_kernal_size), 0.0f, conv_buf_p, static_cast<int>(num_filters), tp);
 
     for (int64_t unfolded_inx = 0; unfolded_inx < words_unfolded_width; unfolded_inx++)
       for (int64_t filter_inx = 0; filter_inx < num_filters; filter_inx++) {
@@ -133,27 +130,19 @@ void WordConvEmbedding::CalculateLengthOfEachWordInSequence(
 
 Status WordConvEmbedding::ValidateInputShape(const TensorShape& w_conv_shape, const TensorShape& w_char_embedding_shape) const {
   if (embedding_size_ != -1 && w_conv_shape[0] != embedding_size_) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Conv filter size does not match embedding_size attribute.",
-                           " embedding_size attribute: ", embedding_size_,
-                           " conv filter size: ", w_conv_shape[0]);
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Conv filter size does not match embedding_size attribute.", " embedding_size attribute: ", embedding_size_, " conv filter size: ", w_conv_shape[0]);
   }
 
   if (conv_window_size_ != -1 && w_conv_shape[2] != conv_window_size_) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Conv kernal size 1 does not match conv_window_size attribute .",
-                           " conv_window_size attribute: ", conv_window_size_,
-                           " conv kernal size 1: ", w_conv_shape[2]);
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Conv kernal size 1 does not match conv_window_size attribute .", " conv_window_size attribute: ", conv_window_size_, " conv kernal size 1: ", w_conv_shape[2]);
   }
 
   if (char_embedding_size_ != -1 && w_char_embedding_shape[1] != char_embedding_size_) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Char embedding size does not match char_embedding_size attribute.",
-                           " char_embedding_size attribute: ", conv_window_size_,
-                           " Char embedding size: ", w_conv_shape[1]);
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Char embedding size does not match char_embedding_size attribute.", " char_embedding_size attribute: ", conv_window_size_, " Char embedding size: ", w_conv_shape[1]);
   }
 
   if (w_char_embedding_shape[1] != w_conv_shape[3]) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Char embedding size does not match conv kernal size 2.",
-                           " Char embedding size: ", conv_window_size_,
-                           " Conv kernal size 2 : ", w_conv_shape[3]);
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Char embedding size does not match conv kernal size 2.", " Char embedding size: ", conv_window_size_, " Conv kernal size 2 : ", w_conv_shape[3]);
   }
 
   return Status::OK();

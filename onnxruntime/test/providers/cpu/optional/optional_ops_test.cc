@@ -172,30 +172,19 @@ class OptionalOpTester : public OpTester {
         is_seq_tensor_ ? seq_tensor_type_proto : tensor_type_proto);
 
     auto& optional_node_arg = graph.GetOrCreateNodeArg("optional_output", &optional_type_proto);
-    ORT_IGNORE_RETURN_VALUE(graph.AddNode("optional_create", "Optional", "Create optional type",
-                                          {graph_input_defs[0]}, {&optional_node_arg},
-                                          nullptr));
+    ORT_IGNORE_RETURN_VALUE(graph.AddNode("optional_create", "Optional", "Create optional type", {graph_input_defs[0]}, {&optional_node_arg}, nullptr));
 
     auto& optional_parsed_node_arg = graph.GetOrCreateNodeArg("parsed_output",
                                                               is_seq_tensor_
                                                                   ? &seq_tensor_type_proto
                                                                   : &tensor_type_proto);
 
-    ORT_IGNORE_RETURN_VALUE(graph.AddNode("optional_get_element", "OptionalGetElement",
-                                          "Parse optional type",
-                                          {&optional_node_arg}, {&optional_parsed_node_arg},
-                                          nullptr));
+    ORT_IGNORE_RETURN_VALUE(graph.AddNode("optional_get_element", "OptionalGetElement", "Parse optional type", {&optional_node_arg}, {&optional_parsed_node_arg}, nullptr));
 
     if (!is_seq_tensor_) {
-      ORT_IGNORE_RETURN_VALUE(graph.AddNode("Size", "Size",
-                                            "Size",
-                                            {&optional_parsed_node_arg}, {graph_output_defs[0]},
-                                            nullptr));
+      ORT_IGNORE_RETURN_VALUE(graph.AddNode("Size", "Size", "Size", {&optional_parsed_node_arg}, {graph_output_defs[0]}, nullptr));
     } else {
-      ORT_IGNORE_RETURN_VALUE(graph.AddNode("SequenceLength", "SequenceLength",
-                                            "SequenceLength",
-                                            {&optional_parsed_node_arg}, {graph_output_defs[0]},
-                                            nullptr));
+      ORT_IGNORE_RETURN_VALUE(graph.AddNode("SequenceLength", "SequenceLength", "SequenceLength", {&optional_parsed_node_arg}, {graph_output_defs[0]}, nullptr));
     }
   }
 

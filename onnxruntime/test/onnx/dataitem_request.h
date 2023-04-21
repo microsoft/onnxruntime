@@ -38,8 +38,7 @@ class DataTaskRequestContext {
   /// <param name="allocator">allocator to use</param>
   /// <param name="task_id">this task id</param>
   /// <returns>execution result and elapsed time</returns>
-  static std::pair<EXECUTE_RESULT, TIME_SPEC> Run(const ITestCase& c, ::Ort::Session& session,
-                                                  OrtAllocator* allocator, size_t task_id);
+  static std::pair<EXECUTE_RESULT, TIME_SPEC> Run(const ITestCase& c, ::Ort::Session& session, OrtAllocator* allocator, size_t task_id);
 
   /// <summary>
   /// Schedules a data task to run on a threadpool. The function
@@ -51,9 +50,7 @@ class DataTaskRequestContext {
   /// <param name="session">session handle</param>
   /// <param name="allocator">allocator to use</param>
   /// <param name="task_id">this taks id</param>
-  static void Request(const Callback& cb, concurrency::ThreadPool* tp,
-                      const ITestCase& c, ::Ort::Session& session,
-                      OrtAllocator* allocator, size_t task_id);
+  static void Request(const Callback& cb, concurrency::ThreadPool* tp, const ITestCase& c, ::Ort::Session& session, OrtAllocator* allocator, size_t task_id);
 
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(DataTaskRequestContext);
 
@@ -68,8 +65,10 @@ class DataTaskRequestContext {
   }
 
   DataTaskRequestContext(const Callback& cb,
-                         const ITestCase& test_case, ::Ort::Session& session,
-                         OrtAllocator* allocator, size_t task_id)
+                         const ITestCase& test_case,
+                         ::Ort::Session& session,
+                         OrtAllocator* allocator,
+                         size_t task_id)
       : cb_(cb),
         test_case_(test_case),
         session_(session),

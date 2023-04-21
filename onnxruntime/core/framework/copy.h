@@ -155,9 +155,7 @@ void StridedCopy(concurrency::ThreadPool* thread_pool,
     std::ptrdiff_t contiguous_span_size = static_cast<std::ptrdiff_t>(dims == 2 ? copy_shape[1] : copy_shape[0]);
 
     concurrency::ThreadPool::TryParallelFor(
-        thread_pool, static_cast<std::ptrdiff_t>(total_num_elements_to_copy),
-        {static_cast<float>(sizeof(T)), static_cast<float>(sizeof(T)), 1.0F},
-        [src_stride, dst_stride, dst, src, contiguous_span_size](std::ptrdiff_t first, std::ptrdiff_t last) {
+        thread_pool, static_cast<std::ptrdiff_t>(total_num_elements_to_copy), {static_cast<float>(sizeof(T)), static_cast<float>(sizeof(T)), 1.0F}, [src_stride, dst_stride, dst, src, contiguous_span_size](std::ptrdiff_t first, std::ptrdiff_t last) {
           // get the current inner and outer index
           std::ptrdiff_t inner = first % contiguous_span_size;
           std::ptrdiff_t outer = first / contiguous_span_size;
@@ -200,10 +198,7 @@ void StridedCopy(concurrency::ThreadPool* thread_pool,
     const TensorShapeVector& const_copy_shape = copy_shape;
 
     concurrency::ThreadPool::TryParallelFor(
-        thread_pool, static_cast<std::ptrdiff_t>(total_num_elements_to_copy),
-        {static_cast<float>(sizeof(T)), static_cast<float>(sizeof(T)), 1.0F},
-        [&const_copy_shape, &const_dst_strides, dst, src, &const_src_strides, dims](std::ptrdiff_t first,
-                                                                                    std::ptrdiff_t last) {
+        thread_pool, static_cast<std::ptrdiff_t>(total_num_elements_to_copy), {static_cast<float>(sizeof(T)), static_cast<float>(sizeof(T)), 1.0F}, [&const_copy_shape, &const_dst_strides, dst, src, &const_src_strides, dims](std::ptrdiff_t first, std::ptrdiff_t last) {
           strided_copy_detail::NdCounter counter(const_copy_shape, first, last);
 
           auto last_dst_stride = const_dst_strides[dims - 1];
@@ -246,7 +241,8 @@ inline bool StridedCopyIfEnabled(concurrency::ThreadPool* thread_pool,
     // it will be a type with the same size though, which is all that matters given we're only copying bits.
     StridedCopy<T>(thread_pool,
                    reinterpret_cast<T*>(dst.MutableDataRaw()) + dst_offset,
-                   dst_strides, copy_shape,
+                   dst_strides,
+                   copy_shape,
                    reinterpret_cast<const T*>(src.DataRaw()) + src_offset,
                    src_strides);
   }
@@ -272,28 +268,23 @@ Status DispatchStridedCopy(concurrency::ThreadPool* thread_pool,
   if (src.IsDataTypeString()) {
     if constexpr (utils::HasType<EnabledDataTypes, std::string>()) {
       supported = true;
-      StridedCopy(thread_pool, dst.MutableData<std::string>() + dst_offset, dst_strides, copy_shape,
-                  src.Data<std::string>() + src_offset, src_strides);
+      StridedCopy(thread_pool, dst.MutableData<std::string>() + dst_offset, dst_strides, copy_shape, src.Data<std::string>() + src_offset, src_strides);
     }
   } else {
     const auto element_size = src.DataType()->Size();
     switch (element_size) {
       case sizeof(uint32_t):
-        supported = StridedCopyIfEnabled<EnabledDataTypes, uint32_t>(thread_pool, dst, dst_offset, dst_strides,
-                                                                     copy_shape, src, src_offset, src_strides);
+        supported = StridedCopyIfEnabled<EnabledDataTypes, uint32_t>(thread_pool, dst, dst_offset, dst_strides, copy_shape, src, src_offset, src_strides);
         break;
       case sizeof(uint64_t):
-        supported = StridedCopyIfEnabled<EnabledDataTypes, uint64_t>(thread_pool, dst, dst_offset, dst_strides,
-                                                                     copy_shape, src, src_offset, src_strides);
+        supported = StridedCopyIfEnabled<EnabledDataTypes, uint64_t>(thread_pool, dst, dst_offset, dst_strides, copy_shape, src, src_offset, src_strides);
         break;
       case sizeof(uint16_t):
-        supported = StridedCopyIfEnabled<EnabledDataTypes, uint16_t>(thread_pool, dst, dst_offset, dst_strides,
-                                                                     copy_shape, src, src_offset, src_strides);
+        supported = StridedCopyIfEnabled<EnabledDataTypes, uint16_t>(thread_pool, dst, dst_offset, dst_strides, copy_shape, src, src_offset, src_strides);
         break;
       case sizeof(uint8_t):
         static_assert(sizeof(bool) == sizeof(uint8_t), "Need to enable separate case for 'bool' on this platform.");
-        supported = StridedCopyIfEnabled<EnabledDataTypes, uint8_t>(thread_pool, dst, dst_offset, dst_strides,
-                                                                    copy_shape, src, src_offset, src_strides);
+        supported = StridedCopyIfEnabled<EnabledDataTypes, uint8_t>(thread_pool, dst, dst_offset, dst_strides, copy_shape, src, src_offset, src_strides);
         break;
       // It's possible that bool is not 1 byte. static_assert above checks if we need to enable this on a platform.
       // case sizeof(bool):

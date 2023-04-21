@@ -48,10 +48,7 @@ Status GENERIC_OP_IR_CREATOR_CLASS(Split)::Evaluate(
   if (ShapeHasValue(node.InputDefs()[0], axis)) {
     int64_t input_axis_dim = ShapeValue(node.InputDefs()[0], axis);
     if (split_size_sum != input_axis_dim) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                             "Cannot split using values in 'split' attribute. Axis=", axis,
-                             " Dim being splitted=", input_axis_dim,
-                             " Sum of sizes in 'split' (must equal size of selected axis) was ", split_size_sum);
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Cannot split using values in 'split' attribute. Axis=", axis, " Dim being splitted=", input_axis_dim, " Sum of sizes in 'split' (must equal size of selected axis) was ", split_size_sum);
     }
   }
 

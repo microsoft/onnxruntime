@@ -62,9 +62,7 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
                                                                   rpc_control_latency_);
 }
 
-bool QNNExecutionProvider::IsNodeSupported(qnn::QnnModelWrapper& qnn_model_wrapper, const NodeUnit& node_unit,
-                                           std::unordered_map<const NodeUnit*, bool>& node_unit_supported_result,
-                                           const logging::Logger& logger) const {
+bool QNNExecutionProvider::IsNodeSupported(qnn::QnnModelWrapper& qnn_model_wrapper, const NodeUnit& node_unit, std::unordered_map<const NodeUnit*, bool>& node_unit_supported_result, const logging::Logger& logger) const {
   bool is_npu_backend = qnn_backend_manager_->IsNpuBackend();
   // If we have visited one of the nodes in the node_unit, use the result directly
   const auto it = node_unit_supported_result.find(&node_unit);
@@ -117,7 +115,8 @@ bool QNNExecutionProvider::IsNodeSupported(qnn::QnnModelWrapper& qnn_model_wrapp
       LOGS(logger, VERBOSE) << "Op not implemented in QNN EP. Op type: " << node_unit.OpType();
     } else {
       auto status = op_builder->IsOpSupported(qnn_model_wrapper,
-                                              node_unit, logger,
+                                              node_unit,
+                                              logger,
                                               is_npu_backend);
       if (Status::OK() != status) {
         LOGS(logger, VERBOSE) << "Op type: " << node_unit.OpType()
@@ -151,12 +150,7 @@ QNNExecutionProvider::GetSupportedNodes(const GraphViewer& graph_viewer,
   std::unordered_map<std::string, size_t> model_output_index_map;
   std::unordered_map<std::string, qnn::OnnxTensorInfo> inputs_info;
   std::unordered_map<std::string, qnn::OnnxTensorInfo> outputs_info;
-  auto qnn_model_wrapper = qnn::QnnModelWrapper(graph_viewer, logger,
-                                                qnn_backend_manager_->GetQnnInterface(),
-                                                qnn_backend_manager_->GetQnnBackendHandle(),
-                                                model_input_index_map,
-                                                model_output_index_map,
-                                                initializer_input_lookup, cpu_allocator_);
+  auto qnn_model_wrapper = qnn::QnnModelWrapper(graph_viewer, logger, qnn_backend_manager_->GetQnnInterface(), qnn_backend_manager_->GetQnnBackendHandle(), model_input_index_map, model_output_index_map, initializer_input_lookup, cpu_allocator_);
 
   for (const auto& node : graph_viewer.Nodes()) {
     const NodeUnit* node_unit = node_unit_map.at(&node);
@@ -223,20 +217,15 @@ QNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer
     return MakeString(QNN, "_", model_hash, "_", metadef_id);
   };
 
-  result = utils::CreateSupportedPartitions(graph_viewer, supported_nodes, {},
-                                            gen_metadef_name, QNN, kQnnExecutionProvider, true);
+  result = utils::CreateSupportedPartitions(graph_viewer, supported_nodes, {}, gen_metadef_name, QNN, kQnnExecutionProvider, true);
 
   const auto num_of_partitions = result.size();
   const auto num_of_supported_nodes = std::transform_reduce(
-      result.begin(), result.end(),
-      size_t{0}, std::plus<>{},
-      [](const auto& partition) -> size_t {
+      result.begin(), result.end(), size_t{0}, std::plus<>{}, [](const auto& partition) -> size_t {
         return partition && partition->sub_graph ? partition->sub_graph->nodes.size() : 0;
       });
 
-  const auto summary_msg = MakeString("Number of partitions supported by QNN EP: ", num_of_partitions,
-                                      ", number of nodes in the graph: ", graph_viewer.NumberOfNodes(),
-                                      ", number of nodes supported by QNN: ", num_of_supported_nodes);
+  const auto summary_msg = MakeString("Number of partitions supported by QNN EP: ", num_of_partitions, ", number of nodes in the graph: ", graph_viewer.NumberOfNodes(), ", number of nodes supported by QNN: ", num_of_supported_nodes);
 
   // If the graph is partitioned in multiple subgraphs, and this may impact performance,
   // we want to give users a summary message at warning level.

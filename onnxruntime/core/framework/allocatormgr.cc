@@ -98,9 +98,7 @@ void AllocatorManager::InsertAllocator(AllocatorPtr allocator) {
   int32_t key = MakeKey(info.mem_type, info.device);
   auto iter = allocators_.find(key);
   if (iter != allocators_.end()) {
-    ORT_THROW("Duplicate allocator for OrtMemType:", info.mem_type, " device:", info.device.ToString(),
-              " Existing allocator: ", iter->second->Info().name,
-              " New allocator: ", allocator->Info().name);
+    ORT_THROW("Duplicate allocator for OrtMemType:", info.mem_type, " device:", info.device.ToString(), " Existing allocator: ", iter->second->Info().name, " New allocator: ", allocator->Info().name);
   }
 
   allocators_[key] = allocator;

@@ -115,8 +115,7 @@ bool TraceSession::GUIDEqual::operator()(GUID const& lhs, GUID const& rhs) const
   return IsEqualGUID(lhs, rhs) != FALSE;
 }
 
-bool TraceSession::AddProvider(GUID providerId, UCHAR level,
-                               ULONGLONG matchAnyKeyword, ULONGLONG matchAllKeyword) {
+bool TraceSession::AddProvider(GUID providerId, UCHAR level, ULONGLONG matchAnyKeyword, ULONGLONG matchAllKeyword) {
   auto p = eventProvider_.emplace(std::make_pair(providerId, Provider()));
   if (!p.second) {
     return false;
@@ -141,9 +140,7 @@ bool TraceSession::AddHandler(GUID providerId, EventHandlerFn handlerFn, void* h
   return true;
 }
 
-bool TraceSession::AddProviderAndHandler(GUID providerId, UCHAR level,
-                                         ULONGLONG matchAnyKeyword, ULONGLONG matchAllKeyword,
-                                         EventHandlerFn handlerFn, void* handlerContext) {
+bool TraceSession::AddProviderAndHandler(GUID providerId, UCHAR level, ULONGLONG matchAnyKeyword, ULONGLONG matchAllKeyword, EventHandlerFn handlerFn, void* handlerContext) {
   if (!AddProvider(providerId, level, matchAnyKeyword, matchAllKeyword))
     return false;
   if (!AddHandler(providerId, handlerFn, handlerContext)) {
@@ -225,9 +222,7 @@ bool TraceSession::InitializeRealtime(TCHAR const* traceSessionName, ShouldStopP
 
     status = EnableTraceEx2(sessionHandle_, pGuid, EVENT_CONTROL_CODE_ENABLE_PROVIDER, h.level_, h.matchAny_, h.matchAll_, 0, nullptr);
     if (status != ERROR_SUCCESS) {
-      fprintf(stderr, "error: failed to enable provider {%08x-%04x-%04x-%02x%02x-%02x%02x%02x%02x%02x%02x}.\n",
-              pGuid->Data1, pGuid->Data2, pGuid->Data3, pGuid->Data4[0], pGuid->Data4[1], pGuid->Data4[2],
-              pGuid->Data4[3], pGuid->Data4[4], pGuid->Data4[5], pGuid->Data4[6], pGuid->Data4[7]);
+      fprintf(stderr, "error: failed to enable provider {%08x-%04x-%04x-%02x%02x-%02x%02x%02x%02x%02x%02x}.\n", pGuid->Data1, pGuid->Data2, pGuid->Data3, pGuid->Data4[0], pGuid->Data4[1], pGuid->Data4[2], pGuid->Data4[3], pGuid->Data4[4], pGuid->Data4[5], pGuid->Data4[6], pGuid->Data4[7]);
       Finalize();
       return false;
     }

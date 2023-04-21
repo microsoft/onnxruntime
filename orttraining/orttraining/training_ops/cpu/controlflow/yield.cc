@@ -8,8 +8,7 @@ namespace onnxruntime {
 namespace contrib {
 
 ONNX_OPERATOR_KERNEL_EX(
-    YieldOp, kMSDomain, 1, kCpuExecutionProvider,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()).ExternalOutputs(), YieldOp);
+    YieldOp, kMSDomain, 1, kCpuExecutionProvider, KernelDefBuilder().TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()).ExternalOutputs(), YieldOp);
 
 Status YieldOp::Compute(OpKernelContext* ctx) const {
   ORT_UNUSED_PARAMETER(ctx);

@@ -32,8 +32,7 @@ class TransposeOpBuilder : public BaseOpBuilder {
 
   // Operator support related
  private:
-  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
-                         const OpSupportCheckParams& params) const override;
+  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit, const OpSupportCheckParams& params) const override;
 
   int32_t GetMinSupportedNNAPIFeatureLevel(const NodeUnit& /* node_unit */,
                                            const OpSupportCheckParams& /* params */) const override {
@@ -41,8 +40,7 @@ class TransposeOpBuilder : public BaseOpBuilder {
   }
 
   bool HasSupportedInputOutputsImpl(
-      const InitializedTensorSet& initializers, const NodeUnit& node_unit,
-      const OpSupportCheckParams& params) const override;
+      const InitializedTensorSet& initializers, const NodeUnit& node_unit, const OpSupportCheckParams& params) const override;
   bool IsNodeUnitTypeSupported(const NodeUnit& /* node_unit */) const override { return true; }
   bool IsQuantizedOp(const NodeUnit& node_unit) const override;
 };
@@ -95,8 +93,7 @@ bool TransposeOpBuilder::IsQuantizedOp(const NodeUnit& node_unit) const {
   return GetQuantizedOpType(node_unit) == QuantizedOpType::QDQTranspose;
 }
 
-bool TransposeOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /* initializers */, const NodeUnit& node_unit,
-                                           const OpSupportCheckParams& /* params */) const {
+bool TransposeOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /* initializers */, const NodeUnit& node_unit, const OpSupportCheckParams& /* params */) const {
   Shape input_shape;
   if (!GetShape(node_unit.Inputs()[0].node_arg, input_shape))
     return false;
@@ -112,8 +109,7 @@ bool TransposeOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /* initia
 }
 
 bool TransposeOpBuilder::HasSupportedInputOutputsImpl(
-    const InitializedTensorSet& initializers, const NodeUnit& node_unit,
-    const OpSupportCheckParams& params) const {
+    const InitializedTensorSet& initializers, const NodeUnit& node_unit, const OpSupportCheckParams& params) const {
   int32_t input_type;
   if (!GetType(node_unit.Inputs()[0].node_arg, input_type))
     return false;

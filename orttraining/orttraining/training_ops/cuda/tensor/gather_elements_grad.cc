@@ -18,13 +18,10 @@ namespace cuda {
 #define CREATE_GATHER_ELEMENTS_GRAD_KERNEL_DEF (*KernelDefBuilder::Create())
 #endif
 
-ONNX_OPERATOR_KERNEL_EX(GatherElementsGrad, kMSDomain, 1, kCudaExecutionProvider,
-                        CREATE_GATHER_ELEMENTS_GRAD_KERNEL_DEF
-                            .InputMemoryType(OrtMemTypeCPUInput, 1)  // 'GatherElements' data shape needs to be on CPU
-                            .TypeConstraint("T", DataTypeImpl::AllIEEEFloatTensorTypes())
-                            .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
-                            .TypeConstraint("Tind", std::vector<MLDataType>{DataTypeImpl::GetTensorType<int32_t>(),
-                                                                            DataTypeImpl::GetTensorType<int64_t>()}),
+ONNX_OPERATOR_KERNEL_EX(GatherElementsGrad, kMSDomain, 1, kCudaExecutionProvider, CREATE_GATHER_ELEMENTS_GRAD_KERNEL_DEF.InputMemoryType(OrtMemTypeCPUInput, 1)  // 'GatherElements' data shape needs to be on CPU
+                                                                                      .TypeConstraint("T", DataTypeImpl::AllIEEEFloatTensorTypes())
+                                                                                      .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
+                                                                                      .TypeConstraint("Tind", std::vector<MLDataType>{DataTypeImpl::GetTensorType<int32_t>(), DataTypeImpl::GetTensorType<int64_t>()}),
                         GatherElementsGrad);
 
 #undef CREATE_GATHER_ELEMENTS_GRAD_KERNEL_DEF
@@ -37,8 +34,7 @@ ONNX_OPERATOR_KERNEL_EX(GatherElementsGrad, kMSDomain, 1, kCudaExecutionProvider
 
 template <typename T>
 struct GatherElementsGrad::ComputeImpl {
-  Status operator()(cudaStream_t stream, const void* dY_data_raw, const void* indices_data_raw, void* dX_data_raw,
-                    const size_t index_element_size, const GatherScatterElementsArgs& args) const {
+  Status operator()(cudaStream_t stream, const void* dY_data_raw, const void* indices_data_raw, void* dX_data_raw, const size_t index_element_size, const GatherScatterElementsArgs& args) const {
     typedef typename ToCudaType<T>::MappedType CudaT;
     const CudaT* updates_data = reinterpret_cast<const CudaT*>(dY_data_raw);
     CudaT* output_data = reinterpret_cast<CudaT*>(dX_data_raw);
@@ -101,8 +97,7 @@ Status GatherElementsGrad::ComputeInternal(OpKernelContext* context) const {
   }
 
   utils::MLTypeCallDispatcher<MLFloat16, float, double> t_disp(dtype);
-  return t_disp.InvokeRet<Status, ComputeImpl>(Stream(context), dY->DataRaw(), indices_tensor->DataRaw(), dX->MutableDataRaw(),
-                                               indices_tensor->DataType()->Size(), args);
+  return t_disp.InvokeRet<Status, ComputeImpl>(Stream(context), dY->DataRaw(), indices_tensor->DataRaw(), dX->MutableDataRaw(), indices_tensor->DataType()->Size(), args);
 }
 
 }  // namespace cuda

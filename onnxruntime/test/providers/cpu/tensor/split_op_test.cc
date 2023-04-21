@@ -18,11 +18,7 @@ using ShapeAndStringData = ShapeAndData<std::string>;
 using ExpectResult = OpTester::ExpectResult;
 
 template <typename T>
-void RunTest(int64_t axis, const std::vector<int64_t>& split_sizes, const ShapeAndData<T>& input,
-             const std::vector<ShapeAndData<T>>& outputs,
-             const std::unordered_set<std::string>& excluded_providers,
-             bool expect_failure = false, bool split_as_input = false, int64_t num_outputs = -1,
-             bool is_initializer = true, const std::string& err_msg = {}, bool skip_split_if_empty = true) {
+void RunTest(int64_t axis, const std::vector<int64_t>& split_sizes, const ShapeAndData<T>& input, const std::vector<ShapeAndData<T>>& outputs, const std::unordered_set<std::string>& excluded_providers, bool expect_failure = false, bool split_as_input = false, int64_t num_outputs = -1, bool is_initializer = true, const std::string& err_msg = {}, bool skip_split_if_empty = true) {
   int opset_version = num_outputs > -1 ? 18 : split_as_input ? 13
                                                              : 7;
 
@@ -104,18 +100,13 @@ void SplitTestAxis0EqualSplit(bool use_opset_13 = false) {
 
   // input shape and data
   ShapeAndData<T> input = {{4, 2},  // shape
-                           {V(1), V(2),
-                            V(3), V(4),
-                            V(5), V(6),
-                            V(7), V(8)}};
+                           {V(1), V(2), V(3), V(4), V(5), V(6), V(7), V(8)}};
 
   outputs.push_back({{2, 2},
-                     {V(1), V(2),
-                      V(3), V(4)}});
+                     {V(1), V(2), V(3), V(4)}});
 
   outputs.push_back({{2, 2},
-                     {V(5), V(6),
-                      V(7), V(8)}});
+                     {V(5), V(6), V(7), V(8)}});
 
   RunTest<T>(axis, {}, input, outputs,
              // TensorRT parser: Assertion failed: axis != BATCH_DIM
@@ -149,19 +140,14 @@ TEST(SplitOperatorTest, Axis0UnequalSplitFloat) {
 
   // input shape and data
   ShapeAndFloatData input = {{4, 2},  // shape
-                             {1.f, 2.f,
-                              3.f, 4.f,
-                              5.f, 6.f,
-                              7.f, 8.f}};
+                             {1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f, 8.f}};
 
   std::vector<int64_t> splits{1, 3};
 
   outputs.push_back({{1, 2}, {1.f, 2.f}});
 
   outputs.push_back({{3, 2},
-                     {3.f, 4.f,
-                      5.f, 6.f,
-                      7.f, 8.f}});
+                     {3.f, 4.f, 5.f, 6.f, 7.f, 8.f}});
   // TensorRT parser: Assertion failed: axis != BATCH_DIM
   RunTest<float>(axis, splits, input, outputs, {kTensorrtExecutionProvider});
 }
@@ -172,19 +158,14 @@ TEST(SplitOperatorTest, Axis0UnequalSplitString) {
 
   // input shape and data
   ShapeAndStringData input = {{4, 2},  // shape
-                              {"a", "b",
-                               "c", "d",
-                               "e", "f",
-                               "g", "h"}};
+                              {"a", "b", "c", "d", "e", "f", "g", "h"}};
 
   std::vector<int64_t> splits{1, 3};
 
   outputs.push_back({{1, 2}, {"a", "b"}});
 
   outputs.push_back({{3, 2},
-                     {"c", "d",
-                      "e", "f",
-                      "g", "h"}});
+                     {"c", "d", "e", "f", "g", "h"}});
   // TensorRT parser: Assertion failed: axis != BATCH_DIM
   RunTest<std::string>(axis, splits, input, outputs, {kTensorrtExecutionProvider});
 }
@@ -195,16 +176,13 @@ TEST(SplitOperatorTest, Axis1EqualSplitFloat) {
 
   // input shape and data
   ShapeAndFloatData input = {{2, 4},
-                             {1.f, 2.f, 3.f, 4.f,
-                              5.f, 6.f, 7.f, 8.f}};
+                             {1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f, 8.f}};
 
   outputs.push_back({{2, 2},
-                     {1.f, 2.f,
-                      5.f, 6.f}});
+                     {1.f, 2.f, 5.f, 6.f}});
 
   outputs.push_back({{2, 2},
-                     {3.f, 4.f,
-                      7.f, 8.f}});
+                     {3.f, 4.f, 7.f, 8.f}});
 
   RunTest<float>(axis, {}, input, outputs, {kTensorrtExecutionProvider});
 }
@@ -215,16 +193,13 @@ TEST(SplitOperatorTest, Axis1EqualSplitString) {
 
   // input shape and data
   ShapeAndStringData input = {{2, 4},
-                              {"a", "b", "c", "d",
-                               "e", "f", "g", "h"}};
+                              {"a", "b", "c", "d", "e", "f", "g", "h"}};
 
   outputs.push_back({{2, 2},
-                     {"a", "b",
-                      "e", "f"}});
+                     {"a", "b", "e", "f"}});
 
   outputs.push_back({{2, 2},
-                     {"c", "d",
-                      "g", "h"}});
+                     {"c", "d", "g", "h"}});
 
   RunTest<std::string>(axis, {}, input, outputs, {kTensorrtExecutionProvider});
 }
@@ -235,14 +210,12 @@ TEST(SplitOperatorTest, Axis1UnequalSplitFloat) {
 
   // input shape and data
   ShapeAndFloatData input = {{2, 4},
-                             {1.f, 2.f, 3.f, 4.f,
-                              5.f, 6.f, 7.f, 8.f}};
+                             {1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f, 8.f}};
 
   std::vector<int64_t> splits{3, 1};
 
   outputs.push_back({{2, 3},
-                     {1.f, 2.f, 3.f,
-                      5.f, 6.f, 7.f}});
+                     {1.f, 2.f, 3.f, 5.f, 6.f, 7.f}});
 
   outputs.push_back({{2, 1},
                      {4.f,
@@ -257,14 +230,12 @@ TEST(SplitOperatorTest, Axis1UnequalSplitString) {
 
   // input shape and data
   ShapeAndStringData input = {{2, 4},
-                              {"a", "b", "c", "d",
-                               "e", "f", "g", "h"}};
+                              {"a", "b", "c", "d", "e", "f", "g", "h"}};
 
   std::vector<int64_t> splits{3, 1};
 
   outputs.push_back({{2, 3},
-                     {"a", "b", "c",
-                      "e", "f", "g"}});
+                     {"a", "b", "c", "e", "f", "g"}});
 
   outputs.push_back({{2, 1},
                      {"d",
@@ -292,25 +263,28 @@ TEST(SplitOperatorTest, Axis2EqualSplit) {
   ShapeAndFloatData input = CreateInput<float>({2, 2, 6});
 
   outputs.push_back({{2, 2, 2},
-                     {1.f, 2.f,
-                      7.f, 8.f,
+                     {1.f, 2.f, 7.f, 8.f,
 
-                      13.f, 14.f,
-                      19.f, 20.f}});
-
-  outputs.push_back({{2, 2, 2},
-                     {3.f, 4.f,
-                      9.f, 10.f,
-
-                      15.f, 16.f,
-                      21.f, 22.f}});
+                      13.f,
+                      14.f,
+                      19.f,
+                      20.f}});
 
   outputs.push_back({{2, 2, 2},
-                     {5.f, 6.f,
-                      11.f, 12.f,
+                     {3.f, 4.f, 9.f, 10.f,
 
-                      17.f, 18.f,
-                      23.f, 24.f}});
+                      15.f,
+                      16.f,
+                      21.f,
+                      22.f}});
+
+  outputs.push_back({{2, 2, 2},
+                     {5.f, 6.f, 11.f, 12.f,
+
+                      17.f,
+                      18.f,
+                      23.f,
+                      24.f}});
 
   RunTest<float>(axis, {}, input, outputs, {kTensorrtExecutionProvider});
 }
@@ -331,18 +305,22 @@ TEST(SplitOperatorTest, Axis2UnequalSplit) {
                       19.f}});
 
   outputs.push_back({{2, 2, 2},
-                     {2.f, 3.f,
-                      8.f, 9.f,
+                     {2.f, 3.f, 8.f, 9.f,
 
-                      14.f, 15.f,
-                      20.f, 21.f}});
+                      14.f,
+                      15.f,
+                      20.f,
+                      21.f}});
 
   outputs.push_back({{2, 2, 3},
-                     {4.f, 5.f, 6.f,
-                      10.f, 11.f, 12.f,
+                     {4.f, 5.f, 6.f, 10.f, 11.f, 12.f,
 
-                      16.f, 17.f, 18.f,
-                      22.f, 23.f, 24.f}});
+                      16.f,
+                      17.f,
+                      18.f,
+                      22.f,
+                      23.f,
+                      24.f}});
 
   RunTest<float>(axis, splits, input, outputs, {kTensorrtExecutionProvider});
 }
@@ -364,18 +342,28 @@ TEST(SplitOperatorTest, Axis1SplitMiddleDimensionEqually) {
   ShapeAndFloatData input = CreateInput<float>({2, 4, 4});
 
   outputs.push_back({{2, 2, 4},
-                     {1.f, 2.f, 3.f, 4.f,
-                      5.f, 6.f, 7.f, 8.f,
+                     {1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f, 8.f,
 
-                      17.f, 18.f, 19.f, 20.f,
-                      21.f, 22.f, 23.f, 24.f}});
+                      17.f,
+                      18.f,
+                      19.f,
+                      20.f,
+                      21.f,
+                      22.f,
+                      23.f,
+                      24.f}});
 
   outputs.push_back({{2, 2, 4},
-                     {9.f, 10.f, 11.f, 12.f,
-                      13.f, 14.f, 15.f, 16.f,
+                     {9.f, 10.f, 11.f, 12.f, 13.f, 14.f, 15.f, 16.f,
 
-                      25.f, 26.f, 27.f, 28.f,
-                      29.f, 30.f, 31.f, 32.f}});
+                      25.f,
+                      26.f,
+                      27.f,
+                      28.f,
+                      29.f,
+                      30.f,
+                      31.f,
+                      32.f}});
 
   RunTest<float>(axis, {}, input, outputs, {kTensorrtExecutionProvider});
 }
@@ -392,16 +380,26 @@ TEST(SplitOperatorTest, Axis1SplitMiddleDimensionUnequally) {
   outputs.push_back({{2, 1, 4},
                      {1.f, 2.f, 3.f, 4.f,
 
-                      17.f, 18.f, 19.f, 20.f}});
+                      17.f,
+                      18.f,
+                      19.f,
+                      20.f}});
 
   outputs.push_back({{2, 3, 4},
-                     {5.f, 6.f, 7.f, 8.f,
-                      9.f, 10.f, 11.f, 12.f,
-                      13.f, 14.f, 15.f, 16.f,
+                     {5.f, 6.f, 7.f, 8.f, 9.f, 10.f, 11.f, 12.f, 13.f, 14.f, 15.f, 16.f,
 
-                      21.f, 22.f, 23.f, 24.f,
-                      25.f, 26.f, 27.f, 28.f,
-                      29.f, 30.f, 31.f, 32.f}});
+                      21.f,
+                      22.f,
+                      23.f,
+                      24.f,
+                      25.f,
+                      26.f,
+                      27.f,
+                      28.f,
+                      29.f,
+                      30.f,
+                      31.f,
+                      32.f}});
 
   RunTest<float>(axis, splits, input, outputs, {kTensorrtExecutionProvider});
 }
@@ -412,16 +410,13 @@ TEST(SplitOperatorTest, NegativeAxis) {
 
   // input shape and data
   ShapeAndFloatData input = {{2, 4},
-                             {1.f, 2.f, 3.f, 4.f,
-                              5.f, 6.f, 7.f, 8.f}};
+                             {1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f, 8.f}};
 
   outputs.push_back({{2, 2},
-                     {1.f, 2.f,
-                      5.f, 6.f}});
+                     {1.f, 2.f, 5.f, 6.f}});
 
   outputs.push_back({{2, 2},
-                     {3.f, 4.f,
-                      7.f, 8.f}});
+                     {3.f, 4.f, 7.f, 8.f}});
 
   RunTest<float>(axis, {}, input, outputs, {kTensorrtExecutionProvider});
 }
@@ -432,10 +427,7 @@ TEST(SplitOperatorTest, InvalidAxis) {
 
   // input shape and data
   ShapeAndFloatData input = {{4, 2},  // shape
-                             {1.f, 2.f,
-                              3.f, 4.f,
-                              5.f, 6.f,
-                              7.f, 8.f}};
+                             {1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f, 8.f}};
 
   outputs.push_back({{1}, {0.f}});
 
@@ -449,10 +441,7 @@ TEST(SplitOperatorTest, SplitAttributeSumTooSmall) {
 
   // input shape and data
   ShapeAndFloatData input = {{4, 2},  // shape
-                             {1.f, 2.f,
-                              3.f, 4.f,
-                              5.f, 6.f,
-                              7.f, 8.f}};
+                             {1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f, 8.f}};
 
   std::vector<int64_t> splits{1, 2};  // should sum to 4
 
@@ -469,10 +458,7 @@ TEST(SplitOperatorTest, InvalidValueInSplitAttribute) {
 
   // input shape and data
   ShapeAndFloatData input = {{4, 2},  // shape
-                             {1.f, 2.f,
-                              3.f, 4.f,
-                              5.f, 6.f,
-                              7.f, 8.f}};
+                             {1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f, 8.f}};
 
   std::vector<int64_t> splits{1, 0, 3};  // 0 is not valid
   outputs.push_back({{1, 2}, {1.f, 2.f}});
@@ -489,19 +475,14 @@ TEST(SplitOperatorTest, Axis0UnequalSplitInputFloat) {
 
   // input shape and data
   ShapeAndFloatData input = {{4, 2},  // shape
-                             {1.f, 2.f,
-                              3.f, 4.f,
-                              5.f, 6.f,
-                              7.f, 8.f}};
+                             {1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f, 8.f}};
 
   std::vector<int64_t> splits{1, 3};
 
   outputs.push_back({{1, 2}, {1.f, 2.f}});
 
   outputs.push_back({{3, 2},
-                     {3.f, 4.f,
-                      5.f, 6.f,
-                      7.f, 8.f}});
+                     {3.f, 4.f, 5.f, 6.f, 7.f, 8.f}});
 
   RunTest<float>(axis, splits, input, outputs, {kTensorrtExecutionProvider}, false, true);
 }
@@ -513,19 +494,14 @@ TEST(SplitOperatorTest, Axis0UnequalSplitInputFloat_not_initializer) {
 
   // input shape and data
   ShapeAndFloatData input = {{4, 2},  // shape
-                             {1.f, 2.f,
-                              3.f, 4.f,
-                              5.f, 6.f,
-                              7.f, 8.f}};
+                             {1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f, 8.f}};
 
   std::vector<int64_t> splits{1, 3};
 
   outputs.push_back({{1, 2}, {1.f, 2.f}});
 
   outputs.push_back({{3, 2},
-                     {3.f, 4.f,
-                      5.f, 6.f,
-                      7.f, 8.f}});
+                     {3.f, 4.f, 5.f, 6.f, 7.f, 8.f}});
 
   RunTest<float>(axis, splits, input, outputs, {kTensorrtExecutionProvider}, false, true, -1, false);
 }
@@ -603,16 +579,26 @@ TEST(SplitOperatorTest, Uint8Axis1SplitMiddleDimensionUnequally) {
   outputs.push_back({{2, 1, 4},
                      {1, 2, 3, 4,
 
-                      17, 18, 19, 20}});
+                      17,
+                      18,
+                      19,
+                      20}});
 
   outputs.push_back({{2, 3, 4},
-                     {5, 6, 7, 8,
-                      9, 10, 11, 12,
-                      13, 14, 15, 16,
+                     {5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
 
-                      21, 22, 23, 24,
-                      25, 26, 27, 28,
-                      29, 30, 31, 32}});
+                      21,
+                      22,
+                      23,
+                      24,
+                      25,
+                      26,
+                      27,
+                      28,
+                      29,
+                      30,
+                      31,
+                      32}});
 
   RunTest<uint8_t>(axis, splits, input, outputs, {kTensorrtExecutionProvider});
 }
@@ -623,16 +609,13 @@ TEST(SplitOperatorTest, Uint8NegativeAxis) {
   std::vector<ShapeAndData<uint8_t>> outputs;
 
   ShapeAndData<uint8_t> input = {{2, 4},
-                                 {1, 2, 3, 4,
-                                  5, 6, 7, 8}};
+                                 {1, 2, 3, 4, 5, 6, 7, 8}};
 
   outputs.push_back({{2, 2},
-                     {1, 2,
-                      5, 6}});
+                     {1, 2, 5, 6}});
 
   outputs.push_back({{2, 2},
-                     {3, 4,
-                      7, 8}});
+                     {3, 4, 7, 8}});
 
   RunTest<uint8_t>(axis, {}, input, outputs, {kTensorrtExecutionProvider});
 }
@@ -643,16 +626,13 @@ TEST(SplitOperatorTest, MissingOptionalInputAdded) {
 
   // input shape and data
   ShapeAndFloatData input = {{2, 4},
-                             {1.f, 2.f, 3.f, 4.f,
-                              5.f, 6.f, 7.f, 8.f}};
+                             {1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f, 8.f}};
 
   outputs.push_back({{2, 2},
-                     {1.f, 2.f,
-                      5.f, 6.f}});
+                     {1.f, 2.f, 5.f, 6.f}});
 
   outputs.push_back({{2, 2},
-                     {3.f, 4.f,
-                      7.f, 8.f}});
+                     {3.f, 4.f, 7.f, 8.f}});
 
   RunTest<float>(axis, {}, input, outputs, {kTensorrtExecutionProvider}, false, true, -1, false, {}, false);
 }
@@ -663,18 +643,13 @@ TEST(SplitOperatorTest, Split18_NumOutputs_EvenSplit) {
 
   // input shape and data
   ShapeAndFloatData input = {{4, 2},  // shape
-                             {1.f, 2.f,
-                              3.f, 4.f,
-                              5.f, 6.f,
-                              7.f, 8.f}};
+                             {1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f, 8.f}};
 
   outputs.push_back({{2, 2},
-                     {1.f, 2.f,
-                      3.f, 4.f}});
+                     {1.f, 2.f, 3.f, 4.f}});
 
   outputs.push_back({{2, 2},
-                     {5.f, 6.f,
-                      7.f, 8.f}});
+                     {5.f, 6.f, 7.f, 8.f}});
 
   int64_t num_outputs = 2;
   RunTest<float>(axis, {}, input, outputs, {kTensorrtExecutionProvider}, false, true, num_outputs, false);
@@ -686,19 +661,13 @@ TEST(SplitOperatorTest, Split18_NumOutputs_UnevenSplit) {
 
   // input shape and data
   ShapeAndFloatData input = {{5, 2},  // shape
-                             {1.f, 2.f,
-                              3.f, 4.f,
-                              5.f, 6.f,
-                              7.f, 8.f,
-                              9.f, 10.f}};
+                             {1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f, 8.f, 9.f, 10.f}};
 
   outputs.push_back({{2, 2},
-                     {1.f, 2.f,
-                      3.f, 4.f}});
+                     {1.f, 2.f, 3.f, 4.f}});
 
   outputs.push_back({{2, 2},
-                     {5.f, 6.f,
-                      7.f, 8.f}});
+                     {5.f, 6.f, 7.f, 8.f}});
 
   outputs.push_back({{1, 2}, {9.f, 10.f}});
 
@@ -712,16 +681,13 @@ TEST(SplitOperatorTest, Split18_InvalidNumOutputs) {
 
   // input shape and data
   ShapeAndFloatData input = {{2, 2},  // shape
-                             {1.f, 2.f,
-                              3.f, 4.f}};
+                             {1.f, 2.f, 3.f, 4.f}};
 
   outputs.push_back({{2, 2},
-                     {1.f, 2.f,
-                      3.f, 4.f}});
+                     {1.f, 2.f, 3.f, 4.f}});
 
   int64_t num_outputs = 0;
-  RunTest<float>(axis, {}, input, outputs, {kTensorrtExecutionProvider, kQnnExecutionProvider}, true, true, num_outputs, false,
-                 "Attribute `num_outputs` value cannot be lower than 1");
+  RunTest<float>(axis, {}, input, outputs, {kTensorrtExecutionProvider, kQnnExecutionProvider}, true, true, num_outputs, false, "Attribute `num_outputs` value cannot be lower than 1");
 
   outputs.clear();
   outputs.push_back({{1, 2},
@@ -730,8 +696,7 @@ TEST(SplitOperatorTest, Split18_InvalidNumOutputs) {
                      {0.f, 0.f}});
 
   num_outputs = 3;
-  RunTest<float>(axis, {}, input, outputs, {kTensorrtExecutionProvider, kQnnExecutionProvider}, true, true, num_outputs, false,
-                 "Invalid num_outputs value of 3. Size of dimension being split is 2");
+  RunTest<float>(axis, {}, input, outputs, {kTensorrtExecutionProvider, kQnnExecutionProvider}, true, true, num_outputs, false, "Invalid num_outputs value of 3. Size of dimension being split is 2");
 }
 
 TEST(SplitOperatorTest, Split18_NumOutputsEvenSplitAxis1) {
@@ -740,8 +705,7 @@ TEST(SplitOperatorTest, Split18_NumOutputsEvenSplitAxis1) {
 
   // input shape and data
   ShapeAndFloatData input = {{2, 3},  // shape
-                             {1.f, 2.f, 3.f,
-                              4.f, 5.f, 6.f}};
+                             {1.f, 2.f, 3.f, 4.f, 5.f, 6.f}};
 
   outputs.push_back({{2, 1}, {1.f, 4.f}});
   outputs.push_back({{2, 1}, {2.f, 5.f}});
@@ -757,12 +721,10 @@ TEST(SplitOperatorTest, Split18_NumOutputsUnevenSplitAxis1) {
 
   // input shape and data
   ShapeAndFloatData input = {{2, 3},  // shape
-                             {1.f, 2.f, 3.f,
-                              4.f, 5.f, 6.f}};
+                             {1.f, 2.f, 3.f, 4.f, 5.f, 6.f}};
 
   outputs.push_back({{2, 2},
-                     {1.f, 2.f,
-                      4.f, 5.f}});
+                     {1.f, 2.f, 4.f, 5.f}});
   outputs.push_back({{2, 1}, {3.f, 6.f}});
 
   int64_t num_outputs = 2;

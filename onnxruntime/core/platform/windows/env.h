@@ -45,9 +45,7 @@ class WindowsEnv : public Env {
 #pragma warning(push)
 #pragma warning(disable : 26409)
 #endif
-  EnvThread* CreateThread(_In_opt_z_ const ORTCHAR_T* name_prefix, int index,
-                          unsigned (*start_address)(int id, Eigen::ThreadPoolInterface* param),
-                          Eigen::ThreadPoolInterface* param, const ThreadOptions& thread_options);
+  EnvThread* CreateThread(_In_opt_z_ const ORTCHAR_T* name_prefix, int index, unsigned (*start_address)(int id, Eigen::ThreadPoolInterface* param), Eigen::ThreadPoolInterface* param, const ThreadOptions& thread_options);
 #if defined(_MSC_VER) && !defined(__clang__)
 #pragma warning(pop)
 #endif
@@ -59,8 +57,7 @@ class WindowsEnv : public Env {
   PIDType GetSelfPid() const override;
   Status GetFileLength(_In_z_ const ORTCHAR_T* file_path, size_t& length) const override;
   common::Status GetFileLength(int fd, /*out*/ size_t& file_size) const override;
-  Status ReadFileIntoBuffer(_In_z_ const ORTCHAR_T* const file_path, const FileOffsetType offset, const size_t length,
-                            const gsl::span<char> buffer) const override;
+  Status ReadFileIntoBuffer(_In_z_ const ORTCHAR_T* const file_path, const FileOffsetType offset, const size_t length, const gsl::span<char> buffer) const override;
   Status MapFileIntoMemory(_In_z_ const ORTCHAR_T* file_path,
                            FileOffsetType offset,
                            size_t length,

@@ -2,6 +2,9 @@
 # Defaults for all languages.
 BasedOnStyle:  Google
 
+# Setting ColumnLimit to 0 so developer choices about where to break lines are maintained.
+# Developers are responsible for adhering to the 120 character maximum.
+ColumnLimit:     0
 SortIncludes: false
 DerivePointerAlignment: false
 BinPackArguments: false

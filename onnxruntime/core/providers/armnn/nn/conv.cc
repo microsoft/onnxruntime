@@ -285,10 +285,8 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
     pNetworkId = &it->second;
   }
 
-  armnn::InputTensors inputTensors{{0, armnn::ConstTensor(Conv::run->GetInputTensorInfo(*pNetworkId, 0),
-                                                          x_data)}};
-  armnn::OutputTensors outputTensors{{0, armnn::Tensor(Conv::run->GetOutputTensorInfo(*pNetworkId, 0),
-                                                       y_data)}};
+  armnn::InputTensors inputTensors{{0, armnn::ConstTensor(Conv::run->GetInputTensorInfo(*pNetworkId, 0), x_data)}};
+  armnn::OutputTensors outputTensors{{0, armnn::Tensor(Conv::run->GetOutputTensorInfo(*pNetworkId, 0), y_data)}};
 
   // Execute network
   Conv::run->EnqueueWorkload(*pNetworkId, inputTensors, outputTensors);
@@ -301,7 +299,8 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     Conv,
     kOnnxDomain,
-    1, 10,
+    1,
+    10,
     kArmNNExecutionProvider,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     Conv<float>);

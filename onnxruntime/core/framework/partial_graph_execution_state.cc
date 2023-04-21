@@ -13,10 +13,9 @@ namespace onnxruntime {
 
 ProgramRegion& PartialGraphExecutionState::GetProgramRegions(const SessionState& session_state) {
   // check whether we can match an existing region
-  auto it = std::find_if(program_regions_.begin(), program_regions_.end(),
-                         [this](const ProgramRegion& region) {
-                           return region.start_pc == this->GetProgramCounterStart() && region.end_pc == this->GetProgramCounterEnd();
-                         });
+  auto it = std::find_if(program_regions_.begin(), program_regions_.end(), [this](const ProgramRegion& region) {
+    return region.start_pc == this->GetProgramCounterStart() && region.end_pc == this->GetProgramCounterEnd();
+  });
   if (it != program_regions_.end()) {
     return *it;
   }
@@ -59,12 +58,7 @@ DeviceStreamCollection* PartialGraphExecutionState::GetDeviceStreamCollection(co
   return device_stream_collection_.get();
 }
 
-StreamExecutionContext& PartialGraphExecutionState::GetExecutionContext(gsl::span<const int>& feed_mlvalue_idxs, gsl::span<const OrtValue>& feeds,
-                                                                        gsl::span<const int>& fetch_mlvalue_idxs, std::vector<OrtValue>& fetches,
-                                                                        const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
-                                                                        const SessionState& session_state,
-                                                                        const logging::Logger& sess_logger,
-                                                                        const DeviceStreamCollection* device_streams) {
+StreamExecutionContext& PartialGraphExecutionState::GetExecutionContext(gsl::span<const int>& feed_mlvalue_idxs, gsl::span<const OrtValue>& feeds, gsl::span<const int>& fetch_mlvalue_idxs, std::vector<OrtValue>& fetches, const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators, const SessionState& session_state, const logging::Logger& sess_logger, const DeviceStreamCollection* device_streams) {
   if (execution_context_ == nullptr) {
     auto* execution_plan = session_state.GetExecutionPlan();
     LOGS(sess_logger, INFO) << "Number of streams: " << execution_plan->execution_plan.size();

@@ -15,8 +15,7 @@ namespace test {
 // and call the OpKernel->Compute() directly, here input and output OrtValues can be strided tensors.
 class KernelComputeTester {
  public:
-  explicit KernelComputeTester(const char* op, const char* provider = kCpuExecutionProvider, int opset_version = 14,
-                               const char* domain = kOnnxDomain)
+  explicit KernelComputeTester(const char* op, const char* provider = kCpuExecutionProvider, int opset_version = 14, const char* domain = kOnnxDomain)
       : op_(op), provider_(provider), opset_version_(opset_version), domain_(domain) {
     if (opset_version_ < 0) {
       static int latest_onnx_version =
@@ -36,26 +35,22 @@ class KernelComputeTester {
   };
 
   template <typename T>
-  void AddInput(const char* name, std::initializer_list<int64_t> dims, std::initializer_list<T> values,
-                std::initializer_list<int64_t> strides = {}, bool is_cpu_data = false) {
+  void AddInput(const char* name, std::initializer_list<int64_t> dims, std::initializer_list<T> values, std::initializer_list<int64_t> strides = {}, bool is_cpu_data = false) {
     AddData(input_data_, name, dims, values.begin(), strides, is_cpu_data);
   }
 
   template <typename T>
-  void AddInput(const char* name, std::initializer_list<int64_t> dims, const std::vector<T>& values,
-                std::initializer_list<int64_t> strides = {}, bool is_cpu_data = false) {
+  void AddInput(const char* name, std::initializer_list<int64_t> dims, const std::vector<T>& values, std::initializer_list<int64_t> strides = {}, bool is_cpu_data = false) {
     AddData(input_data_, name, dims, values.data(), strides, is_cpu_data);
   }
 
   template <typename T>
-  void AddOutput(const char* name, std::initializer_list<int64_t> dims, std::initializer_list<T> values,
-                 std::initializer_list<int64_t> strides = {}) {
+  void AddOutput(const char* name, std::initializer_list<int64_t> dims, std::initializer_list<T> values, std::initializer_list<int64_t> strides = {}) {
     AddData(output_data_, name, dims, values.begin(), strides, false);
   }
 
   template <typename T>
-  void AddOutput(const char* name, std::initializer_list<int64_t> dims, const std::vector<T> values,
-                 std::initializer_list<int64_t> strides = {}) {
+  void AddOutput(const char* name, std::initializer_list<int64_t> dims, const std::vector<T> values, std::initializer_list<int64_t> strides = {}) {
     AddData(output_data_, name, dims, values.data(), strides, false);
   }
 
@@ -70,8 +65,7 @@ class KernelComputeTester {
 
  private:
   template <typename T>
-  void AddData(std::vector<Data>& data, const char* name, const std::vector<int64_t>& dims, const T* values,
-               const std::vector<int64_t>& strides, bool is_cpu_data) {
+  void AddData(std::vector<Data>& data, const char* name, const std::vector<int64_t>& dims, const T* values, const std::vector<int64_t>& strides, bool is_cpu_data) {
     OrtValue value;
     TensorShape shape(dims);
     auto allocator = AllocatorManager::Instance().GetAllocator(CPU);

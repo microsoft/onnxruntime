@@ -50,8 +50,7 @@ Status CheckInputs(const T* query,
 
   const auto& query_dims = query->Shape().GetDims();
   if (query_dims.size() != 3 && query_dims.size() != 5) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'query' is expected to have 3 or 5 dimensions, got ",
-                           query_dims.size());
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'query' is expected to have 3 or 5 dimensions, got ", query_dims.size());
   }
 
   int batch_size = static_cast<int>(query_dims[0]);
@@ -67,85 +66,62 @@ Status CheckInputs(const T* query,
     const auto& past_value_dims = past_value->Shape().GetDims();
 
     if (past_key_dims.size() != 4) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input 'past_key' is expected to have 4 dimensions, got ",
-                             past_key_dims.size());
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'past_key' is expected to have 4 dimensions, got ", past_key_dims.size());
     }
     if (past_value_dims.size() != 4) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input 'past_value' is expected to have 4 dimensions, got ",
-                             past_value_dims.size());
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'past_value' is expected to have 4 dimensions, got ", past_value_dims.size());
     }
 
     if (past_key_dims[0] != batch_size) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input 'past_key' dimension 0 should be batch_size, got ",
-                             past_key_dims[0]);
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'past_key' dimension 0 should be batch_size, got ", past_key_dims[0]);
     }
     if (past_value_dims[0] != batch_size) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input 'past_value' dimension 0 should be batch_size, got ",
-                             past_value_dims[0]);
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'past_value' dimension 0 should be batch_size, got ", past_value_dims[0]);
     }
 
     if (past_key_dims[1] != num_heads) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input 'past_key' dimension 1 should be same as number of heads, got ",
-                             past_key_dims[1]);
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'past_key' dimension 1 should be same as number of heads, got ", past_key_dims[1]);
     }
     if (past_value_dims[1] != num_heads) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input 'past_value' dimension 1 should be same as number of heads, got ",
-                             past_value_dims[1]);
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'past_value' dimension 1 should be same as number of heads, got ", past_value_dims[1]);
     }
     if (past_key_dims[2] != past_value_dims[2]) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input 'past_key' and 'past_value' shall have same dim 2 (past_sequence_length)");
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'past_key' and 'past_value' shall have same dim 2 (past_sequence_length)");
     }
     if (past_key_dims[3] != head_size) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input 'past_key' dimension 3 should be same as head_size, got ",
-                             past_key_dims[3]);
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'past_key' dimension 3 should be same as head_size, got ", past_key_dims[3]);
     }
     if (past_value_dims[3] != head_size) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input 'past_value' dimension 3 should be same as head_size, got ",
-                             past_value_dims[3]);
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'past_value' dimension 3 should be same as head_size, got ", past_value_dims[3]);
     }
     past_sequence_length = static_cast<int>(past_key_dims[2]);
     max_sequence_length = static_cast<int>(past_key_dims[2]);
     if (past_present_share_buffer) {
       if (past_seq_len == nullptr || !onnxruntime::IsScalarOr1ElementVector(past_seq_len)) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                               "past_sequence_length tensor must be of one element when past_present_share_buffer is set");
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "past_sequence_length tensor must be of one element when past_present_share_buffer is set");
       }
       past_sequence_length = *((*past_seq_len).template Data<int32_t>());
     }
   } else if (past_key != nullptr || past_value != nullptr) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Input 'past_key' and 'past_value' shall be both present or both absent");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'past_key' and 'past_value' shall be both present or both absent");
   }
 
   if (key != nullptr) {
     if (query_dims.size() != 3) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'query' is expected to have 3 dimensions when key is given, got ",
-                             query_dims.size());
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'query' is expected to have 3 dimensions when key is given, got ", query_dims.size());
     }
 
     const auto& key_dims = key->Shape().GetDims();
     if (key_dims.size() != 3 && key_dims.size() != 4 && key_dims.size() != 5) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'key' is expected to have 3, 4, or 5 dimensions, got ",
-                             key_dims.size());
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'key' is expected to have 3, 4, or 5 dimensions, got ", key_dims.size());
     }
     if (query_dims[0] != key_dims[0]) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input 'query' and 'key' shall have same dim 0 (batch size)");
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'query' and 'key' shall have same dim 0 (batch size)");
     }
 
     if (key_dims.size() == 3) {
       if (key_dims[2] != query_dims[2]) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                               "Input 'query' and 'key' shall have same dim 2 (hidden_size)");
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'query' and 'key' shall have same dim 2 (hidden_size)");
       }
 
       qkv_format = Q_K_V_BSNH;
@@ -153,8 +129,7 @@ Status CheckInputs(const T* query,
     } else if (key_dims.size() == 5) {
       if (static_cast<int>(key_dims[2]) != num_heads || static_cast<int>(key_dims[3]) != 2 || static_cast<int>(key_dims[4]) != head_size) {
         return ORT_MAKE_STATUS(
-            ONNXRUNTIME, INVALID_ARGUMENT,
-            "Expect 'key' shape (batch_size, kv_sequence_length, num_heads, 2, head_size) for packed kv");
+            ONNXRUNTIME, INVALID_ARGUMENT, "Expect 'key' shape (batch_size, kv_sequence_length, num_heads, 2, head_size) for packed kv");
       }
       if (value != nullptr) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Expect 'value' be none when 'key' has packed kv format.");
@@ -165,8 +140,7 @@ Status CheckInputs(const T* query,
     } else {  // key_dims.size() == 4 (cross-attention with past_key)
       if (static_cast<int>(key_dims[1]) != num_heads || static_cast<int>(key_dims[3]) != head_size) {
         return ORT_MAKE_STATUS(
-            ONNXRUNTIME, INVALID_ARGUMENT,
-            "Expect 'key' shape (batch_size, num_heads, kv_sequence_length, head_size) for past_key");
+            ONNXRUNTIME, INVALID_ARGUMENT, "Expect 'key' shape (batch_size, num_heads, kv_sequence_length, head_size) for past_key");
       }
 
       qkv_format = UNKNOWN;
@@ -174,13 +148,11 @@ Status CheckInputs(const T* query,
     }
   } else {  // packed QKV
     if (query_dims.size() != 3 && query_dims.size() != 5) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'query' is expected to have 3 or 5 dimensions when key is empty, got ",
-                             query_dims.size());
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'query' is expected to have 3 or 5 dimensions when key is empty, got ", query_dims.size());
     }
     if (query_dims.size() == 5 && (static_cast<int>(query_dims[2]) != num_heads || static_cast<int>(query_dims[3]) != 3)) {
       return ORT_MAKE_STATUS(
-          ONNXRUNTIME, INVALID_ARGUMENT,
-          "Expect 'query' shape (batch_size, kv_sequence_length, num_heads, 3, head_size) for packed kv");
+          ONNXRUNTIME, INVALID_ARGUMENT, "Expect 'query' shape (batch_size, kv_sequence_length, num_heads, 3, head_size) for packed kv");
     }
 
     qkv_format = QKV_BSN3H;
@@ -189,8 +161,7 @@ Status CheckInputs(const T* query,
   if (bias != nullptr) {
     const auto& bias_dims = bias->Shape().GetDims();
     if (bias_dims.size() != 1) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'bias' is expected to have 1 dimension, got ",
-                             bias_dims.size());
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'bias' is expected to have 1 dimension, got ", bias_dims.size());
     }
 
     if (value == nullptr) {
@@ -217,8 +188,7 @@ Status CheckInputs(const T* query,
     }
 
     if (mask_type == AttentionMaskType::MASK_UNKNOWN) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input 'key_padding_mask' shape shall be (batch_size) or (batch_size, kv_sequence_length)");
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'key_padding_mask' shape shall be (batch_size) or (batch_size, kv_sequence_length)");
     }
   }
 
@@ -228,25 +198,21 @@ Status CheckInputs(const T* query,
   if (value != nullptr) {
     const auto& value_dims = value->Shape().GetDims();
     if (value_dims.size() != 3 && value_dims.size() != 4) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'value' is expected to have 3 or 4 dimensions, got ",
-                             value_dims.size());
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'value' is expected to have 3 or 4 dimensions, got ", value_dims.size());
     }
 
     if (query_dims[0] != value_dims[0]) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input 'query' and 'value' shall have same dim 0 (batch_size)");
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'query' and 'value' shall have same dim 0 (batch_size)");
     }
 
     if (value_dims.size() == 3) {
       if (static_cast<int64_t>(kv_sequence_length) != value_dims[1]) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                               "Input 'key' and 'value' shall have the same dim 1 (kv_sequence_length)");
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'key' and 'value' shall have the same dim 1 (kv_sequence_length)");
       }
       v_hidden_size = static_cast<int>(value_dims[2]);
     } else {  // value_dims.size() == 4
       if (static_cast<int64_t>(kv_sequence_length) != value_dims[2]) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                               "Input 'past_key' and 'past_value' shall have the same dim 2 (kv_sequence_length)");
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'past_key' and 'past_value' shall have the same dim 2 (kv_sequence_length)");
       }
       v_hidden_size = static_cast<int>(value_dims[1]) * static_cast<int>(value_dims[3]);
       pass_past_in_kv = true;
@@ -259,32 +225,22 @@ Status CheckInputs(const T* query,
     const auto& relative_position_bias_dims = relative_position_bias->Shape().GetDims();
 
     if (relative_position_bias_dims.size() != 4) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input 'relative_position_bias' is expected to have 4 dimensions, got ",
-                             relative_position_bias_dims.size());
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'relative_position_bias' is expected to have 4 dimensions, got ", relative_position_bias_dims.size());
     }
     if (relative_position_bias_dims[0] != batch_size && relative_position_bias_dims[0] != 1) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input 'relative_position_bias' dimension 0 should be batch_size or 1, got ",
-                             relative_position_bias_dims[0]);
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'relative_position_bias' dimension 0 should be batch_size or 1, got ", relative_position_bias_dims[0]);
     }
     if (relative_position_bias_dims[0] == 1) {
       broadcast_res_pos_bias = true;
     }
     if (relative_position_bias_dims[1] != num_heads) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input 'relative_position_bias' dimension 1 should be same as number of heads, got ",
-                             relative_position_bias_dims[1]);
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'relative_position_bias' dimension 1 should be same as number of heads, got ", relative_position_bias_dims[1]);
     }
     if (relative_position_bias_dims[2] != sequence_length) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input 'relative_position_bias' dimension 2 should be same as sequence_length, got ",
-                             relative_position_bias_dims[2]);
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'relative_position_bias' dimension 2 should be same as sequence_length, got ", relative_position_bias_dims[2]);
     }
     if (relative_position_bias_dims[3] != total_sequence_length) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input 'relative_position_bias' dimension 3 should be same as total_sequence_length, got ",
-                             relative_position_bias_dims[3]);
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'relative_position_bias' dimension 3 should be same as total_sequence_length, got ", relative_position_bias_dims[3]);
     }
   }
 
@@ -336,8 +292,7 @@ Status CheckInputs(const T* query,
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "num_heads should be no larger than ", max_threads_per_block);
   }
 
-  return CheckInputs(query, key, value, bias, key_padding_mask, relative_position_bias, past_key, past_value,
-                     past_seq_len, parameters, num_heads, mask_filter_value, scale, past_present_share_buffer);
+  return CheckInputs(query, key, value, bias, key_padding_mask, relative_position_bias, past_key, past_value, past_seq_len, parameters, num_heads, mask_filter_value, scale, past_present_share_buffer);
 }
 
 }  // namespace multihead_attention_helper

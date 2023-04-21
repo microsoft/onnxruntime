@@ -29,8 +29,7 @@ class BetaDistribution {
 
   // Create a BetaDistribution with all the necessary parameters
   //
-  BetaDistribution(float alpha, float beta,
-                   result_type beginRange, result_type endRange)
+  BetaDistribution(float alpha, float beta, result_type beginRange, result_type endRange)
       : m_alpha(alpha),
         m_beta(beta),
         m_beginRange(beginRange),

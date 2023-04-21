@@ -26,9 +26,7 @@ namespace test {
  * \param keepdims Common attribute for all reduce operations.
  */
 template <typename QuantType>
-static void RunReduceOpQDQTest(const std::string& op_type, int opset, const char* test_description,
-                               ExpectedEPNodeAssignment expected_ep_assignment = ExpectedEPNodeAssignment::All,
-                               bool keepdims = true) {
+static void RunReduceOpQDQTest(const std::string& op_type, int opset, const char* test_description, ExpectedEPNodeAssignment expected_ep_assignment = ExpectedEPNodeAssignment::All, bool keepdims = true) {
   ProviderOptions provider_options;
 #if defined(_WIN32)
   provider_options["backend_path"] = "QnnHtp.dll";

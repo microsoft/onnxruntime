@@ -73,20 +73,15 @@ Status TileOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
   size_t size = tensor_byte_size / sizeof(int64_t);
 
   std::vector<uint32_t> multiples;
-  std::transform(tensor_data, tensor_data + size, std::back_inserter(multiples),
-                 [](int64_t item) { return SafeInt<uint32_t>(item); });
+  std::transform(tensor_data, tensor_data + size, std::back_inserter(multiples), [](int64_t item) { return SafeInt<uint32_t>(item); });
 
   uint32_t multiples_size = static_cast<uint32_t>(multiples.size());
   std::vector<uint32_t> multiples_dim{multiples_size};
-  QnnParamWrapper multiples_param(node_unit.Index(), node_unit.Name(), qnn_def::multiples, std::move(multiples_dim),
-                                  std::move(multiples));
+  QnnParamWrapper multiples_param(node_unit.Index(), node_unit.Name(), qnn_def::multiples, std::move(multiples_dim), std::move(multiples));
   param_tensor_names.push_back(multiples_param.GetParamTensorName());
   qnn_model_wrapper.AddParamWrapper(std::move(multiples_param));
 
-  ORT_RETURN_IF_ERROR(ProcessOutputs(qnn_model_wrapper, node_unit,
-                                     std::move(input_names),
-                                     std::move(param_tensor_names),
-                                     logger, is_quantized_model, do_op_validation));
+  ORT_RETURN_IF_ERROR(ProcessOutputs(qnn_model_wrapper, node_unit, std::move(input_names), std::move(param_tensor_names), logger, is_quantized_model, do_op_validation));
 
   return Status::OK();
 }

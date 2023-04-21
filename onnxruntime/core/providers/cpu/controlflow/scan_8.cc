@@ -101,8 +101,7 @@ class Scan8Impl {
  private:
   // validate inputs and setup batch size and max sequence length.
   Status ValidateInput();
-  Status ValidateSubgraphInput(int start_input, int end_input, bool is_loop_state_var,
-                               const std::vector<const NodeArg*>& graph_inputs);
+  Status ValidateSubgraphInput(int start_input, int end_input, bool is_loop_state_var, const std::vector<const NodeArg*>& graph_inputs);
 
   Status AllocateOutputTensors();
   Status CreateLoopStateVariables(std::vector<std::vector<LoopStateVariable>>& loop_state_variables);
@@ -160,11 +159,11 @@ Status Scan<8>::SetupSubgraphExecutionInfo(const SessionState& session_state,
   ORT_UNUSED_PARAMETER(attribute_name);
 
   const auto& node = Node();
-  info_ = std::make_unique<Scan<8>::Info>(node, subgraph_session_state.GetGraphViewer(),
-                                          static_cast<int>(num_scan_inputs_));
+  info_ = std::make_unique<Scan<8>::Info>(node, subgraph_session_state.GetGraphViewer(), static_cast<int>(num_scan_inputs_));
 
   auto status = scan::detail::CreateFeedsFetchesManager(node, *info_, session_state, subgraph_session_state,
-                                                        /* is_v8 */ true, feeds_fetches_manager_);
+                                                        /* is_v8 */ true,
+                                                        feeds_fetches_manager_);
 
   return status;
 }
@@ -228,8 +227,7 @@ static const OrtValue& GetSubgraphInputMLValue(const OpKernelContextInternal& co
 }
 
 // Validate that the subgraph input has valid shapes
-Status Scan8Impl::ValidateSubgraphInput(int start_input, int end_input, bool is_loop_state_var,
-                                        const std::vector<const NodeArg*>& graph_inputs) {
+Status Scan8Impl::ValidateSubgraphInput(int start_input, int end_input, bool is_loop_state_var, const std::vector<const NodeArg*>& graph_inputs) {
   // first dim is batch size. optional sequence dim. dim/s for the data.
   // if there is no dim for the data treat it as a scalar.
   bool has_seq_len_dim = !is_loop_state_var;
@@ -240,9 +238,7 @@ Status Scan8Impl::ValidateSubgraphInput(int start_input, int end_input, bool is_
     const auto& input_shape = input_tensor.Shape();
 
     if (input_shape.NumDimensions() < static_cast<size_t>(min_dims_required))
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Invalid scan input:", graph_inputs[i]->Name(),
-                             " Expected ", min_dims_required,
-                             " dimensions or more but input had shape of ", input_shape);
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Invalid scan input:", graph_inputs[i]->Name(), " Expected ", min_dims_required, " dimensions or more but input had shape of ", input_shape);
 
     auto this_batch_size = input_shape[0];
 
@@ -250,9 +246,7 @@ Status Scan8Impl::ValidateSubgraphInput(int start_input, int end_input, bool is_
       batch_size_ = this_batch_size;
     else {
       if (batch_size_ != this_batch_size) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Scan inputs have inconsistent batch size. Previous value was ",
-                               batch_size_, " but ", graph_inputs[i]->Name(), " has batch size of ",
-                               this_batch_size);
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Scan inputs have inconsistent batch size. Previous value was ", batch_size_, " but ", graph_inputs[i]->Name(), " has batch size of ", this_batch_size);
       }
     }
 
@@ -263,9 +257,7 @@ Status Scan8Impl::ValidateSubgraphInput(int start_input, int end_input, bool is_
         max_sequence_len_ = this_seq_len;
       } else {
         if (max_sequence_len_ != this_seq_len) {
-          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Scan inputs have inconsistent sequence lengths. Previous value was ",
-                                 max_sequence_len_, " but ", graph_inputs[i]->Name(),
-                                 " has length of ", this_seq_len);
+          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Scan inputs have inconsistent sequence lengths. Previous value was ", max_sequence_len_, " but ", graph_inputs[i]->Name(), " has length of ", this_seq_len);
         }
       }
     }
@@ -288,17 +280,14 @@ Status Scan8Impl::ValidateInput() {
   if (sequence_lens_tensor_ != nullptr) {
     auto num_entries = sequence_lens_tensor_->Shape().Size();
     if (num_entries != batch_size_) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "sequence_lens length of ", num_entries,
-                             " did not match batch size of ", batch_size_);
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "sequence_lens length of ", num_entries, " did not match batch size of ", batch_size_);
     }
 
     auto d = sequence_lens_tensor_->DataAsSpan<int64_t>();
     sequence_lens_.assign(d.begin(), d.end());
 
-    if (!std::all_of(sequence_lens_.cbegin(), sequence_lens_.cend(),
-                     [this](int64_t value) { return value > 0 && value <= max_sequence_len_; })) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Invalid entries in sequence_lens. Max sequence length was ", max_sequence_len_);
+    if (!std::all_of(sequence_lens_.cbegin(), sequence_lens_.cend(), [this](int64_t value) { return value > 0 && value <= max_sequence_len_; })) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid entries in sequence_lens. Max sequence length was ", max_sequence_len_);
     }
 
   } else {
@@ -313,22 +302,19 @@ Status Scan8Impl::AllocateOutputTensors() {
   auto& graph_outputs = info_.subgraph.GetOutputs();
 
   if (graph_outputs.size() != static_cast<size_t>(info_.num_outputs)) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Subgraph in 'body' produces ", graph_outputs.size(),
-                           " outputs but Scan expects ", info_.num_outputs);
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Subgraph in 'body' produces ", graph_outputs.size(), " outputs but Scan expects ", info_.num_outputs);
   }
 
   std::unique_ptr<OutputIterator> output_iter;
 
   for (int i = 0; i < info_.num_loop_state_variables; ++i) {
-    status = AllocateOutput(context_, info_.subgraph, i, true, batch_size_, max_sequence_len_, output_iter,
-                            device_helpers_.create_mutable_slicer_func, device_helpers_.set_data_to_zero_func);
+    status = AllocateOutput(context_, info_.subgraph, i, true, batch_size_, max_sequence_len_, output_iter, device_helpers_.create_mutable_slicer_func, device_helpers_.set_data_to_zero_func);
     ORT_RETURN_IF_ERROR(status);
     output_iterators_.push_back(std::move(output_iter));
   }
 
   for (int i = info_.num_loop_state_variables, end = info_.num_outputs; i < end; ++i) {
-    status = AllocateOutput(context_, info_.subgraph, i, false, batch_size_, max_sequence_len_, output_iter,
-                            device_helpers_.create_mutable_slicer_func, device_helpers_.set_data_to_zero_func);
+    status = AllocateOutput(context_, info_.subgraph, i, false, batch_size_, max_sequence_len_, output_iter, device_helpers_.create_mutable_slicer_func, device_helpers_.set_data_to_zero_func);
     ORT_RETURN_IF_ERROR(status);
     output_iterators_.push_back(std::move(output_iter));
   }
@@ -417,9 +403,7 @@ Status Scan8Impl::Execute(const FeedsFetchesManager& ffm) {
     }
 
     // Call the subgraph for each item in the sequence
-    status = IterateSequence(context_, session_state_, batch_loop_state_variables[onnxruntime::narrow<size_t>(b)], scan_input_stream_iterators,
-                             sequence_len, info_.num_loop_state_variables, info_.num_variadic_inputs, info_.num_outputs,
-                             implicit_inputs_, output_iterators_, ffm);
+    status = IterateSequence(context_, session_state_, batch_loop_state_variables[onnxruntime::narrow<size_t>(b)], scan_input_stream_iterators, sequence_len, info_.num_loop_state_variables, info_.num_variadic_inputs, info_.num_outputs, implicit_inputs_, output_iterators_, ffm);
 
     // zero out any remaining values in the sequence
     for (int64_t i = sequence_len; i < max_sequence_len_; ++i) {
@@ -437,7 +421,8 @@ Status Scan8Impl::Execute(const FeedsFetchesManager& ffm) {
 }
 
 ONNX_CPU_OPERATOR_VERSIONED_KERNEL(Scan,
-                                   8, 8,
+                                   8,
+                                   8,
                                    KernelDefBuilder()
                                        .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
                                        .TypeConstraint("V", DataTypeImpl::AllTensorTypes()),

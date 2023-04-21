@@ -39,7 +39,8 @@ TvmExecutionProvider::TvmExecutionProvider(const TvmEPOptions& options)
   AllocatorCreationInfo default_memory_info = {[](int) {
                                                  return std::make_unique<TVMAllocator>();
                                                },
-                                               0, false};
+                                               0,
+                                               false};
   allocator_ = CreateAllocator(default_memory_info);
   InsertAllocator(allocator_);
 
@@ -109,9 +110,7 @@ common::Status TvmExecutionProvider::Compile(const std::vector<FusedNodeAndGraph
     const GraphViewer& graph_body_viewer = fused_node_graph.filtered_graph;
     const Node& fused_node = fused_node_graph.fused_node;
     const std::string func_name = fused_node.Name();
-    Model model(graph_body_viewer.Name(), true, ModelMetaData(), PathString(),
-                IOnnxRuntimeOpSchemaRegistryList(), graph_body_viewer.DomainToVersionMap(),
-                std::vector<ONNX_NAMESPACE::FunctionProto>(), *GetLogger());
+    Model model(graph_body_viewer.Name(), true, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(), graph_body_viewer.DomainToVersionMap(), std::vector<ONNX_NAMESPACE::FunctionProto>(), *GetLogger());
     ONNX_NAMESPACE::ModelProto model_proto = model.ToProto();
     // TVM EP is using static lib approach, so invoke serializer directly.
     GraphViewerToProto(graph_body_viewer, *model_proto.mutable_graph(), true, true);
@@ -233,8 +232,7 @@ TensorShapeVector TvmExecutionProvider::convertTensorShape(const TensorShapeProt
   TensorShapeVector shape(dims);
   for (size_t j = 0; j < dims; ++j) {
     int64_t dim = int64_t(ort_shape[j]);
-    ORT_ENFORCE(dim > 0, "Input dimension is not positive value (dim = " + std::to_string(dim) + "). " +
-                             "Please use provider options to setup input_names and input_shapes");
+    ORT_ENFORCE(dim > 0, "Input dimension is not positive value (dim = " + std::to_string(dim) + "). " + "Please use provider options to setup input_names and input_shapes");
     shape[j] = dim;
   }
 

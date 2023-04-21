@@ -22,9 +22,7 @@ namespace onnxruntime {
 bool IsTransposeReshape(const gsl::span<const size_t>& perm, gsl::span<const int64_t> input_dims);
 
 // Public function for element-wise transpose, primarily to unit test any out of bounds access
-Status DoTransposeEltWise(int64_t num_axes, gsl::span<const int64_t> target_dims, size_t num_blocks,
-                          const gsl::span<const size_t>& stride, const uint8_t* source, uint8_t* target,
-                          size_t element_size);
+Status DoTransposeEltWise(int64_t num_axes, gsl::span<const int64_t> target_dims, size_t num_blocks, const gsl::span<const size_t>& stride, const uint8_t* source, uint8_t* target, size_t element_size);
 
 class TransposeBase {
  public:
@@ -32,8 +30,7 @@ class TransposeBase {
   Transpose the input Tensor into the output Tensor using the provided permutations.
   Both Tensors must have the same data type. `input_shape_override` overrides the shape of `input` for compute purposes.
   */
-  static Status DoTranspose(const gsl::span<const size_t>& permutations, const Tensor& input, Tensor& output,
-                            const TensorShape* input_shape_override = nullptr);
+  static Status DoTranspose(const gsl::span<const size_t>& permutations, const Tensor& input, Tensor& output, const TensorShape* input_shape_override = nullptr);
 
  protected:
   TransposeBase(const OpKernelInfo& info) {
@@ -60,8 +57,7 @@ class TransposeBase {
     }
   }
 
-  Status ComputeOutputShape(const Tensor& X, TensorShapeVector& output_dims, InlinedVector<size_t>& default_perm,
-                            const InlinedVector<size_t>*& p_perm) const {
+  Status ComputeOutputShape(const Tensor& X, TensorShapeVector& output_dims, InlinedVector<size_t>& default_perm, const InlinedVector<size_t>*& p_perm) const {
     size_t rank = X.Shape().NumDimensions();
     const auto& input_dims = X.Shape().GetDims();
 
@@ -86,8 +82,7 @@ class TransposeBase {
         for (const auto& p : *p_perm)
           ss << p << " ";
         ss << "]";
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                               "perm: ", ss.str(), " does not align with rank of input data: ", std::to_string(rank));
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "perm: ", ss.str(), " does not align with rank of input data: ", std::to_string(rank));
       }
       output_dims[i] = input_dims[inpdim];
     }

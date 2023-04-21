@@ -33,7 +33,8 @@ class TestCaseDriver {
   /// <param name="repeat_count">Repeat each data tests this many times (only for non-concurrent execution)</param>
   /// <returns>All tests results</returns>
   static std::vector<std::shared_ptr<TestCaseResult>> Run(const TestEnv& env,
-                                                          size_t concurrent_runs, size_t repeat_count);
+                                                          size_t concurrent_runs,
+                                                          size_t repeat_count);
 
   /// <summary>
   /// Runs all test cases(models) concurrently but not more than
@@ -43,8 +44,7 @@ class TestCaseDriver {
   /// <param name="parallel_models">number of parallel models (test cases) to run concurrently</param>
   /// <param name="concurrent_runs">number of data tests to run concurrently on a specific test case(model)</param>
   /// <returns>All test results</returns>
-  static std::vector<std::shared_ptr<TestCaseResult>> RunParallel(const TestEnv& env, size_t parallel_models,
-                                                                  size_t concurrent_runs);
+  static std::vector<std::shared_ptr<TestCaseResult>> RunParallel(const TestEnv& env, size_t parallel_models, size_t concurrent_runs);
 
   ORT_DISALLOW_ASSIGNMENT(TestCaseDriver);
 

@@ -60,8 +60,7 @@ ONNX_OPERATOR_KERNEL_EX(
 
 namespace {
 template <typename T>
-Status ComputeGeluGradDX(gsl::span<const T> dY, gsl::span<const T> X, gsl::span<T> dX,
-                         gelu_computation_mode::Default) {
+Status ComputeGeluGradDX(gsl::span<const T> dY, gsl::span<const T> X, gsl::span<T> dX, gelu_computation_mode::Default) {
   static constexpr T kAlpha = static_cast<T>(M_2_SQRTPI * M_SQRT1_2 * 0.5);
 
   ConstEigenVectorArrayMap<T> X_array(X.data(), X.size());
@@ -75,8 +74,7 @@ Status ComputeGeluGradDX(gsl::span<const T> dY, gsl::span<const T> X, gsl::span<
 }
 
 template <typename T>
-Status ComputeGeluGradDX(gsl::span<const T> dY, gsl::span<const T> X, gsl::span<T> dX,
-                         gelu_computation_mode::Approximation) {
+Status ComputeGeluGradDX(gsl::span<const T> dY, gsl::span<const T> X, gsl::span<T> dX, gelu_computation_mode::Approximation) {
   static constexpr T kAlpha = static_cast<T>(M_2_SQRTPI * M_SQRT1_2);
   static constexpr T kGamma = static_cast<T>(0.044715f);
   static constexpr T kBeta = static_cast<T>(kGamma * kAlpha * 3.0f);
@@ -122,8 +120,7 @@ Status GeluGrad<T, GeluComputationMode>::Compute(OpKernelContext* context) const
   ORT_ENFORCE(dX);
 
   ORT_RETURN_IF_ERROR((ComputeGeluGradDX<T>(
-      dY->template DataAsSpan<T>(), X->template DataAsSpan<T>(), dX->template MutableDataAsSpan<T>(),
-      GeluComputationMode{})));
+      dY->template DataAsSpan<T>(), X->template DataAsSpan<T>(), dX->template MutableDataAsSpan<T>(), GeluComputationMode{})));
 
   return Status::OK();
 }
@@ -165,8 +162,7 @@ Status BiasGeluGrad_dX<T, GeluComputationMode>::Compute(OpKernelContext* context
   // dX
   const auto biased_X_span = gsl::make_span<const T>(X_plus_B_buffer.get(), X->Shape().Size());
   ORT_RETURN_IF_ERROR((ComputeGeluGradDX<T>(
-      dY->template DataAsSpan<T>(), biased_X_span, dX->template MutableDataAsSpan<T>(),
-      GeluComputationMode{})));
+      dY->template DataAsSpan<T>(), biased_X_span, dX->template MutableDataAsSpan<T>(), GeluComputationMode{})));
 
   return Status::OK();
 }

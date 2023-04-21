@@ -13,8 +13,7 @@ namespace onnxruntime {
 Fuse SoftmaxCrossEntropyLossInternalGrad + Reshape(optional) + Sum/Add to SoftmaxCrossEntropyLossInternalGrad.
 If it's Sum Op, it requires that it has only 2 inputs. Sum/Add must be non-broadcasting computation.
 */
-Status SceLossGradBiasFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
-                                        const logging::Logger& logger) const {
+Status SceLossGradBiasFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
   GraphViewer graph_viewer(graph);
   const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
 
@@ -93,8 +92,12 @@ Status SceLossGradBiasFusion::ApplyImpl(Graph& graph, bool& modified, int graph_
     }
     Node& new_scegrad_node =
         graph.AddNode(graph.GenerateNodeName("FusedSoftmaxCrossEntropyLossInternalGrad"),
-                      "SoftmaxCrossEntropyLossInternalGrad", "FusedSoftmaxCrossEntropyLossInternalGrad",
-                      new_scegrad_node_inputs, new_scegrad_node_outputs, &node.GetAttributes(), kMSDomain);
+                      "SoftmaxCrossEntropyLossInternalGrad",
+                      "FusedSoftmaxCrossEntropyLossInternalGrad",
+                      new_scegrad_node_inputs,
+                      new_scegrad_node_outputs,
+                      &node.GetAttributes(),
+                      kMSDomain);
     new_scegrad_node.SetExecutionProviderType(node.GetExecutionProviderType());
 
     graph_utils::RemoveNodeOutputEdges(graph, node);

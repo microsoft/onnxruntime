@@ -33,8 +33,7 @@ optional<std::pair<int64_t, int64_t>> GetMinAndMaxContiguousAxes(
   const std::vector<int64_t> axes = [&original_axes, rank]() {
     std::vector<int64_t> result(original_axes);
     std::for_each(
-        result.begin(), result.end(),
-        [rank](int64_t& axis) { axis = HandleNegativeAxis(axis, rank); });
+        result.begin(), result.end(), [rank](int64_t& axis) { axis = HandleNegativeAxis(axis, rank); });
     std::sort(result.begin(), result.end());
     return result;
   }();
@@ -90,8 +89,10 @@ optional<std::pair<int64_t, int64_t>> GetMinAndMaxContiguousAxes(
 
 ApplicableMatrixReduction get_applicable_matrix_reduction(
     const cudnnReduceTensorOp_t cudnn_reduce_op,
-    gsl::span<const int64_t> dims, gsl::span<const int64_t> original_axes,
-    int& m_out, int& n_out) {
+    gsl::span<const int64_t> dims,
+    gsl::span<const int64_t> original_axes,
+    int& m_out,
+    int& n_out) {
   if (cudnn_reduce_op != CUDNN_REDUCE_TENSOR_ADD && cudnn_reduce_op != CUDNN_REDUCE_TENSOR_AVG) {
     return ApplicableMatrixReduction::None;
   }

@@ -26,8 +26,7 @@ TEST(GreedySearchTest, GptGreedySearchFp16_VocabPadded) {
   std::vector<int64_t> expected_output_shape{input_ids_shape[0], max_length[0]};
 
   std::vector<int32_t> expected_output{
-      0, 0, 0, 52, 204, 204, 204, 204, 204, 204,
-      0, 0, 195, 731, 731, 114, 114, 114, 114, 114};
+      0, 0, 0, 52, 204, 204, 204, 204, 204, 204, 0, 0, 195, 731, 731, 114, 114, 114, 114, 114};
 
   Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
   auto input_ids_tensor = Ort::Value::CreateTensor(
@@ -63,8 +62,7 @@ TEST(GreedySearchTest, GptGreedySearchFp16_VocabPadded) {
     // Check beam_search_test.cc to see how tiny_gpt2_beamsearch_fp16.onnx was generated.
     Ort::Session session(*ort_env, ORT_TSTR("testdata/transformers/tiny_gpt2_greedysearch_fp16_padded_vocab.onnx"), session_options);
 
-    auto ort_outputs = session.Run(Ort::RunOptions{}, input_names, ort_inputs.data(), ort_inputs.size(),
-                                   output_names, 1);
+    auto ort_outputs = session.Run(Ort::RunOptions{}, input_names, ort_inputs.data(), ort_inputs.size(), output_names, 1);
 
     ASSERT_EQ(ort_outputs.size(), 1U);
     const auto& sequences = ort_outputs[0];
@@ -93,8 +91,7 @@ TEST(GreedySearchTest, GptGreedySearchFp32) {
   std::vector<int64_t> expected_output_shape{input_ids_shape[0], max_length[0]};
 
   std::vector<int32_t> expected_output{
-      0, 0, 0, 52, 204, 204, 204, 204, 204, 204,
-      0, 0, 195, 731, 731, 114, 114, 114, 114, 114};
+      0, 0, 0, 52, 204, 204, 204, 204, 204, 204, 0, 0, 195, 731, 731, 114, 114, 114, 114, 114};
 
   Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
   auto input_ids_tensor = Ort::Value::CreateTensor(
@@ -126,8 +123,7 @@ TEST(GreedySearchTest, GptGreedySearchFp32) {
 
     Ort::Session session(*ort_env, ORT_TSTR("testdata/transformers/tiny_gpt2_greedysearch_with_init_decoder.onnx"), session_options);
 
-    auto ort_outputs = session.Run(Ort::RunOptions{}, input_names, ort_inputs.data(), ort_inputs.size(),
-                                   output_names, 1);
+    auto ort_outputs = session.Run(Ort::RunOptions{}, input_names, ort_inputs.data(), ort_inputs.size(), output_names, 1);
 
     ASSERT_EQ(ort_outputs.size(), 1U);
     const auto& sequences = ort_outputs[0];

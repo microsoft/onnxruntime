@@ -83,9 +83,7 @@ void IExecutionProvider::InsertAllocator(AllocatorPtr allocator) {
 
   auto iter = allocators_.find(key);
   if (iter != allocators_.end()) {
-    ORT_THROW("Duplicate allocator for OrtMemType:", info.mem_type, " device:", info.device.ToString(),
-              " Existing allocator: ", iter->second->Info().name,
-              " New allocator: ", allocator->Info().name);
+    ORT_THROW("Duplicate allocator for OrtMemType:", info.mem_type, " device:", info.device.ToString(), " Existing allocator: ", iter->second->Info().name, " New allocator: ", allocator->Info().name);
   } else {
     allocators_.insert({key, allocator});
     allocator_list_.push_back(allocator);
@@ -98,8 +96,7 @@ void IExecutionProvider::RegisterAllocator(AllocatorManager&) {
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 common::Status IExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& /*fused_nodes_and_graphs*/,
                                            std::vector<NodeComputeInfo>& /*node_compute_funcs*/) {
-  return common::Status(common::ONNXRUNTIME, common::NOT_IMPLEMENTED,
-                        "IExecutionProvider::Compile with FusedNodeAndGraph is not implemented by " + type_);
+  return common::Status(common::ONNXRUNTIME, common::NOT_IMPLEMENTED, "IExecutionProvider::Compile with FusedNodeAndGraph is not implemented by " + type_);
 }
 
 #endif

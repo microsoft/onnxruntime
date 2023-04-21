@@ -14,7 +14,8 @@ namespace cuda {
 
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(If,
                                   kOnnxDomain,
-                                  1, 10,
+                                  1,
+                                  10,
                                   kCudaExecutionProvider,
                                   (*KernelDefBuilder::Create())
                                       .InputMemoryType(OrtMemTypeCPUInput, 0)  // 'cond' needs to be on CPU
@@ -26,7 +27,8 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(If,
 // branches to be the same were relaxed in opset-11
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(If,
                                   kOnnxDomain,
-                                  11, 12,
+                                  11,
+                                  12,
                                   kCudaExecutionProvider,
                                   (*KernelDefBuilder::Create())
                                       .InputMemoryType(OrtMemTypeCPUInput, 0)  // 'cond' needs to be on CPU

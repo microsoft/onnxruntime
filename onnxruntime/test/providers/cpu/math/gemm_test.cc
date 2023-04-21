@@ -34,14 +34,10 @@ void TestGemmNoTrans() {
     test.AddAttribute("alpha", 1.0f);
     test.AddAttribute("beta", 1.0f);
 
-    test.AddInput<T>("A", {2, 4},
-                     {1.0f, 2.0f, 3.0f, 4.0f,
-                      -1.0f, -2.0f, -3.0f, -4.0f});
+    test.AddInput<T>("A", {2, 4}, {1.0f, 2.0f, 3.0f, 4.0f, -1.0f, -2.0f, -3.0f, -4.0f});
     test.AddInput<T>("B", {4, 3}, std::vector<T>(12, 1.0f), b_is_initializer);
     test.AddInput<T>("C", {2, 3}, std::vector<T>(6, 1.0f), c_is_initializer);
-    test.AddOutput<T>("Y", {2, 3},
-                      {11.0f, 11.0f, 11.0f,
-                       -9.0f, -9.0f, -9.0f});
+    test.AddOutput<T>("Y", {2, 3}, {11.0f, 11.0f, 11.0f, -9.0f, -9.0f, -9.0f});
     test.Config(run_with_tunable_op)
         .RunWithConfig();
   };
@@ -78,12 +74,10 @@ TEST(GemmOpTest, GemmNoTrans_f16) {
   test.AddAttribute("alpha", 1.0f);
   test.AddAttribute("beta", 1.0f);
 
-  std::vector<float> A{1.0f, 2.0f, 3.0f, 4.0f,
-                       -1.0f, -2.0f, -3.0f, -4.0f};
+  std::vector<float> A{1.0f, 2.0f, 3.0f, 4.0f, -1.0f, -2.0f, -3.0f, -4.0f};
   std::vector<float> B(12, 1.0f);
   std::vector<float> C(6, 1.0f);
-  std::vector<float> Y{11.0f, 11.0f, 11.0f,
-                       -9.0f, -9.0f, -9.0f};
+  std::vector<float> Y{11.0f, 11.0f, 11.0f, -9.0f, -9.0f, -9.0f};
 
   std::vector<MLFloat16> f_A(8);
   std::vector<MLFloat16> f_B(12);
@@ -157,14 +151,10 @@ void TestGemmBroadcast() {
     test.AddAttribute("alpha", 1.0f);
     test.AddAttribute("beta", 1.0f);
 
-    test.AddInput<T>("A", {2, 4},
-                     {1.0f, 2.0f, 3.0f, 4.0f,
-                      -1.0f, -2.0f, -3.0f, -4.0f});
+    test.AddInput<T>("A", {2, 4}, {1.0f, 2.0f, 3.0f, 4.0f, -1.0f, -2.0f, -3.0f, -4.0f});
     test.AddInput<T>("B", {4, 3}, std::vector<T>(12, 1.0f), b_is_initializer);
     test.AddInput<T>("C", {3}, std::vector<T>{1.0f, 2.0f, 3.0f}, c_is_initializer);
-    test.AddOutput<T>("Y", {2, 3},
-                      {11.0f, 12.0f, 13.0f,
-                       -9.0f, -8.0f, -7.0f});
+    test.AddOutput<T>("Y", {2, 3}, {11.0f, 12.0f, 13.0f, -9.0f, -8.0f, -7.0f});
 #if defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_GPU_FP32)
     test.ConfigExcludeEps({kOpenVINOExecutionProvider});  // OpenVINO: Temporarily disabled due to accuracy issues
 #endif
@@ -193,16 +183,10 @@ static void TestGemmTrans() {
   test.AddAttribute("alpha", 1.0f);
   test.AddAttribute("beta", 1.0f);
 
-  test.AddInput<T>("A", {4, 2},
-                   {1.0f, -1.0f,
-                    2.0f, -2.0f,
-                    3.0f, -3.0f,
-                    4.0f, -4.0f});
+  test.AddInput<T>("A", {4, 2}, {1.0f, -1.0f, 2.0f, -2.0f, 3.0f, -3.0f, 4.0f, -4.0f});
   test.AddInput<T>("B", {3, 4}, std::vector<T>(12, 1.0f));
   test.AddInput<T>("C", {3}, std::vector<T>(3, 1.0f));
-  test.AddOutput<T>("Y", {2, 3},
-                    {11.0f, 11.0f, 11.0f,
-                     -9.0f, -9.0f, -9.0f});
+  test.AddOutput<T>("Y", {2, 3}, {11.0f, 11.0f, 11.0f, -9.0f, -9.0f, -9.0f});
 #if defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_GPU_FP32)
   test.ConfigExcludeEps({kOpenVINOExecutionProvider});  // OpenVINO: Temporarily disabled due to accuracy issues
 #endif
@@ -227,14 +211,10 @@ static void TestGemmTransB() {
     test.AddAttribute("alpha", 1.0f);
     test.AddAttribute("beta", 1.0f);
 
-    test.AddInput<T>("A", {2, 4},
-                     {1.0f, 2.0f, 3.0f, 4.0f,
-                      -1.0f, -2.0f, -3.0f, -4.0f});
+    test.AddInput<T>("A", {2, 4}, {1.0f, 2.0f, 3.0f, 4.0f, -1.0f, -2.0f, -3.0f, -4.0f});
     test.AddInput<T>("B", {3, 4}, std::vector<T>(12, 1.0f), b_is_initializer);
     test.AddInput<T>("C", {1, 3}, std::vector<T>(3, 1.0f), c_is_initializer);
-    test.AddOutput<T>("Y", {2, 3},
-                      {11.0f, 11.0f, 11.0f,
-                       -9.0f, -9.0f, -9.0f});
+    test.AddOutput<T>("Y", {2, 3}, {11.0f, 11.0f, 11.0f, -9.0f, -9.0f, -9.0f});
 #if defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_GPU_FP32)
     test.ConfigExcludeEps({kOpenVINOExecutionProvider});  // OpenVINO: Temporarily disabled due to accuracy issues
 #endif
@@ -263,14 +243,10 @@ static void TestGemmTransB_1() {
     test.AddAttribute("alpha", 1.0f);
     test.AddAttribute("beta", 1.0f);
 
-    test.AddInput<T>("A", {2, 4},
-                     {1.0f, 2.0f, 3.0f, 4.0f,
-                      -1.0f, -2.0f, -3.0f, -4.0f});
+    test.AddInput<T>("A", {2, 4}, {1.0f, 2.0f, 3.0f, 4.0f, -1.0f, -2.0f, -3.0f, -4.0f});
     test.AddInput<T>("B", {3, 4}, std::vector<T>(12, 1.0f), b_is_initializer);
     test.AddInput<T>("C", {2, 1}, std::vector<T>(2, 1.0f), c_is_initializer);
-    test.AddOutput<T>("Y", {2, 3},
-                      {11.0f, 11.0f, 11.0f,
-                       -9.0f, -9.0f, -9.0f});
+    test.AddOutput<T>("Y", {2, 3}, {11.0f, 11.0f, 11.0f, -9.0f, -9.0f, -9.0f});
 #if defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_GPU_FP32)
     test.ConfigExcludeEps({kOpenVINOExecutionProvider});  // OpenVINO: Temporarily disabled due to accuracy issues
 #endif
@@ -296,14 +272,10 @@ void TestGemmAlpha() {
   test.AddAttribute("alpha", 0.5f);
   test.AddAttribute("beta", 1.0f);
 
-  test.AddInput<T>("A", {2, 4},
-                   {1.0f, 2.0f, 3.0f, 4.0f,
-                    -1.0f, -2.0f, -3.0f, -4.0f});
+  test.AddInput<T>("A", {2, 4}, {1.0f, 2.0f, 3.0f, 4.0f, -1.0f, -2.0f, -3.0f, -4.0f});
   test.AddInput<T>("B", {4, 3}, std::vector<T>(12, 1.0f));
   test.AddInput<T>("C", {3}, std::vector<T>(3, 1.0f));
-  test.AddOutput<T>("Y", {2, 3},
-                    {6.0f, 6.0f, 6.0f,
-                     -4.0f, -4.0f, -4.0f});
+  test.AddOutput<T>("Y", {2, 3}, {6.0f, 6.0f, 6.0f, -4.0f, -4.0f, -4.0f});
   // test.AddOutput<T>("Y", {2, 3},
   //                   {5.0f, 5.0f, 5.0f,
   //                    -5.0f, -5.0f, -5.0f});
@@ -330,14 +302,10 @@ void TestGemmBeta() {
   test.AddAttribute("alpha", 1.0f);
   test.AddAttribute("beta", 2.0f);
 
-  test.AddInput<T>("A", {2, 4},
-                   {1.0f, 2.0f, 3.0f, 4.0f,
-                    -1.0f, -2.0f, -3.0f, -4.0f});
+  test.AddInput<T>("A", {2, 4}, {1.0f, 2.0f, 3.0f, 4.0f, -1.0f, -2.0f, -3.0f, -4.0f});
   test.AddInput<T>("B", {4, 3}, std::vector<T>(12, 1.0f));
   test.AddInput<T>("C", {3}, std::vector<T>(3, 1.0f));
-  test.AddOutput<T>("Y", {2, 3},
-                    {12.0f, 12.0f, 12.0f,
-                     -8.0f, -8.0f, -8.0f});
+  test.AddOutput<T>("Y", {2, 3}, {12.0f, 12.0f, 12.0f, -8.0f, -8.0f, -8.0f});
 #if defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_GPU_FP32)
   test.ConfigExcludeEps({kOpenVINOExecutionProvider});  // OpenVINO: Temporarily disabled due to accuracy issues
 #else
@@ -361,14 +329,10 @@ void TestGemmAlphaBeta() {
   test.AddAttribute("alpha", 0.5f);
   test.AddAttribute("beta", 2.0f);
 
-  test.AddInput<T>("A", {2, 4},
-                   {1.0f, 2.0f, 3.0f, 4.0f,
-                    -1.0f, -2.0f, -3.0f, -4.0f});
+  test.AddInput<T>("A", {2, 4}, {1.0f, 2.0f, 3.0f, 4.0f, -1.0f, -2.0f, -3.0f, -4.0f});
   test.AddInput<T>("B", {4, 3}, std::vector<T>(12, 1.0f));
   test.AddInput<T>("C", {3}, std::vector<T>(3, 1.0f));
-  test.AddOutput<T>("Y", {2, 3},
-                    {7.0f, 7.0f, 7.0f,
-                     -3.0f, -3.0f, -3.0f});
+  test.AddOutput<T>("Y", {2, 3}, {7.0f, 7.0f, 7.0f, -3.0f, -3.0f, -3.0f});
 #if defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_GPU_FP32)
   test.ConfigExcludeEps({kOpenVINOExecutionProvider});  // OpenVINO: Temporarily disabled due to accuracy issues
 #else
@@ -392,14 +356,10 @@ void TestGemmNaN() {
   test.AddAttribute("alpha", 1.0f);
   test.AddAttribute("beta", 0.0f);
 
-  test.AddInput<T>("A", {2, 4},
-                   {1.0f, 2.0f, 3.0f, 4.0f,
-                    -1.0f, -2.0f, -3.0f, -4.0f});
+  test.AddInput<T>("A", {2, 4}, {1.0f, 2.0f, 3.0f, 4.0f, -1.0f, -2.0f, -3.0f, -4.0f});
   test.AddInput<T>("B", {4, 3}, std::vector<T>(12, 1.0f));
   test.AddInput<T>("C", {2, 3}, std::vector<T>(6, 1.0f));
-  test.AddOutput<T>("Y", {2, 3},
-                    {10.0f, 10.0f, 10.0f,
-                     -10.0f, -10.0f, -10.0f});
+  test.AddOutput<T>("Y", {2, 3}, {10.0f, 10.0f, 10.0f, -10.0f, -10.0f, -10.0f});
 
   // TensorRT: Seg fault in parser
   test.ConfigExcludeEps({kTensorrtExecutionProvider})
@@ -425,17 +385,10 @@ TEST(GemmOpTest, GemmNaN_bfloat16) {
   test.AddAttribute("transB", (int64_t)0);
   test.AddAttribute("alpha", 1.0f);
   test.AddAttribute("beta", 0.0f);
-  test.AddInput<BFloat16>("A", {2, 4},
-                          MakeBFloat16({1.0f, 2.0f, 3.0f, 4.0f,
-                                        -1.0f, -2.0f, -3.0f, -4.0f}));
-  test.AddInput<BFloat16>("B", {4, 3},
-                          MakeBFloat16({1.0f, 1.0f, 1.0f, 1.0f,
-                                        1.0f, 1.0f, 1.0f, 1.0f,
-                                        1.0f, 1.0f, 1.0f, 1.0f}));
+  test.AddInput<BFloat16>("A", {2, 4}, MakeBFloat16({1.0f, 2.0f, 3.0f, 4.0f, -1.0f, -2.0f, -3.0f, -4.0f}));
+  test.AddInput<BFloat16>("B", {4, 3}, MakeBFloat16({1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f}));
   test.AddInput<BFloat16>("C", {2, 3}, MakeBFloat16({1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f}));
-  test.AddOutput<BFloat16>("Y", {2, 3},
-                           MakeBFloat16({10.0f, 10.0f, 10.0f,
-                                         -10.0f, -10.0f, -10.0f}));
+  test.AddOutput<BFloat16>("Y", {2, 3}, MakeBFloat16({10.0f, 10.0f, 10.0f, -10.0f, -10.0f, -10.0f}));
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
 #if defined(USE_DNNL)
   execution_providers.push_back(DefaultDnnlExecutionProvider());
@@ -453,14 +406,10 @@ void TestGemmScalarBroadcast() {
   test.AddAttribute("alpha", 1.0f);
   test.AddAttribute("beta", 1.0f);
 
-  test.AddInput<T>("A", {2, 4},
-                   {1.0f, 2.0f, 3.0f, 4.0f,
-                    -1.0f, -2.0f, -3.0f, -4.0f});
+  test.AddInput<T>("A", {2, 4}, {1.0f, 2.0f, 3.0f, 4.0f, -1.0f, -2.0f, -3.0f, -4.0f});
   test.AddInput<T>("B", {4, 3}, std::vector<T>(12, 1.0f));
   test.AddInput<T>("C", {1}, std::vector<T>{1.0f});
-  test.AddOutput<T>("Y", {2, 3},
-                    {11.0f, 11.0f, 11.0f,
-                     -9.0f, -9.0f, -9.0f});
+  test.AddOutput<T>("Y", {2, 3}, {11.0f, 11.0f, 11.0f, -9.0f, -9.0f, -9.0f});
   test.Config(run_with_tunable_op)
       .RunWithConfig();
 }
@@ -483,17 +432,10 @@ TEST(GemmOpTest, GemmScalarBroadcast_bfloat16) {
   test.AddAttribute("transA", (int64_t)0);
   test.AddAttribute("transB", (int64_t)0);
   test.AddAttribute("alpha", 1.0f);
-  test.AddInput<BFloat16>("A", {2, 4},
-                          MakeBFloat16({1.0f, 2.0f, 3.0f, 4.0f,
-                                        -1.0f, -2.0f, -3.0f, -4.0f}));
-  test.AddInput<BFloat16>("B", {4, 3},
-                          MakeBFloat16({1.0f, 1.0f, 1.0f, 1.0f,
-                                        1.0f, 1.0f, 1.0f, 1.0f,
-                                        1.0f, 1.0f, 1.0f, 1.0f}));
+  test.AddInput<BFloat16>("A", {2, 4}, MakeBFloat16({1.0f, 2.0f, 3.0f, 4.0f, -1.0f, -2.0f, -3.0f, -4.0f}));
+  test.AddInput<BFloat16>("B", {4, 3}, MakeBFloat16({1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f}));
   test.AddInput<BFloat16>("C", {1}, MakeBFloat16({1.0f}));
-  test.AddOutput<BFloat16>("Y", {2, 3},
-                           MakeBFloat16({11.0f, 11.0f, 11.0f,
-                                         -9.0f, -9.0f, -9.0f}));
+  test.AddOutput<BFloat16>("Y", {2, 3}, MakeBFloat16({11.0f, 11.0f, 11.0f, -9.0f, -9.0f, -9.0f}));
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
 #if defined(USE_DNNL)
   execution_providers.push_back(DefaultDnnlExecutionProvider());
@@ -511,14 +453,10 @@ void TestGemm2DBroadcast_1() {
   test.AddAttribute("alpha", 1.0f);
   test.AddAttribute("beta", 1.0f);
 
-  test.AddInput<T>("A", {2, 4},
-                   {1.0f, 2.0f, 3.0f, 4.0f,
-                    -1.0f, -2.0f, -3.0f, -4.0f});
+  test.AddInput<T>("A", {2, 4}, {1.0f, 2.0f, 3.0f, 4.0f, -1.0f, -2.0f, -3.0f, -4.0f});
   test.AddInput<T>("B", {4, 3}, std::vector<T>(12, 1.0f));
   test.AddInput<T>("C", {2, 1}, std::vector<T>{1.0, 2.0f});
-  test.AddOutput<T>("Y", {2, 3},
-                    {11.0f, 11.0f, 11.0f,
-                     -8.0f, -8.0f, -8.0f});
+  test.AddOutput<T>("Y", {2, 3}, {11.0f, 11.0f, 11.0f, -8.0f, -8.0f, -8.0f});
   test.Config(run_with_tunable_op)
       .RunWithConfig();
 }
@@ -540,17 +478,10 @@ TEST(GemmOpTest, Gemm2DBroadcast_1_bfloat16) {
   test.AddAttribute("transA", (int64_t)0);
   test.AddAttribute("transB", (int64_t)0);
   test.AddAttribute("alpha", 1.0f);
-  test.AddInput<BFloat16>("A", {2, 4},
-                          MakeBFloat16({1.0f, 2.0f, 3.0f, 4.0f,
-                                        -1.0f, -2.0f, -3.0f, -4.0f}));
-  test.AddInput<BFloat16>("B", {4, 3},
-                          MakeBFloat16({1.0f, 1.0f, 1.0f, 1.0f,
-                                        1.0f, 1.0f, 1.0f, 1.0f,
-                                        1.0f, 1.0f, 1.0f, 1.0f}));
+  test.AddInput<BFloat16>("A", {2, 4}, MakeBFloat16({1.0f, 2.0f, 3.0f, 4.0f, -1.0f, -2.0f, -3.0f, -4.0f}));
+  test.AddInput<BFloat16>("B", {4, 3}, MakeBFloat16({1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f}));
   test.AddInput<BFloat16>("C", {2, 1}, MakeBFloat16({1.0f, 2.0f}));
-  test.AddOutput<BFloat16>("Y", {2, 3},
-                           MakeBFloat16({11.0f, 11.0f, 11.0f,
-                                         -8.0f, -8.0f, -8.0f}));
+  test.AddOutput<BFloat16>("Y", {2, 3}, MakeBFloat16({11.0f, 11.0f, 11.0f, -8.0f, -8.0f, -8.0f}));
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
 #if defined(USE_DNNL)
   execution_providers.push_back(DefaultDnnlExecutionProvider());
@@ -569,14 +500,10 @@ void TestGemm2DBroadcast_2() {
   test.AddAttribute("beta", 1.0f);
 
   // Same as GemmBroadcast, but adding the unnecessary second dimension.
-  test.AddInput<T>("A", {2, 4},
-                   {1.0f, 2.0f, 3.0f, 4.0f,
-                    -1.0f, -2.0f, -3.0f, -4.0f});
+  test.AddInput<T>("A", {2, 4}, {1.0f, 2.0f, 3.0f, 4.0f, -1.0f, -2.0f, -3.0f, -4.0f});
   test.AddInput<T>("B", {4, 3}, std::vector<T>(12, 1.0f));
   test.AddInput<T>("C", {1, 3}, std::vector<T>{1.0f, 2.0f, 3.0f});
-  test.AddOutput<T>("Y", {2, 3},
-                    {11.0f, 12.0f, 13.0f,
-                     -9.0f, -8.0f, -7.0f});
+  test.AddOutput<T>("Y", {2, 3}, {11.0f, 12.0f, 13.0f, -9.0f, -8.0f, -7.0f});
   test.Config(run_with_tunable_op)
       .RunWithConfig();
 }
@@ -599,17 +526,10 @@ TEST(GemmOpTest, Gemm2DBroadcast_2_bfloat16) {
   test.AddAttribute("transA", (int64_t)0);
   test.AddAttribute("transB", (int64_t)0);
   test.AddAttribute("alpha", 1.0f);
-  test.AddInput<BFloat16>("A", {2, 4},
-                          MakeBFloat16({1.0f, 2.0f, 3.0f, 4.0f,
-                                        -1.0f, -2.0f, -3.0f, -4.0f}));
-  test.AddInput<BFloat16>("B", {4, 3},
-                          MakeBFloat16({1.0f, 1.0f, 1.0f, 1.0f,
-                                        1.0f, 1.0f, 1.0f, 1.0f,
-                                        1.0f, 1.0f, 1.0f, 1.0f}));
+  test.AddInput<BFloat16>("A", {2, 4}, MakeBFloat16({1.0f, 2.0f, 3.0f, 4.0f, -1.0f, -2.0f, -3.0f, -4.0f}));
+  test.AddInput<BFloat16>("B", {4, 3}, MakeBFloat16({1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f}));
   test.AddInput<BFloat16>("C", {1, 3}, MakeBFloat16({1.0f, 2.0f, 3.0f}));
-  test.AddOutput<BFloat16>("Y", {2, 3},
-                           MakeBFloat16({11.0f, 12.0f, 13.0f,
-                                         -9.0f, -8.0f, -7.0f}));
+  test.AddOutput<BFloat16>("Y", {2, 3}, MakeBFloat16({11.0f, 12.0f, 13.0f, -9.0f, -8.0f, -7.0f}));
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
 #if defined(USE_DNNL)
   execution_providers.push_back(DefaultDnnlExecutionProvider());
@@ -627,14 +547,10 @@ void TestGemmFalseBroadcast() {
   test.AddAttribute("alpha", 1.0f);
   test.AddAttribute("beta", 1.0f);
 
-  test.AddInput<T>("A", {2, 4},
-                   {1.0f, 2.0f, 3.0f, 4.0f,
-                    -1.0f, -2.0f, -3.0f, -4.0f});
+  test.AddInput<T>("A", {2, 4}, {1.0f, 2.0f, 3.0f, 4.0f, -1.0f, -2.0f, -3.0f, -4.0f});
   test.AddInput<T>("B", {4, 3}, std::vector<T>(12, 1.0f));
   test.AddInput<T>("C", {2, 3}, std::vector<T>{1.0f, 1.0f, 1.0f, 2.0f, 2.0f, 2.0f});
-  test.AddOutput<T>("Y", {2, 3},
-                    {11.0f, 11.0f, 11.0f,
-                     -8.0f, -8.0f, -8.0f});
+  test.AddOutput<T>("Y", {2, 3}, {11.0f, 11.0f, 11.0f, -8.0f, -8.0f, -8.0f});
   test.Config(run_with_tunable_op)
       .RunWithConfig();
 }
@@ -657,17 +573,10 @@ TEST(GemmOpTest, GemmFalseBroadcast_2_bfloat16) {
   test.AddAttribute("transA", (int64_t)0);
   test.AddAttribute("transB", (int64_t)0);
   test.AddAttribute("alpha", 1.0f);
-  test.AddInput<BFloat16>("A", {2, 4},
-                          MakeBFloat16({1.0f, 2.0f, 3.0f, 4.0f,
-                                        -1.0f, -2.0f, -3.0f, -4.0f}));
-  test.AddInput<BFloat16>("B", {4, 3},
-                          MakeBFloat16({1.0f, 1.0f, 1.0f, 1.0f,
-                                        1.0f, 1.0f, 1.0f, 1.0f,
-                                        1.0f, 1.0f, 1.0f, 1.0f}));
+  test.AddInput<BFloat16>("A", {2, 4}, MakeBFloat16({1.0f, 2.0f, 3.0f, 4.0f, -1.0f, -2.0f, -3.0f, -4.0f}));
+  test.AddInput<BFloat16>("B", {4, 3}, MakeBFloat16({1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f}));
   test.AddInput<BFloat16>("C", {2, 3}, MakeBFloat16({1.0f, 1.0f, 1.0f, 2.0f, 2.0f, 2.0f}));
-  test.AddOutput<BFloat16>("Y", {2, 3},
-                           MakeBFloat16({11.0f, 11.0f, 11.0f,
-                                         -8.0f, -8.0f, -8.0f}));
+  test.AddOutput<BFloat16>("Y", {2, 3}, MakeBFloat16({11.0f, 11.0f, 11.0f, -8.0f, -8.0f, -8.0f}));
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
 #if defined(USE_DNNL)
   execution_providers.push_back(DefaultDnnlExecutionProvider());
@@ -684,12 +593,10 @@ void TestGemmEmptyTensor() {
   test.AddAttribute("alpha", 1.0f);
   test.AddAttribute("beta", 1.0f);
 
-  test.AddInput<T>("A", {0, 4},
-                   {});
+  test.AddInput<T>("A", {0, 4}, {});
   test.AddInput<T>("B", {4, 3}, std::vector<T>(12, 1.0f));
   test.AddInput<T>("C", {3}, std::vector<T>(3, 1.0f));
-  test.AddOutput<T>("Y", {0, 3},
-                    {});
+  test.AddOutput<T>("Y", {0, 3}, {});
   // TensorRT: doesn't support dynamic shape yet
   test.ConfigExcludeEps({kTensorrtExecutionProvider, kDnnlExecutionProvider, kQnnExecutionProvider})
       .Config(run_with_tunable_op)
@@ -710,13 +617,9 @@ static void TestGemmNoBiasOpset11() {
   test.AddAttribute("alpha", 1.0f);
   test.AddAttribute("beta", 1.0f);
 
-  test.AddInput<T>("A", {2, 4},
-                   {1.0f, 2.0f, 3.0f, 4.0f,
-                    -1.0f, -2.0f, -3.0f, -4.0f});
+  test.AddInput<T>("A", {2, 4}, {1.0f, 2.0f, 3.0f, 4.0f, -1.0f, -2.0f, -3.0f, -4.0f});
   test.AddInput<T>("B", {4, 3}, std::vector<T>(12, 1.0f));
-  test.AddOutput<T>("Y", {2, 3},
-                    {10.0f, 10.0f, 10.0f,
-                     -10.0f, -10.0f, -10.0f});
+  test.AddOutput<T>("Y", {2, 3}, {10.0f, 10.0f, 10.0f, -10.0f, -10.0f, -10.0f});
   // tensorRT don't seem to support missing bias
   std::unordered_set<std::string> excluded_provider_types{kTensorrtExecutionProvider};
   // QNN Linux result diff 0.011714935302734375 exceed the threshold
@@ -739,11 +642,9 @@ static void TestGemmWithAlphaOpset11() {
 
   test.AddAttribute("alpha", 2.0f);
 
-  test.AddInput<T>("A", {2, 2},
-                   {1.0f, 2.0f, 3.0f, 4.0f});
+  test.AddInput<T>("A", {2, 2}, {1.0f, 2.0f, 3.0f, 4.0f});
   test.AddInput<T>("B", {2, 2}, std::vector<T>(4, 1.0f));
-  test.AddOutput<T>("Y", {2, 2},
-                    {6.0f, 6.0f, 14.0f, 14.0f});
+  test.AddOutput<T>("Y", {2, 2}, {6.0f, 6.0f, 14.0f, 14.0f});
   // tensorRT don't seem to support missing bias
   test.ConfigExcludeEps({kTensorrtExecutionProvider})
       .Config(run_with_tunable_op)
@@ -766,19 +667,14 @@ TEST(GemmOpTest, SharedPrepackedWeights) {
   test.AddAttribute("beta", 1.0f);
 
   std::vector<float> b_init_values(12, 1.0f);
-  test.AddInput<float>("A", {2, 4},
-                       {1.0f, 2.0f, 3.0f, 4.0f,
-                        -1.0f, -2.0f, -3.0f, -4.0f});
+  test.AddInput<float>("A", {2, 4}, {1.0f, 2.0f, 3.0f, 4.0f, -1.0f, -2.0f, -3.0f, -4.0f});
   // B is to be an initializer for triggering pre-packing
   test.AddInput<float>("B", {4, 3}, b_init_values, true);
   test.AddInput<float>("C", {2, 3}, std::vector<float>(6, 1.0f));
-  test.AddOutput<float>("Y", {2, 3},
-                        {11.0f, 11.0f, 11.0f,
-                         -9.0f, -9.0f, -9.0f});
+  test.AddOutput<float>("Y", {2, 3}, {11.0f, 11.0f, 11.0f, -9.0f, -9.0f, -9.0f});
 
   OrtValue b;
-  Tensor::InitOrtValue(DataTypeImpl::GetType<float>(), TensorShape({4, 3}),
-                       b_init_values.data(), OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator), b);
+  Tensor::InitOrtValue(DataTypeImpl::GetType<float>(), TensorShape({4, 3}), b_init_values.data(), OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator), b);
 
   SessionOptions so;
 

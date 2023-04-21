@@ -20,19 +20,12 @@ namespace onnxruntime {
 namespace contrib {
 namespace GenerationCpuDeviceHelper {
 
-Status TopK(const Tensor* input, const int axis, const unsigned k, bool largest, bool sorted,
-            AllocatorPtr allocator,
-            Stream* /*stream*/,
-            onnxruntime::concurrency::ThreadPool* threadpool,
-            Tensor& output_values,
-            Tensor& output_indices) {
+Status TopK(const Tensor* input, const int axis, const unsigned k, bool largest, bool sorted, AllocatorPtr allocator, Stream* /*stream*/, onnxruntime::concurrency::ThreadPool* threadpool, Tensor& output_values, Tensor& output_indices) {
   if (input->IsDataType<float>()) {
     return GetTopK<float>(input, axis, k, largest, sorted, allocator, threadpool, output_values, output_indices);
   }
 
-  return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
-                         "BeamSearch op: An implementation for the input type ",
-                         input->DataType(), " is not supported yet");
+  return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "BeamSearch op: An implementation for the input type ", input->DataType(), " is not supported yet");
 }
 
 template <typename T>
@@ -162,8 +155,7 @@ Status CreateGptInputs(
   // Note that we will expand it to (batch_size * num_beams, sequence_length) later.
   // To avoid cloning input_ids, we use const_cast here since this function does not change its content.
   OrtValue input_ids;
-  Tensor::InitOrtValue(element_type, input_ids_shape,
-                       const_cast<Tensor*>(original_input_ids)->MutableData<int32_t>(), location, input_ids);
+  Tensor::InitOrtValue(element_type, input_ids_shape, const_cast<Tensor*>(original_input_ids)->MutableData<int32_t>(), location, input_ids);
 
   OrtValue position_ids;
   Tensor::InitOrtValue(element_type, input_ids_shape, allocator, position_ids);
@@ -171,8 +163,7 @@ Status CreateGptInputs(
   OrtValue attention_mask;
   if (attn_mask_value != nullptr) {
     const Tensor& attn_mask = attn_mask_value->Get<Tensor>();
-    Tensor::InitOrtValue(element_type, input_ids_shape, const_cast<Tensor*>(&attn_mask)->MutableData<int32_t>(),
-                         allocator->Info(), attention_mask);
+    Tensor::InitOrtValue(element_type, input_ids_shape, const_cast<Tensor*>(&attn_mask)->MutableData<int32_t>(), allocator->Info(), attention_mask);
   } else {
     auto mask_type = DataTypeImpl::GetType<int32_t>();
     Tensor::InitOrtValue(mask_type, input_ids_shape, allocator, attention_mask);
@@ -387,8 +378,7 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
   TensorShape next_token_scores_shape(&next_token_scores_dims[0], 2);
   auto element_type = DataTypeImpl::GetType<T>();
   OrtValue next_token_scores_value;
-  Tensor::InitOrtValue(element_type, next_token_scores_shape, next_token_scores.data(), allocator->Info(),
-                       next_token_scores_value);
+  Tensor::InitOrtValue(element_type, next_token_scores_shape, next_token_scores.data(), allocator->Info(), next_token_scores_value);
   const Tensor& input = next_token_scores_value.Get<Tensor>();
 
   constexpr int axis = 1;
@@ -398,8 +388,7 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
 
   Tensor topk_scores;
   Tensor topk_indices;
-  ORT_RETURN_IF_ERROR(TopK(&input, axis, top_k, largest, sorted, allocator, stream, thread_pool,
-                           topk_scores, topk_indices));
+  ORT_RETURN_IF_ERROR(TopK(&input, axis, top_k, largest, sorted, allocator, stream, thread_pool, topk_scores, topk_indices));
 
 #ifdef DEBUG_GENERATION
   dumper->Print("topk_scores", topk_scores);
@@ -676,9 +665,7 @@ Status UpdateGptFeeds(
       next_inputs[i + k] = last_outputs[i];
     }
   } else {
-    PickGptPastState<T>(last_outputs, next_inputs, beam_indices_cpu,
-                        gpt_subgraph_first_past_input_idx,
-                        gpt_subgraph_first_present_output_idx, allocator);
+    PickGptPastState<T>(last_outputs, next_inputs, beam_indices_cpu, gpt_subgraph_first_past_input_idx, gpt_subgraph_first_present_output_idx, allocator);
   }
   return Status::OK();
 }
@@ -715,8 +702,7 @@ Status CreateEncoderInputs(
 
   if (attn_mask_value != nullptr) {
     const Tensor& attention_mask = attn_mask_value->Get<Tensor>();
-    Tensor::InitOrtValue(element_type, input_ids_shape, const_cast<Tensor*>(&attention_mask)->MutableData<int32_t>(),
-                         allocator->Info(), encoder_attention_mask);
+    Tensor::InitOrtValue(element_type, input_ids_shape, const_cast<Tensor*>(&attention_mask)->MutableData<int32_t>(), allocator->Info(), encoder_attention_mask);
   } else {
     auto mask_type = DataTypeImpl::GetType<int32_t>();
     Tensor::InitOrtValue(mask_type, input_ids_shape, allocator, encoder_attention_mask);
@@ -864,8 +850,7 @@ Status UpdateDecoderFeeds(
           last_outputs[t5_decoder_first_present_output_idx + i];
     }
   } else {
-    PickT5PastState<T>(last_outputs, next_inputs, num_present_tensors, beam_indices,
-                       t5_decoder_first_past_input_idx, t5_decoder_first_present_output_idx, allocator);
+    PickT5PastState<T>(last_outputs, next_inputs, num_present_tensors, beam_indices, t5_decoder_first_past_input_idx, t5_decoder_first_present_output_idx, allocator);
   }
   return Status::OK();
 }
@@ -903,8 +888,7 @@ Status CreateWhisperEncoderInputs(
 
   if (attn_mask_value != nullptr) {
     const Tensor& attention_mask = attn_mask_value->Get<Tensor>();
-    Tensor::InitOrtValue(element_type, input_features_shape, const_cast<Tensor*>(&attention_mask)->MutableData<int32_t>(),
-                         allocator->Info(), encoder_attention_mask);
+    Tensor::InitOrtValue(element_type, input_features_shape, const_cast<Tensor*>(&attention_mask)->MutableData<int32_t>(), allocator->Info(), encoder_attention_mask);
   } else {
     auto mask_type = DataTypeImpl::GetType<int32_t>();
     Tensor::InitOrtValue(mask_type, input_features_shape, allocator, encoder_attention_mask);

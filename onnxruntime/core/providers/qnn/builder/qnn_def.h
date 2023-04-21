@@ -139,8 +139,7 @@ class QnnTensorWrapper {
                             const std::string& node_name,
                             std::unordered_map<std::string, bool>& tensors_created_table,
                             std::string& error_msg) {
-    return CreateTensorInQnnGraph(qnn_interface, graph, node_name, tensor_name_,
-                                  qnn_tensor_, tensors_created_table, error_msg);
+    return CreateTensorInQnnGraph(qnn_interface, graph, node_name, tensor_name_, qnn_tensor_, tensors_created_table, error_msg);
   }
 
  private:

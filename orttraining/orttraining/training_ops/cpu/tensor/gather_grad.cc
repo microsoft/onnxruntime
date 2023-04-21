@@ -15,11 +15,8 @@ ONNX_OPERATOR_KERNEL_EX(
     kCpuExecutionProvider,
     KernelDefBuilder()
         .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
-        .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
-                              DataTypeImpl::GetTensorType<double>()})
-        .TypeConstraint("Tind", std::vector<MLDataType>{
-                                    DataTypeImpl::GetTensorType<int32_t>(),
-                                    DataTypeImpl::GetTensorType<int64_t>()}),
+        .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(), DataTypeImpl::GetTensorType<double>()})
+        .TypeConstraint("Tind", std::vector<MLDataType>{DataTypeImpl::GetTensorType<int32_t>(), DataTypeImpl::GetTensorType<int64_t>()}),
     GatherGrad);
 
 #define TYPED_GRAD_FUNCTION_CALL(T, tp)                                      \
@@ -50,8 +47,7 @@ Status GatherGrad::Compute(OpKernelContext* context) const {
 }
 
 template <typename T, typename Tind>
-Status GatherGrad::ComputeImpl(const TensorShape& data_shape, const Tensor& indices, const Tensor& grad, Tensor& output,
-                               concurrency::ThreadPool* tp) const {
+Status GatherGrad::ComputeImpl(const TensorShape& data_shape, const Tensor& indices, const Tensor& grad, Tensor& output, concurrency::ThreadPool* tp) const {
   const Tind* indices_data = indices.template Data<Tind>();
   const T* grad_data = grad.template Data<T>();
   T* output_data = output.template MutableData<T>();
@@ -70,8 +66,7 @@ Status GatherGrad::ComputeImpl(const TensorShape& data_shape, const Tensor& indi
   for (int64_t i = 0; i < N; i++) {
     Tind idx = indices_data[i];
     if (idx < -indices_max || idx >= indices_max) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "indices element out of data bounds, idx=", idx,
-                             " data_dim=", indices_max);
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "indices element out of data bounds, idx=", idx, " data_dim=", indices_max);
     }
   }
 
@@ -89,12 +84,11 @@ Status GatherGrad::ComputeImpl(const TensorShape& data_shape, const Tensor& indi
     output_data[input_index] += grad_data[g];
   };
 
-  concurrency::ThreadPool::TryParallelFor(tp, grad_size, static_cast<double>(block_size),
-                                          [&lambda](ptrdiff_t first, ptrdiff_t last) {
-                                            for (int index = static_cast<int>(first), end = static_cast<int>(last); index < end; ++index) {
-                                              lambda(index);
-                                            }
-                                          });
+  concurrency::ThreadPool::TryParallelFor(tp, grad_size, static_cast<double>(block_size), [&lambda](ptrdiff_t first, ptrdiff_t last) {
+    for (int index = static_cast<int>(first), end = static_cast<int>(last); index < end; ++index) {
+      lambda(index);
+    }
+  });
 
   return Status::OK();
 }

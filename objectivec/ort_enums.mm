@@ -71,8 +71,7 @@ constexpr GraphOptimizationLevelInfo kGraphOptimizationLevelInfos[]{
 
 template <typename Container, typename SelectFn, typename TransformFn>
 auto SelectAndTransform(
-    const Container& container, SelectFn select_fn, TransformFn transform_fn,
-    const char* not_found_msg)
+    const Container& container, SelectFn select_fn, TransformFn transform_fn, const char* not_found_msg)
     -> decltype(transform_fn(*std::begin(container))) {
   const auto it = std::find_if(
       std::begin(container), std::end(container), select_fn);

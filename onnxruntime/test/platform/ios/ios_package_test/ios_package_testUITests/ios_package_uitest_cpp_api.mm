@@ -57,8 +57,7 @@ void testSigmoid(const char* modelPath, bool useCoreML) {
       Ort::Value::CreateTensor<float>(memory_info, input_tensor_values, input_tensor_size, input_node_dims, 3);
   XCTAssert(input_tensor.IsTensor());
 
-  auto output_tensors = session.Run(Ort::RunOptions{nullptr}, input_node_names,
-                                    &input_tensor, 1, output_node_names, 1);
+  auto output_tensors = session.Run(Ort::RunOptions{nullptr}, input_node_names, &input_tensor, 1, output_node_names, 1);
   XCTAssertEqual(output_tensors.size(), 1);
   XCTAssert(output_tensors.front().IsTensor());
 

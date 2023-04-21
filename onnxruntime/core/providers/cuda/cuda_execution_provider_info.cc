@@ -55,8 +55,11 @@ CUDAExecutionProviderInfo CUDAExecutionProviderInfo::FromProviderOptions(const P
                 CUDA_RETURN_IF_ERROR(cudaGetDeviceCount(&num_devices));
                 ORT_RETURN_IF_NOT(
                     0 <= info.device_id && info.device_id < num_devices,
-                    "Invalid device ID: ", info.device_id,
-                    ", must be between 0 (inclusive) and ", num_devices, " (exclusive).");
+                    "Invalid device ID: ",
+                    info.device_id,
+                    ", must be between 0 (inclusive) and ",
+                    num_devices,
+                    " (exclusive).");
                 return Status::OK();
               })
           .AddValueParser(
@@ -86,10 +89,12 @@ CUDAExecutionProviderInfo CUDAExecutionProviderInfo::FromProviderOptions(const P
           .AddAssignmentToReference(cuda::provider_option_names::kMemLimit, info.gpu_mem_limit)
           .AddAssignmentToEnumReference(
               cuda::provider_option_names::kArenaExtendStrategy,
-              arena_extend_strategy_mapping, info.arena_extend_strategy)
+              arena_extend_strategy_mapping,
+              info.arena_extend_strategy)
           .AddAssignmentToEnumReference(
               cuda::provider_option_names::kCudnnConvAlgoSearch,
-              ort_cudnn_conv_algo_search_mapping, info.cudnn_conv_algo_search)
+              ort_cudnn_conv_algo_search_mapping,
+              info.cudnn_conv_algo_search)
           .AddAssignmentToReference(cuda::provider_option_names::kDoCopyInDefaultStream, info.do_copy_in_default_stream)
           .AddAssignmentToReference(cuda::provider_option_names::kCudnnConvUseMaxWorkspace, info.cudnn_conv_use_max_workspace)
           .AddAssignmentToReference(cuda::provider_option_names::kEnableCudaGraph, info.enable_cuda_graph)

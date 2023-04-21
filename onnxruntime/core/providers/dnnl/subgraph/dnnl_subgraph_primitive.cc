@@ -417,8 +417,7 @@ void DnnlSubgraphPrimitive::AddOutputs() {
       outputs_.emplace(dnnl_tensor_name, output_mem_dnnl);
     } else {
       auto output_mem = dnnl::memory(output_md, engine, nullptr);
-      AddPrimitive(dnnl::reorder(output_mem_dnnl, output_mem), {{DNNL_ARG_FROM, output_mem_dnnl},
-                                                                {DNNL_ARG_TO, output_mem}});
+      AddPrimitive(dnnl::reorder(output_mem_dnnl, output_mem), {{DNNL_ARG_FROM, output_mem_dnnl}, {DNNL_ARG_TO, output_mem}});
       outputs_.emplace(dnnl_tensor_name, output_mem);
     }
   }
@@ -585,8 +584,7 @@ dnnl::memory DnnlSubgraphPrimitive::GetMemoryAndReshape(const DnnlTensor& tensor
         dnnl::reorder(mem_from_reshape, mem_to).execute(s, mem_from_reshape, mem_to);
         s.wait();
       } else {
-        AddPrimitive(dnnl::reorder(mem_from_reshape, mem_to), {{DNNL_ARG_FROM, mem_from_reshape},
-                                                               {DNNL_ARG_TO, mem_to}});
+        AddPrimitive(dnnl::reorder(mem_from_reshape, mem_to), {{DNNL_ARG_FROM, mem_from_reshape}, {DNNL_ARG_TO, mem_to}});
       }
     }
   } else {              // same shape, save to reorder
@@ -595,8 +593,7 @@ dnnl::memory DnnlSubgraphPrimitive::GetMemoryAndReshape(const DnnlTensor& tensor
       dnnl::reorder(mem_from, mem_to).execute(s, mem_from, mem_to);
       s.wait();
     } else {
-      AddPrimitive(dnnl::reorder(mem_from, mem_to), {{DNNL_ARG_FROM, mem_from},
-                                                     {DNNL_ARG_TO, mem_to}});
+      AddPrimitive(dnnl::reorder(mem_from, mem_to), {{DNNL_ARG_FROM, mem_from}, {DNNL_ARG_TO, mem_to}});
     }
   }
 
@@ -613,8 +610,7 @@ dnnl::memory DnnlSubgraphPrimitive::GetMemoryInOrtFormat(const DnnlTensor& tenso
   if (!IsMemoryInExpectedOrtFormat(from_desc)) {
     dnnl::memory::desc to_md = dnnl::memory::desc(from_dims, tensor.Type(), GetDnnlFormat(from_dims.size()));
     dnnl::memory to_mem = dnnl::memory(to_md, eng);
-    AddPrimitive(dnnl::reorder(from_mem, to_mem), {{DNNL_ARG_FROM, from_mem},
-                                                   {DNNL_ARG_TO, to_mem}});
+    AddPrimitive(dnnl::reorder(from_mem, to_mem), {{DNNL_ARG_FROM, from_mem}, {DNNL_ARG_TO, to_mem}});
     return to_mem;
   } else {
     // If using GPU this will move the memory from the CPU to the GPU.

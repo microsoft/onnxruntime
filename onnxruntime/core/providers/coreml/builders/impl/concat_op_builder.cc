@@ -18,13 +18,11 @@ class ConcatOpBuilder : public BaseOpBuilder {
   // Add operator related
  private:
 #ifdef __APPLE__
-  [[nodiscard]] Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
-                                             const logging::Logger& logger) const override;
+  [[nodiscard]] Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node, const logging::Logger& logger) const override;
 #endif
 
   // Operator support related
-  bool IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params,
-                         const logging::Logger& logger) const override;
+  bool IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params, const logging::Logger& logger) const override;
 };
 
 // Add operator related
@@ -50,8 +48,7 @@ Status ConcatOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 #endif
 
 // Operator support related
-bool ConcatOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& /* input_params */,
-                                        const logging::Logger& logger) const {
+bool ConcatOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& /* input_params */, const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
   if (input_defs.size() < 2) {
     LOGS(logger, VERBOSE) << "Concat only support 2+ inputs, actual number of inputs: " << input_defs.size();

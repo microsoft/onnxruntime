@@ -22,9 +22,7 @@ class QGemm : protected GemmBase, public MatMulIntegerBase {
     const auto& b_shape = b ? b->Shape() : b_shape_;
 
     const auto* c = context->Input<Tensor>(IN_C);
-    GemmHelper helper(a->Shape(), trans_A_ != CblasNoTrans,
-                      b_shape, trans_B_ != CblasNoTrans,
-                      c != nullptr ? c->Shape() : TensorShape({}));
+    GemmHelper helper(a->Shape(), trans_A_ != CblasNoTrans, b_shape, trans_B_ != CblasNoTrans, c != nullptr ? c->Shape() : TensorShape({}));
     if (!helper.State().IsOK())
       return helper.State();
 
@@ -136,8 +134,7 @@ class QGemm : protected GemmBase, public MatMulIntegerBase {
     OUT_Y = 0
   };
 
-  static void CheckInputs(const Tensor* a_zp, const Tensor* b_zp, const Tensor* y_zp,
-                          const Tensor* a_scale, const Tensor* b_scale, const Tensor* y_scale, const GemmHelper& helper) {
+  static void CheckInputs(const Tensor* a_zp, const Tensor* b_zp, const Tensor* y_zp, const Tensor* a_scale, const Tensor* b_scale, const Tensor* y_scale, const GemmHelper& helper) {
     ORT_ENFORCE(IsScalarOr1ElementVector(a_scale),
                 "QGemm : scale of input a must be a scalar or 1D tensor of size 1");
     ORT_ENFORCE(IsScalarOr1ElementVector(a_zp),

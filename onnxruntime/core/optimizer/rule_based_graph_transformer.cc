@@ -16,8 +16,7 @@ Status RuleBasedGraphTransformer::Register(std::unique_ptr<RewriteRule> rule) {
   if (op_types.empty()) {
     any_op_type_rules_.push_back(*rule);
   } else {
-    std::for_each(op_types.cbegin(), op_types.cend(),
-                  [&](const std::string& op_type) { op_type_to_rules_[op_type].push_back(*rule); });
+    std::for_each(op_types.cbegin(), op_types.cend(), [&](const std::string& op_type) { op_type_to_rules_[op_type].push_back(*rule); });
   }
 
   // Save unique pointer at the rules_ list.
@@ -26,9 +25,7 @@ Status RuleBasedGraphTransformer::Register(std::unique_ptr<RewriteRule> rule) {
   return Status::OK();
 }
 
-Status RuleBasedGraphTransformer::ApplyRulesOnNode(Graph& graph, Node& node,
-                                                   gsl::span<const std::reference_wrapper<const RewriteRule>> rules,
-                                                   RuleEffect& rule_effect, const logging::Logger& logger) const {
+Status RuleBasedGraphTransformer::ApplyRulesOnNode(Graph& graph, Node& node, gsl::span<const std::reference_wrapper<const RewriteRule>> rules, RuleEffect& rule_effect, const logging::Logger& logger) const {
   for (const RewriteRule& rule : rules) {
     ORT_RETURN_IF_ERROR(rule.CheckConditionAndApply(graph, node, rule_effect, logger));
     // If the current node was removed as a result of a rule, stop rule application for that node.

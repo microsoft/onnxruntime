@@ -25,8 +25,7 @@ OpKernelInfo::OpKernelInfo(const onnxruntime::Node& node,
       proto_helper_context_(node) {}
 
 OpKernelInfo::OpKernelInfo(const OpKernelInfo& other)
-    : OpKernelInfo(other.node_, other.kernel_def_, *other.execution_provider_, other.constant_initialized_tensors_,
-                   other.ort_value_name_idx_map_, other.data_transfer_mgr_) {}
+    : OpKernelInfo(other.node_, other.kernel_def_, *other.execution_provider_, other.constant_initialized_tensors_, other.ort_value_name_idx_map_, other.data_transfer_mgr_) {}
 
 const OrtMemoryInfo& OpKernelInfo::GetMemoryInfo(OrtMemType mem_type) const {
   AllocatorPtr alloc = GetAllocator(mem_type);

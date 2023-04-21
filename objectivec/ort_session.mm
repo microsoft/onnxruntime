@@ -79,9 +79,7 @@ NS_ASSUME_NONNULL_BEGIN
       outputValues.push_back(static_cast<OrtValue*>([outputs[outputName] CXXAPIOrtValue]));
     }
 
-    Ort::ThrowOnError(Ort::GetApi().Run(*_session, [runOptions CXXAPIOrtRunOptions],
-                                        inputNames.data(), inputValues.data(), inputNames.size(),
-                                        outputNames.data(), outputNames.size(), outputValues.data()));
+    Ort::ThrowOnError(Ort::GetApi().Run(*_session, [runOptions CXXAPIOrtRunOptions], inputNames.data(), inputValues.data(), inputNames.size(), outputNames.data(), outputNames.size(), outputValues.data()));
 
     return YES;
   }
@@ -116,9 +114,7 @@ NS_ASSUME_NONNULL_BEGIN
       outputValues.push_back(nullptr);
     }
 
-    Ort::ThrowOnError(Ort::GetApi().Run(*_session, [runOptions CXXAPIOrtRunOptions],
-                                        inputNames.data(), inputValues.data(), inputNames.size(),
-                                        outputNames.data(), outputNames.size(), outputValues.data()));
+    Ort::ThrowOnError(Ort::GetApi().Run(*_session, [runOptions CXXAPIOrtRunOptions], inputNames.data(), inputValues.data(), inputNames.size(), outputNames.data(), outputNames.size(), outputValues.data()));
 
     NSMutableDictionary<NSString*, ORTValue*>* outputs = [[NSMutableDictionary alloc] init];
     for (NSUInteger i = 0; i < outputNameArray.count; ++i) {

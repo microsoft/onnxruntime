@@ -130,8 +130,7 @@ void PythonOpBase::AddIntScalarArgs() {
   }
 
   for (size_t i = 0; i < input_float_scalars_.size(); ++i) {
-    const_arg_set_.Add(input_float_scalar_positions_.at(i), Py_BuildValue("f", input_float_scalars_.at(i)),
-                       true /*owned*/);
+    const_arg_set_.Add(input_float_scalar_positions_.at(i), Py_BuildValue("f", input_float_scalars_.at(i)), true /*owned*/);
   }
 }
 

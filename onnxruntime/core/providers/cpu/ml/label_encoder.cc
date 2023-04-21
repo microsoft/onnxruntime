@@ -11,7 +11,8 @@ namespace ml {
 
 ONNX_CPU_OPERATOR_VERSIONED_ML_KERNEL(
     LabelEncoder,
-    1, 1,
+    1,
+    1,
     KernelDefBuilder().TypeConstraint("T1",
                                       std::vector<MLDataType>{DataTypeImpl::GetTensorType<std::string>(),
                                                               DataTypeImpl::GetTensorType<int64_t>()})
@@ -39,12 +40,11 @@ Status LabelEncoder::Compute(OpKernelContext* context) const {
     // map isn't going to change so get end() once instead of calling inside the for_each loop
     const auto map_end = string_to_int_map_.end();
 
-    std::for_each(input.begin(), input.end(),
-                  [&out, &map_end, this](const std::string& value) {
-                    auto map_to = string_to_int_map_.find(value);
-                    *out = map_to == map_end ? default_int_ : map_to->second;
-                    ++out;
-                  });
+    std::for_each(input.begin(), input.end(), [&out, &map_end, this](const std::string& value) {
+      auto map_to = string_to_int_map_.find(value);
+      *out = map_to == map_end ? default_int_ : map_to->second;
+      ++out;
+    });
   } else {
     if (!Y.IsDataTypeString())
       return Status(ONNXRUNTIME, FAIL, "Input of tensor(int64) must have output of tensor(string)");
@@ -55,12 +55,11 @@ Status LabelEncoder::Compute(OpKernelContext* context) const {
 
     const auto map_end = int_to_string_map_.end();
 
-    std::for_each(input.begin(), input.end(),
-                  [&out, &map_end, this](const int64_t& value) {
-                    auto map_to = int_to_string_map_.find(value);
-                    *out = map_to == map_end ? default_string_ : map_to->second;
-                    ++out;
-                  });
+    std::for_each(input.begin(), input.end(), [&out, &map_end, this](const int64_t& value) {
+      auto map_to = int_to_string_map_.find(value);
+      *out = map_to == map_end ? default_string_ : map_to->second;
+      ++out;
+    });
   }
 
   return Status::OK();

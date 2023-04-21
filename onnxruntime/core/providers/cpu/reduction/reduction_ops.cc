@@ -438,9 +438,7 @@ struct ParallelizedData {
 };
 
 template <typename AGG>
-void NoTransposeReduce1Loop(Tensor* output, const TensorShape& new_input_shape, const Tensor& input,
-                            gsl::span<const int64_t> reduced_axes, concurrency::ThreadPool* tp,
-                            ResultsNoTransposePrepareForReduce& last_results) {
+void NoTransposeReduce1Loop(Tensor* output, const TensorShape& new_input_shape, const Tensor& input, gsl::span<const int64_t> reduced_axes, concurrency::ThreadPool* tp, ResultsNoTransposePrepareForReduce& last_results) {
   auto output_shape = output->Shape();
   const typename AGG::input_type* from_data = input.Data<typename AGG::input_type>();
   typename AGG::value_type* to_data = output->MutableData<typename AGG::value_type>();
@@ -498,14 +496,13 @@ void NoTransposeReduce1Loop(Tensor* output, const TensorShape& new_input_shape, 
 
   auto cost = ParallelReduceFastCost(1,
                                      last_results.projected_index.size() * last_results.last_loop_red_size,
-                                     sizeof(typename AGG::input_type), 6);
+                                     sizeof(typename AGG::input_type),
+                                     6);
   concurrency::ThreadPool::TryParallelFor(tp, onnxruntime::narrow<std::ptrdiff_t>(count), cost, fn);
 }
 
 template <typename AGG>
-void NoTransposeReduce2Loops(Tensor* output, const TensorShape& new_input_shape, const Tensor& input,
-                             gsl::span<const int64_t> reduced_axes, concurrency::ThreadPool* tp,
-                             ResultsNoTransposePrepareForReduce& last_results) {
+void NoTransposeReduce2Loops(Tensor* output, const TensorShape& new_input_shape, const Tensor& input, gsl::span<const int64_t> reduced_axes, concurrency::ThreadPool* tp, ResultsNoTransposePrepareForReduce& last_results) {
   auto output_shape = output->Shape();
   const typename AGG::input_type* from_data = input.Data<typename AGG::input_type>();
   typename AGG::value_type* to_data = output->MutableData<typename AGG::value_type>();
@@ -570,7 +567,8 @@ void NoTransposeReduce2Loops(Tensor* output, const TensorShape& new_input_shape,
 
   auto cost = ParallelReduceFastCost(1,
                                      last_results.projected_index.size() * last_results.last_loop_red_size,
-                                     sizeof(typename AGG::input_type), 8);
+                                     sizeof(typename AGG::input_type),
+                                     8);
   concurrency::ThreadPool::TryParallelFor(tp, onnxruntime::narrow<std::ptrdiff_t>(count), cost, fn);
 }
 
@@ -593,7 +591,8 @@ FastReduceKind OptimizeShapeForFastReduce(gsl::span<const int64_t> input_shape,
                                           TensorShapeVector& fast_shape,
                                           TensorShapeVector& fast_output_shape,
                                           TensorShapeVector& fast_axes,
-                                          bool keep_dims, bool noop_with_empty_axes) {
+                                          bool keep_dims,
+                                          bool noop_with_empty_axes) {
   if (input_shape.empty()) {
     fast_shape.assign(input_shape.begin(), input_shape.end());
     fast_output_shape = fast_shape;
@@ -711,8 +710,7 @@ bool CommonFastReduceCopy(OpKernelContext* ctx, TensorShapeVector& input_axes, b
   return false;
 }
 
-typedef void fast_reduce_fct(const Tensor& input, const gsl::span<const int64_t>& fast_shape,
-                             Tensor& output, concurrency::ThreadPool* tp);
+typedef void fast_reduce_fct(const Tensor& input, const gsl::span<const int64_t>& fast_shape, Tensor& output, concurrency::ThreadPool* tp);
 
 bool CommonFastReduceSwitch(OpKernelContext* ctx,
                             const gsl::span<const int64_t>& axes_,
@@ -737,8 +735,7 @@ bool CommonFastReduceSwitch(OpKernelContext* ctx,
   }
 
   fast_kind = OptimizeShapeForFastReduce(
-      reduced_dims, input_axes.empty() ? axes_ : input_axes,
-      fast_shape, output_shape, fast_axes, keepdims_ != 0, noop_with_empty_axes);
+      reduced_dims, input_axes.empty() ? axes_ : input_axes, fast_shape, output_shape, fast_axes, keepdims_ != 0, noop_with_empty_axes);
 
   if (which_fast_reduce != FastReduceKind::kNone) {
     if (IsFastReduceKindAvailable(fast_kind, which_fast_reduce)) {
@@ -799,10 +796,7 @@ bool CommonFastReduce(OpKernelContext* ctx,
                       TensorShapeVector& fast_shape,
                       TensorShapeVector& output_shape,
                       TensorShapeVector& fast_axes) {
-  return CommonFastReduceSwitch(ctx, axes_, keepdims_, noop_with_empty_axes,
-                                fast_kind, fast_shape, output_shape, fast_axes,
-                                AGG::WhichFastReduce(), &AGG::FastReduceKR, &AGG::FastReduceRK,
-                                &AGG::FastReduceKRK, &AGG::FastReduceRKR);
+  return CommonFastReduceSwitch(ctx, axes_, keepdims_, noop_with_empty_axes, fast_kind, fast_shape, output_shape, fast_axes, AGG::WhichFastReduce(), &AGG::FastReduceKR, &AGG::FastReduceRK, &AGG::FastReduceKRK, &AGG::FastReduceRKR);
 }
 
 static void ValidateKeepDims(const TensorShape& shape, int64_t keepdims) {
@@ -818,14 +812,14 @@ static void ValidateKeepDims(const Tensor* input, int64_t keepdims) {
 
 template <typename AGG>
 void CommonReduce1Loop(OpKernelContext* ctx,
-                       const gsl::span<const int64_t>& axes_, int64_t keepdims_,
+                       const gsl::span<const int64_t>& axes_,
+                       int64_t keepdims_,
                        bool noop_with_empty_axes) {
   FastReduceKind fast_kind;
   TensorShapeVector fast_shape;
   TensorShapeVector output_shape;
   TensorShapeVector fast_axes;
-  if (CommonFastReduce<AGG>(ctx, axes_, keepdims_, noop_with_empty_axes,
-                            fast_kind, fast_shape, output_shape, fast_axes)) {
+  if (CommonFastReduce<AGG>(ctx, axes_, keepdims_, noop_with_empty_axes, fast_kind, fast_shape, output_shape, fast_axes)) {
     return;
   }
 
@@ -851,12 +845,12 @@ void CommonReduce1Loop(OpKernelContext* ctx,
 
 template <typename AGG>
 void CommonReduce2Loops(OpKernelContext* ctx,
-                        const gsl::span<const int64_t>& axes_, int64_t keepdims_,
+                        const gsl::span<const int64_t>& axes_,
+                        int64_t keepdims_,
                         bool noop_with_empty_axes) {
   FastReduceKind fast_kind;
   TensorShapeVector fast_shape, output_shape, fast_axes;
-  if (CommonFastReduce<AGG>(ctx, axes_, keepdims_, noop_with_empty_axes,
-                            fast_kind, fast_shape, output_shape, fast_axes)) {
+  if (CommonFastReduce<AGG>(ctx, axes_, keepdims_, noop_with_empty_axes, fast_kind, fast_shape, output_shape, fast_axes)) {
     return;
   }
 
@@ -939,9 +933,7 @@ Status ReduceSum<T>::Compute(OpKernelContext* ctx) const {
 }
 
 template <typename T>
-std::unique_ptr<Tensor> ReduceSum<T>::Impl(const Tensor& input, gsl::span<const int64_t> reduce_axes,
-                                           AllocatorPtr allocator, concurrency::ThreadPool* tp, bool keep_dims,
-                                           const TensorShape* input_shape_override) {
+std::unique_ptr<Tensor> ReduceSum<T>::Impl(const Tensor& input, gsl::span<const int64_t> reduce_axes, AllocatorPtr allocator, concurrency::ThreadPool* tp, bool keep_dims, const TensorShape* input_shape_override) {
   TensorShapeVector axes;
   TensorShapeVector output_shape, fast_shape, fast_axes;
   TensorShape new_input_shape = input_shape_override == nullptr ? input.Shape() : *input_shape_override;
@@ -1047,16 +1039,20 @@ template class ReduceSum<double>;
 template class ReduceSum<int64_t>;
 
 template void CommonReduce1Loop<ReduceAggregatorSum<float>>(OpKernelContext* ctx,
-                                                            const gsl::span<const int64_t>& axes_, int64_t keepdims_,
+                                                            const gsl::span<const int64_t>& axes_,
+                                                            int64_t keepdims_,
                                                             bool noop_with_empty_axes);
 template void CommonReduce1Loop<ReduceAggregatorSum<int32_t>>(OpKernelContext* ctx,
-                                                              const gsl::span<const int64_t>& axes_, int64_t keepdims_,
+                                                              const gsl::span<const int64_t>& axes_,
+                                                              int64_t keepdims_,
                                                               bool noop_with_empty_axes);
 template void CommonReduce1Loop<ReduceAggregatorSum<double>>(OpKernelContext* ctx,
-                                                             const gsl::span<const int64_t>& axes_, int64_t keepdims_,
+                                                             const gsl::span<const int64_t>& axes_,
+                                                             int64_t keepdims_,
                                                              bool noop_with_empty_axes);
 template void CommonReduce1Loop<ReduceAggregatorSum<int64_t>>(OpKernelContext* ctx,
-                                                              const gsl::span<const int64_t>& axes_, int64_t keepdims_,
+                                                              const gsl::span<const int64_t>& axes_,
+                                                              int64_t keepdims_,
                                                               bool noop_with_empty_axes);
 
 }  // namespace onnxruntime

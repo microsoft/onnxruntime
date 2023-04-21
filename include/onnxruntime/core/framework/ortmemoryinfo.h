@@ -17,8 +17,7 @@ struct OrtMemoryInfo {
   OrtAllocatorType alloc_type = OrtInvalidAllocator;
   OrtDevice device;
 
-  constexpr OrtMemoryInfo(const char* name_, OrtAllocatorType type_, OrtDevice device_ = OrtDevice(), int id_ = 0,
-                          OrtMemType mem_type_ = OrtMemTypeDefault)
+  constexpr OrtMemoryInfo(const char* name_, OrtAllocatorType type_, OrtDevice device_ = OrtDevice(), int id_ = 0, OrtMemType mem_type_ = OrtMemTypeDefault)
 #if ((defined(__GNUC__) && __GNUC__ > 4) || defined(__clang__))
       // this causes a spurious error in CentOS gcc 4.8 build so disable if GCC version < 5
       __attribute__((nonnull))

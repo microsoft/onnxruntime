@@ -44,8 +44,7 @@ TensorShape GetTensorShapeFromTensorProto(const ONNX_NAMESPACE::TensorProto& ten
  *                        have any external data or it was loaded from current working dir. This path could be either a
  *                        relative path or an absolute path.
  */
-common::Status TensorProtoToMLValue(const Env& env, const ORTCHAR_T* tensor_proto_path,
-                                    const ONNX_NAMESPACE::TensorProto& input, const MemBuffer& m, OrtValue& value);
+common::Status TensorProtoToMLValue(const Env& env, const ORTCHAR_T* tensor_proto_path, const ONNX_NAMESPACE::TensorProto& input, const MemBuffer& m, OrtValue& value);
 /**
  * @brief Deserialize a TensorProto into a preallocated empty Tensor
  * @param env
@@ -54,9 +53,7 @@ common::Status TensorProtoToMLValue(const Env& env, const ORTCHAR_T* tensor_prot
  * @param tensorp       destination empty tensor
  * @return
  */
-common::Status TensorProtoToTensor(const Env& env, const ORTCHAR_T* model_path,
-                                   const ONNX_NAMESPACE::TensorProto& tensor_proto,
-                                   Tensor& tensor);
+common::Status TensorProtoToTensor(const Env& env, const ORTCHAR_T* model_path, const ONNX_NAMESPACE::TensorProto& tensor_proto, Tensor& tensor);
 
 /** Creates a TensorProto from a Tensor.
     @param[in] tensor the Tensor whose data and shape will be used to create the TensorProto.
@@ -85,10 +82,7 @@ constexpr const ORTCHAR_T* kTensorProtoMemoryAddressTag = ORT_TSTR("*/_ORT_MEM_A
 
 // Given a tensor proto with external data obtain a pointer to the data and its length.
 // The ext_data_deleter argument is updated with a callback that owns/releases the data.
-common::Status GetExtDataFromTensorProto(const Env& env, const ORTCHAR_T* model_path,
-                                         const ONNX_NAMESPACE::TensorProto& tensor_proto,
-                                         void*& ext_data_buf, SafeInt<size_t>& ext_data_len,
-                                         OrtCallback& ext_data_deleter);
+common::Status GetExtDataFromTensorProto(const Env& env, const ORTCHAR_T* model_path, const ONNX_NAMESPACE::TensorProto& tensor_proto, void*& ext_data_buf, SafeInt<size_t>& ext_data_len, OrtCallback& ext_data_deleter);
 
 // Convert the AttributeProto from a Constant node into a TensorProto that can be used as an initializer
 // If AttributeProto contains a TensorProto, this tensor proto is converted as is including the case when the
@@ -99,7 +93,8 @@ common::Status GetExtDataFromTensorProto(const Env& env, const ORTCHAR_T* model_
 // tensor_name specifies the name for the new TensorProto TensorProto
 common::Status ConstantNodeProtoToTensorProto(const ONNX_NAMESPACE::NodeProto& node,
                                               const Path& model_path,
-                                              ONNX_NAMESPACE::TensorProto& tensor, const std::string& tensor_name);
+                                              ONNX_NAMESPACE::TensorProto& tensor,
+                                              const std::string& tensor_name);
 
 common::Status ConstantNodeProtoToTensorProto(const ONNX_NAMESPACE::NodeProto& node,
                                               const Path& model_path,
@@ -425,14 +420,16 @@ inline bool HasName(const ONNX_NAMESPACE::NodeProto& node_proto) {
 // If the tensor does not contain raw data then raw_data should be nullptr and raw_data_len should be 0.
 template <typename T>
 Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len,
-                    /*out*/ T* p_data, size_t expected_size);
+                    /*out*/ T* p_data,
+                    size_t expected_size);
 
 // UnpackTensor from raw data, external data or the type specific data field.
 // Uses the model path to construct the full path for loading external data. In case when model_path is empty
 // it uses current directory.
 template <typename T>
 Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const Path& model_path,
-                    /*out*/ T* p_data, size_t expected_size);
+                    /*out*/ T* p_data,
+                    size_t expected_size);
 
 /**
  * Unpack the data from an initializer tensor

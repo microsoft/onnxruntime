@@ -35,10 +35,9 @@ ProcessBroadcastSpanFuncs CreateScalarBroadcastFuncs() {
         // Transform the output to the correct value from LookupTable
         if (!is_copy) {
           auto* look_up_table = user_data + 2;
-          std::transform(value.cbegin(), value.cend(), output.begin(),
-                         [condition, target, &look_up_table](const T& value_element) {
-                           return condition == target ? look_up_table[value_element] : T{};
-                         });
+          std::transform(value.cbegin(), value.cend(), output.begin(), [condition, target, &look_up_table](const T& value_element) {
+            return condition == target ? look_up_table[value_element] : T{};
+          });
         }
       },
       // Eigen Condition + Scalar Input -> Eigen Output
@@ -54,10 +53,9 @@ ProcessBroadcastSpanFuncs CreateScalarBroadcastFuncs() {
         // Transform the output to the correct value from LookupTable
         if (!is_copy) {
           auto* look_up_table = user_data + 2;
-          std::transform(condition.cbegin(), condition.cend(), output.begin(),
-                         [target, &look_up_table, &value](bool condition_element) {
-                           return condition_element == target ? look_up_table[value] : T{};
-                         });
+          std::transform(condition.cbegin(), condition.cend(), output.begin(), [target, &look_up_table, &value](bool condition_element) {
+            return condition_element == target ? look_up_table[value] : T{};
+          });
         }
       },
       // Eigen Condition + Eigen Input -> Eigen Output
@@ -73,10 +71,9 @@ ProcessBroadcastSpanFuncs CreateScalarBroadcastFuncs() {
         // Transform the output to the correct value from LookupTable
         if (!is_copy) {
           auto* look_up_table = user_data + 2;
-          std::transform(condition.cbegin(), condition.cend(), value.cbegin(), output.begin(),
-                         [target, &look_up_table](bool condition_element, const T& value_element) {
-                           return (condition_element == target) ? look_up_table[value_element] : T{};
-                         });
+          std::transform(condition.cbegin(), condition.cend(), value.cbegin(), output.begin(), [target, &look_up_table](bool condition_element, const T& value_element) {
+            return (condition_element == target) ? look_up_table[value_element] : T{};
+          });
         }
       }};
 }
@@ -94,10 +91,9 @@ ProcessBroadcastSpanFuncs CreateNonScalarBroadcastFuncs() {
         auto output = per_iter_bh.OutputSpan<T>();
         if (condition == target) {
           // Transform the output to the correct value from LookupTable
-          std::transform(value.cbegin(), value.cend(), output.begin(),
-                         [condition, target, &look_up_table, is_copy](const T& value_element) {
-                           return is_copy ? value_element : look_up_table[value_element];
-                         });
+          std::transform(value.cbegin(), value.cend(), output.begin(), [condition, target, &look_up_table, is_copy](const T& value_element) {
+            return is_copy ? value_element : look_up_table[value_element];
+          });
         } else {
           std::fill(output.begin(), output.end(), T{});
         }
@@ -111,10 +107,9 @@ ProcessBroadcastSpanFuncs CreateNonScalarBroadcastFuncs() {
         const T& value = per_iter_bh.ScalarInput1<T>();
         auto output = per_iter_bh.OutputSpan<T>();
         // Transform the output to the correct value from LookupTable
-        std::transform(condition.begin(), condition.end(), output.begin(),
-                       [target, &value, &look_up_table, is_copy](bool condition_element) {
-                         return condition_element == target ? is_copy ? value : look_up_table[value] : T{};
-                       });
+        std::transform(condition.begin(), condition.end(), output.begin(), [target, &value, &look_up_table, is_copy](bool condition_element) {
+          return condition_element == target ? is_copy ? value : look_up_table[value] : T{};
+        });
       },
       [](BroadcastHelper& per_iter_bh) {
         auto* user_data = static_cast<T*>(per_iter_bh.GetUserData());
@@ -125,10 +120,9 @@ ProcessBroadcastSpanFuncs CreateNonScalarBroadcastFuncs() {
         auto value = per_iter_bh.SpanInput1<T>();
         auto output = per_iter_bh.OutputSpan<T>();
         // Transform the output to the correct value from LookupTable
-        std::transform(condition.begin(), condition.end(), value.cbegin(), output.begin(),
-                       [target, &look_up_table, is_copy](bool condition_element, const T& value_element) {
-                         return condition_element == target ? is_copy ? value_element : look_up_table[value_element] : T{};
-                       });
+        std::transform(condition.begin(), condition.end(), value.cbegin(), output.begin(), [target, &look_up_table, is_copy](bool condition_element, const T& value_element) {
+          return condition_element == target ? is_copy ? value_element : look_up_table[value_element] : T{};
+        });
       }};
 }
 
@@ -222,12 +216,12 @@ EnableIfEigenNotScalar<T, ProcessBroadcastSpanFuncs> MergeBroadcastFuncs() {
         auto X_selection = per_iter_bh.SpanInput0<T>();
         auto Y_selection = per_iter_bh.SpanInput1<T>();
         auto output = per_iter_bh.OutputSpan<T>();
-        std::transform(X_selection.cbegin(), X_selection.cend(), Y_selection.cbegin(), output.begin(),
-                       [](const T& x, const T& y) { return !x.empty() ? x : y; });
+        std::transform(X_selection.cbegin(), X_selection.cend(), Y_selection.cbegin(), output.begin(), [](const T& x, const T& y) { return !x.empty() ? x : y; });
       }};
 }
 static void UntypedMerge(OpKernelContext& context,
-                         const Tensor& X_selection_tensor, const Tensor& Y_selection_tensor,
+                         const Tensor& X_selection_tensor,
+                         const Tensor& Y_selection_tensor,
                          const ProcessBroadcastSpanFuncs& functors) {
   InputBroadcaster merge_broadcaster{X_selection_tensor, Y_selection_tensor};
   Tensor& output = *context.Output(0, merge_broadcaster.GetOutputShape());
@@ -244,7 +238,9 @@ namespace contrib {
 QLinearWhere::QLinearWhere(const OpKernelInfo& info) : OpKernel(info) {
   size_t input_def_count = info.node().InputDefs().size();
   ORT_ENFORCE(input_def_count == kExpected_input_count,
-              "There must be ", kExpected_input_count, " inputs! (condition, x, x_scale, x_zero_point, y, y_scale, y_zero_point, z_scale, z_zero_point)");
+              "There must be ",
+              kExpected_input_count,
+              " inputs! (condition, x, x_scale, x_zero_point, y, y_scale, y_zero_point, z_scale, z_zero_point)");
   const Tensor* tensor_x_scale = nullptr;
   const Tensor* tensor_x_zero_point = nullptr;
   const Tensor* tensor_y_scale = nullptr;
@@ -278,12 +274,10 @@ QLinearWhere::QLinearWhere(const OpKernelInfo& info) : OpKernel(info) {
       x_fixed_lookup_table_.resize(256);
       if (is_signed_int8) {
         QlinearBuildLookupTable<int8_t>(
-            x_fixed_lookup_table_.data(), tensor_x_scale, tensor_x_zero_point,
-            tensor_z_scale, tensor_z_zero_point, identity_float);
+            x_fixed_lookup_table_.data(), tensor_x_scale, tensor_x_zero_point, tensor_z_scale, tensor_z_zero_point, identity_float);
       } else {
         QlinearBuildLookupTable<uint8_t>(
-            x_fixed_lookup_table_.data(), tensor_x_scale, tensor_x_zero_point,
-            tensor_z_scale, tensor_z_zero_point, identity_float);
+            x_fixed_lookup_table_.data(), tensor_x_scale, tensor_x_zero_point, tensor_z_scale, tensor_z_zero_point, identity_float);
       }
     }
     is_x_dynamic_ = false;
@@ -297,12 +291,10 @@ QLinearWhere::QLinearWhere(const OpKernelInfo& info) : OpKernel(info) {
       y_fixed_lookup_table_.resize(256);
       if (is_signed_int8) {
         QlinearBuildLookupTable<int8_t>(
-            y_fixed_lookup_table_.data(), tensor_y_scale, tensor_y_zero_point,
-            tensor_z_scale, tensor_z_zero_point, identity_float);
+            y_fixed_lookup_table_.data(), tensor_y_scale, tensor_y_zero_point, tensor_z_scale, tensor_z_zero_point, identity_float);
       } else {
         QlinearBuildLookupTable<uint8_t>(
-            y_fixed_lookup_table_.data(), tensor_y_scale, tensor_y_zero_point,
-            tensor_z_scale, tensor_z_zero_point, identity_float);
+            y_fixed_lookup_table_.data(), tensor_y_scale, tensor_y_zero_point, tensor_z_scale, tensor_z_zero_point, identity_float);
       }
     }
     is_y_dynamic_ = false;
@@ -326,7 +318,10 @@ Status QLinearWhere::Compute(OpKernelContext* ctx) const {
   ORT_ENFORCE(tensor_x_zero_point->GetElementType() == tensor_y_zero_point->GetElementType() &&
                   tensor_x_zero_point->GetElementType() == tensor_z_zero_point->GetElementType() &&
                   tensor_y_zero_point->GetElementType() == tensor_z_zero_point->GetElementType(),
-              "Wrong input type encountered for zero point of quantized input @", 3, 6, 8);
+              "Wrong input type encountered for zero point of quantized input @",
+              3,
+              6,
+              8);
   bool is_signed_int8 = tensor_z_zero_point->IsDataType<int8_t>();
   const auto identity_float = [](float v) -> float { return v; };
 
@@ -336,12 +331,10 @@ Status QLinearWhere::Compute(OpKernelContext* ctx) const {
     x_dynamic_lookup_table.resize(256);
     if (is_signed_int8) {
       QlinearBuildLookupTable<int8_t>(
-          x_dynamic_lookup_table.data(), tensor_x_scale, tensor_x_zero_point,
-          tensor_z_scale, tensor_z_zero_point, identity_float);
+          x_dynamic_lookup_table.data(), tensor_x_scale, tensor_x_zero_point, tensor_z_scale, tensor_z_zero_point, identity_float);
     } else {
       QlinearBuildLookupTable<uint8_t>(
-          x_dynamic_lookup_table.data(), tensor_x_scale, tensor_x_zero_point,
-          tensor_z_scale, tensor_z_zero_point, identity_float);
+          x_dynamic_lookup_table.data(), tensor_x_scale, tensor_x_zero_point, tensor_z_scale, tensor_z_zero_point, identity_float);
     }
   }
 
@@ -352,12 +345,10 @@ Status QLinearWhere::Compute(OpKernelContext* ctx) const {
     y_dynamic_lookup_table.resize(256);
     if (is_signed_int8) {
       QlinearBuildLookupTable<int8_t>(
-          y_dynamic_lookup_table.data(), tensor_y_scale, tensor_y_zero_point,
-          tensor_z_scale, tensor_z_zero_point, identity_float);
+          y_dynamic_lookup_table.data(), tensor_y_scale, tensor_y_zero_point, tensor_z_scale, tensor_z_zero_point, identity_float);
     } else {
       QlinearBuildLookupTable<uint8_t>(
-          y_dynamic_lookup_table.data(), tensor_y_scale, tensor_y_zero_point,
-          tensor_z_scale, tensor_z_zero_point, identity_float);
+          y_dynamic_lookup_table.data(), tensor_y_scale, tensor_y_zero_point, tensor_z_scale, tensor_z_zero_point, identity_float);
     }
   }
   // Each lookup table is 256 bytes

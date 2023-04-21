@@ -48,9 +48,7 @@ struct static_cast_int64 {
 };
 
 std::shared_ptr<OVNetwork>
-CreateOVModel(const ONNX_NAMESPACE::ModelProto& model_proto, const GlobalContext& global_context,
-              const SubGraphContext& subgraph_context,
-              std::map<std::string, std::shared_ptr<ngraph::Node>>& const_outputs_map) {
+CreateOVModel(const ONNX_NAMESPACE::ModelProto& model_proto, const GlobalContext& global_context, const SubGraphContext& subgraph_context, std::map<std::string, std::shared_ptr<ngraph::Node>>& const_outputs_map) {
   if (IsCILogEnabled()) {
     std::cout << "CreateNgraphFunc" << std::endl;
   }
@@ -141,10 +139,7 @@ InferenceEngine::Precision ConvertPrecisionONNXToOpenVINO(const ONNX_NAMESPACE::
 }
 
 Ort::UnownedValue
-GetOutputTensor(Ort::KernelContext& context, size_t batch_size,
-                OVInferRequestPtr infer_request,
-                std::string output_name,
-                std::unordered_map<std::string, int> output_names) {
+GetOutputTensor(Ort::KernelContext& context, size_t batch_size, OVInferRequestPtr infer_request, std::string output_name, std::unordered_map<std::string, int> output_names) {
   auto graph_output_blob = infer_request->GetTensor(output_name);
 
   auto graph_output_dims = graph_output_blob->get_shape();
@@ -249,9 +244,7 @@ void FillOutputHelper(Ort::UnownedValue& out_tensor, std::shared_ptr<ngraph::Nod
   std::copy(res.begin(), res.end(), tensor_data);
 }
 
-void FillInputBlob(OVTensorPtr inputBlob, size_t batch_slice_idx,
-                   std::string input_name, Ort::KernelContext& context,
-                   const SubGraphContext& subgraph_context) {
+void FillInputBlob(OVTensorPtr inputBlob, size_t batch_slice_idx, std::string input_name, Ort::KernelContext& context, const SubGraphContext& subgraph_context) {
   size_t input_data_size = inputBlob->get_byte_size();
   auto input_data = inputBlob->data();
   auto tensor = context.GetInput(subgraph_context.input_names.at(input_name));
@@ -265,8 +258,7 @@ void FillInputBlob(OVTensorPtr inputBlob, size_t batch_slice_idx,
   std::memcpy(input_data, batch_memory_offset, input_data_size);
 }
 
-void FillOutputBlob(OVTensorPtr outputBlob, Ort::UnownedValue& output_tensor,
-                    size_t batch_slice_idx) {
+void FillOutputBlob(OVTensorPtr outputBlob, Ort::UnownedValue& output_tensor, size_t batch_slice_idx) {
   auto output_data = outputBlob->data();
   size_t output_data_size = outputBlob->get_byte_size();
   char* tensor_data = output_tensor.GetTensorMutableData<char>();
@@ -275,7 +267,8 @@ void FillOutputBlob(OVTensorPtr outputBlob, Ort::UnownedValue& output_tensor,
 }
 
 void printPerformanceCounts(const std::vector<OVProfilingInfo>& performanceMap,
-                            std::ostream& stream, std::string deviceName) {
+                            std::ostream& stream,
+                            std::string deviceName) {
   long long totalTime = 0;
   // Print performance counts
   stream << std::endl

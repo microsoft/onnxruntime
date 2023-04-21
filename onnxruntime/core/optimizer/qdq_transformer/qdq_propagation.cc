@@ -29,9 +29,7 @@ bool CanNodePropagate(const Node& node) {
 // 1. insertion_edge is valid - node indexes refer to valid nodes, arg name refers to a valid NodeArg, and it
 //    corresponds to an actual graph relationship
 // 2. scale_initializer_nodearg and zp_initializer_nodearg_ptr (if not null) are constant initializers
-Status InsertQDQPair(Graph& graph, const ExtendedGraphEdge& insertion_edge,
-                     NodeArg& scale_initializer_nodearg, NodeArg* zp_initializer_nodearg_ptr,
-                     const logging::Logger& logger) {
+Status InsertQDQPair(Graph& graph, const ExtendedGraphEdge& insertion_edge, NodeArg& scale_initializer_nodearg, NodeArg* zp_initializer_nodearg_ptr, const logging::Logger& logger) {
   auto* src_node = insertion_edge.GetMutableNodeAtEnd(graph, ExtendedGraphEdge::End::Source);
   auto* dst_node = insertion_edge.GetMutableNodeAtEnd(graph, ExtendedGraphEdge::End::Destination);
 
@@ -72,8 +70,7 @@ Status InsertQDQPair(Graph& graph, const ExtendedGraphEdge& insertion_edge,
                                QDQ::QOpName,
                                "Inserted by QDQPropagationTransformer",
                                // inputs
-                               make_q_or_dq_inputs(pre_q_nodearg, scale_initializer_nodearg,
-                                                   zp_initializer_nodearg_ptr),
+                               make_q_or_dq_inputs(pre_q_nodearg, scale_initializer_nodearg, zp_initializer_nodearg_ptr),
                                // outputs
                                {&q_to_dq_nodearg});
 
@@ -83,8 +80,7 @@ Status InsertQDQPair(Graph& graph, const ExtendedGraphEdge& insertion_edge,
                                 QDQ::DQOpName,
                                 "Inserted by QDQPropagationTransformer",
                                 // inputs
-                                make_q_or_dq_inputs(q_to_dq_nodearg, scale_initializer_nodearg,
-                                                    zp_initializer_nodearg_ptr),
+                                make_q_or_dq_inputs(q_to_dq_nodearg, scale_initializer_nodearg, zp_initializer_nodearg_ptr),
                                 // outputs
                                 {&post_dq_nodearg});
 
@@ -92,8 +88,7 @@ Status InsertQDQPair(Graph& graph, const ExtendedGraphEdge& insertion_edge,
 
   // set up edges
   if (src_node && dst_node) {
-    graph.RemoveEdge(src_node->Index(), dst_node->Index(),
-                     insertion_edge.src->arg_idx, insertion_edge.dst->arg_idx);
+    graph.RemoveEdge(src_node->Index(), dst_node->Index(), insertion_edge.src->arg_idx, insertion_edge.dst->arg_idx);
   }
 
   if (src_node) {
@@ -116,8 +111,7 @@ std::optional<ExtendedGraphEdge> GetPreviousEdge(const Graph& graph, const Node&
 
   const auto input_edges = graph_utils::GraphEdge::GetNodeInputEdges(node);
   const auto input_edge_it = std::find_if(
-      input_edges.begin(), input_edges.end(),
-      [](const graph_utils::GraphEdge& edge) { return edge.dst_arg_index == 0; });
+      input_edges.begin(), input_edges.end(), [](const graph_utils::GraphEdge& edge) { return edge.dst_arg_index == 0; });
 
   if (input_edge_it == input_edges.end()) {
     // maybe edge from input
@@ -195,10 +189,7 @@ class GraphConstantInitializerGetter {
   }
 };
 
-Status PropagateDQForward(Graph& graph, gsl::span<const NodeIndex> node_indices,
-                          const InlinedHashSet<std::string_view>& compatible_eps,
-                          const logging::Logger& logger,
-                          bool& modified) {
+Status PropagateDQForward(Graph& graph, gsl::span<const NodeIndex> node_indices, const InlinedHashSet<std::string_view>& compatible_eps, const logging::Logger& logger, bool& modified) {
   for (auto node_index : node_indices) {
     auto* dq_node_ptr = graph.GetNode(node_index);
     if (dq_node_ptr == nullptr) {
@@ -214,8 +205,7 @@ Status PropagateDQForward(Graph& graph, gsl::span<const NodeIndex> node_indices,
     }
 
     bool dq_zero_point_exists = false;
-    if (!QDQ::QOrDQNodeHasConstantScalarScaleAndZeroPoint(dq_node, GraphConstantInitializerGetter{graph},
-                                                          dq_zero_point_exists)) {
+    if (!QDQ::QOrDQNodeHasConstantScalarScaleAndZeroPoint(dq_node, GraphConstantInitializerGetter{graph}, dq_zero_point_exists)) {
       continue;
     }
 
@@ -245,10 +235,7 @@ Status PropagateDQForward(Graph& graph, gsl::span<const NodeIndex> node_indices,
   return Status::OK();
 }
 
-Status PropagateQBackward(Graph& graph, gsl::span<const NodeIndex> node_indices,
-                          const InlinedHashSet<std::string_view>& compatible_eps,
-                          const logging::Logger& logger,
-                          bool& modified) {
+Status PropagateQBackward(Graph& graph, gsl::span<const NodeIndex> node_indices, const InlinedHashSet<std::string_view>& compatible_eps, const logging::Logger& logger, bool& modified) {
   for (auto node_index : node_indices) {
     auto* q_node_ptr = graph.GetNode(node_index);
     if (q_node_ptr == nullptr) {
@@ -263,8 +250,7 @@ Status PropagateQBackward(Graph& graph, gsl::span<const NodeIndex> node_indices,
     }
 
     bool q_zero_point_exists = false;
-    if (!QDQ::QOrDQNodeHasConstantScalarScaleAndZeroPoint(q_node, GraphConstantInitializerGetter{graph},
-                                                          q_zero_point_exists)) {
+    if (!QDQ::QOrDQNodeHasConstantScalarScaleAndZeroPoint(q_node, GraphConstantInitializerGetter{graph}, q_zero_point_exists)) {
       continue;
     }
 
@@ -295,8 +281,7 @@ Status PropagateQBackward(Graph& graph, gsl::span<const NodeIndex> node_indices,
 }
 }  // namespace
 
-Status QDQPropagationTransformer::ApplyImpl(Graph& graph, bool& modified, int graph_level,
-                                            const logging::Logger& logger) const {
+Status QDQPropagationTransformer::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
   GraphViewer graph_viewer(graph);
   const auto node_indices = gsl::make_span(graph_viewer.GetNodesInTopologicalOrder());
 

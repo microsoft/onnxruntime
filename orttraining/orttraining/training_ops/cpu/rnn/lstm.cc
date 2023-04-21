@@ -23,8 +23,7 @@ REGISTER_LSTMTRAINING_KERNEL_TYPED(float)
 template <typename T>
 Status LSTMTraining<T>::Compute(OpKernelContext* context) const {
   const auto lstm_inputs = lstm::LSTMInputs<T>(context, attributes_.num_directions, attributes_.hidden_size);
-  auto lstm_outputs = lstm::LSTMOutputs<T>(context, attributes_.num_directions, lstm_inputs.shape.sequence_length,
-                                           lstm_inputs.shape.batch_size, attributes_.hidden_size);
+  auto lstm_outputs = lstm::LSTMOutputs<T>(context, attributes_.num_directions, lstm_inputs.shape.sequence_length, lstm_inputs.shape.batch_size, attributes_.hidden_size);
 
   AllocatorPtr alloc;
   ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&alloc));

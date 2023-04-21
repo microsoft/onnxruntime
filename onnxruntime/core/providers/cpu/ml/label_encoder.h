@@ -59,10 +59,20 @@ class LabelEncoder_2 final : public OpKernel {
     auto num_keys = keys.size();
     auto num_values = values.size();
     ORT_ENFORCE(num_keys == num_values,
-                "The ", _key_field_name, " and ", _value_field_name, " attribtues in LabelEncoder ",
-                "(name: ", info.node().Name(), ") must have the same length. ",
-                "However, the number of key is ", num_keys, " and the number of ",
-                "values is ", num_values, ".");
+                "The ",
+                _key_field_name,
+                " and ",
+                _value_field_name,
+                " attribtues in LabelEncoder ",
+                "(name: ",
+                info.node().Name(),
+                ") must have the same length. ",
+                "However, the number of key is ",
+                num_keys,
+                " and the number of ",
+                "values is ",
+                num_values,
+                ".");
 
     for (size_t i = 0; i < num_keys; ++i)
       _map[keys[i]] = values[i];

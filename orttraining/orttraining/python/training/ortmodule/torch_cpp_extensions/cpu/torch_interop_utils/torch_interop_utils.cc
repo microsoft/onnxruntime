@@ -138,6 +138,5 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
   m.def("register_grad_fn", &register_grad_fn, "increase grad_fn shared pointer reference.");
   m.def("unregister_grad_fn", &unregister_grad_fn, "release grad_fn shared pointer reference.");
   m.def("clear_all_grad_fns", &clear_all_grad_fns, "clear all grad_fn shared pointer references.");
-  m.def("clear_grad_fns_for_next_edges", &clear_grad_fns_for_next_edges,
-        "remove reference on next edges' gradient functions.");
+  m.def("clear_grad_fns_for_next_edges", &clear_grad_fns_for_next_edges, "remove reference on next edges' gradient functions.");
 }

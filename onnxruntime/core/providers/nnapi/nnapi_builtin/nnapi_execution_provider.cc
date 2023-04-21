@@ -42,8 +42,7 @@ std::unordered_set<std::string> GetPartitioningStopOps(const optional<std::strin
   const auto stop_ops = utils::SplitString(partitioning_stop_ops_list.value(), ",");
   std::unordered_set<std::string> stop_ops_set;
   stop_ops_set.reserve(stop_ops.size());
-  std::transform(stop_ops.cbegin(), stop_ops.cend(), std::inserter(stop_ops_set, stop_ops_set.begin()),
-                 [](const std::string_view& sv) -> std::string { return std::string(sv); });
+  std::transform(stop_ops.cbegin(), stop_ops.cend(), std::inserter(stop_ops_set, stop_ops_set.begin()), [](const std::string_view& sv) -> std::string { return std::string(sv); });
   return stop_ops_set;
 }
 
@@ -159,8 +158,7 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
       // We only check the target node of the node unit for exclusion
       const bool excluded = check_excluded_nodes && Contains(excluded_nodes, &node_unit->GetNode());
       supported = !excluded &&
-                  nnapi::IsNodeSupportedInGroup(*node_unit, graph_viewer, params,
-                                                node_outputs_in_current_group);
+                  nnapi::IsNodeSupportedInGroup(*node_unit, graph_viewer, params, node_outputs_in_current_group);
       node_unit_supported_result[node_unit] = supported;
     }
 
@@ -196,8 +194,7 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
     return MakeString(NNAPI, "_", model_hash, "_", metadef_id);
   };
 
-  result = utils::CreateSupportedPartitions(graph_viewer, is_node_supported, on_group_closed,
-                                            gen_metadef_name, NNAPI, kNnapiExecutionProvider);
+  result = utils::CreateSupportedPartitions(graph_viewer, is_node_supported, on_group_closed, gen_metadef_name, NNAPI, kNnapiExecutionProvider);
 
   // Generally, NNAPI support graph with inputs and outputs except constant initializer.
   // So far, we have a few cases that sub-graph has zero inputs,
@@ -222,16 +219,18 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
 
   const auto num_of_partitions = result.size();
   const auto num_of_supported_nodes = std::accumulate(
-      result.begin(), result.end(), size_t{0},
-      [](const auto& acc, const auto& partition) -> size_t {
+      result.begin(), result.end(), size_t{0}, [](const auto& acc, const auto& partition) -> size_t {
         return acc + (partition && partition->sub_graph ? partition->sub_graph->nodes.size() : 0);
       });
 
   const auto summary_msg = MakeString(
       "NnapiExecutionProvider::GetCapability,",
-      " number of partitions supported by NNAPI: ", num_of_partitions,
-      " number of nodes in the graph: ", graph_viewer.NumberOfNodes(),
-      " number of nodes supported by NNAPI: ", num_of_supported_nodes);
+      " number of partitions supported by NNAPI: ",
+      num_of_partitions,
+      " number of nodes in the graph: ",
+      graph_viewer.NumberOfNodes(),
+      " number of nodes supported by NNAPI: ",
+      num_of_supported_nodes);
 
   // If the graph is partitioned in multiple subgraphs, and this may impact performance,
   // we want to give users a summary message at warning level.
@@ -411,8 +410,7 @@ common::Status NnapiExecutionProvider::Compile(const std::vector<FusedNodeAndGra
           bool is_dynamic_shape_output = false;
           if (model_output_type.GetOperandBlobByteSize() == 0) {
             if (!model->SupportsDynamicOutputShape()) {
-              return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                                     "We do not support dynamic output shape or empty output for now");
+              return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "We do not support dynamic output shape or empty output for now");
             }
 
             is_dynamic_shape_output = true;
@@ -428,7 +426,9 @@ common::Status NnapiExecutionProvider::Compile(const std::vector<FusedNodeAndGra
 
             ORT_RETURN_IF_ERROR(GetOutputBuffer(ctx,
                                                 *model,
-                                                output_name, output_shape, model_output_type.type,
+                                                output_name,
+                                                output_shape,
+                                                model_output_type.type,
                                                 &output_buffer));
             output_buffer_byte_size = model_output_type.GetOperandBlobByteSize();
           } else {
@@ -464,7 +464,9 @@ common::Status NnapiExecutionProvider::Compile(const std::vector<FusedNodeAndGra
           void* onnx_output_buffer = nullptr;
           ORT_RETURN_IF_ERROR(GetOutputBuffer(ctx,
                                               *model,
-                                              output_name, output_shape, model_output_type.type,
+                                              output_name,
+                                              output_shape,
+                                              model_output_type.type,
                                               &onnx_output_buffer));
 
           size_t output_buffer_byte_size = model_output_type.GetOperandBlobByteSize();

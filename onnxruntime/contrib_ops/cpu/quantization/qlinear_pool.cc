@@ -573,8 +573,7 @@ Status QLinearAveragePool::ComputeImpl(OpKernelContext* context) const {
   bool fallback_to_global = std::equal(x_shape.GetDims().begin() + 2, x_shape.GetDims().end(), kernel_shape.begin()) &&
                             std::all_of(pads.begin(), pads.end(), [](int64_t dim) { return dim == 0LL; });
   if (fallback_to_global) {
-    return ComputeQLinearGlobalAvgPool(X_data, x_scale, x_zero_point, Y_data, y_scale, y_zero_point,
-                                       batch_count, channels, kernel_size, channels_last_, tp);
+    return ComputeQLinearGlobalAvgPool(X_data, x_scale, x_zero_point, Y_data, y_scale, y_zero_point, batch_count, channels, kernel_size, channels_last_, tp);
   }
 
   AllocatorPtr allocator;
@@ -591,13 +590,11 @@ Status QLinearAveragePool::ComputeImpl(OpKernelContext* context) const {
     case 1: {
       if (channels_last_) {
         QLinearPoolNhwc1DTask<T8Bits, onnxruntime::AveragePool> avg_pool_task_1d = {
-            x_data_fp32, Y_data, y_scale, y_zero_point, channels,
-            pooled_height, strides[0], height, kernel_shape, pads, pool_context_, pool_attrs_};
+            x_data_fp32, Y_data, y_scale, y_zero_point, channels, pooled_height, strides[0], height, kernel_shape, pads, pool_context_, pool_attrs_};
         ThreadPool::TryParallelFor(tp, SafeInt<std::ptrdiff_t>(y_image_size) * batch_count, avg_pool_task_1d.Cost(), avg_pool_task_1d);
       } else {
         QLinearPool1DTask<T8Bits, onnxruntime::AveragePool> avg_pool_task_1d = {
-            x_data_fp32, Y_data, y_scale, y_zero_point, x_image_size, y_image_size,
-            pooled_height, strides[0], height, kernel_shape, pads, pool_context_, pool_attrs_};
+            x_data_fp32, Y_data, y_scale, y_zero_point, x_image_size, y_image_size, pooled_height, strides[0], height, kernel_shape, pads, pool_context_, pool_attrs_};
         ThreadPool::TryParallelFor(tp, onnxruntime::narrow<std::ptrdiff_t>(total_channels), avg_pool_task_1d.Cost(), avg_pool_task_1d);
       }
       break;
@@ -606,14 +603,12 @@ Status QLinearAveragePool::ComputeImpl(OpKernelContext* context) const {
     case 2: {
       if (channels_last_) {
         QLinearPoolNhwc2DTask<T8Bits, onnxruntime::AveragePool> avg_pool_task_2d = {
-            x_data_fp32, Y_data, y_scale, y_zero_point, x_image_size, y_image_size, kernel_size, channels,
-            pooled_height, pooled_width, strides[0], strides[1], height, width, kernel_shape, pads, pool_context_, pool_attrs_};
+            x_data_fp32, Y_data, y_scale, y_zero_point, x_image_size, y_image_size, kernel_size, channels, pooled_height, pooled_width, strides[0], strides[1], height, width, kernel_shape, pads, pool_context_, pool_attrs_};
         ThreadPool::TryParallelFor(tp, SafeInt<std::ptrdiff_t>(y_image_size) * batch_count, avg_pool_task_2d.Cost(), avg_pool_task_2d);
 
       } else {
         QLinearPool2DTask<T8Bits, onnxruntime::AveragePool> avg_pool_task_2d = {
-            x_data_fp32, Y_data, y_scale, y_zero_point, x_image_size, y_image_size,
-            pooled_height, pooled_width, strides[0], strides[1], height, width, kernel_shape, pads, pool_context_, pool_attrs_};
+            x_data_fp32, Y_data, y_scale, y_zero_point, x_image_size, y_image_size, pooled_height, pooled_width, strides[0], strides[1], height, width, kernel_shape, pads, pool_context_, pool_attrs_};
         ThreadPool::TryParallelFor(tp, onnxruntime::narrow<std::ptrdiff_t>(total_channels), avg_pool_task_2d.Cost(), avg_pool_task_2d);
       }
       break;
@@ -622,16 +617,12 @@ Status QLinearAveragePool::ComputeImpl(OpKernelContext* context) const {
     case 3: {
       if (channels_last_) {
         QLinearPoolNhwc3DTask<T8Bits, onnxruntime::AveragePool> avg_pool_task_3d = {
-            x_data_fp32, Y_data, y_scale, y_zero_point, x_image_size, y_image_size, kernel_size, channels,
-            pooled_height, pooled_width, pooled_depth, strides[0], strides[1], strides[2], height, width, depth,
-            kernel_shape, pads, pool_context_, pool_attrs_};
+            x_data_fp32, Y_data, y_scale, y_zero_point, x_image_size, y_image_size, kernel_size, channels, pooled_height, pooled_width, pooled_depth, strides[0], strides[1], strides[2], height, width, depth, kernel_shape, pads, pool_context_, pool_attrs_};
         ThreadPool::TryParallelFor(tp, SafeInt<std::ptrdiff_t>(y_image_size) * batch_count, avg_pool_task_3d.Cost(), avg_pool_task_3d);
 
       } else {
         QLinearPool3DTask<T8Bits, onnxruntime::AveragePool> avg_pool_task_3d = {
-            x_data_fp32, Y_data, y_scale, y_zero_point, x_image_size, y_image_size,
-            pooled_height, pooled_width, pooled_depth, strides[0], strides[1], strides[2], height, width, depth,
-            kernel_shape, pads, pool_context_, pool_attrs_};
+            x_data_fp32, Y_data, y_scale, y_zero_point, x_image_size, y_image_size, pooled_height, pooled_width, pooled_depth, strides[0], strides[1], strides[2], height, width, depth, kernel_shape, pads, pool_context_, pool_attrs_};
         ThreadPool::TryParallelFor(tp, onnxruntime::narrow<std::ptrdiff_t>(total_channels), avg_pool_task_3d.Cost(), avg_pool_task_3d);
       }
       break;

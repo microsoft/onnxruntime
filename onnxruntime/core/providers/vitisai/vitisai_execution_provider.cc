@@ -44,8 +44,7 @@ VitisAIExecutionProvider::VitisAIExecutionProvider(const VitisAIExecutionProvide
  * backend type
  */
 static std::vector<std::vector<NodeIndex>>
-GetSupportedNodeClusters(const XGraphHolder& xg, const std::string& backend_type,
-                         const GraphViewer& graph_viewer,
+GetSupportedNodeClusters(const XGraphHolder& xg, const std::string& backend_type, const GraphViewer& graph_viewer,
                          /*out*/ std::unordered_set<std::string>& required_initializers) {
   std::vector<std::vector<NodeIndex>> clusters;
 
@@ -72,7 +71,8 @@ GetSupportedNodeClusters(const XGraphHolder& xg, const std::string& backend_type
     bool is_node_supported = false;
     for (ConstPointerContainer<std::vector<NodeArg*>>::ConstIterator it =
              node_args.begin();
-         it != node_args.end(); ++it) {
+         it != node_args.end();
+         ++it) {
       if (supported_tensors.find((*it)->Name()) != supported_tensors.end()) {
         is_node_supported = true;
         int found_cluster_id = cluster_idx[supported_tensors[(*it)->Name()]];
@@ -221,11 +221,7 @@ VitisAIExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
 
   const Graph& node_graph = graph.GetGraph();
   const std::string& name_ = node_graph.Name();
-  onnxruntime::Model model{name_, true, ModelMetaData{}, PathString{},
-                           IOnnxRuntimeOpSchemaRegistryList{},
-                           node_graph.DomainToVersionMap(),
-                           std::vector<ONNX_NAMESPACE::FunctionProto>(),
-                           logger};
+  onnxruntime::Model model{name_, true, ModelMetaData{}, PathString{}, IOnnxRuntimeOpSchemaRegistryList{}, node_graph.DomainToVersionMap(), std::vector<ONNX_NAMESPACE::FunctionProto>(), logger};
 
   ONNX_NAMESPACE::ModelProto model_proto = model.ToProto();
   model_proto.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
@@ -276,8 +272,7 @@ common::Status VitisAIExecutionProvider::Compile(const std::vector<FusedNodeAndG
     const Node& fused_node = fused_node_graph.fused_node;
     NodeComputeInfo compute_info;
     compute_info.create_state_func = [this, fused_node, logger = GetLogger()](ComputeContext* context, FunctionState* state) {
-      auto* p = new vitisai_ep::VitisAICustomOp(context, fused_node, graph_body_viewer, backend_type_, export_runtime_module_,
-                                                load_runtime_module_, logger);
+      auto* p = new vitisai_ep::VitisAICustomOp(context, fused_node, graph_body_viewer, backend_type_, export_runtime_module_, load_runtime_module_, logger);
       *state = p;
       return 0;
     };

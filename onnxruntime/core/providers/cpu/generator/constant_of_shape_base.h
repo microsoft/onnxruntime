@@ -18,9 +18,16 @@ namespace onnxruntime {
 using ConstantOfShapeDefaultOutputTypes =
     TypeList<
         MLFloat16,
-        float, double,
-        int8_t, int16_t, int32_t, int64_t,
-        uint8_t, uint16_t, uint32_t, uint64_t,
+        float,
+        double,
+        int8_t,
+        int16_t,
+        int32_t,
+        int64_t,
+        uint8_t,
+        uint16_t,
+        uint32_t,
+        uint64_t,
         bool>;
 
 template <typename EnabledOutputTypeList = ConstantOfShapeDefaultOutputTypes>

@@ -177,11 +177,7 @@ void RegisterCudaStreamHandles(IStreamCommandHandleRegistry& stream_handle_regis
       return std::make_unique<CudaStream>(stream, device, cpu_allocator, release_cpu_buffer_on_cuda_stream, true, nullptr, nullptr);
     });
   else
-    stream_handle_registry.RegisterCreateStreamFn(device_type, [cpu_allocator,
-                                                                release_cpu_buffer_on_cuda_stream,
-                                                                external_stream,
-                                                                external_cudnn_handle,
-                                                                external_cublas_handle](const OrtDevice& device) {
+    stream_handle_registry.RegisterCreateStreamFn(device_type, [cpu_allocator, release_cpu_buffer_on_cuda_stream, external_stream, external_cudnn_handle, external_cublas_handle](const OrtDevice& device) {
       return std::make_unique<CudaStream>(external_stream, device, cpu_allocator, release_cpu_buffer_on_cuda_stream, false, external_cudnn_handle, external_cublas_handle);
     });
 }

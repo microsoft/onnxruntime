@@ -145,13 +145,7 @@ void WindowsTelemetry::LogEvaluationStart() const {
                     "EvaluationStart");
 }
 
-void WindowsTelemetry::LogSessionCreation(uint32_t session_id, int64_t ir_version, const std::string& model_producer_name,
-                                          const std::string& model_producer_version, const std::string& model_domain,
-                                          const std::unordered_map<std::string, int>& domain_to_version_map,
-                                          const std::string& model_graph_name,
-                                          const std::unordered_map<std::string, std::string>& model_metadata,
-                                          const std::string& loaded_from, const std::vector<std::string>& execution_provider_ids,
-                                          bool use_fp16) const {
+void WindowsTelemetry::LogSessionCreation(uint32_t session_id, int64_t ir_version, const std::string& model_producer_name, const std::string& model_producer_version, const std::string& model_domain, const std::unordered_map<std::string, int>& domain_to_version_map, const std::string& model_graph_name, const std::unordered_map<std::string, std::string>& model_metadata, const std::string& loaded_from, const std::vector<std::string>& execution_provider_ids, bool use_fp16) const {
   if (global_register_count_ == 0 || enabled_ == false)
     return;
 
@@ -215,8 +209,7 @@ void WindowsTelemetry::LogSessionCreation(uint32_t session_id, int64_t ir_versio
                     TraceLoggingString(execution_provider_string.c_str(), "executionProviderIds"));
 }
 
-void WindowsTelemetry::LogRuntimeError(uint32_t session_id, const common::Status& status, const char* file,
-                                       const char* function, uint32_t line) const {
+void WindowsTelemetry::LogRuntimeError(uint32_t session_id, const common::Status& status, const char* file, const char* function, uint32_t line) const {
   if (global_register_count_ == 0 || enabled_ == false)
     return;
 

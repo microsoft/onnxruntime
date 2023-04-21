@@ -12,7 +12,8 @@ namespace cuda {
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     NonMaxSuppression,
     kOnnxDomain,
-    10, 10,
+    10,
+    10,
     kCudaExecutionProvider,
     (*KernelDefBuilder::Create())
         .InputMemoryType(OrtMemTypeCPUInput, 2)

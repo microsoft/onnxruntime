@@ -1110,10 +1110,9 @@ bool DnnlConcatNodeCapability::AreAxisAndDimensionsSupported(const Node* node) c
 
   // Veriy input dimensions
   const auto& node_inputs = node->InputDefs();
-  auto ref_input_it = std::find_if(node_inputs.begin(), node_inputs.end(),
-                                   [](const auto input) {
-                                     return input->Shape() != nullptr;
-                                   });
+  auto ref_input_it = std::find_if(node_inputs.begin(), node_inputs.end(), [](const auto input) {
+    return input->Shape() != nullptr;
+  });
   if (ref_input_it != node_inputs.end()) {
     const auto ref_input = *ref_input_it;
     const auto ref_input_shape = ref_input->Shape();

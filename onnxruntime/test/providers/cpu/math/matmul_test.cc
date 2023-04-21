@@ -231,11 +231,9 @@ TEST(MathOpTest, MatMul_Float16) {
 #endif
   OpTester test("MatMul", 14);
 
-  std::vector<float> A{1.0f, 2.0f, 3.0f, 4.0f,
-                       -1.0f, -2.0f, -3.0f, -4.0f};
+  std::vector<float> A{1.0f, 2.0f, 3.0f, 4.0f, -1.0f, -2.0f, -3.0f, -4.0f};
   std::vector<float> B(12, 1.0f);
-  std::vector<float> Y{10.0f, 10.0f, 10.0f,
-                       -10.0f, -10.0f, -10.0f};
+  std::vector<float> Y{10.0f, 10.0f, 10.0f, -10.0f, -10.0f, -10.0f};
 
   std::vector<MLFloat16> f_A(8);
   std::vector<MLFloat16> f_B(12);
@@ -298,19 +296,14 @@ TEST(MathOpTest, MatMulSharedPrepackedWeights) {
   OpTester test("MatMul");
 
   std::vector<float> b_init_values(12, 1.0f);
-  test.AddInput<float>("A", {2, 4},
-                       {1.0f, 2.0f, 3.0f, 4.0f,
-                        -1.0f, -2.0f, -3.0f, -4.0f});
+  test.AddInput<float>("A", {2, 4}, {1.0f, 2.0f, 3.0f, 4.0f, -1.0f, -2.0f, -3.0f, -4.0f});
   // B is to be an initializer for triggering pre-packing
   test.AddInput<float>("B", {4, 3}, b_init_values, true);
 
-  test.AddOutput<float>("Y", {2, 3},
-                        {10.0f, 10.0f, 10.0f,
-                         -10.0f, -10.0f, -10.0f});
+  test.AddOutput<float>("Y", {2, 3}, {10.0f, 10.0f, 10.0f, -10.0f, -10.0f, -10.0f});
 
   OrtValue b;
-  Tensor::InitOrtValue(DataTypeImpl::GetType<float>(), TensorShape({4, 3}),
-                       b_init_values.data(), OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator), b);
+  Tensor::InitOrtValue(DataTypeImpl::GetType<float>(), TensorShape({4, 3}), b_init_values.data(), OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator), b);
 
   SessionOptions so;
   // Set up B as a shared initializer to be shared between sessions

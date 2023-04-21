@@ -48,8 +48,11 @@ ROCMExecutionProviderInfo ROCMExecutionProviderInfo::FromProviderOptions(const P
                 HIP_RETURN_IF_ERROR(hipGetDeviceCount(&num_devices));
                 ORT_RETURN_IF_NOT(
                     0 <= info.device_id && info.device_id < num_devices,
-                    "Invalid device ID: ", info.device_id,
-                    ", must be between 0 (inclusive) and ", num_devices, " (exclusive).");
+                    "Invalid device ID: ",
+                    info.device_id,
+                    ", must be between 0 (inclusive) and ",
+                    num_devices,
+                    " (exclusive).");
                 return Status::OK();
               })
           .AddValueParser(
@@ -79,7 +82,8 @@ ROCMExecutionProviderInfo ROCMExecutionProviderInfo::FromProviderOptions(const P
           .AddAssignmentToReference(rocm::provider_option_names::kMemLimit, info.gpu_mem_limit)
           .AddAssignmentToEnumReference(
               rocm::provider_option_names::kArenaExtendStrategy,
-              arena_extend_strategy_mapping, info.arena_extend_strategy)
+              arena_extend_strategy_mapping,
+              info.arena_extend_strategy)
           .AddAssignmentToReference(rocm::provider_option_names::kMiopenConvExhaustiveSearch, info.miopen_conv_exhaustive_search)
           .AddAssignmentToReference(rocm::provider_option_names::kDoCopyInDefaultStream, info.do_copy_in_default_stream)
           .AddAssignmentToReference(rocm::provider_option_names::kMiopenConvUseMaxWorkspace, info.miopen_conv_use_max_workspace)

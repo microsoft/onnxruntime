@@ -22,7 +22,8 @@ class RandomBase {
     if (info.GetAttr<int64_t>("dtype", &dtype).IsOK()) {
       ORT_ENFORCE(ONNX_NAMESPACE::TensorProto::DataType_IsValid(gsl::narrow<int>(dtype)) &&
                       dtype != ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED,
-                  "Invalid dtype of ", dtype);
+                  "Invalid dtype of ",
+                  dtype);
       dtype_ = static_cast<ONNX_NAMESPACE::TensorProto::DataType>(dtype);
     }
   }

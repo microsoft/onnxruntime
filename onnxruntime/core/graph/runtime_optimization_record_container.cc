@@ -24,11 +24,10 @@ bool RuntimeOptimizationRecordContainer::RecordExists(const std::string& optimiz
   if (it == optimizer_name_to_records_.end()) return false;
 
   const auto& records = it->second;
-  return std::find_if(records.begin(), records.end(),
-                      [&](const RuntimeOptimizationRecord& record) {
-                        return record.action_id == action_id &&
-                               record.nodes_to_optimize_indices == nodes_to_optimize_indices;
-                      }) != records.end();
+  return std::find_if(records.begin(), records.end(), [&](const RuntimeOptimizationRecord& record) {
+           return record.action_id == action_id &&
+                  record.nodes_to_optimize_indices == nodes_to_optimize_indices;
+         }) != records.end();
 }
 
 void RuntimeOptimizationRecordContainer::AddRecord(const std::string& optimizer_name,
@@ -130,8 +129,7 @@ static Status LoadRuntimeOptimizationRecordFromOrtFormat(
       nodes_to_optimize_indices.nodes = [&]() {
         InlinedVector<NodeIndex> result;
         result.reserve(fbs_node_indices->size());
-        std::transform(fbs_node_indices->begin(), fbs_node_indices->end(), std::back_inserter(result),
-                       [](const uint32_t idx) { return static_cast<NodeIndex>(idx); });
+        std::transform(fbs_node_indices->begin(), fbs_node_indices->end(), std::back_inserter(result), [](const uint32_t idx) { return static_cast<NodeIndex>(idx); });
         return result;
       }();
     }
@@ -182,7 +180,8 @@ Status RuntimeOptimizationRecordContainer::LoadFromOrtFormat(
     }
 
     ORT_RETURN_IF_NOT(optimizer_name_to_records.emplace(optimizer_name, std::move(records)).second,
-                      "Attempting to load runtime optimization records for a previously loaded optimizer: ", optimizer_name);
+                      "Attempting to load runtime optimization records for a previously loaded optimizer: ",
+                      optimizer_name);
   }
 
   optimizer_name_to_records_ = std::move(optimizer_name_to_records);

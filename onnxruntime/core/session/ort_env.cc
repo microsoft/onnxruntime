@@ -24,11 +24,9 @@ LoggingWrapper::LoggingWrapper(OrtLoggingFunction logging_function, void* logger
     : logging_function_(logging_function), logger_param_(logger_param) {
 }
 
-void LoggingWrapper::SendImpl(const onnxruntime::logging::Timestamp& /*timestamp*/, const std::string& logger_id,
-                              const onnxruntime::logging::Capture& message) {
+void LoggingWrapper::SendImpl(const onnxruntime::logging::Timestamp& /*timestamp*/, const std::string& logger_id, const onnxruntime::logging::Capture& message) {
   std::string s = message.Location().ToString();
-  logging_function_(logger_param_, static_cast<OrtLoggingLevel>(message.Severity()), message.Category(),
-                    logger_id.c_str(), s.c_str(), message.Message().c_str());
+  logging_function_(logger_param_, static_cast<OrtLoggingLevel>(message.Severity()), message.Category(), logger_id.c_str(), s.c_str(), message.Message().c_str());
 }
 
 OrtEnv::OrtEnv(std::unique_ptr<onnxruntime::Environment> value1)

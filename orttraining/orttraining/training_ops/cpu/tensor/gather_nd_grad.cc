@@ -9,13 +9,7 @@ namespace onnxruntime {
 #ifndef DISABLE_CONTRIB_OPS
 
 namespace contrib {
-ONNX_OPERATOR_KERNEL_EX(GatherNDGrad, kMSDomain, 1, kCpuExecutionProvider,
-                        KernelDefBuilder()
-                            .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
-                                                  DataTypeImpl::GetTensorType<double>()})
-                            .TypeConstraint("Tind", {DataTypeImpl::GetTensorType<int64_t>(),
-                                                     DataTypeImpl::GetTensorType<int32_t>()}),
-                        GatherNDGrad);
+ONNX_OPERATOR_KERNEL_EX(GatherNDGrad, kMSDomain, 1, kCpuExecutionProvider, KernelDefBuilder().TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(), DataTypeImpl::GetTensorType<double>()}).TypeConstraint("Tind", {DataTypeImpl::GetTensorType<int64_t>(), DataTypeImpl::GetTensorType<int32_t>()}), GatherNDGrad);
 
 }  // namespace contrib
 
@@ -52,8 +46,7 @@ Status GatherNDGrad::Compute(OpKernelContext* context) const {
 
   int64_t last_indices_dimension = batch_dims_ + indices_shape[indices_shape.NumDimensions() - 1];
   if (last_indices_dimension > static_cast<int64_t>(input_shape.NumDimensions())) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "last dimension of indices must not be larger than rank of input tensor");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "last dimension of indices must not be larger than rank of input tensor");
   }
 
   auto* output_tensor = context->Output(0, input_shape);

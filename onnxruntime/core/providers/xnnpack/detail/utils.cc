@@ -138,14 +138,13 @@ std::unique_ptr<IndexedSubGraph::MetaDef> FuseQDQGroup(const NodeUnit& node_unit
   // but the 5 more unit extra memory is not too expensive
   def.inputs.reserve(9);
   if (qtype == QuantizedOpType::QDQConv || qtype == QuantizedOpType::QDQConvTranspose) {
-    std::for_each(inputs.cbegin(), inputs.cbegin() + 2,
-                  [&def](const NodeUnitIODef& arg) {
-                    // keep the number of inputs the same by inserting an empty string for a missing optional input
-                    def.inputs.push_back(arg.node_arg.Name());
-                    const auto& quant_param = arg.quant_param.value();
-                    def.inputs.push_back(quant_param.scale.Name());
-                    def.inputs.push_back(quant_param.zero_point ? quant_param.zero_point->Name() : "");
-                  });
+    std::for_each(inputs.cbegin(), inputs.cbegin() + 2, [&def](const NodeUnitIODef& arg) {
+      // keep the number of inputs the same by inserting an empty string for a missing optional input
+      def.inputs.push_back(arg.node_arg.Name());
+      const auto& quant_param = arg.quant_param.value();
+      def.inputs.push_back(quant_param.scale.Name());
+      def.inputs.push_back(quant_param.zero_point ? quant_param.zero_point->Name() : "");
+    });
     // y-scale y-zeropoint
     const auto& y_quant_param = node_unit.Outputs()[0].quant_param.value();
     def.inputs.push_back(y_quant_param.scale.Name());
@@ -160,14 +159,13 @@ std::unique_ptr<IndexedSubGraph::MetaDef> FuseQDQGroup(const NodeUnit& node_unit
     }
   } else if (qtype == QuantizedOpType::QDQAvgPool || qtype == QuantizedOpType::QDQSoftmax) {
     // x x-scale x-zp
-    std::for_each(inputs.cbegin(), inputs.cend(),
-                  [&def](const NodeUnitIODef& arg) {
-                    // keep the number of inputs the same by inserting an empty string for a missing optional input
-                    def.inputs.push_back(arg.node_arg.Name());
-                    const auto& quant_param = arg.quant_param.value();
-                    def.inputs.push_back(quant_param.scale.Name());
-                    def.inputs.push_back(quant_param.zero_point ? quant_param.zero_point->Name() : "");
-                  });
+    std::for_each(inputs.cbegin(), inputs.cend(), [&def](const NodeUnitIODef& arg) {
+      // keep the number of inputs the same by inserting an empty string for a missing optional input
+      def.inputs.push_back(arg.node_arg.Name());
+      const auto& quant_param = arg.quant_param.value();
+      def.inputs.push_back(quant_param.scale.Name());
+      def.inputs.push_back(quant_param.zero_point ? quant_param.zero_point->Name() : "");
+    });
     // y-scale y-zeropoint
     const auto& y_quant_param = node_unit.Outputs()[0].quant_param.value();
     def.inputs.push_back(y_quant_param.scale.Name());
@@ -180,10 +178,9 @@ std::unique_ptr<IndexedSubGraph::MetaDef> FuseQDQGroup(const NodeUnit& node_unit
   } else if (qtype == QuantizedOpType::QDQMaxPool || qtype == QuantizedOpType::QDQResize) {
     // Don't care about the quantization parameters for MaxPool, Resize
     // where the two ops don't ask for quantization parameters in computation.
-    std::for_each(inputs.cbegin(), inputs.cend(),
-                  [&def](const NodeUnitIODef& arg) {
-                    def.inputs.push_back(arg.node_arg.Name());
-                  });
+    std::for_each(inputs.cbegin(), inputs.cend(), [&def](const NodeUnitIODef& arg) {
+      def.inputs.push_back(arg.node_arg.Name());
+    });
     if (qtype == QuantizedOpType::QDQResize) {
       def.domain = kOnnxDomain;  // QDQResize is not layout sensitive
     }
@@ -204,8 +201,7 @@ std::unique_ptr<IndexedSubGraph::MetaDef> FuseQDQGroup(const NodeUnit& node_unit
 }
 
 // Fuse activation with node_unit.
-std::unique_ptr<IndexedSubGraph::MetaDef> FuseActivation(const NodeUnit& node_unit, const NodeUnit& activation_unit,
-                                                         const GraphViewer& graph) {
+std::unique_ptr<IndexedSubGraph::MetaDef> FuseActivation(const NodeUnit& node_unit, const NodeUnit& activation_unit, const GraphViewer& graph) {
   std::unique_ptr<IndexedSubGraph::MetaDef> metadef = std::make_unique<IndexedSubGraph::MetaDef>();
   IndexedSubGraph::MetaDef& def = *metadef;
   const Node& activation = activation_unit.GetNode();
@@ -219,10 +215,9 @@ std::unique_ptr<IndexedSubGraph::MetaDef> FuseActivation(const NodeUnit& node_un
   // inputs
   const auto& inputs = node_unit.Inputs();
   def.inputs.reserve(inputs.size());
-  std::for_each(inputs.cbegin(), inputs.cend(),
-                [&def](const NodeUnitIODef& iodef) {
-                  def.inputs.push_back(iodef.node_arg.Name());
-                });
+  std::for_each(inputs.cbegin(), inputs.cend(), [&def](const NodeUnitIODef& iodef) {
+    def.inputs.push_back(iodef.node_arg.Name());
+  });
 
   // outputs
   def.outputs.push_back(activation.OutputDefs()[0]->Name());
@@ -303,8 +298,7 @@ GetQuantizationZeroPointAndScale(const GraphViewer& graphview,
 }
 
 // we have uint8,int8 and int8_per-channel
-TensorQuantType GetTensorQuantType(const NodeUnit& node_unit, int32_t io_index,
-                                   bool is_output, const GraphViewer& graph_viewer) {
+TensorQuantType GetTensorQuantType(const NodeUnit& node_unit, int32_t io_index, bool is_output, const GraphViewer& graph_viewer) {
   // we do not check the legality of io_index here
   const NodeUnitIODef& iodef = is_output ? node_unit.Outputs()[io_index] : node_unit.Inputs()[io_index];
   TensorQuantType datatype = TensorTypeInvalid;
@@ -399,8 +393,11 @@ gsl::span<const T> ReadConstantValues(const OpKernelInfo& info, int idx) {
 }
 
 void GetScaleAndZeroPoint(const OpKernelInfo& info,
-                          int scale_idx, std::vector<float>& scale, int zp_idx,
-                          uint8_t& zero_point, int32_t x_dtype) {
+                          int scale_idx,
+                          std::vector<float>& scale,
+                          int zp_idx,
+                          uint8_t& zero_point,
+                          int32_t x_dtype) {
   auto s_span = ReadConstantValues<float>(info, scale_idx);
   scale.assign(s_span.begin(), s_span.end());
 

@@ -171,8 +171,7 @@ class FuseExecutionProvider : public IExecutionProvider {
 };
 
 namespace test {
-static void VerifyOutputs(const std::vector<OrtValue>& fetches, const std::vector<int64_t>& expected_dims,
-                          const std::vector<float>& expected_values);
+static void VerifyOutputs(const std::vector<OrtValue>& fetches, const std::vector<int64_t>& expected_dims, const std::vector<float>& expected_values);
 static constexpr const ORTCHAR_T* MODEL_URI = ORT_TSTR("testdata/mul_1.onnx");
 static constexpr const ORTCHAR_T* MODEL_URI_NO_OPSET = ORT_TSTR("testdata/mul_1.noopset.onnx");
 // static const std::string MODEL_URI = "./testdata/squeezenet/model.onnx"; // TODO enable this after we've weights?
@@ -182,10 +181,7 @@ static void CreateMatMulModel(std::unique_ptr<onnxruntime::Model>& p_model, Prov
   domain_to_version[onnxruntime::kOnnxDomain] = 7;
   // Generate the input & output def lists
   std::vector<ONNX_NAMESPACE::FunctionProto> model_specific_functions;
-  p_model = std::make_unique<Model>("test", true, ModelMetaData(), PathString(),
-                                    IOnnxRuntimeOpSchemaRegistryList(), domain_to_version,
-                                    model_specific_functions, DefaultLoggingManager().DefaultLogger(),
-                                    ModelOptions(true, true));
+  p_model = std::make_unique<Model>("test", true, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, model_specific_functions, DefaultLoggingManager().DefaultLogger(), ModelOptions(true, true));
   onnxruntime::Graph& graph = p_model->MainGraph();
 
   TypeProto tensor_float;
@@ -216,8 +212,7 @@ static void CreateMatMulModel(std::unique_ptr<onnxruntime::Model>& p_model, Prov
 }
 
 template <typename T = float>
-void VerifyOutputs(const Tensor& tensor, const std::vector<int64_t>& expected_dims,
-                   const std::vector<T>& expected_values) {
+void VerifyOutputs(const Tensor& tensor, const std::vector<int64_t>& expected_dims, const std::vector<T>& expected_values) {
   TensorShape expected_shape(expected_dims);
   ASSERT_EQ(expected_shape, tensor.Shape());
   const std::vector<T> found(tensor.Data<T>(),
@@ -225,8 +220,7 @@ void VerifyOutputs(const Tensor& tensor, const std::vector<int64_t>& expected_di
   ASSERT_EQ(expected_values, found);
 }
 
-void VerifyOutputs(const std::vector<OrtValue>& fetches, const std::vector<int64_t>& expected_dims,
-                   const std::vector<float>& expected_values) {
+void VerifyOutputs(const std::vector<OrtValue>& fetches, const std::vector<int64_t>& expected_dims, const std::vector<float>& expected_values) {
   ASSERT_EQ(1u, fetches.size());
   auto& rtensor = fetches.front().Get<Tensor>();
   VerifyOutputs(rtensor, expected_dims, expected_values);
@@ -239,8 +233,7 @@ void RunModel(InferenceSession& session_object,
   std::vector<int64_t> dims_mul_x = {3, 2};
   std::vector<float> values_mul_x = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
   OrtValue ml_value;
-  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault), dims_mul_x, values_mul_x,
-                       &ml_value);
+  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault), dims_mul_x, values_mul_x, &ml_value);
   NameMLValMap feeds;
   feeds.insert(std::make_pair("X", ml_value));
 
@@ -252,8 +245,7 @@ void RunModel(InferenceSession& session_object,
   if (is_preallocate_output_vec) {
     fetches.resize(output_names.size());
     for (auto& elem : fetches) {
-      CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault), dims_mul_x, values_mul_x,
-                           &elem);
+      CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault), dims_mul_x, values_mul_x, &elem);
     }
   }
 
@@ -307,8 +299,7 @@ void RunModelWithBindingMatMul(InferenceSession& session_object,
 
   OrtValue input_ml_value_B;
   std::vector<int64_t> dims_mul_x_B = {4, 3};
-  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault), dims_mul_x_B, values_mul_x,
-                       &input_ml_value_B);
+  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault), dims_mul_x_B, values_mul_x, &input_ml_value_B);
 
   ASSERT_STATUS_OK(io_binding->BindInput("A", input_ml_value_A));
   ASSERT_STATUS_OK(io_binding->BindInput("B", input_ml_value_B));
@@ -321,8 +312,7 @@ void RunModelWithBindingMatMul(InferenceSession& session_object,
   OrtValue output_ml_value;
   if (is_preallocate_output_vec) {
     if (allocation_provider == kCpuExecutionProvider) {
-      AllocateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault), expected_output_dims,
-                             &output_ml_value);
+      AllocateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault), expected_output_dims, &output_ml_value);
     } else if (allocation_provider == kCudaExecutionProvider || allocation_provider == kRocmExecutionProvider) {
       AllocateMLValue<float>(gpu_provider->GetAllocator(OrtMemTypeDefault), expected_output_dims, &output_ml_value);
     } else {
@@ -587,8 +577,7 @@ TEST(InferenceSessionTests, CheckRunLogger) {
   auto capturing_sink = new CapturingSink();
 
   auto logging_manager = std::make_unique<logging::LoggingManager>(
-      std::unique_ptr<ISink>(capturing_sink), logging::Severity::kVERBOSE, false,
-      LoggingManager::InstanceType::Temporal);
+      std::unique_ptr<ISink>(capturing_sink), logging::Severity::kVERBOSE, false, LoggingManager::InstanceType::Temporal);
 
   std::unique_ptr<Environment> env;
   auto st = Environment::Create(std::move(logging_manager), env);
@@ -606,10 +595,9 @@ TEST(InferenceSessionTests, CheckRunLogger) {
   auto& msgs = capturing_sink->Messages();
   std::copy(msgs.begin(), msgs.end(), std::ostream_iterator<std::string>(std::cout, "\n"));
   bool have_log_entry_with_run_tag =
-      (std::find_if(msgs.begin(), msgs.end(),
-                    [&run_options](std::string msg) {
-                      return msg.find(run_options.run_tag) != string::npos;
-                    }) != msgs.end());
+      (std::find_if(msgs.begin(), msgs.end(), [&run_options](std::string msg) {
+         return msg.find(run_options.run_tag) != string::npos;
+       }) != msgs.end());
 
   ASSERT_TRUE(have_log_entry_with_run_tag);
 #endif
@@ -870,8 +858,7 @@ TEST(InferenceSessionTests, ConfigureVerbosityLevel) {
   auto& msgs = capturing_sink->Messages();
   std::copy(msgs.begin(), msgs.end(), std::ostream_iterator<std::string>(std::cout, "\n"));
   bool have_log_entry_with_vlog_session_msg =
-      (std::find_if(msgs.begin(), msgs.end(),
-                    [&](std::string msg) { return msg.find("Added input argument with name") != string::npos; }) !=
+      (std::find_if(msgs.begin(), msgs.end(), [&](std::string msg) { return msg.find("Added input argument with name") != string::npos; }) !=
        msgs.end());
 
   ASSERT_TRUE(have_log_entry_with_vlog_session_msg);
@@ -1036,8 +1023,7 @@ TEST(InferenceSessionTests, InvalidInputTypeOfTensorElement) {
   std::vector<int64_t> dims_mul_x = {3, 2};
   std::vector<int64_t> values_mul_x = {1, 2, 3, 4, 5, 6};
   OrtValue ml_value;
-  CreateMLValue<int64_t>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault), dims_mul_x, values_mul_x,
-                         &ml_value);
+  CreateMLValue<int64_t>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault), dims_mul_x, values_mul_x, &ml_value);
   NameMLValMap feeds;
   feeds.insert(std::make_pair("X", ml_value));
 
@@ -1147,19 +1133,27 @@ static common::Status RunOptionalInputTest(bool add_required_input,
 
   OrtValue required_input_mlvalue;
   CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault),
-                       dims, required_input_val, &required_input_mlvalue);
+                       dims,
+                       required_input_val,
+                       &required_input_mlvalue);
 
   OrtValue other_required_input_mlvalue;
   CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault),
-                       dims, other_required_input_val, &other_required_input_mlvalue);
+                       dims,
+                       other_required_input_val,
+                       &other_required_input_mlvalue);
 
   OrtValue optional_input_mlvalue;
   CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault),
-                       dims, optional_input_val, &optional_input_mlvalue);
+                       dims,
+                       optional_input_val,
+                       &optional_input_mlvalue);
 
   OrtValue unknown_input_mlvalue;
   CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault),
-                       dims, unknown_input_val, &unknown_input_mlvalue);
+                       dims,
+                       unknown_input_val,
+                       &unknown_input_mlvalue);
 
   NameMLValMap feeds;
 
@@ -1572,8 +1566,7 @@ TEST(InferenceSessionTests, Test3LayerNestedSubgraph) {
   std::vector<int64_t> dim = {1};
   std::vector<bool> va = {false};
   OrtValue ml_value_x;
-  CreateMLValue<bool>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault), dim, va,
-                      &ml_value_x);
+  CreateMLValue<bool>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault), dim, va, &ml_value_x);
   NameMLValMap feeds;
   feeds.insert(std::make_pair("if_cond_input", ml_value_x));
 
@@ -1724,13 +1717,11 @@ TEST(InferenceSessionTests, Test2LayerNestedSubgraph) {
   std::vector<int64_t> dim_input_0 = {1};
   std::vector<float> data_input_0 = {0.0f};
   OrtValue ml_value_input_0;
-  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault), dim_input_0, data_input_0,
-                       &ml_value_input_0);
+  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault), dim_input_0, data_input_0, &ml_value_input_0);
   std::vector<int64_t> dim_input_1 = {1};
   std::vector<bool> data_input_1 = {false};
   OrtValue ml_value_input_1;
-  CreateMLValue<bool>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault), dim_input_1, data_input_1,
-                      &ml_value_input_1);
+  CreateMLValue<bool>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault), dim_input_1, data_input_1, &ml_value_input_1);
   NameMLValMap feeds;
   feeds.insert(std::make_pair("input_0", ml_value_input_0));
   feeds.insert(std::make_pair("input_1", ml_value_input_1));
@@ -1809,18 +1800,10 @@ TEST(InferenceSessionTests, TestTruncatedSequence) {
   run_options.run_tag = "one session/one tag";
 
   std::vector<int64_t> X_dims = {5, 1, 3};
-  std::vector<float> X = {0.5488135f, 0.71518934f, 0.60276335f,
-                          0.5448832f, 0.4236548f, 0.6458941f,
-                          0.4375872f, 0.891773f, 0.96366274f,
-                          0.3834415f, 0.79172504f, 0.5288949f,
-                          0.56804454f, 0.92559665f, 0.07103606f};
+  std::vector<float> X = {0.5488135f, 0.71518934f, 0.60276335f, 0.5448832f, 0.4236548f, 0.6458941f, 0.4375872f, 0.891773f, 0.96366274f, 0.3834415f, 0.79172504f, 0.5288949f, 0.56804454f, 0.92559665f, 0.07103606f};
 
   std::vector<int64_t> Y_dims = {5, 1, 2};
-  std::vector<float> Y_data = {-1.1730184e-04f, -3.1204990e-04f,
-                               -2.9978977e-04f, -1.0602647e-03f,
-                               -3.8115133e-04f, -2.0684483e-03f,
-                               -2.5120965e-04f, -2.9920202e-03f,
-                               3.0980256e-05f, -3.5933927e-03f};
+  std::vector<float> Y_data = {-1.1730184e-04f, -3.1204990e-04f, -2.9978977e-04f, -1.0602647e-03f, -3.8115133e-04f, -2.0684483e-03f, -2.5120965e-04f, -2.9920202e-03f, 3.0980256e-05f, -3.5933927e-03f};
 
   OrtValue ml_value;
   CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault), X_dims, X, &ml_value);
@@ -1923,8 +1906,7 @@ TEST(InferenceSessionTests, TestCopyToFromDevices) {
   std::vector<int64_t> dims_mul_x = {3, 2};
   std::vector<float> values_mul_x = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
   OrtValue ml_value;
-  CreateMLValue<float>(p_dummy_provider->GetAllocator(OrtMemTypeDefault), dims_mul_x, values_mul_x,
-                       &ml_value);
+  CreateMLValue<float>(p_dummy_provider->GetAllocator(OrtMemTypeDefault), dims_mul_x, values_mul_x, &ml_value);
 
   std::vector<std::string> feed_names;
   std::vector<OrtValue> feeds;
@@ -1943,8 +1925,7 @@ TEST(InferenceSessionTests, TestCopyToFromDevices) {
 
     fetches.resize(output_names.size());
     for (auto& elem : fetches) {
-      CreateMLValue<float>(p_dummy_provider->GetAllocator(OrtMemTypeDefault), dims_mul_x, values_mul_x,
-                           &elem);
+      CreateMLValue<float>(p_dummy_provider->GetAllocator(OrtMemTypeDefault), dims_mul_x, values_mul_x, &elem);
     }
 
     // Now run
@@ -2055,9 +2036,7 @@ TEST(InferenceSessionTests, TestStrictShapeInference) {
   tester.Run(session_options, OpTester::ExpectResult::kExpectSuccess, "", excluded_provider_types);
 
   ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(kOrtSessionOptionsConfigStrictShapeTypeInference, "1"));
-  tester.Run(session_options, OpTester::ExpectResult::kExpectFailure,
-             "Mismatch between number of source and target dimensions. Source=1 Target=2",
-             excluded_provider_types);
+  tester.Run(session_options, OpTester::ExpectResult::kExpectFailure, "Mismatch between number of source and target dimensions. Source=1 Target=2", excluded_provider_types);
 }
 
 #ifdef USE_CUDA
@@ -2203,8 +2182,7 @@ TEST(InferenceSessionTests, ModelThatTriggersAllocationPlannerToReuseDoubleTenso
   std::vector<int64_t> dims_x = {1, 2, 3};
   std::vector<float> values_x = {1.6f, -0.6f, -0.5f, -1.0f, 0.8f, -2.3f};
   OrtValue ml_value;
-  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault), dims_x, values_x,
-                       &ml_value);
+  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault), dims_x, values_x, &ml_value);
   NameMLValMap feeds;
   feeds.insert(std::make_pair("u", ml_value));
 
@@ -2464,8 +2442,7 @@ TEST(InferenceSessionTests, CheckIfPerSessionThreadPoolsAreBeingUsed) {
 
   so.session_logid = "CheckIfPerSessionThreadPoolsAreBeingUsed";
   auto logging_manager = std::make_unique<logging::LoggingManager>(
-      std::unique_ptr<ISink>(new CLogSink()), logging::Severity::kVERBOSE, false,
-      LoggingManager::InstanceType::Temporal);
+      std::unique_ptr<ISink>(new CLogSink()), logging::Severity::kVERBOSE, false, LoggingManager::InstanceType::Temporal);
 
   std::unique_ptr<Environment> env;
   auto st = Environment::Create(std::move(logging_manager), env);
@@ -2503,8 +2480,7 @@ TEST(InferenceSessionTests, CheckIfGlobalThreadPoolsAreBeingUsed) {
 
   so.session_logid = "CheckIfGlobalThreadPoolsAreBeingUsed";
   auto logging_manager = std::make_unique<logging::LoggingManager>(
-      std::unique_ptr<ISink>(new CLogSink()), logging::Severity::kVERBOSE, false,
-      LoggingManager::InstanceType::Temporal);
+      std::unique_ptr<ISink>(new CLogSink()), logging::Severity::kVERBOSE, false, LoggingManager::InstanceType::Temporal);
 
   std::unique_ptr<Environment> env;
   OrtThreadingOptions tp_options;
@@ -2541,8 +2517,7 @@ TEST(InferenceSessionTests, CheckIfPerSessionThreadPoolsAreBeingUsed2) {
 
   so.session_logid = "CheckIfPerSessionThreadPoolsAreBeingUsed2";
   auto logging_manager = std::make_unique<logging::LoggingManager>(
-      std::unique_ptr<ISink>(new CLogSink()), logging::Severity::kVERBOSE, false,
-      LoggingManager::InstanceType::Temporal);
+      std::unique_ptr<ISink>(new CLogSink()), logging::Severity::kVERBOSE, false, LoggingManager::InstanceType::Temporal);
 
   std::unique_ptr<Environment> env;
   OrtThreadingOptions tp_options;
@@ -2588,8 +2563,7 @@ TEST(InferenceSessionTests, InvalidSessionEnvCombination) {
 
   so.session_logid = "InvalidSessionEnvCombination";
   auto logging_manager = std::make_unique<logging::LoggingManager>(
-      std::unique_ptr<ISink>(new CLogSink()), logging::Severity::kVERBOSE, false,
-      LoggingManager::InstanceType::Temporal);
+      std::unique_ptr<ISink>(new CLogSink()), logging::Severity::kVERBOSE, false, LoggingManager::InstanceType::Temporal);
 
   std::unique_ptr<Environment> env;
   auto st = Environment::Create(std::move(logging_manager), env);
@@ -2621,8 +2595,7 @@ class InferenceSessionTestSharingAllocator : public InferenceSessionWrapper {
 // Ensure sessions use the same allocator. It uses ORT created allocator.
 TEST(InferenceSessionTests, AllocatorSharing_EnsureSessionsUseSameOrtCreatedAllocator) {
   auto logging_manager = std::make_unique<logging::LoggingManager>(
-      std::unique_ptr<ISink>(new CLogSink()), logging::Severity::kVERBOSE, false,
-      LoggingManager::InstanceType::Temporal);
+      std::unique_ptr<ISink>(new CLogSink()), logging::Severity::kVERBOSE, false, LoggingManager::InstanceType::Temporal);
 
   std::unique_ptr<Environment> env;
   auto st = Environment::Create(std::move(logging_manager), env);
@@ -2635,7 +2608,8 @@ TEST(InferenceSessionTests, AllocatorSharing_EnsureSessionsUseSameOrtCreatedAllo
   OrtMemoryInfo mem_info{onnxruntime::CPU, use_arena ? OrtArenaAllocator : OrtDeviceAllocator};
   AllocatorCreationInfo device_info{
       [mem_info](int) { return std::make_unique<CPUAllocator>(mem_info); },
-      0, use_arena};
+      0,
+      use_arena};
 
   AllocatorPtr allocator_ptr = CreateAllocator(device_info);
   st = env->RegisterAllocator(allocator_ptr);
@@ -2666,8 +2640,7 @@ TEST(InferenceSessionTests, AllocatorSharing_EnsureSessionsUseSameOrtCreatedAllo
 // Ensure sessions don't use the same allocator. It uses ORT created allocator.
 TEST(InferenceSessionTests, AllocatorSharing_EnsureSessionsDontUseSameOrtCreatedAllocator) {
   auto logging_manager = std::make_unique<logging::LoggingManager>(
-      std::unique_ptr<ISink>(new CLogSink()), logging::Severity::kVERBOSE, false,
-      LoggingManager::InstanceType::Temporal);
+      std::unique_ptr<ISink>(new CLogSink()), logging::Severity::kVERBOSE, false, LoggingManager::InstanceType::Temporal);
 
   std::unique_ptr<Environment> env;
   auto st = Environment::Create(std::move(logging_manager), env);
@@ -2680,7 +2653,8 @@ TEST(InferenceSessionTests, AllocatorSharing_EnsureSessionsDontUseSameOrtCreated
   OrtMemoryInfo mem_info{onnxruntime::CPU, use_arena ? OrtArenaAllocator : OrtDeviceAllocator};
   AllocatorCreationInfo device_info{
       [mem_info](int) { return std::make_unique<CPUAllocator>(mem_info); },
-      0, use_arena};
+      0,
+      use_arena};
 
   AllocatorPtr allocator_ptr = CreateAllocator(device_info);
   st = env->RegisterAllocator(allocator_ptr);
@@ -2718,8 +2692,7 @@ class InferenceSessionTestSharingInitializer : public InferenceSessionWrapper {
 
 TEST(InferenceSessionTests, InitializerSharing_EnsureSessionsUseUserAddedInitializer) {
   auto logging_manager = std::make_unique<logging::LoggingManager>(
-      std::unique_ptr<ISink>(new CLogSink()), logging::Severity::kVERBOSE, false,
-      LoggingManager::InstanceType::Temporal);
+      std::unique_ptr<ISink>(new CLogSink()), logging::Severity::kVERBOSE, false, LoggingManager::InstanceType::Temporal);
 
   std::unique_ptr<Environment> env;
   auto st = Environment::Create(std::move(logging_manager), env);
@@ -2803,7 +2776,9 @@ void RunModelWithDenormalAsZero(InferenceSession& session_object,
   std::fill(values_mul.begin(), values_mul.end(), denormal_float);
   OrtValue ml_value;
   CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault),
-                       dims_mul, values_mul, &ml_value);
+                       dims_mul,
+                       values_mul,
+                       &ml_value);
 
   NameMLValMap feeds;
   feeds.insert(std::make_pair("X", ml_value));
@@ -2816,8 +2791,7 @@ void RunModelWithDenormalAsZero(InferenceSession& session_object,
   // prepare expected inputs and outputs
   std::vector<int64_t> expected_dims_mul{3, 1};
   std::vector<float> expected_values_mul(3);
-  std::fill(expected_values_mul.begin(), expected_values_mul.end(),
-            (set_denormal_as_zero) ? 0.0f : denormal_float * 3);
+  std::fill(expected_values_mul.begin(), expected_values_mul.end(), (set_denormal_as_zero) ? 0.0f : denormal_float * 3);
 
   // Now run
   common::Status st = session_object.Run(run_options, feeds, output_names, &fetches);
@@ -2859,8 +2833,7 @@ TEST(InferenceSessionTests, GlobalThreadPoolWithDenormalAsZero) {
   }
 
   auto logging_manager = std::make_unique<logging::LoggingManager>(
-      std::unique_ptr<ISink>(new CLogSink()), logging::Severity::kVERBOSE, false,
-      LoggingManager::InstanceType::Temporal);
+      std::unique_ptr<ISink>(new CLogSink()), logging::Severity::kVERBOSE, false, LoggingManager::InstanceType::Temporal);
 
   std::unique_ptr<Environment> env;
   OrtThreadingOptions tp_options;
@@ -2907,8 +2880,7 @@ TEST(InferenceSessionTests, InterThreadPoolWithDenormalAsZero) {
   }
 
   auto logging_manager = std::make_unique<logging::LoggingManager>(
-      std::unique_ptr<ISink>(new CLogSink()), logging::Severity::kVERBOSE, false,
-      LoggingManager::InstanceType::Temporal);
+      std::unique_ptr<ISink>(new CLogSink()), logging::Severity::kVERBOSE, false, LoggingManager::InstanceType::Temporal);
 
   std::unique_ptr<Environment> env;
   auto st = Environment::Create(std::move(logging_manager), env);

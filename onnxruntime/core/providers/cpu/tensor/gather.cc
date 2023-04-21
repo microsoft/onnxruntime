@@ -28,8 +28,7 @@ ORT_SPECIFY_OP_KERNEL_ARG_REQUIRED_TYPES_ALL_OPSETS(
 #endif
 }  // namespace op_kernel_type_control
 
-using EnabledIndexTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(kCpuExecutionProvider, kOnnxDomain,
-                                                                         Gather, Input, 1);
+using EnabledIndexTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(kCpuExecutionProvider, kOnnxDomain, Gather, Input, 1);
 ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     Gather,
     1,
@@ -84,10 +83,7 @@ Status GatherBase::PrepareForCompute(OpKernelContext* context, Prepare& p) const
 }
 
 template <typename Tin>
-Status GatherCopyData(const Tensor* indices_tensor, const uint8_t* src_base, uint8_t* dst_base, bool is_string_type,
-                      const size_t element_bytes, const int64_t block_size, const int64_t M,
-                      const int64_t N, const int64_t data_batch_bytes, const int64_t gathered_batch_bytes,
-                      const TensorShape& input_data_shape, const int64_t axis, concurrency::ThreadPool* tp) {
+Status GatherCopyData(const Tensor* indices_tensor, const uint8_t* src_base, uint8_t* dst_base, bool is_string_type, const size_t element_bytes, const int64_t block_size, const int64_t M, const int64_t N, const int64_t data_batch_bytes, const int64_t gathered_batch_bytes, const TensorShape& input_data_shape, const int64_t axis, concurrency::ThreadPool* tp) {
   const Tin* indices_data = indices_tensor->Data<Tin>();
 
   // Check the indices first in case there's a out of bound index.
@@ -96,9 +92,7 @@ Status GatherCopyData(const Tensor* indices_tensor, const uint8_t* src_base, uin
   for (int64_t i = 0; i < N; ++i) {
     Tin idx = indices_data[i];
     if (idx < -axis_dim_limit || idx >= axis_dim_limit) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "indices element out of data bounds, idx=", idx,
-                             " must be within the inclusive range [", -axis_dim_limit, ",", axis_dim_limit - 1, "]");
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "indices element out of data bounds, idx=", idx, " must be within the inclusive range [", -axis_dim_limit, ",", axis_dim_limit - 1, "]");
     }
   }
 
@@ -120,12 +114,11 @@ Status GatherCopyData(const Tensor* indices_tensor, const uint8_t* src_base, uin
       memcpy(dst_base + dst_offset, src_base + src_offset, narrow<size_t>(block_size));
     }
   };
-  concurrency::ThreadPool::TryParallelFor(tp, SafeInt<ptrdiff_t>(M) * N, static_cast<double>(block_size),
-                                          [&lambda](ptrdiff_t first, ptrdiff_t last) {
-                                            for (int index = static_cast<int>(first), end = static_cast<int>(last); index < end; ++index) {
-                                              lambda(index);
-                                            }
-                                          });
+  concurrency::ThreadPool::TryParallelFor(tp, SafeInt<ptrdiff_t>(M) * N, static_cast<double>(block_size), [&lambda](ptrdiff_t first, ptrdiff_t last) {
+    for (int index = static_cast<int>(first), end = static_cast<int>(last); index < end; ++index) {
+      lambda(index);
+    }
+  });
 
   return Status::OK();
 }
@@ -153,13 +146,11 @@ Status Gather::Compute(OpKernelContext* context) const {
 
   if (utils::HasType<EnabledIndexTypes, int32_t>() &&
       p.indices_tensor->IsDataType<int32_t>()) {
-    return GatherCopyData<int32_t>(p.indices_tensor, src_base, dst_base, is_string_type, element_bytes,
-                                   block_size, M, N, data_batch_bytes, gathered_batch_bytes, input_data_shape, p.axis, tp);
+    return GatherCopyData<int32_t>(p.indices_tensor, src_base, dst_base, is_string_type, element_bytes, block_size, M, N, data_batch_bytes, gathered_batch_bytes, input_data_shape, p.axis, tp);
   }
   if (utils::HasType<EnabledIndexTypes, int64_t>() &&
       p.indices_tensor->IsDataType<int64_t>()) {
-    return GatherCopyData<int64_t>(p.indices_tensor, src_base, dst_base, is_string_type, element_bytes,
-                                   block_size, M, N, data_batch_bytes, gathered_batch_bytes, input_data_shape, p.axis, tp);
+    return GatherCopyData<int64_t>(p.indices_tensor, src_base, dst_base, is_string_type, element_bytes, block_size, M, N, data_batch_bytes, gathered_batch_bytes, input_data_shape, p.axis, tp);
   }
 
   return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "Gather Tind type not supported in this build.");

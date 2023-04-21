@@ -58,7 +58,9 @@ Status FFTBase<T>::DoFFT(OpKernelContext* context, const Tensor* X, bool complex
 
   ORT_ENFORCE((complex_input || complex_output) && (complex_input != complex_output),
               "Only support RFFT and IRFFT, so either input or output has to be complex type and the other is real type. Got complex input:",
-              complex_input, " complex output: ", complex_output);
+              complex_input,
+              " complex output: ",
+              complex_output);
 
   TensorShape input_shape = X->Shape();
   int64_t input_ndim = input_shape.NumDimensions();

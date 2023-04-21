@@ -32,8 +32,7 @@ class OpKernelContextInternal : public OpKernelContext {
 
     for (int i = 0; i < num_implicit_inputs; ++i) {
       const auto* entry = GetImplicitInputMLValue(i);
-      ORT_ENFORCE(entry != nullptr, "All implicit inputs should have OrtValue instances by now. ",
-                  implicit_inputs[i]->Name(), " does not.");
+      ORT_ENFORCE(entry != nullptr, "All implicit inputs should have OrtValue instances by now. ", implicit_inputs[i]->Name(), " does not.");
       implicit_input_values_.push_back(entry);
     }
   }

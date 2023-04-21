@@ -25,8 +25,7 @@ namespace test {
  * \param expected_ep_assignment How many nodes are expected to be assigned to QNN (All, Some, or None)
  */
 template <typename QuantType>
-static void RunLeakyReluOpQDQTest(int opset, const char* test_description,
-                                  ExpectedEPNodeAssignment expected_ep_assignment = ExpectedEPNodeAssignment::All) {
+static void RunLeakyReluOpQDQTest(int opset, const char* test_description, ExpectedEPNodeAssignment expected_ep_assignment = ExpectedEPNodeAssignment::All) {
   ProviderOptions provider_options;
 #if defined(_WIN32)
   provider_options["backend_path"] = "QnnHtp.dll";

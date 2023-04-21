@@ -20,8 +20,7 @@ void LoadInterOp(const std::basic_string<ORTCHAR_T>& model_uri, InterOpDomains& 
     if (status.Category() == common::SYSTEM) {
       switch (status.Code()) {
         case ENOENT:
-          status = ORT_MAKE_STATUS(ONNXRUNTIME, NO_SUCHFILE, "Load model ", ToUTF8String(model_uri),
-                                   " failed. File doesn't exist");
+          status = ORT_MAKE_STATUS(ONNXRUNTIME, NO_SUCHFILE, "Load model ", ToUTF8String(model_uri), " failed. File doesn't exist");
           break;
         case EINVAL:
           status = ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Load model ", ToUTF8String(model_uri), " failed");

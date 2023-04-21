@@ -78,8 +78,7 @@ Status BatchNorm<T>::Compute(OpKernelContext* context) const {
     tbatch_norm.mean->allocator()->init(arm_compute::TensorInfo(ACLTensorShape(M->Shape()), arm_compute::Format::F32));
     tbatch_norm.var->allocator()->init(arm_compute::TensorInfo(ACLTensorShape(V->Shape()), arm_compute::Format::F32));
 
-    layer->configure(tbatch_norm.in.get(), tbatch_norm.out.get(),
-                     tbatch_norm.mean.get(), tbatch_norm.var.get(), B != nullptr ? tbatch_norm.b.get() : nullptr, S != nullptr ? tbatch_norm.scale.get() : nullptr,
+    layer->configure(tbatch_norm.in.get(), tbatch_norm.out.get(), tbatch_norm.mean.get(), tbatch_norm.var.get(), B != nullptr ? tbatch_norm.b.get() : nullptr, S != nullptr ? tbatch_norm.scale.get() : nullptr,
                      epsilon_);  // no activation in onnx
 
     const T* scale_data = S->Data<T>();
@@ -129,7 +128,8 @@ Status BatchNorm<T>::Compute(OpKernelContext* context) const {
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     BatchNormalization,
     kOnnxDomain,
-    7, 9,
+    7,
+    9,
     kAclExecutionProvider,
     KernelDefBuilder()
         .TypeConstraint("X", DataTypeImpl::GetTensorType<float>())

@@ -68,8 +68,7 @@ TEST_P(SessionStateAddGetKernelTest, AddGetKernelTest) {
   sess_options.use_deterministic_compute = false;
   sess_options.enable_mem_reuse = true;
 
-  SessionState s(graph, execution_providers, tp.get(), nullptr, dtm,
-                 DefaultLoggingManager().DefaultLogger(), profiler, sess_options);
+  SessionState s(graph, execution_providers, tp.get(), nullptr, dtm, DefaultLoggingManager().DefaultLogger(), profiler, sess_options);
 
   std::vector<onnxruntime::NodeArg*> inputs;
   std::vector<onnxruntime::NodeArg*> outputs;
@@ -83,8 +82,7 @@ TEST_P(SessionStateAddGetKernelTest, AddGetKernelTest) {
   ASSERT_TRUE(status.IsOK());
   auto kernel_def = KernelDefBuilder().SetName("Variable").Provider(kCpuExecutionProvider).SinceVersion(1, 10).Build();
 
-  OpKernelInfo p_info(node, *kernel_def, *cpu_execution_provider, s.GetConstantInitializedTensors(),
-                      s.GetOrtValueNameIdxMap(), s.GetDataTransferMgr());
+  OpKernelInfo p_info(node, *kernel_def, *cpu_execution_provider, s.GetConstantInitializedTensors(), s.GetOrtValueNameIdxMap(), s.GetDataTransferMgr());
   unique_ptr<TestOpKernel> p_kernel;
   p_kernel.reset(new TestOpKernel(p_info));
   size_t orig_num_outputs = p_kernel->Node().OutputDefs().size();
@@ -152,12 +150,10 @@ TEST_P(SessionStateTestP, TestInitializerProcessing) {
   sess_options.use_deterministic_compute = false;
   sess_options.enable_mem_reuse = true;
 
-  SessionState session_state(graph, execution_providers, tp.get(), nullptr, dtm,
-                             DefaultLoggingManager().DefaultLogger(), profiler, sess_options);
+  SessionState session_state(graph, execution_providers, tp.get(), nullptr, dtm, DefaultLoggingManager().DefaultLogger(), profiler, sess_options);
 
   GraphPartitioner partitioner(krm, execution_providers);
-  status = partitioner.Partition(graph, session_state.GetMutableFuncMgr(),
-                                 layout_transformer::TransformLayoutForEP);
+  status = partitioner.Partition(graph, session_state.GetMutableFuncMgr(), layout_transformer::TransformLayoutForEP);
   ASSERT_TRUE(status.IsOK()) << status;
 
   ASSERT_STATUS_OK(session_state.FinalizeSessionState(oss.str(), krm));
@@ -225,13 +221,11 @@ TEST(SessionStateTest, TestInitializerMemoryAllocatedUsingNonArenaMemory) {
     // disable allocating initialized tensor memory from the arena(by default it will be allocated by the arena)
     ASSERT_STATUS_OK(sess_options.config_options.AddConfigEntry(kOrtSessionOptionsUseDeviceAllocatorForInitializers, "1"));
 
-    SessionState session_state(graph, execution_providers, nullptr, nullptr, dtm,
-                               DefaultLoggingManager().DefaultLogger(), profiler, sess_options);
+    SessionState session_state(graph, execution_providers, nullptr, nullptr, dtm, DefaultLoggingManager().DefaultLogger(), profiler, sess_options);
 
     // Partition the graph
     GraphPartitioner partitioner(krm, execution_providers);
-    status = partitioner.Partition(graph, session_state.GetMutableFuncMgr(),
-                                   layout_transformer::TransformLayoutForEP);
+    status = partitioner.Partition(graph, session_state.GetMutableFuncMgr(), layout_transformer::TransformLayoutForEP);
     ASSERT_TRUE(status.IsOK()) << status;
     ASSERT_STATUS_OK(session_state.FinalizeSessionState(oss.str(), krm));
 
@@ -276,13 +270,11 @@ TEST(SessionStateTest, TestInitializerMemoryAllocatedUsingNonArenaMemory) {
     sess_options.use_deterministic_compute = false;
     sess_options.enable_mem_reuse = true;
 
-    SessionState session_state(graph, execution_providers, nullptr, nullptr, dtm,
-                               DefaultLoggingManager().DefaultLogger(), profiler, sess_options);
+    SessionState session_state(graph, execution_providers, nullptr, nullptr, dtm, DefaultLoggingManager().DefaultLogger(), profiler, sess_options);
 
     // Partition the graph
     GraphPartitioner partitioner(krm, execution_providers);
-    status = partitioner.Partition(graph, session_state.GetMutableFuncMgr(),
-                                   layout_transformer::TransformLayoutForEP);
+    status = partitioner.Partition(graph, session_state.GetMutableFuncMgr(), layout_transformer::TransformLayoutForEP);
     ASSERT_TRUE(status.IsOK()) << status;
 
     // Finalize the session state
@@ -330,7 +322,8 @@ class PrePackingTestOpKernel : public OpKernel {
   }
 
   Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
-                 /*out*/ bool& is_packed, /*out*/ PrePackedWeights* prepacked_weights) override {
+                 /*out*/ bool& is_packed,
+                 /*out*/ PrePackedWeights* prepacked_weights) override {
     ORT_UNUSED_PARAMETER(tensor);
     ORT_UNUSED_PARAMETER(input_idx);
 
@@ -509,9 +502,7 @@ TEST_P(SessionStatePrepackingTest, PrePackingTest) {
 
   std::unordered_map<std::string, int> domain_to_version;
   domain_to_version[kOnnxDomain] = 11;
-  Model model("graph_main", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
-              domain_to_version, std::vector<ONNX_NAMESPACE::FunctionProto>(),
-              DefaultLoggingManager().DefaultLogger());
+  Model model("graph_main", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, std::vector<ONNX_NAMESPACE::FunctionProto>(), DefaultLoggingManager().DefaultLogger());
 
   // onnxruntime::Model model("graph_main", false, DefaultLoggingManager().DefaultLogger());
   if (test_param.test_subgraph) {
@@ -600,9 +591,7 @@ TEST_F(SessionStateTestSharedInitalizersWithPrePacking, test1) {
   sess_options.config_options.configurations[kOrtSessionOptionsConfigDisablePrepacking] = "0";
 
   // First session/model
-  Model model_1("graph_main", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
-                domain_to_version, std::vector<ONNX_NAMESPACE::FunctionProto>(),
-                DefaultLoggingManager().DefaultLogger());
+  Model model_1("graph_main", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, std::vector<ONNX_NAMESPACE::FunctionProto>(), DefaultLoggingManager().DefaultLogger());
 
   CreateSimpleGraph(model_1.MainGraph());
   PlaceAllNodesToCPUEP(model_1.MainGraph());
@@ -626,9 +615,7 @@ TEST_F(SessionStateTestSharedInitalizersWithPrePacking, test1) {
   ASSERT_EQ(kernel->store_pre_packed_weight_calls_count, 0);
 
   // Second session/model
-  Model model_2("graph_main", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
-                domain_to_version, std::vector<ONNX_NAMESPACE::FunctionProto>(),
-                DefaultLoggingManager().DefaultLogger());
+  Model model_2("graph_main", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, std::vector<ONNX_NAMESPACE::FunctionProto>(), DefaultLoggingManager().DefaultLogger());
 
   CreateSimpleGraph(model_2.MainGraph());
   PlaceAllNodesToCPUEP(model_2.MainGraph());
@@ -667,14 +654,15 @@ TEST_F(SessionStateTestSharedInitalizersWithPrePacking, test2) {
   std::vector<float> float_data(1, 1);
   auto value = std::make_unique<OrtValue>();
   Tensor::InitOrtValue(DataTypeImpl::GetType<float>(),
-                       TensorShape(std::vector<int64_t>{1}), reinterpret_cast<void*>(float_data.data()), mem_info, *value);
+                       TensorShape(std::vector<int64_t>{1}),
+                       reinterpret_cast<void*>(float_data.data()),
+                       mem_info,
+                       *value);
 
   ASSERT_STATUS_OK(sess_options.AddInitializer("node_0_input_1", value.get()));
 
   // First session/model
-  Model model_1("graph_main", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
-                domain_to_version, std::vector<ONNX_NAMESPACE::FunctionProto>(),
-                DefaultLoggingManager().DefaultLogger());
+  Model model_1("graph_main", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, std::vector<ONNX_NAMESPACE::FunctionProto>(), DefaultLoggingManager().DefaultLogger());
 
   CreateSimpleGraph(model_1.MainGraph());
   PlaceAllNodesToCPUEP(model_1.MainGraph());
@@ -698,9 +686,7 @@ TEST_F(SessionStateTestSharedInitalizersWithPrePacking, test2) {
   ASSERT_EQ(kernel->store_pre_packed_weight_calls_count, 0);
 
   // Second session/model
-  Model model_2("graph_main", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
-                domain_to_version, std::vector<ONNX_NAMESPACE::FunctionProto>(),
-                DefaultLoggingManager().DefaultLogger());
+  Model model_2("graph_main", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, std::vector<ONNX_NAMESPACE::FunctionProto>(), DefaultLoggingManager().DefaultLogger());
 
   CreateSimpleGraph(model_2.MainGraph());
   PlaceAllNodesToCPUEP(model_2.MainGraph());
@@ -738,8 +724,7 @@ TEST_F(SessionStateTestSharedInitalizersWithPrePacking, test3) {
   OrtMemoryInfo mem_info(CPU, OrtDeviceAllocator);
   std::vector<float> float_data(1, 1);
   auto value = std::make_unique<OrtValue>();
-  Tensor::InitOrtValue(DataTypeImpl::GetType<float>(), TensorShape(std::vector<int64_t>{1}),
-                       reinterpret_cast<void*>(float_data.data()), mem_info, *value);
+  Tensor::InitOrtValue(DataTypeImpl::GetType<float>(), TensorShape(std::vector<int64_t>{1}), reinterpret_cast<void*>(float_data.data()), mem_info, *value);
 
   ASSERT_STATUS_OK(sess_options.AddInitializer("node_0_input_1", value.get()));
 
@@ -747,9 +732,7 @@ TEST_F(SessionStateTestSharedInitalizersWithPrePacking, test3) {
   PrepackedWeightsContainer prepacked_weights_container;
 
   // First session/model
-  Model model_1("graph_main", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
-                domain_to_version, std::vector<ONNX_NAMESPACE::FunctionProto>(),
-                DefaultLoggingManager().DefaultLogger());
+  Model model_1("graph_main", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, std::vector<ONNX_NAMESPACE::FunctionProto>(), DefaultLoggingManager().DefaultLogger());
 
   CreateSimpleGraph(model_1.MainGraph());
   PlaceAllNodesToCPUEP(model_1.MainGraph());
@@ -778,9 +761,7 @@ TEST_F(SessionStateTestSharedInitalizersWithPrePacking, test3) {
   ASSERT_EQ(session_state_1.GetUsedSharedPrePackedWeightCounter(), static_cast<size_t>(0));
 
   // Second session/model
-  Model model_2("graph_main", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
-                domain_to_version, std::vector<ONNX_NAMESPACE::FunctionProto>(),
-                DefaultLoggingManager().DefaultLogger());
+  Model model_2("graph_main", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, std::vector<ONNX_NAMESPACE::FunctionProto>(), DefaultLoggingManager().DefaultLogger());
 
   CreateSimpleGraph(model_2.MainGraph());
   PlaceAllNodesToCPUEP(model_2.MainGraph());

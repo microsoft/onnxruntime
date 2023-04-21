@@ -22,8 +22,10 @@ namespace onnxruntime {
 namespace test {
 
 static void Check(const char* source,
-                  const char* input_name, std::vector<float> input_values,
-                  const char* output_name, std::vector<float> output_values) {
+                  const char* input_name,
+                  std::vector<float> input_values,
+                  const char* output_name,
+                  std::vector<float> output_values) {
   // Convert source-representation of model to ModelProto:
   ONNX_NAMESPACE::OnnxParser parser(source);
   ONNX_NAMESPACE::ModelProto model;

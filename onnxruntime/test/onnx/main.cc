@@ -85,7 +85,8 @@ static TestTolerances LoadTestTolerances(bool enable_cuda, bool enable_openvino,
   }
   const auto overrides_json = nlohmann::json::parse(
       overrides_ifstream,
-      /*cb=*/nullptr, /*allow_exceptions=*/true
+      /*cb=*/nullptr,
+      /*allow_exceptions=*/true
 // Comment support is added in 3.9.0 with breaking change to default behavior.
 #if NLOHMANN_JSON_VERSION_MAJOR * 1000 + NLOHMANN_JSON_VERSION_MINOR >= 3009
       ,
@@ -638,12 +639,10 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
 
     static const ORTCHAR_T* cuda_flaky_tests[] = {
         ORT_TSTR("fp16_inception_v1"),
-        ORT_TSTR("fp16_shufflenet"), ORT_TSTR("fp16_tiny_yolov2")};
+        ORT_TSTR("fp16_shufflenet"),
+        ORT_TSTR("fp16_tiny_yolov2")};
     static const ORTCHAR_T* dml_disabled_tests[] = {ORT_TSTR("mlperf_ssd_resnet34_1200"), ORT_TSTR("mlperf_ssd_mobilenet_300"), ORT_TSTR("mask_rcnn"), ORT_TSTR("faster_rcnn"), ORT_TSTR("tf_pnasnet_large"), ORT_TSTR("zfnet512"), ORT_TSTR("keras2coreml_Dense_ImageNet")};
-    static const ORTCHAR_T* dnnl_disabled_tests[] = {ORT_TSTR("test_densenet121"), ORT_TSTR("test_resnet18v2"), ORT_TSTR("test_resnet34v2"), ORT_TSTR("test_resnet50v2"), ORT_TSTR("test_resnet101v2"),
-                                                     ORT_TSTR("test_resnet101v2"), ORT_TSTR("test_vgg19"), ORT_TSTR("tf_inception_resnet_v2"), ORT_TSTR("tf_inception_v1"), ORT_TSTR("tf_inception_v3"), ORT_TSTR("tf_inception_v4"), ORT_TSTR("tf_mobilenet_v1_1.0_224"),
-                                                     ORT_TSTR("tf_mobilenet_v2_1.0_224"), ORT_TSTR("tf_mobilenet_v2_1.4_224"), ORT_TSTR("tf_nasnet_large"), ORT_TSTR("tf_pnasnet_large"), ORT_TSTR("tf_resnet_v1_50"), ORT_TSTR("tf_resnet_v1_101"), ORT_TSTR("tf_resnet_v1_101"),
-                                                     ORT_TSTR("tf_resnet_v2_101"), ORT_TSTR("tf_resnet_v2_152"), ORT_TSTR("batchnorm_example_training_mode"), ORT_TSTR("batchnorm_epsilon_training_mode")};
+    static const ORTCHAR_T* dnnl_disabled_tests[] = {ORT_TSTR("test_densenet121"), ORT_TSTR("test_resnet18v2"), ORT_TSTR("test_resnet34v2"), ORT_TSTR("test_resnet50v2"), ORT_TSTR("test_resnet101v2"), ORT_TSTR("test_resnet101v2"), ORT_TSTR("test_vgg19"), ORT_TSTR("tf_inception_resnet_v2"), ORT_TSTR("tf_inception_v1"), ORT_TSTR("tf_inception_v3"), ORT_TSTR("tf_inception_v4"), ORT_TSTR("tf_mobilenet_v1_1.0_224"), ORT_TSTR("tf_mobilenet_v2_1.0_224"), ORT_TSTR("tf_mobilenet_v2_1.4_224"), ORT_TSTR("tf_nasnet_large"), ORT_TSTR("tf_pnasnet_large"), ORT_TSTR("tf_resnet_v1_50"), ORT_TSTR("tf_resnet_v1_101"), ORT_TSTR("tf_resnet_v1_101"), ORT_TSTR("tf_resnet_v2_101"), ORT_TSTR("tf_resnet_v2_152"), ORT_TSTR("batchnorm_example_training_mode"), ORT_TSTR("batchnorm_epsilon_training_mode")};
     static const ORTCHAR_T* qnn_disabled_tests[] = {
         ORT_TSTR("basic_conv_without_padding"),
         ORT_TSTR("basic_conv_with_padding"),
@@ -705,13 +704,10 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
 #endif
 
     std::vector<ITestCase*> tests;
-    LoadTests(data_dirs, whitelisted_test_cases,
-              LoadTestTolerances(enable_cuda, enable_openvino, override_tolerance, atol, rtol),
-              all_disabled_tests,
-              [&owned_tests, &tests](std::unique_ptr<ITestCase> l) {
-                tests.push_back(l.get());
-                owned_tests.push_back(std::move(l));
-              });
+    LoadTests(data_dirs, whitelisted_test_cases, LoadTestTolerances(enable_cuda, enable_openvino, override_tolerance, atol, rtol), all_disabled_tests, [&owned_tests, &tests](std::unique_ptr<ITestCase> l) {
+      tests.push_back(l.get());
+      owned_tests.push_back(std::move(l));
+    });
 
     auto tp = TestEnv::CreateThreadPool(Env::Default());
     TestEnv test_env(env, sf, tp.get(), std::move(tests), stat);

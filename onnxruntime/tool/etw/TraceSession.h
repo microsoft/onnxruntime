@@ -79,8 +79,7 @@ struct TraceSession {
   // RemoveProvider/Handler() returns false if the providerId don't have a handler.
   bool AddProvider(GUID providerId, UCHAR level, ULONGLONG matchAnyKeyword, ULONGLONG matchAllKeyword);
   bool AddHandler(GUID handlerId, EventHandlerFn handlerFn, void* handlerContext);
-  bool AddProviderAndHandler(GUID providerId, UCHAR level, ULONGLONG matchAnyKeyword, ULONGLONG matchAllKeyword,
-                             EventHandlerFn handlerFn, void* handlerContext);
+  bool AddProviderAndHandler(GUID providerId, UCHAR level, ULONGLONG matchAnyKeyword, ULONGLONG matchAllKeyword, EventHandlerFn handlerFn, void* handlerContext);
   bool RemoveProvider(GUID providerId);
   bool RemoveHandler(GUID handlerId);
   bool RemoveProviderAndHandler(GUID providerId);

@@ -116,8 +116,7 @@ Status DecoderMaskedSelfAttention<T1, T2>::ComputeInternal(OpKernelContext* cont
   // If ever a production use-case using GreedySearch/BeamSearch incurs this copy test, we
   // will have to debug the GreedySearch/BeamSearch operator
   if (present_data != past_data) {
-    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(present_data, past_data, past->SizeInBytes(),
-                                         cudaMemcpyDeviceToDevice, cuda_stream));
+    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(present_data, past_data, past->SizeInBytes(), cudaMemcpyDeviceToDevice, cuda_stream));
   }
 
   cublasHandle_t cublas = GetCublasHandle(context);
@@ -136,10 +135,7 @@ Status DecoderMaskedSelfAttention<T1, T2>::ComputeInternal(OpKernelContext* cont
   // QKV Gemm, note that CUDA assumes col-major, so result(N, M) = 1 * weights x input + 1 x bias
   // The bias part is not included here since we fuse bias, transpose and output 3 matrices into one cuda kernel.
   CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
-      cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, k, &one,
-      reinterpret_cast<const CudaT*>(weights->Data<T1>()), n,
-      reinterpret_cast<const CudaT*>(input->Data<T1>()), k,
-      &zero, reinterpret_cast<CudaT*>(gemm_buffer.get()), n, device_prop));
+      cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, k, &one, reinterpret_cast<const CudaT*>(weights->Data<T1>()), n, reinterpret_cast<const CudaT*>(input->Data<T1>()), k, &zero, reinterpret_cast<CudaT*>(gemm_buffer.get()), n, device_prop));
 
   // Update the q, k, and v buffers
   parameters.q = gemm_buffer.get();
@@ -178,8 +174,7 @@ Status DecoderMaskedSelfAttention<T1, T2>::ComputeInternal(OpKernelContext* cont
   if (parameters.beam_width > 1) {
     // If beam width > 1, then cache indirection buffer MUST be present
     if (cache_indir == nullptr) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "If beam width is greater than 1, then cache indirection buffer MUST be present");
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "If beam width is greater than 1, then cache indirection buffer MUST be present");
     }
 
     parameters.cache_indir = cache_indir->Data<int32_t>();

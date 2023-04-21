@@ -310,8 +310,7 @@ std::shared_ptr<IExecutionProvider> GetOrCreateExecutionProvider(const std::stri
   }
 }
 
-void ORTTrainingRegisterExecutionProviders(InferenceSession* sess, const std::vector<std::string>& provider_types,
-                                           const ProviderOptionsMap& provider_options_map) {
+void ORTTrainingRegisterExecutionProviders(InferenceSession* sess, const std::vector<std::string>& provider_types, const ProviderOptionsMap& provider_options_map) {
   for (auto provider_type : provider_types) {
     auto ep = GetOrCreateExecutionProvider(provider_type, provider_options_map, sess->GetSessionOptions());
     if (ep)
@@ -346,9 +345,7 @@ PYBIND11_MODULE(onnxruntime_pybind11_state, m) {
   addObjectMethodsForLazyTensor(m);
 #endif
 
-  m.def("_register_provider_lib", [](const std::string& name,
-                                     const std::string& provider_shared_lib_path,
-                                     const ProviderOptions& default_options) {
+  m.def("_register_provider_lib", [](const std::string& name, const std::string& provider_shared_lib_path, const ProviderOptions& default_options) {
     GetTrainingEnv().RegisterExtExecutionProviderInfo(name, provider_shared_lib_path, default_options);
   });
 

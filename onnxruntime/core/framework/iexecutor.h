@@ -38,9 +38,7 @@ class IExecutor {
   }
 
   // TODO: as fetch_allocators is optional, it should be a pointer instead of reference
-  virtual common::Status Execute(const SessionState& session_state, gsl::span<const int> feed_mlvalue_idxs,
-                                 gsl::span<const OrtValue> feeds, gsl::span<const int> fetch_mlvalue_idxs,
-                                 std::vector<OrtValue>& fetches,
+  virtual common::Status Execute(const SessionState& session_state, gsl::span<const int> feed_mlvalue_idxs, gsl::span<const OrtValue> feeds, gsl::span<const int> fetch_mlvalue_idxs, std::vector<OrtValue>& fetches,
                                  // optional custom allocators. key is index in fetches
                                  const std::unordered_map<size_t, CustomAllocator>& fetch_allocators,
                                  const logging::Logger& logger) = 0;

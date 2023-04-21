@@ -15,12 +15,11 @@ struct GraphEdgeHelper {
   int dst_arg_index;
   std::string arg_name;
 
-  GraphEdgeHelper(NodeIndex src_node, NodeIndex dst_node,
-                  int src_arg_index, int dst_arg_index, const std::string& arg_name) : src_node(src_node),
-                                                                                       dst_node(dst_node),
-                                                                                       src_arg_index(src_arg_index),
-                                                                                       dst_arg_index(dst_arg_index),
-                                                                                       arg_name(arg_name) {}
+  GraphEdgeHelper(NodeIndex src_node, NodeIndex dst_node, int src_arg_index, int dst_arg_index, const std::string& arg_name) : src_node(src_node),
+                                                                                                                               dst_node(dst_node),
+                                                                                                                               src_arg_index(src_arg_index),
+                                                                                                                               dst_arg_index(dst_arg_index),
+                                                                                                                               arg_name(arg_name) {}
 
   static GraphEdgeHelper CreateGraphEdge(const Node& node, const Node::EdgeEnd& edge_end, bool is_input_edge) {
     return is_input_edge

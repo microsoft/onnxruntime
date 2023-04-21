@@ -138,8 +138,7 @@ static Status TryCreateKernel(const Node& node,
                               /*out*/ std::unique_ptr<OpKernel>& op_kernel) {
   const OpSchemaKernelTypeStrResolver kernel_type_str_resolver{};
   const KernelCreateInfo* kernel_create_info = nullptr;
-  ORT_RETURN_IF_ERROR(kernel_registry.TryFindKernel(node, execution_provider.Type(), kernel_type_str_resolver,
-                                                    &kernel_create_info));
+  ORT_RETURN_IF_ERROR(kernel_registry.TryFindKernel(node, execution_provider.Type(), kernel_type_str_resolver, &kernel_create_info));
   OpKernelInfo kernel_info(node,
                            *kernel_create_info->kernel_def,
                            execution_provider,
@@ -153,9 +152,7 @@ std::unique_ptr<const OpKernel> OptimizerExecutionFrame::Info::CreateKernel(cons
   std::unique_ptr<OpKernel> op_kernel;
   std::shared_ptr<KernelRegistry> kernel_registry = execution_provider_.GetKernelRegistry();
   FuncManager func;
-  auto status = TryCreateKernel(*node, *kernel_registry, execution_provider_, initializers_,
-                                ort_value_name_idx_map_, func, data_transfer_mgr_,
-                                op_kernel);
+  auto status = TryCreateKernel(*node, *kernel_registry, execution_provider_, initializers_, ort_value_name_idx_map_, func, data_transfer_mgr_, op_kernel);
 
   // Kernel found in the CPU kernel registry
   if (status.IsOK())
@@ -192,8 +189,7 @@ const DataTransferManager& OptimizerExecutionFrame::GetDataTransferManager() con
 Status OptimizerExecutionFrame::CreateNodeOutputMLValueImpl(OrtValue& ort_value, int ort_value_idx, const TensorShape* shape) {
   const DataTypeImpl* ml_type = utils::GetMLDataType(*(info_.GetMLValueIdxNodeArgMap().at(ort_value_idx)));
   if (ml_type == nullptr)
-    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                  "Tried to allocate without valid type information, ort_value index=" + std::to_string(ort_value_idx));
+    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Tried to allocate without valid type information, ort_value index=" + std::to_string(ort_value_idx));
   if (ml_type->IsSparseTensorType()) {
 #if !defined(DISABLE_SPARSE_TENSORS)
     auto element_type = ml_type->AsSparseTensorType()->GetElementType();

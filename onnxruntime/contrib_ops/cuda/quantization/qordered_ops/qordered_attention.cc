@@ -60,15 +60,18 @@ Status QOrderedAttention::PutIntoMergedWeight(const Tensor& tensor, AllocatorPtr
   }
   auto offset = std::accumulate(&qkv_hidden_sizes_[0], &qkv_hidden_sizes_[qkv_index], 0LL);
   CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(((int8_t*)merged_qkv_weight_.get()) + (offset * input_hidden_size_),
-                                       tensor.Data<int8_t>(), qkv_hidden_sizes_[qkv_index] * input_hidden_size_,
-                                       cudaMemcpyDeviceToDevice, cuda_stream));
+                                       tensor.Data<int8_t>(),
+                                       qkv_hidden_sizes_[qkv_index] * input_hidden_size_,
+                                       cudaMemcpyDeviceToDevice,
+                                       cuda_stream));
   return Status::OK();
 }
 
 Status QOrderedAttention::PutIntoMergedWeightScale(const Tensor& tensor, AllocatorPtr alloc, int qkv_index) {
   ++scale_qkv_weight_const_count_;
   ORT_ENFORCE(tensor.Shape().IsScalar() || (tensor.Shape().NumDimensions() == 1 && qkv_hidden_sizes_[qkv_index] == tensor.Shape()[0]),
-              "qkv gemm scale is not scalar or 1d vector, or not same dims as in qkv_hidden_sizes at qkv_index:", qkv_index);
+              "qkv gemm scale is not scalar or 1d vector, or not same dims as in qkv_hidden_sizes at qkv_index:",
+              qkv_index);
   if (!merged_qkv_alpha_) {
     merged_qkv_alpha_ = BufferUniquePtr(alloc->Alloc(qkv_total_hidden_size_ * sizeof(float)), BufferDeleter(alloc));
   }
@@ -167,8 +170,7 @@ QOrderedAttention::QOrderedAttention(const OpKernelInfo& info) : CudaKernel(info
   ORT_ENFORCE((device_prop.major * 10 + device_prop.minor) >= 75, "QOrderedMatmul need sm75 or highter");
 
   ORT_ENFORCE(qkv_hidden_sizes_.size() == 3, "qkv_hidden_sizes is needed and must be of shape [3]!");
-  ORT_ENFORCE(std::all_of(qkv_hidden_sizes_.begin(), qkv_hidden_sizes_.end(),
-                          [num_heads = this->num_heads_](int64_t v) { return (v > 0) && (v % num_heads) == 0; }),
+  ORT_ENFORCE(std::all_of(qkv_hidden_sizes_.begin(), qkv_hidden_sizes_.end(), [num_heads = this->num_heads_](int64_t v) { return (v > 0) && (v % num_heads) == 0; }),
               "All qkv hiddend_sizes must be positive and divisible by num_heads");
   ORT_ENFORCE(qkv_hidden_sizes_[0] == qkv_hidden_sizes_[1] && qkv_hidden_sizes_[0] == qkv_hidden_sizes_[2],
               "currently qkv hidden size should be same");
@@ -209,8 +211,7 @@ Status QOrderedAttention::ComputeInternal(OpKernelContext* context) const {
   const Tensor* mask_index = context->Input<Tensor>(InputIds::Mask_Index);
 
   auto& device_prop = GetDeviceProp();
-  ORT_RETURN_IF_ERROR(CheckInputs(input->Shape(), merged_weights_shape, merged_bias_shape,
-                                  mask_index,
+  ORT_RETURN_IF_ERROR(CheckInputs(input->Shape(), merged_weights_shape, merged_bias_shape, mask_index,
                                   nullptr,  // past
                                   nullptr,  // relative_position_bias
                                   nullptr,  // parameters
@@ -263,48 +264,33 @@ Status QOrderedAttention::ComputeInternal(OpKernelContext* context) const {
 
   cudaStream_t stream = Stream(context);
   // Gemm result (M, N) = alpha * input * weights + scale_bias.
-  ORT_RETURN_IF_ERROR(QOrdered_MatMul(cublasLt, stream, device_prop,
-                                      1, m, n, k,
-                                      (const float*)merged_qkv_alpha_.get(), input->template Data<int8_t>(), (const int8_t*)merged_qkv_weight_.get(),
-                                      (const float*)merged_qkv_bias_.get(), stacked_qkv_layers,
-                                      CUBLASLT_ORDER_COL,
+  ORT_RETURN_IF_ERROR(QOrdered_MatMul(cublasLt, stream, device_prop, 1, m, n, k, (const float*)merged_qkv_alpha_.get(), input->template Data<int8_t>(), (const int8_t*)merged_qkv_weight_.get(), (const float*)merged_qkv_bias_.get(), stacked_qkv_layers, CUBLASLT_ORDER_COL,
                                       (cublasLtPointerMode_t)4));  // CUBLASLT_POINTER_MODE_ALPHA_DEVICE_VECTOR_BETA_HOST available after 11.4.2
   // debug_print(stacked_qkv_layers, m * n, hidden_size, "stacked_qkv_layer");
 
   // BxSx3xNxH => 3xBxNxSxH, treat 4 consecutive int8 as float
-  ORT_RETURN_IF_ERROR(LaunchTransQkv(stream, 3, sequence_length, batch_size, head_size / sizeof(float), num_heads_,
-                                     max_threads_per_block, false, (const float*)stacked_qkv_layers, (float*)tranposed_qkv_layers));
+  ORT_RETURN_IF_ERROR(LaunchTransQkv(stream, 3, sequence_length, batch_size, head_size / sizeof(float), num_heads_, max_threads_per_block, false, (const float*)stacked_qkv_layers, (float*)tranposed_qkv_layers));
   // debug_print(q_layer, m * n / 3, head_size, "tranposed_q_layers BxNxSxH");
   // debug_print(k_layer, m * n / 3, head_size, "tranposed_k_layers BxNxSxH");
   // debug_print(v_layer, m * n / 3, head_size, "tranposed_v_layers BxNxSxH");
 
   const float q_mm_k_alpha = static_cast<float>((double)const_scale_qkv_layer_[0] * const_scale_qkv_layer_[1] / *scale_attn_scores_data);
-  ORT_RETURN_IF_ERROR(QOrdered_MatMul(cublasLt, stream, device_prop,
-                                      batch_size * num_heads_, sequence_length, sequence_length, head_size,
-                                      &q_mm_k_alpha, q_layer, k_layer, batch_size * num_heads_,
-                                      nullptr, nullptr, nullptr, 1, attention_scores,
+  ORT_RETURN_IF_ERROR(QOrdered_MatMul(cublasLt, stream, device_prop, batch_size * num_heads_, sequence_length, sequence_length, head_size, &q_mm_k_alpha, q_layer, k_layer, batch_size * num_heads_, nullptr, nullptr, nullptr, 1, attention_scores,
                                       CUBLASLT_ORDER_COL));  // matrix B need extra transpose
   // debug_print(attention_scores, size_of_attention_scores, sequence_length, "attention_scores");
 
   // the div sqrt(head_size) was processed when building the softmax lookup table
-  ORT_RETURN_IF_ERROR(QOrderMaskedSoftmax(stream, device_prop, attention_scores, (const float*)softmax_lookup_.get(),
-                                          mask_index->Data<int32_t>(), attention_probs, *scale_attn_probs_data,
-                                          batch_size, num_heads_, sequence_length));
+  ORT_RETURN_IF_ERROR(QOrderMaskedSoftmax(stream, device_prop, attention_scores, (const float*)softmax_lookup_.get(), mask_index->Data<int32_t>(), attention_probs, *scale_attn_probs_data, batch_size, num_heads_, sequence_length));
   // debug_print(attention_probs, size_of_attention_scores, sequence_length, "attention_probs");
 
   // Transpose v_layer from BxNxSxH to BxNxHxS to use tensor core int8 matmul
   ORT_RETURN_IF_ERROR(QOrderBatchTransposeInt8Matrix(stream, device_prop, batch_size * num_heads_, sequence_length, head_size, v_layer, v_layer_T));
 
   const float context_layer_alpha = static_cast<float>((double)*scale_attn_probs_data * const_scale_qkv_layer_[2] / *scale_output_data);
-  ORT_RETURN_IF_ERROR(QOrdered_MatMul(cublasLt, stream, device_prop,
-                                      batch_size * num_heads_, sequence_length, head_size, sequence_length,
-                                      &context_layer_alpha, attention_probs, v_layer_T, batch_size * num_heads_,
-                                      nullptr, nullptr, nullptr, 1, context_layer,
-                                      CUBLASLT_ORDER_COL));
+  ORT_RETURN_IF_ERROR(QOrdered_MatMul(cublasLt, stream, device_prop, batch_size * num_heads_, sequence_length, head_size, sequence_length, &context_layer_alpha, attention_probs, v_layer_T, batch_size * num_heads_, nullptr, nullptr, nullptr, 1, context_layer, CUBLASLT_ORDER_COL));
 
   // scratch3 is BxNxSxH, transpose to output BxSxNxH
-  ORT_RETURN_IF_ERROR(LaunchTransCtx(stream, sequence_length, batch_size, head_size / 4, num_heads_, device_prop.maxThreadsPerBlock,
-                                     false, (const float*)context_layer, (float*)output->MutableData<int8_t>()));
+  ORT_RETURN_IF_ERROR(LaunchTransCtx(stream, sequence_length, batch_size, head_size / 4, num_heads_, device_prop.maxThreadsPerBlock, false, (const float*)context_layer, (float*)output->MutableData<int8_t>()));
   // debug_print(output->Data<int8_t>(), m * n / 3, head_size, "attention output");
 
 #else

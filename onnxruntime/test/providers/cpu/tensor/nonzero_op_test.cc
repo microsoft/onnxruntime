@@ -18,14 +18,10 @@ void NonZeroBasicNumericTest() {
   OpTester test{kOpName, kOpVersion};
 
   std::vector<int64_t> X_dims{1, 2, 3};
-  std::vector<TNarrow> X{0, 1, 2,
-                         0, 3, 4};
+  std::vector<TNarrow> X{0, 1, 2, 0, 3, 4};
   test.AddInput<TTarget>("X", X_dims, std::vector<TTarget>{X.begin(), X.end()});
   test.AddOutput<int64_t>(
-      "Y", {3, 4},
-      {0, 0, 0, 0,
-       0, 0, 1, 1,
-       1, 2, 1, 2});
+      "Y", {3, 4}, {0, 0, 0, 0, 0, 0, 1, 1, 1, 2, 1, 2});
   test.Run();
 }
 }  // namespace
@@ -39,13 +35,9 @@ TEST(NonZeroOpTest, BasicNumeric) {
 TEST(NonZeroOpTest, BasicBool) {
   OpTester test{kOpName, kOpVersion};
   test.AddInput<bool>(
-      "X", {2, 3},
-      {true, false, false,
-       false, false, true});
+      "X", {2, 3}, {true, false, false, false, false, true});
   test.AddOutput<int64_t>(
-      "Y", {2, 2},
-      {0, 1,
-       0, 2});
+      "Y", {2, 2}, {0, 1, 0, 2});
   test.Run();
 }
 
@@ -53,17 +45,15 @@ TEST(NonZeroOpTest, ThreeDims) {
   OpTester test{kOpName, kOpVersion};
 
   std::vector<int64_t> X_dims{2, 2, 2};
-  std::vector<int64_t> X{0, 1,
-                         1, 0,
+  std::vector<int64_t> X{0, 1, 1, 0,
 
-                         1, 0,
-                         1, 0};
+                         1,
+                         0,
+                         1,
+                         0};
   test.AddInput<int64_t>("X", X_dims, std::vector<int64_t>{X.begin(), X.end()});
   test.AddOutput<int64_t>(
-      "Y", {3, 4},
-      {0, 0, 1, 1,
-       0, 1, 0, 1,
-       1, 0, 0, 0});
+      "Y", {3, 4}, {0, 0, 1, 1, 0, 1, 0, 1, 1, 0, 0, 0});
 
   test.Run();
 }
@@ -91,11 +81,9 @@ TEST(NonZeroOpTest, Scalar) {
 TEST(NonZeroOpTest, EmptyInput) {
   OpTester test{kOpName, kOpVersion};
   test.AddInput<int32_t>(
-      "X", {1, 0, 2},
-      {});
+      "X", {1, 0, 2}, {});
   test.AddOutput<int64_t>(
-      "Y", {3, 0},
-      {});
+      "Y", {3, 0}, {});
   test.Run();
 }
 

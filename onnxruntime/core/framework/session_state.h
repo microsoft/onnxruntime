@@ -173,7 +173,8 @@ class SessionState {
     */
   Status GetInitializedTensors(
       const std::unordered_set<std::string>& interested_weights,
-      bool allow_missing_weights, NameMLValMap& retrieved_weights) const;
+      bool allow_missing_weights,
+      NameMLValMap& retrieved_weights) const;
 
   /**
     Get some initialized tensors (weights).
@@ -376,8 +377,7 @@ class SessionState {
 
   Status CreateSubgraphSessionState();
 
-  void AddSubgraphSessionState(onnxruntime::NodeIndex index, const std::string& attribute_name,
-                               std::unique_ptr<SessionState> session_state);
+  void AddSubgraphSessionState(onnxruntime::NodeIndex index, const std::string& attribute_name, std::unique_ptr<SessionState> session_state);
 
   Status PopulateKernelCreateInfo(const KernelRegistryManager& kernel_registry_manager,
                                   bool saving_ort_format);
@@ -451,8 +451,7 @@ class SessionState {
   // for internal allocations by CUDAExecutionProvider::GetScratchBuffer, but could access the per-thread allocator
   // directly instead of going through CUDAExecutionProvider::GetAllocator.
   // If that can be validated we could simply store the AllocatorPtr here and get rid of the delegate.
-  std::map<OrtMemoryInfo, std::function<AllocatorPtr(OrtMemType mem_type)>,
-           OrtMemoryInfoLessThanIgnoreNameAndAllocType>
+  std::map<OrtMemoryInfo, std::function<AllocatorPtr(OrtMemType mem_type)>, OrtMemoryInfoLessThanIgnoreNameAndAllocType>
       allocators_;
 
   OrtValueNameIdxMap ort_value_name_idx_map_;

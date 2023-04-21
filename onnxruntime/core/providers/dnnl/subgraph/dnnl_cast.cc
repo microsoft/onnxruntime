@@ -84,8 +84,7 @@ void DnnlCast::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
   auto reorder = dnnl::reorder(reorder_pd);
 
   // Add primitive to the graph
-  sp.AddPrimitive(reorder, {{DNNL_ARG_SRC, src_mem},
-                            {DNNL_ARG_DST, dst_mem}});
+  sp.AddPrimitive(reorder, {{DNNL_ARG_SRC, src_mem}, {DNNL_ARG_DST, dst_mem}});
 
   // Support scalar return values
   if (sp.IsScalar(node.Input(OUT_OUTPUT))) {

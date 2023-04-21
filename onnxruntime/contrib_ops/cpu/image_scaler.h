@@ -27,8 +27,7 @@ class ImageScaler final : public OpKernel {
     const auto& dims = X->Shape().GetDims();
 
     if (dims.size() < 4) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input is expected to have four dimensions corresponding to [N,C,H,W], got ", dims.size());
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input is expected to have four dimensions corresponding to [N,C,H,W], got ", dims.size());
     }
 
     const int64_t N = dims[0];

@@ -48,8 +48,7 @@ Status BiasGelu<T, use_approximation>::Compute(OpKernelContext* context) const {
       static constexpr int64_t length_per_task = 4096;
       int64_t task_count = (elem_count + length_per_task - 1) / length_per_task;
       concurrency::ThreadPool::TryBatchParallelFor(
-          context->GetOperatorThreadPool(), static_cast<int32_t>(task_count),
-          [&](ptrdiff_t task_idx) {
+          context->GetOperatorThreadPool(), static_cast<int32_t>(task_count), [&](ptrdiff_t task_idx) {
             const auto start = task_idx * length_per_task;
             const T* p_input = input_data + start;
             T* p_output = output_data + start;
@@ -83,8 +82,7 @@ Status BiasGelu<T, use_approximation>::Compute(OpKernelContext* context) const {
   int64_t task_count = elem_count / bias_len;
 
   concurrency::ThreadPool::TryBatchParallelFor(
-      context->GetOperatorThreadPool(), static_cast<int32_t>(task_count),
-      [&](ptrdiff_t task_idx) {
+      context->GetOperatorThreadPool(), static_cast<int32_t>(task_count), [&](ptrdiff_t task_idx) {
         const T* p_input = input_data + task_idx * bias_len;
         T* p_output = output_data + task_idx * bias_len;
         T* p_tmp = tmp_data + task_idx * bias_len;

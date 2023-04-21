@@ -141,7 +141,9 @@ class TreeAggregator {
                        const InlinedVector<ScoreValue<ThresholdType>>& /*predictions2*/) const {}
 
   void FinalizeScores(InlinedVector<ScoreValue<ThresholdType>>& predictions,
-                      OutputType* Z, int add_second_class, int64_t*) const {
+                      OutputType* Z,
+                      int add_second_class,
+                      int64_t*) const {
     ORT_ENFORCE(predictions.size() == (size_t)n_targets_or_classes_);
     ThresholdType val;
     auto it = predictions.begin();
@@ -165,7 +167,9 @@ class TreeAggregatorSum : public TreeAggregator<InputType, ThresholdType, Output
                     const int64_t& n_targets_or_classes,
                     POST_EVAL_TRANSFORM post_transform,
                     const std::vector<ThresholdType>& base_values) : TreeAggregator<InputType, ThresholdType, OutputType>(n_trees,
-                                                                                                                          n_targets_or_classes, post_transform, base_values) {}
+                                                                                                                          n_targets_or_classes,
+                                                                                                                          post_transform,
+                                                                                                                          base_values) {}
 
   // 1 output
 
@@ -211,7 +215,9 @@ class TreeAggregatorSum : public TreeAggregator<InputType, ThresholdType, Output
   }
 
   void FinalizeScores(InlinedVector<ScoreValue<ThresholdType>>& predictions,
-                      OutputType* Z, int add_second_class, int64_t*) const {
+                      OutputType* Z,
+                      int add_second_class,
+                      int64_t*) const {
     auto it = predictions.begin();
     if (this->use_base_values_) {
       auto it2 = this->base_values_.cbegin();
@@ -242,7 +248,9 @@ class TreeAggregatorAverage : public TreeAggregatorSum<InputType, ThresholdType,
   }
 
   void FinalizeScores(InlinedVector<ScoreValue<ThresholdType>>& predictions,
-                      OutputType* Z, int add_second_class, int64_t*) const {
+                      OutputType* Z,
+                      int add_second_class,
+                      int64_t*) const {
     if (this->use_base_values_) {
       ORT_ENFORCE(this->base_values_.size() == predictions.size());
       auto it = predictions.begin();
@@ -324,8 +332,7 @@ class TreeAggregatorMax : public TreeAggregator<InputType, ThresholdType, Output
   TreeAggregatorMax<InputType, ThresholdType, OutputType>(size_t n_trees,
                                                           const int64_t& n_targets_or_classes,
                                                           POST_EVAL_TRANSFORM post_transform,
-                                                          const std::vector<ThresholdType>& base_values) : TreeAggregator<InputType, ThresholdType, OutputType>(n_trees, n_targets_or_classes,
-                                                                                                                                                                post_transform, base_values) {}
+                                                          const std::vector<ThresholdType>& base_values) : TreeAggregator<InputType, ThresholdType, OutputType>(n_trees, n_targets_or_classes, post_transform, base_values) {}
 
   // 1 output
 
@@ -397,16 +404,14 @@ class TreeAggregatorClassifier : public TreeAggregatorSum<InputType, ThresholdTy
                            bool binary_case,
                            bool weights_are_all_positive,
                            int64_t positive_label = 1,
-                           int64_t negative_label = 0) : TreeAggregatorSum<InputType, ThresholdType, OutputType>(n_trees, n_targets_or_classes,
-                                                                                                                 post_transform, base_values),
+                           int64_t negative_label = 0) : TreeAggregatorSum<InputType, ThresholdType, OutputType>(n_trees, n_targets_or_classes, post_transform, base_values),
                                                          class_labels_(class_labels),
                                                          binary_case_(binary_case),
                                                          weights_are_all_positive_(weights_are_all_positive),
                                                          positive_label_(positive_label),
                                                          negative_label_(negative_label) {}
 
-  void get_max_weight(const InlinedVector<ScoreValue<ThresholdType>>& classes, int64_t& maxclass,
-                      ThresholdType& maxweight) const {
+  void get_max_weight(const InlinedVector<ScoreValue<ThresholdType>>& classes, int64_t& maxclass, ThresholdType& maxweight) const {
     maxclass = -1;
     maxweight = 0;
     for (auto it = classes.cbegin(); it != classes.cend(); ++it) {
@@ -421,13 +426,11 @@ class TreeAggregatorClassifier : public TreeAggregatorSum<InputType, ThresholdTy
                             const InlinedVector<ScoreValue<ThresholdType>>& classes) const {
     ORT_ENFORCE(classes.size() == 2 || classes.size() == 1);
     return (classes.size() == 2 && classes[1].has_score)
-               ? _set_score_binary(write_additional_scores, classes[0].score,
-                                   classes[0].has_score, classes[1].score, classes[1].has_score)
+               ? _set_score_binary(write_additional_scores, classes[0].score, classes[0].has_score, classes[1].score, classes[1].has_score)
                : _set_score_binary(write_additional_scores, classes[0].score, classes[0].has_score, 0, 0);
   }
 
-  int64_t _set_score_binary(int& write_additional_scores, ThresholdType score0, unsigned char has_score0,
-                            ThresholdType score1, unsigned char has_score1) const {
+  int64_t _set_score_binary(int& write_additional_scores, ThresholdType score0, unsigned char has_score0, ThresholdType score1, unsigned char has_score1) const {
     ThresholdType pos_weight = has_score1 ? score1 : (has_score0 ? score0 : 0);  // only 1 class
     if (binary_case_) {
       if (weights_are_all_positive_) {
@@ -490,7 +493,9 @@ class TreeAggregatorClassifier : public TreeAggregatorSum<InputType, ThresholdTy
   // N outputs
 
   void FinalizeScores(InlinedVector<ScoreValue<ThresholdType>>& predictions,
-                      OutputType* Z, int /*add_second_class*/, int64_t* Y = 0) const {
+                      OutputType* Z,
+                      int /*add_second_class*/,
+                      int64_t* Y = 0) const {
     ThresholdType maxweight = 0;
     int64_t maxclass = -1;
 

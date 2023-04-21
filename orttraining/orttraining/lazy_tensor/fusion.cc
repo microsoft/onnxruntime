@@ -395,7 +395,9 @@ void OrtFuseGraph(
       &db,
       graph->block(),
       [=](OrtFuser* gf, torch::jit::Node* n) { return fn(n) || n->kind() == kind; },
-      kind, false, arg_limit);
+      kind,
+      false,
+      arg_limit);
 
   g.run();
   torch::jit::Lint(&db);

@@ -125,10 +125,8 @@ Status Concat<T>::Compute(OpKernelContext* ctx) const {
 
   armnn::InputTensors inputTensors{};
   for (int index = 0; index < input_count; ++index)
-    inputTensors.push_back({index, armnn::ConstTensor(Concat::run->GetInputTensorInfo(*pNetworkId, index),
-                                                      input_tensors[index]->Data<T>())});
-  armnn::OutputTensors outputTensors{{0, armnn::Tensor(Concat::run->GetOutputTensorInfo(*pNetworkId, 0),
-                                                       Y->MutableData<T>())}};
+    inputTensors.push_back({index, armnn::ConstTensor(Concat::run->GetInputTensorInfo(*pNetworkId, index), input_tensors[index]->Data<T>())});
+  armnn::OutputTensors outputTensors{{0, armnn::Tensor(Concat::run->GetOutputTensorInfo(*pNetworkId, 0), Y->MutableData<T>())}};
 
   Concat::run->EnqueueWorkload(*pNetworkId, inputTensors, outputTensors);
 
@@ -138,7 +136,8 @@ Status Concat<T>::Compute(OpKernelContext* ctx) const {
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     Concat,
     kOnnxDomain,
-    4, 10,
+    4,
+    10,
     kArmNNExecutionProvider,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     Concat<float>);

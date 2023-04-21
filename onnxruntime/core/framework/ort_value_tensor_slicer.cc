@@ -16,7 +16,10 @@ OrtValueTensorSlicer<T> OrtValueTensorSlicer<T>::Create(T& ort_value, int64_t sl
 
   auto& tensor_shape = ort_value.template Get<Tensor>().Shape();
   ORT_ENFORCE(gsl::narrow_cast<int64_t>(tensor_shape.NumDimensions()) >= slice_dimension,
-              "Insufficient dimensions to slice on ", slice_dimension, ". Shape:", tensor_shape);
+              "Insufficient dimensions to slice on ",
+              slice_dimension,
+              ". Shape:",
+              tensor_shape);
 
   auto dim0_size = tensor_shape[0];
   ORT_ENFORCE(dim0_offset < dim0_size, "Invalid dim0_offset of ", dim0_offset, ". Dimension 0 is ", dim0_size);
@@ -25,8 +28,7 @@ OrtValueTensorSlicer<T> OrtValueTensorSlicer<T>::Create(T& ort_value, int64_t sl
 };
 
 template <typename T>
-OrtValueTensorSlicer<T>::Iterator::Iterator(T& ort_value, size_t slice_dimension, size_t dim0_offset, int64_t position,
-                                            Direction direction)
+OrtValueTensorSlicer<T>::Iterator::Iterator(T& ort_value, size_t slice_dimension, size_t dim0_offset, int64_t position, Direction direction)
     : ort_value_(&ort_value),
       position_(position),
       increment_by_(direction == Direction::kForward ? 1 : -1),
@@ -40,15 +42,13 @@ OrtValueTensorSlicer<T>::Iterator::Iterator(T& ort_value, size_t slice_dimension
   per_iteration_shape_ = shape.Slice(slice_dimension + 1);
   const int64_t per_iteration_shape_size = per_iteration_shape_.Size();
   assert(per_iteration_shape_size >= 0);
-  if (!IAllocator::CalcMemSizeForArray(static_cast<size_t>(per_iteration_shape_size), tensor.DataType()->Size(),
-                                       &per_iteration_offset_))
+  if (!IAllocator::CalcMemSizeForArray(static_cast<size_t>(per_iteration_shape_size), tensor.DataType()->Size(), &per_iteration_offset_))
     ORT_THROW("size overflow");
   const int64_t slice_dimension_size = shape.Slice(slice_dimension).Size();
   assert(slice_dimension_size >= 0);
 
   size_t total_len;
-  if (!IAllocator::CalcMemSizeForArray(static_cast<size_t>(slice_dimension_size), tensor.DataType()->Size(),
-                                       &total_len))
+  if (!IAllocator::CalcMemSizeForArray(static_cast<size_t>(slice_dimension_size), tensor.DataType()->Size(), &total_len))
     ORT_THROW("size overflow");
   if (!IAllocator::CalcMemSizeForArray(dim0_offset, total_len, &total_len))
     ORT_THROW("size overflow");

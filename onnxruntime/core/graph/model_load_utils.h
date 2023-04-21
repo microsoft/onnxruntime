@@ -36,9 +36,7 @@ inline bool IsAllowReleasedONNXOpsetsOnlySet() {
   return true;
 }
 
-inline void ValidateOpsetForDomain(const std::unordered_map<std::string, int>& onnx_released_versions, const logging::Logger& logger,
-                                   bool allow_official_onnx_release_only,
-                                   const std::string& domain, int version) {
+inline void ValidateOpsetForDomain(const std::unordered_map<std::string, int>& onnx_released_versions, const logging::Logger& logger, bool allow_official_onnx_release_only, const std::string& domain, int version) {
   auto it = onnx_released_versions.find(domain);
   if (it != onnx_released_versions.end() && version > it->second) {
     auto current_domain = domain.empty() ? kOnnxDomainAlias : domain;
@@ -52,8 +50,10 @@ inline void ValidateOpsetForDomain(const std::unordered_map<std::string, int>& o
           "The operator schemas and or other functionality may change before next ONNX release "
           "and in this case ONNX Runtime will not guarantee backward compatibility. "
           "Current official support for domain ",
-          current_domain, " is till opset ",
-          it->second, ".");
+          current_domain,
+          " is till opset ",
+          it->second,
+          ".");
     } else {
       LOGS(logger, WARNING) << "ONNX Runtime only *guarantees* support for models stamped "
                                "with official released onnx opset versions. "

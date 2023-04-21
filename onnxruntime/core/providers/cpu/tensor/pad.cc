@@ -40,44 +40,16 @@ ONNX_OPERATOR_KERNEL_EX(Pad,
 
 namespace op_kernel_type_control {
 ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES(
-    kCpuExecutionProvider, kOnnxDomain, Pad, 2, Input, 0,
-    float,
-    double);
+    kCpuExecutionProvider, kOnnxDomain, Pad, 2, Input, 0, float, double);
 
 ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES(
-    kCpuExecutionProvider, kOnnxDomain, Pad, 11, Input, 0,
-    float,
-    double,
-    int32_t,
-    int64_t,
-    uint32_t,
-    uint64_t,
-    int8_t,
-    uint8_t);
+    kCpuExecutionProvider, kOnnxDomain, Pad, 11, Input, 0, float, double, int32_t, int64_t, uint32_t, uint64_t, int8_t, uint8_t);
 
 ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES(
-    kCpuExecutionProvider, kOnnxDomain, Pad, 13, Input, 0,
-    float,
-    double,
-    int32_t,
-    int64_t,
-    uint32_t,
-    uint64_t,
-    int8_t,
-    uint8_t,
-    bool);
+    kCpuExecutionProvider, kOnnxDomain, Pad, 13, Input, 0, float, double, int32_t, int64_t, uint32_t, uint64_t, int8_t, uint8_t, bool);
 
 ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES(
-    kCpuExecutionProvider, kOnnxDomain, Pad, 18, Input, 0,
-    float,
-    double,
-    int32_t,
-    int64_t,
-    uint32_t,
-    uint64_t,
-    int8_t,
-    uint8_t,
-    bool);
+    kCpuExecutionProvider, kOnnxDomain, Pad, 18, Input, 0, float, double, int32_t, int64_t, uint32_t, uint64_t, int8_t, uint8_t, bool);
 
 ORT_SPECIFY_OP_KERNEL_ARG_REQUIRED_TYPES(
     kCpuExecutionProvider, kOnnxDomain, Pad, 11, Input, 0, int32_t, int64_t);
@@ -105,7 +77,8 @@ using AllEnabledPadTypes =
 // only float type is supported for opset-10
 ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     Pad,
-    2, 10,
+    2,
+    10,
     KernelDefBuilder().TypeConstraint(
         "T",
         BuildKernelDefConstraintsFromTypeList<EnabledPad2Types>()),
@@ -117,7 +90,8 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
 
 ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     Pad,
-    11, 12,
+    11,
+    12,
     KernelDefBuilder().TypeConstraint(
         "T",
         BuildKernelDefConstraintsFromTypeList<EnabledPad11Types>()),
@@ -125,7 +99,8 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
 
 ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     Pad,
-    13, 17,
+    13,
+    17,
     KernelDefBuilder().TypeConstraint(
         "T",
         BuildKernelDefConstraintsFromTypeList<EnabledPad13Types>()),
@@ -144,8 +119,7 @@ using PadsVector = PadBase::PadsVector;
 
 // This is the general padding method to n-dimensionally do edge or reflection padding (based on the inputDelta values)
 template <typename T>
-static void PadAxis(T* output, T* input, ptrdiff_t input_delta, ptrdiff_t input_pitch,
-                    size_t block_size, size_t block_count) {
+static void PadAxis(T* output, T* input, ptrdiff_t input_delta, ptrdiff_t input_pitch, size_t block_size, size_t block_count) {
   for (size_t block_index = 0; block_index < block_count; block_index++) {
     for (size_t i = 0; i < block_size; i++) {
       *output++ = *input;
@@ -192,9 +166,7 @@ Status PadBase::HandleDimValueZero(const Mode& mode, const TensorShape& input_sh
       // match numpy behavior of failing if mode is 'edge' and there's an attempt to pad a dimension with value of 0
       for (size_t i = 0, end = input_shape.NumDimensions(); i < end; ++i) {
         if (input_shape[i] == 0 && output_shape[i] > 0) {
-          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                                 "Cannot use 'edge' mode to pad dimension with a value of 0. Input shape:",
-                                 input_shape);
+          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Cannot use 'edge' mode to pad dimension with a value of 0. Input shape:", input_shape);
         }
       }
       break;
@@ -203,9 +175,7 @@ Status PadBase::HandleDimValueZero(const Mode& mode, const TensorShape& input_sh
       // match numpy behavior of failing if mode is 'reflect' and there's an attempt to pad a dimension with value of 0
       for (size_t i = 0, end = input_shape.NumDimensions(); i < end; ++i) {
         if (input_shape[i] == 0 && output_shape[i] > 0) {
-          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                                 "Cannot use 'reflect' mode to pad dimension with a value of 0. Input shape:",
-                                 input_shape);
+          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Cannot use 'reflect' mode to pad dimension with a value of 0. Input shape:", input_shape);
         }
       }
       break;
@@ -242,8 +212,7 @@ static Status PadInputWithDimValueOfZero(OpKernelContext* ctx,
 // Flatten no padding inner most Axis, so one memcpy cover multiple Axis.
 // For example, for a shape of [1,224,224,3] with padding [0,3,3,0,0,3,3,0], can be flatten as
 // [1,224,224*3] with padding [0,3,3*3,0,3,3*3].
-static void FlattenInnerShape(const TensorShapeVector& input_dims, const PadsVector& pads,
-                              const PadsVector& slices, TensorShapeVector& reshaped_dims) {
+static void FlattenInnerShape(const TensorShapeVector& input_dims, const PadsVector& pads, const PadsVector& slices, TensorShapeVector& reshaped_dims) {
   size_t dims_count = input_dims.size();
   size_t inner_axis = dims_count - 1;
   size_t inner_size = 1;
@@ -269,12 +238,10 @@ static void FlattenInnerShape(const TensorShapeVector& input_dims, const PadsVec
   reshaped_dims[inner_axis] = inner_size;
 }
 
-static void ReshapePads(const PadsVector& src_pad, size_t src_dim_count, size_t new_dim_count,
-                        size_t inner_no_pad_size, PadsVector& reshaped_pad) {
+static void ReshapePads(const PadsVector& src_pad, size_t src_dim_count, size_t new_dim_count, size_t inner_no_pad_size, PadsVector& reshaped_pad) {
   size_t inner_axis = new_dim_count - 1;
   std::copy(src_pad.begin(), src_pad.begin() + inner_axis, reshaped_pad.begin());
-  std::copy(src_pad.begin() + src_dim_count, src_pad.begin() + src_dim_count + inner_axis,
-            reshaped_pad.begin() + new_dim_count);
+  std::copy(src_pad.begin() + src_dim_count, src_pad.begin() + src_dim_count + inner_axis, reshaped_pad.begin() + new_dim_count);
 
   // Flatten inner axis.
   reshaped_pad[inner_axis] = src_pad[inner_axis] * inner_no_pad_size;
@@ -454,8 +421,7 @@ static Status PadImpl(OpKernelContext* ctx,
           T* axisStart = output - inner_pitch * input_extents[input_counters.Axis()];
           int64_t prePad = reshaped_pad[input_counters.Axis()];
           int64_t postPad = reshaped_pad[input_counters.Axis() + new_dims_count];
-          PadAxis(axisStart - prePad * inner_pitch, axisStart + prePad * inner_pitch, 1, -inner_pitch * 2,
-                  inner_pitch, onnxruntime::narrow<size_t>(prePad));
+          PadAxis(axisStart - prePad * inner_pitch, axisStart + prePad * inner_pitch, 1, -inner_pitch * 2, inner_pitch, onnxruntime::narrow<size_t>(prePad));
           PadAxis(output, output - 2 * inner_pitch, 1, -inner_pitch * 2, inner_pitch, onnxruntime::narrow<size_t>(postPad));
           output += inner_pitch * postPad;
           alignSkip += inner_pitch * SafeInt<size_t>(prePad);

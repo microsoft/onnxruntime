@@ -398,8 +398,7 @@ class UpsampleBase {
 
   // output_shape is changeable in opset-18 or above.
   // It should be re-computed if axes is not empty.
-  [[nodiscard]] Status ParseSizesData(const Tensor* sizes, TensorShapeVector& output_dims,
-                                      gsl::span<const int64_t> input_dims) const {
+  [[nodiscard]] Status ParseSizesData(const Tensor* sizes, TensorShapeVector& output_dims, gsl::span<const int64_t> input_dims) const {
     auto size_span = sizes->DataAsSpan<int64_t>();
     ORT_RETURN_IF_NOT(input_dims.size() >= size_span.size(),
                       "Resize: input tensor's rank does not match the output tensor's rank.");
@@ -419,8 +418,7 @@ class UpsampleBase {
   }
 
   // it works iff output_shape is specified
-  void AdjustOutputSizeAsPolicy(TensorShapeVector& output_dims, gsl::span<const int64_t> input_dims,
-                                std::vector<float>& scales) const {
+  void AdjustOutputSizeAsPolicy(TensorShapeVector& output_dims, gsl::span<const int64_t> input_dims, std::vector<float>& scales) const {
     std::unordered_set<int64_t> axes_set(axes_.begin(), axes_.end());
 
     // AspectRatioPolicy::STRETCH is default policy when opset < 18
@@ -472,7 +470,12 @@ class UpsampleBase {
         ORT_RETURN_IF_NOT(output_dims[i] == 0,
                           "Input dim is zero but required output dim is non-zero. ",
                           "Cannot scale 0 by any factor to generate a non-zero value. ",
-                          "Dimension: ", i, " Input dim value: ", input_dims[i], " Output dim value: ", output_dims[i]);
+                          "Dimension: ",
+                          i,
+                          " Input dim value: ",
+                          input_dims[i],
+                          " Output dim value: ",
+                          output_dims[i]);
 
         // Scale can be any arbitrary value as technically scaling 0 by any factor
         // results in 0. Keeping scale as 1 is more intuitive given that input_dim == output_dim.

@@ -71,7 +71,8 @@ ONNX_OPERATOR_SET_SCHEMA(
 */
 
 ONNX_CPU_OPERATOR_VERSIONED_KERNEL(If,
-                                   1, 10,
+                                   1,
+                                   10,
                                    KernelDefBuilder()
                                        .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>())
                                        .TypeConstraint("V", DataTypeImpl::AllTensorTypes()),
@@ -80,7 +81,8 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(If,
 // output shape rules requiring the output shapes of the 'THEN' and 'ELSE'
 // branches to be the same were relaxed in opset-11
 ONNX_CPU_OPERATOR_VERSIONED_KERNEL(If,
-                                   11, 12,
+                                   11,
+                                   12,
                                    KernelDefBuilder()
                                        .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>())
                                        .TypeConstraint("V", DataTypeImpl::AllTensorTypes()),
@@ -112,8 +114,11 @@ If::Info::Info(const onnxruntime::Node& node, const GraphViewer& subgraph_in) : 
   auto num_subgraph_outputs = subgraph_outputs.size();
 
   ORT_ENFORCE(num_subgraph_outputs == static_cast<size_t>(num_outputs),
-              "'If' node has ", num_outputs, " outputs which doesn't match the subgraph's ",
-              num_subgraph_outputs, " outputs.");
+              "'If' node has ",
+              num_outputs,
+              " outputs which doesn't match the subgraph's ",
+              num_subgraph_outputs,
+              " outputs.");
 
   subgraph_output_names.reserve(num_subgraph_outputs);
   for (size_t i = 0; i < num_subgraph_outputs; ++i) {
@@ -337,8 +342,7 @@ Status IfImpl::AllocateOutputTensors() {
       outputs_.push_back({AllocationType::IfOutput, *context_.GetOutputMLValue(index)});
     } else {
       // Shouldn't hit this as the kernel assignment logic should check for the types before assigning this kernel
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Only tensors, tensor sequence, optional tensor, and optional tensor sequence types are supported");
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Only tensors, tensor sequence, optional tensor, and optional tensor sequence types are supported");
     }
 
 #if !defined(DISABLE_OPTIONAL_TYPE)
@@ -384,8 +388,7 @@ Status IfImpl::Execute(const FeedsFetchesManager& ffm) {
     if (outputs_[i].first == AllocationType::Delayed) {
       // functor to forward the allocation request from the subgraph to the If node's context so that the
       // allocation plan for the If node's output is used.
-      fetch_allocators[i] = [this, i, &fetches](const TensorShape& shape, const OrtMemoryInfo& location,
-                                                OrtValue& ort_value, bool& allocated) {
+      fetch_allocators[i] = [this, i, &fetches](const TensorShape& shape, const OrtMemoryInfo& location, OrtValue& ort_value, bool& allocated) {
         // if the device the If output is allocated on does not match the required device for the subgraph output
         // we don't update the provided OrtValue and return false for 'allocated'.
         // the execution frame will allocate a buffer on the required device, and the fetches copy
@@ -411,9 +414,7 @@ Status IfImpl::Execute(const FeedsFetchesManager& ffm) {
     }
   }
 
-  status = utils::ExecuteSubgraph(session_state_, ffm, feeds, fetches, fetch_allocators,
-                                  ExecutionMode::ORT_SEQUENTIAL, context_.GetTerminateFlag(),
-                                  context_.Logger(), context_.GetComputeStream());
+  status = utils::ExecuteSubgraph(session_state_, ffm, feeds, fetches, fetch_allocators, ExecutionMode::ORT_SEQUENTIAL, context_.GetTerminateFlag(), context_.Logger(), context_.GetComputeStream());
 
   ORT_RETURN_IF_ERROR(status);
 

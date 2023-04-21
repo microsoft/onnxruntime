@@ -39,8 +39,7 @@ void DnnlBatchNorm::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
   auto flags = dnnl::normalization_flags::use_scale | dnnl::normalization_flags::use_shift | dnnl::normalization_flags::use_global_stats;
 
   auto batchnorm_pd =
-      dnnl::batch_normalization_forward::primitive_desc(dnnl_engine, dnnl::prop_kind::forward_inference,
-                                                        src_md, dst_md, epsilon, flags);
+      dnnl::batch_normalization_forward::primitive_desc(dnnl_engine, dnnl::prop_kind::forward_inference, src_md, dst_md, epsilon, flags);
 
   // If using GPU this will move the memory from the CPU to the GPU.
   batchnorm_src_mem = sp.GetMemoryAndReshape(node.Input(IN_X), batchnorm_pd.src_desc(), dnnl_engine);
@@ -51,12 +50,7 @@ void DnnlBatchNorm::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
   auto batchnorm_dst_mem = dnnl::memory(batchnorm_pd.dst_desc(), dnnl_engine);
 
   auto batchnorm_op = dnnl::batch_normalization_forward(batchnorm_pd);
-  sp.AddPrimitive(batchnorm_op, {{DNNL_ARG_SRC, batchnorm_src_mem},
-                                 {DNNL_ARG_MEAN, batchnorm_mean_mem},
-                                 {DNNL_ARG_VARIANCE, batchnorm_var_mem},
-                                 {DNNL_ARG_SCALE, batchnorm_scale_mem},
-                                 {DNNL_ARG_SHIFT, batchnorm_bias_mem},
-                                 {DNNL_ARG_DST, batchnorm_dst_mem}});
+  sp.AddPrimitive(batchnorm_op, {{DNNL_ARG_SRC, batchnorm_src_mem}, {DNNL_ARG_MEAN, batchnorm_mean_mem}, {DNNL_ARG_VARIANCE, batchnorm_var_mem}, {DNNL_ARG_SCALE, batchnorm_scale_mem}, {DNNL_ARG_SHIFT, batchnorm_bias_mem}, {DNNL_ARG_DST, batchnorm_dst_mem}});
 
   sp.SetMemory(node.Output(OUT_Y), batchnorm_dst_mem);
 }

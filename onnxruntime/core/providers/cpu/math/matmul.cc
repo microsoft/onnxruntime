@@ -12,14 +12,16 @@ namespace onnxruntime {
 
 ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(
     MatMul,
-    1, 8,
+    1,
+    8,
     float,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     MatMul<float>);
 
 ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(
     MatMul,
-    1, 8,
+    1,
+    8,
     double,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<double>()),
     MatMul<double>);
@@ -199,8 +201,7 @@ Status MatMul<float>::Compute(OpKernelContext* ctx) const {
     data[i].alpha = alpha_attr_;
     data[i].beta = 0.0f;
   }
-  MlasGemmBatch(trans_a ? CblasTrans : CblasNoTrans, trans_b ? CblasTrans : CblasNoTrans,
-                M, N, K, data.data(), max_len, thread_pool);
+  MlasGemmBatch(trans_a ? CblasTrans : CblasNoTrans, trans_b ? CblasTrans : CblasNoTrans, M, N, K, data.data(), max_len, thread_pool);
 
   return Status::OK();
 }

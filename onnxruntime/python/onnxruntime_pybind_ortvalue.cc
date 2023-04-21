@@ -293,7 +293,9 @@ void addOrtValueMethods(pybind11::module& m) {
           "from_dlpack", [](py::object data, bool is_bool_tensor) {
             return FromDlpack(data.ptr(), is_bool_tensor);
           },
-          py::arg("data"), py::arg("is_bool_tensor") = false, "Converts a tensor from a external library into an OrtValue by means of the __dlpack__ protocol.")
+          py::arg("data"),
+          py::arg("is_bool_tensor") = false,
+          "Converts a tensor from a external library into an OrtValue by means of the __dlpack__ protocol.")
       .def(
           "__dlpack__", [](OrtValue* ort_value, py::object /* stream */) -> py::object {
             return py::reinterpret_steal<py::object>(ToDlpack(*ort_value));
@@ -323,7 +325,9 @@ void addOrtValueMethods(pybind11::module& m) {
           "push_back", [](std::vector<OrtValue>* v, py::object dlpack_tensor, const bool is_bool_tensor) {
             v->push_back(FromDlpack(dlpack_tensor.ptr(), is_bool_tensor));
           },
-          "Add a new OrtValue after being ownership was transferred from the DLPack structure.", py::arg("dlpack_tensor"), py::arg("is_bool_tensor") = false)
+          "Add a new OrtValue after being ownership was transferred from the DLPack structure.",
+          py::arg("dlpack_tensor"),
+          py::arg("is_bool_tensor") = false)
       .def(
           "push_back_batch", [](std::vector<OrtValue>* v, std::vector<py::object>& torch_tensors, std::vector<int64_t>& data_ptrs, std::vector<py::object>& element_types, const std::vector<std::vector<int64_t>>& shapes, const std::vector<OrtDevice>& devices) {
             for (size_t i = 0; i < torch_tensors.size(); ++i) {

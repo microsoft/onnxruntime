@@ -36,8 +36,7 @@ ONNX_CPU_OPERATOR_KERNEL(
 namespace op_kernel_type_control {
 // we're using one set of types for all opsets
 ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPE_LIST_ALL_OPSETS(
-    kCpuExecutionProvider, kOnnxDomain, Concat, Input, 0,
-    element_type_lists::All);
+    kCpuExecutionProvider, kOnnxDomain, Concat, Input, 0, element_type_lists::All);
 
 // Concat can be used with dimensions or indices so require int32_t and int64_t to be supported
 ORT_SPECIFY_OP_KERNEL_ARG_REQUIRED_TYPES_ALL_OPSETS(
@@ -45,8 +44,7 @@ ORT_SPECIFY_OP_KERNEL_ARG_REQUIRED_TYPES_ALL_OPSETS(
 }  // namespace op_kernel_type_control
 
 namespace {
-using EnabledDataTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(kCpuExecutionProvider, kOnnxDomain,
-                                                                        Concat, Input, 0);
+using EnabledDataTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(kCpuExecutionProvider, kOnnxDomain, Concat, Input, 0);
 }  // namespace
 
 // this method will be shared between 'Concat' (CPU and GPU) and
@@ -105,9 +103,7 @@ Status ConcatBase::PrepareForCompute(OpKernelContext* ctx,
 
   // Handle and fix negative axis
   // In 'stack' mode, the accepted range depends on the output rank (which is one more than the input rank)
-  p.axis = static_cast<uint64_t>(HandleNegativeAxis(axis_, onnxruntime::narrow<int64_t>(!is_stack_
-                                                                                            ? reference_rank
-                                                                                            : reference_rank + 1)));
+  p.axis = static_cast<uint64_t>(HandleNegativeAxis(axis_, onnxruntime::narrow<int64_t>(!is_stack_ ? reference_rank : reference_rank + 1)));
 
   // Ensure all of the non concatenated axes match each other
   for (size_t index = static_cast<size_t>(reference_tensor_index) + 1; index < input_count; index++) {
@@ -138,7 +134,9 @@ Status ConcatBase::PrepareForCompute(OpKernelContext* ctx,
 
       ORT_ENFORCE(input_rank == reference_rank,
                   "Ranks of input data are different, cannot concatenate them. expected rank: ",
-                  reference_rank, " got: ", input_rank);
+                  reference_rank,
+                  " got: ",
+                  input_rank);
 
       // Ensure all the other (non-concat) axes match
       int64_t tensor_size = 1;
@@ -153,8 +151,11 @@ Status ConcatBase::PrepareForCompute(OpKernelContext* ctx,
 
         ORT_RETURN_IF_NOT(dim_value == reference_dims[axis_index],
                           "Non concat axis dimensions must match: Axis ",
-                          axis_index, " has mismatched dimensions of ", dim_value,
-                          " and ", reference_dims[axis_index]);
+                          axis_index,
+                          " has mismatched dimensions of ",
+                          dim_value,
+                          " and ",
+                          reference_dims[axis_index]);
       }
 
       input_tensor_sizes.push_back(tensor_size);  // assign the computed size of the input tensor

@@ -80,7 +80,10 @@ void DumpTensorToFile(const Tensor& tensor, const std::string& tensor_name, cons
   try {
     ORT_ENFORCE(
         tensor_proto.SerializeToFileDescriptor(output_fd),
-        "Failed to write tensor to file - tensor: ", tensor_name, ", file: ", ToUTF8String(file_path_str));
+        "Failed to write tensor to file - tensor: ",
+        tensor_name,
+        ", file: ",
+        ToUTF8String(file_path_str));
   } catch (...) {
     ORT_IGNORE_RETURN_VALUE(Env::Default().FileClose(output_fd));
     throw;
@@ -116,8 +119,10 @@ sqlite3* SqliteConnection() {
         const char* error_message = nullptr;
         rc = sqlite3_exec(db, sql_create_tensor_table, nullptr, 0, (char**)&error_message);
         ORT_ENFORCE(rc == SQLITE_OK,
-                    "Failed to create Tensors table in sqlite3 db ", sqlite_db_path.c_str(),
-                    " on ", error_message);
+                    "Failed to create Tensors table in sqlite3 db ",
+                    sqlite_db_path.c_str(),
+                    " on ",
+                    error_message);
 
         const char* sql_create_node_table =
             "Create table if not exists Nodes ( "
@@ -129,8 +134,10 @@ sqlite3* SqliteConnection() {
 
         rc = sqlite3_exec(db, sql_create_node_table, nullptr, 0, (char**)&error_message);
         ORT_ENFORCE(rc == SQLITE_OK,
-                    "Failed to create Nodes table in sqlite3 db ", sqlite_db_path.c_str(),
-                    " on ", error_message);
+                    "Failed to create Nodes table in sqlite3 db ",
+                    sqlite_db_path.c_str(),
+                    " on ",
+                    error_message);
 
         return db;
       }(),
@@ -291,7 +298,8 @@ void InsertNodePlacementToSqliteDb(const NodeDumpContext& dump_context, const No
 
 void DumpCpuTensor(
     const NodeDumpOptions& dump_options,
-    const Tensor& tensor, const TensorMetadata& tensor_metadata) {
+    const Tensor& tensor,
+    const TensorMetadata& tensor_metadata) {
   switch (dump_options.data_destination) {
     case NodeDumpOptions::DataDestination::StdOut: {
       DispatchOnTensorType(tensor.DataType(), DumpTensorToStdOut, tensor, dump_options);
@@ -317,7 +325,8 @@ void DumpCpuTensor(
 
 void DumpTensor(
     const NodeDumpOptions& dump_options,
-    const Tensor& tensor, TensorMetadata& tensor_metadata,
+    const Tensor& tensor,
+    TensorMetadata& tensor_metadata,
     const SessionState& session_state) {
   // check tensor is on CPU before dumping it
   auto& tensor_location = tensor.Location();
@@ -421,7 +430,8 @@ const NodeDumpOptions& NodeDumpOptionsFromEnvironmentVariables() {
           ParseEnvironmentVariableWithDefault<bool>(env_vars::kDumpingDataToFilesForAllNodesIsOk, false),
           "The current environment variable configuration will dump node input or output data to files for every node. "
           "This may cause a lot of files to be generated. Set the environment variable ",
-          env_vars::kDumpingDataToFilesForAllNodesIsOk, " to confirm this is what you want.");
+          env_vars::kDumpingDataToFilesForAllNodesIsOk,
+          " to confirm this is what you want.");
     }
 
     return opts;

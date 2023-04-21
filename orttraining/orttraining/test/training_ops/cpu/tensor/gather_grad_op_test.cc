@@ -109,16 +109,9 @@ TEST(GatherOpTest, Gather_axis0_indices2d_half) {
 #endif
   OpTester test("Gather");
   test.AddAttribute<int64_t>("axis", 0LL);
-  test.AddInput<MLFloat16>("data", {3, 3},
-                           FloatsToMLFloat16s({0.0f, 0.1f, 0.2f,
-                                               1.0f, 1.1f, 1.2f,
-                                               2.0f, 2.1f, 2.2f}));
-  test.AddInput<int64_t>("indices", {2LL, 2LL},
-                         {1LL, 0LL,
-                          2LL, 1LL});
-  test.AddOutput<MLFloat16>("output", {2, 2, 3},
-                            FloatsToMLFloat16s({1.0f, 1.1f, 1.2f, 0.0f, 0.1f, 0.2f,
-                                                2.0f, 2.1f, 2.2f, 1.0f, 1.1f, 1.2f}));
+  test.AddInput<MLFloat16>("data", {3, 3}, FloatsToMLFloat16s({0.0f, 0.1f, 0.2f, 1.0f, 1.1f, 1.2f, 2.0f, 2.1f, 2.2f}));
+  test.AddInput<int64_t>("indices", {2LL, 2LL}, {1LL, 0LL, 2LL, 1LL});
+  test.AddOutput<MLFloat16>("output", {2, 2, 3}, FloatsToMLFloat16s({1.0f, 1.1f, 1.2f, 0.0f, 0.1f, 0.2f, 2.0f, 2.1f, 2.2f, 1.0f, 1.1f, 1.2f}));
   test.Run();
 }
 
@@ -129,16 +122,11 @@ TEST(GatherGradOpTest, GatherGrad_axis0_indices2d_half) {
 
   OpTester test("GatherGrad", 1, kMSDomain);
   test.AddAttribute<int64_t>("axis", 0LL);
-  test.AddInput<int64_t>("shape", {2},
-                         {3, 3});
-  test.AddInput<int64_t>("indices", {2LL, 2LL},
-                         {0LL, 1LL,
-                          0LL, 1LL});
+  test.AddInput<int64_t>("shape", {2}, {3, 3});
+  test.AddInput<int64_t>("indices", {2LL, 2LL}, {0LL, 1LL, 0LL, 1LL});
 
-  test.AddInput<MLFloat16>("grad", {2, 2, 3},
-                           FloatsToMLFloat16s({0, 1, 2, 3, 4, 5, 0, 1, 2, 3, 4, 5}));
-  test.AddOutput<MLFloat16>("output", {3, 3},
-                            FloatsToMLFloat16s({0, 2, 4, 6, 8, 10, 0, 0, 0}));
+  test.AddInput<MLFloat16>("grad", {2, 2, 3}, FloatsToMLFloat16s({0, 1, 2, 3, 4, 5, 0, 1, 2, 3, 4, 5}));
+  test.AddOutput<MLFloat16>("output", {3, 3}, FloatsToMLFloat16s({0, 2, 4, 6, 8, 10, 0, 0, 0}));
   test.Run();
 }
 #endif
@@ -146,32 +134,22 @@ TEST(GatherGradOpTest, GatherGrad_axis0_indices2d_half) {
 TEST(GatherGradOpTest, GatherGrad_axis0_indices2d_float) {
   OpTester test("GatherGrad", 1, kMSDomain);
   test.AddAttribute<int64_t>("axis", 0LL);
-  test.AddInput<int64_t>("shape", {2},
-                         {3, 3});
-  test.AddInput<int64_t>("indices", {2LL, 2LL},
-                         {0LL, 1LL,
-                          0LL, 1LL});
+  test.AddInput<int64_t>("shape", {2}, {3, 3});
+  test.AddInput<int64_t>("indices", {2LL, 2LL}, {0LL, 1LL, 0LL, 1LL});
 
-  test.AddInput<float>("grad", {2, 2, 3},
-                       {0, 1, 2, 3, 4, 5, 0, 1, 2, 3, 4, 5});
-  test.AddOutput<float>("output", {3, 3},
-                        {0, 2, 4, 6, 8, 10, 0, 0, 0});
+  test.AddInput<float>("grad", {2, 2, 3}, {0, 1, 2, 3, 4, 5, 0, 1, 2, 3, 4, 5});
+  test.AddOutput<float>("output", {3, 3}, {0, 2, 4, 6, 8, 10, 0, 0, 0});
   test.Run();
 }
 
 TEST(GatherGradOpTest, GatherGrad_negative_indices) {
   OpTester test("GatherGrad", 1, kMSDomain);
   test.AddAttribute<int64_t>("axis", 0LL);
-  test.AddInput<int64_t>("shape", {2},
-                         {3, 3});
-  test.AddInput<int64_t>("indices", {2LL, 2LL},
-                         {0LL, -1LL,
-                          0LL, -2LL});
+  test.AddInput<int64_t>("shape", {2}, {3, 3});
+  test.AddInput<int64_t>("indices", {2LL, 2LL}, {0LL, -1LL, 0LL, -2LL});
 
-  test.AddInput<float>("grad", {2, 2, 3},
-                       {0, 1, 2, 3, 4, 5, 0, 1, 2, 3, 4, 5});
-  test.AddOutput<float>("output", {3, 3},
-                        {0, 2, 4, 3, 4, 5, 3, 4, 5});
+  test.AddInput<float>("grad", {2, 2, 3}, {0, 1, 2, 3, 4, 5, 0, 1, 2, 3, 4, 5});
+  test.AddOutput<float>("output", {3, 3}, {0, 2, 4, 3, 4, 5, 3, 4, 5});
   test.Run();
 }
 

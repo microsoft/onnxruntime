@@ -25,28 +25,25 @@ Status DataCopy(const Tensor& input, Tensor& output, void* einsum_rocm_assets) {
   ORT_ENFORCE(output.SizeInBytes() == input.SizeInBytes(),
               "Einsum op: The candidate output does not match the actual output's shape");
   // There are no string tensors in Einsum's case - so safely use memcpy
-  HIP_RETURN_IF_ERROR(hipMemcpyAsync(output.MutableDataRaw(), input.DataRaw(), input.SizeInBytes(),
-                                     hipMemcpyDeviceToDevice,
-                                     static_cast<EinsumRocmAssets*>(einsum_rocm_assets)->GetRocmStream()));
+  HIP_RETURN_IF_ERROR(hipMemcpyAsync(output.MutableDataRaw(), input.DataRaw(), input.SizeInBytes(), hipMemcpyDeviceToDevice, static_cast<EinsumRocmAssets*>(einsum_rocm_assets)->GetRocmStream()));
 
   return Status::OK();
 }
 
 // ROCM EP specific Transpose helper
-Status Transpose(const gsl::span<const size_t>& permutation, const Tensor& input,
-                 Tensor& output, const TensorShape* input_shape_override, void* einsum_rocm_assets) {
+Status Transpose(const gsl::span<const size_t>& permutation, const Tensor& input, Tensor& output, const TensorShape* input_shape_override, void* einsum_rocm_assets) {
   return rocm::Transpose::DoTranspose(static_cast<EinsumRocmAssets*>(einsum_rocm_assets)->rocm_ep_->GetDeviceProp(),
                                       static_cast<EinsumRocmAssets*>(einsum_rocm_assets)->GetRocmStream(),
                                       static_cast<EinsumRocmAssets*>(einsum_rocm_assets)->rocblas_handle_,
-                                      permutation, input, output, input_shape_override);
+                                      permutation,
+                                      input,
+                                      output,
+                                      input_shape_override);
 }
 
 // ROCM EP specific MatMul helper
 template <typename T>
-Status MatMul(const T* input_1_data, const T* input_2_data, T* output_data,
-              size_t left_stride, size_t right_stride, size_t output_stride,
-              size_t num_batches, size_t M, size_t K, size_t N, concurrency::ThreadPool* /*tp*/,
-              void* einsum_rocm_assets) {
+Status MatMul(const T* input_1_data, const T* input_2_data, T* output_data, size_t left_stride, size_t right_stride, size_t output_stride, size_t num_batches, size_t M, size_t K, size_t N, concurrency::ThreadPool* /*tp*/, void* einsum_rocm_assets) {
   typedef typename rocm::ToHipType<T>::MappedType HipT;
 
   namespace blas = rocm::tunable::blas;
@@ -55,27 +52,29 @@ Status MatMul(const T* input_1_data, const T* input_2_data, T* output_data,
           static_cast<EinsumRocmAssets*>(einsum_rocm_assets)->rocm_ep_->GetTuningContext()),
       static_cast<hipStream_t>(static_cast<EinsumRocmAssets*>(einsum_rocm_assets)->ort_stream_->GetHandle()),
       static_cast<EinsumRocmAssets*>(einsum_rocm_assets)->rocblas_handle_,
-      blas::BlasOp::NonTrans, blas::BlasOp::NonTrans,
-      N, M, K,
+      blas::BlasOp::NonTrans,
+      blas::BlasOp::NonTrans,
+      N,
+      M,
+      K,
       /*alpha=*/1.0f,
-      reinterpret_cast<const HipT*>(input_2_data), N, right_stride,
-      reinterpret_cast<const HipT*>(input_1_data), K, left_stride,
+      reinterpret_cast<const HipT*>(input_2_data),
+      N,
+      right_stride,
+      reinterpret_cast<const HipT*>(input_1_data),
+      K,
+      left_stride,
       /*beta=*/0.0f,
-      reinterpret_cast<HipT*>(output_data), N, output_stride,
+      reinterpret_cast<HipT*>(output_data),
+      N,
+      output_stride,
       num_batches);
 }
 
 // ROCM EP specific ReduceSum helper
 template <typename T>
-std::unique_ptr<Tensor> ReduceSum(const Tensor& input, gsl::span<const int64_t> reduce_axes,
-                                  bool keep_dims, AllocatorPtr allocator,
-                                  const TensorShape* input_shape_override,
-                                  concurrency::ThreadPool* /*tp*/, void* einsum_rocm_assets) {
-  return rocm::ReductionOps::ReduceCompute<T>(*static_cast<EinsumRocmAssets*>(einsum_rocm_assets)->rocm_ep_, MIOPEN_REDUCE_TENSOR_ADD,
-                                              allocator, input, reduce_axes,
-                                              keep_dims, false, false, false,
-                                              true, static_cast<EinsumRocmAssets*>(einsum_rocm_assets)->ort_stream_,
-                                              input_shape_override);
+std::unique_ptr<Tensor> ReduceSum(const Tensor& input, gsl::span<const int64_t> reduce_axes, bool keep_dims, AllocatorPtr allocator, const TensorShape* input_shape_override, concurrency::ThreadPool* /*tp*/, void* einsum_rocm_assets) {
+  return rocm::ReductionOps::ReduceCompute<T>(*static_cast<EinsumRocmAssets*>(einsum_rocm_assets)->rocm_ep_, MIOPEN_REDUCE_TENSOR_ADD, allocator, input, reduce_axes, keep_dims, false, false, false, true, static_cast<EinsumRocmAssets*>(einsum_rocm_assets)->ort_stream_, input_shape_override);
 }
 
 // ROCM EP specific Diagonal helper
@@ -85,7 +84,12 @@ std::unique_ptr<Tensor> Diagonal(const Tensor& input, int64_t dim_1, int64_t dim
   auto rank = static_cast<int64_t>(input_dims.size());
 
   ORT_ENFORCE(rank >= 2 && dim_1 != dim_2 && input_dims[dim_1] == input_dims[dim_2],
-              "Cannot parse the diagonal elements along dims ", dim_1, " and ", dim_2, " for input shape ", input_shape);
+              "Cannot parse the diagonal elements along dims ",
+              dim_1,
+              " and ",
+              dim_2,
+              " for input shape ",
+              input_shape);
 
   int64_t first_dim = -1;   // first_dim holds the lesser of dim_1 and dim_2
   int64_t second_dim = -1;  // second_dim holds the greater of dim_1 and dim_2
@@ -139,29 +143,17 @@ std::unique_ptr<Tensor> Diagonal(const Tensor& input, int64_t dim_1, int64_t dim
 
 // float
 template Status DeviceHelpers::RocmDeviceHelpers::MatMul<float>(
-    const float* input_1_data, const float* input_2_data, float* output_data,
-    size_t left_stride, size_t right_stride, size_t output_stride,
-    size_t num_batches, size_t M, size_t K, size_t N, concurrency::ThreadPool* tp,
-    void* einsum_rocm_assets);
+    const float* input_1_data, const float* input_2_data, float* output_data, size_t left_stride, size_t right_stride, size_t output_stride, size_t num_batches, size_t M, size_t K, size_t N, concurrency::ThreadPool* tp, void* einsum_rocm_assets);
 
 template std::unique_ptr<Tensor> DeviceHelpers::RocmDeviceHelpers::ReduceSum<float>(
-    const Tensor& input, gsl::span<const int64_t> reduce_axes,
-    bool keep_dims, AllocatorPtr allocator,
-    const TensorShape* input_shape_override,
-    concurrency::ThreadPool* tp, void* einsum_rocm_assets);
+    const Tensor& input, gsl::span<const int64_t> reduce_axes, bool keep_dims, AllocatorPtr allocator, const TensorShape* input_shape_override, concurrency::ThreadPool* tp, void* einsum_rocm_assets);
 
 // MLFloat16
 template Status DeviceHelpers::RocmDeviceHelpers::MatMul<MLFloat16>(
-    const MLFloat16* input_1_data, const MLFloat16* input_2_data, MLFloat16* output_data,
-    size_t left_stride, size_t right_stride, size_t output_stride,
-    size_t num_batches, size_t M, size_t K, size_t N, concurrency::ThreadPool* tp,
-    void* einsum_rocm_assets);
+    const MLFloat16* input_1_data, const MLFloat16* input_2_data, MLFloat16* output_data, size_t left_stride, size_t right_stride, size_t output_stride, size_t num_batches, size_t M, size_t K, size_t N, concurrency::ThreadPool* tp, void* einsum_rocm_assets);
 
 template std::unique_ptr<Tensor> DeviceHelpers::RocmDeviceHelpers::ReduceSum<MLFloat16>(
-    const Tensor& input, gsl::span<const int64_t> reduce_axes,
-    bool keep_dims, AllocatorPtr allocator,
-    const TensorShape* input_shape_override,
-    concurrency::ThreadPool* tp, void* einsum_rocm_assets);
+    const Tensor& input, gsl::span<const int64_t> reduce_axes, bool keep_dims, AllocatorPtr allocator, const TensorShape* input_shape_override, concurrency::ThreadPool* tp, void* einsum_rocm_assets);
 
 }  // namespace EinsumOp
 

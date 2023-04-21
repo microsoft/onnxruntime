@@ -11,28 +11,11 @@
 namespace onnxruntime {
 namespace cuda {
 
-ONNX_OPERATOR_VERSIONED_KERNEL_EX(Scatter, kOnnxDomain, 9, 10, kCudaExecutionProvider,
-                                  (*KernelDefBuilder::Create())
-                                      .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
-                                      .TypeConstraint("Tind",
-                                                      std::vector<MLDataType>{DataTypeImpl::GetTensorType<int32_t>(),
-                                                                              DataTypeImpl::GetTensorType<int64_t>()}),
-                                  ScatterElements);
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(Scatter, kOnnxDomain, 9, 10, kCudaExecutionProvider, (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()).TypeConstraint("Tind", std::vector<MLDataType>{DataTypeImpl::GetTensorType<int32_t>(), DataTypeImpl::GetTensorType<int64_t>()}), ScatterElements);
 
-ONNX_OPERATOR_VERSIONED_KERNEL_EX(ScatterElements, kOnnxDomain, 11, 12, kCudaExecutionProvider,
-                                  (*KernelDefBuilder::Create())
-                                      .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
-                                      .TypeConstraint("Tind",
-                                                      std::vector<MLDataType>{DataTypeImpl::GetTensorType<int32_t>(),
-                                                                              DataTypeImpl::GetTensorType<int64_t>()}),
-                                  ScatterElements);
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(ScatterElements, kOnnxDomain, 11, 12, kCudaExecutionProvider, (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()).TypeConstraint("Tind", std::vector<MLDataType>{DataTypeImpl::GetTensorType<int32_t>(), DataTypeImpl::GetTensorType<int64_t>()}), ScatterElements);
 
-ONNX_OPERATOR_KERNEL_EX(ScatterElements, kOnnxDomain, 13, kCudaExecutionProvider,
-                        (*KernelDefBuilder::Create())
-                            .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
-                            .TypeConstraint("Tind", std::vector<MLDataType>{DataTypeImpl::GetTensorType<int32_t>(),
-                                                                            DataTypeImpl::GetTensorType<int64_t>()}),
-                        ScatterElements);
+ONNX_OPERATOR_KERNEL_EX(ScatterElements, kOnnxDomain, 13, kCudaExecutionProvider, (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()).TypeConstraint("Tind", std::vector<MLDataType>{DataTypeImpl::GetTensorType<int32_t>(), DataTypeImpl::GetTensorType<int64_t>()}), ScatterElements);
 
 #define CASE_SCATTER_ELEMENTS_IMPL(type)                                                                         \
   case sizeof(type): {                                                                                           \
@@ -42,9 +25,7 @@ ONNX_OPERATOR_KERNEL_EX(ScatterElements, kOnnxDomain, 13, kCudaExecutionProvider
 
 template <typename T>
 struct ScatterElements::ComputeImpl {
-  Status operator()(cudaStream_t stream, const void* input_data_raw, const void* updates_data_raw,
-                    const void* indices_data_raw, void* output_data_raw, const size_t index_element_size,
-                    const GatherScatterElementsArgs& args) const {
+  Status operator()(cudaStream_t stream, const void* input_data_raw, const void* updates_data_raw, const void* indices_data_raw, void* output_data_raw, const size_t index_element_size, const GatherScatterElementsArgs& args) const {
     typedef typename ToCudaType<T>::MappedType CudaT;
     const CudaT* input_data = reinterpret_cast<const CudaT*>(input_data_raw);
     const CudaT* updates_data = reinterpret_cast<const CudaT*>(updates_data_raw);
@@ -87,8 +68,7 @@ Status ScatterElements::ComputeInternal(OpKernelContext* context) const {
 
   for (size_t i = 0; i < indices_dims.size(); ++i) {
     if (indices_dims[i] != updates_dims[i]) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Indices vs updates dimensions differs at position=", i,
-                             " ", indices_dims[i], " vs ", updates_dims[i]);
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Indices vs updates dimensions differs at position=", i, " ", indices_dims[i], " vs ", updates_dims[i]);
     }
   }
 
@@ -113,9 +93,7 @@ Status ScatterElements::ComputeInternal(OpKernelContext* context) const {
   }
 
   utils::MLTypeCallDispatcher<int8_t, MLFloat16, float, double> t_disp(dtype);
-  return t_disp.InvokeRet<Status, ComputeImpl>(Stream(context), input_tensor->DataRaw(), updates_tensor->DataRaw(),
-                                               indices_tensor->DataRaw(), output_tensor->MutableDataRaw(),
-                                               indices_tensor->DataType()->Size(), args);
+  return t_disp.InvokeRet<Status, ComputeImpl>(Stream(context), input_tensor->DataRaw(), updates_tensor->DataRaw(), indices_tensor->DataRaw(), output_tensor->MutableDataRaw(), indices_tensor->DataType()->Size(), args);
 }
 
 }  // namespace cuda

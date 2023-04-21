@@ -36,11 +36,9 @@ Status BaseOpBuilder::AddToModelBuilder(QnnModelWrapper& qnn_model_wrapper,
 
   std::vector<std::string> input_names;
   // Inputs & output handling mostly same for most of the Ops, just node attributes are different
-  ORT_RETURN_IF_ERROR(ProcessInputs(qnn_model_wrapper, node_unit, logger,
-                                    is_quantized_model, input_names, do_op_validation));
+  ORT_RETURN_IF_ERROR(ProcessInputs(qnn_model_wrapper, node_unit, logger, is_quantized_model, input_names, do_op_validation));
 
-  ORT_RETURN_IF_ERROR(ProcessAttributesAndOutputs(qnn_model_wrapper, node_unit, std::move(input_names),
-                                                  logger, is_quantized_model, do_op_validation));
+  ORT_RETURN_IF_ERROR(ProcessAttributesAndOutputs(qnn_model_wrapper, node_unit, std::move(input_names), logger, is_quantized_model, do_op_validation));
 
   return Status::OK();
 }
@@ -129,8 +127,7 @@ Status BaseOpBuilder::ProcessInput(QnnModelWrapper& qnn_model_wrapper,
   Qnn_DataType_t qnn_data_type = QNN_DATATYPE_FLOAT_32;
   const auto* type_proto = input.node_arg.TypeAsProto();
   ORT_RETURN_IF_ERROR(GetQnnDataType(is_quantized_model, type_proto, qnn_data_type));
-  QnnTensorWrapper input_tensorwrapper(input_name, tensor_type, qnn_data_type, quantize_param,
-                                       std::move(input_shape), std::move(unpacked_tensor));
+  QnnTensorWrapper input_tensorwrapper(input_name, tensor_type, qnn_data_type, quantize_param, std::move(input_shape), std::move(unpacked_tensor));
   ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(input_tensorwrapper)), "Failed to add tensor.");
   input_names.push_back(input_name);
 
@@ -164,8 +161,7 @@ Status BaseOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
     return Status::OK();
   }
 
-  ORT_RETURN_IF_ERROR(ProcessOutputs(qnn_model_wrapper, node_unit, std::move(input_names), {},
-                                     logger, is_quantized_model, do_op_validation));
+  ORT_RETURN_IF_ERROR(ProcessOutputs(qnn_model_wrapper, node_unit, std::move(input_names), {}, logger, is_quantized_model, do_op_validation));
   return Status::OK();
 }
 

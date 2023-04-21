@@ -100,8 +100,7 @@ Status Subgraph::Setup(const SessionState& session_state,
     }
   }
 
-  ORT_RETURN_IF_ERROR(FeedsFetchesManager::Create(feed_names, subgraph_output_names,
-                                                  subgraph_session_state.GetOrtValueNameIdxMap(), feeds_fetches_manager_));
+  ORT_RETURN_IF_ERROR(FeedsFetchesManager::Create(feed_names, subgraph_output_names, subgraph_session_state.GetOrtValueNameIdxMap(), feeds_fetches_manager_));
   ORT_RETURN_IF_ERROR(utils::InitializeFeedFetchCopyInfo(subgraph_session_state, *feeds_fetches_manager_));
 
   // Setup the locations where we want the subgraph output to end up on
@@ -139,7 +138,8 @@ Status Subgraph::GetParameters(const ONNX_NAMESPACE::TensorShapeProto* past_shap
   if (merged_past) {
     // Merged past state shape is like (2, batch_size, num_heads, past_seq_len, hidden_size/num_heads)
     ORT_RETURN_IF(past_shape->dim_size() != 5,
-                  "subgraph past state is expected to have 5 dimension, got ", past_shape->dim_size());
+                  "subgraph past state is expected to have 5 dimension, got ",
+                  past_shape->dim_size());
     ORT_RETURN_IF(!past_shape->dim(0).has_dim_value() || past_shape->dim(0).dim_value() != 2,
                   "subgraph past state dimension 0 shall have length of 2");
 
@@ -153,7 +153,8 @@ Status Subgraph::GetParameters(const ONNX_NAMESPACE::TensorShapeProto* past_shap
   } else {
     // Past state shape is like (batch_size, num_heads, past_seq_len, hidden_size/num_heads).
     ORT_RETURN_IF(past_shape->dim_size() != 4,
-                  "subgraph output present_key_self_0 is expected to have 4 dimension, got ", past_shape->dim_size());
+                  "subgraph output present_key_self_0 is expected to have 4 dimension, got ",
+                  past_shape->dim_size());
 
     ORT_RETURN_IF(!past_shape->dim(1).has_dim_value() || past_shape->dim(1).dim_value() <= 0,
                   "subgraph past state dimension 2 shall have a positive value for number of heads");
@@ -166,7 +167,8 @@ Status Subgraph::GetParameters(const ONNX_NAMESPACE::TensorShapeProto* past_shap
 
   // Logits shape is like (batch_size, seq_len, vocabulary_size)
   ORT_RETURN_IF(logits_shape->dim_size() != 3,
-                "subgraph logits output is expected to have 3 dimension, got ", logits_shape->dim_size());
+                "subgraph logits output is expected to have 3 dimension, got ",
+                logits_shape->dim_size());
 
   ORT_RETURN_IF(!logits_shape->dim(2).has_dim_value() || logits_shape->dim(2).dim_value() <= 0,
                 "subgraph past state dimension 2 shall have a positive value for vocabulary size");
@@ -207,8 +209,7 @@ Status Subgraph::AppendBeamWidthAndCacheIndir(std::vector<OrtValue>& feeds,
   int64_t cache_indirection_dims[] = {batch_size, num_beams, max_seq_len};
   TensorShape cache_indirection_shape(&cache_indirection_dims[0], 3);
   OrtValue default_cache_indirection;
-  Tensor::InitOrtValue(DataTypeImpl::GetType<int32_t>(), cache_indirection_shape,
-                       default_allocator, default_cache_indirection);
+  Tensor::InitOrtValue(DataTypeImpl::GetType<int32_t>(), cache_indirection_shape, default_allocator, default_cache_indirection);
   feeds.push_back(default_cache_indirection);
 
   return Status::OK();

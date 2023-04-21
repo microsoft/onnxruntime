@@ -125,20 +125,15 @@ static const KernelCreateInfo& GetKernelCreateInfo(
     NodeIndex node_index) {
   auto entry = kernel_create_info_map.find(node_index);
   ORT_ENFORCE(entry != kernel_create_info_map.cend(),
-              "SessionState should have saved the KernelCreateInfo prior to this running. NodeIndex:", node_index);
+              "SessionState should have saved the KernelCreateInfo prior to this running. NodeIndex:",
+              node_index);
 
   return *entry->second;
 }
 
 class PlannerImpl {
  public:
-  PlannerImpl(const Node* parent_node, const onnxruntime::GraphViewer& graph_viewer,
-              gsl::span<const NodeArg* const> outer_scope_node_args, const ExecutionProviders& providers,
-              const KernelCreateInfoMap& kernel_create_info_map,
-              const SubgraphsKernelCreateInfoMaps& subgraphs_kernel_create_info_maps,
-              const InlinedHashMap<OrtValueName, OrtMemoryInfo>& outer_scope_node_arg_to_location_map,
-              const OrtValueNameIdxMap& ort_value_name_idx_map,
-              const ISequentialPlannerContext& context, SequentialExecutionPlan& plan)
+  PlannerImpl(const Node* parent_node, const onnxruntime::GraphViewer& graph_viewer, gsl::span<const NodeArg* const> outer_scope_node_args, const ExecutionProviders& providers, const KernelCreateInfoMap& kernel_create_info_map, const SubgraphsKernelCreateInfoMaps& subgraphs_kernel_create_info_maps, const InlinedHashMap<OrtValueName, OrtMemoryInfo>& outer_scope_node_arg_to_location_map, const OrtValueNameIdxMap& ort_value_name_idx_map, const ISequentialPlannerContext& context, SequentialExecutionPlan& plan)
       : context_(&context),
         plan_(plan),
         parent_node_(parent_node),
@@ -296,8 +291,7 @@ class PlannerImpl {
 #endif
 
   // Find if there exists some input tensor that we can use in-place for output_arg_num-th input in the node.
-  bool FindReusableInput(const onnxruntime::Node& node, int output_arg_num, OrtValueIndex* reusable_input,
-                         bool* is_strided_tensor) {
+  bool FindReusableInput(const onnxruntime::Node& node, int output_arg_num, OrtValueIndex* reusable_input, bool* is_strided_tensor) {
     *is_strided_tensor = false;
 #ifdef ENABLE_TRAINING
     // Inputs of Yields are essentially the outputs for FW partial subgraph
@@ -387,8 +381,7 @@ class PlannerImpl {
           }
           const auto& may_strided_inputs = output_node_ci.kernel_def->MayStridedInput();
           for (size_t i = 0; i < it->InputDefs().size(); ++i) {
-            if (it->InputDefs()[i] == p_output_arg && std::find(may_strided_inputs.begin(), may_strided_inputs.end(),
-                                                                static_cast<int>(i)) == may_strided_inputs.end()) {
+            if (it->InputDefs()[i] == p_output_arg && std::find(may_strided_inputs.begin(), may_strided_inputs.end(), static_cast<int>(i)) == may_strided_inputs.end()) {
               can_strided = false;
               break;
             }
@@ -441,8 +434,7 @@ class PlannerImpl {
     return elt_type->Size();
   }
 
-  static bool SameSize(const TensorShapeProto& shape1, const onnxruntime::NodeArg& arg1,
-                       const TensorShapeProto& shape2, const onnxruntime::NodeArg& arg2) {
+  static bool SameSize(const TensorShapeProto& shape1, const onnxruntime::NodeArg& arg1, const TensorShapeProto& shape2, const onnxruntime::NodeArg& arg2) {
     const auto& ptype1 = arg1.Type();
     const auto& ptype2 = arg2.Type();
     auto type1_size = GetElementSize(ptype1);
@@ -510,8 +502,7 @@ class PlannerImpl {
       if (!(available_memory_info == required_memory_info)) continue;
       auto p_available_buffer_shape = context_->GetShape(*p_node_arg);
       if (nullptr != p_available_buffer_shape) {
-        if (SameSize(*p_available_buffer_shape, *p_node_arg,
-                     *p_required_buffer_shape, output_arg)) {
+        if (SameSize(*p_available_buffer_shape, *p_node_arg, *p_required_buffer_shape, output_arg)) {
           *reusable_tensor = it->ml_value;
           freelist_.erase(it);
           return true;
@@ -677,25 +668,19 @@ class PlannerImpl {
 
         auto exec_provider = execution_providers_.Get(*pnode);
         if (exec_provider == nullptr) {
-          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Can not find the execution provider ",
-                                 pnode->GetExecutionProviderType());
+          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Can not find the execution provider ", pnode->GetExecutionProviderType());
         }
 
         bool is_implicit_input = false;
 
         // Add location information if applicable for the provided input def
-        auto process_input = [&graph_inputs, &exec_provider, &p_kernel_def, &is_implicit_input,
-                              &set_node_arg_has_explicit_consumer,
-                              &map_implicitly_consumed_node_arg_to_ep,
-                              &set_implicitly_consumed_node_arg_has_heterogenous_ep_consumers,
-                              this](const NodeArg& input, size_t arg_idx) {
+        auto process_input = [&graph_inputs, &exec_provider, &p_kernel_def, &is_implicit_input, &set_node_arg_has_explicit_consumer, &map_implicitly_consumed_node_arg_to_ep, &set_implicitly_consumed_node_arg_has_heterogenous_ep_consumers, this](const NodeArg& input, size_t arg_idx) {
           const auto& name = input.Name();
 
           bool is_graph_input = (graph_inputs.find(name) != graph_inputs.cend());
-          bool is_outer_scope_arg = std::find_if(outer_scope_node_args_.begin(), outer_scope_node_args_.end(),
-                                                 [&name](const NodeArg* value) {
-                                                   return value && value->Name() == name;
-                                                 }) != outer_scope_node_args_.end();
+          bool is_outer_scope_arg = std::find_if(outer_scope_node_args_.begin(), outer_scope_node_args_.end(), [&name](const NodeArg* value) {
+                                      return value && value->Name() == name;
+                                    }) != outer_scope_node_args_.end();
           bool is_subgraph = (parent_node_ != nullptr);
 
           // If it's a graph input or outer scope node arg, set its plan.
@@ -822,8 +807,7 @@ class PlannerImpl {
     return Status::OK();
   }
 
-  OrtMemoryInfo GetLocationForNodeInput(size_t input_index, const Node& node,
-                                        const KernelCreateInfoMap& kernel_create_info_map) {
+  OrtMemoryInfo GetLocationForNodeInput(size_t input_index, const Node& node, const KernelCreateInfoMap& kernel_create_info_map) {
     auto* p_provider = execution_providers_.Get(node);
     ORT_ENFORCE(p_provider);
 
@@ -917,7 +901,9 @@ class PlannerImpl {
 
           const auto& local_subgraph_kernel_create_info_map_key =
               NestedSubgraphInfoDetails::ComposeNestedSubgraphInfoKeyHelper(subgraph_kernel_create_info_map_key_base,
-                                                                            graph_depth, node.Index(), name_to_subgraph.first);
+                                                                            graph_depth,
+                                                                            node.Index(),
+                                                                            name_to_subgraph.first);
 
           auto specific_subgraph_kernel_create_info_map = subgraphs_kernel_create_info_maps_.find(local_subgraph_kernel_create_info_map_key);
           ORT_ENFORCE(specific_subgraph_kernel_create_info_map != subgraphs_kernel_create_info_maps_.end());
@@ -951,8 +937,7 @@ class PlannerImpl {
     // over to the appropriate device before the subgraphs are executed.
     std::vector<std::vector<OrtMemoryInfo>> locations(plan_.allocation_plan.size());
 
-    GeneratePlanForWeightsHelper(graph_viewer_, graph_viewer_.GetAllInitializedTensors(),
-                                 kernel_create_info_map_, "", 0, locations);
+    GeneratePlanForWeightsHelper(graph_viewer_, graph_viewer_.GetAllInitializedTensors(), kernel_create_info_map_, "", 0, locations);
 
     for (size_t i = 0; i != locations.size(); ++i) {
       const std::vector<OrtMemoryInfo>& loc = locations[i];
@@ -1717,8 +1702,7 @@ class PlannerImpl {
   }
 
 #ifndef ORT_ENABLE_STREAM
-  void PartitionIntoStreams(const logging::Logger& /*logger*/, const ExecutionProviders& /*execution_providers*/,
-                            const PathString& /*partition_config_file*/) {
+  void PartitionIntoStreams(const logging::Logger& /*logger*/, const ExecutionProviders& /*execution_providers*/, const PathString& /*partition_config_file*/) {
     stream_nodes_.push_back({});
     node_stream_map_.resize(SafeInt<size_t>(graph_viewer_.MaxNodeIndex()) + 1);
     for (auto node_index : graph_viewer_.GetNodesInTopologicalOrder()) {
@@ -1750,8 +1734,7 @@ class PlannerImpl {
 #else
 
   void
-  PartitionIntoStreams(const logging::Logger& logger, const ExecutionProviders& execution_providers,
-                       const PathString& partition_config_file) {
+  PartitionIntoStreams(const logging::Logger& logger, const ExecutionProviders& execution_providers, const PathString& partition_config_file) {
     auto partitioner = IGraphPartitioner::CreateGraphPartitioner(logger, partition_config_file);
     auto status = partitioner->PartitionGraph(graph_viewer_, execution_providers, stream_nodes_, context_->GetExecutionOrder());
     ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
@@ -1919,7 +1902,8 @@ class PlannerImpl {
         if (wait_it != node_to_wait.end()) {
           for (auto wait_param : wait_it->second) {
             execution_plan[i]->steps_.emplace_back(std::make_unique<WaitOnEPStep>(wait_param.second,
-                                                                                  node_to_notification[wait_param.first], node_index));
+                                                                                  node_to_notification[wait_param.first],
+                                                                                  node_index));
           }
         }
 
@@ -2166,10 +2150,7 @@ Status SequentialPlanner::CreatePlan(
   // allocate/reset here so we know it's clean
   plan.emplace();
 
-  PlannerImpl planner(parent_node, graph_viewer, outer_scope_node_args, providers,
-                      kernel_create_info_map, subgraphs_kernel_create_info_maps,
-                      outer_scope_node_arg_to_location_map,
-                      ort_value_name_idx_map, context, *plan);
+  PlannerImpl planner(parent_node, graph_viewer, outer_scope_node_args, providers, kernel_create_info_map, subgraphs_kernel_create_info_maps, outer_scope_node_arg_to_location_map, ort_value_name_idx_map, context, *plan);
 
   return planner.CreatePlan(
 #ifdef ORT_ENABLE_STREAM

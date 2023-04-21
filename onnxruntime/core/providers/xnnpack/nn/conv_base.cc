@@ -18,10 +18,12 @@ namespace xnnpack {
 
 namespace {
 Status CreateXnnpackKernel(const ConvAttributes* conv_attrs_ptr,
-                           int64_t C, int64_t M,
+                           int64_t C,
+                           int64_t M,
                            const TensorShapeVector& kernel_shape,
                            const std::optional<std::pair<float, float>>& clip_min_max,
-                           const Tensor& Weight, const Tensor* Bias,
+                           const Tensor& Weight,
+                           const Tensor* Bias,
                            XnnpackOperator& op_uptr,
                            xnn_caches_t caches_t,
                            const OpQuantParam& quant_param,
@@ -66,15 +68,14 @@ Status CreateXnnpackKernel(const ConvAttributes* conv_attrs_ptr,
     auto create_func = is_transpose ? xnn_create_deconvolution2d_nhwc_f32
                                     : xnn_create_convolution2d_nhwc_f32;
     status = create_func(
-        input_padding_top, input_padding_right, input_padding_bottom, input_padding_left,
-        kernel_height, kernel_width,
-        subsampling_height, subsampling_width,
-        dilation_height, dilation_width,
-        group_count,
-        group_input_channels, group_output_channels,  // groups, group_input_channels, group_output_channels
-        C, M,                                         // input channel stride, output channel stride
-        Weight.Data<float>(), B_data,
-        foutput_min, foutput_max, flags,
+        input_padding_top, input_padding_right, input_padding_bottom, input_padding_left, kernel_height, kernel_width, subsampling_height, subsampling_width, dilation_height, dilation_width, group_count, group_input_channels, group_output_channels,  // groups, group_input_channels, group_output_channels
+        C,
+        M,  // input channel stride, output channel stride
+        Weight.Data<float>(),
+        B_data,
+        foutput_min,
+        foutput_max,
+        flags,
         caches_t,
         &p);
   } else if (conv_type == OpComputeType::op_compute_type_qs8) {
@@ -86,21 +87,7 @@ Status CreateXnnpackKernel(const ConvAttributes* conv_attrs_ptr,
     auto create_func = is_transpose ? xnn_create_deconvolution2d_nhwc_qs8
                                     : xnn_create_convolution2d_nhwc_qs8;
     status = create_func(
-        input_padding_top, input_padding_right, input_padding_bottom, input_padding_left,
-        kernel_height, kernel_width,
-        subsampling_height, subsampling_width,
-        dilation_height, dilation_width,
-        group_count,
-        group_input_channels,
-        group_output_channels,
-        C, M,
-        quant_param[0].second, quant_param[0].first[0],
-        quant_param[1].first[0], Weight.Data<int8_t>(), B_data,
-        quant_param[2].second, quant_param[2].first[0],
-        output_min, output_max,
-        flags,
-        caches_t,
-        &p);
+        input_padding_top, input_padding_right, input_padding_bottom, input_padding_left, kernel_height, kernel_width, subsampling_height, subsampling_width, dilation_height, dilation_width, group_count, group_input_channels, group_output_channels, C, M, quant_param[0].second, quant_param[0].first[0], quant_param[1].first[0], Weight.Data<int8_t>(), B_data, quant_param[2].second, quant_param[2].first[0], output_min, output_max, flags, caches_t, &p);
   } else if (conv_type == OpComputeType::op_compute_type_qs8_per_channel) {
     auto* B_data = Bias ? Bias->Data<int32_t>() : nullptr;
     const float output_scale = quant_param[2].first[0];
@@ -108,20 +95,17 @@ Status CreateXnnpackKernel(const ConvAttributes* conv_attrs_ptr,
     const int8_t output_min = xnn_u8s8_quantize<int8_t>(foutput_min, output_scale, output_zero_point);
     const int8_t output_max = xnn_u8s8_quantize<int8_t>(foutput_max, output_scale, output_zero_point);
     status = xnn_create_convolution2d_nhwc_qc8(
-        input_padding_top, input_padding_right, input_padding_bottom, input_padding_left,
-        kernel_height, kernel_width,
-        subsampling_height, subsampling_width,
-        dilation_height, dilation_width,
-        group_count,
-        group_input_channels,
-        group_output_channels,
-        C, M,
+        input_padding_top, input_padding_right, input_padding_bottom, input_padding_left, kernel_height, kernel_width, subsampling_height, subsampling_width, dilation_height, dilation_width, group_count, group_input_channels, group_output_channels, C, M,
         // zero_point will convert to int8_t automatically
-        quant_param[0].second, quant_param[0].first[0],
+        quant_param[0].second,
+        quant_param[0].first[0],
         quant_param[1].first.data(),
-        Weight.Data<int8_t>(), B_data,
-        quant_param[2].second, quant_param[2].first[0],
-        output_min, output_max,
+        Weight.Data<int8_t>(),
+        B_data,
+        quant_param[2].second,
+        quant_param[2].first[0],
+        output_min,
+        output_max,
         flags,
         caches_t,
         &p);
@@ -134,28 +118,10 @@ Status CreateXnnpackKernel(const ConvAttributes* conv_attrs_ptr,
     auto create_func = is_transpose ? xnn_create_deconvolution2d_nhwc_qu8
                                     : xnn_create_convolution2d_nhwc_qu8;
     status = create_func(
-        input_padding_top, input_padding_right, input_padding_bottom, input_padding_left,
-        kernel_height, kernel_width,
-        subsampling_height, subsampling_width,
-        dilation_height, dilation_width,
-        group_count,
-        group_input_channels,
-        group_output_channels,
-        C, M,
-        quant_param[0].second, quant_param[0].first[0],
-        quant_param[1].second, quant_param[1].first[0],
-        Weight.Data<uint8_t>(), B_data,
-        quant_param[2].second, quant_param[2].first[0],
-        output_min, output_max,
-        flags,
-        caches_t,
-        &p);
+        input_padding_top, input_padding_right, input_padding_bottom, input_padding_left, kernel_height, kernel_width, subsampling_height, subsampling_width, dilation_height, dilation_width, group_count, group_input_channels, group_output_channels, C, M, quant_param[0].second, quant_param[0].first[0], quant_param[1].second, quant_param[1].first[0], Weight.Data<uint8_t>(), B_data, quant_param[2].second, quant_param[2].first[0], output_min, output_max, flags, caches_t, &p);
   }
   if (status != xnn_status_success) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                           "Failed to create xnnpack kernel. xnn_create_",
-                           is_transpose ? "deconvolution2d" : "convolution2d", "_nhwc_",
-                           OpTypeToString(conv_type), " returned ", status);
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to create xnnpack kernel. xnn_create_", is_transpose ? "deconvolution2d" : "convolution2d", "_nhwc_", OpTypeToString(conv_type), " returned ", status);
   }
   op_uptr.reset(p);
   return Status::OK();
@@ -456,18 +422,14 @@ ConvBase::ConvBase(const OpKernelInfo& info, bool is_transpose)
     }
 
     conv_transpose_attrs_.ComputePadsAndOutputShape(
-        input_shape, M_, kernel_shape_,
-        conv_transpose_attrs_.strides, conv_transpose_attrs_.dilations,
-        conv_transpose_attrs_.output_padding, 1, &conv_transpose_attrs_.pads, &output_shape_);
+        input_shape, M_, kernel_shape_, conv_transpose_attrs_.strides, conv_transpose_attrs_.dilations, conv_transpose_attrs_.output_padding, 1, &conv_transpose_attrs_.pads, &output_shape_);
     output_shape_[1] = output_shape_[2];
     output_shape_[2] = output_shape_[3];
     output_shape_[3] = M_;
   } else {
     ConvAttributes::ConvPadVector pads(conv_attrs_.pads);
     output_shape_.push_back(1);
-    ORT_THROW_IF_ERROR(conv_attrs_.InferPadsAndOutputShape(input_shape, kernel_shape_,
-                                                           conv_attrs_.strides, conv_attrs_.dilations, pads,
-                                                           output_shape_));
+    ORT_THROW_IF_ERROR(conv_attrs_.InferPadsAndOutputShape(input_shape, kernel_shape_, conv_attrs_.strides, conv_attrs_.dilations, pads, output_shape_));
 
     output_shape_.push_back(M_);
   }
@@ -475,14 +437,15 @@ ConvBase::ConvBase(const OpKernelInfo& info, bool is_transpose)
 }
 
 Status ConvBase::CreateKernel() {
-  auto ret = CreateXnnpackKernel(&convbase_attrs_ref_, C_, M_, kernel_shape_, clip_min_max_, packed_w_,
-                                 B_, op0_,
+  auto ret = CreateXnnpackKernel(&convbase_attrs_ref_, C_, M_, kernel_shape_, clip_min_max_, packed_w_, B_, op0_,
 #ifdef XNN_CACHE_ENABLE
                                  &xnn_caches_,
 #else
                                  0,
 #endif
-                                 quant_param_, conv_type_, is_transpose_);
+                                 quant_param_,
+                                 conv_type_,
+                                 is_transpose_);
   return ret;
 }
 }  // namespace xnnpack

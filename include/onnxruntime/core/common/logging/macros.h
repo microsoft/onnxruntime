@@ -215,13 +215,11 @@
 #define LOGF_DEFAULT_IF(boolean_expression, severity, format_str, ...) \
   LOGF_DEFAULT_CATEGORY_IF(boolean_expression, severity, ::onnxruntime::logging::Category::onnxruntime, format_str, ##__VA_ARGS__)
 
-#define LOGF_USER_IF(boolean_expression, logger, severity, format_str, ...)                                  \
-  LOGF_USER_CATEGORY_IF(boolean_expression, logger, severity, ::onnxruntime::logging::Category::onnxruntime, \
-                        format_str, ##__VA_ARGS__)
+#define LOGF_USER_IF(boolean_expression, logger, severity, format_str, ...) \
+  LOGF_USER_CATEGORY_IF(boolean_expression, logger, severity, ::onnxruntime::logging::Category::onnxruntime, format_str, ##__VA_ARGS__)
 
-#define LOGF_USER_DEFAULT_IF(boolean_expression, severity, format_str, ...)                                  \
-  LOGF_USER_DEFAULT_CATEGORY_IF(boolean_expression, severity, ::onnxruntime::logging::Category::onnxruntime, \
-                                format_str, ##__VA_ARGS__)
+#define LOGF_USER_DEFAULT_IF(boolean_expression, severity, format_str, ...) \
+  LOGF_USER_DEFAULT_CATEGORY_IF(boolean_expression, severity, ::onnxruntime::logging::Category::onnxruntime, format_str, ##__VA_ARGS__)
 
 /*
   Debug verbose logging of caller provided level.

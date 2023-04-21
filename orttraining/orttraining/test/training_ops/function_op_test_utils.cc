@@ -118,8 +118,10 @@ void CompareResults(const onnxruntime::training::OpDef& op_def,
                     const std::vector<AttributeProto>& attributes,
                     int opset_version) {
   auto inline_tester = CreateOpTester<OpFunctionTester>(op_def,
-                                                        input_data, input_dims,
-                                                        CreateEmpty2DArray(output_dims), output_dims,
+                                                        input_data,
+                                                        input_dims,
+                                                        CreateEmpty2DArray(output_dims),
+                                                        output_dims,
                                                         attributes,
                                                         opset_version);
   auto run_results = inline_tester->RunFunctionBodyGraphOnCPU();
@@ -127,8 +129,10 @@ void CompareResults(const onnxruntime::training::OpDef& op_def,
   // Use run_results got from inline testing as expected data,
   // test against all registered kernels.
   auto test = CreateOpTester<OpTester>(op_def,
-                                       input_data, input_dims,
-                                       run_results, output_dims,
+                                       input_data,
+                                       input_dims,
+                                       run_results,
+                                       output_dims,
                                        attributes,
                                        opset_version);
   test->Run(OpTester::ExpectResult::kExpectSuccess, "", {});

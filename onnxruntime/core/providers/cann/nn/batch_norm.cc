@@ -85,7 +85,8 @@ Status BatchNorm<T>::ComputeInternal(OpKernelContext* ctx) const {
   ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                         \
       BatchNormalization,                                          \
       kOnnxDomain,                                                 \
-      7, 8,                                                        \
+      7,                                                           \
+      8,                                                           \
       T,                                                           \
       kCannExecutionProvider,                                      \
       (*KernelDefBuilder::Create())                                \
@@ -94,7 +95,8 @@ Status BatchNorm<T>::ComputeInternal(OpKernelContext* ctx) const {
   ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                         \
       BatchNormalization,                                          \
       kOnnxDomain,                                                 \
-      9, 13,                                                       \
+      9,                                                           \
+      13,                                                          \
       T,                                                           \
       kCannExecutionProvider,                                      \
       (*KernelDefBuilder::Create())                                \
@@ -103,7 +105,8 @@ Status BatchNorm<T>::ComputeInternal(OpKernelContext* ctx) const {
   ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                         \
       BatchNormalization,                                          \
       kOnnxDomain,                                                 \
-      14, 14,                                                      \
+      14,                                                          \
+      14,                                                          \
       T,                                                           \
       kCannExecutionProvider,                                      \
       (*KernelDefBuilder::Create())                                \

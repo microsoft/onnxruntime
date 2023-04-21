@@ -121,37 +121,23 @@ void DnnlConvGrad::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
   // Reproduce the forward convolution pd.
   dnnl::convolution_forward::primitive_desc conv_forward_pd;
   if (db_required) {
-    conv_forward_pd = dnnl::convolution_forward::primitive_desc(dnnl_engine, dnnl::prop_kind::forward_training,
-                                                                dnnl::algorithm::convolution_direct,
-                                                                fwd_x_md, w_md, fwd_b_md, fwd_y_md,
-                                                                strides, dilations, padding_left, padding_right);
+    conv_forward_pd = dnnl::convolution_forward::primitive_desc(dnnl_engine, dnnl::prop_kind::forward_training, dnnl::algorithm::convolution_direct, fwd_x_md, w_md, fwd_b_md, fwd_y_md, strides, dilations, padding_left, padding_right);
   } else {
-    conv_forward_pd = dnnl::convolution_forward::primitive_desc(dnnl_engine, dnnl::prop_kind::forward_training,
-                                                                dnnl::algorithm::convolution_direct,
-                                                                fwd_x_md, w_md, fwd_y_md,
-                                                                strides, dilations, padding_left, padding_right);
+    conv_forward_pd = dnnl::convolution_forward::primitive_desc(dnnl_engine, dnnl::prop_kind::forward_training, dnnl::algorithm::convolution_direct, fwd_x_md, w_md, fwd_y_md, strides, dilations, padding_left, padding_right);
   }
 
   // Create the convolution backward data primitive desc
   auto conv_backward_data_pd =
-      dnnl::convolution_backward_data::primitive_desc(dnnl_engine, dnnl::algorithm::convolution_direct,
-                                                      dx_md, w_md, dy_md, strides, dilations, padding_left,
-                                                      padding_right, conv_forward_pd);
+      dnnl::convolution_backward_data::primitive_desc(dnnl_engine, dnnl::algorithm::convolution_direct, dx_md, w_md, dy_md, strides, dilations, padding_left, padding_right, conv_forward_pd);
 
   // Create the convolution backward weights primitve desc
   dnnl::convolution_backward_weights::primitive_desc conv_backward_weights_pd;
   if (db_required) {
     conv_backward_weights_pd =
-        dnnl::convolution_backward_weights::primitive_desc(dnnl_engine, dnnl::algorithm::convolution_direct,
-                                                           x_md, dw_md, db_md, dy_md,
-                                                           strides, dilations, padding_left,
-                                                           padding_right, conv_forward_pd);
+        dnnl::convolution_backward_weights::primitive_desc(dnnl_engine, dnnl::algorithm::convolution_direct, x_md, dw_md, db_md, dy_md, strides, dilations, padding_left, padding_right, conv_forward_pd);
   } else {
     conv_backward_weights_pd =
-        dnnl::convolution_backward_weights::primitive_desc(dnnl_engine, dnnl::algorithm::convolution_direct,
-                                                           x_md, dw_md, dy_md,
-                                                           strides, dilations, padding_left, padding_right,
-                                                           conv_forward_pd);
+        dnnl::convolution_backward_weights::primitive_desc(dnnl_engine, dnnl::algorithm::convolution_direct, x_md, dw_md, dy_md, strides, dilations, padding_left, padding_right, conv_forward_pd);
   }
 
   // check if memory needs to be moved to GPU
@@ -171,17 +157,12 @@ void DnnlConvGrad::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
 
   if (dx_required) {
     auto conv_backward_data_op = dnnl::convolution_backward_data(conv_backward_data_pd);
-    sp.AddPrimitive(conv_backward_data_op, {{DNNL_ARG_DIFF_DST, dy_mem},
-                                            {DNNL_ARG_WEIGHTS, w_mem},
-                                            {DNNL_ARG_DIFF_SRC, dx_mem}});
+    sp.AddPrimitive(conv_backward_data_op, {{DNNL_ARG_DIFF_DST, dy_mem}, {DNNL_ARG_WEIGHTS, w_mem}, {DNNL_ARG_DIFF_SRC, dx_mem}});
   }
 
   if (dw_required || db_required) {
     auto conv_backward_weights_op = dnnl::convolution_backward_weights(conv_backward_weights_pd);
-    sp.AddPrimitive(conv_backward_weights_op, {{DNNL_ARG_DIFF_DST, dy_mem},
-                                               {DNNL_ARG_SRC, x_mem},
-                                               {DNNL_ARG_DIFF_WEIGHTS, dw_mem},
-                                               {DNNL_ARG_DIFF_BIAS, db_mem}});
+    sp.AddPrimitive(conv_backward_weights_op, {{DNNL_ARG_DIFF_DST, dy_mem}, {DNNL_ARG_SRC, x_mem}, {DNNL_ARG_DIFF_WEIGHTS, dw_mem}, {DNNL_ARG_DIFF_BIAS, db_mem}});
   }
 
   if (dx_required) {

@@ -75,8 +75,7 @@ static bool AreIOTypesEqual(Ort::ConstTypeInfo type_info, const ov::Output<ov::N
   return true;
 }
 
-static bool ValidateInputsAndOutputs(const Ort::ConstKernelInfo& kinfo, const ov::OutputVector& ov_inputs,
-                                     const ov::OutputVector& ov_outputs) {
+static bool ValidateInputsAndOutputs(const Ort::ConstKernelInfo& kinfo, const ov::OutputVector& ov_inputs, const ov::OutputVector& ov_outputs) {
   const size_t num_inputs = kinfo.GetInputCount();
   const size_t num_outputs = kinfo.GetOutputCount();
 
@@ -131,16 +130,14 @@ static ov::Tensor OrtToOpenVINOTensor(Ort::UnownedValue ort_tensor) {
   return ov::Tensor(elem_type, ov_shape, raw_data);
 }
 
-KernelOpenVINO::KernelOpenVINO(const OrtApi& /* api*/, const OrtKernelInfo* info,
-                               const std::unordered_map<std::string, std::string>& session_configs)
+KernelOpenVINO::KernelOpenVINO(const OrtApi& /* api*/, const OrtKernelInfo* info, const std::unordered_map<std::string, std::string>& session_configs)
     : weights_(nullptr) {
   Ort::ConstKernelInfo kinfo(info);
   Ort::AllocatorWithDefaultOptions allocator;
 
   this->logger_ = kinfo.GetLogger();
 
-  ORT_CXX_LOGF_NOEXCEPT(this->logger_, OrtLoggingLevel::ORT_LOGGING_LEVEL_VERBOSE,
-                        "Creating KernelOpenVINO for node %s", kinfo.GetNodeName().c_str());
+  ORT_CXX_LOGF_NOEXCEPT(this->logger_, OrtLoggingLevel::ORT_LOGGING_LEVEL_VERBOSE, "Creating KernelOpenVINO for node %s", kinfo.GetNodeName().c_str());
 
   // Extract OpenVINO .bin and .xml contents from node attributes.
   this->weights_ = kinfo.GetTensorAttribute("BIN", allocator);  // Must keep the weights memory alive for inference.
@@ -165,8 +162,7 @@ KernelOpenVINO::KernelOpenVINO(const OrtApi& /* api*/, const OrtKernelInfo* info
 
   if ((device_type_it == session_configs.end()) || device_type_it->second.empty()) {
     const char* default_dev_type = "CPU";
-    ORT_CXX_LOGF(this->logger_, OrtLoggingLevel::ORT_LOGGING_LEVEL_WARNING,
-                 "Did not provide an OpenVINO device type. Using default: %s", default_dev_type);
+    ORT_CXX_LOGF(this->logger_, OrtLoggingLevel::ORT_LOGGING_LEVEL_WARNING, "Did not provide an OpenVINO device type. Using default: %s", default_dev_type);
     this->device_type_ = default_dev_type;
   } else {
     this->device_type_ = device_type_it->second;

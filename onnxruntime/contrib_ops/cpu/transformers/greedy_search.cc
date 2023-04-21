@@ -107,8 +107,7 @@ Status GreedySearch::SetupSubgraphExecutionInfo(const SessionState& session_stat
   if (parameters_.model_type == IGenerationParameters::kModelTypeGpt) {  // GPT-2
     if (attribute_name == "decoder") {
       ORT_ENFORCE(gpt_subgraph_ == nullptr, "SetupSubgraphExecutionInfo should only be called once for each subgraph.");
-      auto res = gpt_details::CreateGptSubgraphAndUpdateParameters(node, session_state, attribute_name,
-                                                                   subgraph_session_state, parameters_);
+      auto res = gpt_details::CreateGptSubgraphAndUpdateParameters(node, session_state, attribute_name, subgraph_session_state, parameters_);
 
       auto status = res.first;
       if (!status.IsOK()) {
@@ -122,8 +121,7 @@ Status GreedySearch::SetupSubgraphExecutionInfo(const SessionState& session_stat
       // TODO (hasesh): If 'init_decoder' is present, then we update 'parameters_' again based on its subgraph (it would have been
       // updated once for the 'decoder' attribute). In future, find a way to update 'parameters' only once based on only one subgraph
       // attribute.
-      auto res = gpt_details::CreateGptSubgraphAndUpdateParameters(node, session_state, attribute_name,
-                                                                   subgraph_session_state, parameters_);
+      auto res = gpt_details::CreateGptSubgraphAndUpdateParameters(node, session_state, attribute_name, subgraph_session_state, parameters_);
 
       auto status = res.first;
       if (!status.IsOK()) {

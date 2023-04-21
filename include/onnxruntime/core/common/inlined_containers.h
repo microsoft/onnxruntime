@@ -60,16 +60,9 @@ class InlinedHashSet : public absl::flat_hash_set<T,
   using Base::Base;
 };
 
-template <typename Key, typename Value,
-          typename Allocator>
-class InlinedHashMap : public absl::flat_hash_map<Key, Value,
-                                                  absl::container_internal::hash_default_hash<Key>,
-                                                  absl::container_internal::hash_default_eq<Key>,
-                                                  Allocator> {
-  using Base = absl::flat_hash_map<Key, Value,
-                                   absl::container_internal::hash_default_hash<Key>,
-                                   absl::container_internal::hash_default_eq<Key>,
-                                   Allocator>;
+template <typename Key, typename Value, typename Allocator>
+class InlinedHashMap : public absl::flat_hash_map<Key, Value, absl::container_internal::hash_default_hash<Key>, absl::container_internal::hash_default_eq<Key>, Allocator> {
+  using Base = absl::flat_hash_map<Key, Value, absl::container_internal::hash_default_hash<Key>, absl::container_internal::hash_default_eq<Key>, Allocator>;
 
  public:
   using Base::Base;
@@ -94,14 +87,8 @@ class NodeHashSet : public absl::node_hash_set<T,
 };
 
 template <typename Key, typename Value, typename Allocator>
-class NodeHashMap : public absl::node_hash_map<Key, Value,
-                                               absl::container_internal::hash_default_hash<Key>,
-                                               absl::container_internal::hash_default_eq<Key>,
-                                               Allocator> {
-  using Base = absl::node_hash_map<Key, Value,
-                                   absl::container_internal::hash_default_hash<Key>,
-                                   absl::container_internal::hash_default_eq<Key>,
-                                   Allocator>;
+class NodeHashMap : public absl::node_hash_map<Key, Value, absl::container_internal::hash_default_hash<Key>, absl::container_internal::hash_default_eq<Key>, Allocator> {
+  using Base = absl::node_hash_map<Key, Value, absl::container_internal::hash_default_hash<Key>, absl::container_internal::hash_default_eq<Key>, Allocator>;
 
  public:
   using Base::Base;
@@ -123,16 +110,9 @@ class InlinedHashSet : public std::unordered_set<T,
   using Base::Base;
 };
 
-template <typename Key, typename Value,
-          typename Allocator>
-class InlinedHashMap : public std::unordered_map<Key, Value,
-                                                 std::hash<Key>,
-                                                 std::equal_to<Key>,
-                                                 Allocator> {
-  using Base = std::unordered_map<Key, Value,
-                                  std::hash<Key>,
-                                  std::equal_to<Key>,
-                                  Allocator>;
+template <typename Key, typename Value, typename Allocator>
+class InlinedHashMap : public std::unordered_map<Key, Value, std::hash<Key>, std::equal_to<Key>, Allocator> {
+  using Base = std::unordered_map<Key, Value, std::hash<Key>, std::equal_to<Key>, Allocator>;
 
  public:
   using Base::Base;
@@ -157,14 +137,8 @@ class NodeHashSet : public std::unordered_set<T,
 };
 
 template <typename Key, typename Value, typename Allocator>
-class NodeHashMap : public std::unordered_map<Key, Value,
-                                              std::hash<Key>,
-                                              std::equal_to<Key>,
-                                              Allocator> {
-  using Base = std::unordered_map<Key, Value,
-                                  std::hash<Key>,
-                                  std::equal_to<Key>,
-                                  Allocator>;
+class NodeHashMap : public std::unordered_map<Key, Value, std::hash<Key>, std::equal_to<Key>, Allocator> {
+  using Base = std::unordered_map<Key, Value, std::hash<Key>, std::equal_to<Key>, Allocator>;
 
  public:
   using Base::Base;

@@ -27,7 +27,8 @@ gsl::span<const OpIdentifierWithStringViews> GetLayoutTransformationRequiredOpId
  * Saves `kernel_type_str_resolver` to a byte buffer owned by `buffer` and referenced by `buffer_span`.
  */
 Status SaveKernelTypeStrResolverToBuffer(const KernelTypeStrResolver& kernel_type_str_resolver,
-                                         flatbuffers::DetachedBuffer& buffer, gsl::span<const uint8_t>& buffer_span);
+                                         flatbuffers::DetachedBuffer& buffer,
+                                         gsl::span<const uint8_t>& buffer_span);
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
 

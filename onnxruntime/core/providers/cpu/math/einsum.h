@@ -24,8 +24,7 @@ class Einsum : public OpKernel {
 
  protected:
   // Holds device specific (CPU / CUDA) compute logic
-  virtual Status DeviceCompute(OpKernelContext* context, const std::vector<const Tensor*>& inputs,
-                               AllocatorPtr allocator, concurrency::ThreadPool* tp) const;
+  virtual Status DeviceCompute(OpKernelContext* context, const std::vector<const Tensor*>& inputs, AllocatorPtr allocator, concurrency::ThreadPool* tp) const;
 
   std::string equation_;
   std::unique_ptr<EinsumEquationPreprocessor> einsum_equation_preprocessor_;

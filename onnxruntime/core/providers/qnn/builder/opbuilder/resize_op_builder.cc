@@ -55,8 +55,7 @@ class ResizeOpBuilder : public BaseOpBuilder {
    * /returns A status indicating failure or success.
    */
   template <typename QnnValType, std::size_t N>
-  Status GetQnnModeFromString(const std::array<std::string_view, N>& onnx_modes, std::string_view onnx_mode,
-                              const char* onnx_mode_label, QnnValType& qnn_mode) const ORT_MUST_USE_RESULT;
+  Status GetQnnModeFromString(const std::array<std::string_view, N>& onnx_modes, std::string_view onnx_mode, const char* onnx_mode_label, QnnValType& qnn_mode) const ORT_MUST_USE_RESULT;
 
   /**
    * Called by IsOpSupported to validate the op for non-quantized models.
@@ -129,12 +128,10 @@ class ResizeOpBuilder : public BaseOpBuilder {
   static constexpr std::array<std::string_view, 2> supported_modes = {"nearest", "linear"};
 
   // QNN values: HALF_PIXEL = 0, PYTORCH_HALF_PIXEL = 1, ALIGN_CORNERS = 2, ASYMMETRIC = 3
-  static constexpr std::array<std::string_view, 4> supported_coord_transf_modes = {"half_pixel", "pytorch_half_pixel",
-                                                                                   "align_corners", "asymmetric"};
+  static constexpr std::array<std::string_view, 4> supported_coord_transf_modes = {"half_pixel", "pytorch_half_pixel", "align_corners", "asymmetric"};
 
   // QNN values: ROUND_PREFER_FLOOR = 0, ROUND_PREFER_CEIL = 1, FLOOR = 2, CEIL = 3
-  static constexpr std::array<std::string_view, 4> supported_nearest_modes = {"round_prefer_floor", "round_prefer_ceil",
-                                                                              "floor", "ceil"};
+  static constexpr std::array<std::string_view, 4> supported_nearest_modes = {"round_prefer_floor", "round_prefer_ceil", "floor", "ceil"};
 };
 
 const OnnxAttrInfo<std::string> ResizeOpBuilder::onnx_mode_attr = {"mode", "nearest"};
@@ -147,7 +144,8 @@ const OnnxAttrInfo<int64_t> ResizeOpBuilder::onnx_exclude_outside_attr = {"exclu
 
 template <typename QnnValType, std::size_t N>
 Status ResizeOpBuilder::GetQnnModeFromString(const std::array<std::string_view, N>& onnx_modes,
-                                             std::string_view onnx_mode, const char* onnx_mode_label,
+                                             std::string_view onnx_mode,
+                                             const char* onnx_mode_label,
                                              QnnValType& qnn_mode) const {
   for (size_t i = 0; i < onnx_modes.size(); ++i) {
     if (onnx_modes[i] == onnx_mode) {
@@ -156,8 +154,7 @@ Status ResizeOpBuilder::GetQnnModeFromString(const std::array<std::string_view, 
     }
   }
 
-  return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QNN EP: Resize operator does not support ", onnx_mode_label,
-                         " ", std::string(onnx_mode));
+  return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QNN EP: Resize operator does not support ", onnx_mode_label, " ", std::string(onnx_mode));
 }
 
 // Utility function that checks if an array of strings contains a specific string.
@@ -203,12 +200,16 @@ Status ResizeOpBuilder::ValidateOp(QnnModelWrapper& qnn_model_wrapper, const Nod
   NodeAttrHelper node_helper(node_unit);
   const std::string resize_mode = GetOnnxAttr(node_helper, onnx_mode_attr);
   ORT_RETURN_IF((resize_mode != "nearest") && (resize_mode != "linear"),
-                "QNN EP: Resize doesn't support mode '", resize_mode.c_str(), "'.",
+                "QNN EP: Resize doesn't support mode '",
+                resize_mode.c_str(),
+                "'.",
                 "Only 'nearest' and 'linear' are supported.");
 
   const std::string coordinate_mode = GetOnnxAttr(node_helper, onnx_coord_transf_mode_attr);
   ORT_RETURN_IF((coordinate_mode != "half_pixel") && (coordinate_mode != "align_corners"),
-                "QNN EP: coordinate transformation mode '", coordinate_mode.c_str(), "' not supported for Resize op.",
+                "QNN EP: coordinate transformation mode '",
+                coordinate_mode.c_str(),
+                "' not supported for Resize op.",
                 "Only 'align_corners' and 'half_pixel' are supported.");
 
   // Check for a valid "nearest_mode" if the mode is "nearest".
@@ -246,7 +247,8 @@ Status ResizeOpBuilder::ValidateOp(QnnModelWrapper& qnn_model_wrapper, const Nod
 
   ONNX_NAMESPACE::DataType input_data_type = input_0.node_arg.Type();
   ORT_RETURN_IF(input_data_type != ONNX_NAMESPACE::Utils::DataTypeUtils::ToType("float"),
-                "QNN EP: Data type ", input_data_type->c_str(),
+                "QNN EP: Data type ",
+                input_data_type->c_str(),
                 " is not supported for Resize operator in CPU backend.");
 
   return Status::OK();
@@ -257,19 +259,20 @@ Status ResizeOpBuilder::ValidateQDQOp(QnnModelWrapper& qnn_model_wrapper, const 
 
   // Check mode
   const std::string interp_mode = GetOnnxAttr(node_helper, onnx_mode_attr);
-  ORT_RETURN_IF_NOT(ArrayHasString(supported_modes, interp_mode), "QNN EP: Resize does not support mode ",
-                    interp_mode.c_str());
+  ORT_RETURN_IF_NOT(ArrayHasString(supported_modes, interp_mode), "QNN EP: Resize does not support mode ", interp_mode.c_str());
 
   // Check coordinate transformation mode
   const std::string transformation_mode = GetOnnxAttr(node_helper, onnx_coord_transf_mode_attr);
   ORT_RETURN_IF_NOT(ArrayHasString(supported_coord_transf_modes, transformation_mode),
-                    "QNN EP: Resize does not support coordinate_transformation_mode ", transformation_mode.c_str());
+                    "QNN EP: Resize does not support coordinate_transformation_mode ",
+                    transformation_mode.c_str());
 
   // Check nearest mode
   if (interp_mode == "nearest") {
     const std::string nearest_mode = GetOnnxAttr(node_helper, onnx_nearest_mode_attr);
     ORT_RETURN_IF_NOT(ArrayHasString(supported_nearest_modes, nearest_mode),
-                      "QNN EP: Resize does not support nearest_mode ", nearest_mode.c_str());
+                      "QNN EP: Resize does not support nearest_mode ",
+                      nearest_mode.c_str());
   }
 
   // Check that input shape has at least a rank of 3.
@@ -345,10 +348,8 @@ Status ResizeOpBuilder::ProcessOpAttrsAndOutputs(QnnModelWrapper& qnn_model_wrap
   } else if ("half_pixel" == coordinate_mode) {
     qnn_half_pixel.bool8Value = static_cast<uint8_t>(1);
   }
-  QnnParamWrapper qnn_align_corners_param(node_unit.Index(), node_unit.Name(),
-                                          qnn_def::align_corners, qnn_align_corners);
-  QnnParamWrapper qnn_half_pixel_param(node_unit.Index(), node_unit.Name(),
-                                       qnn_def::half_pixel_centers, qnn_half_pixel);
+  QnnParamWrapper qnn_align_corners_param(node_unit.Index(), node_unit.Name(), qnn_def::align_corners, qnn_align_corners);
+  QnnParamWrapper qnn_half_pixel_param(node_unit.Index(), node_unit.Name(), qnn_def::half_pixel_centers, qnn_half_pixel);
 
   std::vector<std::string> param_tensor_names;
   param_tensor_names.push_back(qnn_align_corners_param.GetParamTensorName());
@@ -406,8 +407,7 @@ Status ResizeOpBuilder::ProcessQDQOpAttrsAndOutputs(QnnModelWrapper& qnn_model_w
     qnn_exclude_outside.dataType = QNN_DATATYPE_BOOL_8;
     qnn_exclude_outside.bool8Value = static_cast<uint8_t>(GetOnnxAttr(node_helper, onnx_exclude_outside_attr) != 0);
 
-    QnnParamWrapper qnn_exclude_outside_param(node_unit.Index(), node_unit.Name(), qnn_def::exclude_outside,
-                                              qnn_exclude_outside);
+    QnnParamWrapper qnn_exclude_outside_param(node_unit.Index(), node_unit.Name(), qnn_def::exclude_outside, qnn_exclude_outside);
     param_tensor_names.push_back(qnn_exclude_outside_param.GetParamTensorName());
     qnn_model_wrapper.AddParamWrapper(std::move(qnn_exclude_outside_param));
   }
@@ -417,11 +417,9 @@ Status ResizeOpBuilder::ProcessQDQOpAttrsAndOutputs(QnnModelWrapper& qnn_model_w
     const std::string transformation_mode = GetOnnxAttr(node_helper, onnx_coord_transf_mode_attr);
     Qnn_Scalar_t qnn_transformation_mode = QNN_SCALAR_INIT;
     qnn_transformation_mode.dataType = QNN_DATATYPE_UINT_32;
-    ORT_RETURN_IF_ERROR(GetQnnModeFromString(supported_coord_transf_modes, transformation_mode,
-                                             "coordinate_transformation_mode", qnn_transformation_mode.uint32Value));
+    ORT_RETURN_IF_ERROR(GetQnnModeFromString(supported_coord_transf_modes, transformation_mode, "coordinate_transformation_mode", qnn_transformation_mode.uint32Value));
 
-    QnnParamWrapper qnn_transformation_mode_param(node_unit.Index(), node_unit.Name(), qnn_def::transformation_mode,
-                                                  qnn_transformation_mode);
+    QnnParamWrapper qnn_transformation_mode_param(node_unit.Index(), node_unit.Name(), qnn_def::transformation_mode, qnn_transformation_mode);
     param_tensor_names.push_back(qnn_transformation_mode_param.GetParamTensorName());
     qnn_model_wrapper.AddParamWrapper(std::move(qnn_transformation_mode_param));
   }
@@ -433,8 +431,7 @@ Status ResizeOpBuilder::ProcessQDQOpAttrsAndOutputs(QnnModelWrapper& qnn_model_w
     qnn_interp_mode.dataType = QNN_DATATYPE_UINT_32;
     ORT_RETURN_IF_ERROR(GetQnnModeFromString(supported_modes, interp_mode, "mode", qnn_interp_mode.uint32Value));
 
-    QnnParamWrapper qnn_interp_mode_param(node_unit.Index(), node_unit.Name(), qnn_def::interpolation_mode,
-                                          qnn_interp_mode);
+    QnnParamWrapper qnn_interp_mode_param(node_unit.Index(), node_unit.Name(), qnn_def::interpolation_mode, qnn_interp_mode);
     param_tensor_names.push_back(qnn_interp_mode_param.GetParamTensorName());
     qnn_model_wrapper.AddParamWrapper(std::move(qnn_interp_mode_param));
 
@@ -443,18 +440,15 @@ Status ResizeOpBuilder::ProcessQDQOpAttrsAndOutputs(QnnModelWrapper& qnn_model_w
       const std::string nearest_mode = GetOnnxAttr(node_helper, onnx_nearest_mode_attr);
       Qnn_Scalar_t qnn_nearest_mode = QNN_SCALAR_INIT;
       qnn_nearest_mode.dataType = QNN_DATATYPE_UINT_32;
-      ORT_RETURN_IF_ERROR(GetQnnModeFromString(supported_nearest_modes, nearest_mode, "nearest_mode",
-                                               qnn_nearest_mode.uint32Value));
+      ORT_RETURN_IF_ERROR(GetQnnModeFromString(supported_nearest_modes, nearest_mode, "nearest_mode", qnn_nearest_mode.uint32Value));
 
-      QnnParamWrapper qnn_nearest_mode_param(node_unit.Index(), node_unit.Name(), qnn_def::nearest_mode,
-                                             qnn_nearest_mode);
+      QnnParamWrapper qnn_nearest_mode_param(node_unit.Index(), node_unit.Name(), qnn_def::nearest_mode, qnn_nearest_mode);
       param_tensor_names.push_back(qnn_nearest_mode_param.GetParamTensorName());
       qnn_model_wrapper.AddParamWrapper(std::move(qnn_nearest_mode_param));
     }
   }
 
-  return ProcessOutputs(qnn_model_wrapper, node_unit, std::move(input_names), std::move(param_tensor_names),
-                        logger, true, do_op_validation);
+  return ProcessOutputs(qnn_model_wrapper, node_unit, std::move(input_names), std::move(param_tensor_names), logger, true, do_op_validation);
 }
 
 void CreateResizeOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {

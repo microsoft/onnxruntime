@@ -17,8 +17,7 @@ namespace coreml {
 // Shared functions
 
 // TODO, move this to shared_library
-bool HasExternalInitializer(const InitializedTensorSet& initializers, const Node& node,
-                            const logging::Logger& logger) {
+bool HasExternalInitializer(const InitializedTensorSet& initializers, const Node& node, const logging::Logger& logger) {
   for (const auto* node_arg : node.InputDefs()) {
     const auto& input_name(node_arg->Name());
     const auto initializer_it = initializers.find(input_name);
@@ -40,8 +39,7 @@ bool HasExternalInitializer(const InitializedTensorSet& initializers, const Node
 
 // Add operator related
 #ifdef __APPLE__
-Status BaseOpBuilder::AddToModelBuilder(ModelBuilder& model_builder, const Node& node,
-                                        const logging::Logger& logger) const {
+Status BaseOpBuilder::AddToModelBuilder(ModelBuilder& model_builder, const Node& node, const logging::Logger& logger) const {
   OpBuilderInputParams input_params(model_builder.GetGraphViewer());
   ORT_RETURN_IF_NOT(
       IsOpSupported(node, input_params, logger),
@@ -75,8 +73,7 @@ BaseOpBuilder::CreateNNLayer(const std::string& layer_name) {
 
 // Operator support related
 
-bool BaseOpBuilder::IsOpSupported(const Node& node, const OpBuilderInputParams& input_params,
-                                  const logging::Logger& logger) const {
+bool BaseOpBuilder::IsOpSupported(const Node& node, const OpBuilderInputParams& input_params, const logging::Logger& logger) const {
   if (!HasSupportedInputs(node, logger))
     return false;
 

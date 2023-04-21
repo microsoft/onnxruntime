@@ -70,8 +70,7 @@ training::TrainingSession::TrainingConfiguration MakeBasicTrainingConfig();
  * @return TrainingSession for this run.
  */
 std::unique_ptr<training::TrainingSession> BuildAndRunTrainingSessionWithChecks(
-    const SessionOptions& so, const PathString& forward_model_file,
-    const training::TrainingSession::TrainingConfiguration& config);
+    const SessionOptions& so, const PathString& forward_model_file, const training::TrainingSession::TrainingConfiguration& config);
 
 }  // namespace training_session_test_utils
 }  // namespace test

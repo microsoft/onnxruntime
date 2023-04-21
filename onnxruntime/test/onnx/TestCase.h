@@ -28,9 +28,7 @@ class HeapBuffer;
 // One test case can contain multiple test data(input/output pairs)
 class ITestCase {
  public:
-  virtual void LoadTestData(size_t id, onnxruntime::test::HeapBuffer& b,
-                            std::unordered_map<std::string, Ort::Value>& name_data_map,
-                            bool is_input) const = 0;
+  virtual void LoadTestData(size_t id, onnxruntime::test::HeapBuffer& b, std::unordered_map<std::string, Ort::Value>& name_data_map, bool is_input) const = 0;
   virtual const PATH_CHAR_TYPE* GetModelUrl() const = 0;
   virtual const std::string& GetNodeName() const = 0;
   virtual const ONNX_NAMESPACE::ValueInfoProto* GetInputInfoFromModel(size_t i) const = 0;
@@ -87,9 +85,7 @@ class TestTolerances {
  public:
   typedef std::unordered_map<std::string, double> Map;
   TestTolerances(
-      double absolute_default, double relative_default,
-      const Map& absolute_overrides,
-      const Map& relative_overrides);
+      double absolute_default, double relative_default, const Map& absolute_overrides, const Map& relative_overrides);
   TestTolerances() = delete;
   double absolute(const std::string& test_name) const;
   double relative(const std::string& test_name) const;

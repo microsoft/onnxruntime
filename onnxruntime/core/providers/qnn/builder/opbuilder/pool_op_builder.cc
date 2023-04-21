@@ -33,11 +33,7 @@ class PoolOpBuilder : public BaseOpBuilder {
                                      bool do_op_validation) const override ORT_MUST_USE_RESULT;
 
  private:
-  Status SetCommonPoolParams(const NodeAttrHelper& node_helper, std::vector<uint32_t>& filter_size,
-                             std::vector<uint32_t>& pad_amount, std::vector<uint32_t>& stride,
-                             int32_t& ceil_mode,
-                             std::vector<uint32_t>&& input_shape,
-                             std::vector<uint32_t>&& output_shape) const;
+  Status SetCommonPoolParams(const NodeAttrHelper& node_helper, std::vector<uint32_t>& filter_size, std::vector<uint32_t>& pad_amount, std::vector<uint32_t>& stride, int32_t& ceil_mode, std::vector<uint32_t>&& input_shape, std::vector<uint32_t>&& output_shape) const;
 };
 
 // Pool ops are sensitive with data layout, no special validation so far
@@ -78,7 +74,8 @@ Status PoolOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
   if (node_unit.OpType() == "MaxPool" || node_unit.OpType() == "AveragePool") {
     auto auto_pad = node_helper.Get("auto_pad", std::string("NOTSET"));
     ORT_RETURN_IF(auto_pad != "NOTSET" && auto_pad != "SAME_LOWER" && auto_pad != "SAME_UPPER",
-                  "QNN Pool operators do not support 'auto_pad' value: ", auto_pad.c_str());
+                  "QNN Pool operators do not support 'auto_pad' value: ",
+                  auto_pad.c_str());
   }
 
   return Status::OK();
@@ -86,7 +83,8 @@ Status PoolOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
 
 Status PoolOpBuilder::SetCommonPoolParams(const NodeAttrHelper& node_helper,
                                           std::vector<uint32_t>& filter_size,
-                                          std::vector<uint32_t>& pad_amount, std::vector<uint32_t>& stride,
+                                          std::vector<uint32_t>& pad_amount,
+                                          std::vector<uint32_t>& stride,
                                           int32_t& ceil_mode,
                                           std::vector<uint32_t>&& input_shape,
                                           std::vector<uint32_t>&& output_shape) const {
@@ -94,20 +92,19 @@ Status PoolOpBuilder::SetCommonPoolParams(const NodeAttrHelper& node_helper,
   ORT_RETURN_IF_NOT(kernel_shape.size() == 2, "QNN only support kernel_shape with shape[2].");
   filter_size.clear();
   filter_size.resize(kernel_shape.size());
-  std::transform(kernel_shape.begin(), kernel_shape.end(), filter_size.begin(),
-                 [](int32_t item) { return (uint32_t)item; });
+  std::transform(kernel_shape.begin(), kernel_shape.end(), filter_size.begin(), [](int32_t item) { return (uint32_t)item; });
 
   auto strides = node_helper.Get("strides", std::vector<int32_t>{1, 1});
   ORT_RETURN_IF_NOT(strides.size() == 2, "QNN only support strides with shape[2].");
   stride.clear();
   stride.resize(strides.size());
-  std::transform(strides.begin(), strides.end(), stride.begin(),
-                 [](int32_t item) { return (uint32_t)item; });
+  std::transform(strides.begin(), strides.end(), stride.begin(), [](int32_t item) { return (uint32_t)item; });
 
   std::vector<int32_t> pads = {0, 0, 0, 0};
   auto auto_pad = node_helper.Get("auto_pad", std::string("NOTSET"));
   ORT_RETURN_IF(auto_pad != "NOTSET" && auto_pad != "SAME_LOWER" && auto_pad != "SAME_UPPER",
-                "QNN Pool operators do not support 'auto_pad' value: ", auto_pad.c_str());
+                "QNN Pool operators do not support 'auto_pad' value: ",
+                auto_pad.c_str());
 
   if (auto_pad.compare("NOTSET") != 0) {
     auto dilation_values = node_helper.Get("dilations", std::vector<int32_t>{1, 1});
@@ -132,8 +129,7 @@ Status PoolOpBuilder::SetCommonPoolParams(const NodeAttrHelper& node_helper,
   ReArranagePads(pads);
   pad_amount.clear();
   pad_amount.resize(pads.size());
-  std::transform(pads.begin(), pads.end(), pad_amount.begin(),
-                 [](int32_t item) { return (uint32_t)item; });
+  std::transform(pads.begin(), pads.end(), pad_amount.begin(), [](int32_t item) { return (uint32_t)item; });
   ceil_mode = node_helper.Get("ceil_mode", ceil_mode);
   return Status::OK();
 }  // namespace qnn
@@ -165,8 +161,7 @@ Status PoolOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
     std::vector<uint32_t> output_shape;
     ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(outputs[0].node_arg, output_shape), "Cannot get shape");
 
-    ORT_RETURN_IF_ERROR(SetCommonPoolParams(node_helper, filter_size, pad_amount, stride, ceil_mode,
-                                            std::move(input_shape), std::move(output_shape)));
+    ORT_RETURN_IF_ERROR(SetCommonPoolParams(node_helper, filter_size, pad_amount, stride, ceil_mode, std::move(input_shape), std::move(output_shape)));
   }
 
   std::vector<std::string> param_tensor_names;
@@ -226,10 +221,7 @@ Status PoolOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
     qnn_model_wrapper.AddParamWrapper(std::move(count_pad_for_edges_param));
   }
 
-  ORT_RETURN_IF_ERROR(ProcessOutputs(qnn_model_wrapper, node_unit,
-                                     std::move(input_names),
-                                     std::move(param_tensor_names),
-                                     logger, is_quantized_model, do_op_validation));
+  ORT_RETURN_IF_ERROR(ProcessOutputs(qnn_model_wrapper, node_unit, std::move(input_names), std::move(param_tensor_names), logger, is_quantized_model, do_op_validation));
 
   return Status::OK();
 }

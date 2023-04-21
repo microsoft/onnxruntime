@@ -30,19 +30,14 @@ TEST(EndianTest, SwapByteOrderCopy) {
   {
     SwapByteOrderCopy(3, gsl::make_span(src), gsl::make_span(result));
     const auto expected = std::vector<unsigned char>{
-        'c', 'b', 'a',
-        'f', 'e', 'd',
-        'i', 'h', 'g',
-        'l', 'k', 'j'};
+        'c', 'b', 'a', 'f', 'e', 'd', 'i', 'h', 'g', 'l', 'k', 'j'};
     EXPECT_EQ(result, expected);
   }
 
   {
     SwapByteOrderCopy(4, gsl::make_span(src), gsl::make_span(result));
     const auto expected = std::vector<unsigned char>{
-        'd', 'c', 'b', 'a',
-        'h', 'g', 'f', 'e',
-        'l', 'k', 'j', 'i'};
+        'd', 'c', 'b', 'a', 'h', 'g', 'f', 'e', 'l', 'k', 'j', 'i'};
     EXPECT_EQ(result, expected);
   }
 }

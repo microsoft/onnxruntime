@@ -93,8 +93,7 @@ TEST(ParallelExecutor, TestStatusPropagation) {
     tester.AddInput<int64_t>("action", {1}, {/*success*/ 0});
     tester.AddOutput<int64_t>("action_out", {1}, {0});
     // TensorRT doesn't handle a custom op. Possibly it should, but that would be a separate PR
-    tester.Run(OpTester::ExpectResult::kExpectSuccess, {}, {kTensorrtExecutionProvider}, nullptr, nullptr,
-               ExecutionMode::ORT_PARALLEL);
+    tester.Run(OpTester::ExpectResult::kExpectSuccess, {}, {kTensorrtExecutionProvider}, nullptr, nullptr, ExecutionMode::ORT_PARALLEL);
   }
 
   {  // test failure
@@ -103,8 +102,7 @@ TEST(ParallelExecutor, TestStatusPropagation) {
 
     tester.AddInput<int64_t>("action", {1}, {/*failure*/ 1});
     tester.AddOutput<int64_t>("action_out", {1}, {0});
-    tester.Run(OpTester::ExpectResult::kExpectFailure, "Action was 1", {kTensorrtExecutionProvider}, nullptr, nullptr,
-               ExecutionMode::ORT_PARALLEL);
+    tester.Run(OpTester::ExpectResult::kExpectFailure, "Action was 1", {kTensorrtExecutionProvider}, nullptr, nullptr, ExecutionMode::ORT_PARALLEL);
   }
 
   {  // test exception
@@ -143,7 +141,6 @@ TEST_P(ParallelExecutorThreadPoolTest, TestNullInterOpThreadPool) {
   tester.Run(so, OpTester::ExpectResult::kExpectSuccess, {}, {kTensorrtExecutionProvider}, nullptr, nullptr);
 }
 
-INSTANTIATE_TEST_SUITE_P(ParallelExecutorThreadPoolTests, ParallelExecutorThreadPoolTest,
-                         testing::Values(1, 0));
+INSTANTIATE_TEST_SUITE_P(ParallelExecutorThreadPoolTests, ParallelExecutorThreadPoolTest, testing::Values(1, 0));
 }  // namespace test
 }  // namespace onnxruntime

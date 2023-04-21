@@ -12,8 +12,7 @@ namespace contrib {
 template <typename T>
 class CDist final : public OpKernel {
  private:
-  typedef void (*DistFunc)(const T* a, const T* b, T* dest, size_t ma, size_t mb, size_t n,
-                           concurrency::ThreadPool* tp);
+  typedef void (*DistFunc)(const T* a, const T* b, T* dest, size_t ma, size_t mb, size_t n, concurrency::ThreadPool* tp);
   enum class Mode { EUCLIDEAN,
                     SQEUCLIDEAN } mode_;
 

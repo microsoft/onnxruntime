@@ -74,8 +74,7 @@ static bool IsCandidateNode(const Node& node, const InlinedHashSet<std::string_v
   return false;
 }
 
-Status GeluApproximation::ApplyImpl(Graph& graph, bool& modified, int graph_level,
-                                    const logging::Logger& logger) const {
+Status GeluApproximation::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
   GraphViewer graph_viewer(graph);
   const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
 
@@ -88,8 +87,7 @@ Status GeluApproximation::ApplyImpl(Graph& graph, bool& modified, int graph_leve
     ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level, logger));
 
     if (IsCandidateNode(node, GetCompatibleExecutionProviders())) {
-      Node& fastgelu = graph.AddNode(graph.GenerateNodeName("FastGelu"), "FastGelu", "Gelu approximation",
-                                     node.MutableInputDefs(), node.MutableOutputDefs(), nullptr, kMSDomain);
+      Node& fastgelu = graph.AddNode(graph.GenerateNodeName("FastGelu"), "FastGelu", "Gelu approximation", node.MutableInputDefs(), node.MutableOutputDefs(), nullptr, kMSDomain);
 
       fastgelu.SetExecutionProviderType(node.GetExecutionProviderType());
 

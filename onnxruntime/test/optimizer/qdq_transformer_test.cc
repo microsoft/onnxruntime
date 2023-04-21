@@ -273,7 +273,8 @@ TEST(QDQTransformerTests, DQ_S8_to_U8) {
                     12 /*opset_version*/,
                     0.01 /*per_sample_tolerance*/,
                     0.01 /*relative_per_sample_tolerance*/,
-                    nullptr, add_session_options);
+                    nullptr,
+                    add_session_options);
 }
 #endif  // Only for X64 with contrib ops enabled
 
@@ -656,9 +657,7 @@ void QDQTransformerGemmTests(bool has_output_q, bool has_bias, bool beta_not_one
       if (has_bias) {
         auto* dq_bias_output = builder.MakeIntermediate();
         auto* bias = builder.MakeInitializer<BiasType>({input2_shape[1]}, static_cast<BiasType>(0), static_cast<BiasType>(127));
-        builder.AddDequantizeLinearNode<BiasType>(bias, 0.00156f,
-                                                  0,
-                                                  dq_bias_output);
+        builder.AddDequantizeLinearNode<BiasType>(bias, 0.00156f, 0, dq_bias_output);
         input_args.push_back(dq_bias_output);
       }
 
@@ -841,8 +840,14 @@ TEST(QDQTransformerTests, DoubleQDQ) {
   };
 
   auto test_case_all_u8 = [&](bool succeed,
-                              uint8_t zp_1, uint8_t zp_2, uint8_t zp_3, uint8_t zp_4,
-                              float scale_1, float scale_2, float scale_3, float scale_4) {
+                              uint8_t zp_1,
+                              uint8_t zp_2,
+                              uint8_t zp_3,
+                              uint8_t zp_4,
+                              float scale_1,
+                              float scale_2,
+                              float scale_3,
+                              float scale_4) {
     TransformerTester(
         BuildDoubleQDQTestCases<uint8_t, uint8_t, uint8_t, uint8_t>(zp_1, zp_2, zp_3, zp_4, scale_1, scale_2, scale_3, scale_4),
         succeed ? expect_succeed : expect_fail,
@@ -854,8 +859,14 @@ TEST(QDQTransformerTests, DoubleQDQ) {
   };
 
   auto test_case_all_s8 = [&](bool succeed,
-                              int8_t zp_1, int8_t zp_2, int8_t zp_3, int8_t zp_4,
-                              float scale_1, float scale_2, float scale_3, float scale_4) {
+                              int8_t zp_1,
+                              int8_t zp_2,
+                              int8_t zp_3,
+                              int8_t zp_4,
+                              float scale_1,
+                              float scale_2,
+                              float scale_3,
+                              float scale_4) {
     TransformerTester(
         BuildDoubleQDQTestCases<int8_t, int8_t, int8_t, int8_t>(zp_1, zp_2, zp_3, zp_4, scale_1, scale_2, scale_3, scale_4),
         succeed ? expect_succeed : expect_fail,
@@ -874,8 +885,7 @@ TEST(QDQTransformerTests, DoubleQDQ) {
         0.01);
   };
 
-  auto test_case_2u8_2s8_failed = [&](uint8_t zp_1, uint8_t zp_2, int8_t zp_3, int8_t zp_4,
-                                      float scale_1, float scale_2, float scale_3, float scale_4) {
+  auto test_case_2u8_2s8_failed = [&](uint8_t zp_1, uint8_t zp_2, int8_t zp_3, int8_t zp_4, float scale_1, float scale_2, float scale_3, float scale_4) {
     TransformerTester(
         BuildDoubleQDQTestCases<uint8_t, uint8_t, int8_t, int8_t>(zp_1, zp_2, zp_3, zp_4, scale_1, scale_2, scale_3, scale_4),
         expect_fail,
@@ -947,7 +957,12 @@ TEST(QDQTransformerTests, Split_without_IdenticalChildrenConsolidation) {
     TransformerTester(BuildConsolidationTestCase<int8_t, int8_t>(input_shape, axis),
                       check_graph,
                       TransformerLevel::Level1,
-                      TransformerLevel::Level2, {12, 18}, {}, {}, nullptr, {},
+                      TransformerLevel::Level2,
+                      {12, 18},
+                      {},
+                      {},
+                      nullptr,
+                      {},
                       {"IdenticalChildrenConsolidation"});
   };
   test_case({6, 18, 54}, 0);
@@ -1099,9 +1114,7 @@ TEST(QDQTransformerTests, Resize_No_Fusion) {
       EXPECT_EQ(op_to_count["DequantizeLinear"], 1);
     };
 
-    TransformerTester(build_test_case, check_graph,
-                      TransformerLevel::Level1,
-                      TransformerLevel::Level2);
+    TransformerTester(build_test_case, check_graph, TransformerLevel::Level1, TransformerLevel::Level2);
   };
 
   test_case({1, 8, 64, 64}, {4}, {1, 4, 128, 128}, 1);
@@ -1153,10 +1166,7 @@ TEST(QDQTransformerTests, ResizeReshapeSqueezeUnsqueeze) {
       EXPECT_EQ(op_to_count["DequantizeLinear"], 1);
     };
 
-    TransformerTester(build_test_case, check_graph,
-                      TransformerLevel::Level1,
-                      TransformerLevel::Level2,
-                      13 /*opset_version*/);
+    TransformerTester(build_test_case, check_graph, TransformerLevel::Level1, TransformerLevel::Level2, 13 /*opset_version*/);
   };
 
   test_case({1, 2, 26, 42}, {4});
@@ -1190,9 +1200,7 @@ TEST(QDQTransformerTests, ArgMax) {
       EXPECT_EQ(op_to_count["DequantizeLinear"], 0);
     };
 
-    TransformerTester(build_test_case, check_graph,
-                      TransformerLevel::Level1,
-                      TransformerLevel::Level2,
+    TransformerTester(build_test_case, check_graph, TransformerLevel::Level1, TransformerLevel::Level2,
                       /* opset_version */ 13);
   };
 
@@ -1899,8 +1907,12 @@ TEST(QDQTransformerTests, ConvTranspose_DQForward) {
                       check_graph,
                       TransformerLevel::Level1,
                       TransformerLevel::Level2,
-                      12, 0.0, 0.0, nullptr, {},  // defaults that we're not overriding
-                      {"TransposeOptimizer"});    // disable TransposeOptimizer for simplicity
+                      12,
+                      0.0,
+                      0.0,
+                      nullptr,
+                      {},                       // defaults that we're not overriding
+                      {"TransposeOptimizer"});  // disable TransposeOptimizer for simplicity
   };
 
   test_case({1, 13, 13, 23}, {30, 23, 3, 3}, {0, 3, 1, 2});
@@ -1974,7 +1986,10 @@ TEST(QDQTransformerTests, DQForward_MutilpleSteps) {
                       TransformerLevel::Level1,
                       TransformerLevel::Level2,
                       13 /*opset_version*/,
-                      0.0, 0.0, nullptr, {},    // defaults that we're not overriding
+                      0.0,
+                      0.0,
+                      nullptr,
+                      {},                       // defaults that we're not overriding
                       {"TransposeOptimizer"});  // disable TransposeOptimizer for simplicity
   };
 
@@ -2024,12 +2039,7 @@ TEST(QDQTransformerTests, Clip) {
       EXPECT_EQ(op_to_count["DequantizeLinear"], 2);
     };
 
-    TransformerTester(build_test_case, check_clip_graph,
-                      TransformerLevel::Default,
-                      TransformerLevel::Level1,
-                      opset_version,
-                      epsilon,
-                      epsilon);
+    TransformerTester(build_test_case, check_clip_graph, TransformerLevel::Default, TransformerLevel::Level1, opset_version, epsilon, epsilon);
   };
 
   std::vector<int64_t> opsets{12, 18};
@@ -2108,8 +2118,7 @@ void QDQTransformerSoftmaxTests() {
       auto* input_arg = builder.MakeInput<float>(input_shape, -5.f, 5.f);
       auto* output_arg = builder.MakeOutput();
       // add QDQ + Softmax
-      auto* dq_output = AddQDQNodePair<InputType>(builder, input_arg, .105f,
-                                                  (std::numeric_limits<OutputType>::max() / 255 * 255) / 2);
+      auto* dq_output = AddQDQNodePair<InputType>(builder, input_arg, .105f, (std::numeric_limits<OutputType>::max() / 255 * 255) / 2);
       auto* softmax_output = builder.MakeIntermediate();
       auto& softmax_node = builder.AddNode("Softmax", {dq_output}, {softmax_output});
       softmax_node.AddAttribute("axis", axis);
@@ -2215,13 +2224,7 @@ TEST(QDQTransformerTests, QDQPropagation_QBackward) {
       }
       expected_op_types_in_order.insert(
           expected_op_types_in_order.end(),
-          {"QuantizeLinear", "DequantizeLinear",
-           "Transpose",
-           "QuantizeLinear", "DequantizeLinear",
-           "MaxPool",
-           "QuantizeLinear", "DequantizeLinear",
-           "Reshape",
-           "QuantizeLinear"});
+          {"QuantizeLinear", "DequantizeLinear", "Transpose", "QuantizeLinear", "DequantizeLinear", "MaxPool", "QuantizeLinear", "DequantizeLinear", "Reshape", "QuantizeLinear"});
 
       const auto op_types_in_order = GetNodeOpTypesInTopologicalOrder(session.GetGraph());
       EXPECT_EQ(op_types_in_order, expected_op_types_in_order);
@@ -2289,11 +2292,14 @@ TEST(QDQTransformerTests, QDQPropagation_DQForward) {
       std::vector<std::string> expected_op_types_in_order{
           "DequantizeLinear",
           "Transpose",
-          "QuantizeLinear", "DequantizeLinear",
+          "QuantizeLinear",
+          "DequantizeLinear",
           "MaxPool",
-          "QuantizeLinear", "DequantizeLinear",
+          "QuantizeLinear",
+          "DequantizeLinear",
           "Reshape",
-          "QuantizeLinear", "DequantizeLinear"};
+          "QuantizeLinear",
+          "DequantizeLinear"};
       if (add_op_boundary) {
         expected_op_types_in_order.push_back("Sign");
       }
@@ -2306,8 +2312,12 @@ TEST(QDQTransformerTests, QDQPropagation_DQForward) {
                       check_graph,
                       TransformerLevel::Default,
                       TransformerLevel::Level1,
-                      12, 0.0, 0.0, nullptr, {},  // defaults that we're not overriding
-                      {"TransposeOptimizer"});    // disable TransposeOptimizer for simplicity
+                      12,
+                      0.0,
+                      0.0,
+                      nullptr,
+                      {},                       // defaults that we're not overriding
+                      {"TransposeOptimizer"});  // disable TransposeOptimizer for simplicity
   };
 
   test_case({1, 13, 13, 23}, 4, {0, 3, 1, 2}, false, false);
@@ -2336,9 +2346,7 @@ TEST(QDQTransformerTests, QDQPropagation_StopAtOtherQDQ) {
 
     auto check_graph = [&](InferenceSessionWrapper& session) {
       const std::vector<std::string> expected_op_types_in_order{
-          "QuantizeLinear", "DequantizeLinear",
-          "Reshape",
-          "QuantizeLinear"};
+          "QuantizeLinear", "DequantizeLinear", "Reshape", "QuantizeLinear"};
       const auto op_types_in_order = GetNodeOpTypesInTopologicalOrder(session.GetGraph());
       EXPECT_EQ(op_types_in_order, expected_op_types_in_order);
     };
@@ -2372,9 +2380,7 @@ TEST(QDQTransformerTests, QDQPropagation_Q_No_Parent) {
 
     auto check_graph = [&](InferenceSessionWrapper& session) {
       const std::vector<std::string> expected_op_types_in_order{
-          "QuantizeLinear", "DequantizeLinear",
-          "Transpose",
-          "QuantizeLinear"};
+          "QuantizeLinear", "DequantizeLinear", "Transpose", "QuantizeLinear"};
       const auto op_types_in_order = GetNodeOpTypesInTopologicalOrder(session.GetGraph());
       EXPECT_EQ(op_types_in_order, expected_op_types_in_order);
     };
@@ -2409,7 +2415,8 @@ TEST(QDQTransformerTests, QDQPropagation_DQ_No_Children) {
       const std::vector<std::string> expected_op_types_in_order{
           "DequantizeLinear",
           "Transpose",
-          "QuantizeLinear", "DequantizeLinear"};
+          "QuantizeLinear",
+          "DequantizeLinear"};
       const auto op_types_in_order = GetNodeOpTypesInTopologicalOrder(session.GetGraph());
       EXPECT_EQ(op_types_in_order, expected_op_types_in_order);
     };
@@ -2454,8 +2461,12 @@ TEST(QDQTransformerTests, QDQPropagation_Per_Layer_No_Propagation) {
                       check_graph,
                       TransformerLevel::Default,
                       TransformerLevel::Level1,
-                      12, 0.0, 0.0, nullptr, {},  // defaults that we're not overriding
-                      {"TransposeOptimizer"});    // disable TransposeOptimizer for simplicity
+                      12,
+                      0.0,
+                      0.0,
+                      nullptr,
+                      {},                       // defaults that we're not overriding
+                      {"TransposeOptimizer"});  // disable TransposeOptimizer for simplicity
   };
 
   test_case({1, 13, 13, 23}, {0, 2, 3, 1});
@@ -2597,9 +2608,7 @@ TEST(QDQTransformerTests, QDQ_Selector_Test) {
 
     // Generate the indexed subgraph
     const auto compute_capability = utils::MakeComputeCapability(
-        whole_graph_viewer, nodes,
-        []() { return "sub_graph"; },
-        "Test Provider");
+        whole_graph_viewer, nodes, []() { return "sub_graph"; }, "Test Provider");
 
     const GraphViewer partial_graph_viewer(graph, *compute_capability->sub_graph);
     ASSERT_EQ(3, partial_graph_viewer.NumberOfNodes());

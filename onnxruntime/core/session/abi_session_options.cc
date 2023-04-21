@@ -29,13 +29,11 @@ onnxruntime::Status OrtSessionOptions::RegisterCustomOpsLibrary(onnxruntime::Pat
 
   ORT_RETURN_IF_ERROR(platform_env.LoadDynamicLibrary(library_name, false, &library_handle));
   if (!library_handle) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to load dynamic library ",
-                           onnxruntime::PathToUTF8String(library_name));
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to load dynamic library ", onnxruntime::PathToUTF8String(library_name));
   }
 
   OrtStatus*(ORT_API_CALL * RegisterCustomOps)(OrtSessionOptions * options, const OrtApiBase* api) = nullptr;
-  ORT_RETURN_IF_ERROR(platform_env.GetSymbolFromLibrary(library_handle, "RegisterCustomOps",
-                                                        (void**)&RegisterCustomOps));
+  ORT_RETURN_IF_ERROR(platform_env.GetSymbolFromLibrary(library_handle, "RegisterCustomOps", (void**)&RegisterCustomOps));
 
   // Call the exported RegisterCustomOps function and store the return value in a unique_ptr.
   const std::unique_ptr<OrtStatus, decltype(&OrtApis::ReleaseStatus)> status(RegisterCustomOps(this, OrtGetApiBase()),
@@ -79,8 +77,7 @@ ORT_API_STATUS_IMPL(OrtApis::CloneSessionOptions, const OrtSessionOptions* input
 }
 
 // Set execution_mode.
-ORT_API_STATUS_IMPL(OrtApis::SetSessionExecutionMode, _In_ OrtSessionOptions* options,
-                    ExecutionMode execution_mode) {
+ORT_API_STATUS_IMPL(OrtApis::SetSessionExecutionMode, _In_ OrtSessionOptions* options, ExecutionMode execution_mode) {
   switch (execution_mode) {
     case ORT_SEQUENTIAL:
     case ORT_PARALLEL:
@@ -155,8 +152,7 @@ ORT_API_STATUS_IMPL(OrtApis::SetSessionLogSeverityLevel, _In_ OrtSessionOptions*
 }
 
 // Set Graph optimization level.
-ORT_API_STATUS_IMPL(OrtApis::SetSessionGraphOptimizationLevel, _In_ OrtSessionOptions* options,
-                    GraphOptimizationLevel graph_optimization_level) {
+ORT_API_STATUS_IMPL(OrtApis::SetSessionGraphOptimizationLevel, _In_ OrtSessionOptions* options, GraphOptimizationLevel graph_optimization_level) {
   if (graph_optimization_level < 0) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "graph_optimization_level is not valid");
   }
@@ -191,15 +187,13 @@ ORT_API_STATUS_IMPL(OrtApis::SetInterOpNumThreads, _Inout_ OrtSessionOptions* op
   return nullptr;
 }
 
-ORT_API_STATUS_IMPL(OrtApis::AddFreeDimensionOverride, _Inout_ OrtSessionOptions* options,
-                    _In_ const char* dim_denotation, _In_ int64_t dim_value) {
+ORT_API_STATUS_IMPL(OrtApis::AddFreeDimensionOverride, _Inout_ OrtSessionOptions* options, _In_ const char* dim_denotation, _In_ int64_t dim_value) {
   options->value.free_dimension_overrides.push_back(
       onnxruntime::FreeDimensionOverride{dim_denotation, onnxruntime::FreeDimensionOverrideType::Denotation, dim_value});
   return nullptr;
 }
 
-ORT_API_STATUS_IMPL(OrtApis::AddFreeDimensionOverrideByName, _Inout_ OrtSessionOptions* options,
-                    _In_ const char* dim_name, _In_ int64_t dim_value) {
+ORT_API_STATUS_IMPL(OrtApis::AddFreeDimensionOverrideByName, _Inout_ OrtSessionOptions* options, _In_ const char* dim_name, _In_ int64_t dim_value) {
   options->value.free_dimension_overrides.push_back(
       onnxruntime::FreeDimensionOverride{dim_name, onnxruntime::FreeDimensionOverrideType::Name, dim_value});
   return nullptr;
@@ -210,13 +204,11 @@ ORT_API_STATUS_IMPL(OrtApis::DisablePerSessionThreads, _In_ OrtSessionOptions* o
   return nullptr;
 }
 
-ORT_API_STATUS_IMPL(OrtApis::AddSessionConfigEntry, _Inout_ OrtSessionOptions* options,
-                    _In_z_ const char* config_key, _In_z_ const char* config_value) {
+ORT_API_STATUS_IMPL(OrtApis::AddSessionConfigEntry, _Inout_ OrtSessionOptions* options, _In_z_ const char* config_key, _In_z_ const char* config_value) {
   return onnxruntime::ToOrtStatus(options->value.config_options.AddConfigEntry(config_key, config_value));
 }
 
-ORT_API_STATUS_IMPL(OrtApis::HasSessionConfigEntry, _In_ const OrtSessionOptions* options,
-                    _In_z_ const char* config_key, _Out_ int* out) {
+ORT_API_STATUS_IMPL(OrtApis::HasSessionConfigEntry, _In_ const OrtSessionOptions* options, _In_z_ const char* config_key, _Out_ int* out) {
   API_IMPL_BEGIN
   auto value_opt = options->value.config_options.GetConfigEntry(config_key);
   *out = static_cast<int>(value_opt.has_value());
@@ -224,8 +216,7 @@ ORT_API_STATUS_IMPL(OrtApis::HasSessionConfigEntry, _In_ const OrtSessionOptions
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::GetSessionConfigEntry, _In_ const OrtSessionOptions* options,
-                    _In_z_ const char* config_key, _Out_ char* config_value, _Inout_ size_t* size) {
+ORT_API_STATUS_IMPL(OrtApis::GetSessionConfigEntry, _In_ const OrtSessionOptions* options, _In_z_ const char* config_key, _Out_ char* config_value, _Inout_ size_t* size) {
   API_IMPL_BEGIN
   auto value_opt = options->value.config_options.GetConfigEntry(config_key);
 
@@ -235,15 +226,13 @@ ORT_API_STATUS_IMPL(OrtApis::GetSessionConfigEntry, _In_ const OrtSessionOptions
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, err_msg.str().c_str());
   }
 
-  auto status = CopyStringToOutputArg(*value_opt, "Output buffer is not large enough for session config entry", config_value,
-                                      size);
+  auto status = CopyStringToOutputArg(*value_opt, "Output buffer is not large enough for session config entry", config_value, size);
 
   return onnxruntime::ToOrtStatus(status);
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::AddInitializer, _Inout_ OrtSessionOptions* options, _In_z_ const char* name,
-                    _In_ const OrtValue* val) {
+ORT_API_STATUS_IMPL(OrtApis::AddInitializer, _Inout_ OrtSessionOptions* options, _In_z_ const char* name, _In_ const OrtValue* val) {
   API_IMPL_BEGIN
   auto st = options->value.AddInitializer(name, val);
   if (!st.IsOK()) {
@@ -253,9 +242,7 @@ ORT_API_STATUS_IMPL(OrtApis::AddInitializer, _Inout_ OrtSessionOptions* options,
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::AddExternalInitializers, _In_ OrtSessionOptions* options,
-                    _In_reads_(initializers_num) const char* const* initializer_names,
-                    _In_reads_(initializers_num) const OrtValue* const* initializers, size_t initializers_num) {
+ORT_API_STATUS_IMPL(OrtApis::AddExternalInitializers, _In_ OrtSessionOptions* options, _In_reads_(initializers_num) const char* const* initializer_names, _In_reads_(initializers_num) const OrtValue* const* initializers, size_t initializers_num) {
 #if !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_EXTERNAL_INITIALIZERS)
   API_IMPL_BEGIN
   onnxruntime::InlinedVector<std::string> names;

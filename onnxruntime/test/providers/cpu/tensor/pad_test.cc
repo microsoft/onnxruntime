@@ -13,17 +13,17 @@ template <typename T, int opset>
 static void RunOnnxOpsetTypedTest(
     const std::vector<int64_t>& input_dims,
     const std::vector<T>& input,
-    const std::vector<int64_t>& pads, bool pads_is_initializer,
-    T value, bool value_is_initializer,
+    const std::vector<int64_t>& pads,
+    bool pads_is_initializer,
+    T value,
+    bool value_is_initializer,
     const std::vector<int64_t>& output_dims,
     const std::vector<T>& output,
     std::string mode = "constant",
     OpTester::ExpectResult expect = OpTester::ExpectResult::kExpectSuccess,
     const std::string& error_msg = "",
     const std::unordered_set<std::string>& excluded_provider_types = {}) {
-  SCOPED_TRACE(MakeString("opset: ", opset,
-                          ", pads_is_initializer: ", pads_is_initializer,
-                          ", value_is_initializer: ", value_is_initializer));
+  SCOPED_TRACE(MakeString("opset: ", opset, ", pads_is_initializer: ", pads_is_initializer, ", value_is_initializer: ", value_is_initializer));
 
   // ONNX domain opset
   OpTester test("Pad", opset);
@@ -87,30 +87,45 @@ static void RunAllOpsetAllDomainPadTests(
     if constexpr (std::is_same_v<T, float> || std::is_same_v<T, double>) {
       RunOnnxOpsetTypedTest<T, 10>(input_dims,
                                    input,
-                                   pads, test_params.pads_is_initializer,
-                                   value, test_params.value_is_initializer,
+                                   pads,
+                                   test_params.pads_is_initializer,
+                                   value,
+                                   test_params.value_is_initializer,
                                    output_dims,
                                    output,
-                                   mode, expect, error_msg, excluded_provider_types);
+                                   mode,
+                                   expect,
+                                   error_msg,
+                                   excluded_provider_types);
     }
 
     // opset 11
     RunOnnxOpsetTypedTest<T, 11>(input_dims,
                                  input,
-                                 pads, test_params.pads_is_initializer,
-                                 value, test_params.value_is_initializer,
+                                 pads,
+                                 test_params.pads_is_initializer,
+                                 value,
+                                 test_params.value_is_initializer,
                                  output_dims,
                                  output,
-                                 mode, expect, error_msg, excluded_provider_types);
+                                 mode,
+                                 expect,
+                                 error_msg,
+                                 excluded_provider_types);
 
     // opset 13
     RunOnnxOpsetTypedTest<T, 13>(input_dims,
                                  input,
-                                 pads, test_params.pads_is_initializer,
-                                 value, test_params.value_is_initializer,
+                                 pads,
+                                 test_params.pads_is_initializer,
+                                 value,
+                                 test_params.value_is_initializer,
                                  output_dims,
                                  output,
-                                 mode, expect, error_msg, excluded_provider_types);
+                                 mode,
+                                 expect,
+                                 error_msg,
+                                 excluded_provider_types);
 
 #ifndef DISABLE_CONTRIB_OPS
     // There is only support for float type for MSDomain kernel in ORT
@@ -194,29 +209,21 @@ TYPED_TEST(PadOpTest, Pad_Edge_1D) {
 TYPED_TEST(PadOpTest, Pad_Constant_2D) {
   using T = TypeParam;
   RunAllOpsetAllDomainPadTests<T>({2, 2},
-                                  {T(11), T(21),
-                                   T(12), T(22)},
+                                  {T(11), T(21), T(12), T(22)},
                                   {1, 2, 1, 2},
                                   T(123),
                                   {4, 6},
-                                  {T(123), T(123), T(123), T(123), T(123), T(123),
-                                   T(123), T(123), T(11), T(21), T(123), T(123),
-                                   T(123), T(123), T(12), T(22), T(123), T(123),
-                                   T(123), T(123), T(123), T(123), T(123), T(123)});
+                                  {T(123), T(123), T(123), T(123), T(123), T(123), T(123), T(123), T(11), T(21), T(123), T(123), T(123), T(123), T(12), T(22), T(123), T(123), T(123), T(123), T(123), T(123), T(123), T(123)});
 }
 
 TYPED_TEST(PadOpTest, Pad_Constant_2D_negative_pads_1) {
   using T = TypeParam;
   RunAllOpsetAllDomainPadTests<T>({2, 3},
-                                  {T(11), T(21), T(31),
-                                   T(12), T(22), T(32)},
+                                  {T(11), T(21), T(31), T(12), T(22), T(32)},
                                   {1, 2, 1, -1},
                                   T(123),
                                   {4, 4},
-                                  {T(123), T(123), T(123), T(123),
-                                   T(123), T(123), T(11), T(21),
-                                   T(123), T(123), T(12), T(22),
-                                   T(123), T(123), T(123), T(123)});
+                                  {T(123), T(123), T(123), T(123), T(123), T(123), T(11), T(21), T(123), T(123), T(12), T(22), T(123), T(123), T(123), T(123)});
 }
 
 TYPED_TEST(PadOpTest, Pad_Constant_2D_negative_pads_2) {
@@ -227,8 +234,7 @@ TYPED_TEST(PadOpTest, Pad_Constant_2D_negative_pads_2) {
 
   using T = TypeParam;
   RunAllOpsetAllDomainPadTests<T>({2, 3},
-                                  {T(11), T(21), T(31),
-                                   T(12), T(22), T(32)},
+                                  {T(11), T(21), T(31), T(12), T(22), T(32)},
                                   {-1, 0, 0, 0},
                                   T(123),
                                   {1, 3},
@@ -288,192 +294,384 @@ TYPED_TEST(PadOpTest, Pad_Constant_4D_negative_pads) {
 TYPED_TEST(PadOpTest, Pad_3D_complex) {
   using T = TypeParam;
   RunAllOpsetAllDomainPadTests<T>({2, 2, 2},
-                                  {T(11), T(12),
-                                   T(21), T(22),
+                                  {T(11), T(12), T(21), T(22),
 
-                                   T(111), T(112),
-                                   T(121), T(122)},
+                                   T(111),
+                                   T(112),
+                                   T(121),
+                                   T(122)},
                                   {1, 0, 0, -1, 0, 0},
                                   T(0),
                                   {2, 2, 2},
-                                  {T(0), T(0),
-                                   T(0), T(0),
+                                  {T(0), T(0), T(0), T(0),
 
-                                   T(11), T(12),
-                                   T(21), T(22)});
+                                   T(11),
+                                   T(12),
+                                   T(21),
+                                   T(22)});
 }
 
 TYPED_TEST(PadOpTest, Pad_Edge_2D) {
   using T = TypeParam;
   RunAllOpsetAllDomainPadTests<T>({2, 3},
-                                  {T(11), T(21), T(31),
-                                   T(12), T(22), T(32)},
+                                  {T(11), T(21), T(31), T(12), T(22), T(32)},
                                   {2, 2, 2, 2},
                                   T(0),
                                   {6, 7},
-                                  {T(11), T(11), T(11), T(21), T(31), T(31), T(31),
-                                   T(11), T(11), T(11), T(21), T(31), T(31), T(31),
-                                   T(11), T(11), T(11), T(21), T(31), T(31), T(31),
-                                   T(12), T(12), T(12), T(22), T(32), T(32), T(32),
-                                   T(12), T(12), T(12), T(22), T(32), T(32), T(32),
-                                   T(12), T(12), T(12), T(22), T(32), T(32), T(32)},
+                                  {T(11), T(11), T(11), T(21), T(31), T(31), T(31), T(11), T(11), T(11), T(21), T(31), T(31), T(31), T(11), T(11), T(11), T(21), T(31), T(31), T(31), T(12), T(12), T(12), T(22), T(32), T(32), T(32), T(12), T(12), T(12), T(22), T(32), T(32), T(32), T(12), T(12), T(12), T(22), T(32), T(32), T(32)},
                                   "edge");
 }
 
 TYPED_TEST(PadOpTest, Pad_Edge_3D) {
   using T = TypeParam;
   RunAllOpsetAllDomainPadTests<T>({1, 2, 3},
-                                  {T(11), T(21), T(31),
-                                   T(12), T(22), T(32)},
+                                  {T(11), T(21), T(31), T(12), T(22), T(32)},
                                   {1, 2, 2, 1, 2, 2},
                                   T(0),
                                   {3, 6, 7},
-                                  {T(11), T(11), T(11), T(21), T(31), T(31), T(31),
-                                   T(11), T(11), T(11), T(21), T(31), T(31), T(31),
-                                   T(11), T(11), T(11), T(21), T(31), T(31), T(31),
-                                   T(12), T(12), T(12), T(22), T(32), T(32), T(32),
-                                   T(12), T(12), T(12), T(22), T(32), T(32), T(32),
-                                   T(12), T(12), T(12), T(22), T(32), T(32), T(32),
+                                  {T(11), T(11), T(11), T(21), T(31), T(31), T(31), T(11), T(11), T(11), T(21), T(31), T(31), T(31), T(11), T(11), T(11), T(21), T(31), T(31), T(31), T(12), T(12), T(12), T(22), T(32), T(32), T(32), T(12), T(12), T(12), T(22), T(32), T(32), T(32), T(12), T(12), T(12), T(22), T(32), T(32), T(32),
 
-                                   T(11), T(11), T(11), T(21), T(31), T(31), T(31),
-                                   T(11), T(11), T(11), T(21), T(31), T(31), T(31),
-                                   T(11), T(11), T(11), T(21), T(31), T(31), T(31),
-                                   T(12), T(12), T(12), T(22), T(32), T(32), T(32),
-                                   T(12), T(12), T(12), T(22), T(32), T(32), T(32),
-                                   T(12), T(12), T(12), T(22), T(32), T(32), T(32),
+                                   T(11),
+                                   T(11),
+                                   T(11),
+                                   T(21),
+                                   T(31),
+                                   T(31),
+                                   T(31),
+                                   T(11),
+                                   T(11),
+                                   T(11),
+                                   T(21),
+                                   T(31),
+                                   T(31),
+                                   T(31),
+                                   T(11),
+                                   T(11),
+                                   T(11),
+                                   T(21),
+                                   T(31),
+                                   T(31),
+                                   T(31),
+                                   T(12),
+                                   T(12),
+                                   T(12),
+                                   T(22),
+                                   T(32),
+                                   T(32),
+                                   T(32),
+                                   T(12),
+                                   T(12),
+                                   T(12),
+                                   T(22),
+                                   T(32),
+                                   T(32),
+                                   T(32),
+                                   T(12),
+                                   T(12),
+                                   T(12),
+                                   T(22),
+                                   T(32),
+                                   T(32),
+                                   T(32),
 
-                                   T(11), T(11), T(11), T(21), T(31), T(31), T(31),
-                                   T(11), T(11), T(11), T(21), T(31), T(31), T(31),
-                                   T(11), T(11), T(11), T(21), T(31), T(31), T(31),
-                                   T(12), T(12), T(12), T(22), T(32), T(32), T(32),
-                                   T(12), T(12), T(12), T(22), T(32), T(32), T(32),
-                                   T(12), T(12), T(12), T(22), T(32), T(32), T(32)},
+                                   T(11),
+                                   T(11),
+                                   T(11),
+                                   T(21),
+                                   T(31),
+                                   T(31),
+                                   T(31),
+                                   T(11),
+                                   T(11),
+                                   T(11),
+                                   T(21),
+                                   T(31),
+                                   T(31),
+                                   T(31),
+                                   T(11),
+                                   T(11),
+                                   T(11),
+                                   T(21),
+                                   T(31),
+                                   T(31),
+                                   T(31),
+                                   T(12),
+                                   T(12),
+                                   T(12),
+                                   T(22),
+                                   T(32),
+                                   T(32),
+                                   T(32),
+                                   T(12),
+                                   T(12),
+                                   T(12),
+                                   T(22),
+                                   T(32),
+                                   T(32),
+                                   T(32),
+                                   T(12),
+                                   T(12),
+                                   T(12),
+                                   T(22),
+                                   T(32),
+                                   T(32),
+                                   T(32)},
                                   "edge");
 }
 
 TYPED_TEST(PadOpTest, Pad_Reflect_2D) {
   using T = TypeParam;
   RunAllOpsetAllDomainPadTests<T>({3, 3},
-                                  {T(11), T(21), T(31),
-                                   T(12), T(22), T(32),
-                                   T(13), T(23), T(33)},
+                                  {T(11), T(21), T(31), T(12), T(22), T(32), T(13), T(23), T(33)},
                                   {2, 2, 2, 2},
                                   T(0),
                                   {7, 7},
-                                  {T(33), T(23), T(13), T(23), T(33), T(23), T(13),
-                                   T(32), T(22), T(12), T(22), T(32), T(22), T(12),
-                                   T(31), T(21), T(11), T(21), T(31), T(21), T(11),
-                                   T(32), T(22), T(12), T(22), T(32), T(22), T(12),
-                                   T(33), T(23), T(13), T(23), T(33), T(23), T(13),
-                                   T(32), T(22), T(12), T(22), T(32), T(22), T(12),
-                                   T(31), T(21), T(11), T(21), T(31), T(21), T(11)},
+                                  {T(33), T(23), T(13), T(23), T(33), T(23), T(13), T(32), T(22), T(12), T(22), T(32), T(22), T(12), T(31), T(21), T(11), T(21), T(31), T(21), T(11), T(32), T(22), T(12), T(22), T(32), T(22), T(12), T(33), T(23), T(13), T(23), T(33), T(23), T(13), T(32), T(22), T(12), T(22), T(32), T(22), T(12), T(31), T(21), T(11), T(21), T(31), T(21), T(11)},
                                   "reflect");
 }
 
 TYPED_TEST(PadOpTest, Pad_Constant_3D_Inner_No_Padding) {
   using T = TypeParam;
   RunAllOpsetAllDomainPadTests<T>({3, 2, 5},
-                                  {T(1), T(2), T(3), T(4), T(5),
-                                   T(6), T(7), T(8), T(9), T(10),
-                                   T(11), T(12), T(13), T(14), T(15),
-                                   T(16), T(17), T(18), T(19), T(20),
-                                   T(21), T(22), T(23), T(24), T(25),
-                                   T(26), T(27), T(28), T(29), T(30)},
+                                  {T(1), T(2), T(3), T(4), T(5), T(6), T(7), T(8), T(9), T(10), T(11), T(12), T(13), T(14), T(15), T(16), T(17), T(18), T(19), T(20), T(21), T(22), T(23), T(24), T(25), T(26), T(27), T(28), T(29), T(30)},
                                   {1, 1, 0, 1, 1, 0},
                                   T(31),
                                   {5, 4, 5},
-                                  {T(31), T(31), T(31), T(31), T(31),
-                                   T(31), T(31), T(31), T(31), T(31),
-                                   T(31), T(31), T(31), T(31), T(31),
-                                   T(31), T(31), T(31), T(31), T(31),
+                                  {T(31), T(31), T(31), T(31), T(31), T(31), T(31), T(31), T(31), T(31), T(31), T(31), T(31), T(31), T(31), T(31), T(31), T(31), T(31), T(31),
 
-                                   T(31), T(31), T(31), T(31), T(31),
-                                   T(1), T(2), T(3), T(4), T(5),
-                                   T(6), T(7), T(8), T(9), T(10),
-                                   T(31), T(31), T(31), T(31), T(31),
+                                   T(31),
+                                   T(31),
+                                   T(31),
+                                   T(31),
+                                   T(31),
+                                   T(1),
+                                   T(2),
+                                   T(3),
+                                   T(4),
+                                   T(5),
+                                   T(6),
+                                   T(7),
+                                   T(8),
+                                   T(9),
+                                   T(10),
+                                   T(31),
+                                   T(31),
+                                   T(31),
+                                   T(31),
+                                   T(31),
 
-                                   T(31), T(31), T(31), T(31), T(31),
-                                   T(11), T(12), T(13), T(14), T(15),
-                                   T(16), T(17), T(18), T(19), T(20),
-                                   T(31), T(31), T(31), T(31), T(31),
+                                   T(31),
+                                   T(31),
+                                   T(31),
+                                   T(31),
+                                   T(31),
+                                   T(11),
+                                   T(12),
+                                   T(13),
+                                   T(14),
+                                   T(15),
+                                   T(16),
+                                   T(17),
+                                   T(18),
+                                   T(19),
+                                   T(20),
+                                   T(31),
+                                   T(31),
+                                   T(31),
+                                   T(31),
+                                   T(31),
 
-                                   T(31), T(31), T(31), T(31), T(31),
-                                   T(21), T(22), T(23), T(24), T(25),
-                                   T(26), T(27), T(28), T(29), T(30),
-                                   T(31), T(31), T(31), T(31), T(31),
+                                   T(31),
+                                   T(31),
+                                   T(31),
+                                   T(31),
+                                   T(31),
+                                   T(21),
+                                   T(22),
+                                   T(23),
+                                   T(24),
+                                   T(25),
+                                   T(26),
+                                   T(27),
+                                   T(28),
+                                   T(29),
+                                   T(30),
+                                   T(31),
+                                   T(31),
+                                   T(31),
+                                   T(31),
+                                   T(31),
 
-                                   T(31), T(31), T(31), T(31), T(31),
-                                   T(31), T(31), T(31), T(31), T(31),
-                                   T(31), T(31), T(31), T(31), T(31),
-                                   T(31), T(31), T(31), T(31), T(31)},
+                                   T(31),
+                                   T(31),
+                                   T(31),
+                                   T(31),
+                                   T(31),
+                                   T(31),
+                                   T(31),
+                                   T(31),
+                                   T(31),
+                                   T(31),
+                                   T(31),
+                                   T(31),
+                                   T(31),
+                                   T(31),
+                                   T(31),
+                                   T(31),
+                                   T(31),
+                                   T(31),
+                                   T(31),
+                                   T(31)},
                                   "constant");
 }
 
 TYPED_TEST(PadOpTest, Pad_Edge_3D_Inner_No_Padding) {
   using T = TypeParam;
   RunAllOpsetAllDomainPadTests<T>({3, 2, 5},
-                                  {T(1), T(2), T(3), T(4), T(5),
-                                   T(6), T(7), T(8), T(9), T(10),
-                                   T(11), T(12), T(13), T(14), T(15),
-                                   T(16), T(17), T(18), T(19), T(20),
-                                   T(21), T(22), T(23), T(24), T(25),
-                                   T(26), T(27), T(28), T(29), T(30)},
+                                  {T(1), T(2), T(3), T(4), T(5), T(6), T(7), T(8), T(9), T(10), T(11), T(12), T(13), T(14), T(15), T(16), T(17), T(18), T(19), T(20), T(21), T(22), T(23), T(24), T(25), T(26), T(27), T(28), T(29), T(30)},
                                   {1, 1, 0, 1, 1, 0},
                                   T(0),
                                   {5, 4, 5},
-                                  {T(1), T(2), T(3), T(4), T(5),
-                                   T(1), T(2), T(3), T(4), T(5),
-                                   T(6), T(7), T(8), T(9), T(10),
-                                   T(6), T(7), T(8), T(9), T(10),
+                                  {T(1), T(2), T(3), T(4), T(5), T(1), T(2), T(3), T(4), T(5), T(6), T(7), T(8), T(9), T(10), T(6), T(7), T(8), T(9), T(10),
 
-                                   T(1), T(2), T(3), T(4), T(5),
-                                   T(1), T(2), T(3), T(4), T(5),
-                                   T(6), T(7), T(8), T(9), T(10),
-                                   T(6), T(7), T(8), T(9), T(10),
+                                   T(1),
+                                   T(2),
+                                   T(3),
+                                   T(4),
+                                   T(5),
+                                   T(1),
+                                   T(2),
+                                   T(3),
+                                   T(4),
+                                   T(5),
+                                   T(6),
+                                   T(7),
+                                   T(8),
+                                   T(9),
+                                   T(10),
+                                   T(6),
+                                   T(7),
+                                   T(8),
+                                   T(9),
+                                   T(10),
 
-                                   T(11), T(12), T(13), T(14), T(15),
-                                   T(11), T(12), T(13), T(14), T(15),
-                                   T(16), T(17), T(18), T(19), T(20),
-                                   T(16), T(17), T(18), T(19), T(20),
+                                   T(11),
+                                   T(12),
+                                   T(13),
+                                   T(14),
+                                   T(15),
+                                   T(11),
+                                   T(12),
+                                   T(13),
+                                   T(14),
+                                   T(15),
+                                   T(16),
+                                   T(17),
+                                   T(18),
+                                   T(19),
+                                   T(20),
+                                   T(16),
+                                   T(17),
+                                   T(18),
+                                   T(19),
+                                   T(20),
 
-                                   T(21), T(22), T(23), T(24), T(25),
-                                   T(21), T(22), T(23), T(24), T(25),
-                                   T(26), T(27), T(28), T(29), T(30),
-                                   T(26), T(27), T(28), T(29), T(30),
+                                   T(21),
+                                   T(22),
+                                   T(23),
+                                   T(24),
+                                   T(25),
+                                   T(21),
+                                   T(22),
+                                   T(23),
+                                   T(24),
+                                   T(25),
+                                   T(26),
+                                   T(27),
+                                   T(28),
+                                   T(29),
+                                   T(30),
+                                   T(26),
+                                   T(27),
+                                   T(28),
+                                   T(29),
+                                   T(30),
 
-                                   T(21), T(22), T(23), T(24), T(25),
-                                   T(21), T(22), T(23), T(24), T(25),
-                                   T(26), T(27), T(28), T(29), T(30),
-                                   T(26), T(27), T(28), T(29), T(30)},
+                                   T(21),
+                                   T(22),
+                                   T(23),
+                                   T(24),
+                                   T(25),
+                                   T(21),
+                                   T(22),
+                                   T(23),
+                                   T(24),
+                                   T(25),
+                                   T(26),
+                                   T(27),
+                                   T(28),
+                                   T(29),
+                                   T(30),
+                                   T(26),
+                                   T(27),
+                                   T(28),
+                                   T(29),
+                                   T(30)},
                                   "edge");
 }
 
 TYPED_TEST(PadOpTest, Pad_Edge_3D_Last_Pad_Slice_Inner_No_Padding) {
   using T = TypeParam;
   RunAllOpsetAllDomainPadTests<T>({3, 2, 5},
-                                  {T(1), T(2), T(3), T(4), T(5),
-                                   T(6), T(7), T(8), T(9), T(10),
-                                   T(11), T(12), T(13), T(14), T(15),
-                                   T(16), T(17), T(18), T(19), T(20),
-                                   T(21), T(22), T(23), T(24), T(25),
-                                   T(26), T(27), T(28), T(29), T(30)},
+                                  {T(1), T(2), T(3), T(4), T(5), T(6), T(7), T(8), T(9), T(10), T(11), T(12), T(13), T(14), T(15), T(16), T(17), T(18), T(19), T(20), T(21), T(22), T(23), T(24), T(25), T(26), T(27), T(28), T(29), T(30)},
                                   {1, -1, 0, 1, 1, 0},
                                   T(0),
                                   {5, 2, 5},
-                                  {T(6), T(7), T(8), T(9), T(10),
-                                   T(6), T(7), T(8), T(9), T(10),
+                                  {T(6), T(7), T(8), T(9), T(10), T(6), T(7), T(8), T(9), T(10),
 
-                                   T(6), T(7), T(8), T(9), T(10),
-                                   T(6), T(7), T(8), T(9), T(10),
+                                   T(6),
+                                   T(7),
+                                   T(8),
+                                   T(9),
+                                   T(10),
+                                   T(6),
+                                   T(7),
+                                   T(8),
+                                   T(9),
+                                   T(10),
 
-                                   T(16), T(17), T(18), T(19), T(20),
-                                   T(16), T(17), T(18), T(19), T(20),
+                                   T(16),
+                                   T(17),
+                                   T(18),
+                                   T(19),
+                                   T(20),
+                                   T(16),
+                                   T(17),
+                                   T(18),
+                                   T(19),
+                                   T(20),
 
-                                   T(26), T(27), T(28), T(29), T(30),
-                                   T(26), T(27), T(28), T(29), T(30),
+                                   T(26),
+                                   T(27),
+                                   T(28),
+                                   T(29),
+                                   T(30),
+                                   T(26),
+                                   T(27),
+                                   T(28),
+                                   T(29),
+                                   T(30),
 
-                                   T(26), T(27), T(28), T(29), T(30),
-                                   T(26), T(27), T(28), T(29), T(30)},
+                                   T(26),
+                                   T(27),
+                                   T(28),
+                                   T(29),
+                                   T(30),
+                                   T(26),
+                                   T(27),
+                                   T(28),
+                                   T(29),
+                                   T(30)},
                                   "edge");
 }
 
@@ -485,121 +683,242 @@ TYPED_TEST(PadOpTest, Pad_Edge_3D_Last_Slice_Inner_No_Padding) {
 
   using T = TypeParam;
   RunAllOpsetAllDomainPadTests<T>({2, 3, 5},
-                                  {T(1), T(2), T(3), T(4), T(5),
-                                   T(6), T(7), T(8), T(9), T(10),
-                                   T(11), T(12), T(13), T(14), T(15),
-                                   T(16), T(17), T(18), T(19), T(20),
-                                   T(21), T(22), T(23), T(24), T(25),
-                                   T(26), T(27), T(28), T(29), T(30)},
+                                  {T(1), T(2), T(3), T(4), T(5), T(6), T(7), T(8), T(9), T(10), T(11), T(12), T(13), T(14), T(15), T(16), T(17), T(18), T(19), T(20), T(21), T(22), T(23), T(24), T(25), T(26), T(27), T(28), T(29), T(30)},
                                   {1, -1, 0, 1, 0, 0},
                                   T(0),
                                   {4, 2, 5},
-                                  {T(6), T(7), T(8), T(9), T(10),
-                                   T(11), T(12), T(13), T(14), T(15),
+                                  {T(6), T(7), T(8), T(9), T(10), T(11), T(12), T(13), T(14), T(15),
 
-                                   T(6), T(7), T(8), T(9), T(10),
-                                   T(11), T(12), T(13), T(14), T(15),
+                                   T(6),
+                                   T(7),
+                                   T(8),
+                                   T(9),
+                                   T(10),
+                                   T(11),
+                                   T(12),
+                                   T(13),
+                                   T(14),
+                                   T(15),
 
-                                   T(21), T(22), T(23), T(24), T(25),
-                                   T(26), T(27), T(28), T(29), T(30),
+                                   T(21),
+                                   T(22),
+                                   T(23),
+                                   T(24),
+                                   T(25),
+                                   T(26),
+                                   T(27),
+                                   T(28),
+                                   T(29),
+                                   T(30),
 
-                                   T(21), T(22), T(23), T(24), T(25),
-                                   T(26), T(27), T(28), T(29), T(30)},
+                                   T(21),
+                                   T(22),
+                                   T(23),
+                                   T(24),
+                                   T(25),
+                                   T(26),
+                                   T(27),
+                                   T(28),
+                                   T(29),
+                                   T(30)},
                                   "edge");
 }
 
 TYPED_TEST(PadOpTest, Pad_Reflect_3D_Inner_No_Padding) {
   using T = TypeParam;
   RunAllOpsetAllDomainPadTests<T>({3, 2, 5},
-                                  {T(1), T(2), T(3), T(4), T(5),
-                                   T(6), T(7), T(8), T(9), T(10),
-                                   T(11), T(12), T(13), T(14), T(15),
-                                   T(16), T(17), T(18), T(19), T(20),
-                                   T(21), T(22), T(23), T(24), T(25),
-                                   T(26), T(27), T(28), T(29), T(30)},
+                                  {T(1), T(2), T(3), T(4), T(5), T(6), T(7), T(8), T(9), T(10), T(11), T(12), T(13), T(14), T(15), T(16), T(17), T(18), T(19), T(20), T(21), T(22), T(23), T(24), T(25), T(26), T(27), T(28), T(29), T(30)},
                                   {1, 1, 0, 1, 1, 0},
                                   T(0),
                                   {5, 4, 5},
-                                  {T(16), T(17), T(18), T(19), T(20),
-                                   T(11), T(12), T(13), T(14), T(15),
-                                   T(16), T(17), T(18), T(19), T(20),
-                                   T(11), T(12), T(13), T(14), T(15),
+                                  {T(16), T(17), T(18), T(19), T(20), T(11), T(12), T(13), T(14), T(15), T(16), T(17), T(18), T(19), T(20), T(11), T(12), T(13), T(14), T(15),
 
-                                   T(6), T(7), T(8), T(9), T(10),
-                                   T(1), T(2), T(3), T(4), T(5),
-                                   T(6), T(7), T(8), T(9), T(10),
-                                   T(1), T(2), T(3), T(4), T(5),
+                                   T(6),
+                                   T(7),
+                                   T(8),
+                                   T(9),
+                                   T(10),
+                                   T(1),
+                                   T(2),
+                                   T(3),
+                                   T(4),
+                                   T(5),
+                                   T(6),
+                                   T(7),
+                                   T(8),
+                                   T(9),
+                                   T(10),
+                                   T(1),
+                                   T(2),
+                                   T(3),
+                                   T(4),
+                                   T(5),
 
-                                   T(16), T(17), T(18), T(19), T(20),
-                                   T(11), T(12), T(13), T(14), T(15),
-                                   T(16), T(17), T(18), T(19), T(20),
-                                   T(11), T(12), T(13), T(14), T(15),
+                                   T(16),
+                                   T(17),
+                                   T(18),
+                                   T(19),
+                                   T(20),
+                                   T(11),
+                                   T(12),
+                                   T(13),
+                                   T(14),
+                                   T(15),
+                                   T(16),
+                                   T(17),
+                                   T(18),
+                                   T(19),
+                                   T(20),
+                                   T(11),
+                                   T(12),
+                                   T(13),
+                                   T(14),
+                                   T(15),
 
-                                   T(26), T(27), T(28), T(29), T(30),
-                                   T(21), T(22), T(23), T(24), T(25),
-                                   T(26), T(27), T(28), T(29), T(30),
-                                   T(21), T(22), T(23), T(24), T(25),
+                                   T(26),
+                                   T(27),
+                                   T(28),
+                                   T(29),
+                                   T(30),
+                                   T(21),
+                                   T(22),
+                                   T(23),
+                                   T(24),
+                                   T(25),
+                                   T(26),
+                                   T(27),
+                                   T(28),
+                                   T(29),
+                                   T(30),
+                                   T(21),
+                                   T(22),
+                                   T(23),
+                                   T(24),
+                                   T(25),
 
-                                   T(16), T(17), T(18), T(19), T(20),
-                                   T(11), T(12), T(13), T(14), T(15),
-                                   T(16), T(17), T(18), T(19), T(20),
-                                   T(11), T(12), T(13), T(14), T(15)},
+                                   T(16),
+                                   T(17),
+                                   T(18),
+                                   T(19),
+                                   T(20),
+                                   T(11),
+                                   T(12),
+                                   T(13),
+                                   T(14),
+                                   T(15),
+                                   T(16),
+                                   T(17),
+                                   T(18),
+                                   T(19),
+                                   T(20),
+                                   T(11),
+                                   T(12),
+                                   T(13),
+                                   T(14),
+                                   T(15)},
                                   "reflect");
 }
 
 TYPED_TEST(PadOpTest, Pad_Reflect_3D_Last_Pad_Slice_Inner_No_Padding) {
   using T = TypeParam;
   RunAllOpsetAllDomainPadTests<T>({2, 3, 5},
-                                  {T(1), T(2), T(3), T(4), T(5),
-                                   T(6), T(7), T(8), T(9), T(10),
-                                   T(11), T(12), T(13), T(14), T(15),
-                                   T(16), T(17), T(18), T(19), T(20),
-                                   T(21), T(22), T(23), T(24), T(25),
-                                   T(26), T(27), T(28), T(29), T(30)},
+                                  {T(1), T(2), T(3), T(4), T(5), T(6), T(7), T(8), T(9), T(10), T(11), T(12), T(13), T(14), T(15), T(16), T(17), T(18), T(19), T(20), T(21), T(22), T(23), T(24), T(25), T(26), T(27), T(28), T(29), T(30)},
                                   {1, -1, 0, 1, 1, 0},
                                   T(0),
                                   {4, 3, 5},
-                                  {T(21), T(22), T(23), T(24), T(25),
-                                   T(26), T(27), T(28), T(29), T(30),
-                                   T(21), T(22), T(23), T(24), T(25),
+                                  {T(21), T(22), T(23), T(24), T(25), T(26), T(27), T(28), T(29), T(30), T(21), T(22), T(23), T(24), T(25),
 
-                                   T(6), T(7), T(8), T(9), T(10),
-                                   T(11), T(12), T(13), T(14), T(15),
-                                   T(6), T(7), T(8), T(9), T(10),
+                                   T(6),
+                                   T(7),
+                                   T(8),
+                                   T(9),
+                                   T(10),
+                                   T(11),
+                                   T(12),
+                                   T(13),
+                                   T(14),
+                                   T(15),
+                                   T(6),
+                                   T(7),
+                                   T(8),
+                                   T(9),
+                                   T(10),
 
-                                   T(21), T(22), T(23), T(24), T(25),
-                                   T(26), T(27), T(28), T(29), T(30),
-                                   T(21), T(22), T(23), T(24), T(25),
+                                   T(21),
+                                   T(22),
+                                   T(23),
+                                   T(24),
+                                   T(25),
+                                   T(26),
+                                   T(27),
+                                   T(28),
+                                   T(29),
+                                   T(30),
+                                   T(21),
+                                   T(22),
+                                   T(23),
+                                   T(24),
+                                   T(25),
 
-                                   T(6), T(7), T(8), T(9), T(10),
-                                   T(11), T(12), T(13), T(14), T(15),
-                                   T(6), T(7), T(8), T(9), T(10)},
+                                   T(6),
+                                   T(7),
+                                   T(8),
+                                   T(9),
+                                   T(10),
+                                   T(11),
+                                   T(12),
+                                   T(13),
+                                   T(14),
+                                   T(15),
+                                   T(6),
+                                   T(7),
+                                   T(8),
+                                   T(9),
+                                   T(10)},
                                   "reflect");
 }
 
 TYPED_TEST(PadOpTest, Pad_Reflect_3D_Last_Slice_Inner_No_Padding) {
   using T = TypeParam;
   RunAllOpsetAllDomainPadTests<T>({2, 3, 5},
-                                  {T(1), T(2), T(3), T(4), T(5),
-                                   T(6), T(7), T(8), T(9), T(10),
-                                   T(11), T(12), T(13), T(14), T(15),
-                                   T(16), T(17), T(18), T(19), T(20),
-                                   T(21), T(22), T(23), T(24), T(25),
-                                   T(26), T(27), T(28), T(29), T(30)},
+                                  {T(1), T(2), T(3), T(4), T(5), T(6), T(7), T(8), T(9), T(10), T(11), T(12), T(13), T(14), T(15), T(16), T(17), T(18), T(19), T(20), T(21), T(22), T(23), T(24), T(25), T(26), T(27), T(28), T(29), T(30)},
                                   {1, -1, 0, 1, 0, 0},
                                   T(0),
                                   {4, 2, 5},
-                                  {T(21), T(22), T(23), T(24), T(25),
-                                   T(26), T(27), T(28), T(29), T(30),
+                                  {T(21), T(22), T(23), T(24), T(25), T(26), T(27), T(28), T(29), T(30),
 
-                                   T(6), T(7), T(8), T(9), T(10),
-                                   T(11), T(12), T(13), T(14), T(15),
+                                   T(6),
+                                   T(7),
+                                   T(8),
+                                   T(9),
+                                   T(10),
+                                   T(11),
+                                   T(12),
+                                   T(13),
+                                   T(14),
+                                   T(15),
 
-                                   T(21), T(22), T(23), T(24), T(25),
-                                   T(26), T(27), T(28), T(29), T(30),
+                                   T(21),
+                                   T(22),
+                                   T(23),
+                                   T(24),
+                                   T(25),
+                                   T(26),
+                                   T(27),
+                                   T(28),
+                                   T(29),
+                                   T(30),
 
-                                   T(6), T(7), T(8), T(9), T(10),
-                                   T(11), T(12), T(13), T(14), T(15)},
+                                   T(6),
+                                   T(7),
+                                   T(8),
+                                   T(9),
+                                   T(10),
+                                   T(11),
+                                   T(12),
+                                   T(13),
+                                   T(14),
+                                   T(15)},
                                   "reflect");
 }
 
@@ -730,7 +1049,8 @@ TYPED_TEST(PadOpTest, Pad_Edge_DimWithZeroInput) {
                                   {},
                                   "edge",
                                   OpTester::ExpectResult::kExpectFailure,
-                                  "Cannot use 'edge' mode to pad dimension with a value of 0. Input shape:{0}", {kTensorrtExecutionProvider});
+                                  "Cannot use 'edge' mode to pad dimension with a value of 0. Input shape:{0}",
+                                  {kTensorrtExecutionProvider});
 
   RunAllOpsetAllDomainPadTests<T>({2, 0},  // 2D
                                   {},
@@ -740,7 +1060,8 @@ TYPED_TEST(PadOpTest, Pad_Edge_DimWithZeroInput) {
                                   {},
                                   "edge",
                                   OpTester::ExpectResult::kExpectFailure,
-                                  "Cannot use 'edge' mode to pad dimension with a value of 0. Input shape:{2,0}", {kTensorrtExecutionProvider});
+                                  "Cannot use 'edge' mode to pad dimension with a value of 0. Input shape:{2,0}",
+                                  {kTensorrtExecutionProvider});
 
   RunAllOpsetAllDomainPadTests<T>({2, 0},  // 2D
                                   {},
@@ -758,7 +1079,8 @@ TYPED_TEST(PadOpTest, Pad_Edge_DimWithZeroInput) {
                                   {},
                                   "edge",
                                   OpTester::ExpectResult::kExpectFailure,
-                                  "Cannot use 'edge' mode to pad dimension with a value of 0. Input shape:{2,2,0}", {kTensorrtExecutionProvider});
+                                  "Cannot use 'edge' mode to pad dimension with a value of 0. Input shape:{2,2,0}",
+                                  {kTensorrtExecutionProvider});
 
   RunAllOpsetAllDomainPadTests<T>({2, 2, 0},  // 3D
                                   {},
@@ -792,7 +1114,8 @@ TYPED_TEST(PadOpTest, Pad_Reflect_DimWithZeroInput) {
                                   {},
                                   "reflect",
                                   OpTester::ExpectResult::kExpectFailure,
-                                  "Cannot use 'reflect' mode to pad dimension with a value of 0. Input shape:{0,2,1}", {kTensorrtExecutionProvider});
+                                  "Cannot use 'reflect' mode to pad dimension with a value of 0. Input shape:{0,2,1}",
+                                  {kTensorrtExecutionProvider});
 }
 
 TEST(PadOpTest, BoolType) {
@@ -808,19 +1131,11 @@ TEST(PadOpTest, BoolType) {
 TEST(PadOpTest, ConstantPadAxes) {
   OpTester test("Pad", 18);
   test.AddAttribute("mode", "constant");
-  test.AddInput<int32_t>("data", {1, 2, 2, 2},
-                         {1, 1,
-                          1, 1,
-                          1, 1,
-                          1, 1});
+  test.AddInput<int32_t>("data", {1, 2, 2, 2}, {1, 1, 1, 1, 1, 1, 1, 1});
   test.AddInput<int64_t>("pads", {4}, {0, 1, 0, 1});
   test.AddInput<int32_t>("value", {1}, {0});
   test.AddInput<int32_t>("axes", {2}, {1, 3});
-  test.AddOutput<int32_t>("output", {1, 2, 2, 4},
-                          {0, 1, 1, 0,
-                           0, 1, 1, 0,
-                           0, 1, 1, 0,
-                           0, 1, 1, 0});
+  test.AddOutput<int32_t>("output", {1, 2, 2, 4}, {0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0});
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
@@ -830,19 +1145,11 @@ TEST(PadOpTest, ConstantPadAxesTest1) {
   // Specified axes with last two dimensions and have non-zero padding values with one of them
   OpTester test("Pad", 18);
   test.AddAttribute("mode", "constant");
-  test.AddInput<float>("data", {1, 2, 2, 2},
-                       {1.0f, 1.0f,
-                        1.0f, 1.0f,
-                        1.0f, 1.0f,
-                        1.0f, 1.0f});
+  test.AddInput<float>("data", {1, 2, 2, 2}, {1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f});
   test.AddInput<int64_t>("pads", {4}, {0, 1, 0, 1}, true /* pads_is_initializer */);
   test.AddInput<float>("value", {1}, {0.0f}, true /* value_is_initializer */);
   test.AddInput<int64_t>("axes", {2}, {2, 3}, true /* axes_is_initializer */);
-  test.AddOutput<float>("output", {1, 2, 2, 4},
-                        {0.0f, 1.0f, 1.0f, 0.0f,
-                         0.0f, 1.0f, 1.0f, 0.0f,
-                         0.0f, 1.0f, 1.0f, 0.0f,
-                         0.0f, 1.0f, 1.0f, 0.0f});
+  test.AddOutput<float>("output", {1, 2, 2, 4}, {0.0f, 1.0f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f, 0.0f});
   // Note: exclude nnapi ep here, as int64_t type axes input is invalid for NNAPI. Similar for below tests.
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kNnapiExecutionProvider});
 }
@@ -851,23 +1158,11 @@ TEST(PadOpTest, ConstantPadAxesTest2) {
   // Specified axes with last two dimensions and have non-zero padding values on both of them
   OpTester test("Pad", 18);
   test.AddAttribute("mode", "constant");
-  test.AddInput<float>("data", {1, 2, 2, 2},
-                       {1.0f, 1.0f,
-                        1.0f, 1.0f,
-                        1.0f, 1.0f,
-                        1.0f, 1.0f});
+  test.AddInput<float>("data", {1, 2, 2, 2}, {1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f});
   test.AddInput<int64_t>("pads", {4}, {1, 1, 1, 1}, true /* pads_is_initializer */);
   test.AddInput<float>("value", {1}, {0.0f}, true /* value_is_initializer */);
   test.AddInput<int64_t>("axes", {2}, {2, 3}, true /* axes_is_initializer */);
-  test.AddOutput<float>("output", {1, 2, 4, 4},
-                        {0.0f, 0.0f, 0.0f, 0.0f,
-                         0.0f, 1.0f, 1.0f, 0.0f,
-                         0.0f, 1.0f, 1.0f, 0.0f,
-                         0.0f, 0.0f, 0.0f, 0.0f,
-                         0.0f, 0.0f, 0.0f, 0.0f,
-                         0.0f, 1.0f, 1.0f, 0.0f,
-                         0.0f, 1.0f, 1.0f, 0.0f,
-                         0.0f, 0.0f, 0.0f, 0.0f});
+  test.AddOutput<float>("output", {1, 2, 4, 4}, {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f});
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kNnapiExecutionProvider});
 }
 
@@ -875,19 +1170,11 @@ TEST(PadOpTest, ConstantPadAxesTest3) {
   // Specified axes with 0's in pad values other than the last two dimensions
   OpTester test("Pad", 18);
   test.AddAttribute("mode", "constant");
-  test.AddInput<float>("data", {1, 2, 2, 2},
-                       {1.0f, 1.0f,
-                        1.0f, 1.0f,
-                        1.0f, 1.0f,
-                        1.0f, 1.0f});
+  test.AddInput<float>("data", {1, 2, 2, 2}, {1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f});
   test.AddInput<int64_t>("pads", {8}, {0, 0, 0, 1, 0, 0, 0, 1}, true /* pads_is_initializer */);
   test.AddInput<float>("value", {1}, {0.0f}, true /* value_is_initializer */);
   test.AddInput<int64_t>("axes", {4}, {0, 1, 2, 3}, true /* axes_is_initializer */);
-  test.AddOutput<float>("output", {1, 2, 2, 4},
-                        {0.0f, 1.0f, 1.0f, 0.0f,
-                         0.0f, 1.0f, 1.0f, 0.0f,
-                         0.0f, 1.0f, 1.0f, 0.0f,
-                         0.0f, 1.0f, 1.0f, 0.0f});
+  test.AddOutput<float>("output", {1, 2, 2, 4}, {0.0f, 1.0f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f, 0.0f});
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kNnapiExecutionProvider});
 }
 
@@ -895,19 +1182,11 @@ TEST(PadOpTest, ConstantPadAxesOutOfOrder) {
   // Specified out of order axes values
   OpTester test("Pad", 18);
   test.AddAttribute("mode", "constant");
-  test.AddInput<float>("data", {1, 2, 2, 2},
-                       {1.0f, 1.0f,
-                        1.0f, 1.0f,
-                        1.0f, 1.0f,
-                        1.0f, 1.0f});
+  test.AddInput<float>("data", {1, 2, 2, 2}, {1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f});
   test.AddInput<int64_t>("pads", {4}, {1, 0, 1, 0}, true /* pads_is_initializer */);
   test.AddInput<float>("value", {1}, {0.0f}, true /* value_is_initializer */);
   test.AddInput<int64_t>("axes", {2}, {3, 2}, true /* axes_is_initializer */);
-  test.AddOutput<float>("output", {1, 2, 2, 4},
-                        {0.0f, 1.0f, 1.0f, 0.0f,
-                         0.0f, 1.0f, 1.0f, 0.0f,
-                         0.0f, 1.0f, 1.0f, 0.0f,
-                         0.0f, 1.0f, 1.0f, 0.0f});
+  test.AddOutput<float>("output", {1, 2, 2, 4}, {0.0f, 1.0f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f, 0.0f});
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kNnapiExecutionProvider});
 }
 
@@ -915,19 +1194,11 @@ TEST(PadOpTest, ConstantPadAxesWithOneDimensionSpecified) {
   // Specified axes and non-zero padding values for only one of the last two dimensions
   OpTester test("Pad", 18);
   test.AddAttribute("mode", "constant");
-  test.AddInput<float>("data", {1, 2, 2, 2},
-                       {1.0f, 1.0f,
-                        1.0f, 1.0f,
-                        1.0f, 1.0f,
-                        1.0f, 1.0f});
+  test.AddInput<float>("data", {1, 2, 2, 2}, {1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f});
   test.AddInput<int64_t>("pads", {2}, {1, 1}, true /* pads_is_initializer */);
   test.AddInput<float>("value", {1}, {0.0f}, true /* value_is_initializer */);
   test.AddInput<int64_t>("axes", {1}, {3}, true /* axes_is_initializer */);
-  test.AddOutput<float>("output", {1, 2, 2, 4},
-                        {0.0f, 1.0f, 1.0f, 0.0f,
-                         0.0f, 1.0f, 1.0f, 0.0f,
-                         0.0f, 1.0f, 1.0f, 0.0f,
-                         0.0f, 1.0f, 1.0f, 0.0f});
+  test.AddOutput<float>("output", {1, 2, 2, 4}, {0.0f, 1.0f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f, 0.0f});
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kNnapiExecutionProvider});
 }
 
@@ -940,19 +1211,11 @@ TEST(PadOpTest, DISABLED_ConstantPadNegativeAxes) {
   // Specified negative axes value
   OpTester test("Pad", 18);
   test.AddAttribute("mode", "constant");
-  test.AddInput<float>("data", {1, 2, 2, 2},
-                       {1.0f, 1.0f,
-                        1.0f, 1.0f,
-                        1.0f, 1.0f,
-                        1.0f, 1.0f});
+  test.AddInput<float>("data", {1, 2, 2, 2}, {1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f});
   test.AddInput<int64_t>("pads", {2}, {1, 1}, true /* pads_is_initializer */);
   test.AddInput<float>("value", {1}, {0.0f}, true /* value_is_initializer */);
   test.AddInput<int64_t>("axes", {1}, {-1}, true /* axes_is_initializer */);
-  test.AddOutput<float>("output", {1, 2, 2, 4},
-                        {0.0f, 1.0f, 1.0f, 0.0f,
-                         0.0f, 1.0f, 1.0f, 0.0f,
-                         0.0f, 1.0f, 1.0f, 0.0f,
-                         0.0f, 1.0f, 1.0f, 0.0f});
+  test.AddOutput<float>("output", {1, 2, 2, 4}, {0.0f, 1.0f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f, 0.0f});
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kNnapiExecutionProvider});
 }
 

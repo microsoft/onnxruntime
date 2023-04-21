@@ -36,9 +36,7 @@ struct Action {
   };
 
   // saving interface
-  virtual Status RunForSave(Graph& /*graph*/, const NodesToOptimize& /*selected_nodes*/,
-                            const SatRuntimeOptimizationSaveContext& /*save_context*/,
-                            SavedState& /*saved_state*/, bool& /*graph_modified*/) const {
+  virtual Status RunForSave(Graph& /*graph*/, const NodesToOptimize& /*selected_nodes*/, const SatRuntimeOptimizationSaveContext& /*save_context*/, SavedState& /*saved_state*/, bool& /*graph_modified*/) const {
     // do nothing by default
     return Status::OK();
   }
@@ -61,9 +59,7 @@ struct MultiAction : public Action {
   }
 
 #if !defined(ORT_MINIMAL_BUILD)
-  Status RunForSave(Graph& graph, const NodesToOptimize& selected_nodes,
-                    const SatRuntimeOptimizationSaveContext& save_context,
-                    SavedState& saved_state, bool& graph_modified) const override {
+  Status RunForSave(Graph& graph, const NodesToOptimize& selected_nodes, const SatRuntimeOptimizationSaveContext& save_context, SavedState& saved_state, bool& graph_modified) const override {
     for (const auto& action : actions_) {
       ORT_RETURN_IF_ERROR(action->RunForSave(graph, selected_nodes, save_context, saved_state, graph_modified));
     }
@@ -113,9 +109,7 @@ struct ReplaceWithNew : public Action {
   Status Run(Graph& graph, const NodesToOptimize& selected_nodes) const override;
 
 #if !defined(ORT_MINIMAL_BUILD)
-  Status RunForSave(Graph& graph, const NodesToOptimize& selected_nodes,
-                    const SatRuntimeOptimizationSaveContext& save_context,
-                    SavedState& saved_state, bool& graph_modified) const override;
+  Status RunForSave(Graph& graph, const NodesToOptimize& selected_nodes, const SatRuntimeOptimizationSaveContext& save_context, SavedState& saved_state, bool& graph_modified) const override;
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
  protected:
@@ -146,8 +140,7 @@ struct ReplaceWithNew : public Action {
 // replace with a new node that is specified at construction time
 // this class can be overridden to further specify particular aspects at runtime
 struct ReplaceWithNewFixed : public ReplaceWithNew {
-  ReplaceWithNewFixed(std::string domain, std::string op_type, std::vector<NodeAndMoveInfo> value_moves,
-                      NodeAttributes extra_attrs = {})
+  ReplaceWithNewFixed(std::string domain, std::string op_type, std::vector<NodeAndMoveInfo> value_moves, NodeAttributes extra_attrs = {})
       : domain_{std::move(domain)},
         op_type_{std::move(op_type)},
         extra_attrs_{std::move(extra_attrs)},

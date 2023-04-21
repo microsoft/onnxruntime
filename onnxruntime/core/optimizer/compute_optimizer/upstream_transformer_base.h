@@ -67,10 +67,7 @@ class UpStreamGraphTransformerBase : public GraphTransformer {
    *     passed through the Gather/Reshape node, it can also be a candidate for further upstream.
    * @param current_node The node that is to be checked.
    */
-  virtual bool UpStreamInternal(Graph& graph, std::deque<T1>& queue,
-                                Node& current_node, T1& info,
-                                const OpPassThroughConfig<T2>& pass_through_config,
-                                const logging::Logger& logger) const = 0;
+  virtual bool UpStreamInternal(Graph& graph, std::deque<T1>& queue, Node& current_node, T1& info, const OpPassThroughConfig<T2>& pass_through_config, const logging::Logger& logger) const = 0;
 
   /**
    * @brief A consistent way to construct the full qualified op name.

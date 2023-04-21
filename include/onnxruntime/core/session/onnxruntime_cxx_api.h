@@ -414,8 +414,7 @@ struct Env : detail::Base<OrtEnv> {
   Env(const OrtThreadingOptions* tp_options, OrtLoggingLevel logging_level = ORT_LOGGING_LEVEL_WARNING, _In_ const char* logid = "");
 
   /// \brief Wraps OrtApi::CreateEnvWithCustomLoggerAndGlobalThreadPools
-  Env(const OrtThreadingOptions* tp_options, OrtLoggingFunction logging_function, void* logger_param,
-      OrtLoggingLevel logging_level = ORT_LOGGING_LEVEL_WARNING, _In_ const char* logid = "");
+  Env(const OrtThreadingOptions* tp_options, OrtLoggingFunction logging_function, void* logger_param, OrtLoggingLevel logging_level = ORT_LOGGING_LEVEL_WARNING, _In_ const char* logid = "");
 
   /// \brief C Interop Helper
   explicit Env(OrtEnv* p) : Base<OrtEnv>{p} {}
@@ -761,14 +760,12 @@ struct SessionImpl : ConstSessionImpl<T> {
    * \param[in] output_count Number of outputs (the size of the output_names array)
    * \return A std::vector of Value objects that directly maps to the output_names array (eg. output_name[0] is the first entry of the returned vector)
    */
-  std::vector<Value> Run(const RunOptions& run_options, const char* const* input_names, const Value* input_values, size_t input_count,
-                         const char* const* output_names, size_t output_count);
+  std::vector<Value> Run(const RunOptions& run_options, const char* const* input_names, const Value* input_values, size_t input_count, const char* const* output_names, size_t output_count);
 
   /** \brief Run the model returning results in user provided outputs
    * Same as Run(const RunOptions&, const char* const*, const Value*, size_t,const char* const*, size_t)
    */
-  void Run(const RunOptions& run_options, const char* const* input_names, const Value* input_values, size_t input_count,
-           const char* const* output_names, Value* output_values, size_t output_count);
+  void Run(const RunOptions& run_options, const char* const* input_names, const Value* input_values, size_t input_count, const char* const* output_names, Value* output_values, size_t output_count);
 
   void Run(const RunOptions& run_options, const IoBinding&);  ///< Wraps OrtApi::RunWithBinding
 
@@ -1241,8 +1238,7 @@ struct ValueImpl : ConstValueImpl<T> {
   /// <param name="values_param">values buffer information.</param>
   /// <param name="indices_data">coo indices buffer or nullptr for fully sparse data</param>
   /// <param name="indices_num">number of COO indices or 0 for fully sparse data</param>
-  void FillSparseTensorCoo(const OrtMemoryInfo* data_mem_info, const OrtSparseValuesParam& values_param,
-                           const int64_t* indices_data, size_t indices_num);
+  void FillSparseTensorCoo(const OrtMemoryInfo* data_mem_info, const OrtSparseValuesParam& values_param, const int64_t* indices_data, size_t indices_num);
 
   /// <summary>
   /// The API will allocate memory using the allocator instance supplied to the CreateSparseTensor() API
@@ -1257,8 +1253,10 @@ struct ValueImpl : ConstValueImpl<T> {
   /// <param name="outer_indices_num">number of csr outer indices or 0</param>
   void FillSparseTensorCsr(const OrtMemoryInfo* data_mem_info,
                            const OrtSparseValuesParam& values,
-                           const int64_t* inner_indices_data, size_t inner_indices_num,
-                           const int64_t* outer_indices_data, size_t outer_indices_num);
+                           const int64_t* inner_indices_data,
+                           size_t inner_indices_num,
+                           const int64_t* outer_indices_data,
+                           size_t outer_indices_num);
 
   /// <summary>
   /// The API will allocate memory using the allocator instance supplied to the CreateSparseTensor() API
@@ -1317,8 +1315,7 @@ struct Value : detail::ValueImpl<OrtValue> {
    * \param shape_len The number of tensor shape dimensions.
    * \param type The data type.
    */
-  static Value CreateTensor(const OrtMemoryInfo* info, void* p_data, size_t p_data_byte_count, const int64_t* shape, size_t shape_len,
-                            ONNXTensorElementDataType type);
+  static Value CreateTensor(const OrtMemoryInfo* info, void* p_data, size_t p_data_byte_count, const int64_t* shape, size_t shape_len, ONNXTensorElementDataType type);
 
   /** \brief Creates a tensor using a supplied OrtAllocator. Wraps OrtApi::CreateTensorAsOrtValue.
    * \tparam T The numeric datatype. This API is not suitable for strings.
@@ -1355,8 +1352,7 @@ struct Value : detail::ValueImpl<OrtValue> {
   /// <param name="values_shape">non zero values shape. Use a single 0 shape for fully sparse tensors.</param>
   /// <returns></returns>
   template <typename T>
-  static Value CreateSparseTensor(const OrtMemoryInfo* info, T* p_data, const Shape& dense_shape,
-                                  const Shape& values_shape);
+  static Value CreateSparseTensor(const OrtMemoryInfo* info, T* p_data, const Shape& dense_shape, const Shape& values_shape);
 
   /// <summary>
   /// Creates an OrtValue instance containing SparseTensor. This constructs
@@ -1374,8 +1370,7 @@ struct Value : detail::ValueImpl<OrtValue> {
   /// <param name="values_shape">non zero values shape. Use a single 0 shape for fully sparse tensors.</param>
   /// <param name="type">data type</param>
   /// <returns>Ort::Value instance containing SparseTensor</returns>
-  static Value CreateSparseTensor(const OrtMemoryInfo* info, void* p_data, const Shape& dense_shape,
-                                  const Shape& values_shape, ONNXTensorElementDataType type);
+  static Value CreateSparseTensor(const OrtMemoryInfo* info, void* p_data, const Shape& dense_shape, const Shape& values_shape, ONNXTensorElementDataType type);
 
   /// <summary>
   /// This is a simple forwarding method to the below CreateSparseTensor.
@@ -1543,12 +1538,11 @@ struct OpAttr : detail::Base<OrtOpAttr> {
  * \param message_severity The logging severity level of the message.
  * \param message A null-terminated UTF-8 message to log.
  */
-#define ORT_CXX_LOG(logger, message_severity, message)                                       \
-  do {                                                                                       \
-    if (message_severity >= logger.GetLoggingSeverityLevel()) {                              \
-      Ort::ThrowOnError(logger.LogMessage(message_severity, ORT_FILE, __LINE__,              \
-                                          static_cast<const char*>(__FUNCTION__), message)); \
-    }                                                                                        \
+#define ORT_CXX_LOG(logger, message_severity, message)                                                                             \
+  do {                                                                                                                             \
+    if (message_severity >= logger.GetLoggingSeverityLevel()) {                                                                    \
+      Ort::ThrowOnError(logger.LogMessage(message_severity, ORT_FILE, __LINE__, static_cast<const char*>(__FUNCTION__), message)); \
+    }                                                                                                                              \
   } while (false)
 
 /**
@@ -1559,12 +1553,11 @@ struct OpAttr : detail::Base<OrtOpAttr> {
  * \param message_severity The logging severity level of the message.
  * \param message A null-terminated UTF-8 message to log.
  */
-#define ORT_CXX_LOG_NOEXCEPT(logger, message_severity, message)                              \
-  do {                                                                                       \
-    if (message_severity >= logger.GetLoggingSeverityLevel()) {                              \
-      static_cast<void>(logger.LogMessage(message_severity, ORT_FILE, __LINE__,              \
-                                          static_cast<const char*>(__FUNCTION__), message)); \
-    }                                                                                        \
+#define ORT_CXX_LOG_NOEXCEPT(logger, message_severity, message)                                                                    \
+  do {                                                                                                                             \
+    if (message_severity >= logger.GetLoggingSeverityLevel()) {                                                                    \
+      static_cast<void>(logger.LogMessage(message_severity, ORT_FILE, __LINE__, static_cast<const char*>(__FUNCTION__), message)); \
+    }                                                                                                                              \
   } while (false)
 
 /**
@@ -1578,12 +1571,11 @@ struct OpAttr : detail::Base<OrtOpAttr> {
  *               Refer to https://en.cppreference.com/w/cpp/io/c/fprintf for information on valid formats.
  * \param ... Zero or more variadic arguments referenced by the format string.
  */
-#define ORT_CXX_LOGF(logger, message_severity, /*format,*/...)                                            \
-  do {                                                                                                    \
-    if (message_severity >= logger.GetLoggingSeverityLevel()) {                                           \
-      Ort::ThrowOnError(logger.LogFormattedMessage(message_severity, ORT_FILE, __LINE__,                  \
-                                                   static_cast<const char*>(__FUNCTION__), __VA_ARGS__)); \
-    }                                                                                                     \
+#define ORT_CXX_LOGF(logger, message_severity, /*format,*/...)                                                                                  \
+  do {                                                                                                                                          \
+    if (message_severity >= logger.GetLoggingSeverityLevel()) {                                                                                 \
+      Ort::ThrowOnError(logger.LogFormattedMessage(message_severity, ORT_FILE, __LINE__, static_cast<const char*>(__FUNCTION__), __VA_ARGS__)); \
+    }                                                                                                                                           \
   } while (false)
 
 /**
@@ -1597,12 +1589,11 @@ struct OpAttr : detail::Base<OrtOpAttr> {
  *               Refer to https://en.cppreference.com/w/cpp/io/c/fprintf for information on valid formats.
  * \param ... Zero or more variadic arguments referenced by the format string.
  */
-#define ORT_CXX_LOGF_NOEXCEPT(logger, message_severity, /*format,*/...)                                   \
-  do {                                                                                                    \
-    if (message_severity >= logger.GetLoggingSeverityLevel()) {                                           \
-      static_cast<void>(logger.LogFormattedMessage(message_severity, ORT_FILE, __LINE__,                  \
-                                                   static_cast<const char*>(__FUNCTION__), __VA_ARGS__)); \
-    }                                                                                                     \
+#define ORT_CXX_LOGF_NOEXCEPT(logger, message_severity, /*format,*/...)                                                                         \
+  do {                                                                                                                                          \
+    if (message_severity >= logger.GetLoggingSeverityLevel()) {                                                                                 \
+      static_cast<void>(logger.LogFormattedMessage(message_severity, ORT_FILE, __LINE__, static_cast<const char*>(__FUNCTION__), __VA_ARGS__)); \
+    }                                                                                                                                           \
   } while (false)
 
 /// <summary>
@@ -1661,8 +1652,7 @@ struct Logger {
    * \param message The message to log.
    * \return A Ort::Status value to indicate error or success.
    */
-  Status LogMessage(OrtLoggingLevel log_severity_level, const ORTCHAR_T* file_path, int line_number,
-                    const char* func_name, const char* message) const noexcept;
+  Status LogMessage(OrtLoggingLevel log_severity_level, const ORTCHAR_T* file_path, int line_number, const char* func_name, const char* message) const noexcept;
 
   /**
    * Logs a printf-like formatted message via OrtApi::Logger_LogMessage. Use the ORT_CXX_LOGF or ORT_CXX_LOGF_NOEXCEPT
@@ -1679,8 +1669,7 @@ struct Logger {
    * \return A Ort::Status value to indicate error or success.
    */
   template <typename... Args>
-  Status LogFormattedMessage(OrtLoggingLevel log_severity_level, const ORTCHAR_T* file_path, int line_number,
-                             const char* func_name, const char* format, Args&&... args) const noexcept;
+  Status LogFormattedMessage(OrtLoggingLevel log_severity_level, const ORTCHAR_T* file_path, int line_number, const char* func_name, const char* format, Args&&... args) const noexcept;
 
  private:
   const OrtLogger* logger_{};
@@ -1780,13 +1769,7 @@ struct Op : detail::Base<OrtOp> {
 
   explicit Op(OrtOp*);  ///< Take ownership of the OrtOp
 
-  static Op Create(const OrtKernelInfo* info, const char* op_name, const char* domain,
-                   int version, const char** type_constraint_names,
-                   const ONNXTensorElementDataType* type_constraint_values,
-                   size_t type_constraint_count,
-                   const OpAttr* attr_values,
-                   size_t attr_count,
-                   size_t input_count, size_t output_count);
+  static Op Create(const OrtKernelInfo* info, const char* op_name, const char* domain, int version, const char** type_constraint_names, const ONNXTensorElementDataType* type_constraint_values, size_t type_constraint_count, const OpAttr* attr_values, size_t attr_count, size_t input_count, size_t output_count);
 
   void Invoke(const OrtKernelContext* context,
               const Value* input_values,

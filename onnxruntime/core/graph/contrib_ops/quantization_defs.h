@@ -21,9 +21,7 @@ enum class QuantParamTensorType : int {
   Both,
 };
 
-void ValidateTypeAndShapeForScaleAndZP(ONNX_NAMESPACE::InferenceContext& ctx, int index,
-                                       ::google::protobuf::int32 expectedType, QuantParamTensorType expectedScalar,
-                                       int expectedTensorSize = 0);
+void ValidateTypeAndShapeForScaleAndZP(ONNX_NAMESPACE::InferenceContext& ctx, int index, ::google::protobuf::int32 expectedType, QuantParamTensorType expectedScalar, int expectedTensorSize = 0);
 
 // Names follow the convention of BFP_<# sign bits>_<# mantissa bits>_<# exponent bits>_<size of bounding box>
 enum class BFPType : int64_t {

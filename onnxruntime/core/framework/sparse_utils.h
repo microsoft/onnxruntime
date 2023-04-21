@@ -39,8 +39,7 @@ namespace sparse_utils {
 ///   </code>
 ///   </example>
 /// <returns>Status instance</returns>
-Status DenseTensorToSparseCsr(const DataTransferManager& data_manager, const Tensor& src, const AllocatorPtr& cpu_allocator,
-                              const AllocatorPtr& dst_allocator, SparseTensor& dst);
+Status DenseTensorToSparseCsr(const DataTransferManager& data_manager, const Tensor& src, const AllocatorPtr& cpu_allocator, const AllocatorPtr& dst_allocator, SparseTensor& dst);
 
 /// <summary>
 /// Converts Csr format to Dense matrix.
@@ -61,8 +60,7 @@ Status DenseTensorToSparseCsr(const DataTransferManager& data_manager, const Ten
 ///   ORT_RETURN_IF_ERROR(SparseCsrToDenseTensor(data_manager, src, cpu_allocator, dst_allocator, dst));
 ///   </code>
 /// <returns>Status instance</returns>
-Status SparseCsrToDenseTensor(const DataTransferManager& data_manager, const SparseTensor& src, const AllocatorPtr& cpu_allocator,
-                              const AllocatorPtr& dst_allocator, Tensor& dst);
+Status SparseCsrToDenseTensor(const DataTransferManager& data_manager, const SparseTensor& src, const AllocatorPtr& cpu_allocator, const AllocatorPtr& dst_allocator, Tensor& dst);
 
 /// <summary>
 /// Convert COO format to dense matrix.
@@ -77,8 +75,7 @@ Status SparseCsrToDenseTensor(const DataTransferManager& data_manager, const Spa
 /// <param name="dst_allocator">destination device allocator</param>
 /// <param name="dst">output sparse tensor</param>
 /// <returns>Status instance</returns>
-Status SparseCooToDenseTensor(const DataTransferManager& data_manager, const SparseTensor& src, const AllocatorPtr& cpu_allocator,
-                              const AllocatorPtr& dst_allocator, Tensor& dst);
+Status SparseCooToDenseTensor(const DataTransferManager& data_manager, const SparseTensor& src, const AllocatorPtr& cpu_allocator, const AllocatorPtr& dst_allocator, Tensor& dst);
 #endif  //! ORT_MINIMAL_BUILD
 
 /// <summary>
@@ -94,8 +91,7 @@ Status SparseCooToDenseTensor(const DataTransferManager& data_manager, const Spa
 /// <param name="dst_allocator">destination device allocator</param>
 /// <param name="dst">output sparse tensor</param>
 /// <returns>Status instance</returns>
-Status DenseTensorToSparseCoo(const DataTransferManager& data_manager, const Tensor& src, const AllocatorPtr& cpu_allocator,
-                              const AllocatorPtr& dst_allocator, bool linear_index, SparseTensor& dst);
+Status DenseTensorToSparseCoo(const DataTransferManager& data_manager, const Tensor& src, const AllocatorPtr& cpu_allocator, const AllocatorPtr& dst_allocator, bool linear_index, SparseTensor& dst);
 
 }  // namespace sparse_utils
 }  // namespace onnxruntime

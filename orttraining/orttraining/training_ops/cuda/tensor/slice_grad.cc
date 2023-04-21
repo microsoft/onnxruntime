@@ -21,9 +21,7 @@ ONNX_OPERATOR_KERNEL_EX(
         .InputMemoryType(OrtMemTypeCPUInput, 5)
         .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
         .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
-        .TypeConstraint("Tind", std::vector<MLDataType>{
-                                    DataTypeImpl::GetTensorType<int32_t>(),
-                                    DataTypeImpl::GetTensorType<int64_t>()}),
+        .TypeConstraint("Tind", std::vector<MLDataType>{DataTypeImpl::GetTensorType<int32_t>(), DataTypeImpl::GetTensorType<int64_t>()}),
     SliceGrad);
 
 Tensor* GetOutputGradientTensor(OpKernelContext* ctx) {
@@ -40,17 +38,11 @@ const Tensor* SliceGrad::GetSlicedOrUnslicedTensor(OpKernelContext* ctx) const {
   return GetOutputGradientTensor(ctx);
 }
 
-Status SliceGrad::FillInputVectors(OpKernelContext* ctx, TensorShapeVector& input_starts,
-                                   TensorShapeVector& input_ends, TensorShapeVector& input_axes,
-                                   TensorShapeVector& input_steps) const {
-  return FillVectorsFromInput(*ctx->Input<Tensor>(2), *ctx->Input<Tensor>(3), ctx->Input<Tensor>(4),
-                              ctx->Input<Tensor>(5), input_starts, input_ends, input_axes, input_steps);
+Status SliceGrad::FillInputVectors(OpKernelContext* ctx, TensorShapeVector& input_starts, TensorShapeVector& input_ends, TensorShapeVector& input_axes, TensorShapeVector& input_steps) const {
+  return FillVectorsFromInput(*ctx->Input<Tensor>(2), *ctx->Input<Tensor>(3), ctx->Input<Tensor>(4), ctx->Input<Tensor>(5), input_starts, input_ends, input_axes, input_steps);
 }
 
-Status SliceGrad::CallSliceImp(size_t element_size, size_t dimension_count, const TArray<int64_t>& starts_buffer,
-                               const TArray<int64_t>& steps_buffer, const TArray<int64_t>& input_strides,
-                               const TArray<fast_divmod>& output_strides, OpKernelContext* ctx,
-                               const TensorShape& output_shape) const {
+Status SliceGrad::CallSliceImp(size_t element_size, size_t dimension_count, const TArray<int64_t>& starts_buffer, const TArray<int64_t>& steps_buffer, const TArray<int64_t>& input_strides, const TArray<fast_divmod>& output_strides, OpKernelContext* ctx, const TensorShape& output_shape) const {
   Tensor* gradient_out_tensor = GetOutputGradientTensor(ctx);
   CUDA_RETURN_IF_ERROR(cudaMemsetAsync(gradient_out_tensor->MutableDataRaw(), 0, gradient_out_tensor->SizeInBytes(), Stream(ctx)));
   return SliceImplGrad(Stream(ctx),

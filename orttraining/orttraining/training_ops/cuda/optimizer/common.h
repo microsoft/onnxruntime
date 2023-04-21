@@ -12,14 +12,12 @@ Status CopyIfNotSameBuffer(cudaStream_t stream, const Tensor& source_tensor, Ten
   const T* source = source_tensor.template Data<T>();
   T* target = target_tensor.template MutableData<T>();
   if (target != source) {
-    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(target, source, source_tensor.SizeInBytes(), cudaMemcpyDeviceToDevice,
-                                         stream));
+    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(target, source, source_tensor.SizeInBytes(), cudaMemcpyDeviceToDevice, stream));
   }
   return Status::OK();
 }
 
-Status CopyIfNotSameCUDABuffer(OpKernelContext* ctx, size_t number_of_values, const TensorSeq* values,
-                               TensorSeq* updated_values);
+Status CopyIfNotSameCUDABuffer(OpKernelContext* ctx, size_t number_of_values, const TensorSeq* values, TensorSeq* updated_values);
 
 }  // namespace cuda
 }  // namespace onnxruntime

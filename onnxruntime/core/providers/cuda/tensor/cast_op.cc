@@ -34,7 +34,8 @@ const std::vector<MLDataType>& CastOpTypeConstraints() {
   ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                        \
       Cast,                                                       \
       kOnnxDomain,                                                \
-      6, 8,                                                       \
+      6,                                                          \
+      8,                                                          \
       T,                                                          \
       kCudaExecutionProvider,                                     \
       (*KernelDefBuilder::Create())                               \
@@ -44,7 +45,8 @@ const std::vector<MLDataType>& CastOpTypeConstraints() {
   ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                        \
       Cast,                                                       \
       kOnnxDomain,                                                \
-      9, 12,                                                      \
+      9,                                                          \
+      12,                                                         \
       T,                                                          \
       kCudaExecutionProvider,                                     \
       (*KernelDefBuilder::Create())                               \

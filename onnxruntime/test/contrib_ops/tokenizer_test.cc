@@ -19,8 +19,7 @@ constexpr int opset_ver = 1;
 
 using namespace tokenizer_test;
 
-void InitTestAttr(OpTester& test, bool mark, const std::vector<std::string>& sepexp,
-                  int64_t mincharnum, const std::string& tokenexp = std::string()) {
+void InitTestAttr(OpTester& test, bool mark, const std::vector<std::string>& sepexp, int64_t mincharnum, const std::string& tokenexp = std::string()) {
   test.AddAttribute("mark", int64_t{mark});
   if (!sepexp.empty()) {
     test.AddAttribute("separators", sepexp);
@@ -229,10 +228,18 @@ TEST(ContribOpTest, TokenizerCharLevel_CyrillicCharsWithMarkersC) {
     output_dims.push_back(int64_t(6 + 2));
     std::vector<std::string> output{
         start_mark,
-        u8"А", u8"б", u8"с", u8"у", u8"р", u8"д",
+        u8"А",
+        u8"б",
+        u8"с",
+        u8"у",
+        u8"р",
+        u8"д",
         end_mark,
         start_mark,
-        u8"К", u8"о", u8"м", u8"а",
+        u8"К",
+        u8"о",
+        u8"м",
+        u8"а",
         end_mark,
         padval,
         padval};
@@ -263,10 +270,18 @@ TEST(ContribOpTest, TokenizerCharLevel_MixedCharsWithMarkersC) {
     output_dims.push_back(int64_t(6 + 2));
     std::vector<std::string> output{
         start_mark,
-        u8"А", u8"б", u8"с", u8"у", u8"中", u8"文",
+        u8"А",
+        u8"б",
+        u8"с",
+        u8"у",
+        u8"中",
+        u8"文",
         end_mark,
         start_mark,
-        u8"К", u8"о", u8"ñ", u8"ó",
+        u8"К",
+        u8"о",
+        u8"ñ",
+        u8"ó",
         end_mark,
         padval,
         padval};
@@ -339,10 +354,12 @@ TEST(ContribOpTest, TokenizerWithSeparators_MixCharsWithMarkersC) {
     output_dims.push_back(int64_t(2 + 2));
     std::vector<std::string> output{
         start_mark,
-        u8"Абс", u8"中文",
+        u8"Абс",
+        u8"中文",
         end_mark,
         start_mark,
-        u8"Ко", u8"ó",
+        u8"Ко",
+        u8"ó",
         end_mark};
 
     test.AddOutput<std::string>("Y", output_dims, output);

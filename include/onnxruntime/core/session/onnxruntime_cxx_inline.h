@@ -442,8 +442,7 @@ inline Env::Env(const OrtThreadingOptions* tp_options, OrtLoggingLevel logging_l
   }
 }
 
-inline Env::Env(const OrtThreadingOptions* tp_options, OrtLoggingFunction logging_function, void* logger_param,
-                OrtLoggingLevel logging_level, _In_ const char* logid) {
+inline Env::Env(const OrtThreadingOptions* tp_options, OrtLoggingFunction logging_function, void* logger_param, OrtLoggingLevel logging_level, _In_ const char* logid) {
   ThrowOnError(GetApi().CreateEnvWithCustomLoggerAndGlobalThreadPools(logging_function, logger_param, logging_level, logid, tp_options, &p_));
   if (strcmp(logid, "onnxruntime-node") == 0) {
     ThrowOnError(GetApi().SetLanguageProjection(p_, OrtLanguageProjection::ORT_PROJECTION_NODEJS));
@@ -762,8 +761,7 @@ inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::AppendExecutionProvider(
     }
   }
 
-  ThrowOnError(GetApi().SessionOptionsAppendExecutionProvider(this->p_, provider_name.c_str(),
-                                                              keys.data(), values.data(), num_entries));
+  ThrowOnError(GetApi().SessionOptionsAppendExecutionProvider(this->p_, provider_name.c_str(), keys.data(), values.data(), num_entries));
 
   return *this;
 }
@@ -890,8 +888,7 @@ inline TypeInfo ConstSessionImpl<T>::GetOverridableInitializerTypeInfo(size_t in
 }
 
 template <typename T>
-inline std::vector<Value> SessionImpl<T>::Run(const RunOptions& run_options, const char* const* input_names, const Value* input_values, size_t input_count,
-                                              const char* const* output_names, size_t output_count) {
+inline std::vector<Value> SessionImpl<T>::Run(const RunOptions& run_options, const char* const* input_names, const Value* input_values, size_t input_count, const char* const* output_names, size_t output_count) {
   std::vector<Value> output_values;
   output_values.reserve(output_count);
   for (size_t i = 0; i < output_count; i++)
@@ -901,8 +898,7 @@ inline std::vector<Value> SessionImpl<T>::Run(const RunOptions& run_options, con
 }
 
 template <typename T>
-inline void SessionImpl<T>::Run(const RunOptions& run_options, const char* const* input_names, const Value* input_values, size_t input_count,
-                                const char* const* output_names, Value* output_values, size_t output_count) {
+inline void SessionImpl<T>::Run(const RunOptions& run_options, const char* const* input_names, const Value* input_values, size_t input_count, const char* const* output_names, Value* output_values, size_t output_count) {
   static_assert(sizeof(Value) == sizeof(OrtValue*), "Value is really just an array of OrtValue* in memory, so we can reinterpret_cast safely");
   auto ort_input_values = reinterpret_cast<const OrtValue* const*>(input_values);
   auto ort_output_values = reinterpret_cast<OrtValue**>(output_values);
@@ -952,8 +948,7 @@ inline Session::Session(const Env& env, const ORTCHAR_T* model_path, const Sessi
   ThrowOnError(GetApi().CreateSession(env, model_path, options, &this->p_));
 }
 
-inline Session::Session(const Env& env, const ORTCHAR_T* model_path, const SessionOptions& options,
-                        OrtPrepackedWeightsContainer* prepacked_weights_container) {
+inline Session::Session(const Env& env, const ORTCHAR_T* model_path, const SessionOptions& options, OrtPrepackedWeightsContainer* prepacked_weights_container) {
   ThrowOnError(GetApi().CreateSessionWithPrepackedWeightsContainer(env, model_path, options, prepacked_weights_container, &this->p_));
 }
 
@@ -961,10 +956,8 @@ inline Session::Session(const Env& env, const void* model_data, size_t model_dat
   ThrowOnError(GetApi().CreateSessionFromArray(env, model_data, model_data_length, options, &this->p_));
 }
 
-inline Session::Session(const Env& env, const void* model_data, size_t model_data_length,
-                        const SessionOptions& options, OrtPrepackedWeightsContainer* prepacked_weights_container) {
-  ThrowOnError(GetApi().CreateSessionFromArrayWithPrepackedWeightsContainer(env, model_data, model_data_length, options,
-                                                                            prepacked_weights_container, &this->p_));
+inline Session::Session(const Env& env, const void* model_data, size_t model_data_length, const SessionOptions& options, OrtPrepackedWeightsContainer* prepacked_weights_container) {
+  ThrowOnError(GetApi().CreateSessionFromArrayWithPrepackedWeightsContainer(env, model_data, model_data_length, options, prepacked_weights_container, &this->p_));
 }
 
 inline AllocatedStringPtr ModelMetadata::GetProducerNameAllocated(OrtAllocator* allocator) const {
@@ -1351,21 +1344,18 @@ void ValueImpl<T>::UseBlockSparseIndices(const Shape& indices_shape, int32_t* in
 }
 
 template <typename T>
-void ValueImpl<T>::FillSparseTensorCoo(const OrtMemoryInfo* mem_info, const OrtSparseValuesParam& values_param,
-                                       const int64_t* indices_data, size_t indices_num) {
-  ThrowOnError(GetApi().FillSparseTensorCoo(this->p_, mem_info, values_param.values_shape,
-                                            values_param.values_shape_len, values_param.data.p_data,
-                                            indices_data, indices_num));
+void ValueImpl<T>::FillSparseTensorCoo(const OrtMemoryInfo* mem_info, const OrtSparseValuesParam& values_param, const int64_t* indices_data, size_t indices_num) {
+  ThrowOnError(GetApi().FillSparseTensorCoo(this->p_, mem_info, values_param.values_shape, values_param.values_shape_len, values_param.data.p_data, indices_data, indices_num));
 }
 
 template <typename T>
 void ValueImpl<T>::FillSparseTensorCsr(const OrtMemoryInfo* data_mem_info,
                                        const OrtSparseValuesParam& values,
-                                       const int64_t* inner_indices_data, size_t inner_indices_num,
-                                       const int64_t* outer_indices_data, size_t outer_indices_num) {
-  ThrowOnError(GetApi().FillSparseTensorCsr(this->p_, data_mem_info, values.values_shape, values.values_shape_len, values.data.p_data,
-                                            inner_indices_data, inner_indices_num,
-                                            outer_indices_data, outer_indices_num));
+                                       const int64_t* inner_indices_data,
+                                       size_t inner_indices_num,
+                                       const int64_t* outer_indices_data,
+                                       size_t outer_indices_num) {
+  ThrowOnError(GetApi().FillSparseTensorCsr(this->p_, data_mem_info, values.values_shape, values.values_shape_len, values.data.p_data, inner_indices_data, inner_indices_num, outer_indices_data, outer_indices_num));
 }
 
 template <typename T>
@@ -1373,9 +1363,7 @@ void ValueImpl<T>::FillSparseTensorBlockSparse(const OrtMemoryInfo* data_mem_inf
                                                const OrtSparseValuesParam& values,
                                                const Shape& indices_shape,
                                                const int32_t* indices_data) {
-  ThrowOnError(GetApi().FillSparseTensorBlockSparse(this->p_, data_mem_info, values.values_shape, values.values_shape_len, values.data.p_data,
-                                                    indices_shape.shape, indices_shape.shape_len,
-                                                    indices_data));
+  ThrowOnError(GetApi().FillSparseTensorBlockSparse(this->p_, data_mem_info, values.values_shape, values.values_shape_len, values.data.p_data, indices_shape.shape, indices_shape.shape_len, indices_data));
 }
 
 #endif  // !defined(DISABLE_SPARSE_TENSORS)
@@ -1387,8 +1375,7 @@ inline Value Value::CreateTensor(const OrtMemoryInfo* info, T* p_data, size_t p_
   return CreateTensor(info, p_data, p_data_element_count * sizeof(T), shape, shape_len, TypeToTensorType<T>::type);
 }
 
-inline Value Value::CreateTensor(const OrtMemoryInfo* info, void* p_data, size_t p_data_byte_count, const int64_t* shape, size_t shape_len,
-                                 ONNXTensorElementDataType type) {
+inline Value Value::CreateTensor(const OrtMemoryInfo* info, void* p_data, size_t p_data_byte_count, const int64_t* shape, size_t shape_len, ONNXTensorElementDataType type) {
   OrtValue* out;
   ThrowOnError(GetApi().CreateTensorWithDataAsOrtValue(info, p_data, p_data_byte_count, shape, shape_len, type, &out));
   return Value{out};
@@ -1408,16 +1395,13 @@ inline Value Value::CreateTensor(OrtAllocator* allocator, const int64_t* shape, 
 #if !defined(DISABLE_SPARSE_TENSORS)
 
 template <typename T>
-inline Value Value::CreateSparseTensor(const OrtMemoryInfo* info, T* p_data, const Shape& dense_shape,
-                                       const Shape& values_shape) {
+inline Value Value::CreateSparseTensor(const OrtMemoryInfo* info, T* p_data, const Shape& dense_shape, const Shape& values_shape) {
   return CreateSparseTensor(info, p_data, dense_shape, values_shape, TypeToTensorType<T>::type);
 }
 
-inline Value Value::CreateSparseTensor(const OrtMemoryInfo* info, void* p_data, const Shape& dense_shape,
-                                       const Shape& values_shape, ONNXTensorElementDataType type) {
+inline Value Value::CreateSparseTensor(const OrtMemoryInfo* info, void* p_data, const Shape& dense_shape, const Shape& values_shape, ONNXTensorElementDataType type) {
   OrtValue* out;
-  ThrowOnError(GetApi().CreateSparseTensorWithValuesAsOrtValue(info, p_data, dense_shape.shape, dense_shape.shape_len,
-                                                               values_shape.shape, values_shape.shape_len, type, &out));
+  ThrowOnError(GetApi().CreateSparseTensorWithValuesAsOrtValue(info, p_data, dense_shape.shape, dense_shape.shape_len, values_shape.shape, values_shape.shape_len, type, &out));
   return Value{out};
 }
 
@@ -1426,8 +1410,7 @@ inline Value Value::CreateSparseTensor(OrtAllocator* allocator, const Shape& den
   return CreateSparseTensor(allocator, dense_shape, TypeToTensorType<T>::type);
 }
 
-inline Value Value::CreateSparseTensor(OrtAllocator* allocator, const Shape& dense_shape,
-                                       ONNXTensorElementDataType type) {
+inline Value Value::CreateSparseTensor(OrtAllocator* allocator, const Shape& dense_shape, ONNXTensorElementDataType type) {
   OrtValue* out;
   ThrowOnError(GetApi().CreateSparseTensorAsOrtValue(allocator, dense_shape.shape, dense_shape.shape_len, type, &out));
   return Value{out};
@@ -1466,10 +1449,8 @@ inline OrtLoggingLevel Logger::GetLoggingSeverityLevel() const noexcept {
   return cached_severity_level_;
 }
 
-inline Status Logger::LogMessage(OrtLoggingLevel log_severity_level, const ORTCHAR_T* file_path, int line_number,
-                                 const char* func_name, const char* message) const noexcept {
-  OrtStatus* status = GetApi().Logger_LogMessage(logger_, log_severity_level, message, file_path, line_number,
-                                                 func_name);
+inline Status Logger::LogMessage(OrtLoggingLevel log_severity_level, const ORTCHAR_T* file_path, int line_number, const char* func_name, const char* message) const noexcept {
+  OrtStatus* status = GetApi().Logger_LogMessage(logger_, log_severity_level, message, file_path, line_number, func_name);
   return Status{status};
 }
 
@@ -1486,9 +1467,7 @@ inline Status Logger::LogMessage(OrtLoggingLevel log_severity_level, const ORTCH
 #pragma clang diagnostic ignored "-Wformat-security"
 #endif
 template <typename... Args>
-inline Status Logger::LogFormattedMessage(OrtLoggingLevel log_severity_level, const ORTCHAR_T* file_path,
-                                          int line_number, const char* func_name, const char* format,
-                                          Args&&... args) const noexcept {
+inline Status Logger::LogFormattedMessage(OrtLoggingLevel log_severity_level, const ORTCHAR_T* file_path, int line_number, const char* func_name, const char* format, Args&&... args) const noexcept {
   int msg_len = std::snprintf(nullptr, 0U, format, std::forward<Args>(args)...);
 
   if (msg_len < 0) {  // Formatting error
@@ -1723,22 +1702,12 @@ inline KernelInfo::KernelInfo(OrtKernelInfo* info) : detail::KernelInfoImpl<OrtK
 
 inline Op::Op(OrtOp* p) : Base<OrtOp>(p) {}
 
-inline Op Op::Create(const OrtKernelInfo* info, const char* op_name, const char* domain, int version,
-                     const char** type_constraint_names,
-                     const ONNXTensorElementDataType* type_constraint_values,
-                     size_t type_constraint_count,
-                     const OpAttr* attr_values, size_t attr_count,
-                     size_t input_count, size_t output_count) {
+inline Op Op::Create(const OrtKernelInfo* info, const char* op_name, const char* domain, int version, const char** type_constraint_names, const ONNXTensorElementDataType* type_constraint_values, size_t type_constraint_count, const OpAttr* attr_values, size_t attr_count, size_t input_count, size_t output_count) {
   static_assert(sizeof(OpAttr) == sizeof(OrtOpAttr*),
                 "OpAttr's is expected to be just an array of OrtOpAttr in memory so we can reinterpret safely");
   auto attr_input_values = reinterpret_cast<const OrtOpAttr* const*>(attr_values);
   OrtOp* op;
-  Ort::ThrowOnError(GetApi().CreateOp(info, op_name, domain, version, type_constraint_names, type_constraint_values,
-                                      static_cast<int>(type_constraint_count),
-                                      attr_input_values,
-                                      static_cast<int>(attr_count),
-                                      static_cast<int>(input_count),
-                                      static_cast<int>(output_count), &op));
+  Ort::ThrowOnError(GetApi().CreateOp(info, op_name, domain, version, type_constraint_names, type_constraint_values, static_cast<int>(type_constraint_count), attr_input_values, static_cast<int>(attr_count), static_cast<int>(input_count), static_cast<int>(output_count), &op));
   return Op{op};
 }
 
@@ -1751,8 +1720,7 @@ inline void Op::Invoke(const OrtKernelContext* context,
                 "Value is really just an array of OrtValue* in memory, so we can reinterpret_cast safely");
   auto ort_input_values = reinterpret_cast<const OrtValue* const*>(input_values);
   auto ort_output_values = reinterpret_cast<OrtValue**>(output_values);
-  Ort::ThrowOnError(GetApi().InvokeOp(context, p_, ort_input_values, static_cast<int>(input_count),
-                                      ort_output_values, static_cast<int>(output_count)));
+  Ort::ThrowOnError(GetApi().InvokeOp(context, p_, ort_input_values, static_cast<int>(input_count), ort_output_values, static_cast<int>(output_count)));
 }
 
 inline void Op::Invoke(const OrtKernelContext* context,
@@ -1760,8 +1728,7 @@ inline void Op::Invoke(const OrtKernelContext* context,
                        size_t input_count,
                        OrtValue* const* output_values,
                        size_t output_count) {
-  Ort::ThrowOnError(GetApi().InvokeOp(context, p_, input_values, static_cast<int>(input_count),
-                                      output_values, static_cast<int>(output_count)));
+  Ort::ThrowOnError(GetApi().InvokeOp(context, p_, input_values, static_cast<int>(input_count), output_values, static_cast<int>(output_count)));
 }
 
 inline void CustomOpApi::ThrowOnError(OrtStatus* status) {
@@ -1915,8 +1882,7 @@ inline size_t CustomOpApi::KernelContext_GetOutputCount(const OrtKernelContext* 
   return out;
 }
 
-inline OrtValue* CustomOpApi::KernelContext_GetOutput(OrtKernelContext* context, _In_ size_t index,
-                                                      _In_ const int64_t* dim_values, size_t dim_count) {
+inline OrtValue* CustomOpApi::KernelContext_GetOutput(OrtKernelContext* context, _In_ size_t index, _In_ const int64_t* dim_values, size_t dim_count) {
   OrtValue* out;
   Ort::ThrowOnError(api_.KernelContext_GetOutput(context, index, dim_values, dim_count, &out));
   return out;
@@ -1953,8 +1919,7 @@ inline OrtOp* CustomOpApi::CreateOp(_In_ const OrtKernelInfo* info,
                                     _In_ int input_count,
                                     _In_ int output_count) {
   OrtOp* ort_op{};
-  Ort::ThrowOnError(api_.CreateOp(info, op_name, domain, version, type_constraint_names, type_constraint_values,
-                                  type_constraint_count, attr_values, attr_count, input_count, output_count, &ort_op));
+  Ort::ThrowOnError(api_.CreateOp(info, op_name, domain, version, type_constraint_names, type_constraint_values, type_constraint_count, attr_values, attr_count, input_count, output_count, &ort_op));
   return ort_op;
 }
 

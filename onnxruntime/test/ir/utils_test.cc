@@ -73,8 +73,7 @@ static GraphProto CreateNodeRemovalSubgraph(const std::string& new_output_name =
   std::string suffix = add_second_level ? ".top" : ".bottom";
   std::string constant_output_name = (new_output_name.empty() ? "constant_in_0" + suffix : new_output_name);
 
-  Model model("CreateNodeRemovalSubgraph:" + constant_output_name, false,
-              DefaultLoggingManager().DefaultLogger());
+  Model model("CreateNodeRemovalSubgraph:" + constant_output_name, false, DefaultLoggingManager().DefaultLogger());
   auto& graph = model.MainGraph();
 
   TypeProto float_scalar_tensor;
@@ -108,8 +107,7 @@ static GraphProto CreateNodeRemovalSubgraph(const std::string& new_output_name =
     GraphProto else_branch = CreateNodeRemovalSubgraph();
 
     auto& cond_in = graph.GetOrCreateNodeArg("cast_add_output_to_bool", &bool_scalar_tensor);
-    auto& cast_node = graph.AddNode("cast", "Cast", "Cast Add output to bool to use as cond in subgraph",
-                                    {&add_out_0}, {&cond_in});
+    auto& cast_node = graph.AddNode("cast", "Cast", "Cast Add output to bool to use as cond in subgraph", {&add_out_0}, {&cond_in});
     cast_node.AddAttribute("to", static_cast<int64_t>(TensorProto_DataType_BOOL));
 
     auto& nested_if_out_0 = graph.GetOrCreateNodeArg("nested_if_out_0", &float_scalar_tensor);
@@ -157,8 +155,7 @@ static void CreateNodeRemovalGraph(Model& model, bool removal_allowed, bool test
   auto& if_out_0 = graph.GetOrCreateNodeArg("if_out_1", &float_scalar_tensor);
 
   graph.AddNode("id_0", "Identity", "Graph input id node", {&graph_in_0}, {&id_out_0});
-  graph.AddNode("node_to_remove", "Identity", "Node to remove with implicit input to subgraph",
-                {&id_out_0}, {&id_out_1});
+  graph.AddNode("node_to_remove", "Identity", "Node to remove with implicit input to subgraph", {&id_out_0}, {&id_out_1});
 
   // create two subgraphs - one where there will be a clash with the implicit input name if removal_allowed is false.
   GraphProto then_branch;
@@ -185,15 +182,13 @@ static void CreateNodeRemovalGraph(Model& model, bool removal_allowed, bool test
 static void CheckNodeRemovalSubgraphUpdate(const std::string& new_name, const Graph& subgraph) {
   const auto& nodes = subgraph.Nodes();
   // the second input to the Add node is the implicit input that should have been updated
-  const auto& add_node = *std::find_if(nodes.cbegin(), nodes.cend(),
-                                       [](const Node& node) { return node.OpType() == "Add"; });
+  const auto& add_node = *std::find_if(nodes.cbegin(), nodes.cend(), [](const Node& node) { return node.OpType() == "Add"; });
 
   const auto& outer_scope_name = add_node.InputDefs()[1]->Name();
   EXPECT_TRUE(outer_scope_name == new_name);
 
   // if we have a nested subgraph, we have another If node
-  auto if_node_iter = std::find_if(nodes.cbegin(), nodes.cend(),
-                                   [](const Node& node) { return node.OpType() == "If"; });
+  auto if_node_iter = std::find_if(nodes.cbegin(), nodes.cend(), [](const Node& node) { return node.OpType() == "If"; });
   if (if_node_iter != nodes.cend()) {
     CheckNodeRemovalSubgraphUpdate(new_name, *if_node_iter->GetGraphAttribute("then_branch"));
     CheckNodeRemovalSubgraphUpdate(new_name, *if_node_iter->GetGraphAttribute("else_branch"));
@@ -202,7 +197,8 @@ static void CheckNodeRemovalSubgraphUpdate(const std::string& new_name, const Gr
 
 static void UpdateSubgraphWhenRemovingNode(bool include_nested = false) {
   Model model(std::string("UpdateSubgraphWhenRemovingNode") + (include_nested ? ":Nested" : ":SingleLevel"),
-              false, DefaultLoggingManager().DefaultLogger());
+              false,
+              DefaultLoggingManager().DefaultLogger());
 
   CreateNodeRemovalGraph(model, true, include_nested);
 
@@ -237,14 +233,14 @@ TEST(GraphUtils, UpdateNestedSubgraphWhenRemovingNode) {
 // will result with in a clash with an existing node in the subgraph
 static void DontRemoveNodeIfItWillBreakSubgraph(bool test_nested = false) {
   Model model(std::string("DontRemoveNodeIfItWillBreakSubgraph") + (test_nested ? ":Nested" : ":SingleLevel"),
-              false, DefaultLoggingManager().DefaultLogger());
+              false,
+              DefaultLoggingManager().DefaultLogger());
   CreateNodeRemovalGraph(model, false, test_nested);
 
   auto& graph = model.MainGraph();
   auto& node_to_remove = *graph.GetNode(1);
 
-  ASSERT_FALSE(graph_utils::CanRemoveNode(graph, node_to_remove,
-                                          DefaultLoggingManager().DefaultLogger()));
+  ASSERT_FALSE(graph_utils::CanRemoveNode(graph, node_to_remove, DefaultLoggingManager().DefaultLogger()));
 }
 
 TEST(GraphUtils, DontRemoveNodeIfItWillBreakSubgraph) {
@@ -347,17 +343,14 @@ TEST(GraphUtils, TestMultiOutputRemoveNode) {
 
   // Try to remove do_0, which should return false
   // because both outputs are consumed by downstream Operators.
-  ASSERT_FALSE(graph_utils::CanRemoveNode(graph, *nodes[0],
-                                          DefaultLoggingManager().DefaultLogger()));
+  ASSERT_FALSE(graph_utils::CanRemoveNode(graph, *nodes[0], DefaultLoggingManager().DefaultLogger()));
 
   // Try removing do_0 after removing id_2, which should return true
   // because it now has exactly one output consumed by downstream Operators.
-  ASSERT_TRUE(graph_utils::CanRemoveNode(graph, *nodes[1],
-                                         DefaultLoggingManager().DefaultLogger()));
+  ASSERT_TRUE(graph_utils::CanRemoveNode(graph, *nodes[1], DefaultLoggingManager().DefaultLogger()));
   ASSERT_TRUE(graph_utils::RemoveNode(graph, *nodes[1]));
   ASSERT_FALSE(graph_utils::IsOutputUsed(*nodes[0], 0));
-  ASSERT_TRUE(graph_utils::CanRemoveNode(graph, *nodes[0],
-                                         DefaultLoggingManager().DefaultLogger()));
+  ASSERT_TRUE(graph_utils::CanRemoveNode(graph, *nodes[0], DefaultLoggingManager().DefaultLogger()));
   ASSERT_TRUE(graph_utils::RemoveNode(graph, *nodes[0]));
 }
 

@@ -18,9 +18,11 @@ class FFTBase : public ::onnxruntime::cuda::CudaKernel {
  public:
   FFTBase(const OpKernelInfo& info) : ::onnxruntime::cuda::CudaKernel{info}, normalized_{0}, onesided_{1} {
     ORT_ENFORCE((info.GetAttr("signal_ndim", &signal_ndim_)).IsOK(),
-                "Attribute signal_ndim is missing in Node ", info.node().Name());
+                "Attribute signal_ndim is missing in Node ",
+                info.node().Name());
     ORT_ENFORCE(signal_ndim_ >= 1 && signal_ndim_ <= 3,
-                "Expected signal_ndim to be 1, 2, or 3, but got signal_ndim=", signal_ndim_);
+                "Expected signal_ndim to be 1, 2, or 3, but got signal_ndim=",
+                signal_ndim_);
     normalized_ = info.GetAttrOrDefault<int64_t>("normalized", 0);
     onesided_ = info.GetAttrOrDefault<int64_t>("onesided", 1);
     ORT_ENFORCE(normalized_ == 0, "Don't support normalized FFT yet.");

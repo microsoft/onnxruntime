@@ -40,8 +40,7 @@ Status AdasumAllReduce::Compute(OpKernelContext* context) const {
 
   for (int i = 0; i < num_tensors; ++i) {
     const Tensor* x_tensor = context->Input<Tensor>(i);
-    memcpy((uint8_t*)data_buffer + tensor_offsets[i], x_tensor->DataRaw(),
-           tensor_sizes[i]);
+    memcpy((uint8_t*)data_buffer + tensor_offsets[i], x_tensor->DataRaw(), tensor_sizes[i]);
   }
 
   auto recv_buffer = allocator->Alloc(total_recv_buffer_len);

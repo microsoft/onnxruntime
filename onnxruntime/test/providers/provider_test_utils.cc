@@ -39,8 +39,7 @@ Tensor copy_sort(const Tensor& src, const AllocatorPtr& allocator) {
 
 // Check functions for tensor types
 template <typename T>
-void sort_expected_and_actual_buffers(const Tensor& expected, Tensor& expected_sorted,
-                                      const Tensor& actual, Tensor& actual_sorted) {
+void sort_expected_and_actual_buffers(const Tensor& expected, Tensor& expected_sorted, const Tensor& actual, Tensor& actual_sorted) {
   auto allocator = TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault);
   expected_sorted = copy_sort<T>(expected, allocator);
   actual_sorted = copy_sort<T>(actual, allocator);
@@ -60,8 +59,7 @@ void sort_expected_and_actual_buffers(std::vector<T>& expected,
 // other types are below
 template <typename T>
 struct TensorCheck {
-  void operator()(const Tensor& expected_tensor, const Tensor& output_tensor,
-                  const std::string& provider_type, const CheckParams& params) const {
+  void operator()(const Tensor& expected_tensor, const Tensor& output_tensor, const std::string& provider_type, const CheckParams& params) const {
     Tensor expected_sorted, output_sorted;
     const T* expected;
     const T* output;
@@ -92,7 +90,8 @@ template <>
 struct TensorCheck<uint8_t> {
   void operator()(const Tensor& expected_tensor,
                   const Tensor& output_tensor,
-                  const std::string& provider_type, const CheckParams& params) const {
+                  const std::string& provider_type,
+                  const CheckParams& params) const {
     const bool has_abs_err = params.absolute_error_.has_value();
     const bool has_rel_err = params.relative_error_.has_value();
 
@@ -149,7 +148,8 @@ template <>
 struct TensorCheck<int8_t> {
   void operator()(const Tensor& expected_tensor,
                   const Tensor& output_tensor,
-                  const std::string& provider_type, const CheckParams& params) const {
+                  const std::string& provider_type,
+                  const CheckParams& params) const {
     Tensor expected_sorted, output_sorted;
     const int8_t* expected;
     const int8_t* output;
@@ -230,14 +230,11 @@ struct TensorCheck<double> {
               << "i:" << i << ", provider_type: " << provider_type;
         } else {
           if (has_abs_err) {
-            ASSERT_NEAR(expected[i], output[i],
-                        *(params.absolute_error_))
+            ASSERT_NEAR(expected[i], output[i], *(params.absolute_error_))
                 << "i:" << i << ", provider_type: " << provider_type;
           }
           if (has_rel_err) {
-            ASSERT_NEAR(expected[i], output[i],
-                        *(params.relative_error_) *
-                            std::abs(expected[i]))
+            ASSERT_NEAR(expected[i], output[i], *(params.relative_error_) * std::abs(expected[i]))
                 << "i:" << i << ", provider_type: " << provider_type;
           }
         }
@@ -289,14 +286,11 @@ void InternalNumericalCheck(const Tensor& expected_tensor,
             << "i:" << i << ", provider_type: " << provider_type;
       } else {
         if (has_abs_err) {
-          ASSERT_NEAR(expected[i], output[i],
-                      *(params.absolute_error_))
+          ASSERT_NEAR(expected[i], output[i], *(params.absolute_error_))
               << "i:" << i << ", provider_type: " << provider_type;
         }
         if (has_rel_err) {
-          ASSERT_NEAR(expected[i], output[i],
-                      *(params.relative_error_) *
-                          std::abs(expected[i]))
+          ASSERT_NEAR(expected[i], output[i], *(params.relative_error_) * std::abs(expected[i]))
               << "i:" << i << ", provider_type: " << provider_type;
         }
       }
@@ -356,14 +350,11 @@ struct TensorCheck<MLFloat16> {
               << "i:" << i << ", provider_type: " << provider_type;
         } else {
           if (has_abs_err) {
-            EXPECT_NEAR(f_expected[i], f_output[i],
-                        *(params.absolute_error_))
+            EXPECT_NEAR(f_expected[i], f_output[i], *(params.absolute_error_))
                 << "i:" << i << ", provider_type: " << provider_type;
           }
           if (has_rel_err) {
-            EXPECT_NEAR(f_expected[i], f_output[i],
-                        *(params.relative_error_) *
-                            std::abs(expected[i]))
+            EXPECT_NEAR(f_expected[i], f_output[i], *(params.relative_error_) * std::abs(expected[i]))
                 << "i:" << i << ", provider_type: " << provider_type;
           }
         }
@@ -426,8 +417,7 @@ struct TensorCheck<BFloat16> {
   }
 };
 
-void Check(const OpTester::Data& expected_data, const Tensor& output_tensor,
-           const std::string& provider_type) {
+void Check(const OpTester::Data& expected_data, const Tensor& output_tensor, const std::string& provider_type) {
   ORT_ENFORCE(expected_data.data_.Get<Tensor>().Shape() ==
                   output_tensor.Shape(),
               "Expected output shape [" +
@@ -436,9 +426,7 @@ void Check(const OpTester::Data& expected_data, const Tensor& output_tensor,
                   output_tensor.Shape().ToString() + "] for " +
                   expected_data.def_.Name());
 
-  utils::MLTypeCallDispatcher<bool, float, double, uint8_t, uint16_t, uint32_t, uint64_t,
-                              int8_t, int16_t, int32_t, int64_t, std::string, MLFloat16,
-                              BFloat16>
+  utils::MLTypeCallDispatcher<bool, float, double, uint8_t, uint16_t, uint32_t, uint64_t, int8_t, int16_t, int32_t, int64_t, std::string, MLFloat16, BFloat16>
       t_disp(output_tensor.GetElementType());
 
   t_disp.Invoke<TensorCheck>(expected_data.data_.Get<Tensor>(), output_tensor, provider_type, MakeCheckParams(expected_data));
@@ -447,8 +435,7 @@ void Check(const OpTester::Data& expected_data, const Tensor& output_tensor,
 // Check for non tensor types
 
 template <typename T>
-void Check(const OpTester::Data& expected_data, const T& run_output,
-           const std::string& provider_type) {
+void Check(const OpTester::Data& expected_data, const T& run_output, const std::string& provider_type) {
   EXPECT_EQ(expected_data.data_.Get<T>(), run_output) << "provider_type: "
                                                       << provider_type;
 }
@@ -479,9 +466,7 @@ void Check<TensorSeq>(const OpTester::Data& expected_data,
   CheckParams check_params = MakeCheckParams(expected_data);
 
   auto element_type = exp_seq.DataType()->AsPrimitiveDataType()->GetDataType();
-  utils::MLTypeCallDispatcher<bool, float, double, uint8_t, uint16_t, uint32_t, uint64_t,
-                              int8_t, int16_t, int32_t, int64_t, std::string, MLFloat16,
-                              BFloat16>
+  utils::MLTypeCallDispatcher<bool, float, double, uint8_t, uint16_t, uint32_t, uint64_t, int8_t, int16_t, int32_t, int64_t, std::string, MLFloat16, BFloat16>
       t_disp(element_type);
 
   for (size_t i = 0; i < output_num_tensors; ++i) {
@@ -490,8 +475,7 @@ void Check<TensorSeq>(const OpTester::Data& expected_data,
 }
 
 template <typename Type>
-void CheckDispatch(MLDataType type, const OpTester::Data& expected_data,
-                   OrtValue& ort_value, const std::string& provider_type) {
+void CheckDispatch(MLDataType type, const OpTester::Data& expected_data, OrtValue& ort_value, const std::string& provider_type) {
   if (type == DataTypeImpl::GetType<Type>())
     Check<Type>(expected_data, ort_value.Get<Type>(), provider_type);
   else
@@ -500,20 +484,18 @@ void CheckDispatch(MLDataType type, const OpTester::Data& expected_data,
 }
 
 template <typename Type, typename Next, typename... Types>
-void CheckDispatch(MLDataType type, const OpTester::Data& expected_data,
-                   OrtValue& ort_value, const std::string& provider_type) {
+void CheckDispatch(MLDataType type, const OpTester::Data& expected_data, OrtValue& ort_value, const std::string& provider_type) {
   if (type == DataTypeImpl::GetType<Type>())
     Check<Type>(expected_data, ort_value.Get<Type>(), provider_type);
   else
-    CheckDispatch<Next, Types...>(type, expected_data, ort_value,
-                                  provider_type);
+    CheckDispatch<Next, Types...>(type, expected_data, ort_value, provider_type);
 }
 
-void Check(const OpTester::Data& expected_data, OrtValue& ort_value,
-           const std::string& provider_type) {
+void Check(const OpTester::Data& expected_data, OrtValue& ort_value, const std::string& provider_type) {
   CheckDispatch<
 #if !defined(DISABLE_ML_OPS)
-      VectorMapStringToFloat, VectorMapInt64ToFloat,
+      VectorMapStringToFloat,
+      VectorMapInt64ToFloat,
 #endif
       TensorSeq>(
       expected_data.data_.Type(), expected_data, ort_value, provider_type);
@@ -563,16 +545,14 @@ void OpTester::FillFeeds(std::unordered_map<std::string, OrtValue>& feeds) {
 
 void OpTester::SetOutputAbsErr(const char* name, float v) {
   auto it =
-      std::find_if(output_data_.begin(), output_data_.end(),
-                   [name](Data& data) { return (data.def_.Name() == name); });
+      std::find_if(output_data_.begin(), output_data_.end(), [name](Data& data) { return (data.def_.Name() == name); });
   ORT_ENFORCE(it != output_data_.end());
   it->absolute_error_ = optional<float>(v);
 }
 
 void OpTester::SetOutputRelErr(const char* name, float v) {
   auto it =
-      std::find_if(output_data_.begin(), output_data_.end(),
-                   [name](Data& data) { return (data.def_.Name() == name); });
+      std::find_if(output_data_.begin(), output_data_.end(), [name](Data& data) { return (data.def_.Name() == name); });
   ORT_ENFORCE(it != output_data_.end());
   it->relative_error_ = optional<float>(v);
 }
@@ -585,8 +565,7 @@ void OpTester::AddNodes(
   // default behavior is to create a single Node for the op being tested, with
   // node inputs/outputs
   // being 1:1 with graph inputs/outputs.
-  auto& node = graph.AddNode("node1", op_, op_, graph_input_defs,
-                             graph_output_defs, nullptr, domain_);
+  auto& node = graph.AddNode("node1", op_, op_, graph_input_defs, graph_output_defs, nullptr, domain_);
 
   // Add the attributes if any
   for (auto& add_attribute_fn : add_attribute_funcs)
@@ -602,8 +581,7 @@ std::vector<int64_t> OpTester::GetDimsForProto(gsl::span<const int64_t> dims) {
   return dims_for_proto;
 }
 
-void OpTester::AddShapeToTensorData(NodeArg& node_arg, gsl::span<const int64_t> dims,
-                                    const std::vector<std::string>* dim_params) {
+void OpTester::AddShapeToTensorData(NodeArg& node_arg, gsl::span<const int64_t> dims, const std::vector<std::string>* dim_params) {
   if (dim_params && !(dim_params->empty()) && add_shape_to_tensor_data_) {
     // If dim_params presents, configure node_arg's dim value based on dim_params, which supports symbolic dim and dim broadcast.
     const auto& dim_params_data = *dim_params;
@@ -638,8 +616,7 @@ void OpTester::CopyDataToTensor(gsl::span<const gsl::byte> data, Tensor& dst) {
   memcpy(dst.MutableDataRaw(), data.data(), data.size_bytes());
 }
 
-NodeArg OpTester::MakeSparseNodeArg(int32_t dtype, const char* name,
-                                    const gsl::span<const int64_t>& dims, const std::vector<std::string>* dim_params) {
+NodeArg OpTester::MakeSparseNodeArg(int32_t dtype, const char* name, const gsl::span<const int64_t>& dims, const std::vector<std::string>* dim_params) {
   std::vector<int64_t> dims_for_proto = GetDimsForProto(dims);
   TSparseTensorProto type_proto(dtype, add_shape_to_tensor_data_ ? &dims_for_proto : nullptr);
   NodeArg node_arg(name, &type_proto.proto);
@@ -647,15 +624,11 @@ NodeArg OpTester::MakeSparseNodeArg(int32_t dtype, const char* name,
   return node_arg;
 }
 
-void OpTester::AddSparseTensorData(std::vector<Data>& data, NodeArg node_arg,
-                                   std::unique_ptr<SparseTensor> p_tensor,
-                                   const CheckParams& check_params) {
+void OpTester::AddSparseTensorData(std::vector<Data>& data, NodeArg node_arg, std::unique_ptr<SparseTensor> p_tensor, const CheckParams& check_params) {
   OrtValue value;
   auto ml_type = DataTypeImpl::GetType<SparseTensor>();
   value.Init(p_tensor.release(), ml_type, ml_type->GetDeleteFunc());
-  data.push_back(Data(std::move(node_arg), std::move(value),
-                      optional<float>(check_params.relative_error_), optional<float>(check_params.absolute_error_),
-                      check_params.sort_output_));
+  data.push_back(Data(std::move(node_arg), std::move(value), optional<float>(check_params.relative_error_), optional<float>(check_params.absolute_error_), check_params.sort_output_));
 }
 
 void OpTester::AddSparseCooTensorData(std::vector<Data>& data,
@@ -813,10 +786,7 @@ std::unique_ptr<onnxruntime::Model> OpTester::BuildGraph(
   }
 
   auto p_model = std::make_unique<onnxruntime::Model>(
-      "test", false, ModelMetaData(), PathString(), custom_schema_registries_,
-      domain_to_version, std::vector<ONNX_NAMESPACE::FunctionProto>{},
-      DefaultLoggingManager().DefaultLogger(),
-      model_options);
+      "test", false, ModelMetaData(), PathString(), custom_schema_registries_, domain_to_version, std::vector<ONNX_NAMESPACE::FunctionProto>{}, DefaultLoggingManager().DefaultLogger(), model_options);
   onnxruntime::Graph& graph = p_model->MainGraph();
   AddNodes(graph, node_input_defs, output_defs, add_attribute_funcs_);
 
@@ -827,11 +797,7 @@ std::unique_ptr<onnxruntime::Model> OpTester::BuildGraph(
 
 template <class SessionType>
 std::vector<OrtValue> OpTester::ExecuteModel(
-    Model& model, SessionType& session_object, ExpectResult expect_result,
-    const std::string& expected_failure_string, const RunOptions* run_options,
-    const std::unordered_map<std::string, OrtValue>& feeds,
-    const std::vector<std::string>& output_names,
-    const std::string& provider_type, bool allow_released_onnx_opset_only) {
+    Model& model, SessionType& session_object, ExpectResult expect_result, const std::string& expected_failure_string, const RunOptions* run_options, const std::unordered_map<std::string, OrtValue>& feeds, const std::vector<std::string>& output_names, const std::string& provider_type, bool allow_released_onnx_opset_only) {
   std::string s1;
   const bool rc = model.ToProto().SerializeToString(&s1);
   if (!rc) {
@@ -876,7 +842,9 @@ std::vector<OrtValue> OpTester::ExecuteModel(
     fetches.clear();
     status =
         session_object.Run(run_options ? *run_options : default_run_options,
-                           feeds, output_names, &fetches);
+                           feeds,
+                           output_names,
+                           &fetches);
 
     if (status.IsOK()) {
       EXPECT_TRUE(expect_result == ExpectResult::kExpectSuccess)
@@ -999,11 +967,11 @@ bool SetEpsForAllNodes(
 
       // Check the EP has an impl for the node from custom_registries
       if (custom_registries != nullptr &&
-          std::any_of(custom_registries->cbegin(), custom_registries->cend(),
-                      [&](auto reg) { return KernelRegistry::HasImplementationOf(
-                                          *reg->GetKernelRegistry(),
-                                          node, ep->Type(),
-                                          kernel_type_str_resolver); })) {
+          std::any_of(custom_registries->cbegin(), custom_registries->cend(), [&](auto reg) { return KernelRegistry::HasImplementationOf(
+                                                                                                  *reg->GetKernelRegistry(),
+                                                                                                  node,
+                                                                                                  ep->Type(),
+                                                                                                  kernel_type_str_resolver); })) {
         found = true;
         break;
       }
@@ -1055,12 +1023,7 @@ OpTester& OpTester::Config(const Graph::ResolveOptions& resolve_options) {
 }
 
 void OpTester::Run(
-    ExpectResult expect_result, const std::string& expected_failure_string,
-    const std::unordered_set<std::string>& excluded_provider_types,
-    const RunOptions* run_options,
-    std::vector<std::unique_ptr<IExecutionProvider>>* execution_providers,
-    ExecutionMode execution_mode,
-    const Graph::ResolveOptions& options) {
+    ExpectResult expect_result, const std::string& expected_failure_string, const std::unordered_set<std::string>& excluded_provider_types, const RunOptions* run_options, std::vector<std::unique_ptr<IExecutionProvider>>* execution_providers, ExecutionMode execution_mode, const Graph::ResolveOptions& options) {
   SessionOptions so;
   so.use_per_session_threads = false;
   so.session_logid = op_;
@@ -1068,8 +1031,7 @@ void OpTester::Run(
   so.execution_mode = execution_mode;
   so.use_deterministic_compute = use_determinism_;
   so.graph_optimization_level = TransformerLevel::Default;  // 'Default' == off
-  Run(so, expect_result, expected_failure_string, excluded_provider_types,
-      run_options, execution_providers, options);
+  Run(so, expect_result, expected_failure_string, excluded_provider_types, run_options, execution_providers, options);
 }
 
 #define ASSERT_PROVIDER_STATUS_OK(function)                                                         \
@@ -1081,7 +1043,8 @@ void OpTester::Run(
 void OpTester::Run(
     SessionOptions so,  // Take the SessionOptions by value (i.e. make a copy)
                         // because we may need to modify it
-    ExpectResult expect_result, const std::string& expected_failure_string,
+    ExpectResult expect_result,
+    const std::string& expected_failure_string,
     const std::unordered_set<std::string>& excluded_provider_types,
     const RunOptions* run_options,
     std::vector<std::unique_ptr<IExecutionProvider>>* execution_providers,
@@ -1193,9 +1156,7 @@ void OpTester::RunWithConfig(size_t* number_of_pre_packed_weights_counter,
     // Run the model
     if (ctx_.run_with_specified_eps) {
       ExecuteModelForEps(
-          std::move(ctx_.execution_providers), *p_model, ctx_.session_options,
-          ctx_.expect_result, ctx_.expected_failure_string,
-          ctx_.run_options, feeds, output_names,
+          std::move(ctx_.execution_providers), *p_model, ctx_.session_options, ctx_.expect_result, ctx_.expected_failure_string, ctx_.run_options, feeds, output_names,
           /*custom_registries=*/nullptr,
           /*assign_ep_for_nodes=*/false,
           allow_released_onnx_opset_only,
@@ -1276,9 +1237,13 @@ void OpTester::RunWithConfig(size_t* number_of_pre_packed_weights_counter,
               ret.emplace_back(std::move(execution_provider));
               return ret;
             }(),
-            *p_model, ctx_.session_options,
-            ctx_.expect_result, ctx_.expected_failure_string,
-            ctx_.run_options, feeds, output_names,
+            *p_model,
+            ctx_.session_options,
+            ctx_.expect_result,
+            ctx_.expected_failure_string,
+            ctx_.run_options,
+            feeds,
+            output_names,
             &custom_session_registries_,
             /*try_assign_ep_for_nodes=*/true,
             allow_released_onnx_opset_only,
@@ -1295,10 +1260,7 @@ void OpTester::RunWithConfig(size_t* number_of_pre_packed_weights_counter,
 
           if (!execution_providers.empty()) {
             ExecuteModelForEps(
-                std::move(execution_providers), *p_model, ctx_.session_options,
-                ctx_.expect_result, ctx_.expected_failure_string,
-                ctx_.run_options, feeds, output_names,
-                &custom_session_registries_,
+                std::move(execution_providers), *p_model, ctx_.session_options, ctx_.expect_result, ctx_.expected_failure_string, ctx_.run_options, feeds, output_names, &custom_session_registries_,
                 /*assign_ep_for_nodes=*/true,
                 allow_released_onnx_opset_only,
                 number_of_pre_packed_weights_counter,
@@ -1387,8 +1349,7 @@ void OpTester::ExecuteModelForEps(
   }
 
   fetches_ = ExecuteModel<InferenceSession>(
-      model, session_object, expect_result, expected_failure_string,
-      run_options, feeds, output_names, provider_type, allow_released_onnx_opset_only);
+      model, session_object, expect_result, expected_failure_string, run_options, feeds, output_names, provider_type, allow_released_onnx_opset_only);
 
   // After the model has initialized (happens in ExecuteModel),
   // we should be able to tell how many constant initializers were pre-packed
@@ -1458,11 +1419,13 @@ void OpTester::AddReferenceOutputs(const std::string& model_path, float abs_erro
     if (abs_error != 0.0f) {
       output_data_.push_back(Data(NodeArg(output_names[out_idx], &tmp_type_proto),
                                   std::move(subgraph_fetches[out_idx]),
-                                  optional<float>(), optional<float>(abs_error)));
+                                  optional<float>(),
+                                  optional<float>(abs_error)));
     } else {
       output_data_.push_back(Data(NodeArg(output_names[out_idx], &tmp_type_proto),
                                   std::move(subgraph_fetches[out_idx]),
-                                  optional<float>(), optional<float>()));
+                                  optional<float>(),
+                                  optional<float>()));
     }
   }
 }
@@ -1470,12 +1433,7 @@ void OpTester::AddReferenceOutputs(const std::string& model_path, float abs_erro
 #ifdef ENABLE_TRAINING
 // Deprecated code. Remove this when training::TrainingSession is removed.
 template std::vector<OrtValue> OpTester::ExecuteModel<training::TrainingSession>(
-    Model& model, training::TrainingSession& session_object,
-    ExpectResult expect_result, const std::string& expected_failure_string,
-    const RunOptions* run_options,
-    const std::unordered_map<std::string, OrtValue>& feeds,
-    const std::vector<std::string>& output_names, const std::string& provider_type,
-    bool allow_released_onnx_opset_only);
+    Model& model, training::TrainingSession& session_object, ExpectResult expect_result, const std::string& expected_failure_string, const RunOptions* run_options, const std::unordered_map<std::string, OrtValue>& feeds, const std::vector<std::string>& output_names, const std::string& provider_type, bool allow_released_onnx_opset_only);
 #endif
 
 }  // namespace test

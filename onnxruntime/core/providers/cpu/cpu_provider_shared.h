@@ -41,9 +41,7 @@ struct ProviderHostCPU {
   // From cpu/tensor/padbase.h
   virtual Status PadBase__HandleDimValueZero(const Mode& mode, const TensorShape& input_shape, TensorShape& output_shape) = 0;
   // From cpu/tensor/split.h
-  virtual Status SplitBase__PrepareForCompute(const SplitBase* p, const TensorShape& input_shape, int num_outputs, int64_t& axis, int& before_dims,
-                                              int& after_dims_including_split_axis, int& after_dims_excluding_split,
-                                              std::vector<int64_t>& split_sizes) = 0;
+  virtual Status SplitBase__PrepareForCompute(const SplitBase* p, const TensorShape& input_shape, int num_outputs, int64_t& axis, int& before_dims, int& after_dims_including_split_axis, int& after_dims_excluding_split, std::vector<int64_t>& split_sizes) = 0;
   // From cpu/tensor/concatbase.h
   virtual Status ConcatBase__PrepareForCompute(const ConcatBase* p, OpKernelContext* ctx, const ConcatBase_InlinedTensorsVector& input_tensors, Prepare& prepare) = 0;
 
@@ -198,7 +196,8 @@ struct ProviderHostCPU {
   // Should remove the shrunken_gather include from ENABLE_TRAINING_OPS once 1). compute optimizer is enabled for inference or
   // 2). this is needed by inference for other purpose.
   virtual void contrib__ShrunkenGatherCommon__CheckInput(const contrib::ShrunkenGatherCommon* p,
-                                                         const Tensor* input_tensor, const Tensor* indices_tensor,
+                                                         const Tensor* input_tensor,
+                                                         const Tensor* indices_tensor,
                                                          int64_t axis_in) const = 0;
 #endif
 
@@ -233,9 +232,7 @@ inline Status CheckROIAlignValidInput(const Tensor* X_ptr, const Tensor* rois_pt
 
 // From onehot.h
 inline Status ValidateInputs(const Tensor* depth, const Tensor* values) { return g_host_cpu.ValidateInputs(depth, values); }
-inline Status PrepareOutputShape(const Tensor* indices, const int64_t depth_val, const int64_t axis,
-                                 int64_t& prefix_dim_size, int64_t& suffix_dim_size,
-                                 TensorShapeVector& output_shape) { return g_host_cpu.PrepareOutputShape(indices, depth_val, axis, prefix_dim_size, suffix_dim_size, output_shape); }
+inline Status PrepareOutputShape(const Tensor* indices, const int64_t depth_val, const int64_t axis, int64_t& prefix_dim_size, int64_t& suffix_dim_size, TensorShapeVector& output_shape) { return g_host_cpu.PrepareOutputShape(indices, depth_val, axis, prefix_dim_size, suffix_dim_size, output_shape); }
 
 struct EinsumComputePreprocessor {
   static void operator delete(void* p) { g_host_cpu.EinsumComputePreprocessor__operator_delete(reinterpret_cast<EinsumComputePreprocessor*>(p)); }
@@ -252,10 +249,7 @@ struct EinsumComputePreprocessor {
 template <typename T>
 struct EinsumTypedComputeProcessor {
   static void operator delete(void* p) { g_host_cpu.EinsumTypedComputeProcessor__operator_delete(reinterpret_cast<EinsumTypedComputeProcessor*>(p)); }
-  static std::unique_ptr<EinsumTypedComputeProcessor> Create(OpKernelContext* context, AllocatorPtr allocator,
-                                                             concurrency::ThreadPool* tp,
-                                                             EinsumComputePreprocessor& einsum_compute_preprocessor,
-                                                             void* einsum_cuda_assets);
+  static std::unique_ptr<EinsumTypedComputeProcessor> Create(OpKernelContext* context, AllocatorPtr allocator, concurrency::ThreadPool* tp, EinsumComputePreprocessor& einsum_compute_preprocessor, void* einsum_cuda_assets);
 
   void SetDeviceHelpers(const EinsumOp::DeviceHelpers::Transpose& device_transpose_func,
                         const EinsumOp::DeviceHelpers::MatMul<T>& device_matmul_func,

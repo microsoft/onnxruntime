@@ -47,28 +47,20 @@ constexpr size_t countof(T (&)[N]) { return N; }
 extern std::unique_ptr<Ort::Env> ort_env;
 
 template <typename OutT>
-void RunSession(OrtAllocator* allocator, Ort::Session& session_object,
-                const std::vector<Input>& inputs,
-                const char* output_name,
-                const std::vector<int64_t>& dims_y,
-                const std::vector<OutT>& values_y,
-                Ort::Value* output_tensor) {
+void RunSession(OrtAllocator* allocator, Ort::Session& session_object, const std::vector<Input>& inputs, const char* output_name, const std::vector<int64_t>& dims_y, const std::vector<OutT>& values_y, Ort::Value* output_tensor) {
   std::vector<Ort::Value> ort_inputs;
   std::vector<const char*> input_names;
   for (size_t i = 0; i < inputs.size(); i++) {
     input_names.emplace_back(inputs[i].name);
     ort_inputs.emplace_back(
-        Ort::Value::CreateTensor<float>(allocator->Info(allocator), const_cast<float*>(inputs[i].values.data()),
-                                        inputs[i].values.size(), inputs[i].dims.data(), inputs[i].dims.size()));
+        Ort::Value::CreateTensor<float>(allocator->Info(allocator), const_cast<float*>(inputs[i].values.data()), inputs[i].values.size(), inputs[i].dims.data(), inputs[i].dims.size()));
   }
 
   std::vector<Ort::Value> ort_outputs;
   if (output_tensor)
-    session_object.Run(Ort::RunOptions{nullptr}, input_names.data(), ort_inputs.data(), ort_inputs.size(),
-                       &output_name, output_tensor, 1);
+    session_object.Run(Ort::RunOptions{nullptr}, input_names.data(), ort_inputs.data(), ort_inputs.size(), &output_name, output_tensor, 1);
   else {
-    ort_outputs = session_object.Run(Ort::RunOptions{}, input_names.data(), ort_inputs.data(), ort_inputs.size(),
-                                     &output_name, 1);
+    ort_outputs = session_object.Run(Ort::RunOptions{}, input_names.data(), ort_inputs.data(), ort_inputs.size(), &output_name, 1);
     ASSERT_EQ(ort_outputs.size(), 1u);
     output_tensor = &ort_outputs[0];
   }
@@ -85,17 +77,7 @@ void RunSession(OrtAllocator* allocator, Ort::Session& session_object,
 }
 
 template <typename OutT>
-static void TestInference(Ort::Env& env, const std::basic_string<ORTCHAR_T>& model_uri,
-                          const std::vector<Input>& inputs,
-                          const char* output_name,
-                          const std::vector<int64_t>& expected_dims_y,
-                          const std::vector<OutT>& expected_values_y,
-                          int provider_type,
-                          OrtCustomOpDomain* custom_op_domain_ptr,
-                          const ORTCHAR_T* custom_op_library_filename,
-                          bool test_session_creation_only = false,
-                          void* cuda_compute_stream = nullptr,
-                          Ort::SessionOptions* predefined_session_options = nullptr) {
+static void TestInference(Ort::Env& env, const std::basic_string<ORTCHAR_T>& model_uri, const std::vector<Input>& inputs, const char* output_name, const std::vector<int64_t>& expected_dims_y, const std::vector<OutT>& expected_values_y, int provider_type, OrtCustomOpDomain* custom_op_domain_ptr, const ORTCHAR_T* custom_op_library_filename, bool test_session_creation_only = false, void* cuda_compute_stream = nullptr, Ort::SessionOptions* predefined_session_options = nullptr) {
   Ort::SessionOptions default_session_options;
   Ort::SessionOptions& session_options = predefined_session_options ? *predefined_session_options
                                                                     : default_session_options;
@@ -148,7 +130,8 @@ static void TestInference(Ort::Env& env, const std::basic_string<ORTCHAR_T>& mod
                      nullptr);
     // with preallocated output tensor
     Ort::Value value_y = Ort::Value::CreateTensor<float>(default_allocator.get(),
-                                                         expected_dims_y.data(), expected_dims_y.size());
+                                                         expected_dims_y.data(),
+                                                         expected_dims_y.size());
 
     // test it twice
     for (int i = 0; i != 2; ++i)
@@ -227,8 +210,7 @@ TEST_P(CApiTestWithProvider, simple) {
   std::vector<int64_t> expected_dims_y = {3, 2};
   std::vector<float> expected_values_y = {1.0f, 4.0f, 9.0f, 16.0f, 25.0f, 36.0f};
 
-  TestInference<float>(*ort_env, MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, GetParam(),
-                       nullptr, nullptr);
+  TestInference<float>(*ort_env, MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, GetParam(), nullptr, nullptr);
 }
 
 TEST(CApiTest, dim_param) {
@@ -279,8 +261,7 @@ TEST(CApiTest, SparseOutputModel) {
   std::vector<const char*> input_names;
   const char* const output_names[] = {"values"};
   Ort::Session session(*ort_env, SPARSE_OUTPUT_MODEL_URI, Ort::SessionOptions{});
-  auto ort_outputs = session.Run(Ort::RunOptions{}, input_names.data(), ort_inputs.data(), ort_inputs.size(),
-                                 output_names, 1);
+  auto ort_outputs = session.Run(Ort::RunOptions{}, input_names.data(), ort_inputs.data(), ort_inputs.size(), output_names, 1);
   ASSERT_EQ(ort_outputs.size(), 1U);
   const auto& sparse_output = ort_outputs[0];
   auto ti = sparse_output.GetTypeInfo();
@@ -312,45 +293,15 @@ TEST(CApiTest, SparseOutputModel) {
 #ifndef DISABLE_CONTRIB_OPS
 TEST(CApiTest, SparseInputModel) {
   std::vector<int64_t> common_shape{9, 9};  // inputs and outputs same shape
-  std::vector<float> A_values{1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0,
-                              10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0, 17.0,
-                              18.0, 19.0, 20.0, 21.0, 22.0, 23.0, 24.0, 25.0,
-                              26.0, 27.0, 28.0, 29.0, 30.0, 31.0, 32.0, 33.0,
-                              34.0, 35.0, 36.0, 37.0, 38.0, 39.0, 40.0, 41.0,
-                              42.0, 43.0, 44.0, 45.0, 46.0, 47.0, 48.0, 49.0,
-                              50.0, 51.0, 52.0, 53.0};
+  std::vector<float> A_values{1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0, 17.0, 18.0, 19.0, 20.0, 21.0, 22.0, 23.0, 24.0, 25.0, 26.0, 27.0, 28.0, 29.0, 30.0, 31.0, 32.0, 33.0, 34.0, 35.0, 36.0, 37.0, 38.0, 39.0, 40.0, 41.0, 42.0, 43.0, 44.0, 45.0, 46.0, 47.0, 48.0, 49.0, 50.0, 51.0, 52.0, 53.0};
 
   // 2 - D index
   std::vector<int64_t> indices_shape{gsl::narrow<int64_t>(A_values.size()), 2};
-  std::vector<int64_t> A_indices{0, 1, 0, 2, 0, 6, 0, 7, 0, 8, 1, 0, 1,
-                                 1, 1, 2, 1, 6, 1, 7, 1, 8, 2, 0, 2, 1,
-                                 2, 2, 2, 6, 2, 7, 2, 8, 3, 3, 3, 4, 3,
-                                 5, 3, 6, 3, 7, 3, 8, 4, 3, 4, 4, 4, 5,
-                                 4, 6, 4, 7, 4, 8, 5, 3, 5, 4, 5, 5, 5,
-                                 6, 5, 7, 5, 8, 6, 0, 6, 1, 6, 2, 6, 3,
-                                 6, 4, 6, 5, 7, 0, 7, 1, 7, 2, 7, 3, 7,
-                                 4, 7, 5, 8, 0, 8, 1, 8, 2, 8, 3, 8, 4,
-                                 8, 5};
+  std::vector<int64_t> A_indices{0, 1, 0, 2, 0, 6, 0, 7, 0, 8, 1, 0, 1, 1, 1, 2, 1, 6, 1, 7, 1, 8, 2, 0, 2, 1, 2, 2, 2, 6, 2, 7, 2, 8, 3, 3, 3, 4, 3, 5, 3, 6, 3, 7, 3, 8, 4, 3, 4, 4, 4, 5, 4, 6, 4, 7, 4, 8, 5, 3, 5, 4, 5, 5, 5, 6, 5, 7, 5, 8, 6, 0, 6, 1, 6, 2, 6, 3, 6, 4, 6, 5, 7, 0, 7, 1, 7, 2, 7, 3, 7, 4, 7, 5, 8, 0, 8, 1, 8, 2, 8, 3, 8, 4, 8, 5};
 
-  std::vector<float> B_data{0, 1, 2, 0, 0, 0, 3, 4, 5,
-                            6, 7, 8, 0, 0, 0, 9, 10, 11,
-                            12, 13, 14, 0, 0, 0, 15, 16, 17,
-                            0, 0, 0, 18, 19, 20, 21, 22, 23,
-                            0, 0, 0, 24, 25, 26, 27, 28, 29,
-                            0, 0, 0, 30, 31, 32, 33, 34, 35,
-                            36, 37, 38, 39, 40, 41, 0, 0, 0,
-                            42, 43, 44, 45, 46, 47, 0, 0, 0,
-                            48, 49, 50, 51, 52, 53, 0, 0, 0};
+  std::vector<float> B_data{0, 1, 2, 0, 0, 0, 3, 4, 5, 6, 7, 8, 0, 0, 0, 9, 10, 11, 12, 13, 14, 0, 0, 0, 15, 16, 17, 0, 0, 0, 18, 19, 20, 21, 22, 23, 0, 0, 0, 24, 25, 26, 27, 28, 29, 0, 0, 0, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 0, 0, 0, 42, 43, 44, 45, 46, 47, 0, 0, 0, 48, 49, 50, 51, 52, 53, 0, 0, 0};
 
-  std::vector<float> Y_result{546, 561, 576, 552, 564, 576, 39, 42, 45,
-                              1410, 1461, 1512, 1362, 1392, 1422, 201, 222, 243,
-                              2274, 2361, 2448, 2172, 2220, 2268, 363, 402, 441,
-                              2784, 2850, 2916, 4362, 4485, 4608, 1551, 1608, 1665,
-                              3540, 3624, 3708, 5604, 5763, 5922, 2037, 2112, 2187,
-                              4296, 4398, 4500, 6846, 7041, 7236, 2523, 2616, 2709,
-                              678, 789, 900, 2892, 3012, 3132, 4263, 4494, 4725,
-                              786, 915, 1044, 3324, 3462, 3600, 4911, 5178, 5445,
-                              894, 1041, 1188, 3756, 3912, 4068, 5559, 5862, 6165};
+  std::vector<float> Y_result{546, 561, 576, 552, 564, 576, 39, 42, 45, 1410, 1461, 1512, 1362, 1392, 1422, 201, 222, 243, 2274, 2361, 2448, 2172, 2220, 2268, 363, 402, 441, 2784, 2850, 2916, 4362, 4485, 4608, 1551, 1608, 1665, 3540, 3624, 3708, 5604, 5763, 5922, 2037, 2112, 2187, 4296, 4398, 4500, 6846, 7041, 7236, 2523, 2616, 2709, 678, 789, 900, 2892, 3012, 3132, 4263, 4494, 4725, 786, 915, 1044, 3324, 3462, 3600, 4911, 5178, 5445, 894, 1041, 1188, 3756, 3912, 4068, 5559, 5862, 6165};
 
   Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
   Ort::Value::Shape ort_dense_shape{common_shape.data(), common_shape.size()};
@@ -366,8 +317,7 @@ TEST(CApiTest, SparseInputModel) {
   const char* input_names[] = {"sparse_A", "dense_B"};
   const char* const output_names[] = {"dense_Y"};
   Ort::Session session(*ort_env, SPARSE_INPUT_MATMUL_MODEL_URI, Ort::SessionOptions{});
-  auto ort_outputs = session.Run(Ort::RunOptions{}, input_names, ort_inputs.data(), ort_inputs.size(),
-                                 output_names, 1);
+  auto ort_outputs = session.Run(Ort::RunOptions{}, input_names, ort_inputs.data(), ort_inputs.size(), output_names, 1);
   ASSERT_EQ(ort_outputs.size(), 1U);
   const auto& dense_Y = ort_outputs[0];
   ASSERT_TRUE(dense_Y.IsTensor());
@@ -408,12 +358,10 @@ TEST(CApiTest, custom_op_handler) {
   custom_op_domain.Add(&custom_op);
 
 #ifdef USE_CUDA
-  TestInference<float>(*ort_env, CUSTOM_OP_MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, 1,
-                       custom_op_domain, nullptr, false, compute_stream);
+  TestInference<float>(*ort_env, CUSTOM_OP_MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, 1, custom_op_domain, nullptr, false, compute_stream);
   cudaStreamDestroy(compute_stream);
 #else
-  TestInference<float>(*ort_env, CUSTOM_OP_MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, 0,
-                       custom_op_domain, nullptr);
+  TestInference<float>(*ort_env, CUSTOM_OP_MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, 0, custom_op_domain, nullptr);
 #endif
 }
 
@@ -443,8 +391,7 @@ TEST(CApiTest, custom_op_set_input_memory_type) {
   ASSERT_EQ(x_mem_type, OrtMemType::OrtMemTypeDefault);
   ASSERT_EQ(y_mem_type, OrtMemType::OrtMemTypeCPUInput);
 
-  TestInference<float>(*ort_env, CUSTOM_OP_MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, 1,
-                       custom_op_domain, nullptr, false, compute_stream);
+  TestInference<float>(*ort_env, CUSTOM_OP_MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, 1, custom_op_domain, nullptr, false, compute_stream);
   cudaStreamDestroy(compute_stream);
 }
 #endif
@@ -470,18 +417,15 @@ TEST(CApiTest, StandaloneOpHandler) {
   custom_op_domain.Add(&standalone_op);
 
 #ifdef USE_CUDA
-  TestInference<float>(*ort_env, CUSTOM_OP_MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, 1,
-                       custom_op_domain, nullptr);
+  TestInference<float>(*ort_env, CUSTOM_OP_MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, 1, custom_op_domain, nullptr);
 #else
   Ort::SessionOptions session_options;
   const std::basic_string<ORTCHAR_T> ort_file = ORT_TSTR("testdata/foo_1.onnx.test_output.ort");
   session_options.SetOptimizedModelFilePath(ort_file.c_str());
 
-  TestInference<float>(*ort_env, CUSTOM_OP_MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, 0,
-                       custom_op_domain, nullptr, false, nullptr, &session_options);
+  TestInference<float>(*ort_env, CUSTOM_OP_MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, 0, custom_op_domain, nullptr, false, nullptr, &session_options);
 
-  TestInference<float>(*ort_env, ort_file, inputs, "Y", expected_dims_y, expected_values_y, 0,
-                       custom_op_domain, nullptr);
+  TestInference<float>(*ort_env, ort_file, inputs, "Y", expected_dims_y, expected_values_y, 0, custom_op_domain, nullptr);
 #endif
 }
 #endif
@@ -595,11 +539,9 @@ TEST(CApiTest, varied_input_custom_op_handler) {
   custom_op_domain.Add(&slice_custom_op);
 
 #ifdef USE_CUDA
-  TestInference<float>(*ort_env, VARIED_INPUT_CUSTOM_OP_MODEL_URI, inputs, "Z",
-                       expected_dims_z, expected_values_z, 1, custom_op_domain, nullptr);
+  TestInference<float>(*ort_env, VARIED_INPUT_CUSTOM_OP_MODEL_URI, inputs, "Z", expected_dims_z, expected_values_z, 1, custom_op_domain, nullptr);
 #else
-  TestInference<float>(*ort_env, VARIED_INPUT_CUSTOM_OP_MODEL_URI, inputs, "Z",
-                       expected_dims_z, expected_values_z, 0, custom_op_domain, nullptr);
+  TestInference<float>(*ort_env, VARIED_INPUT_CUSTOM_OP_MODEL_URI, inputs, "Z", expected_dims_z, expected_values_z, 0, custom_op_domain, nullptr);
 #endif
 }
 
@@ -635,21 +577,18 @@ TEST(CApiTest, multiple_varied_input_custom_op_handler) {
   std::vector<float> input_0_data = {1.f, 2.f, 3.f, 4.f, 5.f, 6.f};
   std::vector<int64_t> input_0_dims = {3, 2};
   ort_inputs.emplace_back(
-      Ort::Value::CreateTensor<float>(info, const_cast<float*>(input_0_data.data()),
-                                      input_0_data.size(), input_0_dims.data(), input_0_dims.size()));
+      Ort::Value::CreateTensor<float>(info, const_cast<float*>(input_0_data.data()), input_0_data.size(), input_0_dims.data(), input_0_dims.size()));
 
   // input 1 (double type)
   input_names.emplace_back("W");
   std::vector<double> input_1_data = {2, 3, 4, 5, 6, 7};
   std::vector<int64_t> input_1_dims = {3, 2};
   ort_inputs.emplace_back(
-      Ort::Value::CreateTensor<double>(info, const_cast<double*>(input_1_data.data()),
-                                       input_1_data.size(), input_1_dims.data(), input_1_dims.size()));
+      Ort::Value::CreateTensor<double>(info, const_cast<double*>(input_1_data.data()), input_1_data.size(), input_1_dims.data(), input_1_dims.size()));
 
   // Run
   const char* output_name = "Y";
-  auto ort_outputs = session.Run(Ort::RunOptions{}, input_names.data(), ort_inputs.data(), ort_inputs.size(),
-                                 &output_name, 1);
+  auto ort_outputs = session.Run(Ort::RunOptions{}, input_names.data(), ort_inputs.data(), ort_inputs.size(), &output_name, 1);
   ASSERT_EQ(ort_outputs.size(), 1u);
 
   // Validate results
@@ -700,12 +639,9 @@ TEST(CApiTest, variadic_input_output_custom_op) {
   std::vector<std::string> output_names;
 
   // Create inputs.
-  AddInputForCustomStringLengthsKernel("hello", allocator, ort_inputs, input_names, output_names, expected_dims,
-                                       expected_lens);
-  AddInputForCustomStringLengthsKernel("", allocator, ort_inputs, input_names, output_names, expected_dims,
-                                       expected_lens);
-  AddInputForCustomStringLengthsKernel("123", allocator, ort_inputs, input_names, output_names, expected_dims,
-                                       expected_lens);
+  AddInputForCustomStringLengthsKernel("hello", allocator, ort_inputs, input_names, output_names, expected_dims, expected_lens);
+  AddInputForCustomStringLengthsKernel("", allocator, ort_inputs, input_names, output_names, expected_dims, expected_lens);
+  AddInputForCustomStringLengthsKernel("123", allocator, ort_inputs, input_names, output_names, expected_dims, expected_lens);
 
   // Create arrays of c-strings for input and output names.
   auto get_c_str = [](const std::string& str) { return str.c_str(); };
@@ -715,8 +651,7 @@ TEST(CApiTest, variadic_input_output_custom_op) {
   std::transform(output_names.begin(), output_names.end(), output_name_cstrs.begin(), get_c_str);
 
   Ort::Session session(*ort_env, VARIADIC_INPUT_OUTPUT_CUSTOM_OP_MODEL_URI, session_options);
-  auto ort_outputs = session.Run(Ort::RunOptions{}, input_name_cstrs.data(), ort_inputs.data(), ort_inputs.size(),
-                                 output_name_cstrs.data(), output_name_cstrs.size());
+  auto ort_outputs = session.Run(Ort::RunOptions{}, input_name_cstrs.data(), ort_inputs.data(), ort_inputs.size(), output_name_cstrs.data(), output_name_cstrs.size());
   ASSERT_EQ(ort_outputs.size(), 3u);
 
   // Validate outputs.
@@ -764,12 +699,9 @@ TEST(CApiTest, mixed_variadic_input_output_custom_op) {
   std::vector<std::string> output_names;
 
   // Create inputs.
-  AddInputForCustomStringLengthsKernel("mixed variadic", allocator, ort_inputs, input_names, output_names,
-                                       expected_dims, expected_lens);
-  AddInputForCustomStringLengthsKernel("", allocator, ort_inputs, input_names, output_names, expected_dims,
-                                       expected_lens);
-  AddInputForCustomStringLengthsKernel("abcd", allocator, ort_inputs, input_names, output_names, expected_dims,
-                                       expected_lens);
+  AddInputForCustomStringLengthsKernel("mixed variadic", allocator, ort_inputs, input_names, output_names, expected_dims, expected_lens);
+  AddInputForCustomStringLengthsKernel("", allocator, ort_inputs, input_names, output_names, expected_dims, expected_lens);
+  AddInputForCustomStringLengthsKernel("abcd", allocator, ort_inputs, input_names, output_names, expected_dims, expected_lens);
 
   // Create arrays of c-strings for input and output names.
   auto get_c_str = [](const std::string& str) { return str.c_str(); };
@@ -779,8 +711,7 @@ TEST(CApiTest, mixed_variadic_input_output_custom_op) {
   std::transform(output_names.begin(), output_names.end(), output_name_cstrs.begin(), get_c_str);
 
   Ort::Session session(*ort_env, VARIADIC_INPUT_OUTPUT_CUSTOM_OP_MODEL_URI, session_options);
-  auto ort_outputs = session.Run(Ort::RunOptions{}, input_name_cstrs.data(), ort_inputs.data(), ort_inputs.size(),
-                                 output_name_cstrs.data(), output_name_cstrs.size());
+  auto ort_outputs = session.Run(Ort::RunOptions{}, input_name_cstrs.data(), ort_inputs.data(), ort_inputs.size(), output_name_cstrs.data(), output_name_cstrs.size());
   ASSERT_EQ(ort_outputs.size(), 3u);
 
   // Validate outputs.
@@ -826,26 +757,22 @@ TEST(CApiTest, variadic_undef_input_output_custom_op) {
   // Set string input.
   std::string str_input("hello_ort");
   Ort::Value& str_input_val = ort_inputs.emplace_back(
-      Ort::Value::CreateTensor(allocator, input_dims.data(), input_dims.size(),
-                               ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING));
+      Ort::Value::CreateTensor(allocator, input_dims.data(), input_dims.size(), ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING));
   str_input_val.FillStringTensorElement(str_input.c_str(), 0);
 
   // Set int64_t input.
   std::array<int64_t, 1> int_inps = {23};
-  ort_inputs.emplace_back(Ort::Value::CreateTensor<int64_t>(mem_info, int_inps.data(), int_inps.size(),
-                                                            input_dims.data(), input_dims.size()));
+  ort_inputs.emplace_back(Ort::Value::CreateTensor<int64_t>(mem_info, int_inps.data(), int_inps.size(), input_dims.data(), input_dims.size()));
 
   // Set float input.
   std::array<float, 1> float_inps = {10.0f};
-  ort_inputs.emplace_back(Ort::Value::CreateTensor<float>(mem_info, float_inps.data(), float_inps.size(),
-                                                          input_dims.data(), input_dims.size()));
+  ort_inputs.emplace_back(Ort::Value::CreateTensor<float>(mem_info, float_inps.data(), float_inps.size(), input_dims.data(), input_dims.size()));
 
   constexpr std::array<const char*, 3> input_names = {"input_0", "input_1", "input_2"};
   constexpr std::array<const char*, 3> output_names = {"output_0", "output_1", "output_2"};
 
   Ort::Session session(*ort_env, VARIADIC_UNDEF_INPUT_OUTPUT_CUSTOM_OP_MODEL_URI, session_options);
-  auto ort_outputs = session.Run(Ort::RunOptions{}, input_names.data(), ort_inputs.data(), ort_inputs.size(),
-                                 output_names.data(), output_names.size());
+  auto ort_outputs = session.Run(Ort::RunOptions{}, input_names.data(), ort_inputs.data(), ort_inputs.size(), output_names.data(), output_names.size());
   ASSERT_EQ(ort_outputs.size(), 3u);
 
   // Validate outputs.
@@ -1072,22 +999,19 @@ TEST(CApiTest, optional_input_output_custom_op_handler) {
   std::vector<float> input_0_data = {1.f};
   std::vector<int64_t> input_0_dims = {1};
   ort_inputs.emplace_back(
-      Ort::Value::CreateTensor<float>(info, const_cast<float*>(input_0_data.data()),
-                                      input_0_data.size(), input_0_dims.data(), input_0_dims.size()));
+      Ort::Value::CreateTensor<float>(info, const_cast<float*>(input_0_data.data()), input_0_data.size(), input_0_dims.data(), input_0_dims.size()));
 
   // input 1
   std::vector<float> input_1_data = {1.f};
   std::vector<int64_t> input_1_dims = {1};
   ort_inputs.emplace_back(
-      Ort::Value::CreateTensor<float>(info, const_cast<float*>(input_1_data.data()),
-                                      input_1_data.size(), input_1_dims.data(), input_1_dims.size()));
+      Ort::Value::CreateTensor<float>(info, const_cast<float*>(input_1_data.data()), input_1_data.size(), input_1_dims.data(), input_1_dims.size()));
 
   // input 2
   std::vector<float> input_2_data = {1.f};
   std::vector<int64_t> input_2_dims = {1};
   ort_inputs.emplace_back(
-      Ort::Value::CreateTensor<float>(info, const_cast<float*>(input_2_data.data()),
-                                      input_2_data.size(), input_2_dims.data(), input_2_dims.size()));
+      Ort::Value::CreateTensor<float>(info, const_cast<float*>(input_2_data.data()), input_2_data.size(), input_2_dims.data(), input_2_dims.size()));
 
   const char* output_name = "Y";
 
@@ -1095,8 +1019,7 @@ TEST(CApiTest, optional_input_output_custom_op_handler) {
   {
     std::vector<const char*> input_names = {"X1", "X2", "X3"};
     Ort::Session session(*ort_env, OPTIONAL_INPUT_OUTPUT_CUSTOM_OP_MODEL_URI, session_options);
-    auto ort_outputs = session.Run(Ort::RunOptions{}, input_names.data(), ort_inputs.data(), ort_inputs.size(),
-                                   &output_name, 1);
+    auto ort_outputs = session.Run(Ort::RunOptions{}, input_names.data(), ort_inputs.data(), ort_inputs.size(), &output_name, 1);
     ASSERT_EQ(ort_outputs.size(), 1u);
 
     // Validate results
@@ -1118,8 +1041,7 @@ TEST(CApiTest, optional_input_output_custom_op_handler) {
     std::vector<const char*> input_names = {"X1", "X2"};
     ort_inputs.erase(ort_inputs.begin() + 2);  // remove the last input in the container
     Ort::Session session(*ort_env, OPTIONAL_INPUT_OUTPUT_CUSTOM_OP_MODEL_URI_2, session_options);
-    auto ort_outputs = session.Run(Ort::RunOptions{}, input_names.data(), ort_inputs.data(), ort_inputs.size(),
-                                   &output_name, 1);
+    auto ort_outputs = session.Run(Ort::RunOptions{}, input_names.data(), ort_inputs.data(), ort_inputs.size(), &output_name, 1);
     ASSERT_EQ(ort_outputs.size(), 1u);
 
     // Validate results
@@ -1157,13 +1079,11 @@ TEST(CApiTest, custom_op_with_attributes_handler) {
   std::vector<float> input_0_data = {1.f};
   std::vector<int64_t> input_0_dims = {1};
   ort_inputs.emplace_back(
-      Ort::Value::CreateTensor<float>(info, const_cast<float*>(input_0_data.data()),
-                                      input_0_data.size(), input_0_dims.data(), input_0_dims.size()));
+      Ort::Value::CreateTensor<float>(info, const_cast<float*>(input_0_data.data()), input_0_data.size(), input_0_dims.data(), input_0_dims.size()));
 
   // Run
   const char* output_name = "Y";
-  auto ort_outputs = session.Run(Ort::RunOptions{}, input_names.data(), ort_inputs.data(), ort_inputs.size(),
-                                 &output_name, 1);
+  auto ort_outputs = session.Run(Ort::RunOptions{}, input_names.data(), ort_inputs.data(), ort_inputs.size(), &output_name, 1);
   ASSERT_EQ(ort_outputs.size(), 1u);
 
   // Validate results
@@ -1202,8 +1122,7 @@ TEST(CApiTest, RegisterCustomOpForCPUAndCUDA) {
   custom_op_domain.Add(&custom_op_cpu);
   custom_op_domain.Add(&custom_op_cuda);
 
-  TestInference<float>(*ort_env, CUSTOM_OP_MODEL_URI, inputs, "Y", expected_dims_y,
-                       expected_values_y, 1, custom_op_domain, nullptr, true);
+  TestInference<float>(*ort_env, CUSTOM_OP_MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, 1, custom_op_domain, nullptr, true);
 }
 #endif
 
@@ -1220,8 +1139,7 @@ TEST(CApiTest, test_custom_op_get_const_input) {
   std::vector<float> input_0_data = {1.0f, 1.0f, 1.0f, 1.0f};
   std::vector<int64_t> input_0_dims = {1, 4};
   ort_inputs.emplace_back(
-      Ort::Value::CreateTensor<float>(info, const_cast<float*>(input_0_data.data()),
-                                      input_0_data.size(), input_0_dims.data(), input_0_dims.size()));
+      Ort::Value::CreateTensor<float>(info, const_cast<float*>(input_0_data.data()), input_0_data.size(), input_0_dims.data(), input_0_dims.size()));
   const char* output_name = "output";
 
   const ORTCHAR_T* lib_name;
@@ -1240,8 +1158,7 @@ TEST(CApiTest, test_custom_op_get_const_input) {
   Ort::Session session(*ort_env, model_path, session_opts);
   auto default_allocator = std::make_unique<MockedOrtAllocator>();
 
-  session.Run(Ort::RunOptions{}, input_names.data(), ort_inputs.data(), ort_inputs.size(),
-              &output_name, 1);
+  session.Run(Ort::RunOptions{}, input_names.data(), ort_inputs.data(), ort_inputs.size(), &output_name, 1);
 }
 #endif
 
@@ -1256,41 +1173,13 @@ TEST(CApiTest, test_custom_op_openvino_wrapper_library) {
   inputs[0].dims = {1, 1, 28, 28};
 
   // Float image with the digit "1".
-  inputs[0].values = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
-                      0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
-                      0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
-                      0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
-                      0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.75f, 1.0f, 0.75f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
-                      0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.98f, 0.99f, 0.98f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
-                      0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.85f, 0.99f, 0.85f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
-                      0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.98f, 0.99f, 0.98f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
-                      0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.98f, 0.99f, 0.98f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
-                      0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.98f, 1.0f, 0.98f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
-                      0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.98f, 0.99f, 0.98f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
-                      0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.98f, 0.99f, 0.98f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
-                      0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.98f, 0.99f, 0.98f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
-                      0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.98f, 0.99f, 0.98f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
-                      0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.98f, 0.99f, 0.98f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
-                      0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.98f, 0.99f, 0.98f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
-                      0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.98f, 0.99f, 0.98f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
-                      0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.98f, 0.99f, 0.98f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
-                      0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.98f, 0.99f, 0.98f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
-                      0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.98f, 0.99f, 0.98f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
-                      0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.98f, 1.0f, 0.98f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
-                      0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.99f, 1.0f, 0.99f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
-                      0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.94f, 0.99f, 0.94f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
-                      0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.1f, 0.75f, 0.75f, 0.75f, 0.1f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
-                      0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
-                      0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
-                      0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
-                      0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
+  inputs[0].values = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.75f, 1.0f, 0.75f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.98f, 0.99f, 0.98f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.85f, 0.99f, 0.85f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.98f, 0.99f, 0.98f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.98f, 0.99f, 0.98f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.98f, 1.0f, 0.98f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.98f, 0.99f, 0.98f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.98f, 0.99f, 0.98f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.98f, 0.99f, 0.98f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.98f, 0.99f, 0.98f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.98f, 0.99f, 0.98f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.98f, 0.99f, 0.98f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.98f, 0.99f, 0.98f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.98f, 0.99f, 0.98f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.98f, 0.99f, 0.98f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.98f, 0.99f, 0.98f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.98f, 1.0f, 0.98f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.99f, 1.0f, 0.99f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.94f, 0.99f, 0.94f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.1f, 0.75f, 0.75f, 0.75f, 0.1f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
 
   // prepare expected outputs
   std::vector<int64_t> expected_output_dims = {1, 10};
 
   // Digit 1 (index 1) has the highest probability (before applying softmax)
-  std::vector<float> expected_vals = {-5.34957457f, 13.1904755f, -4.79670954f, -3.59232116f, 2.31260920f,
-                                      -4.27866220f, -4.31867933f, 0.587718308f, -2.33952785f, -3.88515306f};
+  std::vector<float> expected_vals = {-5.34957457f, 13.1904755f, -4.79670954f, -3.59232116f, 2.31260920f, -4.27866220f, -4.31867933f, 0.587718308f, -2.33952785f, -3.88515306f};
 
   const ORTCHAR_T* lib_name;
 #if defined(_WIN32)
@@ -1312,12 +1201,7 @@ TEST(CApiTest, test_custom_op_openvino_wrapper_library) {
     Ort::Session session(*ort_env, CUSTOM_OP_OPENVINO_WRAPPER_LIB_TEST_MODEL_URI, session_opts);
     auto default_allocator = std::make_unique<MockedOrtAllocator>();
 
-    RunSession(default_allocator.get(), session,
-               inputs,
-               "Plus214_Output_0",
-               expected_output_dims,
-               expected_vals,
-               nullptr);
+    RunSession(default_allocator.get(), session, inputs, "Plus214_Output_0", expected_output_dims, expected_vals, nullptr);
   }
 
   // Run without specifying any custom op session configurations.
@@ -1329,12 +1213,7 @@ TEST(CApiTest, test_custom_op_openvino_wrapper_library) {
     Ort::Session session(*ort_env, CUSTOM_OP_OPENVINO_WRAPPER_LIB_TEST_MODEL_URI, session_opts);
     auto default_allocator = std::make_unique<MockedOrtAllocator>();
 
-    RunSession(default_allocator.get(), session,
-               inputs,
-               "Plus214_Output_0",
-               expected_output_dims,
-               expected_vals,
-               nullptr);
+    RunSession(default_allocator.get(), session, inputs, "Plus214_Output_0", expected_output_dims, expected_vals, nullptr);
   }
 }
 #endif  // defined(USE_OPENVINO) && (!defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS))
@@ -1353,21 +1232,15 @@ TEST(CApiTest, test_custom_op_library) {
   std::vector<Input> inputs(2);
   inputs[0].name = "input_1";
   inputs[0].dims = {3, 5};
-  inputs[0].values = {1.1f, 2.2f, 3.3f, 4.4f, 5.5f,
-                      6.6f, 7.7f, 8.8f, 9.9f, 10.0f,
-                      11.1f, 12.2f, 13.3f, 14.4f, 15.5f};
+  inputs[0].values = {1.1f, 2.2f, 3.3f, 4.4f, 5.5f, 6.6f, 7.7f, 8.8f, 9.9f, 10.0f, 11.1f, 12.2f, 13.3f, 14.4f, 15.5f};
   inputs[1].name = "input_2";
   inputs[1].dims = {3, 5};
-  inputs[1].values = {15.5f, 14.4f, 13.3f, 12.2f, 11.1f,
-                      10.0f, 9.9f, 8.8f, 7.7f, 6.6f,
-                      5.5f, 4.4f, 3.3f, 2.2f, 1.1f};
+  inputs[1].values = {15.5f, 14.4f, 13.3f, 12.2f, 11.1f, 10.0f, 9.9f, 8.8f, 7.7f, 6.6f, 5.5f, 4.4f, 3.3f, 2.2f, 1.1f};
 
   // prepare expected inputs and outputs
   std::vector<int64_t> expected_dims_y = {3, 5};
   std::vector<int32_t> expected_values_y =
-      {17, 17, 17, 17, 17,
-       17, 18, 18, 18, 17,
-       17, 17, 17, 17, 17};
+      {17, 17, 17, 17, 17, 17, 18, 18, 18, 17, 17, 17, 17, 17, 17};
 
   onnxruntime::PathString lib_name;
 #if defined(_WIN32)
@@ -1379,11 +1252,9 @@ TEST(CApiTest, test_custom_op_library) {
 #endif
 
 #ifdef USE_CUDA
-  TestInference<int32_t>(*ort_env, CUSTOM_OP_LIBRARY_TEST_MODEL_URI, inputs, "output", expected_dims_y,
-                         expected_values_y, 1, nullptr, lib_name.c_str());
+  TestInference<int32_t>(*ort_env, CUSTOM_OP_LIBRARY_TEST_MODEL_URI, inputs, "output", expected_dims_y, expected_values_y, 1, nullptr, lib_name.c_str());
 #else
-  TestInference<int32_t>(*ort_env, CUSTOM_OP_LIBRARY_TEST_MODEL_URI, inputs, "output", expected_dims_y,
-                         expected_values_y, 0, nullptr, lib_name.c_str());
+  TestInference<int32_t>(*ort_env, CUSTOM_OP_LIBRARY_TEST_MODEL_URI, inputs, "output", expected_dims_y, expected_values_y, 0, nullptr, lib_name.c_str());
 #endif
 }
 
@@ -1460,8 +1331,7 @@ TEST(CApiTest, test_pyop) {
   input.values = {1.0f, 2.0f, 3.0f, 4.0f};
   std::vector<int64_t> expected_dims_y = {2, 2};
   std::vector<float> expected_values_y = {2.0f, 4.0f, 6.0f, 8.0f};
-  TestInference<float>(*ort_env, PYOP_FLOAT_MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, 0,
-                       nullptr, nullptr);
+  TestInference<float>(*ort_env, PYOP_FLOAT_MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, 0, nullptr, nullptr);
 }
 
 TEST(CApiTest, test_pyop_multi) {
@@ -1473,8 +1343,7 @@ TEST(CApiTest, test_pyop_multi) {
   input.values = {1.0f, 2.0f, 3.0f, 4.0f};
   std::vector<int64_t> expected_dims_y = {2, 2};
   std::vector<float> expected_values_y = {8.0f, 16.0f, 24.0f, 32.0f};
-  TestInference<float>(*ort_env, PYOP_MULTI_MODEL_URI, inputs, "Z", expected_dims_y, expected_values_y, 0,
-                       nullptr, nullptr);
+  TestInference<float>(*ort_env, PYOP_MULTI_MODEL_URI, inputs, "Z", expected_dims_y, expected_values_y, 0, nullptr, nullptr);
 }
 
 TEST(CApiTest, test_pyop_kwarg) {
@@ -1486,8 +1355,7 @@ TEST(CApiTest, test_pyop_kwarg) {
   input.values = {1.0f, 2.0f, 3.0f, 4.0f};
   std::vector<int64_t> expected_dims_y = {2, 2};
   std::vector<float> expected_values_y = {25.0f, 50.0f, 75.0f, 100.0f};
-  TestInference<float>(*ort_env, PYOP_KWARG_MODEL_URI, inputs, "Z", expected_dims_y, expected_values_y, 0,
-                       nullptr, nullptr);
+  TestInference<float>(*ort_env, PYOP_KWARG_MODEL_URI, inputs, "Z", expected_dims_y, expected_values_y, 0, nullptr, nullptr);
 }
 #endif
 
@@ -1510,8 +1378,7 @@ TEST(ReducedOpsBuildTest, test_excluded_ops) {
   bool failed = false;
   try {
     // only test model loading, exception expected
-    TestInference<float>(*ort_env, model_uri, inputs, "Y", expected_dims_y, expected_values_y, 0,
-                         nullptr, nullptr, true);
+    TestInference<float>(*ort_env, model_uri, inputs, "Y", expected_dims_y, expected_values_y, 0, nullptr, nullptr, true);
   } catch (const Ort::Exception& e) {
     failed = e.GetOrtErrorCode() == ORT_NOT_IMPLEMENTED;
   }
@@ -1572,14 +1439,12 @@ TEST(CApiTest, io_binding) {
 
   const std::array<int64_t, 2> x_shape = {3, 2};
   std::array<float, 3 * 2> x_values = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
-  Ort::Value bound_x = Ort::Value::CreateTensor(info_cpu, x_values.data(), x_values.size(),
-                                                x_shape.data(), x_shape.size());
+  Ort::Value bound_x = Ort::Value::CreateTensor(info_cpu, x_values.data(), x_values.size(), x_shape.data(), x_shape.size());
 
   const std::array<float, 3 * 2> expected_y = {1.0f, 4.0f, 9.0f, 16.0f, 25.0f, 36.0f};
   const std::array<int64_t, 2> y_shape = {3, 2};
   std::array<float, 3 * 2> y_values;
-  Ort::Value bound_y = Ort::Value::CreateTensor(info_cpu, y_values.data(), y_values.size(),
-                                                y_shape.data(), y_shape.size());
+  Ort::Value bound_y = Ort::Value::CreateTensor(info_cpu, y_values.data(), y_values.size(), y_shape.data(), y_shape.size());
 
   Ort::IoBinding binding(session);
   binding.BindInput("X", bound_x);
@@ -1658,8 +1523,7 @@ TEST(CApiTest, io_binding_cuda) {
   cudaMemcpy(input_data.get(), x_values.data(), sizeof(float) * x_values.size(), cudaMemcpyHostToDevice);
 
   // Create an OrtValue tensor backed by data on CUDA memory
-  Ort::Value bound_x = Ort::Value::CreateTensor(info_cuda, reinterpret_cast<float*>(input_data.get()), x_values.size(),
-                                                x_shape.data(), x_shape.size());
+  Ort::Value bound_x = Ort::Value::CreateTensor(info_cuda, reinterpret_cast<float*>(input_data.get()), x_values.size(), x_shape.data(), x_shape.size());
 
   const std::array<int64_t, 2> expected_y_shape = {3, 2};
   const std::array<float, 3 * 2> expected_y = {1.0f, 4.0f, 9.0f, 16.0f, 25.0f, 36.0f};
@@ -1667,8 +1531,7 @@ TEST(CApiTest, io_binding_cuda) {
   ASSERT_NE(output_data.get(), nullptr);
 
   // Create an OrtValue tensor backed by data on CUDA memory
-  Ort::Value bound_y = Ort::Value::CreateTensor(info_cuda, reinterpret_cast<float*>(output_data.get()),
-                                                expected_y.size(), expected_y_shape.data(), expected_y_shape.size());
+  Ort::Value bound_y = Ort::Value::CreateTensor(info_cuda, reinterpret_cast<float*>(output_data.get()), expected_y.size(), expected_y_shape.data(), expected_y_shape.size());
 
   Ort::IoBinding binding(session);
   binding.BindInput("X", bound_x);
@@ -1772,8 +1635,7 @@ TEST(CApiTest, cuda_graph) {
   cudaMemcpy(input_data.get(), x_values.data(), sizeof(float) * x_values.size(), cudaMemcpyHostToDevice);
 
   // Create an OrtValue tensor backed by data on CUDA memory
-  Ort::Value bound_x = Ort::Value::CreateTensor(info_cuda, reinterpret_cast<float*>(input_data.get()), x_values.size(),
-                                                x_shape.data(), x_shape.size());
+  Ort::Value bound_x = Ort::Value::CreateTensor(info_cuda, reinterpret_cast<float*>(input_data.get()), x_values.size(), x_shape.data(), x_shape.size());
 
   const std::array<int64_t, 2> expected_y_shape = {3, 2};
   std::array<float, 3 * 2> expected_y = {1.0f, 4.0f, 9.0f, 16.0f, 25.0f, 36.0f};
@@ -1782,8 +1644,7 @@ TEST(CApiTest, cuda_graph) {
   ASSERT_NE(output_data.get(), nullptr);
 
   // Create an OrtValue tensor backed by data on CUDA memory
-  Ort::Value bound_y = Ort::Value::CreateTensor(info_cuda, reinterpret_cast<float*>(output_data.get()),
-                                                expected_y.size(), expected_y_shape.data(), expected_y_shape.size());
+  Ort::Value bound_y = Ort::Value::CreateTensor(info_cuda, reinterpret_cast<float*>(output_data.get()), expected_y.size(), expected_y_shape.data(), expected_y_shape.size());
 
   Ort::IoBinding binding(session);
   binding.BindInput("X", bound_x);
@@ -1823,8 +1684,7 @@ TEST(CApiTest, create_tensor) {
   int64_t expected_len = 2;
   auto default_allocator = std::make_unique<MockedOrtAllocator>();
 
-  Ort::Value tensor = Ort::Value::CreateTensor(default_allocator.get(), &expected_len, 1,
-                                               ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING);
+  Ort::Value tensor = Ort::Value::CreateTensor(default_allocator.get(), &expected_len, 1, ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING);
 
   Ort::ThrowOnError(Ort::GetApi().FillStringTensor(tensor, s, expected_len));
   auto shape_info = tensor.GetTensorTypeAndShapeInfo();
@@ -1844,8 +1704,7 @@ TEST(CApiTest, fill_string_tensor) {
   int64_t expected_len = 2;
   auto default_allocator = std::make_unique<MockedOrtAllocator>();
 
-  Ort::Value tensor = Ort::Value::CreateTensor(default_allocator.get(), &expected_len, 1,
-                                               ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING);
+  Ort::Value tensor = Ort::Value::CreateTensor(default_allocator.get(), &expected_len, 1, ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING);
 
   for (int64_t i = 0; i < expected_len; i++) {
     tensor.FillStringTensorElement(s[i], i);
@@ -1862,8 +1721,7 @@ TEST(CApiTest, fill_string_tensor_directly) {
   constexpr int64_t expected_len = 2;
 
   MockedOrtAllocator default_allocator;
-  Ort::Value tensor = Ort::Value::CreateTensor(&default_allocator, &expected_len, 1U,
-                                               ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING);
+  Ort::Value tensor = Ort::Value::CreateTensor(&default_allocator, &expected_len, 1U, ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING);
 
   for (size_t i = 0; i < static_cast<size_t>(expected_len); i++) {
     auto* buffer = tensor.GetResizedStringTensorElementBuffer(i, s[i].size());
@@ -1886,8 +1744,7 @@ TEST(CApiTest, get_string_tensor_element) {
   int64_t element_index = 0;
   auto default_allocator = std::make_unique<MockedOrtAllocator>();
 
-  Ort::Value tensor = Ort::Value::CreateTensor(default_allocator.get(), &expected_len, 1,
-                                               ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING);
+  Ort::Value tensor = Ort::Value::CreateTensor(default_allocator.get(), &expected_len, 1, ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING);
 
   tensor.FillStringTensor(s, expected_len);
 
@@ -2002,8 +1859,7 @@ TEST(CApiTest, override_initializer) {
 
   std::string f2_data{"f2_string"};
   // Place a string into Tensor OrtValue and assign to the
-  Ort::Value f2_input_tensor = Ort::Value::CreateTensor(allocator.get(), dims.data(), dims.size(),
-                                                        ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING);
+  Ort::Value f2_input_tensor = Ort::Value::CreateTensor(allocator.get(), dims.data(), dims.size(), ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING);
   const char* const input_char_string[] = {f2_data.c_str()};
   f2_input_tensor.FillStringTensor(input_char_string, 1U);
 
@@ -2033,9 +1889,7 @@ TEST(CApiTest, override_initializer) {
 
   std::vector<const char*> input_names = {"Label", "F2", "F1"};
   const char* output_names[] = {"Label0", "F20", "F11"};
-  std::vector<Ort::Value> ort_outputs = session.Run(Ort::RunOptions{nullptr}, input_names.data(),
-                                                    ort_inputs.data(), ort_inputs.size(),
-                                                    output_names, countof(output_names));
+  std::vector<Ort::Value> ort_outputs = session.Run(Ort::RunOptions{nullptr}, input_names.data(), ort_inputs.data(), ort_inputs.size(), output_names, countof(output_names));
 
   ASSERT_EQ(ort_outputs.size(), 3U);
   // Expecting the last output would be the overridden value of the initializer
@@ -2538,11 +2392,9 @@ TEST_P(CApiTensorRTTest, TestConfigureTensorRTProviderOptions) {
 
   const char* engine_cache_path = "./trt_engine_folder";
 
-  std::vector<const char*> keys{"device_id", "trt_fp16_enable", "trt_int8_enable", "trt_engine_cache_enable",
-                                "trt_engine_cache_path", option_name.c_str()};
+  std::vector<const char*> keys{"device_id", "trt_fp16_enable", "trt_int8_enable", "trt_engine_cache_enable", "trt_engine_cache_path", option_name.c_str()};
 
-  std::vector<const char*> values{"0", "1", "0", "1",
-                                  engine_cache_path, option_value.c_str()};
+  std::vector<const char*> values{"0", "1", "0", "1", engine_cache_path, option_value.c_str()};
 
   ASSERT_TRUE(api.UpdateTensorRTProviderOptions(rel_trt_options.get(), keys.data(), values.data(), keys.size()) == nullptr);
 
@@ -2589,8 +2441,7 @@ TEST_P(CApiTensorRTTest, TestConfigureTensorRTProviderOptions) {
 /*
  * The TensorrtExecutionProviderOptionsTest can be used to test TRT options
  */
-INSTANTIATE_TEST_SUITE_P(CApiTensorRTTest, CApiTensorRTTest,
-                         ::testing::Values("trt_build_heuristics_enable=1", "trt_sparsity_enable=1", "trt_builder_optimization_level=0", "trt_tactic_sources=-CUDNN,+CUBLAS", "trt_auxiliary_streams=2"));
+INSTANTIATE_TEST_SUITE_P(CApiTensorRTTest, CApiTensorRTTest, ::testing::Values("trt_build_heuristics_enable=1", "trt_sparsity_enable=1", "trt_builder_optimization_level=0", "trt_tactic_sources=-CUDNN,+CUBLAS", "trt_auxiliary_streams=2"));
 #endif
 
 #ifdef USE_CUDA
@@ -2604,12 +2455,10 @@ TEST(CApiTest, TestConfigureCUDAProviderOptions) {
   std::unique_ptr<OrtCUDAProviderOptionsV2, decltype(api.ReleaseCUDAProviderOptions)> rel_cuda_options(cuda_options, api.ReleaseCUDAProviderOptions);
 
   std::vector<const char*> keys{
-      "device_id", "gpu_mem_limit", "arena_extend_strategy",
-      "cudnn_conv_algo_search", "do_copy_in_default_stream", "cudnn_conv_use_max_workspace", "cudnn_conv1d_pad_to_nc1d"};
+      "device_id", "gpu_mem_limit", "arena_extend_strategy", "cudnn_conv_algo_search", "do_copy_in_default_stream", "cudnn_conv_use_max_workspace", "cudnn_conv1d_pad_to_nc1d"};
 
   std::vector<const char*> values{
-      "0", "1024", "kSameAsRequested",
-      "DEFAULT", "1", "1"};
+      "0", "1024", "kSameAsRequested", "DEFAULT", "1", "1"};
 
   ASSERT_TRUE(api.UpdateCUDAProviderOptions(rel_cuda_options.get(), keys.data(), values.data(), 6) == nullptr);
 
@@ -2775,9 +2624,7 @@ TEST(CApiTest, TestCudaMemcpyToHostWithSequenceTensors) {
   ort_inputs.emplace_back(Ort::Value::CreateTensor<bool>(info, input_data, 1U, input_dims.data(), 0));
   const char* output_names[] = {"sequence"};
 
-  std::vector<Ort::Value> ort_outputs = session.Run(Ort::RunOptions{nullptr}, input_names.data(),
-                                                    ort_inputs.data(), ort_inputs.size(),
-                                                    output_names, countof(output_names));
+  std::vector<Ort::Value> ort_outputs = session.Run(Ort::RunOptions{nullptr}, input_names.data(), ort_inputs.data(), ort_inputs.size(), output_names, countof(output_names));
 
   // There is no need to check the contents of the output, we are just checking to see if the
   // model runs without crashing
@@ -2814,9 +2661,7 @@ TEST(CApiTest, TestMultiStreamInferenceSimpleSSD) {
   int64_t input_dims[] = {3, 3, 300, 300};
   ort_inputs.emplace_back(Ort::Value::CreateTensor<float>(info, input_data.get(), 3 * 3 * 300 * 300, input_dims, 4U));
   const char* output_names[] = {"graph_out"};
-  std::vector<Ort::Value> ort_outputs = session.Run(Ort::RunOptions{nullptr}, input_names,
-                                                    ort_inputs.data(), ort_inputs.size(),
-                                                    output_names, countof(output_names));
+  std::vector<Ort::Value> ort_outputs = session.Run(Ort::RunOptions{nullptr}, input_names, ort_inputs.data(), ort_inputs.size(), output_names, countof(output_names));
   ASSERT_TRUE(ort_outputs.size() == 1);
   ASSERT_TRUE(ort_outputs[0].IsTensor());
   const auto& type_shape_info = ort_outputs[0].GetTensorTypeAndShapeInfo();

@@ -167,13 +167,16 @@ struct TrainingConfigurationResult {
 // Thin wrapper over internal C++ Optimizer
 struct PyOptimizer {
   PyOptimizer(const std::string optimizer_model_uri,
-              onnxruntime::training::api::Module* model, std::vector<std::shared_ptr<IExecutionProvider>> provider)
+              onnxruntime::training::api::Module* model,
+              std::vector<std::shared_ptr<IExecutionProvider>> provider)
       : optimizer_() {
     auto env = GetTrainingEnv().GetORTEnv();
     // XXX: We hope that env will be around when optimizer needs it.
     optimizer_ = std::make_shared<onnxruntime::training::api::Optimizer>(optimizer_model_uri,
-                                                                         model->NamedParameters(), onnxruntime::SessionOptions(),
-                                                                         *env, provider);
+                                                                         model->NamedParameters(),
+                                                                         onnxruntime::SessionOptions(),
+                                                                         *env,
+                                                                         provider);
   }
 
   std::shared_ptr<onnxruntime::training::api::Optimizer> optimizer_;
@@ -297,14 +300,16 @@ TrainingConfigurationResult ConfigureSessionForTraining(
       const auto it = parameters.optimizer_attributes_map.find(weight_name);
       ORT_ENFORCE(
           it != parameters.optimizer_attributes_map.end(),
-          "Failed to find attribute map for weight ", weight_name);
+          "Failed to find attribute map for weight ",
+          weight_name);
       return it->second;
     };
     opt.weight_int_attributes_generator = [&parameters](const std::string& weight_name) {
       const auto it = parameters.optimizer_int_attributes_map.find(weight_name);
       ORT_ENFORCE(
           it != parameters.optimizer_int_attributes_map.end(),
-          "Failed to find int attribute map for weight ", weight_name);
+          "Failed to find int attribute map for weight ",
+          weight_name);
       return it->second;
     };
     opt.use_mixed_precision_moments = parameters.use_fp16_moments;
@@ -678,13 +683,8 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
       }));
 
   py::class_<TrainingAgent>(m, "TrainingAgent", R"pbdoc(This is the main class used to run a ORTModule model.)pbdoc")
-      .def(py::init([](PyInferenceSession* session, const std::vector<std::string>& fw_feed_names,
-                       const std::vector<OrtDevice>& fw_outputs_device_info,
-                       const std::vector<std::string>& bw_fetches_names,
-                       const std::vector<OrtDevice>& bw_outputs_device_info,
-                       int local_rank) {
-        return std::make_unique<TrainingAgent>(*session->GetSessionHandle(), fw_feed_names, fw_outputs_device_info,
-                                               bw_fetches_names, bw_outputs_device_info, local_rank);
+      .def(py::init([](PyInferenceSession* session, const std::vector<std::string>& fw_feed_names, const std::vector<OrtDevice>& fw_outputs_device_info, const std::vector<std::string>& bw_fetches_names, const std::vector<OrtDevice>& bw_outputs_device_info, int local_rank) {
+        return std::make_unique<TrainingAgent>(*session->GetSessionHandle(), fw_feed_names, fw_outputs_device_info, bw_fetches_names, bw_outputs_device_info, local_rank);
       }))
       .def("run_forward", [](TrainingAgent* agent, const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches, PartialGraphExecutionState* state, OrtValueCachePtr cache) -> void {
         Status status = agent->RunForward(feeds, fetches, *state, cache);
@@ -703,33 +703,26 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
       .value("NONE", GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy::None)
       .value("INSERT_AND_REDUCE", GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy::InsertAndReduce)
       .value("FLOOD_FILL", GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy::FloodFill)
-      .def("__or__", py::overload_cast<GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy,
-                                       GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy>(&operator|))
-      .def("__and__", py::overload_cast<GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy,
-                                        GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy>(&operator&))
-      .def("__eq__", py::overload_cast<GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy,
-                                       GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy>(&operator==))
-      .def("__neq__", py::overload_cast<GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy,
-                                        GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy>(&operator!=));
+      .def("__or__", py::overload_cast<GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy, GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy>(&operator|))
+      .def("__and__", py::overload_cast<GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy, GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy>(&operator&))
+      .def("__eq__", py::overload_cast<GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy, GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy>(&operator==))
+      .def("__neq__", py::overload_cast<GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy, GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy>(&operator!=));
 
   py::class_<GraphTransformerConfiguration::PropagateCastOpsConfiguration>
       propagate_cast_ops_config(
-          m, "PropagateCastOpsConfiguration",
-          R"pbdoc(Propagate cast ops configuration.)pbdoc");
+          m, "PropagateCastOpsConfiguration", R"pbdoc(Propagate cast ops configuration.)pbdoc");
   propagate_cast_ops_config.def(py::init())
       .def_readwrite("strategy", &GraphTransformerConfiguration::PropagateCastOpsConfiguration::strategy)
       .def_readwrite("level", &GraphTransformerConfiguration::PropagateCastOpsConfiguration::level)
       .def_readwrite("allow", &GraphTransformerConfiguration::PropagateCastOpsConfiguration::allow);
 
   py::class_<GraphTransformerConfiguration> graph_transformer_config(
-      m, "GraphTransformerConfiguration",
-      R"pbdoc(Graph transformer configuration.)pbdoc");
+      m, "GraphTransformerConfiguration", R"pbdoc(Graph transformer configuration.)pbdoc");
   graph_transformer_config.def(py::init())
       .def_readwrite("propagate_cast_ops_config", &GraphTransformerConfiguration::propagate_cast_ops_config);
 
   py::class_<TrainingGraphTransformerConfiguration, GraphTransformerConfiguration> training_graph_transformer_config(
-      m, "TrainingGraphTransformerConfiguration",
-      R"pbdoc(Training Graph transformer configuration.)pbdoc");
+      m, "TrainingGraphTransformerConfiguration", R"pbdoc(Training Graph transformer configuration.)pbdoc");
   training_graph_transformer_config.def(py::init())
       .def_readwrite("enable_gelu_approximation", &TrainingGraphTransformerConfiguration::enable_gelu_approximation)
       .def_readwrite("attn_dropout_recompute", &TrainingGraphTransformerConfiguration::attn_dropout_recompute)
@@ -741,8 +734,7 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
       .def_readwrite("propagate_cast_ops_config", &TrainingGraphTransformerConfiguration::GraphTransformerConfiguration::propagate_cast_ops_config);
 
   py::class_<OrtModuleGraphBuilderConfiguration> module_graph_builder_config(
-      m, "OrtModuleGraphBuilderConfiguration",
-      R"pbdoc(Configuration information for module graph builder.)pbdoc");
+      m, "OrtModuleGraphBuilderConfiguration", R"pbdoc(Configuration information for module graph builder.)pbdoc");
 
   py::enum_<Severity>(m, "Severity", py::arithmetic(), py::module_local())
       .value("VERBOSE", logging::Severity::kVERBOSE)
@@ -762,8 +754,7 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
       .def_readwrite("enable_caching", &OrtModuleGraphBuilderConfiguration::enable_caching)
       .def_readwrite("loglevel", &OrtModuleGraphBuilderConfiguration::loglevel);
 
-  py::class_<GraphInfo> graph_info(m, "GraphInfo",
-                                   R"pbdoc(The information of split graphs for frontend.)pbdoc");
+  py::class_<GraphInfo> graph_info(m, "GraphInfo", R"pbdoc(The information of split graphs for frontend.)pbdoc");
   graph_info.def(py::init())
       .def_readwrite("user_input_names", &GraphInfo::user_input_names)
       .def_readwrite("user_input_grad_names", &GraphInfo::user_input_grad_names)
@@ -781,8 +772,7 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
   py::class_<OrtModuleGraphBuilder> ortmodule_graph_builder(m, "OrtModuleGraphBuilder");
   ortmodule_graph_builder.def(py::init([]() { return std::make_unique<OrtModuleGraphBuilder>(); }))
       .def("initialize",
-           [](OrtModuleGraphBuilder* ortmodule_graph_builder, const py::bytes& serialized_model,
-              const OrtModuleGraphBuilderConfiguration& config) {
+           [](OrtModuleGraphBuilder* ortmodule_graph_builder, const py::bytes& serialized_model, const OrtModuleGraphBuilderConfiguration& config) {
              std::istringstream buffer(serialized_model);
              ORT_THROW_IF_ERROR(ortmodule_graph_builder->Initialize(buffer, config));
            })
@@ -859,8 +849,7 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
       .def_readwrite("dtype", &GradientNodeAttributeDefinition::dtype)
       .def_readwrite("is_tensor", &GradientNodeAttributeDefinition::is_tensor);
 
-  py::class_<GradientNodeDefinition> gradient_node_definition(m, "GradientNodeDefinition",
-                                                              R"pbdoc(Definition for gradient graph nodes.)pbdoc");
+  py::class_<GradientNodeDefinition> gradient_node_definition(m, "GradientNodeDefinition", R"pbdoc(Definition for gradient graph nodes.)pbdoc");
 
   gradient_node_definition.def(py::init())
       .def_readwrite("op_type", &GradientNodeDefinition::op_type)
@@ -891,17 +880,22 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
         auto env = GetTrainingEnv().GetORTEnv();
         return std::make_unique<onnxruntime::training::api::Module>(
             model_uri,
-            state.module_checkpoint_state.named_parameters, session_option,
-            *env, provider, eval_model_uri);
+            state.module_checkpoint_state.named_parameters,
+            session_option,
+            *env,
+            provider,
+            eval_model_uri);
       }))
       .def("train_step",
            [](onnxruntime::training::api::Module* model,
-              const std::vector<OrtValue>& user_inputs, std::vector<OrtValue>& user_outputs) -> void {
+              const std::vector<OrtValue>& user_inputs,
+              std::vector<OrtValue>& user_outputs) -> void {
              ORT_THROW_IF_ERROR(model->TrainStep(user_inputs, user_outputs));
            })
       .def("eval_step",
            [](onnxruntime::training::api::Module* model,
-              const std::vector<OrtValue>& user_inputs, std::vector<OrtValue>& user_outputs) -> void {
+              const std::vector<OrtValue>& user_inputs,
+              std::vector<OrtValue>& user_outputs) -> void {
              ORT_THROW_IF_ERROR(model->EvalStep(user_inputs, user_outputs));
            })
       .def("lazy_reset_grad",
@@ -928,8 +922,7 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
                                                                            ToPathString(checkpoint_path)));
            })
       .def("export_model_for_inferencing",
-           [](onnxruntime::training::api::Module* model, const std::string& inference_model_path,
-              const std::vector<std::string>& graph_output_names) -> void {
+           [](onnxruntime::training::api::Module* model, const std::string& inference_model_path, const std::vector<std::string>& graph_output_names) -> void {
              ORT_ENFORCE(model, "Received a nullptr for expected pointer to class training::api::Module");
              ORT_THROW_IF_ERROR(model->ExportModelForInferencing(inference_model_path,
                                                                  graph_output_names));
@@ -955,7 +948,8 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
 
                       return std::make_unique<PyOptimizer>(
                           optimizer_model_uri,
-                          model, provider);
+                          model,
+                          provider);
                     }))
       .def("optimizer_step", [](PyOptimizer* optimizer) -> void {
         ORT_THROW_IF_ERROR(optimizer->optimizer_->Step());
@@ -1048,8 +1042,7 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
                                          &graph_transformation_mgr,
                                          &graph_entities_that_require_gradients](TransformerLevel level) {
             auto transformers_to_register = transformer_utils::GeneratePreTrainingTransformers(
-                level, graph_entities_that_require_gradients, TrainingGraphTransformerConfiguration(),
-                *cpu_execution_provider);
+                level, graph_entities_that_require_gradients, TrainingGraphTransformerConfiguration(), *cpu_execution_provider);
             for (auto& entry : transformers_to_register) {
               ORT_THROW_IF_ERROR(graph_transformation_mgr.Register(std::move(entry), level));
             }

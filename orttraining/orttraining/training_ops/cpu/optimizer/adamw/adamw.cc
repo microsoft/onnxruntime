@@ -49,11 +49,14 @@ Status AdamWOptimizerBase::PrepareForCompute(OpKernelContext* ctx, AdamWOptimize
 
           // Check the weight/gradient/momentums at the same index should have same shape.
           ORT_ENFORCE(weight_tensor.Shape() == gradient_tensor.Shape(),
-                      "Shape of weight and gradient mismatch, weight index:", i);
+                      "Shape of weight and gradient mismatch, weight index:",
+                      i);
           ORT_ENFORCE(gradient_tensor.Shape() == momentum_1_tensor.Shape(),
-                      "Shape of gradient and momentum_1 mismatch, weight index:", i);
+                      "Shape of gradient and momentum_1 mismatch, weight index:",
+                      i);
           ORT_ENFORCE(momentum_1_tensor.Shape() == momentum_2_tensor.Shape(),
-                      "Shape of momentum_1 and momentum_2 mismatch, weight index:", i);
+                      "Shape of momentum_1 and momentum_2 mismatch, weight index:",
+                      i);
 
           prepare.grouped_tensor_sizes[i] = static_cast<int>(weight_tensor.Shape().Size());
 
@@ -90,8 +93,7 @@ ONNX_OPERATOR_KERNEL_EX(
     AdamWOptimizer<float>);
 
 template <typename T>
-Status AdamWOptimizer<T>::AdamWComputeMode0(Tensor& weight, Tensor& gradient, Tensor& momentums_1, Tensor& momentums_2,
-                                            float lr, float alpha_correction, float beta_correction) const {
+Status AdamWOptimizer<T>::AdamWComputeMode0(Tensor& weight, Tensor& gradient, Tensor& momentums_1, Tensor& momentums_2, float lr, float alpha_correction, float beta_correction) const {
   // Perform weight decay.
   MakeEigenArrayMap<T>(weight) = MakeEigenArrayMap<T>(weight) - (MakeEigenArrayMap<T>(weight) * lr * weight_decay_);
 
@@ -112,8 +114,7 @@ Status AdamWOptimizer<T>::AdamWComputeMode0(Tensor& weight, Tensor& gradient, Te
 }
 
 template <typename T>
-Status AdamWOptimizer<T>::AdamWComputeMode1(Tensor& weight, Tensor& gradient, Tensor& momentums_1, Tensor& momentums_2,
-                                            float lr, float lr_corrected) const {
+Status AdamWOptimizer<T>::AdamWComputeMode1(Tensor& weight, Tensor& gradient, Tensor& momentums_1, Tensor& momentums_2, float lr, float lr_corrected) const {
   // Compute exponentially-averaged historical gradient.
   MakeEigenArrayMap<T>(momentums_1) = alpha_ * MakeEigenArrayMap<T>(momentums_1) +
                                       (1.f - alpha_) * MakeEigenArrayMap<T>(gradient);

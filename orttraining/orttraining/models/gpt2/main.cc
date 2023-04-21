@@ -209,8 +209,7 @@ Status ParseArguments(int argc, char* argv[], GPT2Parameters& params, OrtParamet
       params.lr_params.warmup_mode = warmup_mode;
       printf("Using learning rate warmup mode: %s \n", warmup_mode.c_str());
     } else {
-      return Status(ONNXRUNTIME, INVALID_ARGUMENT,
-                    "Incorrect warmup_mode: it must be one of [None|Cosine|Constant|Linear|Poly]");
+      return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Incorrect warmup_mode: it must be one of [None|Cosine|Constant|Linear|Poly]");
     }
 
     std::string optimizer_name = flags["optimizer"].as<std::string>();
@@ -265,8 +264,11 @@ Status ParseArguments(int argc, char* argv[], GPT2Parameters& params, OrtParamet
     ORT_RETURN_IF_NOT(
         logging::Severity::kVERBOSE <= ort_params.log_severity &&
             ort_params.log_severity <= logging::Severity::kFATAL,
-        "Log severity must be in the range [", static_cast<int>(logging::Severity::kVERBOSE),
-        ", ", static_cast<int>(logging::Severity::kFATAL), "].");
+        "Log severity must be in the range [",
+        static_cast<int>(logging::Severity::kVERBOSE),
+        ", ",
+        static_cast<int>(logging::Severity::kFATAL),
+        "].");
     ort_params.vlog_level = flags["ort_vlog_level"].as<int>();
   } catch (const std::exception& e) {
     const std::string msg = "Failed to parse the command line arguments";

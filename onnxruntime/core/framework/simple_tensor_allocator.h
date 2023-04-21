@@ -19,8 +19,7 @@ class SimpleTensorAllocator : public ITensorAllocator {
   const ExecutionPlanBase& seq_plan_;
 
  public:
-  SimpleTensorAllocator(const ExecutionPlanBase& execution_plan, const SessionState& session_state,
-                        InlinedVector<BufferUniquePtr>& /*weights_buffers*/)
+  SimpleTensorAllocator(const ExecutionPlanBase& execution_plan, const SessionState& session_state, InlinedVector<BufferUniquePtr>& /*weights_buffers*/)
       : ITensorAllocator(session_state),
         seq_plan_(execution_plan) {}
 
@@ -30,8 +29,7 @@ class SimpleTensorAllocator : public ITensorAllocator {
     planned_memory_sizes_in_byte.clear();
     return Status::OK();
   }
-  common::Status GetPreallocatedBuffer(int ort_value_index, const std::string& name, std::optional<MemBuffer>& buf_out,
-                                       AllocatorPtr& alloc_out) override;
+  common::Status GetPreallocatedBuffer(int ort_value_index, const std::string& name, std::optional<MemBuffer>& buf_out, AllocatorPtr& alloc_out) override;
   common::Status Trace(int id, const ONNX_NAMESPACE::TensorProto* value) override;
   const MemoryPatternGroup& GetMemPatterns() override {
     return mem_patterns_;

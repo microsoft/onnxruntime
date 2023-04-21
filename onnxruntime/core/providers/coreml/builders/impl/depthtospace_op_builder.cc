@@ -19,13 +19,11 @@ class DepthToSpaceOpBuilder : public BaseOpBuilder {
   // Add operator related
  private:
 #ifdef __APPLE__
-  [[nodiscard]] Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
-                                             const logging::Logger& logger) const override;
+  [[nodiscard]] Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node, const logging::Logger& logger) const override;
 #endif
 
   // Operator support related
-  bool IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params,
-                         const logging::Logger& logger) const override;
+  bool IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params, const logging::Logger& logger) const override;
 };
 
 // Add operator related
@@ -58,8 +56,7 @@ Status DepthToSpaceOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 
 // Operator support related
 
-bool DepthToSpaceOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& /*input_params*/,
-                                              const logging::Logger& logger) const {
+bool DepthToSpaceOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& /*input_params*/, const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
 
   std::vector<int64_t> input_shape;

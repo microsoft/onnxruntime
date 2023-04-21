@@ -141,17 +141,13 @@ void DnnlGemm::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
     // Write the alpha value into the memory object
     sp.WriteToDnnlMemory<float>(beta_mem, {beta});
 
-    auto binary_pd = dnnl::binary::primitive_desc(eng, dnnl::algorithm::binary_add,
-                                                  matmul_pd.dst_desc(), c_md, y_md, binary_attr);
+    auto binary_pd = dnnl::binary::primitive_desc(eng, dnnl::algorithm::binary_add, matmul_pd.dst_desc(), c_md, y_md, binary_attr);
 
     auto binary_c_mem = sp.GetMemoryAndReshape(node.Input(IN_C), binary_pd.src1_desc(), eng);
 
     auto binary_op = dnnl::binary(binary_pd);
 
-    sp.AddPrimitive(binary_op, {{DNNL_ARG_SRC_0, gemm_dst_mem},
-                                {DNNL_ARG_SRC_1, binary_c_mem},
-                                {DNNL_ARG_DST, gemm_dst_mem},
-                                {DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC_1, beta_mem}});
+    sp.AddPrimitive(binary_op, {{DNNL_ARG_SRC_0, gemm_dst_mem}, {DNNL_ARG_SRC_1, binary_c_mem}, {DNNL_ARG_DST, gemm_dst_mem}, {DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC_1, beta_mem}});
   }
   sp.SetMemory(node.Output(OUT_Y), gemm_dst_mem);
 }

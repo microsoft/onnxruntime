@@ -73,11 +73,7 @@ constexpr inline int32_t GetPipelineStageId(const int32_t world_rank,
 class DistributedRunContext {
  public:
   static DistributedRunContext& CreateInstance(DistributedRunConfig config) {
-    return DistributedRunContext::GetOrCreateInstance(config.world_rank, config.world_size,
-                                                      config.local_rank, config.local_size,
-                                                      config.data_parallel_size,
-                                                      config.horizontal_parallel_size,
-                                                      config.pipeline_stage_size);
+    return DistributedRunContext::GetOrCreateInstance(config.world_rank, config.world_size, config.local_rank, config.local_size, config.data_parallel_size, config.horizontal_parallel_size, config.pipeline_stage_size);
   }
 
 #ifndef SHARED_PROVIDER
@@ -147,16 +143,10 @@ class DistributedRunContext {
  protected:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(DistributedRunContext);
 
-  DistributedRunContext(int32_t world_rank, int32_t world_size, int32_t local_rank, int32_t local_size,
-                        int32_t data_parallel_size, int32_t horizontal_parallel_size, int32_t pipeline_stage_size = 1);
+  DistributedRunContext(int32_t world_rank, int32_t world_size, int32_t local_rank, int32_t local_size, int32_t data_parallel_size, int32_t horizontal_parallel_size, int32_t pipeline_stage_size = 1);
 
-  static DistributedRunContext& GetOrCreateInstance(int32_t world_rank = 0, int32_t world_size = 1,
-                                                    int32_t local_rank = 0, int32_t local_size = 1,
-                                                    int32_t data_parallel_size = 1,
-                                                    int32_t horizontal_parallel_size = 1,
-                                                    int32_t pipeline_stage_size = 1) {
-    static DistributedRunContext instance(world_rank, world_size, local_rank, local_size,
-                                          data_parallel_size, horizontal_parallel_size, pipeline_stage_size);
+  static DistributedRunContext& GetOrCreateInstance(int32_t world_rank = 0, int32_t world_size = 1, int32_t local_rank = 0, int32_t local_size = 1, int32_t data_parallel_size = 1, int32_t horizontal_parallel_size = 1, int32_t pipeline_stage_size = 1) {
+    static DistributedRunContext instance(world_rank, world_size, local_rank, local_size, data_parallel_size, horizontal_parallel_size, pipeline_stage_size);
     return instance;
   }
 

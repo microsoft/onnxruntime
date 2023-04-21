@@ -82,7 +82,9 @@ void GetPerStepInput(
 
 void SGDTestLoop(
     ExecutionProviderCreationFunc execution_provider_creator,
-    bool use_baseline_inputs_for_each_iteration, size_t total_step, float lr,
+    bool use_baseline_inputs_for_each_iteration,
+    size_t total_step,
+    float lr,
     std::unordered_map<std::string, std::vector<std::vector<float>>>& named_weights,
     std::unordered_map<std::string, std::vector<std::vector<float>>>& named_gradients,
     std::unordered_map<std::string, VectorInt64>& weight_name_shape_mapping,
@@ -156,8 +158,7 @@ void SGDTestLoop(
         ASSERT_TRUE(weights_to_train.find(weight_name) != weights_to_train.end());
 
         const float* updated_weight_buffer = updated_seq_weight.Get(weight_index).Data<float>();
-        std::copy(updated_weight_buffer, updated_weight_buffer + weights_to_train[weight_name].size(),
-                  weights_to_train[weight_name].begin());
+        std::copy(updated_weight_buffer, updated_weight_buffer + weights_to_train[weight_name].size(), weights_to_train[weight_name].begin());
 
         weight_index += 1;
       }
@@ -210,8 +211,11 @@ void SGDSingleWeightTestLoop10Steps(bool use_baseline_inputs_for_each_iteration,
         {{"fc1.weight", {2, 3}}};
 
     SGDTestLoop(it->second,
-                use_baseline_inputs_for_each_iteration, total_step, lr,
-                named_weights, named_gradients,
+                use_baseline_inputs_for_each_iteration,
+                total_step,
+                lr,
+                named_weights,
+                named_gradients,
                 weight_name_shape_mapping,
                 weight_tolerance,
                 update_signal);
@@ -273,8 +277,11 @@ void SGDMultipleWeightsTestLoop10Steps(bool use_baseline_inputs_for_each_iterati
         {{"fc1.weight", {2, 3}}, {"fc1.bias", {3}}, {"fc2.weight", {3, 2}}, {"fc2.bias", {2}}};
 
     SGDTestLoop(std::move(it->second),
-                use_baseline_inputs_for_each_iteration, total_step, lr,
-                named_weights, named_gradients,
+                use_baseline_inputs_for_each_iteration,
+                total_step,
+                lr,
+                named_weights,
+                named_gradients,
                 weight_name_shape_mapping,
                 weight_tolerance,
                 update_signal);

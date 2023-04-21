@@ -7,8 +7,7 @@
 
 namespace onnxruntime {
 
-Status SoftmaxCrossEntropyLossInternalFusion::ApplyImpl(Graph& graph, bool& modified, int /*graph_level*/,
-                                                        const logging::Logger& /*logger*/) const {
+Status SoftmaxCrossEntropyLossInternalFusion::ApplyImpl(Graph& graph, bool& modified, int /*graph_level*/, const logging::Logger& /*logger*/) const {
   GraphViewer graph_viewer(graph);
   const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
 
@@ -40,8 +39,12 @@ Status SoftmaxCrossEntropyLossInternalFusion::ApplyImpl(Graph& graph, bool& modi
     loss_outputs.emplace_back(&log_prob_def);
 
     Node& new_loss_node = graph.AddNode(graph.GenerateNodeName("SoftmaxCrossEntropyLossInternal"),
-                                        "SoftmaxCrossEntropyLossInternal", "SoftmaxCrossEntropyLossInternal.",
-                                        loss_inputs, loss_outputs, &loss_node.GetAttributes(), onnxruntime::kMSDomain);
+                                        "SoftmaxCrossEntropyLossInternal",
+                                        "SoftmaxCrossEntropyLossInternal.",
+                                        loss_inputs,
+                                        loss_outputs,
+                                        &loss_node.GetAttributes(),
+                                        onnxruntime::kMSDomain);
     // Assign provider to this new node. Provider should be same as the provider for old node.
     new_loss_node.SetExecutionProviderType(loss_node.GetExecutionProviderType());
     graph_utils::FinalizeNodeFusion(graph, new_loss_node, loss_node);

@@ -123,10 +123,12 @@ struct OpPassThroughConfig {
  * @return
  */
 Node* InsertIntermediateNodeOnDestInput(Graph& graph,
-                                        Node& dest_node, int dest_in_index,
+                                        Node& dest_node,
+                                        int dest_in_index,
                                         int new_node_input_index,
                                         int new_node_output_index,
-                                        const std::string& name, const std::string& op_type,
+                                        const std::string& name,
+                                        const std::string& op_type,
                                         const std::string& description,
                                         const InlinedVector<NodeArg*>& input_args,
                                         const InlinedVector<NodeArg*>& output_args,

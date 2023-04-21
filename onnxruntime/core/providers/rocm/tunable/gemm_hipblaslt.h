@@ -56,9 +56,7 @@ constexpr hipblasDatatype_t HipBlasDataTypeFor(const double*) {
 }
 
 template <typename T, typename ParamsT>
-Status HipBlasLtMatMul(const ParamsT* params, int64_t batch, ActivationType activation_type = ActivationType::NONE,
-                       bool enable_bias = false, const T* d_bias = nullptr,
-                       bool enable_scaleD = false, const T* d_scaleD = nullptr) {
+Status HipBlasLtMatMul(const ParamsT* params, int64_t batch, ActivationType activation_type = ActivationType::NONE, bool enable_bias = false, const T* d_bias = nullptr, bool enable_scaleD = false, const T* d_scaleD = nullptr) {
   hipblasLtHandle_t handle;
   HIPBLASLT_RETURN_IF_ERROR(hipblasLtCreate(&handle));
 

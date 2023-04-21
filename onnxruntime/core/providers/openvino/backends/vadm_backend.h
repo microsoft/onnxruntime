@@ -21,10 +21,12 @@ class VADMBackend : public IBackend {
 
  private:
   void StartAsyncInference(Ort::KernelContext& context,
-                           size_t batch_slice_idx, size_t infer_req_idx);
+                           size_t batch_slice_idx,
+                           size_t infer_req_idx);
 
   void CompleteAsyncInference(Ort::KernelContext& context,
-                              size_t batch_slice_idx, size_t infer_req_idx,
+                              size_t batch_slice_idx,
+                              size_t infer_req_idx,
                               size_t batch_size);
 
   GlobalContext& global_context_;

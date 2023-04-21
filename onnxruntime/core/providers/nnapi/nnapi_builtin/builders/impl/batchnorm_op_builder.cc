@@ -33,8 +33,7 @@ class BatchNormalizationOpBuilder : public BaseOpBuilder {
 
   // Operator support related
  private:
-  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
-                         const OpSupportCheckParams& params) const override;
+  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit, const OpSupportCheckParams& params) const override;
 
   // BatchNormalization opset 6- has unsupported attributes
   int GetMinSupportedOpSet(const NodeUnit& /* node_unit */) const override { return 7; }
@@ -120,15 +119,13 @@ Status BatchNormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_bu
   ORT_RETURN_IF_ERROR(model_builder.AddOperandFromPersistMemoryBuffer(tensor_b_name, b.data(), b_operand_type));
 
   int32_t fuse_code = model_builder.FindActivation(node_unit);
-  ORT_RETURN_IF_ERROR(AddNnapiBatchNormalization(model_builder, input, tensor_a_name, tensor_b_name,
-                                                 tensor_imm_product_name, output, fuse_code));
+  ORT_RETURN_IF_ERROR(AddNnapiBatchNormalization(model_builder, input, tensor_a_name, tensor_b_name, tensor_imm_product_name, output, fuse_code));
   return Status::OK();
 }
 
 // Operator support related
 
-bool BatchNormalizationOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
-                                                    const OpSupportCheckParams& /* params */) const {
+bool BatchNormalizationOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit, const OpSupportCheckParams& /* params */) const {
   if (node_unit.Outputs().size() != 1) {
     LOGS_DEFAULT(VERBOSE) << "Your onnx model may be in training mode, please export "
                              "it in test mode.";

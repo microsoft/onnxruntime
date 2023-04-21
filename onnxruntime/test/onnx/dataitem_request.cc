@@ -18,8 +18,7 @@
 namespace onnxruntime {
 namespace test {
 
-std::pair<EXECUTE_RESULT, TIME_SPEC> DataTaskRequestContext::Run(const ITestCase& c, ::Ort::Session& session,
-                                                                 OrtAllocator* allocator, size_t task_id) {
+std::pair<EXECUTE_RESULT, TIME_SPEC> DataTaskRequestContext::Run(const ITestCase& c, ::Ort::Session& session, OrtAllocator* allocator, size_t task_id) {
   std::pair<EXECUTE_RESULT, TIME_SPEC> result;
   Callback empty_cb;
   DataTaskRequestContext ctx(empty_cb, c, session, allocator, task_id);
@@ -35,9 +34,7 @@ std::pair<EXECUTE_RESULT, TIME_SPEC> DataTaskRequestContext::Run(const ITestCase
   return result;
 }
 
-void DataTaskRequestContext::Request(const Callback& cb, concurrency::ThreadPool* tp,
-                                     const ITestCase& c, Ort::Session& session,
-                                     OrtAllocator* allocator, size_t task_id) {
+void DataTaskRequestContext::Request(const Callback& cb, concurrency::ThreadPool* tp, const ITestCase& c, Ort::Session& session, OrtAllocator* allocator, size_t task_id) {
   assert(cb);
   std::unique_ptr<DataTaskRequestContext> self = std::make_unique<DataTaskRequestContext>(cb, c, session, allocator, task_id);
   CallableFactory<DataTaskRequestContext, void> f(self.get());
@@ -104,9 +101,7 @@ std::pair<EXECUTE_RESULT, TIME_SPEC> DataTaskRequestContext::RunImpl() {
   GetMonotonicTimeCounter(&start_time);
   assert(input_names.size() == input_values.size());
 
-  Ort::ThrowOnError(Ort::GetApi().Run(session_, nullptr, input_names.data(), input_values.data(),
-                                      input_values.size(), output_names_raw_ptr.data(),
-                                      output_count, reinterpret_cast<OrtValue**>(output_values.data())));
+  Ort::ThrowOnError(Ort::GetApi().Run(session_, nullptr, input_names.data(), input_values.data(), input_values.size(), output_names_raw_ptr.data(), output_count, reinterpret_cast<OrtValue**>(output_values.data())));
   GetMonotonicTimeCounter(&end_time);
   AccumulateTimeSpec(&spent_time_, &start_time, &end_time);
 
@@ -157,8 +152,7 @@ std::pair<EXECUTE_RESULT, TIME_SPEC> DataTaskRequestContext::RunImpl() {
             "Expected non-None output but received an OrtValue that is None"};
       } else {  // Both expect and actual OrtValues are not None, proceed with data checking
         ret =
-            CompareOrtValue(*actual_output_value, *expected_output_value, per_sample_tolerance,
-                            relative_per_sample_tolerance, post_procesing);
+            CompareOrtValue(*actual_output_value, *expected_output_value, per_sample_tolerance, relative_per_sample_tolerance, post_procesing);
       }
     } else {  // Expected output is None, ensure that the received output OrtValue is None as well
       if (actual_output_value->IsAllocated()) {

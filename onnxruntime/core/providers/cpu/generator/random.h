@@ -41,7 +41,8 @@ class RandomNormal final : public OpKernel {
     ORT_ENFORCE(info.GetAttr<int64_t>("dtype", &dtype).IsOK());
     dtype_ = static_cast<ONNX_NAMESPACE::TensorProto::DataType>(dtype);
     ORT_ENFORCE(ONNX_NAMESPACE::TensorProto::DataType_IsValid(dtype_) && dtype_ != ONNX_NAMESPACE::TensorProto::UNDEFINED,
-                "Invalid dtype of ", dtype_);
+                "Invalid dtype of ",
+                dtype_);
 
     TensorShapeVector shape;
     ORT_ENFORCE(info.GetAttrs("shape", shape).IsOK());
@@ -82,7 +83,8 @@ class RandomNormalLike final : public OpKernel {
     if (info.GetAttr<int64_t>("dtype", &dtype).IsOK()) {
       dtype_ = static_cast<ONNX_NAMESPACE::TensorProto::DataType>(dtype);
       ORT_ENFORCE(ONNX_NAMESPACE::TensorProto::DataType_IsValid(dtype_) && dtype_ != ONNX_NAMESPACE::TensorProto::UNDEFINED,
-                  "Invalid dtype of ", dtype_);
+                  "Invalid dtype of ",
+                  dtype_);
     }
   }
 
@@ -117,7 +119,8 @@ class RandomUniform final : public OpKernel {
     ORT_ENFORCE(info.GetAttr<int64_t>("dtype", &dtype).IsOK());
     dtype_ = static_cast<ONNX_NAMESPACE::TensorProto::DataType>(dtype);
     ORT_ENFORCE(ONNX_NAMESPACE::TensorProto::DataType_IsValid(dtype_) && dtype_ != ONNX_NAMESPACE::TensorProto::UNDEFINED,
-                "Invalid dtype of ", dtype_);
+                "Invalid dtype of ",
+                dtype_);
 
     TensorShapeVector shape;
     ORT_ENFORCE(info.GetAttrs("shape", shape).IsOK());
@@ -155,7 +158,8 @@ class RandomUniformLike final : public OpKernel {
     if (info.GetAttr<int64_t>("dtype", &dtype).IsOK()) {
       dtype_ = static_cast<ONNX_NAMESPACE::TensorProto::DataType>(dtype);
       ORT_ENFORCE(ONNX_NAMESPACE::TensorProto::DataType_IsValid(dtype_) && dtype_ != ONNX_NAMESPACE::TensorProto::UNDEFINED,
-                  "Invalid dtype of ", dtype_);
+                  "Invalid dtype of ",
+                  dtype_);
     }
   }
 
@@ -191,7 +195,8 @@ class Multinomial final : public OpKernel {
       output_dtype_ = static_cast<ONNX_NAMESPACE::TensorProto::DataType>(output_dtype_tmp);
     }
     ORT_ENFORCE(ONNX_NAMESPACE::TensorProto::DataType_IsValid(output_dtype_) && output_dtype_ != ONNX_NAMESPACE::TensorProto::UNDEFINED,
-                "Invalid dtype of ", output_dtype_);
+                "Invalid dtype of ",
+                output_dtype_);
   }
 
   Status Compute(OpKernelContext* ctx) const override;

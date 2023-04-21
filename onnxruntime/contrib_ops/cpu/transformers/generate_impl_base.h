@@ -105,13 +105,17 @@ class GenerateBase {
       if (!scalar_tensor->Shape().IsScalar()) {
         return ORT_MAKE_STATUS(ONNXRUNTIME,
                                FAIL,
-                               "Node input ", name, " should be a scalar. Got shape of ",
+                               "Node input ",
+                               name,
+                               " should be a scalar. Got shape of ",
                                scalar_tensor->Shape());
       }
     } else if (required) {
       return ORT_MAKE_STATUS(ONNXRUNTIME,
                              FAIL,
-                             "Node input ", name, " is required");
+                             "Node input ",
+                             name,
+                             " is required");
     }
     return Status::OK();
   }
@@ -126,27 +130,22 @@ class GenerateBase {
     const auto& dims = input_ids->Shape().GetDims();
     if (parameters->model_type == IGenerationParameters::kModelTypeWhisper) {
       if (dims.size() != 3) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                               "Input 'input_features' is expected to have 3 dimensions, got ", dims.size());
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'input_features' is expected to have 3 dimensions, got ", dims.size());
       }
 
     } else if (dims.size() != 2) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input 'input_ids' is expected to have 2 dimensions, got ", dims.size());
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'input_ids' is expected to have 2 dimensions, got ", dims.size());
     }
 
     if (vocab_mask != nullptr) {  // vocab_mask is optional
       const auto& vocab_mask_dims = vocab_mask->Shape().GetDims();
       if (vocab_mask_dims.size() != 1) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                               "Input 'vocab_mask' is expected to have 1 dimension, got ", vocab_mask_dims.size());
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'vocab_mask' is expected to have 1 dimension, got ", vocab_mask_dims.size());
       }
 
       // There is dependency on vocab_size parameter, which shall be set before calling this function.
       if (static_cast<int>(vocab_mask_dims[0]) != parameters->vocab_size) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                               "Input 'vocab_mask'  dimension 0 does not match with vocab_size's, got ",
-                               vocab_mask_dims[0]);
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'vocab_mask'  dimension 0 does not match with vocab_size's, got ", vocab_mask_dims[0]);
       }
 
       // store vocab mask in parameters.
@@ -164,14 +163,12 @@ class GenerateBase {
 
       // prefix_vocab_mask first dimension should be same as the first dimension of input_ids
       if (static_cast<int>(vocab_mask_dims[0]) != static_cast<int>(dims[0])) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                               "input_ids and prefix_vocab_mask must have the same batch_size");
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "input_ids and prefix_vocab_mask must have the same batch_size");
       }
 
       // There is dependency on vocab_size parameter, which shall be set before calling this function.
       if (static_cast<int>(vocab_mask_dims[1]) != parameters->vocab_size) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                               "Input 'prefix_vocab_mask' shape[1] shall be vocab_size, got ", vocab_mask_dims[1]);
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'prefix_vocab_mask' shape[1] shall be vocab_size, got ", vocab_mask_dims[1]);
       }
 
       // store prefix vocab mask in parameters.
@@ -182,34 +179,28 @@ class GenerateBase {
       const auto& dims_attn = attention_mask->Shape().GetDims();
       if (parameters->model_type == IGenerationParameters::kModelTypeWhisper) {
         if (dims_attn.size() != 3) {
-          return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                                 "Input 'attention_mask' is expected to have 3 dimensions, got ", dims_attn.size());
+          return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'attention_mask' is expected to have 3 dimensions, got ", dims_attn.size());
         }
       } else if (dims_attn.size() != 2) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                               "Input 'attention_mask' is expected to have 2 dimensions, got ", dims_attn.size());
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'attention_mask' is expected to have 2 dimensions, got ", dims_attn.size());
       }
       if (!SpanEq(dims_attn, dims)) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                               "Input 'attention_mask' is expected to have same shape as input_ids");
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'attention_mask' is expected to have same shape as input_ids");
       }
     }
     if (presence_mask != nullptr) {
       const auto& dims_presence = presence_mask->Shape().GetDims();
       if (dims_presence.size() != 2) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                               "Input 'presence_mask' is expected to have 2 dimensions, got ", dims_presence.size());
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'presence_mask' is expected to have 2 dimensions, got ", dims_presence.size());
       }
 
       // presence_mask first dimension should be same as the first dimension of input_ids
       if (static_cast<int>(dims_presence[0]) != static_cast<int>(dims[0])) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                               "input_ids and presence_mask must have the same batch_size");
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "input_ids and presence_mask must have the same batch_size");
       }
 
       if (static_cast<int>(dims_presence[1]) != parameters->vocab_size) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                               "Input 'presence_mask' shape[1] shall be vocab_size, got ", dims_presence[1]);
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'presence_mask' shape[1] shall be vocab_size, got ", dims_presence[1]);
       }
 
       // store prefix vocab mask in parameters.

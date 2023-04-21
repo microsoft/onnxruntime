@@ -18,8 +18,7 @@
 #include <string>
 
 struct KernelOpenVINO {
-  KernelOpenVINO(const OrtApi& api, const OrtKernelInfo* info,
-                 const std::unordered_map<std::string, std::string>& session_configs);
+  KernelOpenVINO(const OrtApi& api, const OrtKernelInfo* info, const std::unordered_map<std::string, std::string>& session_configs);
 
   KernelOpenVINO(const KernelOpenVINO&) = delete;
   KernelOpenVINO& operator=(const KernelOpenVINO&) = delete;

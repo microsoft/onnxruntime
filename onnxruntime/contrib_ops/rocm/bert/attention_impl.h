@@ -56,22 +56,28 @@ Status LaunchDecoderAttentionKernel(
 );
 
 Status LaunchTransCtx(hipStream_t stream,
-                      const int sequence_length, const int batch_size, const int head_size, const int num_heads,
-                      const int max_threads_per_block, const bool reversed_bs, const float* input, float* output);
+                      const int sequence_length,
+                      const int batch_size,
+                      const int head_size,
+                      const int num_heads,
+                      const int max_threads_per_block,
+                      const bool reversed_bs,
+                      const float* input,
+                      float* output);
 
 Status LaunchTransCtx(hipStream_t stream,
-                      const int sequence_length, const int batch_size, const int head_size, const int num_heads,
-                      const int max_threads_per_block, const bool reversed_bs, const half* input, half* output);
+                      const int sequence_length,
+                      const int batch_size,
+                      const int head_size,
+                      const int num_heads,
+                      const int max_threads_per_block,
+                      const bool reversed_bs,
+                      const half* input,
+                      half* output);
 
-Status LaunchTransQkv(hipStream_t stream, const int matrix_num,
-                      const int sequence_length, const int batch_size, const int head_size, const int num_heads,
-                      const int max_threads_per_block, const bool reversed_bs, const float* input, float* output,
-                      int total_matrix_count = -1);
+Status LaunchTransQkv(hipStream_t stream, const int matrix_num, const int sequence_length, const int batch_size, const int head_size, const int num_heads, const int max_threads_per_block, const bool reversed_bs, const float* input, float* output, int total_matrix_count = -1);
 
-Status LaunchTransQkv(hipStream_t stream, const int matrix_num,
-                      const int sequence_length, const int batch_size, const int head_size, const int num_heads,
-                      const int max_threads_per_block, const bool reversed_bs, const half* input, half* output,
-                      int total_matrix_count = -1);
+Status LaunchTransQkv(hipStream_t stream, const int matrix_num, const int sequence_length, const int batch_size, const int head_size, const int num_heads, const int max_threads_per_block, const bool reversed_bs, const half* input, half* output, int total_matrix_count = -1);
 
 Status LaunchConcatTensorToTensor(hipStream_t stream,
                                   const int all_sequence_length,
@@ -169,7 +175,8 @@ inline rocblas_status _compat_rocblas_gemm_strided_batched_ex(rocblas_handle han
                                          batch_count,  // batch count
                                          compute_type,
                                          algo,
-                                         0, 0);
+                                         0,
+                                         0);
 }
 
 // Compatible for CublasMathModeSetter

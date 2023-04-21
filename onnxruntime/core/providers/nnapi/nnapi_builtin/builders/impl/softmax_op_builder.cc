@@ -33,16 +33,14 @@ class SoftMaxOpBuilder : public BaseOpBuilder {
   // Operator support related
 
  private:
-  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
-                         const OpSupportCheckParams& params) const override;
+  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit, const OpSupportCheckParams& params) const override;
 
   int32_t GetMinSupportedNNAPIFeatureLevel(const NodeUnit& /* node_unit */,
                                            const OpSupportCheckParams& /* params */) const override {
     return ANEURALNETWORKS_FEATURE_LEVEL_2;
   }
   bool HasSupportedInputOutputsImpl(
-      const InitializedTensorSet& initializers, const NodeUnit& node_unit,
-      const OpSupportCheckParams& params) const override;
+      const InitializedTensorSet& initializers, const NodeUnit& node_unit, const OpSupportCheckParams& params) const override;
 
   bool IsNodeUnitTypeSupported(const NodeUnit& /* node_unit */) const override { return true; }
 
@@ -82,8 +80,7 @@ Status SoftMaxOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, cons
   int32_t y_zero_point = 0;
   if (IsQuantizedOp(node_unit)) {
     ORT_RETURN_IF_ERROR(GetQuantizationScaleAndZeroPoint(
-        model_builder.GetInitializerTensors(), node_unit.Inputs()[0], node_unit.ModelPath(),
-        x_scale, x_zero_point));
+        model_builder.GetInitializerTensors(), node_unit.Inputs()[0], node_unit.ModelPath(), x_scale, x_zero_point));
 
     ORT_RETURN_IF_ERROR(IsValidInputQuantizedType(model_builder, input, x_scale, x_zero_point));
 
@@ -102,8 +99,7 @@ Status SoftMaxOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, cons
   }
 
   const OperandType output_operand_type(operand_types.at(input).type, shaper[output], y_scale, y_zero_point);
-  ORT_RETURN_IF_ERROR(model_builder.AddOperation(ANEURALNETWORKS_SOFTMAX, input_indices,
-                                                 {output}, {output_operand_type}));
+  ORT_RETURN_IF_ERROR(model_builder.AddOperation(ANEURALNETWORKS_SOFTMAX, input_indices, {output}, {output_operand_type}));
   return Status::OK();
 }
 
@@ -113,8 +109,7 @@ bool SoftMaxOpBuilder::IsQuantizedOp(const NodeUnit& node_unit) const {
   return GetQuantizedOpType(node_unit) == QuantizedOpType::QDQSoftmax;
 }
 
-bool SoftMaxOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /* initializers */, const NodeUnit& node_unit,
-                                         const OpSupportCheckParams& params) const {
+bool SoftMaxOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /* initializers */, const NodeUnit& node_unit, const OpSupportCheckParams& params) const {
   Shape input_shape;
   if (!GetShape(node_unit.Inputs()[0].node_arg, input_shape))
     return false;
@@ -141,8 +136,7 @@ bool SoftMaxOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /* initiali
 }
 
 bool SoftMaxOpBuilder::HasSupportedInputOutputsImpl(
-    const InitializedTensorSet& initializers, const NodeUnit& node_unit,
-    const OpSupportCheckParams& params) const {
+    const InitializedTensorSet& initializers, const NodeUnit& node_unit, const OpSupportCheckParams& params) const {
   if (!IsQuantizedOp(node_unit)) {
     return BaseOpBuilder::HasSupportedInputOutputsImpl(initializers, node_unit, params);
   }
@@ -159,8 +153,10 @@ bool SoftMaxOpBuilder::HasSupportedInputOutputsImpl(
   if (!HasRequiredScaleAndZeroPoint(
           initializers,
           MakeString("Op [", node_unit.OpType(), "] name [", node_unit.Name(), "]'s output 0 "),
-          node_unit.Outputs()[0], node_unit.ModelPath(),
-          1.f / 256 /* required_scale */, 0 /* required_zp */)) {
+          node_unit.Outputs()[0],
+          node_unit.ModelPath(),
+          1.f / 256 /* required_scale */,
+          0 /* required_zp */)) {
     return false;
   }
 

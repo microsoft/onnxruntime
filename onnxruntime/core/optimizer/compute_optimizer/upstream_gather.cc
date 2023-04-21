@@ -64,10 +64,7 @@ UpStreamGatherGraphTransformer::UpStreamGatherGraphTransformer(
 }
 
 bool UpStreamGatherGraphTransformer::UpStreamInternal(
-    Graph& graph, std::deque<SliceInfo>& queue,
-    Node& current_node, SliceInfo& info,
-    const OpPassThroughConfig<UpStreamGatherOperatorActorBase>& pass_through_config,
-    const logging::Logger& logger) const {
+    Graph& graph, std::deque<SliceInfo>& queue, Node& current_node, SliceInfo& info, const OpPassThroughConfig<UpStreamGatherOperatorActorBase>& pass_through_config, const logging::Logger& logger) const {
   Node& slice_node = *info.node_ptr;
   const std::string op_type = GetFullQualifiedOpName(current_node.OpType(), current_node.Domain());
 
@@ -75,21 +72,18 @@ bool UpStreamGatherGraphTransformer::UpStreamInternal(
   std::unordered_map<int, std::vector<DimCompare>> all_input_cmp_rets;
   std::function<void(Node & node)> shape_update_func;
 
-  if (!pass_through_config.actor->PreCheck(graph, current_node, info, logger,
-                                           propagate_input_indices, all_input_cmp_rets, shape_update_func)) {
+  if (!pass_through_config.actor->PreCheck(graph, current_node, info, logger, propagate_input_indices, all_input_cmp_rets, shape_update_func)) {
     LOG_DEBUG_INFO(logger, "Pre-check failed for " + current_node.Name() + "(" + op_type + ")");
     return false;
   }
 
   if (propagate_input_indices.empty()) {
-    LOG_DEBUG_INFO(logger, "Skip handling current node " + current_node.Name() + "(" + op_type +
-                               ") because the requirement is not met.");
+    LOG_DEBUG_INFO(logger, "Skip handling current node " + current_node.Name() + "(" + op_type + ") because the requirement is not met.");
     return false;
   }
 
   if (!shape_update_func) {
-    LOG_DEBUG_INFO(logger, "Skip handling current node " + current_node.Name() + "(" + op_type +
-                               ") because the shape update function is not set.");
+    LOG_DEBUG_INFO(logger, "Skip handling current node " + current_node.Name() + "(" + op_type + ") because the shape update function is not set.");
     return false;
   }
 
@@ -103,8 +97,7 @@ bool UpStreamGatherGraphTransformer::UpStreamInternal(
   for (auto pair : propagate_input_indices) {
     auto input_index = pair.first;  // input index of current_node
     int new_axis = pair.second;     // new axis of current_node's input to be sliced
-    SliceInfo gather_info = PropagateSlicingForInput(graph, slice_node, current_node, input_index, info, new_axis,
-                                                     logger);
+    SliceInfo gather_info = PropagateSlicingForInput(graph, slice_node, current_node, input_index, info, new_axis, logger);
 
     ORT_ENFORCE(gather_info.node_ptr, "New added gather node should not be null.");
     populated_slicing_infos.push_back(gather_info);
@@ -116,8 +109,7 @@ bool UpStreamGatherGraphTransformer::UpStreamInternal(
   // Update shapes
   shape_update_func(current_node);
 
-  if (!pass_through_config.actor->PostProcess(graph, current_node, info, logger, propagate_input_indices,
-                                              all_input_cmp_rets, new_gather_infos)) {
+  if (!pass_through_config.actor->PostProcess(graph, current_node, info, logger, propagate_input_indices, all_input_cmp_rets, new_gather_infos)) {
     ORT_THROW("Post-process failed for " + current_node.Name() + "(" + op_type + ")");
   }
 
@@ -133,9 +125,7 @@ SliceInfo UpStreamGatherGraphTransformer::PropagateSlicingForInput(
     SliceInfo& info,
     int new_axis,
     const logging::Logger& logger) const {
-  LOG_DEBUG_INFO(logger, "PropagateSlicingForInput for Node " + slice_node.Name() + "(" + slice_node.OpType() +
-                             ") with input index " + std::to_string(current_node_input_index) + ", keep_dim = " +
-                             std::to_string(!info.is_scalar_slice));
+  LOG_DEBUG_INFO(logger, "PropagateSlicingForInput for Node " + slice_node.Name() + "(" + slice_node.OpType() + ") with input index " + std::to_string(current_node_input_index) + ", keep_dim = " + std::to_string(!info.is_scalar_slice));
 
   InlinedVector<NodeArg*> input_args;
   input_args.reserve(slice_node.InputDefs().size());
@@ -164,18 +154,7 @@ SliceInfo UpStreamGatherGraphTransformer::PropagateSlicingForInput(
   /* new node output index to connect to current_node*/
   int new_slice_output_index_to_connect = info.GetOutputIndex();
   Node* new_slice_node = InsertIntermediateNodeOnDestInput(
-      graph, current_node,
-      current_node_input_index,
-      new_slice_input_index_to_connect,
-      new_slice_output_index_to_connect,
-      graph.GenerateNodeName(info.entry_slice_arg_name),
-      slice_node.OpType(),
-      "Duplicated Gather node",
-      input_args,
-      output_args,
-      attributes,
-      slice_node.Domain(),
-      logger);
+      graph, current_node, current_node_input_index, new_slice_input_index_to_connect, new_slice_output_index_to_connect, graph.GenerateNodeName(info.entry_slice_arg_name), slice_node.OpType(), "Duplicated Gather node", input_args, output_args, attributes, slice_node.Domain(), logger);
 
   new_slice_node->SetExecutionProviderType(slice_node.GetExecutionProviderType());
 
@@ -190,29 +169,22 @@ SliceInfo UpStreamGatherGraphTransformer::PropagateSlicingForInput(
 }
 
 Status UpStreamGatherGraphTransformer::RemoveOriginSlicingOp(
-    Graph& graph, Node& slice_node, Node& current_node,
-    const logging::Logger& logger, SliceInfo& info) const {
-  LOG_DEBUG_INFO(logger, "RemoveOriginSlicingOp target_node " + current_node.Name() + "(" + current_node.OpType() +
-                             ") slice_node " + slice_node.Name() + "(" + slice_node.OpType() + "), keep_dim = " +
-                             std::to_string(!(info.is_scalar_slice)));
+    Graph& graph, Node& slice_node, Node& current_node, const logging::Logger& logger, SliceInfo& info) const {
+  LOG_DEBUG_INFO(logger, "RemoveOriginSlicingOp target_node " + current_node.Name() + "(" + current_node.OpType() + ") slice_node " + slice_node.Name() + "(" + slice_node.OpType() + "), keep_dim = " + std::to_string(!(info.is_scalar_slice)));
 
   auto slice_input_arg = slice_node.MutableInputDefs()[info.GetDataInputIndex()];
   int output_index = optimizer_utils::IndexOfNodeOutput(current_node, *slice_input_arg);
   auto slice_op_output_arg = slice_node.MutableOutputDefs()[info.GetOutputIndex()];
 
-  LOG_DEBUG_INFO(logger, "RemoveOriginSlicingOp Replace all usage of output " + slice_op_output_arg->Name() + ":0" +
-                             " with " + current_node.MutableOutputDefs()[output_index]->Name() + ":" +
-                             std::to_string(output_index));
+  LOG_DEBUG_INFO(logger, "RemoveOriginSlicingOp Replace all usage of output " + slice_op_output_arg->Name() + ":0" + " with " + current_node.MutableOutputDefs()[output_index]->Name() + ":" + std::to_string(output_index));
 
-  graph_utils::ReplaceDownstreamNodeInput(graph, slice_node, info.GetOutputIndex() /*output_idx*/, current_node,
-                                          output_index /*replacement_output_idx*/);
+  graph_utils::ReplaceDownstreamNodeInput(graph, slice_node, info.GetOutputIndex() /*output_idx*/, current_node, output_index /*replacement_output_idx*/);
   auto gather_origin_consumer_nodes = graph.GetConsumerNodes(slice_op_output_arg->Name());
   std::vector<Node*> slice_op_consumers;
   slice_op_consumers.reserve(gather_origin_consumer_nodes.size());
   for (auto& consumer_node : gather_origin_consumer_nodes) {
     slice_op_consumers.push_back(graph.GetNode(consumer_node->Index()));
-    LOG_DEBUG_INFO(logger, "RemoveOriginSlicingOp Gather's consumer node " + consumer_node->Name() + "(" +
-                               consumer_node->OpType() + ")");
+    LOG_DEBUG_INFO(logger, "RemoveOriginSlicingOp Gather's consumer node " + consumer_node->Name() + "(" + consumer_node->OpType() + ")");
   }
   graph.UpdateConsumerNodes(current_node.OutputDefs()[output_index]->Name(), slice_op_consumers);
   graph.UpdateConsumerNodes(slice_op_output_arg->Name(), {});
@@ -223,9 +195,7 @@ Status UpStreamGatherGraphTransformer::RemoveOriginSlicingOp(
 
 namespace {
 
-std::optional<SliceInfo> IsSupportedGatherND(Graph& graph, Node& node,
-                                             const InlinedHashSet<std::string_view>& compatible_execution_providers,
-                                             const logging::Logger& logger) {
+std::optional<SliceInfo> IsSupportedGatherND(Graph& graph, Node& node, const InlinedHashSet<std::string_view>& compatible_execution_providers, const logging::Logger& logger) {
   if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "GatherND", {1, 12, 13}, kOnnxDomain) ||
       !graph_utils::IsSupportedProvider(node, compatible_execution_providers)) {
     return std::nullopt;
@@ -266,9 +236,7 @@ std::optional<SliceInfo> IsSupportedGatherND(Graph& graph, Node& node,
   return SliceInfo(graph, &node, false, "batch_dims", static_cast<int>(batch_dims), true);
 }
 
-std::optional<SliceInfo> IsSupportedGather(Graph& graph, Node& node,
-                                           const InlinedHashSet<std::string_view>& compatible_execution_providers,
-                                           const logging::Logger& logger) {
+std::optional<SliceInfo> IsSupportedGather(Graph& graph, Node& node, const InlinedHashSet<std::string_view>& compatible_execution_providers, const logging::Logger& logger) {
   if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Gather", {1, 11, 13}, kOnnxDomain) ||
       !graph_utils::IsSupportedProvider(node, compatible_execution_providers)) {
     return std::nullopt;
@@ -298,8 +266,7 @@ std::optional<SliceInfo> IsSupportedGather(Graph& graph, Node& node,
         data_shape->dim(axis).dim_value() > indices_shape->dim(0).dim_value()) {
       // Can support.
     } else {
-      LOG_DEBUG_INFO(logger, "Skip Gather node " + node.Name() + " due to unsupported dim size: " +
-                                 std::to_string(dim_size));
+      LOG_DEBUG_INFO(logger, "Skip Gather node " + node.Name() + " due to unsupported dim size: " + std::to_string(dim_size));
       return std::nullopt;
     }
   }
@@ -307,10 +274,7 @@ std::optional<SliceInfo> IsSupportedGather(Graph& graph, Node& node,
   return SliceInfo(graph, &node, dim_size == 0, "axis", axis, true);
 }
 
-std::optional<SliceInfo> IsSupportedShrunkenGather(Graph& graph, Node& node,
-                                                   const InlinedHashSet<std::string_view>&
-                                                       compatible_execution_providers,
-                                                   const logging::Logger& logger) {
+std::optional<SliceInfo> IsSupportedShrunkenGather(Graph& graph, Node& node, const InlinedHashSet<std::string_view>& compatible_execution_providers, const logging::Logger& logger) {
   if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "ShrunkenGather", {1}, kMSDomain) ||
       !graph_utils::IsSupportedProvider(node, compatible_execution_providers)) {
     return std::nullopt;
@@ -320,9 +284,7 @@ std::optional<SliceInfo> IsSupportedShrunkenGather(Graph& graph, Node& node,
   auto indices_shape = node.MutableInputDefs()[1]->Shape();
   auto gather_out_shape = node.MutableOutputDefs()[0]->Shape();
   if (data_shape == nullptr || indices_shape == nullptr || gather_out_shape == nullptr) {
-    LOG_DEBUG_INFO(logger, "Skip ShrunkenGather node " + node.Name() + " due to undefined shape." +
-                               std::to_string(data_shape == nullptr) + std::to_string(indices_shape == nullptr) +
-                               std::to_string(gather_out_shape == nullptr));
+    LOG_DEBUG_INFO(logger, "Skip ShrunkenGather node " + node.Name() + " due to undefined shape." + std::to_string(data_shape == nullptr) + std::to_string(indices_shape == nullptr) + std::to_string(gather_out_shape == nullptr));
     return std::nullopt;
   }
 
@@ -337,8 +299,7 @@ std::optional<SliceInfo> IsSupportedShrunkenGather(Graph& graph, Node& node,
   int dim_size = indices_shape->dim_size();
 
   if (dim_size == 0) {
-    LOG_DEBUG_INFO(logger, "Skip ShrunkenGather node " + node.Name() + " due to unsupported dim size: " +
-                               std::to_string(dim_size));
+    LOG_DEBUG_INFO(logger, "Skip ShrunkenGather node " + node.Name() + " due to unsupported dim size: " + std::to_string(dim_size));
     return std::nullopt;
   }
 

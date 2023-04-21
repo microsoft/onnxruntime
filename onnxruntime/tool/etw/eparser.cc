@@ -29,8 +29,7 @@ DWORD GetMapInfo(PEVENT_RECORD pEvent, LPWSTR pMapName, DWORD DecodingSource, PE
 
 // Print the property.
 template <typename T>
-PBYTE PrintProperties(PEVENT_RECORD pEvent, PTRACE_EVENT_INFO pInfo, DWORD PointerSize, USHORT i, PBYTE pUserData,
-                      PBYTE pEndOfUserData, const T& t) {
+PBYTE PrintProperties(PEVENT_RECORD pEvent, PTRACE_EVENT_INFO pInfo, DWORD PointerSize, USHORT i, PBYTE pUserData, PBYTE pEndOfUserData, const T& t) {
   TDHSTATUS status = ERROR_SUCCESS;
   USHORT PropertyLength = 0;
   DWORD FormattedDataSize = 0;
@@ -72,8 +71,7 @@ PBYTE PrintProperties(PEVENT_RECORD pEvent, PTRACE_EVENT_INFO pInfo, DWORD Point
       // Get the name/value mapping if the property specifies a value map.
 
       status =
-          GetMapInfo(pEvent, (PWCHAR)((PBYTE)(pInfo) + pInfo->EventPropertyInfoArray[i].nonStructType.MapNameOffset),
-                     pInfo->DecodingSource, pMapInfo);
+          GetMapInfo(pEvent, (PWCHAR)((PBYTE)(pInfo) + pInfo->EventPropertyInfoArray[i].nonStructType.MapNameOffset), pInfo->DecodingSource, pMapInfo);
 
       if (ERROR_SUCCESS != status) {
         wprintf(L"GetMapInfo failed\n");
@@ -83,10 +81,7 @@ PBYTE PrintProperties(PEVENT_RECORD pEvent, PTRACE_EVENT_INFO pInfo, DWORD Point
 
       // Get the size of the buffer required for the formatted data.
 
-      status = TdhFormatProperty(pInfo, pMapInfo, PointerSize, pInfo->EventPropertyInfoArray[i].nonStructType.InType,
-                                 pInfo->EventPropertyInfoArray[i].nonStructType.OutType, PropertyLength,
-                                 (USHORT)(pEndOfUserData - pUserData), pUserData, &FormattedDataSize, pFormattedData,
-                                 &UserDataConsumed);
+      status = TdhFormatProperty(pInfo, pMapInfo, PointerSize, pInfo->EventPropertyInfoArray[i].nonStructType.InType, pInfo->EventPropertyInfoArray[i].nonStructType.OutType, PropertyLength, (USHORT)(pEndOfUserData - pUserData), pUserData, &FormattedDataSize, pFormattedData, &UserDataConsumed);
 
       if (ERROR_INSUFFICIENT_BUFFER == status) {
         if (pFormattedData) {
@@ -104,10 +99,7 @@ PBYTE PrintProperties(PEVENT_RECORD pEvent, PTRACE_EVENT_INFO pInfo, DWORD Point
 
         // Retrieve the formatted data.
 
-        status = TdhFormatProperty(pInfo, pMapInfo, PointerSize, pInfo->EventPropertyInfoArray[i].nonStructType.InType,
-                                   pInfo->EventPropertyInfoArray[i].nonStructType.OutType, PropertyLength,
-                                   (USHORT)(pEndOfUserData - pUserData), pUserData, &FormattedDataSize, pFormattedData,
-                                   &UserDataConsumed);
+        status = TdhFormatProperty(pInfo, pMapInfo, PointerSize, pInfo->EventPropertyInfoArray[i].nonStructType.InType, pInfo->EventPropertyInfoArray[i].nonStructType.OutType, PropertyLength, (USHORT)(pEndOfUserData - pUserData), pUserData, &FormattedDataSize, pFormattedData, &UserDataConsumed);
       }
 
       if (ERROR_SUCCESS == status) {
@@ -292,17 +284,16 @@ void OrtEventHandler(EVENT_RECORD* pEvent, void* pContext) {
     std::wstring opname;
     long time_spent_in_this_op = 0;
     for (USHORT i = 0; i < pInfo->TopLevelPropertyCount; i++) {
-      pUserData = PrintProperties(pEvent, pInfo, PointerSize, i, pUserData, pEndOfUserData,
-                                  [&opname, &time_spent_in_this_op](const wchar_t* key, wchar_t* value) {
-                                    if (wcscmp(key, L"op_name") == 0) {
-                                      opname = value;
-                                    } else if (wcscmp(key, L"time") == 0) {
-                                      time_spent_in_this_op = wcstol(value, nullptr, 10);
-                                    } else {
-                                      wprintf(key);
-                                      abort();
-                                    }
-                                  });
+      pUserData = PrintProperties(pEvent, pInfo, PointerSize, i, pUserData, pEndOfUserData, [&opname, &time_spent_in_this_op](const wchar_t* key, wchar_t* value) {
+        if (wcscmp(key, L"op_name") == 0) {
+          opname = value;
+        } else if (wcscmp(key, L"time") == 0) {
+          time_spent_in_this_op = wcstol(value, nullptr, 10);
+        } else {
+          wprintf(key);
+          abort();
+        }
+      });
       if (NULL == pUserData) {
         wprintf(L"Printing top level properties failed.\n");
         abort();

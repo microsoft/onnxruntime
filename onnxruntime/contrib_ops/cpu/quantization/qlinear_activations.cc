@@ -28,8 +28,7 @@ void QLinearLookupBase<T>::BuildLookupTableIfFixed(const OpKernelInfo& info, Tra
   if (is_fixed_parameters) {
     fixed_lookup_table_.resize(256);
     QlinearBuildLookupTable<T>(
-        fixed_lookup_table_.data(), tensor_x_scale, tensor_x_zero_point,
-        tensor_y_scale, tensor_y_zero_point, fn);
+        fixed_lookup_table_.data(), tensor_x_scale, tensor_x_zero_point, tensor_y_scale, tensor_y_zero_point, fn);
   }
 }
 
@@ -44,8 +43,7 @@ Status QLinearLookupBase<T>::ComputeBase(OpKernelContext* context, Transformer f
   uint8_t table[256];
   if (fixed_lookup_table_.size() == 0) {
     QlinearBuildLookupTable<T>(
-        table, context->Input<Tensor>(1), context->Input<Tensor>(2),
-        context->Input<Tensor>(3), context->Input<Tensor>(4), fn);
+        table, context->Input<Tensor>(1), context->Input<Tensor>(2), context->Input<Tensor>(3), context->Input<Tensor>(4), fn);
   }
 
   using onnxruntime::TensorOpCost;
@@ -54,8 +52,7 @@ Status QLinearLookupBase<T>::ComputeBase(OpKernelContext* context, Transformer f
   const uint8_t* x_data = reinterpret_cast<const uint8_t*>(X.Data<T>());
   uint8_t* y_data = reinterpret_cast<uint8_t*>(Y.MutableData<T>());
   ThreadPool::TryParallelFor(
-      tp, narrow<std::ptrdiff_t>(N), TensorOpCost{1.0, 1.0, 1.0},
-      [this, x_data, y_data, &table](std::ptrdiff_t first, std::ptrdiff_t last) {
+      tp, narrow<std::ptrdiff_t>(N), TensorOpCost{1.0, 1.0, 1.0}, [this, x_data, y_data, &table](std::ptrdiff_t first, std::ptrdiff_t last) {
         QLinearLookupTableTransform(
             x_data + first,
             fixed_lookup_table_.size() ? fixed_lookup_table_.data() : table,
@@ -99,10 +96,7 @@ Status QLinearSigmoid<T>::Compute(OpKernelContext* context) const {
 
 #define REGISTER_QLINEAR_LOOKUPTABLE_TYPED_KERNEL(op_name, version, data_type, KERNEL_CLASS) \
   ONNX_CPU_OPERATOR_TYPED_MS_KERNEL(                                                         \
-      op_name, version, data_type,                                                           \
-      KernelDefBuilder()                                                                     \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<data_type>()),                    \
-      KERNEL_CLASS<data_type>);
+      op_name, version, data_type, KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<data_type>()), KERNEL_CLASS<data_type>);
 
 REGISTER_QLINEAR_LOOKUPTABLE_TYPED_KERNEL(QLinearLeakyRelu, 1, int8_t, QLinearLeakyRelu);
 REGISTER_QLINEAR_LOOKUPTABLE_TYPED_KERNEL(QLinearLeakyRelu, 1, uint8_t, QLinearLeakyRelu);

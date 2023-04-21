@@ -52,8 +52,7 @@ class ScanOpTester : public OpTester {
 
       {
         auto& outer_scope_constant = graph.GetOrCreateNodeArg("outer_scope_constant", &float_single_value);
-        auto& constant = graph.AddNode("outer_scope_constant", "Constant", "Constant with value kOuterNodeAddValue",
-                                       {}, {&outer_scope_constant});
+        auto& constant = graph.AddNode("outer_scope_constant", "Constant", "Constant with value kOuterNodeAddValue", {}, {&outer_scope_constant});
 
         TensorProto value_tensor;
         value_tensor.add_dims(1);
@@ -63,8 +62,7 @@ class ScanOpTester : public OpTester {
         constant.AddAttribute("value", value_tensor);
 
         auto& outer_scope_node_arg = graph.GetOrCreateNodeArg("outer_scope_0", &float_single_value);
-        graph.AddNode("outer_scope_id", "Identity", "Identity for outer_scope_0",
-                      {&outer_scope_constant}, {&outer_scope_node_arg});
+        graph.AddNode("outer_scope_id", "Identity", "Identity for outer_scope_0", {&outer_scope_constant}, {&outer_scope_node_arg});
       }
     }
 
@@ -257,23 +255,9 @@ static common::Status CreateSubgraph(Graph& graph, RunOptions& options, const st
   return status;
 }
 
-static void RunTest_v8(const std::string test_name, int64_t batch_size, int64_t max_sequence_len, int64_t input_size,
-                       std::vector<int64_t>* directions,
-                       std::vector<int64_t>* sequence_lens,
-                       std::vector<float>& loop_state_in_0,
-                       std::vector<float> input_0,
-                       std::vector<float> input_1,
-                       std::vector<float>& loop_state_out_0,
-                       std::vector<float> output_0,
-                       std::vector<float> output_1,
-                       std::vector<float> output_2,
-                       std::vector<float> output_3,
-                       RunOptions options = {},
-                       OpTester::ExpectResult expect_result = OpTester::ExpectResult::kExpectSuccess,
-                       const std::string& failure_message = "") {
+static void RunTest_v8(const std::string test_name, int64_t batch_size, int64_t max_sequence_len, int64_t input_size, std::vector<int64_t>* directions, std::vector<int64_t>* sequence_lens, std::vector<float>& loop_state_in_0, std::vector<float> input_0, std::vector<float> input_1, std::vector<float>& loop_state_out_0, std::vector<float> output_0, std::vector<float> output_1, std::vector<float> output_2, std::vector<float> output_3, RunOptions options = {}, OpTester::ExpectResult expect_result = OpTester::ExpectResult::kExpectSuccess, const std::string& failure_message = "") {
   // create model that will be used to initialize subgraph. currently there's no direct way to create a Graph instance.
-  Model model(test_name, false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(), {{"", 8}},
-              {}, DefaultLoggingManager().DefaultLogger());
+  Model model(test_name, false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(), {{"", 8}}, {}, DefaultLoggingManager().DefaultLogger());
   auto& graph = model.MainGraph();
   auto status = CreateSubgraph(graph, options, options.add_bad_shape ? failure_message : "");
   ASSERT_STATUS_OK(status);
@@ -319,25 +303,9 @@ static void RunTest_v8(const std::string test_name, int64_t batch_size, int64_t 
   test.Run(expect_result, failure_message, options.excluded_provider_types);
 }
 
-static void RunTest_v9(const std::string test_name, int64_t sequence_len, int64_t input_size,
-                       std::vector<int64_t>* input_directions,
-                       std::vector<int64_t>* output_directions,
-                       std::vector<int64_t>* input_axes,
-                       std::vector<int64_t>* output_axes,
-                       std::vector<float>& loop_state_in_0,
-                       std::vector<float> input_0,
-                       std::vector<float> input_1,
-                       std::vector<float>& loop_state_out_0,
-                       std::vector<float> output_0,
-                       std::vector<float> output_1,
-                       std::vector<float> output_2,
-                       std::vector<float> output_3,
-                       RunOptions options = {},
-                       OpTester::ExpectResult expect_result = OpTester::ExpectResult::kExpectSuccess,
-                       const std::string& failure_message = "") {
+static void RunTest_v9(const std::string test_name, int64_t sequence_len, int64_t input_size, std::vector<int64_t>* input_directions, std::vector<int64_t>* output_directions, std::vector<int64_t>* input_axes, std::vector<int64_t>* output_axes, std::vector<float>& loop_state_in_0, std::vector<float> input_0, std::vector<float> input_1, std::vector<float>& loop_state_out_0, std::vector<float> output_0, std::vector<float> output_1, std::vector<float> output_2, std::vector<float> output_3, RunOptions options = {}, OpTester::ExpectResult expect_result = OpTester::ExpectResult::kExpectSuccess, const std::string& failure_message = "") {
   // create model that will be used to initialize subgraph. currently there's no direct way to create a Graph instance.
-  Model model(test_name, false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(), {{"", 11}},
-              {}, DefaultLoggingManager().DefaultLogger());
+  Model model(test_name, false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(), {{"", 11}}, {}, DefaultLoggingManager().DefaultLogger());
   auto& graph = model.MainGraph();
   auto status = CreateSubgraph(graph, options, options.add_bad_shape ? failure_message : "");
   if (!status.IsOK()) {
@@ -392,8 +360,7 @@ static void RunTest_v9(const std::string test_name, int64_t sequence_len, int64_
       if (axis >= -rank && axis < rank) {
         InlinedVector<size_t> permutations;
         TensorShapeVector new_shape;
-        scan::detail::CalculateTransposedShapeForOutput(output_shape, HandleNegativeAxis(axis, rank),
-                                                        permutations, new_shape);
+        scan::detail::CalculateTransposedShapeForOutput(output_shape, HandleNegativeAxis(axis, rank), permutations, new_shape);
         return std::vector<int64_t>(new_shape.cbegin(), new_shape.cend());
       }
     }
@@ -429,10 +396,8 @@ static void ShortSequenceOneInBatchOneLoopStateVar(const RunOptions& options, co
 
   // v8: batch_size, max_sequence_len, input_size
   // v9: sequence_len, input_size
-  std::vector<float> input_0{1.f, 2.f,
-                             4.f, 3.f};
-  std::vector<float> input_1{3.f, 4.f,
-                             2.f, 1.f};
+  std::vector<float> input_0{1.f, 2.f, 4.f, 3.f};
+  std::vector<float> input_1{3.f, 4.f, 2.f, 1.f};
 
   std::vector<float> iteration_count_out{2.f};  // iteration_count_in + 1 for each item in sequence
 
@@ -445,21 +410,9 @@ static void ShortSequenceOneInBatchOneLoopStateVar(const RunOptions& options, co
   std::vector<float> output_3{4.f + output_adjust, 1.f + output_adjust};
 
   if (options.is_v8) {
-    RunTest_v8("ShortSequenceOneInBatchOneLoopStateVar", batch_size, sequence_len, input_size,
-               nullptr, nullptr,
-               iteration_count_in, input_0, input_1,
-               iteration_count_out, output_0, output_1, output_2, output_3,
-               options,
-               expected_error.empty() ? OpTester::ExpectResult::kExpectSuccess : OpTester::ExpectResult::kExpectFailure,
-               expected_error);
+    RunTest_v8("ShortSequenceOneInBatchOneLoopStateVar", batch_size, sequence_len, input_size, nullptr, nullptr, iteration_count_in, input_0, input_1, iteration_count_out, output_0, output_1, output_2, output_3, options, expected_error.empty() ? OpTester::ExpectResult::kExpectSuccess : OpTester::ExpectResult::kExpectFailure, expected_error);
   } else {
-    RunTest_v9("ShortSequenceOneInBatchOneLoopStateVar", input_size, sequence_len,
-               nullptr, nullptr, nullptr, nullptr,
-               iteration_count_in, input_0, input_1,
-               iteration_count_out, output_0, output_1, output_2, output_3,
-               options,
-               expected_error.empty() ? OpTester::ExpectResult::kExpectSuccess : OpTester::ExpectResult::kExpectFailure,
-               expected_error);
+    RunTest_v9("ShortSequenceOneInBatchOneLoopStateVar", input_size, sequence_len, nullptr, nullptr, nullptr, nullptr, iteration_count_in, input_0, input_1, iteration_count_out, output_0, output_1, output_2, output_3, options, expected_error.empty() ? OpTester::ExpectResult::kExpectSuccess : OpTester::ExpectResult::kExpectFailure, expected_error);
   }
 }
 
@@ -589,17 +542,19 @@ TEST(Scan8, ShortSequenceTwoInBatchOneLoopStateVar) {
   std::vector<float> iteration_count_in{0.f, 10.f};  // start at 0 for first item in batch, and 10 for second
 
   // batch_size, max_sequence_len, input_size
-  std::vector<float> input_0{1.f, 2.f,
-                             4.f, 3.f,
+  std::vector<float> input_0{1.f, 2.f, 4.f, 3.f,
 
-                             -1.f, -2.f,
-                             -4.f, -3.f};
+                             -1.f,
+                             -2.f,
+                             -4.f,
+                             -3.f};
 
-  std::vector<float> input_1{3.f, 4.f,
-                             2.f, 1.f,
+  std::vector<float> input_1{3.f, 4.f, 2.f, 1.f,
 
-                             -3.f, -4.f,
-                             -2.f, -1.f};
+                             -3.f,
+                             -4.f,
+                             -2.f,
+                             -1.f};
 
   std::vector<float> iteration_count_out{2.f, 12.f};  // iteration_count_in + 1 for each item in sequence
 
@@ -609,10 +564,7 @@ TEST(Scan8, ShortSequenceTwoInBatchOneLoopStateVar) {
   std::vector<float> output_2{3.f, 2.f, -3.f, -2.f};
   std::vector<float> output_3{4.f, 1.f, -4.f, -1.f};
 
-  RunTest_v8("ShortSequenceTwoInBatchOneLoopStateVar", batch_size, sequence_len, input_size,
-             nullptr, nullptr,
-             iteration_count_in, input_0, input_1,
-             iteration_count_out, output_0, output_1, output_2, output_3);
+  RunTest_v8("ShortSequenceTwoInBatchOneLoopStateVar", batch_size, sequence_len, input_size, nullptr, nullptr, iteration_count_in, input_0, input_1, iteration_count_out, output_0, output_1, output_2, output_3);
 }
 
 TEST(Scan8, MixedSequenceLens) {
@@ -625,23 +577,29 @@ TEST(Scan8, MixedSequenceLens) {
   std::vector<float> iteration_count_in{0.f, 10.f, 1.f};  // start at 0 for first item in batch, and 10 for second
 
   // batch_size, max_sequence_len, input_size
-  std::vector<float> input_0{1.f, 2.f,
-                             4.f, 3.f,  // <- this should be ignored
+  std::vector<float> input_0{1.f, 2.f, 4.f, 3.f,  // <- this should be ignored
 
-                             -1.f, -2.f,
-                             -4.f, -3.f,
+                             -1.f,
+                             -2.f,
+                             -4.f,
+                             -3.f,
 
-                             10.f, 11.f,
-                             12.f, 13.f};
+                             10.f,
+                             11.f,
+                             12.f,
+                             13.f};
 
-  std::vector<float> input_1{3.f, 4.f,
-                             2.f, 1.f,  // <- this should be ignored
+  std::vector<float> input_1{3.f, 4.f, 2.f, 1.f,  // <- this should be ignored
 
-                             -3.f, -4.f,
-                             -2.f, -1.f,
+                             -3.f,
+                             -4.f,
+                             -2.f,
+                             -1.f,
 
-                             22.f, 33.f,
-                             44.f, 55.f};
+                             22.f,
+                             33.f,
+                             44.f,
+                             55.f};
 
   // iteration_count_in + 1 for each item in sequence.
   // as sequence_len is 1 for the first item in the batch, the final value should be 0 + 1.
@@ -656,10 +614,7 @@ TEST(Scan8, MixedSequenceLens) {
   std::vector<float> output_2{3.f, 0.f, -3.f, -2.f, 22.f, 44.f};
   std::vector<float> output_3{4.f, 0.f, -4.f, -1.f, 33.f, 55.f};
 
-  RunTest_v8("MixedSequenceLens", batch_size, max_sequence_len, input_size,
-             nullptr, &sequence_lens,
-             iteration_count_in, input_0, input_1,
-             iteration_count_out, output_0, output_1, output_2, output_3);
+  RunTest_v8("MixedSequenceLens", batch_size, max_sequence_len, input_size, nullptr, &sequence_lens, iteration_count_in, input_0, input_1, iteration_count_out, output_0, output_1, output_2, output_3);
 }
 
 TEST(Scan8, MixedSequenceLensReverse) {
@@ -673,17 +628,19 @@ TEST(Scan8, MixedSequenceLensReverse) {
   std::vector<float> iteration_count_in{0.f, 10.f};  // start at 0 for first item in batch, and 10 for second
 
   // batch_size, max_sequence_len, input_size
-  std::vector<float> input_0{1.f, 2.f,
-                             400.f, 300.f,  // <- this should be ignored
+  std::vector<float> input_0{1.f, 2.f, 400.f, 300.f,  // <- this should be ignored
 
-                             -1.f, -2.f,
-                             -4.f, -3.f};
+                             -1.f,
+                             -2.f,
+                             -4.f,
+                             -3.f};
 
-  std::vector<float> input_1{3.f, 4.f,
-                             200.f, 100.f,  // <- this should be ignored
+  std::vector<float> input_1{3.f, 4.f, 200.f, 100.f,  // <- this should be ignored
 
-                             -3.f, -4.f,
-                             -2.f, -1.f};
+                             -3.f,
+                             -4.f,
+                             -2.f,
+                             -1.f};
 
   // iteration_count_in + 1 for each item in sequence.
   // as sequence_len is 1 for the first item in the batch, the final value should be 0 + 1.
@@ -700,10 +657,7 @@ TEST(Scan8, MixedSequenceLensReverse) {
   std::vector<float> output_2{3.f, 0.f, -2.f, -3.f};
   std::vector<float> output_3{4.f, 0.f, -1.f, -4.f};
 
-  RunTest_v8("MixedSequenceLensReverse", batch_size, max_sequence_len, input_size,
-             &directions, &sequence_lens,
-             iteration_count_in, input_0, input_1,
-             iteration_count_out, output_0, output_1, output_2, output_3);
+  RunTest_v8("MixedSequenceLensReverse", batch_size, max_sequence_len, input_size, &directions, &sequence_lens, iteration_count_in, input_0, input_1, iteration_count_out, output_0, output_1, output_2, output_3);
 }
 
 TEST(Scan8, ShortSequenceTwoInBatchOneLoopStateVarReverseFirstInput) {
@@ -716,17 +670,19 @@ TEST(Scan8, ShortSequenceTwoInBatchOneLoopStateVarReverseFirstInput) {
   std::vector<int64_t> directions{1, 0};  // reverse for input_0, forward for input_1
 
   // batch_size, max_sequence_len, input_size
-  std::vector<float> input_0{1.f, 2.f,
-                             4.f, 3.f,
+  std::vector<float> input_0{1.f, 2.f, 4.f, 3.f,
 
-                             -1.f, -2.f,
-                             -4.f, -3.f};
+                             -1.f,
+                             -2.f,
+                             -4.f,
+                             -3.f};
 
-  std::vector<float> input_1{3.f, 4.f,
-                             2.f, 1.f,
+  std::vector<float> input_1{3.f, 4.f, 2.f, 1.f,
 
-                             -3.f, -4.f,
-                             -2.f, -1.f};
+                             -3.f,
+                             -4.f,
+                             -2.f,
+                             -1.f};
 
   std::vector<float> iteration_count_out{2.f, 12.f};  // iteration_count_in + 1 for each item in sequence
 
@@ -738,10 +694,7 @@ TEST(Scan8, ShortSequenceTwoInBatchOneLoopStateVarReverseFirstInput) {
   std::vector<float> output_2{3.f, 2.f, -3.f, -2.f};
   std::vector<float> output_3{4.f, 1.f, -4.f, -1.f};
 
-  RunTest_v8("ShortSequenceTwoInBatchOneLoopStateVarReverseFirstInput", batch_size, sequence_len, input_size,
-             &directions, nullptr,
-             iteration_count_in, input_0, input_1,
-             iteration_count_out, output_0, output_1, output_2, output_3);
+  RunTest_v8("ShortSequenceTwoInBatchOneLoopStateVarReverseFirstInput", batch_size, sequence_len, input_size, &directions, nullptr, iteration_count_in, input_0, input_1, iteration_count_out, output_0, output_1, output_2, output_3);
 }
 
 TEST(Scan9, ReversedInput) {
@@ -753,11 +706,9 @@ TEST(Scan9, ReversedInput) {
   std::vector<int64_t> input_directions{0, 1};  // reverse second input
 
   // max_sequence_len, input_size
-  std::vector<float> input_0{1.f, 2.f,
-                             3.f, 4.f};
+  std::vector<float> input_0{1.f, 2.f, 3.f, 4.f};
 
-  std::vector<float> input_1{11.f, 12.f,
-                             13.f, 14.f};
+  std::vector<float> input_1{11.f, 12.f, 13.f, 14.f};
 
   std::vector<float> iteration_count_out{2.f};  // iteration_count_in + 1 for each item in sequence
 
@@ -767,10 +718,7 @@ TEST(Scan9, ReversedInput) {
   std::vector<float> output_2{13.f, 11.f};
   std::vector<float> output_3{14.f, 12.f};
 
-  RunTest_v9("ReversedInput", sequence_len, input_size,
-             &input_directions, nullptr, nullptr, nullptr,
-             iteration_count_in, input_0, input_1,
-             iteration_count_out, output_0, output_1, output_2, output_3);
+  RunTest_v9("ReversedInput", sequence_len, input_size, &input_directions, nullptr, nullptr, nullptr, iteration_count_in, input_0, input_1, iteration_count_out, output_0, output_1, output_2, output_3);
 }
 
 TEST(Scan9, ReversedOutput) {
@@ -782,11 +730,9 @@ TEST(Scan9, ReversedOutput) {
   std::vector<int64_t> output_directions{0, 1, 1, 0};  // reverse 2 out of the 4 outputs
 
   // max_sequence_len, input_size
-  std::vector<float> input_0{1.f, 2.f,
-                             3.f, 4.f};
+  std::vector<float> input_0{1.f, 2.f, 3.f, 4.f};
 
-  std::vector<float> input_1{11.f, 12.f,
-                             13.f, 14.f};
+  std::vector<float> input_1{11.f, 12.f, 13.f, 14.f};
 
   std::vector<float> iteration_count_out{2.f};  // iteration_count_in + 1 for each item in sequence
 
@@ -796,10 +742,7 @@ TEST(Scan9, ReversedOutput) {
   std::vector<float> output_2{13.f, 11.f};
   std::vector<float> output_3{12.f, 14.f};
 
-  RunTest_v9("ReversedOutput", sequence_len, input_size,
-             nullptr, &output_directions, nullptr, nullptr,
-             iteration_count_in, input_0, input_1,
-             iteration_count_out, output_0, output_1, output_2, output_3);
+  RunTest_v9("ReversedOutput", sequence_len, input_size, nullptr, &output_directions, nullptr, nullptr, iteration_count_in, input_0, input_1, iteration_count_out, output_0, output_1, output_2, output_3);
 }
 
 TEST(Scan9, TransposeInput) {
@@ -812,10 +755,8 @@ TEST(Scan9, TransposeInput) {
   std::vector<int64_t> input_axes{1, -1};  // transpose both inputs on axis 1
 
   // inputs are {input_size, sequence_len}, but will be transposed to {sequence_len, input_size} by the axes values
-  std::vector<float> input_0{1.f, 3.f,
-                             2.f, 4.f};
-  std::vector<float> input_1{11.f, 13.f,
-                             12.f, 14.f};
+  std::vector<float> input_0{1.f, 3.f, 2.f, 4.f};
+  std::vector<float> input_1{11.f, 13.f, 12.f, 14.f};
 
   std::vector<float> iteration_count_out{2.f};  // iteration_count_in + 1 for each item in sequence
 
@@ -827,10 +768,7 @@ TEST(Scan9, TransposeInput) {
   std::vector<float> output_2{11.f, 13.f};
   std::vector<float> output_3{12.f, 14.f};
 
-  RunTest_v9("TransposeInput", sequence_len, input_size,
-             nullptr, nullptr, &input_axes, nullptr,
-             iteration_count_in, input_0, input_1,
-             iteration_count_out, output_0, output_1, output_2, output_3);
+  RunTest_v9("TransposeInput", sequence_len, input_size, nullptr, nullptr, &input_axes, nullptr, iteration_count_in, input_0, input_1, iteration_count_out, output_0, output_1, output_2, output_3);
 }
 
 TEST(Scan9, TransposeOutput) {
@@ -842,10 +780,8 @@ TEST(Scan9, TransposeOutput) {
   // transpose also supports negative axis
   std::vector<int64_t> output_axes{1, -1, 0, 0};  // transpose two outputs on axis 1, and leave 2 as is by using axis 0
 
-  std::vector<float> input_0{1.f, 2.f,
-                             3.f, 4.f};
-  std::vector<float> input_1{11.f, 12.f,
-                             13.f, 14.f};
+  std::vector<float> input_0{1.f, 2.f, 3.f, 4.f};
+  std::vector<float> input_1{11.f, 12.f, 13.f, 14.f};
 
   std::vector<float> iteration_count_out{2.f};  // iteration_count_in + 1 for each item in sequence
 
@@ -856,10 +792,7 @@ TEST(Scan9, TransposeOutput) {
   std::vector<float> output_2{11.f, 13.f};
   std::vector<float> output_3{12.f, 14.f};
 
-  RunTest_v9("TransposeOutput", sequence_len, input_size,
-             nullptr, nullptr, nullptr, &output_axes,
-             iteration_count_in, input_0, input_1,
-             iteration_count_out, output_0, output_1, output_2, output_3);
+  RunTest_v9("TransposeOutput", sequence_len, input_size, nullptr, nullptr, nullptr, &output_axes, iteration_count_in, input_0, input_1, iteration_count_out, output_0, output_1, output_2, output_3);
 }
 
 TEST(Scan9, TransposeOutputDim2) {
@@ -927,98 +860,38 @@ static void InvalidInput(bool is_v8) {
   std::vector<int64_t> directions = {2, 1};
 
   if (is_v8) {
-    RunTest_v8("InvalidDirectionsValue", batch_size, sequence_len, input_size,
-               &directions, nullptr,
-               iteration_count_in, input_0, input_1,
-               iteration_count_out, output_0, output_1, output_2, output_3,
-               {},
-               OpTester::ExpectResult::kExpectFailure,
-               "Invalid values in 'directions'.");
+    RunTest_v8("InvalidDirectionsValue", batch_size, sequence_len, input_size, &directions, nullptr, iteration_count_in, input_0, input_1, iteration_count_out, output_0, output_1, output_2, output_3, {}, OpTester::ExpectResult::kExpectFailure, "Invalid values in 'directions'.");
   } else {
-    RunTest_v9("InvalidInputDirectionsValue", sequence_len, input_size,
-               &directions, nullptr, nullptr, nullptr,
-               iteration_count_in, input_0, input_1,
-               iteration_count_out, output_0, output_1, output_2, output_3,
-               {},
-               OpTester::ExpectResult::kExpectFailure,
-               "Invalid values in 'scan_input_directions'.");
+    RunTest_v9("InvalidInputDirectionsValue", sequence_len, input_size, &directions, nullptr, nullptr, nullptr, iteration_count_in, input_0, input_1, iteration_count_out, output_0, output_1, output_2, output_3, {}, OpTester::ExpectResult::kExpectFailure, "Invalid values in 'scan_input_directions'.");
 
     std::vector<int64_t> output_directions = {0, 2, 1, 0};
 
-    RunTest_v9("InvalidOutputDirectionsValue", sequence_len, input_size,
-               nullptr, &output_directions, nullptr, nullptr,
-               iteration_count_in, input_0, input_1,
-               iteration_count_out, output_0, output_1, output_2, output_3,
-               {},
-               OpTester::ExpectResult::kExpectFailure,
-               "Invalid values in 'scan_output_directions'.");
+    RunTest_v9("InvalidOutputDirectionsValue", sequence_len, input_size, nullptr, &output_directions, nullptr, nullptr, iteration_count_in, input_0, input_1, iteration_count_out, output_0, output_1, output_2, output_3, {}, OpTester::ExpectResult::kExpectFailure, "Invalid values in 'scan_output_directions'.");
   }
 
   // mismatch between direction entries and num inputs/outputs
   directions = {1, 0, 1};  // too many entries for the 2 inputs, too few for the 4 outputs
 
   if (is_v8) {
-    RunTest_v8("InvalidNumEntriesInDirections", batch_size, sequence_len, input_size,
-               &directions, nullptr,
-               iteration_count_in, input_0, input_1,
-               iteration_count_out, output_0, output_1, output_2, output_3,
-               {},
-               OpTester::ExpectResult::kExpectFailure,
-               "Number of entries in 'directions' was 3 but expected 2");
+    RunTest_v8("InvalidNumEntriesInDirections", batch_size, sequence_len, input_size, &directions, nullptr, iteration_count_in, input_0, input_1, iteration_count_out, output_0, output_1, output_2, output_3, {}, OpTester::ExpectResult::kExpectFailure, "Number of entries in 'directions' was 3 but expected 2");
   } else {
-    RunTest_v9("InvalidNumEntriesInInputDirections", sequence_len, input_size,
-               &directions, nullptr, nullptr, nullptr,
-               iteration_count_in, input_0, input_1,
-               iteration_count_out, output_0, output_1, output_2, output_3,
-               {},
-               OpTester::ExpectResult::kExpectFailure,
-               "Number of entries in 'scan_input_directions' was 3 but expected 2");
+    RunTest_v9("InvalidNumEntriesInInputDirections", sequence_len, input_size, &directions, nullptr, nullptr, nullptr, iteration_count_in, input_0, input_1, iteration_count_out, output_0, output_1, output_2, output_3, {}, OpTester::ExpectResult::kExpectFailure, "Number of entries in 'scan_input_directions' was 3 but expected 2");
 
-    RunTest_v9("InvalidNumEntriesInOutputDirections", sequence_len, input_size,
-               nullptr, &directions, nullptr, nullptr,
-               iteration_count_in, input_0, input_1,
-               iteration_count_out, output_0, output_1, output_2, output_3,
-               {},
-               OpTester::ExpectResult::kExpectFailure,
-               "Number of entries in 'scan_output_directions' was 3 but expected 4");
+    RunTest_v9("InvalidNumEntriesInOutputDirections", sequence_len, input_size, nullptr, &directions, nullptr, nullptr, iteration_count_in, input_0, input_1, iteration_count_out, output_0, output_1, output_2, output_3, {}, OpTester::ExpectResult::kExpectFailure, "Number of entries in 'scan_output_directions' was 3 but expected 4");
   }
 
   if (!is_v8) {
     std::vector<int64_t> input_axes = {2, -1};  // only 2 dims in input so 2 is invalid
-    RunTest_v9("InvalidEntryInInputAxes", sequence_len, input_size,
-               nullptr, nullptr, &input_axes, nullptr,
-               iteration_count_in, input_0, input_1,
-               iteration_count_out, output_0, output_1, output_2, output_3,
-               {},
-               OpTester::ExpectResult::kExpectFailure,
-               "Invalid value in scan_input_axes for input 0 of 2. Input tensor rank was 2");
+    RunTest_v9("InvalidEntryInInputAxes", sequence_len, input_size, nullptr, nullptr, &input_axes, nullptr, iteration_count_in, input_0, input_1, iteration_count_out, output_0, output_1, output_2, output_3, {}, OpTester::ExpectResult::kExpectFailure, "Invalid value in scan_input_axes for input 0 of 2. Input tensor rank was 2");
 
     input_axes = {0, 1, 2};
-    RunTest_v9("InvalidNumEntriesInInputAxes", sequence_len, input_size,
-               nullptr, nullptr, &input_axes, nullptr,
-               iteration_count_in, input_0, input_1,
-               iteration_count_out, output_0, output_1, output_2, output_3,
-               {},
-               OpTester::ExpectResult::kExpectFailure,
-               "[ShapeInferenceError] Number of scan input axes specified (3) is not equal to number of scan inputs (2).");
+    RunTest_v9("InvalidNumEntriesInInputAxes", sequence_len, input_size, nullptr, nullptr, &input_axes, nullptr, iteration_count_in, input_0, input_1, iteration_count_out, output_0, output_1, output_2, output_3, {}, OpTester::ExpectResult::kExpectFailure, "[ShapeInferenceError] Number of scan input axes specified (3) is not equal to number of scan inputs (2).");
 
     std::vector<int64_t> output_axes = {3, -1, 0, 0};  // 2 dims in output so 3 is invalid
-    RunTest_v9("InvalidEntryInOutputAxes", sequence_len, input_size,
-               nullptr, nullptr, nullptr, &output_axes,
-               iteration_count_in, input_0, input_1,
-               iteration_count_out, output_0, output_1, output_2, output_3,
-               {},
-               OpTester::ExpectResult::kExpectFailure,
-               "[ShapeInferenceError] scan_output_axes axis value 3 is invalid for a tensor of rank 2");
+    RunTest_v9("InvalidEntryInOutputAxes", sequence_len, input_size, nullptr, nullptr, nullptr, &output_axes, iteration_count_in, input_0, input_1, iteration_count_out, output_0, output_1, output_2, output_3, {}, OpTester::ExpectResult::kExpectFailure, "[ShapeInferenceError] scan_output_axes axis value 3 is invalid for a tensor of rank 2");
 
     output_axes = {0, 1, 2};
-    RunTest_v9("InvalidNumEntriesInOutputAxes", sequence_len, input_size,
-               nullptr, nullptr, nullptr, &output_axes,
-               iteration_count_in, input_0, input_1,
-               iteration_count_out, output_0, output_1, output_2, output_3,
-               {},
-               OpTester::ExpectResult::kExpectFailure,
-               "[ShapeInferenceError] Number of scan output axes specified (3) is not equal to number of scan outputs (4).");
+    RunTest_v9("InvalidNumEntriesInOutputAxes", sequence_len, input_size, nullptr, nullptr, nullptr, &output_axes, iteration_count_in, input_0, input_1, iteration_count_out, output_0, output_1, output_2, output_3, {}, OpTester::ExpectResult::kExpectFailure, "[ShapeInferenceError] Number of scan output axes specified (3) is not equal to number of scan outputs (4).");
   }
 }
 
@@ -1165,8 +1038,7 @@ void UnknownDimInSubgraphOutput(bool is_v8, bool mixed_execution_providers = fal
     execution_providers.push_back(DefaultCudaExecutionProvider());
     execution_providers.push_back(DefaultCpuExecutionProvider());
 
-    test.Run(OpTester::ExpectResult::kExpectSuccess, "", RunOptions().excluded_provider_types, nullptr,
-             &execution_providers);
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", RunOptions().excluded_provider_types, nullptr, &execution_providers);
   } else {
     test.Run(OpTester::ExpectResult::kExpectSuccess, "", RunOptions().excluded_provider_types);
   }

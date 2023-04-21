@@ -19,10 +19,7 @@ namespace {
 const std::vector<float> kRatios{-1.0f, 0.0f, 0.25f, 0.5f, 0.75f, 0.9f};
 
 template <typename T>
-void LaunchBiasSoftmaxDropoutTester(const std::vector<int64_t>& input_dims, const std::vector<T>& input_data,
-                                    const std::vector<int64_t>& bias_dims, const std::vector<T>& bias_data,
-                                    const std::vector<float>& softmax_output_data, int64_t axis,
-                                    bool is_inner_broadcast, float ratio, float abs_error = 0.005f) {
+void LaunchBiasSoftmaxDropoutTester(const std::vector<int64_t>& input_dims, const std::vector<T>& input_data, const std::vector<int64_t>& bias_dims, const std::vector<T>& bias_data, const std::vector<float>& softmax_output_data, int64_t axis, bool is_inner_broadcast, float ratio, float abs_error = 0.005f) {
   OpTester tester("BiasSoftmaxDropout", 1, onnxruntime::kMSDomain);
   tester.AddAttribute<int64_t>("axis", axis);
   tester.AddAttribute<int64_t>("is_inner_broadcast", static_cast<int64_t>(is_inner_broadcast ? 1 : 0));
@@ -80,8 +77,7 @@ void LaunchBiasSoftmaxDropoutTester(const std::vector<int64_t>& input_dims, cons
   tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &eps);
 }
 
-void RunBiasSoftmaxDropoutTestInternal(const std::vector<int64_t>& input_dims, const std::vector<int64_t>& bias_dims,
-                                       int64_t axis, bool is_inner_broadcast, float ratio) {
+void RunBiasSoftmaxDropoutTestInternal(const std::vector<int64_t>& input_dims, const std::vector<int64_t>& bias_dims, int64_t axis, bool is_inner_broadcast, float ratio) {
   size_t new_axis = static_cast<size_t>(axis < 0 ? axis + static_cast<int64_t>(input_dims.size()) : axis);
   size_t element_count = static_cast<size_t>(
       std::accumulate(input_dims.cbegin() + new_axis, input_dims.cend(), 1LL, std::multiplies<int64_t>()));
@@ -127,26 +123,20 @@ void RunBiasSoftmaxDropoutTestInternal(const std::vector<int64_t>& input_dims, c
   }
 
   // For float.
-  LaunchBiasSoftmaxDropoutTester(input_dims, input_data, bias_dims, bias_data, output_data, axis, is_inner_broadcast,
-                                 ratio);
+  LaunchBiasSoftmaxDropoutTester(input_dims, input_data, bias_dims, bias_data, output_data, axis, is_inner_broadcast, ratio);
 
   // For fp16.
-  LaunchBiasSoftmaxDropoutTester(input_dims, ToFloat16(input_data), bias_dims, ToFloat16(bias_data), output_data, axis,
-                                 is_inner_broadcast, ratio, 0.05f);
+  LaunchBiasSoftmaxDropoutTester(input_dims, ToFloat16(input_data), bias_dims, ToFloat16(bias_data), output_data, axis, is_inner_broadcast, ratio, 0.05f);
 }
 
-void RunBiasSoftmaxDropoutTest(const std::vector<int64_t>& input_dims, const std::vector<int64_t>& bias_dims,
-                               int64_t axis, bool is_inner_broadcast) {
+void RunBiasSoftmaxDropoutTest(const std::vector<int64_t>& input_dims, const std::vector<int64_t>& bias_dims, int64_t axis, bool is_inner_broadcast) {
   for (float ratio : kRatios) {
     RunBiasSoftmaxDropoutTestInternal(input_dims, bias_dims, axis, is_inner_broadcast, ratio);
   }
 }
 
 template <typename T>
-void LaunchSoftmaxDropoutGradTester(const std::vector<int64_t>& dims, const std::vector<T>& dy_data,
-                                    const bool* mask_data, const std::vector<T>& y_data,
-                                    const std::vector<float>& dx_data, int64_t axis, float ratio,
-                                    float abs_error = .005f) {
+void LaunchSoftmaxDropoutGradTester(const std::vector<int64_t>& dims, const std::vector<T>& dy_data, const bool* mask_data, const std::vector<T>& y_data, const std::vector<float>& dx_data, int64_t axis, float ratio, float abs_error = .005f) {
   OpTester test("SoftmaxDropoutGrad", 1, kMSDomain);
   test.AddAttribute<int64_t>("axis", axis);
   test.AddInput<T>("dy", dims, dy_data);

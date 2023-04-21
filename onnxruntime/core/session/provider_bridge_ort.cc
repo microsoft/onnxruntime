@@ -171,8 +171,7 @@ common::Status LoadDynamicLibraryFromProvider(onnxruntime::PathString library_na
 
   ORT_RETURN_IF_ERROR(platform_env.LoadDynamicLibrary(library_name, false, &library_handle));
   if (!library_handle) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to load dynamic library ",
-                           onnxruntime::PathToUTF8String(library_name));
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to load dynamic library ", onnxruntime::PathToUTF8String(library_name));
   }
 
   return onnxruntime::Status::OK();
@@ -273,24 +272,20 @@ struct ProviderHostImpl : ProviderHost {
   // sparse_utils
 #if !defined(DISABLE_SPARSE_TENSORS)
 #if !defined(ORT_MINIMAL_BUILD)
-  Status sparse_utils__DenseTensorToSparseCsr(const DataTransferManager& data_manager, const Tensor& src, const AllocatorPtr& cpu_allocator,
-                                              const AllocatorPtr& dst_allocator, SparseTensor& dst) override {
+  Status sparse_utils__DenseTensorToSparseCsr(const DataTransferManager& data_manager, const Tensor& src, const AllocatorPtr& cpu_allocator, const AllocatorPtr& dst_allocator, SparseTensor& dst) override {
     return sparse_utils::DenseTensorToSparseCsr(data_manager, src, cpu_allocator, dst_allocator, dst);
   }
 
-  Status sparse_utils__SparseCsrToDenseTensor(const DataTransferManager& data_manager, const SparseTensor& src, const AllocatorPtr& cpu_allocator,
-                                              const AllocatorPtr& dst_allocator, Tensor& dst) override {
+  Status sparse_utils__SparseCsrToDenseTensor(const DataTransferManager& data_manager, const SparseTensor& src, const AllocatorPtr& cpu_allocator, const AllocatorPtr& dst_allocator, Tensor& dst) override {
     return sparse_utils::SparseCsrToDenseTensor(data_manager, src, cpu_allocator, dst_allocator, dst);
   }
 
-  Status sparse_utils__SparseCooToDenseTensor(const DataTransferManager& data_manager, const SparseTensor& src, const AllocatorPtr& cpu_allocator,
-                                              const AllocatorPtr& dst_allocator, Tensor& dst) override {
+  Status sparse_utils__SparseCooToDenseTensor(const DataTransferManager& data_manager, const SparseTensor& src, const AllocatorPtr& cpu_allocator, const AllocatorPtr& dst_allocator, Tensor& dst) override {
     return sparse_utils::SparseCooToDenseTensor(data_manager, src, cpu_allocator, dst_allocator, dst);
   }
 
 #endif  // ORT_MINIMAL_BUILD
-  Status sparse_utils__DenseTensorToSparseCoo(const DataTransferManager& data_manager, const Tensor& src, const AllocatorPtr& cpu_allocator,
-                                              const AllocatorPtr& dst_allocator, bool linear_indexs, SparseTensor& dst) override {
+  Status sparse_utils__DenseTensorToSparseCoo(const DataTransferManager& data_manager, const Tensor& src, const AllocatorPtr& cpu_allocator, const AllocatorPtr& dst_allocator, bool linear_indexs, SparseTensor& dst) override {
     return sparse_utils::DenseTensorToSparseCoo(data_manager, src, cpu_allocator, dst_allocator, linear_indexs, dst);
   }
 
@@ -303,8 +298,7 @@ struct ProviderHostImpl : ProviderHost {
   AllocatorPtr IExecutionProvider__GetAllocator(const IExecutionProvider* p, OrtMemType mem_type) override { return p->IExecutionProvider::GetAllocator(mem_type); }
   void IExecutionProvider__InsertAllocator(IExecutionProvider* p, AllocatorPtr allocator) override { return p->IExecutionProvider::InsertAllocator(allocator); }
   std::vector<std::unique_ptr<ComputeCapability>> IExecutionProvider__GetCapability(
-      const IExecutionProvider* p, const onnxruntime::GraphViewer& graph_viewer,
-      const IExecutionProvider::IKernelLookup& kernel_lookup) override {
+      const IExecutionProvider* p, const onnxruntime::GraphViewer& graph_viewer, const IExecutionProvider::IKernelLookup& kernel_lookup) override {
     return p->IExecutionProvider::GetCapability(graph_viewer, kernel_lookup);
   }
 
@@ -791,11 +785,14 @@ struct ProviderHostImpl : ProviderHost {
   std::unique_ptr<Model> GraphViewer__CreateModel(const GraphViewer* graph_viewer, const logging::Logger& logger) override {
     return std::make_unique<Model>(graph_viewer->Name(), true, ModelMetaData(), PathString(),
 #if !defined(ORT_MINIMAL_BUILD)
-                                   IOnnxRuntimeOpSchemaRegistryList({graph_viewer->GetSchemaRegistry()}), graph_viewer->DomainToVersionMap(),
+                                   IOnnxRuntimeOpSchemaRegistryList({graph_viewer->GetSchemaRegistry()}),
+                                   graph_viewer->DomainToVersionMap(),
 #else
-                                   IOnnxRuntimeOpSchemaRegistryList(), graph_viewer->DomainToVersionMap(),
+                                   IOnnxRuntimeOpSchemaRegistryList(),
+                                   graph_viewer->DomainToVersionMap(),
 #endif  // ORT_MINIMAL_BUILD
-                                   std::vector<ONNX_NAMESPACE::FunctionProto>(), logger);
+                                   std::vector<ONNX_NAMESPACE::FunctionProto>(),
+                                   logger);
   }
 
   const std::string& GraphViewer__Name(const GraphViewer* p) noexcept override { return p->Name(); }
@@ -973,8 +970,7 @@ struct ProviderHostImpl : ProviderHost {
 #ifdef ENABLE_STRIDED_TENSORS
   gsl::span<const int64_t> Tensor__Strides(const Tensor* p) override { return p->Strides(); }
   bool Tensor__IsContiguous(const Tensor* p) override { return p->IsContiguous(); }
-  void Tensor__SetShapeAndStrides(Tensor* p, const TensorShape& new_shape,
-                                  gsl::span<const int64_t> new_strides) override {
+  void Tensor__SetShapeAndStrides(Tensor* p, const TensorShape& new_shape, gsl::span<const int64_t> new_strides) override {
     return p->SetShapeAndStrides(new_shape, new_strides);
   }
 #endif
@@ -1044,11 +1040,14 @@ struct ProviderHostImpl : ProviderHost {
 
     return std::make_unique<Model>(graph_viewer.Name(), true, ModelMetaData(), PathString(),
 #if !defined(ORT_MINIMAL_BUILD)
-                                   IOnnxRuntimeOpSchemaRegistryList({graph_viewer.GetSchemaRegistry()}), domain_to_version_map,
+                                   IOnnxRuntimeOpSchemaRegistryList({graph_viewer.GetSchemaRegistry()}),
+                                   domain_to_version_map,
 #else
-                                   IOnnxRuntimeOpSchemaRegistryList(), domain_to_version_map,
+                                   IOnnxRuntimeOpSchemaRegistryList(),
+                                   domain_to_version_map,
 #endif  // ORT_MINIMAL_BUILD
-                                   std::vector<ONNX_NAMESPACE::FunctionProto>(), logger);
+                                   std::vector<ONNX_NAMESPACE::FunctionProto>(),
+                                   logger);
   }
 #endif
 
@@ -1549,8 +1548,7 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_OpenVINO, _In
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_OpenVINO, _In_ OrtSessionOptions* options,
-                    _In_ const char* device_type) {
+ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_OpenVINO, _In_ OrtSessionOptions* options, _In_ const char* device_type) {
   OrtOpenVINOProviderOptions provider_options{};
   provider_options.device_type = device_type;
   return OrtApis::SessionOptionsAppendExecutionProvider_OpenVINO(options, &provider_options);
@@ -1698,8 +1696,7 @@ ORT_API_STATUS_IMPL(OrtApis::UpdateTensorRTProviderOptions,
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::GetTensorRTProviderOptionsAsString, _In_ const OrtTensorRTProviderOptionsV2* tensorrt_options, _Inout_ OrtAllocator* allocator,
-                    _Outptr_ char** ptr) {
+ORT_API_STATUS_IMPL(OrtApis::GetTensorRTProviderOptionsAsString, _In_ const OrtTensorRTProviderOptionsV2* tensorrt_options, _Inout_ OrtAllocator* allocator, _Outptr_ char** ptr) {
   API_IMPL_BEGIN
 #ifdef USE_TENSORRT
   onnxruntime::ProviderOptions options = onnxruntime::GetProviderInfo_Tensorrt(tensorrt_options);
@@ -1827,8 +1824,7 @@ ORT_API_STATUS_IMPL(OrtApis::UpdateCUDAProviderOptions,
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::GetCUDAProviderOptionsAsString, _In_ const OrtCUDAProviderOptionsV2* cuda_options, _Inout_ OrtAllocator* allocator,
-                    _Outptr_ char** ptr) {
+ORT_API_STATUS_IMPL(OrtApis::GetCUDAProviderOptionsAsString, _In_ const OrtCUDAProviderOptionsV2* cuda_options, _Inout_ OrtAllocator* allocator, _Outptr_ char** ptr) {
   API_IMPL_BEGIN
 #ifdef USE_CUDA
   onnxruntime::ProviderOptions options = onnxruntime::GetProviderInfo_Cuda(cuda_options);
@@ -1881,7 +1877,8 @@ ORT_API(void, OrtApis::ReleaseCUDAProviderOptions, _Frees_ptr_opt_ OrtCUDAProvid
 }
 
 ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_CANN,
-                    _In_ OrtSessionOptions* options, _In_ const OrtCANNProviderOptions* cann_options) {
+                    _In_ OrtSessionOptions* options,
+                    _In_ const OrtCANNProviderOptions* cann_options) {
   API_IMPL_BEGIN
   auto factory = onnxruntime::CannProviderFactoryCreator::Create(cann_options);
   if (!factory) {
@@ -1941,7 +1938,8 @@ ORT_API_STATUS_IMPL(OrtApis::UpdateCANNProviderOptions,
 }
 
 ORT_API_STATUS_IMPL(OrtApis::GetCANNProviderOptionsAsString,
-                    _In_ const OrtCANNProviderOptions* cann_options, _Inout_ OrtAllocator* allocator,
+                    _In_ const OrtCANNProviderOptions* cann_options,
+                    _Inout_ OrtAllocator* allocator,
                     _Outptr_ char** ptr) {
   API_IMPL_BEGIN
 #ifdef USE_CANN
@@ -1984,7 +1982,8 @@ ORT_API(void, OrtApis::ReleaseCANNProviderOptions, _Frees_ptr_opt_ OrtCANNProvid
 }
 
 ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_Dnnl,
-                    _In_ OrtSessionOptions* options, _In_ const OrtDnnlProviderOptions* dnnl_options) {
+                    _In_ OrtSessionOptions* options,
+                    _In_ const OrtDnnlProviderOptions* dnnl_options) {
   API_IMPL_BEGIN
   auto factory = onnxruntime::DnnlProviderFactoryCreator::Create(dnnl_options);
   if (!factory) {
@@ -2041,7 +2040,8 @@ ORT_API_STATUS_IMPL(OrtApis::UpdateDnnlProviderOptions,
 }
 
 ORT_API_STATUS_IMPL(OrtApis::GetDnnlProviderOptionsAsString,
-                    _In_ const OrtDnnlProviderOptions* dnnl_options, _Inout_ OrtAllocator* allocator,
+                    _In_ const OrtDnnlProviderOptions* dnnl_options,
+                    _Inout_ OrtAllocator* allocator,
                     _Outptr_ char** ptr) {
   API_IMPL_BEGIN
 #ifdef USE_DNNL

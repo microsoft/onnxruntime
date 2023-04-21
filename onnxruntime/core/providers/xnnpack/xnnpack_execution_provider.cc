@@ -57,7 +57,9 @@ class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSIntern
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 10, int8_t, QLinearConv);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 1, QLinearAveragePool);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider,
-                                      kDynamicDomainByCreate, 1, QLinearSoftmax);
+                                      kDynamicDomainByCreate,
+                                      1,
+                                      QLinearSoftmax);
 
 class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 7, 12, Gemm);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 13, Gemm);
@@ -172,7 +174,8 @@ void XnnpackExecutionProvider::RegisterAllocator(AllocatorManager& allocator_man
             return std::make_unique<CPUAllocator>(OrtMemoryInfo(kXnnpackExecutionProvider,
                                                                 OrtAllocatorType::OrtDeviceAllocator));
           },
-          cpu_device.Id(), enable_cpu_mem_arena_);
+          cpu_device.Id(),
+          enable_cpu_mem_arena_);
       // only the first time we create the allocator do we pass in the xnn_allocator
       cpu_alloc = stored_allocator ? stored_allocator : CreateAllocator(allocator_info);
       // enable sharing of our allocator

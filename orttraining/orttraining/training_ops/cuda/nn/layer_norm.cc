@@ -9,25 +9,10 @@
 namespace onnxruntime {
 namespace cuda {
 
-#define REGISTER_GRADIENT_KERNEL_TYPED(T, U, V)                                                                        \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(LayerNormalizationGrad, kMSDomain, 1, T##_##U##_##V, kCudaExecutionProvider,           \
-                                (*KernelDefBuilder::Create())                                                          \
-                                    .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())                             \
-                                    .TypeConstraint("U", DataTypeImpl::GetTensorType<U>())                             \
-                                    .TypeConstraint("V", DataTypeImpl::GetTensorType<V>()),                            \
-                                LayerNormGrad<T, U, V, false>);                                                        \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(InvertibleLayerNormalizationGrad, kMSDomain, 1, T##_##U##_##V, kCudaExecutionProvider, \
-                                (*KernelDefBuilder::Create())                                                          \
-                                    .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())                             \
-                                    .TypeConstraint("U", DataTypeImpl::GetTensorType<U>())                             \
-                                    .TypeConstraint("V", DataTypeImpl::GetTensorType<V>()),                            \
-                                InvertibleLayerNormGrad<T, U, V>);                                                     \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(SimplifiedLayerNormalizationGrad, kMSDomain, 1, T##_##U##_##V, kCudaExecutionProvider, \
-                                (*KernelDefBuilder::Create())                                                          \
-                                    .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())                             \
-                                    .TypeConstraint("U", DataTypeImpl::GetTensorType<U>())                             \
-                                    .TypeConstraint("V", DataTypeImpl::GetTensorType<V>()),                            \
-                                LayerNormGrad<T, U, V, true>);
+#define REGISTER_GRADIENT_KERNEL_TYPED(T, U, V)                                                                                                                                                                                                                                                                                                            \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(LayerNormalizationGrad, kMSDomain, 1, T##_##U##_##V, kCudaExecutionProvider, (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()).TypeConstraint("U", DataTypeImpl::GetTensorType<U>()).TypeConstraint("V", DataTypeImpl::GetTensorType<V>()), LayerNormGrad<T, U, V, false>);              \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(InvertibleLayerNormalizationGrad, kMSDomain, 1, T##_##U##_##V, kCudaExecutionProvider, (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()).TypeConstraint("U", DataTypeImpl::GetTensorType<U>()).TypeConstraint("V", DataTypeImpl::GetTensorType<V>()), InvertibleLayerNormGrad<T, U, V>); \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(SimplifiedLayerNormalizationGrad, kMSDomain, 1, T##_##U##_##V, kCudaExecutionProvider, (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()).TypeConstraint("U", DataTypeImpl::GetTensorType<U>()).TypeConstraint("V", DataTypeImpl::GetTensorType<V>()), LayerNormGrad<T, U, V, true>);
 
 REGISTER_GRADIENT_KERNEL_TYPED(float, float, float)
 REGISTER_GRADIENT_KERNEL_TYPED(double, double, double)
@@ -90,9 +75,7 @@ Status LayerNormGrad<T, U, V, simplified>::ComputeInternal(OpKernelContext* p_op
   auto part_grad_beta = GetScratchBuffer<CudaU>(part_size * n2, p_op_kernel_context->GetComputeStream());
 
   HostLayerNormGradient<CudaT, CudaU, CudaV, simplified>(
-      GetDeviceProp(), Stream(p_op_kernel_context), Y_grad_data, X_data, reinterpret_cast<const CudaV*>(NULL), scale_data,
-      reinterpret_cast<const CudaV*>(NULL), mean_data, inv_std_var_data, n1, n2, X_grad_data, scale_grad_data,
-      bias_grad_data, part_grad_gamma.get(), part_grad_beta.get(), part_size);
+      GetDeviceProp(), Stream(p_op_kernel_context), Y_grad_data, X_data, reinterpret_cast<const CudaV*>(NULL), scale_data, reinterpret_cast<const CudaV*>(NULL), mean_data, inv_std_var_data, n1, n2, X_grad_data, scale_grad_data, bias_grad_data, part_grad_gamma.get(), part_grad_beta.get(), part_size);
   return Status::OK();
 }
 
@@ -145,9 +128,7 @@ Status InvertibleLayerNormGrad<T, U, V>::ComputeInternal(OpKernelContext* p_op_k
   auto part_grad_beta = GetScratchBuffer<CudaU>(part_size * n2, p_op_kernel_context->GetComputeStream());
 
   HostLayerNormGradient<CudaT, CudaU, CudaV, false>(
-      GetDeviceProp(), Stream(p_op_kernel_context), Y_grad_data, reinterpret_cast<const CudaT*>(NULL), Y_data, scale_data, bias_data,
-      reinterpret_cast<const CudaU*>(NULL), inv_std_var_data, n1, n2, X_grad_data, scale_grad_data, bias_grad_data,
-      part_grad_gamma.get(), part_grad_beta.get(), part_size);
+      GetDeviceProp(), Stream(p_op_kernel_context), Y_grad_data, reinterpret_cast<const CudaT*>(NULL), Y_data, scale_data, bias_data, reinterpret_cast<const CudaU*>(NULL), inv_std_var_data, n1, n2, X_grad_data, scale_grad_data, bias_grad_data, part_grad_gamma.get(), part_grad_beta.get(), part_size);
   return Status::OK();
 }
 

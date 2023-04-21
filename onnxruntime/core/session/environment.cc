@@ -63,8 +63,7 @@ Status Environment::Create(std::unique_ptr<logging::LoggingManager> logging_mana
 // avoid such problems and also remove the unintuitive phenomenon of binding an allocator
 // type to OrtMemoryInfo (which loosely is just device info) ?
 static bool AreOrtMemoryInfosEquivalent(
-    const OrtMemoryInfo& left, const OrtMemoryInfo& right,
-    bool include_allocator_type_for_equivalence_checking = true) {
+    const OrtMemoryInfo& left, const OrtMemoryInfo& right, bool include_allocator_type_for_equivalence_checking = true) {
   if (include_allocator_type_for_equivalence_checking) {
     return left == right;
   } else {
@@ -153,8 +152,7 @@ Status Environment::CreateAndRegisterAllocator(const OrtMemoryInfo& mem_info, co
       initial_growth_chunk_size_bytes = arena_cfg->initial_growth_chunk_size_bytes;
     }
 
-    OrtArenaCfg l_arena_cfg{max_mem, arena_extend_strategy, initial_chunk_size_bytes, max_dead_bytes_per_chunk,
-                            initial_growth_chunk_size_bytes};
+    OrtArenaCfg l_arena_cfg{max_mem, arena_extend_strategy, initial_chunk_size_bytes, max_dead_bytes_per_chunk, initial_growth_chunk_size_bytes};
     AllocatorCreationInfo alloc_creation_info{
         [mem_info](int) { return std::make_unique<CPUAllocator>(mem_info); },
         0,
@@ -163,7 +161,8 @@ Status Environment::CreateAndRegisterAllocator(const OrtMemoryInfo& mem_info, co
     allocator_ptr = CreateAllocator(alloc_creation_info);
   } else {
     AllocatorCreationInfo alloc_creation_info{[](int) { return std::make_unique<CPUAllocator>(); },
-                                              0, create_arena};
+                                              0,
+                                              create_arena};
     allocator_ptr = CreateAllocator(alloc_creation_info);
   }
 
@@ -180,8 +179,7 @@ Status Environment::UnregisterAllocator(const OrtMemoryInfo& mem_info) {
                           });
 
   if (ite == shared_allocators_.end()) {
-    return Status(ONNXRUNTIME, INVALID_ARGUMENT,
-                  "No allocator for this device has been registered for sharing.");
+    return Status(ONNXRUNTIME, INVALID_ARGUMENT, "No allocator for this device has been registered for sharing.");
   }
 
   shared_allocators_.erase(ite);

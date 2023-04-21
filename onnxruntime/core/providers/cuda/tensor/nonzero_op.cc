@@ -13,7 +13,8 @@ namespace cuda {
   ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                    \
       NonZero,                                                                                \
       kOnnxDomain,                                                                            \
-      9, 12,                                                                                  \
+      9,                                                                                      \
+      12,                                                                                     \
       type_name,                                                                              \
       kCudaExecutionProvider,                                                                 \
       (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<type>()), \
@@ -75,8 +76,7 @@ Status NonZero<T>::ComputeInternal(OpKernelContext* context) const {
 
     // cudaMemcpyAsync from device memory to pageable host memory will return only once the copy has completed.
     CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(
-        &nonzero_elements, prefix_counts + number_of_blocks - 1,
-        sizeof(int), cudaMemcpyDeviceToHost, Stream(context)));
+        &nonzero_elements, prefix_counts + number_of_blocks - 1, sizeof(int), cudaMemcpyDeviceToHost, Stream(context)));
 
     TArray<fast_divmod> fdm_x_strides(x_rank);
     TensorPitches x_strides(x_dims);
@@ -87,8 +87,7 @@ Status NonZero<T>::ComputeInternal(OpKernelContext* context) const {
     auto* output_tensor = context->Output(0, {x_rank, nonzero_elements});
     ORT_ENFORCE(output_tensor, "failed to get first output!");
     CUDA_RETURN_IF_ERROR(NonZeroOutputPositions(
-        Stream(context), x_data, x_size, x_rank, fdm_x_strides,
-        prefix_counts, nonzero_elements, output_tensor->MutableData<int64_t>()));
+        Stream(context), x_data, x_size, x_rank, fdm_x_strides, prefix_counts, nonzero_elements, output_tensor->MutableData<int64_t>()));
   } else {
     context->Output(0, {x_rank, nonzero_elements});
   }

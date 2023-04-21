@@ -71,9 +71,7 @@ bool IsResultCloselyMatch(const T& outvalue, const T& expected_value, const doub
 }
 
 template <typename FLOAT_TYPE>
-std::pair<COMPARE_RESULT, std::string> CompareFloatResult(const Tensor& outvalue, const Tensor& expected_value,
-                                                          double per_sample_tolerance,
-                                                          double relative_per_sample_tolerance, bool post_processing) {
+std::pair<COMPARE_RESULT, std::string> CompareFloatResult(const Tensor& outvalue, const Tensor& expected_value, double per_sample_tolerance, double relative_per_sample_tolerance, bool post_processing) {
   const size_t size1 = static_cast<size_t>(expected_value.Shape().Size());
   const FLOAT_TYPE* expected_output = expected_value.Data<FLOAT_TYPE>();
   const FLOAT_TYPE* real_output = outvalue.Data<FLOAT_TYPE>();
@@ -128,10 +126,7 @@ std::pair<COMPARE_RESULT, std::string> IsResultExactlyMatch(const Tensor& outval
   return std::make_pair(COMPARE_RESULT::SUCCESS, "");
 }
 
-std::pair<COMPARE_RESULT, std::string> CompareFloat16Result(const Tensor& outvalue, const Tensor& expected_value,
-                                                            double per_sample_tolerance,
-                                                            double relative_per_sample_tolerance,
-                                                            bool post_processing) {
+std::pair<COMPARE_RESULT, std::string> CompareFloat16Result(const Tensor& outvalue, const Tensor& expected_value, double per_sample_tolerance, double relative_per_sample_tolerance, bool post_processing) {
   const size_t size1 = static_cast<size_t>(expected_value.Shape().Size());
   const MLFloat16* expected_output = expected_value.Data<MLFloat16>();
   const MLFloat16* real_output = outvalue.Data<MLFloat16>();
@@ -151,10 +146,7 @@ std::pair<COMPARE_RESULT, std::string> CompareFloat16Result(const Tensor& outval
   return std::make_pair(result, oss.str());
 }
 
-std::pair<COMPARE_RESULT, std::string> CompareBFloat16Result(const Tensor& outvalue, const Tensor& expected_value,
-                                                             double per_sample_tolerance,
-                                                             double relative_per_sample_tolerance,
-                                                             bool post_processing) {
+std::pair<COMPARE_RESULT, std::string> CompareBFloat16Result(const Tensor& outvalue, const Tensor& expected_value, double per_sample_tolerance, double relative_per_sample_tolerance, bool post_processing) {
   const size_t size1 = static_cast<size_t>(expected_value.Shape().Size());
   const BFloat16* expected_output = expected_value.Data<BFloat16>();
   const BFloat16* real_output = outvalue.Data<BFloat16>();
@@ -174,20 +166,16 @@ std::pair<COMPARE_RESULT, std::string> CompareBFloat16Result(const Tensor& outva
   return std::make_pair(COMPARE_RESULT::SUCCESS, "");
 }
 
-std::pair<COMPARE_RESULT, std::string> CompareTwoTensors(const Tensor& outvalue, const Tensor& expected_tensor,
-                                                         double per_sample_tolerance,
-                                                         double relative_per_sample_tolerance, bool post_processing) {
+std::pair<COMPARE_RESULT, std::string> CompareTwoTensors(const Tensor& outvalue, const Tensor& expected_tensor, double per_sample_tolerance, double relative_per_sample_tolerance, bool post_processing) {
   if (expected_tensor.Shape() != outvalue.Shape()) {
     std::ostringstream oss;
     oss << "shape mismatch, expect " << expected_tensor.Shape().ToString() << " got " << outvalue.Shape().ToString();
     return std::make_pair(COMPARE_RESULT::SHAPE_MISMATCH, oss.str());
   }
   if (outvalue.IsDataType<float>()) {
-    return CompareFloatResult<float>(outvalue, expected_tensor, per_sample_tolerance, relative_per_sample_tolerance,
-                                     post_processing);
+    return CompareFloatResult<float>(outvalue, expected_tensor, per_sample_tolerance, relative_per_sample_tolerance, post_processing);
   } else if (outvalue.IsDataType<double>()) {
-    return CompareFloatResult<double>(outvalue, expected_tensor, per_sample_tolerance, relative_per_sample_tolerance,
-                                      post_processing);
+    return CompareFloatResult<double>(outvalue, expected_tensor, per_sample_tolerance, relative_per_sample_tolerance, post_processing);
   } else if (outvalue.IsDataTypeString()) {
     return IsResultExactlyMatch<std::string>(outvalue, expected_tensor);
   } else if (outvalue.IsDataType<uint8_t>()) {
@@ -209,20 +197,15 @@ std::pair<COMPARE_RESULT, std::string> CompareTwoTensors(const Tensor& outvalue,
   } else if (outvalue.IsDataType<bool>()) {
     return IsResultExactlyMatch<bool>(outvalue, expected_tensor);
   } else if (outvalue.IsDataType<MLFloat16>()) {
-    return CompareFloat16Result(outvalue, expected_tensor, per_sample_tolerance, relative_per_sample_tolerance,
-                                post_processing);
+    return CompareFloat16Result(outvalue, expected_tensor, per_sample_tolerance, relative_per_sample_tolerance, post_processing);
   } else if (outvalue.IsDataType<BFloat16>()) {
-    return CompareBFloat16Result(outvalue, expected_tensor, per_sample_tolerance, relative_per_sample_tolerance,
-                                 post_processing);
+    return CompareBFloat16Result(outvalue, expected_tensor, per_sample_tolerance, relative_per_sample_tolerance, post_processing);
   } else {
     return std::make_pair(COMPARE_RESULT::NOT_SUPPORT, "");
   }
 }
 template <typename T>
-std::pair<COMPARE_RESULT, std::string> CompareSeqOfMapToFloat(const T& real_output_vector, const T& expected_value,
-                                                              double per_sample_tolerance,
-                                                              double relative_per_sample_tolerance,
-                                                              bool post_processing) {
+std::pair<COMPARE_RESULT, std::string> CompareSeqOfMapToFloat(const T& real_output_vector, const T& expected_value, double per_sample_tolerance, double relative_per_sample_tolerance, bool post_processing) {
   if (real_output_vector.size() != expected_value.size()) {
     std::ostringstream oss;
     oss << "vector size mismatch, expected " << expected_value.size() << ", got " << real_output_vector.size();
@@ -259,40 +242,28 @@ std::pair<COMPARE_RESULT, std::string> CompareSeqOfMapToFloat(const T& real_outp
 }
 
 #if !defined(DISABLE_SPARSE_TENSORS)
-std::pair<COMPARE_RESULT, std::string> CompareSparseTensors(const SparseTensor& actual, const SparseTensor& expected,
-                                                            double per_sample_tolerance, double relative_per_sample_tolerance,
-                                                            bool post_processing) {
-  TEST_RETURN_IF_NOT(actual.DataType() == expected.DataType(), COMPARE_RESULT::TYPE_MISMATCH,
-                     "Expected type: ", ElementTypeToString(expected.DataType()),
-                     " actual: ", ElementTypeToString(actual.DataType()));
+std::pair<COMPARE_RESULT, std::string> CompareSparseTensors(const SparseTensor& actual, const SparseTensor& expected, double per_sample_tolerance, double relative_per_sample_tolerance, bool post_processing) {
+  TEST_RETURN_IF_NOT(actual.DataType() == expected.DataType(), COMPARE_RESULT::TYPE_MISMATCH, "Expected type: ", ElementTypeToString(expected.DataType()), " actual: ", ElementTypeToString(actual.DataType()));
 
-  TEST_RETURN_IF_NOT(actual.DenseShape() == expected.DenseShape(), COMPARE_RESULT::SHAPE_MISMATCH,
-                     "Expected dense shape: ", expected.DenseShape(),
-                     " Actual: ", actual.DenseShape());
+  TEST_RETURN_IF_NOT(actual.DenseShape() == expected.DenseShape(), COMPARE_RESULT::SHAPE_MISMATCH, "Expected dense shape: ", expected.DenseShape(), " Actual: ", actual.DenseShape());
 
-  TEST_RETURN_IF_NOT(actual.Format() == expected.Format(), COMPARE_RESULT::TYPE_MISMATCH,
-                     "Expected sparse format", expected.Format(),
-                     " actual: ", actual.Format());
+  TEST_RETURN_IF_NOT(actual.Format() == expected.Format(), COMPARE_RESULT::TYPE_MISMATCH, "Expected sparse format", expected.Format(), " actual: ", actual.Format());
 
-  TEST_RETURN_IF_ERROR(CompareTwoTensors(actual.Values(), expected.Values(),
-                                         per_sample_tolerance, relative_per_sample_tolerance, post_processing),
+  TEST_RETURN_IF_ERROR(CompareTwoTensors(actual.Values(), expected.Values(), per_sample_tolerance, relative_per_sample_tolerance, post_processing),
                        "While comparing sparse values");
 
   if (actual.Format() == SparseFormat::kCoo) {
     auto actual_view = actual.AsCoo();
     auto expected_view = expected.AsCoo();
 
-    TEST_RETURN_IF_ERROR(CompareTwoTensors(actual_view.Indices(), expected_view.Indices(),
-                                           per_sample_tolerance, relative_per_sample_tolerance, post_processing),
+    TEST_RETURN_IF_ERROR(CompareTwoTensors(actual_view.Indices(), expected_view.Indices(), per_sample_tolerance, relative_per_sample_tolerance, post_processing),
                          "Comparing COO indices");
   } else if (actual.Format() == SparseFormat::kCsrc) {
     auto actual_view = actual.AsCsr();
     auto expected_view = expected.AsCsr();
-    TEST_RETURN_IF_ERROR(CompareTwoTensors(actual_view.Inner(), expected_view.Inner(),
-                                           per_sample_tolerance, relative_per_sample_tolerance, post_processing),
+    TEST_RETURN_IF_ERROR(CompareTwoTensors(actual_view.Inner(), expected_view.Inner(), per_sample_tolerance, relative_per_sample_tolerance, post_processing),
                          "Comparing Csr(c) inner indices");
-    TEST_RETURN_IF_ERROR(CompareTwoTensors(actual_view.Outer(), expected_view.Outer(),
-                                           per_sample_tolerance, relative_per_sample_tolerance, post_processing),
+    TEST_RETURN_IF_ERROR(CompareTwoTensors(actual_view.Outer(), expected_view.Outer(), per_sample_tolerance, relative_per_sample_tolerance, post_processing),
                          "Comparing Csr(c) outer indices");
   }
 
@@ -344,9 +315,7 @@ std::ostringstream& VectorToString(const std::vector<T>& input, std::ostringstre
 }  // namespace
 
 namespace onnxruntime {
-std::pair<COMPARE_RESULT, std::string> CompareOrtValue(const OrtValue& o, const OrtValue& expected_mlvalue,
-                                                       double per_sample_tolerance,
-                                                       double relative_per_sample_tolerance, bool post_processing) {
+std::pair<COMPARE_RESULT, std::string> CompareOrtValue(const OrtValue& o, const OrtValue& expected_mlvalue, double per_sample_tolerance, double relative_per_sample_tolerance, bool post_processing) {
   if (o.Type() != expected_mlvalue.Type()) {
     return std::make_pair(COMPARE_RESULT::TYPE_MISMATCH, "");
   }
@@ -359,15 +328,11 @@ std::pair<COMPARE_RESULT, std::string> CompareOrtValue(const OrtValue& o, const 
           << ElementTypeToString(outvalue.DataType());
       return std::make_pair(COMPARE_RESULT::TYPE_MISMATCH, oss.str());
     }
-    return CompareTwoTensors(outvalue, expected_tensor, per_sample_tolerance, relative_per_sample_tolerance,
-                             post_processing);
+    return CompareTwoTensors(outvalue, expected_tensor, per_sample_tolerance, relative_per_sample_tolerance, post_processing);
   } else if (o.IsSparseTensor()) {
 #if !defined(DISABLE_SPARSE_TENSORS)
-    TEST_RETURN_IF_NOT(expected_mlvalue.IsSparseTensor(), COMPARE_RESULT::TYPE_MISMATCH,
-                       "SparseTensor is not expected as output");
-    TEST_RETURN_IF_ERROR(CompareSparseTensors(o.Get<SparseTensor>(), expected_mlvalue.Get<SparseTensor>(),
-                                              per_sample_tolerance, relative_per_sample_tolerance,
-                                              post_processing),
+    TEST_RETURN_IF_NOT(expected_mlvalue.IsSparseTensor(), COMPARE_RESULT::TYPE_MISMATCH, "SparseTensor is not expected as output");
+    TEST_RETURN_IF_ERROR(CompareSparseTensors(o.Get<SparseTensor>(), expected_mlvalue.Get<SparseTensor>(), per_sample_tolerance, relative_per_sample_tolerance, post_processing),
                          "while comaring sparse tensors");
 #endif
     return std::make_pair(COMPARE_RESULT::SUCCESS, "");
@@ -393,8 +358,7 @@ std::pair<COMPARE_RESULT, std::string> CompareOrtValue(const OrtValue& o, const 
     }
 
     for (size_t i = 0; i < expected_tensor_count; ++i) {
-      auto res = CompareTwoTensors(actual_tensor_seq.Get(i), expected_tensor_seq.Get(i), per_sample_tolerance, relative_per_sample_tolerance,
-                                   post_processing);
+      auto res = CompareTwoTensors(actual_tensor_seq.Get(i), expected_tensor_seq.Get(i), per_sample_tolerance, relative_per_sample_tolerance, post_processing);
       if (res.first != COMPARE_RESULT::SUCCESS) {
         return res;
       }
@@ -406,12 +370,10 @@ std::pair<COMPARE_RESULT, std::string> CompareOrtValue(const OrtValue& o, const 
     // Maps
 #if !defined(DISABLE_ML_OPS)
     if (o.Type() == DataTypeImpl::GetType<VectorMapInt64ToFloat>()) {
-      return CompareSeqOfMapToFloat(o.Get<VectorMapInt64ToFloat>(), expected_mlvalue.Get<VectorMapInt64ToFloat>(),
-                                    per_sample_tolerance, relative_per_sample_tolerance, post_processing);
+      return CompareSeqOfMapToFloat(o.Get<VectorMapInt64ToFloat>(), expected_mlvalue.Get<VectorMapInt64ToFloat>(), per_sample_tolerance, relative_per_sample_tolerance, post_processing);
     }
     if (o.Type() == DataTypeImpl::GetType<VectorMapStringToFloat>()) {
-      return CompareSeqOfMapToFloat(o.Get<VectorMapStringToFloat>(), expected_mlvalue.Get<VectorMapStringToFloat>(),
-                                    per_sample_tolerance, relative_per_sample_tolerance, post_processing);
+      return CompareSeqOfMapToFloat(o.Get<VectorMapStringToFloat>(), expected_mlvalue.Get<VectorMapStringToFloat>(), per_sample_tolerance, relative_per_sample_tolerance, post_processing);
     }
     return std::make_pair(COMPARE_RESULT::NOT_SUPPORT, "");
 #else

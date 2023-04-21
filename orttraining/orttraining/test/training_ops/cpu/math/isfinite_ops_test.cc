@@ -16,7 +16,8 @@ TEST(IsFiniteTest, Float) {
 
   std::vector<int64_t> shape = {3};
   std::vector<float> input = {std::numeric_limits<float>::infinity(),
-                              1.0f, std::numeric_limits<float>::quiet_NaN()};
+                              1.0f,
+                              std::numeric_limits<float>::quiet_NaN()};
 
   test.AddInput<float>("X", shape, input);
   test.AddOutput<bool>("Y", shape, {false, true, false});
@@ -29,7 +30,8 @@ TEST(IsFiniteTest, Double) {
 
   std::vector<int64_t> shape = {3};
   std::vector<double> input = {std::numeric_limits<double>::infinity(),
-                               1.0f, std::numeric_limits<double>::quiet_NaN()};
+                               1.0f,
+                               std::numeric_limits<double>::quiet_NaN()};
 
   test.AddInput<double>("X", shape, input);
   test.AddOutput<bool>("Y", shape, {false, true, false});
@@ -42,7 +44,8 @@ TEST(IsFiniteTest, MLFloat16) {
 
   std::vector<int64_t> shape = {3};
   std::vector<float> input = {std::numeric_limits<float>::infinity(),
-                              1.0f, std::numeric_limits<float>::quiet_NaN()};
+                              1.0f,
+                              std::numeric_limits<float>::quiet_NaN()};
   std::vector<MLFloat16> input_half(input.size());
   ConvertFloatToMLFloat16(input.data(), input_half.data(), int(input.size()));
 
@@ -113,7 +116,8 @@ TEST(IsAllFiniteTest, IsNaNOnly) {
 std::vector<std::vector<float>> generate_is_all_finite_test_data(
     const int tensor_count,
     const int max_tensor_size,
-    const float infinite_probability, int seed) {
+    const float infinite_probability,
+    int seed) {
   std::vector<std::vector<float>> tensors(tensor_count);
   std::mt19937 rd(seed);
   std::uniform_int_distribution<int> dist(1, max_tensor_size + 1);
@@ -143,7 +147,8 @@ std::vector<std::vector<float>> generate_is_all_finite_test_data(
 std::vector<std::vector<float>> generate_is_all_finite_test_data(
     const int tensor_count,
     const int max_tensor_size,
-    const bool answer, const int seed) {
+    const bool answer,
+    const int seed) {
   std::vector<std::vector<float>> tensors(tensor_count);
   std::mt19937 rd(seed);
   std::uniform_int_distribution<int> dist(1, max_tensor_size + 1);

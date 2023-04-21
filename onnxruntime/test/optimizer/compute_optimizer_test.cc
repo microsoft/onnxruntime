@@ -50,8 +50,7 @@ static void GatherNDComputationReductionTest(const std::string& op_type,
                                              const logging::Logger& logger,
                                              std::function<void(Graph&, std::string op_type)> validation_func) {
   std::string op_type_lower = op_type;
-  std::transform(op_type_lower.begin(), op_type_lower.end(), op_type_lower.begin(),
-                 [](unsigned char c) { return std::tolower(c); });
+  std::transform(op_type_lower.begin(), op_type_lower.end(), op_type_lower.begin(), [](unsigned char c) { return std::tolower(c); });
   std::string file_path = std::string("testdata/transform/computation_reduction/gathernd/gathernd_") + op_type_lower +
                           std::string(".onnx");
   std::shared_ptr<Model> model;
@@ -183,8 +182,7 @@ TEST(ComputeOptimizerTests, GatherND_E2E) {
   std::random_device rd;                                   // obtain a random number from hardware
   std::mt19937 eng(rd());                                  // seed the generator
   std::uniform_int_distribution<> distr(0, sequence - 1);  // define the range
-  std::for_each(values_unsqueezed_masked_lm_positions.begin(), values_unsqueezed_masked_lm_positions.end(),
-                [&distr, &eng](int64_t& value) { value = distr(eng); });
+  std::for_each(values_unsqueezed_masked_lm_positions.begin(), values_unsqueezed_masked_lm_positions.end(), [&distr, &eng](int64_t& value) { value = distr(eng); });
 
   input_container.AddInput<int64_t>("unsqueezed_masked_lm_positions",
                                     dims_unsqueezed_masked_lm_positions,
@@ -202,19 +200,16 @@ TEST(ComputeOptimizerTests, GatherND_E2E) {
 
   for (auto& provider_type : all_provider_types) {
     std::vector<OrtValue> expected_ort_values;
-    RunModelWithData(model_uri, std::string("RawGraphRun"), provider_type,
-                     input_container, output_names, expected_ort_values);
+    RunModelWithData(model_uri, std::string("RawGraphRun"), provider_type, input_container, output_names, expected_ort_values);
 
     std::vector<OrtValue> actual_ort_values;
-    RunModelWithData(ToPathString(new_model_uri), std::string("OptimizedGraphRun"), provider_type,
-                     input_container, output_names, actual_ort_values);
+    RunModelWithData(ToPathString(new_model_uri), std::string("OptimizedGraphRun"), provider_type, input_container, output_names, actual_ort_values);
 
     ASSERT_TRUE(expected_ort_values.size() == actual_ort_values.size());
     constexpr double per_sample_tolerance = 1e-4;
     constexpr double relative_per_sample_tolerance = 1e-4;
     for (size_t i = 0; i < expected_ort_values.size(); i++) {
-      auto ret = CompareOrtValue(actual_ort_values[i], expected_ort_values[i],
-                                 per_sample_tolerance, relative_per_sample_tolerance, false);
+      auto ret = CompareOrtValue(actual_ort_values[i], expected_ort_values[i], per_sample_tolerance, relative_per_sample_tolerance, false);
       EXPECT_EQ(ret.first, COMPARE_RESULT::SUCCESS) << ret.second;
     }
   }
@@ -308,19 +303,16 @@ TEST(ComputeOptimizerTests, GatherMatMul_ScalarSlicingOnBatchDim) {
 
   for (auto& provider_type : all_provider_types) {
     std::vector<OrtValue> expected_ort_values;
-    RunModelWithData(model_uri, std::string("RawGraphRun"), provider_type,
-                     input_container, output_names, expected_ort_values);
+    RunModelWithData(model_uri, std::string("RawGraphRun"), provider_type, input_container, output_names, expected_ort_values);
 
     std::vector<OrtValue> actual_ort_values;
-    RunModelWithData(ToPathString(new_model_uri), std::string("OptimizedGraphRun"),
-                     provider_type, input_container, output_names, actual_ort_values);
+    RunModelWithData(ToPathString(new_model_uri), std::string("OptimizedGraphRun"), provider_type, input_container, output_names, actual_ort_values);
 
     ASSERT_TRUE(expected_ort_values.size() == actual_ort_values.size());
     constexpr double per_sample_tolerance = 1e-4;
     constexpr double relative_per_sample_tolerance = 1e-4;
     for (size_t i = 0; i < expected_ort_values.size(); i++) {
-      auto ret = CompareOrtValue(actual_ort_values[i], expected_ort_values[i],
-                                 per_sample_tolerance, relative_per_sample_tolerance, false);
+      auto ret = CompareOrtValue(actual_ort_values[i], expected_ort_values[i], per_sample_tolerance, relative_per_sample_tolerance, false);
       EXPECT_EQ(ret.first, COMPARE_RESULT::SUCCESS) << ret.second;
     }
   }
@@ -414,19 +406,16 @@ TEST(ComputeOptimizerTests, GatherMatMul_SlicingOnBatchDim) {
 
   for (auto& provider_type : all_provider_types) {
     std::vector<OrtValue> expected_ort_values;
-    RunModelWithData(model_uri, std::string("RawGraphRun"), provider_type,
-                     input_container, output_names, expected_ort_values);
+    RunModelWithData(model_uri, std::string("RawGraphRun"), provider_type, input_container, output_names, expected_ort_values);
 
     std::vector<OrtValue> actual_ort_values;
-    RunModelWithData(ToPathString(new_model_uri), std::string("OptimizedGraphRun"),
-                     provider_type, input_container, output_names, actual_ort_values);
+    RunModelWithData(ToPathString(new_model_uri), std::string("OptimizedGraphRun"), provider_type, input_container, output_names, actual_ort_values);
 
     ASSERT_TRUE(expected_ort_values.size() == actual_ort_values.size());
     constexpr double per_sample_tolerance = 1e-4;
     constexpr double relative_per_sample_tolerance = 1e-4;
     for (size_t i = 0; i < expected_ort_values.size(); i++) {
-      auto ret = CompareOrtValue(actual_ort_values[i], expected_ort_values[i],
-                                 per_sample_tolerance, relative_per_sample_tolerance, false);
+      auto ret = CompareOrtValue(actual_ort_values[i], expected_ort_values[i], per_sample_tolerance, relative_per_sample_tolerance, false);
       EXPECT_EQ(ret.first, COMPARE_RESULT::SUCCESS) << ret.second;
     }
   }
@@ -512,19 +501,16 @@ TEST(ComputeOptimizerTests, GatherMatMul_ScalarSlicingOnLastDim) {
 
   for (auto& provider_type : all_provider_types) {
     std::vector<OrtValue> expected_ort_values;
-    RunModelWithData(model_uri, std::string("RawGraphRun"), provider_type,
-                     input_container, output_names, expected_ort_values);
+    RunModelWithData(model_uri, std::string("RawGraphRun"), provider_type, input_container, output_names, expected_ort_values);
 
     std::vector<OrtValue> actual_ort_values;
-    RunModelWithData(ToPathString(new_model_uri), std::string("OptimizedGraphRun"),
-                     provider_type, input_container, output_names, actual_ort_values);
+    RunModelWithData(ToPathString(new_model_uri), std::string("OptimizedGraphRun"), provider_type, input_container, output_names, actual_ort_values);
 
     ASSERT_TRUE(expected_ort_values.size() == actual_ort_values.size());
     constexpr double per_sample_tolerance = 1e-4;
     constexpr double relative_per_sample_tolerance = 1e-4;
     for (size_t i = 0; i < expected_ort_values.size(); i++) {
-      auto ret = CompareOrtValue(actual_ort_values[i], expected_ort_values[i],
-                                 per_sample_tolerance, relative_per_sample_tolerance, false);
+      auto ret = CompareOrtValue(actual_ort_values[i], expected_ort_values[i], per_sample_tolerance, relative_per_sample_tolerance, false);
       EXPECT_EQ(ret.first, COMPARE_RESULT::SUCCESS) << ret.second;
     }
   }
@@ -610,19 +596,16 @@ TEST(ComputeOptimizerTests, GatherMatMul_SlicingOnLastDim) {
 
   for (auto& provider_type : all_provider_types) {
     std::vector<OrtValue> expected_ort_values;
-    RunModelWithData(model_uri, std::string("RawGraphRun"), provider_type,
-                     input_container, output_names, expected_ort_values);
+    RunModelWithData(model_uri, std::string("RawGraphRun"), provider_type, input_container, output_names, expected_ort_values);
 
     std::vector<OrtValue> actual_ort_values;
-    RunModelWithData(ToPathString(new_model_uri), std::string("OptimizedGraphRun"),
-                     provider_type, input_container, output_names, actual_ort_values);
+    RunModelWithData(ToPathString(new_model_uri), std::string("OptimizedGraphRun"), provider_type, input_container, output_names, actual_ort_values);
 
     ASSERT_TRUE(expected_ort_values.size() == actual_ort_values.size());
     constexpr double per_sample_tolerance = 1e-4;
     constexpr double relative_per_sample_tolerance = 1e-4;
     for (size_t i = 0; i < expected_ort_values.size(); i++) {
-      auto ret = CompareOrtValue(actual_ort_values[i], expected_ort_values[i],
-                                 per_sample_tolerance, relative_per_sample_tolerance, false);
+      auto ret = CompareOrtValue(actual_ort_values[i], expected_ort_values[i], per_sample_tolerance, relative_per_sample_tolerance, false);
       EXPECT_EQ(ret.first, COMPARE_RESULT::SUCCESS) << ret.second;
     }
   }
@@ -709,19 +692,16 @@ TEST(ComputeOptimizerTests, GatherMatMul_ScalarSlicingOnSecondLastDim) {
 
   for (auto& provider_type : all_provider_types) {
     std::vector<OrtValue> expected_ort_values;
-    RunModelWithData(model_uri, std::string("RawGraphRun"), provider_type,
-                     input_container, output_names, expected_ort_values);
+    RunModelWithData(model_uri, std::string("RawGraphRun"), provider_type, input_container, output_names, expected_ort_values);
 
     std::vector<OrtValue> actual_ort_values;
-    RunModelWithData(ToPathString(new_model_uri), std::string("OptimizedGraphRun"),
-                     provider_type, input_container, output_names, actual_ort_values);
+    RunModelWithData(ToPathString(new_model_uri), std::string("OptimizedGraphRun"), provider_type, input_container, output_names, actual_ort_values);
 
     ASSERT_TRUE(expected_ort_values.size() == actual_ort_values.size());
     constexpr double per_sample_tolerance = 1e-4;
     constexpr double relative_per_sample_tolerance = 1e-4;
     for (size_t i = 0; i < expected_ort_values.size(); i++) {
-      auto ret = CompareOrtValue(actual_ort_values[i], expected_ort_values[i],
-                                 per_sample_tolerance, relative_per_sample_tolerance, false);
+      auto ret = CompareOrtValue(actual_ort_values[i], expected_ort_values[i], per_sample_tolerance, relative_per_sample_tolerance, false);
       EXPECT_EQ(ret.first, COMPARE_RESULT::SUCCESS) << ret.second;
     }
   }
@@ -807,19 +787,16 @@ TEST(ComputeOptimizerTests, GatherMatMul_SlicingOnSecondLastDim) {
 
   for (auto& provider_type : all_provider_types) {
     std::vector<OrtValue> expected_ort_values;
-    RunModelWithData(model_uri, std::string("RawGraphRun"), provider_type,
-                     input_container, output_names, expected_ort_values);
+    RunModelWithData(model_uri, std::string("RawGraphRun"), provider_type, input_container, output_names, expected_ort_values);
 
     std::vector<OrtValue> actual_ort_values;
-    RunModelWithData(ToPathString(new_model_uri), std::string("OptimizedGraphRun"),
-                     provider_type, input_container, output_names, actual_ort_values);
+    RunModelWithData(ToPathString(new_model_uri), std::string("OptimizedGraphRun"), provider_type, input_container, output_names, actual_ort_values);
 
     ASSERT_TRUE(expected_ort_values.size() == actual_ort_values.size());
     constexpr double per_sample_tolerance = 1e-4;
     constexpr double relative_per_sample_tolerance = 1e-4;
     for (size_t i = 0; i < expected_ort_values.size(); i++) {
-      auto ret = CompareOrtValue(actual_ort_values[i], expected_ort_values[i],
-                                 per_sample_tolerance, relative_per_sample_tolerance, false);
+      auto ret = CompareOrtValue(actual_ort_values[i], expected_ort_values[i], per_sample_tolerance, relative_per_sample_tolerance, false);
       EXPECT_EQ(ret.first, COMPARE_RESULT::SUCCESS) << ret.second;
     }
   }
@@ -900,19 +877,16 @@ TEST(ComputeOptimizerTests, GatherReshape_ScalarSlicingOnBatchDim) {
 
   for (auto& provider_type : all_provider_types) {
     std::vector<OrtValue> expected_ort_values;
-    RunModelWithData(model_uri, std::string("RawGraphRun"), provider_type,
-                     input_container, output_names, expected_ort_values);
+    RunModelWithData(model_uri, std::string("RawGraphRun"), provider_type, input_container, output_names, expected_ort_values);
 
     std::vector<OrtValue> actual_ort_values;
-    RunModelWithData(ToPathString(new_model_uri), std::string("OptimizedGraphRun"),
-                     provider_type, input_container, output_names, actual_ort_values);
+    RunModelWithData(ToPathString(new_model_uri), std::string("OptimizedGraphRun"), provider_type, input_container, output_names, actual_ort_values);
 
     ASSERT_TRUE(expected_ort_values.size() == actual_ort_values.size());
     constexpr double per_sample_tolerance = 1e-4;
     constexpr double relative_per_sample_tolerance = 1e-4;
     for (size_t i = 0; i < expected_ort_values.size(); i++) {
-      auto ret = CompareOrtValue(actual_ort_values[i], expected_ort_values[i],
-                                 per_sample_tolerance, relative_per_sample_tolerance, false);
+      auto ret = CompareOrtValue(actual_ort_values[i], expected_ort_values[i], per_sample_tolerance, relative_per_sample_tolerance, false);
       EXPECT_EQ(ret.first, COMPARE_RESULT::SUCCESS) << ret.second;
     }
   }
@@ -994,19 +968,16 @@ TEST(ComputeOptimizerTests, GatherReshape_SlicingOnBatchDim) {
 
   for (auto& provider_type : all_provider_types) {
     std::vector<OrtValue> expected_ort_values;
-    RunModelWithData(model_uri, std::string("RawGraphRun"), provider_type,
-                     input_container, output_names, expected_ort_values);
+    RunModelWithData(model_uri, std::string("RawGraphRun"), provider_type, input_container, output_names, expected_ort_values);
 
     std::vector<OrtValue> actual_ort_values;
-    RunModelWithData(ToPathString(new_model_uri), std::string("OptimizedGraphRun"),
-                     provider_type, input_container, output_names, actual_ort_values);
+    RunModelWithData(ToPathString(new_model_uri), std::string("OptimizedGraphRun"), provider_type, input_container, output_names, actual_ort_values);
 
     ASSERT_TRUE(expected_ort_values.size() == actual_ort_values.size());
     constexpr double per_sample_tolerance = 1e-4;
     constexpr double relative_per_sample_tolerance = 1e-4;
     for (size_t i = 0; i < expected_ort_values.size(); i++) {
-      auto ret = CompareOrtValue(actual_ort_values[i], expected_ort_values[i],
-                                 per_sample_tolerance, relative_per_sample_tolerance, false);
+      auto ret = CompareOrtValue(actual_ort_values[i], expected_ort_values[i], per_sample_tolerance, relative_per_sample_tolerance, false);
       EXPECT_EQ(ret.first, COMPARE_RESULT::SUCCESS) << ret.second;
     }
   }
@@ -1087,19 +1058,16 @@ TEST(ComputeOptimizerTests, GatherReshape_ScalarSlicingOnSeqlenDim) {
 
   for (auto& provider_type : all_provider_types) {
     std::vector<OrtValue> expected_ort_values;
-    RunModelWithData(model_uri, std::string("RawGraphRun"), provider_type,
-                     input_container, output_names, expected_ort_values);
+    RunModelWithData(model_uri, std::string("RawGraphRun"), provider_type, input_container, output_names, expected_ort_values);
 
     std::vector<OrtValue> actual_ort_values;
-    RunModelWithData(ToPathString(new_model_uri), std::string("OptimizedGraphRun"),
-                     provider_type, input_container, output_names, actual_ort_values);
+    RunModelWithData(ToPathString(new_model_uri), std::string("OptimizedGraphRun"), provider_type, input_container, output_names, actual_ort_values);
 
     ASSERT_TRUE(expected_ort_values.size() == actual_ort_values.size());
     constexpr double per_sample_tolerance = 1e-4;
     constexpr double relative_per_sample_tolerance = 1e-4;
     for (size_t i = 0; i < expected_ort_values.size(); i++) {
-      auto ret = CompareOrtValue(actual_ort_values[i], expected_ort_values[i],
-                                 per_sample_tolerance, relative_per_sample_tolerance, false);
+      auto ret = CompareOrtValue(actual_ort_values[i], expected_ort_values[i], per_sample_tolerance, relative_per_sample_tolerance, false);
       EXPECT_EQ(ret.first, COMPARE_RESULT::SUCCESS) << ret.second;
     }
   }
@@ -1181,19 +1149,16 @@ TEST(ComputeOptimizerTests, GatherReshape_SlicingOnSeqlenDim) {
 
   for (auto& provider_type : all_provider_types) {
     std::vector<OrtValue> expected_ort_values;
-    RunModelWithData(model_uri, std::string("RawGraphRun"), provider_type,
-                     input_container, output_names, expected_ort_values);
+    RunModelWithData(model_uri, std::string("RawGraphRun"), provider_type, input_container, output_names, expected_ort_values);
 
     std::vector<OrtValue> actual_ort_values;
-    RunModelWithData(ToPathString(new_model_uri), std::string("OptimizedGraphRun"),
-                     provider_type, input_container, output_names, actual_ort_values);
+    RunModelWithData(ToPathString(new_model_uri), std::string("OptimizedGraphRun"), provider_type, input_container, output_names, actual_ort_values);
 
     ASSERT_TRUE(expected_ort_values.size() == actual_ort_values.size());
     constexpr double per_sample_tolerance = 1e-4;
     constexpr double relative_per_sample_tolerance = 1e-4;
     for (size_t i = 0; i < expected_ort_values.size(); i++) {
-      auto ret = CompareOrtValue(actual_ort_values[i], expected_ort_values[i],
-                                 per_sample_tolerance, relative_per_sample_tolerance, false);
+      auto ret = CompareOrtValue(actual_ort_values[i], expected_ort_values[i], per_sample_tolerance, relative_per_sample_tolerance, false);
       EXPECT_EQ(ret.first, COMPARE_RESULT::SUCCESS) << ret.second;
     }
   }
@@ -1275,19 +1240,16 @@ TEST(ComputeOptimizerTests, GatherReshape_SlicingOnSeqlenDim2) {
 
   for (auto& provider_type : all_provider_types) {
     std::vector<OrtValue> expected_ort_values;
-    RunModelWithData(model_uri, std::string("RawGraphRun"), provider_type,
-                     input_container, output_names, expected_ort_values);
+    RunModelWithData(model_uri, std::string("RawGraphRun"), provider_type, input_container, output_names, expected_ort_values);
 
     std::vector<OrtValue> actual_ort_values;
-    RunModelWithData(ToPathString(new_model_uri), std::string("OptimizedGraphRun"),
-                     provider_type, input_container, output_names, actual_ort_values);
+    RunModelWithData(ToPathString(new_model_uri), std::string("OptimizedGraphRun"), provider_type, input_container, output_names, actual_ort_values);
 
     ASSERT_TRUE(expected_ort_values.size() == actual_ort_values.size());
     constexpr double per_sample_tolerance = 1e-4;
     constexpr double relative_per_sample_tolerance = 1e-4;
     for (size_t i = 0; i < expected_ort_values.size(); i++) {
-      auto ret = CompareOrtValue(actual_ort_values[i], expected_ort_values[i],
-                                 per_sample_tolerance, relative_per_sample_tolerance, false);
+      auto ret = CompareOrtValue(actual_ort_values[i], expected_ort_values[i], per_sample_tolerance, relative_per_sample_tolerance, false);
       EXPECT_EQ(ret.first, COMPARE_RESULT::SUCCESS) << ret.second;
     }
   }
@@ -1448,12 +1410,10 @@ TEST(ComputeOptimizerTests, GatherRobertaE2E) {
 
   for (auto& provider_type : all_provider_types) {
     std::vector<OrtValue> expected_ort_values;
-    RunModelWithData(model_uri, std::string("RawGraphRun"), provider_type,
-                     input_container, output_names, expected_ort_values);
+    RunModelWithData(model_uri, std::string("RawGraphRun"), provider_type, input_container, output_names, expected_ort_values);
 
     std::vector<OrtValue> actual_ort_values;
-    RunModelWithData(ToPathString(new_model_uri), std::string("OptimizedGraphRun"),
-                     provider_type, input_container, output_names, actual_ort_values);
+    RunModelWithData(ToPathString(new_model_uri), std::string("OptimizedGraphRun"), provider_type, input_container, output_names, actual_ort_values);
 
     ASSERT_TRUE(expected_ort_values.size() == actual_ort_values.size());
 
@@ -1463,8 +1423,7 @@ TEST(ComputeOptimizerTests, GatherRobertaE2E) {
     constexpr double per_sample_tolerance = 2e-3;
     constexpr double relative_per_sample_tolerance = 2e-3;
     for (size_t i = 0; i < expected_ort_values.size(); i++) {
-      auto ret = CompareOrtValue(actual_ort_values[i], expected_ort_values[i],
-                                 per_sample_tolerance, relative_per_sample_tolerance, false);
+      auto ret = CompareOrtValue(actual_ort_values[i], expected_ort_values[i], per_sample_tolerance, relative_per_sample_tolerance, false);
       EXPECT_EQ(ret.first, COMPARE_RESULT::SUCCESS) << ret.second;
     }
   }
@@ -1501,8 +1460,7 @@ TEST(ComputeOptimizerTests, ShrunkenGatherElementwiseOps_PropagationOnTwoBranche
         TEST_RETURN_IF_NOT(gather_indices.empty());
         constexpr bool require_constant = true;
         NodeArg* initializer_node_arg = graph.GetNodeArg(node.InputDefs()[1]->Name());
-        TEST_RETURN_IF_NOT(optimizer_utils::AppendTensorFromInitializer(graph, *initializer_node_arg, gather_indices,
-                                                                        require_constant));
+        TEST_RETURN_IF_NOT(optimizer_utils::AppendTensorFromInitializer(graph, *initializer_node_arg, gather_indices, require_constant));
       }
     }
     return Status::OK();
@@ -1527,8 +1485,7 @@ TEST(ComputeOptimizerTests, ShrunkenGatherElementwiseOps_PropagationOnTwoBranche
           InlinedVector<int64_t> values;
           constexpr bool require_constant = true;
           NodeArg* initializer_node_arg = graph.GetNodeArg(producer_node->InputDefs()[1]->Name());
-          TEST_RETURN_IF_NOT(optimizer_utils::AppendTensorFromInitializer(graph, *initializer_node_arg, values,
-                                                                          require_constant));
+          TEST_RETURN_IF_NOT(optimizer_utils::AppendTensorFromInitializer(graph, *initializer_node_arg, values, require_constant));
           for (size_t i = 0; i < values.size(); i++) {
             TEST_RETURN_IF_NOT(values[i] == gather_indices[i]);
           }
@@ -1571,9 +1528,7 @@ TEST(ComputeOptimizerTests, ShrunkenGatherElementwiseOps_PropagationOnTwoBranche
   };
 
   std::unique_ptr<GraphTransformer> transformer = std::make_unique<UpStreamGatherGraphTransformer>();
-  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger, std::move(transformer),
-                                        TransformerLevel::Level1,
-                                        1, pre_graph_checker, post_graph_checker));
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger, std::move(transformer), TransformerLevel::Level1, 1, pre_graph_checker, post_graph_checker));
 }
 
 /*
@@ -1665,9 +1620,7 @@ TEST(ComputeOptimizerTests, ReshapeElementwiseOps_PropagationOnTwoBranches) {
     const std::vector<int> opsets{12, 13, 14};
     for (auto& opset_version : opsets) {
       std::unique_ptr<GraphTransformer> transformer = std::make_unique<UpStreamReshapeGraphTransformer>();
-      ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, opset_version, *logger, std::move(transformer),
-                                            TransformerLevel::Level1,
-                                            1, pre_graph_checker, post_graph_checker));
+      ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, opset_version, *logger, std::move(transformer), TransformerLevel::Level1, 1, pre_graph_checker, post_graph_checker));
     }
   }
 }
@@ -1751,8 +1704,7 @@ TEST(ComputeOptimizerTests, ReshapeElementwiseOps_PropagationOnOneBranch_1DBroad
   const std::vector<int> opsets{12, 13, 14};
   for (auto& opset_version : opsets) {
     std::unique_ptr<GraphTransformer> transformer = std::make_unique<UpStreamReshapeGraphTransformer>();
-    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, opset_version, *logger, std::move(transformer), TransformerLevel::Level1,
-                                          1, pre_graph_checker, post_graph_checker));
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, opset_version, *logger, std::move(transformer), TransformerLevel::Level1, 1, pre_graph_checker, post_graph_checker));
   }
 }
 
@@ -1826,8 +1778,7 @@ TEST(ComputeOptimizerTests, ReshapeElementwiseOps_NoPropagation1) {
   const std::vector<int> opsets{12, 13, 14};
   for (auto& opset_version : opsets) {
     std::unique_ptr<GraphTransformer> transformer = std::make_unique<UpStreamReshapeGraphTransformer>();
-    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, opset_version, *logger, std::move(transformer), TransformerLevel::Level1,
-                                          1, pre_graph_checker, post_graph_checker));
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, opset_version, *logger, std::move(transformer), TransformerLevel::Level1, 1, pre_graph_checker, post_graph_checker));
   }
 }
 
@@ -1910,9 +1861,7 @@ TEST(ComputeOptimizerTests, ReshapeElementwiseOps_PropagationOnOneBranch_ScalarB
   const std::vector<int> opsets{12, 13, 14};
   for (auto& opset_version : opsets) {
     std::unique_ptr<GraphTransformer> transformer = std::make_unique<UpStreamReshapeGraphTransformer>();
-    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, opset_version, *logger, std::move(transformer),
-                                          TransformerLevel::Level1,
-                                          1, pre_graph_checker, post_graph_checker));
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, opset_version, *logger, std::move(transformer), TransformerLevel::Level1, 1, pre_graph_checker, post_graph_checker));
   }
 }
 
@@ -1996,9 +1945,7 @@ TEST(ComputeOptimizerTests, ReshapeMatMul_PropagationOnLeftBranch) {
     const std::vector<int> opsets{12, 13, 14};
     for (auto& opset_version : opsets) {
       std::unique_ptr<GraphTransformer> transformer = std::make_unique<UpStreamReshapeGraphTransformer>();
-      ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, opset_version, *logger, std::move(transformer),
-                                            TransformerLevel::Level1,
-                                            1, pre_graph_checker, post_graph_checker));
+      ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, opset_version, *logger, std::move(transformer), TransformerLevel::Level1, 1, pre_graph_checker, post_graph_checker));
     }
   }
 }
@@ -2090,9 +2037,7 @@ TEST(ComputeOptimizerTests, ReshapeLayerNormalization_PropagationOnOneBranch) {
     const std::vector<int> opsets{12, 13, 14};
     for (auto& opset_version : opsets) {
       std::unique_ptr<GraphTransformer> transformer = std::make_unique<UpStreamReshapeGraphTransformer>();
-      ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, opset_version, *logger, std::move(transformer),
-                                            TransformerLevel::Level1,
-                                            1, pre_graph_checker, post_graph_checker));
+      ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, opset_version, *logger, std::move(transformer), TransformerLevel::Level1, 1, pre_graph_checker, post_graph_checker));
     }
   }
 }
@@ -2175,9 +2120,7 @@ TEST(ComputeOptimizerTests, ReshapeLayerNormalization_NoPropagation) {
     const std::vector<int> opsets{12, 13, 14};
     for (auto& opset_version : opsets) {
       std::unique_ptr<GraphTransformer> transformer = std::make_unique<UpStreamReshapeGraphTransformer>();
-      ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, opset_version, *logger, std::move(transformer),
-                                            TransformerLevel::Level1,
-                                            1, pre_graph_checker, post_graph_checker));
+      ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, opset_version, *logger, std::move(transformer), TransformerLevel::Level1, 1, pre_graph_checker, post_graph_checker));
     }
   }
 }
@@ -2218,8 +2161,7 @@ TEST(ComputeOptimizerTests, ReshapeMlmBertE2E) {
         EXPECT_EQ(parent_node->Name(), "layernorm1");
 
         InlinedVector<int64_t> new_shape_const_values;
-        ASSERT_TRUE(optimizer_utils::AppendTensorFromInitializer(graph, *reshape_node->InputDefs()[1],
-                                                                 new_shape_const_values, true));
+        ASSERT_TRUE(optimizer_utils::AppendTensorFromInitializer(graph, *reshape_node->InputDefs()[1], new_shape_const_values, true));
         ASSERT_EQ(new_shape_const_values.size(), 2U);
         ASSERT_EQ(new_shape_const_values[0], -1);
         ASSERT_EQ(new_shape_const_values[1], 1024);
@@ -2316,20 +2258,17 @@ TEST(ComputeOptimizerTests, ReshapeMlmBertE2E) {
 
   for (auto& provider_type : all_provider_types) {
     std::vector<OrtValue> expected_ort_values;
-    RunModelWithData(model_uri, std::string("RawGraphRun"), provider_type,
-                     input_container, output_names, expected_ort_values);
+    RunModelWithData(model_uri, std::string("RawGraphRun"), provider_type, input_container, output_names, expected_ort_values);
 
     std::vector<OrtValue> actual_ort_values;
-    RunModelWithData(ToPathString(new_model_uri), std::string("OptimizedGraphRun"),
-                     provider_type, input_container, output_names, actual_ort_values);
+    RunModelWithData(ToPathString(new_model_uri), std::string("OptimizedGraphRun"), provider_type, input_container, output_names, actual_ort_values);
 
     ASSERT_TRUE(expected_ort_values.size() == actual_ort_values.size());
 
     constexpr double per_sample_tolerance = 1e-4;
     constexpr double relative_per_sample_tolerance = 1e-4;
     for (size_t i = 0; i < expected_ort_values.size(); i++) {
-      auto ret = CompareOrtValue(actual_ort_values[i], expected_ort_values[i],
-                                 per_sample_tolerance, relative_per_sample_tolerance, false);
+      auto ret = CompareOrtValue(actual_ort_values[i], expected_ort_values[i], per_sample_tolerance, relative_per_sample_tolerance, false);
       EXPECT_EQ(ret.first, COMPARE_RESULT::SUCCESS) << ret.second;
     }
   }

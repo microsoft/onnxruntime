@@ -11,7 +11,8 @@ namespace cuda {
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     Shape,
     kOnnxDomain,
-    1, 12,
+    1,
+    12,
     kCudaExecutionProvider,
     (*KernelDefBuilder::Create())
         // properly force CPU/GPU synch inside the kernel
@@ -23,7 +24,8 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     Shape,
     kOnnxDomain,
-    13, 14,
+    13,
+    14,
     kCudaExecutionProvider,
     (*KernelDefBuilder::Create())
         // properly force CPU/GPU synch inside the kernel

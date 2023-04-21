@@ -161,8 +161,7 @@ bool IsTensorArgument(const char* op_name, const char* overload_name, size_t ind
   return aten_op.elem_kinds[index] == c10::TypeKind::TensorType;
 }
 
-void ExecuteATenOperator(const char* op_name, const char* overload_name, size_t input_size,
-                         DLManagedTensor** dlpack_inputs, size_t output_size, DLManagedTensor** dlpack_outputs) {
+void ExecuteATenOperator(const char* op_name, const char* overload_name, size_t input_size, DLManagedTensor** dlpack_inputs, size_t output_size, DLManagedTensor** dlpack_outputs) {
   const auto& aten_op = ATenOperatorCache::Instance().GetOperator(op_name, overload_name);
   TORCH_INTERNAL_ASSERT(input_size == aten_op.argument_size);
   std::vector<c10::IValue> arguments;

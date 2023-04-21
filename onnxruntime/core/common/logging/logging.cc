@@ -81,9 +81,7 @@ const LoggingManager::Epochs& LoggingManager::GetEpochs() noexcept {
   return epochs;
 }
 
-LoggingManager::LoggingManager(std::unique_ptr<ISink> sink, Severity default_min_severity, bool filter_user_data,
-                               const InstanceType instance_type, const std::string* default_logger_id,
-                               int default_max_vlog_level)
+LoggingManager::LoggingManager(std::unique_ptr<ISink> sink, Severity default_min_severity, bool filter_user_data, const InstanceType instance_type, const std::string* default_logger_id, int default_max_vlog_level)
     : sink_{std::move(sink)},
       default_min_severity_{default_min_severity},
       default_filter_user_data_{filter_user_data},
@@ -192,14 +190,17 @@ static minutes InitLocaltimeOffset(const time_point<system_clock>& epoch) noexce
 
 std::exception LoggingManager::LogFatalAndCreateException(const char* category,
                                                           const CodeLocation& location,
-                                                          const char* format_str, ...) {
+                                                          const char* format_str,
+                                                          ...) {
   std::string exception_msg;
 
   // create Capture in separate scope so it gets destructed (leading to log output) before we throw.
   {
     ::onnxruntime::logging::Capture c{::onnxruntime::logging::LoggingManager::DefaultLogger(),
-                                      ::onnxruntime::logging::Severity::kFATAL, category,
-                                      ::onnxruntime::logging::DataType::SYSTEM, location};
+                                      ::onnxruntime::logging::Severity::kFATAL,
+                                      category,
+                                      ::onnxruntime::logging::DataType::SYSTEM,
+                                      location};
     va_list args;
     va_start(args, format_str);
 

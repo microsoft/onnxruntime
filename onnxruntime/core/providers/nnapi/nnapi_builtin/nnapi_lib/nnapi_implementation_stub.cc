@@ -63,8 +63,7 @@ const NnApi LoadNnApi() {
         return static_cast<int>(ANEURALNETWORKS_NO_ERROR);
       };
   nnapi.ANeuralNetworksExecution_setInputFromMemory =
-      [](ANeuralNetworksExecution*, int32_t, const ANeuralNetworksOperandType*, const ANeuralNetworksMemory*, size_t,
-         size_t) {
+      [](ANeuralNetworksExecution*, int32_t, const ANeuralNetworksOperandType*, const ANeuralNetworksMemory*, size_t, size_t) {
         return static_cast<int>(ANEURALNETWORKS_NO_ERROR);
       };
   nnapi.ANeuralNetworksExecution_setOutput =
@@ -72,8 +71,7 @@ const NnApi LoadNnApi() {
         return static_cast<int>(ANEURALNETWORKS_NO_ERROR);
       };
   nnapi.ANeuralNetworksExecution_setOutputFromMemory =
-      [](ANeuralNetworksExecution*, int32_t, const ANeuralNetworksOperandType*, const ANeuralNetworksMemory*, size_t,
-         size_t) {
+      [](ANeuralNetworksExecution*, int32_t, const ANeuralNetworksOperandType*, const ANeuralNetworksMemory*, size_t, size_t) {
         return static_cast<int>(ANEURALNETWORKS_NO_ERROR);
       };
   nnapi.ANeuralNetworksExecution_startCompute =

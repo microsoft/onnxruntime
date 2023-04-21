@@ -17,8 +17,7 @@ enum class NodeSequence {
   DQ_Q,
 };
 
-bool CleanUpNodeSequence(NodeSequence node_sequence_type, Graph& graph, NodeIndex first_node_idx,
-                         const logging::Logger& logger) {
+bool CleanUpNodeSequence(NodeSequence node_sequence_type, Graph& graph, NodeIndex first_node_idx, const logging::Logger& logger) {
   Node* first_node_ptr = graph.GetNode(first_node_idx);
   if (!first_node_ptr) {
     return false;
@@ -116,7 +115,10 @@ bool CleanUpNodeSequence(NodeSequence node_sequence_type, Graph& graph, NodeInde
     } else {
       // add Identity node to connect the graph input or initializer to the graph output.
       Node& id_node = graph.AddNode(graph.GenerateNodeName("QDQFinalCleanupTransformer"),
-                                    "Identity", "", {first_node.MutableInputDefs()[0]}, {graph_output_nodearg});
+                                    "Identity",
+                                    "",
+                                    {first_node.MutableInputDefs()[0]},
+                                    {graph_output_nodearg});
       id_node.SetExecutionProviderType(second_node.GetExecutionProviderType());
     }
   }
@@ -128,8 +130,7 @@ bool CleanUpNodeSequence(NodeSequence node_sequence_type, Graph& graph, NodeInde
 }
 }  // namespace
 
-Status QDQFinalCleanupTransformer::ApplyImpl(Graph& graph, bool& modified, int graph_level,
-                                             const logging::Logger& logger) const {
+Status QDQFinalCleanupTransformer::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
   GraphViewer graph_viewer(graph);
   const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
 

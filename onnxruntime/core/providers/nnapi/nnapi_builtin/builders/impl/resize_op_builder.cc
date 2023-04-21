@@ -33,8 +33,7 @@ class ResizeOpBuilder : public BaseOpBuilder {
 
   // Operator support related
  private:
-  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
-                         const OpSupportCheckParams& params) const override;
+  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit, const OpSupportCheckParams& params) const override;
 
   int32_t GetMinSupportedNNAPIFeatureLevel(const NodeUnit& /* node_unit */,
                                            const OpSupportCheckParams& /* params */) const override;
@@ -44,8 +43,7 @@ class ResizeOpBuilder : public BaseOpBuilder {
   int GetMinSupportedOpSet(const NodeUnit& /* node_unit */) const override { return 11; }
 
   bool HasSupportedInputOutputsImpl(
-      const InitializedTensorSet& /* initializers */, const NodeUnit& node_unit,
-      const OpSupportCheckParams& /* params */) const override;
+      const InitializedTensorSet& /* initializers */, const NodeUnit& node_unit, const OpSupportCheckParams& /* params */) const override;
   bool IsNodeUnitTypeSupported(const NodeUnit& /* node_unit */) const override { return true; }
   bool IsQuantizedOp(const NodeUnit& node_unit) const override;
 };
@@ -135,8 +133,7 @@ Status ResizeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
 
   OperandType output_operand_type = operand_types.at(input);
   output_operand_type.SetDimensions(output_shape);
-  ORT_RETURN_IF_ERROR(model_builder.AddOperation(operationCode, input_indices,
-                                                 {output}, {output_operand_type}));
+  ORT_RETURN_IF_ERROR(model_builder.AddOperation(operationCode, input_indices, {output}, {output_operand_type}));
 
   return Status::OK();
 }
@@ -147,8 +144,7 @@ bool ResizeOpBuilder::IsQuantizedOp(const NodeUnit& node_unit) const {
   return GetQuantizedOpType(node_unit) == QuantizedOpType::QDQResize;
 }
 
-bool ResizeOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
-                                        const OpSupportCheckParams& params) const {
+bool ResizeOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit, const OpSupportCheckParams& params) const {
   Shape input_shape;
   if (!GetShape(node_unit.Inputs()[0].node_arg, input_shape))
     return false;
@@ -286,8 +282,7 @@ int32_t ResizeOpBuilder::GetMinSupportedNNAPIFeatureLevel(const NodeUnit& node_u
 }
 
 bool ResizeOpBuilder::HasSupportedInputOutputsImpl(
-    const InitializedTensorSet& initializers, const NodeUnit& node_unit,
-    const OpSupportCheckParams& params) const {
+    const InitializedTensorSet& initializers, const NodeUnit& node_unit, const OpSupportCheckParams& params) const {
   int32_t input_type;
   if (!GetType(node_unit.Inputs()[0].node_arg, input_type))
     return false;

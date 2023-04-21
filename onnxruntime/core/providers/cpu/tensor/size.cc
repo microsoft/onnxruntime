@@ -28,7 +28,8 @@ Status Size::Compute(OpKernelContext* ctx) const {
 
 ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     Size,
-    1, 12,
+    1,
+    12,
     KernelDefBuilder().TypeConstraint("T",
                                       std::vector<MLDataType>({DataTypeImpl::GetTensorType<float>(),
                                                                DataTypeImpl::GetTensorType<double>(),

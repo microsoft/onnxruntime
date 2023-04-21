@@ -19,9 +19,7 @@ namespace test {
 namespace {
 
 template <typename T, typename TIndex>
-void GetData(const std::vector<int64_t>& input_dims, const std::vector<int64_t>& indices_dims,
-             const std::vector<int64_t>& indices_strides, int64_t axis, std::vector<T>& input_data,
-             std::vector<TIndex>& indices_data, std::vector<T>& output_data) {
+void GetData(const std::vector<int64_t>& input_dims, const std::vector<int64_t>& indices_dims, const std::vector<int64_t>& indices_strides, int64_t axis, std::vector<T>& input_data, std::vector<TIndex>& indices_data, std::vector<T>& output_data) {
   size_t input_size = static_cast<size_t>(detail::SizeFromDims(input_dims));
   size_t indices_size = static_cast<size_t>(detail::SizeFromDims(indices_dims, indices_strides));
   bool is_strided_indices = !indices_strides.empty();
@@ -63,8 +61,7 @@ void GetData(const std::vector<int64_t>& input_dims, const std::vector<int64_t>&
 }
 
 template <typename T, typename TIndex>
-void RunTest(std::initializer_list<int64_t> input_dims, std::initializer_list<int64_t> indices_dims,
-             bool has_axis = false, int64_t axis = 0LL) {
+void RunTest(std::initializer_list<int64_t> input_dims, std::initializer_list<int64_t> indices_dims, bool has_axis = false, int64_t axis = 0LL) {
   std::vector<T> input_data;
   std::vector<TIndex> indices_data;
   std::vector<T> output_data;
@@ -174,8 +171,7 @@ void RunTestWrapper<std::string>() {
   test4.AddInput<int32_t>("indices", {2, 2}, {0, 0, -3, -3});
   test4.AddOutput<std::string>("output", {2, 2}, {"a", "a", "c", "c"});
   // skip Openvino, which will not throw error message but will ensure no out-of-bound access
-  test4.Run(OpTester::ExpectResult::kExpectFailure, "GatherElements op: Out of range value in index tensor",
-            {kOpenVINOExecutionProvider});
+  test4.Run(OpTester::ExpectResult::kExpectFailure, "GatherElements op: Out of range value in index tensor", {kOpenVINOExecutionProvider});
 
   // 3D input - axis 1
   OpTester test5("GatherElements", 11);
@@ -212,9 +208,7 @@ void RunTestWrapper<std::string>() {
 
 #if defined(ENABLE_STRIDED_TENSORS) && (defined(USE_CUDA) || defined(USE_ROCM))
 template <typename T, typename TIndex>
-void RunKernelComputeTest(std::initializer_list<int64_t> input_dims, std::initializer_list<int64_t> indices_dims,
-                          std::initializer_list<int64_t> indices_strides = {}, bool has_axis = false,
-                          int64_t axis = 0LL) {
+void RunKernelComputeTest(std::initializer_list<int64_t> input_dims, std::initializer_list<int64_t> indices_dims, std::initializer_list<int64_t> indices_strides = {}, bool has_axis = false, int64_t axis = 0LL) {
   std::vector<T> input_data;
   std::vector<TIndex> indices_data;
   std::vector<T> output_data;
@@ -382,9 +376,7 @@ TEST(GatherElementsOpTest, IndicesOutOfBounds) {
   // skip cuda as the cuda kernel won't throw the error message
   // skip openvino which will not throw error message but will ensure no out-of-bound access
   // skip TensorRT because it doesn't support out of bounds indices
-  test.Run(OpTester::ExpectResult::kExpectFailure, "",
-           {kCudaExecutionProvider, kRocmExecutionProvider, kOpenVINOExecutionProvider,
-            kTensorrtExecutionProvider, kDmlExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectFailure, "", {kCudaExecutionProvider, kRocmExecutionProvider, kOpenVINOExecutionProvider, kTensorrtExecutionProvider, kDmlExecutionProvider});
 }
 
 TEST(GatherElementsOpTest, BigIndices) {

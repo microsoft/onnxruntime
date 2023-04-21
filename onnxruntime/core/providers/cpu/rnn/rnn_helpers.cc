@@ -49,33 +49,27 @@ Status ValidateCommonRnnInputs(const Tensor& X,
       W_shape[0] != num_directions ||
       W_shape[1] != hidden_size * WRB_dim_1_multipler ||
       W_shape[2] != input_size)
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input W must have shape {",
-                           num_directions, ",", WRB_dim_1_multipler, "*", hidden_size, ",",
-                           input_size, "}. Actual:", W_shape);
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input W must have shape {", num_directions, ",", WRB_dim_1_multipler, "*", hidden_size, ",", input_size, "}. Actual:", W_shape);
 
   if (R_shape.NumDimensions() != 3 ||
       R_shape[0] != num_directions ||
       R_shape[1] != hidden_size * WRB_dim_1_multipler ||
       R_shape[2] != hidden_size)
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input R must have shape {",
-                           num_directions, ",", WRB_dim_1_multipler, "*", hidden_size, ",",
-                           hidden_size, "}. Actual:", R_shape);
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input R must have shape {", num_directions, ",", WRB_dim_1_multipler, "*", hidden_size, ",", hidden_size, "}. Actual:", R_shape);
 
   if (B != nullptr) {
     auto& B_shape = B->Shape();
     if (B_shape.NumDimensions() != 2 ||
         B_shape[0] != num_directions ||
         B_shape[1] != 2 * WRB_dim_1_multipler * hidden_size)
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input B must have shape {",
-                             num_directions, ",", 2 * WRB_dim_1_multipler, "*", hidden_size, "}. Actual:", B_shape);
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input B must have shape {", num_directions, ",", 2 * WRB_dim_1_multipler, "*", hidden_size, "}. Actual:", B_shape);
   }
 
   if (sequence_lens != nullptr) {
     auto& sequence_lens_shape = sequence_lens->Shape();
     if (sequence_lens_shape.NumDimensions() != 1 ||
         sequence_lens_shape[0] != batch_size) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input sequence_lens must have shape {",
-                             batch_size, "}. Actual:", sequence_lens_shape);
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input sequence_lens must have shape {", batch_size, "}. Actual:", sequence_lens_shape);
     }
 
     auto sequence_len_entries = sequence_lens->DataAsSpan<int>();
@@ -83,8 +77,7 @@ Status ValidateCommonRnnInputs(const Tensor& X,
                     sequence_len_entries.end(),
                     [seq_length](int len) { return len < 0 || len > seq_length; })) {
       return ORT_MAKE_STATUS(
-          ONNXRUNTIME, INVALID_ARGUMENT,
-          "Invalid value/s in sequence_lens. All values must be > 0 and < seq_length. seq_length=", seq_length);
+          ONNXRUNTIME, INVALID_ARGUMENT, "Invalid value/s in sequence_lens. All values must be > 0 and < seq_length. seq_length=", seq_length);
     }
   }
 
@@ -96,8 +89,7 @@ Status ValidateCommonRnnInputs(const Tensor& X,
         initial_h_shape[1] != batch_size ||
         initial_h_shape[2] != hidden_size)
 
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Input initial_h must have shape {",
-                             num_directions, ",", batch_size, ",", hidden_size, "}. Actual:", initial_h_shape);
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Input initial_h must have shape {", num_directions, ",", batch_size, ",", hidden_size, "}. Actual:", initial_h_shape);
   }
 
   return Status::OK();
@@ -128,10 +120,10 @@ std::string NormalizeActivationArgumentAndGetAlphaBetaCount(const std::string& a
                                                             const std::vector<float>::const_iterator& end_alpha,
                                                             std::vector<float>::const_iterator& cur_beta,
                                                             const std::vector<float>::const_iterator& end_beta,
-                                                            float& alpha, float& beta) {
+                                                            float& alpha,
+                                                            float& beta) {
   std::string name(activation);
-  std::transform(name.begin(), name.end(), name.begin(),
-                 [](const unsigned char i) { return static_cast<char>(::tolower(i)); });
+  std::transform(name.begin(), name.end(), name.begin(), [](const unsigned char i) { return static_cast<char>(::tolower(i)); });
 
   auto usage_entry = NameToArgUsageMap.find(name);
   if (usage_entry == NameToArgUsageMap.end()) {
@@ -229,17 +221,20 @@ void ComputeGemm(const int M,
   if (weights.is_prepacked_) {
     MlasGemm(
         CblasNoTrans,
-        M, N, K, alpha,
-        A, K,
-        weights.buffer_, beta,
-        C, ldc, thread_pool);
+        M,
+        N,
+        K,
+        alpha,
+        A,
+        K,
+        weights.buffer_,
+        beta,
+        C,
+        ldc,
+        thread_pool);
   } else {
     ::onnxruntime::math::GemmEx<float>(
-        CblasNoTrans, CblasTrans,
-        M, N, K, alpha,
-        A, K,
-        static_cast<const float*>(weights.buffer_), K, beta,
-        C, ldc, thread_pool);
+        CblasNoTrans, CblasTrans, M, N, K, alpha, A, K, static_cast<const float*>(weights.buffer_), K, beta, C, ldc, thread_pool);
   }
 }
 
@@ -287,9 +282,7 @@ void ComputeGemm(const int M,
   }
 
   MLAS_QGEMM_SCALE_BIAS_OUTPUT_PROCESSOR output_processor(
-      C, ldc, scale_multiplier.data(), nullptr,
-      beta == 1.0f ? MLAS_QGEMM_OUTPUT_MODE::AccumulateMode : MLAS_QGEMM_OUTPUT_MODE::ZeroMode,
-      scale_multiplier.size() == 1 ? MLAS_QUANTIZATION_GRANULARITY::PerMatrix : MLAS_QUANTIZATION_GRANULARITY::PerColumn);
+      C, ldc, scale_multiplier.data(), nullptr, beta == 1.0f ? MLAS_QGEMM_OUTPUT_MODE::AccumulateMode : MLAS_QGEMM_OUTPUT_MODE::ZeroMode, scale_multiplier.size() == 1 ? MLAS_QUANTIZATION_GRANULARITY::PerMatrix : MLAS_QUANTIZATION_GRANULARITY::PerColumn);
 
   MLAS_GEMM_QUANT_SHAPE_PARAMS gemm_shape;
   gemm_shape.M = static_cast<size_t>(M);
@@ -423,8 +416,7 @@ void clip_add_bias(const float b, const float* restrict pb, float* restrict pd, 
   }
 }
 
-void sigmoid_m(const float* restrict ps1, float* restrict ps1_c, const float* restrict ps2, float* restrict pd, int c,
-               const float alpha, const float beta) {
+void sigmoid_m(const float* restrict ps1, float* restrict ps1_c, const float* restrict ps2, float* restrict pd, int c, const float alpha, const float beta) {
   ORT_UNUSED_PARAMETER(alpha);
   ORT_UNUSED_PARAMETER(beta);
   ORT_UNUSED_PARAMETER(ps1_c);
@@ -435,8 +427,7 @@ void sigmoid_m(const float* restrict ps1, float* restrict ps1_c, const float* re
   }
 }
 
-void tanh_m(const float* restrict ps1, float* restrict ps1_c, const float* restrict ps2, float* restrict pd, int c,
-            const float alpha, const float beta) {
+void tanh_m(const float* restrict ps1, float* restrict ps1_c, const float* restrict ps2, float* restrict pd, int c, const float alpha, const float beta) {
   ORT_UNUSED_PARAMETER(alpha);
   ORT_UNUSED_PARAMETER(beta);
   ORT_UNUSED_PARAMETER(ps1_c);
@@ -447,8 +438,7 @@ void tanh_m(const float* restrict ps1, float* restrict ps1_c, const float* restr
   }
 }
 
-void relu_m(const float* restrict ps1, float* restrict ps1_c, const float* restrict ps2, float* restrict pd, int c,
-            const float alpha, const float beta) {
+void relu_m(const float* restrict ps1, float* restrict ps1_c, const float* restrict ps2, float* restrict pd, int c, const float alpha, const float beta) {
   ORT_UNUSED_PARAMETER(ps1_c);
   ORT_UNUSED_PARAMETER(alpha);
   ORT_UNUSED_PARAMETER(beta);
@@ -459,16 +449,14 @@ void relu_m(const float* restrict ps1, float* restrict ps1_c, const float* restr
   }
 }
 
-void composed_m(const float* ps1, const float* ps1_c, const float* ps2, float* pd, int c,
-                std::function<float(float, float, float)> func, float alpha, float beta) {
+void composed_m(const float* ps1, const float* ps1_c, const float* ps2, float* pd, int c, std::function<float(float, float, float)> func, float alpha, float beta) {
   ORT_UNUSED_PARAMETER(ps1_c);
   for (int i = 0; i < c; i++) {
     pd[i] = ps2[i] * func(ps1[i], alpha, beta);
   }
 }
 
-void sigmoid_exact_m(const float* ps1, const float* ps1_c, const float* ps2, float* pd, int c, float alpha,
-                     float beta) {
+void sigmoid_exact_m(const float* ps1, const float* ps1_c, const float* ps2, float* pd, int c, float alpha, float beta) {
   ORT_UNUSED_PARAMETER(ps1_c);
   ORT_UNUSED_PARAMETER(alpha);
   ORT_UNUSED_PARAMETER(beta);
@@ -535,15 +523,13 @@ void tanh_exact(float* pd, int c, float alpha, float beta) {
 // Help compiler simply and correctly optimize for pcurr == pprev case.
 // Although without this in_place(), if restrict pprev and pcur, compiler could also work.
 // Yet this in_place() follow the restrict semantic better.
-static void merge_lstm_gates_to_memory_in_place(const float* restrict pi, const float* restrict pf,
-                                                const float* restrict pg, float* restrict pcurr, int c) {
+static void merge_lstm_gates_to_memory_in_place(const float* restrict pi, const float* restrict pf, const float* restrict pg, float* restrict pcurr, int c) {
   for (int i = 0; i < c; i++) {
     pcurr[i] = pcurr[i] * pf[i] + pi[i] * pg[i];
   }
 }
 
-void merge_lstm_gates_to_memory(const float* pprev, const float* restrict pi, const float* restrict pf,
-                                const float* restrict pg, float* pcurr, int c) {
+void merge_lstm_gates_to_memory(const float* pprev, const float* restrict pi, const float* restrict pf, const float* restrict pg, float* pcurr, int c) {
   if (pprev == pcurr) {
     merge_lstm_gates_to_memory_in_place(pi, pf, pg, pcurr, c);
     return;
@@ -610,8 +596,7 @@ void gru_reset_gate_relu(const float* ps1, float* ps2, float* pd, int c, float a
   }
 }
 
-void gru_reset_gate_composed(const float* ps1, float* ps2, float* pd, int c,
-                             std::function<float(float, float, float)> func, float alpha, float beta) {
+void gru_reset_gate_composed(const float* ps1, float* ps2, float* pd, int c, std::function<float(float, float, float)> func, float alpha, float beta) {
   for (int i = 0; i < c; i++) {
     pd[i] = ps1[i] * func(ps2[i], alpha, beta);
   }
@@ -650,8 +635,7 @@ void gru_output_gate_relu(float* ph, const float* pz, const float* ps, float* po
   }
 }
 
-void gru_output_gate_composed(float* ph, const float* pz, const float* ps, float* po, int c,
-                              std::function<float(float, float, float)> func, float alpha, float beta) {
+void gru_output_gate_composed(float* ph, const float* pz, const float* ps, float* po, int c, std::function<float(float, float, float)> func, float alpha, float beta) {
   for (int i = 0; i < c; i++) {
     po[i] = (1 - pz[i]) * func(ph[i], alpha, beta) + pz[i] * ps[i];
   }
@@ -680,29 +664,25 @@ void gru_output_gate_sigmoid(float* ph, const float* pz, const float* ps, float*
   }
 }
 
-void composed_activation_func(float* ps, int c, std::function<float(float, float, float)> func, float alpha,
-                              float beta) {
+void composed_activation_func(float* ps, int c, std::function<float(float, float, float)> func, float alpha, float beta) {
   for (int i = 0; i < c; i++) {
     ps[i] = func(ps[i], alpha, beta);
   }
 }
 
-void composed_lstm_merge_gates_func(float* ps, int c, std::function<float(float, float, float)> func, float alpha,
-                                    float beta) {
+void composed_lstm_merge_gates_func(float* ps, int c, std::function<float(float, float, float)> func, float alpha, float beta) {
   for (int i = 0; i < c; i++) {
     ps[i] = func(ps[i], alpha, beta);
   }
 }
 
-void composed_gru_reset_gate_func(float* ps, int c, std::function<float(float, float, float)> func, float alpha,
-                                  float beta) {
+void composed_gru_reset_gate_func(float* ps, int c, std::function<float(float, float, float)> func, float alpha, float beta) {
   for (int i = 0; i < c; i++) {
     ps[i] = func(ps[i], alpha, beta);
   }
 }
 
-void composed_gru_output_gate_func(float* ps, int c, std::function<float(float, float, float)> func, float alpha,
-                                   float beta) {
+void composed_gru_output_gate_func(float* ps, int c, std::function<float(float, float, float)> func, float alpha, float beta) {
   for (int i = 0; i < c; i++) {
     ps[i] = func(ps[i], alpha, beta);
   }

@@ -44,8 +44,7 @@ class TensorflowTestSession : public TestSession {
   }
 
  public:
-  TensorflowTestSession(std::random_device& rd, const PerformanceTestConfig& performance_test_config,
-                        const TestModelInfo* m)
+  TensorflowTestSession(std::random_device& rd, const PerformanceTestConfig& performance_test_config, const TestModelInfo* m)
       : rand_engine_(rd()) {
     const auto& model_file_path = performance_test_config.model_info.model_file_path;
     size_t model_file_length;
@@ -214,8 +213,7 @@ class TensorflowTestSession : public TestSession {
     TF_Status* s = TF_NewStatus();
     std::vector<TF_Tensor*> output_tensors(fetches_.size());
     auto start = std::chrono::high_resolution_clock::now();
-    TF_SessionRun(sess_, nullptr, feed_.data(), feed_tensors.data(), static_cast<int>(feed_.size()), fetches_.data(),
-                  output_tensors.data(), static_cast<int>(fetches_.size()), nullptr, 0, nullptr, s);
+    TF_SessionRun(sess_, nullptr, feed_.data(), feed_tensors.data(), static_cast<int>(feed_.size()), fetches_.data(), output_tensors.data(), static_cast<int>(fetches_.size()), nullptr, 0, nullptr, s);
     auto end = std::chrono::high_resolution_clock::now();
     if (TF_GetCode(s) != TF_OK) ORT_THROW("run TF model failed:", TF_Message(s));
     for (TF_Tensor* f : output_tensors) {

@@ -78,13 +78,27 @@ TEST(GatherNDGradOpTest, GatherNDGrad_batch_dims_of_2) {
       });
   test.AddInput<float>("update", {2, 2, 3}, ValueRange<float>(12));
   test.AddOutput<float>(
-      "output", {2, 2, 2, 3},
-      {
-          0, 0, 0, 0, 1, 2,    // batch 0
-          0, 0, 0, 3, 4, 5,    // batch 1
-          6, 7, 8, 0, 0, 0,    // batch 2
-          0, 0, 0, 9, 10, 11,  // batch 3
-      });
+      "output", {2, 2, 2, 3}, {
+                                  0, 0, 0, 0, 1, 2,  // batch 0
+                                  0,
+                                  0,
+                                  0,
+                                  3,
+                                  4,
+                                  5,  // batch 1
+                                  6,
+                                  7,
+                                  8,
+                                  0,
+                                  0,
+                                  0,  // batch 2
+                                  0,
+                                  0,
+                                  0,
+                                  9,
+                                  10,
+                                  11,  // batch 3
+                              });
   test.Run();
 }
 
@@ -102,13 +116,27 @@ TEST(GatherNDGradOpTest, GatherNDGrad_batch_dims_two_negative_indices) {
       });
   test.AddInput<float>("update", {2, 2, 3}, ValueRange<float>(12));
   test.AddOutput<float>(
-      "output", {2, 2, 2, 3},
-      {
-          0, 0, 0, 0, 1, 2,    // batch 0
-          0, 0, 0, 3, 4, 5,    // batch 1
-          6, 7, 8, 0, 0, 0,    // batch 2
-          0, 0, 0, 9, 10, 11,  // batch 3
-      });
+      "output", {2, 2, 2, 3}, {
+                                  0, 0, 0, 0, 1, 2,  // batch 0
+                                  0,
+                                  0,
+                                  0,
+                                  3,
+                                  4,
+                                  5,  // batch 1
+                                  6,
+                                  7,
+                                  8,
+                                  0,
+                                  0,
+                                  0,  // batch 2
+                                  0,
+                                  0,
+                                  0,
+                                  9,
+                                  10,
+                                  11,  // batch 3
+                              });
   test.Run();
 }
 

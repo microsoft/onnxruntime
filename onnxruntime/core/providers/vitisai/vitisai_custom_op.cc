@@ -34,9 +34,7 @@ namespace vitisai_ep {
 
 static ONNX_NAMESPACE::ModelProto GetModelProtoFromFusedNode(const onnxruntime::GraphViewer& graph_viewer,
                                                              const logging::Logger& logger) {
-  onnxruntime::Model model{graph_viewer.Name(), true, ModelMetaData{}, PathString{},
-                           IOnnxRuntimeOpSchemaRegistryList{}, graph_viewer.DomainToVersionMap(),
-                           std::vector<ONNX_NAMESPACE::FunctionProto>(), logger};
+  onnxruntime::Model model{graph_viewer.Name(), true, ModelMetaData{}, PathString{}, IOnnxRuntimeOpSchemaRegistryList{}, graph_viewer.DomainToVersionMap(), std::vector<ONNX_NAMESPACE::FunctionProto>(), logger};
 
   ONNX_NAMESPACE::ModelProto model_proto = model.ToProto();
   model_proto.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
@@ -83,8 +81,7 @@ VitisAICustomOp::VitisAICustomOp(const ComputeContext* context,
     pyxir::RunOptionsHolder run_options(new pyxir::runtime::RunOptions());
     run_options->on_the_fly_quantization = true;
     run_options->export_runtime_module_path = export_runtime_module_;
-    rt_mod_ = pyxir::build_rt(xg_, backend_type_, in_tensor_names_,
-                              out_tensor_names_, "vai", run_options);
+    rt_mod_ = pyxir::build_rt(xg_, backend_type_, in_tensor_names_, out_tensor_names_, "vai", run_options);
   } else {
     std::ifstream in_file(load_runtime_module_);
     std::stringstream buffer;
@@ -121,13 +118,11 @@ Status VitisAICustomOp::Compute(OrtKernelContext* context) const {
       batch_size = tensor_shape[0];
 
       if (tensor_type != ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT)
-        return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-                               "VITIS-AI EP input onnx tensor data type: " + std::to_string(tensor_type) + " not supported.");
+        return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "VITIS-AI EP input onnx tensor data type: " + std::to_string(tensor_type) + " not supported.");
 
       void* input_data = const_cast<void*>(input_tensor.GetTensorRawData());
       in_tensors.push_back(std::shared_ptr<pyxir::XBuffer>(
-          new pyxir::XBuffer(input_data, 4, "f", tensor_shape.size(), tensor_shape,
-                             false, false)));
+          new pyxir::XBuffer(input_data, 4, "f", tensor_shape.size(), tensor_shape, false, false)));
     }
   } catch (const std::exception& exp) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, name_ + ": Exception while copying input data to Pyxir: " + std::string(exp.what()));
@@ -146,13 +141,11 @@ Status VitisAICustomOp::Compute(OrtKernelContext* context) const {
       auto output_tensor = ctx.GetOutput(i, ort_shape.data(), ort_shape.size());
       const auto tensor_type = output_tensor.GetTensorTypeAndShapeInfo().GetElementType();
       if (tensor_type != ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT)
-        return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-                               "VITIS-AI EP input onnx tensor data type: " + std::to_string(tensor_type) + " not supported.");
+        return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "VITIS-AI EP input onnx tensor data type: " + std::to_string(tensor_type) + " not supported.");
 
       void* output_data = output_tensor.GetTensorMutableRawData();
       out_tensors.push_back(std::shared_ptr<pyxir::XBuffer>(
-          new pyxir::XBuffer(output_data, 4, "f", out_shape.size(), out_shape,
-                             false, false)));
+          new pyxir::XBuffer(output_data, 4, "f", out_shape.size(), out_shape, false, false)));
     }
   } catch (const std::exception& exp) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, name_ + ": Exception while creating Pyxir output Tensor: " + std::string(exp.what()));

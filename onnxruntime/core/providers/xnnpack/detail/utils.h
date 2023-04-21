@@ -79,14 +79,12 @@ bool IsPaddingTypeSupported(AutoPadType auto_pad);
 
 using XnnpackOperator = std::unique_ptr<struct xnn_operator, XnnpackOperatorDeleter>;
 
-std::unique_ptr<IndexedSubGraph::MetaDef> FuseActivation(const NodeUnit& conv_unit, const NodeUnit& activation,
-                                                         const GraphViewer& graph);
+std::unique_ptr<IndexedSubGraph::MetaDef> FuseActivation(const NodeUnit& conv_unit, const NodeUnit& activation, const GraphViewer& graph);
 std::unique_ptr<IndexedSubGraph::MetaDef> FuseQDQGroup(const NodeUnit& unit_node);
 
 bool GetType(const NodeArg& node_arg, int32_t& type);
 
-TensorQuantType GetTensorQuantType(const onnxruntime::NodeUnit& node_unit, int32_t io_index,
-                                   bool is_output, const onnxruntime::GraphViewer& graph_viewer);
+TensorQuantType GetTensorQuantType(const onnxruntime::NodeUnit& node_unit, int32_t io_index, bool is_output, const onnxruntime::GraphViewer& graph_viewer);
 
 OpQuantParam ParseQuantParamForOp(const OpKernelInfo& info, int32_t x_dtype, size_t howManyInputScaleAndZp);
 const char* TensorQtypeToString(enum TensorQuantType type);

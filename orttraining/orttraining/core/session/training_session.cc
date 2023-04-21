@@ -173,8 +173,7 @@ Status TrainingSession::BuildLoss(
           ? loss_function_config.value().loss_function_info
           : optional<LossFunctionInfo>{};
   ORT_RETURN_IF_ERROR(ConfigureLossFunction(
-      external_loss_name, loss_function_info,
-      loss_scale_input_name.has_value() ? &loss_scale_input_name.value() : nullptr, loss_name));
+      external_loss_name, loss_function_info, loss_scale_input_name.has_value() ? &loss_scale_input_name.value() : nullptr, loss_name));
 
   ORT_ENFORCE(
       !loss_scale_input_name.has_value() || !loss_scale_input_name.value().empty(),
@@ -243,8 +242,7 @@ Status TrainingSession::PartitionGraphForPipeline(
 
   auto ranks = DistributedRunContext::GetRanks(WorkerGroupType::PipelineParallel);
   ORT_RETURN_IF_ERROR(
-      ApplyPipelinePartitionToMainGraph(model_->MainGraph(), op_to_stage,
-                                        pipeline_stage_id, n_stages, ranks));
+      ApplyPipelinePartitionToMainGraph(model_->MainGraph(), op_to_stage, pipeline_stage_id, n_stages, ranks));
 
   if (pipeline_config.value().partitioned_model_path.has_value()) {
     // Save the partitioned file out.
@@ -497,12 +495,10 @@ Status TrainingSession::ConfigureForTraining(
     OptimizerGraphConfig opt_graph_config{};
     std::unordered_map<std::string, OptimizerNodeConfig> opt_node_configs{};
     ORT_RETURN_IF_ERROR(SetupOptimizerParams(
-        weights_to_train_, fp32_weight_name_to_mixed_precision_node_arg,
-        loss_scale_input_name, config, init_optimizer_states_, opt_graph_config, opt_node_configs, config_result.weight_name_map_after_graph_transform));
+        weights_to_train_, fp32_weight_name_to_mixed_precision_node_arg, loss_scale_input_name, config, init_optimizer_states_, opt_graph_config, opt_node_configs, config_result.weight_name_map_after_graph_transform));
     TrainingConfigurationResult::OptimizerConfigurationResult optimizer_config_result{};
     ORT_RETURN_IF_ERROR(BuildOptimizer(
-        opt_graph_config, opt_node_configs,
-        optimizer_config_result.output_key_to_graph_output_name));
+        opt_graph_config, opt_node_configs, optimizer_config_result.output_key_to_graph_output_name));
     config_result.opt_config_result = optimizer_config_result;
   } else {
     if (config.gradient_accumulation_steps > 1) {
@@ -541,9 +537,7 @@ Status TrainingSession::ConfigureForTraining(
     }
 
     ORT_RETURN_IF_ERROR(AddTensorboard(
-        tensorboard_config.summary_name, tensorboard_scalar_names,
-        tensorboard_config.histogram_node_names, tensorboard_config.norm_node_names,
-        tensorboard_config.dump_convergence_metrics));
+        tensorboard_config.summary_name, tensorboard_scalar_names, tensorboard_config.histogram_node_names, tensorboard_config.norm_node_names, tensorboard_config.dump_convergence_metrics));
   }
 
   // Add GIST encoding
@@ -587,7 +581,9 @@ Status TrainingSession::ConfigureForTraining(
 
 static Status AddLossScaling(
     const std::string& loss_name,
-    Graph& graph, std::string* loss_scale_input_name, std::string& scaled_loss_name) {
+    Graph& graph,
+    std::string* loss_scale_input_name,
+    std::string& scaled_loss_name) {
   if (!loss_scale_input_name) {
     scaled_loss_name = loss_name;
     return Status::OK();
@@ -649,9 +645,7 @@ static Status BuildGradientGraphInternal(Graph& graph,
   std::unordered_set<std::string> names_to_train;
   if (p_weight_to_mixed_precision_map != nullptr) {
     names_to_train = std::unordered_set<std::string>{};
-    std::transform((*p_weight_to_mixed_precision_map).begin(), (*p_weight_to_mixed_precision_map).end(),
-                   std::inserter(names_to_train, names_to_train.begin()),
-                   [](auto pair) { return pair.second; });
+    std::transform((*p_weight_to_mixed_precision_map).begin(), (*p_weight_to_mixed_precision_map).end(), std::inserter(names_to_train, names_to_train.begin()), [](auto pair) { return pair.second; });
   } else {
     names_to_train = node_arg_names_to_train;
   }
@@ -799,8 +793,13 @@ Status TrainingSession::ApplyModelParallelTransformationsToMainGraph(std::unorde
   LOGS_DEFAULT(WARNING) << horizontal_parallel_size << "-way horizontal model parallel is enabled";
   transformers_to_register.emplace_back(std::make_unique<MegatronTransformer>(
       training::DistributedRunContext::RankInGroup(training::WorkerGroupType::HorizontalParallel),
-      horizontal_parallel_size, config_result_out.weight_name_map_after_graph_transform, weights_to_train,
-      config_result_out.weight_partition_info, init_optimizer_states_, *cpu_execution_provider, compatible_eps));
+      horizontal_parallel_size,
+      config_result_out.weight_name_map_after_graph_transform,
+      weights_to_train,
+      config_result_out.weight_partition_info,
+      init_optimizer_states_,
+      *cpu_execution_provider,
+      compatible_eps));
 
   // Generate and register transformers for level
   for (auto& entry : transformers_to_register) {
@@ -861,8 +860,7 @@ Status TrainingSession::ConfigureLossFunction(
 
   try {
     ORT_RETURN_IF_ERROR(ConfigureLossFunctionInternal(
-        external_loss_name_, loss_graph_builder_.get(), loss_function_info_,
-        model_->MainGraph(), loss_scale_input_name, actual_loss_name));
+        external_loss_name_, loss_graph_builder_.get(), loss_function_info_, model_->MainGraph(), loss_scale_input_name, actual_loss_name));
   } catch (const OnnxRuntimeException& exp) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to add loss function:", exp.what());
   }
@@ -883,9 +881,7 @@ Status TrainingSession::EnableMixedPrecision(
 
   std::unordered_map<std::string, std::string> weight_to_mixed_precision_map{};
   std::transform(
-      weights_to_train.cbegin(), weights_to_train.cend(),
-      std::inserter(weight_to_mixed_precision_map, weight_to_mixed_precision_map.begin()),
-      [&fp32_weight_name_to_mixed_precision_node_arg](const std::string& name) {
+      weights_to_train.cbegin(), weights_to_train.cend(), std::inserter(weight_to_mixed_precision_map, weight_to_mixed_precision_map.begin()), [&fp32_weight_name_to_mixed_precision_node_arg](const std::string& name) {
         return fp32_weight_name_to_mixed_precision_node_arg.find(name) != fp32_weight_name_to_mixed_precision_node_arg.end() ? std::make_pair(name, fp32_weight_name_to_mixed_precision_node_arg[name]->Name()) : std::make_pair(name, name);
       });
   weight_to_mixed_precision_map_ = std::move(weight_to_mixed_precision_map);
@@ -915,8 +911,7 @@ Status TrainingSession::BuildAccumulationNode(const std::unordered_set<std::stri
   std::vector<std::string> gradient_names;
   gradient_names.reserve(weights_to_train.size());
   std::transform(
-      weights_to_train.begin(), weights_to_train.end(), std::back_inserter(gradient_names),
-      GradientBuilderBase::GradientName);
+      weights_to_train.begin(), weights_to_train.end(), std::back_inserter(gradient_names), GradientBuilderBase::GradientName);
   auto nodearg_name_generator = [](const std::string& base_name) {
     return base_name;
   };
@@ -935,7 +930,8 @@ Status TrainingSession::BuildOptimizer(
   for (const auto& weight_name : weights_to_train_) {
     ORT_RETURN_IF_NOT(
         opt_configs.find(weight_name) != opt_configs.end(),
-        "Optimizer configuration was not found for weight to train: ", weight_name);
+        "Optimizer configuration was not found for weight to train: ",
+        weight_name);
   }
 
   opt_graph_config_ = opt_graph_config;
@@ -1027,9 +1023,7 @@ Status TrainingSession::Save(const PathString& model_uri, TrainingSession::SaveO
   if (opt == TrainingSession::SaveOption::WITH_UPDATED_WEIGHTS_AND_LOSS_FUNC /* with weights and loss func*/ ||
       opt == TrainingSession::SaveOption::WITH_UPDATED_WEIGHTS_AND_LOSS_FUNC_AND_GRADIENTS /*with everything*/) {
     ORT_RETURN_IF_ERROR(ConfigureLossFunctionInternal(
-        external_loss_name_, loss_graph_builder_.get(), loss_function_info_,
-        new_model->MainGraph(),
-        loss_scale_input_name.has_value() ? &loss_scale_input_name.value() : nullptr, actual_loss_name));
+        external_loss_name_, loss_graph_builder_.get(), loss_function_info_, new_model->MainGraph(), loss_scale_input_name.has_value() ? &loss_scale_input_name.value() : nullptr, actual_loss_name));
   }
 
   if (opt == TrainingSession::SaveOption::WITH_UPDATED_WEIGHTS_AND_LOSS_FUNC_AND_GRADIENTS) {
@@ -1134,9 +1128,7 @@ common::Status TrainingSession::GetModelState(std::unordered_map<std::string, Na
   if (include_mixed_precision_weights) {
     std::unordered_set<std::string> mp_tensor_names{};
     std::unordered_set<std::string> mixed_precision_weight_initializer_names{};
-    std::transform(weight_to_mixed_precision_map_.begin(), weight_to_mixed_precision_map_.end(),
-                   std::inserter(mixed_precision_weight_initializer_names, mixed_precision_weight_initializer_names.begin()),
-                   [](auto pair) { return pair.second; });
+    std::transform(weight_to_mixed_precision_map_.begin(), weight_to_mixed_precision_map_.end(), std::inserter(mixed_precision_weight_initializer_names, mixed_precision_weight_initializer_names.begin()), [](auto pair) { return pair.second; });
     mp_tensor_names.insert(
         mixed_precision_weight_initializer_names.begin(), mixed_precision_weight_initializer_names.end());
     NameMLValMap mp_weights;
@@ -1156,9 +1148,7 @@ common::Status TrainingSession::GetModelState(std::unordered_map<std::string, Na
 common::Status TrainingSession::GetPartitionInfoMap(std::unordered_map<std::string, std::unordered_map<std::string, std::vector<int>>>& part_info_map) {
   for (const auto& weight : weight_partition_info_) {
     const auto& weight_name = weight.first;
-    std::transform(weight_partition_info_[weight_name].original_dim.begin(), weight_partition_info_[weight_name].original_dim.end(),
-                   std::inserter(part_info_map[weight_name]["original_dim"], part_info_map[weight_name]["original_dim"].end()),
-                   [](const int64_t& dim) { return (int)dim; });
+    std::transform(weight_partition_info_[weight_name].original_dim.begin(), weight_partition_info_[weight_name].original_dim.end(), std::inserter(part_info_map[weight_name]["original_dim"], part_info_map[weight_name]["original_dim"].end()), [](const int64_t& dim) { return (int)dim; });
     part_info_map[weight_name]["megatron_row_partition"] = std::vector<int>{weight_partition_info_[weight_name].megatron_row_partition};
   }
   return Status::OK();
@@ -1271,9 +1261,7 @@ Status TrainingSession::SetStateTensors(const NameMLValMap& state_tensors, bool 
   ORT_RETURN_IF_NOT(IsInitialized(), "Can't update initializers before session has been initialized.");
 
   std::unordered_set<std::string> ckpt_initializer_names;
-  std::transform(state_tensors.begin(), state_tensors.end(),
-                 std::inserter(ckpt_initializer_names, ckpt_initializer_names.end()),
-                 [](const auto& pair) { return pair.first; });
+  std::transform(state_tensors.begin(), state_tensors.end(), std::inserter(ckpt_initializer_names, ckpt_initializer_names.end()), [](const auto& pair) { return pair.first; });
 
   NameMLValMap initializers;
   ORT_RETURN_IF_ERROR(GetSessionState().GetInitializedTensors(ckpt_initializer_names, !strict, initializers));
@@ -1289,10 +1277,14 @@ Status TrainingSession::SetStateTensors(const NameMLValMap& state_tensors, bool 
     if (strict) {
       ORT_RETURN_IF_NOT(
           is_valid_state_tensor,
-          "Checkpoint tensor: ", state.first, " is not a known state tensor.");
+          "Checkpoint tensor: ",
+          state.first,
+          " is not a known state tensor.");
       ORT_RETURN_IF_NOT(
           is_tensor_present,
-          "Checkpoint tensor: ", state.first, " is not present in the model.");
+          "Checkpoint tensor: ",
+          state.first,
+          " is not present in the model.");
     }
 
     if (is_valid_state_tensor && is_tensor_present) {
@@ -1319,16 +1311,13 @@ std::unordered_set<std::string> TrainingSession::GetStateTensorNames() const {
   checkpointed_tensor_names.insert(
       opt_state_initializer_names_.begin(), opt_state_initializer_names_.end());
   std::unordered_set<std::string> mixed_precision_weight_initializer_names{};
-  std::transform(weight_to_mixed_precision_map_.begin(), weight_to_mixed_precision_map_.end(),
-                 std::inserter(mixed_precision_weight_initializer_names, mixed_precision_weight_initializer_names.begin()),
-                 [](auto pair) { return pair.second; });
+  std::transform(weight_to_mixed_precision_map_.begin(), weight_to_mixed_precision_map_.end(), std::inserter(mixed_precision_weight_initializer_names, mixed_precision_weight_initializer_names.begin()), [](auto pair) { return pair.second; });
   checkpointed_tensor_names.insert(
       mixed_precision_weight_initializer_names.begin(), mixed_precision_weight_initializer_names.end());
   return checkpointed_tensor_names;
 }
 
-bool TrainingSession::IsUntrainable(const Node* node, const std::string& initializer_name,
-                                    const logging::Logger* logger) {
+bool TrainingSession::IsUntrainable(const Node* node, const std::string& initializer_name, const logging::Logger* logger) {
   auto it = STOP_GRADIENT_EDGES.find(node->OpType());
   if (it != STOP_GRADIENT_EDGES.end()) {
     for (auto input_idx : it->second) {
@@ -1346,7 +1335,8 @@ bool TrainingSession::IsUntrainable(const Node* node, const std::string& initial
 }
 
 bool TrainingSession::IsImmutableWeight(const ImmutableWeights& immutable_weights,
-                                        const Node* node, const TensorProto* tensor,
+                                        const Node* node,
+                                        const TensorProto* tensor,
                                         const logging::Logger* logger) {
   auto it = immutable_weights.find(node->OpType());
   if (it == immutable_weights.end()) {
@@ -1555,8 +1545,7 @@ Status PipelineTrainingSession::PartitionGraphForPipeline(
 
     auto ranks = DistributedRunContext::GetRanks(WorkerGroupType::PipelineParallel);
     ORT_RETURN_IF_ERROR(
-        ApplyPipelinePartitionToMainGraph(model_->MainGraph(), op_to_stage,
-                                          pipeline_stage_id, n_stages, ranks));
+        ApplyPipelinePartitionToMainGraph(model_->MainGraph(), op_to_stage, pipeline_stage_id, n_stages, ranks));
 
     if (pipeline_config.value().partitioned_model_path.has_value()) {
       // Save the partitioned file out.
@@ -1746,7 +1735,10 @@ void PipelineTrainingSession::CreateMicroBatchVariables(
     for (size_t i = 0; i < values.size(); ++i) {
       const auto& name = names[i];
       ORT_ENFORCE(pipeline_context_.sliced_axes[name] >= 0,
-                  "Sliced axis of input \"", name, "\" must be non-negative but got ", pipeline_context_.sliced_axes[name]);
+                  "Sliced axis of input \"",
+                  name,
+                  "\" must be non-negative but got ",
+                  pipeline_context_.sliced_axes[name]);
       const size_t slice_axis = static_cast<size_t>(pipeline_context_.sliced_axes[name]);
       if (has_element(pipeline_context_.sliced_tensor_names, name)) {
         OrtValue sliced_value = SliceTensor(values[i], slice_id, slice_axis, num_slices, *this);

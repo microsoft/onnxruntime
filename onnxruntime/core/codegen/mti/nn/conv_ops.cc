@@ -26,8 +26,7 @@ static tvm::Tensor PadTensor1D(const tvm::Tensor& input,
   const bool do_pad = ((padding_w0 != nullptr && *padding_w0) ||
                        (padding_w1 != nullptr && *padding_w1));
 
-  return do_pad ? Pad(input, pad_before, pad_after,
-                      0, "constant", name + "_input_padded")
+  return do_pad ? Pad(input, pad_before, pad_after, 0, "constant", name + "_input_padded")
                 : input;
 }
 
@@ -99,8 +98,7 @@ static tvm::Tensor PadTensor2D(const tvm::Tensor& input,
                       ((padding_h1 != nullptr && *padding_h1) ||
                        (padding_w1 != nullptr && *padding_w1));
 
-  return do_pad ? Pad(input, pad_before, pad_after,
-                      0, "constant", name + "_input_padded")
+  return do_pad ? Pad(input, pad_before, pad_after, 0, "constant", name + "_input_padded")
                 : input;
 }
 

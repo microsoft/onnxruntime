@@ -61,9 +61,7 @@ class RuleBasedGraphTransformer : public GraphTransformer {
       @param[out] rule_effect Enum that indicates whether and how the graph was modified as a result of
       applying rules on this node.
       @returns Status indicating success or providing error information. */
-  common::Status ApplyRulesOnNode(Graph& graph, Node& node,
-                                  gsl::span<const std::reference_wrapper<const RewriteRule>> rules,
-                                  RewriteRule::RewriteRuleEffect& rule_effect, const logging::Logger& logger) const;
+  common::Status ApplyRulesOnNode(Graph& graph, Node& node, gsl::span<const std::reference_wrapper<const RewriteRule>> rules, RewriteRule::RewriteRuleEffect& rule_effect, const logging::Logger& logger) const;
 
  private:
   using RuleEffect = RewriteRule::RewriteRuleEffect;

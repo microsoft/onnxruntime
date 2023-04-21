@@ -143,28 +143,16 @@ Status LSTMBase::ComputeImpl(OpKernelContext& context,
         hidden_output.subspan(hidden_output_size_per_direction, hidden_output_size_per_direction);
     gsl::span<InputT> last_cell_2 = last_cell.subspan(last_cell_size_per_direction, last_cell_size_per_direction);
 
-    lstm::UniDirectionalLstm<InputT> fw(alloc, logger, seq_length, batch_size, input_size, hidden_size_,
-                                        Direction::kForward, input_forget_, bias_1, peephole_weights_1, initial_hidden_1,
-                                        initial_cell_1, activation_funcs_.Entries()[0], activation_funcs_.Entries()[1],
-                                        activation_funcs_.Entries()[2], clip_, thread_pool);
+    lstm::UniDirectionalLstm<InputT> fw(alloc, logger, seq_length, batch_size, input_size, hidden_size_, Direction::kForward, input_forget_, bias_1, peephole_weights_1, initial_hidden_1, initial_cell_1, activation_funcs_.Entries()[0], activation_funcs_.Entries()[1], activation_funcs_.Entries()[2], clip_, thread_pool);
 
-    lstm::UniDirectionalLstm<InputT> bw(alloc, logger, seq_length, batch_size, input_size, hidden_size_,
-                                        Direction::kReverse, input_forget_, bias_2, peephole_weights_2, initial_hidden_2,
-                                        initial_cell_2, activation_funcs_.Entries()[3], activation_funcs_.Entries()[4],
-                                        activation_funcs_.Entries()[5], clip_, thread_pool);
+    lstm::UniDirectionalLstm<InputT> bw(alloc, logger, seq_length, batch_size, input_size, hidden_size_, Direction::kReverse, input_forget_, bias_2, peephole_weights_2, initial_hidden_2, initial_cell_2, activation_funcs_.Entries()[3], activation_funcs_.Entries()[4], activation_funcs_.Entries()[5], clip_, thread_pool);
 
-    fw.Compute(input, sequence_lens_span, num_directions_, W_1, R_1, output_1,
-               hidden_output_1, last_cell_1);
-    bw.Compute(input, sequence_lens_span, num_directions_, W_2, R_2, output_2,
-               hidden_output_2, last_cell_2);
+    fw.Compute(input, sequence_lens_span, num_directions_, W_1, R_1, output_1, hidden_output_1, last_cell_1);
+    bw.Compute(input, sequence_lens_span, num_directions_, W_2, R_2, output_2, hidden_output_2, last_cell_2);
   } else {
-    lstm::UniDirectionalLstm<InputT> fw(alloc, logger, seq_length, batch_size, input_size, hidden_size_, direction_,
-                                        input_forget_, bias_1, peephole_weights_1, initial_hidden_1, initial_cell_1,
-                                        activation_funcs_.Entries()[0], activation_funcs_.Entries()[1],
-                                        activation_funcs_.Entries()[2], clip_, thread_pool);
+    lstm::UniDirectionalLstm<InputT> fw(alloc, logger, seq_length, batch_size, input_size, hidden_size_, direction_, input_forget_, bias_1, peephole_weights_1, initial_hidden_1, initial_cell_1, activation_funcs_.Entries()[0], activation_funcs_.Entries()[1], activation_funcs_.Entries()[2], clip_, thread_pool);
 
-    fw.Compute(input, sequence_lens_span, num_directions_, W_1, R_1, output_1,
-               hidden_output_1, last_cell_1);
+    fw.Compute(input, sequence_lens_span, num_directions_, W_1, R_1, output_1, hidden_output_1, last_cell_1);
   }
 
   if (!output.empty())
@@ -196,16 +184,14 @@ Status LSTMBase::ValidateInputs(const Tensor& X,
     if (B_shape.NumDimensions() != 2 ||
         B_shape[0] != num_directions_ ||
         B_shape[1] != 8 * hidden_size_)
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input B must have shape {",
-                             num_directions_, ",", 8, "*", hidden_size_, "}. Actual:", B_shape);
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input B must have shape {", num_directions_, ",", 8, "*", hidden_size_, "}. Actual:", B_shape);
   }
 
   if (sequence_lens != nullptr) {
     auto& sequence_lens_shape = sequence_lens->Shape();
     if (sequence_lens_shape.NumDimensions() != 1 ||
         sequence_lens_shape[0] != batch_size) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input sequence_lens must have shape {",
-                             batch_size, "}. Actual:", sequence_lens_shape);
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input sequence_lens must have shape {", batch_size, "}. Actual:", sequence_lens_shape);
     }
 
     auto sequence_len_entries = sequence_lens->DataAsSpan<int>();
@@ -213,8 +199,7 @@ Status LSTMBase::ValidateInputs(const Tensor& X,
                     sequence_len_entries.end(),
                     [seq_length](int len) { return len < 0 || len > seq_length; })) {
       return ORT_MAKE_STATUS(
-          ONNXRUNTIME, INVALID_ARGUMENT,
-          "Invalid value/s in sequence_lens. All values must be > 0 and < seq_length. seq_length=", seq_length);
+          ONNXRUNTIME, INVALID_ARGUMENT, "Invalid value/s in sequence_lens. All values must be > 0 and < seq_length. seq_length=", seq_length);
     }
   }
 
@@ -226,8 +211,7 @@ Status LSTMBase::ValidateInputs(const Tensor& X,
         initial_h_shape[1] != batch_size ||
         initial_h_shape[2] != hidden_size_)
 
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Input initial_h must have shape {",
-                             num_directions_, ",", batch_size, ",", hidden_size_, "}. Actual:", initial_h_shape);
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Input initial_h must have shape {", num_directions_, ",", batch_size, ",", hidden_size_, "}. Actual:", initial_h_shape);
   }
 
   if (initial_c != nullptr) {
@@ -236,8 +220,7 @@ Status LSTMBase::ValidateInputs(const Tensor& X,
     if (initial_c_shape.NumDimensions() != 3 || initial_c_shape[0] != num_directions_ ||
         initial_c_shape[1] != batch_size || initial_c_shape[2] != hidden_size_)
 
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Input initial_c must have shape {", num_directions_, ",", batch_size,
-                             ",", hidden_size_, "}. Actual:", initial_c_shape);
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Input initial_c must have shape {", num_directions_, ",", batch_size, ",", hidden_size_, "}. Actual:", initial_c_shape);
   }
 
   if (P != nullptr) {
@@ -245,8 +228,7 @@ Status LSTMBase::ValidateInputs(const Tensor& X,
 
     if (p_shape.NumDimensions() != 2 || p_shape[0] != num_directions_ || p_shape[1] != 3 * hidden_size_)
 
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Input P must have shape {", num_directions_, ",", 3 * hidden_size_,
-                             "}. Actual:", p_shape);
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Input P must have shape {", num_directions_, ",", 3 * hidden_size_, "}. Actual:", p_shape);
   }
 
   return Status::OK();

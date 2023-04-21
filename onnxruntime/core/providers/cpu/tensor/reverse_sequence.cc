@@ -29,8 +29,7 @@ namespace onnxruntime {
 
 namespace op_kernel_type_control {
 ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPE_LIST_ALL_OPSETS(
-    kCpuExecutionProvider, kOnnxDomain, ReverseSequence, Input, 0,
-    element_type_lists::All);
+    kCpuExecutionProvider, kOnnxDomain, ReverseSequence, Input, 0, element_type_lists::All);
 }
 
 using EnabledReverseSequenceDataTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(
@@ -46,8 +45,7 @@ ONNX_OPERATOR_KERNEL_EX(ReverseSequence,
                         ReverseSequenceOp);
 
 template <typename T>
-static Status ReverseSequenceImpl(const Tensor& X, Tensor& Y, gsl::span<const int64_t> sequence_lengths,
-                                  int64_t max_seq_len, int64_t batch_size, int64_t input_size, bool time_major);
+static Status ReverseSequenceImpl(const Tensor& X, Tensor& Y, gsl::span<const int64_t> sequence_lengths, int64_t max_seq_len, int64_t batch_size, int64_t input_size, bool time_major);
 
 Status ReverseSequenceOp::Compute(OpKernelContext* context) const {
   Status status = Status::OK();
@@ -64,14 +62,12 @@ Status ReverseSequenceOp::Compute(OpKernelContext* context) const {
   const auto& seq_len_shape = seq_lengths.Shape();
 
   if (seq_len_shape.NumDimensions() != 1 || seq_len_shape[0] != batch_size) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "sequence_lens shape must be {batch_size}. Got:",
-                           seq_len_shape, ". batch_size=", batch_size);
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "sequence_lens shape must be {batch_size}. Got:", seq_len_shape, ". batch_size=", batch_size);
   }
 
   auto& Y = *context->Output(0, dims);
 
-  DispatchOnTensorTypeWithReturn(data_type, status, ReverseSequenceImpl, X, Y, seq_lengths.DataAsSpan<int64_t>(),
-                                 max_seq_len, batch_size, input_size, time_major_);
+  DispatchOnTensorTypeWithReturn(data_type, status, ReverseSequenceImpl, X, Y, seq_lengths.DataAsSpan<int64_t>(), max_seq_len, batch_size, input_size, time_major_);
 
   return status;
 }
@@ -141,8 +137,7 @@ static Status ReverseSequenceImpl(const Tensor& X,
     }
 
     if (seq_len > max_seq_len || seq_len < 0) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Invalid sequence length: ", seq_len,
-                             ". Value must be in range [0,", max_seq_len, "]");
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Invalid sequence length: ", seq_len, ". Value must be in range [0,", max_seq_len, "]");
     }
 
     for (int64_t j = 0; j < seq_len; j++) {

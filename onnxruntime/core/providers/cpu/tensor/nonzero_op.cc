@@ -13,7 +13,8 @@ namespace onnxruntime {
 #define NONZERO_9_TYPED_KERNEL(type)                                               \
   ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(                                        \
       NonZero,                                                                     \
-      9, 12,                                                                       \
+      9,                                                                           \
+      12,                                                                          \
       type,                                                                        \
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<type>()), \
       NonZero<type>)
@@ -91,7 +92,8 @@ Status NonZero<T>::Compute(OpKernelContext* context) const {
       const T& value = *data++;
       if (value != T{}) {
         non_zero_indices_buffer.insert(non_zero_indices_buffer.end(),
-                                       coordinate.begin(), coordinate.end());
+                                       coordinate.begin(),
+                                       coordinate.end());
       }
 
       increment_coordinate();
@@ -103,14 +105,16 @@ Status NonZero<T>::Compute(OpKernelContext* context) const {
   // transpose result for output
   ConstEigenMatrixMapRowMajor<int64_t> non_zero_indices_matrix{
       non_zero_indices_buffer.data(),
-      num_non_zero_values, coordinate_size};
+      num_non_zero_values,
+      coordinate_size};
 
   Tensor* const Y = context->Output(0, {coordinate_size, num_non_zero_values});
   ORT_ENFORCE(Y, "failed to get first output!");
 
   EigenMatrixMapRowMajor<int64_t> y_matrix{
       Y->MutableData<int64_t>(),
-      coordinate_size, num_non_zero_values};
+      coordinate_size,
+      num_non_zero_values};
   y_matrix = non_zero_indices_matrix.transpose();
 
   return Status::OK();

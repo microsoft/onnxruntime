@@ -133,8 +133,7 @@ static void TransposeBatch(const std::vector<T>& src, std::vector<T>& dst, size_
 }
 
 template <typename T>
-static void TransposeInput(const std::vector<T>& src, std::vector<T>& dst, const std::vector<int64_t>& dims,
-                           std::vector<int64_t>& new_dims, bool is_trans, bool is_trans_batch) {
+static void TransposeInput(const std::vector<T>& src, std::vector<T>& dst, const std::vector<int64_t>& dims, std::vector<int64_t>& new_dims, bool is_trans, bool is_trans_batch) {
   if (dims.size() < 2 || (!is_trans && !is_trans_batch)) return;
   ORT_ENFORCE(!is_trans_batch || dims.size() >= 3);
   size_t batch = 1;
@@ -163,8 +162,7 @@ static void TransposeInput(const std::vector<T>& src, std::vector<T>& dst, const
 }
 
 template <typename T>
-void ProcessInputs(const std::vector<int64_t>& input_dims, const std::vector<T>& common_input_vals, bool is_trans,
-                   bool is_trans_batch, std::vector<int64_t>& modified_input_dims, std::vector<T>& input_vals) {
+void ProcessInputs(const std::vector<int64_t>& input_dims, const std::vector<T>& common_input_vals, bool is_trans, bool is_trans_batch, std::vector<int64_t>& modified_input_dims, std::vector<T>& input_vals) {
   auto rank = input_dims.size();
   ORT_ENFORCE(rank >= 1);
   int64_t size0 = TensorShape::FromExistingBuffer(input_dims).SizeHelper(0, rank);
@@ -174,9 +172,7 @@ void ProcessInputs(const std::vector<int64_t>& input_dims, const std::vector<T>&
 }
 
 template <typename T>
-void RunFusedMatMulTest(const char* op_name, int32_t opset_version = 7, bool transa = false, bool transb = false,
-                        bool is_trans_batch_a = false, bool is_trans_batch_b = false, float alpha = 1.0f,
-                        bool is_b_constant = false) {
+void RunFusedMatMulTest(const char* op_name, int32_t opset_version = 7, bool transa = false, bool transb = false, bool is_trans_batch_a = false, bool is_trans_batch_b = false, float alpha = 1.0f, bool is_b_constant = false) {
   std::vector<T> common_input_vals{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15};
   for (auto t : GenerateSimpleTestCases<T>()) {
     // is_trans_batch requires dim_size >= 3 and same dim size in both sides.
@@ -206,8 +202,7 @@ void RunFusedMatMulTest(const char* op_name, int32_t opset_version = 7, bool tra
     test.AddAttribute("alpha", alpha);
 
     if (alpha != 1.0f) {
-      std::transform(t.expected_vals.begin(), t.expected_vals.end(), t.expected_vals.begin(),
-                     [alpha](const T& val) -> T { return alpha * val; });
+      std::transform(t.expected_vals.begin(), t.expected_vals.end(), t.expected_vals.begin(), [alpha](const T& val) -> T { return alpha * val; });
     }
 
     test.AddOutput<T>("Y", t.expected_dims, t.expected_vals);

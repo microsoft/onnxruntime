@@ -29,15 +29,13 @@ class IOpBuilder {
   virtual void AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const = 0;
 
   // Add the operator to CoreML model
-  [[nodiscard]] virtual Status AddToModelBuilder(ModelBuilder& model_builder, const Node& node,
-                                                 const logging::Logger& logger) const = 0;
+  [[nodiscard]] virtual Status AddToModelBuilder(ModelBuilder& model_builder, const Node& node, const logging::Logger& logger) const = 0;
 #endif
 
   // Operator support related
  public:
   // Check if an operator is supported
-  virtual bool IsOpSupported(const Node& node, const OpBuilderInputParams& input_params,
-                             const logging::Logger& logger) const = 0;
+  virtual bool IsOpSupported(const Node& node, const OpBuilderInputParams& input_params, const logging::Logger& logger) const = 0;
 };
 
 }  // namespace coreml

@@ -59,8 +59,7 @@ class CheckpointState : public detail::Base<OrtCheckpointState> {
    * Wraps OrtTrainingApi::SaveCheckpoint
    *
    */
-  static void SaveCheckpoint(const TrainingSession& session, const std::basic_string<ORTCHAR_T>& path_to_checkpoint,
-                             bool include_optimizer_states);
+  static void SaveCheckpoint(const TrainingSession& session, const std::basic_string<ORTCHAR_T>& path_to_checkpoint, bool include_optimizer_states);
 };
 
 /** \brief Manage the training loop using this class
@@ -73,10 +72,7 @@ class TrainingSession : public detail::Base<OrtTrainingSession> {
   size_t training_model_output_count_, eval_model_output_count_;
 
  public:
-  TrainingSession(const SessionOptions& session_options, CheckpointState& checkpoint_state,
-                  const std::basic_string<ORTCHAR_T>& train_model_path,
-                  const std::optional<std::basic_string<ORTCHAR_T>>& eval_model_path = std::nullopt,
-                  const std::optional<std::basic_string<ORTCHAR_T>>& optimizer_model_path = std::nullopt);
+  TrainingSession(const SessionOptions& session_options, CheckpointState& checkpoint_state, const std::basic_string<ORTCHAR_T>& train_model_path, const std::optional<std::basic_string<ORTCHAR_T>>& eval_model_path = std::nullopt, const std::optional<std::basic_string<ORTCHAR_T>>& optimizer_model_path = std::nullopt);
 
   /** \brief Run the train step returning results in an Ort allocated vector.
    *
@@ -127,8 +123,7 @@ class TrainingSession : public detail::Base<OrtTrainingSession> {
    * \param[in] total_step_count Total number of training steps.
    * \param[in] initial_lr Initial learning rate to use.
    */
-  void RegisterLinearLRScheduler(int64_t warmup_step_count, int64_t total_step_count,
-                                 float initial_lr);
+  void RegisterLinearLRScheduler(int64_t warmup_step_count, int64_t total_step_count, float initial_lr);
 
   /** \brief Updates the learning rate based on the lr scheduler.
    *

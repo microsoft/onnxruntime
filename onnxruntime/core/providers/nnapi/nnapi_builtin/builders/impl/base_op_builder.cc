@@ -52,7 +52,8 @@ Status BaseOpBuilder::AddToModelBuilder(ModelBuilder& model_builder, const NodeU
       model_builder.UseNCHW(),
   };
   ORT_RETURN_IF_NOT(IsOpSupported(model_builder.GetInitializerTensors(), node_unit, params),
-                    "Unsupported operator ", node_unit.OpType());
+                    "Unsupported operator ",
+                    node_unit.OpType());
 #ifndef NDEBUG
   model_builder.SetDebugCurrentOnnxNodeIndex(node_unit.Index());
 #endif
@@ -64,8 +65,7 @@ Status BaseOpBuilder::AddToModelBuilder(ModelBuilder& model_builder, const NodeU
 
 // Operator support related
 
-bool BaseOpBuilder::IsOpSupported(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
-                                  const OpSupportCheckParams& params) const {
+bool BaseOpBuilder::IsOpSupported(const InitializedTensorSet& initializers, const NodeUnit& node_unit, const OpSupportCheckParams& params) const {
   int32_t required_feature_level = GetMinSupportedNNAPIFeatureLevel(node_unit, params);
   if (required_feature_level > params.android_feature_level) {
     LOGS_DEFAULT(VERBOSE) << "Current Android API level [" << params.android_feature_level
@@ -90,8 +90,7 @@ bool BaseOpBuilder::IsOpSupported(const InitializedTensorSet& initializers, cons
   return IsOpSupportedImpl(initializers, node_unit, params);
 }
 
-bool BaseOpBuilder::HasSupportedInputOutputs(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
-                                             const OpSupportCheckParams& params) const {
+bool BaseOpBuilder::HasSupportedInputOutputs(const InitializedTensorSet& initializers, const NodeUnit& node_unit, const OpSupportCheckParams& params) const {
   // We do not support unknown(null) input shape
   auto has_supported_shape = [](const NodeArg& node_arg, const std::string& name, const std::string& op_type) {
     const auto* shape_proto = node_arg.Shape();
@@ -129,8 +128,7 @@ bool BaseOpBuilder::HasSupportedInputOutputs(const InitializedTensorSet& initial
 }
 
 bool BaseOpBuilder::HasSupportedInputOutputsImpl(
-    const InitializedTensorSet& /* initializers */, const NodeUnit& node_unit,
-    const OpSupportCheckParams& /* params */) const {
+    const InitializedTensorSet& /* initializers */, const NodeUnit& node_unit, const OpSupportCheckParams& /* params */) const {
   // We only check the type of input 0 by default
   // specific op builder can override this
   const auto& input = node_unit.Inputs()[0].node_arg;

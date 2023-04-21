@@ -26,7 +26,8 @@ struct PropertyBag {
 
   void AddProperty(const std::string& name, const PropertyDataType& val) {
     ORT_ENFORCE(named_properties_.find(name) == named_properties_.end(),
-                "Duplicated property named ", name);
+                "Duplicated property named ",
+                name);
 
     named_properties_.insert({name, val});
   }

@@ -37,11 +37,9 @@ class Softmax final : public OpKernel {
   Status Compute(OpKernelContext* ctx) const override;
 
  private:
-  Status ComputeImpl(const Tensor& input, Tensor& output, size_t axis,
-                     concurrency::ThreadPool* thread_pool) const;
+  Status ComputeImpl(const Tensor& input, Tensor& output, size_t axis, concurrency::ThreadPool* thread_pool) const;
 
-  Status ComputeImplOpset13(const Tensor& input, Tensor& output, size_t axis,
-                            concurrency::ThreadPool* thread_pool, OpKernelContext* ctx) const;
+  Status ComputeImplOpset13(const Tensor& input, Tensor& output, size_t axis, concurrency::ThreadPool* thread_pool, OpKernelContext* ctx) const;
 
   int axis_;
   int opset_;

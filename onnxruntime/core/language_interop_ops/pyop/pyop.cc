@@ -118,9 +118,7 @@ PyObject* MakePyObj(const void* data, int32_t type, const std::vector<int64_t>& 
     np_dim.push_back(static_cast<npy_intp>(d));
   }
   auto pyObj = static_cast<PyObject*>(PyArray_EMPTY(static_cast<int>(np_dim.size()), np_dim.data(), type, 0));
-  auto data_len = std::accumulate(begin(np_dim), end(np_dim),
-                                  static_cast<int64_t>(PyArray_DescrFromType(type)->elsize),
-                                  std::multiplies<int64_t>());
+  auto data_len = std::accumulate(begin(np_dim), end(np_dim), static_cast<int64_t>(PyArray_DescrFromType(type)->elsize), std::multiplies<int64_t>());
   auto np_array = reinterpret_cast<PyArrayObject*>(pyObj);
   memcpy(PyArray_DATA(np_array), data, data_len);
   return pyObj;
@@ -152,8 +150,7 @@ bool ExtractOutput(PyObject* pyObj,
   return true;
 }
 
-void* PyOpLibProxy::NewInstance(const char* module, const char* class_name,
-                                const std::unordered_map<std::string, std::string>& args) {
+void* PyOpLibProxy::NewInstance(const char* module, const char* class_name, const std::unordered_map<std::string, std::string>& args) {
   Scope scope;
   auto pyModule = PyImport_ImportModule(module);
   if (nullptr == pyModule) {
@@ -286,9 +283,7 @@ void PyCustomKernel::Compute(OrtKernelContext* context) {
 
   std::string err;
   auto state = PyOpLibProxy::GetInstance().GetGil();
-  ORT_ENFORCE(PyOpLibProxy::GetInstance().InvokePythonFunc(instance_, compute_.c_str(), inputs, inputs_type,
-                                                           inputs_dim, outputs, outputs_elem_size,
-                                                           outputs_dim, logging_func_),
+  ORT_ENFORCE(PyOpLibProxy::GetInstance().InvokePythonFunc(instance_, compute_.c_str(), inputs, inputs_type, inputs_dim, outputs, outputs_elem_size, outputs_dim, logging_func_),
               PyOpLibProxy::GetInstance().GetLastErrorMessage(err));  // ORT_ENFORCE
   PyOpLibProxy::GetInstance().PutGil(state);
 

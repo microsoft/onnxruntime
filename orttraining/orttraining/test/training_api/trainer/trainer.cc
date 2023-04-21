@@ -233,11 +233,7 @@ int RunTraining(const TestRunnerParameters& params) {
 #endif
 
   bool do_eval = params.model_evaluation_graph_path.has_value();
-  Ort::TrainingSession session(soptions, checkpoint_state, params.model_training_graph_path,
-                               params.model_evaluation_graph_path,
-                               params.optimizer_training_graph_path.size() > 0
-                                   ? std::optional<PathString>(params.optimizer_training_graph_path)
-                                   : std::nullopt);
+  Ort::TrainingSession session(soptions, checkpoint_state, params.model_training_graph_path, params.model_evaluation_graph_path, params.optimizer_training_graph_path.size() > 0 ? std::optional<PathString>(params.optimizer_training_graph_path) : std::nullopt);
 
   int64_t sample_batch_count_per_epoch = params.train_batch_size;
   if (sample_batch_count_per_epoch < params.train_batch_size ||

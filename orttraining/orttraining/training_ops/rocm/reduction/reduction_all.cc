@@ -35,8 +35,12 @@ Status ReduceAllL2<TIn, TOut>::ComputeInternal(OpKernelContext* ctx) const {
   for (int i = 0; i < total_tensor_count; ++i) {
     const Tensor* input = ctx->Input<Tensor>(i);
     const auto size = input->Shape().Size();
-    ORT_ENFORCE(size <= std::numeric_limits<int>::max(), "Number of reduced elements (",
-                size, ") exceeds the max allowed value (", std::numeric_limits<int>::max(), ").");
+    ORT_ENFORCE(size <= std::numeric_limits<int>::max(),
+                "Number of reduced elements (",
+                size,
+                ") exceeds the max allowed value (",
+                std::numeric_limits<int>::max(),
+                ").");
     grouped_tensor_pointers[i] = {const_cast<TIn*>(input->Data<TIn>())};
     tensor_sizes[i] = static_cast<int>(size);
   }
@@ -56,7 +60,11 @@ Status ReduceAllL2<TIn, TOut>::ComputeInternal(OpKernelContext* ctx) const {
     // Check if all values are finite and write true to deviceOutput.
     // Otherwise, false will be written.
     launch_multi_tensor_functor<1, TFunctor>(Stream(ctx),
-                                             2048 * 32, tensor_sizes, grouped_tensor_pointers, functor, p_output);
+                                             2048 * 32,
+                                             tensor_sizes,
+                                             grouped_tensor_pointers,
+                                             functor,
+                                             p_output);
 
     // *p_output is the squared sum of all elements.
     // Let's take a sqrt to get the actual L2-norm.

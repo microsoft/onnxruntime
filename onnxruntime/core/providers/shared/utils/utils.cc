@@ -25,8 +25,7 @@ bool GetType(const NodeArg& node_arg, int32_t& type, const logging::Logger& logg
   return true;
 }
 
-bool GetClipMinMax(const InitializedTensorSet& initializers, const Node& node,
-                   float& min, float& max, const logging::Logger& logger) {
+bool GetClipMinMax(const InitializedTensorSet& initializers, const Node& node, float& min, float& max, const logging::Logger& logger) {
   const auto& node_name = node.Name();
   int32_t input_type;
   if (!GetType(*node.InputDefs()[0], input_type, logger))
@@ -111,8 +110,7 @@ std::vector<int32_t> NodeAttrHelper::Get(const std::string& key, const std::vect
   const auto& attr(node_attributes_.at(key));
   std::vector<int32_t> v;
   v.reserve(static_cast<size_t>(attr.ints_size()));
-  std::transform(attr.ints().cbegin(), attr.ints().cend(), std::back_inserter(v),
-                 [](int64_t val) -> int32_t { return SafeInt<int32_t>(val); });
+  std::transform(attr.ints().cbegin(), attr.ints().cend(), std::back_inserter(v), [](int64_t val) -> int32_t { return SafeInt<int32_t>(val); });
   return v;
 }
 

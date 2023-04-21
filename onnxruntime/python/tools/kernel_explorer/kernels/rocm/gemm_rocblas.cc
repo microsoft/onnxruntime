@@ -24,13 +24,7 @@ namespace onnxruntime {
 template <typename T>
 class RocBlasGemm : public IKernelExplorer {
  public:
-  RocBlasGemm(BlasOp opa, BlasOp opb,
-              int64_t m, int64_t n, int64_t k,
-              double alpha,
-              DeviceArray& a, int64_t lda,
-              DeviceArray& b, int64_t ldb,
-              double beta,
-              DeviceArray& c, int64_t ldc) {
+  RocBlasGemm(BlasOp opa, BlasOp opb, int64_t m, int64_t n, int64_t k, double alpha, DeviceArray& a, int64_t lda, DeviceArray& b, int64_t ldb, double beta, DeviceArray& c, int64_t ldc) {
     ROCBLAS_CALL_THROW(rocblas_create_handle(&rocblas_handle_));
     params_.tuning_ctx = TuningContext();
     params_.stream = Stream();
@@ -80,14 +74,7 @@ class RocBlasGemm : public IKernelExplorer {
 template <typename T>
 class RocBlasBatchedGemm : public IBatchedGemmKernelExplorer<T> {
  public:
-  RocBlasBatchedGemm(BlasOp opa, BlasOp opb,
-                     int64_t m, int64_t n, int64_t k,
-                     double alpha,
-                     std::vector<DeviceArray>& as, int64_t lda,
-                     std::vector<DeviceArray>& bs, int64_t ldb,
-                     double beta,
-                     std::vector<DeviceArray>& cs, int64_t ldc,
-                     int64_t batch) {
+  RocBlasBatchedGemm(BlasOp opa, BlasOp opb, int64_t m, int64_t n, int64_t k, double alpha, std::vector<DeviceArray>& as, int64_t lda, std::vector<DeviceArray>& bs, int64_t ldb, double beta, std::vector<DeviceArray>& cs, int64_t ldc, int64_t batch) {
     this->CopyAsBsCsPointersToDevice(as, bs, cs, batch);
     ROCBLAS_CALL_THROW(rocblas_create_handle(&rocblas_handle_));
     params_.tuning_ctx = this->TuningContext();
@@ -139,14 +126,7 @@ class RocBlasBatchedGemm : public IBatchedGemmKernelExplorer<T> {
 template <typename T>
 class RocBlasStridedBatchedGemm : public IKernelExplorer {
  public:
-  RocBlasStridedBatchedGemm(BlasOp opa, BlasOp opb,
-                            int64_t m, int64_t n, int64_t k,
-                            double alpha,
-                            DeviceArray& a, int64_t lda, int64_t stride_a,
-                            DeviceArray& b, int64_t ldb, int64_t stride_b,
-                            double beta,
-                            DeviceArray& c, int64_t ldc, int64_t stride_c,
-                            int64_t batch) {
+  RocBlasStridedBatchedGemm(BlasOp opa, BlasOp opb, int64_t m, int64_t n, int64_t k, double alpha, DeviceArray& a, int64_t lda, int64_t stride_a, DeviceArray& b, int64_t ldb, int64_t stride_b, double beta, DeviceArray& c, int64_t ldc, int64_t stride_c, int64_t batch) {
     ROCBLAS_CALL_THROW(rocblas_create_handle(&rocblas_handle_));
     params_.tuning_ctx = TuningContext();
     params_.stream = Stream();
@@ -205,34 +185,17 @@ class RocBlasStridedBatchedGemm : public IKernelExplorer {
       .def("ListOps", &type<dtype>::ListOps)       \
       .def("SelectOp", &type<dtype>::SelectOp)
 
-#define REGISTER_GEMM(dtype)                                   \
-  REGISTER_OP_COMMON(RocBlasGemm, dtype)                       \
-      .def(py::init<BlasOp, BlasOp, int64_t, int64_t, int64_t, \
-                    double,                                    \
-                    DeviceArray&, int64_t,                     \
-                    DeviceArray&, int64_t,                     \
-                    double,                                    \
-                    DeviceArray&, int64_t>())
+#define REGISTER_GEMM(dtype)             \
+  REGISTER_OP_COMMON(RocBlasGemm, dtype) \
+      .def(py::init<BlasOp, BlasOp, int64_t, int64_t, int64_t, double, DeviceArray&, int64_t, DeviceArray&, int64_t, double, DeviceArray&, int64_t>())
 
-#define REGISTER_BATCHED_GEMM(dtype)                           \
-  REGISTER_OP_COMMON(RocBlasBatchedGemm, dtype)                \
-      .def(py::init<BlasOp, BlasOp, int64_t, int64_t, int64_t, \
-                    double,                                    \
-                    std::vector<DeviceArray>&, int64_t,        \
-                    std::vector<DeviceArray>&, int64_t,        \
-                    double,                                    \
-                    std::vector<DeviceArray>&, int64_t,        \
-                    int64_t>())
+#define REGISTER_BATCHED_GEMM(dtype)            \
+  REGISTER_OP_COMMON(RocBlasBatchedGemm, dtype) \
+      .def(py::init<BlasOp, BlasOp, int64_t, int64_t, int64_t, double, std::vector<DeviceArray>&, int64_t, std::vector<DeviceArray>&, int64_t, double, std::vector<DeviceArray>&, int64_t, int64_t>())
 
-#define REGISTER_STRIDED_BATCHED_GEMM(dtype)                   \
-  REGISTER_OP_COMMON(RocBlasStridedBatchedGemm, dtype)         \
-      .def(py::init<BlasOp, BlasOp, int64_t, int64_t, int64_t, \
-                    double,                                    \
-                    DeviceArray&, int64_t, int64_t,            \
-                    DeviceArray&, int64_t, int64_t,            \
-                    double,                                    \
-                    DeviceArray&, int64_t, int64_t,            \
-                    int64_t>())
+#define REGISTER_STRIDED_BATCHED_GEMM(dtype)           \
+  REGISTER_OP_COMMON(RocBlasStridedBatchedGemm, dtype) \
+      .def(py::init<BlasOp, BlasOp, int64_t, int64_t, int64_t, double, DeviceArray&, int64_t, int64_t, DeviceArray&, int64_t, int64_t, double, DeviceArray&, int64_t, int64_t, int64_t>())
 
 KE_REGISTER(mod) {
   REGISTER_GEMM(float);

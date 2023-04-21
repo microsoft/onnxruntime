@@ -34,8 +34,7 @@ class MatMulScaleFusion : public GraphTransformer {
 
  private:
   Status ApplyImpl(
-      Graph& graph, bool& modified,
-      int graph_level, const logging::Logger& logger) const override;
+      Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const override;
 
   const InlinedHashSet<std::string> excluded_initializer_names_;
 };

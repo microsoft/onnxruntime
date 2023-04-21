@@ -26,14 +26,12 @@ class GemmOpBuilder : public BaseOpBuilder {
   void AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const override;
 
  private:
-  [[nodiscard]] Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
-                                             const logging::Logger& logger) const override;
+  [[nodiscard]] Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node, const logging::Logger& logger) const override;
 #endif
 
   // Operator support related
  private:
-  bool IsOpSupportedImpl(const Node& /* node */, const OpBuilderInputParams& /* input_params */,
-                         const logging::Logger& /* logger */) const override;
+  bool IsOpSupportedImpl(const Node& /* node */, const OpBuilderInputParams& /* input_params */, const logging::Logger& /* logger */) const override;
 };
 
 // Add operator related
@@ -69,8 +67,7 @@ static Status GetTensorFloatDataTransposed(const ONNX_NAMESPACE::TensorProto& te
   return Status::OK();
 }
 
-Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
-                                            const logging::Logger& /* logger */) const {
+Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node, const logging::Logger& /* logger */) const {
   std::unique_ptr<COREML_SPEC::NeuralNetworkLayer> layer = CreateNNLayer(model_builder, node);
 
   const auto& op_type = node.OpType();
@@ -124,8 +121,7 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
 
 // Operator support related
 
-bool GemmOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params,
-                                      const logging::Logger& logger) const {
+bool GemmOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params, const logging::Logger& logger) const {
   const auto& op_type = node.OpType();
   const auto& input_defs(node.InputDefs());
   size_t a_idx = 0, b_idx = 1, c_idx = 2;  // A*B+C

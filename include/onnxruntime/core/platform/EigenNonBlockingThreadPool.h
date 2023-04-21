@@ -311,7 +311,8 @@ class ExtendedThreadPoolInterface : public Eigen::ThreadPoolInterface {
   // [0,k) where k<=n.
   virtual void RunInParallelSection(ThreadPoolParallelSection& ps,
                                     std::function<void(unsigned idx)> fn,
-                                    unsigned n, std::ptrdiff_t block_size) = 0;
+                                    unsigned n,
+                                    std::ptrdiff_t block_size) = 0;
 
   // Special case alternative to RunInParallelSection for use without
   // an existing parallel section.  Ideally we would use a single
@@ -328,7 +329,8 @@ class ExtendedThreadPoolInterface : public Eigen::ThreadPoolInterface {
   // [ Note that this 20% overhead is more than paid for when we have
   // two loops execute in series in a parallel section. ]
   virtual void RunInParallel(std::function<void(unsigned idx)> fn,
-                             unsigned n, std::ptrdiff_t block_size) = 0;
+                             unsigned n,
+                             std::ptrdiff_t block_size) = 0;
   virtual void StartProfiling() = 0;
   virtual std::string StopProfiling() = 0;
 };
@@ -739,8 +741,7 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
   typedef std::function<void()> Task;
   typedef RunQueue<Task, Tag, 1024> Queue;
 
-  ThreadPoolTempl(const CHAR_TYPE* name, int num_threads, bool allow_spinning, Environment& env,
-                  const ThreadOptions& thread_options)
+  ThreadPoolTempl(const CHAR_TYPE* name, int num_threads, bool allow_spinning, Environment& env, const ThreadOptions& thread_options)
       : profiler_(num_threads, name),
         env_(env),
         num_threads_(num_threads),
@@ -1079,7 +1080,8 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
         worker_fn(par_idx);
         ps.tasks_finished++;
       },
-                                           pt.tag, w_idx);
+                                           pt.tag,
+                                           w_idx);
 
       // Queue accepted the task; wake the thread that owns the queue.
       // In addition, if the queue was non-empty, attempt to wake

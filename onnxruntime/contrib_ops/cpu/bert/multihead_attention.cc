@@ -125,18 +125,15 @@ Status AddBiasTranspose(const Tensor* qkv,                   // Input: Q/K/V dat
                                    static_cast<double>(output_tensor.DataType()->Size()) * span_size,
                                    unit_cost * span_size};
     auto tp = context->GetOperatorThreadPool();
-    ThreadPool::TryParallelFor(tp, loop_len, cost,
-                               [span_size, &const_input_broadcaster, &output_tensor, &add_funcs, user_data](std::ptrdiff_t first_span,
-                                                                                                            std::ptrdiff_t last_span) {
-                                 InputBroadcaster segment_input_broadcaster(const_input_broadcaster);
-                                 segment_input_broadcaster.AdvanceBy(first_span * span_size);
+    ThreadPool::TryParallelFor(tp, loop_len, cost, [span_size, &const_input_broadcaster, &output_tensor, &add_funcs, user_data](std::ptrdiff_t first_span, std::ptrdiff_t last_span) {
+      InputBroadcaster segment_input_broadcaster(const_input_broadcaster);
+      segment_input_broadcaster.AdvanceBy(first_span * span_size);
 
-                                 OutputBroadcaster segment_output_broadcaster(span_size, output_tensor,
-                                                                              first_span * span_size, last_span * span_size);
+      OutputBroadcaster segment_output_broadcaster(span_size, output_tensor, first_span * span_size, last_span * span_size);
 
-                                 BroadcastHelper segment_helper(segment_input_broadcaster, segment_output_broadcaster, user_data);
-                                 BroadcastLooper(segment_helper, add_funcs);
-                               });
+      BroadcastHelper segment_helper(segment_input_broadcaster, segment_output_broadcaster, user_data);
+      BroadcastLooper(segment_helper, add_funcs);
+    });
   }
 
   // Reshape Q from BxSxD to BxSxNxH
@@ -202,18 +199,15 @@ Status AddBiasReshape(const Tensor* qkv,        // Input: Q/K/V data - query is 
                                    static_cast<double>(output_tensor.DataType()->Size()) * span_size,
                                    unit_cost * span_size};
     auto tp = context->GetOperatorThreadPool();
-    ThreadPool::TryParallelFor(tp, loop_len, cost,
-                               [span_size, &const_input_broadcaster, &output_tensor, &add_funcs, user_data](std::ptrdiff_t first_span,
-                                                                                                            std::ptrdiff_t last_span) {
-                                 InputBroadcaster segment_input_broadcaster(const_input_broadcaster);
-                                 segment_input_broadcaster.AdvanceBy(first_span * span_size);
+    ThreadPool::TryParallelFor(tp, loop_len, cost, [span_size, &const_input_broadcaster, &output_tensor, &add_funcs, user_data](std::ptrdiff_t first_span, std::ptrdiff_t last_span) {
+      InputBroadcaster segment_input_broadcaster(const_input_broadcaster);
+      segment_input_broadcaster.AdvanceBy(first_span * span_size);
 
-                                 OutputBroadcaster segment_output_broadcaster(span_size, output_tensor,
-                                                                              first_span * span_size, last_span * span_size);
+      OutputBroadcaster segment_output_broadcaster(span_size, output_tensor, first_span * span_size, last_span * span_size);
 
-                                 BroadcastHelper segment_helper(segment_input_broadcaster, segment_output_broadcaster, user_data);
-                                 BroadcastLooper(segment_helper, add_funcs);
-                               });
+      BroadcastHelper segment_helper(segment_input_broadcaster, segment_output_broadcaster, user_data);
+      BroadcastLooper(segment_helper, add_funcs);
+    });
   }
 
   // Reshape Q from BxSxD to BxNxSxH
@@ -300,10 +294,21 @@ Status MultiHeadAttention<T>::Compute(OpKernelContext* context) const {
     return ApplyAttention(query->Data<T>(),
                           (key != nullptr) ? key->Data<T>() : past_key->Data<T>(),
                           (value != nullptr) ? value->Data<T>() : past_value->Data<T>(),
-                          key_padding_mask, nullptr /* past */, nullptr /* past_k */, nullptr /* past_v */,
-                          output, present_k, present_v,
-                          batch_size, q_sequence_length, kv_sequence_length,
-                          qk_head_size, v_head_size, v_hidden_size, extra_add_qk, context);
+                          key_padding_mask,
+                          nullptr /* past */,
+                          nullptr /* past_k */,
+                          nullptr /* past_v */,
+                          output,
+                          present_k,
+                          present_v,
+                          batch_size,
+                          q_sequence_length,
+                          kv_sequence_length,
+                          qk_head_size,
+                          v_head_size,
+                          v_hidden_size,
+                          extra_add_qk,
+                          context);
   }
 
   // For each of Q/K/V, there are multiple scenarios:
@@ -339,11 +344,7 @@ Status MultiHeadAttention<T>::Compute(OpKernelContext* context) const {
 
   if (kv_BNSH) {
     // No bias add needed for K/V, key already of shape BxNxLxH, value already of shape BxNxLxH_v
-    return ApplyAttention(Q.GetMutable<Tensor>()->MutableData<T>(), key->Data<T>(), value->Data<T>(),
-                          key_padding_mask, nullptr /* past */, nullptr /* past_k */, nullptr /* past_v */,
-                          output, present_k, present_v,
-                          batch_size, q_sequence_length, kv_sequence_length,
-                          qk_head_size, v_head_size, v_hidden_size, extra_add_qk, context);
+    return ApplyAttention(Q.GetMutable<Tensor>()->MutableData<T>(), key->Data<T>(), value->Data<T>(), key_padding_mask, nullptr /* past */, nullptr /* past_k */, nullptr /* past_v */, output, present_k, present_v, batch_size, q_sequence_length, kv_sequence_length, qk_head_size, v_head_size, v_hidden_size, extra_add_qk, context);
   }
 
   OrtValue K;
@@ -393,10 +394,7 @@ Status MultiHeadAttention<T>::Compute(OpKernelContext* context) const {
   }
 
   // Compute the attention score and apply the score to V
-  return ApplyAttention(Q.GetMutable<Tensor>()->MutableData<T>(), K.GetMutable<Tensor>()->MutableData<T>(), V.GetMutable<Tensor>()->MutableData<T>(),
-                        key_padding_mask, nullptr /* past */, past_key, past_value, output, present_k, present_v,
-                        batch_size, q_sequence_length, kv_sequence_length,
-                        qk_head_size, v_head_size, v_hidden_size, extra_add_qk, context);
+  return ApplyAttention(Q.GetMutable<Tensor>()->MutableData<T>(), K.GetMutable<Tensor>()->MutableData<T>(), V.GetMutable<Tensor>()->MutableData<T>(), key_padding_mask, nullptr /* past */, past_key, past_value, output, present_k, present_v, batch_size, q_sequence_length, kv_sequence_length, qk_head_size, v_head_size, v_hidden_size, extra_add_qk, context);
 }
 }  // namespace contrib
 }  // namespace onnxruntime

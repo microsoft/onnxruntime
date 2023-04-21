@@ -21,7 +21,8 @@ class ReverseSequenceOp : public OpKernel {
     ORT_ENFORCE(time_axis < 2, "Invalid time_axis of ", time_axis, ". Must be 0 or 1");
 
     ORT_ENFORCE(batch_axis != time_axis,
-                "time_axis and batch_axis must have different values but both are ", time_axis);
+                "time_axis and batch_axis must have different values but both are ",
+                time_axis);
 
     time_major_ = time_axis == 0;
   }

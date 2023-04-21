@@ -31,8 +31,7 @@ enum TrainingMode { TrainingFalse,
                     TrainingTrue,
                     NoTraining };
 
-void RunDropoutTest(const bool use_mask, const std::vector<int64_t>& input_shape, float ratio = -1.0f,
-                    TrainingMode training_mode = TrainingTrue, bool use_float16_ratio = false) {
+void RunDropoutTest(const bool use_mask, const std::vector<int64_t>& input_shape, float ratio = -1.0f, TrainingMode training_mode = TrainingTrue, bool use_float16_ratio = false) {
   OpTester t{"Dropout", k_dropout_opset_version, kOnnxDomain};
 
   const auto input_size = std::accumulate(
@@ -176,9 +175,7 @@ void RunDropoutGradTest(float ratio, const std::vector<int64_t>& input_dims, boo
 
   auto mask_buffer = std::make_unique<bool[]>(input_shape.Size());
   std::generate_n(
-      mask_buffer.get(), input_shape.Size(),
-      [ratio, rng = std::default_random_engine{42},
-       dist = std::uniform_real_distribution<float>{0.0f, 1.0f}]() mutable {
+      mask_buffer.get(), input_shape.Size(), [ratio, rng = std::default_random_engine{42}, dist = std::uniform_real_distribution<float>{0.0f, 1.0f}]() mutable {
         return dist(rng) >= ratio;
       });
 
@@ -186,8 +183,7 @@ void RunDropoutGradTest(float ratio, const std::vector<int64_t>& input_dims, boo
   std::vector<float> dx_data{};
   dx_data.reserve(input_shape.Size());
   std::transform(
-      mask_buffer.get(), mask_buffer.get() + input_shape.Size(), std::back_inserter(dx_data),
-      [output_constant](bool mask_value) { return mask_value ? output_constant : 0.0f; });
+      mask_buffer.get(), mask_buffer.get() + input_shape.Size(), std::back_inserter(dx_data), [output_constant](bool mask_value) { return mask_value ? output_constant : 0.0f; });
 
   test.AddInput<float>("dy", input_shape.AsShapeVector(), dy_data);
   test.AddInput<bool>("mask", input_shape.AsShapeVector(), mask_buffer.get(), input_shape.Size());

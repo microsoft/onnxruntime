@@ -275,13 +275,7 @@ static void RunQuantLSTM(int64_t input_size,
   std::vector<float> Y_data;
   std::vector<float> Y_h_data;
   std::vector<float> Y_c_data;
-  ComputeRefOutput<QType>(Y_data, Y_h_data, Y_c_data,
-                          input_size, batch_size, hidden_size,
-                          X_data, W_data, R_data,
-                          has_bias ? &B_data : nullptr,
-                          has_P ? &P_data : nullptr,
-                          initial_h_data, initial_c_data,
-                          direction, activations, per_channel);
+  ComputeRefOutput<QType>(Y_data, Y_h_data, Y_c_data, input_size, batch_size, hidden_size, X_data, W_data, R_data, has_bias ? &B_data : nullptr, has_P ? &P_data : nullptr, initial_h_data, initial_c_data, direction, activations, per_channel);
 
   std::vector<int64_t> Y_dims = {seq_len, num_directions, batch_size, hidden_size};
   test.AddOutput<float>("Y", Y_dims, Y_data);
@@ -302,52 +296,28 @@ static void RunQuantLSTM(int64_t input_size,
                          int64_t hidden_size,
                          bool per_channel = false) {
   // bias + P: 0, prepacking: 0, bidirectional: 0
-  RunQuantLSTM<QType>(input_size, batch_size, hidden_size,
-                      false /*has_bias*/, false /*has_P*/,
-                      false /*is_initializer_W*/, false /*is_initializer_R*/,
-                      per_channel, "forward");
+  RunQuantLSTM<QType>(input_size, batch_size, hidden_size, false /*has_bias*/, false /*has_P*/, false /*is_initializer_W*/, false /*is_initializer_R*/, per_channel, "forward");
 
   // bias + P: 0, prepacking: 0, bidirectional: 1
-  RunQuantLSTM<QType>(input_size, batch_size, hidden_size,
-                      false /*has_bias*/, false /*has_P*/,
-                      false /*is_initializer_W*/, false /*is_initializer_R*/,
-                      per_channel, "bidirectional");
+  RunQuantLSTM<QType>(input_size, batch_size, hidden_size, false /*has_bias*/, false /*has_P*/, false /*is_initializer_W*/, false /*is_initializer_R*/, per_channel, "bidirectional");
 
   // bias + P: 0, prepacking: 1, bidirectional: 0
-  RunQuantLSTM<QType>(input_size, batch_size, hidden_size,
-                      false /*has_bias*/, false /*has_P*/,
-                      true /*is_initializer_W*/, true /*is_initializer_R*/,
-                      per_channel, "forward");
+  RunQuantLSTM<QType>(input_size, batch_size, hidden_size, false /*has_bias*/, false /*has_P*/, true /*is_initializer_W*/, true /*is_initializer_R*/, per_channel, "forward");
 
   // bias + P: 0, prepacking: 1, bidirectional: 1
-  RunQuantLSTM<QType>(input_size, batch_size, hidden_size,
-                      false /*has_bias*/, false /*has_P*/,
-                      true /*is_initializer_W*/, true /*is_initializer_R*/,
-                      per_channel, "bidirectional");
+  RunQuantLSTM<QType>(input_size, batch_size, hidden_size, false /*has_bias*/, false /*has_P*/, true /*is_initializer_W*/, true /*is_initializer_R*/, per_channel, "bidirectional");
 
   // bias + P: 1, prepacking: 0, bidirectional: 0
-  RunQuantLSTM<QType>(input_size, batch_size, hidden_size,
-                      true /*has_bias*/, true /*has_P*/,
-                      false /*is_initializer_W*/, false /*is_initializer_R*/,
-                      per_channel, "forward");
+  RunQuantLSTM<QType>(input_size, batch_size, hidden_size, true /*has_bias*/, true /*has_P*/, false /*is_initializer_W*/, false /*is_initializer_R*/, per_channel, "forward");
 
   // bias + P: 1, prepacking: 0, bidirectional: 1
-  RunQuantLSTM<QType>(input_size, batch_size, hidden_size,
-                      true /*has_bias*/, true /*has_P*/,
-                      false /*is_initializer_W*/, false /*is_initializer_R*/,
-                      per_channel, "bidirectional");
+  RunQuantLSTM<QType>(input_size, batch_size, hidden_size, true /*has_bias*/, true /*has_P*/, false /*is_initializer_W*/, false /*is_initializer_R*/, per_channel, "bidirectional");
 
   // bias + P: 1, prepacking: 1, bidirectional: 0
-  RunQuantLSTM<QType>(input_size, batch_size, hidden_size,
-                      true /*has_bias*/, true /*has_P*/,
-                      true /*is_initializer_W*/, true /*is_initializer_R*/,
-                      per_channel, "forward");
+  RunQuantLSTM<QType>(input_size, batch_size, hidden_size, true /*has_bias*/, true /*has_P*/, true /*is_initializer_W*/, true /*is_initializer_R*/, per_channel, "forward");
 
   // bias + P: 1, prepacking: 1, bidirectional: 1
-  RunQuantLSTM<QType>(input_size, batch_size, hidden_size,
-                      true /*has_bias*/, true /*has_P*/,
-                      true /*is_initializer_W*/, true /*is_initializer_R*/,
-                      per_channel, "bidirectional");
+  RunQuantLSTM<QType>(input_size, batch_size, hidden_size, true /*has_bias*/, true /*has_P*/, true /*is_initializer_W*/, true /*is_initializer_R*/, per_channel, "bidirectional");
 }
 
 TEST(DynamicQuantLSTMTest, SmallSize) {
@@ -436,13 +406,7 @@ TEST(DynamicQuantLSTMTest, SharedPrepackedWeights) {
   std::vector<float> Y_data;
   std::vector<float> Y_h_data;
   std::vector<float> Y_c_data;
-  ComputeRefOutput<int8_t>(Y_data, Y_h_data, Y_c_data,
-                           input_size, batch_size, hidden_size,
-                           X_data, W_data, R_data,
-                           nullptr,
-                           nullptr,
-                           initial_h_data, initial_c_data,
-                           "forward", activations, false);
+  ComputeRefOutput<int8_t>(Y_data, Y_h_data, Y_c_data, input_size, batch_size, hidden_size, X_data, W_data, R_data, nullptr, nullptr, initial_h_data, initial_c_data, "forward", activations, false);
 
   std::vector<int64_t> Y_dims = {seq_len, num_directions, batch_size, hidden_size};
   test.AddOutput<float>("Y", Y_dims, Y_data);
@@ -457,14 +421,10 @@ TEST(DynamicQuantLSTMTest, SharedPrepackedWeights) {
   OrtMemoryInfo cpu_info(CPU, OrtAllocatorType::OrtDeviceAllocator);
 
   OrtValue W;
-  Tensor::InitOrtValue(ml_int8, TensorShape(W_dims),
-                       w_quant.data(),
-                       cpu_info, W);
+  Tensor::InitOrtValue(ml_int8, TensorShape(W_dims), w_quant.data(), cpu_info, W);
 
   OrtValue R;
-  Tensor::InitOrtValue(ml_int8, TensorShape(R_dims),
-                       r_quant.data(),
-                       cpu_info, R);
+  Tensor::InitOrtValue(ml_int8, TensorShape(R_dims), r_quant.data(), cpu_info, R);
 
   SessionOptions so;
 
@@ -489,8 +449,7 @@ TEST(DynamicQuantLSTMTest, SharedPrepackedWeights) {
   // Session 1
   {
     auto ep_vec = cpu_ep();
-    test.Run(so, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr,
-             &ep_vec, {}, &number_of_pre_packed_weights_counter_session_1, &number_of_shared_pre_packed_weights_counter);
+    test.Run(so, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &ep_vec, {}, &number_of_pre_packed_weights_counter_session_1, &number_of_shared_pre_packed_weights_counter);
     // Assert that no pre-packed weights have been shared thus far
     ASSERT_EQ(number_of_shared_pre_packed_weights_counter, static_cast<size_t>(0));
   }
@@ -511,8 +470,7 @@ TEST(DynamicQuantLSTMTest, SharedPrepackedWeights) {
   {
     size_t number_of_pre_packed_weights_counter_session_2 = 0;
     auto ep_vec = cpu_ep();
-    test.Run(so, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr,
-             &ep_vec, {}, &number_of_pre_packed_weights_counter_session_2, &number_of_shared_pre_packed_weights_counter);
+    test.Run(so, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &ep_vec, {}, &number_of_pre_packed_weights_counter_session_2, &number_of_shared_pre_packed_weights_counter);
 
     // Assert that the same number of weights were pre-packed in both sessions
     ASSERT_EQ(number_of_pre_packed_weights_counter_session_1, number_of_pre_packed_weights_counter_session_2);

@@ -160,15 +160,16 @@ tvm::Tensor ProfileBegin(tvm::Tensor X, const std::string& event_name) {
   g_codegen_profiler_event_ids[event_name] = {true, event_id};
   g_codegen_profiler_events[event_id].first = event_name;
   return topi::detail::make_extern(
-      {X->shape}, {X->dtype}, {X},
-      [&](tvm::Array<tvm::Buffer> ins, tvm::Array<tvm::Buffer> outs) {
+      {X->shape}, {X->dtype}, {X}, [&](tvm::Array<tvm::Buffer> ins, tvm::Array<tvm::Buffer> outs) {
         return topi::detail::call_packed({tvm::Expr("tvm.contrib.onnxruntime.profile_event"),
                                           topi::detail::pack_buffer(ins[0]),
                                           topi::detail::pack_buffer(outs[0]),
                                           gsl::narrow<int>(event_id),
                                           true});
       },
-      event_name + "_begin", "", {})[0];
+      event_name + "_begin",
+      "",
+      {})[0];
 }
 
 tvm::Tensor ProfileEnd(tvm::Tensor X, const std::string& event_name) {
@@ -178,15 +179,16 @@ tvm::Tensor ProfileEnd(tvm::Tensor X, const std::string& event_name) {
   ORT_ENFORCE(event_id < g_codegen_profiler_events.size());
   ORT_ENFORCE(g_codegen_profiler_events[event_id].first == event_name);
   return topi::detail::make_extern(
-      {X->shape}, {X->dtype}, {X},
-      [&](tvm::Array<tvm::Buffer> ins, tvm::Array<tvm::Buffer> outs) {
+      {X->shape}, {X->dtype}, {X}, [&](tvm::Array<tvm::Buffer> ins, tvm::Array<tvm::Buffer> outs) {
         return topi::detail::call_packed({tvm::Expr("tvm.contrib.onnxruntime.profile_event"),
                                           topi::detail::pack_buffer(ins[0]),
                                           topi::detail::pack_buffer(outs[0]),
                                           gsl::narrow<int>(event_id),
                                           false});
       },
-      event_name + "_end", "", {})[0];
+      event_name + "_end",
+      "",
+      {})[0];
 }
 #endif
 

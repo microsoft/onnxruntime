@@ -36,7 +36,8 @@ std::optional<float> GetScalarConstantInitializer(const Graph& graph, const Node
   const auto* shape = node_arg.Shape();
   ORT_ENFORCE(
       shape,
-      "Constant initializer NodeArg shape should not be null. NodeArg: ", node_arg.Name());
+      "Constant initializer NodeArg shape should not be null. NodeArg: ",
+      node_arg.Name());
 
   if (utils::GetTensorShapeFromTensorShapeProto(*shape).Size() != 1) {
     // not a scalar
@@ -45,7 +46,14 @@ std::optional<float> GetScalarConstantInitializer(const Graph& graph, const Node
 
   float scalar{};
   utils::MLTypeCallDispatcher<
-      uint32_t, uint64_t, int32_t, int64_t, MLFloat16, float, double, BFloat16>
+      uint32_t,
+      uint64_t,
+      int32_t,
+      int64_t,
+      MLFloat16,
+      float,
+      double,
+      BFloat16>
       dispatcher{initializer->data_type()};
   ORT_THROW_IF_ERROR(
       (dispatcher.InvokeRet<Status, ExtractScalarAsFloatDispatchTarget>(*initializer, graph.ModelPath(), scalar)));
@@ -55,8 +63,7 @@ std::optional<float> GetScalarConstantInitializer(const Graph& graph, const Node
 
 // gets the scale value and its input index if node is a fusable scale (Mul or Div by scalar constant)
 std::optional<std::pair<float, int>> GetScaleFromNode(
-    const Graph& graph, const Node& scale_node,
-    const InlinedHashSet<std::string>& excluded_initializer_names) {
+    const Graph& graph, const Node& scale_node, const InlinedHashSet<std::string>& excluded_initializer_names) {
   const auto is_excluded_initializer =
       [&excluded_initializer_names](const NodeArg& node_arg) {
         return excluded_initializer_names.find(node_arg.Name()) != excluded_initializer_names.end();
@@ -117,8 +124,7 @@ struct ScaleMergeInfo {
 };
 
 std::vector<ScaleMergeInfo> GetInputNodeMerges(
-    Graph& graph, Node& node,
-    const InlinedHashSet<std::string>& excluded_initializer_names) {
+    Graph& graph, Node& node, const InlinedHashSet<std::string>& excluded_initializer_names) {
   std::vector<ScaleMergeInfo> input_node_merges{};
   for (auto input_edge = node.InputEdgesBegin(); input_edge != node.InputEdgesEnd(); ++input_edge) {
     const Node& input_node = input_edge->GetNode();
@@ -146,8 +152,7 @@ std::vector<ScaleMergeInfo> GetInputNodeMerges(
 }
 
 std::vector<ScaleMergeInfo> GetOutputNodeMerges(
-    Graph& graph, Node& node,
-    const InlinedHashSet<std::string>& excluded_initializer_names) {
+    Graph& graph, Node& node, const InlinedHashSet<std::string>& excluded_initializer_names) {
   if (!optimizer_utils::CheckOutputEdges(graph, node, 1)) {
     return {};
   }
@@ -185,9 +190,7 @@ bool IsMatMulInputTypeSupported(const Node& node) {
 }
 
 Status ProcessNode(
-    Graph& graph, Node& node, bool& modified,
-    const InlinedHashSet<std::string>& excluded_initializer_names,
-    const InlinedHashSet<std::string_view>& compatible_execution_providers) {
+    Graph& graph, Node& node, bool& modified, const InlinedHashSet<std::string>& excluded_initializer_names, const InlinedHashSet<std::string_view>& compatible_execution_providers) {
   if (!graph_utils::IsSupportedProvider(node, compatible_execution_providers)) {
     return Status::OK();
   }
@@ -270,8 +273,7 @@ Status ProcessNode(
       auto input_node_edge = input_node_merge.node_to_merge_edge;
       Node& input_node = get_mutable_node_to_merge(input_node_merge);
       graph.RemoveEdge(
-          input_node.Index(), node.Index(),
-          input_node_edge->GetSrcArgIndex(), input_node_edge->GetDstArgIndex());
+          input_node.Index(), node.Index(), input_node_edge->GetSrcArgIndex(), input_node_edge->GetDstArgIndex());
 
       // only remove merged input node if it has no more outputs
       if (!optimizer_utils::CheckOutputEdges(graph, input_node, 0)) continue;

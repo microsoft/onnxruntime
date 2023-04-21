@@ -20,8 +20,7 @@ namespace NestedSubgraphInfoDetails {
 
 // Used to compose a unique key to identify a nested subgraph
 // relative to a current graph level (which in turn is identified using a "base")
-std::string ComposeNestedSubgraphInfoKeyHelper(const std::string& base, size_t graph_depth,
-                                               NodeIndex node_index, const std::string& attr_name);
+std::string ComposeNestedSubgraphInfoKeyHelper(const std::string& base, size_t graph_depth, NodeIndex node_index, const std::string& attr_name);
 
 }  // namespace NestedSubgraphInfoDetails
 
@@ -114,14 +113,7 @@ class SequentialPlanner {
   // This API allows user to provide a custom planner context.
   // TODO - remove duplicated ExecutionProvider argument
   static Status CreatePlan(
-      const Node* parent_node, const onnxruntime::GraphViewer& graph,
-      gsl::span<const NodeArg* const> outer_scope_node_args,
-      const ExecutionProviders& providers,
-      const KernelCreateInfoMap& kernel_create_info_map,
-      const SubgraphsKernelCreateInfoMaps& subgraphs_kernel_create_info_maps,
-      const InlinedHashMap<OrtValueName, OrtMemoryInfo>& outer_scope_arg_to_location_map,
-      const OrtValueNameIdxMap& ort_value_name_idx_map,
-      const ISequentialPlannerContext& context,
+      const Node* parent_node, const onnxruntime::GraphViewer& graph, gsl::span<const NodeArg* const> outer_scope_node_args, const ExecutionProviders& providers, const KernelCreateInfoMap& kernel_create_info_map, const SubgraphsKernelCreateInfoMaps& subgraphs_kernel_create_info_maps, const InlinedHashMap<OrtValueName, OrtMemoryInfo>& outer_scope_arg_to_location_map, const OrtValueNameIdxMap& ort_value_name_idx_map, const ISequentialPlannerContext& context,
 #ifdef ORT_ENABLE_STREAM
       const IStreamCommandHandleRegistry& stream_handle_registry,
 #endif

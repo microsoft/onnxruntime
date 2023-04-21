@@ -65,18 +65,14 @@ TEST(NnapiExecutionProviderTest, ReshapeFlattenTest) {
   std::vector<int64_t> dims_mul_y = {3, 2, 2};
   std::vector<float> values_mul_y = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f, 10.0f, 11.0f, 12.0f};
   OrtValue ml_value_x;
-  CreateMLValue<float>(TestNnapiExecutionProvider()->GetAllocator(OrtMemTypeDefault), dims_mul_x, values_mul_x,
-                       &ml_value_x);
+  CreateMLValue<float>(TestNnapiExecutionProvider()->GetAllocator(OrtMemTypeDefault), dims_mul_x, values_mul_x, &ml_value_x);
   OrtValue ml_value_y;
-  CreateMLValue<float>(TestNnapiExecutionProvider()->GetAllocator(OrtMemTypeDefault), dims_mul_y, values_mul_y,
-                       &ml_value_y);
+  CreateMLValue<float>(TestNnapiExecutionProvider()->GetAllocator(OrtMemTypeDefault), dims_mul_y, values_mul_y, &ml_value_y);
   NameMLValMap feeds;
   feeds.insert(std::make_pair("X", ml_value_x));
   feeds.insert(std::make_pair("Y", ml_value_y));
 
-  RunAndVerifyOutputsWithEP(model_file_name, "NnapiExecutionProviderTest.ReshapeFlattenTest",
-                            std::make_unique<NnapiExecutionProvider>(0),
-                            feeds);
+  RunAndVerifyOutputsWithEP(model_file_name, "NnapiExecutionProviderTest.ReshapeFlattenTest", std::make_unique<NnapiExecutionProvider>(0), feeds);
 #else
   // test load only
   TestModelLoad(model_file_name,
@@ -93,14 +89,11 @@ TEST(NnapiExecutionProviderTest, SigmoidSupportedInputRankTest) {
   std::vector<float> values_mul_x = {1.0f, 2.0f, 3.0f, 4.0f, 1.0f, 2.0f, 3.0f, 4.0f};
 
   OrtValue ml_value_x;
-  CreateMLValue<float>(TestNnapiExecutionProvider()->GetAllocator(OrtMemTypeDefault), dims_mul_x, values_mul_x,
-                       &ml_value_x);
+  CreateMLValue<float>(TestNnapiExecutionProvider()->GetAllocator(OrtMemTypeDefault), dims_mul_x, values_mul_x, &ml_value_x);
   NameMLValMap feeds;
   feeds.insert(std::make_pair("X", ml_value_x));
 
-  RunAndVerifyOutputsWithEP(model_file_name, "NnapiExecutionProviderTest.SigmoidSupportedInputRankTest",
-                            std::make_unique<NnapiExecutionProvider>(0),
-                            feeds, {ExpectedEPNodeAssignment::None} /* params */);
+  RunAndVerifyOutputsWithEP(model_file_name, "NnapiExecutionProviderTest.SigmoidSupportedInputRankTest", std::make_unique<NnapiExecutionProvider>(0), feeds, {ExpectedEPNodeAssignment::None} /* params */);
 #else
   // test load only
   TestModelLoad(model_file_name,
@@ -120,15 +113,12 @@ TEST(NnapiExecutionProviderTest, DynamicGraphInputTest) {
   std::vector<int64_t> dims_mul_x = {1, 1, 4, 4};
   std::vector<float> values_mul_x = {1.0f, 2.0f, 3.0f, 4.0f, 1.0f, 2.0f, 3.0f, 4.0f, 1.0f, 2.0f, 3.0f, 4.0f, 1.0f, 2.0f, 3.0f, 4.0f};
   OrtValue ml_value_x;
-  CreateMLValue<float>(TestNnapiExecutionProvider()->GetAllocator(OrtMemTypeDefault), dims_mul_x, values_mul_x,
-                       &ml_value_x);
+  CreateMLValue<float>(TestNnapiExecutionProvider()->GetAllocator(OrtMemTypeDefault), dims_mul_x, values_mul_x, &ml_value_x);
 
   NameMLValMap feeds;
   feeds.insert(std::make_pair("X", ml_value_x));
 
-  RunAndVerifyOutputsWithEP(model_file_name, "NnapiExecutionProviderTest.DynamicGraphInputTest",
-                            std::make_unique<NnapiExecutionProvider>(0),
-                            feeds);
+  RunAndVerifyOutputsWithEP(model_file_name, "NnapiExecutionProviderTest.DynamicGraphInputTest", std::make_unique<NnapiExecutionProvider>(0), feeds);
 #else
   TestModelLoad(model_file_name,
                 [](const Graph& graph) { ASSERT_EQ(CountAssignedNodes(graph, kNnapiExecutionProvider), 1)
@@ -149,14 +139,11 @@ TEST(NnapiExecutionProviderTest, InternalUint8SupportTest) {
   std::vector<int64_t> dims_x = {1, 1, 1, 3};
   std::vector<float> values_x = {0.0f, 256.0f, 512.0f};
   OrtValue ml_value_x;
-  CreateMLValue<float>(TestNnapiExecutionProvider()->GetAllocator(OrtMemTypeDefault), dims_x, values_x,
-                       &ml_value_x);
+  CreateMLValue<float>(TestNnapiExecutionProvider()->GetAllocator(OrtMemTypeDefault), dims_x, values_x, &ml_value_x);
   NameMLValMap feeds;
   feeds.insert(std::make_pair("X", ml_value_x));
 
-  RunAndVerifyOutputsWithEP(model_file_name, "NnapiExecutionProviderTest.InternalUint8SupportTest",
-                            std::make_unique<NnapiExecutionProvider>(0),
-                            feeds);
+  RunAndVerifyOutputsWithEP(model_file_name, "NnapiExecutionProviderTest.InternalUint8SupportTest", std::make_unique<NnapiExecutionProvider>(0), feeds);
 #else
   TestModelLoad(model_file_name,
                 [](const Graph& graph) { ASSERT_GT(CountAssignedNodes(graph, kNnapiExecutionProvider), 0)
@@ -206,22 +193,17 @@ TEST(NnapiExecutionProviderTest, FunctionTest) {
   std::vector<int64_t> dims_mul_x = {1, 1, 3, 2};
   std::vector<float> values_mul_x = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
   OrtValue ml_value_x;
-  CreateMLValue<float>(TestNnapiExecutionProvider()->GetAllocator(OrtMemTypeDefault), dims_mul_x, values_mul_x,
-                       &ml_value_x);
+  CreateMLValue<float>(TestNnapiExecutionProvider()->GetAllocator(OrtMemTypeDefault), dims_mul_x, values_mul_x, &ml_value_x);
   OrtValue ml_value_y;
-  CreateMLValue<float>(TestNnapiExecutionProvider()->GetAllocator(OrtMemTypeDefault), dims_mul_x, values_mul_x,
-                       &ml_value_y);
+  CreateMLValue<float>(TestNnapiExecutionProvider()->GetAllocator(OrtMemTypeDefault), dims_mul_x, values_mul_x, &ml_value_y);
   OrtValue ml_value_z;
-  CreateMLValue<float>(TestNnapiExecutionProvider()->GetAllocator(OrtMemTypeDefault), dims_mul_x, values_mul_x,
-                       &ml_value_z);
+  CreateMLValue<float>(TestNnapiExecutionProvider()->GetAllocator(OrtMemTypeDefault), dims_mul_x, values_mul_x, &ml_value_z);
   NameMLValMap feeds;
   feeds.insert(std::make_pair("X", ml_value_x));
   feeds.insert(std::make_pair("Y", ml_value_y));
   feeds.insert(std::make_pair("Z", ml_value_z));
 
-  RunAndVerifyOutputsWithEP(model_file_name, "NnapiExecutionProviderTest.FunctionTest",
-                            std::make_unique<NnapiExecutionProvider>(0),
-                            feeds);
+  RunAndVerifyOutputsWithEP(model_file_name, "NnapiExecutionProviderTest.FunctionTest", std::make_unique<NnapiExecutionProvider>(0), feeds);
 #else
   TestModelLoad(model_file_name,
                 [](const Graph& graph) { ASSERT_GT(CountAssignedNodes(graph, kNnapiExecutionProvider), 0)
@@ -289,9 +271,7 @@ static void RunQDQModelTest(
   model.ToProto().SerializeToString(&model_data);
 
 #if defined(__ANDROID__)
-  RunAndVerifyOutputsWithEP(model_data, "NnapiExecutionProviderTest.TestQDQModel",
-                            std::make_unique<NnapiExecutionProvider>(0),
-                            helper.feeds_, params);
+  RunAndVerifyOutputsWithEP(model_data, "NnapiExecutionProviderTest.TestQDQModel", std::make_unique<NnapiExecutionProvider>(0), helper.feeds_, params);
 #else
   // test load only
   SessionOptions so;
@@ -540,15 +520,12 @@ TEST(NnapiExecutionProviderTest, TestOrtFormatModel) {
   std::vector<float> data = random.Gaussian<float>(dims, 0.0f, 1.f);
 
   OrtValue ml_value;
-  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault), dims, data,
-                       &ml_value);
+  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault), dims, data, &ml_value);
 
   NameMLValMap feeds;
   feeds.insert(std::make_pair("Input3", ml_value));
 
-  RunAndVerifyOutputsWithEP(model_file_name, "NnapiExecutionProviderTest.TestOrtFormatModel",
-                            std::make_unique<NnapiExecutionProvider>(0),
-                            feeds);
+  RunAndVerifyOutputsWithEP(model_file_name, "NnapiExecutionProviderTest.TestOrtFormatModel", std::make_unique<NnapiExecutionProvider>(0), feeds);
 #else
   // test load only
   TestModelLoad(model_file_name,

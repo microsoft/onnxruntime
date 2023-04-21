@@ -117,7 +117,8 @@ TEST(ComputeOptimizerTests, InsertGatherBeforeSceLoss_Allowed) {
         auto* ignore_index_arg = builder.MakeScalarInitializer<int64_t>(-100);
         Node& sce = builder.AddNode("SoftmaxCrossEntropyLossInternal",
                                     {input1_arg, input2_arg, empty, ignore_index_arg},
-                                    {sce_out1, sce_out2}, kMSDomain);
+                                    {sce_out1, sce_out2},
+                                    kMSDomain);
         sce.AddAttribute("reduction", "mean");
         sce.AddAttribute("output_type", static_cast<int64_t>(1));
       } else {
@@ -132,9 +133,7 @@ TEST(ComputeOptimizerTests, InsertGatherBeforeSceLoss_Allowed) {
     std::vector<int> opsets{12, 13, 14, 15};
     for (auto opset : opsets) {
       std::unique_ptr<GraphTransformer> transformer = std::make_unique<InsertGatherBeforeSceLoss>();
-      ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, opset, *logger, std::move(transformer),
-                                            TransformerLevel::Level1,
-                                            1, pre_graph_checker, post_graph_checker));
+      ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, opset, *logger, std::move(transformer), TransformerLevel::Level1, 1, pre_graph_checker, post_graph_checker));
     }
   }
 }
@@ -187,7 +186,8 @@ TEST(ComputeOptimizerTests, InsertGatherBeforeSceLoss_NotAllowed_ReduceNone) {
         auto* ignore_index_arg = builder.MakeScalarInitializer<int64_t>(-100);
         Node& sce = builder.AddNode("SoftmaxCrossEntropyLossInternal",
                                     {input1_arg, input2_arg, empty, ignore_index_arg},
-                                    {sce_out1, sce_out2}, kMSDomain);
+                                    {sce_out1, sce_out2},
+                                    kMSDomain);
         sce.AddAttribute("reduction", "none");
         sce.AddAttribute("output_type", static_cast<int64_t>(1));
       } else {
@@ -202,9 +202,7 @@ TEST(ComputeOptimizerTests, InsertGatherBeforeSceLoss_NotAllowed_ReduceNone) {
     std::vector<int> opsets{12, 13, 14, 15};
     for (auto opset : opsets) {
       std::unique_ptr<GraphTransformer> transformer = std::make_unique<InsertGatherBeforeSceLoss>();
-      ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, opset, *logger, std::move(transformer),
-                                            TransformerLevel::Level1,
-                                            1, pre_graph_checker, post_graph_checker));
+      ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, opset, *logger, std::move(transformer), TransformerLevel::Level1, 1, pre_graph_checker, post_graph_checker));
     }
   }
 }
@@ -254,7 +252,8 @@ TEST(ComputeOptimizerTests, InsertGatherBeforeSceLoss_NotAllowed_NoIgnoreIndex) 
       if (is_sce_internal) {
         Node& sce = builder.AddNode("SoftmaxCrossEntropyLossInternal",
                                     {input1_arg, input2_arg},
-                                    {sce_out1, sce_out2}, kMSDomain);
+                                    {sce_out1, sce_out2},
+                                    kMSDomain);
         sce.AddAttribute("reduction", "sum");
         sce.AddAttribute("output_type", static_cast<int64_t>(1));
       } else {
@@ -268,9 +267,7 @@ TEST(ComputeOptimizerTests, InsertGatherBeforeSceLoss_NotAllowed_NoIgnoreIndex) 
     std::vector<int> opsets{12, 13, 14, 15};
     for (auto opset : opsets) {
       std::unique_ptr<GraphTransformer> transformer = std::make_unique<InsertGatherBeforeSceLoss>();
-      ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, opset, *logger, std::move(transformer),
-                                            TransformerLevel::Level1,
-                                            1, pre_graph_checker, post_graph_checker));
+      ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, opset, *logger, std::move(transformer), TransformerLevel::Level1, 1, pre_graph_checker, post_graph_checker));
     }
   }
 }
@@ -405,20 +402,17 @@ TEST(ComputeOptimizerTests, InsertGatherBeforeSceLoss_MlmBertE2E) {
 
   for (auto& provider_type : all_provider_types) {
     std::vector<OrtValue> expected_ort_values;
-    RunModelWithData(model_uri, std::string("RawGraphRun"), provider_type,
-                     input_container, output_names, expected_ort_values);
+    RunModelWithData(model_uri, std::string("RawGraphRun"), provider_type, input_container, output_names, expected_ort_values);
 
     std::vector<OrtValue> actual_ort_values;
-    RunModelWithData(ToPathString(new_model_uri), std::string("OptimizedGraphRun"),
-                     provider_type, input_container, output_names, actual_ort_values);
+    RunModelWithData(ToPathString(new_model_uri), std::string("OptimizedGraphRun"), provider_type, input_container, output_names, actual_ort_values);
 
     ASSERT_TRUE(expected_ort_values.size() == actual_ort_values.size());
 
     constexpr double per_sample_tolerance = 1e-4;
     constexpr double relative_per_sample_tolerance = 1e-4;
     for (size_t i = 0; i < expected_ort_values.size(); i++) {
-      auto ret = CompareOrtValue(actual_ort_values[i], expected_ort_values[i],
-                                 per_sample_tolerance, relative_per_sample_tolerance, false);
+      auto ret = CompareOrtValue(actual_ort_values[i], expected_ort_values[i], per_sample_tolerance, relative_per_sample_tolerance, false);
       EXPECT_EQ(ret.first, COMPARE_RESULT::SUCCESS) << ret.second;
     }
   }

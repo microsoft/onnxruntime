@@ -23,8 +23,7 @@ Status All<T>::ComputeInternal(OpKernelContext* ctx) const {
   Tensor& output = *ctx->Output(0, {1});
 
   const auto size = input.Shape().Size();
-  ORT_ENFORCE(size <= std::numeric_limits<int>::max(), "Number of reduced elements (",
-              size, ") exceeds the max allowed value (", std::numeric_limits<int>::max(), ").");
+  ORT_ENFORCE(size <= std::numeric_limits<int>::max(), "Number of reduced elements (", size, ") exceeds the max allowed value (", std::numeric_limits<int>::max(), ").");
 
   LaunchAllKernel(
       Stream(ctx),

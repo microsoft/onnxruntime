@@ -110,8 +110,7 @@ ONNX_CPU_OPERATOR_TYPED_KERNEL(
 
 // opset-12 and below
 template <typename T>
-Status Softmax<T>::ComputeImpl(const Tensor& input, Tensor& output, size_t axis,
-                               concurrency::ThreadPool* thread_pool) const {
+Status Softmax<T>::ComputeImpl(const Tensor& input, Tensor& output, size_t axis, concurrency::ThreadPool* thread_pool) const {
   const auto& X_shape = input.Shape();
   const size_t N = onnxruntime::narrow<size_t>(X_shape.SizeToDimension(axis));
   const size_t D = onnxruntime::narrow<size_t>(X_shape.SizeFromDimension(axis));
@@ -121,8 +120,7 @@ Status Softmax<T>::ComputeImpl(const Tensor& input, Tensor& output, size_t axis,
 
 // opset-13 and above
 template <typename T>
-Status Softmax<T>::ComputeImplOpset13(const Tensor& input, Tensor& output, size_t axis,
-                                      concurrency::ThreadPool* thread_pool, OpKernelContext* ctx) const {
+Status Softmax<T>::ComputeImplOpset13(const Tensor& input, Tensor& output, size_t axis, concurrency::ThreadPool* thread_pool, OpKernelContext* ctx) const {
   const auto& X_shape = input.Shape();
   size_t rank = X_shape.NumDimensions();
 
@@ -174,10 +172,7 @@ Status Softmax<T>::ComputeImplOpset13(const Tensor& input, Tensor& output, size_
   const size_t N = onnxruntime::narrow<size_t>(is_transpose_required ? TensorShape(transposed_input_dims).SizeToDimension(rank - 1) : X_shape.SizeToDimension(rank - 1));
   const size_t D = onnxruntime::narrow<size_t>(is_transpose_required ? TensorShape(transposed_input_dims).SizeFromDimension(rank - 1) : X_shape.SizeFromDimension(rank - 1));
 
-  ORT_RETURN_IF_ERROR(SoftmaxCPU<T>(N, D,
-                                    is_transpose_required ? transposed_input.Data<T>() : input.Data<T>(),
-                                    is_transpose_required ? intermediate_output.MutableData<T>() : output.MutableData<T>(),
-                                    log_softmax_, thread_pool));
+  ORT_RETURN_IF_ERROR(SoftmaxCPU<T>(N, D, is_transpose_required ? transposed_input.Data<T>() : input.Data<T>(), is_transpose_required ? intermediate_output.MutableData<T>() : output.MutableData<T>(), log_softmax_, thread_pool));
 
   if (is_transpose_required) {
     // Perform the transpose to get the axes back to the original ordering

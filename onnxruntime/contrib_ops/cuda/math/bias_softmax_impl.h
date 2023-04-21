@@ -11,9 +11,7 @@ namespace contrib {
 namespace cuda {
 
 template <typename T>
-Status BiasSoftmaxImpl(cudaStream_t stream, cudnnHandle_t cudnn_handle, T* output_data, const T* input_data,
-                       const T* bias_data, int element_count, int batch_count, bool is_inner_broadcast,
-                       int bias_broadcast_size);
+Status BiasSoftmaxImpl(cudaStream_t stream, cudnnHandle_t cudnn_handle, T* output_data, const T* input_data, const T* bias_data, int element_count, int batch_count, bool is_inner_broadcast, int bias_broadcast_size);
 
 }  // namespace cuda
 }  // namespace contrib

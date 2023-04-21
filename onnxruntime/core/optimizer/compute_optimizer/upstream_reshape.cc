@@ -44,47 +44,40 @@ UpStreamReshapeGraphTransformer::UpStreamReshapeGraphTransformer(
 }
 
 bool UpStreamReshapeGraphTransformer::UpStreamInternal(
-    Graph& graph, std::deque<ReshapeInfo>& queue, Node& current_node, ReshapeInfo& info,
-    const OpPassThroughConfig<UpStreamReshapeOperatorActorBase>& pass_through_config,
-    const logging::Logger& logger) const {
+    Graph& graph, std::deque<ReshapeInfo>& queue, Node& current_node, ReshapeInfo& info, const OpPassThroughConfig<UpStreamReshapeOperatorActorBase>& pass_through_config, const logging::Logger& logger) const {
   const std::string op_type = GetFullQualifiedOpName(current_node.OpType(), current_node.Domain());
 
   std::vector<int> propagate_input_indices;
   std::unordered_map<int, std::vector<DimCompare>> all_input_cmp_rets;
   std::function<void(Node & node)> shape_update_func;
-  if (!pass_through_config.actor->PreCheck(current_node, info, logger, propagate_input_indices,
-                                           all_input_cmp_rets, shape_update_func)) {
+  if (!pass_through_config.actor->PreCheck(current_node, info, logger, propagate_input_indices, all_input_cmp_rets, shape_update_func)) {
     LOG_DEBUG_INFO(logger, "Pre-check failed for " + current_node.Name() + "(" + op_type + ")");
     return false;
   }
 
   if (propagate_input_indices.empty()) {
-    LOG_DEBUG_INFO(logger, "Skip handling current node " + current_node.Name() + "(" + op_type +
-                               ") because the requirement is not met.");
+    LOG_DEBUG_INFO(logger, "Skip handling current node " + current_node.Name() + "(" + op_type + ") because the requirement is not met.");
     return false;
   }
 
   for (const int& input_idx : propagate_input_indices) {
     auto candidate_input_shape = current_node.InputDefs()[input_idx]->Shape();
     if (candidate_input_shape->dim_size() != 3) {
-      LOG_DEBUG_INFO(logger, "Skip handling current node " + current_node.Name() + "(" + op_type +
-                                 ") because not all candidate inputs have rank = 3.");
+      LOG_DEBUG_INFO(logger, "Skip handling current node " + current_node.Name() + "(" + op_type + ") because not all candidate inputs have rank = 3.");
       return false;
     }
 
     // For unflatten dims, currently only dim values are supported.
     for (int k = 2; k < candidate_input_shape->dim_size(); ++k) {
       if (!candidate_input_shape->dim(k).has_dim_value()) {
-        LOG_DEBUG_INFO(logger, "Skip handling current node " + current_node.Name() +
-                                   ": non-dim-value are not supported yet for unflatten dims.");
+        LOG_DEBUG_INFO(logger, "Skip handling current node " + current_node.Name() + ": non-dim-value are not supported yet for unflatten dims.");
         return false;
       }
     }
   }
 
   if (!shape_update_func) {
-    LOG_DEBUG_INFO(logger, "Skip handling current node " + current_node.Name() + "(" + op_type +
-                               ") because the shape update function is not set.");
+    LOG_DEBUG_INFO(logger, "Skip handling current node " + current_node.Name() + "(" + op_type + ") because the shape update function is not set.");
     return false;
   }
 
@@ -99,8 +92,7 @@ bool UpStreamReshapeGraphTransformer::UpStreamInternal(
     ORT_ENFORCE(all_input_cmp_rets.find(input_index) != all_input_cmp_rets.end(),
                 "all_input_cmp_rets should be a superset of propagate_input_indices");
 
-    ReshapeInfo reshape_info = PropagateReshapeForInput(graph, *info.node_ptr, current_node, input_index, info,
-                                                        all_input_cmp_rets.at(input_index), logger);
+    ReshapeInfo reshape_info = PropagateReshapeForInput(graph, *info.node_ptr, current_node, input_index, info, all_input_cmp_rets.at(input_index), logger);
 
     ORT_ENFORCE(reshape_info.node_ptr, "New added Reshape node should not be null.");
     populated_reshape_infos.push_back(reshape_info);
@@ -112,8 +104,7 @@ bool UpStreamReshapeGraphTransformer::UpStreamInternal(
   // Do the shape update for current_node.
   shape_update_func(current_node);
 
-  if (!pass_through_config.actor->PostProcess(graph, current_node, info, logger, propagate_input_indices,
-                                              all_input_cmp_rets, new_reshape_infos)) {
+  if (!pass_through_config.actor->PostProcess(graph, current_node, info, logger, propagate_input_indices, all_input_cmp_rets, new_reshape_infos)) {
     ORT_THROW("Post-process failed for " + current_node.Name() + "(" + op_type + ")");
   }
 
@@ -122,10 +113,8 @@ bool UpStreamReshapeGraphTransformer::UpStreamInternal(
 }
 
 ReshapeInfo UpStreamReshapeGraphTransformer::PropagateReshapeForInput(
-    Graph& graph, Node& reshape_node, Node& current_node, int current_node_input_index,
-    ReshapeInfo& info, std::vector<DimCompare>& dim_compare_rets, const logging::Logger& logger) const {
-  LOG_DEBUG_INFO(logger, "PropagateReshapeForInput for Node " + current_node.Name() + "(" + current_node.OpType() +
-                             ") with input index " + std::to_string(current_node_input_index));
+    Graph& graph, Node& reshape_node, Node& current_node, int current_node_input_index, ReshapeInfo& info, std::vector<DimCompare>& dim_compare_rets, const logging::Logger& logger) const {
+  LOG_DEBUG_INFO(logger, "PropagateReshapeForInput for Node " + current_node.Name() + "(" + current_node.OpType() + ") with input index " + std::to_string(current_node_input_index));
 
   ORT_ENFORCE(dim_compare_rets.size() >= 2, "dim_compare_rets should have at least 2 elements.");
 
@@ -147,8 +136,7 @@ ReshapeInfo UpStreamReshapeGraphTransformer::PropagateReshapeForInput(
     ORT_ENFORCE(input_shape->dim(k).has_dim_value());
     new_shape.push_back(input_shape->dim(k).dim_value());
   }
-  NodeArg* new_shape_arg = CreateInitializerFromVector(graph, {static_cast<int64_t>(new_shape.size())}, new_shape,
-                                                       graph.GenerateNodeArgName("new_shape"));
+  NodeArg* new_shape_arg = CreateInitializerFromVector(graph, {static_cast<int64_t>(new_shape.size())}, new_shape, graph.GenerateNodeArgName("new_shape"));
 
   input_args.push_back(new_shape_arg);
 
@@ -164,18 +152,7 @@ ReshapeInfo UpStreamReshapeGraphTransformer::PropagateReshapeForInput(
   /* new node output index to connect to current_node*/
   int new_reshape_output_index_to_connect = info.GetOutputIndex();
   Node* new_reshape_node = InsertIntermediateNodeOnDestInput(
-      graph, current_node,
-      current_node_input_index,
-      new_reshape_input_index_to_connect,
-      new_reshape_output_index_to_connect,
-      graph.GenerateNodeName(info.entry_reshape_arg_name),
-      reshape_node.OpType(),
-      "Duplicated Reshape node",
-      input_args,
-      output_args,
-      attributes,
-      reshape_node.Domain(),
-      logger);
+      graph, current_node, current_node_input_index, new_reshape_input_index_to_connect, new_reshape_output_index_to_connect, graph.GenerateNodeName(info.entry_reshape_arg_name), reshape_node.OpType(), "Duplicated Reshape node", input_args, output_args, attributes, reshape_node.Domain(), logger);
 
   new_reshape_node->SetExecutionProviderType(reshape_node.GetExecutionProviderType());
 
@@ -194,26 +171,21 @@ ReshapeInfo UpStreamReshapeGraphTransformer::PropagateReshapeForInput(
 
 Status UpStreamReshapeGraphTransformer::RemoveOriginalReshapeNode(
     Graph& graph, Node& reshape_node, Node& current_node, const logging::Logger& logger, ReshapeInfo& info) const {
-  LOG_DEBUG_INFO(logger, "RemoveOriginalReshapeNode target_node " + current_node.Name() + "(" + current_node.OpType() +
-                             ") reshape_node " + reshape_node.Name() + "(" + reshape_node.OpType() + ")");
+  LOG_DEBUG_INFO(logger, "RemoveOriginalReshapeNode target_node " + current_node.Name() + "(" + current_node.OpType() + ") reshape_node " + reshape_node.Name() + "(" + reshape_node.OpType() + ")");
 
   auto data_input_arg = reshape_node.MutableInputDefs()[info.GetDataInputIndex()];
   int output_index = optimizer_utils::IndexOfNodeOutput(current_node, *data_input_arg);
   auto output_arg = reshape_node.MutableOutputDefs()[info.GetOutputIndex()];
 
-  LOG_DEBUG_INFO(logger, "RemoveOriginalReshapeNode Replace all usage of output " + output_arg->Name() + ":0" +
-                             " with " + current_node.MutableOutputDefs()[output_index]->Name() + ":" +
-                             std::to_string(output_index));
+  LOG_DEBUG_INFO(logger, "RemoveOriginalReshapeNode Replace all usage of output " + output_arg->Name() + ":0" + " with " + current_node.MutableOutputDefs()[output_index]->Name() + ":" + std::to_string(output_index));
 
-  graph_utils::ReplaceDownstreamNodeInput(graph, reshape_node, info.GetOutputIndex() /*output_idx*/, current_node,
-                                          output_index /*replacement_output_idx*/);
+  graph_utils::ReplaceDownstreamNodeInput(graph, reshape_node, info.GetOutputIndex() /*output_idx*/, current_node, output_index /*replacement_output_idx*/);
   auto reshape_origin_consumer_nodes = graph.GetConsumerNodes(output_arg->Name());
   std::vector<Node*> reshape_op_consumers;
   reshape_op_consumers.reserve(reshape_origin_consumer_nodes.size());
   for (auto& consumer_node : reshape_origin_consumer_nodes) {
     reshape_op_consumers.push_back(graph.GetNode(consumer_node->Index()));
-    LOG_DEBUG_INFO(logger, "RemoveOriginalReshapeNode Reshape's consumer node " + consumer_node->Name() + "(" +
-                               consumer_node->OpType() + ")");
+    LOG_DEBUG_INFO(logger, "RemoveOriginalReshapeNode Reshape's consumer node " + consumer_node->Name() + "(" + consumer_node->OpType() + ")");
   }
   graph.UpdateConsumerNodes(current_node.OutputDefs()[output_index]->Name(), reshape_op_consumers);
   graph.UpdateConsumerNodes(output_arg->Name(), {});

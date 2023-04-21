@@ -30,8 +30,7 @@ class TensorAllocatorWithMemPattern : public ITensorAllocator {
       auto& location = mem_patterns_.locations[i];
       auto alloc = GetAllocator(location);
       if (!alloc)
-        return Status(common::ONNXRUNTIME, common::FAIL,
-                      "Failed to get allocator for location: " + location.ToString());
+        return Status(common::ONNXRUNTIME, common::FAIL, "Failed to get allocator for location: " + location.ToString());
 
       // Don't allocate memory when there is no memory usage.
       if (mem_patterns_.patterns[i].PeakSize() <= 0) {
@@ -60,8 +59,7 @@ class TensorAllocatorWithMemPattern : public ITensorAllocator {
   }
 
  public:
-  TensorAllocatorWithMemPattern(const ExecutionPlanBase& execution_plan, const SessionState& session_state,
-                                InlinedVector<BufferUniquePtr>& weights_buffers)
+  TensorAllocatorWithMemPattern(const ExecutionPlanBase& execution_plan, const SessionState& session_state, InlinedVector<BufferUniquePtr>& weights_buffers)
       : ITensorAllocator(session_state),
         planner_(execution_plan, /*using counters*/ false),
         weights_buffers_(weights_buffers),
@@ -74,8 +72,7 @@ class TensorAllocatorWithMemPattern : public ITensorAllocator {
     return Status::OK();
   }
 
-  common::Status GetPreallocatedBuffer(int ort_value_index, const std::string& name,
-                                       std::optional<MemBuffer>& buf_out, AllocatorPtr& alloc_out) override {
+  common::Status GetPreallocatedBuffer(int ort_value_index, const std::string& name, std::optional<MemBuffer>& buf_out, AllocatorPtr& alloc_out) override {
     if (!is_sealed_) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Internal error.");
     }

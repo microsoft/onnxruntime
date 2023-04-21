@@ -36,9 +36,7 @@ class BeamSearchGpt : public BeamSearchBase<T> {
                 const GenerationDeviceHelper::UpdateGptFeedsFunc<T>& update_feeds_func,
                 const void* cuda_device_prop,
                 int cuda_device_arch)
-      : BeamSearchBase<T>(context, decoder_session_state, thread_pool,
-                          ort_stream, cuda_dumper, params,
-                          topk_func, process_logits_func, device_copy_func, device_copy_int32_func),
+      : BeamSearchBase<T>(context, decoder_session_state, thread_pool, ort_stream, cuda_dumper, params, topk_func, process_logits_func, device_copy_func, device_copy_int32_func),
         init_run_decoder_session_state_(init_run_decoder_session_state),
         init_run_gpt_subgraph_(init_run_gpt_subgraph),
         gpt_subgraph_(gpt_subgraph),
@@ -190,7 +188,9 @@ Status BeamSearchGpt<T>::Execute(const FeedsFetchesManager* init_run_feeds_fetch
 
   int64_t scores_dims[] = {
       static_cast<int64_t>(parameters->max_length) - static_cast<int64_t>(parameters->sequence_length),
-      parameters->batch_size, parameters->num_beams, parameters->vocab_size};
+      parameters->batch_size,
+      parameters->num_beams,
+      parameters->vocab_size};
   TensorShape scores_shape(&scores_dims[0], sizeof(scores_dims) / sizeof(scores_dims[0]));
   Tensor* output_scores = this->context_.Output(2, scores_shape);
 
@@ -226,8 +226,7 @@ Status BeamSearchGpt<T>::Execute(const FeedsFetchesManager* init_run_feeds_fetch
   // buffer in GPU for input_ids, position_ids and attention_mask
   IAllocatorUniquePtr<char> buffer;
   OrtValue expanded_input_ids_in_cpu;
-  ORT_RETURN_IF_ERROR(CreateInitialFeeds(cpu_state.sequence_lengths, expanded_input_ids_in_cpu, feeds, buffer,
-                                         gpt_subgraph_.has_decoder_masked_attention_));
+  ORT_RETURN_IF_ERROR(CreateInitialFeeds(cpu_state.sequence_lengths, expanded_input_ids_in_cpu, feeds, buffer, gpt_subgraph_.has_decoder_masked_attention_));
 
   if (gpt_subgraph_.past_present_share_buffer_) {  // Reuse past and present
     fetches.reserve(static_cast<int64_t>(gpt_subgraph_.GetFirstPresentOutputIndex()) + gpt_subgraph_.num_layers);
@@ -237,8 +236,7 @@ Status BeamSearchGpt<T>::Execute(const FeedsFetchesManager* init_run_feeds_fetch
       OrtValue& past_tensor_value = feeds[feed_idx];
       Tensor* past_tensor = past_tensor_value.GetMutable<Tensor>();
       OrtValue present_tensor_value;
-      Tensor::InitOrtValue(past_tensor->DataType(), past_tensor->Shape(), past_tensor->MutableData<T>(),
-                           past_tensor->Location(), present_tensor_value);
+      Tensor::InitOrtValue(past_tensor->DataType(), past_tensor->Shape(), past_tensor->MutableData<T>(), past_tensor->Location(), present_tensor_value);
       fetches.push_back(present_tensor_value);
     }
   }
@@ -372,16 +370,7 @@ Status BeamSearchGpt<T>::Execute(const FeedsFetchesManager* init_run_feeds_fetch
       // For the first iteration, position_ids is initialized as sequence lengths. We can add it to feeds directly.
       // For the remaining iterations, we need increase position_ids first, then add it to feeds.
       bool increase_position = (iteration_counter > 1);
-      ORT_RETURN_IF_ERROR(UpdateFeeds(fetches, feeds, current_length,
-                                      position_ids, increase_position,
-                                      ReinterpretAsSpan<const int32_t>(beam_next_tokens),
-                                      ReinterpretAsSpan<const int32_t>(beam_indices),
-                                      gpt_subgraph_.has_decoder_masked_attention_
-                                          ? ReinterpretAsSpan<const int32_t>(beam_state.chosen_indices)
-                                          : place_holder,
-                                      current_length - 1,
-                                      parameters->sequence_length,
-                                      gpt_subgraph_.has_decoder_masked_attention_));
+      ORT_RETURN_IF_ERROR(UpdateFeeds(fetches, feeds, current_length, position_ids, increase_position, ReinterpretAsSpan<const int32_t>(beam_next_tokens), ReinterpretAsSpan<const int32_t>(beam_indices), gpt_subgraph_.has_decoder_masked_attention_ ? ReinterpretAsSpan<const int32_t>(beam_state.chosen_indices) : place_holder, current_length - 1, parameters->sequence_length, gpt_subgraph_.has_decoder_masked_attention_));
     }
 
     if (gpt_subgraph_.past_present_share_buffer_) {

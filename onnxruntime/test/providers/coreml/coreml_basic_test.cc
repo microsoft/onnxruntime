@@ -77,22 +77,26 @@ TEST(CoreMLExecutionProviderTest, FunctionTest) {
   OrtValue ml_value_x;
 
   CreateMLValue<float>(TestCoreMLExecutionProvider(s_coreml_flags)->GetAllocator(OrtMemTypeDefault),
-                       dims_mul_x, values_mul_x, &ml_value_x);
+                       dims_mul_x,
+                       values_mul_x,
+                       &ml_value_x);
   OrtValue ml_value_y;
   CreateMLValue<float>(TestCoreMLExecutionProvider(s_coreml_flags)->GetAllocator(OrtMemTypeDefault),
-                       dims_mul_x, values_mul_x, &ml_value_y);
+                       dims_mul_x,
+                       values_mul_x,
+                       &ml_value_y);
   OrtValue ml_value_z;
   CreateMLValue<float>(TestCoreMLExecutionProvider(s_coreml_flags)->GetAllocator(OrtMemTypeDefault),
-                       dims_mul_x, values_mul_x, &ml_value_z);
+                       dims_mul_x,
+                       values_mul_x,
+                       &ml_value_z);
 
   NameMLValMap feeds;
   feeds.insert(std::make_pair("X", ml_value_x));
   feeds.insert(std::make_pair("Y", ml_value_y));
   feeds.insert(std::make_pair("Z", ml_value_z));
 
-  RunAndVerifyOutputsWithEP(model_file_name, "CoreMLExecutionProviderTest.FunctionTest",
-                            std::make_unique<CoreMLExecutionProvider>(s_coreml_flags),
-                            feeds);
+  RunAndVerifyOutputsWithEP(model_file_name, "CoreMLExecutionProviderTest.FunctionTest", std::make_unique<CoreMLExecutionProvider>(s_coreml_flags), feeds);
 #else
   // test load only
   SessionOptions so;
@@ -119,14 +123,14 @@ TEST(CoreMLExecutionProviderTest, ArgMaxCastTest) {
   OrtValue ml_value_x;
 
   CreateMLValue<float>(TestCoreMLExecutionProvider(s_coreml_flags)->GetAllocator(OrtMemTypeDefault),
-                       dims_mul_x, values_mul_x, &ml_value_x);
+                       dims_mul_x,
+                       values_mul_x,
+                       &ml_value_x);
 
   NameMLValMap feeds;
   feeds.insert(std::make_pair("X", ml_value_x));
 
-  RunAndVerifyOutputsWithEP(model_file_name, "CoreMLExecutionProviderTest.ArgMaxCastTest",
-                            std::make_unique<CoreMLExecutionProvider>(s_coreml_flags),
-                            feeds);
+  RunAndVerifyOutputsWithEP(model_file_name, "CoreMLExecutionProviderTest.ArgMaxCastTest", std::make_unique<CoreMLExecutionProvider>(s_coreml_flags), feeds);
 #else
   // test load only
   SessionOptions so;
@@ -156,9 +160,7 @@ TEST(CoreMLExecutionProviderTest, TestOrtFormatModel) {
   NameMLValMap feeds;
   feeds.insert(std::make_pair("Input3", ml_value));
 
-  RunAndVerifyOutputsWithEP(model_file_name, "CoreMLExecutionProviderTest.TestOrtFormatModel",
-                            std::make_unique<CoreMLExecutionProvider>(s_coreml_flags),
-                            feeds);
+  RunAndVerifyOutputsWithEP(model_file_name, "CoreMLExecutionProviderTest.TestOrtFormatModel", std::make_unique<CoreMLExecutionProvider>(s_coreml_flags), feeds);
 #else
   // test load only
   SessionOptions so;

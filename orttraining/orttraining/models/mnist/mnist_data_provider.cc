@@ -70,8 +70,7 @@ void PrepareMNISTData(const string& data_folder,
   printf("Preparing data ...\n");
   auto training_images_labels = NormalizeData(dataset.training_images, dataset.training_labels);
   auto test_images_labels = NormalizeData(dataset.test_images, dataset.test_labels);
-  ConvertData(training_images_labels.first, training_images_labels.second, image_dims, label_dims, training_data,
-              shard_index, total_shard);
+  ConvertData(training_images_labels.first, training_images_labels.second, image_dims, label_dims, training_data, shard_index, total_shard);
   ConvertData(test_images_labels.first, test_images_labels.second, image_dims, label_dims, test_data);  // use full test set
   printf("Preparing data: done\n");
   printf("#training set size = %d \n", static_cast<int>(training_data.NumSamples()));

@@ -16,9 +16,12 @@ Status CheckBatchDimensionsMatch(
     ORT_RETURN_IF_NOT(
         num_batch_dimensions <= tensor_shape.NumDimensions(),
         "Number of batch dimensions exceeds tensor rank. ",
-        "Batch dimension count: ", num_batch_dimensions,
-        ", tensor rank: ", tensor_shape.NumDimensions(),
-        ", tensor index: ", tensor_shape_idx);
+        "Batch dimension count: ",
+        num_batch_dimensions,
+        ", tensor rank: ",
+        tensor_shape.NumDimensions(),
+        ", tensor index: ",
+        tensor_shape_idx);
   }
 
   if (tensor_shapes.empty()) return Status::OK();
@@ -29,9 +32,14 @@ Status CheckBatchDimensionsMatch(
       const TensorShape& other_tensor_shape = tensor_shapes[tensor_shape_idx];
       ORT_RETURN_IF_NOT(
           first_tensor_shape[batch_dimension_idx] == other_tensor_shape[batch_dimension_idx],
-          "Batch dimensions differ at index ", batch_dimension_idx, ": ",
-          first_tensor_shape[batch_dimension_idx], " != ", other_tensor_shape[batch_dimension_idx],
-          ", tensor indices: 0, ", tensor_shape_idx);
+          "Batch dimensions differ at index ",
+          batch_dimension_idx,
+          ": ",
+          first_tensor_shape[batch_dimension_idx],
+          " != ",
+          other_tensor_shape[batch_dimension_idx],
+          ", tensor indices: 0, ",
+          tensor_shape_idx);
     }
   }
 
@@ -72,7 +80,8 @@ Status GatherNDBase::PrepareCompute(
       sizes_from_slice_dims_buffer.get(),
       sizes_from_slice_dims.data(),
       sizes_from_slice_dims.size() * sizeof(int64_t),
-      cudaMemcpyHostToDevice, cuda_stream));
+      cudaMemcpyHostToDevice,
+      cuda_stream));
 
   input_slice_offsets_buffer = GetScratchBuffer<int64_t>(num_slices, stream);
 
@@ -113,13 +122,9 @@ Status GatherNDBase::PrepareCompute(
           .TypeConstraint("indices", DataTypeImpl::GetTensorType<TIndex>()), \
       GatherND<TIndex>);
 
-#define REGISTER_KERNEL_TYPED_GATHER_ND(TIndex, ver)                                                           \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                                               \
-      GatherND, kOnnxDomain, ver, TIndex, kCudaExecutionProvider,                                              \
-      (*KernelDefBuilder::Create())                                                                            \
-          .TypeConstraint("T", BuildKernelDefConstraints<float, MLFloat16, double, int64_t, BFloat16, bool>()) \
-          .TypeConstraint("indices", DataTypeImpl::GetTensorType<TIndex>()),                                   \
-      GatherND<TIndex>);
+#define REGISTER_KERNEL_TYPED_GATHER_ND(TIndex, ver) \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                     \
+      GatherND, kOnnxDomain, ver, TIndex, kCudaExecutionProvider, (*KernelDefBuilder::Create()).TypeConstraint("T", BuildKernelDefConstraints<float, MLFloat16, double, int64_t, BFloat16, bool>()).TypeConstraint("indices", DataTypeImpl::GetTensorType<TIndex>()), GatherND<TIndex>);
 
 REGISTER_KERNEL_TYPED_GATHER_ND(int64_t, 13)
 REGISTER_KERNEL_VERSIONED_TYPED_GATHER_ND(int64_t, 12, 12)
@@ -135,8 +140,10 @@ struct GatherNDComputeImpl {
                   int64_t* const input_slice_offsets_data) const {
     typedef typename ToCudaType<T>::MappedType CudaT;
     GatherNDImpl<CudaT>(stream,
-                        num_slices, kernel_input_data,
-                        kernel_output_data, slice_size,
+                        num_slices,
+                        kernel_input_data,
+                        kernel_output_data,
+                        slice_size,
                         input_slice_offsets_data);
   }
 };
@@ -152,14 +159,12 @@ Status GatherND<TIndex>::ComputeInternal(OpKernelContext* context) const {
   auto indices_shape = indices_tensor->Shape();
 
   if (indices_shape.NumDimensions() == 0) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "indices tensor must has rank larger than 0");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "indices tensor must has rank larger than 0");
   }
 
   auto last_indices_dimension = batch_dims_ + indices_shape[indices_shape.NumDimensions() - 1];
   if (last_indices_dimension > static_cast<int64_t>(input_shape.NumDimensions())) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "last dimension of indices must not be larger than rank of input tensor");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "last dimension of indices must not be larger than rank of input tensor");
   }
 
   ORT_RETURN_IF_ERROR(CheckBatchDimensionsMatch(
@@ -181,14 +186,18 @@ Status GatherND<TIndex>::ComputeInternal(OpKernelContext* context) const {
   int64_t slice_size;
   IAllocatorUniquePtr<int64_t> input_slice_offsets_buffer;
   ORT_RETURN_IF_ERROR(PrepareCompute<TIndex>(context->GetComputeStream(),
-                                             batch_dims_, input_shape, indices_shape, indices_tensor,
-                                             num_slices, slice_size, input_slice_offsets_buffer));
+                                             batch_dims_,
+                                             input_shape,
+                                             indices_shape,
+                                             indices_tensor,
+                                             num_slices,
+                                             slice_size,
+                                             input_slice_offsets_buffer));
 
   const void* const kernel_input_data = input_tensor->DataRaw();
   void* const kernel_output_data = output_tensor->MutableDataRaw();
   utils::MLTypeCallDispatcher<float, MLFloat16, double, int64_t, BFloat16, bool> t_disp(input_tensor->GetElementType());
-  t_disp.Invoke<GatherNDComputeImpl>(Stream(context), num_slices, slice_size, kernel_input_data, kernel_output_data,
-                                     input_slice_offsets_buffer.get());
+  t_disp.Invoke<GatherNDComputeImpl>(Stream(context), num_slices, slice_size, kernel_input_data, kernel_output_data, input_slice_offsets_buffer.get());
 
   return Status::OK();
 }

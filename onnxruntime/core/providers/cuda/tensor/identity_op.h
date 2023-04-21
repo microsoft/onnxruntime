@@ -19,14 +19,12 @@ class IdentityOp final : public CudaKernel {
     if (X_ml_type->IsTensorType()) {
       const Tensor* X = context->Input<Tensor>(0);
       if (nullptr == X) {
-        return Status(common::ONNXRUNTIME, common::FAIL,
-                      "IdentityOp cuda: input count mismatch.");
+        return Status(common::ONNXRUNTIME, common::FAIL, "IdentityOp cuda: input count mismatch.");
       }
       const TensorShape& shape = X->Shape();
       Tensor* Y = context->Output(0, shape);
       if (nullptr == Y) {
-        return Status(common::ONNXRUNTIME, common::FAIL,
-                      "IdentityOp cuda: failed to allocate output tensor.");
+        return Status(common::ONNXRUNTIME, common::FAIL, "IdentityOp cuda: failed to allocate output tensor.");
       }
       auto X_type = X->DataType();
 
@@ -64,24 +62,24 @@ class IdentityOp final : public CudaKernel {
       AllocatorPtr alloc;
       auto status = context->GetTempSpaceAllocator(&alloc);
       if (!status.IsOK()) {
-        return Status(common::ONNXRUNTIME, common::FAIL,
-                      "IdentityOp cuda: unable to get an allocator.");
+        return Status(common::ONNXRUNTIME, common::FAIL, "IdentityOp cuda: unable to get an allocator.");
       }
       auto X_size = X->Size();
       Y->Reserve(X_size);
       for (size_t i = 0; i < X_size; ++i) {
         const Tensor& source_tensor = X->Get(i);
         std::unique_ptr<Tensor> target_tensor = Tensor::Create(source_tensor.DataType(),
-                                                               source_tensor.Shape(), alloc);
+                                                               source_tensor.Shape(),
+                                                               alloc);
         CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(target_tensor->MutableDataRaw(),
                                              source_tensor.DataRaw(),
                                              source_tensor.SizeInBytes(),
-                                             cudaMemcpyDeviceToDevice, Stream(context)));
+                                             cudaMemcpyDeviceToDevice,
+                                             Stream(context)));
         Y->Add(std::move(*target_tensor));
       }
     } else {
-      return Status(common::ONNXRUNTIME, common::FAIL,
-                    "IdentityOp cuda: unsupported input type.");
+      return Status(common::ONNXRUNTIME, common::FAIL, "IdentityOp cuda: unsupported input type.");
     }
     return Status::OK();
   }

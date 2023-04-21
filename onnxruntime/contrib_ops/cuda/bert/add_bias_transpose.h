@@ -30,10 +30,7 @@ namespace cuda {
 
 template <typename T>
 void LaunchAddBiasTranspose(
-    cudaStream_t stream, const int num_matrices, const int format, const int max_threads_per_block,
-    const int batch_size, const int sequence_length, const int num_heads, const int qk_head_size,
-    const T* input, const T* biases, T* output, bool enable_half4, const int v_head_size, T* qkv_add_bias = nullptr,
-    int total_matrix_count = -1, bool do_rotary = false, int original_past_sequence_length = 0);
+    cudaStream_t stream, const int num_matrices, const int format, const int max_threads_per_block, const int batch_size, const int sequence_length, const int num_heads, const int qk_head_size, const T* input, const T* biases, T* output, bool enable_half4, const int v_head_size, T* qkv_add_bias = nullptr, int total_matrix_count = -1, bool do_rotary = false, int original_past_sequence_length = 0);
 
 // Add (bias) and Transpose for separated inputs of Q, K and V, and output Trt format.
 // For self attention:
@@ -44,11 +41,7 @@ void LaunchAddBiasTranspose(
 //       KV:  (batch_size, kv_sequence_length, num_heads, 2, head_size)
 template <typename T>
 void LaunchAddBiasTransposeTrt(
-    cudaStream_t stream, const int max_threads_per_block,
-    const int batch_size, const int sequence_length,
-    const int num_heads, const int head_size,
-    const T* biases, const T* query, const T* key, const T* value, T* output,
-    bool is_cross_attention, int kv_sequence_length = -1);
+    cudaStream_t stream, const int max_threads_per_block, const int batch_size, const int sequence_length, const int num_heads, const int head_size, const T* biases, const T* query, const T* key, const T* value, T* output, bool is_cross_attention, int kv_sequence_length = -1);
 
 // Add (bias) for separated inputs of Q, K and V.
 //    Q:  (batch_size, sequence_length, num_heads, head_size)
@@ -56,10 +49,7 @@ void LaunchAddBiasTransposeTrt(
 //    V:  (batch_size, kv_sequence_length, num_heads, v_head_size)
 template <typename T>
 void LaunchAddBias(
-    cudaStream_t stream, const int max_threads_per_block,
-    const int batch_size, const int sequence_length, const int kv_sequence_length,
-    const int num_heads, const int head_size, const int v_head_size,
-    const T* biases, const T* query, const T* key, const T* value, T* q, T* k, T* v);
+    cudaStream_t stream, const int max_threads_per_block, const int batch_size, const int sequence_length, const int kv_sequence_length, const int num_heads, const int head_size, const int v_head_size, const T* biases, const T* query, const T* key, const T* value, T* q, T* k, T* v);
 
 }  // namespace cuda
 }  // namespace contrib

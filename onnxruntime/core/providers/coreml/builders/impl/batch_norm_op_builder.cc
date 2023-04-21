@@ -22,14 +22,12 @@ class BatchNormalizationOpBuilder : public BaseOpBuilder {
   void AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const override;
 
  private:
-  [[nodiscard]] Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
-                                             const logging::Logger& logger) const override;
+  [[nodiscard]] Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node, const logging::Logger& logger) const override;
 #endif
 
   // Operator support related
  private:
-  bool IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params,
-                         const logging::Logger& logger) const override;
+  bool IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params, const logging::Logger& logger) const override;
 
   // BatchNormalization opset 6- has unsupported attributes
   int GetMinSupportedOpSet(const Node& /* node */) const override { return 7; }
@@ -84,8 +82,7 @@ Status BatchNormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_bu
 
 // Operator support related
 
-bool BatchNormalizationOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params,
-                                                    const logging::Logger& logger) const {
+bool BatchNormalizationOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params, const logging::Logger& logger) const {
   if (node.OutputDefs().size() != 1) {
     LOGS(logger, VERBOSE) << "Your onnx model may be in training mode, please export "
                              "it in test mode.";

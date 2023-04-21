@@ -12,8 +12,7 @@ using namespace onnxruntime;
 namespace onnxruntime {
 
 struct VitisAIProviderFactory : IExecutionProviderFactory {
-  VitisAIProviderFactory(std::string&& backend_type, int device_id, std::string&& export_runtime_module,
-                         std::string&& load_runtime_module)
+  VitisAIProviderFactory(std::string&& backend_type, int device_id, std::string&& export_runtime_module, std::string&& load_runtime_module)
       : backend_type_(std::move(backend_type)), device_id_(device_id), export_runtime_module_(std::move(export_runtime_module)), load_runtime_module_(std::move(load_runtime_module)) {}
   ~VitisAIProviderFactory() = default;
 
@@ -42,16 +41,18 @@ std::unique_ptr<IExecutionProvider> VitisAIProviderFactory::CreateProvider() {
 }
 
 std::shared_ptr<IExecutionProviderFactory> VitisAIProviderFactoryCreator::Create(
-    const char* backend_type, int device_id, const char* export_runtime_module,
-    const char* load_runtime_module) {
+    const char* backend_type, int device_id, const char* export_runtime_module, const char* load_runtime_module) {
   return std::make_shared<onnxruntime::VitisAIProviderFactory>(
       backend_type, device_id, export_runtime_module, load_runtime_module);
 }
 }  // namespace onnxruntime
 
 ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_VITISAI,
-                    _In_ OrtSessionOptions* options, _In_ const char* backend_type, int device_id,
-                    const char* export_runtime_module, const char* load_runtime_module) {
+                    _In_ OrtSessionOptions* options,
+                    _In_ const char* backend_type,
+                    int device_id,
+                    const char* export_runtime_module,
+                    const char* load_runtime_module) {
   options->provider_factories.push_back(onnxruntime::VitisAIProviderFactoryCreator::Create(
       backend_type, device_id, export_runtime_module, load_runtime_module));
   return nullptr;

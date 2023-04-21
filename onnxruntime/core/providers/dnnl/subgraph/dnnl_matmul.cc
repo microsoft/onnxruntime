@@ -22,8 +22,7 @@ DnnlMatMul::DnnlMatMul() {}
 //    Depending on its attributes "FusedMatMul" can transpose eather input to the MatMul and scale the resulting output
 void DnnlMatMul::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
   std::unordered_set<std::string> binary_ops = {"Add", "Div", "Mul", "Sub"};
-  std::unordered_set<std::string> elementwise_ops = {"Abs", "Elu", "Exp", "LeakyRelu", "Log", "Relu",
-                                                     "Round", "Sigmoid", "Softplus", "Sqrt", "Tanh"};
+  std::unordered_set<std::string> elementwise_ops = {"Abs", "Elu", "Exp", "LeakyRelu", "Log", "Relu", "Round", "Sigmoid", "Softplus", "Sqrt", "Tanh"};
 
   auto eng = sp.GetEngine();
 

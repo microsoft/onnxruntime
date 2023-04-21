@@ -205,8 +205,10 @@ Status GradientGraphBuilder::CheckNodeArgsReachable() const {
       }
     }
     if (!reachable) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Cannot compute the partial derivative for '", node_arg->Name(),
+      return ORT_MAKE_STATUS(ONNXRUNTIME,
+                             INVALID_ARGUMENT,
+                             "Cannot compute the partial derivative for '",
+                             node_arg->Name(),
                              "' as it's unreachable from the output node(s).");
     }
   }
@@ -324,9 +326,7 @@ Status GradientGraphBuilder::Build(const std::unordered_set<std::string>* p_init
         }
       }
 
-      GradientDef node_defs = GetGradientForOp(gradient_graph_config_, graph_, node, output_args_need_grad,
-                                               input_args_need_grad, logger_, stashed_tensors_,
-                                               python_op_input_require_grad_info_);
+      GradientDef node_defs = GetGradientForOp(gradient_graph_config_, graph_, node, output_args_need_grad, input_args_need_grad, logger_, stashed_tensors_, python_op_input_require_grad_info_);
 
       if (node_defs.empty()) {
         LOGS(logger_, WARNING) << "GetGradientForOp() did not create any nodes for node "

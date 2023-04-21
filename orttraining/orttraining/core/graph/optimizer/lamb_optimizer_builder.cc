@@ -29,7 +29,8 @@ Status LambOptimizerBuilder::Build(
 
   ORT_ENFORCE(weight_argdefs.size() <= size_t(1024),
               "The current LambOptimizer can only update up to 1024 weight tensors, but",
-              "the actual number of weight tensors is ", weight_argdefs.size());
+              "the actual number of weight tensors is ",
+              weight_argdefs.size());
   // We add optimizer's states such as momentums as initializers.
 
   // Lamb optimizer node's inputs and outputs.
@@ -189,7 +190,9 @@ Status LambOptimizerBuilder::Build(
       ORT_RETURN_IF_NOT(weight_argdefs[i].type_proto &&
                             weight_argdefs[i].type_proto->has_tensor_type() &&
                             weight_argdefs[i].type_proto->tensor_type().has_shape(),
-                        "weight_argsdefs[", i, "] did not have tensor with shape");
+                        "weight_argsdefs[",
+                        i,
+                        "] did not have tensor with shape");
       for (const auto& dim : weight_argdefs[i].type_proto->tensor_type().shape().dim()) {
         weight_dims.push_back(dim.dim_value());
       }

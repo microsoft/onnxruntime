@@ -55,20 +55,15 @@ TEST(ViewOperatorTest, TwoViewFloat_1) {
 
   // input shape and data
   ShapeAndFloatData input = {{4, 2},
-                             {1.f, 2.f,
-                              3.f, 4.f,
-                              5.f, 6.f,
-                              7.f, 8.f}};
+                             {1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f, 8.f}};
 
   shapes.push_back({{2}, std::vector<int64_t>(2, 2)});
   shapes.push_back({{2}, std::vector<int64_t>(2, 2)});
 
   outputs.push_back({{2, 2},
-                     {1.f, 2.f,
-                      3.f, 4.f}});
+                     {1.f, 2.f, 3.f, 4.f}});
   outputs.push_back({{2, 2},
-                     {5.f, 6.f,
-                      7.f, 8.f}});
+                     {5.f, 6.f, 7.f, 8.f}});
 
   RunTest<float>(input, shapes, outputs);
 }
@@ -79,19 +74,14 @@ TEST(ViewOperatorTest, TwoViewFloat_2) {
 
   // input shape and data
   ShapeAndFloatData input = {{4, 2},
-                             {1.f, 2.f,
-                              3.f, 4.f,
-                              5.f, 6.f,
-                              7.f, 8.f}};
+                             {1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f, 8.f}};
 
   shapes.push_back({{2}, {1, 2}});
   shapes.push_back({{2}, {3, 2}});
 
   outputs.push_back({{1, 2}, {1.f, 2.f}});
   outputs.push_back({{3, 2},
-                     {3.f, 4.f,
-                      5.f, 6.f,
-                      7.f, 8.f}});
+                     {3.f, 4.f, 5.f, 6.f, 7.f, 8.f}});
 
   RunTest<float>(input, shapes, outputs);
 }
@@ -102,19 +92,14 @@ TEST(ViewOperatorTest, TwoViewFloat_3) {
 
   // input shape and data
   ShapeAndFloatData input = {{4, 2},
-                             {1.f, 2.f,
-                              3.f, 4.f,
-                              5.f, 6.f,
-                              7.f, 8.f}};
+                             {1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f, 8.f}};
 
   shapes.push_back({{2}, {1, 2}});
   shapes.push_back({{3}, {1, 3, 2}});
 
   outputs.push_back({{1, 2}, {1.f, 2.f}});
   outputs.push_back({{1, 3, 2},
-                     {3.f, 4.f,
-                      5.f, 6.f,
-                      7.f, 8.f}});
+                     {3.f, 4.f, 5.f, 6.f, 7.f, 8.f}});
 
   RunTest<float>(input, shapes, outputs);
 }
@@ -125,8 +110,7 @@ TEST(ViewOperatorTest, ThreeViewFloat) {
 
   // input shape and data
   ShapeAndFloatData input = {{4, 3},
-                             {1.f, 2.f, 3.f, 4.f, 5.f, 6.f,
-                              7.f, 8.f, 9.f, 10.f, 11.f, 12.f}};
+                             {1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f, 8.f, 9.f, 10.f, 11.f, 12.f}};
 
   shapes.push_back({{2}, {1, 2}});
   shapes.push_back({{3}, {1, 3, 2}});
@@ -147,9 +131,7 @@ TEST(ViewOperatorTest, TwoViewDouble) {
 
   // input shape and data
   ShapeAndDoubleData input = {{3, 2},
-                              {1.f, 2.f,
-                               3.f, 4.f,
-                               5.f, 6.f}};
+                              {1.f, 2.f, 3.f, 4.f, 5.f, 6.f}};
 
   shapes.push_back({{2}, {2, 1}});
   shapes.push_back({{3}, {1, 2, 2}});
@@ -166,9 +148,7 @@ TEST(ViewOperatorTest, TwoViewHalf) {
   std::vector<ShapeData> shapes;
   std::vector<ShapeAndHalfData> outputs;
 
-  std::vector<float> data = {1.0f, 2.0f,
-                             3.0f, 4.0f,
-                             5.0f, 6.0f};
+  std::vector<float> data = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
   std::vector<MLFloat16> data_half(6);
   ConvertFloatToMLFloat16(data.data(), data_half.data(), 6);
   // input shape and data

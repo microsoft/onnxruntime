@@ -21,9 +21,7 @@ class ReduceSumTraining final : public ReduceKernel<true> {
 
   // For external calls requiring ReduceSumTraining implementation - will return the reduced output.
   //`input_shape_override` overrides the shape of `input` for compute purposes.
-  static Tensor Impl(const Tensor& input, const std::vector<int64_t>& reduce_axes,
-                     AllocatorPtr allocator, concurrency::ThreadPool* tp, bool keep_dims,
-                     const TensorShape* input_shape_override = nullptr);
+  static Tensor Impl(const Tensor& input, const std::vector<int64_t>& reduce_axes, AllocatorPtr allocator, concurrency::ThreadPool* tp, bool keep_dims, const TensorShape* input_shape_override = nullptr);
 };
 
 }  // namespace contrib

@@ -53,7 +53,8 @@ static void BM_ThreadPoolParallelFor(benchmark::State& state) {
   auto tp = std::make_unique<ThreadPool>(&onnxruntime::Env::Default(),
                                          onnxruntime::ThreadOptions(),
                                          nullptr,
-                                         NUM_THREADS, ALLOW_SPINNING);
+                                         NUM_THREADS,
+                                         ALLOW_SPINNING);
   for (auto _ : state) {
     ThreadPool::TryParallelFor(tp.get(), len, cost, SimpleForLoop);
   }
@@ -98,7 +99,8 @@ static void BM_ThreadPoolSimpleParallelFor(benchmark::State& state) {
   auto tp = std::make_unique<ThreadPool>(&onnxruntime::Env::Default(),
                                          onnxruntime::ThreadOptions(),
                                          nullptr,
-                                         num_threads, ALLOW_SPINNING);
+                                         num_threads,
+                                         ALLOW_SPINNING);
   for (auto _ : state) {
     for (int j = 0; j < 100; j++) {
       ThreadPool::TrySimpleParallelFor(tp.get(), len, [&](size_t) {
@@ -142,8 +144,7 @@ BENCHMARK(BM_SimpleForLoop)
     ->Unit(benchmark::TimeUnit::kNanosecond)
     ->Arg(100);
 
-static void TestPartitionWork(std::ptrdiff_t ThreadId, std::ptrdiff_t ThreadCount, std::ptrdiff_t TotalWork,
-                              std::ptrdiff_t* WorkIndex, std::ptrdiff_t* WorkRemaining) {
+static void TestPartitionWork(std::ptrdiff_t ThreadId, std::ptrdiff_t ThreadCount, std::ptrdiff_t TotalWork, std::ptrdiff_t* WorkIndex, std::ptrdiff_t* WorkRemaining) {
   const std::ptrdiff_t WorkPerThread = TotalWork / ThreadCount;
   const std::ptrdiff_t WorkPerThreadExtra = TotalWork % ThreadCount;
 

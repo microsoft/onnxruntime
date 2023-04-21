@@ -115,8 +115,7 @@ bool TryBiasSoftmaxSubgraphMatch(Graph& graph, Node& start, Node*& add, Node*& s
  * computation if axis is not the last dim. Fusing Add+Softmax to BiasSoftmax would require extra transpose for bias,
  * and bring complex checking condition. So since OpSet-13, we will apply the fusion only when axis is the last dim.
  */
-bool TrySelectInputAndBiasWithAlignment(Node& add_node, Node& softmax_node, NodeArg*& input, NodeArg*& mask,
-                                        int& new_axis, bool& is_inner_broadcast) {
+bool TrySelectInputAndBiasWithAlignment(Node& add_node, Node& softmax_node, NodeArg*& input, NodeArg*& mask, int& new_axis, bool& is_inner_broadcast) {
   NodeArg* input1 = add_node.MutableInputDefs()[0];
   NodeArg* input2 = add_node.MutableInputDefs()[1];
 

@@ -72,8 +72,7 @@ Status ReorderPastState(
   // Copy the 'K' values into the temp staging buffer
   size_t past_state_size = packed_past ? past_state.SizeInBytes() / 2 : past_state.SizeInBytes();
   void* past_state_staging_buffer = past_state_staging.MutableDataRaw();
-  CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(past_state_staging_buffer, past_state.DataRaw(), past_state_size,
-                                       cudaMemcpyDeviceToDevice, cuda_stream));
+  CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(past_state_staging_buffer, past_state.DataRaw(), past_state_size, cudaMemcpyDeviceToDevice, cuda_stream));
 
   // Now consider the original 'K' values to be of shape [B, N, max_length, head_size / x, x] and transpose it into
   // [B, N, head_size / x, max_length, x], where x = 16 / sizeof(T)
@@ -90,24 +89,13 @@ Status ReorderPastState(
                                                 past_state_shape[offset + 3] / chunk_size,
                                                 chunk_size};
 
-  TensorShape transpose_output_shape_override = {past_state_shape[offset], past_state_shape[offset + 1],
-                                                 past_state_shape[offset + 3] / chunk_size, past_state_shape[offset + 2],
-                                                 chunk_size};
+  TensorShape transpose_output_shape_override = {past_state_shape[offset], past_state_shape[offset + 1], past_state_shape[offset + 3] / chunk_size, past_state_shape[offset + 2], chunk_size};
 
   // TODO(hasesh): Explore perf tuning for this Transpose operation
-  return onnxruntime::cuda::Transpose::DoTranspose(*static_cast<const cudaDeviceProp*>(cuda_device_prop), cuda_stream,
-                                                   cublas_handle, permutation,
-                                                   past_state_staging, past_state,
-                                                   &transpose_input_shape_override,
-                                                   &transpose_output_shape_override);
+  return onnxruntime::cuda::Transpose::DoTranspose(*static_cast<const cudaDeviceProp*>(cuda_device_prop), cuda_stream, cublas_handle, permutation, past_state_staging, past_state, &transpose_input_shape_override, &transpose_output_shape_override);
 }
 
-Status TopK(const Tensor* input, const int axis, const unsigned k, bool largest, bool sorted,
-            AllocatorPtr allocator,
-            Stream* stream,
-            onnxruntime::concurrency::ThreadPool* /*threadpool*/,
-            Tensor& output_values,
-            Tensor& output_indices) {
+Status TopK(const Tensor* input, const int axis, const unsigned k, bool largest, bool sorted, AllocatorPtr allocator, Stream* stream, onnxruntime::concurrency::ThreadPool* /*threadpool*/, Tensor& output_values, Tensor& output_indices) {
 #ifdef ENABLE_NVTX_PROFILE
   profile::NvtxNestedRangeCreator topkRange("TopK", profile::Color::Green);
   topkRange.Begin();
@@ -164,9 +152,7 @@ Status TopK(const Tensor* input, const int axis, const unsigned k, bool largest,
                                  N,
                                  dimension);
   } else {
-    result = ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
-                             "BeamSearch op: An implementation for the input type ",
-                             input->DataType(), " is not supported yet");
+    result = ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "BeamSearch op: An implementation for the input type ", input->DataType(), " is not supported yet");
   }
 
 #ifdef ENABLE_NVTX_PROFILE
@@ -216,9 +202,7 @@ Status AddToFeeds(const IExecutionProvider* execution_provider,
       } else if (dataType == DataTypeImpl::GetType<MLFloat16>()) {
         memcpy(destination, input.Get<Tensor>().Data<MLFloat16>(), bytes);
       } else {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
-                               "AddToFeeds: An implementation for the input type ",
-                               dataType, " is not supported yet");
+        return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "AddToFeeds: An implementation for the input type ", dataType, " is not supported yet");
       }
       // Do not need alignment because GPT has int32 inputs (past is empty) and T5 encoder has int64 inputs.
       destination += bytes;
@@ -285,8 +269,7 @@ void InitBeamState(transformers::IBeamSearchState<T>* beam_state,
   // copy sequence lengths to GPU
   // since next_positions is only needed to update feeds after subgraph execution, so it is fine to use Async here.
   if (!beam_state->next_positions.empty()) {  // next_positions is empty for T5
-    CUDA_CALL_THROW(cudaMemcpyAsync(beam_state->next_positions.data(), sequence_lengths.data(), sequence_lengths.size_bytes(),
-                                    cudaMemcpyHostToDevice, cuda_stream));
+    CUDA_CALL_THROW(cudaMemcpyAsync(beam_state->next_positions.data(), sequence_lengths.data(), sequence_lengths.size_bytes(), cudaMemcpyHostToDevice, cuda_stream));
   }
 
 #ifdef ENABLE_NVTX_PROFILE
@@ -307,8 +290,7 @@ void InitGreedyState(transformers::IGreedySearchState<T>* greedy_state,
   CUDA_CALL_THROW(cudaMemsetAsync(greedy_state->next_token_scores.data(), 0, greedy_state->next_token_scores.size_bytes(), cuda_stream));
   CUDA_CALL_THROW(cudaMemsetAsync(greedy_state->next_positions.data(), 0, greedy_state->next_positions.size_bytes(), cuda_stream));
 
-  CUDA_CALL_THROW(cudaMemcpyAsync(greedy_state->next_positions.data(), sequence_lengths.data(), sequence_lengths.size_bytes(),
-                                  cudaMemcpyHostToDevice, cuda_stream));
+  CUDA_CALL_THROW(cudaMemcpyAsync(greedy_state->next_positions.data(), sequence_lengths.data(), sequence_lengths.size_bytes(), cudaMemcpyHostToDevice, cuda_stream));
 
 #ifdef ENABLE_NVTX_PROFILE
   initStateRange.End();
@@ -380,8 +362,7 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
       // for token generation.
       gsl::span<const T> source(reinterpret_cast<const T*>(current_logits), vocab_size);
       gsl::span<T> target = next_token_logits.subspan(static_cast<size_t>(i) * vocab_size, vocab_size);
-      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(target.data(), source.data(), sizeof(T) * vocab_size,
-                                           cudaMemcpyDeviceToDevice, cuda_stream));
+      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(target.data(), source.data(), sizeof(T) * vocab_size, cudaMemcpyDeviceToDevice, cuda_stream));
       if (logits_batch_size == batch_beam_size) {
         current_logits += input_length * padded_vocab_size;
       } else if (logits_batch_size == batch_size && i % num_beams == num_beams - 1) {
@@ -407,10 +388,7 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
   const CudaT* X_data = is_reuse_logits_buffer ? logits_data : reinterpret_cast<const CudaT*>(next_token_logits.data());
 
   ORT_RETURN_IF_ERROR((dispatch_blockwise_softmax_forward<CudaT, float, float, true>(
-      cuda_stream, Y_data, X_data, vocab_size,
-      is_reuse_logits_buffer ? padded_vocab_size : vocab_size,
-      vocab_size,
-      batch_size * num_beams)));
+      cuda_stream, Y_data, X_data, vocab_size, is_reuse_logits_buffer ? padded_vocab_size : vocab_size, vocab_size, batch_size * num_beams)));
 
 #ifdef DEBUG_GENERATION
   dumper->Print("next_token_scores after softmax", next_token_scores.data(), batch_size, num_beams, vocab_size);
@@ -426,8 +404,7 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
     void* data = allocator->Alloc(bytes);
     BufferUniquePtr temp_buffer(data, BufferDeleter(allocator));
     sequences_buffer = std::move(temp_buffer);
-    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(sequences_buffer.get(), sequences->GetSequence(0).data(), bytes,
-                                         cudaMemcpyHostToDevice, cuda_stream));
+    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(sequences_buffer.get(), sequences->GetSequence(0).data(), bytes, cudaMemcpyHostToDevice, cuda_stream));
   }
 
   cuda::LaunchLogitsProcessKernel<float>(
@@ -454,8 +431,7 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
 #endif
   // Add beam score to next token scores. Corresponding python code is like:
   //    next_token_scores = next_token_scores + beam_scores[:, None].expand_as(next_token_scores)
-  cuda::LaunchAddProbsKernel(next_token_scores.data(), beam_state->beam_scores.data(),
-                             batch_size, num_beams, vocab_size, cuda_stream);
+  cuda::LaunchAddProbsKernel(next_token_scores.data(), beam_state->beam_scores.data(), batch_size, num_beams, vocab_size, cuda_stream);
 
 #ifdef DEBUG_GENERATION
   dumper->Print("next_token_scores adding beam_scores", next_token_scores.data(), batch_size, num_beams, vocab_size);
@@ -516,8 +492,7 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
     TensorShape next_token_scores_shape(&next_token_scores_dims[0], 2);
     auto element_type = DataTypeImpl::GetType<float>();
     OrtValue next_token_scores_value;
-    Tensor::InitOrtValue(element_type, next_token_scores_shape, next_token_scores.data(), allocator->Info(),
-                         next_token_scores_value);
+    Tensor::InitOrtValue(element_type, next_token_scores_shape, next_token_scores.data(), allocator->Info(), next_token_scores_value);
     const Tensor& input = next_token_scores_value.Get<Tensor>();
 
     constexpr int axis = 1;
@@ -527,8 +502,7 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
 
     std::unique_ptr<Tensor> topk_scores = Tensor::CreateDefault();
     std::unique_ptr<Tensor> topk_indices = Tensor::CreateDefault();
-    ORT_RETURN_IF_ERROR(TopK(&input, axis, top_k, largest, sorted, allocator, ort_stream, thread_pool,
-                             *topk_scores, *topk_indices));
+    ORT_RETURN_IF_ERROR(TopK(&input, axis, top_k, largest, sorted, allocator, ort_stream, thread_pool, *topk_scores, *topk_indices));
 
 #ifdef DEBUG_GENERATION
     dumper->Print("topk_scores", *(topk_scores.get()));
@@ -539,8 +513,7 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
     //   next_indices = (next_tokens / vocab_size).long()
     //   next_tokens = next_tokens % vocab_size
     const int64_t* next_token_indices = topk_indices->Data<int64_t>();
-    cuda::LaunchNextTokenKernel(next_token_indices, beam_state->next_indices.data(), beam_state->next_tokens.data(),
-                                batch_size, top_k, vocab_size, cuda_stream);
+    cuda::LaunchNextTokenKernel(next_token_indices, beam_state->next_indices.data(), beam_state->next_tokens.data(), batch_size, top_k, vocab_size, cuda_stream);
 
     const float* data = topk_scores->Data<float>();
 #ifdef DEBUG_GENERATION
@@ -678,8 +651,7 @@ Status GreedySearchProcessLogits(
       // for token generation.
       gsl::span<const T> source(reinterpret_cast<const T*>(current_logits), vocab_size);
       gsl::span<T> target = next_token_scores.subspan(i * vocab_size, vocab_size);
-      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(target.data(), source.data(), sizeof(T) * vocab_size,
-                                           cudaMemcpyDeviceToDevice, cuda_stream));
+      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(target.data(), source.data(), sizeof(T) * vocab_size, cudaMemcpyDeviceToDevice, cuda_stream));
       current_logits += input_length * padded_vocab_size;
     }
   }
@@ -703,15 +675,13 @@ Status GreedySearchProcessLogits(
     void* data = allocator->Alloc(bytes);
     BufferUniquePtr temp_buffer(data, BufferDeleter(allocator));
     sequences_buffer = std::move(temp_buffer);
-    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(sequences_buffer.get(), sequences->GetSequence(0).data(), bytes,
-                                         cudaMemcpyHostToDevice, cuda_stream));
+    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(sequences_buffer.get(), sequences->GetSequence(0).data(), bytes, cudaMemcpyHostToDevice, cuda_stream));
   }
 
   // Copy parameters->presence_mask to sampling_state->presence_mask
   gsl::span<int>& presence_mask = sampling_state->d_presence_mask;
   if (step == 1 && parameters->presence_mask.data() != nullptr) {
-    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(presence_mask.data(), parameters->presence_mask.data(),
-                                         sizeof(int) * batch_size * vocab_size, cudaMemcpyDeviceToDevice, cuda_stream));
+    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(presence_mask.data(), parameters->presence_mask.data(), sizeof(int) * batch_size * vocab_size, cudaMemcpyDeviceToDevice, cuda_stream));
   }
 
   // TODO(hasesh): Can we avoid the const_cast by changing the interface of
@@ -805,11 +775,9 @@ Status DeviceCopy(gsl::span<T> target, gsl::span<const T> source, Stream* ort_st
   assert(copyDirection >= 0 && copyDirection <= 3);
   cudaStream_t cuda_stream = ort_stream ? static_cast<cudaStream_t>(ort_stream->GetHandle()) : nullptr;
   if (cuda_stream == nullptr) {
-    CUDA_RETURN_IF_ERROR(cudaMemcpy(target.data(), source.data(), source.size_bytes(),
-                                    static_cast<cudaMemcpyKind>(copyDirection)));
+    CUDA_RETURN_IF_ERROR(cudaMemcpy(target.data(), source.data(), source.size_bytes(), static_cast<cudaMemcpyKind>(copyDirection)));
   } else {
-    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(target.data(), source.data(), source.size_bytes(),
-                                         static_cast<cudaMemcpyKind>(copyDirection), cuda_stream));
+    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(target.data(), source.data(), source.size_bytes(), static_cast<cudaMemcpyKind>(copyDirection), cuda_stream));
     CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(cuda_stream));
   }
   return Status::OK();
@@ -849,10 +817,8 @@ Status PickGptPastState(const std::vector<OrtValue>& last_outputs,
 
       gsl::span<T> past_key = past_span.subspan(j * block_size_per_beam, block_size_per_beam);
       gsl::span<T> past_value = past_span.subspan(past_key_size + j * block_size_per_beam, block_size_per_beam);
-      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(past_key.data(), present_key.data(), present_key.size_bytes(),
-                                           cudaMemcpyDeviceToDevice, cuda_stream));
-      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(past_value.data(), present_value.data(), present_value.size_bytes(),
-                                           cudaMemcpyDeviceToDevice, cuda_stream));
+      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(past_key.data(), present_key.data(), present_key.size_bytes(), cudaMemcpyDeviceToDevice, cuda_stream));
+      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(past_value.data(), present_value.data(), present_value.size_bytes(), cudaMemcpyDeviceToDevice, cuda_stream));
     }
 
     next_inputs[gpt_subgraph_first_past_input_idx + i] = past;
@@ -890,8 +856,7 @@ Status PickT5PastState(const std::vector<OrtValue>& last_outputs,
       int32_t beam_index = beam_indices[j];
       gsl::span<const T> present_beam = present_span.subspan(beam_index * block_size_per_beam, block_size_per_beam);
       gsl::span<T> past_beam = past_span.subspan(j * block_size_per_beam, block_size_per_beam);
-      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(past_beam.data(), present_beam.data(), present_beam.size_bytes(),
-                                           cudaMemcpyDeviceToDevice, cuda_stream));
+      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(past_beam.data(), present_beam.data(), present_beam.size_bytes(), cudaMemcpyDeviceToDevice, cuda_stream));
     }
 
     next_inputs[t5_decoder_first_past_input_idx + i] = past;
@@ -935,8 +900,7 @@ Status UpdateGptFeeds(
   cudaStream_t cuda_stream = ort_stream ? static_cast<cudaStream_t>(ort_stream->GetHandle()) : nullptr;
 
   // TODO(hasesh): When BeamScorer is implemented on CUDA, figure out a way to avoid this cross-device copy
-  CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(input_ids_data, beam_next_tokens.data(), beam_next_tokens.size_bytes(),
-                                       cudaMemcpyHostToDevice, cuda_stream));
+  CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(input_ids_data, beam_next_tokens.data(), beam_next_tokens.size_bytes(), cudaMemcpyHostToDevice, cuda_stream));
   next_inputs[0] = input_ids;
 
   // Update position IDs
@@ -954,8 +918,7 @@ Status UpdateGptFeeds(
   int32_t* mask_data = attention_mask.GetMutable<Tensor>()->MutableData<int32_t>();
 
   // Launch kernel to update position_ids and attention_mask for next iteration
-  cuda::LaunchUpdateGptKernel(old_mask_data, mask_data, position_data, batch_beam_size, current_length,
-                              cuda_stream);
+  cuda::LaunchUpdateGptKernel(old_mask_data, mask_data, position_data, batch_beam_size, current_length, cuda_stream);
 
   next_inputs[2] = attention_mask;
 
@@ -1003,9 +966,7 @@ Status UpdateGptFeeds(
         next_inputs[i + k] = last_outputs[i];
       }
     } else {
-      ORT_RETURN_IF_ERROR(PickGptPastState<T>(last_outputs, next_inputs, beam_indices_cpu, allocator,
-                                              gpt_subgraph_first_past_input_idx,
-                                              gpt_subgraph_first_present_output_idx, ort_stream));
+      ORT_RETURN_IF_ERROR(PickGptPastState<T>(last_outputs, next_inputs, beam_indices_cpu, allocator, gpt_subgraph_first_past_input_idx, gpt_subgraph_first_present_output_idx, ort_stream));
     }
   }
 
@@ -1059,8 +1020,7 @@ Status UpdateDecoderFeeds(
   cudaStream_t cuda_stream = ort_stream ? static_cast<cudaStream_t>(ort_stream->GetHandle()) : nullptr;
 
   if (!use_sequence_as_input_ids) {
-    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(input_ids_data, beam_next_tokens.data(), beam_next_tokens.size_bytes(),
-                                         cudaMemcpyHostToDevice, cuda_stream));
+    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(input_ids_data, beam_next_tokens.data(), beam_next_tokens.size_bytes(), cudaMemcpyHostToDevice, cuda_stream));
   } else {
     int32_t* input_ids_data = input_ids.GetMutable<Tensor>()->MutableData<int32_t>();
     for (int i = 0; i < batch_beam_size; i++) {
@@ -1133,8 +1093,7 @@ Status UpdateDecoderFeeds(
       return Status::OK();
     }
 
-    return PickT5PastState<T>(last_outputs, next_inputs, num_present_tensors, beam_indices, allocator,
-                              t5_decoder_first_past_input_idx, t5_decoder_first_present_output_idx, ort_stream);
+    return PickT5PastState<T>(last_outputs, next_inputs, num_present_tensors, beam_indices, allocator, t5_decoder_first_past_input_idx, t5_decoder_first_present_output_idx, ort_stream);
   }
 
   // Make sure data is ready before next subgraph execution.

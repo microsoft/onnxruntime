@@ -80,18 +80,14 @@ Status PackedAttention<T>::CheckInputs(const TensorShape& input_shape,
 
   const auto& input_dims = input_shape.GetDims();
   if (input_dims.size() != 2) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Input 'input' is expected to have 2 dimensions in packing mode, got ",
-                           input_dims.size());
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'input' is expected to have 2 dimensions in packing mode, got ", input_dims.size());
   }
   int64_t token_count = input_dims[0];
   int64_t input_hidden_size = input_dims[1];
 
   const auto& token_offset_dims = token_offset_shape.GetDims();
   if (token_offset_dims.size() != 2) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Input 'packing_token_offset' is expected to have 2 dimensions in packing mode, got ",
-                           token_offset_dims.size());
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'packing_token_offset' is expected to have 2 dimensions in packing mode, got ", token_offset_dims.size());
   }
 
   int64_t batch_size = token_offset_dims[0];
@@ -99,29 +95,24 @@ Status PackedAttention<T>::CheckInputs(const TensorShape& input_shape,
 
   const auto& bias_dims = bias_shape.GetDims();
   if (bias_dims.size() != 1) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'bias' is expected to have 1 dimension, got ",
-                           bias_dims.size());
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'bias' is expected to have 1 dimension, got ", bias_dims.size());
   }
 
   const auto& weights_dims = weights_shape.GetDims();
   if (weights_dims.size() != 2) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'weights' is expected to have 2 dimensions, got ",
-                           weights_dims.size());
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'weights' is expected to have 2 dimensions, got ", weights_dims.size());
   }
   if (weights_dims[0] != input_hidden_size) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Input 1 dimension 0 should have same length as dimension 2 of input 0");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 1 dimension 0 should have same length as dimension 2 of input 0");
   }
 
   if (bias_dims[0] != weights_dims[1]) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Input 'bias' dimension 0 should have same length as dimension 1 of input 'weights'");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'bias' dimension 0 should have same length as dimension 1 of input 'weights'");
   }
 
   const auto& cu_seq_len_dims = cu_seq_len_shape.GetDims();
   if (cu_seq_len_dims.size() != 1 || cu_seq_len_dims[0] != batch_size + 1) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Input 'cumulative_sequence_length' should have 1 dimension with size equal to batch_size + 1");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'cumulative_sequence_length' should have 1 dimension with size equal to batch_size + 1");
   }
 
   int64_t q_hidden_size = bias_dims[0] / static_cast<int64_t>(3);
@@ -129,14 +120,12 @@ Status PackedAttention<T>::CheckInputs(const TensorShape& input_shape,
   int64_t v_hidden_size = k_hidden_size;
   if (qkv_hidden_sizes_.size() != 0) {
     if (qkv_hidden_sizes_.size() != 3) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "qkv_hidden_sizes attribute should have 3 elements");
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "qkv_hidden_sizes attribute should have 3 elements");
     }
 
     for (size_t i = 0; i < qkv_hidden_sizes_.size(); i++) {
       if (qkv_hidden_sizes_[i] % num_heads_ != 0) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                               "hidden_size should be divisible by num_heads:", qkv_hidden_sizes_[i]);
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "hidden_size should be divisible by num_heads:", qkv_hidden_sizes_[i]);
       }
     }
 
@@ -146,15 +135,11 @@ Status PackedAttention<T>::CheckInputs(const TensorShape& input_shape,
   }
 
   if (q_hidden_size != k_hidden_size) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "qkv_hidden_sizes first element should be same as the second");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "qkv_hidden_sizes first element should be same as the second");
   }
 
   if (bias_dims[0] != q_hidden_size + k_hidden_size + v_hidden_size) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Input 'bias' dimension 0 should have same length as sum of Q/K/V hidden sizes:",
-                           " q_hidden_size=", q_hidden_size, " k_hidden_size=", k_hidden_size, " v_hidden_size=",
-                           v_hidden_size, "bias_dims[0]=", bias_dims[0]);
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'bias' dimension 0 should have same length as sum of Q/K/V hidden sizes:", " q_hidden_size=", q_hidden_size, " k_hidden_size=", k_hidden_size, " v_hidden_size=", v_hidden_size, "bias_dims[0]=", bias_dims[0]);
   }
 
   bool broadcast_res_pos_bias = false;
@@ -162,36 +147,26 @@ Status PackedAttention<T>::CheckInputs(const TensorShape& input_shape,
     const auto& relative_position_bias_dims = relative_position_bias->Shape().GetDims();
 
     if (relative_position_bias_dims.size() != 4) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input 'relative_position_bias' is expected to have 4 dimensions, got ",
-                             relative_position_bias_dims.size());
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'relative_position_bias' is expected to have 4 dimensions, got ", relative_position_bias_dims.size());
     }
 
     if (relative_position_bias_dims[0] != batch_size && relative_position_bias_dims[0] != 1) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input 'relative_position_bias' dimension 0 should be same as batch_size or 1, got ",
-                             relative_position_bias_dims[0]);
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'relative_position_bias' dimension 0 should be same as batch_size or 1, got ", relative_position_bias_dims[0]);
     }
     if (relative_position_bias_dims[0] == 1) {
       broadcast_res_pos_bias = true;
     }
 
     if (relative_position_bias_dims[1] != num_heads_) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input 'relative_position_bias' dimension 1 should be same as number of heads, got ",
-                             relative_position_bias_dims[1]);
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'relative_position_bias' dimension 1 should be same as number of heads, got ", relative_position_bias_dims[1]);
     }
 
     if (relative_position_bias_dims[2] != sequence_length) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input 'relative_position_bias' dimension 2 should be same as sequence_length, got ",
-                             relative_position_bias_dims[2]);
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'relative_position_bias' dimension 2 should be same as sequence_length, got ", relative_position_bias_dims[2]);
     }
 
     if (relative_position_bias_dims[3] != sequence_length) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input 'relative_position_bias' dimension 3 should be same as sequence_length, got ",
-                             relative_position_bias_dims[3]);
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'relative_position_bias' dimension 3 should be same as sequence_length, got ", relative_position_bias_dims[3]);
     }
   }
 
@@ -238,8 +213,7 @@ MHARunner* PackedAttention<T>::TryGettingFusedRunner(const PackedAttentionParame
 
   // Assuming that num_heads and head_size do not change.
   if (nullptr == fused_fp16_runner_.get()) {
-    fused_fp16_runner_.reset(new FusedMHARunnerFP16v2(num_heads_, parameters.head_size, sm, false /* causal_mask*/,
-                                                      enable_trt_flash_attention_, parameters.scale));
+    fused_fp16_runner_.reset(new FusedMHARunnerFP16v2(num_heads_, parameters.head_size, sm, false /* causal_mask*/, enable_trt_flash_attention_, parameters.scale));
   }
 
   // In case some kernel not loaded due to shared memory limit, we need to double check here.
@@ -290,10 +264,7 @@ Status PackedAttention<T>::ComputeInternal(OpKernelContext* context) const {
   // Gemm, note that CUDA assumes col-major, so result(N, M) = 1 * weights x input + 1 x bias
   // The bias part is not included here since we fuse bias, transpose and output 3 matrice into one cuda kernel.
   CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
-      cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, k, &one,
-      reinterpret_cast<const CudaT*>(weights->Data<T>()), n,
-      reinterpret_cast<const CudaT*>(input->Data<T>()), k,
-      &zero, reinterpret_cast<CudaT*>(gemm_buffer.get()), n, device_prop));
+      cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, k, &one, reinterpret_cast<const CudaT*>(weights->Data<T>()), n, reinterpret_cast<const CudaT*>(input->Data<T>()), k, &zero, reinterpret_cast<CudaT*>(gemm_buffer.get()), n, device_prop));
 
   constexpr size_t element_size = sizeof(T);
   size_t workSpaceSize = GetAttentionWorkspaceSize(element_size,

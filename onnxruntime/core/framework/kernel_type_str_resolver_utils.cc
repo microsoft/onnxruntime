@@ -22,7 +22,8 @@ gsl::span<const OpIdentifierWithStringViews> GetLayoutTransformationRequiredOpId
 }
 
 Status SaveKernelTypeStrResolverToBuffer(const KernelTypeStrResolver& kernel_type_str_resolver,
-                                         flatbuffers::DetachedBuffer& buffer, gsl::span<const uint8_t>& buffer_span) {
+                                         flatbuffers::DetachedBuffer& buffer,
+                                         gsl::span<const uint8_t>& buffer_span) {
   flatbuffers::FlatBufferBuilder builder;
   flatbuffers::Offset<fbs::KernelTypeStrResolver> fbs_kernel_type_str_resolver;
   ORT_RETURN_IF_ERROR(kernel_type_str_resolver.SaveToOrtFormat(builder, fbs_kernel_type_str_resolver));

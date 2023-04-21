@@ -16,11 +16,7 @@ ONNX_CPU_OPERATOR_ML_KERNEL(
     SVMClassifier,
     1,
     KernelDefBuilder()
-        .TypeConstraint("T1", std::vector<MLDataType>{
-                                  DataTypeImpl::GetTensorType<float>(),
-                                  DataTypeImpl::GetTensorType<double>(),
-                                  DataTypeImpl::GetTensorType<int32_t>(),
-                                  DataTypeImpl::GetTensorType<int64_t>()})
+        .TypeConstraint("T1", std::vector<MLDataType>{DataTypeImpl::GetTensorType<float>(), DataTypeImpl::GetTensorType<double>(), DataTypeImpl::GetTensorType<int32_t>(), DataTypeImpl::GetTensorType<int64_t>()})
         .TypeConstraint("T2", {DataTypeImpl::GetTensorType<int64_t>(), DataTypeImpl::GetTensorType<std::string>()}),
     SVMClassifier);
 
@@ -72,15 +68,11 @@ SVMClassifier::SVMClassifier(const OpKernelInfo& info)
   ORT_ENFORCE(classlabels_strings_.size() > 0 || classlabels_ints_.size() > 0);
   ORT_ENFORCE(proba_.size() == probb_.size());
   ORT_ENFORCE(coefficients_.size() > 0);
-  weights_are_all_positive_ = std::all_of(coefficients_.cbegin(), coefficients_.cend(),
-                                          [](float value) { return value >= 0.f; });
+  weights_are_all_positive_ = std::all_of(coefficients_.cbegin(), coefficients_.cend(), [](float value) { return value >= 0.f; });
 }
 
 template <typename LabelType>
-static void ChooseClass(Tensor& output, const int64_t output_idx, float max_weight, const int64_t maxclass,
-                        bool have_proba, bool weights_are_all_positive,
-                        const std::vector<LabelType>& classlabels,
-                        const LabelType& posclass, const LabelType& negclass) {
+static void ChooseClass(Tensor& output, const int64_t output_idx, float max_weight, const int64_t maxclass, bool have_proba, bool weights_are_all_positive, const std::vector<LabelType>& classlabels, const LabelType& posclass, const LabelType& negclass) {
   LabelType& output_data = *(output.MutableData<LabelType>() + output_idx);
 
   if (classlabels.size() == 2) {
@@ -156,7 +148,8 @@ Status SVMClassifier::Compute(OpKernelContext* ctx) const {
 }
 
 Status SVMClassifier::ComputeImpl(OpKernelContext& ctx,
-                                  gsl::span<const float> x_data, const TensorShape& x_shape) const {
+                                  gsl::span<const float> x_data,
+                                  const TensorShape& x_shape) const {
   concurrency::ThreadPool* threadpool = ctx.GetOperatorThreadPool();
 
   const auto num_batches = SafeInt<int32_t>(x_shape.NumDimensions() == 1 ? 1 : x_shape[0]);
@@ -213,8 +206,7 @@ Status SVMClassifier::ComputeImpl(OpKernelContext& ctx,
     // auto out = gsl::make_span<float>(scores_data.data(), scores_data.size());
 
     // combine the coefficients with the input data and apply the kernel type
-    batched_kernel_dot<float>(x_data, coefficients_, num_batches, class_count_, feature_count_, rho_[0], final_scores,
-                              threadpool);
+    batched_kernel_dot<float>(x_data, coefficients_, num_batches, class_count_, feature_count_, rho_[0], final_scores, threadpool);
 
   } else {
     gsl::span<float> classifier_scores;
@@ -244,8 +236,7 @@ Status SVMClassifier::ComputeImpl(OpKernelContext& ctx,
 
     // combine the input data with the support vectors and apply the kernel type
     // output is {num_batches, vector_count_}
-    batched_kernel_dot<float>(x_data, support_vectors_, num_batches, vector_count_, feature_count_, 0.f, kernels_span,
-                              threadpool);
+    batched_kernel_dot<float>(x_data, support_vectors_, num_batches, vector_count_, feature_count_, 0.f, kernels_span, threadpool);
 
     for (int64_t n = 0; n < num_batches; n++) {
       // reduce scores from kernels using coefficients, taking into account the varying number of support vectors
@@ -307,10 +298,7 @@ Status SVMClassifier::ComputeImpl(OpKernelContext& ctx,
     }
   }
 
-  auto finalize_batch = [this, &final_scores, final_scores_per_batch,
-                         have_proba, &probsp2_data, class_count_squared,
-                         &classifier_scores_data, num_classifiers, &votes_data, &Y,
-                         num_scores_per_batch, write_additional_scores](ptrdiff_t idx) {
+  auto finalize_batch = [this, &final_scores, final_scores_per_batch, have_proba, &probsp2_data, class_count_squared, &classifier_scores_data, num_classifiers, &votes_data, &Y, num_scores_per_batch, write_additional_scores](ptrdiff_t idx) {
     int n = SafeInt<int32_t>(idx);  // convert to a usable sized type
     auto cur_scores = final_scores.subspan(n * SafeInt<size_t>(final_scores_per_batch), onnxruntime::narrow<size_t>(final_scores_per_batch));
 
@@ -354,11 +342,9 @@ Status SVMClassifier::ComputeImpl(OpKernelContext& ctx,
     // onnx specs expects one column per class.
     if (num_classifiers == 1) {  // binary case
       if (using_strings_) {
-        ChooseClass<std::string>(Y, n, max_weight, maxclass, have_proba, weights_are_all_positive_,
-                                 classlabels_strings_, "1", "0");
+        ChooseClass<std::string>(Y, n, max_weight, maxclass, have_proba, weights_are_all_positive_, classlabels_strings_, "1", "0");
       } else {
-        ChooseClass<int64_t>(Y, n, max_weight, maxclass, have_proba, weights_are_all_positive_,
-                             classlabels_ints_, 1, 0);
+        ChooseClass<int64_t>(Y, n, max_weight, maxclass, have_proba, weights_are_all_positive_, classlabels_ints_, 1, 0);
       }
     } else {  // multiclass
       if (using_strings_) {
@@ -370,8 +356,7 @@ Status SVMClassifier::ComputeImpl(OpKernelContext& ctx,
 
     // write the score for this batch
     // as we parallelize the batch processing we want to update the final scores for each batch in the separate threads
-    batched_update_scores_inplace<float>(cur_scores, 1, num_scores_per_batch, post_transform_,
-                                         write_additional_scores, true, nullptr);
+    batched_update_scores_inplace<float>(cur_scores, 1, num_scores_per_batch, post_transform_, write_additional_scores, true, nullptr);
   };
 
   // TODO: Refine this rough metric to choose when to parallelize.

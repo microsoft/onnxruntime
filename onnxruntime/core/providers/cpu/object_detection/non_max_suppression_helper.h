@@ -67,8 +67,7 @@ inline void MaxMin(float lhs, float rhs, float& min, float& max) {
 }
 
 ORT_DEVICE
-inline bool SuppressByIOU(const float* boxes_data, int64_t box_index1, int64_t box_index2,
-                          int64_t center_point_box, float iou_threshold) {
+inline bool SuppressByIOU(const float* boxes_data, int64_t box_index1, int64_t box_index2, int64_t center_point_box, float iou_threshold) {
   float x1_min{};
   float y1_min{};
   float x1_max{};

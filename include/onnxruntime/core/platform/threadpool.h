@@ -246,19 +246,16 @@ class ThreadPool {
   // parallelism, and may also cause inefficiencies due to load balancing
   // issues and stragglers.
 
-  static void TryParallelFor(ThreadPool* tp, std::ptrdiff_t total, double cost_per_unit,
-                             const std::function<void(std::ptrdiff_t first, std::ptrdiff_t last)>& fn) {
+  static void TryParallelFor(ThreadPool* tp, std::ptrdiff_t total, double cost_per_unit, const std::function<void(std::ptrdiff_t first, std::ptrdiff_t last)>& fn) {
     TryParallelFor(tp, total, TensorOpCost{0, 0, static_cast<double>(cost_per_unit)}, fn);
   }
 
-  static void TryParallelFor(ThreadPool* tp, std::ptrdiff_t total, const TensorOpCost& cost_per_unit,
-                             const std::function<void(std::ptrdiff_t first, std::ptrdiff_t last)>& fn);
+  static void TryParallelFor(ThreadPool* tp, std::ptrdiff_t total, const TensorOpCost& cost_per_unit, const std::function<void(std::ptrdiff_t first, std::ptrdiff_t last)>& fn);
 
   // Directly schedule the 'total' tasks to the underlying threadpool, without
   // cutting them by halves
 
-  inline static void TrySimpleParallelFor(ThreadPool* tp, std::ptrdiff_t total,
-                                          const std::function<void(std::ptrdiff_t)>& fn) {
+  inline static void TrySimpleParallelFor(ThreadPool* tp, std::ptrdiff_t total, const std::function<void(std::ptrdiff_t)>& fn) {
     if (tp != nullptr) {
       tp->SimpleParallelFor(total, fn);
     } else {
@@ -390,8 +387,7 @@ class ThreadPool {
   // the number of threads available in the pool.
   // When (i+1)*block_size > total, fn(i*block_size, total) is called instead.
   // Requires 0 < block_size <= total.
-  void ParallelForFixedBlockSizeScheduling(std::ptrdiff_t total, std::ptrdiff_t block_size,
-                                           const std::function<void(std::ptrdiff_t, std::ptrdiff_t)>& fn);
+  void ParallelForFixedBlockSizeScheduling(std::ptrdiff_t total, std::ptrdiff_t block_size, const std::function<void(std::ptrdiff_t, std::ptrdiff_t)>& fn);
 
   // Return whether or not the calling thread should run a loop of
   // num_iterations divided in chunks of block_size in parallel.  If not,
@@ -401,11 +397,9 @@ class ThreadPool {
 
   // Internal (non-static) parallel loop methods.  Unlike the public static methods,
   // these will not handle the cases of OpenMP builds. or builds without a threadpool.
-  void ParallelFor(std::ptrdiff_t total, double cost_per_unit,
-                   const std::function<void(std::ptrdiff_t first, std::ptrdiff_t last)>& fn);
+  void ParallelFor(std::ptrdiff_t total, double cost_per_unit, const std::function<void(std::ptrdiff_t first, std::ptrdiff_t last)>& fn);
 
-  void ParallelFor(std::ptrdiff_t total, const TensorOpCost& cost_per_unit,
-                   const std::function<void(std::ptrdiff_t first, std::ptrdiff_t)>& fn);
+  void ParallelFor(std::ptrdiff_t total, const TensorOpCost& cost_per_unit, const std::function<void(std::ptrdiff_t first, std::ptrdiff_t)>& fn);
 
   void SimpleParallelFor(std::ptrdiff_t total, const std::function<void(std::ptrdiff_t)>& fn);
 

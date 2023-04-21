@@ -14,8 +14,7 @@ class MlasQLinearGlobalAveragePoolTest : public MlasTestBase {
   static const std::vector<T8Bits> ZeroPoints;
 
   static void CalculateGlobalAvgPool(
-      const T8Bits* x, int64_t batch, int64_t channel, int64_t hw, bool channel_last,
-      T8Bits* y, int32_t x_zero_point, float x_scale, int32_t y_zero_point, float y_scale) {
+      const T8Bits* x, int64_t batch, int64_t channel, int64_t hw, bool channel_last, T8Bits* y, int32_t x_zero_point, float x_scale, int32_t y_zero_point, float y_scale) {
     int32_t bias = -x_zero_point * static_cast<int32_t>(hw);
     int64_t stride_image = channel_last ? channel : 1;
     int64_t stride_channel = channel_last ? 1 : hw;
@@ -40,8 +39,7 @@ class MlasQLinearGlobalAveragePoolTest : public MlasTestBase {
     }
   }
 
-  static void CompareResultWithGold(size_t Batch, size_t Channel,
-                                    T8Bits* Output, T8Bits* OutputReference, std::string& info) {
+  static void CompareResultWithGold(size_t Batch, size_t Channel, T8Bits* Output, T8Bits* OutputReference, std::string& info) {
     size_t n = 0;
     for (size_t b = 0; b < Batch; ++b) {
       for (size_t c = 0; c < Channel; c++) {
@@ -83,8 +81,7 @@ class MlasQLinearGlobalAveragePoolTest : public MlasTestBase {
     T8Bits* Output = BufferOutput.GetBuffer(ResultLen);
     T8Bits* Gold = BufferOutputReference.GetBuffer(ResultLen);
     std::string test_info = GetTestInfo(
-        channel_last, Batch, Stride, Channel, ImageSize,
-        InputScale, InputZeroPoint, OutputScale, OutputZeroPoint);
+        channel_last, Batch, Stride, Channel, ImageSize, InputScale, InputZeroPoint, OutputScale, OutputZeroPoint);
 
     std::default_random_engine generator(static_cast<unsigned>(N));
     std::uniform_int_distribution<int> distribution(std::numeric_limits<T8Bits>::lowest(), std::numeric_limits<T8Bits>::max());
@@ -92,29 +89,23 @@ class MlasQLinearGlobalAveragePoolTest : public MlasTestBase {
       Input[n] = static_cast<T8Bits>(distribution(generator));
     }
     CalculateGlobalAvgPool(
-        Input, Batch, Stride, ImageSize, channel_last,
-        Gold, InputZeroPoint, InputScale, OutputZeroPoint, OutputScale);
+        Input, Batch, Stride, ImageSize, channel_last, Gold, InputZeroPoint, InputScale, OutputZeroPoint, OutputScale);
 
     if (!channel_last) {
       std::vector<int32_t> acc(MlasQLinearSafePaddingElementCount(sizeof(int32_t), ResultLen + UnalignedOffset));
       MlasQLinearGlobalAveragePoolNchw(
-          Input, InputScale, InputZeroPoint, Output,
-          OutputScale, OutputZeroPoint, ResultLen, ImageSize, acc.data() + UnalignedOffset);
+          Input, InputScale, InputZeroPoint, Output, OutputScale, OutputZeroPoint, ResultLen, ImageSize, acc.data() + UnalignedOffset);
     } else {
       std::vector<int32_t> acc(MlasQLinearSafePaddingElementCount(sizeof(int32_t), Channel + UnalignedOffset));
       std::vector<T8Bits> zero(MlasQLinearSafePaddingElementCount(sizeof(T8Bits), Channel + UnalignedOffset));
       if (Stride == Channel) {
         MlasQLinearGlobalAveragePoolNhwc(
-            Input, InputScale, InputZeroPoint, Output,
-            OutputScale, OutputZeroPoint, Batch, ImageSize, Stride, Channel,
-            acc.data() + UnalignedOffset, zero.data() + UnalignedOffset);
+            Input, InputScale, InputZeroPoint, Output, OutputScale, OutputZeroPoint, Batch, ImageSize, Stride, Channel, acc.data() + UnalignedOffset, zero.data() + UnalignedOffset);
       } else {
         for (size_t tc = 0; tc < Stride; tc += Channel) {
           size_t cg = ((tc + Channel <= Stride) ? Channel : (Stride - tc));
           MlasQLinearGlobalAveragePoolNhwc(
-              Input + tc, InputScale, InputZeroPoint, Output + tc,
-              OutputScale, OutputZeroPoint, Batch, ImageSize, Stride, cg,
-              acc.data() + UnalignedOffset, zero.data() + UnalignedOffset);
+              Input + tc, InputScale, InputZeroPoint, Output + tc, OutputScale, OutputZeroPoint, Batch, ImageSize, Stride, cg, acc.data() + UnalignedOffset, zero.data() + UnalignedOffset);
         }
       }
     }
@@ -144,11 +135,9 @@ class MlasQLinearGlobalAveragePoolTest : public MlasTestBase {
               for (size_t ys = 0; ys < _countof(scales); ++ys) {
                 for (size_t i = 0; i < _countof(ImageSize); i++) {
                   for (size_t s = 0; s < _countof(Stride); s++) {
-                    Test(channel_last != 0, Batch[b], Stride[s], Stride[s], ImageSize[i],
-                         scales[xs], ZeroPoints[xzp], scales[ys], ZeroPoints[yzp], unalign_offset);
+                    Test(channel_last != 0, Batch[b], Stride[s], Stride[s], ImageSize[i], scales[xs], ZeroPoints[xzp], scales[ys], ZeroPoints[yzp], unalign_offset);
                     if (channel_last == 1 && Stride[s] > 32) {
-                      Test(channel_last != 0, Batch[b], Stride[s], 32, ImageSize[i],
-                           scales[xs], ZeroPoints[xzp], scales[ys], ZeroPoints[yzp], unalign_offset);
+                      Test(channel_last != 0, Batch[b], Stride[s], 32, ImageSize[i], scales[xs], ZeroPoints[xzp], scales[ys], ZeroPoints[yzp], unalign_offset);
                     }
                     unalign_offset = (unalign_offset + 1) & 3;
                   }

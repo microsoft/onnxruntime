@@ -123,9 +123,7 @@ void WriteDataToFile<bool>(FILE* fp, const std::vector<bool>& test_data) {
 }
 
 template <typename T>
-void CreateTensorWithExternalData(TensorProto_DataType type, const std::vector<T>& test_data,
-                                  std::basic_string<ORTCHAR_T>& filename,
-                                  TensorProto& tensor_proto) {
+void CreateTensorWithExternalData(TensorProto_DataType type, const std::vector<T>& test_data, std::basic_string<ORTCHAR_T>& filename, TensorProto& tensor_proto) {
   // Create external data
   FILE* fp;
   CreateTestFile(fp, filename);
@@ -155,8 +153,7 @@ void UnpackAndValidate(const TensorProto& tensor_proto, const Path& model_path, 
 }
 
 template <>
-void UnpackAndValidate<bool>(const TensorProto& tensor_proto, const Path& model_path,
-                             const std::vector<bool>& test_data) {
+void UnpackAndValidate<bool>(const TensorProto& tensor_proto, const Path& model_path, const std::vector<bool>& test_data) {
   // Unpack tensor with external data
   auto arr = std::make_unique<bool[]>(test_data.size());
   auto st = utils::UnpackTensor(tensor_proto, model_path, arr.get(), test_data.size());
@@ -192,8 +189,7 @@ TEST(TensorProtoUtilsTest, UnpackTensorWithExternalData) {
 }
 
 template <typename T>
-static NodeProto CreateConstantNode(const std::string& attrib_name, AttributeProto_AttributeType type,
-                                    std::function<void(AttributeProto&)> add_data) {
+static NodeProto CreateConstantNode(const std::string& attrib_name, AttributeProto_AttributeType type, std::function<void(AttributeProto&)> add_data) {
   NodeProto constant_node;
   constant_node.set_op_type("Constant");
   constant_node.add_output("Constant_output");
@@ -221,8 +217,7 @@ static void TestConstantNodeConversion(const std::string& attrib_name,
   }
 
   auto c = CreateConstantNode<T>(
-      attrib_name, type,
-      [&input, &add_data](AttributeProto& attrib) { add_data(attrib, input); });
+      attrib_name, type, [&input, &add_data](AttributeProto& attrib) { add_data(attrib, input); });
 
   TensorProto tp;
   Path model_path;
@@ -233,66 +228,30 @@ static void TestConstantNodeConversion(const std::string& attrib_name,
 
 TEST(TensorProtoUtilsTest, ConstantTensorProto) {
   TestConstantNodeConversion<float>(
-      "value_float", AttributeProto_AttributeType_FLOAT,
-      [](AttributeProto& attrib, const std::vector<float>& data) { attrib.set_f(data[0]); },
-      [](const TensorProto& tp) {
-        return std::vector<float>(tp.float_data().cbegin(), tp.float_data().cend());
-      },
-      1);
+      "value_float", AttributeProto_AttributeType_FLOAT, [](AttributeProto& attrib, const std::vector<float>& data) { attrib.set_f(data[0]); }, [](const TensorProto& tp) { return std::vector<float>(tp.float_data().cbegin(), tp.float_data().cend()); }, 1);
 
   TestConstantNodeConversion<float>(
-      "value_floats", AttributeProto_AttributeType_FLOATS,
-      [](AttributeProto& attrib, const std::vector<float>& data) {
-        *attrib.mutable_floats() = {data.cbegin(), data.cend()};
-      },
-      [](const TensorProto& tp) {
-        return std::vector<float>(tp.float_data().cbegin(), tp.float_data().cend());
-      },
-      -1);
+      "value_floats", AttributeProto_AttributeType_FLOATS, [](AttributeProto& attrib, const std::vector<float>& data) { *attrib.mutable_floats() = {data.cbegin(), data.cend()}; }, [](const TensorProto& tp) { return std::vector<float>(tp.float_data().cbegin(), tp.float_data().cend()); }, -1);
 
   TestConstantNodeConversion<int64_t>(
-      "value_int", AttributeProto_AttributeType_INT,
-      [](AttributeProto& attrib, const std::vector<int64_t>& data) { attrib.set_i(data[0]); },
-      [](const TensorProto& tp) {
-        return std::vector<int64_t>(tp.int64_data().cbegin(), tp.int64_data().cend());
-      },
-      1);
+      "value_int", AttributeProto_AttributeType_INT, [](AttributeProto& attrib, const std::vector<int64_t>& data) { attrib.set_i(data[0]); }, [](const TensorProto& tp) { return std::vector<int64_t>(tp.int64_data().cbegin(), tp.int64_data().cend()); }, 1);
 
   TestConstantNodeConversion<int64_t>(
-      "value_ints", AttributeProto_AttributeType_INTS,
-      [](AttributeProto& attrib, const std::vector<int64_t>& data) {
-        *attrib.mutable_ints() = {data.cbegin(), data.cend()};
-      },
-      [](const TensorProto& tp) {
-        return std::vector<int64_t>(tp.int64_data().cbegin(), tp.int64_data().cend());
-      },
-      -1);
+      "value_ints", AttributeProto_AttributeType_INTS, [](AttributeProto& attrib, const std::vector<int64_t>& data) { *attrib.mutable_ints() = {data.cbegin(), data.cend()}; }, [](const TensorProto& tp) { return std::vector<int64_t>(tp.int64_data().cbegin(), tp.int64_data().cend()); }, -1);
 
   TestConstantNodeConversion<std::string>(
-      "value_string", AttributeProto_AttributeType_STRING,
-      [](AttributeProto& attrib, const std::vector<std::string>& data) { attrib.set_s(data[0]); },
-      [](const TensorProto& tp) {
-        return std::vector<std::string>(tp.string_data().cbegin(), tp.string_data().cend());
-      },
-      1);
+      "value_string", AttributeProto_AttributeType_STRING, [](AttributeProto& attrib, const std::vector<std::string>& data) { attrib.set_s(data[0]); }, [](const TensorProto& tp) { return std::vector<std::string>(tp.string_data().cbegin(), tp.string_data().cend()); }, 1);
 
   TestConstantNodeConversion<std::string>(
-      "value_strings", AttributeProto_AttributeType_STRINGS,
-      [](AttributeProto& attrib, const std::vector<std::string>& data) {
+      "value_strings", AttributeProto_AttributeType_STRINGS, [](AttributeProto& attrib, const std::vector<std::string>& data) {
         // for (const auto& s : data)
-        *attrib.mutable_strings() = {data.cbegin(), data.cend()};
-      },
-      [](const TensorProto& tp) {
-        return std::vector<std::string>(tp.string_data().cbegin(), tp.string_data().cend());
-      },
-      -1);
+        *attrib.mutable_strings() = {data.cbegin(), data.cend()}; }, [](const TensorProto& tp) { return std::vector<std::string>(tp.string_data().cbegin(), tp.string_data().cend()); }, -1);
 
   // sparse_tensor is covered by SparseTensorConversionTests.TestConstantNodeConversion
 }
 
 template <typename T>
-static NodeProto CreateConstantNodeWithExternalData(TensorProto_DataType type, PathString& tensor_filename,
-                                                    const std::vector<T>& test_data) {
+static NodeProto CreateConstantNodeWithExternalData(TensorProto_DataType type, PathString& tensor_filename, const std::vector<T>& test_data) {
   NodeProto constant_node;
   constant_node.set_op_type("Constant");
   constant_node.add_output("Constant_output");

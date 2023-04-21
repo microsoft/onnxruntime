@@ -77,8 +77,7 @@ Status SplitOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wr
       size_t tensor_byte_size = unpacked_tensor.size();
       size_t size = tensor_byte_size / sizeof(int64_t);
       split_index.push_back(0);  // QNN need the start index of each range and starts from 0
-      std::transform(tensor_data, tensor_data + size, std::back_inserter(split_index),
-                     [](int64_t item) { return SafeInt<uint32_t>(item); });
+      std::transform(tensor_data, tensor_data + size, std::back_inserter(split_index), [](int64_t item) { return SafeInt<uint32_t>(item); });
       split_index.pop_back();
     } else {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QNN doesn't support dynamic split");
@@ -113,15 +112,11 @@ Status SplitOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wr
 
   uint32_t split_size = static_cast<uint32_t>(split_index.size());
   std::vector<uint32_t> split_dim{split_size};
-  QnnParamWrapper split_param(node_unit.Index(), node_unit.Name(), qnn_def::split_index, std::move(split_dim),
-                              std::move(split_index));
+  QnnParamWrapper split_param(node_unit.Index(), node_unit.Name(), qnn_def::split_index, std::move(split_dim), std::move(split_index));
   param_tensor_names.push_back(split_param.GetParamTensorName());
   qnn_model_wrapper.AddParamWrapper(std::move(split_param));
 
-  ORT_RETURN_IF_ERROR(ProcessOutputs(qnn_model_wrapper, node_unit,
-                                     std::move(input_names),
-                                     std::move(param_tensor_names),
-                                     logger, is_quantized_model, do_op_validation));
+  ORT_RETURN_IF_ERROR(ProcessOutputs(qnn_model_wrapper, node_unit, std::move(input_names), std::move(param_tensor_names), logger, is_quantized_model, do_op_validation));
 
   return Status::OK();
 }

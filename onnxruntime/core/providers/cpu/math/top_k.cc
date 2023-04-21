@@ -122,8 +122,13 @@ static void HeapifyIthPosition(int64_t* heap, size_t i, size_t k, const HeapCmp&
 // Selects the top k elements (largest or smallest based on template parameter)
 template <class Comparator>
 static void SelectTopK(const Comparator& comparer,
-                       int64_t row_offset, int64_t num_blocks, int64_t block_slice, int64_t inter_block_offset,
-                       const unsigned k, bool sort_top_k, std::vector<int64_t>& data_holder) {
+                       int64_t row_offset,
+                       int64_t num_blocks,
+                       int64_t block_slice,
+                       int64_t inter_block_offset,
+                       const unsigned k,
+                       bool sort_top_k,
+                       std::vector<int64_t>& data_holder) {
   for (size_t l = 0; l < onnxruntime::narrow<size_t>(num_blocks); ++l) {
     data_holder[l] = (row_offset + (l * block_slice + inter_block_offset));
   }
@@ -144,9 +149,7 @@ static void SelectTopK(const Comparator& comparer,
 // this method will extract the sorted top k largest/smallest elements and place them in the output tensor 'values'
 // along with the metadata output 'indices'
 template <class Comparator>
-static void FindTopKElements(const Tensor* input, const TensorShape& input_shape, Tensor* values,
-                             Tensor* indices, const TensorShape& output_shape, const unsigned k, bool sorted,
-                             const unsigned axis_parsed, concurrency::ThreadPool* threadpool) {
+static void FindTopKElements(const Tensor* input, const TensorShape& input_shape, Tensor* values, Tensor* indices, const TensorShape& output_shape, const unsigned k, bool sorted, const unsigned axis_parsed, concurrency::ThreadPool* threadpool) {
   // Cache some values that will be used in the implementation below
   const int64_t rows = input_shape.SizeToDimension(static_cast<size_t>(axis_parsed));
   const int64_t cols = input->Shape().Size() / rows;
@@ -184,8 +187,7 @@ static void FindTopKElements(const Tensor* input, const TensorShape& input_shape
   if (k == 1) {
     // just need to compare values and not indexes as the first instance of the best value is always selected
     find_top_k =
-        [num_threads, rows, block_slice, num_blocks, input_data, cols,
-         &values_map, &indices_map](std::ptrdiff_t batch) {
+        [num_threads, rows, block_slice, num_blocks, input_data, cols, &values_map, &indices_map](std::ptrdiff_t batch) {
           auto work = concurrency::ThreadPool::PartitionWork(batch, onnxruntime::narrow<size_t>(num_threads), onnxruntime::narrow<size_t>(rows));
           Comparator comparer(input_data);
 
@@ -216,8 +218,7 @@ static void FindTopKElements(const Tensor* input, const TensorShape& input_shape
         };
   } else if (use_priority_queue) {
     find_top_k =
-        [num_threads, rows, block_slice, num_blocks, k, sorted,
-         input_data, cols, &values_map, &indices_map](std::ptrdiff_t batch) {
+        [num_threads, rows, block_slice, num_blocks, k, sorted, input_data, cols, &values_map, &indices_map](std::ptrdiff_t batch) {
           auto work = concurrency::ThreadPool::PartitionWork(batch, onnxruntime::narrow<size_t>(num_threads), onnxruntime::narrow<size_t>(rows));
           Comparator comparer(input_data);
 
@@ -286,9 +287,7 @@ static void FindTopKElements(const Tensor* input, const TensorShape& input_shape
         };
   } else {
     find_top_k =
-        [num_threads, rows, block_slice, num_blocks, k, sorted,
-         input_data, cols,
-         &values_map, &indices_map](std::ptrdiff_t batch) {
+        [num_threads, rows, block_slice, num_blocks, k, sorted, input_data, cols, &values_map, &indices_map](std::ptrdiff_t batch) {
           auto work = concurrency::ThreadPool::PartitionWork(batch, onnxruntime::narrow<size_t>(num_threads), onnxruntime::narrow<size_t>(rows));
           Comparator comparer(input_data);
 
@@ -328,15 +327,13 @@ static void FindTopKElements(const Tensor* input, const TensorShape& input_shape
 
 // Wrapper over core TopK implementation
 template <typename T>
-static Status TopKImpl(OpKernelContext* p_op_kernel_context, const Tensor* input, const int axis, const unsigned k,
-                       bool largest = true, bool sorted = true) {
+static Status TopKImpl(OpKernelContext* p_op_kernel_context, const Tensor* input, const int axis, const unsigned k, bool largest = true, bool sorted = true) {
   const TensorShape& input_shape = input->Shape();
   // Will return axis_ as is if positive or fixes it in case it is negative
   const auto axis_parsed = HandleNegativeAxis(axis, static_cast<int64_t>(input_shape.NumDimensions()));
   // Check to ensure k is within the bounds of what is available in that specific axis
   if (input_shape[onnxruntime::narrow<size_t>(axis_parsed)] < k) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "k argument [", k,
-                           "] should not be greater than specified axis dim value [", input_shape[onnxruntime::narrow<size_t>(axis_parsed)], "]");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "k argument [", k, "] should not be greater than specified axis dim value [", input_shape[onnxruntime::narrow<size_t>(axis_parsed)], "]");
   }
 
   // Resize output tensors to be the same shape as the input except
@@ -348,8 +345,7 @@ static Status TopKImpl(OpKernelContext* p_op_kernel_context, const Tensor* input
   auto* indices = p_op_kernel_context->Output(1, output_shape);
 
   if (values == nullptr || indices == nullptr) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                           "output count mismatch, expected 2 outputs to be present for TopK operator");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "output count mismatch, expected 2 outputs to be present for TopK operator");
   }
 
   // no-op - no output buffers to fill - return silently
@@ -360,11 +356,9 @@ static Status TopKImpl(OpKernelContext* p_op_kernel_context, const Tensor* input
   auto* threadpool = p_op_kernel_context->GetOperatorThreadPool();
 
   if (largest) {
-    FindTopKElements<GreaterValueCmp<T>>(input, input_shape, values, indices, output_shape, k, sorted,
-                                         gsl::narrow_cast<unsigned>(axis_parsed), threadpool);
+    FindTopKElements<GreaterValueCmp<T>>(input, input_shape, values, indices, output_shape, k, sorted, gsl::narrow_cast<unsigned>(axis_parsed), threadpool);
   } else {
-    FindTopKElements<LesserValueCmp<T>>(input, input_shape, values, indices, output_shape, k, sorted,
-                                        gsl::narrow_cast<unsigned>(axis_parsed), threadpool);
+    FindTopKElements<LesserValueCmp<T>>(input, input_shape, values, indices, output_shape, k, sorted, gsl::narrow_cast<unsigned>(axis_parsed), threadpool);
   }
 
   return Status::OK();
@@ -372,11 +366,7 @@ static Status TopKImpl(OpKernelContext* p_op_kernel_context, const Tensor* input
 
 // Wrapper over core TopK implementation
 template <typename T>
-Status GetTopK(const Tensor* input, const int axis, const unsigned k, bool largest, bool sorted,
-               AllocatorPtr allocator,
-               onnxruntime::concurrency::ThreadPool* threadpool,
-               Tensor& output_values,
-               Tensor& output_indices) {
+Status GetTopK(const Tensor* input, const int axis, const unsigned k, bool largest, bool sorted, AllocatorPtr allocator, onnxruntime::concurrency::ThreadPool* threadpool, Tensor& output_values, Tensor& output_indices) {
   const TensorShape& input_shape = input->Shape();
 
   // Will return axis_ as is if positive or fixes it in case it is negative
@@ -384,8 +374,7 @@ Status GetTopK(const Tensor* input, const int axis, const unsigned k, bool large
 
   // Check to ensure k is within the bounds of what is available in that specific axis
   if (input_shape[onnxruntime::narrow<size_t>(axis_parsed)] < k) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "k argument [", k,
-                           "] should not be greater than specified axis dim value [", input_shape[onnxruntime::narrow<size_t>(axis_parsed)], "]");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "k argument [", k, "] should not be greater than specified axis dim value [", input_shape[onnxruntime::narrow<size_t>(axis_parsed)], "]");
   }
 
   // Resize output tensors to be the same shape as the input except
@@ -403,22 +392,16 @@ Status GetTopK(const Tensor* input, const int axis, const unsigned k, bool large
   }
 
   if (largest) {
-    FindTopKElements<GreaterValueCmp<T>>(input, input_shape, &output_values, &output_indices, output_shape, k, sorted,
-                                         gsl::narrow_cast<unsigned>(axis_parsed), threadpool);
+    FindTopKElements<GreaterValueCmp<T>>(input, input_shape, &output_values, &output_indices, output_shape, k, sorted, gsl::narrow_cast<unsigned>(axis_parsed), threadpool);
   } else {
-    FindTopKElements<LesserValueCmp<T>>(input, input_shape, &output_values, &output_indices, output_shape, k, sorted,
-                                        gsl::narrow_cast<unsigned>(axis_parsed), threadpool);
+    FindTopKElements<LesserValueCmp<T>>(input, input_shape, &output_values, &output_indices, output_shape, k, sorted, gsl::narrow_cast<unsigned>(axis_parsed), threadpool);
   }
 
   return Status::OK();
 }
 
 // explicit instantiation
-template Status GetTopK<float>(const Tensor* input, const int axis, const unsigned k, bool largest, bool sorted,
-                               AllocatorPtr allocator,
-                               onnxruntime::concurrency::ThreadPool* threadpool,
-                               Tensor& output_values,
-                               Tensor& output_indices);
+template Status GetTopK<float>(const Tensor* input, const int axis, const unsigned k, bool largest, bool sorted, AllocatorPtr allocator, onnxruntime::concurrency::ThreadPool* threadpool, Tensor& output_values, Tensor& output_indices);
 
 // Opset ver - 1 to 9
 
@@ -517,7 +500,9 @@ Status TopK<10, double>::Compute(OpKernelContext* p_op_kernel_context) const {
 // Opset ver - 11
 
 static void TopkOpset11ConstructorCommon(const OpKernelInfo& op_kernel_info,
-                                         int& axis, bool& largest, bool& sorted) {
+                                         int& axis,
+                                         bool& largest,
+                                         bool& sorted) {
   int64_t axis_temp;
   ORT_ENFORCE(op_kernel_info.GetAttr<int64_t>("axis", &axis_temp).IsOK());
   axis = gsl::narrow_cast<int>(axis_temp);
@@ -575,12 +560,8 @@ Status TopK<11, int64_t>::Compute(OpKernelContext* p_op_kernel_context) const {
 // Register necessary kernels
 // spec https://github.com/onnx/onnx/blob/main/docs/Operators.md#TopK
 
-#define REGISTER_TOPK_VERSIONED_TYPED_KERNEL(OPSET1, OPSET2, TYPE)                                           \
-  ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(TopK, OPSET1, OPSET2, TYPE,                                       \
-                                           KernelDefBuilder()                                                \
-                                               .TypeConstraint("T", DataTypeImpl::GetTensorType<TYPE>())     \
-                                               .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>()), \
-                                           TopK<OPSET2, TYPE>);
+#define REGISTER_TOPK_VERSIONED_TYPED_KERNEL(OPSET1, OPSET2, TYPE) \
+  ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(TopK, OPSET1, OPSET2, TYPE, KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<TYPE>()).TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>()), TopK<OPSET2, TYPE>);
 
 #define REGISTER_TOPK_TYPED_KERNEL(OPSET, TYPE)                                                    \
   ONNX_CPU_OPERATOR_TYPED_KERNEL(TopK,                                                             \

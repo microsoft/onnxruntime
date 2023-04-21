@@ -21,7 +21,8 @@ ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     Clip,
     kOnnxDomain,
-    11, 11,
+    11,
+    11,
     kCudaExecutionProvider,
     (*KernelDefBuilder::Create())
         .TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
@@ -30,7 +31,8 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     Clip,
     kOnnxDomain,
-    12, 12,
+    12,
+    12,
     kCudaExecutionProvider,
     (*KernelDefBuilder::Create())
         .TypeConstraint("T", BuildKernelDefConstraints<float, double, MLFloat16, int8_t, uint8_t, int64_t, uint64_t>()),

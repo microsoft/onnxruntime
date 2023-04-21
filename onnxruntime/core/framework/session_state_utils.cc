@@ -35,8 +35,7 @@ namespace session_state_utils {
 
 // The following method will allocate memory directly using the device allocator.
 // It can handle arena-based allocators and non-arena based allocators.
-static common::Status AllocateBufferUsingDeviceAllocatorFromShapeAndType(const TensorShape& tensor_shape, const DataTypeImpl* type,
-                                                                         const AllocatorPtr& alloc, /*out*/ void*& p_data) {
+static common::Status AllocateBufferUsingDeviceAllocatorFromShapeAndType(const TensorShape& tensor_shape, const DataTypeImpl* type, const AllocatorPtr& alloc, /*out*/ void*& p_data) {
   int64_t shape_size = tensor_shape.Size();
   if (shape_size < 0)
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "shape.Size() must >=0");
@@ -75,13 +74,13 @@ struct ExtDataValueDeleter {
 static inline common::Status ExtDataTensorProtoToTensor(const Env& env,
                                                         const std::basic_string<PATH_CHAR_TYPE>& proto_path,
                                                         const ONNX_NAMESPACE::TensorProto& tensor_proto,
-                                                        Tensor& tensor, OrtCallback& ext_data_deleter) {
+                                                        Tensor& tensor,
+                                                        OrtCallback& ext_data_deleter) {
   ORT_ENFORCE(utils::HasExternalData(tensor_proto));
 
   void* ext_data_buf = nullptr;
   SafeInt<size_t> ext_data_len = 0;
-  ORT_RETURN_IF_ERROR(utils::GetExtDataFromTensorProto(env, proto_path.c_str(), tensor_proto,
-                                                       ext_data_buf, ext_data_len, ext_data_deleter));
+  ORT_RETURN_IF_ERROR(utils::GetExtDataFromTensorProto(env, proto_path.c_str(), tensor_proto, ext_data_buf, ext_data_len, ext_data_deleter));
 
   // NB: creating a do-nothing allocator per tensor is wasteful; can perhaps be
   // avoided if the Tensor class implements the do-nothing behavior when given a
@@ -93,14 +92,9 @@ static inline common::Status ExtDataTensorProtoToTensor(const Env& env,
   return common::Status::OK();
 }
 
-static common::Status DeserializeTensorProto(const Env& env, const std::basic_string<PATH_CHAR_TYPE>& proto_path,
-                                             const ONNX_NAMESPACE::TensorProto& tensor_proto, const MemBuffer* m,
-                                             const AllocatorPtr& alloc, const AllocatorPtr& default_cpu_alloc,
-                                             OrtValue& ort_value, const DataTransferManager& data_transfer_mgr,
-                                             bool use_device_allocator_for_initializers = false) {
+static common::Status DeserializeTensorProto(const Env& env, const std::basic_string<PATH_CHAR_TYPE>& proto_path, const ONNX_NAMESPACE::TensorProto& tensor_proto, const MemBuffer* m, const AllocatorPtr& alloc, const AllocatorPtr& default_cpu_alloc, OrtValue& ort_value, const DataTransferManager& data_transfer_mgr, bool use_device_allocator_for_initializers = false) {
   if (bool(alloc) == (m != nullptr)) {
-    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                  "DeserializeTensorProto() takes either pre-allocated buffer or an allocator!");
+    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "DeserializeTensorProto() takes either pre-allocated buffer or an allocator!");
   }
 
   // Get shape and type of the tensor, and allocate the empty tensor
@@ -110,8 +104,7 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
   if (m != nullptr) {
     p_tensor = std::make_unique<Tensor>(type, tensor_shape, m->GetBuffer(), m->GetAllocInfo());
     if (m->GetLen() < p_tensor->SizeInBytes()) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Internal error. The preallocated buffer is too small. Requires ",
-                             p_tensor->SizeInBytes(), ", Got ", m->GetLen());
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Internal error. The preallocated buffer is too small. Requires ", p_tensor->SizeInBytes(), ", Got ", m->GetLen());
     }
   } else {
     if (use_device_allocator_for_initializers) {
@@ -163,8 +156,7 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
     OrtCallback ext_data_deleter;
     std::optional<ScopedOrtCallbackInvoker> scoped_ort_callback_invoker;
     if (utils::HasExternalData(tensor_proto)) {
-      ORT_RETURN_IF_ERROR(ExtDataTensorProtoToTensor(env, proto_path, tensor_proto, *p_deserialize_tensor,
-                                                     ext_data_deleter));
+      ORT_RETURN_IF_ERROR(ExtDataTensorProtoToTensor(env, proto_path, tensor_proto, *p_deserialize_tensor, ext_data_deleter));
       scoped_ort_callback_invoker = ScopedOrtCallbackInvoker(ext_data_deleter);
     } else {
       ORT_RETURN_IF_ERROR(utils::TensorProtoToTensor(env, proto_path.c_str(), tensor_proto, *p_deserialize_tensor));
@@ -176,8 +168,7 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
       if (copy_status.ErrorMessage().empty()) {
         // The windows execution provider does not return any error message today for CopyTensor since it is
         // not implemented yet. That's the reason we're adding our own error message so that we can debug better.
-        return Status(copy_status.Category(), copy_status.Code(),
-                      "Failed to copy tensor to " + p_tensor->Location().ToString());
+        return Status(copy_status.Category(), copy_status.Code(), "Failed to copy tensor to " + p_tensor->Location().ToString());
       }
       return copy_status;
     }
@@ -188,16 +179,7 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
 }
 
 common::Status SaveInitializedTensors(
-    const Env& env, const std::basic_string<PATH_CHAR_TYPE>& graph_loc,
-    const GraphViewer& graph, const AllocatorPtr& default_cpu_alloc,
-    const OrtValueNameIdxMap& ort_value_name_idx_map,
-    const std::vector<OrtValueIndex>& initializer_allocation_order,
-    ITensorAllocator& planner,
-    const SaveTensorFunction& save_tensor_func,
-    const logging::Logger& logger, const DataTransferManager& data_transfer_mgr,
-    const ExecutionPlanBase& exec_plan,
-    const SessionOptions& session_options,
-    const MemoryProfileFunction& memory_profile_func) {
+    const Env& env, const std::basic_string<PATH_CHAR_TYPE>& graph_loc, const GraphViewer& graph, const AllocatorPtr& default_cpu_alloc, const OrtValueNameIdxMap& ort_value_name_idx_map, const std::vector<OrtValueIndex>& initializer_allocation_order, ITensorAllocator& planner, const SaveTensorFunction& save_tensor_func, const logging::Logger& logger, const DataTransferManager& data_transfer_mgr, const ExecutionPlanBase& exec_plan, const SessionOptions& session_options, const MemoryProfileFunction& memory_profile_func) {
   LOGS(logger, INFO) << "Saving initialized tensors.";
   ORT_ENFORCE(ort_value_name_idx_map.MaxIdx() > -1, "OrtValue indexes should have been populated.");
 
@@ -316,9 +298,7 @@ common::Status SaveInitializedTensors(
       bool use_device_allocator_for_initializers =
           session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsUseDeviceAllocatorForInitializers, "0") == "1";
 
-      Status st = DeserializeTensorProto(env, graph_loc, tensor_proto, (m.has_value()) ? &*m : nullptr, alloc,
-                                         default_cpu_alloc, ort_value, data_transfer_mgr,
-                                         use_device_allocator_for_initializers);
+      Status st = DeserializeTensorProto(env, graph_loc, tensor_proto, (m.has_value()) ? &*m : nullptr, alloc, default_cpu_alloc, ort_value, data_transfer_mgr, use_device_allocator_for_initializers);
       if (!st.IsOK()) {
         std::ostringstream oss;
         oss << "Deserialize tensor " << name << " failed." << st.ErrorMessage();
@@ -348,10 +328,9 @@ common::Status SaveInitializedTensors(
 template <typename T>  // T is container of const NodeArg* or NodeArg*
 static bool IsArgNameInInputsOutputs(const std::string& name,
                                      const T& graph_args) {
-  auto it = std::find_if(graph_args.begin(), graph_args.end(),
-                         [&name](const onnxruntime::NodeArg* arg) {
-                           return arg->Name() == name;
-                         });
+  auto it = std::find_if(graph_args.begin(), graph_args.end(), [&name](const onnxruntime::NodeArg* arg) {
+    return arg->Name() == name;
+  });
   return it != graph_args.end();
 }
 

@@ -48,8 +48,7 @@ class IKernelTypeStrResolver {
    * @param kernel_type_str The op kernel type string.
    * @param[out] resolved_args The op arguments associated with kernel_type_str.
    */
-  virtual Status ResolveKernelTypeStr(const Node& node, std::string_view kernel_type_str,
-                                      gsl::span<const ArgTypeAndIndex>& resolved_args) const = 0;
+  virtual Status ResolveKernelTypeStr(const Node& node, std::string_view kernel_type_str, gsl::span<const ArgTypeAndIndex>& resolved_args) const = 0;
 
  protected:
   ~IKernelTypeStrResolver() = default;
@@ -63,8 +62,7 @@ class IKernelTypeStrResolver {
  */
 class KernelTypeStrResolver final : public IKernelTypeStrResolver {
  public:
-  Status ResolveKernelTypeStr(const Node& node, std::string_view kernel_type_str,
-                              gsl::span<const ArgTypeAndIndex>& resolved_args) const override;
+  Status ResolveKernelTypeStr(const Node& node, std::string_view kernel_type_str, gsl::span<const ArgTypeAndIndex>& resolved_args) const override;
 
 #if !defined(ORT_MINIMAL_BUILD)
 
@@ -126,8 +124,7 @@ class KernelTypeStrResolver final : public IKernelTypeStrResolver {
 class OpSchemaKernelTypeStrResolver final : public IKernelTypeStrResolver {
  public:
   // Note: `node`'s op schema must be populated.
-  Status ResolveKernelTypeStr(const Node& node, std::string_view kernel_type_str,
-                              gsl::span<const ArgTypeAndIndex>& resolved_args) const override;
+  Status ResolveKernelTypeStr(const Node& node, std::string_view kernel_type_str, gsl::span<const ArgTypeAndIndex>& resolved_args) const override;
 
  private:
   // used as a cache when resolving

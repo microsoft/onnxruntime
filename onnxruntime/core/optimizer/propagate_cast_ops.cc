@@ -154,8 +154,7 @@ static bool IsCastTo(const Node* node, TensorProto_DataType data_type) {
   if (node->OpType() == "Cast") {
     const NodeAttributes& attributes = node->GetAttributes();
     const auto attr_hit = attributes.find("to");
-    ORT_ENFORCE(attr_hit != attributes.end(), "Node: ", node->Name(),
-                " is a Cast node and it must have 'to' attribute set.");
+    ORT_ENFORCE(attr_hit != attributes.end(), "Node: ", node->Name(), " is a Cast node and it must have 'to' attribute set.");
     const NodeArg* input = node->InputDefs()[0];
     auto input_data_type = static_cast<TensorProto_DataType>(input->TypeAsProto()->tensor_type().elem_type());
     // Allow cast nodes with same input and output type float/float16 to eliminate such casts.
@@ -445,11 +444,11 @@ static Status RemoveCastNodesChain(Graph& graph, gsl::span<Node* const> casts, N
  *                         |__________|
  *                              |
  */
-static bool RemoveBackToBackCasts(Graph& graph, Node* parent,
-                                  NodeIndices& removed_nodes,
-                                  const logging::Logger& logger) {
+static bool RemoveBackToBackCasts(Graph& graph, Node* parent, NodeIndices& removed_nodes, const logging::Logger& logger) {
   ORT_ENFORCE(IsCastTo(parent, TensorProto::FLOAT),
-              "Expecting parent node: ", parent->Name(), " to be a cast to FLOAT");
+              "Expecting parent node: ",
+              parent->Name(),
+              " to be a cast to FLOAT");
   bool modified = false;
   if (graph_utils::CanRemoveNode(graph, *parent, logger)) {
     NodeArg* cast_output = parent->MutableOutputDefs()[0];
@@ -540,13 +539,7 @@ static bool RemoveBackToBackCasts(Graph& graph, Node* parent,
  *  If the level is 2, the functions traverses up the graph identifying required FP32 casts even if
  *  multiple consumers for the node outputs are found while level 0 or 1 quit traversing up.
  */
-static void SearchUpstream(Graph& graph, NodeArg* node_arg, Node* dst_node,
-                           NodeArgToConsumerMap& require_cast,
-                           NodeArgToConsumerMap& require_cast_fp32,
-                           InlinedHashSet<NodeArg*>& require_type_change,
-                           const NodeIndices& removed_nodes,
-                           size_t level,
-                           const FP16AllowOps& fp16_allow_ops) {
+static void SearchUpstream(Graph& graph, NodeArg* node_arg, Node* dst_node, NodeArgToConsumerMap& require_cast, NodeArgToConsumerMap& require_cast_fp32, InlinedHashSet<NodeArg*>& require_type_change, const NodeIndices& removed_nodes, size_t level, const FP16AllowOps& fp16_allow_ops) {
   Node* node = graph.GetMutableProducerNode(node_arg->Name());
   // If the Cast input feeds more than one node or the cast node feeds a graph output and at least one
   // node then it cannot propagate.
@@ -622,12 +615,7 @@ static void SearchUpstream(Graph& graph, NodeArg* node_arg, Node* dst_node,
  *  in order to remove an FP32 Cast operation up the graph. Also collect the NodeArgs that need to
  *  be converted from float to float16 along the way.
  */
-static void SearchDownstream(Graph& graph, NodeArg* node_arg,
-                             NodeArgToConsumerMap& require_cast,
-                             NodeArgToConsumerMap& require_cast_fp16,
-                             InlinedHashSet<NodeArg*>& require_type_change,
-                             size_t level,
-                             const FP16AllowOps& fp16_allow_ops) {
+static void SearchDownstream(Graph& graph, NodeArg* node_arg, NodeArgToConsumerMap& require_cast, NodeArgToConsumerMap& require_cast_fp16, InlinedHashSet<NodeArg*>& require_type_change, size_t level, const FP16AllowOps& fp16_allow_ops) {
   for (Node* node : graph.GetMutableConsumerNodes(node_arg->Name())) {
     if (node) {
       const std::string& op_type = node->OpType();
@@ -676,10 +664,7 @@ static void SearchDownstream(Graph& graph, NodeArg* node_arg,
 }
 
 // Change the elem_type of the given NodeArgs from FLOAT to FLOAT16.
-static void ChangeTypeToFP16(Graph& graph, InlinedHashSet<NodeArg*>& require_type_change, bool is_forward,
-                             NodeIndices& converted_nodes,
-                             const NodeIndices& inserted_nodes,
-                             const logging::Logger& logger) {
+static void ChangeTypeToFP16(Graph& graph, InlinedHashSet<NodeArg*>& require_type_change, bool is_forward, NodeIndices& converted_nodes, const NodeIndices& inserted_nodes, const logging::Logger& logger) {
   ONNX_NAMESPACE::TypeProto type_proto;
   type_proto.mutable_tensor_type()->set_elem_type(TensorProto::FLOAT16);
   for (NodeArg* node_arg : require_type_change) {
@@ -715,13 +700,7 @@ static void ChangeTypeToFP16(Graph& graph, InlinedHashSet<NodeArg*>& require_typ
  * require_type_change consists of such nodes.  All the frontier nodes require fp32 cast
  * The input node is expected to be non-nullptr
  */
-static bool PropagateForwards(Graph& graph, Node* node,
-                              NodeIndices& removed_nodes,
-                              size_t level,
-                              const FP16AllowOps& fp16_allow_ops,
-                              NodeIndices& converted_nodes,
-                              NodeIndices& inserted_nodes,
-                              const logging::Logger& logger) {
+static bool PropagateForwards(Graph& graph, Node* node, NodeIndices& removed_nodes, size_t level, const FP16AllowOps& fp16_allow_ops, NodeIndices& converted_nodes, NodeIndices& inserted_nodes, const logging::Logger& logger) {
   ORT_ENFORCE(nullptr != node, "Invalid argument, node must not be nullptr");
   bool modified = false;
   NodeArgToConsumerMap require_cast;
@@ -758,13 +737,7 @@ static bool PropagateForwards(Graph& graph, Node* node,
  *  Each of the frontier nodes requires an fp16 cast or fp32 cast.
  *  The input node is expected be non-nullptr.
  */
-static bool PropagateBackwards(Graph& graph, Node* node,
-                               NodeIndices& removed_nodes,
-                               size_t level,
-                               const FP16AllowOps& fp16_allow_ops,
-                               NodeIndices& converted_nodes,
-                               NodeIndices& inserted_nodes,
-                               const logging::Logger& logger) {
+static bool PropagateBackwards(Graph& graph, Node* node, NodeIndices& removed_nodes, size_t level, const FP16AllowOps& fp16_allow_ops, NodeIndices& converted_nodes, NodeIndices& inserted_nodes, const logging::Logger& logger) {
   ORT_ENFORCE(nullptr != node, "Invalid argument node must not be nullptr");
   bool modified = false;
   NodeArgToConsumerMap require_cast;
@@ -818,9 +791,7 @@ static bool PropagateBackwards(Graph& graph, Node* node,
  *          |_________|    |__________|
  *               |              |
  */
-static void FuseNodes(Graph& graph, const NodeArg* input, gsl::span<Node* const> nodes,
-                      NodeIndices& removed_nodes,
-                      NodeIndices& inserted_nodes) {
+static void FuseNodes(Graph& graph, const NodeArg* input, gsl::span<Node* const> nodes, NodeIndices& removed_nodes, NodeIndices& inserted_nodes) {
   ORT_ENFORCE(!nodes.empty(), "Nodes to fuse must not be empty");
   Node* node = nodes[0];
   const Node* producer = graph.GetProducerNode(input->Name());
@@ -865,10 +836,7 @@ static void FuseNodes(Graph& graph, const NodeArg* input, gsl::span<Node* const>
 }
 
 // Traverse the graph recursively searching/collecting sibling Cast op nodes to fuse and call FuseNodes.
-static bool FuseSiblingCasts(Graph& graph, const NodeArg* node_arg,
-                             NodeIndices& removed_nodes,
-                             NodeIndices& inserted_nodes,
-                             const logging::Logger& logger) {
+static bool FuseSiblingCasts(Graph& graph, const NodeArg* node_arg, NodeIndices& removed_nodes, NodeIndices& inserted_nodes, const logging::Logger& logger) {
   bool modified = false;
   InlinedVector<Node*> cast_fp16_siblings;
   InlinedVector<Node*> cast_fp32_siblings;
@@ -899,10 +867,7 @@ static bool FuseSiblingCasts(Graph& graph, const NodeArg* node_arg,
 }
 
 // Overloaded function which goes through all the output args of a node and calls FuseSiblingCasts
-static bool FuseSiblingCasts(Graph& graph, const Node* parent,
-                             NodeIndices& removed_nodes,
-                             NodeIndices& inserted_nodes,
-                             const logging::Logger& logger) {
+static bool FuseSiblingCasts(Graph& graph, const Node* parent, NodeIndices& removed_nodes, NodeIndices& inserted_nodes, const logging::Logger& logger) {
   bool modified = false;
   for (const NodeArg* output : parent->OutputDefs()) {
     modified |= FuseSiblingCasts(graph, output, removed_nodes, inserted_nodes, logger);
@@ -912,9 +877,7 @@ static bool FuseSiblingCasts(Graph& graph, const Node* parent,
 
 // RemoveUnnecessaryCasts
 // Remove a cast if the input elem_type is same the required cast type.
-static bool RemoveUnnecessaryCasts(Graph& graph, Node* node,
-                                   NodeIndices& removed_nodes,
-                                   const logging::Logger& logger) {
+static bool RemoveUnnecessaryCasts(Graph& graph, Node* node, NodeIndices& removed_nodes, const logging::Logger& logger) {
   bool modified = false;
   if (node->InputDefs().size() == 1) {
     const NodeArg* node_arg = node->InputDefs()[0];
@@ -967,13 +930,7 @@ static bool RemoveUnnecessaryCasts(Graph& graph, Node* node,
  *
  *
  */
-static bool PropagateFP32CastsFromInputsToOutputs(Graph& graph, Node* node,
-                                                  NodeIndices& removed_nodes,
-                                                  size_t level,
-                                                  const FP16AllowOps& fp16_allow_ops,
-                                                  NodeIndices& converted_nodes,
-                                                  NodeIndices& inserted_nodes,
-                                                  const logging::Logger& logger) {
+static bool PropagateFP32CastsFromInputsToOutputs(Graph& graph, Node* node, NodeIndices& removed_nodes, size_t level, const FP16AllowOps& fp16_allow_ops, NodeIndices& converted_nodes, NodeIndices& inserted_nodes, const logging::Logger& logger) {
   bool modified = false;
   if (IsFP16Allow(node->OpType(), level, fp16_allow_ops)) {
     bool has_float_inputs = false;
@@ -1076,13 +1033,7 @@ static bool PropagateFP32CastsFromInputsToOutputs(Graph& graph, Node* node,
  *                 |             |
  *                 V             V
  */
-static bool PropagateFP16CastsFromOutputsToInputs(Graph& graph, Node* node,
-                                                  NodeIndices& removed_nodes,
-                                                  size_t level,
-                                                  const FP16AllowOps& fp16_allow_ops,
-                                                  NodeIndices& converted_nodes,
-                                                  NodeIndices& inserted_nodes,
-                                                  const logging::Logger& logger) {
+static bool PropagateFP16CastsFromOutputsToInputs(Graph& graph, Node* node, NodeIndices& removed_nodes, size_t level, const FP16AllowOps& fp16_allow_ops, NodeIndices& converted_nodes, NodeIndices& inserted_nodes, const logging::Logger& logger) {
   bool modified = false;
   if (IsFP16Allow(node->OpType(), level, fp16_allow_ops)) {
     bool has_float_outputs = false;
@@ -1151,8 +1102,7 @@ static bool PropagateFP16CastsFromOutputsToInputs(Graph& graph, Node* node,
  *  If the node_arg is not a graph output then the node_arg is the input of the new cast node. Otherwise the node_arg is the output
  *  of the new cast node. This function is used by InsertFP16Cast or InsertFP32Casts.
  */
-static Node& CreateCast(Graph& graph, NodeArg* node_arg, TensorProto_DataType data_type,
-                        NodeIndices& inserted_nodes, bool is_graph_output = false) {
+static Node& CreateCast(Graph& graph, NodeArg* node_arg, TensorProto_DataType data_type, NodeIndices& inserted_nodes, bool is_graph_output = false) {
   TypeProto type_proto;
   type_proto.mutable_tensor_type()->set_elem_type(is_graph_output ? (data_type == TensorProto::FLOAT ? TensorProto::FLOAT16 : TensorProto::FLOAT) : data_type);
   NodeArg& new_node_arg = graph.GetOrCreateNodeArg(graph.GenerateNodeArgName(node_arg->Name()), &type_proto);
@@ -1201,8 +1151,7 @@ static Node& CreateCast(Graph& graph, NodeArg* node_arg, TensorProto_DataType da
  *                 V             V
  *
  */
-static void InsertFP16Cast(Graph& graph, NodeArg* input_arg, Node* node,
-                           NodeIndices& inserted_nodes, const logging::Logger& logger) {
+static void InsertFP16Cast(Graph& graph, NodeArg* input_arg, Node* node, NodeIndices& inserted_nodes, const logging::Logger& logger) {
   Node& cast = CreateCast(graph, input_arg, TensorProto::FLOAT16, inserted_nodes);
   NodeArg* new_input_arg = cast.MutableOutputDefs()[0];
   auto& inputs = node->MutableInputDefs();
@@ -1258,8 +1207,7 @@ static void InsertFP16Cast(Graph& graph, NodeArg* input_arg, Node* node,
  *          |_________|   |__________|
  *               |              |
  */
-static void InsertFP32Casts(Graph& graph, NodeArg* output_arg,
-                            NodeIndices& inserted_nodes, const logging::Logger& logger) {
+static void InsertFP32Casts(Graph& graph, NodeArg* output_arg, NodeIndices& inserted_nodes, const logging::Logger& logger) {
   NodeArg* orig_output_arg = output_arg;
   Node* producer = graph.GetMutableProducerNode(output_arg->Name());
   auto consumers = graph.GetMutableConsumerNodes(output_arg->Name());
@@ -1475,7 +1423,8 @@ Status PropagateCastOps::ApplyImpl(Graph& graph, bool& modified, int graph_level
 }
 
 PropagateCastOps::PropagateCastOps(GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy strategy,
-                                   size_t level, gsl::span<const std::string> allow_list,
+                                   size_t level,
+                                   gsl::span<const std::string> allow_list,
                                    const InlinedHashSet<std::string_view>& compatible_execution_providers)
     : GraphTransformer("PropagateCastOps", compatible_execution_providers), level_(level), fp16_allow_ops_0_(), strategy_(strategy) {
   if (!allow_list.empty()) {

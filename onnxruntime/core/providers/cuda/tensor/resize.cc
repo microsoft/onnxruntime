@@ -9,7 +9,8 @@ namespace cuda {
   ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                         \
       Resize,                                                      \
       kOnnxDomain,                                                 \
-      10, 10,                                                      \
+      10,                                                          \
+      10,                                                          \
       T,                                                           \
       kCudaExecutionProvider,                                      \
       (*KernelDefBuilder::Create())                                \
@@ -19,7 +20,8 @@ namespace cuda {
   ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                         \
       Resize,                                                      \
       kOnnxDomain,                                                 \
-      11, 12,                                                      \
+      11,                                                          \
+      12,                                                          \
       T,                                                           \
       kCudaExecutionProvider,                                      \
       (*KernelDefBuilder::Create())                                \

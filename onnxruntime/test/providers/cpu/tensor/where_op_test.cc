@@ -18,8 +18,7 @@ template <typename TDest, typename TSrc>
 std::vector<TDest> CastVector(const std::vector<TSrc>& source) {
   std::vector<TDest> target{};
   target.reserve(source.size());
-  std::transform(source.begin(), source.end(), std::back_inserter(target),
-                 [](TSrc n) { return static_cast<TDest>(n); });
+  std::transform(source.begin(), source.end(), std::back_inserter(target), [](TSrc n) { return static_cast<TDest>(n); });
   return target;
 }
 
@@ -29,15 +28,11 @@ void WhereBasicNumericTest() {
 
   const std::vector<int64_t> dims{2, 2};
 
-  test.AddInput<bool>("condition", dims,
-                      {false, true, true, false});
-  test.AddInput<TNumeric>("X", dims,
-                          CastVector<TNumeric, int>({1, 2, 3, 4}));
-  test.AddInput<TNumeric>("Y", dims,
-                          CastVector<TNumeric, int>({5, 6, 7, 8}));
+  test.AddInput<bool>("condition", dims, {false, true, true, false});
+  test.AddInput<TNumeric>("X", dims, CastVector<TNumeric, int>({1, 2, 3, 4}));
+  test.AddInput<TNumeric>("Y", dims, CastVector<TNumeric, int>({5, 6, 7, 8}));
 
-  test.AddOutput<TNumeric>("output", dims,
-                           CastVector<TNumeric, int>({5, 2, 3, 8}));
+  test.AddOutput<TNumeric>("output", dims, CastVector<TNumeric, int>({5, 2, 3, 8}));
 
   test.Run();
 }
@@ -63,8 +58,7 @@ void WhereBroadcastTest(const T& x_value, const T& y_value) {
     test.AddOutput<T>("output", {3, 3, 3}, result);
 
 #if defined(OPENVINO_CONFIG_GPU_FP32) || defined(OPENVINO_CONFIG_GPU_FP16)
-    test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-             {kOpenVINOExecutionProvider});  // OpenVINO: Disabled due to failure for GPU
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});  // OpenVINO: Disabled due to failure for GPU
 #else
     test.Run();
 #endif
@@ -81,14 +75,12 @@ void WhereBroadcastTest(const T& x_value, const T& y_value) {
     result.reserve(3 * 3 * 3);
     for (int i = 0; i < 3; ++i) {
       result.insert(
-          result.end(), 3 * 3,
-          gsl::make_span(condition_values.begin(), condition_values.size())[i] ? x_value : y_value);
+          result.end(), 3 * 3, gsl::make_span(condition_values.begin(), condition_values.size())[i] ? x_value : y_value);
     }
     test.AddOutput<T>("output", {3, 3, 3}, result);
 
 #if defined(OPENVINO_CONFIG_GPU_FP32) || defined(OPENVINO_CONFIG_GPU_FP16)
-    test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-             {kOpenVINOExecutionProvider});  // OpenVINO: Disabled due to failure for GPU
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});  // OpenVINO: Disabled due to failure for GPU
 #else
     test.Run();
 #endif

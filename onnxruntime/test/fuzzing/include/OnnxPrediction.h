@@ -31,9 +31,11 @@ class OnnxPrediction {
 
  public:
   using InputGeneratorFunctionType = std::function<void(OnnxPrediction&,
-                                                        size_t, const std::string&,
+                                                        size_t,
+                                                        const std::string&,
                                                         ONNXTensorElementDataType,
-                                                        size_t, size_t)>;
+                                                        size_t,
+                                                        size_t)>;
 
  public:
   // Uses the onnxruntime to load the model
@@ -75,10 +77,18 @@ class OnnxPrediction {
     auto elem_type = input_type.GetTensorTypeAndShapeInfo().GetElementType();
     if (elem_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT) {
       input_value = Ort::Value::CreateTensor(alloc.GetInfo(),
-                                             input_data[curr_input_index].get(), data_size_in_bytes, shapeInfo.data(), shapeInfo.size(), elem_type);
+                                             input_data[curr_input_index].get(),
+                                             data_size_in_bytes,
+                                             shapeInfo.data(),
+                                             shapeInfo.size(),
+                                             elem_type);
     } else if (elem_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32) {
       input_value = Ort::Value::CreateTensor(alloc.GetInfo(),
-                                             input_data[curr_input_index].get(), data_size_in_bytes, shapeInfo.data(), shapeInfo.size(), elem_type);
+                                             input_data[curr_input_index].get(),
+                                             data_size_in_bytes,
+                                             shapeInfo.data(),
+                                             shapeInfo.size(),
+                                             elem_type);
     } else {
       throw std::exception("only floats are implemented");
     }
@@ -185,6 +195,9 @@ std::ostream& operator<<(std::ostream& out, OnnxPrediction& pred);
 // Used to Generate data for predict
 //
 void GenerateDataForInputTypeTensor(OnnxPrediction& predict,
-                                    size_t input_index, const std::string& input_name,
-                                    ONNXTensorElementDataType elem_type, size_t elem_count, size_t seed);
+                                    size_t input_index,
+                                    const std::string& input_name,
+                                    ONNXTensorElementDataType elem_type,
+                                    size_t elem_count,
+                                    size_t seed);
 #endif

@@ -40,8 +40,7 @@ using ReorderPastStateFunc = std::function<Status(
     Stream* stream)>;  // cublasHandle_t
 
 using TopkFunc = std::function<Status(
-    const Tensor* input, const int axis, const unsigned k, bool largest, bool sorted,
-    AllocatorPtr allocator,
+    const Tensor* input, const int axis, const unsigned k, bool largest, bool sorted, AllocatorPtr allocator,
     Stream* stream,  // cudaStream_t
     onnxruntime::concurrency::ThreadPool* threadpool,
     Tensor& output_values,
@@ -185,12 +184,7 @@ using ExpandBufferFunc = std::function<Status(
 // These are CPU specific device helper implementations
 namespace GenerationCpuDeviceHelper {
 Status TopK(
-    const Tensor* input, const int axis, const unsigned k, bool largest, bool sorted,
-    AllocatorPtr allocator,
-    Stream* stream,
-    onnxruntime::concurrency::ThreadPool* threadpool,
-    Tensor& output_values,
-    Tensor& output_indices);
+    const Tensor* input, const int axis, const unsigned k, bool largest, bool sorted, AllocatorPtr allocator, Stream* stream, onnxruntime::concurrency::ThreadPool* threadpool, Tensor& output_values, Tensor& output_indices);
 
 Status AddToFeeds(
     const IExecutionProvider* execution_provider,

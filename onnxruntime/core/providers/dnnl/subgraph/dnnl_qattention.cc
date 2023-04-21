@@ -28,9 +28,7 @@ dnnl::memory DnnlQAttention::ComputeTotalScale(DnnlSubgraphPrimitive& sp, DnnlNo
     auto binary_src1_mem = sp.GetMemoryAndReshape(node.Input(WEIGHTS_SCALE), binary_pd.src1_desc(), eng);
     auto binary_dst_mem = dnnl::memory(binary_pd.dst_desc(), eng);
     auto binary_prim = dnnl::binary(binary_pd);
-    sp.AddPrimitive(binary_prim, {{DNNL_ARG_SRC_0, binary_src0_mem},
-                                  {DNNL_ARG_SRC_1, binary_src1_mem},
-                                  {DNNL_ARG_DST, binary_dst_mem}});
+    sp.AddPrimitive(binary_prim, {{DNNL_ARG_SRC_0, binary_src0_mem}, {DNNL_ARG_SRC_1, binary_src1_mem}, {DNNL_ARG_DST, binary_dst_mem}});
     return binary_dst_mem;
   } else if (input_scale_mem) {
     return sp.GetMemoryAndReshape(node.Input(INPUT_SCALE), input_scale_mem.get_desc().reshape({1}), eng);
@@ -256,10 +254,7 @@ void DnnlQAttention::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) 
     auto linear_dst_mem = dnnl::memory::desc(mask_index_mem_desc.get_dims(),
                                              mask_index_mem_desc.get_data_type(),
                                              dnnl::memory::format_tag::any);
-    auto linear_pd = dnnl::eltwise_forward::primitive_desc(eng, dnnl::prop_kind::forward_inference,
-                                                           dnnl::algorithm::eltwise_linear,
-                                                           mask_index_mem_desc, linear_dst_mem,
-                                                           10000.0f, -10000.0f);
+    auto linear_pd = dnnl::eltwise_forward::primitive_desc(eng, dnnl::prop_kind::forward_inference, dnnl::algorithm::eltwise_linear, mask_index_mem_desc, linear_dst_mem, 10000.0f, -10000.0f);
 
     auto mask_index_ori_mem = sp.GetMemoryAndReshape(node.Input(MASK_INDEX), linear_pd.src_desc(), eng);
     assert(linear_pd.dst_desc().get_data_type() == dnnl::memory::data_type::s32);
@@ -346,9 +341,7 @@ void DnnlQAttention::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) 
 
     // apply softmax in place to produce attention prob
     {
-      auto softmax_pd = dnnl::softmax_forward::primitive_desc(eng, dnnl::prop_kind::forward_inference,
-                                                              dnnl::algorithm::softmax_accurate,
-                                                              QK_mem.get_desc(), QK_mem.get_desc(), 3);
+      auto softmax_pd = dnnl::softmax_forward::primitive_desc(eng, dnnl::prop_kind::forward_inference, dnnl::algorithm::softmax_accurate, QK_mem.get_desc(), QK_mem.get_desc(), 3);
       auto softmax_prim = dnnl::softmax_forward::primitive(softmax_pd);
 
       // QK = softmax(QK) in place

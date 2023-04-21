@@ -44,9 +44,7 @@ void multi_tensor_axpby_cuda(int chunk_size,
 
 // This function is adapted from NVIDIA/apex
 // https://github.com/NVIDIA/apex/blob/0c7d8e3fa9a095a1641a2290877436d0314b69c6/csrc/amp_C_frontend.cpp#L30
-std::tuple<at::Tensor, at::Tensor> multi_tensor_l2norm_cuda(int chunk_size, at::Tensor noop_flag,
-                                                            std::vector<std::vector<at::Tensor>> tensor_lists,
-                                                            at::optional<bool> per_tensor_python);
+std::tuple<at::Tensor, at::Tensor> multi_tensor_l2norm_cuda(int chunk_size, at::Tensor noop_flag, std::vector<std::vector<at::Tensor>> tensor_lists, at::optional<bool> per_tensor_python);
 
 class MemoryBuffer {
  public:

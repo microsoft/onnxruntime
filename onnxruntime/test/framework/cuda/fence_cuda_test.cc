@@ -58,18 +58,17 @@ static common::Status LoadInferenceSessionFromModel(FenceCudaTestInferenceSessio
   return session.LoadModel(model);
 }
 
-#define CREATE_INITIALIZER_FUNC(T, PROTO_DATATYPE, PROTO_ADD_DATA)                                          \
-  onnxruntime::NodeArg& CreateInitializer(onnxruntime::Graph& graph, const std::string& name,               \
-                                          const std::vector<int64_t>& shape, const std::vector<T>& value) { \
-    ONNX_NAMESPACE::TensorProto tensor_proto;                                                               \
-    for (auto dim : shape) tensor_proto.add_dims(dim);                                                      \
-    tensor_proto.set_data_type(PROTO_DATATYPE);                                                             \
-    for (auto v : value) tensor_proto.PROTO_ADD_DATA(v);                                                    \
-    tensor_proto.set_name(name);                                                                            \
-    graph.AddInitializedTensor(tensor_proto);                                                               \
-    TypeProto type_proto;                                                                                   \
-    type_proto.mutable_tensor_type()->set_elem_type(PROTO_DATATYPE);                                        \
-    return graph.GetOrCreateNodeArg(name, &type_proto);                                                     \
+#define CREATE_INITIALIZER_FUNC(T, PROTO_DATATYPE, PROTO_ADD_DATA)                                                                                              \
+  onnxruntime::NodeArg& CreateInitializer(onnxruntime::Graph& graph, const std::string& name, const std::vector<int64_t>& shape, const std::vector<T>& value) { \
+    ONNX_NAMESPACE::TensorProto tensor_proto;                                                                                                                   \
+    for (auto dim : shape) tensor_proto.add_dims(dim);                                                                                                          \
+    tensor_proto.set_data_type(PROTO_DATATYPE);                                                                                                                 \
+    for (auto v : value) tensor_proto.PROTO_ADD_DATA(v);                                                                                                        \
+    tensor_proto.set_name(name);                                                                                                                                \
+    graph.AddInitializedTensor(tensor_proto);                                                                                                                   \
+    TypeProto type_proto;                                                                                                                                       \
+    type_proto.mutable_tensor_type()->set_elem_type(PROTO_DATATYPE);                                                                                            \
+    return graph.GetOrCreateNodeArg(name, &type_proto);                                                                                                         \
   }
 
 CREATE_INITIALIZER_FUNC(float, TensorProto_DataType_FLOAT, add_float_data)
@@ -185,8 +184,7 @@ TEST(CUDAFenceTests, TileWithComputedInput) {
   std::unordered_map<std::string, int> domain_to_version;
   domain_to_version[onnxruntime::kOnnxDomain] = 7;
   std::unique_ptr<onnxruntime::Model> model = std::make_unique<onnxruntime::Model>(
-      "test", true, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(), domain_to_version,
-      std::vector<ONNX_NAMESPACE::FunctionProto>(), DefaultLoggingManager().DefaultLogger());
+      "test", true, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, std::vector<ONNX_NAMESPACE::FunctionProto>(), DefaultLoggingManager().DefaultLogger());
   onnxruntime::Graph& graph = model->MainGraph();
   TypeProto tensor_float;
   tensor_float.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);

@@ -29,8 +29,7 @@ void ArgsProduct(benchmark::internal::Benchmark* bench,
                  const std::vector<std::vector<int64_t>>& arglists) {
   std::vector<std::size_t> indices(arglists.size(), 0);
   const std::size_t total = std::accumulate(
-      std::begin(arglists), std::end(arglists), std::size_t{1},
-      [](const std::size_t res, const std::vector<int64_t>& arglist) {
+      std::begin(arglists), std::end(arglists), std::size_t{1}, [](const std::size_t res, const std::vector<int64_t>& arglist) {
         return res * arglist.size();
       });
   std::vector<int64_t> args;

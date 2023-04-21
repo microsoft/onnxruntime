@@ -151,8 +151,7 @@ static bool TryConvertDynamicQuantizeLSTM(Node& op_node, Graph& graph) {
 }
 
 // For QAttention operator, if the weight is const int8, convert it to const uint8
-Status Avx2WeightS8ToU8Transformer::ApplyImpl(Graph& graph, bool& modified, int graph_level,
-                                              const logging::Logger& logger) const {
+Status Avx2WeightS8ToU8Transformer::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
   GraphViewer graph_viewer(graph);
   const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
 
@@ -186,9 +185,7 @@ Status Avx2WeightS8ToU8Transformer::ApplyImpl(Graph& graph, bool& modified, int 
 #endif
         MatchesOpSinceVersion(op_node, it->second.versions) &&
         graph_utils::MatchesOpSetDomain(op_node, it->second.domain)) {
-      modified |= QDQ::ConvertS8WeightToU8(graph, op_node,
-                                           it->second.weights_idx,
-                                           it->second.weight_zp_idx);
+      modified |= QDQ::ConvertS8WeightToU8(graph, op_node, it->second.weights_idx, it->second.weight_zp_idx);
       continue;  // finished with this op, next
     }
   }

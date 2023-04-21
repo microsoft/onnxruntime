@@ -11,8 +11,7 @@
 namespace onnxruntime {
 namespace functors {
 
-inline common::Status GetFloatParam(const std::string& name, const onnxruntime::NodeAttributes& attributes,
-                                    float& out) {
+inline common::Status GetFloatParam(const std::string& name, const onnxruntime::NodeAttributes& attributes, float& out) {
   auto attr = attributes.find(name);
   if (attr == attributes.end()) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "No attribute with name:'", name, "'is defined.");
@@ -44,8 +43,7 @@ struct ElementWiseRangedTransform {
   // A helper function for creating such objects by op type name.
   // Ideally we should use op type name + domain name + op version as the key, but currently there is no conflict yet,
   // so other two are not needed
-  static Status Create(const std::string& activation_type, const onnxruntime::NodeAttributes& attributes,
-                       std::unique_ptr<ElementWiseRangedTransform<T>>& out);
+  static Status Create(const std::string& activation_type, const onnxruntime::NodeAttributes& attributes, std::unique_ptr<ElementWiseRangedTransform<T>>& out);
 };
 
 template <typename T>
@@ -98,9 +96,7 @@ class ElementWiseKernel final : public OpKernel {
     F f = f_;
     f.input = X->Data<T>();
     f.output = Y->MutableData<T>();
-    concurrency::ThreadPool::TryParallelFor(tp, static_cast<std::ptrdiff_t>(input_size),
-                                            {static_cast<float>(sizeof(T)), static_cast<float>(sizeof(T)), f.Cost()},
-                                            f);
+    concurrency::ThreadPool::TryParallelFor(tp, static_cast<std::ptrdiff_t>(input_size), {static_cast<float>(sizeof(T)), static_cast<float>(sizeof(T)), f.Cost()}, f);
     return Status::OK();
   }
 

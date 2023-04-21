@@ -143,16 +143,13 @@ inline void SendShapeInfo(
   // Directly use CPU to wait MPI_Send. We cannot use GPU callback because
   // MPI_Send may block the entire GPU until it returns.
   MPI_CHECK(MPI_Send(
-      info_shape_sizes.buffer, info_shape_sizes.size, MPI_CHAR,
-      info_shape_sizes.rank, info_shape_sizes.tag, MPI_COMM_WORLD));
+      info_shape_sizes.buffer, info_shape_sizes.size, MPI_CHAR, info_shape_sizes.rank, info_shape_sizes.tag, MPI_COMM_WORLD));
 
   MPI_CHECK(MPI_Send(
-      info_aggregated_size.buffer, info_aggregated_size.size, MPI_CHAR,
-      info_aggregated_size.rank, info_aggregated_size.tag, MPI_COMM_WORLD));
+      info_aggregated_size.buffer, info_aggregated_size.size, MPI_CHAR, info_aggregated_size.rank, info_aggregated_size.tag, MPI_COMM_WORLD));
 
   MPI_CHECK(MPI_Send(
-      info_shapes.buffer, info_shapes.size, MPI_CHAR,
-      info_shapes.rank, info_shapes.tag, MPI_COMM_WORLD));
+      info_shapes.buffer, info_shapes.size, MPI_CHAR, info_shapes.rank, info_shapes.tag, MPI_COMM_WORLD));
 }
 
 inline void ReceiveShapeInfo(
@@ -175,12 +172,10 @@ inline void ReceiveShapeInfo(
   // Directly use CPU to wait MPI_Recv. We cannot use GPU callback because
   // MPI_Recv may block the entire GPU until it returns.
   MPI_CHECK(MPI_Recv(
-      info_shape_sizes.buffer, info_shape_sizes.size, MPI_CHAR,
-      info_shape_sizes.rank, info_shape_sizes.tag, MPI_COMM_WORLD, MPI_STATUS_IGNORE));
+      info_shape_sizes.buffer, info_shape_sizes.size, MPI_CHAR, info_shape_sizes.rank, info_shape_sizes.tag, MPI_COMM_WORLD, MPI_STATUS_IGNORE));
 
   MPI_CHECK(MPI_Recv(
-      info_aggregated_size.buffer, info_aggregated_size.size, MPI_CHAR,
-      info_aggregated_size.rank, info_aggregated_size.tag, MPI_COMM_WORLD, MPI_STATUS_IGNORE));
+      info_aggregated_size.buffer, info_aggregated_size.size, MPI_CHAR, info_aggregated_size.rank, info_aggregated_size.tag, MPI_COMM_WORLD, MPI_STATUS_IGNORE));
 
   // prefix_tensor_shape_sizes's last element is the number of total dimensions.
   // If a 3-D tensor and a 2-D tensor are sent, its value is 2 + 3 = 5.
@@ -190,8 +185,7 @@ inline void ReceiveShapeInfo(
                          src,
                          static_cast<int>(tag)};
   MPI_CHECK(MPI_Recv(
-      info_shapes.buffer, info_shapes.size, MPI_CHAR,
-      info_shapes.rank, info_shapes.tag, MPI_COMM_WORLD, MPI_STATUS_IGNORE));
+      info_shapes.buffer, info_shapes.size, MPI_CHAR, info_shapes.rank, info_shapes.tag, MPI_COMM_WORLD, MPI_STATUS_IGNORE));
 }
 #endif  // USE_MPI
 

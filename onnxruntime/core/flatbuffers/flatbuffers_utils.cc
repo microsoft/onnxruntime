@@ -17,7 +17,8 @@ namespace onnxruntime::fbs::utils {
 #if !defined(ORT_MINIMAL_BUILD)
 
 flatbuffers::Offset<flatbuffers::String> SaveStringToOrtFormat(flatbuffers::FlatBufferBuilder& builder,
-                                                               bool has_string, const std::string& src) {
+                                                               bool has_string,
+                                                               const std::string& src) {
   if (has_string)
     return builder.CreateString(src);
 
@@ -146,9 +147,7 @@ Status SaveValueInfoOrtFormat(flatbuffers::FlatBufferBuilder& builder,
     // we have a NodeArg for missing optional values (empty name, no type) so allow for that.
     // everything else should have type info
     if (!value_info_proto.name().empty()) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "SaveValueInfoOrtFormat: value_info_proto for ", value_info_proto.name(),
-                             " is missing type info.");
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "SaveValueInfoOrtFormat: value_info_proto for ", value_info_proto.name(), " is missing type info.");
     }
   }
 
@@ -251,8 +250,7 @@ static Status LoadTypeInfoOrtFormat(const fbs::TypeInfo& fbs_type_info,
     ORT_RETURN_IF_ERROR(LoadMapTypeOrtFormat(*fbs_map_type, *type_proto.mutable_map_type()));
   } else {
     // We do not support SparseTensor and Opaque for now
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Type:",
-                           fbs::EnumNameTypeInfoValue(value_type), " is not supported currently");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Type:", fbs::EnumNameTypeInfoValue(value_type), " is not supported currently");
   }
 
   return Status::OK();
@@ -270,7 +268,9 @@ Status LoadValueInfoOrtFormat(const fbs::ValueInfo& fbs_value_info,
     // there is a NodeArg with empty name for missing optional inputs that can have null type info.
     // anything else should have a type
     ORT_RETURN_IF(!value_info_proto.name().empty(),
-                  "Null type info for ", value_info_proto.name(), ". Invalid ORT format model.");
+                  "Null type info for ",
+                  value_info_proto.name(),
+                  ". Invalid ORT format model.");
   } else {
     ORT_RETURN_IF_ERROR(LoadTypeInfoOrtFormat(*fbs_type_info, *value_info_proto.mutable_type()));
   }

@@ -160,7 +160,8 @@ void BasicBackend::StartAsyncInference(Ort::KernelContext& context, OVInferReque
     auto graph_input_info = exe_network_.Get().inputs();
     int input_idx = 0;
     for (auto input_info_iter = graph_input_info.begin();
-         input_info_iter != graph_input_info.end(); ++input_info_iter) {
+         input_info_iter != graph_input_info.end();
+         ++input_info_iter) {
       auto input_names = input_info_iter->get_names();
       std::string onnx_input_name;
       std::string input_name;
@@ -224,7 +225,8 @@ void BasicBackend::StartRemoteAsyncInference(Ort::KernelContext& context, OVInfe
     auto graph_input_info = exe_network_.Get().inputs();
     int input_idx = 0;
     for (auto input_info_iter = graph_input_info.begin();
-         input_info_iter != graph_input_info.end(); ++input_info_iter) {
+         input_info_iter != graph_input_info.end();
+         ++input_info_iter) {
       auto input_names = input_info_iter->get_names();
       std::string onnx_input_name;
       std::string input_name;
@@ -267,7 +269,8 @@ void BasicBackend::StartRemoteAsyncInference(Ort::KernelContext& context, OVInfe
     // Set the output blob as remote blob
     auto graph_output_info = exe_network_.Get().outputs();
     for (auto output_info_iter = graph_output_info.begin();
-         output_info_iter != graph_output_info.end(); ++output_info_iter) {
+         output_info_iter != graph_output_info.end();
+         ++output_info_iter) {
       auto output_names = output_info_iter->get_names();
       std::string onnx_output_name;
       std::string output_name;
@@ -322,7 +325,8 @@ void BasicBackend::CompleteAsyncInference(Ort::KernelContext& context, OVInferRe
     infer_request->WaitRequest();
     auto graph_output_info = exe_network_.Get().outputs();
     for (auto output_info_iter = graph_output_info.begin();
-         output_info_iter != graph_output_info.end(); ++output_info_iter) {
+         output_info_iter != graph_output_info.end();
+         ++output_info_iter) {
       OVTensorPtr graph_output_blob;
       auto output_names = output_info_iter->get_names();
       std::string onnx_output_name;

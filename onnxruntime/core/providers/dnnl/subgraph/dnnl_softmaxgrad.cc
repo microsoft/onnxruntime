@@ -32,21 +32,15 @@ void DnnlSoftmaxGrad::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node)
                                        dnnl::memory::format_tag::any);
 
   // create hints on the fly
-  auto hints_pd = dnnl::softmax_forward::primitive_desc(eng, dnnl::prop_kind::forward_training,
-                                                        dnnl::algorithm::softmax_accurate,
-                                                        softmax_bwd_src_mem.get_desc(), fws_dst_md, axis);
+  auto hints_pd = dnnl::softmax_forward::primitive_desc(eng, dnnl::prop_kind::forward_training, dnnl::algorithm::softmax_accurate, softmax_bwd_src_mem.get_desc(), fws_dst_md, axis);
 
-  auto softmax_bwd_pd = dnnl::softmax_backward::primitive_desc(eng, dnnl::algorithm::softmax_accurate,
-                                                               fws_dst_md, softmax_bwd_diff_dst_mem.get_desc(),
-                                                               softmax_bwd_src_mem.get_desc(), axis, hints_pd);
+  auto softmax_bwd_pd = dnnl::softmax_backward::primitive_desc(eng, dnnl::algorithm::softmax_accurate, fws_dst_md, softmax_bwd_diff_dst_mem.get_desc(), softmax_bwd_src_mem.get_desc(), axis, hints_pd);
 
   auto softmax_bwd_diff_src_mem = dnnl::memory(softmax_bwd_pd.diff_src_desc(), eng);
 
   auto softmax_bwd = dnnl::softmax_backward(softmax_bwd_pd);
 
-  sp.AddPrimitive(softmax_bwd, {{DNNL_ARG_DST, softmax_bwd_src_mem},
-                                {DNNL_ARG_DIFF_DST, softmax_bwd_diff_dst_mem},
-                                {DNNL_ARG_DIFF_SRC, softmax_bwd_diff_src_mem}});
+  sp.AddPrimitive(softmax_bwd, {{DNNL_ARG_DST, softmax_bwd_src_mem}, {DNNL_ARG_DIFF_DST, softmax_bwd_diff_dst_mem}, {DNNL_ARG_DIFF_SRC, softmax_bwd_diff_src_mem}});
 
   sp.SetMemory(node.Output(OUT_dX), softmax_bwd_diff_src_mem);
 }

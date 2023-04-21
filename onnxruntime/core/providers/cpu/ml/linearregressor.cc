@@ -35,34 +35,25 @@ LinearRegressor::LinearRegressor(const OpKernelInfo& info)
 // intercepts_: optional [num_targets].
 // Output: X * coefficients_^T + intercepts_: [num_batches, num_targets]
 template <typename T>
-static Status ComputeImpl(const Tensor& input, int64_t num_batches, int64_t num_features, int64_t num_targets,
-                          const std::vector<float>& coefficients,
-                          const std::vector<float>* intercepts, Tensor& output,
-                          POST_EVAL_TRANSFORM post_transform,
-                          concurrency::ThreadPool* threadpool) {
+static Status ComputeImpl(const Tensor& input, int64_t num_batches, int64_t num_features, int64_t num_targets, const std::vector<float>& coefficients, const std::vector<float>* intercepts, Tensor& output, POST_EVAL_TRANSFORM post_transform, concurrency::ThreadPool* threadpool) {
   const T* input_data = input.Data<T>();
   T* output_data = output.MutableData<T>();
 
   if (intercepts != nullptr) {
     TensorShape intercepts_shape({num_targets});
-    onnxruntime::Gemm<T>::ComputeGemm(CBLAS_TRANSPOSE::CblasNoTrans, CBLAS_TRANSPOSE::CblasTrans,
-                                      num_batches, num_targets, num_features,
-                                      1.f, input_data, coefficients.data(), 1.f,
-                                      intercepts->data(), &intercepts_shape,
-                                      output_data,
-                                      threadpool);
+    onnxruntime::Gemm<T>::ComputeGemm(CBLAS_TRANSPOSE::CblasNoTrans, CBLAS_TRANSPOSE::CblasTrans, num_batches, num_targets, num_features, 1.f, input_data, coefficients.data(), 1.f, intercepts->data(), &intercepts_shape, output_data, threadpool);
   } else {
-    onnxruntime::Gemm<T>::ComputeGemm(CBLAS_TRANSPOSE::CblasNoTrans, CBLAS_TRANSPOSE::CblasTrans,
-                                      num_batches, num_targets, num_features,
-                                      1.f, input_data, coefficients.data(), 1.f,
-                                      nullptr, nullptr,
-                                      output_data,
-                                      threadpool);
+    onnxruntime::Gemm<T>::ComputeGemm(CBLAS_TRANSPOSE::CblasNoTrans, CBLAS_TRANSPOSE::CblasTrans, num_batches, num_targets, num_features, 1.f, input_data, coefficients.data(), 1.f, nullptr, nullptr, output_data, threadpool);
   }
 
   if (post_transform != POST_EVAL_TRANSFORM::NONE) {
     ml::batched_update_scores_inplace(gsl::make_span(output_data, SafeInt<size_t>(num_batches) * num_targets),
-                                      num_batches, num_targets, post_transform, -1, false, threadpool);
+                                      num_batches,
+                                      num_targets,
+                                      post_transform,
+                                      -1,
+                                      false,
+                                      threadpool);
   }
 
   return Status::OK();
@@ -75,8 +66,7 @@ Status LinearRegressor::Compute(OpKernelContext* ctx) const {
   const auto& input_shape = X.Shape();
 
   if (input_shape.NumDimensions() > 2) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input shape had more than 2 dimension. Dims=",
-                           input_shape.NumDimensions());
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input shape had more than 2 dimension. Dims=", input_shape.NumDimensions());
   }
 
   int64_t num_batches = input_shape.NumDimensions() <= 1 ? 1 : input_shape[0];
@@ -88,9 +78,7 @@ Status LinearRegressor::Compute(OpKernelContext* ctx) const {
 
   switch (element_type) {
     case ONNX_NAMESPACE::TensorProto_DataType_FLOAT: {
-      status = ComputeImpl<float>(X, num_batches, num_features, num_targets_, coefficients_,
-                                  use_intercepts_ ? &intercepts_ : nullptr,
-                                  Y, post_transform_, tp);
+      status = ComputeImpl<float>(X, num_batches, num_features, num_targets_, coefficients_, use_intercepts_ ? &intercepts_ : nullptr, Y, post_transform_, tp);
 
       break;
     }

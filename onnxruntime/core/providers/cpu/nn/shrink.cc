@@ -13,8 +13,7 @@ namespace onnxruntime {
 
 namespace op_kernel_type_control {
 ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPE_LIST_ALL_OPSETS(
-    kCpuExecutionProvider, kOnnxDomain, Shrink, Input, 0,
-    element_type_lists::AllNumeric);
+    kCpuExecutionProvider, kOnnxDomain, Shrink, Input, 0, element_type_lists::AllNumeric);
 }
 
 using EnabledShrinkDataTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(

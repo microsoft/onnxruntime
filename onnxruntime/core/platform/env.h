@@ -120,9 +120,7 @@ class Env {
    * Caller is responsible for deleting the returned value
    */
   // clang-format on
-  virtual EnvThread* CreateThread(_In_opt_z_ const ORTCHAR_T* name_prefix, int index,
-                                  _In_ unsigned (*start_address)(int id, Eigen::ThreadPoolInterface* param),
-                                  Eigen::ThreadPoolInterface* threadpool, const ThreadOptions& thread_options) = 0;
+  virtual EnvThread* CreateThread(_In_opt_z_ const ORTCHAR_T* name_prefix, int index, _In_ unsigned (*start_address)(int id, Eigen::ThreadPoolInterface* param), Eigen::ThreadPoolInterface* threadpool, const ThreadOptions& thread_options) = 0;
 
   /// \brief Returns a default environment suitable for the current operating
   /// system.
@@ -168,8 +166,7 @@ class Env {
    * @param length The length in bytes to read.
    * @param buffer The buffer in which to write.
    */
-  virtual common::Status ReadFileIntoBuffer(_In_z_ const ORTCHAR_T* file_path, FileOffsetType offset, size_t length,
-                                            gsl::span<char> buffer) const = 0;
+  virtual common::Status ReadFileIntoBuffer(_In_z_ const ORTCHAR_T* file_path, FileOffsetType offset, size_t length, gsl::span<char> buffer) const = 0;
 
   using MappedMemoryPtr = std::unique_ptr<char[], OrtCallbackInvoker>;
 
@@ -183,8 +180,7 @@ class Env {
    * @param[out] mapped_memory A smart pointer to the mapped memory which
    *             unmaps the memory (unless release()'d) when destroyed.
    */
-  virtual common::Status MapFileIntoMemory(_In_z_ const ORTCHAR_T* file_path, FileOffsetType offset, size_t length,
-                                           MappedMemoryPtr& mapped_memory) const = 0;
+  virtual common::Status MapFileIntoMemory(_In_z_ const ORTCHAR_T* file_path, FileOffsetType offset, size_t length, MappedMemoryPtr& mapped_memory) const = 0;
 
 #ifdef _WIN32
   /// \brief Returns true if the directory exists.

@@ -23,8 +23,7 @@ constexpr bool IsPreferredPathSeparator(PathChar c) {
 PathString NormalizePathSeparators(const PathString& path) {
   PathString result{};
   std::replace_copy_if(
-      path.begin(), path.end(), std::back_inserter(result),
-      [](PathChar c) {
+      path.begin(), path.end(), std::back_inserter(result), [](PathChar c) {
         return std::find(
                    k_valid_path_separators.begin(),
                    k_valid_path_separators.end(),
@@ -36,8 +35,7 @@ PathString NormalizePathSeparators(const PathString& path) {
 
 // parse component and trailing path separator
 PathString::const_iterator ParsePathComponent(
-    PathString::const_iterator begin, PathString::const_iterator end,
-    PathString::const_iterator& component_end, bool* has_trailing_separator) {
+    PathString::const_iterator begin, PathString::const_iterator end, PathString::const_iterator& component_end, bool* has_trailing_separator) {
   component_end = std::find_if(begin, end, IsPreferredPathSeparator);
   const auto sep_end = std::find_if_not(component_end, end, IsPreferredPathSeparator);
   if (has_trailing_separator) *has_trailing_separator = sep_end != component_end;
@@ -48,7 +46,9 @@ PathString::const_iterator ParsePathComponent(
 
 Status ParsePathRoot(
     const PathString& path,
-    PathString& root, bool& has_root_dir, size_t& num_parsed_chars) {
+    PathString& root,
+    bool& has_root_dir,
+    size_t& num_parsed_chars) {
   // assume NormalizePathSeparators() has been called
 
   // drive letter
@@ -96,7 +96,9 @@ Status ParsePathRoot(
 
 Status ParsePathRoot(
     const PathString& path,
-    PathString& root, bool& has_root_dir, size_t& num_parsed_chars) {
+    PathString& root,
+    bool& has_root_dir,
+    size_t& num_parsed_chars) {
   // assume NormalizePathSeparators() has been called
   auto curr_it = std::find_if_not(path.begin(), path.end(), IsPreferredPathSeparator);
   const auto num_initial_seps = std::distance(path.begin(), curr_it);
@@ -214,8 +216,7 @@ Path& Path::Normalize() {
   // remove leading ..'s if root dir present
   if (has_root_dir_) {
     const auto first_non_dotdot_it = std::find_if(
-        normalized_components.begin(), normalized_components.end(),
-        [](const PathString& component) { return component != k_dotdot; });
+        normalized_components.begin(), normalized_components.end(), [](const PathString& component) { return component != k_dotdot; });
     normalized_components.erase(
         normalized_components.begin(), first_non_dotdot_it);
   }
@@ -248,15 +249,15 @@ Path& Path::Append(const Path& other) {
 }
 
 Path& Path::Concat(const PathString& value) {
-  auto first_separator = std::find_if(value.begin(), value.end(),
-                                      [](PathChar c) {
-                                        return std::find(
-                                                   k_valid_path_separators.begin(),
-                                                   k_valid_path_separators.end(),
-                                                   c) != k_valid_path_separators.end();
-                                      });
+  auto first_separator = std::find_if(value.begin(), value.end(), [](PathChar c) {
+    return std::find(
+               k_valid_path_separators.begin(),
+               k_valid_path_separators.end(),
+               c) != k_valid_path_separators.end();
+  });
   ORT_ENFORCE(first_separator == value.end(),
-              "Cannot concatenate with a string containing a path separator. String: ", ToUTF8String(value));
+              "Cannot concatenate with a string containing a path separator. String: ",
+              ToUTF8String(value));
 
   if (components_.empty()) {
     components_.push_back(value);
@@ -270,8 +271,10 @@ Status RelativePath(const Path& src, const Path& dst, Path& rel) {
   ORT_RETURN_IF_NOT(
       src.GetRootPathString() == dst.GetRootPathString(),
       "Paths must have the same root to compute a relative path. ",
-      "src root: ", ToUTF8String(src.GetRootPathString()),
-      ", dst root: ", ToUTF8String(dst.GetRootPathString()));
+      "src root: ",
+      ToUTF8String(src.GetRootPathString()),
+      ", dst root: ",
+      ToUTF8String(dst.GetRootPathString()));
 
   const Path norm_src = src.NormalizedPath(), norm_dst = dst.NormalizedPath();
   const auto& src_components = norm_src.GetComponents();
@@ -281,8 +284,7 @@ Status RelativePath(const Path& src, const Path& dst, Path& rel) {
       src_components.size(), dst_components.size());
 
   const auto mismatch_point = std::mismatch(
-      src_components.begin(), src_components.begin() + min_num_components,
-      dst_components.begin());
+      src_components.begin(), src_components.begin() + min_num_components, dst_components.begin());
 
   const auto& common_src_components_end = mismatch_point.first;
   const auto& common_dst_components_end = mismatch_point.second;
@@ -298,8 +300,7 @@ Status RelativePath(const Path& src, const Path& dst, Path& rel) {
       k_dotdot);
 
   std::copy(
-      common_dst_components_end, dst_components.end(),
-      std::back_inserter(rel_components));
+      common_dst_components_end, dst_components.end(), std::back_inserter(rel_components));
 
   rel = Path(PathString{}, false, rel_components);
   return Status::OK();

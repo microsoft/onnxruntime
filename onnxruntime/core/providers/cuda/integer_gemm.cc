@@ -14,10 +14,7 @@ constexpr int roundoff(int v, int d) {
   return (v + d - 1) / d * d;
 }
 
-Status GemmInt8(int m, int n, int k,
-                int32_t alpha, int32_t beta,
-                const int8_t* a, int lda, const int8_t* b, int ldb, int32_t* c, int ldc,
-                const CudaKernel* cuda_kernel, onnxruntime::Stream* ort_stream) {
+Status GemmInt8(int m, int n, int k, int32_t alpha, int32_t beta, const int8_t* a, int lda, const int8_t* b, int ldb, int32_t* c, int ldc, const CudaKernel* cuda_kernel, onnxruntime::Stream* ort_stream) {
   ORT_ENFORCE(a != nullptr && b != nullptr && c != nullptr, "input matrix should not be null");
   ORT_ENFORCE(cuda_kernel != nullptr, "kernel is null");
   ORT_ENFORCE(ort_stream != nullptr, "Cuda kernel must have the stream instance");
@@ -51,13 +48,23 @@ Status GemmInt8(int m, int n, int k,
 
   CUBLAS_RETURN_IF_ERROR(cublasGemmEx(
       cublas,
-      CUBLAS_OP_N, CUBLAS_OP_N,
-      n, m, k,
+      CUBLAS_OP_N,
+      CUBLAS_OP_N,
+      n,
+      m,
+      k,
       &alpha,
-      ldb_aligned == ldb ? b : b_padded.get(), CUDA_R_8I, ldb_aligned,
-      lda_aligned == lda ? a : a_padded.get(), CUDA_R_8I, lda_aligned,
+      ldb_aligned == ldb ? b : b_padded.get(),
+      CUDA_R_8I,
+      ldb_aligned,
+      lda_aligned == lda ? a : a_padded.get(),
+      CUDA_R_8I,
+      lda_aligned,
       &beta,
-      c, CUDA_R_32I, ldc, CUDA_R_32I,
+      c,
+      CUDA_R_32I,
+      ldc,
+      CUDA_R_32I,
       CUBLAS_GEMM_DFALT));
   return Status::OK();
 }

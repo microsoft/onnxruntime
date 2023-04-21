@@ -22,7 +22,9 @@ class Record {
 
   Record(const std::vector<std::string>& names, const Values& values) {
     ORT_ENFORCE(std::tuple_size<Values>::value == names.size(),
-                "Parameter sizes do not match. %d != %d", std::tuple_size<Values>::value, names.size());
+                "Parameter sizes do not match. %d != %d",
+                std::tuple_size<Values>::value,
+                names.size());
     names_ = names;
     values_ = values;
   }

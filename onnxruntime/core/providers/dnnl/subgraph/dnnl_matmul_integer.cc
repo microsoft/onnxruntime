@@ -17,8 +17,7 @@ DnnlMatMulInteger::DnnlMatMulInteger() {}
 
 void DnnlMatMulInteger::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
   std::unordered_set<std::string> binary_ops = {"Add", "Div", "Mul", "Sub"};
-  std::unordered_set<std::string> elementwise_ops = {"Abs", "Elu", "Exp", "LeakyRelu", "Log", "Relu",
-                                                     "Round", "Sigmoid", "Softplus", "Sqrt", "Tanh"};
+  std::unordered_set<std::string> elementwise_ops = {"Abs", "Elu", "Exp", "LeakyRelu", "Log", "Relu", "Round", "Sigmoid", "Softplus", "Sqrt", "Tanh"};
   auto eng = sp.GetEngine();
 
   bool has_postop_fusion = false;

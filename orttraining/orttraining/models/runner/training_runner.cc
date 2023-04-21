@@ -300,8 +300,7 @@ Status TrainingRunner::Initialize() {
   return Status::OK();
 }
 
-Status TrainingRunner::Run(IDataLoader* training_data_loader, IDataLoader* test_data_loader,
-                           const MapStringToString& mapped_dimensions) {
+Status TrainingRunner::Run(IDataLoader* training_data_loader, IDataLoader* test_data_loader, const MapStringToString& mapped_dimensions) {
   if (MPIContext::GetInstance().GetWorldRank() == 0 && !params_.model_actual_running_graph_path.empty()) {
     ORT_RETURN_IF_ERROR(session_.Save(params_.model_actual_running_graph_path, TrainingSession::SaveOption::NO_RELOAD));
   }
@@ -593,7 +592,8 @@ void TrainingRunner::RunWithUpdate(VectorString& feed_names,
         pipeline_worker_pool_.worker_states[worker_id].execution_exception = std::current_exception();
       }
     },
-                                                           worker_id, step_);
+                                                           worker_id,
+                                                           step_);
 
     // Wait all workers to finish this round of pipeline parallelism.
     // The last batch in a pipeline collects gradient and update the model.
@@ -707,7 +707,8 @@ void TrainingRunner::RunWithoutUpdate(VectorString& feed_names,
         pipeline_worker_pool_.worker_states[worker_id].execution_exception = std::current_exception();
       }
     },
-                                                           worker_id, step_);
+                                                           worker_id,
+                                                           step_);
   } else {
 // Pipeline is not enabled, so we run session using the main thread.
 #ifdef ENABLE_NVTX_PROFILE
@@ -739,8 +740,7 @@ void TrainingRunner::RunWithoutUpdate(VectorString& feed_names,
   ++gradient_accumulation_step_count;
 }
 
-Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoader* test_data_loader,
-                                    const MapStringToString& mapped_dimensions) {
+Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoader* test_data_loader, const MapStringToString& mapped_dimensions) {
   const bool enable_checkpoint_saving =
       MPIContext::GetInstance().GetWorldRank() == 0 &&
       checkpoint_registry_ && params_.checkpoint_period > 0;
@@ -864,8 +864,7 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
               PrepareFetchNamesAndFetches(GradientAccumulateStep,
                                           fetch_names,
                                           fetches));
-          RunWithoutUpdate(feed_names, fetch_names, feeds,
-                           gradient_accumulation_step_count);
+          RunWithoutUpdate(feed_names, fetch_names, feeds, gradient_accumulation_step_count);
         }
 
         // at this point, step_ already be increased by 1.
@@ -902,8 +901,7 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
           bool should_remove_old_checkpoint;
 
           ORT_RETURN_IF_ERROR(checkpoint_registry_->AddCheckpoint(
-              weight_update_step_count_, new_checkpoint_path,
-              should_remove_old_checkpoint, old_checkpoint_path));
+              weight_update_step_count_, new_checkpoint_path, should_remove_old_checkpoint, old_checkpoint_path));
 
           // ensure checkpoint directory exists
           if (!Env::Default().FolderExists(params_.checkpoints_dir)) {
@@ -957,10 +955,7 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
     const size_t peak_workingset_size = perftest::utils::GetPeakWorkingSetSize();
     ORT_RETURN_IF_ERROR(Env::Default().CreateFolder(params_.perf_output_dir));
     // saving json file
-    ORT_RETURN_IF_ERROR(SavePerfMetrics(number_of_batches, gradient_accumulation_step_count, weight_update_steps,
-                                        total_time, avg_time_per_batch, throughput, stabilized_throughput,
-                                        e2e_throughput, mapped_dimensions,
-                                        average_cpu_usage, peak_workingset_size));
+    ORT_RETURN_IF_ERROR(SavePerfMetrics(number_of_batches, gradient_accumulation_step_count, weight_update_steps, total_time, avg_time_per_batch, throughput, stabilized_throughput, e2e_throughput, mapped_dimensions, average_cpu_usage, peak_workingset_size));
   }
 
   std::cout << "Round: " << round_ << "\n"
@@ -982,11 +977,7 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
   return Status::OK();
 }
 
-Status TrainingRunner::SavePerfMetrics(const size_t number_of_batches, const size_t gradient_accumulation_steps,
-                                       const size_t weight_update_steps, const double total_time,
-                                       const double avg_time_per_batch, const double throughput, const double stabilized_throughput,
-                                       const double e2e_throughput, const MapStringToString& mapped_dimensions,
-                                       const short average_cpu_usage, const size_t peak_workingset_size) {
+Status TrainingRunner::SavePerfMetrics(const size_t number_of_batches, const size_t gradient_accumulation_steps, const size_t weight_update_steps, const double total_time, const double avg_time_per_batch, const double throughput, const double stabilized_throughput, const double e2e_throughput, const MapStringToString& mapped_dimensions, const short average_cpu_usage, const size_t peak_workingset_size) {
   // populate metrics for reporting
   json perf_metrics;
   perf_metrics["Model"] = params_.model_type;
@@ -1223,8 +1214,7 @@ Status TrainingRunner::SaveCheckpoint(const PathString& checkpoint_path) {
   ORT_RETURN_IF_ERROR(SaveCheckpointProperties(checkpointed_properties));
 
   ORT_RETURN_IF_ERROR(SaveModelCheckpoint(
-      checkpoint_path, session_.GetDataTransferManager(),
-      checkpointed_tensors, checkpointed_properties));
+      checkpoint_path, session_.GetDataTransferManager(), checkpointed_tensors, checkpointed_properties));
 
   return Status::OK();
 }
@@ -1253,8 +1243,7 @@ Status WithOrtValuesFromTensorProtos(
     OrtValue ort_value;
 
     ORT_RETURN_IF_ERROR(utils::TensorProtoToMLValue(
-        Env::Default(), model_location.c_str(), tensor_proto, mem_buffer,
-        ort_value));
+        Env::Default(), model_location.c_str(), tensor_proto, mem_buffer, ort_value));
 
     name_to_ort_value.emplace(tensor_proto.name(), ort_value);
     tensor_buffers.emplace_back(std::move(tensor_buffer));
@@ -1270,12 +1259,10 @@ Status TrainingRunner::LoadCheckpoint(const PathString& checkpoint_path) {
   std::vector<ONNX_NAMESPACE::TensorProto> checkpointed_tensors{};
   std::unordered_map<std::string, std::string> checkpointed_properties{};
   ORT_RETURN_IF_ERROR(LoadModelCheckpoint(
-      checkpoint_path, session_.GetModelLocation(),
-      checkpointed_tensors, checkpointed_properties));
+      checkpoint_path, session_.GetModelLocation(), checkpointed_tensors, checkpointed_properties));
 
   ORT_RETURN_IF_ERROR(WithOrtValuesFromTensorProtos(
-      session_.GetModelLocation(), checkpointed_tensors,
-      [this](const NameMLValMap& name_to_ort_value) -> Status {
+      session_.GetModelLocation(), checkpointed_tensors, [this](const NameMLValMap& name_to_ort_value) -> Status {
         ORT_RETURN_IF_ERROR(session_.SetStateTensors(name_to_ort_value, true));
         return Status::OK();
       }));

@@ -87,8 +87,7 @@ std::unordered_set<const Node*> GetSupportedNodes(const GraphViewer& graph_viewe
 #endif
 
   const auto& graph_inputs = graph_viewer.GetInputs();
-  if (std::any_of(graph_inputs.begin(), graph_inputs.end(),
-                  [&](const NodeArg* input) { return !IsInputSupported(*input, "graph", logger); })) {
+  if (std::any_of(graph_inputs.begin(), graph_inputs.end(), [&](const NodeArg* input) { return !IsInputSupported(*input, "graph", logger); })) {
     return supported_nodes;
   }
 

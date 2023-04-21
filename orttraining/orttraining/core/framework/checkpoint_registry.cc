@@ -45,7 +45,8 @@ CheckpointRegistry::CheckpointRegistry(
 Status CheckpointRegistry::AddCheckpoint(
     CheckpointId id,
     PathString& new_checkpoint_path,
-    bool& should_remove_old_checkpoint, PathString& old_checkpoint_path) {
+    bool& should_remove_old_checkpoint,
+    PathString& old_checkpoint_path) {
   const PathString checkpoint_path{MakeCheckpointPath(checkpoints_directory_path_, id)};
 
   const auto existing_checkpoint_it = checkpoints_.find(id);

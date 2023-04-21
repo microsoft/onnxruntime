@@ -134,10 +134,7 @@ static size_t UpdateConsumerCount(Graph& graph, NodeArg* target, InlinedHashMap<
  *                              |
  *                              V
  */
-static Node* ReorderCastAndTranspose(Graph& graph, Node* cast,
-                                     InlinedHashMap<NodeArg*, size_t>& consumer_count,
-                                     std::deque<onnxruntime::NodeIndex>& removed_nodes,
-                                     bool& is_trans, bool& is_trans_batch) {
+static Node* ReorderCastAndTranspose(Graph& graph, Node* cast, InlinedHashMap<NodeArg*, size_t>& consumer_count, std::deque<onnxruntime::NodeIndex>& removed_nodes, bool& is_trans, bool& is_trans_batch) {
   ORT_ENFORCE(cast != nullptr);
   auto transpose = GetTransposeNodeFromOutput(graph, *cast->MutableInputDefs()[0], is_trans, is_trans_batch);
   if (transpose == nullptr) {
@@ -319,8 +316,7 @@ Status MatmulTransposeFusion::ApplyImpl(Graph& graph, bool& modified, int graph_
       if (!left) {
         Node* left_node = graph.GetMutableProducerNode(left_input->Name());
         if (left_node && left_node->OpType() == "Cast") {
-          left = ReorderCastAndTranspose(graph, left_node, consumer_count, removed_nodes, is_trans_left,
-                                         is_trans_batch_left);
+          left = ReorderCastAndTranspose(graph, left_node, consumer_count, removed_nodes, is_trans_left, is_trans_batch_left);
         }
       }
     }
@@ -340,8 +336,7 @@ Status MatmulTransposeFusion::ApplyImpl(Graph& graph, bool& modified, int graph_
       if (!right) {
         Node* right_node = graph.GetMutableProducerNode(right_input->Name());
         if (right_node && right_node->OpType() == "Cast") {
-          right = ReorderCastAndTranspose(graph, right_node, consumer_count, removed_nodes, is_trans_right,
-                                          is_trans_batch_right);
+          right = ReorderCastAndTranspose(graph, right_node, consumer_count, removed_nodes, is_trans_right, is_trans_batch_right);
         }
       }
     }
@@ -389,7 +384,9 @@ Status MatmulTransposeFusion::ApplyImpl(Graph& graph, bool& modified, int graph_
                                       "FusedMatMul",
                                       "fused MatMul and Transpose ",
                                       input_defs,
-                                      output_defs, {}, kMSDomain);
+                                      output_defs,
+                                      {},
+                                      kMSDomain);
     float alpha = 1.0f;
     if (node.OpType() == "FusedMatMul") {
       is_trans_left ^= static_cast<bool>(node.GetAttributes().at("transA").i());

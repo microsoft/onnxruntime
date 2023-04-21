@@ -113,12 +113,10 @@ void RunConvOp(const ConvOpAndTestAttributes& attributes,
                bool disable_rocm = false) {
   bool weight_is_initializer = false;
   bool use_float16 = false;
-  TestConvOp(attributes, inputs, input_shapes, expected_output, expected_output_shape,
-             disable_cpu, disable_cuda, disable_rocm, use_float16, weight_is_initializer);
+  TestConvOp(attributes, inputs, input_shapes, expected_output, expected_output_shape, disable_cpu, disable_cuda, disable_rocm, use_float16, weight_is_initializer);
 
   use_float16 = true;
-  TestConvOp(attributes, inputs, input_shapes, expected_output, expected_output_shape,
-             disable_cpu, disable_cuda, disable_rocm, use_float16, weight_is_initializer);
+  TestConvOp(attributes, inputs, input_shapes, expected_output, expected_output_shape, disable_cpu, disable_cuda, disable_rocm, use_float16, weight_is_initializer);
 }
 
 TEST(FusedConvTest, Conv2D_HardSigmoid) {

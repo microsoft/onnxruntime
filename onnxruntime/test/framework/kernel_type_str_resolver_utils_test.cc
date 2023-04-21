@@ -18,8 +18,7 @@ static Status LoadLayoutTransformationRequiredOpsFromOpSchemas(KernelTypeStrReso
   const auto required_op_ids = kernel_type_str_resolver_utils::GetLayoutTransformationRequiredOpIdentifiers();
   const auto schema_registry = SchemaRegistryManager{};
   for (const auto& op_id : required_op_ids) {
-    const auto* op_schema = schema_registry.GetSchema(std::string{op_id.op_type}, op_id.since_version,
-                                                      std::string{op_id.domain});
+    const auto* op_schema = schema_registry.GetSchema(std::string{op_id.op_type}, op_id.since_version, std::string{op_id.domain});
     ORT_RETURN_IF(op_schema == nullptr, "Failed to get op schema.");
     ORT_RETURN_IF_ERROR(kernel_type_str_resolver.RegisterOpSchema(*op_schema));
   }
@@ -61,7 +60,8 @@ TEST(KernelTypeStrResolverUtilsTest, DISABLED_PrintExpectedLayoutTransformationR
   flatbuffers::DetachedBuffer buffer;
   gsl::span<const uint8_t> buffer_span;
   ASSERT_STATUS_OK(kernel_type_str_resolver_utils::SaveKernelTypeStrResolverToBuffer(expected_resolver,
-                                                                                     buffer, buffer_span));
+                                                                                     buffer,
+                                                                                     buffer_span));
 
   constexpr size_t kBytesPerLine = 16;
   std::ostringstream os;

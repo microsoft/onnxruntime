@@ -93,8 +93,7 @@ TEST(StringUtilsTest, MakeStringAndTryParseStringWithCustomType) {
 }
 
 TEST(StringUtilsTest, SplitString) {
-  auto run_test = [](const std::string& string_to_split, const std::string& delimiter,
-                     const std::vector<std::string>& expected_substrings_with_empty) {
+  auto run_test = [](const std::string& string_to_split, const std::string& delimiter, const std::vector<std::string>& expected_substrings_with_empty) {
     SCOPED_TRACE(MakeString("string_to_split: \"", string_to_split, "\", delimiter: \"", delimiter, "\""));
 
     auto test_split = [&](const std::vector<std::string>& expected_substrings, bool keep_empty) {
@@ -111,8 +110,7 @@ TEST(StringUtilsTest, SplitString) {
 
     const std::vector<std::string> expected_substrings_without_empty = [&]() {
       std::vector<std::string> result = expected_substrings_with_empty;
-      result.erase(std::remove_if(result.begin(), result.end(),
-                                  [](const std::string& value) { return value.empty(); }),
+      result.erase(std::remove_if(result.begin(), result.end(), [](const std::string& value) { return value.empty(); }),
                    result.end());
       return result;
     }();

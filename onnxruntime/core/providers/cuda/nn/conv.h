@@ -53,10 +53,7 @@ struct tensor_shape_vector_hash {
   }
 };
 
-template <typename Key, typename T,
-          typename Hash = std::hash<Key>,
-          typename KeyEqual = std::equal_to<Key>,
-          typename ListAllocator = std::allocator<Key>>
+template <typename Key, typename T, typename Hash = std::hash<Key>, typename KeyEqual = std::equal_to<Key>, typename ListAllocator = std::allocator<Key>>
 class lru_unordered_map {
  public:
   lru_unordered_map(size_t max_size) : max_size_(max_size) {}

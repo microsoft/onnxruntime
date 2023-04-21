@@ -18,8 +18,7 @@ class BinaryOpBuilder : public BaseOpBuilder {
   // Add operator related
  private:
 #ifdef __APPLE__
-  [[nodiscard]] Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
-                                             const logging::Logger& logger) const override;
+  [[nodiscard]] Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node, const logging::Logger& logger) const override;
 #endif
   // Operator support related
   int GetMinSupportedOpSet(const Node& node) const override;
@@ -43,8 +42,7 @@ static bool CheckIfBothInputShapesMatch(const Node& node, const logging::Logger&
 
 // Add operator related
 
-Status BinaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
-                                              const logging::Logger& logger) const {
+Status BinaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node, const logging::Logger& logger) const {
   const auto& op_type(node.OpType());
   const auto& input_defs(node.InputDefs());
 
@@ -71,8 +69,7 @@ Status BinaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
   } else if (op_type == "Pow") {
     layer->mutable_powbroadcastable();
   } else {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "BinaryOpBuilder::AddToModelBuilderImpl, unknown op: ", op_type);
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "BinaryOpBuilder::AddToModelBuilderImpl, unknown op: ", op_type);
   }
 
   *layer->mutable_input()->Add() = input_defs[0]->Name();

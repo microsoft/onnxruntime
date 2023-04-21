@@ -25,14 +25,12 @@ constexpr size_t NumIOEntries(bool variadic_io, size_t num_io, size_t num_variad
 // Move or remove an edge.
 //   - moves edges from src+src_slot to dest node+dest_slot if provided.
 //   - remove edges for the src+src_slot if dest+dest_slot not provided.
-void ProcessEdge(Graph& graph, const Node& src, const InOutDefSlot& src_slot,
-                 const Node* dest, const InOutDefSlot* dest_slot) {
+void ProcessEdge(Graph& graph, const Node& src, const InOutDefSlot& src_slot, const Node* dest, const InOutDefSlot* dest_slot) {
   if (src_slot.in_out == ArgType::kInput) {
     // move input edge if present
-    auto iter = std::find_if(src.InputEdgesBegin(), src.InputEdgesEnd(),
-                             [&src_slot](const Node::EdgeEnd& edge) {
-                               return (edge.GetDstArgIndex() == src_slot.idx);
-                             });
+    auto iter = std::find_if(src.InputEdgesBegin(), src.InputEdgesEnd(), [&src_slot](const Node::EdgeEnd& edge) {
+      return (edge.GetDstArgIndex() == src_slot.idx);
+    });
 
     // initializer or graph input doesn't have an edge so either zero or one edges to process
     if (iter != src.InputEdgesEnd()) {
@@ -58,8 +56,7 @@ void ProcessEdge(Graph& graph, const Node& src, const InOutDefSlot& src_slot,
 }
 
 // move an input or output and its edge between two nodes
-Status MoveInputOutputImpl(Graph& graph, const ValueMoveInfo& move_info, Node& src, Node& dest,
-                           bool only_update_dest_definitions) {
+Status MoveInputOutputImpl(Graph& graph, const ValueMoveInfo& move_info, Node& src, Node& dest, bool only_update_dest_definitions) {
   auto& src_defs = (move_info.src_slot.in_out == ArgType::kInput)
                        ? src.MutableInputDefs()
                        : src.MutableOutputDefs();
@@ -154,8 +151,7 @@ bool GetNodesByNodeIndex(Graph& graph, gsl::span<const NodeIndex> indices, Inlin
 // Helper to create the NodesToOptimizeIndices
 // specify num_input_defs/num_output_defs if the last input/output is variadic (default is non-variadic)
 static NodesToOptimizeIndices GetNodesToOptimizeIndices(
-    gsl::span<const NodeIndex> input_nodes, NodeIndex target_node, gsl::span<const NodeIndex> output_nodes,
-    int num_input_defs, int num_output_defs) {
+    gsl::span<const NodeIndex> input_nodes, NodeIndex target_node, gsl::span<const NodeIndex> output_nodes, int num_input_defs, int num_output_defs) {
   size_t num_inputs = num_input_defs == -1 ? input_nodes.size() : static_cast<size_t>(num_input_defs);
   size_t num_outputs = num_output_defs == -1 ? output_nodes.size() : static_cast<size_t>(num_output_defs);
   bool variadic_input = false;
@@ -182,12 +178,11 @@ static NodesToOptimizeIndices GetNodesToOptimizeIndices(
 
   std::for_each(node_indices.cbegin(), node_indices.cend(), [](NodeIndex node_idx) {
     ORT_ENFORCE(node_idx <= NodesToOptimizeIndices::kEmptyNodeIndex,
-                "Node index value is too large to save to ORT format model: ", node_idx);
+                "Node index value is too large to save to ORT format model: ",
+                node_idx);
   });
 
-  return NodesToOptimizeIndices{std::move(node_indices), static_cast<int>(num_inputs), static_cast<int>(num_outputs),
-                                variadic_input, variadic_output,
-                                num_variadic_inputs, num_variadic_outputs};
+  return NodesToOptimizeIndices{std::move(node_indices), static_cast<int>(num_inputs), static_cast<int>(num_outputs), variadic_input, variadic_output, num_variadic_inputs, num_variadic_outputs};
 }
 
 NodesToOptimizeIndices NodesToOptimizeIndicesBuilder::Build() const {
@@ -198,7 +193,8 @@ NodesToOptimizeIndices NodesToOptimizeIndicesBuilder::Build() const {
 NodesToOptimize::NodesToOptimize(gsl::span<Node* const> input_nodes,
                                  Node& target_node,
                                  gsl::span<Node* const> output_nodes,
-                                 int num_input_defs, int num_output_defs)
+                                 int num_input_defs,
+                                 int num_output_defs)
     : num_inputs{num_input_defs == -1 ? gsl::narrow_cast<int>(input_nodes.size()) : num_input_defs},
       num_outputs{num_output_defs == -1 ? gsl::narrow_cast<int>(output_nodes.size()) : num_output_defs} {
   if (num_input_defs != -1) {
@@ -237,13 +233,12 @@ NodesToOptimizeIndices NodesToOptimize::ToIndices() const {
   std::for_each(nodes_.cbegin(), nodes_.cend(), [&node_indices](const Node* node) {
     const NodeIndex node_idx = node != nullptr ? node->Index() : NodesToOptimizeIndices::kEmptyNodeIndex;
     ORT_ENFORCE(node_idx <= NodesToOptimizeIndices::kEmptyNodeIndex,
-                "Node index value is too large to save to ORT format model: ", node_idx);
+                "Node index value is too large to save to ORT format model: ",
+                node_idx);
     node_indices.push_back(node_idx);
   });
 
-  return NodesToOptimizeIndices{std::move(node_indices), num_inputs, num_outputs,
-                                variadic_input_, variadic_output_,
-                                num_variadic_inputs_, num_variadic_outputs_};
+  return NodesToOptimizeIndices{std::move(node_indices), num_inputs, num_outputs, variadic_input_, variadic_output_, num_variadic_inputs_, num_variadic_outputs_};
 }
 
 InlinedVector<Node*> NodesToOptimize::Inputs(gsl::span<const int> indices, bool required) const {
@@ -305,20 +300,17 @@ size_t NodesToOptimize::NumOutputEntries() const {
 // Actions
 //
 
-Status MoveInputOutput(Graph& graph, Node& src, Node& dest, const ValueMoveInfo& move_info,
-                       bool only_update_dest_definitions) {
+Status MoveInputOutput(Graph& graph, Node& src, Node& dest, const ValueMoveInfo& move_info, bool only_update_dest_definitions) {
   return MoveInputOutputImpl(graph, move_info, src, dest, only_update_dest_definitions);
 }
 
-Status MoveInputOutput(Graph& graph, const NodesToOptimize& selected_nodes, Node& dest,
-                       gsl::span<const NodeAndMoveInfo> moves, bool only_update_dest_definitions) {
+Status MoveInputOutput(Graph& graph, const NodesToOptimize& selected_nodes, Node& dest, gsl::span<const NodeAndMoveInfo> moves, bool only_update_dest_definitions) {
   for (const auto& move : moves) {
     auto src_nodes = selected_nodes.GetNodesAtLocation(move.src_node, !move.value_move_info.optional);
 
     for (Node* src : src_nodes) {
       if (src != nullptr) {
-        ORT_RETURN_IF_ERROR(MoveInputOutputImpl(graph, move.value_move_info, *src, dest,
-                                                only_update_dest_definitions));
+        ORT_RETURN_IF_ERROR(MoveInputOutputImpl(graph, move.value_move_info, *src, dest, only_update_dest_definitions));
       } else if (move.value_move_info.optional &&
                  move.value_move_info.fill_optional_with_empty) {
         auto& dest_defs = (move.value_move_info.dest_slot.in_out == ArgType::kInput)

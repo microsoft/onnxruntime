@@ -14,9 +14,7 @@ namespace internal_testing_ep {
 // can't use 'utils::kInternalTestingExecutionProvider' in the macro so redefine here to a name without '::'
 constexpr const char* internal_testing_ep = utils::kInternalTestingExecutionProvider;
 
-ONNX_OPERATOR_KERNEL_EX(Conv, kMSInternalNHWCDomain, 11, internal_testing_ep,
-                        KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
-                        Conv);
+ONNX_OPERATOR_KERNEL_EX(Conv, kMSInternalNHWCDomain, 11, internal_testing_ep, KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()), Conv);
 
 //
 // Kernel implementation example

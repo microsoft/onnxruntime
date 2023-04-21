@@ -9,8 +9,7 @@ namespace test {
 #if defined(USE_CUDA)
 
 static void
-RunQOrdered_Gelu_Test(std::vector<int64_t> const& shape, float scale_x,
-                      float scale_y, OrderCublasLt order) {
+RunQOrdered_Gelu_Test(std::vector<int64_t> const& shape, float scale_x, float scale_y, OrderCublasLt order) {
   static const float sqrt_of_2 = std::sqrt(2.0f);
 
   int64_t N = std::accumulate(shape.begin(), shape.end(), int64_t{1LL}, std::multiplies<int64_t>());

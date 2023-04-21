@@ -44,23 +44,31 @@ Status T5EncoderSubgraph::Validate(const std::vector<const NodeArg*>& subgraph_i
 
   ORT_RETURN_IF(num_subgraph_outputs < 6, "expect >=6 outputs, got:", num_subgraph_outputs);
   ORT_RETURN_IF((static_cast<int>(subgraph_outputs.size()) - first_present_output_index_) % 4 != 0,
-                "number of outputs expected to be 2 + 4 * layers, got:", num_subgraph_outputs);
+                "number of outputs expected to be 2 + 4 * layers, got:",
+                num_subgraph_outputs);
 
   ORT_RETURN_IF(subgraph_inputs[0]->Name() != "encoder_input_ids",
-                "encoder subgraph input 0 shall be named as encoder_input_ids, got: ", subgraph_inputs[0]->Name());
+                "encoder subgraph input 0 shall be named as encoder_input_ids, got: ",
+                subgraph_inputs[0]->Name());
   ORT_RETURN_IF(subgraph_inputs[1]->Name() != "encoder_attention_mask",
-                "encoder subgraph input 1 shall be named as encoder_attention_mask, got: ", subgraph_inputs[1]->Name());
+                "encoder subgraph input 1 shall be named as encoder_attention_mask, got: ",
+                subgraph_inputs[1]->Name());
   ORT_RETURN_IF(subgraph_inputs[2]->Name() != "decoder_input_ids",
-                "encoder subgraph input 2 shall be named as decoder_input_ids, got: ", subgraph_inputs[2]->Name());
+                "encoder subgraph input 2 shall be named as decoder_input_ids, got: ",
+                subgraph_inputs[2]->Name());
 
   ORT_RETURN_IF(subgraph_outputs[0]->Name() != "logits",
-                "encoder subgraph output 0 shall be named as logits, got: ", subgraph_outputs[0]->Name());
+                "encoder subgraph output 0 shall be named as logits, got: ",
+                subgraph_outputs[0]->Name());
   ORT_RETURN_IF(subgraph_outputs[1]->Name() != "encoder_hidden_states",
-                "encoder subgraph output 1 shall be named encoder_hidden_states, got: ", subgraph_outputs[1]->Name());
+                "encoder subgraph output 1 shall be named encoder_hidden_states, got: ",
+                subgraph_outputs[1]->Name());
   ORT_RETURN_IF(subgraph_outputs[2]->Name() != "present_key_self_0",
-                "encoder subgraph output 2 shall be named as present_key_self_0, got: ", subgraph_outputs[2]->Name());
+                "encoder subgraph output 2 shall be named as present_key_self_0, got: ",
+                subgraph_outputs[2]->Name());
   ORT_RETURN_IF(subgraph_outputs[3]->Name() != "present_value_self_0",
-                "encoder subgraph output 3 shall be named as present_value_self_0, got: ", subgraph_outputs[3]->Name());
+                "encoder subgraph output 3 shall be named as present_value_self_0, got: ",
+                subgraph_outputs[3]->Name());
 
   const ONNX_NAMESPACE::TensorShapeProto* past_shape = subgraph_outputs[2]->Shape();
   const ONNX_NAMESPACE::TensorShapeProto* logits_shape = subgraph_outputs[0]->Shape();

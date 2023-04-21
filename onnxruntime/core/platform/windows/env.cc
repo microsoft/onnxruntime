@@ -81,9 +81,7 @@ class WindowsThread : public EnvThread {
   };
 
  public:
-  WindowsThread(const ORTCHAR_T* name_prefix, int index,
-                unsigned (*start_address)(int id, Eigen::ThreadPoolInterface* param), Eigen::ThreadPoolInterface* param,
-                const ThreadOptions& thread_options) {
+  WindowsThread(const ORTCHAR_T* name_prefix, int index, unsigned (*start_address)(int id, Eigen::ThreadPoolInterface* param), Eigen::ThreadPoolInterface* param, const ThreadOptions& thread_options) {
     ORT_ENFORCE(index >= 0, "Negative thread index is not allowed");
     custom_create_thread_fn = thread_options.custom_create_thread_fn;
     custom_thread_creation_options = thread_options.custom_thread_creation_options;
@@ -103,9 +101,7 @@ class WindowsThread : public EnvThread {
     } else {
       _set_errno(0);
       _set_doserrno(0);
-      auto th_handle = _beginthreadex(nullptr, thread_options.stack_size, ThreadMain,
-                                      local_param.get(), 0,
-                                      &threadID);
+      auto th_handle = _beginthreadex(nullptr, thread_options.stack_size, ThreadMain, local_param.get(), 0, &threadID);
       if (th_handle == 0) {
         auto err = errno;
         auto dos_error = _doserrno;
@@ -223,9 +219,7 @@ class WindowsThread : public EnvThread {
 #pragma warning(push)
 #pragma warning(disable : 26409)
 #endif
-EnvThread* WindowsEnv::CreateThread(_In_opt_z_ const ORTCHAR_T* name_prefix, int index,
-                                    unsigned (*start_address)(int id, Eigen::ThreadPoolInterface* param),
-                                    Eigen::ThreadPoolInterface* param, const ThreadOptions& thread_options) {
+EnvThread* WindowsEnv::CreateThread(_In_opt_z_ const ORTCHAR_T* name_prefix, int index, unsigned (*start_address)(int id, Eigen::ThreadPoolInterface* param), Eigen::ThreadPoolInterface* param, const ThreadOptions& thread_options) {
   return new WindowsThread(name_prefix, index, start_address, param, thread_options);
 }
 #if defined(_MSC_VER) && !defined(__clang__)
@@ -304,8 +298,7 @@ common::Status WindowsEnv::GetFileLength(int fd, /*out*/ size_t& file_size) cons
   return Status::OK();
 }
 
-Status WindowsEnv::ReadFileIntoBuffer(_In_z_ const ORTCHAR_T* const file_path, const FileOffsetType offset, const size_t length,
-                                      const gsl::span<char> buffer) const {
+Status WindowsEnv::ReadFileIntoBuffer(_In_z_ const ORTCHAR_T* const file_path, const FileOffsetType offset, const size_t length, const gsl::span<char> buffer) const {
   ORT_RETURN_IF_NOT(file_path, "file_path == nullptr");
   ORT_RETURN_IF_NOT(offset >= 0, "offset < 0");
   ORT_RETURN_IF_NOT(length <= buffer.size(), "length > buffer.size()");
@@ -366,10 +359,7 @@ Status WindowsEnv::MapFileIntoMemory(_In_z_ const ORTCHAR_T* file_path,
       CreateFile2(file_path, GENERIC_READ, FILE_SHARE_READ, OPEN_EXISTING, NULL)};
   if (file_handle.get() == INVALID_HANDLE_VALUE) {
     const auto error_code = GetLastError();
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                           "open file ", ToUTF8String(Basename(file_path)),
-                           " fail, errcode = ", error_code,
-                           " - ", std::system_category().message(error_code));
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "open file ", ToUTF8String(Basename(file_path)), " fail, errcode = ", error_code, " - ", std::system_category().message(error_code));
   }
 
 #if NTDDI_VERSION >= NTDDI_WIN10_RS5 && WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP | WINAPI_PARTITION_SYSTEM)
@@ -394,10 +384,7 @@ Status WindowsEnv::MapFileIntoMemory(_In_z_ const ORTCHAR_T* file_path,
 #endif
   if (file_mapping_handle.get() == INVALID_HANDLE_VALUE) {
     const auto error_code = GetLastError();
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                           "open file mapping ", ToUTF8String(Basename(file_path)),
-                           " fail, errcode = ", error_code,
-                           " - ", std::system_category().message(error_code));
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "open file mapping ", ToUTF8String(Basename(file_path)), " fail, errcode = ", error_code, " - ", std::system_category().message(error_code));
   }
 
   SYSTEM_INFO sysinfo;
@@ -410,12 +397,7 @@ Status WindowsEnv::MapFileIntoMemory(_In_z_ const ORTCHAR_T* file_path,
   const FileOffsetType mapped_offset = offset - offset_to_page;
   if (mapped_offset % allocation_granularity != 0) {
     const auto error_code = GetLastError();
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                           "mapped offset must be a multiple of the allocation granularity",
-                           " , mapped_offset = ", mapped_offset,
-                           " , allocation_granularity = ", allocation_granularity,
-                           " , errcode = ", error_code,
-                           " - ", std::system_category().message(error_code));
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "mapped offset must be a multiple of the allocation granularity", " , mapped_offset = ", mapped_offset, " , allocation_granularity = ", allocation_granularity, " , errcode = ", error_code, " - ", std::system_category().message(error_code));
   }
 
   void* const mapped_base = MapViewOfFile(file_mapping_handle.get(),
@@ -493,9 +475,7 @@ common::Status WindowsEnv::DeleteFolder(const PathString& path) const {
           if (!DeleteFileW(child_path.c_str())) {
             const auto error_code = GetLastError();
             final_status = ORT_MAKE_STATUS(
-                ONNXRUNTIME, FAIL,
-                "DeleteFile() failed - path: ", ToUTF8String(Basename(child_path)),
-                ", error code: ", error_code, " - ", std::system_category().message(error_code));
+                ONNXRUNTIME, FAIL, "DeleteFile() failed - path: ", ToUTF8String(Basename(child_path)), ", error code: ", error_code, " - ", std::system_category().message(error_code));
           }
         }
 
@@ -507,9 +487,7 @@ common::Status WindowsEnv::DeleteFolder(const PathString& path) const {
   if (!RemoveDirectoryW(path.c_str())) {
     const auto error_code = GetLastError();
     final_status = ORT_MAKE_STATUS(
-        ONNXRUNTIME, FAIL,
-        "RemoveDirectory() failed - path: ", ToUTF8String(Basename(path)),
-        ", error code: ", error_code, " - ", std::system_category().message(error_code));
+        ONNXRUNTIME, FAIL, "RemoveDirectory() failed - path: ", ToUTF8String(Basename(path)), ", error code: ", error_code, " - ", std::system_category().message(error_code));
   }
 
   return final_status;
@@ -524,8 +502,7 @@ common::Status WindowsEnv::FileOpenRd(const std::wstring& path, /*out*/ int& fd)
 }
 
 common::Status WindowsEnv::FileOpenWr(const std::wstring& path, /*out*/ int& fd) const {
-  _wsopen_s(&fd, path.c_str(), _O_CREAT | _O_TRUNC | _O_SEQUENTIAL | _O_BINARY | _O_WRONLY, _SH_DENYWR,
-            _S_IREAD | _S_IWRITE);
+  _wsopen_s(&fd, path.c_str(), _O_CREAT | _O_TRUNC | _O_SEQUENTIAL | _O_BINARY | _O_WRONLY, _SH_DENYWR, _S_IREAD | _S_IWRITE);
   if (0 > fd) {
     return common::Status(common::SYSTEM, errno);
   }
@@ -541,8 +518,7 @@ common::Status WindowsEnv::FileOpenRd(const std::string& path, /*out*/ int& fd) 
 }
 
 common::Status WindowsEnv::FileOpenWr(const std::string& path, /*out*/ int& fd) const {
-  _sopen_s(&fd, path.c_str(), _O_CREAT | _O_TRUNC | _O_SEQUENTIAL | _O_BINARY | _O_WRONLY, _SH_DENYWR,
-           _S_IREAD | _S_IWRITE);
+  _sopen_s(&fd, path.c_str(), _O_CREAT | _O_TRUNC | _O_SEQUENTIAL | _O_BINARY | _O_WRONLY, _SH_DENYWR, _S_IREAD | _S_IWRITE);
   if (0 > fd) {
     return common::Status(common::SYSTEM, errno);
   }
@@ -575,8 +551,7 @@ common::Status WindowsEnv::GetCanonicalPath(
 
   if (file_handle.get() == INVALID_HANDLE_VALUE) {
     const auto error_code = GetLastError();
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "open file ", ToUTF8String(Basename(path)), " fail, errcode = ",
-                           error_code, " - ", std::system_category().message(error_code));
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "open file ", ToUTF8String(Basename(path)), " fail, errcode = ", error_code, " - ", std::system_category().message(error_code));
   }
 
   constexpr DWORD initial_buffer_size = MAX_PATH;
@@ -658,7 +633,8 @@ Status WindowsEnv::LoadDynamicLibrary(const PathString& wlibrary_filename, bool 
         error_code,
         MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
         (LPWSTR)s.data(),
-        0, NULL);
+        0,
+        NULL);
     std::wostringstream oss;
     oss << L"LoadLibrary failed with error " << error_code << L" \"" << s.c_str() << L"\" when trying to load \"" << wlibrary_filename << L"\"";
     std::wstring errmsg = oss.str();
@@ -744,9 +720,7 @@ Status WindowsEnv::GetSymbolFromLibrary(void* handle, const std::string& symbol_
     const auto error_code = GetLastError();
     static constexpr DWORD bufferLength = 64 * 1024;
     std::wstring s(bufferLength, '\0');
-    FormatMessageW(FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS, NULL, error_code,
-                   MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
-                   (LPWSTR)s.data(), 0, NULL);
+    FormatMessageW(FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS, NULL, error_code, MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), (LPWSTR)s.data(), 0, NULL);
     std::wostringstream oss;
     oss << L"Failed to find symbol " << ToWideString(symbol_name) << L" in library, error code: "
         << error_code << L" \"" << s.c_str() << L"\"";

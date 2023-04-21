@@ -81,11 +81,9 @@ Status SimpleOpBuilder::ProcessPermAttribute(QnnModelWrapper& qnn_model_wrapper,
   std::vector<uint32_t> perm_shape{perm_size};
   std::vector<uint32_t> perm_data;
   perm_data.resize(perm_size);
-  std::transform(transpose_perm.begin(), transpose_perm.end(), perm_data.begin(),
-                 [](int64_t item) { return SafeInt<uint32_t>(item); });
+  std::transform(transpose_perm.begin(), transpose_perm.end(), perm_data.begin(), [](int64_t item) { return SafeInt<uint32_t>(item); });
 
-  QnnParamWrapper transpose_param(node_unit.Index(), node_unit.Name(), qnn_def::perm,
-                                  std::move(perm_shape), std::move(perm_data));
+  QnnParamWrapper transpose_param(node_unit.Index(), node_unit.Name(), qnn_def::perm, std::move(perm_shape), std::move(perm_data));
   param_tensor_names.push_back(transpose_param.GetParamTensorName());
   qnn_model_wrapper.AddParamWrapper(std::move(transpose_param));
 
@@ -120,8 +118,7 @@ Status SimpleOpBuilder::ProcessAlphaAttribute(QnnModelWrapper& qnn_model_wrapper
   }
   std::vector<uint32_t> input_shape{1};
   Qnn_TensorType_t tensor_type = QNN_TENSOR_TYPE_STATIC;
-  QnnTensorWrapper input_tensorwrapper(input_name, tensor_type, qnn_data_type, quantize_param,
-                                       std::move(input_shape), std::move(unpacked_data));
+  QnnTensorWrapper input_tensorwrapper(input_name, tensor_type, qnn_data_type, quantize_param, std::move(input_shape), std::move(unpacked_data));
   ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(input_tensorwrapper)), "Failed to add tensor.");
   return Status::OK();
 }
@@ -226,10 +223,7 @@ Status SimpleOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_w
     input_names.push_back(input_name);
   }
 
-  ORT_RETURN_IF_ERROR(ProcessOutputs(qnn_model_wrapper, node_unit,
-                                     std::move(input_names),
-                                     std::move(param_tensor_names),
-                                     logger, is_quantized_model, do_op_validation));
+  ORT_RETURN_IF_ERROR(ProcessOutputs(qnn_model_wrapper, node_unit, std::move(input_names), std::move(param_tensor_names), logger, is_quantized_model, do_op_validation));
 
   return Status::OK();
 }

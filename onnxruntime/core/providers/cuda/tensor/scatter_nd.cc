@@ -11,7 +11,8 @@ namespace cuda {
 
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(ScatterND,
                                   kOnnxDomain,
-                                  11, 12,
+                                  11,
+                                  12,
                                   kCudaExecutionProvider,
                                   (*KernelDefBuilder::Create())
                                       .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())

@@ -309,8 +309,7 @@ TEST_F(OpaqueTypeTests, RunModel) {
   IOnnxRuntimeOpSchemaRegistryList custom_schema_registries_ = {registry->GetOpschemaRegistry()};
   std::unordered_map<std::string, int> domain_to_version = {{onnxruntime::kMLDomain, 8}};
 
-  Model model("SparseTensorTest", false, ModelMetaData(), PathString(), custom_schema_registries_, domain_to_version,
-              {}, DefaultLoggingManager().DefaultLogger());
+  Model model("SparseTensorTest", false, ModelMetaData(), PathString(), custom_schema_registries_, domain_to_version, {}, DefaultLoggingManager().DefaultLogger());
   auto& graph = model.MainGraph();
 
   std::vector<onnxruntime::NodeArg*> inputs;
@@ -341,8 +340,7 @@ TEST_F(OpaqueTypeTests, RunModel) {
     auto& output_sparse_tensor_arg = graph.GetOrCreateNodeArg("sparse_rep", &output_sparse_tensor);
     outputs.push_back(&output_sparse_tensor_arg);
 
-    auto& node = graph.AddNode("ConstructSparseTensor", "ConstructSparseTensor", "Create a sparse tensor representation",
-                               inputs, outputs, nullptr, onnxruntime::kMLDomain);
+    auto& node = graph.AddNode("ConstructSparseTensor", "ConstructSparseTensor", "Create a sparse tensor representation", inputs, outputs, nullptr, onnxruntime::kMLDomain);
     node.SetExecutionProviderType(onnxruntime::kCpuExecutionProvider);
   }
   {
@@ -354,8 +352,7 @@ TEST_F(OpaqueTypeTests, RunModel) {
     output_shape.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
     auto& output_shape_arg = graph.GetOrCreateNodeArg("sparse_tensor_shape", &output_shape);
     outputs.push_back(&output_shape_arg);
-    auto& node = graph.AddNode("FetchSparseTensorShape", "FetchSparseTensorShape", "Fetch shape from sparse tensor",
-                               inputs, outputs, nullptr, onnxruntime::kMLDomain);
+    auto& node = graph.AddNode("FetchSparseTensorShape", "FetchSparseTensorShape", "Fetch shape from sparse tensor", inputs, outputs, nullptr, onnxruntime::kMLDomain);
     node.SetExecutionProviderType(onnxruntime::kCpuExecutionProvider);
   }
 

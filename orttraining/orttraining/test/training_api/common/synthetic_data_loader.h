@@ -25,8 +25,7 @@ namespace training {
 namespace test {
 namespace training_api {
 
-using SyntheticDataVector = std::variant<std::vector<int32_t>, std::vector<int64_t>, std::vector<float>,
-                                         std::vector<uint8_t>>;
+using SyntheticDataVector = std::variant<std::vector<int32_t>, std::vector<int64_t>, std::vector<float>, std::vector<uint8_t>>;
 
 struct SyntheticInput {
   explicit SyntheticInput(gsl::span<const int64_t> shape) : shape_(shape.begin(), shape.end()) {

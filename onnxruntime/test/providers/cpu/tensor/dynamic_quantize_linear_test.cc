@@ -28,15 +28,9 @@ TEST(QuantizeLinearOpTest, DynamicQuantizeLinear) {
 TEST(QuantizeLinearOpTest, DynamicQuantizeLinear_Min_Adjusted) {
   OpTester test("DynamicQuantizeLinear", 11);
   std::vector<int64_t> dims{3, 4};
-  test.AddInput<float>("x", dims,
-                       {1, 2.1f, 1.3f, 2.5f,
-                        3.34f, 4.0f, 1.5f, 2.6f,
-                        3.9f, 4.0f, 3.0f, 2.345f});
+  test.AddInput<float>("x", dims, {1, 2.1f, 1.3f, 2.5f, 3.34f, 4.0f, 1.5f, 2.6f, 3.9f, 4.0f, 3.0f, 2.345f});
 
-  test.AddOutput<uint8_t>("y", dims,
-                          {64, 134, 83, 159,
-                           213, 255, 96, 166,
-                           249, 255, 191, 149});
+  test.AddOutput<uint8_t>("y", dims, {64, 134, 83, 159, 213, 255, 96, 166, 249, 255, 191, 149});
   test.AddOutput<float>("y_scale", {}, {0.01568628f});
   test.AddOutput<uint8_t>("y_zero_point", {}, {0});
   test.Run();

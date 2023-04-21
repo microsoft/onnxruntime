@@ -97,14 +97,10 @@ static void RunRemovePaddingTests(
   constexpr bool disable_cpu = true;
   constexpr bool disable_cuda = false;
   constexpr bool disable_rocm = true;
-  RunRemovePadding(input_data, sequence_token_count_data, output_data, token_offset_data, cumulated_seq_len_data,
-                   max_token_count, batch_size, sequence_length, hidden_size, total_tokens,
-                   use_float16, disable_cpu, disable_cuda, disable_rocm);
+  RunRemovePadding(input_data, sequence_token_count_data, output_data, token_offset_data, cumulated_seq_len_data, max_token_count, batch_size, sequence_length, hidden_size, total_tokens, use_float16, disable_cpu, disable_cuda, disable_rocm);
 
   use_float16 = true;
-  RunRemovePadding(input_data, sequence_token_count_data, output_data, token_offset_data, cumulated_seq_len_data,
-                   max_token_count, batch_size, sequence_length, hidden_size, total_tokens,
-                   use_float16, disable_cpu, disable_cuda, disable_rocm);
+  RunRemovePadding(input_data, sequence_token_count_data, output_data, token_offset_data, cumulated_seq_len_data, max_token_count, batch_size, sequence_length, hidden_size, total_tokens, use_float16, disable_cpu, disable_cuda, disable_rocm);
 }
 
 TEST(RemovePaddingTest, RemovePaddingBatch1_NoPadding) {
@@ -115,14 +111,12 @@ TEST(RemovePaddingTest, RemovePaddingBatch1_NoPadding) {
   int max_token_count = 2;
 
   std::vector<float> input_data = {
-      0.8f, -0.5f, 0.0f, 1.f,
-      0.5f, 0.2f, 0.3f, -0.6f};
+      0.8f, -0.5f, 0.0f, 1.f, 0.5f, 0.2f, 0.3f, -0.6f};
 
   std::vector<int32_t> sequence_token_count_data = {2};
 
   std::vector<float> output_data = {
-      0.8f, -0.5f, 0.0f, 1.f,
-      0.5f, 0.2f, 0.3f, -0.6f};
+      0.8f, -0.5f, 0.0f, 1.f, 0.5f, 0.2f, 0.3f, -0.6f};
 
   std::vector<int32_t> token_offset_data = {0, 1};
 
@@ -149,29 +143,12 @@ TEST(RemovePaddingTest, RemovePaddingBatch3_TwoWithPadding) {
   int max_token_count = 4;
 
   std::vector<float> input_data = {
-      0.8f, -0.5f, 0.1f, 0.2f, 0.3f, 0.4f, 0.5f, 0.6f,
-      0.0f, 1.f, 0.8f, 0.9f, 0.1f, 0.2f, 0.3f, 0.4f,
-      0.5f, 0.2f, 0.5f, 0.6f, 0.7f, 0.8f, 0.9f, 1.0f,
-      0.3f, -0.6f, 1.1f, 1.2f, 1.3f, 1.4f, 1.5f, 1.6f,
-      0.15f, 0.25f, 1.7f, 1.8f, 1.9f, 2.0f, 2.1f, 2.2f,
-      0.35f, 0.45f, 2.3f, 2.4f, 2.5f, 2.6f, 2.7f, 2.8f,
-      0.55f, 0.65f, 2.9f, 3.0f, 3.1f, 3.2f, 3.3f, 3.4f,
-      0.75f, 0.85f, 3.5f, 3.6f, 3.7f, 3.8f, 3.9f, 4.0f,
-      0.135f, 0.235f, 4.1f, 4.2f, 4.3f, 4.4f, 4.5f, 4.6f,
-      0.335f, 0.435f, 4.7f, 4.8f, 4.9f, 5.0f, 5.1f, 5.2f,
-      0.535f, 0.635f, 5.3f, 5.4f, 5.5f, 5.6f, 5.7f, 5.8f,
-      0.735f, 0.835f, 5.9f, 6.0f, 6.1f, 6.2f, 6.3f, 6.4f};
+      0.8f, -0.5f, 0.1f, 0.2f, 0.3f, 0.4f, 0.5f, 0.6f, 0.0f, 1.f, 0.8f, 0.9f, 0.1f, 0.2f, 0.3f, 0.4f, 0.5f, 0.2f, 0.5f, 0.6f, 0.7f, 0.8f, 0.9f, 1.0f, 0.3f, -0.6f, 1.1f, 1.2f, 1.3f, 1.4f, 1.5f, 1.6f, 0.15f, 0.25f, 1.7f, 1.8f, 1.9f, 2.0f, 2.1f, 2.2f, 0.35f, 0.45f, 2.3f, 2.4f, 2.5f, 2.6f, 2.7f, 2.8f, 0.55f, 0.65f, 2.9f, 3.0f, 3.1f, 3.2f, 3.3f, 3.4f, 0.75f, 0.85f, 3.5f, 3.6f, 3.7f, 3.8f, 3.9f, 4.0f, 0.135f, 0.235f, 4.1f, 4.2f, 4.3f, 4.4f, 4.5f, 4.6f, 0.335f, 0.435f, 4.7f, 4.8f, 4.9f, 5.0f, 5.1f, 5.2f, 0.535f, 0.635f, 5.3f, 5.4f, 5.5f, 5.6f, 5.7f, 5.8f, 0.735f, 0.835f, 5.9f, 6.0f, 6.1f, 6.2f, 6.3f, 6.4f};
 
   std::vector<int32_t> sequence_token_count_data = {1, 2, 4};
 
   std::vector<float> output_data = {
-      0.8f, -0.5f, 0.1f, 0.2f, 0.3f, 0.4f, 0.5f, 0.6f,
-      0.15f, 0.25f, 1.7f, 1.8f, 1.9f, 2.0f, 2.1f, 2.2f,
-      0.35f, 0.45f, 2.3f, 2.4f, 2.5f, 2.6f, 2.7f, 2.8f,
-      0.135f, 0.235f, 4.1f, 4.2f, 4.3f, 4.4f, 4.5f, 4.6f,
-      0.335f, 0.435f, 4.7f, 4.8f, 4.9f, 5.0f, 5.1f, 5.2f,
-      0.535f, 0.635f, 5.3f, 5.4f, 5.5f, 5.6f, 5.7f, 5.8f,
-      0.735f, 0.835f, 5.9f, 6.0f, 6.1f, 6.2f, 6.3f, 6.4f};
+      0.8f, -0.5f, 0.1f, 0.2f, 0.3f, 0.4f, 0.5f, 0.6f, 0.15f, 0.25f, 1.7f, 1.8f, 1.9f, 2.0f, 2.1f, 2.2f, 0.35f, 0.45f, 2.3f, 2.4f, 2.5f, 2.6f, 2.7f, 2.8f, 0.135f, 0.235f, 4.1f, 4.2f, 4.3f, 4.4f, 4.5f, 4.6f, 0.335f, 0.435f, 4.7f, 4.8f, 4.9f, 5.0f, 5.1f, 5.2f, 0.535f, 0.635f, 5.3f, 5.4f, 5.5f, 5.6f, 5.7f, 5.8f, 0.735f, 0.835f, 5.9f, 6.0f, 6.1f, 6.2f, 6.3f, 6.4f};
 
   std::vector<int32_t> token_offset_data = {0, 4, 5, 8, 9, 10, 11, 1, 2, 3, 6, 7};
 
@@ -198,28 +175,12 @@ TEST(RemovePaddingTest, RemovePaddingBatch3_AllWithPadding) {
   int max_token_count = 3;
 
   std::vector<float> input_data = {
-      0.8f, -0.5f, 0.1f, 0.2f, 0.3f, 0.4f, 0.5f, 0.6f,
-      0.0f, 1.f, 0.8f, 0.9f, 0.1f, 0.2f, 0.3f, 0.4f,
-      0.5f, 0.2f, 0.5f, 0.6f, 0.7f, 0.8f, 0.9f, 1.0f,
-      0.3f, -0.6f, 1.1f, 1.2f, 1.3f, 1.4f, 1.5f, 1.6f,
-      0.15f, 0.25f, 1.7f, 1.8f, 1.9f, 2.0f, 2.1f, 2.2f,
-      0.35f, 0.45f, 2.3f, 2.4f, 2.5f, 2.6f, 2.7f, 2.8f,
-      0.55f, 0.65f, 2.9f, 3.0f, 3.1f, 3.2f, 3.3f, 3.4f,
-      0.75f, 0.85f, 3.5f, 3.6f, 3.7f, 3.8f, 3.9f, 4.0f,
-      0.135f, 0.235f, 4.1f, 4.2f, 4.3f, 4.4f, 4.5f, 4.6f,
-      0.335f, 0.435f, 4.7f, 4.8f, 4.9f, 5.0f, 5.1f, 5.2f,
-      0.535f, 0.635f, 5.3f, 5.4f, 5.5f, 5.6f, 5.7f, 5.8f,
-      0.735f, 0.835f, 5.9f, 6.0f, 6.1f, 6.2f, 6.3f, 6.4f};
+      0.8f, -0.5f, 0.1f, 0.2f, 0.3f, 0.4f, 0.5f, 0.6f, 0.0f, 1.f, 0.8f, 0.9f, 0.1f, 0.2f, 0.3f, 0.4f, 0.5f, 0.2f, 0.5f, 0.6f, 0.7f, 0.8f, 0.9f, 1.0f, 0.3f, -0.6f, 1.1f, 1.2f, 1.3f, 1.4f, 1.5f, 1.6f, 0.15f, 0.25f, 1.7f, 1.8f, 1.9f, 2.0f, 2.1f, 2.2f, 0.35f, 0.45f, 2.3f, 2.4f, 2.5f, 2.6f, 2.7f, 2.8f, 0.55f, 0.65f, 2.9f, 3.0f, 3.1f, 3.2f, 3.3f, 3.4f, 0.75f, 0.85f, 3.5f, 3.6f, 3.7f, 3.8f, 3.9f, 4.0f, 0.135f, 0.235f, 4.1f, 4.2f, 4.3f, 4.4f, 4.5f, 4.6f, 0.335f, 0.435f, 4.7f, 4.8f, 4.9f, 5.0f, 5.1f, 5.2f, 0.535f, 0.635f, 5.3f, 5.4f, 5.5f, 5.6f, 5.7f, 5.8f, 0.735f, 0.835f, 5.9f, 6.0f, 6.1f, 6.2f, 6.3f, 6.4f};
 
   std::vector<int32_t> sequence_token_count_data = {1, 2, 3};
 
   std::vector<float> output_data = {
-      0.8f, -0.5f, 0.1f, 0.2f, 0.3f, 0.4f, 0.5f, 0.6f,
-      0.15f, 0.25f, 1.7f, 1.8f, 1.9f, 2.0f, 2.1f, 2.2f,
-      0.35f, 0.45f, 2.3f, 2.4f, 2.5f, 2.6f, 2.7f, 2.8f,
-      0.135f, 0.235f, 4.1f, 4.2f, 4.3f, 4.4f, 4.5f, 4.6f,
-      0.335f, 0.435f, 4.7f, 4.8f, 4.9f, 5.0f, 5.1f, 5.2f,
-      0.535f, 0.635f, 5.3f, 5.4f, 5.5f, 5.6f, 5.7f, 5.8f};
+      0.8f, -0.5f, 0.1f, 0.2f, 0.3f, 0.4f, 0.5f, 0.6f, 0.15f, 0.25f, 1.7f, 1.8f, 1.9f, 2.0f, 2.1f, 2.2f, 0.35f, 0.45f, 2.3f, 2.4f, 2.5f, 2.6f, 2.7f, 2.8f, 0.135f, 0.235f, 4.1f, 4.2f, 4.3f, 4.4f, 4.5f, 4.6f, 0.335f, 0.435f, 4.7f, 4.8f, 4.9f, 5.0f, 5.1f, 5.2f, 0.535f, 0.635f, 5.3f, 5.4f, 5.5f, 5.6f, 5.7f, 5.8f};
 
   std::vector<int32_t> token_offset_data = {0, 4, 5, 8, 9, 10, 1, 2, 3, 6, 7, 11};
 

@@ -43,16 +43,10 @@ TEST(DequantizeLinearOpTest, DNNL_Int32_ConstantInitializer) {
 TEST(DequantizeLinearOpTest, DNNL_2D_ConstantInitializer) {
   OpTester test("DequantizeLinear", 10);
   std::vector<int64_t> dims{3, 4};
-  test.AddInput<uint8_t>("X", dims,
-                         {0, 1, 2, 3,
-                          0, 1, 2, 3,
-                          0, 10, 20, 30});
+  test.AddInput<uint8_t>("X", dims, {0, 1, 2, 3, 0, 1, 2, 3, 0, 10, 20, 30});
   test.AddInput<float>("scale", {}, {1.0f});
   test.AddInput<uint8_t>("zero_point", {}, {0}, true);
-  test.AddOutput<float>("Y", dims,
-                        {0, 1, 2, 3,
-                         0, 1, 2, 3,
-                         0, 10, 20, 30});
+  test.AddOutput<float>("Y", dims, {0, 1, 2, 3, 0, 1, 2, 3, 0, 10, 20, 30});
   test.Run();
 }
 

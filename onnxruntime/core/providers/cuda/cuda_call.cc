@@ -105,10 +105,7 @@ std::conditional_t<THRW, void, Status> CudaCall(
       cudaGetDevice(&currentCudaDevice);
       cudaGetLastError();  // clear last CUDA error
       static char str[1024];
-      snprintf(str, 1024, "%s failure %d: %s ; GPU=%d ; hostname=%s ; file=%s ; line=%d ; expr=%s; %s",
-               libName, (int)retCode, CudaErrString(retCode), currentCudaDevice,
-               hostname,
-               file, line, exprString, msg);
+      snprintf(str, 1024, "%s failure %d: %s ; GPU=%d ; hostname=%s ; file=%s ; line=%d ; expr=%s; %s", libName, (int)retCode, CudaErrString(retCode), currentCudaDevice, hostname, file, line, exprString, msg);
       if constexpr (THRW) {
         // throw an exception with the error info
         ORT_THROW(str);

@@ -15,9 +15,7 @@
 namespace onnxruntime::QDQ {
 
 bool IsQDQPairSupported(
-    const Node& q_node, const Node& dq_node,
-    const GetConstantInitializerFn& get_const_initializer,
-    const Path& model_path) {
+    const Node& q_node, const Node& dq_node, const GetConstantInitializerFn& get_const_initializer, const Path& model_path) {
   ConstPointerContainer<std::vector<NodeArg*>> dq_input_defs = dq_node.InputDefs();
   ConstPointerContainer<std::vector<NodeArg*>> q_input_defs = q_node.InputDefs();
 

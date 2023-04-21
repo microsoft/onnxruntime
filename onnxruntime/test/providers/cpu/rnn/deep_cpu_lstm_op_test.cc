@@ -162,9 +162,7 @@ void SimpleWeightsNoBiasTwoRows(std::string direction,
   std::vector<float> X_data{1.f, 2.f, 10.f, 11.f};
 
   std::vector<float> W_data{
-      0.1f, 0.2f, 0.3f, 0.4f,
-      1.f, 2.f, 3.f, 4.f,
-      10.f, 11.f, 12.f, 13.f};
+      0.1f, 0.2f, 0.3f, 0.4f, 1.f, 2.f, 3.f, 4.f, 10.f, 11.f, 12.f, 13.f};
 
   std::vector<float> R_data(num_directions * 4 * hidden_size * hidden_size, 0.1f);
 
@@ -173,16 +171,12 @@ void SimpleWeightsNoBiasTwoRows(std::string direction,
     W_data = DuplicateContainer(W_data);
   }
 
-  RunLstmTest(X_data, W_data, false, R_data, false, Y_data, Y_h_data, Y_c_data,
-              input_size, batch_size, hidden_size, seq_length,
-              nullptr, nullptr, nullptr, nullptr, seq_lengths, direction);
+  RunLstmTest(X_data, W_data, false, R_data, false, Y_data, Y_h_data, Y_c_data, input_size, batch_size, hidden_size, seq_length, nullptr, nullptr, nullptr, nullptr, seq_lengths, direction);
 
   // need at least one output, so we need Y_h or Y_c to be requested (non-empty output to compare against) in order
   // to test Y not being returned (output_sequence == false)
   if (!Y_h_data.empty() || !Y_c_data.empty())
-    RunLstmTest(X_data, W_data, false, R_data, false, Y_data, Y_h_data, Y_c_data,
-                input_size, batch_size, hidden_size, seq_length,
-                nullptr, nullptr, nullptr, nullptr, seq_lengths, direction, 999.f, /* output_sequence*/ false);
+    RunLstmTest(X_data, W_data, false, R_data, false, Y_data, Y_h_data, Y_c_data, input_size, batch_size, hidden_size, seq_length, nullptr, nullptr, nullptr, nullptr, seq_lengths, direction, 999.f, /* output_sequence*/ false);
 }
 
 TEST(LSTMTest, ForwardSimpleWeightsNoBiasTwoRows) {
@@ -192,19 +186,20 @@ TEST(LSTMTest, ForwardSimpleWeightsNoBiasTwoRows) {
   }
 
   std::vector<float> Y_data{
-      0.28828835f, 0.36581863f, 0.45679406f,
-      0.34526032f, 0.47220859f, 0.55850911f,
+      0.28828835f, 0.36581863f, 0.45679406f, 0.34526032f, 0.47220859f, 0.55850911f,
 
-      0.84196719f, 0.89402526f, 0.91073048f,
-      0.85882828f, 0.90703777f, 0.92382453f};
+      0.84196719f,
+      0.89402526f,
+      0.91073048f,
+      0.85882828f,
+      0.90703777f,
+      0.92382453f};
 
   std::vector<float> Y_h_data{
-      0.84196719f, 0.89402526f, 0.91073048f,
-      0.85882828f, 0.90703777f, 0.92382453f};
+      0.84196719f, 0.89402526f, 0.91073048f, 0.85882828f, 0.90703777f, 0.92382453f};
 
   std::vector<float> Y_c_data{
-      1.27731147f, 1.44181041f, 1.53179041f,
-      1.3249796f, 1.51063104f, 1.61451544f};
+      1.27731147f, 1.44181041f, 1.53179041f, 1.3249796f, 1.51063104f, 1.61451544f};
 
   SimpleWeightsNoBiasTwoRows("forward", Y_data, Y_h_data, Y_c_data);
 
@@ -219,19 +214,20 @@ TEST(LSTMTest, ReverseSimpleWeightsNoBiasTwoRows) {
   }
 
   std::vector<float> Y_data{
-      0.55391603f, 0.69201493f, 0.82696019f,
-      0.64046413f, 0.82303363f, 0.91610711f,
+      0.55391603f, 0.69201493f, 0.82696019f, 0.64046413f, 0.82303363f, 0.91610711f,
 
-      0.61249432f, 0.70678632f, 0.74094619f,
-      0.62759886f, 0.71640738f, 0.74624585f};
+      0.61249432f,
+      0.70678632f,
+      0.74094619f,
+      0.62759886f,
+      0.71640738f,
+      0.74624585f};
 
   std::vector<float> Y_h_data{
-      0.55391603f, 0.69201493f, 0.82696019f,
-      0.64046413f, 0.82303363f, 0.91610711f};
+      0.55391603f, 0.69201493f, 0.82696019f, 0.64046413f, 0.82303363f, 0.91610711f};
 
   std::vector<float> Y_c_data{
-      1.27850552f, 1.46799496f, 1.57641257f,
-      1.34960834f, 1.54772296f, 1.65633056f};
+      1.27850552f, 1.46799496f, 1.57641257f, 1.34960834f, 1.54772296f, 1.65633056f};
 
   SimpleWeightsNoBiasTwoRows("reverse", Y_data, Y_h_data, Y_c_data);
 }
@@ -243,33 +239,55 @@ TEST(LSTMTest, BidirectionalSimpleWeightsNoBiasTwoRows) {
   }
 
   std::vector<float> Y_data{
-      0.28828835f, 0.36581863f, 0.45679406f,
-      0.34526032f, 0.47220859f, 0.55850911f,
+      0.28828835f, 0.36581863f, 0.45679406f, 0.34526032f, 0.47220859f, 0.55850911f,
 
-      0.55391603f, 0.69201493f, 0.82696019f,
-      0.64046413f, 0.82303363f, 0.91610711f,
+      0.55391603f,
+      0.69201493f,
+      0.82696019f,
+      0.64046413f,
+      0.82303363f,
+      0.91610711f,
 
-      0.84196719f, 0.89402526f, 0.91073048f,
-      0.85882828f, 0.90703777f, 0.92382453f,
+      0.84196719f,
+      0.89402526f,
+      0.91073048f,
+      0.85882828f,
+      0.90703777f,
+      0.92382453f,
 
-      0.61249432f, 0.70678632f, 0.74094619f,
-      0.62759886f, 0.71640738f, 0.74624585f};
+      0.61249432f,
+      0.70678632f,
+      0.74094619f,
+      0.62759886f,
+      0.71640738f,
+      0.74624585f};
 
   std::vector<float> Y_h_data{
       // we did the forward processing of X_data[1] last
-      0.84196719f, 0.89402526f, 0.91073048f,
-      0.85882828f, 0.90703777f, 0.92382453f,
+      0.84196719f,
+      0.89402526f,
+      0.91073048f,
+      0.85882828f,
+      0.90703777f,
+      0.92382453f,
 
       // and the reverse processing of X_data[0] last as the X_data order was reversed
-      0.55391603f, 0.69201493f, 0.82696019f,
-      0.64046413f, 0.82303363f, 0.91610711f};
+      0.55391603f,
+      0.69201493f,
+      0.82696019f,
+      0.64046413f,
+      0.82303363f,
+      0.91610711f};
 
   std::vector<float> Y_c_data{
-      1.27731147f, 1.44181041f, 1.53179041f,
-      1.3249796f, 1.51063104f, 1.61451544f,
+      1.27731147f, 1.44181041f, 1.53179041f, 1.3249796f, 1.51063104f, 1.61451544f,
 
-      1.27850552f, 1.46799496f, 1.57641257f,
-      1.34960834f, 1.54772296f, 1.65633056f};
+      1.27850552f,
+      1.46799496f,
+      1.57641257f,
+      1.34960834f,
+      1.54772296f,
+      1.65633056f};
 
   // cudnn don't support customized activation
   SimpleWeightsNoBiasTwoRows("bidirectional", Y_data, Y_h_data, Y_c_data);
@@ -286,19 +304,23 @@ TEST(LSTMTest, MixedSequenceLengths) {
   std::vector<int> seq_lengths{1, 2};
 
   std::vector<float> Y_data{
-      0.28828835f, 0.36581863f, 0.45679406f,
-      0.34526032f, 0.47220859f, 0.55850911f,
+      0.28828835f, 0.36581863f, 0.45679406f, 0.34526032f, 0.47220859f, 0.55850911f,
 
-      0.f, 0.f, 0.f,
-      0.85882828f, 0.90703777f, 0.92382453f};
+      0.f,
+      0.f,
+      0.f,
+      0.85882828f,
+      0.90703777f,
+      0.92382453f};
 
   std::vector<float> Y_h_data{
-      0.28828835f, 0.36581863f, 0.45679406f,
-      0.85882828f, 0.90703777f, 0.92382453f};
+      0.28828835f, 0.36581863f, 0.45679406f, 0.85882828f, 0.90703777f, 0.92382453f};
 
   std::vector<float> Y_c_data{
       0.52497941f, 0.54983425f, 0.5744428f,  // see intermediate output from ForwardSimpleWeightsNoBiasTwoRows
-      1.3249796f, 1.51063104f, 1.61451544f};
+      1.3249796f,
+      1.51063104f,
+      1.61451544f};
 
   // Not able to mask on Y_c for CUDA using cudnn lib
   SimpleWeightsNoBiasTwoRows("forward", Y_data, Y_h_data, Y_c_data, &seq_lengths);
@@ -307,19 +329,20 @@ TEST(LSTMTest, MixedSequenceLengths) {
   seq_lengths = {2, 1};
 
   Y_data = {
-      0.28828835f, 0.36581863f, 0.45679406f,
-      0.34526032f, 0.47220859f, 0.55850911f,
+      0.28828835f, 0.36581863f, 0.45679406f, 0.34526032f, 0.47220859f, 0.55850911f,
 
-      0.84196719f, 0.89402526f, 0.91073048f,
-      0.f, 0.f, 0.f};
+      0.84196719f,
+      0.89402526f,
+      0.91073048f,
+      0.f,
+      0.f,
+      0.f};
 
   Y_h_data = {
-      0.84196719f, 0.89402526f, 0.91073048f,
-      0.34526032f, 0.47220859f, 0.55850911f};
+      0.84196719f, 0.89402526f, 0.91073048f, 0.34526032f, 0.47220859f, 0.55850911f};
 
   Y_c_data = {
-      1.27731147f, 1.44181041f, 1.53179041f,
-      0.54983425f, 0.59868795f, 0.64565659f};
+      1.27731147f, 1.44181041f, 1.53179041f, 0.54983425f, 0.59868795f, 0.64565659f};
 
   SimpleWeightsNoBiasTwoRows("forward", Y_data, Y_h_data, Y_c_data, &seq_lengths);
 }
@@ -335,19 +358,20 @@ TEST(LSTMTest, MixedSequenceLengthsReverse) {
   std::vector<int> seq_lengths{1, 2};
 
   std::vector<float> Y_data{
-      0.28828844f, 0.36581877f, 0.45679423f,
-      0.64046413f, 0.82303363f, 0.91610711f,
+      0.28828844f, 0.36581877f, 0.45679423f, 0.64046413f, 0.82303363f, 0.91610711f,
 
-      0.f, 0.f, 0.f,
-      0.62759886f, 0.71640738f, 0.74624585f};
+      0.f,
+      0.f,
+      0.f,
+      0.62759886f,
+      0.71640738f,
+      0.74624585f};
 
   std::vector<float> Y_h_data{
-      0.28828844f, 0.36581877f, 0.45679423f,
-      0.64046413f, 0.82303363f, 0.91610711f};
+      0.28828844f, 0.36581877f, 0.45679423f, 0.64046413f, 0.82303363f, 0.91610711f};
 
   std::vector<float> Y_c_data{
-      0.52497941f, 0.54983425f, 0.5744428f,
-      1.34960834f, 1.54772296f, 1.65633056f};
+      0.52497941f, 0.54983425f, 0.5744428f, 1.34960834f, 1.54772296f, 1.65633056f};
 
   SimpleWeightsNoBiasTwoRows("reverse", Y_data, Y_h_data, Y_c_data, &seq_lengths);
 
@@ -355,19 +379,20 @@ TEST(LSTMTest, MixedSequenceLengthsReverse) {
   seq_lengths = {2, 1};
 
   Y_data = {
-      0.55391603f, 0.69201493f, 0.82696019f,
-      0.34526044f, 0.47220877f, 0.55850935f,
+      0.55391603f, 0.69201493f, 0.82696019f, 0.34526044f, 0.47220877f, 0.55850935f,
 
-      0.61249432f, 0.70678632f, 0.74094619f,
-      0.f, 0.f, 0.f};
+      0.61249432f,
+      0.70678632f,
+      0.74094619f,
+      0.f,
+      0.f,
+      0.f};
 
   Y_h_data = {
-      0.55391603f, 0.69201493f, 0.82696019f,
-      0.34526044f, 0.47220877f, 0.55850935f};
+      0.55391603f, 0.69201493f, 0.82696019f, 0.34526044f, 0.47220877f, 0.55850935f};
 
   Y_c_data = {
-      1.27850552f, 1.46799496f, 1.57641257f,
-      0.54983425f, 0.59868795f, 0.64565659f};
+      1.27850552f, 1.46799496f, 1.57641257f, 0.54983425f, 0.59868795f, 0.64565659f};
 
   SimpleWeightsNoBiasTwoRows("reverse", Y_data, Y_h_data, Y_c_data, &seq_lengths);
 }
@@ -389,22 +414,19 @@ TEST(LSTMTest, BatchParallelFalseSeqLengthGreaterThanOne) {
   std::vector<float> X_data{1.f, 2.f};
 
   std::vector<float> W_data{
-      0.1f, 0.2f, 0.3f, 0.4f,
-      1.f, 2.f, 3.f, 4.f};
+      0.1f, 0.2f, 0.3f, 0.4f, 1.f, 2.f, 3.f, 4.f};
 
   std::vector<float> R_data(num_directions * 4 * hidden_size * hidden_size, 0.1f);
 
   std::vector<float> Y_data{
-      0.27546653f, 0.29941525f,
-      0.50903179f, 0.57476457f};
+      0.27546653f, 0.29941525f, 0.50903179f, 0.57476457f};
 
   std::vector<float> Y_c_data{
       1.02721067f, 1.15254318f};
 
   for (bool is_initializer_W : std::initializer_list<bool>{false, true}) {
     for (bool is_initializer_R : std::initializer_list<bool>{false, true}) {
-      RunLstmTest(X_data, W_data, is_initializer_W, R_data, is_initializer_R,
-                  Y_data, {}, Y_c_data, input_size, batch_size, hidden_size, seq_length);
+      RunLstmTest(X_data, W_data, is_initializer_W, R_data, is_initializer_R, Y_data, {}, Y_c_data, input_size, batch_size, hidden_size, seq_length);
     }
   }
 }
@@ -425,17 +447,13 @@ static void LargeBatchWithClip(const std::vector<float>& Y_h_data, float clip = 
   float i = 0.f, increment = 1.f;
   std::generate_n(std::back_inserter(X_data), batch_size * seq_length, [&]() { return i += increment; });
 
-  std::vector<float> W_data{0.1f, 0.2f, 0.3f, 0.4f,
-                            1.f, 2.f, 3.f, 4.f,
-                            10.f, 11.f, 12.f, 13.f};
+  std::vector<float> W_data{0.1f, 0.2f, 0.3f, 0.4f, 1.f, 2.f, 3.f, 4.f, 10.f, 11.f, 12.f, 13.f};
 
   std::vector<float> R_data(num_directions * 4 * hidden_size * hidden_size, 0.1f);
 
   for (bool is_initializer_W : std::initializer_list<bool>{false, true}) {
     for (bool is_initializer_R : std::initializer_list<bool>{false, true}) {
-      RunLstmTest(X_data, W_data, is_initializer_W, R_data, is_initializer_R, {},
-                  Y_h_data, {}, input_size, batch_size, hidden_size, seq_length,
-                  nullptr, nullptr, nullptr, nullptr, nullptr, direction, clip);
+      RunLstmTest(X_data, W_data, is_initializer_W, R_data, is_initializer_R, {}, Y_h_data, {}, input_size, batch_size, hidden_size, seq_length, nullptr, nullptr, nullptr, nullptr, nullptr, direction, clip);
     }
   }
 }
@@ -447,38 +465,7 @@ TEST(LSTMTest, LargeBatchNoClipping) {
   }
 
   std::vector<float> Y_h_data = {
-      0.90387899f, 0.9135572f, 0.91772245f,
-      0.90897038f, 0.92132433f, 0.92825467f,
-      0.91365823f, 0.92815113f, 0.93676105f,
-      0.91799162f, 0.93406357f, 0.94344562f,
-      0.92199681f, 0.93912057f, 0.94859476f,
-      0.92569357f, 0.94340185f, 0.95250664f,
-      0.92909964f, 0.94699686f, 0.95545127f,
-      0.93223207f, 0.94999634f, 0.95765468f,
-      0.93510761f, 0.9524867f, 0.95929726f,
-      0.93774272f, 0.9545467f, 0.96051891f,
-      0.9401536f, 0.95624603f, 0.96142619f,
-      0.94235605f, 0.95764499f, 0.96209939f,
-      0.94436539f, 0.95879495f, 0.96259862f,
-      0.94619635f, 0.95973921f, 0.96296872f,
-      0.94786299f, 0.96051397f, 0.96324302f,
-      0.94937864f, 0.96114929f, 0.96344629f,
-      0.95075587f, 0.96167006f, 0.96359692f,
-      0.95200645f, 0.96209679f, 0.96370852f,
-      0.95314133f, 0.9624464f, 0.9637912f,
-      0.95417069f, 0.96273278f, 0.96385246f,
-      0.95510395f, 0.96296733f, 0.96389785f,
-      0.95594975f, 0.96315942f, 0.96393147f,
-      0.95671607f, 0.96331673f, 0.96395638f,
-      0.9574102f, 0.96344554f, 0.96397483f,
-      0.9580388f, 0.96355102f, 0.9639885f,
-      0.95860795f, 0.96363739f, 0.96399863f,
-      0.95912322f, 0.96370811f, 0.96400613f,
-      0.95958963f, 0.96376601f, 0.96401169f,
-      0.96001179f, 0.96381342f, 0.96401581f,
-      0.96039386f, 0.96385224f, 0.96401886f,
-      0.96073964f, 0.96388402f, 0.96402112f,
-      0.96105254f, 0.96391004f, 0.96402279f};
+      0.90387899f, 0.9135572f, 0.91772245f, 0.90897038f, 0.92132433f, 0.92825467f, 0.91365823f, 0.92815113f, 0.93676105f, 0.91799162f, 0.93406357f, 0.94344562f, 0.92199681f, 0.93912057f, 0.94859476f, 0.92569357f, 0.94340185f, 0.95250664f, 0.92909964f, 0.94699686f, 0.95545127f, 0.93223207f, 0.94999634f, 0.95765468f, 0.93510761f, 0.9524867f, 0.95929726f, 0.93774272f, 0.9545467f, 0.96051891f, 0.9401536f, 0.95624603f, 0.96142619f, 0.94235605f, 0.95764499f, 0.96209939f, 0.94436539f, 0.95879495f, 0.96259862f, 0.94619635f, 0.95973921f, 0.96296872f, 0.94786299f, 0.96051397f, 0.96324302f, 0.94937864f, 0.96114929f, 0.96344629f, 0.95075587f, 0.96167006f, 0.96359692f, 0.95200645f, 0.96209679f, 0.96370852f, 0.95314133f, 0.9624464f, 0.9637912f, 0.95417069f, 0.96273278f, 0.96385246f, 0.95510395f, 0.96296733f, 0.96389785f, 0.95594975f, 0.96315942f, 0.96393147f, 0.95671607f, 0.96331673f, 0.96395638f, 0.9574102f, 0.96344554f, 0.96397483f, 0.9580388f, 0.96355102f, 0.9639885f, 0.95860795f, 0.96363739f, 0.96399863f, 0.95912322f, 0.96370811f, 0.96400613f, 0.95958963f, 0.96376601f, 0.96401169f, 0.96001179f, 0.96381342f, 0.96401581f, 0.96039386f, 0.96385224f, 0.96401886f, 0.96073964f, 0.96388402f, 0.96402112f, 0.96105254f, 0.96391004f, 0.96402279f};
 
   LargeBatchWithClip(Y_h_data);
 }
@@ -491,38 +478,7 @@ TEST(LSTMTest, LargeBatchWithClip) {
   }
 
   std::vector<float> Y_h_data = {
-      0.88572926f, 0.89251395f, 0.89655037f,
-      0.89074291f, 0.90035688f, 0.90727429f,
-      0.89535827f, 0.90727429f, 0.91596163f,
-      0.89963124f, 0.91328279f, 0.9228067f,
-      0.90358195f, 0.91843507f, 0.92809163f,
-      0.90723279f, 0.9228067f, 0.93211437f,
-      0.91038955f, 0.92648469f, 0.93514718f,
-      0.91328279f, 0.92955856f, 0.93741938f,
-      0.91596163f, 0.93211437f, 0.9391149f,
-      0.91843507f, 0.93423112f, 0.94037686f,
-      0.92071318f, 0.9359791f, 0.94131462f,
-      0.9228067f, 0.93741938f, 0.94201073f,
-      0.92472679f, 0.9386042f, 0.94252713f,
-      0.92648469f, 0.9395777f, 0.94266769f,
-      0.92809163f, 0.94037686f, 0.94266769f,
-      0.92955856f, 0.94103248f, 0.94266769f,
-      0.93089609f, 0.94157007f, 0.94266769f,
-      0.93211437f, 0.94201073f, 0.94266769f,
-      0.93322302f, 0.94237184f, 0.94266769f,
-      0.93423112f, 0.94266769f, 0.94266769f,
-      0.93514718f, 0.94266769f, 0.94266769f,
-      0.9359791f, 0.94266769f, 0.94266769f,
-      0.93673424f, 0.94266769f, 0.94266769f,
-      0.93741938f, 0.94266769f, 0.94266769f,
-      0.93804079f, 0.94266769f, 0.94266769f,
-      0.9386042f, 0.94266769f, 0.94266769f,
-      0.9391149f, 0.94266769f, 0.94266769f,
-      0.9395777f, 0.94266769f, 0.94266769f,
-      0.93999702f, 0.94266769f, 0.94266769f,
-      0.94037686f, 0.94266769f, 0.94266769f,
-      0.94072091f, 0.94266769f, 0.94266769f,
-      0.94103248f, 0.94266769f, 0.94266769f};
+      0.88572926f, 0.89251395f, 0.89655037f, 0.89074291f, 0.90035688f, 0.90727429f, 0.89535827f, 0.90727429f, 0.91596163f, 0.89963124f, 0.91328279f, 0.9228067f, 0.90358195f, 0.91843507f, 0.92809163f, 0.90723279f, 0.9228067f, 0.93211437f, 0.91038955f, 0.92648469f, 0.93514718f, 0.91328279f, 0.92955856f, 0.93741938f, 0.91596163f, 0.93211437f, 0.9391149f, 0.91843507f, 0.93423112f, 0.94037686f, 0.92071318f, 0.9359791f, 0.94131462f, 0.9228067f, 0.93741938f, 0.94201073f, 0.92472679f, 0.9386042f, 0.94252713f, 0.92648469f, 0.9395777f, 0.94266769f, 0.92809163f, 0.94037686f, 0.94266769f, 0.92955856f, 0.94103248f, 0.94266769f, 0.93089609f, 0.94157007f, 0.94266769f, 0.93211437f, 0.94201073f, 0.94266769f, 0.93322302f, 0.94237184f, 0.94266769f, 0.93423112f, 0.94266769f, 0.94266769f, 0.93514718f, 0.94266769f, 0.94266769f, 0.9359791f, 0.94266769f, 0.94266769f, 0.93673424f, 0.94266769f, 0.94266769f, 0.93741938f, 0.94266769f, 0.94266769f, 0.93804079f, 0.94266769f, 0.94266769f, 0.9386042f, 0.94266769f, 0.94266769f, 0.9391149f, 0.94266769f, 0.94266769f, 0.9395777f, 0.94266769f, 0.94266769f, 0.93999702f, 0.94266769f, 0.94266769f, 0.94037686f, 0.94266769f, 0.94266769f, 0.94072091f, 0.94266769f, 0.94266769f, 0.94103248f, 0.94266769f, 0.94266769f};
 
   LargeBatchWithClip(Y_h_data, 4.f);
 }
@@ -541,51 +497,67 @@ class LstmOpContext2x1x2x2 {
         activation_betas_{activation_betas} {
     // W[iofc] (4*hidden, X_data)
     input_weights_ = {
-        -0.494659f, 0.0453352f,
-        -0.487793f, 0.417264f,
+        -0.494659f, 0.0453352f, -0.487793f, 0.417264f,
 
-        -0.0175329f, 0.489074f,
-        -0.446013f, 0.414029f,
+        -0.0175329f,
+        0.489074f,
+        -0.446013f,
+        0.414029f,
 
-        -0.0091708f, -0.255364f,
-        -0.106952f, -0.266717f,
+        -0.0091708f,
+        -0.255364f,
+        -0.106952f,
+        -0.266717f,
 
-        -0.0888852f, -0.428709f,
-        -0.283349f, 0.208792f};
+        -0.0888852f,
+        -0.428709f,
+        -0.283349f,
+        0.208792f};
 
     // R[iofc] (4*hidden, hidden)
     recurrent_weights_ = {
-        0.146626f, -0.0620289f,
-        -0.0815302f, 0.100482f,
+        0.146626f, -0.0620289f, -0.0815302f, 0.100482f,
 
-        -0.219535f, -0.306635f,
-        -0.28515f, -0.314112f,
+        -0.219535f,
+        -0.306635f,
+        -0.28515f,
+        -0.314112f,
 
-        -0.228172f, 0.405972f,
-        0.31576f, 0.281487f,
+        -0.228172f,
+        0.405972f,
+        0.31576f,
+        0.281487f,
 
-        -0.394864f, 0.42111f,
-        -0.386624f, -0.390225f};
+        -0.394864f,
+        0.42111f,
+        -0.386624f,
+        -0.390225f};
 
     // P[iof] (3*hidden)
     peephole_weights_ = {
-        0.2345f, 0.5235f,
-        0.4378f, 0.3475f,
-        0.8927f, 0.3456f};
+        0.2345f, 0.5235f, 0.4378f, 0.3475f, 0.8927f, 0.3456f};
 
     // Wb[iofc], Rb[iofc] (8*hidden)
     bias_ = {
         // Wb[iofc]
-        0.381619f, 0.0323954f,
-        -0.14449f, 0.420804f,
-        -0.258721f, 0.45056f,
-        -0.250755f, 0.0967895f,
+        0.381619f,
+        0.0323954f,
+        -0.14449f,
+        0.420804f,
+        -0.258721f,
+        0.45056f,
+        -0.250755f,
+        0.0967895f,
 
         // Rb[iofc]
-        0.0f, 0.0f,
-        0.0f, 0.0f,
-        0.0f, 0.0f,
-        0.0f, 0.0f};
+        0.0f,
+        0.0f,
+        0.0f,
+        0.0f,
+        0.0f,
+        0.0f,
+        0.0f,
+        0.0f};
 
     if (num_directions_ == 2) {
       input_weights_ = DuplicateContainer(input_weights_);
@@ -667,13 +639,21 @@ class LstmOpContext2x1x2x2 {
     // run with and without output_sequence to test UniDirectionalLstm handling when Y isn't returned
     for (bool output_sequence : std::initializer_list<bool>{false, true}) {
       ::onnxruntime::test::RunLstmTest(X,
-                                       input_weights_, false,
-                                       recurrent_weights_, false,
-                                       expected_Y, expected_Y_h, expected_Y_c,
-                                       input_size_, batch_size, hidden_size_, seq_length,
+                                       input_weights_,
+                                       false,
+                                       recurrent_weights_,
+                                       false,
+                                       expected_Y,
+                                       expected_Y_h,
+                                       expected_Y_c,
+                                       input_size_,
+                                       batch_size,
+                                       hidden_size_,
+                                       seq_length,
                                        use_bias ? &bias_ : nullptr,
                                        use_peepholes ? &peephole_weights_ : nullptr,
-                                       initial_h, initial_c,
+                                       initial_h,
+                                       initial_c,
                                        sequence_lens,
                                        direction_,
                                        clip,
@@ -727,16 +707,10 @@ TEST(LSTMTest, ONNXRuntime_TestLSTMBidirectionalBasic) {
 
   constexpr int seq_len = 2, batch_size = 1;
 
-  std::vector<float> X_data = {-0.455351f, -0.276391f,
-                               -0.185934f, -0.269585f};
-  std::vector<float> Y_data = {-0.0251062f, 0.0561262f,
-                               -0.0318928f, 0.0762679f,
-                               -0.0327752f, 0.0593536f,
-                               -0.0306872f, 0.028035f};
-  std::vector<float> Y_h_data = {-0.0327752f, 0.0593536f,
-                                 -0.0318928f, 0.0762679f};
-  std::vector<float> Y_c_data = {-0.0780206f, 0.098829f,
-                                 -0.0753684f, 0.120794f};
+  std::vector<float> X_data = {-0.455351f, -0.276391f, -0.185934f, -0.269585f};
+  std::vector<float> Y_data = {-0.0251062f, 0.0561262f, -0.0318928f, 0.0762679f, -0.0327752f, 0.0593536f, -0.0306872f, 0.028035f};
+  std::vector<float> Y_h_data = {-0.0327752f, 0.0593536f, -0.0318928f, 0.0762679f};
+  std::vector<float> Y_c_data = {-0.0780206f, 0.098829f, -0.0753684f, 0.120794f};
 
   LstmOpContext2x1x2x2 context("bidirectional");
   context.RunTest(X_data, batch_size, seq_len, nullptr, nullptr, Y_data, Y_h_data, Y_c_data);
@@ -752,17 +726,14 @@ TEST(LSTMTest, ONNXRuntime_TestLSTMForwardNoBiasUsePeepholes) {
 
   bool use_bias = false;
   bool use_peepholes = true;
-  std::vector<float> X_data = {-0.455351f, -0.276391f,
-                               -0.185934f, -0.269585f};
+  std::vector<float> X_data = {-0.455351f, -0.276391f, -0.185934f, -0.269585f};
 
-  std::vector<float> Y_data = {0.04154162f, 0.01969122f,
-                               0.05298181f, 0.0030589f};
+  std::vector<float> Y_data = {0.04154162f, 0.01969122f, 0.05298181f, 0.0030589f};
   std::vector<float> Y_h_data = {0.05298181f, 0.0030589f};
   std::vector<float> Y_c_data = {0.11169686f, 0.00625722f};
 
   LstmOpContext2x1x2x2 context("forward");
-  context.RunTest(X_data, batch_size, seq_len, nullptr, nullptr, Y_data, Y_h_data, Y_c_data, nullptr,
-                  use_bias, use_peepholes);
+  context.RunTest(X_data, batch_size, seq_len, nullptr, nullptr, Y_data, Y_h_data, Y_c_data, nullptr, use_bias, use_peepholes);
 }
 
 TEST(LSTMTest, ONNXRuntime_TestLSTMForwardInputForget) {
@@ -780,15 +751,13 @@ TEST(LSTMTest, ONNXRuntime_TestLSTMForwardInputForget) {
 
   std::vector<float> X_data = {-0.455351f, -0.276391f, -0.185934f, -0.269585f};
 
-  std::vector<float> Y_data = {-0.02510626f, 0.05612619f,
-                               -0.0314321f, 0.05087372f};
+  std::vector<float> Y_data = {-0.02510626f, 0.05612619f, -0.0314321f, 0.05087372f};
   std::vector<float> Y_h_data = {-0.0314321f, 0.05087372f};
   std::vector<float> Y_c_data = {-0.07474898f, 0.08480116f};
 
   LstmOpContext2x1x2x2 context("forward");
   // cudnn don't support peepholes
-  context.RunTest(X_data, batch_size, seq_len, nullptr, nullptr, Y_data, Y_h_data, Y_c_data, nullptr,
-                  use_bias, use_peepholes, clip, input_forget);
+  context.RunTest(X_data, batch_size, seq_len, nullptr, nullptr, Y_data, Y_h_data, Y_c_data, nullptr, use_bias, use_peepholes, clip, input_forget);
 }
 
 TEST(LSTMTest, ONNXRuntime_TestLSTMForwardClip) {
@@ -805,14 +774,12 @@ TEST(LSTMTest, ONNXRuntime_TestLSTMForwardClip) {
 
   std::vector<float> X_data = {-0.455351f, -0.276391f, -0.185934f, -0.269585f};
 
-  std::vector<float> Y_data = {-0.02280854f, 0.02744377f,
-                               -0.03516197f, 0.03875681f};
+  std::vector<float> Y_data = {-0.02280854f, 0.02744377f, -0.03516197f, 0.03875681f};
   std::vector<float> Y_h_data = {-0.03516197f, 0.03875681f};
   std::vector<float> Y_c_data = {-0.07415761f, 0.07395997f};
 
   LstmOpContext2x1x2x2 context("forward");
-  context.RunTest(X_data, batch_size, seq_len, nullptr, nullptr, Y_data, Y_h_data, Y_c_data, nullptr,
-                  use_bias, use_peepholes, clip);
+  context.RunTest(X_data, batch_size, seq_len, nullptr, nullptr, Y_data, Y_h_data, Y_c_data, nullptr, use_bias, use_peepholes, clip);
 }
 
 TEST(LSTMTest, ONNXRuntime_TestLSTMBackward) {
@@ -825,8 +792,7 @@ TEST(LSTMTest, ONNXRuntime_TestLSTMBackward) {
 
   std::vector<float> X_data = {-0.455351f, -0.276391f, -0.185934f, -0.269585f};
 
-  std::vector<float> Y_data = {-0.03189282f, 0.07626793f,
-                               -0.03068724f, 0.02803503f};
+  std::vector<float> Y_data = {-0.03189282f, 0.07626793f, -0.03068724f, 0.02803503f};
   std::vector<float> Y_h_data = {-0.03189282f, 0.07626793f};
   std::vector<float> Y_c_data = {-0.07536839f, 0.12079399f};
 
@@ -844,8 +810,7 @@ TEST(LSTMTest, ONNXRuntime_TestLSTMBackward_gpu) {
 
   std::vector<float> X_data = {-0.455351f, -0.276391f, -0.185934f, -0.269585f};
 
-  std::vector<float> Y_data = {-0.033075746f, 0.074455738f,
-                               -0.031248707f, 0.027853041f};
+  std::vector<float> Y_data = {-0.033075746f, 0.074455738f, -0.031248707f, 0.027853041f};
   std::vector<float> Y_h_data = {-0.033075746f, 0.074455738f};
   std::vector<float> Y_c_data = {-0.076699793f, 0.11975205f};
 
@@ -868,14 +833,12 @@ TEST(LSTMTest, ONNXRuntime_TestLSTMForwardHiddenState) {
   std::vector<float> X_data = {-0.455351f, -0.276391f, -0.185934f, -0.269585f};
   std::vector<float> hidden_state = {0.34f, 0.72f};
 
-  std::vector<float> Y_data = {0.01797521f, -0.07104912f,
-                               -0.03174796f, -0.0152949f};
+  std::vector<float> Y_data = {0.01797521f, -0.07104912f, -0.03174796f, -0.0152949f};
   std::vector<float> Y_h_data = {-0.03174796f, -0.0152949f};
   std::vector<float> Y_c_data = {-0.07285583f, -0.02545788f};
 
   LstmOpContext2x1x2x2 context("forward");
-  context.RunTest(X_data, batch_size, seq_len, &hidden_state, nullptr, Y_data, Y_h_data, Y_c_data,
-                  nullptr, use_bias, use_peepholes);
+  context.RunTest(X_data, batch_size, seq_len, &hidden_state, nullptr, Y_data, Y_h_data, Y_c_data, nullptr, use_bias, use_peepholes);
 }
 
 TEST(LSTMTest, ONNXRuntime_TestLSTMForwardCellState) {
@@ -893,14 +856,12 @@ TEST(LSTMTest, ONNXRuntime_TestLSTMForwardCellState) {
   std::vector<float> hidden_state = {0.34f, 0.72f};
   std::vector<float> cell_state = {0.63f, 0.21f};
 
-  std::vector<float> Y_data = {0.12797015f, 0.0097284f,
-                               0.02716939f, 0.01842997f};
+  std::vector<float> Y_data = {0.12797015f, 0.0097284f, 0.02716939f, 0.01842997f};
   std::vector<float> Y_h_data = {0.02716939f, 0.01842997f};
   std::vector<float> Y_c_data = {0.06408449f, 0.03139432f};
 
   LstmOpContext2x1x2x2 context("forward");
-  context.RunTest(X_data, batch_size, seq_len, &hidden_state, &cell_state, Y_data, Y_h_data, Y_c_data,
-                  nullptr, use_bias, use_peepholes);
+  context.RunTest(X_data, batch_size, seq_len, &hidden_state, &cell_state, Y_data, Y_h_data, Y_c_data, nullptr, use_bias, use_peepholes);
 }
 
 TEST(LSTMTest, ONNXRuntime_TestLSTMActivation) {
@@ -918,14 +879,12 @@ TEST(LSTMTest, ONNXRuntime_TestLSTMActivation) {
 
   std::vector<float> X_data = {-0.455351f, -0.276391f, -0.185934f, -0.269585f};
 
-  std::vector<float> Y_data = {-0.0660155f, 0.0351227f,
-                               -0.04236888f, 0.0177365f};
+  std::vector<float> Y_data = {-0.0660155f, 0.0351227f, -0.04236888f, 0.0177365f};
   std::vector<float> Y_h_data = {-0.04236888f, 0.0177365f};
   std::vector<float> Y_c_data = {0.1624992f, 0.04672481f};
 
   LstmOpContext2x1x2x2 context("forward", activations);
-  context.RunTest(X_data, batch_size, seq_len, nullptr, nullptr, Y_data, Y_h_data, Y_c_data,
-                  nullptr, use_bias, use_peepholes);
+  context.RunTest(X_data, batch_size, seq_len, nullptr, nullptr, Y_data, Y_h_data, Y_c_data, nullptr, use_bias, use_peepholes);
 }
 
 // Original comments:
@@ -949,45 +908,27 @@ TEST(LSTMTest, ONNXRuntime_TestLSTMBatchReallocation) {
   //////////////////Inputs///////////////////////////////////
   std::string direction = "forward";
 
-  std::vector<float> X_data = {-0.455351f, -0.276391f,
-                               -0.185934f, -0.269585f};
-  std::vector<float> Y_data = {-0.0660155f, 0.0351227f,
-                               -0.04236888f, 0.0177365f};
+  std::vector<float> X_data = {-0.455351f, -0.276391f, -0.185934f, -0.269585f};
+  std::vector<float> Y_data = {-0.0660155f, 0.0351227f, -0.04236888f, 0.0177365f};
   std::vector<float> Y_h_data = {-0.04236888f, 0.0177365f};
   std::vector<float> Y_c_data = {0.1624992f, 0.04672481f};
 
   LstmOpContext2x1x2x2 context(direction, activations);
-  context.RunTest(X_data, batch_size, seq_len, nullptr, nullptr, Y_data, Y_h_data, Y_c_data,
-                  nullptr, use_bias, use_peepholes);
+  context.RunTest(X_data, batch_size, seq_len, nullptr, nullptr, Y_data, Y_h_data, Y_c_data, nullptr, use_bias, use_peepholes);
 
   batch_size = 3;
 
   // updated from ONNXRuntime test so that it's not the same 2 values repeated 6 times each which potentially hides issues
-  X_data = {-0.455351f, -0.476391f,
-            -0.555351f, -0.376391f,
-            -0.655351f, -0.276391f,
-            -0.185934f, -0.869585f,
-            -0.285934f, -0.769585f,
-            -0.385934f, -0.669585f};
+  X_data = {-0.455351f, -0.476391f, -0.555351f, -0.376391f, -0.655351f, -0.276391f, -0.185934f, -0.869585f, -0.285934f, -0.769585f, -0.385934f, -0.669585f};
 
   /* numpy */
-  Y_data = {-0.090715f, 0.011908f,
-            -0.083193f, 0.037192f,
-            -0.073643f, 0.068889f,
-            -0.10545f, -0.01573f,
-            -0.10621f, -0.0056667f,
-            -0.10559f, 0.015734f};
+  Y_data = {-0.090715f, 0.011908f, -0.083193f, 0.037192f, -0.073643f, 0.068889f, -0.10545f, -0.01573f, -0.10621f, -0.0056667f, -0.10559f, 0.015734f};
 
-  Y_h_data = {-0.10545f, -0.01573f,
-              -0.10621f, -0.0056667f,
-              -0.10559f, 0.015734f};
+  Y_h_data = {-0.10545f, -0.01573f, -0.10621f, -0.0056667f, -0.10559f, 0.015734f};
 
-  Y_c_data = {0.21381f, -0.096022f,
-              0.23038f, -0.0239f,
-              0.24572f, 0.051626f};
+  Y_c_data = {0.21381f, -0.096022f, 0.23038f, -0.0239f, 0.24572f, 0.051626f};
 
-  context.RunTest(X_data, batch_size, seq_len, nullptr, nullptr, Y_data, Y_h_data, Y_c_data,
-                  nullptr, use_bias, use_peepholes);
+  context.RunTest(X_data, batch_size, seq_len, nullptr, nullptr, Y_data, Y_h_data, Y_c_data, nullptr, use_bias, use_peepholes);
 }
 
 // Original comments:
@@ -1012,66 +953,75 @@ TEST(LSTMTest, ONNXRuntime_TestLSTMOutputWrite) {
 
   std::vector<float> X_data = {-0.455351f, -0.276391f, -0.185934f, -0.269585f};
 
-  std::vector<float> Y_data = {-0.06601551f, 0.03512269f,
-                               -0.05520744f, 0.03879774f,
+  std::vector<float> Y_data = {-0.06601551f, 0.03512269f, -0.05520744f, 0.03879774f,
 
-                               -0.04236888f, 0.01773649f,
-                               -0.05332068f, 0.00207076f};
-  std::vector<float> Y_h_data = {-0.04236888f, 0.01773649f,
-                                 -0.05520744f, 0.03879774f};
-  std::vector<float> Y_c_data = {0.1624992f, 0.04672481f,
-                                 0.22009919f, 0.08087098f};
+                               -0.04236888f,
+                               0.01773649f,
+                               -0.05332068f,
+                               0.00207076f};
+  std::vector<float> Y_h_data = {-0.04236888f, 0.01773649f, -0.05520744f, 0.03879774f};
+  std::vector<float> Y_c_data = {0.1624992f, 0.04672481f, 0.22009919f, 0.08087098f};
 
   std::string direction = "bidirectional";
   LstmOpContext2x1x2x2 context(direction, activations);
-  context.RunTest(X_data, batch_size, seq_len, nullptr, nullptr, Y_data, Y_h_data, Y_c_data,
-                  nullptr, use_bias, use_peepholes);
+  context.RunTest(X_data, batch_size, seq_len, nullptr, nullptr, Y_data, Y_h_data, Y_c_data, nullptr, use_bias, use_peepholes);
 
   batch_size = 3;
 
-  X_data = {-0.455351f, -0.776391f,
-            -0.355351f, -0.576391f,
-            -0.255351f, -0.376391f,
+  X_data = {-0.455351f, -0.776391f, -0.355351f, -0.576391f, -0.255351f, -0.376391f,
 
-            -0.185934f, -0.169585f,
-            -0.285934f, -0.469585f,
-            -0.385934f, -0.669585f};
+            -0.185934f,
+            -0.169585f,
+            -0.285934f,
+            -0.469585f,
+            -0.385934f,
+            -0.669585f};
 
-  Y_data = {-0.1269719f, -0.01049645f,
-            -0.09596697f, -0.00592083f,
-            -0.06777587f, -0.00001902f,
+  Y_data = {-0.1269719f, -0.01049645f, -0.09596697f, -0.00592083f, -0.06777587f, -0.00001902f,
 
-            -0.12206709f, -0.0051103f,
-            -0.08422903f, -0.00768428f,
-            -0.05224226f, -0.0042149f,
+            -0.12206709f,
+            -0.0051103f,
+            -0.08422903f,
+            -0.00768428f,
+            -0.05224226f,
+            -0.0042149f,
 
-            -0.02778835f, 0.00775075f,
-            -0.06541093f, -0.00667958f,
-            -0.09953593f, -0.00899231f,
+            -0.02778835f,
+            0.00775075f,
+            -0.06541093f,
+            -0.00667958f,
+            -0.09953593f,
+            -0.00899231f,
 
-            -0.04350187f, 0.01127771f,
-            -0.07949658f, -0.00425178f,
-            -0.10883409f, -0.00926061f};
+            -0.04350187f,
+            0.01127771f,
+            -0.07949658f,
+            -0.00425178f,
+            -0.10883409f,
+            -0.00926061f};
 
-  Y_h_data = {-0.02778835f, 0.00775075f,
-              -0.06541093f, -0.00667958f,
+  Y_h_data = {-0.02778835f, 0.00775075f, -0.06541093f, -0.00667958f,
 
-              -0.09953593f, -0.00899231f,
-              -0.12206709f, -0.0051103f,
+              -0.09953593f,
+              -0.00899231f,
+              -0.12206709f,
+              -0.0051103f,
 
-              -0.08422903f, -0.00768428f,
-              -0.05224226f, -0.0042149f};
+              -0.08422903f,
+              -0.00768428f,
+              -0.05224226f,
+              -0.0042149f};
 
-  Y_c_data = {0.14675268f, 0.01759163f,
-              0.19898503f, -0.01828078f,
-              0.24029977f, -0.02784352f,
+  Y_c_data = {0.14675268f, 0.01759163f, 0.19898503f, -0.01828078f, 0.24029977f, -0.02784352f,
 
-              0.26577898f, -0.01694398f,
-              0.22469461f, -0.02200207f,
-              0.18284359f, -0.01078442f};
+              0.26577898f,
+              -0.01694398f,
+              0.22469461f,
+              -0.02200207f,
+              0.18284359f,
+              -0.01078442f};
 
-  context.RunTest(X_data, batch_size, seq_len, nullptr, nullptr, Y_data, Y_h_data, Y_c_data,
-                  nullptr, use_bias, use_peepholes);
+  context.RunTest(X_data, batch_size, seq_len, nullptr, nullptr, Y_data, Y_h_data, Y_c_data, nullptr, use_bias, use_peepholes);
 }
 
 TEST(LSTMTest, ONNXRuntime_TestLSTMSequenceLengthAllZeros) {
@@ -1087,40 +1037,43 @@ TEST(LSTMTest, ONNXRuntime_TestLSTMSequenceLengthAllZeros) {
   bool use_bias = true;
   bool use_peepholes = false;
 
-  std::vector<float> X_data = {-0.455351f, -0.776391f,
-                               -0.355351f, -0.576391f,
+  std::vector<float> X_data = {-0.455351f, -0.776391f, -0.355351f, -0.576391f,
 
-                               -0.185934f, -0.169585f,
-                               -0.285934f, -0.469585f};
+                               -0.185934f,
+                               -0.169585f,
+                               -0.285934f,
+                               -0.469585f};
 
   std::vector<int> sequence_length = {0, 0};
 
-  std::vector<float> Y_data = {0.0f, 0.0f,
-                               0.0f, 0.0f,
-                               0.0f, 0.0f,
-                               0.0f, 0.0f,
+  std::vector<float> Y_data = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
 
-                               0.0f, 0.0f,
-                               0.0f, 0.0f,
-                               0.0f, 0.0f,
-                               0.0f, 0.0f};
+                               0.0f,
+                               0.0f,
+                               0.0f,
+                               0.0f,
+                               0.0f,
+                               0.0f,
+                               0.0f,
+                               0.0f};
 
-  std::vector<float> Y_h_data = {0.0f, 0.0f,
-                                 0.0f, 0.0f,
+  std::vector<float> Y_h_data = {0.0f, 0.0f, 0.0f, 0.0f,
 
-                                 0.0f, 0.0f,
-                                 0.0f, 0.0f};
+                                 0.0f,
+                                 0.0f,
+                                 0.0f,
+                                 0.0f};
 
-  std::vector<float> Y_c_data = {0.0f, 0.0f,
-                                 0.0f, 0.0f,
+  std::vector<float> Y_c_data = {0.0f, 0.0f, 0.0f, 0.0f,
 
-                                 0.0f, 0.0f,
-                                 0.0f, 0.0f};
+                                 0.0f,
+                                 0.0f,
+                                 0.0f,
+                                 0.0f};
 
   std::string direction = "bidirectional";
   LstmOpContext2x1x2x2 context(direction, activations);
-  context.RunTest(X_data, batch_size, seq_len, nullptr, nullptr, Y_data, Y_h_data, Y_c_data,
-                  &sequence_length, use_bias, use_peepholes);
+  context.RunTest(X_data, batch_size, seq_len, nullptr, nullptr, Y_data, Y_h_data, Y_c_data, &sequence_length, use_bias, use_peepholes);
 }
 
 TEST(LSTMTest, ONNXRuntime_TestLSTMSequenceLengthPartialZeros) {
@@ -1136,42 +1089,49 @@ TEST(LSTMTest, ONNXRuntime_TestLSTMSequenceLengthPartialZeros) {
   bool use_bias = true;
   bool use_peepholes = false;
 
-  std::vector<float> X_data = {-0.455351f, -0.776391f,
-                               0.0f, 0.0f,
+  std::vector<float> X_data = {-0.455351f, -0.776391f, 0.0f, 0.0f,
 
-                               -0.185934f, -0.169585f,
-                               0.0f, 0.0f};
+                               -0.185934f,
+                               -0.169585f,
+                               0.0f,
+                               0.0f};
 
   std::vector<int> sequence_length = {2, 0};
 
-  std::vector<float> Y_data = {-0.1269719f, -0.01049645f,
-                               0.0f, 0.0f,
+  std::vector<float> Y_data = {-0.1269719f, -0.01049645f, 0.0f, 0.0f,
 
-                               -0.12206709f, -0.0051103f,
-                               0.0f, 0.0f,
+                               -0.12206709f,
+                               -0.0051103f,
+                               0.0f,
+                               0.0f,
 
-                               -0.02778835f, 0.00775075f,
-                               0.0f, 0.0f,
+                               -0.02778835f,
+                               0.00775075f,
+                               0.0f,
+                               0.0f,
 
-                               -0.04350187f, 0.01127771f,
-                               0.0f, 0.0f};
+                               -0.04350187f,
+                               0.01127771f,
+                               0.0f,
+                               0.0f};
 
-  std::vector<float> Y_h_data = {-0.02778835f, 0.00775075f,
-                                 0.0f, 0.0f,
+  std::vector<float> Y_h_data = {-0.02778835f, 0.00775075f, 0.0f, 0.0f,
 
-                                 -0.12206709f, -0.0051103f,
-                                 0.0f, 0.0f};
+                                 -0.12206709f,
+                                 -0.0051103f,
+                                 0.0f,
+                                 0.0f};
 
-  std::vector<float> Y_c_data = {0.14675268f, 0.01759163f,
-                                 0.0f, 0.0f,
+  std::vector<float> Y_c_data = {0.14675268f, 0.01759163f, 0.0f, 0.0f,
 
-                                 0.26577898f, -0.01694398f,
-                                 0.0f, 0.0f};
+                                 0.26577898f,
+                                 -0.01694398f,
+                                 0.0f,
+                                 0.0f};
 
   std::string direction = "bidirectional";
   LstmOpContext2x1x2x2 context(direction, activations);
-  context.RunTest(X_data, batch_size, seq_len, nullptr, nullptr, Y_data, Y_h_data, Y_c_data,
-                  &sequence_length, use_bias, use_peepholes);
+  context.RunTest(X_data, batch_size, seq_len, nullptr, nullptr, Y_data, Y_h_data, Y_c_data, &sequence_length, use_bias, use_peepholes);
 }
 
 TEST(LSTMTest, ONNXRuntime_TestLSTMSequenceLengthShorterThanInputSequenceLength) {
@@ -1183,25 +1143,22 @@ TEST(LSTMTest, ONNXRuntime_TestLSTMSequenceLengthShorterThanInputSequenceLength)
   constexpr int seq_len = 2;
   constexpr int batch_size = 1;
 
-  std::vector<float> X_data = {-0.455351f, -0.276391f,
-                               -0.185934f, -0.269585f};
+  std::vector<float> X_data = {-0.455351f, -0.276391f, -0.185934f, -0.269585f};
 
   std::vector<int> sequence_length = {1};
 
-  std::vector<float> initial_h = {0.0f, 0.0f,
-                                  -0.0306872f, 0.028035f};
+  std::vector<float> initial_h = {0.0f, 0.0f, -0.0306872f, 0.028035f};
 
-  std::vector<float> initial_c = {0.0f, 0.0f,
-                                  -0.07243599f, 0.0467052f};
+  std::vector<float> initial_c = {0.0f, 0.0f, -0.07243599f, 0.0467052f};
 
-  std::vector<float> Y_data = {-0.0251062f, 0.0561262f,
-                               -0.0318928f, 0.0762679f,
+  std::vector<float> Y_data = {-0.0251062f, 0.0561262f, -0.0318928f, 0.0762679f,
 
-                               0.0f, 0.0f,
-                               0.0f, 0.0f};
+                               0.0f,
+                               0.0f,
+                               0.0f,
+                               0.0f};
 
-  std::vector<float> Y_h_data = {-0.0251062f, 0.0561262f,
-                                 -0.0318928f, 0.0762679f};
+  std::vector<float> Y_h_data = {-0.0251062f, 0.0561262f, -0.0318928f, 0.0762679f};
 
   std::string direction = "bidirectional";
 
@@ -1218,25 +1175,22 @@ TEST(LSTMTest, ONNXRuntime_TestLSTMSequenceLengthShorterThanInputSequenceLengthN
   constexpr int seq_len = 2;
   constexpr int batch_size = 1;
 
-  std::vector<float> X_data = {-0.455351f, -0.276391f,
-                               -0.185934f, -0.269585f};
+  std::vector<float> X_data = {-0.455351f, -0.276391f, -0.185934f, -0.269585f};
 
   std::vector<int> sequence_length = {1};
 
-  std::vector<float> initial_h = {0.0f, 0.0f,
-                                  -0.0306872f, 0.028035f};
+  std::vector<float> initial_h = {0.0f, 0.0f, -0.0306872f, 0.028035f};
 
-  std::vector<float> initial_c = {0.0f, 0.0f,
-                                  -0.07243599f, 0.0467052f};
+  std::vector<float> initial_c = {0.0f, 0.0f, -0.07243599f, 0.0467052f};
 
-  std::vector<float> Y_data = {0.0415416f, 0.0196912f,
-                               0.0295027f, 0.0334400f,
+  std::vector<float> Y_data = {0.0415416f, 0.0196912f, 0.0295027f, 0.0334400f,
 
-                               0.0f, 0.0f,
-                               0.0f, 0.0f};
+                               0.0f,
+                               0.0f,
+                               0.0f,
+                               0.0f};
 
-  std::vector<float> Y_h_data = {0.0415416f, 0.0196912f,
-                                 0.0295027f, 0.0334400f};
+  std::vector<float> Y_h_data = {0.0415416f, 0.0196912f, 0.0295027f, 0.0334400f};
 
   std::string direction = "bidirectional";
 
@@ -1264,36 +1218,61 @@ TEST(LSTMTest, ONNXRuntime_TestLSTMShorterSeqInMiddle) {
   bool use_bias = true;
   bool use_peepholes = false;
 
-  std::vector<float> X_data = {-0.455351f, -0.776391f,
-                               0.0f, 0.0f,
-                               0.348763f, 0.678345f,
+  std::vector<float> X_data = {-0.455351f, -0.776391f, 0.0f, 0.0f, 0.348763f, 0.678345f,
 
-                               -0.185934f, -0.169585f,
-                               0.0f, 0.0f,
-                               0.078053f, 0.163457f};
+                               -0.185934f,
+                               -0.169585f,
+                               0.0f,
+                               0.0f,
+                               0.078053f,
+                               0.163457f};
 
   std::vector<int> sequence_length = {2, 1, 2};
 
   std::vector<float> Y_data = {0.02907280f, 0.01765226f, -0.06724346f, 0.02957184f, -0.15355367f, 0.04701351f,
 
-                               0.01841230f, 0.04093486f, -0.06724346f, 0.02957184f, -0.17994503f, 0.07397783f,
+                               0.01841230f,
+                               0.04093486f,
+                               -0.06724346f,
+                               0.02957184f,
+                               -0.17994503f,
+                               0.07397783f,
 
-                               -0.02912546f, 0.04120104f, 0.0f, 0.0f, -0.12768818f, 0.07457943f,
+                               -0.02912546f,
+                               0.04120104f,
+                               0.0f,
+                               0.0f,
+                               -0.12768818f,
+                               0.07457943f,
 
-                               -0.04350187f, 0.03531464f, 0.0f, 0.0f, -0.08877515f, 0.03413615f};
+                               -0.04350187f,
+                               0.03531464f,
+                               0.0f,
+                               0.0f,
+                               -0.08877515f,
+                               0.03413615f};
 
   std::vector<float> Y_h_data = {-0.0291254f, 0.04120104f, -0.06724346f, 0.02957184f, -0.12768818f, 0.07457943f,
 
-                                 0.01841230f, 0.04093486f, -0.06724346f, 0.02957184f, -0.17994503f, 0.07397783f};
+                                 0.01841230f,
+                                 0.04093486f,
+                                 -0.06724346f,
+                                 0.02957184f,
+                                 -0.17994503f,
+                                 0.07397783f};
 
   std::vector<float> Y_c_data = {-0.06609819f, 0.06838701f, -0.14596788f, 0.04902556f, -0.26768601f, 0.12119407f,
 
-                                 0.04934450f, 0.07126625f, -0.14596788f, 0.04902556f, -0.34139895f, 0.11673255f};
+                                 0.04934450f,
+                                 0.07126625f,
+                                 -0.14596788f,
+                                 0.04902556f,
+                                 -0.34139895f,
+                                 0.11673255f};
 
   std::string direction = "bidirectional";
   LstmOpContext2x1x2x2 context(direction, activations);
-  context.RunTest(X_data, batch_size, seq_len, nullptr, nullptr, Y_data, Y_h_data, Y_c_data,
-                  &sequence_length, use_bias, use_peepholes, 0.0f, false, false);
+  context.RunTest(X_data, batch_size, seq_len, nullptr, nullptr, Y_data, Y_h_data, Y_c_data, &sequence_length, use_bias, use_peepholes, 0.0f, false, false);
 }
 
 // Doesn't work with CUDA 11.4 on Windows. Need investigation.
@@ -1315,36 +1294,63 @@ TEST(LSTMTest, ONNXRuntime_TestLSTMZeroSeqInMiddle) {
   bool use_bias = true;
   bool use_peepholes = false;
 
-  std::vector<float> X_data = {-0.455351f, -0.776391f,
-                               0.0f, 0.0f,
-                               0.348763f, 0.678345f,
-                               0.877836f, 0.543859f,
+  std::vector<float> X_data = {-0.455351f, -0.776391f, 0.0f, 0.0f, 0.348763f, 0.678345f, 0.877836f, 0.543859f,
 
-                               -0.185934f, -0.169585f,
-                               0.0f, 0.0f,
-                               0.078053f, 0.163457f,
-                               0.846098f, 0.987531f};
+                               -0.185934f,
+                               -0.169585f,
+                               0.0f,
+                               0.0f,
+                               0.078053f,
+                               0.163457f,
+                               0.846098f,
+                               0.987531f};
 
   std::vector<int> sequence_length = {2, 0, 1, 2};
 
-  std::vector<float> Y_data = {0.02907280f, 0.01765226f, 0.0f, 0.0f, -0.15355367f, 0.04701351f, -0.12951779f, -0.00989562f,
-                               0.01841230f, 0.04093486f, 0.0f, 0.0f, -0.15355367f, 0.04701351f, -0.17956293f, 0.01607513f,
+  std::vector<float> Y_data = {0.02907280f, 0.01765226f, 0.0f, 0.0f, -0.15355367f, 0.04701351f, -0.12951779f, -0.00989562f, 0.01841230f, 0.04093486f, 0.0f, 0.0f, -0.15355367f, 0.04701351f, -0.17956293f, 0.01607513f,
 
-                               -0.02912546f, 0.04120104f, 0.0f, 0.0f, 0.0f, 0.0f, -0.22162350f, 0.03132058f,
-                               -0.04350187f, 0.03531464f, 0.0f, 0.0f, 0.0f, 0.0f, -0.17885581f, 0.01959856f};
+                               -0.02912546f,
+                               0.04120104f,
+                               0.0f,
+                               0.0f,
+                               0.0f,
+                               0.0f,
+                               -0.22162350f,
+                               0.03132058f,
+                               -0.04350187f,
+                               0.03531464f,
+                               0.0f,
+                               0.0f,
+                               0.0f,
+                               0.0f,
+                               -0.17885581f,
+                               0.01959856f};
 
   std::vector<float> Y_h_data = {-0.02912546f, 0.04120104f, 0.0f, 0.0f, -0.15355367f, 0.04701351f, -0.22162350f, 0.03132058f,
 
-                                 0.01841230f, 0.04093486f, 0.0f, 0.0f, -0.15355367f, 0.04701351f, -0.17956293f, 0.01607513f};
+                                 0.01841230f,
+                                 0.04093486f,
+                                 0.0f,
+                                 0.0f,
+                                 -0.15355367f,
+                                 0.04701351f,
+                                 -0.17956293f,
+                                 0.01607513f};
 
   std::vector<float> Y_c_data = {-0.06609819f, 0.06838701f, 0.0f, 0.0f, -0.2894889f, 0.07438067f, -0.39655977f, 0.05050645f,
 
-                                 0.04934450f, 0.07126625f, 0.0f, 0.0f, -0.28948891f, 0.07438067f, -0.34931409f, 0.02799958f};
+                                 0.04934450f,
+                                 0.07126625f,
+                                 0.0f,
+                                 0.0f,
+                                 -0.28948891f,
+                                 0.07438067f,
+                                 -0.34931409f,
+                                 0.02799958f};
 
   std::string direction = "bidirectional";
   LstmOpContext2x1x2x2 context(direction, activations);
-  context.RunTest(X_data, batch_size, seq_len, nullptr, nullptr, Y_data, Y_h_data, Y_c_data,
-                  &sequence_length, use_bias, use_peepholes, 0.0f, false, false);
+  context.RunTest(X_data, batch_size, seq_len, nullptr, nullptr, Y_data, Y_h_data, Y_c_data, &sequence_length, use_bias, use_peepholes, 0.0f, false, false);
 }
 
 #ifndef ENABLE_TRAINING
@@ -1359,18 +1365,19 @@ TEST(LSTMTest, SharedPrepackedWeights) {
   std::vector<float> X_data{1.f, 2.f, 10.f, 11.f};
 
   std::vector<float> W_data{
-      0.1f, 0.2f, 0.3f, 0.4f,
-      1.f, 2.f, 3.f, 4.f,
-      10.f, 11.f, 12.f, 13.f};
+      0.1f, 0.2f, 0.3f, 0.4f, 1.f, 2.f, 3.f, 4.f, 10.f, 11.f, 12.f, 13.f};
 
   std::vector<float> R_data(num_directions * 4 * hidden_size * hidden_size, 0.1f);
 
   std::vector<float> Y_data{
-      0.28828835f, 0.36581863f, 0.45679406f,
-      0.34526032f, 0.47220859f, 0.55850911f,
+      0.28828835f, 0.36581863f, 0.45679406f, 0.34526032f, 0.47220859f, 0.55850911f,
 
-      0.84196719f, 0.89402526f, 0.91073048f,
-      0.85882828f, 0.90703777f, 0.92382453f};
+      0.84196719f,
+      0.89402526f,
+      0.91073048f,
+      0.85882828f,
+      0.90703777f,
+      0.92382453f};
 
   OpTester test("LSTM");
 
@@ -1417,13 +1424,11 @@ TEST(LSTMTest, SharedPrepackedWeights) {
 
   // W
   OrtValue W;
-  Tensor::InitOrtValue(DataTypeImpl::GetType<float>(), TensorShape(W_dims),
-                       W_data.data(), OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator), W);
+  Tensor::InitOrtValue(DataTypeImpl::GetType<float>(), TensorShape(W_dims), W_data.data(), OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator), W);
 
   // R
   OrtValue R;
-  Tensor::InitOrtValue(DataTypeImpl::GetType<float>(), TensorShape(R_dims),
-                       R_data.data(), OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator), R);
+  Tensor::InitOrtValue(DataTypeImpl::GetType<float>(), TensorShape(R_dims), R_data.data(), OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator), R);
 
   SessionOptions so;
 
@@ -1448,8 +1453,7 @@ TEST(LSTMTest, SharedPrepackedWeights) {
   // Session 1
   {
     auto ep_vec = cpu_ep();
-    test.Run(so, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr,
-             &ep_vec, {}, &number_of_pre_packed_weights_counter_session_1, &number_of_shared_pre_packed_weights_counter);
+    test.Run(so, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &ep_vec, {}, &number_of_pre_packed_weights_counter_session_1, &number_of_shared_pre_packed_weights_counter);
     // Assert that no pre-packed weights have been shared thus far
     ASSERT_EQ(number_of_shared_pre_packed_weights_counter, static_cast<size_t>(0));
   }
@@ -1470,8 +1474,7 @@ TEST(LSTMTest, SharedPrepackedWeights) {
   {
     size_t number_of_pre_packed_weights_counter_session_2 = 0;
     auto ep_vec = cpu_ep();
-    test.Run(so, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr,
-             &ep_vec, {}, &number_of_pre_packed_weights_counter_session_2, &number_of_shared_pre_packed_weights_counter);
+    test.Run(so, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &ep_vec, {}, &number_of_pre_packed_weights_counter_session_2, &number_of_shared_pre_packed_weights_counter);
 
     // Assert that the same number of weights were pre-packed in both sessions
     ASSERT_EQ(number_of_pre_packed_weights_counter_session_1, number_of_pre_packed_weights_counter_session_2);

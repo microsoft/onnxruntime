@@ -59,8 +59,7 @@ void Recv::ReceiveData(
   nccl_service.SubmitRecvAndWait(info_data.buffer, info_data.size, info_data.rank);
 #elif defined(use_mpi)
   MPI_CHECK(MPI_Recv(
-      info_data.buffer, info_data.size, MPI_CHAR,
-      info_data.rank, info_data.tag, MPI_COMM_WORLD, MPI_STATUS_IGNORE));
+      info_data.buffer, info_data.size, MPI_CHAR, info_data.rank, info_data.tag, MPI_COMM_WORLD, MPI_STATUS_IGNORE));
 #else
   ORT_THROW("Failed to recv from rank: ", info_data.rank);
 #endif
@@ -90,11 +89,9 @@ void Recv::ReceiveData(
     assert(tensor_offset_in_bytes + tensor->SizeInBytes() <= aggregated_aligned_tensor_bytes);
     // Copy data out from buffer.
 #if defined(ORT_USE_NCCL) && defined(USE_NCCL_P2P)
-    CUDA_CALL_THROW(cudaMemcpyAsync(tensor->MutableDataRaw(), buffer.get() + tensor_offset_in_bytes,
-                                    tensor->SizeInBytes(), cudaMemcpyDeviceToDevice, Stream(context)));
+    CUDA_CALL_THROW(cudaMemcpyAsync(tensor->MutableDataRaw(), buffer.get() + tensor_offset_in_bytes, tensor->SizeInBytes(), cudaMemcpyDeviceToDevice, Stream(context)));
 #else
-    CUDA_CALL_THROW(cudaMemcpyAsync(tensor->MutableDataRaw(), buffer.get() + tensor_offset_in_bytes,
-                                    tensor->SizeInBytes(), cudaMemcpyHostToDevice, Stream(context)));
+    CUDA_CALL_THROW(cudaMemcpyAsync(tensor->MutableDataRaw(), buffer.get() + tensor_offset_in_bytes, tensor->SizeInBytes(), cudaMemcpyHostToDevice, Stream(context)));
 #endif
 
 #ifndef NDEBUG

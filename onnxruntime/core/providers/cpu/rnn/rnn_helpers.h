@@ -40,8 +40,7 @@ inline Direction MakeDirection(const std::string& direction) {
   if (direction == "bidirectional") {
     return kBidirectional;
   }
-  ORT_THROW("Invalid 'direction' argument of '", direction,
-            "'. Must be one of 'forward', 'reverse', or 'bidirectional'.");
+  ORT_THROW("Invalid 'direction' argument of '", direction, "'. Must be one of 'forward', 'reverse', or 'bidirectional'.");
 }
 
 /** Allocate a unique_ptr using allocator_, and return a span to the allocated memory so usage is safe
@@ -56,7 +55,8 @@ template <typename TAlloc>
 gsl::span<TAlloc> Allocate(std::shared_ptr<IAllocator> allocator,
                            size_t size,
                            IAllocatorUniquePtr<TAlloc>& unique_ptr,
-                           bool fill = false, TAlloc fill_value = TAlloc{}) {
+                           bool fill = false,
+                           TAlloc fill_value = TAlloc{}) {
   unique_ptr = IAllocator::MakeUniquePtr<TAlloc>(std::move(allocator), size);
   auto span = gsl::make_span(unique_ptr.get(), size);
 
@@ -155,11 +155,7 @@ void ComputeGemm(const int M,
   ORT_ENFORCE(C + (M * ldc - (ldc - N)) <= C_end);
 
   ::onnxruntime::math::GemmEx<float>(
-      CblasNoTrans, CblasTrans,
-      M, N, K, alpha,
-      &*A, lda,
-      &*B, ldb, beta,
-      &*C, ldc, thread_pool);
+      CblasNoTrans, CblasTrans, M, N, K, alpha, &*A, lda, &*B, ldb, beta, &*C, ldc, thread_pool);
 }
 
 struct PackedWeights {
@@ -276,10 +272,12 @@ inline void ComputeGemm(const int M,
               N,
               K,
               alpha,
-              A_span.data(), A_span.data() + A_span.size(),
+              A_span.data(),
+              A_span.data() + A_span.size(),
               weights,
               beta,
-              C_span.data(), C_span.data() + C_span.size(),
+              C_span.data(),
+              C_span.data() + C_span.size(),
               ldc,
               quantized_A_buffer,
               quantize_agg_C_buffer,
@@ -322,8 +320,7 @@ T* SafeRawPointer(typename gsl::span<T> span, size_t offset, size_t size) {
   return span.data() + offset;
 }
 
-void DumpMatrixImpl(const std::string& name, const float* src, int row, int col,
-                    int offset = 0, int col_width = -1);
+void DumpMatrixImpl(const std::string& name, const float* src, int row, int col, int offset = 0, int col_width = -1);
 
 // Helper class to wrap the processing of the activation funcs and any alpha/beta values.
 // The alpha/beta values are consumed in the order of the activation funcs. once they run out
@@ -381,8 +378,7 @@ void tanh(float* pd, int c, float alpha, float beta);
 void relu(float* pd, int c, float alpha, float beta);
 void sigmoid_exact(float* pd, int c, float alpha, float beta);
 void tanh_exact(float* pd, int c, float alpha, float beta);
-void merge_lstm_gates_to_memory(const float* pprev, const float* pi, const float* pf, const float* pg, float* pcurr,
-                                int c);
+void merge_lstm_gates_to_memory(const float* pprev, const float* pi, const float* pf, const float* pg, float* pcurr, int c);
 void gru_reset_gate_tanh(const float* ps1, float* ps2, float* pd, int c, float alpha, float beta);
 void gru_reset_gate_sigmoid(const float* ps1, float* ps2, float* pd, int c, float alpha, float beta);
 void gru_reset_gate_relu(const float* ps1, const float* ps2, float* pd, int c, float alpha, float beta);

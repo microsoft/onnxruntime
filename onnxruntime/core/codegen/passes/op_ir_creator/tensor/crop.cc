@@ -20,8 +20,7 @@ Status GENERIC_OP_IR_CREATOR_CLASS(Crop)::Evaluate(
   OpNodeProtoHelper<ProtoHelperNodeContext> attrs(&ctx);
 
   if (inputs[0]->shape.size() != 4) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Input is expected to have four dimensions corresponding to [N,C,H,W]");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input is expected to have four dimensions corresponding to [N,C,H,W]");
   }
 
   std::vector<int64_t> border;
@@ -33,8 +32,7 @@ Status GENERIC_OP_IR_CREATOR_CLASS(Crop)::Evaluate(
   ORT_UNUSED_PARAMETER(is_ok);
 
   if (border.size() != 4) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Attribute border needs to be specified with four border elements");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Attribute border needs to be specified with four border elements");
   }
 
   tvm::Tensor Y = Crop(inputs[0], ToTvmArray(border), ToTvmArray(scale), node.Name() + "_Crop");

@@ -149,10 +149,8 @@ class Gemm : public onnxruntime::Gemm<T> {
       pNetworkId = &it->second;
     }
 
-    armnn::InputTensors inputTensors{{0, armnn::ConstTensor(Gemm::run->GetInputTensorInfo(*pNetworkId, 0),
-                                                            x_data)}};
-    armnn::OutputTensors outputTensors{{0, armnn::Tensor(Gemm::run->GetOutputTensorInfo(*pNetworkId, 0),
-                                                         y_data)}};
+    armnn::InputTensors inputTensors{{0, armnn::ConstTensor(Gemm::run->GetInputTensorInfo(*pNetworkId, 0), x_data)}};
+    armnn::OutputTensors outputTensors{{0, armnn::Tensor(Gemm::run->GetOutputTensorInfo(*pNetworkId, 0), y_data)}};
 
     Gemm::run->EnqueueWorkload(*pNetworkId, inputTensors, outputTensors);
 

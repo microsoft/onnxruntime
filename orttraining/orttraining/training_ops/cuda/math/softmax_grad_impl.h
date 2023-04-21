@@ -9,7 +9,6 @@
 namespace onnxruntime {
 namespace cuda {
 template <typename T>
-Status SoftmaxGradImpl(cudaStream_t stream, cudnnHandle_t cudnn_handle, T* input_grad, const T* output_grad,
-                       const T* softmax_output, int element_count, int batch_count, bool is_log_softmax);
+Status SoftmaxGradImpl(cudaStream_t stream, cudnnHandle_t cudnn_handle, T* input_grad, const T* output_grad, const T* softmax_output, int element_count, int batch_count, bool is_log_softmax);
 }
 }  // namespace onnxruntime

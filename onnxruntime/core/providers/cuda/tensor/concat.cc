@@ -9,7 +9,8 @@ namespace onnxruntime {
 namespace cuda {
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(Concat,
                                   kOnnxDomain,
-                                  4, 10,
+                                  4,
+                                  10,
                                   kCudaExecutionProvider,
                                   (*KernelDefBuilder::Create())
                                       .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
@@ -18,7 +19,8 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(Concat,
 // opset 11 explicitly support negative axis
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(Concat,
                                   kOnnxDomain,
-                                  11, 12,
+                                  11,
+                                  12,
                                   kCudaExecutionProvider,
                                   (*KernelDefBuilder::Create())
                                       .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
@@ -73,13 +75,11 @@ Status Concat::ComputeInternal(OpKernelContext* ctx) const {
       TArray<const void*, 32> input_ptr_array(input_count);
       for (int i = 0; i < input_count; ++i) input_ptr_array[i] = input_ptr_cpuspan[i];
       ORT_RETURN_IF_ERROR(ConcatSameConcatDimImpl(
-          Stream(ctx), element_bytes, block_size_including_axis_dim, block_size_inside_axis_dim, concat_sizes[0],
-          p.output_tensor->MutableDataRaw(), input_ptr_array, static_cast<size_t>(p.output_num_elements)));
+          Stream(ctx), element_bytes, block_size_including_axis_dim, block_size_inside_axis_dim, concat_sizes[0], p.output_tensor->MutableDataRaw(), input_ptr_array, static_cast<size_t>(p.output_num_elements)));
     } else {
       ORT_RETURN_IF_ERROR(input_ptr.CopyToGpu(ctx->GetComputeStream()));
       ORT_RETURN_IF_ERROR(ConcatSameConcatDimImpl(
-          Stream(ctx), element_bytes, block_size_including_axis_dim, block_size_inside_axis_dim, concat_sizes[0],
-          p.output_tensor->MutableDataRaw(), input_ptr.GpuPtr(), static_cast<size_t>(p.output_num_elements)));
+          Stream(ctx), element_bytes, block_size_including_axis_dim, block_size_inside_axis_dim, concat_sizes[0], p.output_tensor->MutableDataRaw(), input_ptr.GpuPtr(), static_cast<size_t>(p.output_num_elements)));
     }
   } else {
     CudaAsyncBuffer<int64_t> concat_sizes_gpu(this, concat_sizes);
@@ -93,10 +93,7 @@ Status Concat::ComputeInternal(OpKernelContext* ctx) const {
     ORT_RETURN_IF_ERROR(axis_dimension_input_output_mapping_gpu.CopyToGpu(ctx->GetComputeStream()));
     ORT_RETURN_IF_ERROR(concat_sizes_range_gpu.CopyToGpu(ctx->GetComputeStream()));
     ORT_RETURN_IF_ERROR(input_ptr.CopyToGpu(ctx->GetComputeStream()));
-    ORT_RETURN_IF_ERROR(ConcatImpl(Stream(ctx), element_bytes, block_size_including_axis_dim, block_size_inside_axis_dim,
-                                   concat_sizes_gpu.GpuPtr(), concat_sizes_range_gpu.GpuPtr(),
-                                   axis_dimension_input_output_mapping_gpu.GpuPtr(), p.output_tensor->MutableDataRaw(),
-                                   input_ptr.GpuPtr(), static_cast<size_t>(p.output_num_elements)));
+    ORT_RETURN_IF_ERROR(ConcatImpl(Stream(ctx), element_bytes, block_size_including_axis_dim, block_size_inside_axis_dim, concat_sizes_gpu.GpuPtr(), concat_sizes_range_gpu.GpuPtr(), axis_dimension_input_output_mapping_gpu.GpuPtr(), p.output_tensor->MutableDataRaw(), input_ptr.GpuPtr(), static_cast<size_t>(p.output_num_elements)));
   }
 
   return Status::OK();

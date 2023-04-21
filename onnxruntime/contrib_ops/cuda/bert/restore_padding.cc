@@ -42,16 +42,14 @@ Status RestorePadding<T>::ComputeInternal(OpKernelContext* context) const {
 
   const auto& dims = input->Shape().GetDims();
   if (dims.size() != 2) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'input' is expected to have 2 dimensions, got ",
-                           dims.size());
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'input' is expected to have 2 dimensions, got ", dims.size());
   }
   int64_t total_tokens = dims[0];
   int64_t hidden_size = dims[1];
 
   const auto& token_offset_dims = token_offset->Shape().GetDims();
   if (token_offset_dims.size() != 2) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'token_offset' is expected to have 2 dimensions, got ",
-                           token_offset_dims.size());
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'token_offset' is expected to have 2 dimensions, got ", token_offset_dims.size());
   }
   int64_t batch_size = token_offset_dims[0];
   int64_t sequence_length = token_offset_dims[1];

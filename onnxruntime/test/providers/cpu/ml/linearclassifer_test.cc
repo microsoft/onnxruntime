@@ -16,9 +16,7 @@ TEST(MLOpTest, LinearClassifierMulticlass) {
   std::vector<float> X = {1.f, 0.f, 3.f, 44.f, 23.f, 11.3f};
 
   // three estimates, for 3 points each, so 9 predictions
-  std::vector<float> predictions = {-4.14164229f, 1.1092185f, -0.06021539f,
-                                    10.45007543f, -27.46673545f, 1.19408663f,
-                                    -5.24206713f, 8.45549693f, -3.98224414f};
+  std::vector<float> predictions = {-4.14164229f, 1.1092185f, -0.06021539f, 10.45007543f, -27.46673545f, 1.19408663f, -5.24206713f, 8.45549693f, -3.98224414f};
   std::vector<float> intercepts = {-3.91601811f, 0.42575697f, 0.13731251f};
   std::vector<int64_t> predicted_class = {2, 1, 2};
 
@@ -37,15 +35,12 @@ TEST(MLOpTest, LinearClassifierMulticlass) {
 TEST(MLOpTest, LinearClassifierMulticlassProb) {
   OpTester test("LinearClassifier", 1, onnxruntime::kMLDomain);
 
-  std::vector<float> coefficients = {-0.22562418f, 0.34188559f, 0.68346153f,
-                                     -0.68051993f, -0.1975279f, 0.03748541f};
+  std::vector<float> coefficients = {-0.22562418f, 0.34188559f, 0.68346153f, -0.68051993f, -0.1975279f, 0.03748541f};
   std::vector<int64_t> classes = {1, 2, 3};
   std::vector<float> X = {1.f, 0.f, 3.f, 44.f, 23.f, 11.3f};
 
   // three estimates, for 3 points each, so 9 predictions
-  std::vector<float> predictions = {-4.14164229f, 1.1092185f, -0.06021539f,
-                                    10.45007543f, -27.46673545f, 1.19408663f,
-                                    -5.24206713f, 8.45549693f, -3.98224414f};
+  std::vector<float> predictions = {-4.14164229f, 1.1092185f, -0.06021539f, 10.45007543f, -27.46673545f, 1.19408663f, -5.24206713f, 8.45549693f, -3.98224414f};
   std::vector<float> intercepts = {-3.91601811f, 0.42575697f, 0.13731251f};
   std::vector<int64_t> predicted_class = {2, 1, 2};
 
@@ -63,15 +58,12 @@ TEST(MLOpTest, LinearClassifierMulticlassProb) {
 TEST(MLOpTest, LinearClassifierMulticlassProbSigmoid) {
   OpTester test("LinearClassifier", 1, onnxruntime::kMLDomain);
 
-  std::vector<float> coefficients = {-0.22562418f, 0.34188559f, 0.68346153f,
-                                     -0.68051993f, -0.1975279f, 0.03748541f};
+  std::vector<float> coefficients = {-0.22562418f, 0.34188559f, 0.68346153f, -0.68051993f, -0.1975279f, 0.03748541f};
   std::vector<int64_t> classes = {1, 2, 3};
   std::vector<float> X = {1.f, 0.f, 3.f, 44.f, 23.f, 11.3f};
 
   // three estimates, for 3 points each, so 9 predictions
-  std::vector<float> predictions = {0.015647972f, 0.751983387f, 0.484950699f,
-                                    0.999971055f, 1.17855E-12f, 0.767471158f,
-                                    0.005261482f, 0.999787317f, 0.018302525f};
+  std::vector<float> predictions = {0.015647972f, 0.751983387f, 0.484950699f, 0.999971055f, 1.17855E-12f, 0.767471158f, 0.005261482f, 0.999787317f, 0.018302525f};
   std::vector<float> intercepts = {-3.91601811f, 0.42575697f, 0.13731251f};
   std::vector<int64_t> predicted_class = {2, 1, 2};
 
@@ -130,16 +122,13 @@ template <typename T>
 void LinearClassifierMulticlass() {
   OpTester test("LinearClassifier", 1, onnxruntime::kMLDomain);
 
-  std::vector<float> coefficients = {-0.22562418f, 0.34188559f, 0.68346153f,
-                                     -0.68051993f, -0.1975279f, 0.03748541f};
+  std::vector<float> coefficients = {-0.22562418f, 0.34188559f, 0.68346153f, -0.68051993f, -0.1975279f, 0.03748541f};
   std::vector<int64_t> classes = {1, 2, 3};
   int64_t multi_class = 0;
   std::vector<T> X = {1, 0, 3, 44, 23, 11};
 
   // three estimates, for 3 points each, so 9 predictions
-  std::vector<float> predictions = {-4.14164229f, 1.1092185f, -0.06021539f,
-                                    10.45007543f, -27.46673545f, 1.19408663f,
-                                    -5.3446321487426758f, 8.6596536636352539f, -3.9934897422790527};
+  std::vector<float> predictions = {-4.14164229f, 1.1092185f, -0.06021539f, 10.45007543f, -27.46673545f, 1.19408663f, -5.3446321487426758f, 8.6596536636352539f, -3.9934897422790527};
   std::vector<float> intercepts = {-3.91601811f, 0.42575697f, 0.13731251f};
   std::vector<int64_t> predicted_class = {2, 1, 2};
 

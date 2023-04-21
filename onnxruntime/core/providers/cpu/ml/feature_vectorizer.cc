@@ -11,16 +11,11 @@ namespace ml {
 ONNX_CPU_OPERATOR_ML_KERNEL(
     FeatureVectorizer,
     1,
-    KernelDefBuilder().TypeConstraint("T1", std::vector<MLDataType>{
-                                                DataTypeImpl::GetTensorType<int32_t>(),
-                                                DataTypeImpl::GetTensorType<int64_t>(),
-                                                DataTypeImpl::GetTensorType<float>(),
-                                                DataTypeImpl::GetTensorType<double>()}),
+    KernelDefBuilder().TypeConstraint("T1", std::vector<MLDataType>{DataTypeImpl::GetTensorType<int32_t>(), DataTypeImpl::GetTensorType<int64_t>(), DataTypeImpl::GetTensorType<float>(), DataTypeImpl::GetTensorType<double>()}),
     FeatureVectorizer);
 
 template <typename T>
-static void VectorizeTensor(const Tensor& input_tensor, int64_t feature_size, int64_t sum_input_dimensions,
-                            typename gsl::span<float>::iterator out_iter);
+static void VectorizeTensor(const Tensor& input_tensor, int64_t feature_size, int64_t sum_input_dimensions, typename gsl::span<float>::iterator out_iter);
 
 template <typename T>
 static void CopyWithCast(typename gsl::span<const T>::iterator begin,
@@ -29,8 +24,7 @@ static void CopyWithCast(typename gsl::span<const T>::iterator begin,
 
 Status FeatureVectorizer::Compute(OpKernelContext* context) const {
   int input_count = context->NumVariadicInputs(0);
-  ORT_ENFORCE(input_count >= 0 && static_cast<size_t>(input_count) == input_dimensions_.size(), "Number of inputs (",
-              input_count, ") does not match number of inputdimensions values (", input_dimensions_.size(), ").");
+  ORT_ENFORCE(input_count >= 0 && static_cast<size_t>(input_count) == input_dimensions_.size(), "Number of inputs (", input_count, ") does not match number of inputdimensions values (", input_dimensions_.size(), ").");
 
   const auto* tensor_pointer = context->Input<Tensor>(0);
   if (tensor_pointer == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "input count mismatch");
@@ -83,8 +77,7 @@ Status FeatureVectorizer::Compute(OpKernelContext* context) const {
 }  // namespace ml
 
 template <typename T>
-static void VectorizeTensor(const Tensor& input_tensor, int64_t feature_size, int64_t sum_input_dimensions,
-                            typename gsl::span<float>::iterator out_iter) {
+static void VectorizeTensor(const Tensor& input_tensor, int64_t feature_size, int64_t sum_input_dimensions, typename gsl::span<float>::iterator out_iter) {
   auto& shape = input_tensor.Shape();
   auto input_dims = shape.GetDims();
 
@@ -118,11 +111,10 @@ template <typename T>
 static void CopyWithCast(typename gsl::span<const T>::iterator begin,
                          typename gsl::span<const T>::iterator end,
                          gsl::span<float>::iterator out_iter) {
-  std::for_each(begin, end,
-                [&out_iter](const typename gsl::span<const T>::const_reference value) {
-                  *out_iter = static_cast<float>(value);
-                  ++out_iter;
-                });
+  std::for_each(begin, end, [&out_iter](const typename gsl::span<const T>::const_reference value) {
+    *out_iter = static_cast<float>(value);
+    ++out_iter;
+  });
 }
 
 }  // namespace ml

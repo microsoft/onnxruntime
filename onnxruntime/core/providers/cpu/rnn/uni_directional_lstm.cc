@@ -20,8 +20,7 @@ namespace lstm {
 #endif
 
 template <typename TLambda>
-static inline void ExecuteLambdaInParallel(TLambda lambda, int max, int step, double cost,
-                                           onnxruntime::concurrency::ThreadPool* ttp) {
+static inline void ExecuteLambdaInParallel(TLambda lambda, int max, int step, double cost, onnxruntime::concurrency::ThreadPool* ttp) {
   // #define NOTHREADS to execute the lambdas directly and in order if you need to do that to debug
 
 #ifdef NOTHREADS
@@ -44,13 +43,7 @@ using namespace rnn::detail;
 
 template <typename T>
 UniDirectionalLstm<T>::UniDirectionalLstm(
-    AllocatorPtr allocator, const logging::Logger& logger, const int seq_length, const int batch_size,
-    const int input_size, const int hidden_size, Direction direction, const bool input_forget,
-    const gsl::span<const T>& bias, const gsl::span<const T>& peephole_weights,
-    const gsl::span<const T>& initial_hidden_state, const gsl::span<const T>& initial_cell_state,
-    const ActivationFuncs::Entry& activation_func_f, const ActivationFuncs::Entry& activation_func_g,
-    const ActivationFuncs::Entry& activation_func_h, const float clip, concurrency::ThreadPool* thread_pool,
-    const bool training_mode)
+    AllocatorPtr allocator, const logging::Logger& logger, const int seq_length, const int batch_size, const int input_size, const int hidden_size, Direction direction, const bool input_forget, const gsl::span<const T>& bias, const gsl::span<const T>& peephole_weights, const gsl::span<const T>& initial_hidden_state, const gsl::span<const T>& initial_cell_state, const ActivationFuncs::Entry& activation_func_f, const ActivationFuncs::Entry& activation_func_g, const ActivationFuncs::Entry& activation_func_h, const float clip, concurrency::ThreadPool* thread_pool, const bool training_mode)
     : allocator_(allocator),
       logger_(logger),
       seq_length_(seq_length),
@@ -64,14 +57,11 @@ UniDirectionalLstm<T>::UniDirectionalLstm(
       use_peepholes_(!peephole_weights.empty()),
       thread_pool_(thread_pool),
       training_mode_(training_mode) {
-  activation_f_ = {deepcpu::ActivationFuncByName(activation_func_f.name), activation_func_f.alpha,
-                   activation_func_f.beta};
+  activation_f_ = {deepcpu::ActivationFuncByName(activation_func_f.name), activation_func_f.alpha, activation_func_f.beta};
 
-  activation_g_ = {deepcpu::ActivationFuncByName(activation_func_g.name), activation_func_g.alpha,
-                   activation_func_g.beta};
+  activation_g_ = {deepcpu::ActivationFuncByName(activation_func_g.name), activation_func_g.alpha, activation_func_g.beta};
 
-  activation_h_ = {deepcpu::LstmMergeGatesFuncByName(activation_func_h.name), activation_func_h.alpha,
-                   activation_func_h.beta};
+  activation_h_ = {deepcpu::LstmMergeGatesFuncByName(activation_func_h.name), activation_func_h.alpha, activation_func_h.beta};
 
   clip_with_bias_ptr_ = use_bias_ ? deepcpu::clip_add_bias : deepcpu::clip_ignore_bias;
 
@@ -223,10 +213,14 @@ void UniDirectionalLstm<T>::AllocateQuantizeBuffers(int max_sequence_length) {
 template <typename T>
 template <typename WeightT>
 void UniDirectionalLstm<T>::ComputeImpl(const gsl::span<const T>& inputs_arg,
-                                        const gsl::span<const int>& sequence_lengths_arg, const int num_directions,
-                                        const GemmWeights<WeightT>& input_weights, const GemmWeights<WeightT>& recurrent_weights,
-                                        gsl::span<T>& outputs, gsl::span<T>& final_hidden_state,
-                                        gsl::span<T>& final_cell_state, gsl::span<T>& all_cell_states,
+                                        const gsl::span<const int>& sequence_lengths_arg,
+                                        const int num_directions,
+                                        const GemmWeights<WeightT>& input_weights,
+                                        const GemmWeights<WeightT>& recurrent_weights,
+                                        gsl::span<T>& outputs,
+                                        gsl::span<T>& final_hidden_state,
+                                        gsl::span<T>& final_cell_state,
+                                        gsl::span<T>& all_cell_states,
                                         gsl::span<T>& output_iofc) {
   // copy spans (just T* and size, not data in span) as we may change them
   gsl::span<const T> inputs = inputs_arg;
@@ -283,12 +277,7 @@ void UniDirectionalLstm<T>::ComputeImpl(const gsl::span<const T>& inputs_arg,
   AllocateQuantizeBuffers<WeightT>(max_sequence_length);
 
   // apply the weights to all the inputs and save to output_IOFC
-  ComputeGemm(total_rows, hidden_size_x4, input_size_, alpha, inputs,
-              input_weights,
-              beta, output_iofc, hidden_size_x4,
-              quantized_input_or_a_.data(),
-              nullptr,
-              thread_pool_);
+  ComputeGemm(total_rows, hidden_size_x4, input_size_, alpha, inputs, input_weights, beta, output_iofc, hidden_size_x4, quantized_input_or_a_.data(), nullptr, thread_pool_);
 
   DumpMatrix("Xt*(W[iofc]^T)", output_iofc.data(), total_rows, hidden_size_x4);
 
@@ -335,10 +324,10 @@ void UniDirectionalLstm<T>::ComputeImpl(const gsl::span<const T>& inputs_arg,
 
       // calculate Xt*(W[iofc]^T) + Ht-t*R[iofc]
       // Do it sequentially to avoid nested parallelism
-      ComputeGemm(num_seq_to_compute_adjusted, hidden_size_x4, hidden_size_, alpha,
-                  gsl::span<const T>(&*previous_state, previous_state_end - previous_state),  // Ht-1
-                  recurrent_weights,                                                          // R[iofc]
-                  beta, gsl::span<T>(&*step_out_IOFC, output_iofc.end() - step_out_IOFC),     // input contains Xt*(W[iofc]^T)
+      ComputeGemm(num_seq_to_compute_adjusted, hidden_size_x4, hidden_size_, alpha, gsl::span<const T>(&*previous_state, previous_state_end - previous_state),  // Ht-1
+                  recurrent_weights,                                                                                                                            // R[iofc]
+                  beta,
+                  gsl::span<T>(&*step_out_IOFC, output_iofc.end() - step_out_IOFC),  // input contains Xt*(W[iofc]^T)
                   hidden_size_x4,
                   quantized_input_or_a_.data() + (seq_start * hidden_size_),
                   quantized_C_buffer_.data() + (seq_start * hidden_size_x4),
@@ -363,9 +352,7 @@ void UniDirectionalLstm<T>::ComputeImpl(const gsl::span<const T>& inputs_arg,
       span_T_iter batched_cell_states_end = all_cell_states.end();
 
       span_T_iter step_out_IOFC_end = step_out_IOFC + num_seq_to_compute_adjusted * hidden_size_x4;
-      GateComputations(step_out_IOFC, step_out_IOFC_end, c_prev, C_prev_end, c_prev_clipped, C_prev_clipped_end,
-                       batched_output, batched_output_end, sequence_lengths, min_sequence_length, step, seq_start,
-                       num_seq_to_compute_adjusted, output_sequence, batched_cell_states, batched_cell_states_end);
+      GateComputations(step_out_IOFC, step_out_IOFC_end, c_prev, C_prev_end, c_prev_clipped, C_prev_clipped_end, batched_output, batched_output_end, sequence_lengths, min_sequence_length, step, seq_start, num_seq_to_compute_adjusted, output_sequence, batched_cell_states, batched_cell_states_end);
 
       // copy last row to final_cell_state
       for (int lrow = seq_start; lrow < seq_start + num_seq_to_compute_adjusted; ++lrow) {
@@ -448,8 +435,7 @@ void UniDirectionalLstm<T>::ComputeImpl(const gsl::span<const T>& inputs_arg,
   }
 
   if (output_sequence && direction_ == Direction::kReverse)
-    ReverseSequence<T>(outputs, original_outputs, sequence_lengths, seq_length_, batch_size_, hidden_size_,
-                       num_directions, thread_pool_);
+    ReverseSequence<T>(outputs, original_outputs, sequence_lengths, seq_length_, batch_size_, hidden_size_, num_directions, thread_pool_);
 }
 
 // #define PREVIOUS_BROKEN_VERSION
@@ -459,10 +445,18 @@ template <typename T>
 void UniDirectionalLstm<T>::GateComputations(
     span_T_iter& out, span_T_iter& out_end, span_T_iter& C_prev,
     const span_T_iter& C_prev_end,  // Ct-1 value not 'ct'. using 'C' for clarity
-    span_T_iter& C_prev_clipped, const span_T_iter& C_prev_clipped_end, span_T_iter& batched_output,
-    span_T_iter& batched_output_end, const gsl::span<const int>& seq_lengths, const int min_sequence_length,
-    const int step, const int row, const int local_fused_hidden_rows, bool output_sequence,
-    span_T_iter& batched_cell_states, span_T_iter& batched_cell_states_end) {
+    span_T_iter& C_prev_clipped,
+    const span_T_iter& C_prev_clipped_end,
+    span_T_iter& batched_output,
+    span_T_iter& batched_output_end,
+    const gsl::span<const int>& seq_lengths,
+    const int min_sequence_length,
+    const int step,
+    const int row,
+    const int local_fused_hidden_rows,
+    bool output_sequence,
+    span_T_iter& batched_cell_states,
+    span_T_iter& batched_cell_states_end) {
   int hidden_size_x4 = 4 * hidden_size_;
 
   // Activation gates.
@@ -499,8 +493,7 @@ void UniDirectionalLstm<T>::GateComputations(
 
     // Input Gate
     if (use_peepholes_) {
-      deepcpu::elementwise_product(pCprev_hidden_size, SafeRawConstPointer<const T>(peephole_i_, 0, hidden_size_), pi,
-                                   hidden_size_);
+      deepcpu::elementwise_product(pCprev_hidden_size, SafeRawConstPointer<const T>(peephole_i_, 0, hidden_size_), pi, hidden_size_);
     }
 
     const float* pBi = use_bias_ ? SafeRawConstPointer<T>(bias_WRi_, 0, hidden_size_) : nullptr;
@@ -513,8 +506,7 @@ void UniDirectionalLstm<T>::GateComputations(
       for (int i = 0; i < hidden_size_; i++) pf[i] = 1.0f - pi[i];
     } else {
       if (use_peepholes_) {
-        deepcpu::elementwise_product(pCprev_hidden_size, SafeRawConstPointer<const T>(peephole_f_, 0, hidden_size_), pf,
-                                     hidden_size_);
+        deepcpu::elementwise_product(pCprev_hidden_size, SafeRawConstPointer<const T>(peephole_f_, 0, hidden_size_), pf, hidden_size_);
       }
 
       const float* pBf = use_bias_ ? SafeRawConstPointer<T>(bias_WRf_, 0, hidden_size_) : nullptr;
@@ -534,8 +526,7 @@ void UniDirectionalLstm<T>::GateComputations(
     // C_current. use previous C value as input, and update in-place
     float* pC_cur = pCprev_hidden_size;
 #ifdef PREVIOUS_BROKEN_VERSION
-    deepcpu::merge_lstm_gates_to_memory(pCprev_hidden_size + b * hidden_size_, pi, pf, pc,
-                                        pCprev_hidden_size + b * hidden_size_, hidden_size_);
+    deepcpu::merge_lstm_gates_to_memory(pCprev_hidden_size + b * hidden_size_, pi, pf, pc, pCprev_hidden_size + b * hidden_size_, hidden_size_);
     // DumpMatrix("C", pCprev_hidden_size + b * hidden_size_, 1, hidden_size_);
 #else
     deepcpu::merge_lstm_gates_to_memory(pCprev_hidden_size, pi, pf, pc, pC_cur, hidden_size_);
@@ -547,7 +538,8 @@ void UniDirectionalLstm<T>::GateComputations(
       // These lines are the only significant change for the LSTM training.
       // i.e. LSTMTraining needs the batched cell state as output.
       float* pC = SafeRawPointer<T>(batched_cell_states + row * hidden_size_ + b * hidden_size_,
-                                    batched_cell_states_end, hidden_size_);
+                                    batched_cell_states_end,
+                                    hidden_size_);
       for (int idx = 0; idx < hidden_size_; ++idx) {
         pC[idx] = pC_cur[idx];
       }
@@ -555,8 +547,7 @@ void UniDirectionalLstm<T>::GateComputations(
 
     // Output Gate
     if (use_peepholes_)
-      deepcpu::elementwise_product(pCprev_hidden_size, SafeRawConstPointer<const T>(peephole_o_, 0, hidden_size_), po,
-                                   hidden_size_);
+      deepcpu::elementwise_product(pCprev_hidden_size, SafeRawConstPointer<const T>(peephole_o_, 0, hidden_size_), po, hidden_size_);
 
     // calculate 'ot'
     const float* pBo = use_bias_ ? SafeRawConstPointer<T>(bias_WRo_, 0, hidden_size_) : nullptr;
@@ -620,39 +611,42 @@ void UniDirectionalLstm<T>::SetNumThreads() {
 template <typename T>
 template <typename WeightT>
 void UniDirectionalLstm<T>::Compute(const gsl::span<const T>& inputs_arg,
-                                    const gsl::span<const int>& sequence_lengths_arg, const int num_directions,
-                                    const GemmWeights<WeightT>& input_weights, const GemmWeights<WeightT>& recurrent_weights,
-                                    gsl::span<T>& outputs, gsl::span<T>& final_hidden_state,
+                                    const gsl::span<const int>& sequence_lengths_arg,
+                                    const int num_directions,
+                                    const GemmWeights<WeightT>& input_weights,
+                                    const GemmWeights<WeightT>& recurrent_weights,
+                                    gsl::span<T>& outputs,
+                                    gsl::span<T>& final_hidden_state,
                                     gsl::span<T>& final_cell_state) {
   gsl::span<T> dummy_all_cell_states = gsl::span<T>();
-  ComputeImpl(inputs_arg, sequence_lengths_arg, num_directions, input_weights, recurrent_weights, outputs,
-              final_hidden_state, final_cell_state, dummy_all_cell_states, output_iofc_);
+  ComputeImpl(inputs_arg, sequence_lengths_arg, num_directions, input_weights, recurrent_weights, outputs, final_hidden_state, final_cell_state, dummy_all_cell_states, output_iofc_);
 }
 
 template <typename T>
-void UniDirectionalLstm<T>::Compute(const gsl::span<const T>& inputs, const gsl::span<const int>& sequence_lengths,
-                                    int num_directions, const GemmWeights<T>& input_weights,
-                                    const GemmWeights<T>& recurrent_weights, gsl::span<T>& outputs,
-                                    gsl::span<T>& final_hidden_state, gsl::span<T>& final_cell_state,
-                                    gsl::span<T>& all_cell_states, gsl::span<T>& iofc) {
-  ComputeImpl(inputs, sequence_lengths, num_directions, input_weights, recurrent_weights, outputs,
-              final_hidden_state, final_cell_state, all_cell_states, iofc);
+void UniDirectionalLstm<T>::Compute(const gsl::span<const T>& inputs, const gsl::span<const int>& sequence_lengths, int num_directions, const GemmWeights<T>& input_weights, const GemmWeights<T>& recurrent_weights, gsl::span<T>& outputs, gsl::span<T>& final_hidden_state, gsl::span<T>& final_cell_state, gsl::span<T>& all_cell_states, gsl::span<T>& iofc) {
+  ComputeImpl(inputs, sequence_lengths, num_directions, input_weights, recurrent_weights, outputs, final_hidden_state, final_cell_state, all_cell_states, iofc);
 }
 
 template class UniDirectionalLstm<float>;
 template void UniDirectionalLstm<float>::Compute<float>(
     const gsl::span<const float>& inputs_arg,
-    const gsl::span<const int>& sequence_lengths_arg, const int num_directions,
-    const GemmWeights<float>& input_weights, const GemmWeights<float>& recurrent_weights,
+    const gsl::span<const int>& sequence_lengths_arg,
+    const int num_directions,
+    const GemmWeights<float>& input_weights,
+    const GemmWeights<float>& recurrent_weights,
     gsl::span<float>& outputs,
-    gsl::span<float>& final_hidden_state, gsl::span<float>& final_cell_state);
+    gsl::span<float>& final_hidden_state,
+    gsl::span<float>& final_cell_state);
 
 template void UniDirectionalLstm<float>::Compute<uint8_t>(
     const gsl::span<const float>& inputs_arg,
-    const gsl::span<const int>& sequence_lengths_arg, const int num_directions,
-    const GemmWeights<uint8_t>& input_weights, const GemmWeights<uint8_t>& recurrent_weights,
+    const gsl::span<const int>& sequence_lengths_arg,
+    const int num_directions,
+    const GemmWeights<uint8_t>& input_weights,
+    const GemmWeights<uint8_t>& recurrent_weights,
     gsl::span<float>& outputs,
-    gsl::span<float>& final_hidden_state, gsl::span<float>& final_cell_state);
+    gsl::span<float>& final_hidden_state,
+    gsl::span<float>& final_cell_state);
 
 }  // namespace lstm
 }  // namespace onnxruntime

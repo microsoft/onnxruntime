@@ -20,10 +20,7 @@ Status KernelRegistryManager::CreateKernel(const Node& node,
                                            SessionState& session_state,
                                            const KernelCreateInfo& kernel_create_info,
                                            std::unique_ptr<OpKernel>& out) const {
-  OpKernelInfo kernel_info(node, *kernel_create_info.kernel_def, execution_provider,
-                           session_state.GetConstantInitializedTensors(),
-                           session_state.GetOrtValueNameIdxMap(),
-                           session_state.GetDataTransferMgr());
+  OpKernelInfo kernel_info(node, *kernel_create_info.kernel_def, execution_provider, session_state.GetConstantInitializedTensors(), session_state.GetOrtValueNameIdxMap(), session_state.GetDataTransferMgr());
 
   return kernel_create_info.kernel_create_func(session_state.GetMutableFuncMgr(), kernel_info, out);
 }
@@ -32,8 +29,7 @@ Status KernelRegistryManager::RegisterKernels(const ExecutionProviders& executio
   for (auto& provider : execution_providers) {
     auto iter = provider_type_to_registry_.find(provider->Type());
     if (iter != provider_type_to_registry_.end()) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "found duplicated provider ", provider->Type(),
-                             " in KernelRegistryManager");
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "found duplicated provider ", provider->Type(), " in KernelRegistryManager");
     }
 
     auto registry = provider->GetKernelRegistry();

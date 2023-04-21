@@ -68,8 +68,7 @@ class BaseOpBuilder : public IOpBuilder {
 
   bool OnnxDataTypeToQnnDataType(const int32_t data_type, Qnn_DataType_t& qnn_data_type, bool is_quantized = false) const;
 
-  Status GetQnnDataType(const bool is_quantized_node, const ONNX_NAMESPACE::TypeProto* type_proto,
-                        Qnn_DataType_t& tensor_data_type) const {
+  Status GetQnnDataType(const bool is_quantized_node, const ONNX_NAMESPACE::TypeProto* type_proto, Qnn_DataType_t& tensor_data_type) const {
     if (!type_proto || !type_proto->tensor_type().has_elem_type()) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "The tensor doesn't have elem_type.");
     }

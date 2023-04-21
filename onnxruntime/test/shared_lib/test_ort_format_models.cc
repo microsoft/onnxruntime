@@ -16,10 +16,7 @@
 
 extern std::unique_ptr<Ort::Env> ort_env;
 
-static void TestInference(Ort::Env& env, const std::basic_string<ORTCHAR_T>& model_uri,
-                          const std::vector<Input>& inputs, const char* output_name,
-                          const std::vector<int64_t>& expected_dims_y, const std::vector<float>& expected_values_y,
-                          Ort::CustomOpDomain& custom_op_domain, void* cuda_compute_stream = nullptr) {
+static void TestInference(Ort::Env& env, const std::basic_string<ORTCHAR_T>& model_uri, const std::vector<Input>& inputs, const char* output_name, const std::vector<int64_t>& expected_dims_y, const std::vector<float>& expected_values_y, Ort::CustomOpDomain& custom_op_domain, void* cuda_compute_stream = nullptr) {
   Ort::SessionOptions session_options;
   session_options.Add(custom_op_domain);
 
@@ -40,16 +37,14 @@ static void TestInference(Ort::Env& env, const std::basic_string<ORTCHAR_T>& mod
     // we never call that for an input, but need to do the const_cast to make this potential explicit
     float* input_data = const_cast<float*>(inputs[i].values.data());
 
-    auto input_tensor = Ort::Value::CreateTensor<float>(allocator.Info(), input_data, inputs[i].values.size(),
-                                                        inputs[i].dims.data(), inputs[i].dims.size());
+    auto input_tensor = Ort::Value::CreateTensor<float>(allocator.Info(), input_data, inputs[i].values.size(), inputs[i].dims.data(), inputs[i].dims.size());
 
     input_names.push_back(inputs[i].name);
     ort_inputs.push_back(std::move(input_tensor));
   }
 
   std::vector<Ort::Value> ort_outputs;
-  ort_outputs = session.Run(Ort::RunOptions{}, input_names.data(), ort_inputs.data(), ort_inputs.size(),
-                            &output_name, 1);
+  ort_outputs = session.Run(Ort::RunOptions{}, input_names.data(), ort_inputs.data(), ort_inputs.size(), &output_name, 1);
 
   ASSERT_EQ(ort_outputs.size(), size_t(1));
   const auto& output_tensor = &ort_outputs[0];

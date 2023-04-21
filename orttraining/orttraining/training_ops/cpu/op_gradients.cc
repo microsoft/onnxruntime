@@ -137,14 +137,11 @@ Status SoftmaxGrad<T>::Compute(OpKernelContext* context) const {
     std::vector<float> sum_multiplier_(D, 1.f);  // initialize all multiplier values to 1.0
     float* scaledata = scale_.data();
     for (size_t i = 0; i < N; ++i) {
-      math::Dot<float, CPUMathUtil>(d, Ydata + i * d, dYdata + i * d,
-                                    scaledata + i, nullptr);
+      math::Dot<float, CPUMathUtil>(d, Ydata + i * d, dYdata + i * d, scaledata + i, nullptr);
     }
 
     concurrency::ThreadPool* tp = context->GetOperatorThreadPool();
-    math::Gemm<float>(CblasNoTrans, CblasNoTrans, n, d, 1, -1,
-                      scaledata, sum_multiplier_.data(), 1,
-                      dXdata, tp);
+    math::Gemm<float>(CblasNoTrans, CblasNoTrans, n, d, 1, -1, scaledata, sum_multiplier_.data(), 1, dXdata, tp);
 
     math::Mul<float, CPUMathUtil>(gsl::narrow_cast<int>(Y.Shape().Size()), dXdata, Ydata, dXdata, nullptr);
   }
@@ -212,9 +209,7 @@ Status TanhGrad<T>::Compute(OpKernelContext* context) const {
   return Status::OK();
 }
 
-ONNX_OPERATOR_KERNEL_EX(QuickGeluGrad, kMSDomain, 1, kCpuExecutionProvider,
-                        KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
-                        QuickGeluGrad<float>);
+ONNX_OPERATOR_KERNEL_EX(QuickGeluGrad, kMSDomain, 1, kCpuExecutionProvider, KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()), QuickGeluGrad<float>);
 
 template <typename T>
 Status QuickGeluGrad<T>::Compute(OpKernelContext* context) const {
@@ -229,8 +224,7 @@ Status QuickGeluGrad<T>::Compute(OpKernelContext* context) const {
   constexpr int64_t length_per_task = 4096;  // this number comes from FastGelu.
   int64_t task_count = (elem_count + length_per_task - 1) / length_per_task;
   concurrency::ThreadPool::TryBatchParallelFor(
-      tp, static_cast<int32_t>(task_count),
-      [&](ptrdiff_t task_idx) {
+      tp, static_cast<int32_t>(task_count), [&](ptrdiff_t task_idx) {
         const auto start = task_idx * length_per_task;
         const T* p_dy = dY_data + start;
         const T* p_x = X_data + start;

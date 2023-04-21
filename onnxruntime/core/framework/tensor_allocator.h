@@ -21,9 +21,7 @@ struct MemoryPatternGroup;
 class ITensorAllocator {
  public:
   // Create an ITensorAllocator instance based on enable_mem_pattern
-  static std::unique_ptr<ITensorAllocator> Create(bool enable_mem_pattern, const ExecutionPlanBase& execution_plan,
-                                                  const SessionState& session_state,
-                                                  InlinedVector<BufferUniquePtr>& weights_buffers);
+  static std::unique_ptr<ITensorAllocator> Create(bool enable_mem_pattern, const ExecutionPlanBase& execution_plan, const SessionState& session_state, InlinedVector<BufferUniquePtr>& weights_buffers);
 
   AllocatorPtr GetAllocator(const OrtMemoryInfo& memory_info);
 
@@ -48,9 +46,7 @@ class ITensorAllocator {
    * @param alloc_out       [Out]  allocator based on tensor's location, if not null
    * @return
    */
-  virtual common::Status GetPreallocatedBuffer(int ort_value_index, const std::string& name,
-                                               std::optional<MemBuffer>& buf_out,
-                                               AllocatorPtr& alloc_out) = 0;
+  virtual common::Status GetPreallocatedBuffer(int ort_value_index, const std::string& name, std::optional<MemBuffer>& buf_out, AllocatorPtr& alloc_out) = 0;
 
   virtual const MemoryPatternGroup& GetMemPatterns() = 0;
   /**

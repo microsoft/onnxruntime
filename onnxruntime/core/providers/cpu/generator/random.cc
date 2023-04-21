@@ -37,24 +37,19 @@ namespace onnxruntime {
 
 namespace op_kernel_type_control {
 ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES_ALL_OPSETS(
-    kCpuExecutionProvider, kOnnxDomain, RandomNormal, Output, 0,
-    float, double);
+    kCpuExecutionProvider, kOnnxDomain, RandomNormal, Output, 0, float, double);
 
 ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES_ALL_OPSETS(
-    kCpuExecutionProvider, kOnnxDomain, RandomUniform, Output, 0,
-    float, double);
+    kCpuExecutionProvider, kOnnxDomain, RandomUniform, Output, 0, float, double);
 
 ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES_ALL_OPSETS(
-    kCpuExecutionProvider, kOnnxDomain, RandomNormalLike, Output, 0,
-    float, double);
+    kCpuExecutionProvider, kOnnxDomain, RandomNormalLike, Output, 0, float, double);
 
 ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES_ALL_OPSETS(
-    kCpuExecutionProvider, kOnnxDomain, RandomUniformLike, Output, 0,
-    float, double);
+    kCpuExecutionProvider, kOnnxDomain, RandomUniformLike, Output, 0, float, double);
 
 ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES_ALL_OPSETS(
-    kCpuExecutionProvider, kOnnxDomain, Multinomial, Output, 0,
-    int32_t, int64_t);
+    kCpuExecutionProvider, kOnnxDomain, Multinomial, Output, 0, int32_t, int64_t);
 }  // namespace op_kernel_type_control
 
 using EnabledRandomNormalOutputTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(
@@ -165,9 +160,7 @@ Status RandomNormalLike::Compute(OpKernelContext* ctx) const {
   auto dtype = dtype_ != TensorProto_DataType_UNDEFINED ? dtype_ : InferDataType(X);
 
   if (dtype == TensorProto_DataType_UNDEFINED)
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                           "Could not infer data type from input tensor with data type ",
-                           X.DataType());
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Could not infer data type from input tensor with data type ", X.DataType());
 
   std::lock_guard<onnxruntime::OrtMutex> l(generator_mutex_);
   status = RandomNormalCompute(mean_, scale_, generator_, dtype, *Y);
@@ -187,9 +180,7 @@ Status RandomUniformLike::Compute(OpKernelContext* ctx) const {
   auto dtype = dtype_ != TensorProto_DataType_UNDEFINED ? dtype_ : InferDataType(X);
 
   if (dtype == TensorProto_DataType_UNDEFINED)
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                           "Could not infer data type from input tensor with data type ",
-                           X.DataType());
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Could not infer data type from input tensor with data type ", X.DataType());
   std::lock_guard<onnxruntime::OrtMutex> l(generator_mutex_);
   status = RandomUniformCompute(low_, high_, generator_, dtype, *Y);
 
@@ -346,9 +337,7 @@ static TensorProto::DataType InferDataType(const Tensor& tensor) {
   return static_cast<TensorProto::DataType>(dtype);
 }
 
-static Status RandomNormalCompute(float mean, float scale,
-                                  std::default_random_engine& generator,
-                                  TensorProto::DataType dtype, Tensor& Y) {
+static Status RandomNormalCompute(float mean, float scale, std::default_random_engine& generator, TensorProto::DataType dtype, Tensor& Y) {
   bool handled = false;
   switch (dtype) {
     case TensorProto::FLOAT: {
@@ -378,10 +367,7 @@ static Status RandomNormalCompute(float mean, float scale,
   return Status::OK();
 }
 
-static Status RandomUniformCompute(float low, float high,
-                                   std::default_random_engine& generator,
-                                   TensorProto::DataType dtype,
-                                   Tensor& Y) {
+static Status RandomUniformCompute(float low, float high, std::default_random_engine& generator, TensorProto::DataType dtype, Tensor& Y) {
   bool handled = false;
   switch (dtype) {
     case TensorProto::FLOAT: {

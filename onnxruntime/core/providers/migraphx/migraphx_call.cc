@@ -41,10 +41,7 @@ std::conditional_t<THRW, void, Status> RocmCall(
       (void)hipGetDevice(&currentHipDevice);
       (void)hipGetLastError();  // clear last HIP error
       static char str[1024];
-      snprintf(str, 1024, "%s failure %d: %s ; GPU=%d ; hostname=%s ; file=%s ; line=%d ; expr=%s; %s",
-               libName, (int)retCode, RocmErrString(retCode), currentHipDevice,
-               hostname,
-               file, line, exprString, msg);
+      snprintf(str, 1024, "%s failure %d: %s ; GPU=%d ; hostname=%s ; file=%s ; line=%d ; expr=%s; %s", libName, (int)retCode, RocmErrString(retCode), currentHipDevice, hostname, file, line, exprString, msg);
       if constexpr (THRW) {
         // throw an exception with the error info
         ORT_THROW(str);

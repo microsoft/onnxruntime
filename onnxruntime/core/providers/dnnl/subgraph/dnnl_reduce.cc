@@ -167,48 +167,35 @@ void DnnlReduce::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
 
   if (reduce_op == ReduceLogSumExp) {
     if (!src_and_dst_dims_equal) {
-      auto elementwise_pd = dnnl::eltwise_forward::primitive_desc(dnnl_engine, dnnl::prop_kind::forward_inference,
-                                                                  dnnl::algorithm::eltwise_exp, src_md,
-                                                                  dnnl::memory::desc(src_md.get_dims(),
-                                                                                     src_md.get_data_type(),
-                                                                                     dnnl::memory::format_tag::any));
+      auto elementwise_pd = dnnl::eltwise_forward::primitive_desc(dnnl_engine, dnnl::prop_kind::forward_inference, dnnl::algorithm::eltwise_exp, src_md, dnnl::memory::desc(src_md.get_dims(), src_md.get_data_type(), dnnl::memory::format_tag::any));
 
       auto elementwise_dst_mem = dnnl::memory(elementwise_pd.dst_desc(), dnnl_engine);
 
       auto elemenwise_primitive = dnnl::eltwise_forward(elementwise_pd);
-      sp.AddPrimitive(elemenwise_primitive, {{DNNL_ARG_SRC, src_mem},
-                                             {DNNL_ARG_DST, elementwise_dst_mem}});
-      auto reduce_pd = dnnl::reduction::primitive_desc(dnnl_engine, algo, src_md, dst_md, 0.f, 0.f,
-                                                       dnnl_primitive_attr);
+      sp.AddPrimitive(elemenwise_primitive, {{DNNL_ARG_SRC, src_mem}, {DNNL_ARG_DST, elementwise_dst_mem}});
+      auto reduce_pd = dnnl::reduction::primitive_desc(dnnl_engine, algo, src_md, dst_md, 0.f, 0.f, dnnl_primitive_attr);
 
       reduce_dst_mem = dnnl::memory(reduce_pd.dst_desc(), dnnl_engine);
 
       auto reducemean_op = dnnl::reduction(reduce_pd);
-      sp.AddPrimitive(reducemean_op, {{DNNL_ARG_SRC, elementwise_dst_mem},
-                                      {DNNL_ARG_DST, reduce_dst_mem}});
+      sp.AddPrimitive(reducemean_op, {{DNNL_ARG_SRC, elementwise_dst_mem}, {DNNL_ARG_DST, reduce_dst_mem}});
     } else {
       reduce_dst_mem = src_mem;
     }
   } else if (reduce_op == ReduceSumSquare) {
-    auto elementwise_pd = dnnl::eltwise_forward::primitive_desc(dnnl_engine, dnnl::prop_kind::forward_inference,
-                                                                dnnl::algorithm::eltwise_square, src_md,
-                                                                dnnl::memory::desc(src_md.get_dims(),
-                                                                                   src_md.get_data_type(),
-                                                                                   dnnl::memory::format_tag::any));
+    auto elementwise_pd = dnnl::eltwise_forward::primitive_desc(dnnl_engine, dnnl::prop_kind::forward_inference, dnnl::algorithm::eltwise_square, src_md, dnnl::memory::desc(src_md.get_dims(), src_md.get_data_type(), dnnl::memory::format_tag::any));
 
     auto elementwise_dst_mem = dnnl::memory(elementwise_pd.dst_desc(), dnnl_engine);
 
     auto elemenwise_primitive = dnnl::eltwise_forward(elementwise_pd);
-    sp.AddPrimitive(elemenwise_primitive, {{DNNL_ARG_SRC, src_mem},
-                                           {DNNL_ARG_DST, elementwise_dst_mem}});
+    sp.AddPrimitive(elemenwise_primitive, {{DNNL_ARG_SRC, src_mem}, {DNNL_ARG_DST, elementwise_dst_mem}});
     if (!src_and_dst_dims_equal) {
       auto reduce_pd = dnnl::reduction::primitive_desc(dnnl_engine, algo, src_md, dst_md, 0.f, 0.f);
 
       reduce_dst_mem = dnnl::memory(reduce_pd.dst_desc(), dnnl_engine);
 
       auto reducemean_op = dnnl::reduction(reduce_pd);
-      sp.AddPrimitive(reducemean_op, {{DNNL_ARG_SRC, elementwise_dst_mem},
-                                      {DNNL_ARG_DST, reduce_dst_mem}});
+      sp.AddPrimitive(reducemean_op, {{DNNL_ARG_SRC, elementwise_dst_mem}, {DNNL_ARG_DST, reduce_dst_mem}});
     } else {
       reduce_dst_mem = elementwise_dst_mem;
     }
@@ -222,29 +209,22 @@ void DnnlReduce::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
         p_val = 2.0f;
       }
 
-      auto reduce_pd = dnnl::reduction::primitive_desc(dnnl_engine, algo, src_md, dst_md, p_val, 0.f,
-                                                       dnnl_primitive_attr);
+      auto reduce_pd = dnnl::reduction::primitive_desc(dnnl_engine, algo, src_md, dst_md, p_val, 0.f, dnnl_primitive_attr);
 
       // If using GPU this will move the memory from the CPU to the GPU.
       reduce_src_mem = sp.GetMemoryAndReshape(node.Input(IN_DATA), reduce_pd.src_desc(), dnnl_engine);
       reduce_dst_mem = dnnl::memory(reduce_pd.dst_desc(), dnnl_engine);
 
       auto reducemean_op = dnnl::reduction(reduce_pd);
-      sp.AddPrimitive(reducemean_op, {{DNNL_ARG_SRC, reduce_src_mem},
-                                      {DNNL_ARG_DST, reduce_dst_mem}});
+      sp.AddPrimitive(reducemean_op, {{DNNL_ARG_SRC, reduce_src_mem}, {DNNL_ARG_DST, reduce_dst_mem}});
     } else {
       if (reduce_op == ReduceLogSum) {
-        auto elementwise_pd = dnnl::eltwise_forward::primitive_desc(dnnl_engine, dnnl::prop_kind::forward_inference,
-                                                                    dnnl::algorithm::eltwise_log, src_md,
-                                                                    dnnl::memory::desc(src_md.get_dims(),
-                                                                                       src_md.get_data_type(),
-                                                                                       dnnl::memory::format_tag::any));
+        auto elementwise_pd = dnnl::eltwise_forward::primitive_desc(dnnl_engine, dnnl::prop_kind::forward_inference, dnnl::algorithm::eltwise_log, src_md, dnnl::memory::desc(src_md.get_dims(), src_md.get_data_type(), dnnl::memory::format_tag::any));
 
         reduce_dst_mem = dnnl::memory(elementwise_pd.dst_desc(), dnnl_engine);
 
         auto elemenwise_primitive = dnnl::eltwise_forward(elementwise_pd);
-        sp.AddPrimitive(elemenwise_primitive, {{DNNL_ARG_SRC, src_mem},
-                                               {DNNL_ARG_DST, reduce_dst_mem}});
+        sp.AddPrimitive(elemenwise_primitive, {{DNNL_ARG_SRC, src_mem}, {DNNL_ARG_DST, reduce_dst_mem}});
       } else {
         reduce_dst_mem = src_mem;
       }
@@ -268,8 +248,7 @@ void DnnlReduce::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
           (axes.size() == 0 && src_dims[i] == 1)) {
         if (src_dims[i] != 1) {
           auto dims_span = gsl::make_span(src_dims);
-          ORT_ENFORCE(src_dims[i] == 1, "Dimension of input ", i, " must be 1 instead of ", src_dims[i],
-                      ". shape=", TensorShape(dims_span));
+          ORT_ENFORCE(src_dims[i] == 1, "Dimension of input ", i, " must be 1 instead of ", src_dims[i], ". shape=", TensorShape(dims_span));
         }
         ++j;
         continue;

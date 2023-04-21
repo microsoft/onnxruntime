@@ -23,8 +23,7 @@ class Einsum final : public onnxruntime::Einsum {
   Status Compute(OpKernelContext* context) const override;
 
  private:
-  Status DeviceCompute(OpKernelContext* context, const std::vector<const Tensor*>& inputs,
-                       AllocatorPtr allocator, concurrency::ThreadPool* tp) const override;
+  Status DeviceCompute(OpKernelContext* context, const std::vector<const Tensor*>& inputs, AllocatorPtr allocator, concurrency::ThreadPool* tp) const override;
 
   // Members of Einsum CUDA kernel
   using onnxruntime::Einsum::einsum_equation_preprocessor_;

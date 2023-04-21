@@ -35,8 +35,7 @@ GetQDQTestCaseFn BuildQDQConcatTestCase(const std::vector<std::vector<int64_t>>&
                                         bool has_input_float,
                                         bool has_input_int8,
                                         bool has_output_int8) {
-  return [input_shapes, axis,
-          has_input_float, has_input_int8, has_output_int8](
+  return [input_shapes, axis, has_input_float, has_input_int8, has_output_int8](
              ModelTestBuilder& builder) {
     auto input_count = input_shapes.size();
     std::vector<NodeArg*> input_args;

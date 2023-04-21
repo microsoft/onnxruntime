@@ -79,7 +79,8 @@ bool IsVariadicQLinearOp(QLinearOpType type) {
 }
 
 const std::vector<const Node*> GetQDQIONodes(const GraphViewer& graph_viewer,
-                                             const QDQ::NodeGroup& node_group, bool is_input) {
+                                             const QDQ::NodeGroup& node_group,
+                                             bool is_input) {
   std::vector<const Node*> io_nodes;
   const auto& src_nodes = is_input ? node_group.dq_nodes : node_group.q_nodes;
   io_nodes.reserve(src_nodes.size());
@@ -90,8 +91,7 @@ const std::vector<const Node*> GetQDQIONodes(const GraphViewer& graph_viewer,
 }
 
 // Get the input or output NodeUnitIODef(s) for the given QDQ NodeGroup
-std::vector<NodeUnitIODef> GetQDQIODefs(const Node& target_node, const QDQ::NodeGroup& node_group,
-                                        bool is_input) {
+std::vector<NodeUnitIODef> GetQDQIODefs(const Node& target_node, const QDQ::NodeGroup& node_group, bool is_input) {
   const auto& dq_or_q_nodes = is_input ? node_group.dq_nodes : node_group.q_nodes;
   const auto target_node_io_defs = is_input ? target_node.InputDefs() : target_node.OutputDefs();
   const size_t target_node_io_defs_size = target_node_io_defs.size();

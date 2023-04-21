@@ -67,8 +67,7 @@ template void GenerateOptimizerInitialState<MLFloat16>(const std::string& optimi
 void SeparateStateTensors(const NameMLValMap& training_state, NameMLValMap& model_state, TrainingSession::OptimizerState& optimizer_state) {
   NameMLValMap result;
   std::transform(
-      WEIGHT_NAMES.begin(), WEIGHT_NAMES.end(), std::inserter(result, result.end()),
-      [training_state](const std::string& weight_name) {
+      WEIGHT_NAMES.begin(), WEIGHT_NAMES.end(), std::inserter(result, result.end()), [training_state](const std::string& weight_name) {
         return std::make_pair(
             weight_name, training_state.at(weight_name));
       });
@@ -160,8 +159,7 @@ TrainingSession::TrainingConfiguration MakeBasicTrainingConfig() {
 }
 
 std::unique_ptr<TrainingSession> BuildAndRunTrainingSessionWithChecks(
-    const SessionOptions& so, const PathString& forward_model_file,
-    const TrainingSession::TrainingConfiguration& config) {
+    const SessionOptions& so, const PathString& forward_model_file, const TrainingSession::TrainingConfiguration& config) {
   std::unique_ptr<Environment> env;
   ORT_THROW_IF_ERROR(Environment::Create(nullptr, env));
 

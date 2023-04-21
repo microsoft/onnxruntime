@@ -30,7 +30,8 @@ std::unique_ptr<ILossFunction> LossFunctionBuilder::Build(const std::string& los
 
   auto loss_func = registry.MakeUnique(loss_func_type);
   ORT_ENFORCE(loss_func != nullptr,
-              "Fail to create loss function from registry", loss_func_type);
+              "Fail to create loss function from registry",
+              loss_func_type);
 
   return loss_func;
 }

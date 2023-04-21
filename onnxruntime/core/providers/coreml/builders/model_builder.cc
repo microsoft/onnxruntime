@@ -94,9 +94,7 @@ Status ModelBuilder::RegisterInitializers() {
       // This is a scalar initializer, CoreML constant layer requires a shape, make this a {1} tensor
       constant_tensor->mutable_shape()->Add(1);
     } else {
-      std::transform(shape.cbegin(), shape.cend(),
-                     google::protobuf::RepeatedFieldBackInserter(constant_tensor->mutable_shape()),
-                     [](int64_t dim) -> uint64_t { return SafeInt<uint64_t>(dim); });
+      std::transform(shape.cbegin(), shape.cend(), google::protobuf::RepeatedFieldBackInserter(constant_tensor->mutable_shape()), [](int64_t dim) -> uint64_t { return SafeInt<uint64_t>(dim); });
     }
 
     ORT_RETURN_IF_ERROR(CreateCoreMLWeight(*constant_tensor->mutable_data(), tensor));
@@ -133,7 +131,10 @@ Status ModelBuilder::RegisterModelInputOutput(const NodeArg& node_arg, bool is_i
   {  // input_output shape
     const auto* shape_proto = node_arg.Shape();
     ORT_RETURN_IF(shape_proto == nullptr,
-                  "shape_proto cannot be null for ", input_output_type, ": ", name);
+                  "shape_proto cannot be null for ",
+                  input_output_type,
+                  ": ",
+                  name);
     const auto& dims = shape_proto->dim();
     if (dims.empty()) {
       // If we have an empty shape, this is a scalar input,
@@ -148,7 +149,10 @@ Status ModelBuilder::RegisterModelInputOutput(const NodeArg& node_arg, bool is_i
       shape.reserve(dims.size());
       for (const auto& dim : dims) {
         ORT_RETURN_IF_NOT(dim.has_dim_value(),
-                          "Dynamic shape is not supported yet, for ", input_output_type, ": ", name);
+                          "Dynamic shape is not supported yet, for ",
+                          input_output_type,
+                          ": ",
+                          name);
         shape.push_back(dim.dim_value());
       }
     }
@@ -160,8 +164,7 @@ Status ModelBuilder::RegisterModelInputOutput(const NodeArg& node_arg, bool is_i
   {  // type
     const auto* type_proto = node_arg.TypeAsProto();
     if (!type_proto || !type_proto->tensor_type().has_elem_type()) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "The  ", input_output_type, " of graph doesn't have elem_type: ", name);
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "The  ", input_output_type, " of graph doesn't have elem_type: ", name);
     }
 
     data_type = type_proto->tensor_type().elem_type();
@@ -183,9 +186,7 @@ Status ModelBuilder::RegisterModelInputOutput(const NodeArg& node_arg, bool is_i
         break;
       default: {
         // TODO: support other type
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                               "The  ", input_output_type, " of graph doesn't have valid type, name: ", name,
-                               " type: ", type_proto->tensor_type().elem_type());
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "The  ", input_output_type, " of graph doesn't have valid type, name: ", name, " type: ", type_proto->tensor_type().elem_type());
       }
     }
   }
@@ -210,8 +211,7 @@ Status ModelBuilder::AddOperations() {
     if (const auto* op_builder = GetOpBuilder(*node)) {
       ORT_RETURN_IF_ERROR(op_builder->AddToModelBuilder(*this, *node, logger_));
     } else {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Node [", node->Name(), "], type [", node->OpType(), "] is not supported");
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Node [", node->Name(), "], type [", node->OpType(), "] is not supported");
     }
   }
 

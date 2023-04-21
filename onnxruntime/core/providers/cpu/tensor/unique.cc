@@ -13,8 +13,7 @@ namespace onnxruntime {
 
 namespace op_kernel_type_control {
 ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES_ALL_OPSETS(
-    kCpuExecutionProvider, kOnnxDomain, Unique, Input, 0,
-    float, int64_t, int8_t, std::string);
+    kCpuExecutionProvider, kOnnxDomain, Unique, Input, 0, float, int64_t, int8_t, std::string);
 }
 
 using EnabledUniqueDataTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(
@@ -113,8 +112,7 @@ class Subtensor {
   // n_axis is the number of entries for 'axis' is the original data.
   //   e.g. if original shape was [4, 2] and axis is 1, n_axis == 2.
   // subtensor_shape is the shape for the subtensor. the dimension value for the 'axis' dimension in it will be 1.
-  Subtensor(const gsl::span<const T>& data, const TensorShape& subtensor_shape,
-            int64_t axis, int64_t n_axis, int64_t idx) {
+  Subtensor(const gsl::span<const T>& data, const TensorShape& subtensor_shape, int64_t axis, int64_t n_axis, int64_t idx) {
     // rows and columns for the slice along axis, flattened to 2D by merging the dimensions before and after the axis
     int64_t columns = subtensor_shape.SizeFromDimension(onnxruntime::narrow<size_t>(axis));
     int64_t rows = subtensor_shape.SizeToDimension(onnxruntime::narrow<size_t>(axis));

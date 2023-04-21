@@ -25,8 +25,7 @@ struct NchwcTestHelper {
   template <typename T>
   NodeArg* MakeInput(const std::vector<int64_t>& shape, const ONNX_NAMESPACE::TypeProto& type_proto) {
     OrtValue input_value;
-    CreateMLValue<T>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault), shape,
-                     FillRandomData<T>(shape), &input_value);
+    CreateMLValue<T>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault), shape, FillRandomData<T>(shape), &input_value);
     std::string name = graph_.GenerateNodeArgName("input");
     feeds_.insert(std::make_pair(name, input_value));
 
@@ -176,8 +175,7 @@ void NchwcOptimizerTester(const std::function<void(NchwcTestHelper& helper)>& bu
   // Build the model for this test.
   std::unordered_map<std::string, int> domain_to_version;
   domain_to_version[kOnnxDomain] = opset_version;
-  Model model("nchwc", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
-              domain_to_version, {}, DefaultLoggingManager().DefaultLogger());
+  Model model("nchwc", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {}, DefaultLoggingManager().DefaultLogger());
   NchwcTestHelper helper(model.MainGraph());
   build_test_case(helper);
   ASSERT_STATUS_OK(model.MainGraph().Resolve());

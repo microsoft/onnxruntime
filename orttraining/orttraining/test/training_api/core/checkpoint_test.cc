@@ -241,10 +241,8 @@ TEST(CheckpointApiTest, SaveOptimizerStateAsCheckpoint_ThenLoad_CUDA) {
   std::unique_ptr<Environment> env;
   ORT_THROW_IF_ERROR(Environment::Create(nullptr, env));
   std::vector<std::shared_ptr<IExecutionProvider>> cuda_provider{onnxruntime::test::DefaultCudaExecutionProvider()};
-  auto model = std::make_unique<Module>(model_uri, named_parameters, session_option,
-                                        *env, cuda_provider);
-  auto optimizer = std::make_unique<Optimizer>(optim_uri, model->NamedParameters(), session_option,
-                                               *env, cuda_provider);
+  auto model = std::make_unique<Module>(model_uri, named_parameters, session_option, *env, cuda_provider);
+  auto optimizer = std::make_unique<Optimizer>(optim_uri, model->NamedParameters(), session_option, *env, cuda_provider);
 
   /// Phase 2 - Run Optimizer.GetStateDict and call save checkpoint APIs.
   /// And check the result checkpoint files.

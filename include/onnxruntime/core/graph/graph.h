@@ -92,10 +92,7 @@ class Node {
        gsl::span<NodeArg* const> output_args,
        const NodeAttributes* attributes,
        std::string_view domain) {
-    Init(std::string{name}, std::string{op_type}, std::string{description},
-         std::vector<NodeArg*>{input_args.begin(), input_args.end()},
-         std::vector<NodeArg*>{output_args.begin(), output_args.end()},
-         attributes, std::string{domain});
+    Init(std::string{name}, std::string{op_type}, std::string{description}, std::vector<NodeArg*>{input_args.begin(), input_args.end()}, std::vector<NodeArg*>{output_args.begin(), output_args.end()}, attributes, std::string{domain});
   }
 #endif
 
@@ -493,9 +490,7 @@ class Node {
   void SetFunctionTemplate(const FunctionTemplate& func_template);
 #endif
 
-  static Status LoadFromOrtFormat(const onnxruntime::fbs::Node& fbs_node, Graph& graph,
-                                  const OrtFormatLoadOptions& load_options,
-                                  const logging::Logger& logger, std::unique_ptr<Node>& node);
+  static Status LoadFromOrtFormat(const onnxruntime::fbs::Node& fbs_node, Graph& graph, const OrtFormatLoadOptions& load_options, const logging::Logger& logger, std::unique_ptr<Node>& node);
 
   Status LoadFromOrtFormat(const onnxruntime::fbs::Node& fbs_node,
                            const OrtFormatLoadOptions& load_options,
@@ -779,7 +774,8 @@ class Graph {
   /** Return true if "node_arg" is a input or an initializer. Otherwise, returns false. */
   bool IsInputsIncludingInitializers(const NodeArg* node_arg) const noexcept {
     return std::find(graph_inputs_including_initializers_.begin(),
-                     graph_inputs_including_initializers_.end(), node_arg) != graph_inputs_including_initializers_.end();
+                     graph_inputs_including_initializers_.end(),
+                     node_arg) != graph_inputs_including_initializers_.end();
   }
 
   /** Gets the Graph inputs that are initializers
@@ -947,10 +943,7 @@ class Graph {
                 std::initializer_list<NodeArg*> output_args,
                 const NodeAttributes* attributes = nullptr,
                 const std::string& domain = kOnnxDomain) {
-    return AddNode(name, op_type, description,
-                   AsSpan(input_args),
-                   AsSpan(output_args),
-                   attributes, domain);
+    return AddNode(name, op_type, description, AsSpan(input_args), AsSpan(output_args), attributes, domain);
   }
 
   Node& AddNode(const std::string& name,
@@ -960,10 +953,7 @@ class Graph {
                 std::initializer_list<NodeArg*> output_args,
                 const NodeAttributes* attributes = nullptr,
                 const std::string& domain = kOnnxDomain) {
-    return AddNode(name, op_type, description,
-                   input_args,
-                   AsSpan(output_args),
-                   attributes, domain);
+    return AddNode(name, op_type, description, input_args, AsSpan(output_args), attributes, domain);
   }
 
   Node& AddNode(const std::string& name,
@@ -973,10 +963,7 @@ class Graph {
                 gsl::span<NodeArg* const> output_args,
                 const NodeAttributes* attributes = nullptr,
                 const std::string& domain = kOnnxDomain) {
-    return AddNode(name, op_type, description,
-                   AsSpan(input_args),
-                   output_args,
-                   attributes, domain);
+    return AddNode(name, op_type, description, AsSpan(input_args), output_args, attributes, domain);
   }
 
   /** Remove a Node from this Graph and free it.
@@ -1299,10 +1286,9 @@ class Graph {
   bool IsOuterScopeValue(const std::string& name) const {
     if (!parent_node_) return false;
     const auto& implicit_input_defs = parent_node_->ImplicitInputDefs();
-    return std::any_of(implicit_input_defs.cbegin(), implicit_input_defs.cend(),
-                       [&name](const NodeArg* implicit_input) {
-                         return implicit_input->Name() == name;
-                       });
+    return std::any_of(implicit_input_defs.cbegin(), implicit_input_defs.cend(), [&name](const NodeArg* implicit_input) {
+      return implicit_input->Name() == name;
+    });
   }
 
 #if !defined(ORT_MINIMAL_BUILD)
@@ -1324,19 +1310,21 @@ class Graph {
 
   virtual ~Graph();
 
-  static Status LoadFromOrtFormat(const onnxruntime::fbs::Graph& fbs_graph, const Model& owning_model,
-                                  const std::unordered_map<std::string, int>& domain_to_version,
+  static Status LoadFromOrtFormat(const onnxruntime::fbs::Graph& fbs_graph, const Model& owning_model, const std::unordered_map<std::string, int>& domain_to_version,
 #if !defined(ORT_MINIMAL_BUILD)
                                   IOnnxRuntimeOpSchemaCollectionPtr schema_registry,
 #endif
                                   const OrtFormatLoadOptions& load_options,
-                                  const logging::Logger& logger, std::unique_ptr<Graph>& graph);
+                                  const logging::Logger& logger,
+                                  std::unique_ptr<Graph>& graph);
 
   // deserialize a subgraph
   static Status LoadFromOrtFormat(const onnxruntime::fbs::Graph& fbs_graph,
-                                  Graph& parent_graph, const Node& parent_node,
+                                  Graph& parent_graph,
+                                  const Node& parent_node,
                                   const OrtFormatLoadOptions& load_options,
-                                  const logging::Logger& logger, std::unique_ptr<Graph>& graph);
+                                  const logging::Logger& logger,
+                                  std::unique_ptr<Graph>& graph);
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   const RuntimeOptimizationRecordContainer& RuntimeOptimizations() const {
@@ -1360,7 +1348,8 @@ class Graph {
 #if !defined(ORT_MINIMAL_BUILD)
         IOnnxRuntimeOpSchemaCollectionPtr schema_registry,
 #endif
-        Graph* parent_graph, const Node* parent_node,
+        Graph* parent_graph,
+        const Node* parent_node,
         const logging::Logger& logger,
         bool strict_shape_type_inference);
 
@@ -1481,10 +1470,7 @@ class Graph {
   common::Status InferAndVerifyTypeMatch(Node& node, const ONNX_NAMESPACE::OpSchema& op, const ResolveOptions& options);
 
   // perform type and shape inferencing on the subgraph and Resolve to validate
-  static common::Status InferAndVerifySubgraphTypes(const Node& node, Graph& subgraph,
-                                                    const std::vector<const ONNX_NAMESPACE::TypeProto*>& input_types,
-                                                    std::vector<const ONNX_NAMESPACE::TypeProto*>& output_types,
-                                                    const Graph::ResolveOptions& options);
+  static common::Status InferAndVerifySubgraphTypes(const Node& node, Graph& subgraph, const std::vector<const ONNX_NAMESPACE::TypeProto*>& input_types, std::vector<const ONNX_NAMESPACE::TypeProto*>& output_types, const Graph::ResolveOptions& options);
 
   // Apply type-inference and type-checking to all inputs and initializers:
   common::Status TypeCheckInputsAndInitializers();
@@ -1559,8 +1545,7 @@ class Graph {
     // likely) either a logic issue or a graph consistency/correctness issue.
     // use ORT_ENFORCE to prove that or uncover scenarios where we actually
     // expect attempts to retrieve a non-existent node.
-    ORT_ENFORCE(node_index < nodes_.size(), "Validating no unexpected access using an invalid node_index. Got:",
-                node_index, " Max:", nodes_.size());
+    ORT_ENFORCE(node_index < nodes_.size(), "Validating no unexpected access using an invalid node_index. Got:", node_index, " Max:", nodes_.size());
     return nodes_[node_index].get();
   }
 
@@ -1579,7 +1564,8 @@ class Graph {
   InitializedTensorSet name_to_initial_tensor_;
 
   std::unordered_set<std::reference_wrapper<const std::string>,
-                     std::hash<std::string>, std::equal_to<std::string>>
+                     std::hash<std::string>,
+                     std::equal_to<std::string>>
       sparse_tensor_names_;
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)

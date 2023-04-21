@@ -168,7 +168,8 @@ int64_t OrtTorchFunctionPool::RegisterContext(PyObject* autograd_context) {
   index_++;
 
   RefCountTracker::GetInstance().TrackPyObject(RefCountTracker::ObjCategory::AutoGradContext,
-                                               autograd_context, "autograd_context_register");
+                                               autograd_context,
+                                               "autograd_context_register");
 
   ORT_ENFORCE(autograd_context, "Cannot register NULL autograd context.");
   Py_INCREF(autograd_context);
@@ -185,7 +186,8 @@ void OrtTorchFunctionPool::UnregisterContext(int64_t context_index) {
   // We just need remove the context key value pair, the context itself
   // will be removed, when forward outputs are destoyed.
   ORT_ENFORCE(it != func_context_pool_.end(),
-              "Cannot unregister unexisting key: ", context_index);
+              "Cannot unregister unexisting key: ",
+              context_index);
   func_context_pool_.erase(it);
 }
 

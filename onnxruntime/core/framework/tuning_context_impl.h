@@ -180,9 +180,7 @@ static Status CheckKeysMatching(
   std::sort(provided_keys.begin(), provided_keys.end());
 
   std::unordered_set<std::string> intersection;
-  std::set_intersection(required_keys.cbegin(), required_keys.cend(),
-                        provided_keys.cbegin(), provided_keys.cend(),
-                        std::inserter(intersection, intersection.end()));
+  std::set_intersection(required_keys.cbegin(), required_keys.cend(), provided_keys.cbegin(), provided_keys.cend(), std::inserter(intersection, intersection.end()));
   bool matched = true;
   std::ostringstream oss;
   if (intersection.size() != required_keys.size()) {
@@ -233,7 +231,10 @@ Status TuningResultsValidator::ValidateOrtBuildConfig(const std::string& value) 
   auto current = GetOrtBuildConfig();
   ORT_RETURN_IF(current != value,
                 "onnxruntime building configuration mismatch: tuning results produced with library \"",
-                value, "\", current library built with \"", current, "\"");
+                value,
+                "\", current library built with \"",
+                current,
+                "\"");
   return Status::OK();
 }
 

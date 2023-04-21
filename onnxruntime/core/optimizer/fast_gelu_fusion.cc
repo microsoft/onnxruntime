@@ -24,16 +24,14 @@ static bool IsSupportedDataType(const Node& node) {
   }
 }
 
-static bool CheckNode(Graph& graph, const Node& node,
-                      ProviderType provider, bool require_single_output) {
+static bool CheckNode(Graph& graph, const Node& node, ProviderType provider, bool require_single_output) {
   return node.GetExecutionProviderType() == provider &&
          IsSupportedDataType(node) &&
          (!require_single_output || node.GetOutputEdgesCount() == 1) &&
          !graph.NodeProducesGraphOutput(node);
 }
 
-MatchResult FastGeluFusion::CheckFirstFormula(Graph& graph, Node& mul1_node,
-                                              InlinedVector<std::reference_wrapper<Node>>& nodes_to_fuse) const {
+MatchResult FastGeluFusion::CheckFirstFormula(Graph& graph, Node& mul1_node, InlinedVector<std::reference_wrapper<Node>>& nodes_to_fuse) const {
   MatchResult matchResult{false, nullptr, nullptr};
   if (!graph_utils::IsSupportedOptypeVersionAndDomain(mul1_node, "Mul", {7, 13, 14}) ||
       !graph_utils::IsSupportedProvider(mul1_node, GetCompatibleExecutionProviders()) ||
@@ -110,8 +108,7 @@ MatchResult FastGeluFusion::CheckFirstFormula(Graph& graph, Node& mul1_node,
   return matchResult;
 }
 
-MatchResult FastGeluFusion::CheckSecondFormula(Graph& graph, Node& pow1_node,
-                                               InlinedVector<std::reference_wrapper<Node>>& nodes_to_fuse) const {
+MatchResult FastGeluFusion::CheckSecondFormula(Graph& graph, Node& pow1_node, InlinedVector<std::reference_wrapper<Node>>& nodes_to_fuse) const {
   MatchResult matchResult{false, nullptr, nullptr};
   if (!graph_utils::IsSupportedOptypeVersionAndDomain(pow1_node, "Pow", {7, 12, 13, 15}) ||
       !graph_utils::IsSupportedProvider(pow1_node, GetCompatibleExecutionProviders()) ||
@@ -131,8 +128,7 @@ MatchResult FastGeluFusion::CheckSecondFormula(Graph& graph, Node& pow1_node,
   auto input_index = optimizer_utils::IndexOfNodeInput(mul1_node, *pow1_node.MutableOutputDefs()[0]);
   if (!(graph_utils::IsSupportedOptypeVersionAndDomain(mul1_node, "Mul", {7, 13, 14}) &&
         CheckNode(graph, mul1_node, pow1_node.GetExecutionProviderType(), true)) ||
-      !optimizer_utils::IsInitializerWithExpectedValue(graph, *(mul1_node.InputDefs()[(input_index + 1) % 2]),
-                                                       0.044714998453855515f, true)) {
+      !optimizer_utils::IsInitializerWithExpectedValue(graph, *(mul1_node.InputDefs()[(input_index + 1) % 2]), 0.044714998453855515f, true)) {
     return matchResult;
   }
   nodes_to_fuse.push_back(mul1_node);
@@ -170,8 +166,7 @@ MatchResult FastGeluFusion::CheckSecondFormula(Graph& graph, Node& pow1_node,
   input_index = optimizer_utils::IndexOfNodeInput(mul2_node, *add1_node.MutableOutputDefs()[0]);
   if (!(graph_utils::IsSupportedOptypeVersionAndDomain(mul2_node, "Mul", {7, 13, 14}) &&
         CheckNode(graph, mul2_node, pow1_node.GetExecutionProviderType(), true)) ||
-      !optimizer_utils::IsInitializerWithExpectedValue(graph, *(mul2_node.InputDefs()[(input_index + 1) % 2]),
-                                                       0.7978845834732056f, true)) {
+      !optimizer_utils::IsInitializerWithExpectedValue(graph, *(mul2_node.InputDefs()[(input_index + 1) % 2]), 0.7978845834732056f, true)) {
     return matchResult;
   }
   nodes_to_fuse.push_back(mul2_node);
@@ -306,7 +301,9 @@ Status FastGeluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, 
                                          "FastGelu",
                                          "fused GPT2Gelu subgraphs ",
                                          std::array{matchRet.gelu_without_bias_input_arg},
-                                         std::array{&shape_output}, {}, kMSDomain);
+                                         std::array{&shape_output},
+                                         {},
+                                         kMSDomain);
 
     // assign provider to this new node, provider should be same as the provider for old node.
     fast_gelu_node.SetExecutionProviderType(node.GetExecutionProviderType());

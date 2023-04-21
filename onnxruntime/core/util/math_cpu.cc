@@ -72,9 +72,7 @@ EIGEN_MATMUL_FUNCTION(uint64_t)
 // (transpose) if the argument TransA or TransB is set to CblasNoTrans or
 // CblasTrans, respectively, for each of A and B.
 template <>
-void Gemm<float, ThreadPool>(CBLAS_TRANSPOSE TransA, CBLAS_TRANSPOSE TransB, ptrdiff_t M,
-                             ptrdiff_t N, ptrdiff_t K, float alpha, const float* A, const float* B, float beta,
-                             float* C, ThreadPool* threadpool) {
+void Gemm<float, ThreadPool>(CBLAS_TRANSPOSE TransA, CBLAS_TRANSPOSE TransB, ptrdiff_t M, ptrdiff_t N, ptrdiff_t K, float alpha, const float* A, const float* B, float beta, float* C, ThreadPool* threadpool) {
   int lda = static_cast<int>((TransA == CblasNoTrans) ? K : M);
   int ldb = static_cast<int>((TransB == CblasNoTrans) ? N : K);
   MlasGemm(TransA, TransB, M, N, K, alpha, A, lda, B, ldb, beta, C, N, threadpool);
@@ -82,18 +80,14 @@ void Gemm<float, ThreadPool>(CBLAS_TRANSPOSE TransA, CBLAS_TRANSPOSE TransB, ptr
 
 #ifdef MLAS_SUPPORTS_GEMM_DOUBLE
 template <>
-void Gemm<double, ThreadPool>(CBLAS_TRANSPOSE TransA, CBLAS_TRANSPOSE TransB, ptrdiff_t M,
-                              ptrdiff_t N, ptrdiff_t K, double alpha, const double* A, const double* B, double beta,
-                              double* C, ThreadPool* threadpool) {
+void Gemm<double, ThreadPool>(CBLAS_TRANSPOSE TransA, CBLAS_TRANSPOSE TransB, ptrdiff_t M, ptrdiff_t N, ptrdiff_t K, double alpha, const double* A, const double* B, double beta, double* C, ThreadPool* threadpool) {
   int lda = static_cast<int>((TransA == CblasNoTrans) ? K : M);
   int ldb = static_cast<int>((TransB == CblasNoTrans) ? N : K);
   MlasGemm(TransA, TransB, M, N, K, alpha, A, lda, B, ldb, beta, C, N, threadpool);
 }
 #else
 template <>
-void Gemm<double, ThreadPool>(CBLAS_TRANSPOSE TransA, CBLAS_TRANSPOSE TransB, ptrdiff_t M,
-                              ptrdiff_t N, ptrdiff_t K, double alpha, const double* A, const double* B, double beta,
-                              double* C, ThreadPool*) {
+void Gemm<double, ThreadPool>(CBLAS_TRANSPOSE TransA, CBLAS_TRANSPOSE TransB, ptrdiff_t M, ptrdiff_t N, ptrdiff_t K, double alpha, const double* A, const double* B, double beta, double* C, ThreadPool*) {
   auto C_mat = EigenMatrixMap<double>(C, N, M);
   if (beta == 0) {
     C_mat.setZero();
@@ -150,9 +144,7 @@ EIGEN_MATMUL_FUNCTION(double)
 #endif
 
 template <>
-void GemmEx<float, ThreadPool>(CBLAS_TRANSPOSE TransA, CBLAS_TRANSPOSE TransB, ptrdiff_t M, ptrdiff_t N, ptrdiff_t K,
-                               float alpha, const float* A, int lda, const float* B, int ldb, float beta, float* C,
-                               int ldc, ThreadPool* threadpool) {
+void GemmEx<float, ThreadPool>(CBLAS_TRANSPOSE TransA, CBLAS_TRANSPOSE TransB, ptrdiff_t M, ptrdiff_t N, ptrdiff_t K, float alpha, const float* A, int lda, const float* B, int ldb, float beta, float* C, int ldc, ThreadPool* threadpool) {
   MlasGemm(TransA, TransB, M, N, K, alpha, A, lda, B, ldb, beta, C, ldc, threadpool);
 }
 
@@ -190,10 +182,8 @@ void Gemv(CBLAS_TRANSPOSE TransA,
   }
 }
 
-template void Gemv<float, CPUMathUtil>(const CBLAS_TRANSPOSE TransA, int M, int N, float alpha, const float* A, const float* x,
-                                       float beta, float* y, CPUMathUtil*);
-template void Gemv<double, CPUMathUtil>(const CBLAS_TRANSPOSE TransA, int M, int N, float alpha, const double* A, const double* x,
-                                        float beta, double* y, CPUMathUtil*);
+template void Gemv<float, CPUMathUtil>(const CBLAS_TRANSPOSE TransA, int M, int N, float alpha, const float* A, const float* x, float beta, float* y, CPUMathUtil*);
+template void Gemv<double, CPUMathUtil>(const CBLAS_TRANSPOSE TransA, int M, int N, float alpha, const double* A, const double* x, float beta, double* y, CPUMathUtil*);
 #define SPECIALIZED_AXPY(T)                                                                       \
   template <>                                                                                     \
   void Axpy<T, CPUMathUtil>(int N, const T alpha, const T* x, T* Y, CPUMathUtil* /*provider*/) {  \
@@ -657,11 +647,7 @@ template struct Im2col<uint8_t, StorageOrder::NHWC>;
 template struct Im2col<MLFloat16, StorageOrder::NHWC>;
 
 template <>
-void Col2im<float, CPUMathUtil, StorageOrder::NCHW>(const float* data_col, int64_t channels, int64_t height,
-                                                    int64_t width, int64_t kernel_h, int64_t kernel_w,
-                                                    int64_t dilation_h, int64_t dilation_w, int64_t pad_t,
-                                                    int64_t pad_l, int64_t pad_b, int64_t pad_r, int64_t stride_h,
-                                                    int64_t stride_w, float* data_im, CPUMathUtil* context) {
+void Col2im<float, CPUMathUtil, StorageOrder::NCHW>(const float* data_col, int64_t channels, int64_t height, int64_t width, int64_t kernel_h, int64_t kernel_w, int64_t dilation_h, int64_t dilation_w, int64_t pad_t, int64_t pad_l, int64_t pad_b, int64_t pad_r, int64_t stride_h, int64_t stride_w, float* data_im, CPUMathUtil* context) {
   const int64_t output_h =
       (height + pad_b + pad_t - (dilation_h * (kernel_h - 1) + 1)) / stride_h + 1;
   const int64_t output_w =
@@ -748,11 +734,7 @@ void Col2im<float, CPUMathUtil, StorageOrder::NCHW>(const float* data_col, int64
 }
 
 template <>
-void Col2im<float, CPUMathUtil, StorageOrder::NHWC>(const float* data_col, int64_t channels, int64_t height,
-                                                    int64_t width, int64_t kernel_h, int64_t kernel_w,
-                                                    int64_t dilation_h, int64_t dilation_w, int64_t pad_t,
-                                                    int64_t pad_l, int64_t pad_b, int64_t pad_r, int64_t stride_h,
-                                                    int64_t stride_w, float* data_im, CPUMathUtil* context) {
+void Col2im<float, CPUMathUtil, StorageOrder::NHWC>(const float* data_col, int64_t channels, int64_t height, int64_t width, int64_t kernel_h, int64_t kernel_w, int64_t dilation_h, int64_t dilation_w, int64_t pad_t, int64_t pad_l, int64_t pad_b, int64_t pad_r, int64_t stride_h, int64_t stride_w, float* data_im, CPUMathUtil* context) {
   const int64_t dkernel_h = dilation_h * (kernel_h - 1) + 1;
   const int64_t dkernel_w = dilation_w * (kernel_w - 1) + 1;
 
@@ -781,11 +763,7 @@ void Col2im<float, CPUMathUtil, StorageOrder::NHWC>(const float* data_col, int64
 }
 
 template <>
-void Col2imNd<float, CPUMathUtil, StorageOrder::NCHW>(const float* data_col, const int64_t* img_shape,
-                                                      const int64_t* output_shape, int64_t channels_col, int64_t img_size,
-                                                      const int64_t* kernel_shape, const int64_t* stride,
-                                                      const int64_t* dilation, const int64_t* pad, ptrdiff_t N,
-                                                      float* data_img, CPUMathUtil* context) {
+void Col2imNd<float, CPUMathUtil, StorageOrder::NCHW>(const float* data_col, const int64_t* img_shape, const int64_t* output_shape, int64_t channels_col, int64_t img_size, const int64_t* kernel_shape, const int64_t* stride, const int64_t* dilation, const int64_t* pad, ptrdiff_t N, float* data_img, CPUMathUtil* context) {
   Set<float, CPUMathUtil>(narrow<ptrdiff_t>(img_size), 0, data_img, context);
   Im2col<float, StorageOrder::NCHW>()(
       data_col,

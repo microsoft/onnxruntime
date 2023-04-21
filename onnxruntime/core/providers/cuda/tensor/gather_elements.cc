@@ -18,24 +18,13 @@ namespace cuda {
 #define CREATE_GATHER_ELEMENTS_KERNEL_DEF (*KernelDefBuilder::Create())
 #endif
 
-ONNX_OPERATOR_KERNEL_EX(GatherElements, kOnnxDomain, 13, kCudaExecutionProvider,
-                        CREATE_GATHER_ELEMENTS_KERNEL_DEF.TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
-                            .TypeConstraint("Tind", std::vector<MLDataType>{DataTypeImpl::GetTensorType<int32_t>(),
-                                                                            DataTypeImpl::GetTensorType<int64_t>()}),
-                        GatherElements);
+ONNX_OPERATOR_KERNEL_EX(GatherElements, kOnnxDomain, 13, kCudaExecutionProvider, CREATE_GATHER_ELEMENTS_KERNEL_DEF.TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()).TypeConstraint("Tind", std::vector<MLDataType>{DataTypeImpl::GetTensorType<int32_t>(), DataTypeImpl::GetTensorType<int64_t>()}), GatherElements);
 
-ONNX_OPERATOR_VERSIONED_KERNEL_EX(GatherElements, kOnnxDomain, 11, 12, kCudaExecutionProvider,
-                                  CREATE_GATHER_ELEMENTS_KERNEL_DEF
-                                      .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
-                                      .TypeConstraint("Tind",
-                                                      std::vector<MLDataType>{DataTypeImpl::GetTensorType<int32_t>(),
-                                                                              DataTypeImpl::GetTensorType<int64_t>()}),
-                                  GatherElements);
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(GatherElements, kOnnxDomain, 11, 12, kCudaExecutionProvider, CREATE_GATHER_ELEMENTS_KERNEL_DEF.TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()).TypeConstraint("Tind", std::vector<MLDataType>{DataTypeImpl::GetTensorType<int32_t>(), DataTypeImpl::GetTensorType<int64_t>()}), GatherElements);
 
 #undef CREATE_GATHER_ELEMENTS_KERNEL_DEF
 
-void CoalesceDimensions(TensorShapeVector& input_shape, TensorShapeVector& indices_shape,
-                        TensorShapeVector* p_indices_strides, int64_t axis, GatherScatterElementsArgs& args) {
+void CoalesceDimensions(TensorShapeVector& input_shape, TensorShapeVector& indices_shape, TensorShapeVector* p_indices_strides, int64_t axis, GatherScatterElementsArgs& args) {
   size_t rank = input_shape.size();
   if (axis < 0 || axis >= static_cast<int64_t>(rank)) ORT_THROW("Invalid axis in CoalesceDimensions: ", axis);
   size_t new_axis = static_cast<size_t>(axis);
@@ -126,9 +115,7 @@ ONNX_NAMESPACE::TensorProto_DataType GetElementType(size_t element_size) {
 
 template <typename T>
 struct GatherElements::ComputeImpl {
-  Status operator()(cudaStream_t stream, const void* input_data_raw, const void* indices_data_raw,
-                    void* output_data_raw, const size_t index_element_size,
-                    const GatherScatterElementsArgs& args) const {
+  Status operator()(cudaStream_t stream, const void* input_data_raw, const void* indices_data_raw, void* output_data_raw, const size_t index_element_size, const GatherScatterElementsArgs& args) const {
     typedef typename ToCudaType<T>::MappedType CudaT;
     const CudaT* input_data = reinterpret_cast<const CudaT*>(input_data_raw);
     CudaT* output_data = reinterpret_cast<CudaT*>(output_data_raw);
@@ -190,9 +177,7 @@ Status GatherElements::ComputeInternal(OpKernelContext* context) const {
   }
 
   utils::MLTypeCallDispatcher<int8_t, MLFloat16, float, double> t_disp(dtype);
-  return t_disp.InvokeRet<Status, ComputeImpl>(Stream(context), input_tensor->DataRaw(), indices_tensor->DataRaw(),
-                                               output_tensor->MutableDataRaw(), indices_tensor->DataType()->Size(),
-                                               args);
+  return t_disp.InvokeRet<Status, ComputeImpl>(Stream(context), input_tensor->DataRaw(), indices_tensor->DataRaw(), output_tensor->MutableDataRaw(), indices_tensor->DataType()->Size(), args);
 }
 
 }  // namespace cuda

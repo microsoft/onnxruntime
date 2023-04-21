@@ -13,8 +13,7 @@ namespace test {
 
 #ifndef DISABLE_CONTRIB_OPS
 
-void TestConvPath(const std::vector<int64_t>& input_shape, const std::vector<int64_t>& weights_shape,
-                  const std::vector<int64_t>& output_shape, int64_t group) {
+void TestConvPath(const std::vector<int64_t>& input_shape, const std::vector<int64_t>& weights_shape, const std::vector<int64_t>& output_shape, int64_t group) {
   auto build_test_case = [&](ModelTestBuilder& builder) {
     auto* input_arg = builder.MakeInput<float>(input_shape, -31, 31);
     auto* output_arg = builder.MakeOutput();
@@ -36,8 +35,13 @@ void TestConvPath(const std::vector<int64_t>& input_shape, const std::vector<int
   TransformerTester(build_test_case,
                     check_graph,
                     TransformerLevel::Default,
-                    TransformerLevel::Level3, 12, 0.0001, 0.000001,
-                    0, {}, disabled_optimizers);
+                    TransformerLevel::Level3,
+                    12,
+                    0.0001,
+                    0.000001,
+                    0,
+                    {},
+                    disabled_optimizers);
 }
 
 TEST(ConvAddActivationFusionTests, ConvExpandThenGemm) {

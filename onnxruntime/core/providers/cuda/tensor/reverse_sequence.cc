@@ -17,16 +17,18 @@ ONNX_OPERATOR_KERNEL_EX(
     (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
     ReverseSequenceOp);
 
-#define ReverseSequenceCallCudaImplTypeAs(T, TEqual)                                                 \
-  if (X.IsDataType<T>()) {                                                                           \
-    CUDA_RETURN_IF_ERROR(ReverseSequenceCudaImpl(                                                    \
-        Stream(context),                                                                             \
-        reinterpret_cast<const typename ToCudaType<TEqual>::MappedType*>(X.Data<T>()),               \
-        seq_lengths.Data<int64_t>(),                                                                 \
-        reinterpret_cast<typename ToCudaType<TEqual>::MappedType*>(Y.MutableData<T>()),              \
-        gsl::narrow<int>(batch_size), gsl::narrow<int>(max_seq_len), gsl::narrow<int>(element_size), \
-        time_major_));                                                                               \
-    return Status::OK();                                                                             \
+#define ReverseSequenceCallCudaImplTypeAs(T, TEqual)                                    \
+  if (X.IsDataType<T>()) {                                                              \
+    CUDA_RETURN_IF_ERROR(ReverseSequenceCudaImpl(                                       \
+        Stream(context),                                                                \
+        reinterpret_cast<const typename ToCudaType<TEqual>::MappedType*>(X.Data<T>()),  \
+        seq_lengths.Data<int64_t>(),                                                    \
+        reinterpret_cast<typename ToCudaType<TEqual>::MappedType*>(Y.MutableData<T>()), \
+        gsl::narrow<int>(batch_size),                                                   \
+        gsl::narrow<int>(max_seq_len),                                                  \
+        gsl::narrow<int>(element_size),                                                 \
+        time_major_));                                                                  \
+    return Status::OK();                                                                \
   }
 
 Status ReverseSequenceOp::ComputeInternal(OpKernelContext* context) const {
@@ -41,8 +43,7 @@ Status ReverseSequenceOp::ComputeInternal(OpKernelContext* context) const {
   const auto& seq_len_shape = seq_lengths.Shape();
 
   if (seq_len_shape.NumDimensions() != 1 || seq_len_shape[0] != batch_size) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "sequence_lens shape must be {batch_size}. Got:",
-                           seq_len_shape, ". batch_size=", batch_size);
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "sequence_lens shape must be {batch_size}. Got:", seq_len_shape, ". batch_size=", batch_size);
   }
   auto& Y = *context->Output(0, dims);
 
@@ -62,8 +63,7 @@ Status ReverseSequenceOp::ComputeInternal(OpKernelContext* context) const {
   ReverseSequenceCallCudaImplTypeAs(double, int64_t);
   ReverseSequenceCallCudaImplTypeAs(uint64_t, int64_t);
 
-  return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
-                         "Type for ", X.DataType(), " is not supported yet in ReverseSequence.");
+  return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "Type for ", X.DataType(), " is not supported yet in ReverseSequence.");
 }
 
 }  // namespace cuda

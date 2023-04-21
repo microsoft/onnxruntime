@@ -100,11 +100,10 @@ common::Status DataTransferManager::CopyTensors(const std::vector<IDataTransfer:
   const OrtDevice& src_device = first_pair.src.get().Location().device;
   const OrtDevice& dst_device = first_pair.dst.get().Location().device;
 
-  bool all_same = std::all_of(src_dst_pairs.cbegin() + 1, src_dst_pairs.cend(),
-                              [&src_device, &dst_device](const IDataTransfer::SrcDstPair& pair) {
-                                return pair.src.get().Location().device == src_device &&
-                                       pair.dst.get().Location().device == dst_device;
-                              });
+  bool all_same = std::all_of(src_dst_pairs.cbegin() + 1, src_dst_pairs.cend(), [&src_device, &dst_device](const IDataTransfer::SrcDstPair& pair) {
+    return pair.src.get().Location().device == src_device &&
+           pair.dst.get().Location().device == dst_device;
+  });
 
   IDataTransfer* first_dt = nullptr;
 
@@ -153,11 +152,10 @@ common::Status DataTransferManager::CopySparseTensors(const std::vector<IDataTra
   const OrtDevice& src_device = first_pair.src.get().Location().device;
   const OrtDevice& dst_device = first_pair.dst.get().Location().device;
 
-  bool all_same = std::all_of(src_dst_pairs.cbegin() + 1, src_dst_pairs.cend(),
-                              [&src_device, &dst_device](const IDataTransfer::SparseSrcDstPair& pair) {
-                                return pair.src.get().Location().device == src_device &&
-                                       pair.dst.get().Location().device == dst_device;
-                              });
+  bool all_same = std::all_of(src_dst_pairs.cbegin() + 1, src_dst_pairs.cend(), [&src_device, &dst_device](const IDataTransfer::SparseSrcDstPair& pair) {
+    return pair.src.get().Location().device == src_device &&
+           pair.dst.get().Location().device == dst_device;
+  });
 
   IDataTransfer* first_dt = nullptr;
 

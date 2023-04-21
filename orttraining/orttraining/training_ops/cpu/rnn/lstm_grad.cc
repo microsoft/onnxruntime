@@ -22,9 +22,7 @@ REGISTER_LSTMGRAD_KERNEL_TYPED(float)
 template <typename T>
 Status LSTMGrad<T>::Compute(OpKernelContext* context) const {
   const auto lstmgrad_inputs = lstm::LSTMGradInputs<T>(context, attributes_.num_directions, attributes_.hidden_size);
-  auto lstmgrad_outputs = lstm::LSTMGradOutputs<T>(context, attributes_.num_directions, lstmgrad_inputs.shape.sequence_length,
-                                                   lstmgrad_inputs.shape.batch_size, attributes_.hidden_size,
-                                                   lstmgrad_inputs.shape.input_size);
+  auto lstmgrad_outputs = lstm::LSTMGradOutputs<T>(context, attributes_.num_directions, lstmgrad_inputs.shape.sequence_length, lstmgrad_inputs.shape.batch_size, attributes_.hidden_size, lstmgrad_inputs.shape.input_size);
 
   // Allocator in case we need to allocate memory for a nullptr input/output
   AllocatorPtr alloc;

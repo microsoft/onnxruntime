@@ -14,11 +14,8 @@ ONNX_OPERATOR_KERNEL_EX(
     1,
     kCpuExecutionProvider,
     KernelDefBuilder()
-        .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
-                              DataTypeImpl::GetTensorType<double>()})
-        .TypeConstraint("Tind", std::vector<MLDataType>{
-                                    DataTypeImpl::GetTensorType<int32_t>(),
-                                    DataTypeImpl::GetTensorType<int64_t>()}),
+        .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(), DataTypeImpl::GetTensorType<double>()})
+        .TypeConstraint("Tind", std::vector<MLDataType>{DataTypeImpl::GetTensorType<int32_t>(), DataTypeImpl::GetTensorType<int64_t>()}),
     GatherElementsGrad);
 
 #define TYPED_GRAD_FUNCTION_CALL(T)                                            \
@@ -43,14 +40,12 @@ Status GatherElementsGrad::Compute(OpKernelContext* context) const {
   const auto& indices_dims = indices_tensor->Shape().GetDims();
   const auto& dY_dims = dY->Shape().GetDims();
   if (indices_dims.size() != dY_dims.size()) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Indices and dY must have the same rank");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Indices and dY must have the same rank");
   }
 
   for (size_t i = 0; i < indices_dims.size(); ++i) {
     if (indices_dims[i] != dY_dims[i]) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Indices vs dY dimensions differs at position=", i,
-                             " ", indices_dims[i], " vs ", dY_dims[i]);
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Indices vs dY dimensions differs at position=", i, " ", indices_dims[i], " vs ", dY_dims[i]);
     }
   }
 
@@ -59,16 +54,14 @@ Status GatherElementsGrad::Compute(OpKernelContext* context) const {
   // exceed that of the output
   const auto& output_dims = data_shape.GetDims();
   if (output_dims.size() != indices_dims.size()) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Indices must have the same rank as Output. Indices rank=",
-                           indices_dims.size(), ". Output rank=", output_dims.size());
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Indices must have the same rank as Output. Indices rank=", indices_dims.size(), ". Output rank=", output_dims.size());
   }
 
   for (size_t i = 0; i < output_dims.size(); ++i) {
     // For all axes except the axis of interest, make sure that the corresponding 'indices' shape
     // value is within bounds of the corresponding 'data' shape.
     if (static_cast<int64_t>(i) != axis && output_dims[i] < indices_dims[i]) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Indices dim=", indices_dims[i], " at pos=", i,
-                             " is greater than Output dim=", output_dims[i]);
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Indices dim=", indices_dims[i], " at pos=", i, " is greater than Output dim=", output_dims[i]);
     }
   }
 

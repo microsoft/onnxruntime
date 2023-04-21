@@ -39,8 +39,7 @@ onnxruntime::NodeArg* AddCastNode(onnxruntime::Graph& graph,
   std::vector<onnxruntime::NodeArg*> input_defs = {new_on_input ? new_arg : old_arg};
   std::vector<onnxruntime::NodeArg*> output_defs = {new_on_input ? old_arg : new_arg};
 
-  auto& cast_node = graph.AddNode(node_name, "Cast", "cast node to cast from float16 to float32 on cpu",
-                                  input_defs, output_defs);
+  auto& cast_node = graph.AddNode(node_name, "Cast", "cast node to cast from float16 to float32 on cpu", input_defs, output_defs);
   cast_node.AddAttribute("to", to_type);
   cast_node.SetExecutionProviderType(providerType);
   return new_arg;
@@ -53,10 +52,9 @@ static bool NodeNeedsInputCastToFp32(const onnxruntime::Node& node) {
 
   if (not_assigned) {
     const auto& input_defs = node.InputDefs();
-    bool has_fp16_input = std::any_of(input_defs.cbegin(), input_defs.cend(),
-                                      [](const NodeArg* input_def) {
-                                        return IsMLFloat16Tensor(*input_def);
-                                      });
+    bool has_fp16_input = std::any_of(input_defs.cbegin(), input_defs.cend(), [](const NodeArg* input_def) {
+      return IsMLFloat16Tensor(*input_def);
+    });
     return has_fp16_input;
   }
 
@@ -99,10 +97,9 @@ static bool IsIsolatedFp16NodeOnCpu(const onnxruntime::Node& node, onnxruntime::
     do {
       // find the number of fp16 inputs as we need to make sure they're all coming from nodes that will be cast
       const auto& input_defs = node.InputDefs();
-      size_t num_fp16_inputs = std::count_if(input_defs.cbegin(), input_defs.cend(),
-                                             [](const NodeArg* input_def) {
-                                               return IsMLFloat16Tensor(*input_def);
-                                             });
+      size_t num_fp16_inputs = std::count_if(input_defs.cbegin(), input_defs.cend(), [](const NodeArg* input_def) {
+        return IsMLFloat16Tensor(*input_def);
+      });
 
       if (num_fp16_inputs == 0) {
         break;
@@ -335,8 +332,7 @@ class RemoveDuplicateCastTransformer : public GraphTransformer {
   }
 };
 
-Status InsertCastTransformer::ApplyImpl(onnxruntime::Graph& graph, bool& modified, int graph_level,
-                                        const logging::Logger& logger) const {
+Status InsertCastTransformer::ApplyImpl(onnxruntime::Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
   if (force_cpu_fp32_)
     ORT_RETURN_IF_ERROR(ForceSingleNodeCPUFloat16ToFloat32(graph));
 

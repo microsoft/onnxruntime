@@ -38,12 +38,7 @@ static T clampi(int a, int min_value, int max_value) {
 
 template <typename T>
 void RunQLinearMathTestFromFloat(
-    const char* op_name, std::function<float(float, float)> calc,
-    const std::vector<float>& a, const std::vector<int64_t>& a_shape_origin,
-    const quantization::Params<T>& a_params,
-    const std::vector<float>& b, const std::vector<int64_t>& b_shape_origin,
-    const quantization::Params<T>& b_params,
-    const quantization::Params<T>& c_params) {
+    const char* op_name, std::function<float(float, float)> calc, const std::vector<float>& a, const std::vector<int64_t>& a_shape_origin, const quantization::Params<T>& a_params, const std::vector<float>& b, const std::vector<int64_t>& b_shape_origin, const quantization::Params<T>& b_params, const quantization::Params<T>& c_params) {
   const auto run_test = [&](bool input_b_is_initializer,
                             bool all_initializer_scale_zero_point) {
     size_t number_dims = std::max(a_shape_origin.size(), b_shape_origin.size());
@@ -129,25 +124,11 @@ void RunQLinearMathTestFromFloat(
 // total 32 + 31 elements to cover all path
 // for add() usage tensor A
 static std::vector<float> A4Add = {
-    0.00f, 0.25f, 0.50f, 0.75f, 1.00f, 1.25f, 1.50f, 1.75f,
-    2.00f, 2.25f, 2.50f, 2.75f, 3.00f, 3.50f, 3.75f, 4.00f,
-    -0.00f, -0.25f, -0.50f, -0.75f, -1.00f, -1.25f, -1.50f, -1.75f,
-    -2.00f, -2.25f, -2.50f, -2.75f, -3.00f, -4.00f, -3.75f, -3.50f,
-    0.00f, 0.25f, 0.50f, 0.75f, 1.00f, 1.25f, 1.50f, 1.75f,
-    2.00f, 2.25f, 2.50f, 2.75f, 3.00f, 3.75f, 4.25f, 4.50f,
-    -0.00f, -0.25f, -0.50f, -0.75f, -1.00f, -1.25f, -1.50f, -1.75f,
-    -2.00f, -2.25f, -2.50f, -2.75f, -3.00f, 3.75f, 3.00f};
+    0.00f, 0.25f, 0.50f, 0.75f, 1.00f, 1.25f, 1.50f, 1.75f, 2.00f, 2.25f, 2.50f, 2.75f, 3.00f, 3.50f, 3.75f, 4.00f, -0.00f, -0.25f, -0.50f, -0.75f, -1.00f, -1.25f, -1.50f, -1.75f, -2.00f, -2.25f, -2.50f, -2.75f, -3.00f, -4.00f, -3.75f, -3.50f, 0.00f, 0.25f, 0.50f, 0.75f, 1.00f, 1.25f, 1.50f, 1.75f, 2.00f, 2.25f, 2.50f, 2.75f, 3.00f, 3.75f, 4.25f, 4.50f, -0.00f, -0.25f, -0.50f, -0.75f, -1.00f, -1.25f, -1.50f, -1.75f, -2.00f, -2.25f, -2.50f, -2.75f, -3.00f, 3.75f, 3.00f};
 
 // for add() usage tensor B
 static std::vector<float> B4Add = {
-    4.00f, 0.25f, 0.00f, -0.25f, 0.50f, -0.25f, -0.00f, 0.25f,
-    -1.50f, -2.25f, 2.50f, 3.75f, -3.75f, -4.00f, 5.00f, 5.50f,
-    4.00f, 0.25f, 0.00f, -0.25f, 0.50f, -0.25f, -0.00f, 0.25f,
-    -1.50f, -2.25f, 2.50f, 3.75f, -3.75f, -4.00f, 5.00f, 5.50f,
-    4.00f, 0.25f, 0.00f, -0.25f, 0.50f, -0.25f, -0.00f, 0.25f,
-    -1.50f, -2.25f, 2.50f, 3.75f, -3.75f, -4.00f, 5.00f, 5.50f,
-    4.00f, 0.25f, 0.00f, -0.25f, 0.50f, -0.25f, -0.00f, 0.25f,
-    -1.50f, -2.25f, 2.50f, 3.75f, -3.75f, -3.75f, -4.00f};
+    4.00f, 0.25f, 0.00f, -0.25f, 0.50f, -0.25f, -0.00f, 0.25f, -1.50f, -2.25f, 2.50f, 3.75f, -3.75f, -4.00f, 5.00f, 5.50f, 4.00f, 0.25f, 0.00f, -0.25f, 0.50f, -0.25f, -0.00f, 0.25f, -1.50f, -2.25f, 2.50f, 3.75f, -3.75f, -4.00f, 5.00f, 5.50f, 4.00f, 0.25f, 0.00f, -0.25f, 0.50f, -0.25f, -0.00f, 0.25f, -1.50f, -2.25f, 2.50f, 3.75f, -3.75f, -4.00f, 5.00f, 5.50f, 4.00f, 0.25f, 0.00f, -0.25f, 0.50f, -0.25f, -0.00f, 0.25f, -1.50f, -2.25f, 2.50f, 3.75f, -3.75f, -3.75f, -4.00f};
 
 static auto add_function = [](float a_dequantized, float b_dequantized) {
   return a_dequantized + b_dequantized;
@@ -167,10 +148,7 @@ TEST(QLinearBinaryOpTest, AddU8VectorVectorFull) {
   float C_scale = 16.0f / 256.0f;
   quantization::Params<uint8_t> C_params(C_scale, /*zero_point=*/128);
 
-  RunQLinearMathTestFromFloat("QLinearAdd", add_function,
-                              A, {63}, A_params,
-                              B, {63}, B_params,
-                              C_params);
+  RunQLinearMathTestFromFloat("QLinearAdd", add_function, A, {63}, A_params, B, {63}, B_params, C_params);
 }
 
 TEST(QLinearBinaryOpTest, AddU8VectorVectorBroadcast) {
@@ -178,18 +156,13 @@ TEST(QLinearBinaryOpTest, AddU8VectorVectorBroadcast) {
   float A_scale = 8.0f / 256.0f;
   quantization::Params<uint8_t> A_params(A_scale, /*zero_point=*/128);
   std::vector<float> B = {
-      4.00f, 0.25f, 0.00f, -0.25f, 0.50f, -0.25f, -0.00f, 0.25f,
-      -1.50f, -2.25f, 2.50f, 3.75f, -3.75f, -4.00f, 5.00f, 5.50f,
-      -0.50f, -1.25f, 0.75f, 1.25f, 2.25f};
+      4.00f, 0.25f, 0.00f, -0.25f, 0.50f, -0.25f, -0.00f, 0.25f, -1.50f, -2.25f, 2.50f, 3.75f, -3.75f, -4.00f, 5.00f, 5.50f, -0.50f, -1.25f, 0.75f, 1.25f, 2.25f};
   float B_scale = 8.0f / 256.0f;
   quantization::Params<uint8_t> B_params(B_scale, /*zero_point=*/128);
   float C_scale = 16.0f / 256.0f;
   quantization::Params<uint8_t> C_params(C_scale, /*zero_point=*/128);
 
-  RunQLinearMathTestFromFloat("QLinearAdd", add_function,
-                              A, {3, 3, 7}, A_params,
-                              B, {3, 1, 7}, B_params,
-                              C_params);
+  RunQLinearMathTestFromFloat("QLinearAdd", add_function, A, {3, 3, 7}, A_params, B, {3, 1, 7}, B_params, C_params);
 }
 
 TEST(QLinearBinaryOpTest, AddU8ScalarVectorFull) {
@@ -202,10 +175,7 @@ TEST(QLinearBinaryOpTest, AddU8ScalarVectorFull) {
   float C_scale = 8.0f / 256.0f;
   quantization::Params<uint8_t> C_params(C_scale, /*zero_point=*/100);
 
-  RunQLinearMathTestFromFloat("QLinearAdd", add_function,
-                              B, {1}, B_params,
-                              A, {63}, A_params,
-                              C_params);
+  RunQLinearMathTestFromFloat("QLinearAdd", add_function, B, {1}, B_params, A, {63}, A_params, C_params);
 }
 
 TEST(QLinearBinaryOpTest, AddU8ScalarVectorBroadcast) {
@@ -218,10 +188,7 @@ TEST(QLinearBinaryOpTest, AddU8ScalarVectorBroadcast) {
   float C_scale = 8.0f / 256.0f;
   quantization::Params<uint8_t> C_params(C_scale, /*zero_point=*/100);
 
-  RunQLinearMathTestFromFloat("QLinearAdd", add_function,
-                              B, {3, 1, 1}, B_params,
-                              A, {3, 7, 3}, A_params,
-                              C_params);
+  RunQLinearMathTestFromFloat("QLinearAdd", add_function, B, {3, 1, 1}, B_params, A, {3, 7, 3}, A_params, C_params);
 }
 
 TEST(QLinearBinaryOpTest, AddU8VectorScalarFull) {
@@ -234,10 +201,7 @@ TEST(QLinearBinaryOpTest, AddU8VectorScalarFull) {
   float C_scale = 16.0f / 256.0f;
   quantization::Params<uint8_t> C_params(C_scale, /*zero_point=*/128);
 
-  RunQLinearMathTestFromFloat("QLinearAdd", add_function,
-                              A, {63}, A_params,
-                              B, {1}, B_params,
-                              C_params);
+  RunQLinearMathTestFromFloat("QLinearAdd", add_function, A, {63}, A_params, B, {1}, B_params, C_params);
 }
 
 TEST(QLinearBinaryOpTest, AddU8VectorScalarBroadcast) {
@@ -250,10 +214,7 @@ TEST(QLinearBinaryOpTest, AddU8VectorScalarBroadcast) {
   float C_scale = 16.0f / 256.0f;
   quantization::Params<uint8_t> C_params(C_scale, /*zero_point=*/128);
 
-  RunQLinearMathTestFromFloat("QLinearAdd", add_function,
-                              A, {3, 7, 3}, A_params,
-                              B, {1, 1, 3}, B_params,
-                              C_params);
+  RunQLinearMathTestFromFloat("QLinearAdd", add_function, A, {3, 7, 3}, A_params, B, {1, 1, 3}, B_params, C_params);
 }
 
 TEST(QLinearBinaryOpTest, AddS8VectorVectorFull) {
@@ -266,10 +227,7 @@ TEST(QLinearBinaryOpTest, AddS8VectorVectorFull) {
   float C_scale = 16.0f / 256.0f;
   quantization::Params<int8_t> C_params(C_scale, /*zero_point=*/-16);
 
-  RunQLinearMathTestFromFloat("QLinearAdd", add_function,
-                              A, {63}, A_params,
-                              B, {63}, B_params,
-                              C_params);
+  RunQLinearMathTestFromFloat("QLinearAdd", add_function, A, {63}, A_params, B, {63}, B_params, C_params);
 }
 
 TEST(QLinearBinaryOpTest, AddS8VectorVectorBroadcast) {
@@ -277,18 +235,13 @@ TEST(QLinearBinaryOpTest, AddS8VectorVectorBroadcast) {
   float A_scale = 8.0f / 256.0f;
   quantization::Params<int8_t> A_params(A_scale, /*zero_point=*/0);
   std::vector<float> B = {
-      4.00f, 0.25f, 0.00f, -0.25f, 0.50f, -0.25f, -0.00f, 0.25f,
-      -1.50f, -2.25f, 2.50f, 3.75f, -3.75f, -4.00f, 5.00f, 5.50f,
-      -0.50f, -1.25f, 0.75f, 1.25f, 2.25f};
+      4.00f, 0.25f, 0.00f, -0.25f, 0.50f, -0.25f, -0.00f, 0.25f, -1.50f, -2.25f, 2.50f, 3.75f, -3.75f, -4.00f, 5.00f, 5.50f, -0.50f, -1.25f, 0.75f, 1.25f, 2.25f};
   float B_scale = 8.0f / 256.0f;
   quantization::Params<int8_t> B_params(B_scale, /*zero_point=*/0);
   float C_scale = 16.0f / 256.0f;
   quantization::Params<int8_t> C_params(C_scale, /*zero_point=*/-16);
 
-  RunQLinearMathTestFromFloat("QLinearAdd", add_function,
-                              A, {3, 3, 7}, A_params,
-                              B, {3, 1, 7}, B_params,
-                              C_params);
+  RunQLinearMathTestFromFloat("QLinearAdd", add_function, A, {3, 3, 7}, A_params, B, {3, 1, 7}, B_params, C_params);
 }
 
 TEST(QLinearBinaryOpTest, AddS8ScalarVectorFull) {
@@ -301,10 +254,7 @@ TEST(QLinearBinaryOpTest, AddS8ScalarVectorFull) {
   float C_scale = 8.0f / 256.0f;
   quantization::Params<int8_t> C_params(C_scale, /*zero_point=*/10);
 
-  RunQLinearMathTestFromFloat("QLinearAdd", add_function,
-                              B, {1}, B_params,
-                              A, {63}, A_params,
-                              C_params);
+  RunQLinearMathTestFromFloat("QLinearAdd", add_function, B, {1}, B_params, A, {63}, A_params, C_params);
 }
 
 TEST(QLinearBinaryOpTest, AddS8ScalarVectorBroadcast) {
@@ -317,10 +267,7 @@ TEST(QLinearBinaryOpTest, AddS8ScalarVectorBroadcast) {
   float C_scale = 8.0f / 256.0f;
   quantization::Params<int8_t> C_params(C_scale, /*zero_point=*/10);
 
-  RunQLinearMathTestFromFloat("QLinearAdd", add_function,
-                              B, {3, 1, 1}, B_params,
-                              A, {3, 7, 3}, A_params,
-                              C_params);
+  RunQLinearMathTestFromFloat("QLinearAdd", add_function, B, {3, 1, 1}, B_params, A, {3, 7, 3}, A_params, C_params);
 }
 
 TEST(QLinearBinaryOpTest, AddS8VectorScalarFull) {
@@ -333,10 +280,7 @@ TEST(QLinearBinaryOpTest, AddS8VectorScalarFull) {
   float C_scale = 8.0f / 256.0f;
   quantization::Params<int8_t> C_params(C_scale, /*zero_point=*/10);
 
-  RunQLinearMathTestFromFloat("QLinearAdd", add_function,
-                              A, {63}, A_params,
-                              B, {1}, B_params,
-                              C_params);
+  RunQLinearMathTestFromFloat("QLinearAdd", add_function, A, {63}, A_params, B, {1}, B_params, C_params);
 }
 
 TEST(QLinearBinaryOpTest, AddS8VectorScalarBroadcast) {
@@ -349,10 +293,7 @@ TEST(QLinearBinaryOpTest, AddS8VectorScalarBroadcast) {
   float C_scale = 8.0f / 256.0f;
   quantization::Params<int8_t> C_params(C_scale, /*zero_point=*/10);
 
-  RunQLinearMathTestFromFloat("QLinearAdd", add_function,
-                              A, {3, 7, 3}, A_params,
-                              B, {1, 1, 3}, B_params,
-                              C_params);
+  RunQLinearMathTestFromFloat("QLinearAdd", add_function, A, {3, 7, 3}, A_params, B, {1, 1, 3}, B_params, C_params);
 }
 
 //
@@ -368,10 +309,7 @@ TEST(QLinearBinaryOpTest, MulU8VectorVectorFull) {
   float C_scale = 64.0f / 256.0f;
   quantization::Params<uint8_t> C_params(C_scale, /*zero_point=*/128);
 
-  RunQLinearMathTestFromFloat("QLinearMul", mul_function,
-                              A, {63}, A_params,
-                              B, {63}, B_params,
-                              C_params);
+  RunQLinearMathTestFromFloat("QLinearMul", mul_function, A, {63}, A_params, B, {63}, B_params, C_params);
 }
 
 TEST(QLinearBinaryOpTest, MulU8VectorVectorBroadcast) {
@@ -379,18 +317,13 @@ TEST(QLinearBinaryOpTest, MulU8VectorVectorBroadcast) {
   float A_scale = 8.0f / 256.0f;
   quantization::Params<uint8_t> A_params(A_scale, /*zero_point=*/128);
   std::vector<float> B = {
-      4.00f, 0.25f, 0.00f, -0.25f, 0.50f, -0.25f, -0.00f, 0.25f,
-      -1.50f, -2.25f, 2.50f, 3.75f, -3.75f, -4.00f, 5.00f, 5.50f,
-      -0.50f, -1.25f, 0.75f, 0.00f, 2.25f};
+      4.00f, 0.25f, 0.00f, -0.25f, 0.50f, -0.25f, -0.00f, 0.25f, -1.50f, -2.25f, 2.50f, 3.75f, -3.75f, -4.00f, 5.00f, 5.50f, -0.50f, -1.25f, 0.75f, 0.00f, 2.25f};
   float B_scale = 8.0f / 256.0f;
   quantization::Params<uint8_t> B_params(B_scale, /*zero_point=*/128);
   float C_scale = 64.0f / 256.0f;
   quantization::Params<uint8_t> C_params(C_scale, /*zero_point=*/128);
 
-  RunQLinearMathTestFromFloat("QLinearMul", mul_function,
-                              A, {3, 3, 7}, A_params,
-                              B, {3, 1, 7}, B_params,
-                              C_params);
+  RunQLinearMathTestFromFloat("QLinearMul", mul_function, A, {3, 3, 7}, A_params, B, {3, 1, 7}, B_params, C_params);
 }
 
 TEST(QLinearBinaryOpTest, MulU8ScalarVectorFull) {
@@ -403,10 +336,7 @@ TEST(QLinearBinaryOpTest, MulU8ScalarVectorFull) {
   float C_scale = 8.0f / 256.0f;
   quantization::Params<uint8_t> C_params(C_scale, /*zero_point=*/100);
 
-  RunQLinearMathTestFromFloat("QLinearMul", mul_function,
-                              B, {1}, B_params,
-                              A, {63}, A_params,
-                              C_params);
+  RunQLinearMathTestFromFloat("QLinearMul", mul_function, B, {1}, B_params, A, {63}, A_params, C_params);
 }
 
 TEST(QLinearBinaryOpTest, MulU8ScalarVectorBroadcast) {
@@ -419,10 +349,7 @@ TEST(QLinearBinaryOpTest, MulU8ScalarVectorBroadcast) {
   float C_scale = 8.0f / 256.0f;
   quantization::Params<uint8_t> C_params(C_scale, /*zero_point=*/100);
 
-  RunQLinearMathTestFromFloat("QLinearMul", mul_function,
-                              B, {3, 1, 1}, B_params,
-                              A, {3, 7, 3}, A_params,
-                              C_params);
+  RunQLinearMathTestFromFloat("QLinearMul", mul_function, B, {3, 1, 1}, B_params, A, {3, 7, 3}, A_params, C_params);
 }
 
 TEST(QLinearBinaryOpTest, MulU8VectorScalarFull) {
@@ -435,10 +362,7 @@ TEST(QLinearBinaryOpTest, MulU8VectorScalarFull) {
   float C_scale = 16.0f / 256.0f;
   quantization::Params<uint8_t> C_params(C_scale, /*zero_point=*/128);
 
-  RunQLinearMathTestFromFloat("QLinearMul", mul_function,
-                              A, {63}, A_params,
-                              B, {1}, B_params,
-                              C_params);
+  RunQLinearMathTestFromFloat("QLinearMul", mul_function, A, {63}, A_params, B, {1}, B_params, C_params);
 }
 
 TEST(QLinearBinaryOpTest, MulU8VectorScalarBroadcast) {
@@ -451,10 +375,7 @@ TEST(QLinearBinaryOpTest, MulU8VectorScalarBroadcast) {
   float C_scale = 16.0f / 256.0f;
   quantization::Params<uint8_t> C_params(C_scale, /*zero_point=*/128);
 
-  RunQLinearMathTestFromFloat("QLinearMul", mul_function,
-                              A, {3, 7, 3}, A_params,
-                              B, {1, 1, 3}, B_params,
-                              C_params);
+  RunQLinearMathTestFromFloat("QLinearMul", mul_function, A, {3, 7, 3}, A_params, B, {1, 1, 3}, B_params, C_params);
 }
 
 TEST(QLinearBinaryOpTest, MulS8VectorVectorFull) {
@@ -467,10 +388,7 @@ TEST(QLinearBinaryOpTest, MulS8VectorVectorFull) {
   float C_scale = 64.0f / 256.0f;
   quantization::Params<int8_t> C_params(C_scale, /*zero_point=*/-16);
 
-  RunQLinearMathTestFromFloat("QLinearMul", mul_function,
-                              A, {63}, A_params,
-                              B, {63}, B_params,
-                              C_params);
+  RunQLinearMathTestFromFloat("QLinearMul", mul_function, A, {63}, A_params, B, {63}, B_params, C_params);
 }
 
 TEST(QLinearBinaryOpTest, MulS8VectorVectorBroadcast) {
@@ -478,18 +396,13 @@ TEST(QLinearBinaryOpTest, MulS8VectorVectorBroadcast) {
   float A_scale = 8.0f / 256.0f;
   quantization::Params<int8_t> A_params(A_scale, /*zero_point=*/0);
   std::vector<float> B = {
-      4.00f, 0.25f, 0.00f, -0.25f, 0.50f, -0.25f, -0.00f, 0.25f,
-      -1.50f, -2.25f, 2.50f, 3.75f, -3.75f, -4.00f, 5.00f, 5.50f,
-      -0.50f, -1.25f, 0.75f, 1.25f, 2.25f};
+      4.00f, 0.25f, 0.00f, -0.25f, 0.50f, -0.25f, -0.00f, 0.25f, -1.50f, -2.25f, 2.50f, 3.75f, -3.75f, -4.00f, 5.00f, 5.50f, -0.50f, -1.25f, 0.75f, 1.25f, 2.25f};
   float B_scale = 8.0f / 256.0f;
   quantization::Params<int8_t> B_params(B_scale, /*zero_point=*/0);
   float C_scale = 16.0f / 256.0f;
   quantization::Params<int8_t> C_params(C_scale, /*zero_point=*/-16);
 
-  RunQLinearMathTestFromFloat("QLinearMul", mul_function,
-                              A, {3, 3, 7}, A_params,
-                              B, {3, 1, 7}, B_params,
-                              C_params);
+  RunQLinearMathTestFromFloat("QLinearMul", mul_function, A, {3, 3, 7}, A_params, B, {3, 1, 7}, B_params, C_params);
 }
 
 TEST(QLinearBinaryOpTest, MulS8ScalarVectorFull) {
@@ -502,10 +415,7 @@ TEST(QLinearBinaryOpTest, MulS8ScalarVectorFull) {
   float C_scale = 8.0f / 256.0f;
   quantization::Params<int8_t> C_params(C_scale, /*zero_point=*/10);
 
-  RunQLinearMathTestFromFloat("QLinearMul", mul_function,
-                              B, {1}, B_params,
-                              A, {63}, A_params,
-                              C_params);
+  RunQLinearMathTestFromFloat("QLinearMul", mul_function, B, {1}, B_params, A, {63}, A_params, C_params);
 }
 
 TEST(QLinearBinaryOpTest, MulS8ScalarVectorBroadcast) {
@@ -518,10 +428,7 @@ TEST(QLinearBinaryOpTest, MulS8ScalarVectorBroadcast) {
   float C_scale = 8.0f / 256.0f;
   quantization::Params<int8_t> C_params(C_scale, /*zero_point=*/10);
 
-  RunQLinearMathTestFromFloat("QLinearMul", mul_function,
-                              B, {3, 1, 1}, B_params,
-                              A, {3, 7, 3}, A_params,
-                              C_params);
+  RunQLinearMathTestFromFloat("QLinearMul", mul_function, B, {3, 1, 1}, B_params, A, {3, 7, 3}, A_params, C_params);
 }
 
 TEST(QLinearBinaryOpTest, MulS8VectorScalarFull) {
@@ -534,10 +441,7 @@ TEST(QLinearBinaryOpTest, MulS8VectorScalarFull) {
   float C_scale = 8.0f / 256.0f;
   quantization::Params<int8_t> C_params(C_scale, /*zero_point=*/10);
 
-  RunQLinearMathTestFromFloat("QLinearMul", mul_function,
-                              A, {63}, A_params,
-                              B, {1}, B_params,
-                              C_params);
+  RunQLinearMathTestFromFloat("QLinearMul", mul_function, A, {63}, A_params, B, {1}, B_params, C_params);
 }
 
 TEST(QLinearBinaryOpTest, MulS8VectorScalarBroadcast) {
@@ -550,10 +454,7 @@ TEST(QLinearBinaryOpTest, MulS8VectorScalarBroadcast) {
   float C_scale = 8.0f / 256.0f;
   quantization::Params<int8_t> C_params(C_scale, /*zero_point=*/10);
 
-  RunQLinearMathTestFromFloat("QLinearMul", mul_function,
-                              A, {3, 7, 3}, A_params,
-                              B, {1, 1, 3}, B_params,
-                              C_params);
+  RunQLinearMathTestFromFloat("QLinearMul", mul_function, A, {3, 7, 3}, A_params, B, {1, 1, 3}, B_params, C_params);
 }
 
 }  // namespace test

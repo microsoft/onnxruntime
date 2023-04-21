@@ -40,12 +40,10 @@ class SoftmaxCrossEntropyLossGrad final : public LossBase {
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(SoftmaxCrossEntropyLossGrad);
 };
 
-void VerifyLogitWeightAndLabelShape(const TensorShape& logit_shape, const TensorShape& label_shape,
-                                    const TensorShape* weight_shape);
+void VerifyLogitWeightAndLabelShape(const TensorShape& logit_shape, const TensorShape& label_shape, const TensorShape* weight_shape);
 
 void GetNDCFromLogitAndLabelShape(const TensorShape& logit_shape, const TensorShape& label_shape, int64_t& N_D, int64_t& C);
-void GetPermutationAndShape(bool ncd_to_ndc, const TensorShape& tensor_shape, TensorShapeVector& new_shape,
-                            std::vector<size_t>& permutations);
+void GetPermutationAndShape(bool ncd_to_ndc, const TensorShape& tensor_shape, TensorShapeVector& new_shape, std::vector<size_t>& permutations);
 
 }  // namespace contrib
 }  // namespace onnxruntime

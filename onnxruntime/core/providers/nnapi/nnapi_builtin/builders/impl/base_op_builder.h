@@ -52,12 +52,10 @@ class BaseOpBuilder : public IOpBuilder {
 
   // Operator support related
  public:
-  bool IsOpSupported(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
-                     const OpSupportCheckParams& params) const override;
+  bool IsOpSupported(const InitializedTensorSet& initializers, const NodeUnit& node_unit, const OpSupportCheckParams& params) const override;
 
  protected:
-  virtual bool IsOpSupportedImpl(const InitializedTensorSet& /* initializers */, const NodeUnit& /* node_unit */,
-                                 const OpSupportCheckParams& /* params */) const {
+  virtual bool IsOpSupportedImpl(const InitializedTensorSet& /* initializers */, const NodeUnit& /* node_unit */, const OpSupportCheckParams& /* params */) const {
     return true;
   }
 
@@ -69,8 +67,7 @@ class BaseOpBuilder : public IOpBuilder {
   }
 
   virtual bool HasSupportedInputOutputsImpl(
-      const InitializedTensorSet& initializers, const NodeUnit& node_unit,
-      const OpSupportCheckParams& params) const;
+      const InitializedTensorSet& initializers, const NodeUnit& node_unit, const OpSupportCheckParams& params) const;
 
   virtual int GetMinSupportedOpSet(const NodeUnit& /* node_unit */) const { return 1; }
   virtual int GetMaxSupportedOpSet(const NodeUnit& /* node_unit */) const { return 19; }
@@ -82,8 +79,7 @@ class BaseOpBuilder : public IOpBuilder {
 
  private:
   bool HasSupportedOpSet(const NodeUnit& node_unit) const;
-  bool HasSupportedInputOutputs(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
-                                const OpSupportCheckParams& params) const;
+  bool HasSupportedInputOutputs(const InitializedTensorSet& initializers, const NodeUnit& node_unit, const OpSupportCheckParams& params) const;
 };
 
 }  // namespace nnapi

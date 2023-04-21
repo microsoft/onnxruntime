@@ -27,14 +27,12 @@ class ResizeOpBuilder : public BaseOpBuilder {
   void AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const override;
 
  private:
-  [[nodiscard]] Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
-                                             const logging::Logger& logger) const override;
+  [[nodiscard]] Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node, const logging::Logger& logger) const override;
 #endif
 
   // Operator support related
  private:
-  bool IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params,
-                         const logging::Logger& logger) const override;
+  bool IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params, const logging::Logger& logger) const override;
 
   // Resize opset 10- is very different than Resize opset 11+, with many key attributes missing
   // We only support Resize opset 11+ here
@@ -43,7 +41,8 @@ class ResizeOpBuilder : public BaseOpBuilder {
 
 // Helper functions
 bool GetResizeScales(const InitializedTensorSet& initializers,
-                     const Node& node, std::vector<float>& scales,
+                     const Node& node,
+                     std::vector<float>& scales,
                      const logging::Logger&) {
   const auto& input_defs = node.InputDefs();
   if (input_defs.size() < 3)
@@ -59,7 +58,8 @@ bool GetResizeScales(const InitializedTensorSet& initializers,
 }
 
 bool GetResizeOutputSizes(const InitializedTensorSet& initializers,
-                          const Node& node, std::vector<int64_t>& sizes,
+                          const Node& node,
+                          std::vector<int64_t>& sizes,
                           const logging::Logger&) {
   const auto& input_defs = node.InputDefs();
   if (input_defs.size() < 4)
@@ -135,8 +135,7 @@ Status ResizeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 
 // Operator support related
 
-bool ResizeOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params,
-                                        const logging::Logger& logger) const {
+bool ResizeOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params, const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
   const auto& initializers = input_params.graph_viewer.GetAllInitializedTensors();
 

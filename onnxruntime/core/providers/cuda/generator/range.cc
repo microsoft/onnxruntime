@@ -22,11 +22,7 @@ ONNX_OPERATOR_KERNEL_EX(
         .InputMemoryType(OrtMemTypeCPUInput, 0)  // start
         .InputMemoryType(OrtMemTypeCPUInput, 1)  // limit
         .InputMemoryType(OrtMemTypeCPUInput, 2)  // delta
-        .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
-                              DataTypeImpl::GetTensorType<double>(),
-                              DataTypeImpl::GetTensorType<int16_t>(),
-                              DataTypeImpl::GetTensorType<int32_t>(),
-                              DataTypeImpl::GetTensorType<int64_t>()}),
+        .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(), DataTypeImpl::GetTensorType<double>(), DataTypeImpl::GetTensorType<int16_t>(), DataTypeImpl::GetTensorType<int32_t>(), DataTypeImpl::GetTensorType<int64_t>()}),
     Range);
 
 template <typename T>
@@ -36,19 +32,13 @@ static Status ComputeRange(cudaStream_t stream, OpKernelContext* ctx) {
   const auto* delta_tensor_ptr = ctx->Input<Tensor>(2);
 
   if (!start_tensor.Shape().IsScalar()) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "start in Range operator should be scalar like tensor, yet got shape:",
-                           start_tensor.Shape());
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "start in Range operator should be scalar like tensor, yet got shape:", start_tensor.Shape());
   }
   if (!limit_tensor.Shape().IsScalar()) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "limit in Range operator should be scalar like tensor, yet got shape:",
-                           limit_tensor.Shape());
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "limit in Range operator should be scalar like tensor, yet got shape:", limit_tensor.Shape());
   }
   if (delta_tensor_ptr != nullptr && !delta_tensor_ptr->Shape().IsScalar()) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "delta in Range operator should be scalar like tensor, yet got shape:",
-                           delta_tensor_ptr->Shape());
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "delta in Range operator should be scalar like tensor, yet got shape:", delta_tensor_ptr->Shape());
   }
 
   // Start, Limit and Delta are stored in CPU.

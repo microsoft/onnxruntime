@@ -43,8 +43,7 @@ class CustomRegistry final {
   const std::shared_ptr<KernelRegistry>& GetKernelRegistry();
 
 #if !defined(ORT_MINIMAL_BUILD)
-  common::Status RegisterOpSet(std::vector<ONNX_NAMESPACE::OpSchema>& schemas, const std::string& domain,
-                               int baseline_opset_version, int opset_version);
+  common::Status RegisterOpSet(std::vector<ONNX_NAMESPACE::OpSchema>& schemas, const std::string& domain, int baseline_opset_version, int opset_version);
 
   const std::shared_ptr<onnxruntime::OnnxRuntimeOpSchemaRegistry>& GetOpschemaRegistry();
 #endif

@@ -43,8 +43,7 @@ class Loop : public controlflow::IControlFlowKernel {
   // function to concatenate the OrtValue instances from each Loop iteration into a single output buffer.
   // @param per_iteration_output OrtValue instances from each iteration. Never empty. All should have the same shape.
   // @param output Pre-allocated output buffer. On device specific to the ExecutionProvider running the Loop node.
-  using ConcatOutput = std::function<Status(void* stream, std::vector<OrtValue>& per_iteration_output,
-                                            void* output, size_t output_size_in_bytes)>;
+  using ConcatOutput = std::function<Status(void* stream, std::vector<OrtValue>& per_iteration_output, void* output, size_t output_size_in_bytes)>;
 
   static std::unique_ptr<OpKernel> Create(const OpKernelInfo& info, const ConcatOutput& concat_output_func, void* stream);
 

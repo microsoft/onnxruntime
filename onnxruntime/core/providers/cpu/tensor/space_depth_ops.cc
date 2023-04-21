@@ -17,24 +17,22 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     1,
     12,
     KernelDefBuilder()
-        .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
-                              DataTypeImpl::GetTensorType<double>()}),
+        .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(), DataTypeImpl::GetTensorType<double>()}),
     SpaceToDepth);
 
 ONNX_CPU_OPERATOR_KERNEL(
     SpaceToDepth,
     13,
     KernelDefBuilder()
-        .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
-                              DataTypeImpl::GetTensorType<double>()}),
+        .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(), DataTypeImpl::GetTensorType<double>()}),
     SpaceToDepth);
 
 ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     DepthToSpace,
-    1, 10,
+    1,
+    10,
     KernelDefBuilder()
-        .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
-                              DataTypeImpl::GetTensorType<double>()}),
+        .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(), DataTypeImpl::GetTensorType<double>()}),
     DepthToSpace);
 
 ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
@@ -42,16 +40,14 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     11,
     12,
     KernelDefBuilder()
-        .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
-                              DataTypeImpl::GetTensorType<double>()}),
+        .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(), DataTypeImpl::GetTensorType<double>()}),
     DepthToSpace);
 
 ONNX_CPU_OPERATOR_KERNEL(
     DepthToSpace,
     13,
     KernelDefBuilder()
-        .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
-                              DataTypeImpl::GetTensorType<double>()}),
+        .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(), DataTypeImpl::GetTensorType<double>()}),
     DepthToSpace);
 
 // intermediate tensor shapes are:
@@ -68,16 +64,20 @@ using ConstEigenTensorMap = Eigen::TensorMap<Eigen::Tensor<const T, Intermediate
 // helper method to fill in output buffer
 // only this portion is templated to minimize binary size
 template <typename T>
-static void SpaceDepthOpCpuImpl(const Tensor& input, Tensor& output,
-                                const std::array<Eigen::DenseIndex, IntermediateTensorRank>& permutation,
+static void SpaceDepthOpCpuImpl(const Tensor& input, Tensor& output, const std::array<Eigen::DenseIndex, IntermediateTensorRank>& permutation,
                                 const Eigen::DenseIndex batch_size,  // dim0 in both input and output
-                                const Eigen::DenseIndex in_dim1, const Eigen::DenseIndex in_dim2, const Eigen::DenseIndex in_dim3,
-                                const Eigen::DenseIndex in_dim4, const Eigen::DenseIndex in_dim5,
-                                const Eigen::DenseIndex out_dim1, const Eigen::DenseIndex out_dim2, const Eigen::DenseIndex out_dim3,
-                                const Eigen::DenseIndex out_dim4, const Eigen::DenseIndex out_dim5) {
+                                const Eigen::DenseIndex in_dim1,
+                                const Eigen::DenseIndex in_dim2,
+                                const Eigen::DenseIndex in_dim3,
+                                const Eigen::DenseIndex in_dim4,
+                                const Eigen::DenseIndex in_dim5,
+                                const Eigen::DenseIndex out_dim1,
+                                const Eigen::DenseIndex out_dim2,
+                                const Eigen::DenseIndex out_dim3,
+                                const Eigen::DenseIndex out_dim4,
+                                const Eigen::DenseIndex out_dim5) {
   EigenTensorMap<T>(output.MutableData<T>(), batch_size, out_dim1, out_dim2, out_dim3, out_dim4, out_dim5) =
-      ConstEigenTensorMap<T>(input.Data<T>(), batch_size,
-                             in_dim1, in_dim2, in_dim3, in_dim4, in_dim5)
+      ConstEigenTensorMap<T>(input.Data<T>(), batch_size, in_dim1, in_dim2, in_dim3, in_dim4, in_dim5)
           .shuffle(permutation);
 }
 
@@ -98,8 +98,12 @@ Status SpaceToDepth::Compute(OpKernelContext* context) const {
 
   ORT_RETURN_IF_ERROR(InputValidationsAndOutputDimsCalc(input,
                                                         batch,
-                                                        input_depth, input_height, input_width,
-                                                        output_depth, output_height, output_width,
+                                                        input_depth,
+                                                        input_height,
+                                                        input_width,
+                                                        output_depth,
+                                                        output_height,
+                                                        output_width,
                                                         true));
 
   Tensor& output = *context->Output(0, {batch, output_depth, output_height, output_width});
@@ -107,31 +111,9 @@ Status SpaceToDepth::Compute(OpKernelContext* context) const {
   std::array<Eigen::DenseIndex, IntermediateTensorRank> permutation{{0, 3, 5, 1, 2, 4}};
 
   if (input.IsDataType<float>()) {
-    SpaceDepthOpCpuImpl<float>(input, output, permutation,
-                               onnxruntime::narrow<ptrdiff_t>(batch),
-                               onnxruntime::narrow<std::ptrdiff_t>(input_depth),
-                               onnxruntime::narrow<std::ptrdiff_t>(input_height / blocksize_),
-                               onnxruntime::narrow<std::ptrdiff_t>(blocksize_),
-                               onnxruntime::narrow<std::ptrdiff_t>(input_width / blocksize_),
-                               onnxruntime::narrow<std::ptrdiff_t>(blocksize_),
-                               onnxruntime::narrow<ptrdiff_t>(blocksize_),
-                               onnxruntime::narrow<ptrdiff_t>(blocksize_),
-                               onnxruntime::narrow<std::ptrdiff_t>(input_depth),
-                               onnxruntime::narrow<std::ptrdiff_t>(input_height / blocksize_),
-                               onnxruntime::narrow<std::ptrdiff_t>(input_width / blocksize_));
+    SpaceDepthOpCpuImpl<float>(input, output, permutation, onnxruntime::narrow<ptrdiff_t>(batch), onnxruntime::narrow<std::ptrdiff_t>(input_depth), onnxruntime::narrow<std::ptrdiff_t>(input_height / blocksize_), onnxruntime::narrow<std::ptrdiff_t>(blocksize_), onnxruntime::narrow<std::ptrdiff_t>(input_width / blocksize_), onnxruntime::narrow<std::ptrdiff_t>(blocksize_), onnxruntime::narrow<ptrdiff_t>(blocksize_), onnxruntime::narrow<ptrdiff_t>(blocksize_), onnxruntime::narrow<std::ptrdiff_t>(input_depth), onnxruntime::narrow<std::ptrdiff_t>(input_height / blocksize_), onnxruntime::narrow<std::ptrdiff_t>(input_width / blocksize_));
   } else if (input.IsDataType<double>()) {
-    SpaceDepthOpCpuImpl<double>(input, output, permutation,
-                                onnxruntime::narrow<ptrdiff_t>(batch),
-                                onnxruntime::narrow<std::ptrdiff_t>(input_depth),
-                                onnxruntime::narrow<std::ptrdiff_t>(input_height / blocksize_),
-                                onnxruntime::narrow<std::ptrdiff_t>(blocksize_),
-                                onnxruntime::narrow<std::ptrdiff_t>(input_width / blocksize_),
-                                onnxruntime::narrow<std::ptrdiff_t>(blocksize_),
-                                onnxruntime::narrow<ptrdiff_t>(blocksize_),
-                                onnxruntime::narrow<ptrdiff_t>(blocksize_),
-                                onnxruntime::narrow<std::ptrdiff_t>(input_depth),
-                                onnxruntime::narrow<std::ptrdiff_t>(input_height / blocksize_),
-                                onnxruntime::narrow<std::ptrdiff_t>(input_width / blocksize_));
+    SpaceDepthOpCpuImpl<double>(input, output, permutation, onnxruntime::narrow<ptrdiff_t>(batch), onnxruntime::narrow<std::ptrdiff_t>(input_depth), onnxruntime::narrow<std::ptrdiff_t>(input_height / blocksize_), onnxruntime::narrow<std::ptrdiff_t>(blocksize_), onnxruntime::narrow<std::ptrdiff_t>(input_width / blocksize_), onnxruntime::narrow<std::ptrdiff_t>(blocksize_), onnxruntime::narrow<ptrdiff_t>(blocksize_), onnxruntime::narrow<ptrdiff_t>(blocksize_), onnxruntime::narrow<std::ptrdiff_t>(input_depth), onnxruntime::narrow<std::ptrdiff_t>(input_height / blocksize_), onnxruntime::narrow<std::ptrdiff_t>(input_width / blocksize_));
   } else {
     // user will not see this as the kernel doesn't claim support for types other than float and double
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unsupported input type in SpaceToDepth op: ", input.DataType());
@@ -157,8 +139,12 @@ Status DepthToSpace::Compute(OpKernelContext* context) const {
 
   ORT_RETURN_IF_ERROR(InputValidationsAndOutputDimsCalc(input,
                                                         batch,
-                                                        input_depth, input_height, input_width,
-                                                        output_depth, output_height, output_width,
+                                                        input_depth,
+                                                        input_height,
+                                                        input_width,
+                                                        output_depth,
+                                                        output_height,
+                                                        output_width,
                                                         false));
 
   Tensor& output = *context->Output(0, {batch, output_depth, output_height, output_width});
@@ -171,31 +157,9 @@ Status DepthToSpace::Compute(OpKernelContext* context) const {
                              : std::array<Eigen::DenseIndex, IntermediateTensorRank>{{0, 1, 4, 2, 5, 3}};
 
   if (input.IsDataType<float>()) {
-    SpaceDepthOpCpuImpl<float>(input, output, permutation,
-                               onnxruntime::narrow<std::ptrdiff_t>(batch),
-                               onnxruntime::narrow<std::ptrdiff_t>(dim1),
-                               onnxruntime::narrow<std::ptrdiff_t>(blocksize_),
-                               onnxruntime::narrow<std::ptrdiff_t>(dim3),
-                               onnxruntime::narrow<std::ptrdiff_t>(input_height),
-                               onnxruntime::narrow<std::ptrdiff_t>(input_width),
-                               onnxruntime::narrow<std::ptrdiff_t>(input_depth / blocksize_ / blocksize_),
-                               onnxruntime::narrow<std::ptrdiff_t>(input_height),
-                               onnxruntime::narrow<std::ptrdiff_t>(blocksize_),
-                               onnxruntime::narrow<std::ptrdiff_t>(input_width),
-                               onnxruntime::narrow<std::ptrdiff_t>(blocksize_));
+    SpaceDepthOpCpuImpl<float>(input, output, permutation, onnxruntime::narrow<std::ptrdiff_t>(batch), onnxruntime::narrow<std::ptrdiff_t>(dim1), onnxruntime::narrow<std::ptrdiff_t>(blocksize_), onnxruntime::narrow<std::ptrdiff_t>(dim3), onnxruntime::narrow<std::ptrdiff_t>(input_height), onnxruntime::narrow<std::ptrdiff_t>(input_width), onnxruntime::narrow<std::ptrdiff_t>(input_depth / blocksize_ / blocksize_), onnxruntime::narrow<std::ptrdiff_t>(input_height), onnxruntime::narrow<std::ptrdiff_t>(blocksize_), onnxruntime::narrow<std::ptrdiff_t>(input_width), onnxruntime::narrow<std::ptrdiff_t>(blocksize_));
   } else if (input.IsDataType<double>()) {
-    SpaceDepthOpCpuImpl<double>(input, output, permutation,
-                                onnxruntime::narrow<std::ptrdiff_t>(batch),
-                                onnxruntime::narrow<std::ptrdiff_t>(dim1),
-                                onnxruntime::narrow<std::ptrdiff_t>(blocksize_),
-                                onnxruntime::narrow<std::ptrdiff_t>(dim3),
-                                onnxruntime::narrow<std::ptrdiff_t>(input_height),
-                                onnxruntime::narrow<std::ptrdiff_t>(input_width),
-                                onnxruntime::narrow<std::ptrdiff_t>(input_depth / blocksize_ / blocksize_),
-                                onnxruntime::narrow<std::ptrdiff_t>(input_height),
-                                onnxruntime::narrow<std::ptrdiff_t>(blocksize_),
-                                onnxruntime::narrow<std::ptrdiff_t>(input_width),
-                                onnxruntime::narrow<std::ptrdiff_t>(blocksize_));
+    SpaceDepthOpCpuImpl<double>(input, output, permutation, onnxruntime::narrow<std::ptrdiff_t>(batch), onnxruntime::narrow<std::ptrdiff_t>(dim1), onnxruntime::narrow<std::ptrdiff_t>(blocksize_), onnxruntime::narrow<std::ptrdiff_t>(dim3), onnxruntime::narrow<std::ptrdiff_t>(input_height), onnxruntime::narrow<std::ptrdiff_t>(input_width), onnxruntime::narrow<std::ptrdiff_t>(input_depth / blocksize_ / blocksize_), onnxruntime::narrow<std::ptrdiff_t>(input_height), onnxruntime::narrow<std::ptrdiff_t>(blocksize_), onnxruntime::narrow<std::ptrdiff_t>(input_width), onnxruntime::narrow<std::ptrdiff_t>(blocksize_));
   } else {
     // user will not see this as the kernel doesn't claim support for types other than float and double
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unsupported input type in DepthToSpace op: ", input.DataType());

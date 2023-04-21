@@ -101,8 +101,7 @@ Status BFCArena::Extend(size_t rounded_bytes) {
   // Do we have enough space to handle the client's request?
   // If not, fail immediately.
   if (rounded_bytes > available_bytes) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Available memory of ", available_bytes,
-                           " is smaller than requested bytes of ", rounded_bytes);
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Available memory of ", available_bytes, " is smaller than requested bytes of ", rounded_bytes);
   }
 
   auto safe_alloc = [this](size_t alloc_bytes) {
@@ -191,8 +190,7 @@ Status BFCArena::Extend(size_t rounded_bytes) {
   }
 
   if (mem_addr == nullptr) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                           "Failed to allocate memory for requested buffer of size ", rounded_bytes);
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to allocate memory for requested buffer of size ", rounded_bytes);
   }
 
   LOGS_DEFAULT(INFO) << "Extended allocation by " << bytes << " bytes.";
@@ -350,9 +348,7 @@ void* BFCArena::AllocateRawInternal(size_t num_bytes,
       }
       return chunk->ptr;
     } else {
-      status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                               "Failed to find a free memory block despite calling Extend. rounded_bytes=",
-                               rounded_bytes);
+      status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to find a free memory block despite calling Extend. rounded_bytes=", rounded_bytes);
     }
   }
 
@@ -405,10 +401,7 @@ BFCArena::Chunk* BFCArena::SplitFreeChunkFromBin(BFCArena::Bin::FreeChunkSet* fr
   return chunk;
 }
 
-BFCArena::Chunk* BFCArena::FindChunkPtr(BinNum bin_num, size_t rounded_bytes,
-                                        size_t num_bytes, Stream* stream,
-                                        bool allow_chunk_from_different_stream,
-                                        WaitNotificationFn wait_fn) {
+BFCArena::Chunk* BFCArena::FindChunkPtr(BinNum bin_num, size_t rounded_bytes, size_t num_bytes, Stream* stream, bool allow_chunk_from_different_stream, WaitNotificationFn wait_fn) {
   BFCArena::Chunk* other_stream_candidate = nullptr;
   // First identify the first bin that could satisfy rounded_bytes.
   for (; bin_num < kNumBins; bin_num++) {

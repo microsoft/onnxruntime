@@ -144,9 +144,7 @@ Status SliceOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
         size_t size = tensor_byte_size / sizeof(int32_t);
         data.insert(data.end(), tensor_data, tensor_data + size);
       } else {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                               "Data type for starts and ends inputs' is not supported in this build. Got ",
-                               data_type);
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Data type for starts and ends inputs' is not supported in this build. Got ", data_type);
       }
       if (input_i == 0) {
         // Do nothing!
@@ -173,8 +171,7 @@ Status SliceOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
     input_names.push_back(input_name);
     Qnn_TensorType_t tensor_type = GetInputTensorType(qnn_model_wrapper, input_name);
     Qnn_QuantizeParams_t quantize_params = QNN_QUANTIZE_PARAMS_INIT;
-    QnnTensorWrapper input_tensorwrapper(input_name, tensor_type, qnn_data_type, quantize_params,
-                                         std::move(input_shape), std::move(unpacked_tensor));
+    QnnTensorWrapper input_tensorwrapper(input_name, tensor_type, qnn_data_type, quantize_params, std::move(input_shape), std::move(unpacked_tensor));
     ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(input_tensorwrapper)), "Failed to add tensor.");
   }
   TensorShapeVector input_dimensions(input0_shape.cbegin(), input0_shape.cend());

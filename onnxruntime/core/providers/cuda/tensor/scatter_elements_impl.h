@@ -12,8 +12,7 @@ namespace cuda {
 struct GatherScatterElementsArgs;
 
 template <typename T, typename TIndex>
-Status ScatterElementsImpl(cudaStream_t stream, const T* input_data, const TIndex* indices_data, const T* updates_data,
-                           T* output_data, const GatherScatterElementsArgs& args);
+Status ScatterElementsImpl(cudaStream_t stream, const T* input_data, const TIndex* indices_data, const T* updates_data, T* output_data, const GatherScatterElementsArgs& args);
 
 }  // namespace cuda
 }  // namespace onnxruntime

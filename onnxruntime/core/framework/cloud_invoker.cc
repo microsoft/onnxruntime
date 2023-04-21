@@ -157,14 +157,11 @@ onnxruntime::Status AzureTritonInvoker::Send(const CloudEndPointConfig& run_opti
                                              std::vector<OrtValue>& ort_outputs) const {
   const auto auth_key_iter = run_options.find(kAzureAuthKey);
   if (run_options.end() == auth_key_iter) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "auth key must be specified for triton client");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "auth key must be specified for triton client");
   }
 
   if (ort_inputs.size() != input_names.size()) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Number of inputs mismatch with number of input names for triton invoker: ",
-                           ort_inputs.size(), " != ", input_names.size());
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Number of inputs mismatch with number of input names for triton invoker: ", ort_inputs.size(), " != ", input_names.size());
   }
 
   auto tensor_type = DataTypeImpl::GetType<Tensor>();
@@ -190,8 +187,7 @@ onnxruntime::Status AzureTritonInvoker::Send(const CloudEndPointConfig& run_opti
       tc::InferInput* triton_input = {};
       std::string triton_data_type = MapDataType(input_tensor.GetElementType());
       if (triton_data_type.empty()) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Triton client does not support data type: ",
-                               ONNX_NAMESPACE::TensorProto_DataType_Name(input_tensor.GetElementType()));
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Triton client does not support data type: ", ONNX_NAMESPACE::TensorProto_DataType_Name(input_tensor.GetElementType()));
       }
 
       onnxruntime::VectorInt64 dims(ort_input_shape.NumDimensions());
@@ -225,8 +221,7 @@ onnxruntime::Status AzureTritonInvoker::Send(const CloudEndPointConfig& run_opti
     tc::Headers http_headers;
     http_headers["Authorization"] = std::string{"Bearer "} + auth_key_iter->second;
 
-    err = triton_client_->Infer(&results, options, triton_inputs, triton_outputs,
-                                http_headers, tc::Parameters(),
+    err = triton_client_->Infer(&results, options, triton_inputs, triton_outputs, http_headers, tc::Parameters(),
                                 tc::InferenceServerHttpClient::CompressionType::NONE,  // support compression in config?
                                 tc::InferenceServerHttpClient::CompressionType::NONE);
     results_ptr.reset(results);
@@ -289,8 +284,7 @@ Status CloudEndPointInvoker::CreateInvoker(const CloudEndPointConfig& config,
         return status;
       }  // else other endpoint types ...
     }
-    status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                             "Cannot create azure invoker due to missed or mismatched endpoint type.");
+    status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Cannot create azure invoker due to missed or mismatched endpoint type.");
   }
   ORT_CATCH(const std::exception& ex) {
     ORT_HANDLE_EXCEPTION([&]() {

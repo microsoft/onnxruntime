@@ -21,8 +21,7 @@ namespace onnxruntime {
 namespace op_kernel_type_control {
 // we're using one set of types for all opsets
 ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPE_LIST_ALL_OPSETS(
-    kCpuExecutionProvider, kOnnxDomain, Slice, Input, 0,
-    element_type_lists::All);
+    kCpuExecutionProvider, kOnnxDomain, Slice, Input, 0, element_type_lists::All);
 ORT_SPECIFY_OP_KERNEL_ARG_REQUIRED_TYPES_ALL_OPSETS(
     kCpuExecutionProvider, kOnnxDomain, Slice, Input, 0, int32_t, int64_t);
 
@@ -33,21 +32,21 @@ ORT_SPECIFY_OP_KERNEL_ARG_REQUIRED_TYPES_ALL_OPSETS(
 }  // namespace op_kernel_type_control
 
 namespace {
-using EnabledDataTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(kCpuExecutionProvider, kOnnxDomain,
-                                                                        Slice, Input, 0);
-using EnabledIndicesTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(kCpuExecutionProvider, kOnnxDomain,
-                                                                           Slice, Input, 1);
+using EnabledDataTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(kCpuExecutionProvider, kOnnxDomain, Slice, Input, 0);
+using EnabledIndicesTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(kCpuExecutionProvider, kOnnxDomain, Slice, Input, 1);
 }  // namespace
 
 ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     Slice,
-    1, 9,
+    1,
+    9,
     KernelDefBuilder().TypeConstraint("T", BuildKernelDefConstraintsFromTypeList<EnabledDataTypes>()),
     Slice1);
 
 ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     Slice,
-    10, 10,
+    10,
+    10,
     KernelDefBuilder()
         .TypeConstraint("T", BuildKernelDefConstraintsFromTypeList<EnabledDataTypes>())
         .TypeConstraint("Tind", BuildKernelDefConstraintsFromTypeList<EnabledIndicesTypes>()),
@@ -76,9 +75,7 @@ ONNX_CPU_OPERATOR_KERNEL(
 // e.g. if input shape is { 2, 2, 2, 2, 2 }, output shape is { 2, 2, 1, 2, 2 },
 // and the 'steps' value for all dims is 1 except dim-2, then the input shape is coalesced to { 4, 2, 4 }
 // and the output shape is coalesced to { 4, 1, 4 }.
-static void FlattenOutputDims(gsl::span<const int64_t> input_dimensions, gsl::span<const int64_t> output_dims,
-                              TensorShapeVector& starts, TensorShapeVector& ends, TensorShapeVector& steps,
-                              TensorShapeVector*& p_flattened_input_dims, TensorShapeVector*& p_flattened_output_dims) {
+static void FlattenOutputDims(gsl::span<const int64_t> input_dimensions, gsl::span<const int64_t> output_dims, TensorShapeVector& starts, TensorShapeVector& ends, TensorShapeVector& steps, TensorShapeVector*& p_flattened_input_dims, TensorShapeVector*& p_flattened_output_dims) {
   size_t cur = 0;
   size_t nxt = 0;
   while (true) {
@@ -134,24 +131,16 @@ static void FlattenOutputDims(gsl::span<const int64_t> input_dimensions, gsl::sp
 }
 
 // Slice V1-9 & DynamicSlice
-Status SliceBase::PrepareForCompute(gsl::span<const int64_t> raw_starts, gsl::span<const int64_t> raw_ends,
-                                    gsl::span<const int64_t> raw_axes,
-                                    SliceOp::PrepareForComputeMetadata& compute_metadata) {
+Status SliceBase::PrepareForCompute(gsl::span<const int64_t> raw_starts, gsl::span<const int64_t> raw_ends, gsl::span<const int64_t> raw_axes, SliceOp::PrepareForComputeMetadata& compute_metadata) {
   ORT_RETURN_IF_ERROR(SliceOp::PrepareForComputeHelper(raw_starts, raw_ends, raw_axes, compute_metadata));
-  FlattenOutputDims(compute_metadata.input_dimensions_, compute_metadata.output_dims_, compute_metadata.starts_,
-                    compute_metadata.ends_, compute_metadata.steps_, compute_metadata.p_flattened_input_dims_,
-                    compute_metadata.p_flattened_output_dims_);
+  FlattenOutputDims(compute_metadata.input_dimensions_, compute_metadata.output_dims_, compute_metadata.starts_, compute_metadata.ends_, compute_metadata.steps_, compute_metadata.p_flattened_input_dims_, compute_metadata.p_flattened_output_dims_);
   return Status::OK();
 }
 
 // DynamicSlice & Slice V10
-Status SliceBase::PrepareForCompute(gsl::span<const int64_t> raw_starts, gsl::span<const int64_t> raw_ends,
-                                    gsl::span<const int64_t> raw_axes, gsl::span<const int64_t> raw_steps,
-                                    SliceOp::PrepareForComputeMetadata& compute_metadata) {
+Status SliceBase::PrepareForCompute(gsl::span<const int64_t> raw_starts, gsl::span<const int64_t> raw_ends, gsl::span<const int64_t> raw_axes, gsl::span<const int64_t> raw_steps, SliceOp::PrepareForComputeMetadata& compute_metadata) {
   ORT_RETURN_IF_ERROR(SliceOp::PrepareForComputeHelper(raw_starts, raw_ends, raw_axes, raw_steps, compute_metadata));
-  FlattenOutputDims(compute_metadata.input_dimensions_, compute_metadata.output_dims_, compute_metadata.starts_,
-                    compute_metadata.ends_, compute_metadata.steps_, compute_metadata.p_flattened_input_dims_,
-                    compute_metadata.p_flattened_output_dims_);
+  FlattenOutputDims(compute_metadata.input_dimensions_, compute_metadata.output_dims_, compute_metadata.starts_, compute_metadata.ends_, compute_metadata.steps_, compute_metadata.p_flattened_input_dims_, compute_metadata.p_flattened_output_dims_);
 
   return Status::OK();
 }
@@ -216,9 +205,7 @@ Status SliceBase::FillVectorsFromInput(const Tensor& start_tensor,
   } else if (int64_enabled && start_tensor.IsDataType<int64_t>()) {
     CopyData<int64_t>(start_tensor, ends_tensor, axes_tensor, steps_tensor, input_starts, input_ends, input_axes, input_steps);
   } else {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                           "Data type for starts and ends inputs' is not supported in this build. Got ",
-                           start_tensor.DataType());
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Data type for starts and ends inputs' is not supported in this build. Got ", start_tensor.DataType());
   }
 
   return Status::OK();
@@ -250,12 +237,10 @@ static Status SliceImpl(OpKernelContext* ctx,
   if (compute_metadata.p_flattened_input_dims_) {
     // If we were able to coalesce the input and output shapes, use the new shapes.
     auto input_iterator2 =
-        SliceIterator<T>(input_tensor, TensorShape(compute_metadata.flattened_input_dims_), compute_metadata.starts_,
-                         compute_metadata.flattened_output_dims_, compute_metadata.steps_);
+        SliceIterator<T>(input_tensor, TensorShape(compute_metadata.flattened_input_dims_), compute_metadata.starts_, compute_metadata.flattened_output_dims_, compute_metadata.steps_);
     create_output(input_iterator2);
   } else {
-    auto input_iterator2 = SliceIterator<T>(input_tensor, compute_metadata.starts_, compute_metadata.output_dims_,
-                                            compute_metadata.steps_);
+    auto input_iterator2 = SliceIterator<T>(input_tensor, compute_metadata.starts_, compute_metadata.output_dims_, compute_metadata.steps_);
     create_output(input_iterator2);
   }
 
@@ -292,10 +277,7 @@ Status SliceBase::Compute(OpKernelContext* ctx) const {
     TensorShapeVector input_ends;
     TensorShapeVector input_axes;
     TensorShapeVector input_steps;
-    ORT_RETURN_IF_ERROR(FillVectorsFromInput(*ctx->Input<Tensor>(1), *ctx->Input<Tensor>(2),
-                                             ctx->Input<Tensor>(3), ctx->Input<Tensor>(4),
-                                             input_starts, input_ends,
-                                             input_axes, input_steps));
+    ORT_RETURN_IF_ERROR(FillVectorsFromInput(*ctx->Input<Tensor>(1), *ctx->Input<Tensor>(2), ctx->Input<Tensor>(3), ctx->Input<Tensor>(4), input_starts, input_ends, input_axes, input_steps));
 
     ORT_RETURN_IF_ERROR(PrepareForCompute(input_starts, input_ends, input_axes, input_steps, compute_metadata));
   }

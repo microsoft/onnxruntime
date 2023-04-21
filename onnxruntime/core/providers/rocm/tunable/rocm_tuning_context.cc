@@ -22,8 +22,7 @@ static std::string GetHipVersion() {
 
 static Status ValidateHipVersion(const std::string& value) {
   auto current = GetHipVersion();
-  ORT_RETURN_IF(current != value, "HIP runtime version mismatch: tuning results produced with HIP ", value,
-                ", onnxruntime currently run with HIP ", current);
+  ORT_RETURN_IF(current != value, "HIP runtime version mismatch: tuning results produced with HIP ", value, ", onnxruntime currently run with HIP ", current);
   return Status::OK();
 }
 
@@ -36,8 +35,7 @@ static std::string GetRocBlasVersion() {
 
 static Status ValidateRocBlasVersion(const std::string& value) {
   auto current = GetRocBlasVersion();
-  ORT_RETURN_IF(current != value, "rocblas runtime version mismatch: tuning results produced with rocblas ", value,
-                ", onnxruntime currently run with rocblas ", current);
+  ORT_RETURN_IF(current != value, "rocblas runtime version mismatch: tuning results produced with rocblas ", value, ", onnxruntime currently run with rocblas ", current);
   return Status::OK();
 }
 
@@ -47,8 +45,7 @@ std::string RocmTuningResultsValidator::GetDeviceModel() const {
 
 Status RocmTuningResultsValidator::ValidateDeviceModel(const std::string& value) const {
   auto current = GetDeviceModel();
-  ORT_RETURN_IF(current != value, "Device model mismatch: tuning results produced with device ", value,
-                ", onnxruntime currently run with device ", current);
+  ORT_RETURN_IF(current != value, "Device model mismatch: tuning results produced with device ", value, ", onnxruntime currently run with device ", current);
   return Status::OK();
 }
 

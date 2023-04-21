@@ -41,9 +41,7 @@ void GenerateMaskData(size_t size, bool* mask_data, float ratio) {
 }
 
 template <typename T>
-int64_t GetDropoutGradBitmaskAndOutput(size_t size, const std::vector<T>& input_data, const bool* masks,
-                                       const float ratio, std::vector<BitmaskElementType>& bitmask_data,
-                                       std::vector<T>& output_data) {
+int64_t GetDropoutGradBitmaskAndOutput(size_t size, const std::vector<T>& input_data, const bool* masks, const float ratio, std::vector<BitmaskElementType>& bitmask_data, std::vector<T>& output_data) {
   const float p = 1.0f - ratio;
   const float scale = 1.0f / p;
   bitmask_data.clear();

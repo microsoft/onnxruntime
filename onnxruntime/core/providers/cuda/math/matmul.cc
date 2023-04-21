@@ -13,7 +13,8 @@ namespace cuda {
   ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                        \
       MatMul,                                                     \
       kOnnxDomain,                                                \
-      1, 8,                                                       \
+      1,                                                          \
+      8,                                                          \
       T,                                                          \
       kCudaExecutionProvider,                                     \
       (*KernelDefBuilder::Create())                               \
@@ -22,7 +23,8 @@ namespace cuda {
   ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                        \
       MatMul,                                                     \
       kOnnxDomain,                                                \
-      9, 12,                                                      \
+      9,                                                          \
+      12,                                                         \
       T,                                                          \
       kCudaExecutionProvider,                                     \
       (*KernelDefBuilder::Create())                               \
@@ -45,9 +47,7 @@ REGISTER_KERNEL_TYPED(BFloat16)
 
 // StridedBatchedGemm can be used for the following GEMM computation
 // C[pnm] = A[pnk]*B[km] or C[pnm] = A[pnk]*B[pkm]
-static bool CanUseStridedBatchedGemm(const TensorShape& left_shape, const TensorShape& right_shape,
-                                     bool transa, bool transb, bool trans_batch_a, bool trans_batch_b,
-                                     int64_t& stride_A, int64_t& stride_B, int64_t& stride_C, int64_t& batch_count) {
+static bool CanUseStridedBatchedGemm(const TensorShape& left_shape, const TensorShape& right_shape, bool transa, bool transb, bool trans_batch_a, bool trans_batch_b, int64_t& stride_A, int64_t& stride_B, int64_t& stride_C, int64_t& batch_count) {
   size_t left_num_dims = left_shape.NumDimensions();
   size_t right_num_dims = right_shape.NumDimensions();
 
@@ -143,8 +143,7 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
         ldc,
         device_prop));
     return Status::OK();
-  } else if (CanUseStridedBatchedGemm(left_X->Shape(), right_X->Shape(),
-                                      transa, transb, trans_batch_a_, trans_batch_b_, stride_A, stride_B, stride_C, batch_count)) {
+  } else if (CanUseStridedBatchedGemm(left_X->Shape(), right_X->Shape(), transa, transb, trans_batch_a_, trans_batch_b_, stride_A, stride_B, stride_C, batch_count)) {
     CUBLAS_RETURN_IF_ERROR(cublasGemmStridedBatchedHelper(GetCublasHandle(ctx),
                                                           transB,
                                                           transA,

@@ -16,9 +16,7 @@ ONNX_OPERATOR_KERNEL_EX(
     KernelDefBuilder()
         .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
         .TypeConstraint("T", DataTypeImpl::AllTensorTypes())
-        .TypeConstraint("Tind", std::vector<MLDataType>{
-                                    DataTypeImpl::GetTensorType<int32_t>(),
-                                    DataTypeImpl::GetTensorType<int64_t>()}),
+        .TypeConstraint("Tind", std::vector<MLDataType>{DataTypeImpl::GetTensorType<int32_t>(), DataTypeImpl::GetTensorType<int64_t>()}),
     SliceGrad);
 
 Status SliceGrad::Compute(OpKernelContext* context) const {
@@ -32,24 +30,18 @@ Status SliceGrad::Compute(OpKernelContext* context) const {
   TensorShapeVector input_ends;
   TensorShapeVector input_axes;
   TensorShapeVector input_steps;
-  ORT_RETURN_IF_ERROR(FillVectorsFromInput(*context->Input<Tensor>(2), *context->Input<Tensor>(3),
-                                           context->Input<Tensor>(4), context->Input<Tensor>(5),
-                                           input_starts, input_ends, input_axes, input_steps));
+  ORT_RETURN_IF_ERROR(FillVectorsFromInput(*context->Input<Tensor>(2), *context->Input<Tensor>(3), context->Input<Tensor>(4), context->Input<Tensor>(5), input_starts, input_ends, input_axes, input_steps));
 
   SliceOp::PrepareForComputeMetadata compute_metadata(data_shape.GetDims());
   ORT_RETURN_IF_ERROR(PrepareForCompute(input_starts, input_ends, input_axes, input_steps, compute_metadata));
 
   MLDataType T_type = grad.DataType();
   if (T_type == DataTypeImpl::GetType<float>()) {
-    return ComputeImpl<float>(context, output, compute_metadata.output_dims_, compute_metadata.p_flattened_input_dims_,
-                              compute_metadata.p_flattened_output_dims_, compute_metadata.starts_,
-                              compute_metadata.steps_);
+    return ComputeImpl<float>(context, output, compute_metadata.output_dims_, compute_metadata.p_flattened_input_dims_, compute_metadata.p_flattened_output_dims_, compute_metadata.starts_, compute_metadata.steps_);
   }
 
   if (T_type == DataTypeImpl::GetType<double>()) {
-    return ComputeImpl<double>(context, output, compute_metadata.output_dims_, compute_metadata.p_flattened_input_dims_,
-                               compute_metadata.p_flattened_output_dims_, compute_metadata.starts_,
-                               compute_metadata.steps_);
+    return ComputeImpl<double>(context, output, compute_metadata.output_dims_, compute_metadata.p_flattened_input_dims_, compute_metadata.p_flattened_output_dims_, compute_metadata.starts_, compute_metadata.steps_);
   }
 
   return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "Type for T or Tind not supported yet in SliceGrad.");
@@ -88,8 +80,7 @@ Status SliceGrad::ComputeImpl(OpKernelContext* ctx,
 
   if (p_flattened_input_dims) {
     // If we were able to coalesce the input and output shapes, use the new shapes.
-    WritableSliceIterator<T> input_iterator(output_grad_tensor, TensorShape(*p_flattened_input_dims), starts,
-                                            *p_flattened_output_dims, steps);
+    WritableSliceIterator<T> input_iterator(output_grad_tensor, TensorShape(*p_flattened_input_dims), starts, *p_flattened_output_dims, steps);
     create_output(input_iterator);
   } else {
     WritableSliceIterator<T> input_iterator(output_grad_tensor, starts, output_dims, steps);

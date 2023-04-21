@@ -41,12 +41,8 @@ namespace onnxruntime {
 ADD_VERSIONED_TYPED_ROIALIGN_OP(float);
 ADD_VERSIONED_TYPED_ROIALIGN_OP(double);
 
-#define ADD_TYPED_ROIALIGN_OP(data_type)                                                             \
-  ONNX_CPU_OPERATOR_TYPED_KERNEL(RoiAlign, 16, data_type,                                            \
-                                 KernelDefBuilder()                                                  \
-                                     .TypeConstraint("T1", DataTypeImpl::GetTensorType<data_type>()) \
-                                     .TypeConstraint("T2", DataTypeImpl::GetTensorType<int64_t>()),  \
-                                 RoiAlign<data_type>);
+#define ADD_TYPED_ROIALIGN_OP(data_type) \
+  ONNX_CPU_OPERATOR_TYPED_KERNEL(RoiAlign, 16, data_type, KernelDefBuilder().TypeConstraint("T1", DataTypeImpl::GetTensorType<data_type>()).TypeConstraint("T2", DataTypeImpl::GetTensorType<int64_t>()), RoiAlign<data_type>);
 
 ADD_TYPED_ROIALIGN_OP(float);
 ADD_TYPED_ROIALIGN_OP(double);
@@ -69,10 +65,7 @@ struct PreCalc {
 #pragma warning(disable : 26451)
 #endif
 template <typename T>
-static void PreCalcForBilinearInterpolate(const int64_t height, const int64_t width, const int64_t pooled_height,
-                                          const int64_t pooled_width, const int64_t iy_upper, const int64_t ix_upper,
-                                          T roi_start_h, T roi_start_w, T bin_size_h, T bin_size_w, int64_t roi_bin_grid_h,
-                                          int64_t roi_bin_grid_w, std::vector<PreCalc<T>>& pre_calc) {
+static void PreCalcForBilinearInterpolate(const int64_t height, const int64_t width, const int64_t pooled_height, const int64_t pooled_width, const int64_t iy_upper, const int64_t ix_upper, T roi_start_h, T roi_start_w, T bin_size_h, T bin_size_w, int64_t roi_bin_grid_h, int64_t roi_bin_grid_w, std::vector<PreCalc<T>>& pre_calc) {
   int64_t pre_calc_index = 0;
   for (int64_t ph = 0; ph < pooled_height; ph++) {
     for (int64_t pw = 0; pw < pooled_width; pw++) {
@@ -155,9 +148,7 @@ static void PreCalcForBilinearInterpolate(const int64_t height, const int64_t wi
 }
 
 template <typename T>
-void RoiAlignForward(const TensorShape& output_shape, const T* bottom_data, float spatial_scale, int64_t height,
-                     int64_t width, int64_t sampling_ratio, const T* bottom_rois, int64_t num_roi_cols, T* top_data,
-                     RoiAlignMode mode, bool half_pixel, const int64_t* batch_indices_ptr, ThreadPool* ttp) {
+void RoiAlignForward(const TensorShape& output_shape, const T* bottom_data, float spatial_scale, int64_t height, int64_t width, int64_t sampling_ratio, const T* bottom_rois, int64_t num_roi_cols, T* top_data, RoiAlignMode mode, bool half_pixel, const int64_t* batch_indices_ptr, ThreadPool* ttp) {
   int64_t n_rois = output_shape[0];
   int64_t channels = output_shape[1];
   int64_t pooled_height = output_shape[2];
@@ -202,9 +193,7 @@ void RoiAlignForward(const TensorShape& output_shape, const T* bottom_data, floa
       // we want to precalculate indices and weights shared by all channels,
       // this is the key point of optimization
       std::vector<PreCalc<T>> pre_calc(roi_bin_grid_h * roi_bin_grid_w * pooled_width * SafeInt<size_t>(pooled_height));
-      PreCalcForBilinearInterpolate(height, width, pooled_height, pooled_width, roi_bin_grid_h, roi_bin_grid_w,
-                                    roi_start_h, roi_start_w, bin_size_h, bin_size_w, roi_bin_grid_h,
-                                    roi_bin_grid_w, pre_calc);
+      PreCalcForBilinearInterpolate(height, width, pooled_height, pooled_width, roi_bin_grid_h, roi_bin_grid_w, roi_start_h, roi_start_w, bin_size_h, bin_size_w, roi_bin_grid_h, roi_bin_grid_w, pre_calc);
 
       for (int64_t c = 0; c < channels; c++) {
         int64_t index_n_c = index_n + c * pooled_width * pooled_height;
@@ -275,24 +264,20 @@ Status CheckROIAlignValidInput(const Tensor* X_ptr, const Tensor* rois_ptr, cons
   const auto& batch_indices_dims = batch_indices_ptr->Shape();
 
   if (batch_indices_dims.NumDimensions() != 1) {
-    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                  "Number of dimensions for batch indices should be exactly 1");
+    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Number of dimensions for batch indices should be exactly 1");
   }
 
   // validate rois_dims
   if (rois_dims.NumDimensions() != EXPECTED_NUM_ROI_DIMS) {
-    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                  "Number of dimensions for rois should be exactly " + std::to_string(EXPECTED_NUM_ROI_DIMS));
+    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Number of dimensions for rois should be exactly " + std::to_string(EXPECTED_NUM_ROI_DIMS));
   }
   if (rois_dims[1] != EXPECTED_SECOND_ROI_DIM) {
-    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                  "Second dimension for rois should be exactly " + std::to_string(EXPECTED_SECOND_ROI_DIM));
+    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Second dimension for rois should be exactly " + std::to_string(EXPECTED_SECOND_ROI_DIM));
   }
 
   // first dimension of batch_indices and rois should match
   if (batch_indices_dims[0] != rois_dims[0]) {
-    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                  "First dimension (num_rois) of batch_indices and rois don't match");
+    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "First dimension (num_rois) of batch_indices and rois don't match");
   }
   return Status::OK();
 }
@@ -321,8 +306,14 @@ Status RoiAlign<T>::Compute(OpKernelContext* context) const {
   RoiAlignForward<T>(Y.Shape(), X_ptr->Data<T>(), this->spatial_scale_,
                      x_dims[2],  // height
                      x_dims[3],  // width
-                     this->sampling_ratio_, rois_ptr->Data<T>(), num_roi_cols, Y.template MutableData<T>(), this->mode_, this->half_pixel_,
-                     batch_indices_ptr->Data<int64_t>(), context->GetOperatorThreadPool());
+                     this->sampling_ratio_,
+                     rois_ptr->Data<T>(),
+                     num_roi_cols,
+                     Y.template MutableData<T>(),
+                     this->mode_,
+                     this->half_pixel_,
+                     batch_indices_ptr->Data<int64_t>(),
+                     context->GetOperatorThreadPool());
 
   return Status::OK();
 }

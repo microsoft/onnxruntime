@@ -29,8 +29,7 @@ TEST_F(ActivationOpTest, ScaledTanh) {
   static constexpr float alpha = 2.0f;
   static constexpr float beta = 1.5f;
 
-  TestActivationOp<float>("ScaledTanh", input_values, [](float x) { return alpha * tanh(beta * x); },
-                          {{"alpha", alpha}, {"beta", beta}});
+  TestActivationOp<float>("ScaledTanh", input_values, [](float x) { return alpha * tanh(beta * x); }, {{"alpha", alpha}, {"beta", beta}});
 }
 
 TEST_F(ActivationOpTest, ParametricSoftplus) {
@@ -38,21 +37,20 @@ TEST_F(ActivationOpTest, ParametricSoftplus) {
   static constexpr float beta = 1.5f;
 
   TestActivationOp<float>(
-      "ParametricSoftplus", input_values,
-      [](float x) {
+      "ParametricSoftplus", input_values, [](float x) {
         float bx = beta * x;
         if (bx > 0)
           return alpha * (bx + logf(expf(-bx) + 1));
         else
           return alpha * logf(expf(bx) + 1);
       },
-      {{"alpha", alpha}, {"beta", beta}}, false);  // Disable TensorRT due to result mismatch
+      {{"alpha", alpha}, {"beta", beta}},
+      false);  // Disable TensorRT due to result mismatch
 }
 
 TEST_F(ActivationOpTest, Gelu) {
   TestActivationOp<float>(
-      "Gelu", input_values, [](float x) { return x * 0.5f * (1.0f + std::erf(x * static_cast<float>(M_SQRT1_2))); }, {},
-      false, 1, kMSDomain);
+      "Gelu", input_values, [](float x) { return x * 0.5f * (1.0f + std::erf(x * static_cast<float>(M_SQRT1_2))); }, {}, false, 1, kMSDomain);
 }
 
 #if defined(USE_DNNL)
@@ -76,11 +74,19 @@ TEST_F(ActivationOpTest, Gelu_bfloat16) {
   }
 #endif
   std::vector<float> input_values_temp{
-      -1.0f, 0.0f, 1.0f,                                          // normal input values for activation
-      100.0f, -100.0f, 1000.0f, -1000.0f,                         // input values that leads to exp() overflow
-      FLT_MIN, FLT_MIN / 10, -FLT_MIN / 10,                       // min, denorm, -denorm
-      FLT_MAX, -FLT_MAX, std::numeric_limits<float>::infinity(),  // max, -max, inf
-      -0.5f, 0.2f                                                 // inputs values that leads to exceed the original threshold
+      -1.0f, 0.0f, 1.0f,  // normal input values for activation
+      100.0f,
+      -100.0f,
+      1000.0f,
+      -1000.0f,  // input values that leads to exp() overflow
+      FLT_MIN,
+      FLT_MIN / 10,
+      -FLT_MIN / 10,  // min, denorm, -denorm
+      FLT_MAX,
+      -FLT_MAX,
+      std::numeric_limits<float>::infinity(),  // max, -max, inf
+      -0.5f,
+      0.2f  // inputs values that leads to exceed the original threshold
   };
 
   std::vector<BFloat16> output_bf16 = expected_output_bfloat16(input_values_temp);
@@ -108,42 +114,48 @@ TEST_F(ActivationOpTest, QuickGelu) {
   {
     float alpha = 1.702f;
     TestActivationOp<float>(
-        "QuickGelu", quick_gelu_input_values,
-        [alpha](float x) {
+        "QuickGelu", quick_gelu_input_values, [alpha](float x) {
           auto tmp = x * alpha;
           auto y = 1.f / (1.f + std::exp(-std::abs(tmp)));  // safe sigmoid
           y = tmp >= 0 ? y : 1 - y;
           return x * y;
         },
-        {{"alpha", alpha}}, false, 1, kMSDomain);
+        {{"alpha", alpha}},
+        false,
+        1,
+        kMSDomain);
   }
 
   // Silu = x*sigmoid(x), i.e., alpha = 1.0f.
   {
     float alpha = 1.0f;
     TestActivationOp<float>(
-        "QuickGelu", quick_gelu_input_values,
-        [alpha](float x) {
+        "QuickGelu", quick_gelu_input_values, [alpha](float x) {
           auto tmp = x * alpha;
           auto y = 1.f / (1.f + std::exp(-std::abs(tmp)));  // safe sigmoid
           y = tmp >= 0 ? y : 1 - y;
           return x * y;
         },
-        {{"alpha", alpha}}, false, 1, kMSDomain);
+        {{"alpha", alpha}},
+        false,
+        1,
+        kMSDomain);
   }
 
   // Negative alpha.
   {
     float alpha = -1.702f;
     TestActivationOp<float>(
-        "QuickGelu", quick_gelu_input_values,
-        [alpha](float x) {
+        "QuickGelu", quick_gelu_input_values, [alpha](float x) {
           auto tmp = x * alpha;
           auto y = 1.f / (1.f + std::exp(-std::abs(tmp)));  // safe sigmoid
           y = tmp >= 0 ? y : 1 - y;
           return x * y;
         },
-        {{"alpha", alpha}}, false, 1, kMSDomain);
+        {{"alpha", alpha}},
+        false,
+        1,
+        kMSDomain);
   }
 }
 

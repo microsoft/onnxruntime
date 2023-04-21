@@ -50,11 +50,7 @@ TensorShapeProto CreateNewShapeWithMergedTwoLeadingDims(const TensorShapeProto* 
 
 template <bool AreAllOutputShapesEqual>
 bool SimplePointwiseReshapeActor<AreAllOutputShapesEqual>::PreCheck(
-    const Node& current_node, const ReshapeInfo& info,
-    const logging::Logger& logger,
-    std::vector<int>& propagate_input_indices,
-    std::unordered_map<int, std::vector<DimCompare>>& all_input_cmp_rets,
-    std::function<void(Node& node)>& shape_update_func) {
+    const Node& current_node, const ReshapeInfo& info, const logging::Logger& logger, std::vector<int>& propagate_input_indices, std::unordered_map<int, std::vector<DimCompare>>& all_input_cmp_rets, std::function<void(Node& node)>& shape_update_func) {
   LOG_DEBUG_INFO(logger, "Enter SimplePointwiseReshapeActor::PreCheck for node " + current_node.Name());
 
   int current_node_output_index = info.GetDataProducerOutputIndex();
@@ -85,14 +81,12 @@ bool SimplePointwiseReshapeActor<AreAllOutputShapesEqual>::PreCheck(
                                                            input_shape);
 
     if (!success) {
-      LOG_DEBUG_INFO(logger, "Fail SimplePointwiseReshapeActor::PreCheck for node " + current_node.Name() +
-                                 ": reshape's data input rank < passthrough node's input rank");
+      LOG_DEBUG_INFO(logger, "Fail SimplePointwiseReshapeActor::PreCheck for node " + current_node.Name() + ": reshape's data input rank < passthrough node's input rank");
       return false;
     }
 
     if (ret.size() < 2) {
-      LOG_DEBUG_INFO(logger, "Fail SimplePointwiseReshapeActor::PreCheck for node " + current_node.Name() +
-                                 ": full broadcasted shape has dim < 2.");
+      LOG_DEBUG_INFO(logger, "Fail SimplePointwiseReshapeActor::PreCheck for node " + current_node.Name() + ": full broadcasted shape has dim < 2.");
       return false;
     }
 
@@ -100,22 +94,19 @@ bool SimplePointwiseReshapeActor<AreAllOutputShapesEqual>::PreCheck(
 
     if (ret[0] == DimCompare::NotExist && ret[1] == DimCompare::NotExist) {
       // Don't need to propagate Reshape since the two leading dims to flatten do not exist.
-      LOG_DEBUG_INFO(logger, "In SimplePointwiseReshapeActor::PreCheck for node " + current_node.Name() +
-                                 ": skip propagating for the input because the merged dims does not exist.");
+      LOG_DEBUG_INFO(logger, "In SimplePointwiseReshapeActor::PreCheck for node " + current_node.Name() + ": skip propagating for the input because the merged dims does not exist.");
       continue;
     } else if (ret[0] == DimCompare::Equal && ret[1] == DimCompare::Equal) {
       propagate_input_indices.push_back(input_idx);
     } else {
-      LOG_DEBUG_INFO(logger, "Fail SimplePointwiseReshapeActor::PreCheck for node " + current_node.Name() +
-                                 ": not supported cases for two leading dims check.");
+      LOG_DEBUG_INFO(logger, "Fail SimplePointwiseReshapeActor::PreCheck for node " + current_node.Name() + ": not supported cases for two leading dims check.");
       return false;
     }
 
     // All other dims should be equal
     for (int dim_index = 2; dim_index < static_cast<int>(ret.size()); ++dim_index) {
       if (ret[dim_index] != DimCompare::Equal) {
-        LOG_DEBUG_INFO(logger, "Fail SimplePointwiseReshapeActor::PreCheck for node " + current_node.Name() +
-                                   ": unflatten dims should all be equal to full broadcast shape.");
+        LOG_DEBUG_INFO(logger, "Fail SimplePointwiseReshapeActor::PreCheck for node " + current_node.Name() + ": unflatten dims should all be equal to full broadcast shape.");
         return false;
       }
     }
@@ -133,16 +124,14 @@ bool SimplePointwiseReshapeActor<AreAllOutputShapesEqual>::PreCheck(
                                                                      current_node.OutputDefs()[output_idx]->Shape());
 
       if (!success) {
-        LOG_DEBUG_INFO(logger, "Fail SimplePointwiseReshapeActor::PreCheck for node " + current_node.Name() +
-                                   ": reshape's data input rank < passthrough node's output rank");
+        LOG_DEBUG_INFO(logger, "Fail SimplePointwiseReshapeActor::PreCheck for node " + current_node.Name() + ": reshape's data input rank < passthrough node's output rank");
         return false;
       }
 
       // All dims should be equal
       for (int dim_index = 0; dim_index < static_cast<int>(out_cmp_ret.size()); ++dim_index) {
         if (out_cmp_ret[dim_index] != DimCompare::Equal) {
-          LOG_DEBUG_INFO(logger, "Fail SimplePointwiseReshapeActor::PreCheck for node " + current_node.Name() +
-                                     ": output shapes not equal.");
+          LOG_DEBUG_INFO(logger, "Fail SimplePointwiseReshapeActor::PreCheck for node " + current_node.Name() + ": output shapes not equal.");
           return false;
         }
       }
@@ -164,11 +153,7 @@ bool SimplePointwiseReshapeActor<AreAllOutputShapesEqual>::PreCheck(
 }
 
 bool MatMulReshapeActor::PreCheck(
-    const Node& current_node, const ReshapeInfo& info,
-    const logging::Logger& logger,
-    std::vector<int>& propagate_input_indices,
-    std::unordered_map<int, std::vector<DimCompare>>& all_input_cmp_rets,
-    std::function<void(Node& node)>& shape_update_func) {
+    const Node& current_node, const ReshapeInfo& info, const logging::Logger& logger, std::vector<int>& propagate_input_indices, std::unordered_map<int, std::vector<DimCompare>>& all_input_cmp_rets, std::function<void(Node& node)>& shape_update_func) {
   LOG_DEBUG_INFO(logger, "Enter MatMulReshapeActor::PreCheck for node " + current_node.Name());
 
   int current_node_output_index = info.GetDataProducerOutputIndex();
@@ -189,9 +174,7 @@ bool MatMulReshapeActor::PreCheck(
   auto lhs_input_rank = lhs_input_shape->dim_size();
   auto rhs_input_rank = rhs_input_shape->dim_size();
   if (lhs_input_rank != 3 || rhs_input_rank != 2) {
-    LOG_DEBUG_INFO(logger, "Fail MatMulReshapeActor::PreCheck for node " + current_node.Name() +
-                               ": lhs_input_rank is " + std::to_string(lhs_input_rank) +
-                               ", rhs_input_rank is " + std::to_string(rhs_input_rank));
+    LOG_DEBUG_INFO(logger, "Fail MatMulReshapeActor::PreCheck for node " + current_node.Name() + ": lhs_input_rank is " + std::to_string(lhs_input_rank) + ", rhs_input_rank is " + std::to_string(rhs_input_rank));
     return false;
   }
 
@@ -199,8 +182,7 @@ bool MatMulReshapeActor::PreCheck(
                                                          lhs_input_shape);
 
   if (!success) {
-    LOG_DEBUG_INFO(logger, "Fail MatMulReshapeActor::PreCheck for node " + current_node.Name() +
-                               ": reshape's data input rank < passthrough node's input rank");
+    LOG_DEBUG_INFO(logger, "Fail MatMulReshapeActor::PreCheck for node " + current_node.Name() + ": reshape's data input rank < passthrough node's input rank");
     return false;
   }
 
@@ -218,11 +200,7 @@ bool MatMulReshapeActor::PreCheck(
 }
 
 bool LayerNormalizationReshapeActor::PreCheck(
-    const Node& current_node, const ReshapeInfo& info,
-    const logging::Logger& logger,
-    std::vector<int>& propagate_input_indices,
-    std::unordered_map<int, std::vector<DimCompare>>& all_input_cmp_rets,
-    std::function<void(Node& node)>& shape_update_func) {
+    const Node& current_node, const ReshapeInfo& info, const logging::Logger& logger, std::vector<int>& propagate_input_indices, std::unordered_map<int, std::vector<DimCompare>>& all_input_cmp_rets, std::function<void(Node& node)>& shape_update_func) {
   LOG_DEBUG_INFO(logger, "Enter LayerNormalizationReshapeActor::PreCheck for node " + current_node.Name());
 
   auto axis = static_cast<int64_t>(current_node.GetAttributes().at("axis").i());
@@ -235,8 +213,7 @@ bool LayerNormalizationReshapeActor::PreCheck(
   //    Example: [2, 16, 1024], axis = 2, we can merge the first two dims, because reduction is still done for each
   //    set of 1024 elements.
   if (axis < 2) {
-    LOG_DEBUG_INFO(logger, "Fail LayerNormalizationReshapeActor::PreCheck for node " + current_node.Name() +
-                               ": axis is " + std::to_string(axis) + ", which blocks merging leading two dims.");
+    LOG_DEBUG_INFO(logger, "Fail LayerNormalizationReshapeActor::PreCheck for node " + current_node.Name() + ": axis is " + std::to_string(axis) + ", which blocks merging leading two dims.");
     return false;
   }
 
@@ -253,8 +230,7 @@ bool LayerNormalizationReshapeActor::PreCheck(
   auto data_input_shape = current_node.InputDefs()[0]->Shape();
   auto data_input_rank = data_input_shape->dim_size();
   if (data_input_rank != 3) {
-    LOG_DEBUG_INFO(logger, "Fail LayerNormalizationReshapeActor::PreCheck for node " + current_node.Name() +
-                               ": data_input_rank is " + std::to_string(data_input_rank));
+    LOG_DEBUG_INFO(logger, "Fail LayerNormalizationReshapeActor::PreCheck for node " + current_node.Name() + ": data_input_rank is " + std::to_string(data_input_rank));
     return false;
   }
 
@@ -262,8 +238,7 @@ bool LayerNormalizationReshapeActor::PreCheck(
                                                          data_input_shape);
 
   if (!success) {
-    LOG_DEBUG_INFO(logger, "Fail LayerNormalizationReshapeActor::PreCheck for node " + current_node.Name() +
-                               ": reshape's data input rank < passthrough node's input rank");
+    LOG_DEBUG_INFO(logger, "Fail LayerNormalizationReshapeActor::PreCheck for node " + current_node.Name() + ": reshape's data input rank < passthrough node's input rank");
     return false;
   }
 

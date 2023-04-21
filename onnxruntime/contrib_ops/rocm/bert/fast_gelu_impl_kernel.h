@@ -33,8 +33,7 @@ __global__ void FastGeluKernel(int input_length, int bias_length, const T* input
 }
 
 template <typename T, unsigned TPB, int ILP>
-__global__ void FastGeluKernelVec(int input_length, int bias_length, const T* input, const T* bias,
-                                  T* output) {
+__global__ void FastGeluKernelVec(int input_length, int bias_length, const T* input, const T* bias, T* output) {
   using VecT = onnxruntime::rocm::aligned_vector<T, ILP>;
   const T a = T(0.5f);
   const T b = T(0.7978845608028654f);

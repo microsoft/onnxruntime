@@ -73,8 +73,7 @@ Status TransformModelOutputsForInference(Graph& inference_graph,
   inference_graph_output_node_args.reserve(inference_graph_outputs.size());
   for (const auto& output_name : inference_graph_outputs) {
     const NodeArg* output_node_arg = inference_graph.GetNodeArg(std::string(output_name));
-    ORT_RETURN_IF_NOT(output_node_arg, "Expected graph output for inference graph " + std::string(output_name) +
-                                           " could not be found. Please regenerate the eval graph.");
+    ORT_RETURN_IF_NOT(output_node_arg, "Expected graph output for inference graph " + std::string(output_name) + " could not be found. Please regenerate the eval graph.");
     inference_graph_output_node_args.push_back(output_node_arg);
   }
 
@@ -89,7 +88,8 @@ Status TransformModelOutputsForInference(Graph& inference_graph,
 
 Status TransformModelInputsForInference(Graph& inference_graph,
                                         const std::unordered_map<
-                                            std::string, std::shared_ptr<Parameter>>& named_parameters,
+                                            std::string,
+                                            std::shared_ptr<Parameter>>& named_parameters,
                                         const DataTransferManager& data_transfer_manager) {
   std::vector<const NodeArg*> user_graph_inputs;
   for (auto& graph_input_node_arg : inference_graph.GetInputs()) {
@@ -102,10 +102,12 @@ Status TransformModelInputsForInference(Graph& inference_graph,
     } else {
       ORT_ENFORCE(!inference_graph.IsInitializedTensor(named_parameter_it->first),
                   "The eval graph is invalid. Expected model parameter ",
-                  named_parameter_it->first, " to be a graph input, not a graph initializer.");
+                  named_parameter_it->first,
+                  " to be a graph input, not a graph initializer.");
       inference_graph.AddInitializedTensor(utils::CopyTensorToTensorProto(
           named_parameter_it->second->Data().Get<onnxruntime::Tensor>(),
-          named_parameter_it->first, data_transfer_manager));
+          named_parameter_it->first,
+          data_transfer_manager));
     }
   }
 
@@ -237,8 +239,7 @@ Module::Module(const std::string& train_model_path_or_bytes,
       ORT_ENFORCE(target_allocator != nullptr);
 
       // Create a new tensor on the target_device and switch the source_ortvalue to point to this new tensor
-      auto target_tensor = std::make_unique<Tensor>(param_data_tensor.DataType(), param_data_tensor.Shape(),
-                                                    target_allocator);
+      auto target_tensor = std::make_unique<Tensor>(param_data_tensor.DataType(), param_data_tensor.Shape(), target_allocator);
       ORT_THROW_IF_ERROR(train_sess_state.GetDataTransferMgr().CopyTensor(param_data_tensor, *target_tensor.get()));
       auto ml_tensor_type = DataTypeImpl::GetType<Tensor>();
       param_data.Init(target_tensor.release(), ml_tensor_type, ml_tensor_type->GetDeleteFunc());
@@ -251,8 +252,7 @@ Module::Module(const std::string& train_model_path_or_bytes,
     if (params_iter->second->RequiresGrad()) {
       // Create gradient accumulation buffer.
       auto it = param_name_to_grad_input_index_map.find(param_name);
-      ORT_ENFORCE(it != param_name_to_grad_input_index_map.end(), "Gradient buffer input not providered for param: ",
-                  param_name);
+      ORT_ENFORCE(it != param_name_to_grad_input_index_map.end(), "Gradient buffer input not providered for param: ", param_name);
 
       const size_t grad_input_index = it->second;
       auto& param_grad_name = grad_input_names[grad_input_index];
@@ -346,8 +346,10 @@ Status Module::CopyParametersToBuffer(OrtValue& parameters_buffer, const bool tr
   ORT_ENFORCE(nullptr != init_tensor);
   auto expected_buffer_size = static_cast<int64_t>(GetParametersSize(trainable_only));
   ORT_ENFORCE(init_tensor->Shape().Size() == expected_buffer_size,
-              "Parameters buffer size incorrect. Expected:", expected_buffer_size,
-              ", Actual:", init_tensor->Shape().Size());
+              "Parameters buffer size incorrect. Expected:",
+              expected_buffer_size,
+              ", Actual:",
+              init_tensor->Shape().Size());
 
   const DataTransferManager& sess_data_transfer_manager = train_sess_->GetDataTransferManager();
 
@@ -389,8 +391,10 @@ Status Module::CopyBufferToParameters(OrtValue& parameters_buffer, const bool tr
   ORT_ENFORCE(nullptr != init_tensor);
   auto expected_buffer_size = static_cast<int64_t>(GetParametersSize(trainable_only));
   ORT_ENFORCE(init_tensor->Shape().Size() == expected_buffer_size,
-              "Parameters buffer size incorrect. Expected:", expected_buffer_size,
-              ", Actual:", init_tensor->Shape().Size());
+              "Parameters buffer size incorrect. Expected:",
+              expected_buffer_size,
+              ", Actual:",
+              init_tensor->Shape().Size());
 
   const DataTransferManager& sess_data_transfer_manager = train_sess_->GetDataTransferManager();
 
@@ -488,8 +492,7 @@ Status Module::ExportModelForInferencing(const std::string& inference_model_path
 
   // The cloned model's inputs are transformed such that the model has only user defined inputs. All parameters
   // are moved to be constant initializers for the model.
-  ORT_RETURN_IF_ERROR(TransformModelInputsForInference(inference_model->MainGraph(), named_parameters_,
-                                                       eval_sess_->GetDataTransferManager()));
+  ORT_RETURN_IF_ERROR(TransformModelInputsForInference(inference_model->MainGraph(), named_parameters_, eval_sess_->GetDataTransferManager()));
 
   // Save the model at desired location.
   ORT_THROW_IF_ERROR(Model::Save(*inference_model, inference_model_path));
@@ -507,14 +510,18 @@ size_t Module::GetEvalModelInputCount() const noexcept {
 
 std::string Module::GetTrainingModelInputName(size_t index) const {
   ORT_ENFORCE(index < train_user_input_count_,
-              "Train input name index out of range. Expected in range [0-", train_user_input_count_, "). Actual: ",
+              "Train input name index out of range. Expected in range [0-",
+              train_user_input_count_,
+              "). Actual: ",
               index);
   return train_input_names_.at(index);
 }
 
 std::string Module::GetEvalModelInputName(size_t index) const {
   ORT_ENFORCE(index < eval_user_input_count_,
-              "Eval input name index out of range. Expected in range [0-", eval_user_input_count_, "). Actual: ",
+              "Eval input name index out of range. Expected in range [0-",
+              eval_user_input_count_,
+              "). Actual: ",
               index);
   return eval_input_names_.at(index);
 }

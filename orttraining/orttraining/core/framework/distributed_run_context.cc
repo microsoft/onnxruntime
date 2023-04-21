@@ -111,7 +111,8 @@ DistributedRunContext::DistributedRunContext(int32_t world_rank,
   }
 
   groups_[WorkerGroupType::GlobalParallel] = {global_group_ranks, 0,  // Only one group in global parallel.
-                                              WorkerGroupType::GlobalParallel, world_rank};
+                                              WorkerGroupType::GlobalParallel,
+                                              world_rank};
 
   // Initialize Data Parallel Group
   const int32_t data_group_start_index = calculate_linear_index(horizontal_parallel_size, data_parallel_size, x, 0, z);
@@ -120,8 +121,7 @@ DistributedRunContext::DistributedRunContext(int32_t world_rank,
     data_group_ranks.push_back(data_group_start_index + r * horizontal_parallel_size);
   }
 
-  groups_[WorkerGroupType::DataParallel] = {data_group_ranks, data_group_id,
-                                            WorkerGroupType::DataParallel, y};
+  groups_[WorkerGroupType::DataParallel] = {data_group_ranks, data_group_id, WorkerGroupType::DataParallel, y};
 
   // Sort it to use afterwards
   std::sort(data_group_ranks.begin(), data_group_ranks.end());
@@ -132,8 +132,7 @@ DistributedRunContext::DistributedRunContext(int32_t world_rank,
   for (auto r = 0; r < horizontal_parallel_size; r++) {
     hori_group_ranks.push_back(hori_group_start_index + r);
   }
-  groups_[WorkerGroupType::HorizontalParallel] = {hori_group_ranks, hori_group_id,
-                                                  WorkerGroupType::HorizontalParallel, x};
+  groups_[WorkerGroupType::HorizontalParallel] = {hori_group_ranks, hori_group_id, WorkerGroupType::HorizontalParallel, x};
 
   // Model Parallel Group
   // Note: Pipeline parallel group is different than Data and horizontal parallel in a way that ranks in the same
@@ -146,8 +145,7 @@ DistributedRunContext::DistributedRunContext(int32_t world_rank,
     pipeline_group_ranks.push_back(pipe_group_start_index + r * (data_parallel_size * horizontal_parallel_size));
   }
 
-  groups_[WorkerGroupType::PipelineParallel] = {pipeline_group_ranks, pipe_group_id,
-                                                WorkerGroupType::PipelineParallel, z};
+  groups_[WorkerGroupType::PipelineParallel] = {pipeline_group_ranks, pipe_group_id, WorkerGroupType::PipelineParallel, z};
 
   // Node local parallel group
   const int32_t node_group_id = params_.world_rank / params_.local_size;
@@ -172,8 +170,7 @@ DistributedRunContext::DistributedRunContext(int32_t world_rank,
   const int32_t rank_in_owning_node_group =
       (index_in_node_data_parallel_group - node_data_parallel_group_ranks.begin()) % static_cast<int32_t>(node_data_parallel_group_ranks.size());
 
-  groups_[WorkerGroupType::NodeLocalDataParallel] = {node_data_parallel_group_ranks, node_group_id,
-                                                     WorkerGroupType::NodeLocalDataParallel, rank_in_owning_node_group};
+  groups_[WorkerGroupType::NodeLocalDataParallel] = {node_data_parallel_group_ranks, node_group_id, WorkerGroupType::NodeLocalDataParallel, rank_in_owning_node_group};
 
   // Cross node parallel group
   const int32_t cross_node_group_id = params_.local_rank;
@@ -192,8 +189,7 @@ DistributedRunContext::DistributedRunContext(int32_t world_rank,
                         cross_node_group_ranks.end(),
                         std::back_inserter(cross_node_data_parallel_group_ranks));
 
-  groups_[WorkerGroupType::CrossNodeDataParallel] = {cross_node_group_ranks, cross_node_group_id,
-                                                     WorkerGroupType::CrossNodeDataParallel, rank_in_owning_cross_node_group};
+  groups_[WorkerGroupType::CrossNodeDataParallel] = {cross_node_group_ranks, cross_node_group_id, WorkerGroupType::CrossNodeDataParallel, rank_in_owning_cross_node_group};
 }
 }  // namespace training
 }  // namespace onnxruntime

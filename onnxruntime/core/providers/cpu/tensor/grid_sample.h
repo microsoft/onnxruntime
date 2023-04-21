@@ -19,9 +19,13 @@ class GridSample final : public OpKernel {
     std::string padding_mode_str = info.GetAttrOrDefault<std::string>("padding_mode", "zeros");
     align_corners_ = static_cast<bool>(info.GetAttrOrDefault<int64_t>("align_corners", 0));
     ORT_ENFORCE(mode_str == "bilinear" || mode_str == "nearest" || mode_str == "bicubic",
-                "mode \"", mode_str, "\" not supported, expect bilinear, nearest or bicubic");
+                "mode \"",
+                mode_str,
+                "\" not supported, expect bilinear, nearest or bicubic");
     ORT_ENFORCE(padding_mode_str == "zeros" || padding_mode_str == "border" || padding_mode_str == "reflection",
-                "padding_mode \"", padding_mode_str, "\" not supported, expect zeros, border or reflection");
+                "padding_mode \"",
+                padding_mode_str,
+                "\" not supported, expect zeros, border or reflection");
     if (mode_str == "bicubic") {
       mode_ = Bicubic;
     } else if (mode_str == "nearest") {

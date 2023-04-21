@@ -10,41 +10,25 @@
 #include "core/providers/cpu/signal/utils.h"
 
 namespace onnxruntime {
-ONNX_CPU_OPERATOR_KERNEL(HannWindow, 17,
-                         KernelDefBuilder()
-                             .MayInplace(0, 0)                                                     //
-                             .TypeConstraint("T1", BuildKernelDefConstraints<int32_t, int64_t>())  //
-                             .TypeConstraint("T2",
-                                             BuildKernelDefConstraints<float, double, uint8_t, uint16_t, uint32_t,
-                                                                       uint64_t, int8_t, int16_t, int32_t, int64_t>()),
+ONNX_CPU_OPERATOR_KERNEL(HannWindow, 17, KernelDefBuilder().MayInplace(0, 0)                                       //
+                                             .TypeConstraint("T1", BuildKernelDefConstraints<int32_t, int64_t>())  //
+                                             .TypeConstraint("T2", BuildKernelDefConstraints<float, double, uint8_t, uint16_t, uint32_t, uint64_t, int8_t, int16_t, int32_t, int64_t>()),
                          HannWindow);
 
-ONNX_CPU_OPERATOR_KERNEL(HammingWindow, 17,
-                         KernelDefBuilder()
-                             .MayInplace(0, 0)                                                     //
-                             .TypeConstraint("T1", BuildKernelDefConstraints<int32_t, int64_t>())  //
-                             .TypeConstraint("T2",
-                                             BuildKernelDefConstraints<float, double, uint8_t, uint16_t, uint32_t,
-                                                                       uint64_t, int8_t, int16_t, int32_t, int64_t>()),
+ONNX_CPU_OPERATOR_KERNEL(HammingWindow, 17, KernelDefBuilder().MayInplace(0, 0)                                       //
+                                                .TypeConstraint("T1", BuildKernelDefConstraints<int32_t, int64_t>())  //
+                                                .TypeConstraint("T2", BuildKernelDefConstraints<float, double, uint8_t, uint16_t, uint32_t, uint64_t, int8_t, int16_t, int32_t, int64_t>()),
                          HammingWindow);
 
-ONNX_CPU_OPERATOR_KERNEL(BlackmanWindow, 17,
-                         KernelDefBuilder()
-                             .MayInplace(0, 0)                                                     //
-                             .TypeConstraint("T1", BuildKernelDefConstraints<int32_t, int64_t>())  //
-                             .TypeConstraint("T2",
-                                             BuildKernelDefConstraints<float, double, uint8_t, uint16_t, uint32_t,
-                                                                       uint64_t, int8_t, int16_t, int32_t, int64_t>()),
+ONNX_CPU_OPERATOR_KERNEL(BlackmanWindow, 17, KernelDefBuilder().MayInplace(0, 0)                                       //
+                                                 .TypeConstraint("T1", BuildKernelDefConstraints<int32_t, int64_t>())  //
+                                                 .TypeConstraint("T2", BuildKernelDefConstraints<float, double, uint8_t, uint16_t, uint32_t, uint64_t, int8_t, int16_t, int32_t, int64_t>()),
                          BlackmanWindow);
 
-ONNX_CPU_OPERATOR_KERNEL(MelWeightMatrix, 17,
-                         KernelDefBuilder()
-                             .MayInplace(0, 0)                                                     //
-                             .TypeConstraint("T1", BuildKernelDefConstraints<int32_t, int64_t>())  //
-                             .TypeConstraint("T2", BuildKernelDefConstraints<float>())
-                             .TypeConstraint("T3",
-                                             BuildKernelDefConstraints<float, double, uint8_t, uint16_t, uint32_t,
-                                                                       uint64_t, int8_t, int16_t, int32_t, int64_t>()),
+ONNX_CPU_OPERATOR_KERNEL(MelWeightMatrix, 17, KernelDefBuilder().MayInplace(0, 0)                                       //
+                                                  .TypeConstraint("T1", BuildKernelDefConstraints<int32_t, int64_t>())  //
+                                                  .TypeConstraint("T2", BuildKernelDefConstraints<float>())
+                                                  .TypeConstraint("T3", BuildKernelDefConstraints<float, double, uint8_t, uint16_t, uint32_t, uint64_t, int8_t, int16_t, int32_t, int64_t>()),
                          MelWeightMatrix);
 
 template <typename T>
@@ -69,8 +53,7 @@ struct CosineSumWindow {
   }
 };
 
-static Status create_cosine_sum_window(OpKernelContext* ctx, onnx::TensorProto_DataType output_datatype, float a0,
-                                       float a1, float a2, bool is_periodic) {
+static Status create_cosine_sum_window(OpKernelContext* ctx, onnx::TensorProto_DataType output_datatype, float a0, float a1, float a2, bool is_periodic) {
   // Get the size of the window
   auto size = signal::get_scalar_value_from_tensor<int64_t>(ctx->Input<Tensor>(0));
 
@@ -118,8 +101,7 @@ static inline double mel_scale_to_hz(double mels) { return 700 * (pow(10, (mels 
 
 template <typename T>
 struct CreateMelWeightMatrix {
-  Status operator()(OpKernelContext* ctx, int64_t num_mel_bins, int64_t dft_length, int64_t sample_rate,
-                    float lower_edge_hertz, float upper_edge_hertz) {
+  Status operator()(OpKernelContext* ctx, int64_t num_mel_bins, int64_t dft_length, int64_t sample_rate, float lower_edge_hertz, float upper_edge_hertz) {
     // Determine the width of the spectrogram.
     // This is determined as half the size of the fft size. The first element of the spectrum is always retained,
     // and the remaining are halved. The second half can be discarded due to the conjugate symmetry of the output with
@@ -197,13 +179,10 @@ struct CreateMelWeightMatrix {
   }
 };
 
-static Status create_mel_weight_matrix(OpKernelContext* ctx, onnx::TensorProto_DataType output_datatype,
-                                       int64_t num_mel_bins, int64_t dft_length, int64_t sample_rate,
-                                       float lower_edge_hertz, float upper_edge_hertz) {
+static Status create_mel_weight_matrix(OpKernelContext* ctx, onnx::TensorProto_DataType output_datatype, int64_t num_mel_bins, int64_t dft_length, int64_t sample_rate, float lower_edge_hertz, float upper_edge_hertz) {
   utils::MLTypeCallDispatcher<float, double, int8_t, int16_t, int32_t, int64_t, uint8_t, uint16_t, uint32_t, uint64_t>
       dispatcher(output_datatype);
-  return dispatcher.InvokeRet<Status, CreateMelWeightMatrix>(ctx, num_mel_bins, dft_length, sample_rate,
-                                                             lower_edge_hertz, upper_edge_hertz);
+  return dispatcher.InvokeRet<Status, CreateMelWeightMatrix>(ctx, num_mel_bins, dft_length, sample_rate, lower_edge_hertz, upper_edge_hertz);
 }
 
 Status MelWeightMatrix::Compute(OpKernelContext* ctx) const {
@@ -213,7 +192,6 @@ Status MelWeightMatrix::Compute(OpKernelContext* ctx) const {
   const auto lower_edge_hertz = signal::get_scalar_value_from_tensor<float>(ctx->Input<Tensor>(3));
   const auto upper_edge_hertz = signal::get_scalar_value_from_tensor<float>(ctx->Input<Tensor>(4));
 
-  return create_mel_weight_matrix(ctx, data_type_, num_mel_bins, dft_length, sample_rate, lower_edge_hertz,
-                                  upper_edge_hertz);
+  return create_mel_weight_matrix(ctx, data_type_, num_mel_bins, dft_length, sample_rate, lower_edge_hertz, upper_edge_hertz);
 }
 }  // namespace onnxruntime

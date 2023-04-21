@@ -12,13 +12,9 @@ namespace contrib {
 namespace rocm {
 namespace blas {
 
-#define GEMMFASTGELU(T, ScalarT)                                                 \
-  common::Status GemmFastGelu(                                                   \
-      RocmTuningContext* tuning_ctx, hipStream_t stream, rocblas_handle handle,  \
-      BlasOp opa, BlasOp opb,                                                    \
-      std::int64_t m, std::int64_t n, std::int64_t k,                            \
-      ScalarT alpha, const T* a, std::int64_t lda, const T* b, std::int64_t ldb, \
-      const T* bias, ScalarT beta, T* c, std::int64_t ldc)
+#define GEMMFASTGELU(T, ScalarT) \
+  common::Status GemmFastGelu(   \
+      RocmTuningContext* tuning_ctx, hipStream_t stream, rocblas_handle handle, BlasOp opa, BlasOp opb, std::int64_t m, std::int64_t n, std::int64_t k, ScalarT alpha, const T* a, std::int64_t lda, const T* b, std::int64_t ldb, const T* bias, ScalarT beta, T* c, std::int64_t ldc)
 
 namespace row_major {
 

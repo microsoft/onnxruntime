@@ -24,14 +24,12 @@ class ActivationOpBuilder : public BaseOpBuilder {
   void AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const override;
 
  private:
-  [[nodiscard]] Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
-                                             const logging::Logger& logger) const override;
+  [[nodiscard]] Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node, const logging::Logger& logger) const override;
 #endif
 
   // Operator support related
  private:
-  bool IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params,
-                         const logging::Logger& logger) const override;
+  bool IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params, const logging::Logger& logger) const override;
   int GetMinSupportedOpSet(const Node& node) const override;
 };
 
@@ -48,9 +46,7 @@ void ActivationOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, con
 }
 
 namespace {
-Status AddPReluWeight(ModelBuilder& model_builder, const Node& node,
-                      const logging::Logger& logger,
-                      COREML_SPEC::ActivationPReLU& prelu) {
+Status AddPReluWeight(ModelBuilder& model_builder, const Node& node, const logging::Logger& logger, COREML_SPEC::ActivationPReLU& prelu) {
   // add slope initializer as alpha weight
   const auto& slope_tensor = *model_builder.GetInitializerTensors().at(node.InputDefs()[1]->Name());
   const auto slope_tensor_num_elements = narrow<size_t>(Product(slope_tensor.dims()));
@@ -62,7 +58,8 @@ Status AddPReluWeight(ModelBuilder& model_builder, const Node& node,
 
     // "broadcast" single value by creating a CoreML weight with num_channels copies of it
     ORT_RETURN_IF_NOT(slope_tensor.data_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
-                      "slope initializer has unsupported data type: ", slope_tensor.data_type());
+                      "slope initializer has unsupported data type: ",
+                      slope_tensor.data_type());
 
     std::vector<int64_t> x_shape;
     ORT_RETURN_IF_NOT(GetShape(*node.InputDefs()[0], x_shape, logger), "Failed to get shape of X.");
@@ -103,8 +100,7 @@ Status ActivationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
     auto* leaky_relu = layer->mutable_activation()->mutable_leakyrelu();
     leaky_relu->set_alpha(alpha);
   } else {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "ActivationOpBuilder::AddToModelBuilderImpl, unknown op: ", op_type);
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "ActivationOpBuilder::AddToModelBuilderImpl, unknown op: ", op_type);
   }
 
   *layer->mutable_input()->Add() = node.InputDefs()[0]->Name();
@@ -119,8 +115,7 @@ Status ActivationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 
 namespace {
 // assumes that node.OpType() == "PRelu"
-bool IsPReluOpSupported(const Node& node, const OpBuilderInputParams& input_params,
-                        const logging::Logger& logger) {
+bool IsPReluOpSupported(const Node& node, const OpBuilderInputParams& input_params, const logging::Logger& logger) {
   const auto& input_defs = node.InputDefs();
 
   // X input rank must be 3 or 4
@@ -150,8 +145,7 @@ bool IsPReluOpSupported(const Node& node, const OpBuilderInputParams& input_para
       return false;
     }
     const bool has_per_channel_slopes =
-        (slope_shape.size() == 3 && std::all_of(slope_shape.begin() + 1, slope_shape.end(),
-                                                [](int64_t dim) { return dim == 1; }));
+        (slope_shape.size() == 3 && std::all_of(slope_shape.begin() + 1, slope_shape.end(), [](int64_t dim) { return dim == 1; }));
     const bool has_single_slope = Product(slope_shape) == 1;
     if (!has_per_channel_slopes && !has_single_slope) {
       LOGS(logger, VERBOSE) << "PRelu 'slope' input must either have shape [C, 1, 1] or have a single value";
@@ -170,8 +164,7 @@ bool IsPReluOpSupported(const Node& node, const OpBuilderInputParams& input_para
 }
 }  // namespace
 
-bool ActivationOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params,
-                                            const logging::Logger& logger) const {
+bool ActivationOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params, const logging::Logger& logger) const {
   const auto& op_type = node.OpType();
   if (op_type == "PRelu") {
     return IsPReluOpSupported(node, input_params, logger);

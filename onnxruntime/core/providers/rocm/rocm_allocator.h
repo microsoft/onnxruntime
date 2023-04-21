@@ -14,9 +14,7 @@ class ROCMAllocator : public IAllocator {
  public:
   ROCMAllocator(OrtDevice::DeviceId device_id, const char* name)
       : IAllocator(
-            OrtMemoryInfo(name, OrtAllocatorType::OrtDeviceAllocator,
-                          OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, device_id),
-                          device_id, OrtMemTypeDefault)) {}
+            OrtMemoryInfo(name, OrtAllocatorType::OrtDeviceAllocator, OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, device_id), device_id, OrtMemTypeDefault)) {}
   void* Alloc(size_t size) override;
   void Free(void* p) override;
 
@@ -55,9 +53,7 @@ class ROCMPinnedAllocator : public IAllocator {
  public:
   ROCMPinnedAllocator(OrtDevice::DeviceId device_id, const char* name)
       : IAllocator(
-            OrtMemoryInfo(name, OrtAllocatorType::OrtDeviceAllocator,
-                          OrtDevice(OrtDevice::CPU, OrtDevice::MemType::HIP_PINNED, device_id),
-                          device_id, OrtMemTypeCPUOutput)) {}
+            OrtMemoryInfo(name, OrtAllocatorType::OrtDeviceAllocator, OrtDevice(OrtDevice::CPU, OrtDevice::MemType::HIP_PINNED, device_id), device_id, OrtMemTypeCPUOutput)) {}
 
   void* Alloc(size_t size) override;
   void Free(void* p) override;

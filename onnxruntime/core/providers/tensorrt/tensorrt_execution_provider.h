@@ -59,9 +59,7 @@ class TensorrtLogger : public nvinfer1::ILogger {
       gmtime_r(&rawtime, &stm);
 #endif
       char buf[256];
-      strftime(&buf[0], 256,
-               "%Y-%m-%d %H:%M:%S",
-               &stm);
+      strftime(&buf[0], 256, "%Y-%m-%d %H:%M:%S", &stm);
       const char* sevstr = (severity == Severity::kINTERNAL_ERROR ? "    BUG" : severity == Severity::kERROR ? "  ERROR"
                                                                             : severity == Severity::kWARNING ? "WARNING"
                                                                             : severity == Severity::kINFO    ? "   INFO"
@@ -221,7 +219,9 @@ class TensorrtExecutionProvider : public IExecutionProvider {
 
   /**Get IndexedSubGraph based on node list of the subgraph*/
   std::unique_ptr<IndexedSubGraph> GetSubGraph(SubGraph_t graph_nodes_index,
-                                               const GraphViewer& graph, const HashValue& model_hash, int subgraph_index) const;
+                                               const GraphViewer& graph,
+                                               const HashValue& model_hash,
+                                               int subgraph_index) const;
 
   /**
   Get TensorRT supported node lists by calling Onnx-TensorRT parser recursively. Since each time the parser
@@ -230,8 +230,7 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   are not supported by TensorRT, the process will be terminated and the whole graph is simply assigned to
   other execution provider.
   */
-  SubGraphCollection_t GetSupportedList(SubGraphCollection_t supported_nodes_list, int iterations, const int max_iterations,
-                                        const GraphViewer& graph, bool* early_termination) const;
+  SubGraphCollection_t GetSupportedList(SubGraphCollection_t supported_nodes_list, int iterations, const int max_iterations, const GraphViewer& graph, bool* early_termination) const;
 
   bool DetectTensorRTGraphCycles(SubGraphCollection_t& supported_nodes_vector, const GraphViewer& graph, const HashValue& model_hash, bool remove_cycles = true) const;
 

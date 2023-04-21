@@ -15,8 +15,7 @@ float LinearLRScheduler::ComputeLRMultiplicativeFactorInternal(int64_t step) {
   int64_t remain_step_count = total_step_count_ - step;
   int64_t post_warmup_step_count = total_step_count_ - warmup_step_count_;
 
-  return std::max(0.f, static_cast<float>(remain_step_count) /
-                           (std::max(1.f, static_cast<float>(post_warmup_step_count))));
+  return std::max(0.f, static_cast<float>(remain_step_count) / (std::max(1.f, static_cast<float>(post_warmup_step_count))));
 }
 
 }  // namespace api

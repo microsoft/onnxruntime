@@ -62,8 +62,7 @@ constexpr const char* kInternalTestingExecutionProvider = "InternalTestingExecut
 // return true if the execution provider is CPU based (meaning no copies to device are required)
 bool ProviderIsCpuBased(const std::string& provider_type);
 
-common::Status CopyOneInputAcrossDevices(const SessionState& session_state, const std::string& input_name,
-                                         const OrtValue& orig_mlvalue, OrtValue& new_mlvalue);
+common::Status CopyOneInputAcrossDevices(const SessionState& session_state, const std::string& input_name, const OrtValue& orig_mlvalue, OrtValue& new_mlvalue);
 
 // Searches the allocation plan from the session_state to find the OrtMemoryInfo for the value 'name'.
 const OrtMemoryInfo& FindMemoryInfoForValue(const SessionState& session_state,
@@ -82,34 +81,17 @@ void FinalizeFeedFetchCopyInfo(FeedsFetchesManager& feeds_fetches_manager,
                                gsl::span<const OrtMemoryInfo* const> fetch_alloc_info);
 
 // Execute the main graph. The feed_fetches_manager will be finalized based on the provided feeds and fetches.
-common::Status ExecuteGraph(const SessionState& session_state, FeedsFetchesManager& feeds_fetches_manager,
-                            gsl::span<const OrtValue> feeds, std::vector<OrtValue>& fetches,
-                            ExecutionMode execution_mode, const bool& terminate_flag, const logging::Logger& logger,
-                            bool sync_execution_provider,
-                            bool only_execute_path_to_fetches = false,
-                            Stream* parent_stream = nullptr);
+common::Status ExecuteGraph(const SessionState& session_state, FeedsFetchesManager& feeds_fetches_manager, gsl::span<const OrtValue> feeds, std::vector<OrtValue>& fetches, ExecutionMode execution_mode, const bool& terminate_flag, const logging::Logger& logger, bool sync_execution_provider, bool only_execute_path_to_fetches = false, Stream* parent_stream = nullptr);
 
-common::Status ExecuteGraph(const SessionState& session_state, FeedsFetchesManager& feeds_fetches_manager,
-                            gsl::span<const OrtValue> feeds, std::vector<OrtValue>& fetches,
-                            ExecutionMode execution_mode, const RunOptions& run_options, const logging::Logger& logger);
+common::Status ExecuteGraph(const SessionState& session_state, FeedsFetchesManager& feeds_fetches_manager, gsl::span<const OrtValue> feeds, std::vector<OrtValue>& fetches, ExecutionMode execution_mode, const RunOptions& run_options, const logging::Logger& logger);
 
 #ifdef ENABLE_TRAINING
-common::Status ExecutePartialGraph(const SessionState& session_state, FeedsFetchesManager& feeds_fetches_manager,
-                                   gsl::span<const OrtValue> feeds, std::vector<OrtValue>& fetches,
-                                   const logging::Logger& logger, PartialGraphExecutionState& state,
-                                   const OrtValueCachePtr& cache,
-                                   const bool& terminate_flag,
-                                   int32_t partial_graph_index,
-                                   Stream* parent_stream);
+common::Status ExecutePartialGraph(const SessionState& session_state, FeedsFetchesManager& feeds_fetches_manager, gsl::span<const OrtValue> feeds, std::vector<OrtValue>& fetches, const logging::Logger& logger, PartialGraphExecutionState& state, const OrtValueCachePtr& cache, const bool& terminate_flag, int32_t partial_graph_index, Stream* parent_stream);
 #endif
 
 // Execute a subgraph. The feeds_fetches_manager should have been finalized prior to calling this function.
 // See IControlFlowNode::SetupSubgraphExecutionInfo usage in the control flow kernels.
-common::Status ExecuteSubgraph(const SessionState& session_state, const FeedsFetchesManager& feeds_fetches_manager,
-                               gsl::span<const OrtValue> feeds, std::vector<OrtValue>& fetches,
-                               const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
-                               ExecutionMode execution_mode, const bool& terminate_flag, const logging::Logger& logger,
-                               Stream* parent_stream,
+common::Status ExecuteSubgraph(const SessionState& session_state, const FeedsFetchesManager& feeds_fetches_manager, gsl::span<const OrtValue> feeds, std::vector<OrtValue>& fetches, const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators, ExecutionMode execution_mode, const bool& terminate_flag, const logging::Logger& logger, Stream* parent_stream,
                                /*when this is enabled, we will sync the parent stream to make sure the subgraph fetches
                                is complete. this is mainly used when the parent kernel depends on the CPU value of the
                                subgraph fetches, i.e. the loop condition*/

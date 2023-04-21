@@ -49,8 +49,7 @@ Status CreateTensorProtosFromOrtValues(
   // Order the tensors by name.
   InlinedVector<std::string> ordered_tensor_names{};
   ordered_tensor_names.reserve(name_to_ort_value.size());
-  std::transform(name_to_ort_value.begin(), name_to_ort_value.end(), std::back_inserter(ordered_tensor_names),
-                 [](const NameMLValMap::value_type& v) { return v.first; });
+  std::transform(name_to_ort_value.begin(), name_to_ort_value.end(), std::back_inserter(ordered_tensor_names), [](const NameMLValMap::value_type& v) { return v.first; });
   std::sort(ordered_tensor_names.begin(), ordered_tensor_names.end());
 
   saved_tensor_protos.reserve(ordered_tensor_names.size());
@@ -90,15 +89,13 @@ PathString GetTensorProtoPropertiesFilePath(
 }
 
 PathString StringConcat(
-    const PathString& s_a, const PathString& s_b,
-    const PathString& del = k_name_separator) {
+    const PathString& s_a, const PathString& s_b, const PathString& del = k_name_separator) {
   std::basic_ostringstream<PathChar> oss;
   oss << s_a << del << s_b;
   return oss.str();
 }
 
-void StringSplit(const PathString& s, std::vector<PathString>& results,
-                 const PathString& del = k_name_separator) {
+void StringSplit(const PathString& s, std::vector<PathString>& results, const PathString& del = k_name_separator) {
   ORT_ENFORCE(!s.empty(), "String to split is empty");
   size_t start = 0;
   size_t end = s.find(del);
@@ -123,8 +120,7 @@ void WriteTensorProtoToFile(const PathString& file_path,
                             const std::vector<ONNX_NAMESPACE::TensorProto>& tensor_protos,
                             std::string caller_context) {
   auto file_write_status = WithOpenFile(
-      file_path, false,
-      [&tensor_protos](int fd) {
+      file_path, false, [&tensor_protos](int fd) {
         google::protobuf::io::FileOutputStream output{fd};
         ORT_RETURN_IF_ERROR(WriteProtoMessageSequence(tensor_protos, output));
         return Status::OK();
@@ -137,8 +133,7 @@ void LoadTensorProtoFromFile(const PathString& file_path,
                              std::vector<ONNX_NAMESPACE::TensorProto>& tensor_protos,
                              std::string caller_context) {
   auto file_read_status = WithOpenFile(
-      file_path, true,
-      [&tensor_protos](int fd) {
+      file_path, true, [&tensor_protos](int fd) {
         google::protobuf::io::FileInputStream input{fd};
         ORT_RETURN_IF_ERROR(ReadProtoMessageSequence(tensor_protos, input));
         return Status::OK();
@@ -170,15 +165,14 @@ Status OrtSaveInternal(
                          std::set<std::string>& unique_names) {
     for (auto& tensor_proto : tensor_protos) {
       ORT_ENFORCE(unique_names.find(tensor_proto.name()) == unique_names.end(),
-                  "Duplicated tensor proto named ", tensor_proto.name());
+                  "Duplicated tensor proto named ",
+                  tensor_proto.name());
       unique_names.emplace(tensor_proto.name());
     }
   };
   check_unique(trainable_tensor_protos, trainable_unique_names);
   check_unique(non_trainable_tensor_protos, non_trainable_unique_names);
-  std::set_intersection(trainable_unique_names.begin(), trainable_unique_names.end(),
-                        non_trainable_unique_names.begin(), non_trainable_unique_names.end(),
-                        std::back_inserter(inter_sec));
+  std::set_intersection(trainable_unique_names.begin(), trainable_unique_names.end(), non_trainable_unique_names.begin(), non_trainable_unique_names.end(), std::back_inserter(inter_sec));
   ORT_RETURN_IF_NOT(inter_sec.empty(), "Tensor name exists in both trainable param list and non-trainable param list.");
 
   // Keep following saving logic aligned with OrtSaveModuleStatesInternal.
@@ -192,13 +186,15 @@ Status OrtSaveInternal(
   if (trainable_tensor_protos.size() > 0) {
     WriteTensorProtoToFile(
         GetTensorProtoFilePath(checkpoint_path, k_trainable_param_root_prefix),
-        trainable_tensor_protos, "[trainable_param]");
+        trainable_tensor_protos,
+        "[trainable_param]");
   }
 
   if (non_trainable_tensor_protos.size() > 0) {
     WriteTensorProtoToFile(
         GetTensorProtoFilePath(checkpoint_path, k_non_trainable_param_root_prefix),
-        non_trainable_tensor_protos, "[non_trainable_param]");
+        non_trainable_tensor_protos,
+        "[non_trainable_param]");
   }
 
   return Status::OK();
@@ -233,7 +229,8 @@ Status OrtSaveModuleStatesInternal(ModuleCheckpointState& module_state,
       // Save TensorProto to file.
       WriteTensorProtoToFile(
           GetTensorProtoFilePath(parameter_folder_path, pair.first),
-          param_tensor_protos, "[param]");
+          param_tensor_protos,
+          "[param]");
     }
   }
 
@@ -287,7 +284,8 @@ Status OrtSaveOptimizerStatesInternal(OptimizerCheckpointState& optimizer_state,
       // Save TensorProto to file.
       WriteTensorProtoToFile(
           GetTensorProtoFilePath(checkpoint_path, cur_state_filename_prefix),
-          saved_tensor_protos, "[optimizer_state]");
+          saved_tensor_protos,
+          "[optimizer_state]");
     }
 
     // Storing group-wise properties.
@@ -299,7 +297,8 @@ Status OrtSaveOptimizerStatesInternal(OptimizerCheckpointState& optimizer_state,
 
     WriteTensorProtoToFile(
         GetTensorProtoPropertiesFilePath(checkpoint_path, cur_group_filename_prefix),
-        group_wise_properties_tensor_protos, "[param_group_properties]");
+        group_wise_properties_tensor_protos,
+        "[param_group_properties]");
   }
 
   return Status::OK();
@@ -326,7 +325,8 @@ Status OrtSaveInternal(
 
     WriteTensorProtoToFile(
         GetTensorProtoPropertiesFilePath(checkpoint_path, k_property_root_prefix),
-        properties_tensor_protos, "[custom_properties]");
+        properties_tensor_protos,
+        "[custom_properties]");
   }
 
   LOGS_DEFAULT(INFO) << "Checkpoint saved successfully.";

@@ -28,8 +28,11 @@ class Capture {
      @param dataType Type of the data.
      @param location The file location the log message is coming from.
   */
-  Capture(const Logger& logger, logging::Severity severity, const char* category,
-          logging::DataType dataType, const CodeLocation& location)
+  Capture(const Logger& logger,
+          logging::Severity severity,
+          const char* category,
+          logging::DataType dataType,
+          const CodeLocation& location)
       : logger_{&logger}, severity_{severity}, category_{category}, data_type_{dataType}, location_{location} {
   }
 

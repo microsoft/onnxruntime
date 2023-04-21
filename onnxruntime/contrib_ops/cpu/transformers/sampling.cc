@@ -69,8 +69,7 @@ Status Sampling::SetupSubgraphExecutionInfo(const SessionState& session_state,
   if (parameters_.model_type == IGenerationParameters::kModelTypeGpt) {  // GPT-2
     if (attribute_name == "decoder") {
       ORT_ENFORCE(gpt_subgraph_ == nullptr, "SetupSubgraphExecutionInfo should only be called once for each subgraph.");
-      auto res = gpt_details::CreateGptSubgraphAndUpdateParameters(node, session_state, attribute_name,
-                                                                   subgraph_session_state, parameters_);
+      auto res = gpt_details::CreateGptSubgraphAndUpdateParameters(node, session_state, attribute_name, subgraph_session_state, parameters_);
 
       auto status = res.first;
       if (!status.IsOK()) {
@@ -81,8 +80,7 @@ Status Sampling::SetupSubgraphExecutionInfo(const SessionState& session_state,
       decoder_feeds_fetches_manager_ = gpt_subgraph_->GetFeedsFetchesManager();
     } else if (attribute_name == "init_decoder") {
       ORT_ENFORCE(init_run_gpt_subgraph_ == nullptr, "SetupSubgraphExecutionInfo should only be called once for each subgraph.");
-      auto res = gpt_details::CreateGptSubgraphAndUpdateParameters(node, session_state, attribute_name,
-                                                                   subgraph_session_state, parameters_);
+      auto res = gpt_details::CreateGptSubgraphAndUpdateParameters(node, session_state, attribute_name, subgraph_session_state, parameters_);
 
       auto status = res.first;
       if (!status.IsOK()) {

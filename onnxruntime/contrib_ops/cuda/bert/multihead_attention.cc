@@ -126,8 +126,7 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
                                    key != nullptr &&
                                    (value != nullptr || bias == nullptr) &&  // TODO: new kernel for adding bias to packed KV
                                    parameters.hidden_size == parameters.v_hidden_size &&
-                                   has_fused_cross_attention_kernel(sm, parameters.head_size,
-                                                                    parameters.kv_sequence_length);
+                                   has_fused_cross_attention_kernel(sm, parameters.head_size, parameters.kv_sequence_length);
   if (use_fused_cross_attention) {
     if (fused_fp16_cross_attention_kernel_ == nullptr) {
       fused_fp16_cross_attention_kernel_ = get_fused_cross_attention_kernels(sm);
@@ -148,8 +147,7 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
                           (nullptr == key_padding_mask || is_mask_1d_seq_len) &&
                           parameters.hidden_size == parameters.v_hidden_size &&
                           parameters.sequence_length == parameters.kv_sequence_length &&
-                          FusedMHARunnerFP16v2::is_supported(sm, parameters.head_size, sequence_length,
-                                                             enable_trt_flash_attention_, false);
+                          FusedMHARunnerFP16v2::is_supported(sm, parameters.head_size, sequence_length, enable_trt_flash_attention_, false);
   if (use_fused_runner) {
     // Here we assume that num_heads and head_size does not change for a MultiHeadAttention node.
     if (nullptr == fused_fp16_runner_.get()) {

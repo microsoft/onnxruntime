@@ -67,8 +67,7 @@ class Memcpy final : public OpKernel {
         if (Node().OpType() == "MemcpyFromHost") {
           auto status = ctx->GetTempSpaceAllocator(&alloc);
           if (!status.IsOK()) {
-            return Status(common::ONNXRUNTIME, common::FAIL,
-                          "Memcpy cuda: unable to get an allocator.");
+            return Status(common::ONNXRUNTIME, common::FAIL, "Memcpy cuda: unable to get an allocator.");
           }
         } else {
           // If we are copying contents to CPU (op type is "MemcpyToHost"),
@@ -76,8 +75,7 @@ class Memcpy final : public OpKernel {
           // in the sequence will be the allocator from the CPU EP
           auto status = ctx->GetTempSpaceCPUAllocator(&alloc);
           if (!status.IsOK()) {
-            return Status(common::ONNXRUNTIME, common::FAIL,
-                          "Memcpy cuda: unable to get the CPU allocator.");
+            return Status(common::ONNXRUNTIME, common::FAIL, "Memcpy cuda: unable to get the CPU allocator.");
           }
         }
         auto X_size = X->Size();
@@ -128,10 +126,7 @@ AllocatorPtr CUDAExecutionProvider::CreateCudaAllocator(OrtDevice::DeviceId devi
   if (external_allocator_info.UseExternalAllocator()) {
     AllocatorCreationInfo default_memory_info(
         [external_allocator_info](OrtDevice::DeviceId id) {
-          return std::make_unique<CUDAExternalAllocator>(id, CUDA,
-                                                         external_allocator_info.alloc,
-                                                         external_allocator_info.free,
-                                                         external_allocator_info.empty_cache);
+          return std::make_unique<CUDAExternalAllocator>(id, CUDA, external_allocator_info.alloc, external_allocator_info.free, external_allocator_info.empty_cache);
         },
         device_id,
         false);
@@ -156,9 +151,7 @@ AllocatorPtr CUDAExecutionProvider::CreateCudaAllocator(OrtDevice::DeviceId devi
   }
 }
 
-CUDAExecutionProvider::PerThreadContext::PerThreadContext(OrtDevice::DeviceId device_id, cudaStream_t stream, size_t /*gpu_mem_limit*/,
-                                                          ArenaExtendStrategy /*arena_extend_strategy*/, CUDAExecutionProviderExternalAllocatorInfo /*external_allocator_info*/,
-                                                          OrtArenaCfg* /*default_memory_arena_cfg*/) {
+CUDAExecutionProvider::PerThreadContext::PerThreadContext(OrtDevice::DeviceId device_id, cudaStream_t stream, size_t /*gpu_mem_limit*/, ArenaExtendStrategy /*arena_extend_strategy*/, CUDAExecutionProviderExternalAllocatorInfo /*external_allocator_info*/, OrtArenaCfg* /*default_memory_arena_cfg*/) {
   CUDA_CALL_THROW(cudaSetDevice(device_id));
 
   CUBLAS_CALL_THROW(cublasCreate(&cublas_handle_));
@@ -219,8 +212,7 @@ void OverrideTunableOpInfoByEnv(CUDAExecutionProviderInfo& info) {
   }
 
   if (auto env_tunable_op_tuning_enable = onnxruntime::ParseTestOnlyEnvironmentVariable<bool>(
-          "ORT_CUDA_TUNABLE_OP_TUNING_ENABLE", {"0", "1"},
-          "Use provider_options \"tunable_op_tuning_enable\" instead.");
+          "ORT_CUDA_TUNABLE_OP_TUNING_ENABLE", {"0", "1"}, "Use provider_options \"tunable_op_tuning_enable\" instead.");
       env_tunable_op_tuning_enable.has_value() && env_tunable_op_tuning_enable != info.tunable_op.tuning_enable) {
     LOGS_DEFAULT(INFO) << "ORT_CUDA_TUNABLE_OP_TUNING_ENABLE is set to " << *env_tunable_op_tuning_enable;
     info.tunable_op.tuning_enable = *env_tunable_op_tuning_enable;
@@ -321,8 +313,7 @@ CUDAExecutionProvider::PerThreadContext& CUDAExecutionProvider::GetPerThreadCont
 
     // get or create a context
     if (context_state_.retired_context_pool.empty()) {
-      context = std::make_shared<PerThreadContext>(info_.device_id, stream_, info_.gpu_mem_limit,
-                                                   info_.arena_extend_strategy, info_.external_allocator_info, info_.default_memory_arena_cfg);
+      context = std::make_shared<PerThreadContext>(info_.device_id, stream_, info_.gpu_mem_limit, info_.arena_extend_strategy, info_.external_allocator_info, info_.default_memory_arena_cfg);
     } else {
       context = context_state_.retired_context_pool.back();
       context_state_.retired_context_pool.pop_back();
@@ -370,8 +361,7 @@ AllocatorPtr CUDAExecutionProvider::GetAllocator(OrtMemType mem_type) const {
       // which only happnens in some UTs.
       // here is a hack to return another allocator instance.
       // need to fix this in the future.
-      return CreateCudaAllocator(info_.device_id, info_.gpu_mem_limit, info_.arena_extend_strategy,
-                                 info_.external_allocator_info, info_.default_memory_arena_cfg);
+      return CreateCudaAllocator(info_.device_id, info_.gpu_mem_limit, info_.arena_extend_strategy, info_.external_allocator_info, info_.default_memory_arena_cfg);
     }
   }
 
@@ -2253,8 +2243,7 @@ static bool RNNNeedFallbackToCPU(const onnxruntime::Node& node,
         ::ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_STRINGS == attr_value.type()) {
       for (int i = 0; i < attr_value.strings_size(); ++i) {
         std::string activation_lowercase(attr_value.strings(i));
-        std::transform(activation_lowercase.begin(), activation_lowercase.end(), activation_lowercase.begin(),
-                       [](const unsigned char i) { return static_cast<char>(::tolower(i)); });
+        std::transform(activation_lowercase.begin(), activation_lowercase.end(), activation_lowercase.begin(), [](const unsigned char i) { return static_cast<char>(::tolower(i)); });
         if (activations_supported[i] != activation_lowercase) {
           return true;
         }
@@ -2456,8 +2445,7 @@ void CUDAExecutionProvider::RegisterAllocator(AllocatorManager& allocator_manage
     cuda_alloc = allocator_manager.GetAllocator(OrtMemTypeDefault, cuda_device);
 
     if (!cuda_alloc) {
-      cuda_alloc = CreateCudaAllocator(info_.device_id, info_.gpu_mem_limit, info_.arena_extend_strategy,
-                                       info_.external_allocator_info, info_.default_memory_arena_cfg);
+      cuda_alloc = CreateCudaAllocator(info_.device_id, info_.gpu_mem_limit, info_.arena_extend_strategy, info_.external_allocator_info, info_.default_memory_arena_cfg);
       // enable sharing of our allocator
       allocator_manager.InsertAllocator(cuda_alloc);
     }
@@ -2504,8 +2492,7 @@ void CUDAExecutionProvider::RegisterAllocator(AllocatorManager& allocator_manage
       AllocatorCreationInfo cpu_memory_info(
           [](int device_id) {
             return std::make_unique<CPUAllocator>(
-                OrtMemoryInfo("CUDA_CPU", OrtAllocatorType::OrtDeviceAllocator, OrtDevice(), device_id,
-                              OrtMemTypeCPUInput));
+                OrtMemoryInfo("CUDA_CPU", OrtAllocatorType::OrtDeviceAllocator, OrtDevice(), device_id, OrtMemTypeCPUInput));
           },
           cpu_device.Id());
 

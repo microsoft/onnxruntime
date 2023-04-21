@@ -15,14 +15,12 @@ namespace onnxruntime {
 
 namespace op_kernel_type_control {
 ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES_ALL_OPSETS(
-    kCpuExecutionProvider, kOnnxDomain, IsInf, Input, 0,
-    float, double);
+    kCpuExecutionProvider, kOnnxDomain, IsInf, Input, 0, float, double);
 }  // namespace op_kernel_type_control
 
 class IsInf final : public OpKernel {
  public:
-  using EnabledDataTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(kCpuExecutionProvider, kOnnxDomain,
-                                                                          IsInf, Input, 0);
+  using EnabledDataTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(kCpuExecutionProvider, kOnnxDomain, IsInf, Input, 0);
 
   explicit IsInf(const OpKernelInfo& info);
   Status Compute(OpKernelContext* context) const override;

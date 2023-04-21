@@ -113,7 +113,8 @@ Status Concat<T>::Compute(OpKernelContext* ctx) const {
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     Concat,
     kOnnxDomain,
-    4, 10,
+    4,
+    10,
     kAclExecutionProvider,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     Concat<float>);

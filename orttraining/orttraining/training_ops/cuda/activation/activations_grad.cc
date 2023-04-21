@@ -30,7 +30,8 @@ namespace cuda {
         reinterpret_cast<const typename ToCudaType<T>::MappedType*>(prepare.lhs_tensor->template Data<T>()),     \
         reinterpret_cast<const typename ToCudaType<T>::MappedType*>(prepare.rhs_tensor->template Data<T>()),     \
         reinterpret_cast<typename ToCudaType<T>::MappedType*>(prepare.output_tensor->template MutableData<T>()), \
-        &func_ctx, prepare.output_tensor->Shape().Size());                                                       \
+        &func_ctx,                                                                                               \
+        prepare.output_tensor->Shape().Size());                                                                  \
     return Status::OK();                                                                                         \
   }
 

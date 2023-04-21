@@ -124,8 +124,7 @@ void MemoryInfo::SetDynamicAllocation(const OrtValueIndex idx) {
   if (!da_map.Contain(idx)) da_map[idx];
 }
 
-void PrintInforPerTensor(const MemoryInfo::AllocInfoPerTensor& alloc_info, const MemoryInfoPerTensor& mem_info,
-                         const size_t& rel_addr) {
+void PrintInforPerTensor(const MemoryInfo::AllocInfoPerTensor& alloc_info, const MemoryInfoPerTensor& mem_info, const size_t& rel_addr) {
   std::cout << "Tensor name: " << alloc_info.mlvalue_name << ", ";
   std::cout << "Index: " << alloc_info.mlvalue_index << ", ";
   std::cout << "Reuse inplace: " << alloc_info.inplace_reuse << ", ";
@@ -183,9 +182,7 @@ std::string MemoryProfiler::CreateMetadataEvent(const std::string& process_name,
   return evt.str();
 }
 
-std::string MemoryProfiler::CreateMemoryEvent(size_t pid, size_t tid, const std::string& name,
-                                              size_t offset, size_t size,
-                                              const std::string& color_name) {
+std::string MemoryProfiler::CreateMemoryEvent(size_t pid, size_t tid, const std::string& name, size_t offset, size_t size, const std::string& color_name) {
   std::stringstream evt;
   evt << "{";
   evt << "\"ph\":\"X\",";
@@ -204,8 +201,7 @@ std::string MemoryProfiler::CreateMemoryEvent(size_t pid, size_t tid, const std:
   return evt.str();
 }
 
-std::string MemoryProfiler::CreateSummaryEvent(size_t pid, size_t tid, const MemoryInfo::AllocationSummary& summary,
-                                               size_t size, size_t bytes_for_pattern) {
+std::string MemoryProfiler::CreateSummaryEvent(size_t pid, size_t tid, const MemoryInfo::AllocationSummary& summary, size_t size, size_t bytes_for_pattern) {
   const size_t total_bytes = summary.total_size;
   const size_t used_bytes = summary.used_size;
   const size_t free_bytes = total_bytes - used_bytes;
@@ -237,8 +233,7 @@ static bool IsStaticType(const MemoryInfo::MapType& map_type) {
   return map_type == MemoryInfo::MapType::Initializer || map_type == MemoryInfo::MapType::StaticActivation;
 }
 
-static void UpdateSummary(MemoryInfo::AllocationSummary& summary, size_t alloc_offset, size_t alloc_size,
-                          const OrtValueIndex idx, const MemoryInfo::MapType& map_type) {
+static void UpdateSummary(MemoryInfo::AllocationSummary& summary, size_t alloc_offset, size_t alloc_size, const OrtValueIndex idx, const MemoryInfo::MapType& map_type) {
   summary.total_size = std::max(summary.total_size, alloc_offset + alloc_size);
   summary.used_size += alloc_size;
   if (!IsStaticType(map_type)) {
@@ -306,9 +301,15 @@ void MemoryProfiler::CreateEvents(const std::string& p_name,
         const auto& start_itr = ts_map.find(alloc_step);
         const auto& end_itr = ts_map.find(dealloc_step);
         ORT_ENFORCE(start_itr != ts_map.end(),
-                    "The allocation step is not recorded: ", alloc_step, ", ortvalue_index: ", idx);
+                    "The allocation step is not recorded: ",
+                    alloc_step,
+                    ", ortvalue_index: ",
+                    idx);
         ORT_ENFORCE(end_itr != ts_map.end(),
-                    "The deallocation step is not recorded: ", dealloc_step, ", ortvalue_index: ", idx);
+                    "The deallocation step is not recorded: ",
+                    dealloc_step,
+                    ", ortvalue_index: ",
+                    idx);
 
         for (auto itr = start_itr; itr != end_itr; ++itr) {
           UpdateSummary(summary_[summary_key][*itr], offset, size, idx, map_type);

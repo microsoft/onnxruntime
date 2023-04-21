@@ -21,7 +21,8 @@ namespace cuda {
   ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                 \
       ConvTranspose,                                                                       \
       kOnnxDomain,                                                                         \
-      1, 10,                                                                               \
+      1,                                                                                   \
+      10,                                                                                  \
       T,                                                                                   \
       kCudaExecutionProvider,                                                              \
       (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
@@ -56,8 +57,7 @@ Status ConvTranspose<T>::DoConvTranspose(OpKernelContext* context, bool dynamic_
   auto x_dimensions = X->Shape().NumDimensions();
   if (x_dimensions < 3 || x_dimensions > 5) {
     // TODO: the error message should tell which operator raises it.
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input X must be 3-, 4- or 5-dimensional.",
-                           " X: ", X->Shape().ToString().c_str());
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input X must be 3-, 4- or 5-dimensional.", " X: ", X->Shape().ToString().c_str());
   }
   const Tensor* W = context->Input<Tensor>(1);
   const TensorShape& w_shape = W->Shape();
@@ -117,9 +117,7 @@ Status ConvTranspose<T>::DoConvTranspose(OpKernelContext* context, bool dynamic_
       ORT_RETURN_IF_ERROR(s_.y_tensor.Set(y_dims, CudnnTensor::GetDataType<CudaT>()));
 
       cudnnConvolutionMode_t mode = CUDNN_CROSS_CORRELATION;
-      ORT_RETURN_IF_ERROR(s_.conv_desc.Set(p.kernel_shape.size(), p.pads, p.strides, p.dilations,
-                                           gsl::narrow_cast<int>(conv_transpose_attrs_.group),
-                                           mode, CudnnTensor::GetDataType<CudaT>()));
+      ORT_RETURN_IF_ERROR(s_.conv_desc.Set(p.kernel_shape.size(), p.pads, p.strides, p.dilations, gsl::narrow_cast<int>(conv_transpose_attrs_.group), mode, CudnnTensor::GetDataType<CudaT>()));
 
       if (has_bias) {
         const auto& b_shape = p.B->Shape();

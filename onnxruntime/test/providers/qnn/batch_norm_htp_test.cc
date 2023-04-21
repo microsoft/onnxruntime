@@ -31,8 +31,7 @@ GetQDQTestCaseFn BuildQDQBatchNormTestCase(const std::vector<int64_t>& input_sha
     const InputQType quant_zero_point = 0;
     const float quant_scale = 1.0f;
 
-    auto* input = builder.MakeInput<InputQType>(input_shape, std::numeric_limits<InputQType>::min(),
-                                                std::numeric_limits<InputQType>::max());
+    auto* input = builder.MakeInput<InputQType>(input_shape, std::numeric_limits<InputQType>::min(), std::numeric_limits<InputQType>::max());
     auto* dq_input = builder.MakeIntermediate();
     builder.AddDequantizeLinearNode<InputQType>(input, 0.0039f, quant_zero_point, dq_input);
 
@@ -59,9 +58,7 @@ GetQDQTestCaseFn BuildQDQBatchNormTestCase(const std::vector<int64_t>& input_sha
     builder.AddQuantizeLinearNode<InputQType>(batchnorm_output, 0.00377f, quant_zero_point, q_output);
 
     auto* final_output = builder.MakeOutput();
-    builder.AddDequantizeLinearNode<InputQType>(q_output, 0.00377f,
-                                                quant_zero_point,
-                                                final_output);
+    builder.AddDequantizeLinearNode<InputQType>(q_output, 0.00377f, quant_zero_point, final_output);
   };
 }
 
@@ -74,8 +71,7 @@ GetQDQTestCaseFn BuildQDQBatchNormTestCase(const std::vector<int64_t>& input_sha
  * \param expected_ep_assignment How many nodes are expected to be assigned to QNN (All, Some, or None).
  * \param num_modes_in_graph The number of expected nodes in the graph.
  */
-static void RunBatchNormQDQTest(const std::vector<int64_t>& input_shape, const char* test_description,
-                                ExpectedEPNodeAssignment expected_ep_assignment, int num_nodes_in_graph) {
+static void RunBatchNormQDQTest(const std::vector<int64_t>& input_shape, const char* test_description, ExpectedEPNodeAssignment expected_ep_assignment, int num_nodes_in_graph) {
   ProviderOptions provider_options;
 #if defined(_WIN32)
   provider_options["backend_path"] = "QnnHtp.dll";

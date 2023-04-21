@@ -23,8 +23,7 @@ namespace onnxruntime {
 namespace openvino_ep {
 
 // Constructor
-GetCapability::GetCapability(const GraphViewer& graph_viewer_param, std::string device_type_param,
-                             const std::string version_param) : graph_viewer_(graph_viewer_param), device_type_(device_type_param) {
+GetCapability::GetCapability(const GraphViewer& graph_viewer_param, std::string device_type_param, const std::string version_param) : graph_viewer_(graph_viewer_param), device_type_(device_type_param) {
   if (version_param == "V_2022_1") {
     data_ops_ = new DataOps(graph_viewer_, V_2022_1, device_type_);
   } else if (version_param == "V_2022_2") {
@@ -63,8 +62,7 @@ std::vector<std::unique_ptr<ComputeCapability>> GetCapability::Execute() {
     std::vector<std::string> inputs;
     std::vector<std::string> outputs;
     // Fill inputs with names
-    std::for_each(graph_viewer_.GetInputs().begin(), graph_viewer_.GetInputs().end(),
-                  [&inputs](const NodeArg* node_arg) { inputs.push_back(node_arg->Name()); });
+    std::for_each(graph_viewer_.GetInputs().begin(), graph_viewer_.GetInputs().end(), [&inputs](const NodeArg* node_arg) { inputs.push_back(node_arg->Name()); });
 
     /* In scenarios, when there are no inputs or all inputs being initializers,
          ConstantFolding optimization in onnxruntime pre-computes the value.*/
@@ -85,12 +83,10 @@ std::vector<std::unique_ptr<ComputeCapability>> GetCapability::Execute() {
     }
 
     // Initializers need to be part of meta_def->inputs
-    std::for_each(ng_required_initializers.begin(), ng_required_initializers.end(),
-                  [&inputs](const std::string& initializer) { inputs.push_back(initializer); });
+    std::for_each(ng_required_initializers.begin(), ng_required_initializers.end(), [&inputs](const std::string& initializer) { inputs.push_back(initializer); });
 
     // Fill outputs with names
-    std::for_each(graph_viewer_.GetOutputs().begin(), graph_viewer_.GetOutputs().end(),
-                  [&outputs](const NodeArg* node_arg) { outputs.push_back(node_arg->Name()); });
+    std::for_each(graph_viewer_.GetOutputs().begin(), graph_viewer_.GetOutputs().end(), [&outputs](const NodeArg* node_arg) { outputs.push_back(node_arg->Name()); });
 
     // Create and add this graph to result.
     AppendClusterToSubGraph(graph_viewer_.GetNodesInTopologicalOrder(), inputs, outputs, result);
@@ -129,10 +125,9 @@ std::vector<std::unique_ptr<ComputeCapability>> GetCapability::Execute() {
 
     // Myriad plugin can only load 10 subgraphs
     if (device_type_ == "MYRIAD" && connected_clusters.size() > 10) {
-      std::sort(connected_clusters.begin(), connected_clusters.end(),
-                [](const std::vector<NodeIndex>& v1, const std::vector<NodeIndex>& v2) -> bool {
-                  return v1.size() > v2.size();
-                });
+      std::sort(connected_clusters.begin(), connected_clusters.end(), [](const std::vector<NodeIndex>& v1, const std::vector<NodeIndex>& v2) -> bool {
+        return v1.size() > v2.size();
+      });
     }
     int no_of_clusters = 0;
 

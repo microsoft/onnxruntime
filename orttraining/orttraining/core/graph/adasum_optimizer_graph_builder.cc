@@ -82,10 +82,7 @@ Status AdasumOptimizerGraphBuilder::BuildOptimizerNode(
   config.enable_grad_clipping = true;
   config.shared_optimizer_states = opt_graph_config_.shared_optimizer_states;
   ORT_RETURN_IF_ERROR(opt_builder->Build(
-      config, graph_defs,
-      new_initializers,
-      weight_to_opt_mapping,
-      output_weight_argdefs, output_gradient_argdefs));
+      config, graph_defs, new_initializers, weight_to_opt_mapping, output_weight_argdefs, output_gradient_argdefs));
 
   return Status::OK();
 }
@@ -191,15 +188,13 @@ Status AdasumOptimizerGraphBuilder::BuildInternal(
   const float scale = 1.0f / scale_divisor;
   // Only fuse if using hierarchical reduce.
   const bool fuse_scaling_outputs = opt_graph_config_.adasum_reduction_type == AdasumReductionType::GpuHierarchicalReduction ? true : false;
-  ORT_RETURN_IF_ERROR(AddGradientScalingNodes(nodearg_name_generator, scale, gradient_argdefs, fused_gradient_argdef, graph_defs,
-                                              opt_graph_config_.AllReduceDataType(), fuse_scaling_outputs));
+  ORT_RETURN_IF_ERROR(AddGradientScalingNodes(nodearg_name_generator, scale, gradient_argdefs, fused_gradient_argdef, graph_defs, opt_graph_config_.AllReduceDataType(), fuse_scaling_outputs));
 
   // add Allreduce for gradients
   ArgDef reduced_fused_gradient_argdef;
   if (opt_graph_config_.adasum_reduction_type == AdasumReductionType::GpuHierarchicalReduction) {
 #ifdef ORT_USE_NCCL
-    ORT_RETURN_IF_ERROR(AddNcclAllReduceForGradientsWithGroups(gradient_argdefs, fused_gradient_argdef, graph_defs,
-                                                               reduced_fused_gradient_argdef, WorkerGroupType::NodeLocalDataParallel));
+    ORT_RETURN_IF_ERROR(AddNcclAllReduceForGradientsWithGroups(gradient_argdefs, fused_gradient_argdef, graph_defs, reduced_fused_gradient_argdef, WorkerGroupType::NodeLocalDataParallel));
 #else
     ORT_THROW("ORT is not built with NCCL.");
 #endif
@@ -223,11 +218,7 @@ Status AdasumOptimizerGraphBuilder::BuildInternal(
 
   // add weight update
   ORT_RETURN_IF_ERROR(AddDirectWeightUpdate(
-      opt_builder_registry_, weight_argdefs, gradient_argdefs,
-      &global_grad_norm_argdef,
-      &global_grad_norm_finite_argdef,
-      opt_configs_, graph_defs,
-      weight_to_opt_mapping));
+      opt_builder_registry_, weight_argdefs, gradient_argdefs, &global_grad_norm_argdef, &global_grad_norm_finite_argdef, opt_configs_, graph_defs, weight_to_opt_mapping));
 
   // Perform allreduce on deltas after step() for Adasum
   ORT_RETURN_IF_ERROR(AddAdasumAllReduceForGradients(gradient_argdefs,
@@ -238,8 +229,7 @@ Status AdasumOptimizerGraphBuilder::BuildInternal(
   ArgDef adasum_global_grad_finite_argdef;
   if (opt_graph_config_.use_mixed_precision) {
     ORT_RETURN_IF_ERROR(AddFiniteGradientCheck(
-        nodearg_name_generator, gradient_argdefs, graph_defs, adasum_global_grad_finite_argdef,
-        "adasum_all_deltas_finite"));
+        nodearg_name_generator, gradient_argdefs, graph_defs, adasum_global_grad_finite_argdef, "adasum_all_deltas_finite"));
     optimizer_graph_outputs[OptimizerOutputKey::DeltaAllIsFinite] = adasum_global_grad_finite_argdef.name;
   }
 

@@ -51,8 +51,10 @@ Status TransformerLayerRecompute::IdentifyTransformerLayerEdges(
   }
 
   ORT_RETURN_IF_NOT(layer_start_edges.size() == layer_end_edges.size(),
-                    "Number of start and end edges doesn't match!, #start=", layer_start_edges.size(),
-                    ", #end=", layer_end_edges.size());
+                    "Number of start and end edges doesn't match!, #start=",
+                    layer_start_edges.size(),
+                    ", #end=",
+                    layer_end_edges.size());
 
   start_end_edges.clear();
 
@@ -102,9 +104,7 @@ std::vector<const Node*> TransformerLayerRecompute::NodesBetweenEdges(const Grap
 
   // Join fw_visited and bw_visited
   std::vector<const Node*> intersect_nodes;
-  std::set_intersection(fw_visited.begin(), fw_visited.end(),
-                        bw_visited.begin(), bw_visited.end(),
-                        std::back_inserter(intersect_nodes), NodeCompare());
+  std::set_intersection(fw_visited.begin(), fw_visited.end(), bw_visited.begin(), bw_visited.end(), std::back_inserter(intersect_nodes), NodeCompare());
 
   return intersect_nodes;
 }

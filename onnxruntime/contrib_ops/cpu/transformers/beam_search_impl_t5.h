@@ -41,9 +41,7 @@ class BeamSearchT5 : public BeamSearchBase<T> {
                const GenerationDeviceHelper::ExpandBufferFunc<MLFloat16>& expand_buffer_float16_func,
                const void* cuda_device_prop,
                int cuda_device_arch)
-      : BeamSearchBase<T>(context, decoder_session_state, thread_pool,
-                          ort_stream, cuda_dumper, params,
-                          topk_func, process_logits_func, device_copy_func, device_copy_int32_func),
+      : BeamSearchBase<T>(context, decoder_session_state, thread_pool, ort_stream, cuda_dumper, params, topk_func, process_logits_func, device_copy_func, device_copy_int32_func),
         encoder_session_state_(encoder_session_state),
         encoder_subgraph_(encoder_subgraph),
         decoder_subgraph_(decoder_subgraph),
@@ -110,7 +108,9 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
 
   int64_t scores_dims[] = {
       static_cast<int64_t>(parameters->max_length) - static_cast<int64_t>(parameters->sequence_length),
-      parameters->batch_size, parameters->num_beams, parameters->vocab_size};
+      parameters->batch_size,
+      parameters->num_beams,
+      parameters->vocab_size};
   TensorShape scores_shape(&scores_dims[0], sizeof(scores_dims) / sizeof(scores_dims[0]));
   Tensor* output_scores = this->context_.Output(2, scores_shape);
 
@@ -269,8 +269,7 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
         OrtValue& past_tensor_value = decoder_feeds[feed_idx];
         Tensor* past_tensor = past_tensor_value.GetMutable<Tensor>();
         OrtValue present_tensor_value;
-        Tensor::InitOrtValue(past_tensor->DataType(), past_tensor->Shape(), past_tensor->MutableData<T>(),
-                             past_tensor->Location(), present_tensor_value);
+        Tensor::InitOrtValue(past_tensor->DataType(), past_tensor->Shape(), past_tensor->MutableData<T>(), past_tensor->Location(), present_tensor_value);
         decoder_fetches.push_back(present_tensor_value);
       }
     }

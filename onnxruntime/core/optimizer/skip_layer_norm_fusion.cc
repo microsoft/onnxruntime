@@ -16,8 +16,7 @@ static constexpr std::array supported_data_types{"tensor(float16)", "tensor(floa
 
 static bool IsSupportedDataType(const Node& node) {
   for (const auto& input_arg : node.InputDefs()) {
-    if (std::find(supported_data_types.begin(), supported_data_types.end(),
-                  *(input_arg->Type())) == supported_data_types.end()) {
+    if (std::find(supported_data_types.begin(), supported_data_types.end(), *(input_arg->Type())) == supported_data_types.end()) {
       return false;
     }
   }
@@ -285,7 +284,9 @@ Status SkipLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_le
                                                "SkipLayerNormalization",
                                                "fused SkipLayerNorm subgraphs ",
                                                skip_layer_norm_input_defs,
-                                               ln_node.MutableOutputDefs(), {}, kMSDomain);
+                                               ln_node.MutableOutputDefs(),
+                                               {},
+                                               kMSDomain);
     // Get attribute "epsilon" from "LayerNormalization" node if available. Else, default value
     // will be used.
     NodeAttributes ln_attrs = ln_node.GetAttributes();

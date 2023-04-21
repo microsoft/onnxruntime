@@ -131,36 +131,28 @@ void OnnxConverter::HandleInitializer() {
                             ? tensor.raw_data().data()
                             : reinterpret_cast<const char*>(
                                   tensor.float_data().data());
-      rk_tensors_[name] = CreateRknnTensor(name, dims, ptr,
-                                           rk::nn::TensorRole::CONST,
-                                           rk::nn::PrecisionType::FLOAT32);
+      rk_tensors_[name] = CreateRknnTensor(name, dims, ptr, rk::nn::TensorRole::CONST, rk::nn::PrecisionType::FLOAT32);
     } else if (tensor.data_type() ==
                ONNX_NAMESPACE::TensorProto_DataType_UINT8) {
       const char* ptr = tensor.int32_data().empty()
                             ? tensor.raw_data().data()
                             : reinterpret_cast<const char*>(
                                   tensor.int32_data().data());
-      rk_tensors_[name] = CreateRknnTensor(name, dims, ptr,
-                                           rk::nn::TensorRole::CONST,
-                                           rk::nn::PrecisionType::UINT8);
+      rk_tensors_[name] = CreateRknnTensor(name, dims, ptr, rk::nn::TensorRole::CONST, rk::nn::PrecisionType::UINT8);
     } else if (tensor.data_type() ==
                ONNX_NAMESPACE::TensorProto_DataType_INT32) {
       const char* ptr = tensor.int32_data().empty()
                             ? tensor.raw_data().data()
                             : reinterpret_cast<const char*>(
                                   tensor.int32_data().data());
-      rk_tensors_[name] = CreateRknnTensor(name, dims, ptr,
-                                           rk::nn::TensorRole::CONST,
-                                           rk::nn::PrecisionType::INT32);
+      rk_tensors_[name] = CreateRknnTensor(name, dims, ptr, rk::nn::TensorRole::CONST, rk::nn::PrecisionType::INT32);
     } else if (tensor.data_type() ==
                ONNX_NAMESPACE::TensorProto_DataType_INT64) {
       const char* ptr = tensor.int64_data().empty()
                             ? tensor.raw_data().data()
                             : reinterpret_cast<const char*>(
                                   tensor.int64_data().data());
-      rk_tensors_[name] = CreateRknnTensor(name, dims, ptr,
-                                           rk::nn::TensorRole::CONST,
-                                           rk::nn::PrecisionType::INT64);
+      rk_tensors_[name] = CreateRknnTensor(name, dims, ptr, rk::nn::TensorRole::CONST, rk::nn::PrecisionType::INT64);
     } else {
       LOGS_DEFAULT(FATAL) << "tensor name = " << tensor.name()
                           << ", data_type = " << tensor.data_type()
@@ -223,8 +215,7 @@ std::vector<std::shared_ptr<rk::nn::Tensor>> OnnxConverter::GetInputOfOnnxModel(
       }
     }
 
-    auto rk_input = CreateRknnTensor(input.name(), shape, ptr,
-                                     rk::nn::TensorRole::DATA, type);
+    auto rk_input = CreateRknnTensor(input.name(), shape, ptr, rk::nn::TensorRole::DATA, type);
 
     inputs.push_back(rk_input);
 
@@ -325,13 +316,9 @@ std::pair<bool, std::string> OnnxConverter::IsNodeSupported(
   NodeAttrHelper helper(node);
   const auto& op = node.op_type();
   const std::vector<std::string> supported_types{
-      "Conv", "Relu", "Clip", "LeakyRelu",
-      "MaxPool", "AveragePool", "GlobalAveragePool",
-      "Concat", "Softmax", "BatchNormalization", "Gemm",
-      "Add", "Mul", "Sub",
-      "Reshape", "Squeeze", "Unsqueeze",
-      "Flatten", "Transpose", /*"Gather", "Slice",*/
-      "QLinearConv", /*"QuantizeLinear",*/ "DequantizeLinear"};
+      "Conv", "Relu", "Clip", "LeakyRelu", "MaxPool", "AveragePool", "GlobalAveragePool", "Concat", "Softmax", "BatchNormalization", "Gemm", "Add", "Mul", "Sub", "Reshape", "Squeeze", "Unsqueeze", "Flatten", "Transpose", /*"Gather", "Slice",*/
+      "QLinearConv",
+      /*"QuantizeLinear",*/ "DequantizeLinear"};
   if (std::find(supported_types.begin(), supported_types.end(), op) ==
       supported_types.end()) {
     return {false, "Unsupported operator"};
@@ -388,7 +375,8 @@ std::pair<bool, std::string> OnnxConverter::IsNodeSupported(
     }
   } else if (op == "GlobalAveragePool" || op == "GlobalMaxPool") {
     const auto& input_shape = GetShape(model_proto,
-                                       tensor_dims_, node.input(0));
+                                       tensor_dims_,
+                                       node.input(0));
     if (input_shape.size() == 0 || input_shape.size() != 4) {
       return {false, "Only rank-4 tensor is supported"};
     }
@@ -469,7 +457,8 @@ std::pair<bool, std::string> OnnxConverter::IsNodeSupported(
   } else if (op == "Flatten") {
     const auto axis = helper.get("axis", 1);
     const auto& input_shape = GetShape(model_proto,
-                                       tensor_dims_, node.input(0));
+                                       tensor_dims_,
+                                       node.input(0));
     int rank = input_shape.size();
     if (rank != 0) {
       if (axis < 0 || axis > (int64_t)rank) {
@@ -478,7 +467,8 @@ std::pair<bool, std::string> OnnxConverter::IsNodeSupported(
     }
   } else if (op == "Squeeze") {
     const auto& input_shape = GetShape(model_proto,
-                                       tensor_dims_, node.input(0));
+                                       tensor_dims_,
+                                       node.input(0));
     const auto axes = helper.get("axes", std::vector<int>{});
     int rank = input_shape.size();
     if (rank != 0) {
@@ -495,7 +485,8 @@ std::pair<bool, std::string> OnnxConverter::IsNodeSupported(
     }
   } else if (op == "Unsqueeze") {
     const auto& input_shape = GetShape(model_proto,
-                                       tensor_dims_, node.input(0));
+                                       tensor_dims_,
+                                       node.input(0));
     const auto axes = helper.get("axes", std::vector<int>{});
     int rank = input_shape.size();
     if (rank != 0) {
@@ -509,7 +500,8 @@ std::pair<bool, std::string> OnnxConverter::IsNodeSupported(
     }
   } else if (op == "Gather") {
     const auto& input_shape = GetShape(model_proto,
-                                       tensor_dims_, node.input(0));
+                                       tensor_dims_,
+                                       node.input(0));
     const auto axis = helper.get("axis", 1);
     int rank = input_shape.size();
     if (rank != 0 && (axis >= rank || axis < -rank)) {
@@ -517,7 +509,8 @@ std::pair<bool, std::string> OnnxConverter::IsNodeSupported(
     }
   } else if (op == "Concat") {
     const auto& input_shape = GetShape(model_proto,
-                                       tensor_dims_, node.input(0));
+                                       tensor_dims_,
+                                       node.input(0));
     const auto axis = helper.get("axis", 1);
     int rank = input_shape.size();
     if (axis >= 4) {
@@ -617,8 +610,7 @@ void OnnxConverter::Convert(const ONNX_NAMESPACE::ModelProto& model_proto,
       const auto auto_pad = helper.get("auto_pad", "NOTSET");
 
       const auto ori_weight = m(node.input(1));
-      AddConv(m(node.input(0)), strides, pads, dilations, group,
-              ori_weight, bias, auto_pad, m(node.output(0)));
+      AddConv(m(node.input(0)), strides, pads, dilations, group, ori_weight, bias, auto_pad, m(node.output(0)));
     } else if (op == "QLinearConv") {
       const auto strides = helper.get("strides", vector<int>{1, 1});
       const auto pads = helper.get("pads", vector<int>{0, 0, 0, 0});
@@ -629,11 +621,7 @@ void OnnxConverter::Convert(const ONNX_NAMESPACE::ModelProto& model_proto,
       if (node.input_size() >= 9) {
         bias = m(node.input(8));
       }
-      AddQLinearConv(m(node.input(0)), m(node.input(1)), m(node.input(2)),
-                     strides, pads, dilations, group, auto_pad,
-                     m(node.input(3)), m(node.input(4)), m(node.input(5)),
-                     bias, m(node.output(0)), m(node.input(6)),
-                     m(node.input(7)));
+      AddQLinearConv(m(node.input(0)), m(node.input(1)), m(node.input(2)), strides, pads, dilations, group, auto_pad, m(node.input(3)), m(node.input(4)), m(node.input(5)), bias, m(node.output(0)), m(node.input(6)), m(node.input(7)));
     } else if (op == "AveragePool" || op == "MaxPool" ||
                op == "GlobalAveragePool" || op == "GlobalMaxPool") {
       const auto input = m(node.input(0));
@@ -665,8 +653,7 @@ void OnnxConverter::Convert(const ONNX_NAMESPACE::ModelProto& model_proto,
         kernel_shape = {-1, -1};  // -1 for global
         ceil_mode = 0;
       }
-      AddLayerPool(op, input, kernel_shape, pads, strides, ceil_mode,
-                   output);
+      AddLayerPool(op, input, kernel_shape, pads, strides, ceil_mode, output);
     } else if (op == "Relu") {
       const auto input = m(node.input(0));
       const auto output = m(node.output(0));
@@ -728,8 +715,7 @@ void OnnxConverter::Convert(const ONNX_NAMESPACE::ModelProto& model_proto,
       const auto var = m(node.input(4));
       const auto eps = helper.get("epsilon", 1e-5f);
       const auto output = m(node.output(0));
-      AddLayerBatchNorm(input, scale, bias, mean,
-                        var, eps, output);
+      AddLayerBatchNorm(input, scale, bias, mean, var, eps, output);
     } else if (op == "Reshape") {
       const auto input = m(node.input(0));
       const auto shape = m(node.input(1));
@@ -756,8 +742,7 @@ void OnnxConverter::Convert(const ONNX_NAMESPACE::ModelProto& model_proto,
       const auto axes = m(node.input(3));
       const auto steps = m(node.input(4));
       const auto output = m(node.output(0));
-      AddLayerSlice(input, starts, ends, axes,
-                    steps, output);
+      AddLayerSlice(input, starts, ends, axes, steps, output);
     } else if (op == "Squeeze") {
       const auto input = m(node.input(0));
       const auto axes = helper.get("axes", std::vector<int>{});
@@ -840,17 +825,13 @@ void OnnxConverter::AddConv(const string& input,
   const auto& weight = rk_tensors_.at(ori_weight);
   if (group == 1) {
     LOGS_DEFAULT(VERBOSE) << "Vanilla conv";
-    AddLayerConvImpl(input, ori_weight, bias, pads, strides,
-                     1, auto_pad, output);
+    AddLayerConvImpl(input, ori_weight, bias, pads, strides, 1, auto_pad, output);
   } else if (weight->GetDims()[1] == 1) {  // depthwise
     LOGS_DEFAULT(VERBOSE) << "Depthwise conv";
-    AddLayerDepthwiseConvImpl(input, ori_weight, bias, pads,
-                              strides, weight->GetDims()[0] / group, group,
-                              output);
+    AddLayerDepthwiseConvImpl(input, ori_weight, bias, pads, strides, weight->GetDims()[0] / group, group, output);
   } else {
     LOGS_DEFAULT(VERBOSE) << "Group conv";
-    AddLayerConvImpl(input, ori_weight, bias, pads, strides,
-                     group, auto_pad, output);
+    AddLayerConvImpl(input, ori_weight, bias, pads, strides, group, auto_pad, output);
   }
 }
 
@@ -878,20 +859,14 @@ void OnnxConverter::AddQLinearConv(const string& input,
   }
   if (group == 1) {
     LOGS_DEFAULT(VERBOSE) << "Vanilla QLinearConv";
-    AddLayerQLinearConvImpl(input, input_scale, input_zp,
-                            weight, weight_scale, weight_zp,
-                            bias, pads, strides, 1, auto_pad,
-                            output, output_scale, output_zp);
+    AddLayerQLinearConvImpl(input, input_scale, input_zp, weight, weight_scale, weight_zp, bias, pads, strides, 1, auto_pad, output, output_scale, output_zp);
   } else if (rk_tensors_.at(weight)->GetDims()[1] == 1) {  // depthwise
     LOGS_DEFAULT(VERBOSE) << "Depthwise QLinearConv";
     // TODO
     throw std::invalid_argument("Depthwise QLinearConv is not supported yet");
   } else {
     LOGS_DEFAULT(VERBOSE) << "Group QLinearConv";
-    AddLayerQLinearConvImpl(input, input_scale, input_zp,
-                            weight, weight_scale, weight_zp,
-                            bias, pads, strides, group, auto_pad,
-                            output, output_scale, output_zp);
+    AddLayerQLinearConvImpl(input, input_scale, input_zp, weight, weight_scale, weight_zp, bias, pads, strides, group, auto_pad, output, output_scale, output_zp);
   }
 }
 
@@ -903,11 +878,9 @@ void OnnxConverter::AddLayerPool(const std::string& op,
                                  const int32_t ceil_mode,
                                  const std::string& output) {
   if (op == "AveragePool" || op == "GlobalAveragePool") {
-    AddLayerAvePoolImpl(input, kernel_shape, pads, strides,
-                        ceil_mode, output);
+    AddLayerAvePoolImpl(input, kernel_shape, pads, strides, ceil_mode, output);
   } else {
-    AddLayerMaxPoolImpl(input, kernel_shape, pads, strides,
-                        ceil_mode, output);
+    AddLayerMaxPoolImpl(input, kernel_shape, pads, strides, ceil_mode, output);
   }
 }
 
@@ -956,9 +929,7 @@ void OnnxConverter::AddLayerConvImpl(const std::string& input,
   if (HAS(rk_tensors_, output)) {
     outputs.push_back(rk_tensors_.at(output));
   } else {
-    auto rk_output = CreateRknnTensor(output, shaper_[output],
-                                      NULL, rk::nn::TensorRole::VAR,
-                                      inputs[0]->GetPrecision());
+    auto rk_output = CreateRknnTensor(output, shaper_[output], NULL, rk::nn::TensorRole::VAR, inputs[0]->GetPrecision());
     outputs.push_back(rk_output);
     rk_tensors_[output] = rk_output;
   }
@@ -990,7 +961,9 @@ void OnnxConverter::AddLayerConvImpl(const std::string& input,
   attr.has_relu = (activation.second == FuseCode::FUSED_RELU) ? true : false;
 
   graph_->AddOperator(rk::nn::OperatorType::CONV2D,
-                      inputs, outputs, (void*)&attr);
+                      inputs,
+                      outputs,
+                      (void*)&attr);
 }
 
 void OnnxConverter::AddLayerQLinearConvImpl(const string& input,
@@ -1058,23 +1031,14 @@ void OnnxConverter::AddLayerQLinearConvImpl(const string& input,
     free_list_.push_back(ptr);
 
     std::vector<uint32_t> dims = {dim};
-    auto rk_bias = CreateRknnTensor(bias, dims, ptr, rk::nn::TensorRole::CONST,
-                                    rk::nn::PrecisionType::INT32,
-                                    rk::nn::DataLayoutType::NCHW,
-                                    rk::nn::QuantizationType::SYMMETRIC,
-                                    32, in_s[0] * w_s[0]);
+    auto rk_bias = CreateRknnTensor(bias, dims, ptr, rk::nn::TensorRole::CONST, rk::nn::PrecisionType::INT32, rk::nn::DataLayoutType::NCHW, rk::nn::QuantizationType::SYMMETRIC, 32, in_s[0] * w_s[0]);
     inputs.push_back(rk_bias);
   }
 
   if (HAS(rk_tensors_, output)) {
     outputs.push_back(rk_tensors_.at(output));
   } else {
-    auto rk_output = CreateRknnTensor(output, shaper_[output], NULL,
-                                      rk::nn::TensorRole::VAR,
-                                      inputs[0]->GetPrecision(),
-                                      rk::nn::DataLayoutType::NCHW,
-                                      rk::nn::QuantizationType::AFFINE_ASYMMETRIC,
-                                      8, out_s[0], out_zp[0]);
+    auto rk_output = CreateRknnTensor(output, shaper_[output], NULL, rk::nn::TensorRole::VAR, inputs[0]->GetPrecision(), rk::nn::DataLayoutType::NCHW, rk::nn::QuantizationType::AFFINE_ASYMMETRIC, 8, out_s[0], out_zp[0]);
     outputs.push_back(rk_output);
     rk_tensors_[output] = rk_output;
   }
@@ -1106,7 +1070,9 @@ void OnnxConverter::AddLayerQLinearConvImpl(const string& input,
   attr.has_relu = (activation.second == FuseCode::FUSED_RELU) ? true : false;
 
   graph_->AddOperator(rk::nn::OperatorType::CONV2D,
-                      inputs, outputs, (void*)&attr);
+                      inputs,
+                      outputs,
+                      (void*)&attr);
 }
 
 void OnnxConverter::AddLayerDepthwiseConvImpl(
@@ -1154,9 +1120,7 @@ void OnnxConverter::AddLayerDepthwiseConvImpl(
   if (HAS(rk_tensors_, output)) {
     outputs.push_back(rk_tensors_.at(output));
   } else {
-    auto rk_output = CreateRknnTensor(output, shaper_[output],
-                                      NULL, rk::nn::TensorRole::VAR,
-                                      inputs[0]->GetPrecision());
+    auto rk_output = CreateRknnTensor(output, shaper_[output], NULL, rk::nn::TensorRole::VAR, inputs[0]->GetPrecision());
     outputs.push_back(rk_output);
     rk_tensors_[output] = rk_output;
   }
@@ -1179,7 +1143,9 @@ void OnnxConverter::AddLayerDepthwiseConvImpl(
   attr.has_relu = (activation.second == FuseCode::FUSED_RELU) ? true : false;
 
   graph_->AddOperator(rk::nn::OperatorType::CONV2D,
-                      inputs, outputs, (void*)&attr);
+                      inputs,
+                      outputs,
+                      (void*)&attr);
 }
 
 void OnnxConverter::AddLayerConcat(const std::vector<std::string>& input,
@@ -1199,9 +1165,7 @@ void OnnxConverter::AddLayerConcat(const std::vector<std::string>& input,
   if (HAS(rk_tensors_, output)) {
     outputs.push_back(rk_tensors_.at(output));
   } else {
-    auto rk_output = CreateRknnTensor(output, shaper_[output],
-                                      NULL, rk::nn::TensorRole::VAR,
-                                      inputs[0]->GetPrecision());
+    auto rk_output = CreateRknnTensor(output, shaper_[output], NULL, rk::nn::TensorRole::VAR, inputs[0]->GetPrecision());
     outputs.push_back(rk_output);
     rk_tensors_[output] = rk_output;
   }
@@ -1209,7 +1173,9 @@ void OnnxConverter::AddLayerConcat(const std::vector<std::string>& input,
   rk::nn::ConcatAttr attr;
   attr.axis = axis;
   graph_->AddOperator(rk::nn::OperatorType::CONCAT,
-                      inputs, outputs, (void*)&attr);
+                      inputs,
+                      outputs,
+                      (void*)&attr);
 }
 
 void OnnxConverter::AddLayerAvePoolImpl(
@@ -1229,9 +1195,7 @@ void OnnxConverter::AddLayerAvePoolImpl(
   if (HAS(rk_tensors_, output)) {
     outputs.push_back(rk_tensors_.at(output));
   } else {
-    auto rk_output = CreateRknnTensor(output, shaper_[output],
-                                      NULL, rk::nn::TensorRole::VAR,
-                                      inputs[0]->GetPrecision());
+    auto rk_output = CreateRknnTensor(output, shaper_[output], NULL, rk::nn::TensorRole::VAR, inputs[0]->GetPrecision());
     outputs.push_back(rk_output);
     rk_tensors_[output] = rk_output;
   }
@@ -1252,7 +1216,9 @@ void OnnxConverter::AddLayerAvePoolImpl(
   attr.global_pooling = (kernel_shape[0] == -1 && kernel_shape[1] == -1);
 
   graph_->AddOperator(rk::nn::OperatorType::POOL,
-                      inputs, outputs, (void*)&attr);
+                      inputs,
+                      outputs,
+                      (void*)&attr);
 }
 
 void OnnxConverter::AddLayerMaxPoolImpl(
@@ -1272,9 +1238,7 @@ void OnnxConverter::AddLayerMaxPoolImpl(
   if (HAS(rk_tensors_, output)) {
     outputs.push_back(rk_tensors_.at(output));
   } else {
-    auto rk_output = CreateRknnTensor(output, shaper_[output],
-                                      NULL, rk::nn::TensorRole::VAR,
-                                      inputs[0]->GetPrecision());
+    auto rk_output = CreateRknnTensor(output, shaper_[output], NULL, rk::nn::TensorRole::VAR, inputs[0]->GetPrecision());
     outputs.push_back(rk_output);
     rk_tensors_[output] = rk_output;
   }
@@ -1295,7 +1259,9 @@ void OnnxConverter::AddLayerMaxPoolImpl(
   attr.global_pooling = (kernel_shape[0] == -1 && kernel_shape[1] == -1);
 
   graph_->AddOperator(rk::nn::OperatorType::POOL,
-                      inputs, outputs, (void*)&attr);
+                      inputs,
+                      outputs,
+                      (void*)&attr);
 }
 
 void OnnxConverter::AddLayerReLU(const std::string& input,
@@ -1310,9 +1276,7 @@ void OnnxConverter::AddLayerReLU(const std::string& input,
   if (HAS(rk_tensors_, output)) {
     outputs.push_back(rk_tensors_.at(output));
   } else {
-    auto rk_output = CreateRknnTensor(output, shaper_[output],
-                                      NULL, rk::nn::TensorRole::VAR,
-                                      inputs[0]->GetPrecision());
+    auto rk_output = CreateRknnTensor(output, shaper_[output], NULL, rk::nn::TensorRole::VAR, inputs[0]->GetPrecision());
     outputs.push_back(rk_output);
     rk_tensors_[output] = rk_output;
   }
@@ -1332,9 +1296,7 @@ void OnnxConverter::AddLayerSoftmax(const std::string& input,
   if (HAS(rk_tensors_, output)) {
     outputs.push_back(rk_tensors_.at(output));
   } else {
-    auto rk_output = CreateRknnTensor(output, shaper_[output],
-                                      NULL, rk::nn::TensorRole::VAR,
-                                      inputs[0]->GetPrecision());
+    auto rk_output = CreateRknnTensor(output, shaper_[output], NULL, rk::nn::TensorRole::VAR, inputs[0]->GetPrecision());
     outputs.push_back(rk_output);
     rk_tensors_[output] = rk_output;
   }
@@ -1344,7 +1306,9 @@ void OnnxConverter::AddLayerSoftmax(const std::string& input,
   attr.beta = 1.0;
 
   graph_->AddOperator(rk::nn::OperatorType::SOFTMAX,
-                      inputs, outputs, (void*)&attr);
+                      inputs,
+                      outputs,
+                      (void*)&attr);
 }
 
 void OnnxConverter::AddLayerFC(const std::string& input,
@@ -1388,9 +1352,7 @@ void OnnxConverter::AddLayerFC(const std::string& input,
   if (HAS(rk_tensors_, output)) {
     outputs.push_back(rk_tensors_.at(output));
   } else {
-    auto rk_output = CreateRknnTensor(output, shaper_[output],
-                                      NULL, rk::nn::TensorRole::VAR,
-                                      inputs[0]->GetPrecision());
+    auto rk_output = CreateRknnTensor(output, shaper_[output], NULL, rk::nn::TensorRole::VAR, inputs[0]->GetPrecision());
     outputs.push_back(rk_output);
     rk_tensors_[output] = rk_output;
   }
@@ -1400,7 +1362,9 @@ void OnnxConverter::AddLayerFC(const std::string& input,
   attr.has_relu = (activation.second == FuseCode::FUSED_RELU) ? true : false;
 
   graph_->AddOperator(rk::nn::OperatorType::FULLCONNECT,
-                      inputs, outputs, (void*)&attr);
+                      inputs,
+                      outputs,
+                      (void*)&attr);
 }
 
 void OnnxConverter::AddLayerAdd(const std::string& input1,
@@ -1420,9 +1384,7 @@ void OnnxConverter::AddLayerAdd(const std::string& input1,
   if (HAS(rk_tensors_, output)) {
     outputs.push_back(rk_tensors_.at(output));
   } else {
-    auto rk_output = CreateRknnTensor(output, shaper_[output],
-                                      NULL, rk::nn::TensorRole::VAR,
-                                      inputs[0]->GetPrecision());
+    auto rk_output = CreateRknnTensor(output, shaper_[output], NULL, rk::nn::TensorRole::VAR, inputs[0]->GetPrecision());
     outputs.push_back(rk_output);
     rk_tensors_[output] = rk_output;
   }
@@ -1447,9 +1409,7 @@ void OnnxConverter::AddLayerSub(const std::string& input1,
   if (HAS(rk_tensors_, output)) {
     outputs.push_back(rk_tensors_.at(output));
   } else {
-    auto rk_output = CreateRknnTensor(output, shaper_[output],
-                                      NULL, rk::nn::TensorRole::VAR,
-                                      inputs[0]->GetPrecision());
+    auto rk_output = CreateRknnTensor(output, shaper_[output], NULL, rk::nn::TensorRole::VAR, inputs[0]->GetPrecision());
     outputs.push_back(rk_output);
     rk_tensors_[output] = rk_output;
   }
@@ -1474,9 +1434,7 @@ void OnnxConverter::AddLayerMul(const std::string& input1,
   if (HAS(rk_tensors_, output)) {
     outputs.push_back(rk_tensors_.at(output));
   } else {
-    auto rk_output = CreateRknnTensor(output, shaper_[output],
-                                      NULL, rk::nn::TensorRole::VAR,
-                                      inputs[0]->GetPrecision());
+    auto rk_output = CreateRknnTensor(output, shaper_[output], NULL, rk::nn::TensorRole::VAR, inputs[0]->GetPrecision());
     outputs.push_back(rk_output);
     rk_tensors_[output] = rk_output;
   }
@@ -1513,9 +1471,7 @@ void OnnxConverter::AddLayerBatchNorm(const string& input,
   if (HAS(rk_tensors_, output)) {
     outputs.push_back(rk_tensors_.at(output));
   } else {
-    auto rk_output = CreateRknnTensor(output, shaper_[output],
-                                      NULL, rk::nn::TensorRole::VAR,
-                                      inputs[0]->GetPrecision());
+    auto rk_output = CreateRknnTensor(output, shaper_[output], NULL, rk::nn::TensorRole::VAR, inputs[0]->GetPrecision());
     outputs.push_back(rk_output);
     rk_tensors_[output] = rk_output;
   }
@@ -1524,7 +1480,9 @@ void OnnxConverter::AddLayerBatchNorm(const string& input,
   attrs.eps = eps;
 
   graph_->AddOperator(rk::nn::OperatorType::BATCH_NORM,
-                      inputs, outputs, &attrs);
+                      inputs,
+                      outputs,
+                      &attrs);
 }
 
 void OnnxConverter::AddLayerReshape(const string& input,
@@ -1545,9 +1503,7 @@ void OnnxConverter::AddLayerReshape(const string& input,
   } else {
     // the "TFNodes/yolo_evaluation_layer_1/Reshape_5:0" of yolov3.onnx will
     // wrong when role is VAR, modify it to DATA for workaround.
-    auto rk_output = CreateRknnTensor(output, shaper_[output],
-                                      NULL, rk::nn::TensorRole::DATA,
-                                      inputs[0]->GetPrecision());
+    auto rk_output = CreateRknnTensor(output, shaper_[output], NULL, rk::nn::TensorRole::DATA, inputs[0]->GetPrecision());
     outputs.push_back(rk_output);
     rk_tensors_[output] = rk_output;
   }
@@ -1557,7 +1513,9 @@ void OnnxConverter::AddLayerReshape(const string& input,
     attr.shapes.push_back(static_cast<uint32_t>(dim));
   }
   graph_->AddOperator(rk::nn::OperatorType::RESHAPE,
-                      inputs, outputs, (void*)&attr);
+                      inputs,
+                      outputs,
+                      (void*)&attr);
 }
 
 void OnnxConverter::AddLayerFlatten(const string& input,
@@ -1569,7 +1527,8 @@ void OnnxConverter::AddLayerFlatten(const string& input,
   if (axis > 0) {
     const auto in_shape = shaper_[input];
     shape[0] = (int32_t)std::accumulate(in_shape.begin(),
-                                        in_shape.begin() + axis, 1,
+                                        in_shape.begin() + axis,
+                                        1,
                                         std::multiplies<uint32_t>());
   }
 
@@ -1582,9 +1541,7 @@ void OnnxConverter::AddLayerFlatten(const string& input,
   if (HAS(rk_tensors_, output)) {
     outputs.push_back(rk_tensors_.at(output));
   } else {
-    auto rk_output = CreateRknnTensor(output, shaper_[output],
-                                      NULL, rk::nn::TensorRole::VAR,
-                                      inputs[0]->GetPrecision());
+    auto rk_output = CreateRknnTensor(output, shaper_[output], NULL, rk::nn::TensorRole::VAR, inputs[0]->GetPrecision());
     outputs.push_back(rk_output);
     rk_tensors_[output] = rk_output;
   }
@@ -1594,7 +1551,9 @@ void OnnxConverter::AddLayerFlatten(const string& input,
     attr.shapes.push_back(static_cast<uint32_t>(dim));
   }
   graph_->AddOperator(rk::nn::OperatorType::RESHAPE,
-                      inputs, outputs, (void*)&attr);
+                      inputs,
+                      outputs,
+                      (void*)&attr);
 }
 
 void OnnxConverter::AddLayerTranspose(const string& input,
@@ -1611,9 +1570,7 @@ void OnnxConverter::AddLayerTranspose(const string& input,
   if (HAS(rk_tensors_, output)) {
     outputs.push_back(rk_tensors_.at(output));
   } else {
-    auto rk_output = CreateRknnTensor(output, shaper_[output],
-                                      NULL, rk::nn::TensorRole::VAR,
-                                      inputs[0]->GetPrecision());
+    auto rk_output = CreateRknnTensor(output, shaper_[output], NULL, rk::nn::TensorRole::VAR, inputs[0]->GetPrecision());
     outputs.push_back(rk_output);
     rk_tensors_[output] = rk_output;
   }
@@ -1623,7 +1580,9 @@ void OnnxConverter::AddLayerTranspose(const string& input,
     attr.perm.push_back(static_cast<uint32_t>(val));
   }
   graph_->AddOperator(rk::nn::OperatorType::PERMUTE,
-                      inputs, outputs, (void*)&attr);
+                      inputs,
+                      outputs,
+                      (void*)&attr);
 }
 
 void OnnxConverter::AddLayerSlice(const string& input,
@@ -1655,9 +1614,7 @@ void OnnxConverter::AddLayerSlice(const string& input,
   if (HAS(rk_tensors_, output)) {
     outputs.push_back(rk_tensors_.at(output));
   } else {
-    auto rk_output = CreateRknnTensor(output, shaper_[output],
-                                      NULL, rk::nn::TensorRole::VAR,
-                                      inputs[0]->GetPrecision());
+    auto rk_output = CreateRknnTensor(output, shaper_[output], NULL, rk::nn::TensorRole::VAR, inputs[0]->GetPrecision());
     outputs.push_back(rk_output);
     rk_tensors_[output] = rk_output;
   }
@@ -1679,7 +1636,9 @@ void OnnxConverter::AddLayerSlice(const string& input,
   }
 
   graph_->AddOperator(rk::nn::OperatorType::SLICE,
-                      inputs, outputs, (void*)&attr);
+                      inputs,
+                      outputs,
+                      (void*)&attr);
 }
 
 void OnnxConverter::AddLayerSqueeze(const string& input,
@@ -1696,9 +1655,7 @@ void OnnxConverter::AddLayerSqueeze(const string& input,
   if (HAS(rk_tensors_, output)) {
     outputs.push_back(rk_tensors_.at(output));
   } else {
-    auto rk_output = CreateRknnTensor(output, shaper_[output],
-                                      NULL, rk::nn::TensorRole::VAR,
-                                      inputs[0]->GetPrecision());
+    auto rk_output = CreateRknnTensor(output, shaper_[output], NULL, rk::nn::TensorRole::VAR, inputs[0]->GetPrecision());
     outputs.push_back(rk_output);
     rk_tensors_[output] = rk_output;
   }
@@ -1708,7 +1665,9 @@ void OnnxConverter::AddLayerSqueeze(const string& input,
     attr.shapes.push_back(static_cast<uint32_t>(dim));
   }
   graph_->AddOperator(rk::nn::OperatorType::RESHAPE,
-                      inputs, outputs, (void*)&attr);
+                      inputs,
+                      outputs,
+                      (void*)&attr);
 }
 
 void OnnxConverter::AddLayerUnsqueeze(const string& input,
@@ -1725,9 +1684,7 @@ void OnnxConverter::AddLayerUnsqueeze(const string& input,
   if (HAS(rk_tensors_, output)) {
     outputs.push_back(rk_tensors_.at(output));
   } else {
-    auto rk_output = CreateRknnTensor(output, shaper_[output],
-                                      NULL, rk::nn::TensorRole::VAR,
-                                      inputs[0]->GetPrecision());
+    auto rk_output = CreateRknnTensor(output, shaper_[output], NULL, rk::nn::TensorRole::VAR, inputs[0]->GetPrecision());
     outputs.push_back(rk_output);
     rk_tensors_[output] = rk_output;
   }
@@ -1737,7 +1694,9 @@ void OnnxConverter::AddLayerUnsqueeze(const string& input,
     attr.shapes.push_back(static_cast<uint32_t>(dim));
   }
   graph_->AddOperator(rk::nn::OperatorType::RESHAPE,
-                      inputs, outputs, (void*)&attr);
+                      inputs,
+                      outputs,
+                      (void*)&attr);
 }
 
 void OnnxConverter::AddLayerGather(const string& input,
@@ -1756,9 +1715,7 @@ void OnnxConverter::AddLayerGather(const string& input,
   if (HAS(rk_tensors_, output)) {
     outputs.push_back(rk_tensors_.at(output));
   } else {
-    auto rk_output = CreateRknnTensor(output, shaper_[output],
-                                      NULL, rk::nn::TensorRole::VAR,
-                                      inputs[0]->GetPrecision());
+    auto rk_output = CreateRknnTensor(output, shaper_[output], NULL, rk::nn::TensorRole::VAR, inputs[0]->GetPrecision());
     outputs.push_back(rk_output);
     rk_tensors_[output] = rk_output;
   }
@@ -1766,7 +1723,9 @@ void OnnxConverter::AddLayerGather(const string& input,
   rk::nn::GatherAttr attr;
   attr.axis = axis;
   graph_->AddOperator(rk::nn::OperatorType::GATHER,
-                      inputs, outputs, (void*)&attr);
+                      inputs,
+                      outputs,
+                      (void*)&attr);
 }
 
 void OnnxConverter::AddLayerLeakyRelu(const std::string& input,
@@ -1782,9 +1741,7 @@ void OnnxConverter::AddLayerLeakyRelu(const std::string& input,
   if (HAS(rk_tensors_, output)) {
     outputs.push_back(rk_tensors_.at(output));
   } else {
-    auto rk_output = CreateRknnTensor(output, shaper_[output],
-                                      NULL, rk::nn::TensorRole::VAR,
-                                      inputs[0]->GetPrecision());
+    auto rk_output = CreateRknnTensor(output, shaper_[output], NULL, rk::nn::TensorRole::VAR, inputs[0]->GetPrecision());
     outputs.push_back(rk_output);
     rk_tensors_[output] = rk_output;
   }
@@ -1792,7 +1749,9 @@ void OnnxConverter::AddLayerLeakyRelu(const std::string& input,
   rk::nn::LeakyReluAttr attr;
   attr.alpha = alpha;
   graph_->AddOperator(rk::nn::OperatorType::LEAKY_RELU,
-                      inputs, outputs, (void*)&attr);
+                      inputs,
+                      outputs,
+                      (void*)&attr);
 }
 
 void OnnxConverter::AddLayerClip(const std::string& input,
@@ -1809,9 +1768,7 @@ void OnnxConverter::AddLayerClip(const std::string& input,
   if (HAS(rk_tensors_, output)) {
     outputs.push_back(rk_tensors_.at(output));
   } else {
-    auto rk_output = CreateRknnTensor(output, shaper_[output],
-                                      NULL, rk::nn::TensorRole::VAR,
-                                      inputs[0]->GetPrecision());
+    auto rk_output = CreateRknnTensor(output, shaper_[output], NULL, rk::nn::TensorRole::VAR, inputs[0]->GetPrecision());
     outputs.push_back(rk_output);
     rk_tensors_[output] = rk_output;
   }
@@ -1826,7 +1783,9 @@ void OnnxConverter::AddLayerClip(const std::string& input,
     attr.min = min;
     attr.max = max;
     graph_->AddOperator(rk::nn::OperatorType::CLIP,
-                        inputs, outputs, (void*)&attr);
+                        inputs,
+                        outputs,
+                        (void*)&attr);
   }
 }
 
@@ -1847,18 +1806,15 @@ void OnnxConverter::AddLayerQuantizeLinear(const string& input,
   if (HAS(rk_tensors_, output)) {
     outputs.push_back(rk_tensors_.at(output));
   } else {
-    auto rk_output = CreateRknnTensor(output, shaper_[output], NULL,
-                                      rk::nn::TensorRole::VAR,
-                                      rk::nn::PrecisionType::UINT8,
-                                      rk::nn::DataLayoutType::NCHW,
-                                      rk::nn::QuantizationType::AFFINE_ASYMMETRIC,
-                                      8, out_s[0], out_zp[0]);
+    auto rk_output = CreateRknnTensor(output, shaper_[output], NULL, rk::nn::TensorRole::VAR, rk::nn::PrecisionType::UINT8, rk::nn::DataLayoutType::NCHW, rk::nn::QuantizationType::AFFINE_ASYMMETRIC, 8, out_s[0], out_zp[0]);
     outputs.push_back(rk_output);
     rk_tensors_[output] = rk_output;
   }
 
   graph_->AddOperator(rk::nn::OperatorType::DATACONVERT,
-                      inputs, outputs, nullptr);
+                      inputs,
+                      outputs,
+                      nullptr);
 }
 
 void OnnxConverter::AddLayerDequantizeLinear(const string& input,
@@ -1883,15 +1839,15 @@ void OnnxConverter::AddLayerDequantizeLinear(const string& input,
   if (HAS(rk_tensors_, output)) {
     outputs.push_back(rk_tensors_.at(output));
   } else {
-    auto rk_output = CreateRknnTensor(output, shaper_[output], NULL,
-                                      rk::nn::TensorRole::VAR,
-                                      rk::nn::PrecisionType::FLOAT32);
+    auto rk_output = CreateRknnTensor(output, shaper_[output], NULL, rk::nn::TensorRole::VAR, rk::nn::PrecisionType::FLOAT32);
     outputs.push_back(rk_output);
     rk_tensors_[output] = rk_output;
   }
 
   graph_->AddOperator(rk::nn::OperatorType::DATACONVERT,
-                      inputs, outputs, nullptr);
+                      inputs,
+                      outputs,
+                      nullptr);
 }
 
 }  // namespace rknpu

@@ -29,9 +29,7 @@ void Add<MLFloat16>(MLFloat16* a, const MLFloat16* b) {
 }
 
 template <typename T, typename TIndex>
-void GetData(const std::vector<int64_t>& input_dims, const std::vector<int64_t>& indices_dims,
-             const std::vector<int64_t>& indices_strides, int64_t axis, std::vector<T>& dY_data,
-             std::vector<TIndex>& indices_data, std::vector<T>& dX_data) {
+void GetData(const std::vector<int64_t>& input_dims, const std::vector<int64_t>& indices_dims, const std::vector<int64_t>& indices_strides, int64_t axis, std::vector<T>& dY_data, std::vector<TIndex>& indices_data, std::vector<T>& dX_data) {
   size_t dx_size = static_cast<size_t>(onnxruntime::test::detail::SizeFromDims(input_dims));
   size_t indices_size = static_cast<size_t>(onnxruntime::test::detail::SizeFromDims(indices_dims, indices_strides));
   bool is_strided_indices = !indices_strides.empty();
@@ -74,8 +72,7 @@ void GetData(const std::vector<int64_t>& input_dims, const std::vector<int64_t>&
 }
 
 template <typename T, typename TIndex>
-void RunTest(std::initializer_list<int64_t> input_dims, std::initializer_list<int64_t> indices_dims,
-             bool has_axis = false, int64_t axis = 0LL) {
+void RunTest(std::initializer_list<int64_t> input_dims, std::initializer_list<int64_t> indices_dims, bool has_axis = false, int64_t axis = 0LL) {
   std::vector<T> dY_data;
   std::vector<TIndex> indices_data;
   std::vector<T> dX_data;
@@ -137,9 +134,7 @@ void RunTestWrapper() {
 
 #if defined(ENABLE_STRIDED_TENSORS) && (defined(USE_CUDA) || defined(USE_ROCM))
 template <typename T, typename TIndex>
-void RunKernelComputeTest(std::initializer_list<int64_t> input_dims, std::initializer_list<int64_t> indices_dims,
-                          std::initializer_list<int64_t> indices_strides = {}, bool has_axis = false,
-                          int64_t axis = 0LL) {
+void RunKernelComputeTest(std::initializer_list<int64_t> input_dims, std::initializer_list<int64_t> indices_dims, std::initializer_list<int64_t> indices_strides = {}, bool has_axis = false, int64_t axis = 0LL) {
   std::vector<T> dY_data;
   std::vector<TIndex> indices_data;
   std::vector<T> dX_data;

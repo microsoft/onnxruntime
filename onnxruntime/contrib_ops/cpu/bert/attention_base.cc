@@ -56,8 +56,7 @@ Status AttentionBase::CheckInputs(const TensorShape& input_shape,
 
   const auto& dims = input_shape.GetDims();
   if (dims.size() != 3) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'input' is expected to have 3 dimensions, got ",
-                           dims.size());
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'input' is expected to have 3 dimensions, got ", dims.size());
   }
 
   auto& batch_size = dims[0];
@@ -66,23 +65,19 @@ Status AttentionBase::CheckInputs(const TensorShape& input_shape,
 
   const auto& bias_dims = bias_shape.GetDims();
   if (bias_dims.size() != 1) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'bias' is expected to have 1 dimension, got ",
-                           bias_dims.size());
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'bias' is expected to have 1 dimension, got ", bias_dims.size());
   }
 
   const auto& weights_dims = weights_shape.GetDims();
   if (weights_dims.size() != 2) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'weights' is expected to have 2 dimensions, got ",
-                           weights_dims.size());
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'weights' is expected to have 2 dimensions, got ", weights_dims.size());
   }
   if (weights_dims[0] != input_hidden_size) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Input 1 dimension 0 should have same length as dimension 2 of input 0");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 1 dimension 0 should have same length as dimension 2 of input 0");
   }
 
   if (bias_dims[0] != weights_dims[1]) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Input 'bias' dimension 0 should have same length as dimension 1 of input 'weights'");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'bias' dimension 0 should have same length as dimension 1 of input 'weights'");
   }
 
   int64_t q_hidden_size = bias_dims[0] / static_cast<int64_t>(3);
@@ -90,14 +85,12 @@ Status AttentionBase::CheckInputs(const TensorShape& input_shape,
   int64_t v_hidden_size = k_hidden_size;
   if (qkv_hidden_sizes_.size() != 0) {
     if (qkv_hidden_sizes_.size() != 3) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "qkv_hidden_sizes attribute should have 3 elements");
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "qkv_hidden_sizes attribute should have 3 elements");
     }
 
     for (size_t i = 0; i < qkv_hidden_sizes_.size(); i++) {
       if (qkv_hidden_sizes_[i] % num_heads_ != 0) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                               "hidden_size should be divisible by num_heads:", qkv_hidden_sizes_[i]);
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "hidden_size should be divisible by num_heads:", qkv_hidden_sizes_[i]);
       }
     }
 
@@ -109,8 +102,7 @@ Status AttentionBase::CheckInputs(const TensorShape& input_shape,
   int64_t kv_sequence_length = sequence_length;
 
   if (q_hidden_size != k_hidden_size) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "qkv_hidden_sizes first element should be same as the second");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "qkv_hidden_sizes first element should be same as the second");
   }
 
   if (this->require_same_hidden_size_ && k_hidden_size != v_hidden_size) {
@@ -118,10 +110,7 @@ Status AttentionBase::CheckInputs(const TensorShape& input_shape,
   }
 
   if (bias_dims[0] != q_hidden_size + k_hidden_size + v_hidden_size) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Input 'bias' dimension 0 should have same length as sum of Q/K/V hidden sizes:",
-                           " q_hidden_size=", q_hidden_size, " k_hidden_size=", k_hidden_size, " v_hidden_size=",
-                           v_hidden_size, "bias_dims[0]=", bias_dims[0]);
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'bias' dimension 0 should have same length as sum of Q/K/V hidden sizes:", " q_hidden_size=", q_hidden_size, " k_hidden_size=", k_hidden_size, " v_hidden_size=", v_hidden_size, "bias_dims[0]=", bias_dims[0]);
   }
 
   int64_t past_sequence_length = 0;
@@ -133,8 +122,7 @@ Status AttentionBase::CheckInputs(const TensorShape& input_shape,
 
     const auto& past_dims = past->Shape().GetDims();
     if (past_dims.size() != 5) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'past' is expected to have 5 dimension, got ",
-                             past_dims.size());
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'past' is expected to have 5 dimension, got ", past_dims.size());
     }
 
     if (past_dims[0] != 2) {
@@ -142,18 +130,15 @@ Status AttentionBase::CheckInputs(const TensorShape& input_shape,
     }
 
     if (past_dims[1] != batch_size) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Inputs 'past' dimension 1 shall have same length as dimension 0 of input 0");
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Inputs 'past' dimension 1 shall have same length as dimension 0 of input 0");
     }
 
     if (static_cast<int>(past_dims[2]) != num_heads_) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Inputs 'past' dimension 2 shall have length of num_heads", num_heads_);
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Inputs 'past' dimension 2 shall have length of num_heads", num_heads_);
     }
 
     if (static_cast<int>(past_dims[4]) != k_hidden_size / num_heads_) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Inputs 'past' dimension 2 shall have length of ", k_hidden_size / num_heads_);
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Inputs 'past' dimension 2 shall have length of ", k_hidden_size / num_heads_);
     }
 
     if (!past_present_share_buffer_) {
@@ -161,8 +146,7 @@ Status AttentionBase::CheckInputs(const TensorShape& input_shape,
       original_past_sequence_length = past_sequence_length;
     } else {
       if (past_seq_len == nullptr || !onnxruntime::IsScalarOr1ElementVector(past_seq_len)) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                               "past_sequence_length tensor must be of one element when past_present_share_buffer is set");
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "past_sequence_length tensor must be of one element when past_present_share_buffer is set");
       }
       past_sequence_length = *past_seq_len->Data<int32_t>();
     }
@@ -172,8 +156,7 @@ Status AttentionBase::CheckInputs(const TensorShape& input_shape,
   if (past != nullptr && past_present_share_buffer_) {
     const auto& past_dims = past->Shape().GetDims();
     if (past_dims[3] < total_sequence_length) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "when past_present_share_buffer, past tensor sequence must not smaller than total_sequqnce_length ");
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "when past_present_share_buffer, past tensor sequence must not smaller than total_sequqnce_length ");
     }
   }
 
@@ -181,8 +164,7 @@ Status AttentionBase::CheckInputs(const TensorShape& input_shape,
   AttentionMaskType mask_type = AttentionMaskType::MASK_NONE;
   if (mask_index != nullptr) {  // mask_index is optional
     mask_type = AttentionMaskType::MASK_UNKNOWN;
-    auto status = this->CheckMask(mask_index, mask_type,
-                                  max_sequence_length, batch_size, sequence_length, total_sequence_length);
+    auto status = this->CheckMask(mask_index, mask_type, max_sequence_length, batch_size, sequence_length, total_sequence_length);
     if (status != Status::OK()) {
       return status;
     }
@@ -198,33 +180,23 @@ Status AttentionBase::CheckInputs(const TensorShape& input_shape,
     const auto& relative_position_bias_dims = relative_position_bias->Shape().GetDims();
 
     if (relative_position_bias_dims.size() != 4) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input 'relative_position_bias' is expected to have 4 dimensions, got ",
-                             relative_position_bias_dims.size());
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'relative_position_bias' is expected to have 4 dimensions, got ", relative_position_bias_dims.size());
     }
 
     if (relative_position_bias_dims[0] != batch_size && relative_position_bias_dims[0] != 1) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input 'relative_position_bias' dimension 0 should be same as batch_size or 1, got ",
-                             relative_position_bias_dims[0]);
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'relative_position_bias' dimension 0 should be same as batch_size or 1, got ", relative_position_bias_dims[0]);
     }
     if (relative_position_bias_dims[0] == 1) {
       broadcast_res_pos_bias = true;
     }
     if (relative_position_bias_dims[1] != num_heads_) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input 'relative_position_bias' dimension 1 should be same as number of heads, got ",
-                             relative_position_bias_dims[1]);
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'relative_position_bias' dimension 1 should be same as number of heads, got ", relative_position_bias_dims[1]);
     }
     if (relative_position_bias_dims[2] != sequence_length) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input 'relative_position_bias' dimension 2 should be same as sequence_length, got ",
-                             relative_position_bias_dims[2]);
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'relative_position_bias' dimension 2 should be same as sequence_length, got ", relative_position_bias_dims[2]);
     }
     if (relative_position_bias_dims[3] != total_sequence_length) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input 'relative_position_bias' dimension 3 should be same as total_sequence_length, got ",
-                             relative_position_bias_dims[3]);
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'relative_position_bias' dimension 3 should be same as total_sequence_length, got ", relative_position_bias_dims[3]);
     }
   }
 
@@ -233,8 +205,7 @@ Status AttentionBase::CheckInputs(const TensorShape& input_shape,
       max_sequence_length = past->Shape().GetDims()[3];
     }
     if (max_sequence_length != past->Shape().GetDims()[3]) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "max_sequence_length not matching from mask and past when past_present_share_buffer_ is set");
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "max_sequence_length not matching from mask and past when past_present_share_buffer_ is set");
     }
   }
 
@@ -276,8 +247,7 @@ Status AttentionBase::CheckMask(const Tensor* mask_index,
   const auto& mask_dims = mask_index->Shape().GetDims();
   if (mask_dims.size() == 1) {
     if (mask_dims[0] != batch_size && mask_dims[0] != 2 * batch_size && mask_dims[0] != 3 * batch_size + 2) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Inputs 'mask_index' with 1D data shall have length of batch_size or 2 * batch_size or 3 * batch_size + 2");
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Inputs 'mask_index' with 1D data shall have length of batch_size or 2 * batch_size or 3 * batch_size + 2");
     }
     mask_type = (mask_dims[0] == batch_size ? AttentionMaskType::MASK_1D_KEY_SEQ_LEN : mask_dims[0] == 2 * batch_size ? AttentionMaskType::MASK_1D_END_START
                                                                                                                       : AttentionMaskType::MASK_1D_KEY_SEQ_LEN_START);
@@ -315,13 +285,10 @@ Status AttentionBase::CheckMask(const Tensor* mask_index,
     max_sequence_length = mask_dims[3];
     mask_type = AttentionMaskType::MASK_4D_MEGATRON;
     if (this->is_unidirectional_) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Inputs 'mask_index' with 4D data shall have is_unidirectional set to false");
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Inputs 'mask_index' with 4D data shall have is_unidirectional set to false");
     }
   } else {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Input 'mask_index' is expected to have 1, 2, 3 or 4 dimensions, got ",
-                           mask_dims.size());
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'mask_index' is expected to have 1, 2, 3 or 4 dimensions, got ", mask_dims.size());
   }
 
   return Status::OK();

@@ -87,8 +87,7 @@ const std::unordered_set<std::string_view>& GetORTLayoutSensitiveOps();
 /// <param name="debug_graph_fn">Optional functor to debug the graph produced during layout transformation.
 /// This is called after layout transformation if new nodes are inserted, and again after those are optimized.
 /// </param>
-Status TransformLayoutForEP(Graph& graph, bool& modified, const IExecutionProvider& execution_provider,
-                            const DebugGraphFn& debug_graph_fn = {});
+Status TransformLayoutForEP(Graph& graph, bool& modified, const IExecutionProvider& execution_provider, const DebugGraphFn& debug_graph_fn = {});
 
 /// <summary>
 /// Checks if the opset of the Graph is supported by the layout transformer.

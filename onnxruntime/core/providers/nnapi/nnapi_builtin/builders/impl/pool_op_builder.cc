@@ -32,8 +32,7 @@ class PoolOpBuilder : public BaseOpBuilder {
 
   // Operator support related
  private:
-  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
-                         const OpSupportCheckParams& params) const override;
+  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit, const OpSupportCheckParams& params) const override;
 
   int32_t GetMinSupportedNNAPIFeatureLevel(const NodeUnit& /* node_unit */,
                                            const OpSupportCheckParams& params) const override {
@@ -41,8 +40,7 @@ class PoolOpBuilder : public BaseOpBuilder {
   }
 
   bool HasSupportedInputOutputsImpl(
-      const InitializedTensorSet& initializers, const NodeUnit& node_unit,
-      const OpSupportCheckParams& params) const override;
+      const InitializedTensorSet& initializers, const NodeUnit& node_unit, const OpSupportCheckParams& params) const override;
   bool IsNodeUnitTypeSupported(const NodeUnit& /* node_unit */) const override;
   bool IsQuantizedOp(const NodeUnit& node_unit) const override;
 };
@@ -90,10 +88,7 @@ Status PoolOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
     const auto weight_size_y = static_cast<uint32_t>(kernel_shape[0]);
     const auto weight_size_x = static_cast<uint32_t>(kernel_shape[1]);
     ORT_RETURN_IF_ERROR(
-        HandleAutoPad(input_shape, weight_size_y, weight_size_x,
-                      onnx_strides, {1, 1} /* onnx_dilations */,
-                      auto_pad_type, use_nchw,
-                      onnx_pads, nnapi_padding_code, use_auto_pad));
+        HandleAutoPad(input_shape, weight_size_y, weight_size_x, onnx_strides, {1, 1} /* onnx_dilations */, auto_pad_type, use_nchw, onnx_pads, nnapi_padding_code, use_auto_pad));
   } else {  // (op_type == "GlobalAveragePool" || op_type == "GlobalMaxPool")
     use_auto_pad = true;
     nnapi_padding_code = ANEURALNETWORKS_PADDING_VALID;
@@ -151,8 +146,7 @@ Status PoolOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   }
 
   const OperandType output_operand_type(operand_types.at(input).type, shaper[output], y_scale, y_zero_point);
-  ORT_RETURN_IF_ERROR(model_builder.AddOperation(op_code, input_indices,
-                                                 {output}, {output_operand_type}));
+  ORT_RETURN_IF_ERROR(model_builder.AddOperation(op_code, input_indices, {output}, {output_operand_type}));
   return Status::OK();
 }
 
@@ -171,8 +165,7 @@ bool PoolOpBuilder::IsQuantizedOp(const NodeUnit& node_unit) const {
   return IsQuantizedPool(GetQuantizedOpType(node_unit));
 }
 
-bool PoolOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
-                                      const OpSupportCheckParams& /* params */) const {
+bool PoolOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit, const OpSupportCheckParams& /* params */) const {
   const auto& op_name = node_unit.Name();
   const auto& op_type = node_unit.OpType();
   const auto& inputs = node_unit.Inputs();
@@ -274,8 +267,7 @@ bool PoolOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers, 
 }
 
 bool PoolOpBuilder::HasSupportedInputOutputsImpl(
-    const InitializedTensorSet& initializers, const NodeUnit& node_unit,
-    const OpSupportCheckParams& params) const {
+    const InitializedTensorSet& initializers, const NodeUnit& node_unit, const OpSupportCheckParams& params) const {
   const auto& op_type = node_unit.OpType();
   bool is_quant_pool = IsQuantizedOp(node_unit);
   bool is_max_pool = op_type == "MaxPool";
@@ -311,14 +303,13 @@ bool PoolOpBuilder::HasSupportedInputOutputsImpl(
 
 void CreatePoolOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {
   CreateSharedOpBuilderImpl<PoolOpBuilder>(
-      op_type, op_registrations,
-      {
-          "GlobalAveragePool",
-          "GlobalMaxPool",
-          "AveragePool",
-          "MaxPool",
-          "QLinearAveragePool",
-      });
+      op_type, op_registrations, {
+                                     "GlobalAveragePool",
+                                     "GlobalMaxPool",
+                                     "AveragePool",
+                                     "MaxPool",
+                                     "QLinearAveragePool",
+                                 });
 }
 
 }  // namespace nnapi

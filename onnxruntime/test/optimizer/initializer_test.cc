@@ -31,12 +31,10 @@ Status WriteExternalDataFile(gsl::span<const T> data, const PathString& path, Sc
   return Status::OK();
 }
 
-void SetTensorProtoExternalData(const std::string& key, const std::string& value,
-                                ONNX_NAMESPACE::TensorProto& tensor_proto) {
+void SetTensorProtoExternalData(const std::string& key, const std::string& value, ONNX_NAMESPACE::TensorProto& tensor_proto) {
   auto* external_data = tensor_proto.mutable_external_data();
   auto kvp_it = std::find_if(
-      external_data->begin(), external_data->end(),
-      [&key](const ONNX_NAMESPACE::StringStringEntryProto& kvp) { return kvp.key() == key; });
+      external_data->begin(), external_data->end(), [&key](const ONNX_NAMESPACE::StringStringEntryProto& kvp) { return kvp.key() == key; });
   auto* kvp = kvp_it != external_data->end() ? &(*kvp_it) : external_data->Add();
   kvp->set_key(key);
   kvp->set_value(value);
@@ -128,27 +126,21 @@ CppTypeToTensorProto_DataType(double, TensorProto_DataType_DOUBLE);
 template <typename T>
 std::vector<T> GetInitializerData() {
   std::vector<T> data{
-      0, 1, 2, 3,
-      4, 5, 6, 7,
-      8, 9, 10, 11};
+      0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11};
   return data;
 }
 
 template <>
 std::vector<MLFloat16> GetInitializerData<MLFloat16>() {
   std::vector<MLFloat16> data{
-      0_f16, 1_f16, 2_f16, 3_f16,
-      4_f16, 5_f16, 6_f16, 7_f16,
-      8_f16, 9_f16, 10_f16, 11_f16};
+      0_f16, 1_f16, 2_f16, 3_f16, 4_f16, 5_f16, 6_f16, 7_f16, 8_f16, 9_f16, 10_f16, 11_f16};
   return data;
 }
 
 template <>
 std::vector<BFloat16> GetInitializerData<BFloat16>() {
   std::vector<BFloat16> data{
-      0_b16, 1_b16, 2_b16, 3_b16,
-      4_b16, 5_b16, 6_b16, 7_b16,
-      8_b16, 9_b16, 10_b16, 11_b16};
+      0_b16, 1_b16, 2_b16, 3_b16, 4_b16, 5_b16, 6_b16, 7_b16, 8_b16, 9_b16, 10_b16, 11_b16};
   return data;
 }
 
@@ -229,9 +221,7 @@ void TestInitializerDataField() {
   template <>                                                    \
   void TestInitializerDataField<type>() {                        \
     std::vector<type> data{                                      \
-        0, 1, 2, 3,                                              \
-        4, 5, 6, 7,                                              \
-        8, 9, 10, 11};                                           \
+        0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11};                   \
                                                                  \
     ONNX_NAMESPACE::TensorProto tensor_proto;                    \
     tensor_proto.set_data_type(GetTensorProtoDataType<type>());  \

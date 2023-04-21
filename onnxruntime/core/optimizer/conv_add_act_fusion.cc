@@ -265,8 +265,7 @@ void RegisterConvAddActivationFusionRules(SelectorActionRegistry& registry) {
   const auto name = "ConvAddAct";
   auto action = std::make_unique<actions::FuseConvAddActivation>();
   auto selector = std::make_unique<selectors::ConvAddActivation>();
-  registry.RegisterSelectorAndAction(name, {{"Conv", {1, 11}}},
-                                     std::move(selector), std::move(action));
+  registry.RegisterSelectorAndAction(name, {{"Conv", {1, 11}}}, std::move(selector), std::move(action));
 }
 
 SelectorActionRegistry CreateSelectorActionRegistry() {

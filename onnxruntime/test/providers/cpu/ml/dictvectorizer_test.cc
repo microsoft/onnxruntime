@@ -20,8 +20,7 @@ TEST(MLOpTest, DictVectorizerStringInput) {
   test.AddInput<std::string, int64_t>("X", map);
 
   std::vector<int64_t> dims{1, 4};
-  test.AddOutput<int64_t>("Y", dims,
-                          {1, 0, 2, 3});
+  test.AddOutput<int64_t>("Y", dims, {1, 0, 2, 3});
   test.Run();
 }
 

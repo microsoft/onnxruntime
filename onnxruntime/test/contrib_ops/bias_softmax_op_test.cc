@@ -38,8 +38,7 @@ class BiasSoftmaxTester {
   int64_t num_bias_batches_;
 
  public:
-  BiasSoftmaxTester(std::vector<int64_t> in_shape, std::vector<int64_t> bias_shape, int64_t axis,
-                    bool is_inner_broadcast, bool use_float16)
+  BiasSoftmaxTester(std::vector<int64_t> in_shape, std::vector<int64_t> bias_shape, int64_t axis, bool is_inner_broadcast, bool use_float16)
       : in_shape_(in_shape),
         bias_shape_(bias_shape),
         axis_(axis),
@@ -161,8 +160,7 @@ class BiasSoftmaxTester {
   }
 };
 
-void RunBiasSoftmaxTests(std::vector<int64_t> in_shape, std::vector<int64_t> bias_shape, int64_t axis,
-                         bool is_inner_broadcast) {
+void RunBiasSoftmaxTests(std::vector<int64_t> in_shape, std::vector<int64_t> bias_shape, int64_t axis, bool is_inner_broadcast) {
   BiasSoftmaxTester test_fp32(in_shape, bias_shape, axis, is_inner_broadcast, false);
   test_fp32.RunComparison();
   BiasSoftmaxTester test_fp16(in_shape, bias_shape, axis, is_inner_broadcast, true);

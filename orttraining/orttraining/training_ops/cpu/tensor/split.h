@@ -23,9 +23,7 @@ class SplitTraining final : public OpKernel, public SplitBase {
   Status ComputeImpl(OpKernelContext& context, const Tensor& input) const;
 };
 
-Status PrepareForTrainingCompute(const TensorShape& input_shape, int num_outputs, int64_t& axis, int& before_dims,
-                                 int& after_dims_including_split_axis, int& after_dims_excluding_split,
-                                 std::vector<int64_t>& split_sizes);
+Status PrepareForTrainingCompute(const TensorShape& input_shape, int num_outputs, int64_t& axis, int& before_dims, int& after_dims_including_split_axis, int& after_dims_excluding_split, std::vector<int64_t>& split_sizes);
 
 }  // namespace contrib
 }  // namespace onnxruntime

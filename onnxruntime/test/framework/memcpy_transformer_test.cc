@@ -25,8 +25,7 @@ void ExpectSame(const onnxruntime::Node& source, const onnxruntime::Node& target
   EXPECT_EQ(source_output, target_input);
 }
 
-void ExpectCopy(const onnxruntime::Node& source, const std::string& copy_op, const onnxruntime::Node& target,
-                int argnum) {
+void ExpectCopy(const onnxruntime::Node& source, const std::string& copy_op, const onnxruntime::Node& target, int argnum) {
   // Check that source's output is consumed by a copy_op;
   for (auto it = source.OutputNodesBegin(); it != source.OutputNodesEnd(); ++it) {
     auto& copy_node = *it;
@@ -41,8 +40,7 @@ void ExpectCopy(const onnxruntime::Node& source, const std::string& copy_op, con
   EXPECT_TRUE(false) << "Copy node expected but not found";
 }
 
-void ExpectCopy(const onnxruntime::NodeArg& source_arg, const std::string copy_op,
-                const onnxruntime::Node& target, int argnum) {
+void ExpectCopy(const onnxruntime::NodeArg& source_arg, const std::string copy_op, const onnxruntime::Node& target, int argnum) {
   auto* target_input = target.InputDefs()[argnum];
   for (auto it = target.InputNodesBegin(); it != target.InputNodesEnd(); ++it) {
     auto& copy_node = *it;
@@ -58,8 +56,7 @@ void ExpectCopy(const onnxruntime::NodeArg& source_arg, const std::string copy_o
   EXPECT_TRUE(false) << "Copy node expected but not found";
 }
 
-void ExpectCopy(const onnxruntime::Node& source, const std::string copy_op,
-                const onnxruntime::NodeArg& target_arg) {
+void ExpectCopy(const onnxruntime::Node& source, const std::string copy_op, const onnxruntime::NodeArg& target_arg) {
   // Check that source's output is consumed by a copy_op;
   for (auto it = source.OutputNodesBegin(); it != source.OutputNodesEnd(); ++it) {
     auto& copy_node = *it;
@@ -76,10 +73,7 @@ void ExpectCopy(const onnxruntime::Node& source, const std::string copy_op,
 TEST(TransformerTest, MemcpyTransformerTest) {
   std::unordered_map<std::string, int> domain_to_version;
   domain_to_version[kOnnxDomain] = 7;
-  auto model = std::make_shared<onnxruntime::Model>("test", false, ModelMetaData(), PathString(),
-                                                    IOnnxRuntimeOpSchemaRegistryList(),
-                                                    domain_to_version, std::vector<ONNX_NAMESPACE::FunctionProto>(),
-                                                    DefaultLoggingManager().DefaultLogger());
+  auto model = std::make_shared<onnxruntime::Model>("test", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, std::vector<ONNX_NAMESPACE::FunctionProto>(), DefaultLoggingManager().DefaultLogger());
   onnxruntime::Graph& graph = model->MainGraph();
 
   TypeProto tensor_float_type;
@@ -131,10 +125,7 @@ TEST(TransformerTest, MemcpyTransformerTest) {
 TEST(TransformerTest, MemcpyTransformerTestCudaFirst) {
   std::unordered_map<std::string, int> domain_to_version;
   domain_to_version[kOnnxDomain] = 7;
-  auto model = std::make_shared<onnxruntime::Model>("test", false, ModelMetaData(), PathString(),
-                                                    IOnnxRuntimeOpSchemaRegistryList(),
-                                                    domain_to_version, std::vector<ONNX_NAMESPACE::FunctionProto>(),
-                                                    DefaultLoggingManager().DefaultLogger());
+  auto model = std::make_shared<onnxruntime::Model>("test", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, std::vector<ONNX_NAMESPACE::FunctionProto>(), DefaultLoggingManager().DefaultLogger());
   onnxruntime::Graph& graph = model->MainGraph();
 
   TypeProto tensor_float_type;
@@ -216,7 +207,8 @@ TEST(TransformerTest, TestInitializerDuplicationInSubgraph) {
                                                     ModelMetaData(),
                                                     PathString(),
                                                     IOnnxRuntimeOpSchemaRegistryList(),
-                                                    domain_to_version, std::vector<ONNX_NAMESPACE::FunctionProto>(),
+                                                    domain_to_version,
+                                                    std::vector<ONNX_NAMESPACE::FunctionProto>(),
                                                     DefaultLoggingManager().DefaultLogger());
   onnxruntime::Graph& graph = model->MainGraph();
 
@@ -235,7 +227,8 @@ TEST(TransformerTest, TestInitializerDuplicationInSubgraph) {
                                                         ModelMetaData(),
                                                         PathString(),
                                                         IOnnxRuntimeOpSchemaRegistryList(),
-                                                        subgraph_domain_to_version, std::vector<ONNX_NAMESPACE::FunctionProto>(),
+                                                        subgraph_domain_to_version,
+                                                        std::vector<ONNX_NAMESPACE::FunctionProto>(),
                                                         DefaultLoggingManager().DefaultLogger());
   onnxruntime::Graph& subgraph = sub_model->MainGraph();
 
@@ -244,15 +237,9 @@ TEST(TransformerTest, TestInitializerDuplicationInSubgraph) {
   subgraph.AddInitializedTensor(local_constant);
 
   subgraph.AddOuterScopeNodeArg("parent_constant");
-  subgraph.AddNode("node1", "Add", "operator1",
-                   ArgMap{&subgraph.GetOrCreateNodeArg("local_constant", &tensor_float_type),
-                          &graph.GetOrCreateNodeArg("parent_constant", &tensor_float_type)},
-                   ArgMap{&o1_def});
+  subgraph.AddNode("node1", "Add", "operator1", ArgMap{&subgraph.GetOrCreateNodeArg("local_constant", &tensor_float_type), &graph.GetOrCreateNodeArg("parent_constant", &tensor_float_type)}, ArgMap{&o1_def});
 
-  subgraph.AddNode("node2", "Add", "operator2",
-                   ArgMap{&subgraph.GetOrCreateNodeArg("local_constant", &tensor_float_type),
-                          &graph.GetOrCreateNodeArg("parent_constant", &tensor_float_type)},
-                   ArgMap{&o2_def});
+  subgraph.AddNode("node2", "Add", "operator2", ArgMap{&subgraph.GetOrCreateNodeArg("local_constant", &tensor_float_type), &graph.GetOrCreateNodeArg("parent_constant", &tensor_float_type)}, ArgMap{&o2_def});
 
   ASSERT_STATUS_OK(subgraph.Resolve());
 
@@ -300,10 +287,7 @@ TEST(TransformerTest, MemcpyTransformerTestGraphInputConsumedOnMultipleDevices) 
   // the graph input.
   std::unordered_map<std::string, int> domain_to_version;
   domain_to_version[kOnnxDomain] = 7;
-  auto model = std::make_shared<onnxruntime::Model>("test", false, ModelMetaData(), PathString(),
-                                                    IOnnxRuntimeOpSchemaRegistryList(),
-                                                    domain_to_version, std::vector<ONNX_NAMESPACE::FunctionProto>(),
-                                                    DefaultLoggingManager().DefaultLogger());
+  auto model = std::make_shared<onnxruntime::Model>("test", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, std::vector<ONNX_NAMESPACE::FunctionProto>(), DefaultLoggingManager().DefaultLogger());
   onnxruntime::Graph& graph = model->MainGraph();
 
   TypeProto tensor_float_type;
@@ -347,10 +331,7 @@ TEST(TransformerTest, MemcpyTransformerTestImplicitInputConsumedOnMultipleDevice
   // the implicit input.
   std::unordered_map<std::string, int> domain_to_version;
   domain_to_version[kOnnxDomain] = 7;
-  auto model = std::make_shared<onnxruntime::Model>("test", false, ModelMetaData(), PathString(),
-                                                    IOnnxRuntimeOpSchemaRegistryList(),
-                                                    domain_to_version, std::vector<ONNX_NAMESPACE::FunctionProto>(),
-                                                    DefaultLoggingManager().DefaultLogger());
+  auto model = std::make_shared<onnxruntime::Model>("test", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, std::vector<ONNX_NAMESPACE::FunctionProto>(), DefaultLoggingManager().DefaultLogger());
   onnxruntime::Graph& graph = model->MainGraph();
 
   std::unordered_map<std::string, int> subgraph_domain_to_version;
@@ -360,7 +341,8 @@ TEST(TransformerTest, MemcpyTransformerTestImplicitInputConsumedOnMultipleDevice
                                                         ModelMetaData(),
                                                         PathString(),
                                                         IOnnxRuntimeOpSchemaRegistryList(),
-                                                        subgraph_domain_to_version, std::vector<ONNX_NAMESPACE::FunctionProto>(),
+                                                        subgraph_domain_to_version,
+                                                        std::vector<ONNX_NAMESPACE::FunctionProto>(),
                                                         DefaultLoggingManager().DefaultLogger());
   onnxruntime::Graph& subgraph = sub_model->MainGraph();
 

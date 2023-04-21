@@ -48,8 +48,7 @@ Node -> Split -> Squeeze(axis=axis)
 
 So that we can use one kernel to finish the job.
 */
-Status GatherToSplitFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
-                                      const logging::Logger& logger) const {
+Status GatherToSplitFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
   GraphViewer graph_viewer(graph);
   const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
 
@@ -142,8 +141,7 @@ Status GatherToSplitFusion::ApplyImpl(Graph& graph, bool& modified, int graph_le
       }
     }
 
-    Node& split_node = graph.AddNode(graph.GenerateNodeName("Split"), "Split", "Split for Fused Gather nodes",
-                                     {node.MutableOutputDefs()[0]}, add_squeeze_node ? split_outputs : gather_outputs);
+    Node& split_node = graph.AddNode(graph.GenerateNodeName("Split"), "Split", "Split for Fused Gather nodes", {node.MutableOutputDefs()[0]}, add_squeeze_node ? split_outputs : gather_outputs);
     split_node.AddAttribute("axis", split_axis);
     split_node.SetExecutionProviderType(node.GetExecutionProviderType());
 
@@ -156,8 +154,7 @@ Status GatherToSplitFusion::ApplyImpl(Graph& graph, bool& modified, int graph_le
     if (onnx_opset_version < 13) {
       if (add_squeeze_node) {
         for (size_t i = 0; i < output_count; ++i) {
-          Node& squeeze_node = graph.AddNode(graph.GenerateNodeName("Squeeze" + std::to_string(i)), "Squeeze",
-                                             "Squeeze for Fused Gather nodes", {split_outputs[i]}, {gather_outputs[i]});
+          Node& squeeze_node = graph.AddNode(graph.GenerateNodeName("Squeeze" + std::to_string(i)), "Squeeze", "Squeeze for Fused Gather nodes", {split_outputs[i]}, {gather_outputs[i]});
           squeeze_node.AddAttribute("axes", std::vector<int64_t>{split_axis});
           squeeze_node.SetExecutionProviderType(node.GetExecutionProviderType());
         }
@@ -178,8 +175,7 @@ Status GatherToSplitFusion::ApplyImpl(Graph& graph, bool& modified, int graph_le
 
         for (size_t i = 0; i < output_count; ++i) {
           Node& squeeze_node =
-              graph.AddNode(graph.GenerateNodeName("Squeeze" + std::to_string(i)), "Squeeze",
-                            "Squeeze for Fused Gather nodes", {split_outputs[i], axes_arg}, {gather_outputs[i]});
+              graph.AddNode(graph.GenerateNodeName("Squeeze" + std::to_string(i)), "Squeeze", "Squeeze for Fused Gather nodes", {split_outputs[i], axes_arg}, {gather_outputs[i]});
           squeeze_node.SetExecutionProviderType(node.GetExecutionProviderType());
         }
       }
@@ -200,8 +196,7 @@ Status GatherToSplitFusion::ApplyImpl(Graph& graph, bool& modified, int graph_le
 Fuse Range->Gather to Slice. Slice kernel is faster than Gather kernel in this case,
 and SliceGrad is much faster than GatherGrad.
 */
-Status GatherToSliceFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
-                                      const logging::Logger& logger) const {
+Status GatherToSliceFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
   GraphViewer graph_viewer(graph);
   const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
 
@@ -254,8 +249,7 @@ Status GatherToSliceFusion::ApplyImpl(Graph& graph, bool& modified, int graph_le
     if (onnx_opset_version < 13) {
       for (size_t i = 0; i < range_input_defs.size(); ++i) {
         Node& unsqueeze_node =
-            graph.AddNode(graph.GenerateNodeName("Unsqueeze_" + std::to_string(i)), "Unsqueeze",
-                          "Unsqueeze for Fused Gather nodes", {range_input_defs[i]}, {unsqueeze_outputs[i]});
+            graph.AddNode(graph.GenerateNodeName("Unsqueeze_" + std::to_string(i)), "Unsqueeze", "Unsqueeze for Fused Gather nodes", {range_input_defs[i]}, {unsqueeze_outputs[i]});
         unsqueeze_node.AddAttribute("axes", std::vector<int64_t>{static_cast<int64_t>(0)});
         unsqueeze_node.SetExecutionProviderType(node.GetExecutionProviderType());
       }
@@ -268,9 +262,7 @@ Status GatherToSliceFusion::ApplyImpl(Graph& graph, bool& modified, int graph_le
       NodeArg* unsqueeze_axes_arg = &graph_utils::AddInitializer(graph, unsqueeze_axes_initializer_proto);
 
       for (size_t i = 0; i < range_input_defs.size(); ++i) {
-        Node& unsqueeze_node = graph.AddNode(graph.GenerateNodeName("Unsqueeze_" + std::to_string(i)), "Unsqueeze",
-                                             "Unsqueeze for Fused Gather nodes",
-                                             {range_input_defs[i], unsqueeze_axes_arg}, {unsqueeze_outputs[i]});
+        Node& unsqueeze_node = graph.AddNode(graph.GenerateNodeName("Unsqueeze_" + std::to_string(i)), "Unsqueeze", "Unsqueeze for Fused Gather nodes", {range_input_defs[i], unsqueeze_axes_arg}, {unsqueeze_outputs[i]});
         unsqueeze_node.SetExecutionProviderType(node.GetExecutionProviderType());
       }
     }
@@ -293,10 +285,7 @@ Status GatherToSliceFusion::ApplyImpl(Graph& graph, bool& modified, int graph_le
       slice_axes_initializer_proto.add_int32_data(static_cast<int32_t>(axis));
     }
     NodeArg* slice_axes_arg = &graph_utils::AddInitializer(graph, slice_axes_initializer_proto);
-    Node& slice_node = graph.AddNode(graph.GenerateNodeName("Slice"), "Slice", "Slice for Fused Gather nodes",
-                                     {gather_node.MutableInputDefs()[0], unsqueeze_outputs[0], unsqueeze_outputs[1],
-                                      slice_axes_arg, unsqueeze_outputs[2]},
-                                     {gather_node.MutableOutputDefs()[0]});
+    Node& slice_node = graph.AddNode(graph.GenerateNodeName("Slice"), "Slice", "Slice for Fused Gather nodes", {gather_node.MutableInputDefs()[0], unsqueeze_outputs[0], unsqueeze_outputs[1], slice_axes_arg, unsqueeze_outputs[2]}, {gather_node.MutableOutputDefs()[0]});
     slice_node.SetExecutionProviderType(gather_node.GetExecutionProviderType());
 
     for (Node& n : nodes_to_fuse) {

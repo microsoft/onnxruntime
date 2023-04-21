@@ -224,9 +224,7 @@ struct MemoryProfiler {
   //    generating customized sessions for a group of tensors
   // Top_k: The steps with the top-k highest memory consumptions are plot. When top_k == 0, we plot all the steps
   // device_t: The type of the device where the tensors are.
-  void CreateEvents(const std::string& p_name, const size_t pid, const MemoryInfo::MapType& map_type,
-                    const std::string& group_name, const size_t top_k,
-                    const OrtDevice::DeviceType device_t = OrtDevice::GPU);
+  void CreateEvents(const std::string& p_name, const size_t pid, const MemoryInfo::MapType& map_type, const std::string& group_name, const size_t top_k, const OrtDevice::DeviceType device_t = OrtDevice::GPU);
 
   const std::vector<std::string>& GetEvents() { return events_; }
 
@@ -277,11 +275,9 @@ struct MemoryProfiler {
   std::unordered_map<size_t, std::unordered_map<size_t, MemoryInfo::AllocationSummary> > summary_;
 
   std::string CreateMetadataEvent(const std::string& process_name, size_t process_id);
-  std::string CreateMemoryEvent(size_t pid, size_t tid, const std::string& name, size_t offset, size_t size,
-                                const std::string& color_name);
+  std::string CreateMemoryEvent(size_t pid, size_t tid, const std::string& name, size_t offset, size_t size, const std::string& color_name);
 
-  std::string CreateSummaryEvent(size_t pid, size_t tid, const MemoryInfo::AllocationSummary& summary, size_t size,
-                                 size_t bytes_for_pattern);
+  std::string CreateSummaryEvent(size_t pid, size_t tid, const MemoryInfo::AllocationSummary& summary, size_t size, size_t bytes_for_pattern);
 
   MemoryInfo memory_info_for_profiler_;
 };

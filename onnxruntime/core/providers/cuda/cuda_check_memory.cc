@@ -11,8 +11,11 @@ void CheckIfMemoryOnCurrentGpuDevice(const void* ptr) {
   int current_device;
   CUDA_CALL_THROW(cudaGetDevice(&current_device));
   ORT_ENFORCE(attrs.device == current_device,
-              "Current CUDA device is ", current_device,
-              " but the memory of pointer ", ptr,
-              " is allocated on device ", attrs.device);
+              "Current CUDA device is ",
+              current_device,
+              " but the memory of pointer ",
+              ptr,
+              " is allocated on device ",
+              attrs.device);
 }
 }  // namespace onnxruntime

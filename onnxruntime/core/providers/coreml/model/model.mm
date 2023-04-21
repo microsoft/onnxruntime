@@ -183,8 +183,7 @@ asm(".linker_option \"-framework\", \"CoreML\"");
   NSURL* compileUrl = [MLModel compileModelAtURL:modelUrl error:&error];
 
   if (error != nil) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Error compiling model ",
-                           [[error localizedDescription] cStringUsingEncoding:NSUTF8StringEncoding]);
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Error compiling model ", [[error localizedDescription] cStringUsingEncoding:NSUTF8StringEncoding]);
   }
 
   compiled_model_path_ = [compileUrl path];
@@ -196,8 +195,7 @@ asm(".linker_option \"-framework\", \"CoreML\"");
   _model = [MLModel modelWithContentsOfURL:compileUrl configuration:config error:&error];
 
   if (error != NULL) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Error Creating MLModel ",
-                           [[error localizedDescription] cStringUsingEncoding:NSUTF8StringEncoding]);
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Error Creating MLModel ", [[error localizedDescription] cStringUsingEncoding:NSUTF8StringEncoding]);
   }
 
   return onnxruntime::common::Status::OK();
@@ -224,8 +222,7 @@ asm(".linker_option \"-framework\", \"CoreML\"");
                                                                   error:&error];
 
   if (error != nil) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Error executing model: ",
-                           [[error localizedDescription] cStringUsingEncoding:NSUTF8StringEncoding]);
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Error executing model: ", [[error localizedDescription] cStringUsingEncoding:NSUTF8StringEncoding]);
   }
 
   for (auto& output : outputs) {
@@ -236,15 +233,13 @@ asm(".linker_option \"-framework\", \"CoreML\"");
         [output_feature featureValueForName:output_name];
 
     if (output_value == nil) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "output_feature has no value for ",
-                             [output_name cStringUsingEncoding:NSUTF8StringEncoding]);
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "output_feature has no value for ", [output_name cStringUsingEncoding:NSUTF8StringEncoding]);
     }
 
     auto* data = [output_value multiArrayValue];
     auto* model_output_data = data.dataPointer;
     if (model_output_data == nullptr) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "model_output_data has no data for ",
-                             [output_name cStringUsingEncoding:NSUTF8StringEncoding]);
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "model_output_data has no data for ", [output_name cStringUsingEncoding:NSUTF8StringEncoding]);
     }
 
     auto model_output_type = data.dataType;
@@ -283,9 +278,7 @@ asm(".linker_option \"-framework\", \"CoreML\"");
                           "Coreml model_output_type is not MLMultiArrayDataTypeInt32 for the case");
         break;
       default:
-        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                               "Output data type is not supported, actual type: ",
-                               type);
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Output data type is not supported, actual type: ", type);
     }
   }
 

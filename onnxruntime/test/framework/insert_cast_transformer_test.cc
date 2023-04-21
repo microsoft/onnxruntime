@@ -219,10 +219,9 @@ TEST(TransformerTest, Fp16NodeWithSubgraph) {
   const Graph& graph = session.GetGraph();
   const auto& nodes = graph.Nodes();
 
-  auto node_with_subgraph_iter = std::find_if(nodes.cbegin(), nodes.cend(),
-                                              [](const Node& node) {
-                                                return node.ContainsSubgraph();
-                                              });
+  auto node_with_subgraph_iter = std::find_if(nodes.cbegin(), nodes.cend(), [](const Node& node) {
+    return node.ContainsSubgraph();
+  });
 
   ASSERT_NE(node_with_subgraph_iter, nodes.cend());
 

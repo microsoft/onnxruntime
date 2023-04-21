@@ -99,8 +99,7 @@ class EquivalenceClass {
         hash_(CalculateHash()) {
   }
 
-  EquivalenceClass(const Node& node, const gsl::span<const EquivalenceClass* const>& explicit_inputs,
-                   OutputIndex output_index, int discriminator)
+  EquivalenceClass(const Node& node, const gsl::span<const EquivalenceClass* const>& explicit_inputs, OutputIndex output_index, int discriminator)
       : op_type_(node.OpType()),
         domain_(node.Domain()),
         inputs_(Normalize(node, explicit_inputs)),
@@ -353,7 +352,8 @@ Status CommonSubexpressionElimination::ApplyImpl(Graph& graph, bool& modified, i
   std::unordered_map<
       const EquivalenceClass*,
       Representative,
-      DeepPointerHash, DeepPointerEquality>
+      DeepPointerHash,
+      DeepPointerEquality>
       value_to_representative;
 
   // Maps every NodeArg to its equivalence class of.
@@ -393,7 +393,8 @@ Status CommonSubexpressionElimination::ApplyImpl(Graph& graph, bool& modified, i
     }
 
     for (OutputIndex output_index = 0, end = static_cast<int>(node->OutputDefs().size());
-         output_index < end; ++output_index) {
+         output_index < end;
+         ++output_index) {
       const NodeArg* output_def = node->OutputDefs()[output_index];
       auto equivalence_class = std::make_unique<EquivalenceClass>(*node, input_values, output_index, discriminator);
       auto* raw_ptr = equivalence_class.get();
@@ -401,8 +402,7 @@ Status CommonSubexpressionElimination::ApplyImpl(Graph& graph, bool& modified, i
       auto it = value_to_representative.find(raw_ptr);
       if (it == value_to_representative.end()) {
         unique_equivalence_classes.push_back(std::move(equivalence_class));
-        it = value_to_representative.emplace_hint(it, raw_ptr,
-                                                  Representative{output_def, node_index, output_index});
+        it = value_to_representative.emplace_hint(it, raw_ptr, Representative{output_def, node_index, output_index});
       }
 
       equivalence_classes[output_def] = it->first;
@@ -420,7 +420,8 @@ Status CommonSubexpressionElimination::ApplyImpl(Graph& graph, bool& modified, i
 
     bool node_output_replaced = false;
     for (OutputIndex output_idx = 0, end = static_cast<int>(node->OutputDefs().size());
-         output_idx < end; ++output_idx) {
+         output_idx < end;
+         ++output_idx) {
       const NodeArg* output_def = node->OutputDefs()[output_idx];
 
       const EquivalenceClass* equivalence_class = equivalence_classes.at(output_def);

@@ -101,12 +101,7 @@ Status QnnModel::ComposeGraph(const GraphViewer& graph_viewer,
   const auto& graph_name = graph_viewer.Name();
   ORT_RETURN_IF_ERROR(SetGraphInputOutputInfo(graph_viewer, fused_node));
 
-  QnnModelWrapper qnn_model_wrapper = QnnModelWrapper(graph_viewer, logger_,
-                                                      qnn_backend_manager_->GetQnnInterface(),
-                                                      qnn_backend_manager_->GetQnnBackendHandle(),
-                                                      model_input_index_map_,
-                                                      model_output_index_map_,
-                                                      initializer_inputs_, cpu_allocator);
+  QnnModelWrapper qnn_model_wrapper = QnnModelWrapper(graph_viewer, logger_, qnn_backend_manager_->GetQnnInterface(), qnn_backend_manager_->GetQnnBackendHandle(), model_input_index_map_, model_output_index_map_, initializer_inputs_, cpu_allocator);
   bool rt = true;
   rt = qnn_model_wrapper.CreateQnnGraph(qnn_backend_manager_->GetQnnContext(), graph_name);
   if (!rt) {
@@ -132,8 +127,7 @@ Status QnnModel::ComposeGraph(const GraphViewer& graph_viewer,
     }
 
     if (const auto* op_builder = GetOpBuilder(node->OpType())) {
-      ORT_RETURN_IF_ERROR(op_builder->AddToModelBuilder(qnn_model_wrapper, node_unit, logger_,
-                                                        is_quantized_model_));
+      ORT_RETURN_IF_ERROR(op_builder->AddToModelBuilder(qnn_model_wrapper, node_unit, logger_, is_quantized_model_));
     }
   }
 

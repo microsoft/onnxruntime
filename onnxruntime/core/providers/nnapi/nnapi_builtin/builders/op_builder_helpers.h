@@ -41,13 +41,15 @@ Status AddScalarOperand(ModelBuilder& model_builder, InlinedVector<uint32_t>& in
 // adds ANEURALNETWORKS_TRANSPOSE operation
 Status AddNnapiTranspose(ModelBuilder& model_builder,
                          const std::string& data_input,
-                         const std::string& perm_input, const gsl::span<const int32_t> perm,
+                         const std::string& perm_input,
+                         const gsl::span<const int32_t> perm,
                          const std::string& output);
 
 // adds ANEURALNETWORKS_RESHAPE operation
 Status AddNnapiReshape(ModelBuilder& model_builder,
                        const std::string& data_input,
-                       const std::string& shape_input, const std::vector<int32_t>& shape_value,
+                       const std::string& shape_input,
+                       const std::vector<int32_t>& shape_value,
                        const std::string& output);
 
 // adds ANEURALNETWORKS_SPLIT operation
@@ -99,9 +101,13 @@ Status AddInitializerTransposed(ModelBuilder& model_builder,
                                 bool is_per_tensor_u8s8);
 
 Status ComputeConvPads(const Shape& input_dimen,
-                       const uint32_t weight_size_y, const uint32_t weight_size_x,
-                       const std::vector<int32_t>& onnx_pads, const std::vector<int32_t>& onnx_strides, const std::vector<int32_t>& onnx_dilations,
-                       AutoPadType auto_pad_type, bool nchw,
+                       const uint32_t weight_size_y,
+                       const uint32_t weight_size_x,
+                       const std::vector<int32_t>& onnx_pads,
+                       const std::vector<int32_t>& onnx_strides,
+                       const std::vector<int32_t>& onnx_dilations,
+                       AutoPadType auto_pad_type,
+                       bool nchw,
                        std::vector<int32_t>& pads_out);
 
 Status HandleAutoPad(const Shape& input_shape,
@@ -118,9 +124,7 @@ Status HandleAutoPad(const Shape& input_shape,
 // Get scales and zero points for the qlinear binary ops (which has 2 input and 1 output)
 // QLinearConv, QLinearMatmul, QLinearAdd, QLinearMul
 // a, b are inputs, and y is output
-Status GetBinaryOpQuantizationScaleAndZeroPoint(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
-                                                float& a_scale, float& b_scale, float& y_scale,
-                                                int32_t& a_zero_point, int32_t& b_zero_point, int32_t& y_zero_point);
+Status GetBinaryOpQuantizationScaleAndZeroPoint(const InitializedTensorSet& initializers, const NodeUnit& node_unit, float& a_scale, float& b_scale, float& y_scale, int32_t& a_zero_point, int32_t& b_zero_point, int32_t& y_zero_point);
 
 // Get scale and zero point for
 // [QLinearConv] input, weight, output
@@ -131,10 +135,7 @@ Status GetBinaryOpQuantizationScaleAndZeroPoint(const InitializedTensorSet& init
 // If the Qlinear[Conv/MatMul] is using per-tensor u8s8, the weight/B tensor
 // will be convert to uint8 later, will return the same scale and 128 as zero point
 // Also will set is_per_tensor_u8s8 to true to be used later
-Status GetConvMatMulOpQuantizationScaleAndZeroPoint(const ModelBuilder& model_builder, const NodeUnit& node_unit,
-                                                    float& a_scale, float& w_scale, float& y_scale,
-                                                    int32_t& a_zero_point, int32_t& w_zero_point, int32_t& y_zero_point,
-                                                    std::optional<std::vector<float>>& w_scales, bool& is_per_tensor_u8s8);
+Status GetConvMatMulOpQuantizationScaleAndZeroPoint(const ModelBuilder& model_builder, const NodeUnit& node_unit, float& a_scale, float& w_scale, float& y_scale, int32_t& a_zero_point, int32_t& w_zero_point, int32_t& y_zero_point, std::optional<std::vector<float>>& w_scales, bool& is_per_tensor_u8s8);
 
 // NNAPI has the quantization scale and zero point embedded in the ANeuralNetworksOperandType
 // ONNX has the quantization scale and zero point as the inputs of the qlinear operators
@@ -175,17 +176,13 @@ Status AddSqueezeOp(ModelBuilder& model_builder,
                     const std::string& output,
                     std::vector<int32_t> axes);
 
-Status AddMinMaxOperator(ModelBuilder& model_builder, const NodeUnit& node_unit,
-                         const std::string& input1, const std::string& input2);
+Status AddMinMaxOperator(ModelBuilder& model_builder, const NodeUnit& node_unit, const std::string& input1, const std::string& input2);
 
-Status AddReshapeOperator(ModelBuilder& model_builder, const NodeUnit& node_unit,
-                          const std::string& input, const std::vector<int32_t>& shape);
+Status AddReshapeOperator(ModelBuilder& model_builder, const NodeUnit& node_unit, const std::string& input, const std::vector<int32_t>& shape);
 
-bool CanSkipReshape(const ModelBuilder& model_builder, const NodeUnit& node_unit,
-                    size_t input_rank, size_t output_rank);
+bool CanSkipReshape(const ModelBuilder& model_builder, const NodeUnit& node_unit, size_t input_rank, size_t output_rank);
 
-Status GetAxesForSqueezeAndUnSqueeze(ModelBuilder& model_builder, const NodeUnit& node_unit,
-                                     std::vector<int32_t>& axes);
+Status GetAxesForSqueezeAndUnSqueeze(ModelBuilder& model_builder, const NodeUnit& node_unit, std::vector<int32_t>& axes);
 
 // Operator support related helpers
 
@@ -208,8 +205,7 @@ bool IsQuantizationZeroPointSupported(const InitializedTensorSet& initializers,
                                       bool is_conv_matmul_u8s8_weight);
 
 // Check if the given quantized input(s) or output(s) is supported
-bool IsQuantizedIOSupported(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
-                            const std::vector<size_t>& indices, const OpSupportCheckParams& params, ArgType arg_type);
+bool IsQuantizedIOSupported(const InitializedTensorSet& initializers, const NodeUnit& node_unit, const std::vector<size_t>& indices, const OpSupportCheckParams& params, ArgType arg_type);
 
 // Some Quantized NNAPI operations have required output scale and zero point
 // e.g. Softmax (uint8) requires output scale be 1.f/256 and zp be 0
@@ -218,7 +214,8 @@ bool HasRequiredScaleAndZeroPoint(const InitializedTensorSet& initializers,
                                   const std::string& op_desc,
                                   const NodeUnitIODef& io_def,
                                   const Path& path,
-                                  float required_scale, int32_t required_zp);
+                                  float required_scale,
+                                  int32_t required_zp);
 
 // performs broadcasting operation on two shapes to make them compatible
 Status PerformBroadcasting(const Shape& shape1, const Shape& shape2, Shape& output_shape);

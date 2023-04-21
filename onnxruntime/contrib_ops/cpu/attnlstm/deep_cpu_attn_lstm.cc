@@ -110,8 +110,7 @@ Status DeepCpuAttnLstmOp::ComputeImpl(OpKernelContext& context) const {
   const Tensor* attn_layer_weights = context.Input<Tensor>(first_attn_input + 5);        // [num_directions, memory_depth+cell_hidden_size, aw_attn_size]
 
   Status status = ValidateInputs(
-      X, W, R, B, sequence_lens, initial_h, initial_c, P, batch_size,
-      am_query_layer_weights, am_memory_layer_weights, am_v_weights, attn_memory, attn_memory_seq_lens, attn_layer_weights);
+      X, W, R, B, sequence_lens, initial_h, initial_c, P, batch_size, am_query_layer_weights, am_memory_layer_weights, am_v_weights, attn_memory, attn_memory_seq_lens, attn_layer_weights);
   ORT_RETURN_IF_ERROR(status);
 
   const int max_memory_step = narrow<int>(attn_memory.Shape()[1]);
@@ -248,7 +247,8 @@ Status DeepCpuAttnLstmOp::ComputeImpl(OpKernelContext& context) const {
         memory_depth,
         query_depth,
         am_attn_size,
-        false, thread_pool);
+        false,
+        thread_pool);
 
     fam.SetWeights(
         FirstHalfSpan(am_v_weights.DataAsSpan<T>()),
@@ -264,18 +264,12 @@ Status DeepCpuAttnLstmOp::ComputeImpl(OpKernelContext& context) const {
         attn_layer_depth,
         hidden_size_,
         has_attention_layer,
-        fam, thread_pool);
+        fam,
+        thread_pool);
     faw.SetWeights(FirstHalfSpan(attn_layer_weights_span));
 
     UniDirectionalAttnLstm<T> fw(
-        alloc, logger,
-        seq_length, batch_size, input_size,
-        hidden_size_, Direction::kForward, input_forget_, faw,
-        bias_1, peephole_weights_1, initial_hidden_1, initial_cell_1,
-        activation_funcs_.Entries()[0],
-        activation_funcs_.Entries()[1],
-        activation_funcs_.Entries()[2],
-        clip_, thread_pool);
+        alloc, logger, seq_length, batch_size, input_size, hidden_size_, Direction::kForward, input_forget_, faw, bias_1, peephole_weights_1, initial_hidden_1, initial_cell_1, activation_funcs_.Entries()[0], activation_funcs_.Entries()[1], activation_funcs_.Entries()[2], clip_, thread_pool);
 
     BahdanauAttention<T> bam(
         alloc,
@@ -285,7 +279,8 @@ Status DeepCpuAttnLstmOp::ComputeImpl(OpKernelContext& context) const {
         memory_depth,
         query_depth,
         am_attn_size,
-        false, thread_pool);
+        false,
+        thread_pool);
     bam.SetWeights(
         SecondHalfSpan(am_v_weights.DataAsSpan<T>()),
         SecondHalfSpan(am_query_layer_weights.DataAsSpan<T>()),
@@ -300,18 +295,12 @@ Status DeepCpuAttnLstmOp::ComputeImpl(OpKernelContext& context) const {
         attn_layer_depth,
         hidden_size_,
         has_attention_layer,
-        bam, thread_pool);
+        bam,
+        thread_pool);
     baw.SetWeights(SecondHalfSpan(attn_layer_weights_span));
 
     UniDirectionalAttnLstm<T> bw(
-        alloc, logger,
-        seq_length, batch_size, input_size,
-        hidden_size_, Direction::kReverse, input_forget_, baw,
-        bias_2, peephole_weights_2, initial_hidden_2, initial_cell_2,
-        activation_funcs_.Entries()[3],
-        activation_funcs_.Entries()[4],
-        activation_funcs_.Entries()[5],
-        clip_, thread_pool);
+        alloc, logger, seq_length, batch_size, input_size, hidden_size_, Direction::kReverse, input_forget_, baw, bias_2, peephole_weights_2, initial_hidden_2, initial_cell_2, activation_funcs_.Entries()[3], activation_funcs_.Entries()[4], activation_funcs_.Entries()[5], clip_, thread_pool);
 
     fw.Compute(input, sequence_lens_span, num_directions_, input_weights_1, recurrent_weights_1, output_1, hidden_output_1, last_cell_1);
     bw.Compute(input, sequence_lens_span, num_directions_, input_weights_2, hidden_weights_2, output_2, hidden_output_2, last_cell_2);
@@ -325,7 +314,8 @@ Status DeepCpuAttnLstmOp::ComputeImpl(OpKernelContext& context) const {
         memory_depth,
         query_depth,
         am_attn_size,
-        false, thread_pool);
+        false,
+        thread_pool);
 
     fam.SetWeights(
         am_v_weights.DataAsSpan<T>(),
@@ -341,19 +331,13 @@ Status DeepCpuAttnLstmOp::ComputeImpl(OpKernelContext& context) const {
         attn_layer_depth,
         hidden_size_,
         has_attention_layer,
-        fam, thread_pool);
+        fam,
+        thread_pool);
 
     faw.SetWeights(attn_layer_weights_span);
 
     UniDirectionalAttnLstm<T> fw(
-        alloc, logger,
-        seq_length, batch_size, input_size,
-        hidden_size_, direction_, input_forget_, faw,
-        bias_1, peephole_weights_1, initial_hidden_1, initial_cell_1,
-        activation_funcs_.Entries()[0],
-        activation_funcs_.Entries()[1],
-        activation_funcs_.Entries()[2],
-        clip_, thread_pool);
+        alloc, logger, seq_length, batch_size, input_size, hidden_size_, direction_, input_forget_, faw, bias_1, peephole_weights_1, initial_hidden_1, initial_cell_1, activation_funcs_.Entries()[0], activation_funcs_.Entries()[1], activation_funcs_.Entries()[2], clip_, thread_pool);
 
     fw.Compute(input, sequence_lens_span, num_directions_, input_weights_1, recurrent_weights_1, output_1, hidden_output_1, last_cell_1);
   }
@@ -395,33 +379,27 @@ static Status ValidateRnnInputsWithExtraInputFromState(
       W_shape[0] != num_directions ||
       W_shape[1] != hidden_size * WRB_dim_1_multipler ||
       W_shape[2] != input_size)
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input W must have shape {",
-                           num_directions, ",", WRB_dim_1_multipler, "*", hidden_size, ",",
-                           input_size, "}. Actual:", W_shape);
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input W must have shape {", num_directions, ",", WRB_dim_1_multipler, "*", hidden_size, ",", input_size, "}. Actual:", W_shape);
 
   if (R_shape.NumDimensions() != 3 ||
       R_shape[0] != num_directions ||
       R_shape[1] != hidden_size * WRB_dim_1_multipler ||
       R_shape[2] != hidden_size)
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input R must have shape {",
-                           num_directions, ",", WRB_dim_1_multipler, "*", hidden_size, ",",
-                           hidden_size, "}. Actual:", R_shape);
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input R must have shape {", num_directions, ",", WRB_dim_1_multipler, "*", hidden_size, ",", hidden_size, "}. Actual:", R_shape);
 
   if (B != nullptr) {
     auto& B_shape = B->Shape();
     if (B_shape.NumDimensions() != 2 ||
         B_shape[0] != num_directions ||
         B_shape[1] != 2 * WRB_dim_1_multipler * hidden_size)
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input B must have shape {",
-                             num_directions, ",", 2 * WRB_dim_1_multipler, "*", hidden_size, "}. Actual:", B_shape);
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input B must have shape {", num_directions, ",", 2 * WRB_dim_1_multipler, "*", hidden_size, "}. Actual:", B_shape);
   }
 
   if (sequence_lens != nullptr) {
     auto& sequence_lens_shape = sequence_lens->Shape();
     if (sequence_lens_shape.NumDimensions() != 1 ||
         sequence_lens_shape[0] != batch_size) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input sequence_lens must have shape {",
-                             batch_size, "}. Actual:", sequence_lens_shape);
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input sequence_lens must have shape {", batch_size, "}. Actual:", sequence_lens_shape);
     }
 
     auto sequence_len_entries = sequence_lens->DataAsSpan<int>();
@@ -429,8 +407,7 @@ static Status ValidateRnnInputsWithExtraInputFromState(
                     sequence_len_entries.end(),
                     [seq_length](int len) { return len <= 0 || len > seq_length; })) {
       return ORT_MAKE_STATUS(
-          ONNXRUNTIME, INVALID_ARGUMENT,
-          "Invalid value/s in sequence_lens. All values must be > 0 and < seq_length. seq_length=", seq_length);
+          ONNXRUNTIME, INVALID_ARGUMENT, "Invalid value/s in sequence_lens. All values must be > 0 and < seq_length. seq_length=", seq_length);
     }
   }
 
@@ -442,43 +419,31 @@ static Status ValidateRnnInputsWithExtraInputFromState(
         initial_h_shape[1] != batch_size ||
         initial_h_shape[2] != hidden_size)
 
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Input initial_h must have shape {",
-                             num_directions, ",", batch_size, ",", hidden_size, "}. Actual:", initial_h_shape);
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Input initial_h must have shape {", num_directions, ",", batch_size, ",", hidden_size, "}. Actual:", initial_h_shape);
   }
 
   return Status::OK();
 }  // namespace detail
 
 Status DeepCpuAttnLstmOp::ValidateInputs(
-    const Tensor& X, const Tensor& W, const Tensor& R, const Tensor* B,
-    const Tensor* sequence_lens, const Tensor* initial_h, const Tensor* initial_c,
-    const Tensor* P, int batch_size,
-    const Tensor& am_query_layer_weights, const Tensor& am_memory_layer_weights, const Tensor& am_v_weights,
-    const Tensor& attn_memory, const Tensor* attn_memory_seq_lens, const Tensor* attn_layer_weights) const {
+    const Tensor& X, const Tensor& W, const Tensor& R, const Tensor* B, const Tensor* sequence_lens, const Tensor* initial_h, const Tensor* initial_c, const Tensor* P, int batch_size, const Tensor& am_query_layer_weights, const Tensor& am_memory_layer_weights, const Tensor& am_v_weights, const Tensor& attn_memory, const Tensor* attn_memory_seq_lens, const Tensor* attn_layer_weights) const {
   // Check memory of [batch_size, max_memory_step, memory_depth_], its sequence length of [batch_size]
   auto memory_shape = attn_memory.Shape();
   if (memory_shape.NumDimensions() != 3 || memory_shape[0] != batch_size) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Attention mechanism memory shape error! Expected: {", batch_size,
-                           "}, actural: ", memory_shape);
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Attention mechanism memory shape error! Expected: {", batch_size, "}, actural: ", memory_shape);
   }
   const int max_memory_step = narrow<int>(memory_shape[1]);
   const int memory_depth = narrow<int>(memory_shape[2]);
   if (attn_memory_seq_lens != nullptr) {
     auto memory_seq_lens_shape = attn_memory_seq_lens->Shape();
     if (memory_seq_lens_shape.NumDimensions() != 1 || memory_seq_lens_shape[0] != batch_size) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Attention mechanism memory sequence lengths must have shape {", batch_size,
-                             "}, actural: ", memory_seq_lens_shape);
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Attention mechanism memory sequence lengths must have shape {", batch_size, "}, actural: ", memory_seq_lens_shape);
     }
     const gsl::span<const int> mem_seq_lens_span = attn_memory_seq_lens->DataAsSpan<int>();
     auto item_not_in_range = std::find_if(
-        mem_seq_lens_span.begin(), mem_seq_lens_span.end(),
-        [max_memory_step](int len) { return len <= 0 || len > max_memory_step; });
+        mem_seq_lens_span.begin(), mem_seq_lens_span.end(), [max_memory_step](int len) { return len <= 0 || len > max_memory_step; });
     if (item_not_in_range != mem_seq_lens_span.end()) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Attention mechanism memory sequence lengths value must in (0, ",
-                             max_memory_step, "], while ", *item_not_in_range, " found!");
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Attention mechanism memory sequence lengths value must in (0, ", max_memory_step, "], while ", *item_not_in_range, " found!");
     }
   }
 
@@ -487,9 +452,7 @@ Status DeepCpuAttnLstmOp::ValidateInputs(
   if (memory_layer_shape.NumDimensions() != 3 ||
       memory_layer_shape[0] != num_directions_ ||
       memory_layer_shape[1] != memory_depth) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Attention memory layer weight shape error! Expected:{",
-                           num_directions_, ",", memory_depth, ", am_attn_size}, Got:", memory_layer_shape);
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Attention memory layer weight shape error! Expected:{", num_directions_, ",", memory_depth, ", am_attn_size}, Got:", memory_layer_shape);
   }
   const int am_attn_size = narrow<int>(memory_layer_shape[2]);
 
@@ -499,9 +462,7 @@ Status DeepCpuAttnLstmOp::ValidateInputs(
       query_layer_shape[0] != num_directions_ ||
       query_layer_shape[1] != hidden_size_ ||
       query_layer_shape[2] != am_attn_size) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Attention query layer weight shape error! Expected:{",
-                           num_directions_, ", ", hidden_size_, ", ", am_attn_size, "}, Got: ", query_layer_shape);
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Attention query layer weight shape error! Expected:{", num_directions_, ", ", hidden_size_, ", ", am_attn_size, "}, Got: ", query_layer_shape);
   }
 
   // check attention v for [num_directions, am_attn_size]
@@ -509,9 +470,7 @@ Status DeepCpuAttnLstmOp::ValidateInputs(
   if (v_shape.NumDimensions() != 2 ||
       v_shape[0] != num_directions_ ||
       v_shape[1] != am_attn_size) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Attention v weight shape error! Expected:{", num_directions_, ", ", am_attn_size,
-                           "}. Got: ", v_shape);
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Attention v weight shape error! Expected:{", num_directions_, ", ", am_attn_size, "}. Got: ", v_shape);
   }
 
   // Check attention layer weights for [num_directions, memory_depth+cell_hidden_size, aw_attn_size]
@@ -522,9 +481,7 @@ Status DeepCpuAttnLstmOp::ValidateInputs(
     if (attn_layer_shape.NumDimensions() != 3 ||
         attn_layer_shape[0] != num_directions_ ||
         attn_layer_shape[1] != memory_depth + hidden_size_) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Attention layer weight shape error! Expected: {", num_directions_, ", ",
-                             memory_depth + hidden_size_, ", aw_attn_size}. Got:", attn_layer_shape);
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Attention layer weight shape error! Expected: {", num_directions_, ", ", memory_depth + hidden_size_, ", aw_attn_size}. Got:", attn_layer_shape);
     }
     aw_attn_size = narrow<int>(attn_layer_shape[2]);
   }
@@ -541,8 +498,7 @@ Status DeepCpuAttnLstmOp::ValidateInputs(
         initial_c_shape[1] != batch_size ||
         initial_c_shape[2] != hidden_size_)
 
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Input initial_c must have shape {",
-                             num_directions_, ",", batch_size, ",", hidden_size_, "}. Actual:", initial_c_shape);
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Input initial_c must have shape {", num_directions_, ",", batch_size, ",", hidden_size_, "}. Actual:", initial_c_shape);
   }
 
   if (P != nullptr) {
@@ -552,8 +508,7 @@ Status DeepCpuAttnLstmOp::ValidateInputs(
         p_shape[0] != num_directions_ ||
         p_shape[1] != 3 * hidden_size_)
 
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Input P must have shape {",
-                             num_directions_, ",", 3 * hidden_size_, "}. Actual:", p_shape);
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Input P must have shape {", num_directions_, ",", 3 * hidden_size_, "}. Actual:", p_shape);
   }
 
   return Status::OK();

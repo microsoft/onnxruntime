@@ -21,40 +21,7 @@ std::once_flag flag;
  **/
 std::vector<NodeIndex> SupportONNXModel(const GraphViewer& graph_viewer) {
   static std::set<std::string> cann_supported_ops = {
-      "Abs", "Acos", "Acosh", "Add",
-      "And", "ArgMax", "ArgMin", "Asin",
-      "Asinh", "Atan", "Atanh", "AveragePool",
-      "BatchNormalization", "BitShift", "Cast", "Ceil",
-      "Celu", "Clip", "Compress", "Concat",
-      "Constant", "ConstantOfShape", "Conv", "ConvTranspose",
-      "Cos", "Cosh", "CumSum", "DepthToSpace",
-      "Det", "Div", "Dropout", "Elu",
-      "Equal", "Erf", "Exp", "Expand",
-      "EyeLike", "Flatten", "Floor", "Gather",
-      "GatherElements", "GatherND", "Gemm", "GlobalAveragePool",
-      "GlobalLpPool", "GlobalMaxPool", "Greater", "GreaterOrEqual",
-      "Hardmax", "HardSigmoid", "HardSwish", "Identity",
-      "InstanceNormalization", "LeakyRelu", "Less",
-      "LessOrEqual", "Log", "LogSoftmax", "LpNormalization",
-      "LpPool", "LRN", "LSTM", "MatMul",
-      "Max", "MaxPool", "MaxRoiPool", "MaxUnpool",
-      "Mean", "MeanVarianceNormalization", "Min", "Mod",
-      "Mul", "Multinomial", "Neg", "NonMaxSuppression",
-      "NonZero", "Not", "OneHot", "Or",
-      "Pad", "Pow", "PRelu", "RandomNormalLike",
-      "RandomUniform", "RandomUniformLike", "Range", "Reciprocal",
-      "ReduceL1", "ReduceL2", "ReduceLogSum", "ReduceLogSumExp",
-      "ReduceMax", "ReduceMean", "ReduceMin", "ReduceProd",
-      "ReduceSum", "ReduceSumSquare", "Relu", "Reshape",
-      "Resize", "ReverseSequence", "RoiAlign", "Round",
-      "Scatter", "ScatterElements", "ScatterND", "Selu",
-      "Shape", "Shrink", "Sigmoid", "Sign",
-      "Sin", "Sinh", "Size", "Slice",
-      "Softmax", "SoftmaxCrossEntropyLoss", "Softplus", "Softsign",
-      "SpaceToDepth", "Split", "Sqrt", "Squeeze",
-      "Sub", "Sum", "Tanh", "TfIdfVectorizer",
-      "ThresholdedRelu", "Tile", "TopK", "Transpose",
-      "Unsqueeze", "Where", "Xor"};
+      "Abs", "Acos", "Acosh", "Add", "And", "ArgMax", "ArgMin", "Asin", "Asinh", "Atan", "Atanh", "AveragePool", "BatchNormalization", "BitShift", "Cast", "Ceil", "Celu", "Clip", "Compress", "Concat", "Constant", "ConstantOfShape", "Conv", "ConvTranspose", "Cos", "Cosh", "CumSum", "DepthToSpace", "Det", "Div", "Dropout", "Elu", "Equal", "Erf", "Exp", "Expand", "EyeLike", "Flatten", "Floor", "Gather", "GatherElements", "GatherND", "Gemm", "GlobalAveragePool", "GlobalLpPool", "GlobalMaxPool", "Greater", "GreaterOrEqual", "Hardmax", "HardSigmoid", "HardSwish", "Identity", "InstanceNormalization", "LeakyRelu", "Less", "LessOrEqual", "Log", "LogSoftmax", "LpNormalization", "LpPool", "LRN", "LSTM", "MatMul", "Max", "MaxPool", "MaxRoiPool", "MaxUnpool", "Mean", "MeanVarianceNormalization", "Min", "Mod", "Mul", "Multinomial", "Neg", "NonMaxSuppression", "NonZero", "Not", "OneHot", "Or", "Pad", "Pow", "PRelu", "RandomNormalLike", "RandomUniform", "RandomUniformLike", "Range", "Reciprocal", "ReduceL1", "ReduceL2", "ReduceLogSum", "ReduceLogSumExp", "ReduceMax", "ReduceMean", "ReduceMin", "ReduceProd", "ReduceSum", "ReduceSumSquare", "Relu", "Reshape", "Resize", "ReverseSequence", "RoiAlign", "Round", "Scatter", "ScatterElements", "ScatterND", "Selu", "Shape", "Shrink", "Sigmoid", "Sign", "Sin", "Sinh", "Size", "Slice", "Softmax", "SoftmaxCrossEntropyLoss", "Softplus", "Softsign", "SpaceToDepth", "Split", "Sqrt", "Squeeze", "Sub", "Sum", "Tanh", "TfIdfVectorizer", "ThresholdedRelu", "Tile", "TopK", "Transpose", "Unsqueeze", "Where", "Xor"};
 
   std::vector<NodeIndex> unsupported_nodes;
 
@@ -95,8 +62,7 @@ Status ParserONNXModel(std::string string_model, ge::Graph& graph) {
   return Status::OK();
 }
 
-Status BuildONNXModel(ge::Graph& graph, std::string input_shape, const char* soc_name, std::string file_name,
-                      CANNExecutionProviderInfo& info, ge::ModelBufferData& model) {
+Status BuildONNXModel(ge::Graph& graph, std::string input_shape, const char* soc_name, std::string file_name, CANNExecutionProviderInfo& info, ge::ModelBufferData& model) {
   std::call_once(flag, [&soc_name, &info]() {
     std::map<ge::AscendString, ge::AscendString> options;
     options.emplace(ge::ir_option::SOC_VERSION, soc_name);

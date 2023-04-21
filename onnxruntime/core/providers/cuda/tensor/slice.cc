@@ -13,7 +13,8 @@ namespace cuda {
   ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                               \
       Slice,                                                             \
       kOnnxDomain,                                                       \
-      1, 9,                                                              \
+      1,                                                                 \
+      9,                                                                 \
       TIND,                                                              \
       kCudaExecutionProvider,                                            \
       (*KernelDefBuilder::Create())                                      \
@@ -26,7 +27,8 @@ REGISTER_VERSIONED_TYPED_SLICE(int64_t)
   ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                              \
       Slice,                                                            \
       kOnnxDomain,                                                      \
-      10, 10,                                                           \
+      10,                                                               \
+      10,                                                               \
       TIND,                                                             \
       kCudaExecutionProvider,                                           \
       (*KernelDefBuilder::Create())                                     \
@@ -45,7 +47,8 @@ REGISTER_V10_TYPED_SLICE(int64_t)
   ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                              \
       Slice,                                                            \
       kOnnxDomain,                                                      \
-      11, 12,                                                           \
+      11,                                                               \
+      12,                                                               \
       TIND,                                                             \
       kCudaExecutionProvider,                                           \
       (*KernelDefBuilder::Create())                                     \
@@ -80,10 +83,14 @@ REGISTER_V13_TYPED_SLICE(int32_t)
 REGISTER_V13_TYPED_SLICE(int64_t)
 
 static Status SliceImpCore(cudaStream_t stream,
-                           const void* input_data, void* output_data,
-                           size_t element_size, size_t dimension_count,
-                           const TArray<int64_t>& starts_buffer, const TArray<int64_t>& steps_buffer,
-                           const TArray<int64_t>& input_strides, const TArray<fast_divmod>& output_strides,
+                           const void* input_data,
+                           void* output_data,
+                           size_t element_size,
+                           size_t dimension_count,
+                           const TArray<int64_t>& starts_buffer,
+                           const TArray<int64_t>& steps_buffer,
+                           const TArray<int64_t>& input_strides,
+                           const TArray<fast_divmod>& output_strides,
                            const TensorShape& output_shape) {
   if (output_shape.Size() == 0) {
     return Status::OK();
@@ -103,9 +110,7 @@ static Status SliceImpCore(cudaStream_t stream,
 
 namespace SliceCuda {
 
-static Status ComputeSliceStrides(const TensorShape& input_shape, TArray<int64_t>& input_strides,
-                                  TArray<fast_divmod>& output_strides,
-                                  SliceOp::PrepareForComputeMetadata& compute_metadata) {
+static Status ComputeSliceStrides(const TensorShape& input_shape, TArray<int64_t>& input_strides, TArray<fast_divmod>& output_strides, SliceOp::PrepareForComputeMetadata& compute_metadata) {
   // If we were able to coalesce the input and output shapes, use the new shapes to compute the strides.
   const auto input_dimensions = input_shape.GetDims();
   size_t rank = compute_metadata.p_flattened_input_dims_ ? compute_metadata.p_flattened_input_dims_->size()
@@ -194,10 +199,7 @@ Status Slice<dynamic>::ComputeInternal(OpKernelContext* ctx) const {
   // It may seem that we may use `SliceImpCore()` directly, but we need to go through `CallSliceImp()` because
   // `ComputeInternal()` is shared between the inferencing and training kernels and the training kernel overrides
   // `CallSliceImp()`
-  ORT_RETURN_IF_ERROR(CallSliceImp(input_tensor->DataType()->Size(), input_dimensions.size(), starts_buffer,
-                                   steps_buffer, input_strides,
-                                   output_strides, ctx,
-                                   output_shape));
+  ORT_RETURN_IF_ERROR(CallSliceImp(input_tensor->DataType()->Size(), input_dimensions.size(), starts_buffer, steps_buffer, input_strides, output_strides, ctx, output_shape));
 
   return Status::OK();
 }
@@ -208,18 +210,12 @@ const Tensor* Slice<dynamic>::GetSlicedOrUnslicedTensor(OpKernelContext* ctx) co
 }
 
 template <bool dynamic>
-Status Slice<dynamic>::FillInputVectors(OpKernelContext* ctx, TensorShapeVector& input_starts,
-                                        TensorShapeVector& input_ends, TensorShapeVector& input_axes,
-                                        TensorShapeVector& input_steps) const {
-  return FillVectorsFromInput(*ctx->Input<Tensor>(1), *ctx->Input<Tensor>(2), ctx->Input<Tensor>(3),
-                              ctx->Input<Tensor>(4), input_starts, input_ends, input_axes, input_steps);
+Status Slice<dynamic>::FillInputVectors(OpKernelContext* ctx, TensorShapeVector& input_starts, TensorShapeVector& input_ends, TensorShapeVector& input_axes, TensorShapeVector& input_steps) const {
+  return FillVectorsFromInput(*ctx->Input<Tensor>(1), *ctx->Input<Tensor>(2), ctx->Input<Tensor>(3), ctx->Input<Tensor>(4), input_starts, input_ends, input_axes, input_steps);
 }
 
 template <bool dynamic>
-Status Slice<dynamic>::CallSliceImp(size_t element_size, size_t dimension_count, const TArray<int64_t>& starts_buffer,
-                                    const TArray<int64_t>& steps_buffer, const TArray<int64_t>& input_strides,
-                                    const TArray<fast_divmod>& output_strides, OpKernelContext* ctx,
-                                    const TensorShape& output_shape) const {
+Status Slice<dynamic>::CallSliceImp(size_t element_size, size_t dimension_count, const TArray<int64_t>& starts_buffer, const TArray<int64_t>& steps_buffer, const TArray<int64_t>& input_strides, const TArray<fast_divmod>& output_strides, OpKernelContext* ctx, const TensorShape& output_shape) const {
   const auto* input_tensor = ctx->Input<Tensor>(0);
   auto* output_tensor = ctx->Output(0, output_shape);
 

@@ -96,27 +96,27 @@ Status Gemm<T>::ComputeInternal(OpKernelContext* ctx) const {
     } else if (b_shape.NumDimensions() == 1 || b_shape[0] == 1) {
       // B is (N,) or (1, N), broadcast using Y(N,M) = 1 * B(N,1) x ones(1,M) + 0 * Y
       ORT_RETURN_IF_ERROR(tunable::blas::column_major::Gemm(
-          GetTuningContext(), Stream(ctx), GetRocblasHandle(ctx),
-          tunable::blas::BlasOp::NonTrans,
-          tunable::blas::BlasOp::NonTrans,
-          N, M, 1,
+          GetTuningContext(), Stream(ctx), GetRocblasHandle(ctx), tunable::blas::BlasOp::NonTrans, tunable::blas::BlasOp::NonTrans, N, M, 1,
           /*alpha=*/1.0f,
-          b_data, N,
-          GetConstOnes<HipT>(M, Stream(ctx)), 1,
+          b_data,
+          N,
+          GetConstOnes<HipT>(M, Stream(ctx)),
+          1,
           /*beta=*/0.0f,
-          out_data, N));
+          out_data,
+          N));
     } else if (b_shape.NumDimensions() == 2 && b_shape[1] == 1) {
       // B is (M, 1), broadcast using Y(N,M) = 1 * ones(N,1) x B(1,M) + 0 * Y
       ORT_RETURN_IF_ERROR(tunable::blas::column_major::Gemm(
-          GetTuningContext(), Stream(ctx), GetRocblasHandle(ctx),
-          tunable::blas::BlasOp::NonTrans,
-          tunable::blas::BlasOp::NonTrans,
-          N, M, 1,
+          GetTuningContext(), Stream(ctx), GetRocblasHandle(ctx), tunable::blas::BlasOp::NonTrans, tunable::blas::BlasOp::NonTrans, N, M, 1,
           /*alpha=*/1.0f,
-          GetConstOnes<HipT>(N, Stream(ctx)), N,
-          b_data, 1,
+          GetConstOnes<HipT>(N, Stream(ctx)),
+          N,
+          b_data,
+          1,
           /*beta=*/0.0f,
-          out_data, N));
+          out_data,
+          N));
     } else {
       // B is (M, N), no broadcast needed.
       HIP_RETURN_IF_ERROR(hipMemcpyAsync(out_data, b_data, M * N * sizeof(T), hipMemcpyDeviceToDevice, Stream(ctx)));
@@ -124,18 +124,12 @@ Status Gemm<T>::ComputeInternal(OpKernelContext* ctx) const {
   }
 
   return tunable::blas::column_major::Gemm(
-      GetTuningContext(), Stream(ctx),
-      GetRocblasHandle(ctx),
-      trans_B_ ? BlasOp::Trans : BlasOp::NonTrans,
-      trans_A_ ? BlasOp::Trans : BlasOp::NonTrans,
-      N, M, K,
-      alpha_,
-      reinterpret_cast<const HipT*>(W->Data<T>()), (trans_B_ ? K : N),
-      reinterpret_cast<const HipT*>(X->Data<T>()), (trans_A_ ? M : K),
+      GetTuningContext(), Stream(ctx), GetRocblasHandle(ctx), trans_B_ ? BlasOp::Trans : BlasOp::NonTrans, trans_A_ ? BlasOp::Trans : BlasOp::NonTrans, N, M, K, alpha_, reinterpret_cast<const HipT*>(W->Data<T>()), (trans_B_ ? K : N), reinterpret_cast<const HipT*>(X->Data<T>()), (trans_A_ ? M : K),
       // ideally we need to set the output buffer contents to 0 if bias is missing,
       // but passing 0 for beta is cheaper and it will ignore any junk in the output buffer
       B != nullptr ? beta_ : 0.0f,
-      out_data, N);
+      out_data,
+      N);
 }
 
 }  // namespace rocm

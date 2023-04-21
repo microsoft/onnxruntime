@@ -299,8 +299,7 @@ TEST(OrtModelOnlyTests, ValidateOrtFormatModelDoesNotRunOptimizersInFullBuild) {
 
   OrtValue ml_value;
   std::vector<float> data(28 * 28, 0.0);
-  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault), {1, 1, 28, 28}, data,
-                       &ml_value);
+  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault), {1, 1, 28, 28}, data, &ml_value);
   test_info.inputs.insert(std::make_pair("Input3", ml_value));
 
   // prepare outputs
@@ -325,8 +324,7 @@ TEST(OrtModelOnlyTests, SerializeToOrtFormat) {
   test_info.configs.push_back(std::make_pair(kOrtSessionOptionsConfigLoadModelFormat, "ORT"));
 
   OrtValue ml_value;
-  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault), {1}, {123.f},
-                       &ml_value);
+  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault), {1}, {123.f}, &ml_value);
   test_info.inputs.insert(std::make_pair("state_var_in", ml_value));
 
   // prepare outputs
@@ -429,17 +427,18 @@ TEST(OrtModelOnlyTests, UpdateOrtModelVersion) {
 
   RandomValueGenerator random{};  // keep in scope so we get random seed trace message on failure
 
-  TestOrtModelUpdate(onnx_file, ort_file_v4, ort_file_v5,
-                     [&](NameMLValMap& inputs, std::vector<std::string>& output_names) {
-                       std::vector<int64_t> input_dims{1, 1, 28, 28};
-                       std::vector<float> input_data = random.Gaussian<float>(input_dims, 0.0f, 0.9f);
-                       OrtValue ml_value;
-                       CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault),
-                                            input_dims, input_data, &ml_value);
+  TestOrtModelUpdate(onnx_file, ort_file_v4, ort_file_v5, [&](NameMLValMap& inputs, std::vector<std::string>& output_names) {
+    std::vector<int64_t> input_dims{1, 1, 28, 28};
+    std::vector<float> input_data = random.Gaussian<float>(input_dims, 0.0f, 0.9f);
+    OrtValue ml_value;
+    CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault),
+                         input_dims,
+                         input_data,
+                         &ml_value);
 
-                       inputs = {{"Input3", ml_value}};
-                       output_names = {"Plus214_Output_0"};
-                     });
+    inputs = {{"Input3", ml_value}};
+    output_names = {"Plus214_Output_0"};
+  });
 }
 
 // test that a model with saved runtime optimizations can also be updated
@@ -452,20 +451,21 @@ TEST(OrtModelOnlyTests, UpdateOrtModelVersionWithSavedRuntimeOptimizations) {
 
   RandomValueGenerator random{};  // keep in scope so we get random seed trace message on failure
 
-  TestOrtModelUpdate(onnx_file, ort_file_v4, ort_file_v5,
-                     [&](NameMLValMap& inputs, std::vector<std::string>& output_names) {
-                       constexpr int n = 3;  // number of QDQ convs
-                       for (size_t i = 0; i < n; ++i) {
-                         std::vector<int64_t> input_dims{1, 1, 5, 5};
-                         std::vector<uint8_t> input_data = random.Uniform<uint8_t>(input_dims, 0, 255);
-                         OrtValue ml_value;
-                         CreateMLValue<uint8_t>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault),
-                                                input_dims, input_data, &ml_value);
+  TestOrtModelUpdate(onnx_file, ort_file_v4, ort_file_v5, [&](NameMLValMap& inputs, std::vector<std::string>& output_names) {
+    constexpr int n = 3;  // number of QDQ convs
+    for (size_t i = 0; i < n; ++i) {
+      std::vector<int64_t> input_dims{1, 1, 5, 5};
+      std::vector<uint8_t> input_data = random.Uniform<uint8_t>(input_dims, 0, 255);
+      OrtValue ml_value;
+      CreateMLValue<uint8_t>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault),
+                             input_dims,
+                             input_data,
+                             &ml_value);
 
-                         inputs.emplace(MakeString("X_", i), std::move(ml_value));
-                         output_names.push_back(MakeString("Y_", i));
-                       }
-                     });
+      inputs.emplace(MakeString("X_", i), std::move(ml_value));
+      output_names.push_back(MakeString("Y_", i));
+    }
+  });
 }
 
 #if !defined(DISABLE_ML_OPS)
@@ -479,8 +479,7 @@ TEST(OrtModelOnlyTests, SerializeToOrtFormatMLOps) {
   test_info.configs.push_back(std::make_pair(kOrtSessionOptionsConfigLoadModelFormat, "ORT"));
 
   OrtValue ml_value;
-  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault), {3, 2},
-                       {0.f, 1.f, 1.f, 1.f, 2.f, 0.f}, &ml_value);
+  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault), {3, 2}, {0.f, 1.f, 1.f, 1.f, 2.f, 0.f}, &ml_value);
   test_info.inputs.insert(std::make_pair("input", ml_value));
 
   // prepare outputs
@@ -530,8 +529,7 @@ OrtModelTestInfo GetTestInfoForLoadOrtFormatModel() {
   test_info.logid = "LoadOrtFormatModel";
 
   OrtValue ml_value;
-  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault), {1}, {123.f},
-                       &ml_value);
+  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault), {1}, {123.f}, &ml_value);
   test_info.inputs.insert(std::make_pair("state_var_in", ml_value));
 
   // prepare outputs
@@ -584,8 +582,7 @@ OrtModelTestInfo GetTestInfoForLoadOrtFormatModelMLOps() {
   test_info.logid = "LoadOrtFormatModelMLOps";
 
   OrtValue ml_value;
-  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault), {3, 2},
-                       {0.f, 1.f, 1.f, 1.f, 2.f, 0.f}, &ml_value);
+  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault), {3, 2}, {0.f, 1.f, 1.f, 1.f, 2.f, 0.f}, &ml_value);
   test_info.inputs.insert(std::make_pair("input", ml_value));
 
   // prepare outputs

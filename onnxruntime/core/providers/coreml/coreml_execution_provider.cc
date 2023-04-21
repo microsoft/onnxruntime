@@ -68,22 +68,22 @@ CoreMLExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
     return MakeString(COREML, "_", model_hash, "_", metadef_id);
   };
 
-  result = utils::CreateSupportedPartitions(graph_viewer, supported_nodes, {},
-                                            gen_metadef_name, COREML, kCoreMLExecutionProvider);
+  result = utils::CreateSupportedPartitions(graph_viewer, supported_nodes, {}, gen_metadef_name, COREML, kCoreMLExecutionProvider);
 
   const auto num_of_partitions = result.size();
   const auto num_of_supported_nodes = std::transform_reduce(
-      result.begin(), result.end(),
-      size_t{0}, std::plus<>{},
-      [](const auto& partition) -> size_t {
+      result.begin(), result.end(), size_t{0}, std::plus<>{}, [](const auto& partition) -> size_t {
         return partition && partition->sub_graph ? partition->sub_graph->nodes.size() : 0;
       });
 
   const auto summary_msg = MakeString(
       "CoreMLExecutionProvider::GetCapability,",
-      " number of partitions supported by CoreML: ", num_of_partitions,
-      " number of nodes in the graph: ", graph_viewer.NumberOfNodes(),
-      " number of nodes supported by CoreML: ", num_of_supported_nodes);
+      " number of partitions supported by CoreML: ",
+      num_of_partitions,
+      " number of nodes in the graph: ",
+      graph_viewer.NumberOfNodes(),
+      " number of nodes supported by CoreML: ",
+      num_of_supported_nodes);
 
   // If the graph is partitioned in multiple subgraphs, and this may impact performance,
   // we want to give users a summary message at warning level.
@@ -213,8 +213,7 @@ common::Status CoreMLExecutionProvider::Compile(const std::vector<FusedNodeAndGr
               output_buffer = output_tensor.GetTensorMutableData<int64_t>();
               break;
             default:
-              return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                                     "Unsupported type: ", output_type, " for output: ", output_name);
+              return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unsupported type: ", output_type, " for output: ", output_name);
               break;
           }
 
@@ -242,8 +241,7 @@ common::Status CoreMLExecutionProvider::Compile(const std::vector<FusedNodeAndGr
     NodeComputeInfo compute_info;
     compute_info.create_state_func = [](ComputeContext* /*context*/, FunctionState* /*state*/) { return 0; };
     compute_info.release_state_func = [](FunctionState /*state*/) {};
-    compute_info.compute_func = [](FunctionState /* state */, const OrtApi* /* api */,
-                                   OrtKernelContext* /* context */) {
+    compute_info.compute_func = [](FunctionState /* state */, const OrtApi* /* api */, OrtKernelContext* /* context */) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "Compute is not supported in this build.");
     };
     node_compute_funcs.push_back(compute_info);

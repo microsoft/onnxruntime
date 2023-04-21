@@ -66,7 +66,9 @@ struct HasIsSupportedMethod {
 
 template <typename T, typename Arg>
 struct HasIsSupportedMethod<
-    T, Arg, std::enable_if_t<std::is_same_v<decltype(std::declval<T>().IsSupported(std::declval<Arg>())), Status>>> {
+    T,
+    Arg,
+    std::enable_if_t<std::is_same_v<decltype(std::declval<T>().IsSupported(std::declval<Arg>())), Status>>> {
   constexpr static bool value = true;
 };
 
@@ -79,9 +81,7 @@ struct HasIsSupportedMethod<
 template <typename ParamsT>
 class Op {
  public:
-  template <typename T, typename = std::enable_if_t<
-                            !std::is_same_v<Op<ParamsT>, std::remove_cv_t<std::remove_reference_t<T>>>,
-                            void>>
+  template <typename T, typename = std::enable_if_t<!std::is_same_v<Op<ParamsT>, std::remove_cv_t<std::remove_reference_t<T>>>, void>>
   Op(T&& c) : callable_{std::make_unique<CallableImpl<T>>(std::forward<T>(c))} {}  // NOLINT(google-explicit-constructor)
   Op(Op&&) = default;
   Status operator()(const ParamsT* param) { return (*callable_)(param); }

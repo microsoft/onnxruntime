@@ -57,8 +57,7 @@ TEST(LoggingTests, TestCLogSink) {
 
   // create scoped manager so sink gets destroyed once done
   {
-    LoggingManager manager{std::unique_ptr<ISink>{new CLogSink{}}, min_log_level, false,
-                           InstanceType::Temporal};
+    LoggingManager manager{std::unique_ptr<ISink>{new CLogSink{}}, min_log_level, false, InstanceType::Temporal};
 
     auto logger = manager.CreateLogger(logid);
 
@@ -97,8 +96,7 @@ TEST(LoggingTests, TestCErrSink) {
 
   // create scoped manager so sink gets destroyed once done
   {
-    LoggingManager manager{std::unique_ptr<ISink>{new CErrSink{}}, min_log_level, false,
-                           InstanceType::Temporal};
+    LoggingManager manager{std::unique_ptr<ISink>{new CErrSink{}}, min_log_level, false, InstanceType::Temporal};
 
     auto logger = manager.CreateLogger(logid);
 
@@ -127,7 +125,9 @@ TEST(LoggingTests, TestFileSink) {
   // create scoped manager so sink gets destroyed once done
   {
     LoggingManager manager{std::unique_ptr<ISink>{new FileSink{filename, false, false}},
-                           min_log_level, false, InstanceType::Temporal};
+                           min_log_level,
+                           false,
+                           InstanceType::Temporal};
 
     auto logger = manager.CreateLogger(logid);
 

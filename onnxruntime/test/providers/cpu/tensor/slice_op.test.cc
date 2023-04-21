@@ -170,46 +170,29 @@ TEST(SliceTest, Slice2D_StartAndEndOutOfBounds) {
 
 TEST(SliceTest, Slice2D_OneAxis) {
   RunSliceTest<float>({6, 4},
-                      {00.0f, 01.0f, 02.0f, 03.0f,
-                       10.0f, 11.0f, 12.0f, 13.0f,
-                       20.0f, 21.0f, 22.0f, 23.0f,
-                       30.0f, 31.0f, 32.0f, 33.0f,
-                       40.0f, 41.0f, 42.0f, 43.0f,
-                       50.0f, 51.0f, 52.0f, 53.0f},
+                      {00.0f, 01.0f, 02.0f, 03.0f, 10.0f, 11.0f, 12.0f, 13.0f, 20.0f, 21.0f, 22.0f, 23.0f, 30.0f, 31.0f, 32.0f, 33.0f, 40.0f, 41.0f, 42.0f, 43.0f, 50.0f, 51.0f, 52.0f, 53.0f},
                       {1},
                       {3},
                       {0},
                       {},
                       {2, 4},
-                      {10.0f, 11.0f, 12.0f, 13.0f,
-                       20.0f, 21.0f, 22.0f, 23.0f});
+                      {10.0f, 11.0f, 12.0f, 13.0f, 20.0f, 21.0f, 22.0f, 23.0f});
 }
 
 TEST(SliceTest, Slice2D_TwoAxes) {
   RunSliceTest<float>({6, 4},
-                      {00.0f, 01.0f, 02.0f, 03.0f,
-                       10.0f, 11.0f, 12.0f, 13.0f,
-                       20.0f, 21.0f, 22.0f, 23.0f,
-                       30.0f, 31.0f, 32.0f, 33.0f,
-                       40.0f, 41.0f, 42.0f, 43.0f,
-                       50.0f, 51.0f, 52.0f, 53.0f},
+                      {00.0f, 01.0f, 02.0f, 03.0f, 10.0f, 11.0f, 12.0f, 13.0f, 20.0f, 21.0f, 22.0f, 23.0f, 30.0f, 31.0f, 32.0f, 33.0f, 40.0f, 41.0f, 42.0f, 43.0f, 50.0f, 51.0f, 52.0f, 53.0f},
                       {2, 3},
                       {1000, -1},
                       {1, 0},
                       {},
                       {2, 2},
-                      {32.0f, 33.0f,
-                       42.0f, 43.0f});
+                      {32.0f, 33.0f, 42.0f, 43.0f});
 }
 
 TEST(SliceTest, Slice2D_TwoAxesEque) {
   RunSliceTest<float>({6, 4},
-                      {00.0f, 01.0f, 02.0f, 03.0f,
-                       10.0f, 11.0f, 12.0f, 13.0f,
-                       20.0f, 21.0f, 22.0f, 23.0f,
-                       30.0f, 31.0f, 32.0f, 33.0f,
-                       40.0f, 41.0f, 42.0f, 43.0f,
-                       50.0f, 51.0f, 52.0f, 53.0f},
+                      {00.0f, 01.0f, 02.0f, 03.0f, 10.0f, 11.0f, 12.0f, 13.0f, 20.0f, 21.0f, 22.0f, 23.0f, 30.0f, 31.0f, 32.0f, 33.0f, 40.0f, 41.0f, 42.0f, 43.0f, 50.0f, 51.0f, 52.0f, 53.0f},
                       {2, 3},
                       {1000, 3},
                       {1, 0},
@@ -231,30 +214,43 @@ TEST(SliceTest, Slice2D_DefaultAxes) {
 
 TEST(SliceTest, Slice3D) {
   RunSliceTest<float>({3, 3, 3},
-                      {111.0f, 112.0f, 113.0f,
-                       121.0f, 122.0f, 123.0f,
-                       131.0f, 132.0f, 133.0f,
+                      {111.0f, 112.0f, 113.0f, 121.0f, 122.0f, 123.0f, 131.0f, 132.0f, 133.0f,
 
-                       211.0f, 212.0f, 213.0f,
-                       221.0f, 222.0f, 223.0f,
-                       231.0f, 232.0f, 233.0f,
+                       211.0f,
+                       212.0f,
+                       213.0f,
+                       221.0f,
+                       222.0f,
+                       223.0f,
+                       231.0f,
+                       232.0f,
+                       233.0f,
 
-                       311.0f, 312.0f, 313.0f,
-                       321.0f, 322.0f, 323.0f,
-                       331.0f, 332.0f, 333.0f},
+                       311.0f,
+                       312.0f,
+                       313.0f,
+                       321.0f,
+                       322.0f,
+                       323.0f,
+                       331.0f,
+                       332.0f,
+                       333.0f},
                       {0, 1, 1},
                       {1000, 1000, 1000},
                       {},
                       {},
                       {3, 2, 2},
-                      {122.0f, 123.0f,
-                       132.0f, 133.0f,
+                      {122.0f, 123.0f, 132.0f, 133.0f,
 
-                       222.0f, 223.0f,
-                       232.0f, 233.0f,
+                       222.0f,
+                       223.0f,
+                       232.0f,
+                       233.0f,
 
-                       322.0f, 323.0f,
-                       332.0f, 333.0f});
+                       322.0f,
+                       323.0f,
+                       332.0f,
+                       333.0f});
 }
 
 TEST(SliceTest, Slice1D_Int) {
@@ -405,17 +401,27 @@ TEST(SliceTest, Slice2D_WithNegativeSteps_2) {
 
 TEST(SliceTest, Slice3D_WithPositiveSteps_AllAxes) {
   RunSliceTest<int32_t>({3, 3, 3},
-                        {27, 20, 2,
-                         4, 26, 11,
-                         26, 5, 17,
+                        {27, 20, 2, 4, 26, 11, 26, 5, 17,
 
-                         0, 21, 6,
-                         22, 13, 29,
-                         19, 17, 27,
+                         0,
+                         21,
+                         6,
+                         22,
+                         13,
+                         29,
+                         19,
+                         17,
+                         27,
 
-                         4, 20, 12,
-                         3, 9, 24,
-                         17, 6, 24},
+                         4,
+                         20,
+                         12,
+                         3,
+                         9,
+                         24,
+                         17,
+                         6,
+                         24},
                         {0, 1, 1},
                         {1000, 1000, 1000},
                         {0, 1, 2},
@@ -427,41 +433,59 @@ TEST(SliceTest, Slice3D_WithPositiveSteps_AllAxes) {
 
 TEST(SliceTest, Slice3D_FlattenInnermostDimsIncopy) {
   RunSliceTest<int32_t>({3, 3, 3},
-                        {27, 20, 2,
-                         4, 26, 11,
-                         26, 5, 17,
+                        {27, 20, 2, 4, 26, 11, 26, 5, 17,
 
-                         0, 21, 6,
-                         22, 13, 29,
-                         19, 17, 27,
+                         0,
+                         21,
+                         6,
+                         22,
+                         13,
+                         29,
+                         19,
+                         17,
+                         27,
 
-                         4, 20, 12,
-                         3, 9, 24,
-                         17, 6, 24},
+                         4,
+                         20,
+                         12,
+                         3,
+                         9,
+                         24,
+                         17,
+                         6,
+                         24},
                         {0, 0, 1},
                         {1000, 1000, 1000},
                         {2, 1, 0},  // reverse the axes to test that's handled correctly by the flattening logic
                         {1, 1, 2},
                         {1, 3, 3},
-                        {0, 21, 6,
-                         22, 13, 29,
-                         19, 17, 27},
+                        {0, 21, 6, 22, 13, 29, 19, 17, 27},
                         true);
 }
 
 TEST(SliceTest, Slice3D_WithPositiveAndNegativeSteps_SubsetOfAxes_1) {
   RunSliceTest<int32_t>({3, 3, 3},
-                        {27, 20, 2,
-                         4, 26, 11,
-                         26, 5, 17,
+                        {27, 20, 2, 4, 26, 11, 26, 5, 17,
 
-                         0, 21, 6,
-                         22, 13, 29,
-                         19, 17, 27,
+                         0,
+                         21,
+                         6,
+                         22,
+                         13,
+                         29,
+                         19,
+                         17,
+                         27,
 
-                         4, 20, 12,
-                         3, 9, 24,
-                         17, 6, 24},
+                         4,
+                         20,
+                         12,
+                         3,
+                         9,
+                         24,
+                         17,
+                         6,
+                         24},
                         {1, 4},
                         {1000, 1},
                         {1, 2},
@@ -473,17 +497,27 @@ TEST(SliceTest, Slice3D_WithPositiveAndNegativeSteps_SubsetOfAxes_1) {
 
 TEST(SliceTest, Slice3D_WithPositiveAndNegativeSteps_SubsetOfAxes_2) {
   RunSliceTest<int32_t>({3, 3, 3},
-                        {27, 20, 2,
-                         4, 26, 11,
-                         26, 5, 17,
+                        {27, 20, 2, 4, 26, 11, 26, 5, 17,
 
-                         0, 21, 6,
-                         22, 13, 29,
-                         19, 17, 27,
+                         0,
+                         21,
+                         6,
+                         22,
+                         13,
+                         29,
+                         19,
+                         17,
+                         27,
 
-                         4, 20, 12,
-                         3, 9, 24,
-                         17, 6, 24},
+                         4,
+                         20,
+                         12,
+                         3,
+                         9,
+                         24,
+                         17,
+                         6,
+                         24},
                         {1, 4},
                         {1000, 2},
                         {1, 2},
@@ -648,10 +682,7 @@ TEST(SliceTest, Slice2D_ReverseSubsetOfNegAxes_1) {
 // getting to the first value to output.
 TEST(SliceTest, Slice5D_SubsetOfAxes_Flatten2Dims_OffsetInput) {
   RunSliceTest<float>({1, 2, 2, 2, 2},
-                      {1.f, 2.f, 3.f, 4.f,
-                       5.f, 6.f, 7.f, 8.f,
-                       -1.f, -2.f, -3.f, -4.f,
-                       -5.f, -6.f, -7.f, -8.f},
+                      {1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f, 8.f, -1.f, -2.f, -3.f, -4.f, -5.f, -6.f, -7.f, -8.f},
                       {0, 1, 1, 0},
                       {1, 2, std::numeric_limits<int64_t>::max(), 6},
                       {0, 1, 2, 3},
@@ -666,17 +697,13 @@ TEST(SliceTest, Slice5D_SubsetOfAxes_Flatten2Dims_OffsetInput) {
 // See, https://github.com/microsoft/onnxruntime/issues/9368
 TEST(SliceTest, Slice5D_LargeStep) {
   RunSliceTest<float>({1, 2, 2, 2, 2},
-                      {1.f, 2.f, 3.f, 4.f,
-                       5.f, 6.f, 7.f, 8.f,
-                       -1.f, -2.f, -3.f, -4.f,
-                       -5.f, -6.f, -7.f, -8.f},
+                      {1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f, 8.f, -1.f, -2.f, -3.f, -4.f, -5.f, -6.f, -7.f, -8.f},
                       {0},
                       {1},
                       {1},
                       {std::numeric_limits<int64_t>::max()},
                       {1, 1, 2, 2, 2},
-                      {1.f, 2.f, 3.f, 4.f,
-                       5.f, 6.f, 7.f, 8.f},
+                      {1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f, 8.f},
                       true,
                       {});
 }
@@ -687,27 +714,13 @@ TEST(SliceTest, Slice5D_CopyAxis2LargeBlock) {
   // 2) we are combining axis 2 slices(1,2) in one copy because its step is 1 and
   //    dims below it are copied as a whole
   RunSliceTest<float>({1, 3, 4, 2, 2},
-                      {1.f, 2.f, 3.f, 4.f,
-                       5.f, 6.f, 7.f, 8.f,
-                       -1.f, -2.f, -3.f, -4.f,
-                       -5.f, -6.f, -7.f, -8.f,
-                       1.f, 2.f, 3.f, 4.f,
-                       5.f, 6.f, 7.f, 8.f,
-                       -1.f, -2.f, -3.f, -4.f,
-                       -5.f, -6.f, -7.f, -8.f,
-                       1.f, 2.f, 3.f, 4.f,
-                       5.f, 6.f, 7.f, 8.f,
-                       -1.f, -2.f, -3.f, -4.f,
-                       -5.f, -6.f, -7.f, -8.f},
+                      {1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f, 8.f, -1.f, -2.f, -3.f, -4.f, -5.f, -6.f, -7.f, -8.f, 1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f, 8.f, -1.f, -2.f, -3.f, -4.f, -5.f, -6.f, -7.f, -8.f, 1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f, 8.f, -1.f, -2.f, -3.f, -4.f, -5.f, -6.f, -7.f, -8.f},
                       {0, 1},  // starts
                       {2, 3},  // ends
                       {1, 2},  // axis
                       {},      // steps defaults to 1
                       {1, 2, 2, 2, 2},
-                      {5.f, 6.f, 7.f, 8.f,
-                       -1.f, -2.f, -3.f, -4.f,
-                       5.f, 6.f, 7.f, 8.f,
-                       -1.f, -2.f, -3.f, -4.f},
+                      {5.f, 6.f, 7.f, 8.f, -1.f, -2.f, -3.f, -4.f, 5.f, 6.f, 7.f, 8.f, -1.f, -2.f, -3.f, -4.f},
                       true,
                       {});
 }
@@ -734,16 +747,32 @@ TEST(SliceTest, EmptyDim) {
 
 TEST(SliceTest, CoalesceDims) {
   RunSliceTest<float>({2, 2, 2, 2},
-                      {1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f, 8.f, -1.f, -2.f, -3.f, -4.f, -5.f, -6.f, -7.f, -8.f}, {1, 1},
-                      {0, 2}, {0, 1}, {-1, 1}, {1, 1, 2, 2}, {-5.f, -6.f, -7.f, -8.f}, true);
+                      {1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f, 8.f, -1.f, -2.f, -3.f, -4.f, -5.f, -6.f, -7.f, -8.f},
+                      {1, 1},
+                      {0, 2},
+                      {0, 1},
+                      {-1, 1},
+                      {1, 1, 2, 2},
+                      {-5.f, -6.f, -7.f, -8.f},
+                      true);
   RunSliceTest<float>({1, 2, 2, 2, 2},
-                      {1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f, 8.f, -1.f, -2.f, -3.f, -4.f, -5.f, -6.f, -7.f, -8.f}, {1},
-                      {std::numeric_limits<int64_t>::max()}, {2}, {}, {1, 2, 1, 2, 2},
-                      {5.f, 6.f, 7.f, 8.f, -5.f, -6.f, -7.f, -8.f}, true);
+                      {1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f, 8.f, -1.f, -2.f, -3.f, -4.f, -5.f, -6.f, -7.f, -8.f},
+                      {1},
+                      {std::numeric_limits<int64_t>::max()},
+                      {2},
+                      {},
+                      {1, 2, 1, 2, 2},
+                      {5.f, 6.f, 7.f, 8.f, -5.f, -6.f, -7.f, -8.f},
+                      true);
   RunSliceTest<float>({1, 2, 2, 2, 2},
-                      {1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f, 8.f, -1.f, -2.f, -3.f, -4.f, -5.f, -6.f, -7.f, -8.f}, {1, 1},
-                      {std::numeric_limits<int64_t>::max(), std::numeric_limits<int64_t>::max()}, {1, 3}, {},
-                      {1, 1, 2, 1, 2}, {-3.f, -4.f, -7.f, -8.f}, true);
+                      {1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f, 8.f, -1.f, -2.f, -3.f, -4.f, -5.f, -6.f, -7.f, -8.f},
+                      {1, 1},
+                      {std::numeric_limits<int64_t>::max(), std::numeric_limits<int64_t>::max()},
+                      {1, 3},
+                      {},
+                      {1, 1, 2, 1, 2},
+                      {-3.f, -4.f, -7.f, -8.f},
+                      true);
   RunSliceTest<float>({1, 1, 1}, {1.f}, {0}, {std::numeric_limits<int64_t>::max()}, {1}, {}, {1, 1, 1}, {1.f}, true);
 }
 

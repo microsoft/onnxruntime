@@ -36,8 +36,7 @@ using MatrixT = Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor
 
 template <typename T>
 struct Inverse::ComputeImpl {
-  void operator()(const Tensor* input, Tensor* output,
-                  int64_t batch_num, int64_t rows, int64_t cols) const {
+  void operator()(const Tensor* input, Tensor* output, int64_t batch_num, int64_t rows, int64_t cols) const {
     auto batch_offset = batch_num * rows * cols;
     const auto* input_data = input->Data<T>() + batch_offset;
     auto* output_data = output->MutableData<T>() + batch_offset;
@@ -50,8 +49,7 @@ struct Inverse::ComputeImpl {
 
 template <>
 struct Inverse::ComputeImpl<MLFloat16> {
-  void operator()(const Tensor* input, Tensor* output,
-                  int64_t batch_num, int64_t rows, int64_t cols) const {
+  void operator()(const Tensor* input, Tensor* output, int64_t batch_num, int64_t rows, int64_t cols) const {
     auto batch_offset = batch_num * rows * cols;
     // Direct cast to half as it just as MLFloat16 containes only uint16_t
     const auto* input_data = reinterpret_cast<const Eigen::half*>(input->Data<MLFloat16>() + batch_offset);

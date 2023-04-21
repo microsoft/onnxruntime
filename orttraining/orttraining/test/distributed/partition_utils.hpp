@@ -176,8 +176,7 @@ common::Status AddPassthroughInitializer(Graph& graph,
   const size_t from_stage = node_groups.front().stage_id;
   const size_t to_stage = node_groups.back().stage_id;
 
-  ORT_ENFORCE(from_stage < to_stage, "Pass through from_stage (", from_stage,
-              ") is not less than the to_stage (", to_stage, ").");
+  ORT_ENFORCE(from_stage < to_stage, "Pass through from_stage (", from_stage, ") is not less than the to_stage (", to_stage, ").");
 
   auto dtype = initializer->TypeAsProto()->tensor_type().elem_type();
 
@@ -218,8 +217,10 @@ common::Status AddPassthroughInitializer(Graph& graph,
   }
 
   ORT_ENFORCE(node_group_index == node_groups.size(),
-              "Not all nodes are updated with new initializer. Updated: ", node_group_index,
-              ", expected: ", node_groups.size());
+              "Not all nodes are updated with new initializer. Updated: ",
+              node_group_index,
+              ", expected: ",
+              node_groups.size());
 
   return Status::OK();
 }
@@ -392,10 +393,8 @@ common::Status SplitGraph(Graph& graph,
                                                                   new_input_names));
 
     // add output node_arg for send/recv
-    AddNewNodeArg(graph, "send_output_signal" + cut_index_str, ONNX_NAMESPACE::TensorProto_DataType_BOOL,
-                  send_output_args, new_output_names);
-    AddNewNodeArg(graph, "receive_output_signal" + cut_index_str, ONNX_NAMESPACE::TensorProto_DataType_BOOL,
-                  recv_output_args, new_output_names);
+    AddNewNodeArg(graph, "send_output_signal" + cut_index_str, ONNX_NAMESPACE::TensorProto_DataType_BOOL, send_output_args, new_output_names);
+    AddNewNodeArg(graph, "receive_output_signal" + cut_index_str, ONNX_NAMESPACE::TensorProto_DataType_BOOL, recv_output_args, new_output_names);
 
     // add attribute data for send/recv
     ONNX_NAMESPACE::AttributeProto tag;
@@ -413,8 +412,7 @@ common::Status SplitGraph(Graph& graph,
       // find node whose output contains id.node_arg_name
       auto producer_node = graph.GetMutableProducerNode(id.node_arg_name);
       if (!producer_node) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Cannot find producer node of node_arg with name: ", id.node_arg_name,
-                               ". Wrong cutting infomation.");
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Cannot find producer node of node_arg with name: ", id.node_arg_name, ". Wrong cutting infomation.");
       }
 
       // once we find out the producer node for id.node_arg_name, find which output index that leads
@@ -430,8 +428,7 @@ common::Status SplitGraph(Graph& graph,
           }));
 
       if (upstream_nodes_output_index < 0) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Node with name: ", producer_node->Name(),
-                               " doesn't have an output node_arg with name ", id.node_arg_name);
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Node with name: ", producer_node->Name(), " doesn't have an output node_arg with name ", id.node_arg_name);
       }
 
       size_t idx = static_cast<size_t>(upstream_nodes_output_index);
@@ -529,8 +526,7 @@ common::Status GenerateSubgraph(Graph& graph, Node* start_node) {
   std::set<NodeArg*> visited_outputs;
 
   // BFS graph traverse
-  ORT_RETURN_IF_ERROR(TraverseGraphWithConnectedElement(graph, start_node,
-                                                        visited_nodes, visited_inputs, visited_outputs));
+  ORT_RETURN_IF_ERROR(TraverseGraphWithConnectedElement(graph, start_node, visited_nodes, visited_inputs, visited_outputs));
 
   std::set<NodeIndex> visited_node_index;
   for (auto n : visited_nodes) {
@@ -576,10 +572,7 @@ Status CutBasedApplyPipelinePartitionToMainGraph(
   size_t split_count = cut_info.size();
 
   if (num_pipeline_stage != split_count + 1) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Wrong pipeline partition cutting info. Total pipeline stage number is ",
-                           num_pipeline_stage,
-                           ", cut info length is: ",
-                           split_count);
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Wrong pipeline partition cutting info. Total pipeline stage number is ", num_pipeline_stage, ", cut info length is: ", split_count);
   }
 
   std::vector<Node*> send_nodes, recv_nodes;
@@ -591,8 +584,7 @@ Status CutBasedApplyPipelinePartitionToMainGraph(
   ORT_RETURN_IF_ERROR(SplitGraph(graph, cut_info, send_nodes, recv_nodes));
 
   if (send_nodes.size() != split_count || recv_nodes.size() != split_count) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Split error: not all cut has Send and Recv inserted. Send node count: ",
-                           send_nodes.size(), ", Recv node count: ", recv_nodes.size(), ", split count: ", split_count);
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Split error: not all cut has Send and Recv inserted. Send node count: ", send_nodes.size(), ", Recv node count: ", recv_nodes.size(), ", split count: ", split_count);
   }
 
   // Check to see if there are any initializers that is being shared between different partitions. If there
@@ -633,9 +625,13 @@ Status CutBasedApplyPipelinePartitionToMainGraph(
     // For stages in the middle, i-th stage should contain recv node that matches the (i-1)-th inserted recv node, and the i-th
     // inserted send node.
     ORT_RETURN_IF_NOT(recv_node == recv_nodes[pipeline_stage_id - 1],
-                      "Error: stage ", pipeline_stage_id, " doesn't contain the right Recv node. Possibly CutInfo data is wrong.");
+                      "Error: stage ",
+                      pipeline_stage_id,
+                      " doesn't contain the right Recv node. Possibly CutInfo data is wrong.");
     ORT_RETURN_IF_NOT(send_node == send_nodes[pipeline_stage_id],
-                      "Error: stage ", pipeline_stage_id, " doesn't contain the right Send node. Possibly CutInfo data is wrong.");
+                      "Error: stage ",
+                      pipeline_stage_id,
+                      " doesn't contain the right Send node. Possibly CutInfo data is wrong.");
   }
 
   return Status::OK();

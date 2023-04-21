@@ -29,8 +29,7 @@ class DepthToSpaceOpBuilder : public BaseOpBuilder {
 
   // Operator support related
  private:
-  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
-                         const OpSupportCheckParams& params) const override;
+  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit, const OpSupportCheckParams& params) const override;
 };
 
 // Add operator related
@@ -59,15 +58,13 @@ Status DepthToSpaceOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
     ADD_SCALAR_OPERAND(model_builder, input_indices, use_nchw);
   }
   const OperandType output_operand_type(operand_types.at(input).type, shaper[output]);
-  ORT_RETURN_IF_ERROR(model_builder.AddOperation(ANEURALNETWORKS_DEPTH_TO_SPACE, input_indices, {output},
-                                                 {output_operand_type}));
+  ORT_RETURN_IF_ERROR(model_builder.AddOperation(ANEURALNETWORKS_DEPTH_TO_SPACE, input_indices, {output}, {output_operand_type}));
   return Status::OK();
 }
 
 // Operator support related
 
-bool DepthToSpaceOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /* initializers */, const NodeUnit& node_unit,
-                                              const OpSupportCheckParams& params) const {
+bool DepthToSpaceOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /* initializers */, const NodeUnit& node_unit, const OpSupportCheckParams& params) const {
   NodeAttrHelper helper(node_unit);
 
   Shape input_shape;

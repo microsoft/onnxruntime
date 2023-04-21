@@ -179,8 +179,7 @@ Softmax::Softmax(const OpKernelInfo& info) : XnnpackKernel{info} {
         0,  // flags,
         &p);
   }
-  ORT_ENFORCE(xstatus == xnn_status_success, "xnn_create_softmax_nc_",
-              OpTypeToString(op_type_), " failed. Status:", xstatus);
+  ORT_ENFORCE(xstatus == xnn_status_success, "xnn_create_softmax_nc_", OpTypeToString(op_type_), " failed. Status:", xstatus);
   op0_.reset(p);
 }
 
@@ -214,8 +213,7 @@ Status Softmax::Compute(OpKernelContext* ctx) const {
         t_pool);
   }
   if (status != xnn_status_success) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "xnn_setup_softmax_nc_",
-                           OpTypeToString(op_type_), " returned ", status);
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "xnn_setup_softmax_nc_", OpTypeToString(op_type_), " returned ", status);
   }
   status = xnn_run_operator(op0_.get(), t_pool);
   if (status != xnn_status_success) {
@@ -224,12 +222,8 @@ Status Softmax::Compute(OpKernelContext* ctx) const {
   return Status::OK();
 }
 
-ONNX_OPERATOR_VERSIONED_KERNEL_EX(Softmax, kOnnxDomain, 1, 12, kXnnpackExecutionProvider,
-                                  KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
-                                  Softmax);
-ONNX_OPERATOR_KERNEL_EX(Softmax, kOnnxDomain, 13, kXnnpackExecutionProvider,
-                        KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
-                        Softmax);
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(Softmax, kOnnxDomain, 1, 12, kXnnpackExecutionProvider, KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()), Softmax);
+ONNX_OPERATOR_KERNEL_EX(Softmax, kOnnxDomain, 13, kXnnpackExecutionProvider, KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()), Softmax);
 
 ONNX_OPERATOR_KERNEL_EX(QLinearSoftmax, kDynamicDomainByCreate, 1, kXnnpackExecutionProvider,
                         KernelDefBuilder(),  // dynamic schema

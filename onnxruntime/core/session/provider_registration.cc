@@ -132,7 +132,8 @@ ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_DML, _In_ OrtSessio
 
 #ifndef USE_NNAPI
 ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_Nnapi,
-                    _In_ OrtSessionOptions* options, uint32_t nnapi_flags) {
+                    _In_ OrtSessionOptions* options,
+                    uint32_t nnapi_flags) {
   ORT_UNUSED_PARAMETER(options);
   ORT_UNUSED_PARAMETER(nnapi_flags);
   return CreateNotEnabledStatus("NNAPI");
@@ -141,7 +142,8 @@ ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_Nnapi,
 
 #ifndef USE_TVM
 ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_Tvm,
-                    _In_ OrtSessionOptions* options, _In_ const char* settings) {
+                    _In_ OrtSessionOptions* options,
+                    _In_ const char* settings) {
   ORT_UNUSED_PARAMETER(options);
   ORT_UNUSED_PARAMETER(settings);
   return CreateNotEnabledStatus("Tvm");
@@ -160,14 +162,16 @@ ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_Tvm,
  */
 #if defined(ORT_MINIMAL_BUILD)
 ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_CUDA,
-                    _In_ OrtSessionOptions* options, _In_ const OrtCUDAProviderOptions* provider_options) {
+                    _In_ OrtSessionOptions* options,
+                    _In_ const OrtCUDAProviderOptions* provider_options) {
   ORT_UNUSED_PARAMETER(options);
   ORT_UNUSED_PARAMETER(provider_options);
   return CreateNotEnabledStatus("CUDA");
 }
 
 ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_CUDA_V2,
-                    _In_ OrtSessionOptions* options, _In_ const OrtCUDAProviderOptionsV2* cuda_options) {
+                    _In_ OrtSessionOptions* options,
+                    _In_ const OrtCUDAProviderOptionsV2* cuda_options) {
   ORT_UNUSED_PARAMETER(options);
   ORT_UNUSED_PARAMETER(cuda_options);
   return CreateNotEnabledStatus("CUDA");
@@ -190,8 +194,7 @@ ORT_API_STATUS_IMPL(OrtApis::UpdateCUDAProviderOptions,
   return CreateNotEnabledStatus("CUDA");
 }
 
-ORT_API_STATUS_IMPL(OrtApis::GetCUDAProviderOptionsAsString, _In_ const OrtCUDAProviderOptionsV2* cuda_options, _Inout_ OrtAllocator* allocator,
-                    _Outptr_ char** ptr) {
+ORT_API_STATUS_IMPL(OrtApis::GetCUDAProviderOptionsAsString, _In_ const OrtCUDAProviderOptionsV2* cuda_options, _Inout_ OrtAllocator* allocator, _Outptr_ char** ptr) {
   ORT_UNUSED_PARAMETER(cuda_options);
   ORT_UNUSED_PARAMETER(allocator);
   ORT_UNUSED_PARAMETER(ptr);
@@ -213,28 +216,32 @@ ORT_API_STATUS_IMPL(OrtApis::SetCurrentGpuDeviceId, _In_ int device_id) {
 }
 
 ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_ROCM,
-                    _In_ OrtSessionOptions* options, _In_ const OrtROCMProviderOptions* provider_options) {
+                    _In_ OrtSessionOptions* options,
+                    _In_ const OrtROCMProviderOptions* provider_options) {
   ORT_UNUSED_PARAMETER(options);
   ORT_UNUSED_PARAMETER(provider_options);
   return CreateNotEnabledStatus("ROCM");
 }
 
 ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_OpenVINO,
-                    _In_ OrtSessionOptions* options, _In_ const OrtOpenVINOProviderOptions* provider_options) {
+                    _In_ OrtSessionOptions* options,
+                    _In_ const OrtOpenVINOProviderOptions* provider_options) {
   ORT_UNUSED_PARAMETER(options);
   ORT_UNUSED_PARAMETER(provider_options);
   return CreateNotEnabledStatus("OpenVINO");
 }
 
 ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_TensorRT,
-                    _In_ OrtSessionOptions* options, _In_ const OrtTensorRTProviderOptions* tensorrt_options) {
+                    _In_ OrtSessionOptions* options,
+                    _In_ const OrtTensorRTProviderOptions* tensorrt_options) {
   ORT_UNUSED_PARAMETER(options);
   ORT_UNUSED_PARAMETER(tensorrt_options);
   return CreateNotEnabledStatus("TensorRT");
 }
 
 ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_TensorRT_V2,
-                    _In_ OrtSessionOptions* options, _In_ const OrtTensorRTProviderOptionsV2* tensorrt_options) {
+                    _In_ OrtSessionOptions* options,
+                    _In_ const OrtTensorRTProviderOptionsV2* tensorrt_options) {
   ORT_UNUSED_PARAMETER(options);
   ORT_UNUSED_PARAMETER(tensorrt_options);
   return CreateNotEnabledStatus("TensorRT");
@@ -272,14 +279,16 @@ ORT_API(void, OrtApis::ReleaseTensorRTProviderOptions, _Frees_ptr_opt_ OrtTensor
 }
 
 ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_MIGraphX,
-                    _In_ OrtSessionOptions* options, _In_ const OrtMIGraphXProviderOptions* migraphx_options) {
+                    _In_ OrtSessionOptions* options,
+                    _In_ const OrtMIGraphXProviderOptions* migraphx_options) {
   ORT_UNUSED_PARAMETER(options);
   ORT_UNUSED_PARAMETER(migraphx_options);
   return CreateNotEnabledStatus("MIGraphX");
 }
 
 ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_CANN,
-                    _In_ OrtSessionOptions* options, _In_ const OrtCANNProviderOptions* provider_options) {
+                    _In_ OrtSessionOptions* options,
+                    _In_ const OrtCANNProviderOptions* provider_options) {
   ORT_UNUSED_PARAMETER(options);
   ORT_UNUSED_PARAMETER(provider_options);
   return CreateNotEnabledStatus("CANN");
@@ -303,7 +312,8 @@ ORT_API_STATUS_IMPL(OrtApis::UpdateCANNProviderOptions,
 }
 
 ORT_API_STATUS_IMPL(OrtApis::GetCANNProviderOptionsAsString,
-                    _In_ const OrtCANNProviderOptions* cann_options, _Inout_ OrtAllocator* allocator,
+                    _In_ const OrtCANNProviderOptions* cann_options,
+                    _Inout_ OrtAllocator* allocator,
                     _Outptr_ char** ptr) {
   ORT_UNUSED_PARAMETER(cann_options);
   ORT_UNUSED_PARAMETER(allocator);
@@ -316,7 +326,8 @@ ORT_API(void, OrtApis::ReleaseCANNProviderOptions, _Frees_ptr_opt_ OrtCANNProvid
 }
 
 ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_Dnnl,
-                    _In_ OrtSessionOptions* options, _In_ const OrtDnnlProviderOptions* dnnl_options) {
+                    _In_ OrtSessionOptions* options,
+                    _In_ const OrtDnnlProviderOptions* dnnl_options) {
   ORT_UNUSED_PARAMETER(options);
   ORT_UNUSED_PARAMETER(dnnl_options);
   return CreateNotEnabledStatus("Dnnl");
@@ -340,7 +351,8 @@ ORT_API_STATUS_IMPL(OrtApis::UpdateDnnlProviderOptions,
 }
 
 ORT_API_STATUS_IMPL(OrtApis::GetDnnlProviderOptionsAsString,
-                    _In_ const OrtDnnlProviderOptions* dnnl_options, _Inout_ OrtAllocator* allocator,
+                    _In_ const OrtDnnlProviderOptions* dnnl_options,
+                    _Inout_ OrtAllocator* allocator,
                     _Outptr_ char** ptr) {
   ORT_UNUSED_PARAMETER(dnnl_options);
   ORT_UNUSED_PARAMETER(allocator);

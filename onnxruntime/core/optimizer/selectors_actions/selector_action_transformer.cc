@@ -61,8 +61,7 @@ auto SelectorActionRegistry::LookUpByOpType(const std::string& op_type) const
   const auto [range_begin, range_end] = op_type_to_entry_.equal_range(op_type);
   std::vector<gsl::not_null<const Entry*>> result{};
   result.reserve(std::distance(range_begin, range_end));
-  std::transform(range_begin, range_end, std::back_inserter(result),
-                 [](const std::pair<std::string, const Entry*> value) { return value.second; });
+  std::transform(range_begin, range_end, std::back_inserter(result), [](const std::pair<std::string, const Entry*> value) { return value.second; });
   return result;
 }
 #endif  // !defined(ORT_MINIMAL_BUILD)
@@ -86,10 +85,7 @@ SelectorActionTransformer::SelectorActionTransformer(const std::string& name,
 // and repeatedly construction of the graph_viewer.
 // NOTE, the graph must be the same as the graph_viewer's underlying graph
 static Status MatchAndProcess(
-    Graph& graph, const GraphViewer& graph_viewer, Node& node, bool& modified, const logging::Logger& logger,
-    const std::string& transformer_name,
-    const SelectorActionRegistry& selector_action_registry,
-    const SatRuntimeOptimizationSaveContext* save_context) {
+    Graph& graph, const GraphViewer& graph_viewer, Node& node, bool& modified, const logging::Logger& logger, const std::string& transformer_name, const SelectorActionRegistry& selector_action_registry, const SatRuntimeOptimizationSaveContext* save_context) {
   Status status = Status::OK();
 
   do {
@@ -186,9 +182,7 @@ static Status MatchAndProcess(
 }
 
 Status SelectorActionTransformer::ApplySelectorsAndActions(
-    Graph& graph, bool& modified, int graph_level,
-    const logging::Logger& logger,
-    const SatRuntimeOptimizationSaveContext* save_context) const {
+    Graph& graph, bool& modified, int graph_level, const logging::Logger& logger, const SatRuntimeOptimizationSaveContext* save_context) const {
   GraphViewer graph_viewer(graph);
 
   for (auto index : graph_viewer.GetNodesInTopologicalOrder()) {
@@ -200,8 +194,7 @@ Status SelectorActionTransformer::ApplySelectorsAndActions(
     ORT_RETURN_IF_ERROR(Recurse(*node, modified, graph_level, logger));
 
     if (graph_utils::IsSupportedProvider(*node, GetCompatibleExecutionProviders())) {
-      ORT_RETURN_IF_ERROR(MatchAndProcess(graph, graph_viewer, *node, modified, logger,
-                                          Name(), selector_action_registry_, save_context));
+      ORT_RETURN_IF_ERROR(MatchAndProcess(graph, graph_viewer, *node, modified, logger, Name(), selector_action_registry_, save_context));
     }
   }
 
@@ -238,9 +231,15 @@ static Status SetOpSinceVersionForProducedNodes(NodeIndex pre_action_max_num_nod
 
     ORT_RETURN_IF(new_node->Domain() != produced_op_id_it->domain ||
                       new_node->OpType() != produced_op_id_it->op_type,
-                  "New node op (", new_node->Domain(), ':', new_node->OpType(),
+                  "New node op (",
+                  new_node->Domain(),
+                  ':',
+                  new_node->OpType(),
                   ") does not match produced node op in runtime optimization record (",
-                  produced_op_id_it->domain, ':', produced_op_id_it->op_type, ").");
+                  produced_op_id_it->domain,
+                  ':',
+                  produced_op_id_it->op_type,
+                  ").");
 
     assert(new_node->SinceVersion() == -1);
 
@@ -286,8 +285,7 @@ Status SelectorActionTransformer::ApplySavedRuntimeOptimizations(
 
     const NodeIndex post_action_num_nodes = graph.MaxNodeIndex();
 
-    ORT_RETURN_IF_ERROR(SetOpSinceVersionForProducedNodes(pre_action_num_nodes, post_action_num_nodes,
-                                                          record, graph));
+    ORT_RETURN_IF_ERROR(SetOpSinceVersionForProducedNodes(pre_action_num_nodes, post_action_num_nodes, record, graph));
   }
 
   return Status::OK();
@@ -295,14 +293,12 @@ Status SelectorActionTransformer::ApplySavedRuntimeOptimizations(
 
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
-Status SelectorActionTransformer::ApplyImpl(Graph& graph, bool& modified, int graph_level,
-                                            const logging::Logger& logger) const {
+Status SelectorActionTransformer::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
   if (std::holds_alternative<SatRuntimeOptimizationLoadContext>(apply_context_)) {
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
     return ApplySavedRuntimeOptimizations(graph, modified, graph_level, logger);
 #else
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                           "Loading runtime optimizations is not enabled in this build.");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Loading runtime optimizations is not enabled in this build.");
 #endif
   }
 
@@ -313,8 +309,7 @@ Status SelectorActionTransformer::ApplyImpl(Graph& graph, bool& modified, int gr
   const auto* save_context = std::get_if<SatRuntimeOptimizationSaveContext>(&apply_context_);
   return ApplySelectorsAndActions(graph, modified, graph_level, logger, save_context);
 #else
-  return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                         "Running both selectors and actions is not enabled in this build.");
+  return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Running both selectors and actions is not enabled in this build.");
 #endif
 }
 

@@ -61,8 +61,7 @@ void DnnlTranspose::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
   dnnl::memory intermediate_mem = dnnl::memory(intermediate_md, dnnl_engine);
 
   auto traspose_primitive = dnnl::reorder(data_mem, intermediate_mem);
-  sp.AddPrimitive(traspose_primitive, {{DNNL_ARG_FROM, data_mem},
-                                       {DNNL_ARG_TO, intermediate_mem}});
+  sp.AddPrimitive(traspose_primitive, {{DNNL_ARG_FROM, data_mem}, {DNNL_ARG_TO, intermediate_mem}});
 
   // The reorder from above will get the memory in the right order. The next few lines will create a memory and memory descriptor
   // that will have the correct dimentions and correct memory::format

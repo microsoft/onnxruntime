@@ -57,7 +57,8 @@ LARGE_INTEGER perf_freq = OrtGetPerformanceFrequency();
 namespace onnxruntime {
 
 static void CalculateTotalOutputSizes(OpKernelContextInternal* op_kernel_context,
-                                      size_t& total_output_sizes, const std::string& node_name,
+                                      size_t& total_output_sizes,
+                                      const std::string& node_name,
                                       std::string& output_type_shape) {
   // Calculate total output sizes for this operation.
   std::stringstream ss;
@@ -92,8 +93,10 @@ static void CalculateTotalOutputSizes(OpKernelContextInternal* op_kernel_context
 
 static void CalculateTotalInputSizes(const OpKernelContextInternal* op_kernel_context,
                                      const onnxruntime::OpKernel* p_op_kernel,
-                                     size_t& input_activation_sizes, size_t& input_parameter_sizes,
-                                     const std::string& node_name, std::string& input_type_shape) {
+                                     size_t& input_activation_sizes,
+                                     size_t& input_parameter_sizes,
+                                     const std::string& node_name,
+                                     std::string& input_type_shape) {
   // Calculate total input sizes for this operation.
   std::stringstream ss;
   ss << "[";
@@ -219,7 +222,10 @@ class SessionScope {
     if (flush_memory_info_) {
       session_state_.GetMemoryProfiler()->CreateEvents(
           "dynamic activations_" + std::to_string(session_state_.GetMemoryProfiler()->GetMemoryInfo().GetIteration()),
-          session_state_.GetMemoryProfiler()->GetAndIncreasePid(), MemoryInfo::MapType::DynamicActivation, "", 0);
+          session_state_.GetMemoryProfiler()->GetAndIncreasePid(),
+          MemoryInfo::MapType::DynamicActivation,
+          "",
+          0);
       session_state_.GetMemoryProfiler()->Clear();
     }
 #endif
@@ -346,9 +352,7 @@ class KernelScope {
       concurrency::ThreadPool::StartProfiling(session_state_.GetThreadPool());
       VLOGS(session_state_.Logger(), 1) << "Computing kernel: " << node_name_;
       kernel_begin_time_ = session_state_.Profiler().Start();
-      CalculateTotalInputSizes(&kernel_context, &kernel_,
-                               input_activation_sizes_, input_parameter_sizes_,
-                               node_name_, input_type_shape_);
+      CalculateTotalInputSizes(&kernel_context, &kernel_, input_activation_sizes_, input_parameter_sizes_, node_name_, input_type_shape_);
     }
   }
 
@@ -508,7 +512,10 @@ onnxruntime::Status ExecuteKernel(StreamExecutionContext& ctx,
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
     ctx.GetSessionState().GetMemoryProfiler()->CreateEvents(
         "dynamic activations_" + std::to_string(ctx.GetSessionState().GetMemoryProfiler()->GetMemoryInfo().GetIteration()),
-        ctx.GetSessionState().GetMemoryProfiler()->GetAndIncreasePid(), MemoryInfo::MapType::DynamicActivation, "", 0);
+        ctx.GetSessionState().GetMemoryProfiler()->GetAndIncreasePid(),
+        MemoryInfo::MapType::DynamicActivation,
+        "",
+        0);
 #endif
     const auto msg_string = ss.str();
     LOGS(logger, ERROR) << msg_string;
@@ -519,11 +526,7 @@ onnxruntime::Status ExecuteKernel(StreamExecutionContext& ctx,
   return Status::OK();
 }
 
-onnxruntime::Status ExecuteThePlan(const SessionState& session_state, gsl::span<const int> feed_mlvalue_idxs,
-                                   gsl::span<const OrtValue> feeds, gsl::span<const int> fetch_mlvalue_idxs,
-                                   std::vector<OrtValue>& fetches,
-                                   const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
-                                   const logging::Logger& logger,
+onnxruntime::Status ExecuteThePlan(const SessionState& session_state, gsl::span<const int> feed_mlvalue_idxs, gsl::span<const OrtValue> feeds, gsl::span<const int> fetch_mlvalue_idxs, std::vector<OrtValue>& fetches, const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators, const logging::Logger& logger,
 #ifdef ORT_ENABLE_STREAM
                                    const DeviceStreamCollection* device_streams,
 #endif
@@ -612,20 +615,8 @@ onnxruntime::Status ExecuteThePlan(const SessionState& session_state, gsl::span<
 }
 
 #ifdef ENABLE_TRAINING
-onnxruntime::Status PartialExecuteThePlan(const SessionState& session_state, gsl::span<const int> feed_mlvalue_idxs,
-                                          gsl::span<const OrtValue> feeds, gsl::span<const int> fetch_mlvalue_idxs,
-                                          std::vector<OrtValue>& fetches,
-                                          const std::unordered_map<size_t, IExecutor::CustomAllocator>&
-                                              fetch_allocators,
-                                          const logging::Logger& logger,
-                                          const DeviceStreamCollection* device_streams,
-                                          const bool& terminate_flag,
-                                          bool single_thread_mode,
-                                          PartialGraphExecutionState& state,
-                                          const OrtValueCachePtr& cache,
-                                          int32_t partial_graph_index) {
-  auto& ctx = state.GetExecutionContext(feed_mlvalue_idxs, feeds, fetch_mlvalue_idxs, fetches,
-                                        fetch_allocators, session_state, logger, device_streams);
+onnxruntime::Status PartialExecuteThePlan(const SessionState& session_state, gsl::span<const int> feed_mlvalue_idxs, gsl::span<const OrtValue> feeds, gsl::span<const int> fetch_mlvalue_idxs, std::vector<OrtValue>& fetches, const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators, const logging::Logger& logger, const DeviceStreamCollection* device_streams, const bool& terminate_flag, bool single_thread_mode, PartialGraphExecutionState& state, const OrtValueCachePtr& cache, int32_t partial_graph_index) {
+  auto& ctx = state.GetExecutionContext(feed_mlvalue_idxs, feeds, fetch_mlvalue_idxs, fetches, fetch_allocators, session_state, logger, device_streams);
   auto* plan = session_state.GetExecutionPlan();
 
   ctx.SetCurrentRange(&state.GetProgramRegions(session_state));

@@ -580,8 +580,7 @@ typedef void (*ANeuralNetworksDiagnosticExecutionFinishedCallback)(
 // nn api function types
 
 typedef int (*ANeuralNetworksMemory_createFromFd_fn)(
-    size_t size, int protect, int fd, size_t offset,
-    ANeuralNetworksMemory** memory);
+    size_t size, int protect, int fd, size_t offset, ANeuralNetworksMemory** memory);
 
 typedef void (*ANeuralNetworksMemory_free_fn)(ANeuralNetworksMemory* memory);
 
@@ -607,25 +606,19 @@ typedef int (*ANeuralNetworksModel_addOperand_fn)(
     ANeuralNetworksModel* model, const ANeuralNetworksOperandType* type);
 
 typedef int (*ANeuralNetworksModel_setOperandValue_fn)(
-    ANeuralNetworksModel* model, int32_t index, const void* buffer,
-    size_t length);
+    ANeuralNetworksModel* model, int32_t index, const void* buffer, size_t length);
 
 typedef int (*ANeuralNetworksModel_setOperandSymmPerChannelQuantParams_fn)(
-    ANeuralNetworksModel* model, int32_t index,
-    const ANeuralNetworksSymmPerChannelQuantParams* channelQuant);
+    ANeuralNetworksModel* model, int32_t index, const ANeuralNetworksSymmPerChannelQuantParams* channelQuant);
 
 typedef int (*ANeuralNetworksModel_setOperandValueFromMemory_fn)(
-    ANeuralNetworksModel* model, int32_t index,
-    const ANeuralNetworksMemory* memory, size_t offset, size_t length);
+    ANeuralNetworksModel* model, int32_t index, const ANeuralNetworksMemory* memory, size_t offset, size_t length);
 
 typedef int (*ANeuralNetworksModel_addOperation_fn)(
-    ANeuralNetworksModel* model, ANeuralNetworksOperationType type,
-    uint32_t inputCount, const uint32_t* inputs, uint32_t outputCount,
-    const uint32_t* outputs);
+    ANeuralNetworksModel* model, ANeuralNetworksOperationType type, uint32_t inputCount, const uint32_t* inputs, uint32_t outputCount, const uint32_t* outputs);
 
 typedef int (*ANeuralNetworksModel_identifyInputsAndOutputs_fn)(
-    ANeuralNetworksModel* model, uint32_t inputCount, const uint32_t* inputs,
-    uint32_t outputCount, const uint32_t* outputs);
+    ANeuralNetworksModel* model, uint32_t inputCount, const uint32_t* inputs, uint32_t outputCount, const uint32_t* outputs);
 
 typedef int (*ANeuralNetworksModel_relaxComputationFloat32toFloat16_fn)(
     ANeuralNetworksModel* model, bool allow);
@@ -638,22 +631,16 @@ typedef void (*ANeuralNetworksExecution_free_fn)(
     ANeuralNetworksExecution* execution);
 
 typedef int (*ANeuralNetworksExecution_setInput_fn)(
-    ANeuralNetworksExecution* execution, int32_t index,
-    const ANeuralNetworksOperandType* type, const void* buffer, size_t length);
+    ANeuralNetworksExecution* execution, int32_t index, const ANeuralNetworksOperandType* type, const void* buffer, size_t length);
 
 typedef int (*ANeuralNetworksExecution_setInputFromMemory_fn)(
-    ANeuralNetworksExecution* execution, int32_t index,
-    const ANeuralNetworksOperandType* type, const ANeuralNetworksMemory* memory,
-    size_t offset, size_t length);
+    ANeuralNetworksExecution* execution, int32_t index, const ANeuralNetworksOperandType* type, const ANeuralNetworksMemory* memory, size_t offset, size_t length);
 
 typedef int (*ANeuralNetworksExecution_setOutput_fn)(
-    ANeuralNetworksExecution* execution, int32_t index,
-    const ANeuralNetworksOperandType* type, void* buffer, size_t length);
+    ANeuralNetworksExecution* execution, int32_t index, const ANeuralNetworksOperandType* type, void* buffer, size_t length);
 
 typedef int (*ANeuralNetworksExecution_setOutputFromMemory_fn)(
-    ANeuralNetworksExecution* execution, int32_t index,
-    const ANeuralNetworksOperandType* type, const ANeuralNetworksMemory* memory,
-    size_t offset, size_t length);
+    ANeuralNetworksExecution* execution, int32_t index, const ANeuralNetworksOperandType* type, const ANeuralNetworksMemory* memory, size_t offset, size_t length);
 
 typedef int (*ANeuralNetworksExecution_startCompute_fn)(
     ANeuralNetworksExecution* execution, ANeuralNetworksEvent** event);
@@ -683,16 +670,15 @@ typedef int (*ANeuralNetworksDevice_getFeatureLevel_fn)(
 
 typedef int (*ANeuralNetworksModel_getSupportedOperationsForDevices_fn)(
     const ANeuralNetworksModel* model,
-    const ANeuralNetworksDevice* const* devices, uint32_t numDevices,
+    const ANeuralNetworksDevice* const* devices,
+    uint32_t numDevices,
     bool* supportedOps);
 
 typedef int (*ANeuralNetworksCompilation_createForDevices_fn)(
-    ANeuralNetworksModel* model, const ANeuralNetworksDevice* const* devices,
-    uint32_t numDevices, ANeuralNetworksCompilation** compilation);
+    ANeuralNetworksModel* model, const ANeuralNetworksDevice* const* devices, uint32_t numDevices, ANeuralNetworksCompilation** compilation);
 
 typedef int (*ANeuralNetworksCompilation_setCaching_fn)(
-    ANeuralNetworksCompilation* compilation, const char* cacheDir,
-    const uint8_t* token);
+    ANeuralNetworksCompilation* compilation, const char* cacheDir, const uint8_t* token);
 
 typedef int (*ANeuralNetworksCompilation_setTimeout_fn)(
     ANeuralNetworksCompilation* compilation, uint64_t duration);
@@ -759,24 +745,19 @@ typedef enum {
 } DurationCode;
 
 typedef int (*ANeuralNetworksExecution_getDuration_fn)(
-    const ANeuralNetworksExecution* execution, int32_t durationCode,
-    uint64_t* duration);
+    const ANeuralNetworksExecution* execution, int32_t durationCode, uint64_t* duration);
 
 typedef int (*ANeuralNetworksDevice_getExtensionSupport_fn)(
-    const ANeuralNetworksDevice* device, const char* extensionName,
-    bool* isExtensionSupported);
+    const ANeuralNetworksDevice* device, const char* extensionName, bool* isExtensionSupported);
 
 typedef int (*ANeuralNetworksModel_getExtensionOperandType_fn)(
-    ANeuralNetworksModel* model, const char* extensionName,
-    uint16_t operandCodeWithinExtension, int32_t* type);
+    ANeuralNetworksModel* model, const char* extensionName, uint16_t operandCodeWithinExtension, int32_t* type);
 
 typedef int (*ANeuralNetworksModel_getExtensionOperationType_fn)(
-    ANeuralNetworksModel* model, const char* extensionName,
-    uint16_t operationCodeWithinExtension, ANeuralNetworksOperationType* type);
+    ANeuralNetworksModel* model, const char* extensionName, uint16_t operationCodeWithinExtension, ANeuralNetworksOperationType* type);
 
 typedef int (*ANeuralNetworksModel_setOperandExtensionData_fn)(
-    ANeuralNetworksModel* model, int32_t index, const void* data,
-    size_t length);
+    ANeuralNetworksModel* model, int32_t index, const void* data, size_t length);
 
 typedef int (*ANeuralNetworksMemoryDesc_create_fn)(
     ANeuralNetworksMemoryDesc** desc);
@@ -786,12 +767,14 @@ typedef void (*ANeuralNetworksMemoryDesc_free_fn)(
 
 typedef int (*ANeuralNetworksMemoryDesc_addInputRole_fn)(
     ANeuralNetworksMemoryDesc* desc,
-    const ANeuralNetworksCompilation* compilation, uint32_t index,
+    const ANeuralNetworksCompilation* compilation,
+    uint32_t index,
     float frequency);
 
 typedef int (*ANeuralNetworksMemoryDesc_addOutputRole_fn)(
     ANeuralNetworksMemoryDesc* desc,
-    const ANeuralNetworksCompilation* compilation, uint32_t index,
+    const ANeuralNetworksCompilation* compilation,
+    uint32_t index,
     float frequency);
 
 typedef int (*ANeuralNetworksMemoryDesc_setDimensions_fn)(
@@ -814,8 +797,10 @@ typedef int (*ANeuralNetworksEvent_getSyncFenceFd_fn)(
 
 typedef int (*ANeuralNetworksExecution_startComputeWithDependencies_fn)(
     ANeuralNetworksExecution* execution,
-    const ANeuralNetworksEvent* const* dependencies, uint32_t num_dependencies,
-    uint64_t duration, ANeuralNetworksEvent** event);
+    const ANeuralNetworksEvent* const* dependencies,
+    uint32_t num_dependencies,
+    uint64_t duration,
+    ANeuralNetworksEvent** event);
 
 typedef int (*ANeuralNetworksExecution_enableInputAndOutputPadding_fn)(
     ANeuralNetworksExecution* execution, bool enable);

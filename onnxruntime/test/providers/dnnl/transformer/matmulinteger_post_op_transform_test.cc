@@ -112,19 +112,11 @@ class Dnnl_MatMulInteger_to_float_PostOpTester : public OpTester {
 
 TEST(DnnlMatMulIntegerFusion, MatMulInteger_Cast_to_float) {
   Dnnl_MatMulInteger_to_float_PostOpTester test;
-  test.AddInput<int8_t>("a", {2, 4},
-                        {-3, 7, 5, -6,
-                         4, -5, 8, 7});
-  test.AddInput<int8_t>("b", {4, 4},
-                        {5, -3, 7, 8,
-                         -6, -8, -3, 6,
-                         7, 9, 9, -5,
-                         8, 7, -6, 7});
+  test.AddInput<int8_t>("a", {2, 4}, {-3, 7, 5, -6, 4, -5, 8, 7});
+  test.AddInput<int8_t>("b", {4, 4}, {5, -3, 7, 8, -6, -8, -3, 6, 7, 9, 9, -5, 8, 7, -6, 7});
   test.AddInput<int8_t>("a_zp", {}, {5});
   test.AddInput<int8_t>("b_zp", {}, {5});
-  test.AddOutput<float>("Y", {2, 4},
-                        {-55.0f, 16.0f, 89.0f, -44.0f,
-                         122.0f, 154.0f, 68.0f, -39.0f});
+  test.AddOutput<float>("Y", {2, 4}, {-55.0f, 16.0f, 89.0f, -44.0f, 122.0f, 154.0f, 68.0f, -39.0f});
 
   test.Run();
 }
@@ -174,22 +166,12 @@ class Dnnl_MatMulInteger_Mul_PostOpTester : public OpTester {
 
 TEST(DnnlMatMulIntegerFusion, MatMulInteger_Cast_Mul) {
   Dnnl_MatMulInteger_Mul_PostOpTester test;
-  test.AddInput<int8_t>("a", {2, 4},
-                        {-3, 7, 5, -6,
-                         4, -5, 8, 7});
-  test.AddInput<int8_t>("b", {4, 4},
-                        {5, -3, 7, 8,
-                         -6, -8, -3, 6,
-                         7, 9, 9, -5,
-                         8, 7, -6, 7});
+  test.AddInput<int8_t>("a", {2, 4}, {-3, 7, 5, -6, 4, -5, 8, 7});
+  test.AddInput<int8_t>("b", {4, 4}, {5, -3, 7, 8, -6, -8, -3, 6, 7, 9, 9, -5, 8, 7, -6, 7});
   test.AddInput<int8_t>("a_zp", {}, {5});
   test.AddInput<int8_t>("b_zp", {}, {5});
-  test.AddInput<float>("c1", {2, 4},
-                       {0.5f, 1.5f, 2.0f, 2.5f,
-                        -0.5f, -1.5f, -2.0f, -2.5f});
-  test.AddOutput<float>("Y", {2, 4},
-                        {-27.5f, 24.0f, 178.0f, -110.0f,
-                         -61.0f, -231.0f, -136.0f, 97.5f});
+  test.AddInput<float>("c1", {2, 4}, {0.5f, 1.5f, 2.0f, 2.5f, -0.5f, -1.5f, -2.0f, -2.5f});
+  test.AddOutput<float>("Y", {2, 4}, {-27.5f, 24.0f, 178.0f, -110.0f, -61.0f, -231.0f, -136.0f, 97.5f});
 
   test.Run();
 }
@@ -243,25 +225,13 @@ class Dnnl_MatMulInteger_Cast_Mul_Add_PostOpTester : public OpTester {
 
 TEST(DnnlMatMulIntegerFusion, MatMulInteger_Cast_Mul_Add) {
   Dnnl_MatMulInteger_Cast_Mul_Add_PostOpTester test;
-  test.AddInput<int8_t>("a", {2, 4},
-                        {-3, 7, 5, -6,
-                         4, -5, 8, 7});
-  test.AddInput<int8_t>("b", {4, 4},
-                        {5, -3, 7, 8,
-                         -6, -8, -3, 6,
-                         7, 9, 9, -5,
-                         8, 7, -6, 7});
+  test.AddInput<int8_t>("a", {2, 4}, {-3, 7, 5, -6, 4, -5, 8, 7});
+  test.AddInput<int8_t>("b", {4, 4}, {5, -3, 7, 8, -6, -8, -3, 6, 7, 9, 9, -5, 8, 7, -6, 7});
   test.AddInput<int8_t>("a_zp", {}, {5});
   test.AddInput<int8_t>("b_zp", {}, {5});
-  test.AddInput<float>("c1", {2, 4},
-                       {0.5f, 1.5f, 2.0f, 2.5f,
-                        -0.5f, -1.5f, -2.0f, -2.5f});
-  test.AddInput<float>("c2", {2, 4},
-                       {0.2f, 1.4f, 2.6f, 2.8f,
-                        -0.2f, -1.4f, -2.6f, -2.8f});
-  test.AddOutput<float>("Y", {2, 4},
-                        {-27.3f, 25.4f, 180.6f, -107.2f,
-                         -61.2f, -232.4f, -138.6f, 94.7f});
+  test.AddInput<float>("c1", {2, 4}, {0.5f, 1.5f, 2.0f, 2.5f, -0.5f, -1.5f, -2.0f, -2.5f});
+  test.AddInput<float>("c2", {2, 4}, {0.2f, 1.4f, 2.6f, 2.8f, -0.2f, -1.4f, -2.6f, -2.8f});
+  test.AddOutput<float>("Y", {2, 4}, {-27.3f, 25.4f, 180.6f, -107.2f, -61.2f, -232.4f, -138.6f, 94.7f});
 
   test.Run();
 }
@@ -319,25 +289,13 @@ class Dnnl_MatMulInteger_Cast_Mul_Add_Relu_PostOpTester : public OpTester {
 
 TEST(DnnlMatMulIntegerFusion, MatMulInteger_Cast_Mul_Add_Relu) {
   Dnnl_MatMulInteger_Cast_Mul_Add_Relu_PostOpTester test;
-  test.AddInput<int8_t>("a", {2, 4},
-                        {-3, 7, 5, -6,
-                         4, -5, 8, 7});
-  test.AddInput<int8_t>("b", {4, 4},
-                        {5, -3, 7, 8,
-                         -6, -8, -3, 6,
-                         7, 9, 9, -5,
-                         8, 7, -6, 7});
+  test.AddInput<int8_t>("a", {2, 4}, {-3, 7, 5, -6, 4, -5, 8, 7});
+  test.AddInput<int8_t>("b", {4, 4}, {5, -3, 7, 8, -6, -8, -3, 6, 7, 9, 9, -5, 8, 7, -6, 7});
   test.AddInput<int8_t>("a_zp", {}, {5});
   test.AddInput<int8_t>("b_zp", {}, {5});
-  test.AddInput<float>("c1", {2, 4},
-                       {0.5f, 1.5f, 2.0f, 2.5f,
-                        -0.5f, -1.5f, -2.0f, -2.5f});
-  test.AddInput<float>("c2", {2, 4},
-                       {0.2f, 1.4f, 2.6f, 2.8f,
-                        -0.2f, -1.4f, -2.6f, -2.8f});
-  test.AddOutput<float>("Y", {2, 4},
-                        {0.0f, 25.4f, 180.6f, 0.0f,
-                         0.0f, 0.0f, 0.0f, 94.7f});
+  test.AddInput<float>("c1", {2, 4}, {0.5f, 1.5f, 2.0f, 2.5f, -0.5f, -1.5f, -2.0f, -2.5f});
+  test.AddInput<float>("c2", {2, 4}, {0.2f, 1.4f, 2.6f, 2.8f, -0.2f, -1.4f, -2.6f, -2.8f});
+  test.AddOutput<float>("Y", {2, 4}, {0.0f, 25.4f, 180.6f, 0.0f, 0.0f, 0.0f, 0.0f, 94.7f});
 
   test.Run();
 }
@@ -383,22 +341,12 @@ class Dnnl_MatMulInteger_Cast_Div1_PostOpTester : public OpTester {
 
 TEST(DnnlMatMulIntegerFusion, MatMulInteger_Cast_Div1) {
   Dnnl_MatMulInteger_Cast_Div1_PostOpTester test;
-  test.AddInput<int8_t>("a", {2, 4},
-                        {-3, 7, 5, -6,
-                         4, -5, 8, 7});
-  test.AddInput<int8_t>("b", {4, 4},
-                        {5, -3, 7, 8,
-                         -6, -8, -3, 6,
-                         7, 9, 9, -5,
-                         8, 7, -6, 7});
+  test.AddInput<int8_t>("a", {2, 4}, {-3, 7, 5, -6, 4, -5, 8, 7});
+  test.AddInput<int8_t>("b", {4, 4}, {5, -3, 7, 8, -6, -8, -3, 6, 7, 9, 9, -5, 8, 7, -6, 7});
   test.AddInput<int8_t>("a_zp", {}, {5});
   test.AddInput<int8_t>("b_zp", {}, {5});
-  test.AddInput<float>("c1", {2, 4},
-                       {0.5f, 1.5f, 2.0f, 2.5f,
-                        -0.5f, -1.5f, -2.0f, -2.5f});
-  test.AddOutput<float>("Y", {2, 4},
-                        {-110.0f, 10.666667f, 44.5f, -17.6f,
-                         -244.0f, -102.666664f, -34.0f, 15.6f});
+  test.AddInput<float>("c1", {2, 4}, {0.5f, 1.5f, 2.0f, 2.5f, -0.5f, -1.5f, -2.0f, -2.5f});
+  test.AddOutput<float>("Y", {2, 4}, {-110.0f, 10.666667f, 44.5f, -17.6f, -244.0f, -102.666664f, -34.0f, 15.6f});
 
   test.Run();
 }
@@ -444,22 +392,12 @@ class Dnnl_MatMulInteger_Cast_Div2_PostOpTester : public OpTester {
 
 TEST(DnnlMatMulIntegerFusion, MatMulInteger_Cast_Div2) {
   Dnnl_MatMulInteger_Cast_Div2_PostOpTester test;
-  test.AddInput<int8_t>("a", {2, 4},
-                        {-3, 7, 5, -6,
-                         4, -5, 8, 7});
-  test.AddInput<int8_t>("b", {4, 4},
-                        {5, -3, 7, 8,
-                         -6, -8, -3, 6,
-                         7, 9, 9, -5,
-                         8, 7, -6, 7});
+  test.AddInput<int8_t>("a", {2, 4}, {-3, 7, 5, -6, 4, -5, 8, 7});
+  test.AddInput<int8_t>("b", {4, 4}, {5, -3, 7, 8, -6, -8, -3, 6, 7, 9, 9, -5, 8, 7, -6, 7});
   test.AddInput<int8_t>("a_zp", {}, {5});
   test.AddInput<int8_t>("b_zp", {}, {5});
-  test.AddInput<float>("c1", {2, 4},
-                       {0.5f, 1.5f, 2.0f, 2.5f,
-                        -0.5f, -1.5f, -2.0f, -2.5f});
-  test.AddOutput<float>("Y", {2, 4},
-                        {-0.009090909f, 0.09375f, 0.02247191f, -0.056818184f,
-                         -0.0040983604f, -0.0097402595f, -0.029411765f, 0.06410257f});
+  test.AddInput<float>("c1", {2, 4}, {0.5f, 1.5f, 2.0f, 2.5f, -0.5f, -1.5f, -2.0f, -2.5f});
+  test.AddOutput<float>("Y", {2, 4}, {-0.009090909f, 0.09375f, 0.02247191f, -0.056818184f, -0.0040983604f, -0.0097402595f, -0.029411765f, 0.06410257f});
 
   test.Run();
 }
@@ -505,22 +443,12 @@ class Dnnl_MatMulInteger_Cast_Sub1_PostOpTester : public OpTester {
 
 TEST(DnnlMatMulIntegerFusion, MatMulInteger_Cast_Sub1) {
   Dnnl_MatMulInteger_Cast_Sub1_PostOpTester test;
-  test.AddInput<int8_t>("a", {2, 4},
-                        {-3, 7, 5, -6,
-                         4, -5, 8, 7});
-  test.AddInput<int8_t>("b", {4, 4},
-                        {5, -3, 7, 8,
-                         -6, -8, -3, 6,
-                         7, 9, 9, -5,
-                         8, 7, -6, 7});
+  test.AddInput<int8_t>("a", {2, 4}, {-3, 7, 5, -6, 4, -5, 8, 7});
+  test.AddInput<int8_t>("b", {4, 4}, {5, -3, 7, 8, -6, -8, -3, 6, 7, 9, 9, -5, 8, 7, -6, 7});
   test.AddInput<int8_t>("a_zp", {}, {5});
   test.AddInput<int8_t>("b_zp", {}, {5});
-  test.AddInput<float>("c1", {2, 4},
-                       {0.5f, 1.5f, 2.0f, 2.5f,
-                        -0.5f, -1.5f, -2.0f, -2.5f});
-  test.AddOutput<float>("Y", {2, 4},
-                        {-55.5f, 14.5f, 87.0f, -46.5f,
-                         122.5f, 155.5f, 70.0f, -36.5f});
+  test.AddInput<float>("c1", {2, 4}, {0.5f, 1.5f, 2.0f, 2.5f, -0.5f, -1.5f, -2.0f, -2.5f});
+  test.AddOutput<float>("Y", {2, 4}, {-55.5f, 14.5f, 87.0f, -46.5f, 122.5f, 155.5f, 70.0f, -36.5f});
 
   test.Run();
 }
@@ -567,22 +495,12 @@ class Dnnl_MatMulInteger_Cast_Sub2_PostOpTester : public OpTester {
 
 TEST(DnnlMatMulIntegerFusion, MatMulInteger_Cast_Sub2) {
   Dnnl_MatMulInteger_Cast_Sub2_PostOpTester test;
-  test.AddInput<int8_t>("a", {2, 4},
-                        {-3, 7, 5, -6,
-                         4, -5, 8, 7});
-  test.AddInput<int8_t>("b", {4, 4},
-                        {5, -3, 7, 8,
-                         -6, -8, -3, 6,
-                         7, 9, 9, -5,
-                         8, 7, -6, 7});
+  test.AddInput<int8_t>("a", {2, 4}, {-3, 7, 5, -6, 4, -5, 8, 7});
+  test.AddInput<int8_t>("b", {4, 4}, {5, -3, 7, 8, -6, -8, -3, 6, 7, 9, 9, -5, 8, 7, -6, 7});
   test.AddInput<int8_t>("a_zp", {}, {5});
   test.AddInput<int8_t>("b_zp", {}, {5});
-  test.AddInput<float>("c1", {2, 4},
-                       {0.5f, 1.5f, 2.0f, 2.5f,
-                        -0.5f, -1.5f, -2.0f, -2.5f});
-  test.AddOutput<float>("Y", {2, 4},
-                        {55.5f, -14.5f, -87.0f, 46.5f,
-                         -122.5f, -155.5f, -70.0f, 36.5f});
+  test.AddInput<float>("c1", {2, 4}, {0.5f, 1.5f, 2.0f, 2.5f, -0.5f, -1.5f, -2.0f, -2.5f});
+  test.AddOutput<float>("Y", {2, 4}, {55.5f, -14.5f, -87.0f, 46.5f, -122.5f, -155.5f, -70.0f, 36.5f});
 
   test.Run();
 }
@@ -627,19 +545,11 @@ class Dnnl_MatMulInteger_Cast_Abs_PostOpTester : public OpTester {
 
 TEST(DnnlMatMulIntegerFusion, MatMulInteger_Cast_Abs) {
   Dnnl_MatMulInteger_Cast_Abs_PostOpTester test;
-  test.AddInput<int8_t>("a", {2, 4},
-                        {-3, 7, 5, -6,
-                         4, -5, 8, 7});
-  test.AddInput<int8_t>("b", {4, 4},
-                        {5, -3, 7, 8,
-                         -6, -8, -3, 6,
-                         7, 9, 9, -5,
-                         8, 7, -6, 7});
+  test.AddInput<int8_t>("a", {2, 4}, {-3, 7, 5, -6, 4, -5, 8, 7});
+  test.AddInput<int8_t>("b", {4, 4}, {5, -3, 7, 8, -6, -8, -3, 6, 7, 9, 9, -5, 8, 7, -6, 7});
   test.AddInput<int8_t>("a_zp", {}, {5});
   test.AddInput<int8_t>("b_zp", {}, {5});
-  test.AddOutput<float>("Y", {2, 4},
-                        {55.0f, 16.0f, 89.0f, 44.0f,
-                         122.0f, 154.0f, 68.0f, 39.0f});
+  test.AddOutput<float>("Y", {2, 4}, {55.0f, 16.0f, 89.0f, 44.0f, 122.0f, 154.0f, 68.0f, 39.0f});
 
   test.Run();
 }
@@ -684,19 +594,11 @@ class Dnnl_MatMulInteger_Cast_Elu_PostOpTester : public OpTester {
 
 TEST(DnnlMatMulIntegerFusion, MatMulInteger_Cast_Elu) {
   Dnnl_MatMulInteger_Cast_Elu_PostOpTester test;
-  test.AddInput<int8_t>("a", {2, 4},
-                        {-3, 7, 5, -6,
-                         4, -5, 8, 7});
-  test.AddInput<int8_t>("b", {4, 4},
-                        {5, -3, 7, 8,
-                         -6, -8, -3, 6,
-                         7, 9, 9, -5,
-                         8, 7, -6, 7});
+  test.AddInput<int8_t>("a", {2, 4}, {-3, 7, 5, -6, 4, -5, 8, 7});
+  test.AddInput<int8_t>("b", {4, 4}, {5, -3, 7, 8, -6, -8, -3, 6, 7, 9, 9, -5, 8, 7, -6, 7});
   test.AddInput<int8_t>("a_zp", {}, {5});
   test.AddInput<int8_t>("b_zp", {}, {5});
-  test.AddOutput<float>("Y", {2, 4},
-                        {-1.5f, 16.0f, 89.0f, -1.5f,
-                         122.0f, 154.0f, 68.0f, -1.5f});
+  test.AddOutput<float>("Y", {2, 4}, {-1.5f, 16.0f, 89.0f, -1.5f, 122.0f, 154.0f, 68.0f, -1.5f});
 
   test.Run();
 }
@@ -744,22 +646,12 @@ class Dnnl_MatMulInteger_Cast_Mul_Exp_PostOpTester : public OpTester {
 
 TEST(DnnlMatMulIntegerFusion, MatMulInteger_Cast_Mul_Exp) {
   Dnnl_MatMulInteger_Cast_Mul_Exp_PostOpTester test;
-  test.AddInput<int8_t>("a", {2, 4},
-                        {-3, 7, 5, -6,
-                         4, -5, 8, 7});
-  test.AddInput<int8_t>("b", {4, 4},
-                        {5, -3, 7, 8,
-                         -6, -8, -3, 6,
-                         7, 9, 9, -5,
-                         8, 7, -6, 7});
+  test.AddInput<int8_t>("a", {2, 4}, {-3, 7, 5, -6, 4, -5, 8, 7});
+  test.AddInput<int8_t>("b", {4, 4}, {5, -3, 7, 8, -6, -8, -3, 6, 7, 9, 9, -5, 8, 7, -6, 7});
   test.AddInput<int8_t>("a_zp", {}, {5});
   test.AddInput<int8_t>("b_zp", {}, {5});
   test.AddInput<float>("c1", {}, {0.01f});
-  test.AddOutput<float>("Y", {2, 4},
-                        {0.5769498103804866f, 1.1735108709918103f,
-                         2.4351296512898744f, 0.6440364210831414f,
-                         3.3871877336213347f, 4.664590270988126f,
-                         1.9738777322304477f, 0.6770568744981647f});
+  test.AddOutput<float>("Y", {2, 4}, {0.5769498103804866f, 1.1735108709918103f, 2.4351296512898744f, 0.6440364210831414f, 3.3871877336213347f, 4.664590270988126f, 1.9738777322304477f, 0.6770568744981647f});
 
   test.Run();
 }
@@ -804,19 +696,11 @@ class Dnnl_MatMulInteger_Cast_LeakyRelu_PostOpTester : public OpTester {
 
 TEST(DnnlMatMulIntegerFusion, MatMulInteger_Cast_LeakyRelu) {
   Dnnl_MatMulInteger_Cast_LeakyRelu_PostOpTester test;
-  test.AddInput<int8_t>("a", {2, 4},
-                        {-3, 7, 5, -6,
-                         4, -5, 8, 7});
-  test.AddInput<int8_t>("b", {4, 4},
-                        {5, -3, 7, 8,
-                         -6, -8, -3, 6,
-                         7, 9, 9, -5,
-                         8, 7, -6, 7});
+  test.AddInput<int8_t>("a", {2, 4}, {-3, 7, 5, -6, 4, -5, 8, 7});
+  test.AddInput<int8_t>("b", {4, 4}, {5, -3, 7, 8, -6, -8, -3, 6, 7, 9, 9, -5, 8, 7, -6, 7});
   test.AddInput<int8_t>("a_zp", {}, {5});
   test.AddInput<int8_t>("b_zp", {}, {5});
-  test.AddOutput<float>("Y", {2, 4},
-                        {-0.825f, 16.0f, 89.0f, -0.65999997f,
-                         122.0f, 154.0f, 68.0f, -0.585f});
+  test.AddOutput<float>("Y", {2, 4}, {-0.825f, 16.0f, 89.0f, -0.65999997f, 122.0f, 154.0f, 68.0f, -0.585f});
 
   test.Run();
 }
@@ -863,19 +747,11 @@ class Dnnl_MatMulInteger_Cast_Log_PostOpTester : public OpTester {
 
 TEST(DnnlMatMulIntegerFusion, MatMulInteger_Cast_Abs_Log) {
   Dnnl_MatMulInteger_Cast_Log_PostOpTester test;
-  test.AddInput<int8_t>("a", {2, 4},
-                        {-3, 7, 5, -6,
-                         4, -5, 8, 7});
-  test.AddInput<int8_t>("b", {4, 4},
-                        {5, -3, 7, 8,
-                         -6, -8, -3, 6,
-                         7, 9, 9, -5,
-                         8, 7, -6, 7});
+  test.AddInput<int8_t>("a", {2, 4}, {-3, 7, 5, -6, 4, -5, 8, 7});
+  test.AddInput<int8_t>("b", {4, 4}, {5, -3, 7, 8, -6, -8, -3, 6, 7, 9, 9, -5, 8, 7, -6, 7});
   test.AddInput<int8_t>("a_zp", {}, {5});
   test.AddInput<int8_t>("b_zp", {}, {5});
-  test.AddOutput<float>("Y", {2, 4},
-                        {4.0073333f, 2.7725887f, 4.4886365f, 3.7841897f,
-                         4.804021f, 5.0369525f, 4.2195077f, 3.6635616f});
+  test.AddOutput<float>("Y", {2, 4}, {4.0073333f, 2.7725887f, 4.4886365f, 3.7841897f, 4.804021f, 5.0369525f, 4.2195077f, 3.6635616f});
 
   test.Run();
 }
@@ -923,22 +799,12 @@ class Dnnl_MatMulInteger_Add_Round_PostOpTester : public OpTester {
 
 TEST(DnnlMatMulIntegerFusion, MatMulInteger_Cast_Add_Round) {
   Dnnl_MatMulInteger_Add_Round_PostOpTester test;
-  test.AddInput<int8_t>("a", {2, 4},
-                        {-3, 7, 5, -6,
-                         4, -5, 8, 7});
-  test.AddInput<int8_t>("b", {4, 4},
-                        {5, -3, 7, 8,
-                         -6, -8, -3, 6,
-                         7, 9, 9, -5,
-                         8, 7, -6, 7});
+  test.AddInput<int8_t>("a", {2, 4}, {-3, 7, 5, -6, 4, -5, 8, 7});
+  test.AddInput<int8_t>("b", {4, 4}, {5, -3, 7, 8, -6, -8, -3, 6, 7, 9, 9, -5, 8, 7, -6, 7});
   test.AddInput<int8_t>("a_zp", {}, {5});
   test.AddInput<int8_t>("b_zp", {}, {5});
-  test.AddInput<float>("c1", {2, 4},
-                       {0.4f, 0.6f, 0.4f, 0.6f,
-                        0.4f, 0.6f, 0.5f, 0.5f});
-  test.AddOutput<float>("Y", {2, 4},
-                        {-55.0f, 17.0f, 89.0f, -43.0f,
-                         122.0f, 155.0f, 68.0f, -38.0f});
+  test.AddInput<float>("c1", {2, 4}, {0.4f, 0.6f, 0.4f, 0.6f, 0.4f, 0.6f, 0.5f, 0.5f});
+  test.AddOutput<float>("Y", {2, 4}, {-55.0f, 17.0f, 89.0f, -43.0f, 122.0f, 155.0f, 68.0f, -38.0f});
 
   test.Run();
 }
@@ -983,19 +849,11 @@ class Dnnl_MatMulInteger_Cast_Sigmoid_PostOpTester : public OpTester {
 
 TEST(DnnlMatMulIntegerFusion, MatMulInteger_Cast_Sigmoid) {
   Dnnl_MatMulInteger_Cast_Sigmoid_PostOpTester test;
-  test.AddInput<int8_t>("a", {2, 4},
-                        {-3, 7, 5, -6,
-                         4, -5, 8, 7});
-  test.AddInput<int8_t>("b", {4, 4},
-                        {5, -3, 7, 8,
-                         -6, -8, -3, 6,
-                         7, 9, 9, -5,
-                         8, 7, -6, 7});
+  test.AddInput<int8_t>("a", {2, 4}, {-3, 7, 5, -6, 4, -5, 8, 7});
+  test.AddInput<int8_t>("b", {4, 4}, {5, -3, 7, 8, -6, -8, -3, 6, 7, 9, 9, -5, 8, 7, -6, 7});
   test.AddInput<int8_t>("a_zp", {}, {5});
   test.AddInput<int8_t>("b_zp", {}, {5});
-  test.AddOutput<float>("Y", {2, 4},
-                        {1.2995814e-24f, 0.9999999f, 1.0f, 7.781132e-20f,
-                         1.0f, 1.0f, 1.0f, 1.1548225e-17f});
+  test.AddOutput<float>("Y", {2, 4}, {1.2995814e-24f, 0.9999999f, 1.0f, 7.781132e-20f, 1.0f, 1.0f, 1.0f, 1.1548225e-17f});
 
   test.Run();
 }
@@ -1043,23 +901,12 @@ class Dnnl_MatMulInteger_Mul_Softplus_PostOpTester : public OpTester {
 
 TEST(DnnlMatMulIntegerFusion, MatMulInteger_Cast_Mul_Softplus) {
   Dnnl_MatMulInteger_Mul_Softplus_PostOpTester test;
-  test.AddInput<int8_t>("a", {2, 4},
-                        {-3, 7, 5, -6,
-                         4, -5, 8, 7});
-  test.AddInput<int8_t>("b", {4, 4},
-                        {5, -3, 7, 8,
-                         -6, -8, -3, 6,
-                         7, 9, 9, -5,
-                         8, 7, -6, 7});
+  test.AddInput<int8_t>("a", {2, 4}, {-3, 7, 5, -6, 4, -5, 8, 7});
+  test.AddInput<int8_t>("b", {4, 4}, {5, -3, 7, 8, -6, -8, -3, 6, 7, 9, 9, -5, 8, 7, -6, 7});
   test.AddInput<int8_t>("a_zp", {}, {5});
   test.AddInput<int8_t>("b_zp", {}, {5});
-  test.AddInput<float>("c1", {},
-                       {0.01f});
-  test.AddOutput<float>("Y", {2, 4},
-                        {0.4554924814633376f, 0.7763437730407398f,
-                         1.2340546691512106f, 0.4971544503321099f,
-                         1.4786884144349526f, 1.7342345654720792f,
-                         1.0898667349636622f, 0.5170403966954268f});
+  test.AddInput<float>("c1", {}, {0.01f});
+  test.AddOutput<float>("Y", {2, 4}, {0.4554924814633376f, 0.7763437730407398f, 1.2340546691512106f, 0.4971544503321099f, 1.4786884144349526f, 1.7342345654720792f, 1.0898667349636622f, 0.5170403966954268f});
 
   test.Run();
 }
@@ -1106,19 +953,11 @@ class Dnnl_MatMulInteger_Cast_Abs_Sqrt_PostOpTester : public OpTester {
 
 TEST(DnnlMatMulIntegerFusion, MatMulInteger_Cast_Abs_Sqrt) {
   Dnnl_MatMulInteger_Cast_Abs_Sqrt_PostOpTester test;
-  test.AddInput<int8_t>("a", {2, 4},
-                        {-3, 7, 5, -6,
-                         4, -5, 8, 7});
-  test.AddInput<int8_t>("b", {4, 4},
-                        {5, -3, 7, 8,
-                         -6, -8, -3, 6,
-                         7, 9, 9, -5,
-                         8, 7, -6, 7});
+  test.AddInput<int8_t>("a", {2, 4}, {-3, 7, 5, -6, 4, -5, 8, 7});
+  test.AddInput<int8_t>("b", {4, 4}, {5, -3, 7, 8, -6, -8, -3, 6, 7, 9, 9, -5, 8, 7, -6, 7});
   test.AddInput<int8_t>("a_zp", {}, {5});
   test.AddInput<int8_t>("b_zp", {}, {5});
-  test.AddOutput<float>("Y", {2, 4},
-                        {7.4161983f, 4.0f, 9.433981f, 6.6332498f,
-                         11.045361f, 12.409674f, 8.246211f, 6.244998f});
+  test.AddOutput<float>("Y", {2, 4}, {7.4161983f, 4.0f, 9.433981f, 6.6332498f, 11.045361f, 12.409674f, 8.246211f, 6.244998f});
 
   test.Run();
 }
@@ -1166,22 +1005,12 @@ class Dnnl_MatMulInteger_Mul_Tanh_PostOpTester : public OpTester {
 
 TEST(DnnlMatMulIntegerFusion, MatMulInteger_Cast_Mul_Tanh) {
   Dnnl_MatMulInteger_Mul_Tanh_PostOpTester test;
-  test.AddInput<int8_t>("a", {2, 4},
-                        {-3, 7, 5, -6,
-                         4, -5, 8, 7});
-  test.AddInput<int8_t>("b", {4, 4},
-                        {5, -3, 7, 8,
-                         -6, -8, -3, 6,
-                         7, 9, 9, -5,
-                         8, 7, -6, 7});
+  test.AddInput<int8_t>("a", {2, 4}, {-3, 7, 5, -6, 4, -5, 8, 7});
+  test.AddInput<int8_t>("b", {4, 4}, {5, -3, 7, 8, -6, -8, -3, 6, 7, 9, 9, -5, 8, 7, -6, 7});
   test.AddInput<int8_t>("a_zp", {}, {5});
   test.AddInput<int8_t>("b_zp", {}, {5});
   test.AddInput<float>("c1", {}, {0.01f});
-  test.AddOutput<float>("Y", {2, 4},
-                        {-0.5005202111902353f, 0.1586485042974989f,
-                         0.7113937318189626f, -0.41364444218713514f,
-                         0.8396541756543753f, 0.9121203692077173f,
-                         0.5915193954318164f, -0.3713602278765077f});
+  test.AddOutput<float>("Y", {2, 4}, {-0.5005202111902353f, 0.1586485042974989f, 0.7113937318189626f, -0.41364444218713514f, 0.8396541756543753f, 0.9121203692077173f, 0.5915193954318164f, -0.3713602278765077f});
 
   test.Run();
 }
@@ -1306,20 +1135,12 @@ class Dnnl_MatMulInteger_36_ops_PostOpTester : public OpTester {
 
 TEST(DnnlMatMulIntegerFusion, MatMulInteger_36_ops) {
   Dnnl_MatMulInteger_36_ops_PostOpTester test;
-  test.AddInput<int8_t>("a", {2, 4},
-                        {-3, 7, 5, -6,
-                         4, -5, 8, 7});
-  test.AddInput<int8_t>("b", {4, 4},
-                        {5, -3, 7, 8,
-                         -6, -8, -3, 6,
-                         7, 9, 9, -5,
-                         8, 7, -6, 7});
+  test.AddInput<int8_t>("a", {2, 4}, {-3, 7, 5, -6, 4, -5, 8, 7});
+  test.AddInput<int8_t>("b", {4, 4}, {5, -3, 7, 8, -6, -8, -3, 6, 7, 9, 9, -5, 8, 7, -6, 7});
   test.AddInput<int8_t>("a_zp", {}, {5});
   test.AddInput<int8_t>("b_zp", {}, {5});
   test.AddInput<float>("c1", {}, {2.5f});
-  test.AddOutput<float>("Y", {2, 4},
-                        {-55.0f, 16.0f, 89.0f, -44.0f,
-                         122.0f, 154.0f, 68.0f, -39.0f});
+  test.AddOutput<float>("Y", {2, 4}, {-55.0f, 16.0f, 89.0f, -44.0f, 122.0f, 154.0f, 68.0f, -39.0f});
 
   test.Run();
 }
@@ -1366,19 +1187,11 @@ class Dnnl_MatMulInteger_Cast_Elu_LeakyRelu_PostOpTester : public OpTester {
 
 TEST(DnnlMatMulIntegerFusion, MatMulInteger_Cast_Elu_LeakyRelu) {
   Dnnl_MatMulInteger_Cast_Elu_LeakyRelu_PostOpTester test;
-  test.AddInput<int8_t>("a", {2, 4},
-                        {-3, 7, 5, -6,
-                         4, -5, 8, 7});
-  test.AddInput<int8_t>("b", {4, 4},
-                        {5, -3, 7, 8,
-                         -6, -8, -3, 6,
-                         7, 9, 9, -5,
-                         8, 7, -6, 7});
+  test.AddInput<int8_t>("a", {2, 4}, {-3, 7, 5, -6, 4, -5, 8, 7});
+  test.AddInput<int8_t>("b", {4, 4}, {5, -3, 7, 8, -6, -8, -3, 6, 7, 9, 9, -5, 8, 7, -6, 7});
   test.AddInput<int8_t>("a_zp", {}, {5});
   test.AddInput<int8_t>("b_zp", {}, {5});
-  test.AddOutput<float>("Y", {2, 4},
-                        {-0.15f, 16.0f, 89.0f, -0.15f,
-                         122.0f, 154.0f, 68.0f, -0.15f});
+  test.AddOutput<float>("Y", {2, 4}, {-0.15f, 16.0f, 89.0f, -0.15f, 122.0f, 154.0f, 68.0f, -0.15f});
 
   test.Run();
 }

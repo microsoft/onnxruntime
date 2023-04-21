@@ -14,11 +14,7 @@ inline TrainingSession::TrainingSession(const SessionOptions& session_options,
                                         const std::optional<std::basic_string<ORTCHAR_T>>& optimizer_model_path) {
   Env env = Env();
   ThrowOnError(GetTrainingApi().CreateTrainingSession(
-      env, session_options, checkpoint_state,
-      train_model_path.c_str(),
-      eval_model_path.has_value() ? eval_model_path.value().c_str() : nullptr,
-      optimizer_model_path.has_value() ? optimizer_model_path.value().c_str() : nullptr,
-      &p_));
+      env, session_options, checkpoint_state, train_model_path.c_str(), eval_model_path.has_value() ? eval_model_path.value().c_str() : nullptr, optimizer_model_path.has_value() ? optimizer_model_path.value().c_str() : nullptr, &p_));
 
   ThrowOnError(GetTrainingApi().TrainingSessionGetTrainingModelOutputCount(p_, &training_model_output_count_));
 
@@ -33,8 +29,7 @@ inline std::vector<Value> TrainingSession::TrainStep(const std::vector<Value>& i
   auto ort_output_values = reinterpret_cast<OrtValue**>(output_values.data());
   RunOptions run_options;
   ThrowOnError(GetTrainingApi().TrainStep(
-      p_, run_options, input_values.size(), ort_input_values,
-      training_model_output_count_, ort_output_values));
+      p_, run_options, input_values.size(), ort_input_values, training_model_output_count_, ort_output_values));
 
   return output_values;
 }
@@ -51,8 +46,7 @@ inline std::vector<Value> TrainingSession::EvalStep(const std::vector<Value>& in
   auto ort_output_values = reinterpret_cast<OrtValue**>(output_values.data());
   RunOptions run_options;
   ThrowOnError(GetTrainingApi().EvalStep(
-      p_, run_options, input_values.size(), ort_input_values,
-      training_model_output_count_, ort_output_values));
+      p_, run_options, input_values.size(), ort_input_values, training_model_output_count_, ort_output_values));
 
   return output_values;
 }
@@ -67,10 +61,8 @@ inline float TrainingSession::GetLearningRate() const {
   return learning_rate;
 }
 
-inline void TrainingSession::RegisterLinearLRScheduler(int64_t warmup_step_count, int64_t total_step_count,
-                                                       float initial_lr) {
-  ThrowOnError(GetTrainingApi().RegisterLinearLRScheduler(p_, warmup_step_count, total_step_count,
-                                                          initial_lr));
+inline void TrainingSession::RegisterLinearLRScheduler(int64_t warmup_step_count, int64_t total_step_count, float initial_lr) {
+  ThrowOnError(GetTrainingApi().RegisterLinearLRScheduler(p_, warmup_step_count, total_step_count, initial_lr));
 }
 
 inline void TrainingSession::SchedulerStep() {

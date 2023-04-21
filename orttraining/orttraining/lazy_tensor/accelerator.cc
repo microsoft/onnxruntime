@@ -434,9 +434,7 @@ CompiledObject Accelerator::Compile(
 
   // Create a callable which feeds inputs to ORT
   // session's Run(...) and returns outputs.
-  auto code = [this, run_options,
-               feed_names, fetch_names,
-               fetches_device_info, &sess](at::ArrayRef<c10::IValue>& args) {
+  auto code = [this, run_options, feed_names, fetch_names, fetches_device_info, &sess](at::ArrayRef<c10::IValue>& args) {
     // Inputs of ORT session.
     std::vector<OrtValue> feeds;
     // Outputs of ORT session.
@@ -475,8 +473,11 @@ CompiledObject Accelerator::Compile(
       // Inputs are ready. Let's run ORT.
       ORT_THROW_IF_ERROR(sess.Run(
           run_options,
-          feed_names, feeds,
-          fetch_names, &fetches, &fetches_device_info));
+          feed_names,
+          feeds,
+          fetch_names,
+          &fetches,
+          &fetches_device_info));
     }
 
     std::vector<c10::IValue> outputs;

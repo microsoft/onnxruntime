@@ -38,7 +38,8 @@ common::Status CreateCoreMLWeight(CoreML::Specification::WeightParams& weight,
 
 // Copy the float array to a coreml weight
 void CreateCoreMLWeight(CoreML::Specification::WeightParams& weight,
-                        const float* data, size_t num_elements);
+                        const float* data,
+                        size_t num_elements);
 
 }  // namespace coreml
 }  // namespace onnxruntime

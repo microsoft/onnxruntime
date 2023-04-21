@@ -43,7 +43,8 @@ class NodesToOptimize {
   NodesToOptimize(gsl::span<Node* const> input_nodes,
                   Node& target_node,
                   gsl::span<Node* const> output_nodes,
-                  int num_input_defs = -1, int num_output_defs = -1);
+                  int num_input_defs = -1,
+                  int num_output_defs = -1);
 
   // construct from saved NodeIndex values. IsValid() will return false if one or more nodes were missing.
   // Use NodesToOptimizeIndices::kEmptyNodeIndex for nullptr entries in the vectors for missing optional inputs
@@ -196,11 +197,9 @@ struct NodeAndMoveInfo {
 // setting `only_update_dest_definitions` to true is useful for updating the destination node independently from the
 // rest of the graph. e.g., when creating a temporary node that is used to look up a kernel def, we can set the
 // temporary node's definitions (which is all we need) without updating existing graph edges.
-Status MoveInputOutput(Graph& graph, const NodesToOptimize& selected_nodes, Node& dest,
-                       gsl::span<const NodeAndMoveInfo> moves, bool only_update_dest_definitions);
+Status MoveInputOutput(Graph& graph, const NodesToOptimize& selected_nodes, Node& dest, gsl::span<const NodeAndMoveInfo> moves, bool only_update_dest_definitions);
 
-Status MoveInputOutput(Graph& graph, Node& src, Node& dest, const ValueMoveInfo& move_info,
-                       bool only_update_dest_definitions);
+Status MoveInputOutput(Graph& graph, Node& src, Node& dest, const ValueMoveInfo& move_info, bool only_update_dest_definitions);
 
 //
 // Helpers to make the 'move' configuration more easily read
@@ -208,8 +207,10 @@ Status MoveInputOutput(Graph& graph, Node& src, Node& dest, const ValueMoveInfo&
 
 // move specific input/output to slot on target/replacement node
 inline NodeAndMoveInfo MoveToSlot(const NodesToOptimize::NodeLocation& src_node,
-                                  ArgType src_direction, int src_slot,
-                                  ArgType dest_direction, int dest_slot) {
+                                  ArgType src_direction,
+                                  int src_slot,
+                                  ArgType dest_direction,
+                                  int dest_slot) {
   return NodeAndMoveInfo{src_node,
                          ValueMoveInfo{
                              InOutDefSlot{src_direction, src_slot},      // move from this slot
@@ -218,14 +219,15 @@ inline NodeAndMoveInfo MoveToSlot(const NodesToOptimize::NodeLocation& src_node,
 
 // move specific input/output and append to target/replacement node
 inline NodeAndMoveInfo MoveAndAppend(const NodesToOptimize::NodeLocation& src_node,
-                                     ArgType src_direction, int src_slot,
+                                     ArgType src_direction,
+                                     int src_slot,
                                      ArgType dest_direction,
                                      bool optional = false,
                                      bool fill_optional_with_empty = false) {
-  return NodeAndMoveInfo{src_node, ValueMoveInfo{
-                                       InOutDefSlot{src_direction, src_slot},  // move from this slot
-                                       dest_direction, optional,
-                                       fill_optional_with_empty}};  // append here
+  return NodeAndMoveInfo{src_node, ValueMoveInfo{InOutDefSlot{src_direction, src_slot},  // move from this slot
+                                                 dest_direction,
+                                                 optional,
+                                                 fill_optional_with_empty}};  // append here
 }
 
 // move all inputs/outputs from the source node to the target/replacement node

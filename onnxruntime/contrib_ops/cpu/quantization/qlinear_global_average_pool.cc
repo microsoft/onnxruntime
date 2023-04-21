@@ -44,13 +44,10 @@ Status ComputeQLinearGlobalAvgPool(
       std::vector<int32_t> acc_buffer(MlasQLinearSafePaddingElementCount(sizeof(int32_t), narrow<size_t>(C)));
       std::vector<T8Bits> zero_buffer(MlasQLinearSafePaddingElementCount(sizeof(T8Bits), narrow<size_t>(C)), 0);
       MlasQLinearGlobalAveragePoolNhwc(
-          input, x_scale, x_zero_point, output, y_scale, y_zero_point,
-          last - first, narrow<size_t>(image_size), narrow<size_t>(C), narrow<size_t>(C), acc_buffer.data(), zero_buffer.data());
+          input, x_scale, x_zero_point, output, y_scale, y_zero_point, last - first, narrow<size_t>(image_size), narrow<size_t>(C), narrow<size_t>(C), acc_buffer.data(), zero_buffer.data());
     };
     concurrency::ThreadPool::TryParallelFor(
-        tp, static_cast<std::ptrdiff_t>(N),
-        {1.0 * image_size * C, 1.0 * C, 8.0 * image_size * C},
-        worker);
+        tp, static_cast<std::ptrdiff_t>(N), {1.0 * image_size * C, 1.0 * C, 8.0 * image_size * C}, worker);
   }
   return Status::OK();
 }
@@ -112,12 +109,10 @@ Status QLinearGlobalAveragePool::Compute(OpKernelContext* context) const {
 
   int64_t N = x_shape[0];
   int64_t C = (channels_last_ ? x_shape.back() : x_shape[1]);
-  int64_t image_size = std::accumulate(x_shape.begin() + spatial_dim_start, x_shape.begin() + spatial_dim_end,
-                                       1LL, std::multiplies<int64_t>());
+  int64_t image_size = std::accumulate(x_shape.begin() + spatial_dim_start, x_shape.begin() + spatial_dim_end, 1LL, std::multiplies<int64_t>());
 
   std::vector<int64_t> output_dims(x_shape.begin(), x_shape.end());
-  std::transform(x_shape.begin() + spatial_dim_start, x_shape.begin() + spatial_dim_end,
-                 output_dims.begin() + spatial_dim_start, [](const int64_t&) { return int64_t{1}; });
+  std::transform(x_shape.begin() + spatial_dim_start, x_shape.begin() + spatial_dim_end, output_dims.begin() + spatial_dim_start, [](const int64_t&) { return int64_t{1}; });
   Tensor& Y = *context->Output(0, output_dims);
 
   const float x_scale = *(tensor_x_scale->Data<float>());
@@ -125,13 +120,9 @@ Status QLinearGlobalAveragePool::Compute(OpKernelContext* context) const {
 
   auto dtype = X.GetElementType();
   if (dtype == ONNX_NAMESPACE::TensorProto_DataType_UINT8) {
-    return ComputeQLinearGlobalAvgPool(X.Data<uint8_t>(), x_scale, *(tensor_x_zero_point->Data<uint8_t>()),
-                                       Y.MutableData<uint8_t>(), y_scale, *(tensor_y_zero_point->Data<uint8_t>()),
-                                       N, C, image_size, channels_last_, tp);
+    return ComputeQLinearGlobalAvgPool(X.Data<uint8_t>(), x_scale, *(tensor_x_zero_point->Data<uint8_t>()), Y.MutableData<uint8_t>(), y_scale, *(tensor_y_zero_point->Data<uint8_t>()), N, C, image_size, channels_last_, tp);
   } else {
-    return ComputeQLinearGlobalAvgPool(X.Data<int8_t>(), x_scale, *(tensor_x_zero_point->Data<int8_t>()),
-                                       Y.MutableData<int8_t>(), y_scale, *(tensor_y_zero_point->Data<int8_t>()),
-                                       N, C, image_size, channels_last_, tp);
+    return ComputeQLinearGlobalAvgPool(X.Data<int8_t>(), x_scale, *(tensor_x_zero_point->Data<int8_t>()), Y.MutableData<int8_t>(), y_scale, *(tensor_y_zero_point->Data<int8_t>()), N, C, image_size, channels_last_, tp);
   }
 }
 

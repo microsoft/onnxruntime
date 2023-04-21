@@ -16,7 +16,9 @@ const std::string WeightLayoutTiling2D::GetKey(
     int vector_width) {
   return WeightLayout::GetKey(
       local_name_prefix + std::to_string(vector_width),
-      proto_type, 2, 0.0f);
+      proto_type,
+      2,
+      0.0f);
 }
 
 WeightLayoutTiling2D::WeightLayoutTiling2D(
@@ -24,7 +26,9 @@ WeightLayoutTiling2D::WeightLayoutTiling2D(
     int vector_width)
     : WeightLayout(
           local_name_prefix + std::to_string(vector_width),
-          proto_type, 2, 0.0f),
+          proto_type,
+          2,
+          0.0f),
       vector_width_(vector_width) {}
 
 CoordTransFunc WeightLayoutTiling2D::ToActual(const tvm::Tensor& /*X*/) const {

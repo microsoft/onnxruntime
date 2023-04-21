@@ -33,8 +33,7 @@ class ConvOpBuilder : public BaseOpBuilder {
 
   // Operator support related
  private:
-  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
-                         const OpSupportCheckParams& params) const override;
+  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit, const OpSupportCheckParams& params) const override;
 
   int32_t GetMinSupportedNNAPIFeatureLevel(const NodeUnit& /* node_unit */,
                                            const OpSupportCheckParams& params) const override {
@@ -42,8 +41,7 @@ class ConvOpBuilder : public BaseOpBuilder {
   }
 
   bool HasSupportedInputOutputsImpl(
-      const InitializedTensorSet& /* initializers */, const NodeUnit& node_unit,
-      const OpSupportCheckParams& /* params */) const override;
+      const InitializedTensorSet& /* initializers */, const NodeUnit& node_unit, const OpSupportCheckParams& /* params */) const override;
   bool IsNodeUnitTypeSupported(const NodeUnit& /* node_unit */) const override { return true; }
   bool IsQuantizedOp(const NodeUnit& node_unit) const override;
 };
@@ -108,10 +106,7 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   optional<std::vector<float>> w_scales;
   bool is_per_tensor_u8s8 = false;
   if (is_quant_conv) {
-    ORT_RETURN_IF_ERROR(GetConvMatMulOpQuantizationScaleAndZeroPoint(model_builder, node_unit,
-                                                                     x_scale, w_scale, y_scale,
-                                                                     x_zero_point, w_zero_point, y_zero_point,
-                                                                     w_scales, is_per_tensor_u8s8));
+    ORT_RETURN_IF_ERROR(GetConvMatMulOpQuantizationScaleAndZeroPoint(model_builder, node_unit, x_scale, w_scale, y_scale, x_zero_point, w_zero_point, y_zero_point, w_scales, is_per_tensor_u8s8));
   }
 
   Shape onnx_weight_shape;
@@ -138,18 +133,14 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
       }
       break;
     default:
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "The initializer of graph ", weight, " doesn't have valid type: ",
-                             weight_tensor.data_type());
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "The initializer of graph ", weight, " doesn't have valid type: ", weight_tensor.data_type());
   }
 
   // Get weight operand type
   // Per-channel quantized weight is handled differently
   OperandType onnx_weight_operand_type =
       (is_quant_conv && w_scales.has_value())
-          ? OperandType{onnx_weight_type, onnx_weight_shape,
-                        SymmPerChannelQuantParams{w_scales.value(),
-                                                  depthwise_conv_2d ? 3u : 0u}}  // channelDim is 3 for depthwise-conv
+          ? OperandType{onnx_weight_type, onnx_weight_shape, SymmPerChannelQuantParams{w_scales.value(), depthwise_conv_2d ? 3u : 0u}}  // channelDim is 3 for depthwise-conv
           : OperandType{onnx_weight_type, onnx_weight_shape, w_scale, w_zero_point};
 
   // Pre-process weights
@@ -193,7 +184,8 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
     // QLinearConv's bias type need special handling to add scale for quantization input
     const auto& bias_tensor = *model_builder.GetInitializerTensors().at(bias);
     ORT_RETURN_IF_NOT(bias_tensor.data_type() == ONNX_NAMESPACE::TensorProto_DataType_INT32,
-                      "bias of QLinearConv should be int32, actual type: ", bias_tensor.data_type());
+                      "bias of QLinearConv should be int32, actual type: ",
+                      bias_tensor.data_type());
     Shape bias_dimen;
     for (auto dim : bias_tensor.dims())
       bias_dimen.push_back(SafeInt<uint32_t>(dim));
@@ -211,10 +203,7 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   const auto weight_size_y = kernel_shape[1];
   const auto weight_size_x = kernel_shape[2];
   ORT_RETURN_IF_ERROR(
-      HandleAutoPad(input_shape, weight_size_y, weight_size_x,
-                    onnx_strides, onnx_dilations,
-                    auto_pad_type, use_nchw,
-                    onnx_pads, nnapi_padding_code, use_auto_pad));
+      HandleAutoPad(input_shape, weight_size_y, weight_size_x, onnx_strides, onnx_dilations, auto_pad_type, use_nchw, onnx_pads, nnapi_padding_code, use_auto_pad));
 
   InlinedVector<uint32_t> input_indices;
   input_indices.push_back(operand_indices.at(input));
@@ -269,8 +258,7 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   }
 
   const OperandType output_operand_type(operand_types.at(input).type, shaper[output], y_scale, y_zero_point);
-  ORT_RETURN_IF_ERROR(model_builder.AddOperation(operationCode, input_indices,
-                                                 {output}, {output_operand_type}));
+  ORT_RETURN_IF_ERROR(model_builder.AddOperation(operationCode, input_indices, {output}, {output_operand_type}));
   return Status::OK();
 }
 
@@ -279,8 +267,7 @@ bool ConvOpBuilder::IsQuantizedOp(const NodeUnit& node_unit) const {
 }
 
 bool ConvOpBuilder::HasSupportedInputOutputsImpl(
-    const InitializedTensorSet& initializers, const NodeUnit& node_unit,
-    const OpSupportCheckParams& params) const {
+    const InitializedTensorSet& initializers, const NodeUnit& node_unit, const OpSupportCheckParams& params) const {
   if (!IsQuantizedOp(node_unit))
     return BaseOpBuilder::HasSupportedInputOutputsImpl(initializers, node_unit, params);
 
@@ -299,8 +286,7 @@ bool ConvOpBuilder::HasSupportedInputOutputsImpl(
 
 // Operator support related
 
-bool ConvOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
-                                      const OpSupportCheckParams& params) const {
+bool ConvOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit, const OpSupportCheckParams& params) const {
   const auto& op_type = node_unit.OpType();
   bool is_quant_conv = IsQuantizedOp(node_unit);
 
@@ -351,11 +337,10 @@ bool ConvOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers, 
 
 void CreateConvOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {
   CreateSharedOpBuilderImpl<ConvOpBuilder>(
-      op_type, op_registrations,
-      {
-          "Conv",
-          "QLinearConv",
-      });
+      op_type, op_registrations, {
+                                     "Conv",
+                                     "QLinearConv",
+                                 });
 }
 
 }  // namespace nnapi

@@ -10,28 +10,22 @@ namespace cuda {
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     TopK,
     kOnnxDomain,
-    1, 9,
+    1,
+    9,
     kCudaExecutionProvider,
     (*KernelDefBuilder::Create())
-        .TypeConstraint("T", {DataTypeImpl::GetTensorType<MLFloat16>(),
-                              DataTypeImpl::GetTensorType<float>(),
-                              DataTypeImpl::GetTensorType<double>(),
-                              DataTypeImpl::GetTensorType<int32_t>(),
-                              DataTypeImpl::GetTensorType<int64_t>()}),
+        .TypeConstraint("T", {DataTypeImpl::GetTensorType<MLFloat16>(), DataTypeImpl::GetTensorType<float>(), DataTypeImpl::GetTensorType<double>(), DataTypeImpl::GetTensorType<int32_t>(), DataTypeImpl::GetTensorType<int64_t>()}),
     TopK<false>);
 
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     TopK,
     kOnnxDomain,
-    10, 10,
+    10,
+    10,
     kCudaExecutionProvider,
     (*KernelDefBuilder::Create())
         .InputMemoryType(OrtMemTypeCPUInput, 1)
-        .TypeConstraint("T", {DataTypeImpl::GetTensorType<MLFloat16>(),
-                              DataTypeImpl::GetTensorType<float>(),
-                              DataTypeImpl::GetTensorType<double>(),
-                              DataTypeImpl::GetTensorType<int32_t>(),
-                              DataTypeImpl::GetTensorType<int64_t>()})
+        .TypeConstraint("T", {DataTypeImpl::GetTensorType<MLFloat16>(), DataTypeImpl::GetTensorType<float>(), DataTypeImpl::GetTensorType<double>(), DataTypeImpl::GetTensorType<int32_t>(), DataTypeImpl::GetTensorType<int64_t>()})
         .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>()),
     TopK<true>);
 
@@ -42,11 +36,7 @@ ONNX_OPERATOR_KERNEL_EX(
     kCudaExecutionProvider,
     (*KernelDefBuilder::Create())
         .InputMemoryType(OrtMemTypeCPUInput, 1)
-        .TypeConstraint("T", {DataTypeImpl::GetTensorType<MLFloat16>(),
-                              DataTypeImpl::GetTensorType<float>(),
-                              DataTypeImpl::GetTensorType<double>(),
-                              DataTypeImpl::GetTensorType<int32_t>(),
-                              DataTypeImpl::GetTensorType<int64_t>()})
+        .TypeConstraint("T", {DataTypeImpl::GetTensorType<MLFloat16>(), DataTypeImpl::GetTensorType<float>(), DataTypeImpl::GetTensorType<double>(), DataTypeImpl::GetTensorType<int32_t>(), DataTypeImpl::GetTensorType<int64_t>()})
         .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>()),
     TopK<true>);
 
@@ -61,12 +51,7 @@ TopK<inputk>::TopK(const OpKernelInfo& info) : CudaKernel(info) {
 }
 
 #define IS_PRIM_TYPE(T) utils::IsPrimitiveDataType<T>(prim_type)
-#define TOPKIMPL(T) TopKImpl<T>(this, ctx->GetComputeStream(), tensor_X->Data<T>(), \
-                                static_cast<T*>(tensor_V->MutableDataRaw()),        \
-                                static_cast<int64_t*>(tensor_I->MutableDataRaw()),  \
-                                elem_nums_cuda,                                     \
-                                elem_nums.size(),                                   \
-                                axis, K_, largest_, sorted_, N, dimension)
+#define TOPKIMPL(T) TopKImpl<T>(this, ctx->GetComputeStream(), tensor_X->Data<T>(), static_cast<T*>(tensor_V->MutableDataRaw()), static_cast<int64_t*>(tensor_I->MutableDataRaw()), elem_nums_cuda, elem_nums.size(), axis, K_, largest_, sorted_, N, dimension)
 
 template <bool inputk>
 Status TopK<inputk>::ComputeInternal(OpKernelContext* ctx) const {

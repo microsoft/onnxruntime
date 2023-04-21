@@ -16,10 +16,7 @@ namespace ReductionOps {
 // `input_shape_override` is the input shape for compute purposes (if provided)
 
 template <typename T, cudnnReduceTensorIndices_t ReduceTensorIndices = CUDNN_REDUCE_TENSOR_NO_INDICES>
-std::unique_ptr<Tensor> ReduceCompute(const CUDAExecutionProvider& cuda_ep, cudnnReduceTensorOp_t cudnn_reduce_op, AllocatorPtr allocator,
-                                      const Tensor& input, gsl::span<const int64_t> axes,
-                                      bool keep_dims, bool calculate_log, bool calculate_sqt, bool log_sum_exp,
-                                      bool fast_reduction, Stream* stream, const TensorShape* input_shape_override = nullptr);
+std::unique_ptr<Tensor> ReduceCompute(const CUDAExecutionProvider& cuda_ep, cudnnReduceTensorOp_t cudnn_reduce_op, AllocatorPtr allocator, const Tensor& input, gsl::span<const int64_t> axes, bool keep_dims, bool calculate_log, bool calculate_sqt, bool log_sum_exp, bool fast_reduction, Stream* stream, const TensorShape* input_shape_override = nullptr);
 
 }  // namespace ReductionOps
 
@@ -225,9 +222,13 @@ Status PrepareForReduce(const Tensor* X,
 
 template <typename T, cudnnReduceTensorIndices_t ReduceTensorIndices>
 Status ReduceComputeCore(const CUDAExecutionProvider& cuda_ep, const Tensor& input, PrepareReduceMetadata& prepare_reduce_metadata,
-                         /*out*/ Tensor& output, cudnnReduceTensorOp_t cudnn_reduce_op,
+                         /*out*/ Tensor& output,
+                         cudnnReduceTensorOp_t cudnn_reduce_op,
                          gsl::span<const int64_t> axes,
-                         bool calculate_log, bool calculate_sqt, bool log_sum_exp, bool fast_reduction,
+                         bool calculate_log,
+                         bool calculate_sqt,
+                         bool log_sum_exp,
+                         bool fast_reduction,
                          Stream* ort_stream,
                          const TensorShape* input_shape_override = nullptr);
 

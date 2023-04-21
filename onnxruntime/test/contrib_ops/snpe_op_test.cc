@@ -153,9 +153,7 @@ TEST(Snpe_ConvertFromConcat, MimoSupport) {
 
   test.AddInput<float>("value0", {2, 2}, {11.0f, 12.0f, 13.0f, 14.0f});
   test.AddInput<float>("value1", {2, 2}, {21.0f, 22.0f, 23.0f, 24.0f});
-  test.AddOutput<float>("output", {4, 2},
-                        {11.0f, 12.0f, 13.0f, 14.0f,
-                         21.0f, 22.0f, 23.0f, 24.0f});
+  test.AddOutput<float>("output", {4, 2}, {11.0f, 12.0f, 13.0f, 14.0f, 21.0f, 22.0f, 23.0f, 24.0f});
   test.Run();
 
   test.AddProviderOption("buffer_type", "FLOAT");
@@ -181,15 +179,9 @@ TEST(Snpe_ConvertFromSplit, SimoSupport) {
 
   test.AddAttribute("DLC", LoadDlcFile("./testdata/snpe/test_split_equal_parts_2d.dlc"));
 
-  test.AddInput<float>("input", {2, 6},
-                       {11.0f, 12.0f, 13.0f, 14.0f, 15.0f, 16.0f,
-                        21.0f, 22.0f, 23.0f, 24.0f, 25.0f, 26.0f});
-  test.AddOutput<float>("output_1", {2, 3},
-                        {11.0f, 12.0f, 13.0f,
-                         21.0f, 22.0f, 23.0f});
-  test.AddOutput<float>("output_2", {2, 3},
-                        {14.0f, 15.0f, 16.0f,
-                         24.0f, 25.0f, 26.0f});
+  test.AddInput<float>("input", {2, 6}, {11.0f, 12.0f, 13.0f, 14.0f, 15.0f, 16.0f, 21.0f, 22.0f, 23.0f, 24.0f, 25.0f, 26.0f});
+  test.AddOutput<float>("output_1", {2, 3}, {11.0f, 12.0f, 13.0f, 21.0f, 22.0f, 23.0f});
+  test.AddOutput<float>("output_2", {2, 3}, {14.0f, 15.0f, 16.0f, 24.0f, 25.0f, 26.0f});
   test.Run();
 
   test.AddProviderOption("buffer_type", "FLOAT");
@@ -201,12 +193,8 @@ TEST(Snpe_ConvertFromAbs, SisoSupport) {
 
   test.AddAttribute("DLC", LoadDlcFile("./testdata/snpe/test_abs.dlc"));
 
-  test.AddInput<float>("x", {2, 3, 2},
-                       {11.0f, -12.0f, 13.0f, 14.0f, -15.0f, 16.0f,
-                        21.0f, 22.0f, -23.0f, 24.0f, -25.0f, 26.0f});
-  test.AddOutput<float>("y", {2, 3, 2},
-                        {11.0f, 12.0f, 13.0f, 14.0f, 15.0f, 16.0f,
-                         21.0f, 22.0f, 23.0f, 24.0f, 25.0f, 26.0f});
+  test.AddInput<float>("x", {2, 3, 2}, {11.0f, -12.0f, 13.0f, 14.0f, -15.0f, 16.0f, 21.0f, 22.0f, -23.0f, 24.0f, -25.0f, 26.0f});
+  test.AddOutput<float>("y", {2, 3, 2}, {11.0f, 12.0f, 13.0f, 14.0f, 15.0f, 16.0f, 21.0f, 22.0f, 23.0f, 24.0f, 25.0f, 26.0f});
   test.Run();
 
   test.AddProviderOption("buffer_type", "FLOAT");

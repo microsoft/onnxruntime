@@ -78,8 +78,11 @@ OrtDevice CreateOrtDevice(const c10::Device device) {
     return OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, device.index());
   } else {
     ORT_THROW("Unsupport Pytorch c10 device.",
-              " Type: ", c10::DeviceTypeName(device.type()), ",",
-              " ID: ", device.index());
+              " Type: ",
+              c10::DeviceTypeName(device.type()),
+              ",",
+              " ID: ",
+              device.index());
   }
 }
 
@@ -120,8 +123,7 @@ OrtValue CreateOrtTensorValue(const at::Tensor& tensor) {
   // This tensor's life time is controlled by Pytorch.
   // TODO: consider to let ORT also own that tensor.
   std::unique_ptr<onnxruntime::Tensor> ort_tensor = std::make_unique<onnxruntime::Tensor>(
-      element_type, shape,
-      tensor.data_ptr(), memory_info);
+      element_type, shape, tensor.data_ptr(), memory_info);
 
   OrtValue ort_value;
   ort_value.Init(
@@ -239,8 +241,7 @@ OrtValue CreateOrtScalarValue(const at::Scalar& scalar) {
   onnxruntime::MLDataType element_type = CreateOrtScalarType(scalar.type());
   onnxruntime::TensorShape shape({});
   std::unique_ptr<onnxruntime::Tensor> ort_tensor = std::make_unique<onnxruntime::Tensor>(
-      element_type, shape,
-      data_ptr, memory_info);
+      element_type, shape, data_ptr, memory_info);
 
   std::function<void(void*)> deleter = [=](void* p) {
     data_deleter();

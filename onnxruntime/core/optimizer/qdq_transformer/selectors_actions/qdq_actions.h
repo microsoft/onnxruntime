@@ -22,9 +22,7 @@ struct QDQReplaceWithNew : public ReplaceWithNewFixed {
   Status Run(Graph&, const NodesToOptimize& selected_nodes) const override;
 
 #if !defined(ORT_MINIMAL_BUILD)
-  Status RunForSave(Graph& graph, const NodesToOptimize& selected_nodes,
-                    const SatRuntimeOptimizationSaveContext& save_context,
-                    SavedState& saved_state, bool& graph_modified) const override;
+  Status RunForSave(Graph& graph, const NodesToOptimize& selected_nodes, const SatRuntimeOptimizationSaveContext& save_context, SavedState& saved_state, bool& graph_modified) const override;
 #endif  // !defined(ORT_MINIMAL_BUILD)
 };
 
@@ -82,9 +80,7 @@ struct GemmReplaceWithQuant : public Action {
   Status Run(Graph&, const NodesToOptimize& selected_nodes) const override;
 
 #if !defined(ORT_MINIMAL_BUILD)
-  Status RunForSave(Graph& /*graph*/, const NodesToOptimize& /*selected_nodes*/,
-                    const SatRuntimeOptimizationSaveContext& /*save_context*/,
-                    SavedState& /*saved_state*/, bool& /*graph_modified*/) const override;
+  Status RunForSave(Graph& /*graph*/, const NodesToOptimize& /*selected_nodes*/, const SatRuntimeOptimizationSaveContext& /*save_context*/, SavedState& /*saved_state*/, bool& /*graph_modified*/) const override;
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
   static inline void RemoveAttrBeta(const NodesToOptimize& selected_nodes) {

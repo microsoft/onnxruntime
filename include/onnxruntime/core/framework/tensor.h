@@ -54,8 +54,7 @@ class Tensor final {
    * \param offset Offset in bytes to start of Tensor within p_data.
    * \param strides Strides span. Can be empty if the tensor is contiguous.
    */
-  Tensor(MLDataType p_type, const TensorShape& shape, void* p_data, const OrtMemoryInfo& alloc,
-         ptrdiff_t offset = 0, gsl::span<const int64_t> strides = {});
+  Tensor(MLDataType p_type, const TensorShape& shape, void* p_data, const OrtMemoryInfo& alloc, ptrdiff_t offset = 0, gsl::span<const int64_t> strides = {});
 
   /// <summary>
   /// Creates an instance of Tensor on the heap using the appropriate __ctor and
@@ -67,10 +66,7 @@ class Tensor final {
   /// <param name="info"></param>
   /// <param name="offset"></param>
   /// <param name="strides"></param>
-  static void InitOrtValue(MLDataType p_type, const TensorShape& shape,
-                           void* p_data, const OrtMemoryInfo& location,
-                           OrtValue& ort_value, ptrdiff_t offset = 0,
-                           gsl::span<const int64_t> strides = {});
+  static void InitOrtValue(MLDataType p_type, const TensorShape& shape, void* p_data, const OrtMemoryInfo& location, OrtValue& ort_value, ptrdiff_t offset = 0, gsl::span<const int64_t> strides = {});
 
   /// <summary>
   /// Creates an instance of Tensor who own the pre-allocated buffer.
@@ -81,10 +77,7 @@ class Tensor final {
   /// <param name="allocator"></param>
   /// <param name="offset"></param>
   /// <param name="strides"></param>
-  static void InitOrtValue(MLDataType p_type, const TensorShape& shape,
-                           void* p_data, std::shared_ptr<IAllocator> allocator,
-                           OrtValue& ort_value, ptrdiff_t offset = 0,
-                           gsl::span<const int64_t> strides = {});
+  static void InitOrtValue(MLDataType p_type, const TensorShape& shape, void* p_data, std::shared_ptr<IAllocator> allocator, OrtValue& ort_value, ptrdiff_t offset = 0, gsl::span<const int64_t> strides = {});
 
   static size_t CalculateTensorStorageSize(MLDataType p_type,
                                            const TensorShape& shape,
@@ -94,8 +87,7 @@ class Tensor final {
    * Deprecated. The original design is this Tensor class won't do any allocation / release.
    * However, this function will allocate the buffer for the shape, and do placement new if p_type is string tensor.
    */
-  Tensor(MLDataType p_type, const TensorShape& shape, std::shared_ptr<IAllocator> allocator,
-         gsl::span<const int64_t> strides = {});
+  Tensor(MLDataType p_type, const TensorShape& shape, std::shared_ptr<IAllocator> allocator, gsl::span<const int64_t> strides = {});
 
   /// <summary>
   /// Creates an instance of Tensor on the heap using the appropriate __ctor and
@@ -132,8 +124,7 @@ class Tensor final {
    * \param offset Offset in bytes to start of Tensor within p_data.
    * \param strides Strides span. Can be empty if the tensor is contiguous.
    */
-  Tensor(MLDataType p_type, const TensorShape& shape, void* p_data, std::shared_ptr<IAllocator> deleter,
-         ptrdiff_t offset = 0, gsl::span<const int64_t> strides = {});
+  Tensor(MLDataType p_type, const TensorShape& shape, void* p_data, std::shared_ptr<IAllocator> deleter, ptrdiff_t offset = 0, gsl::span<const int64_t> strides = {});
 
   ~Tensor();
 
@@ -185,8 +176,7 @@ class Tensor final {
   template <typename T>
   T* MutableData() {
     // Type check
-    ORT_ENFORCE(utils::IsPrimitiveDataType<T>(dtype_), "Tensor type mismatch. ",
-                "T ", "!=", dtype_);
+    ORT_ENFORCE(utils::IsPrimitiveDataType<T>(dtype_), "Tensor type mismatch. ", "T ", "!=", dtype_);
     return reinterpret_cast<T*>(static_cast<char*>(p_data_) + byte_offset_);
   }
 
@@ -196,8 +186,7 @@ class Tensor final {
   template <typename T>
   gsl::span<T> MutableDataAsSpan() {
     // Type check
-    ORT_ENFORCE(utils::IsPrimitiveDataType<T>(dtype_), "Tensor type mismatch. ",
-                "T ", "!=", dtype_);
+    ORT_ENFORCE(utils::IsPrimitiveDataType<T>(dtype_), "Tensor type mismatch. ", "T ", "!=", dtype_);
     T* data = reinterpret_cast<T*>(static_cast<char*>(p_data_) + byte_offset_);
     return gsl::make_span(data, static_cast<size_t>(shape_.Size()));
   }
@@ -205,16 +194,14 @@ class Tensor final {
   template <typename T>
   const T* Data() const {
     // Type check
-    ORT_ENFORCE(utils::IsPrimitiveDataType<T>(dtype_), "Tensor type mismatch. ",
-                "T ", "!=", dtype_);
+    ORT_ENFORCE(utils::IsPrimitiveDataType<T>(dtype_), "Tensor type mismatch. ", "T ", "!=", dtype_);
     return reinterpret_cast<const T*>(static_cast<char*>(p_data_) + byte_offset_);
   }
 
   template <typename T>
   gsl::span<const T> DataAsSpan() const {
     // Type check
-    ORT_ENFORCE(utils::IsPrimitiveDataType<T>(dtype_), "Tensor type mismatch. ",
-                "T ", "!=", dtype_);
+    ORT_ENFORCE(utils::IsPrimitiveDataType<T>(dtype_), "Tensor type mismatch. ", "T ", "!=", dtype_);
     const T* data = reinterpret_cast<const T*>(static_cast<char*>(p_data_) + byte_offset_);
     return gsl::make_span(data, static_cast<typename gsl::span<T>::size_type>(shape_.Size()));
   }

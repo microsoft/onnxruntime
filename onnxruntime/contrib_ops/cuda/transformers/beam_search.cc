@@ -27,8 +27,7 @@ ONNX_OPERATOR_KERNEL_EX(
         .InputMemoryType(OrtMemTypeCPUInput, 9)    // 'attention_mask' needs to be on CPU
         .OutputMemoryType(OrtMemTypeCPUOutput, 0)  // 'sequences' output on CPU
         .OutputMemoryType(OrtMemTypeCPUOutput, 1)  // 'sequences_scores' output on CPU
-        .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
-                              DataTypeImpl::GetTensorType<MLFloat16>()}),
+        .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(), DataTypeImpl::GetTensorType<MLFloat16>()}),
     BeamSearch);
 
 transformers::CudaTensorConsoleDumper g_cuda_dumper;

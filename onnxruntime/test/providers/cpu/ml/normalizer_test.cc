@@ -124,34 +124,26 @@ TEST(Normalizer, SingleDimensionFloat) {
 
 TEST(Normalizer, TwoDimensionFloat) {
   std::vector<int64_t> dims = {2, 3};
-  std::vector<float> input = {-1.0856306f, 0.99734545f, 0.2829785f,
-                              -1.50629471f, -0.57860025f, 1.65143654f};
+  std::vector<float> input = {-1.0856306f, 0.99734545f, 0.2829785f, -1.50629471f, -0.57860025f, 1.65143654f};
 
-  std::vector<float> max_output{-1.0885202f, 1.f, 0.2837317f,
-                                -0.91211176f, -0.35036176f, 1.f};
+  std::vector<float> max_output{-1.0885202f, 1.f, 0.2837317f, -0.91211176f, -0.35036176f, 1.f};
 
-  std::vector<float> l1_output{-0.45885524f, 0.42154038f, 0.11960436f,
-                               -0.40314806f, -0.15485784f, 0.44199413f};
+  std::vector<float> l1_output{-0.45885524f, 0.42154038f, 0.11960436f, -0.40314806f, -0.15485784f, 0.44199413f};
 
-  std::vector<float> l2_output{-0.7232126f, 0.6643998f, 0.18851127f,
-                               -0.65239084f, -0.25059736f, 0.7152532f};
+  std::vector<float> l2_output{-0.7232126f, 0.6643998f, 0.18851127f, -0.65239084f, -0.25059736f, 0.7152532f};
 
   RunTests(input, dims, max_output, l1_output, l2_output);
 }
 
 TEST(Normalizer, TwoDimensionDouble) {
   std::vector<int64_t> dims = {2, 3};
-  std::vector<double> input = {-1.0856306, 0.99734545, 0.2829785,
-                               -1.50629471, -0.57860025f, 1.65143654};
+  std::vector<double> input = {-1.0856306, 0.99734545, 0.2829785, -1.50629471, -0.57860025f, 1.65143654};
 
-  std::vector<float> max_output{-1.0885202f, 1.f, 0.2837317f,
-                                -0.91211176f, -0.35036176f, 1.f};
+  std::vector<float> max_output{-1.0885202f, 1.f, 0.2837317f, -0.91211176f, -0.35036176f, 1.f};
 
-  std::vector<float> l1_output{-0.45885524f, 0.42154038f, 0.11960436f,
-                               -0.40314806f, -0.15485784f, 0.44199413f};
+  std::vector<float> l1_output{-0.45885524f, 0.42154038f, 0.11960436f, -0.40314806f, -0.15485784f, 0.44199413f};
 
-  std::vector<float> l2_output{-0.7232126f, 0.6643998f, 0.18851127f,
-                               -0.65239084f, -0.25059736f, 0.7152532f};
+  std::vector<float> l2_output{-0.7232126f, 0.6643998f, 0.18851127f, -0.65239084f, -0.25059736f, 0.7152532f};
 
   RunTests(input, dims, max_output, l1_output, l2_output);
 }
@@ -159,21 +151,13 @@ TEST(Normalizer, TwoDimensionDouble) {
 #if defined(_M_AMD64) || defined(__x86_64__)
 TEST(Normalizer, TwoDimensionInt) {
   std::vector<int64_t> dims = {3, 2};
-  std::vector<int32_t> input = {-242, -42,
-                                126, -86,
-                                -67, -9};
+  std::vector<int32_t> input = {-242, -42, 126, -86, -67, -9};
 
-  std::vector<float> max_output{5.7619047f, 1.f,
-                                1.f, -0.6825397f,
-                                7.4444447f, 1.f};
+  std::vector<float> max_output{5.7619047f, 1.f, 1.f, -0.6825397f, 7.4444447f, 1.f};
 
-  std::vector<float> l1_output{-0.85211265f, -0.14788732f,
-                               0.5943396f, -0.4056604f,
-                               -0.8815789f, -0.11842106f};
+  std::vector<float> l1_output{-0.85211265f, -0.14788732f, 0.5943396f, -0.4056604f, -0.8815789f, -0.11842106f};
 
-  std::vector<float> l2_output{-0.98527145f, -0.17099753f,
-                               0.82594985f, -0.56374353f,
-                               -0.9910982f, -0.13313259f};
+  std::vector<float> l2_output{-0.98527145f, -0.17099753f, 0.82594985f, -0.56374353f, -0.9910982f, -0.13313259f};
 
   RunTests(input, dims, max_output, l1_output, l2_output);
 }

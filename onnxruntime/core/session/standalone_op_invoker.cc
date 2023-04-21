@@ -126,8 +126,7 @@ class NodeRepo {
       const Node& node = *cur->second.first;
       auto* schema = graph.GetSchemaRegistry()->GetSchema(node.OpType(), node.SinceVersion(), node.Domain());
 
-      ORT_RETURN_IF_NOT(schema, "Unable to find schema for node. Domain:'", node.Domain(),
-                        "' op_type:", node.OpType());
+      ORT_RETURN_IF_NOT(schema, "Unable to find schema for node. Domain:'", node.Domain(), "' op_type:", node.OpType());
       ORT_RETURN_IF_ERROR(kernel_type_str_resolver.RegisterOpSchema(*schema));
     }
 
@@ -151,14 +150,10 @@ class NodeRepo {
       expect_output_count = node->OutputDefs().size();
     }
     if (expect_input_count != static_cast<size_t>(input_count)) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "invalid node input count: ", input_count,
-                             ", expect: ", expect_input_count);
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "invalid node input count: ", input_count, ", expect: ", expect_input_count);
     }
     if (expect_output_count != static_cast<size_t>(output_count)) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "invalid node output count", output_count,
-                             ", expect: ", expect_output_count);
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "invalid node output count", output_count, ", expect: ", expect_output_count);
     }
     return Status::OK();
   }
@@ -400,8 +395,7 @@ onnxruntime::Status CreateOp(const OrtKernelInfo* info,
     output_args.push_back(arg_ptrs.back().get());
   }
 
-  NodePtr node_ptr = std::make_unique<onnxruntime::Node>(std::string("standalone_") + op_name, op_name, "",
-                                                         input_args, output_args, nullptr, domain);
+  NodePtr node_ptr = std::make_unique<onnxruntime::Node>(std::string("standalone_") + op_name, op_name, "", input_args, output_args, nullptr, domain);
 
   for (int i = 0; i < attr_count; ++i) {
     auto attr_proto = reinterpret_cast<const ONNX_NAMESPACE::AttributeProto*>(attr_values[i]);
@@ -414,14 +408,12 @@ onnxruntime::Status CreateOp(const OrtKernelInfo* info,
   ORT_RETURN_IF_ERROR(status);
 
   auto& kernel_def = kernel_create_info->kernel_def;
-  ORT_RETURN_IF_NOT(kernel_def, "Kernel definition was not found for node Domain:'",
-                    node_ptr->Domain(), "' op_type:", node_ptr->OpType());
+  ORT_RETURN_IF_NOT(kernel_def, "Kernel definition was not found for node Domain:'", node_ptr->Domain(), "' op_type:", node_ptr->OpType());
 
   static const std::unordered_map<int, OrtValue> kEmptyValueMap;
   static const OrtValueNameIdxMap kEmptyNameMap;
 
-  OpKernelInfo tmp_kernel_info(*node_ptr.get(), *kernel_def, *ep, kEmptyValueMap, kEmptyNameMap,
-                               kernel_info->GetDataTransferManager());
+  OpKernelInfo tmp_kernel_info(*node_ptr.get(), *kernel_def, *ep, kEmptyValueMap, kEmptyNameMap, kernel_info->GetDataTransferManager());
   std::unique_ptr<onnxruntime::OpKernel> op_kernel;
 
   auto& node_repo = NodeRepo::GetInstance();

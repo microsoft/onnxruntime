@@ -44,8 +44,7 @@ static void FindMinAndMaxNodeIndex(const TValidNodes& nodes, NodeIndex& min, Nod
 }
 
 template <typename TValidNodes>
-void NodeIndexInfo::Init(const TValidNodes& nodes, NodeIndex max_node_index,
-                         const OrtValueNameIdxMap& ort_value_idx_map) {
+void NodeIndexInfo::Init(const TValidNodes& nodes, NodeIndex max_node_index, const OrtValueNameIdxMap& ort_value_idx_map) {
   if (nodes.empty()) {
     // fairly stupid edge case to handle unit test for Constant. the Constant node becomes an initializer, leaving
     // the graph with no nodes.

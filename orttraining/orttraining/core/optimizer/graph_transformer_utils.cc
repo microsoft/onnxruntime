@@ -203,12 +203,11 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
     // filter out any disabled transformers
     std::vector<std::unique_ptr<GraphTransformer>> filtered_list;
     auto end = rules_and_transformers_to_disable.cend();
-    std::for_each(transformers.begin(), transformers.end(),
-                  [&](std::unique_ptr<GraphTransformer>& item) {
-                    if ((item != nullptr) && (rules_and_transformers_to_disable.find(item->Name()) == end)) {
-                      filtered_list.push_back(std::move(item));
-                    }
-                  });
+    std::for_each(transformers.begin(), transformers.end(), [&](std::unique_ptr<GraphTransformer>& item) {
+      if ((item != nullptr) && (rules_and_transformers_to_disable.find(item->Name()) == end)) {
+        filtered_list.push_back(std::move(item));
+      }
+    });
 
     return filtered_list;
   }
@@ -239,16 +238,14 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       InlinedHashSet<std::string> excluded_initializers(weights_to_train.begin(), weights_to_train.end());
       transformers.emplace_back(std::make_unique<MatMulScaleFusion>(l1_execution_providers, excluded_initializers));
 
-      rule_transformer = optimizer_utils::GenerateRuleBasedGraphTransformer(level, rules_and_transformers_to_disable,
-                                                                            l1_execution_providers);
+      rule_transformer = optimizer_utils::GenerateRuleBasedGraphTransformer(level, rules_and_transformers_to_disable, l1_execution_providers);
     } break;
 
     case TransformerLevel::Level2: {
       InlinedHashSet<std::string_view> cpu_execution_providers = {onnxruntime::kCpuExecutionProvider};
 
       // create rule based transformer consisting of all the level2 rewrite rules
-      rule_transformer = optimizer_utils::GenerateRuleBasedGraphTransformer(level, rules_and_transformers_to_disable,
-                                                                            cpu_execution_providers);
+      rule_transformer = optimizer_utils::GenerateRuleBasedGraphTransformer(level, rules_and_transformers_to_disable, cpu_execution_providers);
 
       transformers.emplace_back(std::make_unique<GemmActivationFusion>(cpu_execution_providers));
       transformers.emplace_back(std::make_unique<ConvActivationFusion>(cpu_execution_providers));
@@ -277,12 +274,11 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
   } else {
     InlinedVector<std::unique_ptr<GraphTransformer>> filtered_list;
     auto end = rules_and_transformers_to_disable.cend();
-    std::for_each(transformers.begin(), transformers.end(),
-                  [&](std::unique_ptr<GraphTransformer>& item) {
-                    if ((item != nullptr) && (rules_and_transformers_to_disable.find(item->Name()) == end)) {
-                      filtered_list.push_back(std::move(item));
-                    }
-                  });
+    std::for_each(transformers.begin(), transformers.end(), [&](std::unique_ptr<GraphTransformer>& item) {
+      if ((item != nullptr) && (rules_and_transformers_to_disable.find(item->Name()) == end)) {
+        filtered_list.push_back(std::move(item));
+      }
+    });
 
     return filtered_list;
   }

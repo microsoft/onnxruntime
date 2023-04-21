@@ -73,8 +73,7 @@ size_t RemoveNodeOutputEdges(Graph& graph, Node& node, int output_idx);
 cannot be overridden at runtime. If the initializer is not found or is not constant, a nullptr is returned.
 @param check_outer_scope If true and the graph is a subgraph, check ancestor graph/s for 'name' if not found in 'graph'.
 */
-const ONNX_NAMESPACE::TensorProto* GetConstantInitializer(const Graph& graph, const std::string& name,
-                                                          bool check_outer_scope = true);
+const ONNX_NAMESPACE::TensorProto* GetConstantInitializer(const Graph& graph, const std::string& name, bool check_outer_scope = true);
 
 // A class helps handle graph edges
 struct GraphEdge {
@@ -138,8 +137,7 @@ bool NodeArgIsConstant(const Graph& graph, const NodeArg& node_arg);
 
 /** Checks if the given node has only constant inputs (initializers) and no input is in excluded_initializers.
 If so returns them in constant_inputs as they may come from outer scope. */
-bool AllNodeInputsAreConstant(const Graph& graph, const Node& node, InitializedTensorSet& constant_inputs,
-                              const InlinedHashSet<std::string>& excluded_initializers = {});
+bool AllNodeInputsAreConstant(const Graph& graph, const Node& node, InitializedTensorSet& constant_inputs, const InlinedHashSet<std::string>& excluded_initializers = {});
 
 /** Gets the index of an input arg with the specified input arg name. */
 int GetNodeInputIndexFromInputName(const Node& node, const std::string& input_name);
@@ -221,8 +219,7 @@ Conditions:
    - otherwise the required graph output will not be produced
  - Removing the node won't break a subgraph that consumes the node's output
 */
-bool CanReplaceNodeWithInitializer(const Graph& graph, const Node& node, const std::string& initializer_name,
-                                   const logging::Logger& logger);
+bool CanReplaceNodeWithInitializer(const Graph& graph, const Node& node, const std::string& initializer_name, const logging::Logger& logger);
 
 /** Remove a node and replace its output with the provided NodeArg for an initializer.
 See CanReplaceNodeWithInitializer for the conditions that must be satisfied in order to remove the node.*/

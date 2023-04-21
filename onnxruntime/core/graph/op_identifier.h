@@ -46,9 +46,7 @@ struct BasicOpIdentifier {
   // string conversion
 
   std::string ToString() const {
-    return MakeString(domain, kStringRepresentationDelimiter,
-                      op_type, kStringRepresentationDelimiter,
-                      since_version);
+    return MakeString(domain, kStringRepresentationDelimiter, op_type, kStringRepresentationDelimiter, since_version);
   }
 
   static Status LoadFromString(std::string_view op_id_str, BasicOpIdentifier& op_id) {
@@ -56,7 +54,8 @@ struct BasicOpIdentifier {
     ORT_RETURN_IF_NOT(components.size() == 3, "Invalid OpIdentifier string: ", op_id_str);
     int since_version{};
     ORT_RETURN_IF_NOT(TryParseStringWithClassicLocale(components[2], since_version),
-                      "Failed to parse since_version from ", components[2]);
+                      "Failed to parse since_version from ",
+                      components[2]);
     op_id = BasicOpIdentifier{StringType{components[0]}, StringType{components[1]}, since_version};
     return Status::OK();
   }

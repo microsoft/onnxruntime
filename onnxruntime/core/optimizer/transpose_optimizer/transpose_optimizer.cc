@@ -67,15 +67,13 @@ static std::vector<int32_t> DataInt32(api::TensorRef& tensor) {
   return result;
 }
 
-static std::string_view AddInitializerInt64(api::GraphRef& graph, const std::vector<int64_t>& shape,
-                                            const std::vector<int64_t>& values) {
+static std::string_view AddInitializerInt64(api::GraphRef& graph, const std::vector<int64_t>& shape, const std::vector<int64_t>& values) {
   const uint8_t* raw_data = reinterpret_cast<const uint8_t*>(values.data());
   std::vector<uint8_t> data(raw_data, raw_data + values.size() * sizeof(int64_t));
   return graph.AddInitializer(api::DataType::INT64, shape, data);
 }
 
-static std::string_view AddInitializerInt32(api::GraphRef& graph, const std::vector<int64_t>& shape,
-                                            const std::vector<int32_t>& values) {
+static std::string_view AddInitializerInt32(api::GraphRef& graph, const std::vector<int64_t>& shape, const std::vector<int32_t>& values) {
   const uint8_t* raw_data = reinterpret_cast<const uint8_t*>(values.data());
   std::vector<uint8_t> data(raw_data, raw_data + values.size() * sizeof(int32_t));
   return graph.AddInitializer(api::DataType::INT32, shape, data);
@@ -85,7 +83,8 @@ static std::string_view AddInitializerInt32(api::GraphRef& graph, const std::vec
 // This is an alternative to using MoveOutput for cases when the values aren't node outputs (if one is an initializer,
 // for example).
 static void ReplaceValueReferences(const std::vector<std::unique_ptr<api::NodeRef>>& nodes,
-                                   std::string_view old_value, std::string_view new_value) {
+                                   std::string_view old_value,
+                                   std::string_view new_value) {
   for (const std::unique_ptr<api::NodeRef>& node : nodes) {
     const std::vector<std::string_view>& inputs = node->Inputs();
     for (size_t i = 0; i < inputs.size(); ++i) {
@@ -97,9 +96,7 @@ static void ReplaceValueReferences(const std::vector<std::unique_ptr<api::NodeRe
 }
 
 // Create a node with a single attribute of type vector<int64_t>
-static std::unique_ptr<api::NodeRef> MakeNode1Attr(api::GraphRef& graph, std::string_view op_type,
-                                                   std::string_view input, std::string_view attr_name,
-                                                   const std::vector<int64_t>& attr_val) {
+static std::unique_ptr<api::NodeRef> MakeNode1Attr(api::GraphRef& graph, std::string_view op_type, std::string_view input, std::string_view attr_name, const std::vector<int64_t>& attr_val) {
   std::vector<std::string_view> inputs{input};
   std::unique_ptr<api::NodeRef> node = graph.AddNode(op_type, inputs, /*num_outputs*/ 1);
   node->SetAttributeInts(attr_name, attr_val);
@@ -107,15 +104,12 @@ static std::unique_ptr<api::NodeRef> MakeNode1Attr(api::GraphRef& graph, std::st
 }
 
 // Creates a Transpose node. Does not update output ValueInfo.
-static std::unique_ptr<api::NodeRef> MakeTranspose(api::GraphRef& graph, std::string_view input,
-                                                   const std::vector<int64_t>& perm) {
+static std::unique_ptr<api::NodeRef> MakeTranspose(api::GraphRef& graph, std::string_view input, const std::vector<int64_t>& perm) {
   return MakeNode1Attr(graph, "Transpose", input, "perm", perm);
 }
 
 // Creates a Squeeze/Unsqueeze node. Does not update output ValueInfo.
-static std::unique_ptr<api::NodeRef> MakeSqueezeOrUnsqueeze(int64_t opset, api::GraphRef& graph,
-                                                            std::string_view op_type, std::string_view input,
-                                                            const std::vector<int64_t>& axes) {
+static std::unique_ptr<api::NodeRef> MakeSqueezeOrUnsqueeze(int64_t opset, api::GraphRef& graph, std::string_view op_type, std::string_view input, const std::vector<int64_t>& axes) {
   if (opset < 13) {
     return MakeNode1Attr(graph, op_type, input, "axes", axes);
   }
@@ -179,9 +173,7 @@ static inline bool NormalizeAndValidateAxis(int64_t& axis, size_t rank) {
 }
 
 // Read int64 data from attribute or input, depending on whether model opset < provided opset
-static std::optional<std::vector<int64_t>> ReadFromAttrOrInput(OptimizerCtx& ctx, api::NodeRef& node,
-                                                               std::string_view attr_name, size_t inp_index,
-                                                               int64_t opset) {
+static std::optional<std::vector<int64_t>> ReadFromAttrOrInput(OptimizerCtx& ctx, api::NodeRef& node, std::string_view attr_name, size_t inp_index, int64_t opset) {
   if (ctx.opset < opset) {
     return node.GetAttributeInts(attr_name);
   } else {
@@ -463,8 +455,7 @@ static void UnsqueezeInput(OptimizerCtx& ctx, api::NodeRef& node, size_t i, cons
   node.SetInput(i, unsq_out);
 }
 
-static void Permute1DConstant(api::GraphRef& graph, api::NodeRef& node, api::TensorRef& constant,
-                              size_t i, std::string_view input_name, const std::vector<int64_t>& perm) {
+static void Permute1DConstant(api::GraphRef& graph, api::NodeRef& node, api::TensorRef& constant, size_t i, std::string_view input_name, const std::vector<int64_t>& perm) {
   // Create new transposed initializer
   auto rank = perm.size();
   auto shape = constant.Shape();
@@ -488,8 +479,7 @@ static void Permute1DConstant(api::GraphRef& graph, api::NodeRef& node, api::Ten
 
 // Replaces ith input to node with transposed value. Might create a new Transpose node, find an existing one,
 // or transpose an initializer.
-static void TransposeInput(api::GraphRef& graph, api::NodeRef& node, size_t i,
-                           const std::vector<int64_t>& perm, const std::vector<int64_t>& perm_inv) {
+static void TransposeInput(api::GraphRef& graph, api::NodeRef& node, size_t i, const std::vector<int64_t>& perm, const std::vector<int64_t>& perm_inv) {
   std::string_view input = node.Inputs()[i];
   // Remove this node as a consumer
   node.SetInput(i, "");
@@ -579,8 +569,7 @@ static void TransposeInput(api::GraphRef& graph, api::NodeRef& node, size_t i,
 }
 
 // Unsqueezes inputs of node to have uniform rank. Returns false if input ranks are unknown or exceed the target rank.
-static bool NormalizeInputRanks(OptimizerCtx ctx, api::NodeRef& node, size_t target_rank,
-                                const std::vector<size_t>& input_indices) {
+static bool NormalizeInputRanks(OptimizerCtx ctx, api::NodeRef& node, size_t target_rank, const std::vector<size_t>& input_indices) {
   auto inputs = node.Inputs();
 
   // Get and validate input ranks
@@ -610,8 +599,7 @@ static bool NormalizeInputRanks(OptimizerCtx ctx, api::NodeRef& node, size_t tar
 
 // Transposes specified inputs according to perm.
 // NOTE: if a Transpose is expected to be above an input to this node, use the inverse of its permutation to cancel it.
-static void TransposeInputs(OptimizerCtx& ctx, api::NodeRef& node, const std::vector<int64_t>& perm,
-                            const std::vector<size_t>& input_indices) {
+static void TransposeInputs(OptimizerCtx& ctx, api::NodeRef& node, const std::vector<int64_t>& perm, const std::vector<size_t>& input_indices) {
   auto perm_inv = InvertPerm(perm);
   for (size_t j : input_indices) {
     TransposeInput(ctx.graph, node, j, perm, perm_inv);
@@ -626,9 +614,7 @@ inline static void TransposeFirstInput(OptimizerCtx& ctx, api::NodeRef& node, co
 // Inserts a Transpose op on the ith output of a node. Returns the new, transposed output.
 // Updates shape information assuming that the output from the node will have a transposed shape (using perm_inv)
 // but the overall (returned) output will match the initial shape.
-static std::string_view TransposeOutput(api::GraphRef& graph, api::NodeRef& node, size_t i,
-                                        const std::vector<int64_t>& perm,
-                                        const std::vector<int64_t>& perm_inv) {
+static std::string_view TransposeOutput(api::GraphRef& graph, api::NodeRef& node, size_t i, const std::vector<int64_t>& perm, const std::vector<int64_t>& perm_inv) {
   // Make transpose without input initially, then add it to avoid cyclic reference.
 
   // X -> Node -> Y,   Transpose
@@ -710,8 +696,7 @@ static bool CanLikelyRemoveTranspose(const api::GraphRef& graph, api::NodeRef& t
 
 // Estimates the cost of transposing an input. Currently uses rank heuristic. Negative if transpose is removed.
 // Feel free to improve as needed.
-static int EstimateTransposeValueCost(const api::GraphRef& graph, std::string_view input,
-                                      const std::vector<int64_t>& perm_inv) {
+static int EstimateTransposeValueCost(const api::GraphRef& graph, std::string_view input, const std::vector<int64_t>& perm_inv) {
   // Case 1: Transposing constants probably costs nothing.
   std::unique_ptr<api::TensorRef> constant = graph.GetConstant(input);
   if (constant != nullptr) {
@@ -736,9 +721,7 @@ static int EstimateTransposeValueCost(const api::GraphRef& graph, std::string_vi
 }
 
 // Estimates total cost of transposing a node's inputs. Negative if transposing is beneficial.
-static int EstimateTransposeInputsCost(const api::GraphRef& graph, const api::NodeRef& node,
-                                       const std::vector<int64_t>& perm_inv,
-                                       const std::vector<size_t>& input_indices) {
+static int EstimateTransposeInputsCost(const api::GraphRef& graph, const api::NodeRef& node, const std::vector<int64_t>& perm_inv, const std::vector<size_t>& input_indices) {
   auto inputs = node.Inputs();
   int cost = 0;
   for (size_t j : input_indices) {
@@ -1216,8 +1199,7 @@ static bool HandleUnsqueeze(HandlerArgs& args) {
 
 constexpr HandlerInfo unsqueeze_handler = {&FirstInput, &HandleUnsqueeze};
 
-static bool HandleQuantizeDequantizeScale(const api::GraphRef& graph, const std::vector<int64_t>& perm,
-                                          api::NodeRef& node, int64_t opset) {
+static bool HandleQuantizeDequantizeScale(const api::GraphRef& graph, const std::vector<int64_t>& perm, api::NodeRef& node, int64_t opset) {
   if (opset >= 13) {
     size_t rank = perm.size();
     // Update axis in Opset >= 13 if scale/zero_point are non-scalar
@@ -1274,8 +1256,7 @@ static bool HandleArgMinMax(HandlerArgs& args) {
 constexpr HandlerInfo arg_min_max_handler = {&FirstInput, &HandleArgMinMax};
 
 // Creates an int32 or int64 initializer and returns the name (Slice supports int64 or int32 axes)
-static std::string_view AddIntInitializerMatchingDtype(api::GraphRef& graph, std::vector<int64_t> values,
-                                                       api::DataType dtype) {
+static std::string_view AddIntInitializerMatchingDtype(api::GraphRef& graph, std::vector<int64_t> values, api::DataType dtype) {
   std::vector<int64_t> shape{gsl::narrow_cast<int64_t>(values.size())};
 
   if (dtype == api::DataType::INT32) {
@@ -1899,11 +1880,7 @@ static const HandlerInfo* GetHandler(api::NodeRef& node, bool allow_extended_ops
   return nullptr;
 }
 
-static int CalculateCost(const api::GraphRef& graph, const api::NodeRef& node,
-                         const std::vector<int64_t>& perm,
-                         const std::unordered_set<std::string>& outputs_leading_to_transpose,
-                         const HandlerInfo& info,
-                         const std::vector<size_t>& input_indices) {
+static int CalculateCost(const api::GraphRef& graph, const api::NodeRef& node, const std::vector<int64_t>& perm, const std::unordered_set<std::string>& outputs_leading_to_transpose, const HandlerInfo& info, const std::vector<size_t>& input_indices) {
   // We require the input cost (number of transposes before the op) and the total cost to strictly decrease.
   // Strict decrease of the input cost ensures the optimization is stable, since the total cost decrease is just an
   // estimate (the transpose after the op may or may not cancel with a subsequent transpose). We don't want
@@ -1933,11 +1910,7 @@ static int CalculateCost(const api::GraphRef& graph, const api::NodeRef& node,
 }
 
 // Default cost check. Returns `true` if pushing the Transpose through the node is considered to be beneficial.
-static bool ShouldPushTranspose(const api::GraphRef& graph, const api::NodeRef& node,
-                                const std::vector<int64_t>& perm,
-                                const std::unordered_set<std::string>& outputs_leading_to_transpose,
-                                const HandlerInfo& info,
-                                const std::vector<size_t> transposable_input_indices) {
+static bool ShouldPushTranspose(const api::GraphRef& graph, const api::NodeRef& node, const std::vector<int64_t>& perm, const std::unordered_set<std::string>& outputs_leading_to_transpose, const HandlerInfo& info, const std::vector<size_t> transposable_input_indices) {
   if (node.IsOp("Transpose")) {
     return true;
   }
@@ -1947,9 +1920,7 @@ static bool ShouldPushTranspose(const api::GraphRef& graph, const api::NodeRef& 
 }
 
 // Finds a handler for the node and estimates the cost of pushing a transpose. Does so if deemed beneficial.
-bool ProcessTranspose(OptimizerCtx& ctx, api::NodeRef& transpose, api::NodeRef& node,
-                      const std::vector<int64_t>& perm, size_t transpose_input_index,
-                      const std::unordered_set<std::string>& outputs_leading_to_transpose) {
+bool ProcessTranspose(OptimizerCtx& ctx, api::NodeRef& transpose, api::NodeRef& node, const std::vector<int64_t>& perm, size_t transpose_input_index, const std::unordered_set<std::string>& outputs_leading_to_transpose) {
   const HandlerInfo* info = GetHandler(node, ctx.allow_extended_ops);
   if (info == nullptr) {
     return false;
@@ -1983,12 +1954,7 @@ bool ProcessTranspose(OptimizerCtx& ctx, api::NodeRef& transpose, api::NodeRef& 
 }
 
 // Returns nullopt if graph opset is unsupported.
-std::optional<OptimizerCtx> MakeOptimizerContext(api::GraphRef& graph, bool allow_extended_ops,
-                                                 const std::string& provider_type,
-                                                 OptimizerMode mode,
-                                                 CostCheckFn cost_check_fn,
-                                                 const std::unordered_set<std::string_view>& layout_sensitive_ops,
-                                                 std::string& error_msg) {
+std::optional<OptimizerCtx> MakeOptimizerContext(api::GraphRef& graph, bool allow_extended_ops, const std::string& provider_type, OptimizerMode mode, CostCheckFn cost_check_fn, const std::unordered_set<std::string_view>& layout_sensitive_ops, std::string& error_msg) {
   auto opset = graph.Opset("");
   if (opset == std::nullopt) {
     opset = graph.Opset("ai.onnx");
@@ -2172,27 +2138,31 @@ const std::unordered_set<std::string_view>& GetLayoutSensitiveOps() {
   static std::unordered_set<std::string_view> layout_sensitive_ops = {
       "BatchNormalization", "InstanceNormalization",
 
-      "Conv", "QLinearConv", "ConvTranspose",
+      "Conv",
+      "QLinearConv",
+      "ConvTranspose",
 
-      "AveragePool", "LpPool", "MaxPool", "MaxUnpool",
-      "GlobalAveragePool", "GlobalLpPool", "GlobalMaxPool",
+      "AveragePool",
+      "LpPool",
+      "MaxPool",
+      "MaxUnpool",
+      "GlobalAveragePool",
+      "GlobalLpPool",
+      "GlobalMaxPool",
 
       "LRN",
       "GridSample",
-      "DepthToSpace", "SpaceToDepth"};
+      "DepthToSpace",
+      "SpaceToDepth"};
 
   return layout_sensitive_ops;
 }
 
-OptimizeResult Optimize(api::GraphRef& graph, bool allow_extended_ops,
-                        const std::string& provider_type, OptimizerMode mode,
-                        CostCheckFn cost_check_fn,
-                        const std::unordered_set<std::string_view>& layout_sensitive_ops) {
+OptimizeResult Optimize(api::GraphRef& graph, bool allow_extended_ops, const std::string& provider_type, OptimizerMode mode, CostCheckFn cost_check_fn, const std::unordered_set<std::string_view>& layout_sensitive_ops) {
   OptimizeResult result{};
 
   std::string error_msg;
-  auto ctx = MakeOptimizerContext(graph, allow_extended_ops, provider_type, mode, cost_check_fn, layout_sensitive_ops,
-                                  error_msg);
+  auto ctx = MakeOptimizerContext(graph, allow_extended_ops, provider_type, mode, cost_check_fn, layout_sensitive_ops, error_msg);
   if (ctx == std::nullopt) {
     if (!error_msg.empty()) {
       result.error_msg = error_msg;
@@ -2204,9 +2174,7 @@ OptimizeResult Optimize(api::GraphRef& graph, bool allow_extended_ops,
   return OptimizeImpl(*ctx);
 }
 
-void WrapTransposesAroundNode(api::GraphRef& graph, api::NodeRef& node,
-                              const std::vector<const std::vector<int64_t>*>& input_perms,
-                              const std::vector<const std::vector<int64_t>*>& output_perms) {
+void WrapTransposesAroundNode(api::GraphRef& graph, api::NodeRef& node, const std::vector<const std::vector<int64_t>*>& input_perms, const std::vector<const std::vector<int64_t>*>& output_perms) {
   for (size_t i = 0; i < input_perms.size(); ++i) {
     const std::vector<int64_t>* input_perm = input_perms[i];
     if (input_perm != nullptr) {
@@ -2221,9 +2189,7 @@ void WrapTransposesAroundNode(api::GraphRef& graph, api::NodeRef& node,
   }
 }
 
-static std::unique_ptr<api::NodeRef> SwapNodeImpl(api::GraphRef& graph, api::NodeRef& node,
-                                                  std::string_view op_type, std::string_view domain,
-                                                  std::optional<int> since_version) {
+static std::unique_ptr<api::NodeRef> SwapNodeImpl(api::GraphRef& graph, api::NodeRef& node, std::string_view op_type, std::string_view domain, std::optional<int> since_version) {
   auto outputs = node.Outputs();
   auto new_node = graph.CopyNode(node, op_type, domain, since_version);
 
@@ -2236,14 +2202,11 @@ static std::unique_ptr<api::NodeRef> SwapNodeImpl(api::GraphRef& graph, api::Nod
   return new_node;
 }
 
-std::unique_ptr<api::NodeRef> SwapNodeOpTypeAndDomain(api::GraphRef& graph, api::NodeRef& node,
-                                                      std::string_view op_type, std::string_view domain) {
+std::unique_ptr<api::NodeRef> SwapNodeOpTypeAndDomain(api::GraphRef& graph, api::NodeRef& node, std::string_view op_type, std::string_view domain) {
   return SwapNodeImpl(graph, node, op_type, domain, std::nullopt);
 }
 
-std::unique_ptr<api::NodeRef> SwapNodeOpTypeDomainAndSinceVersion(api::GraphRef& graph, api::NodeRef& node,
-                                                                  std::string_view op_type, std::string_view domain,
-                                                                  int since_version) {
+std::unique_ptr<api::NodeRef> SwapNodeOpTypeDomainAndSinceVersion(api::GraphRef& graph, api::NodeRef& node, std::string_view op_type, std::string_view domain, int since_version) {
   return SwapNodeImpl(graph, node, op_type, domain, since_version);
 }
 }  // namespace onnx_layout_transformation

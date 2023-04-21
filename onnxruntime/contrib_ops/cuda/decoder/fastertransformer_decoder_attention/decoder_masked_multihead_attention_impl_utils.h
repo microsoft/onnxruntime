@@ -742,7 +742,8 @@ inline __device__ void ConvertFromFloat(uint4& dst, Float8_ src) {
 
 template <typename T>
 inline size_t CalcDynamicBlockMemory(const DecoderMaskedMultiHeadAttentionParams& params,
-                                     int threads_per_value, int threads_per_block) {
+                                     int threads_per_value,
+                                     int threads_per_block) {
   // The amount of shared memory needed to store the Q*K^T values in float.
 
   const int total_sequence_length = params.total_sequence_length;

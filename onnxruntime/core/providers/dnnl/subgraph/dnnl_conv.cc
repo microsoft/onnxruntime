@@ -104,13 +104,9 @@ void DnnlConv::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
 
   dnnl::convolution_forward::primitive_desc conv_pd;
   if (bias_exists) {
-    conv_pd = dnnl::convolution_forward::primitive_desc(dnnl_engine, prop_kind, dnnl::algorithm::convolution_direct,
-                                                        src_md, weight_md, bias_md, dst_md, strides, dilations,
-                                                        padding_left, padding_right, attr);
+    conv_pd = dnnl::convolution_forward::primitive_desc(dnnl_engine, prop_kind, dnnl::algorithm::convolution_direct, src_md, weight_md, bias_md, dst_md, strides, dilations, padding_left, padding_right, attr);
   } else {
-    conv_pd = dnnl::convolution_forward::primitive_desc(dnnl_engine, prop_kind, dnnl::algorithm::convolution_direct,
-                                                        src_md, weight_md, dst_md, strides, dilations, padding_left,
-                                                        padding_right, attr);
+    conv_pd = dnnl::convolution_forward::primitive_desc(dnnl_engine, prop_kind, dnnl::algorithm::convolution_direct, src_md, weight_md, dst_md, strides, dilations, padding_left, padding_right, attr);
   }
 
   // If using GPU this will move the memory from the CPU to the GPU.
@@ -124,14 +120,9 @@ void DnnlConv::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
   // Add the convolution layer to the subgraph
   auto conv_op = dnnl::convolution_forward(conv_pd);
   if (bias_exists) {
-    sp.AddPrimitive(conv_op, {{DNNL_ARG_SRC, conv_src_mem},
-                              {DNNL_ARG_WEIGHTS, conv_weights_mem},
-                              {DNNL_ARG_BIAS, conv_bias_mem},
-                              {DNNL_ARG_DST, conv_dst_mem}});
+    sp.AddPrimitive(conv_op, {{DNNL_ARG_SRC, conv_src_mem}, {DNNL_ARG_WEIGHTS, conv_weights_mem}, {DNNL_ARG_BIAS, conv_bias_mem}, {DNNL_ARG_DST, conv_dst_mem}});
   } else {
-    sp.AddPrimitive(conv_op, {{DNNL_ARG_SRC, conv_src_mem},
-                              {DNNL_ARG_WEIGHTS, conv_weights_mem},
-                              {DNNL_ARG_DST, conv_dst_mem}});
+    sp.AddPrimitive(conv_op, {{DNNL_ARG_SRC, conv_src_mem}, {DNNL_ARG_WEIGHTS, conv_weights_mem}, {DNNL_ARG_DST, conv_dst_mem}});
   }
 
   sp.SetMemory(node.Output(OUT_Y), conv_dst_mem);

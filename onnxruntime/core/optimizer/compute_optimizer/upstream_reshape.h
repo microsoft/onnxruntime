@@ -35,12 +35,7 @@ class UpStreamReshapeGraphTransformer
   std::optional<optimizer::compute_optimizer::ReshapeInfo> IsSupportedForUpstream(
       Graph& graph, Node& node, const logging::Logger& logger) const override;
 
-  bool UpStreamInternal(Graph& graph, std::deque<optimizer::compute_optimizer::ReshapeInfo>& queue,
-                        Node& current_node, optimizer::compute_optimizer::ReshapeInfo& info,
-                        const optimizer::compute_optimizer::OpPassThroughConfig<
-                            optimizer::compute_optimizer::UpStreamReshapeOperatorActorBase>&
-                            pass_through_config,
-                        const logging::Logger& logger) const override;
+  bool UpStreamInternal(Graph& graph, std::deque<optimizer::compute_optimizer::ReshapeInfo>& queue, Node& current_node, optimizer::compute_optimizer::ReshapeInfo& info, const optimizer::compute_optimizer::OpPassThroughConfig<optimizer::compute_optimizer::UpStreamReshapeOperatorActorBase>& pass_through_config, const logging::Logger& logger) const override;
 
  private:
   /**
@@ -84,12 +79,7 @@ class UpStreamReshapeGraphTransformer
    * @param logger Logger.
    * @return  ReshapeInfo for the newly created reshape op.
    */
-  optimizer::compute_optimizer::ReshapeInfo PropagateReshapeForInput(Graph& graph, Node& reshape_node,
-                                                                     Node& current_node,
-                                                                     int current_node_input_index,
-                                                                     optimizer::compute_optimizer::ReshapeInfo& info,
-                                                                     std::vector<optimizer::compute_optimizer::DimCompare>&,
-                                                                     const logging::Logger& logger) const;
+  optimizer::compute_optimizer::ReshapeInfo PropagateReshapeForInput(Graph& graph, Node& reshape_node, Node& current_node, int current_node_input_index, optimizer::compute_optimizer::ReshapeInfo& info, std::vector<optimizer::compute_optimizer::DimCompare>&, const logging::Logger& logger) const;
 
   /**
    * @brief Remove the origin Reshape op but don't update shapes.
@@ -115,8 +105,7 @@ class UpStreamReshapeGraphTransformer
    * @param info reshape_node's ReshapeInfo.
    * @return
    */
-  Status RemoveOriginalReshapeNode(Graph& graph, Node& reshape_node, Node& current_node,
-                                   const logging::Logger& logger, optimizer::compute_optimizer::ReshapeInfo& info) const;
+  Status RemoveOriginalReshapeNode(Graph& graph, Node& reshape_node, Node& current_node, const logging::Logger& logger, optimizer::compute_optimizer::ReshapeInfo& info) const;
 };
 
 }  // namespace onnxruntime

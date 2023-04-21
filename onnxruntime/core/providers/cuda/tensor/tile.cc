@@ -17,11 +17,7 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     kCudaExecutionProvider,
     (*KernelDefBuilder::Create())
         .InputMemoryType(OrtMemTypeCPUInput, 1)
-        .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
-                              DataTypeImpl::GetTensorType<double>(),
-                              DataTypeImpl::GetTensorType<int32_t>(),
-                              DataTypeImpl::GetTensorType<int64_t>(),
-                              DataTypeImpl::GetTensorType<MLFloat16>()})
+        .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(), DataTypeImpl::GetTensorType<double>(), DataTypeImpl::GetTensorType<int32_t>(), DataTypeImpl::GetTensorType<int64_t>(), DataTypeImpl::GetTensorType<MLFloat16>()})
         .TypeConstraint("T1", DataTypeImpl::GetTensorType<int64_t>()),
     Tile);
 
@@ -32,34 +28,23 @@ ONNX_OPERATOR_KERNEL_EX(
     kCudaExecutionProvider,
     (*KernelDefBuilder::Create())
         .InputMemoryType(OrtMemTypeCPUInput, 1)
-        .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
-                              DataTypeImpl::GetTensorType<double>(),
-                              DataTypeImpl::GetTensorType<int32_t>(),
-                              DataTypeImpl::GetTensorType<int64_t>(),
-                              DataTypeImpl::GetTensorType<MLFloat16>()})
+        .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(), DataTypeImpl::GetTensorType<double>(), DataTypeImpl::GetTensorType<int32_t>(), DataTypeImpl::GetTensorType<int64_t>(), DataTypeImpl::GetTensorType<MLFloat16>()})
         .TypeConstraint("T1", DataTypeImpl::GetTensorType<int64_t>()),
     Tile);
 
-#define CASE_TILE(type)                                                                                            \
-  case sizeof(type): {                                                                                             \
-    TileImpl(Stream(ctx), rank, fdm_input_shape, input_strides,                                                    \
-             reinterpret_cast<const typename ToCudaType<type>::MappedType*>(input_data), fdm_output_strides,       \
-             reinterpret_cast<typename ToCudaType<type>::MappedType*>(output_data), output_tensor.Shape().Size()); \
+#define CASE_TILE(type)                                                                                                                                                                                                                                               \
+  case sizeof(type): {                                                                                                                                                                                                                                                \
+    TileImpl(Stream(ctx), rank, fdm_input_shape, input_strides, reinterpret_cast<const typename ToCudaType<type>::MappedType*>(input_data), fdm_output_strides, reinterpret_cast<typename ToCudaType<type>::MappedType*>(output_data), output_tensor.Shape().Size()); \
   } break
 
-#define CASE_TILE_MEMCPY(type)                                                                                \
-  case sizeof(type): {                                                                                        \
-    TileMemcpyImpl(Stream(ctx), reinterpret_cast<const typename ToCudaType<type>::MappedType*>(input_data),   \
-                   reinterpret_cast<typename ToCudaType<type>::MappedType*>(output_data), input_shape.Size(), \
-                   num_of_copies_per_batch);                                                                  \
+#define CASE_TILE_MEMCPY(type)                                                                                                                                                                                                   \
+  case sizeof(type): {                                                                                                                                                                                                           \
+    TileMemcpyImpl(Stream(ctx), reinterpret_cast<const typename ToCudaType<type>::MappedType*>(input_data), reinterpret_cast<typename ToCudaType<type>::MappedType*>(output_data), input_shape.Size(), num_of_copies_per_batch); \
   } break
 
-#define CASE_TILE_BATCHED_MEMCPY(type)                                                                             \
-  case sizeof(type): {                                                                                             \
-    TileBatchedMemcpyImpl(Stream(ctx), reinterpret_cast<const typename ToCudaType<type>::MappedType*>(input_data), \
-                          reinterpret_cast<typename ToCudaType<type>::MappedType*>(output_data),                   \
-                          num_of_elements_per_batch, input_shape.Size(), num_of_batch_copies,                      \
-                          num_of_copies_per_batch);                                                                \
+#define CASE_TILE_BATCHED_MEMCPY(type)                                                                                                                                                                                                                                                  \
+  case sizeof(type): {                                                                                                                                                                                                                                                                  \
+    TileBatchedMemcpyImpl(Stream(ctx), reinterpret_cast<const typename ToCudaType<type>::MappedType*>(input_data), reinterpret_cast<typename ToCudaType<type>::MappedType*>(output_data), num_of_elements_per_batch, input_shape.Size(), num_of_batch_copies, num_of_copies_per_batch); \
   } break
 
 Status Tile::ComputeInternal(OpKernelContext* ctx) const {

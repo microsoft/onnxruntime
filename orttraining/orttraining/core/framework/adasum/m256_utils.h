@@ -68,8 +68,10 @@ inline void MmStorePhPartial(uint16_t* a, __m256 val, int len) {
 
 inline void ComputeDotAndNormSqrdsfp16(const uint16_t* __restrict__ a,
                                        const uint16_t* __restrict__ b,
-                                       int len, double& dotProduct,
-                                       double& anormsq, double& bnormsq) {
+                                       int len,
+                                       double& dotProduct,
+                                       double& anormsq,
+                                       double& bnormsq) {
   int i;
   __m256d dotProductVec = _mm256_setzero_pd();
   __m256d anormVec = _mm256_setzero_pd();
@@ -108,8 +110,7 @@ inline void ComputeDotAndNormSqrdsfp16(const uint16_t* __restrict__ a,
   bnormsq = Mm256ReductionPd(bnormVec);
 }
 
-inline void ScaledAddfp16(int len, double acoeff, uint16_t* __restrict__ a,
-                          double bcoeff, uint16_t* __restrict__ b) {
+inline void ScaledAddfp16(int len, double acoeff, uint16_t* __restrict__ a, double bcoeff, uint16_t* __restrict__ b) {
   int i;
   __m256 acoeffVec = _mm256_set1_ps((float)(acoeff));
   __m256 bcoeffVec = _mm256_set1_ps((float)bcoeff);

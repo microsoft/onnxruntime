@@ -38,7 +38,8 @@ Status SGDOptimizerV2Base::PrepareForCompute(OpKernelContext* ctx, SGDOptimizerV
 
           // Check the weight/gradient/momentums at the same index should have same shape.
           ORT_ENFORCE(weight_tensor.Shape() == gradient_tensor.Shape(),
-                      "Shape of weight and gradient mismatch, weight index:", i);
+                      "Shape of weight and gradient mismatch, weight index:",
+                      i);
 
           prepare.grouped_tensor_sizes[i] = static_cast<int>(weight_tensor.Shape().Size());
 

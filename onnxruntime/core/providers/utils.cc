@@ -9,7 +9,8 @@ namespace utils {
 
 #if !defined(DISABLE_OPTIONAL_TYPE)
 common::Status OutputOptionalWithoutDataHelper(const ONNX_NAMESPACE::TypeProto& input_type_proto,
-                                               OpKernelContext* context, int output_index) {
+                                               OpKernelContext* context,
+                                               int output_index) {
   if (utils::HasOptionalTensorType(input_type_proto)) {
     context->OutputOptionalWithoutData<Tensor>(output_index);
   } else if (utils::HasOptionalTensorSequenceType(input_type_proto)) {

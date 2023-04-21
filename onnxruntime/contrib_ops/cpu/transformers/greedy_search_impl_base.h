@@ -246,9 +246,7 @@ Status GreedySearchBase<T, ParametersT>::ProcessLogits(
     AllocatorPtr& allocator,
     int counter) {
   bool use_sampling = std::is_same<ParametersT, SamplingParameters>::value;
-  return process_logits_func_(logits, &greedy_state, &sampling_state, &(greedy_state.sequences), allocator,
-                              this->thread_pool_, &this->logits_processors_, parameters_,
-                              use_sampling, counter, this->ort_stream_, this->GetConsoleDumper());
+  return process_logits_func_(logits, &greedy_state, &sampling_state, &(greedy_state.sequences), allocator, this->thread_pool_, &this->logits_processors_, parameters_, use_sampling, counter, this->ort_stream_, this->GetConsoleDumper());
 }
 
 template <typename T, typename ParametersT>

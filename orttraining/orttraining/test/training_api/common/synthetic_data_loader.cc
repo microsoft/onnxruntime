@@ -25,8 +25,7 @@ void RandomFloats(std::vector<float>& rets, size_t num_element) {
   static std::default_random_engine generator{static_cast<uint32_t>(seed)};
   std::normal_distribution<float> distribution{mean, scale};
 
-  std::generate_n(std::back_inserter(rets), num_element,
-                  [&distribution]() -> float { return distribution(generator); });
+  std::generate_n(std::back_inserter(rets), num_element, [&distribution]() -> float { return distribution(generator); });
 }
 
 template <typename IntType>
@@ -35,8 +34,7 @@ void RandomInts(std::vector<IntType>& rets, size_t num_element, IntType low, Int
   static std::mt19937 generator(rd());
   std::uniform_int_distribution<IntType> distribution(low, high);
 
-  std::generate_n(std::back_inserter(rets), num_element,
-                  [&distribution]() -> IntType { return distribution(generator); });
+  std::generate_n(std::back_inserter(rets), num_element, [&distribution]() -> IntType { return distribution(generator); });
 }
 
 }  // namespace
@@ -76,8 +74,7 @@ void SyntheticSampleBatch::AddBoolInput(gsl::span<const int64_t> shape) {
 
   SyntheticDataVector& data = data_vector_.back().GetData();
   std::vector<uint8_t> uint8_values;
-  std::transform(values.begin(), values.end(), std::back_inserter(uint8_values),
-                 [](int32_t x) { return static_cast<uint8_t>(x); });
+  std::transform(values.begin(), values.end(), std::back_inserter(uint8_values), [](int32_t x) { return static_cast<uint8_t>(x); });
   data = uint8_values;
 }
 
@@ -109,10 +106,7 @@ void SyntheticSampleBatch::GetBatch(std::vector<Ort::Value>& batches) {
       }
 
       const auto& shape_vector = input.ShapeVector();
-      batches.emplace_back(Ort::Value::CreateTensor(memory_info, arg.data(),
-                                                    (input.NumOfElements() * sizeof(typename T::value_type)),
-                                                    shape_vector.data(), shape_vector.size(),
-                                                    elem_data_type));
+      batches.emplace_back(Ort::Value::CreateTensor(memory_info, arg.data(), (input.NumOfElements() * sizeof(typename T::value_type)), shape_vector.data(), shape_vector.size(), elem_data_type));
     },
                input.GetData());
   }

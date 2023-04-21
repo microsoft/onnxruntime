@@ -367,26 +367,20 @@ static Status ModifyParametersForOptimizerPartitioning(
           int64_t size_for_current_rank = offset + tensor_count - rank_start;
           std::vector<TensorShape> view_shapes = {{size_for_previous_rank}, {size_for_current_rank}, {0}};
           std::vector<bool> enabled = {false, true};
-          ORT_RETURN_IF_ERROR(AddParameterPartition(graph, graph_defs, weight_argdef, gradient_argdef, opt_config,
-                                                    view_shapes, enabled, new_opt_configs, new_weight_argdefs,
-                                                    new_gradient_argdefs, updated_weight_names_map, weight_partition_info));
+          ORT_RETURN_IF_ERROR(AddParameterPartition(graph, graph_defs, weight_argdef, gradient_argdef, opt_config, view_shapes, enabled, new_opt_configs, new_weight_argdefs, new_gradient_argdefs, updated_weight_names_map, weight_partition_info));
         } else if (offset >= rank_start && offset + tensor_count > rank_end) {
           int64_t size_for_current_rank = rank_end - offset;
           int64_t size_for_next_rank = offset + tensor_count - rank_end;
           std::vector<TensorShape> view_shapes = {{0}, {size_for_current_rank}, {size_for_next_rank}};
           std::vector<bool> enabled = {true, false};
-          ORT_RETURN_IF_ERROR(AddParameterPartition(graph, graph_defs, weight_argdef, gradient_argdef, opt_config,
-                                                    view_shapes, enabled, new_opt_configs, new_weight_argdefs,
-                                                    new_gradient_argdefs, updated_weight_names_map, weight_partition_info));
+          ORT_RETURN_IF_ERROR(AddParameterPartition(graph, graph_defs, weight_argdef, gradient_argdef, opt_config, view_shapes, enabled, new_opt_configs, new_weight_argdefs, new_gradient_argdefs, updated_weight_names_map, weight_partition_info));
         } else {  // offset < rank_start && offset + tensor_count > rank_end
           int64_t size_for_previous_rank = rank_start - offset;
           int64_t size_for_current_rank = rank_end - rank_start;
           int64_t size_for_next_rank = offset + tensor_count - rank_end;
           std::vector<TensorShape> view_shapes = {{size_for_previous_rank}, {size_for_current_rank}, {size_for_next_rank}};
           std::vector<bool> enabled = {false, true, false};
-          ORT_RETURN_IF_ERROR(AddParameterPartition(graph, graph_defs, weight_argdef, gradient_argdef, opt_config,
-                                                    view_shapes, enabled, new_opt_configs, new_weight_argdefs,
-                                                    new_gradient_argdefs, updated_weight_names_map, weight_partition_info));
+          ORT_RETURN_IF_ERROR(AddParameterPartition(graph, graph_defs, weight_argdef, gradient_argdef, opt_config, view_shapes, enabled, new_opt_configs, new_weight_argdefs, new_gradient_argdefs, updated_weight_names_map, weight_partition_info));
         }
       }
     } else {
@@ -460,8 +454,7 @@ Status ZeROOptimizerGraphBuilder::BuildInternal(
   const auto total_num_accumulations = opt_graph_config_.gradient_accumulation_steps * opt_graph_config_.data_parallel_group_size;
   ORT_RETURN_IF_NOT(total_num_accumulations > 0, "total_num_accumulations <= 0");
   const float scale = 1.0f / total_num_accumulations;
-  ORT_RETURN_IF_ERROR(AddGradientScalingNodes(nodearg_name_generator, scale, gradient_argdefs, fused_gradient_argdef, graph_defs,
-                                              opt_graph_config_.AllReduceDataType(), false));
+  ORT_RETURN_IF_ERROR(AddGradientScalingNodes(nodearg_name_generator, scale, gradient_argdefs, fused_gradient_argdef, graph_defs, opt_graph_config_.AllReduceDataType(), false));
 
   // add Reducescatter for gradients
   ORT_RETURN_IF_ERROR(AddNcclReduceScatterForGradients(gradient_argdefs, graph_defs));
@@ -486,11 +479,7 @@ Status ZeROOptimizerGraphBuilder::BuildInternal(
 
   // add weight update
   ORT_RETURN_IF_ERROR(AddDirectWeightUpdate(
-      opt_builder_registry_, weight_argdefs, gradient_argdefs,
-      &global_grad_norm_argdef,
-      &global_grad_norm_finite_argdef,
-      opt_configs_, graph_defs,
-      optimizer_state_initializer_names));
+      opt_builder_registry_, weight_argdefs, gradient_argdefs, &global_grad_norm_argdef, &global_grad_norm_finite_argdef, opt_configs_, graph_defs, optimizer_state_initializer_names));
 
   // add Allgather for weights
   ORT_RETURN_IF_ERROR(AddNcclAllGatherForWeights(weight_argdefs, graph_defs));

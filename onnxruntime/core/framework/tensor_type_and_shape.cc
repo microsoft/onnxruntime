@@ -43,43 +43,39 @@ ORT_API(void, OrtApis::ReleaseTensorTypeAndShapeInfo, _Frees_ptr_opt_ OrtTensorT
   std::unique_ptr<OrtTensorTypeAndShapeInfo> p(ptr);
 }
 
-ORT_API_STATUS_IMPL(OrtApis::SetTensorElementType, _Inout_ OrtTensorTypeAndShapeInfo* this_ptr,
-                    enum ONNXTensorElementDataType type) {
+ORT_API_STATUS_IMPL(OrtApis::SetTensorElementType, _Inout_ OrtTensorTypeAndShapeInfo* this_ptr, enum ONNXTensorElementDataType type) {
   API_IMPL_BEGIN
   this_ptr->type = type;
   return nullptr;
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::SetDimensions, OrtTensorTypeAndShapeInfo* this_ptr,
-                    _In_ const int64_t* dim_values, size_t dim_count) {
+ORT_API_STATUS_IMPL(OrtApis::SetDimensions, OrtTensorTypeAndShapeInfo* this_ptr, _In_ const int64_t* dim_values, size_t dim_count) {
   API_IMPL_BEGIN
   this_ptr->shape = onnxruntime::TensorShape(dim_values, dim_count);
   return nullptr;
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::GetTensorElementType, _In_ const struct OrtTensorTypeAndShapeInfo* info,
-                    _Out_ ONNXTensorElementDataType* out) {
+ORT_API_STATUS_IMPL(OrtApis::GetTensorElementType, _In_ const struct OrtTensorTypeAndShapeInfo* info, _Out_ ONNXTensorElementDataType* out) {
   *out = info->type;
   return nullptr;
 }
 
-ORT_API_STATUS_IMPL(OrtApis::GetDimensionsCount, _In_ const struct OrtTensorTypeAndShapeInfo* info,
-                    _Out_ size_t* out) {
+ORT_API_STATUS_IMPL(OrtApis::GetDimensionsCount, _In_ const struct OrtTensorTypeAndShapeInfo* info, _Out_ size_t* out) {
   *out = info->shape.NumDimensions();
   return nullptr;
 }
 
-ORT_API_STATUS_IMPL(OrtApis::GetDimensions, _In_ const struct OrtTensorTypeAndShapeInfo* info,
-                    _Out_ int64_t* dim_values, size_t dim_values_length) {
+ORT_API_STATUS_IMPL(OrtApis::GetDimensions, _In_ const struct OrtTensorTypeAndShapeInfo* info, _Out_ int64_t* dim_values, size_t dim_values_length) {
   info->shape.CopyDims(dim_values, dim_values_length);
   return nullptr;
 }
 
 ORT_API_STATUS_IMPL(OrtApis::GetSymbolicDimensions,
                     _In_ const struct OrtTensorTypeAndShapeInfo* info,
-                    _Out_writes_all_(dim_params_length) const char** names, size_t dim_params_length) {
+                    _Out_writes_all_(dim_params_length) const char** names,
+                    size_t dim_params_length) {
   for (size_t idx = 0, end = std::min(info->dim_params.size(), dim_params_length); idx < end; ++idx) {
     names[idx] = info->dim_params[idx].c_str();
   }
@@ -88,7 +84,8 @@ ORT_API_STATUS_IMPL(OrtApis::GetSymbolicDimensions,
 }
 
 ORT_API_STATUS_IMPL(OrtApis::GetTensorShapeElementCount,
-                    _In_ const OrtTensorTypeAndShapeInfo* this_ptr, _Out_ size_t* out) {
+                    _In_ const OrtTensorTypeAndShapeInfo* this_ptr,
+                    _Out_ size_t* out) {
   API_IMPL_BEGIN
   *out = SafeInt<size_t>{this_ptr->shape.Size()};
   return nullptr;
@@ -207,7 +204,8 @@ std::unique_ptr<OrtTensorTypeAndShapeInfo> OrtTensorTypeAndShapeInfo::GetTensorS
 }
 
 ORT_API_STATUS_IMPL(OrtApis::GetTensorTypeAndShape,
-                    _In_ const OrtValue* v, _Outptr_ OrtTensorTypeAndShapeInfo** out) {
+                    _In_ const OrtValue* v,
+                    _Outptr_ OrtTensorTypeAndShapeInfo** out) {
   API_IMPL_BEGIN
   if (!v->IsAllocated()) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
@@ -240,8 +238,7 @@ ORT_API_STATUS_IMPL(OrtApis::GetTensorTypeAndShape,
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::GetSparseTensorValuesTypeAndShape, _In_ const OrtValue* v,
-                    _Outptr_ OrtTensorTypeAndShapeInfo** out) {
+ORT_API_STATUS_IMPL(OrtApis::GetSparseTensorValuesTypeAndShape, _In_ const OrtValue* v, _Outptr_ OrtTensorTypeAndShapeInfo** out) {
   API_IMPL_BEGIN
 #if !defined(DISABLE_SPARSE_TENSORS)
   const auto& sparse_tensor = SparseTensor::GetSparseTensorFromOrtValue(*v);
@@ -283,8 +280,7 @@ const Tensor& GetIndicesTensor(const OrtValue& v, OrtSparseIndicesFormat indices
 }  // namespace
 #endif  // !defined(DISABLE_SPARSE_TENSORS)
 
-ORT_API_STATUS_IMPL(OrtApis::GetSparseTensorIndicesTypeShape, _In_ const OrtValue* v,
-                    OrtSparseIndicesFormat indices_format, _Outptr_ OrtTensorTypeAndShapeInfo** out) {
+ORT_API_STATUS_IMPL(OrtApis::GetSparseTensorIndicesTypeShape, _In_ const OrtValue* v, OrtSparseIndicesFormat indices_format, _Outptr_ OrtTensorTypeAndShapeInfo** out) {
   API_IMPL_BEGIN
 #if !defined(DISABLE_SPARSE_TENSORS)
   const Tensor& indices_tensor = GetIndicesTensor(*v, indices_format);
@@ -300,8 +296,7 @@ ORT_API_STATUS_IMPL(OrtApis::GetSparseTensorIndicesTypeShape, _In_ const OrtValu
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::GetSparseTensorIndices, _In_ const OrtValue* v,
-                    enum OrtSparseIndicesFormat indices_format, _Out_ size_t* num_indices, _Outptr_ const void** indices) {
+ORT_API_STATUS_IMPL(OrtApis::GetSparseTensorIndices, _In_ const OrtValue* v, enum OrtSparseIndicesFormat indices_format, _Out_ size_t* num_indices, _Outptr_ const void** indices) {
   API_IMPL_BEGIN
 #if !defined(DISABLE_SPARSE_TENSORS)
   const Tensor& indices_tensor = GetIndicesTensor(*v, indices_format);
@@ -332,7 +327,8 @@ ORT_API_STATUS_IMPL(OrtApis::GetValueType, _In_ const OrtValue* v, _Out_ ONNXTyp
  * \return The returned value should be freed by OrtReleaseTypeInfo after use
  */
 ORT_API_STATUS_IMPL(OrtApis::GetTypeInfo,
-                    _In_ const OrtValue* v, _Outptr_result_maybenull_ struct OrtTypeInfo** out) {
+                    _In_ const OrtValue* v,
+                    _Outptr_result_maybenull_ struct OrtTypeInfo** out) {
   API_IMPL_BEGIN
   // TODO: This is consistent with the previous implementation but inconsistent with GetValueType which returns
   // ONNX_TYPE_UNKNOWN if v->Type() is null. Should we instead just call OrtTypeInfo::FromOrtValue and

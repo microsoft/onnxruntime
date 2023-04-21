@@ -25,8 +25,7 @@ void Recv::ReceiveData(
                        static_cast<int>(tag_)};
 
   MPI_CHECK(MPI_Recv(
-      info_data.buffer, info_data.size, MPI_CHAR,
-      info_data.rank, info_data.tag, MPI_COMM_WORLD, MPI_STATUS_IGNORE));
+      info_data.buffer, info_data.size, MPI_CHAR, info_data.rank, info_data.tag, MPI_COMM_WORLD, MPI_STATUS_IGNORE));
 
   // Copy tensors from buffer to outputs.
   size_t tensor_offset_in_bytes = 0;

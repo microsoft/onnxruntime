@@ -13,8 +13,7 @@ namespace fb = flatbuffers;
 
 namespace onnxruntime {
 
-Status KernelTypeStrResolver::ResolveKernelTypeStr(const Node& node, std::string_view kernel_type_str,
-                                                   gsl::span<const ArgTypeAndIndex>& resolved_args) const {
+Status KernelTypeStrResolver::ResolveKernelTypeStr(const Node& node, std::string_view kernel_type_str, gsl::span<const ArgTypeAndIndex>& resolved_args) const {
   const auto op_id = utils::MakeOpId(node);
   const auto op_it = op_kernel_type_str_map_.find(op_id);
   ORT_RETURN_IF(op_it == op_kernel_type_str_map_.end(), "Failed to find op_id: ", op_id);
@@ -28,7 +27,8 @@ Status KernelTypeStrResolver::ResolveKernelTypeStr(const Node& node, std::string
 #endif
 
   ORT_RETURN_IF(type_str_it == type_str_map.end(),
-                "Failed to find args for kernel type string '", kernel_type_str,
+                "Failed to find args for kernel type string '",
+                kernel_type_str,
                 "'. If type constraint names are available, ensure that they are used in the kernel def type "
                 "constraints instead of op input or output names. Not doing so will result in this error.");
   resolved_args = type_str_it->second;
@@ -87,7 +87,8 @@ Status KernelTypeStrResolver::RegisterOpSchema(const ONNX_NAMESPACE::OpSchema& o
 
         ORT_RETURN_IF_NOT(
             formal_param_type_str(curr_arg_type_and_idx) == formal_param_type_str(args_for_io_name.front()),
-            "Kernel type string already exists for formal parameter name '", formal_param.GetName(),
+            "Kernel type string already exists for formal parameter name '",
+            formal_param.GetName(),
             "', but the existing argument with that formal parameter name has a different formal parameter "
             "type string.");
       }
@@ -250,8 +251,7 @@ static std::string LoadFromOrtFormatImpl(const fbs::KernelTypeStrResolver& fbs_k
 Status KernelTypeStrResolver::LoadFromOrtFormat(const fbs::KernelTypeStrResolver& fbs_kernel_type_str_resolver) {
   const auto error_message = LoadFromOrtFormatImpl(fbs_kernel_type_str_resolver, op_kernel_type_str_map_);
   return error_message.empty() ? Status::OK()
-                               : ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, error_message, " ",
-                                                 fbs::utils::kInvalidOrtFormatModelMessage);
+                               : ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, error_message, " ", fbs::utils::kInvalidOrtFormatModelMessage);
 }
 
 void KernelTypeStrResolver::Merge(KernelTypeStrResolver src) {
@@ -260,8 +260,7 @@ void KernelTypeStrResolver::Merge(KernelTypeStrResolver src) {
 
 #if !defined(ORT_MINIMAL_BUILD)
 Status OpSchemaKernelTypeStrResolver::ResolveKernelTypeStr(
-    const Node& node, std::string_view kernel_type_str,
-    gsl::span<const ArgTypeAndIndex>& resolved_args) const {
+    const Node& node, std::string_view kernel_type_str, gsl::span<const ArgTypeAndIndex>& resolved_args) const {
   std::lock_guard lock{resolver_mutex_};
   ORT_RETURN_IF_ERROR(resolver_.RegisterNodeOpSchema(node));
   ORT_RETURN_IF_ERROR(resolver_.ResolveKernelTypeStr(node, kernel_type_str, resolved_args));

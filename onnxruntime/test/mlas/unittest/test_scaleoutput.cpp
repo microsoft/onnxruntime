@@ -44,9 +44,7 @@ class MlasScaleOutputTest : public MlasTestBase {
 
     // Compute Output with MLAS
     MLAS_QGEMM_SCALE_BIAS_OUTPUT_PROCESSOR OutputProcessor(
-        Output, N, Scale, nullptr,
-        AccumulateMode ? MLAS_QGEMM_OUTPUT_MODE::AccumulateMode : MLAS_QGEMM_OUTPUT_MODE::ZeroMode,
-        PerColumn ? MLAS_QUANTIZATION_GRANULARITY::PerColumn : MLAS_QUANTIZATION_GRANULARITY::PerMatrix);
+        Output, N, Scale, nullptr, AccumulateMode ? MLAS_QGEMM_OUTPUT_MODE::AccumulateMode : MLAS_QGEMM_OUTPUT_MODE::ZeroMode, PerColumn ? MLAS_QUANTIZATION_GRANULARITY::PerColumn : MLAS_QUANTIZATION_GRANULARITY::PerMatrix);
     OutputProcessor.Process(Input, 0, 0, M, N, N);
 
     constexpr float epsilon = 1e-6f;

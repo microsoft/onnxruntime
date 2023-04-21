@@ -50,16 +50,10 @@ TEST(DequantizeLinearOpTest, Int32) {
 TEST(DequantizeLinearOpTest, 2D) {
   OpTester test("DequantizeLinear", 10);
   std::vector<int64_t> dims{3, 4};
-  test.AddInput<uint8_t>("X", dims,
-                         {0, 1, 2, 3,
-                          0, 1, 2, 3,
-                          0, 10, 20, 30});
+  test.AddInput<uint8_t>("X", dims, {0, 1, 2, 3, 0, 1, 2, 3, 0, 10, 20, 30});
   test.AddInput<float>("scale", {}, {1.0f});
   test.AddInput<uint8_t>("zero_point", {}, {0});
-  test.AddOutput<float>("Y", dims,
-                        {0, 1, 2, 3,
-                         0, 1, 2, 3,
-                         0, 10, 20, 30});
+  test.AddOutput<float>("Y", dims, {0, 1, 2, 3, 0, 1, 2, 3, 0, 10, 20, 30});
   test.Run();
 }
 
@@ -92,44 +86,100 @@ TEST(DequantizeLinearOpTest, Without_Zero_Point) {
 TEST(DequantizeLinearOpTest, Per_Channel_Axis_Default) {
   OpTester test("DequantizeLinear", 13);
   std::vector<int64_t> dims{2, 3, 2, 4};
-  test.AddInput<int8_t>("X", dims,
-                        {7, 9, 10, 10,
-                         5, 8, 9, 1,
+  test.AddInput<int8_t>("X", dims, {7, 9, 10, 10, 5, 8, 9, 1,
 
-                         8, 6, 7, 9,
-                         10, 0, 7, 10,
+                                    8,
+                                    6,
+                                    7,
+                                    9,
+                                    10,
+                                    0,
+                                    7,
+                                    10,
 
-                         8, 2, 6, 0,
-                         5, 9, 8, 1,
+                                    8,
+                                    2,
+                                    6,
+                                    0,
+                                    5,
+                                    9,
+                                    8,
+                                    1,
 
-                         2, 7, 5, 3,
-                         2, 4, 1, 3,
+                                    2,
+                                    7,
+                                    5,
+                                    3,
+                                    2,
+                                    4,
+                                    1,
+                                    3,
 
-                         8, 7, 4, 8,
-                         10, 1, 5, 5,
+                                    8,
+                                    7,
+                                    4,
+                                    8,
+                                    10,
+                                    1,
+                                    5,
+                                    5,
 
-                         7, 7, 0, 2,
-                         4, 4, 0, 5});
+                                    7,
+                                    7,
+                                    0,
+                                    2,
+                                    4,
+                                    4,
+                                    0,
+                                    5});
   test.AddInput<float>("scale", {3}, {1, 10, 7});
   test.AddInput<int8_t>("zero_point", {3}, {10, 2, 1});
-  test.AddOutput<float>("Y", dims,
-                        {-3, -1, 0, 0,
-                         -5, -2, -1, -9,
+  test.AddOutput<float>("Y", dims, {-3, -1, 0, 0, -5, -2, -1, -9,
 
-                         60, 40, 50, 70,
-                         80, -20, 50, 80,
+                                    60,
+                                    40,
+                                    50,
+                                    70,
+                                    80,
+                                    -20,
+                                    50,
+                                    80,
 
-                         49, 7, 35, -7,
-                         28, 56, 49, 0,
+                                    49,
+                                    7,
+                                    35,
+                                    -7,
+                                    28,
+                                    56,
+                                    49,
+                                    0,
 
-                         -8, -3, -5, -7,
-                         -8, -6, -9, -7,
+                                    -8,
+                                    -3,
+                                    -5,
+                                    -7,
+                                    -8,
+                                    -6,
+                                    -9,
+                                    -7,
 
-                         60, 50, 20, 60,
-                         80, -10, 30, 30,
+                                    60,
+                                    50,
+                                    20,
+                                    60,
+                                    80,
+                                    -10,
+                                    30,
+                                    30,
 
-                         42, 42, -7, 7,
-                         21, 21, -7, 28});
+                                    42,
+                                    42,
+                                    -7,
+                                    7,
+                                    21,
+                                    21,
+                                    -7,
+                                    28});
   // Disable Tensorrt EP due to the non-zero zero_point.
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
@@ -138,23 +188,11 @@ TEST(DequantizeLinearOpTest, Per_Channel_Axis_Default) {
 TEST(DequantizeLinearOpTest, Per_Channel_Axis_0) {
   OpTester test("DequantizeLinear", 13);
   std::vector<int64_t> dims{3, 4};
-  test.AddInput<uint8_t>("X", dims,
-                         {0, 1, 2, 3,
-                          0, 1, 2, 3,
-                          0, 10, 20, 30});
+  test.AddInput<uint8_t>("X", dims, {0, 1, 2, 3, 0, 1, 2, 3, 0, 10, 20, 30});
   test.AddAttribute<int64_t>("axis", 0);
-  test.AddInput<float>("scale", {3},
-                       {1.0f,
-                        2.0f,
-                        4.0f});
-  test.AddInput<uint8_t>("zero_point", {3},
-                         {0,
-                          0,
-                          0});
-  test.AddOutput<float>("Y", dims,
-                        {0, 1, 2, 3,
-                         0, 2, 4, 6,
-                         0, 40, 80, 120});
+  test.AddInput<float>("scale", {3}, {1.0f, 2.0f, 4.0f});
+  test.AddInput<uint8_t>("zero_point", {3}, {0, 0, 0});
+  test.AddOutput<float>("Y", dims, {0, 1, 2, 3, 0, 2, 4, 6, 0, 40, 80, 120});
   test.Run();
 }
 
@@ -162,17 +200,11 @@ TEST(DequantizeLinearOpTest, Per_Channel_Axis_0) {
 TEST(DequantizeLinearOpTest, Per_Channel_Axis_1_int8) {
   OpTester test("DequantizeLinear", 13);
   std::vector<int64_t> dims{3, 4};
-  test.AddInput<int8_t>("X", dims,
-                        {0, 1, 2, 3,
-                         0, 2, 4, 6,
-                         0, 10, 20, 30});
+  test.AddInput<int8_t>("X", dims, {0, 1, 2, 3, 0, 2, 4, 6, 0, 10, 20, 30});
   test.AddAttribute<int64_t>("axis", 1);
   test.AddInput<float>("scale", {4}, {1, 2, 4, 8});
   test.AddInput<int8_t>("zero_point", {4}, {0, -10, -20, -30});
-  test.AddOutput<float>("Y", dims,
-                        {0, 22, 88, 264,
-                         0, 24, 96, 288,
-                         0, 40, 160, 480});
+  test.AddOutput<float>("Y", dims, {0, 22, 88, 264, 0, 24, 96, 288, 0, 40, 160, 480});
   // Disable Tensorrt EP due to the non-zero zero_point.
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
@@ -181,17 +213,11 @@ TEST(DequantizeLinearOpTest, Per_Channel_Axis_1_int8) {
 TEST(DequantizeLinearOpTest, Per_Channel_Axis_1_int32) {
   OpTester test("DequantizeLinear", 13);
   std::vector<int64_t> dims{3, 4};
-  test.AddInput<int32_t>("X", dims,
-                         {0, 1, 2, 3,
-                          0, 2, 4, 6,
-                          0, 10, 20, 30});
+  test.AddInput<int32_t>("X", dims, {0, 1, 2, 3, 0, 2, 4, 6, 0, 10, 20, 30});
   test.AddAttribute<int64_t>("axis", 1);
   test.AddInput<float>("scale", {4}, {1, 2, 4, 8});
   test.AddInput<int32_t>("zero_point", {4}, {0, 0, 0, 0});
-  test.AddOutput<float>("Y", dims,
-                        {0, 2, 8, 24,
-                         0, 4, 16, 48,
-                         0, 20, 80, 240});
+  test.AddOutput<float>("Y", dims, {0, 2, 8, 24, 0, 4, 16, 48, 0, 20, 80, 240});
   // Disable Tensorrt EP due to error, only activation types allowed as input to this layer.
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
@@ -200,23 +226,11 @@ TEST(DequantizeLinearOpTest, Per_Channel_Axis_1_int32) {
 TEST(DequantizeLinearOpTest, Per_Channel_Neg_2) {
   OpTester test("DequantizeLinear", 13);
   std::vector<int64_t> dims{3, 4};
-  test.AddInput<uint8_t>("X", dims,
-                         {0, 1, 2, 3,
-                          0, 1, 2, 3,
-                          0, 10, 20, 30});
+  test.AddInput<uint8_t>("X", dims, {0, 1, 2, 3, 0, 1, 2, 3, 0, 10, 20, 30});
   test.AddAttribute<int64_t>("axis", -2);
-  test.AddInput<float>("scale", {3},
-                       {1.0f,
-                        2.0f,
-                        4.0f});
-  test.AddInput<uint8_t>("zero_point", {3},
-                         {0,
-                          0,
-                          0});
-  test.AddOutput<float>("Y", dims,
-                        {0, 1, 2, 3,
-                         0, 2, 4, 6,
-                         0, 40, 80, 120});
+  test.AddInput<float>("scale", {3}, {1.0f, 2.0f, 4.0f});
+  test.AddInput<uint8_t>("zero_point", {3}, {0, 0, 0});
+  test.AddOutput<float>("Y", dims, {0, 1, 2, 3, 0, 2, 4, 6, 0, 40, 80, 120});
   test.Run();
 }
 
@@ -286,16 +300,10 @@ TEST(QuantizeLinearOpTest, Int8_PositiveZeroPoint) {
 TEST(QuantizeLinearOpTest, 2D) {
   OpTester test("QuantizeLinear", 10);
   std::vector<int64_t> dims{3, 4};
-  test.AddInput<float>("X", dims,
-                       {0, 2, 3, 1000,
-                        0, 2, 3, 1000,
-                        0, 2, 3, 1000});
+  test.AddInput<float>("X", dims, {0, 2, 3, 1000, 0, 2, 3, 1000, 0, 2, 3, 1000});
   test.AddInput<float>("scale", {}, {4});
   test.AddInput<uint8_t>("zero_point", {}, {0});
-  test.AddOutput<uint8_t>("Y", dims,
-                          {0, 0, 1, 250,
-                           0, 0, 1, 250,
-                           0, 0, 1, 250});
+  test.AddOutput<uint8_t>("Y", dims, {0, 0, 1, 250, 0, 0, 1, 250, 0, 0, 1, 250});
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT doesn't support support UINT8 for quantization
 }
 
@@ -321,33 +329,21 @@ TEST(QuantizeLinearOpTest, DISABLED_QuantizeLinear_Without_Zero_Point) {
 TEST(QuantizeLinearOpTest, Per_Channel_Axis_Default) {
   OpTester test("QuantizeLinear", 13);
   std::vector<int64_t> dims{3, 4};
-  test.AddInput<float>("X", dims,
-                       {0, 2, 1, 1001,
-                        1, 1, 2, 1100,
-                        2, 4.2f, 3, 1200});
+  test.AddInput<float>("X", dims, {0, 2, 1, 1001, 1, 1, 2, 1100, 2, 4.2f, 3, 1200});
   test.AddInput<float>("scale", {4}, {1, 2, 3, 20});
   test.AddInput<uint8_t>("zero_point", {4}, {64, 100, 127, 127});
-  test.AddOutput<uint8_t>("Y", dims,
-                          {64, 101, 127, 177,
-                           65, 100, 128, 182,
-                           66, 102, 128, 187});
+  test.AddOutput<uint8_t>("Y", dims, {64, 101, 127, 177, 65, 100, 128, 182, 66, 102, 128, 187});
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT doesn't support support UINT8 for quantization
 }
 
 TEST(QuantizeLinearOpTest, Per_Channel_Axis_0) {
   OpTester test("QuantizeLinear", 13);
   std::vector<int64_t> dims{3, 4};
-  test.AddInput<float>("X", dims,
-                       {0, 2, 3, 1000,
-                        0, 2, 3, 1000,
-                        0, 2, 3, 1000});
+  test.AddInput<float>("X", dims, {0, 2, 3, 1000, 0, 2, 3, 1000, 0, 2, 3, 1000});
   test.AddAttribute<int64_t>("axis", 0);
   test.AddInput<float>("scale", {3}, {1, 2, 4});
   test.AddInput<uint8_t>("zero_point", {3}, {0, 0, 0});
-  test.AddOutput<uint8_t>("Y", dims,
-                          {0, 2, 3, 255,
-                           0, 1, 2, 255,
-                           0, 0, 1, 250});
+  test.AddOutput<uint8_t>("Y", dims, {0, 2, 3, 255, 0, 1, 2, 255, 0, 0, 1, 250});
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT doesn't support support UINT8 for quantization
 }
 
@@ -355,17 +351,11 @@ TEST(QuantizeLinearOpTest, Per_Channel_Axis_0) {
 TEST(QuantizeLinearOpTest, Per_Channel_Axis_neg) {
   OpTester test("QuantizeLinear", 13);
   std::vector<int64_t> dims{3, 4};
-  test.AddInput<float>("X", dims,
-                       {0, 2, 3, 1000,
-                        0, 2, 3, 1000,
-                        0, 2, 3, 1000});
+  test.AddInput<float>("X", dims, {0, 2, 3, 1000, 0, 2, 3, 1000, 0, 2, 3, 1000});
   test.AddAttribute<int64_t>("axis", -2);
   test.AddInput<float>("scale", {3}, {1, 2, 4});
   test.AddInput<uint8_t>("zero_point", {3}, {0, 0, 0});
-  test.AddOutput<uint8_t>("Y", dims,
-                          {0, 2, 3, 255,
-                           0, 1, 2, 255,
-                           0, 0, 1, 250});
+  test.AddOutput<uint8_t>("Y", dims, {0, 2, 3, 255, 0, 1, 2, 255, 0, 0, 1, 250});
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT doesn't support support UINT8 for quantization
 }
 

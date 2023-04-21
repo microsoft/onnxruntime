@@ -643,8 +643,7 @@ TEST_P(ModelTest, Run) {
   if (provider_name == "cpu" && is_single_node)
     use_single_thread.push_back(true);
 
-  std::unique_ptr<ITestCase> l = CreateOnnxTestCase(ToUTF8String(test_case_name), std::move(model_info),
-                                                    per_sample_tolerance, relative_per_sample_tolerance);
+  std::unique_ptr<ITestCase> l = CreateOnnxTestCase(ToUTF8String(test_case_name), std::move(model_info), per_sample_tolerance, relative_per_sample_tolerance);
 
 #ifndef USE_DNNL
   auto tp = TestEnv::CreateThreadPool(Env::Default());
@@ -685,8 +684,28 @@ TEST_P(ModelTest, Run) {
         if (test_case_name.find(ORT_TSTR("FLOAT16")) != std::string::npos) {
           OrtTensorRTProviderOptionsV2 params{0, 0, nullptr, 1000, 1, 1 << 30,
                                               1,  // enable fp16
-                                              0, nullptr, 0, 0, 0, 0, 0, nullptr, 0, nullptr, 0, 0, 0, 0, 0, 0, 0, 0,
-                                              2, -1, nullptr, nullptr};
+                                              0,
+                                              nullptr,
+                                              0,
+                                              0,
+                                              0,
+                                              0,
+                                              0,
+                                              nullptr,
+                                              0,
+                                              nullptr,
+                                              0,
+                                              0,
+                                              0,
+                                              0,
+                                              0,
+                                              0,
+                                              0,
+                                              0,
+                                              2,
+                                              -1,
+                                              nullptr,
+                                              nullptr};
           ortso.AppendExecutionProvider_TensorRT_V2(params);
         } else {
           OrtTensorRTProviderOptionsV2* ep_option = nullptr;
@@ -776,8 +795,7 @@ TEST_P(ModelTest, Run) {
             input_names.push_back(p.first.c_str());
             input_values.push_back(p.second);
           }
-          ort_st = OrtApis::Run(ort_session, nullptr, input_names.data(), input_values.data(), input_values.size(),
-                                output_names.data(), output_names.size(), output_values.data());
+          ort_st = OrtApis::Run(ort_session, nullptr, input_names.data(), input_values.data(), input_values.size(), output_names.data(), output_names.size(), output_values.data());
           if (ort_st != nullptr) {
             OrtErrorCode error_code = OrtApis::GetErrorCode(ort_st);
             if (error_code == ORT_NOT_IMPLEMENTED) {
@@ -823,8 +841,7 @@ TEST_P(ModelTest, Run) {
 
           OrtValue* actual_output_value = iter->second;
           std::pair<COMPARE_RESULT, std::string> ret =
-              CompareOrtValue(*actual_output_value, *expected_output_value, per_sample_tolerance,
-                              relative_per_sample_tolerance, post_procesing);
+              CompareOrtValue(*actual_output_value, *expected_output_value, per_sample_tolerance, relative_per_sample_tolerance, post_procesing);
           COMPARE_RESULT compare_result = ret.first;
           ASSERT_EQ(COMPARE_RESULT::SUCCESS, ret.first) << ret.second;
 

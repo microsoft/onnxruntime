@@ -79,8 +79,7 @@ void Profiler::EndTimeAndRecordEvent(EventCategory category,
   long long dur = TimeDiffMicroSeconds(start_time);
   long long ts = TimeDiffMicroSeconds(profiling_start_time_, start_time);
 
-  EventRecord event(category, logging::GetProcessId(),
-                    logging::GetThreadId(), event_name, ts, dur, {event_args.begin(), event_args.end()});
+  EventRecord event(category, logging::GetProcessId(), logging::GetThreadId(), event_name, ts, dur, {event_args.begin(), event_args.end()});
   if (profile_with_logger_) {
     custom_logger_->SendProfileEvent(event);
   } else {

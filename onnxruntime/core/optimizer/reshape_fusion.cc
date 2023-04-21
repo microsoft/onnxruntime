@@ -149,9 +149,7 @@ static bool Match_Shape(Graph& graph, const Node& concat, const Node& shape, con
  * If checkOneElementOnly is set to true, this function only checks if the matched subgraph produces a
  * one element output(skip the Gather input indices check).
  */
-bool ReshapeFusion::Match_One_Element_Output_Subgraph_1(Graph& graph, const NodeArg& root_input, const Node& concat,
-                                                        int index, gsl::span<const int64_t> shape_value, bool checkOneElementOnly,
-                                                        const logging::Logger& logger) {
+bool ReshapeFusion::Match_One_Element_Output_Subgraph_1(Graph& graph, const NodeArg& root_input, const Node& concat, int index, gsl::span<const int64_t> shape_value, bool checkOneElementOnly, const logging::Logger& logger) {
   std::vector<graph_utils::EdgeEndToMatch> parent_path{
       {0, index, "Unsqueeze", {1, 11, 13}, kOnnxDomain},
       {0, 0, "Gather", {1, 11, 13}, kOnnxDomain},
@@ -196,8 +194,7 @@ bool ReshapeFusion::Match_One_Element_Output_Subgraph_1(Graph& graph, const Node
  * Find the subgraph that matches [root] -> Shape -> Slice -> Squeeze. Check the inputs of slice
  * to make sure the graph produces output with exactly one element.
  */
-bool ReshapeFusion::Match_One_Element_Output_Subgraph_2(Graph& graph, const NodeArg& root_input, const Node& cur_node,
-                                                        int index, const logging::Logger& logger) {
+bool ReshapeFusion::Match_One_Element_Output_Subgraph_2(Graph& graph, const NodeArg& root_input, const Node& cur_node, int index, const logging::Logger& logger) {
   std::vector<graph_utils::EdgeEndToMatch> parent_path{
       {0, index, "Squeeze", {1, 11, 13}, kOnnxDomain},
       {0, 0, "Slice", {1, 11, 13}, kOnnxDomain},
@@ -268,8 +265,7 @@ bool ReshapeFusion::Is_One_Element_Input(const Node& cur_node, int index) {
  *                                                           (one element output node)
  * If one of the above pattern is found, return true. Return false otherwise.
  */
-bool ReshapeFusion::Is_One_Element_Output_Subgraph(Graph& graph, const NodeArg& root_input, const Node& concat,
-                                                   int index, gsl::span<const int64_t> shape_value, const logging::Logger& logger) {
+bool ReshapeFusion::Is_One_Element_Output_Subgraph(Graph& graph, const NodeArg& root_input, const Node& concat, int index, gsl::span<const int64_t> shape_value, const logging::Logger& logger) {
   // Match "1-element subgraph from inferred shape -> concat" or "Shape -> Gather(1d indice) -> Unsqueeze -> [Concat]"
   if (ReshapeFusion::Is_One_Element_Input(concat, index) ||
       ReshapeFusion::Match_One_Element_Output_Subgraph_1(graph, root_input, concat, index, shape_value, true, logger)) {

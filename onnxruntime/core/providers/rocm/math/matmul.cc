@@ -13,7 +13,8 @@ namespace rocm {
   ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                        \
       MatMul,                                                     \
       kOnnxDomain,                                                \
-      1, 8,                                                       \
+      1,                                                          \
+      8,                                                          \
       T,                                                          \
       kRocmExecutionProvider,                                     \
       (*KernelDefBuilder::Create())                               \
@@ -22,7 +23,8 @@ namespace rocm {
   ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                        \
       MatMul,                                                     \
       kOnnxDomain,                                                \
-      9, 12,                                                      \
+      9,                                                          \
+      12,                                                         \
       T,                                                          \
       kRocmExecutionProvider,                                     \
       (*KernelDefBuilder::Create())                               \
@@ -60,20 +62,14 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
   }
 
   MatMulComputeHelper helper;
-  ORT_RETURN_IF_ERROR(helper.Compute(left_X->Shape(), right_X->Shape(), transa,
-                                     transb, trans_batch_a_, trans_batch_b_,
-                                     false));
+  ORT_RETURN_IF_ERROR(helper.Compute(left_X->Shape(), right_X->Shape(), transa, transb, trans_batch_a_, trans_batch_b_, false));
 
   Tensor* Y = ctx->Output(0, helper.OutputShape());
 
   // Bail out early if the output is going to be empty
   if (Y->Shape().Size() == 0) return Status::OK();
 
-  if (MatMulImpl<T>(this, helper, reinterpret_cast<const T*>(left_X->Data<T>()),
-                    reinterpret_cast<const T*>(right_X->Data<T>()),
-                    reinterpret_cast<T*>(Y->MutableData<T>()),
-                    left_X->Shape(), right_X->Shape(),
-                    transa, transb, trans_batch_a_, trans_batch_b_, alpha_, ctx->GetComputeStream()) != Status::OK()) {
+  if (MatMulImpl<T>(this, helper, reinterpret_cast<const T*>(left_X->Data<T>()), reinterpret_cast<const T*>(right_X->Data<T>()), reinterpret_cast<T*>(Y->MutableData<T>()), left_X->Shape(), right_X->Shape(), transa, transb, trans_batch_a_, trans_batch_b_, alpha_, ctx->GetComputeStream()) != Status::OK()) {
     return Status(common::ONNXRUNTIME, common::FAIL, "MatMulImpl failed");
   }
   return Status::OK();

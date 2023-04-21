@@ -29,8 +29,7 @@ TEST(Random, RandomNormal2DDouble) {
   std::normal_distribution<double> distribution{mean, scale};
 
   std::vector<double> expected_output(TensorShape(dims).Size());
-  std::for_each(expected_output.begin(), expected_output.end(),
-                [&generator, &distribution](double& value) { value = distribution(generator); });
+  std::for_each(expected_output.begin(), expected_output.end(), [&generator, &distribution](double& value) { value = distribution(generator); });
 
   test.AddOutput<double>("Y", dims, expected_output);
 
@@ -55,19 +54,20 @@ void RunRandomNormalLike3DFloat(bool infer_dtype = false) {
   if (!infer_dtype)
     test.AddAttribute<int64_t>("dtype", TensorProto::FLOAT);
 
-  test.AddInput<float>("X", dims,
-                       {0.f, 0.f, 0.f,
-                        0.f, 0.f, 0.f,
+  test.AddInput<float>("X", dims, {0.f, 0.f, 0.f, 0.f, 0.f, 0.f,
 
-                        0.f, 0.f, 0.f,
-                        0.f, 0.f, 0.f});
+                                   0.f,
+                                   0.f,
+                                   0.f,
+                                   0.f,
+                                   0.f,
+                                   0.f});
 
   std::default_random_engine generator{gsl::narrow_cast<uint32_t>(seed)};
   std::normal_distribution<float> distribution{mean, scale};
 
   std::vector<float> expected_output(TensorShape(dims).Size());
-  std::for_each(expected_output.begin(), expected_output.end(),
-                [&generator, &distribution](float& value) { value = distribution(generator); });
+  std::for_each(expected_output.begin(), expected_output.end(), [&generator, &distribution](float& value) { value = distribution(generator); });
 
   test.AddOutput<float>("Y", dims, expected_output);
 
@@ -103,8 +103,7 @@ TEST(Random, RandomUniform1DFloat) {
   std::uniform_real_distribution<float> distribution{low, high};
 
   std::vector<float> expected_output(TensorShape(dims).Size());
-  std::for_each(expected_output.begin(), expected_output.end(),
-                [&generator, &distribution](float& value) { value = distribution(generator); });
+  std::for_each(expected_output.begin(), expected_output.end(), [&generator, &distribution](float& value) { value = distribution(generator); });
 
   test.AddOutput<float>("Y", dims, expected_output);
 
@@ -128,16 +127,13 @@ void RunRandomUniformLikeTest(bool infer_dtype = false) {
   if (!infer_dtype)
     test.AddAttribute<int64_t>("dtype", TensorProto::DOUBLE);
 
-  test.AddInput<double>("X", dims,
-                        {0., 0., 0., 0., 0., 0.,
-                         0., 0., 0., 0., 0., 0.});
+  test.AddInput<double>("X", dims, {0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.});
 
   std::default_random_engine generator{gsl::narrow_cast<uint32_t>(seed)};
   std::uniform_real_distribution<double> distribution{low, high};
 
   std::vector<double> expected_output(TensorShape(dims).Size());
-  std::for_each(expected_output.begin(), expected_output.end(),
-                [&generator, &distribution](double& value) { value = distribution(generator); });
+  std::for_each(expected_output.begin(), expected_output.end(), [&generator, &distribution](double& value) { value = distribution(generator); });
 
   test.AddOutput<double>("Y", dims, expected_output);
 
@@ -331,8 +327,7 @@ TEST(Random, MultinomialInvalidDtype) {
 
 #if defined(USE_CUDA) || defined(USE_ROCM)
 // We cannot call CUDA lib from UT, so just do some simple verification on output tensor.
-void RunRandomNormalGpuTest(const std::vector<int64_t> dims, const float mean, const float scale, const float seed,
-                            TensorProto_DataType dtype, bool is_random_like, bool infer_dtype) {
+void RunRandomNormalGpuTest(const std::vector<int64_t> dims, const float mean, const float scale, const float seed, TensorProto_DataType dtype, bool is_random_like, bool infer_dtype) {
   OpTester test(is_random_like ? "RandomNormalLike" : "RandomNormal");
   test.AddAttribute("mean", mean);
   test.AddAttribute("scale", scale);
@@ -423,8 +418,7 @@ TEST(Random, RandomNormalGpu) {
   RunRandomNormalGpuTest(dims2, 0.f, 16.f, 312.f, TensorProto_DataType::TensorProto_DataType_FLOAT16, true, false);
 }
 
-void RunRandomUniformGpuTest(const std::vector<int64_t> dims, const float low, const float high, const float seed,
-                             TensorProto_DataType dtype, bool is_random_like, bool infer_dtype) {
+void RunRandomUniformGpuTest(const std::vector<int64_t> dims, const float low, const float high, const float seed, TensorProto_DataType dtype, bool is_random_like, bool infer_dtype) {
   OpTester test(is_random_like ? "RandomUniformLike" : "RandomUniform");
   test.AddAttribute("low", low);
   test.AddAttribute("high", high);

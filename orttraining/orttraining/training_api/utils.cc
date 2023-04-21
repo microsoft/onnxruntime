@@ -88,8 +88,7 @@ Status OrtValueLike(const SessionState& sess_state, const OrtValue& input_val, O
   return Status::OK();
 }
 
-ONNX_NAMESPACE::TensorProto CopyTensorToTensorProto(const Tensor& src_tensor, const std::string& tensor_proto_name,
-                                                    const DataTransferManager& data_transfer_manager) {
+ONNX_NAMESPACE::TensorProto CopyTensorToTensorProto(const Tensor& src_tensor, const std::string& tensor_proto_name, const DataTransferManager& data_transfer_manager) {
   auto& tensor_location = src_tensor.Location();
   if (tensor_location.device.Type() != OrtDevice::CPU &&
       tensor_location.mem_type != OrtMemTypeCPUInput &&

@@ -23,7 +23,9 @@ GraphAugmenter::GraphDefs LossFunctionUsingOperator::operator()(const Graph& gra
 
   const NodeArg* prediction_arg = graph.GetNodeArg(prediction_name);
   ORT_ENFORCE(prediction_arg != nullptr,
-              "Prediction arg ", prediction_name, " is not found in the graph. ");
+              "Prediction arg ",
+              prediction_name,
+              " is not found in the graph. ");
   TypeProto* label_type_proto = graph_defs.CopyTypeProto(prediction_arg);
 
   node_defs.emplace_back(
@@ -44,7 +46,8 @@ GraphAugmenter::GraphDefs LossFunctionUsingOperator::operator()(const Graph& gra
 
 void LossFunctionRegistry::RegisterOperatorLossFunction(const std::string& op_name) {
   ORT_ENFORCE(!Contains(op_name),
-              "Failed to register loss function using op, the same name exists:", op_name);
+              "Failed to register loss function using op, the same name exists:",
+              op_name);
   Register<LossFunctionUsingOperator>(op_name,
                                       []() -> std::unique_ptr<LossFunctionUsingOperator> {
                                         return std::make_unique<LossFunctionUsingOperator>();

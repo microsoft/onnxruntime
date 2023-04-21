@@ -111,14 +111,7 @@ bool GemmPackBFp32(AllocatorPtr& alloc,
 }
 
 template <typename T>
-void Gemm<T>::ComputeGemm(CBLAS_TRANSPOSE trans_a, CBLAS_TRANSPOSE trans_b,
-                          int64_t M, int64_t N, int64_t K,
-                          float alpha,
-                          const T* a_data, const T* b_data,
-                          float beta,
-                          const T* c_data, const TensorShape* c_shape,
-                          T* y_data,
-                          concurrency::ThreadPool* thread_pool) {
+void Gemm<T>::ComputeGemm(CBLAS_TRANSPOSE trans_a, CBLAS_TRANSPOSE trans_b, int64_t M, int64_t N, int64_t K, float alpha, const T* a_data, const T* b_data, float beta, const T* c_data, const TensorShape* c_shape, T* y_data, concurrency::ThreadPool* thread_pool) {
   // if input is empty tensor, return directly as nothing need to be calculated.
   if (M == 0 || N == 0)
     return;
@@ -126,11 +119,7 @@ void Gemm<T>::ComputeGemm(CBLAS_TRANSPOSE trans_a, CBLAS_TRANSPOSE trans_b,
   // Broadcast the bias as needed if bias is given
   GemmBroadcastBias(M, N, beta, c_data, c_shape, y_data);
 
-  math::Gemm<T>(trans_a, trans_b,
-                narrow<ptrdiff_t>(M), narrow<ptrdiff_t>(N), narrow<ptrdiff_t>(K),
-                alpha,
-                a_data,
-                b_data,
+  math::Gemm<T>(trans_a, trans_b, narrow<ptrdiff_t>(M), narrow<ptrdiff_t>(N), narrow<ptrdiff_t>(K), alpha, a_data, b_data,
                 // ideally we need to set the output buffer contents to 0 if bias is missing,
                 // but passing 0 for beta is cheaper and it will ignore any junk in the output buffer
                 c_data != nullptr ? beta : 0,
@@ -138,14 +127,7 @@ void Gemm<T>::ComputeGemm(CBLAS_TRANSPOSE trans_a, CBLAS_TRANSPOSE trans_b,
                 thread_pool);
 }
 
-template void Gemm<float>::ComputeGemm(CBLAS_TRANSPOSE trans_a, CBLAS_TRANSPOSE trans_b,
-                                       int64_t M, int64_t N, int64_t K,
-                                       float alpha,
-                                       const float* a_data, const float* b_data,
-                                       float beta,
-                                       const float* c_data, const TensorShape* c_shape,
-                                       float* y_data,
-                                       concurrency::ThreadPool* thread_pool);
+template void Gemm<float>::ComputeGemm(CBLAS_TRANSPOSE trans_a, CBLAS_TRANSPOSE trans_b, int64_t M, int64_t N, int64_t K, float alpha, const float* a_data, const float* b_data, float beta, const float* c_data, const TensorShape* c_shape, float* y_data, concurrency::ThreadPool* thread_pool);
 
 template <typename T>
 Status Gemm<T>::PrePack(const Tensor& /* tensor */, int /* input_idx */, AllocatorPtr /*alloc_for_caching*/,
@@ -156,8 +138,7 @@ Status Gemm<T>::PrePack(const Tensor& /* tensor */, int /* input_idx */, Allocat
 }
 
 template <>
-Status Gemm<float>::PrePack(const Tensor& tensor, int input_idx,
-                            AllocatorPtr alloc, /*out*/ bool& is_packed,
+Status Gemm<float>::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc, /*out*/ bool& is_packed,
                             /*out*/ PrePackedWeights* prepacked_weights) {
   is_packed = false;
 
@@ -205,9 +186,7 @@ void Gemm<T>::ComputeActivation(T* y_data, size_t y_size, concurrency::ThreadPoo
     double cost = f->Cost();
     functors::ElementWiseRangedTransform<T>* c(f.get());
     concurrency::ThreadPool::TryParallelFor(
-        thread_pool, total_len,
-        {static_cast<float>(sizeof(T)), static_cast<float>(sizeof(T)), cost},
-        [c](std::ptrdiff_t first, std::ptrdiff_t last) { (*c)(first, last); });
+        thread_pool, total_len, {static_cast<float>(sizeof(T)), static_cast<float>(sizeof(T)), cost}, [c](std::ptrdiff_t first, std::ptrdiff_t last) { (*c)(first, last); });
   }
 }
 
@@ -220,8 +199,7 @@ Status Gemm<T>::Compute(OpKernelContext* context) const {
   const auto* C = context->Input<Tensor>(2);
 
   // Bias could be missing. Treat as scalar 0 if that is the case.
-  GemmHelper helper(A->Shape(), trans_A_ != CblasNoTrans, B->Shape(), trans_B_ != CblasNoTrans,
-                    C != nullptr ? C->Shape() : TensorShape({}));
+  GemmHelper helper(A->Shape(), trans_A_ != CblasNoTrans, B->Shape(), trans_B_ != CblasNoTrans, C != nullptr ? C->Shape() : TensorShape({}));
 
   if (!helper.State().IsOK())
     return helper.State();
@@ -240,8 +218,7 @@ Status Gemm<T>::Compute(OpKernelContext* context) const {
   const T* c_data = C != nullptr ? C->Data<T>() : nullptr;
   const TensorShape* c_shape = C != nullptr ? &C->Shape() : nullptr;
 
-  ComputeGemm(trans_A_, trans_B_, M, N, K, alpha_, A->Data<T>(), B->Data<T>(), beta_,
-              c_data, c_shape, y_data, thread_pool);
+  ComputeGemm(trans_A_, trans_B_, M, N, K, alpha_, A->Data<T>(), B->Data<T>(), beta_, c_data, c_shape, y_data, thread_pool);
 
   ComputeActivation(y_data, SafeInt<size_t>(M) * N, thread_pool);
 
@@ -257,8 +234,7 @@ Status Gemm<float>::Compute(OpKernelContext* context) const {
   const auto* C = context->Input<Tensor>(2);
 
   // Bias could be missing. Treat as scalar 0 if that is the case.
-  GemmHelper helper(A->Shape(), trans_A_ != CblasNoTrans, B ? B->Shape() : b_shape_, trans_B_ != CblasNoTrans,
-                    C != nullptr ? C->Shape() : TensorShape({}));
+  GemmHelper helper(A->Shape(), trans_A_ != CblasNoTrans, B ? B->Shape() : b_shape_, trans_B_ != CblasNoTrans, C != nullptr ? C->Shape() : TensorShape({}));
 
   if (!helper.State().IsOK())
     return helper.State();
@@ -279,8 +255,7 @@ Status Gemm<float>::Compute(OpKernelContext* context) const {
   const TensorShape* c_shape = C != nullptr ? &C->Shape() : nullptr;
 
   if (B) {
-    ComputeGemm(trans_A_, trans_B_, M, N, K, alpha_, A->Data<float>(), B->Data<float>(), beta_,
-                c_data, c_shape, y_data, thread_pool);
+    ComputeGemm(trans_A_, trans_B_, M, N, K, alpha_, A->Data<float>(), B->Data<float>(), beta_, c_data, c_shape, y_data, thread_pool);
   } else {
     GemmBroadcastBias(M, N, beta_, c_data, c_shape, y_data);
     MlasGemm(

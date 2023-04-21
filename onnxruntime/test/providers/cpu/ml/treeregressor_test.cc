@@ -31,8 +31,7 @@ void _multiply_update_array_string(std::vector<std::string>& data, int n) {
 }
 
 template <typename T>
-void GenTreeAndRunTest(int opsetml, const std::vector<T>& X, const std::vector<float>& base_values, const std::vector<float>& results, const std::string& aggFunction,
-                       bool one_obs = false, int64_t n_obs = 8, int n_trees = 1) {
+void GenTreeAndRunTest(int opsetml, const std::vector<T>& X, const std::vector<float>& base_values, const std::vector<float>& results, const std::string& aggFunction, bool one_obs = false, int64_t n_obs = 8, int n_trees = 1) {
   OpTester test("TreeEnsembleRegressor", opsetml, onnxruntime::kMLDomain);
 
   // tree
@@ -125,8 +124,7 @@ void GenTreeAndRunTest(int opsetml, const std::vector<T>& X, const std::vector<f
 }  // namespace test
 
 template <typename T, typename TH>
-void GenTreeAndRunTest_as_tensor(int opsetml, const std::vector<T>& X, const std::vector<TH>& base_values, const std::vector<float>& results, const std::string& aggFunction,
-                                 bool one_obs = false, int64_t n_obs = 8, int n_trees = 1) {
+void GenTreeAndRunTest_as_tensor(int opsetml, const std::vector<T>& X, const std::vector<TH>& base_values, const std::vector<float>& results, const std::string& aggFunction, bool one_obs = false, int64_t n_obs = 8, int n_trees = 1) {
   OpTester test("TreeEnsembleRegressor", opsetml, onnxruntime::kMLDomain);
 
   // tree
@@ -684,59 +682,20 @@ TEST(MLOpTest, TreeRegressorTrueNodeBeforeNode) {
 
   // tree
   int64_t n_targets = 1;
-  std::vector<int64_t> nodes_featureids = {0, 1, 1,
-                                           1, 0, 1,
-                                           0, 0, 0,
-                                           0, 1, 1,
-                                           0, 1, 0,
-                                           0, 0, 0,
-                                           0};
-  std::vector<std::string> nodes_modes = {"BRANCH_LEQ", "BRANCH_LEQ", "BRANCH_LEQ",
-                                          "BRANCH_LEQ", "LEAF", "BRANCH_LEQ",
-                                          "LEAF", "LEAF", "LEAF",
-                                          "LEAF", "BRANCH_LEQ", "BRANCH_LEQ",
-                                          "LEAF", "BRANCH_LEQ", "LEAF",
-                                          "LEAF", "BRANCH_LEQ", "LEAF",
-                                          "LEAF"};
-  std::vector<float> nodes_values = {2.5, 0.4000000059604645, 0.20000000298023224,
-                                     0.5999999642372131, 0.0, 0.7999999523162842,
-                                     0.0, 0.0, 0.0,
-                                     0.0, 1.600000023841858, 1.1999999284744263,
-                                     0.0, 1.399999976158142, 0.0,
-                                     0.0, 17.0, 0.0,
-                                     0.0};
+  std::vector<int64_t> nodes_featureids = {0, 1, 1, 1, 0, 1, 0, 0, 0, 0, 1, 1, 0, 1, 0, 0, 0, 0, 0};
+  std::vector<std::string> nodes_modes = {"BRANCH_LEQ", "BRANCH_LEQ", "BRANCH_LEQ", "BRANCH_LEQ", "LEAF", "BRANCH_LEQ", "LEAF", "LEAF", "LEAF", "LEAF", "BRANCH_LEQ", "BRANCH_LEQ", "LEAF", "BRANCH_LEQ", "LEAF", "LEAF", "BRANCH_LEQ", "LEAF", "LEAF"};
+  std::vector<float> nodes_values = {2.5, 0.4000000059604645, 0.20000000298023224, 0.5999999642372131, 0.0, 0.7999999523162842, 0.0, 0.0, 0.0, 0.0, 1.600000023841858, 1.1999999284744263, 0.0, 1.399999976158142, 0.0, 0.0, 17.0, 0.0, 0.0};
 
   std::vector<int64_t> nodes_treeids = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
-  std::vector<int64_t> nodes_nodeids = {0, 1, 2,
-                                        3, 4, 5,
-                                        6, 7, 8,
-                                        9, 10, 11,
-                                        12, 13, 14,
-                                        15, 16, 17,
-                                        18};
-  std::vector<int64_t> nodes_falsenodeids = {10, 5, 4,
-                                             8, 0, 9,
-                                             0, 0, 0,
-                                             0, 16, 13,
-                                             0, 15, 0,
-                                             0, 18, 0,
-                                             0};
-  std::vector<int64_t> nodes_truenodeids = {1, 2, 3,
-                                            7, 0, 6,
-                                            0, 0, 0,
-                                            0, 11, 12,
-                                            0, 14, 0,
-                                            0, 17, 0,
-                                            0};
+  std::vector<int64_t> nodes_nodeids = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18};
+  std::vector<int64_t> nodes_falsenodeids = {10, 5, 4, 8, 0, 9, 0, 0, 0, 0, 16, 13, 0, 15, 0, 0, 18, 0, 0};
+  std::vector<int64_t> nodes_truenodeids = {1, 2, 3, 7, 0, 6, 0, 0, 0, 0, 11, 12, 0, 14, 0, 0, 17, 0, 0};
 
   std::string post_transform = "NONE";
   std::vector<int64_t> target_ids = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
   std::vector<int64_t> target_nodeids = {4, 6, 7, 8, 9, 12, 14, 15, 17, 18};
   std::vector<int64_t> target_treeids = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
-  std::vector<float> target_weights = {-4.699999809265137, -4.900000095367432, -4.5,
-                                       -4.300000190734863, -4.099999904632568, 11.100000381469727,
-                                       13.300000190734863, 15.5, 17.700000762939453,
-                                       19.899999618530273};
+  std::vector<float> target_weights = {-4.699999809265137, -4.900000095367432, -4.5, -4.300000190734863, -4.099999904632568, 11.100000381469727, 13.300000190734863, 15.5, 17.700000762939453, 19.899999618530273};
 
   // add attributes
   test.AddAttribute("nodes_truenodeids", nodes_truenodeids);

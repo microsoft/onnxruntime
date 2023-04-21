@@ -45,9 +45,7 @@ struct NotZero<std::string> {
 
 #if !defined(ORT_MINIMAL_BUILD)
 template <typename T, typename ValueRecorder>
-void ScanAndRecordCsr(gsl::span<const T> src_span, int64_t cols,
-                      std::vector<int64_t>& inner, std::vector<int64_t>& outer,
-                      ValueRecorder recorder) {
+void ScanAndRecordCsr(gsl::span<const T> src_span, int64_t cols, std::vector<int64_t>& inner, std::vector<int64_t>& outer, ValueRecorder recorder) {
   int64_t row = 0;
   int64_t index = 0;
   outer.push_back(0);
@@ -68,26 +66,21 @@ void ScanAndRecordCsr(gsl::span<const T> src_span, int64_t cols,
   outer.push_back(static_cast<int64_t>(inner.size()));
 }
 
-Status DenseTensorToSparseCsr(const DataTransferManager& data_manager, const Tensor& src,
-                              const AllocatorPtr& cpu_allocator, const AllocatorPtr& dst_allocator,
-                              SparseTensor& dst) {
+Status DenseTensorToSparseCsr(const DataTransferManager& data_manager, const Tensor& src, const AllocatorPtr& cpu_allocator, const AllocatorPtr& dst_allocator, SparseTensor& dst) {
   const auto& src_dims = src.Shape().GetDims();
   if (src_dims.size() != 2) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Currently do not support dims higher than 2 dimensions: ", src_dims.size());
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Currently do not support dims higher than 2 dimensions: ", src_dims.size());
   }
 
   const bool is_string = src.IsDataTypeString();
 
   if (is_string && dst_allocator->Info().device.Type() != OrtDevice::CPU) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Unable to convert strings tensor to a sparse tensor that not on CPU");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Unable to convert strings tensor to a sparse tensor that not on CPU");
   }
 
   const IDataTransfer* data_transfer = data_manager.GetDataTransfer(cpu_allocator->Info().device,
                                                                     dst_allocator->Info().device);
-  ORT_RETURN_IF_NOT(data_transfer != nullptr, "Unable to find a data transfer for copying from device type: ",
-                    cpu_allocator->Info().device.Type(), " to device type: ", dst_allocator->Info().device.Type());
+  ORT_RETURN_IF_NOT(data_transfer != nullptr, "Unable to find a data transfer for copying from device type: ", cpu_allocator->Info().device.Type(), " to device type: ", dst_allocator->Info().device.Type());
 
   const auto element_size = src.DataType()->Size();
   gsl::span<const uint8_t> src_span;
@@ -118,8 +111,7 @@ Status DenseTensorToSparseCsr(const DataTransferManager& data_manager, const Ten
 
   if (is_string) {
     auto str_span = src.DataAsSpan<std::string>();
-    ScanAndRecordCsr(str_span, cols, inner_indices, outer_indices,
-                     [&](const std::string& s) { values_str.push_back(std::cref(s)); });
+    ScanAndRecordCsr(str_span, cols, inner_indices, outer_indices, [&](const std::string& s) { values_str.push_back(std::cref(s)); });
   } else {
     switch (element_size) {
       case sizeof(uint8_t): {
@@ -166,8 +158,7 @@ Status DenseTensorToSparseCsr(const DataTransferManager& data_manager, const Ten
     auto index_type = DataTypeImpl::GetType<int64_t>();
     Tensor inner(index_type, {static_cast<int64_t>(nnz)}, inner_indices.data(), cpu_allocator->Info());
     ORT_RETURN_IF_ERROR(data_transfer->CopyTensor(inner, mutator.Inner()));
-    Tensor outer(index_type, {static_cast<int64_t>(outer_size)},
-                 outer_indices.data(), cpu_allocator->Info());
+    Tensor outer(index_type, {static_cast<int64_t>(outer_size)}, outer_indices.data(), cpu_allocator->Info());
     ORT_RETURN_IF_ERROR(data_transfer->CopyTensor(outer, mutator.Outer()));
   }
 
@@ -175,9 +166,7 @@ Status DenseTensorToSparseCsr(const DataTransferManager& data_manager, const Ten
   return Status::OK();
 }
 
-Status SparseCsrToDenseTensor(const DataTransferManager& data_manager, const SparseTensor& src,
-                              const AllocatorPtr& cpu_allocator, const AllocatorPtr& dst_allocator,
-                              Tensor& dst) {
+Status SparseCsrToDenseTensor(const DataTransferManager& data_manager, const SparseTensor& src, const AllocatorPtr& cpu_allocator, const AllocatorPtr& dst_allocator, Tensor& dst) {
   const auto& src_dims = src.DenseShape().GetDims();
   if (src_dims.size() != 2) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Support 2-D matrices only");
@@ -190,8 +179,7 @@ Status SparseCsrToDenseTensor(const DataTransferManager& data_manager, const Spa
   const bool is_string = src.IsDataTypeString();
 
   if (is_string && dst_allocator->Info().device.Type() != OrtDevice::CPU) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Unable to convert strings tensor to a sparse tensor that is not on CPU");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Unable to convert strings tensor to a sparse tensor that is not on CPU");
   }
 
   const AllocatorPtr& conversion_allocator = (dst_allocator->Info().device.Type() == OrtDevice::CPU)
@@ -281,12 +269,10 @@ Status SparseCsrToDenseTensor(const DataTransferManager& data_manager, const Spa
   return Status::OK();
 }
 
-Status SparseCooToDenseTensor(const DataTransferManager& data_manager, const SparseTensor& src,
-                              const AllocatorPtr& cpu_allocator, const AllocatorPtr& dst_allocator, Tensor& dst) {
+Status SparseCooToDenseTensor(const DataTransferManager& data_manager, const SparseTensor& src, const AllocatorPtr& cpu_allocator, const AllocatorPtr& dst_allocator, Tensor& dst) {
   const auto& src_dims = src.DenseShape().GetDims();
   if (src_dims.size() != 2) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Currently do not support dims higher than 2 dimensions: ", src_dims.size());
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Currently do not support dims higher than 2 dimensions: ", src_dims.size());
   }
 
   if (!(src.Format() == SparseFormat::kCoo)) {
@@ -295,8 +281,7 @@ Status SparseCooToDenseTensor(const DataTransferManager& data_manager, const Spa
 
   const bool is_string = src.IsDataTypeString();
   if (is_string && dst_allocator->Info().device.Type() != OrtDevice::CPU) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Unable to convert strings tensor to a sparse tensor that is not on CPU");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Unable to convert strings tensor to a sparse tensor that is not on CPU");
   }
 
   const AllocatorPtr& conversion_allocator = (dst_allocator->Info().device.Type() == OrtDevice::CPU)
@@ -407,25 +392,20 @@ void ScanAndRecordCoo(gsl::span<const T> src_span,
   }
 }
 
-Status DenseTensorToSparseCoo(const DataTransferManager& data_manager, const Tensor& src,
-                              const AllocatorPtr& cpu_allocator,
-                              const AllocatorPtr& dst_allocator, bool linear_index, SparseTensor& dst) {
+Status DenseTensorToSparseCoo(const DataTransferManager& data_manager, const Tensor& src, const AllocatorPtr& cpu_allocator, const AllocatorPtr& dst_allocator, bool linear_index, SparseTensor& dst) {
   const IDataTransfer* data_transfer = data_manager.GetDataTransfer(cpu_allocator->Info().device,
                                                                     dst_allocator->Info().device);
-  ORT_RETURN_IF_NOT(data_transfer != nullptr, "Unable to find a data transfer for copying from device type: ",
-                    cpu_allocator->Info().device.Type(), " to device type: ", dst_allocator->Info().device.Type());
+  ORT_RETURN_IF_NOT(data_transfer != nullptr, "Unable to find a data transfer for copying from device type: ", cpu_allocator->Info().device.Type(), " to device type: ", dst_allocator->Info().device.Type());
 
   const auto& src_dims = src.Shape().GetDims();
   if (src_dims.size() != 2) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Currently do not support dims higher than 2 dimensions: ", src_dims.size());
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Currently do not support dims higher than 2 dimensions: ", src_dims.size());
   }
 
   const bool is_string = src.IsDataTypeString();
 
   if (is_string && dst_allocator->Info().device.Type() != OrtDevice::CPU) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Unable to convert strings tensor to a sparse tensor that is not on CPU");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Unable to convert strings tensor to a sparse tensor that is not on CPU");
   }
 
   gsl::span<const uint8_t> src_span;
@@ -451,38 +431,32 @@ Status DenseTensorToSparseCoo(const DataTransferManager& data_manager, const Ten
 
   if (is_string) {
     auto str_span = src.DataAsSpan<std::string>();
-    ScanAndRecordCoo(str_span, cols, linear_index, gathered_indices,
-                     [&](const std::string& s) { values_str.push_back(std::cref(s)); });
+    ScanAndRecordCoo(str_span, cols, linear_index, gathered_indices, [&](const std::string& s) { values_str.push_back(std::cref(s)); });
   } else {
     const auto element_size = src.DataType()->Size();
     switch (element_size) {
       case sizeof(uint8_t): {
-        ScanAndRecordCoo(src_span, cols, linear_index, gathered_indices,
-                         [&](int8_t v) { values_8.push_back(v); });
-        Tensor t(src.DataType(), TensorShape{static_cast<int64_t>(values_8.size())},
-                 values_8.data(), cpu_allocator->Info());
+        ScanAndRecordCoo(src_span, cols, linear_index, gathered_indices, [&](int8_t v) { values_8.push_back(v); });
+        Tensor t(src.DataType(), TensorShape{static_cast<int64_t>(values_8.size())}, values_8.data(), cpu_allocator->Info());
         nnz_tensor = std::move(t);
       } break;
       case sizeof(uint16_t): {
         // MFFloat16 and BFloat16 are handled fine
         auto span16 = ReinterpretAsSpan<const uint16_t>(src_span);
         ScanAndRecordCoo(span16, cols, linear_index, gathered_indices, [&](int16_t v) { values_16.push_back(v); });
-        Tensor t(src.DataType(), TensorShape{static_cast<int64_t>(values_16.size())},
-                 values_16.data(), cpu_allocator->Info());
+        Tensor t(src.DataType(), TensorShape{static_cast<int64_t>(values_16.size())}, values_16.data(), cpu_allocator->Info());
         nnz_tensor = std::move(t);
       } break;
       case sizeof(uint32_t): {
         auto span32 = ReinterpretAsSpan<const uint32_t>(src_span);
         ScanAndRecordCoo(span32, cols, linear_index, gathered_indices, [&](int32_t v) { values_32.push_back(v); });
-        Tensor t(src.DataType(), TensorShape{static_cast<int64_t>(values_32.size())},
-                 values_32.data(), cpu_allocator->Info());
+        Tensor t(src.DataType(), TensorShape{static_cast<int64_t>(values_32.size())}, values_32.data(), cpu_allocator->Info());
         nnz_tensor = std::move(t);
       } break;
       case sizeof(uint64_t): {
         auto span64 = ReinterpretAsSpan<const uint64_t>(src_span);
         ScanAndRecordCoo(span64, cols, linear_index, gathered_indices, [&](int64_t v) { values_64.push_back(v); });
-        Tensor t(src.DataType(), TensorShape{static_cast<int64_t>(values_64.size())},
-                 values_64.data(), cpu_allocator->Info());
+        Tensor t(src.DataType(), TensorShape{static_cast<int64_t>(values_64.size())}, values_64.data(), cpu_allocator->Info());
         nnz_tensor = std::move(t);
       } break;
       default:

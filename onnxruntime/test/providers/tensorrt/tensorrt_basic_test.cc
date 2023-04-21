@@ -24,8 +24,7 @@ namespace test {
 class TensorrtExecutionProviderCacheTest : public testing::TestWithParam<std::string> {};
 
 template <typename T>
-void VerifyOutputs(const std::vector<OrtValue>& fetches, const std::vector<int64_t>& expected_dims,
-                   const std::vector<T>& expected_values) {
+void VerifyOutputs(const std::vector<OrtValue>& fetches, const std::vector<int64_t>& expected_dims, const std::vector<T>& expected_values) {
   ASSERT_EQ(1, fetches.size());
   auto& rtensor = fetches.front().Get<Tensor>();
   TensorShape expected_shape(expected_dims);
@@ -316,8 +315,7 @@ TEST(TensorrtExecutionProviderTest, TRTModelIdGeneratorUsingModelHashing) {
   std::shared_ptr<Model> model2;
   ONNX_NAMESPACE::ModelProto model_proto;
   ASSERT_STATUS_OK(Model::Load(model_file_stream, &model_proto));
-  ASSERT_STATUS_OK(Model::Load(std::move(model_proto), PathString(), model2, nullptr,
-                               DefaultLoggingManager().DefaultLogger()));
+  ASSERT_STATUS_OK(Model::Load(std::move(model_proto), PathString(), model2, nullptr, DefaultLoggingManager().DefaultLogger()));
 
   // Test loading same model from file and byte steam. Hash values should be different
   Graph& graph2 = model2->MainGraph();
@@ -675,8 +673,7 @@ TEST_P(TensorrtExecutionProviderCacheTest, Run) {
  * - timing_static: timing cache enabled, static input shape
  * - timing_dynamic: timing cache enabled, static input shape
  */
-INSTANTIATE_TEST_SUITE_P(TensorrtExecutionProviderCacheTests, TensorrtExecutionProviderCacheTest, testing::Values("engine_static", "engine_dynamic", "timing_static", "timing_dynamic"),
-                         [](const ::testing::TestParamInfo<TensorrtExecutionProviderCacheTest::ParamType>& info) { return info.param; });
+INSTANTIATE_TEST_SUITE_P(TensorrtExecutionProviderCacheTests, TensorrtExecutionProviderCacheTest, testing::Values("engine_static", "engine_dynamic", "timing_static", "timing_dynamic"), [](const ::testing::TestParamInfo<TensorrtExecutionProviderCacheTest::ParamType>& info) { return info.param; });
 
 TEST(TensorrtExecutionProviderTest, FunctionTest) {
   onnxruntime::Model model("functiontest", false, DefaultLoggingManager().DefaultLogger());

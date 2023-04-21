@@ -244,8 +244,7 @@ TEST_F(GraphTransformationTests, NoopElimination) {
 
     auto rule_transformer = std::make_unique<RuleBasedGraphTransformer>("RuleTransformer");
     ASSERT_STATUS_OK(rule_transformer->Register(std::make_unique<NoopElimination>()));
-    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 13, *logger_, std::move(rule_transformer), TransformerLevel::Level1, 1,
-                                          pre_graph_checker, post_graph_checker));
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 13, *logger_, std::move(rule_transformer), TransformerLevel::Level1, 1, pre_graph_checker, post_graph_checker));
   }
 
   // 0+x, fp16.
@@ -265,8 +264,7 @@ TEST_F(GraphTransformationTests, NoopElimination) {
 
     auto rule_transformer = std::make_unique<RuleBasedGraphTransformer>("RuleTransformer");
     ASSERT_STATUS_OK(rule_transformer->Register(std::make_unique<NoopElimination>()));
-    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 13, *logger_, std::move(rule_transformer), TransformerLevel::Level1, 1,
-                                          pre_graph_checker, post_graph_checker));
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 13, *logger_, std::move(rule_transformer), TransformerLevel::Level1, 1, pre_graph_checker, post_graph_checker));
   }
 
   // x-0, double.
@@ -286,8 +284,7 @@ TEST_F(GraphTransformationTests, NoopElimination) {
 
     auto rule_transformer = std::make_unique<RuleBasedGraphTransformer>("RuleTransformer");
     ASSERT_STATUS_OK(rule_transformer->Register(std::make_unique<NoopElimination>()));
-    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 13, *logger_, std::move(rule_transformer), TransformerLevel::Level1, 1,
-                                          pre_graph_checker, post_graph_checker));
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 13, *logger_, std::move(rule_transformer), TransformerLevel::Level1, 1, pre_graph_checker, post_graph_checker));
   }
 
   // x*1, int32.
@@ -307,8 +304,7 @@ TEST_F(GraphTransformationTests, NoopElimination) {
 
     auto rule_transformer = std::make_unique<RuleBasedGraphTransformer>("RuleTransformer");
     ASSERT_STATUS_OK(rule_transformer->Register(std::make_unique<NoopElimination>()));
-    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 13, *logger_, std::move(rule_transformer), TransformerLevel::Level1, 1,
-                                          pre_graph_checker, post_graph_checker));
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 13, *logger_, std::move(rule_transformer), TransformerLevel::Level1, 1, pre_graph_checker, post_graph_checker));
   }
 
   // 1*x, int64.
@@ -328,8 +324,7 @@ TEST_F(GraphTransformationTests, NoopElimination) {
 
     auto rule_transformer = std::make_unique<RuleBasedGraphTransformer>("RuleTransformer");
     ASSERT_STATUS_OK(rule_transformer->Register(std::make_unique<NoopElimination>()));
-    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 13, *logger_, std::move(rule_transformer), TransformerLevel::Level1, 1,
-                                          pre_graph_checker, post_graph_checker));
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 13, *logger_, std::move(rule_transformer), TransformerLevel::Level1, 1, pre_graph_checker, post_graph_checker));
   }
 
   // x/1, float.
@@ -349,8 +344,7 @@ TEST_F(GraphTransformationTests, NoopElimination) {
 
     auto rule_transformer = std::make_unique<RuleBasedGraphTransformer>("RuleTransformer");
     ASSERT_STATUS_OK(rule_transformer->Register(std::make_unique<NoopElimination>()));
-    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 13, *logger_, std::move(rule_transformer), TransformerLevel::Level1, 1,
-                                          pre_graph_checker, post_graph_checker));
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 13, *logger_, std::move(rule_transformer), TransformerLevel::Level1, 1, pre_graph_checker, post_graph_checker));
   }
 
   // Invalid case: x+1.
@@ -370,8 +364,7 @@ TEST_F(GraphTransformationTests, NoopElimination) {
 
     auto rule_transformer = std::make_unique<RuleBasedGraphTransformer>("RuleTransformer");
     ASSERT_STATUS_OK(rule_transformer->Register(std::make_unique<NoopElimination>()));
-    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 13, *logger_, std::move(rule_transformer), TransformerLevel::Level1, 1,
-                                          pre_graph_checker, pre_graph_checker));
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 13, *logger_, std::move(rule_transformer), TransformerLevel::Level1, 1, pre_graph_checker, pre_graph_checker));
   }
 
   // Invalid case: initializer rank is larger.
@@ -391,8 +384,7 @@ TEST_F(GraphTransformationTests, NoopElimination) {
 
     auto rule_transformer = std::make_unique<RuleBasedGraphTransformer>("RuleTransformer");
     ASSERT_STATUS_OK(rule_transformer->Register(std::make_unique<NoopElimination>()));
-    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 13, *logger_, std::move(rule_transformer), TransformerLevel::Level1, 1,
-                                          pre_graph_checker, pre_graph_checker));
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 13, *logger_, std::move(rule_transformer), TransformerLevel::Level1, 1, pre_graph_checker, pre_graph_checker));
   }
 
   // Invalid case: 0-x.
@@ -412,8 +404,7 @@ TEST_F(GraphTransformationTests, NoopElimination) {
 
     auto rule_transformer = std::make_unique<RuleBasedGraphTransformer>("RuleTransformer");
     ASSERT_STATUS_OK(rule_transformer->Register(std::make_unique<NoopElimination>()));
-    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 13, *logger_, std::move(rule_transformer), TransformerLevel::Level1, 1,
-                                          pre_graph_checker, pre_graph_checker));
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 13, *logger_, std::move(rule_transformer), TransformerLevel::Level1, 1, pre_graph_checker, pre_graph_checker));
   }
 
   // Invalid case: x-1.
@@ -433,8 +424,7 @@ TEST_F(GraphTransformationTests, NoopElimination) {
 
     auto rule_transformer = std::make_unique<RuleBasedGraphTransformer>("RuleTransformer");
     ASSERT_STATUS_OK(rule_transformer->Register(std::make_unique<NoopElimination>()));
-    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 13, *logger_, std::move(rule_transformer), TransformerLevel::Level1, 1,
-                                          pre_graph_checker, pre_graph_checker));
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 13, *logger_, std::move(rule_transformer), TransformerLevel::Level1, 1, pre_graph_checker, pre_graph_checker));
   }
 
   // Invalid case: 0*x.
@@ -454,8 +444,7 @@ TEST_F(GraphTransformationTests, NoopElimination) {
 
     auto rule_transformer = std::make_unique<RuleBasedGraphTransformer>("RuleTransformer");
     ASSERT_STATUS_OK(rule_transformer->Register(std::make_unique<NoopElimination>()));
-    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 13, *logger_, std::move(rule_transformer), TransformerLevel::Level1, 1,
-                                          pre_graph_checker, pre_graph_checker));
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 13, *logger_, std::move(rule_transformer), TransformerLevel::Level1, 1, pre_graph_checker, pre_graph_checker));
   }
 
   // Invalid case: output is graph output.
@@ -473,8 +462,7 @@ TEST_F(GraphTransformationTests, NoopElimination) {
 
     auto rule_transformer = std::make_unique<RuleBasedGraphTransformer>("RuleTransformer");
     ASSERT_STATUS_OK(rule_transformer->Register(std::make_unique<NoopElimination>()));
-    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 13, *logger_, std::move(rule_transformer), TransformerLevel::Level1, 1,
-                                          pre_graph_checker, pre_graph_checker));
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 13, *logger_, std::move(rule_transformer), TransformerLevel::Level1, 1, pre_graph_checker, pre_graph_checker));
   }
 
   // Invalid case: 1/x.
@@ -494,8 +482,7 @@ TEST_F(GraphTransformationTests, NoopElimination) {
 
     auto rule_transformer = std::make_unique<RuleBasedGraphTransformer>("RuleTransformer");
     ASSERT_STATUS_OK(rule_transformer->Register(std::make_unique<NoopElimination>()));
-    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 13, *logger_, std::move(rule_transformer), TransformerLevel::Level1, 1,
-                                          pre_graph_checker, pre_graph_checker));
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 13, *logger_, std::move(rule_transformer), TransformerLevel::Level1, 1, pre_graph_checker, pre_graph_checker));
   }
 }
 
@@ -1670,8 +1657,7 @@ TEST_F(GraphTransformationTests, TransposeMatmulFusionFromTransposeMatMul) {
   {
     auto transpose_scale_matmul_node =
         std::find_if(
-            graph.Nodes().cbegin(), graph.Nodes().cend(),
-            [](const Node& node) { return node.Name() == "FusedMatMul"; });
+            graph.Nodes().cbegin(), graph.Nodes().cend(), [](const Node& node) { return node.Name() == "FusedMatMul"; });
     ASSERT_NE(transpose_scale_matmul_node, graph.Nodes().cend());
     expected_alpha = transpose_scale_matmul_node->GetAttributes().at("alpha").f();
   }
@@ -1853,8 +1839,7 @@ TEST_F(GraphTransformationTests, GemmTransposeFusion2OutputsFromTranspose) {
 
   auto gemm_node =
       std::find_if(
-          graph.Nodes().cbegin(), graph.Nodes().cend(),
-          [](const Node& node) { return node.Name() == "Gemm_transformed"; });
+          graph.Nodes().cbegin(), graph.Nodes().cend(), [](const Node& node) { return node.Name() == "Gemm_transformed"; });
 
   auto& node = *gemm_node;
   ASSERT_TRUE(node.OpType() == "Gemm");
@@ -1889,8 +1874,7 @@ TEST_F(GraphTransformationTests, GemmTransposeFusion2OutputsFromTransposeTo2Gemm
 
   auto gemm1_node =
       std::find_if(
-          graph.Nodes().cbegin(), graph.Nodes().cend(),
-          [](const Node& node) { return node.Name() == "Gemm1_transformed"; });
+          graph.Nodes().cbegin(), graph.Nodes().cend(), [](const Node& node) { return node.Name() == "Gemm1_transformed"; });
 
   auto& node1 = *gemm1_node;
   ASSERT_TRUE(node1.OpType() == "Gemm");
@@ -1902,8 +1886,7 @@ TEST_F(GraphTransformationTests, GemmTransposeFusion2OutputsFromTransposeTo2Gemm
 
   auto gemm2_node =
       std::find_if(
-          graph.Nodes().cbegin(), graph.Nodes().cend(),
-          [](const Node& node) { return node.Name() == "Gemm2_transformed"; });
+          graph.Nodes().cbegin(), graph.Nodes().cend(), [](const Node& node) { return node.Name() == "Gemm2_transformed"; });
 
   auto& node2 = *gemm2_node;
   ASSERT_TRUE(node2.OpType() == "Gemm");
@@ -2357,7 +2340,9 @@ TEST_F(GraphTransformationTests, FuseConvBnAddMulFloat16) {
     values_x.push_back(x_f);
   }
   CreateMLValue<MLFloat16>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault),
-                           dims_x, values_x, &ml_value_x);
+                           dims_x,
+                           values_x,
+                           &ml_value_x);
   feeds.insert(std::make_pair("X", ml_value_x));
 
   std::vector<std::string> output_names;
@@ -2385,8 +2370,7 @@ TEST_F(GraphTransformationTests, FuseConvBnAddMulFloat16) {
 TEST_F(GraphTransformationTests, ReluClip6Fusion) {
   // Clip op schema changed for opset version 11. Until Clip op is updated in ORT hard coding this model to use
   // older opset.
-  Model model("ReluClip6Fusion", true, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(), {{"", 10}},
-              {}, *logger_);
+  Model model("ReluClip6Fusion", true, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(), {{"", 10}}, {}, *logger_);
   auto& graph = model.MainGraph();
 
   std::vector<NodeArg*> inputs;
@@ -2456,8 +2440,7 @@ TEST_F(GraphTransformationTests, ReluClip6Fusion) {
 TEST_F(GraphTransformationTests, ReluClip11Fusion) {
   std::unordered_map<std::string, int> domain_to_version;
   domain_to_version[kOnnxDomain] = 11;
-  Model model("ReluClip6Fusion", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
-              domain_to_version, std::vector<ONNX_NAMESPACE::FunctionProto>(),
+  Model model("ReluClip6Fusion", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, std::vector<ONNX_NAMESPACE::FunctionProto>(),
               *logger_);  //, true, ModelMetaData(), IOnnxRuntimeOpSchemaRegistryList(), {{"", 11}}, {});
   auto& graph = model.MainGraph();
 
@@ -3591,14 +3574,12 @@ TEST_F(GraphTransformationTests, BiasGeluSwitchedInputOrder) {
 
   OrtValue mlvalue_b_i;
   std::vector<int64_t> dims_b_i = {3072};
-  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault), dims_b_i,
-                       random.Uniform<float>(dims_b_i, 0.0f, 1.0f), &mlvalue_b_i);
+  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault), dims_b_i, random.Uniform<float>(dims_b_i, 0.0f, 1.0f), &mlvalue_b_i);
   feeds.insert(std::make_pair("B_I", mlvalue_b_i));
 
   OrtValue mlvalue_a_i;
   std::vector<int64_t> dims_a_i = {3, 512, 3072};
-  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault), dims_a_i,
-                       random.Uniform<float>(dims_a_i, 0.0f, 1.0f), &mlvalue_a_i);
+  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault), dims_a_i, random.Uniform<float>(dims_a_i, 0.0f, 1.0f), &mlvalue_a_i);
   feeds.insert(std::make_pair("A_I", mlvalue_a_i));
 
   std::vector<std::string> output_names;
@@ -3944,8 +3925,7 @@ TEST_F(GraphTransformationTests, QuickGelu) {
     };
 
     std::unique_ptr<GraphTransformer> transformer = std::make_unique<QuickGeluFusion>();
-    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer), TransformerLevel::Level1, 1,
-                                          pre_graph_checker, post_graph_checker));
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer), TransformerLevel::Level1, 1, pre_graph_checker, post_graph_checker));
   }
 
   // x*Sigmoid(alpha*x), MLFloat16
@@ -3984,8 +3964,7 @@ TEST_F(GraphTransformationTests, QuickGelu) {
     };
 
     std::unique_ptr<GraphTransformer> transformer = std::make_unique<QuickGeluFusion>();
-    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer), TransformerLevel::Level1, 1,
-                                          pre_graph_checker, post_graph_checker));
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer), TransformerLevel::Level1, 1, pre_graph_checker, post_graph_checker));
   }
 
   // Sigmoid's output is consumed by other node.
@@ -4019,8 +3998,7 @@ TEST_F(GraphTransformationTests, QuickGelu) {
     };
 
     std::unique_ptr<GraphTransformer> transformer = std::make_unique<QuickGeluFusion>();
-    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer), TransformerLevel::Level1, 1,
-                                          pre_graph_checker, post_graph_checker));
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer), TransformerLevel::Level1, 1, pre_graph_checker, post_graph_checker));
   }
 
   // First Mul's output is consumed by other node.
@@ -4054,8 +4032,7 @@ TEST_F(GraphTransformationTests, QuickGelu) {
     };
 
     std::unique_ptr<GraphTransformer> transformer = std::make_unique<QuickGeluFusion>();
-    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer), TransformerLevel::Level1, 1,
-                                          pre_graph_checker, post_graph_checker));
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer), TransformerLevel::Level1, 1, pre_graph_checker, post_graph_checker));
   }
 
   // Sigmoid's output is a graph output.
@@ -4087,8 +4064,7 @@ TEST_F(GraphTransformationTests, QuickGelu) {
     };
 
     std::unique_ptr<GraphTransformer> transformer = std::make_unique<QuickGeluFusion>();
-    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer), TransformerLevel::Level1, 1,
-                                          pre_graph_checker, post_graph_checker));
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer), TransformerLevel::Level1, 1, pre_graph_checker, post_graph_checker));
   }
 
   // First Mul's output is a graph output.
@@ -4120,8 +4096,7 @@ TEST_F(GraphTransformationTests, QuickGelu) {
     };
 
     std::unique_ptr<GraphTransformer> transformer = std::make_unique<QuickGeluFusion>();
-    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer), TransformerLevel::Level1, 1,
-                                          pre_graph_checker, post_graph_checker));
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer), TransformerLevel::Level1, 1, pre_graph_checker, post_graph_checker));
   }
 
   // Sigmoid(x)*x, float
@@ -4156,8 +4131,7 @@ TEST_F(GraphTransformationTests, QuickGelu) {
     };
 
     std::unique_ptr<GraphTransformer> transformer = std::make_unique<QuickGeluFusion>();
-    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer), TransformerLevel::Level1, 1,
-                                          pre_graph_checker, post_graph_checker));
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer), TransformerLevel::Level1, 1, pre_graph_checker, post_graph_checker));
   }
 
   // x*Sigmoid(x), MLFloat16
@@ -4192,8 +4166,7 @@ TEST_F(GraphTransformationTests, QuickGelu) {
     };
 
     std::unique_ptr<GraphTransformer> transformer = std::make_unique<QuickGeluFusion>();
-    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer), TransformerLevel::Level1, 1,
-                                          pre_graph_checker, post_graph_checker));
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer), TransformerLevel::Level1, 1, pre_graph_checker, post_graph_checker));
   }
 }
 
@@ -4368,8 +4341,7 @@ TEST_F(GraphTransformationTests, BiasSoftmaxFusionTest_OuterBroadcast) {
     };
 
     std::unique_ptr<GraphTransformer> transformer = std::make_unique<BiasSoftmaxFusion>();
-    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 12, *logger_, std::move(transformer), TransformerLevel::Level2, 1,
-                                          pre_graph_checker, post_graph_checker));
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 12, *logger_, std::move(transformer), TransformerLevel::Level2, 1, pre_graph_checker, post_graph_checker));
   }
 
   // Input and bias have same rank.
@@ -4385,8 +4357,7 @@ TEST_F(GraphTransformationTests, BiasSoftmaxFusionTest_OuterBroadcast) {
     };
 
     std::unique_ptr<GraphTransformer> transformer = std::make_unique<BiasSoftmaxFusion>();
-    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 12, *logger_, std::move(transformer), TransformerLevel::Level2, 1,
-                                          pre_graph_checker, post_graph_checker));
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 12, *logger_, std::move(transformer), TransformerLevel::Level2, 1, pre_graph_checker, post_graph_checker));
   }
 }
 
@@ -4414,8 +4385,7 @@ TEST_F(GraphTransformationTests, BiasSoftmaxFusionTest_OpSet13InValidAxis) {
   };
 
   std::unique_ptr<GraphTransformer> transformer = std::make_unique<BiasSoftmaxFusion>();
-  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer), TransformerLevel::Level2, 1,
-                                        pre_graph_checker, post_graph_checker));
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer), TransformerLevel::Level2, 1, pre_graph_checker, post_graph_checker));
 }
 
 static void TestBiasDropoutFusion(const PathString& file_path, const logging::Logger& logger, const int add_count = 0) {
@@ -4451,10 +4421,7 @@ TEST_F(GraphTransformationTests, BiasDropoutFusionTest) {
 }
 
 #ifdef ENABLE_TRAINING_CORE
-static void TestBitmaskDropoutFusion(const PathString& file_path, bool is_bias_dropout, const logging::Logger& logger,
-                                     const int add_count, const int dropout_count, const int bitmask_dropout_count,
-                                     const int bias_dropout_count, const int bitmask_bias_dropout_count,
-                                     const int dropout_grad_count, const int bitmask_dropout_grad_count) {
+static void TestBitmaskDropoutFusion(const PathString& file_path, bool is_bias_dropout, const logging::Logger& logger, const int add_count, const int dropout_count, const int bitmask_dropout_count, const int bias_dropout_count, const int bitmask_bias_dropout_count, const int dropout_grad_count, const int bitmask_dropout_grad_count) {
   std::shared_ptr<Model> p_model;
   ASSERT_TRUE(Model::Load(file_path, p_model, nullptr, logger).IsOK());
   Graph& graph = p_model->MainGraph();
@@ -4481,16 +4448,11 @@ static void TestBitmaskDropoutFusion(const PathString& file_path, bool is_bias_d
 }
 
 TEST_F(GraphTransformationTests, BitmaskDropoutFusionTest) {
-  TestBitmaskDropoutFusion(MODEL_FOLDER "fusion/bitmask_dropout_replacement_basic.onnx", false, *logger_, 0, 0, 1, 0, 0,
-                           0, 1);
-  TestBitmaskDropoutFusion(MODEL_FOLDER "fusion/bitmask_dropout_replacement_multiple_mask_uses.onnx", false, *logger_,
-                           0, 1, 0, 0, 0, 1, 0);
-  TestBitmaskDropoutFusion(MODEL_FOLDER "fusion/bitmask_bias_dropout_replacement_basic.onnx", false, *logger_, 0, 0, 0,
-                           0, 1, 0, 1);
-  TestBitmaskDropoutFusion(MODEL_FOLDER "fusion/bitmask_bias_dropout_fusion_basic.onnx", true, *logger_, 0, 0, 0, 0, 1,
-                           0, 1);
-  TestBitmaskDropoutFusion(MODEL_FOLDER "fusion/bitmask_bias_dropout_fusion_residual.onnx", true, *logger_, 0, 0, 0, 0,
-                           1, 0, 1);
+  TestBitmaskDropoutFusion(MODEL_FOLDER "fusion/bitmask_dropout_replacement_basic.onnx", false, *logger_, 0, 0, 1, 0, 0, 0, 1);
+  TestBitmaskDropoutFusion(MODEL_FOLDER "fusion/bitmask_dropout_replacement_multiple_mask_uses.onnx", false, *logger_, 0, 1, 0, 0, 0, 1, 0);
+  TestBitmaskDropoutFusion(MODEL_FOLDER "fusion/bitmask_bias_dropout_replacement_basic.onnx", false, *logger_, 0, 0, 0, 0, 1, 0, 1);
+  TestBitmaskDropoutFusion(MODEL_FOLDER "fusion/bitmask_bias_dropout_fusion_basic.onnx", true, *logger_, 0, 0, 0, 0, 1, 0, 1);
+  TestBitmaskDropoutFusion(MODEL_FOLDER "fusion/bitmask_bias_dropout_fusion_residual.onnx", true, *logger_, 0, 0, 0, 0, 1, 0, 1);
 }
 
 /*
@@ -4592,19 +4554,16 @@ TEST_F(GraphTransformationTests, ReshapeFusionOpsetTest) {
         builder.AddNode("Unsqueeze", {gather_out_0}, {unsqueeze_out_0}).AddAttribute("axes", std::vector<int64_t>{0});
         builder.AddNode("Unsqueeze", {gather_out_1}, {unsqueeze_out_1}).AddAttribute("axes", std::vector<int64_t>{0});
       }
-      builder.AddNode("ConcatTraining", {unsqueeze_out_0, unsqueeze_out_1, single_value_1d_int_16, single_value_1d_int_64},
-                      {concattraining1_out, concattraining1_length}, "com.microsoft")
+      builder.AddNode("ConcatTraining", {unsqueeze_out_0, unsqueeze_out_1, single_value_1d_int_16, single_value_1d_int_64}, {concattraining1_out, concattraining1_length}, "com.microsoft")
           .AddAttribute("axis", static_cast<int64_t>(0));
       builder.AddNode("Reshape", {add_out, concattraining1_out}, {out});
     };
 
     std::unique_ptr<GraphTransformer> transformer = std::make_unique<ReshapeFusion>();
     if (opset >= 15 && shape_test_for_opset15) {
-      ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, opset, *logger_, std::move(transformer), TransformerLevel::Level1, 1,
-                                            pre_graph_checker, pre_graph_checker));
+      ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, opset, *logger_, std::move(transformer), TransformerLevel::Level1, 1, pre_graph_checker, pre_graph_checker));
     } else {
-      ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, opset, *logger_, std::move(transformer), TransformerLevel::Level1, 1,
-                                            pre_graph_checker, post_graph_checker));
+      ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, opset, *logger_, std::move(transformer), TransformerLevel::Level1, 1, pre_graph_checker, post_graph_checker));
     }
   }
 }
@@ -4820,8 +4779,7 @@ TEST_F(GraphTransformationTests, LayerNormWithCastFusionTest_5) {
   };
 
   std::unique_ptr<GraphTransformer> transformer = std::make_unique<LayerNormFusion>();
-  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, {14, 18}, *logger_, std::move(transformer), TransformerLevel::Level1,
-                                        1, pre_graph_checker, post_graph_checker));
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, {14, 18}, *logger_, std::move(transformer), TransformerLevel::Level1, 1, pre_graph_checker, post_graph_checker));
 }
 
 TEST_F(GraphTransformationTests, SimplifiedLayerNormFusionTest) {
@@ -4914,8 +4872,7 @@ TEST_F(GraphTransformationTests, SimplifiedLayerNormWithCastsFusionTestCudaEp) {
   }
 }
 
-static void TestSkipLayerNormFusion(const std::basic_string<ORTCHAR_T>& file_path, int add_count, int ln_count,
-                                    int skip_ln_count, int cast_count, logging::Logger* logger) {
+static void TestSkipLayerNormFusion(const std::basic_string<ORTCHAR_T>& file_path, int add_count, int ln_count, int skip_ln_count, int cast_count, logging::Logger* logger) {
   std::shared_ptr<Model> p_model;
   ASSERT_TRUE(Model::Load(file_path, p_model, nullptr, *logger).IsOK());
   Graph& graph = p_model->MainGraph();
@@ -5468,11 +5425,7 @@ TEST_F(GraphTransformationTests, MatMulIntegerToFloatTest) {
 #ifndef DISABLE_CONTRIB_OPS
 template <typename GraphTransformationCheckFn, typename GraphPreprocessFn>
 static void TestMatMulScaleFusion(
-    const PathString& model_path, const Logger& logger,
-    GraphPreprocessFn graph_preprocess_fn,
-    GraphTransformationCheckFn graph_transformation_check_fn,
-    const InlinedHashSet<std::string_view>& compatible_execution_providers = {},
-    const InlinedHashSet<std::string>& excluded_initializer_names = {}) {
+    const PathString& model_path, const Logger& logger, GraphPreprocessFn graph_preprocess_fn, GraphTransformationCheckFn graph_transformation_check_fn, const InlinedHashSet<std::string_view>& compatible_execution_providers = {}, const InlinedHashSet<std::string>& excluded_initializer_names = {}) {
   SCOPED_TRACE(ORT_TSTR("model path: ") + model_path);
 
   std::shared_ptr<Model> model;
@@ -5496,14 +5449,9 @@ static void TestMatMulScaleFusion(
 
 template <typename GraphTransformationCheckFn>
 static void TestMatMulScaleFusion(
-    const PathString& model_path, const Logger& logger,
-    GraphTransformationCheckFn graph_transformation_check,
-    const InlinedHashSet<std::string_view>& compatible_execution_providers = {},
-    const InlinedHashSet<std::string>& excluded_initializer_names = {}) {
+    const PathString& model_path, const Logger& logger, GraphTransformationCheckFn graph_transformation_check, const InlinedHashSet<std::string_view>& compatible_execution_providers = {}, const InlinedHashSet<std::string>& excluded_initializer_names = {}) {
   TestMatMulScaleFusion(
-      model_path, logger,
-      [](Graph&) {}, graph_transformation_check,
-      compatible_execution_providers, excluded_initializer_names);
+      model_path, logger, [](Graph&) {}, graph_transformation_check, compatible_execution_providers, excluded_initializer_names);
 }
 
 TEST_F(GraphTransformationTests, MatMulScaleFusionFusableModels) {
@@ -5516,10 +5464,7 @@ TEST_F(GraphTransformationTests, MatMulScaleFusionFusableModels) {
 
   for (const auto& path : one_fusion_model_paths) {
     TestMatMulScaleFusion(
-        path, *logger_,
-        [](const Graph& graph,
-           std::map<std::string, int> original_op_counts,
-           std::map<std::string, int> transformed_op_counts) {
+        path, *logger_, [](const Graph& graph, std::map<std::string, int> original_op_counts, std::map<std::string, int> transformed_op_counts) {
           EXPECT_EQ(transformed_op_counts["Mul"], 0);
           EXPECT_EQ(transformed_op_counts["Div"], 0);
           EXPECT_EQ(transformed_op_counts["MatMul"], 0);
@@ -5532,8 +5477,7 @@ TEST_F(GraphTransformationTests, MatMulScaleFusionFusableModels) {
               original_op_counts["Mul"] + original_op_counts["Div"] + original_op_counts["com.microsoft.FusedMatMul"];
 
           auto fused_node = std::find_if(
-              graph.Nodes().cbegin(), graph.Nodes().cend(),
-              [](const Node& node) { return node.OpType() == "FusedMatMul"; });
+              graph.Nodes().cbegin(), graph.Nodes().cend(), [](const Node& node) { return node.OpType() == "FusedMatMul"; });
           ASSERT_NE(fused_node, graph.Nodes().cend());
 
           auto alpha_attr = fused_node->GetAttributes().find("alpha");
@@ -5553,10 +5497,7 @@ TEST_F(GraphTransformationTests, MatMulScaleFusionUnfusableModels) {
 
   for (const auto& path : unfusable_model_paths) {
     TestMatMulScaleFusion(
-        path, *logger_,
-        [](const Graph&,
-           const std::map<std::string, int>& original_op_counts,
-           const std::map<std::string, int>& transformed_op_counts) {
+        path, *logger_, [](const Graph&, const std::map<std::string, int>& original_op_counts, const std::map<std::string, int>& transformed_op_counts) {
           EXPECT_EQ(original_op_counts, transformed_op_counts);
         });
   }
@@ -5564,10 +5505,7 @@ TEST_F(GraphTransformationTests, MatMulScaleFusionUnfusableModels) {
 
 TEST_F(GraphTransformationTests, MatMulScaleFusionReusedInputScale) {
   TestMatMulScaleFusion(
-      MODEL_FOLDER "fusion/matmul_scale_reused_input_scale.onnx", *logger_,
-      [](const Graph&,
-         const std::map<std::string, int>&,
-         std::map<std::string, int> transformed_op_counts) {
+      MODEL_FOLDER "fusion/matmul_scale_reused_input_scale.onnx", *logger_, [](const Graph&, const std::map<std::string, int>&, std::map<std::string, int> transformed_op_counts) {
         EXPECT_EQ(transformed_op_counts["Mul"], 0);
         EXPECT_EQ(transformed_op_counts["Div"], 0);
         EXPECT_EQ(transformed_op_counts["MatMul"], 0);
@@ -5577,10 +5515,7 @@ TEST_F(GraphTransformationTests, MatMulScaleFusionReusedInputScale) {
 
 TEST_F(GraphTransformationTests, MatMulScaleFusionExcludedInitializerName) {
   TestMatMulScaleFusion(
-      MODEL_FOLDER "fusion/matmul_scale_in0.onnx", *logger_,
-      [](const Graph&,
-         const std::map<std::string, int>& original_op_counts,
-         const std::map<std::string, int>& transformed_op_counts) {
+      MODEL_FOLDER "fusion/matmul_scale_in0.onnx", *logger_, [](const Graph&, const std::map<std::string, int>& original_op_counts, const std::map<std::string, int>& transformed_op_counts) {
         EXPECT_EQ(original_op_counts, transformed_op_counts);
       },
       {},
@@ -5589,42 +5524,23 @@ TEST_F(GraphTransformationTests, MatMulScaleFusionExcludedInitializerName) {
 
 TEST_F(GraphTransformationTests, MatMulScaleFusionIncompatibleExecutionProvider) {
   TestMatMulScaleFusion(
-      MODEL_FOLDER "fusion/matmul_scale_in0.onnx", *logger_,
-      [](Graph& graph) {
+      MODEL_FOLDER "fusion/matmul_scale_in0.onnx", *logger_, [](Graph& graph) {
         for (auto& node : graph.Nodes()) {
           node.SetExecutionProviderType(kCudaExecutionProvider);
-        }
-      },
-      [](const Graph&,
-         const std::map<std::string, int>& original_op_counts,
-         const std::map<std::string, int>& transformed_op_counts) {
-        EXPECT_EQ(original_op_counts, transformed_op_counts);
-      },
-      {kCpuExecutionProvider});
+        } }, [](const Graph&, const std::map<std::string, int>& original_op_counts, const std::map<std::string, int>& transformed_op_counts) { EXPECT_EQ(original_op_counts, transformed_op_counts); }, {kCpuExecutionProvider});
 }
 
 TEST_F(GraphTransformationTests, MatMulScaleFusionUnsupportedInputType) {
   TestMatMulScaleFusion(
-      MODEL_FOLDER "fusion/matmul_scale_int32.onnx", *logger_,
-      [](Graph& graph) {
+      MODEL_FOLDER "fusion/matmul_scale_int32.onnx", *logger_, [](Graph& graph) {
         for (auto& node : graph.Nodes()) {
           node.SetExecutionProviderType(kCpuExecutionProvider);
-        }
-      },
-      [](const Graph&,
-         const std::map<std::string, int>& original_op_counts,
-         const std::map<std::string, int>& transformed_op_counts) {
-        EXPECT_EQ(original_op_counts, transformed_op_counts);
-      },
-      {kCpuExecutionProvider});
+        } }, [](const Graph&, const std::map<std::string, int>& original_op_counts, const std::map<std::string, int>& transformed_op_counts) { EXPECT_EQ(original_op_counts, transformed_op_counts); }, {kCpuExecutionProvider});
 }
 
 TEST_F(GraphTransformationTests, MatMulScaleFusionWithScaleInput) {
   TestMatMulScaleFusion(
-      MODEL_FOLDER "fusion/matmul_scale_with_scale_input.onnx", *logger_,
-      [](const Graph&,
-         const std::map<std::string, int>&,
-         std::map<std::string, int> transformed_op_counts) {
+      MODEL_FOLDER "fusion/matmul_scale_with_scale_input.onnx", *logger_, [](const Graph&, const std::map<std::string, int>&, std::map<std::string, int> transformed_op_counts) {
         EXPECT_EQ(transformed_op_counts["Mul"], 1);
         EXPECT_EQ(transformed_op_counts["MatMul"], 1);
         EXPECT_EQ(transformed_op_counts["com.microsoft.FusedMatMul"], 0);
@@ -5878,8 +5794,7 @@ TEST_F(GraphTransformationTests, PropagateCastOpsTests_Gelu) {
     };
 
     std::unique_ptr<GraphTransformer> transformer = std::make_unique<PropagateCastOps>(Strategy::FloodFill, 1);
-    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer), TransformerLevel::Level1, 1,
-                                          pre_graph_checker, post_graph_checker));
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer), TransformerLevel::Level1, 1, pre_graph_checker, post_graph_checker));
   }
 
   {
@@ -5909,8 +5824,7 @@ TEST_F(GraphTransformationTests, PropagateCastOpsTests_Gelu) {
     };
 
     std::unique_ptr<GraphTransformer> transformer = std::make_unique<PropagateCastOps>(Strategy::FloodFill, 1);
-    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer), TransformerLevel::Level1, 1,
-                                          pre_graph_checker, post_graph_checker));
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer), TransformerLevel::Level1, 1, pre_graph_checker, post_graph_checker));
   }
 }
 
@@ -6091,8 +6005,7 @@ TEST_F(GraphTransformationTests, ConstantSharing_ShareIntTypedInitializer) {
     const std::vector<int> opsets{12, 13, 14};  // Clip support int64_t since opset 12
     for (auto& opset_version : opsets) {
       std::unique_ptr<GraphTransformer> transformer = std::make_unique<ConstantSharing>();
-      ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, opset_version, *logger_, std::move(transformer), TransformerLevel::Level1,
-                                            1, pre_graph_checker, post_graph_checker));
+      ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, opset_version, *logger_, std::move(transformer), TransformerLevel::Level1, 1, pre_graph_checker, post_graph_checker));
     }
   }
 }
@@ -6193,9 +6106,7 @@ TEST_F(GraphTransformationTests, ConstantSharing_ShareFloatOrHalfTypedInitialize
   };
   for (auto& opset_version : opsets) {
     std::unique_ptr<GraphTransformer> transformer = std::make_unique<ConstantSharing>();
-    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case_float, opset_version, *logger_, std::move(transformer),
-                                          TransformerLevel::Level1, 1,
-                                          pre_graph_checker, post_graph_checker));
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case_float, opset_version, *logger_, std::move(transformer), TransformerLevel::Level1, 1, pre_graph_checker, post_graph_checker));
   }
 
   // MLFloat16 data type tests.
@@ -6205,9 +6116,7 @@ TEST_F(GraphTransformationTests, ConstantSharing_ShareFloatOrHalfTypedInitialize
 
   for (auto& opset_version : opsets) {
     std::unique_ptr<GraphTransformer> transformer = std::make_unique<ConstantSharing>();
-    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case_mlfloat16, opset_version, *logger_, std::move(transformer),
-                                          TransformerLevel::Level1, 1,
-                                          pre_graph_checker, post_graph_checker));
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case_mlfloat16, opset_version, *logger_, std::move(transformer), TransformerLevel::Level1, 1, pre_graph_checker, post_graph_checker));
   }
 }
 
@@ -6317,9 +6226,7 @@ TEST_F(GraphTransformationTests, ConstantSharing_Share2DFloatOrHalfTypedInitiali
   };
   for (auto& opset_version : opsets) {
     std::unique_ptr<GraphTransformer> transformer = std::make_unique<ConstantSharing>();
-    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case_float, opset_version, *logger_, std::move(transformer),
-                                          TransformerLevel::Level1, 1,
-                                          pre_graph_checker, post_graph_checker));
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case_float, opset_version, *logger_, std::move(transformer), TransformerLevel::Level1, 1, pre_graph_checker, post_graph_checker));
   }
 
   // MLFloat16 data type tests.
@@ -6329,9 +6236,7 @@ TEST_F(GraphTransformationTests, ConstantSharing_Share2DFloatOrHalfTypedInitiali
 
   for (auto& opset_version : opsets) {
     std::unique_ptr<GraphTransformer> transformer = std::make_unique<ConstantSharing>();
-    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case_mlfloat16, opset_version, *logger_, std::move(transformer),
-                                          TransformerLevel::Level1, 1,
-                                          pre_graph_checker, post_graph_checker));
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case_mlfloat16, opset_version, *logger_, std::move(transformer), TransformerLevel::Level1, 1, pre_graph_checker, post_graph_checker));
   }
 }
 
@@ -6441,9 +6346,7 @@ TEST_F(GraphTransformationTests, ConstantSharing_ShareFloatAndHalfTypedInitializ
   };
   for (auto& opset_version : opsets) {
     std::unique_ptr<GraphTransformer> transformer = std::make_unique<ConstantSharing>();
-    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case_float, opset_version, *logger_, std::move(transformer),
-                                          TransformerLevel::Level1, 1,
-                                          pre_graph_checker, post_graph_checker));
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case_float, opset_version, *logger_, std::move(transformer), TransformerLevel::Level1, 1, pre_graph_checker, post_graph_checker));
   }
 }
 
@@ -6593,9 +6496,7 @@ TEST_F(GraphTransformationTests, ConstantSharing_Share2DFloatAndHalfTypedInitial
 
   for (auto& opset_version : opsets) {
     std::unique_ptr<GraphTransformer> transformer = std::make_unique<ConstantSharing>();
-    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case_float, opset_version, *logger_, std::move(transformer),
-                                          TransformerLevel::Level1, 1,
-                                          pre_graph_checker, post_graph_checker));
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case_float, opset_version, *logger_, std::move(transformer), TransformerLevel::Level1, 1, pre_graph_checker, post_graph_checker));
   }
 }
 
@@ -6708,9 +6609,7 @@ TEST_F(GraphTransformationTests, ConstantSharing_ShareIntMaxOrFloatInfinityIniti
   };
   for (auto& opset_version : opsets) {
     std::unique_ptr<GraphTransformer> transformer = std::make_unique<ConstantSharing>();
-    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case_float, opset_version, *logger_, std::move(transformer),
-                                          TransformerLevel::Level1, 1,
-                                          pre_graph_checker, post_graph_checker));
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case_float, opset_version, *logger_, std::move(transformer), TransformerLevel::Level1, 1, pre_graph_checker, post_graph_checker));
   }
 }
 
@@ -6827,8 +6726,7 @@ TEST_F(GraphTransformationTests, GatherToSplitFusion) {
     };
 
     std::unique_ptr<GraphTransformer> transformer = std::make_unique<GatherToSplitFusion>();
-    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 12, *logger_, std::move(transformer), TransformerLevel::Level1, 1,
-                                          pre_graph_checker, post_graph_checker));
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 12, *logger_, std::move(transformer), TransformerLevel::Level1, 1, pre_graph_checker, post_graph_checker));
   }
 
   // OpSet-14
@@ -6856,8 +6754,7 @@ TEST_F(GraphTransformationTests, GatherToSplitFusion) {
     };
 
     std::unique_ptr<GraphTransformer> transformer = std::make_unique<GatherToSplitFusion>();
-    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer), TransformerLevel::Level1, 1,
-                                          pre_graph_checker, post_graph_checker));
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer), TransformerLevel::Level1, 1, pre_graph_checker, post_graph_checker));
   }
 
   // OpSet-18
@@ -6885,8 +6782,7 @@ TEST_F(GraphTransformationTests, GatherToSplitFusion) {
     };
 
     std::unique_ptr<GraphTransformer> transformer = std::make_unique<GatherToSplitFusion>();
-    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 18, *logger_, std::move(transformer), TransformerLevel::Level1, 1,
-                                          pre_graph_checker, post_graph_checker));
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 18, *logger_, std::move(transformer), TransformerLevel::Level1, 1, pre_graph_checker, post_graph_checker));
   }
 }
 
@@ -6936,8 +6832,7 @@ TEST_F(GraphTransformationTests, GatherToSplitFusion_NoSqueeze) {
     };
 
     std::unique_ptr<GraphTransformer> transformer = std::make_unique<GatherToSplitFusion>();
-    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 12, *logger_, std::move(transformer), TransformerLevel::Level1, 1,
-                                          pre_graph_checker, post_graph_checker));
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 12, *logger_, std::move(transformer), TransformerLevel::Level1, 1, pre_graph_checker, post_graph_checker));
   }
 
   // OpSet-14
@@ -6957,8 +6852,7 @@ TEST_F(GraphTransformationTests, GatherToSplitFusion_NoSqueeze) {
     };
 
     std::unique_ptr<GraphTransformer> transformer = std::make_unique<GatherToSplitFusion>();
-    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer), TransformerLevel::Level1, 1,
-                                          pre_graph_checker, post_graph_checker));
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer), TransformerLevel::Level1, 1, pre_graph_checker, post_graph_checker));
   }
 
   // OpSet-18
@@ -6978,8 +6872,7 @@ TEST_F(GraphTransformationTests, GatherToSplitFusion_NoSqueeze) {
     };
 
     std::unique_ptr<GraphTransformer> transformer = std::make_unique<GatherToSplitFusion>();
-    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 18, *logger_, std::move(transformer), TransformerLevel::Level1, 1,
-                                          pre_graph_checker, post_graph_checker));
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 18, *logger_, std::move(transformer), TransformerLevel::Level1, 1, pre_graph_checker, post_graph_checker));
   }
 }
 
@@ -7024,8 +6917,7 @@ TEST_F(GraphTransformationTests, GatherToSplitFusion_Invalid) {
     };
 
     std::unique_ptr<GraphTransformer> transformer = std::make_unique<GatherToSplitFusion>();
-    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 12, *logger_, std::move(transformer), TransformerLevel::Level1, 1,
-                                          pre_graph_checker, post_graph_checker));
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 12, *logger_, std::move(transformer), TransformerLevel::Level1, 1, pre_graph_checker, post_graph_checker));
   }
 
   // Invalid Gather indices.
@@ -7060,8 +6952,7 @@ TEST_F(GraphTransformationTests, GatherToSplitFusion_Invalid) {
     };
 
     std::unique_ptr<GraphTransformer> transformer = std::make_unique<GatherToSplitFusion>();
-    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer), TransformerLevel::Level1, 1,
-                                          pre_graph_checker, post_graph_checker));
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer), TransformerLevel::Level1, 1, pre_graph_checker, post_graph_checker));
   }
 
   // Invalid Gather axis.
@@ -7096,8 +6987,7 @@ TEST_F(GraphTransformationTests, GatherToSplitFusion_Invalid) {
     };
 
     std::unique_ptr<GraphTransformer> transformer = std::make_unique<GatherToSplitFusion>();
-    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer), TransformerLevel::Level1, 1,
-                                          pre_graph_checker, post_graph_checker));
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer), TransformerLevel::Level1, 1, pre_graph_checker, post_graph_checker));
   }
 }
 
@@ -7144,8 +7034,7 @@ TEST_F(GraphTransformationTests, GatherToSliceFusion) {
     };
 
     std::unique_ptr<GraphTransformer> transformer = std::make_unique<GatherToSliceFusion>();
-    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 12, *logger_, std::move(transformer), TransformerLevel::Level1, 1,
-                                          pre_graph_checker, post_graph_checker));
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 12, *logger_, std::move(transformer), TransformerLevel::Level1, 1, pre_graph_checker, post_graph_checker));
   }
 
   // OpSet-14, Tind is int64.
@@ -7183,8 +7072,7 @@ TEST_F(GraphTransformationTests, GatherToSliceFusion) {
     };
 
     std::unique_ptr<GraphTransformer> transformer = std::make_unique<GatherToSliceFusion>();
-    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer), TransformerLevel::Level1, 1,
-                                          pre_graph_checker, post_graph_checker));
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer), TransformerLevel::Level1, 1, pre_graph_checker, post_graph_checker));
   }
 }
 

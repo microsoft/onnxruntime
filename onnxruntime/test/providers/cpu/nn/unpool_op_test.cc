@@ -83,28 +83,76 @@ TEST(UnpoolTest, MaxUnPool3D) {
   std::vector<float> expected_vals =
       {
           // slice 1
-          0, 1, 0, 2,
-          0, 0, 0, 0,
-          0, 0, 0, 0,
-          0, 0, 0, 0,
+          0,
+          1,
+          0,
+          2,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
 
           // slice 2
-          0, 0, 0, 0,
-          0, 0, 0, 0,
-          3, 0, 0, 0,
-          0, 0, 4, 0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          3,
+          0,
+          0,
+          0,
+          0,
+          0,
+          4,
+          0,
 
           // slice 3
-          5, 0, 0, 0,
-          0, 0, 6, 0,
-          0, 0, 0, 0,
-          0, 0, 0, 0,
+          5,
+          0,
+          0,
+          0,
+          0,
+          0,
+          6,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
 
           // slice 4
-          0, 0, 0, 0,
-          0, 0, 0, 0,
-          0, 0, 0, 0,
-          7, 0, 8, 0};
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          7,
+          0,
+          8,
+          0};
 
   test.AddInput<float>("xT", t_dims, t_vals);
   test.AddInput<int64_t>("xI", i_dims, i_vals);
@@ -180,28 +228,76 @@ TEST(UnpoolTest, MaxUnPool3D_Without_OutputShape) {
   std::vector<float> expected_vals =
       {
           // slice 1
-          0, 1, 0, 2,
-          0, 0, 0, 0,
-          0, 0, 0, 0,
-          0, 0, 0, 0,
+          0,
+          1,
+          0,
+          2,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
 
           // slice 2
-          0, 0, 0, 0,
-          0, 0, 0, 0,
-          3, 0, 0, 0,
-          0, 0, 4, 0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          3,
+          0,
+          0,
+          0,
+          0,
+          0,
+          4,
+          0,
 
           // slice 3
-          5, 0, 0, 0,
-          0, 0, 6, 0,
-          0, 0, 0, 0,
-          0, 0, 0, 0,
+          5,
+          0,
+          0,
+          0,
+          0,
+          0,
+          6,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
 
           // slice 4
-          0, 0, 0, 0,
-          0, 0, 0, 0,
-          0, 0, 0, 0,
-          7, 0, 8, 0};
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          7,
+          0,
+          8,
+          0};
 
   test.AddInput<float>("xT", t_dims, t_vals);
   test.AddInput<int64_t>("xI", i_dims, i_vals);
@@ -277,12 +373,7 @@ TEST(UnpoolTest, MaxUnPool3D_Padding) {
   std::vector<int64_t> expected_dims = {1, 1, 2, 3, 3};
 
   std::vector<float> expected_vals = {
-      0, 1, 0,
-      0, 2, 0,
-      0, 0, 3,
-      0, 0, 0,
-      4, 0, 0,
-      0, 0, 0};
+      0, 1, 0, 0, 2, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0, 0, 0};
 
   test.AddInput<float>("xT", t_dims, t_vals);
   test.AddInput<int64_t>("xI", i_dims, i_vals);
@@ -330,11 +421,7 @@ TEST(UnpoolTest, MaxUnPool2D_WithOutputShape) {
 
   std::vector<int64_t> expected_dims = {1, 1, 5, 5};
   std::vector<float> expected_vals = {
-      0, 1, 0, 2, 0,
-      0, 0, 0, 0, 0,
-      3, 0, 4, 0, 0,
-      0, 0, 0, 0, 0,
-      0, 0, 0, 0, 0};
+      0, 1, 0, 2, 0, 0, 0, 0, 0, 0, 3, 0, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 
   std::vector<int64_t> expected_dims_size = {4};
 
@@ -394,17 +481,27 @@ print(indices)
   std::vector<int64_t> expected_dims = {1, 1, 3, 3, 3};
 
   std::vector<float> expected_vals = {
-      0, 0, 0,
-      0, 0, 0,
-      0, 0, 0,
+      0, 0, 0, 0, 0, 0, 0, 0, 0,
 
-      0, 0, 0,
-      0, 3, 0,
-      0, 0, 0,
+      0,
+      0,
+      0,
+      0,
+      3,
+      0,
+      0,
+      0,
+      0,
 
-      0, 0, 0,
-      0, 0, 0,
-      0, 0, 0};
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0};
 
   std::vector<int64_t> expected_dims_size = {5};
 

@@ -32,12 +32,10 @@ class ConcatOpBuilder : public BaseOpBuilder {
 
   // Operator support related
  private:
-  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
-                         const OpSupportCheckParams& params) const override;
+  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit, const OpSupportCheckParams& params) const override;
 
   bool HasSupportedInputOutputsImpl(
-      const InitializedTensorSet& initializers, const NodeUnit& node_unit,
-      const OpSupportCheckParams& params) const override;
+      const InitializedTensorSet& initializers, const NodeUnit& node_unit, const OpSupportCheckParams& params) const override;
 
   bool IsNodeUnitTypeSupported(const NodeUnit& /* node_unit */) const override { return true; }
   bool IsQuantizedOp(const NodeUnit& node_unit) const override;
@@ -93,12 +91,20 @@ Status ConcatOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
       for (size_t i = 1; i < node_input_size; i++) {
         const auto& type = operand_types.at(inputs[i].node_arg.Name());
         ORT_RETURN_IF_NOT(scale == type.operandType.scale,
-                          "Input[", i, "]'s scale: ", type.operandType.scale,
-                          " is different than input[0]'s scale: ", scale);
+                          "Input[",
+                          i,
+                          "]'s scale: ",
+                          type.operandType.scale,
+                          " is different than input[0]'s scale: ",
+                          scale);
 
         ORT_RETURN_IF_NOT(zero_point == type.operandType.zeroPoint,
-                          "Input[", i, "]'s zero_point: ", type.operandType.zeroPoint,
-                          " is different than input[0]'s zero_point: ", zero_point);
+                          "Input[",
+                          i,
+                          "]'s zero_point: ",
+                          type.operandType.zeroPoint,
+                          " is different than input[0]'s zero_point: ",
+                          zero_point);
       }
     }
   }
@@ -113,8 +119,7 @@ Status ConcatOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
       float scale = 0.0f;
       int32_t zero_point = 0;
       ORT_RETURN_IF_ERROR(GetQuantizationScaleAndZeroPoint(
-          model_builder.GetInitializerTensors(), node_unit.Inputs()[i], node_unit.ModelPath(),
-          scale, zero_point));
+          model_builder.GetInitializerTensors(), node_unit.Inputs()[i], node_unit.ModelPath(), scale, zero_point));
 
       ORT_RETURN_IF_ERROR(IsValidInputQuantizedType(model_builder, input, scale, zero_point));
     }
@@ -128,8 +133,7 @@ Status ConcatOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
   int32_t y_zero_point = operand_types.at(input0).operandType.zeroPoint;
   if (is_quant_op) {
     ORT_RETURN_IF_ERROR(GetQuantizationScaleAndZeroPoint(
-        model_builder.GetInitializerTensors(), node_unit.Outputs()[0], node_unit.ModelPath(),
-        y_scale, y_zero_point));
+        model_builder.GetInitializerTensors(), node_unit.Outputs()[0], node_unit.ModelPath(), y_scale, y_zero_point));
   }
 
   int32_t rank = static_cast<int32_t>(shaper[input0].size());
@@ -139,8 +143,7 @@ Status ConcatOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
 
   const auto& output = node_unit.Outputs()[0].node_arg.Name();
   OperandType output_operand_type(operand_types.at(input0).type, shaper[output], y_scale, y_zero_point);
-  ORT_RETURN_IF_ERROR(model_builder.AddOperation(ANEURALNETWORKS_CONCATENATION, input_indices,
-                                                 {output}, {output_operand_type}));
+  ORT_RETURN_IF_ERROR(model_builder.AddOperation(ANEURALNETWORKS_CONCATENATION, input_indices, {output}, {output_operand_type}));
   return Status::OK();
 }
 
@@ -151,8 +154,7 @@ bool ConcatOpBuilder::IsQuantizedOp(const NodeUnit& node_unit) const {
   return GetQuantizedOpType(node_unit) == QuantizedOpType::QDQConcat;
 }
 
-bool ConcatOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /* initializers */, const NodeUnit& node_unit,
-                                        const OpSupportCheckParams& /* params */) const {
+bool ConcatOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /* initializers */, const NodeUnit& node_unit, const OpSupportCheckParams& /* params */) const {
   Shape input_shape;
   if (!GetShape(node_unit.Inputs()[0].node_arg, input_shape))
     return false;
@@ -168,8 +170,7 @@ bool ConcatOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /* initializ
 }
 
 bool ConcatOpBuilder::HasSupportedInputOutputsImpl(
-    const InitializedTensorSet& initializers, const NodeUnit& node_unit,
-    const OpSupportCheckParams& params) const {
+    const InitializedTensorSet& initializers, const NodeUnit& node_unit, const OpSupportCheckParams& params) const {
   const auto& op_type = node_unit.OpType();
   const auto& op_name = node_unit.Name();
   const auto input_size = node_unit.Inputs().size();
@@ -203,8 +204,7 @@ bool ConcatOpBuilder::HasSupportedInputOutputsImpl(
       size_t input_idx = 0;
 
       auto status = GetQuantizationScaleAndZeroPoint(
-          initializers, node_unit.Inputs()[input_idx], node_unit.ModelPath(),
-          input_scales[input_idx], input_zps[input_idx]);
+          initializers, node_unit.Inputs()[input_idx], node_unit.ModelPath(), input_scales[input_idx], input_zps[input_idx]);
 
       if (!status.IsOK()) {
         LOGS_DEFAULT(ERROR) << "Op [" << op_type << "] name [" << op_name
@@ -227,7 +227,8 @@ bool ConcatOpBuilder::HasSupportedInputOutputsImpl(
       // NNAPI (28-) requires the output scale and zp be the same as the input 0
       if (!HasRequiredScaleAndZeroPoint(initializers,
                                         MakeString("Op [", op_type, "] name [", op_name, "]'s output 0"),
-                                        node_unit.Outputs()[0], node_unit.ModelPath(),
+                                        node_unit.Outputs()[0],
+                                        node_unit.ModelPath(),
                                         input_scales[0] /* required_scale */,
                                         input_zps[0] /* required_zp */)) {
         return false;

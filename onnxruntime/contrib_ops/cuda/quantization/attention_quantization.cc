@@ -50,8 +50,7 @@ Status QAttention<T, int8_t>::CheckInputs(const Tensor* input,
                                           const Tensor* past_tensor,
                                           void* parameters) const {
   auto& device_prop = GetDeviceProp();
-  ORT_RETURN_IF_ERROR(AttentionBase::CheckInputs(input->Shape(), weights->Shape(), bias->Shape(),
-                                                 mask_index, past_tensor,
+  ORT_RETURN_IF_ERROR(AttentionBase::CheckInputs(input->Shape(), weights->Shape(), bias->Shape(), mask_index, past_tensor,
                                                  nullptr,  // relative_position_bias
                                                  parameters,
                                                  device_prop.maxThreadsPerBlock));
@@ -141,13 +140,7 @@ Status QAttention<T, int8_t>::ComputeInternal(OpKernelContext* context) const {
 
   typedef typename ToCudaType<T>::MappedType CudaT;
 
-  ORT_RETURN_IF_ERROR(GemmInt8(m, n, k,
-                               1 /*alpha_matmul*/, 0 /* beta_matmul*/,
-                               input->Data<int8_t>(), k,
-                               weights->Data<int8_t>(), n,
-                               gemm_buffer_quantized.get(), n,
-                               this,
-                               context->GetComputeStream()));
+  ORT_RETURN_IF_ERROR(GemmInt8(m, n, k, 1 /*alpha_matmul*/, 0 /* beta_matmul*/, input->Data<int8_t>(), k, weights->Data<int8_t>(), n, gemm_buffer_quantized.get(), n, this, context->GetComputeStream()));
 
   CudaT dequant_scale;
   CudaT input_scale = *(reinterpret_cast<const CudaT*>(input_scale_tensor->Data<T>()));
@@ -168,8 +161,7 @@ Status QAttention<T, int8_t>::ComputeInternal(OpKernelContext* context) const {
                                              m,
                                              n));
 
-  std::vector<int64_t> present_dims{2, parameters.batch_size, parameters.num_heads,
-                                    parameters.total_sequence_length, parameters.head_size};
+  std::vector<int64_t> present_dims{2, parameters.batch_size, parameters.num_heads, parameters.total_sequence_length, parameters.head_size};
   TensorShape present_shape(present_dims);
   Tensor* present = context->Output(1, present_shape);
 

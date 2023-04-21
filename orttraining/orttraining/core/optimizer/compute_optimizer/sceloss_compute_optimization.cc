@@ -22,18 +22,14 @@ NodeArg* InsertNodesForValidLabelIndices(Graph& graph, Node& node, NodeArg* labe
   InlinedVector<NodeArg*> output_args{&graph.GetOrCreateNodeArg(graph.GenerateNodeArgName("label_sub_result"),
                                                                 node.MutableInputDefs()[1]->TypeAsProto())};
 
-  Node& sub_node = graph.AddNode(graph.GenerateNodeName("labels_sub"), "Sub", "label sub padding idx", input_args,
-                                 output_args, nullptr, kOnnxDomain);
+  Node& sub_node = graph.AddNode(graph.GenerateNodeName("labels_sub"), "Sub", "label sub padding idx", input_args, output_args, nullptr, kOnnxDomain);
   ORT_ENFORCE(graph.SetOpSchemaFromRegistryForNode(sub_node), "Failed to set op schema for " + sub_node.Name());
   sub_node.SetExecutionProviderType(node.GetExecutionProviderType());
 
   auto non_zero_out_arg = &graph.GetOrCreateNodeArg(graph.GenerateNodeArgName("labels_filter_pad_result"),
                                                     node.MutableInputDefs()[1]->TypeAsProto());
 
-  Node& non_zero_node = graph.AddNode(graph.GenerateNodeName("labels_filter_pad"), "NonZero",
-                                      "labels filtering padding idx",
-                                      {sub_node.MutableOutputDefs()[0]},
-                                      {non_zero_out_arg}, nullptr, kOnnxDomain);
+  Node& non_zero_node = graph.AddNode(graph.GenerateNodeName("labels_filter_pad"), "NonZero", "labels filtering padding idx", {sub_node.MutableOutputDefs()[0]}, {non_zero_out_arg}, nullptr, kOnnxDomain);
 
   ORT_ENFORCE(graph.SetOpSchemaFromRegistryForNode(non_zero_node),
               "Failed to set op schema for " + non_zero_node.Name());
@@ -61,8 +57,7 @@ NodeArg* InsertNodesForValidLabelIndices(Graph& graph, Node& node, NodeArg* labe
 
   auto squeeze_out_arg = &graph.GetOrCreateNodeArg(graph.GenerateNodeArgName("squeeze_adaptor"),
                                                    non_zero_out_arg->TypeAsProto());
-  Node& squeeze_node = graph.AddNode(graph.GenerateNodeName("squeeze_adaptor"), "Squeeze", "nonzero_squeezer",
-                                     squeeze_input_args, {squeeze_out_arg}, &attributes, kOnnxDomain);
+  Node& squeeze_node = graph.AddNode(graph.GenerateNodeName("squeeze_adaptor"), "Squeeze", "nonzero_squeezer", squeeze_input_args, {squeeze_out_arg}, &attributes, kOnnxDomain);
   ORT_ENFORCE(graph.SetOpSchemaFromRegistryForNode(squeeze_node),
               "Failed to set op schema for " + squeeze_node.Name());
 
@@ -76,8 +71,7 @@ NodeArg* InsertNodesForValidLabelIndices(Graph& graph, Node& node, NodeArg* labe
 }
 }  // namespace
 
-Status InsertGatherBeforeSceLoss::ApplyImpl(Graph& graph, bool& modified, int /*graph_level*/,
-                                            const logging::Logger& logger) const {
+Status InsertGatherBeforeSceLoss::ApplyImpl(Graph& graph, bool& modified, int /*graph_level*/, const logging::Logger& logger) const {
   LOG_DEBUG_INFO(logger, "Enter InsertGatherBeforeSceLoss");
 
   GraphViewer graph_viewer(graph);
@@ -92,8 +86,7 @@ Status InsertGatherBeforeSceLoss::ApplyImpl(Graph& graph, bool& modified, int /*
     auto& node = *node_ptr;
 
     bool is_onnx_sce = graph_utils::IsSupportedOptypeVersionAndDomain(node, "SoftmaxCrossEntropyLoss", {12, 13});
-    bool is_internal_sce = graph_utils::IsSupportedOptypeVersionAndDomain(node, "SoftmaxCrossEntropyLossInternal", {1},
-                                                                          kMSDomain);
+    bool is_internal_sce = graph_utils::IsSupportedOptypeVersionAndDomain(node, "SoftmaxCrossEntropyLossInternal", {1}, kMSDomain);
 
     if ((!is_onnx_sce && !is_internal_sce) ||
         !graph_utils::IsSupportedProvider(node, GetCompatibleExecutionProviders())) {
@@ -105,8 +98,7 @@ Status InsertGatherBeforeSceLoss::ApplyImpl(Graph& graph, bool& modified, int /*
     // Skip if already inserted a ShrunkenGather node.
     if (labels_producer && graph_utils::IsSupportedOptypeVersionAndDomain(
                                *labels_producer, "ShrunkenGather", {1}, kMSDomain)) {
-      LOG_DEBUG_INFO(logger, "Skip node " + node.Name() + "(" + node.OpType() +
-                                 ") due to labels input is already consumed by a ShrunkenGather node.");
+      LOG_DEBUG_INFO(logger, "Skip node " + node.Name() + "(" + node.OpType() + ") due to labels input is already consumed by a ShrunkenGather node.");
       continue;
     }
 
@@ -114,14 +106,12 @@ Status InsertGatherBeforeSceLoss::ApplyImpl(Graph& graph, bool& modified, int /*
     auto logits_shape = node.MutableInputDefs()[0]->Shape();
     auto labels_shape = node.MutableInputDefs()[1]->Shape();
     if (logits_shape == nullptr || labels_shape == nullptr) {
-      LOG_DEBUG_INFO(logger, "Skip node " + node.Name() + "(" + node.OpType() +
-                                 ") due to undefined input shapes.");
+      LOG_DEBUG_INFO(logger, "Skip node " + node.Name() + "(" + node.OpType() + ") due to undefined input shapes.");
       continue;
     }
 
     if (logits_shape->dim_size() != 2 || labels_shape->dim_size() != 1) {
-      LOG_DEBUG_INFO(logger, "Skip node " + node.Name() + "(" + node.OpType() +
-                                 ") due to unsupported input shape ranks.");
+      LOG_DEBUG_INFO(logger, "Skip node " + node.Name() + "(" + node.OpType() + ") due to unsupported input shape ranks.");
       continue;
     }
 
@@ -130,8 +120,7 @@ Status InsertGatherBeforeSceLoss::ApplyImpl(Graph& graph, bool& modified, int /*
     if (reduction.compare("mean") == 0 || reduction.compare("sum") == 0) {
       // loss output is a scalar, don't need reset shape.
     } else {
-      LOG_DEBUG_INFO(logger, "Skip node " + node.Name() + "(" + node.OpType() +
-                                 ") due to loss [reduction=" + reduction + "].");
+      LOG_DEBUG_INFO(logger, "Skip node " + node.Name() + "(" + node.OpType() + ") due to loss [reduction=" + reduction + "].");
       continue;
     }
 
@@ -139,8 +128,7 @@ Status InsertGatherBeforeSceLoss::ApplyImpl(Graph& graph, bool& modified, int /*
     if (is_internal_sce) {
       if (node.InputDefs().size() < 4 || !graph_utils::IsConstantInitializer(
                                              graph, node.InputDefs()[3]->Name(), /* check_outer_scope */ false)) {
-        LOG_DEBUG_INFO(logger, "Skip node " + node.Name() + "(" + node.OpType() +
-                                   ") due to target padding idx is non-constant initializer. Input count: " + std::to_string(node.InputDefs().size()));
+        LOG_DEBUG_INFO(logger, "Skip node " + node.Name() + "(" + node.OpType() + ") due to target padding idx is non-constant initializer. Input count: " + std::to_string(node.InputDefs().size()));
         continue;
       }
       ignore_index_node_arg = node.MutableInputDefs()[3];
@@ -151,16 +139,14 @@ Status InsertGatherBeforeSceLoss::ApplyImpl(Graph& graph, bool& modified, int /*
         ignore_index_node_arg = onnxruntime::optimizer::compute_optimizer::CreateInitializerFromVector(
             graph, {}, {ignore_index_value}, graph.GenerateNodeArgName("ignore_index"));
       } else {
-        LOG_DEBUG_INFO(logger, "Skip node " + node.Name() + "(" + node.OpType() +
-                                   ") due to missing ignore_index attribute.");
+        LOG_DEBUG_INFO(logger, "Skip node " + node.Name() + "(" + node.OpType() + ") due to missing ignore_index attribute.");
         continue;
       }
     }
 
     std::vector<const Node*> sce_out1_consumers = graph.GetConsumerNodes(node.OutputDefs()[1]->Name());
     if (sce_out1_consumers.size() != 0 || graph.IsOutput(node.OutputDefs()[1])) {
-      LOG_DEBUG_INFO(logger, "Skip node " + node.Name() + "(" + node.OpType() +
-                                 ") due to log_prob output is graph output or consumed by other nodes.");
+      LOG_DEBUG_INFO(logger, "Skip node " + node.Name() + "(" + node.OpType() + ") due to log_prob output is graph output or consumed by other nodes.");
       continue;
     }
 
@@ -192,18 +178,7 @@ Status InsertGatherBeforeSceLoss::ApplyImpl(Graph& graph, bool& modified, int /*
       /* new node output index to connect to node*/
       int new_gather_output_index_to_connect = 0;
       Node* new_gather_node = onnxruntime::optimizer::compute_optimizer::InsertIntermediateNodeOnDestInput(
-          graph, node,
-          i,
-          new_gather_input_index_to_connect,
-          new_gather_output_index_to_connect,
-          graph.GenerateNodeName("LabelsFilter"),
-          "ShrunkenGather",
-          "ShrunkenGather node to filter invalid tokens.",
-          input_args,
-          output_args,
-          {},
-          kMSDomain,
-          logger);
+          graph, node, i, new_gather_input_index_to_connect, new_gather_output_index_to_connect, graph.GenerateNodeName("LabelsFilter"), "ShrunkenGather", "ShrunkenGather node to filter invalid tokens.", input_args, output_args, {}, kMSDomain, logger);
 
       new_gather_node->SetExecutionProviderType(node.GetExecutionProviderType());
       auto gather_out_arg = new_gather_node->MutableOutputDefs()[0];
@@ -216,8 +191,7 @@ Status InsertGatherBeforeSceLoss::ApplyImpl(Graph& graph, bool& modified, int /*
     handled_sce_node_count += 1;
   }
 
-  LOG_DEBUG_INFO(logger, "Exit InsertGatherBeforeSceLoss, handled " + std::to_string(handled_sce_node_count) +
-                             " SCE nodes");
+  LOG_DEBUG_INFO(logger, "Exit InsertGatherBeforeSceLoss, handled " + std::to_string(handled_sce_node_count) + " SCE nodes");
 
   return Status::OK();
 }

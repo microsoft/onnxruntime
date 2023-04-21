@@ -56,7 +56,8 @@ class Scatter final : public OpKernel {
 
 ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     Scatter,
-    9, 10,
+    9,
+    10,
     KernelDefBuilder()
         .MayInplace(0, 0)
         .TypeConstraint("T",
@@ -249,8 +250,7 @@ struct Func_Max<BFloat16> {
 
 template <class TIndex>
 Status GetIndices(
-    const Tensor& data_input, const Tensor& indices_input, int64_t axis,
-    std::vector<int64_t>& indices_data) {
+    const Tensor& data_input, const Tensor& indices_input, int64_t axis, std::vector<int64_t>& indices_data) {
   const auto& input_data_shape = data_input.Shape();
   const auto* indices_data_raw = indices_input.Data<TIndex>();
   const auto num_indices = indices_input.Shape().Size();
@@ -263,10 +263,7 @@ Status GetIndices(
     const int64_t idx = static_cast<int64_t>(indices_data_raw[i]);
 
     if (idx < -axis_dim_limit || idx >= axis_dim_limit) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "indices element out of data bounds, idx=", idx,
-                             " must be within the inclusive range [", -axis_dim_limit,
-                             ",", axis_dim_limit - 1, "]");
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "indices element out of data bounds, idx=", idx, " must be within the inclusive range [", -axis_dim_limit, ",", axis_dim_limit - 1, "]");
     }
 
     indices_data_result.push_back(idx < 0 ? idx + axis_dim_limit : idx);
@@ -279,7 +276,10 @@ Status GetIndices(
 template <class Tdata, typename FuncT>
 Status ScatterData(
     const FuncT& func,
-    const Tensor* data_input, const std::vector<int64_t>& indices_data, const Tensor* updates_input, int64_t axis,
+    const Tensor* data_input,
+    const std::vector<int64_t>& indices_data,
+    const Tensor* updates_input,
+    int64_t axis,
     Tensor* data_output) {
   const TensorShape& input_data_shape = data_input->Shape();
 
@@ -390,8 +390,7 @@ Status ScatterData(
 
 template <typename TData>
 struct ScatterDataDispatchTarget {
-  Status operator()(const Tensor* data_input, const std::vector<int64_t>& indices_data, const Tensor* updates_input, int64_t axis,
-                    const std::string& reduction, Tensor* data_output) const {
+  Status operator()(const Tensor* data_input, const std::vector<int64_t>& indices_data, const Tensor* updates_input, int64_t axis, const std::string& reduction, Tensor* data_output) const {
     if (reduction == "add")
       return ScatterData<TData>(
           Func_Add<TData>(), data_input, indices_data, updates_input, axis, data_output);
@@ -426,14 +425,12 @@ Status Scatter<EnabledDataTypes>::Compute(OpKernelContext* context) const {
   auto indices_dims = indices_input->Shape().GetDims();
   auto updates_dims = updates_input->Shape().GetDims();
   if (indices_dims.size() != updates_dims.size()) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Indices and updates must have the same rank");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Indices and updates must have the same rank");
   }
 
   for (size_t i = 0; i < indices_dims.size(); ++i) {
     if (indices_dims[i] != updates_dims[i]) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Indices vs updates dimensions differs at position=", i,
-                             " ", indices_dims[i], " vs ", updates_dims[i]);
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Indices vs updates dimensions differs at position=", i, " ", indices_dims[i], " vs ", updates_dims[i]);
     }
   }
 
@@ -442,16 +439,14 @@ Status Scatter<EnabledDataTypes>::Compute(OpKernelContext* context) const {
   // exceed that of the input
   auto input_dims = input_data_shape.GetDims();
   if (input_dims.size() != indices_dims.size()) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Indices must have the same rank as Input. Indices rank=",
-                           indices_dims.size(), ". Input rank=", input_dims.size());
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Indices must have the same rank as Input. Indices rank=", indices_dims.size(), ". Input rank=", input_dims.size());
   }
 
   for (size_t i = 0; i < input_dims.size(); ++i) {
     // For all axes except the axis of interest, make sure that the corresponding 'indices' shape
     // value is within bounds of the corresponding 'data' shape.
     if (static_cast<int64_t>(i) != axis && input_dims[i] < indices_dims[i]) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Indices dim=", indices_dims[i], " at pos=", i,
-                             " is greater than input dim=", input_dims[i]);
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Indices dim=", indices_dims[i], " at pos=", i, " is greater than input dim=", input_dims[i]);
     }
   }
 
@@ -493,8 +488,7 @@ struct Func_Add {
 };
 
 template <class Tin, class Tdata>
-Status GatherElementsGradImpl(const Tensor* indices_input, const Tensor* updates_input,
-                              const int64_t axis, Tensor* data_output) {
+Status GatherElementsGradImpl(const Tensor* indices_input, const Tensor* updates_input, const int64_t axis, Tensor* data_output) {
   std::vector<int64_t> indices_data{};
   ORT_RETURN_IF_ERROR(GetIndices<Tin>(*data_output, *indices_input, axis, indices_data));
   return ScatterData<Tdata>(Func_Add<Tdata>(), data_output, indices_data, updates_input, axis, data_output);

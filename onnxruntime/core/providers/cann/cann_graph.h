@@ -72,8 +72,7 @@ struct CannModelPreparation {
 
 std::vector<NodeIndex> SupportONNXModel(const GraphViewer& graph_viewer);
 Status ParserONNXModel(std::string string_model, ge::Graph& graph);
-Status BuildONNXModel(ge::Graph& graph, std::string input_shape, const char* soc_name, std::string file_name,
-                      CANNExecutionProviderInfo& info, ge::ModelBufferData& model);
+Status BuildONNXModel(ge::Graph& graph, std::string input_shape, const char* soc_name, std::string file_name, CANNExecutionProviderInfo& info, ge::ModelBufferData& model);
 
 }  // namespace cann
 }  // namespace onnxruntime

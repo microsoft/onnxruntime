@@ -24,37 +24,13 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     Tile,
     6,
     12,
-    KernelDefBuilder().TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
-                                            DataTypeImpl::GetTensorType<double>(),
-                                            DataTypeImpl::GetTensorType<int8_t>(),
-                                            DataTypeImpl::GetTensorType<int16_t>(),
-                                            DataTypeImpl::GetTensorType<int32_t>(),
-                                            DataTypeImpl::GetTensorType<int64_t>(),
-                                            DataTypeImpl::GetTensorType<uint8_t>(),
-                                            DataTypeImpl::GetTensorType<uint16_t>(),
-                                            DataTypeImpl::GetTensorType<uint32_t>(),
-                                            DataTypeImpl::GetTensorType<uint64_t>(),
-                                            DataTypeImpl::GetTensorType<std::string>(),
-                                            DataTypeImpl::GetTensorType<bool>()})
-        .TypeConstraint("T1", DataTypeImpl::GetTensorType<int64_t>()),
+    KernelDefBuilder().TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(), DataTypeImpl::GetTensorType<double>(), DataTypeImpl::GetTensorType<int8_t>(), DataTypeImpl::GetTensorType<int16_t>(), DataTypeImpl::GetTensorType<int32_t>(), DataTypeImpl::GetTensorType<int64_t>(), DataTypeImpl::GetTensorType<uint8_t>(), DataTypeImpl::GetTensorType<uint16_t>(), DataTypeImpl::GetTensorType<uint32_t>(), DataTypeImpl::GetTensorType<uint64_t>(), DataTypeImpl::GetTensorType<std::string>(), DataTypeImpl::GetTensorType<bool>()}).TypeConstraint("T1", DataTypeImpl::GetTensorType<int64_t>()),
     Tile);
 
 ONNX_CPU_OPERATOR_KERNEL(
     Tile,
     13,
-    KernelDefBuilder().TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
-                                            DataTypeImpl::GetTensorType<double>(),
-                                            DataTypeImpl::GetTensorType<int8_t>(),
-                                            DataTypeImpl::GetTensorType<int16_t>(),
-                                            DataTypeImpl::GetTensorType<int32_t>(),
-                                            DataTypeImpl::GetTensorType<int64_t>(),
-                                            DataTypeImpl::GetTensorType<uint8_t>(),
-                                            DataTypeImpl::GetTensorType<uint16_t>(),
-                                            DataTypeImpl::GetTensorType<uint32_t>(),
-                                            DataTypeImpl::GetTensorType<uint64_t>(),
-                                            DataTypeImpl::GetTensorType<std::string>(),
-                                            DataTypeImpl::GetTensorType<bool>()})
-        .TypeConstraint("T1", DataTypeImpl::GetTensorType<int64_t>()),
+    KernelDefBuilder().TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(), DataTypeImpl::GetTensorType<double>(), DataTypeImpl::GetTensorType<int8_t>(), DataTypeImpl::GetTensorType<int16_t>(), DataTypeImpl::GetTensorType<int32_t>(), DataTypeImpl::GetTensorType<int64_t>(), DataTypeImpl::GetTensorType<uint8_t>(), DataTypeImpl::GetTensorType<uint16_t>(), DataTypeImpl::GetTensorType<uint32_t>(), DataTypeImpl::GetTensorType<uint64_t>(), DataTypeImpl::GetTensorType<std::string>(), DataTypeImpl::GetTensorType<bool>()}).TypeConstraint("T1", DataTypeImpl::GetTensorType<int64_t>()),
     Tile);
 
 Status TileCoreForFixedSizeTypes(const Tensor& input_tensor, Tensor& output_tensor, const int64_t* repeats, TensorAxisCounters& input_counters, const TensorPitches& output_pitches, size_t element_size) {

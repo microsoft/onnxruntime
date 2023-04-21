@@ -173,8 +173,19 @@ class MlasFgemmTest : public MlasTestBase {
 
     Test(trans_a ? CblasTrans : CblasNoTrans,
          trans_b ? CblasTrans : CblasNoTrans,
-         M, N, K, BatchSize, alpha, A, trans_a ? M : K, B, trans_b ? K : N,
-         beta, C, CReference, N);
+         M,
+         N,
+         K,
+         BatchSize,
+         alpha,
+         A,
+         trans_a ? M : K,
+         B,
+         trans_b ? K : N,
+         beta,
+         C,
+         CReference,
+         N);
   }
 
   void Test(CBLAS_TRANSPOSE TransA,

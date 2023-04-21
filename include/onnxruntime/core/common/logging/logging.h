@@ -104,10 +104,7 @@ class LoggingManager final {
      @param default_max_vlog_level Default maximum level for VLOG messages to be created unless overridden in CreateLogger.
      Requires a severity of kVERBOSE for VLOG messages to be logged.
   */
-  LoggingManager(std::unique_ptr<ISink> sink, Severity default_min_severity, bool default_filter_user_data,
-                 InstanceType instance_type,
-                 const std::string* default_logger_id = nullptr,
-                 int default_max_vlog_level = -1);
+  LoggingManager(std::unique_ptr<ISink> sink, Severity default_min_severity, bool default_filter_user_data, InstanceType instance_type, const std::string* default_logger_id = nullptr, int default_max_vlog_level = -1, );
 
   /**
      Creates a new logger instance which will use the provided logger_id and default severity and vlog levels.
@@ -125,7 +122,9 @@ class LoggingManager final {
      @returns A new Logger instance that the caller owns.
   */
   std::unique_ptr<Logger> CreateLogger(const std::string& logger_id,
-                                       Severity min_severity, bool filter_user_data, int max_vlog_level = -1);
+                                       Severity min_severity,
+                                       bool filter_user_data,
+                                       int max_vlog_level = -1);
 
   /**
      Gets the default logger instance if set. Throws if no default logger is currently registered.
@@ -165,7 +164,8 @@ class LoggingManager final {
   */
   static std::exception LogFatalAndCreateException(const char* category,
                                                    const CodeLocation& location,
-                                                   const char* format_str, ...);
+                                                   const char* format_str,
+                                                   ...);
 
   /**
      Logs the message using the provided logger id.
@@ -218,8 +218,7 @@ class Logger {
      @param vlog_level Minimum level for VLOG messages to be created. Note that a severity of kVERBOSE must be provided
      for VLOG messages to be logged.
   */
-  Logger(const LoggingManager& loggingManager, std::string id,
-         Severity severity, bool filter_user_data, int vlog_level)
+  Logger(const LoggingManager& loggingManager, std::string id, Severity severity, bool filter_user_data, int vlog_level)
       : logging_manager_{&loggingManager},
         id_{id},
         min_severity_{severity},

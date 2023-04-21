@@ -21,14 +21,13 @@ class Tokenizer final : public OpKernel {
   Status Compute(OpKernelContext* context) const override;
 
  private:
-  Status CharTokenize(OpKernelContext* context, size_t N, size_t C,
-                      gsl::span<const int64_t> input_dims) const;
+  Status CharTokenize(OpKernelContext* context, size_t N, size_t C, gsl::span<const int64_t> input_dims) const;
 
-  Status SeparatorExpressionTokenizer(OpKernelContext* context, size_t N, size_t C,
-                                      gsl::span<const int64_t> input_dims) const;
+  Status SeparatorExpressionTokenizer(OpKernelContext* context, size_t N, size_t C, gsl::span<const int64_t> input_dims) const;
 
   Status TokenExpression(OpKernelContext* ctx,
-                         size_t N, size_t C,
+                         size_t N,
+                         size_t C,
                          gsl::span<const int64_t> input_dims) const;
 
   bool mark_{false};
@@ -114,8 +113,7 @@ Tokenizer::Tokenizer(const OpKernelInfo& info) : OpKernel(info) {
   }
 }
 
-Status Tokenizer::CharTokenize(OpKernelContext* ctx, size_t N, size_t C,
-                               gsl::span<const int64_t> input_dims) const {
+Status Tokenizer::CharTokenize(OpKernelContext* ctx, size_t N, size_t C, gsl::span<const int64_t> input_dims) const {
   // With char tokenzation we get as many tokens as the number of
   // utf8 characters in the string. So for every string we calculate its character(utf8) length
   // add padding and add start/end test separators if necessary
@@ -127,12 +125,10 @@ Status Tokenizer::CharTokenize(OpKernelContext* ctx, size_t N, size_t C,
   while (curr_input != last) {
     const auto& s = *curr_input;
     size_t tokens = 0;  // length in utf8 chars
-    if (!utf8_validate(reinterpret_cast<const unsigned char*>(s.data()), s.size(),
-                       tokens)) {
+    if (!utf8_validate(reinterpret_cast<const unsigned char*>(s.data()), s.size(), tokens)) {
       // Please do not include the input text in the error message as it could
       // be deemed as a compliance violation by teams using this operator
-      return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                    "Input string contains invalid utf8 chars");
+      return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Input string contains invalid utf8 chars");
     }
     max_tokens = std::max(max_tokens, tokens);
     ++curr_input;
@@ -193,7 +189,8 @@ Status Tokenizer::CharTokenize(OpKernelContext* ctx, size_t N, size_t C,
 }
 
 Status Tokenizer::SeparatorExpressionTokenizer(OpKernelContext* ctx,
-                                               size_t N, size_t C,
+                                               size_t N,
+                                               size_t C,
                                                gsl::span<const int64_t> input_dims) const {
   using namespace re2;
   std::vector<std::vector<StringPiece>> rows;
@@ -213,10 +210,8 @@ Status Tokenizer::SeparatorExpressionTokenizer(OpKernelContext* ctx,
   while (curr_input != last) {
     const auto& s = *curr_input;
     size_t utf8_chars = 0;  // length in utf8 chars
-    if (!utf8_validate(reinterpret_cast<const unsigned char*>(s.data()), s.size(),
-                       utf8_chars)) {
-      return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                    "Input string contains invalid utf8 chars: " + s);
+    if (!utf8_validate(reinterpret_cast<const unsigned char*>(s.data()), s.size(), utf8_chars)) {
+      return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Input string contains invalid utf8 chars: " + s);
     }
 
     std::vector<StringPiece> row{s};
@@ -239,10 +234,10 @@ Status Tokenizer::SeparatorExpressionTokenizer(OpKernelContext* ctx,
             auto token_len = match_pos - start_pos;
             utf8_chars = 0;
             bool valid = utf8_len(reinterpret_cast<const unsigned char*>(text.data() + start_pos),
-                                  token_len, utf8_chars);
+                                  token_len,
+                                  utf8_chars);
             if (!valid) {
-              return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                            "Match contains invalid utf8 chars: " + submatch.as_string());
+              return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Match contains invalid utf8 chars: " + submatch.as_string());
             }
             if (utf8_chars >= size_t(mincharnum_)) {
               tokens.emplace_back(text.data() + start_pos, token_len);
@@ -262,7 +257,8 @@ Status Tokenizer::SeparatorExpressionTokenizer(OpKernelContext* ctx,
             auto trailing_len = end_pos - start_pos;
             utf8_chars = 0;
             utf8_len(reinterpret_cast<const unsigned char*>(text.data() + start_pos),
-                     trailing_len, utf8_chars);
+                     trailing_len,
+                     utf8_chars);
             if (utf8_chars >= size_t(mincharnum_)) {
               tokens.emplace_back(text.data() + start_pos, trailing_len);
             }
@@ -334,7 +330,8 @@ Status Tokenizer::SeparatorExpressionTokenizer(OpKernelContext* ctx,
 }
 
 Status Tokenizer::TokenExpression(OpKernelContext* ctx,
-                                  size_t N, size_t C,
+                                  size_t N,
+                                  size_t C,
                                   gsl::span<const int64_t> input_dims) const {
   using namespace re2;
   // Represents a token that will be output after
@@ -356,10 +353,8 @@ Status Tokenizer::TokenExpression(OpKernelContext* ctx,
     const auto& s = *curr_input;
 
     size_t utf8_chars = 0;
-    if (!utf8_validate(reinterpret_cast<const unsigned char*>(s.data()), s.size(),
-                       utf8_chars)) {
-      return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                    "Input string contains invalid utf8 chars: " + s);
+    if (!utf8_validate(reinterpret_cast<const unsigned char*>(s.data()), s.size(), utf8_chars)) {
+      return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Input string contains invalid utf8 chars: " + s);
     }
 
     tokens.emplace_back();
@@ -383,8 +378,7 @@ Status Tokenizer::TokenExpression(OpKernelContext* ctx,
         auto token_len = submatch.length();
         utf8_chars = 0;
         if (!utf8_len(reinterpret_cast<const unsigned char*>(submatch.data()), token_len, utf8_chars)) {
-          return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                        "Match contains invalid utf8 chars: " + submatch.as_string());
+          return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Match contains invalid utf8 chars: " + submatch.as_string());
         }
         if (utf8_chars >= size_t(mincharnum_)) {
           row.push_back(submatch);
@@ -464,8 +458,7 @@ Status Tokenizer::Compute(OpKernelContext* ctx) const {
   auto X = ctx->Input<Tensor>(0);
   if (X == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "input count mismatch");
   if (!X->IsDataTypeString()) {
-    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                  "tensor(string) expected as input");
+    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "tensor(string) expected as input");
   }
 
   auto& input_shape = X->Shape();
@@ -479,8 +472,7 @@ Status Tokenizer::Compute(OpKernelContext* ctx) const {
     N = narrow<size_t>(input_dims[0]);
     C = narrow<size_t>(input_dims[1]);
   } else {
-    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                  "Input dimensions are either [C] or [N][C] allowed");
+    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Input dimensions are either [C] or [N][C] allowed");
   }
 
   // Empty input

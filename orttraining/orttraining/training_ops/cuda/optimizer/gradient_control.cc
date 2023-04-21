@@ -43,7 +43,8 @@ Status ZeroGradient<T>::ComputeInternal(OpKernelContext* ctx) const {
   CUDA_RETURN_IF_ERROR(cudaMemsetAsync(
       zero_gradient.template MutableData<T>(),
       0,
-      zero_gradient.Shape().Size() * sizeof(T), Stream(ctx)));
+      zero_gradient.Shape().Size() * sizeof(T),
+      Stream(ctx)));
 
   return Status::OK();
 }
@@ -123,8 +124,7 @@ Status InPlaceAccumulatorV2<T, T_GRAD>::ComputeInternal(OpKernelContext* ctx) co
     const T_GRAD* source = right_addee_buffer.template Data<T_GRAD>();
     T* target = left_addee_buffer.template MutableData<T>();
     if (std::is_same<T, T_GRAD>::value) {
-      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(target, source, right_addee_buffer.SizeInBytes(), cudaMemcpyDeviceToDevice,
-                                           Stream(ctx)));
+      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(target, source, right_addee_buffer.SizeInBytes(), cudaMemcpyDeviceToDevice, Stream(ctx)));
     } else {
       Impl_Cast<CudaT_GRAD, CudaT>(
           Stream(ctx),

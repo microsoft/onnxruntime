@@ -23,7 +23,8 @@ TEST(LayoutTransformationPotentiallyAddedOpsTests, OpsHaveLatestVersions) {
 
   for (auto it = std::rbegin(kLayoutTransformationPotentiallyAddedOps),
             end = std::rend(kLayoutTransformationPotentiallyAddedOps);
-       it != end; ++it) {
+       it != end;
+       ++it) {
     if (prev_domain != it->domain || prev_op_type != it->op_type) {
       const auto* schema = schema_registry->GetSchema(std::string{it->op_type}, INT_MAX, std::string{it->domain});
       ASSERT_NE(schema, nullptr);

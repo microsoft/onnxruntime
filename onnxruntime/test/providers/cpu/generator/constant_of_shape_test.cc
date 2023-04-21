@@ -87,25 +87,19 @@ inline void SetValue(TensorProto& t_proto, MLFloat16 value) {
 
 // This works for int64_t
 template <class T>
-inline void SetValue(TensorProto& t_proto, T value,
-                     typename std::enable_if<std::is_same<T, int64_t>::value>::type* = nullptr) {
+inline void SetValue(TensorProto& t_proto, T value, typename std::enable_if<std::is_same<T, int64_t>::value>::type* = nullptr) {
   t_proto.mutable_int64_data()->Add(value);
 }
 
 // For uint32 and uint64
 template <class T>
-inline void SetValue(TensorProto& t_proto, T value,
-                     typename std::enable_if<std::is_same<T, uint64_t>::value ||
-                                             std::is_same<T, uint32_t>::value>::type* = nullptr) {
+inline void SetValue(TensorProto& t_proto, T value, typename std::enable_if<std::is_same<T, uint64_t>::value || std::is_same<T, uint32_t>::value>::type* = nullptr) {
   t_proto.mutable_uint64_data()->Add(value);
 }
 
 // For everything else except float, double and MLFloat16
 template <class T>
-inline void SetValue(TensorProto& t_proto, T value,
-                     typename std::enable_if<!std::is_same<T, int64_t>::value &&
-                                             !std::is_same<T, uint32_t>::value &&
-                                             !std::is_same<T, uint64_t>::value>::type* = nullptr) {
+inline void SetValue(TensorProto& t_proto, T value, typename std::enable_if<!std::is_same<T, int64_t>::value && !std::is_same<T, uint32_t>::value && !std::is_same<T, uint64_t>::value>::type* = nullptr) {
   t_proto.mutable_int32_data()->Add(value);
 }
 

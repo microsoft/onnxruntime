@@ -62,7 +62,9 @@ void MergeMatMulWeights(const T* q_weight, const T* k_weight, const T* v_weight,
 // Load q, k and v weights, and validate their data types.
 static bool LoadQkvWeights(
     Graph& graph,
-    const Node& q, const Node& k, const Node& v,
+    const Node& q,
+    const Node& k,
+    const Node& v,
     const ONNX_NAMESPACE::TensorProto*& q_tensor,
     const ONNX_NAMESPACE::TensorProto*& k_tensor,
     const ONNX_NAMESPACE::TensorProto*& v_tensor) {
@@ -91,11 +93,7 @@ static bool LoadQkvWeights(
 }
 
 // Merge the weights of Q, K and V inputs for MatMul or Add (bias) into one input.
-static NodeArg& MergeQkvWeights(Graph& graph, int64_t hidden_size,
-                                const ONNX_NAMESPACE::TensorProto* q_tensor,
-                                const ONNX_NAMESPACE::TensorProto* k_tensor,
-                                const ONNX_NAMESPACE::TensorProto* v_tensor,
-                                bool is_matmul) {
+static NodeArg& MergeQkvWeights(Graph& graph, int64_t hidden_size, const ONNX_NAMESPACE::TensorProto* q_tensor, const ONNX_NAMESPACE::TensorProto* k_tensor, const ONNX_NAMESPACE::TensorProto* v_tensor, bool is_matmul) {
   assert(nullptr != q_tensor);
   assert(nullptr != k_tensor);
   assert(nullptr != v_tensor);
@@ -333,8 +331,7 @@ static bool FuseSubGraphQKImpl(Node& layer_norm,
     DEBUG_LOG("k root is not layer norm");
     return false;
   }
-  if (!AttentionFusionHelper::CheckNodesInPathK(graph, k_reshape, k_transpose, num_heads,
-                                                head_size, /*transpose_optimized_pattern*/ false, logger)) {
+  if (!AttentionFusionHelper::CheckNodesInPathK(graph, k_reshape, k_transpose, num_heads, head_size, /*transpose_optimized_pattern*/ false, logger)) {
     DEBUG_LOG("CheckNodesInPathK returns false");
     return false;
   }
@@ -438,8 +435,7 @@ static bool FuseSubGraphQK(Node& layer_norm,
   }
 
   std::vector<NodeIndex> nodes_to_remove;
-  if (!FuseSubGraphQKImpl(layer_norm, graph, parent_path_nodes, mask_input, mask_int32_map, edges, nodes_to_remove, hidden_size,
-                          num_heads, head_size, mask_nodes.mask_filter_value, logger)) {
+  if (!FuseSubGraphQKImpl(layer_norm, graph, parent_path_nodes, mask_input, mask_int32_map, edges, nodes_to_remove, hidden_size, num_heads, head_size, mask_nodes.mask_filter_value, logger)) {
     return false;
   }
 
@@ -529,8 +525,7 @@ static bool FuseSubGraphQKDistilBert(Node& layer_norm,
   }
 
   std::vector<NodeIndex> nodes_to_remove;
-  if (!FuseSubGraphQKImpl(layer_norm, graph, parent_path_nodes, mask_input, mask_int32_map, edges, nodes_to_remove, hidden_size,
-                          num_heads, head_size, mask_nodes.mask_filter_value, logger)) {
+  if (!FuseSubGraphQKImpl(layer_norm, graph, parent_path_nodes, mask_input, mask_int32_map, edges, nodes_to_remove, hidden_size, num_heads, head_size, mask_nodes.mask_filter_value, logger)) {
     return false;
   }
 

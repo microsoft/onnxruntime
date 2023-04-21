@@ -78,7 +78,10 @@ Status OneHotOp<in_type, out_type, depth_type>::ComputeInternal(OpKernelContext*
 
   const fast_divmod fdm_depth_suffix(gsl::narrow_cast<int>(depth_val * suffix_dim_size));
   OneHotImpl(Stream(ctx),
-             indices_data, fdm_depth_suffix, fdm_suffix, depth_val,
+             indices_data,
+             fdm_depth_suffix,
+             fdm_suffix,
+             depth_val,
              values_data[1],
              values_data[0],
              output_data,

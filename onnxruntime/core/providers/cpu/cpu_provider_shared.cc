@@ -85,9 +85,7 @@ struct ProviderHostCPUImpl : ProviderHostCPU {
   // From cpu/tensor/padbase.h (direct)
   Status PadBase__HandleDimValueZero(const Mode& mode, const TensorShape& input_shape, TensorShape& output_shape) override { return PadBase::HandleDimValueZero(mode, input_shape, output_shape); }
   // From cpu/tensor/split.h (direct)
-  Status SplitBase__PrepareForCompute(const SplitBase* p, const TensorShape& input_shape, int num_outputs, int64_t& axis, int& before_dims,
-                                      int& after_dims_including_split_axis, int& after_dims_excluding_split,
-                                      std::vector<int64_t>& split_sizes) override { return p->SplitBase::PrepareForCompute(input_shape, num_outputs, axis, before_dims, after_dims_including_split_axis, after_dims_excluding_split, split_sizes); }
+  Status SplitBase__PrepareForCompute(const SplitBase* p, const TensorShape& input_shape, int num_outputs, int64_t& axis, int& before_dims, int& after_dims_including_split_axis, int& after_dims_excluding_split, std::vector<int64_t>& split_sizes) override { return p->SplitBase::PrepareForCompute(input_shape, num_outputs, axis, before_dims, after_dims_including_split_axis, after_dims_excluding_split, split_sizes); }
 
   // From cpu/tensor/concatbase.h (direct)
   Status ConcatBase__PrepareForCompute(const ConcatBase* p, OpKernelContext* ctx, const ConcatBase_InlinedTensorsVector& input_tensors, Prepare& prepare) override {
@@ -192,8 +190,7 @@ struct ProviderHostCPUImpl : ProviderHostCPU {
                                               const TensorShape& global_weights_shape,
                                               const TensorShape& global_bias_shape,
                                               const TensorShape& global_shape) override {
-    return p->contrib::LongformerAttentionBase::CheckInputs(input_shape, weights_shape, bias_shape, mask_shape,
-                                                            global_weights_shape, global_bias_shape, global_shape);
+    return p->contrib::LongformerAttentionBase::CheckInputs(input_shape, weights_shape, bias_shape, mask_shape, global_weights_shape, global_bias_shape, global_shape);
   }
 
   Status AttentionBase__CheckInputs(const contrib::AttentionBase* p,
@@ -206,18 +203,17 @@ struct ProviderHostCPUImpl : ProviderHostCPU {
                                     void* parameters,
                                     const int max_threads_per_block,
                                     const Tensor* past_seq_len) override {
-    return p->contrib::AttentionBase::CheckInputs(input_shape, weights_shape, bias_shape, mask_index, past,
-                                                  relative_position_bias,
-                                                  parameters,
-                                                  max_threads_per_block,
-                                                  past_seq_len);
+    return p->contrib::AttentionBase::CheckInputs(input_shape, weights_shape, bias_shape, mask_index, past, relative_position_bias, parameters, max_threads_per_block, past_seq_len);
   }
 
   Tensor* AttentionBase__GetPresent(const contrib::AttentionBase* p,
-                                    OpKernelContext* context, const Tensor* past, int batch_size, int head_size,
-                                    int sequence_length, int& past_sequence_length) override {
-    return p->contrib::AttentionBase::GetPresent(context, past, batch_size, head_size,
-                                                 sequence_length, past_sequence_length);
+                                    OpKernelContext* context,
+                                    const Tensor* past,
+                                    int batch_size,
+                                    int head_size,
+                                    int sequence_length,
+                                    int& past_sequence_length) override {
+    return p->contrib::AttentionBase::GetPresent(context, past, batch_size, head_size, sequence_length, past_sequence_length);
   }
 
   void BeamSearch__Init(contrib::transformers::BeamSearch* p, const OpKernelInfo& info) override {
@@ -228,11 +224,8 @@ struct ProviderHostCPUImpl : ProviderHostCPU {
     return p->contrib::transformers::BeamSearch::Compute(ctx);
   }
 
-  Status BeamSearch__SetupSubgraphExecutionInfo(contrib::transformers::BeamSearch* p, const SessionState& session_state,
-                                                const std::string& attribute_name,
-                                                const SessionState& subgraph_session_state) override {
-    return p->contrib::transformers::BeamSearch::SetupSubgraphExecutionInfo(session_state, attribute_name,
-                                                                            subgraph_session_state);
+  Status BeamSearch__SetupSubgraphExecutionInfo(contrib::transformers::BeamSearch* p, const SessionState& session_state, const std::string& attribute_name, const SessionState& subgraph_session_state) override {
+    return p->contrib::transformers::BeamSearch::SetupSubgraphExecutionInfo(session_state, attribute_name, subgraph_session_state);
   }
 
   void GreedySearch__Init(contrib::transformers::GreedySearch* p, const OpKernelInfo& info) override {
@@ -269,18 +262,15 @@ struct ProviderHostCPUImpl : ProviderHostCPU {
   void contrib__GetPermutationAndShape(bool ncd_to_ndc, const TensorShape& tensor_shape, TensorShapeVector& new_shape, std::vector<size_t>& permutations) override { contrib::GetPermutationAndShape(ncd_to_ndc, tensor_shape, new_shape, permutations); }
   Status contrib__PrepareForTrainingCompute(const TensorShape& input_shape, int num_outputs, int64_t& axis, int& before_dims, int& after_dims_including_split_axis, int& after_dims_excluding_split, std::vector<int64_t>& split_sizes) override { return contrib::PrepareForTrainingCompute(input_shape, num_outputs, axis, before_dims, after_dims_including_split_axis, after_dims_excluding_split, split_sizes); }
   // From cpu/optimizer/adamwbase.h (direct)
-  Status contrib__AdamWOptimizerBase__PrepareForCompute(const contrib::AdamWOptimizerBase* p, OpKernelContext* ctx,
-                                                        contrib__AdamWOptimizerBase__Prepare& prepare) override {
+  Status contrib__AdamWOptimizerBase__PrepareForCompute(const contrib::AdamWOptimizerBase* p, OpKernelContext* ctx, contrib__AdamWOptimizerBase__Prepare& prepare) override {
     return p->AdamWOptimizerBase::PrepareForCompute(ctx,
                                                     reinterpret_cast<contrib::AdamWOptimizerBase::Prepare&>(prepare));
   }
-  Status contrib__SGDOptimizerV2Base__PrepareForCompute(const contrib::SGDOptimizerV2Base* p, OpKernelContext* ctx,
-                                                        contrib__SGDOptimizerV2Base__Prepare& prepare) override {
+  Status contrib__SGDOptimizerV2Base__PrepareForCompute(const contrib::SGDOptimizerV2Base* p, OpKernelContext* ctx, contrib__SGDOptimizerV2Base__Prepare& prepare) override {
     return p->SGDOptimizerV2Base::PrepareForCompute(ctx,
                                                     reinterpret_cast<contrib::SGDOptimizerV2Base::Prepare&>(prepare));
   }
-  void contrib__ShrunkenGatherCommon__CheckInput(const contrib::ShrunkenGatherCommon* p, const Tensor* input_tensor,
-                                                 const Tensor* indices_tensor, int64_t axis_in) const override {
+  void contrib__ShrunkenGatherCommon__CheckInput(const contrib::ShrunkenGatherCommon* p, const Tensor* input_tensor, const Tensor* indices_tensor, int64_t axis_in) const override {
     return p->ShrunkenGatherCommon::CheckInput(input_tensor, indices_tensor, axis_in);
   }
 

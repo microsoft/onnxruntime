@@ -30,9 +30,7 @@ ONNX_OPERATOR_KERNEL_EX(
     1,
     kCpuExecutionProvider,
     KernelDefBuilder()
-        .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
-                              DataTypeImpl::GetTensorType<double>(),
-                              DataTypeImpl::GetTensorType<bool>()})
+        .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(), DataTypeImpl::GetTensorType<double>(), DataTypeImpl::GetTensorType<bool>()})
         .TypeConstraint("S", DataTypeImpl::GetTensorType<std::string>()),
     SummaryScalarOp);
 
@@ -42,8 +40,7 @@ ONNX_OPERATOR_KERNEL_EX(
     1,
     kCpuExecutionProvider,
     KernelDefBuilder()
-        .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
-                              DataTypeImpl::GetTensorType<double>()})
+        .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(), DataTypeImpl::GetTensorType<double>()})
         .TypeConstraint("S", DataTypeImpl::GetTensorType<std::string>()),
     SummaryHistogramOp);
 

@@ -41,8 +41,7 @@ bool EnforceNodeAllInputOutputHaveShapes(const Node& node) {
 }  // namespace
 
 template <typename T1, typename T2>
-Status UpStreamGraphTransformerBase<T1, T2>::ApplyImpl(Graph& graph, bool& modified, int graph_level,
-                                                       const logging::Logger& logger)
+Status UpStreamGraphTransformerBase<T1, T2>::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger)
     const {
   LOG_DEBUG_INFO(logger, "Enter UpStreamGraphTransformerBase");
 
@@ -96,8 +95,7 @@ Status UpStreamGraphTransformerBase<T1, T2>::ApplyImpl(Graph& graph, bool& modif
       // 2. If the node has more than one outputs, only one of the outputs has output edge
       //   and that output is used by the node to upstream.
       if (input_tensor_producer_node->GetOutputEdgesCount() > 1) {
-        LOG_DEBUG_INFO(logger, log_prefix + " stops at node " + input_tensor_producer_node->Name() +
-                                   " since multiple consumers found");
+        LOG_DEBUG_INFO(logger, log_prefix + " stops at node " + input_tensor_producer_node->Name() + " since multiple consumers found");
         continue;
       }
 
@@ -119,31 +117,24 @@ Status UpStreamGraphTransformerBase<T1, T2>::ApplyImpl(Graph& graph, bool& modif
 
   // For `Node A` -> 'Entry Node B', one `passthrough` means, entry node B is moved ahead of node A on
   // its every input branch. `passthrough_count` is the total number of times we move entry node B.
-  LOG_DEBUG_INFO(logger, "Exit UpStreamGraphTransformerBase, reordered " + std::to_string(reordered_node_count) +
-                             " nodes, total passthrough count (how many times we re-order the nodes): " +
-                             std::to_string(passthrough_count));
+  LOG_DEBUG_INFO(logger, "Exit UpStreamGraphTransformerBase, reordered " + std::to_string(reordered_node_count) + " nodes, total passthrough count (how many times we re-order the nodes): " + std::to_string(passthrough_count));
   return Status::OK();
 }
 
 template <typename T1, typename T2>
-bool UpStreamGraphTransformerBase<T1, T2>::Upstream(Graph& graph, std::deque<T1>& queue,
-                                                    Node& current_node, T1& info,
-                                                    const logging::Logger& logger) const {
+bool UpStreamGraphTransformerBase<T1, T2>::Upstream(Graph& graph, std::deque<T1>& queue, Node& current_node, T1& info, const logging::Logger& logger) const {
   const std::string op_type = GetFullQualifiedOpName(current_node.OpType(), current_node.Domain());
   if (allowed_passthrough_ops_.count(op_type)) {
     auto& pass_through_config = allowed_passthrough_ops_.at(op_type);
     LOG_DEBUG_INFO(logger, "Enter reorder handle for node " + current_node.Name() + "(" + op_type + ")");
 
-    if (!graph_utils::IsSupportedOptypeVersionAndDomain(current_node, current_node.OpType(),
-                                                        pass_through_config.opsets, current_node.Domain())) {
-      LOG_DEBUG_INFO(logger, "Unsupported opset for " + current_node.Name() + "(" + op_type + ") since version: " +
-                                 std::to_string(current_node.SinceVersion()));
+    if (!graph_utils::IsSupportedOptypeVersionAndDomain(current_node, current_node.OpType(), pass_through_config.opsets, current_node.Domain())) {
+      LOG_DEBUG_INFO(logger, "Unsupported opset for " + current_node.Name() + "(" + op_type + ") since version: " + std::to_string(current_node.SinceVersion()));
       return false;
     }
 
     if (!EnforceNodeAllInputOutputHaveShapes(current_node)) {
-      LOG_DEBUG_INFO(logger, "Some inputs/outputs' shape not found for node " + current_node.Name() + "(" +
-                                 op_type + ")");
+      LOG_DEBUG_INFO(logger, "Some inputs/outputs' shape not found for node " + current_node.Name() + "(" + op_type + ")");
       return false;
     }
 

@@ -37,9 +37,7 @@ class Attention : public OpKernel, public AttentionCPUBase {
                                    /*out*/ bool& used_shared_buffers) override;
 
  private:
-  bool IsPackWeightsSuccessful(int qkv_index, AllocatorPtr alloc, size_t head_size,
-                               size_t input_hidden_size, const T* weights_data,
-                               size_t weight_matrix_col_size, PrePackedWeights* prepacked_weights);
+  bool IsPackWeightsSuccessful(int qkv_index, AllocatorPtr alloc, size_t head_size, size_t input_hidden_size, const T* weights_data, size_t weight_matrix_col_size, PrePackedWeights* prepacked_weights);
 
   BufferUniquePtr packed_weights_[3];
   size_t packed_weights_size_[3] = {0, 0, 0};
@@ -155,14 +153,9 @@ Status Attention<T>::PrePack(const Tensor& weights, int input_idx, AllocatorPtr 
   const size_t qkv_head_size[3] = {q_hidden_size / num_heads_, k_hidden_size / num_heads_, v_hidden_size / num_heads_};
   const size_t weight_matrix_col_size = q_hidden_size + k_hidden_size + v_hidden_size;
 
-  if (!IsPackWeightsSuccessful(0, alloc, qkv_head_size[0], input_hidden_size,
-                               weights_data, weight_matrix_col_size, prepacked_weights) ||
-      !IsPackWeightsSuccessful(1, alloc, qkv_head_size[1], input_hidden_size,
-                               weights_data + (num_heads_ * qkv_head_size[0]),
-                               weight_matrix_col_size, prepacked_weights) ||
-      !IsPackWeightsSuccessful(2, alloc, qkv_head_size[2], input_hidden_size,
-                               weights_data + (num_heads_ * (qkv_head_size[0] + qkv_head_size[1])),
-                               weight_matrix_col_size, prepacked_weights)) {
+  if (!IsPackWeightsSuccessful(0, alloc, qkv_head_size[0], input_hidden_size, weights_data, weight_matrix_col_size, prepacked_weights) ||
+      !IsPackWeightsSuccessful(1, alloc, qkv_head_size[1], input_hidden_size, weights_data + (num_heads_ * qkv_head_size[0]), weight_matrix_col_size, prepacked_weights) ||
+      !IsPackWeightsSuccessful(2, alloc, qkv_head_size[2], input_hidden_size, weights_data + (num_heads_ * (qkv_head_size[0] + qkv_head_size[1])), weight_matrix_col_size, prepacked_weights)) {
     if (prepacked_weights == nullptr) {
       FreePackedWeights(packed_weights_, qkv_hidden_sizes_.size());
     }
@@ -328,11 +321,7 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
   }
 
   // Compute the attention score and apply the score to V
-  return ApplyAttention(Q, K, V, mask_index, past, nullptr /* past_key */, nullptr /* past_value */,
-                        output, nullptr /* present_key */, nullptr /* present_value */,
-                        batch_size, sequence_length, sequence_length,
-                        parameters.head_size, parameters.v_head_size, parameters.v_hidden_size,
-                        relative_position_bias, context);
+  return ApplyAttention(Q, K, V, mask_index, past, nullptr /* past_key */, nullptr /* past_value */, output, nullptr /* present_key */, nullptr /* present_value */, batch_size, sequence_length, sequence_length, parameters.head_size, parameters.v_head_size, parameters.v_hidden_size, relative_position_bias, context);
 }
 }  // namespace contrib
 }  // namespace onnxruntime

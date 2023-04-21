@@ -207,9 +207,7 @@ OrtValue* OrtCreateTensor(int data_type, void* data, size_t data_length, size_t*
     RETURN_NULLPTR_IF_ERROR(GetAllocatorWithDefaultOptions, &allocator);
 
     OrtValue* value = nullptr;
-    RETURN_NULLPTR_IF_ERROR(CreateTensorAsOrtValue, allocator,
-                            dims_length > 0 ? shapes.data() : nullptr, dims_length,
-                            ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING, &value);
+    RETURN_NULLPTR_IF_ERROR(CreateTensorAsOrtValue, allocator, dims_length > 0 ? shapes.data() : nullptr, dims_length, ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING, &value);
 
     const char* const* strings = reinterpret_cast<const char* const*>(data);
     RETURN_NULLPTR_IF_ERROR(FillStringTensor, value, strings, data_length / sizeof(const char*));
@@ -220,9 +218,7 @@ OrtValue* OrtCreateTensor(int data_type, void* data, size_t data_length, size_t*
     RETURN_NULLPTR_IF_ERROR(CreateCpuMemoryInfo, OrtDeviceAllocator, OrtMemTypeDefault, &memoryInfo);
 
     OrtValue* value = nullptr;
-    int error_code = CHECK_STATUS(CreateTensorWithDataAsOrtValue, memoryInfo, data, data_length,
-                                  dims_length > 0 ? shapes.data() : nullptr, dims_length,
-                                  static_cast<ONNXTensorElementDataType>(data_type), &value);
+    int error_code = CHECK_STATUS(CreateTensorWithDataAsOrtValue, memoryInfo, data, data_length, dims_length > 0 ? shapes.data() : nullptr, dims_length, static_cast<ONNXTensorElementDataType>(data_type), &value);
 
     Ort::GetApi().ReleaseMemoryInfo(memoryInfo);
     return (error_code == ORT_OK) ? value : nullptr;
@@ -360,8 +356,12 @@ void OrtReleaseRunOptions(OrtRunOptions* run_options) {
 }
 
 int OrtRun(OrtSession* session,
-           const char** input_names, const ort_tensor_handle_t* inputs, size_t input_count,
-           const char** output_names, size_t output_count, ort_tensor_handle_t* outputs,
+           const char** input_names,
+           const ort_tensor_handle_t* inputs,
+           size_t input_count,
+           const char** output_names,
+           size_t output_count,
+           ort_tensor_handle_t* outputs,
            OrtRunOptions* run_options) {
   return CHECK_STATUS(Run, session, run_options, input_names, inputs, input_count, output_names, output_count, outputs);
 }

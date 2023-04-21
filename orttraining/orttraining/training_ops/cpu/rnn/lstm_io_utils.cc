@@ -19,9 +19,7 @@ rnn::detail::GemmWeights<T> LoadWeights(const Tensor* weights, const int index) 
   return rnn::detail::GemmWeights<T>(index, weights_data, weights_size_per_direction, rnn::detail::PackedWeights());
 }
 
-void ValidateLSTMInputs(const Tensor* X, const Tensor* W, const Tensor* R, const Tensor* B,
-                        const Tensor* SL, const Tensor* H0, const Tensor* C0, const Tensor* P,
-                        const int directions, const int hidden_size) {
+void ValidateLSTMInputs(const Tensor* X, const Tensor* W, const Tensor* R, const Tensor* B, const Tensor* SL, const Tensor* H0, const Tensor* C0, const Tensor* P, const int directions, const int hidden_size) {
   const auto& X_shape = X->Shape();
   ORT_ENFORCE(X_shape.NumDimensions() == 3U, "Input X must have 3 dimensions only. Actual:", X_shape);
   const int batch_size = narrow<int>(X_shape[1]);
@@ -32,21 +30,40 @@ void ValidateLSTMInputs(const Tensor* X, const Tensor* W, const Tensor* R, const
                   narrow<int>(W_shape[0]) == directions &&
                   narrow<int>(W_shape[1]) == 4 * hidden_size &&
                   narrow<int>(W_shape[2]) == input_size,
-              "Input W must have shape {", directions, ", ", 4 * hidden_size, ", ", input_size, "}. Actual:", W_shape);
+              "Input W must have shape {",
+              directions,
+              ", ",
+              4 * hidden_size,
+              ", ",
+              input_size,
+              "}. Actual:",
+              W_shape);
 
   const auto& R_shape = R->Shape();
   ORT_ENFORCE(R_shape.NumDimensions() == 3U &&
                   narrow<int>(R_shape[0]) == directions &&
                   narrow<int>(R_shape[1]) == 4 * hidden_size &&
                   narrow<int>(R_shape[2]) == hidden_size,
-              "Input R must have shape {", directions, ", ", 4 * hidden_size, ", ", hidden_size, "}. Actual:", R_shape);
+              "Input R must have shape {",
+              directions,
+              ", ",
+              4 * hidden_size,
+              ", ",
+              hidden_size,
+              "}. Actual:",
+              R_shape);
 
   if (B != nullptr) {
     const auto& B_shape = B->Shape();
     ORT_ENFORCE(B_shape.NumDimensions() == 2U &&
                     narrow<int>(B_shape[0]) == directions &&
                     narrow<int>(B_shape[1]) == 8 * hidden_size,
-                "Input B must have shape {", directions, ", ", 8 * hidden_size, "}. Actual:", B_shape);
+                "Input B must have shape {",
+                directions,
+                ", ",
+                8 * hidden_size,
+                "}. Actual:",
+                B_shape);
   }
 
   ORT_ENFORCE(!SL,
@@ -60,7 +77,14 @@ void ValidateLSTMInputs(const Tensor* X, const Tensor* W, const Tensor* R, const
                     narrow<int>(H0_shape[0]) == directions &&
                     narrow<int>(H0_shape[1]) == batch_size &&
                     narrow<int>(H0_shape[2]) == hidden_size,
-                "Input H0 must have shape {", directions, ", ", batch_size, ", ", hidden_size, "}. Actual:", H0_shape);
+                "Input H0 must have shape {",
+                directions,
+                ", ",
+                batch_size,
+                ", ",
+                hidden_size,
+                "}. Actual:",
+                H0_shape);
   }
 
   if (C0 != nullptr) {
@@ -69,7 +93,14 @@ void ValidateLSTMInputs(const Tensor* X, const Tensor* W, const Tensor* R, const
                     narrow<int>(C0_shape[0]) == directions &&
                     narrow<int>(C0_shape[1]) == batch_size &&
                     narrow<int>(C0_shape[2]) == hidden_size,
-                "Input C0 must have shape {", directions, ", ", batch_size, ", ", hidden_size, "}. Actual:", C0_shape);
+                "Input C0 must have shape {",
+                directions,
+                ", ",
+                batch_size,
+                ", ",
+                hidden_size,
+                "}. Actual:",
+                C0_shape);
   }
 
   if (P != nullptr) {
@@ -77,13 +108,16 @@ void ValidateLSTMInputs(const Tensor* X, const Tensor* W, const Tensor* R, const
     ORT_ENFORCE(P_shape.NumDimensions() == 2U &&
                     narrow<int>(P_shape[0]) == directions &&
                     narrow<int>(P_shape[1]) == 3 * hidden_size,
-                "Input P must have shape {", directions, ", ", 3 * hidden_size, "}. Actual:", P_shape);
+                "Input P must have shape {",
+                directions,
+                ", ",
+                3 * hidden_size,
+                "}. Actual:",
+                P_shape);
   }
 }
 
-void ValidateLSTMGradInputs(const Tensor* X, const Tensor* HAll, const Tensor* CAll, const Tensor* IOFC,
-                            const Tensor* grad_HAll, const Tensor* grad_Ht, const Tensor* grad_Ct,
-                            const int directions, const int hidden_size) {
+void ValidateLSTMGradInputs(const Tensor* X, const Tensor* HAll, const Tensor* CAll, const Tensor* IOFC, const Tensor* grad_HAll, const Tensor* grad_Ht, const Tensor* grad_Ct, const int directions, const int hidden_size) {
   const auto& X_shape = X->Shape();
   const int sequence_length = narrow<int>(X_shape[0]);
   const int batch_size = narrow<int>(X_shape[1]);
@@ -95,7 +129,16 @@ void ValidateLSTMGradInputs(const Tensor* X, const Tensor* HAll, const Tensor* C
                     narrow<int>(HAll_shape[1]) == directions &&
                     narrow<int>(HAll_shape[2]) == batch_size &&
                     narrow<int>(HAll_shape[3]) == hidden_size,
-                "Input HAll must have shape {", sequence_length, ", ", directions, ", ", batch_size, ", ", hidden_size, "}. Actual:", HAll_shape);
+                "Input HAll must have shape {",
+                sequence_length,
+                ", ",
+                directions,
+                ", ",
+                batch_size,
+                ", ",
+                hidden_size,
+                "}. Actual:",
+                HAll_shape);
   }
 
   if (CAll != nullptr) {
@@ -105,7 +148,16 @@ void ValidateLSTMGradInputs(const Tensor* X, const Tensor* HAll, const Tensor* C
                     narrow<int>(CAll_shape[1]) == directions &&
                     narrow<int>(CAll_shape[2]) == batch_size &&
                     narrow<int>(CAll_shape[3]) == hidden_size,
-                "Input CAll must have shape {", sequence_length, ", ", directions, ", ", batch_size, ", ", hidden_size, "}. Actual:", CAll_shape);
+                "Input CAll must have shape {",
+                sequence_length,
+                ", ",
+                directions,
+                ", ",
+                batch_size,
+                ", ",
+                hidden_size,
+                "}. Actual:",
+                CAll_shape);
   }
 
   if (IOFC != nullptr) {
@@ -115,7 +167,16 @@ void ValidateLSTMGradInputs(const Tensor* X, const Tensor* HAll, const Tensor* C
                     narrow<int>(IOFC_shape[1]) == directions &&
                     narrow<int>(IOFC_shape[2]) == batch_size &&
                     narrow<int>(IOFC_shape[3]) == 4 * hidden_size,
-                "Input IOFC must have shape {", sequence_length, ", ", directions, ", ", batch_size, ", ", 4 * hidden_size, "}. Actual:", IOFC_shape);
+                "Input IOFC must have shape {",
+                sequence_length,
+                ", ",
+                directions,
+                ", ",
+                batch_size,
+                ", ",
+                4 * hidden_size,
+                "}. Actual:",
+                IOFC_shape);
   }
 
   if (grad_HAll != nullptr) {
@@ -125,8 +186,16 @@ void ValidateLSTMGradInputs(const Tensor* X, const Tensor* HAll, const Tensor* C
                     narrow<int>(grad_HAll_shape[1]) == directions &&
                     narrow<int>(grad_HAll_shape[2]) == batch_size &&
                     narrow<int>(grad_HAll_shape[3]) == hidden_size,
-                "Input grad_HAll must have shape {", sequence_length, ", ", directions, ", ", batch_size,
-                ", ", hidden_size, "}. Actual:", grad_HAll_shape);
+                "Input grad_HAll must have shape {",
+                sequence_length,
+                ", ",
+                directions,
+                ", ",
+                batch_size,
+                ", ",
+                hidden_size,
+                "}. Actual:",
+                grad_HAll_shape);
   }
 
   if (grad_Ht != nullptr) {
@@ -135,7 +204,14 @@ void ValidateLSTMGradInputs(const Tensor* X, const Tensor* HAll, const Tensor* C
                     narrow<int>(grad_Ht_shape[0]) == directions &&
                     narrow<int>(grad_Ht_shape[1]) == batch_size &&
                     narrow<int>(grad_Ht_shape[2]) == hidden_size,
-                "Input grad_Ht must have shape {", directions, ", ", batch_size, ", ", hidden_size, "}. Actual:", grad_Ht_shape);
+                "Input grad_Ht must have shape {",
+                directions,
+                ", ",
+                batch_size,
+                ", ",
+                hidden_size,
+                "}. Actual:",
+                grad_Ht_shape);
   }
 
   if (grad_Ct != nullptr) {
@@ -144,7 +220,14 @@ void ValidateLSTMGradInputs(const Tensor* X, const Tensor* HAll, const Tensor* C
                     narrow<int>(grad_Ct_shape[0]) == directions &&
                     narrow<int>(grad_Ct_shape[1]) == batch_size &&
                     narrow<int>(grad_Ct_shape[2]) == hidden_size,
-                "Input grad_Ct must have shape {", directions, ", ", batch_size, ", ", hidden_size, "}. Actual:", grad_Ct_shape);
+                "Input grad_Ct must have shape {",
+                directions,
+                ", ",
+                batch_size,
+                ", ",
+                hidden_size,
+                "}. Actual:",
+                grad_Ct_shape);
   }
 }
 
@@ -154,7 +237,8 @@ LSTMAttributes::LSTMAttributes(const OpKernelInfo& info) {
   std::string direction_str = info.GetAttrOrDefault<std::string>("direction", "forward");
   direction = rnn::detail::MakeDirection(direction_str);
   ORT_ENFORCE(direction == rnn::detail::Direction::kForward,
-              "LSTM and LSTMGrad kernel only supports the forward direction for now. Provided direction: ", direction);
+              "LSTM and LSTMGrad kernel only supports the forward direction for now. Provided direction: ",
+              direction);
   num_directions = 1;
 
   std::vector<std::string> activation_func_names = info.GetAttrsOrDefault<std::string>("activations");
@@ -167,7 +251,10 @@ LSTMAttributes::LSTMAttributes(const OpKernelInfo& info) {
   }
 
   ORT_ENFORCE(activation_func_names.size() == static_cast<size_t>(num_directions) * 3U,
-              "Unexpected number of activation function names provided. Expected: ", num_directions * 3, " Actual: ", activation_func_names.size());
+              "Unexpected number of activation function names provided. Expected: ",
+              num_directions * 3,
+              " Actual: ",
+              activation_func_names.size());
 
   ORT_ENFORCE(activation_func_names[0] == "sigmoid",
               "LSTM and LSTMGrad only support the sigmoid function for the f activation parameter.");
@@ -220,8 +307,7 @@ LSTMInputs<T>::LSTMInputs(OpKernelContext* context, const int directions, const 
 }
 
 template <typename T>
-LSTMOutputs<T>::LSTMOutputs(OpKernelContext* context, const int directions, const int sequence_length,
-                            const int batch_size, const int hidden_size) {
+LSTMOutputs<T>::LSTMOutputs(OpKernelContext* context, const int directions, const int sequence_length, const int batch_size, const int hidden_size) {
   const TensorShape HAll_shape{sequence_length, directions, batch_size, hidden_size};  // [seq_length, directions, batch_size, hidden_size]
   Tensor* HAll = context->Output(0, HAll_shape);                                       // all hidden states
   const TensorShape Ht_shape{directions, batch_size, hidden_size};                     // [directions, batch_size, hidden_size]
@@ -242,11 +328,9 @@ LSTMOutputs<T>::LSTMOutputs(OpKernelContext* context, const int directions, cons
   const size_t final_state_size = static_cast<size_t>(directions) * static_cast<size_t>(batch_size) *
                                   static_cast<size_t>(hidden_size);
   final_hidden_state = Ht ? Ht->MutableDataAsSpan<T>()
-                          : rnn::detail::Allocate(alloc, final_state_size,
-                                                  h_final_ptr_, true, static_cast<T>(0));
+                          : rnn::detail::Allocate(alloc, final_state_size, h_final_ptr_, true, static_cast<T>(0));
   final_cell_state = Ct ? Ct->MutableDataAsSpan<T>()
-                        : rnn::detail::Allocate(alloc, final_state_size,
-                                                c_final_ptr_, true, static_cast<T>(0));
+                        : rnn::detail::Allocate(alloc, final_state_size, c_final_ptr_, true, static_cast<T>(0));
 
   ORT_ENFORCE(CAll, "All cell states output is required for LSTMTraining to compute gradients.");
   all_cell_states = CAll->MutableDataAsSpan<T>();
@@ -289,11 +373,9 @@ LSTMGradInputs<T>::LSTMGradInputs(OpKernelContext* context, const int directions
   const size_t initial_state_size = static_cast<size_t>(directions) * static_cast<size_t>(shape.batch_size) *
                                     static_cast<size_t>(hidden_size);
   initial_hidden_state = H0 ? H0->DataAsSpan<T>()
-                            : rnn::detail::Allocate(alloc, initial_state_size,
-                                                    initial_hidden_state_ptr_, true, static_cast<T>(0));
+                            : rnn::detail::Allocate(alloc, initial_state_size, initial_hidden_state_ptr_, true, static_cast<T>(0));
   initial_cell_state = C0 ? C0->DataAsSpan<T>()
-                          : rnn::detail::Allocate(alloc, initial_state_size,
-                                                  initial_cell_state_ptr_, true, static_cast<T>(0));
+                          : rnn::detail::Allocate(alloc, initial_state_size, initial_cell_state_ptr_, true, static_cast<T>(0));
 
   ORT_ENFORCE(HAll, "All hidden states input to LSTMGrad must exist to compute the gradients.");
   all_hidden_states = HAll->DataAsSpan<T>();
@@ -310,8 +392,7 @@ LSTMGradInputs<T>::LSTMGradInputs(OpKernelContext* context, const int directions
 }
 
 template <typename T>
-LSTMGradOutputs<T>::LSTMGradOutputs(OpKernelContext* context, const int directions, const int sequence_length,
-                                    const int batch_size, const int hidden_size, const int input_size) {
+LSTMGradOutputs<T>::LSTMGradOutputs(OpKernelContext* context, const int directions, const int sequence_length, const int batch_size, const int hidden_size, const int input_size) {
   // Outputs of the gradient kernel
   const TensorShape dX_shape{sequence_length, batch_size, input_size};  // [seq_length, batch_size, input_size]
   Tensor* dX = context->Output(0, dX_shape);                            // gradient w.r.t to the input X
@@ -341,11 +422,9 @@ LSTMGradOutputs<T>::LSTMGradOutputs(OpKernelContext* context, const int directio
   const size_t initial_state_size = static_cast<size_t>(directions) * static_cast<size_t>(batch_size) *
                                     static_cast<size_t>(hidden_size);
   grad_initial_cell_state = dC0 ? dC0->MutableDataAsSpan<T>()
-                                : rnn::detail::Allocate(alloc, initial_state_size,
-                                                        grad_initial_cell_state_ptr_, true, static_cast<T>(0));
+                                : rnn::detail::Allocate(alloc, initial_state_size, grad_initial_cell_state_ptr_, true, static_cast<T>(0));
   grad_initial_hidden_state = dH0 ? dH0->MutableDataAsSpan<T>()
-                                  : rnn::detail::Allocate(alloc, initial_state_size,
-                                                          grad_initial_hidden_state_ptr_, true, static_cast<T>(0));
+                                  : rnn::detail::Allocate(alloc, initial_state_size, grad_initial_hidden_state_ptr_, true, static_cast<T>(0));
   grad_peephole_weights = dP ? dP->MutableDataAsSpan<T>() : gsl::span<T>();
 }
 

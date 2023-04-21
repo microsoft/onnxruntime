@@ -44,7 +44,8 @@ QLinearConcat::QLinearConcat(const OpKernelInfo& info) : OpKernel(info), ConcatB
     }
     ORT_ENFORCE(tensor_x_scale->IsDataType<float>(), "Input scale is not float for input def @", def_index + 1);
     ORT_ENFORCE(tensor_x_zero_point->GetElementType() == tensor_y_zero_point->GetElementType(),
-                "Wrong input type encountered for zero point input def @", def_index + 2);
+                "Wrong input type encountered for zero point input def @",
+                def_index + 2);
 
     size_t input_idx = (def_index - 2) / 3;
     fixed_table_attrs_[input_idx] |= LOOKUP_TABLE_IS_FIXED;
@@ -54,12 +55,10 @@ QLinearConcat::QLinearConcat(const OpKernelInfo& info) : OpKernel(info), ConcatB
       fixed_lookup_tables_[input_idx].resize(256);
       if (is_signed_int8) {
         QlinearBuildLookupTable<int8_t>(
-            fixed_lookup_tables_[input_idx].data(), tensor_x_scale, tensor_x_zero_point,
-            tensor_y_scale, tensor_y_zero_point, identity_float);
+            fixed_lookup_tables_[input_idx].data(), tensor_x_scale, tensor_x_zero_point, tensor_y_scale, tensor_y_zero_point, identity_float);
       } else {
         QlinearBuildLookupTable<uint8_t>(
-            fixed_lookup_tables_[input_idx].data(), tensor_x_scale, tensor_x_zero_point,
-            tensor_y_scale, tensor_y_zero_point, identity_float);
+            fixed_lookup_tables_[input_idx].data(), tensor_x_scale, tensor_x_zero_point, tensor_y_scale, tensor_y_zero_point, identity_float);
       }
     }
   }
@@ -94,7 +93,8 @@ Status QLinearConcat::Compute(OpKernelContext* ctx) const {
 
       ORT_ENFORCE(tensor_x_scale->IsDataType<float>(), "Input scale is not float for quantized input @", tuple_start + 1);
       ORT_ENFORCE(tensor_x_zero_point->GetElementType() == tensor_y_zero_point->GetElementType(),
-                  "Wrong input type encountered for zero point of quantized input @", tuple_start + 2);
+                  "Wrong input type encountered for zero point of quantized input @",
+                  tuple_start + 2);
 
       if (has_same_scale(tensor_x_scale, tensor_y_scale) && has_same_zero_point(is_signed_int8, tensor_x_zero_point, tensor_y_zero_point)) {
         dynamic_table_attrs[input_index] |= LOOKUP_TABLE_IS_COPY;
@@ -102,12 +102,10 @@ Status QLinearConcat::Compute(OpKernelContext* ctx) const {
         dynamic_lookup_tables[input_index].resize(256);
         if (is_signed_int8) {
           QlinearBuildLookupTable<int8_t>(
-              dynamic_lookup_tables[input_index].data(), tensor_x_scale, tensor_x_zero_point,
-              tensor_y_scale, tensor_y_zero_point, identity_float);
+              dynamic_lookup_tables[input_index].data(), tensor_x_scale, tensor_x_zero_point, tensor_y_scale, tensor_y_zero_point, identity_float);
         } else {
           QlinearBuildLookupTable<uint8_t>(
-              dynamic_lookup_tables[input_index].data(), tensor_x_scale, tensor_x_zero_point,
-              tensor_y_scale, tensor_y_zero_point, identity_float);
+              dynamic_lookup_tables[input_index].data(), tensor_x_scale, tensor_x_zero_point, tensor_y_scale, tensor_y_zero_point, identity_float);
         }
       }
     }

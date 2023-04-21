@@ -65,18 +65,12 @@ Status SVMRegressor<T>::Compute(OpKernelContext* ctx) const {
 
     // combine the input data with the support vectors and apply the kernel type
     // output is {num_batches, vector_count_}
-    batched_kernel_dot<float>(x_data, support_vectors_, num_batches, vector_count_, feature_count_, 0.f, tmp_data_span,
-                              threadpool);
+    batched_kernel_dot<float>(x_data, support_vectors_, num_batches, vector_count_, feature_count_, 0.f, tmp_data_span, threadpool);
 
     static const TensorShape rho_shape({1});
 
     // combine with coefficients and add rho_[0]
-    onnxruntime::Gemm<T>::ComputeGemm(CBLAS_TRANSPOSE::CblasNoTrans, CBLAS_TRANSPOSE::CblasTrans,
-                                      num_batches, 1, vector_count_,
-                                      1.f, tmp_data_span.data(), coefficients_.data(), 1.f,
-                                      rho_.data(), &rho_shape,
-                                      out.data(),
-                                      threadpool);
+    onnxruntime::Gemm<T>::ComputeGemm(CBLAS_TRANSPOSE::CblasNoTrans, CBLAS_TRANSPOSE::CblasTrans, num_batches, 1, vector_count_, 1.f, tmp_data_span.data(), coefficients_.data(), 1.f, rho_.data(), &rho_shape, out.data(), threadpool);
   } else if (mode_ == SVM_TYPE::SVM_LINEAR) {
     // combine the coefficients with the input data and apply the kernel type
     batched_kernel_dot<float>(x_data, coefficients_, num_batches, 1, feature_count_, rho_[0], out, threadpool);

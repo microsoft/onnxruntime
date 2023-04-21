@@ -15,8 +15,7 @@ void ElementwiseProduct(const float* op1, const float* op2, float* dest, int siz
 }  // namespace
 
 template <typename T>
-LSTMGradImpl<T>::LSTMGradImpl(int sequence_length, int batch_size, int hidden_size, int input_size,
-                              concurrency::ThreadPool* thread_pool, AllocatorPtr allocator)
+LSTMGradImpl<T>::LSTMGradImpl(int sequence_length, int batch_size, int hidden_size, int input_size, concurrency::ThreadPool* thread_pool, AllocatorPtr allocator)
     : sequence_length_(sequence_length),
       batch_size_(batch_size),
       hidden_size_(hidden_size),
@@ -165,20 +164,24 @@ void LSTMGradImpl<T>::ComputeGradient(const LSTMGradInputs<T>& inputs, LSTMGradO
     const float* grad_Cfinal = inputs.grad_final_cell_state.empty()
                                    ? nullptr
                                    : SafeRawPointer<const T>(inputs.grad_final_cell_state.begin() + hidden_sizexidx,
-                                                             inputs.grad_final_cell_state.end(), hidden_size_);
+                                                             inputs.grad_final_cell_state.end(),
+                                                             hidden_size_);
 
     // Accumulate grad_Cfinal into grad_initial_cell_state
     float* grad_Ct = SafeRawPointer<T>(outputs.grad_initial_cell_state.begin() + hidden_sizexidx,
-                                       outputs.grad_initial_cell_state.end(), hidden_size_);
+                                       outputs.grad_initial_cell_state.end(),
+                                       hidden_size_);
     if (grad_Cfinal)
       deepcpu::elementwise_sum1(grad_Cfinal, grad_Ct, hidden_size_);
 
     const float* grad_Hfinal = inputs.grad_final_hidden_state.empty()
                                    ? nullptr
                                    : SafeRawPointer<const T>(inputs.grad_final_hidden_state.begin() + hidden_sizexidx,
-                                                             inputs.grad_final_hidden_state.end(), hidden_size_);
+                                                             inputs.grad_final_hidden_state.end(),
+                                                             hidden_size_);
     float* grad_Ht = SafeRawPointer<T>(outputs.grad_initial_hidden_state.begin() + hidden_sizexidx,
-                                       outputs.grad_initial_hidden_state.end(), hidden_size_);
+                                       outputs.grad_initial_hidden_state.end(),
+                                       hidden_size_);
     // The LSTM outputs: all hidden states, final hidden state and final cell states
     // In addition to all hidden states being used, the final hidden state could also be used in the remainder of the
     // graph. So, accumulate the final hidden state gradient in gradHt.
@@ -206,16 +209,20 @@ void LSTMGradImpl<T>::ComputeGradient(const LSTMGradInputs<T>& inputs, LSTMGradO
                                                   hidden_size_
                                             : 0U;
       const float* Ct = SafeRawPointer<const T>(inputs.all_cell_states.begin() + CH_offset,
-                                                inputs.all_cell_states.end(), hidden_size_);
+                                                inputs.all_cell_states.end(),
+                                                hidden_size_);
       const float* Ctminus1 = t > 0 ? SafeRawPointer<const T>(inputs.all_cell_states.begin() + CHtminus1_offset,
-                                                              inputs.all_cell_states.end(), hidden_size_)
+                                                              inputs.all_cell_states.end(),
+                                                              hidden_size_)
                                     : SafeRawPointer<const T>(inputs.initial_cell_state.begin() + hidden_sizexidx,
-                                                              inputs.initial_cell_state.end(), hidden_size_);
+                                                              inputs.initial_cell_state.end(),
+                                                              hidden_size_);
       const float* grad_Ht2 = inputs.grad_all_hidden_states.empty()
                                   ? nullptr
                                   : SafeRawPointer<const T>(
                                         inputs.grad_all_hidden_states.begin() + CH_offset,
-                                        inputs.grad_all_hidden_states.end(), hidden_size_);
+                                        inputs.grad_all_hidden_states.end(),
+                                        hidden_size_);
       // Accumulate the gradient from the gradients of all hidden states for this sequence index and batch index.
       if (grad_Ht2)
         deepcpu::elementwise_sum1(grad_Ht2, grad_Ht, hidden_size_);
@@ -297,31 +304,28 @@ void LSTMGradImpl<T>::ComputeGradient(const LSTMGradInputs<T>& inputs, LSTMGradO
         // [1, input_size_] = [1, hidden_size_] * [hidden_size_, input_size_]
         // M = 1, N = input_size_, K = hidden_size_
         float* grad_Xt = SafeRawPointer<T>(outputs.grad_input.begin() + X_offset,
-                                           outputs.grad_input.end(), input_size_);
-        ::onnxruntime::math::Gemm<float>(CblasNoTrans, CblasNoTrans, 1, input_size_,
-                                         hidden_size_, alpha, grad_ai, Wi, input_beta, grad_Xt, thread_pool_);
+                                           outputs.grad_input.end(),
+                                           input_size_);
+        ::onnxruntime::math::Gemm<float>(CblasNoTrans, CblasNoTrans, 1, input_size_, hidden_size_, alpha, grad_ai, Wi, input_beta, grad_Xt, thread_pool_);
 
         // ao = Xto * Wo^T + Ht-1o * Ro^T + Po (.) Ct + Wbo + Rbo
         // dL/dXto = dL/dao * Wo ---------- (15)
         // [1, input_size_] = [1, hidden_size_] * [hidden_size_, input_size_]
         // M = 1, N = input_size_, K = hidden_size_
         input_beta = 1.0f;
-        ::onnxruntime::math::Gemm<float>(CblasNoTrans, CblasNoTrans, 1, input_size_,
-                                         hidden_size_, alpha, grad_ao, Wo, input_beta, grad_Xt, thread_pool_);
+        ::onnxruntime::math::Gemm<float>(CblasNoTrans, CblasNoTrans, 1, input_size_, hidden_size_, alpha, grad_ao, Wo, input_beta, grad_Xt, thread_pool_);
 
         // af = Xtf * Wf^T + Ht-1f * Rf^T + Pf (.) Ct-1 + Wbf + Rbf
         // dL/dXtf = dL/daf * Wf ---------- (16)
         // [1, input_size_] = [1, hidden_size_] * [hidden_size_, input_size_]
         // M = 1, N = input_size_, K = hidden_size_
-        ::onnxruntime::math::Gemm<float>(CblasNoTrans, CblasNoTrans, 1, input_size_,
-                                         hidden_size_, alpha, grad_af, Wf, input_beta, grad_Xt, thread_pool_);
+        ::onnxruntime::math::Gemm<float>(CblasNoTrans, CblasNoTrans, 1, input_size_, hidden_size_, alpha, grad_af, Wf, input_beta, grad_Xt, thread_pool_);
 
         // ac = Xtc * Wc^T + Ht-1c * Rc^T + Wbc + Rbc
         // dL/dXtc = dL/dac * Wc ---------- (17)
         // [1, input_size_] = [1, hidden_size_] * [hidden_size_, input_size_]
         // M = 1, N = input_size_, K = hidden_size_
-        ::onnxruntime::math::Gemm<float>(CblasNoTrans, CblasNoTrans, 1, input_size_,
-                                         hidden_size_, alpha, grad_ac, Wc, input_beta, grad_Xt, thread_pool_);
+        ::onnxruntime::math::Gemm<float>(CblasNoTrans, CblasNoTrans, 1, input_size_, hidden_size_, alpha, grad_ac, Wc, input_beta, grad_Xt, thread_pool_);
       }
 
       if (grad_weights_required) {
@@ -333,9 +337,9 @@ void LSTMGradImpl<T>::ComputeGradient(const LSTMGradInputs<T>& inputs, LSTMGradO
         // [hidden_size_, input_size_] = [1, hidden_size_]^T * [1, input_size_]
         // M = hidden_size_, N = input_size_, K = 1
         const float* Xt = SafeRawPointer<const T>(inputs.input.begin() + X_offset,
-                                                  inputs.input.end(), input_size_);
-        ::onnxruntime::math::Gemm<float>(CblasTrans, CblasNoTrans, hidden_size_, input_size_,
-                                         1, alpha, grad_ai, Xt, weight_beta, grad_Wi_local, thread_pool_);
+                                                  inputs.input.end(),
+                                                  input_size_);
+        ::onnxruntime::math::Gemm<float>(CblasTrans, CblasNoTrans, hidden_size_, input_size_, 1, alpha, grad_ai, Xt, weight_beta, grad_Wi_local, thread_pool_);
         // Note that the weight beta is always 0. So, we must accumulate ourselves.
         deepcpu::elementwise_sum1(grad_Wi_local, grad_Wi, hidden_size_ * input_size_);
 
@@ -343,8 +347,7 @@ void LSTMGradImpl<T>::ComputeGradient(const LSTMGradInputs<T>& inputs, LSTMGradO
         // dL/dWo = dL/dao^T * Xto ---------- (19)
         // [hidden_size_, input_size_] = [1, hidden_size_]^T * [1, input_size_]
         // M = hidden_size_, N = input_size_, K = 1
-        ::onnxruntime::math::Gemm<float>(CblasTrans, CblasNoTrans, hidden_size_, input_size_,
-                                         1, alpha, grad_ao, Xt, weight_beta, grad_Wo_local, thread_pool_);
+        ::onnxruntime::math::Gemm<float>(CblasTrans, CblasNoTrans, hidden_size_, input_size_, 1, alpha, grad_ao, Xt, weight_beta, grad_Wo_local, thread_pool_);
         // Note that the weight beta is always 0. So, we must accumulate ourselves.
         deepcpu::elementwise_sum1(grad_Wo_local, grad_Wo, hidden_size_ * input_size_);
 
@@ -352,8 +355,7 @@ void LSTMGradImpl<T>::ComputeGradient(const LSTMGradInputs<T>& inputs, LSTMGradO
         // dL/dWf = dL/daf^T * Xtf ---------- (20)
         // [hidden_size_, input_size_] = [1, hidden_size_]^T * [1, input_size_]
         // M = hidden_size_, N = input_size_, K = 1
-        ::onnxruntime::math::Gemm<float>(CblasTrans, CblasNoTrans, hidden_size_, input_size_,
-                                         1, alpha, grad_af, Xt, weight_beta, grad_Wf_local, thread_pool_);
+        ::onnxruntime::math::Gemm<float>(CblasTrans, CblasNoTrans, hidden_size_, input_size_, 1, alpha, grad_af, Xt, weight_beta, grad_Wf_local, thread_pool_);
         // Note that the weight beta is always 0. So, we must accumulate ourselves.
         deepcpu::elementwise_sum1(grad_Wf_local, grad_Wf, hidden_size_ * input_size_);
 
@@ -361,8 +363,7 @@ void LSTMGradImpl<T>::ComputeGradient(const LSTMGradInputs<T>& inputs, LSTMGradO
         // dL/dWc = dL/dac^T * Xtc ---------- (21)
         // [hidden_size_, input_size_] = [1, hidden_size_]^T * [1, input_size_]
         // M = hidden_size_, N = input_size_, K = 1
-        ::onnxruntime::math::Gemm<float>(CblasTrans, CblasNoTrans, hidden_size_, input_size_,
-                                         1, alpha, grad_ac, Xt, weight_beta, grad_Wc_local, thread_pool_);
+        ::onnxruntime::math::Gemm<float>(CblasTrans, CblasNoTrans, hidden_size_, input_size_, 1, alpha, grad_ac, Xt, weight_beta, grad_Wc_local, thread_pool_);
         // Note that the weight beta is always 0. So, we must accumulate ourselves.
         deepcpu::elementwise_sum1(grad_Wc_local, grad_Wc, hidden_size_ * input_size_);
       }
@@ -372,17 +373,18 @@ void LSTMGradImpl<T>::ComputeGradient(const LSTMGradInputs<T>& inputs, LSTMGradO
       if (grad_recurrence_weights_required) {
         const float* Htminus1 = t > 0 ? SafeRawPointer<const T>(
                                             inputs.all_hidden_states.begin() + CHtminus1_offset,
-                                            inputs.all_hidden_states.end(), hidden_size_)
+                                            inputs.all_hidden_states.end(),
+                                            hidden_size_)
                                       : SafeRawPointer<const T>(
                                             inputs.initial_hidden_state.begin() + hidden_sizexidx,
-                                            inputs.initial_hidden_state.end(), hidden_size_);
+                                            inputs.initial_hidden_state.end(),
+                                            hidden_size_);
 
         // ai = Xti * Wi^T + Ht-1i * Ri^T + Pi (.) Ct-1 + Wbi + Rbi
         // dL/dRi = dL/dai^T * Ht-1i ---------- (22)
         // [hidden_size_, hidden_size_] = [1, hidden_size_]^T * [1, hidden_size_]
         // M = hidden_size_, N = hidden_size_, K = 1
-        ::onnxruntime::math::Gemm<float>(CblasTrans, CblasNoTrans, hidden_size_, hidden_size_,
-                                         1, alpha, grad_ai, Htminus1, weight_beta, grad_Ri_local, thread_pool_);
+        ::onnxruntime::math::Gemm<float>(CblasTrans, CblasNoTrans, hidden_size_, hidden_size_, 1, alpha, grad_ai, Htminus1, weight_beta, grad_Ri_local, thread_pool_);
         // Note that the weight beta is always 0. So, we must accumulate ourselves.
         deepcpu::elementwise_sum1(grad_Ri_local, grad_Ri, hidden_size_ * hidden_size_);
 
@@ -390,8 +392,7 @@ void LSTMGradImpl<T>::ComputeGradient(const LSTMGradInputs<T>& inputs, LSTMGradO
         // dL/dRo = dL/dao^T * Ht-1o ---------- (23)
         // [hidden_size_, hidden_size_] = [1, hidden_size_]^T * [1, hidden_size_]
         // M = hidden_size_, N = hidden_size_, K = 1
-        ::onnxruntime::math::Gemm<float>(CblasTrans, CblasNoTrans, hidden_size_, hidden_size_,
-                                         1, alpha, grad_ao, Htminus1, weight_beta, grad_Ro_local, thread_pool_);
+        ::onnxruntime::math::Gemm<float>(CblasTrans, CblasNoTrans, hidden_size_, hidden_size_, 1, alpha, grad_ao, Htminus1, weight_beta, grad_Ro_local, thread_pool_);
         // Note that the weight beta is always 0. So, we must accumulate ourselves.
         deepcpu::elementwise_sum1(grad_Ro_local, grad_Ro, hidden_size_ * hidden_size_);
 
@@ -399,8 +400,7 @@ void LSTMGradImpl<T>::ComputeGradient(const LSTMGradInputs<T>& inputs, LSTMGradO
         // dL/dRf = dL/daf^T * Ht-1f ---------- (24)
         // [hidden_size_, hidden_size_] = [1, hidden_size_]^T * [1, hidden_size_]
         // M = hidden_size_, N = hidden_size_, K = 1
-        ::onnxruntime::math::Gemm<float>(CblasTrans, CblasNoTrans, hidden_size_, hidden_size_,
-                                         1, alpha, grad_af, Htminus1, weight_beta, grad_Rf_local, thread_pool_);
+        ::onnxruntime::math::Gemm<float>(CblasTrans, CblasNoTrans, hidden_size_, hidden_size_, 1, alpha, grad_af, Htminus1, weight_beta, grad_Rf_local, thread_pool_);
         // Note that the weight beta is always 0. So, we must accumulate ourselves.
         deepcpu::elementwise_sum1(grad_Rf_local, grad_Rf, hidden_size_ * hidden_size_);
 
@@ -408,8 +408,7 @@ void LSTMGradImpl<T>::ComputeGradient(const LSTMGradInputs<T>& inputs, LSTMGradO
         // dL/dRc = dL/dac^T * Ht-1c ---------- (25)
         // [hidden_size_, hidden_size_] = [1, hidden_size_]^T * [1, hidden_size_]
         // M = hidden_size_, N = hidden_size_, K = 1
-        ::onnxruntime::math::Gemm<float>(CblasTrans, CblasNoTrans, hidden_size_, hidden_size_,
-                                         1, alpha, grad_ac, Htminus1, weight_beta, grad_Rc_local, thread_pool_);
+        ::onnxruntime::math::Gemm<float>(CblasTrans, CblasNoTrans, hidden_size_, hidden_size_, 1, alpha, grad_ac, Htminus1, weight_beta, grad_Rc_local, thread_pool_);
         // Note that the weight beta is always 0. So, we must accumulate ourselves.
         deepcpu::elementwise_sum1(grad_Rc_local, grad_Rc, hidden_size_ * hidden_size_);
       }
@@ -473,8 +472,7 @@ void LSTMGradImpl<T>::ComputeGradient(const LSTMGradInputs<T>& inputs, LSTMGradO
       // dL/dHt-1i = dL/dai * Ri ---------- (38)
       // [1, hidden_size_] = [1, hidden_size_] * [hidden_size_, hidden_size_]
       // M = 1, N = hidden_size_, K = hidden_size_
-      ::onnxruntime::math::Gemm<float>(CblasNoTrans, CblasNoTrans, 1, hidden_size_,
-                                       hidden_size_, alpha, grad_ai, Ri, recurrence_input_beta, grad_Ht, thread_pool_);
+      ::onnxruntime::math::Gemm<float>(CblasNoTrans, CblasNoTrans, 1, hidden_size_, hidden_size_, alpha, grad_ai, Ri, recurrence_input_beta, grad_Ht, thread_pool_);
 
       recurrence_input_beta = 1.0f;
 
@@ -482,22 +480,19 @@ void LSTMGradImpl<T>::ComputeGradient(const LSTMGradInputs<T>& inputs, LSTMGradO
       // dL/dHt-1o = dL/dao * Ro ---------- (39)
       // [1, hidden_size_] = [1, hidden_size_] * [hidden_size_, hidden_size_]
       // M = 1, N = hidden_size_, K = hidden_size_
-      ::onnxruntime::math::Gemm<float>(CblasNoTrans, CblasNoTrans, 1, hidden_size_,
-                                       hidden_size_, alpha, grad_ao, Ro, recurrence_input_beta, grad_Ht, thread_pool_);
+      ::onnxruntime::math::Gemm<float>(CblasNoTrans, CblasNoTrans, 1, hidden_size_, hidden_size_, alpha, grad_ao, Ro, recurrence_input_beta, grad_Ht, thread_pool_);
 
       // af = Xtf * Wf^T + Ht-1f * Rf^T + Pf (.) Ct-1 + Wbf + Rbf
       // dL/dHt-1f = dL/daf * Rf ---------- (40)
       // [1, hidden_size_] = [1, hidden_size_] * [hidden_size_, hidden_size_]
       // M = 1, N = hidden_size_, K = hidden_size_
-      ::onnxruntime::math::Gemm<float>(CblasNoTrans, CblasNoTrans, 1, hidden_size_,
-                                       hidden_size_, alpha, grad_af, Rf, recurrence_input_beta, grad_Ht, thread_pool_);
+      ::onnxruntime::math::Gemm<float>(CblasNoTrans, CblasNoTrans, 1, hidden_size_, hidden_size_, alpha, grad_af, Rf, recurrence_input_beta, grad_Ht, thread_pool_);
 
       // ac = Xtc * Wc^T + Ht-1c * Rc^T + Wbc + Rbc
       // dL/dHt-1c = dL/dac * Rc ---------- (41)
       // [1, hidden_size_] = [1, hidden_size_] * [hidden_size_, hidden_size_]
       // M = 1, N = hidden_size_, K = hidden_size_
-      ::onnxruntime::math::Gemm<float>(CblasNoTrans, CblasNoTrans, 1, hidden_size_,
-                                       hidden_size_, alpha, grad_ac, Rc, recurrence_input_beta, grad_Ht, thread_pool_);
+      ::onnxruntime::math::Gemm<float>(CblasNoTrans, CblasNoTrans, 1, hidden_size_, hidden_size_, alpha, grad_ac, Rc, recurrence_input_beta, grad_Ht, thread_pool_);
     }
   }
 }

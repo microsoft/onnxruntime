@@ -33,8 +33,7 @@ struct LoggingManager final {
 };
 
 struct Capture final {
-  static std::unique_ptr<Capture> Create(const Logger& logger, logging::Severity severity, const char* category,
-                                         logging::DataType dataType, const CodeLocation& location) { return g_host->logging__Capture__construct(logger, severity, category, dataType, location); }
+  static std::unique_ptr<Capture> Create(const Logger& logger, logging::Severity severity, const char* category, logging::DataType dataType, const CodeLocation& location) { return g_host->logging__Capture__construct(logger, severity, category, dataType, location); }
   static void operator delete(void* p) { g_host->logging__Capture__operator_delete(reinterpret_cast<Capture*>(p)); }
 
   std::ostream& Stream() noexcept { return g_host->logging__Capture__Stream(this); }

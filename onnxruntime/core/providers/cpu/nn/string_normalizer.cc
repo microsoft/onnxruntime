@@ -44,7 +44,9 @@ class Locale {
     loc_ = _create_locale(LC_CTYPE, name.c_str());
     if (loc_ == nullptr) {
       ORT_THROW("Failed to construct locale with name:",
-                name, ":", ":Please, install necessary language-pack-XX and configure locales");
+                name,
+                ":",
+                ":Please, install necessary language-pack-XX and configure locales");
     }
   }
 
@@ -60,11 +62,9 @@ class Locale {
                   std::wstring& wstr) const {
     assert(caseaction != StringNormalizer::NONE);
     if (caseaction == StringNormalizer::LOWER) {
-      std::transform(wstr.begin(), wstr.end(), wstr.begin(),
-                     [this](wchar_t ch) { return ::_towlower_l(ch, loc_); });
+      std::transform(wstr.begin(), wstr.end(), wstr.begin(), [this](wchar_t ch) { return ::_towlower_l(ch, loc_); });
     } else {
-      std::transform(wstr.begin(), wstr.end(), wstr.begin(),
-                     [this](wchar_t ch) { return ::_towupper_l(ch, loc_); });
+      std::transform(wstr.begin(), wstr.end(), wstr.begin(), [this](wchar_t ch) { return ::_towupper_l(ch, loc_); });
     }
   }
 
@@ -87,7 +87,10 @@ class Locale {
     ORT_CATCH(const std::runtime_error& e) {
       ORT_HANDLE_EXCEPTION([&]() {
         ORT_THROW("Failed to construct locale with name:",
-                  name, ":", e.what(), ":Please, install necessary language-pack-XX and configure locales");
+                  name,
+                  ":",
+                  e.what(),
+                  ":Please, install necessary language-pack-XX and configure locales");
       });
     }
   }
@@ -98,11 +101,9 @@ class Locale {
                   std::wstring& wstr) const {
     assert(caseaction != StringNormalizer::NONE);
     if (caseaction == StringNormalizer::LOWER) {
-      std::transform(wstr.begin(), wstr.end(), wstr.begin(),
-                     [this](wchar_t ch) { return std::tolower(ch, loc_); });
+      std::transform(wstr.begin(), wstr.end(), wstr.begin(), [this](wchar_t ch) { return std::tolower(ch, loc_); });
     } else {
-      std::transform(wstr.begin(), wstr.end(), wstr.begin(),
-                     [this](wchar_t ch) { return std::toupper(ch, loc_); });
+      std::transform(wstr.begin(), wstr.end(), wstr.begin(), [this](wchar_t ch) { return std::toupper(ch, loc_); });
     }
   }
 
@@ -193,11 +194,7 @@ const std::string default_locale("en_US.UTF-8");  // All non-MS
 #endif  // MS_VER
 
 template <class ForwardIter>
-Status CopyCaseAction(ForwardIter first, ForwardIter end, OpKernelContext* ctx,
-                      const Locale& loc,
-                      Utf8Converter& converter,
-                      size_t N, size_t C,
-                      StringNormalizer::CaseAction caseaction) {
+Status CopyCaseAction(ForwardIter first, ForwardIter end, OpKernelContext* ctx, const Locale& loc, Utf8Converter& converter, size_t N, size_t C, StringNormalizer::CaseAction caseaction) {
   std::vector<int64_t> output_dims;
   if (N == 1) {
     output_dims.push_back(1);
@@ -226,8 +223,7 @@ Status CopyCaseAction(ForwardIter first, ForwardIter end, OpKernelContext* ctx,
       if (wstr == wconv_error) {
         // Please do not include the input text in the error message as it could
         // be deemed as a compliance violation by teams using this operator
-        return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                      "Input contains invalid utf8 chars");
+        return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Input contains invalid utf8 chars");
       }
       // In place transform
       loc.ChangeCase(caseaction, wstr);
@@ -304,20 +300,17 @@ Status StringNormalizer::Compute(OpKernelContext* ctx) const {
   size_t C = 0;
   if (input_dims.size() == 1) {
     if (input_dims[0] < 1) {
-      return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                    "Single dimension value must be greater than 0");
+      return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Single dimension value must be greater than 0");
     }
     C = onnxruntime::narrow<size_t>(input_dims[0]);
   } else if (input_dims.size() == 2) {
     if (input_dims[0] != 1 || input_dims[1] < 1) {
-      return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                    "Input dimensions are either[C > 0] or [1][C > 0] allowed");
+      return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Input dimensions are either[C > 0] or [1][C > 0] allowed");
     }
     N = 1;
     C = onnxruntime::narrow<size_t>(input_dims[1]);
   } else {
-    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                  "Input dimensions are either[C > 0] or [1][C > 0] allowed");
+    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Input dimensions are either[C > 0] or [1][C > 0] allowed");
   }
 
   Status status;
@@ -338,8 +331,7 @@ Status StringNormalizer::Compute(OpKernelContext* ctx) const {
         }
         ++first;
       }
-      status = CopyCaseAction(filtered_strings.cbegin(), filtered_strings.cend(), ctx, locale, converter,
-                              N, filtered_strings.size(), case_change_action_);
+      status = CopyCaseAction(filtered_strings.cbegin(), filtered_strings.cend(), ctx, locale, converter, N, filtered_strings.size(), case_change_action_);
     } else {
       // Nothing to filter. Copy input to output and change case if needed
       status = CopyCaseAction(input_data, input_data + C, ctx, locale, converter, N, C, case_change_action_);
@@ -361,8 +353,7 @@ Status StringNormalizer::Compute(OpKernelContext* ctx) const {
         if (wstr == wconv_error) {
           // Please do not include the input text in the error message as it could
           // be deemed as a compliance violation by teams using this operator
-          return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                        "Input contains invalid utf8 chars");
+          return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Input contains invalid utf8 chars");
         }
         locale.ChangeCase(compare_caseaction_, wstr);
         if (0 == wstopwords_.count(wstr)) {
@@ -375,11 +366,9 @@ Status StringNormalizer::Compute(OpKernelContext* ctx) const {
         ++first;
       }
       if (case_change_action_ == NONE) {
-        status = CopyCaseAction(filtered_orignal_strings.cbegin(), filtered_orignal_strings.cend(), ctx, locale, converter,
-                                N, filtered_orignal_strings.size(), NONE);
+        status = CopyCaseAction(filtered_orignal_strings.cbegin(), filtered_orignal_strings.cend(), ctx, locale, converter, N, filtered_orignal_strings.size(), NONE);
       } else {
-        status = CopyCaseAction(filtered_cased_strings.begin(), filtered_cased_strings.end(), ctx, locale, converter,
-                                N, filtered_cased_strings.size(), NONE);
+        status = CopyCaseAction(filtered_cased_strings.begin(), filtered_cased_strings.end(), ctx, locale, converter, N, filtered_cased_strings.size(), NONE);
       }
     } else {
       // Nothing to filter. Copy input to output and change case if needed

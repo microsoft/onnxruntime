@@ -114,8 +114,7 @@ Model::NNMemory::NNMemory(const NnApi& nnapi_handle, const char* name, size_t si
     fd_ = nnapi_.ASharedMemory_create(name, size);
     data_ptr_ = reinterpret_cast<uint8_t*>(
         mmap(nullptr, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd_, 0));
-    THROW_ON_ERROR(nnapi_.ANeuralNetworksMemory_createFromFd(size, PROT_READ | PROT_WRITE,
-                                                             fd_, 0, &nn_memory_handle_));
+    THROW_ON_ERROR(nnapi_.ANeuralNetworksMemory_createFromFd(size, PROT_READ | PROT_WRITE, fd_, 0, &nn_memory_handle_));
   }
 }
 

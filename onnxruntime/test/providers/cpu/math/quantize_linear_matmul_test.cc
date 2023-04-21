@@ -13,114 +13,144 @@ namespace test {
 
 TEST(QuantizeLinearMatmulOpTest, QLinearMatMul3D_U8U8) {
   OpTester test("QLinearMatMul", 10);
-  test.AddInput<uint8_t>("T1", {2, 2, 4},
-                         {208, 236, 0, 238,
-                          3, 214, 255, 29,
+  test.AddInput<uint8_t>("T1", {2, 2, 4}, {208, 236, 0, 238, 3, 214, 255, 29,
 
-                          208, 236, 0, 238,
-                          3, 214, 255, 29});
+                                           208,
+                                           236,
+                                           0,
+                                           238,
+                                           3,
+                                           214,
+                                           255,
+                                           29});
 
   test.AddInput<float>("a_scale", {}, {0.0066f});
   test.AddInput<uint8_t>("a_zero_point", {}, {113});
 
-  test.AddInput<uint8_t>("T2", {2, 4, 3},
-                         {152, 51, 244,
-                          60, 26, 255,
-                          0, 127, 246,
-                          127, 254, 247,
+  test.AddInput<uint8_t>("T2", {2, 4, 3}, {152, 51, 244, 60, 26, 255, 0, 127, 246, 127, 254, 247,
 
-                          152, 51, 244,
-                          60, 26, 255,
-                          0, 127, 246,
-                          127, 254, 247});
+                                           152,
+                                           51,
+                                           244,
+                                           60,
+                                           26,
+                                           255,
+                                           0,
+                                           127,
+                                           246,
+                                           127,
+                                           254,
+                                           247});
 
   test.AddInput<float>("b_scale", {}, {0.00705f});
   test.AddInput<uint8_t>("b_zero_point", {}, {114});
 
   test.AddInput<float>("y_scale", {}, {0.0107f});
   test.AddInput<uint8_t>("y_zero_point", {}, {118});
-  test.AddOutput<uint8_t>("T3", {2, 2, 3},
-                          {168, 115, 255,
-                           1, 66, 151,
+  test.AddOutput<uint8_t>("T3", {2, 2, 3}, {168, 115, 255, 1, 66, 151,
 
-                           168, 115, 255,
-                           1, 66, 151});
+                                            168,
+                                            115,
+                                            255,
+                                            1,
+                                            66,
+                                            151});
 
   test.Run();
 }
 
 TEST(QuantizeLinearMatmulOpTest, QLinearMatMul3D_U8S8) {
   OpTester test("QLinearMatMul", 10);
-  test.AddInput<uint8_t>("T1", {2, 2, 4},
-                         {208, 126, 0, 238,
-                          3, 214, 255, 29,
+  test.AddInput<uint8_t>("T1", {2, 2, 4}, {208, 126, 0, 238, 3, 214, 255, 29,
 
-                          208, 236, 0, 238,
-                          3, 214, 255, 29});
+                                           208,
+                                           236,
+                                           0,
+                                           238,
+                                           3,
+                                           214,
+                                           255,
+                                           29});
 
   test.AddInput<float>("a_scale", {}, {0.0066f});
   test.AddInput<uint8_t>("a_zero_point", {}, {113});
 
-  test.AddInput<int8_t>("T2", {2, 4, 3},
-                        {-43, 51, -34,
-                         60, 26, -17,
-                         0, 63, -55,
-                         47, -29, -31,
+  test.AddInput<int8_t>("T2", {2, 4, 3}, {-43, 51, -34, 60, 26, -17, 0, 63, -55, 47, -29, -31,
 
-                         -62, 51, -42,
-                         60, 26, -22,
-                         0, -8, -19,
-                         37, -2, -47});
+                                          -62,
+                                          51,
+                                          -42,
+                                          60,
+                                          26,
+                                          -22,
+                                          0,
+                                          -8,
+                                          -19,
+                                          37,
+                                          -2,
+                                          -47});
 
   test.AddInput<float>("b_scale", {}, {0.00802f});
   test.AddInput<int8_t>("b_zero_point", {}, {-2});
 
   test.AddInput<float>("y_scale", {}, {0.0123f});
   test.AddInput<uint8_t>("y_zero_point", {}, {118});
-  test.AddOutput<uint8_t>("T3", {2, 2, 3},
-                          {130, 95, 114,
-                           148, 155, 105,
+  test.AddOutput<uint8_t>("T3", {2, 2, 3}, {130, 95, 114, 148, 155, 105,
 
-                           146, 157, 75,
-                           160, 101, 134});
+                                            146,
+                                            157,
+                                            75,
+                                            160,
+                                            101,
+                                            134});
 
   test.Run();
 }
 
 TEST(QuantizeLinearMatmulOpTest, QLinearMatMul3D_S8S8) {
   OpTester test("QLinearMatMul", 10);
-  test.AddInput<int8_t>("T1", {2, 2, 4},
-                        {80, -2, -128, 110,
-                         -125, 86, 127, -99,
+  test.AddInput<int8_t>("T1", {2, 2, 4}, {80, -2, -128, 110, -125, 86, 127, -99,
 
-                         80, 108, -128, 110,
-                         -125, 86, 127, -99});
+                                          80,
+                                          108,
+                                          -128,
+                                          110,
+                                          -125,
+                                          86,
+                                          127,
+                                          -99});
 
   test.AddInput<float>("a_scale", {}, {0.0066f});
   test.AddInput<int8_t>("a_zero_point", {}, {-15});
 
-  test.AddInput<int8_t>("T2", {2, 4, 3},
-                        {-43, 51, -34,
-                         60, 26, -17,
-                         0, 63, -55,
-                         47, -29, -31,
+  test.AddInput<int8_t>("T2", {2, 4, 3}, {-43, 51, -34, 60, 26, -17, 0, 63, -55, 47, -29, -31,
 
-                         -62, 51, -42,
-                         60, 26, -22,
-                         0, -8, -19,
-                         37, -2, -47});
+                                          -62,
+                                          51,
+                                          -42,
+                                          60,
+                                          26,
+                                          -22,
+                                          0,
+                                          -8,
+                                          -19,
+                                          37,
+                                          -2,
+                                          -47});
 
   test.AddInput<float>("b_scale", {}, {0.00802f});
   test.AddInput<int8_t>("b_zero_point", {}, {-2});
 
   test.AddInput<float>("y_scale", {}, {0.0123f});
   test.AddInput<int8_t>("y_zero_point", {}, {-10});
-  test.AddOutput<int8_t>("T3", {2, 2, 3},
-                         {2, -33, -14,
-                          20, 27, -23,
+  test.AddOutput<int8_t>("T3", {2, 2, 3}, {2, -33, -14, 20, 27, -23,
 
-                          18, 29, -53,
-                          32, -27, 6});
+                                           18,
+                                           29,
+                                           -53,
+                                           32,
+                                           -27,
+                                           6});
 
   test.Run();
 }
@@ -128,28 +158,19 @@ TEST(QuantizeLinearMatmulOpTest, QLinearMatMul3D_S8S8) {
 TEST(QuantizeLinearMatmulOpTest, QLinearMatMul2D_U8U8) {
   auto run_test = [](bool only_t1_not_initializer) {
     OpTester test("QLinearMatMul", 10);
-    test.AddInput<uint8_t>("T1", {2, 4},
-                           {208, 236, 0, 238,
-                            3, 214, 255, 29});
+    test.AddInput<uint8_t>("T1", {2, 4}, {208, 236, 0, 238, 3, 214, 255, 29});
 
     test.AddInput<float>("a_scale", {}, {0.0066f}, only_t1_not_initializer);
     test.AddInput<uint8_t>("a_zero_point", {}, {113}, only_t1_not_initializer);
 
-    test.AddInput<uint8_t>("T2", {4, 3},
-                           {152, 51, 244,
-                            60, 26, 255,
-                            0, 127, 246,
-                            127, 254, 247},
-                           only_t1_not_initializer);
+    test.AddInput<uint8_t>("T2", {4, 3}, {152, 51, 244, 60, 26, 255, 0, 127, 246, 127, 254, 247}, only_t1_not_initializer);
 
     test.AddInput<float>("b_scale", {}, {0.00705f}, only_t1_not_initializer);
     test.AddInput<uint8_t>("b_zero_point", {}, {114}, only_t1_not_initializer);
 
     test.AddInput<float>("y_scale", {}, {0.0107f}, only_t1_not_initializer);
     test.AddInput<uint8_t>("y_zero_point", {}, {118}, only_t1_not_initializer);
-    test.AddOutput<uint8_t>("T3", {2, 3},
-                            {168, 115, 255,
-                             1, 66, 151});
+    test.AddOutput<uint8_t>("T3", {2, 3}, {168, 115, 255, 1, 66, 151});
 
     test.Run();
   };
@@ -163,28 +184,19 @@ TEST(QuantizeLinearMatmulOpTest, QLinearMatMul2D_U8U8) {
 TEST(QuantizeLinearMatmulOpTest, QLinearMatMul2D_U8S8) {
   auto run_test = [](bool only_t1_not_initializer) {
     OpTester test("QLinearMatMul", 10);
-    test.AddInput<uint8_t>("T1", {2, 4},
-                           {208, 126, 0, 238,
-                            3, 214, 255, 29});
+    test.AddInput<uint8_t>("T1", {2, 4}, {208, 126, 0, 238, 3, 214, 255, 29});
 
     test.AddInput<float>("a_scale", {}, {0.0066f}, only_t1_not_initializer);
     test.AddInput<uint8_t>("a_zero_point", {}, {113}, only_t1_not_initializer);
 
-    test.AddInput<int8_t>("T2", {4, 3},
-                          {-43, 51, -34,
-                           60, 26, -17,
-                           0, 63, -55,
-                           47, -29, -31},
-                          only_t1_not_initializer);
+    test.AddInput<int8_t>("T2", {4, 3}, {-43, 51, -34, 60, 26, -17, 0, 63, -55, 47, -29, -31}, only_t1_not_initializer);
 
     test.AddInput<float>("b_scale", {}, {0.00802f}, only_t1_not_initializer);
     test.AddInput<int8_t>("b_zero_point", {}, {0}, only_t1_not_initializer);
 
     test.AddInput<float>("y_scale", {}, {0.0123f}, only_t1_not_initializer);
     test.AddInput<uint8_t>("y_zero_point", {}, {118}, only_t1_not_initializer);
-    test.AddOutput<uint8_t>("T3", {2, 3},
-                            {129, 94, 113,
-                             147, 154, 104});
+    test.AddOutput<uint8_t>("T3", {2, 3}, {129, 94, 113, 147, 154, 104});
 
     test.Run();
   };
@@ -198,28 +210,19 @@ TEST(QuantizeLinearMatmulOpTest, QLinearMatMul2D_U8S8) {
 TEST(QuantizeLinearMatmulOpTest, QLinearMatMul2D_S8S8) {
   auto run_test = [](bool only_t1_not_initializer) {
     OpTester test("QLinearMatMul", 10);
-    test.AddInput<int8_t>("T1", {2, 4},
-                          {80, -2, -128, 110,
-                           -125, 86, 127, -99});
+    test.AddInput<int8_t>("T1", {2, 4}, {80, -2, -128, 110, -125, 86, 127, -99});
 
     test.AddInput<float>("a_scale", {}, {0.0066f}, only_t1_not_initializer);
     test.AddInput<int8_t>("a_zero_point", {}, {-15}, only_t1_not_initializer);
 
-    test.AddInput<int8_t>("T2", {4, 3},
-                          {-43, 51, -34,
-                           60, 26, -17,
-                           0, 63, -55,
-                           47, -29, -31},
-                          only_t1_not_initializer);
+    test.AddInput<int8_t>("T2", {4, 3}, {-43, 51, -34, 60, 26, -17, 0, 63, -55, 47, -29, -31}, only_t1_not_initializer);
 
     test.AddInput<float>("b_scale", {}, {0.00802f}, only_t1_not_initializer);
     test.AddInput<int8_t>("b_zero_point", {}, {0}, only_t1_not_initializer);
 
     test.AddInput<float>("y_scale", {}, {0.0123f}, only_t1_not_initializer);
     test.AddInput<int8_t>("y_zero_point", {}, {-10}, only_t1_not_initializer);
-    test.AddOutput<int8_t>("T3", {2, 3},
-                           {1, -34, -15,
-                            19, 26, -24});
+    test.AddOutput<int8_t>("T3", {2, 3}, {1, -34, -15, 19, 26, -24});
 
     test.Run();
   };
@@ -273,18 +276,13 @@ TEST(QuantizeLinearMatmulOpTest, PerColumn_2D) {
   OpTester test("QLinearMatMul", 10);
   test.AddInput<uint8_t>("a",
                          {2, 4},
-                         {125, 135, 133, 122,
-                          132, 123, 136, 135});
+                         {125, 135, 133, 122, 132, 123, 136, 135});
   test.AddInput<float>("a_scale", {}, {0.1f});
   test.AddInput<uint8_t>("a_zero_point", {}, {133});
   test.AddInput<int8_t>("b",
                         {4, 4},
-                        {0, -8, 2, 3,
-                         -11, -13, -8, 1,
-                         2, 4, 4, -10,
-                         3, 2, -11, 2});
-  test.AddInput<float>("b_scale", {4},
-                       {0.1f, 0.2f, 0.3f, 0.4f});
+                        {0, -8, 2, 3, -11, -13, -8, 1, 2, 4, 4, -10, 3, 2, -11, 2});
+  test.AddInput<float>("b_scale", {4}, {0.1f, 0.2f, 0.3f, 0.4f});
   test.AddInput<int8_t>("b_zero_point",
                         {1, 4},
                         {1, -2, 2, -1});
@@ -293,8 +291,7 @@ TEST(QuantizeLinearMatmulOpTest, PerColumn_2D) {
 
   test.AddOutput<uint8_t>("y",
                           {2, 4},
-                          {128, 128, 148, 118,
-                           136, 144, 142, 121});
+                          {128, 128, 148, 118, 136, 144, 142, 121});
 
   test.Run();
 }
@@ -303,18 +300,13 @@ TEST(QuantizeLinearMatmulOpTest, PerColumn_2D_S8S8) {
   OpTester test("QLinearMatMul", 10);
   test.AddInput<int8_t>("a",
                         {2, 4},
-                        {-3, 7, 5, -6,
-                         4, -5, 8, 7});
+                        {-3, 7, 5, -6, 4, -5, 8, 7});
   test.AddInput<float>("a_scale", {}, {0.1f});
   test.AddInput<int8_t>("a_zero_point", {}, {5});
   test.AddInput<int8_t>("b",
                         {4, 4},
-                        {0, -8, 2, 3,
-                         -11, -13, -8, 1,
-                         2, 4, 4, -10,
-                         3, 2, -11, 2});
-  test.AddInput<float>("b_scale", {4},
-                       {0.1f, 0.2f, 0.3f, 0.4f});
+                        {0, -8, 2, 3, -11, -13, -8, 1, 2, 4, 4, -10, 3, 2, -11, 2});
+  test.AddInput<float>("b_scale", {4}, {0.1f, 0.2f, 0.3f, 0.4f});
   test.AddInput<int8_t>("b_zero_point",
                         {1, 4},
                         {1, -2, 2, -1});
@@ -323,8 +315,7 @@ TEST(QuantizeLinearMatmulOpTest, PerColumn_2D_S8S8) {
 
   test.AddOutput<int8_t>("y",
                          {2, 4},
-                         {0, 0, 20, -10,
-                          8, 16, 14, -7});
+                         {0, 0, 20, -10, 8, 16, 14, -7});
 
   test.Run();
 }
@@ -338,41 +329,57 @@ TEST(QuantizeLinearMatmulOpTest, PerColumn_ND) {
   OpTester test("QLinearMatMul", 10);
   test.AddInput<uint8_t>("a",
                          {2, 2, 4},
-                         {125, 135, 133, 122,
-                          132, 123, 136, 135,
+                         {125, 135, 133, 122, 132, 123, 136, 135,
 
-                          125, 135, 133, 122,
-                          132, 123, 136, 135});
+                          125,
+                          135,
+                          133,
+                          122,
+                          132,
+                          123,
+                          136,
+                          135});
   test.AddInput<float>("a_scale", {}, {0.1f});
   test.AddInput<uint8_t>("a_zero_point", {}, {133});
   test.AddInput<int8_t>("b",
                         {2, 4, 4},
-                        {0, -8, 2, 3,
-                         -11, -13, -8, 1,
-                         2, 4, 4, -10,
-                         3, 2, -11, 2,
+                        {0, -8, 2, 3, -11, -13, -8, 1, 2, 4, 4, -10, 3, 2, -11, 2,
 
-                         0, -8, 2, 3,
-                         -11, -13, -8, 1,
-                         2, 4, 4, -10,
-                         3, 2, -11, 2});
-  test.AddInput<float>("b_scale", {2, 1, 4},
-                       {0.1f, 0.2f, 0.3f, 0.4f,
-                        0.4f, 0.3f, 0.2f, 0.1f});
+                         0,
+                         -8,
+                         2,
+                         3,
+                         -11,
+                         -13,
+                         -8,
+                         1,
+                         2,
+                         4,
+                         4,
+                         -10,
+                         3,
+                         2,
+                         -11,
+                         2});
+  test.AddInput<float>("b_scale", {2, 1, 4}, {0.1f, 0.2f, 0.3f, 0.4f, 0.4f, 0.3f, 0.2f, 0.1f});
   test.AddInput<int8_t>("b_zero_point",
                         {2, 1, 4},
-                        {1, -2, 2, -1,
-                         2, -4, -1, 0});
+                        {1, -2, 2, -1, 2, -4, -1, 0});
   test.AddInput<float>("y_scale", {}, {0.2f});
   test.AddInput<uint8_t>("y_zero_point", {}, {130});
 
   test.AddOutput<uint8_t>("y",
                           {2, 2, 4},
-                          {128, 128, 148, 118,
-                           136, 144, 142, 121,
+                          {128, 128, 148, 118, 136, 144, 142, 121,
 
-                           126, 122, 137, 128,
-                           157, 150, 136, 128});
+                           126,
+                           122,
+                           137,
+                           128,
+                           157,
+                           150,
+                           136,
+                           128});
 
   test.Run();
 }
@@ -386,41 +393,57 @@ TEST(QuantizeLinearMatmulOpTest, PerColumn_ND_S8S8) {
   OpTester test("QLinearMatMul", 10);
   test.AddInput<int8_t>("a",
                         {2, 2, 4},
-                        {-3, 7, 5, -6,
-                         4, -5, 8, 7,
+                        {-3, 7, 5, -6, 4, -5, 8, 7,
 
-                         -3, 7, 5, -6,
-                         4, -5, 8, 7});
+                         -3,
+                         7,
+                         5,
+                         -6,
+                         4,
+                         -5,
+                         8,
+                         7});
   test.AddInput<float>("a_scale", {}, {0.1f});
   test.AddInput<int8_t>("a_zero_point", {}, {5});
   test.AddInput<int8_t>("b",
                         {2, 4, 4},
-                        {0, -8, 2, 3,
-                         -11, -13, -8, 1,
-                         2, 4, 4, -10,
-                         3, 2, -11, 2,
+                        {0, -8, 2, 3, -11, -13, -8, 1, 2, 4, 4, -10, 3, 2, -11, 2,
 
-                         0, -8, 2, 3,
-                         -11, -13, -8, 1,
-                         2, 4, 4, -10,
-                         3, 2, -11, 2});
-  test.AddInput<float>("b_scale", {2, 1, 4},
-                       {0.1f, 0.2f, 0.3f, 0.4f,
-                        0.4f, 0.3f, 0.2f, 0.1f});
+                         0,
+                         -8,
+                         2,
+                         3,
+                         -11,
+                         -13,
+                         -8,
+                         1,
+                         2,
+                         4,
+                         4,
+                         -10,
+                         3,
+                         2,
+                         -11,
+                         2});
+  test.AddInput<float>("b_scale", {2, 1, 4}, {0.1f, 0.2f, 0.3f, 0.4f, 0.4f, 0.3f, 0.2f, 0.1f});
   test.AddInput<int8_t>("b_zero_point",
                         {2, 1, 4},
-                        {1, -2, 2, -1,
-                         2, -4, -1, 0});
+                        {1, -2, 2, -1, 2, -4, -1, 0});
   test.AddInput<float>("y_scale", {}, {0.2f});
   test.AddInput<int8_t>("y_zero_point", {}, {2});
 
   test.AddOutput<int8_t>("y",
                          {2, 2, 4},
-                         {0, 0, 20, -10,
-                          8, 16, 14, -7,
+                         {0, 0, 20, -10, 8, 16, 14, -7,
 
-                          -2, -6, 9, 0,
-                          29, 22, 8, 0});
+                          -2,
+                          -6,
+                          9,
+                          0,
+                          29,
+                          22,
+                          8,
+                          0});
 
   test.Run();
 }
@@ -447,15 +470,13 @@ struct PrePackTestOp {
     const auto& inputs = p_original->inputs();
     for (int i = 0; i < static_cast<int>(inputs.size()); i++) {
       const auto& in = inputs[i];
-      modified.Input(i, in.GetName(), in.GetDescription(), in.GetTypeStr(),
-                     in.GetOption(), in.GetIsHomogeneous(), in.GetMinArity(), in.GetDifferentiationCategory());
+      modified.Input(i, in.GetName(), in.GetDescription(), in.GetTypeStr(), in.GetOption(), in.GetIsHomogeneous(), in.GetMinArity(), in.GetDifferentiationCategory());
     }
 
     const auto& outputs = p_original->outputs();
     for (int oi = 0; oi < static_cast<int>(outputs.size()); oi++) {
       const auto& out = outputs[oi];
-      modified.Output(oi, out.GetName(), out.GetDescription(), out.GetTypeStr(),
-                      out.GetOption(), out.GetIsHomogeneous(), out.GetMinArity(), out.GetDifferentiationCategory());
+      modified.Output(oi, out.GetName(), out.GetDescription(), out.GetTypeStr(), out.GetOption(), out.GetIsHomogeneous(), out.GetMinArity(), out.GetDifferentiationCategory());
     }
 
     for (const auto& ty : p_original->typeConstraintParams()) {

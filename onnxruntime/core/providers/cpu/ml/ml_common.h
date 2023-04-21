@@ -303,8 +303,7 @@ static inline void ComputeSoftmaxZero(gsl::span<T>& values) {
 }
 
 template <typename T, typename IT>
-static void write_scores(InlinedVector<IT>& scores, POST_EVAL_TRANSFORM post_transform,
-                         T* Z, int add_second_class) {
+static void write_scores(InlinedVector<IT>& scores, POST_EVAL_TRANSFORM post_transform, T* Z, int add_second_class) {
   if (scores.size() >= 2) {
     switch (post_transform) {
       case POST_EVAL_TRANSFORM::PROBIT:
@@ -375,8 +374,7 @@ static void write_scores(InlinedVector<IT>& scores, POST_EVAL_TRANSFORM post_tra
 }
 
 template <typename T>
-static void write_scores(InlinedVector<T>& scores, POST_EVAL_TRANSFORM post_transform, int64_t write_index, Tensor* Z,
-                         int add_second_class) {
+static void write_scores(InlinedVector<T>& scores, POST_EVAL_TRANSFORM post_transform, int64_t write_index, Tensor* Z, int add_second_class) {
   T* out_p = Z->MutableData<T>() + write_index;
   size_t len;
   if (!IAllocator::CalcMemSizeForArray(scores.size(), sizeof(T), &len)) {
@@ -389,10 +387,7 @@ static void write_scores(InlinedVector<T>& scores, POST_EVAL_TRANSFORM post_tran
 //       Attempted to parallelize the calculations if the number of scores to process was large, but no clear benefit
 //       was seen from testing with the arbitrary values of 1000 scores per threads.
 template <typename T>
-void batched_update_scores_inplace(gsl::span<T> scores, int64_t num_batches_in, int64_t batch_size,
-                                   POST_EVAL_TRANSFORM post_transform,
-                                   int add_second_class, bool have_space_for_second_class,
-                                   concurrency::ThreadPool* threadpool) {
+void batched_update_scores_inplace(gsl::span<T> scores, int64_t num_batches_in, int64_t batch_size, POST_EVAL_TRANSFORM post_transform, int add_second_class, bool have_space_for_second_class, concurrency::ThreadPool* threadpool) {
   if (batch_size < 1)
     return;
 

@@ -37,8 +37,10 @@
  * \return A unique_ptr containing the mock sink.
  */
 static std::unique_ptr<onnxruntime::logging::ISink> SetupMockSinkCalls(const std::string& log_id,
-                                                                       int num_calls, const char* file,
-                                                                       const char* func, const int& line) {
+                                                                       int num_calls,
+                                                                       const char* file,
+                                                                       const char* func,
+                                                                       const int& line) {
   using namespace onnxruntime;
   auto mock_sink = std::make_unique<MockSink>();
 
@@ -108,8 +110,7 @@ TEST_F(RealCAPITestsFixture, CCppApiLoggerGetLoggingSeverityLevel) {
   const std::string log_id = "aaabbbccc";
   const onnxruntime::logging::Severity min_severity = onnxruntime::logging::Severity::kWARNING;
 
-  onnxruntime::logging::LoggingManager manager{std::make_unique<MockSink>(), min_severity, false,
-                                               onnxruntime::logging::LoggingManager::InstanceType::Temporal};
+  onnxruntime::logging::LoggingManager manager{std::make_unique<MockSink>(), min_severity, false, onnxruntime::logging::LoggingManager::InstanceType::Temporal};
 
   std::unique_ptr<onnxruntime::logging::Logger> logger = manager.CreateLogger(log_id);
   const OrtLogger* c_ort_logger = reinterpret_cast<const OrtLogger*>(logger.get());
@@ -141,8 +142,7 @@ TEST_F(RealCAPITestsFixture, CApiLoggerLogMessage) {
   // Setup a mock sink that expects 2 log calls.
   auto mock_sink = SetupMockSinkCalls(log_id, 2, __FILE__, __FUNCTION__, line_num);
 
-  onnxruntime::logging::LoggingManager manager{std::move(mock_sink), min_severity, false,
-                                               onnxruntime::logging::LoggingManager::InstanceType::Temporal};
+  onnxruntime::logging::LoggingManager manager{std::move(mock_sink), min_severity, false, onnxruntime::logging::LoggingManager::InstanceType::Temporal};
 
   std::unique_ptr<onnxruntime::logging::Logger> logger = manager.CreateLogger(log_id);
   const OrtLogger* c_ort_logger = reinterpret_cast<const OrtLogger*>(logger.get());
@@ -154,17 +154,14 @@ TEST_F(RealCAPITestsFixture, CApiLoggerLogMessage) {
 
   // Test 2 calls to OrtApi::Logger_LogMessage
   line_num = __LINE__ + 1;
-  Ort::ThrowOnError(Ort::GetApi().Logger_LogMessage(c_ort_logger, OrtLoggingLevel::ORT_LOGGING_LEVEL_ERROR, "Hello",
-                                                    ORT_FILE, line_num, static_cast<const char*>(__FUNCTION__)));
+  Ort::ThrowOnError(Ort::GetApi().Logger_LogMessage(c_ort_logger, OrtLoggingLevel::ORT_LOGGING_LEVEL_ERROR, "Hello", ORT_FILE, line_num, static_cast<const char*>(__FUNCTION__)));
 
   line_num = __LINE__ + 1;
-  Ort::ThrowOnError(Ort::GetApi().Logger_LogMessage(c_ort_logger, OrtLoggingLevel::ORT_LOGGING_LEVEL_ERROR, "Hello2",
-                                                    ORT_FILE, line_num, static_cast<const char*>(__FUNCTION__)));
+  Ort::ThrowOnError(Ort::GetApi().Logger_LogMessage(c_ort_logger, OrtLoggingLevel::ORT_LOGGING_LEVEL_ERROR, "Hello2", ORT_FILE, line_num, static_cast<const char*>(__FUNCTION__)));
 
   // The following call to OrtApi::Logger_LogMessage should be filtered out due to insufficient severity.
   line_num = __LINE__ + 1;
-  Ort::ThrowOnError(Ort::GetApi().Logger_LogMessage(c_ort_logger, OrtLoggingLevel::ORT_LOGGING_LEVEL_INFO, "Ignored",
-                                                    ORT_FILE, line_num, static_cast<const char*>(__FUNCTION__)));
+  Ort::ThrowOnError(Ort::GetApi().Logger_LogMessage(c_ort_logger, OrtLoggingLevel::ORT_LOGGING_LEVEL_INFO, "Ignored", ORT_FILE, line_num, static_cast<const char*>(__FUNCTION__)));
 }
 
 TEST_F(RealCAPITestsFixture, CppApiORTCXXLOG) {
@@ -178,8 +175,7 @@ TEST_F(RealCAPITestsFixture, CppApiORTCXXLOG) {
   // Setup a mock sink that expects 2 log calls.
   auto mock_sink = SetupMockSinkCalls(log_id, 2, __FILE__, __FUNCTION__, line_num);
 
-  onnxruntime::logging::LoggingManager manager{std::move(mock_sink), min_severity, false,
-                                               onnxruntime::logging::LoggingManager::InstanceType::Temporal};
+  onnxruntime::logging::LoggingManager manager{std::move(mock_sink), min_severity, false, onnxruntime::logging::LoggingManager::InstanceType::Temporal};
 
   std::unique_ptr<onnxruntime::logging::Logger> logger = manager.CreateLogger(log_id);
   Ort::Logger cpp_ort_logger{reinterpret_cast<const OrtLogger*>(logger.get())};
@@ -215,8 +211,7 @@ TEST_F(RealCAPITestsFixture, CppApiORTCXXLOGF) {
   // Setup a mock sink that expects 5 log calls.
   auto mock_sink = SetupMockSinkCalls(log_id, 5, __FILE__, __FUNCTION__, line_num);
 
-  onnxruntime::logging::LoggingManager manager{std::move(mock_sink), min_severity, false,
-                                               onnxruntime::logging::LoggingManager::InstanceType::Temporal};
+  onnxruntime::logging::LoggingManager manager{std::move(mock_sink), min_severity, false, onnxruntime::logging::LoggingManager::InstanceType::Temporal};
 
   std::unique_ptr<onnxruntime::logging::Logger> logger = manager.CreateLogger(log_id);
   Ort::Logger cpp_ort_logger{reinterpret_cast<const OrtLogger*>(logger.get())};
@@ -286,8 +281,7 @@ TEST_F(MockCAPITestsFixture, CppLogMacroBypassCApiCall) {
   const std::string log_id = "MOCK_API";
   const onnxruntime::logging::Severity min_severity = onnxruntime::logging::Severity::kWARNING;
 
-  onnxruntime::logging::LoggingManager manager{std::make_unique<MockSink>(), min_severity, false,
-                                               onnxruntime::logging::LoggingManager::InstanceType::Temporal};
+  onnxruntime::logging::LoggingManager manager{std::make_unique<MockSink>(), min_severity, false, onnxruntime::logging::LoggingManager::InstanceType::Temporal};
   std::unique_ptr<onnxruntime::logging::Logger> logger = manager.CreateLogger(log_id);
 
   // Create a mock OrtApi.
@@ -320,9 +314,7 @@ TEST_F(MockCAPITestsFixture, CppLogMacroBypassCApiCall) {
 
   // Hardcode OrtApi::Logger_LogMessage to always return a "Mock failure" failure status when called.
   // This will allows to detect if the C API is actually called or bypassed.
-  mock_ort_api.Logger_LogMessage = [](const OrtLogger* /* logger */, OrtLoggingLevel /* log_severity_level */,
-                                      const char* /* message */, const ORTCHAR_T* /* file_path */,
-                                      int /* line_number */, const char* /* func_name */) noexcept -> OrtStatus* {
+  mock_ort_api.Logger_LogMessage = [](const OrtLogger* /* logger */, OrtLoggingLevel /* log_severity_level */, const char* /* message */, const ORTCHAR_T* /* file_path */, int /* line_number */, const char* /* func_name */) noexcept -> OrtStatus* {
     return reinterpret_cast<OrtStatus*>(&MockCAPITestsFixture::mock_status_);
   };
 

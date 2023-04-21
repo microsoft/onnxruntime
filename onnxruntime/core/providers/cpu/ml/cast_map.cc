@@ -65,9 +65,7 @@ Status CastMap::Compute(OpKernelContext* context) const {
   if (c_checker.IsMapOf<int64_t, float>()) {
     float_input = true;
   } else if (!c_checker.IsMapOf<int64_t, std::string>()) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid input type of value: ",
-                           input_type,
-                           " Expected std::map<int64_t, float> or std::map<int64_t, std::string>");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid input type of value: ", input_type, " Expected std::map<int64_t, float> or std::map<int64_t, std::string>");
   }
 
   Status status;
@@ -112,11 +110,10 @@ Status CastMap::ComputeImpl(OpKernelContext& context, TTo pad_value) const {
   // for each item in the entry, use the template specialized Cast function to convert
   if (map_form_ == PACK_MAP::DENSE) {
     // dense map is a straight copy
-    std::for_each(X.cbegin(), X.cend(),
-                  [&out_iter](const typename InputMap::value_type& entry) {
-                    *out_iter = Cast<TFrom, TTo>(entry.second);
-                    ++out_iter;
-                  });
+    std::for_each(X.cbegin(), X.cend(), [&out_iter](const typename InputMap::value_type& entry) {
+      *out_iter = Cast<TFrom, TTo>(entry.second);
+      ++out_iter;
+    });
   } else {
     // sparse map puts pad_value in all entries that aren't present in the input, up to map_max_
     auto cur_input = X.cbegin();
@@ -125,7 +122,8 @@ Status CastMap::ComputeImpl(OpKernelContext& context, TTo pad_value) const {
     int64_t cur_idx = 0;
 
     ORT_ENFORCE(cur_input == end_input || cur_input->first >= 0,
-                "Negative index values are not permitted. First entry in map has index value of ", cur_input->first);
+                "Negative index values are not permitted. First entry in map has index value of ",
+                cur_input->first);
 
     // for each output value, see if we have an input value, if not use the pad value
     while (out_iter < out_end) {

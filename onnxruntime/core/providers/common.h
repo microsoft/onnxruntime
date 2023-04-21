@@ -20,8 +20,7 @@ Handle a potentially negative axis. Enforces negative axis is valid.
 @returns non-negative axis.
 */
 inline int64_t HandleNegativeAxis(int64_t axis, int64_t tensor_rank) {
-  ORT_ENFORCE(axis >= -tensor_rank && axis <= tensor_rank - 1, "axis ", axis,
-              " is not in valid range [-", tensor_rank, ",", tensor_rank - 1, "]");
+  ORT_ENFORCE(axis >= -tensor_rank && axis <= tensor_rank - 1, "axis ", axis, " is not in valid range [-", tensor_rank, ",", tensor_rank - 1, "]");
   // Handle negative axis
   return axis < 0 ? axis + tensor_rank : axis;
 }
@@ -76,9 +75,12 @@ inline AutoPadType StringToAutoPadType(const std::string& str) {
 // helper function
 
 inline Status ComputePad(const int64_t in_dim,
-                         const int64_t stride, const int64_t kernel, const int64_t dilation,
+                         const int64_t stride,
+                         const int64_t kernel,
+                         const int64_t dilation,
                          AutoPadType pad_type,
-                         int64_t& pad_head, int64_t& pad_tail,
+                         int64_t& pad_head,
+                         int64_t& pad_tail,
                          bool force_symmetric_auto_padding = false) {
   switch (pad_type) {
     case AutoPadType::NOTSET:
@@ -90,8 +92,7 @@ inline Status ComputePad(const int64_t in_dim,
     case AutoPadType::SAME_UPPER:
     case AutoPadType::SAME_LOWER: {
       if (1 != dilation)
-        return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                      "Dilation not supported for AutoPadType::SAME_UPPER or AutoPadType::SAME_LOWER.");
+        return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Dilation not supported for AutoPadType::SAME_UPPER or AutoPadType::SAME_LOWER.");
 
       // The ONNX spec says if `auto_pad` attribute is set, pad until the `legacy_target_size`
       // is `ceil (in_dim / stride)`. The following line of code is essentially just that and
@@ -119,16 +120,22 @@ inline Status ComputePad(const int64_t in_dim,
 }
 
 constexpr inline int64_t ComputeOutputShape(const int64_t in_dim,
-                                            const int64_t stride, const int64_t kernel, const int64_t dilation,
-                                            const int64_t pad_head, const int64_t pad_tail) {
+                                            const int64_t stride,
+                                            const int64_t kernel,
+                                            const int64_t dilation,
+                                            const int64_t pad_head,
+                                            const int64_t pad_tail) {
   const int64_t dkernel = dilation * (kernel - 1) + 1;
   return static_cast<int64_t>(static_cast<double>(in_dim + pad_head + pad_tail - dkernel) / stride + 1);
 }
 
 inline Status ComputePadAndOutputShape(const int64_t in_dim,
-                                       const int64_t stride, const int64_t kernel, const int64_t dilation,
+                                       const int64_t stride,
+                                       const int64_t kernel,
+                                       const int64_t dilation,
                                        AutoPadType pad_type,
-                                       int64_t& pad_head, int64_t& pad_tail,
+                                       int64_t& pad_head,
+                                       int64_t& pad_tail,
                                        int64_t& out_dim,
                                        bool force_symmetric_auto_padding = false) {
   ORT_RETURN_IF_ERROR(

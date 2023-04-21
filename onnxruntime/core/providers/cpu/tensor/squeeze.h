@@ -49,8 +49,7 @@ class SqueezeBase {
     for (size_t i = 0; i < num_dimensions; ++i) {
       if ((j < axes_corrected.size() && axes_corrected[j] == static_cast<int64_t>(i)) ||
           (axes_corrected.size() == 0 && input_shape[i] == 1)) {
-        ORT_ENFORCE(input_shape[i] == 1, "Dimension of input ", i, " must be 1 instead of ", input_shape[i],
-                    ". shape=", input_shape);
+        ORT_ENFORCE(input_shape[i] == 1, "Dimension of input ", i, " must be 1 instead of ", input_shape[i], ". shape=", input_shape);
         ++j;
         continue;
       }

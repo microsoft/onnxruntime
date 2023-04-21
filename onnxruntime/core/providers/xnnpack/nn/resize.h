@@ -27,8 +27,7 @@ class Resize : public UpsampleBase, public XnnpackKernel {
   static bool IsOnnxNodeSupported(const NodeUnit& nodeunit, const GraphViewer& graph);
 
  private:
-  Status ComputeInternal(OpKernelContext* ctx, const Tensor* input,
-                         const TensorShapeVector& output_dims) const;
+  Status ComputeInternal(OpKernelContext* ctx, const Tensor* input, const TensorShapeVector& output_dims) const;
 
  private:
   bool is_NHWC_;

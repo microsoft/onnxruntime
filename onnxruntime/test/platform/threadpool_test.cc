@@ -120,7 +120,8 @@ void TestConcurrentParallelFor(const std::string& name, int num_threads, int num
           }
           td.clear();
         },
-        dynamic_block_base, mock_hybrid);
+        dynamic_block_base,
+        mock_hybrid);
   }
 }
 
@@ -173,10 +174,9 @@ void TestPoolCreation(const std::string&, int iter) {
                                            nullptr,
                                            num_threads,
                                            true);
-    ThreadPool::TryParallelFor(tp.get(), per_iter, 0.0,
-                               [&](std::ptrdiff_t s, std::ptrdiff_t e) {
-                                 ctr += e - s;
-                               });
+    ThreadPool::TryParallelFor(tp.get(), per_iter, 0.0, [&](std::ptrdiff_t s, std::ptrdiff_t e) {
+      ctr += e - s;
+    });
   }
   ASSERT_EQ(ctr, iter * per_iter);
 }

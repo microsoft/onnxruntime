@@ -28,7 +28,8 @@ std::shared_ptr<IExecutionProviderFactory> CoreMLProviderFactoryCreator::Create(
 }  // namespace onnxruntime
 
 ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_CoreML,
-                    _In_ OrtSessionOptions* options, uint32_t coreml_flags) {
+                    _In_ OrtSessionOptions* options,
+                    uint32_t coreml_flags) {
   options->provider_factories.push_back(onnxruntime::CoreMLProviderFactoryCreator::Create(coreml_flags));
   return nullptr;
 }

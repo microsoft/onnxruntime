@@ -40,8 +40,7 @@ class SliceOpBuilder : public BaseOpBuilder {
   // We only support slice from opset 10
   int GetMinSupportedOpSet(const NodeUnit& /* node_unit */) const override { return 10; }
 
-  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
-                         const OpSupportCheckParams& params) const override;
+  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit, const OpSupportCheckParams& params) const override;
 };
 
 // Add operator related
@@ -98,9 +97,7 @@ Status SliceOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
         auto tensor_data = unpacked_tensor.DataAsSpan<int32_t>();
         data.insert(data.end(), tensor_data.begin(), tensor_data.end());
       } else {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                               "Data type for starts and ends inputs' is not supported in this build. Got ",
-                               data_type);
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Data type for starts and ends inputs' is not supported in this build. Got ", data_type);
       }
 
       return Status::OK();
@@ -117,9 +114,7 @@ Status SliceOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
   // output shape is of type uint32_t, convert from int64 compute_metadata.output_dims_
   Shape nnapi_output_shape;
   nnapi_output_shape.reserve(compute_metadata.output_dims_.size());
-  std::transform(compute_metadata.output_dims_.cbegin(), compute_metadata.output_dims_.cend(),
-                 std::back_inserter(nnapi_output_shape),
-                 [](int64_t i) { return SafeInt<uint32_t>(i); });
+  std::transform(compute_metadata.output_dims_.cbegin(), compute_metadata.output_dims_.cend(), std::back_inserter(nnapi_output_shape), [](int64_t i) { return SafeInt<uint32_t>(i); });
 
   const auto& input = inputs[0].node_arg.Name();
   const auto& output = node_unit.Outputs()[0].node_arg.Name();
@@ -140,9 +135,7 @@ Status SliceOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
                               const char* name, const Shape& shape, const gsl::span<const int64_t>& param_raw_data) {
     std::vector<int32_t> param_data;
     param_data.reserve(param_raw_data.size());
-    std::transform(param_raw_data.begin(), param_raw_data.end(),
-                   std::back_inserter(param_data),
-                   [](int64_t i) { return SafeInt<int32_t>(i); });
+    std::transform(param_raw_data.begin(), param_raw_data.end(), std::back_inserter(param_data), [](int64_t i) { return SafeInt<int32_t>(i); });
     std::string param_name = model_builder.GetUniqueName(node_unit.Name() + name);
     OperandType param_operand_type(Type::TENSOR_INT32, shape);
     ORT_RETURN_IF_ERROR(
@@ -201,8 +194,7 @@ Status SliceOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
 
 // Operator support related
 
-bool SliceOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
-                                       const OpSupportCheckParams& /* params */) const {
+bool SliceOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit, const OpSupportCheckParams& /* params */) const {
   Shape input_shape;
   if (!GetShape(node_unit.Inputs()[0].node_arg, input_shape))
     return false;

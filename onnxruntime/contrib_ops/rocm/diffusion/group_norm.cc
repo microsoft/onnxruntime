@@ -12,8 +12,7 @@ namespace rocm {
 #define GROUP_NORM_TYPES float, MLFloat16
 
 ONNX_OPERATOR_KERNEL_EX(
-    GroupNorm, kMSDomain, 1, kRocmExecutionProvider,
-    (*KernelDefBuilder::Create()).TypeConstraint("T", BuildKernelDefConstraints<GROUP_NORM_TYPES>()), GroupNorm);
+    GroupNorm, kMSDomain, 1, kRocmExecutionProvider, (*KernelDefBuilder::Create()).TypeConstraint("T", BuildKernelDefConstraints<GROUP_NORM_TYPES>()), GroupNorm);
 
 using namespace ONNX_NAMESPACE;
 
@@ -78,28 +77,23 @@ Status GroupNorm::ComputeInternal(OpKernelContext* context) const {
 
   const auto& input_dims = input->Shape().GetDims();
   if (input_dims.size() != 4) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "input is expected to have 4 dimensions, got ", input_dims.size());
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "input is expected to have 4 dimensions, got ", input_dims.size());
   }
 
   const auto& gamma_dims = gamma->Shape().GetDims();
   if (gamma_dims.size() != 1) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "gamma is expected to have 1 dimension, got ", gamma_dims.size());
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "gamma is expected to have 1 dimension, got ", gamma_dims.size());
   }
   if (gamma_dims[0] != input_dims[3]) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Number of channels in gamma and input does not match");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Number of channels in gamma and input does not match");
   }
 
   const auto& beta_dims = beta->Shape().GetDims();
   if (beta_dims.size() != 1) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "beta is expected to have 1 dimension, got ", beta_dims.size());
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "beta is expected to have 1 dimension, got ", beta_dims.size());
   }
   if (beta_dims[0] != input_dims[3]) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Number of channels in beta and input does not match");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Number of channels in beta and input does not match");
   }
 
   // Input and output format is NHWC
@@ -109,22 +103,13 @@ Status GroupNorm::ComputeInternal(OpKernelContext* context) const {
   int width = static_cast<int>(input_dims[2]);
 
   if (num_channels % num_groups_ != 0) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "number of channels should be divisiable by num_groups");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "number of channels should be divisiable by num_groups");
   }
 
   auto workspace = GetScratchBuffer<void>(GetGroupNormWorkspaceSizeInBytes(), context->GetComputeStream());
 
   utils::MLTypeCallDispatcher<GROUP_NORM_TYPES> dispatcher(input->GetElementType());
-  return dispatcher.InvokeRet<Status, DispatchGroupNorm>(GetTuningContext(), Stream(context),
-                                                         output, input, gamma, beta, workspace.get(),
-                                                         epsilon_,
-                                                         batch_size,
-                                                         num_channels,
-                                                         height,
-                                                         width,
-                                                         num_groups_,
-                                                         use_swish_activation_);
+  return dispatcher.InvokeRet<Status, DispatchGroupNorm>(GetTuningContext(), Stream(context), output, input, gamma, beta, workspace.get(), epsilon_, batch_size, num_channels, height, width, num_groups_, use_swish_activation_);
 }
 
 }  // namespace rocm

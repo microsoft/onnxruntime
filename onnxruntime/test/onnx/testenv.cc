@@ -17,8 +17,7 @@ std::unique_ptr<OrtThreadPool> TestEnv::CreateThreadPool(onnxruntime::Env& env) 
   return std::make_unique<OrtThreadPool>(&env, onnxruntime::ThreadOptions{}, ORT_TSTR("onnx_runner_tp"), core_num, false);
 }
 
-TestEnv::TestEnv(Ort::Env& env, Ort::SessionOptions& so, PThreadPool tp,
-                 std::vector<ITestCase*>&& tests, TestResultStat& stat)
+TestEnv::TestEnv(Ort::Env& env, Ort::SessionOptions& so, PThreadPool tp, std::vector<ITestCase*>&& tests, TestResultStat& stat)
     : env_(env),
       so_(so),
       tp_(tp),
@@ -55,10 +54,9 @@ static inline void AddFailedName(const TestCaseResult& r, TestResultStat& stat) 
 void TestEnv::CalculateStats(const std::vector<std::shared_ptr<TestCaseResult>>& results) {
   ORT_ENFORCE(tests_.size() == results.size(), "Should have received results for all the test cases");
   stat_.total_model_count = tests_.size();
-  stat_.total_test_case_count = std::accumulate(std::begin(tests_), std::end(tests_), size_t{0},
-                                                [](size_t v, const ITestCase* c) {
-                                                  return c->GetDataCount() + v;
-                                                });
+  stat_.total_test_case_count = std::accumulate(std::begin(tests_), std::end(tests_), size_t{0}, [](size_t v, const ITestCase* c) {
+    return c->GetDataCount() + v;
+  });
 
   for (size_t i = 0; i != tests_.size(); ++i) {
     const auto& test = tests_[i];

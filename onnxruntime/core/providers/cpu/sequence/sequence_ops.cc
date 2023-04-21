@@ -46,9 +46,7 @@ ONNX_CPU_OPERATOR_KERNEL(
     KernelDefBuilder()
         .TypeConstraint("S", DataTypeImpl::AllSequenceTensorTypes())
         .TypeConstraint("T", DataTypeImpl::AllTensorTypes())
-        .TypeConstraint("I", std::vector<MLDataType>{
-                                 DataTypeImpl::GetTensorType<int32_t>(),
-                                 DataTypeImpl::GetTensorType<int64_t>()}),
+        .TypeConstraint("I", std::vector<MLDataType>{DataTypeImpl::GetTensorType<int32_t>(), DataTypeImpl::GetTensorType<int64_t>()}),
     SequenceAt);
 
 static int64_t GetSeqIdx(const Tensor& idx_tensor) {
@@ -88,8 +86,7 @@ Status SequenceAt::Compute(OpKernelContext* context) const {
 
   int64_t input_seq_idx = GetSeqIdx(*I);
   if (!ValidateSeqIdx(input_seq_idx, static_cast<int64_t>(X->Size()))) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Invalid sequence index (", input_seq_idx, ") specified for sequence of size (", X->Size(), ")");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid sequence index (", input_seq_idx, ") specified for sequence of size (", X->Size(), ")");
   }
 
   if (input_seq_idx < 0) {
@@ -179,9 +176,7 @@ ONNX_CPU_OPERATOR_KERNEL(
     11,
     KernelDefBuilder()
         .TypeConstraint("S", DataTypeImpl::AllSequenceTensorTypes())
-        .TypeConstraint("I", std::vector<MLDataType>{
-                                 DataTypeImpl::GetTensorType<int32_t>(),
-                                 DataTypeImpl::GetTensorType<int64_t>()}),
+        .TypeConstraint("I", std::vector<MLDataType>{DataTypeImpl::GetTensorType<int32_t>(), DataTypeImpl::GetTensorType<int64_t>()}),
     SequenceInsert);
 
 // Using DataTransferManager here allows other non-CPU EPs to use this implementation of the sequence ops
@@ -199,9 +194,7 @@ Status SequenceInsert::Compute(OpKernelContext* context) const {
 
   // Data type of the input tensor MUST be same as that of the input sequence
   if (!S->IsSameDataType(*X)) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Data type of the input tensor MUST be same as that of the input sequence. Sequence data type (",
-                           DataTypeImpl::ToString(S->DataType()), "), input tensor data type (", DataTypeImpl::ToString(X->DataType()), ")");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Data type of the input tensor MUST be same as that of the input sequence. Sequence data type (", DataTypeImpl::ToString(S->DataType()), "), input tensor data type (", DataTypeImpl::ToString(X->DataType()), ")");
   }
 
   const auto* I = context->Input<Tensor>(2);
@@ -210,8 +203,7 @@ Status SequenceInsert::Compute(OpKernelContext* context) const {
   if (I) {                                        // position is optional
     input_seq_idx = GetSeqIdx(*I);
     if (!ValidateSeqIdx(input_seq_idx, num_tensors_input_seq) && input_seq_idx != num_tensors_input_seq) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Invalid sequence index (", input_seq_idx, ") specified for sequence of size (", num_tensors_input_seq, ")");
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid sequence index (", input_seq_idx, ") specified for sequence of size (", num_tensors_input_seq, ")");
     }
 
     if (input_seq_idx < 0) {
@@ -246,9 +238,7 @@ ONNX_CPU_OPERATOR_KERNEL(
     11,
     KernelDefBuilder()
         .TypeConstraint("S", DataTypeImpl::AllSequenceTensorTypes())
-        .TypeConstraint("I", std::vector<MLDataType>{
-                                 DataTypeImpl::GetTensorType<int32_t>(),
-                                 DataTypeImpl::GetTensorType<int64_t>()}),
+        .TypeConstraint("I", std::vector<MLDataType>{DataTypeImpl::GetTensorType<int32_t>(), DataTypeImpl::GetTensorType<int64_t>()}),
     SequenceErase);
 
 Status SequenceErase::Compute(OpKernelContext* context) const {
@@ -260,8 +250,7 @@ Status SequenceErase::Compute(OpKernelContext* context) const {
   if (I) {                                            // position is optional
     input_seq_idx = GetSeqIdx(*I);
     if (!ValidateSeqIdx(input_seq_idx, static_cast<int64_t>(num_tensors_input_seq))) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Invalid sequence index (", input_seq_idx, ") specified for sequence of size (", num_tensors_input_seq, ")");
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid sequence index (", input_seq_idx, ") specified for sequence of size (", num_tensors_input_seq, ")");
     }
 
     if (input_seq_idx < 0) {
@@ -302,8 +291,7 @@ Status SequenceConstruct::Compute(OpKernelContext* context) const {
   for (int input_idx = 0; input_idx < num_inputs; ++input_idx) {
     const auto* X = context->Input<Tensor>(input_idx);
     if (input_idx > 0 && X->DataType() != first_dtype) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Violation of the requirment that all input tensors must have the same data type.");
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Violation of the requirment that all input tensors must have the same data type.");
     }
   }
 
@@ -322,8 +310,7 @@ Status SequenceConstruct::Compute(OpKernelContext* context) const {
 
 namespace op_kernel_type_control {
 ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES_ALL_OPSETS(
-    kCpuExecutionProvider, kOnnxDomain, SplitToSequence, Input, 0,
-    float, double, int32_t, int64_t, std::string);
+    kCpuExecutionProvider, kOnnxDomain, SplitToSequence, Input, 0, float, double, int32_t, int64_t, std::string);
 }  // namespace op_kernel_type_control
 
 namespace {
@@ -338,9 +325,7 @@ ONNX_CPU_OPERATOR_KERNEL(
         .TypeConstraint("T",
                         BuildKernelDefConstraintsFromTypeList<EnabledSplitToSequenceDataTypes>())
         .TypeConstraint("S", DataTypeImpl::AllSequenceTensorTypes())
-        .TypeConstraint("I", std::vector<MLDataType>{
-                                 DataTypeImpl::GetTensorType<int32_t>(),
-                                 DataTypeImpl::GetTensorType<int64_t>()}),
+        .TypeConstraint("I", std::vector<MLDataType>{DataTypeImpl::GetTensorType<int32_t>(), DataTypeImpl::GetTensorType<int64_t>()}),
     SplitToSequence);
 
 SplitToSequence::SplitToSequence(const OpKernelInfo& info) : OpKernel(info) {
@@ -370,11 +355,7 @@ Status SplitToSequence::Compute(OpKernelContext* context) const {
   return status;
 }
 
-Status SplitToSequence::PrepareForCompute(const TensorShape& input_shape, int64_t split_scalar, bool is_split_input_scalar,
-                                          int64_t& num_outputs, int64_t& axis, int& before_dims,
-                                          int& after_dims_including_split_axis, int& after_dims_excluding_split,
-                                          bool& is_uneven_split, int& num_remaining_splits,
-                                          std::vector<int64_t>& split_sizes) const {
+Status SplitToSequence::PrepareForCompute(const TensorShape& input_shape, int64_t split_scalar, bool is_split_input_scalar, int64_t& num_outputs, int64_t& axis, int& before_dims, int& after_dims_including_split_axis, int& after_dims_excluding_split, bool& is_uneven_split, int& num_remaining_splits, std::vector<int64_t>& split_sizes) const {
   auto input_dims = input_shape.GetDims();
   const auto num_dimensions = gsl::narrow_cast<int64_t>(input_shape.NumDimensions());
   axis = HandleNegativeAxis(axis_, num_dimensions);  // handle negative and enforce axis is valid
@@ -406,8 +387,7 @@ Status SplitToSequence::PrepareForCompute(const TensorShape& input_shape, int64_
     } else {
       auto split_size_sum = std::accumulate(split_sizes.cbegin(), split_sizes.cend(), 0LL);
       if (split_size_sum != split_dim_size) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                               "split_size_sum (", split_size_sum, ") != split_dim_size (", split_dim_size, ")");
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "split_size_sum (", split_size_sum, ") != split_dim_size (", split_dim_size, ")");
       }
       num_outputs = split_sizes.size();
     }
@@ -454,8 +434,7 @@ static void GetSplitSizesInput(const Tensor& tensor, std::vector<int64_t>& split
 }
 
 template <typename T>
-Status SplitToSequence::ComputeImpl(OpKernelContext& context, const Tensor& input,
-                                    const Tensor* p_split_input) const {
+Status SplitToSequence::ComputeImpl(OpKernelContext& context, const Tensor& input, const Tensor* p_split_input) const {
   if (!utils::HasType<EnabledSplitToSequenceDataTypes, T>()) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Data type is not supported in this build.");
   }

@@ -113,7 +113,8 @@ class BatchNormHelper {
     new_dims.clear();
     auto orig_dims = x_shape.GetDims();
     ORT_ENFORCE(orig_dims.size() < 6,
-                "Input dim size should be < 6 for BatchNorm, but got ", std::to_string(orig_dims.size()));
+                "Input dim size should be < 6 for BatchNorm, but got ",
+                std::to_string(orig_dims.size()));
     if (orig_dims.size() == 4 /*supported size by CUDA*/ ||
         orig_dims.size() == 5 /*supported size by CUDA*/) {
       new_dims = std::vector<int64_t>(orig_dims.begin(), orig_dims.end());

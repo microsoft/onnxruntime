@@ -45,8 +45,10 @@ Info::Info(const Node& node, const GraphViewer& subgraph_in, int num_scan_inputs
   auto& graph_inputs = subgraph.GetInputs();
   auto num_subgraph_inputs = static_cast<int>(graph_inputs.size());
   ORT_ENFORCE(num_variadic_inputs == num_subgraph_inputs,
-              "The subgraph in 'body' requires ", num_subgraph_inputs,
-              " inputs but Scan was only given ", num_variadic_inputs);
+              "The subgraph in 'body' requires ",
+              num_subgraph_inputs,
+              " inputs but Scan was only given ",
+              num_variadic_inputs);
 
   subgraph_input_names.reserve(num_inputs);
   subgraph_output_names.reserve(num_outputs);
@@ -59,16 +61,18 @@ Info::Info(const Node& node, const GraphViewer& subgraph_in, int num_scan_inputs
   }
 }
 
-void ReadDirections(const OpKernelInfo& info, const std::string& attr_name,
-                    TensorShapeVector& directions, size_t num_entries) {
+void ReadDirections(const OpKernelInfo& info, const std::string& attr_name, TensorShapeVector& directions, size_t num_entries) {
   if (info.GetAttrs(attr_name, directions).IsOK()) {
     ORT_ENFORCE(directions.size() == num_entries,
-                "Number of entries in '", attr_name, "' was ", directions.size(),
-                " but expected ", num_entries);
+                "Number of entries in '",
+                attr_name,
+                "' was ",
+                directions.size(),
+                " but expected ",
+                num_entries);
 
-    bool valid = std::all_of(directions.cbegin(), directions.cend(),
-                             [](int64_t i) { return static_cast<ScanDirection>(i) == ScanDirection::kForward ||
-                                                    static_cast<ScanDirection>(i) == ScanDirection::kReverse; });
+    bool valid = std::all_of(directions.cbegin(), directions.cend(), [](int64_t i) { return static_cast<ScanDirection>(i) == ScanDirection::kForward ||
+                                                                                            static_cast<ScanDirection>(i) == ScanDirection::kReverse; });
     ORT_ENFORCE(valid, "Invalid values in '", attr_name, "'. 0 == forward. 1 == reverse.");
   } else {
     // default to forward if we know how many entries there should be
@@ -76,21 +80,14 @@ void ReadDirections(const OpKernelInfo& info, const std::string& attr_name,
   }
 }
 
-Status AllocateOutput(OpKernelContextInternal& context, const GraphViewer& subgraph,
-                      int output_index, bool is_loop_state_var, int64_t batch_size, int64_t sequence_len,
-                      std::unique_ptr<OutputIterator>& output_iterator,
-                      const scan::detail::DeviceHelpers::CreateMutableSlicer& create_slicer_func,
-                      const scan::detail::DeviceHelpers::ZeroData& zero_data_func,
-                      ScanDirection direction,
-                      bool temporary) {
+Status AllocateOutput(OpKernelContextInternal& context, const GraphViewer& subgraph, int output_index, bool is_loop_state_var, int64_t batch_size, int64_t sequence_len, std::unique_ptr<OutputIterator>& output_iterator, const scan::detail::DeviceHelpers::CreateMutableSlicer& create_slicer_func, const scan::detail::DeviceHelpers::ZeroData& zero_data_func, ScanDirection direction, bool temporary) {
   // use the shape from the subgraph output. we require this to be specified in the model or inferable.
   auto& graph_outputs = subgraph.GetOutputs();
   auto* graph_output = graph_outputs.at(output_index);
   auto* graph_output_shape = graph_output->Shape();
 
   if (!graph_output_shape) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Subgraph must have the shape set for all outputs but ",
-                           graph_output->Name(), " did not.");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Subgraph must have the shape set for all outputs but ", graph_output->Name(), " did not.");
   }
 
   TensorShape output_shape = onnxruntime::utils::GetTensorShapeFromTensorShapeProto(*graph_output_shape);
@@ -113,20 +110,14 @@ Status AllocateOutput(OpKernelContextInternal& context, const GraphViewer& subgr
   std::copy(graph_output_dims.begin(), graph_output_dims.end(), std::back_inserter(scan_output_dims));
 
   if (!temporary) {
-    ORT_RETURN_IF_ERROR(OutputIterator::Create(context, output_index, is_loop_state_var, is_v8,
-                                               TensorShape(scan_output_dims),
-                                               create_slicer_func, zero_data_func,
-                                               output_iterator, direction));
+    ORT_RETURN_IF_ERROR(OutputIterator::Create(context, output_index, is_loop_state_var, is_v8, TensorShape(scan_output_dims), create_slicer_func, zero_data_func, output_iterator, direction));
   } else {
     auto mltype = utils::GetMLDataType(*graph_output);
 
     // the outputs from Scan are constrained to tensors, so we can safely cast to TensorTypeBase
     auto ml_data_type = static_cast<const TensorTypeBase*>(mltype)->GetElementType();
 
-    ORT_RETURN_IF_ERROR(OutputIterator::Create(context, output_index, is_loop_state_var, is_v8,
-                                               TensorShape(scan_output_dims),
-                                               create_slicer_func, zero_data_func,
-                                               output_iterator, direction, temporary, ml_data_type));
+    ORT_RETURN_IF_ERROR(OutputIterator::Create(context, output_index, is_loop_state_var, is_v8, TensorShape(scan_output_dims), create_slicer_func, zero_data_func, output_iterator, direction, temporary, ml_data_type));
   }
 
   return Status::OK();
@@ -163,8 +154,7 @@ Status CreateFeedsFetchesManager(const Node& node,
   }
 
   std::unique_ptr<FeedsFetchesManager> ffm;
-  ORT_RETURN_IF_ERROR(FeedsFetchesManager::Create(feed_names, info.subgraph_output_names,
-                                                  subgraph_session_state.GetOrtValueNameIdxMap(), ffm));
+  ORT_RETURN_IF_ERROR(FeedsFetchesManager::Create(feed_names, info.subgraph_output_names, subgraph_session_state.GetOrtValueNameIdxMap(), ffm));
   ORT_RETURN_IF_ERROR(utils::InitializeFeedFetchCopyInfo(subgraph_session_state, *ffm));
 
   // we provide fetches using memory allocated by Scan, so provide locations based on the Scan output locations
@@ -183,13 +173,7 @@ Status CreateFeedsFetchesManager(const Node& node,
   return Status::OK();
 }
 
-Status IterateSequence(OpKernelContextInternal& context, const SessionState& session_state,
-                       std::vector<LoopStateVariable>& loop_state_variables,
-                       std::vector<OrtValueTensorSlicer<const OrtValue>::Iterator>& scan_input_stream_iterators,
-                       int64_t seq_length, int num_loop_state_variables, int num_variadic_inputs,
-                       int num_variadic_outputs, const std::vector<const OrtValue*>& implicit_inputs,
-                       std::vector<std::unique_ptr<OutputIterator>>& output_iterators,
-                       const FeedsFetchesManager& ffm) {
+Status IterateSequence(OpKernelContextInternal& context, const SessionState& session_state, std::vector<LoopStateVariable>& loop_state_variables, std::vector<OrtValueTensorSlicer<const OrtValue>::Iterator>& scan_input_stream_iterators, int64_t seq_length, int num_loop_state_variables, int num_variadic_inputs, int num_variadic_outputs, const std::vector<const OrtValue*>& implicit_inputs, std::vector<std::unique_ptr<OutputIterator>>& output_iterators, const FeedsFetchesManager& ffm) {
   Status status = Status::OK();
 
   auto num_implicit_inputs = implicit_inputs.size();
@@ -243,8 +227,7 @@ Status IterateSequence(OpKernelContextInternal& context, const SessionState& ses
 
           // use a custom allocator that will forward the allocation request to the Scan context
           // and add the sequence length dimension. this avoids using a temporary value for the first output
-          fetch_allocators[output] = [i, &iterator, &fetches](const TensorShape& shape, const OrtMemoryInfo& location,
-                                                              OrtValue& ort_value, bool& allocated) {
+          fetch_allocators[output] = [i, &iterator, &fetches](const TensorShape& shape, const OrtMemoryInfo& location, OrtValue& ort_value, bool& allocated) {
             auto status = iterator.AllocateFinalOutput(shape);
             ORT_RETURN_IF_ERROR(status);
 
@@ -270,9 +253,7 @@ Status IterateSequence(OpKernelContextInternal& context, const SessionState& ses
     }
 
     // Create Executor and run graph.
-    status = utils::ExecuteSubgraph(session_state, ffm, feeds, fetches, fetch_allocators,
-                                    ExecutionMode::ORT_SEQUENTIAL, context.GetTerminateFlag(), context.Logger(),
-                                    context.GetComputeStream());
+    status = utils::ExecuteSubgraph(session_state, ffm, feeds, fetches, fetch_allocators, ExecutionMode::ORT_SEQUENTIAL, context.GetTerminateFlag(), context.Logger(), context.GetComputeStream());
 
     ORT_RETURN_IF_ERROR(status);
 
@@ -299,8 +280,7 @@ OrtValue AllocateTensorInMLValue(const MLDataType data_type, const TensorShape& 
   return ort_value;
 };
 
-void CalculateTransposedShapeForInput(const TensorShape& original_shape, int64_t axis,
-                                      InlinedVector<size_t>& permutations, TensorShapeVector& transposed_shape) {
+void CalculateTransposedShapeForInput(const TensorShape& original_shape, int64_t axis, InlinedVector<size_t>& permutations, TensorShapeVector& transposed_shape) {
   int64_t rank = original_shape.NumDimensions();
   const auto& dims = original_shape.GetDims();
 
@@ -318,8 +298,7 @@ void CalculateTransposedShapeForInput(const TensorShape& original_shape, int64_t
   }
 }
 
-void CalculateTransposedShapeForOutput(const TensorShape& original_shape, int64_t axis,
-                                       InlinedVector<size_t>& permutations, TensorShapeVector& transposed_shape) {
+void CalculateTransposedShapeForOutput(const TensorShape& original_shape, int64_t axis, InlinedVector<size_t>& permutations, TensorShapeVector& transposed_shape) {
   int64_t rank = original_shape.NumDimensions();
   const auto& dims = original_shape.GetDims();
 
@@ -340,8 +319,7 @@ void CalculateTransposedShapeForOutput(const TensorShape& original_shape, int64_
   }
 }
 
-LoopStateVariable::LoopStateVariable(const OrtValue& original_value, OrtValue& final_value, const int64_t sequence_len,
-                                     AllocatorPtr& allocator)
+LoopStateVariable::LoopStateVariable(const OrtValue& original_value, OrtValue& final_value, const int64_t sequence_len, AllocatorPtr& allocator)
     : sequence_len_{sequence_len}, original_value_{original_value}, final_value_{final_value} {
   auto& tensor = original_value.Get<Tensor>();
   auto& shape = tensor.Shape();
@@ -395,9 +373,7 @@ static Status MakeShapeConcrete(const TensorShape& per_iteration_shape, TensorSh
       final_shape[i + final_shape_offset] = per_iteration_shape[i];
     } else {
       if (existing_value != per_iteration_shape[i]) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                               "Mismatch between expected shape and shape from first output",
-                               final_shape, " is not compatible with ", per_iteration_shape);
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Mismatch between expected shape and shape from first output", final_shape, " is not compatible with ", per_iteration_shape);
       }
     }
   }

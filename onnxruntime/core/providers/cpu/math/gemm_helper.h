@@ -32,11 +32,7 @@ class GemmHelper {
     }
 
     if (right[k_dim] != K_)
-      status_ = ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                                "GEMM: Dimension mismatch, W: ",
-                                right.ToString(),
-                                " K: " + std::to_string(K_),
-                                " N:" + std::to_string(N_));
+      status_ = ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "GEMM: Dimension mismatch, W: ", right.ToString(), " K: " + std::to_string(K_), " N:" + std::to_string(N_));
 
     if (!IsValidBroadcast(bias, M_, N_))
       status_ = common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Gemm: Invalid bias shape for broadcast");
@@ -73,9 +69,7 @@ class GemmHelper {
 };
 
 template <typename T>
-void GemmBroadcastBias(int64_t M, int64_t N, float beta,
-                       const T* c_data, const TensorShape* c_shape,
-                       T* y_data) {
+void GemmBroadcastBias(int64_t M, int64_t N, float beta, const T* c_data, const TensorShape* c_shape, T* y_data) {
   // Broadcast the bias as needed if bias is given
   if (beta != 0 && c_data != nullptr) {
     ORT_ENFORCE(c_shape != nullptr, "c_shape is required if c_data is provided");

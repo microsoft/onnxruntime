@@ -9,35 +9,22 @@ namespace cuda {
 
 using namespace ONNX_NAMESPACE;
 
-ONNX_OPERATOR_KERNEL_EX(RandomNormal, kOnnxDomain, 1, kCudaExecutionProvider,
-                        (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::AllIEEEFloatTensorTypes()),
-                        RandomNormal);
+ONNX_OPERATOR_KERNEL_EX(RandomNormal, kOnnxDomain, 1, kCudaExecutionProvider, (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::AllIEEEFloatTensorTypes()), RandomNormal);
 
-ONNX_OPERATOR_KERNEL_EX(RandomNormalLike, kOnnxDomain, 1, kCudaExecutionProvider,
-                        (*KernelDefBuilder::Create())
-                            .TypeConstraint("T1", DataTypeImpl::AllTensorTypes())
-                            .TypeConstraint("T2", DataTypeImpl::AllIEEEFloatTensorTypes()),
-                        RandomNormalLike);
+ONNX_OPERATOR_KERNEL_EX(RandomNormalLike, kOnnxDomain, 1, kCudaExecutionProvider, (*KernelDefBuilder::Create()).TypeConstraint("T1", DataTypeImpl::AllTensorTypes()).TypeConstraint("T2", DataTypeImpl::AllIEEEFloatTensorTypes()), RandomNormalLike);
 
-ONNX_OPERATOR_KERNEL_EX(RandomUniform, kOnnxDomain, 1, kCudaExecutionProvider,
-                        (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::AllIEEEFloatTensorTypes()),
-                        RandomUniform);
+ONNX_OPERATOR_KERNEL_EX(RandomUniform, kOnnxDomain, 1, kCudaExecutionProvider, (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::AllIEEEFloatTensorTypes()), RandomUniform);
 
-ONNX_OPERATOR_KERNEL_EX(RandomUniformLike, kOnnxDomain, 1, kCudaExecutionProvider,
-                        (*KernelDefBuilder::Create())
-                            .TypeConstraint("T1", DataTypeImpl::AllTensorTypes())
-                            .TypeConstraint("T2", DataTypeImpl::AllIEEEFloatTensorTypes()),
-                        RandomUniformLike);
+ONNX_OPERATOR_KERNEL_EX(RandomUniformLike, kOnnxDomain, 1, kCudaExecutionProvider, (*KernelDefBuilder::Create()).TypeConstraint("T1", DataTypeImpl::AllTensorTypes()).TypeConstraint("T2", DataTypeImpl::AllIEEEFloatTensorTypes()), RandomUniformLike);
 
-#define RANDOM_COMPUTE_IMPL(name)                                                                        \
-  template <typename T>                                                                                  \
-  struct name##ComputeImpl {                                                                             \
-    void operator()(const cudaDeviceProp& prop, cudaStream_t stream, const int64_t N, const float alpha, \
-                    const float beta, PhiloxGenerator& generator, Tensor& Y) const {                     \
-      typedef typename ToCudaType<T>::MappedType CudaT;                                                  \
-      CudaT* Y_data = reinterpret_cast<CudaT*>(Y.MutableData<T>());                                      \
-      name##KernelImpl<CudaT>(prop, stream, N, alpha, beta, generator, Y_data);                          \
-    }                                                                                                    \
+#define RANDOM_COMPUTE_IMPL(name)                                                                                                                                         \
+  template <typename T>                                                                                                                                                   \
+  struct name##ComputeImpl {                                                                                                                                              \
+    void operator()(const cudaDeviceProp& prop, cudaStream_t stream, const int64_t N, const float alpha, const float beta, PhiloxGenerator& generator, Tensor& Y) const { \
+      typedef typename ToCudaType<T>::MappedType CudaT;                                                                                                                   \
+      CudaT* Y_data = reinterpret_cast<CudaT*>(Y.MutableData<T>());                                                                                                       \
+      name##KernelImpl<CudaT>(prop, stream, N, alpha, beta, generator, Y_data);                                                                                           \
+    }                                                                                                                                                                     \
   };
 
 RANDOM_COMPUTE_IMPL(RandomNormal)
@@ -64,9 +51,7 @@ Status RandomNormalLike::ComputeInternal(OpKernelContext* p_ctx) const {
   int dtype = GetDType();
   if (dtype == TensorProto_DataType_UNDEFINED && !p_X->IsDataType<float>() && !p_X->IsDataType<double>() &&
       !p_X->IsDataType<MLFloat16>()) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                           "Output data type is required to be one of float types, but got incompatible data type ",
-                           p_X->DataType(), " from input tensor.");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Output data type is required to be one of float types, but got incompatible data type ", p_X->DataType(), " from input tensor.");
   }
 
   if (dtype == TensorProto_DataType_UNDEFINED)
@@ -94,9 +79,7 @@ Status RandomUniformLike::ComputeInternal(OpKernelContext* p_ctx) const {
   int dtype = GetDType();
   if (dtype == TensorProto_DataType_UNDEFINED && !p_X->IsDataType<float>() && !p_X->IsDataType<double>() &&
       !p_X->IsDataType<MLFloat16>()) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                           "Output data type is required to be one of float types, but got incompatible data type ",
-                           p_X->DataType(), " from input tensor.");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Output data type is required to be one of float types, but got incompatible data type ", p_X->DataType(), " from input tensor.");
   }
 
   if (dtype == TensorProto_DataType_UNDEFINED)

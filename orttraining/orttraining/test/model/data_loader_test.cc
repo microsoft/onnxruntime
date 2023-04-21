@@ -143,8 +143,7 @@ TEST(TrainingDataLoaderTest, DataLoader_OneSingleFileFailParsing) {
 
 namespace {
 void TestDataLoaderWithMultipleFiles(
-    const size_t num_input_files, const size_t max_num_files_preload,
-    const size_t* const start_data_set_index = nullptr) {
+    const size_t num_input_files, const size_t max_num_files_preload, const size_t* const start_data_set_index = nullptr) {
   const MapStringToString input_name_map = {{"a", "a"}, {"b", "b"}, {"c", "c"}};
   TemporaryDirectory tmp_dir{ORT_TSTR("training_data_loader_test_dir")};
   const PathString& train_data_dir = ConcatPathComponent<PathChar>(tmp_dir.Path(), ORT_TSTR("multiple_files"));

@@ -20,10 +20,18 @@ Status Memcpy::Compute(OpKernelContext* ctx) const {
 
     if (!retval.IsOK()) {
       LOGS(ctx->Logger(), ERROR) << MakeString(retval.ErrorMessage(),
-                                               " Copying ", Node().InputDefs()[0]->Name(),
-                                               " to ", Node().OutputDefs()[0]->Name(),
-                                               " Input shape:", X->Shape(), " Output shape:", Y->Shape(),
-                                               " X data:", X->DataRaw(), " Y data:", Y->DataRaw());
+                                               " Copying ",
+                                               Node().InputDefs()[0]->Name(),
+                                               " to ",
+                                               Node().OutputDefs()[0]->Name(),
+                                               " Input shape:",
+                                               X->Shape(),
+                                               " Output shape:",
+                                               Y->Shape(),
+                                               " X data:",
+                                               X->DataRaw(),
+                                               " Y data:",
+                                               Y->DataRaw());
     }
   }
 #if !defined(DISABLE_SPARSE_TENSORS)
@@ -33,9 +41,14 @@ Status Memcpy::Compute(OpKernelContext* ctx) const {
     retval = X->Copy(Info().GetDataTransferManager(), *Y);
     if (!retval.IsOK()) {
       LOGS(ctx->Logger(), ERROR) << MakeString(retval.ErrorMessage(),
-                                               " Copying ", Node().InputDefs()[0]->Name(),
-                                               " to ", Node().OutputDefs()[0]->Name(),
-                                               " Input shape:", X->DenseShape(), " Output shape:", Y->DenseShape());
+                                               " Copying ",
+                                               Node().InputDefs()[0]->Name(),
+                                               " to ",
+                                               Node().OutputDefs()[0]->Name(),
+                                               " Input shape:",
+                                               X->DenseShape(),
+                                               " Output shape:",
+                                               Y->DenseShape());
     }
   }
 #endif

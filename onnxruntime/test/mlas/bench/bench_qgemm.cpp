@@ -35,7 +35,8 @@ void QGEMM(benchmark::State& state, bool pack_b, bool a_is_signed) {
   tpo.auto_set_affinity = true;
   std::unique_ptr<onnxruntime::concurrency::ThreadPool> tp(
       onnxruntime::concurrency::CreateThreadPool(&onnxruntime::Env::Default(),
-                                                 tpo, onnxruntime::concurrency::ThreadPoolType::INTRA_OP));
+                                                 tpo,
+                                                 onnxruntime::concurrency::ThreadPoolType::INTRA_OP));
 
   auto A_holder = RandomVectorUniform<uint8_t>(static_cast<size_t>(M * K * batch), uint8_t(-100), uint8_t(100));
   auto B_holder = RandomVectorUniform<uint8_t>(static_cast<size_t>(N * K * batch), uint8_t(-110), uint8_t(110));

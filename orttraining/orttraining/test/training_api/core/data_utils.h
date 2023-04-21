@@ -21,9 +21,7 @@ void OrtValueToVec(const OrtValue& val, std::vector<T>& output) {
 }
 
 template <typename T>
-void CudaOrtValueToCpuVec(const OrtValue& val, std::vector<T>& output,
-                          std::shared_ptr<IExecutionProvider> cuda_provider,
-                          std::shared_ptr<IExecutionProvider> cpu_provider) {
+void CudaOrtValueToCpuVec(const OrtValue& val, std::vector<T>& output, std::shared_ptr<IExecutionProvider> cuda_provider, std::shared_ptr<IExecutionProvider> cpu_provider) {
   const Tensor& src_tensor = val.Get<Tensor>();
 
   auto allocator = cpu_provider->GetAllocator(OrtMemTypeDefault);

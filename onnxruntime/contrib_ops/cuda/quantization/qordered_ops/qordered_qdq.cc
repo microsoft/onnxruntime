@@ -59,8 +59,7 @@ void UpdateTileRequire(cublasLtOrder_t order, int64_t& row_tile, int64_t& col_ti
   }
 }
 
-Status CheckTensorOrder(const Tensor& input_tensor, cublasLtOrder_t input_order, cublasLtOrder_t output_order,
-                        int64_t& rows, int64_t& cols, int64_t& batchCount, int64_t& elementCount) {
+Status CheckTensorOrder(const Tensor& input_tensor, cublasLtOrder_t input_order, cublasLtOrder_t output_order, int64_t& rows, int64_t& cols, int64_t& batchCount, int64_t& elementCount) {
   const auto dims = input_tensor.Shape().GetDims();
   cols = dims.back();
   rows = (dims.size() <= 1 ? 1LL : dims[dims.size() - 2]);
@@ -82,11 +81,9 @@ cublasLtOrder_t GetCublasLtOrderAttr(const OpKernelInfo& info, const char* order
   return gsl::narrow<cublasLtOrder_t>(order_value);
 }
 
-cublasLtOrder_t GetCublasLtOrderAttr(const OpKernelInfo& info, const char* order_attr,
-                                     int num_allowed_orders, const cublasLtOrder_t* orders_allowed, const char* error_msg) {
+cublasLtOrder_t GetCublasLtOrderAttr(const OpKernelInfo& info, const char* order_attr, int num_allowed_orders, const cublasLtOrder_t* orders_allowed, const char* error_msg) {
   cublasLtOrder_t order = GetCublasLtOrderAttr(info, order_attr);
-  ORT_ENFORCE(std::any_of(orders_allowed, orders_allowed + num_allowed_orders,
-                          [order](cublasLtOrder_t allowed_order) { return allowed_order == order; }),
+  ORT_ENFORCE(std::any_of(orders_allowed, orders_allowed + num_allowed_orders, [order](cublasLtOrder_t allowed_order) { return allowed_order == order; }),
               error_msg);
   return order;
 }
@@ -122,7 +119,11 @@ DequantizeWithOrder::DequantizeWithOrder(const OpKernelInfo& info) : CudaKernel(
   Status status = info.GetAttr("to", &to_type);
   ORT_ENFORCE(status.IsOK(), "Attribute to is not set.");
   ORT_ENFORCE(to_type == onnx::TensorProto_DataType_FLOAT16 || to_type == onnx::TensorProto_DataType_FLOAT,
-              "Attribute to only support float(", onnx::TensorProto_DataType_FLOAT, ") or float16(", onnx::TensorProto_DataType_FLOAT16, ").");
+              "Attribute to only support float(",
+              onnx::TensorProto_DataType_FLOAT,
+              ") or float16(",
+              onnx::TensorProto_DataType_FLOAT16,
+              ").");
   order_input_ = GetCublasLtOrderAttr(info, "order_input");
   order_output_ = GetCublasLtOrderAttr(info, "order_output");
   ORT_ENFORCE(order_output_ == CUBLASLT_ORDER_ROW,
@@ -154,12 +155,10 @@ Status QuantizeWithOrder::ComputeInternal(OpKernelContext* context) const {
   if (order_output_ == CUBLASLT_ORDER_COL32) {
     if (input_tensor.IsDataType<MLFloat16>()) {
       ORT_RETURN_IF_ERROR(QOrderQuantizeRowToCol32(
-          stream, device_prop, (const __half*)input_tensor.Data<MLFloat16>(), output_tensor->MutableData<int8_t>(),
-          *scale, gsl::narrow<unsigned>(batch), gsl::narrow<unsigned>(rows), gsl::narrow<unsigned>(cols)));
+          stream, device_prop, (const __half*)input_tensor.Data<MLFloat16>(), output_tensor->MutableData<int8_t>(), *scale, gsl::narrow<unsigned>(batch), gsl::narrow<unsigned>(rows), gsl::narrow<unsigned>(cols)));
     } else {
       ORT_RETURN_IF_ERROR(QOrderQuantizeRowToCol32(
-          stream, device_prop, input_tensor.Data<float>(), output_tensor->MutableData<int8_t>(),
-          *scale, gsl::narrow<unsigned>(batch), gsl::narrow<unsigned>(rows), gsl::narrow<unsigned>(cols)));
+          stream, device_prop, input_tensor.Data<float>(), output_tensor->MutableData<int8_t>(), *scale, gsl::narrow<unsigned>(batch), gsl::narrow<unsigned>(rows), gsl::narrow<unsigned>(cols)));
     }
   } else {
     auto q8_buffer = GetScratchBuffer<int8_t>(order_input_ == order_output_ ? 0LL : n, context->GetComputeStream());
@@ -172,8 +171,7 @@ Status QuantizeWithOrder::ComputeInternal(OpKernelContext* context) const {
 
     if (order_input_ != order_output_) {
       ORT_RETURN_IF_ERROR(Reorder(
-          cublasLt, stream, device_prop, gsl::narrow<int>(batch), rows, cols, CUDA_R_8I,
-          q8_buffer.get(), (cublasLtOrder_t)order_input_, output_tensor->MutableDataRaw(), (cublasLtOrder_t)order_output_));
+          cublasLt, stream, device_prop, gsl::narrow<int>(batch), rows, cols, CUDA_R_8I, q8_buffer.get(), (cublasLtOrder_t)order_input_, output_tensor->MutableDataRaw(), (cublasLtOrder_t)order_output_));
     }
   }
 
@@ -205,12 +203,10 @@ Status DequantizeWithOrder::ComputeInternal(OpKernelContext* context) const {
   if (order_input_ == CUBLASLT_ORDER_COL32) {
     if (output_tensor->IsDataType<MLFloat16>()) {
       ORT_RETURN_IF_ERROR(QOrderDequantizeCol32ToRow(
-          stream, device_prop, input_tensor.Data<int8_t>(), (__half*)output_tensor->MutableData<MLFloat16>(),
-          *scale, gsl::narrow<unsigned>(batch), gsl::narrow<unsigned>(rows), gsl::narrow<unsigned>(cols)));
+          stream, device_prop, input_tensor.Data<int8_t>(), (__half*)output_tensor->MutableData<MLFloat16>(), *scale, gsl::narrow<unsigned>(batch), gsl::narrow<unsigned>(rows), gsl::narrow<unsigned>(cols)));
     } else {
       ORT_RETURN_IF_ERROR(QOrderDequantizeCol32ToRow(
-          stream, device_prop, input_tensor.Data<int8_t>(), output_tensor->MutableData<float>(),
-          *scale, gsl::narrow<unsigned>(batch), gsl::narrow<unsigned>(rows), gsl::narrow<unsigned>(cols)));
+          stream, device_prop, input_tensor.Data<int8_t>(), output_tensor->MutableData<float>(), *scale, gsl::narrow<unsigned>(batch), gsl::narrow<unsigned>(rows), gsl::narrow<unsigned>(cols)));
     }
   } else {
     if (output_tensor->IsDataType<MLFloat16>()) {

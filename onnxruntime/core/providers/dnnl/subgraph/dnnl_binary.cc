@@ -47,9 +47,7 @@ void DnnlBinary::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
   auto binary_dst_mem = dnnl::memory(binary_pd.dst_desc(), eng);
   auto binary_prim = dnnl::binary(binary_pd);
 
-  sp.AddPrimitive(binary_prim, {{DNNL_ARG_SRC_0, binary_src0_mem},
-                                {DNNL_ARG_SRC_1, binary_src1_mem},
-                                {DNNL_ARG_DST, binary_dst_mem}});
+  sp.AddPrimitive(binary_prim, {{DNNL_ARG_SRC_0, binary_src0_mem}, {DNNL_ARG_SRC_1, binary_src1_mem}, {DNNL_ARG_DST, binary_dst_mem}});
 
   if (sp.IsScalar(node.Input(IN_A)) && sp.IsScalar(node.Input(IN_B))) {
     sp.SetMemory(node.Output(OUT_Y), binary_dst_mem, false, true);

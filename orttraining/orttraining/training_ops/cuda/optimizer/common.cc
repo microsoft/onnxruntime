@@ -6,8 +6,7 @@
 namespace onnxruntime {
 namespace cuda {
 
-Status CopyIfNotSameCUDABuffer(OpKernelContext* ctx, size_t number_of_values,
-                               const TensorSeq* values, TensorSeq* updated_values) {
+Status CopyIfNotSameCUDABuffer(OpKernelContext* ctx, size_t number_of_values, const TensorSeq* values, TensorSeq* updated_values) {
   if (values != updated_values) {
     AllocatorPtr alloc;
     ORT_ENFORCE(ctx->GetTempSpaceAllocator(&alloc).IsOK(),
@@ -25,7 +24,8 @@ Status CopyIfNotSameCUDABuffer(OpKernelContext* ctx, size_t number_of_values,
       CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(target_tensor->MutableDataRaw(),
                                            source_tensor.DataRaw(),
                                            source_tensor.SizeInBytes(),
-                                           cudaMemcpyDeviceToDevice, cuda_stream));
+                                           cudaMemcpyDeviceToDevice,
+                                           cuda_stream));
 
       updated_values->Add(std::move(*target_tensor));  // Add will check for type consistency
     }

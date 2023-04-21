@@ -33,8 +33,7 @@ constexpr int64_t kMaskSeed = 42;
 const std::vector<float> kRatios{0.25f, 0.50f, 0.75f, 0.99f};
 
 template <typename T>
-void RunTestForInference(const std::vector<int64_t>& input_dims, bool has_ratio = false, bool has_training_mode = false,
-                         bool has_mask = false) {
+void RunTestForInference(const std::vector<int64_t>& input_dims, bool has_ratio = false, bool has_training_mode = false, bool has_mask = false) {
   size_t input_size =
       static_cast<size_t>(std::accumulate(input_dims.begin(), input_dims.end(), 1LL, std::multiplies<int64_t>()));
   std::vector<T> input_data = ValueRange<T>(input_size, T(1.f), T(1.f));
@@ -140,8 +139,7 @@ void RunTestForTraining(const std::vector<int64_t>& input_dims) {
     bitmask_dropout.AddInput<float>("ratio", {}, {ratio});
     bitmask_dropout.AddInput<bool>("training_mode", {}, {true});
     bitmask_dropout.AddOutput<T>("output", input_dims, output_values, input_size);
-    bitmask_dropout.AddOutput<BitmaskElementType>("mask", {static_cast<int64_t>(bitmask_values.size())},
-                                                  bitmask_values);
+    bitmask_dropout.AddOutput<BitmaskElementType>("mask", {static_cast<int64_t>(bitmask_values.size())}, bitmask_values);
 
     std::vector<std::unique_ptr<IExecutionProvider>> bitmask_dropout_eps;
 #ifdef USE_CUDA

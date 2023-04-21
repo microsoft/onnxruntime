@@ -177,9 +177,7 @@ namespace {
 using GraphOpCountsCheckerFn = std::function<void(const OpCountMap& loaded_ops, const OpCountMap& initialized_ops)>;
 using GraphCheckerFn = std::function<void(const Graph& graph)>;
 
-void LoadAndInitializeSession(const SessionOptions& so, const PathString& input_model_path,
-                              const GraphOpCountsCheckerFn& graph_op_count_checker_fn,
-                              const GraphCheckerFn& graph_checker_fn = {}) {
+void LoadAndInitializeSession(const SessionOptions& so, const PathString& input_model_path, const GraphOpCountsCheckerFn& graph_op_count_checker_fn, const GraphCheckerFn& graph_checker_fn = {}) {
   InferenceSessionWrapper session{so, GetEnvironment()};
 
   ASSERT_STATUS_OK(session.Load(input_model_path));
@@ -210,10 +208,7 @@ void SaveAndLoadRuntimeOptimizationsForModel(
         do_save ? ort_model_with_runtime_opt_path + ORT_TSTR(".test_output")
                 : ort_model_with_runtime_opt_path;
 
-    SCOPED_TRACE(MakeString("ONNX model: '", ToUTF8String(onnx_model_path),
-                            "', ORT format model with runtime optimizations: '",
-                            ToUTF8String(saved_runtime_optimizations_model_path),
-                            "', load only: ", !do_save));
+    SCOPED_TRACE(MakeString("ONNX model: '", ToUTF8String(onnx_model_path), "', ORT format model with runtime optimizations: '", ToUTF8String(saved_runtime_optimizations_model_path), "', load only: ", !do_save));
 
     // save runtime optimizations
     if (do_save) {
@@ -224,8 +219,7 @@ void SaveAndLoadRuntimeOptimizationsForModel(
       so.optimized_model_filepath = saved_runtime_optimizations_model_path;
 
       ASSERT_NO_FATAL_FAILURE(LoadAndInitializeSession(
-          so, onnx_model_path,
-          [](const OpCountMap& loaded_ops, const OpCountMap& initialized_ops) {
+          so, onnx_model_path, [](const OpCountMap& loaded_ops, const OpCountMap& initialized_ops) {
             EXPECT_EQ(initialized_ops, loaded_ops);
           }));
     }
@@ -237,8 +231,7 @@ void SaveAndLoadRuntimeOptimizationsForModel(
       so.graph_optimization_level = TransformerLevel::Level2;
 
       ASSERT_NO_FATAL_FAILURE(LoadAndInitializeSession(
-          so, saved_runtime_optimizations_model_path,
-          graph_op_counts_checker_for_replay));
+          so, saved_runtime_optimizations_model_path, graph_op_counts_checker_for_replay));
     }
   };
 
@@ -276,9 +269,7 @@ void CheckNhwcTransformerIsApplied(const PathString& ort_model_path,
   };
 
   ASSERT_NO_FATAL_FAILURE(LoadAndInitializeSession(
-      so, ort_model_path,
-      graph_op_counts_checker,
-      graph_checker));
+      so, ort_model_path, graph_op_counts_checker, graph_checker));
 };
 }  // namespace
 

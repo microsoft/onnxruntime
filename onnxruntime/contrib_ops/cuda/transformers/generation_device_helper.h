@@ -28,12 +28,7 @@ Status ReorderPastState(
     Tensor& past_state_staging,
     Stream* stream);
 
-Status TopK(const Tensor* input, const int axis, const unsigned k, bool largest, bool sorted,
-            AllocatorPtr allocator,
-            Stream* stream,
-            onnxruntime::concurrency::ThreadPool* threadpool,
-            Tensor& output_values,
-            Tensor& output_indices);
+Status TopK(const Tensor* input, const int axis, const unsigned k, bool largest, bool sorted, AllocatorPtr allocator, Stream* stream, onnxruntime::concurrency::ThreadPool* threadpool, Tensor& output_values, Tensor& output_indices);
 
 Status AddToFeeds(const IExecutionProvider* execution_provider,
                   Stream* ort_stream,

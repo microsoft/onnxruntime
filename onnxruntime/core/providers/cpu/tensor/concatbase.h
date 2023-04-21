@@ -27,8 +27,7 @@ class ConcatBase {
   // the core method that will be invoked by the 'Concat' (CPU and GPU)
   // and 'ConcatFromSequence' kernels
   using InlinedTensorsVector = InlinedVector<const Tensor*, Prepare::kExpectedNumberOfInputs>;
-  Status PrepareForCompute(OpKernelContext* ctx, const InlinedTensorsVector& input_tensors,
-                           Prepare& p) const;
+  Status PrepareForCompute(OpKernelContext* ctx, const InlinedTensorsVector& input_tensors, Prepare& p) const;
 
  protected:
   ConcatBase(const OpKernelInfo& info, bool is_sequence_op = false) {

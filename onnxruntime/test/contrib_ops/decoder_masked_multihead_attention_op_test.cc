@@ -74,12 +74,10 @@ static std::vector<T> CreateRandom(int size) {
 
 // QKV
 template <typename T>
-static std::vector<T> QKV(std::vector<T>& input, std::vector<T>& weights, std::vector<T>& bias,
-                          int batch_size, int sequence_length, int hidden_size);
+static std::vector<T> QKV(std::vector<T>& input, std::vector<T>& weights, std::vector<T>& bias, int batch_size, int sequence_length, int hidden_size);
 
 template <>
-std::vector<float> QKV(std::vector<float>& input, std::vector<float>& weights, std::vector<float>& bias,
-                       int batch_size, int sequence_length, int hidden_size) {
+std::vector<float> QKV(std::vector<float>& input, std::vector<float>& weights, std::vector<float>& bias, int batch_size, int sequence_length, int hidden_size) {
   std::vector<float> qkv;
   qkv.resize(batch_size * sequence_length * 3 * hidden_size, 0);
 
@@ -101,8 +99,7 @@ std::vector<float> QKV(std::vector<float>& input, std::vector<float>& weights, s
 }
 
 template <>
-std::vector<MLFloat16> QKV(std::vector<MLFloat16>& input, std::vector<MLFloat16>& weights, std::vector<MLFloat16>& bias,
-                           int batch_size, int sequence_length, int hidden_size) {
+std::vector<MLFloat16> QKV(std::vector<MLFloat16>& input, std::vector<MLFloat16>& weights, std::vector<MLFloat16>& bias, int batch_size, int sequence_length, int hidden_size) {
   std::vector<MLFloat16> qkv;
   qkv.resize(batch_size * sequence_length * 3 * hidden_size, static_cast<MLFloat16>(0.f));
 
@@ -126,8 +123,7 @@ std::vector<MLFloat16> QKV(std::vector<MLFloat16>& input, std::vector<MLFloat16>
 // Transpose [B, N, S, H/x, x] -> [B, N, H/x, S, x]
 // where `num_chunks` = H/x
 template <typename T>
-std::vector<T> Transpose(T* data, int batch_size, int num_heads,
-                         int num_chunks, int max_sequence_length, int virtual_head_size) {
+std::vector<T> Transpose(T* data, int batch_size, int num_heads, int num_chunks, int max_sequence_length, int virtual_head_size) {
   std::vector<T> transposed(batch_size * num_heads * num_chunks * max_sequence_length * virtual_head_size, T{0.f});
 
   for (int b = 0; b < batch_size; ++b) {
@@ -154,8 +150,7 @@ std::vector<T> Transpose(T* data, int batch_size, int num_heads,
 // Given two buffers of shapes [B, N, c, M_s, c_size]
 // check for equality of the first sequence_length elements alone
 template <typename T>
-void CheckEquality(T* data_1, T* data_2, int batch_size, int num_heads, int num_chunks,
-                   int max_sequence_length, int sequence_length, int virtual_head_size) {
+void CheckEquality(T* data_1, T* data_2, int batch_size, int num_heads, int num_chunks, int max_sequence_length, int sequence_length, int virtual_head_size) {
   for (int b = 0; b < batch_size; ++b) {
     for (int n = 0; n < num_heads; ++n) {
       for (int c = 0; c < num_chunks; ++c) {
@@ -181,8 +176,11 @@ void CheckEquality(T* data_1, T* data_2, int batch_size, int num_heads, int num_
 // Copy 'V' over as is
 template <typename T>
 static std::vector<T> ReorderKVCache(std::vector<T>& unordered_k_cache,
-                                     int batch_size, int num_heads, int sequence_length,
-                                     int head_size, int max_sequence_length) {
+                                     int batch_size,
+                                     int num_heads,
+                                     int sequence_length,
+                                     int head_size,
+                                     int max_sequence_length) {
   std::vector<T> ordered(unordered_k_cache.size(), T{0.f});
 
   // Copy V over
@@ -222,8 +220,10 @@ static std::vector<T> ReorderKVCache(std::vector<T>& unordered_k_cache,
 template <typename T>
 static std::vector<T> MergeReorderedKVCacheWithK(std::vector<T>& ordered_k_cache,
                                                  T* k,
-                                                 int batch_size, int num_heads,
-                                                 int past_sequence_length, int max_sequence_length,
+                                                 int batch_size,
+                                                 int num_heads,
+                                                 int past_sequence_length,
+                                                 int max_sequence_length,
                                                  int head_size) {
   std::vector<T> merged = ordered_k_cache;
 
@@ -277,8 +277,10 @@ static std::vector<T> MergeReorderedKVCacheWithK(std::vector<T>& ordered_k_cache
 template <typename T>
 static void MergeReorderedKVCacheWithV(T* v_cache,
                                        T* v,
-                                       int batch_size, int num_heads,
-                                       int past_sequence_length, int max_sequence_length,
+                                       int batch_size,
+                                       int num_heads,
+                                       int past_sequence_length,
+                                       int max_sequence_length,
                                        int head_size) {
   int output_iter = past_sequence_length * head_size;
 
@@ -297,10 +299,7 @@ static void MergeReorderedKVCacheWithV(T* v_cache,
 }
 
 template <typename T>
-static std::pair<std::vector<T>, std::vector<T>> MergePastKWithPresentKAndTranspose(T* past_k, T* present_k,
-                                                                                    int num_batch, int num_heads,
-                                                                                    int past_sequence_length, int max_sequence_length,
-                                                                                    int head_size) {
+static std::pair<std::vector<T>, std::vector<T>> MergePastKWithPresentKAndTranspose(T* past_k, T* present_k, int num_batch, int num_heads, int past_sequence_length, int max_sequence_length, int head_size) {
   int total_seq_length = (past_sequence_length + 1);
   std::vector<T> merged_k(num_batch * num_heads * total_seq_length * head_size, T{0.f});
   std::vector<T> transposed_merged_k(num_batch * num_heads * total_seq_length * head_size, T{0.f});
@@ -348,8 +347,7 @@ static std::pair<std::vector<T>, std::vector<T>> MergePastKWithPresentKAndTransp
 }
 
 template <typename T>
-void ValidateReorderedMergedKWithK(T* k, T* k_cache, int batch_size, int num_heads,
-                                   int total_sequence_length, int max_sequence_length, int head_size) {
+void ValidateReorderedMergedKWithK(T* k, T* k_cache, int batch_size, int num_heads, int total_sequence_length, int max_sequence_length, int head_size) {
   // k -> B N S H
   // k_cache -> B N H/chunk_size max_sequence_length chunk_size
 
@@ -382,12 +380,10 @@ void ValidateReorderedMergedKWithK(T* k, T* k_cache, int batch_size, int num_hea
 
 // QK_Transpose
 template <typename T>
-std::vector<T> QK_Transpose(T* q_matrix, T* k_transpose_matrix,
-                            int batch_size, int num_heads, int total_sequence_length, int head_size);
+std::vector<T> QK_Transpose(T* q_matrix, T* k_transpose_matrix, int batch_size, int num_heads, int total_sequence_length, int head_size);
 
 template <>
-std::vector<float> QK_Transpose(float* q_matrix, float* k_transpose_matrix,
-                                int batch_size, int num_heads, int total_sequence_length, int head_size) {
+std::vector<float> QK_Transpose(float* q_matrix, float* k_transpose_matrix, int batch_size, int num_heads, int total_sequence_length, int head_size) {
   int hidden_size = num_heads * head_size;
 
   std::vector<float> qk_transpose;
@@ -424,8 +420,7 @@ std::vector<float> QK_Transpose(float* q_matrix, float* k_transpose_matrix,
 }
 
 template <>
-std::vector<MLFloat16> QK_Transpose(MLFloat16* q_matrix, MLFloat16* k_transpose_matrix,
-                                    int batch_size, int num_heads, int total_sequence_length, int head_size) {
+std::vector<MLFloat16> QK_Transpose(MLFloat16* q_matrix, MLFloat16* k_transpose_matrix, int batch_size, int num_heads, int total_sequence_length, int head_size) {
   int hidden_size = num_heads * head_size;
 
   std::vector<MLFloat16> qk_transpose;
@@ -464,11 +459,19 @@ std::vector<MLFloat16> QK_Transpose(MLFloat16* q_matrix, MLFloat16* k_transpose_
 // Softmax_QK_Transpose
 template <typename T>
 std::vector<T> Softmax_QK_Transpose(T* qk_transpose_matrix,
-                                    int batch_size, int num_heads, int sequence_length, int total_sequence_length, int head_size);
+                                    int batch_size,
+                                    int num_heads,
+                                    int sequence_length,
+                                    int total_sequence_length,
+                                    int head_size);
 
 template <>
 std::vector<float> Softmax_QK_Transpose(float* qk_transpose_matrix,
-                                        int batch_size, int num_heads, int sequence_length, int total_sequence_length, int head_size) {
+                                        int batch_size,
+                                        int num_heads,
+                                        int sequence_length,
+                                        int total_sequence_length,
+                                        int head_size) {
   if (sequence_length != 1) {
     throw std::runtime_error("Not supported");
   }
@@ -507,7 +510,11 @@ std::vector<float> Softmax_QK_Transpose(float* qk_transpose_matrix,
 
 template <>
 std::vector<MLFloat16> Softmax_QK_Transpose(MLFloat16* qk_transpose_matrix,
-                                            int batch_size, int num_heads, int sequence_length, int total_sequence_length, int head_size) {
+                                            int batch_size,
+                                            int num_heads,
+                                            int sequence_length,
+                                            int total_sequence_length,
+                                            int head_size) {
   if (sequence_length != 1) {
     throw std::runtime_error("Not supported");
   }
@@ -548,14 +555,20 @@ std::vector<MLFloat16> Softmax_QK_Transpose(MLFloat16* qk_transpose_matrix,
 template <typename T>
 std::vector<T> Softmax_QK_Transpose_V(T* softmax_qk_transpose_matrix,
                                       T* v_matrix,
-                                      int batch_size, int num_heads, int sequence_length,
-                                      int total_sequence_length, int max_sequence_length,
+                                      int batch_size,
+                                      int num_heads,
+                                      int sequence_length,
+                                      int total_sequence_length,
+                                      int max_sequence_length,
                                       int head_size);
 template <>
 std::vector<float> Softmax_QK_Transpose_V(float* softmax_qk_transpose_matrix,
                                           float* v_matrix,
-                                          int batch_size, int num_heads, int sequence_length,
-                                          int total_sequence_length, int max_sequence_length,
+                                          int batch_size,
+                                          int num_heads,
+                                          int sequence_length,
+                                          int total_sequence_length,
+                                          int max_sequence_length,
                                           int head_size) {
   if (sequence_length != 1) {
     throw std::runtime_error("Not supported");
@@ -596,8 +609,11 @@ std::vector<float> Softmax_QK_Transpose_V(float* softmax_qk_transpose_matrix,
 template <>
 std::vector<MLFloat16> Softmax_QK_Transpose_V(MLFloat16* softmax_qk_transpose_matrix,
                                               MLFloat16* v_matrix,
-                                              int batch_size, int num_heads, int sequence_length,
-                                              int total_sequence_length, int max_sequence_length,
+                                              int batch_size,
+                                              int num_heads,
+                                              int sequence_length,
+                                              int total_sequence_length,
+                                              int max_sequence_length,
                                               int head_size) {
   if (sequence_length != 1) {
     throw std::runtime_error("Not supported");
@@ -680,15 +696,13 @@ TEST(DecoderMaskedSelfAttentionTest, Test_fp32) {
 
         auto kv_cache = CreateRandom<float>(past_present_size);
 
-        auto reordered_kv_cache = ReorderKVCache<float>(kv_cache, batch_size,
-                                                        number_of_heads, past_sequence_length, head_size, max_sequence_length);
+        auto reordered_kv_cache = ReorderKVCache<float>(kv_cache, batch_size, number_of_heads, past_sequence_length, head_size, max_sequence_length);
 
         // Validate if reordering went well - by transposing and checking equality
         int chunk_size = 16 / sizeof(float);
         int num_chunks = head_size / chunk_size;
         auto transposed = Transpose<float>(kv_cache.data(), batch_size, number_of_heads, num_chunks, max_sequence_length, chunk_size);
-        CheckEquality<float>(transposed.data(), reordered_kv_cache.data(), batch_size, number_of_heads, num_chunks,
-                             max_sequence_length, past_sequence_length, chunk_size);
+        CheckEquality<float>(transposed.data(), reordered_kv_cache.data(), batch_size, number_of_heads, num_chunks, max_sequence_length, past_sequence_length, chunk_size);
 
         tester.AddInput<float>("past", past_dims, reordered_kv_cache);
 
@@ -703,21 +717,16 @@ TEST(DecoderMaskedSelfAttentionTest, Test_fp32) {
         auto qkv = QKV(input, weight, bias, batch_size, sequence_length, hidden_size);
         auto* qkv_matrix = qkv.data();
 
-        auto pair = MergePastKWithPresentKAndTranspose<float>(kv_cache.data(), qkv_matrix + hidden_size, batch_size,
-                                                              number_of_heads, past_sequence_length,
-                                                              max_sequence_length, head_size);
+        auto pair = MergePastKWithPresentKAndTranspose<float>(kv_cache.data(), qkv_matrix + hidden_size, batch_size, number_of_heads, past_sequence_length, max_sequence_length, head_size);
 
         auto k_merged = pair.first;
         auto k_transpose = pair.second;
 
-        auto qk_transpose = QK_Transpose<float>(qkv_matrix, k_transpose.data(), batch_size, number_of_heads,
-                                                total_sequence_length, head_size);
+        auto qk_transpose = QK_Transpose<float>(qkv_matrix, k_transpose.data(), batch_size, number_of_heads, total_sequence_length, head_size);
 
-        auto softmax_qk_transpose = Softmax_QK_Transpose<float>(qk_transpose.data(), batch_size, number_of_heads,
-                                                                sequence_length, total_sequence_length, head_size);
+        auto softmax_qk_transpose = Softmax_QK_Transpose<float>(qk_transpose.data(), batch_size, number_of_heads, sequence_length, total_sequence_length, head_size);
 
-        auto present = MergeReorderedKVCacheWithK<float>(reordered_kv_cache, qkv_matrix + hidden_size, batch_size,
-                                                         number_of_heads, past_sequence_length, max_sequence_length, head_size);
+        auto present = MergeReorderedKVCacheWithK<float>(reordered_kv_cache, qkv_matrix + hidden_size, batch_size, number_of_heads, past_sequence_length, max_sequence_length, head_size);
 
         // Validate our test logic
         // We want to validate if our merged "unordered" K is the same as
@@ -725,13 +734,9 @@ TEST(DecoderMaskedSelfAttentionTest, Test_fp32) {
         // is equivalent to the QKT we do in the kernel
         ValidateReorderedMergedKWithK<float>(k_merged.data(), present.data(), batch_size, number_of_heads, total_sequence_length, max_sequence_length, head_size);
 
-        MergeReorderedKVCacheWithV<float>(present.data() + (past_present_size / 2), qkv_matrix + 2 * hidden_size, batch_size,
-                                          number_of_heads, past_sequence_length, max_sequence_length, head_size);
+        MergeReorderedKVCacheWithV<float>(present.data() + (past_present_size / 2), qkv_matrix + 2 * hidden_size, batch_size, number_of_heads, past_sequence_length, max_sequence_length, head_size);
 
-        auto output = Softmax_QK_Transpose_V<float>(softmax_qk_transpose.data(), present.data() + (past_present_size / 2),
-                                                    batch_size, number_of_heads,
-                                                    sequence_length, total_sequence_length,
-                                                    max_sequence_length, head_size);
+        auto output = Softmax_QK_Transpose_V<float>(softmax_qk_transpose.data(), present.data() + (past_present_size / 2), batch_size, number_of_heads, sequence_length, total_sequence_length, max_sequence_length, head_size);
 
         // Output(s)
         tester.AddOutput<float>("output", input_dims, output);
@@ -794,15 +799,13 @@ TEST(DecoderMaskedSelfAttentionTest, Test_fp16) {
 
         auto kv_cache = CreateRandom<MLFloat16>(past_present_size);
 
-        auto reordered_kv_cache = ReorderKVCache<MLFloat16>(kv_cache, batch_size,
-                                                            number_of_heads, past_sequence_length, head_size, max_sequence_length);
+        auto reordered_kv_cache = ReorderKVCache<MLFloat16>(kv_cache, batch_size, number_of_heads, past_sequence_length, head_size, max_sequence_length);
 
         // Validate if reordering went well - by transposing and checking equality
         int chunk_size = 16 / sizeof(MLFloat16);
         int num_chunks = head_size / chunk_size;
         auto transposed = Transpose<MLFloat16>(kv_cache.data(), batch_size, number_of_heads, num_chunks, max_sequence_length, chunk_size);
-        CheckEquality<MLFloat16>(transposed.data(), reordered_kv_cache.data(), batch_size, number_of_heads, num_chunks,
-                                 max_sequence_length, past_sequence_length, chunk_size);
+        CheckEquality<MLFloat16>(transposed.data(), reordered_kv_cache.data(), batch_size, number_of_heads, num_chunks, max_sequence_length, past_sequence_length, chunk_size);
 
         tester.AddInput<MLFloat16>("past", past_dims, reordered_kv_cache);
 
@@ -817,21 +820,16 @@ TEST(DecoderMaskedSelfAttentionTest, Test_fp16) {
         auto qkv = QKV(input, weight, bias, batch_size, sequence_length, hidden_size);
         auto* qkv_matrix = qkv.data();
 
-        auto pair = MergePastKWithPresentKAndTranspose<MLFloat16>(kv_cache.data(), qkv_matrix + hidden_size, batch_size,
-                                                                  number_of_heads, past_sequence_length,
-                                                                  max_sequence_length, head_size);
+        auto pair = MergePastKWithPresentKAndTranspose<MLFloat16>(kv_cache.data(), qkv_matrix + hidden_size, batch_size, number_of_heads, past_sequence_length, max_sequence_length, head_size);
 
         auto k_merged = pair.first;
         auto k_transpose = pair.second;
 
-        auto qk_transpose = QK_Transpose<MLFloat16>(qkv_matrix, k_transpose.data(), batch_size, number_of_heads,
-                                                    total_sequence_length, head_size);
+        auto qk_transpose = QK_Transpose<MLFloat16>(qkv_matrix, k_transpose.data(), batch_size, number_of_heads, total_sequence_length, head_size);
 
-        auto softmax_qk_transpose = Softmax_QK_Transpose<MLFloat16>(qk_transpose.data(), batch_size, number_of_heads,
-                                                                    sequence_length, total_sequence_length, head_size);
+        auto softmax_qk_transpose = Softmax_QK_Transpose<MLFloat16>(qk_transpose.data(), batch_size, number_of_heads, sequence_length, total_sequence_length, head_size);
 
-        auto present = MergeReorderedKVCacheWithK<MLFloat16>(reordered_kv_cache, qkv_matrix + hidden_size, batch_size,
-                                                             number_of_heads, past_sequence_length, max_sequence_length, head_size);
+        auto present = MergeReorderedKVCacheWithK<MLFloat16>(reordered_kv_cache, qkv_matrix + hidden_size, batch_size, number_of_heads, past_sequence_length, max_sequence_length, head_size);
 
         // Validate our test logic
         // We want to validate if our merged "unordered" K is the same as
@@ -839,13 +837,9 @@ TEST(DecoderMaskedSelfAttentionTest, Test_fp16) {
         // is equivalent to the QKT we do in the kernel
         ValidateReorderedMergedKWithK<MLFloat16>(k_merged.data(), present.data(), batch_size, number_of_heads, total_sequence_length, max_sequence_length, head_size);
 
-        MergeReorderedKVCacheWithV<MLFloat16>(present.data() + (past_present_size / 2), qkv_matrix + 2 * hidden_size, batch_size,
-                                              number_of_heads, past_sequence_length, max_sequence_length, head_size);
+        MergeReorderedKVCacheWithV<MLFloat16>(present.data() + (past_present_size / 2), qkv_matrix + 2 * hidden_size, batch_size, number_of_heads, past_sequence_length, max_sequence_length, head_size);
 
-        auto output = Softmax_QK_Transpose_V(softmax_qk_transpose.data(), present.data() + (past_present_size / 2),
-                                             batch_size, number_of_heads,
-                                             sequence_length, total_sequence_length,
-                                             max_sequence_length, head_size);
+        auto output = Softmax_QK_Transpose_V(softmax_qk_transpose.data(), present.data() + (past_present_size / 2), batch_size, number_of_heads, sequence_length, total_sequence_length, max_sequence_length, head_size);
 
         // Output(s)
         tester.AddOutput<MLFloat16>("output", input_dims, output);

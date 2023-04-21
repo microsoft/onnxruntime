@@ -50,7 +50,8 @@ inline bool CanCoalesce(
 */
 inline void CopyStride(
     std::initializer_list<std::reference_wrapper<TensorShapeVector>>& tensors_strides,
-    std::size_t dim, std::size_t ndim) {
+    std::size_t dim,
+    std::size_t ndim) {
   for (const auto& cur_stride : tensors_strides) {
     auto& strides = cur_stride.get();
     strides[dim] = strides[ndim];

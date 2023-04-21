@@ -40,8 +40,7 @@ ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_CPU, _In_ OrtSessio
 #if defined(_MSC_VER) && !defined(__clang__)
 #pragma warning(disable : 26409)
 #endif
-ORT_API_STATUS_IMPL(OrtApis::CreateCpuMemoryInfo, enum OrtAllocatorType type, enum OrtMemType mem_type,
-                    _Outptr_ OrtMemoryInfo** out) {
+ORT_API_STATUS_IMPL(OrtApis::CreateCpuMemoryInfo, enum OrtAllocatorType type, enum OrtMemType mem_type, _Outptr_ OrtMemoryInfo** out) {
   *out = new OrtMemoryInfo(onnxruntime::CPU, type, OrtDevice(), 0, mem_type);
   return nullptr;
 }

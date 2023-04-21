@@ -43,16 +43,14 @@ Status ComputeMatrixOffsets(cudaStream_t stream, T* workspace_data, size_t num_b
     workspace_data += matrix_size;
   }
 
-  CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(matrix_ptrs.get(), cuda_ptrs.data(), sizeof(T*) * num_batches,
-                                       cudaMemcpyHostToDevice, stream));
+  CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(matrix_ptrs.get(), cuda_ptrs.data(), sizeof(T*) * num_batches, cudaMemcpyHostToDevice, stream));
   return Status::OK();
 }
 
 Status CheckForSingularity(cudaStream_t stream, const IAllocatorUniquePtr<int>& info, const std::unique_ptr<int[]>& info_cpu, size_t num_batches) {
   // Let's check if any of the info values is non-zero
   // cudaMemcpyAsync from device memory to pageable host memory will return only once the copy has completed.
-  CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(info_cpu.get(), info.get(), sizeof(int) * num_batches,
-                                       cudaMemcpyDeviceToHost, stream));
+  CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(info_cpu.get(), info.get(), sizeof(int) * num_batches, cudaMemcpyDeviceToHost, stream));
   for (size_t i = 0; i < num_batches; ++i) {
     if (info_cpu[i] != 0) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Matrix is singular at batch:", i);
@@ -65,9 +63,7 @@ Status CheckForSingularity(cudaStream_t stream, const IAllocatorUniquePtr<int>& 
 
 template <typename T>
 struct Inverse::ComputeImpl {
-  Status operator()(onnxruntime::Stream* ort_stream, Inverse::CublasHandle cublas_h, const Inverse* inst, const Tensor& input, Tensor& output,
-                    const IAllocatorUniquePtr<int>& info, const IAllocatorUniquePtr<int>& pivots,
-                    size_t num_batches, size_t rows) const {
+  Status operator()(onnxruntime::Stream* ort_stream, Inverse::CublasHandle cublas_h, const Inverse* inst, const Tensor& input, Tensor& output, const IAllocatorUniquePtr<int>& info, const IAllocatorUniquePtr<int>& pivots, size_t num_batches, size_t rows) const {
     using namespace onnxruntime::cuda;
     using namespace inverse_internal;
     using CudaT = typename ToCudaType<T>::MappedType;
@@ -84,8 +80,7 @@ struct Inverse::ComputeImpl {
         // Convert from MLFloat16(half) to float
         Impl_Cast<CudaT, float>(stream, reinterpret_cast<const CudaT*>(input.Data<MLFloat16>()), input_workspace.get(), input_count);
       } else {
-        CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(input_workspace.get(), input.Data<float>(), sizeof(float) * input_count,
-                                             cudaMemcpyDeviceToDevice, stream));
+        CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(input_workspace.get(), input.Data<float>(), sizeof(float) * input_count, cudaMemcpyDeviceToDevice, stream));
       }
       IAllocatorUniquePtr<float*> matrix_ptrs = inst->GetScratchBuffer<float*>(n_batches, ort_stream);
       ORT_RETURN_IF_ERROR(ComputeMatrixOffsets<float>(stream, input_workspace.get(), num_batches, rows, matrix_ptrs));
@@ -114,8 +109,7 @@ struct Inverse::ComputeImpl {
       }
     } else if (std::is_same<T, double>::value) {
       IAllocatorUniquePtr<double> input_workspace = inst->GetScratchBuffer<double>(static_cast<int>(input_count), ort_stream);
-      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(input_workspace.get(), input.Data<double>(), sizeof(double) * input_count,
-                                           cudaMemcpyDeviceToDevice, stream));
+      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(input_workspace.get(), input.Data<double>(), sizeof(double) * input_count, cudaMemcpyDeviceToDevice, stream));
 
       IAllocatorUniquePtr<double*> matrix_ptrs = inst->GetScratchBuffer<double*>(n_batches, ort_stream);
       ORT_RETURN_IF_ERROR(ComputeMatrixOffsets<double>(stream, input_workspace.get(), num_batches, rows, matrix_ptrs));

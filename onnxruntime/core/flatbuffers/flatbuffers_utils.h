@@ -37,11 +37,11 @@ constexpr auto kInvalidOrtFormatModelMessage = "Invalid ORT format model.";
 
 // Will only create string in flatbuffers when has_string is true
 flatbuffers::Offset<flatbuffers::String> SaveStringToOrtFormat(flatbuffers::FlatBufferBuilder& builder,
-                                                               bool has_string, const std::string& src);
+                                                               bool has_string,
+                                                               const std::string& src);
 
 onnxruntime::common::Status SaveValueInfoOrtFormat(
-    flatbuffers::FlatBufferBuilder& builder, const ONNX_NAMESPACE::ValueInfoProto& value_info_proto,
-    flatbuffers::Offset<fbs::ValueInfo>& fbs_value_info);
+    flatbuffers::FlatBufferBuilder& builder, const ONNX_NAMESPACE::ValueInfoProto& value_info_proto, flatbuffers::Offset<fbs::ValueInfo>& fbs_value_info);
 
 void LoadStringFromOrtFormat(std::string& dst, const flatbuffers::String* fbs_string);
 
@@ -70,6 +70,5 @@ bool IsOrtFormatModelBytes(const void* bytes, int num_bytes);
 }  // namespace fbs
 }  // namespace onnxruntime
 
-#define ORT_FORMAT_RETURN_IF_NULL(expr, expr_description)            \
-  ORT_RETURN_IF((expr) == nullptr, (expr_description), " is null. ", \
-                onnxruntime::fbs::utils::kInvalidOrtFormatModelMessage)
+#define ORT_FORMAT_RETURN_IF_NULL(expr, expr_description) \
+  ORT_RETURN_IF((expr) == nullptr, (expr_description), " is null. ", onnxruntime::fbs::utils::kInvalidOrtFormatModelMessage)

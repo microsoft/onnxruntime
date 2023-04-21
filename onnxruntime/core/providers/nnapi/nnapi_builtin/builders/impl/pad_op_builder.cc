@@ -45,8 +45,7 @@ class PadOpBuilder : public BaseOpBuilder {
     return 11;
   }
 
-  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
-                         const OpSupportCheckParams& params) const override;
+  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit, const OpSupportCheckParams& params) const override;
 };
 
 void PadOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
@@ -92,8 +91,7 @@ Status PadOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const No
 
   const Shape converted_pads_shape{data_rank, 2};
   const OperandType converted_pads_operand_type{Type::TENSOR_INT32, converted_pads_shape};
-  ORT_RETURN_IF_ERROR(model_builder.AddOperandFromPersistMemoryBuffer(pads, converted_pads_data.data(),
-                                                                      converted_pads_operand_type));
+  ORT_RETURN_IF_ERROR(model_builder.AddOperandFromPersistMemoryBuffer(pads, converted_pads_data.data(), converted_pads_operand_type));
   input_indices.push_back(operand_indices.at(pads));
 
   // `constant_value` input
@@ -115,8 +113,7 @@ Status PadOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const No
   return model_builder.AddOperation(op_code, input_indices, {output}, {output_operand_type});
 }
 
-bool PadOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
-                                     const OpSupportCheckParams& /* params */) const {
+bool PadOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit, const OpSupportCheckParams& /* params */) const {
   const auto& inputs = node_unit.Inputs();
 
   // only support 1-4d input shape

@@ -16,9 +16,7 @@ ONNX_CPU_OPERATOR_KERNEL(
     TfIdfVectorizer,
     9,
     KernelDefBuilder()
-        .TypeConstraint("T", {DataTypeImpl::GetTensorType<std::string>(),
-                              DataTypeImpl::GetTensorType<int32_t>(),
-                              DataTypeImpl::GetTensorType<int64_t>()})
+        .TypeConstraint("T", {DataTypeImpl::GetTensorType<std::string>(), DataTypeImpl::GetTensorType<int32_t>(), DataTypeImpl::GetTensorType<int64_t>()})
         .TypeConstraint("T1", DataTypeImpl::GetTensorType<float>()),
     TfIdfVectorizer);
 
@@ -43,8 +41,7 @@ using NgramPartString = NgramPart<std::string>;
 // Avoid recursive class definitions using unique_ptr + forward declaration
 using IntMap = std::unordered_map<int64_t, std::unique_ptr<NgramPartInt>>;
 
-using StrMap = std::unordered_map<std::reference_wrapper<const std::string>, std::unique_ptr<NgramPartString>,
-                                  std::hash<std::string>, std::equal_to<std::string>>;
+using StrMap = std::unordered_map<std::reference_wrapper<const std::string>, std::unique_ptr<NgramPartString>, std::hash<std::string>, std::equal_to<std::string>>;
 
 template <>
 struct NgramPart<int64_t> {
@@ -62,8 +59,7 @@ struct NgramPart<std::string> {
 
 // Returns next ngram_id
 template <class K, class ForwardIter, class Map>
-inline size_t PopulateGrams(ForwardIter first, size_t ngrams, size_t ngram_size, size_t ngram_id,
-                            Map& c) {
+inline size_t PopulateGrams(ForwardIter first, size_t ngrams, size_t ngram_size, size_t ngram_id, Map& c) {
   for (; ngrams > 0; --ngrams) {
     size_t n = 1;
     Map* m = &c;
@@ -141,8 +137,7 @@ struct TfIdfVectorizer::Impl {
   Impl(const Impl&) = delete;
   Impl& operator=(const Impl&) = delete;
 
-  void IncrementCount(size_t ngram_id, size_t row_num,
-                      std::vector<uint32_t>& frequencies) const {
+  void IncrementCount(size_t ngram_id, size_t row_num, std::vector<uint32_t>& frequencies) const {
     assert(ngram_id != 0);
     --ngram_id;
     assert(ngram_id < ngram_indexes_.size());
@@ -173,7 +168,9 @@ TfIdfVectorizer::TfIdfVectorizer(const OpKernelInfo& info) : OpKernel(info), imp
   ORT_ENFORCE(status.IsOK(), "min_gram_length is required");
   ORT_ENFORCE(impl_->max_gram_length_ >= impl_->min_gram_length_,
               "min_gram_length >= max_gram_length required: ",
-              std::to_string(impl_->max_gram_length_), " >= ", std::to_string(impl_->min_gram_length_));
+              std::to_string(impl_->max_gram_length_),
+              " >= ",
+              std::to_string(impl_->min_gram_length_));
 
   status = info.GetAttr("max_skip_count", &impl_->max_skip_count_);
   ORT_ENFORCE(status.IsOK(), "max_skip_count is required");
@@ -183,17 +180,20 @@ TfIdfVectorizer::TfIdfVectorizer(const OpKernelInfo& info) : OpKernel(info), imp
   ORT_ENFORCE(status.IsOK() && !impl_->ngram_counts_.empty(), "Non-empty ngram_counts is required");
   ORT_ENFORCE(size_t(impl_->min_gram_length_) <= impl_->ngram_counts_.size(),
               "min_gram_length must be inbounds of ngram_counts: ",
-              std::to_string(impl_->min_gram_length_), " <= ", std::to_string(impl_->ngram_counts_.size()));
+              std::to_string(impl_->min_gram_length_),
+              " <= ",
+              std::to_string(impl_->ngram_counts_.size()));
   ORT_ENFORCE(size_t(impl_->max_gram_length_) <= impl_->ngram_counts_.size(),
               "max_gram_length must be inbounds of ngram_counts: ",
-              std::to_string(impl_->max_gram_length_), " <= ", std::to_string(impl_->ngram_counts_.size()));
+              std::to_string(impl_->max_gram_length_),
+              " <= ",
+              std::to_string(impl_->ngram_counts_.size()));
 
   status = info.GetAttrsAsSpan("ngram_indexes", impl_->ngram_indexes_);
   ORT_ENFORCE(status.IsOK() && !impl_->ngram_indexes_.empty(), "Non-empty ngram_indexes is required");
   {
     // Check that all are positive
-    ORT_ENFORCE(std::all_of(impl_->ngram_indexes_.begin(), impl_->ngram_indexes_.end(),
-                            [](int64_t i) { return i >= 0; }),
+    ORT_ENFORCE(std::all_of(impl_->ngram_indexes_.begin(), impl_->ngram_indexes_.end(), [](int64_t i) { return i >= 0; }),
                 "Negative ngram_indexes values are not allowed");
     // Set output size to max output index + 1;
     auto greatest_hit = std::max_element(impl_->ngram_indexes_.begin(), impl_->ngram_indexes_.end());
@@ -203,8 +203,10 @@ TfIdfVectorizer::TfIdfVectorizer(const OpKernelInfo& info) : OpKernel(info), imp
   status = info.GetAttrsAsSpan("weights", impl_->weights_);
   if (status.IsOK()) {
     ORT_ENFORCE(impl_->weights_.size() == impl_->ngram_indexes_.size(),
-                "Got weights of size: ", std::to_string(impl_->weights_.size()),
-                " but ngram_indexes size: ", std::to_string(impl_->ngram_indexes_.size()),
+                "Got weights of size: ",
+                std::to_string(impl_->weights_.size()),
+                " but ngram_indexes size: ",
+                std::to_string(impl_->ngram_indexes_.size()),
                 " must be of equal size");
   }
 
@@ -229,11 +231,15 @@ TfIdfVectorizer::TfIdfVectorizer(const OpKernelInfo& info) : OpKernel(info), imp
     size_t start_idx = onnxruntime::narrow<size_t>(impl_->ngram_counts_[i]);
     size_t end_idx = onnxruntime::narrow<size_t>((i + 1) < impl_->ngram_counts_.size() ? impl_->ngram_counts_[i + 1] : total_items);
     ORT_ENFORCE(end_idx >= start_idx && end_idx <= total_items,
-                "n-gram counts out of bounds for ", std::to_string(ngram_size), "-grams");
+                "n-gram counts out of bounds for ",
+                std::to_string(ngram_size),
+                "-grams");
     auto items = end_idx - start_idx;
     if (items > 0) {
       ORT_ENFORCE((items % ngram_size == 0),
-                  "Number of items must compose whole ", std::to_string(ngram_size), "-grams");
+                  "Number of items must compose whole ",
+                  std::to_string(ngram_size),
+                  "-grams");
       auto ngrams = items / ngram_size;
       // Skip loading into hash_set ngrams that are not in the range of [min_gram_length-max_gram_length]
       if (ngram_size >= min_gram_length && ngram_size <= max_gram_length) {
@@ -311,8 +317,7 @@ void TfIdfVectorizer::OutputResult(OpKernelContext* ctx, size_t B, const std::ve
   }
 }
 
-void TfIdfVectorizer::ComputeImpl(OpKernelContext* ctx, ptrdiff_t row_num, size_t row_size,
-                                  std::vector<uint32_t>& frequencies) const {
+void TfIdfVectorizer::ComputeImpl(OpKernelContext* ctx, ptrdiff_t row_num, size_t row_size, std::vector<uint32_t>& frequencies) const {
   auto X = ctx->Input<Tensor>(0);
   const auto elem_size = X->DataType()->Size();
 
@@ -403,12 +408,10 @@ Status TfIdfVectorizer::Compute(OpKernelContext* ctx) const {
     C = onnxruntime::narrow<size_t>(input_dims[1]);
     num_rows = static_cast<int32_t>(B);
     if (B < 1) {
-      return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                    "Input shape must have either [C] or [B,C] dimensions with B > 0.");
+      return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Input shape must have either [C] or [B,C] dimensions with B > 0.");
     }
   } else {
-    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                  "Input shape must have either [C] or [B,C] dimensions with B > 0.");
+    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Input shape must have either [C] or [B,C] dimensions with B > 0.");
   }
 
   assert((num_rows * C) == total_items);

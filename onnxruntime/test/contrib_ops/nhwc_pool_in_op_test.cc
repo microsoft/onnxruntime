@@ -289,17 +289,12 @@ TEST(NhwcFp16PoolOpTest, AvgPoolIncludePadPixel) {
   test.AddAttribute("kernel_shape", std::vector<int64_t>{2, 2});
   test.AddAttribute("count_include_pad", (int64_t)1);
   std::vector<MLFloat16> x_vals = {
-      MLFloat16(0.3337f), MLFloat16(0.8794f), MLFloat16(0.3375f),
-      MLFloat16(0.6666f), MLFloat16(0.4426f), MLFloat16(0.6474f),
-      MLFloat16(0.7675f), MLFloat16(0.8823f), MLFloat16(0.8852f)};
+      MLFloat16(0.3337f), MLFloat16(0.8794f), MLFloat16(0.3375f), MLFloat16(0.6666f), MLFloat16(0.4426f), MLFloat16(0.6474f), MLFloat16(0.7675f), MLFloat16(0.8823f), MLFloat16(0.8852f)};
 
   std::vector<int64_t> x_dims = {1, 3, 3, 1};
   std::vector<int64_t> expected_dims = {1, 4, 4, 1};
   std::vector<MLFloat16> expected_vals = {
-      MLFloat16(0.0834f), MLFloat16(0.3033f), MLFloat16(0.3042f), MLFloat16(0.0844f),
-      MLFloat16(0.2501f), MLFloat16(0.5806f), MLFloat16(0.5767f), MLFloat16(0.2462f),
-      MLFloat16(0.3585f), MLFloat16(0.6897f), MLFloat16(0.7144f), MLFloat16(0.3832f),
-      MLFloat16(0.1919f), MLFloat16(0.4124f), MLFloat16(0.4419f), MLFloat16(0.2213f)};
+      MLFloat16(0.0834f), MLFloat16(0.3033f), MLFloat16(0.3042f), MLFloat16(0.0844f), MLFloat16(0.2501f), MLFloat16(0.5806f), MLFloat16(0.5767f), MLFloat16(0.2462f), MLFloat16(0.3585f), MLFloat16(0.6897f), MLFloat16(0.7144f), MLFloat16(0.3832f), MLFloat16(0.1919f), MLFloat16(0.4124f), MLFloat16(0.4419f), MLFloat16(0.2213f)};
 
   test.AddInput<MLFloat16>("X", x_dims, x_vals);
   test.AddOutput<MLFloat16>("Y", expected_dims, expected_vals);

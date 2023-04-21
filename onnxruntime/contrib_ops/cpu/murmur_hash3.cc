@@ -101,15 +101,8 @@ ONNX_OPERATOR_KERNEL_EX(
     1,
     kCpuExecutionProvider,
     KernelDefBuilder()
-        .TypeConstraint("T1", std::vector<MLDataType>{DataTypeImpl::GetTensorType<int32_t>(),
-                                                      DataTypeImpl::GetTensorType<uint32_t>(),
-                                                      DataTypeImpl::GetTensorType<int64_t>(),
-                                                      DataTypeImpl::GetTensorType<uint64_t>(),
-                                                      DataTypeImpl::GetTensorType<float>(),
-                                                      DataTypeImpl::GetTensorType<double>(),
-                                                      DataTypeImpl::GetTensorType<std::string>()})
-        .TypeConstraint("T2", std::vector<MLDataType>{DataTypeImpl::GetTensorType<int32_t>(),
-                                                      DataTypeImpl::GetTensorType<uint32_t>()}),
+        .TypeConstraint("T1", std::vector<MLDataType>{DataTypeImpl::GetTensorType<int32_t>(), DataTypeImpl::GetTensorType<uint32_t>(), DataTypeImpl::GetTensorType<int64_t>(), DataTypeImpl::GetTensorType<uint64_t>(), DataTypeImpl::GetTensorType<float>(), DataTypeImpl::GetTensorType<double>(), DataTypeImpl::GetTensorType<std::string>()})
+        .TypeConstraint("T2", std::vector<MLDataType>{DataTypeImpl::GetTensorType<int32_t>(), DataTypeImpl::GetTensorType<uint32_t>()}),
     MurmurHash3);
 
 void MurmurHash3::MurmurHash3_x86_32(const void* key, int len, uint32_t seed, void* out) const {

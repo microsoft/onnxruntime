@@ -8,8 +8,7 @@
 namespace Ort {
 namespace Experimental {
 
-inline std::vector<Ort::Value> Session::Run(const std::vector<std::string>& input_names, const std::vector<Ort::Value>& input_values,
-                                            const std::vector<std::string>& output_names, const RunOptions& run_options) {
+inline std::vector<Ort::Value> Session::Run(const std::vector<std::string>& input_names, const std::vector<Ort::Value>& input_values, const std::vector<std::string>& output_names, const RunOptions& run_options) {
   size_t output_names_count = GetOutputNames().size();
   std::vector<Ort::Value> output_values;
   for (size_t i = 0; i < output_names_count; i++) output_values.emplace_back(nullptr);
@@ -17,8 +16,7 @@ inline std::vector<Ort::Value> Session::Run(const std::vector<std::string>& inpu
   return output_values;
 }
 
-inline void Session::Run(const std::vector<std::string>& input_names, const std::vector<Ort::Value>& input_values,
-                         const std::vector<std::string>& output_names, std::vector<Ort::Value>& output_values, const RunOptions& run_options) {
+inline void Session::Run(const std::vector<std::string>& input_names, const std::vector<Ort::Value>& input_values, const std::vector<std::string>& output_names, std::vector<Ort::Value>& output_values, const RunOptions& run_options) {
   size_t input_names_count = input_names.size();
   size_t output_names_count = output_names.size();
   std::vector<const char*> input_names_(input_names_count, nullptr);

@@ -29,8 +29,7 @@ class CastOpBuilder : public BaseOpBuilder {
 
   // Operator support related
  private:
-  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
-                         const OpSupportCheckParams& params) const override;
+  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit, const OpSupportCheckParams& params) const override;
 
   int32_t GetMinSupportedNNAPIFeatureLevel(const NodeUnit& /* node_unit */,
                                            const OpSupportCheckParams& /* params */) const override {
@@ -65,13 +64,11 @@ Status CastOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   InlinedVector<uint32_t> input_indices;
   input_indices.push_back(operand_indices.at(input));
   const OperandType output_operand_type(type, shaper[output]);
-  ORT_RETURN_IF_ERROR(model_builder.AddOperation(ANEURALNETWORKS_CAST, input_indices, {output},
-                                                 {output_operand_type}));
+  ORT_RETURN_IF_ERROR(model_builder.AddOperation(ANEURALNETWORKS_CAST, input_indices, {output}, {output_operand_type}));
   return Status::OK();
 }
 
-bool CastOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /* initializers */, const NodeUnit& node_unit,
-                                      const OpSupportCheckParams& /* params */) const {
+bool CastOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /* initializers */, const NodeUnit& node_unit, const OpSupportCheckParams& /* params */) const {
   NodeAttrHelper helper(node_unit);
   const auto to = helper.Get("to", 0);
   if (to != ONNX_NAMESPACE::TensorProto::FLOAT &&

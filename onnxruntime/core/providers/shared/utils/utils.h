@@ -23,8 +23,7 @@ class NodeUnit;
 // If min/max are not known initializer tensors, will return false
 // For now we only support getting float min/max,
 // since in most cases, Clip(0,6)[Relu6] will be fused by quantization tool
-bool GetClipMinMax(const InitializedTensorSet& initializers, const Node& node,
-                   float& min, float& max, const logging::Logger& logger);
+bool GetClipMinMax(const InitializedTensorSet& initializers, const Node& node, float& min, float& max, const logging::Logger& logger);
 
 // Get the type of the given NodeArg
 // Will return false if the given NodeArg has no type

@@ -16,7 +16,12 @@ bool IsEnvironmentVariableOne(const char* name) {
   const auto is_one = std::strcmp(flag, "1") == 0;
   const auto is_zero = std::strcmp(flag, "0") == 0;
   ORT_ENFORCE(is_one || is_zero,
-              "Must set ", name, "=0, ", name, "=1, or unset ", name);
+              "Must set ",
+              name,
+              "=0, ",
+              name,
+              "=1, or unset ",
+              name);
   return is_one;
 }
 

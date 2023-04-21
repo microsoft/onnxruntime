@@ -19,8 +19,7 @@ class FusedConv : public onnxruntime::cuda::Conv<T, false> {
     ORT_THROW_IF_ERROR(MapMode(activation));
     CUDNN_CALL_THROW(cudnnCreateActivationDescriptor(&activation_desc_));
     CUDNN_CALL_THROW(cudnnSetActivationDescriptor(
-        activation_desc_, activation_mode_, cudnnNanPropagation_t::CUDNN_NOT_PROPAGATE_NAN,
-        std::numeric_limits<double>::max()));
+        activation_desc_, activation_mode_, cudnnNanPropagation_t::CUDNN_NOT_PROPAGATE_NAN, std::numeric_limits<double>::max()));
   }
 
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(FusedConv);
@@ -78,20 +77,16 @@ class FusedConv : public onnxruntime::cuda::Conv<T, false> {
                                                     Base::s_.y_tensor,
                                                     Base::s_.y_data));
       if (has_b) {
-        CUDNN_RETURN_IF_ERROR(cudnnAddTensor(cudnnHandle, &alpha, Base::s_.b_tensor, Base::s_.b_data,
-                                             &alpha, Base::s_.y_tensor, Base::s_.y_data));
+        CUDNN_RETURN_IF_ERROR(cudnnAddTensor(cudnnHandle, &alpha, Base::s_.b_tensor, Base::s_.b_data, &alpha, Base::s_.y_tensor, Base::s_.y_data));
       }
       if (has_z) {
-        CUDNN_RETURN_IF_ERROR(cudnnAddTensor(cudnnHandle, &alpha, Base::s_.z_tensor, Base::s_.z_data,
-                                             &alpha, Base::s_.y_tensor, Base::s_.y_data));
+        CUDNN_RETURN_IF_ERROR(cudnnAddTensor(cudnnHandle, &alpha, Base::s_.z_tensor, Base::s_.z_data, &alpha, Base::s_.y_tensor, Base::s_.y_data));
       }
-      CUDNN_RETURN_IF_ERROR(cudnnActivationForward(cudnnHandle, activation_desc_, &alpha, Base::s_.y_tensor,
-                                                   Base::s_.y_data, &beta, Base::s_.y_tensor, Base::s_.y_data));
+      CUDNN_RETURN_IF_ERROR(cudnnActivationForward(cudnnHandle, activation_desc_, &alpha, Base::s_.y_tensor, Base::s_.y_data, &beta, Base::s_.y_tensor, Base::s_.y_data));
     }
     if (Base::s_.post_slicing_required) {
       ORT_RETURN_IF_ERROR(onnxruntime::cuda::SliceOutUnwantedOutputSection(
-          this->Stream(context), Base::s_.y_data, Base::s_.y_dims_with_adjusted_pads, Base::s_.Y->MutableDataRaw(),
-          Base::s_.y_dims.GetDims(), Base::s_.slice_starts, Base::s_.slice_ends, Base::s_.slice_axes, Base::s_.element_size));
+          this->Stream(context), Base::s_.y_data, Base::s_.y_dims_with_adjusted_pads, Base::s_.Y->MutableDataRaw(), Base::s_.y_dims.GetDims(), Base::s_.slice_starts, Base::s_.slice_ends, Base::s_.slice_axes, Base::s_.element_size));
     }
     return Status::OK();
   }
@@ -102,8 +97,7 @@ class FusedConv : public onnxruntime::cuda::Conv<T, false> {
       activation_mode_ = cudnnActivationMode_t::CUDNN_ACTIVATION_RELU;
     } else {
       return ORT_MAKE_STATUS(
-          StatusCategory::ONNXRUNTIME, StatusCode::INVALID_ARGUMENT,
-          "unsupported conv activation mode \"", activaton_mode, "\"");
+          StatusCategory::ONNXRUNTIME, StatusCode::INVALID_ARGUMENT, "unsupported conv activation mode \"", activaton_mode, "\"");
     }
     return Status::OK();
   }

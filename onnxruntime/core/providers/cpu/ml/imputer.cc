@@ -49,8 +49,7 @@ namespace ml {
 ONNX_CPU_OPERATOR_ML_KERNEL(
     Imputer,
     1,
-    KernelDefBuilder().TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
-                                            DataTypeImpl::GetTensorType<int64_t>()}),
+    KernelDefBuilder().TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(), DataTypeImpl::GetTensorType<int64_t>()}),
     ImputerOp);
 
 ImputerOp::ImputerOp(const OpKernelInfo& info) : OpKernel(info),

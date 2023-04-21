@@ -21,14 +21,10 @@ Status SoftMaxComputeHelper(
     RocmTuningContext* tuning_ctx = nullptr);
 
 template <typename InputT, typename OutputT, typename AccT, bool IsLogSoftmax>
-Status dispatch_warpwise_softmax_forward(hipStream_t stream, OutputT* dst, const InputT* src, int softmax_elements,
-                                         int softmax_elements_stride, int batch_count,
-                                         RocmTuningContext* tuning_ctx = nullptr);
+Status dispatch_warpwise_softmax_forward(hipStream_t stream, OutputT* dst, const InputT* src, int softmax_elements, int softmax_elements_stride, int batch_count, RocmTuningContext* tuning_ctx = nullptr);
 
 template <typename InputT, typename OutputT, typename AccT, bool IsLogSoftmax>
-Status dispatch_blockwise_softmax_forward(hipStream_t stream, OutputT* output, const InputT* input, int softmax_elements,
-                                          int input_stride, int output_stride, int batch_count,
-                                          RocmTuningContext* tuning_ctx = nullptr);
+Status dispatch_blockwise_softmax_forward(hipStream_t stream, OutputT* output, const InputT* input, int softmax_elements, int input_stride, int output_stride, int batch_count, RocmTuningContext* tuning_ctx = nullptr);
 
 template <typename T>
 class Softmax final : public RocmKernel {

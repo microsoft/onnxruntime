@@ -21,36 +21,41 @@ TEST(PathTest, Parse) {
 
         std::vector<PathString> expected_components_ps{};
         std::transform(
-            expected_components.begin(), expected_components.end(),
-            std::back_inserter(expected_components_ps),
-            [](const std::string& s) { return ToPathString(s); });
+            expected_components.begin(), expected_components.end(), std::back_inserter(expected_components_ps), [](const std::string& s) { return ToPathString(s); });
         EXPECT_EQ(p.GetComponents(), expected_components_ps);
         EXPECT_EQ(p.GetRootPathString(), ToPathString(expected_root));
       };
 
   check_parse(
       "i/am/relative",
-      "", {"i", "am", "relative"});
+      "",
+      {"i", "am", "relative"});
 #ifdef _WIN32
   check_parse(
       "/i/am/rooted",
-      R"(\)", {"i", "am", "rooted"});
+      R"(\)",
+      {"i", "am", "rooted"});
   check_parse(
       R"(\\server\share\i\am\rooted)",
-      R"(\\server\share\)", {"i", "am", "rooted"});
+      R"(\\server\share\)",
+      {"i", "am", "rooted"});
   check_parse(
       R"(C:\i\am\rooted)",
-      R"(C:\)", {"i", "am", "rooted"});
+      R"(C:\)",
+      {"i", "am", "rooted"});
   check_parse(
       R"(C:i\am\relative)",
-      "C:", {"i", "am", "relative"});
+      "C:",
+      {"i", "am", "relative"});
 #else  // POSIX
   check_parse(
       "/i/am/rooted",
-      "/", {"i", "am", "rooted"});
+      "/",
+      {"i", "am", "rooted"});
   check_parse(
       "//root_name/i/am/rooted",
-      "//root_name/", {"i", "am", "rooted"});
+      "//root_name/",
+      {"i", "am", "rooted"});
 #endif
 }
 
@@ -193,14 +198,11 @@ TEST(PathTest, RelativePath) {
       };
 
   check_relative(
-      "/a/b/c/d/e", "/a/b/c/d/e/f/g/h",
-      "f/g/h");
+      "/a/b/c/d/e", "/a/b/c/d/e/f/g/h", "f/g/h");
   check_relative(
-      "/a/b/c/d/e", "/a/b/f/g/h/i",
-      "../../../f/g/h/i");
+      "/a/b/c/d/e", "/a/b/f/g/h/i", "../../../f/g/h/i");
   check_relative(
-      "a/b/../c/../d", "e/./f/../g/h",
-      "../../e/g/h");
+      "a/b/../c/../d", "e/./f/../g/h", "../../e/g/h");
 }
 
 TEST(PathTest, RelativePathFailure) {

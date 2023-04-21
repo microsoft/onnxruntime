@@ -127,8 +127,7 @@ long int TempFailureRetry(TFunc retriable_operation, TFuncArgs&&... args) {
 
 // nftw() callback to remove a file
 int nftw_remove(
-    const char* fpath, const struct stat* /*sb*/,
-    int /*typeflag*/, struct FTW* /*ftwbuf*/) {
+    const char* fpath, const struct stat* /*sb*/, int /*typeflag*/, struct FTW* /*ftwbuf*/) {
   const auto result = remove(fpath);
   if (result != 0) {
     auto [err_no, err_msg] = GetSystemError();
@@ -165,9 +164,7 @@ class PosixThread : public EnvThread {
   };
 
  public:
-  PosixThread(const ORTCHAR_T* name_prefix, int index,
-              unsigned (*start_address)(int id, Eigen::ThreadPoolInterface* param), Eigen::ThreadPoolInterface* param,
-              const ThreadOptions& thread_options) {
+  PosixThread(const ORTCHAR_T* name_prefix, int index, unsigned (*start_address)(int id, Eigen::ThreadPoolInterface* param), Eigen::ThreadPoolInterface* param, const ThreadOptions& thread_options) {
     ORT_ENFORCE(index >= 0, "Negative thread index is not allowed");
     custom_create_thread_fn = thread_options.custom_create_thread_fn;
     custom_thread_creation_options = thread_options.custom_thread_creation_options;
@@ -277,9 +274,7 @@ class PosixEnv : public Env {
     return default_env;
   }
 
-  EnvThread* CreateThread(const ORTCHAR_T* name_prefix, int index,
-                          unsigned (*start_address)(int id, Eigen::ThreadPoolInterface* param),
-                          Eigen::ThreadPoolInterface* param, const ThreadOptions& thread_options) override {
+  EnvThread* CreateThread(const ORTCHAR_T* name_prefix, int index, unsigned (*start_address)(int id, Eigen::ThreadPoolInterface* param), Eigen::ThreadPoolInterface* param, const ThreadOptions& thread_options) override {
     return new PosixThread(name_prefix, index, start_address, param, thread_options);
   }
 
@@ -377,8 +372,7 @@ class PosixEnv : public Env {
     return Status::OK();
   }
 
-  Status ReadFileIntoBuffer(const ORTCHAR_T* file_path, FileOffsetType offset, size_t length,
-                            gsl::span<char> buffer) const override {
+  Status ReadFileIntoBuffer(const ORTCHAR_T* file_path, FileOffsetType offset, size_t length, gsl::span<char> buffer) const override {
     ORT_RETURN_IF_NOT(file_path, "file_path == nullptr");
     ORT_RETURN_IF_NOT(offset >= 0, "offset < 0");
     ORT_RETURN_IF_NOT(length <= buffer.size(), "length > buffer.size()");
@@ -412,8 +406,7 @@ class PosixEnv : public Env {
       }
 
       if (bytes_read == 0) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "ReadFileIntoBuffer - unexpected end of file. ", "File: ", file_path,
-                               ", offset: ", offset, ", length: ", length);
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "ReadFileIntoBuffer - unexpected end of file. ", "File: ", file_path, ", offset: ", offset, ", length: ", length);
       }
 
       total_bytes_read += bytes_read;
@@ -422,8 +415,7 @@ class PosixEnv : public Env {
     return Status::OK();
   }
 
-  Status MapFileIntoMemory(const ORTCHAR_T* file_path, FileOffsetType offset, size_t length,
-                           MappedMemoryPtr& mapped_memory) const override {
+  Status MapFileIntoMemory(const ORTCHAR_T* file_path, FileOffsetType offset, size_t length, MappedMemoryPtr& mapped_memory) const override {
     ORT_RETURN_IF_NOT(file_path, "file_path == nullptr");
     ORT_RETURN_IF_NOT(offset >= 0, "offset < 0");
 
@@ -532,8 +524,7 @@ class PosixEnv : public Env {
     *handle = dlopen(library_filename.c_str(), RTLD_NOW | (global_symbols ? RTLD_GLOBAL : RTLD_LOCAL));
     char* error_str = dlerror();
     if (!*handle) {
-      return common::Status(common::ONNXRUNTIME, common::FAIL,
-                            "Failed to load library " + library_filename + " with error: " + error_str);
+      return common::Status(common::ONNXRUNTIME, common::FAIL, "Failed to load library " + library_filename + " with error: " + error_str);
     }
     return common::Status::OK();
   }
@@ -546,8 +537,7 @@ class PosixEnv : public Env {
     int retval = dlclose(handle);
     char* error_str = dlerror();
     if (retval != 0) {
-      return common::Status(common::ONNXRUNTIME, common::FAIL,
-                            "Failed to unload library with error: " + std::string(error_str));
+      return common::Status(common::ONNXRUNTIME, common::FAIL, "Failed to unload library with error: " + std::string(error_str));
     }
     return common::Status::OK();
   }
@@ -562,8 +552,7 @@ class PosixEnv : public Env {
 
     char* error_str = dlerror();
     if (error_str) {
-      return common::Status(common::ONNXRUNTIME, common::FAIL,
-                            "Failed to get symbol " + symbol_name + " with error: " + error_str);
+      return common::Status(common::ONNXRUNTIME, common::FAIL, "Failed to get symbol " + symbol_name + " with error: " + error_str);
     }
     // it's possible to get a NULL symbol in our case when Schemas are not custom.
     return common::Status::OK();

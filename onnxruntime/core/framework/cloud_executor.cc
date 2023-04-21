@@ -8,11 +8,7 @@
 
 namespace onnxruntime {
 
-common::Status CloudExecutor::Execute(const SessionState& session_state, gsl::span<const int>,
-                                      gsl::span<const OrtValue> feeds, gsl::span<const int>,
-                                      std::vector<OrtValue>& fetches,
-                                      const std::unordered_map<size_t, CustomAllocator>&,
-                                      const logging::Logger&) {
+common::Status CloudExecutor::Execute(const SessionState& session_state, gsl::span<const int>, gsl::span<const OrtValue> feeds, gsl::span<const int>, std::vector<OrtValue>& fetches, const std::unordered_map<size_t, CustomAllocator>&, const logging::Logger&) {
   // collect input names
   const auto& inputs = session_state.GetGraphViewer().GetInputs();
   InlinedVector<std::string> input_names;
@@ -36,7 +32,8 @@ common::Status CloudExecutor::Execute(const SessionState& session_state, gsl::sp
 
   auto status = CloudEndPointInvoker::CreateInvoker(
       session_state.GetSessionOptions().config_options.configurations,
-      allocator, invoker);
+      allocator,
+      invoker);
 
   if (invoker) {
     return invoker->Send(run_options_, input_names, feeds, output_names, fetches);

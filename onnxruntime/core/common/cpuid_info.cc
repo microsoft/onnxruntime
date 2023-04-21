@@ -246,8 +246,11 @@ void CPUIDInfo::ArmWindowsInit() {
     auto retCode = ::RegGetValueA(
         HKEY_LOCAL_MACHINE,
         "HARDWARE\\DESCRIPTION\\System\\CentralProcessor\\0",
-        "CP 4020", RRF_RT_REG_QWORD, nullptr,
-        &ID_AA64PFR0_EL1, &valsize);
+        "CP 4020",
+        RRF_RT_REG_QWORD,
+        nullptr,
+        &ID_AA64PFR0_EL1,
+        &valsize);
     if (retCode == ERROR_SUCCESS) {
       // AdvSIMD, bits [23:20]
       auto advSimd = ID_AA64PFR0_EL1 >> 20;

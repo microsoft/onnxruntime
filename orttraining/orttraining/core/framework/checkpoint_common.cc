@@ -39,7 +39,8 @@ Status CreateOrtValuesFromTensorProtos(
 
     OrtValue ort_value;
     ort_value.Init(p_tensor.release(),
-                   DataTypeImpl::GetType<Tensor>(), DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
+                   DataTypeImpl::GetType<Tensor>(),
+                   DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
     name_to_ort_value.emplace(tensor_proto.name(), ort_value);
   }
 

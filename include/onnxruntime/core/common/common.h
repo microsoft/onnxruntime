@@ -80,8 +80,7 @@ void PrintFinalMessage(const char* msg);
 
 std::vector<std::string> GetStackTrace();
 // these is a helper function that gets defined by platform/Telemetry
-void LogRuntimeError(uint32_t session_id, const common::Status& status, const char* file,
-                     const char* function, uint32_t line);
+void LogRuntimeError(uint32_t session_id, const common::Status& status, const char* file, const char* function, uint32_t line);
 
 // __PRETTY_FUNCTION__ isn't a macro on gcc, so use a check for _MSC_VER
 // so we only define it as one for MSVC
@@ -130,15 +129,14 @@ void LogRuntimeError(uint32_t session_id, const common::Status& status, const ch
 // Check condition.
 // NOTE: The arguments get streamed into a string via ostringstream::operator<<
 // DO NOT use a printf format string, as that will not work as you expect.
-#define ORT_ENFORCE(condition, ...)                                                   \
-  do {                                                                                \
-    if (!(condition)) {                                                               \
-      ::onnxruntime::PrintFinalMessage(                                               \
-          ::onnxruntime::OnnxRuntimeException(ORT_WHERE_WITH_STACK, #condition,       \
-                                              ::onnxruntime::MakeString(__VA_ARGS__)) \
-              .what());                                                               \
-      abort();                                                                        \
-    }                                                                                 \
+#define ORT_ENFORCE(condition, ...)                                                                                     \
+  do {                                                                                                                  \
+    if (!(condition)) {                                                                                                 \
+      ::onnxruntime::PrintFinalMessage(                                                                                 \
+          ::onnxruntime::OnnxRuntimeException(ORT_WHERE_WITH_STACK, #condition, ::onnxruntime::MakeString(__VA_ARGS__)) \
+              .what());                                                                                                 \
+      abort();                                                                                                          \
+    }                                                                                                                   \
   } while (false)
 
 #define ORT_THROW_EX(ex, ...)                                                                      \
@@ -169,12 +167,11 @@ void LogRuntimeError(uint32_t session_id, const common::Status& status, const ch
 // Check condition.
 // NOTE: The arguments get streamed into a string via ostringstream::operator<<
 // DO NOT use a printf format string, as that will not work as you expect.
-#define ORT_ENFORCE(condition, ...)                                                      \
-  do {                                                                                   \
-    if (!(condition)) {                                                                  \
-      throw ::onnxruntime::OnnxRuntimeException(ORT_WHERE_WITH_STACK, #condition,        \
-                                                ::onnxruntime::MakeString(__VA_ARGS__)); \
-    }                                                                                    \
+#define ORT_ENFORCE(condition, ...)                                                                                        \
+  do {                                                                                                                     \
+    if (!(condition)) {                                                                                                    \
+      throw ::onnxruntime::OnnxRuntimeException(ORT_WHERE_WITH_STACK, #condition, ::onnxruntime::MakeString(__VA_ARGS__)); \
+    }                                                                                                                      \
   } while (false)
 
 #define ORT_THROW_EX(ex, ...) \
@@ -276,9 +273,7 @@ constexpr size_t kMaxStrLen = 2048;
 
 // Returns whether `key` is in `container`.
 // Like C++20's map/set contains() member function.
-template <typename Key, typename... OtherContainerArgs,
-          template <typename...> typename AssociativeContainer,
-          typename LookupKey>
+template <typename Key, typename... OtherContainerArgs, template <typename...> typename AssociativeContainer, typename LookupKey>
 inline bool Contains(const AssociativeContainer<Key, OtherContainerArgs...>& container, LookupKey&& key) {
   return container.find(std::forward<LookupKey>(key)) != container.end();
 }

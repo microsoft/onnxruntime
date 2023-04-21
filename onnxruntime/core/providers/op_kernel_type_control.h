@@ -118,7 +118,8 @@ struct EnabledTypes {
       boost::mp11::mp_eval_if_not<
           HasTypesMember<T>,
           TypeList<>,
-          GetTypesMemberAsSet, T>;
+          GetTypesMemberAsSet,
+          T>;
 
   static_assert(HasTypesMember<DefaultTypesHolder>::value, "Default types must be provided.");
 
@@ -235,11 +236,9 @@ struct EnabledTypes {
  * @param ArgIndex Index of the given Op kernel argument.
  * @param DefaultTypeList The types.
  */
-#define ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPE_LIST_ALL_OPSETS(                                  \
-    OpProvider, OpDomain, OpName, ArgDirection, ArgIndex, DefaultTypeList)                       \
-  ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPE_LIST(OpProvider, OpDomain, OpName,                      \
-                                              ::onnxruntime::op_kernel_type_control::kAllOpSets, \
-                                              ArgDirection, ArgIndex, DefaultTypeList)
+#define ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPE_LIST_ALL_OPSETS(            \
+    OpProvider, OpDomain, OpName, ArgDirection, ArgIndex, DefaultTypeList) \
+  ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPE_LIST(OpProvider, OpDomain, OpName, ::onnxruntime::op_kernel_type_control::kAllOpSets, ArgDirection, ArgIndex, DefaultTypeList)
 
 /**
  * Specifies a default set of types for a given Op kernel argument.
@@ -258,8 +257,7 @@ struct EnabledTypes {
 #define ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES(                      \
     OpProvider, OpDomain, OpName, OpSet, ArgDirection, ArgIndex, ...) \
   ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPE_LIST(                        \
-      OpProvider, OpDomain, OpName, OpSet, ArgDirection, ArgIndex,    \
-      ORT_TYPE_LIST(__VA_ARGS__))
+      OpProvider, OpDomain, OpName, OpSet, ArgDirection, ArgIndex, ORT_TYPE_LIST(__VA_ARGS__))
 
 /**
  * Specifies a default set of types for a given Op kernel argument that is valid for all opsets.
@@ -274,11 +272,9 @@ struct EnabledTypes {
  * @param ArgIndex Index of the given Op kernel argument.
  * @param ... The types.
  */
-#define ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES_ALL_OPSETS(                                  \
-    OpProvider, OpDomain, OpName, ArgDirection, ArgIndex, ...)                               \
-  ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES(OpProvider, OpDomain, OpName,                      \
-                                          ::onnxruntime::op_kernel_type_control::kAllOpSets, \
-                                          ArgDirection, ArgIndex, __VA_ARGS__)
+#define ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES_ALL_OPSETS(    \
+    OpProvider, OpDomain, OpName, ArgDirection, ArgIndex, ...) \
+  ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES(OpProvider, OpDomain, OpName, ::onnxruntime::op_kernel_type_control::kAllOpSets, ArgDirection, ArgIndex, __VA_ARGS__)
 
 /**
  * Specifies a required set of types for a given Op kernel argument.
@@ -317,11 +313,9 @@ struct EnabledTypes {
  * @param ArgIndex Index of the given Op kernel argument.
  * @param RequiredTypeList The types.
  */
-#define ORT_SPECIFY_OP_KERNEL_ARG_REQUIRED_TYPE_LIST_ALL_OPSETS(                                  \
-    OpProvider, OpDomain, OpName, ArgDirection, ArgIndex, RequiredTypeList)                       \
-  ORT_SPECIFY_OP_KERNEL_ARG_REQUIRED_TYPE_LIST(OpProvider, OpDomain, OpName,                      \
-                                               ::onnxruntime::op_kernel_type_control::kAllOpSets, \
-                                               ArgDirection, ArgIndex, RequiredTypeList)
+#define ORT_SPECIFY_OP_KERNEL_ARG_REQUIRED_TYPE_LIST_ALL_OPSETS(            \
+    OpProvider, OpDomain, OpName, ArgDirection, ArgIndex, RequiredTypeList) \
+  ORT_SPECIFY_OP_KERNEL_ARG_REQUIRED_TYPE_LIST(OpProvider, OpDomain, OpName, ::onnxruntime::op_kernel_type_control::kAllOpSets, ArgDirection, ArgIndex, RequiredTypeList)
 
 /**
  * Specifies a required set of types for a given Op kernel argument.
@@ -340,8 +334,7 @@ struct EnabledTypes {
 #define ORT_SPECIFY_OP_KERNEL_ARG_REQUIRED_TYPES(                     \
     OpProvider, OpDomain, OpName, OpSet, ArgDirection, ArgIndex, ...) \
   ORT_SPECIFY_OP_KERNEL_ARG_REQUIRED_TYPE_LIST(                       \
-      OpProvider, OpDomain, OpName, OpSet, ArgDirection, ArgIndex,    \
-      ORT_TYPE_LIST(__VA_ARGS__))
+      OpProvider, OpDomain, OpName, OpSet, ArgDirection, ArgIndex, ORT_TYPE_LIST(__VA_ARGS__))
 
 /**
  * Specifies a required set of types for a given Op kernel argument that is valid for all opsets.
@@ -356,11 +349,9 @@ struct EnabledTypes {
  * @param ArgIndex Index of the given Op kernel argument.
  * @param ... The types.
  */
-#define ORT_SPECIFY_OP_KERNEL_ARG_REQUIRED_TYPES_ALL_OPSETS(                                  \
-    OpProvider, OpDomain, OpName, ArgDirection, ArgIndex, ...)                                \
-  ORT_SPECIFY_OP_KERNEL_ARG_REQUIRED_TYPES(OpProvider, OpDomain, OpName,                      \
-                                           ::onnxruntime::op_kernel_type_control::kAllOpSets, \
-                                           ArgDirection, ArgIndex, __VA_ARGS__)
+#define ORT_SPECIFY_OP_KERNEL_ARG_REQUIRED_TYPES_ALL_OPSETS(   \
+    OpProvider, OpDomain, OpName, ArgDirection, ArgIndex, ...) \
+  ORT_SPECIFY_OP_KERNEL_ARG_REQUIRED_TYPES(OpProvider, OpDomain, OpName, ::onnxruntime::op_kernel_type_control::kAllOpSets, ArgDirection, ArgIndex, __VA_ARGS__)
 
 /**
  * TypeList type with the enabled types for a given Op kernel argument.
@@ -395,11 +386,9 @@ struct EnabledTypes {
  * @param ArgDirection Direction of the given Op kernel argument - Input or Output.
  * @param ArgIndex Index of the given Op kernel argument.
  */
-#define ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(                                  \
-    OpProvider, OpDomain, OpName, ArgDirection, ArgIndex)                                \
-  ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST(OpProvider, OpDomain, OpName,                      \
-                                      ::onnxruntime::op_kernel_type_control::kAllOpSets, \
-                                      ArgDirection, ArgIndex)
+#define ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(   \
+    OpProvider, OpDomain, OpName, ArgDirection, ArgIndex) \
+  ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST(OpProvider, OpDomain, OpName, ::onnxruntime::op_kernel_type_control::kAllOpSets, ArgDirection, ArgIndex)
 
 /**
  * Usage example:

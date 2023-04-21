@@ -15,10 +15,7 @@ inline int roundoff(int v, int d) {
   return (v + d - 1) / d * d;
 }
 
-Status GemmInt8(int m, int n, int k,
-                int32_t alpha, int32_t beta,
-                const int8_t* a, int lda, const int8_t* b, int ldb, int32_t* c, int ldc,
-                const RocmKernel* rocm_kernel, onnxruntime::Stream* ort_stream) {
+Status GemmInt8(int m, int n, int k, int32_t alpha, int32_t beta, const int8_t* a, int lda, const int8_t* b, int ldb, int32_t* c, int ldc, const RocmKernel* rocm_kernel, onnxruntime::Stream* ort_stream) {
   ORT_ENFORCE(a != nullptr && b != nullptr && c != nullptr, "input matrix should not be null");
   ORT_ENFORCE(rocm_kernel != nullptr, "kernel is null");
 
@@ -50,17 +47,29 @@ Status GemmInt8(int m, int n, int k,
   auto handle = ort_rocm_stream->rocblas_handle_;
   ROCBLAS_RETURN_IF_ERROR(rocblas_gemm_ex(
       handle,
-      rocblas_operation_none, rocblas_operation_none,
-      n, m, k,
+      rocblas_operation_none,
+      rocblas_operation_none,
+      n,
+      m,
+      k,
       &alpha,
-      ldb_aligned == ldb ? b : b_padded.get(), rocblas_datatype_i8_r, ldb_aligned,
-      lda_aligned == lda ? a : a_padded.get(), rocblas_datatype_i8_r, lda_aligned,
+      ldb_aligned == ldb ? b : b_padded.get(),
+      rocblas_datatype_i8_r,
+      ldb_aligned,
+      lda_aligned == lda ? a : a_padded.get(),
+      rocblas_datatype_i8_r,
+      lda_aligned,
       &beta,
-      c, rocblas_datatype_i32_r, ldc,
-      c, rocblas_datatype_i32_r, ldc,  // C == D
+      c,
+      rocblas_datatype_i32_r,
+      ldc,
+      c,
+      rocblas_datatype_i32_r,
+      ldc,  // C == D
       rocblas_datatype_i32_r,
       rocblas_gemm_algo_standard,
-      0, 0));
+      0,
+      0));
   return Status::OK();
 }
 }  // namespace rocm

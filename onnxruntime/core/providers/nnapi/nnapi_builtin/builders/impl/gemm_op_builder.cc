@@ -69,11 +69,9 @@ class GemmOpBuilder : public BaseOpBuilder {
 
   // Operator support related
  private:
-  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
-                         const OpSupportCheckParams& params) const override;
+  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit, const OpSupportCheckParams& params) const override;
   bool HasSupportedInputOutputsImpl(
-      const InitializedTensorSet& /* initializers */, const NodeUnit& node_unit,
-      const OpSupportCheckParams& /* params */) const override;
+      const InitializedTensorSet& /* initializers */, const NodeUnit& node_unit, const OpSupportCheckParams& /* params */) const override;
   int GetMinSupportedOpSet(const NodeUnit& node_unit) const override;
 
   bool IsNodeUnitTypeSupported(const NodeUnit& /* node_unit */) const override { return true; }
@@ -159,10 +157,7 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   if (is_quant_matmul || is_quant_gemm) {
     optional<std::vector<float>> w_scales;
     ORT_RETURN_IF_ERROR(
-        GetConvMatMulOpQuantizationScaleAndZeroPoint(model_builder, node_unit,
-                                                     a_scale, b_scale, y_scale,
-                                                     a_zero_point, b_zero_point, y_zero_point,
-                                                     w_scales, is_per_tensor_u8s8));
+        GetConvMatMulOpQuantizationScaleAndZeroPoint(model_builder, node_unit, a_scale, b_scale, y_scale, a_zero_point, b_zero_point, y_zero_point, w_scales, is_per_tensor_u8s8));
   }
 
   uint32_t input_2_idx;
@@ -198,8 +193,7 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
       if (shaper[bias].size() > 1) {
         std::string bias_squeezed = model_builder.GetUniqueName(node_unit.Name() + op + "_bias_squeezed");
         // We will use squeeze all here
-        ORT_RETURN_IF_ERROR(AddSqueezeOp(model_builder, node_unit.Name(),
-                                         bias, bias_squeezed, {} /* axes */));
+        ORT_RETURN_IF_ERROR(AddSqueezeOp(model_builder, node_unit.Name(), bias, bias_squeezed, {} /* axes */));
         bias_idx = operand_indices.at(bias_squeezed);
         LOGS_DEFAULT(VERBOSE) << "GemmOpBuilder - Operand [" << bias << "] squeezed from "
                               << Shape2String(shaper[bias])
@@ -212,7 +206,8 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
       const auto& bias_tensor = *model_builder.GetInitializerTensors().at(bias);
       // QGemm has a contraint on input C to be int32 type
       ORT_RETURN_IF_NOT(bias_tensor.data_type() == ONNX_NAMESPACE::TensorProto_DataType_INT32,
-                        "bias of QDQGemm should be int32, actual type: ", bias_tensor.data_type());
+                        "bias of QDQGemm should be int32, actual type: ",
+                        bias_tensor.data_type());
       Shape bias_dimen;
       for (auto dim : bias_tensor.dims())
         bias_dimen.push_back(SafeInt<uint32_t>(dim));
@@ -221,7 +216,8 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
       ORT_RETURN_IF_ERROR(
           model_builder.AddOperandFromPersistMemoryBuffer(
               bias,
-              unpacked_tensor.data<int32_t>(), bias_operand_type));
+              unpacked_tensor.data<int32_t>(),
+              bias_operand_type));
 
       bias_idx = operand_indices.at(bias);
     }
@@ -254,16 +250,14 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   ADD_SCALAR_OPERAND(model_builder, input_indices, fuse_code);
 
   const OperandType output_operand_type(operand_types.at(input1).type, shaper[output], y_scale, y_zero_point);
-  ORT_RETURN_IF_ERROR(model_builder.AddOperation(ANEURALNETWORKS_FULLY_CONNECTED, input_indices,
-                                                 {output}, {output_operand_type}));
+  ORT_RETURN_IF_ERROR(model_builder.AddOperation(ANEURALNETWORKS_FULLY_CONNECTED, input_indices, {output}, {output_operand_type}));
   return Status::OK();
 }
 
 // Operator support related
 
 bool GemmOpBuilder::HasSupportedInputOutputsImpl(
-    const InitializedTensorSet& initializers, const NodeUnit& node_unit,
-    const OpSupportCheckParams& params) const {
+    const InitializedTensorSet& initializers, const NodeUnit& node_unit, const OpSupportCheckParams& params) const {
   if (!IsQuantizedOp(node_unit)) {
     return BaseOpBuilder::HasSupportedInputOutputsImpl(initializers, node_unit, params);
   }
@@ -295,8 +289,7 @@ bool GemmOpBuilder::IsQuantizedOp(const NodeUnit& node_unit) const {
   return IsQuantizedGemm(GetQuantizedOpType(node_unit));
 }
 
-bool GemmOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
-                                      const OpSupportCheckParams& params) const {
+bool GemmOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit, const OpSupportCheckParams& params) const {
   // check batch matmul first, then fall back to checking single gemm/matmul
   {
     const bool is_supported_batch_matmul =
@@ -400,12 +393,11 @@ bool GemmOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers, 
 
 void CreateGemmOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {
   CreateSharedOpBuilderImpl<GemmOpBuilder>(
-      op_type, op_registrations,
-      {
-          "Gemm",
-          "MatMul",
-          "QLinearMatMul",
-      });
+      op_type, op_registrations, {
+                                     "Gemm",
+                                     "MatMul",
+                                     "QLinearMatMul",
+                                 });
 }
 
 }  // namespace nnapi

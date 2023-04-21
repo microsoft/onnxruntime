@@ -17,8 +17,7 @@ static std::vector<std::string> supported_data_types{"tensor(float16)", "tensor(
 
 static bool IsSupportedDataType(const Node& node) {
   for (const auto& input_arg : node.InputDefs()) {
-    if (std::find(supported_data_types.begin(), supported_data_types.end(),
-                  *(input_arg->Type())) == supported_data_types.end()) {
+    if (std::find(supported_data_types.begin(), supported_data_types.end(), *(input_arg->Type())) == supported_data_types.end()) {
       return false;
     }
   }
@@ -162,7 +161,9 @@ Status GeluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, cons
                                     "Gelu",
                                     "fused Gelu subgraphs ",
                                     gelu_input_defs,
-                                    {}, {}, kMSDomain);
+                                    {},
+                                    {},
+                                    kMSDomain);
 
     // Assign provider to this new node. Provider should be same as the provider for old node.
     gelu_node.SetExecutionProviderType(div.GetExecutionProviderType());

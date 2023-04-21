@@ -60,26 +60,13 @@ TEST(MLOpTest, SVMRegressorNuSVC) {
 TEST(MLOpTest, SVMRegressorNuSVCPolyKernel) {
   OpTester test("SVMRegressor", 1, onnxruntime::kMLDomain);
 
-  std::vector<float> dual_coefficients = {-2.74322388e+01f, 5.81893108e+01f, -1.00000000e+02f,
-                                          6.91693781e+01f, 7.62161261e-02f, -2.66618042e-03f};
-  std::vector<float> support_vectors = {0.f, 0.5f, 32.f,
-                                        1.f, 1.5f, 1.f,
-                                        2.f, 2.9f, -32.f,
-                                        3.f, 13.3f, -11.f,
-                                        12.f, 12.9f, -312.f,
-                                        43.f, 413.3f, -114.f};
+  std::vector<float> dual_coefficients = {-2.74322388e+01f, 5.81893108e+01f, -1.00000000e+02f, 6.91693781e+01f, 7.62161261e-02f, -2.66618042e-03f};
+  std::vector<float> support_vectors = {0.f, 0.5f, 32.f, 1.f, 1.5f, 1.f, 2.f, 2.9f, -32.f, 3.f, 13.3f, -11.f, 12.f, 12.9f, -312.f, 43.f, 413.3f, -114.f};
   std::vector<float> rho = {1.5004596f};
   std::vector<float> kernel_params = {0.001f, 0.f, 3.f};  // gamma, coef0, degree
 
   // 8 batches with 3 features in each
-  std::vector<float> X = {1.f, 0.0f, 0.4f,
-                          3.0f, 44.0f, -3.f,
-                          12.0f, 12.9f, 112.f,
-                          23.0f, 11.3f, -222.f,
-                          23.0f, 11.3f, -222.f,
-                          23.0f, 3311.3f, -222.f,
-                          23.0f, 11.3f, -222.f,
-                          43.0f, 413.3f, -114.f};
+  std::vector<float> X = {1.f, 0.0f, 0.4f, 3.0f, 44.0f, -3.f, 12.0f, 12.9f, 112.f, 23.0f, 11.3f, -222.f, 23.0f, 11.3f, -222.f, 23.0f, 3311.3f, -222.f, 23.0f, 11.3f, -222.f, 43.0f, 413.3f, -114.f};
 
   /*
   # batched_dot_product calculations

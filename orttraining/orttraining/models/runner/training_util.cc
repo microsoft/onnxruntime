@@ -83,8 +83,7 @@ common::Status DataSet::GetTensorDimensionsFromInputs(const std::map<std::string
     const Tensor& first_tensor = data_[0]->at(input_index).Get<Tensor>();
     auto shape_vector = first_tensor.Shape().GetDims();
 
-    ORT_RETURN_IF_NOT(metric.second < shape_vector.size(), "Index out of bounds for input: ", input_name.c_str(),
-                      "; requested index: ", metric.second, ", actual size: ", shape_vector.size());
+    ORT_RETURN_IF_NOT(metric.second < shape_vector.size(), "Index out of bounds for input: ", input_name.c_str(), "; requested index: ", metric.second, ", actual size: ", shape_vector.size());
 
     mapped_dimensions.insert({metric.first, std::to_string(shape_vector[metric.second])});
   }

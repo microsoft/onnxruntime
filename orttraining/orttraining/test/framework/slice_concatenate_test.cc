@@ -100,9 +100,7 @@ static std::unique_ptr<onnxruntime::Model> MakeModel() {
   std::unordered_map<std::string, int> domain_to_version;
   domain_to_version.insert({"", 15});  // Create an opset 15 model
   auto model = std::make_unique<onnxruntime::Model>(
-      "test", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
-      domain_to_version, std::vector<ONNX_NAMESPACE::FunctionProto>{},
-      DefaultLoggingManager().DefaultLogger());
+      "test", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, std::vector<ONNX_NAMESPACE::FunctionProto>{}, DefaultLoggingManager().DefaultLogger());
   return model;
 }
 
@@ -111,8 +109,7 @@ TEST(PipelineParallel, FloatTensorSlice2d) {
 
   CreateFakeGraph(model->MainGraph());
 
-  std::vector<float> vector{1.0f, -2.0f, -3.0f, 4.0f,
-                            5.0f, 6.0f, 7.0f, 8.0f};
+  std::vector<float> vector{1.0f, -2.0f, -3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f};
   auto value = CreateTensorValue({2, 4}, vector, false);
 
   onnxruntime::SessionOptions so;
@@ -147,8 +144,7 @@ TEST(PipelineParallel, FloatTensorSlice1d) {
 
   CreateFakeGraph(model->MainGraph());
 
-  std::vector<float> vector{1.0f, -2.0f, -3.0f, 4.0f,
-                            5.0f, 6.0f, 7.0f, 8.0f};
+  std::vector<float> vector{1.0f, -2.0f, -3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f};
   auto value = CreateTensorValue({8}, vector, false);
 
   onnxruntime::SessionOptions so;
@@ -214,8 +210,7 @@ TEST(PipelineParallel, FloatTensorSlice3d) {
 
   CreateFakeGraph(model->MainGraph());
 
-  std::vector<float> vector{1.0f, -2.0f, -3.0f, 4.0f,
-                            5.0f, 6.0f, 7.0f, 8.0f};
+  std::vector<float> vector{1.0f, -2.0f, -3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f};
   auto value = CreateTensorValue({2, 2, 2}, vector, false);
 
   onnxruntime::SessionOptions so;
@@ -237,8 +232,7 @@ TEST(PipelineParallel, FloatTensorSlice3dGpu) {
 
   CreateFakeGraph(model->MainGraph());
 
-  std::vector<float> vector{1.0f, -2.0f, -3.0f, 4.0f,
-                            5.0f, 6.0f, 7.0f, 8.0f};
+  std::vector<float> vector{1.0f, -2.0f, -3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f};
   auto value = CreateTensorValue({2, 2, 2}, vector, true);
 
   onnxruntime::SessionOptions so;
@@ -353,17 +347,13 @@ TEST(PipelineParallel, FloatTensorConcat3dMore) {
   }
 
   auto result_vector_axis_0 = CreateVector(training::ConcatenateTensors(values, 0, session));
-  CompareVector(result_vector_axis_0, {0.f, 1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f,
-                                       8.f, 9.f, 10.f, 11.f, 12.f, 13.f, 14.f, 15.f,
-                                       16.f, 17.f, 18.f, 19.f, 20.f, 21.f, 22.f, 23.f});
+  CompareVector(result_vector_axis_0, {0.f, 1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f, 8.f, 9.f, 10.f, 11.f, 12.f, 13.f, 14.f, 15.f, 16.f, 17.f, 18.f, 19.f, 20.f, 21.f, 22.f, 23.f});
 
   auto result_vector_axis_1 = CreateVector(training::ConcatenateTensors(values, 1, session));
-  CompareVector(result_vector_axis_1, {0.f, 1.f, 2.f, 3.f, 8.f, 9.f, 10.f, 11.f, 16.f, 17.f, 18.f, 19.f,
-                                       4.f, 5.f, 6.f, 7.f, 12.f, 13.f, 14.f, 15.f, 20.f, 21.f, 22.f, 23.f});
+  CompareVector(result_vector_axis_1, {0.f, 1.f, 2.f, 3.f, 8.f, 9.f, 10.f, 11.f, 16.f, 17.f, 18.f, 19.f, 4.f, 5.f, 6.f, 7.f, 12.f, 13.f, 14.f, 15.f, 20.f, 21.f, 22.f, 23.f});
 
   auto result_vector_axis_2 = CreateVector(training::ConcatenateTensors(values, 2, session));
-  CompareVector(result_vector_axis_2, {0.f, 1.f, 8.f, 9.f, 16.f, 17.f, 2.f, 3.f, 10.f, 11.f, 18.f, 19.f,
-                                       4.f, 5.f, 12.f, 13.f, 20.f, 21.f, 6.f, 7.f, 14.f, 15.f, 22.f, 23.f});
+  CompareVector(result_vector_axis_2, {0.f, 1.f, 8.f, 9.f, 16.f, 17.f, 2.f, 3.f, 10.f, 11.f, 18.f, 19.f, 4.f, 5.f, 12.f, 13.f, 20.f, 21.f, 6.f, 7.f, 14.f, 15.f, 22.f, 23.f});
 }
 
 #ifdef USE_CUDA

@@ -91,9 +91,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   Tensor* output = context->Output(0, output_shape);
 
   std::vector<int64_t> present_dims{
-      2, parameters.batch_size, parameters.num_heads,
-      past_present_share_buffer_ ? parameters.max_sequence_length : parameters.total_sequence_length,
-      parameters.head_size};
+      2, parameters.batch_size, parameters.num_heads, past_present_share_buffer_ ? parameters.max_sequence_length : parameters.total_sequence_length, parameters.head_size};
   TensorShape present_shape(present_dims);
   Tensor* present = context->Output(kPresentOutputIndex, present_shape);
 
@@ -114,13 +112,11 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
                                    nullptr == relative_position_bias &&
                                    parameters.past_sequence_length == 0 &&
                                    parameters.hidden_size == parameters.v_hidden_size &&
-                                   FusedMHARunnerFP16v2::is_supported(sm, parameters.head_size, sequence_length,
-                                                                      enable_trt_flash_attention_, true);
+                                   FusedMHARunnerFP16v2::is_supported(sm, parameters.head_size, sequence_length, enable_trt_flash_attention_, true);
     if (use_causal_fused_runner) {
       // Here we assume that num_heads, head_size and is_unidirectional does not change for an Attention node.
       if (nullptr == fused_fp16_runner_.get()) {
-        fused_fp16_runner_ = FusedMHARunnerFP16v2::Create(num_heads_, parameters.head_size, sm, is_unidirectional_,
-                                                          enable_trt_flash_attention_, parameters.scale);
+        fused_fp16_runner_ = FusedMHARunnerFP16v2::Create(num_heads_, parameters.head_size, sm, is_unidirectional_, enable_trt_flash_attention_, parameters.scale);
       }
 
       // Here we assume all causal kernels can be loaded into shared memory. TODO: add a function to check.
@@ -133,14 +129,12 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
                             nullptr == present &&
                             nullptr == relative_position_bias &&
                             parameters.hidden_size == parameters.v_hidden_size &&
-                            FusedMHARunnerFP16v2::is_supported(sm, parameters.head_size, sequence_length,
-                                                               enable_trt_flash_attention_, false);
+                            FusedMHARunnerFP16v2::is_supported(sm, parameters.head_size, sequence_length, enable_trt_flash_attention_, false);
 
     if (use_fused_runner) {
       // Here we assume that num_heads, head_size and is_unidirectional does not change for an Attention node.
       if (nullptr == fused_fp16_runner_.get()) {
-        fused_fp16_runner_ = FusedMHARunnerFP16v2::Create(num_heads_, parameters.head_size, sm, is_unidirectional_,
-                                                          enable_trt_flash_attention_, parameters.scale);
+        fused_fp16_runner_ = FusedMHARunnerFP16v2::Create(num_heads_, parameters.head_size, sm, is_unidirectional_, enable_trt_flash_attention_, parameters.scale);
       }
 
       // In case some kernel not loaded due to shared memory limit, we need to double check here.
@@ -182,10 +176,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   // Gemm, note that CUDA assumes col-major, so result(N, M) = 1 * weights x input + 1 x bias
   // The bias part is not included here since we fuse bias, transpose and output 3 matrice into one cuda kernel.
   CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
-      cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, k, &one,
-      reinterpret_cast<const CudaT*>(weights->Data<T>()), n,
-      reinterpret_cast<const CudaT*>(input->Data<T>()), k,
-      &zero, reinterpret_cast<CudaT*>(gemm_buffer.get()), n, device_prop));
+      cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, k, &one, reinterpret_cast<const CudaT*>(weights->Data<T>()), n, reinterpret_cast<const CudaT*>(input->Data<T>()), k, &zero, reinterpret_cast<CudaT*>(gemm_buffer.get()), n, device_prop));
 
   constexpr size_t element_size = sizeof(T);
   constexpr bool use_fused_cross_attention = false;

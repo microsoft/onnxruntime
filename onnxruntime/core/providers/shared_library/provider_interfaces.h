@@ -135,8 +135,7 @@ struct ProviderHost {
 
   virtual std::string GetEnvironmentVar(const std::string& var_name) = 0;
 
-  virtual void LogRuntimeError(uint32_t session_id, const common::Status& status,
-                               const char* file, const char* function, uint32_t line) = 0;
+  virtual void LogRuntimeError(uint32_t session_id, const common::Status& status, const char* file, const char* function, uint32_t line) = 0;
 
   virtual std::vector<std::string> GetStackTrace() = 0;
 
@@ -206,16 +205,12 @@ struct ProviderHost {
   // sparse_utils
 #if !defined(DISABLE_SPARSE_TENSORS)
 #if !defined(ORT_MINIMAL_BUILD)
-  virtual Status sparse_utils__DenseTensorToSparseCsr(const DataTransferManager& data_manager, const Tensor& src, const AllocatorPtr& cpu_allocator,
-                                                      const AllocatorPtr& dst_allocator, SparseTensor& dst) = 0;
-  virtual Status sparse_utils__SparseCsrToDenseTensor(const DataTransferManager& data_manager, const SparseTensor& src, const AllocatorPtr& cpu_allocator,
-                                                      const AllocatorPtr& dst_allocator, Tensor& dst) = 0;
+  virtual Status sparse_utils__DenseTensorToSparseCsr(const DataTransferManager& data_manager, const Tensor& src, const AllocatorPtr& cpu_allocator, const AllocatorPtr& dst_allocator, SparseTensor& dst) = 0;
+  virtual Status sparse_utils__SparseCsrToDenseTensor(const DataTransferManager& data_manager, const SparseTensor& src, const AllocatorPtr& cpu_allocator, const AllocatorPtr& dst_allocator, Tensor& dst) = 0;
 
-  virtual Status sparse_utils__SparseCooToDenseTensor(const DataTransferManager& data_manager, const SparseTensor& src, const AllocatorPtr& cpu_allocator,
-                                                      const AllocatorPtr& dst_allocator, Tensor& dst) = 0;
+  virtual Status sparse_utils__SparseCooToDenseTensor(const DataTransferManager& data_manager, const SparseTensor& src, const AllocatorPtr& cpu_allocator, const AllocatorPtr& dst_allocator, Tensor& dst) = 0;
 #endif  // !ORT_MINIMAL_BUILD
-  virtual Status sparse_utils__DenseTensorToSparseCoo(const DataTransferManager& data_manager, const Tensor& src, const AllocatorPtr& cpu_allocator,
-                                                      const AllocatorPtr& dst_allocator, bool linear_indexs, SparseTensor& dst) = 0;
+  virtual Status sparse_utils__DenseTensorToSparseCoo(const DataTransferManager& data_manager, const Tensor& src, const AllocatorPtr& cpu_allocator, const AllocatorPtr& dst_allocator, bool linear_indexs, SparseTensor& dst) = 0;
 #endif  // !defined(DISABLE_SPARSE_TENSORS)
 
   // IAllocator
@@ -224,8 +219,7 @@ struct ProviderHost {
   // IExecutionProvider
   virtual AllocatorPtr IExecutionProvider__GetAllocator(const IExecutionProvider* p, OrtMemType mem_type) = 0;
   virtual void IExecutionProvider__InsertAllocator(IExecutionProvider* p, AllocatorPtr allocator) = 0;
-  virtual std::vector<std::unique_ptr<ComputeCapability>> IExecutionProvider__GetCapability(const IExecutionProvider* p, const onnxruntime::GraphViewer& graph_viewer,
-                                                                                            const IExecutionProvider::IKernelLookup& kernel_lookup) = 0;
+  virtual std::vector<std::unique_ptr<ComputeCapability>> IExecutionProvider__GetCapability(const IExecutionProvider* p, const onnxruntime::GraphViewer& graph_viewer, const IExecutionProvider::IKernelLookup& kernel_lookup) = 0;
 
   virtual common::Status IExecutionProvider__Compile(IExecutionProvider* p, const std::vector<IExecutionProvider::FusedNodeAndGraph>& fused_nodes_and_graphs, std::vector<NodeComputeInfo>& node_compute_funcs) = 0;
 
@@ -833,8 +827,7 @@ struct ProviderHost {
 #ifdef ENABLE_STRIDED_TENSORS
   virtual gsl::span<const int64_t> Tensor__Strides(const Tensor* p) = 0;
   virtual bool Tensor__IsContiguous(const Tensor* p) = 0;
-  virtual void Tensor__SetShapeAndStrides(Tensor* p, const TensorShape& new_shape,
-                                          gsl::span<const int64_t> new_strides) = 0;
+  virtual void Tensor__SetShapeAndStrides(Tensor* p, const TensorShape& new_shape, gsl::span<const int64_t> new_strides) = 0;
 #endif
 
 #if !defined(DISABLE_SPARSE_TENSORS)
@@ -857,7 +850,8 @@ struct ProviderHost {
   // AllocatorManager
   virtual void AllocatorManager__InsertAllocator(AllocatorManager* p, AllocatorPtr allocator) = 0;
   virtual AllocatorPtr AllocatorManager__GetAllocator(const AllocatorManager* p,
-                                                      OrtMemType mem_type, OrtDevice device) = 0;
+                                                      OrtMemType mem_type,
+                                                      OrtDevice device) = 0;
 
 #if defined(ENABLE_TRAINING) && defined(ORT_USE_NCCL)
   virtual training::DistributedRunContext& GetDistributedRunContextInstance() = 0;

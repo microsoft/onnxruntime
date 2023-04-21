@@ -59,8 +59,7 @@ inline void CopyVectorToTensor<bool>(const std::vector<bool>& value, Tensor& ten
 }
 
 template <typename T>
-void CreateMLValue(AllocatorPtr alloc, const std::vector<int64_t>& dims, const std::vector<T>& value,
-                   OrtValue* p_mlvalue) {
+void CreateMLValue(AllocatorPtr alloc, const std::vector<int64_t>& dims, const std::vector<T>& value, OrtValue* p_mlvalue) {
   TensorShape shape(dims);
   auto element_type = DataTypeImpl::GetType<T>();
   Tensor::InitOrtValue(element_type, shape, std::move(alloc), *p_mlvalue);
@@ -73,8 +72,7 @@ void CreateMLValue(AllocatorPtr alloc, const std::vector<int64_t>& dims, const s
 
 // Lifetime of data_buffer should be managed by the caller.
 template <typename T>
-void CreateMLValue(gsl::span<const int64_t> dims, T* data_buffer, const OrtMemoryInfo& info,
-                   OrtValue* p_mlvalue) {
+void CreateMLValue(gsl::span<const int64_t> dims, T* data_buffer, const OrtMemoryInfo& info, OrtValue* p_mlvalue) {
   TensorShape shape(dims);
   auto element_type = DataTypeImpl::GetType<T>();
   Tensor::InitOrtValue(element_type, shape, data_buffer, info, *p_mlvalue);

@@ -25,8 +25,7 @@ half maybe2half(float x) {
 
 template <typename T, typename U, typename V, unsigned TPB>
 __global__ void SkipLayerNormKernel(
-    const int ld, const T* input, const T* skip, const V* beta, const V* gamma, const T* bias,
-    const U epsilon, V* output, T* skip_input_bias_add_output) {
+    const int ld, const T* input, const T* skip, const V* beta, const V* gamma, const T* bias, const U epsilon, V* output, T* skip_input_bias_add_output) {
   const U reverse_ld = U(1.f / ld);
   const int offset = blockIdx.x * ld;
 
@@ -53,9 +52,7 @@ __global__ void SkipLayerNormKernel(
 // Vectorized kernel
 template <typename T, typename U, typename V, unsigned TPB, int ILP>
 __global__ void SkipLayerNormKernelVec(
-    const int ld, const T* input, const T* skip, const V* beta, const V* gamma,
-    const T* bias, const U epsilon, V* output, T* skip_input_bias_add_output,
-    bool hasBias, bool hasSkipInputBiasAdditionOutput) {
+    const int ld, const T* input, const T* skip, const V* beta, const V* gamma, const T* bias, const U epsilon, V* output, T* skip_input_bias_add_output, bool hasBias, bool hasSkipInputBiasAdditionOutput) {
   const U reverse_ld = U(1.f / ld);
   const int offset = blockIdx.x * ld;
 
@@ -100,9 +97,7 @@ __global__ void SkipLayerNormKernelVec(
 // Vectorized kernel
 template <typename T, typename U, typename V, unsigned TPB, int ILP>
 __global__ void SkipLayerNormKernelSmall(
-    const int ld, const T* input, const T* skip, const V* beta, const V* gamma,
-    const T* bias, const U epsilon, V* output, T* skip_input_bias_add_output,
-    bool hasBias, bool hasSkipInputBiasAdditionOutput) {
+    const int ld, const T* input, const T* skip, const V* beta, const V* gamma, const T* bias, const U epsilon, V* output, T* skip_input_bias_add_output, bool hasBias, bool hasSkipInputBiasAdditionOutput) {
   const U rld = U(1.f / ld);
   const int idx = blockIdx.x * ld + threadIdx.x * ILP;  // grid_size = n / ld
 

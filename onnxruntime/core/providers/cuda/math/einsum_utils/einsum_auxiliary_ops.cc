@@ -24,28 +24,25 @@ Status DataCopy(const Tensor& input, Tensor& output, void* einsum_cuda_assets) {
   ORT_ENFORCE(output.SizeInBytes() == input.SizeInBytes(),
               "Einsum op: The candidate output does not match the actual output's shape");
   // There are no string tensors in Einsum's case - so safely use memcpy
-  CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(output.MutableDataRaw(), input.DataRaw(), input.SizeInBytes(),
-                                       cudaMemcpyDeviceToDevice,
-                                       static_cast<EinsumCudaAssets*>(einsum_cuda_assets)->GetCudaStream()));
+  CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(output.MutableDataRaw(), input.DataRaw(), input.SizeInBytes(), cudaMemcpyDeviceToDevice, static_cast<EinsumCudaAssets*>(einsum_cuda_assets)->GetCudaStream()));
 
   return Status::OK();
 }
 
 // CUDA EP specific Transpose helper
-Status Transpose(const gsl::span<const size_t>& permutation, const Tensor& input,
-                 Tensor& output, const TensorShape* input_shape_override, void* einsum_cuda_assets) {
+Status Transpose(const gsl::span<const size_t>& permutation, const Tensor& input, Tensor& output, const TensorShape* input_shape_override, void* einsum_cuda_assets) {
   return cuda::Transpose::DoTranspose(static_cast<EinsumCudaAssets*>(einsum_cuda_assets)->cuda_ep_->GetDeviceProp(),
                                       static_cast<EinsumCudaAssets*>(einsum_cuda_assets)->GetCudaStream(),
                                       static_cast<EinsumCudaAssets*>(einsum_cuda_assets)->cublas_handle_,
-                                      permutation, input, output, input_shape_override);
+                                      permutation,
+                                      input,
+                                      output,
+                                      input_shape_override);
 }
 
 // CUDA EP specific MatMul helper
 template <typename T>
-Status MatMul(const T* input_1_data, const T* input_2_data, T* output_data,
-              size_t left_stride, size_t right_stride, size_t output_stride,
-              size_t num_batches, size_t M, size_t K, size_t N, concurrency::ThreadPool* /*tp*/,
-              void* einsum_cuda_assets) {
+Status MatMul(const T* input_1_data, const T* input_2_data, T* output_data, size_t left_stride, size_t right_stride, size_t output_stride, size_t num_batches, size_t M, size_t K, size_t N, concurrency::ThreadPool* /*tp*/, void* einsum_cuda_assets) {
   typedef typename cuda::ToCudaType<T>::MappedType CudaT;
 
   CudaT one = cuda::ToCudaType<T>::FromFloat(1.0f);
@@ -76,15 +73,8 @@ Status MatMul(const T* input_1_data, const T* input_2_data, T* output_data,
 
 // CUDA EP specific ReduceSum helper
 template <typename T>
-std::unique_ptr<Tensor> ReduceSum(const Tensor& input, gsl::span<const int64_t> reduce_axes,
-                                  bool keep_dims, AllocatorPtr allocator,
-                                  const TensorShape* input_shape_override,
-                                  concurrency::ThreadPool* /*tp*/, void* einsum_cuda_assets) {
-  return cuda::ReductionOps::ReduceCompute<T>(*static_cast<EinsumCudaAssets*>(einsum_cuda_assets)->cuda_ep_, CUDNN_REDUCE_TENSOR_ADD,
-                                              allocator, input, reduce_axes,
-                                              keep_dims, false, false, false,
-                                              true, static_cast<EinsumCudaAssets*>(einsum_cuda_assets)->ort_stream_,
-                                              input_shape_override);
+std::unique_ptr<Tensor> ReduceSum(const Tensor& input, gsl::span<const int64_t> reduce_axes, bool keep_dims, AllocatorPtr allocator, const TensorShape* input_shape_override, concurrency::ThreadPool* /*tp*/, void* einsum_cuda_assets) {
+  return cuda::ReductionOps::ReduceCompute<T>(*static_cast<EinsumCudaAssets*>(einsum_cuda_assets)->cuda_ep_, CUDNN_REDUCE_TENSOR_ADD, allocator, input, reduce_axes, keep_dims, false, false, false, true, static_cast<EinsumCudaAssets*>(einsum_cuda_assets)->ort_stream_, input_shape_override);
 }
 
 // CUDA EP specific Diagonal helper
@@ -94,7 +84,12 @@ std::unique_ptr<Tensor> Diagonal(const Tensor& input, int64_t dim_1, int64_t dim
   auto rank = static_cast<int64_t>(input_dims.size());
 
   ORT_ENFORCE(rank >= 2 && dim_1 != dim_2 && input_dims[dim_1] == input_dims[dim_2],
-              "Cannot parse the diagonal elements along dims ", dim_1, " and ", dim_2, " for input shape ", input_shape);
+              "Cannot parse the diagonal elements along dims ",
+              dim_1,
+              " and ",
+              dim_2,
+              " for input shape ",
+              input_shape);
 
   int64_t first_dim = -1;   // first_dim holds the lesser of dim_1 and dim_2
   int64_t second_dim = -1;  // second_dim holds the greater of dim_1 and dim_2
@@ -148,42 +143,24 @@ std::unique_ptr<Tensor> Diagonal(const Tensor& input, int64_t dim_1, int64_t dim
 
 // float
 template Status DeviceHelpers::CudaDeviceHelpers::MatMul<float>(
-    const float* input_1_data, const float* input_2_data, float* output_data,
-    size_t left_stride, size_t right_stride, size_t output_stride,
-    size_t num_batches, size_t M, size_t K, size_t N, concurrency::ThreadPool* tp,
-    void* einsum_cuda_assets);
+    const float* input_1_data, const float* input_2_data, float* output_data, size_t left_stride, size_t right_stride, size_t output_stride, size_t num_batches, size_t M, size_t K, size_t N, concurrency::ThreadPool* tp, void* einsum_cuda_assets);
 
 template std::unique_ptr<Tensor> DeviceHelpers::CudaDeviceHelpers::ReduceSum<float>(
-    const Tensor& input, gsl::span<const int64_t> reduce_axes,
-    bool keep_dims, AllocatorPtr allocator,
-    const TensorShape* input_shape_override,
-    concurrency::ThreadPool* tp, void* einsum_cuda_assets);
+    const Tensor& input, gsl::span<const int64_t> reduce_axes, bool keep_dims, AllocatorPtr allocator, const TensorShape* input_shape_override, concurrency::ThreadPool* tp, void* einsum_cuda_assets);
 
 // double
 template Status DeviceHelpers::CudaDeviceHelpers::MatMul<double>(
-    const double* input_1_data, const double* input_2_data, double* output_data,
-    size_t left_stride, size_t right_stride, size_t output_stride,
-    size_t num_batches, size_t M, size_t K, size_t N, concurrency::ThreadPool* tp,
-    void* einsum_cuda_assets);
+    const double* input_1_data, const double* input_2_data, double* output_data, size_t left_stride, size_t right_stride, size_t output_stride, size_t num_batches, size_t M, size_t K, size_t N, concurrency::ThreadPool* tp, void* einsum_cuda_assets);
 
 template std::unique_ptr<Tensor> DeviceHelpers::CudaDeviceHelpers::ReduceSum<double>(
-    const Tensor& input, gsl::span<const int64_t> reduce_axes,
-    bool keep_dims, AllocatorPtr allocator,
-    const TensorShape* input_shape_override,
-    concurrency::ThreadPool* tp, void* einsum_cuda_assets);
+    const Tensor& input, gsl::span<const int64_t> reduce_axes, bool keep_dims, AllocatorPtr allocator, const TensorShape* input_shape_override, concurrency::ThreadPool* tp, void* einsum_cuda_assets);
 
 // MLFloat16
 template Status DeviceHelpers::CudaDeviceHelpers::MatMul<MLFloat16>(
-    const MLFloat16* input_1_data, const MLFloat16* input_2_data, MLFloat16* output_data,
-    size_t left_stride, size_t right_stride, size_t output_stride,
-    size_t num_batches, size_t M, size_t K, size_t N, concurrency::ThreadPool* tp,
-    void* einsum_cuda_assets);
+    const MLFloat16* input_1_data, const MLFloat16* input_2_data, MLFloat16* output_data, size_t left_stride, size_t right_stride, size_t output_stride, size_t num_batches, size_t M, size_t K, size_t N, concurrency::ThreadPool* tp, void* einsum_cuda_assets);
 
 template std::unique_ptr<Tensor> DeviceHelpers::CudaDeviceHelpers::ReduceSum<MLFloat16>(
-    const Tensor& input, gsl::span<const int64_t> reduce_axes,
-    bool keep_dims, AllocatorPtr allocator,
-    const TensorShape* input_shape_override,
-    concurrency::ThreadPool* tp, void* einsum_cuda_assets);
+    const Tensor& input, gsl::span<const int64_t> reduce_axes, bool keep_dims, AllocatorPtr allocator, const TensorShape* input_shape_override, concurrency::ThreadPool* tp, void* einsum_cuda_assets);
 
 }  // namespace EinsumOp
 

@@ -12,7 +12,8 @@ namespace utils {
 
 #if !defined(DISABLE_OPTIONAL_TYPE)
 common::Status OutputOptionalWithoutDataHelper(const ONNX_NAMESPACE::TypeProto& input_type_proto,
-                                               OpKernelContext* context, int output_index);
+                                               OpKernelContext* context,
+                                               int output_index);
 #endif
 
 }  // namespace utils

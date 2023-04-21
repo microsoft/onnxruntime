@@ -28,8 +28,7 @@ class FunctionKernel : public OpKernel {
       // TODO: we are only provide host allocate method in compute context.
       // Do we need to hold the ref-counting here?
       funckernel->host_allocator_ = info.GetAllocator(OrtMemType::OrtMemTypeDefault);
-      ComputeContext context = {allocate_helper_func, release_helper_func, funckernel->host_allocator_.get(),
-                                info.node().Name().c_str()};
+      ComputeContext context = {allocate_helper_func, release_helper_func, funckernel->host_allocator_.get(), info.node().Name().c_str()};
       int ret = funckernel->compute_info_->create_state_func(&context, &funckernel->func_state_);
       if (ret != 0)
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Create state function failed. Return value:", ret);
@@ -48,8 +47,7 @@ class FunctionKernel : public OpKernel {
     auto* context_internal = static_cast<OpKernelContextInternal*>(context);
     const OrtApi* api = OrtGetApiBase()->GetApi(ORT_API_VERSION);
     if (api == nullptr) return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "API VERSION ", ORT_API_VERSION, " is invalid.");
-    return compute_info_->compute_func(func_state_, api,
-                                       reinterpret_cast<OrtKernelContext*>(context_internal));
+    return compute_info_->compute_func(func_state_, api, reinterpret_cast<OrtKernelContext*>(context_internal));
   }
 
  private:

@@ -80,8 +80,7 @@ Status AllreduceOptimizerGraphBuilder::BuildInternal(
       opt_graph_config_.gradient_accumulation_steps * opt_graph_config_.data_parallel_group_size;
   ORT_RETURN_IF_NOT(total_num_accumulations > 0, "total_num_accumulations <= 0");
   const float scale = 1.0f / total_num_accumulations;
-  ORT_RETURN_IF_ERROR(AddGradientScalingNodes(nodearg_name_generator, scale, gradient_argdefs, output_gradient_argdef, graph_defs,
-                                              opt_graph_config_.AllReduceDataType()));
+  ORT_RETURN_IF_ERROR(AddGradientScalingNodes(nodearg_name_generator, scale, gradient_argdefs, output_gradient_argdef, graph_defs, opt_graph_config_.AllReduceDataType()));
 
   ORT_RETURN_IF_ERROR(AddNcclAllReduceForGradients(gradient_argdefs, output_gradient_argdef, graph_defs));
 
@@ -103,11 +102,7 @@ Status AllreduceOptimizerGraphBuilder::BuildInternal(
 
   // add weight update
   ORT_RETURN_IF_ERROR(AddDirectWeightUpdate(
-      opt_builder_registry_, weight_argdefs, gradient_argdefs,
-      &global_grad_norm_argdef,
-      &global_grad_norm_finite_argdef,
-      opt_configs_, graph_defs,
-      weight_to_opt_mapping));
+      opt_builder_registry_, weight_argdefs, gradient_argdefs, &global_grad_norm_argdef, &global_grad_norm_finite_argdef, opt_configs_, graph_defs, weight_to_opt_mapping));
 
   return Status::OK();
 }

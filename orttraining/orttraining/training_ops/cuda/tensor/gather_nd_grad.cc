@@ -8,15 +8,9 @@
 namespace onnxruntime {
 namespace cuda {
 
-#define REGISTER_KERNEL_TYPED_GATHER_ND_GRAD(TIndex)                                            \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                                \
-      GatherNDGrad, kMSDomain, 1, TIndex, kCudaExecutionProvider,                               \
-      (*KernelDefBuilder::Create())                                                             \
-          .TypeConstraint("T", BuildKernelDefConstraints<MLFloat16, float, double, BFloat16>()) \
-          .TypeConstraint("Tind", DataTypeImpl::GetTensorType<TIndex>())                        \
-          .TypeConstraint("T1", DataTypeImpl::GetTensorType<int64_t>())                         \
-          .InputMemoryType(OrtMemTypeCPUInput, 0),                                              \
-      GatherNDGrad<TIndex>);
+#define REGISTER_KERNEL_TYPED_GATHER_ND_GRAD(TIndex) \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                     \
+      GatherNDGrad, kMSDomain, 1, TIndex, kCudaExecutionProvider, (*KernelDefBuilder::Create()).TypeConstraint("T", BuildKernelDefConstraints<MLFloat16, float, double, BFloat16>()).TypeConstraint("Tind", DataTypeImpl::GetTensorType<TIndex>()).TypeConstraint("T1", DataTypeImpl::GetTensorType<int64_t>()).InputMemoryType(OrtMemTypeCPUInput, 0), GatherNDGrad<TIndex>);
 
 REGISTER_KERNEL_TYPED_GATHER_ND_GRAD(int64_t)
 
@@ -30,8 +24,10 @@ struct GatherNDGradComputeImpl {
                   int64_t* const input_slice_offsets_data) const {
     typedef typename ToCudaType<T>::MappedType CudaT;
     GatherNDGradImpl<CudaT>(stream,
-                            num_slices, kernel_input_data,
-                            kernel_output_data, slice_size,
+                            num_slices,
+                            kernel_input_data,
+                            kernel_output_data,
+                            slice_size,
                             input_slice_offsets_data);
   }
 };
@@ -49,8 +45,7 @@ Status GatherNDGrad<TIndex>::ComputeInternal(OpKernelContext* context) const {
   auto update_shape = update_tensor->Shape();
 
   if (indices_shape.NumDimensions() == 0) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "indices tensor must has rank larger than 0");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "indices tensor must has rank larger than 0");
   }
 
   auto last_indices_dimension = batch_dims_ + indices_shape[indices_shape.NumDimensions() - 1];
@@ -60,8 +55,7 @@ Status GatherNDGrad<TIndex>::ComputeInternal(OpKernelContext* context) const {
   auto input_shape = TensorShape(shape_data, shape_tensor->SizeInBytes() / sizeof(shape_tensor->DataType()));
 
   if (last_indices_dimension > static_cast<int64_t>(input_shape.NumDimensions())) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "last dimension of indices must not be larger than rank of input tensor");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "last dimension of indices must not be larger than rank of input tensor");
   }
 
   ORT_RETURN_IF_ERROR(CheckBatchDimensionsMatch(
@@ -77,8 +71,13 @@ Status GatherNDGrad<TIndex>::ComputeInternal(OpKernelContext* context) const {
   int64_t slice_size;
   IAllocatorUniquePtr<int64_t> input_slice_offsets_buffer;
   ORT_RETURN_IF_ERROR(PrepareCompute<TIndex>(context->GetComputeStream(),
-                                             batch_dims_, input_shape, indices_shape, indices_tensor,
-                                             num_slices, slice_size, input_slice_offsets_buffer));
+                                             batch_dims_,
+                                             input_shape,
+                                             indices_shape,
+                                             indices_tensor,
+                                             num_slices,
+                                             slice_size,
+                                             input_slice_offsets_buffer));
 
   const void* const kernel_input_data = update_tensor->DataRaw();
   void* const kernel_output_data = output_tensor->MutableDataRaw();

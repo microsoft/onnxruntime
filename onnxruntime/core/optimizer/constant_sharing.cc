@@ -66,8 +66,7 @@ bool IsAllowedToShare(const ONNX_NAMESPACE::TensorShapeProto* input_shape,
 
 // Return true when initializer node arg is consumed by any node containing sub graphs;
 // Otherwise, return false.
-bool PrepareInputPortsToReplace(Graph& graph, const NodeArg* origin_initializer_node_arg,
-                                InlinedHashMap<const Node*, InlinedVector<int>>& consumer_node_to_input_ports_map) {
+bool PrepareInputPortsToReplace(Graph& graph, const NodeArg* origin_initializer_node_arg, InlinedHashMap<const Node*, InlinedVector<int>>& consumer_node_to_input_ports_map) {
   std::vector<const Node*> consumers = graph.GetConsumerNodes(origin_initializer_node_arg->Name());
 
   for (const Node* const_node : consumers) {
@@ -97,7 +96,8 @@ void ReplaceInputsToUseSharedInitializer(Graph& graph,
                                          const NodeArg* origin_initializer_node_arg,
                                          NodeArg* shared_initializer_node_arg) {
   for (auto it = consumer_node_to_input_ports_map.begin(), end = consumer_node_to_input_ports_map.end();
-       it != end; ++it) {
+       it != end;
+       ++it) {
     Node* node = graph.GetNode(it->first->Index());
     // Iterate all input defs to replace those that are equal to origin_initializer_node_arg,
     // Then it would be safe to remove the consumer node.
@@ -175,8 +175,7 @@ size_t GetOrAddValueInConstantStore(
 
 }  // namespace
 
-Status ConstantSharing::ApplyImpl(Graph& graph, bool& modified, int /*graph_level*/,
-                                  const logging::Logger& logger) const {
+Status ConstantSharing::ApplyImpl(Graph& graph, bool& modified, int /*graph_level*/, const logging::Logger& logger) const {
   int shared_count = 0;
   // Accumulated map from type/value/rank to initializer:
   // > The key is a string representation of initializer's data type, value and rank.
@@ -218,14 +217,15 @@ Status ConstantSharing::ApplyImpl(Graph& graph, bool& modified, int /*graph_leve
     // > The key is consumer Node pointer.
     // > The value is a list of indices for the consumer Nodes' input (that used origin_initializer_node_arg).
     InlinedHashMap<const Node*, InlinedVector<int>> consumer_node_to_input_ports_map;
-    bool found_subgraph_usage = PrepareInputPortsToReplace(graph, origin_initializer_node_arg,
-                                                           consumer_node_to_input_ports_map);
+    bool found_subgraph_usage = PrepareInputPortsToReplace(graph, origin_initializer_node_arg, consumer_node_to_input_ports_map);
     if (found_subgraph_usage || consumer_node_to_input_ports_map.size() == 0) {
       continue;
     }
     const std::string data_store_key = MakeString(tensor_proto->data_type(),
-                                                  "_", origin_initializer_node_arg->Shape()->dim_size(),
-                                                  "_", num_elements);
+                                                  "_",
+                                                  origin_initializer_node_arg->Shape()->dim_size(),
+                                                  "_",
+                                                  num_elements);
 
     std::unique_ptr<InitializerValue> init_value = std::make_unique<InitializerValue>(tensor_proto, graph);
     // The constant value store contains multiple buckets, indexed by data_store_key.
@@ -248,8 +248,7 @@ Status ConstantSharing::ApplyImpl(Graph& graph, bool& modified, int /*graph_leve
       shared_count += 1;
     }
 
-    ReplaceInputsToUseSharedInitializer(graph, consumer_node_to_input_ports_map, origin_initializer_node_arg,
-                                        pattern_key_to_shared_arg_map[pattern_key]);
+    ReplaceInputsToUseSharedInitializer(graph, consumer_node_to_input_ports_map, origin_initializer_node_arg, pattern_key_to_shared_arg_map[pattern_key]);
 
     modified = true;
   }

@@ -468,8 +468,7 @@ TEST_F(GraphTest, LocalCustomRegistry) {
 // op schema for each of the function body nodes can be found).
 TEST_F(GraphTest, FunctionOpsetImportTest) {
   std::shared_ptr<Model> model;
-  ASSERT_STATUS_OK(Model::Load(ORT_TSTR("testdata/function_opset_test.onnx"), model, {},
-                               *logger_));
+  ASSERT_STATUS_OK(Model::Load(ORT_TSTR("testdata/function_opset_test.onnx"), model, {}, *logger_));
   auto schema_registry = ONNX_NAMESPACE::OpSchemaRegistry::Instance();
   const auto& graph = model->MainGraph();
   for (const auto& node : graph.Nodes()) {
@@ -1754,12 +1753,10 @@ TEST_F(GraphTest, ReplaceInitializedTensor) {
 #if !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_EXTERNAL_INITIALIZERS)
 
 namespace {
-void SetTensorProtoExternalData(const std::string& key, const std::string& value,
-                                ONNX_NAMESPACE::TensorProto& tensor_proto) {
+void SetTensorProtoExternalData(const std::string& key, const std::string& value, ONNX_NAMESPACE::TensorProto& tensor_proto) {
   auto* external_data = tensor_proto.mutable_external_data();
   auto kvp_it = std::find_if(
-      external_data->begin(), external_data->end(),
-      [&key](const ONNX_NAMESPACE::StringStringEntryProto& kvp) { return kvp.key() == key; });
+      external_data->begin(), external_data->end(), [&key](const ONNX_NAMESPACE::StringStringEntryProto& kvp) { return kvp.key() == key; });
   auto* kvp = kvp_it != external_data->end() ? &(*kvp_it) : external_data->Add();
   kvp->set_key(key);
   kvp->set_value(value);
@@ -1778,8 +1775,7 @@ TEST_F(GraphTest, InjectExternalInitializedTensors) {
   // Create OrtValue for replacement
   TensorShape data_shape{static_cast<int64_t>(tensor_data.size())};
   OrtValue ort_value;
-  Tensor::InitOrtValue(DataTypeImpl::GetType<int32_t>(), data_shape, tensor_data.data(),
-                       OrtMemoryInfo(onnxruntime::CPU, OrtAllocatorType::OrtDeviceAllocator), ort_value);
+  Tensor::InitOrtValue(DataTypeImpl::GetType<int32_t>(), data_shape, tensor_data.data(), OrtMemoryInfo(onnxruntime::CPU, OrtAllocatorType::OrtDeviceAllocator), ort_value);
   const InlinedHashMap<std::string, OrtValue> injection_initializers = {
       {initializer_name, ort_value}};
 
@@ -1794,8 +1790,7 @@ TEST_F(GraphTest, InjectExternalInitializedTensors) {
         tensor_proto.add_dims(tensor_data.size());
         tensor_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT32);
         tensor_proto.set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL);
-        SetTensorProtoExternalData("location", ToUTF8String(tensor_data_dir_relative_path.ToPathString()),
-                                   tensor_proto);
+        SetTensorProtoExternalData("location", ToUTF8String(tensor_data_dir_relative_path.ToPathString()), tensor_proto);
         SetTensorProtoExternalData("offset", "0", tensor_proto);
         SetTensorProtoExternalData("length", std::to_string(tensor_data.size() * sizeof(int32_t)), tensor_proto);
         return tensor_proto;
@@ -1829,8 +1824,7 @@ TEST_F(GraphTest, InjectExternalInitializedTensors) {
     ASSERT_FALSE(utils::HasExternalData(*with_data));
     const auto& original_tensor = ort_value.Get<Tensor>();
     Tensor replaced_tensor(original_tensor.DataType(), data_shape, std::make_shared<CPUAllocator>());
-    ASSERT_STATUS_OK(utils::TensorProtoToTensor(Env::Default(), tensor_data_dir_path.ToPathString().c_str(), *with_data,
-                                                replaced_tensor));
+    ASSERT_STATUS_OK(utils::TensorProtoToTensor(Env::Default(), tensor_data_dir_path.ToPathString().c_str(), *with_data, replaced_tensor));
     ASSERT_EQ(original_tensor.GetElementType(), replaced_tensor.GetElementType());
     const auto original_span = original_tensor.DataAsSpan<int32_t>();
     const auto replaced_span = replaced_tensor.DataAsSpan<int32_t>();
@@ -2039,10 +2033,9 @@ TEST_F(GraphTest, DontRemoveUnusedInitializerWithGraphInput) {
 
   auto& graph = model->MainGraph();
   const auto& inputs_including_initializers = graph.GetInputsIncludingInitializers();
-  auto j = std::find_if(inputs_including_initializers.cbegin(), inputs_including_initializers.cend(),
-                        [&unused_initializer_name](const NodeArg* input) {
-                          return input->Name() == unused_initializer_name;
-                        });
+  auto j = std::find_if(inputs_including_initializers.cbegin(), inputs_including_initializers.cend(), [&unused_initializer_name](const NodeArg* input) {
+    return input->Name() == unused_initializer_name;
+  });
 
   ASSERT_NE(j, inputs_including_initializers.cend()) << "Unused initializer was incorrectly removed.";
 }

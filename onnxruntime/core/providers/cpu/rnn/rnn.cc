@@ -48,9 +48,7 @@ T Clip(const T& x, T clip) {
 }
 
 template <typename T>
-void ApplyActivationToBatches(const Tensor* sequence_lens, const T* h_prev, T* Y_buffer_data_current_frame,
-                              int64_t time_step, int64_t batch_size, int64_t hidden_size,
-                              T alpha, T beta, T clip, std::function<T(T, T, T)> activation_func) {
+void ApplyActivationToBatches(const Tensor* sequence_lens, const T* h_prev, T* Y_buffer_data_current_frame, int64_t time_step, int64_t batch_size, int64_t hidden_size, T alpha, T beta, T clip, std::function<T(T, T, T)> activation_func) {
   const int* seq_len_data = sequence_lens ? sequence_lens->Data<int>() : nullptr;
 
   for (int batch = 0; batch < batch_size; batch++) {
@@ -74,8 +72,7 @@ void ApplyActivationToBatches(const Tensor* sequence_lens, const T* h_prev, T* Y
 }
 
 template <typename T>
-void Assign_Y_h(const T* Y_buffer_data, Tensor* Y_h, const Tensor* sequence_lens,
-                int64_t num_directions, int direction, bool isReverse, int64_t batch_size, int64_t seq_length, int64_t hidden_size) {
+void Assign_Y_h(const T* Y_buffer_data, Tensor* Y_h, const Tensor* sequence_lens, int64_t num_directions, int direction, bool isReverse, int64_t batch_size, int64_t seq_length, int64_t hidden_size) {
   for (int batch = 0; batch < batch_size; batch++) {
     int64_t last_time_step = isReverse ? 0 : seq_length - 1;
     if (nullptr != sequence_lens && !isReverse)
@@ -84,15 +81,12 @@ void Assign_Y_h(const T* Y_buffer_data, Tensor* Y_h, const Tensor* sequence_lens
                        direction * batch_size * hidden_size +
                        batch * hidden_size;
     int64_t Y_h_offset = direction * batch_size * hidden_size + batch * hidden_size;
-    math::CopyVector<T, CPUMathUtil>(static_cast<int>(hidden_size), Y_buffer_data + y_offset,
-                                     Y_h->MutableData<T>() + Y_h_offset,
-                                     &CPUMathUtil::Instance());
+    math::CopyVector<T, CPUMathUtil>(static_cast<int>(hidden_size), Y_buffer_data + y_offset, Y_h->MutableData<T>() + Y_h_offset, &CPUMathUtil::Instance());
   }
 }
 
 template <typename T>
-void ClearMissingFrames(T* Y_buffer_data, const Tensor* sequence_lens,
-                        int64_t num_directions, int64_t batch_size, int64_t seq_length, int64_t hidden_size) {
+void ClearMissingFrames(T* Y_buffer_data, const Tensor* sequence_lens, int64_t num_directions, int64_t batch_size, int64_t seq_length, int64_t hidden_size) {
   for (int direction = 0; direction < num_directions; direction++) {
     for (int batch = 0; batch < batch_size; batch++) {
       if (sequence_lens->Data<int>()[batch] < seq_length) {
@@ -132,8 +126,7 @@ Status RNN<float>::Compute(OpKernelContext* ctx) const {
   int64_t batch_size = X.Shape()[1];
   int64_t input_size = X.Shape()[2];
 
-  auto status = rnn::detail::ValidateCommonRnnInputs(X, W.Shape(), R.Shape(), B, 1, sequence_lens, initial_h,
-                                                     num_directions, hidden_size_);
+  auto status = rnn::detail::ValidateCommonRnnInputs(X, W.Shape(), R.Shape(), B, 1, sequence_lens, initial_h, num_directions, hidden_size_);
   ORT_RETURN_IF_ERROR(status);
 
   // RNN outputs are optional
@@ -233,20 +226,16 @@ Status RNN<float>::Compute(OpKernelContext* ctx) const {
       y_frame_mat += EigenMatrixMapRowMajor<float>(&x_matmul_w_buffer_data[time_step * Y_frame_size], onnxruntime::narrow<size_t>(batch_size), onnxruntime::narrow<size_t>(hidden_size_));
 
       // apply activation
-      ApplyActivationToBatches<float>(sequence_lens, h_prev, Y_buffer_data_current_frame,
-                                      time_step, batch_size, hidden_size_,
-                                      activation_alpha_[direction], activation_beta_[direction], clip_, activation_func);
+      ApplyActivationToBatches<float>(sequence_lens, h_prev, Y_buffer_data_current_frame, time_step, batch_size, hidden_size_, activation_alpha_[direction], activation_beta_[direction], clip_, activation_func);
     }  // close sequence loop
 
     if (Y_h)
-      Assign_Y_h<float>(Y_buffer_data, Y_h, sequence_lens,
-                        num_directions, direction, isReverse, batch_size, seq_length, hidden_size_);
+      Assign_Y_h<float>(Y_buffer_data, Y_h, sequence_lens, num_directions, direction, isReverse, batch_size, seq_length, hidden_size_);
   }
 
   // Now the full sequence is completed. Set missing frames to zero.
   if (nullptr != sequence_lens) {
-    ClearMissingFrames(Y_buffer_data, sequence_lens,
-                       num_directions, batch_size, seq_length, hidden_size_);
+    ClearMissingFrames(Y_buffer_data, sequence_lens, num_directions, batch_size, seq_length, hidden_size_);
   }
 
   if (Y != nullptr)

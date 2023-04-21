@@ -268,8 +268,7 @@ TEST(InternalTestingEP, TestRegisterAllocatorHandlesUsageInMultipleSessions) {
   // and use the same EP instances in both
   const std::unordered_set<std::string> supported_ops{"Conv", "Clip"};
   std::vector<std::shared_ptr<IExecutionProvider>> eps{
-      std::make_shared<InternalTestingExecutionProvider>(supported_ops, std::unordered_set<std::string>{},
-                                                         DataLayout::NHWC),
+      std::make_shared<InternalTestingExecutionProvider>(supported_ops, std::unordered_set<std::string>{}, DataLayout::NHWC),
       std::make_shared<CPUExecutionProvider>(CPUExecutionProviderInfo{}, true /* delay allocator registration to allow sharing */)};
 
   // check RegisterAllocator is implemented properly and supports calls from multiple inference sessions
@@ -298,8 +297,7 @@ TEST(InternalTestingEP, TestReplaceAllocatorDoesntBreakDueToLocalAllocatorStorag
   const std::unordered_set<std::string> supported_ops{"Conv", "Clip"};
 
   std::vector<std::shared_ptr<IExecutionProvider>> eps{
-      std::make_shared<InternalTestingExecutionProvider>(supported_ops, std::unordered_set<std::string>{},
-                                                         DataLayout::NHWC),
+      std::make_shared<InternalTestingExecutionProvider>(supported_ops, std::unordered_set<std::string>{}, DataLayout::NHWC),
       std::make_shared<CPUExecutionProvider>(CPUExecutionProviderInfo{})};
 
   for (const auto& ep : eps) {
@@ -423,8 +421,7 @@ TEST(InternalTestingEP, TestModelWithSubgraph) {
   // the output from fused nodes using the testing EP is always 0, so we should match the expected output this way
   // as we replace all the Add nodes with something that returns 0.
   // RunAndVerifyOutputsWithEP checks that nodes are assigned to the EP so we know it's being used to execute the model
-  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault), {1}, {-2.f},
-                       &ml_value);
+  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault), {1}, {-2.f}, &ml_value);
   NameMLValMap feeds;
   feeds.insert(std::make_pair("state_var_in", ml_value));
   // compare outputs from CPU EP vs custom EP
@@ -465,8 +462,7 @@ Status CompileFailureTestExecutionProvider::Compile(const std::vector<FusedNodeA
     const onnxruntime::GraphViewer& graph_viewer(fused_node_and_graph.filtered_graph);
     for (const auto& node : graph_viewer.Nodes()) {
       if (compile_failure_ops_.find(node.OpType()) != compile_failure_ops_.end()) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                               "CompileFailureTestExecutionProvider::Compile failed for node: ", node.Name());
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "CompileFailureTestExecutionProvider::Compile failed for node: ", node.Name());
       }
     }
   }

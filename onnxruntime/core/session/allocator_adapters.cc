@@ -50,8 +50,7 @@ void IAllocatorImplWrappingOrtAllocator::Free(void* p) {
 #if defined(_MSC_VER) && !defined(__clang__)
 #pragma warning(disable : 26409)
 #endif
-ORT_API_STATUS_IMPL(OrtApis::CreateAllocator, const OrtSession* sess,
-                    const OrtMemoryInfo* mem_info, _Outptr_ OrtAllocator** out) {
+ORT_API_STATUS_IMPL(OrtApis::CreateAllocator, const OrtSession* sess, const OrtMemoryInfo* mem_info, _Outptr_ OrtAllocator** out) {
   API_IMPL_BEGIN
   auto* session = reinterpret_cast<const ::onnxruntime::InferenceSession*>(sess);
   auto allocator_ptr = session->GetAllocator(*mem_info);
@@ -63,9 +62,7 @@ ORT_API_STATUS_IMPL(OrtApis::CreateAllocator, const OrtSession* sess,
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::CreateAndRegisterAllocator, _Inout_ OrtEnv* env,
-                    _In_ const OrtMemoryInfo* mem_info,
-                    _In_ const OrtArenaCfg* arena_cfg) {
+ORT_API_STATUS_IMPL(OrtApis::CreateAndRegisterAllocator, _Inout_ OrtEnv* env, _In_ const OrtMemoryInfo* mem_info, _In_ const OrtArenaCfg* arena_cfg) {
   using namespace onnxruntime;
   if (!env) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Env is null");
@@ -83,8 +80,7 @@ ORT_API_STATUS_IMPL(OrtApis::CreateAndRegisterAllocator, _Inout_ OrtEnv* env,
   return nullptr;
 }
 
-ORT_API_STATUS_IMPL(OrtApis::RegisterAllocator, _Inout_ OrtEnv* env,
-                    _In_ OrtAllocator* allocator) {
+ORT_API_STATUS_IMPL(OrtApis::RegisterAllocator, _Inout_ OrtEnv* env, _In_ OrtAllocator* allocator) {
   using namespace onnxruntime;
   if (!env) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Env is null");
@@ -113,8 +109,7 @@ ORT_API_STATUS_IMPL(OrtApis::RegisterAllocator, _Inout_ OrtEnv* env,
   return nullptr;
 }
 
-ORT_API_STATUS_IMPL(OrtApis::UnregisterAllocator, _Inout_ OrtEnv* env,
-                    _In_ const OrtMemoryInfo* mem_info) {
+ORT_API_STATUS_IMPL(OrtApis::UnregisterAllocator, _Inout_ OrtEnv* env, _In_ const OrtMemoryInfo* mem_info) {
   using namespace onnxruntime;
   if (!env) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Env is null");

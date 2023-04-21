@@ -64,8 +64,7 @@ void CropAndResizeForward(const TensorShape& output_shape,
   int64_t pooled_width = output_shape[3];
 
   ThreadPool::TryBatchParallelFor(
-      ttp, static_cast<int32_t>(n_rois),
-      [&](ptrdiff_t n) {
+      ttp, static_cast<int32_t>(n_rois), [&](ptrdiff_t n) {
         int64_t index_n = n * channels * pooled_width * pooled_height;
 
         const T* offset_bottom_rois = bottom_rois + n * num_roi_cols;
@@ -199,8 +198,7 @@ Status CropAndResize<T>::Compute(OpKernelContext* context) const {
 
   // validate crop_size
   if (crop_size_dims.NumDimensions() != 1) {
-    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                  "Number of dimensions for crop size should be exactly 1");
+    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Number of dimensions for crop size should be exactly 1");
   }
 
   auto channels = x_dims[1];

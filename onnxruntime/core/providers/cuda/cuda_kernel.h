@@ -125,8 +125,7 @@ class CudaKernel : public OpKernel {
       if (cpu_pinned_copy_) {
         gpu_copy_ = op_kernel_->GetScratchBuffer<T>(count_, stream);
         cudaStream_t cuda_stream = stream ? static_cast<cudaStream_t>(stream->GetHandle()) : nullptr;
-        CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(gpu_copy_.get(), cpu_pinned_copy_.get(), count_ * sizeof(T), cudaMemcpyHostToDevice,
-                                             cuda_stream));
+        CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(gpu_copy_.get(), cpu_pinned_copy_.get(), count_ * sizeof(T), cudaMemcpyHostToDevice, cuda_stream));
         op_kernel_->AddDeferredReleaseCPUPtr(cpu_pinned_copy_.release(), stream);
       }
       return Status::OK();

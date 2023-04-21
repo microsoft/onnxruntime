@@ -66,11 +66,9 @@ void Send::SendData(
 #endif
 
 #if defined(ORT_USE_NCCL) && defined(USE_NCCL_P2P)
-    CUDA_CALL_THROW(cudaMemcpyAsync(buffer.get() + tensor_offsets_in_bytes[i], tensor->DataRaw(),
-                                    tensor_sizes_in_bytes[i], cudaMemcpyDeviceToDevice, Stream(ctx)));
+    CUDA_CALL_THROW(cudaMemcpyAsync(buffer.get() + tensor_offsets_in_bytes[i], tensor->DataRaw(), tensor_sizes_in_bytes[i], cudaMemcpyDeviceToDevice, Stream(ctx)));
 #else
-    CUDA_CALL_THROW(cudaMemcpyAsync(buffer.get() + tensor_offsets_in_bytes[i], tensor->DataRaw(),
-                                    tensor_sizes_in_bytes[i], cudaMemcpyDeviceToHost, Stream(ctx)));
+    CUDA_CALL_THROW(cudaMemcpyAsync(buffer.get() + tensor_offsets_in_bytes[i], tensor->DataRaw(), tensor_sizes_in_bytes[i], cudaMemcpyDeviceToHost, Stream(ctx)));
 #endif
   }
 
@@ -103,8 +101,7 @@ void Send::SendData(
   nccl_service.SubmitSendAndWait(info_data.buffer, info_data.size, info_data.rank);
 #elif defined(USE_MPI)
   MPI_CHECK(MPI_Send(
-      info_data.buffer, info_data.size, MPI_CHAR,
-      info_data.rank, info_data.tag, MPI_COMM_WORLD));
+      info_data.buffer, info_data.size, MPI_CHAR, info_data.rank, info_data.tag, MPI_COMM_WORLD));
 #else
   ORT_THROW("Failed to send to rank: ", info_data.rank);
 #endif

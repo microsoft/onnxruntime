@@ -41,7 +41,8 @@ class FastGeluOp {
     FastGeluKernelVec<T, ThreadsPerBlock, VecSize>
         <<<dim3(CeilDiv(params->input_length, ThreadsPerBlock * VecSize)),
            dim3(ThreadsPerBlock),
-           0, params->stream>>>(
+           0,
+           params->stream>>>(
             params->input_length, params->bias_length, params->input, params->bias, params->output);
     return HIP_CALL(hipGetLastError());
   }

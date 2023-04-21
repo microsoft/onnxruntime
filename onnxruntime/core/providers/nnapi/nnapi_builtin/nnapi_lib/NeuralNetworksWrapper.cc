@@ -96,8 +96,7 @@ size_t OperandType::GetElementByteSize() const {
 }
 
 size_t OperandType::GetOperandBlobByteSize() const {
-  SafeInt<size_t> num_elements = std::accumulate(dimensions.begin(), dimensions.end(), SafeInt<size_t>(1),
-                                                 std::multiplies<SafeInt<size_t>>());
+  SafeInt<size_t> num_elements = std::accumulate(dimensions.begin(), dimensions.end(), SafeInt<size_t>(1), std::multiplies<SafeInt<size_t>>());
   return num_elements * GetElementByteSize();
 }
 

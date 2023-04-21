@@ -18,6 +18,5 @@ Calculate Softmax using CPU memory.
 @param logarithmic If true, compute LogSoftmax. If false compute Softmax.
 */
 template <typename T>
-common::Status SoftmaxCPU(size_t N, size_t D, const T* Xdata, T* Ydata,
-                          bool logarithmic, concurrency::ThreadPool* thread_pool);
+common::Status SoftmaxCPU(size_t N, size_t D, const T* Xdata, T* Ydata, bool logarithmic, concurrency::ThreadPool* thread_pool);
 }  // namespace onnxruntime

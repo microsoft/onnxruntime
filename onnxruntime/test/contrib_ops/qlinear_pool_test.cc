@@ -135,9 +135,7 @@ void RunQLinearAveragePoolNchw(
     int64_t y_size = std::accumulate(y_dims.begin(), y_dims.end(), 1LL, std::multiplies<int64_t>());
     std::vector<T8Bits> y_data(y_size);
     CalculateAvgPoolNchw(
-        x_data.data(), x_dims, x_params,
-        y_data.data(), y_dims, y_params,
-        kernel_shape, strides, pads, count_include_pad);
+        x_data.data(), x_dims, x_params, y_data.data(), y_dims, y_params, kernel_shape, strides, pads, count_include_pad);
 
     OpTester test("QLinearAveragePool", 1, onnxruntime::kMSDomain);
 
@@ -231,9 +229,7 @@ void RunQLinearAveragePoolNhwc(
   int64_t y_size = std::accumulate(y_dims.begin(), y_dims.end(), 1LL, std::multiplies<int64_t>());
   std::vector<T8Bits> y_data(y_size);
   CalculateAvgPoolNchw(
-      x_data.data(), x_dims, x_params,
-      y_data.data(), y_dims, y_params,
-      kernel_shape, strides, pads, count_include_pad);
+      x_data.data(), x_dims, x_params, y_data.data(), y_dims, y_params, kernel_shape, strides, pads, count_include_pad);
 
   // transpose the result
   std::vector<T8Bits> y_data_nhwc = transpose_to_nhwc(y_data, y_dims);

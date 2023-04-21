@@ -15,7 +15,8 @@ StreamExecutionContext::StreamExecutionContext(const SessionState& sess_state,
                                                size_t num_barriers,
                                                const DeviceStreamCollection* device_stream_map,
                                                gsl::span<const int> feed_mlvalue_idxs,
-                                               gsl::span<const OrtValue> feeds, gsl::span<const int> fetch_mlvalue_idxs,
+                                               gsl::span<const OrtValue> feeds,
+                                               gsl::span<const int> fetch_mlvalue_idxs,
                                                std::vector<OrtValue>& fetches,
                                                const std::unordered_map<size_t, IExecutor::CustomAllocator>&
                                                    fetch_allocators,
@@ -83,7 +84,8 @@ Stream* StreamExecutionContext ::GetDeviceStream(size_t idx) {
 StreamExecutionContext::StreamExecutionContext(const SessionState& sess_state,
                                                int32_t num_streams,
                                                gsl::span<const int> feed_mlvalue_idxs,
-                                               gsl::span<const OrtValue> feeds, gsl::span<const int> fetch_mlvalue_idxs,
+                                               gsl::span<const OrtValue> feeds,
+                                               gsl::span<const int> fetch_mlvalue_idxs,
                                                std::vector<OrtValue>& fetches,
                                                const std::unordered_map<size_t, IExecutor::CustomAllocator>&
                                                    fetch_allocators,
@@ -242,8 +244,7 @@ void RunSince(size_t stream_idx, StreamExecutionContext& ctx, SessionScope& sess
   return;
 }
 
-void ScheduleDownstream(StreamExecutionContext& ctx, size_t trigger, bool single_thread_mode,
-                        const bool& terminate_flag, SessionScope& session_scope) {
+void ScheduleDownstream(StreamExecutionContext& ctx, size_t trigger, bool single_thread_mode, const bool& terminate_flag, SessionScope& session_scope) {
   auto* plan = ctx.GetSessionState().GetExecutionPlan();
   auto& downstream_map = plan->downstream_map;
   auto* tp = single_thread_mode ? nullptr : ctx.GetSessionState().GetInterOpThreadPool();

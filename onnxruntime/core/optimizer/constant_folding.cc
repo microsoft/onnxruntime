@@ -183,12 +183,10 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level,
 
 #if !defined(DISABLE_SPARSE_TENSORS)
       // Create execution frame for executing constant nodes.
-      OptimizerExecutionFrame::Info info({node}, constant_inputs, graph.ModelPath(), execution_provider_,
-                                         is_sparse_initializer_check);
+      OptimizerExecutionFrame::Info info({node}, constant_inputs, graph.ModelPath(), execution_provider_, is_sparse_initializer_check);
 #else
       // Create execution frame for executing constant nodes.
-      OptimizerExecutionFrame::Info info({node}, constant_inputs, graph.ModelPath(), execution_provider_,
-                                         [](std::string const&) { return false; });
+      OptimizerExecutionFrame::Info info({node}, constant_inputs, graph.ModelPath(), execution_provider_, [](std::string const&) { return false; });
 #endif
 
       std::vector<int> fetch_mlvalue_idxs;

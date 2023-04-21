@@ -45,8 +45,7 @@ Status CheckInputs(const TensorShape& query_shape,
                    const bool has_key_padding_mask) {
   const auto& query_shape_dims = query_shape.GetDims();
   if (query_shape_dims.size() != 3) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'query' is expected to have 3 dimensions, got ",
-                           query_shape_dims.size());
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'query' is expected to have 3 dimensions, got ", query_shape_dims.size());
   }
 
   int sequence_length = static_cast<int>(query_shape_dims[0]);
@@ -55,8 +54,7 @@ Status CheckInputs(const TensorShape& query_shape,
 
   const auto& key_shape_dims = key_shape.GetDims();
   if (key_shape_dims.size() != 3) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'key' is expected to have 3 dimensions, got ",
-                           key_shape_dims.size());
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'key' is expected to have 3 dimensions, got ", key_shape_dims.size());
   }
   int kv_sequence_length = static_cast<int>(key_shape_dims[0]);
 
@@ -70,14 +68,12 @@ Status CheckInputs(const TensorShape& query_shape,
 
   const auto& q_weights_dims = q_weights_shape.GetDims();
   if (q_weights_dims.size() != 2) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'q_weights' is expected to have 2 dimensions, got ",
-                           q_weights_dims.size());
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'q_weights' is expected to have 2 dimensions, got ", q_weights_dims.size());
   }
 
   const auto& kv_weights_dims = kv_weights_shape.GetDims();
   if (kv_weights_dims.size() != 2) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'kv_weights' is expected to have 2 dimensions, got ",
-                           kv_weights_dims.size());
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'kv_weights' is expected to have 2 dimensions, got ", kv_weights_dims.size());
   }
 
   if (q_weights_dims[0] != hidden_size || q_weights_dims[1] != hidden_size) {
@@ -90,8 +86,7 @@ Status CheckInputs(const TensorShape& query_shape,
 
   const auto& bias_dims = bias_shape.GetDims();
   if (bias_dims.size() != 1) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'bias' is expected to have 1 dimension, got ",
-                           bias_dims.size());
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'bias' is expected to have 1 dimension, got ", bias_dims.size());
   }
 
   if (bias_dims[0] != 3 * static_cast<int64_t>(hidden_size)) {
@@ -103,9 +98,7 @@ Status CheckInputs(const TensorShape& query_shape,
     const auto& kp_mask_dims = key_padding_mask->Shape().GetDims();
 
     if (kp_mask_dims.size() != 2) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input 'key_padding_mask' is expected to have 2 dimension, got ",
-                             kp_mask_dims.size());
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'key_padding_mask' is expected to have 2 dimension, got ", kp_mask_dims.size());
     }
 
     if (kp_mask_dims[0] != batch_size) {
@@ -123,22 +116,19 @@ Status CheckInputs(const TensorShape& query_shape,
     }
 
     if (kp_mask_dims[1] != key_length) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "key_padding_mask shall have same sequence length as generated key");
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "key_padding_mask shall have same sequence length as generated key");
     }
   }
 
   if (key_cache != nullptr && value_cache != nullptr && has_layer_state && use_past) {
     const auto& key_cache_dims = key_cache->Shape().GetDims();
     if (key_cache_dims.size() != 4) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'key_cache' is expected to have 4 dimension, got ",
-                             key_cache_dims.size());
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'key_cache' is expected to have 4 dimension, got ", key_cache_dims.size());
     }
 
     const auto& value_cache_dims = value_cache->Shape().GetDims();
     if (value_cache_dims.size() != 4) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'value_cache' is expected to have 4 dimension, got ",
-                             value_cache_dims.size());
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'value_cache' is expected to have 4 dimension, got ", value_cache_dims.size());
     }
 
     if (key_cache_dims[0] != batch_size) {
@@ -191,14 +181,10 @@ Status DecoderAttention<T>::ComputeInternal(OpKernelContext* context) const {
   // Copy static_kv, use_past and has_layer_state to CPU
   auto pinned_buffer = AllocateBufferOnCPUPinned<void>(4 * sizeof(bool));
   bool* kernel_state_pinned = reinterpret_cast<bool*>(pinned_buffer.get());
-  CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(kernel_state_pinned, static_kv->Data<bool>(), sizeof(bool),
-                                       cudaMemcpyDeviceToHost, stream));
-  CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(kernel_state_pinned + 1, use_past->Data<bool>(), sizeof(bool),
-                                       cudaMemcpyDeviceToHost, stream));
-  CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(kernel_state_pinned + 2, has_layer_state->Data<bool>(), sizeof(bool),
-                                       cudaMemcpyDeviceToHost, stream));
-  CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(kernel_state_pinned + 3, has_key_padding_mask->Data<bool>(), sizeof(bool),
-                                       cudaMemcpyDeviceToHost, stream));
+  CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(kernel_state_pinned, static_kv->Data<bool>(), sizeof(bool), cudaMemcpyDeviceToHost, stream));
+  CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(kernel_state_pinned + 1, use_past->Data<bool>(), sizeof(bool), cudaMemcpyDeviceToHost, stream));
+  CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(kernel_state_pinned + 2, has_layer_state->Data<bool>(), sizeof(bool), cudaMemcpyDeviceToHost, stream));
+  CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(kernel_state_pinned + 3, has_key_padding_mask->Data<bool>(), sizeof(bool), cudaMemcpyDeviceToHost, stream));
 
   // Create an event to make sure the async copy is finished before reading the data.
   AutoDestoryCudaEvent new_event;
@@ -268,16 +254,10 @@ Status DecoderAttention<T>::ComputeInternal(OpKernelContext* context) const {
   // TODO(tianleiwu): fuse bias and transpose
   // broadcast bias for query: (h2, S*B)
   CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
-      cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, 1, &one,
-      reinterpret_cast<const CudaT*>(bias->Data<T>()), n,
-      GetConstOnes<CudaT>(m, Stream(context)), 1,
-      &zero, reinterpret_cast<CudaT*>(gemm_query_buffer_p.get()), n, device_prop));
+      cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, 1, &one, reinterpret_cast<const CudaT*>(bias->Data<T>()), n, GetConstOnes<CudaT>(m, Stream(context)), 1, &zero, reinterpret_cast<CudaT*>(gemm_query_buffer_p.get()), n, device_prop));
   // matmul: (h2, h1)*(h1, S*B)
   CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
-      cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, k, &one,
-      reinterpret_cast<const CudaT*>(q_weights->Data<T>()), n,
-      reinterpret_cast<const CudaT*>(query->Data<T>()), k,
-      &one, reinterpret_cast<CudaT*>(gemm_query_buffer_p.get()), n, device_prop));
+      cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, k, &one, reinterpret_cast<const CudaT*>(q_weights->Data<T>()), n, reinterpret_cast<const CudaT*>(query->Data<T>()), k, &one, reinterpret_cast<CudaT*>(gemm_query_buffer_p.get()), n, device_prop));
   // gemm_query_buffer in col-base: (h2, S*B)
 
   // calcualte k, v
@@ -293,16 +273,10 @@ Status DecoderAttention<T>::ComputeInternal(OpKernelContext* context) const {
       kv_sequence_length = sequence_length;
       // broadcast bias for key and value: (2*h2, T_S*B)
       CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
-          cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, 1, &one,
-          reinterpret_cast<const CudaT*>(bias->Data<T>() + hidden_size), n,
-          GetConstOnes<CudaT>(m, Stream(context)), 1,
-          &zero, reinterpret_cast<CudaT*>(gemm_kv_buffer_p.get()), n, device_prop));
+          cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, 1, &one, reinterpret_cast<const CudaT*>(bias->Data<T>() + hidden_size), n, GetConstOnes<CudaT>(m, Stream(context)), 1, &zero, reinterpret_cast<CudaT*>(gemm_kv_buffer_p.get()), n, device_prop));
       // matmul: (2*h2, h1)*(h1, T_S*B)
       CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
-          cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, k, &one,
-          reinterpret_cast<const CudaT*>(kv_weights->Data<T>()), n,
-          reinterpret_cast<const CudaT*>(query->Data<T>()), k,
-          &one, reinterpret_cast<CudaT*>(gemm_kv_buffer_p.get()), n, device_prop));
+          cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, k, &one, reinterpret_cast<const CudaT*>(kv_weights->Data<T>()), n, reinterpret_cast<const CudaT*>(query->Data<T>()), k, &one, reinterpret_cast<CudaT*>(gemm_kv_buffer_p.get()), n, device_prop));
       // gemm_kv_buffer in col-base: (2*h2, T_S*B)
     } else {
       gemm_kv_buffer_p = GetScratchBuffer<T>(static_cast<size_t>(batch_size) * 2 * key_sequence_length * hidden_size,
@@ -313,16 +287,10 @@ Status DecoderAttention<T>::ComputeInternal(OpKernelContext* context) const {
       kv_sequence_length = key_sequence_length;
       // broadcast bias for key and value: (2*h2, T_S*B)
       CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
-          cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, 1, &one,
-          reinterpret_cast<const CudaT*>(bias->Data<T>() + hidden_size), n,
-          GetConstOnes<CudaT>(m, Stream(context)), 1,
-          &zero, reinterpret_cast<CudaT*>(gemm_kv_buffer_p.get()), n, device_prop));
+          cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, 1, &one, reinterpret_cast<const CudaT*>(bias->Data<T>() + hidden_size), n, GetConstOnes<CudaT>(m, Stream(context)), 1, &zero, reinterpret_cast<CudaT*>(gemm_kv_buffer_p.get()), n, device_prop));
       // matmul: (2*h2, h1)*(h1, T_S*B)
       CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
-          cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, k, &one,
-          reinterpret_cast<const CudaT*>(kv_weights->Data<T>()), n,
-          reinterpret_cast<const CudaT*>(key->Data<T>()), k,
-          &one, reinterpret_cast<CudaT*>(gemm_kv_buffer_p.get()), n, device_prop));
+          cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, k, &one, reinterpret_cast<const CudaT*>(kv_weights->Data<T>()), n, reinterpret_cast<const CudaT*>(key->Data<T>()), k, &one, reinterpret_cast<CudaT*>(gemm_kv_buffer_p.get()), n, device_prop));
       // gemm_kv_buffer in col-base: (2*h2, T_S*B)
     }
   } else {
@@ -337,16 +305,10 @@ Status DecoderAttention<T>::ComputeInternal(OpKernelContext* context) const {
       kv_sequence_length = cache_sequence_length + sequence_length;
       // broadcast bias for key and value: (2*h2, T_S*B)
       CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
-          cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, 1, &one,
-          reinterpret_cast<const CudaT*>(bias->Data<T>() + hidden_size), n,
-          GetConstOnes<CudaT>(m, Stream(context)), 1,
-          &zero, reinterpret_cast<CudaT*>(gemm_kv_buffer_p.get()), n, device_prop));
+          cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, 1, &one, reinterpret_cast<const CudaT*>(bias->Data<T>() + hidden_size), n, GetConstOnes<CudaT>(m, Stream(context)), 1, &zero, reinterpret_cast<CudaT*>(gemm_kv_buffer_p.get()), n, device_prop));
       // matmul: (2*h2, h1)*(h1, T_S*B)
       CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
-          cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, k, &one,
-          reinterpret_cast<const CudaT*>(kv_weights->Data<T>()), n,
-          reinterpret_cast<const CudaT*>(query->Data<T>()), k,
-          &one, reinterpret_cast<CudaT*>(gemm_kv_buffer_p.get()), n, device_prop));
+          cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, k, &one, reinterpret_cast<const CudaT*>(kv_weights->Data<T>()), n, reinterpret_cast<const CudaT*>(query->Data<T>()), k, &one, reinterpret_cast<CudaT*>(gemm_kv_buffer_p.get()), n, device_prop));
       // gemm_kv_buffer in col-base: (2*h2, T_S*B)
     } else {
       kv_sequence_length = cache_sequence_length;

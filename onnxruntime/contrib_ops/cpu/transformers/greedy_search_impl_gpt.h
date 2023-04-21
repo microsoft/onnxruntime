@@ -229,8 +229,7 @@ Status GreedySearchGpt<T, ParametersT>::Execute(const FeedsFetchesManager* init_
       OrtValue& past_tensor_value = feeds[feed_idx];
       Tensor* past_tensor = past_tensor_value.GetMutable<Tensor>();
       OrtValue present_tensor_value;
-      Tensor::InitOrtValue(past_tensor->DataType(), past_tensor->Shape(), past_tensor->MutableData<T>(),
-                           past_tensor->Location(), present_tensor_value);
+      Tensor::InitOrtValue(past_tensor->DataType(), past_tensor->Shape(), past_tensor->MutableData<T>(), past_tensor->Location(), present_tensor_value);
       fetches.push_back(present_tensor_value);
     }
   }
@@ -350,10 +349,7 @@ Status GreedySearchGpt<T, ParametersT>::Execute(const FeedsFetchesManager* init_
     if (current_length < parameters->max_length) {
       bool increase_position = (iteration_counter > 1);
 
-      ORT_RETURN_IF_ERROR(UpdateFeeds(fetches, feeds, current_length,
-                                      position_ids, increase_position,
-                                      ReinterpretAsSpan<const int32_t>(next_tokens),
-                                      current_length - 1));
+      ORT_RETURN_IF_ERROR(UpdateFeeds(fetches, feeds, current_length, position_ids, increase_position, ReinterpretAsSpan<const int32_t>(next_tokens), current_length - 1));
     }
     if (gpt_subgraph_.past_present_share_buffer_) {
       // clear fetched values before presents[]

@@ -52,70 +52,60 @@ void RunBroadcastGradientArgsTest(const char* op,
 TEST(BroadcastGradientArgsTest, Basic) {
   std::vector<int64_t> A_axes_expected = {};
   std::vector<int64_t> B_axes_expected = {1, 0};
-  RunBroadcastGradientArgsTest("BroadcastGradientArgs", {2, 16, 1024, 1024}, {1, 1, 1024, 1024},
-                               &A_axes_expected, &B_axes_expected);
+  RunBroadcastGradientArgsTest("BroadcastGradientArgs", {2, 16, 1024, 1024}, {1, 1, 1024, 1024}, &A_axes_expected, &B_axes_expected);
 }
 
 TEST(BroadcastGradientArgsTest, Basic_both_valid_op) {
   std::vector<int64_t> A_axes_expected = {2};
   std::vector<int64_t> B_axes_expected = {1, 0};
-  RunBroadcastGradientArgsTest("BroadcastGradientArgs", {2, 16, 1, 1024}, {1, 1, 1024, 1024},
-                               &A_axes_expected, &B_axes_expected);
+  RunBroadcastGradientArgsTest("BroadcastGradientArgs", {2, 16, 1, 1024}, {1, 1, 1024, 1024}, &A_axes_expected, &B_axes_expected);
 }
 
 TEST(BroadcastGradientArgsTest, Basic_no_bcast) {
   std::vector<int64_t> A_axes_expected = {};
   std::vector<int64_t> B_axes_expected = {};
-  RunBroadcastGradientArgsTest("BroadcastGradientArgs", {2, 3, 4, 5}, {2, 3, 4, 5},
-                               &A_axes_expected, &B_axes_expected);
+  RunBroadcastGradientArgsTest("BroadcastGradientArgs", {2, 3, 4, 5}, {2, 3, 4, 5}, &A_axes_expected, &B_axes_expected);
 }
 
 TEST(BroadcastGradientArgsTest, Basic_B_scalar) {
   std::vector<int64_t> A_axes_expected = {};
   std::vector<int64_t> B_axes_expected = {3, 2, 1, 0};
-  RunBroadcastGradientArgsTest("BroadcastGradientArgs", {2, 3, 4, 5}, {},
-                               &A_axes_expected, &B_axes_expected);
+  RunBroadcastGradientArgsTest("BroadcastGradientArgs", {2, 3, 4, 5}, {}, &A_axes_expected, &B_axes_expected);
 }
 
 TEST(BroadcastGradientArgsTest, Basic_B_vector) {
   std::vector<int64_t> A_axes_expected = {};
   std::vector<int64_t> B_axes_expected = {2, 1, 0};
-  RunBroadcastGradientArgsTest("BroadcastGradientArgs", {2, 3, 4, 5}, {5},
-                               &A_axes_expected, &B_axes_expected);
+  RunBroadcastGradientArgsTest("BroadcastGradientArgs", {2, 3, 4, 5}, {5}, &A_axes_expected, &B_axes_expected);
 }
 
 TEST(BroadcastGradientArgsTest, Basic_A_bcast_different_size) {
   std::vector<int64_t> A_axes_expected = {1, 0};
   std::vector<int64_t> B_axes_expected = {};
-  RunBroadcastGradientArgsTest("BroadcastGradientArgs", {4, 5}, {2, 3, 4, 5},
-                               &A_axes_expected, &B_axes_expected);
+  RunBroadcastGradientArgsTest("BroadcastGradientArgs", {4, 5}, {2, 3, 4, 5}, &A_axes_expected, &B_axes_expected);
 }
 
 TEST(BroadcastGradientArgsTest, Basic_both_bcast_different_size) {
   std::vector<int64_t> A_axes_expected = {1, 0};
   std::vector<int64_t> B_axes_expected = {3, 2};
-  RunBroadcastGradientArgsTest("BroadcastGradientArgs", {1, 4, 5}, {2, 3, 1, 1},
-                               &A_axes_expected, &B_axes_expected);
+  RunBroadcastGradientArgsTest("BroadcastGradientArgs", {1, 4, 5}, {2, 3, 1, 1}, &A_axes_expected, &B_axes_expected);
 }
 
 TEST(BroadcastGradientArgsTest, Basic_both_bcast_different_size_2) {
   std::vector<int64_t> A_axes_expected = {0};
   std::vector<int64_t> B_axes_expected = {3, 2, 1};
-  RunBroadcastGradientArgsTest("BroadcastGradientArgs", {3, 4, 5}, {2, 1, 1, 1},
-                               &A_axes_expected, &B_axes_expected);
+  RunBroadcastGradientArgsTest("BroadcastGradientArgs", {3, 4, 5}, {2, 1, 1, 1}, &A_axes_expected, &B_axes_expected);
 }
 
 TEST(BroadcastGradientArgsTest, Basic_invalid_broadcast) {
   std::vector<int64_t> A_axes_expected = {};
   std::vector<int64_t> B_axes_expected = {};
-  RunBroadcastGradientArgsTest("BroadcastGradientArgs", {3, 4, 5}, {2, 1, 6, 1},
-                               &A_axes_expected, &B_axes_expected, true /*fail*/);
+  RunBroadcastGradientArgsTest("BroadcastGradientArgs", {3, 4, 5}, {2, 1, 6, 1}, &A_axes_expected, &B_axes_expected, true /*fail*/);
 }
 
 TEST(BroadcastGradientArgsTest, Basic_only_A_output) {
   std::vector<int64_t> A_axes_expected = {0};
-  RunBroadcastGradientArgsTest("BroadcastGradientArgs", {3, 4, 5}, {2, 1, 1, 1},
-                               &A_axes_expected, nullptr);
+  RunBroadcastGradientArgsTest("BroadcastGradientArgs", {3, 4, 5}, {2, 1, 1, 1}, &A_axes_expected, nullptr);
 }
 
 }  // namespace test

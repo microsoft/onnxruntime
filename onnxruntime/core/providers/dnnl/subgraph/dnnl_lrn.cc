@@ -35,8 +35,7 @@ void DnnlLrn::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
   prop_kind = dnnl::prop_kind::forward_inference;
 #endif  // ENABLE_TRAINING
 
-  auto lrn_pd = dnnl::lrn_forward::primitive_desc(dnnl_engine, prop_kind, dnnl::algorithm::lrn_across_channels,
-                                                  lrn_src_md, dst_md, size, alpha, beta, bias);
+  auto lrn_pd = dnnl::lrn_forward::primitive_desc(dnnl_engine, prop_kind, dnnl::algorithm::lrn_across_channels, lrn_src_md, dst_md, size, alpha, beta, bias);
 
   // If using GPU this will move the memory from the CPU to the GPU.
   lrn_src_mem = sp.GetMemoryAndReshape(node.Input(IN_X), lrn_pd.src_desc(), dnnl_engine);
@@ -46,12 +45,9 @@ void DnnlLrn::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
 #ifdef ENABLE_TRAINING
   auto workspace_mem = dnnl::memory(lrn_pd.workspace_desc(), dnnl_engine);
 
-  sp.AddPrimitive(lrn_op, {{DNNL_ARG_SRC, lrn_src_mem},
-                           {DNNL_ARG_WORKSPACE, workspace_mem},
-                           {DNNL_ARG_DST, lrn_dst_mem}});
+  sp.AddPrimitive(lrn_op, {{DNNL_ARG_SRC, lrn_src_mem}, {DNNL_ARG_WORKSPACE, workspace_mem}, {DNNL_ARG_DST, lrn_dst_mem}});
 #else
-  sp.AddPrimitive(lrn_op, {{DNNL_ARG_SRC, lrn_src_mem},
-                           {DNNL_ARG_DST, lrn_dst_mem}});
+  sp.AddPrimitive(lrn_op, {{DNNL_ARG_SRC, lrn_src_mem}, {DNNL_ARG_DST, lrn_dst_mem}});
 #endif  // ENABLE_TRAINING
 
   sp.SetMemory(node.Output(OUT_Y), lrn_dst_mem);

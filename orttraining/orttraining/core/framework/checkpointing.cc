@@ -88,7 +88,8 @@ Status SaveRuntimeTensor(
 
   ORT_RETURN_IF_NOT(
       data_file.write(tensor_data.data(), length),
-      "Failed to write to data file: ", ToUTF8String(relative_data_path));
+      "Failed to write to data file: ",
+      ToUTF8String(relative_data_path));
 
   tensor_proto = std::move(saved_tensor_proto);
   return Status::OK();
@@ -98,8 +99,7 @@ std::vector<std::string> GetOrderedOrtValueNames(const NameMLValMap& name_to_val
   std::vector<std::string> ordered_names{};
   ordered_names.reserve(name_to_value.size());
   std::transform(
-      name_to_value.begin(), name_to_value.end(), std::back_inserter(ordered_names),
-      [](const NameMLValMap::value_type& v) { return v.first; });
+      name_to_value.begin(), name_to_value.end(), std::back_inserter(ordered_names), [](const NameMLValMap::value_type& v) { return v.first; });
   std::sort(ordered_names.begin(), ordered_names.end());
   return ordered_names;
 }
@@ -131,13 +131,11 @@ Status SaveRuntimeTensors(
 
     saved_tensor_protos.emplace_back();
     ORT_RETURN_IF_ERROR(SaveRuntimeTensor(
-        tensor_name, tensor, tensor_data_buffer, tensors_data_relative_path,
-        tensors_data_file, saved_tensor_protos.back()));
+        tensor_name, tensor, tensor_data_buffer, tensors_data_relative_path, tensors_data_file, saved_tensor_protos.back()));
   }
 
   ORT_RETURN_IF_ERROR(WithOpenFile(
-      tensors_path, false,
-      [&saved_tensor_protos](int fd) {
+      tensors_path, false, [&saved_tensor_protos](int fd) {
         google::protobuf::io::FileOutputStream output{fd};
         ORT_RETURN_IF_ERROR(WriteProtoMessageSequence(saved_tensor_protos, output));
         return Status::OK();
@@ -152,8 +150,7 @@ Status SaveProperties(
   std::vector<ONNX_NAMESPACE::StringStringEntryProto> property_protos{};
   property_protos.reserve(properties.size());
   std::transform(
-      properties.begin(), properties.end(), std::back_inserter(property_protos),
-      [](const std::pair<std::string, std::string>& property) {
+      properties.begin(), properties.end(), std::back_inserter(property_protos), [](const std::pair<std::string, std::string>& property) {
         ONNX_NAMESPACE::StringStringEntryProto property_proto{};
         property_proto.set_key(property.first);
         property_proto.set_value(property.second);
@@ -162,15 +159,12 @@ Status SaveProperties(
 
   // ensure consistent ordering
   std::sort(
-      property_protos.begin(), property_protos.end(),
-      [](const ONNX_NAMESPACE::StringStringEntryProto& a,
-         const ONNX_NAMESPACE::StringStringEntryProto& b) {
+      property_protos.begin(), property_protos.end(), [](const ONNX_NAMESPACE::StringStringEntryProto& a, const ONNX_NAMESPACE::StringStringEntryProto& b) {
         return a.key() < b.key();
       });
 
   ORT_RETURN_IF_ERROR(WithOpenFile(
-      properties_path, false,
-      [&property_protos](int fd) {
+      properties_path, false, [&property_protos](int fd) {
         google::protobuf::io::FileOutputStream output{fd};
         ORT_RETURN_IF_ERROR(WriteProtoMessageSequence(property_protos, output));
         return Status::OK();
@@ -197,7 +191,8 @@ Status SaveModelCheckpoint(
   ORT_RETURN_IF_ERROR(SaveRuntimeTensors(
       GetCheckpointTensorsFilePath(checkpoint_path),
       GetCheckpointTensorsDataFilePath(checkpoint_path),
-      data_transfer_manager, runtime_tensors));
+      data_transfer_manager,
+      runtime_tensors));
 
   // write properties file
   ORT_RETURN_IF_ERROR(SaveProperties(
@@ -219,8 +214,7 @@ Status UpdateTensorsExternalDataLocations(
 
     auto& external_data = *tensor_proto.mutable_external_data();
     auto location_it = std::find_if(
-        external_data.begin(), external_data.end(),
-        [](ONNX_NAMESPACE::StringStringEntryProto& kvp) { return kvp.key() == "location"; });
+        external_data.begin(), external_data.end(), [](ONNX_NAMESPACE::StringStringEntryProto& kvp) { return kvp.key() == "location"; });
     ORT_RETURN_IF_NOT(location_it != external_data.end(), "location_it == external_data.end()");
 
     // TODO is the encoding correct? https://github.com/onnx/onnx/issues/2392
@@ -241,8 +235,7 @@ Status LoadModelCheckpoint(
   // read tensors file
   std::vector<ONNX_NAMESPACE::TensorProto> loaded_tensor_protos{};
   ORT_RETURN_IF_ERROR(WithOpenFile(
-      GetCheckpointTensorsFilePath(checkpoint_path), true,
-      [&loaded_tensor_protos](int fd) {
+      GetCheckpointTensorsFilePath(checkpoint_path), true, [&loaded_tensor_protos](int fd) {
         google::protobuf::io::FileInputStream input{fd};
         ORT_RETURN_IF_ERROR(ReadProtoMessageSequence(loaded_tensor_protos, input));
         return Status::OK();
@@ -272,8 +265,7 @@ Status LoadModelCheckpoint(
   // read properties file
   std::vector<ONNX_NAMESPACE::StringStringEntryProto> loaded_property_protos{};
   ORT_RETURN_IF_ERROR(WithOpenFile(
-      GetCheckpointPropertiesFilePath(checkpoint_path), true,
-      [&loaded_property_protos](int fd) {
+      GetCheckpointPropertiesFilePath(checkpoint_path), true, [&loaded_property_protos](int fd) {
         google::protobuf::io::FileInputStream input{fd};
         ORT_RETURN_IF_ERROR(ReadProtoMessageSequence(loaded_property_protos, input));
         return Status::OK();
@@ -281,9 +273,7 @@ Status LoadModelCheckpoint(
 
   std::unordered_map<std::string, std::string> loaded_properties{};
   std::transform(
-      loaded_property_protos.begin(), loaded_property_protos.end(),
-      std::inserter(loaded_properties, loaded_properties.end()),
-      [](const ONNX_NAMESPACE::StringStringEntryProto& property_proto) {
+      loaded_property_protos.begin(), loaded_property_protos.end(), std::inserter(loaded_properties, loaded_properties.end()), [](const ONNX_NAMESPACE::StringStringEntryProto& property_proto) {
         return std::make_pair(property_proto.key(), property_proto.value());
       });
 

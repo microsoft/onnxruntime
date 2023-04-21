@@ -17,7 +17,8 @@ namespace rocm {
   ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                 \
       Conv,                                                                                \
       kOnnxDomain,                                                                         \
-      1, 10,                                                                               \
+      1,                                                                                   \
+      10,                                                                                  \
       T,                                                                                   \
       kRocmExecutionProvider,                                                              \
       (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
@@ -44,13 +45,11 @@ const miopenConvFwdAlgorithm_t Conv<T, NHWC>::kAllAlgos[] = {
     miopenConvolutionFwdAlgoWinograd,
     miopenConvolutionFwdAlgoImplicitGEMM};
 
-miopenStatus_t GetWorkspaceSize(miopenHandle_t handle, const MiopenConvState<miopenConvAlgoPerf_t>& s,
-                                miopenConvFwdAlgorithm_t algo, size_t* sz) {
+miopenStatus_t GetWorkspaceSize(miopenHandle_t handle, const MiopenConvState<miopenConvAlgoPerf_t>& s, miopenConvFwdAlgorithm_t algo, size_t* sz) {
   return miopenConvolutionForwardGetWorkSpaceSize(handle, s.w_desc, s.x_tensor, s.conv_desc, s.y_tensor, sz);
 }
 
-size_t GetMaxWorkspaceSize(miopenHandle_t handle, const MiopenConvState<miopenConvAlgoPerf_t>& s,
-                           const miopenConvFwdAlgorithm_t* algo, int n_algo) {
+size_t GetMaxWorkspaceSize(miopenHandle_t handle, const MiopenConvState<miopenConvAlgoPerf_t>& s, const miopenConvFwdAlgorithm_t* algo, int n_algo) {
   // TODO: get maximum available size from memory arean
   size_t free, total;
   HIP_CALL_THROW(hipMemGetInfo(&free, &total));
@@ -103,8 +102,7 @@ Status Conv<T, NHWC>::UpdateState(OpKernelContext* context, bool bias_expected) 
   // Make sure input and weight are 4D for NHWC since we set 4D descriptor for NHWC.
   constexpr bool channels_last = NHWC;
   if (channels_last && (x_shape.NumDimensions() != 4 || w_shape.NumDimensions() != 4)) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Number of dimensions of X and W should be 4 for channels_last format (NHWC)");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Number of dimensions of X and W should be 4 for channels_last format (NHWC)");
   }
 
   // set B
@@ -179,10 +177,7 @@ Status Conv<T, NHWC>::UpdateState(OpKernelContext* context, bool bias_expected) 
     TensorShape spatial_shape = X->Shape().Slice(spatial_dim_start, spatial_dim_end);
 
     TensorShapeVector y_dims_with_adjusted_pads(y_dims);
-    ORT_RETURN_IF_ERROR(conv_attrs_.InferOutputShapeWithAdjustedPads(spatial_shape, kernel_shape,
-                                                                     strides, dilations, pads, y_dims, y_dims_with_adjusted_pads,
-                                                                     post_slicing_required, slice_starts, slice_ends, slice_axes,
-                                                                     channels_last));
+    ORT_RETURN_IF_ERROR(conv_attrs_.InferOutputShapeWithAdjustedPads(spatial_shape, kernel_shape, strides, dilations, pads, y_dims, y_dims_with_adjusted_pads, post_slicing_required, slice_starts, slice_ends, slice_axes, channels_last));
 
     if (channels_last) {
       y_dims.push_back(M);
@@ -256,9 +251,7 @@ Status Conv<T, NHWC>::UpdateState(OpKernelContext* context, bool bias_expected) 
       ORT_RETURN_IF_ERROR(s_.y_tensor.Set(y_dims_miopen, MiopenTensor::GetDataType<HipT>()));
     }
 
-    ORT_RETURN_IF_ERROR(s_.conv_desc.Set(kernel_shape.size(), pads, strides, dilations,
-                                         gsl::narrow_cast<int>(conv_attrs_.group),
-                                         miopenConvolution, MiopenTensor::GetDataType<HipT>()));
+    ORT_RETURN_IF_ERROR(s_.conv_desc.Set(kernel_shape.size(), pads, strides, dilations, gsl::narrow_cast<int>(conv_attrs_.group), miopenConvolution, MiopenTensor::GetDataType<HipT>()));
 
     if (context->InputCount() >= 3) {
       const Tensor* B = context->Input<Tensor>(2);
@@ -351,23 +344,18 @@ Status Conv<T, NHWC>::ComputeInternal(OpKernelContext* context) const {
 
   constexpr bool channels_last = NHWC;
   if (nullptr != s_.b_data && !channels_last) {
-    MIOPEN_RETURN_IF_ERROR(miopenConvolutionForwardBias(miopen_handle, &alpha, s_.b_tensor, s_.b_data,
-                                                        &beta, s_.y_tensor, s_.y_data));
+    MIOPEN_RETURN_IF_ERROR(miopenConvolutionForwardBias(miopen_handle, &alpha, s_.b_tensor, s_.b_data, &beta, s_.y_tensor, s_.y_data));
   }
   // To deal with asymmetric padding, we may have over-padded on one or both sides of the spatial dimensions
   // This may have lead to extra results that are unnecessary and hence we slice that off here
   if (s_.post_slicing_required) {
-    ORT_RETURN_IF_ERROR(SliceOutUnwantedOutputSection(Stream(context), s_.y_data, s_.y_dims_with_adjusted_pads,
-                                                      s_.Y->MutableDataRaw(), s_.y_dims.GetDims(), s_.slice_starts,
-                                                      s_.slice_ends, s_.slice_axes, s_.element_size));
+    ORT_RETURN_IF_ERROR(SliceOutUnwantedOutputSection(Stream(context), s_.y_data, s_.y_dims_with_adjusted_pads, s_.Y->MutableDataRaw(), s_.y_dims.GetDims(), s_.slice_starts, s_.slice_ends, s_.slice_axes, s_.element_size));
   }
   if (nullptr != s_.b_data && channels_last) {
     const Tensor* B = context->Input<Tensor>(2);
     const auto& b_shape = B->Shape();
 
-    ConvBiasImpl(Stream(context), reinterpret_cast<const HipT*>(s_.Y->MutableDataRaw()),
-                 reinterpret_cast<const HipT*>(B->Data<T>()),
-                 reinterpret_cast<HipT*>(s_.Y->MutableDataRaw()), b_shape[0], s_.Y->Shape().Size());
+    ConvBiasImpl(Stream(context), reinterpret_cast<const HipT*>(s_.Y->MutableDataRaw()), reinterpret_cast<const HipT*>(B->Data<T>()), reinterpret_cast<HipT*>(s_.Y->MutableDataRaw()), b_shape[0], s_.Y->Shape().Size());
   }
   return Status::OK();
 }

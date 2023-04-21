@@ -67,8 +67,7 @@ TEST_F(ExecutionFrameTest, TensorAllocationTest) {
   sess_options.use_deterministic_compute = false;
   sess_options.enable_mem_reuse = true;
 
-  SessionState state(graph, execution_providers, &tp_, nullptr, dtm,
-                     DefaultLoggingManager().DefaultLogger(), profiler, sess_options);
+  SessionState state(graph, execution_providers, &tp_, nullptr, dtm, DefaultLoggingManager().DefaultLogger(), profiler, sess_options);
 
   node->SetExecutionProviderType(xp_typ);
 
@@ -83,8 +82,7 @@ TEST_F(ExecutionFrameTest, TensorAllocationTest) {
   TensorShape shape(std::vector<int64_t>{2, 3});
   OrtValue& mlvalue0 = *frame.GetMutableNodeInputOrOutputMLValue(start_index);
   const auto& memory_info = execution_providers.Get(xp_typ)->GetAllocator(OrtMemTypeDefault)->Info();
-  ASSERT_STATUS_OK(frame.AllocateMLValueTensorSelfOwnBuffer(mlvalue0, start_index, DataTypeImpl::GetType<float>(),
-                                                            memory_info, shape));
+  ASSERT_STATUS_OK(frame.AllocateMLValueTensorSelfOwnBuffer(mlvalue0, start_index, DataTypeImpl::GetType<float>(), memory_info, shape));
 
   OrtValue* p_ml_value = frame.GetMutableNodeInputOrOutputMLValue(0);
   ASSERT_TRUE(p_ml_value != nullptr);
@@ -110,8 +108,7 @@ TEST_F(ExecutionFrameTest, TensorAllocationTest) {
 }
 
 TEST_F(ExecutionFrameTest, OutputShapeValidationTest) {
-  onnxruntime::Model model("test", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
-                           {{kOnnxDomain, 12}}, {}, DefaultLoggingManager().DefaultLogger());
+  onnxruntime::Model model("test", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(), {{kOnnxDomain, 12}}, {}, DefaultLoggingManager().DefaultLogger());
   onnxruntime::Graph& graph = model.MainGraph();
   TypeProto tensor_float;
   tensor_float.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
@@ -142,8 +139,7 @@ TEST_F(ExecutionFrameTest, OutputShapeValidationTest) {
   sess_options.use_deterministic_compute = false;
   sess_options.enable_mem_reuse = true;
 
-  SessionState state(graph, execution_providers, &tp_, nullptr, dtm,
-                     DefaultLoggingManager().DefaultLogger(), profiler, sess_options);
+  SessionState state(graph, execution_providers, &tp_, nullptr, dtm, DefaultLoggingManager().DefaultLogger(), profiler, sess_options);
 
   node->SetExecutionProviderType(xp_typ);
 
@@ -169,9 +165,7 @@ TEST_F(ExecutionFrameTest, OutputShapeValidationTest) {
 }
 
 TEST_F(ExecutionFrameTest, FeedInDataTest) {
-  onnxruntime::Model model("test", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
-                           std::unordered_map<std::string, int>{{"", 10}}, {},
-                           DefaultLoggingManager().DefaultLogger());
+  onnxruntime::Model model("test", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(), std::unordered_map<std::string, int>{{"", 10}}, {}, DefaultLoggingManager().DefaultLogger());
   onnxruntime::Graph& graph = model.MainGraph();
   TypeProto tensor_float;
   tensor_float.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
@@ -205,8 +199,7 @@ TEST_F(ExecutionFrameTest, FeedInDataTest) {
   sess_options.use_deterministic_compute = false;
   sess_options.enable_mem_reuse = true;
 
-  SessionState state(graph, execution_providers, &tp_, nullptr, dtm,
-                     DefaultLoggingManager().DefaultLogger(), profiler, sess_options);
+  SessionState state(graph, execution_providers, &tp_, nullptr, dtm, DefaultLoggingManager().DefaultLogger(), profiler, sess_options);
 
   ASSERT_STATUS_OK(state.FinalizeSessionState(ORT_TSTR(""), kernel_registry_manager));
 
@@ -231,8 +224,7 @@ TEST_F(ExecutionFrameTest, MemPatternTest) {
   auto xp_type = cpu_xp->Type();
   std::unordered_map<std::string, int> domain_to_version;
   domain_to_version[onnxruntime::kOnnxDomain] = 7;
-  onnxruntime::Model model("test", true, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
-                           domain_to_version, {}, DefaultLoggingManager().DefaultLogger());
+  onnxruntime::Model model("test", true, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {}, DefaultLoggingManager().DefaultLogger());
   onnxruntime::Graph& graph = model.MainGraph();
   TypeProto tensor_float;
   tensor_float.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
@@ -268,8 +260,7 @@ TEST_F(ExecutionFrameTest, MemPatternTest) {
   sess_options.use_deterministic_compute = false;
   sess_options.enable_mem_reuse = true;
 
-  SessionState state(graph, execution_providers, &tp_, nullptr, dtm,
-                     DefaultLoggingManager().DefaultLogger(), profiler, sess_options);
+  SessionState state(graph, execution_providers, &tp_, nullptr, dtm, DefaultLoggingManager().DefaultLogger(), profiler, sess_options);
 
   ASSERT_STATUS_OK(state.FinalizeSessionState(ORT_TSTR(""), kernel_registry_manager));
 
@@ -290,13 +281,16 @@ TEST_F(ExecutionFrameTest, MemPatternTest) {
   OrtValue v1, v2, v3;
   CreateMLValue<float>(cpu_allocator,
                        std::vector<int64_t>{1, 2},
-                       std::vector<float>{1.0f, 1.0f}, &v1);
+                       std::vector<float>{1.0f, 1.0f},
+                       &v1);
   CreateMLValue<float>(cpu_allocator,
                        std::vector<int64_t>{2, 2},
-                       std::vector<float>(4, 1.0f), &v2);
+                       std::vector<float>(4, 1.0f),
+                       &v2);
   CreateMLValue<float>(cpu_allocator,
                        std::vector<int64_t>{2, 3},
-                       std::vector<float>(6, 1.0f), &v3);
+                       std::vector<float>(6, 1.0f),
+                       &v3);
 
   std::vector<OrtValue> outputs;
   ExecutionFrame frame(AsSpan({x1_idx, x2_idx, x3_idx}), AsSpan({v1, v2, v3}), AsSpan({t3_idx}), outputs, {}, {}, state);
@@ -305,20 +299,11 @@ TEST_F(ExecutionFrameTest, MemPatternTest) {
   OrtValue& mlvalue4 = *frame.GetMutableNodeInputOrOutputMLValue(4);
   OrtValue& mlvalue5 = *frame.GetMutableNodeInputOrOutputMLValue(5);
 
-  ASSERT_STATUS_OK(frame.AllocateMLValueTensorSelfOwnBuffer(mlvalue3, 3,
-                                                            DataTypeImpl::GetType<float>(),
-                                                            cpu_allocator->Info(),
-                                                            TensorShape(std::vector<int64_t>{2, 2})));
+  ASSERT_STATUS_OK(frame.AllocateMLValueTensorSelfOwnBuffer(mlvalue3, 3, DataTypeImpl::GetType<float>(), cpu_allocator->Info(), TensorShape(std::vector<int64_t>{2, 2})));
 
-  ASSERT_STATUS_OK(frame.AllocateMLValueTensorSelfOwnBuffer(mlvalue4, 4,
-                                                            DataTypeImpl::GetType<float>(),
-                                                            cpu_allocator->Info(),
-                                                            TensorShape(std::vector<int64_t>{2, 3})));
+  ASSERT_STATUS_OK(frame.AllocateMLValueTensorSelfOwnBuffer(mlvalue4, 4, DataTypeImpl::GetType<float>(), cpu_allocator->Info(), TensorShape(std::vector<int64_t>{2, 3})));
 
-  ASSERT_STATUS_OK(frame.AllocateMLValueTensorSelfOwnBuffer(mlvalue5, 5,
-                                                            DataTypeImpl::GetType<float>(),
-                                                            cpu_allocator->Info(),
-                                                            TensorShape(std::vector<int64_t>{2, 3})));
+  ASSERT_STATUS_OK(frame.AllocateMLValueTensorSelfOwnBuffer(mlvalue5, 5, DataTypeImpl::GetType<float>(), cpu_allocator->Info(), TensorShape(std::vector<int64_t>{2, 3})));
   MemoryPatternGroup pattern;
   ASSERT_STATUS_OK(frame.GeneratePatterns(pattern));
 
@@ -337,8 +322,7 @@ TEST_F(ExecutionFrameTest, MemPatternWithExternalOutputsTest) {
   std::unordered_map<std::string, int> domain_to_version;
   domain_to_version[onnxruntime::kOnnxDomain] = 12;
   domain_to_version[onnxruntime::kMSDomain] = 1;
-  onnxruntime::Model model("test", true, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
-                           domain_to_version, {}, DefaultLoggingManager().DefaultLogger());
+  onnxruntime::Model model("test", true, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {}, DefaultLoggingManager().DefaultLogger());
   onnxruntime::Graph& graph = model.MainGraph();
   TypeProto tensor_float;
   tensor_float.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
@@ -369,8 +353,7 @@ TEST_F(ExecutionFrameTest, MemPatternWithExternalOutputsTest) {
   profiling::Profiler profiler;
   SessionOptions so;
 
-  SessionState state(graph, execution_providers, &tp_, nullptr, dtm, DefaultLoggingManager().DefaultLogger(),
-                     profiler, so);
+  SessionState state(graph, execution_providers, &tp_, nullptr, dtm, DefaultLoggingManager().DefaultLogger(), profiler, so);
 
   ASSERT_STATUS_OK(state.FinalizeSessionState(ORT_TSTR(""), kernel_registry_manager));
 
@@ -447,11 +430,7 @@ TEST(ExecutionFrameTestWithoutSessionState, BadModelInvalidDimParamUsage) {
 // Test that when an initializer is a graph output it is handled correctly
 TEST(ExecutionFrameTestInit, InitializerAsOutput) {
   const std::vector<float> expected{
-      1.764052391052246f, 0.40015721321105957f, 0.978738009929657f, 2.2408931255340576f, 1.8675580024719238f,
-      -0.9772778749465942f, 0.9500884413719177f, -0.15135720372200012f, -0.10321885347366333f, 0.4105985164642334f,
-      0.14404356479644775f, 1.4542734622955322f, 0.7610377073287964f, 0.12167501449584961f, 0.44386324286460876f,
-      0.3336743414402008f, 1.4940791130065918f, -0.2051582634449005f, 0.3130677044391632f, -0.8540957570075989f,
-      -2.5529897212982178f, 0.653618574142456f, 0.8644362092018127f, -0.7421650290489197f, 2.269754648208618f};
+      1.764052391052246f, 0.40015721321105957f, 0.978738009929657f, 2.2408931255340576f, 1.8675580024719238f, -0.9772778749465942f, 0.9500884413719177f, -0.15135720372200012f, -0.10321885347366333f, 0.4105985164642334f, 0.14404356479644775f, 1.4542734622955322f, 0.7610377073287964f, 0.12167501449584961f, 0.44386324286460876f, 0.3336743414402008f, 1.4940791130065918f, -0.2051582634449005f, 0.3130677044391632f, -0.8540957570075989f, -2.5529897212982178f, 0.653618574142456f, 0.8644362092018127f, -0.7421650290489197f, 2.269754648208618f};
 
   SessionOptions so;
 
@@ -469,8 +448,7 @@ TEST(ExecutionFrameTestInit, InitializerAsOutput) {
     const void* orig_buffer = results[0].Get<Tensor>().DataRaw();
 
     RunOptions ro;
-    ASSERT_STATUS_OK(session.Run(ro, EmptySpan<const std::string>(),
-                                 EmptySpan<const OrtValue>(), AsSpan({std::string("values")}), &results, nullptr));
+    ASSERT_STATUS_OK(session.Run(ro, EmptySpan<const std::string>(), EmptySpan<const OrtValue>(), AsSpan({std::string("values")}), &results, nullptr));
 
     EXPECT_EQ(results[0].Get<Tensor>().DataRaw(), orig_buffer);
     EXPECT_THAT(results[0].Get<Tensor>().DataAsSpan<float>(), ::testing::ContainerEq(gsl::make_span(expected)));
@@ -484,8 +462,7 @@ TEST(ExecutionFrameTestInit, InitializerAsOutput) {
 
     std::vector<OrtValue> results;
     RunOptions ro;
-    ASSERT_STATUS_OK(session.Run(ro, EmptySpan<std::string>(),
-                                 EmptySpan<OrtValue>(), AsSpan({std::string("values")}), &results, nullptr));
+    ASSERT_STATUS_OK(session.Run(ro, EmptySpan<std::string>(), EmptySpan<OrtValue>(), AsSpan({std::string("values")}), &results, nullptr));
 
     // output buffer should not be the same as the initializer in SessionState
     const auto& initializers = session.GetSessionState().GetInitializedTensors();
@@ -498,9 +475,7 @@ TEST(ExecutionFrameTestInit, InitializerAsOutput) {
 TEST(ExecutionFrameTestInit, SparseInitializerAsOutput) {
   const std::vector<int64_t> dense_shape{3, 3};
   std::vector<float> dense_data = {
-      0, 0, 1.764052391052246f,
-      0.40015721321105957f, 0, 0.978738009929657f,
-      0, 0, 0};
+      0, 0, 1.764052391052246f, 0.40015721321105957f, 0, 0.978738009929657f, 0, 0, 0};
 
   const std::vector<float> expected_values = {1.764052391052246f, 0.40015721321105957f, 0.978738009929657f};
   const std::vector<int64_t> expected_linear_indices = {2, 3, 5};

@@ -185,8 +185,7 @@ bool TransformerMemcpyImpl::ModifyGraph(const KernelRegistryManager& kernel_regi
   return modified;
 }
 
-void TransformerMemcpyImpl::ProcessDefs(onnxruntime::Node& node, const KernelRegistryManager& kernel_registries,
-                                        InitializedTensorSet& initializers_consumed) {
+void TransformerMemcpyImpl::ProcessDefs(onnxruntime::Node& node, const KernelRegistryManager& kernel_registries, InitializedTensorSet& initializers_consumed) {
   auto node_provider_type = node.GetExecutionProviderType();
   if ((node_provider_type == provider_) ||
       (node_provider_type == kCudaExecutionProvider && kTensorrtExecutionProvider == provider_) ||
@@ -309,9 +308,7 @@ void TransformerMemcpyImpl::AddCopyNode(onnxruntime::NodeArg* arg, bool is_input
   std::string new_node_name = graph_.GenerateNodeName("Memcpy");
 
   const auto op_name = is_input ? "MemcpyFromHost" : "MemcpyToHost";
-  auto& new_node = graph_.AddNode(new_node_name, op_name, "Copy from/to host memory",
-                                  std::vector<onnxruntime::NodeArg*>{src_arg},
-                                  std::vector<onnxruntime::NodeArg*>{dst_arg});
+  auto& new_node = graph_.AddNode(new_node_name, op_name, "Copy from/to host memory", std::vector<onnxruntime::NodeArg*>{src_arg}, std::vector<onnxruntime::NodeArg*>{dst_arg});
   new_node.SetExecutionProviderType(provider_);
   std::map<const onnxruntime::NodeArg*, onnxruntime::NodeArg*> map = {{arg, new_arg}};
   auto it = provider_input_nodes_.find(arg);

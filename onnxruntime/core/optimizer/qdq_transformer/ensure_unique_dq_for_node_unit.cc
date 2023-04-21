@@ -62,8 +62,7 @@ Status DuplicateDQForOutputEdge(const graph_utils::GraphEdge& original_dq_output
   const auto original_dq_input_edges = graph_utils::GraphEdge::GetNodeInputEdges(original_dq_node);
   for (const auto& original_dq_input_edge : original_dq_input_edges) {
     // create edge from the original DQ node's input node
-    graph.AddEdge(original_dq_input_edge.src_node, new_dq_node.Index(),
-                  original_dq_input_edge.src_arg_index, original_dq_input_edge.dst_arg_index);
+    graph.AddEdge(original_dq_input_edge.src_node, new_dq_node.Index(), original_dq_input_edge.src_arg_index, original_dq_input_edge.dst_arg_index);
   }
 
   // add DQ' -> Y
@@ -105,8 +104,7 @@ Status EnsureUniqueDQForEachExplicitOutputEdge(const Node& node, Graph& graph, b
 
   // Remove edges to implicit inputs from consideration.
   const auto dq_output_edges_to_explicit_inputs_end = std::remove_if(
-      dq_output_edges.begin(), dq_output_edges.end(),
-      [&const_graph = std::as_const(graph)](const graph_utils::GraphEdge& dq_output_edge) {
+      dq_output_edges.begin(), dq_output_edges.end(), [&const_graph = std::as_const(graph)](const graph_utils::GraphEdge& dq_output_edge) {
         const Node* consumer_node_ptr = const_graph.GetNode(dq_output_edge.dst_node);
         assert(consumer_node_ptr != nullptr);
         const Node& consumer_node = *consumer_node_ptr;

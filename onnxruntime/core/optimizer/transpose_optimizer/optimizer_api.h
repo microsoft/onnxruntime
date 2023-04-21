@@ -352,8 +352,7 @@ class GraphRef {
   /// </param>
   /// <param name="domain">The new node's domain. Empty string signifies default onnx domain.</param>
   /// <returns>The new node</returns>
-  virtual std::unique_ptr<NodeRef> AddNode(std::string_view op_type, const std::vector<std::string_view>& inputs,
-                                           size_t num_outputs, std::string_view domain = /*kOnnxDomain*/ "") = 0;
+  virtual std::unique_ptr<NodeRef> AddNode(std::string_view op_type, const std::vector<std::string_view>& inputs, size_t num_outputs, std::string_view domain = /*kOnnxDomain*/ "") = 0;
 
   /// <summary>
   /// Creates a copy of the provided node in the graph with the specified op type and domain.
@@ -362,9 +361,7 @@ class GraphRef {
   /// <param name="domain">The new node's domain. Empty string signifies default onnx domain.</param>
   /// <param name="since_version">The new node's since_version. If unspecified, use that of the old node.</param>
   /// <returns>The new node</returns>
-  virtual std::unique_ptr<NodeRef> CopyNode(const api::NodeRef& source_node, std::string_view op_type,
-                                            std::string_view domain = "",
-                                            std::optional<int> since_version = std::nullopt) = 0;
+  virtual std::unique_ptr<NodeRef> CopyNode(const api::NodeRef& source_node, std::string_view op_type, std::string_view domain = "", std::optional<int> since_version = std::nullopt) = 0;
 
   /// <summary>
   /// Deletes a node from the graph. Behavior is undefined if node has any consumers.
@@ -388,8 +385,7 @@ class GraphRef {
   /// Raw bytes for new initializer. Length matches product of dimensions and size of the dtype
   /// </param>
   /// <returns>Generated name for the initializer</returns>
-  virtual std::string_view AddInitializer(DataType dtype, const std::vector<int64_t>& shape,
-                                          const std::vector<uint8_t>& data) = 0;
+  virtual std::string_view AddInitializer(DataType dtype, const std::vector<int64_t>& shape, const std::vector<uint8_t>& data) = 0;
 
   /// <summary>
   /// "Moves" an output from one node to another, (effectively transferring the output name, shape, type,
@@ -501,11 +497,7 @@ struct OptimizeResult {
 /// If these ops are not provided, transpose optimizer may convert the layout for these ops </param>
 /// <returns>OptimizeResult. If error_msg is set the Optimize failed. If not set, graph_modified indicates whether
 /// any changes were required during optimization.</returns>
-OptimizeResult Optimize(api::GraphRef& graph, bool allow_extended_ops,
-                        const std::string& provider_type = "",
-                        OptimizerMode mode = OptimizerMode::OPTIMIZE_TRANSPOSE,
-                        CostCheckFn cost_check_fn = nullptr,
-                        const std::unordered_set<std::string_view>& layout_sensitive_ops = {});
+OptimizeResult Optimize(api::GraphRef& graph, bool allow_extended_ops, const std::string& provider_type = "", OptimizerMode mode = OptimizerMode::OPTIMIZE_TRANSPOSE, CostCheckFn cost_check_fn = nullptr, const std::unordered_set<std::string_view>& layout_sensitive_ops = {});
 
 /* Layout Transformation Tools
  * These methods help change the channel ordering of layout sensitive ops (like Conv). ONNX currently only supports
@@ -542,9 +534,7 @@ OptimizeResult Optimize(api::GraphRef& graph, bool allow_extended_ops,
 /// <param name="node">Node to modify</param>
 /// <param name="input_perms">Input permutations. nullptr entries indicate to skip corresponding input.</param>
 /// <param name="output_perms">Output permutations. nullptr entries indicate to skip corresponding output.</param>
-void WrapTransposesAroundNode(api::GraphRef& graph, api::NodeRef& node,
-                              const std::vector<const std::vector<int64_t>*>& input_perms,
-                              const std::vector<const std::vector<int64_t>*>& output_perms);
+void WrapTransposesAroundNode(api::GraphRef& graph, api::NodeRef& node, const std::vector<const std::vector<int64_t>*>& input_perms, const std::vector<const std::vector<int64_t>*>& output_perms);
 
 /// <summary>
 /// Computes the perm attribute needed to transpose a tensor from channel-first ordering (NCHW or NCD...D) to
@@ -573,8 +563,7 @@ std::vector<int64_t> ChannelLastToFirstPerm(size_t rank);
 /// <param name="op_type">New node op_type</param>
 /// <param name="domain">New node domain. "" for the default domain.</param>
 /// <returns>The newly created node.</returns>
-std::unique_ptr<api::NodeRef> SwapNodeOpTypeAndDomain(api::GraphRef& graph, api::NodeRef& node,
-                                                      std::string_view op_type, std::string_view domain);
+std::unique_ptr<api::NodeRef> SwapNodeOpTypeAndDomain(api::GraphRef& graph, api::NodeRef& node, std::string_view op_type, std::string_view domain);
 
 /// <summary>
 /// Swaps out a node for a new copy of that node with the specified op type, domain, and since version.
@@ -588,8 +577,6 @@ std::unique_ptr<api::NodeRef> SwapNodeOpTypeAndDomain(api::GraphRef& graph, api:
 /// <param name="domain">New node domain. "" for the default domain.</param>
 /// <param name="op_type">New node since version.</param>
 /// <returns>The newly created node.</returns>
-std::unique_ptr<api::NodeRef> SwapNodeOpTypeDomainAndSinceVersion(api::GraphRef& graph, api::NodeRef& node,
-                                                                  std::string_view op_type, std::string_view domain,
-                                                                  int since_version);
+std::unique_ptr<api::NodeRef> SwapNodeOpTypeDomainAndSinceVersion(api::GraphRef& graph, api::NodeRef& node, std::string_view op_type, std::string_view domain, int since_version);
 
 }  // namespace onnx_layout_transformation

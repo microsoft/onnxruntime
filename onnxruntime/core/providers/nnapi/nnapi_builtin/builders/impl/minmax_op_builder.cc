@@ -37,8 +37,7 @@ class MinMaxOpBuilder : public BaseOpBuilder {
   // Min/Max opset 5- uses consumed_inputs attribute which is not supported for now
   int GetMinSupportedOpSet(const NodeUnit& /* node_unit */) const override { return 6; }
 
-  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
-                         const OpSupportCheckParams& params) const override;
+  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit, const OpSupportCheckParams& params) const override;
 };
 
 // Add operator related
@@ -53,8 +52,7 @@ Status MinMaxOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
 
 // Operator support related
 
-bool MinMaxOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /* initializers */, const NodeUnit& node_unit,
-                                        const OpSupportCheckParams& /* params */) const {
+bool MinMaxOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /* initializers */, const NodeUnit& node_unit, const OpSupportCheckParams& /* params */) const {
   // TODO: support 2+ inputs for Min/Max op
   if (node_unit.Inputs().size() != 2) {
     LOGS_DEFAULT(VERBOSE) << "[" << node_unit.OpType() << "] only supports 2 inputs, "
@@ -67,11 +65,10 @@ bool MinMaxOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /* initializ
 
 void CreateMinMaxOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {
   CreateSharedOpBuilderImpl<MinMaxOpBuilder>(
-      op_type, op_registrations,
-      {
-          "Min",
-          "Max",
-      });
+      op_type, op_registrations, {
+                                     "Min",
+                                     "Max",
+                                 });
 }
 
 }  // namespace nnapi

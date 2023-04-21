@@ -156,9 +156,7 @@ Status OrtModuleGraphBuilder::OptimizeForwardGraph(std::unordered_set<std::strin
   std::unique_ptr<CPUExecutionProvider> cpu_execution_provider =
       std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
 
-  std::set_union(config_.initializer_names_to_train.begin(), config_.initializer_names_to_train.end(),
-                 config_.input_names_require_grad.begin(), config_.input_names_require_grad.end(),
-                 std::inserter(x_node_arg_names, x_node_arg_names.begin()));
+  std::set_union(config_.initializer_names_to_train.begin(), config_.initializer_names_to_train.end(), config_.input_names_require_grad.begin(), config_.input_names_require_grad.end(), std::inserter(x_node_arg_names, x_node_arg_names.begin()));
   auto add_transformers = [&](TransformerLevel level) {
     auto transformers_to_register = transformer_utils::GeneratePreTrainingTransformers(
         level, x_node_arg_names, config_.graph_transformer_config, *cpu_execution_provider);
@@ -194,8 +192,7 @@ Status OrtModuleGraphBuilder::BuildGradientGraph(const std::unordered_set<std::s
   gradient_graph_config.set_gradients_as_graph_outputs = true;
   std::unordered_set<std::string> y_node_arg_names(graph_info_.user_output_names.begin(),
                                                    graph_info_.user_output_names.end());
-  GradientGraphBuilder grad_graph_builder(&gradient_graph, y_node_arg_names, x_node_arg_names, "",
-                                          gradient_graph_config, *logger_);
+  GradientGraphBuilder grad_graph_builder(&gradient_graph, y_node_arg_names, x_node_arg_names, "", gradient_graph_config, *logger_);
 
   const std::unordered_set<std::string>& non_differentiable_output_names =
       grad_graph_builder.GetNonDifferentiableYNodeArgNames();
@@ -256,9 +253,7 @@ void OrtModuleGraphBuilder::HandleOutputsAndGrads() {
     auto& output_node_arg = gradient_graph.GetOrCreateNodeArg(
         gradient_graph.GenerateNodeArgName(output_grad_name + "_add_output"), type_info);
     Node& add_node = gradient_graph.AddNode(
-        output_grad_name + "_add", "Add", "",
-        std::array{&external_node_arg, producer_node->MutableOutputDefs()[producer_node_arg_index]},
-        std::array{&output_node_arg});
+        output_grad_name + "_add", "Add", "", std::array{&external_node_arg, producer_node->MutableOutputDefs()[producer_node_arg_index]}, std::array{&output_node_arg});
     graph_utils::ReplaceDownstreamNodeInput(gradient_graph, *producer_node, producer_node_arg_index, add_node, 0);
   }
 
@@ -362,13 +357,11 @@ void OrtModuleGraphBuilder::HandleOutputsAndGrads() {
       }
 
       // Insert the Sum node to sum-up the duplicated gradients
-      gradient_graph.AddNode("Sum_for_" + arg_name, "Sum", "Sum up duplicated gradient", sum_input_node_args,
-                             sum_output_node_arg, {}, kOnnxDomain);
+      gradient_graph.AddNode("Sum_for_" + arg_name, "Sum", "Sum up duplicated gradient", sum_input_node_args, sum_output_node_arg, {}, kOnnxDomain);
     }
   }
 
-  gradient_graph.AddNode("YieldOp", "YieldOp", "Yield Op", yield_input_node_args, yield_output_node_args, &attributes,
-                         kMSDomain);
+  gradient_graph.AddNode("YieldOp", "YieldOp", "Yield Op", yield_input_node_args, yield_output_node_args, &attributes, kMSDomain);
 }
 
 void OrtModuleGraphBuilder::ReorderOutputs() {

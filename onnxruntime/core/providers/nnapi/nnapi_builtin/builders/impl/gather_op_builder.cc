@@ -36,8 +36,7 @@ class GatherOpBuilder : public BaseOpBuilder {
     return ANEURALNETWORKS_FEATURE_LEVEL_3;
   }
 
-  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
-                         const OpSupportCheckParams& params) const override;
+  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit, const OpSupportCheckParams& params) const override;
 };
 
 // Add operator related
@@ -91,8 +90,7 @@ Status GatherOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
 
     if (data_type == ONNX_NAMESPACE::TensorProto_DataType_INT64) {
       auto indice_span = unpacked_tensor.DataAsSpan<int64_t>();
-      std::transform(indice_span.begin(), indice_span.end(), indices.begin(),
-                     [](int64_t indice_n) -> int32_t { return SafeInt<int32_t>(indice_n); });
+      std::transform(indice_span.begin(), indice_span.end(), indices.begin(), [](int64_t indice_n) -> int32_t { return SafeInt<int32_t>(indice_n); });
     } else if (data_type == ONNX_NAMESPACE::TensorProto_DataType_INT32) {
       auto indice_span = unpacked_tensor.DataAsSpan<int32_t>();
       indices.assign(indice_span.begin(), indice_span.end());
@@ -104,14 +102,12 @@ Status GatherOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
   input_indices.push_back(operand_indices.at(input2));
 
   const OperandType output_operand_type(operand_types.at(input1).type, shaper[output]);
-  return model_builder.AddOperation(ANEURALNETWORKS_GATHER, input_indices,
-                                    {output}, {output_operand_type});
+  return model_builder.AddOperation(ANEURALNETWORKS_GATHER, input_indices, {output}, {output_operand_type});
 }
 
 // Operator support related
 
-bool GatherOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
-                                        const OpSupportCheckParams& /* params */) const {
+bool GatherOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit, const OpSupportCheckParams& /* params */) const {
   const auto& inputs = node_unit.Inputs();
   Shape input_shape;
 

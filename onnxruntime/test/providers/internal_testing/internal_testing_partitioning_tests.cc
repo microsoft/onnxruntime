@@ -185,11 +185,7 @@ struct PartitionStats {
   int num_compiled_nodes;
 };
 
-static void TestNnapiPartitioning(const std::string& test_name, const std::string& model_uri,
-                                  bool optimize, bool debug_output,
-                                  const std::unordered_set<std::string>& stop_ops,
-                                  const std::vector<std::string>& additional_supported_ops,
-                                  PartitionStats& stats) {
+static void TestNnapiPartitioning(const std::string& test_name, const std::string& model_uri, bool optimize, bool debug_output, const std::unordered_set<std::string>& stop_ops, const std::vector<std::string>& additional_supported_ops, PartitionStats& stats) {
   SessionOptions so;
   so.graph_optimization_level = optimize ? TransformerLevel::Level3 : TransformerLevel::Level1;
 
@@ -272,11 +268,10 @@ static void TestNnapiPartitioning(const std::string& test_name, const std::strin
           const Node* cur_node = nodes_to_add.front();
           nodes_to_add.pop();
 
-          std::for_each(cur_node->OutputNodesBegin(), cur_node->OutputNodesEnd(),
-                        [&nodes_to_add, &excluded_nodes](const Node& output_node) {
-                          nodes_to_add.push(&output_node);
-                          excluded_nodes.insert(&output_node);
-                        });
+          std::for_each(cur_node->OutputNodesBegin(), cur_node->OutputNodesEnd(), [&nodes_to_add, &excluded_nodes](const Node& output_node) {
+            nodes_to_add.push(&output_node);
+            excluded_nodes.insert(&output_node);
+          });
         }
       }
     }
@@ -341,14 +336,11 @@ TEST(InternalTestingEP, DISABLED_TestNnapiPartitioningMlPerfModels) {
       PartitionStats stats{}, stop_at_nms_stats{}, slice_stats{};
 
       // arbitrary examples of running different combinations to test what partitioning results
-      TestNnapiPartitioning("Base", model_uri, optimize, debug_output,
-                            {}, {}, stats);
+      TestNnapiPartitioning("Base", model_uri, optimize, debug_output, {}, {}, stats);
 
-      TestNnapiPartitioning("StopAt[NMS]", model_uri, optimize, debug_output,
-                            {"NonMaxSuppression"}, {}, stop_at_nms_stats);
+      TestNnapiPartitioning("StopAt[NMS]", model_uri, optimize, debug_output, {"NonMaxSuppression"}, {}, stop_at_nms_stats);
 
-      TestNnapiPartitioning("ExtraOps[Slice]", model_uri, optimize, debug_output,
-                            {}, {"Slice"}, slice_stats);
+      TestNnapiPartitioning("ExtraOps[Slice]", model_uri, optimize, debug_output, {}, {"Slice"}, slice_stats);
     };
 
     run_tests(false);

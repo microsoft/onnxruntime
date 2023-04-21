@@ -34,7 +34,8 @@ extern "C" {
 #endif
 
 ORT_EXPORT ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_CoreML,
-                          _In_ OrtSessionOptions* options, uint32_t coreml_flags);
+                          _In_ OrtSessionOptions* options,
+                          uint32_t coreml_flags);
 
 #ifdef __cplusplus
 }

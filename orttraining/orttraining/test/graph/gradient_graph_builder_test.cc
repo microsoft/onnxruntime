@@ -434,77 +434,17 @@ static void RunBertTrainingWithChecks(
 
   std::vector<std::vector<int64_t>> tensor_values = {
       /*input_ids*/
-      {49, 97, 53, 5, 33, 65, 62,
-       51, 38, 61, 45, 74, 27, 64,
-       17, 36, 17, 96, 12, 79, 32,
-       68, 90, 77, 18, 39, 12, 93,
-       9, 87, 42, 60, 71, 12, 45,
-       55, 40, 78, 81, 26, 70, 61,
-       56, 66, 33, 7, 70, 1, 11,
-       92, 51, 90, 85, 80, 0, 78,
-       63, 42, 31, 93, 41, 90, 8,
-       24, 72, 28, 30, 18, 69, 57,
-       11, 10, 40, 65, 62, 13, 38,
-       70, 37, 90, 15, 70, 42, 69,
-       26, 77, 70, 75, 36, 56, 11},
+      {49, 97, 53, 5, 33, 65, 62, 51, 38, 61, 45, 74, 27, 64, 17, 36, 17, 96, 12, 79, 32, 68, 90, 77, 18, 39, 12, 93, 9, 87, 42, 60, 71, 12, 45, 55, 40, 78, 81, 26, 70, 61, 56, 66, 33, 7, 70, 1, 11, 92, 51, 90, 85, 80, 0, 78, 63, 42, 31, 93, 41, 90, 8, 24, 72, 28, 30, 18, 69, 57, 11, 10, 40, 65, 62, 13, 38, 70, 37, 90, 15, 70, 42, 69, 26, 77, 70, 75, 36, 56, 11},
       /*token_type_ids*/
-      {12, 13, 1, 8, 15, 12, 9,
-       15, 11, 6, 4, 9, 4, 3,
-       8, 4, 9, 3, 2, 10, 15,
-       3, 11, 13, 10, 6, 15, 14,
-       8, 1, 0, 2, 12, 0, 15,
-       10, 7, 10, 2, 6, 7, 7,
-       4, 14, 2, 2, 10, 15, 3,
-       9, 9, 3, 10, 6, 9, 14,
-       2, 12, 10, 7, 9, 5, 6,
-       5, 1, 8, 15, 2, 2, 4,
-       4, 1, 2, 12, 8, 7, 6,
-       13, 8, 14, 15, 11, 2, 10,
-       3, 15, 10, 6, 7, 0, 8},
+      {12, 13, 1, 8, 15, 12, 9, 15, 11, 6, 4, 9, 4, 3, 8, 4, 9, 3, 2, 10, 15, 3, 11, 13, 10, 6, 15, 14, 8, 1, 0, 2, 12, 0, 15, 10, 7, 10, 2, 6, 7, 7, 4, 14, 2, 2, 10, 15, 3, 9, 9, 3, 10, 6, 9, 14, 2, 12, 10, 7, 9, 5, 6, 5, 1, 8, 15, 2, 2, 4, 4, 1, 2, 12, 8, 7, 6, 13, 8, 14, 15, 11, 2, 10, 3, 15, 10, 6, 7, 0, 8},
       /*input_mask*/
-      {1, 1, 0, 1, 1, 1, 1,
-       1, 1, 0, 0, 1, 0, 0,
-       1, 0, 1, 0, 0, 1, 1,
-       0, 1, 1, 1, 0, 1, 1,
-       1, 0, 0, 0, 1, 0, 1,
-       1, 0, 1, 0, 0, 0, 0,
-       0, 1, 0, 0, 1, 1, 0,
-       1, 1, 0, 1, 0, 1, 1,
-       0, 1, 1, 0, 1, 0, 0,
-       0, 0, 1, 1, 0, 0, 0,
-       0, 0, 0, 1, 1, 0, 0,
-       1, 1, 1, 1, 1, 0, 1,
-       0, 1, 1, 0, 0, 0, 1},
+      {1, 1, 0, 1, 1, 1, 1, 1, 1, 0, 0, 1, 0, 0, 1, 0, 1, 0, 0, 1, 1, 0, 1, 1, 1, 0, 1, 1, 1, 0, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 1, 1, 0, 1, 1, 0, 1, 0, 1, 1, 0, 1, 1, 0, 1, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 1, 1, 1, 1, 1, 0, 1, 0, 1, 1, 0, 0, 0, 1},
       /*masked_lm_ids*/
-      {1, 1, 0, 1, 2, 1, 1,
-       1, 1, 1, 2, 0, 2, 0,
-       1, 0, 0, 2, 1, 2, 2,
-       2, 0, 1, 0, 2, 0, 2,
-       1, 1, 2, 0, 1, 1, 1,
-       2, 2, 0, 2, 1, 1, 2,
-       1, 0, 2, 0, 0, 2, 1,
-       2, 2, 2, 0, 2, 1, 1,
-       0, 2, 1, 2, 0, 0, 2,
-       0, 0, 0, 2, 1, 0, 0,
-       1, 2, 1, 0, 1, 2, 1,
-       2, 0, 2, 1, 2, 0, 2,
-       2, 2, 1, 1, 0, 2, 1},
+      {1, 1, 0, 1, 2, 1, 1, 1, 1, 1, 2, 0, 2, 0, 1, 0, 0, 2, 1, 2, 2, 2, 0, 1, 0, 2, 0, 2, 1, 1, 2, 0, 1, 1, 1, 2, 2, 0, 2, 1, 1, 2, 1, 0, 2, 0, 0, 2, 1, 2, 2, 2, 0, 2, 1, 1, 0, 2, 1, 2, 0, 0, 2, 0, 0, 0, 2, 1, 0, 0, 1, 2, 1, 0, 1, 2, 1, 2, 0, 2, 1, 2, 0, 2, 2, 2, 1, 1, 0, 2, 1},
       /*next_sentence_labels*/
       {1, 1, 0, 1, 1, 1, 1, 1, 1, 0, 0, 1, 0},
       /*masked_lm_positions*/
-      {0, 1, 2, 3, 4, 5, 6,
-       0, 1, 2, 3, 4, 5, 6,
-       0, 1, 2, 3, 4, 5, 6,
-       0, 1, 2, 3, 4, 5, 6,
-       0, 1, 2, 3, 4, 5, 6,
-       0, 1, 2, 3, 4, 5, 6,
-       0, 1, 2, 3, 4, 5, 6,
-       0, 1, 2, 3, 4, 5, 6,
-       0, 1, 2, 3, 4, 5, 6,
-       0, 1, 2, 3, 4, 5, 6,
-       0, 1, 2, 3, 4, 5, 6,
-       0, 1, 2, 3, 4, 5, 6,
-       0, 1, 2, 3, 4, 5, 6}};
+      {0, 1, 2, 3, 4, 5, 6, 0, 1, 2, 3, 4, 5, 6, 0, 1, 2, 3, 4, 5, 6, 0, 1, 2, 3, 4, 5, 6, 0, 1, 2, 3, 4, 5, 6, 0, 1, 2, 3, 4, 5, 6, 0, 1, 2, 3, 4, 5, 6, 0, 1, 2, 3, 4, 5, 6, 0, 1, 2, 3, 4, 5, 6, 0, 1, 2, 3, 4, 5, 6, 0, 1, 2, 3, 4, 5, 6, 0, 1, 2, 3, 4, 5, 6, 0, 1, 2, 3, 4, 5, 6}};
 
   std::vector<OrtValue> feeds(feed_names.size());
   for (size_t i = 0; i < 6; ++i) {
@@ -746,8 +686,7 @@ class PipelineSplitter {
   //   const ValueInfoProto* TValueInfoLookupFn(const std::string& name)
   template <typename TValueInfoLookupFn>
   bool AddValueInfoByNameFromLookup(
-      google::protobuf::RepeatedPtrField<ONNX_NAMESPACE::ValueInfoProto>& dst, TValueInfoLookupFn lookup,
-      const std::string& name, const std::string& new_name) {
+      google::protobuf::RepeatedPtrField<ONNX_NAMESPACE::ValueInfoProto>& dst, TValueInfoLookupFn lookup, const std::string& name, const std::string& new_name) {
     for (auto iter = dst.cbegin(); iter != dst.cend(); ++iter) {
       if (iter->name() == new_name) {
         return true;
@@ -1188,7 +1127,10 @@ void RetrieveEventOperators(
     *backward_send_record = records[2];
   } else {
     ORT_THROW("Wrong number of WaitEvent operators: ",
-              waits.size(), " allowed value range is [0, ", num_stages - 1, ").");
+              waits.size(),
+              " allowed value range is [0, ",
+              num_stages - 1,
+              ").");
   }
 }
 
@@ -1770,11 +1712,9 @@ TEST(GradientGraphBuilderTest, TrainingSession_WithPipeline) {
       wait_record_pipeline_values.resize(wait_record_pipeline.size());
       for (size_t i = 0; i < wait_record_pipeline.size(); ++i) {
         TrainingUtil::CreateCpuMLValue<int64_t>(
-            {}, {wait_record_pipeline[i].first},
-            &wait_record_pipeline_values[i].first);
+            {}, {wait_record_pipeline[i].first}, &wait_record_pipeline_values[i].first);
         TrainingUtil::CreateCpuMLValue<int64_t>(
-            {}, {wait_record_pipeline[i].second},
-            &wait_record_pipeline_values[i].second);
+            {}, {wait_record_pipeline[i].second}, &wait_record_pipeline_values[i].second);
       }
     }
   };
@@ -1806,39 +1746,17 @@ TEST(GradientGraphBuilderTest, TrainingSession_WithPipeline) {
     switch (sub_id) {
       case 0:
         input_names = {
-            "X_sync", "T3_grad_sync",
-            "wait_pipeline_0_fw",
-            "record_pipeline_0_fw", "record_data_0_fw",
-            "wait_data_0_bw", "wait_pipeline_0_bw",
-            "record_pipeline_0_bw"};
+            "X_sync", "T3_grad_sync", "wait_pipeline_0_fw", "record_pipeline_0_fw", "record_data_0_fw", "wait_data_0_bw", "wait_pipeline_0_bw", "record_pipeline_0_bw"};
         input_values = {
-            data.x_value, data.t3_grad_value,
-            data.wait_record_pipeline_values[0].first,
-            data.wait_record_pipeline_values[0].second,
-            data.record_data_values[0],
-            data.record_data_values[3],
-            data.wait_record_pipeline_values[1].first,
-            data.wait_record_pipeline_values[1].second};
+            data.x_value, data.t3_grad_value, data.wait_record_pipeline_values[0].first, data.wait_record_pipeline_values[0].second, data.record_data_values[0], data.record_data_values[3], data.wait_record_pipeline_values[1].first, data.wait_record_pipeline_values[1].second};
         output_names = {"T3_sync"};
         output_values = {data.t3_value};
         break;
       case 1:
         input_names = {
-            "T3_sync", "T6_grad_sync",
-            "wait_data_1_fw", "wait_pipeline_1_fw",
-            "record_pipeline_1_fw", "record_data_1_fw",
-            "wait_data_1_bw", "wait_pipeline_1_bw",
-            "record_pipeline_1_bw", "record_data_1_bw"};
+            "T3_sync", "T6_grad_sync", "wait_data_1_fw", "wait_pipeline_1_fw", "record_pipeline_1_fw", "record_data_1_fw", "wait_data_1_bw", "wait_pipeline_1_bw", "record_pipeline_1_bw", "record_data_1_bw"};
         input_values = {
-            data.t3_value, data.t6_grad_value,
-            data.record_data_values[0],
-            data.wait_record_pipeline_values[2].first,
-            data.wait_record_pipeline_values[2].second,
-            data.record_data_values[1],
-            data.record_data_values[2],
-            data.wait_record_pipeline_values[3].first,
-            data.wait_record_pipeline_values[3].second,
-            data.record_data_values[3]};
+            data.t3_value, data.t6_grad_value, data.record_data_values[0], data.wait_record_pipeline_values[2].first, data.wait_record_pipeline_values[2].second, data.record_data_values[1], data.record_data_values[2], data.wait_record_pipeline_values[3].first, data.wait_record_pipeline_values[3].second, data.record_data_values[3]};
         output_names = {"T6_sync", "T3_grad_sync"};
         output_values = {data.t6_value, data.t3_grad_value};
         break;
@@ -1846,12 +1764,9 @@ TEST(GradientGraphBuilderTest, TrainingSession_WithPipeline) {
         // note that last stage only need to wait on FW and record and BW
         // there's no wait/record in between
         input_names = {
-            "T6_sync", "labels",
-            "wait_data_2_fw", "wait_pipeline_2_fw",
-            "record_pipeline_2_bw", "record_data_2_bw"};
+            "T6_sync", "labels", "wait_data_2_fw", "wait_pipeline_2_fw", "record_pipeline_2_bw", "record_data_2_bw"};
         input_values = {
-            data.t6_value, data.label_value,
-            data.record_data_values[1],
+            data.t6_value, data.label_value, data.record_data_values[1],
             data.wait_record_pipeline_values[4].first,   // wait on FW
             data.wait_record_pipeline_values[5].second,  // record on BW
             data.record_data_values[2]};

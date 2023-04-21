@@ -12,9 +12,11 @@ class OpKernelContext {
  public:
   using ArgMap = std::unordered_map<std::string, size_t>;
 
-  OpKernelContext(_Inout_ IExecutionFrame* frame, _In_ const OpKernel* kernel,
+  OpKernelContext(_Inout_ IExecutionFrame* frame,
+                  _In_ const OpKernel* kernel,
                   _In_ Stream* stream,
-                  _In_opt_ concurrency::ThreadPool* threadpool, _In_ const logging::Logger& logger);
+                  _In_opt_ concurrency::ThreadPool* threadpool,
+                  _In_ const logging::Logger& logger);
 
   virtual ~OpKernelContext() = default;
 

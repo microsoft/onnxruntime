@@ -20,22 +20,16 @@ namespace op_kernel_type_control {
 // Max
 ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES(kCpuExecutionProvider, kOnnxDomain, Max, 8, Input, 0, float, double);
 
-ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES(kCpuExecutionProvider, kOnnxDomain, Max, 12, Input, 0,
-                                        float, double, MLFloat16, int32_t, uint32_t, int64_t, uint64_t);
-ORT_SPECIFY_OP_KERNEL_ARG_REQUIRED_TYPES(kCpuExecutionProvider, kOnnxDomain, Max, 12, Input, 0,
-                                         int32_t, int64_t);
+ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES(kCpuExecutionProvider, kOnnxDomain, Max, 12, Input, 0, float, double, MLFloat16, int32_t, uint32_t, int64_t, uint64_t);
+ORT_SPECIFY_OP_KERNEL_ARG_REQUIRED_TYPES(kCpuExecutionProvider, kOnnxDomain, Max, 12, Input, 0, int32_t, int64_t);
 
 // Min
 ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES(kCpuExecutionProvider, kOnnxDomain, Min, 8, Input, 0, float, double);
-ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES(kCpuExecutionProvider, kOnnxDomain, Min, 12, Input, 0,
-                                        float, double, MLFloat16, int32_t, uint32_t, int64_t, uint64_t);
-ORT_SPECIFY_OP_KERNEL_ARG_REQUIRED_TYPES(kCpuExecutionProvider, kOnnxDomain, Min, 12, Input, 0,
-                                         int32_t, int64_t);
+ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES(kCpuExecutionProvider, kOnnxDomain, Min, 12, Input, 0, float, double, MLFloat16, int32_t, uint32_t, int64_t, uint64_t);
+ORT_SPECIFY_OP_KERNEL_ARG_REQUIRED_TYPES(kCpuExecutionProvider, kOnnxDomain, Min, 12, Input, 0, int32_t, int64_t);
 
 // Mod
-ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES_ALL_OPSETS(kCpuExecutionProvider, kOnnxDomain, Mod, Input, 0,
-                                                   float, double, int64_t, uint64_t, int32_t, uint32_t,
-                                                   int16_t, uint16_t, int8_t, uint8_t, MLFloat16);
+ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES_ALL_OPSETS(kCpuExecutionProvider, kOnnxDomain, Mod, Input, 0, float, double, int64_t, uint64_t, int32_t, uint32_t, int16_t, uint16_t, int8_t, uint8_t, MLFloat16);
 
 // Pow
 ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES(kCpuExecutionProvider, kOnnxDomain, Pow, 7, Input, 0, float, double);
@@ -43,10 +37,8 @@ ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES(kCpuExecutionProvider, kOnnxDomain, Pow,
 // Pow 12 and later has separate Base and Exponent types.
 // To reduce templatization we choose to support a subset of types for the base and exponent.
 // This gives us 16 permutations.
-ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES(kCpuExecutionProvider, kOnnxDomain, Pow, 12,
-                                        Input, 0, int32_t, int64_t, float, double);
-ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES(kCpuExecutionProvider, kOnnxDomain, Pow, 12,
-                                        Input, 1, int32_t, int64_t, float, double);
+ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES(kCpuExecutionProvider, kOnnxDomain, Pow, 12, Input, 0, int32_t, int64_t, float, double);
+ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES(kCpuExecutionProvider, kOnnxDomain, Pow, 12, Input, 1, int32_t, int64_t, float, double);
 }  // namespace op_kernel_type_control
 
 //
@@ -62,10 +54,8 @@ using EnabledModTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(
     kCpuExecutionProvider, kOnnxDomain, Mod, Input, 0);
 
 using EnabledPow7Types = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST(kCpuExecutionProvider, kOnnxDomain, Pow, 7, Input, 0);
-using EnabledPow12BaseTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST(kCpuExecutionProvider, kOnnxDomain,
-                                                                  Pow, 12, Input, 0);
-using EnabledPow12ExpTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST(kCpuExecutionProvider, kOnnxDomain,
-                                                                 Pow, 12, Input, 1);
+using EnabledPow12BaseTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST(kCpuExecutionProvider, kOnnxDomain, Pow, 12, Input, 0);
+using EnabledPow12ExpTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST(kCpuExecutionProvider, kOnnxDomain, Pow, 12, Input, 1);
 
 namespace functors {
 template <>
@@ -97,7 +87,8 @@ void Exp<float>::operator()(std::ptrdiff_t first, std::ptrdiff_t last) const {
 #define REG_ELEMENTWISE_VERSIONED_TYPED_KERNEL(OP_TYPE, VERSION_FROM, VERSION_TO, TYPE, KERNEL_CLASS) \
   ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(                                                           \
       OP_TYPE,                                                                                        \
-      VERSION_FROM, VERSION_TO,                                                                       \
+      VERSION_FROM,                                                                                   \
+      VERSION_TO,                                                                                     \
       TYPE,                                                                                           \
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<TYPE>()),                    \
       KERNEL_CLASS<TYPE>);
@@ -105,7 +96,8 @@ void Exp<float>::operator()(std::ptrdiff_t first, std::ptrdiff_t last) const {
 #define REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(OP_TYPE, VERSION_FROM, VERSION_TO, TYPE, KERNEL_CLASS) \
   ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(                                                                     \
       OP_TYPE,                                                                                                  \
-      VERSION_FROM, VERSION_TO,                                                                                 \
+      VERSION_FROM,                                                                                             \
+      VERSION_TO,                                                                                               \
       TYPE,                                                                                                     \
       KernelDefBuilder()                                                                                        \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<TYPE>())                                             \
@@ -120,37 +112,32 @@ void Exp<float>::operator()(std::ptrdiff_t first, std::ptrdiff_t last) const {
           .TypeConstraint("T", CONSTRAINTS),                                     \
       KERNEL_CLASS);
 
-#define REG_ELEMENTWISE_VERSIONED_KERNEL_NONT(OP_TYPE, VERSION_FROM, VERSION_TO, KERNEL_CLASS, \
-                                              CONSTRAINTS)                                     \
-  ONNX_CPU_OPERATOR_VERSIONED_KERNEL(                                                          \
-      OP_TYPE,                                                                                 \
-      VERSION_FROM,                                                                            \
-      VERSION_TO,                                                                              \
-      KernelDefBuilder()                                                                       \
-          .TypeConstraint("T", CONSTRAINTS),                                                   \
+#define REG_ELEMENTWISE_VERSIONED_KERNEL_NONT(OP_TYPE, VERSION_FROM, VERSION_TO, KERNEL_CLASS, CONSTRAINTS) \
+  ONNX_CPU_OPERATOR_VERSIONED_KERNEL(                                                                       \
+      OP_TYPE,                                                                                              \
+      VERSION_FROM,                                                                                         \
+      VERSION_TO,                                                                                           \
+      KernelDefBuilder()                                                                                    \
+          .TypeConstraint("T", CONSTRAINTS),                                                                \
       KERNEL_CLASS);
 
-#define REG_ELEMENTWISE_KERNEL_NONT_2(OP_TYPE, VERSION, KERNEL_CLASS, \
-                                      T1_CONSTRAINTS,                 \
-                                      T2_CONSTRAINTS)                 \
-  ONNX_CPU_OPERATOR_KERNEL(                                           \
-      OP_TYPE,                                                        \
-      VERSION,                                                        \
-      KernelDefBuilder()                                              \
-          .TypeConstraint("T", T1_CONSTRAINTS)                        \
-          .TypeConstraint("T1", T2_CONSTRAINTS),                      \
+#define REG_ELEMENTWISE_KERNEL_NONT_2(OP_TYPE, VERSION, KERNEL_CLASS, T1_CONSTRAINTS, T2_CONSTRAINTS) \
+  ONNX_CPU_OPERATOR_KERNEL(                                                                           \
+      OP_TYPE,                                                                                        \
+      VERSION,                                                                                        \
+      KernelDefBuilder()                                                                              \
+          .TypeConstraint("T", T1_CONSTRAINTS)                                                        \
+          .TypeConstraint("T1", T2_CONSTRAINTS),                                                      \
       KERNEL_CLASS);
 
-#define REG_ELEMENTWISE_VERSIONED_KERNEL_NONT_2(OP_TYPE, VERSION_FROM, VERSION_TO, KERNEL_CLASS, \
-                                                T1_CONSTRAINTS,                                  \
-                                                T2_CONSTRAINTS)                                  \
-  ONNX_CPU_OPERATOR_VERSIONED_KERNEL(                                                            \
-      OP_TYPE,                                                                                   \
-      VERSION_FROM,                                                                              \
-      VERSION_TO,                                                                                \
-      KernelDefBuilder()                                                                         \
-          .TypeConstraint("T", T1_CONSTRAINTS)                                                   \
-          .TypeConstraint("T1", T2_CONSTRAINTS),                                                 \
+#define REG_ELEMENTWISE_VERSIONED_KERNEL_NONT_2(OP_TYPE, VERSION_FROM, VERSION_TO, KERNEL_CLASS, T1_CONSTRAINTS, T2_CONSTRAINTS) \
+  ONNX_CPU_OPERATOR_VERSIONED_KERNEL(                                                                                            \
+      OP_TYPE,                                                                                                                   \
+      VERSION_FROM,                                                                                                              \
+      VERSION_TO,                                                                                                                \
+      KernelDefBuilder()                                                                                                         \
+          .TypeConstraint("T", T1_CONSTRAINTS)                                                                                   \
+          .TypeConstraint("T1", T2_CONSTRAINTS),                                                                                 \
       KERNEL_CLASS);
 
 REG_ELEMENTWISE_VERSIONED_TYPED_KERNEL(Add, 7, 12, float, Add);
@@ -258,20 +245,13 @@ REG_ELEMENTWISE_VERSIONED_TYPED_KERNEL(Sqrt, 6, 12, double, Sqrt);
 REG_ELEMENTWISE_TYPED_KERNEL(Sqrt, 13, float, Sqrt);
 REG_ELEMENTWISE_TYPED_KERNEL(Sqrt, 13, double, Sqrt);
 
-REG_ELEMENTWISE_VERSIONED_KERNEL_NONT(Pow, 7, 11, Pow,
-                                      BuildKernelDefConstraintsFromTypeList<EnabledPow7Types>());
+REG_ELEMENTWISE_VERSIONED_KERNEL_NONT(Pow, 7, 11, Pow, BuildKernelDefConstraintsFromTypeList<EnabledPow7Types>());
 
-REG_ELEMENTWISE_VERSIONED_KERNEL_NONT_2(Pow, 12, 12, Pow,
-                                        BuildKernelDefConstraintsFromTypeList<EnabledPow12BaseTypes>(),
-                                        BuildKernelDefConstraintsFromTypeList<EnabledPow12ExpTypes>());
+REG_ELEMENTWISE_VERSIONED_KERNEL_NONT_2(Pow, 12, 12, Pow, BuildKernelDefConstraintsFromTypeList<EnabledPow12BaseTypes>(), BuildKernelDefConstraintsFromTypeList<EnabledPow12ExpTypes>());
 
-REG_ELEMENTWISE_VERSIONED_KERNEL_NONT_2(Pow, 13, 14, Pow,
-                                        BuildKernelDefConstraintsFromTypeList<EnabledPow12BaseTypes>(),
-                                        BuildKernelDefConstraintsFromTypeList<EnabledPow12ExpTypes>());
+REG_ELEMENTWISE_VERSIONED_KERNEL_NONT_2(Pow, 13, 14, Pow, BuildKernelDefConstraintsFromTypeList<EnabledPow12BaseTypes>(), BuildKernelDefConstraintsFromTypeList<EnabledPow12ExpTypes>());
 
-REG_ELEMENTWISE_KERNEL_NONT_2(Pow, 15, Pow,
-                              BuildKernelDefConstraintsFromTypeList<EnabledPow12BaseTypes>(),
-                              BuildKernelDefConstraintsFromTypeList<EnabledPow12ExpTypes>());
+REG_ELEMENTWISE_KERNEL_NONT_2(Pow, 15, Pow, BuildKernelDefConstraintsFromTypeList<EnabledPow12BaseTypes>(), BuildKernelDefConstraintsFromTypeList<EnabledPow12ExpTypes>());
 
 REG_ELEMENTWISE_VERSIONED_TYPED_KERNEL(Exp, 6, 12, float, Exp);
 REG_ELEMENTWISE_VERSIONED_TYPED_KERNEL(Exp, 6, 12, double, Exp);
@@ -453,9 +433,7 @@ ONNX_CPU_OPERATOR_KERNEL(
 using AllocateTensorFunc = std::unique_ptr<Tensor> (*)(const TensorAllocator& tensor_allocator,
                                                        const TensorShape& shape);
 
-static void UntypedBroadcastVariadic(int input_count, OpKernelContext& context,
-                                     AllocateTensorFunc allocate_tensor,
-                                     const ProcessBroadcastSpanFuncs& funcs);
+static void UntypedBroadcastVariadic(int input_count, OpKernelContext& context, AllocateTensorFunc allocate_tensor, const ProcessBroadcastSpanFuncs& funcs);
 
 template <typename T>
 Status Add<T>::Compute(OpKernelContext* context) const {
@@ -536,10 +514,9 @@ void PowImpl(OpKernelContext& context) {
         auto Y = per_iter_bh.SpanInput1<E>();
         auto output = per_iter_bh.OutputSpan<T>();
 
-        std::transform(Y.begin(), Y.end(), output.begin(),
-                       [X](E y) {
-                         return static_cast<T>(std::pow(X, y));
-                       });
+        std::transform(Y.begin(), Y.end(), output.begin(), [X](E y) {
+          return static_cast<T>(std::pow(X, y));
+        });
       },
       [](BroadcastHelper& per_iter_bh) {
         auto X = per_iter_bh.SpanInput0<T>();
@@ -548,21 +525,18 @@ void PowImpl(OpKernelContext& context) {
 
         // optimize for X^2 and X^3
         if (Y == 2) {
-          std::transform(X.begin(), X.end(), output.begin(),
-                         [](T x) {
-                           return static_cast<T>(x * x);
-                         });
+          std::transform(X.begin(), X.end(), output.begin(), [](T x) {
+            return static_cast<T>(x * x);
+          });
 
         } else if (Y == 3) {
-          std::transform(X.begin(), X.end(), output.begin(),
-                         [](T x) {
-                           return static_cast<T>(x * x * x);
-                         });
+          std::transform(X.begin(), X.end(), output.begin(), [](T x) {
+            return static_cast<T>(x * x * x);
+          });
         } else {
-          std::transform(X.begin(), X.end(), output.begin(),
-                         [Y](T x) {
-                           return static_cast<T>(std::pow(x, Y));
-                         });
+          std::transform(X.begin(), X.end(), output.begin(), [Y](T x) {
+            return static_cast<T>(std::pow(x, Y));
+          });
         }
       },
       [](BroadcastHelper& per_iter_bh) {
@@ -570,10 +544,9 @@ void PowImpl(OpKernelContext& context) {
         auto Y = per_iter_bh.SpanInput1<E>();
         auto output = per_iter_bh.OutputSpan<T>();
 
-        std::transform(X.begin(), X.end(), Y.begin(), output.begin(),
-                       [](T x, E y) {
-                         return static_cast<T>(std::pow(x, y));
-                       });
+        std::transform(X.begin(), X.end(), Y.begin(), output.begin(), [](T x, E y) {
+          return static_cast<T>(std::pow(x, y));
+        });
       }};
 
   UntypedBroadcastTwo(context, funcs, 1.0);
@@ -597,8 +570,7 @@ Status DispatchOnBase(OpKernelContext& context, const Tensor& Y) {
       PowImpl<B, double>(context);
       break;
     default:
-      s = ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Unsupported Y type: ",
-                          DataTypeImpl::ToString(Y.DataType()));
+      s = ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Unsupported Y type: ", DataTypeImpl::ToString(Y.DataType()));
   }
   return s;
 }
@@ -629,8 +601,7 @@ Pow::Compute(OpKernelContext* context) const {
       s = DispatchOnBase<double>(*context, Y);
       break;
     default:
-      s = ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Unsupported X type: ",
-                          DataTypeImpl::ToString(X.DataType()));
+      s = ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Unsupported X type: ", DataTypeImpl::ToString(X.DataType()));
   }
   return s;
 }
@@ -1198,20 +1169,18 @@ Status BitwiseAnd<T>::Compute(OpKernelContext* context) const {
         auto Y = per_iter_bh.SpanInput1<T>();
         auto output = per_iter_bh.OutputSpan<T>();
 
-        std::transform(Y.begin(), Y.end(), output.begin(),
-                       [X](T y) {
-                         return std::bit_and<T>()(X, y);
-                       });
+        std::transform(Y.begin(), Y.end(), output.begin(), [X](T y) {
+          return std::bit_and<T>()(X, y);
+        });
       },
       [](BroadcastHelper& per_iter_bh) {
         auto X = per_iter_bh.SpanInput0<T>();
         const T Y = per_iter_bh.ScalarInput1<T>();
         auto output = per_iter_bh.OutputSpan<T>();
 
-        std::transform(X.begin(), X.end(), output.begin(),
-                       [Y](T x) {
-                         return static_cast<T>(std::bit_and<T>()(x, Y));
-                       });
+        std::transform(X.begin(), X.end(), output.begin(), [Y](T x) {
+          return static_cast<T>(std::bit_and<T>()(x, Y));
+        });
       },
       [](BroadcastHelper& per_iter_bh) {
         auto X = per_iter_bh.SpanInput0<T>();
@@ -1243,20 +1212,18 @@ Status BitwiseOr<T>::Compute(OpKernelContext* context) const {
         auto Y = per_iter_bh.SpanInput1<T>();
         auto output = per_iter_bh.OutputSpan<T>();
 
-        std::transform(Y.begin(), Y.end(), output.begin(),
-                       [X](T y) {
-                         return std::bit_or<T>()(X, y);
-                       });
+        std::transform(Y.begin(), Y.end(), output.begin(), [X](T y) {
+          return std::bit_or<T>()(X, y);
+        });
       },
       [](BroadcastHelper& per_iter_bh) {
         auto X = per_iter_bh.SpanInput0<T>();
         const T Y = per_iter_bh.ScalarInput1<T>();
         auto output = per_iter_bh.OutputSpan<T>();
 
-        std::transform(X.begin(), X.end(), output.begin(),
-                       [Y](T x) {
-                         return static_cast<T>(std::bit_or<T>()(x, Y));
-                       });
+        std::transform(X.begin(), X.end(), output.begin(), [Y](T x) {
+          return static_cast<T>(std::bit_or<T>()(x, Y));
+        });
       },
       [](BroadcastHelper& per_iter_bh) {
         auto X = per_iter_bh.SpanInput0<T>();
@@ -1278,20 +1245,18 @@ Status BitwiseXor<T>::Compute(OpKernelContext* context) const {
         auto Y = per_iter_bh.SpanInput1<T>();
         auto output = per_iter_bh.OutputSpan<T>();
 
-        std::transform(Y.begin(), Y.end(), output.begin(),
-                       [X](T y) {
-                         return std::bit_xor<T>()(X, y);
-                       });
+        std::transform(Y.begin(), Y.end(), output.begin(), [X](T y) {
+          return std::bit_xor<T>()(X, y);
+        });
       },
       [](BroadcastHelper& per_iter_bh) {
         auto X = per_iter_bh.SpanInput0<T>();
         const T Y = per_iter_bh.ScalarInput1<T>();
         auto output = per_iter_bh.OutputSpan<T>();
 
-        std::transform(X.begin(), X.end(), output.begin(),
-                       [Y](T x) {
-                         return static_cast<T>(std::bit_xor<T>()(x, Y));
-                       });
+        std::transform(X.begin(), X.end(), output.begin(), [Y](T x) {
+          return static_cast<T>(std::bit_xor<T>()(x, Y));
+        });
       },
       [](BroadcastHelper& per_iter_bh) {
         auto X = per_iter_bh.SpanInput0<T>();
@@ -1758,30 +1723,27 @@ void BroadCastFMod(OpKernelContext* context) {
         auto Y = per_iter_bh.SpanInput1<T>();
         auto output = per_iter_bh.OutputSpan<T>();
 
-        std::transform(Y.begin(), Y.end(), output.begin(),
-                       [X](T y) {
-                         return static_cast<T>(std::fmod(X, y));
-                       });
+        std::transform(Y.begin(), Y.end(), output.begin(), [X](T y) {
+          return static_cast<T>(std::fmod(X, y));
+        });
       },
       [](BroadcastHelper& per_iter_bh) {
         auto X = per_iter_bh.SpanInput0<T>();
         const T& Y = per_iter_bh.ScalarInput1<T>();
         auto output = per_iter_bh.OutputSpan<T>();
 
-        std::transform(X.begin(), X.end(), output.begin(),
-                       [Y](T x) {
-                         return static_cast<T>(std::fmod(x, Y));
-                       });
+        std::transform(X.begin(), X.end(), output.begin(), [Y](T x) {
+          return static_cast<T>(std::fmod(x, Y));
+        });
       },
       [](BroadcastHelper& per_iter_bh) {
         auto X = per_iter_bh.SpanInput0<T>();
         auto Y = per_iter_bh.SpanInput1<T>();
         auto output = per_iter_bh.OutputSpan<T>();
 
-        std::transform(X.begin(), X.end(), Y.begin(), output.begin(),
-                       [](T x, T y) {
-                         return static_cast<T>(std::fmod(x, y));
-                       });
+        std::transform(X.begin(), X.end(), Y.begin(), output.begin(), [](T x, T y) {
+          return static_cast<T>(std::fmod(x, y));
+        });
       }};
 
   UntypedBroadcastTwo(*context, funcs);
@@ -1804,30 +1766,27 @@ void BroadCastMod(OpKernelContext* context) {
         auto Y = per_iter_bh.SpanInput1<T>();
         auto output = per_iter_bh.OutputSpan<T>();
 
-        std::transform(Y.begin(), Y.end(), output.begin(),
-                       [X](T y) {
-                         return Modulus(X, y);
-                       });
+        std::transform(Y.begin(), Y.end(), output.begin(), [X](T y) {
+          return Modulus(X, y);
+        });
       },
       [](BroadcastHelper& per_iter_bh) {
         auto X = per_iter_bh.SpanInput0<T>();
         const T& Y = per_iter_bh.ScalarInput1<T>();
         auto output = per_iter_bh.OutputSpan<T>();
 
-        std::transform(X.begin(), X.end(), output.begin(),
-                       [Y](T x) {
-                         return Modulus(x, Y);
-                       });
+        std::transform(X.begin(), X.end(), output.begin(), [Y](T x) {
+          return Modulus(x, Y);
+        });
       },
       [](BroadcastHelper& per_iter_bh) {
         auto X = per_iter_bh.SpanInput0<T>();
         auto Y = per_iter_bh.SpanInput1<T>();
         auto output = per_iter_bh.OutputSpan<T>();
 
-        std::transform(X.begin(), X.end(), Y.begin(), output.begin(),
-                       [](T x, T y) {
-                         return Modulus(x, y);
-                       });
+        std::transform(X.begin(), X.end(), Y.begin(), output.begin(), [](T x, T y) {
+          return Modulus(x, y);
+        });
       }};
 
   UntypedBroadcastTwo(*context, funcs);
@@ -1840,32 +1799,29 @@ void BroadCastMLFloat16FMod(OpKernelContext* context) {
         auto Y = per_iter_bh.SpanInput1<MLFloat16>();
         auto output = per_iter_bh.OutputSpan<MLFloat16>();
 
-        std::transform(Y.begin(), Y.end(), output.begin(),
-                       [X_fl = math::halfToFloat(X.val)](const MLFloat16& y) {
-                         return MLFloat16(math::floatToHalf(std::fmod(X_fl, math::halfToFloat(y.val))));
-                       });
+        std::transform(Y.begin(), Y.end(), output.begin(), [X_fl = math::halfToFloat(X.val)](const MLFloat16& y) {
+          return MLFloat16(math::floatToHalf(std::fmod(X_fl, math::halfToFloat(y.val))));
+        });
       },
       [](BroadcastHelper& per_iter_bh) {
         auto X = per_iter_bh.SpanInput0<MLFloat16>();
         const MLFloat16 Y = per_iter_bh.ScalarInput1<MLFloat16>();
         auto output = per_iter_bh.OutputSpan<MLFloat16>();
 
-        std::transform(X.begin(), X.end(), output.begin(),
-                       [Y_fl = math::halfToFloat(Y.val)](const MLFloat16& x) {
-                         return MLFloat16(math::floatToHalf(std::fmod(math::halfToFloat(x.val), Y_fl)));
-                       });
+        std::transform(X.begin(), X.end(), output.begin(), [Y_fl = math::halfToFloat(Y.val)](const MLFloat16& x) {
+          return MLFloat16(math::floatToHalf(std::fmod(math::halfToFloat(x.val), Y_fl)));
+        });
       },
       [](BroadcastHelper& per_iter_bh) {
         auto X = per_iter_bh.SpanInput0<MLFloat16>();
         auto Y = per_iter_bh.SpanInput1<MLFloat16>();
         auto output = per_iter_bh.OutputSpan<MLFloat16>();
 
-        std::transform(X.begin(), X.end(), Y.begin(), output.begin(),
-                       [](const MLFloat16& x, const MLFloat16& y) {
-                         auto x_fl = math::halfToFloat(x.val);
-                         auto y_fl = math::halfToFloat(y.val);
-                         return MLFloat16(math::floatToHalf(std::fmod(x_fl, y_fl)));
-                       });
+        std::transform(X.begin(), X.end(), Y.begin(), output.begin(), [](const MLFloat16& x, const MLFloat16& y) {
+          auto x_fl = math::halfToFloat(x.val);
+          auto y_fl = math::halfToFloat(y.val);
+          return MLFloat16(math::floatToHalf(std::fmod(x_fl, y_fl)));
+        });
       }};
 
   UntypedBroadcastTwo(*context, funcs);
@@ -1934,8 +1890,7 @@ void UntypedBroadcastTwo(OpKernelContext& context, const ProcessBroadcastSpanFun
 // Variant of UntypedBroadcastTwo that will parallelize.
 // Operator usage is the same as the parallelization is opaque to the operator.
 // unit_cost must be a valid cost value.
-void UntypedBroadcastTwo(OpKernelContext& context, const ProcessBroadcastSpanFuncs& funcs, double unit_cost,
-                         void* user_data) {
+void UntypedBroadcastTwo(OpKernelContext& context, const ProcessBroadcastSpanFuncs& funcs, double unit_cost, void* user_data) {
   const Tensor& input0_tensor = *context.Input<Tensor>(0);
   const Tensor& input1_tensor = *context.Input<Tensor>(1);
   InputBroadcaster input_broadcaster(input0_tensor, input1_tensor);
@@ -1963,19 +1918,13 @@ void UntypedBroadcastTwo(OpKernelContext& context, const ProcessBroadcastSpanFun
     const InputBroadcaster& const_input_broadcaster = input_broadcaster;
 
     concurrency::ThreadPool::TryParallelFor(
-        tp, output_size / span_size,
-        TensorOpCost{static_cast<double>(input_broadcaster.Input0ElementSize()) * span_size,
-                     static_cast<double>(output_tensor.DataType()->Size()) * span_size,
-                     unit_cost * span_size},
-        [span_size, &const_input_broadcaster, &output_tensor, &funcs, user_data](std::ptrdiff_t first_span,
-                                                                                 std::ptrdiff_t last_span) {
+        tp, output_size / span_size, TensorOpCost{static_cast<double>(input_broadcaster.Input0ElementSize()) * span_size, static_cast<double>(output_tensor.DataType()->Size()) * span_size, unit_cost * span_size}, [span_size, &const_input_broadcaster, &output_tensor, &funcs, user_data](std::ptrdiff_t first_span, std::ptrdiff_t last_span) {
           // copy original input_broadcaster (which is at start of all input) and advance to this segment
           InputBroadcaster segment_input_broadcaster(const_input_broadcaster);
           segment_input_broadcaster.AdvanceBy(first_span * span_size);
 
           // create broadcaster for this segment of output
-          OutputBroadcaster segment_output_broadcaster(span_size, output_tensor,
-                                                       first_span * span_size, last_span * span_size);
+          OutputBroadcaster segment_output_broadcaster(span_size, output_tensor, first_span * span_size, last_span * span_size);
 
           BroadcastHelper segment_helper(segment_input_broadcaster, segment_output_broadcaster, user_data);
           BroadcastLooper(segment_helper, funcs);
@@ -1984,9 +1933,7 @@ void UntypedBroadcastTwo(OpKernelContext& context, const ProcessBroadcastSpanFun
 }
 
 // allocate_tensor should allocate a tensor of the output type with the given shape
-static void UntypedBroadcastVariadic(int input_count, OpKernelContext& context,
-                                     AllocateTensorFunc allocate_tensor,
-                                     const ProcessBroadcastSpanFuncs& funcs) {
+static void UntypedBroadcastVariadic(int input_count, OpKernelContext& context, AllocateTensorFunc allocate_tensor, const ProcessBroadcastSpanFuncs& funcs) {
   const auto& input0 = *context.Input<Tensor>(0);
 
   // One item is trivial, just copy and exit

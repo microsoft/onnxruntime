@@ -275,12 +275,7 @@ Status QnnBackendManager::SetDspPowerConfig() {
   rpc_control_latency.config = QNN_DSP_PERF_INFRASTRUCTURE_POWER_CONFIGOPTION_RPC_CONTROL_LATENCY;
   rpc_control_latency.rpcControlLatencyConfig = rpc_control_latency_;
 
-  const QnnDspPerfInfrastructure_PowerConfig_t* power_configs[] = {&dcvs_enable, &sleep_disable,
-                                                                   &dcvs_power_mode, &bus_VCorner_min,
-                                                                   &bus_VCorner_target, &bus_VCorner_max,
-                                                                   &core_VCorner_min, &core_VCorner_target,
-                                                                   &core_VCorner_max, &rpc_control_latency,
-                                                                   nullptr};
+  const QnnDspPerfInfrastructure_PowerConfig_t* power_configs[] = {&dcvs_enable, &sleep_disable, &dcvs_power_mode, &bus_VCorner_min, &bus_VCorner_target, &bus_VCorner_max, &core_VCorner_min, &core_VCorner_target, &core_VCorner_max, &rpc_control_latency, nullptr};
 
   QnnDevice_Infrastructure_t qnn_device_infra = nullptr;
   auto status = qnn_interface_.deviceGetInfrastructure(&qnn_device_infra);

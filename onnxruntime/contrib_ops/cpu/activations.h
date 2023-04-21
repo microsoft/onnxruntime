@@ -72,8 +72,7 @@ class Gelu : public OpKernel {
     constexpr int64_t length_per_task = 4096;  // this number comes from FastGelu.
     int64_t task_count = (elem_count + length_per_task - 1) / length_per_task;
     concurrency::ThreadPool::TryBatchParallelFor(
-        tp, static_cast<int32_t>(task_count),
-        [&](ptrdiff_t task_idx) {
+        tp, static_cast<int32_t>(task_count), [&](ptrdiff_t task_idx) {
           const auto start = task_idx * length_per_task;
           const T* p_input = input_data + start;
           T* p_output = output_data + start;
@@ -112,8 +111,7 @@ class QuickGelu : public OpKernel {
     constexpr int64_t length_per_task = 4096;  // this number comes from FastGelu.
     int64_t task_count = (elem_count + length_per_task - 1) / length_per_task;
     concurrency::ThreadPool::TryBatchParallelFor(
-        tp, static_cast<int32_t>(task_count),
-        [&](ptrdiff_t task_idx) {
+        tp, static_cast<int32_t>(task_count), [&](ptrdiff_t task_idx) {
           const auto start = task_idx * length_per_task;
           const T* p_input = input_data + start;
           T* p_output = output_data + start;

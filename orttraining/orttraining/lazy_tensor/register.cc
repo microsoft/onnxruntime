@@ -68,8 +68,7 @@ void register_ort_as_torch_jit_executor() {
   // Tell Pytorch to use "op_creator" to execute "accelerator_symbol"
   // when executing JIT graph.
   torch::jit::RegisterOperators op({torch::jit::Operator(
-      accelerator_symbol, op_creator,
-      c10::AliasAnalysisKind::PURE_FUNCTION)});
+      accelerator_symbol, op_creator, c10::AliasAnalysisKind::PURE_FUNCTION)});
 }
 }  // namespace lazytensor
 }  // namespace onnxruntime

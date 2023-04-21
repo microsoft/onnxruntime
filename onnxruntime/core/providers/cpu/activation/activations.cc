@@ -14,23 +14,19 @@ namespace onnxruntime {
 
 #define REGISTER_VERSIONED_UNARY_ELEMENTWISE_KERNEL(op, since_version, end_version) \
   ONNX_CPU_OPERATOR_VERSIONED_KERNEL(                                               \
-      op, since_version, end_version,                                               \
-      KernelDefBuilder().MayInplace(0, 0).TypeConstraint("T", DataTypeImpl::GetTensorType<float>()), op<float>);
+      op, since_version, end_version, KernelDefBuilder().MayInplace(0, 0).TypeConstraint("T", DataTypeImpl::GetTensorType<float>()), op<float>);
 
 #define REGISTER_UNARY_ELEMENTWISE_KERNEL(op, since_version) \
   ONNX_CPU_OPERATOR_KERNEL(                                  \
-      op, since_version,                                     \
-      KernelDefBuilder().MayInplace(0, 0).TypeConstraint("T", DataTypeImpl::GetTensorType<float>()), op<float>);
+      op, since_version, KernelDefBuilder().MayInplace(0, 0).TypeConstraint("T", DataTypeImpl::GetTensorType<float>()), op<float>);
 
 #define REGISTER_VERSIONED_UNARY_ELEMENTWISE_TYPED_KERNEL(op, since_version, end_version, type) \
   ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(                                                     \
-      op, since_version, end_version, type,                                                     \
-      KernelDefBuilder().MayInplace(0, 0).TypeConstraint("T", DataTypeImpl::GetTensorType<type>()), op<type>);
+      op, since_version, end_version, type, KernelDefBuilder().MayInplace(0, 0).TypeConstraint("T", DataTypeImpl::GetTensorType<type>()), op<type>);
 
 #define REGISTER_UNARY_ELEMENTWISE_TYPED_KERNEL(op, since_version, type) \
   ONNX_CPU_OPERATOR_TYPED_KERNEL(                                        \
-      op, since_version, type,                                           \
-      KernelDefBuilder().MayInplace(0, 0).TypeConstraint("T", DataTypeImpl::GetTensorType<type>()), op<type>);
+      op, since_version, type, KernelDefBuilder().MayInplace(0, 0).TypeConstraint("T", DataTypeImpl::GetTensorType<type>()), op<type>);
 
 REGISTER_UNARY_ELEMENTWISE_KERNEL(Elu, 6);
 REGISTER_UNARY_ELEMENTWISE_KERNEL(HardSigmoid, 6);
@@ -62,8 +58,7 @@ REGISTER_UNARY_ELEMENTWISE_KERNEL(LeakyRelu, 16);
 
 namespace functors {
 template <typename T>
-Status ElementWiseRangedTransform<T>::Create(const std::string& type, const NodeAttributes& attributes,
-                                             std::unique_ptr<ElementWiseRangedTransform<T>>& out) {
+Status ElementWiseRangedTransform<T>::Create(const std::string& type, const NodeAttributes& attributes, std::unique_ptr<ElementWiseRangedTransform<T>>& out) {
 #define CREATE_ELE_KERNEL(X)                     \
   if (type == #X) {                              \
     auto p = std::make_unique<functors::X<T>>(); \
@@ -93,8 +88,7 @@ Status ElementWiseRangedTransform<T>::Create(const std::string& type, const Node
   return Status(ONNXRUNTIME, FAIL, "unknown kernel type");
 }
 
-template Status ElementWiseRangedTransform<float>::Create(const std::string& type, const NodeAttributes& attributes,
-                                                          std::unique_ptr<ElementWiseRangedTransform<float>>& out);
+template Status ElementWiseRangedTransform<float>::Create(const std::string& type, const NodeAttributes& attributes, std::unique_ptr<ElementWiseRangedTransform<float>>& out);
 }  // namespace functors
 
 namespace functors {

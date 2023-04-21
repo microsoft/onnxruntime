@@ -9,7 +9,8 @@ namespace cuda {
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     Unsqueeze,
     kOnnxDomain,
-    1, 10,
+    1,
+    10,
     kCudaExecutionProvider,
     (*KernelDefBuilder::Create())
         .Alias(0, 0)
@@ -20,7 +21,8 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     Unsqueeze,
     kOnnxDomain,
-    11, 12,
+    11,
+    12,
     kCudaExecutionProvider,
     (*KernelDefBuilder::Create())
         .Alias(0, 0)

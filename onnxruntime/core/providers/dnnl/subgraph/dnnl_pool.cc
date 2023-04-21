@@ -51,8 +51,7 @@ void DnnlPool::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
 
   auto dilation = dnnl::memory::dims(kernel_shape.size(), 0);
 
-  auto pool_pd = dnnl::pooling_forward::primitive_desc(dnnl_engine, prop_kind, algo, src_md, dst_md, strides,
-                                                       kernel_shape, dilation, padding_left, padding_right);
+  auto pool_pd = dnnl::pooling_forward::primitive_desc(dnnl_engine, prop_kind, algo, src_md, dst_md, strides, kernel_shape, dilation, padding_left, padding_right);
 
 #ifndef ENABLE_TRAINING
   // If using GPU this will move the memory from the CPU to the GPU.
@@ -64,12 +63,9 @@ void DnnlPool::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
 #ifdef ENABLE_TRAINING
   auto pool_workspace_mem = dnnl::memory(pool_pd.workspace_desc(), dnnl_engine);
 
-  sp.AddPrimitive(pool_op, {{DNNL_ARG_SRC, pool_src_mem},
-                            {DNNL_ARG_WORKSPACE, pool_workspace_mem},
-                            {DNNL_ARG_DST, pool_dst_mem}});
+  sp.AddPrimitive(pool_op, {{DNNL_ARG_SRC, pool_src_mem}, {DNNL_ARG_WORKSPACE, pool_workspace_mem}, {DNNL_ARG_DST, pool_dst_mem}});
 #else
-  sp.AddPrimitive(pool_op, {{DNNL_ARG_SRC, pool_src_mem},
-                            {DNNL_ARG_DST, pool_dst_mem}});
+  sp.AddPrimitive(pool_op, {{DNNL_ARG_SRC, pool_src_mem}, {DNNL_ARG_DST, pool_dst_mem}});
 #endif  // ENABLE_TRAINING
 
   sp.SetMemory(node.Output(OUT_Y), pool_dst_mem);

@@ -51,7 +51,8 @@ class FusedConvFp16 final : public OpKernel {
   Status Compute(OpKernelContext* context) const override;
 
   Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
-                 /*out*/ bool& is_packed, /*out*/ PrePackedWeights* prepacked_weights) override;
+                 /*out*/ bool& is_packed,
+                 /*out*/ PrePackedWeights* prepacked_weights) override;
 
   Status UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers,
                                    int input_idx,
@@ -283,9 +284,7 @@ Status FusedConvFp16::Compute(OpKernelContext* context) const {
   }
   if (Sum) {
     if (Sum->Shape() != Y->Shape()) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Z shape does not match output shape.",
-                             " Z: ", Sum->Shape().ToString().c_str(),
-                             " Output: ", Y->Shape().ToString().c_str());
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Z shape does not match output shape.", " Z: ", Sum->Shape().ToString().c_str(), " Output: ", Y->Shape().ToString().c_str());
     }
   }
 
@@ -560,7 +559,9 @@ Status FusedConvFp16::Compute(OpKernelContext* context) const {
               static_cast<size_t>(output_count),
               static_cast<size_t>(group_output_channels),
               static_cast<size_t>(kernel_dim),
-              1, &gemm_params, thread_pool);
+              1,
+              &gemm_params,
+              thread_pool);
         }
       }
     };
@@ -578,9 +579,7 @@ Status FusedConvFp16::Compute(OpKernelContext* context) const {
         MLAS_ACTIVATION activation;
         activation.ActivationKind = MlasIdentityActivation;
         MLAS_HALF_GEMM_ACTIVATION_PROCESSOR proc(activation, SumData);
-        proc.Process(Ydata, 0, 0, static_cast<size_t>(M),
-                     static_cast<size_t>(output_image_size),
-                     static_cast<size_t>(output_image_size));
+        proc.Process(Ydata, 0, 0, static_cast<size_t>(M), static_cast<size_t>(output_image_size), static_cast<size_t>(output_image_size));
       }
     }
 

@@ -72,7 +72,8 @@ void CheckArguments(
 
   for (const auto i : requires_grads) {
     ORT_ENFORCE(i == 0 || i == 1,
-                "Flag of requiring gradient must be either 0 (not required) or 1 (required) but got ", i);
+                "Flag of requiring gradient must be either 0 (not required) or 1 (required) but got ",
+                i);
   }
 
   std::vector<int64_t> counts(len, 0);
@@ -222,15 +223,13 @@ PythonObjectPtr CreatePythonCallArguments(
   for (size_t i = 0; i < tensor_args.size(); ++i) {
     // Wrap with DLPack, then transfer to Python for its release.
     PyObject* dl_tensor = training::framework::torch::ToDlpack(tensor_args[i]);
-    Ort_PyTuple_SetItem_NoIncref(args.get(), num_control_args + tensor_indices[i], dl_tensor,
-                                 "dltensor");
+    Ort_PyTuple_SetItem_NoIncref(args.get(), num_control_args + tensor_indices[i], dl_tensor, "dltensor");
   }
 
   // Non-tensor inputs to call autograd.Function.apply or autograd.Function.backward.
   for (size_t i = 0; i < obj_args.size(); ++i) {
     PyObject* pyobj = reinterpret_cast<PyObject*>(obj_args[i]);
-    Ort_PyTuple_SetItem_Incref(args.get(), num_control_args + obj_indices[i], pyobj,
-                               "const_args");
+    Ort_PyTuple_SetItem_Incref(args.get(), num_control_args + obj_indices[i], pyobj, "const_args");
   }
 
   return args;

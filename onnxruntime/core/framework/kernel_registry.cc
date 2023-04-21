@@ -14,11 +14,9 @@
 namespace onnxruntime {
 
 namespace {
-bool IsTypeProtoCompatible(gsl::span<const MLDataType> enabled_types, const ONNX_NAMESPACE::TypeProto& actual_type,
-                           std::string& mismatch_reason) {
+bool IsTypeProtoCompatible(gsl::span<const MLDataType> enabled_types, const ONNX_NAMESPACE::TypeProto& actual_type, std::string& mismatch_reason) {
   const bool is_type_compatible = std::any_of(
-      enabled_types.begin(), enabled_types.end(),
-      [&actual_type](const DataTypeImpl* expected_type) {
+      enabled_types.begin(), enabled_types.end(), [&actual_type](const DataTypeImpl* expected_type) {
         bool rc = expected_type->IsCompatible(actual_type);  // for easier debugging
         return rc;
       });
@@ -152,8 +150,7 @@ bool KernelRegistry::VerifyKernelDef(const Node& node,
   const auto& kernel_type_constraints = kernel_def.TypeConstraints();
 
   bool matched = type_constraint_values ? MatchKernelDefTypes(kernel_type_constraints, *type_constraint_values)
-                                        : MatchKernelDefTypes(node, kernel_type_constraints, *kernel_type_str_resolver,
-                                                              mismatch_reason);
+                                        : MatchKernelDefTypes(node, kernel_type_constraints, *kernel_type_str_resolver, mismatch_reason);
 
   if (!matched) {
     std::ostringstream ostr;
@@ -206,8 +203,7 @@ Status KernelRegistry::TryFindKernelImpl(const Node& node,
         << " and type (" << node.OpType() << ")"
         << " kernel is not supported in " << expected_provider << "."
         << " Encountered following errors: (";
-    std::copy(verify_kernel_def_error_strs.begin(), verify_kernel_def_error_strs.end(),
-              std::ostream_iterator<std::string>(oss, "\n"));
+    std::copy(verify_kernel_def_error_strs.begin(), verify_kernel_def_error_strs.end(), std::ostream_iterator<std::string>(oss, "\n"));
     oss << ")";
 
     VLOGS_DEFAULT(2) << "TryFindKernel failed, Reason: " << oss.str();
@@ -217,15 +213,11 @@ Status KernelRegistry::TryFindKernelImpl(const Node& node,
   return Status(common::ONNXRUNTIME, common::FAIL, "Kernel not found");
 }
 
-Status KernelRegistry::TryFindKernel(const Node& node, ProviderType exec_provider,
-                                     const IKernelTypeStrResolver& kernel_type_str_resolver,
-                                     const KernelCreateInfo** out) const {
+Status KernelRegistry::TryFindKernel(const Node& node, ProviderType exec_provider, const IKernelTypeStrResolver& kernel_type_str_resolver, const KernelCreateInfo** out) const {
   return TryFindKernelImpl(node, exec_provider, &kernel_type_str_resolver, nullptr, out);
 }
 
-Status KernelRegistry::TryFindKernel(const Node& node, ProviderType exec_provider,
-                                     const TypeConstraintMap& type_constraints,
-                                     const KernelCreateInfo** out) const {
+Status KernelRegistry::TryFindKernel(const Node& node, ProviderType exec_provider, const TypeConstraintMap& type_constraints, const KernelCreateInfo** out) const {
   return TryFindKernelImpl(node, exec_provider, nullptr, &type_constraints, out);
 }
 
@@ -244,9 +236,7 @@ Status KernelRegistry::Register(KernelCreateInfo&& create_info) {
   for (auto i = range.first; i != range.second; ++i) {
     if (i->second.kernel_def &&
         i->second.kernel_def->IsConflict(*create_info.kernel_def)) {
-      return Status(common::ONNXRUNTIME, common::FAIL,
-                    "Failed to add kernel for " + key +
-                        ": Conflicting with a registered kernel with op versions.");
+      return Status(common::ONNXRUNTIME, common::FAIL, "Failed to add kernel for " + key + ": Conflicting with a registered kernel with op versions.");
     }
   }
 

@@ -28,7 +28,8 @@ static int GetVersionForDomain(const std::string& domain, const M<std::string, i
 
 std::unique_ptr<ONNX_NAMESPACE::OpSchema> CreateSchema(
     const Graph& graph,
-    const IndexedSubGraph& nodes_to_fuse, bool allow_aggregated_tensor_type) {
+    const IndexedSubGraph& nodes_to_fuse,
+    bool allow_aggregated_tensor_type) {
   const auto* meta_def = nodes_to_fuse.GetMetaDef();
 
   using ONNX_NAMESPACE::OpSchema;
@@ -47,8 +48,7 @@ std::unique_ptr<ONNX_NAMESPACE::OpSchema> CreateSchema(
     // Due to this, a user of this style of schema must manually check whether any applicable type constraints
     // for each input or output are satisfied prior to creating a node that uses this schema
     //
-    op_schema->TypeConstraint("TAggregatedTypes", ONNX_NAMESPACE::OpSchema::all_tensor_types_with_bfloat(),
-                              "all_tensor_types_with_bfloat");
+    op_schema->TypeConstraint("TAggregatedTypes", ONNX_NAMESPACE::OpSchema::all_tensor_types_with_bfloat(), "all_tensor_types_with_bfloat");
   }
 
   int i = 0;
@@ -56,18 +56,14 @@ std::unique_ptr<ONNX_NAMESPACE::OpSchema> CreateSchema(
     const auto* input_arg = graph.GetNodeArg(input);
     // inputs must have a type. can be inferred for outputs.
     ORT_ENFORCE(input_arg->Type() != nullptr);
-    op_schema->Input(i, input, "",
-                     allow_aggregated_tensor_type ? "TAggregatedTypes" : *input_arg->Type(),
-                     OpSchema::FormalParameterOption::Single, /*is_homogeneous=*/!allow_aggregated_tensor_type);
+    op_schema->Input(i, input, "", allow_aggregated_tensor_type ? "TAggregatedTypes" : *input_arg->Type(), OpSchema::FormalParameterOption::Single, /*is_homogeneous=*/!allow_aggregated_tensor_type);
     i++;
   }
 
   i = 0;
   for (const auto& output : meta_def->outputs) {
     const auto* output_arg = graph.GetNodeArg(output);
-    op_schema->Output(i, output, "",
-                      allow_aggregated_tensor_type ? "TAggregatedTypes" : *output_arg->Type(),
-                      OpSchema::FormalParameterOption::Single, /*is_homogeneous=*/!allow_aggregated_tensor_type);
+    op_schema->Output(i, output, "", allow_aggregated_tensor_type ? "TAggregatedTypes" : *output_arg->Type(), OpSchema::FormalParameterOption::Single, /*is_homogeneous=*/!allow_aggregated_tensor_type);
     i++;
   }
   op_schema->Finalize();
@@ -314,8 +310,7 @@ std::unique_ptr<ONNX_NAMESPACE::OpSchema> CreateSchema(const std::string& functi
     const auto& domain = opSet.domain();
     const auto version = gsl::narrow_cast<int>(opSet.version());
 
-    model_load_utils::ValidateOpsetForDomain(onnx_released_versions, logger,
-                                             allow_official_onnx_release_only_final, domain, version);
+    model_load_utils::ValidateOpsetForDomain(onnx_released_versions, logger, allow_official_onnx_release_only_final, domain, version);
 
     // We need to overwrite the domain here with ("") or else the loop below will try to find ("")
     // in the map and if not found (when domain == kOnnxDomainAlias), adds an entry for ("", 11).
@@ -335,9 +330,7 @@ std::unique_ptr<ONNX_NAMESPACE::OpSchema> CreateSchema(const std::string& functi
                                                                                        model_local_functions.end());
         std::unordered_map<std::string, TensorShapeProto> empty_map;
         ONNX_NAMESPACE::shape_inference::SymbolTableImpl symbolTable;
-        ONNX_NAMESPACE::shape_inference::InferShapeForFunctionNode(*onnx_func_proto, func_domain_to_version,
-                                                                   schema_registry, ctx, options, map_copy,
-                                                                   &symbolTable, &empty_map);
+        ONNX_NAMESPACE::shape_inference::InferShapeForFunctionNode(*onnx_func_proto, func_domain_to_version, schema_registry, ctx, options, map_copy, &symbolTable, &empty_map);
       });
 
   op_schema->Finalize();
@@ -475,8 +468,7 @@ class Inliner {
   }
 };
 
-void Specialize(ONNX_NAMESPACE::FunctionProto& called_function, const ONNX_NAMESPACE::NodeProto calling_node,
-                const onnxruntime::NodeAttributes& attr_map, std::string unique_prefix) {
+void Specialize(ONNX_NAMESPACE::FunctionProto& called_function, const ONNX_NAMESPACE::NodeProto calling_node, const onnxruntime::NodeAttributes& attr_map, std::string unique_prefix) {
   Inliner::specialize(calling_node, called_function, attr_map, unique_prefix);
 }
 

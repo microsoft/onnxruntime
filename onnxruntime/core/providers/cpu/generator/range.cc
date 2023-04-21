@@ -14,11 +14,9 @@ namespace onnxruntime {
 
 namespace op_kernel_type_control {
 ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES_ALL_OPSETS(
-    kCpuExecutionProvider, kOnnxDomain, Range, Input, 0,
-    float, double, int16_t, int32_t, int64_t);
+    kCpuExecutionProvider, kOnnxDomain, Range, Input, 0, float, double, int16_t, int32_t, int64_t);
 ORT_SPECIFY_OP_KERNEL_ARG_REQUIRED_TYPES_ALL_OPSETS(
-    kCpuExecutionProvider, kOnnxDomain, Range, Input, 0,
-    int32_t, int64_t);
+    kCpuExecutionProvider, kOnnxDomain, Range, Input, 0, int32_t, int64_t);
 }  // namespace op_kernel_type_control
 
 using EnabledRangeDataTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(
@@ -57,7 +55,9 @@ ONNX_CPU_OPERATOR_KERNEL(
 template <typename T>
 static Status ComputeRange(
     OpKernelContext* ctx,
-    const Tensor& start_tensor, const Tensor& limit_tensor, const Tensor* delta_tensor_ptr) {
+    const Tensor& start_tensor,
+    const Tensor& limit_tensor,
+    const Tensor* delta_tensor_ptr) {
   T start = *start_tensor.Data<T>();
   T limit = *limit_tensor.Data<T>();
   T delta = (delta_tensor_ptr == nullptr) ? T{1} : *(delta_tensor_ptr->Data<T>());
@@ -83,7 +83,9 @@ template <class T>
 struct CallRangeImpl {
   Status operator()(
       OpKernelContext* ctx,
-      const Tensor& start_tensor, const Tensor& limit_tensor, const Tensor* delta_tensor_ptr) const {
+      const Tensor& start_tensor,
+      const Tensor& limit_tensor,
+      const Tensor* delta_tensor_ptr) const {
     return ComputeRange<T>(ctx, start_tensor, limit_tensor, delta_tensor_ptr);
   }
 };
@@ -95,19 +97,13 @@ Status Range::Compute(OpKernelContext* ctx) const {
   const auto* delta_tensor_ptr = ctx->Input<Tensor>(2);
 
   if (!start_tensor.Shape().IsScalar()) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "start in Range operator should be scalar like tensor, yet got shape:",
-                           start_tensor.Shape());
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "start in Range operator should be scalar like tensor, yet got shape:", start_tensor.Shape());
   }
   if (!limit_tensor.Shape().IsScalar()) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "limit in Range operator should be scalar like tensor, yet got shape:",
-                           limit_tensor.Shape());
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "limit in Range operator should be scalar like tensor, yet got shape:", limit_tensor.Shape());
   }
   if (delta_tensor_ptr != nullptr && !delta_tensor_ptr->Shape().IsScalar()) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "delta in Range operator should be scalar like tensor, yet got shape:",
-                           delta_tensor_ptr->Shape());
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "delta in Range operator should be scalar like tensor, yet got shape:", delta_tensor_ptr->Shape());
   }
 
   utils::MLTypeCallDispatcherFromTypeList<EnabledRangeDataTypes> t_disp(

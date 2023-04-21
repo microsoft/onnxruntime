@@ -139,7 +139,11 @@ void CopySlice(Tensor& dst, const Tensor& src, const size_t slice_id, const size
 
   ORT_ENFORCE(src_shape[slice_axis] % num_slices == 0,
               "The dimension along the sliced axis must be divisible by the number of slices.",
-              " We have sliced dimension ", src_shape[slice_axis], " and number slices ", num_slices, ".");
+              " We have sliced dimension ",
+              src_shape[slice_axis],
+              " and number slices ",
+              num_slices,
+              ".");
 
   // Cache sliced dimension.
   const size_t slice_dim = src_shape[slice_axis];

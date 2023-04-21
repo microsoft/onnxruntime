@@ -15,8 +15,7 @@ namespace contrib {
 namespace rocm {
 
 template <typename T>
-Status LaunchFastGeluKernel(RocmTuningContext* tuning_ctx, hipStream_t stream, int input_length, int bias_length,
-                            const T* input, const T* bias, T* output);
+Status LaunchFastGeluKernel(RocmTuningContext* tuning_ctx, hipStream_t stream, int input_length, int bias_length, const T* input, const T* bias, T* output);
 
 }  // namespace rocm
 }  // namespace contrib

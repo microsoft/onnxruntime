@@ -20,8 +20,7 @@ namespace onnxruntime {
 namespace test {
 
 template <typename T>
-void VerifyOutputs(const std::vector<OrtValue>& fetches, const std::vector<int64_t>& expected_dims,
-                   const std::vector<T>& expected_values) {
+void VerifyOutputs(const std::vector<OrtValue>& fetches, const std::vector<int64_t>& expected_dims, const std::vector<T>& expected_values) {
   ASSERT_EQ(1, fetches.size());
   auto& rtensor = fetches.front().Get<Tensor>();
   TensorShape expected_shape(expected_dims);

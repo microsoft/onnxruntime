@@ -18,19 +18,16 @@ Status CheckInputs(const OpKernelContext* context) {
 
   const auto& input_dims = input->Shape().GetDims();
   if (input_dims.size() < 1) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Input 0 is expected to have 1 or more dimensions, got ", input_dims.size());
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 0 is expected to have 1 or more dimensions, got ", input_dims.size());
   }
 
   if (nullptr != bias) {
     const auto& bias_dims = bias->Shape().GetDims();
     if (bias_dims.size() != 1) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input 1 is expected to have 1 dimensions, got ", bias_dims.size());
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 1 is expected to have 1 dimensions, got ", bias_dims.size());
     }
     if (bias_dims[0] != input_dims[input_dims.size() - 1]) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input 1 dimension 0 should have same length as the last dimension of input 0");
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 1 dimension 0 should have same length as the last dimension of input 0");
     }
   }
 

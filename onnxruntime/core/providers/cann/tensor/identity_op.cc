@@ -10,12 +10,11 @@ namespace cann {
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     Dropout,
     kOnnxDomain,
-    7, 9,
+    7,
+    9,
     kCannExecutionProvider,
     (*KernelDefBuilder::Create())
-        .TypeConstraint("T", {DataTypeImpl::GetTensorType<MLFloat16>(),
-                              DataTypeImpl::GetTensorType<float>(),
-                              DataTypeImpl::GetTensorType<double>()})
+        .TypeConstraint("T", {DataTypeImpl::GetTensorType<MLFloat16>(), DataTypeImpl::GetTensorType<float>(), DataTypeImpl::GetTensorType<double>()})
         .Alias(0, 0),
     IdentityOp<true>);
 
@@ -26,9 +25,7 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     11,
     kCannExecutionProvider,
     (*KernelDefBuilder::Create())
-        .TypeConstraint("T", {DataTypeImpl::GetTensorType<MLFloat16>(),
-                              DataTypeImpl::GetTensorType<float>(),
-                              DataTypeImpl::GetTensorType<double>()})
+        .TypeConstraint("T", {DataTypeImpl::GetTensorType<MLFloat16>(), DataTypeImpl::GetTensorType<float>(), DataTypeImpl::GetTensorType<double>()})
         .TypeConstraint("T1", DataTypeImpl::GetTensorType<bool>())
         .Alias(0, 0),
     IdentityOp<true>);
@@ -36,7 +33,8 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     Identity,
     kOnnxDomain,
-    1, 12,
+    1,
+    12,
     kCannExecutionProvider,
     (*KernelDefBuilder::Create())
         .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
@@ -46,7 +44,8 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     Identity,
     kOnnxDomain,
-    13, 13,
+    13,
+    13,
     kCannExecutionProvider,
     (*KernelDefBuilder::Create())
         .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())

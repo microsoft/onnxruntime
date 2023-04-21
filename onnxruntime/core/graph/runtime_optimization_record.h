@@ -65,8 +65,7 @@ an ORT format model. This also means that non-empty node indices here must be in
 
   friend bool operator==(const NodesToOptimizeIndices& a, const NodesToOptimizeIndices& b) {
     const auto tied = [](const NodesToOptimizeIndices& n) {
-      return std::tie(n.nodes, n.num_inputs, n.num_outputs, n.variadic_input, n.variadic_output,
-                      n.num_variadic_inputs, n.num_variadic_outputs);
+      return std::tie(n.nodes, n.num_inputs, n.num_outputs, n.variadic_input, n.variadic_output, n.num_variadic_inputs, n.num_variadic_outputs);
     };
     return tied(a) == tied(b);
   }

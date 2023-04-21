@@ -25,14 +25,12 @@ class PadOpBuilder : public BaseOpBuilder {
   void AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const override;
 
  private:
-  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
-                               const logging::Logger& logger) const override;
+  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node, const logging::Logger& logger) const override;
 #endif
 
   // Operator support related
  private:
-  bool IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params,
-                         const logging::Logger& logger) const override;
+  bool IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params, const logging::Logger& logger) const override;
 
   int GetMinSupportedOpSet(const Node& /* node */) const override {
     // Note: before Pad-11, inputs `pads` and `constant_value` were attributes
@@ -43,7 +41,8 @@ class PadOpBuilder : public BaseOpBuilder {
 // Helper function
 // Use axes initializer data if `axes` input provided or create default axes vector.
 static InlinedVector<int64_t> GetPaddingAxesData(const InitializedTensorSet& initializers,
-                                                 const Node& node, int64_t input_rank) {
+                                                 const Node& node,
+                                                 int64_t input_rank) {
   InlinedVector<int64_t> axes_tensor_data;
   const auto& input_defs = node.InputDefs();
 
@@ -53,8 +52,7 @@ static InlinedVector<int64_t> GetPaddingAxesData(const InitializedTensorSet& ini
     Initializer axes_initializer(axes_tensor);
     const auto axes_data_span = axes_initializer.DataAsSpan<int64_t>();
     std::transform(
-        axes_data_span.begin(), axes_data_span.end(), std::back_inserter(axes_tensor_data),
-        [input_rank](int64_t axis) { return HandleNegativeAxis(axis, input_rank); });
+        axes_data_span.begin(), axes_data_span.end(), std::back_inserter(axes_tensor_data), [input_rank](int64_t axis) { return HandleNegativeAxis(axis, input_rank); });
   } else {
     // if not provided, make a default axes as [0, 1, ..., input_rank - 1]
     InlinedVector<int64_t> default_axes(input_rank);
@@ -126,8 +124,7 @@ Status PadOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 
 // Operator support related
 
-bool PadOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params,
-                                     const logging::Logger& logger) const {
+bool PadOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params, const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
   const auto& initializers = input_params.graph_viewer.GetAllInitializedTensors();
 

@@ -19,11 +19,9 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
 
 namespace op_kernel_type_control {
 ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES(
-    kCpuExecutionProvider, kOnnxDomain, Clip, 11, Input, 0,
-    float);
+    kCpuExecutionProvider, kOnnxDomain, Clip, 11, Input, 0, float);
 ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES(
-    kCpuExecutionProvider, kOnnxDomain, Clip, 12, Input, 0,
-    float, double, int8_t, uint8_t, int32_t, uint32_t, int64_t, uint64_t);
+    kCpuExecutionProvider, kOnnxDomain, Clip, 12, Input, 0, float, double, int8_t, uint8_t, int32_t, uint32_t, int64_t, uint64_t);
 }  // namespace op_kernel_type_control
 
 using EnabledClip11Types = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST(
@@ -99,8 +97,7 @@ Status Clip_6<T>::Compute(OpKernelContext* ctx) const {
 
 template <typename T>
 struct Clip::ComputeImpl {
-  void operator()(const Tensor* X, const Tensor* min, const Tensor* max, Tensor* Y,
-                  concurrency::ThreadPool* tp) const {
+  void operator()(const Tensor* X, const Tensor* min, const Tensor* max, Tensor* Y, concurrency::ThreadPool* tp) const {
     auto min_val = std::numeric_limits<T>::lowest();
     auto max_val = std::numeric_limits<T>::max();
     if (min) {
@@ -122,8 +119,7 @@ struct Clip::ComputeImpl {
     const int64_t task_count = (elem_count + length_per_task - 1) / length_per_task;
 
     concurrency::ThreadPool::TryBatchParallelFor(
-        tp, static_cast<int32_t>(task_count),
-        [&](ptrdiff_t task_idx) {
+        tp, static_cast<int32_t>(task_count), [&](ptrdiff_t task_idx) {
           const int64_t start = task_idx * length_per_task;
           const size_t count = narrow<size_t>(std::min(length_per_task, elem_count - start));
 

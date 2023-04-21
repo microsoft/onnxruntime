@@ -100,13 +100,8 @@ DECLARE_SCHEDULE_DISPATCHER_CLASS(OrtOpName)
 using TVMScheduleRegistry = codegen::RegistryBase<Scheduler>;
 
 // Macro declares TVM scheduler class
-#define DECLARE_TVM_SCHEDULER_CLASS(OP, PRETFIX)       \
-  DECLARE_CREATOR_CLASS(OP, PRETFIX##Scheduler,        \
-                        const tvm::Tensor&,            \
-                        const Node*,                   \
-                        tvm_codegen::CodeGenContext&,  \
-                        tvm_codegen::ScheduleContext&, \
-                        bool)
+#define DECLARE_TVM_SCHEDULER_CLASS(OP, PRETFIX) \
+  DECLARE_CREATOR_CLASS(OP, PRETFIX##Scheduler, const tvm::Tensor&, const Node*, tvm_codegen::CodeGenContext&, tvm_codegen::ScheduleContext&, bool)
 
 // Macro returns TVM scheduler's name with prefix
 #define TVM_SCHEDULER_CLASS(OP, PREFIX) \

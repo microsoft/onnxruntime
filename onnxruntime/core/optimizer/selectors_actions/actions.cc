@@ -101,28 +101,20 @@ static Status CreateReplacementNode(Graph& graph,
 
 Status ReplaceWithNew::Run(Graph& graph, const NodesToOptimize& selected_nodes) const {
   const RuntimeState runtime_state{graph, selected_nodes};
-  ORT_RETURN_IF_ERROR(CreateReplacementNode(graph, selected_nodes,
-                                            OpType(runtime_state),
-                                            Domain(runtime_state),
-                                            ExtraAttributes(runtime_state),
-                                            ValueMoves(runtime_state),
-                                            /* only_update_dest_definitions */ false, nullptr));
+  ORT_RETURN_IF_ERROR(CreateReplacementNode(graph, selected_nodes, OpType(runtime_state), Domain(runtime_state), ExtraAttributes(runtime_state), ValueMoves(runtime_state),
+                                            /* only_update_dest_definitions */ false,
+                                            nullptr));
   return node_remover_.Run(graph, selected_nodes);
 }
 
 #if !defined(ORT_MINIMAL_BUILD)
-Status ReplaceWithNew::RunForSave(Graph& graph, const NodesToOptimize& selected_nodes,
-                                  const SatRuntimeOptimizationSaveContext& /*save_context*/,
-                                  SavedState& saved_state, bool& graph_modified) const {
+Status ReplaceWithNew::RunForSave(Graph& graph, const NodesToOptimize& selected_nodes, const SatRuntimeOptimizationSaveContext& /*save_context*/, SavedState& saved_state, bool& graph_modified) const {
   // make temporary node, save its op schema, remove temporary node
   const RuntimeState runtime_state{graph, selected_nodes};
   Node* replacement{};
-  ORT_RETURN_IF_ERROR(CreateReplacementNode(graph, selected_nodes,
-                                            OpType(runtime_state),
-                                            Domain(runtime_state),
-                                            ExtraAttributes(runtime_state),
-                                            ValueMoves(runtime_state),
-                                            /* only_update_dest_definitions */ true, &replacement));
+  ORT_RETURN_IF_ERROR(CreateReplacementNode(graph, selected_nodes, OpType(runtime_state), Domain(runtime_state), ExtraAttributes(runtime_state), ValueMoves(runtime_state),
+                                            /* only_update_dest_definitions */ true,
+                                            &replacement));
 
   ORT_RETURN_IF_NOT(graph.SetOpSchemaFromRegistryForNode(*replacement), "Failed to set node op schema.");
   saved_state.produced_node_op_schemas.push_back(replacement->Op());

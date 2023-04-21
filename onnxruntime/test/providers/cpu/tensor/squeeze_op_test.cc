@@ -65,10 +65,8 @@ TEST(SqueezeOpTest, Squeeze_string) {
 TEST(SqueezeOpTest, Squeeze_2) {
   OpTester test("Squeeze");
   test.AddAttribute("axes", std::vector<int64_t>{0, 2, 3});
-  test.AddInput<float>("data", {1, 4, 1, 1, 2},
-                       std::vector<float>{1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f});
-  test.AddOutput<float>("squeezed", {4, 2},
-                        std::vector<float>{1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f});
+  test.AddInput<float>("data", {1, 4, 1, 1, 2}, std::vector<float>{1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f});
+  test.AddOutput<float>("squeezed", {4, 2}, std::vector<float>{1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f});
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});  // Incorrect precision. Will be re-enabled after it's fixed
 }
 
@@ -76,10 +74,8 @@ TEST(SqueezeOpTest, UnsortedAxes) {
   OpTester test("Squeeze");
   test.AddShapeToTensorData(false);  // TODO: re-enable shape inference test after ONNX fix
   test.AddAttribute("axes", std::vector<int64_t>{3, 0, 2});
-  test.AddInput<float>("data", {1, 4, 1, 1, 2},
-                       std::vector<float>{1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f});
-  test.AddOutput<float>("squeezed", {4, 2},
-                        std::vector<float>{1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f});
+  test.AddInput<float>("data", {1, 4, 1, 1, 2}, std::vector<float>{1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f});
+  test.AddOutput<float>("squeezed", {4, 2}, std::vector<float>{1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f});
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});  // Incorrect precision. Will be re-enabled after it's fixed
 }
 
@@ -87,10 +83,8 @@ TEST(SqueezeOpTest, DuplicateAxes) {
   OpTester test("Squeeze");
   test.AddShapeToTensorData(false);  // TODO: re-enable shape inference test after ONNX fix
   test.AddAttribute("axes", std::vector<int64_t>{3, 0, 2, 0, 2, 3});
-  test.AddInput<float>("data", {1, 4, 1, 1, 2},
-                       std::vector<float>{1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f});
-  test.AddOutput<float>("squeezed", {4, 2},
-                        std::vector<float>{1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f});
+  test.AddInput<float>("data", {1, 4, 1, 1, 2}, std::vector<float>{1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f});
+  test.AddOutput<float>("squeezed", {4, 2}, std::vector<float>{1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f});
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});  // Incorrect precision. Will be re-enabled after it's fixed
 }
 
@@ -114,10 +108,8 @@ TEST(SqueezeOpTest, BadAxes) {
 TEST(SqueezeOpTest, SqueezeNegAxis_2) {
   OpTester test("Squeeze", 11);
   test.AddAttribute("axes", std::vector<int64_t>{0, -3, -2});
-  test.AddInput<float>("data", {1, 4, 1, 1, 2},
-                       std::vector<float>{1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f});
-  test.AddOutput<float>("squeezed", {4, 2},
-                        std::vector<float>{1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f});
+  test.AddInput<float>("data", {1, 4, 1, 1, 2}, std::vector<float>{1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f});
+  test.AddOutput<float>("squeezed", {4, 2}, std::vector<float>{1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f});
 
   // OpenVINO EP Incorrect precision. Will be re-enabled after its fixed
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});
@@ -126,11 +118,9 @@ TEST(SqueezeOpTest, SqueezeNegAxis_2) {
 TEST(SqueezeOpTest, Squeeze_2_axes_input) {
   auto run_test = [](bool axes_is_initializer) {
     OpTester test("Squeeze", 13);
-    test.AddInput<float>("data", {1, 4, 1, 1, 2},
-                         std::vector<float>{1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f});
+    test.AddInput<float>("data", {1, 4, 1, 1, 2}, std::vector<float>{1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f});
     test.AddInput<int64_t>("axes", {3}, std::vector<int64_t>{0, 2, 3}, axes_is_initializer);
-    test.AddOutput<float>("squeezed", {4, 2},
-                          std::vector<float>{1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f});
+    test.AddOutput<float>("squeezed", {4, 2}, std::vector<float>{1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f});
     // Incorrect precision for OpenVINO EP. Will be re-enabled after it's fixed
     // TensorRT and OpenVINO dont support "axes" input in opset 13, re-enable after
     test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider, kTensorrtExecutionProvider});
@@ -156,12 +146,10 @@ TEST(SqueezeOpTest, Squeeze_Empty_Axes_opset13) {
 TEST(SqueezeOpTest, SqueezeNegAxis_axes_input) {
   auto run_test = [](bool axes_is_initializer) {
     OpTester test("Squeeze", 13);
-    test.AddInput<float>("data", {1, 4, 1, 1, 2},
-                         std::vector<float>{1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f});
+    test.AddInput<float>("data", {1, 4, 1, 1, 2}, std::vector<float>{1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f});
 
     test.AddInput<int64_t>("axes", {3}, std::vector<int64_t>{0, -3, -2}, axes_is_initializer);
-    test.AddOutput<float>("squeezed", {4, 2},
-                          std::vector<float>{1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f});
+    test.AddOutput<float>("squeezed", {4, 2}, std::vector<float>{1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f});
 
     // OpenVINO EP Incorrect precision. Will be re-enabled after its fixed
     // TensorRT and OpenVINO dont support "axes" input in opset 13, re-enable after
@@ -176,11 +164,9 @@ TEST(SqueezeOpTest, SqueezeNegAxis_axes_input) {
 TEST(SqueezeOpTest, Squeeze_4d_2_axes_input) {
   auto run_test = [](bool axes_is_initializer) {
     OpTester test("Squeeze", 13);
-    test.AddInput<float>("data", {1, 4, 1, 2},
-                         std::vector<float>{1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f});
+    test.AddInput<float>("data", {1, 4, 1, 2}, std::vector<float>{1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f});
     test.AddInput<int64_t>("axes", {2}, std::vector<int64_t>{0, 2}, axes_is_initializer);
-    test.AddOutput<float>("squeezed", {4, 2},
-                          std::vector<float>{1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f});
+    test.AddOutput<float>("squeezed", {4, 2}, std::vector<float>{1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f});
     // Incorrect precision for OpenVINO EP. Will be re-enabled after it's fixed
     // TensorRT and OpenVINO dont support "axes" input in opset 13, re-enable after
     test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider, kTensorrtExecutionProvider});
@@ -194,12 +180,10 @@ TEST(SqueezeOpTest, Squeeze_4d_2_axes_input) {
 TEST(SqueezeOpTest, Squeeze_4d_NegAxis_axes_input) {
   auto run_test = [](bool axes_is_initializer) {
     OpTester test("Squeeze", 13);
-    test.AddInput<float>("data", {1, 4, 1, 2},
-                         std::vector<float>{1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f});
+    test.AddInput<float>("data", {1, 4, 1, 2}, std::vector<float>{1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f});
 
     test.AddInput<int64_t>("axes", {2}, std::vector<int64_t>{0, -2}, axes_is_initializer);
-    test.AddOutput<float>("squeezed", {4, 2},
-                          std::vector<float>{1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f});
+    test.AddOutput<float>("squeezed", {4, 2}, std::vector<float>{1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f});
 
     // OpenVINO EP Incorrect precision. Will be re-enabled after its fixed
     // TensorRT and OpenVINO dont support "axes" input in opset 13, re-enable after
@@ -236,11 +220,9 @@ TEST(SqueezeOpTest, Squeeze_opset13_2_bfloat16) {
 #endif
   OpTester test("Squeeze", 13);
   // test.AddAttribute("axes", std::vector<int64_t>{0, 2, 3});
-  test.AddInput<BFloat16>("data", {1, 4, 1, 1, 2},
-                          MakeBFloat16({1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f}));
+  test.AddInput<BFloat16>("data", {1, 4, 1, 1, 2}, MakeBFloat16({1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f}));
   test.AddInput<int64_t>("axes", {3}, {0, 2, 3}, true);  // only support initializer input at axes.
-  test.AddOutput<BFloat16>("squeezed", {4, 2},
-                           MakeBFloat16({1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f}));
+  test.AddOutput<BFloat16>("squeezed", {4, 2}, MakeBFloat16({1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f}));
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
 #if defined(USE_DNNL)
   execution_providers.push_back(DefaultDnnlExecutionProvider());
@@ -307,11 +289,9 @@ TEST(SqueezeOpTest, UnsortedAxes_opset13_bfloat16) {
   }
 #endif
   OpTester test("Squeeze", 13);
-  test.AddInput<BFloat16>("data", {1, 4, 1, 1, 2},
-                          MakeBFloat16({1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f}));
+  test.AddInput<BFloat16>("data", {1, 4, 1, 1, 2}, MakeBFloat16({1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f}));
   test.AddInput<int64_t>("axes", {3}, std::vector<int64_t>{3, 0, 2}, true);
-  test.AddOutput<BFloat16>("squeezed", {4, 2},
-                           MakeBFloat16({1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f}));
+  test.AddOutput<BFloat16>("squeezed", {4, 2}, MakeBFloat16({1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f}));
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
 #if defined(USE_DNNL)
   execution_providers.push_back(DefaultDnnlExecutionProvider());
@@ -327,11 +307,9 @@ TEST(SqueezeOpTest, DuplicateAxes_opset13_bfloat16) {
   }
 #endif
   OpTester test("Squeeze", 13);
-  test.AddInput<BFloat16>("data", {1, 4, 1, 1, 2},
-                          MakeBFloat16({1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f}));
+  test.AddInput<BFloat16>("data", {1, 4, 1, 1, 2}, MakeBFloat16({1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f}));
   test.AddInput<int64_t>("axes", {6}, std::vector<int64_t>{3, 0, 2, 0, 2, 3}, true);
-  test.AddOutput<BFloat16>("squeezed", {4, 2},
-                           MakeBFloat16({1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f}));
+  test.AddOutput<BFloat16>("squeezed", {4, 2}, MakeBFloat16({1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f}));
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
 #if defined(USE_DNNL)
   execution_providers.push_back(DefaultDnnlExecutionProvider());
@@ -368,11 +346,9 @@ TEST(SqueezeOpTest, SqueezeNegAxis_2_opset13_bfloat16) {
   }
 #endif
   OpTester test("Squeeze", 13);
-  test.AddInput<BFloat16>("data", {1, 4, 1, 1, 2},
-                          MakeBFloat16({1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f}));
+  test.AddInput<BFloat16>("data", {1, 4, 1, 1, 2}, MakeBFloat16({1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f}));
   test.AddInput<int64_t>("axes", {3}, std::vector<int64_t>{0, -3, -2}, true);
-  test.AddOutput<BFloat16>("squeezed", {4, 2},
-                           MakeBFloat16({1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f}));
+  test.AddOutput<BFloat16>("squeezed", {4, 2}, MakeBFloat16({1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f}));
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
 #if defined(USE_DNNL)
   execution_providers.push_back(DefaultDnnlExecutionProvider());

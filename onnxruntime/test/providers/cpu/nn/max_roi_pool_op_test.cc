@@ -21,9 +21,7 @@ TEST(RoIPoolTest, MaxRoiPool) {
   for (int i = 0; i < input_channels * image_size; i++)
     input.push_back(1.0f * i / 10);
   std::vector<float> rois = {
-      0, 1, 1, 2, 3,
-      0, 1, 1, 2, 3,
-      0, 1, 1, 2, 3};
+      0, 1, 1, 2, 3, 0, 1, 1, 2, 3, 0, 1, 1, 2, 3};
 
   std::vector<int64_t> x_dims = {1, 3, H, W};
 
@@ -32,9 +30,7 @@ TEST(RoIPoolTest, MaxRoiPool) {
   test.AddInput<float>("rois", rois_dims, rois);
 
   const std::vector<float> expected_vals = {
-      2.0f, 5.6f, 9.2f,
-      2.0f, 5.6f, 9.2f,
-      2.0f, 5.6f, 9.2f};
+      2.0f, 5.6f, 9.2f, 2.0f, 5.6f, 9.2f, 2.0f, 5.6f, 9.2f};
   std::vector<int64_t> expected_dims = {3, 3, pooled_height, pooled_width};
   test.AddOutput<float>("Y", expected_dims, expected_vals);
   test.Run();

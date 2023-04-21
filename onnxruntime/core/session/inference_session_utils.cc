@@ -183,40 +183,35 @@ Status JsonConfigParser::ParseSessionOptionsFromModelProto(SessionOptions& sessi
 
     if (key == "intra_op_num_threads") {
       if (!value.is_number_integer()) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                               "intra_op_num_threads option in the model file must be an integer");
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "intra_op_num_threads option in the model file must be an integer");
       }
 
       ORT_RETURN_IF_ERROR(SetIntraOpNumThreads(session_options, it.value().get<int>(), logger_));
 
     } else if (key == "inter_op_num_threads") {
       if (!value.is_number_integer()) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                               "inter_op_num_threads option in the model file must be an integer");
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "inter_op_num_threads option in the model file must be an integer");
       }
 
       ORT_RETURN_IF_ERROR(SetInterOpNumThreads(session_options, it.value().get<int>(), logger_));
 
     } else if (key == "execution_mode") {
       if (!value.is_number_integer()) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                               "execution_mode option in the model file must be an integer");
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "execution_mode option in the model file must be an integer");
       }
 
       ORT_RETURN_IF_ERROR(SetExecutionMode(session_options, it.value().get<int>(), logger_));
 
     } else if (key == "graph_optimization_level") {
       if (!value.is_number_integer()) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                               "graph_optimization_level option in the model file must be an integer");
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "graph_optimization_level option in the model file must be an integer");
       }
 
       ORT_RETURN_IF_ERROR(SetGraphOptimizationLevel(session_options, it.value().get<int>(), logger_));
 
     } else if (key == "enable_profiling") {
       if (!value.is_number_integer()) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                               "enable_profiling option in the model file must be an integer");
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "enable_profiling option in the model file must be an integer");
       }
 
       ORT_RETURN_IF_ERROR(SetEnableProfiling(session_options, it.value().get<int>(), logger_));
@@ -230,8 +225,7 @@ Status JsonConfigParser::ParseSessionOptionsFromModelProto(SessionOptions& sessi
 }
 
 Status JsonConfigParser::ParseRunOptionsFromModelProto(RunOptions& /*run_options*/) {
-  return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
-                         "Parsing RunOptions from ModelProto is not supported yet");
+  return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "Parsing RunOptions from ModelProto is not supported yet");
 }
 
 Status ParseTuningResultsFromModelMetadata(const onnxruntime::ModelMetadata& metadata,
@@ -255,8 +249,7 @@ Status ParseTuningResultsFromModelMetadata(const onnxruntime::ModelMetadata& met
   ORT_CATCH(const std::exception& e) {
     ORT_HANDLE_EXCEPTION([&]() {
       status = ORT_MAKE_STATUS(
-          ONNXRUNTIME, FAIL,
-          "Tuning results stored in the model file cannot be parsed. Error message: ", e.what(), ". Ignoring...");
+          ONNXRUNTIME, FAIL, "Tuning results stored in the model file cannot be parsed. Error message: ", e.what(), ". Ignoring...");
     });
     ORT_RETURN_IF_ERROR(status);
   }

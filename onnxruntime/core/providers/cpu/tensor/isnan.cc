@@ -13,7 +13,8 @@ namespace onnxruntime {
 #define ADD_TYPED_ISNAN_OP_9(data_type)                                   \
   ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(                               \
       IsNaN,                                                              \
-      9, 12,                                                              \
+      9,                                                                  \
+      12,                                                                 \
       data_type,                                                          \
       KernelDefBuilder()                                                  \
           .TypeConstraint("T1", DataTypeImpl::GetTensorType<data_type>()) \

@@ -60,13 +60,13 @@ Status AddNnapiTranspose(ModelBuilder& model_builder,
 
   OperandType output_operand_type = operand_types.at(data_input);
   output_operand_type.SetDimensions(output_dimen);
-  return model_builder.AddOperation(ANEURALNETWORKS_TRANSPOSE, input_indices, {output},
-                                    {output_operand_type});
+  return model_builder.AddOperation(ANEURALNETWORKS_TRANSPOSE, input_indices, {output}, {output_operand_type});
 }
 
 Status AddNnapiReshape(ModelBuilder& model_builder,
                        const std::string& data_input,
-                       const std::string& shape_input, const std::vector<int32_t>& shape_value,
+                       const std::string& shape_input,
+                       const std::vector<int32_t>& shape_value,
                        const std::string& output) {
   auto& shaper = model_builder.GetShaper();
   // Calculate reshape output shape
@@ -112,15 +112,16 @@ Status AddNnapiReshape(ModelBuilder& model_builder,
   // Add new shape
   const Shape shape_dimen{static_cast<uint32_t>(shape_value.size())};
   const OperandType shape_operand_type{Type::TENSOR_INT32, shape_dimen};
-  ORT_RETURN_IF_ERROR(model_builder.AddOperandFromPersistMemoryBuffer(shape_input, shape_value.data(),
-                                                                      shape_operand_type));
+  ORT_RETURN_IF_ERROR(model_builder.AddOperandFromPersistMemoryBuffer(shape_input, shape_value.data(), shape_operand_type));
   input_indices.push_back(operand_indices.at(shape_input));
 
   // For reshape, the output type should be the same as the input type except the shape is different
   OperandType output_operand_type{operand_types.at(data_input)};
   output_operand_type.SetDimensions(output_dimen);
   ORT_RETURN_IF_ERROR(model_builder.AddOperation(ANEURALNETWORKS_RESHAPE,
-                                                 input_indices, {output}, {output_operand_type}));
+                                                 input_indices,
+                                                 {output},
+                                                 {output_operand_type}));
 
   return Status::OK();
 }
@@ -142,7 +143,13 @@ Status AddNnapiSplit(ModelBuilder& model_builder,
   {
     const auto input_shape = shaper[input];
     ORT_RETURN_IF_NOT(input_shape[axis] % count == 0,
-                      "count [", count, "] does not evenly divide dimension ", axis, " [", input_shape[axis], "]");
+                      "count [",
+                      count,
+                      "] does not evenly divide dimension ",
+                      axis,
+                      " [",
+                      input_shape[axis],
+                      "]");
 
     Shape output_shape = input_shape;
     output_shape[axis] = SafeInt<uint32_t>(input_shape[axis] / count);
@@ -159,15 +166,16 @@ Status AddNnapiSplit(ModelBuilder& model_builder,
   const OperandType& input_operand_type = operand_types.at(input);
   std::vector<OperandType> output_operand_types;
   output_operand_types.reserve(count);
-  std::transform(outputs.begin(), outputs.end(), std::back_inserter(output_operand_types),
-                 [&](const std::string& output) {
-                   OperandType output_operand_type = input_operand_type;
-                   output_operand_type.SetDimensions(shaper[output]);
-                   return output_operand_type;
-                 });
+  std::transform(outputs.begin(), outputs.end(), std::back_inserter(output_operand_types), [&](const std::string& output) {
+    OperandType output_operand_type = input_operand_type;
+    output_operand_type.SetDimensions(shaper[output]);
+    return output_operand_type;
+  });
 
   ORT_RETURN_IF_ERROR(model_builder.AddOperation(ANEURALNETWORKS_SPLIT,
-                                                 input_indices, outputs, output_operand_types));
+                                                 input_indices,
+                                                 outputs,
+                                                 output_operand_types));
 
   return Status::OK();
 }
@@ -197,10 +205,8 @@ Status AddNnapiBatchNormalization(ModelBuilder& model_builder,
   Shape output1_shape;
   // broadcasting support for eltwise shape operation
   ORT_RETURN_IF_ERROR(op_builder_helpers::PerformBroadcasting(shape1, shape2, output1_shape));
-  const OperandType output_operand_type(operand_types.at(input1).type, output1_shape,
-                                        output_scale, output_zero_point);
-  ORT_RETURN_IF_ERROR(model_builder.AddOperation(ANEURALNETWORKS_MUL, input_indices,
-                                                 {output1}, {output_operand_type}));
+  const OperandType output_operand_type(operand_types.at(input1).type, output1_shape, output_scale, output_zero_point);
+  ORT_RETURN_IF_ERROR(model_builder.AddOperation(ANEURALNETWORKS_MUL, input_indices, {output1}, {output_operand_type}));
 
   // Add Nnapi Add
   input_indices.clear();
@@ -212,10 +218,8 @@ Status AddNnapiBatchNormalization(ModelBuilder& model_builder,
   const Shape& shape3 = shaper[input3];
   Shape output2_shape;
   ORT_RETURN_IF_ERROR(op_builder_helpers::PerformBroadcasting(output1_shape, shape3, output2_shape));
-  const OperandType output_operand_type2(operand_types.at(input3).type, output2_shape,
-                                         output_scale, output_zero_point);
-  ORT_RETURN_IF_ERROR(model_builder.AddOperation(ANEURALNETWORKS_ADD, input_indices,
-                                                 {output2}, {output_operand_type2}));
+  const OperandType output_operand_type2(operand_types.at(input3).type, output2_shape, output_scale, output_zero_point);
+  ORT_RETURN_IF_ERROR(model_builder.AddOperation(ANEURALNETWORKS_ADD, input_indices, {output2}, {output_operand_type2}));
   return Status::OK();
 }
 
@@ -256,8 +260,7 @@ bool IsSupportedBatchMatMul(const NodeUnit& node_unit, int32_t nnapi_feature_lev
 
   if (a_shape.size() < 3 ||
       a_shape.size() != b_shape.size() ||
-      !std::equal(a_shape.begin(), a_shape.end() - 2,
-                  b_shape.begin(), b_shape.end() - 2)) {
+      !std::equal(a_shape.begin(), a_shape.end() - 2, b_shape.begin(), b_shape.end() - 2)) {
     LOGS_DEFAULT(VERBOSE)
         << "A and B must have at least three dimensions and have the same leading dimensions except for the last two. "
         << "A shape: " << Shape2String(a_shape) << ", B shape: " << Shape2String(b_shape);
@@ -309,19 +312,16 @@ Status BuildBatchMatMul(ModelBuilder& model_builder, const NodeUnit& node_unit) 
   const bool reshape_leading_dimensions = a_shape.size() > 3;
   const auto batch_size = ShapeSize(a_shape, 0, a_shape.size() - 2);
 
-  auto add_reshape = [&model_builder](const std::string& input, const Shape& new_shape,
-                                      const std::string& output) -> Status {
+  auto add_reshape = [&model_builder](const std::string& input, const Shape& new_shape, const std::string& output) -> Status {
     const std::string new_shape_name = model_builder.GetUniqueName(input + "/new_shape");
     std::vector<int32_t> new_shape_i32{};
     new_shape_i32.reserve(new_shape.size());
-    std::transform(new_shape.begin(), new_shape.end(), std::back_inserter(new_shape_i32),
-                   [](uint32_t d) { return narrow<int32_t>(d); });
+    std::transform(new_shape.begin(), new_shape.end(), std::back_inserter(new_shape_i32), [](uint32_t d) { return narrow<int32_t>(d); });
     ORT_RETURN_IF_ERROR(AddNnapiReshape(model_builder, input, new_shape_name, new_shape_i32, output));
     return Status::OK();
   };
 
-  auto add_reshape_generate_output = [&model_builder, &add_reshape](const std::string& input, const Shape& new_shape,
-                                                                    std::string& output) -> Status {
+  auto add_reshape_generate_output = [&model_builder, &add_reshape](const std::string& input, const Shape& new_shape, std::string& output) -> Status {
     std::string reshaped = model_builder.GetUniqueName(input + "/reshaped");
     ORT_RETURN_IF_ERROR(add_reshape(input, new_shape, reshaped));
     output = std::move(reshaped);
@@ -345,8 +345,7 @@ Status BuildBatchMatMul(ModelBuilder& model_builder, const NodeUnit& node_unit) 
   {
     const std::string b_new_perm = model_builder.GetUniqueName(b + "/new_perm"),
                       b_transposed = model_builder.GetUniqueName(b + "/transposed");
-    ORT_RETURN_IF_ERROR(AddNnapiTranspose(model_builder, gemm_b_inputs.front(), b_new_perm,
-                                          AsSpan<int32_t>({0, 2, 1}), b_transposed));
+    ORT_RETURN_IF_ERROR(AddNnapiTranspose(model_builder, gemm_b_inputs.front(), b_new_perm, AsSpan<int32_t>({0, 2, 1}), b_transposed));
     gemm_b_inputs.front() = b_transposed;
   }
 
@@ -388,8 +387,7 @@ Status BuildBatchMatMul(ModelBuilder& model_builder, const NodeUnit& node_unit) 
       ORT_RETURN_IF_ERROR(model_builder.AddOperandFromPersistMemoryBuffer(bias, buffer.data(), bias_operand_type));
     }
 
-    auto add_fc = [&model_builder, &bias](const std::string& a, const std::string& b_transposed,
-                                          const std::string& output) -> Status {
+    auto add_fc = [&model_builder, &bias](const std::string& a, const std::string& b_transposed, const std::string& output) -> Status {
       const auto& operand_indices = model_builder.GetOperandIndices();
       const auto& operand_types = model_builder.GetOperandTypes();
       auto& shaper = model_builder.GetShaper();
@@ -405,8 +403,7 @@ Status BuildBatchMatMul(ModelBuilder& model_builder, const NodeUnit& node_unit) 
       Shape output_dimen{a_dimen[0], b_transposed_dimen[0]};
       shaper.AddShape(output, output_dimen);
       const OperandType output_operand_type(operand_types.at(a).type, output_dimen);
-      ORT_RETURN_IF_ERROR(model_builder.AddOperation(ANEURALNETWORKS_FULLY_CONNECTED, input_indices,
-                                                     {output}, {output_operand_type}));
+      ORT_RETURN_IF_ERROR(model_builder.AddOperation(ANEURALNETWORKS_FULLY_CONNECTED, input_indices, {output}, {output_operand_type}));
       return Status::OK();
     };
 
@@ -441,8 +438,7 @@ Status BuildBatchMatMul(ModelBuilder& model_builder, const NodeUnit& node_unit) 
       auto& shaper = model_builder.GetShaper();
       InlinedVector<uint32_t> input_indices;
       input_indices.reserve(inputs.size() + 1);
-      std::transform(inputs.begin(), inputs.end(), std::back_inserter(input_indices),
-                     [&operand_indices](const std::string& input) { return operand_indices.at(input); });
+      std::transform(inputs.begin(), inputs.end(), std::back_inserter(input_indices), [&operand_indices](const std::string& input) { return operand_indices.at(input); });
       const int32_t axis = 0;
       ORT_RETURN_IF_ERROR(AddScalarOperand(model_builder, input_indices, axis));
 
@@ -471,7 +467,9 @@ Status BuildBatchMatMul(ModelBuilder& model_builder, const NodeUnit& node_unit) 
       OperandType output_operand_type = operand_types.at(inputs[0]);
       output_operand_type.SetDimensions(shaper[output]);
       ORT_RETURN_IF_ERROR(model_builder.AddOperation(ANEURALNETWORKS_CONCATENATION,
-                                                     input_indices, {output}, {output_operand_type}));
+                                                     input_indices,
+                                                     {output},
+                                                     {output_operand_type}));
       return Status::OK();
     };
 
@@ -497,7 +495,10 @@ Status AddInitializerInNewLayout(ModelBuilder& model_builder,
   const auto& tensor = *model_builder.GetInitializerTensors().at(name);
   const Shape& shape = source_operand_type.dimensions;
   ORT_RETURN_IF_NOT(shape.size() == 4,
-                    "The initializer is not 4D: ", name, " actual dim ", shape.size());
+                    "The initializer is not 4D: ",
+                    name,
+                    " actual dim ",
+                    shape.size());
 
   // TODO support other data types
   const uint8_t* src = nullptr;
@@ -509,9 +510,7 @@ Status AddInitializerInNewLayout(ModelBuilder& model_builder,
       break;
     }
     default:
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "The initializer of graph ", name,
-                             " doesn't have valid type: ", tensor.data_type());
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "The initializer of graph ", name, " doesn't have valid type: ", tensor.data_type());
   }
   Initializer unpacked_tensor(tensor, model_builder.GetGraphViewer().ModelPath());
   src = unpacked_tensor.DataAsByteSpan().data();
@@ -571,7 +570,10 @@ Status AddInitializerTransposed(ModelBuilder& model_builder,
   const Shape& shape = source_operand_type.dimensions;
 
   ORT_RETURN_IF_NOT(shape.size() == 2,
-                    "The initializer is not 2D: ", name, " actual dim ", shape.size());
+                    "The initializer is not 2D: ",
+                    name,
+                    " actual dim ",
+                    shape.size());
 
   // TODO support other data types
   const uint8_t* src = nullptr;
@@ -582,9 +584,7 @@ Status AddInitializerTransposed(ModelBuilder& model_builder,
       break;
     }
     default:
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "The initializer of graph ", name,
-                             " doesn't have valid type: ", tensor.data_type());
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "The initializer of graph ", name, " doesn't have valid type: ", tensor.data_type());
   }
   Initializer unpacked_tensor(tensor, model_builder.GetGraphViewer().ModelPath());
   // could be float/u8/s8, so we have to use raw data here.
@@ -610,9 +610,13 @@ Status AddInitializerTransposed(ModelBuilder& model_builder,
 
 Status ComputeConvPads(
     const Shape& input_dimen,
-    const uint32_t weight_size_y, const uint32_t weight_size_x,
-    const std::vector<int32_t>& onnx_pads, const std::vector<int32_t>& onnx_strides, const std::vector<int32_t>& onnx_dilations,
-    AutoPadType auto_pad_type, bool nchw,
+    const uint32_t weight_size_y,
+    const uint32_t weight_size_x,
+    const std::vector<int32_t>& onnx_pads,
+    const std::vector<int32_t>& onnx_strides,
+    const std::vector<int32_t>& onnx_dilations,
+    AutoPadType auto_pad_type,
+    bool nchw,
     std::vector<int32_t>& pads_out) {
   const int32_t input_size_y = nchw ? input_dimen[2] : input_dimen[1];
   const int32_t input_size_x = nchw ? input_dimen[3] : input_dimen[2];
@@ -627,16 +631,21 @@ Status ComputeConvPads(
   int64_t padding_right = onnx_pads[3];
 
   ORT_RETURN_IF_ERROR(ComputePad(input_size_y,
-                                 stride_y, weight_size_y, dilation_y,
+                                 stride_y,
+                                 weight_size_y,
+                                 dilation_y,
                                  auto_pad_type,
-                                 padding_top, padding_bottom));
+                                 padding_top,
+                                 padding_bottom));
   ORT_RETURN_IF_ERROR(ComputePad(input_size_x,
-                                 stride_x, weight_size_x, dilation_x,
+                                 stride_x,
+                                 weight_size_x,
+                                 dilation_x,
                                  auto_pad_type,
-                                 padding_left, padding_right));
+                                 padding_left,
+                                 padding_right));
 
-  pads_out = {static_cast<int32_t>(padding_top), static_cast<int32_t>(padding_left),
-              static_cast<int32_t>(padding_bottom), static_cast<int32_t>(padding_right)};
+  pads_out = {static_cast<int32_t>(padding_top), static_cast<int32_t>(padding_left), static_cast<int32_t>(padding_bottom), static_cast<int32_t>(padding_right)};
 
   return Status::OK();
 }
@@ -653,10 +662,7 @@ Status HandleAutoPad(const Shape& input_shape,
                      bool& use_auto_pad) {
   use_auto_pad = false;
   if (auto_pad_type != AutoPadType::NOTSET) {
-    ORT_RETURN_IF_ERROR(ComputeConvPads(input_shape, weight_size_y, weight_size_x,
-                                        onnx_pads, onnx_strides, onnx_dilations,
-                                        auto_pad_type, use_nchw,
-                                        onnx_pads));
+    ORT_RETURN_IF_ERROR(ComputeConvPads(input_shape, weight_size_y, weight_size_x, onnx_pads, onnx_strides, onnx_dilations, auto_pad_type, use_nchw, onnx_pads));
 
     if (AutoPadType::VALID == auto_pad_type || AutoPadType::SAME_UPPER == auto_pad_type) {
       use_auto_pad = true;
@@ -666,10 +672,7 @@ Status HandleAutoPad(const Shape& input_shape,
   } else if (onnx_dilations == std::vector<int32_t>{1, 1}) {
     // Since NNAPI runs more efficiently using auto_pad, we try to map the NOTSET padding to auto_pad
     std::vector<int32_t> same_upper_pads;
-    ORT_RETURN_IF_ERROR(ComputeConvPads(input_shape, weight_size_y, weight_size_x,
-                                        onnx_pads, onnx_strides, onnx_dilations,
-                                        AutoPadType::SAME_UPPER, use_nchw,
-                                        same_upper_pads));
+    ORT_RETURN_IF_ERROR(ComputeConvPads(input_shape, weight_size_y, weight_size_x, onnx_pads, onnx_strides, onnx_dilations, AutoPadType::SAME_UPPER, use_nchw, same_upper_pads));
     if (onnx_pads == same_upper_pads) {
       use_auto_pad = true;
       nnapi_padding_code = ANEURALNETWORKS_PADDING_SAME;
@@ -680,9 +683,7 @@ Status HandleAutoPad(const Shape& input_shape,
 }
 
 Status GetBinaryOpQuantizationScaleAndZeroPoint(
-    const InitializedTensorSet& initializers, const NodeUnit& node_unit,
-    float& a_scale, float& b_scale, float& y_scale,
-    int32_t& a_zero_point, int32_t& b_zero_point, int32_t& y_zero_point) {
+    const InitializedTensorSet& initializers, const NodeUnit& node_unit, float& a_scale, float& b_scale, float& y_scale, int32_t& a_zero_point, int32_t& b_zero_point, int32_t& y_zero_point) {
   ORT_RETURN_IF_ERROR(GetQuantizationScaleAndZeroPoint(
       initializers, node_unit.Inputs()[0], node_unit.ModelPath(), a_scale, a_zero_point));
   ORT_RETURN_IF_ERROR(GetQuantizationScaleAndZeroPoint(
@@ -694,18 +695,13 @@ Status GetBinaryOpQuantizationScaleAndZeroPoint(
 }
 
 Status GetConvMatMulOpQuantizationScaleAndZeroPoint(
-    const ModelBuilder& model_builder, const NodeUnit& node_unit,
-    float& a_scale, float& w_scale, float& y_scale,
-    int32_t& a_zero_point, int32_t& w_zero_point, int32_t& y_zero_point,
-    std::optional<std::vector<float>>& w_scales, bool& is_per_tensor_u8s8) {
+    const ModelBuilder& model_builder, const NodeUnit& node_unit, float& a_scale, float& w_scale, float& y_scale, int32_t& a_zero_point, int32_t& w_zero_point, int32_t& y_zero_point, std::optional<std::vector<float>>& w_scales, bool& is_per_tensor_u8s8) {
   is_per_tensor_u8s8 = false;
   const auto& initializers(model_builder.GetInitializerTensors());
   // Get scale and zero points
   // We will handle per-channel weight scale and zero point later
   ORT_RETURN_IF_ERROR(
-      GetBinaryOpQuantizationScaleAndZeroPoint(initializers, node_unit,
-                                               a_scale, w_scale, y_scale,
-                                               a_zero_point, w_zero_point, y_zero_point));
+      GetBinaryOpQuantizationScaleAndZeroPoint(initializers, node_unit, a_scale, w_scale, y_scale, a_zero_point, w_zero_point, y_zero_point));
 
   const auto& inputs = node_unit.Inputs();
   const auto& weight_tensor = *initializers.at(inputs[1].node_arg.Name());
@@ -749,17 +745,11 @@ Status IsValidInputQuantizedType(const ModelBuilder& model_builder,
                                  int32_t zero_point) {
   const OperandType& input_operand_type = model_builder.GetOperandTypes().at(input_name);
   if (input_operand_type.operandType.scale != scale) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Input [", input_name,
-                           "] NNAPI input scale: ", input_operand_type.operandType.scale,
-                           ", ONNX input scale: ", scale);
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input [", input_name, "] NNAPI input scale: ", input_operand_type.operandType.scale, ", ONNX input scale: ", scale);
   }
 
   if (input_operand_type.operandType.zeroPoint != zero_point) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Input [", input_name,
-                           "] NNAPI input zero point: ", input_operand_type.operandType.zeroPoint,
-                           ", ONNX input zero point: ", zero_point);
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input [", input_name, "] NNAPI input zero point: ", input_operand_type.operandType.zeroPoint, ", ONNX input zero point: ", zero_point);
   }
 
   return Status::OK();
@@ -776,13 +766,11 @@ Status IsValidConvWeightQuantizedType(const ModelBuilder& model_builder,
   if (scales) {
     const OperandType& input_operand_type = model_builder.GetOperandTypes().at(input_name);
     if (!input_operand_type.channelQuant) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input [", input_name, "] has no channelQuant");
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input [", input_name, "] has no channelQuant");
     }
 
     if (input_operand_type.channelQuant.value().scales != scales.value()) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input [", input_name, "] has mismatch scales between onnx and NNAPI");
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input [", input_name, "] has mismatch scales between onnx and NNAPI");
     }
   }
 
@@ -792,8 +780,7 @@ Status IsValidConvWeightQuantizedType(const ModelBuilder& model_builder,
 Status IsOpInRequiredLayout(bool use_nchw, const NodeUnit& node_unit) {
   bool is_op_nhwc = node_unit.Domain() == kMSInternalNHWCDomain;
   if (is_op_nhwc && use_nchw) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                           "Expected layout and operator layout do not match. Possible bug in layout optimizer.");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Expected layout and operator layout do not match. Possible bug in layout optimizer.");
   }
 
   return Status::OK();
@@ -836,16 +823,15 @@ Status AddBinaryOperator(int32_t op_type,
     ADD_SCALAR_OPERAND(model_builder, input_indices, fuse_code);
   }
 
-  const OperandType output_operand_type(operand_types.at(input1).type, shaper[output],
-                                        output_scale, output_zero_point);
-  ORT_RETURN_IF_ERROR(model_builder.AddOperation(op_type, input_indices,
-                                                 {output}, {output_operand_type}));
+  const OperandType output_operand_type(operand_types.at(input1).type, shaper[output], output_scale, output_zero_point);
+  ORT_RETURN_IF_ERROR(model_builder.AddOperation(op_type, input_indices, {output}, {output_operand_type}));
   return Status::OK();
 }
 
 Status AddSqueezeOp(ModelBuilder& model_builder,
                     const std::string& node_name,
-                    const std::string& input, const std::string& output,
+                    const std::string& input,
+                    const std::string& output,
                     std::vector<int32_t> axes) {
   if (model_builder.GetEffectiveFeatureLevel() < ANEURALNETWORKS_FEATURE_LEVEL_2) {
     return ORT_MAKE_STATUS(
@@ -908,13 +894,11 @@ Status AddSqueezeOp(ModelBuilder& model_builder,
 
   shaper.AddShape(output, output_dimen);
   const OperandType output_operand_type(operand_types.at(input).type, output_dimen);
-  ORT_RETURN_IF_ERROR(model_builder.AddOperation(ANEURALNETWORKS_SQUEEZE, input_indices,
-                                                 {output}, {output_operand_type}));
+  ORT_RETURN_IF_ERROR(model_builder.AddOperation(ANEURALNETWORKS_SQUEEZE, input_indices, {output}, {output_operand_type}));
   return Status::OK();
 }
 
-Status GetAxesForSqueezeAndUnSqueeze(ModelBuilder& model_builder, const NodeUnit& node_unit,
-                                     std::vector<int32_t>& axes) {
+Status GetAxesForSqueezeAndUnSqueeze(ModelBuilder& model_builder, const NodeUnit& node_unit, std::vector<int32_t>& axes) {
   // Squeeze/Unsqueeze opset 13 uses input1 as axes
   if (node_unit.SinceVersion() > 12) {
     // For squeeze, axes is an optional input.If it is not supplied, return an empty axes as default to squeeze all
@@ -940,8 +924,7 @@ Status GetAxesForSqueezeAndUnSqueeze(ModelBuilder& model_builder, const NodeUnit
   return Status::OK();
 }
 
-Status AddMinMaxOperator(ModelBuilder& model_builder, const NodeUnit& node_unit,
-                         const std::string& input1, const std::string& input2) {
+Status AddMinMaxOperator(ModelBuilder& model_builder, const NodeUnit& node_unit, const std::string& input1, const std::string& input2) {
   auto& shaper(model_builder.GetShaper());
   const auto& operand_indices(model_builder.GetOperandIndices());
   const auto& operand_types(model_builder.GetOperandTypes());
@@ -963,8 +946,7 @@ Status AddMinMaxOperator(ModelBuilder& model_builder, const NodeUnit& node_unit,
   input_indices.push_back(operand_indices.at(input2));  // input 2
 
   const OperandType output_operand_type(operand_types.at(input1).type, shaper[output]);
-  ORT_RETURN_IF_ERROR(model_builder.AddOperation(op_code, input_indices,
-                                                 {output}, {output_operand_type}));
+  ORT_RETURN_IF_ERROR(model_builder.AddOperation(op_code, input_indices, {output}, {output_operand_type}));
 
   return Status::OK();
 }
@@ -981,8 +963,7 @@ Status AddMinMaxOperator(ModelBuilder& model_builder, const NodeUnit& node_unit,
 // between NNAPI CPU impl and Hardware Accelerator impl and will speed up the execution
 // If we are going to skip the reshape, we will still add correct shape and operand type for the output in
 // onnxruntime::nnapi::Model.
-bool CanSkipReshape(const ModelBuilder& model_builder, const NodeUnit& node_unit,
-                    size_t input_rank, size_t output_rank) {
+bool CanSkipReshape(const ModelBuilder& model_builder, const NodeUnit& node_unit, size_t input_rank, size_t output_rank) {
   // Since we know this is a Reshape NodeUnit, so we can safely assume there is only 1 output
   // and the node_unit has only one output node.
   const auto& output_node_arg = node_unit.Outputs()[0].node_arg;
@@ -1199,8 +1180,7 @@ bool IsQuantizationZeroPointSupported(const InitializedTensorSet& initializers,
   return true;
 }
 
-bool IsQuantizedIOSupported(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
-                            const std::vector<size_t>& indices, const OpSupportCheckParams& params, ArgType arg_type) {
+bool IsQuantizedIOSupported(const InitializedTensorSet& initializers, const NodeUnit& node_unit, const std::vector<size_t>& indices, const OpSupportCheckParams& params, ArgType arg_type) {
   const auto& op_type = node_unit.OpType();
   auto quant_op_type = GetQuantizedOpType(node_unit);
 
@@ -1252,13 +1232,11 @@ bool IsQuantizedIOSupported(const InitializedTensorSet& initializers, const Node
     }
 
     // Check scale and zero point
-    if (!IsQuantizationScaleSupported(initializers, io_def, params, op_type,
-                                      is_quant_matmul, is_conv_matmul_u8s8_weight)) {
+    if (!IsQuantizationScaleSupported(initializers, io_def, params, op_type, is_quant_matmul, is_conv_matmul_u8s8_weight)) {
       return false;
     }
 
-    if (!IsQuantizationZeroPointSupported(initializers, io_def, op_type, node_unit.ModelPath(),
-                                          is_quant_matmul, is_conv_matmul_u8s8_weight)) {
+    if (!IsQuantizationZeroPointSupported(initializers, io_def, op_type, node_unit.ModelPath(), is_quant_matmul, is_conv_matmul_u8s8_weight)) {
       return false;
     }
   }
@@ -1270,11 +1248,11 @@ bool HasRequiredScaleAndZeroPoint(const InitializedTensorSet& initializers,
                                   const std::string& op_desc,
                                   const NodeUnitIODef& io_def,
                                   const Path& path,
-                                  float required_scale, int32_t required_zp) {
+                                  float required_scale,
+                                  int32_t required_zp) {
   float scale = 0.0f;
   int32_t zp = 0;
-  auto status = GetQuantizationScaleAndZeroPoint(initializers, io_def, path,
-                                                 scale, zp);
+  auto status = GetQuantizationScaleAndZeroPoint(initializers, io_def, path, scale, zp);
   if (!status.IsOK()) {
     LOGS_DEFAULT(ERROR) << op_desc
                         << " GetQuantizationScaleAndZeroPoint failed, message: "
@@ -1311,8 +1289,10 @@ Status PerformBroadcasting(const Shape& shape1, const Shape& shape2, Shape& outp
     int dim_min_shape = min_shape[j];
     if (dim_max_shape != dim_min_shape) {
       ORT_RETURN_IF_NOT(dim_max_shape == 1 || dim_min_shape == 1,
-                        "Dimensions are not compatible, dim1: ", dim_max_shape,
-                        "dim2: ", dim_min_shape);
+                        "Dimensions are not compatible, dim1: ",
+                        dim_max_shape,
+                        "dim2: ",
+                        dim_min_shape);
       if (dim_max_shape == 1) {
         max_shape[i] = dim_min_shape;
       }

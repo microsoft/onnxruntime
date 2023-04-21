@@ -23,15 +23,13 @@ struct GetRatioDataImpl {
 
 template <typename T>
 struct DispatchSoftmaxDropoutGradImpl {
-  Status operator()(cudaStream_t stream, cudnnHandle_t cudnn_handle, Tensor* dX, const Tensor* dY, const Tensor* mask,
-                    const Tensor* softmax_Y, int element_count, int batch_count, const float ratio) {
+  Status operator()(cudaStream_t stream, cudnnHandle_t cudnn_handle, Tensor* dX, const Tensor* dY, const Tensor* mask, const Tensor* softmax_Y, int element_count, int batch_count, const float ratio) {
     typedef typename ToCudaType<T>::MappedType CudaT;
     CudaT* input_grad_data = reinterpret_cast<CudaT*>(dX->MutableData<T>());
     const CudaT* output_grad_data = reinterpret_cast<const CudaT*>(dY->Data<T>());
     const bool* mask_data = reinterpret_cast<const bool*>(mask->Data<bool>());
     const CudaT* softmax_output_data = reinterpret_cast<const CudaT*>(softmax_Y->Data<T>());
-    return SoftmaxDropoutGradImpl(stream, cudnn_handle, input_grad_data, output_grad_data, mask_data,
-                                  softmax_output_data, element_count, batch_count, ratio);
+    return SoftmaxDropoutGradImpl(stream, cudnn_handle, input_grad_data, output_grad_data, mask_data, softmax_output_data, element_count, batch_count, ratio);
   }
 };
 
@@ -43,12 +41,7 @@ struct DispatchSoftmaxDropoutGradImpl {
 #define SOFTMAX_DROPOUT_GRAD_TYPES float, MLFloat16, double
 #endif
 
-ONNX_OPERATOR_KERNEL_EX(SoftmaxDropoutGrad, kMSDomain, 1, kCudaExecutionProvider,
-                        (*KernelDefBuilder::Create())
-                            .TypeConstraint("T", BuildKernelDefConstraints<SOFTMAX_DROPOUT_GRAD_TYPES>())
-                            .TypeConstraint("T1", DataTypeImpl::AllIEEEFloatTensorTypes())
-                            .InputMemoryType(OrtMemTypeCPUInput, 3),
-                        SoftmaxDropoutGrad);
+ONNX_OPERATOR_KERNEL_EX(SoftmaxDropoutGrad, kMSDomain, 1, kCudaExecutionProvider, (*KernelDefBuilder::Create()).TypeConstraint("T", BuildKernelDefConstraints<SOFTMAX_DROPOUT_GRAD_TYPES>()).TypeConstraint("T1", DataTypeImpl::AllIEEEFloatTensorTypes()).InputMemoryType(OrtMemTypeCPUInput, 3), SoftmaxDropoutGrad);
 
 Status SoftmaxDropoutGrad::ComputeInternal(OpKernelContext* ctx) const {
   const Tensor* dY = ctx->Input<Tensor>(0);
@@ -70,8 +63,7 @@ Status SoftmaxDropoutGrad::ComputeInternal(OpKernelContext* ctx) const {
 
   Tensor* dX = ctx->Output(0, input_shape);
   utils::MLTypeCallDispatcher<SOFTMAX_DROPOUT_GRAD_TYPES> t_disp(dY->GetElementType());
-  return t_disp.InvokeRet<Status, DispatchSoftmaxDropoutGradImpl>(Stream(ctx), GetCudnnHandle(ctx), dX, dY, mask, softmax_Y,
-                                                                  element_count, batch_count, ratio_data);
+  return t_disp.InvokeRet<Status, DispatchSoftmaxDropoutGradImpl>(Stream(ctx), GetCudnnHandle(ctx), dX, dY, mask, softmax_Y, element_count, batch_count, ratio_data);
 }
 
 #undef SOFTMAX_DROPOUT_GRAD_TYPES

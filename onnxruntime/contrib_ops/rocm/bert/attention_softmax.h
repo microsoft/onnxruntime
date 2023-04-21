@@ -268,10 +268,8 @@ __global__ void SoftmaxWithRawMaskSmallKernel(
 }
 
 template <typename T, unsigned TPB>
-__global__ void SoftmaxKernelSmall(const int all_sequence_length, const int sequence_length,
-                                   const T* add_before_softmax, const T* input, T* output, bool is_unidirectional) {
-  SoftmaxSmall<T, TPB>(all_sequence_length, sequence_length, all_sequence_length, 0,
-                       add_before_softmax, input, output, is_unidirectional);
+__global__ void SoftmaxKernelSmall(const int all_sequence_length, const int sequence_length, const T* add_before_softmax, const T* input, T* output, bool is_unidirectional) {
+  SoftmaxSmall<T, TPB>(all_sequence_length, sequence_length, all_sequence_length, 0, add_before_softmax, input, output, is_unidirectional);
 }
 
 template <typename T, unsigned TPB>
@@ -282,8 +280,14 @@ __global__ void SoftmaxKernel(const int all_sequence_length, const T* add_before
 template <typename T>
 Status ComputeSoftmax(
     hipStream_t stream,
-    const int all_sequence_length, const int sequence_length, const int batch_size, const int num_heads,
-    const T* add_before_softmax, const T* input, T* output, bool is_unidirectional) {
+    const int all_sequence_length,
+    const int sequence_length,
+    const int batch_size,
+    const int num_heads,
+    const T* add_before_softmax,
+    const T* input,
+    T* output,
+    bool is_unidirectional) {
   const dim3 grid(sequence_length * num_heads, batch_size, 1);
   if (all_sequence_length <= 32) {
     const int blockSize = 32;
@@ -321,10 +325,7 @@ Status ComputeSoftmax(
 }
 
 template <typename T, unsigned TPB>
-__global__ void MaskedSoftmaxKernelSmall(const int all_sequence_length, const int sequence_length,
-                                         const int* mask_end, const int* mask_start,
-                                         const T* add_before_softmax, const T* input, T* output,
-                                         bool is_unidirectional) {
+__global__ void MaskedSoftmaxKernelSmall(const int all_sequence_length, const int sequence_length, const int* mask_end, const int* mask_start, const T* add_before_softmax, const T* input, T* output, bool is_unidirectional) {
   __shared__ int start_position;
   __shared__ int end_position;
 
@@ -341,13 +342,11 @@ __global__ void MaskedSoftmaxKernelSmall(const int all_sequence_length, const in
   }
   __syncthreads();
 
-  SoftmaxSmall<T, TPB>(all_sequence_length, sequence_length, end_position, start_position,
-                       add_before_softmax, input, output, is_unidirectional);
+  SoftmaxSmall<T, TPB>(all_sequence_length, sequence_length, end_position, start_position, add_before_softmax, input, output, is_unidirectional);
 }
 
 template <typename T, unsigned TPB>
-__global__ void MaskedSoftmaxKernel(const int all_sequence_length, const int* mask_end, const int* mask_start,
-                                    const T* add_before_softmax, const T* input, T* output) {
+__global__ void MaskedSoftmaxKernel(const int all_sequence_length, const int* mask_end, const int* mask_start, const T* add_before_softmax, const T* input, T* output) {
   __shared__ int start_position;
   __shared__ int end_position;
 
@@ -370,15 +369,21 @@ __global__ void MaskedSoftmaxKernel(const int all_sequence_length, const int* ma
 template <typename T>
 Status ComputeSoftmaxWithMask1D(
     hipStream_t stream,
-    const int all_sequence_length, const int sequence_length, const int batch_size, const int num_heads,
-    const int* mask_index, const int* mask_start,
-    const T* add_before_softmax, const T* input, T* output, const bool is_unidirectional) {
+    const int all_sequence_length,
+    const int sequence_length,
+    const int batch_size,
+    const int num_heads,
+    const int* mask_index,
+    const int* mask_start,
+    const T* add_before_softmax,
+    const T* input,
+    T* output,
+    const bool is_unidirectional) {
   const dim3 grid(sequence_length * num_heads, batch_size, 1);
 
 #define DISPATCH_KERNEL_SMALL_WITH_BLOCKSIZE(block_size)                    \
   MaskedSoftmaxKernelSmall<T, block_size><<<grid, block_size, 0, stream>>>( \
-      all_sequence_length, sequence_length, mask_index, mask_start,         \
-      add_before_softmax, input, output, is_unidirectional);
+      all_sequence_length, sequence_length, mask_index, mask_start, add_before_softmax, input, output, is_unidirectional);
 
   if (all_sequence_length <= 32) {
     DISPATCH_KERNEL_SMALL_WITH_BLOCKSIZE(32);
@@ -395,8 +400,7 @@ Status ComputeSoftmaxWithMask1D(
   } else if (!is_unidirectional) {
     const int blockSize = 1024;
     MaskedSoftmaxKernel<T, blockSize><<<grid, blockSize, 0, stream>>>(
-        all_sequence_length, mask_index, mask_start,
-        add_before_softmax, input, output);
+        all_sequence_length, mask_index, mask_start, add_before_softmax, input, output);
   } else {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Attention ROCM operator does not support total sequence length > 1024.");
   }
@@ -429,10 +433,7 @@ Status ComputeSoftmaxWithRawMask(hipStream_t stream,
 
 #define DISPATCH_KERNEL_SMALL_WITH_BLOCKSIZE(block_size)                         \
   SoftmaxWithRawMaskSmallKernel<T, block_size><<<grid, block_size, 0, stream>>>( \
-      all_sequence_length, sequence_length, attention_mask_strides,              \
-      attention_mask, key_padding_mask, add_before_softmax, input, out,          \
-      is_unidirectional, rsqrt_head_size,                                        \
-      use_persistent_softmax, mask_filter_value);
+      all_sequence_length, sequence_length, attention_mask_strides, attention_mask, key_padding_mask, add_before_softmax, input, out, is_unidirectional, rsqrt_head_size, use_persistent_softmax, mask_filter_value);
 
   if (all_sequence_length <= 32) {
     DISPATCH_KERNEL_SMALL_WITH_BLOCKSIZE(32);

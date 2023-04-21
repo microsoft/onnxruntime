@@ -268,8 +268,7 @@ class SparseTensor final {
   /// <param name="values_data">pointer to a buffer to be copied. Use nullptr for fully sparse tensors.</param>
   /// <param name="indices"></param>
   /// <returns></returns>
-  Status MakeCooData(const IDataTransfer& data_transfer, const OrtMemoryInfo& data_location,
-                     size_t values_count, const void* values_data, gsl::span<const int64_t> indices);
+  Status MakeCooData(const IDataTransfer& data_transfer, const OrtMemoryInfo& data_location, size_t values_count, const void* values_data, gsl::span<const int64_t> indices);
 
   /// <summary>
   /// The method allocates a single contiguous buffer and creates instances of std::strings in it, with
@@ -349,7 +348,8 @@ class SparseTensor final {
   /// <returns></returns>
   Status MakeCsrData(const IDataTransfer& data_transfer,
                      const OrtMemoryInfo& data_location,
-                     size_t values_count, const void* values_data,
+                     size_t values_count,
+                     const void* values_data,
                      gsl::span<const int64_t> inner_index,
                      gsl::span<const int64_t> outer_index);
 
@@ -364,9 +364,7 @@ class SparseTensor final {
   /// <param name="inner_index">inner index to be copied. Use empty span for fully sparse tensors.</param>
   /// <param name="outer_index">outer index to be copied. Use empty span for fully sparse tensors.</param>
   /// <returns></returns>
-  Status MakeCsrStrings(size_t string_count, const char* const* strings,
-                        gsl::span<const int64_t> inner_index,
-                        gsl::span<const int64_t> outer_index);
+  Status MakeCsrStrings(size_t string_count, const char* const* strings, gsl::span<const int64_t> inner_index, gsl::span<const int64_t> outer_index);
 
   /// <summary>
   /// Give writable access to Csr values and indices
@@ -443,8 +441,10 @@ class SparseTensor final {
   /// <returns></returns>
   Status MakeBlockSparseData(const IDataTransfer& data_transfer,
                              const OrtMemoryInfo& data_location,
-                             const TensorShape& values_shape, const void* values_data,
-                             const TensorShape& indices_shape, const int32_t* indices_data);
+                             const TensorShape& values_shape,
+                             const void* values_data,
+                             const TensorShape& indices_shape,
+                             const int32_t* indices_data);
 
   /// <summary>
   /// The method allocates a single contiguous buffer and creates instances of std::strings in it, with
@@ -457,8 +457,7 @@ class SparseTensor final {
   /// <param name="indices_shape">Use {0} for fully sparse tensors</param>
   /// <param name="indices_data">use nullptr for fully sparse tensors</param>
   /// <returns></returns>
-  Status MakeBlockSparseStrings(const TensorShape& values_shape, const char* const* strings,
-                                const TensorShape& indices_shape, const int32_t* indices_data);
+  Status MakeBlockSparseStrings(const TensorShape& values_shape, const char* const* strings, const TensorShape& indices_shape, const int32_t* indices_data);
 
   /// <summary>
   /// Mutable data access

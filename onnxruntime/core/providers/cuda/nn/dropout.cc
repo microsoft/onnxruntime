@@ -21,37 +21,20 @@ struct GetRatioDataImpl {
 
 template <typename T>
 struct DropoutComputeImpl {
-  void operator()(const cudaDeviceProp& prop, cudaStream_t stream, const int64_t N, const int64_t mask_element_count,
-                  const float ratio_data, PhiloxGenerator& generator, const Tensor& X, Tensor& Y, void* mask_data,
-                  bool use_bitmask) const {
+  void operator()(const cudaDeviceProp& prop, cudaStream_t stream, const int64_t N, const int64_t mask_element_count, const float ratio_data, PhiloxGenerator& generator, const Tensor& X, Tensor& Y, void* mask_data, bool use_bitmask) const {
     typedef typename ToCudaType<T>::MappedType CudaT;
     const CudaT* X_data = reinterpret_cast<const CudaT*>(X.Data<T>());
     CudaT* Y_data = reinterpret_cast<CudaT*>(Y.MutableData<T>());
 
-    DropoutKernelImpl<CudaT>(prop, stream, N, mask_element_count, ratio_data, generator, X_data, Y_data, mask_data,
-                             use_bitmask);
+    DropoutKernelImpl<CudaT>(prop, stream, N, mask_element_count, ratio_data, generator, X_data, Y_data, mask_data, use_bitmask);
   }
 };
 
 }  // namespace
 
-ONNX_OPERATOR_VERSIONED_KERNEL_EX(Dropout, kOnnxDomain, 12, 12, kCudaExecutionProvider,
-                                  (*KernelDefBuilder::Create())
-                                      .TypeConstraint("T", DataTypeImpl::AllIEEEFloatTensorTypes())
-                                      .TypeConstraint("T1", DataTypeImpl::AllIEEEFloatTensorTypes())
-                                      .TypeConstraint("T2", DataTypeImpl::GetTensorType<bool>())
-                                      .InputMemoryType(OrtMemTypeCPUInput, 1)
-                                      .InputMemoryType(OrtMemTypeCPUInput, 2),
-                                  Dropout<false>);
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(Dropout, kOnnxDomain, 12, 12, kCudaExecutionProvider, (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::AllIEEEFloatTensorTypes()).TypeConstraint("T1", DataTypeImpl::AllIEEEFloatTensorTypes()).TypeConstraint("T2", DataTypeImpl::GetTensorType<bool>()).InputMemoryType(OrtMemTypeCPUInput, 1).InputMemoryType(OrtMemTypeCPUInput, 2), Dropout<false>);
 
-ONNX_OPERATOR_KERNEL_EX(Dropout, kOnnxDomain, 13, kCudaExecutionProvider,
-                        (*KernelDefBuilder::Create())
-                            .TypeConstraint("T", BuildKernelDefConstraints<MLFloat16, float, double, BFloat16>())
-                            .TypeConstraint("T1", BuildKernelDefConstraints<MLFloat16, float, double, BFloat16>())
-                            .TypeConstraint("T2", DataTypeImpl::GetTensorType<bool>())
-                            .InputMemoryType(OrtMemTypeCPUInput, 1)
-                            .InputMemoryType(OrtMemTypeCPUInput, 2),
-                        Dropout<false>);
+ONNX_OPERATOR_KERNEL_EX(Dropout, kOnnxDomain, 13, kCudaExecutionProvider, (*KernelDefBuilder::Create()).TypeConstraint("T", BuildKernelDefConstraints<MLFloat16, float, double, BFloat16>()).TypeConstraint("T1", BuildKernelDefConstraints<MLFloat16, float, double, BFloat16>()).TypeConstraint("T2", DataTypeImpl::GetTensorType<bool>()).InputMemoryType(OrtMemTypeCPUInput, 1).InputMemoryType(OrtMemTypeCPUInput, 2), Dropout<false>);
 
 template <bool UseBitmask>
 Status Dropout<UseBitmask>::ComputeInternal(OpKernelContext* context) const {
@@ -118,8 +101,7 @@ Status Dropout<UseBitmask>::ComputeInternal(OpKernelContext* context) const {
   PhiloxGenerator& generator = generator_ ? *generator_ : PhiloxGenerator::Default();
 
   utils::MLTypeCallDispatcher<float, MLFloat16, double, BFloat16> t_disp(X->GetElementType());
-  t_disp.Invoke<DropoutComputeImpl>(GetDeviceProp(), Stream(context), N, mask_element_count, ratio_data, generator, *X, *Y,
-                                    mask_data, UseBitmask);
+  t_disp.Invoke<DropoutComputeImpl>(GetDeviceProp(), Stream(context), N, mask_element_count, ratio_data, generator, *X, *Y, mask_data, UseBitmask);
 
   return Status::OK();
 }

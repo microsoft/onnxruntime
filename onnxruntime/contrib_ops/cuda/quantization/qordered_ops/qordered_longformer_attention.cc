@@ -51,8 +51,7 @@ QOrderedLongformerAttention::QOrderedLongformerAttention(const OpKernelInfo& inf
   const cublasLtOrder_t* allowed_weight_orders = weight_tiles_for_input_col32;
 
   order_input_ = GetCublasLtOrderAttr(
-      info, "order_input", 2, InputOrders,
-      "QOrderedLongformerAttention: Only ORDER_ROW or ORDER_COL32 is supported for order_input");
+      info, "order_input", 2, InputOrders, "QOrderedLongformerAttention: Only ORDER_ROW or ORDER_COL32 is supported for order_input");
   ORT_ENFORCE(order_input_ == CUBLASLT_ORDER_ROW, "Currently only support input with ORDER_ROW");
 
   if (order_input_ == CUBLASLT_ORDER_ROW) {
@@ -60,14 +59,11 @@ QOrderedLongformerAttention::QOrderedLongformerAttention(const OpKernelInfo& inf
     allowed_weight_orders = weight_tiles_for_input_row;
   }
   order_weight_ = GetCublasLtOrderAttr(
-      info, "order_weight", num_allowed_weight_orders, allowed_weight_orders,
-      "QOrderedLongformerAttention: un-supported order for order_weght");
+      info, "order_weight", num_allowed_weight_orders, allowed_weight_orders, "QOrderedLongformerAttention: un-supported order for order_weght");
   order_global_weight_ = GetCublasLtOrderAttr(
-      info, "order_global_weight", num_allowed_weight_orders, allowed_weight_orders,
-      "QOrderedLongformerAttention: un-supported order for order_global_weight");
+      info, "order_global_weight", num_allowed_weight_orders, allowed_weight_orders, "QOrderedLongformerAttention: un-supported order for order_global_weight");
   order_output_ = GetCublasLtOrderAttr(
-      info, "order_output", 1, (const cublasLtOrder_t*)&order_input_,
-      "QOrderedLongformerAttention: oder_output must be same as order_input");
+      info, "order_output", 1, (const cublasLtOrder_t*)&order_input_, "QOrderedLongformerAttention: oder_output must be same as order_input");
 
 #else
 
@@ -87,8 +83,7 @@ QOrderedLongformerAttention::ComputeInternal(OpKernelContext* context) const {
   const Tensor* global_weights = context->Input<Tensor>(8);
   const Tensor* global_bias = context->Input<Tensor>(10);
   const Tensor* global_attention_mask = context->Input<Tensor>(12);
-  ORT_RETURN_IF_ERROR(CheckInputs(input->Shape(), weights->Shape(), bias->Shape(), attention_mask->Shape(),
-                                  global_weights->Shape(), global_bias->Shape(), global_attention_mask->Shape()));
+  ORT_RETURN_IF_ERROR(CheckInputs(input->Shape(), weights->Shape(), bias->Shape(), attention_mask->Shape(), global_weights->Shape(), global_bias->Shape(), global_attention_mask->Shape()));
   // Input shapes:
   //   input                 : (batch_size, sequence_length, hidden_size)
   //   weights               : (3, hidden_size, hidden_size)
@@ -143,7 +138,8 @@ QOrderedLongformerAttention::ComputeInternal(OpKernelContext* context) const {
   CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(batch_global_num_pinned,
                                        batch_global_num_buffer.get(),
                                        batch_size * sizeof(int),
-                                       cudaMemcpyDeviceToHost, stream));
+                                       cudaMemcpyDeviceToHost,
+                                       stream));
 
   // Create an event to make sure the async copy is finished before reading the data.
   AutoDestoryCudaEvent new_event;
@@ -174,16 +170,9 @@ QOrderedLongformerAttention::ComputeInternal(OpKernelContext* context) const {
 
   // Note: bias is already pre-processed i.e., / *scale_qkvgemm
   int8_t* s8_gemm_buffer = ((int8_t*)gemm_buffer.get()) + 2 * qkv_size;
-  ORT_RETURN_IF_ERROR(QOrdered_MatMul(cublasLt, stream, device_prop,
-                                      batch_size, sequence_length, n, k,
-                                      &alpha, input->Data<int8_t>(), weights->Data<int8_t>(),
-                                      bias->Data<float>(),
-                                      s8_gemm_buffer,
-                                      (cublasLtOrder_t)order_weight_));
+  ORT_RETURN_IF_ERROR(QOrdered_MatMul(cublasLt, stream, device_prop, batch_size, sequence_length, n, k, &alpha, input->Data<int8_t>(), weights->Data<int8_t>(), bias->Data<float>(), s8_gemm_buffer, (cublasLtOrder_t)order_weight_));
 
-  ORT_RETURN_IF_ERROR(QOrderDequantizeToRow((cublasLtOrder_t)order_input_, stream, device_prop,
-                                            s8_gemm_buffer, (CudaT*)gemm_buffer.get(),
-                                            *scale_qkvgemm, batch_size, sequence_length, n));
+  ORT_RETURN_IF_ERROR(QOrderDequantizeToRow((cublasLtOrder_t)order_input_, stream, device_prop, s8_gemm_buffer, (CudaT*)gemm_buffer.get(), *scale_qkvgemm, batch_size, sequence_length, n));
 
   // Wait for async copy of batch_global_num
   CUDA_RETURN_IF_ERROR(cudaEventSynchronize(is_copy_done));
@@ -210,15 +199,8 @@ QOrderedLongformerAttention::ComputeInternal(OpKernelContext* context) const {
     global_gemm_buffer = reinterpret_cast<CudaT*>(reinterpret_cast<char*>(gemm_buffer.get()) + qkv_size);
     int8_t* global_s8_gemm_buffer = ((int8_t*)gemm_buffer.get()) + (2 * qkv_size + qkv_count * sizeof(int8_t));
     float global_alpha = (*scale_input * *scale_global_weight) / *scale_global_qkvgemm;
-    ORT_RETURN_IF_ERROR(QOrdered_MatMul(cublasLt, stream, device_prop,
-                                        batch_size, sequence_length, n, k,
-                                        &global_alpha, input->Data<int8_t>(), global_weights->Data<int8_t>(),
-                                        global_bias->Data<float>(),
-                                        global_s8_gemm_buffer,
-                                        (cublasLtOrder_t)order_global_weight_));
-    ORT_RETURN_IF_ERROR(QOrderDequantizeToRow((cublasLtOrder_t)order_input_, stream, device_prop,
-                                              global_s8_gemm_buffer, global_gemm_buffer,
-                                              *scale_global_qkvgemm, batch_size, sequence_length, n));
+    ORT_RETURN_IF_ERROR(QOrdered_MatMul(cublasLt, stream, device_prop, batch_size, sequence_length, n, k, &global_alpha, input->Data<int8_t>(), global_weights->Data<int8_t>(), global_bias->Data<float>(), global_s8_gemm_buffer, (cublasLtOrder_t)order_global_weight_));
+    ORT_RETURN_IF_ERROR(QOrderDequantizeToRow((cublasLtOrder_t)order_input_, stream, device_prop, global_s8_gemm_buffer, global_gemm_buffer, *scale_global_qkvgemm, batch_size, sequence_length, n));
   }
 
   size_t workSpaceSize = GetLongformerAttentionWorkspaceSize(element_size,
@@ -257,9 +239,7 @@ QOrderedLongformerAttention::ComputeInternal(OpKernelContext* context) const {
                                                       true,     // use_merged_qkv_weights
                                                       false));  // use_half4
 
-  ORT_RETURN_IF_ERROR(QOrderQuantizeRowTo((cublasLtOrder_t)order_input_, stream, device_prop,
-                                          (const CudaT*)out_fp16, output->template MutableData<int8_t>(),
-                                          *scale_output, batch_size, sequence_length, hidden_size));
+  ORT_RETURN_IF_ERROR(QOrderQuantizeRowTo((cublasLtOrder_t)order_input_, stream, device_prop, (const CudaT*)out_fp16, output->template MutableData<int8_t>(), *scale_output, batch_size, sequence_length, hidden_size));
 
   // Defer release of pinned memory since cudaStreamSynchronize is not used here and kernel need access the buffer.
   this->AddDeferredReleaseCPUPtr(pinned_buffer.release(), context->GetComputeStream());

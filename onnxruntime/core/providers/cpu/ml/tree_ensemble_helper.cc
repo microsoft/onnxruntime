@@ -10,9 +10,7 @@ using namespace std;
 namespace onnxruntime {
 namespace ml {
 
-Status GetNumberOfElementsAttrsOrDefault(const OpKernelInfo& info, const std::string& name,
-                                         ONNX_NAMESPACE::TensorProto_DataType proto_type,
-                                         size_t& n_elements, ONNX_NAMESPACE::TensorProto& proto) {
+Status GetNumberOfElementsAttrsOrDefault(const OpKernelInfo& info, const std::string& name, ONNX_NAMESPACE::TensorProto_DataType proto_type, size_t& n_elements, ONNX_NAMESPACE::TensorProto& proto) {
   auto status = info.GetAttr(name, &proto);
   if (!status.IsOK()) {
     // Attribute is missing, n_elements is set to 0.
@@ -25,7 +23,11 @@ Status GetNumberOfElementsAttrsOrDefault(const OpKernelInfo& info, const std::st
   }
   ORT_ENFORCE(n_dims == 1, "Attribute '", name, "' must be a vector.");
   ORT_ENFORCE(proto.data_type() == proto_type,
-              "Unexpected type (", proto.data_type(), "(for attribute '", name, "'.");
+              "Unexpected type (",
+              proto.data_type(),
+              "(for attribute '",
+              name,
+              "'.");
 
   n_elements = onnxruntime::narrow<size_t>(proto.dims()[0]);
   ORT_ENFORCE(n_elements > 0, "Attribute '", name, "' has one dimension but is empty.");
@@ -33,8 +35,7 @@ Status GetNumberOfElementsAttrsOrDefault(const OpKernelInfo& info, const std::st
 }
 
 template <typename TH>
-Status GetVectorAttrsOrDefault(const OpKernelInfo& info, const std::string& name,
-                               ONNX_NAMESPACE::TensorProto_DataType proto_type, std::vector<TH>& data) {
+Status GetVectorAttrsOrDefault(const OpKernelInfo& info, const std::string& name, ONNX_NAMESPACE::TensorProto_DataType proto_type, std::vector<TH>& data) {
   if (proto_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_DOUBLE) {
     ORT_ENFORCE((std::is_same<double, TH>::value));
   } else if (proto_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT) {

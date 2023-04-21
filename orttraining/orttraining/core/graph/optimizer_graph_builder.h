@@ -21,8 +21,7 @@ namespace training {
 using NodeArgNameGeneratorFn = std::function<std::string(const std::string&)>;
 
 Status GetArgDefsFromGraph(
-    const Graph& graph, const std::vector<std::string>& node_arg_names,
-    std::vector<ArgDef>& argdefs);
+    const Graph& graph, const std::vector<std::string>& node_arg_names, std::vector<ArgDef>& argdefs);
 
 ArgDef BuildGradientAccumulationNode(const NodeArgNameGeneratorFn& nodearg_name_generator,
                                      const ArgDef& gradient,

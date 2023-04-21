@@ -45,10 +45,13 @@ LinearClassifier::LinearClassifier(const OpKernelInfo& info)
 // intercepts_: [num_targets]
 // scores: X * coefficients_^T + intercepts_: [num_batches, num_targets]
 void LinearClassifier::ComputeImpl(const gsl::span<const float> input,
-                                   int64_t num_batches, int64_t num_features, int64_t num_targets,
+                                   int64_t num_batches,
+                                   int64_t num_features,
+                                   int64_t num_targets,
                                    const std::vector<float>& coefficients,
                                    const std::vector<float>& intercepts,
-                                   Tensor& labels_output, Tensor& scores_output,
+                                   Tensor& labels_output,
+                                   Tensor& scores_output,
                                    POST_EVAL_TRANSFORM post_transform,
                                    bool add_second_class,
                                    concurrency::ThreadPool* threadpool) const {
@@ -56,16 +59,13 @@ void LinearClassifier::ComputeImpl(const gsl::span<const float> input,
   auto scores_output_data = scores_output.MutableDataAsSpan<float>();
   size_t scores_output_size = SafeInt<size_t>(num_batches) * num_targets * (add_second_class ? 2 : 1);
   ORT_ENFORCE(scores_output_data.size() >= scores_output_size,
-              "Scores output is incorrect size. Expected:", scores_output_size,
-              " Found:", scores_output_data.size());
+              "Scores output is incorrect size. Expected:",
+              scores_output_size,
+              " Found:",
+              scores_output_data.size());
 
   TensorShape intercepts_shape({num_targets});
-  onnxruntime::Gemm<float>::ComputeGemm(CBLAS_TRANSPOSE::CblasNoTrans, CBLAS_TRANSPOSE::CblasTrans,
-                                        num_batches, num_targets, num_features,
-                                        1.f, input_data, coefficients.data(), 1.f,
-                                        intercepts.data(), &intercepts_shape,
-                                        scores_output_data.data(),
-                                        threadpool);
+  onnxruntime::Gemm<float>::ComputeGemm(CBLAS_TRANSPOSE::CblasNoTrans, CBLAS_TRANSPOSE::CblasTrans, num_batches, num_targets, num_features, 1.f, input_data, coefficients.data(), 1.f, intercepts.data(), &intercepts_shape, scores_output_data.data(), threadpool);
 
   float* score = scores_output_data.data();
   float* end_scores = score + (num_batches * num_targets);  // we haven't added extra targets yet so iterate the original scores
@@ -113,9 +113,7 @@ void LinearClassifier::ComputeImpl(const gsl::span<const float> input,
   }
 
   if (post_transform != POST_EVAL_TRANSFORM::NONE || add_second_class) {
-    ml::batched_update_scores_inplace(scores_output_data, num_batches, num_targets, post_transform,
-                                      add_second_class ? 1 : -1, false,
-                                      threadpool);
+    ml::batched_update_scores_inplace(scores_output_data, num_batches, num_targets, post_transform, add_second_class ? 1 : -1, false, threadpool);
   }
 }
 
@@ -135,8 +133,7 @@ Status LinearClassifier::Compute(OpKernelContext* ctx) const {
   const auto& X = *ctx->Input<Tensor>(0);
   const TensorShape& input_shape = X.Shape();
   if (input_shape.NumDimensions() == 0) {
-    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                  "Input shape needs to be at least a single dimension.");
+    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Input shape needs to be at least a single dimension.");
   }
 
   int64_t num_batches = input_shape.NumDimensions() == 1 ? 1 : input_shape[0];
@@ -193,8 +190,7 @@ Status LinearClassifier::Compute(OpKernelContext* ctx) const {
     input = cast_span;
   }
 
-  ComputeImpl(input, num_batches, num_features, class_count_, coefficients_, intercepts_,
-              *Y, *Z, post_transform_, add_second_class, tp);
+  ComputeImpl(input, num_batches, num_features, class_count_, coefficients_, intercepts_, *Y, *Z, post_transform_, add_second_class, tp);
 
   if (cast_buffer != nullptr) {
     alloc->Free(cast_buffer);

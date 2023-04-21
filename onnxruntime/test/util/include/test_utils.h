@@ -66,8 +66,7 @@ void CheckShapeEquality(const ONNX_NAMESPACE::TensorShapeProto* shape1,
 
 // Create OrtValue on CPU copying from provided inputs.
 template <typename T>
-void CreateInputOrtValueOnCPU(gsl::span<const int64_t> dims, const std::vector<T>& value,
-                              OrtValue* p_ortvalue, AllocatorPtr alloc = nullptr) {
+void CreateInputOrtValueOnCPU(gsl::span<const int64_t> dims, const std::vector<T>& value, OrtValue* p_ortvalue, AllocatorPtr alloc = nullptr) {
   static CPUExecutionProviderInfo info;
   static CPUExecutionProvider cpu_provider(info);
   static AllocatorPtr cpu_allocator = cpu_provider.GetAllocator(OrtMemTypeDefault);

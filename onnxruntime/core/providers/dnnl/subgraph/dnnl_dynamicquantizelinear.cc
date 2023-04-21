@@ -61,25 +61,18 @@ void DnnlDynamicQuantizeLinear::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlN
   }
 
   // Create reduction primitive
-  auto max_reduction_prim = dnnl::reduction({eng, dnnl::algorithm::reduction_max,
-                                             x_md, y_scale_md, 0.f, 0.f, max_reduction_attr});
-  auto min_reduction_prim = dnnl::reduction({eng, dnnl::algorithm::reduction_min,
-                                             x_md, y_scale_md, 0.f, 0.f, min_reduction_attr});
+  auto max_reduction_prim = dnnl::reduction({eng, dnnl::algorithm::reduction_max, x_md, y_scale_md, 0.f, 0.f, max_reduction_attr});
+  auto min_reduction_prim = dnnl::reduction({eng, dnnl::algorithm::reduction_min, x_md, y_scale_md, 0.f, 0.f, min_reduction_attr});
 
   // Create y_scale and min memory
   auto y_scale_mem = dnnl::memory(y_scale_md, eng);
   auto min_reduction_mem = dnnl::memory(y_scale_md, eng);
 
   // Compute min first since max_reduction needs min as input
-  sp.AddPrimitive(min_reduction_prim, {{DNNL_ARG_SRC, x_mem},
-                                       {DNNL_ARG_ATTR_MULTIPLE_POST_OP(0) | DNNL_ARG_SRC_1, zero_mem},
-                                       {DNNL_ARG_DST, min_reduction_mem}});
+  sp.AddPrimitive(min_reduction_prim, {{DNNL_ARG_SRC, x_mem}, {DNNL_ARG_ATTR_MULTIPLE_POST_OP(0) | DNNL_ARG_SRC_1, zero_mem}, {DNNL_ARG_DST, min_reduction_mem}});
 
   // Compute y_scale in fp32
-  sp.AddPrimitive(max_reduction_prim, {{DNNL_ARG_SRC, x_mem},
-                                       {DNNL_ARG_ATTR_MULTIPLE_POST_OP(0) | DNNL_ARG_SRC_1, zero_mem},
-                                       {DNNL_ARG_ATTR_MULTIPLE_POST_OP(1) | DNNL_ARG_SRC_1, min_reduction_mem},
-                                       {DNNL_ARG_DST, y_scale_mem}});
+  sp.AddPrimitive(max_reduction_prim, {{DNNL_ARG_SRC, x_mem}, {DNNL_ARG_ATTR_MULTIPLE_POST_OP(0) | DNNL_ARG_SRC_1, zero_mem}, {DNNL_ARG_ATTR_MULTIPLE_POST_OP(1) | DNNL_ARG_SRC_1, min_reduction_mem}, {DNNL_ARG_DST, y_scale_mem}});
 
   // Y_ZERO_POINT COMPUTATION
   // Create memory and primitive descriptors
@@ -100,18 +93,14 @@ void DnnlDynamicQuantizeLinear::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlN
   sp.WriteToDnnlMemory<float>(scale_mem, {-1.0f});
 
   // Create primitives
-  auto zp_prim_pd = dnnl::binary::primitive_desc(eng, dnnl::algorithm::binary_div,
-                                                 y_scale_md, y_scale_md, y_zp_md, zp_prim_attr);
+  auto zp_prim_pd = dnnl::binary::primitive_desc(eng, dnnl::algorithm::binary_div, y_scale_md, y_scale_md, y_zp_md, zp_prim_attr);
   auto zp_prim = dnnl::binary(zp_prim_pd);
 
   // Create zp memory dst
   auto y_zp_mem = dnnl::memory(zp_prim_pd.dst_desc(), eng);
 
   // Calc zp
-  sp.AddPrimitive(zp_prim, {{DNNL_ARG_SRC_0, min_reduction_mem},
-                            {DNNL_ARG_SRC_1, y_scale_mem},
-                            {DNNL_ARG_DST, y_zp_mem},
-                            {DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC_0, scale_mem}});
+  sp.AddPrimitive(zp_prim, {{DNNL_ARG_SRC_0, min_reduction_mem}, {DNNL_ARG_SRC_1, y_scale_mem}, {DNNL_ARG_DST, y_zp_mem}, {DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC_0, scale_mem}});
 
   // Y COMPUTATION
   // Create y md and binary desc
@@ -130,10 +119,7 @@ void DnnlDynamicQuantizeLinear::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlN
   // Create y_dst mem
   auto y_mem = dnnl::memory(y_pd.dst_desc(), eng);
   // Compute y
-  sp.AddPrimitive(y_prim, {{DNNL_ARG_SRC_0, x_mem},
-                           {DNNL_ARG_SRC_1, y_scale_mem},
-                           {DNNL_ARG_ATTR_MULTIPLE_POST_OP(1) | DNNL_ARG_SRC_1, y_zp_mem},
-                           {DNNL_ARG_DST, y_mem}});
+  sp.AddPrimitive(y_prim, {{DNNL_ARG_SRC_0, x_mem}, {DNNL_ARG_SRC_1, y_scale_mem}, {DNNL_ARG_ATTR_MULTIPLE_POST_OP(1) | DNNL_ARG_SRC_1, y_zp_mem}, {DNNL_ARG_DST, y_mem}});
 
   // Set outputs
   sp.SetMemory(node.Output(OUT_Y), y_mem);

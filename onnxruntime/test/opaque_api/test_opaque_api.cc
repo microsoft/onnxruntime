@@ -179,8 +179,7 @@ std::string CreateModel() {
     auto& output_arg = graph.GetOrCreateNodeArg("Output", &exp_type_proto);
     outputs.push_back(&output_arg);
 
-    auto& node = graph.AddNode("OpaqueCApiTestKernel", "OpaqueCApiTestKernel", "Replace all h to underscore",
-                               inputs, outputs, nullptr, onnxruntime::kMSDomain);
+    auto& node = graph.AddNode("OpaqueCApiTestKernel", "OpaqueCApiTestKernel", "Replace all h to underscore", inputs, outputs, nullptr, onnxruntime::kMSDomain);
     node.SetExecutionProviderType(onnxruntime::kCpuExecutionProvider);
   }
   EXPECT_TRUE(graph.Resolve().IsOK());
@@ -235,8 +234,7 @@ TEST(OpaqueApiTest, RunModelWithOpaqueInputOutput) {
     Ort::Value output_val(nullptr);  // empty
 
     Ort::RunOptions run_options;
-    session.Run(run_options, input_names, &container_val, num_input_nodes,
-                output_names, &output_val, num_output_nodes);
+    session.Run(run_options, input_names, &container_val, num_input_nodes, output_names, &output_val, num_output_nodes);
 
     ExperimentalDataContainer result;
     // Need to verify that the output match the expected one

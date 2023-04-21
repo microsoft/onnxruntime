@@ -30,8 +30,7 @@ Status VariadicElementwiseOp<VariadicElementwiseOpTag, SupportedElementTypes...>
   }
 
   CudaT* output_data = reinterpret_cast<CudaT*>(output.MutableData<T>());
-  Impl_NoBroadcastInputBatch<CudaT, VariadicElementwiseOpTag>(stream, input_data_batch, output_data,
-                                                              output.Shape().Size());
+  Impl_NoBroadcastInputBatch<CudaT, VariadicElementwiseOpTag>(stream, input_data_batch, output_data, output.Shape().Size());
 
   while (index < input_count) {
     size_t left_count = input_count - index + 1;
@@ -41,11 +40,7 @@ Status VariadicElementwiseOp<VariadicElementwiseOpTag, SupportedElementTypes...>
       BinaryElementwisePreparation prepare;
       ORT_RETURN_IF_ERROR(BinaryElementwiseBroadcastPrepare(&output, &inputs[input_count - 1].get(), &output, &prepare));
       Impl_General<CudaT, VariadicElementwiseOpTag>(
-          stream, prepare.output_rank_or_simple_broadcast, &prepare.lhs_padded_strides,
-          reinterpret_cast<const CudaT*>(prepare.lhs_tensor->Data<T>()), &prepare.rhs_padded_strides,
-          reinterpret_cast<const CudaT*>(prepare.rhs_tensor->Data<T>()), &prepare.fdm_output_strides,
-          prepare.fdm_H, prepare.fdm_C, reinterpret_cast<CudaT*>(prepare.output_tensor->MutableData<T>()),
-          prepare.output_tensor->Shape().Size());
+          stream, prepare.output_rank_or_simple_broadcast, &prepare.lhs_padded_strides, reinterpret_cast<const CudaT*>(prepare.lhs_tensor->Data<T>()), &prepare.rhs_padded_strides, reinterpret_cast<const CudaT*>(prepare.rhs_tensor->Data<T>()), &prepare.fdm_output_strides, prepare.fdm_H, prepare.fdm_C, reinterpret_cast<CudaT*>(prepare.output_tensor->MutableData<T>()), prepare.output_tensor->Shape().Size());
 
       // Must be the last.
       break;
@@ -59,8 +54,7 @@ Status VariadicElementwiseOp<VariadicElementwiseOpTag, SupportedElementTypes...>
       index++;
     }
 
-    Impl_NoBroadcastInputBatch<CudaT, VariadicElementwiseOpTag>(stream, left_input_data_batch, output_data,
-                                                                output.Shape().Size());
+    Impl_NoBroadcastInputBatch<CudaT, VariadicElementwiseOpTag>(stream, left_input_data_batch, output_data, output.Shape().Size());
   }
 
   return Status::OK();
@@ -116,22 +110,14 @@ VariadicElementwiseOp<VariadicElementwiseOpTag, SupportedElementTypes...>::Gener
   if (index_of_same_shape == inputs.size()) {
     CUDA_RETURN_IF_ERROR(cudaMemsetAsync(output.MutableDataRaw(), 0, output.SizeInBytes(), stream));
     ORT_RETURN_IF_ERROR(BinaryElementwiseBroadcastPrepare(&output, &inputs[0].get(), &output, &prepare));
-    Impl_Add(stream, prepare.output_rank_or_simple_broadcast, &prepare.lhs_padded_strides,
-             reinterpret_cast<const CudaT*>(prepare.lhs_tensor->Data<T>()), &prepare.rhs_padded_strides,
-             reinterpret_cast<const CudaT*>(prepare.rhs_tensor->Data<T>()), &prepare.fdm_output_strides,
-             prepare.fdm_H, prepare.fdm_C, reinterpret_cast<CudaT*>(prepare.output_tensor->MutableData<T>()),
-             prepare.output_tensor->Shape().Size());
+    Impl_Add(stream, prepare.output_rank_or_simple_broadcast, &prepare.lhs_padded_strides, reinterpret_cast<const CudaT*>(prepare.lhs_tensor->Data<T>()), &prepare.rhs_padded_strides, reinterpret_cast<const CudaT*>(prepare.rhs_tensor->Data<T>()), &prepare.fdm_output_strides, prepare.fdm_H, prepare.fdm_C, reinterpret_cast<CudaT*>(prepare.output_tensor->MutableData<T>()), prepare.output_tensor->Shape().Size());
   } else {
     // First operation is between input[0] and input[index_of_same_shape] if index_of_same_shape is not 0.
     size_t index = index_of_same_shape == 0 ? 1 : 0;
     ORT_RETURN_IF_ERROR(
         BinaryElementwiseBroadcastPrepare(&inputs[index_of_same_shape].get(), &inputs[index].get(), &output, &prepare));
     Impl_General<CudaT, VariadicElementwiseOpTag>(
-        stream, prepare.output_rank_or_simple_broadcast, &prepare.lhs_padded_strides,
-        reinterpret_cast<const CudaT*>(prepare.lhs_tensor->Data<T>()), &prepare.rhs_padded_strides,
-        reinterpret_cast<const CudaT*>(prepare.rhs_tensor->Data<T>()), &prepare.fdm_output_strides,
-        prepare.fdm_H, prepare.fdm_C, reinterpret_cast<CudaT*>(prepare.output_tensor->MutableData<T>()),
-        prepare.output_tensor->Shape().Size());
+        stream, prepare.output_rank_or_simple_broadcast, &prepare.lhs_padded_strides, reinterpret_cast<const CudaT*>(prepare.lhs_tensor->Data<T>()), &prepare.rhs_padded_strides, reinterpret_cast<const CudaT*>(prepare.rhs_tensor->Data<T>()), &prepare.fdm_output_strides, prepare.fdm_H, prepare.fdm_C, reinterpret_cast<CudaT*>(prepare.output_tensor->MutableData<T>()), prepare.output_tensor->Shape().Size());
   }
 
   for (size_t index = 1; index < inputs.size(); index++) {
@@ -142,11 +128,7 @@ VariadicElementwiseOp<VariadicElementwiseOpTag, SupportedElementTypes...>::Gener
 
     ORT_RETURN_IF_ERROR(BinaryElementwiseBroadcastPrepare(&output, &inputs[index].get(), &output, &prepare));
     Impl_General<CudaT, VariadicElementwiseOpTag>(
-        stream, prepare.output_rank_or_simple_broadcast, &prepare.lhs_padded_strides,
-        reinterpret_cast<const CudaT*>(prepare.lhs_tensor->Data<T>()), &prepare.rhs_padded_strides,
-        reinterpret_cast<const CudaT*>(prepare.rhs_tensor->Data<T>()), &prepare.fdm_output_strides,
-        prepare.fdm_H, prepare.fdm_C, reinterpret_cast<CudaT*>(prepare.output_tensor->MutableData<T>()),
-        prepare.output_tensor->Shape().Size());
+        stream, prepare.output_rank_or_simple_broadcast, &prepare.lhs_padded_strides, reinterpret_cast<const CudaT*>(prepare.lhs_tensor->Data<T>()), &prepare.rhs_padded_strides, reinterpret_cast<const CudaT*>(prepare.rhs_tensor->Data<T>()), &prepare.fdm_output_strides, prepare.fdm_H, prepare.fdm_C, reinterpret_cast<CudaT*>(prepare.output_tensor->MutableData<T>()), prepare.output_tensor->Shape().Size());
   }
 
   return Status::OK();
@@ -178,8 +160,7 @@ Status VariadicElementwiseOp<VariadicElementwiseOpTag, SupportedElementTypes...>
     auto& output_tensor = context->RequiredOutput(0, first_input_tensor.Shape());
     if (first_input_tensor.DataRaw() != output_tensor.DataRaw()) {
       CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(
-          output_tensor.MutableDataRaw(), first_input_tensor.DataRaw(), first_input_tensor.SizeInBytes(),
-          cudaMemcpyDeviceToDevice, Stream(context)));
+          output_tensor.MutableDataRaw(), first_input_tensor.DataRaw(), first_input_tensor.SizeInBytes(), cudaMemcpyDeviceToDevice, Stream(context)));
     }
 
     return Status::OK();
@@ -189,20 +170,17 @@ Status VariadicElementwiseOp<VariadicElementwiseOpTag, SupportedElementTypes...>
   utils::MLTypeCallDispatcher<SupportedElementTypes...> dispatcher(element_type);
 
   // Special case for no broadcasting.
-  if (std::all_of(input_tensors.begin() + 1, input_tensors.end(),
-                  [&first_input_tensor](InputTensorVector::value_type t) {
-                    return first_input_tensor.Shape() == t.get().Shape();
-                  })) {
+  if (std::all_of(input_tensors.begin() + 1, input_tensors.end(), [&first_input_tensor](InputTensorVector::value_type t) {
+        return first_input_tensor.Shape() == t.get().Shape();
+      })) {
     auto& output_tensor = context->RequiredOutput(0, first_input_tensor.Shape());
 
     // special case for no broadcasting and 2 inputs
     if (input_count == 2) {
-      return dispatcher.template InvokeRet<Status, BinaryImplDispatchTarget>(Stream(context), input_tensors[0],
-                                                                             input_tensors[1], output_tensor);
+      return dispatcher.template InvokeRet<Status, BinaryImplDispatchTarget>(Stream(context), input_tensors[0], input_tensors[1], output_tensor);
     }
 
-    return dispatcher.template InvokeRet<Status, NoBroadcastBatchImplDispatchTarget>(Stream(context), input_tensors,
-                                                                                     output_tensor);
+    return dispatcher.template InvokeRet<Status, NoBroadcastBatchImplDispatchTarget>(Stream(context), input_tensors, output_tensor);
   }
 
   // compute output shape first, using broadcast rule
@@ -230,24 +208,19 @@ namespace {
 
 using SumOp = VariadicElementwiseOp<variadic_elementwise_ops::Sum, MLFloat16, float, double, BFloat16>;
 
-using MinOp = VariadicElementwiseOp<variadic_elementwise_ops::Min, uint32_t, uint64_t, int32_t, int64_t, MLFloat16,
-                                    float, double, BFloat16>;
+using MinOp = VariadicElementwiseOp<variadic_elementwise_ops::Min, uint32_t, uint64_t, int32_t, int64_t, MLFloat16, float, double, BFloat16>;
 
-using MaxOp = VariadicElementwiseOp<variadic_elementwise_ops::Max, uint32_t, uint64_t, int32_t, int64_t, MLFloat16,
-                                    float, double, BFloat16>;
+using MaxOp = VariadicElementwiseOp<variadic_elementwise_ops::Max, uint32_t, uint64_t, int32_t, int64_t, MLFloat16, float, double, BFloat16>;
 }  // namespace
 
 // kernel registration
 
-#define REGISTER_KERNEL(name, impl_class, version, datatypes)                                                        \
-  ONNX_OPERATOR_KERNEL_EX(name, kOnnxDomain, version, kCudaExecutionProvider,                                        \
-                          (*KernelDefBuilder::Create()).TypeConstraint("T", BuildKernelDefConstraints<datatypes>()), \
-                          impl_class)
+#define REGISTER_KERNEL(name, impl_class, version, datatypes) \
+  ONNX_OPERATOR_KERNEL_EX(name, kOnnxDomain, version, kCudaExecutionProvider, (*KernelDefBuilder::Create()).TypeConstraint("T", BuildKernelDefConstraints<datatypes>()), impl_class)
 
 #define REGISTER_VERSIONED_KERNEL(name, impl_class, start_version, end_version, datatypes) \
   ONNX_OPERATOR_VERSIONED_KERNEL_EX(                                                       \
-      name, kOnnxDomain, start_version, end_version, kCudaExecutionProvider,               \
-      (*KernelDefBuilder::Create()).TypeConstraint("T", BuildKernelDefConstraints<datatypes>()), impl_class)
+      name, kOnnxDomain, start_version, end_version, kCudaExecutionProvider, (*KernelDefBuilder::Create()).TypeConstraint("T", BuildKernelDefConstraints<datatypes>()), impl_class)
 
 #define UZILHFD_TYPES uint32_t, uint64_t, int32_t, int64_t, MLFloat16, float, double, BFloat16
 #define HFD_TYPES MLFloat16, float, double, BFloat16

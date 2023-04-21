@@ -22,12 +22,16 @@ Status AddToExistingNodeArgs(
     const auto* new_nodearg = graph.GetNodeArg(new_nodearg_name);
     ORT_RETURN_IF_NOT(
         new_nodearg,
-        addition_context, " - failed to find NodeArg by name: ", new_nodearg_name);
+        addition_context,
+        " - failed to find NodeArg by name: ",
+        new_nodearg_name);
 
     if (nodeargs_set.find(new_nodearg) != nodeargs_set.end()) {
       ORT_RETURN_IF(
           is_duplicate_an_error,
-          addition_context, " - error - attempted to add a duplicate NodeArg: ", new_nodearg_name);
+          addition_context,
+          " - error - attempted to add a duplicate NodeArg: ",
+          new_nodearg_name);
       LOGS_DEFAULT(INFO)
           << addition_context << " - skipping addition of duplicate NodeArg: " << new_nodearg_name;
       continue;
@@ -83,8 +87,7 @@ Status GraphAugmenter::AugmentGraph(Graph& graph,
   if (!graph_element_defs.GraphInputs().empty()) {
     std::vector<const NodeArg*> new_inputs;
     ORT_RETURN_IF_ERROR(AddToExistingNodeArgs(
-        "add graph inputs", graph, graph_element_defs.GraphInputs(), graph.GetInputsIncludingInitializers(),
-        false, new_inputs));
+        "add graph inputs", graph, graph_element_defs.GraphInputs(), graph.GetInputsIncludingInitializers(), false, new_inputs));
     graph.SetInputs(new_inputs);
   }
 

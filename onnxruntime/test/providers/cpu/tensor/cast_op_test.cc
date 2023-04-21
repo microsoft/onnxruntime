@@ -67,8 +67,7 @@ template <typename SrcType, typename DstType>
 typename std::enable_if<AnyRequireCastThroughFloat<SrcType, DstType>::value>::type
 CastSpan(gsl::span<const SrcType> src, gsl::span<DstType> dst) {
   std::transform(
-      src.begin(), src.end(), dst.begin(),
-      [](SrcType s) {
+      src.begin(), src.end(), dst.begin(), [](SrcType s) {
         return static_cast<DstType>(static_cast<float>(s));
       });
 }
@@ -77,8 +76,7 @@ template <typename SrcType, typename DstType>
 typename std::enable_if<!AnyRequireCastThroughFloat<SrcType, DstType>::value>::type
 CastSpan(gsl::span<const SrcType> src, gsl::span<DstType> dst) {
   std::transform(
-      src.begin(), src.end(), dst.begin(),
-      [](SrcType s) {
+      src.begin(), src.end(), dst.begin(), [](SrcType s) {
         return static_cast<DstType>(s);
       });
 }
@@ -95,12 +93,10 @@ struct CastNonStringTester {
   void operator()(const std::pair<SrcType, DstType>&) {
     SCOPED_TRACE(
         onnxruntime::MakeString(
-            "Cast from type ", utils::ToTensorProtoElementType<SrcType>(),
-            " to type ", utils::ToTensorProtoElementType<DstType>()));
+            "Cast from type ", utils::ToTensorProtoElementType<SrcType>(), " to type ", utils::ToTensorProtoElementType<DstType>()));
 
     const std::vector<int> input_int_values{
-        0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11,
-        0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11};
+        0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11};
     const TensorShape shape{2, 3, 2, 2};
     const size_t size = gsl::narrow<size_t>(shape.Size());
     ASSERT_EQ(input_int_values.size(), size);
@@ -120,10 +116,18 @@ struct CastNonStringTester {
 using CastNonStringTypes =
     boost::mp11::mp_list<
         bool,
-        float, double,
-        uint8_t, uint16_t, uint32_t, uint64_t,
-        int8_t, int16_t, int32_t, int64_t,
-        MLFloat16, BFloat16>;
+        float,
+        double,
+        uint8_t,
+        uint16_t,
+        uint32_t,
+        uint64_t,
+        int8_t,
+        int16_t,
+        int32_t,
+        int64_t,
+        MLFloat16,
+        BFloat16>;
 
 TEST(CastOpTest, NonStringTypes) {
   // TODO: Unskip when fixed #41968513
@@ -137,21 +141,16 @@ TEST(CastOpTest, NonStringTypes) {
 
 TEST(CastOpTest, FromString) {
   const std::vector<int64_t> shape{2, 2, 2};
-  const std::vector<std::string> string_data = {"-inf", "+INF", "0.9767611", "0.28280696",
-                                                "-0.12019656", "5.0", "NaN", "nan"};
-  const std::vector<float> float_output = {-(std::numeric_limits<float>::infinity()), std::numeric_limits<float>::infinity(),
-                                           0.9767611f, 0.28280696f,
-                                           -0.12019656f, 5.0f, NAN, NAN};
+  const std::vector<std::string> string_data = {"-inf", "+INF", "0.9767611", "0.28280696", "-0.12019656", "5.0", "NaN", "nan"};
+  const std::vector<float> float_output = {-(std::numeric_limits<float>::infinity()), std::numeric_limits<float>::infinity(), 0.9767611f, 0.28280696f, -0.12019656f, 5.0f, NAN, NAN};
   TestCastOp(gsl::make_span(string_data), gsl::make_span(float_output), shape);
 
-  const std::vector<std::string> float16_string_data = {"-inf", "+INF", "0.5", "0.25",
-                                                        "0.0", "-1.0", "-1.5", "NaN"};
+  const std::vector<std::string> float16_string_data = {"-inf", "+INF", "0.5", "0.25", "0.0", "-1.0", "-1.5", "NaN"};
   const std::vector<MLFloat16> float16_output =
       CastedValues<float, MLFloat16>(
           gsl::make_span(
               std::vector<float>{
-                  -std::numeric_limits<float>::infinity(), std::numeric_limits<float>::infinity(), 0.5f, 0.25f,
-                  0.0f, -1.0f, -1.5f, NAN}));
+                  -std::numeric_limits<float>::infinity(), std::numeric_limits<float>::infinity(), 0.5f, 0.25f, 0.0f, -1.0f, -1.5f, NAN}));
   TestCastOp(gsl::make_span(float16_string_data), gsl::make_span(float16_output), shape);
 
   const std::vector<std::string> int_16_string_data = {"0", "1", "2", "3", "4", "5", "-32768", "32767"};
@@ -165,23 +164,18 @@ TEST(CastOpTest, FromString) {
 
 TEST(CastOpTest, ToString) {
   const std::vector<int64_t> shape{2, 2, 2};
-  const std::vector<float> float_input = {NAN, -1.f, 0.0391877927f, 0.296140194f, -0.120196559f, 5.0f,
-                                          -std::numeric_limits<float>::infinity(),
-                                          std::numeric_limits<float>::infinity()};
+  const std::vector<float> float_input = {NAN, -1.f, 0.0391877927f, 0.296140194f, -0.120196559f, 5.0f, -std::numeric_limits<float>::infinity(), std::numeric_limits<float>::infinity()};
 
   // float output precision is 8, so the expected output differs slightly from the input due to that
-  const std::vector<std::string> string_output = {"NaN", "-1", "0.039187793", "0.29614019",
-                                                  "-0.12019656", "5", "-INF", "INF"};
+  const std::vector<std::string> string_output = {"NaN", "-1", "0.039187793", "0.29614019", "-0.12019656", "5", "-INF", "INF"};
   TestCastOp(gsl::make_span(float_input), gsl::make_span(string_output), shape);
 
   const std::vector<MLFloat16> float16_input =
       CastedValues<float, MLFloat16>(
           gsl::make_span(
               std::vector<float>{
-                  -std::numeric_limits<float>::infinity(), std::numeric_limits<float>::infinity(), 0.5f, 0.25f,
-                  0.0f, -1.0f, -1.5f, NAN}));
-  const std::vector<std::string> float16_string_output = {"-INF", "INF", "0.5", "0.25",
-                                                          "0", "-1", "-1.5", "NaN"};
+                  -std::numeric_limits<float>::infinity(), std::numeric_limits<float>::infinity(), 0.5f, 0.25f, 0.0f, -1.0f, -1.5f, NAN}));
+  const std::vector<std::string> float16_string_output = {"-INF", "INF", "0.5", "0.25", "0", "-1", "-1.5", "NaN"};
   TestCastOp(gsl::make_span(float16_input), gsl::make_span(float16_string_output), shape);
 
   const std::vector<std::string> int_string_data = {"0", "1", "2", "3", "4", "5", "6", "7"};

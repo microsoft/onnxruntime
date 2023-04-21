@@ -12,10 +12,15 @@
 namespace onnxruntime {
 namespace rocm {
 
-#define REGISTER_GRADIENT_KERNEL_TYPED(T)                                                                            \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(ConvGrad, kMSDomain, 1, T, kRocmExecutionProvider,                                   \
-                                (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
-                                ConvGrad<T>);
+#define REGISTER_GRADIENT_KERNEL_TYPED(T)                                                  \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                           \
+      ConvGrad,                                                                            \
+      kMSDomain,                                                                           \
+      1,                                                                                   \
+      T,                                                                                   \
+      kRocmExecutionProvider,                                                              \
+      (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      ConvGrad<T>);
 
 REGISTER_GRADIENT_KERNEL_TYPED(float)
 // MIOpen double support not currently implemented.
@@ -28,13 +33,21 @@ using T_BwdFilterPerf = miopenConvAlgoPerf_t;
 using T_BwdFilterAlgo = miopenConvBwdWeightsAlgorithm_t;
 
 miopenStatus_t GetWorkspaceSize(const ConvArgs& args, T_BwdDataAlgo algo, size_t* workspace_size) {
-  return miopenConvolutionBackwardDataGetWorkSpaceSize(args.handle, args.y_tensor, args.x_tensor, args.conv_desc,
-                                                       args.w_desc, workspace_size);
+  return miopenConvolutionBackwardDataGetWorkSpaceSize(args.handle,
+                                                       args.y_tensor,
+                                                       args.x_tensor,
+                                                       args.conv_desc,
+                                                       args.w_desc,
+                                                       workspace_size);
 }
 
 miopenStatus_t GetWorkspaceSize(const ConvArgs& args, T_BwdFilterAlgo algo, size_t* workspace_size) {
-  return miopenConvolutionBackwardWeightsGetWorkSpaceSize(args.handle, args.y_tensor, args.x_tensor, args.conv_desc,
-                                                          args.w_desc, workspace_size);
+  return miopenConvolutionBackwardWeightsGetWorkSpaceSize(args.handle,
+                                                          args.y_tensor,
+                                                          args.x_tensor,
+                                                          args.conv_desc,
+                                                          args.w_desc,
+                                                          workspace_size);
 }
 
 template <typename T_Algo>
@@ -127,8 +140,7 @@ template <>
 struct AlgoSearch<T_BwdDataAlgo> {
   static constexpr auto DEFAULT_ALGO = miopenConvolutionBwdDataAlgoGEMM;
   static AlgoPerfCache<T_BwdDataPerf>& Cache() { return bwd_data_algos; }
-  static Status FindAlgorithms(const ConvArgs& args, const ROCMExecutionProvider* provider,
-                               std::vector<T_BwdDataPerf>& perf_results) {
+  static Status FindAlgorithms(const ConvArgs& args, const ROCMExecutionProvider* provider, std::vector<T_BwdDataPerf>& perf_results) {
     static const T_BwdDataAlgo algos[] = {
         miopenConvolutionBwdDataAlgoGEMM,
         miopenConvolutionBwdDataAlgoDirect,
@@ -146,8 +158,7 @@ struct AlgoSearch<T_BwdDataAlgo> {
     // Because the benchmarking uses a huge amount of memory, e.g. a few GBs.
     IAllocatorUniquePtr<void> workspace = provider->GetTransientScratchBuffer<void>(max_workspace_size);
     MIOPEN_RETURN_IF_ERROR(miopenFindConvolutionBackwardDataAlgorithm(
-        args.handle, args.y_tensor, args.dy_data, args.w_desc, args.w_data, args.conv_desc, args.x_tensor,
-        args.dx_data, 1, &perf_count, candidates.get(), workspace.get(), max_workspace_size, false));
+        args.handle, args.y_tensor, args.dy_data, args.w_desc, args.w_data, args.conv_desc, args.x_tensor, args.dx_data, 1, &perf_count, candidates.get(), workspace.get(), max_workspace_size, false));
     perf_results = GetValidAlgorithms<T_BwdDataPerf>(candidates.get(), perf_count);
     return Status::OK();
   }
@@ -157,8 +168,7 @@ template <>
 struct AlgoSearch<T_BwdFilterAlgo> {
   static constexpr auto DEFAULT_ALGO = miopenConvolutionBwdWeightsAlgoGEMM;
   static AlgoPerfCache<T_BwdFilterPerf>& Cache() { return bwd_filter_algos; }
-  static Status FindAlgorithms(const ConvArgs& args, const ROCMExecutionProvider* provider,
-                               std::vector<T_BwdFilterPerf>& perf_results) {
+  static Status FindAlgorithms(const ConvArgs& args, const ROCMExecutionProvider* provider, std::vector<T_BwdFilterPerf>& perf_results) {
     static const T_BwdFilterAlgo algos[] = {
         miopenConvolutionBwdWeightsAlgoGEMM,
         miopenConvolutionBwdWeightsAlgoDirect,
@@ -175,8 +185,7 @@ struct AlgoSearch<T_BwdFilterAlgo> {
     // Because the benchmarking uses a huge amount of memory, e.g. a few GBs.
     IAllocatorUniquePtr<void> workspace = provider->GetTransientScratchBuffer<void>(max_workspace_size);
     MIOPEN_RETURN_IF_ERROR(miopenFindConvolutionBackwardWeightsAlgorithm(
-        args.handle, args.y_tensor, args.dy_data, args.x_tensor, args.x_data, args.conv_desc, args.w_desc,
-        args.dw_data, 1, &perf_count, candidates.get(), workspace.get(), max_workspace_size, false));
+        args.handle, args.y_tensor, args.dy_data, args.x_tensor, args.x_data, args.conv_desc, args.w_desc, args.dw_data, 1, &perf_count, candidates.get(), workspace.get(), max_workspace_size, false));
     perf_results = GetValidAlgorithms<T_BwdFilterPerf>(candidates.get(), perf_count);
     return Status::OK();
   }
@@ -229,8 +238,7 @@ Status AlgoIterator<T_BwdFilterAlgo>::OnlyDefaultAlgorithm(const ConvArgs& args,
 }
 
 template <typename T>
-Status ConvGrad<T>::PrepareArgs(const Tensor& x, const Tensor& dY, const Tensor& w, Tensor* dB, Tensor* dX,
-                                Tensor* dW, miopenHandle_t miopen_handle) const {
+Status ConvGrad<T>::PrepareArgs(const Tensor& x, const Tensor& dY, const Tensor& w, Tensor* dB, Tensor* dX, Tensor* dW, miopenHandle_t miopen_handle) const {
   const TensorShape& x_shape = x.Shape();
   auto x_dims = x_shape.AsShapeVector();
   args_.x_data = reinterpret_cast<const HipT*>(x.template Data<T>());
@@ -308,9 +316,7 @@ Status ConvGrad<T>::PrepareArgs(const Tensor& x, const Tensor& dY, const Tensor&
     ORT_RETURN_IF_ERROR(args_.w_desc.Set(w_dims, args_.params.data_type));
     ORT_RETURN_IF_ERROR(args_.x_tensor.Set(x_dims, args_.params.data_type));
     ORT_RETURN_IF_ERROR(args_.y_tensor.Set(dy_dims, args_.params.data_type));
-    ORT_RETURN_IF_ERROR(args_.conv_desc.Set(kernel_shape.size(), pads, strides, dilations,
-                                            gsl::narrow_cast<int>(conv_attrs_.group), miopenConvolution,
-                                            args_.params.data_type));
+    ORT_RETURN_IF_ERROR(args_.conv_desc.Set(kernel_shape.size(), pads, strides, dilations, gsl::narrow_cast<int>(conv_attrs_.group), miopenConvolution, args_.params.data_type));
 
     if (dB) {
       const TensorShape& db_shape = dB->Shape();
@@ -348,8 +354,7 @@ Status ConvGrad<T>::ComputeInputGradient(onnxruntime::Stream* stream) const {
         const auto zero = Consts<HipT>::Zero;
         IAllocatorUniquePtr<void> workspace = GetScratchBuffer<void>(algo_perf.memory, stream);
         MIOPEN_RETURN_IF_ERROR(miopenConvolutionBackwardData(
-            args_.handle, &one, args_.y_tensor, args_.dy_data, args_.w_desc, args_.w_data, args_.conv_desc,
-            algo_perf.bwd_data_algo, &zero, args_.x_tensor, args_.dx_data, workspace.get(), algo_perf.memory));
+            args_.handle, &one, args_.y_tensor, args_.dy_data, args_.w_desc, args_.w_data, args_.conv_desc, algo_perf.bwd_data_algo, &zero, args_.x_tensor, args_.dx_data, workspace.get(), algo_perf.memory));
         return Status::OK();
       });
 }
@@ -363,8 +368,7 @@ Status ConvGrad<T>::ComputeWeightGradient(onnxruntime::Stream* stream) const {
         const auto zero = Consts<HipT>::Zero;
         IAllocatorUniquePtr<void> workspace = GetScratchBuffer<void>(algo_perf.memory, stream);
         MIOPEN_RETURN_IF_ERROR(miopenConvolutionBackwardWeights(
-            args_.handle, &one, args_.y_tensor, args_.dy_data, args_.x_tensor, args_.x_data, args_.conv_desc,
-            algo_perf.bwd_weights_algo, &zero, args_.w_desc, args_.dw_data, workspace.get(), algo_perf.memory));
+            args_.handle, &one, args_.y_tensor, args_.dy_data, args_.x_tensor, args_.x_data, args_.conv_desc, algo_perf.bwd_weights_algo, &zero, args_.w_desc, args_.dw_data, workspace.get(), algo_perf.memory));
         return Status::OK();
       });
 }
@@ -374,8 +378,7 @@ Status ConvGrad<T>::ComputeBiasGradient() const {
   const auto one = Consts<HipT>::One;
   const auto zero = Consts<HipT>::Zero;
   MIOPEN_RETURN_IF_ERROR(miopenConvolutionBackwardBias(
-      args_.handle, &one, args_.y_tensor, args_.dy_data, &zero,
-      args_.b_tensor, args_.db_data));
+      args_.handle, &one, args_.y_tensor, args_.dy_data, &zero, args_.b_tensor, args_.db_data));
   return Status::OK();
 }
 

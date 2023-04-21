@@ -33,7 +33,13 @@ class ExpandDims final : public OpKernel {
     TensorShapeVector expanded_shape(X_shape.AsShapeVector());
     int64_t X_NumDims = X_shape.Size();
     ORT_ENFORCE(axis <= X_NumDims && axis >= -X_NumDims,
-                "Axis must be within range [", -X_NumDims, ", ", X_NumDims, "].", " Axis is ", axis);
+                "Axis must be within range [",
+                -X_NumDims,
+                ", ",
+                X_NumDims,
+                "].",
+                " Axis is ",
+                axis);
     if (axis >= 0) {
       expanded_shape.insert(expanded_shape.begin() + axis, 1);
     } else {

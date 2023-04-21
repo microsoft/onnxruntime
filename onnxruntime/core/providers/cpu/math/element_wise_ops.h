@@ -792,10 +792,19 @@ struct OutputBroadcaster {
     ptrdiff_t real_end = (end_offset <= 0) ? len : end_offset;
     if (start_offset != 0 || end_offset != 0) {  // Keep original semantic
       ORT_ENFORCE(start_offset >= 0 && real_end >= 0 && start_offset <= real_end && real_end <= len,
-                  "Invalid start/ending offset [", start_offset, ",", real_end, ") for tensor of length:", len);
+                  "Invalid start/ending offset [",
+                  start_offset,
+                  ",",
+                  real_end,
+                  ") for tensor of length:",
+                  len);
       ORT_ENFORCE(start_offset % span_size == 0 && real_end % span_size == 0,
-                  "Broadcast Output range [", start_offset, ", ", real_end,
-                  ") are not at boundary of span with size:", span_size);
+                  "Broadcast Output range [",
+                  start_offset,
+                  ", ",
+                  real_end,
+                  ") are not at boundary of span with size:",
+                  span_size);
     }
 
     output_elements_ = real_end - start_offset;
@@ -953,16 +962,14 @@ static void ParallelizeSingleSpan(TBroadcastHelper& helper, const ProcessBroadca
 
   if (helper.IsInput0Scalar()) {
     concurrency::ThreadPool::TryParallelFor(
-        helper.Threadpool(), helper.NumOutputElements(), cost,
-        [&helper, &functors](std::ptrdiff_t first, std::ptrdiff_t last) {
+        helper.Threadpool(), helper.NumOutputElements(), cost, [&helper, &functors](std::ptrdiff_t first, std::ptrdiff_t last) {
           size_t count = static_cast<size_t>(last - first);
           TBroadcastHelper segment_helper(helper, first, count);
           functors.input0scalar(segment_helper);
         });
   } else if (helper.IsInput1Scalar()) {
     concurrency::ThreadPool::TryParallelFor(
-        helper.Threadpool(), helper.NumOutputElements(), cost,
-        [&helper, &functors](std::ptrdiff_t first, std::ptrdiff_t last) {
+        helper.Threadpool(), helper.NumOutputElements(), cost, [&helper, &functors](std::ptrdiff_t first, std::ptrdiff_t last) {
           size_t count = static_cast<size_t>(last - first);
           TBroadcastHelper segment_helper(helper, first, count);
           functors.input1scalar(segment_helper);
@@ -970,8 +977,7 @@ static void ParallelizeSingleSpan(TBroadcastHelper& helper, const ProcessBroadca
 
   } else {
     concurrency::ThreadPool::TryParallelFor(
-        helper.Threadpool(), helper.NumOutputElements(), cost,
-        [&helper, &functors](std::ptrdiff_t first, std::ptrdiff_t last) {
+        helper.Threadpool(), helper.NumOutputElements(), cost, [&helper, &functors](std::ptrdiff_t first, std::ptrdiff_t last) {
           size_t count = static_cast<size_t>(last - first);
           TBroadcastHelper segment_helper(helper, first, count);
           functors.general(segment_helper);
@@ -991,8 +997,7 @@ void UntypedBroadcastTwo(OpKernelContext& context, const ProcessBroadcastSpanFun
 //
 // Operator usage is the same as the parallelization is opaque to the operator.
 // unit_cost must be a valid cost value.
-void UntypedBroadcastTwo(OpKernelContext& context, const ProcessBroadcastSpanFuncs& funcs, double unit_cost,
-                         void* user_data = nullptr);
+void UntypedBroadcastTwo(OpKernelContext& context, const ProcessBroadcastSpanFuncs& funcs, double unit_cost, void* user_data = nullptr);
 
 // Helper to provide the looping logic with optimization for parallelizing within a single span if the
 // TBroadcastHelper instance was setup to enable that.

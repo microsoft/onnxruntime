@@ -15,7 +15,8 @@ namespace cuda {
   ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                         \
       BatchNormalization,                                          \
       kOnnxDomain,                                                 \
-      7, 8,                                                        \
+      7,                                                           \
+      8,                                                           \
       T,                                                           \
       kCudaExecutionProvider,                                      \
       (*KernelDefBuilder::Create())                                \
@@ -24,7 +25,8 @@ namespace cuda {
   ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                         \
       BatchNormalization,                                          \
       kOnnxDomain,                                                 \
-      9, 13,                                                       \
+      9,                                                           \
+      13,                                                          \
       T,                                                           \
       kCudaExecutionProvider,                                      \
       (*KernelDefBuilder::Create())                                \
@@ -33,7 +35,8 @@ namespace cuda {
   ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                         \
       BatchNormalization,                                          \
       kOnnxDomain,                                                 \
-      14, 14,                                                      \
+      14,                                                          \
+      14,                                                          \
       T,                                                           \
       kCudaExecutionProvider,                                      \
       (*KernelDefBuilder::Create())                                \

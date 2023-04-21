@@ -45,8 +45,7 @@ inline Ort::Value CreateTensorWithDataAsOrtValue(const Ort::MemoryInfo& info,
                                                  OrtAllocator*,
                                                  const std::vector<int64_t>& dims,
                                                  std::vector<T>& input) {
-  return Ort::Value::CreateTensor<T>(static_cast<const OrtMemoryInfo*>(info), input.data(), input.size() * sizeof(T),
-                                     dims.data(), dims.size());
+  return Ort::Value::CreateTensor<T>(static_cast<const OrtMemoryInfo*>(info), input.data(), input.size() * sizeof(T), dims.data(), dims.size());
 }
 
 template <>
@@ -54,8 +53,7 @@ inline Ort::Value CreateTensorWithDataAsOrtValue(const Ort::MemoryInfo&,
                                                  OrtAllocator* allocator,
                                                  const std::vector<int64_t>& dims,
                                                  std::vector<std::string>& input) {
-  auto tensor_value = Ort::Value::CreateTensor(allocator, dims.data(), dims.size(),
-                                               ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING);
+  auto tensor_value = Ort::Value::CreateTensor(allocator, dims.data(), dims.size(), ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING);
 
   std::vector<const char*> p_str;
   for (const auto& s : input) {
@@ -135,14 +133,13 @@ using PATH_STRING_TYPE = std::basic_string<PATH_CHAR_TYPE>;
 
 static void SortFileNames(std::vector<std::basic_string<PATH_CHAR_TYPE>>& input_pb_files) {
   if (input_pb_files.size() <= 1) return;
-  std::sort(input_pb_files.begin(), input_pb_files.end(),
-            [](const std::basic_string<PATH_CHAR_TYPE>& left, const std::basic_string<PATH_CHAR_TYPE>& right) -> bool {
-              std::basic_string<PATH_CHAR_TYPE> leftname = GetLastComponent(left);
-              std::basic_string<PATH_CHAR_TYPE> rightname = GetLastComponent(right);
-              int left1 = ExtractFileNo(leftname);
-              int right1 = ExtractFileNo(rightname);
-              return left1 < right1;
-            });
+  std::sort(input_pb_files.begin(), input_pb_files.end(), [](const std::basic_string<PATH_CHAR_TYPE>& left, const std::basic_string<PATH_CHAR_TYPE>& right) -> bool {
+    std::basic_string<PATH_CHAR_TYPE> leftname = GetLastComponent(left);
+    std::basic_string<PATH_CHAR_TYPE> rightname = GetLastComponent(right);
+    int left1 = ExtractFileNo(leftname);
+    int right1 = ExtractFileNo(rightname);
+    return left1 < right1;
+  });
 
   for (size_t i = 0; i != input_pb_files.size(); ++i) {
     int fileno = ExtractFileNo(GetLastComponent(input_pb_files[i]));
@@ -166,8 +163,7 @@ Ort::Value TensorToOrtValue(const ONNX_NAMESPACE::TensorProto& t, onnxruntime::t
   Ort::Value temp_value{nullptr};
   onnxruntime::test::OrtCallback d;
   auto cpu_memory_info = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeDefault);
-  status = onnxruntime::test::TensorProtoToMLValue(t, onnxruntime::test::MemBuffer(p, len, *static_cast<OrtMemoryInfo*>(cpu_memory_info)),
-                                                   temp_value, d);
+  status = onnxruntime::test::TensorProtoToMLValue(t, onnxruntime::test::MemBuffer(p, len, *static_cast<OrtMemoryInfo*>(cpu_memory_info)), temp_value, d);
   if (!status.IsOK()) {
     ORT_THROW(status.ToString());
   }
@@ -177,9 +173,7 @@ Ort::Value TensorToOrtValue(const ONNX_NAMESPACE::TensorProto& t, onnxruntime::t
   return temp_value;
 }
 
-void LoopDataFile(int test_data_pb_fd, bool is_input, const TestModelInfo& modelinfo,
-                  std::unordered_map<std::string, Ort::Value>& name_data_map, onnxruntime::test::HeapBuffer& b,
-                  std::ostringstream& oss) {
+void LoopDataFile(int test_data_pb_fd, bool is_input, const TestModelInfo& modelinfo, std::unordered_map<std::string, Ort::Value>& name_data_map, onnxruntime::test::HeapBuffer& b, std::ostringstream& oss) {
   google::protobuf::io::FileInputStream f(test_data_pb_fd, protobuf_block_size_in_bytes);
   f.SetCloseOnDelete(true);
   google::protobuf::io::CodedInputStream coded_input(&f);
@@ -301,18 +295,21 @@ class OnnxTestCase : public ITestCase {
 
   void ConvertTestData(const ONNX_NAMESPACE::TensorProto& test_data_pb,
                        onnxruntime::test::HeapBuffer& b,
-                       bool is_input, size_t i,
+                       bool is_input,
+                       size_t i,
                        std::unordered_map<std::string, Ort::Value>& out) const;
 
   void ConvertTestData(const ONNX_NAMESPACE::SequenceProto& test_data_pb,
                        onnxruntime::test::HeapBuffer& b,
-                       bool is_input, size_t i,
+                       bool is_input,
+                       size_t i,
                        std::unordered_map<std::string, Ort::Value>& out) const;
 
 #if !defined(DISABLE_OPTIONAL_TYPE)
   void ConvertTestData(const ONNX_NAMESPACE::OptionalProto& test_data_pb,
                        onnxruntime::test::HeapBuffer& b,
-                       bool is_input, size_t i,
+                       bool is_input,
+                       size_t i,
                        std::unordered_map<std::string, Ort::Value>& out) const;
 #endif
 
@@ -325,8 +322,7 @@ class OnnxTestCase : public ITestCase {
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(OnnxTestCase);
 
  public:
-  OnnxTestCase(const std::string& test_case_name, _In_ std::unique_ptr<TestModelInfo> model,
-               double default_per_sample_tolerance, double default_relative_per_sample_tolerance);
+  OnnxTestCase(const std::string& test_case_name, _In_ std::unique_ptr<TestModelInfo> model, double default_per_sample_tolerance, double default_relative_per_sample_tolerance);
   void GetPerSampleTolerance(double* value) const override;
   void GetRelativePerSampleTolerance(double* value) const override;
   void GetPostProcessing(bool* value) const override;
@@ -345,17 +341,14 @@ class OnnxTestCase : public ITestCase {
   const std::string& GetTestCaseName() const override { return test_case_name_; }
   std::string GetTestCaseVersion() const override { return model_info_->GetNominalOpsetVersion(); }
 
-  void LoadTestData(size_t id, onnxruntime::test::HeapBuffer& b, std::unordered_map<std::string, Ort::Value>&,
-                    bool is_input) const override;
+  void LoadTestData(size_t id, onnxruntime::test::HeapBuffer& b, std::unordered_map<std::string, Ort::Value>&, bool is_input) const override;
 };
 
 std::unique_ptr<ITestCase> CreateOnnxTestCase(const std::string& test_case_name,
                                               std::unique_ptr<TestModelInfo> model,
                                               double default_per_sample_tolerance,
                                               double default_relative_per_sample_tolerance) {
-  return std::make_unique<OnnxTestCase>(test_case_name, std::move(model),
-                                        default_per_sample_tolerance,
-                                        default_relative_per_sample_tolerance);
+  return std::make_unique<OnnxTestCase>(test_case_name, std::move(model), default_per_sample_tolerance, default_relative_per_sample_tolerance);
 }
 
 void OnnxTestCase::GetPerSampleTolerance(double* value) const {
@@ -465,9 +458,7 @@ static void LoadOptional(const PATH_STRING_TYPE& pb_file,
 }
 #endif
 
-void OnnxTestCase::LoadTestData(size_t id, onnxruntime::test::HeapBuffer& b,
-                                std::unordered_map<std::string, Ort::Value>& name_data_map,
-                                bool is_input) const {
+void OnnxTestCase::LoadTestData(size_t id, onnxruntime::test::HeapBuffer& b, std::unordered_map<std::string, Ort::Value>& name_data_map, bool is_input) const {
   if (id >= test_data_dirs_.size()) {
     ORT_THROW("index out of bound");
   }
@@ -550,7 +541,8 @@ void OnnxTestCase::LoadTestData(size_t id, onnxruntime::test::HeapBuffer& b,
 
 void OnnxTestCase::ConvertTestData(const ONNX_NAMESPACE::TensorProto& test_data_pb,
                                    onnxruntime::test::HeapBuffer& b,
-                                   bool is_input, size_t i,
+                                   bool is_input,
+                                   size_t i,
                                    std::unordered_map<std::string, Ort::Value>& out) const {
   const std::string& name = test_data_pb.name();
   const std::string& name_finalized = !name.empty()
@@ -567,8 +559,7 @@ void OnnxTestCase::ConvertTestData(const ONNX_NAMESPACE::TensorProto& test_data_
   Ort::Value v1{nullptr};
   onnxruntime::test::OrtCallback d;
   OrtMemoryInfo cpu_memory_info(onnxruntime::CPU, OrtDeviceAllocator, OrtDevice(), 0, OrtMemTypeDefault);
-  status = onnxruntime::test::TensorProtoToMLValue(test_data_pb, onnxruntime::test::MemBuffer(p, len, cpu_memory_info),
-                                                   v1, d);
+  status = onnxruntime::test::TensorProtoToMLValue(test_data_pb, onnxruntime::test::MemBuffer(p, len, cpu_memory_info), v1, d);
   if (!status.IsOK()) {
     ORT_THROW(status.ToString());
   }
@@ -580,7 +571,8 @@ void OnnxTestCase::ConvertTestData(const ONNX_NAMESPACE::TensorProto& test_data_
 
 void OnnxTestCase::ConvertTestData(const ONNX_NAMESPACE::SequenceProto& test_data_pb,
                                    onnxruntime::test::HeapBuffer& b,
-                                   bool is_input, size_t i,
+                                   bool is_input,
+                                   size_t i,
                                    std::unordered_map<std::string, Ort::Value>& out) const {
   const std::string& name = test_data_pb.name();
   const std::string& name_finalized = !name.empty()
@@ -606,8 +598,7 @@ void OnnxTestCase::ConvertTestData(const ONNX_NAMESPACE::SequenceProto& test_dat
     Ort::Value v1{nullptr};
     onnxruntime::test::OrtCallback d;
     OrtMemoryInfo cpu_memory_info(onnxruntime::CPU, OrtDeviceAllocator, OrtDevice(), 0, OrtMemTypeDefault);
-    status = onnxruntime::test::TensorProtoToMLValue(*it, onnxruntime::test::MemBuffer(p, len, cpu_memory_info),
-                                                     v1, d);
+    status = onnxruntime::test::TensorProtoToMLValue(*it, onnxruntime::test::MemBuffer(p, len, cpu_memory_info), v1, d);
     if (!status.IsOK()) {
       ORT_THROW(status.ToString());
     }
@@ -630,7 +621,8 @@ void OnnxTestCase::ConvertTestData(const ONNX_NAMESPACE::SequenceProto& test_dat
 #if !defined(DISABLE_OPTIONAL_TYPE)
 void OnnxTestCase::ConvertTestData(const ONNX_NAMESPACE::OptionalProto& test_data_pb,
                                    onnxruntime::test::HeapBuffer& b,
-                                   bool is_input, size_t i,
+                                   bool is_input,
+                                   size_t i,
                                    std::unordered_map<std::string, Ort::Value>& out) const {
   // Optional Tensor
   if (test_data_pb.elem_type() ==
@@ -686,8 +678,7 @@ void OnnxTestCase::ConvertTestData(const ONNX_NAMESPACE::OptionalProto& test_dat
 }
 #endif
 
-OnnxTestCase::OnnxTestCase(const std::string& test_case_name, _In_ std::unique_ptr<TestModelInfo> model,
-                           double default_per_sample_tolerance, double default_relative_per_sample_tolerance)
+OnnxTestCase::OnnxTestCase(const std::string& test_case_name, _In_ std::unique_ptr<TestModelInfo> model, double default_per_sample_tolerance, double default_relative_per_sample_tolerance)
     : test_case_name_(test_case_name), model_info_(std::move(model)) {
   std::basic_string<PATH_CHAR_TYPE> test_case_dir = model_info_->GetDir();
 
@@ -760,8 +751,7 @@ void LoadTests(const std::vector<std::basic_string<PATH_CHAR_TYPE>>& input_paths
       std::basic_string<PATH_CHAR_TYPE> test_case_name = my_dir_name;
       if (test_case_name.compare(0, 5, ORT_TSTR("test_")) == 0) test_case_name = test_case_name.substr(5);
 
-      if (!whitelisted_test_cases.empty() && std::find(whitelisted_test_cases.begin(), whitelisted_test_cases.end(),
-                                                       test_case_name) == whitelisted_test_cases.end()) {
+      if (!whitelisted_test_cases.empty() && std::find(whitelisted_test_cases.begin(), whitelisted_test_cases.end(), test_case_name) == whitelisted_test_cases.end()) {
         return true;
       }
       if (disabled_tests.find(test_case_name) != disabled_tests.end()) return true;
@@ -784,9 +774,7 @@ void LoadTests(const std::vector<std::basic_string<PATH_CHAR_TYPE>>& input_paths
 
       const auto tolerance_key = ToUTF8String(my_dir_name);
 
-      std::unique_ptr<ITestCase> l = CreateOnnxTestCase(ToUTF8String(test_case_name), std::move(model_info),
-                                                        tolerances.absolute(tolerance_key),
-                                                        tolerances.relative(tolerance_key));
+      std::unique_ptr<ITestCase> l = CreateOnnxTestCase(ToUTF8String(test_case_name), std::move(model_info), tolerances.absolute(tolerance_key), tolerances.relative(tolerance_key));
       process_function(std::move(l));
       return true;
     });
@@ -794,12 +782,10 @@ void LoadTests(const std::vector<std::basic_string<PATH_CHAR_TYPE>>& input_paths
 }
 
 TestTolerances::TestTolerances(
-    double absolute_default, double relative_default,
-    const Map& absolute_overrides,
-    const Map& relative_overrides) : absolute_default_(absolute_default),
-                                     relative_default_(relative_default),
-                                     absolute_overrides_(absolute_overrides),
-                                     relative_overrides_(relative_overrides) {}
+    double absolute_default, double relative_default, const Map& absolute_overrides, const Map& relative_overrides) : absolute_default_(absolute_default),
+                                                                                                                      relative_default_(relative_default),
+                                                                                                                      absolute_overrides_(absolute_overrides),
+                                                                                                                      relative_overrides_(relative_overrides) {}
 
 double TestTolerances::absolute(const std::string& name) const {
   const auto iter = absolute_overrides_.find(name);

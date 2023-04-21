@@ -27,12 +27,7 @@ class CApiTestGlobalThreadPoolsWithProvider : public testing::Test, public ::tes
 };
 
 template <typename OutT>
-static void RunSession(OrtAllocator& allocator, Ort::Session& session_object,
-                       std::vector<Input>& inputs,
-                       const char* output_name,
-                       const std::vector<int64_t>& dims_y,
-                       const std::vector<OutT>& values_y,
-                       Ort::Value* output_tensor) {
+static void RunSession(OrtAllocator& allocator, Ort::Session& session_object, std::vector<Input>& inputs, const char* output_name, const std::vector<int64_t>& dims_y, const std::vector<OutT>& values_y, Ort::Value* output_tensor) {
   std::vector<Ort::Value> ort_inputs;
   std::vector<const char*> input_names;
   for (size_t i = 0; i < inputs.size(); i++) {

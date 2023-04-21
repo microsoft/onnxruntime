@@ -80,15 +80,19 @@ void TorchAdamWSingleWeightTestLoop10Steps(bool use_baseline_inputs_for_each_ite
         {{"fc1.weight", {2, 3}}};
 
     AdamWTestLoop(it->second,
-                  use_baseline_inputs_for_each_iteration, total_step, lr,
+                  use_baseline_inputs_for_each_iteration,
+                  total_step,
+                  lr,
                   static_cast<float>(0.9f),    // alpha
                   static_cast<float>(0.999f),  // beta
                   static_cast<float>(1e-8f),   // epsilon
                   static_cast<float>(1e-2f),   // weight_decay
                   static_cast<int64_t>(0),     // adam_mode
                   static_cast<int64_t>(1),     // correct_bias
-                  named_weights, named_gradients,
-                  named_momentum1s, named_momentum2s,
+                  named_weights,
+                  named_gradients,
+                  named_momentum1s,
+                  named_momentum2s,
                   weight_name_shape_mapping,
                   weight_tolerance,
                   momentum1_tolerance,
@@ -170,15 +174,19 @@ void TorchAdamWMultipleWeightsTestLoop10Steps(bool use_baseline_inputs_for_each_
         {{"fc1.weight", {2, 3}}, {"fc1.bias", {3}}, {"fc2.weight", {3, 2}}, {"fc2.bias", {2}}};
 
     AdamWTestLoop(std::move(it->second),
-                  use_baseline_inputs_for_each_iteration, total_step, lr,
+                  use_baseline_inputs_for_each_iteration,
+                  total_step,
+                  lr,
                   static_cast<float>(0.9f),    // alpha
                   static_cast<float>(0.999f),  // beta
                   static_cast<float>(1e-8f),   // epsilon
                   static_cast<float>(1e-2f),   // weight_decay
                   static_cast<int64_t>(0),     // adam_mode
                   static_cast<int64_t>(1),     // correct_bias
-                  named_weights, named_gradients,
-                  named_momentum1s, named_momentum2s,
+                  named_weights,
+                  named_gradients,
+                  named_momentum1s,
+                  named_momentum2s,
                   weight_name_shape_mapping,
                   weight_tolerance,
                   momentum1_tolerance,
@@ -252,15 +260,19 @@ void HFAdamWSingleWeightTestLoop10Steps(bool use_baseline_inputs_for_each_iterat
         {{"fc1.weight", {2, 3}}};
 
     AdamWTestLoop(std::move(it->second),
-                  use_baseline_inputs_for_each_iteration, total_step, lr,
+                  use_baseline_inputs_for_each_iteration,
+                  total_step,
+                  lr,
                   static_cast<float>(0.9f),    // alpha
                   static_cast<float>(0.999f),  // beta
                   static_cast<float>(1e-6f),   // epsilon
                   static_cast<float>(0.0f),    // weight_decay
                   static_cast<int64_t>(1),     // adam_mode
                   static_cast<int64_t>(1),     // correct_bias
-                  named_weights, named_gradients,
-                  named_momentum1s, named_momentum2s,
+                  named_weights,
+                  named_gradients,
+                  named_momentum1s,
+                  named_momentum2s,
                   weight_name_shape_mapping,
                   weight_tolerance,
                   momentum1_tolerance,
@@ -335,15 +347,19 @@ void HFAdamWMultipleWeightsTestLoop10Steps(
         {{"fc1.weight", {2, 3}}, {"fc1.bias", {3}}, {"fc2.weight", {3, 2}}, {"fc2.bias", {2}}};
 
     AdamWTestLoop(std::move(it->second),
-                  use_baseline_inputs_for_each_iteration, total_step, lr,
+                  use_baseline_inputs_for_each_iteration,
+                  total_step,
+                  lr,
                   static_cast<float>(0.9f),    // alpha
                   static_cast<float>(0.999f),  // beta
                   static_cast<float>(1e-6f),   // epsilon
                   static_cast<float>(0.0f),    // weight_decay
                   static_cast<int64_t>(1),     // adam_mode
                   static_cast<int64_t>(1),     // correct_bias
-                  named_weights, named_gradients,
-                  named_momentum1s, named_momentum2s,
+                  named_weights,
+                  named_gradients,
+                  named_momentum1s,
+                  named_momentum2s,
                   weight_name_shape_mapping,
                   weight_tolerance,
                   momentum1_tolerance,

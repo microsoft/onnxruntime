@@ -175,9 +175,7 @@ bool RoctracerManager::CreateEventForActivityRecord(const roctracer_record_t* re
       name = roctracer_op_string(call_record.domain_, call_record.cid_, 0);
 
       args = {
-          {"stream", call_record.cid_ == HIP_API_ID_hipMemset
-                         ? "0"
-                         : PointerToHexString((void*)launch_args.hipMemsetAsync.stream)},
+          {"stream", call_record.cid_ == HIP_API_ID_hipMemset ? "0" : PointerToHexString((void*)launch_args.hipMemsetAsync.stream)},
           {"dst", PointerToHexString(launch_args.hipMemset.dst)},
           {"size", std::to_string(launch_args.hipMemset.sizeBytes)},
           {"value", std::to_string(launch_args.hipMemset.value)}};
@@ -191,9 +189,7 @@ bool RoctracerManager::CreateEventForActivityRecord(const roctracer_record_t* re
       name = roctracer_op_string(call_record.domain_, call_record.cid_, 0);
 
       args = {
-          {"stream", call_record.cid_ == HIP_API_ID_hipMemcpy
-                         ? "0"
-                         : PointerToHexString((void*)launch_args.hipMemcpyAsync.stream)},
+          {"stream", call_record.cid_ == HIP_API_ID_hipMemcpy ? "0" : PointerToHexString((void*)launch_args.hipMemcpyAsync.stream)},
           {"src", PointerToHexString(launch_args.hipMemcpy.src)},
           {"dst", PointerToHexString(launch_args.hipMemcpy.dst)},
           {"kind", MemcpyKindToString(launch_args.hipMemcpy.kind)}};
@@ -206,9 +202,7 @@ bool RoctracerManager::CreateEventForActivityRecord(const roctracer_record_t* re
       name = roctracer_op_string(call_record.domain_, call_record.cid_, 0);
 
       args = {
-          {"stream", call_record.cid_ == HIP_API_ID_hipMemcpy2D
-                         ? "0"
-                         : PointerToHexString((void*)launch_args.hipMemcpy2DAsync.stream)},
+          {"stream", call_record.cid_ == HIP_API_ID_hipMemcpy2D ? "0" : PointerToHexString((void*)launch_args.hipMemcpy2DAsync.stream)},
           {"src", PointerToHexString(launch_args.hipMemcpy2D.src)},
           {"dst", PointerToHexString(launch_args.hipMemcpy2D.dst)},
           {"spitch", std::to_string(launch_args.hipMemcpy2D.spitch)},

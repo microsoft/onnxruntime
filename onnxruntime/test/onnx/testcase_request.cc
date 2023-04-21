@@ -13,8 +13,7 @@
 namespace onnxruntime {
 namespace test {
 
-TestCaseRequestContext::TestCaseRequestContext(const Callback& cb, PThreadPool tp, const ITestCase& test_case, Ort::Env& env,
-                                               const Ort::SessionOptions& session_opts, size_t test_case_id)
+TestCaseRequestContext::TestCaseRequestContext(const Callback& cb, PThreadPool tp, const ITestCase& test_case, Ort::Env& env, const Ort::SessionOptions& session_opts, size_t test_case_id)
     : cb_(cb),
       tp_(tp),
       test_case_(test_case),
@@ -51,9 +50,11 @@ bool TestCaseRequestContext::SetupSession() {
 }
 
 std::shared_ptr<TestCaseResult> TestCaseRequestContext::Run(PThreadPool tpool,
-                                                            const ITestCase& c, Ort::Env& env,
+                                                            const ITestCase& c,
+                                                            Ort::Env& env,
                                                             const Ort::SessionOptions& session_opts,
-                                                            size_t concurrent_runs, size_t repeat_count) {
+                                                            size_t concurrent_runs,
+                                                            size_t repeat_count) {
   // temp hack. Because we have no resource control. We may not have enough memory to run this test in parallel
   if (c.GetTestCaseName() == "coreml_FNS-Candy_ImageNet") {
     concurrent_runs = 1;
@@ -74,12 +75,7 @@ std::shared_ptr<TestCaseResult> TestCaseRequestContext::Run(PThreadPool tpool,
   return result;
 }
 
-void TestCaseRequestContext::Request(const Callback& cb, PThreadPool tpool,
-                                     const ITestCase& c,
-                                     Ort::Env& env,
-                                     const Ort::SessionOptions& session_opts,
-                                     size_t test_case_id,
-                                     size_t concurrent_runs) {
+void TestCaseRequestContext::Request(const Callback& cb, PThreadPool tpool, const ITestCase& c, Ort::Env& env, const Ort::SessionOptions& session_opts, size_t test_case_id, size_t concurrent_runs) {
   // temp hack. Because we have no resource control. We may not have enough memory to run this test in parallel
   if (c.GetTestCaseName() == "coreml_FNS-Candy_ImageNet") {
     concurrent_runs = 1;

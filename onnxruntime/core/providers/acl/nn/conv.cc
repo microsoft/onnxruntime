@@ -181,8 +181,7 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
       aclPads[3] = pads[2];
     }
 
-    arm_compute::PadStrideInfo aclPadStride = arm_compute::PadStrideInfo(aclStrides[0], aclStrides[1],
-                                                                         aclPads[0], aclPads[1], aclPads[2], aclPads[3], arm_compute::DimensionRoundingType::FLOOR);
+    arm_compute::PadStrideInfo aclPadStride = arm_compute::PadStrideInfo(aclStrides[0], aclStrides[1], aclPads[0], aclPads[1], aclPads[2], aclPads[3], arm_compute::DimensionRoundingType::FLOOR);
     unsigned int aclDilation0 = (dilations.size() == 2) ? dilations[1] : 1;
 
     LOGS_DEFAULT(VERBOSE) << "padding: {" << aclPads[0] << "," << aclPads[1] << "," << aclPads[2] << "," << aclPads[3] << "}";
@@ -235,14 +234,9 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
 #endif
 
 #ifdef ACL_1902
-        layer->configure(tconv.in.get(), tconv.k.get(), (B != nullptr) ? tconv.b.get() : nullptr, tconv.out.get(),
-                         aclPadStride, 1 /* depth multiplier */,
-                         acl_activ_enabled ? arm_compute::ActivationLayerInfo(acl_activ_func, conv_attrs_.alpha) : arm_compute::ActivationLayerInfo());
+        layer->configure(tconv.in.get(), tconv.k.get(), (B != nullptr) ? tconv.b.get() : nullptr, tconv.out.get(), aclPadStride, 1 /* depth multiplier */, acl_activ_enabled ? arm_compute::ActivationLayerInfo(acl_activ_func, conv_attrs_.alpha) : arm_compute::ActivationLayerInfo());
 #elif defined(ACL_1905) || defined(ACL_1908) || defined(ACL_2002)
-        layer->configure(tconv.in.get(), tconv.k.get(), (B != nullptr) ? tconv.b.get() : nullptr, tconv.out.get(),
-                         aclPadStride, 1 /* depth multiplier */,
-                         acl_activ_enabled ? arm_compute::ActivationLayerInfo(acl_activ_func, conv_attrs_.alpha) : arm_compute::ActivationLayerInfo(),
-                         arm_compute::Size2D(aclDilation0, dilations[0]));
+        layer->configure(tconv.in.get(), tconv.k.get(), (B != nullptr) ? tconv.b.get() : nullptr, tconv.out.get(), aclPadStride, 1 /* depth multiplier */, acl_activ_enabled ? arm_compute::ActivationLayerInfo(acl_activ_func, conv_attrs_.alpha) : arm_compute::ActivationLayerInfo(), arm_compute::Size2D(aclDilation0, dilations[0]));
 #endif
         tconv.layer = std::move(layer);
         tconv.isDepthwiseCPU = false;
@@ -267,11 +261,7 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
         }
         LOGS_DEFAULT(VERBOSE) << "ACL 2D convolution";
         auto layer = std::make_shared<arm_compute::NEConvolutionLayer>(mm_layer);
-        layer->configure(tconv.in.get(), tconv.k.get(), (B != nullptr) ? tconv.b.get() : nullptr, tconv.out.get(),
-                         aclPadStride,
-                         arm_compute::WeightsInfo(), arm_compute::Size2D(aclDilation0, dilations[0]),
-                         acl_activ_enabled ? arm_compute::ActivationLayerInfo(acl_activ_func, conv_attrs_.alpha) : arm_compute::ActivationLayerInfo(),
-                         false, conv_attrs_.group);
+        layer->configure(tconv.in.get(), tconv.k.get(), (B != nullptr) ? tconv.b.get() : nullptr, tconv.out.get(), aclPadStride, arm_compute::WeightsInfo(), arm_compute::Size2D(aclDilation0, dilations[0]), acl_activ_enabled ? arm_compute::ActivationLayerInfo(acl_activ_func, conv_attrs_.alpha) : arm_compute::ActivationLayerInfo(), false, conv_attrs_.group);
         tconv.layer = std::move(layer);
       }
     }

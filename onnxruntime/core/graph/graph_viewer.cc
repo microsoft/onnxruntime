@@ -117,8 +117,7 @@ GraphViewer::GraphViewer(const Graph& graph, const IndexedSubGraph* filter_info)
     // filter nodes in topo order to just the nodes in filter_info_
     auto orig_order = std::move(nodes_in_topological_order_);
     nodes_in_topological_order_.reserve(filter_info->nodes.size());
-    std::copy_if(orig_order.cbegin(), orig_order.cend(), std::back_inserter(nodes_in_topological_order_),
-                 [this](NodeIndex idx) { return filtered_node_indices_.count(idx) != 0; });
+    std::copy_if(orig_order.cbegin(), orig_order.cend(), std::back_inserter(nodes_in_topological_order_), [this](NodeIndex idx) { return filtered_node_indices_.count(idx) != 0; });
 
     // Filter the initializers also
     // Get the names of all the inputs and implicit inputs of all the nodes in this subgraph
@@ -143,9 +142,7 @@ GraphViewer::GraphViewer(const Graph& graph, const IndexedSubGraph* filter_info)
 #if !defined(ORT_MINIMAL_BUILD)
     auto orig_priority_order = std::move(nodes_in_topological_order_with_priority_);
     nodes_in_topological_order_with_priority_.reserve(filter_info->nodes.size());
-    std::copy_if(orig_priority_order.cbegin(), orig_priority_order.cend(),
-                 std::back_inserter(nodes_in_topological_order_with_priority_),
-                 [this](NodeIndex idx) { return filtered_node_indices_.count(idx) != 0; });
+    std::copy_if(orig_priority_order.cbegin(), orig_priority_order.cend(), std::back_inserter(nodes_in_topological_order_with_priority_), [this](NodeIndex idx) { return filtered_node_indices_.count(idx) != 0; });
 #endif
   }
 }

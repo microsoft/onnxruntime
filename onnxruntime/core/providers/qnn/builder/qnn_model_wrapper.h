@@ -138,8 +138,7 @@ class QnnModelWrapper {
                                 const bool is_for_output = false) {
     LOGS(logger_, VERBOSE) << "Add NCHW->HWCN Transpose node after Conv weight input: " << input_name
                            << " -> " << output_name;
-    return AddTransposeNode(node_index, input_name, output_name, input_shape, nchw2hwcn_perm_, output_shape,
-                            tensor_data_type, quantize_param, is_for_input, is_for_output);
+    return AddTransposeNode(node_index, input_name, output_name, input_shape, nchw2hwcn_perm_, output_shape, tensor_data_type, quantize_param, is_for_input, is_for_output);
   }
 
   // Tranpose CNHW->HWCN for QNN weight
@@ -154,8 +153,7 @@ class QnnModelWrapper {
                                 const bool is_for_output = false) {
     LOGS(logger_, VERBOSE) << "Add CNHW->HWCN Transpose node after ConvTranspose weight input: " << input_name
                            << " -> " << output_name;
-    return AddTransposeNode(node_index, input_name, output_name, input_shape, cnhw2hwcn_perm_, output_shape,
-                            tensor_data_type, quantize_param, is_for_input, is_for_output);
+    return AddTransposeNode(node_index, input_name, output_name, input_shape, cnhw2hwcn_perm_, output_shape, tensor_data_type, quantize_param, is_for_input, is_for_output);
   }
 
  private:

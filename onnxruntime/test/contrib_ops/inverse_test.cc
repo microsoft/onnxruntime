@@ -28,8 +28,7 @@ TEST(InverseContribOpTest, two_by_two_float16) {
   auto input_float = {4.f, 7.f, 2.f, 6.f};
   std::vector<MLFloat16> input;
   std::transform(
-      input_float.begin(), input_float.end(), std::back_inserter(input),
-      [](float v) {
+      input_float.begin(), input_float.end(), std::back_inserter(input), [](float v) {
         return MLFloat16(math::floatToHalf(v));
       });
 
@@ -47,11 +46,7 @@ TEST(InverseContribOpTest, two_by_two_float16) {
 
 TEST(InverseContribOpTest, four_by_four_float) {
   OpTester test("Inverse", 1, kMSDomain);
-  test.AddInput<float>("X", {4, 4},
-                       {4.f, 0.f, 0.f, 0.f,
-                        0.f, 0.f, 2.f, 0.f,
-                        0.f, 1.f, 2.f, 0.f,
-                        1.f, 0.f, 0.f, 1.f});
+  test.AddInput<float>("X", {4, 4}, {4.f, 0.f, 0.f, 0.f, 0.f, 0.f, 2.f, 0.f, 0.f, 1.f, 2.f, 0.f, 1.f, 0.f, 0.f, 1.f});
   test.AddOutput<float>("Y", {4, 4}, {0.25f, 0.f, 0.f, 0.f, 0.f, -1.f, 1.f, 0.f, 0.f, 0.5f, 0.f, 0.f, -0.25f, 0.f, 0.f, 1.f});
   test.Run();
 }
@@ -60,10 +55,7 @@ TEST(InverseContribOpTest, four_by_four_batches_float) {
   OpTester test("Inverse", 1, kMSDomain);
 
   auto one_input_matrix_4x4 = {
-      4.f, 0.f, 0.f, 0.f,
-      0.f, 0.f, 2.f, 0.f,
-      0.f, 1.f, 2.f, 0.f,
-      1.f, 0.f, 0.f, 1.f};
+      4.f, 0.f, 0.f, 0.f, 0.f, 0.f, 2.f, 0.f, 0.f, 1.f, 2.f, 0.f, 1.f, 0.f, 0.f, 1.f};
 
   // batches 3x4 i.e. 12 batches so the full shape is 3x4x4x4
   std::vector<float> input;
@@ -72,10 +64,7 @@ TEST(InverseContribOpTest, four_by_four_batches_float) {
   }
 
   auto one_output_matrix_4x4 = {
-      0.25f, 0.f, 0.f, 0.f,
-      0.f, -1.f, 1.f, 0.f,
-      0.f, 0.5f, 0.f, 0.f,
-      -0.25f, 0.f, 0.f, 1.f};
+      0.25f, 0.f, 0.f, 0.f, 0.f, -1.f, 1.f, 0.f, 0.f, 0.5f, 0.f, 0.f, -0.25f, 0.f, 0.f, 1.f};
 
   std::vector<float> output;
   for (int64_t i = 0; i < 3 * 4; ++i) {

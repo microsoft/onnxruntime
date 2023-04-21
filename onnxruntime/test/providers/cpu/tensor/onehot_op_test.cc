@@ -14,13 +14,7 @@ TEST(OneHotOpTest, DefaultAxis) {
   test.AddInput<int64_t>("indices", {2, 3}, {1, 9, 8, 2, 4, 6});
   test.AddInput<int64_t>("depth", {1}, {10});
   test.AddInput<int64_t>("values", {2}, {0, 1});
-  test.AddOutput<int64_t>("output", {2, 3, 10},
-                          {0, 1, 0, 0, 0, 0, 0, 0, 0, 0,
-                           0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
-                           0, 0, 0, 0, 0, 0, 0, 0, 1, 0,
-                           0, 0, 1, 0, 0, 0, 0, 0, 0, 0,
-                           0, 0, 0, 0, 1, 0, 0, 0, 0, 0,
-                           0, 0, 0, 0, 0, 0, 1, 0, 0, 0});
+  test.AddOutput<int64_t>("output", {2, 3, 10}, {0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0});
   test.Run();
 }
 
@@ -29,13 +23,7 @@ TEST(OneHotOpTest, DefaultAxis_float_float_float /*indices, output, depth*/) {
   test.AddInput<float>("indices", {2, 3}, {1., 9., 8., 2., 4., 6.});
   test.AddInput<float>("depth", {1}, {10.});
   test.AddInput<float>("values", {2}, {0., 1.});
-  test.AddOutput<float>("output", {2, 3, 10},
-                        {0., 1., 0., 0., 0., 0., 0., 0., 0., 0.,
-                         0., 0., 0., 0., 0., 0., 0., 0., 0., 1.,
-                         0., 0., 0., 0., 0., 0., 0., 0., 1., 0.,
-                         0., 0., 1., 0., 0., 0., 0., 0., 0., 0.,
-                         0., 0., 0., 0., 1., 0., 0., 0., 0., 0.,
-                         0., 0., 0., 0., 0., 0., 1., 0., 0., 0.});
+  test.AddOutput<float>("output", {2, 3, 10}, {0., 1., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 1., 0., 0., 0., 0., 0., 0., 0., 0., 1., 0., 0., 0., 1., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 1., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 1., 0., 0., 0.});
   test.Run();
 }
 
@@ -44,13 +32,7 @@ TEST(OneHotOpTest, DefaultAxis_int64_int32_float /*indices, output, depth*/) {
   test.AddInput<int64_t>("indices", {2, 3}, {1, 9, 8, 2, 4, 6});
   test.AddInput<float>("depth", {1}, {10.});
   test.AddInput<int32_t>("values", {2}, {0, 1});
-  test.AddOutput<int32_t>("output", {2, 3, 10},
-                          {0, 1, 0, 0, 0, 0, 0, 0, 0, 0,
-                           0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
-                           0, 0, 0, 0, 0, 0, 0, 0, 1, 0,
-                           0, 0, 1, 0, 0, 0, 0, 0, 0, 0,
-                           0, 0, 0, 0, 1, 0, 0, 0, 0, 0,
-                           0, 0, 0, 0, 0, 0, 1, 0, 0, 0});
+  test.AddOutput<int32_t>("output", {2, 3, 10}, {0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0});
   test.Run();
 }
 
@@ -59,13 +41,7 @@ TEST(OneHotOpTest, DefaultAxis_int64_float_int64 /*indices, output, depth*/) {
   test.AddInput<int64_t>("indices", {2, 3}, {1, 9, 8, 2, 4, 6});
   test.AddInput<int64_t>("depth", {1}, {10});
   test.AddInput<float>("values", {2}, {0, 1});
-  test.AddOutput<float>("output", {2, 3, 10},
-                        {0, 1, 0, 0, 0, 0, 0, 0, 0, 0,
-                         0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
-                         0, 0, 0, 0, 0, 0, 0, 0, 1, 0,
-                         0, 0, 1, 0, 0, 0, 0, 0, 0, 0,
-                         0, 0, 0, 0, 1, 0, 0, 0, 0, 0,
-                         0, 0, 0, 0, 0, 0, 1, 0, 0, 0});
+  test.AddOutput<float>("output", {2, 3, 10}, {0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0});
   test.Run();
 }
 
@@ -74,13 +50,7 @@ TEST(OneHotOpTest, DefaultAxis_int32_float_float /*indices, output, depth*/) {
   test.AddInput<int32_t>("indices", {2, 3}, {1, 9, 8, 2, 4, 6});
   test.AddInput<float>("depth", {1}, {10.0f});
   test.AddInput<float>("values", {2}, {0.0f, 1.0f});
-  test.AddOutput<float>("output", {2, 3, 10},
-                        {0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
-                         0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f,
-                         0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f,
-                         0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
-                         0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
-                         0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f});
+  test.AddOutput<float>("output", {2, 3, 10}, {0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f});
   test.Run();
 }
 
@@ -89,13 +59,7 @@ TEST(OneHotOpTest, DefaultAxis_int32_float_int32 /*indices, output, depth*/) {
   test.AddInput<int32_t>("indices", {2, 3}, {1, 9, 8, 2, 4, 6});
   test.AddInput<int32_t>("depth", {1}, {10});
   test.AddInput<float>("values", {2}, {0.0f, 1.0f});
-  test.AddOutput<float>("output", {2, 3, 10},
-                        {0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
-                         0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f,
-                         0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f,
-                         0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
-                         0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
-                         0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f});
+  test.AddOutput<float>("output", {2, 3, 10}, {0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f});
   test.Run();
 }
 
@@ -106,17 +70,7 @@ TEST(OneHotOpTest, Axis_0) {
   test.AddInput<int64_t>("indices", {2, 3}, {1, 9, 8, 2, 4, 6});
   test.AddInput<int64_t>("depth", {1}, {10});
   test.AddInput<int64_t>("values", {2}, {0, 1});
-  test.AddOutput<int64_t>("output", {10, 2, 3},
-                          {0, 0, 0, 0, 0, 0,
-                           1, 0, 0, 0, 0, 0,
-                           0, 0, 0, 1, 0, 0,
-                           0, 0, 0, 0, 0, 0,
-                           0, 0, 0, 0, 1, 0,
-                           0, 0, 0, 0, 0, 0,
-                           0, 0, 0, 0, 0, 1,
-                           0, 0, 0, 0, 0, 0,
-                           0, 0, 1, 0, 0, 0,
-                           0, 1, 0, 0, 0, 0});
+  test.AddOutput<int64_t>("output", {10, 2, 3}, {0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0});
   test.Run();
 }
 
@@ -127,27 +81,7 @@ TEST(OneHotOpTest, Axis_1) {
   test.AddInput<int64_t>("indices", {2, 3}, {1, 9, 8, 2, 4, 6});
   test.AddInput<int64_t>("depth", {1}, {10});
   test.AddInput<int64_t>("values", {2}, {0, 1});
-  test.AddOutput<int64_t>("output", {2, 10, 3},
-                          {0, 0, 0,
-                           1, 0, 0,
-                           0, 0, 0,
-                           0, 0, 0,
-                           0, 0, 0,
-                           0, 0, 0,
-                           0, 0, 0,
-                           0, 0, 0,
-                           0, 0, 1,
-                           0, 1, 0,
-                           0, 0, 0,
-                           0, 0, 0,
-                           1, 0, 0,
-                           0, 0, 0,
-                           0, 1, 0,
-                           0, 0, 0,
-                           0, 0, 1,
-                           0, 0, 0,
-                           0, 0, 0,
-                           0, 0, 0});
+  test.AddOutput<int64_t>("output", {2, 10, 3}, {0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0});
   test.Run();
 }
 
@@ -158,13 +92,7 @@ TEST(OneHotOpTest, Axis_2) {
   test.AddInput<int64_t>("indices", {2, 3}, {1, 9, 8, 2, 4, 6});
   test.AddInput<int64_t>("depth", {1}, {10});
   test.AddInput<int64_t>("values", {2}, {0, 1});
-  test.AddOutput<int64_t>("output", {2, 3, 10},
-                          {0, 1, 0, 0, 0, 0, 0, 0, 0, 0,
-                           0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
-                           0, 0, 0, 0, 0, 0, 0, 0, 1, 0,
-                           0, 0, 1, 0, 0, 0, 0, 0, 0, 0,
-                           0, 0, 0, 0, 1, 0, 0, 0, 0, 0,
-                           0, 0, 0, 0, 0, 0, 1, 0, 0, 0});
+  test.AddOutput<int64_t>("output", {2, 3, 10}, {0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0});
   test.Run();
 }
 
@@ -175,17 +103,7 @@ TEST(OneHotOpTest, Axis_Negative_NonDefault) {
   test.AddInput<int64_t>("indices", {2, 3}, {1, 9, 8, 2, 4, 6});
   test.AddInput<int64_t>("depth", {1}, {10});
   test.AddInput<int64_t>("values", {2}, {0, 1});
-  test.AddOutput<int64_t>("output", {10, 2, 3},
-                          {0, 0, 0, 0, 0, 0,
-                           1, 0, 0, 0, 0, 0,
-                           0, 0, 0, 1, 0, 0,
-                           0, 0, 0, 0, 0, 0,
-                           0, 0, 0, 0, 1, 0,
-                           0, 0, 0, 0, 0, 0,
-                           0, 0, 0, 0, 0, 1,
-                           0, 0, 0, 0, 0, 0,
-                           0, 0, 1, 0, 0, 0,
-                           0, 1, 0, 0, 0, 0});
+  test.AddOutput<int64_t>("output", {10, 2, 3}, {0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0});
   test.Run();
 }
 
@@ -194,13 +112,7 @@ TEST(OneHotOpTest, FloatInt64) {
   test.AddInput<float>("indices", {2, 3}, {1.f, 9.f, 8.f, 2.f, 4.f, 6.f});
   test.AddInput<int64_t>("depth", {1}, {10});
   test.AddInput<int64_t>("values", {2}, {0, 1});
-  test.AddOutput<int64_t>("output", {2, 3, 10},
-                          {0, 1, 0, 0, 0, 0, 0, 0, 0, 0,
-                           0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
-                           0, 0, 0, 0, 0, 0, 0, 0, 1, 0,
-                           0, 0, 1, 0, 0, 0, 0, 0, 0, 0,
-                           0, 0, 0, 0, 1, 0, 0, 0, 0, 0,
-                           0, 0, 0, 0, 0, 0, 1, 0, 0, 0});
+  test.AddOutput<int64_t>("output", {2, 3, 10}, {0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0});
   test.Run();
 }
 
@@ -209,13 +121,7 @@ TEST(OneHotOpTest, DefaultAxis_NonZeroOffValue) {
   test.AddInput<int64_t>("indices", {2, 3}, {1, 9, 8, 2, 4, 6});
   test.AddInput<int64_t>("depth", {1}, {10});
   test.AddInput<int64_t>("values", {2}, {2, 3});
-  test.AddOutput<int64_t>("output", {2, 3, 10},
-                          {2, 3, 2, 2, 2, 2, 2, 2, 2, 2,
-                           2, 2, 2, 2, 2, 2, 2, 2, 2, 3,
-                           2, 2, 2, 2, 2, 2, 2, 2, 3, 2,
-                           2, 2, 3, 2, 2, 2, 2, 2, 2, 2,
-                           2, 2, 2, 2, 3, 2, 2, 2, 2, 2,
-                           2, 2, 2, 2, 2, 2, 3, 2, 2, 2});
+  test.AddOutput<int64_t>("output", {2, 3, 10}, {2, 3, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 3, 2, 2, 2, 2, 2, 2, 2, 2, 3, 2, 2, 2, 3, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 3, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 3, 2, 2, 2});
   test.Run();
 }
 
@@ -224,13 +130,7 @@ TEST(OneHotOpTest, DefaultAxis_float_float_float_NonZeroOffValue /*indices, outp
   test.AddInput<float>("indices", {2, 3}, {1., 9., 8., 2., 4., 6.});
   test.AddInput<float>("depth", {1}, {10.});
   test.AddInput<float>("values", {2}, {2., 3.});
-  test.AddOutput<float>("output", {2, 3, 10},
-                        {2., 3., 2., 2., 2., 2., 2., 2., 2., 2.,
-                         2., 2., 2., 2., 2., 2., 2., 2., 2., 3.,
-                         2., 2., 2., 2., 2., 2., 2., 2., 3., 2.,
-                         2., 2., 3., 2., 2., 2., 2., 2., 2., 2.,
-                         2., 2., 2., 2., 3., 2., 2., 2., 2., 2.,
-                         2., 2., 2., 2., 2., 2., 3., 2., 2., 2.});
+  test.AddOutput<float>("output", {2, 3, 10}, {2., 3., 2., 2., 2., 2., 2., 2., 2., 2., 2., 2., 2., 2., 2., 2., 2., 2., 2., 3., 2., 2., 2., 2., 2., 2., 2., 2., 3., 2., 2., 2., 3., 2., 2., 2., 2., 2., 2., 2., 2., 2., 2., 2., 3., 2., 2., 2., 2., 2., 2., 2., 2., 2., 2., 2., 3., 2., 2., 2.});
   test.Run();
 }
 
@@ -239,13 +139,7 @@ TEST(OneHotOpTest, DefaultAxis_int64_int32_float_NonZeroOffValue /*indices, outp
   test.AddInput<int64_t>("indices", {2, 3}, {1, 9, 8, 2, 4, 6});
   test.AddInput<float>("depth", {1}, {10.});
   test.AddInput<int32_t>("values", {2}, {2, 3});
-  test.AddOutput<int32_t>("output", {2, 3, 10},
-                          {2, 3, 2, 2, 2, 2, 2, 2, 2, 2,
-                           2, 2, 2, 2, 2, 2, 2, 2, 2, 3,
-                           2, 2, 2, 2, 2, 2, 2, 2, 3, 2,
-                           2, 2, 3, 2, 2, 2, 2, 2, 2, 2,
-                           2, 2, 2, 2, 3, 2, 2, 2, 2, 2,
-                           2, 2, 2, 2, 2, 2, 3, 2, 2, 2});
+  test.AddOutput<int32_t>("output", {2, 3, 10}, {2, 3, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 3, 2, 2, 2, 2, 2, 2, 2, 2, 3, 2, 2, 2, 3, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 3, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 3, 2, 2, 2});
   test.Run();
 }
 
@@ -254,13 +148,7 @@ TEST(OneHotOpTest, DefaultAxis_int64_float_int64_NonZeroOffValue /*indices, outp
   test.AddInput<int64_t>("indices", {2, 3}, {1, 9, 8, 2, 4, 6});
   test.AddInput<int64_t>("depth", {1}, {10});
   test.AddInput<float>("values", {2}, {2, 3});
-  test.AddOutput<float>("output", {2, 3, 10},
-                        {2, 3, 2, 2, 2, 2, 2, 2, 2, 2,
-                         2, 2, 2, 2, 2, 2, 2, 2, 2, 3,
-                         2, 2, 2, 2, 2, 2, 2, 2, 3, 2,
-                         2, 2, 3, 2, 2, 2, 2, 2, 2, 2,
-                         2, 2, 2, 2, 3, 2, 2, 2, 2, 2,
-                         2, 2, 2, 2, 2, 2, 3, 2, 2, 2});
+  test.AddOutput<float>("output", {2, 3, 10}, {2, 3, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 3, 2, 2, 2, 2, 2, 2, 2, 2, 3, 2, 2, 2, 3, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 3, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 3, 2, 2, 2});
   test.Run();
 }
 
@@ -269,13 +157,7 @@ TEST(OneHotOpTest, DefaultAxis_int32_float_float_NonZeroOffValue /*indices, outp
   test.AddInput<int32_t>("indices", {2, 3}, {1, 9, 8, 2, 4, 6});
   test.AddInput<float>("depth", {1}, {10.0f});
   test.AddInput<float>("values", {2}, {2.0f, 3.0f});
-  test.AddOutput<float>("output", {2, 3, 10},
-                        {2.0f, 3.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f,
-                         2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 3.0f,
-                         2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 3.0f, 2.0f,
-                         2.0f, 2.0f, 3.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f,
-                         2.0f, 2.0f, 2.0f, 2.0f, 3.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f,
-                         2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 3.0f, 2.0f, 2.0f, 2.0f});
+  test.AddOutput<float>("output", {2, 3, 10}, {2.0f, 3.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 3.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 3.0f, 2.0f, 2.0f, 2.0f, 3.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 3.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 3.0f, 2.0f, 2.0f, 2.0f});
   test.Run();
 }
 
@@ -284,13 +166,7 @@ TEST(OneHotOpTest, DefaultAxis_int32_float_int32_NonZeroOffValue /*indices, outp
   test.AddInput<int32_t>("indices", {2, 3}, {1, 9, 8, 2, 4, 6});
   test.AddInput<int32_t>("depth", {1}, {10});
   test.AddInput<float>("values", {2}, {2.0f, 3.0f});
-  test.AddOutput<float>("output", {2, 3, 10},
-                        {2.0f, 3.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f,
-                         2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 3.0f,
-                         2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 3.0f, 2.0f,
-                         2.0f, 2.0f, 3.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f,
-                         2.0f, 2.0f, 2.0f, 2.0f, 3.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f,
-                         2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 3.0f, 2.0f, 2.0f, 2.0f});
+  test.AddOutput<float>("output", {2, 3, 10}, {2.0f, 3.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 3.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 3.0f, 2.0f, 2.0f, 2.0f, 3.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 3.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 3.0f, 2.0f, 2.0f, 2.0f});
   test.Run();
 }
 
@@ -301,17 +177,7 @@ TEST(OneHotOpTest, Axis_0_NonZeroOffValue) {
   test.AddInput<int64_t>("indices", {2, 3}, {1, 9, 8, 2, 4, 6});
   test.AddInput<int64_t>("depth", {1}, {10});
   test.AddInput<int64_t>("values", {2}, {2, 3});
-  test.AddOutput<int64_t>("output", {10, 2, 3},
-                          {2, 2, 2, 2, 2, 2,
-                           3, 2, 2, 2, 2, 2,
-                           2, 2, 2, 3, 2, 2,
-                           2, 2, 2, 2, 2, 2,
-                           2, 2, 2, 2, 3, 2,
-                           2, 2, 2, 2, 2, 2,
-                           2, 2, 2, 2, 2, 3,
-                           2, 2, 2, 2, 2, 2,
-                           2, 2, 3, 2, 2, 2,
-                           2, 3, 2, 2, 2, 2});
+  test.AddOutput<int64_t>("output", {10, 2, 3}, {2, 2, 2, 2, 2, 2, 3, 2, 2, 2, 2, 2, 2, 2, 2, 3, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 3, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 3, 2, 2, 2, 2, 2, 2, 2, 2, 3, 2, 2, 2, 2, 3, 2, 2, 2, 2});
   test.Run();
 }
 
@@ -322,27 +188,7 @@ TEST(OneHotOpTest, Axis_1_NonZeroOffValue) {
   test.AddInput<int64_t>("indices", {2, 3}, {1, 9, 8, 2, 4, 6});
   test.AddInput<int64_t>("depth", {1}, {10});
   test.AddInput<int64_t>("values", {2}, {2, 3});
-  test.AddOutput<int64_t>("output", {2, 10, 3},
-                          {2, 2, 2,
-                           3, 2, 2,
-                           2, 2, 2,
-                           2, 2, 2,
-                           2, 2, 2,
-                           2, 2, 2,
-                           2, 2, 2,
-                           2, 2, 2,
-                           2, 2, 3,
-                           2, 3, 2,
-                           2, 2, 2,
-                           2, 2, 2,
-                           3, 2, 2,
-                           2, 2, 2,
-                           2, 3, 2,
-                           2, 2, 2,
-                           2, 2, 3,
-                           2, 2, 2,
-                           2, 2, 2,
-                           2, 2, 2});
+  test.AddOutput<int64_t>("output", {2, 10, 3}, {2, 2, 2, 3, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 3, 2, 3, 2, 2, 2, 2, 2, 2, 2, 3, 2, 2, 2, 2, 2, 2, 3, 2, 2, 2, 2, 2, 2, 3, 2, 2, 2, 2, 2, 2, 2, 2, 2});
   test.Run();
 }
 
@@ -353,13 +199,7 @@ TEST(OneHotOpTest, Axis_2_NonZeroOffValue) {
   test.AddInput<int64_t>("indices", {2, 3}, {1, 9, 8, 2, 4, 6});
   test.AddInput<int64_t>("depth", {1}, {10});
   test.AddInput<int64_t>("values", {2}, {2, 3});
-  test.AddOutput<int64_t>("output", {2, 3, 10},
-                          {2, 3, 2, 2, 2, 2, 2, 2, 2, 2,
-                           2, 2, 2, 2, 2, 2, 2, 2, 2, 3,
-                           2, 2, 2, 2, 2, 2, 2, 2, 3, 2,
-                           2, 2, 3, 2, 2, 2, 2, 2, 2, 2,
-                           2, 2, 2, 2, 3, 2, 2, 2, 2, 2,
-                           2, 2, 2, 2, 2, 2, 3, 2, 2, 2});
+  test.AddOutput<int64_t>("output", {2, 3, 10}, {2, 3, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 3, 2, 2, 2, 2, 2, 2, 2, 2, 3, 2, 2, 2, 3, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 3, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 3, 2, 2, 2});
   test.Run();
 }
 
@@ -370,17 +210,7 @@ TEST(OneHotOpTest, Axis_Negative_NonDefault_NonZeroOffValue) {
   test.AddInput<int64_t>("indices", {2, 3}, {1, 9, 8, 2, 4, 6});
   test.AddInput<int64_t>("depth", {1}, {10});
   test.AddInput<int64_t>("values", {2}, {2, 3});
-  test.AddOutput<int64_t>("output", {10, 2, 3},
-                          {2, 2, 2, 2, 2, 2,
-                           3, 2, 2, 2, 2, 2,
-                           2, 2, 2, 3, 2, 2,
-                           2, 2, 2, 2, 2, 2,
-                           2, 2, 2, 2, 3, 2,
-                           2, 2, 2, 2, 2, 2,
-                           2, 2, 2, 2, 2, 3,
-                           2, 2, 2, 2, 2, 2,
-                           2, 2, 3, 2, 2, 2,
-                           2, 3, 2, 2, 2, 2});
+  test.AddOutput<int64_t>("output", {10, 2, 3}, {2, 2, 2, 2, 2, 2, 3, 2, 2, 2, 2, 2, 2, 2, 2, 3, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 3, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 3, 2, 2, 2, 2, 2, 2, 2, 2, 3, 2, 2, 2, 2, 3, 2, 2, 2, 2});
   test.Run();
 }
 
@@ -389,13 +219,7 @@ TEST(OneHotOpTest, FloatInt64_NonZeroOffValue) {
   test.AddInput<float>("indices", {2, 3}, {1.f, 9.f, 8.f, 2.f, 4.f, 6.f});
   test.AddInput<int64_t>("depth", {1}, {10});
   test.AddInput<int64_t>("values", {2}, {2, 3});
-  test.AddOutput<int64_t>("output", {2, 3, 10},
-                          {2, 3, 2, 2, 2, 2, 2, 2, 2, 2,
-                           2, 2, 2, 2, 2, 2, 2, 2, 2, 3,
-                           2, 2, 2, 2, 2, 2, 2, 2, 3, 2,
-                           2, 2, 3, 2, 2, 2, 2, 2, 2, 2,
-                           2, 2, 2, 2, 3, 2, 2, 2, 2, 2,
-                           2, 2, 2, 2, 2, 2, 3, 2, 2, 2});
+  test.AddOutput<int64_t>("output", {2, 3, 10}, {2, 3, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 3, 2, 2, 2, 2, 2, 2, 2, 2, 3, 2, 2, 2, 3, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 3, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 3, 2, 2, 2});
   test.Run();
 }
 
@@ -404,13 +228,7 @@ TEST(OneHotOpTest, FloatString) {
   test.AddInput<float>("indices", {2, 3}, {1.f, 9.f, 8.f, 2.f, 4.f, 6.f});
   test.AddInput<int64_t>("depth", {1}, {10});
   test.AddInput<string>("values", {2}, {"off", "on"});
-  test.AddOutput<string>("output", {2, 3, 10},
-                         {"off", "on", "off", "off", "off", "off", "off", "off", "off", "off",
-                          "off", "off", "off", "off", "off", "off", "off", "off", "off", "on",
-                          "off", "off", "off", "off", "off", "off", "off", "off", "on", "off",
-                          "off", "off", "on", "off", "off", "off", "off", "off", "off", "off",
-                          "off", "off", "off", "off", "on", "off", "off", "off", "off", "off",
-                          "off", "off", "off", "off", "off", "off", "on", "off", "off", "off"});
+  test.AddOutput<string>("output", {2, 3, 10}, {"off", "on", "off", "off", "off", "off", "off", "off", "off", "off", "off", "off", "off", "off", "off", "off", "off", "off", "off", "on", "off", "off", "off", "off", "off", "off", "off", "off", "on", "off", "off", "off", "on", "off", "off", "off", "off", "off", "off", "off", "off", "off", "off", "off", "on", "off", "off", "off", "off", "off", "off", "off", "off", "off", "off", "off", "on", "off", "off", "off"});
   test.Run();
 }
 
@@ -421,17 +239,7 @@ TEST(OneHotOpTest, Axis_Negative_NegIndex_NonDefault) {
   test.AddInput<int64_t>("indices", {2, 3}, {1, -1, 8, 2, 4, 6});
   test.AddInput<int64_t>("depth", {1}, {10});
   test.AddInput<int64_t>("values", {2}, {0, 1});
-  test.AddOutput<int64_t>("output", {10, 2, 3},
-                          {0, 0, 0, 0, 0, 0,
-                           1, 0, 0, 0, 0, 0,
-                           0, 0, 0, 1, 0, 0,
-                           0, 0, 0, 0, 0, 0,
-                           0, 0, 0, 0, 1, 0,
-                           0, 0, 0, 0, 0, 0,
-                           0, 0, 0, 0, 0, 1,
-                           0, 0, 0, 0, 0, 0,
-                           0, 0, 1, 0, 0, 0,
-                           0, 1, 0, 0, 0, 0});
+  test.AddOutput<int64_t>("output", {10, 2, 3}, {0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0});
   test.Run();
 }
 
@@ -442,17 +250,7 @@ TEST(OneHotOpTest, Axis_Negative_NegIndex_NonDefault_NonZeroOffValue) {
   test.AddInput<int64_t>("indices", {2, 3}, {1, -1, 8, 2, 4, 6});
   test.AddInput<int64_t>("depth", {1}, {10});
   test.AddInput<int64_t>("values", {2}, {2, 3});
-  test.AddOutput<int64_t>("output", {10, 2, 3},
-                          {2, 2, 2, 2, 2, 2,
-                           3, 2, 2, 2, 2, 2,
-                           2, 2, 2, 3, 2, 2,
-                           2, 2, 2, 2, 2, 2,
-                           2, 2, 2, 2, 3, 2,
-                           2, 2, 2, 2, 2, 2,
-                           2, 2, 2, 2, 2, 3,
-                           2, 2, 2, 2, 2, 2,
-                           2, 2, 3, 2, 2, 2,
-                           2, 3, 2, 2, 2, 2});
+  test.AddOutput<int64_t>("output", {10, 2, 3}, {2, 2, 2, 2, 2, 2, 3, 2, 2, 2, 2, 2, 2, 2, 2, 3, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 3, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 3, 2, 2, 2, 2, 2, 2, 2, 2, 3, 2, 2, 2, 2, 3, 2, 2, 2, 2});
   test.Run();
 }
 
@@ -461,13 +259,7 @@ TEST(OneHotOpTest, DefaultAxis_IndicesOutOfRange) {
   test.AddInput<int64_t>("indices", {2, 3}, {1, -1, 8, 13, 4, -12});
   test.AddInput<int64_t>("depth", {1}, {10});
   test.AddInput<int64_t>("values", {2}, {0, 1});
-  test.AddOutput<int64_t>("output", {2, 3, 10},
-                          {0, 1, 0, 0, 0, 0, 0, 0, 0, 0,
-                           0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
-                           0, 0, 0, 0, 0, 0, 0, 0, 1, 0,
-                           0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-                           0, 0, 0, 0, 1, 0, 0, 0, 0, 0,
-                           0, 0, 0, 0, 0, 0, 0, 0, 0, 0});
+  test.AddOutput<int64_t>("output", {2, 3, 10}, {0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0});
   test.Run();
 }
 
@@ -476,13 +268,7 @@ TEST(OneHotOpTest, DefaultAxis_IndicesOutOfRange_NonZeroOffValue) {
   test.AddInput<int64_t>("indices", {2, 3}, {1, -1, 8, 13, 4, -12});
   test.AddInput<int64_t>("depth", {1}, {10});
   test.AddInput<int64_t>("values", {2}, {2, 3});
-  test.AddOutput<int64_t>("output", {2, 3, 10},
-                          {2, 3, 2, 2, 2, 2, 2, 2, 2, 2,
-                           2, 2, 2, 2, 2, 2, 2, 2, 2, 3,
-                           2, 2, 2, 2, 2, 2, 2, 2, 3, 2,
-                           2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
-                           2, 2, 2, 2, 3, 2, 2, 2, 2, 2,
-                           2, 2, 2, 2, 2, 2, 2, 2, 2, 2});
+  test.AddOutput<int64_t>("output", {2, 3, 10}, {2, 3, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 3, 2, 2, 2, 2, 2, 2, 2, 2, 3, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 3, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2});
   test.Run();
 }
 
@@ -506,12 +292,7 @@ TEST(OneHotOpTest, DefaultAxis_int64_MLFloat16_int64 /*indices, output, depth*/)
   std::vector<MLFloat16> fp16_values(values.size());
   ConvertFloatToMLFloat16(values.data(), fp16_values.data(), static_cast<int>(values.size()));
 
-  std::vector<float> output{0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
-                            0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f,
-                            0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f,
-                            0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
-                            0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
-                            0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f};
+  std::vector<float> output{0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f};
   std::vector<MLFloat16> fp16_output(output.size());
   ConvertFloatToMLFloat16(output.data(), fp16_output.data(), static_cast<int>(output.size()));
 
@@ -531,12 +312,7 @@ TEST(OneHotOpTest, DefaultAxis_int32_MLFloat16_int32 /*indices, output, depth*/)
   std::vector<MLFloat16> fp16_values(values.size());
   ConvertFloatToMLFloat16(values.data(), fp16_values.data(), static_cast<int>(values.size()));
 
-  std::vector<float> output{0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
-                            0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f,
-                            0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f,
-                            0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
-                            0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
-                            0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f};
+  std::vector<float> output{0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f};
   std::vector<MLFloat16> fp16_output(output.size());
   ConvertFloatToMLFloat16(output.data(), fp16_output.data(), static_cast<int>(output.size()));
 
@@ -556,12 +332,7 @@ TEST(OneHotOpTest, DefaultAxis_int64_MLFloat16_int64_NonZeroOffValue /*indices, 
   std::vector<MLFloat16> fp16_values(values.size());
   ConvertFloatToMLFloat16(values.data(), fp16_values.data(), static_cast<int>(values.size()));
 
-  std::vector<float> output{2.0f, 3.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f,
-                            2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 3.0f,
-                            2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 3.0f, 2.0f,
-                            2.0f, 2.0f, 3.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f,
-                            2.0f, 2.0f, 2.0f, 2.0f, 3.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f,
-                            2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 3.0f, 2.0f, 2.0f, 2.0f};
+  std::vector<float> output{2.0f, 3.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 3.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 3.0f, 2.0f, 2.0f, 2.0f, 3.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 3.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 3.0f, 2.0f, 2.0f, 2.0f};
   std::vector<MLFloat16> fp16_output(output.size());
   ConvertFloatToMLFloat16(output.data(), fp16_output.data(), static_cast<int>(output.size()));
 
@@ -581,12 +352,7 @@ TEST(OneHotOpTest, DefaultAxis_int32_MLFloat16_int32_NonZeroOffValue /*indices, 
   std::vector<MLFloat16> fp16_values(values.size());
   ConvertFloatToMLFloat16(values.data(), fp16_values.data(), static_cast<int>(values.size()));
 
-  std::vector<float> output{2.0f, 3.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f,
-                            2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 3.0f,
-                            2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 3.0f, 2.0f,
-                            2.0f, 2.0f, 3.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f,
-                            2.0f, 2.0f, 2.0f, 2.0f, 3.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f,
-                            2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 3.0f, 2.0f, 2.0f, 2.0f};
+  std::vector<float> output{2.0f, 3.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 3.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 3.0f, 2.0f, 2.0f, 2.0f, 3.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 3.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 3.0f, 2.0f, 2.0f, 2.0f};
   std::vector<MLFloat16> fp16_output(output.size());
   ConvertFloatToMLFloat16(output.data(), fp16_output.data(), static_cast<int>(output.size()));
 

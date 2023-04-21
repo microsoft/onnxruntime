@@ -14,12 +14,9 @@ namespace contrib {
 // once Keras Mask RCNN is shipped with all ONNX domain ops
 
 // Currently this kernel is required to support Keras Mask-RCNN
-ONNX_OPERATOR_KERNEL_EX(GatherND, kMSDomain, 1, kCpuExecutionProvider,
-                        KernelDefBuilder()
-                            .TypeConstraint("T", DataTypeImpl::AllTensorTypes())
-                            // contrib spec supports `int32_t` and `int64_t` for indices
-                            .TypeConstraint("Tind", {DataTypeImpl::GetTensorType<int32_t>(),
-                                                     DataTypeImpl::GetTensorType<int64_t>()}),
+ONNX_OPERATOR_KERNEL_EX(GatherND, kMSDomain, 1, kCpuExecutionProvider, KernelDefBuilder().TypeConstraint("T", DataTypeImpl::AllTensorTypes())
+                                                                           // contrib spec supports `int32_t` and `int64_t` for indices
+                                                                           .TypeConstraint("Tind", {DataTypeImpl::GetTensorType<int32_t>(), DataTypeImpl::GetTensorType<int64_t>()}),
                         GatherND);
 
 }  // namespace contrib
@@ -39,7 +36,8 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
 // opset 12 added batch_dims attribute
 ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     GatherND,
-    12, 12,
+    12,
+    12,
     KernelDefBuilder()
         .TypeConstraint("T", DataTypeImpl::AllTensorTypes())
         .TypeConstraint("indices", DataTypeImpl::GetTensorType<int64_t>()),
@@ -55,8 +53,7 @@ ONNX_CPU_OPERATOR_KERNEL(
     GatherND);
 
 template <typename Tind>
-Status GatherNDBase::PrepareForCompute(const TensorShape& input_shape, const Tensor* indices_tensor,
-                                       const int64_t bytes_per_value, Prepare& p, concurrency::ThreadPool* tp) const {
+Status GatherNDBase::PrepareForCompute(const TensorShape& input_shape, const Tensor* indices_tensor, const int64_t bytes_per_value, Prepare& p, concurrency::ThreadPool* tp) const {
   const auto& indices_shape = indices_tensor->Shape();
   if (indices_shape.NumDimensions() == 0) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "indices tensor must has rank larger than 0");
@@ -104,8 +101,7 @@ Status GatherNDBase::PrepareForCompute(const TensorShape& input_shape, const Ten
   };
 
   concurrency::ThreadPool::TryParallelFor(
-      tp, onnxruntime::narrow<size_t>(num_slices), static_cast<double>(num_slice_dims),
-      [&lambda](ptrdiff_t first, ptrdiff_t last) {
+      tp, onnxruntime::narrow<size_t>(num_slices), static_cast<double>(num_slice_dims), [&lambda](ptrdiff_t first, ptrdiff_t last) {
         for (int slice_idx = static_cast<int>(first), end = static_cast<int>(last); slice_idx < end; ++slice_idx) {
           lambda(slice_idx);
         }
@@ -138,13 +134,11 @@ Status GatherND::Compute(OpKernelContext* context) const {
 
   int64_t last_indices_dimension = batch_dims_ + indices_shape[indices_shape.NumDimensions() - 1];
   if (last_indices_dimension > static_cast<int64_t>(input_shape.NumDimensions())) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "last dimension of indices must not be larger than rank of input tensor");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "last dimension of indices must not be larger than rank of input tensor");
   }
 
   std::vector<int64_t> shape(indices_shape.GetDims().begin(), indices_shape.GetDims().end() - 1);
-  shape.insert(shape.end(), input_shape.GetDims().begin() + onnxruntime::narrow<std::ptrdiff_t>(last_indices_dimension),
-               input_shape.GetDims().end());
+  shape.insert(shape.end(), input_shape.GetDims().begin() + onnxruntime::narrow<std::ptrdiff_t>(last_indices_dimension), input_shape.GetDims().end());
 
   auto* output_tensor = context->Output(0, TensorShape(std::move(shape)));
 
@@ -178,12 +172,10 @@ Status GatherND::Compute(OpKernelContext* context) const {
 
 Status GatherND::GatherNumber(const Prepare& p, concurrency::ThreadPool* tp) const {
   auto lambda = [&](int64_t slice_idx) {
-    memcpy(p.output_base + slice_idx * p.bytes_per_slice, p.input_base + p.slice_offsets[onnxruntime::narrow<size_t>(slice_idx)] * p.element_bytes,
-           onnxruntime::narrow<size_t>(p.bytes_per_slice));
+    memcpy(p.output_base + slice_idx * p.bytes_per_slice, p.input_base + p.slice_offsets[onnxruntime::narrow<size_t>(slice_idx)] * p.element_bytes, onnxruntime::narrow<size_t>(p.bytes_per_slice));
   };
   concurrency::ThreadPool::TryParallelFor(
-      tp, p.slice_offsets.size(), static_cast<double>(p.bytes_per_slice),
-      [&lambda](ptrdiff_t first, ptrdiff_t last) {
+      tp, p.slice_offsets.size(), static_cast<double>(p.bytes_per_slice), [&lambda](ptrdiff_t first, ptrdiff_t last) {
         for (int slice_idx = static_cast<int>(first), end = static_cast<int>(last); slice_idx < end; ++slice_idx) {
           lambda(slice_idx);
         }
@@ -199,8 +191,7 @@ Status GatherND::GatherString(const Prepare& p, concurrency::ThreadPool* tp) con
     }
   };
   concurrency::ThreadPool::TryParallelFor(
-      tp, p.slice_offsets.size(), static_cast<double>(p.element_count_per_slice),
-      [&lambda](ptrdiff_t first, ptrdiff_t last) {
+      tp, p.slice_offsets.size(), static_cast<double>(p.element_count_per_slice), [&lambda](ptrdiff_t first, ptrdiff_t last) {
         for (int slice_idx = static_cast<int>(first), end = static_cast<int>(last); slice_idx < end; ++slice_idx) {
           lambda(slice_idx);
         }

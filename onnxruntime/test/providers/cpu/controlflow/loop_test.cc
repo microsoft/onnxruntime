@@ -60,8 +60,7 @@ class LoopOpTester : public OpTester {
     auto mutable_dim = float_scalar.mutable_tensor_type()->mutable_shape()->add_dim();
     mutable_dim->set_dim_value(1);
 
-    auto& cast_node = graph.AddNode("cast", "Cast", "Use graph input in main graph",
-                                    {graph_input_defs.back()}, {graph_output_defs.back()});
+    auto& cast_node = graph.AddNode("cast", "Cast", "Use graph input in main graph", {graph_input_defs.back()}, {graph_output_defs.back()});
     cast_node.AddAttribute("to", int64_t(TensorProto_DataType_INT64));
 
     // add Loop node
@@ -96,8 +95,7 @@ static const ONNX_NAMESPACE::GraphProto CreateSubgraph(const RunOptions& options
   // Loop tests use unsqueeze operator in it's subgraph. Unsqueeze was updated in opset13
   // This test can continue to use opset12 or can be updated to use the latest opset once
   // unsqueeze op13 implementation is done.
-  Model model("Loop subgraph", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(), {{"", 12}},
-              {}, DefaultLoggingManager().DefaultLogger());
+  Model model("Loop subgraph", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(), {{"", 12}}, {}, DefaultLoggingManager().DefaultLogger());
   auto& graph = model.MainGraph();
 
   std::vector<NodeArg*> inputs;
@@ -210,9 +208,7 @@ static const ONNX_NAMESPACE::GraphProto CreateSubgraph(const RunOptions& options
 
   // Unsqueeze iter_num_float, if initial iter_num is scalar.
   if (!is_iter_num_1d) {
-    auto& unsqueeze = graph.AddNode("iter_num_unsqueeze", "Unsqueeze",
-                                    "Unsqueeze iter_num_float to tensor of single dim",
-                                    {&iter_num_float}, {&iter_num_float_tensor});
+    auto& unsqueeze = graph.AddNode("iter_num_unsqueeze", "Unsqueeze", "Unsqueeze iter_num_float to tensor of single dim", {&iter_num_float}, {&iter_num_float_tensor});
     unsqueeze.AddAttribute("axes", std::vector<int64_t>{0});
   }
 
@@ -280,8 +276,7 @@ static const ONNX_NAMESPACE::GraphProto CreateSubgraph(const RunOptions& options
   {
     {
       auto& max_value_out = graph.GetOrCreateNodeArg("max_value_out", &float_tensor_single_dim);
-      auto& constant = graph.AddNode("constant_max_value", "Constant", "Constant with value kSumMax",
-                                     {}, {&max_value_out});
+      auto& constant = graph.AddNode("constant_max_value", "Constant", "Constant with value kSumMax", {}, {&max_value_out});
 
       TensorProto value_tensor;
       value_tensor.add_dims(1);
@@ -380,13 +375,17 @@ void ExitDueToCond(const RunOptions& options) {
 
   std::vector<int64_t> loop_out_0_final_shape{expected_num_iterations, 2};
   std::vector<float> loop_out_0_final{0.f, 3.f,  // iter #, sum for each iteration
-                                      1.f, 6.f,
-                                      2.f, 9.f};
+                                      1.f,
+                                      6.f,
+                                      2.f,
+                                      9.f};
 
   RunTest(max_iterations,
           loop_var_0_final,
-          loop_var_1_final_shape, loop_var_1_final,
-          loop_out_0_final_shape, loop_out_0_final,
+          loop_var_1_final_shape,
+          loop_var_1_final,
+          loop_out_0_final_shape,
+          loop_out_0_final,
           options);
 }
 
@@ -447,12 +446,15 @@ TEST(Loop, ExitDueToMaxIterations) {
 
   std::vector<int64_t> loop_out_0_final_shape{expected_num_iterations, 2};
   std::vector<float> loop_out_0_final{0.f, 3.f,  // iter #, sum for each iteration
-                                      1.f, 6.f};
+                                      1.f,
+                                      6.f};
 
   RunTest(max_iterations,
           loop_var_0_final,
-          loop_var_1_final_shape, loop_var_1_final,
-          loop_out_0_final_shape, loop_out_0_final,
+          loop_var_1_final_shape,
+          loop_var_1_final,
+          loop_out_0_final_shape,
+          loop_out_0_final,
           {});
 }
 
@@ -470,8 +472,10 @@ TEST(Loop, ZeroIterations) {
 
   RunTest(max_iterations,
           loop_var_0_final,
-          loop_var_1_final_shape, loop_var_1_final,
-          loop_out_0_final_shape, loop_out_0_final,
+          loop_var_1_final_shape,
+          loop_var_1_final,
+          loop_out_0_final_shape,
+          loop_out_0_final,
           {});
 }
 
@@ -569,8 +573,7 @@ TEST(Loop, InfiniteLoopTermination) {
   std::future<void> terminator_result = task.get_future();
   std::thread terminator_thread{std::move(task)};
 
-  test.Run(OpTester::ExpectResult::kExpectFailure, "Exiting due to terminate flag being set to true",
-           {kTensorrtExecutionProvider, kOpenVINOExecutionProvider}, &session_run_options);  // Disable TensorRT on unsupported data type BOOL
+  test.Run(OpTester::ExpectResult::kExpectFailure, "Exiting due to terminate flag being set to true", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider}, &session_run_options);  // Disable TensorRT on unsupported data type BOOL
 
   // call get to propagate any exception
   terminator_result.get();
@@ -684,9 +687,7 @@ TEST(Loop, SubgraphTypeOverride) {
 
   Graph::ResolveOptions options;
   options.override_types = true;
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kTensorrtExecutionProvider}, &session_run_options, nullptr,
-           ExecutionMode::ORT_SEQUENTIAL, options);
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider}, &session_run_options, nullptr, ExecutionMode::ORT_SEQUENTIAL, options);
 }
 
 // Regression test that a subgraph input overrides an outer scope value of the same name.
@@ -947,8 +948,7 @@ TEST(Loop, BugFixIssue4031_implicit_input_handling) {
 
   // prepare inputs
   OrtValue ml_value;
-  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault), {1}, {123.f},
-                       &ml_value);
+  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault), {1}, {123.f}, &ml_value);
   NameMLValMap feeds;
   feeds.insert(std::make_pair("state_var_in", ml_value));
 
@@ -1169,9 +1169,7 @@ TEST(Loop, OptionalTypeAsLoopCarriedDependency) {
     std::unordered_map<std::string, int> domain_to_version;
     domain_to_version.insert({"", 16});  // Opset 16 model
 
-    Model model("optional type in Loop subgraph carried dependency", false, ModelMetaData(), PathString(), {},
-                domain_to_version, std::vector<ONNX_NAMESPACE::FunctionProto>{},
-                DefaultLoggingManager().DefaultLogger());
+    Model model("optional type in Loop subgraph carried dependency", false, ModelMetaData(), PathString(), {}, domain_to_version, std::vector<ONNX_NAMESPACE::FunctionProto>{}, DefaultLoggingManager().DefaultLogger());
 
     auto& graph = model.MainGraph();
 

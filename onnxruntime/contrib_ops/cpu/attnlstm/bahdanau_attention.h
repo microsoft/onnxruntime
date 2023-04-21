@@ -23,7 +23,8 @@ class BahdanauAttention : public IAttentionMechanism<T> {
       int memory_depth,
       int query_depth,
       int attn_depth,
-      bool normalize, concurrency::ThreadPool* threadpool);
+      bool normalize,
+      concurrency::ThreadPool* threadpool);
 
   void SetWeights(
       const gsl::span<const T>& attn_weights,

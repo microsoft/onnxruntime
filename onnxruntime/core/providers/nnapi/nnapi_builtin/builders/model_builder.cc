@@ -28,9 +28,7 @@ using namespace android::nn::wrapper;
 namespace onnxruntime {
 namespace nnapi {
 
-ModelBuilder::ModelBuilder(const GraphViewer& graph_viewer, const NnApi& nnapi_handle,
-                           gsl::span<const DeviceWrapper> nnapi_target_devices,
-                           TargetDeviceOption target_device_option)
+ModelBuilder::ModelBuilder(const GraphViewer& graph_viewer, const NnApi& nnapi_handle, gsl::span<const DeviceWrapper> nnapi_target_devices, TargetDeviceOption target_device_option)
     : nnapi_(nnapi_handle), graph_viewer_(graph_viewer), nnapi_model_{std::make_unique<Model>(nnapi_handle)}, shaper_{graph_viewer}, nnapi_target_devices_(nnapi_target_devices), target_device_option_(target_device_option), nnapi_effective_feature_level_(GetNNAPIEffectiveFeatureLevel(nnapi_handle, nnapi_target_devices_)) {
   nnapi_model_->nnapi_effective_feature_level_ = nnapi_effective_feature_level_;
 }
@@ -153,7 +151,9 @@ void ModelBuilder::GetAllQuantizedOpInputs() {
 static Status GetInputDataType(
     const InitializedTensorSet& initializers,
     const std::unordered_map<std::string, std::vector<const NodeUnit*>>& all_quantized_op_inputs,
-    const std::string& name, int32_t data_type, const Shape& shape,
+    const std::string& name,
+    int32_t data_type,
+    const Shape& shape,
     OperandType& operand_type) {
   Type type = Type::TENSOR_FLOAT32;
   float scale = 0.0f;
@@ -169,9 +169,7 @@ static Status GetInputDataType(
       type = Type::TENSOR_QUANT8_ASYMM;
       if (!Contains(all_quantized_op_inputs, name)) {
         // We current do not support uint8 input if it is not a quantized input
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                               "The input/initializer of graph has unsupported quantized type, name: ", name,
-                               " type: ", data_type);
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "The input/initializer of graph has unsupported quantized type, name: ", name, " type: ", data_type);
       }
 
       // TODO, verify the scale and zero point match if there are multiple op using same input
@@ -189,9 +187,7 @@ static Status GetInputDataType(
       // separately by OpBuilder, so we do not treat it as an input/initializers here
     default:
       // TODO: support other type
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "The input/initializer of graph doesn't have valid type, name: ",
-                             name, " type: ", data_type);
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "The input/initializer of graph doesn't have valid type, name: ", name, " type: ", data_type);
       break;
   }
 
@@ -227,8 +223,7 @@ Status ModelBuilder::RegisterInitializers() {
 
     OperandType operand_type(Type::TENSOR_FLOAT32, shape);
     ORT_RETURN_IF_ERROR(
-        GetInputDataType(GetInitializerTensors(), all_quantized_op_inputs_,
-                         name, tensor.data_type(), shape, operand_type));
+        GetInputDataType(GetInitializerTensors(), all_quantized_op_inputs_, name, tensor.data_type(), shape, operand_type));
     shaper_.AddShape(name, operand_type.dimensions);
 
     uint32_t index = 0;
@@ -257,8 +252,12 @@ Status ModelBuilder::RegisterInitializers() {
     Initializer unpacked_tensor(tensor, graph_viewer_.ModelPath());
     size_t size_in_bytes = unpacked_tensor.DataAsByteSpan().size();
     ORT_RETURN_IF_NOT(size == size_in_bytes,
-                      "initializer tensor: ", tensor.name(), "'s size: ",
-                      size_in_bytes, " should match the calculated size: ", size);
+                      "initializer tensor: ",
+                      tensor.name(),
+                      "'s size: ",
+                      size_in_bytes,
+                      " should match the calculated size: ",
+                      size);
     src = unpacked_tensor.DataAsByteSpan().data();
     uint8_t* dest = nnapi_model_->mem_initializers_->GetDataPtr() + offset;
     memcpy(dest, src, size);
@@ -300,12 +299,10 @@ Status ModelBuilder::RegisterModelInputs() {
     OperandType operand_type(Type::TENSOR_FLOAT32, shape);
     const auto* type_proto = node_arg->TypeAsProto();
     if (!type_proto || !type_proto->tensor_type().has_elem_type()) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "The input of graph doesn't have elem_type: ", input_name);
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "The input of graph doesn't have elem_type: ", input_name);
     } else {
       ORT_RETURN_IF_ERROR(
-          GetInputDataType(GetInitializerTensors(), all_quantized_op_inputs_,
-                           input_name, type_proto->tensor_type().elem_type(), shape, operand_type));
+          GetInputDataType(GetInitializerTensors(), all_quantized_op_inputs_, input_name, type_proto->tensor_type().elem_type(), shape, operand_type));
     }
 
     shaper_.AddShape(input_name, operand_type.dimensions);
@@ -324,8 +321,7 @@ Status ModelBuilder::RegisterModelOutputs() {
     const auto& output_name = node_arg->Name();
 
     if (!Contains(operands_, output_name)) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "The output of graph is not registered [", output_name, "]");
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "The output of graph is not registered [", output_name, "]");
     }
 
     // Since for now all the shapes are deterministic for NNAPI, it's impossible we can have unknown output shape
@@ -335,8 +331,11 @@ Status ModelBuilder::RegisterModelOutputs() {
       // In NNAPI scalar output must have {1} shape
       const auto& output_shape = shaper_[output_name];
       ORT_RETURN_IF_NOT(output_shape.size() == 1 && output_shape[0] == 1,
-                        "scalar output [", output_name, "] must have {1} shape, ",
-                        " actual shape, ", Shape2String(output_shape));
+                        "scalar output [",
+                        output_name,
+                        "] must have {1} shape, ",
+                        " actual shape, ",
+                        Shape2String(output_shape));
 
       // Record the scalar output
       // Since within NNAPI the scalar outputs will have {1} shapes, and for ORT scalar outputs will have {} shapes,
@@ -369,9 +368,7 @@ Status ModelBuilder::AddNewNNAPIOperand(const OperandType& operand_type, uint32_
 
   if (operand_type.channelQuant) {
     if (nnapi_effective_feature_level_ < ANEURALNETWORKS_FEATURE_LEVEL_3) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Per-channel quantization is only supported on Android API level 29+,",
-                             " system NNAPI feature level: ", nnapi_effective_feature_level_);
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Per-channel quantization is only supported on Android API level 29+,", " system NNAPI feature level: ", nnapi_effective_feature_level_);
     }
 
     RETURN_STATUS_ON_ERROR(nnapi_.ANeuralNetworksModel_setOperandSymmPerChannelQuantParams(
@@ -381,8 +378,7 @@ Status ModelBuilder::AddNewNNAPIOperand(const OperandType& operand_type, uint32_
   return Status::OK();
 }
 
-void ModelBuilder::RegisterOperand(const std::string& name, uint32_t index,
-                                   const OperandType& operand_type) {
+void ModelBuilder::RegisterOperand(const std::string& name, uint32_t index, const OperandType& operand_type) {
   operand_indices_[name] = index;
   operand_types_.emplace(name, operand_type);
   operands_.insert(name);
@@ -390,27 +386,23 @@ void ModelBuilder::RegisterOperand(const std::string& name, uint32_t index,
 
 Status ModelBuilder::SetOperandValue(uint32_t index,
                                      Model::NNMemory* memory,
-                                     size_t size, size_t offset) {
+                                     size_t size,
+                                     size_t offset) {
 #ifdef USENNAPISHAREDMEM
   RETURN_STATUS_ON_ERROR(
       nnapi_.ANeuralNetworksModel_setOperandValueFromMemory(
-          nnapi_model_->model_, index,
-          memory->GetHandle(),
-          offset, size));
+          nnapi_model_->model_, index, memory->GetHandle(), offset, size));
 #else
   RETURN_STATUS_ON_ERROR(
       nnapi_.ANeuralNetworksModel_setOperandValue(
-          nnapi_model_->model_, index,
-          memory->GetDataPtr() + offset,
-          size));
+          nnapi_model_->model_, index, memory->GetDataPtr() + offset, size));
 #endif
 
   return Status::OK();
 }
 
 Status ModelBuilder::AddOperandFromPersistMemoryBuffer(
-    const std::string& name, const void* buffer,
-    const android::nn::wrapper::OperandType& operand_type) {
+    const std::string& name, const void* buffer, const android::nn::wrapper::OperandType& operand_type) {
   shaper_.AddShape(name, operand_type.dimensions);
   uint32_t index = 0;
   ORT_RETURN_IF_ERROR(AddNewOperand(name, operand_type, index));
@@ -421,8 +413,7 @@ Status ModelBuilder::AddOperandFromPersistMemoryBuffer(
   if (size < ANEURALNETWORKS_MAX_SIZE_OF_IMMEDIATELY_COPIED_VALUES) {
     RETURN_STATUS_ON_ERROR(
         nnapi_.ANeuralNetworksModel_setOperandValue(
-            nnapi_model_->model_, index,
-            buffer, size));
+            nnapi_model_->model_, index, buffer, size));
   } else {
     const size_t padded_size = GetPaddedByteSize(size);
     auto persist_buffer = std::make_unique<Model::NNMemory>(nnapi_, name.c_str(), padded_size);
@@ -465,17 +456,14 @@ Status ModelBuilder::AddOperations() {
     if (const auto* op_builder = GetOpBuilder(node_unit)) {
       ORT_RETURN_IF_ERROR(op_builder->AddToModelBuilder(*this, node_unit));
     } else {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Node [", node_unit.Name(), "], type [", node_unit.OpType(), "] is not supported");
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Node [", node_unit.Name(), "], type [", node_unit.OpType(), "] is not supported");
     }
   }
 
   return Status::OK();
 }
 
-Status ModelBuilder::AddOperation(int op, const InlinedVector<uint32_t>& input_indices,
-                                  const std::vector<std::string>& output_names,
-                                  const std::vector<OperandType>& output_types) {
+Status ModelBuilder::AddOperation(int op, const InlinedVector<uint32_t>& input_indices, const std::vector<std::string>& output_names, const std::vector<OperandType>& output_types) {
 #ifndef NDEBUG
   operations_recorder_.emplace_back(current_onnx_node_index_, op);
 #endif
@@ -488,8 +476,7 @@ Status ModelBuilder::AddOperation(int op, const InlinedVector<uint32_t>& input_i
 
   RETURN_STATUS_ON_ERROR_WITH_NOTE(
       nnapi_.ANeuralNetworksModel_addOperation(
-          nnapi_model_->model_, op, static_cast<uint32_t>(input_indices.size()), &input_indices[0],
-          static_cast<uint32_t>(output_indices.size()), &output_indices[0]),
+          nnapi_model_->model_, op, static_cast<uint32_t>(input_indices.size()), &input_indices[0], static_cast<uint32_t>(output_indices.size()), &output_indices[0]),
       "op = " + std::to_string(op));
 
   num_nnapi_ops_++;
@@ -503,10 +490,7 @@ Status ModelBuilder::Compile(std::unique_ptr<Model>& model) {
 
   RETURN_STATUS_ON_ERROR_WITH_NOTE(
       nnapi_.ANeuralNetworksModel_identifyInputsAndOutputs(
-          nnapi_model_->model_, static_cast<uint32_t>(input_index_vec_.size()),
-          &input_index_vec_[0],
-          static_cast<uint32_t>(output_index_vec_.size()),
-          &output_index_vec_[0]),
+          nnapi_model_->model_, static_cast<uint32_t>(input_index_vec_.size()), &input_index_vec_[0], static_cast<uint32_t>(output_index_vec_.size()), &output_index_vec_[0]),
       "on identifyInputsAndOutputs");
 
   // relax fp32tofp16 is only available on API 28+
@@ -535,12 +519,10 @@ Status ModelBuilder::Compile(std::unique_ptr<Model>& model) {
     auto* supported_ops = supported_ops_holder.get();
     RETURN_STATUS_ON_ERROR_WITH_NOTE(
         nnapi_.ANeuralNetworksModel_getSupportedOperationsForDevices(
-            nnapi_model_->model_, device_handles.data(),
-            static_cast<uint32_t>(device_handles.size()), supported_ops),
+            nnapi_model_->model_, device_handles.data(), static_cast<uint32_t>(device_handles.size()), supported_ops),
         "on getSupportedOperationsForDevices");
 
-    bool all_ops_supported = std::all_of(supported_ops, supported_ops + num_nnapi_ops_,
-                                         [](bool is_supported) { return is_supported; });
+    bool all_ops_supported = std::all_of(supported_ops, supported_ops + num_nnapi_ops_, [](bool is_supported) { return is_supported; });
     if (!all_ops_supported) {
       // There are some ops not supported by the list of the target devices
       // Fail the Compile
@@ -548,9 +530,7 @@ Status ModelBuilder::Compile(std::unique_ptr<Model>& model) {
       // TODO, add some logic to not fail for some cases
       // Such as, if there are some acceptable fall back to CPU (nnapi-reference)
       // and CPU is not in the target devices list
-      return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-                             "The model cannot run using the current set of target devices, ",
-                             GetDevicesDescription(nnapi_target_devices_));
+      return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "The model cannot run using the current set of target devices, ", GetDevicesDescription(nnapi_target_devices_));
     }
     // Workaround bugs in NNAPI drives on some phones
     // where ops are passed checking by 'ANeuralNetworksModel_getSupportedOperationsForDevices'
@@ -566,8 +546,7 @@ Status ModelBuilder::Compile(std::unique_ptr<Model>& model) {
     auto supported_ops = gsl::make_span(supported_ops_holder.get(), num_nnapi_ops_);
     RETURN_STATUS_ON_ERROR_WITH_NOTE(
         nnapi_.ANeuralNetworksModel_getSupportedOperationsForDevices(
-            nnapi_model_->model_, device_handles.data(),
-            static_cast<uint32_t>(device_handles.size() - 1), supported_ops.data()),
+            nnapi_model_->model_, device_handles.data(), static_cast<uint32_t>(device_handles.size() - 1), supported_ops.data()),
         "on getSupportedOperationsForDevices");
 
     ORT_ENFORCE(num_nnapi_ops_ == operations_recorder_.size(), "num_nnapi_ops_!=operations_recorder_.size()");
@@ -608,8 +587,7 @@ Status ModelBuilder::Compile(std::unique_ptr<Model>& model) {
   if (use_create_for_devices) {
     RETURN_STATUS_ON_ERROR_WITH_NOTE(
         nnapi_.ANeuralNetworksCompilation_createForDevices(
-            nnapi_model_->model_, device_handles.data(),
-            static_cast<uint32_t>(device_handles.size()), &nnapi_model_->compilation_),
+            nnapi_model_->model_, device_handles.data(), static_cast<uint32_t>(device_handles.size()), &nnapi_model_->compilation_),
         "on createForDevices");
   } else {
     RETURN_STATUS_ON_ERROR_WITH_NOTE(

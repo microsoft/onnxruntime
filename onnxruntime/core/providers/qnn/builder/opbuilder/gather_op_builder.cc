@@ -75,8 +75,7 @@ Status GatherOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
       const int64_t* gather_indices_int64 = reinterpret_cast<const int64_t*>(unpacked_tensor.data());
       gather_indices.resize(size * sizeof(int32_t));
       int32_t* gather_indices_int32 = reinterpret_cast<int32_t*>(gather_indices.data());
-      std::transform(gather_indices_int64, gather_indices_int64 + size, gather_indices_int32,
-                     [](int64_t item) { return SafeInt<uint32_t>(item); });
+      std::transform(gather_indices_int64, gather_indices_int64 + size, gather_indices_int32, [](int64_t item) { return SafeInt<uint32_t>(item); });
     } else {
       gather_indices = std::move(unpacked_tensor);
     }
@@ -90,8 +89,7 @@ Status GatherOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
   std::vector<uint32_t> input_shape;
   ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(inputs[1].node_arg, input_shape), "Cannot get shape");
   std::vector<uint32_t> cast_output_shape(input_shape);
-  QnnTensorWrapper input_tensorwrapper(input_name, tensor_type, qnn_data_type, quantize_param,
-                                       std::move(input_shape), std::move(gather_indices));
+  QnnTensorWrapper input_tensorwrapper(input_name, tensor_type, qnn_data_type, quantize_param, std::move(input_shape), std::move(gather_indices));
   ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(input_tensorwrapper)), "Failed to add tensor.");
 
   if (!is_initializer_input && qnn_data_type == QNN_DATATYPE_INT_64) {
@@ -99,8 +97,7 @@ Status GatherOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
     if (qnn_data_type == QNN_DATATYPE_INT_64) {
       // Add Cast node for indices
       indices_input_name = input_name + "_cast";
-      QnnTensorWrapper cast_output(indices_input_name, QNN_TENSOR_TYPE_NATIVE, QNN_DATATYPE_INT_32, quantize_param,
-                                   std::move(cast_output_shape));
+      QnnTensorWrapper cast_output(indices_input_name, QNN_TENSOR_TYPE_NATIVE, QNN_DATATYPE_INT_32, quantize_param, std::move(cast_output_shape));
       ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(cast_output)), "Failed to add tensor.");
       ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(indices_input_name,
                                                         qnn_def::package_name,
@@ -149,14 +146,12 @@ Status GatherOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_w
                     "Cannot get shape");
 
   // replace the dimension for p.axis with the shape from the indices
-  std::copy(input_tensor_wrapper.GetTensorDims().begin(), input_tensor_wrapper.GetTensorDims().begin() + axis_value,
-            std::back_inserter(qnn_output_shape));
+  std::copy(input_tensor_wrapper.GetTensorDims().begin(), input_tensor_wrapper.GetTensorDims().begin() + axis_value, std::back_inserter(qnn_output_shape));
 
   const auto& indicies_shape = indices_input_tensor_wrapper.GetTensorDims();
   std::copy(indicies_shape.begin(), indicies_shape.end(), std::back_inserter(qnn_output_shape));
 
-  std::copy(input_tensor_wrapper.GetTensorDims().begin() + axis_value + 1, input_tensor_wrapper.GetTensorDims().end(),
-            std::back_inserter(qnn_output_shape));
+  std::copy(input_tensor_wrapper.GetTensorDims().begin() + axis_value + 1, input_tensor_wrapper.GetTensorDims().end(), std::back_inserter(qnn_output_shape));
 
   const auto& gather_output = node_unit.Outputs()[0];
   const auto& output_name = gather_output.node_arg.Name();
@@ -179,8 +174,7 @@ Status GatherOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_w
   bool reshape_required = (qnn_output_shape.size() != target_output_shape.size());
   std::string gather_output_name = output_name + (reshape_required ? "_reshape" : "");
   Qnn_TensorType_t tensor_type = (!reshape_required && is_graph_output) ? QNN_TENSOR_TYPE_APP_READ : QNN_TENSOR_TYPE_NATIVE;
-  QnnTensorWrapper gather_output_wrapper(gather_output_name, tensor_type, qnn_data_type, quantize_param,
-                                         std::move(qnn_output_shape));
+  QnnTensorWrapper gather_output_wrapper(gather_output_name, tensor_type, qnn_data_type, quantize_param, std::move(qnn_output_shape));
   ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(gather_output_wrapper)), "Failed to add tensor.");
 
   ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(GetNodeName(node_unit),
@@ -195,8 +189,7 @@ Status GatherOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_w
   if (reshape_required) {
     // Add Reshape Node after Gather.
     Qnn_TensorType_t reshape_tensor_type = is_graph_output ? QNN_TENSOR_TYPE_APP_READ : QNN_TENSOR_TYPE_NATIVE;
-    QnnTensorWrapper reshape_output(output_name, reshape_tensor_type, qnn_data_type, quantize_param,
-                                    std::move(target_output_shape));
+    QnnTensorWrapper reshape_output(output_name, reshape_tensor_type, qnn_data_type, quantize_param, std::move(target_output_shape));
     ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(reshape_output)), "Failed to add tensor.");
     const static std::string qnn_node_type = "Reshape";
     ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(output_name,

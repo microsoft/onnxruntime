@@ -24,13 +24,13 @@ using EnumNameMapping = std::vector<std::pair<TEnum, std::string>>;
 template <typename TEnum>
 Status EnumToName(const EnumNameMapping<TEnum>& mapping, TEnum value, std::string& name) {
   const auto it = std::find_if(
-      mapping.begin(), mapping.end(),
-      [&value](const std::pair<TEnum, std::string>& entry) {
+      mapping.begin(), mapping.end(), [&value](const std::pair<TEnum, std::string>& entry) {
         return entry.first == value;
       });
   ORT_RETURN_IF(
       it == mapping.end(),
-      "Failed to map enum value to name: ", static_cast<typename std::underlying_type<TEnum>::type>(value));
+      "Failed to map enum value to name: ",
+      static_cast<typename std::underlying_type<TEnum>::type>(value));
   name = it->second;
   return Status::OK();
 }
@@ -49,13 +49,13 @@ template <typename TEnum>
 Status NameToEnum(
     const EnumNameMapping<TEnum>& mapping, const std::string& name, TEnum& value) {
   const auto it = std::find_if(
-      mapping.begin(), mapping.end(),
-      [&name](const std::pair<TEnum, std::string>& entry) {
+      mapping.begin(), mapping.end(), [&name](const std::pair<TEnum, std::string>& entry) {
         return entry.second == name;
       });
   ORT_RETURN_IF(
       it == mapping.end(),
-      "Failed to map enum name to value: ", name);
+      "Failed to map enum name to value: ",
+      name);
   value = it->first;
   return Status::OK();
 }
@@ -85,7 +85,9 @@ class ProviderOptionsParser {
       const std::string& name, ValueParserType value_parser) {
     ORT_ENFORCE(
         value_parsers_.emplace(name, ValueParser{value_parser}).second,
-        "Provider option \"", name, "\" already has a value parser.");
+        "Provider option \"",
+        name,
+        "\" already has a value parser.");
     return *this;
   }
 
@@ -145,12 +147,17 @@ class ProviderOptionsParser {
       const auto value_parser_it = value_parsers_.find(name);
       ORT_RETURN_IF(
           value_parser_it == value_parsers_.end(),
-          "Unknown provider option: \"", name, "\".");
+          "Unknown provider option: \"",
+          name,
+          "\".");
 
       const auto parse_status = value_parser_it->second(value_str);
       ORT_RETURN_IF_NOT(
           parse_status.IsOK(),
-          "Failed to parse provider option \"", name, "\": ", parse_status.ErrorMessage());
+          "Failed to parse provider option \"",
+          name,
+          "\": ",
+          parse_status.ErrorMessage());
     }
 
     return Status::OK();

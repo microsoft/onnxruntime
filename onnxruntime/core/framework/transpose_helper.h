@@ -40,6 +40,5 @@ We fall back to the default implementation in all other cases, and if the input 
 
 namespace onnxruntime {
 bool IsTransposeMovingSingleAxis(gsl::span<const size_t> permutations, size_t& from, size_t& to);
-void SingleAxisTranspose(gsl::span<const size_t> permutations, const Tensor& input, Tensor& output, size_t from,
-                         size_t to, const TensorShape* input_shape_override = nullptr);
+void SingleAxisTranspose(gsl::span<const size_t> permutations, const Tensor& input, Tensor& output, size_t from, size_t to, const TensorShape* input_shape_override = nullptr);
 }  // namespace onnxruntime

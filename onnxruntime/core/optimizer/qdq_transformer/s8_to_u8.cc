@@ -5,8 +5,7 @@
 
 namespace onnxruntime::QDQ {
 
-bool ConvertS8WeightToU8(Graph& graph, Node& op_node,
-                         size_t weights_idx, size_t weight_zp_idx) {
+bool ConvertS8WeightToU8(Graph& graph, Node& op_node, size_t weights_idx, size_t weight_zp_idx) {
   auto& input_defs = op_node.MutableInputDefs();
   if (input_defs.size() < weights_idx + 1) {
     return false;

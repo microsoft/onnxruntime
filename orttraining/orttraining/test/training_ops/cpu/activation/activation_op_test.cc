@@ -19,7 +19,8 @@ void TestElementwiseGradientOp(
     const std::vector<std::pair<std::string, std::vector<float>>>& inputs,
     std::function<float(const std::vector<float>&)> expected_func,
     const std::unordered_map<std::string, float> attrs = {},
-    int opset_version = 7, const char* domain = kOnnxDomain) {
+    int opset_version = 7,
+    const char* domain = kOnnxDomain) {
   const auto first_input = inputs.begin();
   ASSERT_NE(first_input, inputs.end());
   for (auto input = first_input; input != inputs.end(); ++input) {
@@ -40,8 +41,7 @@ void TestElementwiseGradientOp(
   for (size_t i = 0; i < input_size; i++) {
     std::vector<float> params(inputs.size());
     std::transform(
-        inputs.begin(), inputs.end(), params.begin(),
-        [i](const std::pair<std::string, std::vector<float>>& input) {
+        inputs.begin(), inputs.end(), params.begin(), [i](const std::pair<std::string, std::vector<float>>& input) {
           return input.second[i];
         });
     expected_vals.push_back(expected_func(params));
@@ -104,7 +104,9 @@ TEST(GeluGradTest, Basic) {
 
         return GeluGrad(dy, x);
       },
-      {}, 1, kMSDomain);
+      {},
+      1,
+      kMSDomain);
 }
 
 TEST(FastGeluGradTest, Basic) {
@@ -120,7 +122,9 @@ TEST(FastGeluGradTest, Basic) {
 
         return GeluApproximationGrad(dy, x);
       },
-      {}, 1, kMSDomain);
+      {},
+      1,
+      kMSDomain);
 }
 
 TEST(BiasGeluGradDxTest, Basic) {
@@ -137,7 +141,9 @@ TEST(BiasGeluGradDxTest, Basic) {
 
         return GeluGrad(dy, x + b);
       },
-      {}, 1, kMSDomain);
+      {},
+      1,
+      kMSDomain);
 }
 
 TEST(BiasFastGeluGradDxTest, Basic) {
@@ -154,7 +160,9 @@ TEST(BiasFastGeluGradDxTest, Basic) {
 
         return GeluApproximationGrad(dy, x + b);
       },
-      {}, 1, kMSDomain);
+      {},
+      1,
+      kMSDomain);
 }
 
 TEST(ReluGradTest, Basic) {
@@ -170,7 +178,9 @@ TEST(ReluGradTest, Basic) {
 
         return ReluGrad(dy, x);
       },
-      {}, 1, kMSDomain);
+      {},
+      1,
+      kMSDomain);
 }
 
 TEST(SigmoidGradTest, Basic) {
@@ -186,7 +196,9 @@ TEST(SigmoidGradTest, Basic) {
 
         return SigmoidGrad(dy, y);
       },
-      {}, 1, kMSDomain);
+      {},
+      1,
+      kMSDomain);
 }
 
 TEST(TanhGradTest, Basic) {
@@ -202,7 +214,9 @@ TEST(TanhGradTest, Basic) {
 
         return TanhGrad(dy, y);
       },
-      {}, 1, kMSDomain);
+      {},
+      1,
+      kMSDomain);
 }
 
 TEST(QuickGeluGradTest, Basic) {
@@ -225,7 +239,9 @@ TEST(QuickGeluGradTest, Basic) {
           const auto dy = params[0], x = params[1];
           return QuickGeluGrad(dy, x, alpha);
         },
-        {{"alpha", alpha}}, 1, kMSDomain);
+        {{"alpha", alpha}},
+        1,
+        kMSDomain);
   }
 
   // Silu = x*sigmoid(x), i.e., alpha = 1.0f.
@@ -242,7 +258,9 @@ TEST(QuickGeluGradTest, Basic) {
           const auto dy = params[0], x = params[1];
           return QuickGeluGrad(dy, x, alpha);
         },
-        {{"alpha", alpha}}, 1, kMSDomain);
+        {{"alpha", alpha}},
+        1,
+        kMSDomain);
   }
 
   // Negative alpha.
@@ -259,15 +277,15 @@ TEST(QuickGeluGradTest, Basic) {
           const auto dy = params[0], x = params[1];
           return QuickGeluGrad(dy, x, alpha);
         },
-        {{"alpha", alpha}}, 1, kMSDomain);
+        {{"alpha", alpha}},
+        1,
+        kMSDomain);
   }
 }
 
 namespace {
 template <typename TComputeGeluGradScalarFn>
-void TestBiasGeluGradBroadcastBias(const std::string& op, int opset_version, const std::string& domain,
-                                   const TensorShape& input_shape,
-                                   TComputeGeluGradScalarFn compute_gelu_grad_scalar_fn) {
+void TestBiasGeluGradBroadcastBias(const std::string& op, int opset_version, const std::string& domain, const TensorShape& input_shape, TComputeGeluGradScalarFn compute_gelu_grad_scalar_fn) {
   OpTester test(op.c_str(), opset_version, domain.c_str());
 
   ASSERT_TRUE(input_shape.NumDimensions() > 0 && input_shape.Size() > 0);

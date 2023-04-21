@@ -108,9 +108,7 @@ Status DecoderMaskedMultiHeadAttention<T1, T2>::ComputeInternal(OpKernelContext*
   Tensor* output = context->Output(0, output_shape);
 
   std::vector<int64_t> present_dims{
-      parameters.batch_size, parameters.num_heads,
-      past_present_share_buffer_ ? parameters.max_sequence_length : parameters.total_sequence_length,
-      parameters.head_size};
+      parameters.batch_size, parameters.num_heads, past_present_share_buffer_ ? parameters.max_sequence_length : parameters.total_sequence_length, parameters.head_size};
   TensorShape present_shape(present_dims);
   Tensor* present_key = context->Output(kPresentOutputIndex, present_shape);
   Tensor* present_value = context->Output(kPresentOutputIndex + 1, present_shape);
@@ -130,8 +128,7 @@ Status DecoderMaskedMultiHeadAttention<T1, T2>::ComputeInternal(OpKernelContext*
   // Decoder cross-attention
   if (past_key == nullptr && present_key == nullptr) {
     if (relative_position_bias != nullptr) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
-                             "DecoderMaskedMultiHeadAttention does not support relative position bias for cross-attention");
+      return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "DecoderMaskedMultiHeadAttention does not support relative position bias for cross-attention");
     }
 
     parameters.is_cross_attention = true;
@@ -156,12 +153,10 @@ Status DecoderMaskedMultiHeadAttention<T1, T2>::ComputeInternal(OpKernelContext*
     // This is just to circumvent the OpTester's limitation of not being able to bind a specific
     // buffer to inputs/outputs.
     if (present_key_data != past_key_data) {
-      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(present_key_data, past_key_data, past_key->SizeInBytes(),
-                                           cudaMemcpyDeviceToDevice, cuda_stream));
+      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(present_key_data, past_key_data, past_key->SizeInBytes(), cudaMemcpyDeviceToDevice, cuda_stream));
     }
     if (present_value_data != past_value_data) {
-      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(present_value_data, past_value_data, past_value->SizeInBytes(),
-                                           cudaMemcpyDeviceToDevice, cuda_stream));
+      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(present_value_data, past_value_data, past_value->SizeInBytes(), cudaMemcpyDeviceToDevice, cuda_stream));
     }
 
     parameters.is_cross_attention = false;
@@ -194,8 +189,7 @@ Status DecoderMaskedMultiHeadAttention<T1, T2>::ComputeInternal(OpKernelContext*
   if (parameters.beam_width > 1) {
     // If beam width > 1, then cache indirection buffer MUST be present
     if (cache_indir == nullptr) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "If beam width is greater than 1, then cache indirection buffer MUST be present");
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "If beam width is greater than 1, then cache indirection buffer MUST be present");
     }
 
     parameters.cache_indir = cache_indir->Data<int32_t>();

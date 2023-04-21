@@ -71,10 +71,7 @@ Status CudnnRnnBase<T>::SetCudnnRnnWeightBias(const cudnnHandle_t cudnn_handle,
 }
 
 template <typename T>
-Status CudnnRnnBase<T>::ReorganizeWeights(const Tensor* W, const Tensor* R, const Tensor* B,
-                                          IAllocatorUniquePtr<void>& reorganized_w_data,
-                                          CudnnFilterDescriptor& target_w_desc,
-                                          CudnnRNN& rnn_desc, onnxruntime::Stream* ort_stream) const {
+Status CudnnRnnBase<T>::ReorganizeWeights(const Tensor* W, const Tensor* R, const Tensor* B, IAllocatorUniquePtr<void>& reorganized_w_data, CudnnFilterDescriptor& target_w_desc, CudnnRNN& rnn_desc, onnxruntime::Stream* ort_stream) const {
   typedef typename ToCudaType<T>::MappedType CudaT;
   int64_t input_size = W->Shape()[2];
   // RNN W[num_directions_, hidden_size_, input_size]
@@ -111,8 +108,7 @@ Status CudnnRnnBase<T>::ReorganizeWeights(const Tensor* W, const Tensor* R, cons
 
   auto* ort_cuda_stream = dynamic_cast<CudaStream*>(ort_stream);
   cudnnHandle_t cudnn_handle = ort_cuda_stream ? ort_cuda_stream->cudnn_handle_ : DefaultCudnnHandle();
-  ORT_RETURN_IF_ERROR(SetCudnnRnnWeightBias(cudnn_handle, rnn_desc, fake_x_desc, target_w_desc,
-                                            reorganized_w_data.get(), W_data, R_data, B_data, cuda_stream));
+  ORT_RETURN_IF_ERROR(SetCudnnRnnWeightBias(cudnn_handle, rnn_desc, fake_x_desc, target_w_desc, reorganized_w_data.get(), W_data, R_data, B_data, cuda_stream));
 
   return Status::OK();
 }
@@ -322,8 +318,14 @@ Status CudnnRnnBase<T>::ComputeInternal(OpKernelContext* ctx) const {
                                                      y_h_data,
                                                      y_c_desc,
                                                      y_c_data,
-                                                     nullptr, nullptr, nullptr, nullptr,
-                                                     nullptr, nullptr, nullptr, nullptr,
+                                                     nullptr,
+                                                     nullptr,
+                                                     nullptr,
+                                                     nullptr,
+                                                     nullptr,
+                                                     nullptr,
+                                                     nullptr,
+                                                     nullptr,
                                                      workspace_cuda.get(),
                                                      workspace_bytes));
 

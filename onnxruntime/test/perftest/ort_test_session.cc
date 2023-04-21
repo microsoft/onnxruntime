@@ -25,16 +25,13 @@ std::chrono::duration<double> OnnxRuntimeTestSession::Run() {
   const size_t id = static_cast<size_t>(dist_(rand_engine_, p));
   auto& input = test_inputs_.at(id);
   auto start = std::chrono::high_resolution_clock::now();
-  auto output_values = session_.Run(Ort::RunOptions{nullptr}, input_names_.data(), input.data(), input_names_.size(),
-                                    output_names_raw_ptr.data(), output_names_raw_ptr.size());
+  auto output_values = session_.Run(Ort::RunOptions{nullptr}, input_names_.data(), input.data(), input_names_.size(), output_names_raw_ptr.data(), output_names_raw_ptr.size());
   auto end = std::chrono::high_resolution_clock::now();
   std::chrono::duration<double> duration_seconds = end - start;
   return duration_seconds;
 }
 
-OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device& rd,
-                                               const PerformanceTestConfig& performance_test_config,
-                                               const TestModelInfo& m)
+OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device& rd, const PerformanceTestConfig& performance_test_config, const TestModelInfo& m)
     : rand_engine_(rd()), input_names_(m.GetInputCount()), input_names_str_(m.GetInputCount()), input_length_(m.GetInputCount()) {
   Ort::SessionOptions session_options;
   const std::string& provider_name = performance_test_config.machine_config.provider_type_name;
@@ -421,10 +418,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
       auto value = token.substr(pos + 1);
 
       if (key == "device_type") {
-        std::set<std::string> ov_supported_device_types = {"CPU_FP32", "CPU_FP16", "GPU_FP32",
-                                                           "GPU.0_FP32", "GPU.1_FP32", "GPU_FP16",
-                                                           "GPU.0_FP16", "GPU.1_FP16", "VAD-M_FP16",
-                                                           "MYRIAD_FP16", "VAD-F_FP32"};
+        std::set<std::string> ov_supported_device_types = {"CPU_FP32", "CPU_FP16", "GPU_FP32", "GPU.0_FP32", "GPU.1_FP32", "GPU_FP16", "GPU.0_FP16", "GPU.1_FP16", "VAD-M_FP16", "MYRIAD_FP16", "VAD-F_FP32"};
         if (ov_supported_device_types.find(value) != ov_supported_device_types.end()) {
           device_type = value;
         } else if (value.find("HETERO:") == 0) {
@@ -846,8 +840,7 @@ bool OnnxRuntimeTestSession::PopulateGeneratedInputTestData(int32_t seed) {
       }
 
       auto allocator = Ort::AllocatorWithDefaultOptions();
-      Ort::Value input_tensor = Ort::Value::CreateTensor(allocator, (const int64_t*)input_node_dim.data(),
-                                                         input_node_dim.size(), tensor_info.GetElementType());
+      Ort::Value input_tensor = Ort::Value::CreateTensor(allocator, (const int64_t*)input_node_dim.data(), input_node_dim.size(), tensor_info.GetElementType());
       InitializeTensorWithSeed(seed, input_tensor);
       PreLoadTestData(0, i, std::move(input_tensor));
     }

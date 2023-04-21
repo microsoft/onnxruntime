@@ -46,8 +46,7 @@ Status ReluOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   } else {
     InlinedVector<uint32_t> input_indices;
     input_indices.push_back(operand_indices.at(input));
-    ORT_RETURN_IF_ERROR(model_builder.AddOperation(ANEURALNETWORKS_RELU, input_indices,
-                                                   {output}, {output_operand_type}));
+    ORT_RETURN_IF_ERROR(model_builder.AddOperation(ANEURALNETWORKS_RELU, input_indices, {output}, {output_operand_type}));
   }
 
   return Status::OK();

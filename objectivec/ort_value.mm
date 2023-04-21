@@ -82,8 +82,7 @@ bool SafeMultiply(size_t a, size_t b, size_t& out) {
       return result;
     }();
     Ort::Value ortValue = Ort::Value::CreateTensor(
-        memoryInfo, tensorData.mutableBytes, tensorData.length,
-        shapeVector.data(), shapeVector.size(), ONNXElementType);
+        memoryInfo, tensorData.mutableBytes, tensorData.length, shapeVector.data(), shapeVector.size(), ONNXElementType);
 
     return [self initWithCAPIOrtValue:ortValue.release()
                    externalTensorData:tensorData

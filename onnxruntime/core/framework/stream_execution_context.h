@@ -64,7 +64,8 @@ class StreamExecutionContext {
                          const DeviceStreamCollection* device_stream_map,
 #endif
                          gsl::span<const int> feed_mlvalue_idxs,
-                         gsl::span<const OrtValue> feeds, gsl::span<const int> fetch_mlvalue_idxs,
+                         gsl::span<const OrtValue> feeds,
+                         gsl::span<const int> fetch_mlvalue_idxs,
                          std::vector<OrtValue>& fetches,
                          const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
                          const logging::Logger& sess_logger,

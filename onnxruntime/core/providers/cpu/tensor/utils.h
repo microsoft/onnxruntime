@@ -227,8 +227,7 @@ struct SliceIteratorBase {
   }
 
  protected:
-  SliceIteratorBase(const Tensor& tensor, gsl::span<const int64_t> starts,
-                    gsl::span<const int64_t> extents, gsl::span<const int64_t> steps)
+  SliceIteratorBase(const Tensor& tensor, gsl::span<const int64_t> starts, gsl::span<const int64_t> extents, gsl::span<const int64_t> steps)
       : is_string_tensor_(tensor.IsDataTypeString()),
         input_{reinterpret_cast<const byte*>(tensor.DataRaw())},
         element_size_(tensor.DataType()->Size()),
@@ -243,8 +242,7 @@ struct SliceIteratorBase {
   // The explicit tensor_shape usually has inner most axis flattened. For example, given shape[1,4,4,2], if last axis
   // does not have padding or slice, then it will be flattened as [1,4,8] for better performance (One inner most copy instead of 4).
   // Also supports arbitrary positive and negative stepping along individual axes
-  SliceIteratorBase(const Tensor& tensor, const TensorShape& tensor_shape, gsl::span<const int64_t> starts,
-                    gsl::span<const int64_t> extents, gsl::span<const int64_t> steps)
+  SliceIteratorBase(const Tensor& tensor, const TensorShape& tensor_shape, gsl::span<const int64_t> starts, gsl::span<const int64_t> extents, gsl::span<const int64_t> steps)
       : is_string_tensor_(tensor.IsDataTypeString()),
         input_{reinterpret_cast<const byte*>(tensor.DataRaw())},
         element_size_(tensor.DataType()->Size()),
@@ -391,8 +389,7 @@ struct SliceIteratorBase {
 // This provides easy sequential iteration over a subset of a tensor given a span of starts, extents & optionally steps
 template <typename T>
 struct SliceIterator : public SliceIteratorBase {
-  SliceIterator(const Tensor& tensor, gsl::span<const int64_t> starts,
-                gsl::span<const int64_t> extents, gsl::span<const int64_t> steps)
+  SliceIterator(const Tensor& tensor, gsl::span<const int64_t> starts, gsl::span<const int64_t> extents, gsl::span<const int64_t> steps)
       : SliceIteratorBase(tensor, starts, extents, steps) {
   }
 
@@ -400,8 +397,7 @@ struct SliceIterator : public SliceIteratorBase {
   // The explicit tensor_shape usually has inner most axis flattened. For example, given shape[1,4,4,2], if last axis
   // does not have padding or slice, then it will be flattened as [1,4,8] for better performance (One inner most copy instead of 4).
   // Also supports arbitrary positive and negative stepping along individual axes
-  SliceIterator(const Tensor& tensor, const TensorShape& tensor_shape, gsl::span<const int64_t> starts,
-                gsl::span<const int64_t> extents, gsl::span<const int64_t> steps)
+  SliceIterator(const Tensor& tensor, const TensorShape& tensor_shape, gsl::span<const int64_t> starts, gsl::span<const int64_t> extents, gsl::span<const int64_t> steps)
       : SliceIteratorBase(tensor, tensor_shape, starts, extents, steps) {
   }
 
@@ -460,8 +456,7 @@ inline void CopyCpuTensor(const Tensor* src, Tensor* tgt) {
 // This provides easy sequential iteration over a subset of a tensor given a span of starts, extents & optionally steps
 template <typename T>
 struct WritableSliceIterator {
-  WritableSliceIterator(Tensor& tensor, gsl::span<const int64_t> starts,
-                        gsl::span<const int64_t> extents, gsl::span<const int64_t> steps)
+  WritableSliceIterator(Tensor& tensor, gsl::span<const int64_t> starts, gsl::span<const int64_t> extents, gsl::span<const int64_t> steps)
       : input_(tensor.MutableData<T>()), extents_(extents), skips_(tensor.Shape(), extents, steps), indices_(extents.size(), 0) {
     auto dims = tensor.Shape().GetDims();
     Init(dims, starts, steps);
@@ -471,24 +466,34 @@ struct WritableSliceIterator {
   // The explicit tensor_shape usually has inner most axis flattened. For example, given shape[1,4,4,2], if last axis
   // does not have padding or slice, then it will be flattened as [1,4,8] for better performance (One inner most copy instead of 4).
   // Also supports arbitrary positive and negative stepping along individual axes
-  WritableSliceIterator(Tensor& tensor, const TensorShape& tensor_shape, gsl::span<const int64_t> starts,
-                        gsl::span<const int64_t> extents, gsl::span<const int64_t> steps)
+  WritableSliceIterator(Tensor& tensor, const TensorShape& tensor_shape, gsl::span<const int64_t> starts, gsl::span<const int64_t> extents, gsl::span<const int64_t> steps)
       : input_(tensor.MutableData<T>()), extents_(extents), skips_(tensor_shape, extents, steps), indices_(extents.size(), 0) {
     auto dims = tensor_shape.GetDims();
     Init(dims, starts, steps);
   }
 
   // Initialize initial skip and inner_extent.
-  void Init(gsl::span<const int64_t> dims, gsl::span<const int64_t> starts,
-            gsl::span<const int64_t> steps) {
+  void Init(gsl::span<const int64_t> dims, gsl::span<const int64_t> starts, gsl::span<const int64_t> steps) {
     ORT_ENFORCE(dims.size() == starts.size(),
-                "dims.size()=", dims.size(), " != ", "starts.size()=", starts.size());
+                "dims.size()=",
+                dims.size(),
+                " != ",
+                "starts.size()=",
+                starts.size());
 
     ORT_ENFORCE(dims.size() == extents_.size(),
-                "dims.size()=", dims.size(), " != ", "extents.size()=", extents_.size());
+                "dims.size()=",
+                dims.size(),
+                " != ",
+                "extents.size()=",
+                extents_.size());
 
     ORT_ENFORCE(dims.size() == steps.size(),
-                "dims.size()=", dims.size(), " != ", "steps.size()=", steps.size());
+                "dims.size()=",
+                dims.size(),
+                " != ",
+                "steps.size()=",
+                steps.size());
 
     SafeInt<size_t> pitch = 1;
     // Initial skip, so that input_ points to the first element to copy

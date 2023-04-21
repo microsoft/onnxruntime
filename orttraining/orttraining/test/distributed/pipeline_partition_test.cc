@@ -46,9 +46,7 @@ TEST(PipelinePartition, DropoutGraph2stages) {
   for (int i = 0; i < num_stages; ++i) {
     rank_ids.at(i) = i;
   }
-  status = ApplyPipelinePartitionToMainGraph(graph, op_to_stage,
-                                             pipeline_stage_id, num_stages,
-                                             rank_ids);
+  status = ApplyPipelinePartitionToMainGraph(graph, op_to_stage, pipeline_stage_id, num_stages, rank_ids);
   EXPECT_TRUE(status.IsOK()) << "Failed to apply partition. Error: "
                              << status.ErrorMessage();
 
@@ -81,14 +79,11 @@ void LoadAndPartitionWithCuts(const PathString& model_path,
 
     EXPECT_TRUE(status.IsOK()) << "Failed to get stage map. Error: "
                                << status.ErrorMessage();
-    status = ApplyPipelinePartitionToMainGraph(graph, op_to_stage,
-                                               pipeline_stage_id, num_stages,
-                                               rank_ids);
+    status = ApplyPipelinePartitionToMainGraph(graph, op_to_stage, pipeline_stage_id, num_stages, rank_ids);
     EXPECT_TRUE(status.IsOK()) << "Failed to apply partition. Error: "
                                << status.ErrorMessage();
   } else {
-    status = CutBasedApplyPipelinePartitionToMainGraph(graph, cuts,
-                                                       pipeline_stage_id, num_stages);
+    status = CutBasedApplyPipelinePartitionToMainGraph(graph, cuts, pipeline_stage_id, num_stages);
     EXPECT_TRUE(status.IsOK()) << "Failed to apply partition. Error: "
                                << status.ErrorMessage();
   }
@@ -138,8 +133,7 @@ TEST(PipelinePartition, AttentionPastState2Stages) {
   Graph& graph = cb_model->MainGraph();
 
   std::vector<std::string> in_partition = {
-      "215", "222", "228", "232", "226", "233", "227", "219", "216", "218", "221",
-      "234", "237", "236", "235", "238", "output"};
+      "215", "222", "228", "232", "226", "233", "227", "219", "216", "218", "221", "234", "237", "236", "235", "238", "output"};
 
   // +1 for the additional Send node.
   EXPECT_EQ(graph.NumberOfNodes(), in_partition.size() + 1);
@@ -166,8 +160,7 @@ void compareGraphs(Graph& graph1, Graph& graph2) {
   }
 }
 
-void comparePartitionTest(const PathString& filename, int num_stages,
-                          int pipeline_stage_id, CutList& cuts) {
+void comparePartitionTest(const PathString& filename, int num_stages, int pipeline_stage_id, CutList& cuts) {
   std::shared_ptr<Model> sm_model;
   LoadAndPartitionWithCuts(filename, num_stages, pipeline_stage_id, cuts, true, sm_model);
   Graph& sm_graph = sm_model->MainGraph();

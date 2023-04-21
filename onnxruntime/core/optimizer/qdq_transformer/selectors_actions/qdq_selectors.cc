@@ -17,8 +17,7 @@ namespace {
 // adjust for an optional input/output that has an entry but does not exist
 int NumActualValues(const Node& node, bool input) {
   const auto& defs = input ? node.InputDefs() : node.OutputDefs();
-  return gsl::narrow_cast<int>(std::count_if(defs.cbegin(), defs.cend(),
-                                             [](const NodeArg* def) { return def && def->Exists(); }));
+  return gsl::narrow_cast<int>(std::count_if(defs.cbegin(), defs.cend(), [](const NodeArg* def) { return def && def->Exists(); }));
 }
 
 std::vector<const Node*> FindQDQNodes(const GraphViewer& graph_viewer, const Node& node, bool find_dq_nodes) {
@@ -28,21 +27,16 @@ std::vector<const Node*> FindQDQNodes(const GraphViewer& graph_viewer, const Nod
                     : graph_utils::FindChildrenByType(node, QDQ::QOpName);
 
   // Remove all the nodes which are not in the graph_viewer
-  nodes.erase(std::remove_if(nodes.begin(), nodes.end(),
-                             [&graph_viewer](const Node* _node) {
-                               return _node == nullptr || graph_viewer.GetNode(_node->Index()) == nullptr;
-                             }),
+  nodes.erase(std::remove_if(nodes.begin(), nodes.end(), [&graph_viewer](const Node* _node) {
+                return _node == nullptr || graph_viewer.GetNode(_node->Index()) == nullptr;
+              }),
               nodes.end());
 
   return nodes;
 }
 }  // namespace
 
-bool NodeGroupSelector::CheckQDQNodes(const GraphViewer& graph_viewer, const Node& node,
-                                      const std::vector<const Node*>& dq_nodes,
-                                      const std::vector<const Node*>& q_nodes,
-                                      int num_dq_inputs,
-                                      bool is_empty_q_nodes_allowed) const {
+bool NodeGroupSelector::CheckQDQNodes(const GraphViewer& graph_viewer, const Node& node, const std::vector<const Node*>& dq_nodes, const std::vector<const Node*>& q_nodes, int num_dq_inputs, bool is_empty_q_nodes_allowed) const {
   if (num_dq_inputs == -1) {
     num_dq_inputs = NumActualValues(node, true);
   }
@@ -144,9 +138,7 @@ bool DropDQNodeGroupSelector::Check(const GraphViewer& graph_viewer,
   return IsDQSupported(dq_node, get_const_initializer);
 }
 
-bool UnaryNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node& node,
-                                   const std::vector<const Node*>& dq_nodes,
-                                   const std::vector<const Node*>& q_nodes) const {
+bool UnaryNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node& node, const std::vector<const Node*>& dq_nodes, const std::vector<const Node*>& q_nodes) const {
   if (!CheckQDQNodes(graph_viewer, node, dq_nodes, q_nodes, 1)) {
     return false;
   }
@@ -277,8 +269,7 @@ bool GemmNodeGroupSelector::Check(const GraphViewer& graph_viewer,
                                   const Node& node,
                                   const std::vector<const Node*>& dq_nodes,
                                   const std::vector<const Node*>& q_nodes) const {
-  if (!CheckQDQNodes(graph_viewer, node, dq_nodes, q_nodes,
-                     -1 /*num_dq_inputs*/, true /*is_empty_q_nodes_allowed*/)) {
+  if (!CheckQDQNodes(graph_viewer, node, dq_nodes, q_nodes, -1 /*num_dq_inputs*/, true /*is_empty_q_nodes_allowed*/)) {
     return false;
   }
 
@@ -315,9 +306,7 @@ void GemmSelector::UpdateBuilder(NodesToOptimizeIndicesBuilder& builder) const {
   builder.input_nodes.resize(3, NodesToOptimizeIndices::kEmptyNodeIndex);
 }
 
-bool WhereNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node& node,
-                                   const std::vector<const Node*>& dq_nodes,
-                                   const std::vector<const Node*>& q_nodes) const {
+bool WhereNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node& node, const std::vector<const Node*>& dq_nodes, const std::vector<const Node*>& q_nodes) const {
   // Where has 1 boolean input and 2 dq inputs
   if (!CheckQDQNodes(graph_viewer, node, dq_nodes, q_nodes, 2)) {
     return false;

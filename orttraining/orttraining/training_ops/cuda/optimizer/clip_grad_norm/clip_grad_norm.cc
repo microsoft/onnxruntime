@@ -16,16 +16,14 @@ namespace {
 constexpr int ChunkSize = 2048 * 32;
 constexpr float Epsilon = 0.000001f;
 
-void GetGroupedTensors(const TensorSeq* gradients, InlinedVector<int>* tensor_sizes,
-                       InlinedVector<std::vector<void*>>* grouped_tensor_pointers) {
+void GetGroupedTensors(const TensorSeq* gradients, InlinedVector<int>* tensor_sizes, InlinedVector<std::vector<void*>>* grouped_tensor_pointers) {
   for (size_t i = 0; i < gradients->Size(); ++i) {
     (*tensor_sizes)[i] = static_cast<int>(gradients->Get(i).Shape().Size());
     (*grouped_tensor_pointers)[i] = {const_cast<float*>(gradients->Get(i).Data<float>())};
   }
 }
 
-Status GetL2Norm(cudaStream_t stream, InlinedVector<int>& tensor_sizes,
-                 InlinedVector<std::vector<void*>>& grouped_tensor_pointers, float** l2_norm) {
+Status GetL2Norm(cudaStream_t stream, InlinedVector<int>& tensor_sizes, InlinedVector<std::vector<void*>>& grouped_tensor_pointers, float** l2_norm) {
   CUDA_RETURN_IF_ERROR(cudaMemsetAsync(*l2_norm, 0, sizeof(float), stream));
   MultiTensorReduceL2<float, float> multi_tensor_reduce_l2_functor;
   launch_multi_tensor_functor<ClipGradNormGroupSize, MultiTensorReduceL2<float, float>>(
@@ -36,8 +34,7 @@ Status GetL2Norm(cudaStream_t stream, InlinedVector<int>& tensor_sizes,
   return Status::OK();
 }
 
-Status PopulateOutput(cudaStream_t stream, AllocatorPtr alloc, const TensorSeq* gradients,
-                      TensorSeq** clipped_gradients) {
+Status PopulateOutput(cudaStream_t stream, AllocatorPtr alloc, const TensorSeq* gradients, TensorSeq** clipped_gradients) {
   // If the output buffer is the same as the input buffer, the planner has
   // decided to reuse the buffer. No need to perform a memcpy in that case.
   if (gradients == *clipped_gradients) {
@@ -49,11 +46,13 @@ Status PopulateOutput(cudaStream_t stream, AllocatorPtr alloc, const TensorSeq* 
   for (size_t gradient_idx = 0; gradient_idx < gradients->Size(); ++gradient_idx) {
     const Tensor& source_tensor = gradients->Get(gradient_idx);
     std::unique_ptr<Tensor> target_tensor = Tensor::Create(source_tensor.DataType(),
-                                                           source_tensor.Shape(), alloc);
+                                                           source_tensor.Shape(),
+                                                           alloc);
     CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(target_tensor->MutableDataRaw(),
                                          source_tensor.DataRaw(),
                                          source_tensor.SizeInBytes(),
-                                         cudaMemcpyDeviceToDevice, stream));
+                                         cudaMemcpyDeviceToDevice,
+                                         stream));
     (*clipped_gradients)->Add(std::move(*target_tensor));  // Add will check for type consistency
   }
 
@@ -93,8 +92,7 @@ Status InplaceClipGradNorm::ComputeInternal(OpKernelContext* ctx) const {
   // Perform gradient clipping
   ClipGradNormFunctor<float> clip_grad_functor;
   launch_multi_tensor_functor<ClipGradNormGroupSize, decltype(clip_grad_functor)>(
-      Stream(ctx), ChunkSize, tensor_sizes, grouped_tensor_pointers, clip_grad_functor, total_norm,
-      Epsilon, max_norm_);
+      Stream(ctx), ChunkSize, tensor_sizes, grouped_tensor_pointers, clip_grad_functor, total_norm, Epsilon, max_norm_);
 
   // Populate the output sequence tensors.
   TensorSeq* clipped_gradients = ctx->Output<TensorSeq>(0);

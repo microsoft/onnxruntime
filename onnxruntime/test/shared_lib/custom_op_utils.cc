@@ -173,8 +173,7 @@ void MyCustomStringLengthsKernel::Compute(OrtKernelContext* context) {
   const size_t num_inputs = kcontext.GetInputCount();
   Ort::Logger logger = kcontext.GetLogger();
 
-  ORT_CXX_LOGF(logger, OrtLoggingLevel::ORT_LOGGING_LEVEL_VERBOSE, "Getting string lengths for %d inputs",
-               static_cast<int>(num_inputs));
+  ORT_CXX_LOGF(logger, OrtLoggingLevel::ORT_LOGGING_LEVEL_VERBOSE, "Getting string lengths for %d inputs", static_cast<int>(num_inputs));
 
   // Each output is set to the length of the corresponding input string.
   for (size_t i = 0; i < num_inputs; ++i) {
@@ -186,16 +185,11 @@ void MyCustomStringLengthsKernel::Compute(OrtKernelContext* context) {
   }
 }
 
-void AddInputForCustomStringLengthsKernel(std::string input_str, OrtAllocator* allocator,
-                                          std::vector<Ort::Value>& ort_inputs, std::vector<std::string>& input_names,
-                                          std::vector<std::string>& output_names,
-                                          std::vector<std::vector<int64_t>>& expected_dims,
-                                          std::vector<std::vector<int64_t>>& expected_outputs) {
+void AddInputForCustomStringLengthsKernel(std::string input_str, OrtAllocator* allocator, std::vector<Ort::Value>& ort_inputs, std::vector<std::string>& input_names, std::vector<std::string>& output_names, std::vector<std::vector<int64_t>>& expected_dims, std::vector<std::vector<int64_t>>& expected_outputs) {
   const size_t input_index = ort_inputs.size();
   constexpr std::array<int64_t, 1> input_dims = {1};
   Ort::Value& ort_value = ort_inputs.emplace_back(
-      Ort::Value::CreateTensor(allocator, input_dims.data(), input_dims.size(),
-                               ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING));
+      Ort::Value::CreateTensor(allocator, input_dims.data(), input_dims.size(), ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING));
   std::ostringstream oss(std::ostringstream::ate);
 
   oss.str("input_");
@@ -325,8 +319,7 @@ void SliceCustomOpKernel::Compute(OrtKernelContext* context) {
   switch (input_X_type) {
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT:
 
-      custom_slice(input_X.GetTensorData<float>(), slice_from, slice_to,
-                   output.GetTensorMutableData<float>(), ctx.GetGPUComputeStream());
+      custom_slice(input_X.GetTensorData<float>(), slice_from, slice_to, output.GetTensorMutableData<float>(), ctx.GetGPUComputeStream());
       // cudaStreamSynchronize(nullptr);
       // If everything is setup correctly, custom op implementations need not have such explicit synchronization logic as above.
       // To make sure custom kernels and ORT CUDA kernels are implicitly synchronized:
@@ -337,8 +330,7 @@ void SliceCustomOpKernel::Compute(OrtKernelContext* context) {
       // Here, an example for (2) is shown (See test_inference.cc to see how this custom op is used.)
       break;
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE:
-      custom_slice(input_X.GetTensorData<double>(), slice_from, slice_to,
-                   output.GetTensorMutableData<double>(), ctx.GetGPUComputeStream());
+      custom_slice(input_X.GetTensorData<double>(), slice_from, slice_to, output.GetTensorMutableData<double>(), ctx.GetGPUComputeStream());
       // cudaStreamSynchronize(nullptr);
       // If everything is setup correctly, custom op implementations need not have such explicit synchronization logic as above.
       // To make sure custom kernels and ORT CUDA kernels are implicitly synchronized:
@@ -359,10 +351,7 @@ StandaloneCustomKernel::StandaloneCustomKernel(const OrtKernelInfo* k_info) {
 
   const char* add_type_constraint_names[1] = {"T"};
   ONNXTensorElementDataType add_type_constraint_values[1] = {ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT};
-  op_add_ = Ort::Op::Create(info_copy_, "Add", "", /* must match onnx version number exactly */ 14,
-                            add_type_constraint_names,
-                            add_type_constraint_values,
-                            1, nullptr, 0, 2, 1);
+  op_add_ = Ort::Op::Create(info_copy_, "Add", "", /* must match onnx version number exactly */ 14, add_type_constraint_names, add_type_constraint_values, 1, nullptr, 0, 2, 1);
 
 #if !defined(REDUCED_OPS_BUILD)
   InitTopK();
@@ -386,10 +375,7 @@ void StandaloneCustomKernel::InitTopK() {
   auto sorted = Ort::OpAttr("sorted", &sorted_value, 1, OrtOpAttrType::ORT_OP_ATTR_INT);
 
   Ort::OpAttr top_attrs[3] = {std::move(axis), std::move(largest), std::move(sorted)};
-  op_topk_ = Ort::Op::Create(info_copy_, "TopK", "", /* must match onnx version number exactly */ 11,
-                             type_constraint_names,
-                             type_constraint_values,
-                             2, top_attrs, 3, 2, 2);
+  op_topk_ = Ort::Op::Create(info_copy_, "TopK", "", /* must match onnx version number exactly */ 11, type_constraint_names, type_constraint_values, 2, top_attrs, 3, 2, 2);
 }
 
 void StandaloneCustomKernel::InvokeTopK(OrtKernelContext* context) {
@@ -441,21 +427,15 @@ void StandaloneCustomKernel::InitGru() {
   Ort::OpAttr direction = Ort::OpAttr("direction", direction_string, 1, OrtOpAttrType::ORT_OP_ATTR_STRING);
 
   int64_t linear_before_reset_value = 0;
-  Ort::OpAttr linear_before_reset = Ort::OpAttr("linear_before_reset", &linear_before_reset_value, 1,
-                                                OrtOpAttrType::ORT_OP_ATTR_INT);
+  Ort::OpAttr linear_before_reset = Ort::OpAttr("linear_before_reset", &linear_before_reset_value, 1, OrtOpAttrType::ORT_OP_ATTR_INT);
 
   int64_t hidden_size_value = 2;
   Ort::OpAttr hidden_size = Ort::OpAttr("hidden_size", &hidden_size_value, 1, OrtOpAttrType::ORT_OP_ATTR_INT);
 
   // can push_back to vector as well
-  const Ort::OpAttr gru_attrs[6] = {std::move(activations), std::move(activation_alpha),
-                                    std::move(activation_beta), std::move(direction),
-                                    std::move(linear_before_reset), std::move(hidden_size)};
+  const Ort::OpAttr gru_attrs[6] = {std::move(activations), std::move(activation_alpha), std::move(activation_beta), std::move(direction), std::move(linear_before_reset), std::move(hidden_size)};
 
-  op_gru_ = Ort::Op::Create(info_copy_, "GRU", "", /* must match onnx version number exactly */ 14,
-                            type_constraint_names,
-                            type_constraint_values,
-                            2, gru_attrs, 6, 6, 2);
+  op_gru_ = Ort::Op::Create(info_copy_, "GRU", "", /* must match onnx version number exactly */ 14, type_constraint_names, type_constraint_values, 2, gru_attrs, 6, 6, 2);
 }
 
 void StandaloneCustomKernel::InvokeGru(OrtKernelContext* context) {
@@ -466,39 +446,80 @@ void StandaloneCustomKernel::InvokeGru(OrtKernelContext* context) {
   auto X = Ort::Value::CreateTensor(mem_info, raw_x, 2, raw_x_shape, 3);
 
   float raw_w[24] = {
-      -0.494659f, 0.0453352f, -0.487793f, 0.417264f,    // Wz
-      -0.0091708f, -0.255364f, -0.106952f, -0.266717f,  // Wr
-      -0.0888852f, -0.428709f, -0.283349f, 0.208792f,   // Wh
-      -0.494659f, 0.0453352f, -0.487793f, 0.417264f,    // WBz
-      -0.0091708f, -0.255364f, -0.106952f, -0.266717f,  // WBr
-      -0.0888852f, -0.428709f, -0.283349f, 0.208792f    // WBh
+      -0.494659f, 0.0453352f, -0.487793f, 0.417264f,  // Wz
+      -0.0091708f,
+      -0.255364f,
+      -0.106952f,
+      -0.266717f,  // Wr
+      -0.0888852f,
+      -0.428709f,
+      -0.283349f,
+      0.208792f,  // Wh
+      -0.494659f,
+      0.0453352f,
+      -0.487793f,
+      0.417264f,  // WBz
+      -0.0091708f,
+      -0.255364f,
+      -0.106952f,
+      -0.266717f,  // WBr
+      -0.0888852f,
+      -0.428709f,
+      -0.283349f,
+      0.208792f  // WBh
   };
   int64_t raw_w_shape[3] = {2, 6, 2};
   auto W = Ort::Value::CreateTensor(mem_info, raw_w, 24, raw_w_shape, 3);
 
   float raw_r[24] = {
       0.146626f, -0.0620289f, -0.0815302f, 0.100482f,  // Rz
-      -0.228172f, 0.405972f, 0.31576f, 0.281487f,      // Rr
-      -0.394864f, 0.42111f, -0.386624f, -0.390225f,    // Rh
-      0.146626f, -0.0620289f, -0.0815302f, 0.100482f,  // RBz
-      -0.228172f, 0.405972f, 0.31576f, 0.281487f,      // RBr
-      -0.394864f, 0.42111f, -0.386624f, -0.390225f};   // RBh
+      -0.228172f,
+      0.405972f,
+      0.31576f,
+      0.281487f,  // Rr
+      -0.394864f,
+      0.42111f,
+      -0.386624f,
+      -0.390225f,  // Rh
+      0.146626f,
+      -0.0620289f,
+      -0.0815302f,
+      0.100482f,  // RBz
+      -0.228172f,
+      0.405972f,
+      0.31576f,
+      0.281487f,  // RBr
+      -0.394864f,
+      0.42111f,
+      -0.386624f,
+      -0.390225f};  // RBh
   int64_t raw_r_shape[3] = {2, 6, 2};
   auto R = Ort::Value::CreateTensor(mem_info, raw_r, 24, raw_r_shape, 3);
 
   float raw_b[24] = {
-      0.381619f, 0.0323954f,   // Wbz
-      -0.258721f, 0.45056f,    // Wbr
-      -0.250755f, 0.0967895f,  // Wbh
-      0.0f, 0.0f,              // Rbz
-      -0.0f, 0.0f,             // Rbr
-      -0.0f, 0.0f,             // Rbh
-      0.381619f, 0.0323954f,   // WBbz
-      -0.258721f, 0.45056f,    // WBbr
-      -0.250755f, 0.0967895f,  // WBbh
-      0.0f, 0.0f,              // RBbz
-      -0.0f, 0.0f,             // RBbr
-      -0.0f, 0.0f};            // RBbh
+      0.381619f, 0.0323954f,  // Wbz
+      -0.258721f,
+      0.45056f,  // Wbr
+      -0.250755f,
+      0.0967895f,  // Wbh
+      0.0f,
+      0.0f,  // Rbz
+      -0.0f,
+      0.0f,  // Rbr
+      -0.0f,
+      0.0f,  // Rbh
+      0.381619f,
+      0.0323954f,  // WBbz
+      -0.258721f,
+      0.45056f,  // WBbr
+      -0.250755f,
+      0.0967895f,  // WBbh
+      0.0f,
+      0.0f,  // RBbz
+      -0.0f,
+      0.0f,  // RBbr
+      -0.0f,
+      0.0f};  // RBbh
   int64_t raw_b_shape[2] = {2, 12};
   auto B = Ort::Value::CreateTensor(mem_info, raw_b, 24, raw_b_shape, 2);
 
@@ -518,8 +539,7 @@ void StandaloneCustomKernel::InvokeGru(OrtKernelContext* context) {
   int64_t raw_yh_shape[64] = {2, 1, 2};
   auto YH = Ort::Value::CreateTensor(mem_info, raw_yh, 4, raw_yh_shape, 3);
 
-  const Ort::Value inputs[6] = {std::move(X), std::move(W), std::move(R), std::move(B),
-                                std::move(sequence_lens), std::move(initial_h)};
+  const Ort::Value inputs[6] = {std::move(X), std::move(W), std::move(R), std::move(B), std::move(sequence_lens), std::move(initial_h)};
   Ort::Value outputs[2] = {std::move(Y), std::move(YH)};
 
   const float expected_y[4] = {-0.832559f,
@@ -556,20 +576,11 @@ void StandaloneCustomKernel::InitInvokeConv(OrtKernelContext* context) {
   int64_t stride_values[] = {2};
   Ort::OpAttr strides = Ort::OpAttr("strides", &stride_values, 1, OrtOpAttrType::ORT_OP_ATTR_INTS);
 
-  const Ort::OpAttr conv_attrs[] = {std::move(dilations), std::move(group), std::move(kernel_shape),
-                                    std::move(pads), std::move(strides)};
-  auto op_conv = Ort::Op::Create(info_copy_, "Conv", "", 11,
-                                 type_constraint_names,
-                                 type_constraint_values,
-                                 1, conv_attrs, 5, 2, 1);
+  const Ort::OpAttr conv_attrs[] = {std::move(dilations), std::move(group), std::move(kernel_shape), std::move(pads), std::move(strides)};
+  auto op_conv = Ort::Op::Create(info_copy_, "Conv", "", 11, type_constraint_names, type_constraint_values, 1, conv_attrs, 5, 2, 1);
 
   std::vector<int64_t> X_shape = {3, 1, 8};
-  std::vector<float> X_value = {0.11094123125076294f, -0.0038032233715057373f, 0.3896123170852661f, 0.33259105682373047f,
-                                0.02794349193572998f, -0.08360505104064941f, -0.4100455045700073f, -0.09502679109573364f,
-                                -0.11361867189407349f, -0.025495320558547974f, 0.3696536421775818f, 0.3529144525527954f,
-                                -0.34991076588630676f, -0.22024285793304443f, 0.23085933923721313f, -0.4575521945953369f,
-                                -0.17685726284980774f, -0.06030535697937012f, -0.3996139168739319f, -0.19385704398155212f,
-                                -0.10454908013343811f, -0.14503943920135498f, -0.31941986083984375f, -0.15372398495674133f};
+  std::vector<float> X_value = {0.11094123125076294f, -0.0038032233715057373f, 0.3896123170852661f, 0.33259105682373047f, 0.02794349193572998f, -0.08360505104064941f, -0.4100455045700073f, -0.09502679109573364f, -0.11361867189407349f, -0.025495320558547974f, 0.3696536421775818f, 0.3529144525527954f, -0.34991076588630676f, -0.22024285793304443f, 0.23085933923721313f, -0.4575521945953369f, -0.17685726284980774f, -0.06030535697937012f, -0.3996139168739319f, -0.19385704398155212f, -0.10454908013343811f, -0.14503943920135498f, -0.31941986083984375f, -0.15372398495674133f};
 
   auto X = Ort::Value::CreateTensor(mem_info, reinterpret_cast<float*>(X_value.data()), X_value.size(), reinterpret_cast<int64_t*>(X_shape.data()), X_shape.size());
 
@@ -586,14 +597,7 @@ void StandaloneCustomKernel::InitInvokeConv(OrtKernelContext* context) {
 
   op_conv.Invoke(context, inputs, 2, outputs, 1);
 
-  float Y_expected[] = {0.010817262344062328f, 0.05266154557466507f, 0.054253075271844864f, -0.03628557175397873f,
-                        -0.05423086881637573f, 0.05262419581413269f, 0.22330480813980103f, 0.14844439923763275f,
-                        -0.1848062425851822f, -0.14227961003780365f, -0.011078324168920517f, 0.02101614698767662f,
-                        0.014770962297916412f, -0.023767895996570587f, 0.03053247183561325f, -0.053894221782684326f,
-                        0.13591864705085754f, -0.03771348297595978f, -0.011907249689102173f, 0.08010470867156982f,
-                        -0.01724436692893505f, -0.06235451623797417f, -0.06304522603750229f, -0.044972069561481476f,
-                        -0.042245108634233475f, -0.08389100432395935f, -0.2509208619594574f, -0.18825212121009827f,
-                        -0.18779152631759644f, -0.11083387583494186f};
+  float Y_expected[] = {0.010817262344062328f, 0.05266154557466507f, 0.054253075271844864f, -0.03628557175397873f, -0.05423086881637573f, 0.05262419581413269f, 0.22330480813980103f, 0.14844439923763275f, -0.1848062425851822f, -0.14227961003780365f, -0.011078324168920517f, 0.02101614698767662f, 0.014770962297916412f, -0.023767895996570587f, 0.03053247183561325f, -0.053894221782684326f, 0.13591864705085754f, -0.03771348297595978f, -0.011907249689102173f, 0.08010470867156982f, -0.01724436692893505f, -0.06235451623797417f, -0.06304522603750229f, -0.044972069561481476f, -0.042245108634233475f, -0.08389100432395935f, -0.2509208619594574f, -0.18825212121009827f, -0.18779152631759644f, -0.11083387583494186f};
 
   for (int i = 0; i < 3 * 2 * 5; ++i) {
     if (std::abs(Y_values[i] - Y_expected[i]) > 1e-6) {

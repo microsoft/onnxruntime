@@ -83,8 +83,7 @@ void CopyMutableOptionalElement(const ONNX_NAMESPACE::TypeProto& elem_proto,
   proto.mutable_optional_type()->mutable_elem_type()->CopyFrom(elem_proto);
 }
 
-void AssignOpaqueDomainName(const char* domain, const char* name,
-                            ONNX_NAMESPACE::TypeProto& proto) {
+void AssignOpaqueDomainName(const char* domain, const char* name, ONNX_NAMESPACE::TypeProto& proto) {
   auto* mutable_opaque = proto.mutable_opaque_type();
   mutable_opaque->mutable_domain()->assign(domain);
   mutable_opaque->mutable_name()->assign(name);

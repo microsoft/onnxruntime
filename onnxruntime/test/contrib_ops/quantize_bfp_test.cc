@@ -16,8 +16,7 @@ TEST(QuantizeBFPTest, CreateQuantizeGraph) {
   // Generate the input & output def lists
   std::vector<ONNX_NAMESPACE::FunctionProto> model_specific_functions;
   auto p_model = std::make_unique<Model>(
-      "test", true, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(), domain_to_version,
-      model_specific_functions, DefaultLoggingManager().DefaultLogger(), ModelOptions(true, true));
+      "test", true, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, model_specific_functions, DefaultLoggingManager().DefaultLogger(), ModelOptions(true, true));
   onnxruntime::Graph& graph = p_model->MainGraph();
 
   ONNX_NAMESPACE::TypeProto x_float;
@@ -54,8 +53,7 @@ TEST(QuantizeBFPTest, CreateQuantizeGraph) {
   output_defs.push_back(&output_arg_strides);
 
   // Create a simple model
-  graph.AddNode("node1", "QuantizeBFP", "quantizes float tensor to BFP", input_defs, output_defs, &attributes,
-                onnxruntime::kMSDomain);
+  graph.AddNode("node1", "QuantizeBFP", "quantizes float tensor to BFP", input_defs, output_defs, &attributes, onnxruntime::kMSDomain);
   Status status = graph.Resolve();
   ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
 }
@@ -66,8 +64,7 @@ TEST(DequantizeBFPTest, CreateDequantizeGraph) {
   // Generate the input & output def lists
   std::vector<ONNX_NAMESPACE::FunctionProto> model_specific_functions;
   auto p_model = std::make_unique<Model>(
-      "test", true, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(), domain_to_version,
-      model_specific_functions, DefaultLoggingManager().DefaultLogger(), ModelOptions(true, true));
+      "test", true, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, model_specific_functions, DefaultLoggingManager().DefaultLogger(), ModelOptions(true, true));
   onnxruntime::Graph& graph = p_model->MainGraph();
 
   ONNX_NAMESPACE::TypeProto x_byte;
@@ -109,8 +106,7 @@ TEST(DequantizeBFPTest, CreateDequantizeGraph) {
   output_defs.push_back(&output_arg_y);
 
   // Create a simple model
-  graph.AddNode("node1", "DequantizeBFP", "dequantizes BFP tensor to float", input_defs, output_defs, &attributes,
-                onnxruntime::kMSDomain);
+  graph.AddNode("node1", "DequantizeBFP", "dequantizes BFP tensor to float", input_defs, output_defs, &attributes, onnxruntime::kMSDomain);
   Status status = graph.Resolve();
   ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
 }

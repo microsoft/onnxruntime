@@ -80,7 +80,8 @@ void IExecutionFrame::UpdateFeeds(gsl::span<const int> feed_mlvalue_idxs, gsl::s
 }
 
 void IExecutionFrame::UpdateFetches(gsl::span<const int> fetch_mlvalue_idxs,
-                                    gsl::span<const OrtValue> fetches, const std::unordered_map<int, OrtValue>& initializers) {
+                                    gsl::span<const OrtValue> fetches,
+                                    const std::unordered_map<int, OrtValue>& initializers) {
   ORT_ENFORCE(fetch_mlvalue_idxs.size() == fetches.size());
 
   if (!fetches.empty()) {
@@ -122,9 +123,7 @@ Status IExecutionFrame::GetOutputs(gsl::span<const int> fetch_mlvalue_idxs, std:
   } else {
     // if there's a mismatch things are out so sync so fail
     if (fetches.size() != num_fetches) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Fetches vector passed to GetOutputs contains ", fetches.size(),
-                             " entries which doesn't match the number of fetches the frame was initialized with of ",
-                             num_fetches);
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Fetches vector passed to GetOutputs contains ", fetches.size(), " entries which doesn't match the number of fetches the frame was initialized with of ", num_fetches);
     }
   }
 
@@ -151,9 +150,7 @@ OrtValue* IExecutionFrame::GetMutableNodeInputOrOutputMLValue(int index) {
 // This method is not thread safe!
 // Return S_OK and nullptr if index map to an value that is an unused optional input/output
 
-Status IExecutionFrame::GetOrCreateNodeOutputMLValue(const int output_index, int output_arg_index,
-                                                     const TensorShape* shape, OrtValue*& p_ort_value,
-                                                     const Node& node) {
+Status IExecutionFrame::GetOrCreateNodeOutputMLValue(const int output_index, int output_arg_index, const TensorShape* shape, OrtValue*& p_ort_value, const Node& node) {
   auto status = Status::OK();
   int ort_value_idx = GetNodeIdxToMLValueIdx(output_arg_index);
 
@@ -168,14 +165,18 @@ Status IExecutionFrame::GetOrCreateNodeOutputMLValue(const int output_index, int
       if (p_ort_value->IsTensor()) {
         const Tensor& tensor = p_ort_value->Get<Tensor>();
         ORT_ENFORCE(shape && tensor.Shape() == *shape,
-                    "OrtValue shape verification failed. Current shape:", tensor.Shape(),
-                    " Requested shape:", shape ? shape->ToString() : "null");
+                    "OrtValue shape verification failed. Current shape:",
+                    tensor.Shape(),
+                    " Requested shape:",
+                    shape ? shape->ToString() : "null");
       } else if (p_ort_value->IsSparseTensor()) {
 #if !defined(DISABLE_SPARSE_TENSORS)
         const SparseTensor& sp_tensor = p_ort_value->Get<SparseTensor>();
         ORT_ENFORCE(shape && sp_tensor.DenseShape() == *shape,
-                    "OrtValue shape verification failed. Current shape:", sp_tensor.DenseShape(),
-                    " Requested shape:", shape ? shape->ToString() : "null");
+                    "OrtValue shape verification failed. Current shape:",
+                    sp_tensor.DenseShape(),
+                    " Requested shape:",
+                    shape ? shape->ToString() : "null");
 #endif
       }
     } else {
@@ -218,10 +219,7 @@ int IExecutionFrame::GetNodeIdxToMLValueIdx(int index) const {
   return ort_value_idx;
 }
 
-void IExecutionFrame::Init(gsl::span<const int> feed_mlvalue_idxs, gsl::span<const OrtValue> feeds,
-                           const std::unordered_map<int, OrtValue>& initializers,
-                           const std::function<bool(const std::string& name)>& is_initializer_sparse_func,
-                           gsl::span<const OrtValue> fetches) {
+void IExecutionFrame::Init(gsl::span<const int> feed_mlvalue_idxs, gsl::span<const OrtValue> feeds, const std::unordered_map<int, OrtValue>& initializers, const std::function<bool(const std::string& name)>& is_initializer_sparse_func, gsl::span<const OrtValue> fetches) {
   ORT_ENFORCE(feeds.size() == feed_mlvalue_idxs.size());
   ORT_ENFORCE(fetches.empty() || fetches.size() == fetch_mlvalue_idxs_.size());
 
@@ -280,9 +278,7 @@ void IExecutionFrame::Init(gsl::span<const int> feed_mlvalue_idxs, gsl::span<con
         // Outputting Coo format because initializers are Constant nodes, and they are converted to dense.
         AllocatorPtr allocator = GetAllocator(src.Location());
         constexpr bool has_linear_coo_index = true;
-        ORT_THROW_IF_ERROR(sparse_utils::DenseTensorToSparseCoo(GetDataTransferManager(), src,
-                                                                cpu_allocator, allocator, has_linear_coo_index,
-                                                                *dest.GetMutable<SparseTensor>()));
+        ORT_THROW_IF_ERROR(sparse_utils::DenseTensorToSparseCoo(GetDataTransferManager(), src, cpu_allocator, allocator, has_linear_coo_index, *dest.GetMutable<SparseTensor>()));
       } else {
 #else
       ORT_UNUSED_PARAMETER(is_initializer_sparse_func);
@@ -319,9 +315,7 @@ Status IExecutionFrame::GetOutputs(std::vector<OrtValue>& fetches) {
   } else {
     // if there's a mismatch things are out so sync so fail
     if (fetches.size() != num_fetches) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Fetches vector passed to GetOutputs contains ", fetches.size(),
-                             " entries which doesn't match the number of fetches the frame was initialized with of ",
-                             num_fetches);
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Fetches vector passed to GetOutputs contains ", fetches.size(), " entries which doesn't match the number of fetches the frame was initialized with of ", num_fetches);
     }
   }
 
@@ -336,9 +330,7 @@ bool IExecutionFrame::IsOutput(int ort_value_idx) const {
   return std::find(fetch_mlvalue_idxs_.begin(), fetch_mlvalue_idxs_.end(), ort_value_idx) != fetch_mlvalue_idxs_.end();
 }
 
-ExecutionFrame::ExecutionFrame(gsl::span<const int> feed_mlvalue_idxs, gsl::span<const OrtValue> feeds,
-                               gsl::span<const int> fetch_mlvalue_idxs, gsl::span<const OrtValue> fetches,
-                               const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
+ExecutionFrame::ExecutionFrame(gsl::span<const int> feed_mlvalue_idxs, gsl::span<const OrtValue> feeds, gsl::span<const int> fetch_mlvalue_idxs, gsl::span<const OrtValue> fetches, const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
 #ifdef ORT_ENABLE_STREAM
                                const DeviceStreamCollection* device_streams,
 #endif
@@ -470,7 +462,10 @@ ExecutionFrame::ExecutionFrame(gsl::span<const int> feed_mlvalue_idxs, gsl::span
               mem_profier_ptr->GetMemoryInfo().RecordPatternInfo(*mem_patterns_, MemoryInfo::MapType::StaticActivation);
               mem_profier_ptr->CreateEvents(
                   "static activations_" + std::to_string(mem_profier_ptr->GetMemoryInfo().GetIteration()),
-                  mem_profier_ptr->GetAndIncreasePid(), MemoryInfo::MapType::StaticActivation, "", 0);
+                  mem_profier_ptr->GetAndIncreasePid(),
+                  MemoryInfo::MapType::StaticActivation,
+                  "",
+                  0);
             }
 #endif
             // log size of activation. Keep it commented out for now to avoid log flooding.
@@ -493,9 +488,7 @@ const DataTransferManager& ExecutionFrame::GetDataTransferManager() const {
   return session_state_.GetDataTransferMgr();
 }
 
-Status ExecutionFrame::AllocateMLValueTensorSelfOwnBuffer(OrtValue& ort_value, int ort_value_index,
-                                                          MLDataType element_type, const OrtMemoryInfo& location,
-                                                          const TensorShape& shape) {
+Status ExecutionFrame::AllocateMLValueTensorSelfOwnBuffer(OrtValue& ort_value, int ort_value_index, MLDataType element_type, const OrtMemoryInfo& location, const TensorShape& shape) {
   return AllocateMLValueTensorSelfOwnBufferHelper(ort_value, ort_value_index, element_type, location, shape);
 }
 
@@ -512,10 +505,7 @@ Stream* ExecutionFrame::GetValueStream(int ort_value_idx) const {
   return nullptr;
 }
 
-Status ExecutionFrame::AllocateMLValueTensorSelfOwnBufferHelper(OrtValue& ort_value, int ort_value_index,
-                                                                MLDataType element_type,
-                                                                const OrtMemoryInfo& location,
-                                                                const TensorShape& shape) {
+Status ExecutionFrame::AllocateMLValueTensorSelfOwnBufferHelper(OrtValue& ort_value, int ort_value_index, MLDataType element_type, const OrtMemoryInfo& location, const TensorShape& shape) {
   if (ort_value_index == NodeIndexInfo::kInvalidEntry) {
     return Status(ONNXRUNTIME, FAIL, "Trying to allocate memory for unused optional inputs/outputs");
   }
@@ -552,8 +542,7 @@ Status ExecutionFrame::AllocateMLValueTensorSelfOwnBufferHelper(OrtValue& ort_va
           if (block->size_ == size) {
             void* buffer = it->second.get();
             auto status = AllocateTensorWithPreAllocateBufferHelper(
-                ort_value, static_cast<void*>(static_cast<char*>(buffer) + block->offset_), element_type, location,
-                shape);
+                ort_value, static_cast<void*>(static_cast<char*>(buffer) + block->offset_), element_type, location, shape);
             return status;
           } else {
             // the block size may vary especially if the model has NonZero ops, or different sequence lengths are
@@ -615,10 +604,7 @@ Status ExecutionFrame::AllocateMLValueTensorSelfOwnBufferHelper(OrtValue& ort_va
   return Status::OK();
 }
 
-Status ExecutionFrame::AllocateMLValueTensorPreAllocateBuffer(OrtValue& ort_value, int ort_value_index_reuse,
-                                                              MLDataType element_type, const OrtMemoryInfo& location,
-                                                              const TensorShape& shape,
-                                                              bool is_strided_tensor) {
+Status ExecutionFrame::AllocateMLValueTensorPreAllocateBuffer(OrtValue& ort_value, int ort_value_index_reuse, MLDataType element_type, const OrtMemoryInfo& location, const TensorShape& shape, bool is_strided_tensor) {
   OrtValue& ort_value_reuse = GetMutableMLValue(ort_value_index_reuse);
 
   auto* reuse_tensor = ort_value_reuse.GetMutable<Tensor>();
@@ -659,10 +645,7 @@ Status ExecutionFrame::AllocateMLValueTensorPreAllocateBuffer(OrtValue& ort_valu
   return AllocateTensorWithPreAllocateBufferHelper(ort_value, reuse_buffer, element_type, location, shape);
 }
 
-Status ExecutionFrame::AllocateTensorWithPreAllocateBufferHelper(OrtValue& ort_value, void* pBuffer,
-                                                                 MLDataType element_type,
-                                                                 const OrtMemoryInfo& location,
-                                                                 const TensorShape& shape) {
+Status ExecutionFrame::AllocateTensorWithPreAllocateBufferHelper(OrtValue& ort_value, void* pBuffer, MLDataType element_type, const OrtMemoryInfo& location, const TensorShape& shape) {
   Tensor::InitOrtValue(element_type, shape, pBuffer, location, ort_value, 0L);
   return Status::OK();
 }
@@ -682,9 +665,7 @@ static Status AllocateTensorSequence(OrtValue& ort_value) {
 }
 
 #if !defined(DISABLE_SPARSE_TENSORS)
-static Status AllocateSparseTensor(OrtValue& mlvalue, const DataTypeImpl& ml_type, AllocatorPtr allocator,
-                                   const TensorShape& shape,
-                                   const SessionState& /*session_state*/) {
+static Status AllocateSparseTensor(OrtValue& mlvalue, const DataTypeImpl& ml_type, AllocatorPtr allocator, const TensorShape& shape, const SessionState& /*session_state*/) {
   auto element_type = ml_type.AsSparseTensorType()->GetElementType();
   SparseTensor::InitOrtValue(element_type, shape, std::move(allocator), mlvalue);
 
@@ -714,8 +695,7 @@ Status ExecutionFrame::AllocateAsPerAllocationPlan(OrtValue& ort_value, int ort_
   const auto* ml_type = per_alloc_plan.value_type;
   if (ml_type == nullptr) {
     return Status(
-        ONNXRUNTIME, INVALID_ARGUMENT,
-        "Tried to allocate without valid type information, ort_value index=" + std::to_string(ort_value_index));
+        ONNXRUNTIME, INVALID_ARGUMENT, "Tried to allocate without valid type information, ort_value index=" + std::to_string(ort_value_index));
   }
 
   // if there is a custom allocator for this ort_value_index, call it to do the allocation
@@ -751,8 +731,7 @@ Status ExecutionFrame::AllocateAsPerAllocationPlan(OrtValue& ort_value, int ort_
       // In the future we may want to have different way to handle it.
       case AllocKind::kAllocateOutput:
       case AllocKind::kAllocate: {
-        ORT_RETURN_IF_ERROR(AllocateMLValueTensorSelfOwnBuffer(ort_value, ort_value_index, ml_data_type, alloc_info,
-                                                               *shape));
+        ORT_RETURN_IF_ERROR(AllocateMLValueTensorSelfOwnBuffer(ort_value, ort_value_index, ml_data_type, alloc_info, *shape));
         break;
       }
       case AllocKind::kReuse: {
@@ -789,8 +768,7 @@ Status ExecutionFrame::AllocateAsPerAllocationPlan(OrtValue& ort_value, int ort_
     return Status::OK();
   } else if (ml_type->IsSparseTensorType()) {
 #if !defined(DISABLE_SPARSE_TENSORS)
-    return AllocateSparseTensor(ort_value, *ml_type, GetAllocator(alloc_info),
-                                *shape, session_state_);
+    return AllocateSparseTensor(ort_value, *ml_type, GetAllocator(alloc_info), *shape, session_state_);
 #else
     // Model load should have failed so this should be unreachable
     ORT_THROW("SparseTensor is not supported in this build.");

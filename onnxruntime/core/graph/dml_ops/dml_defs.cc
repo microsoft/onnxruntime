@@ -11,7 +11,8 @@
 namespace ONNX_NAMESPACE {
 void convPoolShapeInference(
     ONNX_NAMESPACE::InferenceContext& ctx,
-    bool use_dilation, bool require_kernel_shape,
+    bool use_dilation,
+    bool require_kernel_shape,
     int input1Idx,
     int input2Idx);
 void convTransposeShapeInference(InferenceContext& ctx);

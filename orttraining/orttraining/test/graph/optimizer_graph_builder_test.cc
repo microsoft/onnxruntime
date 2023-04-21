@@ -109,8 +109,7 @@ Status SetUpBaseGraph(Graph& graph) {
 std::unordered_map<std::string, OptimizerNodeConfig> GetOptInfoMap(const std::string& optim_name) {
   std::unordered_map<std::string, OptimizerNodeConfig> result{};
   std::transform(
-      k_weight_names.begin(), k_weight_names.end(), std::inserter(result, result.end()),
-      [&optim_name](const std::string& weight_name) {
+      k_weight_names.begin(), k_weight_names.end(), std::inserter(result, result.end()), [&optim_name](const std::string& weight_name) {
         return std::make_pair(
             weight_name, OptimizerNodeConfig{optim_name, nullptr, "Learning_Rate", {}});
       });

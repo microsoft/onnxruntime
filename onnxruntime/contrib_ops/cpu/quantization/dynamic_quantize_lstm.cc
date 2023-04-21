@@ -12,8 +12,7 @@ class DynamicQuantizeLSTM : public OpKernel, public LSTMBase {
  public:
   DynamicQuantizeLSTM(const OpKernelInfo& info) : OpKernel(info), LSTMBase(info) {}
 
-  Status PrePack(const Tensor& tensor, int input_idx,
-                 AllocatorPtr alloc, /*out*/ bool& is_packed,
+  Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc, /*out*/ bool& is_packed,
                  /*out*/ PrePackedWeights* prepacked_weights) override;
 
   Status UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers,
@@ -25,8 +24,7 @@ class DynamicQuantizeLSTM : public OpKernel, public LSTMBase {
   ~DynamicQuantizeLSTM() override = default;
 
  private:
-  Status TryPackWeights(const Tensor& weights, PackedWeights& packed_weights, bool& is_packed,
-                        bool& is_weight_signed, AllocatorPtr& alloc);
+  Status TryPackWeights(const Tensor& weights, PackedWeights& packed_weights, bool& is_packed, bool& is_weight_signed, AllocatorPtr& alloc);
 
   template <typename T>
   Status ComputeImpl(OpKernelContext& context) const;
@@ -37,8 +35,7 @@ class DynamicQuantizeLSTM : public OpKernel, public LSTMBase {
   bool is_R_signed_;
 };
 
-Status DynamicQuantizeLSTM::TryPackWeights(const Tensor& weights, PackedWeights& packed_weights,
-                                           bool& is_packed, bool& is_weight_signed, AllocatorPtr& alloc) {
+Status DynamicQuantizeLSTM::TryPackWeights(const Tensor& weights, PackedWeights& packed_weights, bool& is_packed, bool& is_weight_signed, AllocatorPtr& alloc) {
   const auto& shape = weights.Shape();
   if (shape.NumDimensions() != 3) {
     return Status::OK();
@@ -130,13 +127,11 @@ Status DynamicQuantizeLSTM::UseSharedPrePackedBuffers(std::vector<BufferUniquePt
   return Status::OK();
 }
 
-#define WeightCheck(weight_shape, weight_name)                                                                                              \
-  if ((weight_shape.NumDimensions() != 1 && weight_shape.NumDimensions() != 2) ||                                                           \
-      (weight_shape.NumDimensions() == 2 && weight_shape[1] != static_cast<int64_t>(hidden_size_) * 4) ||                                   \
-      weight_shape[0] != num_directions_) {                                                                                                 \
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,                                                                                   \
-                           "Input ", #weight_name, " must have shape {", num_directions_, "} for per-tensor/layer quantization or shape {", \
-                           num_directions_, ", 4*", hidden_size_, "} for per-channel quantization. Actual:", weight_shape);                 \
+#define WeightCheck(weight_shape, weight_name)                                                                                                                                                                                                                              \
+  if ((weight_shape.NumDimensions() != 1 && weight_shape.NumDimensions() != 2) ||                                                                                                                                                                                           \
+      (weight_shape.NumDimensions() == 2 && weight_shape[1] != static_cast<int64_t>(hidden_size_) * 4) ||                                                                                                                                                                   \
+      weight_shape[0] != num_directions_) {                                                                                                                                                                                                                                 \
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input ", #weight_name, " must have shape {", num_directions_, "} for per-tensor/layer quantization or shape {", num_directions_, ", 4*", hidden_size_, "} for per-channel quantization. Actual:", weight_shape); \
   }
 
 #define ZeroPointCheck(w_zp, zp_shape, is_W_signed, weight_name)                                                                           \

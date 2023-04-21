@@ -41,8 +41,7 @@ struct KernelAndDef {
   std::unique_ptr<Allocs> a = std::make_unique<Allocs>();
 
   template <typename KernelType>
-  static KernelAndDef CreateKernel(const std::string& op_name, const std::string& domain,
-                                   const std::vector<AttributeProto>& attrs, int64_t batch_size) {
+  static KernelAndDef CreateKernel(const std::string& op_name, const std::string& domain, const std::vector<AttributeProto>& attrs, int64_t batch_size) {
     std::unordered_map<std::string, int> domain2Version;
     domain2Version[""] = 12;
     domain2Version[kMSDomain] = 1;
@@ -80,10 +79,7 @@ class MyIExecutionFrame : public IExecutionFrame {
   IExecutionProvider& a_;
 
  public:
-  MyIExecutionFrame(IExecutionProvider& a, const std::vector<int>& feed_mlvalue_idxs,
-                    const std::vector<OrtValue>& feeds, const std::unordered_map<int, OrtValue>& initializers,
-                    const std::vector<int>& fetch_mlvalue_idxs, const std::vector<OrtValue>& fetches,
-                    const OrtValueNameIdxMap& ort_value_idx_map, const NodeIndexInfo& node_index_info)
+  MyIExecutionFrame(IExecutionProvider& a, const std::vector<int>& feed_mlvalue_idxs, const std::vector<OrtValue>& feeds, const std::unordered_map<int, OrtValue>& initializers, const std::vector<int>& fetch_mlvalue_idxs, const std::vector<OrtValue>& fetches, const OrtValueNameIdxMap& ort_value_idx_map, const NodeIndexInfo& node_index_info)
       : IExecutionFrame(ort_value_idx_map, node_index_info, fetch_mlvalue_idxs),
         a_(a) {
     Init(
@@ -132,9 +128,7 @@ class MyIExecutionFrame : public IExecutionFrame {
 };
 
 template <typename KernelType>
-static void RunSingleNode(const std::string& op_name, const std::string& domain,
-                          const std::vector<AttributeProto>& attrs, benchmark::State& state, float low = -1.0f,
-                          float high = 1.0f) {
+static void RunSingleNode(const std::string& op_name, const std::string& domain, const std::vector<AttributeProto>& attrs, benchmark::State& state, float low = -1.0f, float high = 1.0f) {
   const int64_t batch_size = state.range(0);
   float* output = (float*)aligned_alloc(sizeof(float) * static_cast<size_t>(batch_size), 64);
   float* data = GenerateArrayWithRandomValue<float>(batch_size, low, high);
@@ -158,8 +152,7 @@ static void RunSingleNode(const std::string& op_name, const std::string& domain,
   tpo.auto_set_affinity = true;
   std::unique_ptr<concurrency::ThreadPool> tp(
       concurrency::CreateThreadPool(&onnxruntime::Env::Default(), tpo, concurrency::ThreadPoolType::INTRA_OP));
-  MyIExecutionFrame f(*k.a, feed_mlvalue_idxs, feeds, {}, fetch_mlvalue_idxs, fetches, *k.ort_value_idx_map,
-                      node_index_info);
+  MyIExecutionFrame f(*k.a, feed_mlvalue_idxs, feeds, {}, fetch_mlvalue_idxs, fetches, *k.ort_value_idx_map, node_index_info);
   for (auto _ : state) {
     OpKernelContext c(&f, k.kernel.get(), /*stream*/ nullptr, tp.get(), *k.test_logger);
     Status st = k.kernel->Compute(&c);
@@ -186,8 +179,7 @@ BENCHMARK(BM_GeluCompute)
     ->Arg(1572864);
 
 static void BM_ScaledTanhCompute(benchmark::State& state) {
-  RunSingleNode<contrib::ScaledTanh<float>>("ScaledTanh", kMSDomain,
-                                            {MakeAttribute("alpha", 0.8f), MakeAttribute("beta", 0.3f)}, state);
+  RunSingleNode<contrib::ScaledTanh<float>>("ScaledTanh", kMSDomain, {MakeAttribute("alpha", 0.8f), MakeAttribute("beta", 0.3f)}, state);
 }
 
 BENCHMARK(BM_ScaledTanhCompute)
@@ -201,10 +193,9 @@ BENCHMARK(BM_ScaledTanhCompute)
     ->Arg(80000);
 
 static void BM_EluCompute(benchmark::State& state) {
-  RunSingleNode<Elu<float>>("Elu", "",
-                            {
-                                MakeAttribute("alpha", 0.8f),
-                            },
+  RunSingleNode<Elu<float>>("Elu", "", {
+                                           MakeAttribute("alpha", 0.8f),
+                                       },
                             state);
 }
 
@@ -222,8 +213,7 @@ BENCHMARK(BM_EluCompute)
     ->Arg(80000);
 
 static void BM_HardSigmoidCompute(benchmark::State& state) {
-  RunSingleNode<HardSigmoid<float>>("HardSigmoid", "", {MakeAttribute("alpha", 0.2f), MakeAttribute("beta", 0.5f)},
-                                    state, 0.1f, 0.6f);
+  RunSingleNode<HardSigmoid<float>>("HardSigmoid", "", {MakeAttribute("alpha", 0.2f), MakeAttribute("beta", 0.5f)}, state, 0.1f, 0.6f);
 }
 
 BENCHMARK(BM_HardSigmoidCompute)

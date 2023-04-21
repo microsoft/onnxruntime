@@ -18,11 +18,13 @@ Status SetEnvironmentVar(const std::string& name, const optional<std::string>& v
   if (value.has_value()) {
     ORT_RETURN_IF_NOT(
         setenv(name.c_str(), value->c_str(), 1) == 0,
-        "setenv() failed: ", errno);
+        "setenv() failed: ",
+        errno);
   } else {
     ORT_RETURN_IF_NOT(
         unsetenv(name.c_str()) == 0,
-        "unsetenv() failed: ", errno);
+        "unsetenv() failed: ",
+        errno);
   }
   return Status::OK();
 }
@@ -36,7 +38,8 @@ Status GetEnvironmentVar(const std::string& name, optional<std::string>& value) 
 Status SetEnvironmentVar(const std::string& name, const optional<std::string>& value) {
   ORT_RETURN_IF_NOT(
       SetEnvironmentVariableA(name.c_str(), value.has_value() ? value.value().c_str() : nullptr) != 0,
-      "SetEnvironmentVariableA() failed: ", GetLastError());
+      "SetEnvironmentVariableA() failed: ",
+      GetLastError());
   return Status::OK();
 }
 
@@ -85,8 +88,7 @@ EnvVarMap GetEnvironmentVars(const std::vector<std::string>& env_var_names) {
 ScopedEnvironmentVariables::ScopedEnvironmentVariables(const EnvVarMap& new_env_vars) {
   std::vector<std::string> new_env_var_names{};
   std::transform(
-      new_env_vars.begin(), new_env_vars.end(), std::back_inserter(new_env_var_names),
-      [](const EnvVarMap::value_type& new_env_var) { return new_env_var.first; });
+      new_env_vars.begin(), new_env_vars.end(), std::back_inserter(new_env_var_names), [](const EnvVarMap::value_type& new_env_var) { return new_env_var.first; });
 
   original_environment_variables_ = GetEnvironmentVars(new_env_var_names);
 

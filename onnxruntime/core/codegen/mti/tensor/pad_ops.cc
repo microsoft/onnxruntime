@@ -60,10 +60,12 @@ tvm::Tensor Pad(const tvm::Tensor& t,
 
     if (mode == "reflect") {
       return tvm::ir::Select::make(topi::detail::Map(conds, tvm::ir::Or::make),
-                                   t(coords), t(indices));
+                                   t(coords),
+                                   t(indices));
     } else if (mode == "constant") {
       return tvm::ir::Select::make(topi::detail::Map(conds, tvm::ir::Or::make),
-                                   tvm::make_const(t->dtype, pad_value), t(indices));
+                                   tvm::make_const(t->dtype, pad_value),
+                                   t(indices));
     }
 
     // default mode is edge
@@ -94,7 +96,8 @@ tvm::Tensor Pad(const tvm::Tensor& t,
     }
 
     return tvm::ir::Select::make(topi::detail::Map(conds, tvm::ir::Or::make),
-                                 pad_value, t(indices));
+                                 pad_value,
+                                 t(indices));
   };
 
   return tvm::compute(output_shape, l, name);

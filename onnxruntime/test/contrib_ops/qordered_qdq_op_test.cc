@@ -13,9 +13,7 @@ namespace onnxruntime {
 namespace test {
 
 template <typename TSrc, typename TDst>
-static std::vector<TDst> ReorderAndTransform(const std::vector<int64_t>& shape, const std::vector<TSrc>& src,
-                                             OrderCublasLt order_from, OrderCublasLt order_to,
-                                             std::function<TDst(TSrc)> transform) {
+static std::vector<TDst> ReorderAndTransform(const std::vector<int64_t>& shape, const std::vector<TSrc>& src, OrderCublasLt order_from, OrderCublasLt order_to, std::function<TDst(TSrc)> transform) {
   int64_t cols = 0, rows = 0, batch = 0;
   BatchRowColFromShape(shape, batch, rows, cols);
 
@@ -43,27 +41,22 @@ static std::vector<TDst> ReorderAndTransform(const std::vector<int64_t>& shape, 
 }
 
 template <typename T>
-static std::vector<int8_t> QuantizeTransform(std::vector<int64_t> const& shape, float scale,
-                                             const std::vector<T>& src, OrderCublasLt order) {
-  return ReorderAndTransform<T, int8_t>(shape, src, ORDER_ROW, order,
-                                        [scale](T source_value) -> int8_t {
-                                          float v = (float)source_value / scale;
-                                          v = std::max(-128.0f, v);
-                                          v = std::min(127.0f, v);
-                                          return static_cast<int8_t>(std::nearbyintf(v));
-                                        });
+static std::vector<int8_t> QuantizeTransform(std::vector<int64_t> const& shape, float scale, const std::vector<T>& src, OrderCublasLt order) {
+  return ReorderAndTransform<T, int8_t>(shape, src, ORDER_ROW, order, [scale](T source_value) -> int8_t {
+    float v = (float)source_value / scale;
+    v = std::max(-128.0f, v);
+    v = std::min(127.0f, v);
+    return static_cast<int8_t>(std::nearbyintf(v));
+  });
 }
 
 template <typename T>
-static std::vector<T> DequantizeTransform(std::vector<int64_t> const& shape, float scale,
-                                          const std::vector<int8_t>& src, OrderCublasLt order) {
-  return ReorderAndTransform<int8_t, T>(shape, src, order, ORDER_ROW,
-                                        [scale](int8_t source_value) -> T { return T(scale * float(source_value)); });
+static std::vector<T> DequantizeTransform(std::vector<int64_t> const& shape, float scale, const std::vector<int8_t>& src, OrderCublasLt order) {
+  return ReorderAndTransform<int8_t, T>(shape, src, order, ORDER_ROW, [scale](int8_t source_value) -> T { return T(scale * float(source_value)); });
 }
 
 template <typename T>
-static std::vector<T> Reorder(std::vector<int64_t> const& shape, const std::vector<T>& src,
-                              OrderCublasLt order_from, OrderCublasLt order_to) {
+static std::vector<T> Reorder(std::vector<int64_t> const& shape, const std::vector<T>& src, OrderCublasLt order_from, OrderCublasLt order_to) {
   return ReorderAndTransform<T, T>(shape, src, order_from, order_to, [](T v) -> T { return v; });
 }
 

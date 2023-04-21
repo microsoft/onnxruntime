@@ -91,7 +91,8 @@ Status MemoryOptimizer::ParseConfigFromString(const std::string& enable_memory_o
                         subgraph_string_representation);
 
       ORT_RETURN_IF_NOT(requested_apply_count == -1 || requested_apply_count >= 0,
-                        "Invalid requested_apply_count specified for subgraph: ", requested_apply_count);
+                        "Invalid requested_apply_count specified for subgraph: ",
+                        requested_apply_count);
 
       // At this point, subgraph_string_representation is a pattern graph string representation.
       pattern_subgraph_to_user_optimizer_config_map_[subgraph_string_representation] =
@@ -101,7 +102,8 @@ Status MemoryOptimizer::ParseConfigFromString(const std::string& enable_memory_o
 
   int probe_level = ParseIntValueFromString(level);
   ORT_RETURN_IF_NOT(probe_level < static_cast<int>(ProbeLevel::LevelMax) && probe_level >= 0,
-                    "Invalid probe level specified: ", level);
+                    "Invalid probe level specified: ",
+                    level);
   recompute_probe_level_ = static_cast<ProbeLevel>(probe_level);
 
   return Status::OK();
@@ -263,8 +265,7 @@ bool MemoryOptimizer::ModifyGraph(Graph& graph,
 
           // Add new edge connecting the input with the output nodes directly.
           // This also updates the destination node's input node args
-          graph.AddEdge(replacement_node_ptr->Index(), output_edge.dst_node, static_cast<int>(output_index),
-                        output_edge.dst_arg_index);
+          graph.AddEdge(replacement_node_ptr->Index(), output_edge.dst_node, static_cast<int>(output_index), output_edge.dst_arg_index);
         }
       }
     }
@@ -281,16 +282,14 @@ Status MemoryOptimizer::ApplyImpl(Graph& graph, bool& modified, int /*graph_leve
   InlinedHashMap<std::string, std::pair<bool, bool>> fw_op_output_arg_used_map;
   InlinedHashMap<NodeIndex, size_t> node_index_to_its_order_in_topological_sort_map;
   int64_t boundary_op_order_in_topological_sort =
-      PrepareForTransformation(graph, fw_op_output_arg_used_map,
-                               node_index_to_its_order_in_topological_sort_map);
+      PrepareForTransformation(graph, fw_op_output_arg_used_map, node_index_to_its_order_in_topological_sort_map);
   if (boundary_op_order_in_topological_sort < 0) {
     LOGS(logger, VERBOSE) << "No boundary op found. Skip memory optimization.";
     return Status::OK();
   }
 
   InlinedHashMap<const Node*, InlinedVector<size_t>> candidate_output_args_map;
-  ORT_RETURN_IF_ERROR(GetStashedActivationCandidates(graph, fw_op_output_arg_used_map, candidate_output_args_map,
-                                                     logger));
+  ORT_RETURN_IF_ERROR(GetStashedActivationCandidates(graph, fw_op_output_arg_used_map, candidate_output_args_map, logger));
 
   SubGraphStores recompute_subgraph_stores;
   SubGraphStores recompute_with_compromise_subgraph_stores;
@@ -309,21 +308,14 @@ Status MemoryOptimizer::ApplyImpl(Graph& graph, bool& modified, int /*graph_leve
     }
 
     bool can_compromise_stashed_activation = false;
-    CheckNodeForRecompute(*p_node, fw_op_output_arg_used_map,
-                          node_index_to_its_order_in_topological_sort_map,
-                          candidate_output_args_map,
-                          recompute_subgraph_stores, logger, false,
-                          can_compromise_stashed_activation);
+    CheckNodeForRecompute(*p_node, fw_op_output_arg_used_map, node_index_to_its_order_in_topological_sort_map, candidate_output_args_map, recompute_subgraph_stores, logger, false, can_compromise_stashed_activation);
 
     if (can_compromise_stashed_activation) {
       LOGS(logger, VERBOSE) << "Searching Node " << p_node->Name() << "(" << p_node->OpType()
                             << ") for compromised recompute";
       // If the subgraph recompute can save memory by comprising the assumption - recompute graphs' input must exist
       // during backward pass, then we can try to compromise the assumption.
-      CheckNodeForRecompute(*p_node, fw_op_output_arg_used_map, node_index_to_its_order_in_topological_sort_map,
-                            candidate_output_args_map,
-                            recompute_with_compromise_subgraph_stores, logger, true,
-                            can_compromise_stashed_activation);
+      CheckNodeForRecompute(*p_node, fw_op_output_arg_used_map, node_index_to_its_order_in_topological_sort_map, candidate_output_args_map, recompute_with_compromise_subgraph_stores, logger, true, can_compromise_stashed_activation);
     }
   }
 
@@ -340,18 +332,12 @@ Status MemoryOptimizer::ApplyImpl(Graph& graph, bool& modified, int /*graph_leve
 
     bool has_been_modified = false;
     if (recompute_subgraph_stores.ContainsSubGraphInstance(p_node)) {
-      has_been_modified = ModifyGraph(graph, node_index_to_its_order_in_topological_sort_map,
-                                      candidate_output_args_map, logger,
-                                      boundary_op_order_in_topological_sort,
-                                      recompute_subgraph_stores, p_node);
+      has_been_modified = ModifyGraph(graph, node_index_to_its_order_in_topological_sort_map, candidate_output_args_map, logger, boundary_op_order_in_topological_sort, recompute_subgraph_stores, p_node);
     }
 
     // If there are other recompute plan for this node, we skip them because the graph is already modified.
     if (!has_been_modified && recompute_with_compromise_subgraph_stores.ContainsSubGraphInstance(p_node)) {
-      has_been_modified = ModifyGraph(graph, node_index_to_its_order_in_topological_sort_map,
-                                      candidate_output_args_map, logger,
-                                      boundary_op_order_in_topological_sort,
-                                      recompute_with_compromise_subgraph_stores, p_node);
+      has_been_modified = ModifyGraph(graph, node_index_to_its_order_in_topological_sort_map, candidate_output_args_map, logger, boundary_op_order_in_topological_sort, recompute_with_compromise_subgraph_stores, p_node);
     }
 
     modified = modified || has_been_modified;
@@ -642,11 +628,10 @@ Status MemoryOptimizer::SelectRecomputeSubgraph(const Node& entry_node,
     nodes.clear();
   } else {
     // Re-order the nodes in topological order.
-    std::sort(nodes.begin(), nodes.end(),
-              [&node_index_to_its_order_in_topological_sort_map](const Node*& lhs, const Node*& rhs) {
-                return node_index_to_its_order_in_topological_sort_map.at(lhs->Index()) <
-                       node_index_to_its_order_in_topological_sort_map.at(rhs->Index());
-              });
+    std::sort(nodes.begin(), nodes.end(), [&node_index_to_its_order_in_topological_sort_map](const Node*& lhs, const Node*& rhs) {
+      return node_index_to_its_order_in_topological_sort_map.at(lhs->Index()) <
+             node_index_to_its_order_in_topological_sort_map.at(rhs->Index());
+    });
   }
   return Status::OK();
 }
@@ -667,12 +652,7 @@ void MemoryOptimizer::CheckNodeForRecompute(const Node& node,
   }
 
   InlinedVector<const Node*> nodes_in_topological_order;
-  ORT_ENFORCE(SelectRecomputeSubgraph(node, candidate_output_args_map.at(&node),
-                                      fw_op_output_arg_used_map,
-                                      node_index_to_its_order_in_topological_sort_map,
-                                      nodes_in_topological_order, logger,
-                                      compromise_stashed_activation,
-                                      can_compromise_stashed_activation)
+  ORT_ENFORCE(SelectRecomputeSubgraph(node, candidate_output_args_map.at(&node), fw_op_output_arg_used_map, node_index_to_its_order_in_topological_sort_map, nodes_in_topological_order, logger, compromise_stashed_activation, can_compromise_stashed_activation)
                   .IsOK());
   if (nodes_in_topological_order.size() == 0) {
     return;
@@ -771,8 +751,7 @@ Status MemoryOptimizer::CreateRecomputeGraph(Graph& graph,
         continue;
       }
       int producer_output_index = optimizer_utils::IndexOfNodeOutput(*producer_node, *input_arg);
-      graph.AddEdge(producer_node->Index(), recompute_node.Index(), static_cast<int>(producer_output_index),
-                    static_cast<int>(j));
+      graph.AddEdge(producer_node->Index(), recompute_node.Index(), static_cast<int>(producer_output_index), static_cast<int>(j));
 
       graph.AddConsumerNode(input_arg->Name(), &recompute_node);
     }

@@ -59,9 +59,7 @@ std::vector<BitmaskElementType> MasksToBitmasks(size_t size, const bool* mask_da
   return result;
 }
 
-void RunBiasDropoutTest(const bool use_mask, const std::vector<int64_t>& input_shape, float ratio = -1.0f,
-                        TrainingMode training_mode = TrainingTrue, bool use_float16_ratio = false,
-                        bool has_residual = true, bool has_same_shape_bias = false) {
+void RunBiasDropoutTest(const bool use_mask, const std::vector<int64_t>& input_shape, float ratio = -1.0f, TrainingMode training_mode = TrainingTrue, bool use_float16_ratio = false, bool has_residual = true, bool has_same_shape_bias = false) {
   OpTester t{"BiasDropout", 1, kMSDomain};
   OpTester t_bitmask("BitmaskBiasDropout", 1, kMSDomain);
   constexpr int64_t seed = 42;
@@ -148,7 +146,8 @@ void RunBiasDropoutTest(const bool use_mask, const std::vector<int64_t>& input_s
       ASSERT_EQ(static_cast<unsigned int>(num_dropped_values), static_cast<size_t>(output_span.size())) << "provider: " << provider_type;
     } else {
       ASSERT_NEAR(static_cast<float>(num_dropped_values) / static_cast<size_t>(output_span.size()),
-                  training_mode == TrainingTrue ? ratio : 0.0f, 0.1f)
+                  training_mode == TrainingTrue ? ratio : 0.0f,
+                  0.1f)
           << "provider: " << provider_type;
 
       for (decltype(output_span.size()) i = 0; i < output_span.size(); ++i) {

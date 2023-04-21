@@ -6,8 +6,7 @@
 namespace onnxruntime {
 
 // This function must exist due to the C++ base class constructor needing this to be defined for the vtable, but it is never called.
-Status Einsum::DeviceCompute(OpKernelContext* /*context*/, const std::vector<const Tensor*>& /*inputs*/,
-                             AllocatorPtr /*allocator*/, concurrency::ThreadPool* /*tp*/) const {
+Status Einsum::DeviceCompute(OpKernelContext* /*context*/, const std::vector<const Tensor*>& /*inputs*/, AllocatorPtr /*allocator*/, concurrency::ThreadPool* /*tp*/) const {
   assert(false);
   return Status::OK();
 }
@@ -26,8 +25,7 @@ Status Einsum::Compute(OpKernelContext* context) const {
   return onnxruntime::Einsum::Compute(context);
 }
 
-Status Einsum::DeviceCompute(OpKernelContext* context, const std::vector<const Tensor*>& inputs,
-                             AllocatorPtr allocator, concurrency::ThreadPool* tp) const {
+Status Einsum::DeviceCompute(OpKernelContext* context, const std::vector<const Tensor*>& inputs, AllocatorPtr allocator, concurrency::ThreadPool* tp) const {
   auto* stream = context->GetComputeStream();
   ORT_RETURN_IF(!stream, "stream is null");
   auto* rocm_stream = static_cast<RocmStream*>(stream);
@@ -35,8 +33,7 @@ Status Einsum::DeviceCompute(OpKernelContext* context, const std::vector<const T
   EinsumOp::EinsumRocmAssets einsum_rocm_assets(rocblas_handle, rocm_ep_, stream);
 
   // EinsumComputePreprocessor section -
-  auto einsum_compute_preprocessor = EinsumComputePreprocessor::Create(*einsum_equation_preprocessor_, inputs, allocator,
-                                                                       &einsum_rocm_assets);
+  auto einsum_compute_preprocessor = EinsumComputePreprocessor::Create(*einsum_equation_preprocessor_, inputs, allocator, &einsum_rocm_assets);
 
   einsum_compute_preprocessor->SetDeviceHelpers(EinsumOp::DeviceHelpers::RocmDeviceHelpers::Diagonal,
                                                 EinsumOp::DeviceHelpers::RocmDeviceHelpers::Transpose);
@@ -45,9 +42,7 @@ Status Einsum::DeviceCompute(OpKernelContext* context, const std::vector<const T
 
   // EinsumComputeProcessor section -
   if (inputs[0]->IsDataType<float>()) {
-    auto einsum_compute_processor = EinsumTypedComputeProcessor<float>::Create(context, allocator, tp,
-                                                                               *einsum_compute_preprocessor,
-                                                                               &einsum_rocm_assets);
+    auto einsum_compute_processor = EinsumTypedComputeProcessor<float>::Create(context, allocator, tp, *einsum_compute_preprocessor, &einsum_rocm_assets);
 
     einsum_compute_processor->SetDeviceHelpers(EinsumOp::DeviceHelpers::RocmDeviceHelpers::Transpose,
                                                EinsumOp::DeviceHelpers::RocmDeviceHelpers::MatMul<float>,
@@ -55,9 +50,7 @@ Status Einsum::DeviceCompute(OpKernelContext* context, const std::vector<const T
                                                EinsumOp::DeviceHelpers::RocmDeviceHelpers::DataCopy);
     return einsum_compute_processor->Run();
   } else if (inputs[0]->IsDataType<MLFloat16>()) {
-    auto einsum_compute_processor = EinsumTypedComputeProcessor<MLFloat16>::Create(context, allocator, tp,
-                                                                                   *einsum_compute_preprocessor,
-                                                                                   &einsum_rocm_assets);
+    auto einsum_compute_processor = EinsumTypedComputeProcessor<MLFloat16>::Create(context, allocator, tp, *einsum_compute_preprocessor, &einsum_rocm_assets);
 
     einsum_compute_processor->SetDeviceHelpers(EinsumOp::DeviceHelpers::RocmDeviceHelpers::Transpose,
                                                EinsumOp::DeviceHelpers::RocmDeviceHelpers::MatMul<MLFloat16>,
@@ -66,9 +59,7 @@ Status Einsum::DeviceCompute(OpKernelContext* context, const std::vector<const T
     return einsum_compute_processor->Run();
   }
 
-  return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
-                         "Einsum op: An implementation for the input type ",
-                         inputs[0]->DataType(), " is not supported yet");
+  return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "Einsum op: An implementation for the input type ", inputs[0]->DataType(), " is not supported yet");
 }
 
 }  // namespace rocm

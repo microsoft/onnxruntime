@@ -76,8 +76,7 @@ class ReduceOpBuilder : public BaseOpBuilder {
   using AxesOnnxIntType = int64_t;
   using AxesQnnIntType = uint32_t;
 
-  Status GetAxesSet(QnnModelWrapper& qnn_model_wrapper, const NodeUnit& node_unit,
-                    InlinedHashSet<AxesOnnxIntType>& axes_set) const;
+  Status GetAxesSet(QnnModelWrapper& qnn_model_wrapper, const NodeUnit& node_unit, InlinedHashSet<AxesOnnxIntType>& axes_set) const;
 
   // Maps an operator type to the opset in which "axes" became an input instead of an attribute.
   static const std::array<int, REDUCE_OP_TYPE_COUNT> opset_with_axes_as_input;
@@ -91,8 +90,7 @@ const std::array<int, REDUCE_OP_TYPE_COUNT> ReduceOpBuilder::opset_with_axes_as_
     13   // ReduceSum
 };
 
-Status ReduceOpBuilder::GetAxesSet(QnnModelWrapper& qnn_model_wrapper, const NodeUnit& node_unit,
-                                   InlinedHashSet<AxesOnnxIntType>& axes_set) const {
+Status ReduceOpBuilder::GetAxesSet(QnnModelWrapper& qnn_model_wrapper, const NodeUnit& node_unit, InlinedHashSet<AxesOnnxIntType>& axes_set) const {
   ReduceOpType reduce_op_type = GetReduceOpType(node_unit.OpType());
   if (reduce_op_type == ReduceOpType::REDUCE_OP_TYPE_UNKNOWN) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QNN EP: Unknown reduce operator ", node_unit.OpType());
@@ -120,14 +118,12 @@ Status ReduceOpBuilder::GetAxesSet(QnnModelWrapper& qnn_model_wrapper, const Nod
                       "Cannot get shape of axes input");
 
     if (axes_shape.size() != 1) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                             "QNN EP: \"axes\" input must have shape [M] where 0 < M <= rank(input[0])");
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QNN EP: \"axes\" input must have shape [M] where 0 < M <= rank(input[0])");
     }
 
     bool noop_with_empty_axes = static_cast<bool>(node_helper.Get("noop_with_empty_axes", (int64_t)0));
     if (axes_shape[0] == 0 && noop_with_empty_axes) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                             "QNN EP: does not support NoOp for reduction operators with empty axes.");
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QNN EP: does not support NoOp for reduction operators with empty axes.");
     }
 
     // Empty axes means to use default axes (when noop_with_empty_axes is 0).
@@ -172,8 +168,7 @@ Status ReduceOpBuilder::GetAxesSet(QnnModelWrapper& qnn_model_wrapper, const Nod
   }
 
   if (axes_set.size() > input_rank) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                           "QNN EP: \"axes\" input must have shape [M] where 0 < M <= rank(input[0])");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QNN EP: \"axes\" input must have shape [M] where 0 < M <= rank(input[0])");
   }
 
   return Status::OK();
@@ -232,11 +227,9 @@ Status ReduceOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_w
   std::vector<AxesQnnIntType> axes_shape{SafeInt<AxesQnnIntType>(num_axes)};
   std::vector<AxesQnnIntType> axes_data;
   axes_data.resize(num_axes);
-  std::transform(axes_set.begin(), axes_set.end(), axes_data.begin(),
-                 [](AxesOnnxIntType item) { return SafeInt<AxesQnnIntType>(item); });
+  std::transform(axes_set.begin(), axes_set.end(), axes_data.begin(), [](AxesOnnxIntType item) { return SafeInt<AxesQnnIntType>(item); });
 
-  QnnParamWrapper axes_param(node_unit.Index(), node_unit.Name(), qnn_def::axes,
-                             std::move(axes_shape), std::move(axes_data));
+  QnnParamWrapper axes_param(node_unit.Index(), node_unit.Name(), qnn_def::axes, std::move(axes_shape), std::move(axes_data));
   param_tensor_names.push_back(axes_param.GetParamTensorName());
   qnn_model_wrapper.AddParamWrapper(std::move(axes_param));
 
@@ -251,10 +244,7 @@ Status ReduceOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_w
   param_tensor_names.push_back(keep_dims_param.GetParamTensorName());
   qnn_model_wrapper.AddParamWrapper(std::move(keep_dims_param));
 
-  ORT_RETURN_IF_ERROR(ProcessOutputs(qnn_model_wrapper, node_unit,
-                                     std::move(input_names),
-                                     std::move(param_tensor_names),
-                                     logger, is_quantized_model, do_op_validation));
+  ORT_RETURN_IF_ERROR(ProcessOutputs(qnn_model_wrapper, node_unit, std::move(input_names), std::move(param_tensor_names), logger, is_quantized_model, do_op_validation));
 
   return Status::OK();
 }

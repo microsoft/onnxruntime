@@ -11,8 +11,7 @@ namespace onnxruntime::lstm {
 template <typename T>
 class LSTMGradImpl {
  public:
-  LSTMGradImpl(int sequence_length, int batch_size, int hidden_size, int input_size,
-               concurrency::ThreadPool* thread_pool, AllocatorPtr allocator);
+  LSTMGradImpl(int sequence_length, int batch_size, int hidden_size, int input_size, concurrency::ThreadPool* thread_pool, AllocatorPtr allocator);
 
   void ComputeGradient(const LSTMGradInputs<T>& inputs, LSTMGradOutputs<T>& outputs);
 

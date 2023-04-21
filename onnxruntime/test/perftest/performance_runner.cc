@@ -270,9 +270,7 @@ static std::unique_ptr<TestModelInfo> CreateModelInfo(const PerformanceTestConfi
   ORT_NOT_IMPLEMENTED(ToUTF8String(performance_test_config_.backend), " is not supported");
 }
 
-static std::unique_ptr<TestSession> CreateSession(Ort::Env& env, std::random_device& rd,
-                                                  const PerformanceTestConfig& performance_test_config_,
-                                                  const TestModelInfo& test_model_info) {
+static std::unique_ptr<TestSession> CreateSession(Ort::Env& env, std::random_device& rd, const PerformanceTestConfig& performance_test_config_, const TestModelInfo& test_model_info) {
   if (CompareCString(performance_test_config_.backend.c_str(), ORT_TSTR("ort")) == 0) {
     return std::make_unique<OnnxRuntimeTestSession>(env, rd, performance_test_config_, test_model_info);
   }

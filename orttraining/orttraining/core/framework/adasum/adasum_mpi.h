@@ -23,15 +23,18 @@ class AdasumMPI : public AdasumInterface<MPI_Comm> {
                             int64_t input_buffer_bytes,
                             void* output_data_buffer,
                             int64_t output_buffer_bytes,
-                            MLDataType data_type, int dst_src_rank,
-                            int tag, MPI_Comm communicator) override;
+                            MLDataType data_type,
+                            int dst_src_rank,
+                            int tag,
+                            MPI_Comm communicator) override;
 
   int GetRankWithComm(MPI_Comm local_comm) override;
 
   int GetSizeWithComm(MPI_Comm comm) override;
 
   void SumAllreduceWithComm(void* data,
-                            int num_elements, MLDataType data_type,
+                            int num_elements,
+                            MLDataType data_type,
                             MPI_Comm comm) override;
 
  private:

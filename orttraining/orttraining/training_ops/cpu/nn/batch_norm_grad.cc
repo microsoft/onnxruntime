@@ -72,12 +72,7 @@ Status BatchNormalizationGrad<T>::Compute(OpKernelContext* ctx) const {
 }
 
 ONNX_OPERATOR_KERNEL_EX(
-    BatchNormalizationGrad, kMSDomain, 1, kCpuExecutionProvider,
-    KernelDefBuilder()
-        .TypeConstraint("T", DataTypeImpl::GetTensorType<float>())
-        .TypeConstraint("T1", DataTypeImpl::GetTensorType<float>())
-        .TypeConstraint("T2", DataTypeImpl::GetTensorType<float>()),
-    BatchNormalizationGrad<float>);
+    BatchNormalizationGrad, kMSDomain, 1, kCpuExecutionProvider, KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()).TypeConstraint("T1", DataTypeImpl::GetTensorType<float>()).TypeConstraint("T2", DataTypeImpl::GetTensorType<float>()), BatchNormalizationGrad<float>);
 
 }  // namespace contrib
 }  // namespace onnxruntime

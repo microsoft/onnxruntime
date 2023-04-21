@@ -37,7 +37,8 @@ class OrtValueTensorData {
   OrtValue GetOrtValue() {
     return OrtValue(
         new Tensor(DataTypeImpl::GetType<float>(), shape_, data_.data(), cpu_alloc_info),
-        DataTypeImpl::GetType<Tensor>(), DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
+        DataTypeImpl::GetType<Tensor>(),
+        DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
   }
 
  private:
@@ -127,9 +128,7 @@ TEST(CheckpointingTest, SaveAndLoad) {
 
   std::unordered_map<std::string, ONNX_NAMESPACE::TensorProto> name_to_loaded_tensor_proto{};
   std::transform(
-      loaded_tensor_protos.begin(), loaded_tensor_protos.end(),
-      std::inserter(name_to_loaded_tensor_proto, name_to_loaded_tensor_proto.end()),
-      [](const ONNX_NAMESPACE::TensorProto& tensor_proto) {
+      loaded_tensor_protos.begin(), loaded_tensor_protos.end(), std::inserter(name_to_loaded_tensor_proto, name_to_loaded_tensor_proto.end()), [](const ONNX_NAMESPACE::TensorProto& tensor_proto) {
         return std::make_pair(tensor_proto.name(), tensor_proto);
       });
 

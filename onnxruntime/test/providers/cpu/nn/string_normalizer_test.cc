@@ -19,10 +19,7 @@ const std::string test_locale("en-US");
 const std::string test_locale("en_US.UTF-8");
 #endif
 
-void InitTestAttr(OpTester& test, const std::string& case_change_action,
-                  bool is_case_sensitive,
-                  const std::vector<std::string>& stopwords,
-                  const std::string& locale) {
+void InitTestAttr(OpTester& test, const std::string& case_change_action, bool is_case_sensitive, const std::vector<std::string>& stopwords, const std::string& locale) {
   if (!case_change_action.empty()) {
     test.AddAttribute("case_change_action", case_change_action);
   }
@@ -46,8 +43,7 @@ TEST(ContribOpTest, StringNormalizerTest) {
     OpTester test("StringNormalizer", opset_ver, domain);
     InitTestAttr(test, "", true, {}, test_locale);
     std::vector<int64_t> dims{4};
-    std::vector<std::string> input = {std::string("monday"), std::string("tuesday"),
-                                      std::string("wednesday"), std::string("thursday")};
+    std::vector<std::string> input = {std::string("monday"), std::string("tuesday"), std::string("wednesday"), std::string("thursday")};
     test.AddInput<std::string>("T", dims, input);
     std::vector<std::string> output(input);  // do the same for now
     test.AddOutput<std::string>("Y", dims, output);
@@ -60,12 +56,12 @@ TEST(ContribOpTest, StringNormalizerTest) {
     OpTester test("StringNormalizer", opset_ver, domain);
     InitTestAttr(test, "NONE", true, {"monday"}, test_locale);
     std::vector<int64_t> dims{4};
-    std::vector<std::string> input = {std::string("monday"), std::string("tuesday"),
-                                      std::string("wednesday"), std::string("thursday")};
+    std::vector<std::string> input = {std::string("monday"), std::string("tuesday"), std::string("wednesday"), std::string("thursday")};
     test.AddInput<std::string>("T", dims, input);
 
     std::vector<std::string> output = {std::string("tuesday"),
-                                       std::string("wednesday"), std::string("thursday")};
+                                       std::string("wednesday"),
+                                       std::string("thursday")};
     test.AddOutput<std::string>("Y", {3}, output);
     test.Run(OpTester::ExpectResult::kExpectSuccess);
   }
@@ -76,12 +72,12 @@ TEST(ContribOpTest, StringNormalizerTest) {
     OpTester test("StringNormalizer", opset_ver, domain);
     InitTestAttr(test, "LOWER", true, {"monday"}, test_locale);
     std::vector<int64_t> dims{4};
-    std::vector<std::string> input = {std::string("monday"), std::string("tuesday"),
-                                      std::string("wednesday"), std::string("thursday")};
+    std::vector<std::string> input = {std::string("monday"), std::string("tuesday"), std::string("wednesday"), std::string("thursday")};
     test.AddInput<std::string>("T", dims, input);
 
     std::vector<std::string> output = {std::string("tuesday"),
-                                       std::string("wednesday"), std::string("thursday")};
+                                       std::string("wednesday"),
+                                       std::string("thursday")};
     test.AddOutput<std::string>("Y", {3}, output);
     test.Run(OpTester::ExpectResult::kExpectSuccess);
   }
@@ -92,12 +88,12 @@ TEST(ContribOpTest, StringNormalizerTest) {
     OpTester test("StringNormalizer", opset_ver, domain);
     InitTestAttr(test, "UPPER", true, {"monday"}, test_locale);
     std::vector<int64_t> dims{4};
-    std::vector<std::string> input = {std::string("monday"), std::string("tuesday"),
-                                      std::string("wednesday"), std::string("thursday")};
+    std::vector<std::string> input = {std::string("monday"), std::string("tuesday"), std::string("wednesday"), std::string("thursday")};
     test.AddInput<std::string>("T", dims, input);
 
     std::vector<std::string> output = {std::string("TUESDAY"),
-                                       std::string("WEDNESDAY"), std::string("THURSDAY")};
+                                       std::string("WEDNESDAY"),
+                                       std::string("THURSDAY")};
     test.AddOutput<std::string>("Y", {3}, output);
     test.Run(OpTester::ExpectResult::kExpectSuccess);
   }

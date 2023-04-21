@@ -13,8 +13,7 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     12,
     KernelDefBuilder()
         .TypeConstraint("T", DataTypeImpl::AllTensorTypes())
-        .TypeConstraint("Tind", std::vector<MLDataType>{DataTypeImpl::GetTensorType<int32_t>(),
-                                                        DataTypeImpl::GetTensorType<int64_t>()}),
+        .TypeConstraint("Tind", std::vector<MLDataType>{DataTypeImpl::GetTensorType<int32_t>(), DataTypeImpl::GetTensorType<int64_t>()}),
     GatherElements);
 
 ONNX_CPU_OPERATOR_KERNEL(
@@ -22,8 +21,7 @@ ONNX_CPU_OPERATOR_KERNEL(
     13,
     KernelDefBuilder()
         .TypeConstraint("T", DataTypeImpl::AllTensorTypes())
-        .TypeConstraint("Tind", std::vector<MLDataType>{DataTypeImpl::GetTensorType<int32_t>(),
-                                                        DataTypeImpl::GetTensorType<int64_t>()}),
+        .TypeConstraint("Tind", std::vector<MLDataType>{DataTypeImpl::GetTensorType<int32_t>(), DataTypeImpl::GetTensorType<int64_t>()}),
     GatherElements);
 
 // Compute the number of 'inner_dimension' elements
@@ -44,8 +42,7 @@ static int64_t CalculateInnerDimCount(const TensorShape& dims) {
 // The calculation is fairly straightforward, starting with the second to innermost axis we muldiv the inner_dim
 // by the indices shape size. We also skip this calculation on the skip_axis as that's handled elsewhere.
 //
-static inline size_t CalculateOffset(size_t inner_dim, const TensorPitches& input_shape_pitches, size_t skip_axis,
-                                     const TensorShape& indices_shape) {
+static inline size_t CalculateOffset(size_t inner_dim, const TensorPitches& input_shape_pitches, size_t skip_axis, const TensorShape& indices_shape) {
   // in this context, rank can never be < 1, so saving checking overhead
   size_t rank = input_shape_pitches.size();
 
@@ -90,8 +87,7 @@ FORCEINLINE int64_t GetIndex(size_t i, const T* indices, int64_t axis_size) {
 #endif
 
 template <typename Tin>
-static void core_impl(const Tensor* input_tensor, const Tensor* indices_tensor, Tensor* output_tensor, int64_t axis,
-                      concurrency::ThreadPool* ttp) {
+static void core_impl(const Tensor* input_tensor, const Tensor* indices_tensor, Tensor* output_tensor, int64_t axis, concurrency::ThreadPool* ttp) {
   // Get input & output pointers
   const int8_t* input_data = reinterpret_cast<const int8_t*>(input_tensor->DataRaw());
   int8_t* output_data = reinterpret_cast<int8_t*>(output_tensor->MutableDataRaw());
@@ -165,13 +161,11 @@ Status GatherElements::ValidateInputShapes(const TensorShape& input_data_shape,
 
   // GatherElements cannot operate on scalars
   if (input_data_rank < 1)
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "GatherElements op: Cannot operate on scalar input");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "GatherElements op: Cannot operate on scalar input");
 
   // The ranks of the inputs must be the same
   if (input_data_rank != indices_rank)
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "GatherElements op: Rank of input 'data' needs to be equal to rank of input 'indices'");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "GatherElements op: Rank of input 'data' needs to be equal to rank of input 'indices'");
 
   // Except for the axis of interest all other dim values of the 'indices' input must be within bounds
   // of the corresponding 'data' input dim value
@@ -208,8 +202,7 @@ Status GatherElements::Compute(OpKernelContext* context) const {
 
   const auto& input_data_type = input_tensor->DataType();
   if (input_data_type != output_tensor->DataType())
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "GatherElements op: Data type of input 'data' should match the data type of the output");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "GatherElements op: Data type of input 'data' should match the data type of the output");
 
   // if there are no elements in 'indices' - nothing to process
   if (indices_shape.Size() == 0)

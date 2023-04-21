@@ -48,7 +48,8 @@ static std::string GetAllocatorId(const std::string& name, const int id, const b
 }
 
 static Status RegisterAllocator(std::unordered_map<std::string, AllocatorPtr>& map,
-                                std::unique_ptr<IAllocator> allocator, size_t /*memory_limit*/,
+                                std::unique_ptr<IAllocator> allocator,
+                                size_t /*memory_limit*/,
                                 bool use_arena) {
   auto& info = allocator->Info();
   auto allocator_id = GetAllocatorId(info.name, info.id, use_arena);

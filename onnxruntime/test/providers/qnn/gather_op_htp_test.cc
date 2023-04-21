@@ -25,8 +25,7 @@ namespace test {
  * \param expected_ep_assignment How many nodes are expected to be assigned to QNN (All, Some, or None)
  */
 template <typename QuantType, typename IndicesType>
-static void RunGatherOpQDQTest(int opset, const char* test_description, bool scalar_indices = false,
-                               ExpectedEPNodeAssignment expected_ep_assignment = ExpectedEPNodeAssignment::All) {
+static void RunGatherOpQDQTest(int opset, const char* test_description, bool scalar_indices = false, ExpectedEPNodeAssignment expected_ep_assignment = ExpectedEPNodeAssignment::All) {
   ProviderOptions provider_options;
 #if defined(_WIN32)
   provider_options["backend_path"] = "QnnHtp.dll";

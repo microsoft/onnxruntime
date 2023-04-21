@@ -34,11 +34,9 @@ class BinaryOpBuilder : public BaseOpBuilder {
  private:
   int32_t GetMinSupportedNNAPIFeatureLevel(const NodeUnit& node_unit,
                                            const OpSupportCheckParams& params) const override;
-  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
-                         const OpSupportCheckParams& params) const override;
+  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit, const OpSupportCheckParams& params) const override;
   bool HasSupportedInputOutputsImpl(
-      const InitializedTensorSet& initializers, const NodeUnit& node_unit,
-      const OpSupportCheckParams& params) const override;
+      const InitializedTensorSet& initializers, const NodeUnit& node_unit, const OpSupportCheckParams& params) const override;
   int GetMinSupportedOpSet(const NodeUnit& node_unit) const override;
 
   bool IsNodeUnitTypeSupported(const NodeUnit& node_unit) const override;
@@ -95,9 +93,7 @@ Status BinaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
 
   if (is_quant_op) {
     ORT_RETURN_IF_ERROR(GetBinaryOpQuantizationScaleAndZeroPoint(
-        model_builder.GetInitializerTensors(), node_unit,
-        a_scale, b_scale, y_scale,
-        a_zero_point, b_zero_point, y_zero_point));
+        model_builder.GetInitializerTensors(), node_unit, a_scale, b_scale, y_scale, a_zero_point, b_zero_point, y_zero_point));
   }
 
   // Verify if the scale and zero point matchs from onnx input and nnapi input match
@@ -111,10 +107,7 @@ Status BinaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
     fuse_code = model_builder.FindActivation(node_unit);
   }
 
-  return AddBinaryOperator(op_code, model_builder,
-                           input1, input2,
-                           add_activation, fuse_code,
-                           output, y_scale, y_zero_point);
+  return AddBinaryOperator(op_code, model_builder, input1, input2, add_activation, fuse_code, output, y_scale, y_zero_point);
 }
 
 // Operator support related
@@ -163,8 +156,7 @@ int BinaryOpBuilder::GetMinSupportedOpSet(const NodeUnit& node_unit) const {
 }
 
 bool BinaryOpBuilder::HasSupportedInputOutputsImpl(
-    const InitializedTensorSet& initializers, const NodeUnit& node_unit,
-    const OpSupportCheckParams& params) const {
+    const InitializedTensorSet& initializers, const NodeUnit& node_unit, const OpSupportCheckParams& params) const {
   bool is_quantized_op = IsQuantizedOp(node_unit);
   bool is_pow = node_unit.OpType() == "Pow";
   if (!is_quantized_op && !is_pow)
@@ -203,8 +195,7 @@ bool BinaryOpBuilder::HasSupportedInputOutputsImpl(
   return true;
 }
 
-bool BinaryOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /* initializers */, const NodeUnit& node_unit,
-                                        const OpSupportCheckParams& /* params */) const {
+bool BinaryOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /* initializers */, const NodeUnit& node_unit, const OpSupportCheckParams& /* params */) const {
   const auto& op_type(node_unit.OpType());
   const auto& inputs = node_unit.Inputs();
   Shape input1_shape, input2_shape;
@@ -226,17 +217,16 @@ bool BinaryOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /* initializ
 
 void CreateBinaryOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {
   CreateSharedOpBuilderImpl<BinaryOpBuilder>(
-      op_type, op_registrations,
-      {
-          "Add",
-          "Sub",
-          "Mul",
-          "Div",
-          "QLinearAdd",
-          "QLinearMul",
-          "Pow",
-          "PRelu",
-      });
+      op_type, op_registrations, {
+                                     "Add",
+                                     "Sub",
+                                     "Mul",
+                                     "Div",
+                                     "QLinearAdd",
+                                     "QLinearMul",
+                                     "Pow",
+                                     "PRelu",
+                                 });
 }
 
 }  // namespace nnapi

@@ -21,11 +21,8 @@ class AdamWOptimizer final : public OpKernel, public AdamWOptimizerBase {
   Status Compute(OpKernelContext* context) const override;
 
  private:
-  Status AdamWComputeMode0(Tensor& weight, Tensor& gradient, Tensor& momentums_1, Tensor& momentums_2, float lr,
-                           float alpha_correction,
-                           float beta_correction) const;
-  Status AdamWComputeMode1(Tensor& weight, Tensor& gradient, Tensor& momentums_1, Tensor& momentums_2, float lr,
-                           float lr_corrected) const;
+  Status AdamWComputeMode0(Tensor& weight, Tensor& gradient, Tensor& momentums_1, Tensor& momentums_2, float lr, float alpha_correction, float beta_correction) const;
+  Status AdamWComputeMode1(Tensor& weight, Tensor& gradient, Tensor& momentums_1, Tensor& momentums_2, float lr, float lr_corrected) const;
 };
 
 }  // namespace contrib

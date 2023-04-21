@@ -32,7 +32,8 @@ void ParsePropertyFromTensorProto(const ONNX_NAMESPACE::TensorProto& tensor_prot
 
 void PropertyBag::AddProperty(const ONNX_NAMESPACE::TensorProto& tensor_proto) {
   ORT_ENFORCE(named_properties_.find(tensor_proto.name()) == named_properties_.end(),
-              "Duplicated property named ", tensor_proto.name());
+              "Duplicated property named ",
+              tensor_proto.name());
 
   if (!IsSupportedDataType(tensor_proto.data_type())) {
     ORT_THROW("Failed to add property from tensorproto: float, int64_t and std::string data types supported only.");

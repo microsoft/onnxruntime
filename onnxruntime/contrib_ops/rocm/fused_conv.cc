@@ -26,10 +26,7 @@ miopenStatus_t _miopenAddTensor(
   const miopenTensorOp_t tensorOp = miopenTensorOpAdd;
   // Using miopenOpTensor to implement Add operator.
   // opnd2 = Add ( 0.0 * opnd0, alpha * opnd1 ) + beta * opnd2
-  return miopenOpTensor(handle, tensorOp,
-                        zero_scalar, cDesc, C,
-                        alpha, aDesc, A,
-                        beta, cDesc, C);
+  return miopenOpTensor(handle, tensorOp, zero_scalar, cDesc, C, alpha, aDesc, A, beta, cDesc, C);
 }
 
 }  // namespace
@@ -210,14 +207,22 @@ class FusedConv : public onnxruntime::rocm::Conv<T, false> {
                                                       Base::s_.workspace_bytes));
       if (has_b) {
         MIOPEN_RETURN_IF_ERROR(_miopenAddTensor(this->GetMiopenHandle(context),
-                                                &alpha, Base::s_.b_tensor, Base::s_.b_data,
-                                                &alpha, Base::s_.y_tensor, Base::s_.y_data,
+                                                &alpha,
+                                                Base::s_.b_tensor,
+                                                Base::s_.b_data,
+                                                &alpha,
+                                                Base::s_.y_tensor,
+                                                Base::s_.y_data,
                                                 &beta));
       }
       if (has_z) {
         MIOPEN_RETURN_IF_ERROR(_miopenAddTensor(this->GetMiopenHandle(context),
-                                                &alpha, Base::s_.z_tensor, Base::s_.z_data,
-                                                &alpha, Base::s_.y_tensor, Base::s_.y_data,
+                                                &alpha,
+                                                Base::s_.z_tensor,
+                                                Base::s_.z_data,
+                                                &alpha,
+                                                Base::s_.y_tensor,
+                                                Base::s_.y_data,
                                                 &beta));
       }
       MIOPEN_RETURN_IF_ERROR(miopenActivationForward(this->GetMiopenHandle(context),
@@ -250,8 +255,7 @@ class FusedConv : public onnxruntime::rocm::Conv<T, false> {
       activation_mode_ = miopenActivationMode_t::miopenActivationRELU;
     } else {
       return ORT_MAKE_STATUS(
-          StatusCategory::ONNXRUNTIME, StatusCode::INVALID_ARGUMENT,
-          "unsupported conv activation mode \"", activaton_mode, "\"");
+          StatusCategory::ONNXRUNTIME, StatusCode::INVALID_ARGUMENT, "unsupported conv activation mode \"", activaton_mode, "\"");
     }
     return Status::OK();
   }
@@ -381,7 +385,8 @@ class FusedConv : public onnxruntime::rocm::Conv<T, false> {
     auto status = miopenCreateOpConvForward(fusion.plan, &fusion.conv_op, Base::s_.conv_desc, Base::s_.w_desc);
     if (status == miopenStatusUnsupportedOp) {
       auto msg = MakeString("MIOpen does not support the conv fusion for node \"",
-                            node_name, "\", fallback to unfused implementation.");
+                            node_name,
+                            "\", fallback to unfused implementation.");
       LOGS_DEFAULT(WARNING) << msg;
       return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, msg);
     }

@@ -11,15 +11,11 @@ namespace contrib {
 namespace {
 
 template <typename T>
-void FakeQuantPerTensor(OpKernelContext* ctx, const int64_t num_elements, const T* input_data, T quant_scale,
-                        T quant_zero_point, int64_t quant_min, int64_t quant_max, T* fake_quantized_data,
-                        bool* quantization_mask_data) {
+void FakeQuantPerTensor(OpKernelContext* ctx, const int64_t num_elements, const T* input_data, T quant_scale, T quant_zero_point, int64_t quant_min, int64_t quant_max, T* fake_quantized_data, bool* quantization_mask_data) {
   const auto zero_point_int = static_cast<int64_t>(quant_zero_point);
   auto* tp = ctx->GetOperatorThreadPool();
   concurrency::ThreadPool::TryParallelFor(
-      tp, num_elements, /* 1 Read, 2 Writes, 4 Computes */ TensorOpCost{1.0, 2.0, 4.0},
-      [quant_scale, zero_point_int, quant_min, quant_max, &input_data, &fake_quantized_data, &quantization_mask_data](
-          std::ptrdiff_t begin, std::ptrdiff_t end) {
+      tp, num_elements, /* 1 Read, 2 Writes, 4 Computes */ TensorOpCost{1.0, 2.0, 4.0}, [quant_scale, zero_point_int, quant_min, quant_max, &input_data, &fake_quantized_data, &quantization_mask_data](std::ptrdiff_t begin, std::ptrdiff_t end) {
         for (std::ptrdiff_t index = begin; index != end; ++index) {
           size_t idx = static_cast<size_t>(index);
 
@@ -79,8 +75,7 @@ Status FakeQuant<T>::Compute(OpKernelContext* ctx) const {
 
   // Compute
   // TODO(bmeswani): Add support for FakeQuantPerChannel
-  FakeQuantPerTensor(ctx, input_tensor->Shape().Size(), input_data, *quant_scale, *quant_zero_point, quant_min_,
-                     quant_max_, fake_quantized_data, quantization_mask_data);
+  FakeQuantPerTensor(ctx, input_tensor->Shape().Size(), input_data, *quant_scale, *quant_zero_point, quant_min_, quant_max_, fake_quantized_data, quantization_mask_data);
 
   return Status::OK();
 }

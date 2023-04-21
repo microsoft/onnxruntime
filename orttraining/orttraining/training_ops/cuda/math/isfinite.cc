@@ -29,7 +29,8 @@ Status IsFiniteOp<TSrc>::ComputeInternal(OpKernelContext* context) const {
   IsFinite(
       Stream(context),
       reinterpret_cast<const CudaTSrc*>(input.Data<TSrc>()),
-      output.MutableData<bool>(), input.Shape().Size());
+      output.MutableData<bool>(),
+      input.Shape().Size());
 
   return Status::OK();
 }

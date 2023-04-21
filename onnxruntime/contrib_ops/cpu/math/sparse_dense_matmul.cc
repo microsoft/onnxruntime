@@ -49,8 +49,7 @@ struct ComputeCtx {
 
 #if !defined(__i386__) && !defined(_M_IX86) && !defined(__wasm__) && !defined(__ANDROID__)
 template <typename T>
-inline void SparseDenseMatMulImpl(const ComputeCtx& ctx, const ConstSparseMatrixMap<T>& map_A,
-                                  const ConstEigenMatrixMapRowMajor<T>& map_B, EigenMatrixMapRowMajor<T>& output_map) {
+inline void SparseDenseMatMulImpl(const ComputeCtx& ctx, const ConstSparseMatrixMap<T>& map_A, const ConstEigenMatrixMapRowMajor<T>& map_B, EigenMatrixMapRowMajor<T>& output_map) {
   if (ctx.trans_A && ctx.trans_B) {
     output_map = map_A.transpose() * map_B.transpose();
   } else if (ctx.trans_A && !ctx.trans_B) {
@@ -63,8 +62,7 @@ inline void SparseDenseMatMulImpl(const ComputeCtx& ctx, const ConstSparseMatrix
 }
 
 template <>
-inline void SparseDenseMatMulImpl<float>(const ComputeCtx& ctx, const ConstSparseMatrixMap<float>& map_A,
-                                         const ConstEigenMatrixMapRowMajor<float>& map_B, EigenMatrixMapRowMajor<float>& output_map) {
+inline void SparseDenseMatMulImpl<float>(const ComputeCtx& ctx, const ConstSparseMatrixMap<float>& map_A, const ConstEigenMatrixMapRowMajor<float>& map_B, EigenMatrixMapRowMajor<float>& output_map) {
   if (ctx.trans_A && ctx.trans_B) {
     output_map = map_A.transpose() * ctx.alpha * map_B.transpose();
   } else if (ctx.trans_A && !ctx.trans_B) {
@@ -85,10 +83,7 @@ struct SparseToDenseCsr {
     const auto& out_dims = output.Shape().GetDims();
     auto csr_view = A.AsCsr();
 
-    ConstSparseMatrixMap<T> map_A(a_dims[0], a_dims[1], A.NumValues(),
-                                  csr_view.Outer().Data<int64_t>(),
-                                  csr_view.Inner().Data<int64_t>(),
-                                  A.Values().Data<T>());
+    ConstSparseMatrixMap<T> map_A(a_dims[0], a_dims[1], A.NumValues(), csr_view.Outer().Data<int64_t>(), csr_view.Inner().Data<int64_t>(), A.Values().Data<T>());
     ConstEigenMatrixMapRowMajor<T> map_B(B.Data<T>(), b_dims[0], b_dims[1]);
     EigenMatrixMapRowMajor<T> output_map(output.MutableData<T>(), out_dims[0], out_dims[1]);
     // XXX: Consider re-writing it as a parallel loop as Eigen requires it to use OpenMP
@@ -170,8 +165,7 @@ Status SparseToDenseMatMul::Compute(OpKernelContext* ctx) const {
   const auto inner_B = (trans_b_attr_) ? b_dims[1] : b_dims[0];
   const auto outer_B = (trans_b_attr_) ? b_dims[0] : b_dims[1];
 
-  ORT_RETURN_IF_NOT(inner_A == inner_B, "Can not multiply A and B as inner dimension does not match. inner_A: ",
-                    inner_A, " vs inner_B: ", inner_B);
+  ORT_RETURN_IF_NOT(inner_A == inner_B, "Can not multiply A and B as inner dimension does not match. inner_A: ", inner_A, " vs inner_B: ", inner_B);
 
   TensorShape output_shape{outer_A, outer_B};
   auto* output = ctx->Output(0, output_shape);

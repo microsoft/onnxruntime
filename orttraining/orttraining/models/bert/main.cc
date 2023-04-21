@@ -377,8 +377,7 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params, OrtParamet
       params.lr_params.warmup_mode = warmup_mode;
       printf("Using learning rate warmup mode: %s \n", warmup_mode.c_str());
     } else {
-      return Status(ONNXRUNTIME, INVALID_ARGUMENT,
-                    "Incorrect warmup_mode: it must be one of [None|Cosine|Constant|Linear|Poly]");
+      return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Incorrect warmup_mode: it must be one of [None|Cosine|Constant|Linear|Poly]");
     }
 
     std::string optimizer_name = flags["optimizer"].as<std::string>();
@@ -526,8 +525,11 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params, OrtParamet
     ORT_RETURN_IF_NOT(
         logging::Severity::kVERBOSE <= ort_params.log_severity &&
             ort_params.log_severity <= logging::Severity::kFATAL,
-        "Log severity must be in the range [", static_cast<int>(logging::Severity::kVERBOSE),
-        ", ", static_cast<int>(logging::Severity::kFATAL), "].");
+        "Log severity must be in the range [",
+        static_cast<int>(logging::Severity::kVERBOSE),
+        ", ",
+        static_cast<int>(logging::Severity::kFATAL),
+        "].");
     ort_params.vlog_level = flags["ort_vlog_level"].as<int>();
 
     params.use_memory_efficient_gradient = flags["use_memory_efficient_gradient"].as<bool>();
@@ -754,7 +756,8 @@ void setup_training_params(BertParameters& params) {
 
 static bool GetParametersForPhase(
     size_t phase,  // counting from 0
-    const BertParameters& base_parameters, BertParameters& round_parameters) {
+    const BertParameters& base_parameters,
+    BertParameters& round_parameters) {
   // beyond phase 2
   if (phase >= 2) return false;
 

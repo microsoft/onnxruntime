@@ -74,8 +74,7 @@ Status CastOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
                                      type_proto,
                                      qnn_data_type));
 
-  QnnTensorWrapper input_tensorwrapper(input_name, tensor_type, qnn_data_type, QNN_QUANTIZE_PARAMS_INIT,
-                                       std::move(input_shape), std::move(unpacked_tensor));
+  QnnTensorWrapper input_tensorwrapper(input_name, tensor_type, qnn_data_type, QNN_QUANTIZE_PARAMS_INIT, std::move(input_shape), std::move(unpacked_tensor));
   ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(input_tensorwrapper)),
                     "Failed to add input tensor for QNN Cast node.");
   input_names.push_back(input_name);

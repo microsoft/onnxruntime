@@ -372,7 +372,9 @@ class IfOpTesterOnlyConstantNodesInConditionalBranches : public OpTester {
         auto& then_constant_node = graph_then.AddNode(
             then_branch ? "Constant_Then" : "Constant_Else",
             "Constant",
-            then_branch ? "Constant_Then" : "Constant_Else", {}, outputs);
+            then_branch ? "Constant_Then" : "Constant_Else",
+            {},
+            outputs);
 
         AttributeProto then_constant_attr_proto;
         then_constant_attr_proto.set_name("value");
@@ -448,7 +450,9 @@ class IfOpTesterWithSequencesAsOutput : public OpTester {
         ORT_IGNORE_RETURN_VALUE(graph.AddNode(
             then_branch ? "SequenceEmpty_Then" : "SequenceEmpty_Else",
             "SequenceEmpty",
-            then_branch ? "SequenceEmpty_Then" : "SequenceEmpty_Else", {}, outputs));
+            then_branch ? "SequenceEmpty_Then" : "SequenceEmpty_Else",
+            {},
+            outputs));
 
         auto status = graph.Resolve();
         EXPECT_EQ(status, Status::OK());
@@ -503,9 +507,7 @@ class IfOpTesterWithOptionalTypeAsOutput : public OpTester {
       std::unordered_map<std::string, int> domain_to_version;
       domain_to_version.insert({"", 16});  // Opset 16 model
 
-      Model subgraph(then_branch ? "Then_subgraph" : "Else_subgraph", false, ModelMetaData(), PathString(), {},
-                     domain_to_version, std::vector<ONNX_NAMESPACE::FunctionProto>{},
-                     DefaultLoggingManager().DefaultLogger());
+      Model subgraph(then_branch ? "Then_subgraph" : "Else_subgraph", false, ModelMetaData(), PathString(), {}, domain_to_version, std::vector<ONNX_NAMESPACE::FunctionProto>{}, DefaultLoggingManager().DefaultLogger());
 
       auto& graph = subgraph.MainGraph();
 
@@ -516,7 +518,9 @@ class IfOpTesterWithOptionalTypeAsOutput : public OpTester {
       graph.AddNode(
           then_branch ? "Identity_Then" : "Identity_Else",
           "Identity",
-          then_branch ? "Identity_Then" : "Identity_Else", {&pass_through_identity_input}, if_outputs);
+          then_branch ? "Identity_Then" : "Identity_Else",
+          {&pass_through_identity_input},
+          if_outputs);
 
       auto status = graph.Resolve();
       EXPECT_EQ(status, Status::OK());

@@ -271,8 +271,7 @@ int32_t IndexOfNodeOutput(const Node& node, const NodeArg& node_arg) {
 // so we have to assume that they are not deterministic, to be on the safe side.
 // We could also allow other known domains (kMSDomain, kMSNchwcDomain, kMSFeaturizersDomain),
 // as long as we verify which of their operations are non-deterministic and add them in the map below.
-constexpr std::array kOnnxDomainNonDeterministicOps{"RandomUniform", "RandomNormal", "RandomUniformLike",
-                                                    "RandomNormalLike", "Multinomial"};
+constexpr std::array kOnnxDomainNonDeterministicOps{"RandomUniform", "RandomNormal", "RandomUniformLike", "RandomNormalLike", "Multinomial"};
 
 #ifdef ENABLE_TRAINING_OPS
 constexpr std::array kMSDomainDeterministicOps{"ShrunkenGather"};
@@ -376,8 +375,7 @@ bool IsScalar(const NodeArg& input_arg) {
 }
 
 template <typename T>
-bool GetScalarInitializerValue(const onnxruntime::Graph& graph, const onnxruntime::NodeArg& input_arg, T& value,
-                               bool is_constant) {
+bool GetScalarInitializerValue(const onnxruntime::Graph& graph, const onnxruntime::NodeArg& input_arg, T& value, bool is_constant) {
   if (!IsScalar(input_arg)) {
     return false;
   }
@@ -400,8 +398,7 @@ bool GetScalarInitializerValue(const onnxruntime::Graph& graph, const onnxruntim
   return true;
 }
 
-template bool GetScalarInitializerValue<float>(const onnxruntime::Graph& graph, const onnxruntime::NodeArg& input_arg, float& value,
-                                               bool is_constant);
+template bool GetScalarInitializerValue<float>(const onnxruntime::Graph& graph, const onnxruntime::NodeArg& input_arg, float& value, bool is_constant);
 
 #endif  // #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
