@@ -23,13 +23,13 @@ def getExtOrIntegerDefault(name) {
 def getOnnxruntimePackageName() {
   // locate user's project dir
   def reactnativeRootDir = project.rootDir.parentFile
-  // get file path of package.json
+  // get package.json file in root directory
   def packageJsonFile = new File(reactnativeRootDir, 'package.json')
-  // read field 'onnxruntime-package-name'
+  // read field 'ortPackageName'
   if (packageJsonFile.exists()) {
     def packageJsonContents = packageJsonFile.getText()
     def packageJson = new groovy.json.JsonSlurper().parseText(packageJsonContents)
-    def packageName = packageJson.ortpackagename
+    def packageName = packageJson.ortPackageName
     return packageName
   } else {
     throw new GradleException(
