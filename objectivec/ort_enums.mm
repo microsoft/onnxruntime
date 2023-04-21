@@ -5,7 +5,7 @@
 
 #include <algorithm>
 
-#import "src/cxx_api.h"
+#import "cxx_api.h"
 
 namespace {
 
