@@ -49,6 +49,7 @@ static const OpVersionsAndSelector::OpVersionsMap GetUnaryOpVersionsMap() {
           {"ReduceProd", {}},
           {"ReduceSum", {}},
           {"Relu", {}},
+          {"Gelu", {}},
           {"Sigmoid", {}},
           {"Slice", {}},
           {"Softmax", {}},
@@ -190,7 +191,7 @@ std::vector<NodeGroup> SelectorManager::GetQDQSelections(const GraphViewer& grap
     const auto* node = graph_viewer.GetNode(index);
     // post layout transformation all the layout sensitive nodes are converted to domain
     // kMSInternalNHWCDomain. Therefore need to allow this domain as well.
-    if (node->Domain() != kOnnxDomain && node->Domain() != kMSInternalNHWCDomain) {
+    if (node->Domain() != kOnnxDomain && node->Domain() != kMSInternalNHWCDomain && node->Domain() != kMSDomain) {
       continue;
     }
 
