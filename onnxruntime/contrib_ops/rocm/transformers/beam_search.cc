@@ -4,8 +4,8 @@
 #include "core/providers/rocm/rocm_common.h"
 #include "core/providers/rocm/rocm_execution_provider.h"
 #include "contrib_ops/rocm/transformers/beam_search.h"
-#include "contrib_ops/rocm/transformers/generation_device_helper.h"
 #include "contrib_ops/rocm/transformers/dump_rocm_tensor.h"
+#include "contrib_ops/rocm/transformers/generation_device_helper.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -55,11 +55,6 @@ BeamSearch::BeamSearch(const OpKernelInfo& info)
                                   GenerationCudaDeviceHelper::ExpandBuffer<MLFloat16>);
 
   SetConsoleDumper(&g_rocm_dumper);
-
-  cuda_device_prop_ = &reinterpret_cast<const ROCMExecutionProvider*>(info.GetExecutionProvider())->GetDeviceProp();
-
-  cuda_device_arch_ = static_cast<const hipDeviceProp_t*>(cuda_device_prop_)->major * 100 +
-                      static_cast<const hipDeviceProp_t*>(cuda_device_prop_)->minor * 10;
 }
 
 Status BeamSearch::ComputeInternal(OpKernelContext* context) const {
