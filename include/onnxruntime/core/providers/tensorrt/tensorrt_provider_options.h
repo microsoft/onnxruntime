@@ -40,7 +40,9 @@ struct OrtTensorRTProviderOptionsV2 {
   int trt_auxiliary_streams;                    // Set maximum number of auxiliary streams per inference stream. Setting this value to 0 will lead to optimal memory usage. Default -1 = heuristics
   const char* trt_tactic_sources;               // pecify the tactics to be used by adding (+) or removing (-) tactics from the default
                                                 // tactic sources (default = all available tactics) e.g. "-CUDNN,+CUBLAS" available keys: "CUBLAS"|"CUBLAS_LT"|"CUDNN"|"EDGE_MASK_CONVOLUTIONS"
-  const char* trt_profile_min_shapes;          // Specify the range of the input shapes to build the engine with
-  const char* trt_profile_max_shapes;          // Specify the range of the input shapes to build the engine with
-  const char* trt_profile_opt_shapes;          // Specify the range of the input shapes to build the engine with
+  const char* trt_extra_plugin_lib_paths;       // specify extra TensorRT plugin library paths
+  const char* trt_profile_min_shapes;           // Specify the range of the input shapes to build the engine with
+  const char* trt_profile_max_shapes;           // Specify the range of the input shapes to build the engine with
+  const char* trt_profile_opt_shapes;           // Specify the range of the input shapes to build the engine with
+  int trt_engine_cache_built_with_explicit_profiles; // Whether the engine cache is built with explicit profiles provided by user. Default 0 = false, nonzero = true
 };

@@ -44,6 +44,7 @@ cmake/external/FeaturizersLibrary/
 # Java specific ignores
 java/.gradle
 java/hs_*.log
+/java/bin
 onnxruntime/python/version_info.py
 /orttraining/orttraining/eager/ort_aten.g.cpp
 /orttraining/orttraining/eager/ort_customops.g.cpp
@@ -188,3 +189,10 @@ dmypy.json
 
 # Cython debug symbols
 cython_debug/
+
+# Swift Package Manager
+Packages/
+Package.pins
+Package.resolved
+.build/
+.swiftpm/

@@ -39,9 +39,11 @@ constexpr const char* kSparsityEnable = "trt_sparsity_enable";
 constexpr const char* kBuilderOptimizationLevel = "trt_builder_optimization_level";
 constexpr const char* kAuxiliaryStreams = "trt_auxiliary_streams";
 constexpr const char* kTacticSources = "trt_tactic_sources";
+constexpr const char* kExtraPluginLibPaths = "trt_extra_plugin_lib_paths";
 constexpr const char* kProfilesMinShapes = "trt_profile_min_shapes";
 constexpr const char* kProfilesMaxShapes = "trt_profile_max_shapes";
 constexpr const char* kProfilesOptShapes = "trt_profile_opt_shapes";
+constexpr const char* kEngineCacheBuiltWithExplicitProfiles = "trt_engine_cache_built_with_explicit_profiles";
 }  // namespace provider_option_names
 }  // namespace tensorrt
 
@@ -86,9 +88,11 @@ TensorrtExecutionProviderInfo TensorrtExecutionProviderInfo::FromProviderOptions
           .AddAssignmentToReference(tensorrt::provider_option_names::kBuilderOptimizationLevel, info.builder_optimization_level)
           .AddAssignmentToReference(tensorrt::provider_option_names::kAuxiliaryStreams, info.auxiliary_streams)
           .AddAssignmentToReference(tensorrt::provider_option_names::kTacticSources, info.tactic_sources)
+          .AddAssignmentToReference(tensorrt::provider_option_names::kExtraPluginLibPaths, info.extra_plugin_lib_paths)
           .AddAssignmentToReference(tensorrt::provider_option_names::kProfilesMinShapes, info.profile_min_shapes)
           .AddAssignmentToReference(tensorrt::provider_option_names::kProfilesMaxShapes, info.profile_max_shapes)
           .AddAssignmentToReference(tensorrt::provider_option_names::kProfilesOptShapes, info.profile_opt_shapes)
+          .AddAssignmentToReference(tensorrt::provider_option_names::kEngineCacheBuiltWithExplicitProfiles, info.engine_cache_built_with_explicit_profiles)
           .Parse(options)); // add new provider option here.
 
   return info;
@@ -123,9 +127,11 @@ ProviderOptions TensorrtExecutionProviderInfo::ToProviderOptions(const TensorrtE
       {tensorrt::provider_option_names::kBuilderOptimizationLevel, MakeStringWithClassicLocale(info.builder_optimization_level)},
       {tensorrt::provider_option_names::kAuxiliaryStreams, MakeStringWithClassicLocale(info.auxiliary_streams)},
       {tensorrt::provider_option_names::kTacticSources, MakeStringWithClassicLocale(info.tactic_sources)},
+      {tensorrt::provider_option_names::kExtraPluginLibPaths, MakeStringWithClassicLocale(info.extra_plugin_lib_paths)},
       {tensorrt::provider_option_names::kProfilesMinShapes, MakeStringWithClassicLocale(info.profile_min_shapes)},
       {tensorrt::provider_option_names::kProfilesMaxShapes, MakeStringWithClassicLocale(info.profile_max_shapes)},
       {tensorrt::provider_option_names::kProfilesOptShapes, MakeStringWithClassicLocale(info.profile_opt_shapes)},
+      {tensorrt::provider_option_names::kEngineCacheBuiltWithExplicitProfiles, MakeStringWithClassicLocale(info.engine_cache_built_with_explicit_profiles)},
   };
   return options;
 }

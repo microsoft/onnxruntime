@@ -38,9 +38,11 @@ static const std::string kSparsityEnable = "ORT_TENSORRT_SPARSITY_ENABLE";
 static const std::string kBuilderOptimizationLevel = "ORT_TENSORRT_BUILDER_OPTIMIZATION_LEVEL";
 static const std::string kAuxiliaryStreams = "ORT_TENSORRT_AUXILIARY_STREAMS";
 static const std::string kTacticSources = "ORT_TENSORRT_TACTIC_SOURCES";
+static const std::string kExtraPluginLibPaths = "ORT_TENSORRT_EXTRA_PLUGIN_LIB_PATHS";
 static const std::string kProfilesMinShapes = "ORT_TENSORRT_PROFILE_MIN_SHAPES";
 static const std::string kProfilesMaxShapes = "ORT_TENSORRT_PROFILE_MAX_SHAPES";
 static const std::string kProfilesOptShapes = "ORT_TENSORRT_PROFILE_OPT_SHAPES";
+static const std::string kEngineCacheBuiltWithExplicitProfiles = "ORT_ENGINE_CACHE_BUILT_WITH_EXPLICIT_PROFILES";
 // Old env variable for backward compatibility
 static const std::string kEngineCachePath = "ORT_TENSORRT_ENGINE_CACHE_PATH";
 }  // namespace tensorrt_env_vars
@@ -167,6 +169,8 @@ class TensorrtExecutionProvider : public IExecutionProvider {
 
   void RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry) const override;
 
+  void GetCustomOpDomainList(std::vector<OrtCustomOpDomain*>& custom_op_domain_list) const override;
+
  private:
   TensorrtExecutionProviderInfo info_;
   bool external_stream_ = false;
@@ -205,6 +209,7 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   bool timing_cache_enable_ = false;
   bool force_timing_cache_match_ = false;
   bool detailed_build_log_ = false;
+  bool engine_cache_built_with_explicit_profiles_ = false; 
 
   std::unordered_set<std::string> control_flow_op_set_ = {"If", "Loop", "Scan"};
   std::unordered_map<std::string, tensorrt_ptr::unique_pointer<nvonnxparser::IParser>> parsers_;

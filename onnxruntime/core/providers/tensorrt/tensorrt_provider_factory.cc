@@ -8,6 +8,7 @@
 #include "tensorrt_provider_factory_creator.h"
 #include "core/framework/provider_options.h"
 #include "core/providers/tensorrt/tensorrt_provider_options.h"
+#include "core/providers/tensorrt/tensorrt_execution_provider_custom_ops.h"
 #include <string.h>
 
 using namespace onnxruntime;
@@ -23,9 +24,15 @@ struct TensorrtProviderFactory : IExecutionProviderFactory {
 
   std::unique_ptr<IExecutionProvider> CreateProvider() override;
 
+  void GetCustomOpDomainList(std::vector<OrtCustomOpDomain*>& custom_op_domain_list);
+
  private:
   TensorrtExecutionProviderInfo info_;
 };
+
+void TensorrtProviderFactory::GetCustomOpDomainList(std::vector<OrtCustomOpDomain*>& custom_op_domain_list) {
+  custom_op_domain_list = info_.custom_op_domain_list;
+}
 
 std::unique_ptr<IExecutionProvider> TensorrtProviderFactory::CreateProvider() {
   return std::make_unique<TensorrtExecutionProvider>(info_);
@@ -43,6 +50,11 @@ struct Tensorrt_Provider : Provider {
     TensorrtExecutionProviderInfo info;
     info.device_id = device_id;
     info.has_trt_options = false;
+
+    common::Status status = CreateTensorRTCustomOpDomainList(info);
+    if (!status.IsOK()) {
+      LOGS_DEFAULT(WARNING) << "[TensorRT EP] Failed to get TRT plugins from TRT plugin registration.";
+    }
     return std::make_shared<TensorrtProviderFactory>(info);
   }
 
@@ -78,9 +90,17 @@ struct Tensorrt_Provider : Provider {
     info.builder_optimization_level = options.trt_builder_optimization_level;
     info.auxiliary_streams = options.trt_auxiliary_streams;
     info.tactic_sources = options.trt_tactic_sources == nullptr ? "" : options.trt_tactic_sources;
+    info.extra_plugin_lib_paths = options.trt_extra_plugin_lib_paths == nullptr ? "" : options.trt_extra_plugin_lib_paths;
     info.profile_min_shapes = options.trt_profile_min_shapes == nullptr ? "" : options.trt_profile_min_shapes;
     info.profile_max_shapes = options.trt_profile_max_shapes == nullptr ? "" : options.trt_profile_max_shapes;
     info.profile_opt_shapes = options.trt_profile_opt_shapes == nullptr ? "" : options.trt_profile_opt_shapes;
+    info.engine_cache_built_with_explicit_profiles = options.trt_engine_cache_built_with_explicit_profiles != 0;
+
+    common::Status status = CreateTensorRTCustomOpDomainList(info);
+    if (!status.IsOK()) {
+      LOGS_DEFAULT(WARNING) << "[TensorRT EP] Failed to get TRT plugins from TRT plugin registration.";
+    }
+
     return std::make_shared<TensorrtProviderFactory>(info);
   }
 
@@ -210,11 +230,17 @@ struct Tensorrt_Provider : Provider {
       dest[str_size] = '\0';
       trt_options.trt_profile_opt_shapes = (const char*)dest;
     }
+    trt_options.trt_engine_cache_built_with_explicit_profiles = internal_options.engine_cache_built_with_explicit_profiles;
   }
 
   ProviderOptions GetProviderOptions(const void* provider_options) override {
     auto& options = *reinterpret_cast<const OrtTensorRTProviderOptionsV2*>(provider_options);
     return onnxruntime::TensorrtExecutionProviderInfo::ToProviderOptions(options);
+  }
+
+  void GetCustomOpDomainList(IExecutionProviderFactory* factory, std::vector<OrtCustomOpDomain*>& custom_op_domains_ptr) override {
+    TensorrtProviderFactory* trt_factory = reinterpret_cast<TensorrtProviderFactory*>(factory);
+    trt_factory->GetCustomOpDomainList(custom_op_domains_ptr);
   }
 
   void Initialize() override {
