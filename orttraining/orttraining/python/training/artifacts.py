@@ -149,7 +149,7 @@ def generate_artifacts(
     checkpoint_path = artifact_directory / f"{prefix}checkpoint"
     if os.path.exists(checkpoint_path):
         logging.info("Checkpoint path %s already exists. Overwriting.", checkpoint_path)
-    onnxblock.save_checkpoint(training_block.parameters(), str(checkpoint_path))
+    onnxblock.save_checkpoint(training_block.parameters(), checkpoint_path)
     logging.info("Saved checkpoint to %s", checkpoint_path)
 
     # If optimizer is not specified, skip creating the optimizer model
