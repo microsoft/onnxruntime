@@ -1545,6 +1545,12 @@ inline void* KernelContext::GetGPUComputeStream() const {
   return out;
 }
 
+inline OrtAllocator* KernelContext::GetAllocator(const OrtMemoryInfo& memory_info) const {
+  OrtAllocator* out = nullptr;
+  Ort::ThrowOnError(GetApi().KernelContext_GetAllocator(ctx_, &memory_info, &out));
+  return out;
+}
+
 inline Logger KernelContext::GetLogger() const {
   const OrtLogger* out = nullptr;
   ThrowOnError(GetApi().KernelContext_GetLogger(this->ctx_, &out));

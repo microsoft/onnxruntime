@@ -112,7 +112,8 @@ ORT_API_STATUS_IMPL(OrtApis::KernelContext_GetAllocator, _In_ const OrtKernelCon
   if (!allocator) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "No requested allocator available");
   }
-  *out = new onnxruntime::OrtAllocatorImplWrappingIAllocator(std::move(allocator));
+  std::unique_ptr<onnxruntime::OrtAllocatorImplWrappingIAllocator> p = std::make_unique<onnxruntime::OrtAllocatorImplWrappingIAllocator>(std::move(allocator));
+  *out = p.release();
   return nullptr;
   API_IMPL_END
 };

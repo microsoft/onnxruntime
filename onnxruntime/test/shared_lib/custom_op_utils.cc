@@ -36,7 +36,7 @@ void MyCustomKernel::Compute(OrtKernelContext* context) {
 #ifdef USE_CUDA
   OrtMemoryInfo mem_info("", OrtAllocatorType::OrtDeviceAllocator, OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, 0));
 #else
-  OrtMemoryInfo mem_info("", OrtAllocatorType::OrtDeviceAllocator, OrtDevice(OrtDevice::CPU, OrtDevice::MemType::DEFAULT, 0));
+  OrtMemoryInfo mem_info("", OrtAllocatorType::OrtArenaAllocator, OrtDevice(OrtDevice::CPU, OrtDevice::MemType::DEFAULT, 0));
 #endif
   OrtAllocator* allocator;
   Ort::ThrowOnError(ort_.KernelContext_GetAllocator(context, &mem_info, &allocator));
