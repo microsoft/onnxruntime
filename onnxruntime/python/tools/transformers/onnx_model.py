@@ -11,7 +11,17 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 from float16 import convert_float_to_float16
-from onnx import AttributeProto, GraphProto, ModelProto, NodeProto, TensorProto, helper, numpy_helper, save_model
+from onnx import (
+    AttributeProto,
+    GraphProto,
+    ModelProto,
+    NodeProto,
+    TensorProto,
+    ValueInfoProto,
+    helper,
+    numpy_helper,
+    save_model,
+)
 from shape_infer_helper import SymbolicShapeInferenceHelper
 
 logger = logging.getLogger(__name__)
@@ -614,13 +624,36 @@ class OnnxModel:
             kwargs["keep_io_types"] = True
 
         model = self.model
+        is_shape_infer_done = False
         if use_symbolic_shape_infer:
             # Use symbolic shape inference since custom operators (like Gelu, SkipLayerNormalization etc)
             # are not recognized by onnx shape inference.
-            shape_infer_helper = SymbolicShapeInferenceHelper(model, verbose=0)
-            model = shape_infer_helper.infer_shapes(model, auto_merge=True, guess_output_rank=False)
+            shape_infer_helper = SymbolicShapeInferenceHelper(model)
+            model_with_shape = shape_infer_helper.infer_shapes(model, auto_merge=True, guess_output_rank=False)
 
-        parameters = {"disable_shape_infer": use_symbolic_shape_infer}
+            # auto_merge might cause issue (see https://github.com/microsoft/onnxruntime/issues/15521)
+            # we only merge tensor data type but not shape information back to the original onnx model.
+            # Note that float16 conversion need data type but not shape information.
+            if model_with_shape is not None:
+                name_vi = {}
+                for vi in model_with_shape.graph.value_info:
+                    vi_copy = ValueInfoProto()
+                    vi_copy.CopyFrom(vi)
+                    if hasattr(vi_copy.type, "tensor_type") and hasattr(vi_copy.type.tensor_type, "shape"):
+                        vi_copy.type.tensor_type.ClearField("shape")
+                    name_vi[vi.name] = vi_copy
+
+                for vi in model.graph.value_info:
+                    if vi.name in name_vi:
+                        del name_vi[vi.name]
+                for _, vi in name_vi.items():
+                    model.graph.value_info.append(vi)
+
+                is_shape_infer_done = True
+
+        # No need to run onnx shape inference since we got data type information from symbolic shape inference.
+        parameters = {"disable_shape_infer": is_shape_infer_done}
+
         parameters.update(
             {
                 key: kwargs[key]
