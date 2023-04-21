@@ -205,10 +205,11 @@ def export_onnx_models(
         if overwrite or not os.path.exists(onnx_path):
             logger.info(f"Exporting ONNX model to {onnx_path}")
             # We have to clone model before exporting onnx, otherwise verify_onnx will report large difference.
-            cloned_model = copy.deepcopy(model).to(device)
+            device_to_export = torch.device("cpu")
+            cloned_model = copy.deepcopy(model).to(device_to_export)
             WhisperHelper.export_onnx(
                 cloned_model,
-                device,
+                device_to_export,
                 onnx_path,
                 verbose,
                 use_external_data_format,
@@ -292,7 +293,7 @@ def main():
         assert args.use_gpu, "fp16 requires --use_gpu"
 
     if args.optimize_onnx:
-        logger.warning("Graph optimization for Whisper is not implemented yet.")
+        logger.warning("Applying graph optimization for Whisper...")
 
     output_paths = export_onnx_models(
         args.model_name_or_path,
