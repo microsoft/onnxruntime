@@ -121,10 +121,10 @@ class [[nodiscard]] Status {
 
   Status(StatusCategory category, int code);
 
-  GSL_SUPPRESS(r.11)
+  GSL_SUPPRESS(r .11)
   Status(const Status& other)
       : state_((other.state_ == nullptr) ? nullptr : new State(*other.state_)) {}
-  GSL_SUPPRESS(r.11)
+  GSL_SUPPRESS(r .11)
   Status& operator=(const Status& other) {
     if (state_ != other.state_) {
       if (other.state_ == nullptr) {

@@ -22,12 +22,12 @@ static std::unordered_map<std::string, int> GetFunctionOpsetImports(const ONNX_N
 // Construct it with fused index graph, instantiate the function directly
 FunctionImpl::FunctionImpl(onnxruntime::Graph& graph,
                            const IndexedSubGraph& nodes_to_fuse)
-    : function_body_graph_(graph.GetModel(), 
-        graph.GetSchemaRegistry(), 
-        function_storage_proto_,
-        graph.DomainToVersionMap(),
-        graph.GetLogger(),
-        graph.StrictShapeTypeInference()) {
+    : function_body_graph_(graph.GetModel(),
+                           graph.GetSchemaRegistry(),
+                           function_storage_proto_,
+                           graph.DomainToVersionMap(),
+                           graph.GetLogger(),
+                           graph.StrictShapeTypeInference()) {
   auto* meta_def = nodes_to_fuse.GetMetaDef();
 
   int i = 0;
@@ -92,7 +92,7 @@ FunctionImpl::FunctionImpl(onnxruntime::Graph& graph,
     }
   }
 
-  //TODO: if we reuse the nodes in parent graph, maybe we don't need to resolve it.
+  // TODO: if we reuse the nodes in parent graph, maybe we don't need to resolve it.
   auto status = function_body_graph_.Resolve();
   ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
 }

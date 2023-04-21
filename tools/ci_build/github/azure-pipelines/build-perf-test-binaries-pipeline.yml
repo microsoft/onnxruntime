@@ -28,7 +28,7 @@ stages:
         artifactName: 'onnxruntime-android-full-aar'
         job_name_suffix: 'Full'
         publish_executables: '1'
-        pool_name: 'Linux-CPU'
+        pool_name: 'aiinfra-Linux-CPU'
 
 # build Python packages
 # Linux GPU only

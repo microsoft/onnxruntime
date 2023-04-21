@@ -28,7 +28,7 @@
 namespace onnxruntime {
 namespace openvino_ep {
 
-//Ops which are supported only in models(as intermediate nodes) and not in unit tests
+// Ops which are supported only in models(as intermediate nodes) and not in unit tests
 std::set<std::string> ops_supported_only_in_model = {
     "Cast",
     "Concat",
@@ -59,7 +59,7 @@ std::set<std::string> ops_supported_only_in_model = {
     "QuantizeLinear",
     "GatherElements"};
 
-//Ops which are supported as functions (as composite ops)
+// Ops which are supported as functions (as composite ops)
 std::set<std::string> ops_supported_as_function = {
     "LessOrEqual",
     "GreaterOrEqual",
@@ -186,7 +186,7 @@ std::vector<SupportedOp> supported_op_mode = {
     {"Resize", V_2021_3, {"MYRIAD"}},
     {"Resize", V_2022_1, {"All"}},
     {"Reshape", V_2020_4, {"All"}},
-    {"ReverseSequence", V_2022_1, {"CPU","GPU"}},
+    {"ReverseSequence", V_2022_1, {"CPU", "GPU"}},
     {"RoiAlign", V_2021_1, {"All"}},
     {"Round", V_2021_2, {"MYRIAD"}},
     {"Round", V_2021_4, {"All"}},
@@ -194,7 +194,7 @@ std::vector<SupportedOp> supported_op_mode = {
     {"Scatter", V_2022_1, {"All"}},
     {"ScatterElements", V_2021_2, {"MYRIAD"}},
     {"ScatterElements", V_2022_1, {"All"}},
-    {"ScatterND", V_2022_1, {"CPU","GPU"}},
+    {"ScatterND", V_2022_1, {"CPU", "GPU"}},
     {"Selu", V_2020_4, {"CPU", "GPU"}},
     {"Shape", V_2020_4, {"All"}},
     {"Shrink", V_2022_1, {"CPU", "GPU"}},
@@ -300,11 +300,10 @@ void DataOps::populate_op_mode_supported() {
   no_dimension_supported_.push_back({"ReduceMin", V_2021_3, {"MYRIAD"}});
   no_dimension_supported_.push_back({"ReduceMin", V_2021_4, {"All"}});
   no_dimension_supported_.push_back({"ReduceMax", V_2021_4, {"All"}});
-  no_dimension_supported_.push_back({"ReduceProd", V_2022_1, {"CPU","GPU"}});
+  no_dimension_supported_.push_back({"ReduceProd", V_2022_1, {"CPU", "GPU"}});
   no_dimension_supported_.push_back({"QuantizeLinear", V_2021_4, {"All"}});
   no_dimension_supported_.push_back({"DequantizeLinear", V_2021_4, {"All"}});
   no_dimension_supported_.push_back({"Shape", V_2022_1, {"GPU"}});
-
 
   subgraph_supported_.push_back({"Mul", V_2020_4, {"All"}});
   subgraph_supported_.push_back({"Transpose", V_2020_4, {"All"}});
@@ -318,17 +317,17 @@ void DataOps::populate_op_mode_supported() {
   subgraph_supported_.push_back({"Div", V_2021_1, {"CPU"}});
   subgraph_supported_.push_back({"Sub", V_2021_1, {"CPU"}});
 
-  //populate unsupportedmode_t
+  // populate unsupportedmode_t
   {
     UnsupportedOpMode obj = {{V_2022_1, V_2022_2, V_2022_3},
                              [this](const Node* node, const InitializedTensorSet&) {
-                               //Abs is not supproted with INT8 or INT32 as input data type on GPU
+                               // Abs is not supproted with INT8 or INT32 as input data type on GPU
                                if (device_id_.find("GPU") != std::string::npos) {
-                                for (size_t i = 0; i < node->InputDefs().size(); i++) {
-                                  if (node->InputDefs()[i]->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT8 ||
-                                    node->InputDefs()[i]->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32)
-                                    return true;
-                                }
+                                 for (size_t i = 0; i < node->InputDefs().size(); i++) {
+                                   if (node->InputDefs()[i]->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT8 ||
+                                       node->InputDefs()[i]->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32)
+                                     return true;
+                                 }
                                }
                                return false;
                              }};
@@ -337,7 +336,7 @@ void DataOps::populate_op_mode_supported() {
   {
     UnsupportedOpMode obj = {{V_2022_1, V_2022_2, V_2022_3},
                              [this](const Node* node, const InitializedTensorSet&) {
-                               //tensor type does not support select last index
+                               // tensor type does not support select last index
                                auto& attributes = node->GetAttributes();
                                auto last_index_arg = attributes.count("select_last_index") > 0 ? attributes.at("select_last_index").i() : 0;
                                if (last_index_arg != 0)
@@ -354,16 +353,16 @@ void DataOps::populate_op_mode_supported() {
     UnsupportedOpMode obj = {{V_2022_1, V_2022_2, V_2022_3},
                              [this](const Node* node, const InitializedTensorSet&) {
                                if (device_id_.find("GPU") != std::string::npos) {
-                                //int64 data type is not supported on GPU
-                                const bool data_is_int64 = node->InputDefs()[0]->Type()->find("int64") != std::string::npos;
-                                return data_is_int64;
+                                 // int64 data type is not supported on GPU
+                                 const bool data_is_int64 = node->InputDefs()[0]->Type()->find("int64") != std::string::npos;
+                                 return data_is_int64;
                                }
                                if (device_id_.find("MYRIAD") != std::string::npos) {
-                                //int64,int8,uint8 data type is not supported on MYRIAD
-                                const bool data_is_int64 = node->InputDefs()[0]->Type()->find("int64") != std::string::npos;
-                                const bool data_is_int8 = node->InputDefs()[0]->Type()->find("int8") != std::string::npos;
-                                const bool data_is_uint8 = node->InputDefs()[0]->Type()->find("uint8") != std::string::npos;
-                                return (data_is_int64 || data_is_int8 || data_is_uint8);
+                                 // int64,int8,uint8 data type is not supported on MYRIAD
+                                 const bool data_is_int64 = node->InputDefs()[0]->Type()->find("int64") != std::string::npos;
+                                 const bool data_is_int8 = node->InputDefs()[0]->Type()->find("int8") != std::string::npos;
+                                 const bool data_is_uint8 = node->InputDefs()[0]->Type()->find("uint8") != std::string::npos;
+                                 return (data_is_int64 || data_is_int8 || data_is_uint8);
                                }
                                return false;
                              }};
@@ -371,34 +370,34 @@ void DataOps::populate_op_mode_supported() {
   }
   {
     UnsupportedOpMode obj = {{V_2022_1, V_2022_2, V_2022_3},
-                             [this](const Node* node, const InitializedTensorSet& ) {
+                             [this](const Node* node, const InitializedTensorSet&) {
                                if (device_id_.find("MYRIAD") != std::string::npos) {
-                                  const auto& attributes = node->GetAttributes();
-                                  auto conv_filter = attributes.find("kernel_shape");
-                                  auto& ints = conv_filter->second().ints();
-                                  //If the kernel size is not 2D, the op is rejected in case of MYRIAD
-                                  if(ints.size() !=2) {
-                                    return true;
-                                  }
+                                 const auto& attributes = node->GetAttributes();
+                                 auto conv_filter = attributes.find("kernel_shape");
+                                 auto& ints = conv_filter->second().ints();
+                                 // If the kernel size is not 2D, the op is rejected in case of MYRIAD
+                                 if (ints.size() != 2) {
+                                   return true;
+                                 }
                                }
                                if (device_id_.find("GPU") != std::string::npos) {
-                                  bool if_bias = false;
-                                  const auto& attributes = node->GetAttributes();
-                                  auto conv_filter = attributes.find("kernel_shape");
-                                  if (conv_filter != attributes.end()) {
-                                    auto& ints = conv_filter->second().ints();
-                                    // check if the Input for the op has bias
-                                    if (node->InputDefs().size() > 2) {
-                                      if (node->InputDefs()[2]->Name() == "B")
-                                        if_bias = true;
-                                    }
-                                    // If the kernel size is 3D and the input doesnot have bias,
-                                    // the op is rejected in case of GPU
-                                    if (ints.size() == 3 && !if_bias)
-                                      return true;
-                                  }
-                                }
-                                return false;
+                                 bool if_bias = false;
+                                 const auto& attributes = node->GetAttributes();
+                                 auto conv_filter = attributes.find("kernel_shape");
+                                 if (conv_filter != attributes.end()) {
+                                   auto& ints = conv_filter->second().ints();
+                                   // check if the Input for the op has bias
+                                   if (node->InputDefs().size() > 2) {
+                                     if (node->InputDefs()[2]->Name() == "B")
+                                       if_bias = true;
+                                   }
+                                   // If the kernel size is 3D and the input doesnot have bias,
+                                   // the op is rejected in case of GPU
+                                   if (ints.size() == 3 && !if_bias)
+                                     return true;
+                                 }
+                               }
+                               return false;
                              }};
     op_list_.insert({"Conv", obj});
   }
@@ -407,28 +406,28 @@ void DataOps::populate_op_mode_supported() {
                              [this](const Node* node, const InitializedTensorSet& initializers) {
                                if (device_id_.find("MYRIAD") != std::string::npos) {
                                  if (GetInputCount(node, initializers) > 1)
-                                  return true;
+                                   return true;
                                }
                                if (device_id_.find("GPU") != std::string::npos) {
-                                // If the device is GPU, only 2D dilations with 1x1 pixel are supported
-                                const auto& attributes = node->GetAttributes();
-                                auto dilation = attributes.find("dilations");
-                                if (dilation != attributes.end()) {
-                                  auto& dilation_attr = attributes.at("dilations");
-                                  auto int_size = dilation_attr.ints_size();
-                                  if (int_size == 2) {
-                                    if (dilation_attr.ints(0) != 1 || dilation_attr.ints(1) !=1) {
-                                      return true;
-                                    }
-                                  }
-                                  // If 3D dilations, reject the op
-                                  if (int_size == 3)
-                                    return true;
-                                }
-                                auto group_attr = attributes.find("group");
-                                // group 4 is not supported
-                                if (group_attr->second().i() == 4)
-                                  return true;
+                                 // If the device is GPU, only 2D dilations with 1x1 pixel are supported
+                                 const auto& attributes = node->GetAttributes();
+                                 auto dilation = attributes.find("dilations");
+                                 if (dilation != attributes.end()) {
+                                   auto& dilation_attr = attributes.at("dilations");
+                                   auto int_size = dilation_attr.ints_size();
+                                   if (int_size == 2) {
+                                     if (dilation_attr.ints(0) != 1 || dilation_attr.ints(1) != 1) {
+                                       return true;
+                                     }
+                                   }
+                                   // If 3D dilations, reject the op
+                                   if (int_size == 3)
+                                     return true;
+                                 }
+                                 auto group_attr = attributes.find("group");
+                                 // group 4 is not supported
+                                 if (group_attr->second().i() == 4)
+                                   return true;
                                }
                                return false;
                              }};
@@ -438,31 +437,31 @@ void DataOps::populate_op_mode_supported() {
     UnsupportedOpMode obj = {{V_2022_1, V_2022_2, V_2022_3},
                              [this](const Node* node, const InitializedTensorSet&) {
                                if (device_id_.find("MYRIAD") != std::string::npos) {
-                                const auto& indices_arg = node->InputDefs()[0];
-                                const auto& output_arg = node->OutputDefs()[0];
-                                if (indices_arg->TypeAsProto()->tensor_type().elem_type() != output_arg->TypeAsProto()->tensor_type().elem_type())
-                                  return true;
-                                if ((indices_arg->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16) ||
-                                    (indices_arg->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT) ||
-                                    (indices_arg->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32) ||
-                                    (indices_arg->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT64)) {
-                                  return false;
-                                }
+                                 const auto& indices_arg = node->InputDefs()[0];
+                                 const auto& output_arg = node->OutputDefs()[0];
+                                 if (indices_arg->TypeAsProto()->tensor_type().elem_type() != output_arg->TypeAsProto()->tensor_type().elem_type())
+                                   return true;
+                                 if ((indices_arg->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16) ||
+                                     (indices_arg->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT) ||
+                                     (indices_arg->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32) ||
+                                     (indices_arg->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT64)) {
+                                   return false;
+                                 }
                                }
                                return true;
                              }};
     op_list_.insert({"GatherElements", obj});
   }
-   {
+  {
     UnsupportedOpMode obj = {{V_2022_3},
                              [this](const Node* node, const InitializedTensorSet&) {
-                               if (device_id_.find("GPU") != std::string::npos && node->OpType()=="If"){
+                               if (device_id_.find("GPU") != std::string::npos && node->OpType() == "If") {
                                  // Only Equal op is supported as input for IF op in GPU
-                                for (auto nit = node->InputNodesBegin(); nit != node->InputNodesEnd(); ++nit){
-                                  if (nit->OpType() == "Equal"){
-                                    return false;
-                                  }
-                                }
+                                 for (auto nit = node->InputNodesBegin(); nit != node->InputNodesEnd(); ++nit) {
+                                   if (nit->OpType() == "Equal") {
+                                     return false;
+                                   }
+                                 }
                                }
                                return true;
                              }};
@@ -471,7 +470,7 @@ void DataOps::populate_op_mode_supported() {
   {
     UnsupportedOpMode obj = {{V_2022_1, V_2022_2, V_2022_3},
                              [this](const Node* node, const InitializedTensorSet&) {
-                               //If the Input size of LSTM is greater than 3, it is rejected.
+                               // If the Input size of LSTM is greater than 3, it is rejected.
                                if (device_id_.find("MYRIAD") != std::string::npos) {
                                  if (node->InputDefs().size() > 3)
                                    return true;
@@ -497,11 +496,11 @@ void DataOps::populate_op_mode_supported() {
                                if (device_id_.find("GPU") != std::string::npos) {
                                  auto x_data_type = node->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
                                  auto y_data_type = node->InputDefs()[1]->TypeAsProto()->tensor_type().elem_type();
-                                 //currently both inputs with int32 are not supported and also both input datatypes should be same
+                                 // currently both inputs with int32 are not supported and also both input datatypes should be same
                                  const bool A_is_int32 = node->InputDefs()[0]->Type()->find("int32") != std::string::npos;
                                  const bool B_is_int32 = node->InputDefs()[1]->Type()->find("int32") != std::string::npos;
                                  if ((A_is_int32 && B_is_int32) || (x_data_type != y_data_type))
-                                  return true;
+                                   return true;
                                }
                                return false;
                              }};
@@ -515,7 +514,7 @@ void DataOps::populate_op_mode_supported() {
                                  auto y_data_type = node->InputDefs()[1]->TypeAsProto()->tensor_type().elem_type();
                                  return x_data_type != y_data_type;
                                }
-                               //currently both inputs with int32 or int64 datatype are not supported
+                               // currently both inputs with int32 or int64 datatype are not supported
                                const bool A_is_int32 = node->InputDefs()[0]->Type()->find("int32") != std::string::npos;
                                const bool B_is_int32 = node->InputDefs()[1]->Type()->find("int32") != std::string::npos;
                                const bool A_is_int64 = node->InputDefs()[0]->Type()->find("int64") != std::string::npos;
@@ -531,12 +530,12 @@ void DataOps::populate_op_mode_supported() {
                              [this](const Node* node, const InitializedTensorSet&) {
                                // Max op with one input is not supporting for GPU_FP16
                                if (device_id_.find("GPU") != std::string::npos) {
-                                auto prec_str = openvino_ep::BackendManager::GetGlobalContext().precision_str;
-                                if (prec_str == "FP16") {
-                                 if (node->InputDefs().size() == 1) {
-                                   return true;
+                                 auto prec_str = openvino_ep::BackendManager::GetGlobalContext().precision_str;
+                                 if (prec_str == "FP16") {
+                                   if (node->InputDefs().size() == 1) {
+                                     return true;
+                                   }
                                  }
-                                }
                                }
                                return false;
                              }};
@@ -547,12 +546,12 @@ void DataOps::populate_op_mode_supported() {
                              [this](const Node* node, const InitializedTensorSet&) {
                                // Min op with one input is not supporting for GPU_FP16
                                if (device_id_.find("GPU") != std::string::npos) {
-                                auto prec_str = openvino_ep::BackendManager::GetGlobalContext().precision_str;
-                                if (prec_str == "FP16") {
-                                 if (node->InputDefs().size() == 1) {
-                                   return true;
+                                 auto prec_str = openvino_ep::BackendManager::GetGlobalContext().precision_str;
+                                 if (prec_str == "FP16") {
+                                   if (node->InputDefs().size() == 1) {
+                                     return true;
+                                   }
                                  }
-                                }
                                }
                                return false;
                              }};
@@ -563,12 +562,12 @@ void DataOps::populate_op_mode_supported() {
                              [this](const Node* node, const InitializedTensorSet&) {
                                // Sum op with one input is not supporting for GPU_FP16
                                if (device_id_.find("GPU") != std::string::npos) {
-                                auto prec_str = openvino_ep::BackendManager::GetGlobalContext().precision_str;
-                                if (prec_str == "FP16") {
-                                 if (node->InputDefs().size() == 1) {
-                                   return true;
+                                 auto prec_str = openvino_ep::BackendManager::GetGlobalContext().precision_str;
+                                 if (prec_str == "FP16") {
+                                   if (node->InputDefs().size() == 1) {
+                                     return true;
+                                   }
                                  }
-                                }
                                }
                                return false;
                              }};
@@ -578,46 +577,46 @@ void DataOps::populate_op_mode_supported() {
     UnsupportedOpMode obj = {{V_2022_1, V_2022_2, V_2022_3},
                              [this](const Node* node, const InitializedTensorSet& initializers) {
                                if (device_id_.find("GPU") != std::string::npos) {
-                                auto slope = node->InputDefs()[1];
-                                //PRelu slope has to be an initializer or needs to come from a constant node
-                                if (initializers.count(slope->Name()))
-                                  return false;
-                                else {
-                                  for (auto input_node = node->InputNodesBegin(); input_node != node->InputNodesEnd(); ++input_node) {
-                                    if (GetInputCount(this->graph_viewer_.GetNode((*input_node).Index()), initializers) == 0)
-                                      return false;
-                                  }
-                                }
+                                 auto slope = node->InputDefs()[1];
+                                 // PRelu slope has to be an initializer or needs to come from a constant node
+                                 if (initializers.count(slope->Name()))
+                                   return false;
+                                 else {
+                                   for (auto input_node = node->InputNodesBegin(); input_node != node->InputNodesEnd(); ++input_node) {
+                                     if (GetInputCount(this->graph_viewer_.GetNode((*input_node).Index()), initializers) == 0)
+                                       return false;
+                                   }
+                                 }
                                }
-                                return true;
+                               return true;
                              }};
     op_list_.insert({"PRelu", obj});
   }
   {
     UnsupportedOpMode obj = {{V_2022_1, V_2022_2, V_2022_3},
                              [this](const Node* node, const InitializedTensorSet&) {
-                                const auto& input_arg = node->InputDefs()[1];
-                                auto shape = input_arg->Shape();
-                                //Reshape op with empty dim is Rejected for Myriad
-                                if (shape != nullptr) {
-                                  for (const auto& dim : input_arg->Shape()->dim()) {
-                                    if (utils::HasDimValue(dim) && dim.dim_value() == 0)
-                                      return true;
-                                  }
-                                }
-                              return false;
-                            }};
+                               const auto& input_arg = node->InputDefs()[1];
+                               auto shape = input_arg->Shape();
+                               // Reshape op with empty dim is Rejected for Myriad
+                               if (shape != nullptr) {
+                                 for (const auto& dim : input_arg->Shape()->dim()) {
+                                   if (utils::HasDimValue(dim) && dim.dim_value() == 0)
+                                     return true;
+                                 }
+                               }
+                               return false;
+                             }};
     op_list_.insert({"Reshape", obj});
   }
   {
     UnsupportedOpMode obj = {{V_2022_1},
                              [this](const Node* node, const InitializedTensorSet&) {
-                                auto& attributes = node->GetAttributes();
-                                if (attributes.count("mode") ==1 && attributes.at("mode").s() == "linear") {
-                                  if (node->InputDefs().size() == 4) {
-                                    return true;
-                                  }
-                                }
+                               auto& attributes = node->GetAttributes();
+                               if (attributes.count("mode") == 1 && attributes.at("mode").s() == "linear") {
+                                 if (node->InputDefs().size() == 4) {
+                                   return true;
+                                 }
+                               }
                                return false;
                              }};
     op_list_.insert({"Resize", obj});
@@ -626,10 +625,10 @@ void DataOps::populate_op_mode_supported() {
     UnsupportedOpMode obj = {{V_2022_1, V_2022_2, V_2022_3},
                              [this](const Node* node, const InitializedTensorSet&) {
                                if (device_id_.find("GPU") != std::string::npos || device_id_.find("MYRIAD") != std::string::npos) {
-                                 //INT32 dataype is not supported as input
+                                 // INT32 dataype is not supported as input
                                  for (size_t i = 0; i < node->InputDefs().size(); i++) {
-                                 if (node->InputDefs()[i]->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32)
-                                   return true;
+                                   if (node->InputDefs()[i]->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32)
+                                     return true;
                                  }
                                }
                                return false;
@@ -642,7 +641,7 @@ void DataOps::populate_op_mode_supported() {
                                if (device_id_.find("MYRIAD") != std::string::npos) {
                                  const auto& attributes = node->GetAttributes();
                                  auto axis_attr = attributes.find("axis");
-                                 //Negative axis is not supported
+                                 // Negative axis is not supported
                                  if (axis_attr->second().i() < 0)
                                    return true;
 
@@ -650,15 +649,14 @@ void DataOps::populate_op_mode_supported() {
                                  auto updates_shape = input_arg->Shape();
                                  const auto& output_arg = node->OutputDefs()[0];
                                  auto out_shape = output_arg->Shape();
-                                 //If updates attribute dim value greater than output_shape dim value, we reject
-                                 if(node->InputDefs()[2]->Name() == "updates")
-                                 {
-                                  size_t updates_size = updates_shape->dim_size();
-                                  if(updates_size == 2) {
-                                    if(updates_shape->dim(1).dim_value() > out_shape->dim(1).dim_value())
-                                      return true;
-                                  }
-                                  }
+                                 // If updates attribute dim value greater than output_shape dim value, we reject
+                                 if (node->InputDefs()[2]->Name() == "updates") {
+                                   size_t updates_size = updates_shape->dim_size();
+                                   if (updates_size == 2) {
+                                     if (updates_shape->dim(1).dim_value() > out_shape->dim(1).dim_value())
+                                       return true;
+                                   }
+                                 }
                                }
                                return false;
                              }};
@@ -669,10 +667,10 @@ void DataOps::populate_op_mode_supported() {
     UnsupportedOpMode obj = {{V_2022_1, V_2022_2, V_2022_3},
                              [this](const Node* node, const InitializedTensorSet&) {
                                if (device_id_.find("GPU") != std::string::npos) {
-                                auto output_data_type = node->OutputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
-                                //If the output of ScatterND op is BOOL, it is rejected for GPU.
-                                if (output_data_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_BOOL)
-                                  return true;
+                                 auto output_data_type = node->OutputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
+                                 // If the output of ScatterND op is BOOL, it is rejected for GPU.
+                                 if (output_data_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_BOOL)
+                                   return true;
                                }
                                return false;
                              }};
@@ -683,7 +681,7 @@ void DataOps::populate_op_mode_supported() {
   {
     UnsupportedOpMode obj = {{V_2022_1, V_2022_2, V_2022_3},
                              [this](const Node* node, const InitializedTensorSet&) {
-                               //If the Input of Shrink op is UINT8, it is rejected (Due to output mismatch)
+                               // If the Input of Shrink op is UINT8, it is rejected (Due to output mismatch)
                                for (size_t i = 0; i < node->InputDefs().size(); i++) {
                                  if (node->InputDefs()[i]->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT8)
                                    return true;
@@ -695,7 +693,7 @@ void DataOps::populate_op_mode_supported() {
   {
     UnsupportedOpMode obj = {{V_2022_1, V_2022_2, V_2022_3},
                              [this](const Node* node, const InitializedTensorSet& initializers) {
-                               //start, end, axes need to be a initializer
+                               // start, end, axes need to be a initializer
                                bool cond_for_slice = false;
                                const auto& data_arg = node->InputDefs()[0];
                                auto graph_inputs = graph_viewer_.GetInputs();
@@ -722,11 +720,11 @@ void DataOps::populate_op_mode_supported() {
     UnsupportedOpMode obj = {{V_2022_1, V_2022_2},
                              [this](const Node* node, const InitializedTensorSet&) {
                                if (device_id_.find("GPU") != std::string::npos) {
-                                if (node->InputDefs().size() > 1 &&
-                                 (node->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type() ==
-                                 ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT)) {
-                                  return true;
-                                }
+                                 if (node->InputDefs().size() > 1 &&
+                                     (node->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type() ==
+                                      ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT)) {
+                                   return true;
+                                 }
                                }
                                return false;
                              }};
@@ -735,21 +733,21 @@ void DataOps::populate_op_mode_supported() {
   {
     UnsupportedOpMode obj = {{V_2022_1, V_2022_2, V_2022_3},
                              [this](const Node* node, const InitializedTensorSet&) {
-                                //If the operator is unsqueeze
-                                //If axes is an input, then we cannot produce a static graph. Conversion fails in convert_function_to_cnn_network.
-                                for (size_t i = 0; i < node->InputDefs().size(); i++) {
-                                  if(node->InputDefs()[i]->Name() == "axes") {
-                                    return true;
-                                  }
-                                }
-                                return (!this->dimension_unsupported(node));
+                               // If the operator is unsqueeze
+                               // If axes is an input, then we cannot produce a static graph. Conversion fails in convert_function_to_cnn_network.
+                               for (size_t i = 0; i < node->InputDefs().size(); i++) {
+                                 if (node->InputDefs()[i]->Name() == "axes") {
+                                   return true;
+                                 }
+                               }
+                               return (!this->dimension_unsupported(node));
                              }};
     op_list_.insert({"Unsqueeze", obj});
   }
   {
     UnsupportedOpMode obj = {{V_2022_1, V_2022_2, V_2022_3},
                              [this](const Node* node, const InitializedTensorSet&) {
-                               //check for attributes
+                               // check for attributes
                                auto& upsample_attr = node->GetAttributes();
                                if (upsample_attr.count("scales") > 0) {
                                  auto& upsample_arg = upsample_attr.at("scales");
@@ -759,11 +757,11 @@ void DataOps::populate_op_mode_supported() {
                                  }
                                }
 
-                               //check for input dimensions
+                               // check for input dimensions
                                const auto& x_arg = node->InputDefs()[0];
                                auto shape = x_arg->Shape();
                                if (shape != nullptr) {
-                                 //input tensor rank cannot be of one dimension
+                                 // input tensor rank cannot be of one dimension
                                  if (shape->dim_size() == 1) {
                                    return true;
                                  }
@@ -785,43 +783,41 @@ bool DataOps::op_is_supported(std::string name, std::vector<SupportedOp>& op_lis
   bool auto_support = false;
   bool multi_support = false;
   for (size_t i = 0; i < op_list.size(); i++) {
-
     if (op_list[i].optype == name) {
       if (op_list[i].version <= version_id_) {
         auto it = op_list[i].device_type.begin();
         while (it != op_list[i].device_type.end()) {
-          //status variable is set to True if it's Hetero/Multi/Auto device type
+          // status variable is set to True if it's Hetero/Multi/Auto device type
           bool status = false;
 
-          //The operator to be marked true, it should be supported by either of the devices specified with HETERO
+          // The operator to be marked true, it should be supported by either of the devices specified with HETERO
           if (device_id_.find("HETERO") == 0) {
-              status = true;
-              if (device_id_.find(*it) != std::string::npos || (*it == "All")) {
-                return true;
-              }
+            status = true;
+            if (device_id_.find(*it) != std::string::npos || (*it == "All")) {
+              return true;
+            }
           }
 
-         //The operator to be marked true, it should be supported by all the devices specified with MULTI/AUTO
+          // The operator to be marked true, it should be supported by all the devices specified with MULTI/AUTO
           if (device_id_.find("MULTI") == 0) {
-              status = true;
-              if ((*it == "All") || device_id_.find(*it) != std::string::npos) {
-                multi_support = true;
-              }
+            status = true;
+            if ((*it == "All") || device_id_.find(*it) != std::string::npos) {
+              multi_support = true;
+            }
           }
-          //The operator to be marked true, it should be supported by atleast CPU device specified with AUTO
+          // The operator to be marked true, it should be supported by atleast CPU device specified with AUTO
           if (device_id_.find("AUTO") == 0) {
-              if (std::string(*it).find("CPU")==std::string::npos){
-                auto_support = false;
-              }
-              else if((*it == "All") || (device_id_.find(*it) != std::string::npos)){
-                auto_support = true;
-              }
+            if (std::string(*it).find("CPU") == std::string::npos) {
+              auto_support = false;
+            } else if ((*it == "All") || (device_id_.find(*it) != std::string::npos)) {
+              auto_support = true;
+            }
           }
-          //if device supported is all then we support it
+          // if device supported is all then we support it
           if (*it == "All") {
             return true;
           }
-          //check for device supported
+          // check for device supported
           if (status == false) {
             if (device_id_.find(*it) != std::string::npos) {
               return true;
@@ -829,7 +825,6 @@ bool DataOps::op_is_supported(std::string name, std::vector<SupportedOp>& op_lis
           }
           it++;
         }
-
       }
     }
   }
@@ -995,7 +990,7 @@ bool DataOps::node_is_supported(const std::map<std::string, std::set<std::string
    3b. If above is not true, check if the op is available in nGraph.
   */
 
-  //Check 0
+  // Check 0
   if (!op_is_supported(optype, supported_op_mode)) {
 #ifndef NDEBUG
     if (openvino_ep::backend_utils::IsDebugEnabled()) {
@@ -1005,7 +1000,7 @@ bool DataOps::node_is_supported(const std::map<std::string, std::set<std::string
     return false;
   }
 
-  //Check 1
+  // Check 1
   bool are_types_supported = true;
 
   node->ForEachDef([this, &are_types_supported](const NodeArg& node_arg, bool is_input) {
@@ -1019,7 +1014,7 @@ bool DataOps::node_is_supported(const std::map<std::string, std::set<std::string
   });
 
   if (!are_types_supported) {
-    #ifndef NDEBUG
+#ifndef NDEBUG
     if (openvino_ep::backend_utils::IsDebugEnabled()) {
       std::cout << "DType is not supported" << std::endl;
     }
@@ -1027,7 +1022,7 @@ bool DataOps::node_is_supported(const std::map<std::string, std::set<std::string
     return false;
   }
 
-  //Check 2
+  // Check 2
 
   bool has_unsupported_dimension = false;
   node->ForEachDef([&has_unsupported_dimension, this, &optype](const NodeArg& node_arg, bool is_input) {
@@ -1037,7 +1032,7 @@ bool DataOps::node_is_supported(const std::map<std::string, std::set<std::string
     }
     auto shape = node_arg.Shape();
     if (shape != nullptr) {
-      //Can't have no dimensions
+      // Can't have no dimensions
       if (shape->dim_size() == 0) {
         if (op_is_supported(optype, no_dimension_supported_)) {
           return;
@@ -1048,15 +1043,15 @@ bool DataOps::node_is_supported(const std::map<std::string, std::set<std::string
         has_unsupported_dimension = true;
         return;
       } else {
-        //Zero dimension check
+        // Zero dimension check
         for (const auto& dim : shape->dim()) {
           if (utils::HasDimValue(dim) && dim.dim_value() == 0) {
             if ((device_id_.find("MYRIAD") != std::string::npos) && (optype == "Resize"))
               return;
             if ((device_id_.find("GPU") != std::string::npos) && ((optype == "Expand") ||
-                (optype == "Slice") || (optype == "Concat") || (optype == "Shape"))) {
-                return;
-              }
+                                                                  (optype == "Slice") || (optype == "Concat") || (optype == "Shape"))) {
+              return;
+            }
             has_unsupported_dimension = true;
             return;
           }
@@ -1074,7 +1069,7 @@ bool DataOps::node_is_supported(const std::map<std::string, std::set<std::string
     return false;
   }
 
-  //Check 3a
+  // Check 3a
   if (domain == kOnnxDomain && unsupported_op_mode(node)) {
     if (optype == "GatherElements") {
       return true;
@@ -1106,7 +1101,7 @@ bool DataOps::node_is_supported(const std::map<std::string, std::set<std::string
 #endif
     return false;
   }
-    return true;
+  return true;
 }
 
 std::vector<NodeIndex> DataOps::GetUnsupportedNodeIndices(std::unordered_set<std::string>& ng_required_initializers) {
@@ -1182,8 +1177,7 @@ bool DataOps::SpecialConditionForClusterSizeOne(std::unordered_set<std::string>&
     if (output_data_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT ||
         output_data_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16) {
       return false;
-    }
-    else {
+    } else {
       return true;
     }
   }

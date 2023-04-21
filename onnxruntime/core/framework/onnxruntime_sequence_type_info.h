@@ -12,7 +12,6 @@ class TypeProto;
 
 struct OrtSequenceTypeInfo {
  public:
-
   explicit OrtSequenceTypeInfo(std::unique_ptr<OrtTypeInfo> sequence_key_type) noexcept;
   ~OrtSequenceTypeInfo();
 

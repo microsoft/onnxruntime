@@ -27,7 +27,7 @@ SVMRegressor<T>::SVMRegressor(const OpKernelInfo& info)
   one_class_ = (onec != 0);
 
   if (vector_count_ > 0) {
-    feature_count_ = support_vectors_.size() / vector_count_;  //length of each support vector
+    feature_count_ = support_vectors_.size() / vector_count_;  // length of each support vector
     mode_ = SVM_TYPE::SVM_SVC;
   } else {
     feature_count_ = coefficients_.size();

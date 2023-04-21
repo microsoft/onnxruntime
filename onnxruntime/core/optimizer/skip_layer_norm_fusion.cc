@@ -90,6 +90,36 @@ static bool CheckSecondAdd(Graph& graph, Node& add, ProviderType providertype) {
          add_input1_shape->dim(2).dim_value() == add_input2_shape->dim(0).dim_value();
 }
 
+// Add a Cast to convert input from float16/bfloat16 to float when input type is different fromm output type
+static NodeArg* CastToFloat(Graph& graph, NodeArg* input, int32_t output_data_type, ProviderType provider_type) {
+  if (nullptr == input->Type() ||
+      input->TypeAsProto()->tensor_type().elem_type() == output_data_type ||
+      output_data_type != ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
+    return input;
+  }
+
+  auto input_shape = input->Shape();
+  TypeProto input_float;
+  input_float.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
+  for (auto i = 0; i < input_shape->dim_size(); ++i) {
+    auto dim = input_float.mutable_tensor_type()->mutable_shape()->add_dim();
+    *dim = input_shape->dim(i);
+  }
+  auto& cast_float = graph.GetOrCreateNodeArg(graph.GenerateNodeArgName(input->Name() + "_Float"), &input_float);
+
+  auto& node = graph.AddNode(graph.GenerateNodeName(input->Name() + "_Cast"),
+                             "Cast",
+                             "Cast Input to float",
+                             std::array{input},
+                             std::array{&cast_float},
+                             nullptr,
+                             kOnnxDomain);
+
+  node.AddAttribute("to", int64_t{ONNX_NAMESPACE::TensorProto_DataType_FLOAT});
+  node.SetExecutionProviderType(provider_type);
+  return &cast_float;
+}
+
 /**
 Skip Layer Normalization will fuse Add + LayerNormalization into one node, and another Add if applicable
 
@@ -242,6 +272,14 @@ Status SkipLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_le
 
     nodes_to_remove.push_back(*p_add1);
     nodes_to_remove.push_back(ln_node);
+
+    // If input types are different than output type and output type is float, insert cast node after inputs.
+    for (auto& input_def : skip_layer_norm_input_defs) {
+      input_def = CastToFloat(graph,
+                              input_def,
+                              ln_node.MutableOutputDefs()[0]->TypeAsProto()->tensor_type().elem_type(),
+                              ln_node.GetExecutionProviderType());
+    }
 
     Node& skip_layer_norm_node = graph.AddNode(graph.GenerateNodeName("SkipLayerNormalization"),
                                                "SkipLayerNormalization",

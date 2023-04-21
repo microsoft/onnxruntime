@@ -50,6 +50,7 @@ select = [
     "W", # pycodestyle
     "B", # flake8-bugbear
     "N", # pep8-naming
+    "ISC", # flake8-implicit-str-concat
     "YTT", # flake8-2020
     "RUF", # Ruff-specific rules
     "SIM", # flake8-simplify
@@ -62,6 +63,7 @@ select = [
 # NOTE: Refrain from growing the ignore list unless for exceptional cases.
 # Always include a comment to explain why.
 ignore = [
+    "B028", # FIXME: Add stacklevel to warnings
     "E501", # Line length controlled by black
     "N803", # Argument casing
     "N812", # Allow import torch.nn.functional as F
@@ -75,6 +77,7 @@ ignore = [
 ignore-init-module-imports = true
 unfixable = [
     "F401", # Unused imports
+    "SIM112", # Use upper case for env vars
 ]
 
 [tool.ruff.per-file-ignores]
@@ -82,3 +85,4 @@ unfixable = [
 # Prefer inline ignores with `noqa: xxx`.
 # Eventually this list should become empty.
 "orttraining/orttraining/test/**" = ["N802"] # Function casing
+"tools/nuget/generate_nuspec_for_native_nuget.py" = ["ISC003"] # Too many errors to fix
