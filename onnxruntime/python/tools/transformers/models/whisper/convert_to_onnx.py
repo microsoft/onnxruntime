@@ -192,6 +192,7 @@ def export_onnx_models(
 
     output_paths = []
     for name, model in models.items():
+        print(f"Handing model ====> {name}")
         model.to(device)
         filename_suffix = "_" + name
 
@@ -240,6 +241,7 @@ def export_onnx_models(
                         use_external_data_format,
                         auto_mixed_precision=not disable_auto_mixed_precision,
                         use_gpu=use_gpu,
+                        use_decoder_masked_multi_head_attention = (name == "decoder")
                     )
                     onnx_path = output_path
 

@@ -224,6 +224,7 @@ class WhisperHelper:
         use_external_data_format: bool = False,
         auto_mixed_precision: bool = True,
         use_gpu: bool = False,
+        use_decoder_masked_multi_head_attention : bool = False
     ):
         """Optimize ONNX model with an option to convert it to use mixed precision."""
 
@@ -231,6 +232,7 @@ class WhisperHelper:
 
         optimization_options = FusionOptions("bart")
         optimization_options.use_multi_head_attention = True
+        optimization_options.use_decoder_masked_multi_head_attention = use_decoder_masked_multi_head_attention
 
         m = optimize_model(
             onnx_model_path,

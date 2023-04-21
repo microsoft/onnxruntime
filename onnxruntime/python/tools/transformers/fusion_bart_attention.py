@@ -338,26 +338,39 @@ class FusionBartAttention(FusionAttention):
                 # Note: Decoder attention with past key and past value is fused as multihead attention
                 # rather than attention because multihead attention supports separate past key and past
                 # value whereas attention supports concatenated past key and past value.
-                new_node = (
-                    self.create_multihead_attention_node(
-                        matmul_q,
-                        matmul_k if decoder_cross_attention or decoder_attention_with_past else past_k,
-                        matmul_v if decoder_cross_attention or decoder_attention_with_past else past_v,
-                        add_q,
-                        add_k if decoder_cross_attention or decoder_attention_with_past else None,
-                        add_v if decoder_cross_attention or decoder_attention_with_past else None,
-                        num_heads,
-                        hidden_size,
-                        attention_last_node.output[0],
-                        past_k=past_k if decoder_attention_with_past else "",
-                        past_v=past_v if decoder_attention_with_past else "",
-                        present_k=present_k,
-                        present_v=present_v,
-                        packed_qkv=decoder_attention_with_past,
-                    )
-                    if self.use_multi_head_attention
-                    else None
-                )
+                if self.use_decoder_masked_multi_head_attention:
+                    new_node = self.create_multihead_attention_node(
+                            matmul_q,
+                            matmul_k if decoder_cross_attention or decoder_attention_with_past else past_k,
+                            matmul_v if decoder_cross_attention or decoder_attention_with_past else past_v,
+                            add_q,
+                            add_k if decoder_cross_attention or decoder_attention_with_past else None,
+                            add_v if decoder_cross_attention or decoder_attention_with_past else None,
+                            num_heads,
+                            hidden_size,
+                            attention_last_node.output[0],
+                            past_k=past_k if decoder_attention_with_past else "",
+                            past_v=past_v if decoder_attention_with_past else "",
+                            present_k=present_k,
+                            present_v=present_v,
+                        )
+                elif self.use_multi_head_attention:
+                    new_node = self.create_multihead_attention_node(
+                            matmul_q,
+                            matmul_k if decoder_cross_attention or decoder_attention_with_past else past_k,
+                            matmul_v if decoder_cross_attention or decoder_attention_with_past else past_v,
+                            add_q,
+                            add_k if decoder_cross_attention or decoder_attention_with_past else None,
+                            add_v if decoder_cross_attention or decoder_attention_with_past else None,
+                            num_heads,
+                            hidden_size,
+                            attention_last_node.output[0],
+                            past_k=past_k if decoder_attention_with_past else "",
+                            past_v=past_v if decoder_attention_with_past else "",
+                            present_k=present_k,
+                            present_v=present_v,
+                            packed_qkv=decoder_attention_with_past,
+                        )
             else:
                 # Temporarily set multihead attention flag to false
                 use_multi_head_attention_ground_truth = self.use_multi_head_attention
