@@ -36,8 +36,8 @@ jobs:
       "$(brew --prefix llvm@15)/bin/clang-tidy" \
         -p="$(Build.BinariesDirectory)/Debug" \
         --checks="-*,clang-analyzer-*" \
-        --header-filter="objectivec/include|objectivec/src|onnxruntime/core" \
-        ./objectivec/src/*.mm \
+        --header-filter="objectivec/include|objectivec|onnxruntime/core" \
+        ./objectivec/*.mm \
         ./onnxruntime/core/platform/apple/logging/apple_log_sink.mm \
         ./onnxruntime/core/providers/coreml/model/*.mm
     displayName: Analyze Objective-C/C++ source code

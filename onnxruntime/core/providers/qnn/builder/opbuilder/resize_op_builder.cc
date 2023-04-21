@@ -279,6 +279,12 @@ Status ResizeOpBuilder::ValidateQDQOp(QnnModelWrapper& qnn_model_wrapper, const 
                     "QNN EP: Cannot get shape for Resize input");
   ORT_RETURN_IF(input_shape.size() < 3, "QNN EP: Resize input must have a rank >= 3.");
 
+  const auto& output_0 = node_unit.Outputs()[0];
+  std::vector<uint32_t> output_shape;
+  ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(output_0.node_arg, output_shape),
+                    "QNN EP: Cannot get shape for Resize output");
+  ORT_RETURN_IF(output_shape.size() < 3, "QNN EP: Resize output must have a rank >= 3.");
+
   return Status::OK();
 }
 
