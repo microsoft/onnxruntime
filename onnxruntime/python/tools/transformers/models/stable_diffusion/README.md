@@ -40,7 +40,7 @@ The last two optimizations (Packed QKV and BiasAdd) are only available in nightl
 
 ### Results on MI250X with 1 GCD
 
-With runtime tuning enabled, we get following perference number on one GCD of a MI250X GPU:
+With runtime tuning enabled, we get following performance number on one GCD of a MI250X GPU:
 
 | Optimizations                                                         | Average Latency (batch_size=1) | Memory in MB (batch_size=1) | Average Latency (batch_size=8) | Memory in MB (batch_size=8) |
 | --------------------------------------------------------------------- | ------------------------------ | --------------------------- | ------------------------------ | --------------------------- |
@@ -52,7 +52,7 @@ With runtime tuning enabled, we get following perference number on one GCD of a 
 | FP16 baseline + FMHA + NhwcConv + GroupNorm + BiasSplitGelu           | 2.2                            | 4,910                       | 12.5                           | 9,646                       |
 | FP16 baseline + FMHA + NhwcConv + GroupNorm + BiasSplitGelu + BiasAdd | 2.2                            | 4,910                       | 12.5                           | 9,778                       |
 
-The entries marked with `*` produce suspicious output images. The might be numerical stability or correctness issue for the pipeline. The perference number is for reference only.
+The entries marked with `*` produce suspicious output images. The might be numerical stability or correctness issue for the pipeline. The performance number is for reference only.
 
 ## Scripts:
 

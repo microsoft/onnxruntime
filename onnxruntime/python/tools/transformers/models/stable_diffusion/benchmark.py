@@ -111,25 +111,22 @@ class RocmMemoryMonitor:
 
     def measure_gpu_usage(self):
         device_count = len(self.rocm_smi.listDevices()) if self.rocm_smi is not None else 0
-        max_used = 0
-        used = 0
+        max_gpu_usage = [0 for i in range(device_count)]
+        gpu_name = [f"GPU{i}" for i in range(device_count)]
         while True:
-            max_gpu_usage = [0 for i in range(device_count)]
-            gpu_name = [f"GPU{i}" for i in range(device_count)]
-            while True:
-                for i in range(device_count):
-                    max_gpu_usage[i] = max(max_gpu_usage[i], self.get_used_memory(i))
-                time.sleep(0.002)  # 2ms
-                if not self.keep_measuring:
-                    break
-            return [
-                {
-                    "device_id": i,
-                    "name": gpu_name[i],
-                    "max_used_MB": max_gpu_usage[i],
-                }
-                for i in range(device_count)
-            ]
+            for i in range(device_count):
+                max_gpu_usage[i] = max(max_gpu_usage[i], self.get_used_memory(i))
+            time.sleep(0.002)  # 2ms
+            if not self.keep_measuring:
+                break
+        return [
+            {
+                "device_id": i,
+                "name": gpu_name[i],
+                "max_used_MB": max_gpu_usage[i],
+            }
+            for i in range(device_count)
+        ]
 
 
 def measure_gpu_memory(monitor_type, func, start_memory=None):
@@ -259,7 +256,8 @@ def run_ort_pipeline(
     def warmup():
         pipe("warm up", height, width, num_inference_steps=steps, num_images_per_prompt=batch_size)
 
-    # Run warm up, and measure GPU memory of two runs (The first run has cuDNN algo search so it might need more memory)
+    # Run warm up, and measure GPU memory of two runs
+    # cuDNN/MIOpen The first run has  algo search so it might need more memory)
     first_run_memory = measure_gpu_memory(memory_monitor_type, warmup, start_memory)
     second_run_memory = measure_gpu_memory(memory_monitor_type, warmup, start_memory)
 
