@@ -52,6 +52,16 @@ namespace Microsoft.ML.OnnxRuntime
             NativeApiStatus.VerifySuccess(NativeTrainingMethods.OrtLoadCheckpoint(NativeOnnxValueHelper.GetPlatformSerializedString(checkpointPath), out handle));
         }
 
+        /// <summary>
+        /// Saves the checkpoint
+        /// <param name="checkpointPath"> absolute path to the checkpoint file.</param>
+        /// <param name="includeOptimizerState"> absolute path to the checkpoint file.</param>
+        /// </summary>
+        public void SaveCheckpoint(string checkpointPath, bool includeOptimizerState = false)
+        {
+            NativeApiStatus.VerifySuccess(NativeTrainingMethods.OrtSaveCheckpoint(handle, NativeOnnxValueHelper.GetPlatformSerializedString(checkpointPath), includeOptimizerState));
+        }
+
 #region SafeHandle
         /// <summary>
         /// Overrides SafeHandle.ReleaseHandle() to properly dispose of
