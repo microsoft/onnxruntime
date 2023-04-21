@@ -26,17 +26,14 @@ void ortenv_setup() {
 }
 
 #ifdef USE_TENSORRT
+// TensorRT will load/unload libraries as builder objects are created and torn down. This will happen for
+// every single unit test, which leads to excessive test execution time due to that overhead.
+// Nvidia suggests to keep a placeholder builder object around to avoid this.
 #include "NvInfer.h"
 class DummyLogger : public nvinfer1::ILogger {
-  nvinfer1::ILogger::Severity verbosity_;
-
  public:
-  DummyLogger(Severity verbosity = Severity::kWARNING)
-      : verbosity_(verbosity) {}
-  void log(Severity severity, const char* msg) noexcept override
-  {
-    static_cast<void>(0);
-  }
+  DummyLogger(Severity verbosity)
+  void log(Severity severity, const char* msg) noexcept override {}
 };
 DummyLogger trt_logger(nvinfer1::ILogger::Severity::kWARNING);
 auto const placeholder = std::unique_ptr<nvinfer1::IBuilder>(nvinfer1::createInferBuilder(trt_logger));
