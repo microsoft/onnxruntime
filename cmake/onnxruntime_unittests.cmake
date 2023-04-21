@@ -1448,7 +1448,7 @@ if (NOT onnxruntime_BUILD_WEBASSEMBLY)
                           ${JAVA_NATIVE_TEST_DIR}/$<TARGET_LINKER_FILE_NAME:custom_op_library>)
           if (onnxruntime_ENABLE_TRAINING_APIS)
             message(STATUS "Running Java inference and training tests")
-            add_test(NAME onnxruntime4j_test COMMAND ${GRADLE_EXECUTABLE} cmakeCheck -DcmakeBuildDir=${CMAKE_CURRENT_BINARY_DIR} ${ORT_PROVIDER_FLAGS} -DENABLE_TRAINING=1
+            add_test(NAME onnxruntime4j_test COMMAND ${GRADLE_EXECUTABLE} cmakeCheck -DcmakeBuildDir=${CMAKE_CURRENT_BINARY_DIR} ${ORT_PROVIDER_FLAGS} -DENABLE_TRAINING_APIS=1
                           WORKING_DIRECTORY ${REPO_ROOT}/java)
           else()
             message(STATUS "Running Java inference tests only")
