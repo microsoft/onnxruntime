@@ -2,6 +2,10 @@ require "json"
 
 package = JSON.parse(File.read(File.join(__dir__, "package.json")))
 
+# Expect to return the absolute path of the react native root project dir
+current_dir = File.dirname(__FILE__)
+root_dir =  File.dirname(File.dirname(current_dir))
+
 Pod::Spec.new do |spec|
   spec.static_framework = true
 
@@ -19,4 +23,11 @@ Pod::Spec.new do |spec|
 
   spec.dependency "React-Core"
   spec.dependency "onnxruntime-c"
+
+  # Read the ortpackagename field in react native root directory
+  if (File.exist?(File.join(root_dir, 'package.json')))
+    if (root_package["ortpackagename"] == "onnxruntime-ext")
+      spec.dependency "onnxruntime-extensions-c"
+    end
+  end
 end

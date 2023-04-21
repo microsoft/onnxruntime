@@ -128,10 +128,13 @@ public class OnnxruntimeModule extends ReactContextBaseJavaModule {
       modelStream.read(modelArray);
 
       SessionOptions sessionOptions = parseSessionOptions(options);
-      // Optional call of sessionOptions java level api to enable usage of custom ops in ort-extensions package
-      if (BuildConfig.ORT_PACKAGE_VERSION == "onnxruntime-ext") {
-        sessionOptions.registerCustomOpLibrary(ai.onnxruntime.extensions.OrtxPackage.getLibraryPath());
-      }
+
+      /*
+        Optional call of sessionOptions java api to enable usage of ort extensions custom ops in
+        a react native app
+      */
+      // sessionOptions.registerCustomOpLibrary(ai.onnxruntime.extensions.OrtxPackage.getLibraryPath());
+
       ortSession = ortEnvironment.createSession(modelArray, sessionOptions);
       sessionMap.put(uri, ortSession);
     } else {

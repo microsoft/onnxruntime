@@ -8,6 +8,9 @@
 #import <React/RCTLog.h>
 #import <onnxruntime/onnxruntime_cxx_api.h>
 
+// Optional include of ort extensions header
+// #include <onnxruntime_extensions.h>
+
 @implementation OnnxruntimeModule
 
 struct SessionInfo {
@@ -87,6 +90,15 @@ RCT_EXPORT_METHOD(run
     sessionInfo = new SessionInfo();
 
     Ort::SessionOptions sessionOptions = [self parseSessionOptions:options];
+
+    /*
+      Optional call of sessionOptions java api to enable usage of ort extensions custom ops in
+      a react native app
+    */
+    // if (RegisterCustomOps(sessionOptions, OrtGetApiBase()) != nullptr) {
+    //   throw std::runtime_error("RegisterCustomOps failed");
+    // }
+
     sessionInfo->session.reset(new Ort::Session(*ortEnv, [modelPath UTF8String], sessionOptions));
 
     sessionInfo->inputNames.reserve(sessionInfo->session->GetInputCount());

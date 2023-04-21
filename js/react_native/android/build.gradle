@@ -23,7 +23,6 @@ def getExtOrIntegerDefault(name) {
 def getOnnxruntimePackageName() {
   // locate user's project dir
   def reactnativeRootDir = project.rootDir.parentFile
-  println(reactnativeRootDir)
   // get file path of package.json
   def packageJsonFile = new File(reactnativeRootDir, 'package.json')
   // read field 'onnxruntime-package-name'
@@ -40,13 +39,6 @@ def getOnnxruntimePackageName() {
   return ""
 }
 
-task generateOrtPackageName {
-    def ortPackageName = getOnnxruntimePackageName()
-    def file = file("${buildDir}/generated/ort_package_name.txt")
-    file.getParentFile().mkdirs()
-    file.write(ortPackageName)
-}
-
 android {
   compileSdkVersion getExtOrIntegerDefault('compileSdkVersion')
   buildToolsVersion getExtOrDefault('buildToolsVersion')
@@ -56,7 +48,6 @@ android {
     versionCode 1
     versionName "1.0"
     testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
-    buildConfigField "String", "ORT_PACKAGE_VERSION", "\"${file("${buildDir}/generated/ort_package_name.txt").text}\""
   }
 
   buildTypes {
