@@ -16,9 +16,9 @@ namespace onnxruntime {
 namespace AttentionFusionHelper {
 
 struct MatchGemmResult {
-  const Node* gemm = nullptr;                     // the Gemm node.
+  const Node* gemm = nullptr;           // the Gemm node.
   const Node* input_node = nullptr;     // one node in the subgraph that accept the input.
-  const Node* output_node = nullptr;              // the node that have output of the subgraph.
+  const Node* output_node = nullptr;    // the node that have output of the subgraph.
   std::vector<NodeIndex> node_indices;  // id of all nodes.
 };
 
@@ -765,13 +765,13 @@ bool MatchInputMaskSubgraph(const Graph& graph, const Node& layer_norm, const No
     return false;
   }
 
-  //check where has X=-Infinity
+  // check where has X=-Infinity
   if (!optimizer_utils::IsInitializerWithExpectedValue(graph, *(where.InputDefs()[1]), -INFINITY, true)) {
     DEBUG_LOG("where const not matched.");
     return false;
   }
 
-  //expand has another input Shape <-- qk_MatMul
+  // expand has another input Shape <-- qk_MatMul
   std::vector<graph_utils::EdgeEndToMatch> shape_path{
       {0, 1, "Shape", {1, 13}, kOnnxDomain},
       {0, 0, "MatMul", {1, 9, 13}, kOnnxDomain}};
@@ -789,13 +789,13 @@ bool MatchInputMaskSubgraph(const Graph& graph, const Node& layer_norm, const No
     return false;
   }
 
-  //equal has input B=0
+  // equal has input B=0
   if (!optimizer_utils::IsInitializerWithExpectedValue(graph, *(equal.InputDefs()[1]), 0.0f, true)) {
     DEBUG_LOG("equal const not matched.");
     return false;
   }
 
-  //reshape node's shape input
+  // reshape node's shape input
   std::vector<graph_utils::EdgeEndToMatch> reshape_shape_path_1{
       {0, 1, "Concat", {4, 11, 13}, kOnnxDomain},
       {0, 0, "Unsqueeze", {1, 11, 13}, kOnnxDomain},
@@ -825,7 +825,7 @@ bool MatchInputMaskSubgraph(const Graph& graph, const Node& layer_norm, const No
   }
   const Node& gather_2 = edges[1]->GetNode();
   const Node& shape_2 = edges[2]->GetNode();
-  //check gather has the right indices
+  // check gather has the right indices
   if (!optimizer_utils::IsInitializerWithExpectedValue(graph, *(gather_1.InputDefs()[1]), static_cast<int64_t>(0), true) ||
       !optimizer_utils::IsInitializerWithExpectedValue(graph, *(gather_2.InputDefs()[1]), static_cast<int64_t>(1), true)) {
     DEBUG_LOG("gather indices not matched.");
@@ -850,7 +850,7 @@ bool MatchInputMaskSubgraph(const Graph& graph, const Node& layer_norm, const No
     return false;
   }
 
-  //check concat input shape information
+  // check concat input shape information
   if (concat.InputDefs().size() != 4) {
     return false;
   }
@@ -907,7 +907,7 @@ bool MatchPastSubgraph(Graph& graph, const Node& k_concat, const Node& v_concat,
     return false;
   }
   size_t i = 0;
-  const Node* past_k_transpose = transpose_optimized_pattern ? nullptr : & edges[i++]->GetNode();
+  const Node* past_k_transpose = transpose_optimized_pattern ? nullptr : &edges[i++]->GetNode();
   const Node& past_k_gather = edges[i++]->GetNode();
 
   std::vector<graph_utils::EdgeEndToMatch> present_k_path{
@@ -948,14 +948,12 @@ bool MatchPastSubgraph(Graph& graph, const Node& k_concat, const Node& v_concat,
 
   if (!transpose_optimized_pattern) {
     InlinedVector<int64_t> perm;
-    if (!(graph_utils::GetRepeatedNodeAttributeValues(*past_k_transpose, "perm", perm)
-        && perm.size() == 4 && perm[0] == 0 && perm[1] == 1 && perm[2] == 3 && perm[3] == 2)) {
+    if (!(graph_utils::GetRepeatedNodeAttributeValues(*past_k_transpose, "perm", perm) && perm.size() == 4 && perm[0] == 0 && perm[1] == 1 && perm[2] == 3 && perm[3] == 2)) {
       DEBUG_LOG("past_k_transpose perm attribute not matched");
       return false;
     }
 
-    if (!(graph_utils::GetRepeatedNodeAttributeValues(*present_k_transpose, "perm", perm)
-        && perm.size() == 4 && perm[0] == 0 && perm[1] == 1 && perm[2] == 3 && perm[3] == 2)) {
+    if (!(graph_utils::GetRepeatedNodeAttributeValues(*present_k_transpose, "perm", perm) && perm.size() == 4 && perm[0] == 0 && perm[1] == 1 && perm[2] == 3 && perm[3] == 2)) {
       DEBUG_LOG("present_k_transpose perm attribute not matched");
       return false;
     }
@@ -1106,7 +1104,7 @@ bool CheckNodesInPathV(const Graph& graph, const Node& reshape, const Node& tran
   if (!optimizer_utils::AppendTensorFromInitializer(graph, *(v_reshape.InputDefs()[1]), v_reshape_shape) ||
       v_reshape_shape.size() != 4 ||
       v_reshape_shape[0] != 0 ||
-      (v_reshape_shape[1] != 0 && v_reshape_shape[1] != -1) ||  //v_reshape_shape[1] != -1 added for supporting distilbert
+      (v_reshape_shape[1] != 0 && v_reshape_shape[1] != -1) ||  // v_reshape_shape[1] != -1 added for supporting distilbert
       v_reshape_shape[2] <= 0 ||
       v_reshape_shape[2] > hidden_size ||
       (head_size < 0 && v_reshape_shape[3] != -1) ||
@@ -1157,7 +1155,7 @@ bool CheckNodesInPathQ(const Graph& graph, const Node& qk_div, const Node& q_res
   if (!optimizer_utils::AppendTensorFromInitializer(graph, *(q_reshape.InputDefs()[1]), q_reshape_shape) ||
       q_reshape_shape.size() != 4 ||
       q_reshape_shape[0] != 0 ||
-      (q_reshape_shape[1] != 0 && q_reshape_shape[1] != -1) ||  //q_reshape_shape[1] != -1 added for supporting distilbert
+      (q_reshape_shape[1] != 0 && q_reshape_shape[1] != -1) ||  // q_reshape_shape[1] != -1 added for supporting distilbert
       q_reshape_shape[2] != num_heads ||
       q_reshape_shape[3] != head_size) {
     DEBUG_LOG("q_reshape const not matched");
@@ -1205,7 +1203,7 @@ bool CheckNodesInPathK(const Graph& graph, const Node& k_reshape, const Node& k_
   if (!optimizer_utils::AppendTensorFromInitializer(graph, *(k_reshape.InputDefs()[1]), k_reshape_shape) ||
       k_reshape_shape.size() != 4 ||
       k_reshape_shape[0] != 0 ||
-      (k_reshape_shape[1] != 0 && k_reshape_shape[1] != -1) ||  //k_reshape_shape[1] != -1 added for supporting distilbert
+      (k_reshape_shape[1] != 0 && k_reshape_shape[1] != -1) ||  // k_reshape_shape[1] != -1 added for supporting distilbert
       k_reshape_shape[2] != num_heads ||
       k_reshape_shape[3] != head_size) {
     DEBUG_LOG("k_reshape const not matched");
@@ -1451,7 +1449,6 @@ bool FuseGptAttention(Node& layer_norm, Graph& graph, int64_t hidden_size, std::
   bool transpose_optimized_pattern = false;
   const Node* opt_k_transpose = nullptr;
   if (has_past) {
-
     k_concat = graph_utils::GetInputNode(qk_matmul, 1);
     if (k_concat == nullptr) {
       return false;
@@ -1463,8 +1460,7 @@ bool FuseGptAttention(Node& layer_norm, Graph& graph, int64_t hidden_size, std::
       opt_k_transpose = k_concat;
       InlinedVector<int64_t> perm;
 
-      if (!(graph_utils::GetRepeatedNodeAttributeValues(*opt_k_transpose, "perm", perm)
-          && perm.size() == 4 && perm[0] == 0 && perm[1] == 1 && perm[2] == 3 && perm[3] == 2)) {
+      if (!(graph_utils::GetRepeatedNodeAttributeValues(*opt_k_transpose, "perm", perm) && perm.size() == 4 && perm[0] == 0 && perm[1] == 1 && perm[2] == 3 && perm[3] == 2)) {
         DEBUG_LOG("opt_k_transpose perm attribute not matched");
         return false;
       }
@@ -1544,8 +1540,7 @@ bool FuseGptAttention(Node& layer_norm, Graph& graph, int64_t hidden_size, std::
   attention_node.AddAttribute("num_heads", num_heads);
   attention_node.AddAttribute("unidirectional", static_cast<int64_t>(unidir_mask_result.is_unidirectional));
   if (mask_nodes.mask_filter_value != -10000.0f || unidir_mask_result.mask_filter_value != -10000.0f) {
-    float mask_filter_value = mask_nodes.mask_filter_value != -10000.0f ?
-                              mask_nodes.mask_filter_value : unidir_mask_result.mask_filter_value;
+    float mask_filter_value = mask_nodes.mask_filter_value != -10000.0f ? mask_nodes.mask_filter_value : unidir_mask_result.mask_filter_value;
     attention_node.AddAttribute("mask_filter_value", mask_filter_value);
   }
 

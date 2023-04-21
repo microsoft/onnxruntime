@@ -142,7 +142,7 @@ Status PerformanceRunner::Run() {
   // TODO: end profiling
   // if (!performance_test_config_.run_config.profile_file.empty()) session_object->EndProfiling();
   auto first_inference_duration =
-    std::chrono::duration_cast<std::chrono::milliseconds>(initial_inference_result_.end - initial_inference_result_.start).count();
+      std::chrono::duration_cast<std::chrono::milliseconds>(initial_inference_result_.end - initial_inference_result_.start).count();
   std::chrono::duration<double> inference_duration = performance_result_.end - performance_result_.start;
 
   std::cout << "Session creation time cost: " << session_create_duration.count() << " s\n"
@@ -207,7 +207,7 @@ Status PerformanceRunner::RunParallelDuration() {
     duration_seconds = end - start;
   } while (duration_seconds.count() < performance_test_config_.run_config.duration_in_seconds);
 
-  //Join
+  // Join
   std::unique_lock<OrtMutex> lock(m);
   cv.wait(lock, [&counter]() { return counter == 0; });
 
@@ -240,7 +240,7 @@ Status PerformanceRunner::ForkJoinRepeat() {
     });
   }
 
-  //Join
+  // Join
   std::unique_lock<OrtMutex> lock(m);
   cv.wait(lock, [&counter]() { return counter == 0; });
 

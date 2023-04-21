@@ -16,10 +16,9 @@
 #include "tvm_compiler.h"
 #include "tvm_runner.h"
 
-
 namespace onnxruntime {
-  class Graph;
-  class NodeArg;
+class Graph;
+class NodeArg;
 namespace tvm {
 
 class TvmExecutionProvider : public IExecutionProvider {
@@ -45,13 +44,13 @@ class TvmExecutionProvider : public IExecutionProvider {
   void printOptions();
   std::shared_ptr<TvmModule> compileModel(const std::string& func_name,
                                           const GraphViewer& graph_viewer,
-                                          InputsInfoMap& inputs_info);    // NOLINT
+                                          InputsInfoMap& inputs_info);  // NOLINT
   void setInputShapesForFreezedNN(const GraphViewer& graph_viewer,
-                                  TVMTensorShapes& input_shapes,          // NOLINT
-                                  InputsInfoMap& all_input_shapes);       // NOLINT
+                                  TVMTensorShapes& input_shapes,     // NOLINT
+                                  InputsInfoMap& all_input_shapes);  // NOLINT
   void setInputShapesForUnfreezedNN(const GraphViewer& graph_viewer,
-                                    TVMTensorShapes& input_shapes,        // NOLINT
-                                    InputsInfoMap& all_input_shapes);     // NOLINT
+                                    TVMTensorShapes& input_shapes,     // NOLINT
+                                    InputsInfoMap& all_input_shapes);  // NOLINT
   TensorShapeVector getInputShape(const NodeArg* node);
   TensorShapeVector convertTensorShape(const ONNX_NAMESPACE::TensorShapeProto& shape_proto);
   void prepareOutputTensors(const std::shared_ptr<TvmModule>& mod,

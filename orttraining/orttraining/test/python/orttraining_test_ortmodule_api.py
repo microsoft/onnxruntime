@@ -5245,7 +5245,7 @@ def test_sigmoid_grad_opset13():
                 onx = getattr(model_onx, name)
                 opv = None
                 for op in onx.opset_import:
-                    if op.domain == "":
+                    if not op.domain:
                         opv = op.version
                 assert opv == 13
         _test_helpers.assert_values_are_close(ort_prediction, pt_prediction)

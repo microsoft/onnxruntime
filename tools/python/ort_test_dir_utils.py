@@ -219,7 +219,7 @@ def run_test_dir(model_or_dir):
             output_names = list(expected_outputs.keys())
             # handle case where there's a single expected output file but no name in it (empty string for name)
             # e.g. ONNX test models 20190729\opset8\tf_mobilenet_v2_1.4_224
-            if len(output_names) == 1 and output_names[0] == "":
+            if len(output_names) == 1 and output_names[0] == "":  # noqa: PLC1901
                 output_names = [o.name for o in sess.get_outputs()]
                 assert len(output_names) == 1, "There should be single output_name."
                 expected_outputs[output_names[0]] = expected_outputs[""]

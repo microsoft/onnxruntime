@@ -75,7 +75,6 @@ TEST(CApiTest, session_options_empty_affinity_string) {
 
 #ifdef DISABLE_EXTERNAL_INITIALIZERS
 TEST(CApiTest, TestDisableExternalInitiliazers) {
-
   constexpr auto model_path = ORT_TSTR("testdata/model_with_external_initializers.onnx");
 
   Ort::SessionOptions so;
