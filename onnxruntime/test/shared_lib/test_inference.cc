@@ -2893,8 +2893,8 @@ TEST(LiteCustomOpTest, CustomFunc) {
       Ort::Value::CreateTensor<int32_t>(memory_info, alpha_value, 1, alpha_dim, 1),
       Ort::Value::CreateTensor<int32_t>(memory_info, indices_value, 6, indices_dim, 1)};
 
-  Ort::RunOptions run_optoins;
-  auto output_tensors = session.Run(run_optoins, input_names, input_tensors, 4, output_names, 1);
+  Ort::RunOptions run_options;
+  auto output_tensors = session.Run(run_options, input_names, input_tensors, 4, output_names, 1);
   const auto& vector_filterred = output_tensors.at(0);
   auto type_shape_info = vector_filterred.GetTensorTypeAndShapeInfo();
   const float* floats_output = static_cast<const float*>(vector_filterred.GetTensorRawData());
@@ -2961,8 +2961,8 @@ TEST(LiteCustomOpTest, CustomStruct) {
   input_tensors[0].FillStringTensor(str_1_raw, 2);
   input_tensors[1].FillStringTensor(str_2_raw, 1);
 
-  Ort::RunOptions run_optoins;
-  auto output_tensors = session.Run(run_optoins, input_names, input_tensors, 2, output_names, 1);
+  Ort::RunOptions run_options;
+  auto output_tensors = session.Run(run_options, input_names, input_tensors, 2, output_names, 1);
   const auto& str_out_tensor = output_tensors.at(0);
   auto num_chars = str_out_tensor.GetStringTensorDataLength();
   std::vector<char> chars(num_chars + 1, '\0');
@@ -3028,8 +3028,8 @@ TEST(LiteCustomOpTest, MissingOptional) {
       Ort::Value::CreateTensor<float>(memory_info, vector_1_value, vector_1_dim[0], vector_1_dim, 1),
       Ort::Value::CreateTensor<float>(memory_info, vector_2_value, vector_2_dim[0], vector_2_dim, 1)};
 
-  Ort::RunOptions run_optoins;
-  auto output_tensors = session.Run(run_optoins, input_names, input_tensors, 2, output_names, 1);
+  Ort::RunOptions run_options;
+  auto output_tensors = session.Run(run_options, input_names, input_tensors, 2, output_names, 1);
   ASSERT_TRUE(output_tensors.size() == 1);
 }
 
@@ -3066,7 +3066,7 @@ TEST(LiteCustomOpTest, HasOptional) {
       Ort::Value::CreateTensor<float>(memory_info, vector_3_value, vector_3_dim[0], vector_3_dim, 1),
   };
 
-  Ort::RunOptions run_optoins;
-  auto output_tensors = session.Run(run_optoins, input_names, input_tensors, 3, output_names, 2);
+  Ort::RunOptions run_options;
+  auto output_tensors = session.Run(run_options, input_names, input_tensors, 3, output_names, 2);
   ASSERT_TRUE(output_tensors.size() == 2);
 }
