@@ -34,21 +34,31 @@ void RunQnnModelTest(const GetTestModelFn& build_test_case, const ProviderOption
                      int opset_version, ExpectedEPNodeAssignment expected_ep_assignment, int num_nodes_in_ep,
                      const char* test_description, float fp32_abs_err = 1e-5f);
 
-enum HTPSupport {
-  HTP_SUPPORT_UNKNOWN = 0,
-  HTP_UNSUPPORTED,
-  HTP_SUPPORTED,
-  HTP_SUPPORT_ERROR,
+enum class BackendSupport {
+  SUPPORT_UNKNOWN,
+  UNSUPPORTED,
+  SUPPORTED,
+  SUPPORT_ERROR,
 };
 
-// Testing fixture class for tests that require the HTP backend. Checks if HTP is available before the test begins.
+// Testing fixture class for tests that require the QNN HTP backend. Checks if HTP is available before the test begins.
 // The test is skipped if HTP is unavailable (may occur on Windows ARM64).
 // TODO: Remove once HTP can be emulated on Windows ARM64.
 class QnnHTPBackendTests : public ::testing::Test {
  protected:
   void SetUp() override;
 
-  static HTPSupport cached_htp_support_;  // Set by the first test using this fixture.
+  static BackendSupport cached_htp_support_;  // Set by the first test using this fixture.
+};
+
+// Testing fixture class for tests that require the QNN CPU backend. Checks if QNN CPU is available before the test
+// begins. The test is skipped if the CPU backend is unavailable (may occur on Windows ARM64 VM).
+// TODO: Remove once QNN CPU backend works on Windows ARM64 pipeline VM.
+class QnnCPUBackendTests : public ::testing::Test {
+ protected:
+  void SetUp() override;
+
+  static BackendSupport cached_cpu_support_;  // Set by the first test using this fixture.
 };
 
 /**
