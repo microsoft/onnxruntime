@@ -33,6 +33,13 @@ namespace Microsoft.ML.OnnxRuntime
             public IntPtr ReleaseTrainingSession;
             public IntPtr ReleaseCheckpointState;
             public IntPtr ExportModelForInferencing;
+            public IntPtr SetSeed;
+            public IntPtr TrainingSessionGetTrainingModelInputCount;
+            public IntPtr TrainingSessionGetEvalModelInputCount;
+            public IntPtr TrainingSessionGetTrainingModelInputName;
+            public IntPtr TrainingSessionGetEvalModelInputName;
+            public IntPtr AddProperty;
+            public IntPtr GetProperty;
         }
 
         internal static class NativeTrainingMethods
@@ -77,6 +84,14 @@ namespace Microsoft.ML.OnnxRuntime
                     OrtSchedulerStep = (DOrtSchedulerStep)Marshal.GetDelegateForFunctionPointer(trainingApi_.SchedulerStep, typeof(DOrtSchedulerStep));
                     OrtReleaseTrainingSession = (DOrtReleaseTrainingSession)Marshal.GetDelegateForFunctionPointer(trainingApi_.ReleaseTrainingSession, typeof(DOrtReleaseTrainingSession));
                     OrtReleaseCheckpointState = (DOrtReleaseCheckpointState)Marshal.GetDelegateForFunctionPointer(trainingApi_.ReleaseCheckpointState, typeof(DOrtReleaseCheckpointState));
+                    OrtExportModelForInferencing = (DOrtExportModelForInferencing)Marshal.GetDelegateForFunctionPointer(trainingApi_.ExportModelForInferencing, typeof(DOrtExportModelForInferencing));
+                    OrtSetSeed = (DOrtSetSeed)Marshal.GetDelegateForFunctionPointer(trainingApi_.SetSeed, typeof(DOrtSetSeed));
+                    OrtGetTrainingModelInputCount = (DOrtGetTrainingModelInputCount)Marshal.GetDelegateForFunctionPointer(trainingApi_.TrainingSessionGetTrainingModelInputCount, typeof(DOrtGetTrainingModelInputCount));
+                    OrtGetEvalModelInputCount = (DOrtGetEvalModelInputCount)Marshal.GetDelegateForFunctionPointer(trainingApi_.TrainingSessionGetEvalModelInputCount, typeof(DOrtGetEvalModelInputCount));
+                    OrtGetTrainingModelInputName = (DOrtGetTrainingModelInputName)Marshal.GetDelegateForFunctionPointer(trainingApi_.TrainingSessionGetTrainingModelInputName, typeof(DOrtGetTrainingModelInputName));
+                    OrtGetEvalModelInputName = (DOrtGetEvalModelInputName)Marshal.GetDelegateForFunctionPointer(trainingApi_.TrainingSessionGetEvalModelInputName, typeof(DOrtGetEvalModelInputName));
+                    OrtAddProperty = (DOrtAddProperty)Marshal.GetDelegateForFunctionPointer(trainingApi_.AddProperty, typeof(DOrtAddProperty));
+                    OrtGetProperty = (DOrtGetProperty)Marshal.GetDelegateForFunctionPointer(trainingApi_.GetProperty, typeof(DOrtGetProperty));
                 }
 
             }
@@ -98,13 +113,14 @@ namespace Microsoft.ML.OnnxRuntime
             /// <summary>
             /// Creates an instance of OrtSession with provided parameters
             /// </summary>
-            /// <param name="checkpointPath">checkpoint string path</param>
-            /// <param name="checkpointState">(Output) Loaded OrtCheckpointState instance</param>
+            /// <param name="checkpointState">OrtCheckpointState instance to save</param>
+            /// <param name="checkpointPath">Checkpoint string path</param>
+            /// <param name="includeOptimizerState">Flag indicating whether to save the optimizer state.</param>
             [UnmanagedFunctionPointer(CallingConvention.Winapi)]
             public delegate IntPtr /* OrtStatus* */DOrtSaveCheckpoint(
+                                            IntPtr /*(OrtCheckpointState*)*/ checkpointState,
                                             byte[] checkpointPath,
-                                            IntPtr /*(OrtTrainingSession*)*/ session,
-                                            bool saveOptimizerState);
+                                            bool includeOptimizerState);
 
             public static DOrtSaveCheckpoint OrtSaveCheckpoint;
 
@@ -170,7 +186,7 @@ namespace Microsoft.ML.OnnxRuntime
             public static DOrtLazyResetGrad OrtLazyResetGrad;
 
             [UnmanagedFunctionPointer(CallingConvention.Winapi)]
-            public delegate IntPtr /*(ONNStatus*)*/ DOrtTrainStep(
+            public delegate IntPtr /*(OrtStatus*)*/ DOrtTrainStep(
                                                     IntPtr /*(OrtTrainingSession*)*/ session,
                                                     IntPtr /*(OrtSessionRunOptions*)*/ runOptions,  // can be null to use the default options
                                                     UIntPtr inputCount,
@@ -182,7 +198,7 @@ namespace Microsoft.ML.OnnxRuntime
             public static DOrtTrainStep OrtTrainStep;
 
             [UnmanagedFunctionPointer(CallingConvention.Winapi)]
-            public delegate IntPtr /*(ONNStatus*)*/ DOrtEvalStep(
+            public delegate IntPtr /*(OrtStatus*)*/ DOrtEvalStep(
                                                     IntPtr /*(OrtTrainingSession*)*/ session,
                                                     IntPtr /*(OrtSessionRunOptions*)*/ runOptions,  // can be null to use the default options
                                                     UIntPtr inputCount,
@@ -194,7 +210,7 @@ namespace Microsoft.ML.OnnxRuntime
             public static DOrtEvalStep OrtEvalStep;
 
             [UnmanagedFunctionPointer(CallingConvention.Winapi)]
-            public delegate IntPtr /*(ONNStatus*)*/ DOrtOptimizerStep(
+            public delegate IntPtr /*(OrtStatus*)*/ DOrtOptimizerStep(
                                                     IntPtr /*(OrtTrainingSession*)*/ session,
                                                     IntPtr /*(OrtSessionRunOptions*)*/ runOptions  // can be null to use the default options
                                                     );
@@ -202,7 +218,7 @@ namespace Microsoft.ML.OnnxRuntime
             public static DOrtOptimizerStep OrtOptimizerStep;
 
             [UnmanagedFunctionPointer(CallingConvention.Winapi)]
-            public delegate IntPtr /*(ONNStatus*)*/ DOrtSetLearningRate(
+            public delegate IntPtr /*(OrtStatus*)*/ DOrtSetLearningRate(
                                                     IntPtr /*(OrtTrainingSession*)*/ session,
                                                     float learningRate
                                                     );
@@ -210,7 +226,7 @@ namespace Microsoft.ML.OnnxRuntime
             public static DOrtSetLearningRate OrtSetLearningRate;
 
             [UnmanagedFunctionPointer(CallingConvention.Winapi)]
-            public delegate IntPtr /*(ONNStatus*)*/ DOrtGetLearningRate(
+            public delegate IntPtr /*(OrtStatus*)*/ DOrtGetLearningRate(
                                                     IntPtr /*(OrtTrainingSession*)*/ session,
                                                     out float learningRate
                                                     );
@@ -218,7 +234,7 @@ namespace Microsoft.ML.OnnxRuntime
             public static DOrtGetLearningRate OrtGetLearningRate;
 
             [UnmanagedFunctionPointer(CallingConvention.Winapi)]
-            public delegate IntPtr /*(ONNStatus*)*/ DOrtRegisterLinearLRScheduler(
+            public delegate IntPtr /*(OrtStatus*)*/ DOrtRegisterLinearLRScheduler(
                                                     IntPtr /*(OrtTrainingSession*)*/ session,
                                                     long warmupStepCount,
                                                     long totalStepCount,
@@ -227,7 +243,7 @@ namespace Microsoft.ML.OnnxRuntime
             public static DOrtRegisterLinearLRScheduler OrtRegisterLinearLRScheduler;
 
             [UnmanagedFunctionPointer(CallingConvention.Winapi)]
-            public delegate IntPtr /*(ONNStatus*)*/ DOrtSchedulerStep(
+            public delegate IntPtr /*(OrtStatus*)*/ DOrtSchedulerStep(
                                                     IntPtr /*(OrtTrainingSession*)*/ session
                                                     );
             public static DOrtSchedulerStep OrtSchedulerStep;
@@ -239,6 +255,80 @@ namespace Microsoft.ML.OnnxRuntime
             [UnmanagedFunctionPointer(CallingConvention.Winapi)]
             public delegate void DOrtReleaseCheckpointState(IntPtr /*(OrtCheckpointState*)*/checkpointState);
             public static DOrtReleaseCheckpointState OrtReleaseCheckpointState;
+
+            [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+            public delegate IntPtr /*(OrtStatus*)*/ DOrtExportModelForInferencing(
+                                                    IntPtr /*(OrtTrainingSession*)*/ session,
+                                                    byte[] inferenceModelPath,
+                                                    UIntPtr graphOutputCount,
+                                                    IntPtr[] /*(const char* const*)*/ graphOutputNames
+                                                    );
+
+            public static DOrtExportModelForInferencing OrtExportModelForInferencing;
+
+            [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+            public delegate IntPtr /*(OrtStatus*)*/ DOrtSetSeed(
+                                                    long seed
+                                                    );
+
+            public static DOrtSetSeed OrtSetSeed;
+
+            [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+            public delegate IntPtr /*(OrtStatus*)*/ DOrtGetTrainingModelInputCount(
+                                                    IntPtr /*(OrtTrainingSession*)*/ session,
+                                                    out UIntPtr inputCount
+                                                    );
+
+            public static DOrtGetTrainingModelInputCount OrtGetTrainingModelInputCount;
+
+            [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+            public delegate IntPtr /*(OrtStatus*)*/ DOrtGetEvalModelInputCount(
+                                                    IntPtr /*(OrtTrainingSession*)*/ session,
+                                                    out UIntPtr inputCount
+                                                    );
+
+            public static DOrtGetEvalModelInputCount OrtGetEvalModelInputCount;
+
+            [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+            public delegate IntPtr /*(OrtStatus*)*/ DOrtGetTrainingModelInputName(
+                                                    IntPtr /*(OrtTrainingSession*)*/ session,
+                                                    UIntPtr index,
+                                                    IntPtr /*(OrtAllocator*)*/ allocator,
+                                                    out IntPtr /*(char**)*/name
+                                                    );
+
+            public static DOrtGetTrainingModelInputName OrtGetTrainingModelInputName;
+
+            [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+            public delegate IntPtr /*(OrtStatus*)*/ DOrtGetEvalModelInputName(
+                                                    IntPtr /*(OrtTrainingSession*)*/ session,
+                                                    UIntPtr index,
+                                                    IntPtr /*(OrtAllocator*)*/ allocator,
+                                                    out IntPtr /*(char**)*/name
+                                                    );
+
+            public static DOrtGetEvalModelInputName OrtGetEvalModelInputName;
+
+            [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+            public delegate IntPtr /*(OrtStatus*)*/ DOrtAddProperty(
+                                                    IntPtr /*(OrtCheckpointState*)*/ checkpointState,
+                                                    IntPtr /*(const char*)*/ propertyName,
+                                                    OrtPropertyType propertyType,
+                                                    IntPtr /*(const void*)*/ propertyValue
+                                                    );
+
+            public static DOrtAddProperty OrtAddProperty;
+
+            [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+            public delegate IntPtr /*(OrtStatus*)*/ DOrtGetProperty(
+                                                    IntPtr /*(OrtCheckpointState*)*/ checkpointState,
+                                                    IntPtr /*(const char*)*/ propertyName,
+                                                    IntPtr /*(OrtAllocator*)*/ allocator,
+                                                    out OrtPropertyType propertyType,
+                                                    out IntPtr /*(const void**)*/ propertyValue
+                                                    );
+
+            public static DOrtGetProperty OrtGetProperty;
 
     #endregion TrainingSession API
 

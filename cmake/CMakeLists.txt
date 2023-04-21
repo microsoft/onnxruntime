@@ -14,7 +14,11 @@ cmake_policy(SET CMP0104 OLD)
 
 # Enable Hot Reload for MSVC compilers if supported.
 if (POLICY CMP0141)
-  cmake_policy(SET CMP0141 NEW)
+  if(${CMAKE_VERSION} VERSION_GREATER_EQUAL "3.26.0")
+    cmake_policy(SET CMP0141 NEW)
+  else()
+    cmake_policy(SET CMP0141 OLD)
+  endif()
 endif()
 
 # Project
