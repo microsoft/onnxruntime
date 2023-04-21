@@ -41,7 +41,8 @@ enum ResizeCoordinateTransformationMode {
   TF_HALF_PIXEL_FOR_NN = 3,
   ALIGN_CORNERS = 4,
   TF_CROP_AND_RESIZE = 5,
-  CoordinateTransformationModeCount = 6,
+  HALF_PIXEL_SYMMETRIC = 6,
+  CoordinateTransformationModeCount = 7,
 };
 
 enum ResizeNearestMode {
@@ -237,6 +238,9 @@ class UpsampleBase {
     if (coordinate_transform_mode_name == "half_pixel") {
       return HALF_PIXEL;
     }
+    if ("half_pixel_symmetric" == coordinate_transform_mode_name) {
+      return HALF_PIXEL_SYMMETRIC;
+    }
     ORT_THROW("coordinate_transform_mode:[" + coordinate_transform_mode_name + "] is not supportted!");
   }
 
@@ -265,6 +269,15 @@ class UpsampleBase {
                           ? roi_start * (length_original - 1) +
                                 (x_resized * (roi_end - roi_start) * (length_original - 1)) / (length_resized - 1)
                           : 0.5 * (roi_start + roi_end) * (length_original - 1);
+          return static_cast<float>(orig);
+        };
+      case HALF_PIXEL_SYMMETRIC:
+        return [](float x_resized, float x_scale, float length_resized, float length_original, float, float) {
+          float output_width = x_scale * length_original;
+          float adjustment = length_resized / output_width;
+          float center = length_original / 2;
+          float offset = center * (1 - adjustment);
+          auto orig = offset + (x_resized + 0.5) / x_scale - 0.5;
           return static_cast<float>(orig);
         };
       default:  // "half_pixel"
