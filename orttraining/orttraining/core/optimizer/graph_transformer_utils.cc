@@ -10,8 +10,6 @@
 #include "core/optimizer/bias_softmax_fusion.h"
 #include "core/optimizer/cast_elimination.h"
 #include "core/optimizer/common_subexpression_elimination.h"
-#include "core/optimizer/compute_optimizer/upstream_gather.h"
-#include "core/optimizer/compute_optimizer/upstream_reshape.h"
 #include "core/optimizer/concat_slice_elimination.h"
 #include "core/optimizer/constant_folding.h"
 #include "core/optimizer/constant_sharing.h"
@@ -53,7 +51,6 @@
 #include "orttraining/core/framework/distributed_run_context.h"
 #include "orttraining/core/optimizer/batchnorm_replacement.h"
 #include "orttraining/core/optimizer/bitmask_dropout_replacement.h"
-#include "orttraining/core/optimizer/compute_optimizer/sceloss_compute_optimization.h"
 #include "orttraining/core/optimizer/concat_replacement.h"
 #include "orttraining/core/optimizer/graph_transformer_registry.h"
 #include "orttraining/core/optimizer/insert_output_rewriter.h"
@@ -62,6 +59,13 @@
 #include "orttraining/core/optimizer/lstm_replacement.h"
 #include "orttraining/core/optimizer/transformer_layer_recompute.h"
 #include "orttraining/core/optimizer/qdq_fusion.h"
+
+// Only enabled in full training build. Not in on device training builds
+#ifdef ENABLE_TRAINING
+#include "core/optimizer/compute_optimizer/upstream_gather.h"
+#include "core/optimizer/compute_optimizer/upstream_reshape.h"
+#include "orttraining/core/optimizer/compute_optimizer/sceloss_compute_optimization.h"
+#endif
 
 namespace onnxruntime {
 namespace training {
@@ -162,6 +166,7 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
                                                                      cuda_execution_provider));
       }
 
+#ifdef ENABLE_TRAINING
       if (config.enable_compute_optimizer) {
         transformers.emplace_back(std::make_unique<UpStreamGatherGraphTransformer>(compatible_eps));
         if (config.enable_label_sparsity_optimization) {
@@ -169,6 +174,7 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
           transformers.emplace_back(std::make_unique<InsertGatherBeforeSceLoss>(compatible_eps));
         }
       }
+#endif
 
     } break;
 
