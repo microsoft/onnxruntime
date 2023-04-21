@@ -24,10 +24,12 @@ Pod::Spec.new do |spec|
   spec.dependency "React-Core"
   spec.dependency "onnxruntime-c"
 
-  # Read the ort package name field in react native root directory
   if (File.exist?(File.join(root_dir, 'package.json')))
+    # Read the react native root project directory package.json file
+    root_package = JSON.parse(File.read(File.join(root_dir, 'package.json')))
     if (root_package["ortPackageName"] == "onnxruntime-ext")
       spec.dependency "onnxruntime-extensions-c"
     end
   end
+
 end
