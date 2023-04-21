@@ -176,7 +176,7 @@ class TensorT<std::string_view> : public Tensor {
   using string_views = std::vector<std::string_view>;
 
   TensorT(OrtKernelContext* ctx, size_t indice, bool is_input) : Tensor(ctx), indice_(indice), is_input_(is_input) {
-    if (is_input) {
+    if (is_input_) {
       if (indice >= ctx_.GetInputCount()) {
         ORT_CXX_API_THROW("invalid indice for Ort::Custom::TensorT", OrtErrorCode::ORT_INVALID_ARGUMENT);
       }
