@@ -6,8 +6,7 @@ from onnx import TensorProto, helper
 from transformers import WhisperConfig
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
-from convert_generation import get_shared_initializers  # noqa: E402
-
+from convert_generation import get_shared_initializers, update_decoder_subgraph_share_buffer_and_use_decoder_masked_mha  # noqa: E402
 
 def add_attention_mask(model):
     # Add attention mask - required by BeamSearch but unused in Pytorch
@@ -89,6 +88,11 @@ def chain_model(args):
 
     # Initializers/opsets
     # Delete shared data between decoder/encoder and move to larger graph initializers
+    if update_decoder_subgraph_share_buffer_and_use_decoder_masked_mha(decoder_model.graph):
+        logger.info("*****update t5 decoder subgraph successfully!!!*****")
+    else:
+        logger.info("*****DecoderMaskedMultiHeadAttention is not applied to T5 decoder*****")
+
     initializers = get_shared_initializers(encoder_model, decoder_model)
     node.attribute.extend(
         [
@@ -96,6 +100,8 @@ def chain_model(args):
             helper.make_attribute("encoder", encoder_model.graph),
         ]
     )
+
+
     opset_import = [helper.make_opsetid(domain="com.microsoft", version=1), helper.make_opsetid(domain="", version=17)]
 
     beam_graph = helper.make_graph([node], "beam-search-test", graph_inputs, graph_outputs, initializers)

@@ -187,7 +187,7 @@ def export_onnx_models(
     models = WhisperHelper.load_model(model_name_or_path, cache_dir, device, merge_encoder_and_decoder_init)
     config = models["decoder"].config
 
-    if (not use_external_data_format) and (config.num_layers > 24):
+    if (not use_external_data_format) and (config.num_hidden_layers > 24):
         logger.info("Try use_external_data_format when model size > 2GB")
 
     output_paths = []
