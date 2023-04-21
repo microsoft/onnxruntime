@@ -66,8 +66,7 @@ common::Status CopyOneInputAcrossDevices(const SessionState& session_state, cons
                                          const OrtValue& orig_mlvalue, OrtValue& new_mlvalue);
 
 // Searches the allocation plan from the session_state to find the OrtMemoryInfo for the value 'name'.
-const OrtDevice& FindDeviceForValue(const SessionState& session_state,
-                                            std::string_view name);
+const OrtDevice& FindDeviceForValue(const SessionState& session_state, std::string_view name);
 
 // Initialize the feed and fetch copy info using session_state.
 // Determines the device that each graph input that will be fed will be consumed on,

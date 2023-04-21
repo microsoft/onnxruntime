@@ -68,8 +68,7 @@ Status Subgraph::Setup(const SessionState& session_state,
   feed_names.reserve(static_cast<size_t>(num_subgraph_inputs) + static_cast<size_t>(num_implicit_inputs));
 
   // Use the first output (logits) to find device location.
-  const OrtDevice& default_location = utils::FindDeviceForValue(subgraph_session_state,
-                                                                        subgraph_output_names[0]);
+  const OrtDevice& default_location = utils::FindDeviceForValue(subgraph_session_state, subgraph_output_names[0]);
 
   // The position_ids, attention_mask, past_0, ... are created by this operator so the name doesn't matter.
   feed_names.insert(feed_names.end(), subgraph_input_names.begin(), subgraph_input_names.end());

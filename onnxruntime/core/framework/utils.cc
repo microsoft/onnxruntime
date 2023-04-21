@@ -236,8 +236,8 @@ static bool HaveCpuExecutionProvidersOnly(const ExecutionProviders& execution_pr
 }
 
 static const OrtDevice& FindDeviceForValue(const OrtValueNameIdxMap& map,
-                                                   const SequentialExecutionPlan& plan,
-                                                   std::string_view name) {
+                                           const SequentialExecutionPlan& plan,
+                                           std::string_view name) {
   int idx = -1;
   auto status = map.GetIdx(name, idx);
   ORT_THROW_IF_ERROR(status);
@@ -246,8 +246,7 @@ static const OrtDevice& FindDeviceForValue(const OrtValueNameIdxMap& map,
   return location;
 }
 
-const OrtDevice& FindDeviceForValue(const SessionState& session_state,
-                                            std::string_view name) {
+const OrtDevice& FindDeviceForValue(const SessionState& session_state, std::string_view name) {
   const auto* exec_plan_ptr = session_state.GetExecutionPlan();
   ORT_ENFORCE(exec_plan_ptr);
 

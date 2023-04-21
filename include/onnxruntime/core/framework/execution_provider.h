@@ -68,6 +68,10 @@ class IExecutionProvider {
       metadef_id_generator_ = std::make_unique<ModelMetadefIdGenerator>();
     }
   }
+
+  /*
+     default device for this ExecutionProvider
+  */
   OrtDevice default_device_;
 
  public:
@@ -327,6 +331,9 @@ class IExecutionProvider {
     return nullptr;
   }
 
+  /**
+   * Return the appropriate OrtDevice object given OrtMemType.
+   */
   virtual OrtDevice GetOrtDeviceByMemType(OrtMemType mem_type) const {
     if (mem_type == OrtMemTypeCPUInput || mem_type == OrtMemTypeCPUOutput) {
       return OrtDevice();  // default return CPU device.

@@ -819,8 +819,7 @@ class PlannerImpl {
     return Status::OK();
   }
 
-  OrtDevice GetLocationForNodeInput(size_t input_index, const Node& node,
-                                        const KernelCreateInfoMap& kernel_create_info_map) {
+  OrtDevice GetLocationForNodeInput(size_t input_index, const Node& node, const KernelCreateInfoMap& kernel_create_info_map) {
     auto* p_provider = execution_providers_.Get(node);
     ORT_ENFORCE(p_provider);
 
@@ -1735,8 +1734,8 @@ class PlannerImpl {
     onnxruntime::ProviderType exec_provider_name = node->GetExecutionProviderType();
     const IExecutionProvider* ep = execution_providers.Get(exec_provider_name);
     ORT_ENFORCE(ep);
-    auto& node_device_mem_location = ep->GetOrtDeviceByMemType(OrtMemType::OrtMemTypeDefault);
-    execution_plan.emplace_back(std::make_unique<SequentialExecutionPlan::LogicStream>(node_device_mem_location.device));
+    auto node_device_mem_location = ep->GetOrtDeviceByMemType(OrtMemType::OrtMemTypeDefault);
+    execution_plan.emplace_back(std::make_unique<SequentialExecutionPlan::LogicStream>(node_device_mem_location));
     // 2. add steps to the execution plan
     for (auto node_index : stream_nodes_[0]) {
       execution_plan[0]->steps_.emplace_back(std::make_unique<LaunchKernelStep>(node_index));
