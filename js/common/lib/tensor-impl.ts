@@ -11,9 +11,6 @@ type SupportedTypedArrayConstructors = Float32ArrayConstructor|Uint8ArrayConstru
     Float64ArrayConstructor|Uint32ArrayConstructor|BigUint64ArrayConstructor;
 type SupportedTypedArray = InstanceType<SupportedTypedArrayConstructors>;
 
-const isBigInt64ArrayAvailable = typeof BigInt64Array !== 'undefined' && typeof BigInt64Array.from === 'function';
-const isBigUint64ArrayAvailable = typeof BigUint64Array !== 'undefined' && typeof BigUint64Array.from === 'function';
-
 // a runtime map that maps type string to TypedArray constructor. Should match Tensor.DataTypeMap.
 const NUMERIC_TENSOR_TYPE_TO_TYPEDARRAY_MAP = new Map<string, SupportedTypedArrayConstructors>([
   ['float32', Float32Array],
@@ -39,14 +36,27 @@ const NUMERIC_TENSOR_TYPEDARRAY_TO_TYPE_MAP = new Map<SupportedTypedArrayConstru
   [Uint32Array, 'uint32'],
 ]);
 
-if (isBigInt64ArrayAvailable) {
-  NUMERIC_TENSOR_TYPE_TO_TYPEDARRAY_MAP.set('int64', BigInt64Array);
-  NUMERIC_TENSOR_TYPEDARRAY_TO_TYPE_MAP.set(BigInt64Array, 'int64');
-}
-if (isBigUint64ArrayAvailable) {
-  NUMERIC_TENSOR_TYPE_TO_TYPEDARRAY_MAP.set('uint64', BigUint64Array);
-  NUMERIC_TENSOR_TYPEDARRAY_TO_TYPE_MAP.set(BigUint64Array, 'uint64');
-}
+// the following code allows delaying execution of BigInt checking. This allows lazy initialization for
+// NUMERIC_TENSOR_TYPE_TO_TYPEDARRAY_MAP and NUMERIC_TENSOR_TYPEDARRAY_TO_TYPE_MAP, which allows BigInt polyfill
+// if available.
+let isBigIntChecked = false;
+const checkBigInt = () => {
+  if (!isBigIntChecked) {
+    isBigIntChecked = true;
+    const isBigInt64ArrayAvailable = typeof BigInt64Array !== 'undefined' && typeof BigInt64Array.from === 'function';
+    const isBigUint64ArrayAvailable =
+        typeof BigUint64Array !== 'undefined' && typeof BigUint64Array.from === 'function';
+
+    if (isBigInt64ArrayAvailable) {
+      NUMERIC_TENSOR_TYPE_TO_TYPEDARRAY_MAP.set('int64', BigInt64Array);
+      NUMERIC_TENSOR_TYPEDARRAY_TO_TYPE_MAP.set(BigInt64Array, 'int64');
+    }
+    if (isBigUint64ArrayAvailable) {
+      NUMERIC_TENSOR_TYPE_TO_TYPEDARRAY_MAP.set('uint64', BigUint64Array);
+      NUMERIC_TENSOR_TYPEDARRAY_TO_TYPE_MAP.set(BigUint64Array, 'uint64');
+    }
+  }
+};
 
 /**
  * calculate size from dims.
@@ -75,6 +85,8 @@ export class Tensor implements TensorInterface {
   constructor(
       arg0: TensorType|TensorDataType|readonly boolean[], arg1?: TensorDataType|readonly number[]|readonly boolean[],
       arg2?: readonly number[]) {
+    checkBigInt();
+
     let type: TensorType;
     let data: TensorDataType;
     let dims: typeof arg1|typeof arg2;
@@ -269,12 +281,13 @@ export class Tensor implements TensorInterface {
     if (isHTMLImageEle) {
       // HTMLImageElement - image object - format is RGBA by default
       const canvas = document.createElement('canvas');
+      canvas.width = image.width;
+      canvas.height = image.height;
       const pixels2DContext = canvas.getContext('2d');
 
       if (pixels2DContext != null) {
-        let height = image.naturalHeight;
-        let width = image.naturalWidth;
-
+        let height = image.height;
+        let width = image.width;
         if (options !== undefined && options.resizedHeight !== undefined && options.resizedWidth !== undefined) {
           height = options.resizedHeight;
           width = options.resizedWidth;
@@ -303,10 +316,7 @@ export class Tensor implements TensorInterface {
           tensorConfig.width = width;
         }
 
-        canvas.width = width;
-        canvas.height = height;
-
-        pixels2DContext.drawImage(image, 0, 0, width, height);
+        pixels2DContext.drawImage(image, 0, 0);
         data = pixels2DContext.getImageData(0, 0, width, height).data;
       } else {
         throw new Error('Can not access image data');

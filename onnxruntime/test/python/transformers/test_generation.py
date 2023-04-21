@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# coding: utf-8
 # -------------------------------------------------------------------------
 # Copyright (c) Microsoft Corporation.  All rights reserved.
 # Licensed under the MIT License.  See License.txt in the project root for
@@ -74,9 +73,8 @@ class TestBeamSearchGpt(unittest.TestCase):
         self.assertTrue(init_decoder_found)
 
     def run_beam_search(self, extra_arguments: str, sentences=None, append_arguments=True, is_greedy=False):
-
         if append_arguments:
-            arguments = " ".join(self.default_arguments + [extra_arguments]).split()
+            arguments = " ".join([*self.default_arguments, extra_arguments]).split()
         else:
             arguments = extra_arguments.split()
 
@@ -137,10 +135,34 @@ class TestBeamSearchGpt(unittest.TestCase):
             self.run_beam_search("--past_present_share_buffer --use_gpu -p fp16", is_greedy=True)
 
     @pytest.mark.slow
+    def test_greedy_search_use_decoder_masked_self_attention(self):
+        if self.enable_cuda:
+            self.run_beam_search(
+                "--past_present_share_buffer --use_decoder_masked_self_attention --use_gpu", is_greedy=True
+            )
+
+    @pytest.mark.slow
+    def test_greedy_search_use_decoder_masked_self_attention_fp16(self):
+        if self.enable_cuda:
+            self.run_beam_search(
+                "--past_present_share_buffer --use_decoder_masked_self_attention --use_gpu -p fp16", is_greedy=True
+            )
+
+    @pytest.mark.slow
     def test_greedy_search_float16(self):
         # TODO: investigate fp16 parity issue for greedy/beam search with repetition_penalty != 1.0
         if self.enable_cuda:
             self.run_beam_search("--repetition_penalty 1.0 --use_gpu -p fp16", is_greedy=True)
+
+    @pytest.mark.slow
+    def test_beam_search_use_decoder_masked_self_attention(self):
+        if self.enable_cuda:
+            self.run_beam_search("--past_present_share_buffer --use_decoder_masked_self_attention --use_gpu")
+
+    @pytest.mark.slow
+    def test_beam_search_use_decoder_masked_self_attention_fp16(self):
+        if self.enable_cuda:
+            self.run_beam_search("--past_present_share_buffer --use_decoder_masked_self_attention --use_gpu -p fp16")
 
     @pytest.mark.slow
     def test_external_data(self):
@@ -189,8 +211,7 @@ class TestBeamSearchT5(unittest.TestCase):
 
         self.sentences = [
             "translate English to French: The product is released",
-            "summarize: research continues to show that pets bring real health benefits to their owners."
-            + "Having a dog around can lead to lower levels of stress for both adults and kids.",
+            "summarize: research continues to show that pets bring real health benefits to their owners. Having a dog around can lead to lower levels of stress for both adults and kids.",
         ]
 
         if os.path.exists(self.beam_search_onnx_path):
@@ -211,7 +232,7 @@ class TestBeamSearchT5(unittest.TestCase):
 
     def run_beam_search(self, extra_arguments: str, sentences=None, append_arguments=True):
         if append_arguments:
-            arguments = " ".join(self.default_arguments + [extra_arguments]).split()
+            arguments = " ".join([*self.default_arguments, extra_arguments]).split()
         else:
             arguments = extra_arguments.split()
 

@@ -27,7 +27,8 @@ Status GptSubgraph::CreateInitialFeeds(
     const GenerationDeviceHelper::AddToFeedsFunc& add_to_feeds_func,
     IAllocatorUniquePtr<char>& buffer,
     Stream* ort_stream,
-    int max_seq_len_past_present_share_buffer) {
+    int past_present_share_buffer_max_seq_len,
+    bool need_cache_indir) {
   ORT_ENFORCE(session_state_ != nullptr, "Setup must be called before CreateInitialFeeds");
 
   const IExecutionProvider* provider = GetProvider();
@@ -46,7 +47,7 @@ Status GptSubgraph::CreateInitialFeeds(
   AllocatorPtr cpu_allocator = session_state_->GetAllocator(input_ids.Location());
 
   // Store allocator, which will be used in remaining feeds
-  auto default_allocator = provider->GetAllocator(0, OrtMemTypeDefault);
+  auto default_allocator = provider->GetAllocator(OrtMemTypeDefault);
   allocator_ = default_allocator;
 
   // The ordering is the same as used in Setup
@@ -83,20 +84,30 @@ Status GptSubgraph::CreateInitialFeeds(
       feeds.push_back(empty_past);
     }
   } else {
-    int64_t past_state_dims[] = {2, batch_size * num_beams, num_heads, max_seq_len_past_present_share_buffer, head_size};
+    // Past state feeds
+    int64_t past_state_dims[] = {2, batch_size * num_beams, num_heads, past_present_share_buffer_max_seq_len, head_size};
     TensorShape past_shape(&past_state_dims[0], 5);
-    // The remaining inputs are past state execpt the last one
-    for (int i = first_past_input_index_; i < num_subgraph_inputs - 1; ++i) {
+
+    // The remaining inputs are past state except the last one or three (see below for details)
+    // If `need_cache_indir` is false, then the last input is `past_sequence_length`
+
+    // If `need_cache_indir` is true, then the last inputs are `past_sequence_length`,
+    // `beam_width`, and `cache_indirection`
+    auto past_end_iter = need_cache_indir ? num_subgraph_inputs - 3 : num_subgraph_inputs - 1;
+    for (int i = first_past_input_index_; i < past_end_iter; ++i) {
       OrtValue past_tensor;
       Tensor::InitOrtValue(past_type, past_shape, default_allocator, past_tensor);
       feeds.push_back(past_tensor);
     }
-    int64_t past_seq_len_dims[] = {1};
-    TensorShape past_seq_len_shape(&past_seq_len_dims[0], 1);
-    OrtValue past_seq_len_tensor_value;
-    Tensor::InitOrtValue(DataTypeImpl::GetType<int32_t>(), past_seq_len_shape, cpu_allocator, past_seq_len_tensor_value);
-    feeds.push_back(past_seq_len_tensor_value);
-    *past_seq_len_tensor_value.GetMutable<Tensor>()->MutableData<int32_t>() = 0;
+
+    // Past sequence length feed
+    ORT_RETURN_IF_ERROR(AppendPastSequenceLength(feeds, cpu_allocator, 0));
+
+    // Add beam search specific inputs
+    if (need_cache_indir) {
+      ORT_RETURN_IF_ERROR(AppendBeamWidthAndCacheIndir(feeds, cpu_allocator, default_allocator, batch_size, num_beams,
+                                                       past_present_share_buffer_max_seq_len));
+    }
   }
 
   // Pass in implicit inputs
@@ -112,8 +123,12 @@ Status GptSubgraph::Validate(const std::vector<const NodeArg*>& subgraph_inputs,
   ORT_RETURN_IF(num_subgraph_outputs <= first_present_output_index_,
                 "Invalid GPT-2 subgraph: number of outputs shall be larger than 1 (Need past state in outputs).");
 
-  ORT_RETURN_IF(!((num_subgraph_inputs == num_subgraph_outputs + 2) || (num_subgraph_inputs == num_subgraph_outputs + 3)),
-                "Invalid GPT-2 subgraph: number of inputs shall be number of outputs plus 2 or 3 (if past_present_share_buffer)");
+  ORT_RETURN_IF(!((num_subgraph_inputs == num_subgraph_outputs + 2) ||
+                  (num_subgraph_inputs == num_subgraph_outputs + 3) ||
+                  (num_subgraph_inputs == num_subgraph_outputs + 5)),
+                "Invalid GPT-2 subgraph: number of inputs shall be number of outputs plus 2 or "
+                "3 (if past_present_share_buffer) or "
+                "5 (if past_present_share_buffer and use_decoder_masked_self_attention for BeamSearch)");
 
   ORT_RETURN_IF(subgraph_inputs[0]->Name() != "input_ids",
                 "subgraph input 0 shall be named as input_ids, got: ", subgraph_inputs[0]->Name());

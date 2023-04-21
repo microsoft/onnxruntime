@@ -18,8 +18,8 @@ class Reshape final : public CannKernel {
     allow_zero_ = (info.GetAttrOrDefault("allowzero", static_cast<int64_t>(0)) == 1);
   }
 
-  Status ComputeInternal(OpKernelContext* context) const override {
-    const Tensor* shapeTensor = context->Input<Tensor>(1);
+  Status ComputeInternal(OpKernelContext* ctx) const override {
+    const Tensor* shapeTensor = ctx->Input<Tensor>(1);
     if (shapeTensor == nullptr)
       return Status(common::ONNXRUNTIME, common::FAIL, "the 0th input is missing");
     if (shapeTensor->Shape().NumDimensions() != 1)
@@ -28,14 +28,14 @@ class Reshape final : public CannKernel {
     auto data_span = shapeTensor->template DataAsSpan<int64_t>();
     TensorShapeVector shape(data_span.begin(), data_span.end());
 
-    const Tensor* X = context->Input<Tensor>(0);
+    const Tensor* X = ctx->Input<Tensor>(0);
     if (X == nullptr)
       return Status(common::ONNXRUNTIME, common::FAIL, "the 1th input is missing");
     const TensorShape& X_shape = X->Shape();
 
     ReshapeHelper helper(X_shape, shape, allow_zero_);
 
-    Tensor* Y = context->Output(0, TensorShape(shape));
+    Tensor* Y = ctx->Output(0, TensorShape(shape));
     const void* source = X->DataRaw();
     void* target = Y->MutableDataRaw();
     if (target != source) {
@@ -56,14 +56,14 @@ class Reshape_1 final : public CannKernel {
     ORT_ENFORCE(status.IsOK(), "Attribute shape is not set.");
   }
 
-  Status ComputeInternal(OpKernelContext* context) const override {
+  Status ComputeInternal(OpKernelContext* ctx) const override {
     TensorShapeVector shape = shape_;
-    const Tensor* X = context->Input<Tensor>(0);
+    const Tensor* X = ctx->Input<Tensor>(0);
     const TensorShape& X_shape = X->Shape();
 
     ReshapeHelper helper(X_shape, shape);
 
-    Tensor* Y = context->Output(0, TensorShape(shape));
+    Tensor* Y = ctx->Output(0, TensorShape(shape));
     const void* source = X->DataRaw();
     void* target = Y->MutableDataRaw();
     if (target != source) {

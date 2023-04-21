@@ -48,7 +48,7 @@ stages:
       timeoutInMinutes: 90
       workspace:
         clean: all
-      pool: Linux-CPU
+      pool: aiinfra-Linux-CPU
       strategy:
         matrix:
           ${{ each PythonVersion in parameters.python_version }}:
@@ -152,10 +152,16 @@ stages:
           filename: 'C:\Program Files\Intel\openvino_2021.4.752\bin\setupvars.bat'
           modifyEnvironment: true
 
-      - script: |
-          python -m pip install -q setuptools wheel numpy==1.21.6
-        workingDirectory: '$(Build.BinariesDirectory)'
-        displayName: 'Install python modules'
+      - task: PythonScript@0
+        inputs:
+          scriptSource: inline
+          script: |
+            import sys
+            np_version = 'numpy==1.21.6' if sys.version_info < (3, 11) else 'numpy==1.24.2'
+            import subprocess
+            subprocess.call(['pip', 'install', '-q', 'setuptools', 'wheel', np_version])
+          workingDirectory: '$(Build.BinariesDirectory)'
+          displayName: 'Install python modules'
 
       - task: PowerShell@2
         displayName: 'Install ONNX'
@@ -237,7 +243,7 @@ stages:
 
       - task: DeleteFiles@1
         displayName: 'Delete files from $(Build.BinariesDirectory)\$(BuildConfig)'
-        condition: and (succeeded(), eq(variables['PythonVersion'], '3.7'))
+        condition: and (succeeded(), eq(variables['PythonVersion'], '3.8'))
         inputs:
           SourceFolder: '$(Build.BinariesDirectory)\$(BuildConfig)'
           Contents: |
@@ -258,7 +264,7 @@ stages:
       #in 32 bits Win32 build. I tried all the settings but they all don't work.
       - task: SDLNativeRules@3
         displayName: 'Run the PREfast SDL Native Rules for MSBuild'
-        condition: and (succeeded(), eq(variables['PythonVersion'], '3.7'))
+        condition: and (succeeded(), eq(variables['PythonVersion'], '3.8'))
         inputs:
           msBuildArchitecture: amd64
           setupCommandlines: 'python $(Build.SourcesDirectory)\tools\ci_build\build.py --config Debug --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_generator "Visual Studio 16 2019" --enable_pybind --enable_onnx_tests --parallel --update --cmake_extra_defines onnxruntime_ENABLE_STATIC_ANALYSIS=ON'
@@ -267,7 +273,7 @@ stages:
 
       - task: TSAUpload@2
         displayName: 'TSA upload'
-        condition: and(and (succeeded(), eq(variables['PythonVersion'], '3.7')), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+        condition: and(and (succeeded(), eq(variables['PythonVersion'], '3.8')), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
         inputs:
           GdnPublishTsaOnboard: false
           GdnPublishTsaConfigFile: '$(Build.sourcesDirectory)\.gdn\.gdntsa'
@@ -301,10 +307,10 @@ stages:
 
       - template: get-docker-image-steps.yml
         parameters:
-          Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_cuda11_6_tensorrt8_5
+          Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_cuda11_8_tensorrt8_6
           Context: tools/ci_build/github/linux/docker
           DockerBuildArgs: "--network=host --build-arg POLICY=manylinux2014 --build-arg PLATFORM=x86_64 --build-arg DEVTOOLSET_ROOTPATH=/opt/rh/devtoolset-11/root --build-arg PREPEND_PATH=/opt/rh/devtoolset-11/root/usr/bin: --build-arg LD_LIBRARY_PATH_ARG=/opt/rh/devtoolset-11/root/usr/lib64:/opt/rh/devtoolset-11/root/usr/lib:/opt/rh/devtoolset-11/root/usr/lib64/dyninst:/opt/rh/devtoolset-11/root/usr/lib/dyninst:/usr/local/lib64 --build-arg BUILD_UID=$( id -u )"
-          Repository: onnxruntimecuda116xtrt85build
+          Repository: onnxruntimecuda118xtrt86build
 
       - task: CmdLine@2
         displayName: 'Build Python Wheel'
@@ -318,14 +324,14 @@ stages:
               --volume /data/models:/build/models:ro \
               --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
               -e BUILD_BUILDNUMBER \
-              onnxruntimecuda116xtrt85build \
+              onnxruntimecuda118xtrt86build \
                 $(PythonManylinuxDir)/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
                   --build_dir /build --cmake_generator Ninja \
                   --config Release --update --build \
                   --skip_submodule_sync \
                   --parallel \
                   --build_wheel \
-                  --enable_onnx_tests --use_tensorrt --cuda_version=11.6 --tensorrt_home=/usr --cuda_home=/usr/local/cuda-11.6 --cudnn_home=/usr/local/cuda-11.6 \
+                  --enable_onnx_tests --use_tensorrt --use_tensorrt_builtin_parser --cuda_version=11.8 --tensorrt_home=/usr --cuda_home=/usr/local/cuda-11.8 --cudnn_home=/usr/local/cuda-11.8 \
                   ${{ parameters.gpu_build_py_parameters }} \
                   --cmake_extra_defines CMAKE_CUDA_HOST_COMPILER=/opt/rh/devtoolset-11/root/usr/bin/cc 'CMAKE_CUDA_ARCHITECTURES=37;50;52;60;61;70;75;80'
           workingDirectory: $(Build.SourcesDirectory)
@@ -355,7 +361,7 @@ stages:
                   --skip_submodule_sync \
                   --parallel \
                   --build_wheel \
-                  --enable_onnx_tests --use_tensorrt --cuda_version=11.4 --tensorrt_home=/usr --cuda_home=/usr/local/cuda-11.4 --cudnn_home=/usr/local/cuda-11.4  \
+                  --enable_onnx_tests --use_tensorrt --use_tensorrt_builtin_parser --cuda_version=11.4 --tensorrt_home=/usr --cuda_home=/usr/local/cuda-11.4 --cudnn_home=/usr/local/cuda-11.4  \
                   ${{ parameters.gpu_build_py_parameters }} --ctest_path '' \
                   --cmake_extra_defines CMAKE_CUDA_HOST_COMPILER=/opt/rh/devtoolset-11/root/usr/bin/cc 'CMAKE_CUDA_ARCHITECTURES=37;50;52;60;61;70;75;80'
 
@@ -386,7 +392,7 @@ stages:
       variables:
         CUDA_VERSION: '11.6'
         buildArch: x64
-        EpBuildFlags: --use_tensorrt --tensorrt_home="C:\local\TensorRT-8.5.1.7.Windows10.x86_64.cuda-11.8.cudnn8.6" --cuda_version=$(CUDA_VERSION) --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v$(CUDA_VERSION)" --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=37;50;52;60;61;70;75;80"
+        EpBuildFlags: --use_tensorrt --use_tensorrt_builtin_parser --tensorrt_home="C:\local\TensorRT-8.6.0.12.Windows10.x86_64.cuda-11.8" --cuda_version=$(CUDA_VERSION) --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v$(CUDA_VERSION)" --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=37;50;52;60;61;70;75;80"
         EnvSetupScript: setup_env_gpu.bat
         EP_NAME: gpu
       strategy:
@@ -412,10 +418,16 @@ stages:
           modifyEnvironment: true
           workingFolder: '$(Build.BinariesDirectory)'
 
-      - script: |
-          python -m pip install -q setuptools wheel numpy==1.21.6
-        workingDirectory: '$(Build.BinariesDirectory)'
-        displayName: 'Install python modules'
+      - task: PythonScript@0
+        inputs:
+          scriptSource: inline
+          script: |
+            import sys
+            np_version = 'numpy==1.21.6' if sys.version_info < (3, 11) else 'numpy==1.24.2'
+            import subprocess
+            subprocess.call(['pip', 'install', '-q', 'setuptools', 'wheel', np_version])
+          workingDirectory: '$(Build.BinariesDirectory)'
+          displayName: 'Install python modules'
 
       - task: PowerShell@2
         displayName: 'Install ONNX'
@@ -497,7 +509,7 @@ stages:
 
       - task: DeleteFiles@1
         displayName: 'Delete files from $(Build.BinariesDirectory)\RelWithDebInfo'
-        condition: and (succeeded(), eq(variables['PythonVersion'], '3.7'))
+        condition: and (succeeded(), eq(variables['PythonVersion'], '3.8'))
         inputs:
           SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo'
           Contents: |
@@ -516,7 +528,7 @@ stages:
       #Manually set msBuildCommandline so that we can also set CAExcludePath
       - task: SDLNativeRules@3
         displayName: 'Run the PREfast SDL Native Rules for MSBuild'
-        condition: and (succeeded(), eq(variables['PythonVersion'], '3.7'))
+        condition: and (succeeded(), eq(variables['PythonVersion'], '3.8'))
         inputs:
           msBuildArchitecture: amd64
           setupCommandlines: 'python $(Build.SourcesDirectory)\tools\ci_build\build.py --config RelWithDebInfo --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_generator "Visual Studio 16 2019" --enable_pybind --enable_onnx_tests ${{ parameters.gpu_build_py_parameters }} --parallel $(EpBuildFlags) --update --cmake_extra_defines onnxruntime_ENABLE_STATIC_ANALYSIS=ON'
@@ -525,7 +537,7 @@ stages:
 
       - task: TSAUpload@2
         displayName: 'TSA upload'
-        condition: and(and (succeeded(), eq(variables['PythonVersion'], '3.7')), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+        condition: and(and (succeeded(), eq(variables['PythonVersion'], '3.8')), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
         inputs:
           GdnPublishTsaOnboard: false
           GdnPublishTsaConfigFile: '$(Build.sourcesDirectory)\.gdn\.gdntsa'

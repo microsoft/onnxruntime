@@ -47,6 +47,9 @@ class T5DecoderInit(torch.nn.Module):
         self.decoder_start_token_id = (
             decoder_start_token_id if decoder_start_token_id is not None else self.config.decoder_start_token_id
         )
+        self.tie_word_embeddings = (
+            self.config.tie_word_embeddings if hasattr(self.config, "tie_word_embeddings") else True
+        )
 
     def forward(
         self,
@@ -76,7 +79,8 @@ class T5DecoderInit(torch.nn.Module):
         sequence_output = decoder_outputs.last_hidden_state
         present_key_values = decoder_outputs.past_key_values
 
-        sequence_output = sequence_output * (self.config.d_model**-0.5)
+        if self.tie_word_embeddings:
+            sequence_output = sequence_output * (self.config.d_model**-0.5)
 
         lm_logits = self.lm_head(sequence_output)
         past_self, past_cross = PastKeyValuesHelper.group_by_self_or_cross(present_key_values)
@@ -91,15 +95,19 @@ class T5Decoder(torch.nn.Module):
         self.decoder = decoder
         self.lm_head = lm_head
         self.config = config
+        self.tie_word_embeddings = (
+            self.config.tie_word_embeddings if hasattr(self.config, "tie_word_embeddings") else True
+        )
 
-    def forward(self, decoder_input_ids, encoder_attention_mask, encoder_hidden_states, *past):
-
+    def forward(self, decoder_input_ids, encoder_attention_mask, *past):
         past_key_values = PastKeyValuesHelper.group_by_layer(past, self.config.num_layers)
 
+        # This is a hack since only the third dimension of encoder_hidden_states is used here
+        dummy_encoder_hidden_states = encoder_attention_mask.unsqueeze(2)
         decoder_outputs = self.decoder(
             input_ids=decoder_input_ids,
             past_key_values=past_key_values,
-            encoder_hidden_states=encoder_hidden_states,
+            encoder_hidden_states=dummy_encoder_hidden_states,
             encoder_attention_mask=encoder_attention_mask,
             use_cache=True,
             return_dict=True,
@@ -108,7 +116,8 @@ class T5Decoder(torch.nn.Module):
         sequence_output = decoder_outputs.last_hidden_state
         present_key_values = decoder_outputs.past_key_values
 
-        sequence_output = sequence_output * (self.config.d_model**-0.5)
+        if self.tie_word_embeddings:
+            sequence_output = sequence_output * (self.config.d_model**-0.5)
 
         lm_logits = self.lm_head(sequence_output)
         present_self, _ = PastKeyValuesHelper.group_by_self_or_cross(present_key_values)
@@ -122,12 +131,10 @@ class T5DecoderInputs:
         self,
         decoder_input_ids,
         encoder_attention_mask,
-        encoder_hidden_states,
         past_key_values=None,
     ):
         self.decoder_input_ids: torch.LongTensor = decoder_input_ids
         self.encoder_attention_mask: torch.LongTensor = encoder_attention_mask
-        self.encoder_hidden_states: Union[torch.FloatTensor, torch.HalfTensor] = encoder_hidden_states
         self.past_key_values: Union[List[torch.FloatTensor], List[torch.HalfTensor], None] = past_key_values
 
     @staticmethod
@@ -154,7 +161,6 @@ class T5DecoderInputs:
         Returns:
             T5DecoderInputs: dummy inputs for decoder
         """
-        hidden_size: int = config.d_model
         num_attention_heads: int = config.num_heads
         num_layers: int = config.num_layers
         vocab_size: int = config.vocab_size
@@ -181,13 +187,6 @@ class T5DecoderInputs:
         )
 
         float_type = torch.float16 if float16 else torch.float32
-        encoder_hidden_state = torch.rand(
-            batch_size,
-            encode_sequence_length,
-            hidden_size,
-            dtype=float_type,
-            device=device,
-        )
 
         if past_decode_sequence_length > 0:
             self_attention_past_shape = [
@@ -212,25 +211,22 @@ class T5DecoderInputs:
         else:
             past = None
 
-        return T5DecoderInputs(decoder_input_ids, encoder_inputs.attention_mask, encoder_hidden_state, past)
+        return T5DecoderInputs(decoder_input_ids, encoder_inputs.attention_mask, past)
 
     def to_list(self) -> List:
         input_list = [
             self.decoder_input_ids,
             self.encoder_attention_mask,
-            self.encoder_hidden_states,
         ]
         if self.past_key_values:
             input_list.extend(self.past_key_values)
         return input_list
 
     def to_fp32(self):
-        encoder_hidden_state = self.encoder_hidden_states.to(dtype=torch.float32)
         past = [p.to(dtype=torch.float32) for p in self.past_key_values] if self.past_key_values else None
         return T5DecoderInputs(
             self.decoder_input_ids.clone(),
             self.encoder_attention_mask.clone(),
-            encoder_hidden_state,
             past,
         )
 
@@ -273,12 +269,11 @@ class T5DecoderHelper:
 
         input_past_names = past_names if isinstance(decoder, T5Decoder) else []
         output_present_names = present_self_names if isinstance(decoder, T5Decoder) else present_names
-        output_names = ["logits"] + output_present_names
+        output_names = ["logits", *output_present_names]
 
         # Shape of input tensors (sequence_length==1):
         #    input_ids: (batch_size, sequence_length)
         #    encoder_attention_mask: (batch_size, encode_sequence_length)
-        #    encoder_hidden_states: (batch_size, encode_sequence_length, hidden_size)
         #    past_self_*: (batch_size, num_heads, past_decode_sequence_length, head_size)
         #    past_cross_*: (batch_size, num_heads, encode_sequence_length, head_size)
 
@@ -289,7 +284,6 @@ class T5DecoderHelper:
 
         input_names = ["input_ids"]
         input_names.append("encoder_attention_mask")
-        input_names.append("encoder_hidden_states")
         input_names.extend(input_past_names)
 
         dynamic_axes = {
@@ -362,7 +356,6 @@ class T5DecoderHelper:
         ort_inputs = {
             "input_ids": numpy.ascontiguousarray(inputs.decoder_input_ids.cpu().numpy()),
             "encoder_attention_mask": numpy.ascontiguousarray(inputs.encoder_attention_mask.cpu().numpy()),
-            "encoder_hidden_states": numpy.ascontiguousarray(inputs.encoder_hidden_states.cpu().numpy()),
         }
 
         if inputs.past_key_values:
@@ -384,7 +377,7 @@ class T5DecoderHelper:
         max_cases: int = 4,
     ):
         """Compare the result from PyTorch and OnnxRuntime to verify the ONNX model is good."""
-        float16: bool = TypeHelper.get_input_type(ort_session, "encoder_hidden_states") == "tensor(float16)"
+        float16: bool = TypeHelper.get_input_type(ort_session, "past_key_self_0") == "tensor(float16)"
 
         test_cases = [(4, 11, 3), (1, 2, 5), (3, 1, 1), (8, 5, 2)]
         test_cases_max_diff = []
@@ -394,7 +387,7 @@ class T5DecoderHelper:
             past_decode_sequence_length,
         ) in test_cases[:max_cases]:
             if isinstance(model, T5DecoderInit):
-                past_decode_sequence_length = 0
+                past_decode_sequence_length = 0  # noqa: PLW2901
 
             inputs = T5DecoderInputs.create_dummy(
                 model.config,
@@ -434,8 +427,11 @@ class T5DecoderHelper:
 
             test_cases_max_diff.append(max_diff_all)
             logger.info(
-                f"batch_size={batch_size}, encode_sequence_length={encode_sequence_length}, "
-                + f"past_decode_sequence_length={past_decode_sequence_length}, max_diff={max_diff_all}"
+                "batch_size=%s, encode_sequence_length=%s, past_decode_sequence_length=%s, max_diff=%s",
+                batch_size,
+                encode_sequence_length,
+                past_decode_sequence_length,
+                max_diff_all,
             )
 
         return max_diff_all

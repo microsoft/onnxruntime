@@ -19,8 +19,13 @@ class FusionSkipLayerNormalization(Fusion):
     Note: This fusion does not check the input shape of Add and LayerNormalization.
     """
 
-    def __init__(self, model: OnnxModel):
-        super().__init__(model, "SkipLayerNormalization", "LayerNormalization")
+    def __init__(
+        self,
+        model: OnnxModel,
+        fused_op_type: str = "SkipLayerNormalization",
+        search_op_types: str = "LayerNormalization",
+    ):
+        super().__init__(model, fused_op_type, search_op_types)
         # Update shape inference is needed since other fusions might add new edge which does not have shape info yet.
         self.shape_infer_helper = self.model.infer_runtime_shape({"batch_size": 4, "seq_len": 7}, update=True)
 
@@ -37,12 +42,15 @@ class FusionSkipLayerNormalization(Fusion):
             return
 
         for add_input in add.input:
-            if self.model.get_initializer(add_input) != None:
+            if self.model.get_initializer(add_input) is not None:
                 return
 
         # The number of input node of add should be 2
         if len(self.model.get_parents(add)) != 2:
             return
+
+        # Root Mean Square Layer Normalization
+        simplified = node.op_type == "SimplifiedLayerNormalization"
 
         if self.shape_infer_helper is not None:
             if not self.shape_infer_helper.compare_shape(add.input[0], add.input[1]):
@@ -89,12 +97,16 @@ class FusionSkipLayerNormalization(Fusion):
         ):
             self.nodes_to_remove.extend([add, node])
 
-            inputs = [add.input[0], add.input[1], node.input[1], node.input[2]]
+            inputs = (
+                [add.input[0], add.input[1], node.input[1], node.input[2]]
+                if not simplified
+                else [add.input[0], add.input[1], node.input[1]]
+            )
             normalize_node = helper.make_node(
-                "SkipLayerNormalization",
+                self.fused_op_type,
                 inputs=inputs,
                 outputs=outputs,
-                name=self.model.create_node_name("SkipLayerNormalization", name_prefix="SkipLayerNorm"),
+                name=self.model.create_node_name(self.fused_op_type, name_prefix="SkipLayerNorm"),
             )
             normalize_node.domain = "com.microsoft"
 
@@ -138,6 +150,7 @@ class FusionBiasSkipLayerNormalization(Fusion):
 
         # bias should be one dimension
         bias_index = -1
+        bias_weight = None
         for i, input in enumerate(add.input):
             initializer = self.model.get_initializer(input)
             if initializer is None:
@@ -146,15 +159,15 @@ class FusionBiasSkipLayerNormalization(Fusion):
             bias_weight = NumpyHelper.to_array(initializer)
             break
         if bias_weight is None:
-            logger.debug(f"Bias weight not found")
+            logger.debug("Bias weight not found")
             return
         if len(bias_weight.shape) != 1:
-            logger.debug(f"Bias weight is not 1D")
+            logger.debug("Bias weight is not 1D")
             return
 
         subgraph_nodes = [node, add]
         if not self.model.is_safe_to_fuse_nodes(subgraph_nodes, node.output, input_name_to_nodes, output_name_to_node):
-            logger.debug(f"Skip fusing SkipLayerNormalization with Bias since it is not safe")
+            logger.debug("Skip fusing SkipLayerNormalization with Bias since it is not safe")
             return
 
         self.nodes_to_remove.extend(subgraph_nodes)

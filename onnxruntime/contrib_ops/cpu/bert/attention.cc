@@ -80,7 +80,7 @@ bool Attention<T>::IsPackWeightsSuccessful(int qkv_index,
   auto* packed_weights_data = static_cast<uint8_t*>(alloc->AllocArray(packb_size, loop_len));
 
   // Initialize memory to 0 as there could be some padding associated with pre-packed
-  // buffer memory and we don not want it uninitialized and generate different hashes
+  // buffer memory and we do not want it uninitialized and generate different hashes
   // if and when we try to cache this pre-packed buffer for sharing between sessions.
   memset(packed_weights_data, 0, packed_weights_data_size);
   packed_weights_[qkv_index] = BufferUniquePtr(packed_weights_data, BufferDeleter(std::move(alloc)));
@@ -198,7 +198,7 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
 
   const Tensor* mask_index = context->Input<Tensor>(3);
   const Tensor* past = context->Input<Tensor>(4);
-  const Tensor* extra_add_qk = context->Input<Tensor>(5);
+  const Tensor* relative_position_bias = context->Input<Tensor>(5);
 
   const TensorShape& weights_shape = (weights ? weights->Shape() : weight_shape_);
 
@@ -208,7 +208,7 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
                                   bias->Shape(),
                                   mask_index,
                                   past,
-                                  extra_add_qk,
+                                  relative_position_bias,
                                   &parameters));
 
   const int batch_size = parameters.batch_size;
@@ -328,10 +328,11 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
   }
 
   // Compute the attention score and apply the score to V
-  return ApplyAttention(Q, K, V, mask_index, past, output,
-                        batch_size, sequence_length,
+  return ApplyAttention(Q, K, V, mask_index, past, nullptr /* past_key */, nullptr /* past_value */,
+                        output, nullptr /* present_key */, nullptr /* present_value */,
+                        batch_size, sequence_length, sequence_length,
                         parameters.head_size, parameters.v_head_size, parameters.v_hidden_size,
-                        extra_add_qk, context);
+                        relative_position_bias, context);
 }
 }  // namespace contrib
 }  // namespace onnxruntime

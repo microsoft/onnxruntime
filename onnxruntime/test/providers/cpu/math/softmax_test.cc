@@ -86,7 +86,7 @@ TEST(SoftmaxOperator, Simple_bfloat16) {
   }
 #endif
 #ifdef USE_DNNL
-   if (!DnnlHasBF16Support()) {
+  if (!DnnlHasBF16Support()) {
     LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
     return;
   }
@@ -108,7 +108,7 @@ TEST(SoftmaxOperator, Simple_bfloat16) {
 #endif
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
-#endif //  USE_CUDA USE_ROCM USE_DNNL
+#endif  //  USE_CUDA USE_ROCM USE_DNNL
 
 TEST(SoftmaxOperator, LargeNumber) {
   // x = np.array([[0, 1, 2, 3], [10000, 10001, 10002, 10003]]).astype(np.float32)
@@ -122,8 +122,8 @@ TEST(SoftmaxOperator, LargeNumber) {
   RunTest(x_vals, expected_vals, dimensions);
 }
 
-//np.random.seed(123)   # Use a seed so we can replicate the input and expected values here and in python
-//x = np.abs(np.random.randn(3, 4, 5).astype(np.float32))
+// np.random.seed(123)   # Use a seed so we can replicate the input and expected values here and in python
+// x = np.abs(np.random.randn(3, 4, 5).astype(np.float32))
 static std::vector<int64_t> three_dimensions = {3, 4, 5};
 static std::vector<float> x_vals_3dims = {
     1.0856307f, 0.99734545f, 0.2829785f, 1.5062947f, 0.5786002f,
@@ -350,7 +350,8 @@ TEST(SoftmaxOperator, DimWithZero) {
 
   RunTest(x_vals, expected_vals, dimensions, /*opset*/ -1, /*axis*/ 0,
           {kTensorrtExecutionProvider,
-           kNnapiExecutionProvider}  // NNAPI softmax does not support empty input
+           kNnapiExecutionProvider,  // NNAPI softmax does not support empty input
+           kQnnExecutionProvider}    // QNN doesn't support dim 0
   );
 }
 

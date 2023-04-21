@@ -178,7 +178,7 @@ static std::string GenerateSchemaKey(const IndexedSubGraph& subgraph_ptr) {
 }
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
 NodeArg::NodeArg(const std::string& name, const TypeProto* p_node_arg_type) {
   node_arg_info_.set_name(name);
   // If the name is empty, it means the arg does not exist.
@@ -195,7 +195,7 @@ NodeArg::NodeArg(const std::string& name, const TypeProto* p_node_arg_type) {
     type_ = nullptr;
   }
 }
-#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+#endif  // #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
 
 NodeArg::NodeArg(NodeArgInfo&& node_arg_info) {
   node_arg_info_ = std::move(node_arg_info);
@@ -567,7 +567,14 @@ const Path& Node::ModelPath() const noexcept {
 #if !defined(ORT_MINIMAL_BUILD)
 
 bool Node::CanBeInlined() const {
-  return func_body_ || func_template_ || op_ && (op_->HasFunction() || op_->HasContextDependentFunction());
+  if (func_body_ || func_template_)
+    return true;
+  if (!op_) return false;
+  ONNX_NAMESPACE::FunctionProto function_proto;
+  return TryGetFunctionProto(function_proto);
+  // Note: We end up doing some redundant work, which can be eliminated if we cache
+  // the constructed FunctionProto. Keeping the changes localized for now. A better
+  // implementation would require some more invasive refactoring.
 }
 
 bool Node::TryGetFunctionProto(ONNX_NAMESPACE::FunctionProto& onnx_function_proto) const {
@@ -591,8 +598,29 @@ bool Node::TryGetFunctionProto(ONNX_NAMESPACE::FunctionProto& onnx_function_prot
       ONNX_NAMESPACE::FunctionBodyBuildContextImpl function_body_ctx(node_proto, input_types);
       return op_->BuildContextDependentFunction(function_body_ctx, onnx_function_proto);
     } else if (op_->HasFunction()) {
-      onnx_function_proto = *(op_->GetFunction());
-      return true;
+      const FunctionProto* function_ptr = nullptr;
+      // We need to get a function-body suitable for the ONNX opset used by the model.
+      // The first-parameter to GetFunction needs to be the ONNX opset used by the model.
+      // Unfortunately, ONNX's function-registration code uses the function's since-version
+      // as the default-version, which is incorrect in the case of functions belonging to
+      // non-onnx domains, like MSDOMAIN.
+
+      // We use the following as a temporary hack.
+      function_ptr = op_->GetFunction(SinceVersion(), false);
+
+      // TODO: Switch to following, once ONNX issue is fixed.
+      // auto& map = graph_->DomainToVersionMap();
+      // const auto iter = map.find(kOnnxDomain);
+      // if (iter != map.end()) {
+      //   function_ptr = op_->GetFunction(iter->second, true);
+      // } else {
+      //   function_ptr = op_->GetFunction();
+      // }
+
+      if (function_ptr != nullptr) {
+        onnx_function_proto = *function_ptr;
+        return true;
+      }
     }
   }
   return false;
@@ -613,6 +641,11 @@ void Node::ToProto(NodeProto& proto, bool update_subgraphs) const {
 
   if (!description_.empty())
     proto.set_doc_string(description_);
+
+  // Checks an attribute was not removed.
+  if (!can_be_saved_) {
+    ORT_THROW("Removable attributes were removed before the conversion is started.");
+  }
 
   // Set attributes.
   proto.clear_attribute();
@@ -665,6 +698,11 @@ Status Node::SaveToOrtFormat(flatbuffers::FlatBufferBuilder& builder,
   auto outputs = GetNodeArgsOrtFormat(definitions_.output_defs);
   auto input_arg_counts = builder.CreateVector(definitions_.input_arg_count);
   auto implicit_inputs = GetNodeArgsOrtFormat(definitions_.implicit_input_defs);
+
+  // Checks an attribute was not removed.
+  if (!can_be_saved_) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Removable attributes were removed before the node is saved.");
+  }
 
   // Node attributes
   std::vector<flatbuffers::Offset<fbs::Attribute>> attributes_vec;
@@ -821,7 +859,7 @@ Status Node::LoadEdgesFromOrtFormat(const onnxruntime::fbs::NodeEdge& fbs_node_e
   return Status::OK();
 }
 
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
 void Node::Init(const std::string& name,
                 const std::string& op_type,
                 const std::string& description,
@@ -835,6 +873,7 @@ void Node::Init(const std::string& name,
   definitions_.input_defs = input_args;
   definitions_.output_defs = output_args;
   domain_ = domain;
+  can_be_saved_ = true;
   priority_ = 0;
   if (kOnnxDomainAlias == domain_) {
     domain_ = kOnnxDomain;
@@ -859,7 +898,9 @@ void Node::Init(const std::string& name,
     }
   }
 }
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
 
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 Node::Definitions& Node::MutableDefinitions() noexcept {
   // someone fetching these is going to change something
   graph_->SetGraphResolveNeeded();
@@ -944,6 +985,17 @@ bool Node::ClearAttribute(const std::string& attr_name) {
   return attributes_.erase(attr_name) > 0;
 }
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+
+int Node::PruneRemovableAttributes(gsl::span<const std::string> removable_attributes) {
+  graph_->SetGraphResolveNeeded();
+  graph_->SetGraphProtoSyncNeeded();
+  int n_removed = 0;
+  for (const auto& name : removable_attributes) {
+    n_removed += static_cast<int>(attributes_.erase(name));
+  }
+  can_be_saved_ = can_be_saved_ && n_removed == 0;
+  return n_removed;
+}
 
 #if !defined(ORT_MINIMAL_BUILD)
 Status Node::UpdateInputArgCount() {
@@ -1573,11 +1625,12 @@ Status Graph::BuildConnections(std::unordered_set<std::string>& outer_scope_node
             Node& output_node = *entry->second.first;
             AddEdge(output_node.Index(), node->Index(), entry->second.second, input_slot_index);
 
-            // If this Graph was built manually, remove the implicit input from the graph outputs
-            // if it is present there and not explicitly listed in the ordered graph outputs
-            // (as that implies we should leave it as an output).
-            // If the Graph was loaded from a GraphProto, honor the explicit graph outputs and leave as is.
-            if (!is_loaded_from_model_file_) {
+            // If this Graph was built manually and the outputs were not manually set, remove the implicit input from
+            // the graph outputs if it is present there.
+            //
+            // Otherwise, if the Graph was loaded from a GraphProto or the outputs were manually set, honor the
+            // explicit graph outputs and leave as is.
+            if (!is_loaded_from_model_file_ && !graph_outputs_manually_set_) {
               graph_outputs_.erase(std::remove(graph_outputs_.begin(), graph_outputs_.end(), node_arg),
                                    graph_outputs_.end());
             }

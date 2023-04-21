@@ -9,8 +9,12 @@ using namespace onnxruntime::common;
 namespace onnxruntime {
 namespace cuda {
 
-const std::vector<MLDataType> castOpTypeConstraints{
-  DataTypeImpl::GetTensorType<MLFloat16>(),
+const std::vector<MLDataType>& CastOpTypeConstraints() {
+  // Must be done as a local static for a shared provider, to avoid the prefast warning:
+  // Global initializer calls a non-constexpr function 'onnxruntime::DataTypeImpl::GetTensorType<onnxruntime::MLFloat16>'
+  // In a shared provider, GetTensorType is a function call into Onnxruntime and isn't constexpr
+  static std::vector<MLDataType> types{
+      DataTypeImpl::GetTensorType<MLFloat16>(),
       DataTypeImpl::GetTensorType<BFloat16>(),
       DataTypeImpl::GetTensorType<float>(),
       DataTypeImpl::GetTensorType<double>(),
@@ -22,8 +26,9 @@ const std::vector<MLDataType> castOpTypeConstraints{
       DataTypeImpl::GetTensorType<uint16_t>(),
       DataTypeImpl::GetTensorType<uint32_t>(),
       DataTypeImpl::GetTensorType<uint64_t>(),
-      DataTypeImpl::GetTensorType<bool>()
-};
+      DataTypeImpl::GetTensorType<bool>()};
+  return types;
+}
 
 #define REGISTER_KERNEL_TYPED(T)                                  \
   ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                        \
@@ -34,7 +39,7 @@ const std::vector<MLDataType> castOpTypeConstraints{
       kCudaExecutionProvider,                                     \
       (*KernelDefBuilder::Create())                               \
           .TypeConstraint("T1", DataTypeImpl::GetTensorType<T>()) \
-          .TypeConstraint("T2", castOpTypeConstraints),           \
+          .TypeConstraint("T2", CastOpTypeConstraints()),         \
       Cast<T>);                                                   \
   ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                        \
       Cast,                                                       \
@@ -44,7 +49,7 @@ const std::vector<MLDataType> castOpTypeConstraints{
       kCudaExecutionProvider,                                     \
       (*KernelDefBuilder::Create())                               \
           .TypeConstraint("T1", DataTypeImpl::GetTensorType<T>()) \
-          .TypeConstraint("T2", castOpTypeConstraints),           \
+          .TypeConstraint("T2", CastOpTypeConstraints()),         \
       Cast<T>);                                                   \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
       Cast,                                                       \
@@ -54,7 +59,7 @@ const std::vector<MLDataType> castOpTypeConstraints{
       kCudaExecutionProvider,                                     \
       (*KernelDefBuilder::Create())                               \
           .TypeConstraint("T1", DataTypeImpl::GetTensorType<T>()) \
-          .TypeConstraint("T2", castOpTypeConstraints),           \
+          .TypeConstraint("T2", CastOpTypeConstraints()),         \
       Cast<T>);
 
 template <typename SrcT>
@@ -66,15 +71,15 @@ Status Cast<SrcT>::ComputeInternal(OpKernelContext* context) const {
   const auto* x_data = reinterpret_cast<const CudaSrcT*>(X->Data<SrcT>());
   size_t count = shape.Size();
 
-#define CASE(TP_TYPE, DstT)                                                                          \
-  case TP_TYPE:                                                                                      \
-    if (count > 0) {                                                                                 \
-      Impl_Cast<CudaSrcT, typename ToCudaType<DstT>::MappedType>(                                    \
-          Stream(context),                                                                           \
-          x_data,                                                                                    \
+#define CASE(TP_TYPE, DstT)                                                                 \
+  case TP_TYPE:                                                                             \
+    if (count > 0) {                                                                        \
+      Impl_Cast<CudaSrcT, typename ToCudaType<DstT>::MappedType>(                           \
+          Stream(context),                                                                  \
+          x_data,                                                                           \
           reinterpret_cast<typename ToCudaType<DstT>::MappedType*>(Y->MutableData<DstT>()), \
-          count);                                                                                    \
-    }                                                                                                \
+          count);                                                                           \
+    }                                                                                       \
     break;
 
   switch (to_) {

@@ -123,6 +123,12 @@ static void IOTypeConstraintHelper(const ONNX_NAMESPACE::FunctionProto& onnx_fun
     const auto* node_op_schema = schema_registry->GetSchema(node.op_type(), domain_version, node.domain());
     int variadic_arg_idx = -1;
     for (int i = 0; i < node.input_size(); ++i) {
+      if (node_op_schema && variadic_arg_idx == -1) {
+        // The check is applied only if we have not seen a variadic parameter so far:
+        ORT_ENFORCE(static_cast<size_t>(i) < node_op_schema->inputs().size(),
+                    "Too many inputs for op " + node.op_type());
+      }
+
       auto& in_name = node.input().Get(i);
       auto iter = input_name_idx_map.find(in_name);
       if (iter != input_name_idx_map.end()) {
@@ -157,12 +163,12 @@ static void IOTypeConstraintHelper(const ONNX_NAMESPACE::FunctionProto& onnx_fun
             }
           }
         }
+      }
 
-        // if this is a variadic input there are no more inputs in the schema
-        if (node_op_schema && variadic_arg_idx == -1 &&
-            node_op_schema->inputs().at(schema_idx).GetOption() == OpSchema::FormalParameterOption::Variadic) {
-          variadic_arg_idx = i;
-        }
+      // if this is a variadic input there are no more inputs in the schema
+      if (node_op_schema && variadic_arg_idx == -1 &&
+          node_op_schema->inputs().at(i).GetOption() == OpSchema::FormalParameterOption::Variadic) {
+        variadic_arg_idx = i;
       }
     }
 
@@ -202,12 +208,12 @@ static void IOTypeConstraintHelper(const ONNX_NAMESPACE::FunctionProto& onnx_fun
             }
           }
         }
+      }
 
-        // if this is a variadic output there are no more outputs in the schema
-        if (node_op_schema && variadic_arg_idx == -1 &&
-            node_op_schema->outputs().at(schema_idx).GetOption() == OpSchema::FormalParameterOption::Variadic) {
-          variadic_arg_idx = i;
-        }
+      // if this is a variadic output there are no more outputs in the schema
+      if (node_op_schema && variadic_arg_idx == -1 &&
+          node_op_schema->outputs().at(i).GetOption() == OpSchema::FormalParameterOption::Variadic) {
+        variadic_arg_idx = i;
       }
     }
 
@@ -229,7 +235,18 @@ static void IOTypeConstraintHelper(const ONNX_NAMESPACE::FunctionProto& onnx_fun
 
   int i = 0;
   for (auto& input : input_types_list) {
-    op_schema->Input(i, input.first, "", input.second);
+    if (!input.first.empty()) {
+      op_schema->Input(i, input.first, "", input.second);
+    } else {
+      // Handle unused input: its type can be anything.
+      std::string type_str = "Tin" + std::to_string(i);
+      op_schema->Input(i, onnx_func_proto.input(i), "", type_str);
+      auto& dest_types = type_constraint_map[type_str];
+      dest_types.reserve(dest_types.size() + all_types.size());
+      for (const auto& data_type : all_types) {
+        dest_types.emplace_back(data_type);
+      }
+    }
     ++i;
   }
   i = 0;
@@ -348,7 +365,7 @@ class Inliner {
     name = new_name;
   }
 
-  void rename(std::string& name) {
+  void rename(std::string& name, bool is_new_def) {
     if (name.empty()) return;
     for (auto i = rename_scopes.size(); i > 0; --i) {
       const auto& map = rename_scopes[i - 1];
@@ -358,7 +375,10 @@ class Inliner {
         return;
       }
     }
-    make_unique(name);
+    if (is_new_def) {
+      make_unique(name);
+    }
+    // Otherwise, it is a reference to an outer-scope variable that should not be renamed.
   }
 
   template <bool isOutput>
@@ -396,10 +416,10 @@ class Inliner {
       n.set_name(prefix + n.name());
 
     for (auto& x : *n.mutable_input()) {
-      rename(x);
+      rename(x, false);
     }
     for (auto& y : *n.mutable_output()) {
-      rename(y);
+      rename(y, true);
     }
     auto& attributes = *n.mutable_attribute();
     for (auto attr_iter = attributes.begin(); attr_iter != attributes.end();) {
@@ -463,7 +483,15 @@ void Specialize(ONNX_NAMESPACE::FunctionProto& called_function, const ONNX_NAMES
 void Specialize(ONNX_NAMESPACE::FunctionProto& called_function, Node& calling_node, std::string unique_prefix) {
   ONNX_NAMESPACE::NodeProto calling_node_proto;
   calling_node.ToProto(calling_node_proto);
-  Specialize(called_function, calling_node_proto, calling_node.GetAttributes(), unique_prefix);
+
+  onnxruntime::NodeAttributes attr_map = calling_node.GetAttributes();
+  for (auto& attribute_proto : called_function.attribute_proto()) {
+    auto entry = attr_map.find(attribute_proto.name());
+    if (entry == attr_map.cend()) {
+      attr_map[attribute_proto.name()] = attribute_proto;
+    }
+  }
+  Specialize(called_function, calling_node_proto, attr_map, unique_prefix);
 }
 
 }  // namespace function_utils

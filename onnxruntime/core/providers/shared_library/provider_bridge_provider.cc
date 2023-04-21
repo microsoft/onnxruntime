@@ -43,6 +43,10 @@
 #include "orttraining/training_ops/cpu/controlflow/group.h"
 #include "orttraining/training_ops/cpu/optimizer/adamw/adamwbase.h"
 #include "orttraining/training_ops/cpu/optimizer/sgd/sgdbase.h"
+
+// Should remove the include from ENABLE_TRAINING_OPS once 1). compute optimizer is enabled for inference or
+// 2). this is needed by inference for other purpose.
+#include "contrib_ops/cpu/tensor/shrunken_gather.h"
 #endif
 
 #ifdef ENABLE_TRAINING
@@ -285,8 +289,8 @@ bool IAllocator::CalcMemSizeForArrayWithAlignment(size_t nmemb, size_t size, siz
   return g_host->IAllocator__CalcMemSizeForArrayWithAlignment(nmemb, size, alignment, out);
 }
 
-AllocatorPtr IExecutionProvider::GetAllocator(int id, OrtMemType mem_type) const {
-  return g_host->IExecutionProvider__GetAllocator(this, id, mem_type);
+AllocatorPtr IExecutionProvider::GetAllocator(OrtMemType mem_type) const {
+  return g_host->IExecutionProvider__GetAllocator(this, mem_type);
 }
 
 void IExecutionProvider::InsertAllocator(AllocatorPtr allocator) {
@@ -563,12 +567,12 @@ Status AttentionBase::CheckInputs(const TensorShape& input_shape,
                                   const TensorShape& bias_shape,
                                   const Tensor*& mask_index,
                                   const Tensor* past,
-                                  const Tensor* extra_add_qk,
+                                  const Tensor* relative_position_bias,
                                   void* parameters,
                                   const int max_threads_per_block,
                                   const Tensor* past_seq_len) const {
   return g_host_cpu.AttentionBase__CheckInputs(this, input_shape, weights_shape, bias_shape,
-                                               mask_index, past, extra_add_qk, parameters,
+                                               mask_index, past, relative_position_bias, parameters,
                                                max_threads_per_block, past_seq_len);
 }
 Tensor* AttentionBase::GetPresent(OpKernelContext* context, const Tensor* past, int batch_size, int head_size,
@@ -647,6 +651,9 @@ Status AdamWOptimizerBase::PrepareForCompute(OpKernelContext* ctx, AdamWOptimize
 Status SGDOptimizerV2Base::PrepareForCompute(OpKernelContext* ctx, SGDOptimizerV2Base::Prepare& prepare) const {
   return g_host_cpu.contrib__SGDOptimizerV2Base__PrepareForCompute(this, ctx, reinterpret_cast<contrib__SGDOptimizerV2Base__Prepare&>(prepare));
 }
+void ShrunkenGatherCommon::CheckInput(const Tensor* input_tensor, const Tensor* indices_tensor, int64_t axis_in) const {
+  return g_host_cpu.contrib__ShrunkenGatherCommon__CheckInput(this, input_tensor, indices_tensor, axis_in);
+}
 }  // namespace contrib
 #endif
 
@@ -690,6 +697,10 @@ void RefCountTracker::DumpDetails(const std::string& phase_name) const {
 
 #if defined(USE_CANN)
 RandomGenerator& RandomGenerator::Default() { return g_host->RandomGenerator__Default(); }
+void* AllocateBufferWithOptions(IAllocator& allocator, size_t size, bool use_reserve, Stream* stream,
+                                WaitNotificationFn wait_fn) {
+  return g_host->Allocator__AllocateBufferWithOptions(allocator, size, use_reserve, stream, wait_fn);
+}
 
 namespace cann {
 std::unique_ptr<Model> CreateModel(const GraphViewer& graph_viewer, const logging::Logger& logger) {
@@ -702,9 +713,19 @@ void MurmurHash3::x86_128(const void* key, int len, uint32_t seed, void* out) {
   return g_host->MurmurHash3__x86_128(key, len, seed, out);
 }
 
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
+Status LoadDynamicLibrary(onnxruntime::PathString library_name) {
+  return g_host->LoadDynamicLibrary(library_name);
+}
+#endif
+
 #ifdef _WIN32
 std::string ToUTF8String(const std::wstring& s) {
   return g_host->ToUTF8String(s);
+}
+
+std::wstring ToWideString(const std::string& s) {
+  return g_host->ToWideString(s);
 }
 #endif
 }  // namespace onnxruntime

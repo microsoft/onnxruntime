@@ -11,9 +11,7 @@ def hipify(hipify_perl_path, src_file_path, dst_file_path):
     if not os.path.exists(dir_name):
         os.makedirs(dir_name, exist_ok=True)
     # Run hipify-perl first, capture output
-    s = subprocess.run(
-        [hipify_perl_path, "-roc", src_file_path], stdout=subprocess.PIPE, universal_newlines=True, check=False
-    ).stdout
+    s = subprocess.run([hipify_perl_path, "-roc", src_file_path], stdout=subprocess.PIPE, text=True, check=False).stdout
 
     # Additional exact-match replacements.
     # Order matters for all of the following replacements, reglardless of appearing in logical sections.
@@ -59,6 +57,8 @@ def hipify(hipify_perl_path, src_file_path, dst_file_path):
     s = s.replace("GPU_WARP_SIZE = 32", "GPU_WARP_SIZE = 64")
     s = s.replace("std::exp", "expf")
     s = s.replace("std::log", "logf")
+    s = s.replace("WaitCudaNotificationOnDevice", "WaitRocmNotificationOnDevice")
+    s = s.replace("hipHostAlloc", "hipHostMalloc")
     s = s.replace(
         "#include <cub/device/device_radix_sort.cuh>",
         "#include <hipcub/hipcub.hpp>\n#include <hipcub/backend/rocprim/device/device_radix_sort.hpp>",
@@ -66,6 +66,10 @@ def hipify(hipify_perl_path, src_file_path, dst_file_path):
     s = s.replace(
         '#include "cub/device/device_radix_sort.cuh"',
         "#include <hipcub/hipcub.hpp>\n#include <hipcub/backend/rocprim/device/device_radix_sort.hpp>",
+    )
+    s = s.replace(
+        "#include <cub/device/device_segmented_radix_sort.cuh>",
+        "#include <hipcub/backend/rocprim/device/device_segmented_radix_sort.hpp>",
     )
     s = s.replace(
         "#include <cub/device/device_reduce.cuh>", "#include <hipcub/backend/rocprim/device/device_reduce.hpp>"

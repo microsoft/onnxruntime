@@ -45,36 +45,30 @@ namespace Microsoft.ML.OnnxRuntime
         public string GetOptions()
         {
             var allocator = OrtAllocator.DefaultInstance;
-
             // Process provider options string
-            IntPtr providerOptions = IntPtr.Zero;
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtGetTensorRTProviderOptionsAsString(handle, allocator.Pointer, out providerOptions));
-            using (var ortAllocation = new OrtMemoryAllocation(allocator, providerOptions, 0))
-            {
-                return NativeOnnxValueHelper.StringFromNativeUtf8(providerOptions);
-            }
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtGetTensorRTProviderOptionsAsString(handle, 
+                allocator.Pointer, out IntPtr providerOptions));
+            return NativeOnnxValueHelper.StringFromNativeUtf8(providerOptions, allocator);
+        }
+
+        private static IntPtr UpdateTRTOptions(IntPtr handle, IntPtr[] keys, IntPtr[] values, UIntPtr count)
+        {
+            return NativeMethods.OrtUpdateTensorRTProviderOptions(handle, keys, values, count);
         }
 
         /// <summary>
         /// Updates  the configuration knobs of OrtTensorRTProviderOptions that will eventually be used to configure a TensorRT EP
         /// Please refer to the following on different key/value pairs to configure a TensorRT EP and their meaning:
-        /// https://www.onnxruntime.ai/docs/reference/execution-providers/TensorRT-ExecutionProvider.html
+        /// https://onnxruntime.ai/docs/execution-providers/TensorRT-ExecutionProvider.html
         /// </summary>
         /// <param name="providerOptions">key/value pairs used to configure a TensorRT Execution Provider</param>
         public void UpdateOptions(Dictionary<string, string> providerOptions)
         {
+            ProviderOptionsUpdater.Update(providerOptions, handle, UpdateTRTOptions);
 
-            using (var cleanupList = new DisposableList<IDisposable>())
+            if (providerOptions.ContainsKey(_deviceIdStr))
             {
-                var keysArray = NativeOnnxValueHelper.ConvertNamesToUtf8(providerOptions.Keys.ToArray(), n => n, cleanupList);
-                var valuesArray = NativeOnnxValueHelper.ConvertNamesToUtf8(providerOptions.Values.ToArray(), n => n, cleanupList);
-
-                NativeApiStatus.VerifySuccess(NativeMethods.OrtUpdateTensorRTProviderOptions(handle, keysArray, valuesArray, (UIntPtr)providerOptions.Count));
-
-                if (providerOptions.ContainsKey(_deviceIdStr))
-                {
-                    _deviceId = Int32.Parse(providerOptions[_deviceIdStr]);
-                }
+                _deviceId = Int32.Parse(providerOptions[_deviceIdStr]);
             }
         }
 
@@ -156,32 +150,26 @@ namespace Microsoft.ML.OnnxRuntime
         public string GetOptions()
         {
             var allocator = OrtAllocator.DefaultInstance;
-
             // Process provider options string
-            IntPtr providerOptions = IntPtr.Zero;
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtGetCUDAProviderOptionsAsString(handle, allocator.Pointer, out providerOptions));
-            using (var ortAllocation = new OrtMemoryAllocation(allocator, providerOptions, 0))
-            {
-                return NativeOnnxValueHelper.StringFromNativeUtf8(providerOptions);
-            }
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtGetCUDAProviderOptionsAsString(handle, 
+                allocator.Pointer, out IntPtr providerOptions));
+            return NativeOnnxValueHelper.StringFromNativeUtf8(providerOptions, allocator);
+        }
+
+        private static IntPtr UpdateCUDAProviderOptions(IntPtr handle, IntPtr[] keys, IntPtr[] values, UIntPtr count)
+        {
+            return NativeMethods.OrtUpdateCUDAProviderOptions(handle, keys, values, count);
         }
 
         /// <summary>
         /// Updates  the configuration knobs of OrtCUDAProviderOptions that will eventually be used to configure a CUDA EP
         /// Please refer to the following on different key/value pairs to configure a CUDA EP and their meaning:
-        /// https://www.onnxruntime.ai/docs/reference/execution-providers/CUDA-ExecutionProvider.html
+        /// https://onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html
         /// </summary>
         /// <param name="providerOptions">key/value pairs used to configure a CUDA Execution Provider</param>
         public void UpdateOptions(Dictionary<string, string> providerOptions)
         {
-
-            using (var cleanupList = new DisposableList<IDisposable>())
-            {
-                var keysArray = NativeOnnxValueHelper.ConvertNamesToUtf8(providerOptions.Keys.ToArray(), n => n, cleanupList);
-                var valuesArray = NativeOnnxValueHelper.ConvertNamesToUtf8(providerOptions.Values.ToArray(), n => n, cleanupList);
-
-                NativeApiStatus.VerifySuccess(NativeMethods.OrtUpdateCUDAProviderOptions(handle, keysArray, valuesArray, (UIntPtr)providerOptions.Count));
-            }
+            ProviderOptionsUpdater.Update(providerOptions, handle, UpdateCUDAProviderOptions);
         }
 
         #endregion

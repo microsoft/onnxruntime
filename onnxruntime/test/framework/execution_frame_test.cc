@@ -75,14 +75,14 @@ TEST_F(ExecutionFrameTest, TensorAllocationTest) {
   ASSERT_STATUS_OK(state.FinalizeSessionState(ORT_TSTR(""), kernel_registry_manager));
 
   vector<OrtValue> outputs;
-  ExecutionFrame frame({}, {}, {}, outputs, {}, state, {});
+  ExecutionFrame frame({}, {}, {}, outputs, {}, {}, state);
 
   int start_index = frame.GetNodeOffset(node->Index());
   ASSERT_EQ(start_index, 0);
 
   TensorShape shape(std::vector<int64_t>{2, 3});
   OrtValue& mlvalue0 = *frame.GetMutableNodeInputOrOutputMLValue(start_index);
-  const auto& memory_info = execution_providers.Get(xp_typ)->GetAllocator(0, OrtMemTypeDefault)->Info();
+  const auto& memory_info = execution_providers.Get(xp_typ)->GetAllocator(OrtMemTypeDefault)->Info();
   ASSERT_STATUS_OK(frame.AllocateMLValueTensorSelfOwnBuffer(mlvalue0, start_index, DataTypeImpl::GetType<float>(),
                                                             memory_info, shape));
 
@@ -150,7 +150,7 @@ TEST_F(ExecutionFrameTest, OutputShapeValidationTest) {
   ASSERT_STATUS_OK(state.FinalizeSessionState(ORT_TSTR(""), kernel_registry_manager));
 
   vector<OrtValue> outputs;
-  ExecutionFrame frame({}, {}, {}, outputs, {}, state, {});
+  ExecutionFrame frame({}, {}, {}, outputs, {}, {}, state);
 
   int start_index = frame.GetNodeOffset(node->Index());
   ASSERT_EQ(start_index, 0);
@@ -216,7 +216,7 @@ TEST_F(ExecutionFrameTest, FeedInDataTest) {
   ASSERT_TRUE(mlvalue_name_idx_map.GetIdx("Y", y_idx).IsOK());
 
   vector<OrtValue> outputs;
-  ExecutionFrame frame(AsSpan({x_idx}), AsSpan({value}), AsSpan({y_idx}), outputs, {}, state, {});
+  ExecutionFrame frame(AsSpan({x_idx}), AsSpan({value}), AsSpan({y_idx}), outputs, {}, {}, state);
 
   OrtValue* p_ml_value = frame.GetMutableNodeInputOrOutputMLValue(0);
   Tensor* p_tensor_arg_0 = p_ml_value ? p_ml_value->GetMutable<Tensor>() : nullptr;
@@ -285,7 +285,7 @@ TEST_F(ExecutionFrameTest, MemPatternTest) {
   ASSERT_TRUE(mlvalue_name_idx_map.GetIdx("T2", t2_idx).IsOK());
   ASSERT_TRUE(mlvalue_name_idx_map.GetIdx("T3", t3_idx).IsOK());
 
-  auto cpu_allocator = execution_providers.Get(xp_type)->GetAllocator(0, OrtMemTypeDefault);
+  auto cpu_allocator = execution_providers.Get(xp_type)->GetAllocator(OrtMemTypeDefault);
 
   OrtValue v1, v2, v3;
   CreateMLValue<float>(cpu_allocator,
@@ -299,7 +299,7 @@ TEST_F(ExecutionFrameTest, MemPatternTest) {
                        std::vector<float>(6, 1.0f), &v3);
 
   std::vector<OrtValue> outputs;
-  ExecutionFrame frame(AsSpan({x1_idx, x2_idx, x3_idx}), AsSpan({v1, v2, v3}), AsSpan({t3_idx}), outputs, {}, state, {});
+  ExecutionFrame frame(AsSpan({x1_idx, x2_idx, x3_idx}), AsSpan({v1, v2, v3}), AsSpan({t3_idx}), outputs, {}, {}, state);
 
   OrtValue& mlvalue3 = *frame.GetMutableNodeInputOrOutputMLValue(3);
   OrtValue& mlvalue4 = *frame.GetMutableNodeInputOrOutputMLValue(4);
@@ -381,14 +381,14 @@ TEST_F(ExecutionFrameTest, MemPatternWithExternalOutputsTest) {
   ASSERT_TRUE(mlvalue_name_idx_map.GetIdx("T", t_idx).IsOK());
   ASSERT_TRUE(mlvalue_name_idx_map.GetIdx("Y", y_idx).IsOK());
 
-  auto cpu_allocator = execution_providers.Get(xp_type)->GetAllocator(0, OrtMemTypeDefault);
+  auto cpu_allocator = execution_providers.Get(xp_type)->GetAllocator(OrtMemTypeDefault);
 
   OrtValue x_value, t_value;
   CreateMLValue<float>(cpu_allocator, std::vector<int64_t>{2, 2}, std::vector<float>(4, 2.0f), &x_value);
   CreateMLValue<float>(cpu_allocator, std::vector<int64_t>{2, 2}, std::vector<float>(4, 1.0f), &t_value);
 
   vector<OrtValue> outputs;
-  ExecutionFrame frame(AsSpan({x_idx}), AsSpan({x_value}), AsSpan({y_idx}), outputs, {}, state, {});
+  ExecutionFrame frame(AsSpan({x_idx}), AsSpan({x_value}), AsSpan({y_idx}), outputs, {}, {}, state);
 
   ASSERT_FALSE(frame.GetMutableNodeInputOrOutputMLValue(t_idx)->IsTensor());
   ASSERT_STATUS_OK(frame.SetOutputMLValue(t_idx, t_value));
@@ -427,7 +427,7 @@ TEST(ExecutionFrameTestWithoutSessionState, BadModelInvalidDimParamUsage) {
   }
 
   OrtValue ml_value;
-  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_X, values_X, &ml_value);
+  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault), dims_X, values_X, &ml_value);
   NameMLValMap feeds;
   feeds.insert(std::make_pair("X", ml_value));
 

@@ -1,8 +1,10 @@
 if (onnxruntime_USE_FLASH_ATTENTION)
   include(FetchContent)
-  FetchContent_Declare(cutlass
-    GIT_REPOSITORY https://github.com/nvidia/cutlass.git
-    GIT_TAG        8b42e751c63ba219755c8ed91af5f6ec1ecc1ee6
+  FetchContent_Declare(
+    cutlass
+    URL ${DEP_URL_cutlass}
+    URL_HASH SHA1=${DEP_SHA1_cutlass}
+    PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/cutlass/cutlass.patch
   )
 
   FetchContent_GetProperties(cutlass)

@@ -52,11 +52,11 @@ class Fusion:
         if self.fused_count:
             for key, value in self.fused_count.items():
                 if value:
-                    logger.info(f"Fused {key} count: {value}")
+                    logger.info(f"Fused {key}: {value}")
         else:
             count = op_list.count(self.fused_op_type)
             if count > 0:
-                logger.info(f"Fused {self.description} count: {count}")
+                logger.info(f"Fused {self.description}: {count}")
 
         self.model.remove_nodes(self.nodes_to_remove)
         self.model.add_nodes(self.nodes_to_add, self.node_name_to_graph_name)

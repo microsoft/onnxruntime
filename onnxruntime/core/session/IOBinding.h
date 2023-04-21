@@ -86,7 +86,7 @@ class IOBinding {
    * If it doesn't support that, return the default allocator from CPU provider
    * \return a nonnull pointer
    */
-  AllocatorPtr GetCPUAllocator(int id, onnxruntime::ProviderType provider_type) const;
+  AllocatorPtr GetCPUAllocator(onnxruntime::ProviderType provider_type) const;
 
   /**
    * clear inputs or outputs. IOBinding is stateful. There are cases we need to reset its state.

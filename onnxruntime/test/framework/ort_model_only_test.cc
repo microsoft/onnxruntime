@@ -25,7 +25,6 @@ using namespace ONNX_NAMESPACE;
 
 namespace onnxruntime {
 namespace test {
-
 struct OrtModelTestInfo {
   std::basic_string<ORTCHAR_T> model_filename;
   std::string logid;
@@ -300,7 +299,7 @@ TEST(OrtModelOnlyTests, ValidateOrtFormatModelDoesNotRunOptimizersInFullBuild) {
 
   OrtValue ml_value;
   std::vector<float> data(28 * 28, 0.0);
-  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), {1, 1, 28, 28}, data,
+  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault), {1, 1, 28, 28}, data,
                        &ml_value);
   test_info.inputs.insert(std::make_pair("Input3", ml_value));
 
@@ -326,7 +325,7 @@ TEST(OrtModelOnlyTests, SerializeToOrtFormat) {
   test_info.configs.push_back(std::make_pair(kOrtSessionOptionsConfigLoadModelFormat, "ORT"));
 
   OrtValue ml_value;
-  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), {1}, {123.f},
+  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault), {1}, {123.f},
                        &ml_value);
   test_info.inputs.insert(std::make_pair("state_var_in", ml_value));
 
@@ -435,7 +434,7 @@ TEST(OrtModelOnlyTests, UpdateOrtModelVersion) {
                        std::vector<int64_t> input_dims{1, 1, 28, 28};
                        std::vector<float> input_data = random.Gaussian<float>(input_dims, 0.0f, 0.9f);
                        OrtValue ml_value;
-                       CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault),
+                       CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault),
                                             input_dims, input_data, &ml_value);
 
                        inputs = {{"Input3", ml_value}};
@@ -460,8 +459,8 @@ TEST(OrtModelOnlyTests, UpdateOrtModelVersionWithSavedRuntimeOptimizations) {
                          std::vector<int64_t> input_dims{1, 1, 5, 5};
                          std::vector<uint8_t> input_data = random.Uniform<uint8_t>(input_dims, 0, 255);
                          OrtValue ml_value;
-                         CreateMLValue<uint8_t>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault),
-                                              input_dims, input_data, &ml_value);
+                         CreateMLValue<uint8_t>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault),
+                                                input_dims, input_data, &ml_value);
 
                          inputs.emplace(MakeString("X_", i), std::move(ml_value));
                          output_names.push_back(MakeString("Y_", i));
@@ -480,7 +479,7 @@ TEST(OrtModelOnlyTests, SerializeToOrtFormatMLOps) {
   test_info.configs.push_back(std::make_pair(kOrtSessionOptionsConfigLoadModelFormat, "ORT"));
 
   OrtValue ml_value;
-  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), {3, 2},
+  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault), {3, 2},
                        {0.f, 1.f, 1.f, 1.f, 2.f, 0.f}, &ml_value);
   test_info.inputs.insert(std::make_pair("input", ml_value));
 
@@ -531,7 +530,7 @@ OrtModelTestInfo GetTestInfoForLoadOrtFormatModel() {
   test_info.logid = "LoadOrtFormatModel";
 
   OrtValue ml_value;
-  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), {1}, {123.f},
+  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault), {1}, {123.f},
                        &ml_value);
   test_info.inputs.insert(std::make_pair("state_var_in", ml_value));
 
@@ -585,7 +584,7 @@ OrtModelTestInfo GetTestInfoForLoadOrtFormatModelMLOps() {
   test_info.logid = "LoadOrtFormatModelMLOps";
 
   OrtValue ml_value;
-  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), {3, 2},
+  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault), {3, 2},
                        {0.f, 1.f, 1.f, 1.f, 2.f, 0.f}, &ml_value);
   test_info.inputs.insert(std::make_pair("input", ml_value));
 

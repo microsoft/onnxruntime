@@ -7,6 +7,9 @@
 
 #include "core/common/common.h"
 #include "core/framework/tunable.h"
+#define TUNING_CONTEXT_IMPL
+#include "core/framework/tuning_context_impl.h"
+#undef TUNING_CONTEXT_IMPL
 
 using namespace std::chrono_literals;
 
@@ -17,12 +20,77 @@ namespace {
 // test on CPU and it does not use stream
 using StreamT = void*;
 
-class Timer : public ::onnxruntime::tunable::Timer<StreamT> {
- public:
-  using TimerBase = ::onnxruntime::tunable::Timer<StreamT>;
+constexpr static const char* kTestKey = "THE_TEST_KEY";
+constexpr static const char* kValidTestValue = "THE_VALID_TEST_VALUE";
 
-  explicit Timer(StreamT stream) : TimerBase{stream} {}
-  ~Timer() = default;
+static std::string GetTestValue() {
+  return kValidTestValue;
+}
+
+static Status ValidateTestValue(const std::string& value) {
+  auto current = GetTestValue();
+  ORT_RETURN_IF(current != value, "Only ", kValidTestValue, " is valid for key ", kTestKey);
+  return Status::OK();
+}
+
+class TestTuningResultsValidator : public TuningResultsValidator {
+ public:
+  TestTuningResultsValidator() {
+    RegisterValidator(kTestKey, GetTestValue, ValidateTestValue);
+  };
+
+ protected:
+  std::string GetOrtBuildConfig() const override {
+    return "TEST_BUILD";
+  }
+};
+
+class TestTuningContext : public ITuningContext {
+ public:
+  using ITuningContext::ITuningContext;
+
+  void EnableTunableOp() override { op_enabled_ = true; }
+  void DisableTunableOp() override { op_enabled_ = false; }
+  bool IsTunableOpEnabled() const override { return op_enabled_; }
+
+  void EnableTuning() override { tuning_enabled_ = true; }
+  void DisableTuning() override { tuning_enabled_ = false; }
+  bool IsTuningEnabled() const override { return tuning_enabled_; }
+
+  TuningResultsManager& GetTuningResultsManager() override { return manager_; }
+  const TuningResultsManager& GetTuningResultsManager() const override { return manager_; }
+
+  const TuningResultsValidator& GetTuningResultsValidator() const override { return validator_; }
+
+  void ClearCache() { manager_.Clear(); }
+
+ private:
+  bool op_enabled_{false};
+  bool tuning_enabled_{false};
+  TuningResultsManager manager_{};
+  TestTuningResultsValidator validator_{};
+};
+
+class TestEP : public IExecutionProvider {
+  static constexpr const char* kEPType = "TestEP";
+  TestTuningContext tuning_ctx_{this};
+
+ public:
+  TestEP() : IExecutionProvider{kEPType, true} {}
+
+  ITuningContext* GetTuningContext() const override {
+    return const_cast<TestTuningContext*>(&tuning_ctx_);
+  }
+
+  void ClearCache() { tuning_ctx_.ClearCache(); }
+};
+
+class TestTimer : public ITimer<StreamT> {
+ public:
+  using TimerBase = ITimer<StreamT>;
+
+  explicit TestTimer(StreamT stream) : TimerBase{stream} {}
+  ~TestTimer() = default;
 
   void Start() override {
     start_ = std::chrono::steady_clock::now();
@@ -43,24 +111,27 @@ class Timer : public ::onnxruntime::tunable::Timer<StreamT> {
   TimePoint end_;
 };
 
-using OpParams = ::onnxruntime::tunable::OpParams<StreamT>;
+using OpParams = OpParams<TestTuningContext, StreamT>;
 
 template <typename ParamsT>
-using Op = ::onnxruntime::tunable::Op<ParamsT>;
+using Op = Op<ParamsT>;
 
 template <typename ParamsT>
-using TunableOp = ::onnxruntime::tunable::TunableOp<ParamsT, Timer>;
+using TunableOp = TunableOp<ParamsT, TestTimer>;
 
 }  // namespace
 
-struct VecAddParams : ::onnxruntime::tunable::OpParams<StreamT> {
+struct VecAddParams : OpParams {
   VecAddParams(const int* a_buf, const int* b_buf, int* c_buf, int num_elem, int beta)
-      : ::onnxruntime::tunable::OpParams<StreamT>(nullptr),
+      : OpParams(nullptr, StreamT{}),
         a(a_buf),
         b(b_buf),
         c(c_buf),
         num_elem(num_elem),
-        beta(beta) {}
+        beta(beta) {
+    ep = std::make_shared<TestEP>();
+    tuning_ctx = static_cast<TestTuningContext*>(ep->GetTuningContext());
+  }
 
   std::string Signature() const {
     return std::to_string(num_elem) + "_" + std::to_string(beta);
@@ -71,6 +142,9 @@ struct VecAddParams : ::onnxruntime::tunable::OpParams<StreamT> {
   int* c;
   int num_elem;
   int beta;
+
+  // Create a temporary tuning context for the test case.
+  std::shared_ptr<TestEP> ep;
 };
 
 void LaunchVecAddKernel(const int* a, const int* b, int* c, int num_elem, int beta) {
@@ -93,7 +167,7 @@ TEST(TunableOp, OpWrapsFunction) {
   int c{};
   VecAddParams params(&a, &b, &c, 1, 0);
 
-  tunable::Op<VecAddParams> vec_add(VecAddFunc);
+  Op<VecAddParams> vec_add(VecAddFunc);
 
   auto status = vec_add(&params);
   ASSERT_TRUE(status.IsOK());
@@ -112,7 +186,7 @@ TEST(TunableOp, OpWrapsLambda) {
   int c{};
   VecAddParams params(&a, &b, &c, 1, 0);
 
-  tunable::Op<VecAddParams> vec_add([](const VecAddParams* params) {
+  Op<VecAddParams> vec_add([](const VecAddParams* params) {
     LaunchVecAddKernel(params->a, params->b, params->c, params->num_elem, params->beta);
     return Status::OK();
   });
@@ -129,7 +203,7 @@ TEST(TunableOp, OpWrapsMoveOnlyLambda) {
   VecAddParams params(&a, &b, &c, 1, 0);
 
   auto non_copyable = std::make_unique<int>(0);
-  tunable::Op<VecAddParams> vec_add([non_copyable = std::move(non_copyable)](const VecAddParams* params) {
+  Op<VecAddParams> vec_add([non_copyable = std::move(non_copyable)](const VecAddParams* params) {
     LaunchVecAddKernel(params->a, params->b, params->c, params->num_elem, params->beta);
     return Status::OK();
   });
@@ -153,7 +227,7 @@ TEST(TunableOp, OpWrapsConstFunctor) {
   int c{};
   VecAddParams params(&a, &b, &c, 1, 0);
 
-  tunable::Op<VecAddParams> vec_add(VecAddConstFunctor{});
+  Op<VecAddParams> vec_add(VecAddConstFunctor{});
 
   auto status = vec_add(&params);
   ASSERT_TRUE(status.IsOK());
@@ -174,7 +248,7 @@ TEST(TunableOp, OpWrapsMutableFunctor) {
   int c{};
   VecAddParams params(&a, &b, &c, 1, 0);
 
-  tunable::Op<VecAddParams> vec_add(VecAddMutableFunctor{});
+  Op<VecAddParams> vec_add(VecAddMutableFunctor{});
 
   auto status = vec_add(&params);
   ASSERT_TRUE(status.IsOK());
@@ -199,7 +273,7 @@ TEST(TunableOp, OpWrapsMoveOnlyFunctor) {
   int c{};
   VecAddParams params(&a, &b, &c, 1, 0);
 
-  tunable::Op<VecAddParams> vec_add(VecAddMoveOnlyFunctor{});
+  Op<VecAddParams> vec_add(VecAddMoveOnlyFunctor{});
 
   auto status = vec_add(&params);
   ASSERT_TRUE(status.IsOK());
@@ -232,7 +306,7 @@ TEST(TunableOp, OpWrapsFunctorWithExtendedIsSupported) {
 
   // Test Op::IsSupported will have correct fallback if user does not implement it in its functor.
   {
-    tunable::Op<VecAddParams> vec_add(VecAddMoveOnlyFunctor{});
+    Op<VecAddParams> vec_add(VecAddMoveOnlyFunctor{});
     VecAddParams params(a, b, nullptr, 1, 0);
     status = vec_add.IsSupported(&params);
     ASSERT_EQ(status.Category(), common::StatusCategory::NONE);
@@ -246,7 +320,7 @@ TEST(TunableOp, OpWrapsFunctorWithExtendedIsSupported) {
 
   // Test Op::IsSupported will use user provided one if they implemented it.
   {
-    tunable::Op<VecAddParams> vec_add(VecAddWithIsSupportedMethod{});
+    Op<VecAddParams> vec_add(VecAddWithIsSupportedMethod{});
 
     VecAddParams params(a, b, c, 4, 0);
     status = vec_add.IsSupported(&params);
@@ -300,9 +374,12 @@ class TunableVecAddSelectFast : public TunableOp<VecAddParamsRecordLastRun> {
     this->RegisterOp(SlowFull);
     this->RegisterOp(FastFull);
   }
+
+  constexpr static int kSlowFullId = 0;
+  constexpr static int kFastFullId = 1;
 };
 
-TEST(TunableOp, SelectFast) {
+TEST(TunableOp, SelectFastIfTuning) {
 #ifdef ORT_NO_RTTI
   GTEST_SKIP() << "TunableOp needs RTTI to work correctly";
 #else
@@ -314,9 +391,15 @@ TEST(TunableOp, SelectFast) {
   params.last_run = &last_run;
 
   TunableVecAddSelectFast op{};
-  op.EnableTuning();
-
+  // Only enable op usage, slow (default) should be selected
+  params.TuningContext()->EnableTunableOp();
   auto status = op(&params);
+  ASSERT_TRUE(status.IsOK());
+  ASSERT_EQ(last_run, "SlowFull");
+
+  // Also enable tuning, fast should be selected
+  params.TuningContext()->EnableTuning();
+  status = op(&params);
   ASSERT_TRUE(status.IsOK());
   ASSERT_EQ(last_run, "FastFull");
 #endif
@@ -342,7 +425,7 @@ TEST(TunableOp, SelectSupported) {
   params.last_run = &last_run;
 
   TunableVecAddSelectSupported op{};
-  op.EnableTuning();
+  params.TuningContext()->EnableTunableOpAndTuning();
 
   auto status = op(&params);
   ASSERT_TRUE(status.IsOK());
@@ -373,7 +456,7 @@ TEST(TunableOp, SelectFastestIfSupported) {
   params.last_run = &last_run;
 
   TunableVecAddSelectFastestIfSupported op{};
-  op.EnableTuning();
+  params.TuningContext()->EnableTunableOpAndTuning();
 
   auto status = op(&params);
   ASSERT_TRUE(status.IsOK());
@@ -398,7 +481,7 @@ TEST(TunableOp, DisabledWithManualSelection) {
   params.last_run = &last_run;
 
   TunableVecAddSelectFastestIfSupported op{};
-  op.DisableTuning();
+  params.TuningContext()->DisableTunableOp();
 
   auto status = op(&params);
   ASSERT_EQ(last_run, "FastestNarrow");
@@ -452,14 +535,13 @@ TEST(TunableOp, HandleInplaceUpdate) {
   constexpr const int a = 7500000;
   constexpr const int b = 42;
   int c{};
-  VecAddParamsRecordLastRun params(&a, &b, &c, 1, 0);
 
   {
     // NO INPLACE UPDATE is carried out during tuning. We automatically get correct result.
     c = 4200;
-    params.beta = 0;
+    VecAddParamsRecordLastRun params(&a, &b, &c, 1, /*beta=*/0);
     TunableVecAddNotHandleInplaceUpdate op_not_handle_inplace_update{};
-    op_not_handle_inplace_update.EnableTuning();
+    params.TuningContext()->EnableTunableOpAndTuning();
     auto status = op_not_handle_inplace_update(&params);
     ASSERT_TRUE(status.IsOK());
     ASSERT_EQ(c, 7500042);
@@ -468,9 +550,9 @@ TEST(TunableOp, HandleInplaceUpdate) {
   {
     // inplace update in this case, If we don't process the params, we will get incorrect result (during tuning)
     c = 4200;
-    params.beta = 1;
+    VecAddParamsRecordLastRun params(&a, &b, &c, 1, /*beta=*/1);
     TunableVecAddNotHandleInplaceUpdate op_not_handle_inplace_update{};
-    op_not_handle_inplace_update.EnableTuning();
+    params.TuningContext()->EnableTunableOpAndTuning();
     auto status = op_not_handle_inplace_update(&params);
     ASSERT_TRUE(status.IsOK());
     ASSERT_NE(c, 4200);     // value should be changed
@@ -480,9 +562,9 @@ TEST(TunableOp, HandleInplaceUpdate) {
   {
     // NO INPLACE UPDATE is carried out during tuning. We skip params processing. And we get correct result.
     c = 4200;
-    params.beta = 0;
+    VecAddParamsRecordLastRun params(&a, &b, &c, 1, /*beta=*/0);
     TunableVecAddHandleInplaceUpdate op{};
-    op.EnableTuning();
+    params.TuningContext()->EnableTunableOpAndTuning();
     auto status = op(&params);
     ASSERT_TRUE(status.IsOK());
     ASSERT_EQ(c, 7500042);
@@ -492,9 +574,9 @@ TEST(TunableOp, HandleInplaceUpdate) {
   {
     // inplace update in this case, We will handle the buffer and we will get correct result
     c = 4200;
-    params.beta = 1;
+    VecAddParamsRecordLastRun params(&a, &b, &c, 1, /*beta=*/1);
     TunableVecAddHandleInplaceUpdate op{};
-    op.EnableTuning();
+    params.TuningContext()->EnableTunableOpAndTuning();
     auto status = op(&params);
     ASSERT_TRUE(status.IsOK());
     ASSERT_EQ(c, 7504242);
@@ -503,6 +585,138 @@ TEST(TunableOp, HandleInplaceUpdate) {
 #endif
 }
 
+TEST(TunableOp, OpSignatureMustNotChange) {
+#ifdef ORT_NO_RTTI
+  GTEST_SKIP() << "TunableOp needs RTTI to work correctly";
+#else
+  std::vector<std::string> signatures1;
+  std::vector<std::string> signatures2;
+  signatures1.emplace_back(TunableVecAddSelectFast{}.Signature());
+  signatures1.emplace_back(TunableVecAddSelectSupported{}.Signature());
+  signatures1.emplace_back(TunableVecAddSelectFastestIfSupported{}.Signature());
+  signatures1.emplace_back(TunableVecAddNotHandleInplaceUpdate{}.Signature());
+  signatures1.emplace_back(TunableVecAddHandleInplaceUpdate{}.Signature());
+
+  signatures2.emplace_back(TunableVecAddSelectFast{}.Signature());
+  signatures2.emplace_back(TunableVecAddSelectSupported{}.Signature());
+  signatures2.emplace_back(TunableVecAddSelectFastestIfSupported{}.Signature());
+  signatures2.emplace_back(TunableVecAddNotHandleInplaceUpdate{}.Signature());
+  signatures2.emplace_back(TunableVecAddHandleInplaceUpdate{}.Signature());
+
+  ASSERT_EQ(signatures1, signatures2);
+#endif
+}
+
+TEST(TunableOp, OpSignatureMustNotCollide) {
+#ifdef ORT_NO_RTTI
+  GTEST_SKIP() << "TunableOp needs RTTI to work correctly";
+#else
+  std::unordered_set<std::string> signatures;
+  signatures.insert(TunableVecAddSelectFast{}.Signature());
+  signatures.insert(TunableVecAddSelectSupported{}.Signature());
+  signatures.insert(TunableVecAddSelectFastestIfSupported{}.Signature());
+  signatures.insert(TunableVecAddNotHandleInplaceUpdate{}.Signature());
+  signatures.insert(TunableVecAddHandleInplaceUpdate{}.Signature());
+
+  ASSERT_THAT(signatures, ::testing::SizeIs(5));
+#endif
+}
+
 }  // namespace tuning
+
+namespace tuning_context {
+
+TEST(TuningContext, TunableOpRespectTuningContext) {
+#ifdef ORT_NO_RTTI
+  GTEST_SKIP() << "TunableOp needs RTTI to work correctly";
+#else
+  constexpr const int a = 7500000;
+  constexpr const int b = 42;
+  int c{};
+  tuning::VecAddParamsRecordLastRun params(&a, &b, &c, 1, 0);
+  std::string last_run;
+  params.last_run = &last_run;
+
+  tuning::TunableVecAddSelectFast op{};
+  auto* ctx = params.TuningContext();
+  auto& mgr = ctx->GetTuningResultsManager();
+  ctx->EnableTunableOpAndTuning();
+
+  {
+    // Before TunableOp(...), there is no entry in it.
+    ASSERT_EQ(mgr.Lookup(op.Signature()).size(), 0u);
+
+    auto status = op(&params);
+    ASSERT_TRUE(status.IsOK());
+    ASSERT_EQ(last_run, "FastFull");
+
+    // After TunableOp(...), the result entry is corretly written.
+    ASSERT_EQ(mgr.Lookup(op.Signature()).size(), 1u);
+    ASSERT_EQ(mgr.Lookup(op.Signature(), params.Signature()), tuning::TunableVecAddSelectFast::kFastFullId);
+  }
+
+  last_run.clear();
+  mgr.Clear();
+  {
+    ASSERT_EQ(mgr.Lookup(op.Signature()).size(), 0u);
+
+    // TunableOp(...), respect the existing entry (manually loaded) if id in bound
+    mgr.Add(op.Signature(), params.Signature(), tuning::TunableVecAddSelectFast::kSlowFullId);
+    auto status = op(&params);
+    ASSERT_TRUE(status.IsOK());
+    ASSERT_EQ(last_run, "SlowFull");
+  }
+
+  last_run.clear();
+  mgr.Clear();
+  {
+    // TunableOp(...), must not respect the existing entry if id not in bound
+    // manually create an out of bound id
+    mgr.Add(op.Signature(), params.Signature(), 1000000);
+    auto status = op(&params);
+    ASSERT_TRUE(status.IsOK()) << "TunableOp should recover from an out of bound id";
+    ASSERT_EQ(last_run, "FastFull");
+    ASSERT_EQ(mgr.Lookup(op.Signature(), params.Signature()), tuning::TunableVecAddSelectFast::kFastFullId);
+  }
+#endif
+}
+
+TEST(TuningContext, GetAndLoadTuningResults) {
+#ifdef ORT_NO_RTTI
+  GTEST_SKIP() << "TunableOp needs RTTI to work correctly";
+#else
+  constexpr const int a = 7500000;
+  constexpr const int b = 42;
+  int c{};
+  tuning::VecAddParamsRecordLastRun params(&a, &b, &c, 1, 0);
+  std::string last_run;
+  params.last_run = &last_run;
+
+  tuning::TunableVecAddSelectFast op{};
+  auto* ctx = params.TuningContext();
+  ctx->EnableTunableOpAndTuning();
+
+  auto status = op(&params);
+  ASSERT_TRUE(status.IsOK());
+  ASSERT_EQ(last_run, "FastFull");
+
+  auto trs = ctx->GetTuningResults();
+  ASSERT_EQ(trs.ep, "TestEP");
+
+  ASSERT_EQ(trs.validators.size(), TestTuningResultsValidator::mandatory_keys.size() + 1);
+  for (const auto& key : TestTuningResultsValidator::mandatory_keys) {
+    ASSERT_THAT(trs.validators, ::testing::Contains(::testing::Key(key)));
+  }
+  ASSERT_THAT(trs.validators, ::testing::Contains(::testing::Key(kTestKey)));
+
+  ASSERT_EQ(trs.results.size(), 1u);
+  ASSERT_THAT(trs.results, ::testing::Contains(::testing::Key(op.Signature())));
+  ASSERT_THAT(trs.results[op.Signature()], ::testing::Contains(::testing::Key(params.Signature())));
+  ASSERT_EQ(trs.results[op.Signature()][params.Signature()], tuning::TunableVecAddSelectFast::kFastFullId);
+#endif
+}
+
+}  // namespace tuning_context
+
 }  // namespace test
 }  // namespace onnxruntime

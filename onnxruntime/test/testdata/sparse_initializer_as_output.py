@@ -1,22 +1,18 @@
 import argparse
-import os
+import os  # noqa: F401
 import sys
 import traceback
-from typing import Any, Callable, Dict, List, Optional, Sequence, Text, Tuple, TypeVar, Union, cast
+from typing import Any, Callable, Dict, List, Optional, Sequence, Text, Tuple, TypeVar, Union, cast  # noqa: F401
 
 import numpy as np
 import onnx
-from onnx import (
-    AttributeProto,
-    GraphProto,
-    SparseTensorProto,
-    TensorProto,
-    ValueInfoProto,
-    helper,
-    mapping,
-    numpy_helper,
-    utils,
-)
+from onnx import AttributeProto  # noqa: F401
+from onnx import GraphProto  # noqa: F401
+from onnx import SparseTensorProto  # noqa: F401
+from onnx import mapping  # noqa: F401
+from onnx import numpy_helper  # noqa: F401
+from onnx import utils  # noqa: F401
+from onnx import TensorProto, ValueInfoProto, helper
 from onnx.helper import make_opsetid
 
 
@@ -60,7 +56,7 @@ def make_sparse_tensor_value_info(
 
         if shape_denotation:
             if len(shape_denotation) != len(shape):
-                raise ValueError("Invalid shape_denotation. " "Must be of the same length as shape.")
+                raise ValueError("Invalid shape_denotation. Must be of the same length as shape.")
 
         for i, d in enumerate(shape):
             dim = sparse_tensor_shape_proto.dim.add()
@@ -71,7 +67,7 @@ def make_sparse_tensor_value_info(
             elif isinstance(d, str):
                 dim.dim_param = d
             else:
-                raise ValueError("Invalid item in shape: {}. " "Needs to be one of `int` or `str`.".format(d))
+                raise ValueError(f"Invalid item in shape: {d}. Needs to be one of `int` or `str`.")
 
             if shape_denotation:
                 dim.denotation = shape_denotation[i]
@@ -112,7 +108,7 @@ def create_model(constant_node_name, output_file_name):
     )
 
     # Outputs, a square matrix
-    Values_info = make_sparse_tensor_value_info("values", TensorProto.FLOAT, dense_shape)
+    Values_info = make_sparse_tensor_value_info("values", TensorProto.FLOAT, dense_shape)  # noqa: N806
 
     graph_def = helper.make_graph(
         nodes=[constant_node],

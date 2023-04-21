@@ -5,7 +5,7 @@
 
 set -e
 set -x
-export PATH=/opt/python/cp37-cp37m/bin:$PATH
+export PATH=/opt/python/cp38-cp38/bin:$PATH
 
 BUILD_DIR=${1:?"usage: $0 <build directory>"}
 
@@ -26,7 +26,7 @@ python3 /onnxruntime_src/tools/ci_build/build.py \
     --build_wheel \
     --skip_tests \
     --enable_training_ops \
-    --enable_pybind --cmake_extra_defines PYTHON_INCLUDE_DIR=/opt/python/cp37-cp37m/include/python3.7m PYTHON_LIBRARY=/usr/lib64/librt.so \
+    --enable_pybind --cmake_extra_defines PYTHON_INCLUDE_DIR=/opt/python/cp38-cp38/include/python3.8 PYTHON_LIBRARY=/usr/lib64/librt.so \
     --use_nnapi \
     --use_coreml
 
@@ -53,6 +53,13 @@ python3 /onnxruntime_src/tools/python/create_reduced_build_config.py --format OR
 # Config with type reduction
 python3 /onnxruntime_src/tools/python/create_reduced_build_config.py --format ORT --enable_type_reduction \
     /onnxruntime_src/onnxruntime/test/testdata \
+    /home/onnxruntimedev/.test_data/required_ops_and_types.ort_models.config
+
+# Append the info for ops involved from inside custom ops. These can't be read from the models as they're
+# dynamically created at runtime when the kernel is created.
+cat /onnxruntime_src/onnxruntime/test/testdata/ort_minimal_e2e_test_data/required_ops.standalone_invoker.config >> \
+    /home/onnxruntimedev/.test_data/required_ops.ort_models.config
+cat /onnxruntime_src/onnxruntime/test/testdata/ort_minimal_e2e_test_data/required_ops.standalone_invoker.config >> \
     /home/onnxruntimedev/.test_data/required_ops_and_types.ort_models.config
 
 # Test that we can convert an ONNX model with custom ops to ORT format

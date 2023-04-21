@@ -27,7 +27,7 @@ const static char* OUTPUT_DIR = ".";
 const PATH_STRING_TYPE TRAINING_DATA_PATH = ORT_TSTR("squeezenet_data/training");
 const PATH_STRING_TYPE TEST_DATA_PATH = ORT_TSTR("squeezenet_data/test");
 
-int main(int /*argc*/, char* /*args*/ []) {
+int main(int /*argc*/, char* /*args*/[]) {
   string default_logger_id{"Default"};
   logging::LoggingManager default_logging_manager{unique_ptr<logging::ISink>{new logging::CLogSink{}},
                                                   logging::Severity::kWARNING,
@@ -56,7 +56,7 @@ int main(int /*argc*/, char* /*args*/ []) {
   params.loss_func_info_ = LossFunctionInfo(OpDef("SoftmaxCrossEntropy"),
                                             "loss",
                                             {params.model_prediction_name_, "labels"});
-  //params.weights_not_to_train_ = {"pool10_1_shape"};  // Use not-to-train list
+  // params.weights_not_to_train_ = {"pool10_1_shape"};  // Use not-to-train list
   params.weights_to_train_ = {"conv10_w_0__71", "conv10_b_0__70"};
   params.batch_size_ = BATCH_SIZE;
   params.num_of_epoch_ = NUM_OF_EPOCH;

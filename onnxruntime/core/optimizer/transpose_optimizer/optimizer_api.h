@@ -3,13 +3,14 @@
 
 #pragma once
 
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
 #include <unordered_map>
-#include <vector>
 #include <unordered_set>
+#include <vector>
 
 namespace onnx_layout_transformation {
 namespace api {
@@ -229,7 +230,7 @@ class NodeRef {
   /// not assigned to any EP.
   /// </summary>
   /// <returns>EP type or empty string</returns>
-  virtual const std::string& GetExecutionProviderType() const = 0;
+  virtual std::string_view GetExecutionProviderType() const = 0;
 
   /// <summary>
   /// Returns the schema since version for the op_type of this node. Value of -1 means it is not set.
@@ -437,7 +438,31 @@ class GraphRef {
 }  // namespace api
 
 constexpr int64_t kMinSupportedOpset = 7;
-constexpr int64_t kMaxSupportedOpset = 18;
+constexpr int64_t kMaxSupportedOpset = 19;
+
+// enum of results that a CostCheckFn can return.
+enum class CostCheckResult {
+  kStop,           // pushing Transpose is expected to negatively impact performance
+  kPushTranspose,  // pushing Transpose is expected to improve performance
+  kFallThrough     // fall through to default cost check
+};
+
+/// <summary>
+/// Function to allow overriding the default cost check to determine whether it is worth pushing a Transpose through
+/// a node.
+/// </summary>
+/// <param name="graph">The graph being optimized</param>
+/// <param name="node">The node we're considering pushing a Transpose through</param>
+/// <param name="perm">The perm value of the Transpose</param>
+/// <param name="outputs_leading_to_transpose">The set of outputs that lead to another Transpose in the graph.
+///   If we can successfully push the Transpose until it meets another Transpose they can either cancel each other out,
+///   or be merged into a single Transpose.
+/// </param>
+using CostCheckFn =
+    std::function<CostCheckResult(const api::GraphRef& graph,
+                                  const api::NodeRef& node,
+                                  const std::vector<int64_t>& perm,
+                                  const std::unordered_set<std::string>& outputs_leading_to_transpose)>;
 
 enum class OptimizerMode {
   OPTIMIZE_TRANSPOSE,        // simple transpose optimization
@@ -469,6 +494,8 @@ struct OptimizeResult {
 /// <param name="provider_type">Execution provider if applicable.</param>
 /// <param name="mode">Current mode. Optimizer can be called in the context of transpose optimizations or during
 /// layout transformations.</param>
+/// <param name="cost_check_fn">Optional cost checking function to determine whether it is worth pushing a Transpose
+/// through a node.</param>
 /// <param name="layout_sensitive_ops">List of ops which are treated as layout sensitive by the ONNX standard
 /// as well as any runtime specific ops. These ops should be provided when mode is set to OPTIMIZE_LAYOUT_TRANSFORM.
 /// If these ops are not provided, transpose optimizer may convert the layout for these ops </param>
@@ -477,6 +504,7 @@ struct OptimizeResult {
 OptimizeResult Optimize(api::GraphRef& graph, bool allow_extended_ops,
                         const std::string& provider_type = "",
                         OptimizerMode mode = OptimizerMode::OPTIMIZE_TRANSPOSE,
+                        CostCheckFn cost_check_fn = nullptr,
                         const std::unordered_set<std::string_view>& layout_sensitive_ops = {});
 
 /* Layout Transformation Tools

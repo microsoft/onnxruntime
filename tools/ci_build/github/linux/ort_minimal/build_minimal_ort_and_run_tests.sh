@@ -7,7 +7,7 @@
 
 set -e
 set -x
-export PATH=/opt/python/cp37-cp37m/bin:$PATH
+export PATH=/opt/python/cp38-cp38/bin:$PATH
 USAGE_TEXT="Usage:
   -b|--build-directory <build directory>
     Specifies the build directory. Required.

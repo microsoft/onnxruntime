@@ -5,7 +5,8 @@ buildscript {
         buildToolsVersion = "29.0.2"
         minSdkVersion = 21
         compileSdkVersion = 31
-        targetSdkVersion = 29
+        targetSdkVersion = 31
+        kotlinVersion = "1.5.30"
     }
     repositories {
         google()
@@ -13,7 +14,7 @@ buildscript {
     }
     dependencies {
         classpath('com.android.tools.build:gradle:4.1.2')
-
+        classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlinVersion")
         // NOTE: Do not place your application dependencies here; they belong
         // in the individual module build.gradle files
     }
@@ -29,6 +30,10 @@ allprojects {
         maven {
             // Android JSC is installed from npm
             url("$rootDir/../node_modules/jsc-android/dist")
+        }
+        maven { 
+          // Add Detox as a precompiled native dependency
+          url("$rootDir/../node_modules/detox/Detox-android")
         }
 
         google()

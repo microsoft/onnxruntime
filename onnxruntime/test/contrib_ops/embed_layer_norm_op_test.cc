@@ -17,10 +17,11 @@ static void RunTest(const embedlayernorm::OpData& data,
   int min_cuda_architecture = use_float16 ? 530 : 0;
 
   bool enable_cuda = HasCudaEnvironment(min_cuda_architecture);
+  bool enable_rocm = DefaultRocmExecutionProvider().get() != nullptr;
   bool enable_dml = DefaultDmlExecutionProvider().get() != nullptr;
   bool enable_cpu = !use_float16;
 
-  if (enable_cpu || enable_cuda || enable_dml) {
+  if (enable_cpu || enable_cuda || enable_dml || enable_rocm) {
     // Input and output shapes
     //   Input 0 - input_ids          : (batch_size, sequence_size)
     //   Input 1 - segment_ids        : (batch_size, sequence_size)
@@ -142,6 +143,10 @@ static void RunTest(const embedlayernorm::OpData& data,
     if (enable_cuda) {
       std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
       execution_providers.push_back(DefaultCudaExecutionProvider());
+      tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+    } else if (enable_rocm) {
+      std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+      execution_providers.push_back(DefaultRocmExecutionProvider());
       tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
     } else if (enable_dml) {
       std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;

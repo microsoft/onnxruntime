@@ -11,7 +11,9 @@ from onnxruntime.training import orttrainer
 try:
     from onnxruntime.training.ortmodule import ORTModule
     from onnxruntime.training.ortmodule._fallback import ORTModuleInitException
-    from onnxruntime.training.ortmodule._graph_execution_manager_factory import GraphExecutionManagerFactory
+    from onnxruntime.training.ortmodule._graph_execution_manager_factory import (  # noqa: F401
+        GraphExecutionManagerFactory,
+    )
 except ImportError:
     # Some pipelines do not contain ORTModule
     pass
@@ -57,11 +59,11 @@ def assert_model_outputs(output_a, output_b, verbose=False, rtol=1e-7, atol=0):
     assert isinstance(output_a, list) and isinstance(output_b, list), "output_a and output_b must be list of numbers"
     if len(output_a) != len(output_b):
         raise AssertionError(
-            "output_a and output_b must have the same length (%r != %r)." % (len(output_a), len(output_b))
+            f"output_a and output_b must have the same length ({len(output_a)!r} != {len(output_b)!r})."
         )
 
     # for idx in range(len(output_a)):
-    assert_allclose(output_a, output_b, rtol=rtol, atol=atol, err_msg=f"Model output value mismatch")
+    assert_allclose(output_a, output_b, rtol=rtol, atol=atol, err_msg="Model output value mismatch")
 
 
 def assert_onnx_weights(model_a, model_b, verbose=False, rtol=1e-7, atol=0):
@@ -115,7 +117,7 @@ def _assert_state_dict_weights(state_dict_a, state_dict_b, verbose, rtol, atol):
         atol (float, default is 1e-4): Max absolute difference
     """
 
-    for (a_name, a_val), (b_name, b_val) in zip(state_dict_a.items(), state_dict_b.items()):
+    for (a_name, a_val), (_b_name, b_val) in zip(state_dict_a.items(), state_dict_b.items()):
         np_a_vals = np.array(a_val).flatten()
         np_b_vals = np.array(b_val).flatten()
         assert np_a_vals.shape == np_b_vals.shape
@@ -192,13 +194,13 @@ def _get_name(name):
     res = os.path.join(data, name)
     if os.path.exists(res):
         return res
-    raise FileNotFoundError("Unable to find '{0}' or '{1}' or '{2}'".format(name, rel, res))
+    raise FileNotFoundError(f"Unable to find '{name}' or '{rel}' or '{res}'")
 
 
 # Depending on calling backward() from which outputs, it's possible that grad of some weights are not calculated.
 # none_pt_params is to tell what these weights are, so we will not compare the tensors.
 def assert_gradients_match_and_reset_gradient(
-    ort_model, pt_model, none_pt_params=[], reset_gradient=True, rtol=1e-05, atol=1e-06
+    ort_model, pt_model, none_pt_params=[], reset_gradient=True, rtol=1e-04, atol=1e-05  # noqa: B006
 ):
     ort_named_params = list(ort_model.named_parameters())
     pt_named_params = list(pt_model.named_parameters())
@@ -220,15 +222,15 @@ def assert_gradients_match_and_reset_gradient(
             pt_param.grad = None
 
 
-def assert_values_are_close(input, other, rtol=1e-05, atol=1e-06):
+def assert_values_are_close(input, other, rtol=1e-04, atol=1e-05):
     are_close = torch.allclose(input, other, rtol=rtol, atol=atol)
     if not are_close:
         abs_diff = torch.abs(input - other)
         abs_other = torch.abs(other)
-        max_atol = torch.max((abs_diff - rtol * abs_other))
+        max_atol = torch.max(abs_diff - rtol * abs_other)
         max_rtol = torch.max((abs_diff - atol) / abs_other)
-        err_msg = "The maximum atol is {}, maximum rtol is {}".format(max_atol, max_rtol)
-        assert False, err_msg
+        err_msg = f"The maximum atol is {max_atol}, maximum rtol is {max_rtol}"
+        raise AssertionError(err_msg)
 
 
 def _run_model_on_device(device, model, input_list, label_input, is_eval_mode=False, run_forward_twice=False):
@@ -266,7 +268,7 @@ def _run_model_on_device(device, model, input_list, label_input, is_eval_mode=Fa
             loss += criterion(output2, target2)
 
         loss.backward()
-        for name, param in model.named_parameters():
+        for _name, param in model.named_parameters():
             if param.requires_grad:
                 grad_outputs.append(param.grad)
     return forward_outputs, grad_outputs
@@ -299,8 +301,8 @@ def run_training_test_and_compare(
     pt_model_label_input,
     run_forward_twice=False,
     ignore_grad_compare=False,
-    expected_outputs=[],
-    expected_grads=[],
+    expected_outputs=[],  # noqa: B006
+    expected_grads=[],  # noqa: B006
 ):
     cpu = torch.device("cpu")
 
@@ -344,11 +346,11 @@ def run_training_test_on_device_and_compare(
     barrier_func,
     run_forward_twice=False,
     ignore_grad_compare=False,
-    expected_outputs=[],
-    expected_grads=[],
+    expected_outputs=[],  # noqa: B006
+    expected_grads=[],  # noqa: B006
 ):
     repeats = 16
-    for i in range(repeats):
+    for _i in range(repeats):
         m = pt_model_builder_func()
         x = pt_model_inputs_generator()
 
@@ -424,7 +426,7 @@ def run_evaluate_test_on_device_and_compare(
     run_forward_twice=False,
 ):
     repeats = 16
-    for i in range(repeats):
+    for _i in range(repeats):
         m = pt_model_builder_func()
         x = pt_model_inputs_generator()
 

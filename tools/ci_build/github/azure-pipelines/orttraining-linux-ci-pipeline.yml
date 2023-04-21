@@ -1,23 +1,29 @@
 resources:
   repositories:
-  - repository: manylinux
+  - repository: manylinux # The name used to reference this repository in the checkout step
     type: Github
     endpoint: Microsoft
     name: pypa/manylinux
-    ref: 1a61614cabfd6b91c6afd6d9e172cc5b838c65fe
+    ref: aead4d751c2101e23336aa73f2380df83e7a13f3
 
 jobs:
 - job: Linux_Build
-  timeoutInMinutes: 150
-  variables:
-    skipComponentGovernanceDetection: true
+  timeoutInMinutes: 180
   workspace:
     clean: all
-  pool: Linux-CPU-2019
+  variables:
+    skipComponentGovernanceDetection: true
+    CCACHE_DIR: $(Pipeline.Workspace)/ccache
+    TODAY: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
+  pool: onnxruntime-Ubuntu-2004-Training-CPU
   steps:
+  - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
+    displayName: 'Clean Agent Directories'
+    condition: always()
+
   - checkout: self
     clean: true
-    submodules: recursive
+    submodules: none
 
   - task: NodeTool@0
     inputs:
@@ -35,29 +41,49 @@ jobs:
       DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
       Repository: onnxruntimecpubuild
 
+  - task: Cache@2
+    inputs:
+      key: '"$(TODAY)" | "$(Build.SourceBranch)" | "$(Build.SourceVersion)"'
+      path: $(CCACHE_DIR)
+      cacheHitVar: CACHE_RESTORED
+      restoreKeys: |
+        "$(TODAY)" | "$(Build.SourceBranch)"
+        "$(TODAY)" |
+    displayName: Cach Task
+
   - task: CmdLine@2
     displayName: 'build'
     inputs:
       script: |
         mkdir -p $HOME/.onnx
+        mkdir -p $(Pipeline.Workspace)/ccache
         docker run --rm \
           --volume /data/onnx:/data/onnx:ro \
           --volume $(Build.SourcesDirectory):/onnxruntime_src \
           --volume $(Build.BinariesDirectory):/build \
           --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
+          --volume $(Pipeline.Workspace)/ccache:/cache \
           -e ALLOW_RELEASED_ONNX_OPSET_ONLY=0 \
           -e NIGHTLY_BUILD \
           -e BUILD_BUILDNUMBER \
+          -e CCACHE_DIR=/cache \
           onnxruntimecpubuild \
+          /bin/bash -c "
+            set -ex; \
+            ccache -s; \
             /opt/python/cp38-cp38/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
               --build_dir /build --cmake_generator Ninja \
-              --config Debug Release \
+              --config Release \
               --skip_submodule_sync \
               --build_shared_lib \
               --parallel \
-              --build_wheel --enable_training \
+              --build_wheel \
               --enable_onnx_tests \
-              --build_java --build_nodejs --update --build
+              --enable_training \
+              --use_cache \
+              --build_java --build_nodejs --update --build; \
+                ccache -sv; \
+                ccache -z"
       workingDirectory: $(Build.SourcesDirectory)
 
   - task: CmdLine@2
@@ -69,15 +95,12 @@ jobs:
          cp $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/manylinux/requirements.txt $(Build.BinariesDirectory)/requirements.txt
          # Test ORT with the latest ONNX release.
          sed -i "s/git+http:\/\/github\.com\/onnx\/onnx.*/onnx/" $(Build.BinariesDirectory)/requirements.txt
-         #Do not explicitly specify numpy version as this is not a packaging pipeline, any version should be ok
-         sed -i "/^numpy/d" $(Build.BinariesDirectory)/requirements.txt
          python3 -m pip install -r $(Build.BinariesDirectory)/requirements.txt
-         mkdir $(Build.BinariesDirectory)/requirements_torch_cpu
+         mkdir $(Build.BinariesDirectory)/requirements_torch_cpu/
          cp $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/training/ortmodule/stage1/requirements_torch_cpu/requirements.txt $(Build.BinariesDirectory)/requirements_torch_cpu/requirements.txt
          python3 -m pip install -r $(Build.BinariesDirectory)/requirements_torch_cpu/requirements.txt
-         ln -sf /data/models $(Build.BinariesDirectory)
          cd $(Build.SourcesDirectory)/java
-         /usr/local/gradle/bin/gradle "cmakeCheck" "-DcmakeBuildDir=$(Build.BinariesDirectory)/Release"
+         $(Build.SourcesDirectory)/java/gradlew "cmakeCheck" "-DcmakeBuildDir=$(Build.BinariesDirectory)/Release"
 
   - task: CmdLine@2
     displayName: 'Install Release python package'
@@ -86,35 +109,24 @@ jobs:
          rm -rf $(Build.BinariesDirectory)/Release/onnxruntime $(Build.BinariesDirectory)/Release/pybind11
          python3 -m pip install $(Build.BinariesDirectory)/Release/dist/*.whl
 
-
   - task: PythonScript@0
     displayName: 'Run Release unit tests'
     inputs:
        scriptPath: $(Build.SourcesDirectory)/tools/ci_build/build.py
        workingDirectory: $(Build.BinariesDirectory)/Release
-       arguments: --build_dir $(Build.BinariesDirectory) --cmake_generator Ninja --config Release --test --skip_submodule_sync --build_shared_lib --parallel --build_wheel --enable_training --enable_onnx_tests --build_nodejs --ctest_path ""
-
-  - task: CmdLine@2
-    displayName: 'Install Debug python package'
-    inputs:
-      script: |
-         set -e -x
-         rm -rf $(Build.BinariesDirectory)/Debug/onnxruntime $(Build.BinariesDirectory)/Debug/pybind11
-         python3 -m pip uninstall -y ort-nightly-gpu ort-nightly onnxruntime onnxruntime-gpu onnxruntime-training onnxruntime-directml ort-nightly-directml -qq
-         python3 -m pip install $(Build.BinariesDirectory)/Debug/dist/*.whl
-
-  - task: PythonScript@0
-    displayName: 'Run Debug unit tests'
-    inputs:
-      scriptPath: $(Build.SourcesDirectory)/tools/ci_build/build.py
-      arguments: --build_dir $(Build.BinariesDirectory) --cmake_generator Ninja --config Debug --test --skip_submodule_sync --build_shared_lib --parallel --build_wheel --enable_training --enable_onnx_tests --build_nodejs --ctest_path ""
-      workingDirectory: $(Build.BinariesDirectory)/Debug
-
-  - task: PythonScript@0
-    displayName: 'Symbolic shape infer'
-    inputs:
-      scriptPath: $(Build.BinariesDirectory)/Release/onnxruntime_test_python_symbolic_shape_infer.py
-      workingDirectory: $(Build.BinariesDirectory)/Release
+       arguments: >-
+          --build_dir $(Build.BinariesDirectory)
+          --cmake_generator Ninja
+          --config Release
+          --test
+          --skip_submodule_sync
+          --build_shared_lib
+          --parallel
+          --build_wheel
+          --enable_onnx_tests
+          --enable_training
+          --build_nodejs
+          --ctest_path ""
 
   - task: PublishTestResults@2
     displayName: 'Publish unit test results'
@@ -123,5 +135,3 @@ jobs:
       searchFolder: '$(Build.BinariesDirectory)'
       testRunTitle: 'Unit Test Run'
     condition: succeededOrFailed()
-
-  - template: templates/clean-agent-build-directory-step.yml

@@ -17,7 +17,7 @@ class TestWhereModel(unittest.TestCase):
     @staticmethod
     def input_feeds_for_where(n, name2shape):
         input_data_list = []
-        for i in range(n):
+        for _i in range(n):
             inputs = {}
             for name, shape in name2shape.items():
                 if name == "condition":
@@ -53,8 +53,7 @@ class TestWhereModel(unittest.TestCase):
         model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 16)])
         save(model, model_path)
 
-    def quantize_where_test(self, activation_type, weight_type, extra_options={}):
-
+    def quantize_where_test(self, activation_type, weight_type, extra_options={}):  # noqa: B006
         model_fp32_path = "where_fp32.onnx"
         input_shape = [2, 2]
         self.construct_model(model_fp32_path, input_shape)
@@ -146,7 +145,7 @@ class TestWhereModel(unittest.TestCase):
         self.quantize_where_test(QuantType.QUInt8, QuantType.QUInt8, extra_options={"ForceQuantizeNoInputCheck": True})
         print(__name__)
 
-    def test_quantize_where_u8u8_no_ForceQuantizeNoInputCheck(self):
+    def test_quantize_where_u8u8_no_ForceQuantizeNoInputCheck(self):  # noqa: N802
         self.quantize_where_test(QuantType.QUInt8, QuantType.QUInt8, extra_options={"ForceQuantizeNoInputCheck": False})
         print(__name__)
 

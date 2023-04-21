@@ -22,6 +22,12 @@ namespace contrib {
 // These are CUDA specific device helper implementations
 namespace GenerationCudaDeviceHelper {
 
+Status ReorderPastState(
+    const void* cuda_device_prop,
+    Tensor& past_state,
+    Tensor& past_state_staging,
+    Stream* stream);
+
 Status TopK(const Tensor* input, const int axis, const unsigned k, bool largest, bool sorted,
             AllocatorPtr allocator,
             Stream* stream,
@@ -64,7 +70,7 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
 template <typename T>
 Status GreedySearchProcessLogits(const OrtValue& logits,                                 // logits output of subgraph
                                  transformers::IGreedySearchState<T>* greedy_state,      // state
-                                 transformers::ISamplingState<T>* sampling_state,// sampling buffers
+                                 transformers::ISamplingState<T>* sampling_state,        // sampling buffers
                                  transformers::ISequences* sequences,                    // sequences
                                  AllocatorPtr& allocator,                                // default allocator
                                  onnxruntime::concurrency::ThreadPool* thread_pool,      // thread pool (for CPU only)
@@ -91,12 +97,15 @@ Status UpdateGptFeeds(
     OrtValue& position_ids,
     bool increase_position,
     gsl::span<const int32_t> beam_next_tokens,
-    gsl::span<const int32_t> beam_indices,
+    gsl::span<const int32_t> beam_indices_cpu,
+    gsl::span<const int32_t> beam_indices_gpu,
     int num_beams,
     int gpt_subgraph_first_past_input_idx,
     int gpt_subgraph_first_present_output_idx,
     bool past_present_share_buffer,
-    int past_sequence_len);
+    int past_sequence_len,
+    int input_sequence_len,
+    bool need_cache_indir);
 
 // ---------------------------------------------------------------
 // Functions for encoder-decoder model like T5
@@ -112,11 +121,15 @@ Status UpdateDecoderFeeds(
     int num_present_tensors,
     gsl::span<const int32_t> beam_next_tokens,
     gsl::span<const int32_t> beam_indices,
+    gsl::span<const int32_t> beam_indices_gpu,
     int num_beams,
     int t5_decoder_first_past_input_idx,
     int t5_decoder_first_present_output_idx,
     bool use_sequence_as_input_ids,
     int current_length,
+    int input_sequence_len,
+    bool past_present_share_buffer,
+    bool need_cache_indir,
     transformers::Sequences& sequences,
     const transformers::IConsoleDumper* dumper);
 
@@ -127,7 +140,8 @@ Status ExpandBuffer(
     int num_beams,
     AllocatorPtr allocator,
     OrtValue& expanded,
-    bool only_copy_shape);
+    bool only_copy_shape,
+    int max_sequence_length = 0);
 
 }  // namespace GenerationCudaDeviceHelper
 }  // namespace contrib

@@ -52,6 +52,7 @@ class XnnpackExecutionProvider : public IExecutionProvider {
 
  private:
   pthreadpool* xnnpack_thread_pool_{nullptr};
+  const bool enable_cpu_mem_arena_;
 };
 
 }  // namespace onnxruntime

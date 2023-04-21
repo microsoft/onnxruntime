@@ -7,6 +7,7 @@
 #include "core/session/inference_session.h"
 #include "core/session/environment.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
+#include "core/graph/graph_utils.h"
 
 #include "orttraining/training_api/module.h"
 #include "orttraining/training_api/utils.h"
@@ -43,13 +44,17 @@ std::unordered_set<const Node*> GetReverseReachableNodes(Graph& inference_graph,
 }
 
 Status RemoveUnusedNodes(Graph& inference_graph, InlinedVector<const NodeArg*>& output_node_args) {
-  auto reachable_nodes = GetReverseReachableNodes(inference_graph, output_node_args);
+  const auto reachable_nodes = GetReverseReachableNodes(inference_graph, output_node_args);
 
   // Get all graph nodes and remove those that are not in the reachable nodes.
   GraphViewer graph_viewer(inference_graph);
-  for (auto& node : graph_viewer.Nodes()) {
-    if (!reachable_nodes.count(&node)) {
-      inference_graph.RemoveNode(node.Index());
+  const auto node_indices = graph_viewer.GetNodesInTopologicalOrder();
+  for (size_t idx = node_indices.size(); idx > 0; --idx) {
+    const NodeIndex node_index = idx - 1;
+    auto* node = inference_graph.GetNode(node_index);
+    if (!reachable_nodes.count(node)) {
+      graph_utils::RemoveNodeOutputEdges(inference_graph, *node);
+      inference_graph.RemoveNode(node_index);
     }
   }
 
@@ -149,7 +154,6 @@ Module::Module(const std::string& train_model_path_or_bytes,
                const std::vector<std::shared_ptr<IExecutionProvider>>& providers,
                const std::optional<std::string>& eval_model_path_or_bytes)
     : named_parameters_{named_parameters} {
-
   // Enforce weight prepacking is disabled
   // If user explicitly enabled weight prepacking then return error.
   // Default value is enabled. Therefore, explicitly disable it if the value is not set by user.

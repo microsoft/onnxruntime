@@ -1,7 +1,7 @@
 from enum import IntEnum, unique
 
 
-class _OptimizerConfig(object):
+class _OptimizerConfig:
     r"""Base class for optimizer configuration
 
     This class is not an optimizer, but a means to configure existing ones from ORT backend.
@@ -13,7 +13,7 @@ class _OptimizerConfig(object):
         name (str): optimizer names.
             One of 'SGDOptimizer', 'AdamOptimizer' and 'LambOptimizer'
         defaults (dict): optimizer parameters applied to all model parameters.
-                         Used when a parameter group doesn’t specify them.
+                         Used when a parameter group doesn`t specify them.
                          NOTE: Every optimizer must have 'lr'.
         params (list of dict, default is []): list of parameter groups.
             Each dict must contain a 'params' key with a list of names of model's parameter that will
@@ -46,7 +46,7 @@ class _OptimizerConfig(object):
         ], "'name' must be one of 'AdamOptimizer', 'LambOptimizer' or 'SGDOptimizer'"
         assert isinstance(defaults, dict), "'defaults' must be a dict"
         assert "lr" in defaults, "'defaults' must contain a {'lr' : positive number} entry"
-        assert (isinstance(defaults["lr"], float) or isinstance(defaults["lr"], int)) and defaults[
+        assert (isinstance(defaults["lr"], float) or isinstance(defaults["lr"], int)) and defaults[  # noqa: SIM101
             "lr"
         ] >= 0, "lr must be a positive number"
         assert isinstance(params, list), "'params' must be a list"
@@ -111,7 +111,7 @@ class SGDConfig(_OptimizerConfig):
         sgd_optim1 = SGDConfig(lr=0.001)
     """
 
-    def __init__(self, params=[], lr=0.001):
+    def __init__(self, params=[], lr=0.001):  # noqa: B006
         super().__init__(name="SGDOptimizer", params=params, defaults={"lr": lr})
         assert isinstance(params, list) and len(params) == 0, "'params' must be an empty list for SGD optimizer"
 
@@ -154,7 +154,7 @@ class AdamConfig(_OptimizerConfig):
 
     def __init__(
         self,
-        params=[],
+        params=[],  # noqa: B006
         lr=0.001,
         alpha=0.9,
         beta=0.999,
@@ -229,7 +229,7 @@ class LambConfig(_OptimizerConfig):
 
     def __init__(
         self,
-        params=[],
+        params=[],  # noqa: B006
         lr=0.001,
         alpha=0.9,
         beta=0.999,

@@ -105,8 +105,8 @@
       "test_leakyrelu_default",
       "test_leakyrelu_example",
       "test_leakyrelu",
-      // "test_lrn_default",  <-- failing due to low precison. If absolute CPU error threshold is increased from 1e-4 to 1e-2 (100x increase), it passes the test.
-      // "test_lrn",  <-- failing due to low precison. If absolute CPU error threshold is increased from 1e-4 to 1e-3 (10x increase), it passes the test.
+      "test_lrn_default",
+      "test_lrn",
       "test_matmul_2d",
       "test_matmul_3d",
       "test_matmul_4d",

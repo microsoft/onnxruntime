@@ -12,6 +12,15 @@ cmake_policy(SET CMP0117 NEW)
 # Don't let cmake set a default value for CMAKE_CUDA_ARCHITECTURES
 cmake_policy(SET CMP0104 OLD)
 
+# Enable Hot Reload for MSVC compilers if supported.
+if (POLICY CMP0141)
+  if(${CMAKE_VERSION} VERSION_GREATER_EQUAL "3.26.0")
+    cmake_policy(SET CMP0141 NEW)
+  else()
+    cmake_policy(SET CMP0141 OLD)
+  endif()
+endif()
+
 # Project
 project(onnxruntime C CXX ASM)
 
@@ -22,6 +31,7 @@ include(CheckCXXCompilerFlag)
 include(CheckLanguage)
 include(CMakeDependentOption)
 include(FetchContent)
+include(CheckFunctionExists)
 
 set(CMAKE_CXX_STANDARD 17)
 
@@ -54,6 +64,7 @@ option(onnxruntime_ENABLE_CUDA_LINE_NUMBER_INFO "When building with CUDA support
 option(onnxruntime_USE_OPENVINO "Build with OpenVINO support" OFF)
 option(onnxruntime_USE_COREML "Build with CoreML support" OFF)
 option(onnxruntime_USE_NNAPI_BUILTIN "Build with builtin NNAPI lib for Android NNAPI support" OFF)
+option(onnxruntime_USE_QNN "Build with QNN support" OFF)
 option(onnxruntime_USE_SNPE "Build with SNPE support" OFF)
 option(onnxruntime_USE_RKNPU "Build with RKNPU support" OFF)
 option(onnxruntime_USE_DNNL "Build with DNNL support" OFF)
@@ -158,14 +169,13 @@ option(onnxruntime_ENABLE_WEBASSEMBLY_THREADS "Enable this option to create WebA
 option(onnxruntime_ENABLE_WEBASSEMBLY_EXCEPTION_CATCHING "Enable this option to turn on exception catching" OFF)
 option(onnxruntime_ENABLE_WEBASSEMBLY_API_EXCEPTION_CATCHING "Enable this option to turn on api exception catching" OFF)
 option(onnxruntime_ENABLE_WEBASSEMBLY_EXCEPTION_THROWING "Enable this option to turn on exception throwing even if the build disabled exceptions support" OFF)
+option(onnxruntime_WEBASSEMBLY_RUN_TESTS_IN_BROWSER "Enable this option to run tests in browser instead of Node.js" OFF)
 option(onnxruntime_ENABLE_WEBASSEMBLY_DEBUG_INFO "Enable this option to turn on DWARF format debug info" OFF)
 option(onnxruntime_ENABLE_WEBASSEMBLY_PROFILING "Enable this option to turn on WebAssembly profiling and preserve function names" OFF)
+option(onnxruntime_ENABLE_WEBASSEMBLY_OUTPUT_OPTIMIZED_MODEL "Enable this option to allow WebAssembly to output optimized model" OFF)
 
 # Enable bitcode for iOS
 option(onnxruntime_ENABLE_BITCODE "Enable bitcode for iOS only" OFF)
-
-# build eager mode
-option(onnxruntime_ENABLE_EAGER_MODE "build ort eager mode")
 
 # build Pytorch's LazyTensor support
 cmake_dependent_option(onnxruntime_ENABLE_LAZY_TENSOR "Enable ORT as a LazyTensor backend in Pytorch." ON "onnxruntime_ENABLE_TRAINING" OFF)
@@ -175,6 +185,9 @@ option(onnxruntime_BUILD_OPSCHEMA_LIB "Build op schema library" ON)
 
 # option to enable custom operators in onnxruntime-extensions
 option(onnxruntime_USE_EXTENSIONS "Build with onnxruntime-extensions for more features" OFF)
+
+# option to enable custom operators in onnxruntime-extensions with a custom path
+option(onnxruntime_EXTENSIONS_OVERRIDDEN, "Enable onnxruntime-extensions overridden" OFF)
 
 # Enable registering custom op schemas from shared libraries in python environment.
 option(onnxruntime_ENABLE_EXTERNAL_CUSTOM_OP_SCHEMAS "Enable registering user defined custom op schemas dynamically" OFF)
@@ -197,6 +210,7 @@ option(onnxruntime_ENABLE_ATEN "Enable ATen fallback" OFF)
 
 # composable kernel is managed automatically, unless user want to explicitly disable it, it should not be manually set
 option(onnxruntime_USE_COMPOSABLE_KERNEL "Enable composable kernel for ROCm EP" ON)
+option(onnxruntime_USE_ROCBLAS_EXTENSION_API "Enable rocblas tuning for ROCm EP" OFF)
 option(onnxruntime_BUILD_KERNEL_EXPLORER "Build Kernel Explorer for testing and profiling GPU kernels" OFF)
 
 option(onnxruntime_BUILD_CACHE "onnxruntime build with cache" OFF)
@@ -204,25 +218,6 @@ option(onnxruntime_BUILD_CACHE "onnxruntime build with cache" OFF)
 cmake_dependent_option(MSVC_Z7_OVERRIDE "replacing /Zi and /ZI with /Z7 when using MSVC with CCache" ON "onnxruntime_BUILD_CACHE; MSVC" OFF)
 
 option(onnxruntime_USE_AZURE "Build with azure inferencing support" OFF)
-
-# ENABLE_TRAINING includes all training functionality
-# The following 2 entry points
-# 1. ORTModule
-# 2. ORT Training APIs
-# It includes all the feature additions as well like
-# 1. Python OP
-# 2. Aten Fallback
-# 3. Strided Tensors
-# 4. All training ops including communication and  collectives ops
-# 5. ONNXBlock (Front end for training preparation when using training apis)
-# Some features are only enabled when onnxruntime_ENABLE_PYTHON is ON as they are only relevant
-# when using python env
-if (onnxruntime_ENABLE_TRAINING)
-  set(onnxruntime_ENABLE_TRAINING_OPS ON)
-  set(onnxruntime_ENABLE_TRAINING_APIS ON)
-  set(onnxruntime_ENABLE_TRAINING_TORCH_INTEROP ON)
-  set(onnxruntime_ENABLE_ATEN ON)
-endif()
 
 # ENABLE_TRAINING includes all training functionality
 # The following 2 entry points
@@ -264,7 +259,7 @@ if (onnxruntime_USE_ROCM)
   endif()
 
   if (NOT CMAKE_HIP_ARCHITECTURES)
-    set(CMAKE_HIP_ARCHITECTURES "gfx906;gfx908;gfx90a")
+    set(CMAKE_HIP_ARCHITECTURES "gfx906;gfx908;gfx90a;gfx1030")
   endif()
 
   file(GLOB rocm_cmake_components ${onnxruntime_ROCM_HOME}/lib/cmake/*)
@@ -345,6 +340,11 @@ function(set_msvc_c_cpp_compiler_warning_level warning_level)
     set_property(DIRECTORY PROPERTY COMPILE_OPTIONS "${opts}")
   endif()
 endfunction()
+
+
+if(MSVC_Z7_OVERRIDE)
+  set(CMAKE_MSVC_DEBUG_INFORMATION_FORMAT "$<$<CONFIG:Debug,RelWithDebInfo>:Embedded>")
+endif(MSVC_Z7_OVERRIDE)
 
 # set default MSVC warning level to 3 for external dependencies
 set_msvc_c_cpp_compiler_warning_level(3)
@@ -474,12 +474,12 @@ endif()
 if (onnxruntime_BUILD_SHARED_LIB OR onnxruntime_ENABLE_PYTHON)
   if (onnxruntime_ENABLE_PYTHON)
     if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS OR onnxruntime_REQUIRE_PYTHON_EMBED_LIB)
-      find_package(Python 3.6 COMPONENTS Interpreter Development NumPy)
+      find_package(Python 3.8 COMPONENTS Interpreter Development NumPy)
     else()
-      find_package(Python 3.6 COMPONENTS Interpreter Development.Module NumPy)
+      find_package(Python 3.8 COMPONENTS Interpreter Development.Module NumPy)
     endif()
   else()
-    find_package(Python 3.6 COMPONENTS Interpreter)
+    find_package(Python 3.8 COMPONENTS Interpreter)
   endif()
 endif()
 
@@ -498,7 +498,7 @@ if (WIN32)
     # issued by thrust nonstandard extension used: nameless struct/union
     list(APPEND ORT_WARNING_FLAGS "/wd4201")
     # warning C4800: Implicit conversion from 'X' to bool. Possible information loss
-    if (onnxruntime_USE_OPENVINO OR onnxruntime_ENABLE_EAGER_MODE)
+    if (onnxruntime_USE_OPENVINO)
        list(APPEND ORT_WARNING_FLAGS "/wd4800")
     endif()
     # operator 'operator-name': deprecated between enumerations of different types
@@ -554,6 +554,7 @@ else()
   check_cxx_compiler_flag(-Wbitwise-instead-of-logical HAS_BITWISE_INSTEAD_OF_LOGICAL)
   check_cxx_compiler_flag(-Wenum-constexpr-conversion HAS_ENUM_CONSTEXPR_CONVERSION)
   check_cxx_compiler_flag(-Wdeprecated-builtins HAS_DEPRECATED_BUILTINS)
+  check_function_exists(reallocarray HAS_REALLOCARRAY)
 
   if (HAS_TAUTOLOGICAL_POINTER_COMPARE)
     #we may have extra null pointer checkings in debug build, it's not an issue
@@ -622,6 +623,7 @@ if (onnxruntime_USE_CUDA)
       list(APPEND ORT_PROVIDER_FLAGS -DUSE_FLASH_ATTENTION=1)
       list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_FLASH_ATTENTION=1)
     endif()
+
 endif()
 if (onnxruntime_USE_VITISAI)
     list(APPEND ORT_PROVIDER_FLAGS -DUSE_VITISAI=1)
@@ -653,6 +655,11 @@ if (onnxruntime_USE_NNAPI_BUILTIN)
     list(APPEND ORT_PROVIDER_FLAGS -DUSE_NNAPI=1)
     list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_NNAPI_BUILTIN=1)
     list(APPEND ONNXRUNTIME_PROVIDER_NAMES nnapi)
+endif()
+if (onnxruntime_USE_QNN)
+    list(APPEND ORT_PROVIDER_FLAGS -DUSE_QNN=1)
+    list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_QNN=1)
+    list(APPEND ONNXRUNTIME_PROVIDER_NAMES qnn)
 endif()
 if (onnxruntime_USE_SNPE)
     list(APPEND ORT_PROVIDER_FLAGS -DUSE_SNPE=1)
@@ -715,14 +722,6 @@ if (onnxruntime_USE_AZURE)
     list(APPEND ONNXRUNTIME_PROVIDER_NAMES azure)
 endif()
 
-if (onnxruntime_ENABLE_EAGER_MODE)
-  if (NOT onnxruntime_ENABLE_TRAINING OR NOT onnxruntime_ENABLE_PYTHON)
-    message(
-        FATAL_ERROR
-        "Option onnxruntime_ENABLE_EAGER_MODE can only be used when onnxruntime_ENABLE_TRAINING and onnxruntime_ENABLE_PYTHON are enabled")
-  endif()
-  set(ONNXRUNTIME_EAGER_CMAKE_FILE_NAME onnxruntime_eager)
-endif()
 
 if (onnxruntime_ENABLE_LAZY_TENSOR)
   # To support LazyTensor, ORT needs to call Python function from C/C++.
@@ -737,25 +736,9 @@ if (onnxruntime_ENABLE_LAZY_TENSOR)
   # cleaner.
 endif()
 
-if(MSVC)
-  # Replace /Zi and /ZI with /Z7
-  if(MSVC_Z7_OVERRIDE)
-    foreach(flag_var
-      CMAKE_C_FLAGS CMAKE_C_FLAGS_DEBUG  CMAKE_C_FLAGS_RELWITHDEBINFO
-      CMAKE_CXX_FLAGS CMAKE_CXX_FLAGS_DEBUG  CMAKE_CXX_FLAGS_RELWITHDEBINFO)
-      if(${flag_var} MATCHES "/Z[iI]")
-        string(REGEX REPLACE "/Z[iI]" "/Z7" ${flag_var} "${${flag_var}}")
-      endif(${flag_var} MATCHES "/Z[iI]")
-    endforeach(flag_var)
-  endif(MSVC_Z7_OVERRIDE)
-endif()
-
 function(onnxruntime_set_compile_flags target_name)
     if (CPUINFO_SUPPORTED)
-      onnxruntime_add_include_to_target(${target_name} cpuinfo)
-    endif()
-    if(onnxruntime_ENABLE_EAGER_MODE)
-      target_compile_definitions(${target_name} PRIVATE ENABLE_EAGER_MODE)
+      onnxruntime_add_include_to_target(${target_name} cpuinfo::cpuinfo)
     endif()
     if(onnxruntime_ENABLE_LAZY_TENSOR)
       target_compile_definitions(${target_name} PRIVATE ENABLE_LAZY_TENSOR)
@@ -795,7 +778,7 @@ function(onnxruntime_set_compile_flags target_name)
     endif()
     if (MSVC)
       foreach(CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORY ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
-        target_compile_options(${target_name} PRIVATE "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/external:I${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORY}>")
+        target_compile_options(${target_name} PRIVATE "$<$<OR:$<COMPILE_LANGUAGE:C>,$<COMPILE_LANGUAGE:CXX>>:/external:I${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORY}>")
       endforeach()
       foreach(onnxruntime_external_lib IN LISTS onnxruntime_EXTERNAL_LIBRARIES)
         #TODO: the list contains cmake keywords like "debug". We should exclude them.
@@ -806,11 +789,11 @@ function(onnxruntime_set_compile_flags target_name)
               if(onnxruntime_external_lib_include_dir MATCHES "^\\$<BUILD_INTERFACE:([^>]+)>$")
                 string(REGEX REPLACE "^\\$<BUILD_INTERFACE:([^>]+)>$" "\\1" onnxruntime_external_lib_include_dir_cmake "${onnxruntime_external_lib_include_dir}")
                 cmake_path(NATIVE_PATH onnxruntime_external_lib_include_dir_cmake NORMALIZE onnxruntime_external_lib_include_dir_native)
-                target_compile_options(${target_name} PRIVATE "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/external:I${onnxruntime_external_lib_include_dir_native}>")
+                target_compile_options(${target_name} PRIVATE "$<$<OR:$<COMPILE_LANGUAGE:C>,$<COMPILE_LANGUAGE:CXX>>:/external:I${onnxruntime_external_lib_include_dir_native}>")
               endif()
             else()
               cmake_path(NATIVE_PATH onnxruntime_external_lib_include_dir NORMALIZE onnxruntime_external_lib_include_dir_native)
-              target_compile_options(${target_name} PRIVATE "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/external:I${onnxruntime_external_lib_include_dir_native}>")
+              target_compile_options(${target_name} PRIVATE "$<$<OR:$<COMPILE_LANGUAGE:C>,$<COMPILE_LANGUAGE:CXX>>:/external:I${onnxruntime_external_lib_include_dir_native}>")
             endif()
           endforeach()
         endif()
@@ -819,13 +802,13 @@ function(onnxruntime_set_compile_flags target_name)
       if (onnxruntime_ENABLE_MEMLEAK_CHECKER)
         target_compile_definitions(${target_name} PUBLIC -DONNXRUNTIME_ENABLE_MEMLEAK_CHECK)
       endif()
-      target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /utf-8>" "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/utf-8>")
-      target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /sdl>" "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/sdl>")
+      target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /utf-8>" "$<$<OR:$<COMPILE_LANGUAGE:C>,$<COMPILE_LANGUAGE:CXX>>:/utf-8>")
+      target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /sdl>" "$<$<OR:$<COMPILE_LANGUAGE:C>,$<COMPILE_LANGUAGE:CXX>>:/sdl>")
       set_target_properties(${target_name}
                       PROPERTIES VS_GLOBAL_CAExcludePath "${ORT_BINARY_DIR};${ORT_SOURCE_DIR}")
       if (onnxruntime_ENABLE_STATIC_ANALYSIS)
-        target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /analyze>" "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/analyze>")
-        target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /analyze:external->" "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/analyze:external->")
+        target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /analyze>" "$<$<OR:$<COMPILE_LANGUAGE:C>,$<COMPILE_LANGUAGE:CXX>>:/analyze>")
+        target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /analyze:external->" "$<$<OR:$<COMPILE_LANGUAGE:C>,$<COMPILE_LANGUAGE:CXX>>:/analyze:external->")
       endif()
     else()
       # Enable warning
@@ -836,7 +819,7 @@ function(onnxruntime_set_compile_flags target_name)
         target_compile_options(${target_name} PRIVATE "-Wno-unused-parameter")
       endif()
       target_compile_definitions(${target_name} PUBLIC -DNSYNC_ATOMIC_CPP11)
-      target_include_directories(${target_name} PRIVATE "${google_nsync_SOURCE_DIR}/public")
+      onnxruntime_add_include_to_target(${target_name} nsync::nsync_cpp)
     endif()
     foreach(ORT_FLAG ${ORT_PROVIDER_FLAGS})
       target_compile_definitions(${target_name} PRIVATE ${ORT_FLAG})
@@ -1041,6 +1024,7 @@ endif()
 
 if (onnxruntime_USE_DNNL)
   include(dnnl)
+  add_compile_definitions(DNNL_OPENMP)
 endif()
 
 # TVM EP
@@ -1275,16 +1259,20 @@ if (onnxruntime_USE_CUDA)
       if (CMAKE_CUDA_COMPILER_VERSION VERSION_LESS 11)
         set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_30,code=sm_30") # K series
       endif()
-      # 37, 50 still work in CUDA 11 but are marked deprecated and will be removed in future CUDA version.
-      set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_37,code=sm_37") # K80
-      set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_50,code=sm_50") # M series
-
+      if (CMAKE_CUDA_COMPILER_VERSION VERSION_LESS 12)
+	# 37, 50 still work in CUDA 11 but are marked deprecated and will be removed in future CUDA version.
+	set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_37,code=sm_37") # K80
+	set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_50,code=sm_50") # M series
+      endif()
       set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_52,code=sm_52") # M60
       set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_60,code=sm_60") # P series
       set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_70,code=sm_70") # V series
       set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_75,code=sm_75") # T series
       if (CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 11)
         set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_80,code=sm_80") # A series
+      endif()
+      if (CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 12)
+        set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_90,code=sm_90") # H series
       endif()
     endif()
   endif()
@@ -1356,97 +1344,105 @@ if (onnxruntime_ENABLE_TRAINING)
   add_compile_definitions(ENABLE_STRIDED_TENSORS)
   add_compile_definitions(ENABLE_TRAINING)
 
-  if (UNIX)
-    if (EXISTS "${onnxruntime_MPI_HOME}")
-      set(MPI_HOME "${onnxruntime_MPI_HOME}")
-    elseif (EXISTS "/bert_ort/openmpi")
-      set(MPI_HOME "/bert_ort/openmpi")
-    endif()
-
-    find_package(MPI)
-
-    if (MPI_CXX_FOUND)
-      message( STATUS "MPI Version: ${MPI_CXX_VERSION}")
-      message( STATUS "MPI (include: ${MPI_CXX_INCLUDE_DIRS}, library: ${MPI_CXX_LIBRARIES})" )
-      mark_as_advanced(MPI_CXX_INCLUDE_DIRS MPI_CXX_LIBRARIES)
-      list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${MPI_CXX_LIBRARIES} ${MPI_CXX_LINK_FLAGS})
-    else ()
-      set(onnxruntime_USE_NCCL OFF)
-      set(onnxruntime_USE_MPI OFF)
-      message( WARNING "MPI is not found. Please define onnxruntime_MPI_HOME to specify the path of MPI. Otherwise, NCCL will be disabled." )
-    endif()
-
-    # Find NCCL and MPI
-    if (onnxruntime_USE_NCCL AND MPI_CXX_FOUND)
-      if (onnxruntime_USE_CUDA)
-        set(NCCL_LIBNAME "nccl")
-      elseif (onnxruntime_USE_ROCM)
-        set(NCCL_LIBNAME "rccl")
-      endif()
-
-      find_path(NCCL_INCLUDE_DIR
-        NAMES ${NCCL_LIBNAME}.h
-        HINTS
-        ${onnxruntime_NCCL_HOME}/include
-        $ENV{CUDA_ROOT}/include)
-
-      find_library(NCCL_LIBRARY
-        NAMES ${NCCL_LIBNAME}
-        HINTS
-        ${onnxruntime_NCCL_HOME}/lib/x86_64-linux-gnu
-        ${onnxruntime_NCCL_HOME}/lib
-        $ENV{CUDA_ROOT}/lib64)
-
-      include(FindPackageHandleStandardArgs)
-      find_package_handle_standard_args(NCCL DEFAULT_MSG NCCL_INCLUDE_DIR NCCL_LIBRARY)
-
-      if (NCCL_FOUND)
-        set(NCCL_HEADER_FILE "${NCCL_INCLUDE_DIR}/${NCCL_LIBNAME}.h")
-        message( STATUS "Determining NCCL version from the header file: ${NCCL_HEADER_FILE}" )
-        file (STRINGS ${NCCL_HEADER_FILE} NCCL_MAJOR_VERSION_DEFINED
-              REGEX "^[ \t]*#define[ \t]+NCCL_MAJOR[ \t]+[0-9]+.*$" LIMIT_COUNT 1)
-        if (NCCL_MAJOR_VERSION_DEFINED)
-          string (REGEX REPLACE "^[ \t]*#define[ \t]+NCCL_MAJOR[ \t]+" ""
-                  NCCL_MAJOR_VERSION ${NCCL_MAJOR_VERSION_DEFINED})
-          message( STATUS "NCCL_MAJOR_VERSION: ${NCCL_MAJOR_VERSION}" )
-        endif()
-        file (STRINGS ${NCCL_HEADER_FILE} NCCL_MINOR_VERSION_DEFINED
-              REGEX "^[ \t]*#define[ \t]+NCCL_MINOR[ \t]+[0-9]+.*$" LIMIT_COUNT 1)
-        if (NCCL_MINOR_VERSION_DEFINED)
-          string (REGEX REPLACE "^[ \t]*#define[ \t]+NCCL_MINOR[ \t]+" ""
-                  NCCL_MINOR_VERSION ${NCCL_MINOR_VERSION_DEFINED})
-          message(STATUS "NCCL_MINOR_VERSION: ${NCCL_MINOR_VERSION}")
-        endif()
-
-        if (NCCL_MAJOR_VERSION_DEFINED AND NCCL_MINOR_VERSION_DEFINED)
-          if ("${NCCL_MAJOR_VERSION}.${NCCL_MINOR_VERSION}" VERSION_GREATER_EQUAL "2.7")
-            add_definitions(-DUSE_NCCL_P2P=1)
-            message( STATUS "NCCL P2P is enabled for supporting ncclSend and ncclRecv." )
-          endif()
-        endif()
-
-        set(NCCL_INCLUDE_DIRS ${NCCL_INCLUDE_DIR})
-        set(NCCL_LIBRARIES ${NCCL_LIBRARY})
-        message( STATUS "NCCL (include: ${NCCL_INCLUDE_DIRS}, library: ${NCCL_LIBRARIES})" )
-        mark_as_advanced(NCCL_INCLUDE_DIRS NCCL_LIBRARIES)
-
-        list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${NCCL_LIBRARIES})
-
-        add_definitions(-DORT_USE_NCCL=1)
-        message( STATUS "NCCL is enabled in Linux GPU Build." )
-      else ()
-        set(onnxruntime_USE_NCCL OFF)
-        message( WARNING "NCCL is not found. Please use --nccl_home to specify the path of NCCL. Otherwise, NCCL is disabled." )
-      endif()
-    endif()
-  endif()
-
-  if (onnxruntime_USE_MPI AND MPI_CXX_FOUND)
-    add_definitions(-DUSE_MPI=1)
-  endif()
-
   add_subdirectory(tensorboard EXCLUDE_FROM_ALL)
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES tensorboard)
+endif()
+
+if (UNIX AND onnxruntime_USE_MPI)
+  if (EXISTS "${onnxruntime_MPI_HOME}")
+    set(MPI_HOME "${onnxruntime_MPI_HOME}")
+  elseif (EXISTS "/bert_ort/openmpi")
+    set(MPI_HOME "/bert_ort/openmpi")
+  endif()
+
+  find_package(MPI)
+
+  if (MPI_CXX_FOUND)
+    message( STATUS "MPI Version: ${MPI_CXX_VERSION}")
+    message( STATUS "MPI (include: ${MPI_CXX_INCLUDE_DIRS}, library: ${MPI_CXX_LIBRARIES})" )
+    mark_as_advanced(MPI_CXX_INCLUDE_DIRS MPI_CXX_LIBRARIES)
+    list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${MPI_CXX_LIBRARIES} ${MPI_CXX_LINK_FLAGS})
+  else ()
+    message(
+          FATAL_ERROR
+          "MPI is not found. Please define onnxruntime_MPI_HOME to specify the path of MPI. Otherwise, NCCL will be disabled."
+        )
+  endif()
+
+  # Find NCCL and MPI
+  if (onnxruntime_USE_NCCL AND MPI_CXX_FOUND)
+    if (onnxruntime_USE_CUDA)
+      set(NCCL_LIBNAME "nccl")
+    elseif (onnxruntime_USE_ROCM)
+      set(NCCL_LIBNAME "rccl")
+    endif()
+    find_path(NCCL_INCLUDE_DIR
+      NAMES ${NCCL_LIBNAME}.h
+      HINTS
+      ${onnxruntime_NCCL_HOME}/include
+      $ENV{CUDA_ROOT}/include)
+
+    find_library(NCCL_LIBRARY
+      NAMES ${NCCL_LIBNAME}
+      HINTS
+      ${onnxruntime_NCCL_HOME}/lib/x86_64-linux-gnu
+      ${onnxruntime_NCCL_HOME}/lib
+      $ENV{CUDA_ROOT}/lib64)
+
+    include(FindPackageHandleStandardArgs)
+    find_package_handle_standard_args(NCCL DEFAULT_MSG NCCL_INCLUDE_DIR NCCL_LIBRARY)
+
+    if (NCCL_FOUND)
+      set(NCCL_HEADER_FILE "${NCCL_INCLUDE_DIR}/${NCCL_LIBNAME}.h")
+      message( STATUS "Determining NCCL version from the header file: ${NCCL_HEADER_FILE}" )
+      file (STRINGS ${NCCL_HEADER_FILE} NCCL_MAJOR_VERSION_DEFINED
+            REGEX "^[ \t]*#define[ \t]+NCCL_MAJOR[ \t]+[0-9]+.*$" LIMIT_COUNT 1)
+      if (NCCL_MAJOR_VERSION_DEFINED)
+        string (REGEX REPLACE "^[ \t]*#define[ \t]+NCCL_MAJOR[ \t]+" ""
+                NCCL_MAJOR_VERSION ${NCCL_MAJOR_VERSION_DEFINED})
+        message( STATUS "NCCL_MAJOR_VERSION: ${NCCL_MAJOR_VERSION}" )
+      endif()
+      file (STRINGS ${NCCL_HEADER_FILE} NCCL_MINOR_VERSION_DEFINED
+            REGEX "^[ \t]*#define[ \t]+NCCL_MINOR[ \t]+[0-9]+.*$" LIMIT_COUNT 1)
+      if (NCCL_MINOR_VERSION_DEFINED)
+        string (REGEX REPLACE "^[ \t]*#define[ \t]+NCCL_MINOR[ \t]+" ""
+                NCCL_MINOR_VERSION ${NCCL_MINOR_VERSION_DEFINED})
+        message(STATUS "NCCL_MINOR_VERSION: ${NCCL_MINOR_VERSION}")
+      endif()
+
+      if (NCCL_MAJOR_VERSION_DEFINED AND NCCL_MINOR_VERSION_DEFINED)
+        if ("${NCCL_MAJOR_VERSION}.${NCCL_MINOR_VERSION}" VERSION_GREATER_EQUAL "2.7")
+          add_definitions(-DUSE_NCCL_P2P=1)
+          message( STATUS "NCCL P2P is enabled for supporting ncclSend and ncclRecv." )
+        endif()
+      endif()
+
+      set(NCCL_INCLUDE_DIRS ${NCCL_INCLUDE_DIR})
+      set(NCCL_LIBRARIES ${NCCL_LIBRARY})
+      message( STATUS "NCCL (include: ${NCCL_INCLUDE_DIRS}, library: ${NCCL_LIBRARIES})" )
+      mark_as_advanced(NCCL_INCLUDE_DIRS NCCL_LIBRARIES)
+
+      list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${NCCL_LIBRARIES})
+
+
+      add_definitions(-DORT_USE_NCCL=1)
+      message( STATUS "NCCL is enabled in Linux GPU Build." )
+    else ()
+      set(onnxruntime_USE_NCCL OFF)
+      message(
+          FATAL_ERROR
+          "NCCL is not found. Please use --nccl_home to specify the path of NCCL. Otherwise, NCCL is disabled."
+        )
+    endif()
+  endif()
+else()
+  set(onnxruntime_USE_NCCL OFF)
+  set(onnxruntime_USE_MPI OFF)
+message( WARNING "MPI and NCCL disabled on Win build." )
+endif()
+
+if (onnxruntime_USE_MPI)
+  add_definitions(-DUSE_MPI=1)
 endif()
 
 # Default version parts for Microsoft.AI.MachineLearning.dll, onnxruntime.dll, onnxruntime_providers_openvino.dll and onnxruntime_providers_shared.dll in non-ADO pipeline local builds
@@ -1460,7 +1456,7 @@ if (WIN32)
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${SYS_PATH_LIB})
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES debug Dbghelp)
 else()
-  list(APPEND onnxruntime_EXTERNAL_LIBRARIES nsync_cpp)
+  list(APPEND onnxruntime_EXTERNAL_LIBRARIES nsync::nsync_cpp)
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${CMAKE_DL_LIBS} Threads::Threads)
 endif()
 
@@ -1552,6 +1548,10 @@ endif()
 if (onnxruntime_BUILD_WEBASSEMBLY)
   message(STATUS "WebAssembly Build is enabled")
   list(APPEND ONNXRUNTIME_CMAKE_FILES onnxruntime_webassembly)
+
+  if (onnxruntime_ENABLE_WEBASSEMBLY_OUTPUT_OPTIMIZED_MODEL)
+    add_compile_definitions(ORT_ENABLE_WEBASSEMBLY_OUTPUT_OPTIMIZED_MODEL)
+  endif()
 endif()
 
 if(onnxruntime_BUILD_KERNEL_EXPLORER)

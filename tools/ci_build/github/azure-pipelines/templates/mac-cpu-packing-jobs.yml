@@ -1,0 +1,114 @@
+parameters:
+- name: MacosArch
+  type: string
+  values:
+  - 'x86_64'
+  - 'arm64'
+  - 'universal2'
+  default: 'x86_64'
+
+- name: WithCache
+  displayName: Build with Cache
+  type: boolean
+  default: false
+
+- name: AdditionalBuildFlags
+  displayName: Additional build flags for build.py
+  type: string
+  default: ''
+
+# Must be 1 or 0
+- name: AllowReleasedOpsetOnly
+  displayName: Whether unreleased onnx opsets are allowed
+  type: number
+  default: 1
+  values:
+  - 1
+  - 0
+
+jobs:
+- job: MacOS_C_API_Packaging_CPU_${{ parameters.MacosArch }}
+  workspace:
+    clean: all
+  variables:
+    MACOSX_DEPLOYMENT_TARGET: '10.14'
+    ALLOW_RELEASED_ONNX_OPSET_ONLY: ${{ parameters.AllowReleasedOpsetOnly }}
+    TODAY: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
+    PROTO_CACHE_DIR: $(Pipeline.Workspace)/ccache_proto
+    ORT_CACHE_DIR: $(Pipeline.Workspace)/ccache_ort
+  pool:
+    vmImage: 'macOS-12'
+  timeoutInMinutes: 300
+  steps:
+  - checkout: self
+    clean: true
+    submodules: none
+
+  - task: UsePythonVersion@0
+    # Use python 3.8 to avoid build some of the required packages
+    displayName: Use Python 3.8
+    inputs:
+      versionSpec: 3.8
+  - task: NodeTool@0
+    inputs:
+      versionSpec: '16.x'
+
+  - template: set-version-number-variables-step.yml
+
+  - template: mac-build-step-with-cache.yml
+    parameters:
+      WithCache: ${{ parameters.WithCache }}
+      Today: $(TODAY)
+      AdditionalKey: ' protobuf | "$(Agent.OS)" | $(Build.SourcesDirectory)/cmake/deps.txt, $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/inference/x64/python/cpu/scripts/install_protobuf.sh'
+      CacheDir: $(PROTO_CACHE_DIR)
+      ChangeEveryCommit: false
+      BuildStep:
+        - script: |
+            set -e -x
+            pushd .
+            $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/inference/x64/python/cpu/scripts/install_protobuf.sh -d $(Build.SourcesDirectory)/cmake/deps.txt -p $(Build.BinariesDirectory)/installed
+            popd
+            export PATH=$(Build.BinariesDirectory)/installed/bin:$PATH
+            export ONNX_ML=1
+            export CMAKE_ARGS="-DONNX_GEN_PB_TYPE_STUBS=OFF -DONNX_WERROR=OFF"
+            python3 -m pip install -r '$(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/requirements.txt'
+            sudo xcode-select --switch /Applications/Xcode_13.1.app/Contents/Developer
+          displayName: 'Install dependencies'
+          env:
+            CCACHE_DIR: $(PROTO_CACHE_DIR)
+
+  - ${{ if eq(parameters.MacosArch, 'universal2') }}:
+    - template: mac-cpu-packaging-steps.yml
+      parameters:
+        MacosArch: ${{ parameters.MacosArch }}
+        AdditionalBuildFlags: ${{ parameters.AdditionalBuildFlags }} --use_coreml --cmake_extra_defines CMAKE_OSX_ARCHITECTURES="arm64;x86_64"
+        BuildJava: false
+        BuildNodejs: false
+        WithCache: ${{ parameters.WithCache }}
+        ${{ if eq(parameters.WithCache, true) }}:
+          Today: $(TODAY)
+          CacheDir: $(ORT_CACHE_DIR)
+
+  - ${{ if eq(parameters.MacosArch, 'arm64') }}:
+    - template: mac-cpu-packaging-steps.yml
+      parameters:
+        MacosArch: ${{ parameters.MacosArch }}
+        AdditionalBuildFlags: ${{ parameters.AdditionalBuildFlags }} --build_nodejs --build_java --use_coreml --cmake_extra_defines CMAKE_OSX_ARCHITECTURES=arm64
+        BuildJava: true
+        BuildNodejs: true
+        WithCache: ${{ parameters.WithCache }}
+        ${{ if eq(parameters.WithCache, true) }}:
+          Today: $(TODAY)
+          CacheDir: $(ORT_CACHE_DIR)
+
+  - ${{ if eq(parameters.MacosArch, 'x86_64') }}:
+    - template: mac-cpu-packaging-steps.yml
+      parameters:
+        MacosArch: ${{ parameters.MacosArch }}
+        AdditionalBuildFlags: ${{ parameters.AdditionalBuildFlags }} --build_nodejs --build_java --use_coreml
+        BuildJava: true
+        BuildNodejs: true
+        WithCache: ${{ parameters.WithCache }}
+        ${{ if eq(parameters.WithCache, true) }}:
+          Today: $(TODAY)
+          CacheDir: $(ORT_CACHE_DIR)

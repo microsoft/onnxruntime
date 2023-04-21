@@ -20,7 +20,6 @@
 
 #include "tvm_api.h"
 
-
 namespace onnxruntime {
 namespace tvm {
 
@@ -33,14 +32,11 @@ TvmModule TVMCompile(const TvmEPOptions& options,
                      const std::string& onnx_txt,
                      const std::string& model_path,
                      int opset,
-                     const TVMTensorShapes& input_shapes)
-{
+                     const TVMTensorShapes& input_shapes) {
   ::tvm::Array<TvmIntArray> shapes;
-  for (size_t i = 0; i < input_shapes.size(); ++i)
-  {
+  for (size_t i = 0; i < input_shapes.size(); ++i) {
     TvmIntArray shape;
-    for (auto& dim : input_shapes[i])
-    {
+    for (auto& dim : input_shapes[i]) {
       shape.push_back(::tvm::Integer(dim));
     }
     shapes.push_back(shape);
@@ -72,11 +68,11 @@ std::vector<std::string> glob(const std::string& dir, const std::string& extensi
   HANDLE hFind = ::FindFirstFile(pattern.c_str(), &fd);
   if (hFind != INVALID_HANDLE_VALUE) {
     do {
-      if ( !(fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) ) {
+      if (!(fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) {
         filenames.push_back(
-          dir +
-          ToUTF8String(PathString{k_preferred_path_separator}) +
-          fd.cFileName);
+            dir +
+            ToUTF8String(PathString{k_preferred_path_separator}) +
+            fd.cFileName);
       }
     } while (::FindNextFile(hFind, &fd));
     ::FindClose(hFind);
@@ -114,27 +110,26 @@ std::string filter_lib_paths(const std::vector<std::string>& lib_paths, const st
 }
 
 static std::unordered_map<std::string, uint64_t> str2dev_type = {
-  {"llvm", 1},
-  {"stackvm", 1},
-  {"cpu", 1},
-  {"c", 1},
-  {"hybrid", 1},
-  {"composite", 1},
-  {"cuda", 2},
-  {"nvptx", 2},
-  {"cl", 4},
-  {"opencl", 4},
-  {"sdaccel", 4},
-  {"aocl", 5},
-  {"aocl_sw_emu", 5},
-  {"vulkan", 7},
-  {"metal", 8},
-  {"vpi", 9},
-  {"rocm", 10},
-  {"ext_dev", 12},
-  {"hexagon", 14},
-  {"webgpu", 15}
-};
+    {"llvm", 1},
+    {"stackvm", 1},
+    {"cpu", 1},
+    {"c", 1},
+    {"hybrid", 1},
+    {"composite", 1},
+    {"cuda", 2},
+    {"nvptx", 2},
+    {"cl", 4},
+    {"opencl", 4},
+    {"sdaccel", 4},
+    {"aocl", 5},
+    {"aocl_sw_emu", 5},
+    {"vulkan", 7},
+    {"metal", 8},
+    {"vpi", 9},
+    {"rocm", 10},
+    {"ext_dev", 12},
+    {"hexagon", 14},
+    {"webgpu", 15}};
 
 TvmModule TVMSoCompile(const TvmEPOptions& options) {
   const std::string& dir = options.so_folder;
@@ -203,8 +198,7 @@ TvmModule TVMSoCompile(const TvmEPOptions& options) {
 
 void TVMSetInputs(TvmModule& mod,
                   std::vector<size_t>& inds,
-                  std::vector<DLTensor>& inputs)
-{
+                  std::vector<DLTensor>& inputs) {
   TvmPackedFunc set_input = mod.GetFunction("set_input", false);
   TvmPackedFunc set_input_zero_copy = mod.GetFunction("set_input_zero_copy", false);
   for (size_t i = 0; i < inds.size(); ++i) {
@@ -218,8 +212,7 @@ void TVMSetInputs(TvmModule& mod,
 
 void TVM_VM_SetInputs(TvmModule& mod,
                       std::vector<size_t>& inds,
-                      std::vector<DLTensor>& inputs)
-{
+                      std::vector<DLTensor>& inputs) {
   size_t num_total_args = inputs.size() + 1;
   std::vector<TVMValue> tvm_values(num_total_args);
   std::vector<int> tvm_type_codes(num_total_args);
@@ -227,7 +220,7 @@ void TVM_VM_SetInputs(TvmModule& mod,
   const std::string func_name = "main";
   setter(0, func_name.c_str());
   for (size_t k = 0; k < num_total_args - 1; ++k) {
-    setter(inds[k]+1, &inputs[k]);
+    setter(inds[k] + 1, &inputs[k]);
   }
 
   TvmPackedFunc set_input = mod.GetFunction("set_input", false);
@@ -235,9 +228,33 @@ void TVM_VM_SetInputs(TvmModule& mod,
   set_input.CallPacked(::tvm::runtime::TVMArgs(tvm_values.data(), tvm_type_codes.data(), int(num_total_args)), &rv);
 }
 
+void TVMSetOutputsZeroCopy(TvmModule& mod,
+                           std::vector<DLTensor>& outputs) {
+  TvmPackedFunc set_output = mod.GetFunction("set_output_zero_copy", false);
+  for (size_t i = 0; i < outputs.size(); ++i) {
+    set_output(i, &outputs[i]);
+  }
+}
+
+void TVM_VM_SetOutputsZeroCopy(TvmModule& mod,
+                               std::vector<DLTensor>& outputs) {
+  size_t num_total_args = outputs.size() + 1;
+  std::vector<TVMValue> tvm_values(num_total_args);
+  std::vector<int> tvm_type_codes(num_total_args);
+  tvm_rt::TVMArgsSetter setter(tvm_values.data(), tvm_type_codes.data());
+  const std::string func_name = "main";
+  setter(0, func_name.c_str());
+  for (size_t k = 0; k < num_total_args - 1; ++k) {
+    setter(k + 1, &outputs[k]);
+  }
+
+  TvmPackedFunc set_output = mod.GetFunction("set_outputs", false);
+  tvm_rt::TVMRetValue rv;
+  set_output.CallPacked(tvm_rt::TVMArgs(tvm_values.data(), tvm_type_codes.data(), num_total_args), &rv);
+}
+
 void TVMGetOutputs(TvmModule& mod,
-                   std::vector<DLTensor>& outputs)
-{
+                   std::vector<DLTensor>& outputs) {
   TvmPackedFunc get_output = mod.GetFunction("get_output", false);
   for (size_t i = 0; i < outputs.size(); ++i) {
     get_output(i, &outputs[i]);
@@ -245,8 +262,7 @@ void TVMGetOutputs(TvmModule& mod,
 }
 
 void TVM_VM_GetOutputs(TvmModule& mod,
-                       std::vector<DLTensor>& outputs)
-{
+                       std::vector<DLTensor>& outputs) {
   TvmPackedFunc get_output = mod.GetFunction("get_output", false);
   for (size_t i = 0; i < outputs.size(); ++i) {
     // TODO(vvchernov): think about improvement of memory management
@@ -256,8 +272,7 @@ void TVM_VM_GetOutputs(TvmModule& mod,
 }
 
 void TVMGetOutputShapes(TvmModule& mod,
-                        TVMTensorShapes& output_shapes)
-{
+                        TVMTensorShapes& output_shapes) {
   size_t size = output_shapes.size();
   TvmPackedFunc get_output = mod.GetFunction("get_output", false);
   for (size_t i = 0; i < size; ++i) {
@@ -272,15 +287,13 @@ void TVMGetOutputShapes(TvmModule& mod,
   }
 }
 
-void TVMRun(TvmModule& mod)
-{
+void TVMRun(TvmModule& mod) {
   TvmPackedFunc run = mod.GetFunction("run", false);
   ORT_ENFORCE(run != nullptr, "Unable to retrieve graph executor run.");
   run();
 }
 
-void TVM_VM_Run(TvmModule& mod)
-{
+void TVM_VM_Run(TvmModule& mod) {
   TvmPackedFunc run = mod.GetFunction("invoke", false);
   ORT_ENFORCE(run != nullptr, "Unable to retrieve virtual machine invoke.");
   run("main");

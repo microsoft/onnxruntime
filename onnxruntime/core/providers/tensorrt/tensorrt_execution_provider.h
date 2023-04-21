@@ -30,6 +30,15 @@ static const std::string kDecryptionLibPath = "ORT_TENSORRT_ENGINE_DECRYPTION_LI
 static const std::string kForceSequentialEngineBuild = "ORT_TENSORRT_FORCE_SEQUENTIAL_ENGINE_BUILD";
 static const std::string kContextMemorySharingEnable = "ORT_TENSORRT_CONTEXT_MEMORY_SHARING_ENABLE";
 static const std::string kLayerNormFP32Fallback = "ORT_TENSORRT_LAYER_NORM_FP32_FALLBACK";
+static const std::string kTimingCacheEnable = "ORT_TENSORRT_TIMING_CACHE_ENABLE";
+static const std::string kForceTimingCache = "ORT_TENSORRT_FORCE_TIMING_CACHE_ENABLE";
+static const std::string kDetailedBuildLog = "ORT_TENSORRT_DETAILED_BUILD_LOG_ENABLE";
+static const std::string kBuildHeuristics = "ORT_TENSORRT_BUILD_HEURISTICS_ENABLE";
+static const std::string kSparsityEnable = "ORT_TENSORRT_SPARSITY_ENABLE";
+static const std::string kBuilderOptimizationLevel = "ORT_TENSORRT_BUILDER_OPTIMIZATION_LEVEL";
+static const std::string kAuxiliaryStreams = "ORT_TENSORRT_AUXILIARY_STREAMS";
+static const std::string kTacticSources = "ORT_TENSORRT_TACTIC_SOURCES";
+static const std::string kExtraPluginLibPaths = "ORT_TENSORRT_EXTRA_PLUGIN_LIB_PATHS";
 // Old env variable for backward compatibility
 static const std::string kEngineCachePath = "ORT_TENSORRT_ENGINE_CACHE_PATH";
 }  // namespace tensorrt_env_vars
@@ -114,6 +123,15 @@ struct TensorrtFuncState {
   bool engine_decryption_enable = false;
   int (*engine_decryption)(const char*, char*, size_t*) = nullptr;
   int (*engine_encryption)(const char*, char*, size_t) = nullptr;
+  bool timing_cache_enable = true;
+  bool force_timing_cache = false;
+  bool detailed_build_log = false;
+  bool build_heuristics_enable = false;
+  bool sparsity_enable = false;
+  int builder_optimization_level = 2;
+  int auxiliary_streams = -1;
+  bool filter_tactic_sources = false;
+  nvinfer1::TacticSources tactic_sources;
 };
 
 // Logical device representation.
@@ -134,7 +152,7 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   common::Status Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
                          std::vector<NodeComputeInfo>& node_compute_funcs) override;
 
-  AllocatorPtr GetAllocator(int id, OrtMemType mem_type) const override;
+  AllocatorPtr GetAllocator(OrtMemType mem_type) const override;
 
   void RegisterAllocator(AllocatorManager& allocator_manager) override;
 
@@ -145,6 +163,8 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   }
 
   void RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry) const override;
+
+  void GetCustomOpDomainList(std::vector<OrtCustomOpDomain*>& custom_op_domain_list) const override;
 
  private:
   TensorrtExecutionProviderInfo info_;
@@ -163,6 +183,11 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   bool int8_use_native_tensorrt_calibration_table_ = false;
   bool dump_subgraphs_ = false;
   bool engine_cache_enable_ = false;
+  bool build_heuristics_enable_ = false;
+  bool sparsity_enable_ = false;
+  int builder_optimization_level_ = 2;
+  int auxiliary_streams_ = -1;
+  std::string tactic_sources_;
   std::string cache_path_, engine_decryption_lib_path_;
   std::unique_ptr<nvinfer1::IRuntime> runtime_ = nullptr;
   OrtMutex tensorrt_mu_;
@@ -176,6 +201,9 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   bool engine_decryption_enable_ = false;
   int (*engine_decryption_)(const char*, char*, size_t*) = nullptr;
   int (*engine_encryption_)(const char*, char*, size_t) = nullptr;
+  bool timing_cache_enable_ = false;
+  bool force_timing_cache_match_ = false;
+  bool detailed_build_log_ = false;
 
   std::unordered_set<std::string> control_flow_op_set_ = {"If", "Loop", "Scan"};
   std::unordered_map<std::string, tensorrt_ptr::unique_pointer<nvonnxparser::IParser>> parsers_;

@@ -52,7 +52,7 @@ static void Check(const char* source,
 
   std::unique_ptr<CPUExecutionProvider> provider = std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
   OrtValue ort_value;
-  CreateMLValue<float>(provider->GetAllocator(0, OrtMemTypeDefault), {int64_t(input_values.size())}, input_values, &ort_value);
+  CreateMLValue<float>(provider->GetAllocator(OrtMemTypeDefault), {int64_t(input_values.size())}, input_values, &ort_value);
 
   feeds.insert(std::make_pair(std::string(input_name), ort_value));
 
@@ -316,6 +316,34 @@ TEST(FunctionTest, AttrName) {
   Check(code, "x", {1.0, 2.0, 3.0}, "y", {3.0, 6.0, 9.0});
 }
 
+// Test function with attribute that has default value.
+TEST(FunctionTest, AttrWithDefault) {
+  const char* code = R"(
+        <
+        ir_version: 8,
+        opset_import: [ "" : 16, "local" : 1 ]
+        >
+        agraph (float[N] x) => (float[N] y)
+        {
+            y0 = local.myfun <a = 2.0> (x)
+            y1 = local.myfun (x)
+            y = Add (y0, y1)
+        }
+
+        <
+        opset_import: [ "" : 16 ],
+        domain: "local"
+        >
+        myfun <a: float=1.0> (x) => (y) {
+            x2 = Constant <value_float: float=@a>()
+            x3 = CastLike (x2, x)
+            y = Add (x, x3)
+        }
+        )";
+
+  Check(code, "x", {1.0, 2.0, 3.0}, "y", {5.0, 7.0, 9.0});
+}
+
 // Test use of constants inside sub-graphs, which are promoted to initializers by ORT.
 TEST(FunctionTest, NestedConstant) {
   const char* code = R"(
@@ -352,5 +380,63 @@ TEST(FunctionTest, Variadics) {
   ASSERT_STATUS_OK(session_object.Load(model_uri));
   ASSERT_STATUS_OK(session_object.Initialize());
 }
+
+// A variation of the variadics issue above, where the first input/output of the
+// variadic list is NOT an input/output of the function.
+TEST(FunctionTest, VariadicsNonInputOutput) {
+  const char* code = R"(
+    <ir_version: 8, opset_import: ["" : 17, "local" : 1]>
+    mymodel (float[2] x) => (float[3] y) {
+      y = local.func (x)
+    }
+
+    <opset_import: ["" : 17 ],  domain: "local">
+    func (a) => (y) {
+      b = Identity(a)
+      z = Concat <axis = 0> (b, a, b)
+      y, w = Split (z)
+    }
+  )";
+
+  Check(code, "x", {1.0, 2.0}, "y", {1.0, 2.0, 1.0});
+}
+
+// Test use of outer-scope names inside sub-graphs in functions that are inlined.
+TEST(FunctionTest, OuterScopeName) {
+  const char* code = R"(
+        <ir_version: 8, opset_import: [ "" : 17 ]>
+        agraph (float[N] x) => (float[N] y)
+        {
+            xseq = SequenceConstruct (x)
+            zeros = Constant <value = float[3] {0.0, 0.0, 0.0}> ()
+            yseq = SequenceMap (xseq) <body =
+              zeropad (float[3] lx) => (float[6] ly) {
+                ly = Concat <axis = 0> (lx, zeros)
+              }>
+            zero = Constant <value = int64{0}> ()
+            y = SequenceAt (yseq, zero)
+        }
+        )";
+
+  Check(code, "x", {1.0, 2.0, 3.0}, "y", {1.0, 2.0, 3.0, 0.0, 0.0, 0.0});
+}
+
+// Test use of functions with unused inputs:
+TEST(FunctionTest, UnusedFunctionInputs) {
+  const char* code = R"(
+    <ir_version: 8, opset_import: ["" : 17, "local" : 1]>
+    mymodel (float[3] x) => (float[3] y) {
+      y = local.func (x, x, x)
+    }
+
+    <opset_import: ["" : 17 ],  domain: "local">
+    func (a, b, c) => (y) {
+      y = Mul (a, b)
+    }
+  )";
+
+  Check(code, "x", {1.0, 2.0, 3.0}, "y", {1.0, 4.0, 9.0});
+}
+
 }  // namespace test
 }  // namespace onnxruntime

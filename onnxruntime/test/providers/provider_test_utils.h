@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <memory>
 #include <utility>
 #include <variant>
 
@@ -686,7 +687,7 @@ class OpTester {
   }
 
   // Generate the reference outputs with the model file
-  void AddReferenceOutputs(const std::string& model_path, float abs_error = 0.0f);
+  void AddReferenceOutputs(const std::string& model_path, float abs_error = 0.0f, std::unique_ptr<IExecutionProvider> ep = nullptr);
 
   void AddCustomOpRegistry(std::shared_ptr<CustomRegistry> registry) {
     custom_schema_registries_.push_back(registry->GetOpschemaRegistry());
@@ -1003,10 +1004,10 @@ class OpTester {
 
     if (seq_tensors) {
       auto num_tensors = seq_tensors->tensors.size();
-      std::vector<Tensor> tensors;
-      tensors.resize(num_tensors);
       auto elem_type = DataTypeImpl::GetType<T>();
 
+      ptr = std::make_unique<TensorSeq>(elem_type);
+      ptr->Reserve(num_tensors);
       for (size_t i = 0; i < num_tensors; ++i) {
         TensorShape shape{seq_tensors->tensors[i].shape};
         auto values_count = static_cast<int64_t>(seq_tensors->tensors[i].data.size());
@@ -1014,16 +1015,14 @@ class OpTester {
                     " input values doesn't match tensor size of ", shape.Size());
 
         auto allocator = test::AllocatorManager::Instance().GetAllocator(CPU);
-        auto& tensor = tensors[i];
-
-        tensor = Tensor(elem_type,
-                        shape,
-                        allocator);
+        Tensor tensor(elem_type, shape, allocator);
 
         auto* data_ptr = tensor.MutableData<T>();
         for (int64_t x = 0; x < values_count; ++x) {
           data_ptr[x] = seq_tensors->tensors[i].data[x];
         }
+
+        ptr->Add(std::move(tensor));
 
         if (add_shape_to_tensor_data_) {
           auto* output_tensor_type = sequence_tensor_proto.proto.mutable_sequence_type()
@@ -1047,9 +1046,6 @@ class OpTester {
           }
         }
       }
-
-      ptr = std::make_unique<TensorSeq>(elem_type);
-      ptr->SetElements(std::move(tensors));
     }
 
     OrtValue value;

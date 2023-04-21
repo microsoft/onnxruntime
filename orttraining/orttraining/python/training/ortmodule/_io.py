@@ -11,7 +11,8 @@ from collections import abc
 
 import torch
 
-from ._fallback import ORTModuleIOError, ORTModuleONNXModelException, _FallbackManager, wrap_exception
+from ._fallback import ORTModuleIOError, ORTModuleONNXModelException, wrap_exception
+from ._logger import suppress_os_stream_output
 from ._utils import warn_of_constant_inputs
 
 
@@ -66,7 +67,7 @@ class _OutputIdentityOp(torch.autograd.Function):
         return g.op("Identity", self)
 
 
-class _PrimitiveType(object):
+class _PrimitiveType:
     _primitive_types = {int, bool, float}
 
     @staticmethod
@@ -110,7 +111,7 @@ def flatten_kwargs(kwargs, device):
     return flattened_kwargs
 
 
-class _InputInfo(object):
+class _InputInfo:
     def __init__(
         self,
         names,
@@ -161,7 +162,9 @@ class _InputInfo(object):
         return args, kwargs
 
 
-def _combine_input_buffers_initializers(params, onnx_input_names, input_info, buffer_names, inputs, kwargs, device):
+def _combine_input_buffers_initializers(
+    params, onnx_input_names, input_info, buffer_names, inputs, kwargs, device, input_density_ob
+):
     """Creates forward `*inputs` list from user input and PyTorch initializers
 
     ONNX Runtime forward requires an ordered list of:
@@ -214,7 +217,7 @@ def _combine_input_buffers_initializers(params, onnx_input_names, input_info, bu
                 if name != input_info.names[input_idx]:
                     # When ONNX drops unused inputs, get correct index from user input
                     # if name is not in input_info.names, ValueError will be thrown
-                    input_idx = input_info.names.index(name)
+                    input_idx = input_info.names.index(name)  # noqa: PLW2901
                 inp = non_none_inputs[input_idx]
             except (IndexError, ValueError):
                 # ONNX input name is not present in input_info.names.
@@ -222,7 +225,7 @@ def _combine_input_buffers_initializers(params, onnx_input_names, input_info, bu
 
         if inp is None:
             # Registered buffers are translated to user_input+initializer in ONNX
-            try:
+            try:  # noqa: SIM105
                 inp = buffer_names_dict[name]
             except KeyError:
                 # ONNX input name is not present in the registered buffer dict.
@@ -231,6 +234,8 @@ def _combine_input_buffers_initializers(params, onnx_input_names, input_info, bu
         if inp is not None:
             if _PrimitiveType.is_primitive_type(inp):
                 inp = _PrimitiveType.get_tensor(inp, device)
+
+            input_density_ob.inspect_from_input_data(name, inp)
             result.append(inp)
         else:
             raise wrap_exception(
@@ -264,7 +269,7 @@ def deepcopy_model_input(*inputs, **kwargs):
     return sample_inputs_copy, sample_kwargs_copy
 
 
-class _TensorStub(object):
+class _TensorStub:
     """Tensor stub class used to represent model's input or output"""
 
     __slots__ = ["name", "dtype", "shape", "shape_dims"]
@@ -298,7 +303,7 @@ class _TensorStub(object):
         if not other:
             return False
         elif not isinstance(other, _TensorStub):
-            raise NotImplemented("_TensorStub must only be compared to another _TensorStub instance!")
+            raise NotImplementedError("_TensorStub must only be compared to another _TensorStub instance!")
         elif self.name != other.name:
             return False
         elif self.dtype != other.dtype:
@@ -462,7 +467,7 @@ def _transform_output_to_flat_tuple(data):
 
 class _FlattenedModule(torch.nn.Module):
     def __init__(self, original_module):
-        super(_FlattenedModule, self).__init__()
+        super().__init__()
         self._original_module = original_module
 
         # Before `forward` is called, _ort_module must be assigned
@@ -481,17 +486,17 @@ def parse_inputs_for_onnx_export(all_input_parameters, onnx_graph, schema, input
             dynamic_axes[name].update({dim_idx: f"{name}_dim{dim_idx}"})
         return dynamic_axes
 
-    def _add_input(name, input, onnx_graph, onnx_graph_input_names):
+    def _add_input(name, input_value, onnx_graph, onnx_graph_input_names):
         """Returns number of expanded non none inputs that _add_input processed"""
 
-        if input is None or isinstance(input, str):
+        if name in input_names or input_value is None or isinstance(input_value, str):
             # Drop all None and string inputs and return 0.
             return
 
-        if isinstance(input, abc.Sequence):
+        if isinstance(input_value, abc.Sequence):
             # If the input is a sequence (like a list), expand the list so that
             # each element of the list is an input by itself.
-            for i, val in enumerate(input):
+            for i, val in enumerate(input_value):
                 # Name each input with the index appended to the original name of the
                 # argument.
                 _add_input(f"{name}_{i}", val, onnx_graph, onnx_graph_input_names)
@@ -499,10 +504,10 @@ def parse_inputs_for_onnx_export(all_input_parameters, onnx_graph, schema, input
             # Return here since the list by itself is not a valid input.
             # All the elements of the list have already been added as inputs individually.
             return
-        elif isinstance(input, abc.Mapping):
+        elif isinstance(input_value, abc.Mapping):
             # If the input is a mapping (like a dict), expand the dict so that
             # each element of the dict is an input by itself.
-            for key, val in input.items():
+            for key, val in input_value.items():
                 _add_input(f"{name}_{key}", val, onnx_graph, onnx_graph_input_names)
 
             # Return here since the dict by itself is not a valid input.
@@ -513,11 +518,11 @@ def parse_inputs_for_onnx_export(all_input_parameters, onnx_graph, schema, input
         # a part of the onnx graph or not.
         input_names.append(name)
 
-        if (onnx_graph is None or name in onnx_graph_input_names) and isinstance(input, torch.Tensor):
-            if input.requires_grad:
+        if (onnx_graph is None or name in onnx_graph_input_names) and isinstance(input_value, torch.Tensor):
+            if input_value.requires_grad:
                 input_names_require_grad.append(name)
-            dynamic_axes.update(_add_dynamic_shape(name, input))
-            input_shape.append(list(input.size()))
+            dynamic_axes.update(_add_dynamic_shape(name, input_value))
+            input_shape.append(list(input_value.size()))
 
     # Ignore optional inputs explicitly specified as None
     # ONNX exporter may remove unused inputs
@@ -548,7 +553,7 @@ def parse_inputs_for_onnx_export(all_input_parameters, onnx_graph, schema, input
             # All positional non-*args and non-**kwargs are processed here
             name = input_parameter.name
             inp = None
-            input_idx += var_positional_idx
+            input_idx += var_positional_idx  # noqa: PLW2901
             if input_idx < len(inputs) and inputs[input_idx] is not None:
                 inp = inputs[input_idx]
             elif name in kwargs and kwargs[name] is not None:
@@ -557,8 +562,7 @@ def parse_inputs_for_onnx_export(all_input_parameters, onnx_graph, schema, input
         elif input_parameter.kind == inspect.Parameter.VAR_KEYWORD:
             # **kwargs is always the last argument of forward()
             for name, inp in kwargs.items():
-                if name not in input_names:
-                    _add_input(name, inp, onnx_graph, onnx_graph_input_names)
+                _add_input(name, inp, onnx_graph, onnx_graph_input_names)
 
     return _InputInfo(
         names=input_names,
@@ -570,12 +574,12 @@ def parse_inputs_for_onnx_export(all_input_parameters, onnx_graph, schema, input
     )
 
 
-def parse_outputs_for_onnx_export_and_extract_schema(module, inputs, kwargs):
+def parse_outputs_for_onnx_export_and_extract_schema(module, inputs, kwargs, log_level):
     # Perform a forward call to grab outputs
     output_names = None
     output_dynamic_axes = None
     is_deepcopy = False
-    with torch.no_grad():
+    with torch.no_grad(), suppress_os_stream_output(log_level=log_level):
         # Deepcopy inputs, since input values may change after model run.
         sample_inputs_copy, sample_kwargs_copy = deepcopy_model_input(*inputs, **kwargs)
         try:

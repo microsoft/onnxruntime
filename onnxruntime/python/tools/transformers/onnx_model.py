@@ -31,7 +31,7 @@ class OnnxModel:
     def disable_shape_inference(self):
         self.enable_shape_infer = False
 
-    def infer_runtime_shape(self, dynamic_axis_mapping={}, update=False):
+    def infer_runtime_shape(self, dynamic_axis_mapping={}, update=False):  # noqa: B006
         if self.enable_shape_infer:
             if self.shape_infer_helper is None or update:
                 self.shape_infer_helper = SymbolicShapeInferenceHelper(self.model)
@@ -39,7 +39,7 @@ class OnnxModel:
             try:
                 if self.shape_infer_helper.infer(dynamic_axis_mapping):
                     return self.shape_infer_helper
-            except:  # noqa
+            except Exception:
                 self.enable_shape_infer = False  # disable shape inference to suppress same error message.
                 print("failed in shape inference", sys.exc_info()[0])
 
@@ -49,17 +49,19 @@ class OnnxModel:
         input_name_to_nodes = {}
         for node in self.nodes():
             for input_name in node.input:
-                if input_name not in input_name_to_nodes:
-                    input_name_to_nodes[input_name] = [node]
-                else:
-                    input_name_to_nodes[input_name].append(node)
+                if input_name:  # could be empty when it is optional
+                    if input_name not in input_name_to_nodes:
+                        input_name_to_nodes[input_name] = [node]
+                    else:
+                        input_name_to_nodes[input_name].append(node)
         return input_name_to_nodes
 
     def output_name_to_node(self):
         output_name_to_node = {}
         for node in self.nodes():
             for output_name in node.output:
-                output_name_to_node[output_name] = node
+                if output_name:  # could be empty when it is optional
+                    output_name_to_node[output_name] = node
         return output_name_to_node
 
     def nodes(self):
@@ -128,6 +130,8 @@ class OnnxModel:
         for graph in self.graphs():
             if node in graph.node:
                 graph.node.remove(node)
+                return
+        logger.warning("Failed to remove node %s", node)  # It might be a bug to hit this line.
 
     def remove_nodes(self, nodes_to_remove):
         for node in nodes_to_remove:
@@ -182,6 +186,12 @@ class OnnxModel:
                 node.output[j] = new_output_name
 
     def replace_output_of_all_nodes(self, old_output_name, new_output_name):
+        # This function shall be used carefully. For example:
+        #       Add --[old_name]--> Cast ---> [new_name]
+        #        |
+        #        +----[old_name]--> Transpose -->
+        # If we want to remove the Cast node: replace output of Add to new_name is not enough;
+        # The input of Transpose shall also be updated to new_name.
         for node in self.model.graph.node:
             OnnxModel.replace_node_output(node, old_output_name, new_output_name)
 
@@ -233,7 +243,7 @@ class OnnxModel:
 
         return output_name_to_node[input]
 
-    def match_first_parent(self, node, parent_op_type, output_name_to_node, exclude=[]):
+    def match_first_parent(self, node, parent_op_type, output_name_to_node, exclude=[]):  # noqa: B006
         """
         Find parent node based on constraints on op_type.
 
@@ -262,7 +272,7 @@ class OnnxModel:
         parent_op_type,
         input_index=None,
         output_name_to_node=None,
-        exclude=[],
+        exclude=[],  # noqa: B006
         return_indice=None,
     ):
         """
@@ -308,7 +318,7 @@ class OnnxModel:
 
     def match_parent_paths(self, node, paths, output_name_to_node):
         for i, path in enumerate(paths):
-            assert isinstance(path, List) or isinstance(path, Tuple)
+            assert isinstance(path, (List, Tuple))
             return_indice = []
             matched = self.match_parent_path(node, path[0], path[1], output_name_to_node, return_indice)
             if matched:
@@ -319,7 +329,7 @@ class OnnxModel:
         self,
         node,
         parent_op_types,
-        parent_input_index,
+        parent_input_index=None,
         output_name_to_node=None,
         return_indice=None,
     ):
@@ -339,7 +349,8 @@ class OnnxModel:
         Returns:
             parents: a list of matched parent node.
         """
-        assert len(parent_input_index) == len(parent_op_types)
+        if parent_input_index is not None:
+            assert len(parent_input_index) == len(parent_op_types)
 
         if output_name_to_node is None:
             output_name_to_node = self.output_name_to_node()
@@ -350,16 +361,19 @@ class OnnxModel:
             matched_parent = self.match_parent(
                 current_node,
                 op_type,
-                parent_input_index[i],
+                parent_input_index[i] if parent_input_index is not None else None,
                 output_name_to_node,
                 exclude=[],
                 return_indice=return_indice,
             )
             if matched_parent is None:
-                logger.debug(
-                    f"Failed to match index={i} parent_input_index={parent_input_index[i]} op_type={op_type}",
-                    stack_info=True,
-                )
+                if parent_input_index is not None:
+                    logger.debug(
+                        f"Failed to match index={i} parent_input_index={parent_input_index[i]} op_type={op_type}",
+                        stack_info=True,
+                    )
+                else:
+                    logger.debug(f"Failed to match index={i} op_type={op_type}", stack_info=True)
                 return None
 
             matched_parents.append(matched_parent)
@@ -553,7 +567,9 @@ class OnnxModel:
             graph_output_names = set(self.get_graphs_output_names())
             for node in nodes_to_remove:
                 if bool(set(node.output) & graph_output_names):
-                    if not bool(set(node.input) & graph_input_names):
+                    if (not bool(set(node.input) & graph_input_names)) and len(
+                        self.input_name_to_nodes()[node.input[0]]
+                    ) == 1:
                         self.replace_output_of_all_nodes(node.input[0], node.output[0])
                     else:
                         continue
@@ -585,7 +601,7 @@ class OnnxModel:
                                                        Defaults to True.
             keep_io_types (Union[bool, List[str]], optional): boolean or a list of float32 input/output names.
                                                               If True, model inputs/outputs should be left as float32.
-                                                              Defaults to False.
+                                                              Defaults to True.
             op_block_list (List[str], optional): List of operator types to leave as float32.
                                                  Defaults to None, which will use `float16.DEFAULT_OP_BLOCK_LIST`.
             node_block_list (List[str], optional): List of node names to leave as float32. Defaults to None.
@@ -601,7 +617,7 @@ class OnnxModel:
         if use_symbolic_shape_infer:
             # Use symbolic shape inference since custom operators (like Gelu, SkipLayerNormalization etc)
             # are not recognized by onnx shape inference.
-            shape_infer_helper = SymbolicShapeInferenceHelper(model)
+            shape_infer_helper = SymbolicShapeInferenceHelper(model, verbose=0)
             model = shape_infer_helper.infer_shapes(model, auto_merge=True, guess_output_rank=False)
 
         parameters = {"disable_shape_infer": use_symbolic_shape_infer}
@@ -737,14 +753,18 @@ class OnnxModel:
         if len(unused_nodes) > 0:
             logger.debug(f"Removed unused constant nodes: {len(unused_nodes)}")
 
-    def prune_graph(self, outputs=None):
+    def prune_graph(self, outputs=None, allow_remove_graph_inputs=True):
         """
-        Prune graph to keep only required outputs. It removes unnecessary inputs and nodes.
-        Nodes are not linked (directly or indirectly) to any required output will be removed.
+        Prune graph to keep only required outputs. It removes unnecessary nodes that are not linked
+        (directly or indirectly) to any required output.
+
+        There is also an option to remove graph inputs that are not used to generate any required output.
 
         Args:
             outputs (list): a list of graph outputs to retain. If it is None, all graph outputs will be kept.
+            allow_remove_graph_inputs (bool): allow remove graph inputs.
         """
+
         if len(self.graphs()) > 1:
             logger.debug("Skip prune_graph since graph has subgraph")
             return
@@ -779,24 +799,28 @@ class OnnxModel:
             self.model.graph.output.remove(output)
 
         # remove inputs not used by any node.
-        input_name_to_nodes = self.input_name_to_nodes()
         input_to_remove = []
-        for input in self.model.graph.input:
-            if input.name not in input_name_to_nodes:
-                input_to_remove.append(input)
-        for input in input_to_remove:
-            self.model.graph.input.remove(input)
+        if allow_remove_graph_inputs:
+            input_name_to_nodes = self.input_name_to_nodes()
+            for input in self.model.graph.input:
+                if input.name not in input_name_to_nodes:
+                    input_to_remove.append(input)
+            for input in input_to_remove:
+                self.model.graph.input.remove(input)
 
         if input_to_remove or output_to_remove or nodes_to_remove:
-            logger.info(
-                "Graph pruned: {} inputs, {} outputs and {} nodes are removed".format(
-                    len(input_to_remove), len(output_to_remove), len(nodes_to_remove)
-                )
-            )
+            removed = []
+            if input_to_remove:
+                removed.append(f"{len(input_to_remove)} inputs")
+            if output_to_remove:
+                removed.append(f"{len(output_to_remove)} outputs")
+            if nodes_to_remove:
+                removed.append(f"{len(nodes_to_remove)} nodes")
+            logger.info("Removed %s", ", ".join(removed))
 
         self.update_graph()
 
-    def update_graph(self, verbose=False):
+    def update_graph(self, verbose=False, allow_remove_graph_inputs=False):
         graph = self.model.graph
 
         remaining_input_names = []
@@ -814,11 +838,12 @@ class OnnxModel:
 
         # remove graph input that is not used
         inputs_to_remove = []
-        for input in graph.input:
-            if input.name not in remaining_input_names:
-                inputs_to_remove.append(input)
-        for input in inputs_to_remove:
-            graph.input.remove(input)
+        if allow_remove_graph_inputs:
+            for input in graph.input:
+                if input.name not in remaining_input_names:
+                    inputs_to_remove.append(input)
+            for input in inputs_to_remove:
+                graph.input.remove(input)
 
         names_to_remove = [input.name for input in inputs_to_remove]
         logger.debug(f"remove {len(inputs_to_remove)} unused inputs: {names_to_remove}")
@@ -859,66 +884,64 @@ class OnnxModel:
         return True
 
     @staticmethod
-    def graph_topological_sort(graph):
-        deps_count = [0] * len(graph.node)  # dependency count of each node
-        deps_to_nodes = {}  # input to node indice
+    def graph_topological_sort(graph, is_deterministic=False):
+        deps_set = set()  # dependency set of all node
+        sorted_node_set = set()  # sorted node set
         sorted_nodes = []  # initialize sorted_nodes
-        for node_idx, node in enumerate(graph.node):
-            # CANNOT use len(node.input) directly because input can be optional
-            deps_count[node_idx] = sum(1 for _ in node.input if _)
-            if deps_count[node_idx] == 0:  # Constant doesn't depend on any inputs
-                sorted_nodes.append(graph.node[node_idx])
-                continue
 
-            for input_name in node.input:
-                if input_name not in deps_to_nodes:
-                    deps_to_nodes[input_name] = [node_idx]
-                else:
-                    deps_to_nodes[input_name].append(node_idx)
-
-        # Note: this logic only applies to top level graph since a sub graph could use intializer from parent graph
         initializer_names = [init.name for init in graph.initializer]
         graph_input_names = [input.name for input in graph.input]
         input_names = initializer_names + graph_input_names
-        input_names.sort()
-        prev_input_name = None
+
+        if is_deterministic:
+            input_names.sort()
+
         for input_name in input_names:
-            if prev_input_name == input_name:
-                continue
+            deps_set.add(input_name)
 
-            prev_input_name = input_name
-            if input_name in deps_to_nodes:
-                for node_idx in deps_to_nodes[input_name]:
-                    deps_count[node_idx] = deps_count[node_idx] - 1
-                    if deps_count[node_idx] == 0:
-                        sorted_nodes.append(graph.node[node_idx])
+        sorted_node_set_len = -1
+        graph_nodes = graph.node if not is_deterministic else sorted(graph.node, key=lambda x: x.name)
+        last_node_name = None
+        while len(sorted_node_set) != len(graph_nodes):
+            if len(sorted_node_set) == sorted_node_set_len:
+                break
+            sorted_node_set_len = len(sorted_node_set)
+            for node_idx, node in enumerate(graph_nodes):
+                if node_idx in sorted_node_set:
+                    continue
+                input_count = sum(1 for _ in node.input if _)
+                if input_count == 0:
+                    sorted_nodes.append(node)
+                    sorted_node_set.add(node_idx)
+                    for output in node.output:
+                        deps_set.add(output)
+                    continue
+                failed = False
+                for input_name in node.input:
+                    if input_name and input_name not in deps_set:
+                        failed = True
+                        last_node_name = node.name
+                if not failed:
+                    sorted_nodes.append(node)
+                    sorted_node_set.add(node_idx)
+                    for output in node.output:
+                        deps_set.add(output)
+                else:
+                    continue
 
-        start = 0
-        end = len(sorted_nodes)
-
-        while start < end:
-            for output in sorted_nodes[start].output:
-                if output in deps_to_nodes:
-                    for node_idx in deps_to_nodes[output]:
-                        deps_count[node_idx] = deps_count[node_idx] - 1
-                        if deps_count[node_idx] == 0:
-                            sorted_nodes.append(graph.node[node_idx])
-                            end = end + 1
-            start = start + 1
-
-        if end != len(graph.node):
+        if len(sorted_node_set) != len(graph.node):
             raise RuntimeError(
-                f"Graph is not a DAG: end={end}, len(graph.node)={len(graph.node)}, graph.node[end]={graph.node[end]}"
+                f"Graph is not a DAG: len(sorted_node_set)={len(sorted_node_set)}, len(graph.node)={len(graph.node)}, failed at node {last_node_name}"
             )
 
         graph.ClearField("node")
         graph.node.extend(sorted_nodes)
 
-    def topological_sort(self):
+    def topological_sort(self, is_deterministic=False):
         # TODO: support graph_topological_sort() in subgraphs
         # for graph in self.graphs():
         #    self.graph_topological_sort(graph)
-        OnnxModel.graph_topological_sort(self.model.graph)
+        OnnxModel.graph_topological_sort(self.model.graph, is_deterministic)
 
     @staticmethod
     def save(
@@ -977,6 +1000,10 @@ class OnnxModel:
         logger.info("Sort graphs in topological order")
         self.topological_sort()
 
+        # Note: After the model is saved to another directory with external data,
+        #       You need reload the onnx model if you want to read tensor from self.model object.
+        #       It is because the base directory is not updated for self.model object so attempt to read tensor data
+        #       might encounter error since external data cannot be located.
         OnnxModel.save(self.model, output_path, use_external_data_format, all_tensors_to_one_file)
         logger.info(f"Model saved to {output_path}")
 
@@ -1004,6 +1031,18 @@ class OnnxModel:
                 return opset.version
         raise RuntimeError("ONNX model has no opset for default domain")
 
+    def get_operator_statistics(self, include_domain=False):
+        """
+        Returns node count of operators.
+        """
+        op_count = {}
+        for node in self.nodes():
+            op = (node.domain + ":" if include_domain and node.domain else "") + node.op_type
+            op_count[op] = 1 if op not in op_count else (op_count[op] + 1)
+
+        logger.info(f"Operators:{op_count}")
+        return op_count
+
     @staticmethod
     def has_same_value(tensor1: TensorProto, tensor2: TensorProto) -> bool:
         """Returns True when two tensors have same value.
@@ -1020,7 +1059,7 @@ class OnnxModel:
             return False
         if tensor1.HasField("raw_data") and tensor2.HasField("raw_data"):
             return tensor1.raw_data == tensor2.raw_data
-        return numpy_helper.to_array(tensor1) == numpy_helper.to_array(tensor2)
+        return (numpy_helper.to_array(tensor1) == numpy_helper.to_array(tensor2)).all()
 
     def remove_duplicated_initializer(self):
         """Remove initializers with duplicated values, and only keep the first one.
@@ -1085,3 +1124,6 @@ class OnnxModel:
         for value_info in self.model.graph.value_info:
             if value_info.name not in excluded:
                 value_info.name = prefix + value_info.name
+
+    def clean_shape_infer(self):
+        self.model.graph.ClearField("value_info")

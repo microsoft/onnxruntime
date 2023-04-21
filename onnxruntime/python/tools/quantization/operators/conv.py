@@ -4,7 +4,6 @@ from onnx import onnx_pb as onnx_proto
 
 from ..quant_utils import (
     TENSOR_NAME_QUANT_SUFFIX,
-    BiasToQuantize,
     QuantizedValue,
     QuantizedValueType,
     attribute_to_kwarg,
@@ -34,7 +33,7 @@ class ConvInteger(QuantOperatorBase):
         # Add tensors for the shape to be reshaped to
         weight = find_by_name(node.input[1], model.initializer())
         if weight is None:
-            raise ValueError("Expected {} to be an initializer".format(node.input[1]))
+            raise ValueError(f"Expected {node.input[1]} to be an initializer")
 
         # Add reshape for correct broadcase
         output = node.output[0]
@@ -79,7 +78,7 @@ class ConvInteger(QuantOperatorBase):
         nodes.extend(nodes_weight)
 
         conv_integer_output = node.output[0] + "_output_quantized"
-        conv_integer_name = node.name + "_quant" if node.name != "" else ""
+        conv_integer_name = node.name + "_quant" if node.name else ""
 
         kwargs = {}
         for attribute in node.attribute:
@@ -102,7 +101,7 @@ class ConvInteger(QuantOperatorBase):
 
         # Add mul operation to multiply scales of two inputs.
         assert len(scale_names) == 2
-        if conv_integer_name != "":
+        if conv_integer_name:
             scales_mul_op = conv_integer_name + "_scales_mul"
         else:
             scales_mul_op = scale_names[0] + "_" + scale_names[1] + "_mul"
@@ -119,7 +118,7 @@ class ConvInteger(QuantOperatorBase):
 
         # Add mul operation to multiply mul_scales_op result with output of ConvInteger
         # and make the output of this node the same as output of original conv node.
-        output_scale_mul_op = conv_integer_name + "_output_scale_mul" if conv_integer_name != "" else ""
+        output_scale_mul_op = conv_integer_name + "_output_scale_mul" if conv_integer_name else ""
         nodes.append(
             get_mul_node(
                 [cast_op_output, scales_mul_op_output],
@@ -192,7 +191,7 @@ class QLinearConv(QuantOperatorBase):
             bias_present = True
 
         qlinear_conv_output = node.output[0] + TENSOR_NAME_QUANT_SUFFIX
-        qlinear_conv_name = qlinear_conv_name = node.name + "_quant" if node.name != "" else ""
+        qlinear_conv_name = qlinear_conv_name = node.name + "_quant" if node.name else ""
 
         kwargs = {}
         for attribute in node.attribute:
@@ -238,7 +237,7 @@ class QDQConv(QDQOperatorBase):
 
     def quantize(self):
         node = self.node
-        assert node.op_type == "Conv"
+        assert node.op_type == "Conv" or node.op_type == "ConvTranspose"
 
         self.quantizer.quantize_activation_tensor(node.input[0])
         if not self.disable_qdq_for_node_output:

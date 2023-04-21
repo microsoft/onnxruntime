@@ -239,7 +239,7 @@ void RunModel(InferenceSession& session_object,
   std::vector<int64_t> dims_mul_x = {3, 2};
   std::vector<float> values_mul_x = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
   OrtValue ml_value;
-  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x,
+  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault), dims_mul_x, values_mul_x,
                        &ml_value);
   NameMLValMap feeds;
   feeds.insert(std::make_pair("X", ml_value));
@@ -252,7 +252,7 @@ void RunModel(InferenceSession& session_object,
   if (is_preallocate_output_vec) {
     fetches.resize(output_names.size());
     for (auto& elem : fetches) {
-      CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x,
+      CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault), dims_mul_x, values_mul_x,
                            &elem);
     }
   }
@@ -280,7 +280,7 @@ void RunModelWithBindingMatMul(InferenceSession& session_object,
   unique_ptr<IOBinding> io_binding;
   Status st = session_object.NewIOBinding(&io_binding);
   ASSERT_TRUE(st.IsOK());
-  auto input_allocator = io_binding->GetCPUAllocator(0, bind_provider_type);
+  auto input_allocator = io_binding->GetCPUAllocator(bind_provider_type);
 
   // bind a value to A with input that will produce invalid output in order to test replacement of a feed
   std::vector<float> values_mul_x_tmp = {12.f, 11.f, 10.f, 9.f, 8.f, 7.f, 6.f, 5.f, 4.f, 3.f, 2.f, 1.f};
@@ -307,7 +307,7 @@ void RunModelWithBindingMatMul(InferenceSession& session_object,
 
   OrtValue input_ml_value_B;
   std::vector<int64_t> dims_mul_x_B = {4, 3};
-  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x_B, values_mul_x,
+  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault), dims_mul_x_B, values_mul_x,
                        &input_ml_value_B);
 
   ASSERT_STATUS_OK(io_binding->BindInput("A", input_ml_value_A));
@@ -321,10 +321,10 @@ void RunModelWithBindingMatMul(InferenceSession& session_object,
   OrtValue output_ml_value;
   if (is_preallocate_output_vec) {
     if (allocation_provider == kCpuExecutionProvider) {
-      AllocateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), expected_output_dims,
+      AllocateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault), expected_output_dims,
                              &output_ml_value);
     } else if (allocation_provider == kCudaExecutionProvider || allocation_provider == kRocmExecutionProvider) {
-      AllocateMLValue<float>(gpu_provider->GetAllocator(0, OrtMemTypeDefault), expected_output_dims, &output_ml_value);
+      AllocateMLValue<float>(gpu_provider->GetAllocator(OrtMemTypeDefault), expected_output_dims, &output_ml_value);
     } else {
       ORT_THROW("Unsupported provider");
     }
@@ -357,7 +357,7 @@ void RunModelWithBindingMatMul(InferenceSession& session_object,
     auto& rtensor = outputs.front().Get<Tensor>();
     auto element_type = rtensor.DataType();
     auto& shape = rtensor.Shape();
-    auto cpu_allocator = TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault);
+    auto cpu_allocator = TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault);
     std::unique_ptr<Tensor> cpu_tensor = std::make_unique<Tensor>(element_type,
                                                                   shape,
                                                                   cpu_allocator);
@@ -716,11 +716,11 @@ TEST(InferenceSessionTests, CheckRunProfilerWithSessionOptions2) {
       ASSERT_TRUE(lines[i].find(s) != string::npos);
 #ifdef USE_CUDA
       has_api_info = has_api_info || lines[i].find("Api") != string::npos &&
-                                               lines[i].find("cudaLaunch") != string::npos;
+                                         lines[i].find("cudaLaunch") != string::npos;
 #endif
 #ifdef USE_ROCM
       has_api_info = has_api_info || lines[i].find("Api") != string::npos &&
-                                               lines[i].find("hipLaunch") != string::npos;
+                                         lines[i].find("hipLaunch") != string::npos;
 #endif
     }
   }
@@ -731,7 +731,6 @@ TEST(InferenceSessionTests, CheckRunProfilerWithSessionOptions2) {
   ASSERT_TRUE(has_api_info || true);
 #endif
 }
-
 
 TEST(InferenceSessionTests, CheckRunProfilerWithStartProfile) {
   SessionOptions so;
@@ -877,12 +876,12 @@ TEST(InferenceSessionTests, ConfigureVerbosityLevel) {
 
   ASSERT_TRUE(have_log_entry_with_vlog_session_msg);
 
-  //bool have_log_entry_with_vlog_run_msg =
-  //    (std::find_if(msgs.begin(), msgs.end(),
-  //                  [&](std::string msg) { return msg.find("Size of execution plan vector") != string::npos; }) !=
-  //     msgs.end());
+  // bool have_log_entry_with_vlog_run_msg =
+  //     (std::find_if(msgs.begin(), msgs.end(),
+  //                   [&](std::string msg) { return msg.find("Size of execution plan vector") != string::npos; }) !=
+  //      msgs.end());
 
-  //ASSERT_TRUE(have_log_entry_with_vlog_run_msg);
+  // ASSERT_TRUE(have_log_entry_with_vlog_run_msg);
 
   bool has_num_streams_msg =
       (std::find_if(msgs.begin(), msgs.end(), [&](std::string msg) { return msg.find("Number of streams") != string::npos; }) != msgs.end());
@@ -1000,7 +999,7 @@ TEST(InferenceSessionTests, TestIOBindingReuse) {
 
   OrtValue ml_value1;
   vector<float> v1{2.f};
-  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), {1}, v1, &ml_value1);
+  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault), {1}, v1, &ml_value1);
   ASSERT_STATUS_OK(io_binding->BindOutput("foo", ml_value1));
   ASSERT_TRUE(io_binding->GetOutputs().size() == 1);
   auto span = io_binding->GetOutputs()[0].Get<Tensor>().DataAsSpan<float>();
@@ -1011,7 +1010,7 @@ TEST(InferenceSessionTests, TestIOBindingReuse) {
 
   OrtValue ml_value2;
   vector<float> v2{3.f};
-  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), {1}, v2, &ml_value2);
+  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault), {1}, v2, &ml_value2);
   ASSERT_STATUS_OK(io_binding->BindOutput("foo", ml_value2));
   ASSERT_TRUE(io_binding->GetOutputs().size() == 1);
   span = io_binding->GetOutputs()[0].Get<Tensor>().DataAsSpan<float>();
@@ -1037,7 +1036,7 @@ TEST(InferenceSessionTests, InvalidInputTypeOfTensorElement) {
   std::vector<int64_t> dims_mul_x = {3, 2};
   std::vector<int64_t> values_mul_x = {1, 2, 3, 4, 5, 6};
   OrtValue ml_value;
-  CreateMLValue<int64_t>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x,
+  CreateMLValue<int64_t>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault), dims_mul_x, values_mul_x,
                          &ml_value);
   NameMLValMap feeds;
   feeds.insert(std::make_pair("X", ml_value));
@@ -1147,19 +1146,19 @@ static common::Status RunOptionalInputTest(bool add_required_input,
   std::vector<float> unknown_input_val = {20.f};
 
   OrtValue required_input_mlvalue;
-  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault),
+  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault),
                        dims, required_input_val, &required_input_mlvalue);
 
   OrtValue other_required_input_mlvalue;
-  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault),
+  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault),
                        dims, other_required_input_val, &other_required_input_mlvalue);
 
   OrtValue optional_input_mlvalue;
-  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault),
+  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault),
                        dims, optional_input_val, &optional_input_mlvalue);
 
   OrtValue unknown_input_mlvalue;
-  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault),
+  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault),
                        dims, unknown_input_val, &unknown_input_mlvalue);
 
   NameMLValMap feeds;
@@ -1283,11 +1282,11 @@ TEST(ExecutionProviderTest, FunctionTest) {
   std::vector<int64_t> dims_mul_x = {3, 2};
   std::vector<float> values_mul_x = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
   OrtValue ml_value_x;
-  CreateMLValue<float>(testCPUExecutionProvider->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x, &ml_value_x);
+  CreateMLValue<float>(testCPUExecutionProvider->GetAllocator(OrtMemTypeDefault), dims_mul_x, values_mul_x, &ml_value_x);
   OrtValue ml_value_y;
-  CreateMLValue<float>(testCPUExecutionProvider->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x, &ml_value_y);
+  CreateMLValue<float>(testCPUExecutionProvider->GetAllocator(OrtMemTypeDefault), dims_mul_x, values_mul_x, &ml_value_y);
   OrtValue ml_value_z;
-  CreateMLValue<float>(testCPUExecutionProvider->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x, &ml_value_z);
+  CreateMLValue<float>(testCPUExecutionProvider->GetAllocator(OrtMemTypeDefault), dims_mul_x, values_mul_x, &ml_value_z);
   NameMLValMap feeds;
   feeds.insert(std::make_pair("X", ml_value_x));
   feeds.insert(std::make_pair("Y", ml_value_y));
@@ -1554,7 +1553,7 @@ TEST(InferenceSessionTests, Test3LayerNestedSubgraph) {
   so.session_logid = "InferenceSessionTests.Test3LayerNestedSubgraph";
   InferenceSession session_object{so, GetEnvironment()};
 
-#if USE_TENSORRT
+#if defined(_WIN32) && defined(USE_TENSORRT)
   ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultTensorrtExecutionProvider()));
 #elif USE_CUDA
   ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultCudaExecutionProvider()));
@@ -1573,7 +1572,7 @@ TEST(InferenceSessionTests, Test3LayerNestedSubgraph) {
   std::vector<int64_t> dim = {1};
   std::vector<bool> va = {false};
   OrtValue ml_value_x;
-  CreateMLValue<bool>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dim, va,
+  CreateMLValue<bool>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault), dim, va,
                       &ml_value_x);
   NameMLValMap feeds;
   feeds.insert(std::make_pair("if_cond_input", ml_value_x));
@@ -1592,7 +1591,7 @@ TEST(InferenceSessionTests, Test3LayerNestedSubgraph) {
   ASSERT_TRUE(status.IsOK());
   VerifyOutputs(fetches, expected_dims, expected_values);
 
-#if USE_TENSORRT
+#if defined(_WIN32) && defined(USE_TENSORRT)
   // previous run with graph being optimized, one of If node’s both subgraphs become empty, so TRT EP won’t assign this If node to TRT and later ORT assign it to CUDA.
   // we also want to test graph not being optimized and TRT EP should also be able to run it and make the whole graph run on TRT.
   so.graph_optimization_level = TransformerLevel::Default;
@@ -1706,7 +1705,7 @@ TEST(InferenceSessionTests, Test2LayerNestedSubgraph) {
   so.session_logid = "InferenceSessionTests.Test2LayerNestedSubgraph";
   InferenceSession session_object{so, GetEnvironment()};
 
-#if USE_TENSORRT
+#if defined(_WIN32) && defined(USE_TENSORRT)
   ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultTensorrtExecutionProvider()));
 #elif USE_CUDA
   ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultCudaExecutionProvider()));
@@ -1725,12 +1724,12 @@ TEST(InferenceSessionTests, Test2LayerNestedSubgraph) {
   std::vector<int64_t> dim_input_0 = {1};
   std::vector<float> data_input_0 = {0.0f};
   OrtValue ml_value_input_0;
-  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dim_input_0, data_input_0,
+  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault), dim_input_0, data_input_0,
                        &ml_value_input_0);
   std::vector<int64_t> dim_input_1 = {1};
   std::vector<bool> data_input_1 = {false};
   OrtValue ml_value_input_1;
-  CreateMLValue<bool>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dim_input_1, data_input_1,
+  CreateMLValue<bool>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault), dim_input_1, data_input_1,
                       &ml_value_input_1);
   NameMLValMap feeds;
   feeds.insert(std::make_pair("input_0", ml_value_input_0));
@@ -1824,7 +1823,7 @@ TEST(InferenceSessionTests, TestTruncatedSequence) {
                                3.0980256e-05f, -3.5933927e-03f};
 
   OrtValue ml_value;
-  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), X_dims, X, &ml_value);
+  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault), X_dims, X, &ml_value);
 
   std::string input_name = "Input13165";
   NameMLValMap feeds = {{input_name, ml_value}};
@@ -1871,7 +1870,7 @@ TEST(InferenceSessionTests, TestTruncatedSequence) {
     truncated_input_dims[0] = truncated_len;
     OrtValue truncated_ml_value;
     std::vector<float> truncated_input(X.begin() + seq_start * seq_stride, X.begin() + (seq_start + truncated_len) * seq_stride);
-    CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), truncated_input_dims, truncated_input, &truncated_ml_value);
+    CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault), truncated_input_dims, truncated_input, &truncated_ml_value);
     NameMLValMap truncated_feeds = {{input_name, truncated_ml_value}};
     if (seq_start > 0) {
       // continue from truncated sequence
@@ -1924,7 +1923,7 @@ TEST(InferenceSessionTests, TestCopyToFromDevices) {
   std::vector<int64_t> dims_mul_x = {3, 2};
   std::vector<float> values_mul_x = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
   OrtValue ml_value;
-  CreateMLValue<float>(p_dummy_provider->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x,
+  CreateMLValue<float>(p_dummy_provider->GetAllocator(OrtMemTypeDefault), dims_mul_x, values_mul_x,
                        &ml_value);
 
   std::vector<std::string> feed_names;
@@ -1944,7 +1943,7 @@ TEST(InferenceSessionTests, TestCopyToFromDevices) {
 
     fetches.resize(output_names.size());
     for (auto& elem : fetches) {
-      CreateMLValue<float>(p_dummy_provider->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x,
+      CreateMLValue<float>(p_dummy_provider->GetAllocator(OrtMemTypeDefault), dims_mul_x, values_mul_x,
                            &elem);
     }
 
@@ -2204,7 +2203,7 @@ TEST(InferenceSessionTests, ModelThatTriggersAllocationPlannerToReuseDoubleTenso
   std::vector<int64_t> dims_x = {1, 2, 3};
   std::vector<float> values_x = {1.6f, -0.6f, -0.5f, -1.0f, 0.8f, -2.3f};
   OrtValue ml_value;
-  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_x, values_x,
+  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault), dims_x, values_x,
                        &ml_value);
   NameMLValMap feeds;
   feeds.insert(std::make_pair("u", ml_value));
@@ -2732,7 +2731,7 @@ TEST(InferenceSessionTests, InitializerSharing_EnsureSessionsUseUserAddedInitial
   OrtValue val_to_share;
   std::vector<float> input_data_vec{1., 2., 3., 4., 5., 6.};
 
-  auto allocator = TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault);
+  auto allocator = TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault);
   CreateMLValue<float>(allocator, {3, 2}, input_data_vec, &val_to_share_from_allocator);
 
   OrtMemoryInfo mem_info{CPU, OrtArenaAllocator};
@@ -2778,15 +2777,19 @@ TEST(InferenceSessionTests, InitializerSharing_EnsureSessionsUseUserAddedInitial
   ASSERT_EQ(so1_init_buffer, so2_init_buffer);
 
   int so3_idx;
-  ASSERT_STATUS_OK(sess3.GetSessionState().GetOrtValueNameIdxMap().GetIdx(init_name, so3_idx));
-  const auto* so3_init_buffer = sess3.GetSessionState().GetInitializedTensors().at(so3_idx).Get<Tensor>().Data<float>();
+  // If the original initializer name got changed by graph transformers, then we don't need check
+  // the data ptr reuse or not with other session.
+  if (sess3.GetSessionState().GetOrtValueNameIdxMap().GetIdx(init_name, so3_idx).IsOK()) {
+    const auto* so3_init_buffer =
+        sess3.GetSessionState().GetInitializedTensors().at(so3_idx).Get<Tensor>().Data<float>();
 
-  // Ensure session 3 doesn't share the same data ptr as any other session
-  ASSERT_NE(so3_init_buffer, so1_init_buffer);
-  ASSERT_NE(so3_init_buffer, so2_init_buffer);
+    // Ensure session 3 doesn't share the same data ptr as any other session
+    ASSERT_NE(so3_init_buffer, so1_init_buffer);
+    ASSERT_NE(so3_init_buffer, so2_init_buffer);
 
-  // Ensure session 3 doesn't share the same data ptr as the one supplied by the user for any of the other sessions
-  ASSERT_NE(so3_init_buffer, val_to_share.Get<Tensor>().Data<float>());
+    // Ensure session 3 doesn't share the same data ptr as the one supplied by the user for any of the other sessions
+    ASSERT_NE(so3_init_buffer, val_to_share.Get<Tensor>().Data<float>());
+  }
 }
 
 void RunModelWithDenormalAsZero(InferenceSession& session_object,
@@ -2799,7 +2802,7 @@ void RunModelWithDenormalAsZero(InferenceSession& session_object,
   std::vector<float> values_mul(6);
   std::fill(values_mul.begin(), values_mul.end(), denormal_float);
   OrtValue ml_value;
-  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault),
+  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault),
                        dims_mul, values_mul, &ml_value);
 
   NameMLValMap feeds;

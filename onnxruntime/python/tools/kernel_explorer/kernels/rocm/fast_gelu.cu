@@ -16,7 +16,7 @@ template <typename T, int ThreadsPerBlock, int VecSize>
 class FastGelu : public IKernelExplorer {
  public:
   FastGelu(DeviceArray& input, DeviceArray& bias, DeviceArray& output, int input_length, int bias_length)
-      : params_(this->Stream(), static_cast<T*>(input.ptr()), static_cast<T*>(bias.ptr()),
+      : params_(TuningContext(), Stream(), static_cast<T*>(input.ptr()), static_cast<T*>(bias.ptr()),
                 static_cast<T*>(output.ptr()), input_length, bias_length) {}
 
   bool IsSupported() {
@@ -38,7 +38,7 @@ template <typename T>
 class FastGeluStaticSelection : public IKernelExplorer {
  public:
   FastGeluStaticSelection(DeviceArray& input, DeviceArray& bias, DeviceArray& output, int input_length, int bias_length)
-      : params_(this->Stream(), static_cast<T*>(input.ptr()), static_cast<T*>(bias.ptr()),
+      : params_(TuningContext(), Stream(), static_cast<T*>(input.ptr()), static_cast<T*>(bias.ptr()),
                 static_cast<T*>(output.ptr()), input_length, bias_length) {}
 
   bool IsSupported() {
@@ -58,9 +58,9 @@ template <typename T>
 class FastGeluTunable : public IKernelExplorer {
  public:
   FastGeluTunable(DeviceArray& input, DeviceArray& bias, DeviceArray& output, int input_length, int bias_length)
-      : params_(this->Stream(), static_cast<T*>(input.ptr()), static_cast<T*>(bias.ptr()),
+      : params_(TuningContext(), Stream(), static_cast<T*>(input.ptr()), static_cast<T*>(bias.ptr()),
                 static_cast<T*>(output.ptr()), input_length, bias_length) {
-    op_.EnableTuning();
+    params_.TuningContext()->EnableTunableOpAndTuning();
   }
 
   void Run() override {
@@ -110,7 +110,7 @@ class FastGeluTunable : public IKernelExplorer {
       .def("Run", &name<type>::Run)                                        \
       .def("IsSupported", &name<type>::IsSupported);
 
-void InitFastGelu(py::module m) {
+KE_REGISTER(m) {
   REGISTER_OP_FOR_ALL_THREADS_PER_BLOCK(FastGelu, half);
   REGISTER_OP_FOR_ALL_THREADS_PER_BLOCK(FastGelu, float);
   REGISTER_OP_FOR_ALL_THREADS_PER_BLOCK(FastGelu, double);

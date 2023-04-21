@@ -23,7 +23,6 @@ inline std::vector<T> random(std::vector<int64_t> shape) {
   return generator.Uniform<T>(shape, 0.0f, 1.0f);
 }
 
-
 template <>
 inline std::vector<int64_t> random<int64_t>(std::vector<int64_t> shape) {
   int64_t size = 1;
@@ -91,7 +90,7 @@ struct FunctionTestCase {
     input_args.emplace_back(input_name, &arg_type);
 
     OrtValue ort_value;
-    CreateMLValue<T>(provider->GetAllocator(0, OrtMemTypeDefault), shape, data, &ort_value);
+    CreateMLValue<T>(provider->GetAllocator(OrtMemTypeDefault), shape, data, &ort_value);
     input_values.push_back(std::make_pair(input_name, ort_value));
     input_value_map.insert(std::make_pair(input_name, ort_value));
   }
@@ -108,7 +107,7 @@ struct FunctionTestCase {
     if (GenData) {
       std::vector<T> data = random<T>(shape);
       OrtValue ort_value;
-      CreateMLValue<T>(provider->GetAllocator(0, OrtMemTypeDefault), shape, data, &ort_value);
+      CreateMLValue<T>(provider->GetAllocator(OrtMemTypeDefault), shape, data, &ort_value);
       input_values.push_back(std::make_pair(input_name, ort_value));
       input_value_map.insert(std::make_pair(input_name, ort_value));
     }
@@ -122,7 +121,7 @@ struct FunctionTestCase {
     for (size_t i = 0; i < data.size(); i++)
       data[i] = data[i] % bound;
     OrtValue ort_value;
-    CreateMLValue<T>(provider->GetAllocator(0, OrtMemTypeDefault), shape, data, &ort_value);
+    CreateMLValue<T>(provider->GetAllocator(OrtMemTypeDefault), shape, data, &ort_value);
     input_values.push_back(std::make_pair(input_name, ort_value));
     input_value_map.insert(std::make_pair(input_name, ort_value));
   }

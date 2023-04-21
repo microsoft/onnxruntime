@@ -25,7 +25,7 @@ struct NchwcTestHelper {
   template <typename T>
   NodeArg* MakeInput(const std::vector<int64_t>& shape, const ONNX_NAMESPACE::TypeProto& type_proto) {
     OrtValue input_value;
-    CreateMLValue<T>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), shape,
+    CreateMLValue<T>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault), shape,
                      FillRandomData<T>(shape), &input_value);
     std::string name = graph_.GenerateNodeArgName("input");
     feeds_.insert(std::make_pair(name, input_value));
@@ -1233,7 +1233,7 @@ TEST(NchwcOptimizerTests, UpsampleNearest) {
         sizes_shape[1] = 42;
         constexpr int64_t shape2 = 27;
         constexpr int64_t shape3 = 15;
-        //The result is 64-bit. Use double for calculation to get better precision.
+        // The result is 64-bit. Use double for calculation to get better precision.
         sizes_shape[2] = static_cast<int64_t>(static_cast<double>(scale_h) * shape2);
         sizes_shape[3] = static_cast<int64_t>(static_cast<double>(scale_w) * shape3);
         input_args.push_back(helper.Make1DInitializer<float>({}));

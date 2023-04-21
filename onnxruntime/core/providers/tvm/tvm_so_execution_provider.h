@@ -14,8 +14,7 @@
 #include "core/platform/ort_mutex.h"
 
 #include "tvm_compiler.h"  // NOLINT(build/include_subdir)
-#include "tvm_runner.h"  // NOLINT(build/include_subdir)
-
+#include "tvm_runner.h"    // NOLINT(build/include_subdir)
 
 namespace onnxruntime {
 class Graph;
@@ -39,7 +38,7 @@ class TvmSoExecutionProvider : public IExecutionProvider {
   common::Status Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
                          std::vector<NodeComputeInfo>& node_compute_funcs) override;
   std::unique_ptr<onnxruntime::IDataTransfer> GetDataTransfer() const override;
-  AllocatorPtr GetAllocator(int id, OrtMemType mem_type) const override;
+  AllocatorPtr GetAllocator(OrtMemType mem_type) const override;
 
  private:
   void printOptions();
@@ -48,13 +47,13 @@ class TvmSoExecutionProvider : public IExecutionProvider {
 #endif
   std::shared_ptr<TvmModule> compileModel(const std::string& func_name,
                                           const GraphViewer& graph_viewer,
-                                          InputsInfoMap& inputs_info);    // NOLINT
+                                          InputsInfoMap& inputs_info);  // NOLINT
   void setInputShapesForFreezedNN(const GraphViewer& graph_viewer,
-                                  TVMTensorShapes& input_shapes,          // NOLINT
-                                  InputsInfoMap& all_input_shapes);       // NOLINT
+                                  TVMTensorShapes& input_shapes,     // NOLINT
+                                  InputsInfoMap& all_input_shapes);  // NOLINT
   void setInputShapesForUnfreezedNN(const GraphViewer& graph_viewer,
-                                    TVMTensorShapes& input_shapes,        // NOLINT
-                                    InputsInfoMap& all_input_shapes);     // NOLINT
+                                    TVMTensorShapes& input_shapes,     // NOLINT
+                                    InputsInfoMap& all_input_shapes);  // NOLINT
   TensorShapeVector getInputShape(const NodeArg* node);
   TensorShapeVector convertTensorShape(const ONNX_NAMESPACE::TensorShapeProto& shape_proto);
   void prepareOutputTensors(std::vector<DLTensor>& output_tensors);  // NOLINT

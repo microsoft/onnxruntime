@@ -30,16 +30,16 @@ def _test_ios_packages(args):
     # should be under the c_framework_dir
     c_framework_dir = args.c_framework_dir.resolve()
     if not c_framework_dir.is_dir():
-        raise FileNotFoundError("c_framework_dir {} is not a folder.".format(c_framework_dir))
+        raise FileNotFoundError(f"c_framework_dir {c_framework_dir} is not a folder.")
 
     has_framework = (c_framework_dir / "onnxruntime.framework").exists()
     has_xcframework = (c_framework_dir / "onnxruntime.xcframework").exists()
 
     if not has_framework and not has_xcframework:
-        raise FileNotFoundError("{} does not have onnxruntime.framework/xcframework".format(c_framework_dir))
+        raise FileNotFoundError(f"{c_framework_dir} does not have onnxruntime.framework/xcframework")
 
     if has_framework and has_xcframework:
-        raise ValueError("Cannot proceed when both onnxruntime.framework " "and onnxruntime.xcframework exist")
+        raise ValueError("Cannot proceed when both onnxruntime.framework and onnxruntime.xcframework exist")
 
     framework_name = "onnxruntime.framework" if has_framework else "onnxruntime.xcframework"
 
@@ -91,7 +91,7 @@ def _test_ios_packages(args):
         shutil.make_archive(zip_file_path.with_suffix(""), "zip", root_dir=local_pods_dir)
 
         # update the podspec to point to the local framework zip file
-        with open(podspec, "r") as file:
+        with open(podspec) as file:
             file_data = file.read()
 
         file_data = file_data.replace("file:///http_source_placeholder", f"file:///{zip_file_path}")

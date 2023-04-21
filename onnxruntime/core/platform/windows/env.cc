@@ -95,7 +95,7 @@ class WindowsThread : public EnvThread {
     }
 
     if (custom_create_thread_fn) {
-      custom_thread_handle = custom_create_thread_fn(custom_thread_creation_options, (OrtThreadWorkerFn)CustomThreadMain, local_param.get());
+      custom_thread_handle = custom_create_thread_fn(custom_thread_creation_options, CustomThreadMain, local_param.get());
       if (!custom_thread_handle) {
         ORT_THROW("custom_create_thread_fn returned invalid handle.");
       }
@@ -136,25 +136,14 @@ class WindowsThread : public EnvThread {
 #pragma warning(disable : 6387)
   static unsigned __stdcall ThreadMain(void* param) {
     std::unique_ptr<Param> p(static_cast<Param*>(param));
-#if WINVER >= _WIN32_WINNT_WIN10
-    constexpr SetThreadDescriptionFunc pSetThrDesc = SetThreadDescription;
-#elif WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)
-    HMODULE kernelModule = GetModuleHandle(TEXT("kernel32.dll"));
-    // kernel32.dll is always loaded
-    assert(kernelModule != nullptr);
-    auto pSetThrDesc =
-        (SetThreadDescriptionFunc)GetProcAddress(kernelModule, "SetThreadDescription");
-#else
-    constexpr SetThreadDescriptionFunc pSetThrDesc = nullptr;
-#endif
-    if (pSetThrDesc != nullptr) {
-      const ORTCHAR_T* name_prefix =
-          (p->name_prefix == nullptr || wcslen(p->name_prefix) == 0) ? L"onnxruntime" : p->name_prefix;
-      std::wostringstream oss;
-      oss << name_prefix << "-" << p->index;
-      // Ignore the error
-      (void)pSetThrDesc(GetCurrentThread(), oss.str().c_str());
-    }
+
+    const ORTCHAR_T* name_prefix =
+        (p->name_prefix == nullptr || wcslen(p->name_prefix) == 0) ? L"onnxruntime" : p->name_prefix;
+    std::wostringstream oss;
+    oss << name_prefix << "-" << p->index;
+    // Ignore the error
+    (void)SetThreadDescription(GetCurrentThread(), oss.str().c_str());
+
     unsigned ret = 0;
     ORT_TRY {
       if (p->affinity.has_value() && !p->affinity->empty()) {
@@ -217,7 +206,7 @@ class WindowsThread : public EnvThread {
   }
 #pragma warning(pop)
 
-  static void __stdcall CustomThreadMain(void* param) {
+  static void CustomThreadMain(void* param) {
     std::unique_ptr<Param> p(static_cast<Param*>(param));
     ORT_TRY {
       p->start_address(p->index, p->param);
@@ -273,13 +262,8 @@ PIDType WindowsEnv::GetSelfPid() const {
 }
 
 Status WindowsEnv::GetFileLength(_In_z_ const ORTCHAR_T* file_path, size_t& length) const {
-#if WINVER >= _WIN32_WINNT_WIN8
   wil::unique_hfile file_handle{
       CreateFile2(file_path, FILE_READ_ATTRIBUTES, FILE_SHARE_READ, OPEN_EXISTING, NULL)};
-#else
-  wil::unique_hfile file_handle{
-      CreateFileW(file_path, FILE_READ_ATTRIBUTES, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL)};
-#endif
   if (file_handle.get() == INVALID_HANDLE_VALUE) {
     const auto error_code = GetLastError();
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "open file ", ToUTF8String(Basename(file_path)), " fail, errcode = ", error_code, " - ", std::system_category().message(error_code));
@@ -325,13 +309,8 @@ Status WindowsEnv::ReadFileIntoBuffer(_In_z_ const ORTCHAR_T* const file_path, c
   ORT_RETURN_IF_NOT(file_path, "file_path == nullptr");
   ORT_RETURN_IF_NOT(offset >= 0, "offset < 0");
   ORT_RETURN_IF_NOT(length <= buffer.size(), "length > buffer.size()");
-#if WINVER >= _WIN32_WINNT_WIN8
   wil::unique_hfile file_handle{
       CreateFile2(file_path, GENERIC_READ, FILE_SHARE_READ, OPEN_EXISTING, NULL)};
-#else
-  wil::unique_hfile file_handle{
-      CreateFileW(file_path, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL)};
-#endif
   if (file_handle.get() == INVALID_HANDLE_VALUE) {
     const auto error_code = GetLastError();
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "open file ", ToUTF8String(Basename(file_path)), " fail, errcode = ", error_code, " - ", std::system_category().message(error_code));
@@ -383,13 +362,8 @@ Status WindowsEnv::MapFileIntoMemory(_In_z_ const ORTCHAR_T* file_path,
     return Status::OK();
   }
 
-#if WINVER >= _WIN32_WINNT_WIN8
   wil::unique_hfile file_handle{
       CreateFile2(file_path, GENERIC_READ, FILE_SHARE_READ, OPEN_EXISTING, NULL)};
-#else
-  wil::unique_hfile file_handle{
-      CreateFileW(file_path, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL)};
-#endif
   if (file_handle.get() == INVALID_HANDLE_VALUE) {
     const auto error_code = GetLastError();
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
@@ -588,23 +562,16 @@ common::Status WindowsEnv::GetCanonicalPath(
     PathString& canonical_path) const {
   // adapted from MSVC STL std::filesystem::canonical() implementation
   // https://github.com/microsoft/STL/blob/ed3cbf36416a385828e7a5987ca52cb42882d84b/stl/inc/filesystem#L2986
-#if WINVER >= _WIN32_WINNT_WIN8
+  CREATEFILE2_EXTENDED_PARAMETERS param;
+  memset(&param, 0, sizeof(param));
+  param.dwSize = sizeof(CREATEFILE2_EXTENDED_PARAMETERS);
+  param.dwFileFlags = FILE_FLAG_BACKUP_SEMANTICS;
   wil::unique_hfile file_handle{CreateFile2(
       path.c_str(),
       FILE_READ_ATTRIBUTES,
       FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
       OPEN_EXISTING,
-      NULL)};
-#else
-  wil::unique_hfile file_handle{CreateFileW(
-      path.c_str(),
-      FILE_READ_ATTRIBUTES,
-      FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
-      nullptr,
-      OPEN_EXISTING,
-      FILE_FLAG_BACKUP_SEMANTICS,
-      nullptr)};
-#endif
+      &param)};
 
   if (file_handle.get() == INVALID_HANDLE_VALUE) {
     const auto error_code = GetLastError();

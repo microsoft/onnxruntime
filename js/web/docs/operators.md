@@ -84,7 +84,7 @@ See [Compatibility](../README.md#Compatibility) for a list of the supported plat
 | [InstanceNormalization](https://github.com/onnx/onnx/blob/main/docs/Operators.md#InstanceNormalization) | [6+](https://github.com/onnx/onnx/blob/main/docs/Changelog.md#InstanceNormalization-6) |
 | [IsInf](https://github.com/onnx/onnx/blob/main/docs/Operators.md#IsInf) |  |
 | [IsNaN](https://github.com/onnx/onnx/blob/main/docs/Operators.md#IsNaN) |  |
-| [LRN](https://github.com/onnx/onnx/blob/main/docs/Operators.md#LRN) |  |
+| [LRN](https://github.com/onnx/onnx/blob/main/docs/Operators.md#LRN) | [1-12](https://github.com/onnx/onnx/blob/main/docs/Changelog.md#LRN-1), [13+](https://github.com/onnx/onnx/blob/main/docs/Changelog.md#LRN-13) |
 | [LSTM](https://github.com/onnx/onnx/blob/main/docs/Operators.md#LSTM) |  |
 | [LayerNormalization](https://github.com/onnx/onnx/blob/main/docs/Operators.md#LayerNormalization) |  |
 | [LeakyRelu](https://github.com/onnx/onnx/blob/main/docs/Operators.md#LeakyRelu) | [6-15](https://github.com/onnx/onnx/blob/main/docs/Changelog.md#LeakyRelu-6), [16+](https://github.com/onnx/onnx/blob/main/docs/Changelog.md#LeakyRelu-16) |

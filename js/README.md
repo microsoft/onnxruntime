@@ -243,7 +243,7 @@ It should be able to consumed by both from projects that uses NPM packages (thro
 
 #### Reduced WebAssembly artifacts
 
-By default, the WebAssembly artifacts from onnxruntime-web package allows use of both standard ONNX models (.onnx) and ORT format models (.ort). There is an option to use a minimal build of ONNX Runtime to reduce the binary size, which only supports ORT format models. See also [ORT format model](https://onnxruntime.ai/docs/tutorials/mobile/overview.html) for more information.
+By default, the WebAssembly artifacts from onnxruntime-web package allows use of both standard ONNX models (.onnx) and ORT format models (.ort). There is an option to use a minimal build of ONNX Runtime to reduce the binary size, which only supports ORT format models. See also [ORT format model](https://onnxruntime.ai/docs/reference/ort-format-models.html) for more information.
 
 #### Reduced JavaScript bundle file fize
 
@@ -397,19 +397,71 @@ From ORT v1.13 onwards the 'full' ONNX Runtime package is used. It supports both
      - replace `com.microsoft.onnxruntime:onnxruntime-android` with `com.microsoft.onnxruntime:onnxruntime-mobile` in /js/react_native/e2e/android/app/build.gradle
      - replace `onnxruntime-c` with `onnxruntime-mobile-c` in /js/react_native/e2e/ios/Podfile
 
-   From `<ORT_ROOT>/js/react_native/e2e/android`, run e2e Android tests as follows,
+  - Run E2E Testing with Detox framework
 
-   ```sh
-   ./gradlew :app:connectedDebugAndroidTest
-   ```
+    When testing with integrated [Detox](https://wix.github.io/Detox/docs/next/introduction/getting-started) framework for Android and iOS e2e apps:
+    - Detox prerequisites:
 
-   From `<ORT_ROOT>/js/react_native/e2e/ios`, run e2e iOS tests as follows,
+      Install detox command line tools:
+      ```
+      yarn global add detox-cli
+      ```
+      Install applesimutils which is required by Detox to work with iOS simulators. (Requires a MacOS device)
+      ```
+      brew tap wix/brew
+      brew install applesimutils
+      ```
+      Main Detox project files:
+        - `.detoxrc.js` -Detox config file;
+        - `e2e/jest.config.js` -Jest configuration;
+        - `e2e/OnnxruntimeModuleExample.test.js` - initial react native onnxruntimemodule e2e detox test.
+    - Build the detox e2e testing app.
 
-   ```sh
-   xcrun xcodebuild test -workspace OnnxruntimeModuleExample.xcworkspace -scheme OnnxruntimeModuleExample -destination 'platform=iOS Simulator,OS=latest,name=iPhone 13'
-   ```
+      From `<ORT_ROOT>/js/react_native/e2e`, run the command to build the e2e testing app. Before that ensure you have android emulator/ios simulator started locally.
 
-   ***`yarn bootstrap` changes `packages.json` and `yarn.lock` files. Once testing is done, restore changes to avoid unwanted commit.***
+      iOS (Debug):
+
+      ```
+      detox build --configuration ios.sim.debug
+      ```
+      
+      Android (Debug):
+
+      ```
+      detox build --configuration android.emu.debug
+      ```
+      
+      * Note: If names of local testing android/ios devices do not match the default setting in `.detoxrc.js` file, 
+      modify the device name in config files accordingly to match local device name otherwise would cause a build failure.
+
+    - Run the detox e2e tests.
+      
+      In a debug configuration, you need to have React Native packager running in parallel before you start Detox tests:
+
+      ```
+      npm start
+
+      > react-native start
+      ```
+      
+      From `<ORT_ROOT>/js/react_native/e2e`, run Detox tests using the following command:
+
+      iOS (Debug):
+
+      ```
+      detox test --configuration ios.sim.debug
+      ```
+
+      Android (Debug):
+
+      ```
+      detox test --configuration android.emu.debug
+      ```
+
+      To record logs for testing results, add `--record-logs`. Output logs and test results will be produced in the `e2e/artifacts/` folder.
+      See: [Detox/logger#artifacts](https://wix.github.io/Detox/docs/api/logger#artifacts)
+    
+      ***`yarn bootstrap` changes `packages.json` and `yarn.lock` files. Once testing is done, restore changes to avoid unwanted commit.***
 
 5. Run Android and iOS apps.
 
@@ -417,7 +469,6 @@ From ORT v1.13 onwards the 'full' ONNX Runtime package is used. It supports both
    yarn e2e android
    yarn e2e ios
    ```
-
 ### NPM Packaging
 
 1. Update a version using `npm version <version>` from `<ORT_ROOT>/js/react_native` folder. If it's for a dev, use `npm version <version>-dev.<subversion>`

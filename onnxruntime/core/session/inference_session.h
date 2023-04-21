@@ -18,6 +18,8 @@
 #include "core/framework/kernel_registry_manager.h"
 #include "core/framework/prepacked_weights_container.h"
 #include "core/framework/session_state.h"
+#include "core/framework/tuning_results.h"
+#include "core/framework/framework_provider_common.h"
 #include "core/graph/basic_types.h"
 #include "core/optimizer/graph_transformer_level.h"
 #include "core/optimizer/graph_transformer_mgr.h"
@@ -31,29 +33,22 @@
 #include <TraceLoggingActivity.h>
 #endif
 
-namespace onnxruntime {  // forward declarations
-class GraphTransformer;
-class Environment;
-}  // namespace onnxruntime
-
 namespace ONNX_NAMESPACE {
 class ModelProto;
 }  // namespace ONNX_NAMESPACE
 
-struct OrtCustomOpDomain {
-  std::string domain_;
-  std::vector<const OrtCustomOp*> custom_ops_;
-};
-
-namespace onnxruntime {
-class IExecutionProvider;  // forward decl
-class IOBinding;
+namespace onnxruntime {  // forward declarations
 class CustomRegistry;
+class Environment;
+class GraphTransformer;
+class IExecutionProvider;
+class IOBinding;
 struct Notification;
+
 #ifdef ENABLE_TRAINING
 struct PartialGraphExecutionState;
-typedef InlinedHashMap<std::string, OrtValue> OrtValueCache;
-typedef std::shared_ptr<OrtValueCache> OrtValueCachePtr;
+using OrtValueCache = InlinedHashMap<std::string, OrtValue>;
+using OrtValueCachePtr = std::shared_ptr<OrtValueCache>;
 #endif
 
 namespace logging {
@@ -213,7 +208,7 @@ class InferenceSession {
     * @return OK if success.
     */
   [[nodiscard]] common::Status RegisterGraphTransformer(std::unique_ptr<onnxruntime::GraphTransformer> p_graph_transformer,
-                                          TransformerLevel level = TransformerLevel::Level2);
+                                                        TransformerLevel level = TransformerLevel::Level2);
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
@@ -306,9 +301,9 @@ class InferenceSession {
   [[nodiscard]] common::Status Initialize();
 
   [[nodiscard]] common::Status Run(const RunOptions& run_options, gsl::span<const std::string> feed_names,
-                     gsl::span<const OrtValue> feeds, gsl::span<const std::string> output_names,
-                     std::vector<OrtValue>* p_fetches,
-                     const std::vector<OrtDevice>* p_fetches_device_info = nullptr);
+                                   gsl::span<const OrtValue> feeds, gsl::span<const std::string> output_names,
+                                   std::vector<OrtValue>* p_fetches,
+                                   const std::vector<OrtDevice>* p_fetches_device_info = nullptr);
 
   /**
    * Run a pre-loaded and pre-intialized model.
@@ -321,7 +316,7 @@ class InferenceSession {
    * @return OK if success.
    */
   [[nodiscard]] common::Status Run(const NameMLValMap& feeds, gsl::span<const std::string> output_names,
-                     std::vector<OrtValue>* p_fetches);
+                                   std::vector<OrtValue>* p_fetches);
 
   /**
    * See Run(const NameMLValMap& feeds, const std::vector<std::string>& output_names, std::vector<OrtValue>* p_fetches)
@@ -329,8 +324,8 @@ class InferenceSession {
    * @param run_options use this to tune the Run call to your needs.
    */
   [[nodiscard]] common::Status Run(const RunOptions& run_options, const NameMLValMap& feeds,
-                     gsl::span<const std::string> output_names,
-                     std::vector<OrtValue>* p_fetches);
+                                   gsl::span<const std::string> output_names,
+                                   std::vector<OrtValue>* p_fetches);
 
   /**
    * Creates a new binding object for binding inputs and outputs.
@@ -448,6 +443,25 @@ class InferenceSession {
     */
   const profiling::Profiler& GetProfiling() const;
 
+#if !defined(ORT_MINIMAL_BUILD)
+  /**
+   * Get the TuningResults of TunableOp for every execution providers.
+   * @return The TuningResults of each execution provider.
+   */
+  std::vector<TuningResults> GetTuningResults() const;
+
+  /**
+   * Set the TuningResults back to each execution provider. Mainly for offline tuning.
+   * @param trs is the list of TuningResults to be loaded.
+   * @param error_on_invalid otherwise, validation faliure is not an error, only a warning log will be produced.
+   * @param auto_enable if true, automatically enable tunable op usage (but not tuning) if the TuningResults is
+                        correctly loaded
+   * @return OK if success.
+   */
+  Status SetTuningResults(const std::vector<TuningResults>& trs, bool error_on_invalid = false,
+                          bool auto_enable = false);
+#endif
+
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
   MemoryProfiler& GetMemoryProfiler() {
     return memory_profiler_;
@@ -497,7 +511,7 @@ class InferenceSession {
   [[nodiscard]] common::Status LoadOnnxModel(std::unique_ptr<ONNX_NAMESPACE::ModelProto> p_model_proto);
 
   [[nodiscard]] common::Status LoadWithLoader(std::function<common::Status(std::shared_ptr<Model>&)> loader,
-                                const std::string& event_name);
+                                              const std::string& event_name);
 
   [[nodiscard]] common::Status DoPostLoadProcessing(onnxruntime::Model& model);
 
@@ -600,13 +614,13 @@ class InferenceSession {
   void InitLogger(logging::LoggingManager* logging_manager);
 
   [[nodiscard]] common::Status CheckShapes(const std::string& input_name, const TensorShape& input_shape,
-                             const TensorShape& expected_shape) const;
+                                           const TensorShape& expected_shape) const;
 
   [[nodiscard]] common::Status ValidateInputs(gsl::span<const std::string> feed_names,
-                                gsl::span<const OrtValue> feeds) const;
+                                              gsl::span<const OrtValue> feeds) const;
 
   [[nodiscard]] common::Status ValidateOutputs(gsl::span<const std::string> output_names,
-                                 const std::vector<OrtValue>* p_fetches) const;
+                                               const std::vector<OrtValue>* p_fetches) const;
 
   [[nodiscard]] common::Status WaitForNotification(Notification* p_executor_done, int64_t timeout_in_ms);
 
@@ -624,7 +638,7 @@ class InferenceSession {
    */
 
   [[nodiscard]] common::Status ValidateAndParseShrinkArenaString(const std::string& ort_device_list,
-                                                   /*out*/ InlinedVector<AllocatorPtr>& arenas_to_shrink) const;
+                                                                 /*out*/ InlinedVector<AllocatorPtr>& arenas_to_shrink) const;
 
   /*
    * Performs the shrinkage of arenas requested to be shrunk by the user
@@ -639,19 +653,11 @@ class InferenceSession {
       MinimalBuildOptimizationHandling minimal_build_optimization_handling,
       RecordRuntimeOptimizationProducedNodeOpSchemaFn record_runtime_optimization_produced_op_schema_fn) const;
 
-  [[nodiscard]] common::Status TransformGraph(onnxruntime::Graph& graph,
-                                const onnxruntime::GraphTransformerManager& graph_transformer_mgr,
-                                const ExecutionProviders& providers, KernelRegistryManager& kernel_registry_manager,
-                                const InsertCastTransformer& insert_cast_transformer,
-                                SessionState& session_state,
-                                bool saving_model_in_ort_format);
+  common::Status TransformGraph(onnxruntime::Graph& graph, bool saving_model_in_ort_format);
 
-  onnxruntime::GraphTransformerManager graph_transformation_mgr_;
+  onnxruntime::GraphTransformerManager graph_transformer_mgr_;
 
-  InsertCastTransformer insert_cast_transformer_;
-
-  // assuming that OpSchema* elements are not null. our version of gsl::not_null doesn't specialize std::hash.
-  InlinedHashSet<const ONNX_NAMESPACE::OpSchema*> saved_runtime_optimization_produced_node_op_schemas_;
+  InlinedHashSet<gsl::not_null<const ONNX_NAMESPACE::OpSchema*>> saved_runtime_optimization_produced_node_op_schemas_;
 #endif
   // Any GraphTransformer/RewriteRule name in this set will not be enabled.
   InlinedHashSet<std::string> optimizers_to_disable_;

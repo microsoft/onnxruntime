@@ -39,33 +39,35 @@ namespace onnxruntime {
 namespace contrib {
 namespace rocm {
 
-template <typename T>
+template <typename T, typename U, typename V>
 Status LaunchSkipLayerNormKernel(
-    bool tuning, hipStream_t stream, T* output, const T* input, const T* skip, const T* gamma,
-    const T* beta, const T* bias, float epsilon, int ld, int element_count) {
+    RocmTuningContext* tuning_ctx, hipStream_t stream, V* output, T* skip_input_bias_add_output, const T* input,
+    const T* skip, const V* gamma, const V* beta, const T* bias, float epsilon, int ld, int element_count) {
   // this must be true because element_count is the total size of the tensor
   assert(element_count % ld == 0);
 
-  SkipLayerNormParams<T> params(stream, output, input, skip, gamma, beta, bias, epsilon, ld, element_count);
+  SkipLayerNormParams<T, V> params(tuning_ctx, stream, output, skip_input_bias_add_output, input, skip,
+                                   gamma, beta, bias, epsilon, ld, element_count);
 
-  if (tuning) {
-    static SkipLayerNormTunableOp<T> op;
-    op.EnableTuning();
+  if (tuning_ctx->IsTunableOpEnabled()) {
+    static SkipLayerNormTunableOp<T, U, V> op;
     return op(&params);
   }
 
-  return SkipLayerNormStaticSelection<T>(&params);
+  return SkipLayerNormStaticSelection<T, U, V>(&params);
 }
 
-template Status LaunchSkipLayerNormKernel<float>(bool tuning, hipStream_t stream, float* output, const float* input,
-                                                 const float* skip, const float* gamma, const float* beta,
-                                                 const float* bias, float epsilon, int ld,
-                                                 int element_count);
+template Status LaunchSkipLayerNormKernel<float, float, float>(
+    RocmTuningContext* tuning_ctx, hipStream_t stream, float* output, float* skip_input_bias_add_output, const float* input,
+    const float* skip, const float* gamma, const float* beta,
+    const float* bias, float epsilon, int ld,
+    int element_count);
 
-template Status LaunchSkipLayerNormKernel<half>(bool tuning, hipStream_t stream, half* output, const half* input,
-                                                const half* skip, const half* gamma, const half* beta,
-                                                const half* bias, float epsilon, int ld,
-                                                int element_count);
+template Status LaunchSkipLayerNormKernel<half, float, half>(
+    RocmTuningContext* tuning_ctx, hipStream_t stream, half* output, half* skip_input_bias_add_output, const half* input,
+    const half* skip, const half* gamma, const half* beta,
+    const half* bias, float epsilon, int ld,
+    int element_count);
 
 }  // namespace rocm
 }  // namespace contrib
