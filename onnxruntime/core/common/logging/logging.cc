@@ -81,7 +81,12 @@ const LoggingManager::Epochs& LoggingManager::GetEpochs() noexcept {
   return epochs;
 }
 
-LoggingManager::LoggingManager(std::unique_ptr<ISink> sink, Severity default_min_severity, bool filter_user_data, const InstanceType instance_type, const std::string* default_logger_id, int default_max_vlog_level)
+LoggingManager::LoggingManager(std::unique_ptr<ISink> sink,
+                               Severity default_min_severity,
+                               bool filter_user_data,
+                               const InstanceType instance_type,
+                               const std::string* default_logger_id,
+                               int default_max_vlog_level)
     : sink_{std::move(sink)},
       default_min_severity_{default_min_severity},
       default_filter_user_data_{filter_user_data},

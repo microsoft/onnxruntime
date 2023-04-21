@@ -104,7 +104,12 @@ class LoggingManager final {
      @param default_max_vlog_level Default maximum level for VLOG messages to be created unless overridden in CreateLogger.
      Requires a severity of kVERBOSE for VLOG messages to be logged.
   */
-  LoggingManager(std::unique_ptr<ISink> sink, Severity default_min_severity, bool default_filter_user_data, InstanceType instance_type, const std::string* default_logger_id = nullptr, int default_max_vlog_level = -1, );
+  LoggingManager(std::unique_ptr<ISink> sink,
+                 Severity default_min_severity,
+                 bool default_filter_user_data,
+                 InstanceType instance_type,
+                 const std::string* default_logger_id = nullptr,
+                 int default_max_vlog_level = -1);
 
   /**
      Creates a new logger instance which will use the provided logger_id and default severity and vlog levels.
