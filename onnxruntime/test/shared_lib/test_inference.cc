@@ -2946,7 +2946,7 @@ TEST(LiteCustomOpTest, CustomStruct) {
   const char* output_names[] = {"str_out"};
 
   OrtAllocator* allocator = nullptr;
-  ortApi.GetAllocatorWithDefaultOptions(&allocator);
+  ASSERT_TRUE(!ortApi.GetAllocatorWithDefaultOptions(&allocator));
   auto memory_info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
 
   int64_t str_1_dims[] = {2};

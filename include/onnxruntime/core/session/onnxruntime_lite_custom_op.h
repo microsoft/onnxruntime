@@ -149,6 +149,9 @@ class TensorT<std::string> : public Tensor {
     // note - there will be copy ...
     output.FillStringTensor(raw.data(), raw.size());
   }
+  const Span<std::string>& AsSpan() {
+      ORT_CXX_API_THROW("span for TensorT<std::string> not implemented", OrtErrorCode::ORT_RUNTIME_EXCEPTION);
+  }
   const std::string& AsScalar() {
     if (input_strings_.size() != 1) {
       ORT_CXX_API_THROW("invalid shape while trying to get a scalar string from Ort::Custom::TensorT",
@@ -210,6 +213,9 @@ class TensorT<std::string_view> : public Tensor {
     auto output = ctx_.GetOutput(indice_, dims.data(), dims.size());
     // note - there will be copy ...
     output.FillStringTensor(raw.data(), raw.size());
+  }
+  const Span<std::string_view>& AsSpan() {
+      ORT_CXX_API_THROW("span for TensorT<std::string_view> not implemented", OrtErrorCode::ORT_RUNTIME_EXCEPTION);
   }
   std::string_view AsScalar() {
     if (input_string_views_.size() != 1) {
@@ -551,8 +557,8 @@ struct OrtCustomFunc : public OrtCustomOpBase {
     OrtCustomOp::CreateKernel = [](const OrtCustomOp* this_, const OrtApi* ort_api, const OrtKernelInfo* info) {
       auto kernel = std::make_unique<Kernel>();
       kernel->compute_fn_ = static_cast<const MyType*>(this_)->compute_fn_;
-      ort_api->KernelInfo_GetInputCount(info, &kernel->num_input_);
-      ort_api->KernelInfo_GetOutputCount(info, &kernel->num_output_);
+      Ort::ThrowOnError(ort_api->KernelInfo_GetInputCount(info, &kernel->num_input_));
+      Ort::ThrowOnError(ort_api->KernelInfo_GetOutputCount(info, &kernel->num_output_));
       auto self = static_cast<const OrtCustomFunc*>(this_);
       kernel->ep_ = self->execution_provider_;
       return reinterpret_cast<void*>(kernel.release());
@@ -600,8 +606,8 @@ struct OrtCustomStruct : public OrtCustomOpBase {
 
     OrtCustomOp::CreateKernel = [](const OrtCustomOp* this_, const OrtApi* ort_api, const OrtKernelInfo* info) {
       auto kernel = std::make_unique<Kernel>();
-      ort_api->KernelInfo_GetInputCount(info, &kernel->num_input_);
-      ort_api->KernelInfo_GetOutputCount(info, &kernel->num_output_);
+      Ort::ThrowOnError(ort_api->KernelInfo_GetInputCount(info, &kernel->num_input_));
+      Ort::ThrowOnError(ort_api->KernelInfo_GetOutputCount(info, &kernel->num_output_));
       kernel->custom_op_ = std::make_unique<CustomOp>(ort_api, info);
       auto self = static_cast<const OrtCustomStruct*>(this_);
       kernel->ep_ = self->execution_provider_;
