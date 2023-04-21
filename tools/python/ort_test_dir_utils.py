@@ -65,7 +65,13 @@ def _create_missing_input_data(model_inputs, name_input_map, symbolic_dim_values
 
 
 def create_test_dir(
-    model_path, root_path, test_name, name_input_map=None, symbolic_dim_values_map=None, name_output_map=None
+    model_path,
+    root_path,
+    test_name,
+    name_input_map=None,
+    symbolic_dim_values_map=None,
+    name_output_map=None,
+    output_generation_session_options=None,
 ):
     """
     Create a test directory that can be used with onnx_test_runner or onnxruntime_perf_test.
@@ -80,7 +86,9 @@ def create_test_dir(
                                     using random data.
     :param name_output_map: Optional map of output names to numpy ndarray expected output data.
                             If not provided, the model will be run with the input to generate output data to save.
-    :return: None
+    :param output_generation_session_options: Session options to use when running the model to generate output data.
+                                              This is only used if name_output_map is not provided.
+    :return: The test directory path.
     """
 
     model_path = os.path.abspath(model_path)
@@ -139,13 +147,15 @@ def create_test_dir(
     # save expected output data if provided. run model to create if not.
     if not name_output_map:
         output_names = [o.name for o in model_outputs]
-        sess = ort.InferenceSession(test_model_filename)
+        sess = ort.InferenceSession(test_model_filename, sess_options=output_generation_session_options)
         outputs = sess.run(output_names, name_input_map)
         name_output_map = {}
         for name, data in zip(output_names, outputs):
             name_output_map[name] = data
 
     save_data("output", name_output_map, model_outputs)
+
+    return test_dir
 
 
 def read_test_dir(dir_name):
