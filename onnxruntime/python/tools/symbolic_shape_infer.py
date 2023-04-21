@@ -2090,8 +2090,8 @@ class SymbolicShapeInference:
                 # mask shape: (batch_size, total_sequence_length) or (batch_size, sequence_length, total_sequence_length) or (batch_size, 1, max_seq_len, max_seq_len)
                 # present shape: (2, batch_size, num_heads, total_sequence_length, head_size), where total_sequence_length=sequence_length+past_sequence_length
                 input_shape = self._get_shape(node, 0)
-                past_shape = self._get_shape(node, 4) if node.input[4] else []
-                mask_shape = self._get_shape(node, 3) if node.input[3] else []
+                past_shape = self._get_shape(node, 4) if len(node.input) > 4 and node.input[4] else []
+                mask_shape = self._get_shape(node, 3) if len(node.input) > 3 and node.input[3] else []
 
                 if past_shape and len(past_shape) == 5:
                     if mask_shape and len(mask_shape) in [2, 3]:

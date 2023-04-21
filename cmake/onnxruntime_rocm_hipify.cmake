@@ -9,6 +9,11 @@ set(contrib_ops_excluded_files
   "bert/attention.h"
   "bert/attention_impl.cu"
   "bert/attention_softmax.h"
+  "bert/decoder_masked_multihead_attention.h"
+  "bert/decoder_masked_multihead_attention.cc"
+  "bert/decoder_masked_self_attention.h"
+  "bert/decoder_masked_self_attention.cc"
+  "bert/fastertransformer_decoder_attention/*"
   "bert/multihead_attention.cc"
   "bert/multihead_attention.h"
   "bert/fast_gelu_impl.cu"
@@ -92,16 +97,6 @@ set(contrib_ops_excluded_files
   "cuda_contrib_kernels.h"
   "inverse.cc"
   "fused_conv.cc"
-  "decoder/decoder_masked_multihead_attention.h"
-  "decoder/decoder_masked_multihead_attention.cc"
-  "decoder/decoder_masked_self_attention.h"
-  "decoder/decoder_masked_self_attention.cc"
-  "decoder/fastertransformer_decoder_attention/decoder_masked_multihead_attention_impl.h"
-  "decoder/fastertransformer_decoder_attention/decoder_masked_multihead_attention.h"
-  "decoder/fastertransformer_decoder_attention/decoder_masked_multihead_attention_impl.cu"
-  "decoder/fastertransformer_decoder_attention/decoder_masked_multihead_attention_32.cu"
-  "decoder/fastertransformer_decoder_attention/decoder_masked_multihead_attention_64.cu"
-  "decoder/fastertransformer_decoder_attention/decoder_masked_multihead_attention_128.cu"
 )
 
 if (NOT onnxruntime_ENABLE_ATEN)

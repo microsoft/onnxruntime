@@ -65,7 +65,8 @@ jobs:
     ALLOW_RELEASED_ONNX_OPSET_ONLY: '0'
     DocUpdateNeeded: false  # Set to true during document generation if there are diffs
     skipComponentGovernanceDetection: true
-    CCACHE_DIR: $(Pipeline.Workspace)/ccache
+    DEPS_CACHE_DIR: $(Agent.TempDirectory)/deps_ccache
+    ORT_CACHE_DIR: $(Agent.TempDirectory)/ort_ccache
     TODAY: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
     ${{ if eq(parameters.WITH_CACHE, true) }}:
       PS_CACHE_ARG: '-use_cache'
@@ -130,44 +131,48 @@ jobs:
     workingDirectory: '$(Build.BinariesDirectory)'
     displayName: 'Install python modules'
 
-  - powershell: |
-      if ([string]::IsNullOrEmpty((Get-Command ccache -errorAction SilentlyContinue)))
-      {
-        choco install ccache -y --version 4.7.4
-        $ccache_path = (Get-Command ccache).Source
-        $ccache_parent_dir = (Split-Path -parent $ccache_path)
-        Copy-Item "C:\ProgramData\chocolatey\lib\ccache\tools\ccache-4.7.4-windows-x86_64\ccache.exe" -Destination "C:\ProgramData\chocolatey\bin\cl.exe"
-        Get-ChildItem $ccache_parent_dir
-        ccache --version
-      }
-    displayName: Install ccache and update PATH to use linked versions of gcc, cc, etc
-    condition: eq(${{ parameters.WITH_CACHE }}, true)
-
-  - task: Cache@2
-    inputs:
-      key: '"$(TODAY)" | ccache | "$(System.StageName)" | "$(Build.SourceBranch)" | "$(Build.SourceVersion)" '
-      path: $(CCACHE_DIR)
-      restoreKeys: |
-        "$(TODAY)" | ccache | "$(System.StageName)" | "$(Build.SourceBranch)"
-        "$(TODAY)" | ccache | "$(System.StageName)"
-        "$(TODAY)" | ccache |
-    displayName: Cache Task
-    condition: eq(${{ parameters.WITH_CACHE }}, true)
+  - ${{ if eq(parameters.WITH_CACHE, true) }}:
+    - powershell: |
+        if ([string]::IsNullOrEmpty((Get-Command ccache -errorAction SilentlyContinue)))
+        {
+          choco install ccache -y --version 4.7.4
+          $ccache_path = (Get-Command ccache).Source
+          $ccache_parent_dir = (Split-Path -parent $ccache_path)
+          Copy-Item "C:\ProgramData\chocolatey\lib\ccache\tools\ccache-4.7.4-windows-x86_64\ccache.exe" -Destination "C:\ProgramData\chocolatey\bin\cl.exe"
+          Get-ChildItem $ccache_parent_dir
+          ccache --version
+        }
+      displayName: Install ccache and update PATH to use linked versions of gcc, cc, etc
 
   - ${{ if or(eq(parameters.RunOnnxRuntimeTests, true), eq(parameters.GenerateDocumentation, true)) }}:
+      - ${{ if eq(parameters.WITH_CACHE, true) }}:
+        - task: Cache@2
+          # machinepool is used to ensure the compiler is same
+          inputs:
+            key: '"$(TODAY)" | ${{ parameters.buildArch }} | ${{ parameters.BuildConfig }} | ${{ parameters.MachinePool }} | $(Build.SourcesDirectory)/cmake/deps.txt, $(Build.SourcesDirectory)/tools/ci_build/github/windows/install_third_party_deps.ps1, $(Build.SourcesDirectory)/tools/ci_build/github/windows/helpers.ps1'
+            path: $(DEPS_CACHE_DIR)
+            restoreKeys: |
+              "$(TODAY)" | ${{ parameters.buildArch }} | ${{ parameters.BuildConfig }} | ${{ parameters.MachinePool }}
+          displayName: Cache Task
+
       - task: PowerShell@2
         displayName: 'Install ONNX'
         inputs:
           filePath: '$(Build.SourcesDirectory)/tools/ci_build/github/windows/install_third_party_deps.ps1'
           workingDirectory: '$(Build.BinariesDirectory)'
           arguments: -cpu_arch ${{ parameters.buildArch }} -install_prefix $(Build.BinariesDirectory)\${{ parameters.BuildConfig }}\installed -build_config ${{ parameters.BuildConfig }} ${{ variables['PS_CACHE_ARG'] }}
+        ${{ if eq(parameters.WITH_CACHE, true) }}:
+          env:
+            CCACHE_DIR: $(DEPS_CACHE_DIR)
+            CCACHE_COMPILERCHECK: content
 
-      - powershell: |
-          ccache -sv
-          ccache -z
-        displayName: cache stat
-        condition: eq(${{ parameters.WITH_CACHE }}, true)
-
+      - ${{ if eq(parameters.WITH_CACHE, true) }}:
+        - powershell: |
+            ccache -sv
+            ccache -z
+          displayName: cache stat
+          env:
+            CCACHE_DIR: $(DEPS_CACHE_DIR)
 
   - task: NuGetToolInstaller@0
     displayName: Use Nuget 5.7.0
@@ -182,6 +187,18 @@ jobs:
       restoreSolution: '$(Build.SourcesDirectory)\packages.config'
       nugetConfigPath: '$(Build.SourcesDirectory)\NuGet.config'
       restoreDirectory: '$(Build.BinariesDirectory)\${{ parameters.BuildConfig }}'
+
+  - ${{ if eq(parameters.WITH_CACHE, true) }}:
+    - task: Cache@2
+      inputs:
+        ${{if eq(variables['Build.SourceBranchName'], 'merge')}}:
+          key: ' "$(TODAY)" |  $(System.StageName) | ${{ parameters.BuildConfig }} | merge '
+        ${{else}}:
+          key: '"$(TODAY)" | onnxruntime | $(System.StageName) | ${{ parameters.BuildConfig }} | $(Build.SourceVersion) '
+        path: $(ORT_CACHE_DIR)
+        restoreKeys: |
+          "$(TODAY)" | onnxruntime | $(System.StageName) | ${{ parameters.BuildConfig }}
+      displayName: Cache Task
 
   - task: PythonScript@0
     displayName: 'Generate cmake config'
@@ -202,12 +219,17 @@ jobs:
       logProjectEvents: false
       workingFolder: '$(Build.BinariesDirectory)\${{ parameters.BuildConfig }}'
       createLogFile: true
+    ${{ if eq(parameters.WITH_CACHE, true) }}:
+      env:
+        CCACHE_DIR: $(ORT_CACHE_DIR)
 
-  - powershell: |
-      ccache -sv
-      ccache -z
-    displayName: cache stat
-    condition: eq(${{ parameters.WITH_CACHE }}, true)
+  - ${{ if eq(parameters.WITH_CACHE, true) }}:
+    - powershell: |
+        ccache -sv
+        ccache -z
+      displayName: cache stat
+      env:
+        CCACHE_DIR: $(ORT_CACHE_DIR)
 
   - powershell: |
       Get-Volume D

@@ -176,7 +176,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 
                 // Save checkpoint
                 string savedCheckpointPath = Path.Combine(Directory.GetCurrentDirectory(), "saved_checkpoint.ckpt");
-                trainingSession.SaveCheckpoint(savedCheckpointPath, false);
+                state.SaveCheckpoint(savedCheckpointPath, true);
 
                 // Load checkpoint and run train step
                 var loadedState = new CheckpointState(savedCheckpointPath);
