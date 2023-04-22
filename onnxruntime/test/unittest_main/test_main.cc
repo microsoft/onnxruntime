@@ -32,7 +32,7 @@ void ortenv_setup() {
 #include "NvInfer.h"
 class DummyLogger : public nvinfer1::ILogger {
  public:
-  DummyLogger(Severity verbosity)
+  DummyLogger(Severity verbosity) {}
   void log(Severity severity, const char* msg) noexcept override {}
 };
 DummyLogger trt_logger(nvinfer1::ILogger::Severity::kWARNING);
