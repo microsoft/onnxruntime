@@ -1229,6 +1229,15 @@ if (onnxruntime_USE_VITISAI)
   endif()
 endif()
 
+execute_process(COMMAND ${GIT_EXECUTABLE} log -1 --format=%h
+    OUTPUT_VARIABLE ORT_GIT_COMMIT)
+string(STRIP ${ORT_GIT_COMMIT} ORT_GIT_COMMIT)
+execute_process(COMMAND ${GIT_EXECUTABLE} rev-parse --abbrev-ref HEAD
+    OUTPUT_VARIABLE ORT_GIT_BRANCH)
+string(STRIP ${ORT_GIT_BRANCH} ORT_GIT_BRANCH)
+set(ORT_BUILD_INFO "ORT Build Info: git-branch=${ORT_GIT_BRANCH}, git-commit-id=${ORT_GIT_COMMIT}")
+string(APPEND ORT_BUILD_INFO ", build type=${CMAKE_BUILD_TYPE}")
+string(APPEND ORT_BUILD_INFO ", cmake cxx flags: ${CMAKE_CXX_FLAGS}")
 configure_file(onnxruntime_config.h.in ${CMAKE_CURRENT_BINARY_DIR}/onnxruntime_config.h)
 if (WIN32)
   configure_file(../requirements.txt.in ${CMAKE_CURRENT_BINARY_DIR}/Debug/requirements.txt)

@@ -128,6 +128,13 @@ inline const OrtApi& GetApi() noexcept { return *Global<void>::api_; }
 std::string GetVersionString();
 
 /// <summary>
+/// This function returns the onnxruntime build information: including git branch,
+/// git commit id, build type(Debug/Release/RelWithDebInfo) and cmake cpp flags.
+/// </summary>
+/// <returns>string</returns>
+std::string GetBuildInfoString();
+
+/// <summary>
 /// This is a C++ wrapper for OrtApi::GetAvailableProviders() and
 /// returns a vector of strings representing the available execution providers.
 /// </summary>

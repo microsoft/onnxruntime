@@ -22,3 +22,6 @@
 #cmakedefine HAS_BITWISE_INSTEAD_OF_LOGICAL
 #cmakedefine HAS_REALLOCARRAY
 #cmakedefine ORT_VERSION "@ORT_VERSION@"
+#cmakedefine ORT_GIT_COMMIT "@ORT_GIT_COMMIT@"
+#cmakedefine ORT_GIT_BRANCH "@ORT_GIT_BRANCH@"
+#cmakedefine ORT_BUILD_INFO "@ORT_BUILD_INFO@"
