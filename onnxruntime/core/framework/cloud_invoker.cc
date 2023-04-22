@@ -2,7 +2,8 @@
 // Licensed under the MIT License.
 
 #ifdef USE_AZURE
-#include "http_client.h"
+//#include "http_client.h"
+#define CURL_STATICLIB
 #include "curl/curl.h"
 #include "nlohmann/json.hpp"
 #include "core/common/common.h"
@@ -18,7 +19,7 @@ using namespace onnxruntime::common;
 
 namespace onnxruntime {
 
-namespace tc = triton::client;
+//namespace tc = triton::client;
 
 const char* kAzureUri = "azure.uri";
 const char* kAzureModelName = "azure.model_name";
@@ -163,7 +164,7 @@ onnxruntime::Status OpenAIInvoker::Send(const CloudEndPointConfig& run_options,
 }
 
 //////////////////////////////////////////////////////////
-
+/*
 class AzureTritonInvoker : public CloudEndPointInvoker {
  public:
   AzureTritonInvoker(const CloudEndPointConfig& config, const AllocatorPtr& allocator);
@@ -397,7 +398,7 @@ onnxruntime::Status AzureTritonInvoker::Send(const CloudEndPointConfig& run_opti
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Caught exception in TritonInvokder::Send", ex.what());
   }
   return Status::OK();
-}
+}*/
 
 void CloudEndPointInvoker::ReadConfig(const char* config_name, std::string& config_val, bool required) {
   const auto iter = config_.find(config_name);
@@ -416,7 +417,8 @@ Status CloudEndPointInvoker::CreateInvoker(const CloudEndPointConfig& config,
     const auto iter = config.find(kAzureEndpointType);
     if (config.end() != iter) {
       if (iter->second == kAzureTriton) {
-        invoker = std::make_unique<AzureTritonInvoker>(config, allocator);
+        ORT_ENFORCE(false, "triton invoker not implemented");
+        //invoker = std::make_unique<AzureTritonInvoker>(config, allocator);
         return status;
       } else if (iter->second == kAzureOpenAI) {
         invoker = std::make_unique<OpenAIInvoker>(config, allocator);
