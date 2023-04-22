@@ -92,8 +92,7 @@ RCT_EXPORT_METHOD(run
     Ort::SessionOptions sessionOptions = [self parseSessionOptions:options];
 
     /*
-      Optional call of sessionOptions java api to enable usage of ort extensions custom ops in
-      a react native app
+      Optional call of to enable usage of ort extensions custom ops
     */
     // if (RegisterCustomOps(sessionOptions, OrtGetApiBase()) != nullptr) {
     //   throw std::runtime_error("RegisterCustomOps failed");
