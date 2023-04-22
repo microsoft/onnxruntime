@@ -1981,6 +1981,7 @@ def build_nuget_package(
     use_tvm,
     use_winml,
     use_snpe,
+    use_qnn,
     enable_training_apis,
 ):
     if not (is_windows() or is_linux()):
@@ -2027,6 +2028,9 @@ def build_nuget_package(
     elif use_snpe:
         execution_provider = '/p:ExecutionProvider="snpe"'
         package_name = '/p:OrtPackageId="Microsoft.ML.OnnxRuntime.Snpe"'
+    elif use_qnn:
+        execution_provider = '/p:ExecutionProvider="qnn"'
+        package_name = '/p:OrtPackageId="Microsoft.ML.OnnxRuntime.QNN"'
     else:
         # use the solution file that includes Xamarin mobile targets
         sln = "OnnxRuntime.CSharp.sln"
@@ -2649,6 +2653,7 @@ def main():
                 args.use_tvm,
                 args.use_winml,
                 args.use_snpe,
+                args.use_qnn,
                 args.enable_training_apis,
             )
 
