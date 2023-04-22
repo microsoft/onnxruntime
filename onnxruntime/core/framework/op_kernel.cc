@@ -183,7 +183,7 @@ OrtValue* OpKernelContext::GetOutputMLValue(int index) {
 }
 
 AllocatorPtr OpKernelContext::GetAllocator(const OrtMemoryInfo& memory_info) const {
-    return execution_frame_->GetAllocator(memory_info);
+  return execution_frame_->GetAllocator(memory_info);
 }
 
 #ifdef ENABLE_ATEN
