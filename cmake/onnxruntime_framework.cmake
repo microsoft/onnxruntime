@@ -44,7 +44,7 @@ if (onnxruntime_USE_AZURE)
   #link_directories(${TRITON_BIN}/lib ${TRITON_BIN}/lib64 ${TRITON_THIRD_PARTY}/curl/lib ${TRITON_THIRD_PARTY}/curl/lib64)
 
   target_include_directories(onnxruntime_framework PRIVATE ${CURL_SRC}/include)
-  link_directories(${CURL_BIN}/lib/RelWithDebInfo)
+  link_directories(${CURL_BIN}/lib/RelWithDebInfo ${CURL_BIN}/lib)
 
   if (WIN32)
 
@@ -58,7 +58,7 @@ if (onnxruntime_USE_AZURE)
     #find_package(ZLIB REQUIRED)
     #find_package(OpenSSL REQUIRED)
     #target_link_libraries(onnxruntime_framework PRIVATE httpclient_static curl ZLIB::ZLIB OpenSSL::Crypto OpenSSL::SSL)
-    # target_link_libraries(onnxruntime_framework PRIVATE curl OpenSSL::Crypto OpenSSL::SSL)
+    #target_link_libraries(onnxruntime_framework PRIVATE curl OpenSSL::Crypto OpenSSL::SSL)
 
   endif() #if (WIN32)
 

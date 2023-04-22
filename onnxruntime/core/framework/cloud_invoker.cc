@@ -58,6 +58,7 @@ OpenAIInvoker::OpenAIInvoker(const CloudEndPointConfig& config,
   ReadConfig(kAzureModelName, model_name_);
 }
 
+#ifdef _WIN32
 struct MemoryStruct {
   char* memory;
   size_t size;
@@ -162,6 +163,15 @@ onnxruntime::Status OpenAIInvoker::Send(const CloudEndPointConfig& run_options,
   ort_outputs[0].Init(output_tensor.release(), tensor_type, tensor_type->GetDeleteFunc());
   return Status::OK();
 }
+#else
+onnxruntime::Status OpenAIInvoker::Send(const CloudEndPointConfig&,
+                                        const InlinedVector<std::string>& /*input_names*/,
+                                        gsl::span<const OrtValue> /*ort_inputs*/,
+                                        const InlinedVector<std::string>& /*output_names*/,
+                                        std::vector<OrtValue>&) const {
+  return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "OpenAIInvoker not implemented for posix");
+}
+#endif
 
 //////////////////////////////////////////////////////////
 /*
