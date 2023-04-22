@@ -148,6 +148,12 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 ex = Assert.Throws<OnnxRuntimeException>(() => { opt.AppendExecutionProvider("SNPE"); });
                 Assert.Contains("SNPE execution provider is not supported in this build", ex.Message);
 #endif
+#if USE_QNN
+                opt.AppendExecutionProvider("QNN");
+#else
+                ex = Assert.Throws<OnnxRuntimeException>(() => { opt.AppendExecutionProvider("QNN"); });
+                Assert.Contains("QNN execution provider is not supported in this build", ex.Message);
+#endif
 
                 opt.AppendExecutionProvider_CPU(1);
             }
