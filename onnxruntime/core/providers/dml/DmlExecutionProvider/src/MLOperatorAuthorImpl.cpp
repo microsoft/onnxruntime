@@ -1158,8 +1158,20 @@ namespace Windows::AI::MachineLearning::Adapter
     {
         ORT_TRY
         {
-            ComPtr<IMLOperatorTensor> tensorWrapper = m_constantInputGetter(inputIndex);
+            *tensor = nullptr;
 
+            auto constantInput = m_constantInputGetter(inputIndex);
+            if (!std::holds_alternative<ComPtr<IMLOperatorTensor>>(constantInput))
+            {
+                assert(std::find(
+                    m_requiredConstantCpuInputs.begin(),
+                    m_requiredConstantCpuInputs.end(),
+                    inputIndex) == m_requiredConstantCpuInputs.end());
+
+                return S_OK;
+            }
+
+            auto tensorWrapper = std::get<ComPtr<IMLOperatorTensor>>(constantInput);
             if (tensorWrapper == nullptr)
             {
                 assert(std::find(
