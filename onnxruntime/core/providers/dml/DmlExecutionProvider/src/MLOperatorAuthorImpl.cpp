@@ -1153,6 +1153,42 @@ namespace Windows::AI::MachineLearning::Adapter
         ORT_CATCH_RETURN
     }
 
+    template <class NodeInfoImpl_t, class Base1_t, class Base2_t>
+    HRESULT STDMETHODCALLTYPE OpNodeInfoWrapper<NodeInfoImpl_t, Base1_t, Base2_t>::TryGetConstantInputTensor(uint32_t inputIndex, IMLOperatorTensor** tensor) const noexcept
+    {
+        ORT_TRY
+        {
+            *tensor = nullptr;
+
+            auto constantInput = m_constantInputGetter(inputIndex);
+            if (!std::holds_alternative<ComPtr<IMLOperatorTensor>>(constantInput))
+            {
+                assert(std::find(
+                    m_requiredConstantCpuInputs.begin(),
+                    m_requiredConstantCpuInputs.end(),
+                    inputIndex) == m_requiredConstantCpuInputs.end());
+
+                return S_OK;
+            }
+
+            auto tensorWrapper = std::get<ComPtr<IMLOperatorTensor>>(constantInput);
+            if (tensorWrapper == nullptr)
+            {
+                assert(std::find(
+                    m_requiredConstantCpuInputs.begin(),
+                    m_requiredConstantCpuInputs.end(),
+                    inputIndex) == m_requiredConstantCpuInputs.end());
+
+                return S_OK;
+            }
+
+            *tensor = tensorWrapper.Detach();
+
+            return S_OK;
+        }
+        ORT_CATCH_RETURN
+    }
+
     HRESULT STDMETHODCALLTYPE OpKernelInfoWrapper::GetOutputTensorShape(uint32_t outputIndex, uint32_t dimensionCount, uint32_t* dimensions) const noexcept
     {
         ORT_TRY
