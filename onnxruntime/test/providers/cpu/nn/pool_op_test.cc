@@ -1023,7 +1023,7 @@ TEST(PoolTest, GlobalAveragePool_Large_128) {
   std::vector<float> expected_vals = {2.71828f};
   test.AddInput<float>("X", x_dims, x_vals);
   test.AddOutput<float>("Y", expected_dims, expected_vals,
-                        /*sort_output=*/false, /*rel_error=*/1e-3, /*abs_error=*/1e-2);
+                        /*sort_output=*/false, /*rel_error=*/1e-3f, /*abs_error=*/1e-2f);
   test.Run();
 }
 
@@ -1036,7 +1036,7 @@ TEST(PoolTest, GlobalAveragePool_Large_256) {
   std::vector<float> expected_vals = {3.14159f};
   test.AddInput<float>("X", x_dims, x_vals);
   test.AddOutput<float>("Y", expected_dims, expected_vals,
-                        /*sort_output=*/false, /*rel_error=*/1e-3, /*abs_error=*/1e-2);
+                        /*sort_output=*/false, /*rel_error=*/1e-3f, /*abs_error=*/1e-2f);
   test.Run();
 }
 
