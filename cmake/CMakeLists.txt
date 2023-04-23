@@ -12,6 +12,15 @@ cmake_policy(SET CMP0117 NEW)
 # Don't let cmake set a default value for CMAKE_CUDA_ARCHITECTURES
 cmake_policy(SET CMP0104 OLD)
 
+# Enable Hot Reload for MSVC compilers if supported.
+if (POLICY CMP0141)
+  if(${CMAKE_VERSION} VERSION_GREATER_EQUAL "3.26.0")
+    cmake_policy(SET CMP0141 NEW)
+  else()
+    cmake_policy(SET CMP0141 OLD)
+  endif()
+endif()
+
 # Project
 project(onnxruntime C CXX ASM)
 
@@ -331,6 +340,11 @@ function(set_msvc_c_cpp_compiler_warning_level warning_level)
     set_property(DIRECTORY PROPERTY COMPILE_OPTIONS "${opts}")
   endif()
 endfunction()
+
+
+if(MSVC_Z7_OVERRIDE)
+  set(CMAKE_MSVC_DEBUG_INFORMATION_FORMAT "$<$<CONFIG:Debug,RelWithDebInfo>:Embedded>")
+endif(MSVC_Z7_OVERRIDE)
 
 # set default MSVC warning level to 3 for external dependencies
 set_msvc_c_cpp_compiler_warning_level(3)
@@ -720,19 +734,6 @@ if (onnxruntime_ENABLE_LAZY_TENSOR)
   # TODO: In the future, we can compile LazyTensor into a standalone
   # library target, onnxruntime_lazy_tensor, to make the buid
   # cleaner.
-endif()
-
-if(MSVC)
-  # Replace /Zi and /ZI with /Z7
-  if(MSVC_Z7_OVERRIDE)
-    foreach(flag_var
-      CMAKE_C_FLAGS CMAKE_C_FLAGS_DEBUG  CMAKE_C_FLAGS_RELWITHDEBINFO
-      CMAKE_CXX_FLAGS CMAKE_CXX_FLAGS_DEBUG  CMAKE_CXX_FLAGS_RELWITHDEBINFO)
-      if(${flag_var} MATCHES "/Z[iI]")
-        string(REGEX REPLACE "/Z[iI]" "/Z7" ${flag_var} "${${flag_var}}")
-      endif(${flag_var} MATCHES "/Z[iI]")
-    endforeach(flag_var)
-  endif(MSVC_Z7_OVERRIDE)
 endif()
 
 function(onnxruntime_set_compile_flags target_name)

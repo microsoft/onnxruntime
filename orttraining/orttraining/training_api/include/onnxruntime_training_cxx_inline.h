@@ -7,12 +7,11 @@
 
 namespace Ort {
 
-inline TrainingSession::TrainingSession(const SessionOptions& session_options,
+inline TrainingSession::TrainingSession(const Env& env, const SessionOptions& session_options,
                                         CheckpointState& checkpoint_state,
                                         const std::basic_string<ORTCHAR_T>& train_model_path,
                                         const std::optional<std::basic_string<ORTCHAR_T>>& eval_model_path,
                                         const std::optional<std::basic_string<ORTCHAR_T>>& optimizer_model_path) {
-  Env env = Env();
   ThrowOnError(GetTrainingApi().CreateTrainingSession(
       env, session_options, checkpoint_state,
       train_model_path.c_str(),
@@ -82,16 +81,105 @@ inline void TrainingSession::OptimizerStep() {
   ThrowOnError(GetTrainingApi().OptimizerStep(p_, run_options));
 }
 
+inline std::vector<std::string> TrainingSession::InputNames(const bool training) {
+  auto& input_count_function = training ? GetTrainingApi().TrainingSessionGetTrainingModelInputCount
+                                        : GetTrainingApi().TrainingSessionGetEvalModelInputCount;
+  auto& input_name_function = training ? GetTrainingApi().TrainingSessionGetTrainingModelInputName
+                                       : GetTrainingApi().TrainingSessionGetEvalModelInputName;
+
+  size_t input_count = 0;
+  ThrowOnError(input_count_function(p_, &input_count));
+  std::vector<std::string> input_names(input_count);
+  AllocatorWithDefaultOptions allocator;
+  for (size_t index = 0; index < input_count; ++index) {
+    char* input_name;
+    ThrowOnError(input_name_function(p_, index, allocator, &input_name));
+    input_names[index] = std::string(input_name);
+    allocator.Free(input_name);
+  }
+
+  return input_names;
+}
+
+inline std::vector<std::string> TrainingSession::OutputNames(const bool training) {
+  auto& output_count_function = training ? GetTrainingApi().TrainingSessionGetTrainingModelOutputCount
+                                         : GetTrainingApi().TrainingSessionGetEvalModelOutputCount;
+  auto& output_name_function = training ? GetTrainingApi().TrainingSessionGetTrainingModelOutputName
+                                        : GetTrainingApi().TrainingSessionGetEvalModelOutputName;
+
+  size_t output_count = 0;
+  ThrowOnError(output_count_function(p_, &output_count));
+  std::vector<std::string> output_names(output_count);
+  AllocatorWithDefaultOptions allocator;
+  for (size_t index = 0; index < output_count; ++index) {
+    char* output_name;
+    ThrowOnError(output_name_function(p_, index, allocator, &output_name));
+    output_names[index] = std::string(output_name);
+    allocator.Free(output_name);
+  }
+
+  return output_names;
+}
+
+inline Value TrainingSession::ToBuffer(const bool only_trainable) {
+  size_t buffer_size = 0U;
+  ThrowOnError(GetTrainingApi().GetParametersSize(p_, &buffer_size, only_trainable));
+
+  std::array<int64_t, 1> buffer_shape{static_cast<int64_t>(buffer_size)};
+
+  AllocatorWithDefaultOptions allocator;
+  Value buffer = Value::CreateTensor(allocator, buffer_shape.data(), 1U,
+                                     ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT);
+
+  ThrowOnError(GetTrainingApi().CopyParametersToBuffer(p_, buffer, only_trainable));
+
+  return buffer;
+}
+
+inline void TrainingSession::FromBuffer(Value& buffer) {
+  if (!buffer.IsTensor()) {
+    ThrowStatus(Status("Incorrect buffer received. Expected a tensor buffer.", OrtErrorCode::ORT_INVALID_ARGUMENT));
+  }
+
+  auto tensor_info = buffer.GetTensorTypeAndShapeInfo();
+  auto buffer_shape = tensor_info.GetShape();
+
+  if (buffer_shape.size() != 1U) {
+    ThrowStatus(Status("Incorrect buffer received. Expected a contiguous tensor buffer.",
+                       OrtErrorCode::ORT_INVALID_ARGUMENT));
+  }
+
+  auto buffer_size = buffer_shape.front();
+
+  size_t session_buffer_size_trainable_only = 0U;
+  ThrowOnError(GetTrainingApi().GetParametersSize(p_, &session_buffer_size_trainable_only, true));
+
+  if (buffer_size == static_cast<int64_t>(session_buffer_size_trainable_only)) {
+    ThrowOnError(GetTrainingApi().CopyBufferToParameters(p_, buffer, true));
+    return;
+  }
+
+  size_t session_buffer_size = 0U;
+  ThrowOnError(GetTrainingApi().GetParametersSize(p_, &session_buffer_size, false));
+
+  if (buffer_size != static_cast<int64_t>(session_buffer_size)) {
+    ThrowStatus(Status("Incorrect buffer size received.", OrtErrorCode::ORT_INVALID_ARGUMENT));
+  }
+
+  ThrowOnError(GetTrainingApi().CopyBufferToParameters(p_, buffer, false));
+}
+
 inline CheckpointState CheckpointState::LoadCheckpoint(const std::basic_string<ORTCHAR_T>& path_to_checkpoint) {
   OrtCheckpointState* checkpoint_state;
   ThrowOnError(GetTrainingApi().LoadCheckpoint(path_to_checkpoint.c_str(), &checkpoint_state));
   return CheckpointState(checkpoint_state);
 }
 
-inline void CheckpointState::SaveCheckpoint(const TrainingSession& session,
+inline void CheckpointState::SaveCheckpoint(const CheckpointState& checkpoint_states,
                                             const std::basic_string<ORTCHAR_T>& path_to_checkpoint,
-                                            bool include_optimizer_states) {
-  ThrowOnError(GetTrainingApi().SaveCheckpoint(path_to_checkpoint.c_str(), session, include_optimizer_states));
+                                            const bool include_optimizer_state) {
+  ThrowOnError(GetTrainingApi().SaveCheckpoint(checkpoint_states, path_to_checkpoint.c_str(),
+                                               include_optimizer_state));
 }
 
 inline void TrainingSession::ExportModelForInferencing(const std::basic_string<ORTCHAR_T>& inference_model_path,
@@ -107,6 +195,62 @@ inline void TrainingSession::ExportModelForInferencing(const std::basic_string<O
 
 inline void SetSeed(const int64_t seed) {
   ThrowOnError(GetTrainingApi().SetSeed(seed));
+}
+
+inline void CheckpointState::AddProperty(const std::string& property_name, const Property& property_value) {
+  if (std::holds_alternative<int64_t>(property_value)) {
+    int64_t value = std::get<int64_t>(property_value);
+    void* value_p = &value;
+    ThrowOnError(GetTrainingApi().AddProperty(p_, property_name.c_str(), OrtPropertyType::OrtIntProperty, value_p));
+  } else if (std::holds_alternative<float>(property_value)) {
+    float value = std::get<float>(property_value);
+    void* value_p = &value;
+    ThrowOnError(GetTrainingApi().AddProperty(p_, property_name.c_str(), OrtPropertyType::OrtFloatProperty, value_p));
+  } else if (std::holds_alternative<std::string>(property_value)) {
+    std::string value = std::get<std::string>(property_value);
+    auto buffer = std::make_unique<char[]>(value.length() + 1).release();
+    memcpy(buffer, value.c_str(), value.length());
+    ThrowOnError(GetTrainingApi().AddProperty(p_, property_name.c_str(), OrtPropertyType::OrtStringProperty, buffer));
+  } else {
+    ThrowStatus(Status("Unknown property type received.", OrtErrorCode::ORT_INVALID_ARGUMENT));
+  }
+}
+
+inline Property CheckpointState::GetProperty(const std::string& property_name) {
+  void* property_value = nullptr;
+  OrtPropertyType property_type;
+
+  AllocatorWithDefaultOptions allocator;
+  ThrowOnError(GetTrainingApi().GetProperty(p_, property_name.c_str(), allocator, &property_type, &property_value));
+
+  Property property;
+
+  switch (property_type) {
+    case OrtPropertyType::OrtIntProperty: {
+      auto value_p = reinterpret_cast<int64_t*>(property_value);
+      property = *value_p;
+      allocator.Free(property_value);
+      break;
+    }
+    case OrtPropertyType::OrtFloatProperty: {
+      auto value_p = reinterpret_cast<float*>(property_value);
+      property = *value_p;
+      allocator.Free(property_value);
+      break;
+    }
+    case OrtPropertyType::OrtStringProperty: {
+      auto value_p = reinterpret_cast<char*>(property_value);
+      property = std::string(value_p);
+      allocator.Free(property_value);
+      break;
+    }
+    default: {
+      ThrowStatus(Status("Unknown property type received.", OrtErrorCode::ORT_INVALID_ARGUMENT));
+      break;
+    }
+  }
+
+  return property;
 }
 
 }  // namespace Ort

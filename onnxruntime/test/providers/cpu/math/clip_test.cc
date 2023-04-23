@@ -128,15 +128,15 @@ TEST(MathOpTest, Clip_int32) {
 
   std::vector<int64_t> dims{3, 3};
   test.AddInput<int32_t>("X", dims,
-                        {-1, 0, 1,
-                        -16, 12, -6,
-                        -5, 2, 16});
+                         {-1, 0, 1,
+                          -16, 12, -6,
+                          -5, 2, 16});
   test.AddInput<int32_t>("min", {}, {-10});
   test.AddInput<int32_t>("max", {}, {10});
   test.AddOutput<int32_t>("Y", dims,
-                        {-1, 0, 1,
-                          -10, 10, -6,
-                          -5, 2, 10});
+                          {-1, 0, 1,
+                           -10, 10, -6,
+                           -5, 2, 10});
 
   // TensorRT does not support Clip opset 12 yet.
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
@@ -147,15 +147,15 @@ TEST(MathOpTest, Clip_uint32) {
 
   std::vector<int64_t> dims{3, 3};
   test.AddInput<uint32_t>("X", dims,
-                        {0, 0, 1,
-                        5, 12, 3,
-                        2, 7, 16});
+                          {0, 0, 1,
+                           5, 12, 3,
+                           2, 7, 16});
   test.AddInput<uint32_t>("min", {}, {3});
   test.AddInput<uint32_t>("max", {}, {10});
   test.AddOutput<uint32_t>("Y", dims,
-                        {3, 3, 3,
-                          5, 10, 3,
-                          3, 7, 10});
+                           {3, 3, 3,
+                            5, 10, 3,
+                            3, 7, 10});
 
   // TensorRT does not support Clip opset 12 yet.
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});

@@ -65,7 +65,8 @@ struct GroupNormNHWCParams : OpParams {
   }
 
   std::string Signature() const override {
-    std::string sig = std::to_string(n) + "_" + std::to_string(h * w) + "_" + std::to_string(c) + "_" + std::to_string(groups);
+    std::string swish_suffix = withSwish ? "_Swish" : "_Pass";
+    std::string sig = std::to_string(n) + "_" + std::to_string(h * w) + "_" + std::to_string(c) + "_" + std::to_string(groups) + swish_suffix;
     return sig;
   }
 

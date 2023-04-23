@@ -28,7 +28,7 @@ class TrainingSession {
   TrainingSession(const Environment& session_env,
                   const SessionOptions& session_options,
                   const std::vector<std::shared_ptr<IExecutionProvider>>& providers,
-                  const std::unordered_map<std::string, std::shared_ptr<Parameter>>& parameters,
+                  CheckpointState* state,
                   const ModelIdentifiers& model_identifiers);
 
   Status RegisterScheduler(const std::function<
@@ -69,8 +69,6 @@ class TrainingSession {
 
   Status SchedulerStep() noexcept;
 
-  Status CreateCheckpointState(CheckpointState& chkpt_state, bool save_optimizer_state) const;
-
   size_t GetParametersSize(const bool trainable_only = true) const;
 
   Status CopyParametersToBuffer(OrtValue& parameters_buffer, const bool trainable_only = true);
@@ -83,7 +81,7 @@ class TrainingSession {
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(TrainingSession);
 
-  const std::unordered_map<std::string, std::shared_ptr<Parameter>> named_parameters_;
+  CheckpointState* state_;  // Non owning pointer to the checkpoint state. It must outlive the training session.
   std::unique_ptr<Module> module_;
   std::shared_ptr<Optimizer> optimizer_;
   std::unique_ptr<LRSchedulerBase> scheduler_;

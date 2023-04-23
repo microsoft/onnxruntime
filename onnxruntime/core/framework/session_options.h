@@ -44,8 +44,8 @@ struct FreeDimensionOverride {
 };
 
 /**
-  * Configuration information for a session.
-  */
+ * Configuration information for a session.
+ */
 struct SessionOptions {
   ExecutionMode execution_mode = ExecutionMode::ORT_SEQUENTIAL;
 
@@ -126,7 +126,7 @@ struct SessionOptions {
   // See onnxruntime_c_api.h for detailed documentation.
   Status AddInitializer(_In_z_ const char* name, _In_ const OrtValue* val);
 
-#if !defined(ORT_MINIMAL_BUILD)  && !defined(DISABLE_EXTERNAL_INITIALIZERS)
+#if !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_EXTERNAL_INITIALIZERS)
   // Customer supplied pre-processed data for external initializers
   InlinedHashMap<std::string, OrtValue> external_initializers;
   Status AddExternalInitializers(gsl::span<const std::string> names, gsl::span<const OrtValue> values);

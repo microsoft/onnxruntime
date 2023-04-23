@@ -399,7 +399,7 @@ def main(args):
     model_name = args.model
     onnx_model_path = model_name + ".onnx"
 
-    global weight_bias_format
+    global weight_bias_format  # noqa: PLW0603
     weight_bias_format = 0 if args.no_merge_qkv else 1
 
     model = LongformerModel.from_pretrained(PRETRAINED_LONGFORMER_MODELS[model_name])

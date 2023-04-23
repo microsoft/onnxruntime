@@ -46,7 +46,7 @@ class _OptimizerConfig:
         ], "'name' must be one of 'AdamOptimizer', 'LambOptimizer' or 'SGDOptimizer'"
         assert isinstance(defaults, dict), "'defaults' must be a dict"
         assert "lr" in defaults, "'defaults' must contain a {'lr' : positive number} entry"
-        assert (isinstance(defaults["lr"], float) or isinstance(defaults["lr"], int)) and defaults[
+        assert (isinstance(defaults["lr"], float) or isinstance(defaults["lr"], int)) and defaults[  # noqa: SIM101
             "lr"
         ] >= 0, "lr must be a positive number"
         assert isinstance(params, list), "'params' must be a list"

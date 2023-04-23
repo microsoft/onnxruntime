@@ -102,7 +102,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--ort_root",
         type=str,
-        help="Path to ONNXRuntime repository root. " "Inferred from the location of this script if not provided.",
+        help="Path to ONNXRuntime repository root. Inferred from the location of this script if not provided.",
     )
 
     args = parser.parse_args()

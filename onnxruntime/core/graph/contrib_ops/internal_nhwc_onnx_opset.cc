@@ -36,6 +36,17 @@ void RegisterNHWCSchema(const RegistrationFunc& f, ::ONNX_NAMESPACE::OpSchema&& 
                   .SetDomain(onnxruntime::kMSInternalNHWCDomain)));
 }
 
+// Registration function that uses the default InferenceContext to leverage the default ONNX type/shape inferencing
+// with the kMSInternalNHWCDomain domain. Used by NHWC Resize operator.
+void RegisterNCHWSchemaWithNHWCDomain(const RegistrationFunc& f, ::ONNX_NAMESPACE::OpSchema&& schema) {
+  auto onnx_inferencing_func = schema.GetTypeAndShapeInferenceFunction();
+  f(std::move(::ONNX_NAMESPACE::OpSchema(schema)
+                  .TypeAndShapeInferenceFunction([onnx_inferencing_func](ONNX_NAMESPACE::InferenceContext& ctx) {
+                    onnx_inferencing_func(ctx);
+                  })
+                  .SetDomain(onnxruntime::kMSInternalNHWCDomain)));
+}
+
 void RegisterNHWCSchemaWithActivation(const RegistrationFunc& f, ::ONNX_NAMESPACE::OpSchema&& schema) {
   auto onnx_inferencing_func = schema.GetTypeAndShapeInferenceFunction();
   f(std::move(::ONNX_NAMESPACE::OpSchema(schema)
@@ -66,6 +77,12 @@ void RegisterNHWCSchemaWithActivation(const RegistrationFunc& f, ::ONNX_NAMESPAC
   RegisterNHWCSchemaWithActivation(                                            \
       RegistrationFn,                                                          \
       ::ONNX_NAMESPACE::GetOpSchema<                                           \
+          ::ONNX_NAMESPACE::ONNX_OPERATOR_SET_SCHEMA_CLASS_NAME(Onnx, SinceVersion, Op)>())
+
+#define REGISTER_NCHW_SCHEMA_WITH_NHWC_DOMAIN(RegistrationFn, Op, SinceVersion) \
+  RegisterNCHWSchemaWithNHWCDomain(                                             \
+      RegistrationFn,                                                           \
+      ::ONNX_NAMESPACE::GetOpSchema<                                            \
           ::ONNX_NAMESPACE::ONNX_OPERATOR_SET_SCHEMA_CLASS_NAME(Onnx, SinceVersion, Op)>())
 
 void OpSet_Internal_NHWC_ONNX::ForEachSchema(const std::function<void(ONNX_NAMESPACE::OpSchema&&)>& fn) {
@@ -115,10 +132,18 @@ void OpSet_Internal_NHWC_ONNX::ForEachSchema(const std::function<void(ONNX_NAMES
   REGISTER_NHWC_SCHEMA(fn, SpaceToDepth, 1);
   REGISTER_NHWC_SCHEMA(fn, SpaceToDepth, 13);
 
-#if defined(USE_QNN)
-  REGISTER_NHWC_SCHEMA(fn, Resize, 11);
-  REGISTER_NHWC_SCHEMA(fn, Resize, 13);
-#endif
+  // The REGISTER_NCHW_SCHEMA_WITH_NHWC_DOMAIN macro uses the default ONNX type/shape inferencing, which assumes
+  // data layouts in NCHW. We use the default ONNX type/shape inferencing for NHWC Resize to avoid having to modify
+  // the 'scales' or 'sizes' inputs within a custom InferenceContext class.
+  //
+  // An alternative could have been to leave NHWC Resize in the ONNX domain (instead of the internal NHWC domain).
+  // However, the internal NHWC domain is necessary to allow EPs to detect and reject Resize ops with unsupported
+  // shapes after layout transformation.
+  //
+  // NHWC Resize is currently used by the QNN EP.
+  REGISTER_NCHW_SCHEMA_WITH_NHWC_DOMAIN(fn, Resize, 11);
+  REGISTER_NCHW_SCHEMA_WITH_NHWC_DOMAIN(fn, Resize, 13);
+  REGISTER_NCHW_SCHEMA_WITH_NHWC_DOMAIN(fn, Resize, 18);
 
   // internal QLinear ops
   REGISTER_NHWC_SCHEMA_FROM_MSDOMAIN(fn, QLinearAveragePool, 1);

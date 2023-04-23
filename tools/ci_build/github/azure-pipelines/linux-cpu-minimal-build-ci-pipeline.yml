@@ -90,6 +90,7 @@ jobs:
                 -e ORT_BUILD_WITH_CACHE=1 \
                 onnxruntimecpubuild \
                   /bin/bash -c "
+                    set -e -x;
                     /onnxruntime_src/tools/ci_build/github/linux/ort_minimal/build_full_ort_and_create_ort_files.sh /build/1; \
                     ccache -sv; \
                     ccache -z;"

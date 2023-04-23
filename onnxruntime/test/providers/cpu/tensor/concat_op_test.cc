@@ -130,7 +130,7 @@ TEST(ConcatOpTest, Concat2D_4) {
                          31.0f, 32.0f, 33.0f, 34.0f,
                          41.0f, 42.0f, 43.0f, 44.0f});
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kTensorrtExecutionProvider});  //TensorRT: no support for dynamic shape tensor
+           {kTensorrtExecutionProvider});  // TensorRT: no support for dynamic shape tensor
 }
 
 TEST(ConcatOpTest, Concat2D_5) {

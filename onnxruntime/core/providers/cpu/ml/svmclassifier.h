@@ -104,8 +104,8 @@ class SVMCommon {
 
 class SVMClassifier final : public OpKernel, private SVMCommon {
   using SVMCommon::batched_kernel_dot;
-  using SVMCommon::set_kernel_type;
   using SVMCommon::get_kernel_type;
+  using SVMCommon::set_kernel_type;
 
  public:
   SVMClassifier(const OpKernelInfo& info);
@@ -129,7 +129,7 @@ class SVMClassifier final : public OpKernel, private SVMCommon {
   std::vector<int64_t> classlabels_ints_;
   std::vector<std::string> classlabels_strings_;
   POST_EVAL_TRANSFORM post_transform_;
-  SVM_TYPE mode_;  //how are we computing SVM? 0=LibSVC, 1=LibLinear
+  SVM_TYPE mode_;  // how are we computing SVM? 0=LibSVC, 1=LibLinear
 };
 
 }  // namespace ml

@@ -11,7 +11,7 @@ export CUDA_HOME=/usr/local/cuda
 export CUDNN_HOME=/usr/local/cuda
 export CUDACXX=$CUDA_HOME/bin/nvcc
 
-./build.sh --config RelWithDebInfo --use_cuda --enable_training --build_wheel --skip_tests --cuda_version=11.6 --parallel 8 --use_mpi
+./build.sh --config RelWithDebInfo --use_cuda --enable_training --build_wheel --skip_tests --cuda_version=11.8 --parallel 8 --use_mpi
 ```
 
 Install the Python wheel.

@@ -109,7 +109,8 @@ class Stream {
 };
 
 namespace synchronize {
-// an object which record the status of the stream, and can be wait on from another stream.
+// An abstraction used for synchronization between streams. See its concrete subclass (CudaNotification, etc.) how the activate
+// and wait works for a specific stream
 class Notification {
  public:
   explicit Notification(Stream& s) : stream_(s) {}
@@ -165,6 +166,5 @@ class IStreamCommandHandleRegistry {
   // register a handle about how to create stream on given device type.
   virtual void RegisterCreateStreamFn(OrtDevice::DeviceType device_type, CreateStreamFn f) = 0;
 };
-
 
 }  // namespace onnxruntime

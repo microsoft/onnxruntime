@@ -64,6 +64,10 @@ struct PropertyBag {
     return named_properties_.size();
   }
 
+  bool HasProperty(const std::string& property_name) const {
+    return named_properties_.count(property_name);
+  }
+
  private:
   const InlinedVector<int32_t> supported_data_types{
       ONNX_NAMESPACE::TensorProto::FLOAT,
@@ -76,6 +80,14 @@ struct PropertyBag {
 
   InlinedHashMap<std::string, PropertyDataType> named_properties_;
 };
+
+template <>
+inline PropertyDataType PropertyBag::GetProperty<PropertyDataType>(const std::string& name) const {
+  auto it = named_properties_.find(name);
+  ORT_ENFORCE(it != named_properties_.end(), "No property named ", name);
+
+  return it->second;
+}
 
 }  // namespace api
 }  // namespace training
