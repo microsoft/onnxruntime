@@ -22,8 +22,11 @@ namespace {
 template <typename T>
 struct DataTypeToName;
 
-#define DTYPE_TO_STR(type, name) \
-    template<> struct DataTypeToName<type>{ constexpr static const char* value = name; }; \
+#define DTYPE_TO_STR(type, name)               \
+  template <>                                  \
+  struct DataTypeToName<type> {                \
+    constexpr static const char* value = name; \
+  };
 
 DTYPE_TO_STR(float, "fp32");
 DTYPE_TO_STR(half, "fp16");
@@ -39,13 +42,13 @@ const std::string GetDataTypeName() {
 
 void LoadRocmTritonKernel();
 
-Status LaunchTritonKernel(hipStream_t stream, std::string fname, int grid0, int grid1, int grid2, void *args, size_t args_size);
+Status LaunchTritonKernel(hipStream_t stream, std::string fname, int grid0, int grid1, int grid2, void* args, size_t args_size);
 
-const TritonKernelMetaData *GetRocmTritonKernelMetadata(size_t idx);
+const TritonKernelMetaData* GetRocmTritonKernelMetadata(size_t idx);
 
-const std::vector<int> *GetRocmTritonKernelByGroup(std::string group_name);
+const std::vector<int>* GetRocmTritonKernelByGroup(std::string group_name);
 
-Status LaunchTritonKernel(hipStream_t stream, size_t idx, int grid0, int grid1, int grid2, void *args, size_t args_size);
+Status LaunchTritonKernel(hipStream_t stream, size_t idx, int grid0, int grid1, int grid2, void* args, size_t args_size);
 
-}  // end of rocm
-}  // end of onnxruntime
+}  // namespace rocm
+}  // namespace onnxruntime
