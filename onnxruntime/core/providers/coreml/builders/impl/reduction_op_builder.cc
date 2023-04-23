@@ -21,11 +21,14 @@ class ReductionOpBuilder : public BaseOpBuilder {
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
                                const logging::Logger& logger) const override;
 #endif
+
+  bool IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params,
+                         const logging::Logger& logger) const override;
 };
 
 namespace {
 template <typename T>
-void AddReductionParams(T* params, std::vector<int64_t>& axes, bool keepdims, bool noop_with_empty_axes) {
+void AddReductionParams(T* params, const std::vector<int64_t>& axes, bool keepdims, bool noop_with_empty_axes) {
   params->set_keepdims(keepdims);
 
   for (auto& axis : axes)
@@ -41,9 +44,21 @@ Status ReductionOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, co
                                                  const logging::Logger& /* logger */) const {
   const auto& op_type(node.OpType());
   const auto& input_defs(node.InputDefs());
+  const auto& initializers(model_builder.GetInitializerTensors());
+
+  std::vector<int64_t> axes;
 
   NodeAttrHelper helper(node);
-  auto axes = helper.Get("axes", std::vector<int64_t>{});
+  if (input_defs.size() > 1) {
+    auto& axes_tensor = *initializers.at(input_defs[1]->Name());
+    const int64_t* raw_axes = axes_tensor.int64_data().empty()
+      ? reinterpret_cast<const int64_t*>(axes_tensor.raw_data().data())
+      : axes_tensor.int64_data().data();
+    const auto size = axes_tensor.dims()[0];
+    axes = std::vector<int64_t>(raw_axes, raw_axes + size);
+  } else {
+    axes = helper.Get("axes", std::vector<int64_t>{});
+  }
   auto keepdims = helper.Get("keepdims", false);
   auto noop_with_empty_axes = helper.Get("noop_with_empty_axes", 0);
 
@@ -65,6 +80,31 @@ Status ReductionOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, co
   return Status::OK();
 }
 #endif
+
+bool ReductionOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params,
+                                           const logging::Logger& logger) const {
+  const auto& input_defs = node.InputDefs();
+
+  if (input_defs.size() == 1) {
+    NodeAttrHelper helper(node);
+
+    if (!helper.HasAttr("axes")) {
+      LOGS(logger, VERBOSE) << "Axes of reduction must be an attribute if not present in inputs";
+      return false;
+    }
+
+    return true;
+  }
+
+  const auto& axes_name = input_defs[1]->Name();
+  const auto& initializers = input_params.graph_viewer.GetAllInitializedTensors();
+  if (!Contains(initializers, axes_name)) {
+    LOGS(logger, VERBOSE) << "Axes of reduction must be a constant initializer";
+    return false;
+  }
+
+  return true;
+}
 
 void CreateReductionOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {
   op_registrations.builders.push_back(std::make_unique<ReductionOpBuilder>());
