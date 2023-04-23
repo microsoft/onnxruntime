@@ -276,7 +276,7 @@ Results are from Standard_NC4as_T4_v3 Azure virtual machine:
 | onnxruntime | dev                     | ROCMExecutionProvider | 1          | 2.2             | 5,548               | 4,908                |
 | torch       | 1.12.1+rocm5.4          | -                     | 1          | 3.4             | 6,653               | 4,613                |
 | torch       | 2.0.0+rocm5.4.2         | default               | 1          | 3.2             | 5,977               | 4,368                |
-| torch       | 2.0.0a0+git254afb8      | compile               | 1          | 3.0             | 5,869               | 4,266                |
+| torch       | 2.0.0+rocm5.4.2         | compile               | 1          | 3.0             | 5,869               | 4,266                |
 | onnxruntime | dev                     | ROCMExecutionProvider | 4          | 6.6             | 5,546               | 4,906                |
 | torch       | 1.12.1+rocm5.4          | -                     | 4          | 10.1            | 19,477              | 11,325               |
 | torch       | 2.0.0+rocm5.4.2         | default               | 4          | 10.5            | 13,051              | 7,300                |
@@ -285,6 +285,23 @@ Results are from Standard_NC4as_T4_v3 Azure virtual machine:
 | torch       | 1.12.1+rocm5.4          | -                     | 8          | 19.3            | 55,851              | 20,014               |
 | torch       | 2.0.0+rocm5.4.2         | default               | 8          | 20.3            | 23,551              | 11,930               |
 | torch       | 2.0.0+rocm5.4.2         | compile               | 8          | 17.8            | 23,303              | 11,800               |
+
+#### Results of MI100 (Ubuntu 20.04)
+
+| engine      | version                 | provider              | batch size | average latency | first run memory MB | second run memory MB |
+| ----------- | ----------------------- | --------------------- | ---------- | --------------- | ------------------- | -------------------- |
+| onnxruntime | dev                     | ROCMExecutionProvider | 1          | 2.4             | 5,254               | 4,614                |
+| torch       | 1.12.1+rocm5.4          | -                     | 1          | 3.5             | 5,771               | 4,672                |
+| torch       | 2.0.0+rocm5.4.2         | default               | 1          | 3.5             | 5,811               | 4,206                |
+| torch       | 2.0.0+rocm5.4.2         | compile               | 1          | 3.1             | 5,774               | 4,168                |
+| onnxruntime | dev                     | ROCMExecutionProvider | 4          | 7.5             | 7,290               | 6,646                |
+| torch       | 1.12.1+rocm5.4          | -                     | 4          | 10.7            | 19,334              | 11,181               |
+| torch       | 2.0.0+rocm5.4.2         | default               | 4          | 11.5            | 12,881              | 7,151                |
+| torch       | 2.0.0+rocm5.4.2         | compile               | 4          | 10.0            | 12,740              | 7,073                |
+| onnxruntime | dev                     | ROCMExecutionProvider | 8          | 14.4            | 7,320               | 6,676                |
+| torch       | 1.12.1+rocm5.4          | -                     | 8          | 20.2            | 31,820              | 19,908               |
+| torch       | 2.0.0+rocm5.4.2         | default               | 8          | 22.2            | 23,415              | 11,815               |
+| torch       | 2.0.0+rocm5.4.2         | compile               | 8          | 19.3            | 23,154              | 11,667               |
 
 ### Credits
 
