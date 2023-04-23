@@ -15,12 +15,12 @@ namespace onnxruntime {
 namespace rocm {
 namespace {
 
-#define HIP_CHECK(status)                                       \
-	if (status != hipSuccess) {                             \
-		ORT_RETURN_IF(true, hipGetErrorName(status));  \
-	}
+#define HIP_CHECK(status)                         \
+  if (status != hipSuccess) {                     \
+    ORT_RETURN_IF(true, hipGetErrorName(status)); \
+  }
 
-const int HIP_WARP_SIZE=64;
+const int HIP_WARP_SIZE = 64;
 const std::string FILE_SP = "/";
 const std::string META_FILENAME = "meta.json";
 
@@ -44,7 +44,7 @@ const std::string GetRocmTritonKernelPath() {
  */
 void TryToLoadKernel() {
   auto status = Status::OK();
-  
+
   ORT_TRY {
     // get kernel lib metadata
     const auto path = GetRocmTritonKernelPath();
@@ -86,7 +86,7 @@ void TryToLoadKernel() {
       // parse constants
       if (j_m.contains("constants")) {
         auto constants = j_m["constants"];
-        for (auto &el : constants.items()) {
+        for (auto& el : constants.items()) {
           auto k = el.key();
           auto v = el.value();
           if (!v.is_number_integer()) {
@@ -103,16 +103,16 @@ void TryToLoadKernel() {
       LOGS_DEFAULT(VERBOSE) << "loaded rocm triton kernel: " << fname << " idx: " << idx;
     }
   }
-  ORT_CATCH (const std::exception &e) {
+  ORT_CATCH(const std::exception& e) {
     ORT_HANDLE_EXCEPTION([&]() {
-          std::ostringstream message_stream;
-          message_stream << "rocm triton load metadata failed. Error message: " << e.what();
+      std::ostringstream message_stream;
+      message_stream << "rocm triton load metadata failed. Error message: " << e.what();
 
-          std::string message = message_stream.str();
+      std::string message = message_stream.str();
 
-          LOGS_DEFAULT(ERROR) << message;
-          status = ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, message);
-        });
+      LOGS_DEFAULT(ERROR) << message;
+      status = ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, message);
+    });
   }
   ORT_THROW_IF_ERROR(status);
 }
@@ -126,7 +126,7 @@ void LoadRocmTritonKernel() {
   std::call_once(load_triton_kernel_flag, TryToLoadKernel);
 }
 
-Status LaunchTritonKernel(hipStream_t stream, std::string fname, int grid0, int grid1, int grid2, void *args, size_t args_size) {
+Status LaunchTritonKernel(hipStream_t stream, std::string fname, int grid0, int grid1, int grid2, void* args, size_t args_size) {
   if (rocm_triton_kernel_map.count(fname) == 0) {
     // return unsupported status when not found function name in registry
     // this error status will be used by tunableOp
@@ -138,7 +138,7 @@ Status LaunchTritonKernel(hipStream_t stream, std::string fname, int grid0, int 
   auto idx = rocm_triton_kernel_map[fname];
   auto metadata = rocm_triton_kernel_metadata[idx];
   void* config[] = {HIP_LAUNCH_PARAM_BUFFER_POINTER, args, HIP_LAUNCH_PARAM_BUFFER_SIZE, &args_size,
-                      HIP_LAUNCH_PARAM_END};
+                    HIP_LAUNCH_PARAM_END};
 
   HIP_CHECK(hipModuleLaunchKernel(metadata.func,
                                   grid0, grid1, grid2,
@@ -150,7 +150,7 @@ Status LaunchTritonKernel(hipStream_t stream, std::string fname, int grid0, int 
   return Status::OK();
 }
 
-Status LaunchTritonKernel(hipStream_t stream, size_t idx, int grid0, int grid1, int grid2, void *args, size_t args_size) {
+Status LaunchTritonKernel(hipStream_t stream, size_t idx, int grid0, int grid1, int grid2, void* args, size_t args_size) {
   if (idx >= rocm_triton_kernel_metadata.size()) {
     // return unsupported status when not found function name in registry
     // this error status will be used by tunableOp
@@ -161,7 +161,7 @@ Status LaunchTritonKernel(hipStream_t stream, size_t idx, int grid0, int grid1, 
   }
   auto metadata = rocm_triton_kernel_metadata[idx];
   void* config[] = {HIP_LAUNCH_PARAM_BUFFER_POINTER, args, HIP_LAUNCH_PARAM_BUFFER_SIZE, &args_size,
-                      HIP_LAUNCH_PARAM_END};
+                    HIP_LAUNCH_PARAM_END};
 
   HIP_CHECK(hipModuleLaunchKernel(metadata.func,
                                   grid0, grid1, grid2,
@@ -173,18 +173,18 @@ Status LaunchTritonKernel(hipStream_t stream, size_t idx, int grid0, int grid1, 
   return Status::OK();
 }
 
-const TritonKernelMetaData *GetRocmTritonKernelMetadata(size_t idx) {
+const TritonKernelMetaData* GetRocmTritonKernelMetadata(size_t idx) {
   if (idx >= rocm_triton_kernel_metadata.size()) {
     return nullptr;
   }
   return &rocm_triton_kernel_metadata[idx];
 }
 
-const std::vector<int> *GetRocmTritonKernelByGroup(std::string group_name) {
+const std::vector<int>* GetRocmTritonKernelByGroup(std::string group_name) {
   if (rocm_triton_kernel_group_map.count(group_name) == 0) {
     return nullptr;
   }
   return &rocm_triton_kernel_group_map.at(group_name);
 }
-}  // end of rocm
-}  // end of onnxruntime
+}  // namespace rocm
+}  // namespace onnxruntime
