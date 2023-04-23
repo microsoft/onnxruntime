@@ -1,0 +1,24 @@
+CompileFlags:
+  Add:
+    - -std=c++17
+    - -D__HIP_PLATFORM_AMD__
+    - -DROCM_USE_FLOAT16
+    - -I/opt/rocm/include
+    - -I/home/guangyunhan/onnxruntime-ke/build_ck_interwave/Release/_deps/composable_kernel-src/include
+    - -I/home/guangyunhan/onnxruntime-ke/build_ck_interwave/Release/_deps/composable_kernel-src/library/include
+    - -I/usr/local/cuda/include
+---
+If:
+  PathMatch: .*rocm.*\.cuh?
+
+CompileFlags:
+  Add:
+    - -xhip
+
+---
+If:
+  PathMatch: .*rocm/bert.*\.h?
+
+CompileFlags:
+  Add:
+    - -xhip

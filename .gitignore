@@ -1,3 +1,9 @@
+.cache/
+build/
+build_cuda/
+build_rocm/
+/compile_commands.json
+
 # build, distribute, and bins (+ python proto bindings)
 build
 build_*/

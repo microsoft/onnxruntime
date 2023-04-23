@@ -8,11 +8,6 @@
     ],
     "[python]": {
         "editor.tabSize": 4,
-        // Auto sort imports
-        "editor.formatOnSave": true,
-        "editor.codeActionsOnSave": {
-            "source.organizeImports": true
-        },
     },
     // Enable Python linting and Pylance type checking
     "python.analysis.typeCheckingMode": "basic",
@@ -27,17 +22,7 @@
         "--line-length",
         "120"
     ],
-    "python.linting.enabled": true,
-    "python.linting.flake8Enabled": true,
-    "python.linting.pylintEnabled": true,
-    "python.linting.pydocstyleEnabled": true,
     "python.linting.pydocstyleArgs": [
         "--convention=google"
     ],
-    "python.linting.banditEnabled": true,
-    "cpplint.lineLength": 120,
-    "cpplint.filters": [
-        "-build/include_subdir",
-        "-runtime/references"
-    ]
 }
