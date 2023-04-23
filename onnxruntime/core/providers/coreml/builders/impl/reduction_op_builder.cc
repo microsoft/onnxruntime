@@ -25,11 +25,14 @@ class ReductionOpBuilder : public BaseOpBuilder {
 
 namespace {
 template <typename T>
-void AddReductionParams(T* params, std::vector<int64_t>& axes, bool keepdims) {
+void AddReductionParams(T* params, std::vector<int64_t>& axes, bool keepdims, bool noop_with_empty_axes) {
   params->set_keepdims(keepdims);
-  for (auto& axis : axes) {
+
+  for (auto& axis : axes)
     params->add_axes(axis);
-  }
+
+  if (axes.size() == 0 && noop_with_empty_axes)
+    params->reduceall();
 }
 } // namespace
 
@@ -42,13 +45,14 @@ Status ReductionOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, co
   NodeAttrHelper helper(node);
   auto axes = helper.Get("axes", std::vector<int64_t>{});
   auto keepdims = helper.Get("keepdims", false);
+  auto noop_with_empty_axes = helper.Get("noop_with_empty_axes", 0);
 
   std::unique_ptr<COREML_SPEC::NeuralNetworkLayer> layer = CreateNNLayer(model_builder, node);
 
   if (op_type == "ReduceSum") {
-    AddReductionParams(layer->mutable_reducesum(), axes, keepdims);
+    AddReductionParams(layer->mutable_reducesum(), axes, keepdims, noop_with_empty_axes);
   } else if (op_type == "ReduceMean") {
-    AddReductionParams(layer->mutable_reducemean(), axes, keepdims);
+    AddReductionParams(layer->mutable_reducemean(), axes, keepdims, noop_with_empty_axes);
   } else {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "ReductionOpBuilder::AddToModelBuilderImpl, unknown op: ", op_type);
