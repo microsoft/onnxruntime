@@ -375,10 +375,10 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="providerOptions">Optional key/value pairs to specify execution provider options.</param>
         public void AppendExecutionProvider(string providerName, Dictionary<string, string> providerOptions = null)
         {
-            if (providerName != "SNPE" && providerName != "XNNPACK" && providerName != "AzureExecutionProvider")
+            if (providerName != "SNPE" && providerName != "XNNPACK" && providerName != "AZURE")
             {
                 throw new NotSupportedException(
-                    "Only SNPE, XNNPACK and Azure execution providers can be enabled by this method.");
+                    "Only SNPE, XNNPACK and AZURE execution providers can be enabled by this method.");
             }
 
             if (providerOptions == null)
