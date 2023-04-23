@@ -44,7 +44,6 @@ class ResizeOpBuilder : public BaseOpBuilder {
                                      bool do_op_validation) const override ORT_MUST_USE_RESULT;
 
  private:
-
   /**
    * Returns the QNN integer value that corresponds to the given ONNX mode (string).
    *
@@ -280,6 +279,12 @@ Status ResizeOpBuilder::ValidateQDQOp(QnnModelWrapper& qnn_model_wrapper, const 
                     "QNN EP: Cannot get shape for Resize input");
   ORT_RETURN_IF(input_shape.size() < 3, "QNN EP: Resize input must have a rank >= 3.");
 
+  const auto& output_0 = node_unit.Outputs()[0];
+  std::vector<uint32_t> output_shape;
+  ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(output_0.node_arg, output_shape),
+                    "QNN EP: Cannot get shape for Resize output");
+  ORT_RETURN_IF(output_shape.size() < 3, "QNN EP: Resize output must have a rank >= 3.");
+
   return Status::OK();
 }
 
@@ -305,14 +310,11 @@ Status ResizeOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_w
                                                     const logging::Logger& logger,
                                                     bool is_quantized_model,
                                                     bool do_op_validation) const {
-
   // The QNN Resize op does not currently work with the QNN cpu backend, but works with the HTP backend. Therefore, we
   // currently use QNN's Resize op for quantized models and either ResizeBilinear or ResizeNearestNeighbor for
   // non-quantized models. This requires separate handling for quantized models.
   // TODO: Use only Resize once QNN's Resize op works in the QNN cpu backend.
-  return is_quantized_model ?
-      ProcessQDQOpAttrsAndOutputs(qnn_model_wrapper, node_unit, std::move(input_names), logger, do_op_validation) :
-      ProcessOpAttrsAndOutputs(qnn_model_wrapper, node_unit, std::move(input_names), logger, do_op_validation);
+  return is_quantized_model ? ProcessQDQOpAttrsAndOutputs(qnn_model_wrapper, node_unit, std::move(input_names), logger, do_op_validation) : ProcessOpAttrsAndOutputs(qnn_model_wrapper, node_unit, std::move(input_names), logger, do_op_validation);
 }
 
 Status ResizeOpBuilder::ProcessOpAttrsAndOutputs(QnnModelWrapper& qnn_model_wrapper,

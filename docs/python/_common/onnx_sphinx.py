@@ -20,12 +20,12 @@ from onnx.onnx_cpp2py_export.defs import SchemaError  # pylint: disable=E1101,E0
 from sphinx.util import logging
 
 
-def get_template():  # type: ignore
+def get_template():
     try:
         from jinja2 import Template
     except ImportError:  # pragma no cover
 
-        class Template:  # type: ignore
+        class Template:
             "Docstring template"
 
             def __init__(self, *args):
@@ -46,7 +46,7 @@ def get_template():  # type: ignore
     return Template
 
 
-def _get_diff_template():  # type: ignore
+def _get_diff_template():
     template = get_template()
     return template(
         textwrap.dedent(
@@ -86,7 +86,7 @@ def _get_diff_template():  # type: ignore
     )
 
 
-def _get_ops_template():  # type: ignore
+def _get_ops_template():
     template = get_template()
     return template(
         textwrap.dedent(
@@ -186,7 +186,7 @@ def _get_ops_template():  # type: ignore
     )
 
 
-def _get_main_template():  # type: ignore
+def _get_main_template():
     template = get_template()
     return template(
         textwrap.dedent(
@@ -249,7 +249,7 @@ _attribute_conversion_functions = {
 }
 
 
-def _populate__get_all_schemas_with_history():  # type: ignore
+def _populate__get_all_schemas_with_history():
     import onnxruntime.capi.onnxruntime_pybind11_state as rtpy
 
     get_schemas = rtpy.get_all_operator_schema or rtpy.get_all_opkernel_def
@@ -270,21 +270,21 @@ def _populate__get_all_schemas_with_history():  # type: ignore
     return res
 
 
-def _get_all_schemas_with_history():  # type: ignore
-    global __get_all_schemas_with_history  # pylint: disable=W0603
+def _get_all_schemas_with_history():
+    global __get_all_schemas_with_history  # noqa: PLW0603
     if __get_all_schemas_with_history is None:
         __get_all_schemas_with_history = _populate__get_all_schemas_with_history()
     return __get_all_schemas_with_history
 
 
-def get_domain_list():  # type: ignore
+def get_domain_list():
     """
     Returns the list of available domains.
     """
     return list(sorted(set(map(lambda s: s.domain, get_all_schemas_with_history()))))
 
 
-def get_operator_schemas(op_name, version=None, domain=None):  # type: ignore
+def get_operator_schemas(op_name, version=None, domain=None):
     """
     Returns all schemas mapped to an operator name.
     :param op_name: name of the operator
@@ -312,7 +312,7 @@ def get_operator_schemas(op_name, version=None, domain=None):  # type: ignore
             for op, v in ops.items():
                 if version is None:
                     sch.extend(v.values())
-                elif version == "last" and (dom == "" or "onnx" in dom):
+                elif version == "last" and (not dom or "onnx" in dom):
                     try:
                         sch.append(get_schema(op, domain=dom))
                     except SchemaError:  # pragma: no cover
@@ -333,7 +333,7 @@ def get_operator_schemas(op_name, version=None, domain=None):  # type: ignore
     return [v[-1] for v in vals]
 
 
-def get_rst_doc(  # type: ignore
+def get_rst_doc(
     folder,
     op_name=None,
     domain=None,
@@ -544,7 +544,7 @@ def get_rst_doc(  # type: ignore
     return docs, d_links
 
 
-def _insert_diff(folder, docs, split=".. tag-diff-insert.", op_name=None, version=None, domain=None):  # type: ignore
+def _insert_diff(folder, docs, split=".. tag-diff-insert.", op_name=None, version=None, domain=None):
     """
     Splits a using `split`, insert HTML differences between pieces.
     The function relies on package `pyquickhelper`.
@@ -555,9 +555,9 @@ def _insert_diff(folder, docs, split=".. tag-diff-insert.", op_name=None, versio
 
     reg = re.compile("([A-Z][A-Za-z0-9_]*) - ([0-9]+)")
 
-    d_links = {}  # type: ignore
-    pieces = [spl[0]]  # type: ignore
-    mds = []  # type: ignore
+    d_links = {}
+    pieces = [spl[0]]
+    mds = []
     for i in range(1, len(spl)):
         spl1 = spl[i - 1].strip("\n ")
         spl2 = spl[i].strip("\n ")
@@ -660,13 +660,13 @@ def _process_example(code: str) -> str:
     """
     Add necessary imports to make the example work.
     """
-    code = code.replace("  # type: ignore", "")
+    code = code.replace("", "")
     missing_imports = ["import numpy as np", "import onnx"]
     elements = [*missing_imports, "", "", code.strip("\n"), ""]
     return "\n".join(elements)
 
 
-def get_onnx_example(op_name):  # type: ignore
+def get_onnx_example(op_name):
     """
     Retrieves examples associated to one operator
     stored in onnx packages.
@@ -688,7 +688,7 @@ def get_onnx_example(op_name):  # type: ignore
     if module is None:
         # Unable to find an example for 'op_name'.
         return {}
-    results = {}  # type: ignore
+    results = {}
     for v in mod.__dict__.values():
         if not isinstance(v, _Exporter):
             continue
@@ -712,7 +712,7 @@ def get_onnx_example(op_name):  # type: ignore
                     first = i + 1
             found = textwrap.dedent("\n".join(lines[first:]))
             key = me[len("export") :]
-            if key == "":
+            if not key:
                 key = "default"
                 if key in results:
                     key = f"example {len(results) + 1}"
@@ -736,9 +736,7 @@ def is_last_schema(sch: OpSchema) -> bool:
     return last.since_version == sch.since_version
 
 
-def onnx_documentation_folder(
-    folder, title="ONNX Operators in onnxruntime", flog=None, max_opsets=None
-):  # type: ignore
+def onnx_documentation_folder(folder, title="ONNX Operators in onnxruntime", flog=None, max_opsets=None):
     """
     Creates documentation in a folder for all known
     ONNX operators defined in onnxruntime or a subset.
@@ -758,7 +756,7 @@ def onnx_documentation_folder(
         @property
         def domain_name(self):
             title = self.domain
-            if title == "":
+            if not title:
                 title = "ai.onnx"
             return title
 
@@ -787,8 +785,8 @@ def onnx_documentation_folder(
                 table_dom.append(f"      - {col1}")
                 table_dom.append(f"      - {col2}")
             table_dom.append("")
-            if indent != "":
-                for i in range(len(table_dom)):  # pylint: disable=C0200
+            if indent:
+                for i in range(len(table_dom)):
                     table_dom[i] = indent + table_dom[i]
             res = "\n".join(table_dom)
             return res
@@ -817,7 +815,7 @@ def onnx_documentation_folder(
 
     # loop on domains
     for dom in sorted(all_schemas):
-        sdom = "ai.onnx" if dom == "" else dom
+        sdom = dom if dom else "ai.onnx"
         dom_pages = []
 
         do = all_schemas[dom]
@@ -830,7 +828,7 @@ def onnx_documentation_folder(
                 flog(f"generate page for onnx {dom!r} - {op!r}")  # pragma: no cover
             page_name = f"onnx_{dom.replace('.', '')}_{op}"
             doc, d_links = get_rst_doc(folder, op, domain=dom, version=None, example=True, diff=True)
-            if dom == "":
+            if not dom:
                 main = op
             else:
                 main = f"{dom} - {op}"

@@ -26,7 +26,7 @@ class MatMul : public XnnpackKernel {
                  /*out*/ bool& is_packed,
                  /*out*/ PrePackedWeights* prepacked_weights) override;
 
-private:
+ private:
   TensorShape b_shape_;
   BufferUniquePtr packed_b_;
   AllocatorPtr myAlloc;
@@ -40,7 +40,6 @@ private:
   xnn_caches xnn_caches_ = {0, 0};
   xnn_weights_cache weights_cache_;
 #endif
-
 };
 
 }  // namespace xnnpack

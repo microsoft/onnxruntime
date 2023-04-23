@@ -55,7 +55,7 @@ jobs:
           set +e
           if ! lintrunner --force-color --all-files --tee-json=lint.json -v; then
               echo ""
-              echo -e "\e[1m\e[36mYou can reproduce these results locally by using \`lintrunner -m main\`.\e[0m"
+              echo -e "\e[1m\e[36mYou can reproduce these results locally by using \`lintrunner\`. To set up lintrunner locally, see https://github.com/microsoft/onnxruntime/blob/main/docs/Coding_Conventions_and_Standards.md#linting .\e[0m"
               exit 1
           fi
       - name: Produce SARIF

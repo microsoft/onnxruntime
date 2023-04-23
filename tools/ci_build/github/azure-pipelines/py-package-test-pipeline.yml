@@ -10,7 +10,7 @@ stages:
   - template: templates/py-packaging-linux-test.yml
     parameters:
       arch: 'x86_64'
-      machine_pool: 'Linux-CPU'
+      machine_pool: 'aiinfra-Linux-CPU'
       device: 'CPU'
 
 - stage: Linux_Test_CPU_aarch64_stage

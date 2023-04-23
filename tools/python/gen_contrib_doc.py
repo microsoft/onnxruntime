@@ -34,7 +34,7 @@ def display_number(v):  # type: (int) -> Text
 
 
 def should_render_domain(domain, domain_filter):  # type: (Text) -> bool
-    if domain in (ONNX_DOMAIN, ONNX_ML_DOMAIN) or domain == "" or domain == "ai.onnx.ml":
+    if domain in (ONNX_DOMAIN, ONNX_ML_DOMAIN) or domain == "" or domain == "ai.onnx.ml":  # noqa: PLC1901
         return False
 
     if domain_filter and domain not in domain_filter:
@@ -398,7 +398,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--domains",
         nargs="+",
-        help="Filter to specified domains. " "e.g. `--domains com.microsoft com.microsoft.nchwc`",
+        help="Filter to specified domains. " "e.g. `--domains com.microsoft com.microsoft.nchwc`",  # noqa: ISC001
     )
     parser.add_argument(
         "--output_path",

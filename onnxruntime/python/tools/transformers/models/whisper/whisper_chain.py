@@ -107,5 +107,6 @@ def chain_model(args):
         save_as_external_data=True,
         all_tensors_to_one_file=True,
         convert_attribute=True,
+        location=f"{os.path.basename(args.beam_model_output_dir)}.data",
     )
     onnx.checker.check_model(args.beam_model_output_dir, full_check=True)

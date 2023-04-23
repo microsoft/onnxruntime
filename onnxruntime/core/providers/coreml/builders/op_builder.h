@@ -30,7 +30,7 @@ class IOpBuilder {
 
   // Add the operator to CoreML model
   [[nodiscard]] virtual Status AddToModelBuilder(ModelBuilder& model_builder, const Node& node,
-                                   const logging::Logger& logger) const = 0;
+                                                 const logging::Logger& logger) const = 0;
 #endif
 
   // Operator support related

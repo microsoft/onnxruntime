@@ -10,16 +10,25 @@
 ORT_RUNTIME_CLASS(TrainingSession);  /// Type that enables performing training for the given user models.
 ORT_RUNTIME_CLASS(CheckpointState);  /// Type that holds the training states for the training session.
 
+typedef enum OrtPropertyType {
+  OrtIntProperty = 0,
+  OrtFloatProperty = 1,
+  OrtStringProperty = 2,
+} OrtPropertyType;
+
 struct OrtTrainingApi {
   /** \brief Load a checkpoint state from directory on disk into checkpoint_state.
    *
    * This function will parse a checkpoint directory, pull relevant files and load the training
-   * states into the checkpoint_state. This checkpoint state can then be used to create the
+   * state into the checkpoint_state. This checkpoint state can then be used to create the
    * training session by invoking CreateTrainingSession. By doing so, the training session will resume
-   * training from the given checkpoint.
+   * training from the given checkpoint state.
+   * Note that the training session created with a checkpoint state uses this state to store the entire
+   * training state (including model parameters, its gradients, the optimizer states and the properties).
+   * As a result, it is required that the checkpoint state outlive the lifetime of the training session.
    *
    * \param[in] checkpoint_path Path to the checkpoint directory
-   * \param[out] checkpoint_state Checkpoint states that contains the states of the training session.
+   * \param[out] checkpoint_state Checkpoint state that contains the states of the training session.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
@@ -27,21 +36,20 @@ struct OrtTrainingApi {
   ORT_API2_STATUS(LoadCheckpoint, _In_ const ORTCHAR_T* checkpoint_path,
                   _Outptr_ OrtCheckpointState** checkpoint_state);
 
-  /** \brief Save the training session states to a checkpoint directory on disk.
+  /** \brief Save the given state to a checkpoint directory on disk.
    *
-   * This function retrieves the training session states from the training session and serializes them
-   * to a checkpoint directory on disk. This checkpoint can later be loaded by invoking LoadCheckpoint
-   * to continue the training with the same states.
+   * This function serializes the provided checkpoint state to a directory on disk.
+   * This checkpoint can later be loaded by invoking LoadCheckpoint to continue the training with the same state.
    *
-   * \param[in] checkpoint_path Path to the checkpoint directory
-   * \param[in] session The training session from where the checkpoint states are to be retrieved.
-   * \param[in] save_optimizer_state Boolean flag indicating whether or not to save the optimizer states to the checkpoint.
+   * \param[in] checkpoint_state The checkpoint state to save.
+   * \param[in] checkpoint_path Path to the checkpoint directory.
+   * \param[in] include_optimizer_state Flag to indicate whether to save the optimizer state or not.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
    */
-  ORT_API2_STATUS(SaveCheckpoint, _In_ const ORTCHAR_T* checkpoint_path, _In_ const OrtTrainingSession* session,
-                  bool save_optimizer_state);
+  ORT_API2_STATUS(SaveCheckpoint, _In_ OrtCheckpointState* checkpoint_state, _In_ const ORTCHAR_T* checkpoint_path,
+                  const bool include_optimizer_state);
 
   /** \brief Create a training session that can be used to begin or resume training.
    *
@@ -371,6 +379,43 @@ struct OrtTrainingApi {
    */
   ORT_API2_STATUS(TrainingSessionGetEvalModelInputName, _In_ const OrtTrainingSession* sess, size_t index,
                   _In_ OrtAllocator* allocator, _Outptr_ char** output);
+
+  /** \brief Adds the given property to the checkpoint state.
+   *
+   * Runtime properties such as epoch, training step, best score, and others can be added to the checkpoint
+   * state by the user if they desire by calling this function with the appropriate property name and
+   * value. The given property name must be unique to be able to successfully add the property.
+   *
+   * \param[in] checkpoint_state The checkpoint state which should hold the property.
+   * \param[in] property_name Unique name of the property being added.
+   * \param[in] property_type Type of the property associated with the given name.
+   * \param[in] property_value Property value associated with the given name.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   */
+  ORT_API2_STATUS(AddProperty, _Inout_ OrtCheckpointState* checkpoint_state,
+                  _In_ const char* property_name, _In_ enum OrtPropertyType property_type,
+                  _In_ void* property_value);
+
+  /** \brief Gets the property value associated with the given name from the checkpoint state.
+   *
+   * Gets the property value from an existing entry in the checkpoint state. The property must
+   * exist in the checkpoint state to be able to retrieve it successfully.
+   * Property values are allocated on the heap. The user must free up the memory as needed by their application.
+   *
+   * \param[in] checkpoint_state The checkpoint state that is currently holding the property.
+   * \param[in] property_name Unique name of the property being retrieved.
+   * \param[in] allocator Allocator used to allocate the memory for the property_value.
+   * \param[out] property_type Type of the property associated with the given name.
+   * \param[out] property_value Property value associated with the given name.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   */
+  ORT_API2_STATUS(GetProperty, _In_ const OrtCheckpointState* checkpoint_state,
+                  _In_ const char* property_name, _Inout_ OrtAllocator* allocator,
+                  _Out_ enum OrtPropertyType* property_type, _Outptr_ void** property_value);
 };
 
 typedef struct OrtTrainingApi OrtTrainingApi;

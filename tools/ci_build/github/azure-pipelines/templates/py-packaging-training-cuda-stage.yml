@@ -100,6 +100,13 @@ stages:
             CudaVersion: ${{ parameters.cuda_version }}
             GccVersion: ${{ parameters.gcc_version }}
             UploadWheel: ${{ parameters.upload_wheel }}
+          Python311:
+            PythonVersion: '3.11'
+            TorchVersion: ${{ parameters.torch_version }}
+            OpsetVersion: ${{ parameters.opset_version }}
+            CudaVersion: ${{ parameters.cuda_version }}
+            GccVersion: ${{ parameters.gcc_version }}
+            UploadWheel: ${{ parameters.upload_wheel }}
 
       steps:
       - task: CmdLine@2

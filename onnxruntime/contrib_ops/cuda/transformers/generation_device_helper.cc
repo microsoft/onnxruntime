@@ -1038,7 +1038,7 @@ Status UpdateDecoderFeeds(
     int input_sequence_len,
     bool past_present_share_buffer,
     bool need_cache_indir,
-    transformers::Sequences&,
+    transformers::Sequences& sequences,
     const transformers::IConsoleDumper* dumper) {
   // last_outputs: logits, present_key_self_0, present_value_self_0, ...
   // next_inputs: input_ids,
@@ -1047,22 +1047,33 @@ Status UpdateDecoderFeeds(
   //              past_key_cross_0, past_value_cross_0, ...
   // Only need copy beam next tokens to input_ids, and copy present_*_self_* to past_*_self_*,
 
-  if (use_sequence_as_input_ids) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
-                           "BeamSearch CUDA Op does not support using sequence as input_ids in decoder input");
-  }
-
   // Update input_ids with next tokens.
   int batch_beam_size = static_cast<int>(beam_next_tokens.size());
-  int64_t dims[] = {batch_beam_size, 1};
+  int sequence_length = !use_sequence_as_input_ids ? 1 : current_length;
+  int64_t dims[] = {batch_beam_size, sequence_length};
   TensorShape input_ids_shape(&dims[0], 2);
   auto element_type = DataTypeImpl::GetType<int32_t>();
   OrtValue input_ids;
   Tensor::InitOrtValue(element_type, input_ids_shape, allocator, input_ids);
   int32_t* input_ids_data = input_ids.GetMutable<Tensor>()->MutableData<int32_t>();
   cudaStream_t cuda_stream = ort_stream ? static_cast<cudaStream_t>(ort_stream->GetHandle()) : nullptr;
-  CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(input_ids_data, beam_next_tokens.data(), beam_next_tokens.size_bytes(),
-                                       cudaMemcpyHostToDevice, cuda_stream));
+
+  if (!use_sequence_as_input_ids) {
+    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(input_ids_data, beam_next_tokens.data(), beam_next_tokens.size_bytes(),
+                                         cudaMemcpyHostToDevice, cuda_stream));
+  } else {
+    int32_t* input_ids_data = input_ids.GetMutable<Tensor>()->MutableData<int32_t>();
+    for (int i = 0; i < batch_beam_size; i++) {
+      gsl::span<const int32_t> sequence = sequences.GetSequence(i);
+      const int32_t* sequence_data = sequence.data();
+      CUDA_RETURN_IF_ERROR(
+          cudaMemcpyAsync(input_ids_data + i * current_length,
+                          sequence_data,
+                          current_length * sizeof(int32_t),
+                          cudaMemcpyHostToDevice,
+                          cuda_stream));
+    }
+  }
   next_inputs[0] = input_ids;
 
 #ifdef DEBUG_GENERATION
@@ -1176,12 +1187,12 @@ Status ExpandBuffer(Stream* ort_stream,
     for (int i = 0; i < batch_size; i++) {
       for (int j = 0; j < num_beams; j++) {
         CUDA_RETURN_IF_ERROR(
-          cudaMemcpyAsync(
-              target,
-              input_data + i * chunk_size,
-              sizeof(T) * chunk_size,
-              cudaMemcpyDeviceToDevice,
-              cuda_stream));
+            cudaMemcpyAsync(
+                target,
+                input_data + i * chunk_size,
+                sizeof(T) * chunk_size,
+                cudaMemcpyDeviceToDevice,
+                cuda_stream));
         target += chunk_size;
       }
     }
@@ -1201,12 +1212,12 @@ Status ExpandBuffer(Stream* ort_stream,
     for (int j = 0; j < num_beams; j++) {
       for (int k = 0; k < num_heads; k++) {
         CUDA_RETURN_IF_ERROR(
-          cudaMemcpyAsync(
-            target,
-            input_data + i * NSH + k * input_offset,
-            sizeof(T) * SafeInt<size_t>(input_offset),
-            cudaMemcpyDeviceToDevice,
-            cuda_stream));
+            cudaMemcpyAsync(
+                target,
+                input_data + i * NSH + k * input_offset,
+                sizeof(T) * SafeInt<size_t>(input_offset),
+                cudaMemcpyDeviceToDevice,
+                cuda_stream));
         target += output_offset;
       }
     }

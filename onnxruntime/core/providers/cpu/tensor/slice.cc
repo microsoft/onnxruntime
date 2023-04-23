@@ -244,7 +244,7 @@ static Status SliceImpl(OpKernelContext* ctx,
       output = slice_input_iterator.CopyContiguousInnermostAxes(output);
     }
 
-     ORT_ENFORCE(output == output_end);
+    ORT_ENFORCE(output == output_end);
   };
 
   if (compute_metadata.p_flattened_input_dims_) {

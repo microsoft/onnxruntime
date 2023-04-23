@@ -71,10 +71,10 @@ Status BiasAdd<T>::ComputeInternal(OpKernelContext* context) const {
   typedef typename ToCudaType<T>::MappedType CudaT;
   const int32_t grid_size = static_cast<int32_t>(input_dims[0] * input_dims[1]);
   LaunchBiasAddKernel<CudaT>(Stream(context), grid_size, static_cast<int32_t>(input_dims[2]),
-                              reinterpret_cast<const CudaT*>(input->Data<T>()),
-                              reinterpret_cast<const CudaT*>(bias->Data<T>()),
-                              reinterpret_cast<const CudaT*>(skip->Data<T>()),
-                              reinterpret_cast<CudaT*>(output->MutableData<T>()));
+                             reinterpret_cast<const CudaT*>(input->Data<T>()),
+                             reinterpret_cast<const CudaT*>(bias->Data<T>()),
+                             reinterpret_cast<const CudaT*>(skip->Data<T>()),
+                             reinterpret_cast<CudaT*>(output->MutableData<T>()));
 
   CUDA_RETURN_IF_ERROR(cudaPeekAtLastError());
   return Status::OK();

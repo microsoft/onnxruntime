@@ -59,7 +59,6 @@ constexpr const char* kSnippetThreshold = "ORT_DEBUG_NODE_IO_SNIPPET_THRESHOLD";
 // Number of array items in snippet at beginning and end of each dimension (default 3)
 constexpr const char* kSnippetEdgeItems = "ORT_DEBUG_NODE_IO_SNIPPET_EDGE_ITEMS";
 
-
 }  // namespace debug_node_inputs_outputs_env_vars
 
 constexpr char kFilterPatternDelimiter = ';';

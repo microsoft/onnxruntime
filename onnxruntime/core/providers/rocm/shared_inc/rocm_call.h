@@ -36,4 +36,9 @@ std::conditional_t<THRW, void, Status> RocmCall(
 #define NCCL_CALL_THROW(expr) (RocmCall<ncclResult_t, true>((expr), #expr, "NCCL", ncclSuccess, "", __FILE__, __LINE__))
 #endif
 
+#ifdef USE_HIPBLASLT
+#define HIPBLASLT_CALL(expr) (RocmCall<hipblasStatus_t, false>((expr), #expr, "hipBLASLt", HIPBLAS_STATUS_SUCCESS, "", __FILE__, __LINE__))
+#define HIPBLASLT_CALL_THROW(expr) (RocmCall<hipblasStatus_t, true>((expr), #expr, "hipBLASLt", HIPBLAS_STATUS_SUCCESS, "", __FILE__, __LINE__))
+#endif
+
 }  // namespace onnxruntime

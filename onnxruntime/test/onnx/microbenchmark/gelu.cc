@@ -11,7 +11,7 @@
 using namespace onnxruntime;
 using namespace onnxruntime::concurrency;
 
-//naive implementation of Gelu
+// naive implementation of Gelu
 static void BM_GeluSingleThreadPlainLoop(benchmark::State& state) {
   const size_t batch_size = static_cast<size_t>(state.range(0));
   float* output = (float*)aligned_alloc(sizeof(float) * batch_size, 64);
@@ -26,7 +26,7 @@ static void BM_GeluSingleThreadPlainLoop(benchmark::State& state) {
   aligned_free(output);
 }
 
-//Use eigen and mlas to implement Gelu, single thread
+// Use eigen and mlas to implement Gelu, single thread
 BENCHMARK(BM_GeluSingleThreadPlainLoop)
     ->UseRealTime()
     ->UseRealTime()
@@ -62,7 +62,7 @@ BENCHMARK(BM_GeluSingleThreadMlas)
     ->Arg(20000)
     ->Arg(40000);
 
-//Use ParallelFor to implement Gelu, single thread
+// Use ParallelFor to implement Gelu, single thread
 static void BM_GeluParallelFor(benchmark::State& state) {
   const size_t batch_size = static_cast<size_t>(state.range(0));
   const int cost = static_cast<int>(state.range(1));
@@ -140,13 +140,13 @@ static void BM_ScaledTanhParallelFor(benchmark::State& state) {
   const float beta_ = 0.6f;
   for (auto _ : state) {
     ThreadPool::TryParallelFor(tp.get(), batch_size, cost,
-                            [alpha_, beta_, data, output](ptrdiff_t first, ptrdiff_t last) {
-      ptrdiff_t len = last - first;
-      float* output_ptr = output + first;
-      onnxruntime::ConstEigenVectorArrayMap<float> xm(data + first, len);
-      onnxruntime::EigenVectorArrayMap<float> ym(output_ptr, len);
-      ym = (xm >= 0).select(xm, alpha_ * (xm.exp() - 1));
-    });
+                               [alpha_, beta_, data, output](ptrdiff_t first, ptrdiff_t last) {
+                                 ptrdiff_t len = last - first;
+                                 float* output_ptr = output + first;
+                                 onnxruntime::ConstEigenVectorArrayMap<float> xm(data + first, len);
+                                 onnxruntime::EigenVectorArrayMap<float> ym(output_ptr, len);
+                                 ym = (xm >= 0).select(xm, alpha_ * (xm.exp() - 1));
+                               });
   }
   aligned_free(data);
   aligned_free(output);
@@ -234,7 +234,7 @@ BENCHMARK(BM_GeluBatchParallelFor)
     ->Arg(20000)
     ->Arg(40000);
 
-//The one we're currently using
+// The one we're currently using
 static void BM_GeluBatchParallelFor2(benchmark::State& state) {
   const size_t elem_count = static_cast<size_t>(state.range(0));
 
@@ -301,19 +301,19 @@ static void BM_GeluBatchParallelFor3(benchmark::State& state) {
 
   for (auto _ : state) {
     concurrency::ThreadPool::TryBatchParallelFor(
-      tp.get(),
-      static_cast<ptrdiff_t>(task_count),
-      [batch_size, data, length_per_task, output](ptrdiff_t task_idx) {
-        const auto first = task_idx * length_per_task;
-        const ptrdiff_t len = std::min(length_per_task, static_cast<int64_t>(batch_size - first));
-        float* output_ptr = output + first;
-        onnxruntime::ConstEigenVectorArrayMap<float> xm(data + first, len);
-        onnxruntime::EigenVectorArrayMap<float> ym(output_ptr, len);
-        ym = xm * static_cast<float>(M_SQRT1_2);
-        MlasComputeErf(output_ptr, output_ptr, len);
-        ym = xm * 0.5f * (ym + 1.0f);
-      },
-      0);
+        tp.get(),
+        static_cast<ptrdiff_t>(task_count),
+        [batch_size, data, length_per_task, output](ptrdiff_t task_idx) {
+          const auto first = task_idx * length_per_task;
+          const ptrdiff_t len = std::min(length_per_task, static_cast<int64_t>(batch_size - first));
+          float* output_ptr = output + first;
+          onnxruntime::ConstEigenVectorArrayMap<float> xm(data + first, len);
+          onnxruntime::EigenVectorArrayMap<float> ym(output_ptr, len);
+          ym = xm * static_cast<float>(M_SQRT1_2);
+          MlasComputeErf(output_ptr, output_ptr, len);
+          ym = xm * 0.5f * (ym + 1.0f);
+        },
+        0);
   }
   aligned_free(data);
   aligned_free(output);

@@ -569,7 +569,7 @@ const Path& Node::ModelPath() const noexcept {
 bool Node::CanBeInlined() const {
   if (func_body_ || func_template_)
     return true;
-  if (! op_) return false;
+  if (!op_) return false;
   ONNX_NAMESPACE::FunctionProto function_proto;
   return TryGetFunctionProto(function_proto);
   // Note: We end up doing some redundant work, which can be eliminated if we cache

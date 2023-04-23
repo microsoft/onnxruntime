@@ -106,7 +106,7 @@ class LSTMQuant(QuantOperatorBase):
             kwargs.update(attribute_to_kwarg(attribute))
         kwargs["domain"] = ms_domain
 
-        quant_lstm_name = "" if node.name == "" else node.name + "_quant"
+        quant_lstm_name = "" if not node.name else node.name + "_quant"
         quant_lstm_node = onnx.helper.make_node("DynamicQuantizeLSTM", inputs, node.output, quant_lstm_name, **kwargs)
         self.quantizer.new_nodes.append(quant_lstm_node)
 

@@ -8,7 +8,7 @@
 #undef ORT_API_MANUAL_INIT
 
 #ifdef _MSC_VER
-#pragma warning(disable: 4100)
+#pragma warning(disable : 4100)
 #endif
 #include <openvino/openvino.hpp>
 #ifdef _MSC_VER

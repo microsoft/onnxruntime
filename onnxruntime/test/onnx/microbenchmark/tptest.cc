@@ -27,7 +27,7 @@ BENCHMARK(BM_CreateThreadPool)
     ->UseRealTime()
     ->Unit(benchmark::TimeUnit::kMillisecond);
 
-//On Xeon W-2123 CPU, it takes about 2ns for each iteration
+// On Xeon W-2123 CPU, it takes about 2ns for each iteration
 #ifdef _WIN32
 #pragma optimize("", off)
 #else
@@ -51,9 +51,9 @@ static void BM_ThreadPoolParallelFor(benchmark::State& state) {
   const int cost = static_cast<int>(state.range(1));
   OrtThreadPoolParams tpo;
   auto tp = std::make_unique<ThreadPool>(&onnxruntime::Env::Default(),
-                                                 onnxruntime::ThreadOptions(),
-                                                 nullptr,
-                                                 NUM_THREADS, ALLOW_SPINNING);
+                                         onnxruntime::ThreadOptions(),
+                                         nullptr,
+                                         NUM_THREADS, ALLOW_SPINNING);
   for (auto _ : state) {
     ThreadPool::TryParallelFor(tp.get(), len, cost, SimpleForLoop);
   }
@@ -96,15 +96,15 @@ static void BM_ThreadPoolSimpleParallelFor(benchmark::State& state) {
   const size_t body = state.range(2);
   OrtThreadPoolParams tpo;
   auto tp = std::make_unique<ThreadPool>(&onnxruntime::Env::Default(),
-                                                 onnxruntime::ThreadOptions(),
-                                                 nullptr,
-                                                 num_threads, ALLOW_SPINNING);
+                                         onnxruntime::ThreadOptions(),
+                                         nullptr,
+                                         num_threads, ALLOW_SPINNING);
   for (auto _ : state) {
     for (int j = 0; j < 100; j++) {
       ThreadPool::TrySimpleParallelFor(tp.get(), len, [&](size_t) {
-	  for (volatile size_t x = 0; x < body; x++) {
-	  }
-	});
+        for (volatile size_t x = 0; x < body; x++) {
+        }
+      });
     }
   }
 }
@@ -113,8 +113,8 @@ static void BM_ThreadPoolSimpleParallelFor(benchmark::State& state) {
 // always cover 1 thread and NUM_THREADS.  In addition, anticipating
 // NUMA effects on 2-socket machines, we look just below and just
 // above the point where the second socket must be used.
-static constexpr int HALF_THREADS = NUM_THREADS>=2 ? ((NUM_THREADS/2)) : 1;
-static constexpr int HALF_THREADS_PLUS_1 = NUM_THREADS>=2 ? ((NUM_THREADS/2)+1) : 1;
+static constexpr int HALF_THREADS = NUM_THREADS >= 2 ? ((NUM_THREADS / 2)) : 1;
+static constexpr int HALF_THREADS_PLUS_1 = NUM_THREADS >= 2 ? ((NUM_THREADS / 2) + 1) : 1;
 
 BENCHMARK(BM_ThreadPoolSimpleParallelFor)
     ->UseRealTime()

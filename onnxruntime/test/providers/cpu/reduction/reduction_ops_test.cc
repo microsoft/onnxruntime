@@ -44,14 +44,14 @@ void TestReduceOp(const std::string& op,
   test.AddInput<float>("data", input_dims, data);
   test.AddOutput<OutT>("reduced", expected_dims, expected_data);
 #if defined(OPENVINO_CONFIG_GPU_FP32)
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider, kOpenVINOExecutionProvider, kTensorrtExecutionProvider});  //TensorRT,OpenVINO: result differs
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider, kOpenVINOExecutionProvider, kTensorrtExecutionProvider});  // TensorRT,OpenVINO: result differs
 #else
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider, kTensorrtExecutionProvider});  //TensorRT: result differs
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider, kTensorrtExecutionProvider});  // TensorRT: result differs
 #endif
 }
 
-//TODO:investigate why it is so slow. It need 12 seconds on an Azure Standard F48s_v2 (48 vcpus, 96 GiB memory)
-// machine in RelWithDebInfo build mode, but only 2 seconds on my local dev machine(4 cores).
+// TODO:investigate why it is so slow. It need 12 seconds on an Azure Standard F48s_v2 (48 vcpus, 96 GiB memory)
+//  machine in RelWithDebInfo build mode, but only 2 seconds on my local dev machine(4 cores).
 #ifdef NDEBUG
 TEST(ReductionOpTest, ReductionVariationTest) {
   const std::vector<float>& input_data = testcases.input_data;
@@ -99,7 +99,7 @@ TEST(ReductionOpTest, ReduceL1_default_axes_keepdims) {
 #if defined(USE_DNNL)
 TEST(ReductionOpTest, ReduceL1_default_axes_keepdims_bfloat16) {
 #ifdef USE_DNNL
-   if (!DnnlHasBF16Support()) {
+  if (!DnnlHasBF16Support()) {
     LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
     return;
   }
@@ -138,13 +138,13 @@ TEST(ReductionOpTest, ReduceL1_do_not_keep_dims) {
                         9.0f, 10.0f,
                         11.0f, 12.0f});
   test.AddOutput<float>("reduced", {3, 2}, {3.0f, 7.0f, 11.0f, 15.0f, 19.0f, 23.0f});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: full reduce without keepDimensions is not supported with explicit batch
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: full reduce without keepDimensions is not supported with explicit batch
 }
 
 #if defined(USE_DNNL)
 TEST(ReductionOpTest, ReduceL1_do_not_keep_dims_bfloat16) {
 #ifdef USE_DNNL
-   if (!DnnlHasBF16Support()) {
+  if (!DnnlHasBF16Support()) {
     LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
     return;
   }
@@ -165,8 +165,8 @@ TEST(ReductionOpTest, ReduceL1_do_not_keep_dims_bfloat16) {
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
 #if defined(USE_DNNL)
   execution_providers.push_back(DefaultDnnlExecutionProvider());
-#endif  //  USE_DNNL
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider}, nullptr, &execution_providers);// TensorRT: full reduce without keepDimensions is not supported with explicit batch
+#endif                                                                                                                //  USE_DNNL
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider}, nullptr, &execution_providers);  // TensorRT: full reduce without keepDimensions is not supported with explicit batch
 }
 #endif  //  USE_DNNL
 
@@ -177,13 +177,13 @@ TEST(ReductionOpTest, ReduceL1_do_not_keep_dims_2) {
   test.AddInput<float>("data", {3},
                        {1.0f, 2.0f, 3.0f});
   test.AddOutput<float>("reduced", {}, {6.0f});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: full reduce without keepDimensions is not supported with explicit batch
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: full reduce without keepDimensions is not supported with explicit batch
 }
 
 #if defined(USE_DNNL)
 TEST(ReductionOpTest, ReduceL1_do_not_keep_dims_2_bfloat16) {
 #ifdef USE_DNNL
-   if (!DnnlHasBF16Support()) {
+  if (!DnnlHasBF16Support()) {
     LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
     return;
   }
@@ -197,7 +197,7 @@ TEST(ReductionOpTest, ReduceL1_do_not_keep_dims_2_bfloat16) {
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
 #if defined(USE_DNNL)
   execution_providers.push_back(DefaultDnnlExecutionProvider());
-#endif  //  USE_DNNL
+#endif                                                                                                                //  USE_DNNL
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider}, nullptr, &execution_providers);  // TensorRT: full reduce without keepDimensions is not supported with explicit batch
 }
 #endif  //  USE_DNNL
@@ -221,7 +221,7 @@ TEST(ReductionOpTest, ReduceL1_keepdims) {
 #if defined(USE_DNNL)
 TEST(ReductionOpTest, ReduceL1_keepdims_bfloat16) {
 #ifdef USE_DNNL
-   if (!DnnlHasBF16Support()) {
+  if (!DnnlHasBF16Support()) {
     LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
     return;
   }
@@ -298,7 +298,7 @@ TEST(ReductionOpTest, ReduceL1_int64) {
 #if defined(USE_DNNL)
 TEST(ReductionOpTest, ReduceL1_bfloat16) {
 #ifdef USE_DNNL
-   if (!DnnlHasBF16Support()) {
+  if (!DnnlHasBF16Support()) {
     LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
     return;
   }
@@ -359,7 +359,7 @@ TEST(ReductionOpTest, ReduceL2_default_axes_do_not_keep_dims) {
                         9.0f, 10.0f,
                         11.0f, 12.0f});
   test.AddOutput<float>("reduced", {}, {25.49509757f});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: full reduce without keepDimensions is not supported with explicit batch
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: full reduce without keepDimensions is not supported with explicit batch
 }
 
 TEST(ReductionOpTest, ReduceL2_do_not_keepdims) {
@@ -376,7 +376,7 @@ TEST(ReductionOpTest, ReduceL2_do_not_keepdims) {
                         9.0f, 10.0f,
                         11.0f, 12.0f});
   test.AddOutput<float>("reduced", {3, 2}, {2.23606798f, 5.0f, 7.81024968f, 10.63014581f, 13.45362405f, 16.2788206f});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: full reduce without keepDimensions is not supported with explicit batch
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: full reduce without keepDimensions is not supported with explicit batch
 }
 
 TEST(ReductionOpTest, ReduceL2_do_not_keepdims_2) {
@@ -386,7 +386,7 @@ TEST(ReductionOpTest, ReduceL2_do_not_keepdims_2) {
   test.AddInput<float>("data", {3},
                        {1.0f, 2.0f, 3.0f});
   test.AddOutput<float>("reduced", {}, {3.741657387f});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: full reduce without keepDimensions is not supported with explicit batch
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: full reduce without keepDimensions is not supported with explicit batch
 }
 
 TEST(ReductionOpTest, ReduceL2_keepdims) {
@@ -426,7 +426,7 @@ TEST(ReductionOpTest, ReduceL2) {
 #if defined(USE_DNNL)
 TEST(ReductionOpTest, ReduceL2_bfloat16) {
 #ifdef USE_DNNL
-   if (!DnnlHasBF16Support()) {
+  if (!DnnlHasBF16Support()) {
     LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
     return;
   }
@@ -466,7 +466,7 @@ TEST(ReductionOpTest, ReduceL2_int32) {
                           9, 10,
                           11, 12});
   test.AddOutput<int32_t>("reduced", {2}, {15, 20});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});  //TensorRT: Int32 not allowed as input to this layer
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});  // TensorRT: Int32 not allowed as input to this layer
 }
 
 TEST(ReductionOpTest, ReduceL2_int64) {
@@ -483,7 +483,7 @@ TEST(ReductionOpTest, ReduceL2_int64) {
                           9, 10,
                           11, 12});
   test.AddOutput<int64_t>("reduced", {2}, {15, 20});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});  //TensorRT: Int64 not allowed as input to this layer
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});  // TensorRT: Int64 not allowed as input to this layer
 }
 
 TEST(ReductionOpTest, ReduceL20DTensor) {
@@ -515,7 +515,7 @@ TEST(ReductionOpTest, ReduceLogSum) {
 #if defined(USE_DNNL)
 TEST(ReductionOpTest, ReduceLogSum_bfloat16) {
 #ifdef USE_DNNL
-   if (!DnnlHasBF16Support()) {
+  if (!DnnlHasBF16Support()) {
     LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
     return;
   }
@@ -524,17 +524,17 @@ TEST(ReductionOpTest, ReduceLogSum_bfloat16) {
   test.AddAttribute("axes", std::vector<int64_t>{1});
   test.AddAttribute("keepdims", (int64_t)1);
   test.AddInput<BFloat16>("data", {3, 2, 2},
-                                   MakeBFloat16({1.0f, 2.0f,
-                                                 3.0f, 4.0f,
+                          MakeBFloat16({1.0f, 2.0f,
+                                        3.0f, 4.0f,
 
-                                                 5.0f, 6.0f,
-                                                 7.0f, 8.0f,
-                                                 9.0f, 10.0f,
-                                                 11.0f, 12.0f}));
+                                        5.0f, 6.0f,
+                                        7.0f, 8.0f,
+                                        9.0f, 10.0f,
+                                        11.0f, 12.0f}));
   test.AddOutput<BFloat16>("reduced", {3, 1, 2},
-                        MakeBFloat16({1.38629436f, 1.79175949f,
-                                      2.48490667f, 2.6390574f,
-                                      2.99573231f, 3.09104252f}));
+                           MakeBFloat16({1.38629436f, 1.79175949f,
+                                         2.48490667f, 2.6390574f,
+                                         2.99573231f, 3.09104252f}));
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
 #if defined(USE_DNNL)
   execution_providers.push_back(DefaultDnnlExecutionProvider());
@@ -562,7 +562,7 @@ TEST(ReductionOpTest, ReduceLogSum_do_not_keepdims_2) {
   test.AddInput<float>("data", {3},
                        {1.0f, 2.0f, 3.0f});
   test.AddOutput<float>("reduced", {}, {1.79175947f});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: full reduce without keepDimensions is not supported with explicit batch
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: full reduce without keepDimensions is not supported with explicit batch
 }
 
 TEST(ReductionOpTest, ReduceLogSumAxes01) {
@@ -640,7 +640,7 @@ TEST(ReductionOpTest, ReduceLogSumExp_default_axes_do_not_keep_dims) {
                         55.0f, 1.0f,
                         60.0f, 2.0f});
   test.AddOutput<float>("reduced", {}, {60.00671387f});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: full reduce without keepDimensions is not supported with explicit batch
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: full reduce without keepDimensions is not supported with explicit batch
 }
 
 TEST(ReductionOpTest, ReduceLogSumExp_default_axes_do_not_keep_dims_double) {
@@ -656,7 +656,7 @@ TEST(ReductionOpTest, ReduceLogSumExp_default_axes_do_not_keep_dims_double) {
                          55.0, 1.0,
                          60.0, 2.0});
   test.AddOutput<double>("reduced", {}, {60.00671387});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: full reduce without keepDimensions is not supported with explicit batch
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: full reduce without keepDimensions is not supported with explicit batch
 }
 
 TEST(ReductionOpTest, ReduceLogSumExp_do_not_keepdims) {
@@ -673,7 +673,7 @@ TEST(ReductionOpTest, ReduceLogSumExp_do_not_keepdims) {
                         55.0f, 1.0f,
                         60.0f, 2.0f});
   test.AddOutput<float>("reduced", {3, 2}, {20.0f, 2.31326175f, 40.00004578f, 2.31326175f, 60.00671387f, 2.31326175f});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: full reduce without keepDimensions is not supported with explicit batch
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: full reduce without keepDimensions is not supported with explicit batch
 }
 
 TEST(ReductionOpTest, ReduceLogSumExp_do_not_keepdims_double) {
@@ -690,7 +690,7 @@ TEST(ReductionOpTest, ReduceLogSumExp_do_not_keepdims_double) {
                          55.0, 1.0,
                          60.0, 2.0});
   test.AddOutput<double>("reduced", {3, 2}, {20.0, 2.31326175, 40.00004578, 2.31326175, 60.00671387, 2.31326175});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: full reduce without keepDimensions is not supported with explicit batch
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: full reduce without keepDimensions is not supported with explicit batch
 }
 
 TEST(ReductionOpTest, ReduceLogSumExp_do_not_keepdims_2) {
@@ -700,7 +700,7 @@ TEST(ReductionOpTest, ReduceLogSumExp_do_not_keepdims_2) {
   test.AddInput<float>("data", {3},
                        {1.0f, 2.0f, 3.0f});
   test.AddOutput<float>("reduced", {}, {3.40760596f});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: full reduce without keepDimensions is not supported with explicit batch
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: full reduce without keepDimensions is not supported with explicit batch
 }
 
 TEST(ReductionOpTest, ReduceLogSumExp_do_not_keepdims_2_double) {
@@ -710,7 +710,7 @@ TEST(ReductionOpTest, ReduceLogSumExp_do_not_keepdims_2_double) {
   test.AddInput<double>("data", {3},
                         {1.0, 2.0, 3.0});
   test.AddOutput<double>("reduced", {}, {3.40760596});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: full reduce without keepDimensions is not supported with explicit batch
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: full reduce without keepDimensions is not supported with explicit batch
 }
 
 TEST(ReductionOpTest, ReduceLogSumExp_keepdims) {
@@ -767,7 +767,7 @@ TEST(ReductionOpTest, ReduceLogSumExp) {
 #if defined(USE_DNNL)
 TEST(ReductionOpTest, ReduceLogSumExp_bfloat16) {
 #ifdef USE_DNNL
-   if (!DnnlHasBF16Support()) {
+  if (!DnnlHasBF16Support()) {
     LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
     return;
   }
@@ -927,7 +927,7 @@ TEST(ReductionOpTest, ReduceMax_default_axes_do_not_keep_dims) {
 #if defined(OPENVINO_CONFIG_MYRIAD)
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});  // OpenVINO: Disabled as incorrect dimensions in the output data
 #else
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: full reduce without keepDimensions is not supported with explicit batch                         //TensorRT: axis must be 0
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});                          // TensorRT: full reduce without keepDimensions is not supported with explicit batch                         //TensorRT: axis must be 0
 #endif
 }
 
@@ -958,7 +958,7 @@ TEST(ReductionOpTest, ReduceMax_do_not_keepdims_2) {
 #if defined(OPENVINO_CONFIG_MYRIAD)
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});  // OpenVINO: Disabled as incorrect dimensions in the output data
 #else
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: full reduce without keepDimensions is not supported with explicit batch
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});                          // TensorRT: full reduce without keepDimensions is not supported with explicit batch
 #endif
 }
 
@@ -1018,7 +1018,7 @@ TEST(ReductionOpTest, ReduceMaxAxesInitializerOpset18) {
 #if defined(USE_DNNL)
 TEST(ReductionOpTest, ReduceMax_bfloat16) {
 #ifdef USE_DNNL
-   if (!DnnlHasBF16Support()) {
+  if (!DnnlHasBF16Support()) {
     LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
     return;
   }
@@ -1094,7 +1094,7 @@ TEST(ReductionOpTest, ReduceMax_int32) {
 #if defined(OPENVINO_CONFIG_GPU_FP32) || defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_MYRIAD)
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});  // OpenVINO: Disabled temporarily
 #else
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});                          //TensorRT: axis must be 0
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});                          // TensorRT: axis must be 0
 #endif
 }
 
@@ -1115,7 +1115,7 @@ TEST(ReductionOpTest, ReduceMax_int64) {
 #if defined(OPENVINO_CONFIG_GPU_FP32) || defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_MYRIAD)
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});  // OpenVINO: Disabled temporarily
 #else
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});                          //TensorRT: axis must be 0
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});                          // TensorRT: axis must be 0
 #endif
 }
 
@@ -1136,7 +1136,7 @@ TEST(ReductionOpTest, ReduceMax_int8) {
 #if defined(OPENVINO_CONFIG_MYRIAD)
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});  // OpenVINO: Disabled temporarily
 #else
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});                          //TensorRT: axis must be 0
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});                          // TensorRT: axis must be 0
 #endif
 }
 
@@ -1157,7 +1157,7 @@ TEST(ReductionOpTest, ReduceMax_uint8) {
 #if defined(OPENVINO_CONFIG_MYRIAD)
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});  // OpenVINO: Disabled temporarily
 #else
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});                          //TensorRT: axis must be 0
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});                          // TensorRT: axis must be 0
 #endif
 }
 
@@ -1165,7 +1165,7 @@ TEST(ReductionOpTest, ReduceMax0DTensor) {
   OpTester test("ReduceMax");
   test.AddInput<float>("data", {}, {2});
   test.AddOutput<float>("reduced", {}, {2});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider}); //can't access out of range dim in OpenVINO-EP
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});  // can't access out of range dim in OpenVINO-EP
 }
 
 TEST(ReductionOpTest, ReduceMean_default_axes_keepdims) {
@@ -1187,7 +1187,7 @@ TEST(ReductionOpTest, ReduceMean_default_axes_keepdims) {
 #ifdef USE_DNNL
 TEST(ReductionOpTest, ReduceMean_default_axes_keepdims_bfloat16) {
 #ifdef USE_DNNL
-   if (!DnnlHasBF16Support()) {
+  if (!DnnlHasBF16Support()) {
     LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
     return;
   }
@@ -1197,13 +1197,13 @@ TEST(ReductionOpTest, ReduceMean_default_axes_keepdims_bfloat16) {
   test.AddAttribute("keepdims", (int64_t)1);
   test.AddInput<BFloat16>("data", {3, 2, 2},
                           MakeBFloat16({5.0f, 1.0f,
-                        20.0f, 2.0f,
+                                        20.0f, 2.0f,
 
-                        30.0f, 1.0f,
-                        40.0f, 2.0f,
+                                        30.0f, 1.0f,
+                                        40.0f, 2.0f,
 
-                        55.0f, 1.0f,
-                        60.0f, 2.0f}));
+                                        55.0f, 1.0f,
+                                        60.0f, 2.0f}));
   test.AddOutput<BFloat16>("reduced", {1, 1, 1}, MakeBFloat16({18.25f}));
   test.Run();
 }
@@ -1238,13 +1238,13 @@ TEST(ReductionOpTest, ReduceMean_default_axes_do_not_keep_dims) {
                         55.0f, 1.0f,
                         60.0f, 2.0f});
   test.AddOutput<float>("reduced", {}, {18.25f});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: full reduce without keepDimensions is not supported with explicit batch
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: full reduce without keepDimensions is not supported with explicit batch
 }
 
 #ifdef USE_DNNL
 TEST(ReductionOpTest, ReduceMean_default_axes_do_not_keep_dims_bfloat16) {
 #ifdef USE_DNNL
-   if (!DnnlHasBF16Support()) {
+  if (!DnnlHasBF16Support()) {
     LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
     return;
   }
@@ -1252,14 +1252,14 @@ TEST(ReductionOpTest, ReduceMean_default_axes_do_not_keep_dims_bfloat16) {
   OpTester test("ReduceMean", 13);
   test.AddAttribute("keepdims", (int64_t)0);
   test.AddInput<BFloat16>("data", {3, 2, 2},
-                               MakeBFloat16({5.0f, 1.0f,
-                                             20.0f, 2.0f,
+                          MakeBFloat16({5.0f, 1.0f,
+                                        20.0f, 2.0f,
 
-                                             30.0f, 1.0f,
-                                             40.0f, 2.0f,
+                                        30.0f, 1.0f,
+                                        40.0f, 2.0f,
 
-                                             55.0f, 1.0f,
-                                             60.0f, 2.0f}));
+                                        55.0f, 1.0f,
+                                        60.0f, 2.0f}));
   test.AddOutput<BFloat16>("reduced", {}, MakeBFloat16({18.25f}));
   test.Run();
 }
@@ -1277,7 +1277,7 @@ TEST(ReductionOpTest, ReduceMean_default_axes_do_not_keep_dims_double) {
                          55.0, 1.0,
                          60.0, 2.0});
   test.AddOutput<double>("reduced", {}, {18.25});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: full reduce without keepDimensions is not supported with explicit batch
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: full reduce without keepDimensions is not supported with explicit batch
 }
 
 TEST(ReductionOpTest, ReduceMean_do_not_keepdims) {
@@ -1307,7 +1307,7 @@ TEST(ReductionOpTest, ReduceMean_do_not_keepdims) {
 #ifdef USE_DNNL
 TEST(ReductionOpTest, ReduceMean_do_not_keepdims_bfloat16) {
 #ifdef USE_DNNL
-   if (!DnnlHasBF16Support()) {
+  if (!DnnlHasBF16Support()) {
     LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
     return;
   }
@@ -1316,14 +1316,14 @@ TEST(ReductionOpTest, ReduceMean_do_not_keepdims_bfloat16) {
   test.AddAttribute("axes", std::vector<int64_t>{1});
   test.AddAttribute("keepdims", (int64_t)0);
   test.AddInput<BFloat16>("data", {3, 2, 2},
-                               MakeBFloat16({5.0f, 1.0f,
-                                             20.0f, 2.0f,
+                          MakeBFloat16({5.0f, 1.0f,
+                                        20.0f, 2.0f,
 
-                                             30.0f, 1.0f,
-                                             40.0f, 2.0f,
+                                        30.0f, 1.0f,
+                                        40.0f, 2.0f,
 
-                                             55.0f, 1.0f,
-                                             60.0f, 2.0f}));
+                                        55.0f, 1.0f,
+                                        60.0f, 2.0f}));
   test.AddOutput<BFloat16>("reduced", {3, 2}, MakeBFloat16({12.5f, 1.5f, 35.0f, 1.5f, 57.5f, 1.5f}));
   test.Run();
 }
@@ -1361,12 +1361,12 @@ TEST(ReductionOpTest, ReduceMean_do_not_keepdims_2) {
   test.AddInput<float>("data", {3},
                        {1.0f, 2.0f, 3.0f});
   test.AddOutput<float>("reduced", {}, {2.0f});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: full reduce without keepDimensions is not supported with explicit batch
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: full reduce without keepDimensions is not supported with explicit batch
 }
 #ifdef USE_DNNL
 TEST(ReductionOpTest, ReduceMean_do_not_keepdims_2_bfloat16) {
 #ifdef USE_DNNL
-   if (!DnnlHasBF16Support()) {
+  if (!DnnlHasBF16Support()) {
     LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
     return;
   }
@@ -1375,11 +1375,11 @@ TEST(ReductionOpTest, ReduceMean_do_not_keepdims_2_bfloat16) {
   test.AddAttribute("axes", std::vector<int64_t>{0});
   test.AddAttribute("keepdims", (int64_t)0);
   test.AddInput<BFloat16>("data", {3},
-                       MakeBFloat16({1.0f, 2.0f, 3.0f}));
+                          MakeBFloat16({1.0f, 2.0f, 3.0f}));
   test.AddOutput<BFloat16>("reduced", {}, MakeBFloat16({2.0f}));
   test.Run();
 }
-#endif //USE_DNNL
+#endif  // USE_DNNL
 
 TEST(ReductionOpTest, ReduceMean_do_not_keepdims_2_double) {
   OpTester test("ReduceMean");
@@ -1388,7 +1388,7 @@ TEST(ReductionOpTest, ReduceMean_do_not_keepdims_2_double) {
   test.AddInput<double>("data", {3},
                         {1.0, 2.0, 3.0});
   test.AddOutput<double>("reduced", {}, {2.0});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: full reduce without keepDimensions is not supported with explicit batch
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: full reduce without keepDimensions is not supported with explicit batch
 }
 
 TEST(ReductionOpTest, ReduceMean_keepdims) {
@@ -1418,7 +1418,7 @@ TEST(ReductionOpTest, ReduceMean_keepdims) {
 #ifdef USE_DNNL
 TEST(ReductionOpTest, ReduceMean_keepdims_bfloat16) {
 #ifdef USE_DNNL
-   if (!DnnlHasBF16Support()) {
+  if (!DnnlHasBF16Support()) {
     LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
     return;
   }
@@ -1427,18 +1427,18 @@ TEST(ReductionOpTest, ReduceMean_keepdims_bfloat16) {
   test.AddAttribute("axes", std::vector<int64_t>{1});
   test.AddAttribute("keepdims", (int64_t)1);
   test.AddInput<BFloat16>("data", {3, 2, 2},
-                        MakeBFloat16({5.0f, 1.0f,
-                        20.0f, 2.0f,
+                          MakeBFloat16({5.0f, 1.0f,
+                                        20.0f, 2.0f,
 
-                        30.0f, 1.0f,
-                        40.0f, 2.0f,
+                                        30.0f, 1.0f,
+                                        40.0f, 2.0f,
 
-                        55.0f, 1.0f,
-                        60.0f, 2.0f}));
+                                        55.0f, 1.0f,
+                                        60.0f, 2.0f}));
   test.AddOutput<BFloat16>("reduced", {3, 1, 2}, MakeBFloat16({12.5f, 1.5f, 35.0f, 1.5f, 57.5f, 1.5f}));
   test.Run();
 }
-#endif //USE_DNNL
+#endif  // USE_DNNL
 
 TEST(ReductionOpTest, ReduceMean_keepdims_double) {
   OpTester test("ReduceMean");
@@ -1505,7 +1505,7 @@ TEST(ReductionOpTest, ReduceMeanAxesInitializerOpset18) {
 #ifdef USE_DNNL
 TEST(ReductionOpTest, ReduceMean_bfloat16) {
 #ifdef USE_DNNL
-   if (!DnnlHasBF16Support()) {
+  if (!DnnlHasBF16Support()) {
     LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
     return;
   }
@@ -1514,19 +1514,19 @@ TEST(ReductionOpTest, ReduceMean_bfloat16) {
   test.AddAttribute("axes", std::vector<int64_t>{0, 2});
   test.AddAttribute("keepdims", (int64_t)1);
   test.AddInput<BFloat16>("data", {3, 2, 2},
-                        MakeBFloat16({1.0f, 2.0f,
-                        3.0f, 4.0f,
+                          MakeBFloat16({1.0f, 2.0f,
+                                        3.0f, 4.0f,
 
-                        5.0f, 6.0f,
-                        7.0f, 8.0f,
+                                        5.0f, 6.0f,
+                                        7.0f, 8.0f,
 
-                        9.0f, 10.0f,
-                        11.0f, 12.0f}));
+                                        9.0f, 10.0f,
+                                        11.0f, 12.0f}));
   test.AddOutput<BFloat16>("reduced", {1, 2, 1}, MakeBFloat16({5.5f, 7.5f}));
 
   test.Run();
 }
-#endif //USE_DNNL
+#endif  // USE_DNNL
 
 TEST(ReductionOpTest, ReduceMean_double) {
   OpTester test("ReduceMean");
@@ -1589,7 +1589,7 @@ TEST(ReductionOpTest, ReduceMean_keepdims_results_in_noop) {
 #ifdef USE_DNNL
 TEST(ReductionOpTest, ReduceMean_keepdims_results_in_noop_bfloat16) {
 #ifdef USE_DNNL
-   if (!DnnlHasBF16Support()) {
+  if (!DnnlHasBF16Support()) {
     LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
     return;
   }
@@ -1615,7 +1615,7 @@ TEST(ReductionOpTest, ReduceMean_keepdims_results_in_shape_change) {
 #ifdef USE_DNNL
 TEST(ReductionOpTest, ReduceMean_keepdims_results_in_shape_change_bfloat16) {
 #ifdef USE_DNNL
-   if (!DnnlHasBF16Support()) {
+  if (!DnnlHasBF16Support()) {
     LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
     return;
   }
@@ -1658,7 +1658,7 @@ TEST(ReductionOpTest, ReduceMin_default_axes_do_not_keep_dims) {
                         55.0f, 1.0f,
                         60.0f, 2.0f});
   test.AddOutput<float>("reduced", {}, {1.0f});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: full reduce without keepDimensions is not supported with explicit batch
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: full reduce without keepDimensions is not supported with explicit batch
 }
 
 TEST(ReductionOpTest, ReduceMin_default_axes_do_not_keep_dims_2D) {
@@ -1668,7 +1668,7 @@ TEST(ReductionOpTest, ReduceMin_default_axes_do_not_keep_dims_2D) {
                        {5.0f, 1.0f,
                         20.0f, 2.0f});
   test.AddOutput<float>("reduced", {}, {1.0f});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: full reduce without keepDimensions is not supported with explicit batch
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: full reduce without keepDimensions is not supported with explicit batch
 }
 
 TEST(ReductionOpTest, ReduceMin_do_not_keepdims) {
@@ -1695,7 +1695,7 @@ TEST(ReductionOpTest, ReduceMin_do_not_keepdims_2) {
   test.AddInput<float>("data", {3},
                        {5.0f, 1.0f, 20.0f});
   test.AddOutput<float>("reduced", {}, {1.0f});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: full reduce without keepDimensions is not supported with explicit batch
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: full reduce without keepDimensions is not supported with explicit batch
 }
 
 TEST(ReductionOpTest, ReduceMin_keepdims) {
@@ -1754,7 +1754,7 @@ TEST(ReductionOpTest, ReduceMinAxesInitializerOpset18) {
 #if defined(USE_DNNL)
 TEST(ReductionOpTest, ReduceMin_bfloat16) {
 #ifdef USE_DNNL
-   if (!DnnlHasBF16Support()) {
+  if (!DnnlHasBF16Support()) {
     LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
     return;
   }
@@ -1763,14 +1763,14 @@ TEST(ReductionOpTest, ReduceMin_bfloat16) {
   test.AddAttribute("axes", std::vector<int64_t>{0, 2});
   test.AddAttribute("keepdims", (int64_t)1);
   test.AddInput<BFloat16>("data", {3, 2, 2},
-                       MakeBFloat16({1.0f, 2.0f,
-                                     3.0f, 4.0f,
+                          MakeBFloat16({1.0f, 2.0f,
+                                        3.0f, 4.0f,
 
-                                     5.0f, 6.0f,
-                                     7.0f, 8.0f,
+                                        5.0f, 6.0f,
+                                        7.0f, 8.0f,
 
-                                     9.0f, 10.0f,
-                                     11.0f, 12.0f}));
+                                        9.0f, 10.0f,
+                                        11.0f, 12.0f}));
   test.AddOutput<BFloat16>("reduced", {1, 2, 1}, MakeBFloat16({1.0f, 3.0f}));
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
 #if defined(USE_DNNL)
@@ -2090,7 +2090,7 @@ TEST(ReductionOpTest, ReduceSum_half_bert) {
 #if defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_DNNL)
 TEST(ReductionOpTest, ReduceSum_bfloat16) {
 #ifdef USE_DNNL
-   if (!DnnlHasBF16Support()) {
+  if (!DnnlHasBF16Support()) {
     LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
     return;
   }
@@ -2116,7 +2116,7 @@ TEST(ReductionOpTest, ReduceSum_bfloat16) {
 // on CUDA - this UT, with axes {0,2}, will go thru cudnn lib only if ATenOp is not initialized
 // on ROCM - miopen call succeeded, but results in data error, thus follow the same logic done in cudnn for now
 //           4.2 doesn't run properly (data error), thus enable the UT only above 4.3
-#if defined(USE_CUDA) || (defined(USE_ROCM)  && ROCM_VERSION >= 40300)
+#if defined(USE_CUDA) || (defined(USE_ROCM) && ROCM_VERSION >= 40300)
 TEST(ReductionOpTest, ReduceSumBFloat16_2) {
   OpTester test("ReduceSum", 14);
   test.AddAttribute("keepdims", (int64_t)0);
@@ -2316,7 +2316,7 @@ TEST(ReductionOpTest, ReduceSum_default_axes_do_not_keep_dims) {
                         9.0f, 10.0f,
                         11.0f, 12.0f});
   test.AddOutput<float>("reduced", {}, {78.0f});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: full reduce without keepDimensions is not supported with explicit batch
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: full reduce without keepDimensions is not supported with explicit batch
 }
 
 TEST(ReductionOpTest, ReduceSum_do_not_keepdims) {
@@ -2337,7 +2337,7 @@ TEST(ReductionOpTest, ReduceSum_do_not_keepdims_2) {
   test.AddInput<float>("data", {3},
                        {1.0f, 2.0f, 3.0f});
   test.AddOutput<float>("reduced", {}, {6.0f});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: full reduce without keepDimensions is not supported with explicit batch
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: full reduce without keepDimensions is not supported with explicit batch
 }
 
 TEST(ReductionOpTest, ReduceSum_keepdims) {
@@ -2452,7 +2452,7 @@ TEST(ReductionOpTest, ReduceSumSquare) {
 #if defined(USE_DNNL)
 TEST(ReductionOpTest, ReduceSumSquare_bfloat16) {
 #ifdef USE_DNNL
-   if (!DnnlHasBF16Support()) {
+  if (!DnnlHasBF16Support()) {
     LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
     return;
   }
@@ -2476,7 +2476,7 @@ TEST(ReductionOpTest, ReduceSumSquare_bfloat16) {
 #endif  // USE_DNNL
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
-#endif //USE_DNNL
+#endif  // USE_DNNL
 
 TEST(ReductionOpTest, ReduceSumSquare_double) {
   OpTester test("ReduceSumSquare");
@@ -2509,7 +2509,7 @@ TEST(ReductionOpTest, ReduceSumSquare_int32) {
                           9, 10,
                           11, 12});
   test.AddOutput<int32_t>("reduced", {1, 2, 1}, {247, 403});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: Int64 not allowed as input to this layer
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: Int64 not allowed as input to this layer
 }
 
 TEST(ReductionOpTest, ReduceSumSquare_int64) {
@@ -2526,7 +2526,7 @@ TEST(ReductionOpTest, ReduceSumSquare_int64) {
                           9, 10,
                           11, 12});
   test.AddOutput<int64_t>("reduced", {1, 2, 1}, {247, 403});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: Int64 not allowed as input to this layer
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: Int64 not allowed as input to this layer
 }
 
 TEST(ReductionOpTest, ReduceSumSquare_default_axes_keepdims) {
@@ -2558,7 +2558,7 @@ TEST(ReductionOpTest, ReduceSumSquare_default_axes_do_not_keep_dims) {
                         9.0f, 10.0f,
                         11.0f, 12.0f});
   test.AddOutput<float>("reduced", {}, {650.0f});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: full reduce without keepDimensions is not supported with explicit batch
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: full reduce without keepDimensions is not supported with explicit batch
 }
 
 TEST(ReductionOpTest, ReduceSumSquare_do_not_keepdims) {
@@ -2585,7 +2585,7 @@ TEST(ReductionOpTest, ReduceSumSquare_do_not_keepdims_2) {
   test.AddInput<float>("data", {3},
                        {1.0f, 2.0f, 3.0f});
   test.AddOutput<float>("reduced", {}, {14.0f});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: full reduce without keepDimensions is not supported with explicit batch
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: full reduce without keepDimensions is not supported with explicit batch
 }
 
 TEST(ReductionOpTest, ReduceSumSquare_keepdims) {
@@ -2640,7 +2640,7 @@ TEST(ReductionOpTest, ReduceProd_default_axes_do_not_keep_dims) {
                         9.0f, 10.0f,
                         11.0f, 12.0f});
   test.AddOutput<float>("reduced", {}, {479001600.f});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: full reduce without keepDimensions is not supported with explicit batch
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: full reduce without keepDimensions is not supported with explicit batch
 }
 
 TEST(ReductionOpTest, ReduceProd_do_not_keepdims) {
@@ -2667,7 +2667,7 @@ TEST(ReductionOpTest, ReduceProd_do_not_keepdims_2) {
   test.AddInput<float>("data", {3},
                        {1.0f, 2.0f, 3.0f});
   test.AddOutput<float>("reduced", {}, {6.0f});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: full reduce without keepDimensions is not supported with explicit batch
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: full reduce without keepDimensions is not supported with explicit batch
 }
 
 TEST(ReductionOpTest, ReduceProd_keepdims) {
@@ -2724,7 +2724,7 @@ TEST(ReductionOpTest, ReduceProdAxesInitializerOpset18) {
 #if defined(USE_DNNL)
 TEST(ReductionOpTest, ReduceProd_bfloat16) {
 #ifdef USE_DNNL
-   if (!DnnlHasBF16Support()) {
+  if (!DnnlHasBF16Support()) {
     LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
     return;
   }
@@ -2805,7 +2805,7 @@ TEST(ReductionOpTest, ArgMax) {
                           {1, 1,
                            1, 1,
                            1, 1});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: axis must be 0
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: axis must be 0
 }
 
 TEST(ReductionOpTest, ArgMax_Double_Type) {
@@ -2825,7 +2825,7 @@ TEST(ReductionOpTest, ArgMax_Double_Type) {
                           {1, 1,
                            1, 1,
                            1, 1});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: axis must be 0
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: axis must be 0
 }
 
 TEST(ReductionOpTest, ArgMax_do_not_keepdims) {
@@ -2845,7 +2845,7 @@ TEST(ReductionOpTest, ArgMax_do_not_keepdims) {
                           {1, 1,
                            1, 1,
                            1, 1});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: axis must be 0
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: axis must be 0
 }
 
 TEST(ReductionOpTest, ArgMax_do_not_keepdims_2) {
@@ -2996,7 +2996,7 @@ TEST(ReductionOpTest, ArgMax2D) {
                         9.0f, 10.0f});
   test.AddOutput<int64_t>("reduced", {3, 1},
                           {1, 0, 1});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: axis must be 0
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: axis must be 0
 }
 
 TEST(ReductionOpTest, ArgMax2D_select_last) {
@@ -3061,7 +3061,7 @@ TEST(ReductionOpTest, ArgMin_Double_Type) {
                           {0, 0,
                            0, 0,
                            0, 0});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: axis must be 0
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: axis must be 0
 }
 
 TEST(ReductionOpTest, ArgMin_Double_Precision) {
@@ -3081,7 +3081,7 @@ TEST(ReductionOpTest, ArgMin_Double_Precision) {
                           {1, 1,
                            0, 1,
                            1, 0});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: axis must be 0
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: axis must be 0
 }
 
 TEST(ReductionOpTest, ArgMin_do_not_keepdims) {

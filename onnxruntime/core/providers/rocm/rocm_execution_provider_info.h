@@ -69,7 +69,7 @@ struct ROCMExecutionProviderInfo {
 };
 }  // namespace onnxruntime
 
-template<>
+template <>
 struct std::hash<::onnxruntime::rocm::TunableOpInfo> {
   size_t operator()(const ::onnxruntime::rocm::TunableOpInfo& info) const {
     size_t seed_and_value{0xbc9f1d34};
