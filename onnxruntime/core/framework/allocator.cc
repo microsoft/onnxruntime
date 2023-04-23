@@ -122,7 +122,7 @@ void* AllocateBufferWithOptions(IAllocator& alloc, size_t size, bool use_reserve
       return stream_aware_alloc->AllocOnStream(size, stream, wait_fn);
     }
 #else
-  ORT_UNUSED_PARAMETER(wait_fn);
+    ORT_UNUSED_PARAMETER(wait_fn);
 #endif  // ORT_ENABLE_STREAM
   }
   return alloc.Alloc(size);

@@ -83,8 +83,8 @@ class MatMulIntegerBase : public OpKernel {
 
  protected:
   /**
-   * @return input index of Matrix B, the weight tensor 
-  */
+   * @return input index of Matrix B, the weight tensor
+   */
   virtual int GetAIdx() const { return 0; }
   virtual int GetBIdx() const = 0;
 
@@ -100,7 +100,7 @@ class MatMulIntegerBase : public OpKernel {
   bool IsBQuantParamSupported(const TensorShape& B_quant_param_shape, const TensorShape& B_shape) const {
     int64_t B_quant_param_rank = B_quant_param_shape.NumDimensions();
     int64_t B_shape_rank = B_shape.NumDimensions();
-    if (B_quant_param_rank == 0 ||                                       //scalar
+    if (B_quant_param_rank == 0 ||                                       // scalar
         (B_quant_param_rank == 1 && B_quant_param_shape.Size() == 1)) {  // 1D tensor with size 1
       return true;
     }

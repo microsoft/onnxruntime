@@ -11,7 +11,7 @@ export CUDA_HOME=/usr/local/cuda
 export CUDNN_HOME=/usr/local/cuda
 export CUDACXX=$CUDA_HOME/bin/nvcc
 
-./build.sh --config RelWithDebInfo --use_cuda --enable_training --build_wheel --skip_tests --cuda_version=11.6 --parallel 8 --use_mpi
+./build.sh --config RelWithDebInfo --use_cuda --enable_training --build_wheel --skip_tests --cuda_version=11.8 --parallel 8 --use_mpi
 ```
 
 Install the Python wheel.
@@ -129,7 +129,25 @@ Before full qualified name can be got from exporter, this environment variables 
 - **Feature Area**: *ORTMODULE/Optimizations*
 - **Description**: By default, this is enabled then some computation can be saved. This env var can be used for disabling
 the optimization to guarantee exactly same compute with baseline (for example PyTorch, when doing convergence parity
-debugging).
+debugging). Disable it with following command:
+
+	```bash
+	export ORTMODULE_ENABLE_COMPUTE_OPTIMIZER=0
+	```
+
+	There are fine-grained flags to control different optimizations, but only applied when `ORTMODULE_ENABLE_COMPUTE_OPTIMIZER` is enabled.
+	- `ORTMODULE_ENABLE_LABEL_SPARSITY_OPT` is used to enable the optimization leveraging label sparsity.
+
+#### ORTMODULE_ENABLE_INPUT_DENSITY_INSPECTOR
+
+- **Feature Area**: *ORTMODULE/Runtime inspector*
+- **Description**: By default, this is disabled. This env var can be used for enabling the input data sparsity
+inspection. Training users or our dev could leverage this info for improving perf accordingly. Enable it with following
+command:
+
+	```bash
+	export ORTMODULE_ENABLE_INPUT_DENSITY_INSPECTOR=1
+	```
 
 ### 2.2 Memory Optimization
 

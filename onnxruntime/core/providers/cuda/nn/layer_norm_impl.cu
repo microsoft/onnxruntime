@@ -1,18 +1,18 @@
 /**
-* Copyright (c) 2016-present, Facebook, Inc.
-*
-* Licensed under the Apache License, Version 2.0 (the "License");
-* you may not use this file except in compliance with the License.
-* You may obtain a copy of the License at
-*
-*     http://www.apache.org/licenses/LICENSE-2.0
-*
-* Unless required by applicable law or agreed to in writing, software
-* distributed under the License is distributed on an "AS IS" BASIS,
-* WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-* See the License for the specific language governing permissions and
-* limitations under the License.
-*/
+ * Copyright (c) 2016-present, Facebook, Inc.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 
 //
 // Copyright (c) 2017, NVIDIA CORPORATION. All rights reserved.
@@ -85,7 +85,9 @@ __device__ void cuWelfordMuSigma2(
     const int i1,
     U& mu,
     U& sigma2,
-    U* buf) {
+    U* buf,
+    const T* __restrict__ skip,
+    const T* __restrict__ bias) {
   // Assumptions:
   // 1) blockDim.x == GPU_WARP_SIZE
   // 2) Tensor is contiguous
@@ -102,15 +104,34 @@ __device__ void cuWelfordMuSigma2(
     const int numx = blockDim.x * blockDim.y;
     const int thrx = threadIdx.x + threadIdx.y * blockDim.x;
     const T* lvals = vals + i1 * n2;
+    const T* skip_vals = (skip != NULL) ? skip + i1 * n2 : NULL;
     int l = 4 * thrx;
     for (; l + 3 < n2; l += 4 * numx) {
       for (int k = 0; k < 4; ++k) {
         U curr = static_cast<U>(lvals[l + k]);
+
+        if (bias != NULL) {
+          curr += static_cast<U>(bias[l + k]);
+        }
+
+        if (skip_vals != NULL) {
+          curr += static_cast<U>(skip_vals[l + k]);
+        }
+
         cuWelfordOnlineSum<U, simplified>(curr, mu, sigma2, count);
       }
     }
     for (; l < n2; ++l) {
       U curr = static_cast<U>(lvals[l]);
+
+      if (bias != NULL) {
+        curr += static_cast<U>(bias[l]);
+      }
+
+      if (skip_vals != NULL) {
+        curr += static_cast<U>(skip_vals[l]);
+      }
+
       cuWelfordOnlineSum<U, simplified>(curr, mu, sigma2, count);
     }
 // intra-warp reductions
@@ -314,7 +335,10 @@ __global__ void cuApplyLayerNorm(
     const int n2,
     const U epsilon,
     const V* __restrict__ gamma,
-    const V* __restrict__ beta) {
+    const V* __restrict__ beta,
+    const T* __restrict__ skip,
+    const T* __restrict__ bias,
+    T* __restrict__ skip_input_bias_add_output) {
   // Assumptions:
   // 1) blockDim.x == GPU_WARP_SIZE
   // 2) Tensors are contiguous
@@ -323,20 +347,35 @@ __global__ void cuApplyLayerNorm(
     SharedMemory<U> shared;
     U* buf = shared.getPointer();
     U mu, sigma2;
-    cuWelfordMuSigma2<T, U, simplified>(vals, n1, n2, i1, mu, sigma2, buf);
+    cuWelfordMuSigma2<T, U, simplified>(vals, n1, n2, i1, mu, sigma2, buf, skip, bias);
     const T* lvals = vals + i1 * n2;
+    const T* skip_vals = (skip != NULL) ? skip + i1 * n2 : NULL;
     V* ovals = output_vals + i1 * n2;
+    T* skip_input_bias_add_ovals = (skip_input_bias_add_output != NULL) ? skip_input_bias_add_output + i1 * n2 : NULL;
     U c_inv_std_dev = rsqrt(sigma2 + epsilon);
     const int numx = blockDim.x * blockDim.y;
     const int thrx = threadIdx.x + threadIdx.y * blockDim.x;
     for (int i = thrx; i < n2; i += numx) {
       U curr = static_cast<U>(lvals[i]);
-      V gamma_i = (gamma != NULL) ? gamma[i] : (V)1;
-      V beta_i = (beta != NULL) ? beta[i] : (V)0;
+
+      if (bias != NULL) {
+        curr += static_cast<U>(bias[i]);
+      }
+
+      if (skip_vals != NULL) {
+        curr += static_cast<U>(skip_vals[i]);
+      }
+
+      U gamma_i = (gamma != NULL) ? (U)gamma[i] : (U)1;
+      U beta_i = (beta != NULL) ? (U)beta[i] : (U)0;
       if (simplified) {
-        ovals[i] = gamma_i * static_cast<V>(c_inv_std_dev * curr);
+        ovals[i] = static_cast<V>(gamma_i * c_inv_std_dev * curr);
       } else {
-        ovals[i] = gamma_i * static_cast<V>(c_inv_std_dev * (curr - mu)) + beta_i;
+        ovals[i] = static_cast<V>(gamma_i * c_inv_std_dev * (curr - mu) + beta_i);
+      }
+
+      if (skip_input_bias_add_ovals != NULL) {
+        skip_input_bias_add_ovals[i] = static_cast<T>(curr);
       }
     }
     if (threadIdx.x == 0 && threadIdx.y == 0) {
@@ -344,6 +383,17 @@ __global__ void cuApplyLayerNorm(
       if (inv_std_dev != nullptr) inv_std_dev[i1] = c_inv_std_dev;
     }
   }
+}
+
+int32_t round_up_power_of_2(int32_t v) {
+  v--;
+  v |= v >> 1;
+  v |= v >> 2;
+  v |= v >> 4;
+  v |= v >> 8;
+  v |= v >> 16;
+  v++;
+  return v;
 }
 
 template <typename T, typename U, typename V, bool simplified>
@@ -358,12 +408,26 @@ void HostApplyLayerNorm(
     int n2,
     double epsilon,
     const V* gamma,
-    const V* beta) {
+    const V* beta,
+    const T* skip,
+    const T* bias,
+    T* skip_input_bias_add_output) {
   const int maxGridY = prop.maxGridSize[1];
   const int warp_size = prop.warpSize;
   ORT_ENFORCE(warp_size == GPU_WARP_SIZE_HOST);
 
-  dim3 threads(warp_size, 4, 1);
+  // Be careful for the logic on treads_y calc:
+  //     * 4 is current implementation related, yet it does not using vectorized load
+  //     * Do not using maxTreads as it will cause resource issue.
+  int threads_y = std::min(round_up_power_of_2((n2 + 4 * warp_size - 1) / (4 * warp_size)),
+                           prop.maxThreadsPerBlock / (warp_size * 2));
+  // threads_y could be 16, 8, 4, 2, 1. Calculate total number of rows that could be run in parallel.
+  int parallel_rows = prop.multiProcessorCount * ((prop.maxThreadsPerBlock / 2) / warp_size / threads_y);
+  while (threads_y > 2 && parallel_rows < n1) {
+    threads_y /= 2;
+    parallel_rows *= 2;
+  }
+  dim3 threads(warp_size, threads_y, 1);
 #ifdef __HIP_PLATFORM_HCC__
   // Optimization for ROCm MI100
   threads.y = 1;
@@ -378,13 +442,15 @@ void HostApplyLayerNorm(
       input,
       n1, n2,
       U(epsilon),
-      gamma, beta);
+      gamma, beta,
+      skip, bias, skip_input_bias_add_output);
 }
 
-#define LAYERNORM_LINEAR_IMPL(T, U, V, simplified)                                                                  \
-  template void HostApplyLayerNorm<T, U, V, simplified>(const cudaDeviceProp& prop, cudaStream_t stream, V* output, \
-                                                        U* mean, U* inv_std_dev, const T* input, int n1, int n2,    \
-                                                        double epsilon, const V* gamma, const V* beta);
+#define LAYERNORM_LINEAR_IMPL(T, U, V, simplified)                                                                    \
+  template void HostApplyLayerNorm<T, U, V, simplified>(const cudaDeviceProp& prop, cudaStream_t stream, V* output,   \
+                                                        U* mean, U* inv_std_dev, const T* input, int n1, int n2,      \
+                                                        double epsilon, const V* gamma, const V* beta, const T* skip, \
+                                                        const T* bias, T* skip_input_bias_add_output);
 
 LAYERNORM_LINEAR_IMPL(float, float, float, true)
 LAYERNORM_LINEAR_IMPL(half, float, half, true)

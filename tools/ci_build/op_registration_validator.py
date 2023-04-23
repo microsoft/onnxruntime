@@ -88,22 +88,21 @@ class RegistrationValidator(op_registration_utils.RegistrationProcessor):
             # TODO remove once CUDA EP supports ArgMin/ArgMax for opset 12+
             ops_with_incomplete_support = ["kOnnxDomain:ArgMin", "kOnnxDomain:ArgMax"]
             if key in ops_with_incomplete_support:
-                log.warn("Allowing missing unversioned registration for op with incomplete support: {}".format(key))
+                log.warn(f"Allowing missing unversioned registration for op with incomplete support: {key}")
                 allow_missing_unversioned_registration = True
 
             if opset_to and not allow_missing_unversioned_registration:
-                log.error("Missing unversioned registration for {}".format(key))
+                log.error(f"Missing unversioned registration for {key}")
                 self.failed = True
 
 
 if __name__ == "__main__":
-
     parser = argparse.ArgumentParser(description="Script to validate operator kernel registrations.")
 
     parser.add_argument(
         "--ort_root",
         type=str,
-        help="Path to ONNXRuntime repository root. " "Inferred from the location of this script if not provided.",
+        help="Path to ONNXRuntime repository root. Inferred from the location of this script if not provided.",
     )
 
     args = parser.parse_args()
@@ -114,7 +113,7 @@ if __name__ == "__main__":
     registration_files = op_registration_utils.get_kernel_registration_files(ort_root, include_cuda)
 
     for file in registration_files:
-        log.info("Processing {}".format(file))
+        log.info(f"Processing {file}")
 
         processor = RegistrationValidator()
         op_registration_utils.process_kernel_registration_file(file, processor)

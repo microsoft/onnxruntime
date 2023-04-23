@@ -41,7 +41,7 @@ class MHARunner {
         mLdOut(0),
         mStrideOut(0),
         mScale(scale == 0.0f ? 1.f / sqrtf(static_cast<float>(headSize))
-                      : scale),
+                             : scale),
         mHasCausalMask(causal_mask) {
   }
 
@@ -109,6 +109,13 @@ class FusedMHARunnerFP16v2 : public MHARunner {
   bool isValid(int s) const override;
 
   int getSFromMaxSeqLen(const int max_seq_len) const override;
+
+  static std::unique_ptr<MHARunner> Create(const int numHeads,
+                                           const int headSize,
+                                           const int sm,
+                                           bool causal_mask,
+                                           bool enable_flash_attention,
+                                           const float scale);
 
  private:
   int mSm;

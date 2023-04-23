@@ -112,6 +112,14 @@ class Tensor final {
                            OrtValue& ort_value,
                            gsl::span<const int64_t> strides = {});
 
+  /// <summary>
+  /// Creates an instance of Tensor on the heap using the appropriate __ctor and
+  /// initializes OrtValue with it.
+  /// </summary>
+  /// <param name="tensor"></param>
+  /// <param name="ort_value"></param>
+  static void InitOrtValue(Tensor&& tensor, OrtValue& ort_value);
+
   /**
    * Create tensor with given type, shape, pre-allocated memory and allocator which will be used to free the pre-allocated memory.
    * This function won't check if the preallocated buffer(p_data) has enough room for the shape.

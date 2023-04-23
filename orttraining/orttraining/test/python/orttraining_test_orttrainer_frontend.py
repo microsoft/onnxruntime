@@ -2,7 +2,7 @@ import inspect
 import os
 import tempfile
 from functools import partial
-from packaging.version import Version as StrictVersion
+
 import _test_commons
 import _test_helpers
 import onnx
@@ -10,16 +10,14 @@ import pytest
 import torch
 import torch.nn.functional as F
 from numpy.testing import assert_allclose
+from packaging.version import Version as StrictVersion
 
 from onnxruntime import SessionOptions, set_seed
-from onnxruntime.capi.ort_trainer import IODescription as Legacy_IODescription
 from onnxruntime.capi.ort_trainer import LossScaler as Legacy_LossScaler
-from onnxruntime.capi.ort_trainer import ModelDescription as Legacy_ModelDescription
 from onnxruntime.capi.ort_trainer import ORTTrainer as Legacy_ORTTrainer
-from onnxruntime.training import PropagateCastOpsStrategy, TrainStepInfo, _utils, amp, checkpoint
+from onnxruntime.training import PropagateCastOpsStrategy, TrainStepInfo, _utils, amp
 from onnxruntime.training import model_desc_validation as md_val
-from onnxruntime.training import optim, orttrainer
-from onnxruntime.training import orttrainer_options as orttrainer_options
+from onnxruntime.training import optim, orttrainer, orttrainer_options
 
 ###############################################################################
 # Testing starts here #########################################################
@@ -30,7 +28,7 @@ pytorch_110 = StrictVersion(".".join(torch.__version__.split(".")[:2])) >= Stric
 
 def get_model_opset(model_onnx):
     for op in model_onnx.opset_import:
-        if op.domain == "":
+        if op.domain == "":  # noqa: PLC1901
             return op.version
     return None
 
@@ -60,8 +58,6 @@ def testORTTrainerOptionsDefaultValues(test_input):
                 "sliced_tensor_names": [],
             },
             "allreduce_post_accumulation": False,
-            "data_parallel_size": 1,
-            "horizontal_parallel_size": 1,
             "deepspeed_zero_optimization": {
                 "stage": 0,
             },
@@ -194,9 +190,9 @@ def testORTTrainerModelDescValidSchemas(input_dict, input_dtype, output_dtype):
     assert model_description.loss_scale_input.dtype == torch.float32
 
     # Append type to inputs/outputs tuples
-    for idx, i_desc in enumerate(model_description.inputs):
+    for idx, i_desc in enumerate(model_description.inputs):  # noqa: B007
         model_description.add_type_to_input_description(idx, input_dtype[idx])
-    for idx, o_desc in enumerate(model_description.outputs):
+    for idx, o_desc in enumerate(model_description.outputs):  # noqa: B007
         model_description.add_type_to_output_description(idx, output_dtype[idx])
 
     # Verify inputs/outputs tuples are replaced by the typed counterparts
@@ -265,7 +261,6 @@ def testDynamicLossScaler():
     # Performing 9*2000 updates to cover all branches of LossScaler.update(train_step_info.all_finite=True)
     loss_scale = float(1 << 16)
     for cycles in range(1, 10):
-
         # 1999 updates without overflow produces 1999 stable steps
         for i in range(1, 2000):
             new_loss_scale = default_scaler.update(train_step_info)
@@ -294,7 +289,7 @@ def testDynamicLossScaler():
 
     # Performing 24 updates to half the loss scale each time
     loss_scale = float(1 << 16) * (2**8)
-    for count in range(1, 25):
+    for count in range(1, 25):  # noqa: B007
         new_loss_scale = default_scaler.update(train_step_info)
         loss_scale /= 2
         assert default_scaler._stable_steps_count == 0
@@ -304,7 +299,7 @@ def testDynamicLossScaler():
     assert_allclose(new_loss_scale, 1.0, rtol=rtol, err_msg="loss scale mismatch")
 
     # After 25 updates, min_loss_scale is reached and loss scale is not halfed from that point on
-    for count in range(1, 5):
+    for count in range(1, 5):  # noqa: B007
         new_loss_scale = default_scaler.update(train_step_info)
         assert default_scaler._stable_steps_count == 0
         assert_allclose(new_loss_scale, loss_scale, rtol=rtol, err_msg="loss scale mismatch")
@@ -315,7 +310,7 @@ def testDynamicLossScalerCustomValues():
     scaler = amp.loss_scaler.DynamicLossScaler(
         automatic_update=False, loss_scale=3, up_scale_window=7, min_loss_scale=5, max_loss_scale=10
     )
-    assert scaler.automatic_update == False
+    assert scaler.automatic_update is False
     assert_allclose(scaler.loss_scale, 3, rtol=rtol, err_msg="loss scale mismatch")
     assert_allclose(scaler.min_loss_scale, 5, rtol=rtol, err_msg="min loss scale mismatch")
     assert_allclose(scaler.max_loss_scale, 10, rtol=rtol, err_msg="max loss scale mismatch")
@@ -331,14 +326,14 @@ def testTrainStepInfo():
         optimizer_config=optimizer_config, all_finite=False, fetches=fetches, optimization_step=123, step=456
     )
     assert step_info.optimizer_config == optimizer_config
-    assert step_info.all_finite == False
+    assert step_info.all_finite is False
     assert step_info.fetches == fetches
     assert step_info.optimization_step == 123
     assert step_info.step == 456
 
     step_info = orttrainer.TrainStepInfo(optimizer_config)
     assert step_info.optimizer_config == optimizer_config
-    assert step_info.all_finite == True
+    assert step_info.all_finite is True
     assert step_info.fetches == []
     assert step_info.optimization_step == 0
     assert step_info.step == 0
@@ -458,7 +453,7 @@ def testOptimizerConfigAdam():
     assert_allclose(0.0, cfg.lambda_coef, rtol=rtol, err_msg="lambda_coef mismatch")
     assert_allclose(1e-8, cfg.epsilon, rtol=rtol, err_msg="epsilon mismatch")
     assert_allclose(1.0, cfg.max_norm_clip, rtol=rtol, err_msg="max_norm_clip mismatch")
-    assert cfg.do_bias_correction == True, "lambda_coef mismatch"
+    assert cfg.do_bias_correction is True, "lambda_coef mismatch"
     assert cfg.weight_decay_mode == optim.AdamConfig.DecayMode.BEFORE_WEIGHT_UPDATE, "weight_decay_mode mismatch"
 
 
@@ -475,7 +470,7 @@ def testOptimizerConfigLamb():
     assert cfg.ratio_max == float("inf"), "ratio_max mismatch"
     assert_allclose(1e-6, cfg.epsilon, rtol=rtol, err_msg="epsilon mismatch")
     assert_allclose(1.0, cfg.max_norm_clip, rtol=rtol, err_msg="max_norm_clip mismatch")
-    assert cfg.do_bias_correction == False, "do_bias_correction mismatch"
+    assert cfg.do_bias_correction is False, "do_bias_correction mismatch"
 
 
 @pytest.mark.parametrize("optim_name", [("Adam"), ("Lamb")])
@@ -1044,7 +1039,7 @@ def testORTTrainerInternalUseContribOps(enable_onnx_contrib_ops):
     # Training loop
     data, targets = batcher_fn(train_data, 0)
     if not enable_onnx_contrib_ops and not pytorch_110:
-        with pytest.raises(Exception) as e_info:
+        with pytest.raises(Exception):
             _, _ = trainer.train_step(data, targets)
     else:
         _, _ = trainer.train_step(data, targets)
@@ -1168,7 +1163,7 @@ def testORTTrainerStateDictWrapModelLossFn(loss_scaler, optimizer_config, gradie
     # Train once and check initial state
     trainer.train_step(x=data1, label=label1)
     state_dict = trainer.state_dict()
-    assert all([weight in state_dict["model"]["full_precision"].keys() for weight in ["linear.bias", "linear.weight"]])
+    assert all([weight in state_dict["model"]["full_precision"] for weight in ["linear.bias", "linear.weight"]])
 
     # Initialize training session 2 from state of Training 1
     torch.manual_seed(seed)
@@ -1591,7 +1586,7 @@ def testORTTrainerLegacyAndExperimentalLRScheduler(seed, device, optimizer_confi
 
 
 def testLossScalerLegacyAndExperimentalFullCycle():
-    info = orttrainer.TrainStepInfo(
+    orttrainer.TrainStepInfo(
         optimizer_config=optim.LambConfig(lr=0.001), all_finite=True, fetches=[], optimization_step=0, step=0
     )
     new_ls = amp.DynamicLossScaler()
@@ -1605,10 +1600,9 @@ def testLossScalerLegacyAndExperimentalFullCycle():
     assert_allclose(new_ls.max_loss_scale, old_ls.max_loss_scale_)
 
     # Performing 9*2000 updates to cover all branches of LossScaler.update(train_step_info.all_finite=True)
-    for cycles in range(1, 10):
-
+    for _cycles in range(1, 10):
         # 1999 updates without overflow produces 1999 stable steps
-        for i in range(1, 2000):
+        for _i in range(1, 2000):
             new_loss_scale = new_ls.update(train_step_info)
             old_ls.update_loss_scale(train_step_info.all_finite)
             old_loss_scale = old_ls.loss_scale_
@@ -1626,7 +1620,7 @@ def testLossScalerLegacyAndExperimentalFullCycle():
     assert_allclose(new_loss_scale, old_loss_scale)
 
     # After 9 cycles, loss scale reaches max_loss_scale and it is not doubled from that point on
-    for count in range(1, 2050):
+    for _count in range(1, 2050):
         new_loss_scale = new_ls.update(train_step_info)
         old_ls.update_loss_scale(train_step_info.all_finite)
         old_loss_scale = old_ls.loss_scale_
@@ -1637,7 +1631,7 @@ def testLossScalerLegacyAndExperimentalFullCycle():
     train_step_info.all_finite = False
 
     # Performing 24 updates to half the loss scale each time
-    for count in range(1, 25):
+    for _count in range(1, 25):
         new_loss_scale = new_ls.update(train_step_info)
         old_ls.update_loss_scale(train_step_info.all_finite)
         old_loss_scale = old_ls.loss_scale_
@@ -1648,7 +1642,7 @@ def testLossScalerLegacyAndExperimentalFullCycle():
     assert_allclose(new_loss_scale, old_loss_scale)
 
     # After 25 updates, min_loss_scale is reached and loss scale is not halfed from that point on
-    for count in range(1, 5):
+    for _count in range(1, 5):
         new_loss_scale = new_ls.update(train_step_info)
         old_ls.update_loss_scale(train_step_info.all_finite)
         old_loss_scale = old_ls.loss_scale_
@@ -1757,7 +1751,7 @@ def testORTTrainerOptionsEnabledAdasumFlag(test_input):
     """Test the enabled_adasum flag values when set enabled"""
 
     actual_values = orttrainer_options.ORTTrainerOptions(test_input)
-    assert actual_values.distributed.enable_adasum == True
+    assert actual_values.distributed.enable_adasum is True
 
 
 @pytest.mark.parametrize(
@@ -1774,13 +1768,13 @@ def testORTTrainerOptionsDisabledAdasumFlag(test_input):
     """Test the enabled_adasum flag values when set disabled"""
 
     actual_values = orttrainer_options.ORTTrainerOptions(test_input)
-    assert actual_values.distributed.enable_adasum == False
+    assert actual_values.distributed.enable_adasum is False
 
 
 def testORTTrainerUnusedInput():
     class UnusedInputModel(torch.nn.Module):
         def __init__(self):
-            super(UnusedInputModel, self).__init__()
+            super().__init__()
 
         def forward(self, x, y):
             return torch.mean(x)

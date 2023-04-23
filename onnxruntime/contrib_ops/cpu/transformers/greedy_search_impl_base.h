@@ -79,6 +79,9 @@ struct GreedySearchState : public IGreedySearchState<T> {
             int vocab_size,
             int sequence_length,
             int max_length,
+            int num_heads,
+            int head_size,
+            bool has_decoder_masked_self_attention,
             bool is_cuda) {
     // below buffers are on cpu
     this->sequences_space = AllocateBuffer<int32_t>(cpu_allocator,
@@ -107,6 +110,16 @@ struct GreedySearchState : public IGreedySearchState<T> {
           this->temp_topk_tokens_buffer,
           this->topk_scores_buffer,
           this->topk_tokens_buffer);
+
+      // If at all we need to, we only need to re-order past state for CUDA as
+      //`DecoderMaskedSelfAttention` is only supported on CUDA
+      if (has_decoder_masked_self_attention) {
+        TensorShape staging_for_past_state_reorder_buffer_shape = {batch_size, num_heads, max_length, head_size};
+
+        Tensor temp(DataTypeImpl::GetType<T>(), staging_for_past_state_reorder_buffer_shape, allocator);
+
+        this->staging_for_past_state_reorder = std::move(temp);
+      }
     }
   }
 
@@ -131,6 +144,7 @@ struct GreedySearchState : public IGreedySearchState<T> {
   BufferUniquePtr next_positions_buffer_;
   BufferUniquePtr eos_meet_buffer_;
   BufferUniquePtr temp_topk_buffer_;
+  BufferUniquePtr staging_for_past_state_reorder_buffer_;
 };
 
 // Base class of gready search implementation that is common for both GPT-2 and Bart/T5.

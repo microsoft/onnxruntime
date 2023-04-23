@@ -21,15 +21,10 @@ TEST(Identity, StringType) {
   std::vector<int64_t> dims{2, 2};
   test.AddInput<std::string>("X", dims, {"a", "b", "x", "y"});
   test.AddOutput<std::string>("Y", dims, {"a", "b", "x", "y"});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: unsupported data type
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: unsupported data type
 }
 
 TEST(Identity, SequenceType) {
-  // TODO: Unskip when fixed #41968513
-  if (DefaultDmlExecutionProvider().get() != nullptr) {
-    GTEST_SKIP() << "Skipping because of the following error: Failed to find args for kernel type string 'T'";
-  }
-
   OpTester test("Identity", 14, kOnnxDomain);
   SeqTensors<int64_t> input;
   input.AddTensor({3, 2}, {1, 2, 3, 4, 5, 6});
@@ -42,11 +37,6 @@ TEST(Identity, SequenceType) {
 #if !defined(DISABLE_OPTIONAL_TYPE)
 
 TEST(Identity, OptionalTensorType_NonNone) {
-  // TODO: Unskip when fixed #42638109
-  if (DefaultDmlExecutionProvider().get() != nullptr) {
-    GTEST_SKIP() << "Skipping because of the following error: Failed to find args for kernel type string 'T'";
-  }
-
   OpTester test("Identity", 16, kOnnxDomain);
   // Since this test is being written at a time when only opset 15  has been released, we set
   // `test_allow_released_onnx_opset_only_` to 'false' to allow this test to run
@@ -55,15 +45,10 @@ TEST(Identity, OptionalTensorType_NonNone) {
   std::initializer_list<float> data = {-1.0856307f, 0.99734545f};
   test.AddOptionalTypeTensorInput<float>("A", {2}, &data);
   test.AddOptionalTypeTensorOutput<float>("Y", {2}, &data);
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: opset 16 is not supported yet
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: opset 16 is not supported yet
 }
 
 TEST(Identity, OptionalTensorType_None) {
-  // TODO: Unskip when fixed #42638109
-  if (DefaultDmlExecutionProvider().get() != nullptr) {
-    GTEST_SKIP() << "Skipping because of the following error: Failed to find args for kernel type string 'T'";
-  }
-
   OpTester test("Identity", 16, kOnnxDomain);
   // Since this test is being written at a time when only opset 15  has been released, we set
   // `test_allow_released_onnx_opset_only_` to 'false' to allow this test to run
@@ -71,15 +56,10 @@ TEST(Identity, OptionalTensorType_None) {
 
   test.AddOptionalTypeTensorInput<float>("A", {}, nullptr);                            // None
   test.AddOptionalTypeTensorOutput<float>("Y", {}, nullptr);                           // None
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: opset 16 is not supported yet
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: opset 16 is not supported yet
 }
 
 TEST(Identity, OptionalTensorSequenceType_NonNone) {
-  // TODO: Unskip when fixed #42638109
-  if (DefaultDmlExecutionProvider().get() != nullptr) {
-    GTEST_SKIP() << "Skipping because of the following error: Failed to find args for kernel type string 'T'";
-  }
-
   OpTester test("Identity", 16, kOnnxDomain);
   // Since this test is being written at a time when only opset 15  has been released, we set
   // `test_allow_released_onnx_opset_only_` to 'false' to allow this test to run
@@ -91,15 +71,10 @@ TEST(Identity, OptionalTensorSequenceType_NonNone) {
 
   test.AddOptionalTypeSeqInput<int64_t>("A", &input);
   test.AddOptionalTypeSeqOutput<int64_t>("Y", &input);
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: opset 16 is not supported yet
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: opset 16 is not supported yet
 }
 
 TEST(Identity, OptionalTensorSequenceType_None) {
-  // TODO: Unskip when fixed #42638109
-  if (DefaultDmlExecutionProvider().get() != nullptr) {
-    GTEST_SKIP() << "Skipping because of the following error: Failed to find args for kernel type string 'T'";
-  }
-
   OpTester test("Identity", 16, kOnnxDomain);
   // Since this test is being written at a time when only opset 15  has been released, we set
   // `test_allow_released_onnx_opset_only_` to 'false' to allow this test to run
@@ -107,7 +82,7 @@ TEST(Identity, OptionalTensorSequenceType_None) {
 
   test.AddOptionalTypeSeqInput<float>("A", nullptr);                                   // None
   test.AddOptionalTypeSeqOutput<float>("Y", nullptr);                                  // None
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: opset 16 is not supported yet
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: opset 16 is not supported yet
 }
 
 #endif

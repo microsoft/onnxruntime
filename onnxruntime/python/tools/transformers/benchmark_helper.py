@@ -81,7 +81,7 @@ def create_onnxruntime_session(
     num_threads=-1,
     enable_profiling=False,
     verbose=False,
-    provider_options={},  # map execution provider name to its option
+    provider_options={},  # map execution provider name to its option  # noqa: B006
 ):
     session = None
     try:
@@ -133,7 +133,7 @@ def create_onnxruntime_session(
             providers = [(name, provider_options[name]) if name in provider_options else name for name in providers]
 
         session = onnxruntime.InferenceSession(onnx_model_path, sess_options, providers=providers)
-    except:
+    except Exception:
         logger.error("Exception", exc_info=True)
 
     return session
@@ -185,12 +185,12 @@ def get_latency_result(latency_list, batch_size):
 
     return {
         "test_times": len(latency_list),
-        "latency_variance": "{:.2f}".format(latency_variance),
-        "latency_90_percentile": "{:.2f}".format(numpy.percentile(latency_list, 90) * 1000.0),
-        "latency_95_percentile": "{:.2f}".format(numpy.percentile(latency_list, 95) * 1000.0),
-        "latency_99_percentile": "{:.2f}".format(numpy.percentile(latency_list, 99) * 1000.0),
-        "average_latency_ms": "{:.2f}".format(latency_ms),
-        "QPS": "{:.2f}".format(throughput),
+        "latency_variance": f"{latency_variance:.2f}",
+        "latency_90_percentile": f"{numpy.percentile(latency_list, 90) * 1000.0:.2f}",
+        "latency_95_percentile": f"{numpy.percentile(latency_list, 95) * 1000.0:.2f}",
+        "latency_99_percentile": f"{numpy.percentile(latency_list, 99) * 1000.0:.2f}",
+        "average_latency_ms": f"{latency_ms:.2f}",
+        "QPS": f"{throughput:.2f}",
     }
 
 
@@ -245,8 +245,11 @@ def output_summary(results, csv_filename, args):
         ]
         data_names = []
         for batch_size in args.batch_sizes:
-            for sequence_length in args.sequence_lengths:
-                data_names.append(f"b{batch_size}_s{sequence_length}")
+            if args.sequence_lengths == [""]:
+                data_names.append(f"b{batch_size}")
+            else:
+                for sequence_length in args.sequence_lengths:
+                    data_names.append(f"b{batch_size}_s{sequence_length}")
 
         csv_writer = csv.DictWriter(csv_file, fieldnames=header_names + data_names)
         csv_writer.writeheader()
@@ -273,7 +276,10 @@ def output_summary(results, csv_filename, args):
                                             assert row[k] == headers[k]
                                     b = result["batch_size"]
                                     s = result["sequence_length"]
-                                    row[f"b{b}_s{s}"] = result["average_latency_ms"]
+                                    if s:
+                                        row[f"b{b}_s{s}"] = result["average_latency_ms"]
+                                    else:
+                                        row[f"b{b}"] = result["average_latency_ms"]
                             if row:
                                 csv_writer.writerow(row)
 
@@ -282,12 +288,16 @@ def output_summary(results, csv_filename, args):
 
 def output_fusion_statistics(model_fusion_statistics, csv_filename):
     with open(csv_filename, mode="a", newline="", encoding="ascii") as csv_file:
-        column_names = ["model_filename", "datetime", "transformers", "torch"] + list(
-            next(iter(model_fusion_statistics.values())).keys()
-        )
+        column_names = [
+            "model_filename",
+            "datetime",
+            "transformers",
+            "torch",
+            *list(next(iter(model_fusion_statistics.values())).keys()),
+        ]
         csv_writer = csv.DictWriter(csv_file, fieldnames=column_names)
         csv_writer.writeheader()
-        for key in model_fusion_statistics.keys():
+        for key in model_fusion_statistics:
             model_fusion_statistics[key]["datetime"] = str(datetime.now())
             model_fusion_statistics[key]["transformers"] = transformers.__version__
             model_fusion_statistics[key]["torch"] = torch.__version__
@@ -325,7 +335,7 @@ def inference_ort_with_io_binding(
     # Bind inputs and outputs to onnxruntime session
     io_binding = ort_session.io_binding()
     # Bind inputs to device
-    for name in ort_inputs.keys():
+    for name in ort_inputs:
         np_input = torch.from_numpy(ort_inputs[name]).to(device)
         input_type = (
             IO_BINDING_DATA_TYPE_MAP[str(ort_inputs[name].dtype)]
@@ -371,7 +381,7 @@ def inference_ort_with_io_binding(
     return result
 
 
-def allocateOutputBuffers(output_buffers, output_buffer_max_sizes, device):
+def allocateOutputBuffers(output_buffers, output_buffer_max_sizes, device):  # noqa: N802
     # Allocate output tensors with the largest test size needed. So the allocated memory can be reused
     # for each test run.
 
@@ -543,6 +553,7 @@ def get_ort_environment_variables():
     # Environment variables might impact ORT performance on transformer models. Note that they are for testing only.
     env_names = [
         "ORT_DISABLE_FUSED_ATTENTION",
+        "ORT_ENABLE_FUSED_CAUSAL_ATTENTION",
         "ORT_DISABLE_FUSED_CROSS_ATTENTION",
         "ORT_DISABLE_TRT_FLASH_ATTENTION",
         "ORT_DISABLE_MEMORY_EFFICIENT_ATTENTION",

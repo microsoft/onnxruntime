@@ -3,32 +3,7 @@
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "contrib_ops/cuda/bert/add_bias_transpose.h"
-
-namespace onnxruntime {
-namespace cuda {
-
-struct __align__(8) Half4 {
-  half2 x;
-  half2 y;
-};
-
-__device__ __forceinline__ Half4 operator+(const Half4& a, const Half4& b) {
-  Half4 r;
-  r.x = a.x + b.x;
-  r.y = a.y + b.y;
-  return r;
-}
-
-__device__ __forceinline__ float2 operator+(const float2& a, const float2& b) {
-  return make_float2(a.x + b.x, a.y + b.y);
-}
-
-__device__ __forceinline__ float4 operator+(const float4& a, const float4& b) {
-  return make_float4(a.x + b.x, a.y + b.y, a.z + b.z, a.w + b.w);
-}
-
-}  // namespace cuda
-}  // namespace onnxruntime
+#include "contrib_ops/cuda/bert/rotary_embedding_util.h"
 
 using namespace onnxruntime::cuda;
 
@@ -240,6 +215,151 @@ __global__ void AddBiasTransposeQKV(int M, const T* input, const T* biases, T* o
   }
 }
 
+#ifndef USE_ROCM
+template <typename T>
+__global__ void AddBiasTransposeQKV(int M, const T* input, const T* biases, T* output, T* qkv_add_bias,
+                                    const int rotary_embedding_dim, const int head_size, const int step,
+                                    const int format) {
+  // AddBiasTransposeQKV with rotary embedding
+  // Format 1 for unfused attention, or fused causal attention
+  //     Input:  BxSxMxNxH
+  //     Output: MxBxNxSxH
+  //     qkv_add_bias: BxSxMxNxH
+  // Format 2 for fused TRT attention
+  //     Input:  BxSxMxNxH
+  //     Output: BxSxNxMxH
+  //     qkv_add_bias: BxSxMxNxH
+  // Format 3 for cutlass memory efficient attention
+  //     Input:  BxSxMxNxH
+  //     Output: MxBxSxNxH
+  // B is batch_size, S is sequence_length, M is number of matrices, N is num_heads, H is head_size
+  int n = blockIdx.y;
+  int s = blockIdx.x;
+  int b = blockIdx.z;
+
+  const int seq_len = (gridDim.x == step) ? s : step;
+
+  const int num_heads = gridDim.y;
+
+  const int sequence_length = gridDim.x;
+  const int batch_size = gridDim.z;
+  const int H = head_size;
+  const int NH = num_heads * head_size;
+  const int NHS = NH * sequence_length;
+
+  constexpr int vec_size = Vec_t<T>::size;
+  using Vec_t = typename Vec_t<T>::Type;
+
+  extern __shared__ __align__(sizeof(float2)) char smem_[];
+
+  int tidx = threadIdx.x;
+  const int head_idx = tidx * vec_size;
+
+  if (head_idx < head_size) {
+    const bool is_masked = head_idx >= head_size;
+
+    const int input_offset_base = n * head_size + (s * M) * NH + b * NHS * M;
+    const int src_q_idx = input_offset_base + head_idx;
+    const int src_k_idx = input_offset_base + NH + head_idx;
+    const int src_v_idx = input_offset_base + 2 * NH + head_idx;
+
+    Vec_t q, k, v;
+    Vec_t q_bias, k_bias, v_bias;
+
+    if (!is_masked) {
+      q = *reinterpret_cast<const Vec_t*>(&input[src_q_idx]);
+      k = *reinterpret_cast<const Vec_t*>(&input[src_k_idx]);
+      v = *reinterpret_cast<const Vec_t*>(&input[src_v_idx]);
+
+      q_bias = *reinterpret_cast<const Vec_t*>(&biases[n * H + head_idx]);
+      k_bias = *reinterpret_cast<const Vec_t*>(&biases[NH + n * H + head_idx]);
+      v_bias = *reinterpret_cast<const Vec_t*>(&biases[2 * NH + n * H + head_idx]);
+    }
+
+    q = add_vec(q, q_bias);
+    k = add_vec(k, k_bias);
+    v = add_vec(v, v_bias);
+
+    const bool do_rotary = !is_masked && vec_size * tidx < rotary_embedding_dim;
+
+    T* q_smem = reinterpret_cast<T*>(smem_);
+    T* k_smem = q_smem + rotary_embedding_dim;
+
+    const int half_rotary_dim = rotary_embedding_dim / 2;
+    const int half_idx        = (head_idx) / half_rotary_dim;
+    const int intra_half_idx  = (head_idx) % half_rotary_dim;
+    const int smem_pitch      = half_rotary_dim;
+
+    if (do_rotary) {
+      *reinterpret_cast<Vec_t*>(q_smem + half_idx * smem_pitch + intra_half_idx) = q;
+      *reinterpret_cast<Vec_t*>(k_smem + half_idx * smem_pitch + intra_half_idx) = k;
+    }
+
+    __syncthreads();
+
+    const int transpose_idx = half_idx * (half_rotary_dim / 2) + intra_half_idx / 2;
+    constexpr int tidx_factor = vec_size / 2;
+
+    if (do_rotary) {
+      vec_from_smem_transpose(q, q_smem, transpose_idx, smem_pitch);
+      vec_from_smem_transpose(k, k_smem, transpose_idx, smem_pitch);
+
+      apply_rotary_embedding(q, k, transpose_idx / tidx_factor, rotary_embedding_dim, seq_len);
+
+      write_smem_transpose(q, q_smem, transpose_idx, smem_pitch);
+      write_smem_transpose(k, k_smem, transpose_idx, smem_pitch);
+    }
+
+    __syncthreads();
+
+    if (do_rotary) {
+      q = *reinterpret_cast<Vec_t*>(q_smem + half_idx * smem_pitch + intra_half_idx);
+      k = *reinterpret_cast<Vec_t*>(k_smem + half_idx * smem_pitch + intra_half_idx);
+    }
+
+    int dest_q_idx;
+    int dest_k_idx;
+    int dest_v_idx;
+
+    // Format 1
+    if (format == 1) {
+      const int output_offset_base = s * head_size + n * sequence_length * H + b * NHS;
+      dest_q_idx = output_offset_base + head_idx;
+      dest_k_idx = output_offset_base + NHS * batch_size + head_idx;
+      dest_v_idx = output_offset_base + 2 * NHS * batch_size + head_idx;
+    }
+
+    // Format 2
+    if (format == 2) {
+      const int output_offset_base = M * (b * NHS + s * NH + n * H);
+      dest_q_idx = output_offset_base + head_idx;
+      dest_k_idx = output_offset_base + H + head_idx;
+      dest_v_idx = output_offset_base + 2 * H + head_idx;
+    }
+
+    // Format 3
+    if (format == 3) {
+      const int output_offset_base = n * H + s * NH + b * NHS;
+      dest_q_idx = output_offset_base + head_idx;
+      dest_k_idx = output_offset_base + NHS * batch_size + head_idx;
+      dest_v_idx = output_offset_base + 2 * NHS * batch_size + head_idx;
+    }
+
+    if (!is_masked) {
+      *reinterpret_cast<Vec_t*>(&output[dest_q_idx]) = q;
+      *reinterpret_cast<Vec_t*>(&output[dest_k_idx]) = k;
+      *reinterpret_cast<Vec_t*>(&output[dest_v_idx]) = v;
+
+      if (nullptr != qkv_add_bias) {
+        *reinterpret_cast<Vec_t*>(&qkv_add_bias[src_q_idx]) = q;
+        *reinterpret_cast<Vec_t*>(&qkv_add_bias[src_k_idx]) = k;
+        *reinterpret_cast<Vec_t*>(&qkv_add_bias[src_v_idx]) = v;
+      }
+    }
+  }
+}
+#endif
+
 // this suppose 3 matrix in total
 template <typename T>
 __global__ void AddBiasTransposeQKV(const T* input, const T* biases, T* output, int v_head_size) {
@@ -319,6 +439,7 @@ __global__ void AddBiasTransposeQKVLarge(const int head_size, const T* input, co
     h += stride;
   }
 }
+
 
 template <typename T>
 __global__ void AddBiasTransposeCutlass(const T* input, const T* biases, T* output, int v_head_size) {
@@ -518,8 +639,35 @@ template <typename T>
 void InvokeAddBiasTranspose(
     cudaStream_t stream, const int num_matrices, const int format, const int max_threads_per_block,
     const int batch_size, const int sequence_length, const int num_heads, const int qk_head_size,
-    const T* input, const T* biases, T* output, T* qkv_add_bias, const int v_head_size, int total_matrix_count) {
+    const T* input, const T* biases, T* output, T* qkv_add_bias, const int v_head_size, int total_matrix_count,
+    bool do_rotary = false, int original_past_sequence_length = 0) {
   assert(num_heads <= max_threads_per_block);
+
+  if (do_rotary) {
+#ifdef USE_ROCM
+    ORT_THROW("Rotary Attention is not supported on ROCm");
+#elif !defined(__CUDA_ARCH__) || __CUDA_ARCH__ >= 530
+    if (format != 1 && format != 2 && format != 3) {
+      ORT_THROW("format must be 1, 2 or 3 for rotary attention");
+    }
+    if (v_head_size != -1 && qk_head_size != v_head_size) {
+      ORT_THROW("qk_head_size must be equal to v_head_size for rotary attention");
+    }
+
+    const int step = original_past_sequence_length == 0 ? sequence_length : original_past_sequence_length;
+    size_t smem_size = 2 * qk_head_size * sizeof(T);
+
+    const dim3 grid(sequence_length, num_heads, batch_size);
+    const dim3 block((qk_head_size / 2 + 31) / 32 * 32, 1, 1);
+    AddBiasTransposeQKV<T><<<grid, block, smem_size, stream>>>(total_matrix_count, input, biases, output,
+                                                               qkv_add_bias, qk_head_size, qk_head_size,
+                                                               step, format);
+#else
+    ORT_THROW("Rotary Attention is supported on sm >= 530. Current sm is", __CUDA_ARCH__);
+#endif
+    return;
+  }
+
   const dim3 grid(sequence_length, batch_size, num_matrices);
   if (qk_head_size * num_heads <= max_threads_per_block) {
     const dim3 block(qk_head_size, num_heads, 1);
@@ -575,10 +723,10 @@ template <>
 void LaunchAddBiasTranspose(
     cudaStream_t stream, const int num_matrices, const int format, const int max_threads_per_block,
     const int batch_size, const int sequence_length, const int num_heads, const int qk_head_size,
-    const half* input, const half* biases, half* output,
-    bool enable_half4, const int v_head_size, half* qkv_add_bias, int total_matrix_count) {
+    const half* input, const half* biases, half* output, bool enable_half4, const int v_head_size,
+    half* qkv_add_bias, int total_matrix_count, bool do_rotary, int original_past_sequence_length) {
   total_matrix_count = std::max(num_matrices, total_matrix_count);
-  if (enable_half4 && 0 == (qk_head_size % 4) && (v_head_size == -1 || 0 == (v_head_size % 4))) {
+  if (enable_half4 && 0 == (qk_head_size % 4) && (v_head_size == -1 || 0 == (v_head_size % 4)) && !do_rotary) {
     const int H = qk_head_size / 4;
     const int H_v = v_head_size / 4;
     const Half4* input2 = reinterpret_cast<const Half4*>(input);
@@ -588,7 +736,7 @@ void LaunchAddBiasTranspose(
     InvokeAddBiasTranspose<Half4>(stream, num_matrices, format, max_threads_per_block,
                                   batch_size, sequence_length, num_heads, H, input2, biases2, output2,
                                   qkv_add_bias2, H_v, total_matrix_count);
-  } else if (0 == (qk_head_size & 1) && (v_head_size == -1 || 0 == (v_head_size & 1))) {
+  } else if (0 == (qk_head_size & 1) && (v_head_size == -1 || 0 == (v_head_size & 1)) && !do_rotary) {
     const int H = qk_head_size / 2;
     const int H_v = v_head_size / 2;
     const half2* input2 = reinterpret_cast<const half2*>(input);
@@ -602,7 +750,7 @@ void LaunchAddBiasTranspose(
     InvokeAddBiasTranspose<half>(
         stream, num_matrices, format, max_threads_per_block,
         batch_size, sequence_length, num_heads, qk_head_size, input, biases, output,
-        qkv_add_bias, v_head_size, total_matrix_count);
+        qkv_add_bias, v_head_size, total_matrix_count, do_rotary, original_past_sequence_length);
   }
 }
 
@@ -610,10 +758,11 @@ template <>
 void LaunchAddBiasTranspose(
     cudaStream_t stream, const int num_matrices, const int format, const int max_threads_per_block,
     const int batch_size, const int sequence_length, const int num_heads, const int qk_head_size,
-    const float* input, const float* biases, float* output,
-    bool /*enable_half4*/, const int v_head_size, float* qkv_add_bias, int total_matrix_count) {
+    const float* input, const float* biases, float* output, bool /*enable_half4*/,
+    const int v_head_size, float* qkv_add_bias, int total_matrix_count, bool do_rotary,
+    int original_past_sequence_length) {
   total_matrix_count = std::max(num_matrices, total_matrix_count);
-  if (0 == (qk_head_size % 4) && (v_head_size == -1 || 0 == (v_head_size % 4))) {
+  if (0 == (qk_head_size % 4) && (v_head_size == -1 || 0 == (v_head_size % 4)) && !do_rotary) {
     const int H = qk_head_size / 4;
     const float4* input2 = reinterpret_cast<const float4*>(input);
     const float4* biases2 = reinterpret_cast<const float4*>(biases);
@@ -623,7 +772,7 @@ void LaunchAddBiasTranspose(
         stream, num_matrices, format, max_threads_per_block,
         batch_size, sequence_length, num_heads, H, input2, biases2, output2,
         qkv_add_bias2, v_head_size / 4, total_matrix_count);
-  } else if (0 == (qk_head_size & 1) && (v_head_size == -1 || 0 == (v_head_size & 1))) {
+  } else if (0 == (qk_head_size & 1) && (v_head_size == -1 || 0 == (v_head_size & 1)) && !do_rotary) {
     const int H = qk_head_size / 2;
     const float2* input2 = reinterpret_cast<const float2*>(input);
     const float2* biases2 = reinterpret_cast<const float2*>(biases);
@@ -637,7 +786,7 @@ void LaunchAddBiasTranspose(
     InvokeAddBiasTranspose<float>(
         stream, num_matrices, format, max_threads_per_block,
         batch_size, sequence_length, num_heads, qk_head_size, input, biases, output,
-        qkv_add_bias, v_head_size, total_matrix_count);
+        qkv_add_bias, v_head_size, total_matrix_count, do_rotary, original_past_sequence_length);
   }
 }
 

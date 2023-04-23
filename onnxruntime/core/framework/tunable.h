@@ -130,14 +130,17 @@ class TunableOp {
  public:
   TunableOp() = default;
   TunableOp(TunableOp&&) = default;
+  virtual ~TunableOp() = default;
 
   Status operator()(const ParamsT* params) {
-    int id = default_id_;
+    int id = -1;
     ITuningContext* ctx = params->TuningContext();
     if (ctx->IsTunableOpEnabled()) {
       auto& mgr = ctx->GetTuningResultsManager();
       auto op_sig = Signature();
       auto params_sig = params->Signature();
+
+      // Usage is enabled, then we are free to use previous tuning result.
       id = mgr.Lookup(op_sig, params_sig);
       if (id > static_cast<int>(ops_.size())) {
         LOGS_DEFAULT(ERROR) << "Invalid TunableOp kernel id for " << op_sig
@@ -145,14 +148,16 @@ class TunableOp {
         mgr.Delete(op_sig, params_sig);
         id = -1;
       }
-      if (id < 0) {
+
+      // If there is not previous tuning result been found, we do the tuning iff tuning is enabled
+      if (id < 0 && ctx->IsTuningEnabled()) {
         auto maybe_proxy_params = PreTuning(params);
         id = FindFastest(maybe_proxy_params);
         PostTuning(maybe_proxy_params);
         mgr.Add(op_sig, params_sig, id);
       }
     }
-    ORT_RETURN_IF_ERROR(ops_[id](params));
+    ORT_RETURN_IF_ERROR(ops_[id < 0 ? default_id_ : id](params));
     return Status::OK();
   }
 
@@ -168,7 +173,15 @@ class TunableOp {
     // Do nothing if we are not playing around with params
   }
 
-  virtual ~TunableOp() = default;
+  std::string Signature() {
+    // According to C++17 standard https://wg21.link/n4659 section 15.7.4
+    // > if the operand of typeid refers to the
+    // > object under construction or destruction, typeid yields the std::type_info object representing the constructor
+    // > or destructor’s class.
+    // So delay the op signature generation. See https://github.com/microsoft/onnxruntime/pull/14709
+    std::call_once(signature_init_once_, [this]() { signature_ = CreateSignature(); });
+    return signature_;
+  }
 
  protected:
   // set the default op to be used in non-tuning scenario
@@ -181,6 +194,10 @@ class TunableOp {
     this->ops_.emplace_back(std::move(op));
   }
 
+  int NumberOfOps() {
+    return this->ops_.size();
+  }
+
   void RegisterNestedTunableOp(TunableOp<ParamsT, TimerT>* op_ptr) {
     nested_tunable_ops_.insert(op_ptr);
 
@@ -188,10 +205,6 @@ class TunableOp {
     RegisterOp([op_ptr](const ParamsT* params) {
       return op_ptr->operator()(params);
     });
-  }
-
-  std::string Signature() const {
-    return signature_;
   }
 
  private:
@@ -216,6 +229,7 @@ class TunableOp {
   static bool IsSupported(Op<ParamsT>& op, const ParamsT* param) {
     Status status = op.IsSupported(param);
     if (status.Category() == common::StatusCategory::NONE && status.Code() == common::StatusCode::INVALID_ARGUMENT) {
+      LOGS_DEFAULT(VERBOSE) << "unsupported reason: " << status.ErrorMessage();
       return false;
     }
     ORT_THROW_IF_ERROR(status);
@@ -272,7 +286,8 @@ class TunableOp {
 #endif
   }
 
-  std::string signature_{CreateSignature()};
+  mutable std::once_flag signature_init_once_;
+  std::string signature_;
 
   // the default impl to use when tuning is disabled
   int default_id_{0};

@@ -110,8 +110,7 @@ Status Sampling::Compute(OpKernelContext* ctx) const {
   if (has_init_decoder_) {
     ORT_ENFORCE(init_run_decoder_session_state, "Subgraph SessionState was not found for 'decoder' attribute.");
     ORT_ENFORCE(init_run_decoder_feeds_fetches_manager_, "CreateFeedsFetchesManager must be called prior to execution of graph.");
-    ORT_ENFORCE(init_run_gpt_subgraph_ && gpt_subgraph_
-                  && init_run_gpt_subgraph_->past_present_share_buffer_ == gpt_subgraph_->past_present_share_buffer_,
+    ORT_ENFORCE(init_run_gpt_subgraph_ && gpt_subgraph_ && init_run_gpt_subgraph_->past_present_share_buffer_ == gpt_subgraph_->past_present_share_buffer_,
                 "past_present_share_buffer mode must be same for init decoder and decoder subgraphes");
   }
 
@@ -135,11 +134,14 @@ Status Sampling::Compute(OpKernelContext* ctx) const {
           parameters,
           GenerationCpuDeviceHelper::CreateGptInputs,
           add_to_feeds_func_ ? add_to_feeds_func_ : GenerationCpuDeviceHelper::AddToFeeds,
+          reorder_past_state_func_ ? reorder_past_state_func_ : nullptr,  // Only CUDA implementation needs the reorder helper for now
           topk_func_ ? topk_func_ : GenerationCpuDeviceHelper::TopK,
           process_logits_func_ ? process_logits_func_ : GenerationCpuDeviceHelper::GreedySearchProcessLogits<float>,
           init_greedy_state_func_ ? init_greedy_state_func_ : GenerationCpuDeviceHelper::InitGreedyState<float>,
           device_copy_func_ ? device_copy_func_ : GenerationCpuDeviceHelper::DeviceCopy<float>,
-          update_gpt_feeds_func_ ? update_gpt_feeds_func_ : GenerationCpuDeviceHelper::UpdateGptFeeds<float>};
+          update_gpt_feeds_func_ ? update_gpt_feeds_func_ : GenerationCpuDeviceHelper::UpdateGptFeeds<float>,
+          gpu_device_prop_,
+          gpu_device_arch_};
       ORT_RETURN_IF_ERROR(impl.Initialize());
 
       return impl.Execute(init_run_decoder_feeds_fetches_manager_, *decoder_feeds_fetches_manager_);
@@ -156,11 +158,15 @@ Status Sampling::Compute(OpKernelContext* ctx) const {
           parameters,
           GenerationCpuDeviceHelper::CreateGptInputs,
           add_to_feeds_func_ ? add_to_feeds_func_ : GenerationCpuDeviceHelper::AddToFeeds,
+          reorder_past_state_func_ ? reorder_past_state_func_ : nullptr,  // Only CUDA implementation needs the reorder helper for now
           topk_func_ ? topk_func_ : GenerationCpuDeviceHelper::TopK,
           process_logits_fp16_func_,
           init_greedy_state_fp16_func_,
           device_copy_func_,
-          update_gpt_feeds_fp16_func_};
+          update_gpt_feeds_fp16_func_,
+          gpu_device_prop_,
+          gpu_device_arch_};
+
       ORT_RETURN_IF_ERROR(impl.Initialize());
 
       return impl.Execute(init_run_decoder_feeds_fetches_manager_, *decoder_feeds_fetches_manager_);

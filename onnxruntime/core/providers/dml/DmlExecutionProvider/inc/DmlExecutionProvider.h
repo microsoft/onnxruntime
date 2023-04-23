@@ -45,5 +45,6 @@ namespace Dml
     void FreeGPUAllocation(void* ptr);
 
     void RegisterDmlOperators(IMLOperatorRegistry* registry);
+    void RegisterCpuOperatorsAsDml(onnxruntime::KernelRegistry* registry);
 
 } // namespace Dml

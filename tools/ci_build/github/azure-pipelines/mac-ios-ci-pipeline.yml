@@ -1,30 +1,59 @@
 jobs:
 - job: iOS_CI_on_Mac
   pool:
-    vmImage: 'macOS-11'
+    vmImage: 'macOS-12'
   variables:
     MACOSX_DEPLOYMENT_TARGET: '10.14'
+    PROTO_CACHE_DIR: $(Pipeline.Workspace)/proto_ccache
+    ORT_CACHE_DIR: $(Pipeline.Workspace)/ort_ccache
+    TODAY: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
   timeoutInMinutes: 150
   steps:
-    - script: |
-        $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/inference/x64/python/cpu/scripts/install_protobuf.sh \
-          -p $(Build.BinariesDirectory)/protobuf_install -d $(Build.SourcesDirectory)/cmake/deps.txt
-      displayName: Install protobuf
+    - template: templates/mac-build-step-with-cache.yml
+      parameters:
+        WithCache: true
+        Today: $(TODAY)
+        AdditionalKey: ' protobuf | "$(Agent.OS)" | $(Build.SourcesDirectory)/cmake/deps.txt, $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/inference/x64/python/cpu/scripts/install_protobuf.sh'
+        CacheDir: $(PROTO_CACHE_DIR)
+        ChangeEveryCommit: false
+        BuildStep:
+          - script: |
+              $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/inference/x64/python/cpu/scripts/install_protobuf.sh \
+                -p $(Build.BinariesDirectory)/protobuf_install -d $(Build.SourcesDirectory)/cmake/deps.txt
+            displayName: Install protobuf
+            env:
+              CCACHE_DIR: $(PROTO_CACHE_DIR)
 
-    - script: |
-        python3 $(Build.SourcesDirectory)/tools/ci_build/build.py \
-          --skip_submodule_sync \
-          --build_dir $(Build.BinariesDirectory)/iOS \
-          --build_shared \
-          --use_coreml \
-          --use_xnnpack \
-          --ios \
-          --ios_sysroot iphonesimulator  \
-          --osx_arch x86_64 \
-          --apple_deploy_target 11.0 \
-          --use_xcode \
-          --config RelWithDebInfo \
-          --build_apple_framework \
-          --path_to_protoc_exe $(Build.BinariesDirectory)/protobuf_install/bin/protoc \
-          --parallel
-      displayName: (CPU, CoreML, XNNPACK EPs) Build onnxruntime for iOS x86_64 and run tests using simulator
+    - template: templates/mac-build-step-with-cache.yml
+      parameters:
+        WithCache: true
+        Today: $(TODAY)
+        AdditionalKey: onnxruntime
+        CacheDir: $(ORT_CACHE_DIR)
+        ChangeEveryCommit: true
+        BuildStep:
+          - script: |
+              sudo xcode-select --switch /Applications/Xcode_13.1.app/Contents/Developer
+              python3 $(Build.SourcesDirectory)/tools/ci_build/build.py \
+                --skip_submodule_sync \
+                --build_dir $(Build.BinariesDirectory)/iOS \
+                --build_shared \
+                --use_coreml \
+                --use_xnnpack \
+                --ios \
+                --ios_sysroot iphonesimulator  \
+                --osx_arch x86_64 \
+                --apple_deploy_target 11.0 \
+                --use_xcode \
+                --config RelWithDebInfo \
+                --build_apple_framework \
+                --path_to_protoc_exe $(Build.BinariesDirectory)/protobuf_install/bin/protoc \
+                --parallel
+            displayName: (CPU, CoreML, XNNPACK EPs) Build onnxruntime for iOS x86_64 and run tests using simulator
+            env:
+              CC: clang
+              CXX: clang++
+              CCACHE_CPP2: 1
+              CCACHE_DEPEND: 1
+              CCACHE_SLOPPINESS: modules
+              CCACHE_DIR: $(ORT_CACHE_DIR)

@@ -26,9 +26,9 @@ def is_windows():
     return sys.platform.startswith("win")
 
 
-def run_subprocess(args, cwd=None, capture=False, dll_path=None, shell=False, env={}, log=None):
+def run_subprocess(args, cwd=None, capture=False, dll_path=None, shell=False, env={}, log=None):  # noqa: B006
     if log:
-        log.info("Running subprocess in '{0}'\n{1}".format(cwd or os.getcwd(), args))
+        log.info(f"Running subprocess in '{cwd or os.getcwd()}'\n{args}")
     my_env = os.environ.copy()
     if dll_path:
         if is_windows():
@@ -93,7 +93,7 @@ def legacy_poly_lr_scheduler(global_step, initial_lr, total_steps, warmup, power
 
 def generate_dummy_optim_state(model, optimizer):
     np.random.seed(0)
-    if not (isinstance(optimizer, optim.AdamConfig) or isinstance(optimizer, optim.LambConfig)):
+    if not (isinstance(optimizer, (optim.AdamConfig, optim.LambConfig))):
         return dict()
 
     moment_keys = ["Moment_1", "Moment_2"]
@@ -167,7 +167,7 @@ def generate_random_input_from_bart_model_desc(desc, seed=1, device="cuda:0"):
     dtype = torch.int64
     vocab_size = 30528
     sample_input = []
-    for index, input in enumerate(desc["inputs"]):
+    for _index, input in enumerate(desc["inputs"]):
         size = []
         for s in input[1]:
             if isinstance(s, (int)):

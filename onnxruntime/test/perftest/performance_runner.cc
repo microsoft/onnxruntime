@@ -114,7 +114,9 @@ Status PerformanceRunner::Run() {
   }
 
   // warm up
+  initial_inference_result_.start = std::chrono::high_resolution_clock::now();
   ORT_RETURN_IF_ERROR(RunOneIteration<true>());
+  initial_inference_result_.end = std::chrono::high_resolution_clock::now();
 
   // TODO: start profiling
   // if (!performance_test_config_.run_config.profile_file.empty())
@@ -139,9 +141,12 @@ Status PerformanceRunner::Run() {
   std::chrono::duration<double> session_create_duration = session_create_end_ - session_create_start_;
   // TODO: end profiling
   // if (!performance_test_config_.run_config.profile_file.empty()) session_object->EndProfiling();
+  auto first_inference_duration =
+      std::chrono::duration_cast<std::chrono::milliseconds>(initial_inference_result_.end - initial_inference_result_.start).count();
   std::chrono::duration<double> inference_duration = performance_result_.end - performance_result_.start;
 
   std::cout << "Session creation time cost: " << session_create_duration.count() << " s\n"
+            << "First inference time cost: " << first_inference_duration << " ms\n"
             << "Total inference time cost: " << performance_result_.total_time_cost << " s\n"  // sum of time taken by each request
             << "Total inference requests: " << performance_result_.time_costs.size() << "\n"
             << "Average inference time cost: " << performance_result_.total_time_cost / performance_result_.time_costs.size() * 1000 << " ms\n"
@@ -202,7 +207,7 @@ Status PerformanceRunner::RunParallelDuration() {
     duration_seconds = end - start;
   } while (duration_seconds.count() < performance_test_config_.run_config.duration_in_seconds);
 
-  //Join
+  // Join
   std::unique_lock<OrtMutex> lock(m);
   cv.wait(lock, [&counter]() { return counter == 0; });
 
@@ -235,7 +240,7 @@ Status PerformanceRunner::ForkJoinRepeat() {
     });
   }
 
-  //Join
+  // Join
   std::unique_lock<OrtMutex> lock(m);
   cv.wait(lock, [&counter]() { return counter == 0; });
 

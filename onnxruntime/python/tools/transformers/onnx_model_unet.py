@@ -12,7 +12,7 @@ from fusion_biassplitgelu import FusionBiasSplitGelu
 from fusion_group_norm import FusionGroupNorm
 from fusion_nhwc_conv import FusionNhwcConv
 from fusion_options import FusionOptions
-from fusion_transpose import FusionTranspose
+from fusion_transpose import FusionInsertTranspose, FusionTranspose
 from onnx import ModelProto
 from onnx_model import OnnxModel
 from onnx_model_bert import BertOnnxModel
@@ -89,7 +89,7 @@ class UnetOnnxModel(BertOnnxModel):
         if total:
             logger.info("Removed %d Transpose nodes", total)
 
-    def fuse_attention(self, options: Optional[FusionOptions] = None):
+    def fuse_multi_head_attention(self, options: Optional[FusionOptions] = None):
         # Self Attention
         enable_packed_qkv = (options is None) or options.enable_packed_qkv
         self_attention_fusion = FusionAttentionUnet(
@@ -131,12 +131,15 @@ class UnetOnnxModel(BertOnnxModel):
             group_norm_fusion = FusionGroupNorm(self)
             group_norm_fusion.apply()
 
+            insert_transpose_fusion = FusionInsertTranspose(self)
+            insert_transpose_fusion.apply()
+
         if (options is None) or options.enable_bias_splitgelu:
             bias_split_gelu_fusion = FusionBiasSplitGelu(self)
             bias_split_gelu_fusion.apply()
 
         if (options is None) or options.enable_attention:
-            self.fuse_attention()
+            self.fuse_multi_head_attention(options)
 
         if (options is None) or options.enable_skip_layer_norm:
             self.fuse_skip_layer_norm()
@@ -146,8 +149,6 @@ class UnetOnnxModel(BertOnnxModel):
         # Remove reshape nodes that having same shape of input and output based on symbolic shape inference.
         self.utils.remove_useless_reshape_nodes()
 
-        self.convert_conv_to_nhwc()
-
         if (options is None) or options.enable_bias_skip_layer_norm:
             # Fuse SkipLayerNormalization and Add Bias before it.
             self.fuse_add_bias_skip_layer_norm()
@@ -155,7 +156,10 @@ class UnetOnnxModel(BertOnnxModel):
         if options is not None and options.enable_gelu_approximation:
             self.gelu_approximation()
 
-        self.merge_adjacent_transpose()
+        if options is None or options.enable_nhwc_conv:
+            self.convert_conv_to_nhwc()
+
+            self.merge_adjacent_transpose()
 
         if options is not None and options.enable_bias_add:
             self.fuse_bias_add()
@@ -177,6 +181,7 @@ class UnetOnnxModel(BertOnnxModel):
             "BiasSplitGelu",
             "GroupNorm",
             "NhwcConv",
+            "BiasAdd",
         ]
         for op in ops:
             nodes = self.get_nodes_by_op_type(op)

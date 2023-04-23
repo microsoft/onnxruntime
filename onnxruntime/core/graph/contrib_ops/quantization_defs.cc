@@ -949,6 +949,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Attr("num_heads", "Number of attention heads", AttributeProto::INT)
         .Attr("unidirectional", "Whether every token can only attend to previous tokens. Default value is 0.",
               AttributeProto::INT, static_cast<int64_t>(0))
+        .Attr("do_rotary", "Whether to use rotary position embedding. Default value is 0.",
+              AttributeProto::INT, OPTIONAL_VALUE)
         .Attr("past_present_share_buffer", "Corresponding past and present are same tensor, its shape is "
               "(2, batch_size, num_heads, max_sequence_length, head_size)",
               AttributeProto::INT, OPTIONAL_VALUE)

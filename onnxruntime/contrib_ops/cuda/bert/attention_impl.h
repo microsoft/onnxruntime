@@ -57,13 +57,19 @@ struct AttentionData {
   const int* mask_index;
   gsl::span<const int64_t> mask_index_dims;
   const T* past;
+  const T* past_key;
+  const T* past_value;
   const T* relative_position_bias;
 
   bool has_qkv_workspace;
   T* workspace;
+  T* temp_k_workspace;
+  T* temp_v_workspace;
 
   T* output;
   T* present;
+  T* present_key;
+  T* present_value;
 
   void* fused_runner;
   const void* fused_cross_attention_kernel;

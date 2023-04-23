@@ -223,7 +223,7 @@ TEST_F(ActivationOpTest, Sigmoid_bfloat16) {
   }
 #endif
 #ifdef USE_DNNL
-   if (!DnnlHasBF16Support()) {
+  if (!DnnlHasBF16Support()) {
     LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
     return;
   }
@@ -267,7 +267,7 @@ TEST_F(ActivationOpTest, Tanh_bfloat16) {
   }
 #endif
 #ifdef USE_DNNL
-   if (!DnnlHasBF16Support()) {
+  if (!DnnlHasBF16Support()) {
     LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
     return;
   }
@@ -307,7 +307,7 @@ TEST_F(ActivationOpTest, Relu_bfloat16) {
   }
 #endif
 #ifdef USE_DNNL
-   if (!DnnlHasBF16Support()) {
+  if (!DnnlHasBF16Support()) {
     LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
     return;
   }
@@ -337,18 +337,18 @@ TEST_F(ActivationOpTest, Relu_bfloat16) {
 #endif
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
-#endif  //USE_CUDA || USE_ROCM || USE_DNNL
+#endif  // USE_CUDA || USE_ROCM || USE_DNNL
 
 #if defined(USE_DNNL)
 TEST_F(ActivationOpTest, LeakyRelu_bfloat16) {
 #ifdef USE_DNNL
-   if (!DnnlHasBF16Support()) {
+  if (!DnnlHasBF16Support()) {
     LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
     return;
   }
 #endif
   OpTester test("LeakyRelu", 16);
-  float alpha = 0.01f; // oneDNN set alpha equal to 0.01
+  float alpha = 0.01f;  // oneDNN set alpha equal to 0.01
   auto formula = [alpha](float x) { return (x >= 0) ? x : alpha * x; };
 
   std::vector<float> X = input_values.front();
@@ -497,7 +497,8 @@ TEST_F(ActivationOpTest, PRelu_MultiChannel3D) {
   test.AddInput<float>("X", x_dims, inputs);
   test.AddInput<float>("slope", slope_dims, slopes);
   test.AddOutput<float>("Y", x_dims, outputs);
-  test.Run();
+  // QNN has some issue with the broadcast support
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kQnnExecutionProvider});
 }
 
 TEST_F(ActivationOpTest, PRelu_MultiChannel4D) {
@@ -524,7 +525,8 @@ TEST_F(ActivationOpTest, PRelu_MultiChannel4D) {
     test.AddInput<float>("X", x_dims, inputs);
     test.AddInput<float>("slope", slope_dims, slopes, slope_is_initializer);
     test.AddOutput<float>("Y", x_dims, outputs);
-    test.Run();
+    // QNN has some issue with the broadcast support
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kQnnExecutionProvider});
   };
 
   test(true /* slope_is_initializer */, 5, 4, 3, 2);

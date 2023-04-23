@@ -79,13 +79,6 @@ stages:
       pool: ${{ parameters.agent_pool }}
       strategy:
         matrix:
-          Python37:
-            PythonVersion: '3.7'
-            TorchVersion: ${{ parameters.torch_version }}
-            OpsetVersion: ${{ parameters.opset_version }}
-            CudaVersion: ${{ parameters.cuda_version }}
-            GccVersion: ${{ parameters.gcc_version }}
-            UploadWheel: ${{ parameters.upload_wheel }}
           Python38:
             PythonVersion: '3.8'
             TorchVersion: ${{ parameters.torch_version }}
@@ -102,6 +95,13 @@ stages:
             UploadWheel: ${{ parameters.upload_wheel }}
           Python310:
             PythonVersion: '3.10'
+            TorchVersion: ${{ parameters.torch_version }}
+            OpsetVersion: ${{ parameters.opset_version }}
+            CudaVersion: ${{ parameters.cuda_version }}
+            GccVersion: ${{ parameters.gcc_version }}
+            UploadWheel: ${{ parameters.upload_wheel }}
+          Python311:
+            PythonVersion: '3.11'
             TorchVersion: ${{ parameters.torch_version }}
             OpsetVersion: ${{ parameters.opset_version }}
             CudaVersion: ${{ parameters.cuda_version }}

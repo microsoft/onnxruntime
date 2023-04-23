@@ -55,10 +55,6 @@ stages:
       pool: 'Win-CPU-2021'
       strategy:
         matrix:
-          Python37_x64:
-            PythonVersion: '3.7'
-            MsbuildPlatform: x64
-            buildArch: x64
           Python38_x64:
             PythonVersion: '3.8'
             MsbuildPlatform: x64
@@ -71,13 +67,13 @@ stages:
             PythonVersion: '3.10'
             MsbuildPlatform: x64
             buildArch: x64
+          Python311_x64:
+            PythonVersion: '3.11'
+            MsbuildPlatform: x64
+            buildArch: x64
           # Training build cannot support Win32 for now because one or more of its python
           # dependencies does not support Win32. So, don't build a training package for Win32
           ${{ if not(contains(parameters.build_py_parameters, '--enable_training')) }}:
-            Python37_x86:
-              PythonVersion: '3.7'
-              MsbuildPlatform: Win32
-              buildArch: x86
             Python38_x86:
               PythonVersion: '3.8'
               MsbuildPlatform: Win32
@@ -88,6 +84,10 @@ stages:
               buildArch: x86
             Python310_x86:
               PythonVersion: '3.10'
+              MsbuildPlatform: Win32
+              buildArch: x86
+            Python311_x86:
+              PythonVersion: '3.11'
               MsbuildPlatform: Win32
               buildArch: x86
       variables:
@@ -127,10 +127,16 @@ stages:
           modifyEnvironment: true
           workingFolder: '$(Build.BinariesDirectory)'
 
-      - script: |
-          python -m pip install -q setuptools wheel numpy==1.21.6
-        workingDirectory: '$(Build.BinariesDirectory)'
-        displayName: 'Install python modules'
+      - task: PythonScript@0
+        inputs:
+          scriptSource: inline
+          script: |
+            import sys
+            np_version = 'numpy==1.21.6' if sys.version_info < (3, 11) else 'numpy==1.24.2'
+            import subprocess
+            subprocess.call(['pip', 'install', '-q', 'setuptools', 'wheel', np_version])
+          workingDirectory: '$(Build.BinariesDirectory)'
+          displayName: 'Install python modules'
 
       - template: download-deps.yml
 
@@ -237,7 +243,7 @@ stages:
       #in 32 bits Win32 build. I tried all the settings but they all don't work.
       - task: SDLNativeRules@3
         displayName: 'Run the PREfast SDL Native Rules for MSBuild'
-        condition: and (succeeded(), and(eq(variables['buildArch'], 'x64'), eq(variables['PythonVersion'], '3.7')))
+        condition: and (succeeded(), and(eq(variables['buildArch'], 'x64'), eq(variables['PythonVersion'], '3.8')))
         inputs:
           msBuildArchitecture: amd64
           setupCommandlines: 'python $(Build.SourcesDirectory)\tools\ci_build\build.py --config Debug --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_generator "Visual Studio 16 2019" --enable_pybind --enable_onnx_tests --parallel $(TelemetryOption) --update --cmake_extra_defines onnxruntime_ENABLE_STATIC_ANALYSIS=ON'
@@ -247,7 +253,7 @@ stages:
 
       - task: TSAUpload@2
         displayName: 'TSA upload'
-        condition: and(and (succeeded(), and(eq(variables['buildArch'], 'x64'), eq(variables['PythonVersion'], '3.7'))), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+        condition: and(and (succeeded(), and(eq(variables['buildArch'], 'x64'), eq(variables['PythonVersion'], '3.8'))), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
         inputs:
           GdnPublishTsaOnboard: false
           GdnPublishTsaConfigFile: '$(Build.sourcesDirectory)\.gdn\.gdntsa'
@@ -265,16 +271,8 @@ stages:
       - template: py-win-gpu.yml
         parameters:
           MACHINE_POOL: 'onnxruntime-gpu-winbuild-t4'
-          PYTHON_VERSION: '3.7'
-          EP_BUILD_FLAGS: --use_tensorrt --tensorrt_home="C:\local\TensorRT-8.5.1.7.Windows10.x86_64.cuda-11.8.cudnn8.6" --cuda_version=11.6 --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.6"  --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=37;50;52;60;61;70;75;80"
-          ENV_SETUP_SCRIPT: setup_env_gpu.bat
-          EP_NAME: gpu
-
-      - template: py-win-gpu.yml
-        parameters:
-          MACHINE_POOL: 'onnxruntime-gpu-winbuild-t4'
           PYTHON_VERSION: '3.8'
-          EP_BUILD_FLAGS: --use_tensorrt --tensorrt_home="C:\local\TensorRT-8.5.1.7.Windows10.x86_64.cuda-11.8.cudnn8.6" --cuda_version=11.6 --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.6"  --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=37;50;52;60;61;70;75;80"
+          EP_BUILD_FLAGS: --use_tensorrt --use_tensorrt_builtin_parser --tensorrt_home="C:\local\TensorRT-8.6.0.12.Windows10.x86_64.cuda-11.8" --cuda_version=11.6 --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.6"  --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=52;60;61;70;75;80"
           ENV_SETUP_SCRIPT: setup_env_gpu.bat
           EP_NAME: gpu
 
@@ -282,7 +280,7 @@ stages:
         parameters:
           MACHINE_POOL: 'onnxruntime-gpu-winbuild-t4'
           PYTHON_VERSION: '3.9'
-          EP_BUILD_FLAGS: --use_tensorrt --tensorrt_home="C:\local\TensorRT-8.5.1.7.Windows10.x86_64.cuda-11.8.cudnn8.6" --cuda_version=11.6 --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.6"  --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=37;50;52;60;61;70;75;80"
+          EP_BUILD_FLAGS: --use_tensorrt --use_tensorrt_builtin_parser --tensorrt_home="C:\local\TensorRT-8.6.0.12.Windows10.x86_64.cuda-11.8" --cuda_version=11.6 --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.6"  --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=52;60;61;70;75;80"
           ENV_SETUP_SCRIPT: setup_env_gpu.bat
           EP_NAME: gpu
 
@@ -290,17 +288,17 @@ stages:
         parameters:
           MACHINE_POOL: 'onnxruntime-gpu-winbuild-t4'
           PYTHON_VERSION: '3.10'
-          EP_BUILD_FLAGS: --use_tensorrt --tensorrt_home="C:\local\TensorRT-8.5.1.7.Windows10.x86_64.cuda-11.8.cudnn8.6" --cuda_version=11.6 --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.6"  --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=37;50;52;60;61;70;75;80"
+          EP_BUILD_FLAGS: --use_tensorrt --use_tensorrt_builtin_parser --tensorrt_home="C:\local\TensorRT-8.6.0.12.Windows10.x86_64.cuda-11.8" --cuda_version=11.6 --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.6"  --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=52;60;61;70;75;80"
           ENV_SETUP_SCRIPT: setup_env_gpu.bat
           EP_NAME: gpu
 
       - template: py-win-gpu.yml
         parameters:
-          MACHINE_POOL: 'aiinfra-dml-winbuild'
-          PYTHON_VERSION: '3.7'
-          EP_BUILD_FLAGS: --use_dml --cmake_extra_defines CMAKE_SYSTEM_VERSION=10.0.18362.0 --enable_wcos
-          ENV_SETUP_SCRIPT: setup_env.bat
-          EP_NAME: directml
+          MACHINE_POOL: 'onnxruntime-gpu-winbuild-t4'
+          PYTHON_VERSION: '3.11'
+          EP_BUILD_FLAGS: --use_tensorrt --tensorrt_home="C:\local\TensorRT-8.5.1.7.Windows10.x86_64.cuda-11.8.cudnn8.6" --cuda_version=11.6 --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.6"  --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=52;60;61;70;75;80"
+          ENV_SETUP_SCRIPT: setup_env_gpu.bat
+          EP_NAME: gpu
 
       - template: py-win-gpu.yml
         parameters:
@@ -322,6 +320,14 @@ stages:
         parameters:
           MACHINE_POOL: 'aiinfra-dml-winbuild'
           PYTHON_VERSION: '3.10'
+          EP_BUILD_FLAGS: --use_dml --cmake_extra_defines CMAKE_SYSTEM_VERSION=10.0.18362.0 --enable_wcos
+          ENV_SETUP_SCRIPT: setup_env.bat
+          EP_NAME: directml
+
+      - template: py-win-gpu.yml
+        parameters:
+          MACHINE_POOL: 'aiinfra-dml-winbuild'
+          PYTHON_VERSION: '3.11'
           EP_BUILD_FLAGS: --use_dml --cmake_extra_defines CMAKE_SYSTEM_VERSION=10.0.18362.0 --enable_wcos
           ENV_SETUP_SCRIPT: setup_env.bat
           EP_NAME: directml
@@ -332,19 +338,19 @@ stages:
       workspace:
         clean: all
       pool:
-        vmImage: 'macOS-11'
+        vmImage: 'macOS-12'
       variables:
-        MACOSX_DEPLOYMENT_TARGET: '10.14'
+        MACOSX_DEPLOYMENT_TARGET: '10.15'
       strategy:
         matrix:
-          Python37:
-            PythonVersion: '3.7'
           Python38:
             PythonVersion: '3.8'
           Python39:
             PythonVersion: '3.9'
           Python310:
             PythonVersion: '3.10'
+          Python311:
+            PythonVersion: '3.11'
       steps:
       - checkout: self
         clean: true
@@ -366,8 +372,9 @@ stages:
           export PATH=$(Build.BinariesDirectory)/installed/bin:$PATH
           export ONNX_ML=1
           export CMAKE_ARGS="-DONNX_GEN_PB_TYPE_STUBS=OFF -DONNX_WERROR=OFF"
+          export _PYTHON_HOST_PLATFORM=macosx-${{variables.MACOSX_DEPLOYMENT_TARGET}}-x86_64
           python3 -m pip install -r '$(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/requirements.txt'
-          sudo xcode-select --switch /Applications/Xcode_12.4.app/Contents/Developer
+          sudo xcode-select --switch /Applications/Xcode_13.1.app/Contents/Developer
           python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --parallel --config Release --skip_onnx_tests --build_wheel ${{ parameters.build_py_parameters }}
         displayName: 'Command Line Script'
 
@@ -393,7 +400,7 @@ stages:
       workspace:
         clean: all
       pool:
-        vmImage: 'macOS-11'
+        vmImage: 'macOS-12'
       variables:
         MACOSX_DEPLOYMENT_TARGET: '11.0'
       strategy:
@@ -406,6 +413,8 @@ stages:
             PythonVersion: '3.9'
           Python310:
             PythonVersion: '3.10'
+          Python311:
+            PythonVersion: '3.11'
       steps:
       - checkout: self
         clean: true
@@ -422,6 +431,9 @@ stages:
           system_profiler SPSoftwareDataType SPHardwareDataType
         displayName: 'Mac machine info'
 
+      # Don't remove _PYTHON_HOST_PLATFORM, it's used to generate correct package name
+      # Setting _PYTHON_HOST_PLATFORM overwrites the value return by get_platform()
+      # Ref: https://wiki.debian.org/Python/MultiArch
       - script: |
           set -e -x
           pushd .
@@ -433,14 +445,21 @@ stages:
           export PATH=$(Build.BinariesDirectory)/installed/bin:$PATH
           export ONNX_ML=1
           export CMAKE_ARGS="-DONNX_GEN_PB_TYPE_STUBS=OFF -DONNX_WERROR=OFF"
+          export _PYTHON_HOST_PLATFORM=macosx-${{variables.MACOSX_DEPLOYMENT_TARGET}}-arm64
           python3 -m pip install -r '$(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/requirements.txt'
-          sudo xcode-select --switch /Applications/Xcode_12.4.app/Contents/Developer
+          sudo xcode-select --switch /Applications/Xcode_13.1.app/Contents/Developer
           python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --parallel --config Release --skip_tests --cmake_extra_defines CMAKE_OSX_ARCHITECTURES=arm64 --build_wheel ${{ parameters.build_py_parameters }}
         displayName: 'Command Line Script'
 
       - script: |
+          set -ex
           python -m pip install --upgrade delocate
           cd '$(Build.BinariesDirectory)/Release/dist'
+          ls
+          for file in *.whl
+          do
+            [[ "$file" == *arm64* ]] || ( echo "Mac Silicon package name is NOT correct" && exit 1)
+          done
           for file in *.whl
           do
             delocate-listdeps "$file"
@@ -488,16 +507,15 @@ stages:
           ${{ if contains(parameters.build_py_parameters, '--use_azure') }}:
             device: '-d AZURE'
 
-  - ${{ if eq(parameters.enable_ubuntu_cpu, true) }}:
+  - ${{ if and(eq(parameters.enable_ubuntu_cpu, true), contains(parameters.build_py_parameters, '--use_azure'))}}:
       - template: py-linux-ubuntu.yml
         parameters:
           arch: 'aarch64'
           machine_pool: 'aiinfra-linux-ARM64-CPU-2019'
           base_image: 'arm64v8/ubuntu:18.04'
-          ${{ if contains(parameters.build_py_parameters, '--use_azure') }}:
-            device: '-d AZURE'
+          device: '-d AZURE'
 
-  - ${{ if eq(parameters.enable_ubuntu_cpu, true) }}:
+  - ${{ if and(eq(parameters.enable_ubuntu_cpu, true), contains(parameters.build_py_parameters, '--use_azure'))}}:
       - template: py-linux-ubuntu.yml
         parameters:
           arch: 'x86_64'
@@ -510,6 +528,6 @@ stages:
       - template: py-linux-gpu.yml
         parameters:
           arch: 'x86_64'
-          machine_pool: 'Linux-CPU'
+          machine_pool: 'aiinfra-Linux-CPU'
           ${{ if contains(parameters.build_py_parameters, '--use_azure') }}:
             device: '-d AZURE'

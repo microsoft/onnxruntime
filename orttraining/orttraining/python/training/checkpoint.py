@@ -1,12 +1,13 @@
+import os
+import tempfile
+import warnings
+from enum import Enum
+
 import numpy as np
 import onnx
-import os
 import torch
-import warnings
-import tempfile
-from enum import Enum
-from . import _checkpoint_storage, _utils
 
+from . import _checkpoint_storage, _utils
 
 ################################################################################
 # Experimental Checkpoint APIs
@@ -15,7 +16,7 @@ from . import _checkpoint_storage, _utils
 
 def experimental_state_dict(ort_trainer, include_optimizer_state=True):
     warnings.warn(
-        "experimental_state_dict() will be deprecated soon. " "Please use ORTTrainer.state_dict() instead.",
+        "experimental_state_dict() will be deprecated soon. Please use ORTTrainer.state_dict() instead.",
         DeprecationWarning,
     )
 
@@ -45,7 +46,7 @@ def experimental_state_dict(ort_trainer, include_optimizer_state=True):
 
 def experimental_load_state_dict(ort_trainer, state_dict, strict=False):
     warnings.warn(
-        "experimental_load_state_dict() will be deprecated soon. " "Please use ORTTrainer.load_state_dict() instead.",
+        "experimental_load_state_dict() will be deprecated soon. Please use ORTTrainer.load_state_dict() instead.",
         DeprecationWarning,
     )
 
@@ -65,7 +66,7 @@ def experimental_load_state_dict(ort_trainer, state_dict, strict=False):
         if name in cur_initializers_names:
             new_initializers[name] = state_dict[name].numpy()
         elif strict:
-            raise RuntimeError("Checkpoint tensor: {} is not present in the model.".format(name))
+            raise RuntimeError(f"Checkpoint tensor: {name} is not present in the model.")
 
     ort_trainer._update_onnx_model_initializers(new_initializers)
 
@@ -86,7 +87,7 @@ def experimental_save_checkpoint(
     include_optimizer_state=True,
 ):
     warnings.warn(
-        "experimental_save_checkpoint() will be deprecated soon. " "Please use ORTTrainer.save_checkpoint() instead.",
+        "experimental_save_checkpoint() will be deprecated soon. Please use ORTTrainer.save_checkpoint() instead.",
         DeprecationWarning,
     )
 
@@ -112,7 +113,7 @@ def experimental_save_checkpoint(
 
 def experimental_load_checkpoint(ort_trainer, checkpoint_dir, checkpoint_prefix="ORT_checkpoint", strict=False):
     warnings.warn(
-        "experimental_load_checkpoint() will be deprecated soon. " "Please use ORTTrainer.load_checkpoint() instead.",
+        "experimental_load_checkpoint() will be deprecated soon. Please use ORTTrainer.load_checkpoint() instead.",
         DeprecationWarning,
     )
 
@@ -131,7 +132,7 @@ def experimental_load_checkpoint(ort_trainer, checkpoint_dir, checkpoint_prefix=
         return _load_single_checkpoint(ort_trainer, checkpoint_dir, checkpoint_prefix, is_partitioned, strict)
 
 
-class _AGGREGATION_MODE(Enum):
+class _AGGREGATION_MODE(Enum):  # noqa: N801
     Zero = 0
     Megatron = 1
 
@@ -241,7 +242,7 @@ def _aggregate_model_states(
                 model_state_key,
                 model_state_value,
                 state_dict[model][full_precision],
-                "Value mismatch for model state {}".format(model_state_key),
+                f"Value mismatch for model state {model_state_key}",
             )
 
 
@@ -283,7 +284,7 @@ def _aggregate_optimizer_states(rank_state_dict, sharded_states_original_dims, s
                     optimizer_key,
                     optimizer_value,
                     state_dict[optimizer][model_state_key],
-                    "Value mismatch for model state {} and optimizer state {}".format(model_state_key, optimizer_key),
+                    f"Value mismatch for model state {model_state_key} and optimizer state {optimizer_key}",
                 )
 
 
@@ -319,8 +320,8 @@ def _aggregate_trainer_options(rank_state_dict, state_dict, partial_aggregation)
     world_rank = _utils.state_dict_trainer_options_world_rank_key()
     world_size = _utils.state_dict_trainer_options_world_size_key()
     optimizer_name = _utils.state_dict_trainer_options_optimizer_name_key()
-    D_size = _utils.state_dict_trainer_options_data_parallel_size_key()
-    H_size = _utils.state_dict_trainer_options_horizontal_parallel_size_key()
+    D_size = _utils.state_dict_trainer_options_data_parallel_size_key()  # noqa: N806
+    H_size = _utils.state_dict_trainer_options_horizontal_parallel_size_key()  # noqa: N806
 
     state_dict[trainer_options][mixed_precision] = rank_state_dict[trainer_options][mixed_precision]
     state_dict[trainer_options][zero_stage] = 0
@@ -422,32 +423,32 @@ def _aggregate_over_ranks(
         assert (
             ranks[i] == rank_state_dict[_utils.state_dict_trainer_options_key()][world_rank]
         ), "Unexpected rank in file at path {}. Expected {}, got {}".format(
-            path, rank, rank_state_dict[_utils.state_dict_trainer_options_key()][world_rank]
+            path, rank, rank_state_dict[_utils.state_dict_trainer_options_key()][world_rank]  # noqa: F821
         )
         if loaded_mixed_precision is None:
             loaded_mixed_precision = rank_state_dict[_utils.state_dict_trainer_options_key()][mixed_precision]
         else:
             assert (
                 loaded_mixed_precision == rank_state_dict[_utils.state_dict_trainer_options_key()][mixed_precision]
-            ), "Mixed precision state mismatch among checkpoint files. File: {}".format(path)
+            ), f"Mixed precision state mismatch among checkpoint files. File: {path}"
         if loaded_world_size is None:
             loaded_world_size = rank_state_dict[_utils.state_dict_trainer_options_key()][world_size]
         else:
             assert (
                 loaded_world_size == rank_state_dict[_utils.state_dict_trainer_options_key()][world_size]
-            ), "World size state mismatch among checkpoint files. File: {}".format(path)
+            ), f"World size state mismatch among checkpoint files. File: {path}"
         if loaded_zero_stage is None:
             loaded_zero_stage = rank_state_dict[_utils.state_dict_trainer_options_key()][zero_stage]
         else:
             assert (
                 loaded_zero_stage == rank_state_dict[_utils.state_dict_trainer_options_key()][zero_stage]
-            ), "Zero stage mismatch among checkpoint files. File: {}".format(path)
+            ), f"Zero stage mismatch among checkpoint files. File: {path}"
         if loaded_optimizer_name is None:
             loaded_optimizer_name = rank_state_dict[_utils.state_dict_trainer_options_key()][optimizer_name]
         else:
             assert (
                 loaded_optimizer_name == rank_state_dict[_utils.state_dict_trainer_options_key()][optimizer_name]
-            ), "Optimizer name mismatch among checkpoint files. File: {}".format(path)
+            ), f"Optimizer name mismatch among checkpoint files. File: {path}"
 
         # aggregate all model states
         _aggregate_model_states(rank_state_dict, sharded_states_original_dims, state_dict, loaded_mixed_precision, mode)
@@ -484,7 +485,7 @@ def _aggregate_over_ranks(
     return _to_pytorch_format(state_dict) if pytorch_format else state_dict
 
 
-def _aggregate_over_D_H(ordered_paths, D_groups, H_groups, pytorch_format):
+def _aggregate_over_D_H(ordered_paths, D_groups, H_groups, pytorch_format):  # noqa: N802
     """Aggregate checkpoint files and return a single state dictionary for the D+H
     (Zero+Megatron) partitioning strategy.
     For D+H aggregation scenario, the first pass of aggregation(partial aggregation) is over D groups
@@ -540,14 +541,14 @@ def aggregate_checkpoints(paths, pytorch_format=True):
     """
 
     loaded_trainer_options = _checkpoint_storage.load(paths[0], key=_utils.state_dict_trainer_options_key())
-    D_size = _utils.state_dict_trainer_options_data_parallel_size_key()
-    H_size = _utils.state_dict_trainer_options_horizontal_parallel_size_key()
+    D_size = _utils.state_dict_trainer_options_data_parallel_size_key()  # noqa: N806
+    H_size = _utils.state_dict_trainer_options_horizontal_parallel_size_key()  # noqa: N806
     world_size = _utils.state_dict_trainer_options_world_size_key()
 
-    D_size = loaded_trainer_options[D_size]
-    H_size = loaded_trainer_options[H_size]
+    D_size = loaded_trainer_options[D_size]  # noqa: N806
+    H_size = loaded_trainer_options[H_size]  # noqa: N806
     world_size = loaded_trainer_options[world_size]
-    D_groups, H_groups = _get_parallellism_groups(D_size, H_size, world_size)
+    D_groups, H_groups = _get_parallellism_groups(D_size, H_size, world_size)  # noqa: N806
 
     combine_zero = loaded_trainer_options[_utils.state_dict_trainer_options_zero_stage_key()] > 0
     combine_megatron = len(H_groups[0]) > 1
@@ -630,8 +631,8 @@ def _list_checkpoint_files(checkpoint_dir, checkpoint_prefix, extension=".ort.pt
 
 
 def _get_checkpoint_name(prefix, is_partitioned, world_rank=None, world_size=None):
-    SINGLE_CHECKPOINT_FILENAME = "{prefix}.ort.pt"
-    MULTIPLE_CHECKPOINT_FILENAME = "{prefix}.ZeRO.{world_rank}.{world_size}.ort.pt"
+    SINGLE_CHECKPOINT_FILENAME = "{prefix}.ort.pt"  # noqa: N806
+    MULTIPLE_CHECKPOINT_FILENAME = "{prefix}.ZeRO.{world_rank}.{world_size}.ort.pt"  # noqa: N806
 
     if is_partitioned:
         filename = MULTIPLE_CHECKPOINT_FILENAME.format(
@@ -657,9 +658,8 @@ def _split_state_dict(state_dict):
     return split_sd
 
 
-class _CombineZeroCheckpoint(object):
+class _CombineZeroCheckpoint:
     def __init__(self, checkpoint_files, clean_state_dict=None):
-
         assert len(checkpoint_files) > 0, "No checkpoint files passed"
         self.checkpoint_files = checkpoint_files
         self.clean_state_dict = clean_state_dict
@@ -684,7 +684,7 @@ class _CombineZeroCheckpoint(object):
         elif name_split[0].endswith("_fp16"):
             mp_suffix = "_fp16"
         param_name = name_split[0]
-        if optimizer_key != "":
+        if optimizer_key != "":  # noqa: PLC1901
             param_name = param_name.split(optimizer_key)[1]
         param_name = param_name.split("_fp16")[0]
         return param_name, optimizer_key, view_num, mp_suffix

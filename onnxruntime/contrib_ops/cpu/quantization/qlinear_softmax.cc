@@ -147,9 +147,9 @@ common::Status QlinearSoftmaxCPU<uint8_t>(size_t N,
   ThreadPool::TryParallelFor(
       thread_pool, N,
       // Read 3*N (max,sum,div) write N (div), computation=Read
-      TensorOpCost{static_cast<double>(D * 3),
+      TensorOpCost{static_cast<double>(D) * 3.0,
                    static_cast<double>(D),
-                   static_cast<double>(D * 3)},
+                   static_cast<double>(D) * 3.0},
       [x_data, y_data, D, y_scale, yzp, &lookup_table](std::ptrdiff_t first, std::ptrdiff_t last) {
         const auto c_y_scale = y_scale;
         const auto c_y_zp = yzp;

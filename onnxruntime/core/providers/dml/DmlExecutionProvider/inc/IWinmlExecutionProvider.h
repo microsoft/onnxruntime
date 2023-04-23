@@ -66,7 +66,7 @@ namespace Windows::AI::MachineLearning::Adapter
         virtual void Close() = 0;
     };
 
-    using MLOperatorTensorGetter = std::function<Microsoft::WRL::ComPtr<IMLOperatorTensor>(uint32_t index)>;
+    using MLOperatorTensorGetter = std::function<std::variant<Microsoft::WRL::ComPtr<IMLOperatorTensor>, std::vector<Microsoft::WRL::ComPtr<IMLOperatorTensor>>>(uint32_t index)>;
 
     struct DmlOperatorParams
     {

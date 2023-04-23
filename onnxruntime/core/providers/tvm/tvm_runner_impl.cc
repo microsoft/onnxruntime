@@ -93,8 +93,7 @@ GERunnerImpl::GERunnerImpl(const std::shared_ptr<TvmModule>& mod,
                            const InputsInfoMap& inputs_info,
                            const TVMTensorShapes output_shapes,
                            const std::vector<DLTensor> output_tensors,
-                           bool set_output_zero_copy) :
-  RunnerImpl(mod, inputs_info, output_shapes, output_tensors, set_output_zero_copy) {
+                           bool set_output_zero_copy) : RunnerImpl(mod, inputs_info, output_shapes, output_tensors, set_output_zero_copy) {
 }
 
 void GERunnerImpl::set_input(Ort::KernelContext& context) {
@@ -127,8 +126,7 @@ VMRunnerImpl::VMRunnerImpl(const std::shared_ptr<TvmModule>& mod,
                            const InputsInfoMap& inputs_info,
                            const TVMTensorShapes output_shapes,
                            const std::vector<DLTensor> output_tensors,
-                           bool set_output_zero_copy) :
-  RunnerImpl(mod, inputs_info, output_shapes, output_tensors, set_output_zero_copy) {
+                           bool set_output_zero_copy) : RunnerImpl(mod, inputs_info, output_shapes, output_tensors, set_output_zero_copy) {
 }
 
 void VMRunnerImpl::set_input(Ort::KernelContext& context) {
@@ -141,7 +139,7 @@ void VMRunnerImpl::set_input(Ort::KernelContext& context) {
 
 void VMRunnerImpl::connect_output_tensors2ort(Ort::KernelContext& context) {
   // TODO(vvchernov): try to find more flexible solution
-  if(!probe_infer_) {
+  if (!probe_infer_) {
     infer_once_to_get_output_shapes();
   }
 

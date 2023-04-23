@@ -7,8 +7,9 @@
 
 #include "core/providers/rocm/cu_inc/common.cuh"
 #include "core/providers/rocm/tunable/gemm_ck.cuh"
-#include "core/providers/rocm/tunable/gemm_rocblas.h"
 #include "core/providers/rocm/tunable/gemm_common.h"
+#include "core/providers/rocm/tunable/gemm_hipblaslt.h"
+#include "core/providers/rocm/tunable/gemm_rocblas.h"
 #include "core/providers/rocm/tunable/rocm_tunable.h"
 
 namespace onnxruntime {
@@ -37,6 +38,10 @@ class GemmTunableOp : public TunableOp<GemmParams<T>> {
  public:
   GemmTunableOp() {
     this->RegisterOp(RocBlasGemmOp<T>);
+
+#ifdef USE_HIPBLASLT
+    this->RegisterOp(HipBlasLtGemmOp<T>);
+#endif
 
 #ifdef USE_ROCBLAS_EXTENSION_API
     this->RegisterNestedTunableOp(&rocblas_gemm_tunable_op_);
@@ -86,6 +91,10 @@ class BatchedGemmTunableOp : public TunableOp<BatchedGemmParams<T>> {
  public:
   BatchedGemmTunableOp() {
     this->RegisterOp(RocBlasBatchedGemmOp<T>);
+
+#ifdef USE_ROCBLAS_EXTENSION_API
+    this->RegisterNestedTunableOp(&rocblas_batched_gemm_tunable_op_);
+#endif /* #ifdef USE_ROCBLAS_EXTENSION_API */
   }
 
   const BatchedGemmParams<T>* PreTuning(const BatchedGemmParams<T>* params) override {
@@ -122,6 +131,11 @@ class BatchedGemmTunableOp : public TunableOp<BatchedGemmParams<T>> {
       delete params;
     }
   }
+
+ private:
+#ifdef USE_ROCBLAS_EXTENSION_API
+  RocBlasBatchedGemmTunableOp<T> rocblas_batched_gemm_tunable_op_;
+#endif
 };
 
 template <typename T, typename ALayout, typename BLayout>
@@ -129,6 +143,15 @@ class StridedBatchedGemmTunableOp : public TunableOp<StridedBatchedGemmParams<T>
  public:
   StridedBatchedGemmTunableOp() {
     this->RegisterOp(RocBlasStridedBatchedGemmOp<T>);
+
+#ifdef USE_HIPBLASLT
+    this->RegisterOp(HipBlasLtStridedBatchedGemmOp<T>);
+#endif
+
+#ifdef USE_ROCBLAS_EXTENSION_API
+    this->RegisterNestedTunableOp(&rocblas_strided_batched_gemm_tunable_op_);
+#endif /* #ifdef USE_ROCBLAS_EXTENSION_API */
+
 #ifdef USE_COMPOSABLE_KERNEL
     for (auto&& [_, op] : GetCKStridedBatchedGemmTypeStringAndOps<T, ALayout, BLayout>()) {
       ORT_UNUSED_PARAMETER(_);
@@ -155,6 +178,11 @@ class StridedBatchedGemmTunableOp : public TunableOp<StridedBatchedGemmParams<T>
       delete params;
     }
   }
+
+ private:
+#ifdef USE_ROCBLAS_EXTENSION_API
+  RocBlasStridedBatchedGemmTunableOp<T> rocblas_strided_batched_gemm_tunable_op_;
+#endif
 };
 
 }  // namespace internal

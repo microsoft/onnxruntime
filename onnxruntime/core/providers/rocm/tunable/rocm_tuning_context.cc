@@ -63,11 +63,22 @@ RocmTuningResultsValidator::RocmTuningResultsValidator(ROCMExecutionProvider* ep
 
 std::string RocmTuningResultsValidator::GetOrtBuildConfig() const {
   std::ostringstream oss;
-  oss << "USE_CK=" << USE_COMPOSABLE_KERNEL << "|";
+#ifdef USE_COMPOSABLE_KERNEL
+  oss << "USE_CK=" << 1 << "|";
+#else
+  oss << "USE_CK=" << 0 << "|";
+#endif
+
 #ifdef USE_ROCBLAS_EXTENSION_API
   oss << "USE_ROCBLAS_EXTENSION_API=" << 1 << "|";
 #else
   oss << "USE_ROCBLAS_EXTENSION_API=" << 0 << "|";
+#endif
+
+#ifdef USE_HIPBLASLT
+  oss << "USE_HIPBLASLT=" << 1 << "|";
+#else
+  oss << "USE_HIPBLASLT=" << 0 << "|";
 #endif
   return oss.str();
 }
@@ -77,16 +88,30 @@ RocmTuningContext::RocmTuningContext(ROCMExecutionProvider* ep, TunableOpInfo* i
 
 void RocmTuningContext::EnableTunableOp() {
   LOGS_DEFAULT(INFO) << "Enable TunableOp for ROCm Execution Provider";
-  info_->enabled = true;
+  info_->enable = true;
 }
 
 void RocmTuningContext::DisableTunableOp() {
   LOGS_DEFAULT(INFO) << "Disable TunableOp for ROCm Execution Provider";
-  info_->enabled = false;
+  info_->enable = false;
 }
 
 bool RocmTuningContext::IsTunableOpEnabled() const {
-  return info_->enabled;
+  return info_->enable;
+}
+
+void RocmTuningContext::EnableTuning() {
+  LOGS_DEFAULT(INFO) << "Enable TunableOp tuning for ROCm Execution Provider";
+  info_->tuning_enable = true;
+}
+
+void RocmTuningContext::DisableTuning() {
+  LOGS_DEFAULT(INFO) << "Disable TunableOp tuning for ROCm Execution Provider";
+  info_->tuning_enable = false;
+}
+
+bool RocmTuningContext::IsTuningEnabled() const {
+  return info_->tuning_enable;
 }
 
 TuningResultsManager& RocmTuningContext::GetTuningResultsManager() {

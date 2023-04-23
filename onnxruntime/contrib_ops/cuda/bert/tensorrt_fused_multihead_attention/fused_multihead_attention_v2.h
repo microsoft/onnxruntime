@@ -3104,7 +3104,7 @@ class FusedMultiHeadAttentionXMMAKernelV2 : public TFusedMultiHeadAttentionXMMAK
                          bool flash_attention = false,
                          bool causal_mask = false) const {
     s = flash_attention ? 0 : s;
-    return (uint64_t)s << 32 | d << 8 | (with_relative_position_bias ? 16ull : 0ull) | (flash_attention ? 8ull : 0ull) | (causal_mask ? 4ull : 0ull) | (interleaved ? 2ull : 0ull) | (unroll ? 1ull : 0ull);
+    return (uint64_t)s << 32 | (uint64_t)d << 8 | (with_relative_position_bias ? 16ull : 0ull) | (flash_attention ? 8ull : 0ull) | (causal_mask ? 4ull : 0ull) | (interleaved ? 2ull : 0ull) | (unroll ? 1ull : 0ull);
   }
 
   virtual uint64_t hashID(const KernelMeta& kernelMeta) const {

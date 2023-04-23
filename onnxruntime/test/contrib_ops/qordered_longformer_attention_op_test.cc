@@ -34,15 +34,14 @@ static void run_qordered_longformer_attention_op_test(
     const int64_t head_size,
     const int64_t window,
     int64_t input_hidden_size = 0) {
-
   int cuda_runtime_version = 0;
   // Need 11.4 or higher cuda runtime
   if ((cudaRuntimeGetVersion(&cuda_runtime_version) != cudaSuccess) || (cuda_runtime_version < 11040)) {
     return;
   }
 
-  // Needs Turing or higher architecture
-  if (NeedSkipIfCudaArchLowerThan(750)) {
+  // Needs Turing architecture
+  if (NeedSkipIfCudaArchLowerThan(750) || NeedSkipIfCudaArchGreaterEqualThan(800)) {
     return;
   }
 
@@ -153,8 +152,6 @@ TEST(QOrderedTest, LongformerAttention_1x128x2x16_window_32) {
   // }
   // debug_print(global_attention_mask.data(), batch_size, sequence_len, "global_attention_mask");
   // float scale_output = 1.0f / 8.0f;
-
-
 
   //========inputq : 128x32 ============
   std::vector<int8_t> inputq = {
@@ -666,6 +663,6 @@ TEST(QOrderedTest, LongformerAttention_1x128x2x16_window_32) {
 }  // namespace test
 }  // namespace onnxruntime
 
-#endif // CUDA_VERSION
+#endif  // CUDA_VERSION
 
 #endif  // USE_CUDA

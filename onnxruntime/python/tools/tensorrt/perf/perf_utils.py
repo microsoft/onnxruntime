@@ -1,11 +1,11 @@
 import json
-import logging
+import logging  # noqa: F401
 import pprint
 import re
 import subprocess
 import sys
 
-import coloredlogs
+import coloredlogs  # noqa: F401
 
 debug = False
 debug_verbose = False
@@ -62,7 +62,7 @@ provider_list = [
     trt_fp16,
     standalone_trt_fp16,
 ]
-table_headers = [model_title] + provider_list
+table_headers = [model_title, *provider_list]
 
 # graph options
 disable = "disable"
@@ -96,7 +96,7 @@ def is_validate_mode(running_mode):
 
 
 def is_standalone(ep):
-    return ep == standalone_trt or ep == standalone_trt_fp16
+    return ep in (standalone_trt, standalone_trt_fp16)
 
 
 def get_output(command):
@@ -119,10 +119,9 @@ def pretty_print(pp, json_object):
 
 
 def parse_single_file(f):
-
     try:
         data = json.load(f)
-    except Exception as e:
+    except Exception:
         return None
 
     model_run_flag = False
@@ -131,7 +130,7 @@ def parse_single_file(f):
     provider_op_map_first_run = {}  # ep -> map of operator to duration
 
     for row in data:
-        if not "cat" in row:
+        if "cat" not in row:
             continue
 
         if row["cat"] == "Session":
@@ -146,7 +145,7 @@ def parse_single_file(f):
             if "name" in row and "args" in row and re.search(".*kernel_time", row["name"]):
                 args = row["args"]
 
-                if not "op_name" in args or not "provider" in args:
+                if "op_name" not in args or "provider" not in args:
                     continue
 
                 provider = args["provider"]
@@ -172,7 +171,7 @@ def parse_single_file(f):
                     op_map = provider_op_map[provider]
 
                     # avoid duplicated metrics
-                    if not row["name"] in op_map:
+                    if row["name"] not in op_map:
                         op_map[row["name"]] = row["dur"]
                         provider_op_map[provider] = op_map
 
@@ -245,9 +244,9 @@ def calculate_trt_op_percentage(trt_op_map, cuda_op_map):
     #
     ratio_of_ops_in_trt = (total_ops - total_cuda_and_cpu_ops) / total_ops
     if debug:
-        print("total_cuda_and_cpu_ops: {}".format(total_cuda_and_cpu_ops))
-        print("total_ops: {}".format(total_ops))
-        print("ratio_of_ops_in_trt: {}".format(ratio_of_ops_in_trt))
+        print(f"total_cuda_and_cpu_ops: {total_cuda_and_cpu_ops}")
+        print(f"total_ops: {total_ops}")
+        print(f"ratio_of_ops_in_trt: {ratio_of_ops_in_trt}")
 
     return ((total_ops - total_cuda_and_cpu_ops), total_ops, ratio_of_ops_in_trt)
 
@@ -280,7 +279,7 @@ def calculate_trt_latency_percentage(trt_op_map):
             op_map = trt_op_map[ep]
 
             total_time = 0
-            for key, value in op_map.items():
+            for _key, value in op_map.items():
                 total_time += int(value)
 
             if ep == "TensorrtExecutionProvider":
@@ -294,9 +293,9 @@ def calculate_trt_latency_percentage(trt_op_map):
         ratio_of_trt_execution_time = total_trt_execution_time / total_execution_time
 
     if debug:
-        print("total_trt_execution_time: {}".format(total_trt_execution_time))
-        print("total_execution_time: {}".format(total_execution_time))
-        print("ratio_of_trt_execution_time: {}".format(ratio_of_trt_execution_time))
+        print(f"total_trt_execution_time: {total_trt_execution_time}")
+        print(f"total_execution_time: {total_execution_time}")
+        print(f"ratio_of_trt_execution_time: {ratio_of_trt_execution_time}")
 
     return (total_trt_execution_time, total_execution_time, ratio_of_trt_execution_time)
 
@@ -326,7 +325,7 @@ def get_profile_metrics(path, profile_file_prefix, logger):
 
     data = []
     for profile in profiling_files:
-        profile = profile.split("\t")[1]
+        profile = profile.split("\t")[1]  # noqa: PLW2901
 
         logger.debug("Parsing profile %s ...", profile)
         with open(profile, encoding="utf-8") as fd:

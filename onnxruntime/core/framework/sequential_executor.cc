@@ -57,7 +57,8 @@ LARGE_INTEGER perf_freq = OrtGetPerformanceFrequency();
 namespace onnxruntime {
 
 static void CalculateTotalOutputSizes(OpKernelContextInternal* op_kernel_context,
-                                      size_t& total_output_sizes, const std::string& node_name, std::string& output_type_shape) {
+                                      size_t& total_output_sizes, const std::string& node_name,
+                                      std::string& output_type_shape) {
   // Calculate total output sizes for this operation.
   std::stringstream ss;
   int added_type_shapes = 0;
@@ -153,24 +154,26 @@ std::string ComposeSeriesName(const GraphViewer& graph_viewer) {
 class SessionScope {
  public:
   friend class KernelScope;
-  SessionScope(const SessionState& session_state, const ExecutionFrame& frame) : session_state_(session_state)
+  SessionScope(const SessionState& session_state, const ExecutionFrame& frame)
+      : session_state_(session_state)
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
-                                                                                 ,
-                                                                                 frame_(frame)
+        ,
+        frame_(frame)
 #endif
 #ifdef CONCURRENCY_VISUALIZER
-                                                                                 ,
-                                                                                 series_(ComposeSeriesName(session_state.GetGraphViewer())
+        ,
+        series_(ComposeSeriesName(session_state.GetGraphViewer()))
 #endif
 #ifdef ENABLE_NVTX_PROFILE
-                                                                                 ,
-                                                                                 session_tag_(profile::Context::GetInstance().GetThreadTagOrDefault(std::this_thread::get_id())),
-                                                                                 forward_range_("Batch-" + session_tag_ + " Forward", profile::Color::White),
-                                                                                 backward_range_("Batch-" + session_tag_ + " Backward", profile::Color::Black)
+        ,
+        session_tag_(profile::Context::GetInstance().GetThreadTagOrDefault(std::this_thread::get_id())),
+        forward_range_("Batch-" + session_tag_ + " Forward", profile::Color::White),
+        backward_range_("Batch-" + session_tag_ + " Backward", profile::Color::Black)
 #endif
 #ifdef DEBUG_NODE_INPUTS_OUTPUTS
-                                                                                 ,
-                                                                                 dump_context_ {session_state_.GetGraphExecutionCounter(), 0}
+        ,
+        dump_context_{
+            session_state_.GetGraphExecutionCounter(), 0}
 #endif
   {
     if (session_state_.Profiler().IsEnabled()) {
@@ -178,7 +181,7 @@ class SessionScope {
     }
 
     auto& logger = session_state_.Logger();
-    LOGS(logger, INFO) << "Begin execution";
+    LOGS(logger, VERBOSE) << "Begin execution";
     const SequentialExecutionPlan& seq_exec_plan = *session_state_.GetExecutionPlan();
     const auto& exec_plan_vec = seq_exec_plan.execution_plan;
     VLOGS(logger, 1) << "Size of execution plan vector: " << exec_plan_vec.size();
@@ -213,10 +216,12 @@ class SessionScope {
 #endif
 
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
-    session_state_.GetMemoryProfiler()->CreateEvents(
-        "dynamic activations_" + std::to_string(session_state_.GetMemoryProfiler()->GetMemoryInfo().GetIteration()),
-        session_state_.GetMemoryProfiler()->GetAndIncreasePid(), MemoryInfo::MapType::DynamicActivation, "", 0);
-    session_state_.GetMemoryProfiler()->Clear();
+    if (flush_memory_info_) {
+      session_state_.GetMemoryProfiler()->CreateEvents(
+          "dynamic activations_" + std::to_string(session_state_.GetMemoryProfiler()->GetMemoryInfo().GetIteration()),
+          session_state_.GetMemoryProfiler()->GetAndIncreasePid(), MemoryInfo::MapType::DynamicActivation, "", 0);
+      session_state_.GetMemoryProfiler()->Clear();
+    }
 #endif
 
     if (session_state_.Profiler().IsEnabled()) {
@@ -225,21 +230,31 @@ class SessionScope {
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
     auto& logger = session_state_.Logger();
     for (auto i : frame_.GetStaticMemorySizeInfo()) {
-      LOGS(logger, INFO) << "[Memory] ExecutionFrame statically allocates "
-                         << i.second << " bytes for " << i.first << std::endl;
+      LOGS(logger, VERBOSE) << "[Memory] ExecutionFrame statically allocates "
+                            << i.second << " bytes for " << i.first << std::endl;
     }
 
     for (auto i : frame_.GetDynamicMemorySizeInfo()) {
-      LOGS(logger, INFO) << "[Memory] ExecutionFrame dynamically allocates "
-                         << i.second << " bytes for " << i.first << std::endl;
+      LOGS(logger, VERBOSE) << "[Memory] ExecutionFrame dynamically allocates "
+                            << i.second << " bytes for " << i.first << std::endl;
     }
 #endif
   }
-private:
+
+#if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
+  void SetFlushMemoryInfoFlag(bool flush_memory_info) {
+    flush_memory_info_ = flush_memory_info;
+  }
+#endif
+
+ private:
   const SessionState& session_state_;
   TimePoint session_start_;
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
   const ExecutionFrame& frame_;
+  // Whether memory profiler need create events and flush to file.
+  // For partial graph run, when the last subgraph of the whole graph is executing, we need flush to file.
+  bool flush_memory_info_ = true;
 #endif
 
 #ifdef CONCURRENCY_VISUALIZER
@@ -261,27 +276,29 @@ class KernelScope {
  public:
   KernelScope(SessionScope& session_scope,
               OpKernelContextInternal& kernel_context,
-              const OpKernel& kernel) : session_scope_(session_scope),
-                                        session_state_(session_scope_.session_state_),
-                                        kernel_context_(kernel_context),
-                                        kernel_(kernel)
+              const OpKernel& kernel)
+      : session_scope_(session_scope),
+        session_state_(session_scope_.session_state_),
+        kernel_context_(kernel_context),
+        kernel_(kernel)
 #ifdef CONCURRENCY_VISUALIZER
-                                        ,
-                                        span_(session_scope_.series_, "%s.%d", kernel_.Node().OpType().c_str(), kernel_.Node().Index())
+        ,
+        span_(session_scope_.series_, "%s.%d", kernel_.Node().OpType().c_str(), kernel_.Node().Index())
 #endif
 #ifdef ENABLE_NVTX_PROFILE
-                                        ,
-                                        node_compute_range_(MakeString(kernel_.Node().OpType(),
-                                                                       ".",
-                                                                       kernel_.Node().Index(),
-                                                                       "(",
-                                                                       kernel_.Node().Name(),
-                                                                       ")"),
-                                                            profile::Color::Yellow)
+        ,
+        node_compute_range_(MakeString(kernel_.Node().OpType(),
+                                       ".",
+                                       kernel_.Node().Index(),
+                                       "(",
+                                       kernel_.Node().Name(),
+                                       ")"),
+                            profile::Color::Yellow)
 #endif
 #ifdef DEBUG_NODE_INPUTS_OUTPUTS
-                                        ,
-                                        dump_context_{session_scope_.dump_context_.iteration, kernel_.Node().Index()}
+        ,
+        dump_context_{
+            session_scope_.dump_context_.iteration, kernel_.Node().Index()}
 #endif
   {
 #ifdef CONCURRENCY_VISUALIZER
@@ -295,7 +312,8 @@ class KernelScope {
     if (node.Description() != "Backward pass" && !forward_range.IsBeginCalled()) {
       // Start timing forward pass when encountering the first forward node.
       forward_range.Begin();
-    } else if (node.Description() == "Backward pass" && !backward_range.IsBeginCalled() && forward_range.IsBeginCalled()) {
+    } else if (node.Description() == "Backward pass" && !backward_range.IsBeginCalled() &&
+               forward_range.IsBeginCalled()) {
       // Start timing backward pass when encountering the first backward node.
       // In the meanwhile, forward range ends.
       forward_range.End();
@@ -358,7 +376,8 @@ class KernelScope {
                                          {"output_size", std::to_string(total_output_sizes_)},
                                          {"input_type_shape", input_type_shape_},
                                          {"output_type_shape", output_type_shape_},
-                                         {"thread_scheduling_stats", concurrency::ThreadPool::StopProfiling(session_state_.GetThreadPool())},
+                                         {"thread_scheduling_stats",
+                                          concurrency::ThreadPool::StopProfiling(session_state_.GetThreadPool())},
                                      });
       auto sync_time_begin = profiler.Start();
       profiler.EndTimeAndRecordEvent(profiling::NODE_EVENT,
@@ -487,15 +506,16 @@ onnxruntime::Status ExecuteKernel(StreamExecutionContext& ctx,
        << "' Status Message: " << status.ErrorMessage();
     // If the computation failed, we still can record the memory consumption
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
-    ctx.GetSessionState().GetMemoryProfiler()->CreateEvents("dynamic activations_" + std::to_string(ctx.GetSessionState().GetMemoryProfiler()->GetMemoryInfo().GetIteration()),
-                                                            ctx.GetSessionState().GetMemoryProfiler()->GetAndIncreasePid(), MemoryInfo::MapType::DynamicActivation, "", 0);
+    ctx.GetSessionState().GetMemoryProfiler()->CreateEvents(
+        "dynamic activations_" + std::to_string(ctx.GetSessionState().GetMemoryProfiler()->GetMemoryInfo().GetIteration()),
+        ctx.GetSessionState().GetMemoryProfiler()->GetAndIncreasePid(), MemoryInfo::MapType::DynamicActivation, "", 0);
 #endif
     const auto msg_string = ss.str();
     LOGS(logger, ERROR) << msg_string;
     return Status(status.Category(), status.Code(), msg_string);
   }
   ctx.RecycleNodeInputs(idx);
-  LOGS(logger, INFO) << "stream " << stream_idx << " launch kernel with idx " << idx;
+  LOGS(logger, VERBOSE) << "stream " << stream_idx << " launch kernel with idx " << idx;
   return Status::OK();
 }
 
@@ -511,7 +531,7 @@ onnxruntime::Status ExecuteThePlan(const SessionState& session_state, gsl::span<
                                    const bool only_execute_path_to_fetches,
                                    bool single_thread_mode) {
   auto* execution_plan = session_state.GetExecutionPlan();
-  LOGS(logger, INFO) << "Number of streams: " << execution_plan->execution_plan.size();
+  LOGS(logger, VERBOSE) << "Number of streams: " << execution_plan->execution_plan.size();
   int32_t valid_streams = 0;
   for (auto& stream : execution_plan->execution_plan) {
     if (stream && stream->steps_.size() > 0)
@@ -595,13 +615,15 @@ onnxruntime::Status ExecuteThePlan(const SessionState& session_state, gsl::span<
 onnxruntime::Status PartialExecuteThePlan(const SessionState& session_state, gsl::span<const int> feed_mlvalue_idxs,
                                           gsl::span<const OrtValue> feeds, gsl::span<const int> fetch_mlvalue_idxs,
                                           std::vector<OrtValue>& fetches,
-                                          const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
+                                          const std::unordered_map<size_t, IExecutor::CustomAllocator>&
+                                              fetch_allocators,
                                           const logging::Logger& logger,
                                           const DeviceStreamCollection* device_streams,
                                           const bool& terminate_flag,
                                           bool single_thread_mode,
                                           PartialGraphExecutionState& state,
-                                          const OrtValueCachePtr& cache) {
+                                          const OrtValueCachePtr& cache,
+                                          int32_t partial_graph_index) {
   auto& ctx = state.GetExecutionContext(feed_mlvalue_idxs, feeds, fetch_mlvalue_idxs, fetches,
                                         fetch_allocators, session_state, logger, device_streams);
   auto* plan = session_state.GetExecutionPlan();
@@ -609,6 +631,13 @@ onnxruntime::Status PartialExecuteThePlan(const SessionState& session_state, gsl
   ctx.SetCurrentRange(&state.GetProgramRegions(session_state));
 
   SessionScope session_scope(session_state, ctx.GetExecutionFrame());
+
+#if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
+  // Only flush memory info for the 2nd partial graph execution (since ORTModule runs this function twice).
+  session_scope.SetFlushMemoryInfoFlag(partial_graph_index == 1);
+#else
+  ORT_UNUSED_PARAMETER(partial_graph_index);
+#endif
 
   ctx.SetOrtValueCache(cache);
 

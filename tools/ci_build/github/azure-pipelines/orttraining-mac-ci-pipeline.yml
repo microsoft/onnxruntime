@@ -1,6 +1,7 @@
-jobs:
-- template: templates/mac-ci.yml
+stages:
+- template: templates/mac-cpu-packaging-pipeline.yml
   parameters:
     AllowReleasedOpsetOnly: 0
     BuildForAllArchs: false
     AdditionalBuildFlags: --enable_training
+    WithCache: true

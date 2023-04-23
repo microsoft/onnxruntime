@@ -56,6 +56,7 @@ namespace Dml
             ) const noexcept = 0;
 
         STDMETHOD(CopyTensor)(IMLOperatorTensor* dst, IMLOperatorTensor* src) const noexcept = 0;
+        STDMETHOD(CopyTensors)(gsl::span<IMLOperatorTensor*> dst, gsl::span<IMLOperatorTensor*> src) const noexcept = 0;
 
         STDMETHOD(FillTensorWithPattern)(
             IMLOperatorTensor* dst,

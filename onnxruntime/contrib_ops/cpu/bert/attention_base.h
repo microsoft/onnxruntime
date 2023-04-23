@@ -27,7 +27,7 @@ class AttentionBase {
                      const Tensor* past,
                      int batch_size,
                      int head_size,
-                     int sequence_length,
+                     int kv_sequence_length,
                      int& past_sequence_length) const;
 
  protected:
@@ -37,6 +37,7 @@ class AttentionBase {
     num_heads_ = static_cast<int>(num_heads);
 
     is_unidirectional_ = info.GetAttrOrDefault<int64_t>("unidirectional", 0) == 1;
+    do_rotary_ = info.GetAttrOrDefault<int64_t>("do_rotary", 0) == 1;
     mask_filter_value_ = info.GetAttrOrDefault<float>("mask_filter_value", -10000.0f);
     scale_ = info.GetAttrOrDefault<float>("scale", 0.0f);
 
@@ -70,6 +71,7 @@ class AttentionBase {
   std::vector<int64_t> qkv_hidden_sizes_;  // Q, K, V hidden sizes parsed from the qkv_hidden_sizes attribute.
   bool require_same_hidden_size_;          // whether the implementation supports different hidden sizes of Q/K/V.
   bool past_present_share_buffer_;         // whether or not the past (if used) and present tensor share the same buffer
+  bool do_rotary_;                         // whether or not to use rotary embeddings
   float mask_filter_value_;                // the value to be used for filtered out positions
   float scale_;                            // the scale to be used for softmax
 };

@@ -20,8 +20,9 @@ jobs:
           --config RelWithDebInfo \
           --enable_training \
           --enable_training_apis \
-          --use_cuda --cuda_version=11.6 --cuda_home=/usr/local/cuda-11.6 --cudnn_home=/usr/local/cuda-11.6 \
+          --use_cuda --cuda_version=11.8 --cuda_home=/usr/local/cuda-11.8 --cudnn_home=/usr/local/cuda-11.8 \
           --build_wheel \
+          --build_java \
           --skip_tests \
           " \
         -u

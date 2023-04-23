@@ -10,6 +10,7 @@
 #include "core/common/safeint.h"
 #include "tensorrt_execution_provider.h"
 #include "tensorrt_execution_provider_utils.h"
+#include "tensorrt_execution_provider_custom_ops.h"
 #include "core/providers/cuda/shared_inc/cuda_call.h"
 #include "core/providers/cuda/math/unary_elementwise_ops_impl.h"
 #include "core/providers/cuda/gpu_data_transfer.h"
@@ -117,6 +118,93 @@ bool SetDynamicRange(nvinfer1::INetworkDefinition& network, std::unordered_map<s
   }
   return true;
 }
+
+std::vector<std::string> SplitToStringVec(std::string const& s, char separator) {
+  std::vector<std::string> splitted;
+
+  for (size_t start = 0; start < s.length();) {
+    size_t separatorIndex = s.find(separator, start);
+    if (separatorIndex == std::string::npos) {
+      separatorIndex = s.length();
+    }
+    splitted.emplace_back(s.substr(start, separatorIndex - start));
+    start = separatorIndex + 1;
+  }
+
+  return splitted;
+}
+
+nvinfer1::TacticSources GetTacticSourceFromString(std::string& tactic_sting) {
+  nvinfer1::TacticSources disabledTactics = 0;
+  nvinfer1::TacticSources enabledTactics = 0;
+  std::vector<std::string> tacticList = SplitToStringVec(tactic_sting, ',');
+  for (auto& t : tacticList) {
+    bool enable{false};
+    if (t.front() == '+') {
+      enable = true;
+    } else if (t.front() != '-') {
+      LOGS_DEFAULT(WARNING) << "[TensorRT EP] Tactic source must be prefixed with + or - skipping: " << t;
+    }
+    t.erase(0, 1);
+
+    const auto toUpper = [](std::string& sourceName) {
+      std::transform(
+          sourceName.begin(), sourceName.end(), sourceName.begin(), [](char c) { return std::toupper(c); });
+      return sourceName;
+    };
+
+    nvinfer1::TacticSource source{};
+    t = toUpper(t);
+    if (t == "CUBLAS") {
+      source = nvinfer1::TacticSource::kCUBLAS;
+    } else if (t == "CUBLASLT" || t == "CUBLAS_LT") {
+      source = nvinfer1::TacticSource::kCUBLAS_LT;
+    } else if (t == "CUDNN") {
+      source = nvinfer1::TacticSource::kCUDNN;
+    } else if (t == "EDGE_MASK_CONVOLUTIONS") {
+      source = nvinfer1::TacticSource::kEDGE_MASK_CONVOLUTIONS;
+    } else if (t == "JIT_CONVOLUTIONS") {
+      source = nvinfer1::TacticSource::kJIT_CONVOLUTIONS;
+    } else {
+      LOGS_DEFAULT(WARNING) << "[TensorRT EP] Tactic source was not found with name: " << t;
+    }
+
+    uint32_t sourceBit = 1U << static_cast<uint32_t>(source);
+
+    if (enable) {
+      enabledTactics |= sourceBit;
+    } else {
+      disabledTactics |= sourceBit;
+    }
+  }
+  return enabledTactics & ~disabledTactics;
+}
+
+inline std::vector<char> loadTimingCacheFile(const std::string inFileName) {
+  std::ifstream iFile(inFileName, std::ios::in | std::ios::binary);
+  if (!iFile) {
+    LOGS_DEFAULT(WARNING) << "[TensorRT EP] Could not read timing cache from: " << inFileName
+                          << ". A new timing cache will be generated and written.";
+    return std::vector<char>();
+  }
+  iFile.seekg(0, std::ifstream::end);
+  size_t fsize = iFile.tellg();
+  iFile.seekg(0, std::ifstream::beg);
+  std::vector<char> content(fsize);
+  iFile.read(content.data(), fsize);
+  iFile.close();
+  return content;
+}
+
+inline void saveTimingCacheFile(const std::string outFileName, const nvinfer1::IHostMemory* blob) {
+  std::ofstream oFile(outFileName, std::ios::out | std::ios::binary);
+  if (!oFile) {
+    LOGS_DEFAULT(WARNING) << "[TensorRT EP] Could not write timing cache to: " << outFileName;
+    return;
+  }
+  oFile.write((char*)blob->data(), blob->size());
+  oFile.close();
+}
 }  // namespace
 
 namespace google {
@@ -168,33 +256,33 @@ void Impl_Cast(
 }  // namespace cuda
 
 template <>
-Status CudaCall<cudaError, false>(cudaError retCode, const char* exprString, const char* libName, cudaError successCode, const char* msg) {
-  return g_host->CudaCall_false(retCode, exprString, libName, successCode, msg);
+Status CudaCall<cudaError, false>(cudaError retCode, const char* exprString, const char* libName, cudaError successCode, const char* msg, const char* file, const int line) {
+  return g_host->CudaCall_false(retCode, exprString, libName, successCode, msg, file, line);
 }
 
 template <>
-void CudaCall<cudaError, true>(cudaError retCode, const char* exprString, const char* libName, cudaError successCode, const char* msg) {
-  return g_host->CudaCall_true(retCode, exprString, libName, successCode, msg);
+void CudaCall<cudaError, true>(cudaError retCode, const char* exprString, const char* libName, cudaError successCode, const char* msg, const char* file, const int line) {
+  return g_host->CudaCall_true(retCode, exprString, libName, successCode, msg, file, line);
 }
 
 template <>
-Status CudaCall<cublasStatus_t, false>(cublasStatus_t retCode, const char* exprString, const char* libName, cublasStatus_t successCode, const char* msg) {
-  return g_host->CudaCall_false(retCode, exprString, libName, successCode, msg);
+Status CudaCall<cublasStatus_t, false>(cublasStatus_t retCode, const char* exprString, const char* libName, cublasStatus_t successCode, const char* msg, const char* file, const int line) {
+  return g_host->CudaCall_false(retCode, exprString, libName, successCode, msg, file, line);
 }
 
 template <>
-void CudaCall<cublasStatus_t, true>(cublasStatus_t retCode, const char* exprString, const char* libName, cublasStatus_t successCode, const char* msg) {
-  return g_host->CudaCall_true(retCode, exprString, libName, successCode, msg);
+void CudaCall<cublasStatus_t, true>(cublasStatus_t retCode, const char* exprString, const char* libName, cublasStatus_t successCode, const char* msg, const char* file, const int line) {
+  return g_host->CudaCall_true(retCode, exprString, libName, successCode, msg, file, line);
 }
 
 template <>
-Status CudaCall<cudnnStatus_t, false>(cudnnStatus_t retCode, const char* exprString, const char* libName, cudnnStatus_t successCode, const char* msg) {
-  return g_host->CudaCall_false(retCode, exprString, libName, successCode, msg);
+Status CudaCall<cudnnStatus_t, false>(cudnnStatus_t retCode, const char* exprString, const char* libName, cudnnStatus_t successCode, const char* msg, const char* file, const int line) {
+  return g_host->CudaCall_false(retCode, exprString, libName, successCode, msg, file, line);
 }
 
 template <>
-void CudaCall<cudnnStatus_t, true>(cudnnStatus_t retCode, const char* exprString, const char* libName, cudnnStatus_t successCode, const char* msg) {
-  return g_host->CudaCall_true(retCode, exprString, libName, successCode, msg);
+void CudaCall<cudnnStatus_t, true>(cudnnStatus_t retCode, const char* exprString, const char* libName, cudnnStatus_t successCode, const char* msg, const char* file, const int line) {
+  return g_host->CudaCall_true(retCode, exprString, libName, successCode, msg, file, line);
 }
 
 class Memcpy final : public OpKernel {
@@ -312,7 +400,10 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
     }
     dump_subgraphs_ = info.dump_subgraphs;
     engine_cache_enable_ = info.engine_cache_enable;
-    if (engine_cache_enable_ || int8_enable_) {
+    timing_cache_enable_ = info.timing_cache_enable;
+    force_timing_cache_match_ = info.force_timing_cache;
+    detailed_build_log_ = info.detailed_build_log;
+    if (engine_cache_enable_ || int8_enable_ || timing_cache_enable_) {
       cache_path_ = info.engine_cache_path;
     }
     engine_decryption_enable_ = info.engine_decryption_enable;
@@ -324,6 +415,11 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
     if (fp16_enable_) {
       layer_norm_fp32_fallback_ = info.layer_norm_fp32_fallback;
     }
+    build_heuristics_enable_ = info.build_heuristics_enable;
+    sparsity_enable_ = info.sparsity_enable;
+    builder_optimization_level_ = info.builder_optimization_level;
+    auxiliary_streams_ = info.auxiliary_streams;
+    tactic_sources_ = info.tactic_sources;
   } else {
     const std::string max_partition_iterations_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kMaxPartitionIterations);
     if (!max_partition_iterations_env.empty()) {
@@ -386,7 +482,22 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
       engine_cache_enable_ = (std::stoi(engine_cache_enable_env) == 0 ? false : true);
     }
 
-    if (engine_cache_enable_ || int8_enable_) {
+    const std::string timing_cache_enable_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kTimingCacheEnable);
+    if (!timing_cache_enable_env.empty()) {
+      timing_cache_enable_ = (std::stoi(timing_cache_enable_env) == 0 ? false : true);
+    }
+
+    const std::string detailed_build_log_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kDetailedBuildLog);
+    if (!detailed_build_log_env.empty()) {
+      detailed_build_log_ = (std::stoi(detailed_build_log_env) == 0 ? false : true);
+    }
+
+    const std::string timing_force_match_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kForceTimingCache);
+    if (!timing_force_match_env.empty()) {
+      force_timing_cache_match_ = (std::stoi(timing_force_match_env) == 0 ? false : true);
+    }
+
+    if (engine_cache_enable_ || int8_enable_ || timing_cache_enable_) {
       const std::string engine_cache_path = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kEngineCachePath);
       cache_path_ = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kCachePath);
       if (!engine_cache_path.empty() && cache_path_.empty()) {
@@ -418,6 +529,31 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
     if (!layer_norm_fp32_fallback_env.empty()) {
       layer_norm_fp32_fallback_ = (std::stoi(layer_norm_fp32_fallback_env) == 0 ? false : true);
     }
+
+    const std::string build_heuristics_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kBuildHeuristics);
+    if (!build_heuristics_env.empty()) {
+      build_heuristics_enable_ = (std::stoi(build_heuristics_env) == 0 ? false : true);
+    }
+
+    const std::string sparsity_enable_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kSparsityEnable);
+    if (!sparsity_enable_env.empty()) {
+      sparsity_enable_ = (std::stoi(sparsity_enable_env) == 0 ? false : true);
+    }
+
+    const std::string builder_optimization_level_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kBuilderOptimizationLevel);
+    if (!builder_optimization_level_env.empty()) {
+      builder_optimization_level_ = std::stoi(builder_optimization_level_env);
+    }
+
+    const std::string auxiliary_streams_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kAuxiliaryStreams);
+    if (!auxiliary_streams_env.empty()) {
+      auxiliary_streams_ = std::stoi(auxiliary_streams_env);
+    }
+
+    const std::string tactic_sources_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kTacticSources);
+    if (!tactic_sources_env.empty()) {
+      tactic_sources_ = tactic_sources_env;
+    }
   }
 
   // Validate setting
@@ -438,7 +574,7 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
     dla_core_ = 0;
   }
 
-  if (engine_cache_enable_ || int8_enable_) {
+  if (engine_cache_enable_ || int8_enable_ || timing_cache_enable_) {
     if (!cache_path_.empty() && !fs::is_directory(cache_path_)) {
       if (!fs::create_directory(cache_path_)) {
         throw std::runtime_error("Failed to create directory " + cache_path_);
@@ -483,7 +619,12 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
                         << ", trt_engine_decryption_lib_path: " << engine_decryption_lib_path_
                         << ", trt_force_sequential_engine_build: " << force_sequential_engine_build_
                         << ", trt_context_memory_sharing_enable: " << context_memory_sharing_enable_
-                        << ", trt_layer_norm_fp32_fallback: " << layer_norm_fp32_fallback_;
+                        << ", trt_layer_norm_fp32_fallback: " << layer_norm_fp32_fallback_
+                        << ", trt_build_heuristics_enable: " << build_heuristics_enable_
+                        << ", trt_sparsity_enable: " << sparsity_enable_
+                        << ", trt_builder_optimization_level: " << builder_optimization_level_
+                        << ", trt_auxiliary_streams: " << auxiliary_streams_
+                        << ", trt_tactic_sources: " << tactic_sources_;
 }
 
 TensorrtExecutionProvider::~TensorrtExecutionProvider() {
@@ -494,6 +635,7 @@ TensorrtExecutionProvider::~TensorrtExecutionProvider() {
   if (!external_stream_ && stream_) {
     ORT_IGNORE_RETURN_VALUE(CUDA_CALL(cudaStreamDestroy(stream_)));
   }
+  ReleaseTensorRTCustomOpDomainList(info_.custom_op_domain_list);
 }
 
 AllocatorPtr TensorrtExecutionProvider::GetAllocator(OrtMemType mem_type) const {
@@ -582,6 +724,10 @@ Status TensorrtExecutionProvider::OnRunEnd(bool sync_stream) {
     CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream_));
   }
   return Status::OK();
+}
+
+void TensorrtExecutionProvider::GetCustomOpDomainList(std::vector<OrtCustomOpDomain*>& custom_op_domain_list) const {
+  custom_op_domain_list = info_.custom_op_domain_list;
 }
 
 // Check the graph is the subgraph of control flow op
@@ -1366,6 +1512,45 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
       }
     }
 
+    // enable sparse weights
+    if (sparsity_enable_) {
+      trt_config->setFlag(nvinfer1::BuilderFlag::kSPARSE_WEIGHTS);
+      LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Sparse weights are allowed";
+    }
+
+    // enable builder heuristics
+    if (build_heuristics_enable_) {
+      trt_config->setFlag(nvinfer1::BuilderFlag::kENABLE_TACTIC_HEURISTIC);
+      LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Builder heuristics are enabled";
+    }
+#if NV_TENSORRT_MINOR > 5 && NV_TENSORRT_MAJOR >= 8
+    // switch optimizaion level
+    if (builder_optimization_level_ != 2) {
+      trt_config->setBuilderOptimizationLevel(builder_optimization_level_);
+      LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Builder optimization level is set to " << builder_optimization_level_;
+    }
+
+    // limit auxiliary streams
+    if (auxiliary_streams_ >= 0) {
+      trt_config->setMaxAuxStreams(auxiliary_streams_);
+      LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Auxiliary streams are se to " << auxiliary_streams_;
+    }
+#else
+    if (builder_optimization_level_ != 2) {
+      LOGS_DEFAULT(WARNING) << "[TensorRT EP] Builder optimization level can only be used on TRT 8.6 onwards!";
+    }
+    if (auxiliary_streams_ >= 0) {
+      LOGS_DEFAULT(WARNING) << "[TensorRT EP] Auxiliary streams can only be set on TRT 8.6 onwards!";
+    }
+#endif
+    // limit used tactic sources
+    if (!tactic_sources_.empty()) {
+      nvinfer1::TacticSources tactics = trt_config->getTacticSources();
+      tactics |= GetTacticSourceFromString(tactic_sources_);
+      trt_config->setTacticSources(tactics);
+      LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Tactic sources are limited using " << tactic_sources_;
+    }
+
     // Build TRT engine here if the graph doesn't have dynamic shape input. Otherwise engine will
     // be built at runtime
     std::unique_ptr<nvinfer1::ICudaEngine> trt_engine;
@@ -1373,6 +1558,12 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
     if (!has_dynamic_shape) {
       const std::string cache_path = GetCachePath(cache_path_, trt_node_name_with_precision);
       const std::string engine_cache_path = cache_path + ".engine";
+      std::string timing_cache_path = "";
+      if (timing_cache_enable_) {
+        cudaDeviceProp prop;
+        CUDA_CALL_THROW(cudaGetDeviceProperties(&prop, device_id_));
+        timing_cache_path = GetTimingCachePath(cache_path_, prop);
+      }
       {
         // ifstream file check, engine serialization/deserialization and engine build are in critical section. It needs lock protection to prevent race condition when inferencing with multithreading.
         auto lock = GetApiLock();
@@ -1419,11 +1610,34 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
             }
           }
 
+          // Load timing cache from file. Create a fresh cache if the file doesn't exist
+          std::unique_ptr<nvinfer1::ITimingCache> timing_cache = nullptr;
+          if (timing_cache_enable_) {
+            std::vector<char> loaded_timing_cache = loadTimingCacheFile(timing_cache_path);
+            timing_cache.reset(trt_config->createTimingCache(static_cast<const void*>(loaded_timing_cache.data()), loaded_timing_cache.size()));
+            if (timing_cache == nullptr) {
+              return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+                                     "TensorRT EP could not create timing cache: " + timing_cache_path);
+            }
+            trt_config->setTimingCache(*timing_cache, force_timing_cache_match_);
+            if (detailed_build_log_) {
+              LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Deserialized timing cache from " + timing_cache_path;
+            }
+          }
+
           // Build engine
+          std::chrono::steady_clock::time_point engine_build_start;
+          if (detailed_build_log_) {
+            engine_build_start = std::chrono::steady_clock::now();
+          }
           trt_engine = std::unique_ptr<nvinfer1::ICudaEngine>(trt_builder->buildEngineWithConfig(*trt_network, *trt_config));
           if (trt_engine == nullptr) {
             return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
                                    "TensorRT EP could not build engine for fused node: " + fused_node.Name());
+          }
+          if (detailed_build_log_) {
+            auto engine_build_stop = std::chrono::steady_clock::now();
+            LOGS_DEFAULT(INFO) << "TensorRT engine build for " << trt_node_name_with_precision << " took: " << std::chrono::duration_cast<std::chrono::milliseconds>(engine_build_stop - engine_build_start).count() << "ms" << std::endl;
           }
           if (engine_cache_enable_) {
             std::unique_ptr<nvinfer1::IHostMemory> serializedModel(trt_engine->serialize());
@@ -1438,7 +1652,20 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
               std::ofstream file(engine_cache_path, std::ios::binary | std::ios::out);
               file.write(reinterpret_cast<char*>(serializedModel->data()), engine_size);
             }
-            LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Serialized " + engine_cache_path;
+            LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Serialized engine " + engine_cache_path;
+          }
+          // serialize and save timing cache
+          if (timing_cache_enable_) {
+            auto timing_cache = trt_config->getTimingCache();
+            std::unique_ptr<nvinfer1::IHostMemory> timingCacheHostData{timing_cache->serialize()};
+            if (timingCacheHostData == nullptr) {
+              return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+                                     "TensorRT EP could not serialize timing cache: " + timing_cache_path);
+            }
+            saveTimingCacheFile(timing_cache_path, timingCacheHostData.get());
+            if (detailed_build_log_) {
+              LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Serialized timing cache " + timing_cache_path;
+            }
           }
         }
       }
@@ -1498,13 +1725,20 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
     NodeComputeInfo compute_info;
     compute_info.create_state_func = [=](ComputeContext* context, FunctionState* state) {
       std::unique_ptr<TensorrtFuncState> p = std::make_unique<TensorrtFuncState>();
+      // translate tactic sources string to nvinfer1::TacticSources
+      nvinfer1::TacticSources tactics = 0;
+      if (!tactic_sources_.empty()) {
+        tactics = GetTacticSourceFromString(tactic_sources_);
+      }
       *p = {context->allocate_func, context->release_func, context->allocator_handle, &parsers_[context->node_name],
             &engines_[context->node_name], &contexts_[context->node_name], &builders_[context->node_name],
             &networks_[context->node_name], input_info_[context->node_name], output_info_[context->node_name],
             input_shape_ranges_[context->node_name], &tensorrt_mu_, fp16_enable_, int8_enable_, int8_calibration_cache_available_,
             dla_enable_, dla_core_, &max_workspace_size_, trt_node_name_with_precision, engine_cache_enable_, cache_path_,
             runtime_.get(), nullptr, allocator_, context_memory_sharing_enable_, &max_ctx_mem_size_, &context_memory_,
-            dynamic_range_map, engine_decryption_enable_, engine_decryption_, engine_encryption_};
+            dynamic_range_map, engine_decryption_enable_, engine_decryption_, engine_encryption_, timing_cache_enable_,
+            force_timing_cache_match_, detailed_build_log_, build_heuristics_enable_, sparsity_enable_,
+            builder_optimization_level_, auxiliary_streams_, !tactic_sources_.empty(), tactics};
       *state = p.release();
       return 0;
     };
@@ -1545,6 +1779,12 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
       const std::string cache_path = GetCachePath(trt_state->engine_cache_path, trt_state->trt_node_name_with_precision);
       const std::string engine_cache_path = cache_path + ".engine";
       const std::string profile_cache_path = cache_path + ".profile";
+      std::string timing_cache_path = "";
+      if (timing_cache_enable_) {
+        cudaDeviceProp prop;
+        CUDA_CALL_THROW(cudaGetDeviceProperties(&prop, device_id_));
+        timing_cache_path = GetTimingCachePath(cache_path_, prop);
+      }
       if (trt_state->engine_cache_enable && trt_engine == nullptr) {
         std::ifstream engine_file(engine_cache_path, std::ios::binary | std::ios::in);
         std::ifstream profile_file(profile_cache_path, std::ios::binary | std::ios::in);
@@ -1779,11 +2019,73 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
           trt_config->setDLACore(trt_state->dla_core);
         }
 
+        // enable sparse weights
+        if (trt_state->sparsity_enable) {
+          trt_config->setFlag(nvinfer1::BuilderFlag::kSPARSE_WEIGHTS);
+          LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Sparse weights are allowed";
+        }
+
+        // enable builder heuristics
+        if (trt_state->build_heuristics_enable) {
+          trt_config->setFlag(nvinfer1::BuilderFlag::kENABLE_TACTIC_HEURISTIC);
+          LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Builder heuristics are enabled";
+        }
+#if NV_TENSORRT_MINOR > 5 && NV_TENSORRT_MAJOR >= 8
+        // switch optimizaion level
+        if (trt_state->builder_optimization_level != 2) {
+          trt_config->setBuilderOptimizationLevel(trt_state->builder_optimization_level);
+          LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Builder optimization level is set to " << builder_optimization_level_;
+        }
+
+        // limit auxiliary streams
+        if (trt_state->auxiliary_streams >= 0) {
+          trt_config->setMaxAuxStreams(trt_state->auxiliary_streams);
+          LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Auxiliary streams are se to " << trt_state->auxiliary_streams;
+        }
+#else
+        if (trt_state->builder_optimization_level != 2) {
+          LOGS_DEFAULT(WARNING) << "[TensorRT EP] Builder optimization level can only be used on TRT 8.6 onwards!";
+        }
+        if (trt_state->auxiliary_streams >= 0) {
+          LOGS_DEFAULT(WARNING) << "[TensorRT EP] Auxiliary streams can only be set on TRT 8.6 onwards!";
+        }
+#endif
+        // limit used tactic sources
+        if (trt_state->filter_tactic_sources) {
+          nvinfer1::TacticSources tactics = trt_config->getTacticSources();
+          tactics |= trt_state->tactic_sources;
+          trt_config->setTacticSources(tactics);
+          LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Tactic sources are limited using bitmask " << tactics;
+        }
+
+        // Load timing cache from file. Create a fresh cache if the file doesn't exist
+        std::unique_ptr<nvinfer1::ITimingCache> timing_cache = nullptr;
+        if (trt_state->timing_cache_enable) {
+          std::vector<char> loaded_timing_cache = loadTimingCacheFile(timing_cache_path);
+          timing_cache.reset(trt_config->createTimingCache(static_cast<const void*>(loaded_timing_cache.data()), loaded_timing_cache.size()));
+          if (timing_cache == nullptr) {
+            return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+                                   "TensorRT EP could not create timing cache: " + timing_cache_path);
+          }
+          trt_config->setTimingCache(*timing_cache, force_timing_cache_match_);
+          if (detailed_build_log_) {
+            LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Deserialized timing cache from " + timing_cache_path;
+          }
+        }
+
         // Build engine
         {
           auto lock = GetApiLock();
+          std::chrono::steady_clock::time_point engine_build_start;
+          if (detailed_build_log_) {
+            engine_build_start = std::chrono::steady_clock::now();
+          }
           *(trt_state->engine) = std::unique_ptr<nvinfer1::ICudaEngine>(
               trt_builder->buildEngineWithConfig(*trt_state->network->get(), *trt_config));
+          if (detailed_build_log_) {
+            auto engine_build_stop = std::chrono::steady_clock::now();
+            LOGS_DEFAULT(INFO) << "TensorRT engine build for " << trt_state->trt_node_name_with_precision << " took: " << std::chrono::duration_cast<std::chrono::milliseconds>(engine_build_stop - engine_build_start).count() << "ms" << std::endl;
+          }
         }
         if (trt_state->engine == nullptr) {
           return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "TensorRT EP Failed to Build Engine.");
@@ -1806,6 +2108,20 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
           } else {
             std::ofstream file(engine_cache_path, std::ios::binary | std::ios::out);
             file.write(reinterpret_cast<char*>(serializedModel->data()), engine_size);
+          }
+        }
+
+        // serialize and save timing cache
+        if (trt_state->timing_cache_enable) {
+          auto timing_cache = trt_config->getTimingCache();
+          std::unique_ptr<nvinfer1::IHostMemory> timingCacheHostData{timing_cache->serialize()};
+          if (timingCacheHostData == nullptr) {
+            return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+                                   "TensorRT EP could not serialize timing cache: " + timing_cache_path);
+          }
+          saveTimingCacheFile(timing_cache_path, timingCacheHostData.get());
+          if (detailed_build_log_) {
+            LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Serialized timing cache " + timing_cache_path;
           }
         }
 

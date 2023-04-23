@@ -3,7 +3,7 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
-import warnings
+import warnings  # noqa: F401
 
 import torch
 import torch.onnx.symbolic_helper as sym_help
@@ -12,6 +12,30 @@ from torch.onnx import register_custom_op_symbolic
 from torch.onnx.symbolic_helper import _get_tensor_dim_size, _get_tensor_sizes, parse_args
 
 from onnxruntime.training import ortmodule
+
+# Mapping from pytorch scalar type to onnx scalar type.
+_CAST_PYTORCH_TO_ONNX = {
+    "Byte": torch.onnx.TensorProtoDataType.UINT8,
+    "Char": torch.onnx.TensorProtoDataType.INT8,
+    "Double": torch.onnx.TensorProtoDataType.DOUBLE,
+    "Float": torch.onnx.TensorProtoDataType.FLOAT,
+    "Half": torch.onnx.TensorProtoDataType.FLOAT16,
+    "Int": torch.onnx.TensorProtoDataType.INT32,
+    "Long": torch.onnx.TensorProtoDataType.INT64,
+    "Short": torch.onnx.TensorProtoDataType.INT16,
+    "Bool": torch.onnx.TensorProtoDataType.BOOL,
+    "ComplexFloat": torch.onnx.TensorProtoDataType.COMPLEX64,
+    "ComplexDouble": torch.onnx.TensorProtoDataType.COMPLEX128,
+    "BFloat16": torch.onnx.TensorProtoDataType.BFLOAT16,
+    "Undefined": torch.onnx.TensorProtoDataType.UNDEFINED,
+}
+
+
+def pytorch_type_to_onnx(scalar_type: str) -> torch.onnx.TensorProtoDataType:
+    try:
+        return torch.onnx.JitScalarType.from_name(scalar_type).onnx_type()
+    except AttributeError:
+        return _CAST_PYTORCH_TO_ONNX[scalar_type]
 
 
 def wrap_custom_export_function(original_func):
@@ -84,19 +108,17 @@ def cross_entropy_loss(g, node, logits, target, weight, reduction, ignore_index,
     output_type = None
 
     #####################################################################################################
-    # Workaround: cross_entropy_loss takes fp16 as input and generates fp32 output.
+    # cross_entropy_loss takes fp16 as input and generates fp32 output.
     # sample aten graph:
     #     %target : Long(16, strides=[1], requires_grad=0, device=cuda:0)
     #     %input : Half(16, 3, strides=[3, 1], requires_grad=0, device=cuda:0) = aten::linear(%18, %13, %19)
     #     Float(requires_grad=0, device=cuda:0) = aten::cross_entropy_loss(%input, %target, %21, %22, %23, %24)
-    # If ORT do the compute with the input data type, the scaled loss gradient will become inf (cannot represented
-    # with fp16). Here we try to cast the fp16 to fp32 based on the export context (if there is).
-    # Currently not all type promotion/demotion are considered, only fp16 to fp32 is considered. For others, they
-    # remain the same behavior as before, but leave a warning message.
-
+    #
+    # So here if we could get node, then explicitly set output type that might be different with input type;
+    # otherwise, we do the cast (because there is no good way to define a float output type without inheriting from
+    # existing node)
     if not node:
         # For lower version torch we cannot get node output types, we do the type promotion for safety.
-        # Assume a failure will happen if a non-float32 result is expected.
         if logits.type().scalarType() == "Half":
             logits_casted = g.op("Cast", logits, to_i=torch.onnx.TensorProtoDataType.FLOAT)
 
@@ -105,30 +127,9 @@ def cross_entropy_loss(g, node, logits, target, weight, reduction, ignore_index,
 
         output_type = logits_casted.type()
     else:
-        # For higher version torch we can get node output types, only adding cast for known type promotion cases.
+        # For higher version torch we can get node output types
         loss_output = list(node.outputs())[0]
-        loss_scalar_type = loss_output.type().scalarType()
-        logits_scalar_type = logits.type().scalarType()
-        if loss_scalar_type != logits_scalar_type and logits_scalar_type == "Half" and loss_scalar_type == "Float":
-            # TODO: remove the cast once SoftmaxCrossEntropyLossInternal supports fp16 input and fp32 output.
-            logits_casted = g.op("Cast", logits, to_i=torch.onnx.TensorProtoDataType.FLOAT)
-            if not weight.node().mustBeNone():
-                if weight.type().scalarType() == "Half":
-                    weight_casted = g.op("Cast", weight, to_i=torch.onnx.TensorProtoDataType.FLOAT)
-                else:
-                    warnings.warn(
-                        "Unsupported diverged input and output types for weight when export cross_entropy_loss."
-                        f"weight type: {weight.type().scalarType()}, loss type: {loss_scalar_type}"
-                    )
-
-        else:
-            warnings.warn(
-                "Unsupported diverged input and output types for logits when export cross_entropy_loss."
-                f"logits type: {logits_scalar_type}, loss type: {loss_scalar_type}"
-            )
-
         output_type = loss_output.type()
-    # End of workaround
     ##################################
 
     # reduction: 0->none, 1->mean, 2->sum
@@ -143,6 +144,7 @@ def cross_entropy_loss(g, node, logits, target, weight, reduction, ignore_index,
         weight_casted,
         ignore_index,
         reduction_s=reduction,
+        output_type_i=pytorch_type_to_onnx(output_type.scalarType()),
         outputs=2,
     )
     output.setType(output_type)
@@ -171,7 +173,7 @@ def embedding(g, weight, indices, padding_idx, scale_grad_by_freq, sparse):
     )
     indices_shape = _get_tensor_sizes(indices)
     if indices_shape is not None and hasattr(weight.type(), "with_sizes"):
-        output_type = weight.type().with_sizes(indices_shape + [_get_tensor_dim_size(weight, 1)])
+        output_type = weight.type().with_sizes([*indices_shape, _get_tensor_dim_size(weight, 1)])
         output.setType(output_type)
     return output
 
@@ -269,7 +271,7 @@ def adaptive_avg_pool2d(g, self, output_size):
 
 
 @register_symbolic("numpy_T")
-def numpy_T(g, self):
+def numpy_T(g, self):  # noqa: N802
     # Numpy-style `a.T`: returns the tensor
     # with dims reversed
     rank = sym_help._get_tensor_rank(self)
@@ -299,7 +301,7 @@ def squeeze(g, self, dim=None):
 # exporting to Split with SplitGrad as gradient graph.
 # Exporter will fail to register symbolic with non-empty domain when torch version is < 1.11.0.
 @register_symbolic("ConstantChunk", "prim", torch_version_start="1.11.0")
-def prim_ConstantChunk(g, self, chunks, dim):
+def prim_ConstantChunk(g, self, chunks, dim):  # noqa: N802
     if chunks == 1:
         return self
     input_shape_dim = g.op(
@@ -548,7 +550,7 @@ def einsum_internal(g, equation, tensor_list):
     # After process contraction labels, contraction_labels = [k],
     # label_perm_map = {(s, 0), (m, 1), (k, 2)}, out_size = 2, perm_size = 3.
     out_size = len(result_labels)
-    label_perm_map = dict([(label, idx) for idx, label in enumerate(result_labels)])
+    label_perm_map = {label: idx for idx, label in enumerate(result_labels)}
     perm_size = out_size
     contraction_labels = []
     lhs_reduce_sum_axes = []
@@ -757,9 +759,9 @@ def group_norm(g, input, num_groups, weight, bias, eps, cudnn_enabled):
 
     shape = g.op("Shape", input)
     size = g.op("Size", input)
-    N = g.op("Gather", shape, g.op("Constant", value_t=torch.tensor(0, dtype=torch.long)), axis_i=0)
-    C = g.op("Gather", shape, g.op("Constant", value_t=torch.tensor(1, dtype=torch.long)), axis_i=0)
-    HxW = g.op("Div", size, g.op("Mul", N, C))
+    N = g.op("Gather", shape, g.op("Constant", value_t=torch.tensor(0, dtype=torch.long)), axis_i=0)  # noqa: N806
+    C = g.op("Gather", shape, g.op("Constant", value_t=torch.tensor(1, dtype=torch.long)), axis_i=0)  # noqa: N806
+    HxW = g.op("Div", size, g.op("Mul", N, C))  # noqa: N806
     return g.op(
         "org.pytorch.aten::ATen",
         input,

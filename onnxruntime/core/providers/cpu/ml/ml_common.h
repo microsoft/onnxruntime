@@ -20,14 +20,14 @@ enum class OUTPUT_MODE {
   ALL_SCORES
 };
 
-enum class NODE_MODE {
-  BRANCH_LEQ,
-  BRANCH_LT,
-  BRANCH_GTE,
-  BRANCH_GT,
-  BRANCH_EQ,
-  BRANCH_NEQ,
-  LEAF
+enum NODE_MODE : uint8_t {
+  LEAF = 1,
+  BRANCH_LEQ = 2,
+  BRANCH_LT = 4,
+  BRANCH_GTE = 6,
+  BRANCH_GT = 8,
+  BRANCH_EQ = 10,
+  BRANCH_NEQ = 12
 };
 
 static inline NODE_MODE MakeTreeNodeMode(const std::string& input) {
@@ -185,7 +185,7 @@ static inline float ErfInv(float x) {
   return x;
 }
 
-//https://www.csie.ntu.edu.tw/~cjlin/papers/svmprob/svmprob.pdf
+// https://www.csie.ntu.edu.tw/~cjlin/papers/svmprob/svmprob.pdf
 static inline void multiclass_probability(int64_t classcount,
                                           const gsl::span<const float>& r,
                                           const gsl::span<float>& p) {
@@ -279,7 +279,7 @@ static inline void ComputeSoftmax(gsl::span<T>& values) {
     *it = static_cast<float>(*it) / this_sum;
 }
 
-//this function skips zero values (since exp(0) is non zero)
+// this function skips zero values (since exp(0) is non zero)
 template <typename T>
 static inline void ComputeSoftmaxZero(gsl::span<T>& values) {
   // compute exp with negative number to be numerically stable
@@ -335,26 +335,26 @@ static void write_scores(InlinedVector<IT>& scores, POST_EVAL_TRANSFORM post_tra
           *Z = static_cast<T>(*it);
         break;
     }
-  } else if (scores.size() == 1) {  //binary case
+  } else if (scores.size() == 1) {  // binary case
     if (post_transform == POST_EVAL_TRANSFORM::PROBIT) {
       scores[0] = ComputeProbit(static_cast<float>(scores[0]));
       *Z = static_cast<T>(scores[0]);
     } else {
       switch (add_second_class) {
-        case 0:  //0=all positive weights, winning class is positive
+        case 0:  // 0=all positive weights, winning class is positive
           scores.push_back(scores[0]);
-          scores[0] = 1 - scores[0];  //put opposite score in positive slot
+          scores[0] = 1 - scores[0];  // put opposite score in positive slot
           *Z = static_cast<T>(scores[0]);
           *(Z + 1) = static_cast<T>(scores[1]);
           break;
-        case 1:  //1 = all positive weights, winning class is negative
+        case 1:  // 1 = all positive weights, winning class is negative
           scores.push_back(scores[0]);
-          scores[0] = 1 - scores[0];  //put opposite score in positive slot
+          scores[0] = 1 - scores[0];  // put opposite score in positive slot
           *Z = static_cast<T>(scores[0]);
           *(Z + 1) = static_cast<T>(scores[1]);
           break;
         case 2:
-        case 3:  //2 = mixed weights, winning class is positive
+        case 3:  // 2 = mixed weights, winning class is positive
           if (post_transform == POST_EVAL_TRANSFORM::LOGISTIC) {
             scores.resize(2);
             scores[1] = static_cast<T>(ComputeLogistic(static_cast<float>(scores[0])));
@@ -485,8 +485,8 @@ void batched_update_scores_inplace(gsl::span<T> scores, int64_t num_batches_in, 
           };
           break;
 
-        case 2:  //2 = mixed weights, winning class is positive
-        case 3:  //3 = mixed weights, winning class is negative
+        case 2:  // 2 = mixed weights, winning class is positive
+        case 3:  // 3 = mixed weights, winning class is negative
           if (post_transform == POST_EVAL_TRANSFORM::LOGISTIC) {
             update_scores = [](const float score, float* output) {
               *output++ = ComputeLogistic(-score);

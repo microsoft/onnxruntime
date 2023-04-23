@@ -170,7 +170,9 @@ enum : size_t {
   AlgoSearchWorkspaceSize = 32 * 1024 * 1024,
 };
 
-template <typename T>
+// ONNX Conv operator uses NCHW format for input, weights and output.
+// NhwcConv contrib ops uses NHWC format: last dimension of input, weights and output are channels.
+template <typename T, bool NHWC>
 class Conv : public RocmKernel {
  public:
   using HipT = typename ToHipType<T>::MappedType;

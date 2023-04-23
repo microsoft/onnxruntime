@@ -13,7 +13,7 @@ using namespace onnxruntime::test;
 namespace onnxruntime {
 namespace test {
 
-#if defined(USE_CUDA)  // The operator has only CUDA implementation right now
+#if defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_DML)
 static std::vector<float> GetExpectedResult(const std::vector<float>& input_data,
                                             const std::vector<float>& bias_data,
                                             const std::vector<float>& skip_data) {
@@ -37,7 +37,11 @@ static void RunSkipBiasGpuTest(const std::vector<float>& input_data,
                                const std::vector<int64_t>& output_dims,
                                bool use_float16 = false) {
   int min_cuda_architecture = use_float16 ? 530 : 0;
-  if (!HasCudaEnvironment(min_cuda_architecture)) {
+  bool enable_cuda = HasCudaEnvironment(min_cuda_architecture);
+  bool enable_rocm = (nullptr != DefaultRocmExecutionProvider().get());
+  bool enable_dml = (nullptr != DefaultDmlExecutionProvider().get());
+
+  if (!enable_cuda && !enable_rocm && !enable_dml) {
     return;
   }
 
@@ -56,7 +60,15 @@ static void RunSkipBiasGpuTest(const std::vector<float>& input_data,
   }
 
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-  execution_providers.push_back(DefaultCudaExecutionProvider());
+  if (enable_cuda) {
+    execution_providers.push_back(DefaultCudaExecutionProvider());
+  }
+  if (enable_rocm) {
+    execution_providers.push_back(DefaultRocmExecutionProvider());
+  }
+  if (enable_dml) {
+    execution_providers.push_back(DefaultDmlExecutionProvider());
+  }
   tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 

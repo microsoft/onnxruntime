@@ -162,7 +162,7 @@ class SessionState {
 #endif
 
 #ifdef ENABLE_TRAINING
-// This is referenced in training::TrainingSession. Should be removed when this class is removed.
+  // This is referenced in training::TrainingSession. Should be removed when this class is removed.
   /**
     Get some initialized tensors (weights).
     @param interested_weights The names of the weights to retrieve.
@@ -306,6 +306,10 @@ class SessionState {
   SessionState* Parent() {
     return parent_;
   }
+
+  // Clear all removable attributes if they exists.
+  // The function logs the list of removable attributes for every node.
+  void PruneRemovableAttributes();
 
   size_t GetNumberOfPrepacksCounter() const {
     return number_of_prepacks_counter_;

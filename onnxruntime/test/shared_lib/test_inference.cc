@@ -21,6 +21,8 @@
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/session/onnxruntime_run_options_config_keys.h"
 #include "core/util/thread_utils.h"
+
+#include "onnxruntime_config.h"
 #include "providers.h"
 #include "test_allocator.h"
 #include "test_fixture.h"
@@ -92,8 +94,11 @@ static void TestInference(Ort::Env& env, const std::basic_string<ORTCHAR_T>& mod
                           OrtCustomOpDomain* custom_op_domain_ptr,
                           const ORTCHAR_T* custom_op_library_filename,
                           bool test_session_creation_only = false,
-                          void* cuda_compute_stream = nullptr) {
-  Ort::SessionOptions session_options;
+                          void* cuda_compute_stream = nullptr,
+                          Ort::SessionOptions* predefined_session_options = nullptr) {
+  Ort::SessionOptions default_session_options;
+  Ort::SessionOptions& session_options = predefined_session_options ? *predefined_session_options
+                                                                    : default_session_options;
 
   if (provider_type == 1) {
 #ifdef USE_CUDA
@@ -444,9 +449,8 @@ TEST(CApiTest, custom_op_set_input_memory_type) {
 }
 #endif
 
-#if !defined(ORT_MINIMAL_BUILD) && !defined(REDUCED_OPS_BUILD)
-// disable test in reduced-op-build since TOPK and GRU are excluded there
-TEST(CApiTest, standalone_op_handler) {
+#if !defined(ORT_MINIMAL_BUILD)
+TEST(CApiTest, StandaloneOpHandler) {
   std::vector<Input> inputs(1);
   Input& input = inputs[0];
   input.name = "X";
@@ -466,9 +470,18 @@ TEST(CApiTest, standalone_op_handler) {
   custom_op_domain.Add(&standalone_op);
 
 #ifdef USE_CUDA
-  TestInference<float>(*ort_env, CUSTOM_OP_MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, 1, custom_op_domain, nullptr);
+  TestInference<float>(*ort_env, CUSTOM_OP_MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, 1,
+                       custom_op_domain, nullptr);
 #else
-  TestInference<float>(*ort_env, CUSTOM_OP_MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, 0, custom_op_domain, nullptr);
+  Ort::SessionOptions session_options;
+  const std::basic_string<ORTCHAR_T> ort_file = ORT_TSTR("testdata/foo_1.onnx.test_output.ort");
+  session_options.SetOptimizedModelFilePath(ort_file.c_str());
+
+  TestInference<float>(*ort_env, CUSTOM_OP_MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, 0,
+                       custom_op_domain, nullptr, false, nullptr, &session_options);
+
+  TestInference<float>(*ort_env, ort_file, inputs, "Y", expected_dims_y, expected_values_y, 0,
+                       custom_op_domain, nullptr);
 #endif
 }
 #endif
@@ -1194,6 +1207,44 @@ TEST(CApiTest, RegisterCustomOpForCPUAndCUDA) {
 }
 #endif
 
+#if (!defined(ORT_MINIMAL_BUILD)) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
+TEST(CApiTest, test_custom_op_get_const_input) {
+  const auto* model_path = TSTR("testdata/test_kernel_info_get_const_input.onnx");
+
+  Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
+  std::vector<Ort::Value> ort_inputs;
+  std::vector<const char*> input_names;
+
+  // input 0 (float type)
+  input_names.emplace_back("input1");
+  std::vector<float> input_0_data = {1.0f, 1.0f, 1.0f, 1.0f};
+  std::vector<int64_t> input_0_dims = {1, 4};
+  ort_inputs.emplace_back(
+      Ort::Value::CreateTensor<float>(info, const_cast<float*>(input_0_data.data()),
+                                      input_0_data.size(), input_0_dims.data(), input_0_dims.size()));
+  const char* output_name = "output";
+
+  const ORTCHAR_T* lib_name;
+#if defined(_WIN32)
+  lib_name = ORT_TSTR("custom_op_get_const_input_test_library.dll");
+#elif defined(__APPLE__)
+  lib_name = ORT_TSTR("libcustom_op_get_const_input_test_library.dylib");
+#else
+  lib_name = ORT_TSTR("./libcustom_op_get_const_input_test_library.so");
+#endif
+
+  Ort::SessionOptions session_opts;
+
+  session_opts.RegisterCustomOpsLibrary(lib_name);
+
+  Ort::Session session(*ort_env, model_path, session_opts);
+  auto default_allocator = std::make_unique<MockedOrtAllocator>();
+
+  session.Run(Ort::RunOptions{}, input_names.data(), ort_inputs.data(), ort_inputs.size(),
+              &output_name, 1);
+}
+#endif
+
 #if defined(USE_OPENVINO) && (!defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS))
 TEST(CApiTest, test_custom_op_openvino_wrapper_library) {
   // Tests a custom operator that wraps an OpenVINO MNIST model (.xml and .bin files serialized into node attributes).
@@ -1250,21 +1301,41 @@ TEST(CApiTest, test_custom_op_openvino_wrapper_library) {
   lib_name = ORT_TSTR("./libcustom_op_openvino_wrapper_library.so");
 #endif
 
-  Ort::SessionOptions session_opts;
-  Ort::CustomOpConfigs custom_op_configs;
+  // Run with custom op session configurations.
+  {
+    Ort::SessionOptions session_opts;
+    Ort::CustomOpConfigs custom_op_configs;
 
-  custom_op_configs.AddConfig("OpenVINO_Wrapper", "device_type", "CPU");
-  session_opts.RegisterCustomOpsLibrary(lib_name, custom_op_configs);
+    custom_op_configs.AddConfig("OpenVINO_Wrapper", "device_type", "CPU");
+    session_opts.RegisterCustomOpsLibrary(lib_name, custom_op_configs);
 
-  Ort::Session session(*ort_env, CUSTOM_OP_OPENVINO_WRAPPER_LIB_TEST_MODEL_URI, session_opts);
-  auto default_allocator = std::make_unique<MockedOrtAllocator>();
+    Ort::Session session(*ort_env, CUSTOM_OP_OPENVINO_WRAPPER_LIB_TEST_MODEL_URI, session_opts);
+    auto default_allocator = std::make_unique<MockedOrtAllocator>();
 
-  RunSession(default_allocator.get(), session,
-             inputs,
-             "Plus214_Output_0",
-             expected_output_dims,
-             expected_vals,
-             nullptr);
+    RunSession(default_allocator.get(), session,
+               inputs,
+               "Plus214_Output_0",
+               expected_output_dims,
+               expected_vals,
+               nullptr);
+  }
+
+  // Run without specifying any custom op session configurations.
+  // Expect custom op to use "CPU" as OpenVINO's default backend.
+  {
+    Ort::SessionOptions session_opts;
+    session_opts.RegisterCustomOpsLibrary(lib_name);
+
+    Ort::Session session(*ort_env, CUSTOM_OP_OPENVINO_WRAPPER_LIB_TEST_MODEL_URI, session_opts);
+    auto default_allocator = std::make_unique<MockedOrtAllocator>();
+
+    RunSession(default_allocator.get(), session,
+               inputs,
+               "Plus214_Output_0",
+               expected_output_dims,
+               expected_vals,
+               nullptr);
+  }
 }
 #endif  // defined(USE_OPENVINO) && (!defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS))
 
@@ -1786,6 +1857,29 @@ TEST(CApiTest, fill_string_tensor) {
   ASSERT_EQ(len, expected_len);
 }
 
+TEST(CApiTest, fill_string_tensor_directly) {
+  constexpr std::string_view s[] = {"abc", "kmp"};
+  constexpr int64_t expected_len = 2;
+
+  MockedOrtAllocator default_allocator;
+  Ort::Value tensor = Ort::Value::CreateTensor(&default_allocator, &expected_len, 1U,
+                                               ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING);
+
+  for (size_t i = 0; i < static_cast<size_t>(expected_len); i++) {
+    auto* buffer = tensor.GetResizedStringTensorElementBuffer(i, s[i].size());
+    memcpy(buffer, s[i].data(), s[i].size());
+  }
+
+  auto shape_info = tensor.GetTensorTypeAndShapeInfo();
+  int64_t len = shape_info.GetElementCount();
+  ASSERT_EQ(len, expected_len);
+
+  for (size_t i = 0; i < static_cast<size_t>(expected_len); i++) {
+    auto element = tensor.GetStringTensorElement(i);
+    ASSERT_EQ(s[i], element);
+  }
+}
+
 TEST(CApiTest, get_string_tensor_element) {
   const char* s[] = {"abc", "kmp"};
   int64_t expected_len = 2;
@@ -2111,6 +2205,13 @@ TEST(CApiTest, get_available_providers_cpp) {
   ASSERT_TRUE(std::find(providers.begin(), providers.end(), "CUDAExecutionProvider") != providers.end());
 #endif
 }
+
+TEST(CApiTest, get_version_string_cpp) {
+  std::string version_string = Ort::GetVersionString();
+  ASSERT_FALSE(version_string.empty());
+  ASSERT_EQ(version_string, ORT_VERSION);
+}
+
 TEST(CApiTest, TestSharedAllocators) {
   OrtEnv* env_ptr = (OrtEnv*)(*ort_env);
 
@@ -2418,9 +2519,16 @@ TEST(CApiTest, ConfigureCudaArenaAndDemonstrateMemoryArenaShrinkage) {
 #endif
 
 #ifdef USE_TENSORRT
+class CApiTensorRTTest : public testing::Test, public ::testing::WithParamInterface<std::string> {};
 
 // This test uses CreateTensorRTProviderOptions/UpdateTensorRTProviderOptions APIs to configure and create a TensorRT Execution Provider
-TEST(CApiTest, TestConfigureTensorRTProviderOptions) {
+TEST_P(CApiTensorRTTest, TestConfigureTensorRTProviderOptions) {
+  std::string param = GetParam();
+  size_t pos = param.find("=");
+  std::string option_name = param.substr(0, pos);
+  std::string option_value = param.substr(pos + 1);
+  ASSERT_NE(pos, std::string::npos);
+
   const auto& api = Ort::GetApi();
   OrtTensorRTProviderOptionsV2* trt_options;
   OrtAllocator* allocator;
@@ -2430,16 +2538,19 @@ TEST(CApiTest, TestConfigureTensorRTProviderOptions) {
 
   const char* engine_cache_path = "./trt_engine_folder";
 
-  std::vector<const char*> keys{"device_id", "trt_fp16_enable", "trt_int8_enable", "trt_engine_cache_enable", "trt_engine_cache_path"};
+  std::vector<const char*> keys{"device_id", "trt_fp16_enable", "trt_int8_enable", "trt_engine_cache_enable",
+                                "trt_engine_cache_path", option_name.c_str()};
 
-  std::vector<const char*> values{"0", "1", "0", "1", engine_cache_path};
+  std::vector<const char*> values{"0", "1", "0", "1",
+                                  engine_cache_path, option_value.c_str()};
 
-  ASSERT_TRUE(api.UpdateTensorRTProviderOptions(rel_trt_options.get(), keys.data(), values.data(), 5) == nullptr);
+  ASSERT_TRUE(api.UpdateTensorRTProviderOptions(rel_trt_options.get(), keys.data(), values.data(), keys.size()) == nullptr);
 
   ASSERT_TRUE(api.GetAllocatorWithDefaultOptions(&allocator) == nullptr);
   ASSERT_TRUE(api.GetTensorRTProviderOptionsAsString(rel_trt_options.get(), allocator, &trt_options_str) == nullptr);
   std::string s(trt_options_str);
   ASSERT_TRUE(s.find(engine_cache_path) != std::string::npos);
+  ASSERT_TRUE(s.find(param.c_str()) != std::string::npos);
   ASSERT_TRUE(api.AllocatorFree(allocator, (void*)trt_options_str) == nullptr);
 
   Ort::SessionOptions session_options;
@@ -2474,6 +2585,12 @@ TEST(CApiTest, TestConfigureTensorRTProviderOptions) {
   struct stat buffer;
   ASSERT_TRUE(stat(engine_cache_path, &buffer) == 0);
 }
+
+/*
+ * The TensorrtExecutionProviderOptionsTest can be used to test TRT options
+ */
+INSTANTIATE_TEST_SUITE_P(CApiTensorRTTest, CApiTensorRTTest,
+                         ::testing::Values("trt_build_heuristics_enable=1", "trt_sparsity_enable=1", "trt_builder_optimization_level=0", "trt_tactic_sources=-CUDNN,+CUBLAS", "trt_auxiliary_streams=2"));
 #endif
 
 #ifdef USE_CUDA
@@ -2566,7 +2683,7 @@ TEST(CApiTest, TestPerSessionCustomThreadPoolHooks) {
   ASSERT_TRUE(custom_join_hook_called == (thread_count - 1) << 1);
 }
 
-// Preventing resize tranformer issue:
+// Preventing resize transformer issue:
 // https://github.com/microsoft/onnxruntime/issues/9857
 #ifndef REDUCED_OPS_BUILD
 TEST(CApiTest, crop_and_resize) {

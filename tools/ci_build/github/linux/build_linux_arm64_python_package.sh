@@ -7,7 +7,7 @@ CXXFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-st
 
 BUILD_DEVICE="CPU"
 BUILD_CONFIG="Release"
-PYTHON_EXES=("/opt/python/cp37-cp37m/bin/python3.7" "/opt/python/cp38-cp38/bin/python3.8" "/opt/python/cp39-cp39/bin/python3.9" "/opt/python/cp310-cp310/bin/python3.10")
+PYTHON_EXES=("/opt/python/cp38-cp38/bin/python3.8" "/opt/python/cp39-cp39/bin/python3.9" "/opt/python/cp310-cp310/bin/python3.10" "/opt/python/cp311-cp311/bin/python3.11")
 while getopts "d:p:" parameter_Option
 do case "${parameter_Option}"
 in
@@ -42,8 +42,8 @@ fi
 
 if [ "$BUILD_DEVICE" == "GPU" ]; then
     #Enable CUDA and TRT EPs.
-    ONNXRUNTIME_CUDA_VERSION="11.6"
-    BUILD_ARGS+=("--use_cuda" "--use_tensorrt" "--cuda_version=$ONNXRUNTIME_CUDA_VERSION" "--tensorrt_home=/usr" "--cuda_home=/usr/local/cuda-$ONNXRUNTIME_CUDA_VERSION" "--cudnn_home=/usr/local/cuda-$ONNXRUNTIME_CUDA_VERSION" "--cmake_extra_defines" "CMAKE_CUDA_ARCHITECTURES=37;50;52;60;61;70;75;80")
+    ONNXRUNTIME_CUDA_VERSION="11.8"
+    BUILD_ARGS+=("--use_cuda" "--use_tensorrt" "--cuda_version=$ONNXRUNTIME_CUDA_VERSION" "--tensorrt_home=/usr" "--cuda_home=/usr/local/cuda-$ONNXRUNTIME_CUDA_VERSION" "--cudnn_home=/usr/local/cuda-$ONNXRUNTIME_CUDA_VERSION" "--cmake_extra_defines" "CMAKE_CUDA_ARCHITECTURES=52;60;61;70;75;80")
 elif [ "$BUILD_DEVICE" == "AZURE" ]; then
     BUILD_ARGS+=("--use_azure")
     if [ -f /etc/lsb-release ]; then
@@ -64,3 +64,5 @@ do
 
   cp /build/$BUILD_CONFIG/dist/*.whl /build/dist
 done
+
+which ccache && ccache -sv && ccache -z

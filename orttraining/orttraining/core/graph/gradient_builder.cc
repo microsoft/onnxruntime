@@ -752,6 +752,17 @@ IMPLEMENT_GRADIENT_BUILDER(GetGatherGradient) {
               SrcNodeAttributes())};
 }
 
+IMPLEMENT_GRADIENT_BUILDER(GetShrunkenGatherGradient) {
+  return std::vector<NodeDef>{
+      NodeDef("Shape",
+              {I(0)},
+              {IA("I0_shape")}),
+      NodeDef(OpDef{"GatherGrad", kMSDomain, 1},
+              {IA("I0_shape"), I(1), GO(0)},
+              {GI(0)},
+              SrcNodeAttributes())};
+}
+
 IMPLEMENT_GRADIENT_BUILDER(GetGatherElementsGradient) {
   return std::vector<NodeDef>{
       NodeDef("Shape",
@@ -1233,8 +1244,19 @@ IMPLEMENT_GRADIENT_BUILDER(GetSoftmaxCrossEntropyLossInternalGradient) {
   for (size_t i = 1; i < input_size; i++) {
     input_arg_def.emplace_back(I(i));
   }
+
+  auto src_attrs = SrcNodeAttributes();
+  std::vector<AttributeProto> attrs;
+  for (auto& attr : src_attrs) {
+    if (attr.first == "output_type") {
+      attrs.push_back(MakeAttribute("output_type", static_cast<int64_t>(IElemType(0))));
+      continue;
+    }
+    attrs.push_back(attr.second);
+  }
+
   return std::vector<NodeDef>{
-      NodeDef(OpDef{"SoftmaxCrossEntropyLossInternalGrad", kMSDomain, 1}, input_arg_def, {GI(0)}, SrcNodeAttributes())};
+      NodeDef(OpDef{"SoftmaxCrossEntropyLossInternalGrad", kMSDomain, 1}, input_arg_def, {GI(0)}, attrs)};
 }
 
 IMPLEMENT_GRADIENT_BUILDER(GetGlobalAveragePoolGradient) {
@@ -1814,6 +1836,10 @@ IMPLEMENT_GRADIENT_BUILDER(GetPythonOpGradient) {
               "PythonOpGrad requiring gradient output count mismatch.");
   attrs.push_back(MakeAttribute("output_tensor_requires_grads", bw_tensor_output_requires_grads));
 
+  if (src_attrs.find("comment") != src_attrs.end() && utils::HasString(src_attrs.at("comment"))) {
+    attrs.push_back(MakeAttribute("comment", src_attrs.at("comment").s()));
+  }
+
   std::vector<ArgDef> output_args;
   for (int i = 0; i < GetSrcNodeInputSize(); ++i) {
     if (IsGradientRequiredForSrcNodeInput(i)) {
@@ -1882,6 +1908,79 @@ IMPLEMENT_GRADIENT_BUILDER(GetScatterElementsGradient) {
 
 IMPLEMENT_GRADIENT_BUILDER(GetFakeQuantGradient) {
   return {NodeDef(OpDef{"FakeQuantGrad", kMSDomain, 1}, {GO(0), O(1)}, {GI(0)})};
+}
+
+IMPLEMENT_GRADIENT_BUILDER(GetLSTMGradient) {
+  std::vector<ArgDef> input_args;
+  constexpr int bias_input_index = 3;
+  constexpr int peephole_weights_input_index = 7;
+
+  // Add inputs of the LSTMTraining node as inputs of the LSTMGrad node
+  // Add inputs from the source node for X, W, R, SL, H0, C0
+  // Add empty argdef for non existing inputs
+  for (int i = 0; i < GetSrcNodeInputSize(); i++) {
+    if (i == bias_input_index || i == peephole_weights_input_index)
+      continue;
+    if (I(i).Exists()) {
+      input_args.push_back(I(i));
+    } else {
+      input_args.push_back(ArgDef());
+    }
+  }
+
+  ORT_ENFORCE(GetSrcNodeOutputSize() >= 5,
+              "LSTMTraining node must generate the outputs all hidden states (index 0), "
+              "all cell states (index 3) and iofc gate copmutations (index 4) so that gradients can be computed.");
+
+  if (O(0).Exists()) {
+    input_args.push_back(O(0));  // all hidden states output of the LSTMTraining node
+  } else {
+    input_args.push_back(ArgDef());
+  }
+
+  if (O(3).Exists()) {
+    input_args.push_back(O(3));  // all cell states output of the LSTMTraining node
+  } else {
+    input_args.push_back(ArgDef());
+  }
+
+  if (O(4).Exists()) {
+    input_args.push_back(O(4));  // i, o, f, c gate computations output of the LSTMTraining node
+  } else {
+    input_args.push_back(ArgDef());
+  }
+
+  // Add gradients of the outputs of the LSTMTraining node as inputs to the LSTMGrad node
+  // Gradients of the outputs of the LSTMTraining node include grad_HAll, grad_HFinal, grad_CFinal
+  for (int o = 0; o < 3; ++o) {
+    if (GO(o).Exists() && IsGradientAvailableForSrcNodeOutput(o)) {
+      input_args.push_back(GO(o));
+    } else {
+      input_args.push_back(ArgDef());
+    }
+  }
+
+  // Add gradients of the LSTMTraining inputs as outputs of the LSTMGrad node
+  // Outputs are gradients of:
+  //   1) X (input tensor)
+  //   2) W (weight tensor)
+  //   3) R (recurrence weight tensor)
+  //   4) B (bias tensor)
+  //   5) H0 (initial hidden state tensor)
+  //   6) C0 (initial cell state tensor)
+  //   7) P (peephole weight tensor)
+  std::vector<ArgDef> output_args;
+  constexpr int sequence_length_input_index = 4;
+  for (int i = 0; i < GetSrcNodeInputSize(); ++i) {
+    if (sequence_length_input_index == i) continue;
+    if (I(i).Exists() && IsGradientRequiredForSrcNodeInput(i)) {
+      output_args.push_back(GI(i));
+    } else {
+      output_args.push_back(ArgDef());
+    }
+  }
+
+  return {NodeDef(OpDef{"LSTMGrad", kMSDomain, 1}, input_args, output_args, SrcNodeAttributes())};
 }
 
 }  // namespace training

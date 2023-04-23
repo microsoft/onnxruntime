@@ -14,7 +14,7 @@
 #ifdef _MSC_VER
 #pragma warning(pop)
 #endif
-//TODO: fix the warnings
+// TODO: fix the warnings
 #if defined(_MSC_VER) && !defined(__clang__)
 // Chance of arithmetic overflow could be reduced
 #pragma warning(disable : 26451)
@@ -280,7 +280,7 @@ void UniDirectionalAttnLstm<T>::Compute(const gsl::span<const T>& inputs_arg,
     // after the first step this will switch to the output from the previous step
     span_T_const_iter previous_state = batched_hidden_state_one_step.begin();
 
-    //run through steps sequentially
+    // run through steps sequentially
     for (int step = 0; step < max_sequence_length; step++) {
       const std::string seqno_str = " [seqno=" + std::to_string(step) + "]";
 
@@ -335,7 +335,7 @@ void UniDirectionalAttnLstm<T>::Compute(const gsl::span<const T>& inputs_arg,
       }
 
       if (output_sequence) {
-        //set to 0 if step >= sequence_length
+        // set to 0 if step >= sequence_length
         for (int lrow = 0; lrow < batch_size_; lrow++) {
           if (step >= min_sequence_length && step >= sequence_lengths[lrow]) {
             auto dst = outputs.data() + step * output_step_length + lrow * hidden_size_;
@@ -409,7 +409,7 @@ void UniDirectionalAttnLstm<T>::GateComputations(span_T_iter& out, span_T_iter& 
     const float* pBi = use_bias_ ? SafeRawConstPointer<T>(bias_WRi_, 0, hidden_size_) : nullptr;
     clip_with_bias_ptr_(clip_, pBi, pi, hidden_size_);  // post: pi has input to f() to calculate i
     activation_f_.func(pi, hidden_size_, activation_f_.alpha, activation_f_.beta);
-    //DumpMatrix("i" + row_str, pi, 1, hidden_size_);
+    // DumpMatrix("i" + row_str, pi, 1, hidden_size_);
 
     // Forget Gate
     if (input_forget_) {

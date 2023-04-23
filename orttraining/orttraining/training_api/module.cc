@@ -1,14 +1,17 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "orttraining/training_api/module.h"
+
 #include "core/common/safeint.h"
 #include "core/common/string_utils.h"
 #include "core/framework/execution_provider.h"
 #include "core/session/inference_session.h"
 #include "core/session/environment.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
+#include "core/graph/graph_utils.h"
 
-#include "orttraining/training_api/module.h"
+#include "orttraining/training_api/checkpoint.h"
 #include "orttraining/training_api/utils.h"
 
 using namespace onnxruntime;
@@ -43,13 +46,17 @@ std::unordered_set<const Node*> GetReverseReachableNodes(Graph& inference_graph,
 }
 
 Status RemoveUnusedNodes(Graph& inference_graph, InlinedVector<const NodeArg*>& output_node_args) {
-  auto reachable_nodes = GetReverseReachableNodes(inference_graph, output_node_args);
+  const auto reachable_nodes = GetReverseReachableNodes(inference_graph, output_node_args);
 
   // Get all graph nodes and remove those that are not in the reachable nodes.
   GraphViewer graph_viewer(inference_graph);
-  for (auto& node : graph_viewer.Nodes()) {
-    if (!reachable_nodes.count(&node)) {
-      inference_graph.RemoveNode(node.Index());
+  const auto node_indices = graph_viewer.GetNodesInTopologicalOrder();
+  for (size_t idx = node_indices.size(); idx > 0; --idx) {
+    const NodeIndex node_index = idx - 1;
+    auto* node = inference_graph.GetNode(node_index);
+    if (!reachable_nodes.count(node)) {
+      graph_utils::RemoveNodeOutputEdges(inference_graph, *node);
+      inference_graph.RemoveNode(node_index);
     }
   }
 
@@ -143,13 +150,12 @@ Status Parameter::ResetGrad() {
 }
 
 Module::Module(const std::string& train_model_path_or_bytes,
-               const std::unordered_map<std::string, std::shared_ptr<Parameter>>& named_parameters,
+               CheckpointState* state,
                const onnxruntime::SessionOptions& session_options,
                const Environment& env,
                const std::vector<std::shared_ptr<IExecutionProvider>>& providers,
                const std::optional<std::string>& eval_model_path_or_bytes)
-    : named_parameters_{named_parameters} {
-
+    : state_{state} {
   // Enforce weight prepacking is disabled
   // If user explicitly enabled weight prepacking then return error.
   // Default value is enabled. Therefore, explicitly disable it if the value is not set by user.
@@ -157,7 +163,8 @@ Module::Module(const std::string& train_model_path_or_bytes,
   if (session_options.config_options.TryGetConfigEntry(kOrtSessionOptionsConfigDisablePrepacking, disable_prepacking)) {
     ORT_ENFORCE(disable_prepacking == "1", "Prepacking is not supported for training scenarios.");
   } else {
-    const_cast<SessionOptions&>(session_options).config_options.configurations[kOrtSessionOptionsConfigDisablePrepacking] = "1";
+    const_cast<SessionOptions&>(session_options)
+        .config_options.configurations[kOrtSessionOptionsConfigDisablePrepacking] = "1";
   }
 
   train_sess_ = std::make_unique<onnxruntime::InferenceSession>(session_options, env);
@@ -166,6 +173,9 @@ Module::Module(const std::string& train_model_path_or_bytes,
     ORT_THROW_IF_ERROR(train_sess_->RegisterExecutionProvider(provider));
   }
   ORT_THROW_IF_ERROR(train_sess_->Initialize());
+
+  // Make sure that the checkpoint state can copy tensors
+  state_->module_checkpoint_state.train_session_data_transfer_mgr = &train_sess_->GetDataTransferManager();
 
   // Extract model input and output names
   std::vector<std::string> train_input_names, train_output_names;
@@ -177,8 +187,8 @@ Module::Module(const std::string& train_model_path_or_bytes,
 
   std::unordered_map<std::string, size_t> param_name_to_grad_input_index_map;
   for (const auto& input_name : train_input_names) {
-    auto it = named_parameters_.find(input_name);
-    if (it != named_parameters_.end()) {
+    auto it = state_->module_checkpoint_state.named_parameters.find(input_name);
+    if (it != state_->module_checkpoint_state.named_parameters.end()) {
       param_input_names.emplace_back(input_name);
     } else if (input_name == ACCUMULATE_GRAD_CONTROL_INPUT_NAME) {
       reset_grad_name.emplace_back(input_name);
@@ -207,8 +217,8 @@ Module::Module(const std::string& train_model_path_or_bytes,
   // Loop each parameter, allocate it's memory based on user specified device.
   auto& train_sess_state = train_sess_->GetSessionState();
   for (auto& param_name : param_input_names) {
-    auto params_iter = named_parameters_.find(param_name);
-    ORT_ENFORCE(params_iter != named_parameters_.end());
+    auto params_iter = state_->module_checkpoint_state.named_parameters.find(param_name);
+    ORT_ENFORCE(params_iter != state_->module_checkpoint_state.named_parameters.end());
 
     // Retrieve the target device for "param_name"
     InlinedVector<SessionState::NodeInfo> node_info_vec;
@@ -276,7 +286,8 @@ Module::Module(const std::string& train_model_path_or_bytes,
     // TODO: Add the checks instead of making assumptions??
     std::vector<std::string> eval_user_input_names, eval_param_input_names;
     for (const auto& input_name : eval_input_names_) {
-      if (named_parameters_.find(input_name) != named_parameters_.end()) {
+      if (state_->module_checkpoint_state.named_parameters.find(input_name) !=
+          state_->module_checkpoint_state.named_parameters.end()) {
         // it is a parameter
         eval_param_input_names.emplace_back(input_name);
         continue;
@@ -312,13 +323,14 @@ std::string Module::GetTrainingModelOutputName(size_t index) const {
 }
 
 std::string Module::GetEvalModelOutputName(size_t index) const {
-  ORT_ENFORCE(index < eval_output_names_.size(), "Eval output name index out of range. Expected in range [0-", eval_output_names_.size(), "). Actual: ", index);
+  ORT_ENFORCE(index < eval_output_names_.size(), "Eval output name index out of range. Expected in range [0-",
+              eval_output_names_.size(), "). Actual: ", index);
   return eval_output_names_.at(index);
 }
 
 size_t Module::GetParametersSize(const bool trainable_only) const {
   SafeInt<size_t> parameters_size = 0;
-  for (const auto& it : named_parameters_) {
+  for (const auto& it : state_->module_checkpoint_state.named_parameters) {
     if (trainable_only && !it.second->RequiresGrad()) {
       continue;
     }
@@ -329,10 +341,14 @@ size_t Module::GetParametersSize(const bool trainable_only) const {
 
 std::vector<std::shared_ptr<Parameter>> Module::Parameters() const {
   std::vector<std::shared_ptr<Parameter>> params;
-  for (auto& it : named_parameters_) {
+  for (auto& it : state_->module_checkpoint_state.named_parameters) {
     params.push_back(it.second);
   }
   return params;
+}
+
+std::unordered_map<std::string, std::shared_ptr<Parameter>> Module::NamedParameters() const {
+  return state_->module_checkpoint_state.named_parameters;
 }
 
 Status Module::CopyParametersToBuffer(OrtValue& parameters_buffer, const bool trainable_only) {
@@ -349,7 +365,7 @@ Status Module::CopyParametersToBuffer(OrtValue& parameters_buffer, const bool tr
 
   size_t offset = 0;
   for (const auto& param_name : weight_names_) {
-    auto& param = named_parameters_.at(param_name);
+    auto& param = state_->module_checkpoint_state.named_parameters.at(param_name);
     if (trainable_only && !param->RequiresGrad()) {
       continue;
     }
@@ -392,7 +408,7 @@ Status Module::CopyBufferToParameters(OrtValue& parameters_buffer, const bool tr
 
   size_t offset = 0;
   for (const auto& param_name : weight_names_) {
-    auto& param = named_parameters_.at(param_name);
+    auto& param = state_->module_checkpoint_state.named_parameters.at(param_name);
     if (trainable_only && !param->RequiresGrad()) {
       continue;
     }
@@ -455,17 +471,6 @@ Status Module::EvalStep(const std::vector<OrtValue>& inputs, std::vector<OrtValu
   return Status::OK();
 }
 
-Status Module::GetStateDict(ModuleCheckpointState& module_checkpoint_state) {
-  module_checkpoint_state.named_parameters = NamedParameters();
-
-  // Pass the training session data transfer manager for data copying when saving.
-  // An alternative is, we can do copy at this stage.
-  ORT_RETURN_IF_NOT(train_sess_, "training session not initialized");
-  const DataTransferManager& sess_data_transfer_manager = train_sess_->GetDataTransferManager();
-  module_checkpoint_state.train_session_data_transfer_mgr = &sess_data_transfer_manager;
-  return Status::OK();
-}
-
 Status Module::ExportModelForInferencing(const std::string& inference_model_path,
                                          gsl::span<const std::string> graph_output_names) const {
   ORT_RETURN_IF(!eval_sess_ || eval_model_path_.empty(),
@@ -484,7 +489,7 @@ Status Module::ExportModelForInferencing(const std::string& inference_model_path
 
   // The cloned model's inputs are transformed such that the model has only user defined inputs. All parameters
   // are moved to be constant initializers for the model.
-  ORT_RETURN_IF_ERROR(TransformModelInputsForInference(inference_model->MainGraph(), named_parameters_,
+  ORT_RETURN_IF_ERROR(TransformModelInputsForInference(inference_model->MainGraph(), state_->module_checkpoint_state.named_parameters,
                                                        eval_sess_->GetDataTransferManager()));
 
   // Save the model at desired location.

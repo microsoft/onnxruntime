@@ -5,25 +5,21 @@
 #
 # This script converts stable diffusion onnx models from float to half (mixed) precision for GPU inference.
 #
-# Before running this script, you need convert checkpoint to float32 onnx models like the following
-#    export ONNX_ROOT=./sd_onnx
-#    pip install -r requirements.txt
-#    huggingface-cli login
-#    wget https://raw.githubusercontent.com/huggingface/diffusers/v0.12.1/scripts/convert_stable_diffusion_checkpoint_to_onnx.py
-#    python convert_stable_diffusion_checkpoint_to_onnx.py --model_path runwayml/stable-diffusion-v1-5  --output_path $ONNX_ROOT/sd-v1-5
-#    python convert_stable_diffusion_checkpoint_to_onnx.py --model_path stabilityai/stable-diffusion-2-1 --output_path $ONNX_ROOT/sd-v2-1
-# Note that this script might not be compatible with older or newer version of diffusers.
-
-# Then you can use this script to convert them to float16 like the following:
-#    python optimize_pipeline.py -i $ONNX_ROOT/sd-v1-5 -o $ONNX_ROOT/sd-v1-5-fp16 --float16
-# Or
-#    python -m onnxruntime.transformers.models.stable_diffusion.optimize_pipeline -i $ONNX_ROOT/sd-v1-5 -o $ONNX_ROOT/sd-v1-5-fp16 --float16
+# Before running this script, follow README.md to setup python environment and convert stable diffusion checkpoint to float32 onnx models.
 #
-# Note that output model is for CUDA Execution Provider. It might not run in CPU Execution Provider.
+# For example, the float32 ONNX pipeline is saved to ./sd-v1-5 directory, you can optimize and convert it to float16 like the following:
+#    python optimize_pipeline.py -i ./sd-v1-5 -o ./sd-v1-5-fp16 --float16
 #
-# Stable diffusion 2.1 model will get black images using float16 Attention. A walkaround is to force it in float32:
-#    python optimize_pipeline.py -i $ONNX_ROOT/sd-v2-1 -o $ONNX_ROOT/sd-v2-1-fp16 --float16 --force_fp32_ops unet:Attention
-
+# Note that the optimized models are for CUDA Execution Provider. It might not run in other execution provider.
+#
+# Stable diffusion 2.1 model will get black images using float16 Attention. A walkaround is to force Attention to run in float32 like the following:
+#    python optimize_pipeline.py -i ./sd-v2-1 -o ./sd-v2-1-fp16 --float16 --force_fp32_ops unet:Attention
+#
+# If you are using nightly package (or built from source), you can force MultiHeadAttention to run in float32:
+#    python optimize_pipeline.py -i ./sd-v2-1 -o ./sd-v2-1-fp16 --float16 --force_fp32_ops unet:MultiHeadAttention
+#
+# ROCm EP doesn't support MultiHeadAttention, add --disable_attention to disable attention fusion:
+#    python optimize_pipeline.py -i ./sd-v1-5 -o ./sd-v1-5-fp16 --float16 --disable_attention
 
 import argparse
 import logging
@@ -41,11 +37,11 @@ from packaging import version
 import onnxruntime
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
-from fusion_options import FusionOptions
-from onnx_model_clip import ClipOnnxModel
-from onnx_model_unet import UnetOnnxModel
-from onnx_model_vae import VaeOnnxModel
-from optimizer import optimize_by_onnxruntime, optimize_model
+from fusion_options import FusionOptions  # noqa: E402
+from onnx_model_clip import ClipOnnxModel  # noqa: E402
+from onnx_model_unet import UnetOnnxModel  # noqa: E402
+from onnx_model_vae import VaeOnnxModel  # noqa: E402
+from optimizer import optimize_by_onnxruntime, optimize_model  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -58,6 +54,7 @@ def optimize_sd_pipeline(
     float16: bool,
     force_fp32_ops: List[str],
     enable_runtime_optimization: bool,
+    args,
 ):
     """Optimize onnx models used in stable diffusion onnx pipeline and optionally convert to float16.
 
@@ -130,10 +127,12 @@ def optimize_sd_pipeline(
         # Right now, onnxruntime does not save >2GB model so we use script to optimize unet instead.
         logger.info(f"Optimize {onnx_model_path}...")
 
-        fusion_options = FusionOptions(model_type)
+        args.model_type = model_type
+        fusion_options = FusionOptions.parse(args)
+
         if model_type in ["unet"]:
-            # There are some optimizations that are not available in v1.14 or older version
-            has_all_optimizations = version.parse(onnxruntime.__version__) > version.parse("1.14.0")
+            # Some optimizations are not available in v1.14 or older version: packed QKV and BiasAdd
+            has_all_optimizations = version.parse(onnxruntime.__version__) >= version.parse("1.15.0")
             fusion_options.enable_packed_kv = float16
             fusion_options.enable_packed_qkv = float16 and has_all_optimizations
             fusion_options.enable_bias_add = has_all_optimizations
@@ -292,6 +291,8 @@ def parse_arguments():
     )
     parser.set_defaults(use_external_data_format=False)
 
+    FusionOptions.add_arguments(parser)
+
     args = parser.parse_args()
     return args
 
@@ -309,6 +310,7 @@ def main():
         args.float16,
         args.force_fp32_ops,
         args.inspect,
+        args,
     )
 
 

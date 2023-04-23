@@ -29,7 +29,6 @@ bool Gemm::IsOnnxNodeSupported(const NodeUnit& node_unit, const GraphViewer& gra
     const auto beta = node.GetAttributes().find("beta");
     if ((*beta).second.f() != 1.0) break;
 
-
     const NodeArg* A_arg = input_defs[0];
     const NodeArg* B_arg = input_defs[1];
     const NodeArg* C_arg = input_defs.size() == 2 ? nullptr : input_defs[2];
@@ -120,7 +119,7 @@ Status Gemm::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr,
   if (input_idx == 1) {
     B_ = &tensor;
     if (C_matrix_exists_) {
-        return Status::OK();
+      return Status::OK();
     }
   }
 
@@ -145,20 +144,20 @@ Status Gemm::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr,
       trans_B_ == CblasNoTrans ? B_->Shape()[1] : B_->Shape()[0],  // size_t output_channels,
       trans_B_ == CblasNoTrans ? B_->Shape()[0] : B_->Shape()[1],  // size_t input_stride,
       trans_B_ == CblasNoTrans ? B_->Shape()[1] : B_->Shape()[0],  // size_t output_stride,
-      B_->Data<float>(),             // const float* kernel,
-      bias_Data,                                                  // const float* bias,
+      B_->Data<float>(),                                           // const float* kernel,
+      bias_Data,                                                   // const float* bias,
       output_min,
       output_max,
       flags,
-  #ifdef XNN_CACHE_ENABLE
+#ifdef XNN_CACHE_ENABLE
       &xnn_caches_,
-  #else
+#else
       0,
-  #endif
+#endif
       &p);
 
   if (status != xnn_status_success) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "xnn_create_fully_connected_nc_f32 returned ", status);
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "xnn_create_fully_connected_nc_f32 returned ", status);
   }
   op0_.reset(p);
 

@@ -51,7 +51,7 @@ static void RunSession(OrtAllocator& allocator, Ort::Session& session_object,
 
   auto type_info = output_tensor->GetTensorTypeAndShapeInfo();
   ASSERT_EQ(type_info.GetShape(), dims_y);
-  //size_t total_len = type_info.GetElementCount();
+  // size_t total_len = type_info.GetElementCount();
   ASSERT_EQ(values_y.size(), static_cast<size_t>(5));
 
   OutT* f = output_tensor->GetTensorMutableData<OutT>();
@@ -78,7 +78,7 @@ static Ort::Session GetSessionObj(Ort::Env& env, T model_uri, int provider_type)
     dnnl_options.use_arena = 1;
     dnnl_options.threadpool_args = nullptr;
     session_options.AppendExecutionProvider_Dnnl(dnnl_options);
-    //Ort::ThrowOnError(OrtApis::SessionOptionsAppendExecutionProvider_Dnnl(session_options, &dnnl_options));
+    // Ort::ThrowOnError(OrtApis::SessionOptionsAppendExecutionProvider_Dnnl(session_options, &dnnl_options));
     std::cout << "Running simple inference with dnnl provider" << std::endl;
 #else
     return Ort::Session(nullptr);

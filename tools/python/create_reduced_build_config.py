@@ -74,7 +74,6 @@ def _extract_ops_from_onnx_model(model_files: typing.Iterable[pathlib.Path]):
 
 
 def create_config_from_onnx_models(model_files: typing.Iterable[pathlib.Path], output_file: pathlib.Path):
-
     required_ops = _extract_ops_from_onnx_model(model_files)
 
     output_file.parent.mkdir(parents=True, exist_ok=True)
@@ -112,7 +111,7 @@ def main():
     argparser.add_argument(
         "model_path_or_dir",
         type=pathlib.Path,
-        help="Path to a single model, or a directory that will be recursively searched " "for models to process.",
+        help="Path to a single model, or a directory that will be recursively searched for models to process.",
     )
 
     argparser.add_argument(

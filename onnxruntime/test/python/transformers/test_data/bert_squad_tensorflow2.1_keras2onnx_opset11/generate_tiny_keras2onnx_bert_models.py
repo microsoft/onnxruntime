@@ -26,7 +26,7 @@ The input model is generated like the following (need install keras2onnx from so
 import argparse
 import os
 import random
-import sys
+import sys  # noqa: F401
 import timeit
 from pathlib import Path
 
@@ -45,7 +45,7 @@ SEQ_LEN = 7
 
 class TinyBertOnnxModel(OnnxModel):
     def __init__(self, model, verbose):
-        super(TinyBertOnnxModel, self).__init__(model, verbose)
+        super().__init__(model, verbose)
         self.resize_model()
 
     def resize_weight(self, initializer_name, target_shape):
@@ -108,7 +108,7 @@ class TinyBertOnnxModel(OnnxModel):
             if len(tensor.shape) == 1 and tensor.shape[0] == 1:
                 if tensor == old_parameters["num_heads"]:
                     print(
-                        "initializer type={}".format(initializer.data_type),
+                        f"initializer type={initializer.data_type}",
                         initializer.name,
                         old_parameters["num_heads"],
                         "=>[",
@@ -123,7 +123,7 @@ class TinyBertOnnxModel(OnnxModel):
                     )
                 elif tensor == old_parameters["seq_len"]:
                     print(
-                        "initializer type={}".format(initializer.data_type),
+                        f"initializer type={initializer.data_type}",
                         initializer.name,
                         old_parameters["seq_len"],
                         "=>[",
@@ -138,7 +138,7 @@ class TinyBertOnnxModel(OnnxModel):
                     )
                 elif tensor == old_parameters["size_per_head"]:
                     print(
-                        "initializer type={}".format(initializer.data_type),
+                        f"initializer type={initializer.data_type}",
                         initializer.name,
                         old_parameters["size_per_head"],
                         "=>[",
@@ -153,7 +153,7 @@ class TinyBertOnnxModel(OnnxModel):
                     )
                 elif tensor == old_parameters["hidden_size"]:
                     print(
-                        "initializer type={}".format(initializer.data_type),
+                        f"initializer type={initializer.data_type}",
                         initializer.name,
                         old_parameters["hidden_size"],
                         "=>[",
@@ -168,7 +168,7 @@ class TinyBertOnnxModel(OnnxModel):
                     )
                 elif tensor == 4 * old_parameters["hidden_size"]:
                     print(
-                        "initializer type={}".format(initializer.data_type),
+                        f"initializer type={initializer.data_type}",
                         initializer.name,
                         4 * old_parameters["hidden_size"],
                         "=>[",
@@ -184,7 +184,7 @@ class TinyBertOnnxModel(OnnxModel):
             elif len(tensor.shape) == 0:
                 if tensor == old_parameters["num_heads"]:
                     print(
-                        "initializer type={}".format(initializer.data_type),
+                        f"initializer type={initializer.data_type}",
                         initializer.name,
                         old_parameters["num_heads"],
                         "=>",
@@ -198,7 +198,7 @@ class TinyBertOnnxModel(OnnxModel):
                     )
                 elif tensor == old_parameters["seq_len"]:
                     print(
-                        "initializer type={}".format(initializer.data_type),
+                        f"initializer type={initializer.data_type}",
                         initializer.name,
                         old_parameters["seq_len"],
                         "=>",
@@ -212,7 +212,7 @@ class TinyBertOnnxModel(OnnxModel):
                     )
                 elif tensor == old_parameters["size_per_head"]:
                     print(
-                        "initializer type={}".format(initializer.data_type),
+                        f"initializer type={initializer.data_type}",
                         initializer.name,
                         old_parameters["size_per_head"],
                         "=>",
@@ -226,7 +226,7 @@ class TinyBertOnnxModel(OnnxModel):
                     )
                 elif tensor == old_parameters["hidden_size"]:
                     print(
-                        "initializer type={}".format(initializer.data_type),
+                        f"initializer type={initializer.data_type}",
                         initializer.name,
                         old_parameters["hidden_size"],
                         "=>",
@@ -240,7 +240,7 @@ class TinyBertOnnxModel(OnnxModel):
                     )
                 elif tensor == 4 * old_parameters["hidden_size"]:
                     print(
-                        "initializer type={}".format(initializer.data_type),
+                        f"initializer type={initializer.data_type}",
                         initializer.name,
                         4 * old_parameters["hidden_size"],
                         "=>",
@@ -254,7 +254,7 @@ class TinyBertOnnxModel(OnnxModel):
                     )
                 elif tensor == 1.0 / np.sqrt(old_parameters["size_per_head"]):
                     print(
-                        "initializer type={}".format(initializer.data_type),
+                        f"initializer type={initializer.data_type}",
                         initializer.name,
                         1.0 / np.sqrt(old_parameters["size_per_head"]),
                         "=>",
@@ -302,7 +302,6 @@ class TinyBertOnnxModel(OnnxModel):
         """
         Update input and output shape to use dynamic axes.
         """
-        dynamic_batch_inputs = {}
         for input in self.model.graph.input:
             dim_proto = input.type.tensor_type.shape.dim[0]
             dim_proto.dim_param = dynamic_batch_dim
@@ -355,7 +354,6 @@ def generate_test_data(
         sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_DISABLE_ALL
         sess = onnxruntime.InferenceSession(onnx_file, sess_options, providers=["CPUExecutionProvider"])
 
-        input1_name = sess.get_inputs()[0].name
         output_names = [output.name for output in sess.get_outputs()]
         inputs = {
             "input_ids": input_1,
@@ -365,19 +363,19 @@ def generate_test_data(
         print("inputs", inputs)
         result = sess.run(output_names, inputs)
 
-        with open(os.path.join(path, "input_{}.pb".format(0)), "wb") as f:
+        with open(os.path.join(path, f"input_{0}.pb"), "wb") as f:
             f.write(tensor_1.SerializeToString())
-        with open(os.path.join(path, "input_{}.pb".format(1)), "wb") as f:
+        with open(os.path.join(path, f"input_{1}.pb"), "wb") as f:
             f.write(tensor_2.SerializeToString())
-        with open(os.path.join(path, "input_{}.pb".format(2)), "wb") as f:
+        with open(os.path.join(path, f"input_{2}.pb"), "wb") as f:
             f.write(tensor_3.SerializeToString())
 
-        for i, output_name in enumerate(output_names):
+        for i, _output_name in enumerate(output_names):
             tensor_result = numpy_helper.from_array(
                 np.asarray(result[i]).reshape((batch_size, sequence_length)),
                 output_names[i],
             )
-            with open(os.path.join(path, "output_{}.pb".format(i)), "wb") as f:
+            with open(os.path.join(path, f"output_{i}.pb"), "wb") as f:
                 f.write(tensor_result.SerializeToString())
 
         start_time = timeit.default_timer()
@@ -402,14 +400,14 @@ def generate_test_data(
                 print("Warning: GPU not found")
                 continue
         outputs = session.run(None, inputs)
-        evalTime = timeit.default_timer() - start_time
+        evalTime = timeit.default_timer() - start_time  # noqa: N806
         if outputs[0].tolist() != result[0].tolist():
             print(
                 "Error: not same result after optimization. use_cpu={}, no_opt_output={}, opt_output={}".format(
                     use_cpu, result[0].tolist(), outputs[1].tolist()
                 )
             )
-        print("** Evaluation done in total {} secs".format(evalTime))
+        print(f"** Evaluation done in total {evalTime} secs")
 
 
 def main():
