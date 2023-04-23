@@ -154,10 +154,15 @@ onnxruntime::Status OpenAIInvoker::Send(const CloudEndPointConfig& run_options,
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to create output tensor");
   }
 
+  /*
   nlohmann::json json_config = nlohmann::json::parse(chunk.memory);
   auto* output_string = output_tensor->MutableData<std::string>();
   output_string->append(json_config["text"]);
+  */
+  auto* output_string = output_tensor->MutableData<std::string>();
+  output_string->append(chunk.memory);
   free(chunk.memory);
+
   ort_outputs.resize(1);
   auto tensor_type = DataTypeImpl::GetType<Tensor>();
   ort_outputs[0].Init(output_tensor.release(), tensor_type, tensor_type->GetDeleteFunc());
