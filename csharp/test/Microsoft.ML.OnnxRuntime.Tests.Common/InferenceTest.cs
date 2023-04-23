@@ -2074,6 +2074,18 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             }
         }
 
+        private class CudaEPOpFact : FactAttribute
+        {
+            public CudaEPOpFact()
+            {
+                var testCudaEPOp = System.Environment.GetEnvironmentVariable("TESTCUDAEPOP");
+                if (testCudaEPOp == null || !testCudaEPOp.Equals("ON"))
+                {
+                    Skip = "TestCUDAProviderOptions is skipped";
+                }
+            }
+        }
+
         private class SkipNonPackageTests : FactAttribute
         {
             public SkipNonPackageTests()
