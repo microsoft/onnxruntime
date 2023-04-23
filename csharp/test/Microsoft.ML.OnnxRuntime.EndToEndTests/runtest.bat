@@ -64,6 +64,7 @@ IF "%PACKAGENAME%"=="Microsoft.ML.OnnxRuntime.Gpu" (
   %dn% test -p:DefineConstants=USE_CUDA test\Microsoft.ML.OnnxRuntime.EndToEndTests\Microsoft.ML.OnnxRuntime.EndToEndTests.csproj --no-restore --verbosity detailed
 ) ELSE (
   %dn% test test\Microsoft.ML.OnnxRuntime.EndToEndTests\Microsoft.ML.OnnxRuntime.EndToEndTests.csproj --no-restore --verbosity detailed
+)
 
 IF NOT errorlevel 0 (
     @echo "Failed to build or execute the end-to-end test"
