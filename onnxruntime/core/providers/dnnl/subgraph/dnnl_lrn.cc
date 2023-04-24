@@ -47,8 +47,8 @@ void DnnlLrn::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
   auto workspace_mem = dnnl::memory(lrn_pd.workspace_desc(), dnnl_engine);
 
   sp.AddPrimitive(lrn_op, {{DNNL_ARG_SRC, lrn_src_mem},
-                            {DNNL_ARG_WORKSPACE, workspace_mem},
-                            {DNNL_ARG_DST, lrn_dst_mem}});
+                           {DNNL_ARG_WORKSPACE, workspace_mem},
+                           {DNNL_ARG_DST, lrn_dst_mem}});
 #else
   sp.AddPrimitive(lrn_op, {{DNNL_ARG_SRC, lrn_src_mem},
                            {DNNL_ARG_DST, lrn_dst_mem}});

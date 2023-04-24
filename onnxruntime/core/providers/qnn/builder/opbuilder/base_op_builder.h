@@ -135,9 +135,13 @@ class BaseOpBuilder : public IOpBuilder {
         {"Tanh", "Tanh"},
         {"Transpose", "Transpose"},
 
+        {"DequantizeLinear", "Dequantize"},
+        {"QuantizeLinear", "Quantize"},
+
         {"MatMul", "MatMul"},
 
         {"Relu", "Relu"},
+        {"Gelu", "Gelu"},
         {"Sigmoid", "Sigmoid"},
 
         {"Conv", "Conv2d"},
@@ -274,7 +278,7 @@ class BaseOpBuilder : public IOpBuilder {
 
     auto pos = input_output_count_qnn_required.find(onnx_op_type);
     if (pos == input_output_count_qnn_required.end()) {
-      return std::make_pair< size_t, size_t>(0, 0);
+      return std::make_pair<size_t, size_t>(0, 0);
     } else {
       return pos->second;
     }

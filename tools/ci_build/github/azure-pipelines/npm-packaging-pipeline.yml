@@ -49,7 +49,7 @@ stages:
   parameters:
     NpmPackagingMode: ${{ variables.NpmPackagingMode }}
     BuildConfig: 'Release'
-    PoolName: 'Linux-CPU'
+    PoolName: 'aiinfra-Linux-CPU'
     PackageName: 'onnxruntime-react-native'
     BuildAndroidAARStageDependsOn: 'Extract_commit'
 

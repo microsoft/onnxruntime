@@ -25,7 +25,7 @@ struct Pool1DTask final {
   }
 
   void operator()(std::ptrdiff_t begin, std::ptrdiff_t end) const {
-    for (std::ptrdiff_t c = begin; c < end; ++c)  {
+    for (std::ptrdiff_t c = begin; c < end; ++c) {
       operator()(c);
     }
   }
@@ -74,7 +74,7 @@ struct Pool2DTask final {
   }
 
   void operator()(std::ptrdiff_t begin, std::ptrdiff_t end) const {
-    for (std::ptrdiff_t c = begin; c < end; ++c)  {
+    for (std::ptrdiff_t c = begin; c < end; ++c) {
       operator()(c);
     }
   }
@@ -137,7 +137,7 @@ struct Pool3DTask final {
   }
 
   void operator()(std::ptrdiff_t begin, std::ptrdiff_t end) const {
-    for (std::ptrdiff_t c = begin; c < end; ++c)  {
+    for (std::ptrdiff_t c = begin; c < end; ++c) {
       operator()(c);
     }
   }
@@ -199,7 +199,7 @@ struct MaxPool1DTask final {
   }
 
   void operator()(std::ptrdiff_t begin, std::ptrdiff_t end) const {
-    for (std::ptrdiff_t c = begin; c < end; ++c)  {
+    for (std::ptrdiff_t c = begin; c < end; ++c) {
       operator()(c);
     }
   }
@@ -252,7 +252,7 @@ struct MaxPool2DTask final {
   }
 
   void operator()(std::ptrdiff_t begin, std::ptrdiff_t end) const {
-    for (std::ptrdiff_t c = begin; c < end; ++c)  {
+    for (std::ptrdiff_t c = begin; c < end; ++c) {
       operator()(c);
     }
   }
@@ -318,7 +318,7 @@ struct MaxPool3DTask {
   int64_t storage_order;
 
   void operator()(std::ptrdiff_t begin, std::ptrdiff_t end) const {
-    for (std::ptrdiff_t c = begin; c < end; ++c)  {
+    for (std::ptrdiff_t c = begin; c < end; ++c) {
       operator()(c);
     }
   }
@@ -369,8 +369,7 @@ struct MaxPool3DTask {
           }
           y_d[pool_index] = Yh;
           if (i_d != nullptr)
-            i_d[pool_index] = storage_order == 0 ? c * x_step + h_index * width * depth + w_index * depth + d_index :
-                                                   c * x_step + h_index + w_index * height + d_index * height * width;
+            i_d[pool_index] = storage_order == 0 ? c * x_step + h_index * width * depth + w_index * depth + d_index : c * x_step + h_index + w_index * height + d_index * height * width;
         }
       }
     }

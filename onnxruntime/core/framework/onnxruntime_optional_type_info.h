@@ -11,7 +11,6 @@ class TypeProto;
 }
 
 struct OrtOptionalTypeInfo {
-
   explicit OrtOptionalTypeInfo(std::unique_ptr<OrtTypeInfo> contained_type) noexcept;
   ~OrtOptionalTypeInfo();
 

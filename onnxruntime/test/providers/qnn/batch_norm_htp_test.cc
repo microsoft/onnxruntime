@@ -31,8 +31,8 @@ GetQDQTestCaseFn BuildQDQBatchNormTestCase(const std::vector<int64_t>& input_sha
     const InputQType quant_zero_point = 0;
     const float quant_scale = 1.0f;
 
-    auto* input = builder.MakeInput<InputQType>(input_shape, static_cast<InputQType>(-1),
-                                                static_cast<InputQType>(1));
+    auto* input = builder.MakeInput<InputQType>(input_shape, std::numeric_limits<InputQType>::min(),
+                                                std::numeric_limits<InputQType>::max());
     auto* dq_input = builder.MakeIntermediate();
     builder.AddDequantizeLinearNode<InputQType>(input, 0.0039f, quant_zero_point, dq_input);
 
@@ -41,15 +41,15 @@ GetQDQTestCaseFn BuildQDQBatchNormTestCase(const std::vector<int64_t>& input_sha
     builder.AddDequantizeLinearNode<ScaleQType>(scale, 0.0028f, quant_zero_point, dq_scale_output);
 
     auto* dq_bias_output = builder.MakeIntermediate();
-    auto* bias = builder.MakeInitializer<BiasQType>({num_channels}, static_cast<BiasQType>(0), static_cast<BiasQType>(0));
+    auto* bias = builder.MakeInitializer<BiasQType>({num_channels}, std::vector<BiasQType>(num_channels));
     builder.AddDequantizeLinearNode<BiasQType>(bias, quant_scale, quant_zero_point, dq_bias_output);
 
     auto* dq_mean_output = builder.MakeIntermediate();
-    auto* mean = builder.MakeInitializer<InputQType>({num_channels}, static_cast<InputQType>(0), static_cast<InputQType>(0));
+    auto* mean = builder.MakeInitializer<InputQType>({num_channels}, std::vector<InputQType>(num_channels));
     builder.AddDequantizeLinearNode<InputQType>(mean, quant_scale, quant_zero_point, dq_mean_output);
 
     auto* dq_var_output = builder.MakeIntermediate();
-    auto* var = builder.MakeInitializer<InputQType>({num_channels}, static_cast<InputQType>(255), static_cast<InputQType>(255));
+    auto* var = builder.MakeInitializer<InputQType>({num_channels}, std::vector<InputQType>(num_channels, 255));
     builder.AddDequantizeLinearNode<InputQType>(var, 0.003921f, 0, dq_var_output);
 
     auto* batchnorm_output = builder.MakeIntermediate();
@@ -75,7 +75,7 @@ GetQDQTestCaseFn BuildQDQBatchNormTestCase(const std::vector<int64_t>& input_sha
  * \param num_modes_in_graph The number of expected nodes in the graph.
  */
 static void RunBatchNormQDQTest(const std::vector<int64_t>& input_shape, const char* test_description,
-                                   ExpectedEPNodeAssignment expected_ep_assignment, int num_nodes_in_graph) {
+                                ExpectedEPNodeAssignment expected_ep_assignment, int num_nodes_in_graph) {
   ProviderOptions provider_options;
 #if defined(_WIN32)
   provider_options["backend_path"] = "QnnHtp.dll";

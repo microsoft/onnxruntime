@@ -356,10 +356,10 @@ using AllocatedStringPtr = std::unique_ptr<char, detail::AllocatedFree>;
  *  constructors to construct an instance of a Status object from exceptions.
  */
 struct Status : detail::Base<OrtStatus> {
-  explicit Status(std::nullptr_t) noexcept {}       ///< Create an empty object, must be assigned a valid one to be used
-  explicit Status(OrtStatus* status) noexcept;  ///< Takes ownership of OrtStatus instance returned from the C API.
-  explicit Status(const Exception&) noexcept;       ///< Creates status instance out of exception
-  explicit Status(const std::exception&) noexcept;  ///< Creates status instance out of exception
+  explicit Status(std::nullptr_t) noexcept {}               ///< Create an empty object, must be assigned a valid one to be used
+  explicit Status(OrtStatus* status) noexcept;              ///< Takes ownership of OrtStatus instance returned from the C API.
+  explicit Status(const Exception&) noexcept;               ///< Creates status instance out of exception
+  explicit Status(const std::exception&) noexcept;          ///< Creates status instance out of exception
   Status(const char* message, OrtErrorCode code) noexcept;  ///< Creates status instance out of null-terminated string message.
   std::string GetErrorMessage() const;
   OrtErrorCode GetErrorCode() const;
@@ -473,7 +473,6 @@ struct RunOptions : detail::Base<OrtRunOptions> {
   RunOptions& UnsetTerminate();
 };
 
-
 namespace detail {
 // Utility function that returns a SessionOption config entry key for a specific custom operator.
 // Ex: custom_op.[custom_op_name].[config]
@@ -514,7 +513,7 @@ struct CustomOpConfigs {
    * {"my_op.key", "value"}.
    *
    * \return An unordered map of flattened configurations.
-  */
+   */
   const std::unordered_map<std::string, std::string>& GetFlattenedConfigs() const;
 
  private:
@@ -574,7 +573,7 @@ struct SessionOptionsImpl : ConstSessionOptionsImpl<T> {
 
   SessionOptionsImpl& DisablePerSessionThreads();  ///< Wraps OrtApi::DisablePerSessionThreads
 
-  SessionOptionsImpl& AddConfigEntry(const char* config_key, const char* config_value);                        ///< Wraps OrtApi::AddSessionConfigEntry
+  SessionOptionsImpl& AddConfigEntry(const char* config_key, const char* config_value);  ///< Wraps OrtApi::AddSessionConfigEntry
 
   SessionOptionsImpl& AddInitializer(const char* name, const OrtValue* ort_val);                                             ///< Wraps OrtApi::AddInitializer
   SessionOptionsImpl& AddExternalInitializers(const std::vector<std::string>& names, const std::vector<Value>& ort_values);  ///< Wraps OrtApi::AddExternalInitializers
@@ -1071,6 +1070,14 @@ struct ConstValueImpl : Base<T> {
   void GetStringTensorElement(size_t buffer_length, size_t element_index, void* buffer) const;
 
   /// <summary>
+  /// Returns string tensor UTF-8 encoded string element.
+  /// Use of this API is recommended over GetStringTensorElement() that takes void* buffer pointer.
+  /// </summary>
+  /// <param name="element_index"></param>
+  /// <returns>std::string</returns>
+  std::string GetStringTensorElement(size_t element_index) const;
+
+  /// <summary>
   /// The API returns a byte length of UTF-8 encoded string element
   /// contained in either a tensor or a spare tensor values.
   /// </summary>
@@ -1177,6 +1184,20 @@ struct ValueImpl : ConstValueImpl<T> {
   /// <param name="s">[in] A null terminated UTF-8 encoded string</param>
   /// <param name="index">[in] Index of the string in the tensor to set</param>
   void FillStringTensorElement(const char* s, size_t index);
+
+  /// <summary>
+  /// Allocate if necessary and obtain a pointer to a UTF-8
+  /// encoded string element buffer indexed by the flat element index,
+  /// of the specified length.
+  ///
+  /// This API is for advanced usage. It avoids a need to construct
+  /// an auxiliary array of string pointers, and allows to write data directly
+  /// (do not zero terminate).
+  /// </summary>
+  /// <param name="index"></param>
+  /// <param name="buffer_length"></param>
+  /// <returns>a pointer to a writable buffer</returns>
+  char* GetResizedStringTensorElementBuffer(size_t index, size_t buffer_length);
 
 #if !defined(DISABLE_SPARSE_TENSORS)
   /// <summary>

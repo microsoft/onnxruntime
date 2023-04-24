@@ -47,10 +47,10 @@ struct CodeLocation {
     out << (format == Format::kFilename ? FileNoPath() : file_and_path) << ":" << line_num << " " << function;
     return out.str();
   }
-  //utf-8. Because on Windows we compile our code with "/utf-8". And we assume the other platforms only use utf-8.
+  // utf-8. Because on Windows we compile our code with "/utf-8". And we assume the other platforms only use utf-8.
   const std::string file_and_path;
   const int line_num;
-  //utf-8
+  // utf-8
   const std::string function;
   const std::vector<std::string> stacktrace;
 };

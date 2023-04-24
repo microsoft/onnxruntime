@@ -216,7 +216,7 @@ def run_check_with_model(
 
     unsupported_ops = set()
     logger.debug(
-        "Checking if the data types and operators used in the model are supported " "in the pre-built ORT package..."
+        "Checking if the data types and operators used in the model are supported in the pre-built ORT package..."
     )
     unsupported = check_graph(
         model_with_type_info.graph,
@@ -284,7 +284,7 @@ def main():
 
     parser.add_argument(
         "--config_path",
-        help="Path to required operators and types configuration used to build " "the pre-built ORT mobile package.",
+        help="Path to required operators and types configuration used to build the pre-built ORT mobile package.",
         required=False,
         type=pathlib.Path,
         default=get_default_config_path(),

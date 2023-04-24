@@ -8,11 +8,11 @@
 namespace onnxruntime {
 namespace ort_dnnl {
 
-class DnnlReshape{
+class DnnlReshape {
  public:
   enum InputTensors : int {
     IN_DATA = 0,
-    IN_SHAPE =1,
+    IN_SHAPE = 1,
   };
 
   enum OutputTensors : int {
@@ -22,7 +22,7 @@ class DnnlReshape{
   DnnlReshape();
   void CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node);
 
-  private:
+ private:
   bool GetAllowZero(DnnlNode& node);
 };
 

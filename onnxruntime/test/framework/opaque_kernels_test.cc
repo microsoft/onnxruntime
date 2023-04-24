@@ -336,7 +336,7 @@ TEST_F(OpaqueTypeTests, RunModel) {
     auto& sparse_shape_arg = graph.GetOrCreateNodeArg("sparse_shape", &input_shape);
     inputs.push_back(&sparse_shape_arg);
 
-    //Output is our custom data type
+    // Output is our custom data type
     TypeProto output_sparse_tensor(*DataTypeImpl::GetType<SparseTensorSample>()->GetTypeProto());
     auto& output_sparse_tensor_arg = graph.GetOrCreateNodeArg("sparse_rep", &output_sparse_tensor);
     outputs.push_back(&output_sparse_tensor_arg);

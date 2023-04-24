@@ -1,14 +1,15 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "orttraining/training_api/optimizer.h"
 #include "core/framework/execution_provider.h"
 #include "core/framework/TensorSeq.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
 #include "core/session/inference_session.h"
 #include "core/session/environment.h"
 
+#include "orttraining/training_api/checkpoint.h"
 #include "orttraining/training_api/utils.h"
-#include "orttraining/training_api/optimizer.h"
 
 namespace onnxruntime {
 namespace training {
@@ -96,9 +97,9 @@ std::shared_ptr<OptimizerAlgorithmBase> OptimizerAlorithmFactory::CreateInstance
 }
 
 Status Optimizer::GenerateMomentumNamedStates() {
-  auto& param_named_optimizer_states = optimizer_state_.param_named_optimizer_states;
+  auto& param_named_optimizer_states = optimizer_state_->param_named_optimizer_states;
   auto& optim_sess_state = optim_sess_->GetSessionState();
-  for (auto& pair : named_parameters_) {
+  for (auto& pair : state_->module_checkpoint_state.named_parameters) {
     if (pair.second->RequiresGrad()) {
       param_named_optimizer_states.insert({pair.first, ParameterOptimizerState()});
       ParameterOptimizerState& cur_param_optimizer_states = param_named_optimizer_states[pair.first];
@@ -118,7 +119,7 @@ Status Optimizer::GenerateMomentumNamedStates() {
 Status Optimizer::ConstructInputs() {
   inputs_.clear();
 
-  auto& param_named_optimizer_states = optimizer_state_.param_named_optimizer_states;
+  auto& param_named_optimizer_states = optimizer_state_->param_named_optimizer_states;
 
   std::vector<Tensor> params, grads;
   std::vector<std::vector<Tensor>> list_of_momentums;
@@ -174,32 +175,26 @@ Status Optimizer::ConstructInputs() {
   }
 
   return Status::OK();
-}
+}  // namespace api
 
 Optimizer::Optimizer(const std::string& optim_path_or_bytes,
-                     const std::unordered_map<std::string, std::shared_ptr<Parameter>>& named_parameters,
+                     CheckpointState* state,
                      const onnxruntime::SessionOptions& session_options,
                      const Environment& env,
                      const std::vector<std::shared_ptr<IExecutionProvider>>& providers)
-    : named_parameters_(named_parameters) {
+    : optim_sess_(std::make_unique<InferenceSession>(session_options, env)), state_(state) {
   Initialize(optim_path_or_bytes, session_options, env, providers);
 
-  // TODO: add multiple group support.
-  ORT_THROW_IF_ERROR(GenerateMomentumNamedStates());
-  ORT_THROW_IF_ERROR(ConstructInputs());
-}
-
-Optimizer::Optimizer(const std::string& optim_path_or_bytes,
-                     const std::unordered_map<std::string, std::shared_ptr<Parameter>>& named_parameters,
-                     const onnxruntime::SessionOptions& session_options,
-                     const Environment& env,
-                     const std::vector<std::shared_ptr<IExecutionProvider>>& providers,
-                     OptimizerCheckpointState& optimizer_checkpoint_states)
-    : named_parameters_(named_parameters) {
-  Initialize(optim_path_or_bytes, session_options, env, providers);
-
-  // TODO: add multiple group support.
-  ORT_THROW_IF_ERROR(LoadStateDict(optimizer_checkpoint_states));
+  if (state_->optimizer_checkpoint_state.group_named_optimizer_states.empty()) {
+    state_->optimizer_checkpoint_state.group_named_optimizer_states.insert(
+        {GROUP_ZERO_NAME, std::make_shared<GroupOptimizerState>()});
+    // TODO: add multiple group support.
+    ORT_THROW_IF_ERROR(GenerateMomentumNamedStates());
+    ORT_THROW_IF_ERROR(ConstructInputs());
+  } else {
+    // TODO: add multiple group support.
+    ORT_THROW_IF_ERROR(LoadStateDict(optimizer_checkpoint_states));
+  }
 }
 
 void Optimizer::Initialize(const std::string& optim_path_or_bytes,
@@ -214,6 +209,9 @@ void Optimizer::Initialize(const std::string& optim_path_or_bytes,
 
   ORT_THROW_IF_ERROR(optim_sess_->Load(optim_path_or_bytes));
   ORT_THROW_IF_ERROR(optim_sess_->Initialize());
+
+  // Make sure that the checkpoint state can copy tensors
+  state_->optimizer_checkpoint_state.optimizer_session_data_transfer_mgr = &optim_sess_->GetDataTransferManager();
 
   utils::GetGraphInputOutputNames(optim_sess_, input_names_, output_names_);
 
@@ -232,11 +230,11 @@ void Optimizer::Initialize(const std::string& optim_path_or_bytes,
 
 Status Optimizer::Step() {
   OrtValue learning_rate_input, step_input;
-  utils::WrapInOrtValue<float>(optimizer_state_.learning_rate, &learning_rate_input);
+  utils::WrapInOrtValue<float>(optimizer_state_->learning_rate, &learning_rate_input);
   // Use step count + 1 before running optimizer step.
   // This is necessary since bias correction uses the step
   // as a power. Using power of 0 is wrong.
-  utils::WrapInOrtValue<int64_t>(optimizer_state_.step + 1, &step_input);
+  utils::WrapInOrtValue<int64_t>(optimizer_state_->step + 1, &step_input);
   std::vector<OrtValue> feeds({learning_rate_input, step_input});
   feeds.insert(feeds.end(), inputs_.begin(), inputs_.end());
 
@@ -256,7 +254,7 @@ Status Optimizer::GetStateDict(OptimizerCheckpointState& optimizer_checkpoint_st
   auto& grouped_optimizer_states = optimizer_checkpoint_state.group_named_optimizer_states;
 
   // To support multiple groups, the Optimizer constructor needs to accept information for grouping.
-  grouped_optimizer_states.insert({GROUP_ZERO_NAME, std::make_shared<GroupOptimizerState>(optimizer_state_)});
+  grouped_optimizer_states.insert({GROUP_ZERO_NAME, std::make_shared<GroupOptimizerState>(*optimizer_state_)});
 
   // Pass the optimizer session data transfer manager for data copying when saving.
   // An alternative is, we can do copy at this stage.

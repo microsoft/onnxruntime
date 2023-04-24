@@ -19,7 +19,7 @@ The interface for in-place transformation of a Graph.
 class GraphTransformer {
  public:
   GraphTransformer(const std::string& name,
-      const InlinedHashSet<std::string_view>& compatible_execution_providers = {}) noexcept
+                   const InlinedHashSet<std::string_view>& compatible_execution_providers = {}) noexcept
       : name_(name), compatible_provider_types_(compatible_execution_providers) {
   }
 
