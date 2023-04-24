@@ -7,9 +7,9 @@
 #include <stdbool.h>
 #include "onnxruntime_c_api.h"
 
-/** \page TrainingCCPPApi Training C & C++ APIs
+/** \page training_c_cpp_api Training C & C++ APIs
  *
- * Training C and C++ APIs are an extension of the \ref CCppApis "onnxruntime core C and C++ APIs" and should be used in conjunction with them.
+ * Training C and C++ APIs are an extension of the \ref c_cpp_api "onnxruntime core C and C++ APIs" and should be used in conjunction with them.
  *
  * In order to train a model with onnxruntime, the following training artifacts must be generated:
  * - The training onnx model
