@@ -88,6 +88,13 @@ impl TensorTypeAndShapeInfo {
 
         Ok(dimensions)
     }
+
+    /// Return the tensor dimensions as usize instead of i64.
+    pub fn get_dimensions_as_usize(&self) -> Vec<usize> {
+        self.dimensions.iter()
+            .map(|dim| *dim as usize)
+            .collect::<Vec<_>>()
+    }
 }
 
 impl Drop for TensorTypeAndShapeInfo {

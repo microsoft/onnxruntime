@@ -36,7 +36,15 @@ impl IoBinding {
         Ok(Self { ptr, session })
     }
 
-    /// Bind an ::OrtValue to an ::OrtIoBinding input
+    /// Bind an OrtValue to this IoBinding input
+    /// 
+    /// It is recommended that OrtValue own its own data, since the data memory
+    /// will be used by IoBinding after the ort_value borrow ends, and the 
+    /// onnxruntime C API cannot enforce the lifetime of whatever does own
+    /// the data memory.
+    /// 
+    /// MutableOrtValue / MutableOrtValueTyped safely provide an OrtValue that owns 
+    /// its data and an ArrayViewMut to read / write to the values from Rust.
     #[tracing::instrument]
     #[allow(clippy::not_unsafe_ptr_arg_deref)]
     pub fn bind_input<S>(&mut self, name: S, ort_value: &OrtValue) -> OrtResult<()>
@@ -53,7 +61,15 @@ impl IoBinding {
         Ok(())
     }
 
-    /// Bind an ::OrtValue to an ::OrtIoBinding output
+    /// Bind an OrtValue to this IoBinding output
+    /// 
+    /// It is recommended that OrtValue own its own data, since the data memory
+    /// will be used by IoBinding after the ort_value borrow ends, and the 
+    /// onnxruntime C API cannot enforce the lifetime of whatever does own
+    /// the data memory.
+    /// 
+    /// MutableOrtValue / MutableOrtValueTyped safely provide an OrtValue that owns 
+    /// its data and an ArrayViewMut to read / write to the values from Rust.
     #[tracing::instrument]
     #[allow(clippy::not_unsafe_ptr_arg_deref)]
     pub fn bind_output<S>(&mut self, name: S, ort_value: &OrtValue) -> OrtResult<()>
@@ -70,7 +86,7 @@ impl IoBinding {
         Ok(())
     }
 
-    /// Bind an ::OrtIoBinding output to a device
+    /// Bind an IoBinding output to a device
     #[tracing::instrument]
     pub fn bind_output_to_device<S>(&mut self, name: S, mem_info: MemoryInfo) -> OrtResult<()>
     where
@@ -87,7 +103,7 @@ impl IoBinding {
         Ok(())
     }
 
-    /// Retrieve the outputs of the ::OrtIoBinding as OrtValue
+    /// Retrieve the outputs of the IoBinding as OrtValue
     #[tracing::instrument]
     pub fn outputs(&self) -> OrtResult<HashMap<String, OrtValue>> {
         // get keys

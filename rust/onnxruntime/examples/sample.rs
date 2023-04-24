@@ -1,6 +1,6 @@
 #![forbid(unsafe_code)]
 
-use onnxruntime::{environment::Environment, ndarray::Array, GraphOptimizationLevel, LoggingLevel, OrtNdArray};
+use onnxruntime::{environment::Environment, ndarray::Array, GraphOptimizationLevel, LoggingLevel, AsOrtValue, NdArrayOrtValue};
 use std::{env::var, collections::HashMap};
 use tracing::Level;
 use tracing_subscriber::FmtSubscriber;
@@ -63,33 +63,16 @@ fn run() -> Result<(), Error> {
     assert_eq!(input0_shape, [1, 3, 224, 224]);
     assert_eq!(output0_shape, [1, 1000, 1, 1]);
 
-    // Create input arrays in a map from input_name to array.
-    // OrtNdArray is a container for an ndarray::Array that will
-    // generate an OrtValue upon request.
-    // This is generally long-lived, where the array(s) are
-    // set with different inputs for each call to session.run()
-    let mut input_arrays: HashMap<String, OrtNdArray<_,_>> = session.inputs.iter()
-        .map(|(name, tensor_info)| {
-            // Get shape of tensor
-            let shape: Vec<usize> = tensor_info.tensor_shape.iter()
-                .map(|d| d.unwrap() as usize)
-                .collect();
-            // Compute total size of tensor (for linspace)
-            let n: usize = shape.iter().product();
-            // Create a 1-D tensor of the right total size, then reshape it.
-            let array = Array::linspace(0.0_f32, 1.0, n)
-                .into_shape(shape)
-                .unwrap();
-            // Key/value pair
-            (name.clone(), OrtNdArray::new(array))
-        })
-        .collect();
+    let n = input0_shape.iter().product();
+    let input0 = Array::linspace(0.0_f32, 1.0, n)
+        .into_shape(input0_shape)
+        .unwrap();
 
-    // A quick translation of name / OrtNdArray -> name / OrtValue
-    // before each call to session.run()
-    let inputs = 
-        onnxruntime::create_graph_inputs(&session, input_arrays.iter_mut())?;
-    
+    let inputs: HashMap<String, Box<dyn AsOrtValue>> = HashMap::from([
+        (session.inputs.get_index(0).unwrap().0.clone(),
+        NdArrayOrtValue::try_boxed_from(&session, &input0)?)
+    ]);
+
     // Ask session.run() for all outputs
     let output_names: Vec<String> = session.outputs
         .keys()
@@ -97,7 +80,7 @@ fn run() -> Result<(), Error> {
         .collect();
 
     // Compute the ONNX graph
-    let outputs = session.run(inputs, output_names.as_slice())?;
+    let outputs = session.run_with_arrays(&inputs, output_names.as_slice())?;
 
     // Convert the output OrtValue to an ndarray to consume its contents.
     let out_tensor = outputs.get(0).unwrap().array_view::<f32>()?;

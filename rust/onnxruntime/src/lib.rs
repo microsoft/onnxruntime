@@ -197,11 +197,8 @@ pub use metadata::Metadata;
 pub mod tensor_type_and_shape_info;
 pub use tensor_type_and_shape_info::TensorTypeAndShapeInfo;
 
-pub mod ortndarray;
-pub use ortndarray::{OrtNdArray, create_graph_inputs, copy_array_to_ort_value};
-
 pub mod value;
-pub use value::OrtValue;
+pub use value::{OrtValue, MutableOrtValue, MutableOrtValueTyped, NdArrayOrtValue, AsOrtValue};
 
 pub mod io_binding;
 pub use io_binding::IoBinding;
@@ -437,7 +434,7 @@ impl From<&str> for DeviceName {
 }
 
 /// Enum mapping ONNX Runtime's supported tensor types
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum TensorElementDataType {
     /// 32-bit floating point, equivalent to Rust's `f32`
     Float,

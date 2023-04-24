@@ -6,10 +6,10 @@ use crate::{
     allocator::Allocator,
     char_ptr_to_string,
     environment::{Environment, _Environment},
-    io_binding::IoBinding,
+    IoBinding,
     memory_info::MemoryInfo,
     allocator::AllocatorType, DeviceName, GraphOptimizationLevel, MemType,
-    TensorElementDataType, OrtValue, metadata::Metadata,
+    TensorElementDataType, OrtValue, Metadata, AsOrtValue, 
 };
 use indexmap::IndexMap;
 use onnxruntime_sys as sys;
@@ -850,13 +850,13 @@ pub struct GraphTensorInfo {
     /// Optimization to prevent regenerating this for each run() call
     name_cstr: CString,
     /// Shape of the tensor. None = variable. C API uses an i64, though the value must be positive.
-    pub tensor_shape: Vec<Option<u32>>,
+    pub tensor_shape: Vec<Option<usize>>,
     /// Teneor element data type
     pub element_type: TensorElementDataType,
 }
 
 impl GraphTensorInfo {
-    pub(crate) fn new(name: String, tensor_shape: Vec<Option<u32>>, element_type: TensorElementDataType) -> GraphTensorInfo {
+    pub(crate) fn new(name: String, tensor_shape: Vec<Option<usize>>, element_type: TensorElementDataType) -> GraphTensorInfo {
         GraphTensorInfo { name_cstr: CString::new(name).unwrap(), tensor_shape, element_type }
     }
 
@@ -915,18 +915,19 @@ impl Session {
     /// must exist in session.outputs.
     /// The returned list of OrtValues correspond to the list of output_names.
     /// 
-    /// If using ndarray, an owned array can be stored in an OrtNdArray, which
-    /// can create an OrtValue and return a reference to it for use here.
+    /// OrtValues may safely be acquired from MutableOrtValue, 
+    /// MutableOrtValueTyped or NdarrayOrtValue, though the latter is
+    /// better used with run_with_arrays().
     #[tracing::instrument]
     pub fn run(
         &self,
-        inputs: HashMap<&String, &OrtValue>,
+        inputs: &HashMap<String, &OrtValue>,
         output_names: &[String],
     ) -> OrtResult<Vec<OrtValue>> {
         // Construct list of input names: pointers to CString names in self.inputs
         let input_names_ptr: Vec<*const c_char> = inputs
             .keys()
-            .map(|name| match self.inputs.get(*name) {
+            .map(|name| match self.inputs.get(name) {
                 Some(input_info) => Ok(input_info.name_cstr.as_ptr()),
                 None => Err(OrtError::PointerShouldNotBeNull(format!("Input tensor {:?} does not exist", name))),
             })
@@ -935,8 +936,8 @@ impl Session {
         // Construct list of output names: pointers to CString names in self.outputs
         let output_names_ptr: Vec<*const c_char> = output_names
             .iter()
-            .map(|name| match self.inputs.get(name) {
-                Some(input_info) => Ok(input_info.name_cstr.as_ptr()),
+            .map(|name| match self.outputs.get(name) {
+                Some(output_info) => Ok(output_info.name_cstr.as_ptr()),
                 None => Err(OrtError::PointerShouldNotBeNull(format!("Output tensor {:?} does not exist", name))),
             })
             .collect::<OrtResult<Vec<_>>>()?;
@@ -973,7 +974,31 @@ impl Session {
             .collect::<Vec<OrtValue>>() )
     }
 
+    /// A helper function that acquires the OrtValue for each input and 
+    /// calls run(). 
+    /// 
+    /// When caller code stores tensors in ndarray::Arrays, one may create
+    /// for each Array an NdArrayOrtValue when building the inputs map to 
+    /// this function. See NdArrayOrtValue for usage.
+    pub fn run_with_arrays<'i, 'v>(
+        &self,
+        inputs: &'i HashMap<String, Box<dyn AsOrtValue + 'v>>,
+        output_names: &[String],
+    ) -> OrtResult<Vec<OrtValue>> 
+    where 
+        'i : 'v
+    {
+        let ort_inputs: HashMap<String, &'v OrtValue> = inputs.iter()
+            .map(|(name, val)| 
+                (name.clone(), val.as_ort_value()))
+            .collect();
+
+        self.run(&ort_inputs, output_names)
+    }
+
     /// Run the input data through the ONNX graph, performing inference.
+    /// This uses the IoBinding interface, where input and output OrtValues
+    /// are preconfigured with the IoBinding.
     pub fn run_with_iobinding(&self, io_binding: &IoBinding) -> OrtResult<()> {
         let run_options_ptr: *const sys::OrtRunOptions = std::ptr::null();
         let status =
@@ -1106,7 +1131,7 @@ mod dangerous {
         ) -> *mut sys::OrtStatus },
         session_ptr: *mut sys::OrtSession,
         i: usize,
-    ) -> OrtResult<(TensorElementDataType, Vec<Option<u32>>)> {
+    ) -> OrtResult<(TensorElementDataType, Vec<Option<usize>>)> {
         let mut typeinfo_ptr: *mut sys::OrtTypeInfo = std::ptr::null_mut();
 
         let status = unsafe { f(session_ptr, i, &mut typeinfo_ptr) };
@@ -1129,7 +1154,7 @@ mod dangerous {
                 .dimensions
                 .clone()
                 .into_iter()
-                .map(|d| if d == -1 { None } else { Some(d as u32) })
+                .map(|d| if d == -1 { None } else { Some(d as usize) })
                 .collect(),
         ))
     }
