@@ -554,10 +554,16 @@ def test_ortmodule_fallback_warn_message(is_training, persist_fallback):
     # Use data in different device for testing
     inputs = torch.randn(N, D_in, device=data_device)
 
-    for _ in range(3):
+    for i in range(3):
         with pytest.raises(RuntimeError), pytest.warns(UserWarning) as warning_record:
             ort_model(inputs)
-        assert "Fallback to PyTorch due to exception" in str(warning_record[0].message.args[0])
+
+        # Only log the warn message once or when retries is enabled
+        # Otherwise the warn message will be skipped
+        if i == 0 or not persist_fallback:
+            assert "Fallback to PyTorch due to exception" in str(warning_record[0].message.args[0])
+        else:
+            assert warning_record.list == []
 
     del os.environ["ORTMODULE_SKIPCHECK_POLICY"]
 
