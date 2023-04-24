@@ -3,6 +3,7 @@
 #include "core/common/cpuid_info.h"
 #include "core/common/logging/logging.h"
 #include "core/common/logging/severity.h"
+#include <iostream>
 
 #ifdef __linux__
 
@@ -132,7 +133,13 @@ void CPUIDInfo::ArmLinuxInit() {
 #ifdef CPUINFO_SUPPORTED
   pytorch_cpuinfo_init_ = cpuinfo_initialize();
   if (!pytorch_cpuinfo_init_) {
-    LOGS_DEFAULT(WARNING) << "Failed to init pytorch cpuinfo library, may cause CPU EP performance degradation due to undetected CPU features.";
+    const char* message = "Failed to init pytorch cpuinfo library, may cause CPU EP performance degradation due to undetected CPU features.";
+    if (LoggingManager::HasDefaultLogger()) {
+      LOGS_DEFAULT(WARNING) << message;
+    } else {
+      std::cerr << message << std::endl;
+    }
+
     return;
   }
 #else
