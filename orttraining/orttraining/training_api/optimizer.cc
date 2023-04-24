@@ -64,7 +64,9 @@ Status GraphInputsAreExpected(gsl::span<std::string> actual_graph_inputs,
 std::shared_ptr<OptimizerAlgorithmBase> OptimizerAlorithmFactory::CreateInstance(
     const std::string& optim_path_or_bytes, int32_t& group_count) {
   std::shared_ptr<Model> model;
-  ORT_ENFORCE(Model::Load(optim_path_or_bytes, model, nullptr, logging::LoggingManager::DefaultLogger()).IsOK());
+  ORT_ENFORCE(Model::Load(ToWideString(optim_path_or_bytes), model, nullptr,
+                          logging::LoggingManager::DefaultLogger())
+                  .IsOK());
   Graph& graph = model->MainGraph();
   std::unordered_map<std::string, int32_t> opt_type_to_freq_map;
   for (auto& node : graph.Nodes()) {
