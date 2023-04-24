@@ -144,8 +144,10 @@ export class WebGpuBackend {
   }
 
   dispose(): void {
-    // TODO: uninitialization
-    // this.glContext.dispose();
+    // currently, we do not do anything in this function. In all known use cases, we don't have the requirement to
+    // actually dispose the WebGpuBackend instance, because it's always used as a singleton.
+    //
+    // revisit this place if we get real requirement to dispose the instance.
   }
 
   getCommandEncoder(): GPUCommandEncoder {
