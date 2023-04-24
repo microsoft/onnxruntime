@@ -43,6 +43,7 @@ class RegistrationValidator(op_registration_utils.RegistrationProcessor):
         start_version: int,
         end_version: typing.Optional[int] = None,
         type: typing.Optional[str] = None,
+        type2: typing.Optional[str] = None,
     ):
         key = domain + ":" + operator
         prev_start, prev_end = self.last_op_registrations[key] if key in self.last_op_registrations else (None, None)
@@ -92,10 +93,7 @@ class RegistrationValidator(op_registration_utils.RegistrationProcessor):
                 allow_missing_unversioned_registration = True
 
             if opset_to and not allow_missing_unversioned_registration:
-                log.error(
-                    f"Missing unversioned registration for {key}, "
-                    f"opset_from={opset_from}, opset_to={opset_to}"
-                )
+                log.error(f"Missing unversioned registration for {key}, opset_from={opset_from}, opset_to={opset_to}")
                 self.failed = True
 
 
