@@ -42,24 +42,22 @@ void CompareValue(float expected, float output, float rtol = 1e-4, float atol = 
 }
 
 /**
- * @brief Prepare model and optimizer before launch test function.
- *    Be noted: though state might not used by test_function, but we still need pass it to make sure `state` live
- *    through until test_function is finished. The same reason, we need do a device sync before quit test_function
- *    when running cuda test.
- *    The reason is: Module and Optimizer don't own the parameters, which is a bit weird.
+ * @brief Prepare the model and optimizer before launching the test function.
+ * Be noted: though the state might not be used by test_function, we still need to pass it to
+ * make sure `state` lives through until test_function is finished.
+ *
  * @param run_cuda If true, running on cuda; otherwise, running on cpu.
  * @param need_eval If true, load eval model when building Module.
  * @param need_opt If true, don't build Optimizer, only build Module.
  */
-static void PrepareModelAndOptimizerForTest(
-    bool run_cuda,
-    bool need_eval,
-    bool need_opt,
-    std::function<void(std::shared_ptr<Module>,
-                       std::shared_ptr<Optimizer>,
-                       CheckpointState&,
-                       bool)>
-        test_function) {
+void PrepareModelAndOptimizerForTest(bool run_cuda,
+                                     bool need_eval,
+                                     bool need_opt,
+                                     std::function<void(std::shared_ptr<Module>,
+                                                        std::shared_ptr<Optimizer>,
+                                                        CheckpointState&,
+                                                        bool)>
+                                         test_function) {
   std::vector<std::shared_ptr<IExecutionProvider>> providers;
   if (run_cuda) {
     providers = {onnxruntime::test::DefaultCudaExecutionProvider()};
@@ -99,10 +97,6 @@ static void PrepareModelAndOptimizerForTest(
   }
 
   test_function(model, optim, state, run_cuda);
-
-  if (run_cuda) {
-    cudaDeviceSynchronize();
-  }
 }
 
 /**
@@ -266,13 +260,13 @@ TEST(TrainingApiTest, ModuleTrainStep) {
 #endif
 }
 
-TEST(TrainingApiTest, OptimizerCreatedWithoutCheckpointState) {
+TEST(TrainingApiTest, OptimizerCreatedWithoutOptimizerCheckpointState) {
   auto run_test = [](std::shared_ptr<Module> model, std::shared_ptr<Optimizer> optim,
                      CheckpointState& /*state*/,
                      bool run_cuda)
       -> void {
     {
-      // Before load state dict, check if optim state is initialized to 0
+      // Check if optimizer state is initialized to 0.
       OptimizerCheckpointState optimizer_states;
       ASSERT_STATUS_OK(optim->GetStateDict(optimizer_states));
 
@@ -300,7 +294,7 @@ TEST(TrainingApiTest, OptimizerCreatedWithoutCheckpointState) {
 #endif
 }
 
-TEST(TrainingApiTest, OptimizerCreatedWithCheckpointState) {
+TEST(TrainingApiTest, OptimizerCreatedWithOptimizerCheckpointState) {
   std::vector<bool> run_cuda_list{false};
 #ifdef USE_CUDA
   run_cuda_list.push_back(true);
@@ -372,10 +366,6 @@ TEST(TrainingApiTest, OptimizerCreatedWithCheckpointState) {
         }
       }
     }
-
-    if (run_cuda) {
-      cudaDeviceSynchronize();
-    }
   }
 }
 
@@ -390,7 +380,7 @@ TEST(TrainingApiTest, OptimizerRestoreFromCheckpointState) {
                                                              external_optimizer_checkpoint_state));
     ASSERT_STATUS_OK(optim->LoadStateDict(external_optimizer_checkpoint_state));
 
-    // After loading state dict, check if optim state is updated to new states.
+    // After loading state dict, validate optim state is updated to new states.
     OptimizerCheckpointState optimizer_states;
     ASSERT_STATUS_OK(optim->GetStateDict(optimizer_states));
 
