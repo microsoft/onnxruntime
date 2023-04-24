@@ -2253,6 +2253,12 @@ SEARCH_INCLUDES        = YES
 # preprocessor.
 # This tag requires that the tag SEARCH_INCLUDES is set to YES.
 
+# onnxruntime-training and onnxruntime core headers are in different directories.
+# Since the onnxruntime-training header file depends on macros defined in the
+# onnxruntime core header files, we need to INCLUDE_PATH to point to the path where
+# doxygen can find the onnxruntime core header files.
+# Else, doxygen will not be able to resolve the macros defined in the onnxruntime
+# core header files.
 INCLUDE_PATH           = "../../include/onnxruntime/core/session/"
 
 # You can use the INCLUDE_FILE_PATTERNS tag to specify one or more wildcard
