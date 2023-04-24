@@ -24,6 +24,7 @@ class FusionBartAttention(FusionAttention):
         attention_mask: AttentionMask,
     ):
         super().__init__(model, hidden_size, num_heads, attention_mask)
+        self.use_decoder_masked_multi_head_attention = False
 
     def check_runtime_shape_path(
         self,
@@ -339,7 +340,7 @@ class FusionBartAttention(FusionAttention):
                 # rather than attention because multihead attention supports separate past key and past
                 # value whereas attention supports concatenated past key and past value.
                 if self.use_decoder_masked_multi_head_attention:
-                    new_node = self.create_multihead_attention_node(
+                    new_node = self.create_decoder_masked_multihead_attention_node(
                             matmul_q,
                             matmul_k if decoder_cross_attention or decoder_attention_with_past else past_k,
                             matmul_v if decoder_cross_attention or decoder_attention_with_past else past_v,

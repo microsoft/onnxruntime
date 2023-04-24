@@ -192,7 +192,7 @@ def export_onnx_models(
 
     output_paths = []
     for name, model in models.items():
-        print(f"Handing model ====> {name}")
+        print(f"Handling model ====> {name}")
         model.to(device)
         filename_suffix = "_" + name
 

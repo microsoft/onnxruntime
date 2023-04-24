@@ -667,6 +667,21 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "which beam the 'k' th token came from for the 'j' th beam for batch 'i' in the current iteration",
                "M",
                OpSchema::Optional)
+        .Input(10,
+               "q_bias",
+               "q_bias of shape (hidden_size)",
+               "T",
+               OpSchema::Optional)
+        .Input(11,
+               "k_bias",
+               "k_bias of shape (hidden_size)",
+               "T",
+               OpSchema::Optional)
+        .Input(12,
+               "v_bias",
+               "v_bias of shape (hidden_size)",
+               "T",
+               OpSchema::Optional)
         .Output(0,
                 "output",
                 "3D output tensor with shape (batch_size, sequence_length, v_hidden_size)",

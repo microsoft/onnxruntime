@@ -89,9 +89,9 @@ def chain_model(args):
     # Initializers/opsets
     # Delete shared data between decoder/encoder and move to larger graph initializers
     if update_decoder_subgraph_share_buffer_and_use_decoder_masked_mha(decoder_model.graph):
-        logger.info("*****update t5 decoder subgraph successfully!!!*****")
+        print("*****update t5 decoder subgraph successfully!!!*****")
     else:
-        logger.info("*****DecoderMaskedMultiHeadAttention is not applied to T5 decoder*****")
+        print("*****DecoderMaskedMultiHeadAttention is not applied to T5 decoder*****")
 
     initializers = get_shared_initializers(encoder_model, decoder_model)
     node.attribute.extend(
