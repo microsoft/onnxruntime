@@ -20,7 +20,7 @@ namespace test {
 
 #ifndef DISABLE_CONTRIB_OPS
 
-TEST(ShapeOptimizerTests, ConstantFoldShape_Shape15CannotFold) {
+TEST(ShapeOptimizerTests, Shape15CannotFold) {
   /*
           [attention_mask1_dim0,512,1536]
                            |
@@ -97,7 +97,7 @@ TEST(ShapeOptimizerTests, ConstantFoldShape_Shape15CannotFold) {
   }
 }
 
-TEST(ShapeOptimizerTests, ConstantFoldShape_Shape15) {
+TEST(ShapeOptimizerTests, Shape15) {
   /*
           [attention_mask1_dim0,512,1536]
                            |
@@ -175,7 +175,7 @@ TEST(ShapeOptimizerTests, ConstantFoldShape_Shape15) {
   }
 }
 
-TEST(ShapeOptimizerTests, ConstantFoldShape_Shape15TakesGraphInput) {
+TEST(ShapeOptimizerTests, Shape15TakesGraphInput) {
   /*
    [attention_mask1_dim0,512,1536]
                   |
@@ -245,7 +245,7 @@ TEST(ShapeOptimizerTests, ConstantFoldShape_Shape15TakesGraphInput) {
   }
 }
 
-TEST(ShapeOptimizerTests, ConstantFoldShape_Shape15GeneratesGraphOutput) {
+TEST(ShapeOptimizerTests, Shape15GeneratesGraphOutput) {
   /*
           [attention_mask1_dim0,512,1536]
                            |
@@ -316,7 +316,7 @@ TEST(ShapeOptimizerTests, ConstantFoldShape_Shape15GeneratesGraphOutput) {
   }
 }
 
-TEST(ShapeOptimizerTests, ConstantFoldShape_Slice) {
+TEST(ShapeOptimizerTests, Slice) {
   /*
             [attention_mask1_dim0,512,1536]
                            |
@@ -399,7 +399,7 @@ TEST(ShapeOptimizerTests, ConstantFoldShape_Slice) {
   }
 }
 
-TEST(ShapeOptimizerTests, ConstantFoldShape_SliceGeneratesGraphOutput) {
+TEST(ShapeOptimizerTests, SliceGeneratesGraphOutput) {
   /*
             [attention_mask1_dim0,512,1536]
                            |
@@ -475,7 +475,7 @@ TEST(ShapeOptimizerTests, ConstantFoldShape_SliceGeneratesGraphOutput) {
   }
 }
 
-TEST(ShapeOptimizerTests, ConstantFoldShape_Gather) {
+TEST(ShapeOptimizerTests, Gather) {
   /*
                   [attention_mask1_dim0,512,24,64]
                                   |
@@ -566,7 +566,7 @@ TEST(ShapeOptimizerTests, ConstantFoldShape_Gather) {
   }
 }
 
-TEST(ShapeOptimizerTests, ConstantFoldShape_ConcreteDimUsedBySlice) {
+TEST(ShapeOptimizerTests, ConcreteDimUsedBySlice) {
   /*
                         [attention_mask1_dim0,24,512,512]
                                   |
@@ -727,7 +727,7 @@ TEST(ShapeOptimizerTests, ConstantFoldShape_ConcreteDimUsedBySlice) {
   }
 }
 
-TEST(ShapeOptimizerTests, ConstantFoldShape_ConcreteDimUsedByGatherSlice) {
+TEST(ShapeOptimizerTests, ConcreteDimUsedByGatherSlice) {
   /*
       [attention_mask1_dim0,512,1536]     [4]: (0, 0, 24, -1)
                             \            /
@@ -885,7 +885,7 @@ TEST(ShapeOptimizerTests, ConstantFoldShape_ConcreteDimUsedByGatherSlice) {
   }
 }
 
-TEST(ShapeOptimizerTests, ConstantFoldShape_SymbolicDimUsedByGather_ConcreteDimUsedByGather) {
+TEST(ShapeOptimizerTests, SymbolicDimUsedByGather_ConcreteDimUsedByGather) {
   /*
                 [attention_mask1_dim0,512,1536]     [4]: (0, 0, 24, -1)
                                       \            /

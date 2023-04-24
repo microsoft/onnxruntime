@@ -28,7 +28,7 @@ namespace onnxruntime {
 #endif
 #endif
 
-// Put utilities into anonymous namespace.
+// Put utilities into an anonymous namespace.
 namespace {
 
 constexpr int64_t NormalizeIndex(int64_t initial_index_value, int64_t rank) {
@@ -110,7 +110,7 @@ bool CanSliceNodeBeReplacedWithConstant(Graph& graph, Node& slice_node, const Te
     return false;
   }
 
-  // Try to parse the value and double check.
+  // Try to parse the value and double-check.
   InlinedVector<int64_t> starts_values, ends_values, axes_values, steps_values;
   if (!(optimizer_utils::AppendTensorFromInitializer(graph, *starts_input, starts_values, true) &&
         starts_values.size() == 1)) {
