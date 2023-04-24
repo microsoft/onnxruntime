@@ -797,11 +797,6 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
     {"bernoulli_seed", "By design. Test data is for informational purpose because the generator is non deterministic."},
     {"bernoulli_seed_expanded", "By design. Test data is for informational purpose because the generator is non deterministic."},
     {"bernoulli_expanded", "By design. Test data is for informational purpose because the generator is non deterministic."},
-    {"test_roialign_aligned_true", "Opset 16 not supported yet."},
-    {"test_roialign_aligned_false", "Opset 16 not supported yet."},
-    {"test_scatternd_add", "Opset 16 not supported yet."},
-    {"test_scatternd_multiply", "Opset 16 not supported yet."},
-    {"test_scatter_elements_with_duplicate_indices", "Opset 16 not supported yet."},
     {"col2im_pads", "onnx 18 test data error."},
 
 #if defined(DISABLE_OPTIONAL_TYPE)
