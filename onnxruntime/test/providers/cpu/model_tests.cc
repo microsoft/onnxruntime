@@ -108,13 +108,13 @@ TEST_P(ModelTest, Run) {
   }
 
   std::unique_ptr<OnnxModelInfo> model_info = std::make_unique<OnnxModelInfo>(model_path.c_str());
-  if (model_info->GetONNXOpSetVersion() < 14 && model_info->GetONNXOpSetVersion() > 17 &&
+  if (model_info->GetONNXOpSetVersion() < 14 || model_info->GetONNXOpSetVersion() > 17 &&
       provider_name == "tensorrt") {
     // TensorRT can run most of the model tests, but only part of
     // them is enabled here to save CI build time.
     // Besides saving CI build time, TRT isn’t able to support full ONNX ops spec and therefore some testcases will
     // fail. That's one of reasons we skip those testcases and only test latest ONNX opsets.
-    SkipTest(" enable opset 14 to 17 for tensorrt");
+    SkipTest(" tensorrt: enable opset 14 to 17 for onnx model test");
     return;
   }
 
