@@ -282,7 +282,7 @@ namespace ImageTestHelper {
                 errors++;
             }
         }
-        std::cerr << "total errors is " << errors << "/" << size << ", errors rate is " << (float)errors / size;
+        std::cerr << "total errors is " << errors << "/" << size << ", errors rate is " << (float)errors / size << std::endl;
         return (float)errors / size < cMaxErrorRate;
     }
 }

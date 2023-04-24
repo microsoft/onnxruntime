@@ -2,14 +2,11 @@
 // Licensed under the MIT License.
 
 #include <thread>
-#include <random>
 
 #include "gtest/gtest.h"
 #include "nlohmann/json.hpp"
 
-#include "test/framework/test_utils.h"
 #include "test/util/include/asserts.h"
-#include "test/util/include/test_utils.h"
 #include "core/framework/tensorprotoutils.h"
 #include "orttraining/training_api/utils.h"
 #include "orttraining/training_api/module.h"
@@ -31,24 +28,6 @@ namespace {
 
 #define MODEL_FOLDER ORT_TSTR("testdata/training_api/")
 
-void GenerateRandomData(std::vector<float>& data) {
-  float scale = 1.f;
-  float mean = 0.f;
-  float seed = 123.f;
-
-  std::default_random_engine generator_float{gsl::narrow_cast<uint32_t>(seed)};
-  std::normal_distribution<float> distribution_float{mean, scale};
-  std::for_each(data.begin(), data.end(),
-                [&generator_float, &distribution_float](float& value) { value = distribution_float(generator_float); });
-}
-
-void GenerateRandomInput(gsl::span<const int64_t> dims, OrtValue& input) {
-  TensorShape shape(dims);
-  std::vector<float> data(shape.Size());
-  GenerateRandomData(data);
-  onnxruntime::test::CreateInputOrtValueOnCPU<float>(dims, data, &input);
-}
-
 void TestModuleExport(const std::vector<std::shared_ptr<IExecutionProvider>>& providers) {
   auto training_model_uri = MODEL_FOLDER "training_model.onnx";
   auto eval_model_uri = MODEL_FOLDER "eval_model.onnx";
@@ -60,7 +39,7 @@ void TestModuleExport(const std::vector<std::shared_ptr<IExecutionProvider>>& pr
   std::unique_ptr<Environment> env;
   ASSERT_STATUS_OK(Environment::Create(nullptr, env));
   auto model = std::make_unique<onnxruntime::training::api::Module>(
-      ToUTF8String(training_model_uri), state.module_checkpoint_state.named_parameters, onnxruntime::SessionOptions(),
+      ToUTF8String(training_model_uri), &state, onnxruntime::SessionOptions(),
       *env, providers, ToUTF8String(eval_model_uri));
 
   auto test_dir = ORT_TSTR("export_model_for_inferencing_test_dir");
@@ -138,10 +117,10 @@ void TestLRSchduler(const std::basic_string<ORTCHAR_T>& test_file_name, float in
   ASSERT_STATUS_OK(Environment::Create(nullptr, env));
   const std::vector<std::shared_ptr<IExecutionProvider>> providers{onnxruntime::test::DefaultCudaExecutionProvider()};
   auto model = std::make_unique<onnxruntime::training::api::Module>(
-      ToUTF8String(model_uri), state.module_checkpoint_state.named_parameters,
+      ToUTF8String(model_uri), &state,
       session_option, *env, providers);
   auto optim = std::make_shared<onnxruntime::training::api::Optimizer>(
-      ToUTF8String(optim_uri), model->NamedParameters(), session_option,
+      ToUTF8String(optim_uri), &state, session_option,
       *env, providers);
 
   OrtValue input, target;
@@ -207,7 +186,7 @@ TEST(TrainingApiTest, ModuleParametersSize) {
   std::unique_ptr<Environment> env;
   ASSERT_STATUS_OK(Environment::Create(nullptr, env));
   auto model = std::make_unique<onnxruntime::training::api::Module>(ToUTF8String(model_uri),
-                                                                    state.module_checkpoint_state.named_parameters, session_option,
+                                                                    &state, session_option,
                                                                     *env, std::vector<std::shared_ptr<IExecutionProvider>>());
   size_t params_size = 0;
   for (auto& param : model->Parameters()) {
@@ -230,7 +209,7 @@ TEST(TrainingApiTest, ModuleCopyBufferToParameters) {
   std::unique_ptr<Environment> env;
   ASSERT_STATUS_OK(Environment::Create(nullptr, env));
   auto model = std::make_unique<onnxruntime::training::api::Module>(ToUTF8String(model_uri),
-                                                                    state.module_checkpoint_state.named_parameters, session_option,
+                                                                    &state, session_option,
                                                                     *env, std::vector<std::shared_ptr<IExecutionProvider>>());
   int64_t params_size = static_cast<int64_t>(model->GetParametersSize());
   std::vector<float> expected_param_buffer(params_size);
@@ -268,7 +247,7 @@ TEST(TrainingApiTest, ModuleTrainStep) {
   std::unique_ptr<Environment> env;
   ASSERT_STATUS_OK(Environment::Create(nullptr, env));
   auto model = std::make_unique<onnxruntime::training::api::Module>(ToUTF8String(model_uri),
-                                                                    state.module_checkpoint_state.named_parameters, session_option,
+                                                                    &state, session_option,
                                                                     *env, std::vector<std::shared_ptr<IExecutionProvider>>());
   ASSERT_EQ(model->GetTrainingModelOutputCount(), 1);
   OrtValue input, target;
@@ -340,10 +319,10 @@ TEST(TrainingApiTest, OptimStep) {
   std::shared_ptr<IExecutionProvider> cpu_provider = onnxruntime::test::DefaultCpuExecutionProvider();
   ASSERT_STATUS_OK(Environment::Create(nullptr, env));
   auto model = std::make_unique<onnxruntime::training::api::Module>(
-      ToUTF8String(model_uri), state.module_checkpoint_state.named_parameters, session_option,
+      ToUTF8String(model_uri), &state, session_option,
       *env, providers);
   auto optim = std::make_unique<onnxruntime::training::api::Optimizer>(
-      ToUTF8String(optim_uri), model->NamedParameters(), session_option,
+      ToUTF8String(optim_uri), &state, session_option,
       *env, providers);
 
   OrtValue input, target;

@@ -276,9 +276,9 @@ __global__ void AddBiasTransposeQKV(int M, const T* input, const T* biases, T* o
       v_bias = *reinterpret_cast<const Vec_t*>(&biases[2 * NH + n * H + head_idx]);
     }
 
-    q = add(q, q_bias);
-    k = add(k, k_bias);
-    v = add(v, v_bias);
+    q = add_vec(q, q_bias);
+    k = add_vec(k, k_bias);
+    v = add_vec(v, v_bias);
 
     const bool do_rotary = !is_masked && vec_size * tidx < rotary_embedding_dim;
 

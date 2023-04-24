@@ -165,9 +165,9 @@ namespace Microsoft.ML.OnnxRuntime
             options.AppendExecutionProvider_ROCM(deviceId);
             return options;
         }
-#endregion
+        #endregion
 
-#region ExecutionProviderAppends
+        #region ExecutionProviderAppends
         /// <summary>
         /// Appends CPU EP to a list of available execution providers for the session.
         /// </summary>
@@ -240,11 +240,8 @@ namespace Microsoft.ML.OnnxRuntime
 #if __MOBILE__
             throw new NotSupportedException("The OpenVINO Execution Provider is not supported in this build");
 #else
-            var deviceIdPinned = GCHandle.Alloc(NativeOnnxValueHelper.StringToZeroTerminatedUtf8(deviceId), GCHandleType.Pinned);
-            using (var pinnedDeviceIdName = new PinnedGCHandle(deviceIdPinned))
-            {
-                NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_OpenVINO(handle, pinnedDeviceIdName.Pointer));
-            }
+            var utf8 = NativeOnnxValueHelper.StringToZeroTerminatedUtf8(deviceId);
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_OpenVINO(handle, utf8));
 #endif
         }
 
@@ -350,46 +347,48 @@ namespace Microsoft.ML.OnnxRuntime
 #if __MOBILE__
             throw new NotSupportedException("The TVM Execution Provider is not supported in this build");
 #else
-            var settingsPinned = GCHandle.Alloc(NativeOnnxValueHelper.StringToZeroTerminatedUtf8(settings), GCHandleType.Pinned);
-            using (var pinnedSettingsName = new PinnedGCHandle(settingsPinned))
-            {
-                NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_Tvm(handle, pinnedSettingsName.Pointer));
-            }
+            var utf8 = NativeOnnxValueHelper.StringToZeroTerminatedUtf8(settings);
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_Tvm(handle, utf8));
 #endif
         }
 
+        private class ExecutionProviderAppender
+        {
+            private byte[] _utf8ProviderName;
+            internal ExecutionProviderAppender(byte[] providerName)
+            {
+                _utf8ProviderName = providerName;
+            }
+
+            public IntPtr Appender(IntPtr handle, IntPtr[] optKeys, IntPtr[] optValues, UIntPtr optCount)
+            {
+                return NativeMethods.SessionOptionsAppendExecutionProvider(
+                    handle, _utf8ProviderName, optKeys, optValues, optCount);
+            }
+        }
+
+
         /// <summary>
-        /// Append SNPE or XNNPACK execution provider
+        /// Append QNN, SNPE or XNNPACK execution provider
         /// </summary>
-        /// <param name="providerName">Execution provider to add. 'SNPE' or 'XNNPACK' are currently supported.</param>
+        /// <param name="providerName">Execution provider to add. 'QNN', 'SNPE' or 'XNNPACK' are currently supported.</param>
         /// <param name="providerOptions">Optional key/value pairs to specify execution provider options.</param>
         public void AppendExecutionProvider(string providerName, Dictionary<string, string> providerOptions = null)
         {
-            if (providerName != "SNPE" && providerName != "XNNPACK")
+            if (providerName != "SNPE" && providerName != "XNNPACK" && providerName != "QNN")
             {
                 throw new NotSupportedException(
-                    "Only SNPE and XNNPACK execution providers can be enabled by this method.");
+                    "Only QNN, SNPE and XNNPACK execution providers can be enabled by this method.");
             }
 
-            using (var cleanupList = new DisposableList<IDisposable>())
+            if (providerOptions == null)
             {
-                string[] ep = { providerName }; // put in array so we can use ConvertNamesToUtf8 for everything
-                var epArray = NativeOnnxValueHelper.ConvertNamesToUtf8(ep, n => n, cleanupList);
-
-                if (providerOptions == null)
-                {
-                    providerOptions = new Dictionary<string, string>();
-                }
-
-                var keysArray = NativeOnnxValueHelper.ConvertNamesToUtf8(
-                    providerOptions.Keys.ToArray(), n => n, cleanupList);
-
-                var valuesArray = NativeOnnxValueHelper.ConvertNamesToUtf8(
-                    providerOptions.Values.ToArray(), n => n, cleanupList);
-
-                NativeApiStatus.VerifySuccess(NativeMethods.SessionOptionsAppendExecutionProvider(
-                    handle, epArray[0], keysArray, valuesArray, (UIntPtr)providerOptions.Count));
+                providerOptions = new Dictionary<string, string>();
             }
+
+            var utf8ProviderName = NativeOnnxValueHelper.StringToZeroTerminatedUtf8(providerName);
+            var appender = new ExecutionProviderAppender(utf8ProviderName);
+            ProviderOptionsUpdater.Update(providerOptions, handle, appender.Appender);
         }
         #endregion //ExecutionProviderAppends
 
@@ -405,12 +404,9 @@ namespace Microsoft.ML.OnnxRuntime
         [ObsoleteAttribute("RegisterCustomOpLibrary(...) is obsolete. Use RegisterCustomOpLibraryV2(...) instead.", false)]
         public void RegisterCustomOpLibrary(string libraryPath)
         {
-            IntPtr libraryHandle = IntPtr.Zero;
-            var libraryPathPinned = GCHandle.Alloc(NativeOnnxValueHelper.StringToZeroTerminatedUtf8(libraryPath), GCHandleType.Pinned);
-            using (var pinnedlibraryPath = new PinnedGCHandle(libraryPathPinned))
-            {
-                NativeApiStatus.VerifySuccess(NativeMethods.OrtRegisterCustomOpsLibrary(handle, pinnedlibraryPath.Pointer, out libraryHandle));
-            }
+            var utf8Path = NativeOnnxValueHelper.StringToZeroTerminatedUtf8(libraryPath);
+            // The handle is leaking in this version
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtRegisterCustomOpsLibrary(handle, utf8Path, out IntPtr libraryHandle));
         }
 
         /// <summary>
@@ -426,11 +422,8 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="libraryHandle">out parameter, library handle</param>
         public void RegisterCustomOpLibraryV2(string libraryPath, out IntPtr libraryHandle)
         {
-            var libraryPathPinned = GCHandle.Alloc(NativeOnnxValueHelper.StringToZeroTerminatedUtf8(libraryPath), GCHandleType.Pinned);
-            using (var pinnedlibraryPath = new PinnedGCHandle(libraryPathPinned))
-            {
-                NativeApiStatus.VerifySuccess(NativeMethods.OrtRegisterCustomOpsLibrary(handle, pinnedlibraryPath.Pointer, out libraryHandle));
-            }
+            var utf8Path = NativeOnnxValueHelper.StringToZeroTerminatedUtf8(libraryPath);
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtRegisterCustomOpsLibrary(handle, utf8Path, out libraryHandle));
         }
 
         /// <summary>
@@ -444,11 +437,8 @@ namespace Microsoft.ML.OnnxRuntime
         /// managed by the user (created using the CreateTensorWithDataAsOrtValue API) and it must outlive the session object</param>
         public void AddInitializer(string name, OrtValue ortValue)
         {
-            var utf8NamePinned = GCHandle.Alloc(NativeOnnxValueHelper.StringToZeroTerminatedUtf8(name), GCHandleType.Pinned);
-            using (var pinnedName = new PinnedGCHandle(utf8NamePinned))
-            {
-                NativeApiStatus.VerifySuccess(NativeMethods.OrtAddInitializer(handle, pinnedName.Pointer, ortValue.Handle));
-            }
+            var utf8 = NativeOnnxValueHelper.StringToZeroTerminatedUtf8(name);
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtAddInitializer(handle, utf8, ortValue.Handle));
         }
 
         /// <summary>
@@ -459,12 +449,9 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="configValue">config key value</param>
         public void AddSessionConfigEntry(string configKey, string configValue)
         {
-            using (var pinnedConfigKeyName = new PinnedGCHandle(GCHandle.Alloc(NativeOnnxValueHelper.StringToZeroTerminatedUtf8(configKey), GCHandleType.Pinned)))
-            using (var pinnedConfigValueName = new PinnedGCHandle(GCHandle.Alloc(NativeOnnxValueHelper.StringToZeroTerminatedUtf8(configValue), GCHandleType.Pinned)))
-            {
-                NativeApiStatus.VerifySuccess(NativeMethods.OrtAddSessionConfigEntry(handle,
-                                              pinnedConfigKeyName.Pointer, pinnedConfigValueName.Pointer));
-            }
+            var utf8Key = NativeOnnxValueHelper.StringToZeroTerminatedUtf8(configKey);
+            var utf8Value = NativeOnnxValueHelper.StringToZeroTerminatedUtf8(configValue);
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtAddSessionConfigEntry(handle, utf8Key, utf8Value));
         }
 
         /// <summary>
@@ -475,11 +462,8 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="dimValue">denotation value</param>
         public void AddFreeDimensionOverride(string dimDenotation, long dimValue)
         {
-            var utf8DimDenotationPinned = GCHandle.Alloc(NativeOnnxValueHelper.StringToZeroTerminatedUtf8(dimDenotation), GCHandleType.Pinned);
-            using (var pinnedDimDenotation = new PinnedGCHandle(utf8DimDenotationPinned))
-            {
-                NativeApiStatus.VerifySuccess(NativeMethods.OrtAddFreeDimensionOverride(handle, pinnedDimDenotation.Pointer, dimValue));
-            }
+            var utf8 = NativeOnnxValueHelper.StringToZeroTerminatedUtf8(dimDenotation);
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtAddFreeDimensionOverride(handle, utf8, dimValue));
         }
 
         /// <summary>
@@ -490,13 +474,10 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="dimValue">dimension value</param>
         public void AddFreeDimensionOverrideByName(string dimName, long dimValue)
         {
-            var utf8DimNamePinned = GCHandle.Alloc(NativeOnnxValueHelper.StringToZeroTerminatedUtf8(dimName), GCHandleType.Pinned);
-            using (var pinnedDimName = new PinnedGCHandle(utf8DimNamePinned))
-            {
-                NativeApiStatus.VerifySuccess(NativeMethods.OrtAddFreeDimensionOverrideByName(handle, pinnedDimName.Pointer, dimValue));
-            }
+            var utf8 = NativeOnnxValueHelper.StringToZeroTerminatedUtf8(dimName);
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtAddFreeDimensionOverrideByName(handle, utf8, dimValue));
         }
-#endregion
+        #endregion
 
         internal IntPtr Handle
         {
@@ -506,7 +487,7 @@ namespace Microsoft.ML.OnnxRuntime
             }
         }
 
-#region Public Properties
+        #region Public Properties
         /// <summary>
         /// Overrides SafeHandle.IsInvalid
         /// </summary>
@@ -633,12 +614,8 @@ namespace Microsoft.ML.OnnxRuntime
 
             set
             {
-                var logIdPinned = GCHandle.Alloc(NativeOnnxValueHelper.StringToZeroTerminatedUtf8(value), GCHandleType.Pinned);
-                using (var pinnedlogIdName = new PinnedGCHandle(logIdPinned))
-                {
-                    NativeApiStatus.VerifySuccess(NativeMethods.OrtSetSessionLogId(handle, pinnedlogIdName.Pointer));
-                }
-
+                var utf8 = NativeOnnxValueHelper.StringToZeroTerminatedUtf8(value);
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtSetSessionLogId(handle, utf8));
                 _logId = value;
             }
         }
@@ -757,9 +734,9 @@ namespace Microsoft.ML.OnnxRuntime
         }
         private ExecutionMode _executionMode = ExecutionMode.ORT_SEQUENTIAL;
 
-#endregion
+        #endregion
 
-#region Private Methods
+        #region Private Methods
 
 #if !__MOBILE__
         // Declared, but called only if OS = Windows.
@@ -820,9 +797,9 @@ namespace Microsoft.ML.OnnxRuntime
             }
             return true;
         }
-#endregion
+        #endregion
 
-#region SafeHandle
+        #region SafeHandle
         /// <summary>
         /// Overrides SafeHandle.ReleaseHandle() to properly dispose of
         /// the native instance of SessionOptions
@@ -834,6 +811,6 @@ namespace Microsoft.ML.OnnxRuntime
             handle = IntPtr.Zero;
             return true;
         }
-#endregion
+        #endregion
     }
 }
