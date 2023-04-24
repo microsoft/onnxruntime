@@ -134,7 +134,7 @@ void CPUIDInfo::ArmLinuxInit() {
   pytorch_cpuinfo_init_ = cpuinfo_initialize();
   if (!pytorch_cpuinfo_init_) {
     const char* message = "Failed to init pytorch cpuinfo library, may cause CPU EP performance degradation due to undetected CPU features.";
-    if (LoggingManager::HasDefaultLogger()) {
+    if (logging::LoggingManager::HasDefaultLogger()) {
       LOGS_DEFAULT(WARNING) << message;
     } else {
       std::cerr << message << std::endl;
