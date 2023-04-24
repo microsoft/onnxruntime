@@ -108,7 +108,7 @@ TEST_P(ModelTest, Run) {
   }
 
   std::unique_ptr<OnnxModelInfo> model_info = std::make_unique<OnnxModelInfo>(model_path.c_str());
-  if (model_info->GetONNXOpSetVersion() < 14 || model_info->GetONNXOpSetVersion() > 17 &&
+  if ((model_info->GetONNXOpSetVersion() < 14 || model_info->GetONNXOpSetVersion() > 17) &&
       provider_name == "tensorrt") {
     // TensorRT can run most of the model tests, but only part of
     // them is enabled here to save CI build time.
