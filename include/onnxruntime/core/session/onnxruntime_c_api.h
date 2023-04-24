@@ -4150,6 +4150,30 @@ struct OrtApi {
    */
   ORT_API2_STATUS(GetOptionalContainedTypeInfo, _In_ const OrtOptionalTypeInfo* optional_type_info,
                   _Outptr_ OrtTypeInfo** out);
+
+  /** \brief Set a single string in a string tensor
+   *  Do not zero terminate the string data.
+   *
+   * \param[in] value A string tensor
+   * \param[in] index - flat index of the element
+   * \param[in] length_in_bytes length of the buffer in utf-8 bytes (without the null terminator)
+   * \param[in/out] buffer - address of return value
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   */
+  ORT_API2_STATUS(GetResizedStringTensorElementBuffer, _Inout_ OrtValue* value, _In_ size_t index, _In_ size_t length_in_bytes, _Inout_ char** buffer);
+
+  /** \brief Get Allocator from KernelContext for a specific memoryInfo.
+   *
+   * \param[in] context OrtKernelContext instance
+   * \param[in] mem_info OrtMemoryInfo instance
+   * \param[out] out A pointer to OrtAllocator.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value. Always returns nullptr.
+   *
+   * \since Version 1.15.
+   */
+  ORT_API2_STATUS(KernelContext_GetAllocator, _In_ const OrtKernelContext* context, _In_ const OrtMemoryInfo* mem_info, _Outptr_ OrtAllocator** out);
 };
 
 /*

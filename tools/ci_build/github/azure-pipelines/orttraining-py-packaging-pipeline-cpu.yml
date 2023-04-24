@@ -35,6 +35,8 @@ stages:
             PythonVersion: '3.9'
           Python310:
             PythonVersion: '3.10'
+          Python311:
+            PythonVersion: '3.11'
 
       steps:
       - task: CmdLine@2
