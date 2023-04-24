@@ -135,9 +135,13 @@ class BaseOpBuilder : public IOpBuilder {
         {"Tanh", "Tanh"},
         {"Transpose", "Transpose"},
 
+        {"DequantizeLinear", "Dequantize"},
+        {"QuantizeLinear", "Quantize"},
+
         {"MatMul", "MatMul"},
 
         {"Relu", "Relu"},
+        {"Gelu", "Gelu"},
         {"Sigmoid", "Sigmoid"},
 
         {"Conv", "Conv2d"},

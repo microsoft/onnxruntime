@@ -14,6 +14,8 @@ import torch
 from whisper_chain import chain_model
 from whisper_helper import PRETRAINED_WHISPER_MODELS, WhisperHelper
 
+from onnxruntime import quantization
+
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 from benchmark_helper import Precision, create_onnxruntime_session, prepare_environment, setup_logger  # noqa: E402
 
@@ -67,8 +69,8 @@ def parse_arguments():
         required=False,
         type=Precision,
         default=Precision.FLOAT32,
-        choices=[Precision.FLOAT32, Precision.FLOAT16],
-        help="Precision of model to run. fp32 for full precision, fp16 for half precision",
+        choices=[Precision.FLOAT32, Precision.FLOAT16, Precision.INT8],
+        help="Precision of model to run. fp32 for full precision, fp16 for half precision, int8 for quantization",
     )
 
     parser.add_argument("--verbose", required=False, action="store_true")
@@ -134,6 +136,27 @@ def parse_arguments():
         help="default name is whisper_beamsearch.onnx.",
     )
 
+    parser.add_argument(
+        "--quantize_embedding_layer",
+        required=False,
+        action="store_true",
+        help="Produce beam search model with chained encdecinit and decoder.",
+    )
+
+    parser.add_argument(
+        "--quantize_per_channel",
+        required=False,
+        action="store_true",
+        help="Produce beam search model with chained encdecinit and decoder.",
+    )
+
+    parser.add_argument(
+        "--quantize_reduce_range",
+        required=False,
+        action="store_true",
+        help="Produce beam search model with chained encdecinit and decoder.",
+    )
+
     parser.add_argument("--no_repeat_ngram_size", type=int, default=3, help="default to 3")
 
     args = parser.parse_args()
@@ -155,6 +178,9 @@ def export_onnx_models(
     overwrite: bool = False,
     disable_auto_mixed_precision: bool = False,
     use_int32_inputs: bool = True,
+    quantize_embedding_layer: bool = False,
+    quantize_per_channel: bool = False,
+    quantize_reduce_range: bool = False,
 ):
     device = torch.device("cuda:0" if use_gpu else "cpu")
 
@@ -179,10 +205,11 @@ def export_onnx_models(
         if overwrite or not os.path.exists(onnx_path):
             logger.info(f"Exporting ONNX model to {onnx_path}")
             # We have to clone model before exporting onnx, otherwise verify_onnx will report large difference.
-            cloned_model = copy.deepcopy(model).to(device)
+            device_to_export = torch.device("cpu")
+            cloned_model = copy.deepcopy(model).to(device_to_export)
             WhisperHelper.export_onnx(
                 cloned_model,
-                device,
+                device_to_export,
                 onnx_path,
                 verbose,
                 use_external_data_format,
@@ -202,17 +229,33 @@ def export_onnx_models(
             )
 
             if overwrite or not os.path.exists(output_path):
-                logger.info(f"Optimizing model to {output_path}")
-                WhisperHelper.optimize_onnx(
-                    onnx_path,
-                    output_path,
-                    precision == Precision.FLOAT16,
-                    config.encoder_attention_heads,
-                    config.d_model,
-                    use_external_data_format,
-                    auto_mixed_precision=not disable_auto_mixed_precision,
-                    use_gpu=use_gpu,
-                )
+                if optimize_onnx:
+                    logger.info(f"Optimizing model to {output_path}")
+                    WhisperHelper.optimize_onnx(
+                        onnx_path,
+                        output_path,
+                        precision == Precision.FLOAT16,
+                        config.encoder_attention_heads,
+                        config.d_model,
+                        use_external_data_format,
+                        auto_mixed_precision=not disable_auto_mixed_precision,
+                        use_gpu=use_gpu,
+                    )
+                    onnx_path = output_path
+
+                if precision == Precision.INT8:
+                    quantization.quantize_dynamic(
+                        onnx_path,
+                        output_path,
+                        op_types_to_quantize=["MatMul", "Gemm", "Gather"]
+                        if quantize_embedding_layer
+                        else ["MatMul", "Gemm"],
+                        use_external_data_format=use_external_data_format,
+                        per_channel=quantize_per_channel,
+                        reduce_range=quantize_reduce_range,
+                        optimize_model=False,
+                        extra_options={"MatMulConstBOnly": True},
+                    )
             else:
                 logger.info(f"Skip optimizing: existed ONNX model {onnx_path}")
         else:
@@ -246,14 +289,11 @@ def main():
     output_dir = args.output if not args.output.endswith(".onnx") else os.path.dirname(args.output)
     prepare_environment(cache_dir, output_dir, args.use_gpu)
 
-    if args.precision != Precision.FLOAT32:
-        assert args.optimize_onnx, "fp16/int8 requires --optimize_onnx"
-
     if args.precision == Precision.FLOAT16:
         assert args.use_gpu, "fp16 requires --use_gpu"
 
     if args.optimize_onnx:
-        logger.warning("Graph optimization for Whisper is not implemented yet.")
+        logger.warning("Applying graph optimization for Whisper...")
 
     output_paths = export_onnx_models(
         args.model_name_or_path,
@@ -269,6 +309,9 @@ def main():
         args.overwrite,
         args.disable_auto_mixed_precision,
         not args.use_int64_inputs,
+        args.quantize_embedding_layer,
+        args.quantize_per_channel,
+        args.quantize_reduce_range,
     )
 
     if args.chain_model:

@@ -10,15 +10,20 @@ def shared
 
   # Comment the next line if you don't want to use dynamic frameworks
   use_frameworks!
-
-  # Mobile build:
-  # if File.exist?('../local_pods/onnxruntime-mobile-c.zip')
-  #   pod 'onnxruntime-mobile-c', :podspec => '../onnxruntime-mobile-c.podspec'
+  
+  # Mobile build
+  # ort_mobile_c_local_pod_path = ENV['ORT_MOBILE_C_LOCAL_POD_PATH']
+  # if ort_mobile_c_local_pod_path != nil
+  #   print 'Using onnxruntime-c pod at ', ort_mobile_c_local_pod_path, "\n"
+  #   pod 'onnxruntime-mobile-c', :path => ort_mobile_c_local_pod_path
   # else
   #   pod 'onnxruntime-mobile-c'
   # end
-  if File.exist?('../local_pods/onnxruntime-c.zip')
-    pod 'onnxruntime-c', :podspec => '../onnxruntime-c.podspec'
+
+  ort_c_local_pod_path = ENV['ORT_C_LOCAL_POD_PATH']
+  if ort_c_local_pod_path != nil
+    print 'Using onnxruntime-c pod at ', ort_c_local_pod_path, "\n"
+    pod 'onnxruntime-c', :path => ort_c_local_pod_path
   else
     pod 'onnxruntime-c'
   end
