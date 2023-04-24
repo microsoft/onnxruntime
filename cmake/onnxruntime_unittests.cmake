@@ -69,6 +69,10 @@ function(AddTest)
       target_include_directories(${_UT_TARGET} PRIVATE ${NCCL_INCLUDE_DIRS})
     endif()
   endif()
+  if (onnxruntime_USE_TENSORRT)
+    # used for instantiating placeholder TRT builder to mitigate TRT library load/unload overhead
+    target_include_directories(${_UT_TARGET} PRIVATE ${TENSORRT_INCLUDE_DIR})
+  endif()
 
   if(MSVC)
     target_compile_options(${_UT_TARGET} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /utf-8>"
@@ -583,6 +587,7 @@ if(onnxruntime_USE_TENSORRT)
   list(APPEND onnxruntime_test_framework_src_patterns  "${ONNXRUNTIME_ROOT}/core/providers/tensorrt/tensorrt_execution_provider_utils.h")
   list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_tensorrt)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_tensorrt onnxruntime_providers_shared)
+  list(APPEND onnxruntime_test_providers_libs ${TENSORRT_LIBRARY_INFER})
 endif()
 
 if(onnxruntime_USE_MIGRAPHX)
@@ -770,21 +775,13 @@ endif()
 
 set(test_all_args)
 if (onnxruntime_USE_TENSORRT)
-    if (onnxruntime_SKIP_AND_PERFORM_FILTERED_TENSORRT_TESTS)
-       # TRT EP package pipelines takes much longer time to run tests with TRT 8.5. We can't use placeholder to reduce testing time due to application test deadlock.
-       # Therefore we only run filtered TRT EP tests.
-      list(APPEND test_all_args "--gtest_filter=*tensorrt_*:*TensorrtExecutionProviderTest*" )
-      #list(APPEND test_all_args "--gtest_filter=-*cpu_*:*cuda_*:*ContribOpTest*:*QuantGemmTest*:*QLinearConvTest*:*MurmurHash3OpTest*:*PadOpTest*:*QLinearConvTest*" )
-    else()
-      # TRT EP CI takes much longer time when updating to TRT 8.2
-      # So, we only run trt ep and exclude other eps to reduce CI test time.
-      #
-      # The test names of model tests were using sequential number in the past.
-      # This PR https://github.com/microsoft/onnxruntime/pull/10220 (Please see ExpandModelName function in model_tests.cc for more details)
-      # made test name contain the "ep" and "model path" information, so we can easily filter the tests using cuda ep or other ep with *cpu_* or *xxx_*.
-      list(APPEND test_all_args "--gtest_filter=-*cpu_*:*cuda_*" )
-    endif()
-
+  # TRT EP CI takes much longer time when updating to TRT 8.2
+  # So, we only run trt ep and exclude other eps to reduce CI test time.
+  #
+  # The test names of model tests were using sequential number in the past.
+  # This PR https://github.com/microsoft/onnxruntime/pull/10220 (Please see ExpandModelName function in model_tests.cc for more details)
+  # made test name contain the "ep" and "model path" information, so we can easily filter the tests using cuda ep or other ep with *cpu_* or *xxx_*.
+  list(APPEND test_all_args "--gtest_filter=-*cpu_*:*cuda_*" )
 endif ()
 
 AddTest(
@@ -920,9 +917,9 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
     endif()
 
     if (MSVC OR ${CMAKE_SYSTEM_NAME} STREQUAL "Linux")
-        file(GLOB QNN_LIB_FILES LIST_DIRECTORIES false "${onnxruntime_QNN_HOME}/target/${QNN_ARCH_ABI}/lib/*.so" "${onnxruntime_QNN_HOME}/target/${QNN_ARCH_ABI}/lib/*.dll")
+        file(GLOB QNN_LIB_FILES LIST_DIRECTORIES false "${onnxruntime_QNN_HOME}/lib/${QNN_ARCH_ABI}/*.so" "${onnxruntime_QNN_HOME}/target/${QNN_ARCH_ABI}/lib/*.so" "${onnxruntime_QNN_HOME}/lib/${QNN_ARCH_ABI}/*.dll" "${onnxruntime_QNN_HOME}/target/${QNN_ARCH_ABI}/lib/*.dll")
         if (${QNN_ARCH_ABI} STREQUAL "aarch64-windows-msvc")
-          file(GLOB EXTRA_HTP_LIB LIST_DIRECTORIES false "${onnxruntime_QNN_HOME}/target/hexagon-v68/lib/unsigned/libQnnHtpV68Skel.so")
+          file(GLOB EXTRA_HTP_LIB LIST_DIRECTORIES false "${onnxruntime_QNN_HOME}/lib/hexagon-v68/unsigned/libQnnHtpV68Skel.so" "${onnxruntime_QNN_HOME}/target/hexagon-v68/lib/unsigned/libQnnHtpV68Skel.so")
           list(APPEND QNN_LIB_FILES ${EXTRA_HTP_LIB})
         endif()
         message(STATUS "QNN lib files: " ${QNN_LIB_FILES})
@@ -1202,6 +1199,9 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
     if (onnxruntime_USE_CUDA)
       list(APPEND onnxruntime_shared_lib_test_LIBS onnxruntime_test_cuda_ops_lib cudart)
     endif()
+    if (onnxruntime_USE_TENSORRT)
+      list(APPEND onnxruntime_shared_lib_test_LIBS ${TENSORRT_LIBRARY_INFER})
+    endif()
     if (CMAKE_SYSTEM_NAME STREQUAL "Android")
       list(APPEND onnxruntime_shared_lib_test_LIBS ${android_shared_libs})
     endif()
@@ -1465,6 +1465,9 @@ if (NOT onnxruntime_BUILD_WEBASSEMBLY)
             ${ONNXRUNTIME_CUSTOM_OP_REGISTRATION_TEST_SRC_DIR}/test_registercustomops.cc)
 
     set(onnxruntime_customopregistration_test_LIBS custom_op_library onnxruntime_common onnxruntime_test_utils)
+    if (onnxruntime_USE_TENSORRT)
+      list(APPEND onnxruntime_customopregistration_test_LIBS ${TENSORRT_LIBRARY_INFER})
+    endif()
     AddTest(DYN
             TARGET onnxruntime_customopregistration_test
             SOURCES ${onnxruntime_customopregistration_test_SRC} ${onnxruntime_unittest_main_src}
