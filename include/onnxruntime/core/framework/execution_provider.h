@@ -72,7 +72,7 @@ class IExecutionProvider {
   /*
      default device for this ExecutionProvider
   */
-  OrtDevice default_device_;
+  const OrtDevice default_device_;
 
  public:
   virtual ~IExecutionProvider() = default;
