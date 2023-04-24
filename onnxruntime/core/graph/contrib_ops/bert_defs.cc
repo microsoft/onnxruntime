@@ -855,6 +855,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
     OpSchema()
         .SetDoc(EmbedLayerNormalization_ver1_doc)
         .Attr("epsilon", "The epsilon value to use to avoid division by zero.", AttributeProto::FLOAT, kDefaultEmbedLayerNormEpsilon)
+        .Attr("mask_index_type", "The mask index tensor type for shape inference (0: None, 1: 1D mask_index)", AttributeProto::INT, OPTIONAL_VALUE)
         .Input(0, "input_ids", "2D words IDs with shape (batch_size, sequence_length)", "T1")
         .Input(1, "segment_ids", "2D segment IDs with shape (batch_size, sequence_length)", "T1", OpSchema::Optional)
         .Input(2, "word_embedding", "2D with shape (,hidden_size)", "T")

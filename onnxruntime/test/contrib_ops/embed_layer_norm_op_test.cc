@@ -122,7 +122,12 @@ static void RunTest(const embedlayernorm::OpData& data,
       }
       tester.AddOutput<float>("output", output_dims, data.output_data);
     }
-    tester.AddOutput<int32_t>("mask_index", mask_index_dims, data.mask_index_data);
+    tester.AddAttribute("mask_index_type", static_cast<int64_t>(data.mask_index_type));
+    if (data.mask_index_data.size()) {
+      tester.AddOutput<int32_t>("mask_index", mask_index_dims, data.mask_index_data);
+    } else {
+      tester.AddOptionalOutputEdge<int32_t>();
+    }
     if (sum_output) {
       std::vector<int64_t> embedding_sum_output_dims = output_dims;
       if (use_float16) {
@@ -188,6 +193,11 @@ TEST(EmbedLayerNormTest, EmbedLayerNormBatch1_EmbeddingSum) {
 TEST(EmbedLayerNormTest, EmbedLayerNormBatch1_EmbeddingSum_Float16) {
   RunTest(embedlayernorm::EmbedLayerNormBatch1_EmbeddingSum(), true, true);
 }
+
+TEST(EmbedLayerNormTest, EmbedLayerNormBatch1_EmbeddingSum_NoMaskIndex) {
+  RunTest(embedlayernorm::EmbedLayerNormBatch1_EmbeddingSum_NoMaskIndex(), false, true);
+}
+
 TEST(EmbedLayerNormTest, EmbedLayerNormBatch2) {
   RunTest(embedlayernorm::EmbedLayerNormBatch2());
 }
