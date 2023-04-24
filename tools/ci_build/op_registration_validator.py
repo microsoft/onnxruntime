@@ -88,11 +88,14 @@ class RegistrationValidator(op_registration_utils.RegistrationProcessor):
             # TODO remove once CUDA EP supports ArgMin/ArgMax for opset 12+
             ops_with_incomplete_support = ["kOnnxDomain:ArgMin", "kOnnxDomain:ArgMax"]
             if key in ops_with_incomplete_support:
-                log.warn(f"Allowing missing unversioned registration for op with incomplete support: {key}")
+                log.warning(f"Allowing missing unversioned registration for op with incomplete support: {key}")
                 allow_missing_unversioned_registration = True
 
             if opset_to and not allow_missing_unversioned_registration:
-                log.error(f"Missing unversioned registration for {key}")
+                log.error(
+                    f"Missing unversioned registration for {key}, "
+                    f"opset_from={opset_from}, opset_to={opset_to}"
+                )
                 self.failed = True
 
 

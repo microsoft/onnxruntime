@@ -101,7 +101,17 @@ Status DequantizeLinear<T, U>::ComputeInternal(OpKernelContext* ctx) const {
   ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                            \
       QuantizeLinear,                                                 \
       kOnnxDomain,                                                    \
-      10, 18,                                                         \
+      10, 12,                                                         \
+      T,                                                              \
+      kCudaExecutionProvider,                                         \
+      (*KernelDefBuilder::Create())                                   \
+          .TypeConstraint("T1", DataTypeImpl::GetTensorType<float>()) \
+          .TypeConstraint("T2", DataTypeImpl::GetTensorType<T>()),    \
+      QuantizeLinear<T, float>);                                      \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                            \
+      QuantizeLinear,                                                 \
+      kOnnxDomain,                                                    \
+      13, 18,                                                         \
       T,                                                              \
       kCudaExecutionProvider,                                         \
       (*KernelDefBuilder::Create())                                   \
@@ -144,7 +154,16 @@ REGISTER_Q_KERNEL_TYPED_19(Float8E5M2)
   ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                        \
       DequantizeLinear,                                           \
       kOnnxDomain,                                                \
-      10, 18,                                                     \
+      10, 12,                                                     \
+      T,                                                          \
+      kCudaExecutionProvider,                                     \
+      (*KernelDefBuilder::Create())                               \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      DequantizeLinear<T, float>);                                \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                        \
+      DequantizeLinear,                                           \
+      kOnnxDomain,                                                \
+      13, 18,                                                     \
       T,                                                          \
       kCudaExecutionProvider,                                     \
       (*KernelDefBuilder::Create())                               \

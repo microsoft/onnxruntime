@@ -324,7 +324,17 @@
     "current_failing_tests_NNAPI": [
         "^test_maxpool_2d_uint8",
         "^test_negative_log_likelihood.*",
-        "^test_softmax_cross_entropy.*"
+        "^test_softmax_cross_entropy.*",
+        // disabling float 8
+        "^test_cast_no_saturate*",
+        "^test_cast_FLOAT8*",
+        "^test_castlike_FLOAT8*",
+        "^test_cast_FLOAT_to_FLOAT8*",
+        "^test_castlike_FLOAT_to_FLOAT8*",
+        "^test_cast_FLOAT16_to_FLOAT8*",
+        "^test_castlike_FLOAT16_to_FLOAT8*",
+        "^test_test dequantizelinear_e*",
+        "^test_test quantizelinear_e*"
     ],
     "current_failing_tests_OPENVINO_MYRIAD": [
         "^test_range",
@@ -693,12 +703,15 @@
         // even if a seed is specified.
         "^test_bernoulli_*",
         // No support for float8 in numpy
-        "^test_cast_FLOAT_to_FLOAT8*",
-        "^test_castlike_FLOAT_to_FLOAT8*",
+        "^test_cast_no_saturate*",
         "^test_cast_FLOAT8*",
         "^test_castlike_FLOAT8*",
-        "^test_cast_no_saturate_*",
-        "^test_castlike_no_saturate_*"
+        "^test_cast_FLOAT_to_FLOAT8*",
+        "^test_castlike_FLOAT_to_FLOAT8*",
+        "^test_cast_FLOAT16_to_FLOAT8*",
+        "^test_castlike_FLOAT16_to_FLOAT8*",
+        "^test_test dequantizelinear_e*",
+        "^test_test quantizelinear_e*"
     ],
     "failing_permanently_nodejs_binding": [
         // those test cases are no longer available in later opset version
