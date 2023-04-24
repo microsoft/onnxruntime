@@ -82,6 +82,7 @@ using IndexedSubGraph_MetaDef = IndexedSubGraph::MetaDef;
 #include "core/providers/dnnl/dnnl_provider_factory.h"
 #include "core/providers/migraphx/migraphx_provider_factory.h"
 #include "core/providers/openvino/openvino_provider_factory.h"
+#include "core/providers/openvino/openvino_provider_options.h"
 #include "core/providers/tensorrt/tensorrt_provider_factory.h"
 #include "core/providers/tensorrt/tensorrt_provider_options.h"
 #include "core/providers/cuda/cuda_provider_options.h"
@@ -1328,7 +1329,32 @@ std::shared_ptr<IExecutionProviderFactory> MIGraphXProviderFactoryCreator::Creat
   return s_library_migraphx.Get().CreateExecutionProviderFactory(provider_options);
 }
 
+
+// Adapter to convert the legacy OrtOpenVINOProviderOptions to the latest OrtOpenVINOProviderOptionsV2
+OrtOpenVINOProviderOptionsV2 OrtOpenVINOProviderOptionsToOrtOpenVINOProviderOptionsV2(const OrtOpenVINOProviderOptions* legacy_ov_options) {
+  OrtOpenVINOProviderOptionsV2 ov_options_converted;
+
+  ov_options_converted.device_type = legacy_ov_options->device_type;
+  ov_options_converted.enable_vpu_fast_compile = legacy_ov_options->enable_vpu_fast_compile;
+  ov_options_converted.device_id = legacy_ov_options->device_id;
+  ov_options_converted.num_of_threads = legacy_ov_options->num_of_threads;
+  ov_options_converted.cache_dir = legacy_ov_options->cache_dir;
+  ov_options_converted.context = legacy_ov_options->context;
+  ov_options_converted.enable_opencl_throttling = legacy_ov_options->enable_opencl_throttling;
+  ov_options_converted.enable_dynamic_shapes = legacy_ov_options->enable_dynamic_shapes;
+
+  // Add new provider option below
+  ov_options_converted.num_streams = 1;
+
+  return ov_options_converted;
+}
+
 std::shared_ptr<IExecutionProviderFactory> OpenVINOProviderFactoryCreator::Create(const OrtOpenVINOProviderOptions* provider_options) {
+  OrtOpenVINOProviderOptionsV2 ov_options_converted = onnxruntime::OrtOpenVINOProviderOptionsToOrtOpenVINOProviderOptionsV2(provider_options);
+  return s_library_openvino.Get().CreateExecutionProviderFactory(&ov_options_converted);
+}
+
+std::shared_ptr<IExecutionProviderFactory> OpenVINOProviderFactoryCreator::Create(const OrtOpenVINOProviderOptionsV2* provider_options) {
   return s_library_openvino.Get().CreateExecutionProviderFactory(provider_options);
 }
 
@@ -1549,11 +1575,30 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_OpenVINO, _In
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_OpenVINO_V2, _In_ OrtSessionOptions* options, _In_ const OrtOpenVINOProviderOptionsV2* provider_options) {
+  API_IMPL_BEGIN
+  auto factory = onnxruntime::OpenVINOProviderFactoryCreator::Create(provider_options);
+  if (!factory) {
+    return OrtApis::CreateStatus(ORT_FAIL, "SessionOptionsAppendExecutionProvider_OpenVINO_V2: Failed to load shared library");
+  }
+
+  options->provider_factories.push_back(factory);
+  return nullptr;
+  API_IMPL_END
+}
+
 ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_OpenVINO, _In_ OrtSessionOptions* options,
                     _In_ const char* device_type) {
   OrtOpenVINOProviderOptions provider_options{};
   provider_options.device_type = device_type;
   return OrtApis::SessionOptionsAppendExecutionProvider_OpenVINO(options, &provider_options);
+}
+
+ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_OpenVINO_V2, _In_ OrtSessionOptions* options,
+                    _In_ const char* device_type) {
+  OrtOpenVINOProviderOptionsV2 provider_options;
+  provider_options.device_type = device_type;
+  return OrtApis::SessionOptionsAppendExecutionProvider_OpenVINO_V2(options, &provider_options);
 }
 
 ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_CUDA, _In_ OrtSessionOptions* options, int device_id) {

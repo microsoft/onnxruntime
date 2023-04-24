@@ -18,6 +18,13 @@ extern "C" {
 ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_OpenVINO,
                _In_ OrtSessionOptions* options, _In_ const char* device_type);
 
+/**
+ * \param device_type openvino device type and precision. Could be any of
+ * CPU_FP32, CPU_FP16, GPU_FP32, GPU_FP16.
+ */
+ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_OpenVINO_V2,
+               _In_ OrtSessionOptions* options, _In_ const char* device_type);
+
 #ifdef __cplusplus
 }
 #endif

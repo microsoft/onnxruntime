@@ -6,6 +6,7 @@
 #include <core/session/onnxruntime_cxx_api.h>
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/providers/tensorrt/tensorrt_provider_options.h"
+#include "core/providers/openvino/openvino_provider_options.h"
 #include "core/providers/dnnl/dnnl_provider_options.h"
 #include <assert.h>
 #include "providers.h"
@@ -398,6 +399,9 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
     std::string cache_dir = "";             // [cache_dir]: specify the path to
                                             // dump and load the blobs for the model caching/kernel caching (GPU)
                                             // feature. If blob files are already present, it will be directly loaded.
+    int num_streams = 1;                    // [num_streams]: Option that specifies the number of parallel inference
+                                            // requests to be processed on a given `device_type`. Overrides the
+                                            // accelerator default value of number of streams with this value at runtime.
     bool enable_opencl_throttling = false;  // [enable_opencl_throttling]: Enables OpenCL queue throttling for GPU
                                             // device (Reduces CPU Utilization when using GPU)
     bool enable_dynamic_shapes = false;     // [enable_dynamic_shapes]: Enables Dynamic Shapes feature for CPU device)
@@ -476,19 +480,23 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
         }
       } else if (key == "cache_dir") {
         cache_dir = value;
+      } else if (key == "num_streams") {
+        std::stringstream sstream(value);
+        sstream >> num_streams;
       } else {
-        ORT_THROW("[ERROR] [OpenVINO] wrong key type entered. Choose from the following runtime key options that are available for OpenVINO. ['device_type', 'device_id', 'enable_vpu_fast_compile', 'num_of_threads', 'cache_dir', 'enable_opencl_throttling|true'] \n");
+        ORT_THROW("[ERROR] [OpenVINO] wrong key type entered. Choose from the following runtime key options that are available for OpenVINO. ['device_type', 'device_id', 'enable_vpu_fast_compile', 'num_of_threads', 'cache_dir', 'num_streams', 'enable_opencl_throttling|true'] \n");
       }
     }
-    OrtOpenVINOProviderOptions options;
-    options.device_type = device_type.c_str();                    // To set the device_type
-    options.device_id = device_id.c_str();                        // To set the device_id
-    options.enable_vpu_fast_compile = enable_vpu_fast_compile;    // To enable_vpu_fast_compile, default is false
-    options.num_of_threads = num_of_threads;                      // To set number of free InferRequests, default is 8
-    options.cache_dir = cache_dir.c_str();                        // sets the cache_dir, default is ""
-    options.enable_opencl_throttling = enable_opencl_throttling;  // Enables GPU Throttling (Reduces CPU Utilization)
-    options.enable_dynamic_shapes = enable_dynamic_shapes;        // Enables Dynamic Shapes feature
-    session_options.AppendExecutionProvider_OpenVINO(options);
+    OrtOpenVINOProviderOptionsV2 options;
+    options.device_type = device_type.c_str();                  // To set the device_type
+    options.enable_vpu_fast_compile = enable_vpu_fast_compile;  // To enable_vpu_fast_compile, default is false
+    options.device_id = device_id.c_str();                      // To set the device_id
+    options.num_of_threads = num_of_threads;                    // To set number of free InferRequests, default is 8
+    options.cache_dir = cache_dir.c_str();                      // sets the cache_dir, default is ""
+    options.num_streams = num_streams;                            // < 1 = default, -1 = ov::streams::AUTO (let device decide), >1 = user defined number of parallel inference streams
+    options.enable_opencl_throttling = enable_opencl_throttling;    // Enables GPU Throttling (Reduces CPU Utilization)
+    options.enable_dynamic_shapes = enable_dynamic_shapes;      // Enables Dynamic Shapes feature
+    session_options.AppendExecutionProvider_OpenVINO_V2(options);
 #else
     ORT_THROW("OpenVINO is not supported in this build\n");
 #endif

@@ -12,7 +12,7 @@ namespace onnxruntime {
 #pragma warning(disable : 26436)
 #endif
 struct Provider {
-  // Takes a pointer to a provider specific structure to create the factory. For example, with OpenVINO it is a pointer to an OrtOpenVINOProviderOptions structure
+  // Takes a pointer to a provider specific structure to create the factory. For example, with OpenVINO it is a pointer to an OrtOpenVINOProviderOptions_V2 structure
   virtual std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory(const void* /*provider_options*/) { return nullptr; }
 
   // Old simple device_id API to create provider factories, currently used by DNNL And TensorRT

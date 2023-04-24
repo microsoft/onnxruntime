@@ -20,6 +20,7 @@ struct GlobalContext {
   std::string precision_str;
   std::string device_id;
   std::string cache_dir;
+  int num_streams;
   std::vector<bool> deviceAvailableList = {true, true, true, true, true, true, true, true};
   std::vector<std::string> deviceTags = {"0", "1", "2", "3", "4", "5", "6", "7"};
   std::string onnx_model_name;

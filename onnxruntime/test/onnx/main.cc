@@ -22,6 +22,7 @@
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/optimizer/graph_transformer_level.h"
 #include "core/framework/session_options.h"
+#include "core/providers/openvino/openvino_provider_options.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "nlohmann/json.hpp"
 
@@ -389,6 +390,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       // Setting default optimization level for OpenVINO can be overridden with -o option
       sf.SetGraphOptimizationLevel(ORT_DISABLE_ALL);
       sf.AppendExecutionProvider_OpenVINO(OrtOpenVINOProviderOptions{});
+      sf.AppendExecutionProvider_OpenVINO_V2(OrtOpenVINOProviderOptionsV2{});
 #else
       fprintf(stderr, "OpenVINO is not supported in this build");
       return -1;

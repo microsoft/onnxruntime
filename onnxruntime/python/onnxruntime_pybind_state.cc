@@ -26,6 +26,7 @@
 #include "core/platform/env.h"
 #include "core/providers/get_execution_providers.h"
 #include "core/providers/tensorrt/tensorrt_provider_options.h"
+#include "core/providers/openvino/openvino_provider_options.h"
 #include "core/session/IOBinding.h"
 #include "core/session/abi_session_options_impl.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
@@ -599,7 +600,7 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
 #endif
   } else if (type == kOpenVINOExecutionProvider) {
 #ifdef USE_OPENVINO
-    OrtOpenVINOProviderOptions params;
+    OrtOpenVINOProviderOptionsV2 params;
     params.device_type = openvino_device_type.c_str();
     std::string cache_dir;
 
@@ -641,6 +642,8 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
         } else if (option.first == "cache_dir") {
           cache_dir = option.second;
           params.cache_dir = cache_dir.c_str();
+        } else if (option.first == "num_streams") {
+          params.num_streams = std::stoi(option.second);
         } else if (option.first == "context") {
           params.context = (void*)(option.second.c_str());
         } else {
