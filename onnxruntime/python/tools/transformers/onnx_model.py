@@ -901,6 +901,13 @@ class OnnxModel:
 
         sorted_node_set_len = -1
         graph_nodes = graph.node if not is_deterministic else sorted(graph.node, key=lambda x: x.name)
+
+        # generated_names = set()
+        # for node in graph_nodes:
+        #     for output in node.output:
+        #         if output:
+        #             generated_names.add(output)
+
         last_node_name = None
         while len(sorted_node_set) != len(graph_nodes):
             if len(sorted_node_set) == sorted_node_set_len:
@@ -914,7 +921,8 @@ class OnnxModel:
                     sorted_nodes.append(node)
                     sorted_node_set.add(node_idx)
                     for output in node.output:
-                        deps_set.add(output)
+                        if output:
+                            deps_set.add(output)
                     continue
                 failed = False
                 for input_name in node.input:
@@ -925,7 +933,8 @@ class OnnxModel:
                     sorted_nodes.append(node)
                     sorted_node_set.add(node_idx)
                     for output in node.output:
-                        deps_set.add(output)
+                        if output:
+                            deps_set.add(output)
                 else:
                     continue
 
@@ -998,7 +1007,7 @@ class OnnxModel:
 
     def save_model_to_file(self, output_path, use_external_data_format=False, all_tensors_to_one_file=True):
         logger.info("Sort graphs in topological order")
-        self.topological_sort()
+        # self.topological_sort()
 
         # Note: After the model is saved to another directory with external data,
         #       You need reload the onnx model if you want to read tensor from self.model object.

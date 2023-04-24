@@ -684,7 +684,7 @@ class FusionAttention(Fusion):
         beam_width: str = "beam_width",
         cache_indirection: str = "cache_indirection"
     ) -> Union[NodeProto, None]:
-        """Create a MultiHeadAttention node.
+        """Create a DecoderMaskedMultiHeadAttention node.
 
         Args:
             q_matmul (NodeProto): name of MatMul from Q path - (batch_size, sequence_length, hidden_size)
@@ -733,9 +733,9 @@ class FusionAttention(Fusion):
             return None
 
         # Create combined Q/K/V bias
-        q_bias = get_initializer_input_tensor(q_add)
-        k_bias = get_initializer_input_tensor(k_add)
-        v_bias = get_initializer_input_tensor(v_add)
+        q_bias = self.get_initializer_input_tensor(q_add)
+        k_bias = self.get_initializer_input_tensor(k_add)
+        v_bias = self.get_initializer_input_tensor(v_add)
         has_bias  = q_bias is not None and k_bias is not None and v_bias is not None
 
         # Add optional inputs for MHA
