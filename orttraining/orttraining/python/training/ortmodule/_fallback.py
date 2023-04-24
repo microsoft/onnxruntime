@@ -179,10 +179,11 @@ class _FallbackManager:
             # This warning will not be raised again if retry is not enabled
             warnings.warn(
                 (
-                    "Fallback to PyTorch due to exception %s was triggered. "
+                    "Fallback to PyTorch due to exception {} was triggered. "
                     "Report this issue with a minimal repro at https://www.github.com/microsoft/onnxruntime. "
-                    "See details below:\n\n%s" % (exception_type, exception_string)
-                ), UserWarning,
+                    "See details below:\n\n{}".format(exception_type, exception_string)
+                ),
+                UserWarning,
             )
 
             self._raised_fallback_exception = True
