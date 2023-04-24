@@ -47,8 +47,8 @@ from torch.onnx.symbolic_helper import parse_args
 from transformers import LongformerModel, LongformerSelfAttention
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
-from onnx_model_bert import BertOnnxModel
-from torch_onnx_export_helper import torch_onnx_export
+from onnx_model_bert import BertOnnxModel  # noqa: E402
+from torch_onnx_export_helper import torch_onnx_export  # noqa: E402
 
 # Supports format 0 or 1
 weight_bias_format = 0
@@ -149,7 +149,6 @@ def parse_arguments():
 
 # Create a dummy input for ONNX export.
 def get_dummy_inputs(config, export_padding, device):
-
     # When sequence length is multiple of windows size, there is no padding logic in ONNX graph
     sequence_length = config.attention_window[0] + 1 if export_padding else config.attention_window[0]
 
@@ -266,7 +265,7 @@ def my_longformer_self_attention_forward_4_3(
     is_global_attn=None,
     output_attentions=False,
 ):
-    assert output_attentions == False
+    assert output_attentions is False
     return my_longformer_self_attention_forward_4(
         self,
         hidden_states,
@@ -288,7 +287,7 @@ def my_longformer_self_attention_forward_4_3_2(
     is_global_attn=None,
     output_attentions=False,
 ):
-    assert output_attentions == False
+    assert output_attentions is False
     assert layer_head_mask is None
     return my_longformer_self_attention_forward_4(
         self,
@@ -400,7 +399,7 @@ def main(args):
     model_name = args.model
     onnx_model_path = model_name + ".onnx"
 
-    global weight_bias_format
+    global weight_bias_format  # noqa: PLW0603
     weight_bias_format = 0 if args.no_merge_qkv else 1
 
     model = LongformerModel.from_pretrained(PRETRAINED_LONGFORMER_MODELS[model_name])

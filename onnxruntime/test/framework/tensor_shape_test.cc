@@ -14,7 +14,6 @@ namespace utils {
 namespace test {
 
 static void TestShapeWithVector(const TensorShapeVector& vector) {
-
   // Test constructing from a vector
   TensorShape shape{vector};
   EXPECT_EQ(shape, gsl::make_span(vector));
@@ -24,13 +23,12 @@ static void TestShapeWithVector(const TensorShapeVector& vector) {
   EXPECT_EQ(shape, shape_copy);
 
   // Test copying to itself
-  TensorShape &shape2=shape;
+  TensorShape& shape2 = shape;
   shape = shape2;
   EXPECT_EQ(shape, shape_copy);
 }
 
 TEST(TensorShapeTest, VariousSizes) {
-
   // Test various sizes of copying between vectors
   TestShapeWithVector({});
   TestShapeWithVector({10});
@@ -46,18 +44,17 @@ TEST(TensorShapeTest, VariousSizes) {
   TensorShape shape{small};
   EXPECT_EQ(shape.GetDims(), gsl::make_span(small));
 
-  shape=TensorShape{large};
+  shape = TensorShape{large};
   EXPECT_EQ(shape.GetDims(), gsl::make_span(large));
 
-  shape=TensorShape{small};
+  shape = TensorShape{small};
   EXPECT_EQ(shape.GetDims(), gsl::make_span(small));
 }
 
 TEST(TensorShapeTest, FromExistingBuffer) {
-
   std::vector<int64_t> buffer{12, 23, 34, 45, 56, 67, 78, 89};
   auto shape = TensorShape::FromExistingBuffer(buffer);
-  auto shape_copy=shape;
+  auto shape_copy = shape;
 
   // Pointers and sizes should match as they're the same buffer
   EXPECT_EQ(gsl::make_span(buffer).data(), shape.GetDims().data());
@@ -72,7 +69,7 @@ TEST(TensorShapeTest, FromExistingBuffer) {
 
   // Test assigning from an empty shape
   TensorShape empty_shape;
-  shape_copy=empty_shape;
+  shape_copy = empty_shape;
 
   EXPECT_EQ(shape_copy, empty_shape);
 }

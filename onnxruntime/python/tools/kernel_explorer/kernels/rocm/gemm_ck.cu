@@ -1,8 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "python/tools/kernel_explorer/kernels/rocm/gemm_ck.h"
-
 #include <pybind11/stl.h>
 
 #include <memory>
@@ -208,15 +206,13 @@ class CKStridedBatchedGemm : public IKernelExplorer {
   REGISTER_CKSTRIDEDBATCHEDGEMM(dtype, Col, Row, "TN");      \
   REGISTER_CKSTRIDEDBATCHEDGEMM(dtype, Col, Col, "TT");
 
-void InitComposableKernelGemm(py::module m) {
+KE_REGISTER(m) {
   REGISTER_CKGEMM_FOR_ALL_TRANSAB(float);
   REGISTER_CKGEMM_FOR_ALL_TRANSAB(half);
 
   REGISTER_CKSTRIDEDBATCHEDGEMM_FOR_ALL_TRANSAB(float);
   REGISTER_CKSTRIDEDBATCHEDGEMM_FOR_ALL_TRANSAB(half);
 }
-#else
-void InitComposableKernelGemm(py::module) {}
 #endif  // USE_COMPOSABLE_KERNEL
 
 }  // namespace onnxruntime

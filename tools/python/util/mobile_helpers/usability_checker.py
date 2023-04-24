@@ -32,7 +32,7 @@ class _SupportedOpsChecker:
         self._ops = {}  # op to caveats
         self._ops_seen = set()
 
-        with open(filename, "r") as f:
+        with open(filename) as f:
             for line in f.readlines():
                 # we're looking for a markdown table with 2 columns. first is op name. second is caveats
                 # op name is domain:op
@@ -85,7 +85,6 @@ class PartitioningInfo:
         self.nodes_unsupported_due_to_dynamic_input = -1
 
     def suitability(self):
-
         # for now add up all the nodes. if there are subgraphs, the percentage of covered nodes will be reduced by all
         # nodes in the subgraphs.
         num_nodes = self.num_nodes + self.num_nodes_in_subgraphs
@@ -444,7 +443,7 @@ def check_shapes(graph: onnx.GraphProto, logger: logging.Logger = None):
 
     if logger:
         logger.info(
-            f"Num values with fixed shape={num_fixed_values}. " f"Num values with dynamic shape={num_dynamic_values}"
+            f"Num values with fixed shape={num_fixed_values}. Num values with dynamic shape={num_dynamic_values}"
         )
 
         if dynamic_inputs:
@@ -465,7 +464,6 @@ def check_shapes(graph: onnx.GraphProto, logger: logging.Logger = None):
 
 
 def checker(model_path, logger: logging.Logger):
-
     model = onnx.load(model_path)
     model_with_shape_info = onnx.shape_inference.infer_shapes(model)
 

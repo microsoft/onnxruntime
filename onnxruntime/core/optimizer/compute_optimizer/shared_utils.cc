@@ -47,7 +47,11 @@ Node* InsertIntermediateNodeOnDestInput(Graph& graph,
   for (size_t j = 0; j < new_node.MutableOutputDefs().size(); ++j) {
     graph.UpdateProducerNode(new_node.MutableOutputDefs()[j]->Name(), new_node.Index());
   }
-  graph.AddConsumerNode(src_node_arg->Name(), &new_node);
+
+  for (size_t j = 0; j < new_node.MutableInputDefs().size(); ++j) {
+    graph.AddConsumerNode(new_node.MutableInputDefs()[j]->Name(), &new_node);
+  }
+
   const Node* src_node = graph.GetProducerNode(src_node_arg->Name());
   if (src_node) {
     int src_out_index = optimizer_utils::IndexOfNodeOutput(*src_node, *src_node_arg);
@@ -97,6 +101,92 @@ Node* InsertIntermediateNodeOnDestInput(Graph& graph,
                              std::to_string(dest_in_index) + "th input " +
                              dest_node.InputDefs()[dest_in_index]->Name());
   return &new_node;
+}
+
+std::pair<bool, std::vector<DimCompare>> CompareInputShapeWithOutputShape(
+    const ONNX_NAMESPACE::TensorShapeProto* full_broadcasted_shape,
+    const ONNX_NAMESPACE::TensorShapeProto* target_shape) {
+  int full_rank = full_broadcasted_shape->dim_size();
+  int target_rank = target_shape->dim_size();
+
+  if (target_rank > full_rank) {
+    return std::make_pair<bool, std::vector<DimCompare>>(false, {});
+  }
+
+  std::vector<DimCompare> rets(full_rank);
+  // For broadcasted shape, we need to compare from the right to left.
+  // Be noted: if the dim of target_shape does not exist, we still continue the loop unless we handle
+  // all the dims of full_broadcasted_shape.
+  for (int i = -1; i >= -full_rank; --i) {
+    int idx = full_rank + i;
+    if (i < -target_rank) {
+      rets[idx] = DimCompare::NotExist;
+      continue;
+    }
+
+    auto& dim = full_broadcasted_shape->dim(idx);
+    auto& target_dim = target_shape->dim(target_rank + i);
+    if (dim.has_dim_value() && target_dim.has_dim_value()) {
+      if (dim.dim_value() != target_dim.dim_value()) {
+        if (target_dim.dim_value() == 1) {
+          rets[idx] = DimCompare::BroadCast;
+        } else {
+          rets[idx] = DimCompare::NotEqual;
+        }
+      } else {
+        rets[idx] = DimCompare::Equal;
+      }
+    } else if (dim.has_dim_param() && target_dim.has_dim_param()) {
+      if (dim.dim_param() != target_dim.dim_param()) {
+        rets[idx] = DimCompare::NotEqual;
+      } else {
+        rets[idx] = DimCompare::Equal;
+      }
+    } else {
+      if (target_dim.has_dim_value() && target_dim.dim_value() == 1) {
+        rets[idx] = DimCompare::BroadCast;
+      } else {
+        rets[idx] = DimCompare::NotEqual;
+      }
+    }
+  }
+
+  return std::make_pair<bool, std::vector<DimCompare>>(true, std::move(rets));
+}
+
+int GetONNXOpSetVersion(const Graph& graph) {
+  int onnx_opset = -1;
+  auto onnx_domain_it = graph.DomainToVersionMap().find(kOnnxDomain);
+  if (onnx_domain_it != graph.DomainToVersionMap().end()) {
+    onnx_opset = onnx_domain_it->second;
+  } else {
+    auto onnx_domain_alias_it = graph.DomainToVersionMap().find(kOnnxDomainAlias);
+    if (onnx_domain_alias_it != graph.DomainToVersionMap().end())
+      onnx_opset = onnx_domain_alias_it->second;
+    else
+      ORT_THROW("ONNX domain not found in this model");
+  }
+  return onnx_opset;
+}
+
+NodeArg* CreateInitializerFromVector(Graph& graph,
+                                     const InlinedVector<int64_t>& dims,
+                                     const InlinedVector<int64_t>& values,
+                                     const std::string& name) {
+  ONNX_NAMESPACE::TensorProto const_tensor;
+  const_tensor.set_name(name);
+  const_tensor.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+
+  int64_t total_count = 1;
+  for (const int64_t dim : dims) {
+    const_tensor.add_dims(dim);
+    total_count *= dim;
+  }
+
+  ORT_ENFORCE(total_count == static_cast<int64_t>(values.size()));
+
+  const_tensor.set_raw_data(values.data(), values.size() * sizeof(int64_t));
+  return &graph_utils::AddInitializer(graph, const_tensor);
 }
 
 }  // namespace onnxruntime::optimizer::compute_optimizer

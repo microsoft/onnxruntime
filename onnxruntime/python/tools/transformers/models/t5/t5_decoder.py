@@ -47,6 +47,9 @@ class T5DecoderInit(torch.nn.Module):
         self.decoder_start_token_id = (
             decoder_start_token_id if decoder_start_token_id is not None else self.config.decoder_start_token_id
         )
+        self.tie_word_embeddings = (
+            self.config.tie_word_embeddings if hasattr(self.config, "tie_word_embeddings") else True
+        )
 
     def forward(
         self,
@@ -76,7 +79,8 @@ class T5DecoderInit(torch.nn.Module):
         sequence_output = decoder_outputs.last_hidden_state
         present_key_values = decoder_outputs.past_key_values
 
-        sequence_output = sequence_output * (self.config.d_model**-0.5)
+        if self.tie_word_embeddings:
+            sequence_output = sequence_output * (self.config.d_model**-0.5)
 
         lm_logits = self.lm_head(sequence_output)
         past_self, past_cross = PastKeyValuesHelper.group_by_self_or_cross(present_key_values)
@@ -91,9 +95,11 @@ class T5Decoder(torch.nn.Module):
         self.decoder = decoder
         self.lm_head = lm_head
         self.config = config
+        self.tie_word_embeddings = (
+            self.config.tie_word_embeddings if hasattr(self.config, "tie_word_embeddings") else True
+        )
 
     def forward(self, decoder_input_ids, encoder_attention_mask, *past):
-
         past_key_values = PastKeyValuesHelper.group_by_layer(past, self.config.num_layers)
 
         # This is a hack since only the third dimension of encoder_hidden_states is used here
@@ -110,7 +116,8 @@ class T5Decoder(torch.nn.Module):
         sequence_output = decoder_outputs.last_hidden_state
         present_key_values = decoder_outputs.past_key_values
 
-        sequence_output = sequence_output * (self.config.d_model**-0.5)
+        if self.tie_word_embeddings:
+            sequence_output = sequence_output * (self.config.d_model**-0.5)
 
         lm_logits = self.lm_head(sequence_output)
         present_self, _ = PastKeyValuesHelper.group_by_self_or_cross(present_key_values)
@@ -154,7 +161,6 @@ class T5DecoderInputs:
         Returns:
             T5DecoderInputs: dummy inputs for decoder
         """
-        hidden_size: int = config.d_model
         num_attention_heads: int = config.num_heads
         num_layers: int = config.num_layers
         vocab_size: int = config.vocab_size
@@ -263,7 +269,7 @@ class T5DecoderHelper:
 
         input_past_names = past_names if isinstance(decoder, T5Decoder) else []
         output_present_names = present_self_names if isinstance(decoder, T5Decoder) else present_names
-        output_names = ["logits"] + output_present_names
+        output_names = ["logits", *output_present_names]
 
         # Shape of input tensors (sequence_length==1):
         #    input_ids: (batch_size, sequence_length)
@@ -381,7 +387,7 @@ class T5DecoderHelper:
             past_decode_sequence_length,
         ) in test_cases[:max_cases]:
             if isinstance(model, T5DecoderInit):
-                past_decode_sequence_length = 0
+                past_decode_sequence_length = 0  # noqa: PLW2901
 
             inputs = T5DecoderInputs.create_dummy(
                 model.config,
@@ -421,8 +427,11 @@ class T5DecoderHelper:
 
             test_cases_max_diff.append(max_diff_all)
             logger.info(
-                f"batch_size={batch_size}, encode_sequence_length={encode_sequence_length}, "
-                + f"past_decode_sequence_length={past_decode_sequence_length}, max_diff={max_diff_all}"
+                "batch_size=%s, encode_sequence_length=%s, past_decode_sequence_length=%s, max_diff=%s",
+                batch_size,
+                encode_sequence_length,
+                past_decode_sequence_length,
+                max_diff_all,
             )
 
         return max_diff_all

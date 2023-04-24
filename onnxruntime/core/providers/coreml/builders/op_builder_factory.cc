@@ -15,8 +15,12 @@ namespace coreml {
 static OpBuilderRegistrations CreateOpBuilderRegistrations() {
   OpBuilderRegistrations op_registrations;
 
-  {  // Add
+  {  // Add/Mul/Pow/Sub/Div
     CreateBinaryOpBuilder("Add", op_registrations);
+    CreateBinaryOpBuilder("Mul", op_registrations);
+    CreateBinaryOpBuilder("Pow", op_registrations);
+    CreateBinaryOpBuilder("Sub", op_registrations);
+    CreateBinaryOpBuilder("Div", op_registrations);
   }
 
   {  // Activations
@@ -24,6 +28,7 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
     CreateActivationOpBuilder("Tanh", op_registrations);
     CreateActivationOpBuilder("Relu", op_registrations);
     CreateActivationOpBuilder("PRelu", op_registrations);
+    CreateActivationOpBuilder("LeakyRelu", op_registrations);
   }
 
   {  // Transpose
@@ -88,6 +93,10 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
 
   {  // LRN
     CreateLRNOpBuilder("LRN", op_registrations);
+  }
+
+  {  // Pad
+    CreatePadOpBuilder("Pad", op_registrations);
   }
 
   return op_registrations;

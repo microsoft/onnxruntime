@@ -14,10 +14,10 @@ def find_node(graph_proto, op_type):
 
 
 def gen_attribute(key, value):
-    attr = AttributeProto()
+    attr = AttributeProto()  # noqa: F821
     attr.name = key
     attr.ints.extend(int(v) for v in value)
-    attr.type = AttributeProto.INTS
+    attr.type = AttributeProto.INTS  # noqa: F821
     return attr
 
 
@@ -48,21 +48,21 @@ def layer_norm_transform(model_proto):
 
     graph_proto = model_proto.graph
 
-    _, map_input_Div = find_node(graph_proto, "Div")
+    _, map_input_Div = find_node(graph_proto, "Div")  # noqa: N806
 
-    _, map_input_Sqrt = find_node(graph_proto, "Sqrt")
+    _, map_input_Sqrt = find_node(graph_proto, "Sqrt")  # noqa: N806
 
-    _, map_input_Add = find_node(graph_proto, "Add")
+    _, map_input_Add = find_node(graph_proto, "Add")  # noqa: N806
 
-    nodes_ReduceMean, map_input_ReduceMean = find_node(graph_proto, "ReduceMean")
+    nodes_ReduceMean, map_input_ReduceMean = find_node(graph_proto, "ReduceMean")  # noqa: N806
 
-    _, map_input_Pow = find_node(graph_proto, "Pow")
+    _, map_input_Pow = find_node(graph_proto, "Pow")  # noqa: N806
 
-    _, map_input_Mul = find_node(graph_proto, "Mul")
+    _, map_input_Mul = find_node(graph_proto, "Mul")  # noqa: N806
 
     # find right side Sub (see the layer norm subgrapg)
-    nodes_Sub = []
-    map_input_Sub = {}
+    nodes_Sub = []  # noqa: N806
+    map_input_Sub = {}  # noqa: N806
     for node in graph_proto.node:
         if node.op_type == "Sub":
             if node.output[0] in map_input_Pow:
@@ -70,16 +70,16 @@ def layer_norm_transform(model_proto):
                 map_input_Sub[node.input[1]] = node
 
     # find first ReduceMean
-    first_ReduceMean = []
-    first_ReduceMean_outputs = []
+    first_ReduceMean = []  # noqa: N806
+    first_ReduceMean_outputs = []  # noqa: N806
     for node in nodes_ReduceMean:
         if node.output[0] in map_input_Sub:
             first_ReduceMean.append(node)
             first_ReduceMean_outputs.append(node.output[0])
 
     # find constant node
-    nodes_Constant = []
-    map_output_Constant = {}
+    nodes_Constant = []  # noqa: N806
+    map_output_Constant = {}  # noqa: N806
     for node in graph_proto.node:
         if node.op_type == "Constant":
             nodes_Constant.append(node)
@@ -111,19 +111,19 @@ def layer_norm_transform(model_proto):
         if node_reduce.output[0] not in map_input_Add:
             continue
 
-        node_Add = map_input_Add[node_reduce.output[0]]
+        node_Add = map_input_Add[node_reduce.output[0]]  # noqa: N806
         if node_Add.output[0] not in map_input_Sqrt:
             continue
 
-        node_Sqrt = map_input_Sqrt[node_Add.output[0]]
+        node_Sqrt = map_input_Sqrt[node_Add.output[0]]  # noqa: N806
         if node_Sqrt.output[0] not in map_input_Div:
             continue
 
-        node_Div = map_input_Div[node_Sqrt.output[0]]
+        node_Div = map_input_Div[node_Sqrt.output[0]]  # noqa: N806
         if node_Div.output[0] not in map_input_Mul:
             continue
 
-        node_Mul = map_input_Mul[node_Div.output[0]]
+        node_Mul = map_input_Mul[node_Div.output[0]]  # noqa: N806
 
         if node_Mul.input[0] != node_Div.output[0]:
             layer_norm_input.append(node_Mul.input[0])
@@ -133,7 +133,7 @@ def layer_norm_transform(model_proto):
         if node_Mul.output[0] not in map_input_Add:
             continue
 
-        node_Add1 = map_input_Add[node_Mul.output[0]]
+        node_Add1 = map_input_Add[node_Mul.output[0]]  # noqa: N806
         layer_norm_input.append(node_Add1.input[1])
 
         removed_nodes.append(node)

@@ -19,23 +19,18 @@ enum class BufferType : int {
   TF8,
   TF16,
   UINT8,
-  FLOAT};
+  FLOAT
+};
 
 class SnpeRuntimeOptions {
  public:
   SnpeRuntimeOptions()
-      : runtime_target_()
-      , execution_priority_(zdl::DlSystem::ExecutionPriorityHint_t::NORMAL)
-      , runtime_options_()
-      , buffer_type_(BufferType::ITENSOR) {
+      : runtime_target_(), execution_priority_(zdl::DlSystem::ExecutionPriorityHint_t::NORMAL), runtime_options_(), buffer_type_(BufferType::ITENSOR) {
   }
 
   explicit SnpeRuntimeOptions(const std::unordered_map<std::string, std::string>& options)
-      : runtime_target_()
-      , execution_priority_(zdl::DlSystem::ExecutionPriorityHint_t::NORMAL)
-      , runtime_options_(options)
-      , buffer_type_(BufferType::ITENSOR) {
-      ParseOptions();
+      : runtime_target_(), execution_priority_(zdl::DlSystem::ExecutionPriorityHint_t::NORMAL), runtime_options_(options), buffer_type_(BufferType::ITENSOR) {
+    ParseOptions();
   }
 
   const SnpeRuntimeWrapper& GetRuntimeTarget() const {

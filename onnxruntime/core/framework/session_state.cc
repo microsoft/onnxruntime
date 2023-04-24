@@ -266,15 +266,15 @@ void SessionState::PruneRemovableAttributes() {
       continue;
     LOGS(logger_, INFO) << "removed " << n_removed << " removable attributes "
                         << "for node '" << node->Name() << "' ('" << node->OpType() << "'), "
-                        << "among attributes: " << [removable_attributes]() -> std::string{
-                          std::ostringstream os;
-                          for(auto it = removable_attributes.cbegin(); it != removable_attributes.cend(); ++it) {
-                            if (it != removable_attributes.cbegin())
-                              os << ", ";
-                            os << *it;
-                          }
-                          return os.str();
-                        }() << ".";
+                        << "among attributes: " << [removable_attributes]() -> std::string {
+      std::ostringstream os;
+      for (auto it = removable_attributes.cbegin(); it != removable_attributes.cend(); ++it) {
+        if (it != removable_attributes.cbegin())
+          os << ", ";
+        os << *it;
+      }
+      return os.str();
+    }() << ".";
   }
 }
 

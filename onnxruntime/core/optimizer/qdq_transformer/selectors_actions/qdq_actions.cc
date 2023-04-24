@@ -72,20 +72,19 @@ std::vector<NodeAndMoveInfo> ConvMoves() {
 
   return moves;
 }
-std::vector<NodeAndMoveInfo> WhereMoves(){
+std::vector<NodeAndMoveInfo> WhereMoves() {
   NTO::NodeLocation dq_x{NTO::NodeType::kInput, 0};
   NTO::NodeLocation dq_y{NTO::NodeType::kInput, 1};
   NTO::NodeLocation target{NTO::NodeType::kTarget, 0};
   NTO::NodeLocation q{NTO::NodeType::kOutput, 0};
 
   std::vector<NodeAndMoveInfo> moves{
-      MoveAndAppend(target,ArgType::kInput, 0, ArgType::kInput),  // move the condition to the new node
-      MoveAll(dq_x, ArgType::kInput),                          // append all inputs from x
-      MoveAll(dq_y, ArgType::kInput),                             // append all inputs from x
-      MoveAndAppend(q, ArgType::kInput, 1, ArgType::kInput),  // append scale (input 1) from q
-      MoveAndAppend(q, ArgType::kInput, 2, ArgType::kInput),  // append zp (input 2) from q
-      MoveAll(q, ArgType::kOutput)
-  };
+      MoveAndAppend(target, ArgType::kInput, 0, ArgType::kInput),  // move the condition to the new node
+      MoveAll(dq_x, ArgType::kInput),                              // append all inputs from x
+      MoveAll(dq_y, ArgType::kInput),                              // append all inputs from x
+      MoveAndAppend(q, ArgType::kInput, 1, ArgType::kInput),       // append scale (input 1) from q
+      MoveAndAppend(q, ArgType::kInput, 2, ArgType::kInput),       // append zp (input 2) from q
+      MoveAll(q, ArgType::kOutput)};
   return moves;
 }
 QDQReplaceWithNew SplitReplacer() {

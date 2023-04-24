@@ -146,18 +146,19 @@ std::vector<NodeUnitIODef> GetQDQIODefs(const Node& target_node, const QDQ::Node
 }  // namespace
 
 NodeUnit::NodeUnit(const Node& node)
-      :target_node_(node),
+    : target_node_(node),
       type_(Type::SingleNode) {
   InitForSingleNode();
 }
 
 NodeUnit::NodeUnit(const GraphViewer& graph_viewer, const QDQ::NodeGroup& node_group)
-      :q_nodes_{GetQDQIONodes(graph_viewer, node_group, false /* is_input */)},
+    : q_nodes_{GetQDQIONodes(graph_viewer, node_group, false /* is_input */)},
       dq_nodes_{GetQDQIONodes(graph_viewer, node_group, true /* is_input */)},
       target_node_(*graph_viewer.GetNode(node_group.target_node)),
       type_(Type::QDQGroup),
       inputs_{GetQDQIODefs(target_node_, node_group, true /* is_input */)},
       outputs_{GetQDQIODefs(target_node_, node_group, false /* is_input */)} {
+  ORT_THROW_IF_ERROR(QDQ::ValidateNodeGroupDQNodes(graph_viewer, target_node_, dq_nodes_));
 }
 
 const std::string& NodeUnit::Domain() const noexcept { return target_node_.Domain(); }

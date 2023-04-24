@@ -48,14 +48,14 @@ def parse_arguments():
     parser.add_argument(
         "--package_path",
         required=True,
-        help="Path containing the package to be validated." + "Must only contain only one package within this.",
+        help="Path containing the package to be validated. Must only contain only one package within this.",
     )
     parser.add_argument(
         "--platforms_supported", required=True, help="Comma separated list (no space). Ex: linux-x64,win-x86,osx-x64"
     )
     parser.add_argument(
         "--verify_nuget_signing",
-        help="Flag indicating if Nuget package signing is to be verified. " "Only accepts 'true' or 'false'",
+        help="Flag indicating if Nuget package signing is to be verified. Only accepts 'true' or 'false'",
     )
 
     return parser.parse_args()
@@ -89,7 +89,7 @@ def check_if_dlls_are_present(
     platforms = platforms_supported.strip().split(",")
     if package_type == "tarball":
         file_list_in_package = list()
-        for (dirpath, dirnames, filenames) in os.walk(package_path):
+        for dirpath, _dirnames, filenames in os.walk(package_path):
             file_list_in_package += [os.path.join(dirpath, file) for file in filenames]
     else:
         file_list_in_package = zip_file.namelist()
@@ -261,8 +261,8 @@ def validate_nuget(args):
 
     exit_code = 0
 
-    nupkg_copy_name = "NugetCopy" + ".nupkg"
-    zip_copy_name = "NugetCopy" + ".zip"
+    nupkg_copy_name = "NugetCopy.nupkg"
+    zip_copy_name = "NugetCopy.zip"
     zip_file = None
 
     # Remove any residual files
@@ -335,7 +335,7 @@ def main():
     elif args.package_type == "zip":
         validate_zip(args)
     else:
-        print("Package type {} is not supported".format(args.package_type))
+        print(f"Package type {args.package_type} is not supported")
 
 
 if __name__ == "__main__":

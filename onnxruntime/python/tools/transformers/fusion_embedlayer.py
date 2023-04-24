@@ -112,7 +112,12 @@ class FusionEmbedLayerNoMask(Fusion):
                 logger.debug("No Attention like subgraph in children of LayerNormalization")
                 return False
         else:
-            if children_types != ["Add", "MatMul", "MatMul", "MatMul",] and children_types != [
+            if children_types != [
+                "Add",
+                "MatMul",
+                "MatMul",
+                "MatMul",
+            ] and children_types != [
                 "MatMul",
                 "MatMul",
                 "MatMul",
@@ -245,11 +250,11 @@ class FusionEmbedLayerNoMask(Fusion):
                             /                  Add (optional, B=0)
                            /                    |
                         Gather (segment_ids) Unsqueeze (axes=0)
-                           \        |           |
-                            \     Gather      Slice (data[1,512], starts=0, ends=*, axes=1, steps=1)
-                              \    /            |
+                           \\        |           |
+                            \\     Gather      Slice (data[1,512], starts=0, ends=*, axes=1, steps=1)
+                              \\    /            |
                                 Add          Gather
-                                   \       /
+                                   \\       /
                                       Add
                                        |
                                 LayerNormalization
@@ -735,7 +740,7 @@ class FusionEmbedLayerNormalization(FusionEmbedLayerNoMask):
         if len(embed_node.input) == 7:
             embed_node.input.append(mask_int32)
             logger.debug("append mask to %s", embed_node.name)
-        elif len(embed_node.input) > 7 and embed_node.input[7] == "":
+        elif len(embed_node.input) > 7 and not embed_node.input[7]:
             embed_node.input[7] = mask_int32
             logger.debug("replace mask in %s", embed_node.name)
         else:

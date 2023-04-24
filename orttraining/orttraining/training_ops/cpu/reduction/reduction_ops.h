@@ -28,4 +28,3 @@ class ReduceSumTraining final : public ReduceKernel<true> {
 
 }  // namespace contrib
 }  // namespace onnxruntime
-

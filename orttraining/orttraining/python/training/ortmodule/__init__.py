@@ -25,7 +25,7 @@ def _defined_from_envvar(name, default_value, warn=True):
         new_value = type(default_value)(new_value)
     except (TypeError, ValueError) as e:
         if warn:
-            warnings.warn("Unable to overwrite constant %r due to %r." % (name, e))
+            warnings.warn(f"Unable to overwrite constant {name!r} due to {e!r}.")
         return default_value
     return new_value
 
@@ -88,7 +88,7 @@ if not is_torch_cpp_extensions_installed(ORTMODULE_TORCH_CPP_DIR) and "-m" not i
 
 # Initalized ORT's random seed with pytorch's initial seed
 # in case user has set pytorch seed before importing ORTModule
-set_seed((torch.initial_seed() % sys.maxsize))
+set_seed(torch.initial_seed() % sys.maxsize)
 
 
 # Override torch.manual_seed and torch.cuda.manual_seed
@@ -111,16 +111,16 @@ torch.cuda.manual_seed = override_torch_cuda_manual_seed
 
 
 def _use_deterministic_algorithms(enabled):
-    global ORTMODULE_IS_DETERMINISTIC
+    global ORTMODULE_IS_DETERMINISTIC  # noqa: PLW0603
     ORTMODULE_IS_DETERMINISTIC = enabled
 
 
 def _are_deterministic_algorithms_enabled():
-    global ORTMODULE_IS_DETERMINISTIC
+    global ORTMODULE_IS_DETERMINISTIC  # noqa: PLW0602
     return ORTMODULE_IS_DETERMINISTIC
 
 
-from .debug_options import DebugOptions, LogLevel  # noqa: E402
+from .debug_options import DebugOptions, LogLevel  # noqa: E402, F401
 
 # ORTModule must be loaded only after all validation passes
-from .ortmodule import ORTModule  # noqa: E402
+from .ortmodule import ORTModule  # noqa: E402, F401

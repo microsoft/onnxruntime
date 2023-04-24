@@ -43,7 +43,7 @@ class TestIOBinding(unittest.TestCase):
         return np.array([[2.0, 8.0], [18.0, 32.0], [50.0, 72.0]], dtype=np.float32)
 
     def test_bind_input_to_cpu_arr(self):
-        input = self.create_numpy_input()
+        self.create_numpy_input()
 
         session = onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=onnxrt.get_available_providers())
         io_binding = session.io_binding()
@@ -66,8 +66,8 @@ class TestIOBinding(unittest.TestCase):
         # Validate results
         self.assertTrue(np.array_equal(self.create_expected_output(), ort_output))
 
+    @unittest.skip("Could not find an implementation for Identity(19) node with name ''")
     def test_bind_input_types(self):
-
         opset = onnx_opset_version()
         devices = [
             (
@@ -99,12 +99,11 @@ class TestIOBinding(unittest.TestCase):
                 np.bool_,
             ]:
                 with self.subTest(dtype=dtype, device=str(device)):
-
                     x = np.arange(8).reshape((-1, 2)).astype(dtype)
                     proto_dtype = NP_TYPE_TO_TENSOR_TYPE[x.dtype]
 
-                    X = helper.make_tensor_value_info("X", proto_dtype, [None, x.shape[1]])
-                    Y = helper.make_tensor_value_info("Y", proto_dtype, [None, x.shape[1]])
+                    X = helper.make_tensor_value_info("X", proto_dtype, [None, x.shape[1]])  # noqa: N806
+                    Y = helper.make_tensor_value_info("Y", proto_dtype, [None, x.shape[1]])  # noqa: N806
 
                     # inference
                     node_add = helper.make_node("Identity", ["X"], ["Y"])

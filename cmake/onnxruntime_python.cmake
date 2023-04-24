@@ -29,8 +29,8 @@ if(onnxruntime_ENABLE_TRAINING)
 endif()
 
 # Add Pytorch as a library.
-if (onnxruntime_ENABLE_LAZY_TENSOR OR onnxruntime_ENABLE_EAGER_MODE)
-  # Both Lazy Tensor and Eager Mode require Pytorch as a library.
+if (onnxruntime_ENABLE_LAZY_TENSOR)
+  # Lazy Tensor requires Pytorch as a library.
   list(APPEND CMAKE_PREFIX_PATH ${onnxruntime_PREBUILT_PYTORCH_PATH})
   # The following line may change ${CUDA_NVCC_FLAGS} and ${CMAKE_CUDA_FLAGS},
   # if Pytorch is built from source.
@@ -42,15 +42,6 @@ if (onnxruntime_ENABLE_LAZY_TENSOR OR onnxruntime_ENABLE_EAGER_MODE)
   # Let's remove ONNX_NAMESPACE from Torch.
   list(FILTER CUDA_NVCC_FLAGS EXCLUDE REGEX "-DONNX_NAMESPACE=.+")
   string(REGEX REPLACE "-DONNX_NAMESPACE=.+ " " " CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS}")
-endif()
-
-if (onnxruntime_ENABLE_EAGER_MODE)
-  file(GLOB onnxruntime_eager_extension_srcs CONFIGURE_DEPENDS
-    "${ORTTRAINING_ROOT}/orttraining/eager/*.cpp"
-    )
-
-  list(APPEND onnxruntime_pybind_srcs
-              ${onnxruntime_eager_extension_srcs})
 endif()
 
 # Support ORT as a backend in Pytorch's LazyTensor.
@@ -72,7 +63,7 @@ endif()
 # onnxruntime_ENABLE_LAZY_TENSOR and onnxruntime_ENABLE_EAGER_MODE
 # need DLPack code to pass tensors cross ORT and Pytorch boundary.
 # TODO: consider making DLPack code a standalone library.
-if (onnxruntime_ENABLE_LAZY_TENSOR OR onnxruntime_ENABLE_EAGER_MODE)
+if (onnxruntime_ENABLE_LAZY_TENSOR)
   # If DLPack code is not built, add it to ORT's pybind target.
   if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
     list(APPEND onnxruntime_pybind_srcs
@@ -148,7 +139,7 @@ endif()
 
 # Eager mode and LazyTensor are both Pytorch's backends, so their
 # dependencies are set together below.
-if (onnxruntime_ENABLE_EAGER_MODE OR onnxruntime_ENABLE_LAZY_TENSOR)
+if (onnxruntime_ENABLE_LAZY_TENSOR)
   # Set library dependencies shared by aforementioned backends.
 
   # todo: this is because the prebuild pytorch may use a different version of protobuf headers.
@@ -172,26 +163,7 @@ if (onnxruntime_ENABLE_EAGER_MODE OR onnxruntime_ENABLE_LAZY_TENSOR)
     target_link_libraries(onnxruntime_pybind11_state PRIVATE ${LIBTORCH_CUDA_LIBRARY} ${LIBC10_CUDA_LIBRARY})
   endif()
 
-  if (onnxruntime_ENABLE_EAGER_MODE)
-    target_link_libraries(onnxruntime_pybind11_state PRIVATE onnxruntime_eager)
-  endif()
 
-  # This part is eager-mode specific.
-  # the ort_aten.g.cpp is generated from tools. currently it has some limitations.
-  # todo: fix this
-  if (onnxruntime_ENABLE_EAGER_MODE AND NOT MSVC)
-    set_source_files_properties("${ORTTRAINING_ROOT}/orttraining/eager/ort_aten.g.cpp" PROPERTIES COMPILE_FLAGS -Wno-unused-parameter)
-    set_source_files_properties("${ORTTRAINING_ROOT}/orttraining/eager/ort_aten.cpp" PROPERTIES COMPILE_FLAGS -Wno-unused-parameter)
-    set_source_files_properties("${ORTTRAINING_ROOT}/orttraining/eager/ort_guard.cpp" PROPERTIES COMPILE_FLAGS -Wno-unused-parameter)
-    set_source_files_properties("${ORTTRAINING_ROOT}/orttraining/eager/ort_tensor.cpp" PROPERTIES COMPILE_FLAGS -Wno-unused-parameter)
-    set_source_files_properties("${ORTTRAINING_ROOT}/orttraining/eager/ort_backends.cpp" PROPERTIES COMPILE_FLAGS -Wno-unused-parameter)
-    set_source_files_properties("${ORTTRAINING_ROOT}/orttraining/eager/ort_customops.g.cpp" PROPERTIES COMPILE_FLAGS -Wno-unused-parameter)
-    set_source_files_properties("${ORTTRAINING_ROOT}/orttraining/eager/ort_eager.cpp" PROPERTIES COMPILE_FLAGS -Wno-unused-parameter)
-    set_source_files_properties("${ORTTRAINING_ROOT}/orttraining/eager/ort_hooks.cpp" PROPERTIES COMPILE_FLAGS -Wno-unused-parameter)
-    set_source_files_properties("${ORTTRAINING_ROOT}/orttraining/eager/ort_ops.cpp" PROPERTIES COMPILE_FLAGS -Wno-unused-parameter)
-    set_source_files_properties("${ORTTRAINING_ROOT}/orttraining/eager/ort_util.cpp" PROPERTIES COMPILE_FLAGS -Wno-unused-parameter)
-    set_source_files_properties("${ORTTRAINING_ROOT}/orttraining/python/orttraining_python_module.cc" PROPERTIES COMPILE_FLAGS -Wno-unused-parameter)
-  endif()
   if (MSVC)
     target_compile_options(onnxruntime_pybind11_state PRIVATE "/wd4100" "/wd4324" "/wd4458" "/wd4127" "/wd4193" "/wd4624" "/wd4702")
     target_compile_options(onnxruntime_pybind11_state PRIVATE "/bigobj" "/wd4275" "/wd4244" "/wd4267" "/wd4067")
@@ -416,6 +388,9 @@ if (onnxruntime_ENABLE_TRAINING)
   file(GLOB onnxruntime_python_utils_data_srcs CONFIGURE_DEPENDS
   "${ORTTRAINING_SOURCE_DIR}/python/training/utils/data/*"
   )
+  file(GLOB onnxruntime_python_utils_hooks_srcs CONFIGURE_DEPENDS
+  "${ORTTRAINING_SOURCE_DIR}/python/training/utils/hooks/*"
+  )
   if (onnxruntime_ENABLE_TRAINING_APIS)
     file(GLOB onnxruntime_python_onnxblock_srcs CONFIGURE_DEPENDS
     "${ORTTRAINING_SOURCE_DIR}/python/training/onnxblock/*"
@@ -450,6 +425,9 @@ if (onnxruntime_BUILD_UNIT_TESTS)
   )
   file(GLOB onnxruntime_python_transformers_testdata_srcs CONFIGURE_DEPENDS
       "${ONNXRUNTIME_ROOT}/test/python/transformers/test_data/models/*.onnx"
+  )
+  file(GLOB onnxruntime_python_transformers_testdata_whisper CONFIGURE_DEPENDS
+      "${ONNXRUNTIME_ROOT}/test/python/transformers/test_data/models/whisper/*.onnx"
   )
 endif()
 
@@ -548,6 +526,7 @@ add_custom_command(
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/quantization
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/transformers
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/transformers/test_data/models
+  COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/transformers/test_data/models/whisper
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/eager_test
   COMMAND ${CMAKE_COMMAND} -E copy
       ${ONNXRUNTIME_ROOT}/__init__.py
@@ -686,6 +665,9 @@ if (onnxruntime_BUILD_UNIT_TESTS)
     COMMAND ${CMAKE_COMMAND} -E copy
         ${onnxruntime_python_transformers_testdata_srcs}
         $<TARGET_FILE_DIR:${build_output_target}>/transformers/test_data/models/
+    COMMAND ${CMAKE_COMMAND} -E copy
+        ${onnxruntime_python_transformers_testdata_whisper}
+        $<TARGET_FILE_DIR:${build_output_target}>/transformers/test_data/models/whisper/
   )
 endif()
 
@@ -720,6 +702,7 @@ if (onnxruntime_ENABLE_TRAINING)
     COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/ortmodule/torch_cpp_extensions/cuda/torch_gpu_allocator
     COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/ortmodule/torch_cpp_extensions/cuda/fused_ops
     COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/utils/data/
+    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/utils/hooks/
     COMMAND ${CMAKE_COMMAND} -E copy
         ${onnxruntime_python_capi_training_srcs}
         $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/training/
@@ -771,6 +754,9 @@ if (onnxruntime_ENABLE_TRAINING)
     COMMAND ${CMAKE_COMMAND} -E copy
         ${onnxruntime_python_utils_data_srcs}
         $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/utils/data/
+    COMMAND ${CMAKE_COMMAND} -E copy
+        ${onnxruntime_python_utils_hooks_srcs}
+        $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/utils/hooks/
   )
   if (onnxruntime_ENABLE_TRAINING_APIS)
     add_custom_command(

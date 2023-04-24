@@ -1,7 +1,6 @@
 import io
 import os
 import warnings
-from packaging.version import Version as LooseVersion
 
 import numpy as np
 import onnx
@@ -9,6 +8,7 @@ import torch
 import torch.nn
 import torch.onnx
 from onnx import helper, numpy_helper
+from packaging.version import Version as LooseVersion
 
 import onnxruntime as ort
 import onnxruntime.capi.pt_patch
@@ -140,13 +140,13 @@ def ort_training_session_run_helper(session, iobinding, inputs, input_descs, out
     return torch_outputs
 
 
-def FuseSofmaxNLLToSoftmaxCE(onnx_model):
+def FuseSofmaxNLLToSoftmaxCE(onnx_model):  # noqa: N802
     nll_count = 0
     while True:
         nll_count = nll_count + 1
         nll_loss_node = None
         nll_loss_node_index = 0
-        for nll_loss_node_index, node in enumerate(onnx_model.graph.node):
+        for nll_loss_node_index, node in enumerate(onnx_model.graph.node):  # noqa: B007
             if node.op_type == "nll_loss" or node.op_type == "NegativeLogLikelihoodLoss":
                 nll_loss_node = node
                 break
@@ -158,7 +158,7 @@ def FuseSofmaxNLLToSoftmaxCE(onnx_model):
         softmax_node_index = 0
         label_input_name = None
         weight_input_name = None
-        for softmax_node_index, node in enumerate(onnx_model.graph.node):
+        for softmax_node_index, node in enumerate(onnx_model.graph.node):  # noqa: B007
             if node.op_type == "LogSoftmax":
                 # has to be connected to nll_loss
                 if len(nll_loss_node.input) > 2:
@@ -238,9 +238,9 @@ def dtype_torch_to_numpy(torch_dtype):
         raise Exception("Torch type to numpy type mapping unavailable for: " + str(torch_dtype))
 
 
-class model_loss_cls(torch.nn.Module):
+class model_loss_cls(torch.nn.Module):  # noqa: N801
     def __init__(self, model, loss_fn):
-        super(model_loss_cls, self).__init__()
+        super().__init__()
         self.model_ = model
         self.loss_fn_ = loss_fn
 
@@ -253,7 +253,7 @@ class model_loss_cls(torch.nn.Module):
 
 class WrapModel(torch.nn.Module):
     def __init__(self, model, loss_fn, input_names):
-        super(WrapModel, self).__init__()
+        super().__init__()
         self.model_ = model
         self.loss_fn_ = loss_fn
         self.input_names_ = input_names
@@ -264,10 +264,10 @@ class WrapModel(torch.nn.Module):
         # *inputs is given by torch trace. It is in the order of input_names.
         # model_ takes input in a order (which can be obtained via inspect.signature(model.forward)) different than input_names.
         sig = inspect.signature(self.model_.forward)
-        ordered_list_keys = list(sig.parameters.keys())
+        list(sig.parameters.keys())
 
         input_dict = {}
-        for key in sig.parameters.keys():
+        for key in sig.parameters:
             if key in self.input_names_:
                 input_dict[key] = inputs[self.input_names_.index(key)]
 
@@ -422,7 +422,7 @@ def convert_model_loss_fn_to_onnx(model, loss_fn, model_desc, device, inputs, op
     onnx_model = onnx.load_model_from_string(f.getvalue())
 
     # Remove 'model_.' prefix introduced by model wrapper for initializers.
-    if isinstance(model, WrapModel) or isinstance(model, model_loss_cls):
+    if isinstance(model, (WrapModel, model_loss_cls)):
         replace_name_dict = {}
         for n in onnx_model.graph.initializer:
             if n.name.startswith("model_."):
@@ -450,7 +450,7 @@ def create_ort_training_session_with_optimizer(
     allreduce_post_accumulation=False,
     deepspeed_zero_stage=0,
     enable_grad_norm_clip=True,
-    frozen_weights=[],
+    frozen_weights=[],  # noqa: B006
     opset_version=DEFAULT_OPSET_VERSION,
     use_deterministic_compute=False,
     use_memory_efficient_gradient=False,
@@ -482,7 +482,7 @@ def create_ort_training_session_with_optimizer(
 
     unused_frozen_weights = [n for n in frozen_weights if n not in [i.name for i in model.graph.initializer]]
     if unused_frozen_weights:
-        raise RuntimeError("{} in frozen_weights not found in model weights.".format(unused_frozen_weights))
+        raise RuntimeError(f"{unused_frozen_weights} in frozen_weights not found in model weights.")
 
     weights_to_train = set()
     for initializer in model.graph.initializer:
@@ -521,7 +521,7 @@ def create_ort_training_session_with_optimizer(
     ort_parameters.optimizer_attributes_map = optimizer_attributes_map
     ort_parameters.optimizer_int_attributes_map = optimizer_int_attributes_map
 
-    sessionOptions = ort.SessionOptions()
+    sessionOptions = ort.SessionOptions()  # noqa: N806
     sessionOptions.use_deterministic_compute = use_deterministic_compute
     if len(optimized_model_filepath) > 0:
         sessionOptions.optimized_model_filepath = optimized_model_filepath
@@ -530,7 +530,7 @@ def create_ort_training_session_with_optimizer(
     eval_io_binding = session.io_binding()
 
     if bind_parameters:
-        for param in torch_params.keys():
+        for param in torch_params:
             torch_tensor = torch_params[param]
 
             train_io_binding.bind_input(
@@ -556,12 +556,12 @@ def create_ort_training_session_with_optimizer(
 def save_checkpoint(
     model, checkpoint_dir, checkpoint_prefix="ORT_checkpoint", checkpoint_state_dict=None, include_optimizer_state=True
 ):
-    if checkpoint_state_dict == None:
+    if checkpoint_state_dict is None:
         checkpoint_state_dict = {"model": model.state_dict(include_optimizer_state)}
     else:
         checkpoint_state_dict.update({"model": model.state_dict(include_optimizer_state)})
 
-    assert os.path.exists(checkpoint_dir), "ERROR: Checkpoint directory doesn't exist: {}".format(checkpoint_dir)
+    assert os.path.exists(checkpoint_dir), f"ERROR: Checkpoint directory doesn't exist: {checkpoint_dir}"
 
     checkpoint_name = get_checkpoint_name(
         checkpoint_prefix, model.deepspeed_zero_stage_, model.world_rank, model.world_size
@@ -569,7 +569,7 @@ def save_checkpoint(
     checkpoint_file = os.path.join(checkpoint_dir, checkpoint_name)
 
     if os.path.exists(checkpoint_file):
-        warnings.warn("{} already exists, overwriting.".format(checkpoint_file))
+        warnings.warn(f"{checkpoint_file} already exists, overwriting.")
 
     torch.save(checkpoint_state_dict, checkpoint_file)
 
@@ -581,11 +581,11 @@ def _load_single_checkpoint(model, checkpoint_dir, checkpoint_prefix, is_partiti
     if is_partitioned:
         assert_msg = (
             "Couldn't find checkpoint file {}."
-            + "Optimizer partitioning is enabled using ZeRO. Please make sure that the "
-            + "checkpoint file exists for rank {} of {}."
+            "Optimizer partitioning is enabled using ZeRO. Please make sure that the "
+            "checkpoint file exists for rank {} of {}."
         ).format(checkpoint_file, model.world_rank, model.world_size)
     else:
-        assert_msg = "Couldn't find checkpoint file {}.".format(checkpoint_file)
+        assert_msg = f"Couldn't find checkpoint file {checkpoint_file}."
 
     assert os.path.exists(checkpoint_file), assert_msg
 
@@ -606,7 +606,7 @@ def _load_multi_checkpoint(model, checkpoint_dir, checkpoint_prefix, strict):
 
     # aggregate other keys in the state_dict.
     # Values will be overwritten for matching keys among workers
-    all_checkpoint_states = dict()
+    all_checkpoint_states = {}
     for checkpoint_file in checkpoint_files:
         checkpoint_state = torch.load(checkpoint_file, map_location="cpu")
         del checkpoint_state["model"]
@@ -620,7 +620,7 @@ def load_checkpoint(model, checkpoint_dir, checkpoint_prefix="ORT_checkpoint", s
     if len(checkpoint_files) > 1:
         warnings.warn(
             f"Found more than one file with prefix {checkpoint_prefix} in directory {checkpoint_dir}."
-            + "Attempting to load ZeRO checkpoint."
+            "Attempting to load ZeRO checkpoint."
         )
         is_partitioned = True
     if (not model.deepspeed_zero_stage_) and is_partitioned:
@@ -649,7 +649,7 @@ class ORTTrainer:
         loss_scaler=None,
         deepspeed_zero_stage=0,
         enable_grad_norm_clip=True,
-        frozen_weights=[],
+        frozen_weights=[],  # noqa: B006
         _opset_version=DEFAULT_OPSET_VERSION,
         _enable_internal_postprocess=True,
         _extra_postprocess=None,
@@ -659,7 +659,7 @@ class ORTTrainer:
         enable_adasum=False,
         optimized_model_filepath="",
     ):
-        super(ORTTrainer, self).__init__()
+        super().__init__()
         """
         Initialize ORTTrainer.
 
@@ -976,7 +976,7 @@ class ORTTrainer:
             if name in cur_initializers_names:
                 new_initializers[name] = state_dict[name].numpy()
             elif strict:
-                raise RuntimeError("Checkpoint tensor: {} is not present in the model.".format(name))
+                raise RuntimeError(f"Checkpoint tensor: {name} is not present in the model.")
 
         self._update_onnx_model_initializers(new_initializers)
 
@@ -1012,11 +1012,11 @@ class ORTTrainer:
 
         for input_desc in input_desc_with_:
             if input_desc.name_ in kwargs:
-                input = input + (kwargs[input_desc.name_],)
+                input = (*input, kwargs[input_desc.name_])
         if internal_learning_rate is not None:
-            input = input + (internal_learning_rate,)
+            input = (*input, internal_learning_rate)
         if internal_loss_scale is not None:
-            input = input + (internal_loss_scale,)
+            input = (*input, internal_loss_scale)
         elif self.use_mixed_precision:
             # loss_scale input name is needed to call train_step, for example:
             #   kwargs[model.loss_scale_input_name] = loss_scale
@@ -1024,8 +1024,8 @@ class ORTTrainer:
             # However, when first time train_step is called model.loss_scale_input_name is not set.
             # To workaround this problem, we use the special name 'default_loss_scale_input_name' to indicate
             # the loss_scale.
-            if "default_loss_scale_input_name" in kwargs.keys():
-                input = input + (kwargs["default_loss_scale_input_name"],)
+            if "default_loss_scale_input_name" in kwargs:
+                input = (*input, kwargs["default_loss_scale_input_name"])
 
         fetches = None
         if "fetches" in kwargs:
@@ -1203,12 +1203,12 @@ class LossScaler:
         self,
         loss_scale_input_name,
         is_dynamic_scale,
-        loss_scale=float(1 << 16),
+        loss_scale=float(1 << 16),  # noqa: B008
         up_scale_window=2000,
         min_loss_scale=1.0,
-        max_loss_scale=float(1 << 24),
+        max_loss_scale=float(1 << 24),  # noqa: B008
     ):
-        super(LossScaler, self).__init__()
+        super().__init__()
         self.loss_scale_input_name_ = loss_scale_input_name
         self.is_dynamic_scale_ = is_dynamic_scale
         self.initial_loss_scale_ = loss_scale

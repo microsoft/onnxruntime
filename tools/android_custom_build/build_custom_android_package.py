@@ -3,6 +3,7 @@
 # Licensed under the MIT License.
 
 import argparse
+import os
 import pathlib
 import shlex
 import shutil
@@ -12,6 +13,10 @@ import sys
 SCRIPT_DIR = pathlib.Path(__file__).parent.resolve()
 DEFAULT_OPS_CONFIG_RELATIVE_PATH = "tools/ci_build/github/android/mobile_package.required_operators.config"
 DEFAULT_BUILD_SETTINGS_RELATIVE_PATH = "tools/ci_build/github/android/default_mobile_aar_build_settings.json"
+
+
+def is_windows():
+    return sys.platform.startswith("win")
 
 
 def run(cmd_arg_list, **kwargs):
@@ -65,14 +70,14 @@ def parse_args():
         "--config",
         choices=["Debug", "MinSizeRel", "Release", "RelWithDebInfo"],
         default=default_config,
-        help="The build configuration. " f"The default is {default_config}.",
+        help=f"The build configuration. The default is {default_config}.",
     )
 
     default_docker_image_tag = "onnxruntime-android-custom-build:latest"
     parser.add_argument(
         "--docker_image_tag",
         default=default_docker_image_tag,
-        help="The tag for the Docker image. " f"The default is {default_docker_image_tag}.",
+        help=f"The tag for the Docker image. The default is {default_docker_image_tag}.",
     )
 
     parser.add_argument(
@@ -104,19 +109,18 @@ def main():
         docker_build_image_args += ["--build-arg", f"ONNXRUNTIME_BRANCH_OR_TAG={args.onnxruntime_branch_or_tag}"]
     if args.onnxruntime_repo_url:
         docker_build_image_args += ["--build-arg", f"ONNXRUNTIME_REPO={args.onnxruntime_repo_url}"]
+    if not is_windows():
+        docker_build_image_args += ["--build-arg", f"BUILD_UID={os.geteuid()}"]
 
-    docker_build_image_cmd = (
-        [
-            args.docker_path,
-            "build",
-            "--tag",
-            args.docker_image_tag,
-            "--file",
-            str(SCRIPT_DIR / "Dockerfile"),
-        ]
-        + docker_build_image_args
-        + [str(SCRIPT_DIR)]
-    )
+    docker_build_image_cmd = [
+        args.docker_path,
+        "build",
+        "--tag",
+        args.docker_image_tag,
+        "--file",
+        str(SCRIPT_DIR / "Dockerfile"),
+        *docker_build_image_args,
+    ] + [str(SCRIPT_DIR)]
 
     run(docker_build_image_cmd)
 
@@ -150,24 +154,17 @@ def main():
     # enable use of Ctrl-C to stop when running interactively
     docker_run_interactive_args = ["-it"] if sys.stdin.isatty() else []
 
-    docker_container_build_cmd = (
-        [
-            args.docker_path,
-            "run",
-        ]
-        + docker_run_interactive_args
-        + [
-            f"--name={args.docker_container_name}" if args.docker_container_name is not None else "--rm",
-            f"--volume={working_dir}:/workspace/shared",
-            args.docker_image_tag,
-            "/bin/bash",
-            "/workspace/scripts/build.sh",
-            args.config,
-            container_ops_config_file,
-            container_build_settings_file,
-            "/workspace/shared/output",
-        ]
-    )
+    docker_container_build_cmd = [args.docker_path, "run", *docker_run_interactive_args] + [
+        f"--name={args.docker_container_name}" if args.docker_container_name is not None else "--rm",
+        f"--volume={working_dir}:/workspace/shared",
+        args.docker_image_tag,
+        "/bin/bash",
+        "/workspace/scripts/build.sh",
+        args.config,
+        container_ops_config_file,
+        container_build_settings_file,
+        "/workspace/shared/output",
+    ]
 
     run(docker_container_build_cmd)
 

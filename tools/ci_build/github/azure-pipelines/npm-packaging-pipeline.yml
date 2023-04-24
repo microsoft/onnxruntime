@@ -34,34 +34,33 @@ resources:
     type: Github
     endpoint: Microsoft
     name: pypa/manylinux
-    ref: 1a61614cabfd6b91c6afd6d9e172cc5b838c65fe
+    ref: aead4d751c2101e23336aa73f2380df83e7a13f3
 
 stages:
 - template: templates/web-ci.yml
   parameters:
     NpmPackagingMode: ${{ variables.NpmPackagingMode }}
     IsReleasePipeline: true
-    PoolName: 'Win-CPU-2021'
+    PoolName: 'Azure-Pipelines-EO-Windows2022-aiinfra'
     PackageName: 'onnxruntime-web'
+    ExtraBuildArgs: ''
 
-- stage: Build_React_Native
-  dependsOn: Extract_commit
-  jobs:
-  - template: templates/react-native-ci.yml
-    parameters:
-      NpmPackagingMode: ${{ variables.NpmPackagingMode }}
-      BuildConfig: 'Release'
-      PoolName: 'Linux-CPU'
-      PackageName: 'onnxruntime-react-native'
+- template: templates/react-native-ci.yml
+  parameters:
+    NpmPackagingMode: ${{ variables.NpmPackagingMode }}
+    BuildConfig: 'Release'
+    PoolName: 'aiinfra-Linux-CPU'
+    PackageName: 'onnxruntime-react-native'
+    BuildAndroidAARStageDependsOn: 'Extract_commit'
 
-- stage: Download_Node_Package
+- stage: Download_Node_Package_And_Publish_Validation_Script
   dependsOn:
-  - Build_React_Native
+  - ReactNative_CI
   - Build_web_Release
   - Build_web_Debug
   jobs:
-  - job: Download_Node_Package
-    pool: 'Win-CPU-2021'
+  - job: Download_Node_Package_And_Publish_Validation_Script
+    pool: 'Azure-Pipelines-EO-Windows2022-aiinfra'
     variables:
       runCodesignValidationInjection: false
     timeoutInMinutes: 10
@@ -78,7 +77,7 @@ stages:
           artifactName: 'NPM_packages'
           targetPath: '$(Pipeline.Workspace)'
         displayName: 'Download onnxruntime-node Pipeline Artifact'
-      
+
     - ${{ if ne(parameters.NodePipelineId, 'latest') }}:
       - task: DownloadPipelineArtifact@2
         inputs:
@@ -90,17 +89,29 @@ stages:
           artifactName: 'NPM_packages'
           targetPath: '$(Pipeline.Workspace)'
         displayName: 'Download onnxruntime-node Pipeline Artifact'
-    
+
     - task: CopyFiles@2
       inputs:
         sourceFolder: $(Pipeline.Workspace)
         contents: onnxruntime-*.tgz
-        targetFolder: $(Build.ArtifactStagingDirectory)
+        targetFolder: $(Build.ArtifactStagingDirectory)\node-artifacts
       displayName: 'Copy onnxruntime-node Artifacts'
-    
+
     - task: PublishPipelineArtifact@0
       inputs:
         artifactName: 'onnxruntime-node'
-        targetPath: '$(Build.ArtifactStagingDirectory)'
+        targetPath: '$(Build.ArtifactStagingDirectory)\node-artifacts'
       displayName: 'Publish onnxruntime-node Pipeline Artifact'
-      
+
+    - task: CopyFiles@2
+      inputs:
+        sourceFolder: $(Build.SourcesDirectory)\tools\ci_build\github\js
+        contents: validate-npm-packages.py
+        targetFolder: $(Build.ArtifactStagingDirectory)\validation-scripts
+      displayName: 'Copy validation scripts'
+
+    - task: PublishPipelineArtifact@0
+      inputs:
+        artifactName: 'validation_scripts'
+        targetPath: '$(Build.ArtifactStagingDirectory)\validation-scripts'
+      displayName: 'Publish validation scripts'

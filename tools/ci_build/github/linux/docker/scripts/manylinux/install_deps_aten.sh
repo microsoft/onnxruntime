@@ -6,7 +6,7 @@ yum -y install \
     graphviz
 
 if [ ! -d "/opt/conda/bin" ]; then
-    PYTHON_EXES=("/opt/python/cp37-cp37m/bin/python3.7" "/opt/python/cp38-cp38/bin/python3.8" "/opt/python/cp39-cp39/bin/python3.9")
+    PYTHON_EXES=("/opt/python/cp38-cp38/bin/python3.8" "/opt/python/cp39-cp39/bin/python3.9" "/opt/python/cp310-cp310/bin/python3.10" "/opt/python/cp311-cp311/bin/python3.11")
 else
     PYTHON_EXES=("/opt/conda/bin/python")
 fi
@@ -43,7 +43,7 @@ do
   if ! [[ ${PYTHON_EXE} = "/opt/python/cp310-cp310/bin/python3.10" ]]; then
     ${PYTHON_EXE} -m pip install -r ${0/%install_deps_aten\.sh/..\/training\/ortmodule\/stage1\/requirements_torch_cpu\/requirements.txt}
   else
-    ${PYTHON_EXE} -m pip install torch==1.13.1+cpu -f https://download.pytorch.org/whl/torch_stable.html
+    ${PYTHON_EXE} -m pip install torch==2.0.0+cpu -f https://download.pytorch.org/whl/torch_stable.html
   fi
 done
 

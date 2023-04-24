@@ -50,7 +50,7 @@ def generate_file_list_for_ep(nuget_artifacts_dir, ep, files_list, include_pdbs)
 
         for cpu_arch in ["x86", "x64", "arm", "arm64"]:
             if child.name == get_package_name("win", cpu_arch, ep):
-                child = child / "lib"
+                child = child / "lib"  # noqa: PLW2901
                 for child_file in child.iterdir():
                     suffixes = [".dll", ".lib", ".pdb"] if include_pdbs else [".dll", ".lib"]
                     if child_file.suffix in suffixes and is_this_file_needed(ep, child_file.name):
@@ -59,9 +59,9 @@ def generate_file_list_for_ep(nuget_artifacts_dir, ep, files_list, include_pdbs)
                         )
         for cpu_arch in ["x86_64", "arm64"]:
             if child.name == get_package_name("osx", cpu_arch, ep):
-                child = child / "lib"
+                child = child / "lib"  # noqa: PLW2901
                 if cpu_arch == "x86_64":
-                    cpu_arch = "x64"
+                    cpu_arch = "x64"  # noqa: PLW2901
                 for child_file in child.iterdir():
                     # Check if the file has digits like onnxruntime.1.8.0.dylib. We can skip such things
                     is_versioned_dylib = re.match(r".*[\.\d+]+\.dylib$", child_file.name)
@@ -71,11 +71,11 @@ def generate_file_list_for_ep(nuget_artifacts_dir, ep, files_list, include_pdbs)
                         )
         for cpu_arch in ["x64", "aarch64"]:
             if child.name == get_package_name("linux", cpu_arch, ep):
-                child = child / "lib"
+                child = child / "lib"  # noqa: PLW2901
                 if cpu_arch == "x86_64":
-                    cpu_arch = "x64"
+                    cpu_arch = "x64"  # noqa: PLW2901
                 elif cpu_arch == "aarch64":
-                    cpu_arch = "arm64"
+                    cpu_arch = "arm64"  # noqa: PLW2901
                 for child_file in child.iterdir():
                     if not child_file.is_file():
                         continue
@@ -90,12 +90,13 @@ def generate_file_list_for_ep(nuget_artifacts_dir, ep, files_list, include_pdbs)
                     files_list.append('<file src="' + str(child_file) + '" target="runtimes/android/native"/>')
 
         if child.name == "onnxruntime-ios-xcframework":
-            files_list.append('<file src="' + str(child) + "\\**" '" target="runtimes/ios/native"/>')
+            files_list.append('<file src="' + str(child) + "\\**" '" target="runtimes/ios/native"/>')  # noqa: ISC001
 
 
 def parse_arguments():
     parser = argparse.ArgumentParser(
-        description="ONNX Runtime create nuget spec script " "(for hosting native shared library artifacts)", usage=""
+        description="ONNX Runtime create nuget spec script (for hosting native shared library artifacts)",
+        usage="",
     )
     # Main arguments
     parser.add_argument("--package_name", required=True, help="ORT package name. Eg: Microsoft.ML.OnnxRuntime.Gpu")
@@ -150,7 +151,7 @@ def generate_description(line_list, package_name):
         description = "This package contains Windows ML binaries."
     elif "Microsoft.ML.OnnxRuntime" in package_name:  # This is a Microsoft.ML.OnnxRuntime.* package
         description = (
-            "This package contains native shared library artifacts " "for all supported platforms of ONNX Runtime."
+            "This package contains native shared library artifacts for all supported platforms of ONNX Runtime."
         )
 
     line_list.append("<description>" + description + "</description>")
@@ -362,7 +363,7 @@ def generate_files(line_list, args):
     else:
         runtimes_native_folder = "native"
 
-    runtimes = '{}{}\\{}"'.format(runtimes_target, args.target_architecture, runtimes_native_folder)
+    runtimes = f'{runtimes_target}{args.target_architecture}\\{runtimes_native_folder}"'
 
     # Process headers
     files_list.append(

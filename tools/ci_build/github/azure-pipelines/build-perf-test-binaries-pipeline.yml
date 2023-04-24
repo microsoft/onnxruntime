@@ -12,7 +12,7 @@ resources:
     type: Github
     endpoint: Microsoft
     name: pypa/manylinux
-    ref: 1a61614cabfd6b91c6afd6d9e172cc5b838c65fe
+    ref: aead4d751c2101e23336aa73f2380df83e7a13f3
 
 stages:
 
@@ -28,7 +28,7 @@ stages:
         artifactName: 'onnxruntime-android-full-aar'
         job_name_suffix: 'Full'
         publish_executables: '1'
-        pool_name: 'Linux-CPU'
+        pool_name: 'aiinfra-Linux-CPU'
 
 # build Python packages
 # Linux GPU only

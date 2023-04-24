@@ -18,16 +18,13 @@ using namespace onnxruntime;
 using namespace onnxruntime::common;
 using namespace onnxruntime::training;
 
-
 using CutList = std::vector<TrainingSession::TrainingConfiguration::CutInfo>;
 
 TEST(PipelinePartition, DropoutGraph2stages) {
   int num_stages = 2;
   int pipeline_stage_id = 1;
   std::map<std::string, int> input_map = {
-    {"A", 0}, {"B", 0}, {"C", 0}, {"D", 0}, {"E", 0}, {"F", 0},
-    {"O1", 1}, {"O2", 1}, {"O3", 1}, {"O4", 1}, {"O5", 1}
-  };
+      {"A", 0}, {"B", 0}, {"C", 0}, {"D", 0}, {"E", 0}, {"F", 0}, {"O1", 1}, {"O2", 1}, {"O3", 1}, {"O4", 1}, {"O5", 1}};
 
   const auto& log_manager = DefaultLoggingManager();
   const auto& default_logger = log_manager.DefaultLogger();
@@ -97,20 +94,17 @@ void LoadAndPartitionWithCuts(const PathString& model_path,
   }
 }
 
-
 TEST(PipelinePartition, AttentionPastState3Stages) {
   const auto filename = ORT_TSTR("testdata/attention_past_state.onnx");
   int num_stages = 3;
   int stage_id = 1;
   TrainingSession::TrainingConfiguration::CutInfo cut0 = {
-    TrainingSession::TrainingConfiguration::CutEdge("94")
-  };
+      TrainingSession::TrainingConfiguration::CutEdge("94")};
 
   TrainingSession::TrainingConfiguration::CutInfo cut1 = {
-    TrainingSession::TrainingConfiguration::CutEdge("176", {"214"}),
-    TrainingSession::TrainingConfiguration::CutEdge("183", {"212"}),
-    TrainingSession::TrainingConfiguration::CutEdge("210")
-  };
+      TrainingSession::TrainingConfiguration::CutEdge("176", {"214"}),
+      TrainingSession::TrainingConfiguration::CutEdge("183", {"212"}),
+      TrainingSession::TrainingConfiguration::CutEdge("210")};
   CutList cuts = {cut0, cut1};
 
   std::shared_ptr<Model> cb_model;
@@ -123,11 +117,11 @@ TEST(PipelinePartition, AttentionPastState3Stages) {
   EXPECT_TRUE(graph.GetMutableProducerNode("100") != nullptr);
   EXPECT_TRUE(graph.GetMutableProducerNode("169") != nullptr);
   EXPECT_TRUE(graph.GetMutableProducerNode("210") != nullptr);
-  EXPECT_TRUE(graph.GetMutableProducerNode("174") != nullptr); 
+  EXPECT_TRUE(graph.GetMutableProducerNode("174") != nullptr);
   // The following producers should not be in this partition.
-  EXPECT_FALSE(graph.GetMutableProducerNode("85") != nullptr);  // Stage 0
-  EXPECT_FALSE(graph.GetMutableProducerNode("221") != nullptr); // Stage 2
-  EXPECT_FALSE(graph.GetMutableProducerNode("214") != nullptr); // Stage 2
+  EXPECT_FALSE(graph.GetMutableProducerNode("85") != nullptr);   // Stage 0
+  EXPECT_FALSE(graph.GetMutableProducerNode("221") != nullptr);  // Stage 2
+  EXPECT_FALSE(graph.GetMutableProducerNode("214") != nullptr);  // Stage 2
 }
 
 TEST(PipelinePartition, AttentionPastState2Stages) {
@@ -135,8 +129,7 @@ TEST(PipelinePartition, AttentionPastState2Stages) {
   int num_stages = 2;
   int stage_id = 1;
   TrainingSession::TrainingConfiguration::CutInfo cut0 = {
-    TrainingSession::TrainingConfiguration::CutEdge("214")
-  };
+      TrainingSession::TrainingConfiguration::CutEdge("214")};
 
   CutList cuts = {cut0};
 
@@ -145,9 +138,8 @@ TEST(PipelinePartition, AttentionPastState2Stages) {
   Graph& graph = cb_model->MainGraph();
 
   std::vector<std::string> in_partition = {
-    "215", "222", "228", "232", "226", "233", "227", "219", "216", "218", "221",
-    "234", "237", "236", "235", "238", "output"
-  };
+      "215", "222", "228", "232", "226", "233", "227", "219", "216", "218", "221",
+      "234", "237", "236", "235", "238", "output"};
 
   // +1 for the additional Send node.
   EXPECT_EQ(graph.NumberOfNodes(), in_partition.size() + 1);
@@ -162,7 +154,7 @@ void compareGraphs(Graph& graph1, Graph& graph2) {
 
   GraphViewer gv2(graph2);
   const auto& g2_nodes = gv2.GetNodesInTopologicalOrder();
-  
+
   EXPECT_EQ(g1_nodes.size(), g2_nodes.size());
 
   for (size_t i = 0, t = g1_nodes.size(); i < t; ++i) {
@@ -191,11 +183,9 @@ TEST(ComparePartitions, AttentionPastState3Stages) {
   const auto filename = ORT_TSTR("testdata/attention_past_state.onnx");
   int num_stages = 3;
   TrainingSession::TrainingConfiguration::CutInfo cut0 = {
-    TrainingSession::TrainingConfiguration::CutEdge("94")
-  };
+      TrainingSession::TrainingConfiguration::CutEdge("94")};
   TrainingSession::TrainingConfiguration::CutInfo cut1 = {
-    TrainingSession::TrainingConfiguration::CutEdge("214")
-  };
+      TrainingSession::TrainingConfiguration::CutEdge("214")};
   CutList cuts = {cut0, cut1};
   for (int stage = 0; stage < num_stages; ++stage) {
     comparePartitionTest(filename, num_stages, stage, cuts);
@@ -206,34 +196,31 @@ TEST(ComparePartitions, AttentionPastState3StagesMultiEdgeCut) {
   const auto filename = ORT_TSTR("testdata/attention_past_state.onnx");
   int num_stages = 3;
   TrainingSession::TrainingConfiguration::CutInfo cut0 = {
-    TrainingSession::TrainingConfiguration::CutEdge("94")
-  };
+      TrainingSession::TrainingConfiguration::CutEdge("94")};
   TrainingSession::TrainingConfiguration::CutInfo cut1 = {
-    TrainingSession::TrainingConfiguration::CutEdge("176", {"214"}),
-    TrainingSession::TrainingConfiguration::CutEdge("183", {"212"}),
-    TrainingSession::TrainingConfiguration::CutEdge("210")
-  };
+      TrainingSession::TrainingConfiguration::CutEdge("176", {"214"}),
+      TrainingSession::TrainingConfiguration::CutEdge("183", {"212"}),
+      TrainingSession::TrainingConfiguration::CutEdge("210")};
   CutList cuts = {cut0, cut1};
   for (int stage = 0; stage < num_stages; ++stage) {
     comparePartitionTest(filename, num_stages, stage, cuts);
   }
 }
-
 
 TEST(ComparePartitions, BertToy) {
   const auto filename = ORT_TSTR("testdata/bert_toy_optimized.onnx");
   int num_stages = 3;
   TrainingSession::TrainingConfiguration::CutInfo cut0 = {
-    TrainingSession::TrainingConfiguration::CutEdge("326"),
-    TrainingSession::TrainingConfiguration::CutEdge("103", {"413", "529"})};
+      TrainingSession::TrainingConfiguration::CutEdge("326"),
+      TrainingSession::TrainingConfiguration::CutEdge("103", {"413", "529"})};
   TrainingSession::TrainingConfiguration::CutInfo cut1 = {
-    TrainingSession::TrainingConfiguration::CutEdge("558"),
-    TrainingSession::TrainingConfiguration::CutEdge("103", {"645"})};
+      TrainingSession::TrainingConfiguration::CutEdge("558"),
+      TrainingSession::TrainingConfiguration::CutEdge("103", {"645"})};
   CutList cuts = {cut0, cut1};
   for (int stage = 0; stage < num_stages; ++stage) {
     comparePartitionTest(filename, num_stages, stage, cuts);
   }
 }
 
-}
-}
+}  // namespace test
+}  // namespace onnxruntime

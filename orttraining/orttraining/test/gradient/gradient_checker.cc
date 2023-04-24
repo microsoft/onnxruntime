@@ -465,9 +465,10 @@ inline Status GradientChecker<X_T, Y_T, JAC_T>::ComputeGradientError(
     bool check_not_have_shape_inferencing /* = false*/,
     std::vector<std::unique_ptr<IExecutionProvider>>* execution_providers /* = nullptr */) {
   // TODO: Consider varying mean and variance
-  float scale = 5.f;
-  float mean = 0.f;
-  const auto seed = GetTestRandomSeed();
+  constexpr float scale = 5.f;
+  constexpr float mean = 0.f;
+  constexpr int seed = 5566;
+  // Use fixed random since numerically compute gradient is not stable.
   std::default_random_engine generator{gsl::narrow_cast<decltype(generator)::result_type>(seed)};
   std::normal_distribution<X_T> distribution{mean, scale};
 

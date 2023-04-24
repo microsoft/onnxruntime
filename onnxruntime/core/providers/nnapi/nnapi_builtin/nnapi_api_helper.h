@@ -54,12 +54,13 @@ constexpr const char* const kNnapiCpuDeviceName = "nnapi-reference";
  */
 int32_t GetNNAPIEffectiveFeatureLevel(const NnApi& nnapi_handle, gsl::span<const DeviceWrapper> device_handles);
 
+using DeviceWrapperVector = InlinedVector<DeviceWrapper>;
+
 /**
  * Get all target devices specified by target_device_option.
- *
  */
 Status GetTargetDevices(const NnApi& nnapi_handle, TargetDeviceOption target_device_option,
-                        InlinedVector<DeviceWrapper>& nnapi_target_devices);
+                        DeviceWrapperVector& nnapi_target_devices);
 
 int32_t GetNNAPIEffectiveFeatureLevelFromTargetDeviceOption(const NnApi& nnapi_handle, TargetDeviceOption target_device_option);
 

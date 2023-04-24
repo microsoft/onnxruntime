@@ -16,9 +16,9 @@ class TestOnnxOpsOrtModule(unittest.TestCase):
         if not are_close:
             abs_diff = torch.abs(tensor - other)
             abs_other = torch.abs(other)
-            max_atol = torch.max((abs_diff - rtol * abs_other))
+            max_atol = torch.max(abs_diff - rtol * abs_other)
             max_rtol = torch.max((abs_diff - atol) / abs_other)
-            raise AssertionError("The maximum atol is %r, maximum rtol is %r." % (max_atol, max_rtol))
+            raise AssertionError(f"The maximum atol is {max_atol!r}, maximum rtol is {max_rtol!r}.")
 
     def assert_gradients_match_and_reset_gradient(
         self, ort_model, pt_model, none_pt_params=None, reset_gradient=True, rtol=1e-05, atol=1e-06
@@ -49,9 +49,9 @@ class TestOnnxOpsOrtModule(unittest.TestCase):
         pt_model_cls, op_grad_type, kwargs = self.get_torch_model_name(name, device)
         if kwargs is None:
             kwargs = {}
-        N = 32
+        N = 32  # noqa: N806
         pt_model = pt_model_cls().to(device)
-        D_in = pt_model.fc1.in_features
+        D_in = pt_model.fc1.in_features  # noqa: N806
         ort_model = ORTModule(copy.deepcopy(pt_model))
 
         def run_step(model, x):
@@ -78,13 +78,13 @@ class TestOnnxOpsOrtModule(unittest.TestCase):
         self.assertIn('op_type: "%s"' % name, str(onnx_graph_inf))
         for onnx_model in [onnx_graph_inf, onnx_graph_train]:
             for oimp in onnx_model.opset_import:
-                if oimp.domain == "":
+                if oimp.domain == "":  # noqa: PLC1901
                     self.assertEqual(oimp.version, 15)
         if op_grad_type is not None:
             if isinstance(op_grad_type, tuple):
                 text = str(onnx_graph_train)
                 if all(map(lambda op: ('op_type: "%s"' % op) not in text, op_grad_type)):
-                    raise AssertionError("Operator %s not found in %s." % (" or ".join(op_grad_type), text))
+                    raise AssertionError("Operator {} not found in {}.".format(" or ".join(op_grad_type), text))
             else:
                 self.assertIn('op_type: "%s"' % op_grad_type, str(onnx_graph_train))
 

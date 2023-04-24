@@ -29,7 +29,7 @@ onnx.checker.check_model(inferred_model)
 
 onnx.save_model(model, "capi_symbolic_dims.onnx")
 
-import onnxruntime as rt
+import onnxruntime as rt  # noqa: E402
 
 sess = rt.InferenceSession("capi_symbolic_dims.onnx")
 print([i.shape for i in sess.get_inputs()])

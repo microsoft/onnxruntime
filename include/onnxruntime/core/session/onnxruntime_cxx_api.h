@@ -25,6 +25,7 @@
 #pragma once
 #include "onnxruntime_c_api.h"
 #include <cstddef>
+#include <cstdio>
 #include <array>
 #include <memory>
 #include <stdexcept>
@@ -355,12 +356,14 @@ using AllocatedStringPtr = std::unique_ptr<char, detail::AllocatedFree>;
  *  constructors to construct an instance of a Status object from exceptions.
  */
 struct Status : detail::Base<OrtStatus> {
-  explicit Status(std::nullptr_t) {}       ///< Create an empty object, must be assigned a valid one to be used
-  explicit Status(OrtStatus* status);      ///< Takes ownership of OrtStatus instance returned from the C API. Must be non-null
-  explicit Status(const Exception&);       ///< Creates status instance out of exception
-  explicit Status(const std::exception&);  ///< Creates status instance out of exception
+  explicit Status(std::nullptr_t) noexcept {}               ///< Create an empty object, must be assigned a valid one to be used
+  explicit Status(OrtStatus* status) noexcept;              ///< Takes ownership of OrtStatus instance returned from the C API.
+  explicit Status(const Exception&) noexcept;               ///< Creates status instance out of exception
+  explicit Status(const std::exception&) noexcept;          ///< Creates status instance out of exception
+  Status(const char* message, OrtErrorCode code) noexcept;  ///< Creates status instance out of null-terminated string message.
   std::string GetErrorMessage() const;
   OrtErrorCode GetErrorCode() const;
+  bool IsOK() const noexcept;  ///< Returns true if instance represents an OK (non-error) status.
 };
 
 /** \brief The ThreadingOptions
@@ -470,7 +473,6 @@ struct RunOptions : detail::Base<OrtRunOptions> {
   RunOptions& UnsetTerminate();
 };
 
-
 namespace detail {
 // Utility function that returns a SessionOption config entry key for a specific custom operator.
 // Ex: custom_op.[custom_op_name].[config]
@@ -511,7 +513,7 @@ struct CustomOpConfigs {
    * {"my_op.key", "value"}.
    *
    * \return An unordered map of flattened configurations.
-  */
+   */
   const std::unordered_map<std::string, std::string>& GetFlattenedConfigs() const;
 
  private:
@@ -571,7 +573,7 @@ struct SessionOptionsImpl : ConstSessionOptionsImpl<T> {
 
   SessionOptionsImpl& DisablePerSessionThreads();  ///< Wraps OrtApi::DisablePerSessionThreads
 
-  SessionOptionsImpl& AddConfigEntry(const char* config_key, const char* config_value);                        ///< Wraps OrtApi::AddSessionConfigEntry
+  SessionOptionsImpl& AddConfigEntry(const char* config_key, const char* config_value);  ///< Wraps OrtApi::AddSessionConfigEntry
 
   SessionOptionsImpl& AddInitializer(const char* name, const OrtValue* ort_val);                                             ///< Wraps OrtApi::AddInitializer
   SessionOptionsImpl& AddExternalInitializers(const std::vector<std::string>& names, const std::vector<Value>& ort_values);  ///< Wraps OrtApi::AddExternalInitializers
@@ -889,6 +891,19 @@ struct SequenceTypeInfo : detail::SequenceTypeInfoImpl<OrtSequenceTypeInfo> {
 
 namespace detail {
 template <typename T>
+struct OptionalTypeInfoImpl : Base<T> {
+  using B = Base<T>;
+  using B::B;
+  TypeInfo GetOptionalElementType() const;  ///< Wraps OrtApi::CastOptionalTypeToContainedTypeInfo
+};
+
+}  // namespace detail
+
+// This is always owned by the TypeInfo and can only be obtained from it.
+using ConstOptionalTypeInfo = detail::OptionalTypeInfoImpl<detail::Unowned<const OrtOptionalTypeInfo>>;
+
+namespace detail {
+template <typename T>
 struct MapTypeInfoImpl : detail::Base<T> {
   using B = Base<T>;
   using B::B;
@@ -918,6 +933,7 @@ struct TypeInfoImpl : detail::Base<T> {
   ConstTensorTypeAndShapeInfo GetTensorTypeAndShapeInfo() const;  ///< Wraps OrtApi::CastTypeInfoToTensorInfo
   ConstSequenceTypeInfo GetSequenceTypeInfo() const;              ///< Wraps OrtApi::CastTypeInfoToSequenceTypeInfo
   ConstMapTypeInfo GetMapTypeInfo() const;                        ///< Wraps OrtApi::CastTypeInfoToMapTypeInfo
+  ConstOptionalTypeInfo GetOptionalTypeInfo() const;              ///< wraps OrtApi::CastTypeInfoToOptionalTypeInfo
 
   ONNXType GetONNXType() const;
 };
@@ -1054,6 +1070,14 @@ struct ConstValueImpl : Base<T> {
   void GetStringTensorElement(size_t buffer_length, size_t element_index, void* buffer) const;
 
   /// <summary>
+  /// Returns string tensor UTF-8 encoded string element.
+  /// Use of this API is recommended over GetStringTensorElement() that takes void* buffer pointer.
+  /// </summary>
+  /// <param name="element_index"></param>
+  /// <returns>std::string</returns>
+  std::string GetStringTensorElement(size_t element_index) const;
+
+  /// <summary>
   /// The API returns a byte length of UTF-8 encoded string element
   /// contained in either a tensor or a spare tensor values.
   /// </summary>
@@ -1160,6 +1184,20 @@ struct ValueImpl : ConstValueImpl<T> {
   /// <param name="s">[in] A null terminated UTF-8 encoded string</param>
   /// <param name="index">[in] Index of the string in the tensor to set</param>
   void FillStringTensorElement(const char* s, size_t index);
+
+  /// <summary>
+  /// Allocate if necessary and obtain a pointer to a UTF-8
+  /// encoded string element buffer indexed by the flat element index,
+  /// of the specified length.
+  ///
+  /// This API is for advanced usage. It avoids a need to construct
+  /// an auxiliary array of string pointers, and allows to write data directly
+  /// (do not zero terminate).
+  /// </summary>
+  /// <param name="index"></param>
+  /// <param name="buffer_length"></param>
+  /// <returns>a pointer to a writable buffer</returns>
+  char* GetResizedStringTensorElementBuffer(size_t index, size_t buffer_length);
 
 #if !defined(DISABLE_SPARSE_TENSORS)
   /// <summary>
@@ -1497,6 +1535,158 @@ struct OpAttr : detail::Base<OrtOpAttr> {
   OpAttr(const char* name, const void* data, int len, OrtOpAttrType type);
 };
 
+/**
+ * Macro that logs a message using the provided logger. Throws an exception if OrtApi::Logger_LogMessage fails.
+ * Example: ORT_CXX_LOG(logger, ORT_LOGGING_LEVEL_INFO, "Log a message");
+ *
+ * \param logger The Ort::Logger instance to use. Must be a value or reference.
+ * \param message_severity The logging severity level of the message.
+ * \param message A null-terminated UTF-8 message to log.
+ */
+#define ORT_CXX_LOG(logger, message_severity, message)                                       \
+  do {                                                                                       \
+    if (message_severity >= logger.GetLoggingSeverityLevel()) {                              \
+      Ort::ThrowOnError(logger.LogMessage(message_severity, ORT_FILE, __LINE__,              \
+                                          static_cast<const char*>(__FUNCTION__), message)); \
+    }                                                                                        \
+  } while (false)
+
+/**
+ * Macro that logs a message using the provided logger. Can be used in noexcept code since errors are silently ignored.
+ * Example: ORT_CXX_LOG_NOEXCEPT(logger, ORT_LOGGING_LEVEL_INFO, "Log a message");
+ *
+ * \param logger The Ort::Logger instance to use. Must be a value or reference.
+ * \param message_severity The logging severity level of the message.
+ * \param message A null-terminated UTF-8 message to log.
+ */
+#define ORT_CXX_LOG_NOEXCEPT(logger, message_severity, message)                              \
+  do {                                                                                       \
+    if (message_severity >= logger.GetLoggingSeverityLevel()) {                              \
+      static_cast<void>(logger.LogMessage(message_severity, ORT_FILE, __LINE__,              \
+                                          static_cast<const char*>(__FUNCTION__), message)); \
+    }                                                                                        \
+  } while (false)
+
+/**
+ * Macro that logs a printf-like formatted message using the provided logger. Throws an exception if
+ * OrtApi::Logger_LogMessage fails or if a formatting error occurs.
+ * Example: ORT_CXX_LOGF(logger, ORT_LOGGING_LEVEL_INFO, "Log an int: %d", 12);
+ *
+ * \param logger The Ort::Logger instance to use. Must be a value or reference.
+ * \param message_severity The logging severity level of the message.
+ * \param format A null-terminated UTF-8 format string forwarded to a printf-like function.
+ *               Refer to https://en.cppreference.com/w/cpp/io/c/fprintf for information on valid formats.
+ * \param ... Zero or more variadic arguments referenced by the format string.
+ */
+#define ORT_CXX_LOGF(logger, message_severity, /*format,*/...)                                            \
+  do {                                                                                                    \
+    if (message_severity >= logger.GetLoggingSeverityLevel()) {                                           \
+      Ort::ThrowOnError(logger.LogFormattedMessage(message_severity, ORT_FILE, __LINE__,                  \
+                                                   static_cast<const char*>(__FUNCTION__), __VA_ARGS__)); \
+    }                                                                                                     \
+  } while (false)
+
+/**
+ * Macro that logs a printf-like formatted message using the provided logger. Can be used in noexcept code since errors
+ * are silently ignored.
+ * Example: ORT_CXX_LOGF_NOEXCEPT(logger, ORT_LOGGING_LEVEL_INFO, "Log an int: %d", 12);
+ *
+ * \param logger The Ort::Logger instance to use. Must be a value or reference.
+ * \param message_severity The logging severity level of the message.
+ * \param format A null-terminated UTF-8 format string forwarded to a printf-like function.
+ *               Refer to https://en.cppreference.com/w/cpp/io/c/fprintf for information on valid formats.
+ * \param ... Zero or more variadic arguments referenced by the format string.
+ */
+#define ORT_CXX_LOGF_NOEXCEPT(logger, message_severity, /*format,*/...)                                   \
+  do {                                                                                                    \
+    if (message_severity >= logger.GetLoggingSeverityLevel()) {                                           \
+      static_cast<void>(logger.LogFormattedMessage(message_severity, ORT_FILE, __LINE__,                  \
+                                                   static_cast<const char*>(__FUNCTION__), __VA_ARGS__)); \
+    }                                                                                                     \
+  } while (false)
+
+/// <summary>
+/// This class represents an ONNX Runtime logger that can be used to log information with an
+/// associated severity level and source code location (file path, line number, function name).
+///
+/// A Logger can be obtained from within custom operators by calling Ort::KernelInfo::GetLogger().
+/// Instances of Ort::Logger are the size of two pointers and can be passed by value.
+///
+/// Use the ORT_CXX_LOG macros to ensure the source code location is set properly from the callsite
+/// and to take advantage of a cached logging severity level that can bypass calls to the underlying C API.
+/// </summary>
+struct Logger {
+  /**
+   * Creates an empty Ort::Logger. Must be initialized from a valid Ort::Logger before use.
+   */
+  Logger() = default;
+
+  /**
+   * Creates an empty Ort::Logger. Must be initialized from a valid Ort::Logger before use.
+   */
+  explicit Logger(std::nullptr_t) {}
+
+  /**
+   * Creates a logger from an ::OrtLogger instance. Caches the logger's current severity level by calling
+   * OrtApi::Logger_GetLoggingSeverityLevel. Throws an exception if OrtApi::Logger_GetLoggingSeverityLevel fails.
+   *
+   * \param logger The ::OrtLogger to wrap.
+   */
+  explicit Logger(const OrtLogger* logger);
+
+  ~Logger() = default;
+
+  Logger(const Logger&) = default;
+  Logger& operator=(const Logger&) = default;
+
+  Logger(Logger&& v) noexcept = default;
+  Logger& operator=(Logger&& v) noexcept = default;
+
+  /**
+   * Returns the logger's current severity level from the cached member.
+   *
+   * \return The current ::OrtLoggingLevel.
+   */
+  OrtLoggingLevel GetLoggingSeverityLevel() const noexcept;
+
+  /**
+   * Logs the provided message via OrtApi::Logger_LogMessage. Use the ORT_CXX_LOG or ORT_CXX_LOG_NOEXCEPT
+   * macros to properly set the source code location and to use the cached severity level to potentially bypass
+   * calls to the underlying C API.
+   *
+   * \param log_severity_level The message's logging severity level.
+   * \param file_path The filepath of the file in which the message is logged. Usually the value of ORT_FILE.
+   * \param line_number The file line number in which the message is logged. Usually the value of __LINE__.
+   * \param func_name The name of the function in which the message is logged. Usually the value of __FUNCTION__.
+   * \param message The message to log.
+   * \return A Ort::Status value to indicate error or success.
+   */
+  Status LogMessage(OrtLoggingLevel log_severity_level, const ORTCHAR_T* file_path, int line_number,
+                    const char* func_name, const char* message) const noexcept;
+
+  /**
+   * Logs a printf-like formatted message via OrtApi::Logger_LogMessage. Use the ORT_CXX_LOGF or ORT_CXX_LOGF_NOEXCEPT
+   * macros to properly set the source code location and to use the cached severity level to potentially bypass
+   * calls to the underlying C API. Returns an error status if a formatting error occurs.
+   *
+   * \param log_severity_level The message's logging severity level.
+   * \param file_path The filepath of the file in which the message is logged. Usually the value of ORT_FILE.
+   * \param line_number The file line number in which the message is logged. Usually the value of __LINE__.
+   * \param func_name The name of the function in which the message is logged. Usually the value of __FUNCTION__.
+   * \param format A null-terminated UTF-8 format string forwarded to a printf-like function.
+   *               Refer to https://en.cppreference.com/w/cpp/io/c/fprintf for information on valid formats.
+   * \param args Zero or more variadic arguments referenced by the format string.
+   * \return A Ort::Status value to indicate error or success.
+   */
+  template <typename... Args>
+  Status LogFormattedMessage(OrtLoggingLevel log_severity_level, const ORTCHAR_T* file_path, int line_number,
+                             const char* func_name, const char* format, Args&&... args) const noexcept;
+
+ private:
+  const OrtLogger* logger_{};
+  OrtLoggingLevel cached_severity_level_{};
+};
+
 /// <summary>
 /// This class wraps a raw pointer OrtKernelContext* that is being passed
 /// to the custom kernel Compute() method. Use it to safely access context
@@ -1511,6 +1701,8 @@ struct KernelContext {
   UnownedValue GetOutput(size_t index, const int64_t* dim_values, size_t dim_count) const;
   UnownedValue GetOutput(size_t index, const std::vector<int64_t>& dims) const;
   void* GetGPUComputeStream() const;
+  Logger GetLogger() const;
+  OrtAllocator* GetAllocator(const OrtMemoryInfo& memory_info) const;
 
  private:
   OrtKernelContext* ctx_;
@@ -1558,6 +1750,11 @@ struct KernelInfoImpl : Base<T> {
 
   TypeInfo GetInputTypeInfo(size_t index) const;
   TypeInfo GetOutputTypeInfo(size_t index) const;
+
+  ConstValue GetTensorConstantInput(size_t index, int* is_constant) const;
+
+  std::string GetNodeName() const;
+  Logger GetLogger() const;
 };
 
 }  // namespace detail

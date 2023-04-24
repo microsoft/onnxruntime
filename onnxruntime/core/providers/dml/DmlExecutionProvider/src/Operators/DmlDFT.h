@@ -5,6 +5,10 @@
 
 #include "../External/D3DX12/d3dx12.h"
 
+// NOTE: When this operator's implementation is moved into DML, the associated FP16 fallback
+//       should be removed from IsCustomOpShader(...) in
+//       onnxruntime\core\providers\dml\DmlExecutionProvider\src\ExecutionProvider.cpp
+
 // The shader headers are produced using "GeneratedShaders/GenerateShaders.bat"
 namespace DFTFloat32
 {
@@ -290,7 +294,7 @@ public:
             ORT_THROW_IF_FAILED(outputUnknown.As(&outputResource));
 
             // Get optional dft_length input
-            uint32_t dftLength = inputDims[m_axis];
+            uint32_t dftLength = inputDims[onnxruntime::narrow<size_t>(m_axis)];
             ComPtr<IMLOperatorTensor> dftLengthTensor;
             if (SUCCEEDED(context->GetInputTensor(1, &dftLengthTensor)) && dftLengthTensor != nullptr)
             {

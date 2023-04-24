@@ -20,7 +20,7 @@
 namespace onnxruntime {
 namespace openvino_ep {
 
-//Gets the input count of given node
+// Gets the input count of given node
 int GetInputCount(const Node* node, const InitializedTensorSet& initializer_set) {
   int count = 0;
   for (const auto& input : node->InputDefs()) {
@@ -33,7 +33,7 @@ int GetInputCount(const Node* node, const InitializedTensorSet& initializer_set)
   return count;
 }
 
-//Ops which are supported only in models(as intermediate nodes) and not in unit tests
+// Ops which are supported only in models(as intermediate nodes) and not in unit tests
 bool IsOpSupportedOnlyInModel(std::string name) {
   std::set<std::string> ops_supported_only_in_model = {
       "Cast",
@@ -89,7 +89,7 @@ std::map<std::string, std::set<std::string>> GetNgSupportedOps(const int onnx_op
   std::map<std::string, std::set<std::string>> ng_supported_ops;
   ng_supported_ops.emplace(kOnnxDomain, ngraph::onnx_import::get_supported_operators(onnx_opset, kOnnxDomain));
 
-  const std::set<std::string> ng_disabled_ops = {"LSTM"};  //Place-holder for ops not supported.
+  const std::set<std::string> ng_disabled_ops = {"LSTM"};  // Place-holder for ops not supported.
 
   for (const auto& disabled_op : ng_disabled_ops) {
     ng_supported_ops.at(kOnnxDomain).erase(disabled_op);
@@ -121,7 +121,7 @@ GetPartitionedClusters(const std::vector<NodeIndex>& topological_order, const st
     }
   }
 
-  //Tail
+  // Tail
   std::vector<NodeIndex> this_cluster{prev, topological_order.end()};
   if (!this_cluster.empty()) {
     ng_clusters.push_back(std::move(this_cluster));
@@ -214,7 +214,7 @@ void GetInputsOutputsOfCluster(const GraphViewer& graph_viewer,
     }
   }
 
-  //Extract initializers used by this_cluster.
+  // Extract initializers used by this_cluster.
   std::unordered_set<std::string> original_graph_inputs;
   for (const auto& node_arg : graph_viewer.GetInputsIncludingInitializers()) {
     original_graph_inputs.insert(node_arg->Name());

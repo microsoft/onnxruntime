@@ -8,27 +8,11 @@ on:
   pull_request:
 
 jobs:
-  lint-python:
-    name: Lint Python
+  optional-lint:
+    name: Optional Lint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
-      - name: flake8
-        uses: reviewdog/action-flake8@v3
-        with:
-          github_token: ${{ secrets.github_token }}
-          # Change reviewdog reporter if you need [github-pr-check, github-check, github-pr-review].
-          reporter: github-pr-check
-          # Change reporter level if you need.
-          # GitHub Status Check won't become failure with a warning.
-          level: error
-          filter_mode: file
-      - name: pyflakes
-        uses: reviewdog/action-pyflakes@v1
-        with:
-          github_token: ${{ secrets.github_token }}
-          reporter: github-pr-check
-          level: warning
+      - uses: actions/checkout@v3
       - name: misspell # Check spellings as well
         uses: reviewdog/action-misspell@v1
         with:
@@ -44,43 +28,49 @@ jobs:
           reporter: github-pr-check
           level: info
           filter_mode: file
-      - name: pyright
-        uses: jordemort/action-pyright@v1
-        with:
-          github_token: ${{ secrets.github_token }}
-          reporter: github-pr-check
-          level: warning
-          filter_mode: added
-          lib: true
-          pyright_version: 1.1.291
-      - name: pylint
-        uses: dciborow/action-pylint@0.0.7
-        with:
-          github_token: ${{ secrets.github_token }}
-          reporter: github-pr-check
-          level: warning
-          filter_mode: diff_context
-          glob_pattern: "**/*.py"
 
   lint-python-format:
-    # Separated black/isort from other Python linters because we want this job to
-    # fail and not affect other linters
-    # According to https://black.readthedocs.io/en/stable/integrations/github_actions.html:
-    #     We recommend the use of the @stable tag, but per version tags also exist if you prefer that.
-    #     Note that the action’s version you select is independent of the version of Black the action will use.
-    #     The version of Black the action will use can be configured via version.
+    # Required workflow
     name: Python format
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
-      - uses: actions/setup-python@v2
+      - uses: actions/checkout@v3
+      - name: Setup Python
+        uses: actions/setup-python@v4
         with:
+          # Version range or exact version of Python to use, using SemVer's version range syntax. Reads from .python-version if unset.
           python-version: "3.10"
-      - uses: psf/black@stable
+      - name: Setup Rust
+        uses: actions-rs/toolchain@v1
         with:
-          options: "--check --diff --color"
-          version: "22.12.0"
-      - uses: isort/isort-action@master
+          toolchain: stable
+          components: rustfmt
+      - name: Install dependencies
+        run: |
+          python -m pip install -r requirements-dev.txt
+          python -m pip install lintrunner lintrunner-adapters
+          lintrunner init
+      - name: Run lintrunner on all files
+        run: |
+          set +e
+          if ! lintrunner --force-color --all-files --tee-json=lint.json -v; then
+              echo ""
+              echo -e "\e[1m\e[36mYou can reproduce these results locally by using \`lintrunner\`. To set up lintrunner locally, see https://github.com/microsoft/onnxruntime/blob/main/docs/Coding_Conventions_and_Standards.md#linting .\e[0m"
+              exit 1
+          fi
+      - name: Produce SARIF
+        if: always()
+        run: |
+          python -m lintrunner_adapters to-sarif lint.json lintrunner.sarif
+      - name: Upload SARIF file
+        if: always()
+        continue-on-error: true
+        uses: github/codeql-action/upload-sarif@v2
+        with:
+          # Path to SARIF file relative to the root of the repository
+          sarif_file: lintrunner.sarif
+          category: lintrunner
+          checkout_path: ${{ github.workspace }}
 
   lint-cpp:
     name: Lint C++
@@ -98,13 +88,6 @@ jobs:
             --cmake_extra_defines CMAKE_EXPORT_COMPILE_COMMANDS=ON
       - name: Generate ONNX protobuf files
         run: cmake --build build/Debug --config Debug --target onnx_proto
-#       - name: Run clang-tidy
-#         uses: ZedThree/clang-tidy-review@526cbfb043719639f1ebdeedae0cc1eacd219d8f
-#         with:
-#           token: ${{ secrets.github_token }}
-#           build_dir: "build/Debug"
-#           config_file: ".clang-tidy"
-#           lgtm_comment_body: ""
       - uses: reviewdog/action-cpplint@master
         with:
           github_token: ${{ secrets.github_token }}
@@ -117,7 +100,7 @@ jobs:
     name: Lint JavaScript
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
       - uses: reviewdog/action-eslint@v1
         with:
           reporter: github-pr-check
