@@ -3,7 +3,7 @@
 
 import {expect} from 'chai';
 import {readFile} from 'fs';
-import {onnx as onnxProto} from 'onnx-proto';
+import {onnx} from 'onnx-proto';
 import * as ort from 'onnxruntime-common';
 import {extname} from 'path';
 import {inspect, promisify} from 'util';
@@ -14,6 +14,7 @@ import {createWebGLContext} from '../lib/onnxjs/backends/webgl/webgl-context-fac
 import {Logger, Profiler} from '../lib/onnxjs/instrument';
 import {Operator} from '../lib/onnxjs/operators';
 import {Tensor} from '../lib/onnxjs/tensor';
+import {ProtoUtil} from '../lib/onnxjs/util';
 
 import {base64toBuffer, createMockGraph} from './test-shared';
 import {Test} from './test-types';
@@ -25,6 +26,8 @@ const WEBGL_THRESHOLD_ABSOLUTE_ERROR = 1.0e-3;
 const WEBGL_THRESHOLD_RELATIVE_ERROR = 1.00001;
 const WEBGL_HALF_FLOAT_THRESHOLD_ABSOLUTE_ERROR = 0.1;
 const WEBGL_HALF_FLOAT_THRESHOLD_RELATIVE_ERROR = 1.02;
+const WEBGPU_THRESHOLD_ABSOLUTE_ERROR = 1.0e-3;
+const WEBGPU_THRESHOLD_RELATIVE_ERROR = 1.00001;
 const WASM_THRESHOLD_ABSOLUTE_ERROR = 1.0e-4;
 const WASM_THRESHOLD_RELATIVE_ERROR = 1.000001;
 const ONNXRUNTIME_THRESHOLD_ABSOLUTE_ERROR = 1.0e-3;
@@ -54,12 +57,40 @@ async function loadFile(uri: string): Promise<Uint8Array> {
   }
 }
 
-async function loadTensorProto(uriOrData: string|Uint8Array): Promise<Test.NamedTensor> {
+async function loadTensorProto(uriOrData: string|Uint8Array, allowInt64 = false): Promise<Test.NamedTensor> {
   const buf = (typeof uriOrData === 'string') ? await loadFile(uriOrData) : uriOrData;
-  const tensorProto = onnxProto.TensorProto.decode(buf);
-  const tensor = Tensor.fromProto(tensorProto);
+  const tensorProto = onnx.TensorProto.decode(buf);
+
+  let tensor: ort.Tensor;
+
+  // by default, we don't allow (u)int64. this is for backward compatibility.
+  if (allowInt64 && tensorProto && tensorProto.dataType &&
+      ((tensorProto.dataType === onnx.TensorProto.DataType.INT64 ||
+        tensorProto.dataType === onnx.TensorProto.DataType.UINT64))) {
+    const signed = tensorProto.dataType === onnx.TensorProto.DataType.INT64;
+    const dataConstructor = signed ? BigInt64Array : BigUint64Array;
+    const length = tensorProto.rawData.byteLength / 8;
+    const data = new dataConstructor(length);
+
+    if (tensorProto.rawData && typeof tensorProto.rawData.byteLength === 'number' &&
+        tensorProto.rawData.byteLength > 0) {
+      const dataSource =
+          new DataView(tensorProto.rawData.buffer, tensorProto.rawData.byteOffset, tensorProto.rawData.byteLength);
+      for (let i = 0; i < length; i++) {
+        data[i] = signed ? dataSource.getBigInt64(i * 8, true) : dataSource.getBigUint64(i * 8, true);
+      }
+    } else {
+      for (let i = 0; i < length; i++) {
+        data[i] = BigInt((signed ? tensorProto.int64Data : tensorProto.uint64Data)![i].toString());
+      }
+    }
+    tensor = new ort.Tensor(signed ? 'int64' : 'uint64', data, ProtoUtil.tensorDimsFromProto(tensorProto.dims));
+  } else {
+    const internalTensor = Tensor.fromProto(tensorProto);
+    tensor = fromInternalTensor(internalTensor);
+  }
   // add property 'name' to the tensor object.
-  const namedTensor = fromInternalTensor(tensor) as unknown as Test.NamedTensor;
+  const namedTensor = tensor as unknown as Test.NamedTensor;
   namedTensor.name = tensorProto.name;
   return namedTensor;
 }
@@ -70,10 +101,12 @@ async function loadMlProto(_uriOrData: string|Uint8Array): Promise<Test.NamedTen
 
 async function loadTensors(
     modelMetaData: {inputNames: readonly string[]; outputNames: readonly string[]}, testCase: Test.ModelTestCase,
-    fileCache?: FileCacheBuffer) {
+    backendName: string, fileCache?: FileCacheBuffer) {
   const inputs: Test.NamedTensor[] = [];
   const outputs: Test.NamedTensor[] = [];
   let dataFileType: 'none'|'pb'|'npy' = 'none';
+
+  const allowInt64 = ['wasm', 'xnnpack', 'webgpu'].includes(backendName);
 
   for (const dataFile of testCase.dataFiles) {
     const ext = extname(dataFile);
@@ -86,7 +119,7 @@ async function loadTensors(
       }
 
       const uriOrData = fileCache && fileCache[dataFile] ? fileCache[dataFile] : dataFile;
-      const t = ext.toLowerCase() === '.pb' ? await loadTensorProto(uriOrData) :  // onnx.TensorProto
+      const t = ext.toLowerCase() === '.pb' ? await loadTensorProto(uriOrData, allowInt64) :  // onnx.TensorProto
                                               await loadMlProto(uriOrData);
 
       const dataFileBasename = dataFile.split(/[/\\]/).pop()!;
@@ -214,7 +247,7 @@ export class ModelTestContext {
       const initEnd = now();
 
       for (const testCase of modelTest.cases) {
-        await loadTensors(session, testCase, this.cache);
+        await loadTensors(session, testCase, modelTest.backend!, this.cache);
       }
 
       return new ModelTestContext(
@@ -275,6 +308,9 @@ export class TensorResultValidator {
         this.absoluteThreshold = WEBGL_THRESHOLD_ABSOLUTE_ERROR;
         this.relativeThreshold = WEBGL_THRESHOLD_RELATIVE_ERROR;
       }
+    } else if (backend === 'webgpu') {
+      this.absoluteThreshold = WEBGPU_THRESHOLD_ABSOLUTE_ERROR;
+      this.relativeThreshold = WEBGPU_THRESHOLD_RELATIVE_ERROR;
     } else if (backend === 'wasm' || backend === 'xnnpack') {
       this.absoluteThreshold = WASM_THRESHOLD_ABSOLUTE_ERROR;
       this.relativeThreshold = WASM_THRESHOLD_RELATIVE_ERROR;
@@ -466,8 +502,10 @@ export async function runModelTestSet(
     const feeds: Record<string, ort.Tensor> = {};
     testCase.inputs!.forEach((tensor, i) => feeds[context.session.inputNames[i]] = tensor);
     const start = now();
+    Logger.verbose('TestRunner', `Timestamp before session run: ${start}`);
     const outputs = await context.session.run(feeds);
     const end = now();
+    Logger.verbose('TestRunner', `Timestamp after session run: ${end}`);
     if (context.perfData.count === 0) {
       context.perfData.firstRun = end - start;
     } else {
@@ -519,7 +557,7 @@ export class OpTestContext {
   inferenceHandler: InferenceHandler;
 
   constructor(protected opTest: Test.OperatorTest) {
-    this.backendHint = opTest.backend === 'webgl' ? 'webgl' : 'cpu';
+    this.backendHint = opTest.backend ?? 'cpu';
   }
   createOperator(): Operator {
     return initializeOperator(
@@ -558,9 +596,14 @@ async function runOpTestcase(
       testcase.inputs.map(input => createTensor(input.dims, input.type as Tensor.DataType, input.data));
 
   const results = operator.impl(inferenceHandler, inputTensors, operator.context);
-  // if ('then' in results) {
-  //   results = await results;
-  // }
+
+  // try async data read.
+  for (const result of results) {
+    try {
+      await result.getData();
+    } catch {
+    }
+  }
 
   results.forEach((output, i) => {
     Logger.verbose('TestOpRunner', `  Result'${i}': ${output.type}[${output.dims.join(',')}]`);

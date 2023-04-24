@@ -114,6 +114,9 @@ endif()
 if(onnxruntime_USE_NNAPI_BUILTIN)
   set(PROVIDERS_NNAPI onnxruntime_providers_nnapi)
 endif()
+if(onnxruntime_USE_JS)
+  set(PROVIDERS_JS onnxruntime_providers_js)
+endif()
 if(onnxruntime_USE_QNN)
   set(PROVIDERS_QNN onnxruntime_providers_qnn)
 endif()
@@ -1062,6 +1065,24 @@ if (onnxruntime_USE_NNAPI_BUILTIN)
             RUNTIME   DESTINATION ${CMAKE_INSTALL_BINDIR}
             FRAMEWORK DESTINATION ${CMAKE_INSTALL_BINDIR})
   endif()
+endif()
+
+if (onnxruntime_USE_JS)
+  add_compile_definitions(USE_JS=1)
+
+  file(GLOB_RECURSE onnxruntime_providers_js_cc_srcs
+    "${ONNXRUNTIME_ROOT}/core/providers/js/*.h"
+    "${ONNXRUNTIME_ROOT}/core/providers/js/*.cc"
+  )
+
+  source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_js_cc_srcs})
+  onnxruntime_add_static_library(onnxruntime_providers_js ${onnxruntime_providers_js_cc_srcs})
+  onnxruntime_add_include_to_target(onnxruntime_providers_js
+    onnxruntime_common onnxruntime_framework onnx onnx_proto ${PROTOBUF_LIB} flatbuffers Boost::mp11
+  )
+
+  add_dependencies(onnxruntime_providers_js ${onnxruntime_EXTERNAL_DEPENDENCIES})
+
 endif()
 
 if (onnxruntime_USE_QNN)

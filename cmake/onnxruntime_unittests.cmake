@@ -504,6 +504,10 @@ if(onnxruntime_USE_NNAPI_BUILTIN)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_nnapi)
 endif()
 
+if(onnxruntime_USE_JS)
+  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_js)
+endif()
+
 if(onnxruntime_USE_RKNPU)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_rknpu)
 endif()
@@ -551,6 +555,7 @@ set(ONNXRUNTIME_TEST_LIBS
     ${onnxruntime_libs}
     # CUDA, ROCM, TENSORRT, MIGRAPHX, DNNL, and OpenVINO are dynamically loaded at runtime
     ${PROVIDERS_NNAPI}
+    ${PROVIDERS_JS}
     ${PROVIDERS_QNN}
     ${PROVIDERS_SNPE}
     ${PROVIDERS_RKNPU}
@@ -602,6 +607,13 @@ if(onnxruntime_USE_NNAPI_BUILTIN)
   list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_nnapi)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_nnapi)
   list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_nnapi)
+endif()
+
+if(onnxruntime_USE_JS)
+  list(APPEND onnxruntime_test_framework_src_patterns  ${TEST_SRC_DIR}/providers/js/*)
+  list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_js)
+  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_js)
+  list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_js)
 endif()
 
 if(onnxruntime_USE_QNN)
@@ -838,6 +850,9 @@ if (onnxruntime_BUILD_WEBASSEMBLY)
   set_target_properties(onnxruntime_test_all PROPERTIES LINK_FLAGS "-s STACK_SIZE=1048576 -s ALLOW_MEMORY_GROWTH=1 --pre-js \"${TEST_SRC_DIR}/wasm/onnxruntime_test_all_adapter.js\" -s \"EXPORTED_RUNTIME_METHODS=['FS']\" --preload-file ${CMAKE_CURRENT_BINARY_DIR}/testdata@/testdata -s EXIT_RUNTIME=1")
   if (onnxruntime_ENABLE_WEBASSEMBLY_THREADS)
     set_property(TARGET onnxruntime_test_all APPEND_STRING PROPERTY LINK_FLAGS " -s USE_PTHREADS=1 -s PROXY_TO_PTHREAD=1")
+  endif()
+  if (onnxruntime_USE_JS)
+    set_property(TARGET onnxruntime_test_all APPEND_STRING PROPERTY LINK_FLAGS " --pre-js \"${ONNXRUNTIME_ROOT}/wasm/js_internal_api.js\"")
   endif()
 endif()
 
