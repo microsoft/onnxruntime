@@ -150,6 +150,7 @@ class TrainingSession : public detail::Base<OrtTrainingSession> {
    * The checkpoint state represents the parameters of the training session which will be moved
    * to the device specified by the user through the session options (if necessary).
    *
+   * \param[in] env Env to be used for the training session.
    * \param[in] session_options SessionOptions that the user can customize for this training session.
    * \param[in] checkpoint_state Training states that the training session uses as a starting point for training.
    * \param[in] train_model_path Model to be used to perform training.

@@ -7,7 +7,9 @@
 #include <stdbool.h>
 #include "onnxruntime_c_api.h"
 
-/** \page OrtTrainingApi Training C & C++ APIs
+/** \page TrainingCCPPApi Training C & C++ APIs
+ *
+ * Training C and C++ APIs are an extension of the \ref CCppApis "onnxruntime core C and C++ APIs" and should be used in conjunction with them.
  *
  * In order to train a model with onnxruntime, the following training artifacts must be generated:
  * - The training onnx model
@@ -56,6 +58,9 @@
  *
  * g_ort_training_api->ExportModelForInferencing(training_session, inference_model_path, ...);
  * g_ort_training_api->SaveCheckpoint(state, path_to_checkpoint, false);
+ *
+ * g_ort_training_api->ReleaseTrainingSession(training_session);
+ * g_ort_training_api->ReleaseCheckpointState(state);
  * ```
  *
  * > **Note**
