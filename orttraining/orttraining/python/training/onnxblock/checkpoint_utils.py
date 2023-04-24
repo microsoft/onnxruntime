@@ -26,7 +26,7 @@ def save_checkpoint(
     trainable_params, non_trainable_params = parameters
     trainable_params = [param.SerializeToString() for param in trainable_params]
     non_trainable_params = [param.SerializeToString() for param in non_trainable_params]
-    _internal_save_checkpoint(trainable_params, non_trainable_params, path_to_checkpoint)
+    _internal_save_checkpoint(trainable_params, non_trainable_params, os.fspath(path_to_checkpoint))
 
 
 def load_checkpoint_to_model(path_to_checkpoint: Union[str, os.PathLike], model: onnx.ModelProto) -> None:
@@ -37,4 +37,4 @@ def load_checkpoint_to_model(path_to_checkpoint: Union[str, os.PathLike], model:
         model (onnx.ModelProto): The model to load the checkpoint to.
     """
 
-    model.ParseFromString(_internal_load_checkpoint_to_model(path_to_checkpoint, model.SerializeToString()))
+    model.ParseFromString(_internal_load_checkpoint_to_model(os.fspath(path_to_checkpoint), model.SerializeToString()))

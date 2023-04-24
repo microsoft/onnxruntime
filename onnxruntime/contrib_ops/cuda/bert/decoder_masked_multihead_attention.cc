@@ -5,8 +5,8 @@
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
 #include "core/platform/env_var_utils.h"
 #include "contrib_ops/cpu/bert/multihead_attention_helper.h"
-#include "contrib_ops/cuda/decoder/decoder_masked_multihead_attention.h"
-#include "contrib_ops/cuda/decoder/fastertransformer_decoder_attention/decoder_masked_multihead_attention_impl.h"
+#include "contrib_ops/cuda/bert/decoder_masked_multihead_attention.h"
+#include "contrib_ops/cuda/bert/fastertransformer_decoder_attention/decoder_masked_multihead_attention_impl.h"
 
 using namespace onnxruntime::cuda;
 using namespace ::onnxruntime::common;

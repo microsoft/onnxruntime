@@ -72,19 +72,19 @@ static void RunCastOpTest(const std::vector<int64_t>& shape, ONNX_NAMESPACE::Ten
 //
 
 // Cast int32_t to float on CPU
-TEST(QnnCPUBackendTests, TestCastInt32ToFloat) {
+TEST_F(QnnCPUBackendTests, TestCastInt32ToFloat) {
   RunCastOpTest<int32_t>({2, 3}, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT, ExpectedEPNodeAssignment::All,
                          "TestCastInt32ToFloat", false);
 }
 
 // Cast uint8_t to float on CPU
-TEST(QnnCPUBackendTests, TestCastUInt8ToFloat) {
+TEST_F(QnnCPUBackendTests, TestCastUInt8ToFloat) {
   RunCastOpTest<uint8_t>({2, 3}, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT, ExpectedEPNodeAssignment::All,
                          "TestCastUInt8ToFloat", false);
 }
 
 // Cast float to int32_t on CPU
-TEST(QnnCPUBackendTests, TestCastFloatToInt32) {
+TEST_F(QnnCPUBackendTests, TestCastFloatToInt32) {
   RunCastOpTest<float>({2, 3}, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32, ExpectedEPNodeAssignment::All,
                        "TestCastInt32ToFloat", false);
 }
