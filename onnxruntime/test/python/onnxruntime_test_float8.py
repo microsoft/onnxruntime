@@ -492,7 +492,7 @@ class TestInferenceSession(unittest.TestCase):
             if "Quantization from float16 is not supported yet for CPU provider" in str(e):
                 return
             raise AssertionError(
-                f"Unable to run qdq for name={name!r}, " f"float_name={float_name!r}, saturate={saturate!r}."
+                f"Unable to run qdq for name={name!r}, float_name={float_name!r}, saturate={saturate!r}."
             ) from e
         assert_allclose(expect, y)
         self.assertEqual(expect.shape, y.shape)
