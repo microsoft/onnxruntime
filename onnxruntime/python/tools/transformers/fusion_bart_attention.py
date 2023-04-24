@@ -24,7 +24,6 @@ class FusionBartAttention(FusionAttention):
         attention_mask: AttentionMask,
     ):
         super().__init__(model, hidden_size, num_heads, attention_mask)
-        self.use_decoder_masked_multi_head_attention = False
 
     def check_runtime_shape_path(
         self,
