@@ -96,7 +96,14 @@ std::shared_ptr<OptimizerAlgorithmBase> OptimizerAlorithmFactory::CreateInstance
   }
 }
 
-Status Optimizer::GenerateMomentumNamedStates() {
+Status Optimizer::GenerateMomentumNamedStates(OptimizerCheckpointState& optimizer_checkpoint_states) {
+  auto group_optimizer_state_it =
+      optimizer_checkpoint_states.group_named_optimizer_states.find(GROUP_ZERO_NAME);
+  ORT_ENFORCE(group_optimizer_state_it != optimizer_checkpoint_states.group_named_optimizer_states.end(),
+              "Group 0 not found in the optimizer checkpoint states.");
+
+  optimizer_state_ = group_optimizer_state_it->second;
+
   auto& param_named_optimizer_states = optimizer_state_->param_named_optimizer_states;
   auto& optim_sess_state = optim_sess_->GetSessionState();
   for (auto& pair : state_->module_checkpoint_state.named_parameters) {
@@ -126,7 +133,7 @@ Status Optimizer::ConstructInputs() {
   list_of_momentums.resize(optimizer_algo_shared_ptr_->momentum_keys.size());
 
   // Collect all the non-user-defined inputs from the named_parameters_.
-  for (auto& [parameter_name, parameter] : named_parameters_) {
+  for (auto& [parameter_name, parameter] : state_->module_checkpoint_state.named_parameters) {
     if (parameter->RequiresGrad()) {
       // Collect parameters and prepare for tensorseq creation
       auto* param_tensor = parameter->Data().GetMutable<Tensor>();
@@ -185,15 +192,15 @@ Optimizer::Optimizer(const std::string& optim_path_or_bytes,
     : optim_sess_(std::make_unique<InferenceSession>(session_options, env)), state_(state) {
   Initialize(optim_path_or_bytes, session_options, env, providers);
 
-  if (state_->optimizer_checkpoint_state.group_named_optimizer_states.empty()) {
+  ORT_ENFORCE(state != nullptr, "Checkpoint state cannot be null.");
+  auto g_it = state_->optimizer_checkpoint_state.group_named_optimizer_states.find(GROUP_ZERO_NAME);
+  if (g_it == state_->optimizer_checkpoint_state.group_named_optimizer_states.end()) {
     state_->optimizer_checkpoint_state.group_named_optimizer_states.insert(
         {GROUP_ZERO_NAME, std::make_shared<GroupOptimizerState>()});
-    // TODO: add multiple group support.
-    ORT_THROW_IF_ERROR(GenerateMomentumNamedStates());
+    ORT_THROW_IF_ERROR(GenerateMomentumNamedStates(state_->optimizer_checkpoint_state));
     ORT_THROW_IF_ERROR(ConstructInputs());
   } else {
-    // TODO: add multiple group support.
-    ORT_THROW_IF_ERROR(LoadStateDict(optimizer_checkpoint_states));
+    ORT_THROW_IF_ERROR(LoadStateDict(state_->optimizer_checkpoint_state));
   }
 }
 
@@ -244,7 +251,7 @@ Status Optimizer::Step() {
 
   // Extract step output and update
   if (utils::GetScalarFromOrtValue<int64_t>(outputs[0]) == 1LL) {
-    optimizer_state_.step++;
+    optimizer_state_->step++;
   }
 
   return Status::OK();
@@ -270,14 +277,14 @@ Status Optimizer::LoadStateDict(OptimizerCheckpointState& optimizer_checkpoint_s
   ORT_ENFORCE(group_optimizer_state_it != optimizer_checkpoint_states.group_named_optimizer_states.end(),
               "Group 0 not found in the optimizer checkpoint states.");
 
-  optimizer_state_ = *group_optimizer_state_it->second;
+  optimizer_state_ = group_optimizer_state_it->second;
   bool strict_match = true;
 
   ORT_RETURN_IF_NOT(optim_sess_, "optimizer session not initialized");
   auto& optim_sess_state = optim_sess_->GetSessionState();
-  auto& param_named_optimizer_states = optimizer_state_.param_named_optimizer_states;
+  auto& param_named_optimizer_states = optimizer_state_->param_named_optimizer_states;
 
-  for (auto& params_iter : named_parameters_) {
+  for (auto& params_iter : state_->module_checkpoint_state.named_parameters) {
     if (params_iter.second->RequiresGrad()) {
       bool src_exist = param_named_optimizer_states.find(params_iter.first) !=
                        param_named_optimizer_states.cend();

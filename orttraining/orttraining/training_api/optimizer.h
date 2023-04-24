@@ -148,7 +148,7 @@ struct Optimizer {
   }
 
   // Generates optimizer momentum states for parameters that require grad.
-  Status GenerateMomentumNamedStates();
+  Status GenerateMomentumNamedStates(OptimizerCheckpointState& optimizer_checkpoint_states);
   // Constructs the ortvalue inputs to be fed to the graph
   // at each step.
   Status ConstructInputs();

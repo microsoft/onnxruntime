@@ -36,24 +36,6 @@ constexpr int64_t total_step_count = 100;
 constexpr float initial_lr = 1e-3f;
 constexpr int64_t resume_step = total_step_count / 2;
 
-void GenerateRandomData(std::vector<float>& data) {
-  float scale = 1.f;
-  float mean = 0.f;
-  float seed = 123.f;
-
-  std::default_random_engine generator_float{gsl::narrow_cast<uint32_t>(seed)};
-  std::normal_distribution<float> distribution_float{mean, scale};
-  std::for_each(data.begin(), data.end(),
-                [&generator_float, &distribution_float](float& value) { value = distribution_float(generator_float); });
-}
-
-void GenerateRandomInput(gsl::span<const int64_t> dims, OrtValue& input) {
-  TensorShape shape(dims);
-  std::vector<float> data(shape.Size());
-  GenerateRandomData(data);
-  onnxruntime::test::CreateInputOrtValueOnCPU<float>(dims, data, &input);
-}
-
 void CompareValue(float expected, float output, float rtol = 1e-4, float atol = 1e-5) {
   ASSERT_NEAR(expected, output, atol);
   ASSERT_NEAR(expected, output, rtol * std::abs(expected));
@@ -74,7 +56,9 @@ static void PrepareModelAndOptimizerForTest(
     bool need_eval,
     bool need_opt,
     std::function<void(std::shared_ptr<Module>,
-                       std::shared_ptr<Optimizer>, CheckpointState&)>
+                       std::shared_ptr<Optimizer>,
+                       CheckpointState&,
+                       bool)>
         test_function) {
   std::vector<std::shared_ptr<IExecutionProvider>> providers;
   if (run_cuda) {
@@ -99,22 +83,22 @@ static void PrepareModelAndOptimizerForTest(
   std::shared_ptr<Module> model;
   if (need_eval) {
     model = std::make_shared<Module>(
-        ToUTF8String(model_uri), state.module_checkpoint_state.named_parameters, onnxruntime::SessionOptions(),
+        ToUTF8String(model_uri), &state, onnxruntime::SessionOptions(),
         *env, providers, ToUTF8String(eval_model_uri));
   } else {
     model = std::make_shared<Module>(
-        ToUTF8String(model_uri), state.module_checkpoint_state.named_parameters, session_option,
+        ToUTF8String(model_uri), &state, session_option,
         *env, providers);
   }
 
   std::shared_ptr<Optimizer> optim;
   if (need_opt) {
     optim = std::make_shared<Optimizer>(
-        ToUTF8String(optim_uri), model->NamedParameters(), session_option,
+        ToUTF8String(optim_uri), &state, session_option,
         *env, providers);
   }
 
-  test_function(model, optim, state);
+  test_function(model, optim, state, run_cuda);
 
   if (run_cuda) {
     cudaDeviceSynchronize();
@@ -158,7 +142,10 @@ Status CreateFakeOptimizerCheckpointStateOnCPU(
 }  // namespace
 
 TEST(TrainingApiTest, ModuleParametersSize) {
-  auto run_test = [](std::shared_ptr<Module> model, std::shared_ptr<Optimizer> /*optim*/, CheckpointState & /*state*/)
+  auto run_test = [](std::shared_ptr<Module> model,
+                     std::shared_ptr<Optimizer> /*optim*/,
+                     CheckpointState& /*state*/,
+                     bool /*run_cuda*/)
       -> void {
     size_t params_size = 0;
     for (auto& param : model->Parameters()) {
@@ -177,7 +164,10 @@ TEST(TrainingApiTest, ModuleParametersSize) {
 }
 
 TEST(TrainingApiTest, ModuleCopyBufferToParameters) {
-  auto run_test = [](std::shared_ptr<Module> model, std::shared_ptr<Optimizer> /*optim*/, CheckpointState & /*state*/)
+  auto run_test = [](std::shared_ptr<Module> model,
+                     std::shared_ptr<Optimizer> /*optim*/,
+                     CheckpointState& /*state*/,
+                     bool /*run_cuda*/)
       -> void {
     int64_t params_size = static_cast<int64_t>(model->GetParametersSize());
     std::vector<float> expected_param_buffer(params_size);
@@ -211,7 +201,9 @@ TEST(TrainingApiTest, ModuleCopyBufferToParameters) {
 }
 
 TEST(TrainingApiTest, ModuleTrainStep) {
-  auto run_test = [](std::shared_ptr<Module> model, std::shared_ptr<Optimizer> /*optim*/, CheckpointState & /*state*/)
+  auto run_test = [](std::shared_ptr<Module> model, std::shared_ptr<Optimizer> /*optim*/,
+                     CheckpointState& /*state*/,
+                     bool run_cuda)
       -> void {
     ASSERT_EQ(model->GetTrainingModelOutputCount(), 1);
     OrtValue input, target;
@@ -235,12 +227,20 @@ TEST(TrainingApiTest, ModuleTrainStep) {
       bias_grad = bias_param->Gradient();
 
       if (step > 1) {
-        CpuOrtValueToVec(bias_grad, current_bias_grad_vec);
+        if (run_cuda) {
+          CudaOrtValueToCpuVec(bias_grad, current_bias_grad_vec);
+        } else {
+          CpuOrtValueToVec(bias_grad, current_bias_grad_vec);
+        }
         for (size_t i = 0; i < current_bias_grad_vec.size(); i++) {
           ASSERT_EQ(current_bias_grad_vec[i], single_bias_grad_vec[i] * step);
         }
       } else {
-        CpuOrtValueToVec(bias_grad, single_bias_grad_vec);
+        if (run_cuda) {
+          CudaOrtValueToCpuVec(bias_grad, single_bias_grad_vec);
+        } else {
+          CpuOrtValueToVec(bias_grad, single_bias_grad_vec);
+        }
       }
     }
     // reset grad
@@ -250,7 +250,11 @@ TEST(TrainingApiTest, ModuleTrainStep) {
     std::vector<OrtValue>& inputs = *data_loader.begin();
     std::vector<OrtValue> fetches;
     ASSERT_STATUS_OK(model->TrainStep(inputs, fetches));
-    CpuOrtValueToVec(bias_grad, current_bias_grad_vec);
+    if (run_cuda) {
+      CudaOrtValueToCpuVec(bias_grad, current_bias_grad_vec);
+    } else {
+      CpuOrtValueToVec(bias_grad, current_bias_grad_vec);
+    }
     for (size_t i = 0; i < current_bias_grad_vec.size(); i++) {
       ASSERT_EQ(current_bias_grad_vec[i], single_bias_grad_vec[i]);
     }
@@ -258,13 +262,14 @@ TEST(TrainingApiTest, ModuleTrainStep) {
 
   PrepareModelAndOptimizerForTest(false /*run_cuda*/, false /*need_eval*/, false /*need_opt*/, run_test);
 #ifdef USE_CUDA
-// TODO: fix this test
-// PrepareModelAndOptimizerForTest(true /*run_cuda*/, false /*need_eval*/, false /*need_opt*/, run_test);
+  PrepareModelAndOptimizerForTest(true /*run_cuda*/, false /*need_eval*/, false /*need_opt*/, run_test);
 #endif
 }
 
 TEST(TrainingApiTest, OptimizerCreatedWithoutCheckpointState) {
-  auto run_test = [](std::shared_ptr<Module> model, std::shared_ptr<Optimizer> optim, CheckpointState & /*state*/)
+  auto run_test = [](std::shared_ptr<Module> model, std::shared_ptr<Optimizer> optim,
+                     CheckpointState& /*state*/,
+                     bool run_cuda)
       -> void {
     {
       // Before load state dict, check if optim state is initialized to 0
@@ -277,7 +282,10 @@ TEST(TrainingApiTest, OptimizerCreatedWithoutCheckpointState) {
             optimizer_states.group_named_optimizer_states["group0"]->param_named_optimizer_states.at(param_name);
         for (auto& param_p : param_state.momentum_named_states) {
           std::vector<float> moment_vec;
-          CudaOrtValueToCpuVec(param_state.momentum_named_states.at(param_p.first), moment_vec);
+          if (run_cuda)
+            CudaOrtValueToCpuVec(param_state.momentum_named_states.at(param_p.first), moment_vec);
+          else
+            CpuOrtValueToVec(param_state.momentum_named_states.at(param_p.first), moment_vec);
           for (size_t i = 0; i < moment_vec.size(); i++) {
             ASSERT_EQ(moment_vec[i], 0.0f);
           }
@@ -319,16 +327,17 @@ TEST(TrainingApiTest, OptimizerCreatedWithCheckpointState) {
     ASSERT_STATUS_OK(Environment::Create(nullptr, env));
 
     std::shared_ptr<Module> model = std::make_shared<Module>(
-        ToUTF8String(model_uri), state.module_checkpoint_state.named_parameters, session_option,
+        ToUTF8String(model_uri), &state, session_option,
         *env, providers);
 
-    // Load state dict from faked optmizer checkpoint state.
-    OptimizerCheckpointState external_optimizer_checkpoint_state;
-    ASSERT_STATUS_OK(CreateFakeOptimizerCheckpointStateOnCPU(model->NamedParameters(), {"momentum0", "momentum1"},
+    // Load state dict from faked optimizer checkpoint state.
+    CheckpointState new_state = state;
+    OptimizerCheckpointState& external_optimizer_checkpoint_state = new_state.optimizer_checkpoint_state;
+    ASSERT_STATUS_OK(CreateFakeOptimizerCheckpointStateOnCPU(model->NamedParameters(),
+                                                             {"momentum0", "momentum1"},
                                                              external_optimizer_checkpoint_state));
     std::shared_ptr<Optimizer> optim = std::make_shared<Optimizer>(
-        ToUTF8String(optim_uri), model->NamedParameters(), session_option,
-        *env, providers, external_optimizer_checkpoint_state);
+        ToUTF8String(optim_uri), &new_state, session_option, *env, providers);
 
     // After loading state dict, check if optim state is updated to new states.
     OptimizerCheckpointState optimizer_states;
@@ -344,9 +353,18 @@ TEST(TrainingApiTest, OptimizerCreatedWithCheckpointState) {
               ->param_named_optimizer_states.at(param_name);
       for (auto& param_p : param_state.momentum_named_states) {
         std::vector<float> moment_vec;
-        CudaOrtValueToCpuVec(param_state.momentum_named_states.at(param_p.first), moment_vec);
+        if (run_cuda) {
+          CudaOrtValueToCpuVec(param_state.momentum_named_states.at(param_p.first), moment_vec);
+        } else {
+          CpuOrtValueToVec(param_state.momentum_named_states.at(param_p.first), moment_vec);
+        }
         std::vector<float> external_moment_vect;
-        CpuOrtValueToVec(external_param_state.momentum_named_states.at(param_p.first), external_moment_vect);
+
+        if (run_cuda) {
+          CudaOrtValueToCpuVec(external_param_state.momentum_named_states.at(param_p.first), external_moment_vect);
+        } else {
+          CpuOrtValueToVec(external_param_state.momentum_named_states.at(param_p.first), external_moment_vect);
+        }
 
         ASSERT_EQ(moment_vec.size(), external_moment_vect.size());
         for (size_t i = 0; i < moment_vec.size(); i++) {
@@ -362,7 +380,9 @@ TEST(TrainingApiTest, OptimizerCreatedWithCheckpointState) {
 }
 
 TEST(TrainingApiTest, OptimizerRestoreFromCheckpointState) {
-  auto run_test = [](std::shared_ptr<Module> model, std::shared_ptr<Optimizer> optim, CheckpointState & /*state*/)
+  auto run_test = [](std::shared_ptr<Module> model, std::shared_ptr<Optimizer> optim,
+                     CheckpointState& /*state*/,
+                     bool run_cuda)
       -> void {
     // Load state dict from faked optimizer checkpoint state.
     OptimizerCheckpointState external_optimizer_checkpoint_state;
@@ -384,9 +404,18 @@ TEST(TrainingApiTest, OptimizerRestoreFromCheckpointState) {
               ->param_named_optimizer_states.at(param_name);
       for (auto& param_p : param_state.momentum_named_states) {
         std::vector<float> moment_vec;
-        CudaOrtValueToCpuVec(param_state.momentum_named_states.at(param_p.first), moment_vec);
+        if (run_cuda) {
+          CudaOrtValueToCpuVec(param_state.momentum_named_states.at(param_p.first), moment_vec);
+        } else {
+          CpuOrtValueToVec(param_state.momentum_named_states.at(param_p.first), moment_vec);
+        }
+
         std::vector<float> external_moment_vect;
-        CpuOrtValueToVec(external_param_state.momentum_named_states.at(param_p.first), external_moment_vect);
+        if (run_cuda) {
+          CudaOrtValueToCpuVec(external_param_state.momentum_named_states.at(param_p.first), external_moment_vect);
+        } else {
+          CpuOrtValueToVec(external_param_state.momentum_named_states.at(param_p.first), external_moment_vect);
+        }
 
         ASSERT_EQ(moment_vec.size(), external_moment_vect.size());
         for (size_t i = 0; i < moment_vec.size(); i++) {
@@ -403,7 +432,9 @@ TEST(TrainingApiTest, OptimizerRestoreFromCheckpointState) {
 }
 
 TEST(TrainingApiTest, OptimizerStep) {
-  auto run_test = [](std::shared_ptr<Module> model, std::shared_ptr<Optimizer> optim, CheckpointState & /*state*/)
+  auto run_test = [](std::shared_ptr<Module> model, std::shared_ptr<Optimizer> optim,
+                     CheckpointState& /*state*/,
+                     bool run_cuda)
       -> void {
     OrtValue input, target;
     GenerateRandomInput(std::array<int64_t, 2>{2, 784}, input);
@@ -422,10 +453,15 @@ TEST(TrainingApiTest, OptimizerStep) {
       ParameterOptimizerState& param_state =
           optimizer_states.group_named_optimizer_states["group0"]->param_named_optimizer_states.at(param_name);
       OrtValue& moment_1 = param_state.momentum_named_states.at("momentum0");
-
-      CudaOrtValueToCpuVec(model->NamedParameters().at(param_name)->Data(), param_vec_before_optimizer_step);
       std::vector<float> moment_1_vec;
-      CudaOrtValueToCpuVec(moment_1, moment_1_vec);
+      if (run_cuda) {
+        CudaOrtValueToCpuVec(model->NamedParameters().at(param_name)->Data(), param_vec_before_optimizer_step);
+        CudaOrtValueToCpuVec(moment_1, moment_1_vec);
+      } else {
+        CpuOrtValueToVec(model->NamedParameters().at(param_name)->Data(), param_vec_before_optimizer_step);
+        CpuOrtValueToVec(moment_1, moment_1_vec);
+      }
+
       for (size_t i = 0; i < moment_1_vec.size(); i++) {
         ASSERT_EQ(moment_1_vec[i], 0.0f);
       }
@@ -437,10 +473,15 @@ TEST(TrainingApiTest, OptimizerStep) {
       std::vector<OrtValue> fetches;
       ASSERT_STATUS_OK(model->TrainStep(inputs, fetches));
       std::vector<float> grads;
-      CudaOrtValueToCpuVec(model->NamedParameters().at(param_name)->Gradient(), grads);
+      if (run_cuda) {
+        CudaOrtValueToCpuVec(model->NamedParameters().at(param_name)->Gradient(), grads);
+      } else {
+        CpuOrtValueToVec(model->NamedParameters().at(param_name)->Gradient(), grads);
+      }
+
       ASSERT_STATUS_OK(optim->Step());
 
-      // Get optimizer state and check if it is updated
+      // Get the optimizer state and check if it is updated
       {
         OptimizerCheckpointState optimizer_states;
         ASSERT_STATUS_OK(optim->GetStateDict(optimizer_states));
@@ -456,7 +497,12 @@ TEST(TrainingApiTest, OptimizerStep) {
         }
 
         std::vector<float> param_vec_after_optimizer_step;
-        CudaOrtValueToCpuVec(model->NamedParameters().at(param_name)->Data(), param_vec_after_optimizer_step);
+        if (run_cuda) {
+          CudaOrtValueToCpuVec(model->NamedParameters().at(param_name)->Data(), param_vec_after_optimizer_step);
+        } else {
+          CpuOrtValueToVec(model->NamedParameters().at(param_name)->Data(), param_vec_after_optimizer_step);
+        }
+
         for (size_t i = 0; i < param_vec_after_optimizer_step.size(); ++i) {
           if (grads[i] != 0.0f && moment_1_vec[i] != 0.0f) {
             ASSERT_NE(param_vec_after_optimizer_step[i], param_vec_before_optimizer_step[i]);
@@ -480,7 +526,8 @@ TEST(TrainingApiTest, ModuleExportModelForInferencing) {
   ASSERT_STATUS_OK(Environment::Create(nullptr, env));
 
   auto run_test =
-      [&eval_model, &env](std::shared_ptr<Module> model, std::shared_ptr<Optimizer>, CheckpointState & /*state*/)
+      [&eval_model, &env](std::shared_ptr<Module> model, std::shared_ptr<Optimizer>, CheckpointState& /*state*/,
+                          bool /*run_cuda*/)
       -> void {
     auto test_dir = ORT_TSTR("export_model_for_inferencing_test_dir");
     if (Env::Default().FolderExists(test_dir)) {
@@ -540,7 +587,8 @@ void TestLRSchduler(const std::basic_string<ORTCHAR_T>& test_file_name, float in
                     int64_t warmup_step_count) {
   auto run_test =
       [&test_file_name, initial_lr, total_step_count, warmup_step_count](
-          std::shared_ptr<Module> model, std::shared_ptr<Optimizer> optim, CheckpointState & /*state*/)
+          std::shared_ptr<Module> model, std::shared_ptr<Optimizer> optim, CheckpointState& /*state*/,
+          bool /*run_cuda*/)
       -> void {
     OrtValue input, target;
     GenerateRandomInput(std::array<int64_t, 2>{2, 784}, input);
