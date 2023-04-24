@@ -80,7 +80,8 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 
                 var providerOptionsDict = new Dictionary<string, string>();
                 providerOptionsDict["device_id"] = "0";
-                providerOptionsDict["gpu_mem_limit"] = "20971520";
+                // 256MB
+                providerOptionsDict["gpu_mem_limit"] = "268435456";
                 providerOptionsDict["arena_extend_strategy"] = "kSameAsRequested";
                 providerOptionsDict["cudnn_conv_algo_search"] = "DEFAULT";
                 providerOptionsDict["do_copy_in_default_stream"] = "1";
@@ -96,7 +97,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 value = resultProviderOptionsDict["device_id"];
                 Assert.Equal("0", value);
                 value = resultProviderOptionsDict["gpu_mem_limit"];
-                Assert.Equal("20971520", value);
+                Assert.Equal("268435456", value);
                 value = resultProviderOptionsDict["arena_extend_strategy"];
                 Assert.Equal("kSameAsRequested", value);
                 value = resultProviderOptionsDict["cudnn_conv_algo_search"];
