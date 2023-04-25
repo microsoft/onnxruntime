@@ -36,11 +36,11 @@
 
 ## Data/Telemetry
 
-Windows distributions of this project may collect usage data and send it to Microsoft to help improve our products and services. See the [privacy statement](https://github.com/microsoft/onnxruntime/blob/main/docs/Privacy.md) for more details.
+Windows distributions of this project may collect usage data and send it to Microsoft to help improve our products and services. See the [privacy statement](docs/Privacy.md) for more details.
 
 ## Contributions and Feedback
 
-We welcome contributions! Please see the [contribution guidelines](https://github.com/microsoft/onnxruntime/blob/main/CONTRIBUTING.md).
+We welcome contributions! Please see the [contribution guidelines](CONTRIBUTING.md).
 
 For feature requests or bug reports, please file a [GitHub Issue](https://github.com/Microsoft/onnxruntime/issues).
 
@@ -54,4 +54,4 @@ or contact [opencode@microsoft.com](mailto:opencode@microsoft.com) with any addi
 
 ## License
 
-This project is licensed under the [MIT License](https://github.com/microsoft/onnxruntime/blob/main/LICENSE).
+This project is licensed under the [MIT License](LICENSE).
