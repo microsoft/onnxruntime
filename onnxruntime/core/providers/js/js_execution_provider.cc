@@ -295,7 +295,8 @@ void JsExecutionProvider::RegisterAllocator(AllocatorManager& allocator_manager)
     if (!cpu_alloc) {
       AllocatorCreationInfo cpuAllocatorCreationInfo([&](int) {
         return std::make_unique<js::JsCPUAllocator>();
-      });
+      },
+                                                     0, false);
       cpu_alloc = CreateAllocator(cpuAllocatorCreationInfo);
       allocator_manager.InsertAllocator(cpu_alloc);
     }
