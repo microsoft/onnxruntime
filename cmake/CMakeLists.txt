@@ -1229,21 +1229,18 @@ if (onnxruntime_USE_VITISAI)
   endif()
 endif()
 
-# If the build envs have no git, ORT_GIT_COMMIT and ORT_GIT_BRANCH will be set to "Not-Available".
-execute_process(COMMAND git log -1 --format=%h
-    OUTPUT_VARIABLE ORT_GIT_COMMIT)
-string(STRIP "${ORT_GIT_COMMIT}" ORT_GIT_COMMIT)
-if ("${ORT_GIT_COMMIT}" STREQUAL "")
-  set(ORT_GIT_COMMIT "Not-Available")
+set(ORT_BUILD_INFO "ORT Build Info: ")
+find_package(Git)
+if (Git_FOUND)
+  execute_process(COMMAND ${GIT_EXECUTABLE} log -1 --format=%h
+      OUTPUT_VARIABLE ORT_GIT_COMMIT)
+  string(STRIP "${ORT_GIT_COMMIT}" ORT_GIT_COMMIT)
+  execute_process(COMMAND ${GIT_EXECUTABLE} rev-parse --abbrev-ref HEAD
+      OUTPUT_VARIABLE ORT_GIT_BRANCH)
+  string(STRIP "${ORT_GIT_BRANCH}" ORT_GIT_BRANCH)
+  string(APPEND ORT_BUILD_INFO "git-branch=${ORT_GIT_BRANCH}, git-commit-id=${ORT_GIT_COMMIT}, ")
 endif()
-execute_process(COMMAND git rev-parse --abbrev-ref HEAD
-    OUTPUT_VARIABLE ORT_GIT_BRANCH)
-string(STRIP "${ORT_GIT_BRANCH}" ORT_GIT_BRANCH)
-if ("${ORT_GIT_BRANCH}" STREQUAL "")
-  set(ORT_GIT_BRANCH "Not-Available")
-endif()
-set(ORT_BUILD_INFO "ORT Build Info: git-branch=${ORT_GIT_BRANCH}, git-commit-id=${ORT_GIT_COMMIT}")
-string(APPEND ORT_BUILD_INFO ", build type=${CMAKE_BUILD_TYPE}")
+string(APPEND ORT_BUILD_INFO "build type=${CMAKE_BUILD_TYPE}")
 string(APPEND ORT_BUILD_INFO ", cmake cxx flags: ${CMAKE_CXX_FLAGS}")
 configure_file(onnxruntime_config.h.in ${CMAKE_CURRENT_BINARY_DIR}/onnxruntime_config.h)
 if (WIN32)

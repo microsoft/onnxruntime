@@ -215,11 +215,13 @@ Status TuningResultsValidator::ValidateOrtVersion(const std::string& value) cons
 }
 
 std::string TuningResultsValidator::GetOrtGitCommit() const {
-  return ORT_GIT_COMMIT;
+  // TODO:
+  return "";
 }
 
 Status TuningResultsValidator::ValidateOrtGitCommit(const std::string& value) const {
-  ORT_RETURN_IF(value != ORT_GIT_COMMIT, "onnxruntime git commit mismatch");
+  // TODO:
+  ORT_UNUSED_PARAMETER(value);
   return Status::OK();
 }
 
