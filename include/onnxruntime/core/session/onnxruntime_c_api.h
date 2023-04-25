@@ -3,7 +3,7 @@
 
 // See docs\c_cxx\README.md on generating the Doxygen documentation from this file
 
-/** \mainpage OnnxRuntime
+/** \mainpage ONNX Runtime
  *
  * ONNX Runtime is a high-performance inference and training graph execution engine for deeplearning models.
  *
