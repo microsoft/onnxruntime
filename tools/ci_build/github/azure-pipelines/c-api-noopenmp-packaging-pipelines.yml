@@ -165,6 +165,7 @@ stages:
         artifactName: 'drop-onnxruntime-java-win-x64-tensorrt'
         targetPath: '$(Build.BinariesDirectory)\java-artifact\onnxruntime-java-win-x64'
         specificArtifact: ${{ parameters.specificArtifact }}
+        runId: ${{ parameters.runId }}
 
     - template: templates/flex-downloadPipelineArtifact.yml
       parameters:
@@ -172,6 +173,7 @@ stages:
         artifactName: 'drop-onnxruntime-java-linux-x64-cuda'
         targetPath: '$(Build.BinariesDirectory)\java-artifact\onnxruntime-java-linux-x64'
         specificArtifact: ${{ parameters.specificArtifact }}
+        runId: ${{ parameters.runId }}
 
     - template: templates/flex-downloadPipelineArtifact.yml
       parameters:
@@ -179,6 +181,7 @@ stages:
         artifactName: 'drop-onnxruntime-java-linux-x64-tensorrt'
         targetPath: '$(Build.BinariesDirectory)\java-artifact\onnxruntime-java-linux-x64-tensorrt'
         specificArtifact: ${{ parameters.specificArtifact }}
+        runId: ${{ parameters.runId }}
 
     - task: PowerShell@2
       displayName: 'PowerShell Script'
