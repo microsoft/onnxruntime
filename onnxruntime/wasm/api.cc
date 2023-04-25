@@ -363,7 +363,14 @@ int OrtRun(OrtSession* session,
            const char** input_names, const ort_tensor_handle_t* inputs, size_t input_count,
            const char** output_names, size_t output_count, ort_tensor_handle_t* outputs,
            OrtRunOptions* run_options) {
-  return CHECK_STATUS(Run, session, run_options, input_names, inputs, input_count, output_names, output_count, outputs);
+#if defined(USE_JS)
+  EM_ASM({ Module["jsepRunPromise"] = new Promise(function(r) { Module.jsepRunPromiseResolve = r; }); });
+#endif
+  auto status_code = CHECK_STATUS(Run, session, run_options, input_names, inputs, input_count, output_names, output_count, outputs);
+#if defined(USE_JS)
+  EM_ASM({ Module.jsepRunPromiseResolve($0); }, status_code);
+#endif
+  return status_code;
 }
 
 char* OrtEndProfiling(ort_session_handle_t session) {
