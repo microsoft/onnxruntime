@@ -86,7 +86,7 @@ struct CheckpointState;
  *     but reserving using the original OrtValue with the copied data buffer;
  *   >> Otherwise, it generates the optimizer state initialized as all zeros and owns them.
  * > If 'optimizer_checkpoint_states' is not provided in the constructor as part of `CheckpointState`.
- *   It owns the optimizer state initialized as all zeros on the same device of corresponding parameters.
+ *   The optimizer states are initialized as all zeros on the same device of corresponding parameters.
  *
  * Currently, we only support load checkpoints from the constructor;
  * no public API to load state dict after Optimizer instance is created.
