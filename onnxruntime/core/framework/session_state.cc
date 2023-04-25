@@ -69,7 +69,8 @@ SessionState::SessionState(Graph& graph,
                            const logging::Logger& logger,
                            profiling::Profiler& profiler,
                            const SessionOptions& sess_options,
-                           PrepackedWeightsContainer* prepacked_weights_container)
+                           PrepackedWeightsContainer* prepacked_weights_container,
+                           std::shared_ptr<std::map<OrtDevice, AllocatorPtr>> parent_allocators)
     : graph_(graph),
       execution_providers_(execution_providers),
       logger_(logger),
@@ -86,13 +87,19 @@ SessionState::SessionState(Graph& graph,
 {
   enable_mem_pattern_ = sess_options_.enable_mem_pattern &&
                         sess_options_.execution_mode == ExecutionMode::ORT_SEQUENTIAL;
-  // The allocator registration rule:
-  // Each location (OrtDevice) will only have 1 allocator used for whole session.
-  // The EP which is registered first will have higher priority
-  for (auto ep : execution_providers_) {
-    auto allocators = ep->CreatePreferredAllocators();
-    for (auto& alloc : allocators) {
-      allocators_.insert({alloc->Info().device, alloc});  // DONT overwrite existing key
+
+  if (parent_allocators) {
+    allocators_ = parent_allocators;
+  } else {
+    allocators_ = std::make_shared<std::map<OrtDevice, AllocatorPtr>>();
+    // The allocator registration rule:
+    // Each location (OrtDevice) will only have 1 allocator used for whole session.
+    // The EP which is registered first will have higher priority
+    for (auto ep : execution_providers_) {
+      auto allocators = ep->CreatePreferredAllocators();
+      for (auto& alloc : allocators) {
+        allocators_->insert({alloc->Info().device, alloc});  // DONT overwrite existing key
+      }
     }
   }
 }
@@ -102,8 +109,8 @@ AllocatorPtr SessionState::GetAllocator(const OrtMemoryInfo& location) const noe
 }
 
 AllocatorPtr SessionState::GetAllocator(const OrtDevice& device) const noexcept {
-  auto it = allocators_.find(device);
-  if (it != allocators_.end()) return it->second;
+  auto it = allocators_->find(device);
+  if (it != allocators_->end()) return it->second;
   assert(false);
   return nullptr;
 }
@@ -1031,7 +1038,7 @@ Status SessionState::CreateSubgraphSessionState() {
       auto subgraph_session_state =
           std::make_unique<SessionState>(*subgraph, execution_providers_,
                                          thread_pool_, inter_op_thread_pool_, data_transfer_mgr_,
-                                         logger_, profiler_, sess_options_);
+                                         logger_, profiler_, sess_options_, nullptr, allocators_);
 
       // Pass fused function manager to subgraph
       subgraph_session_state->fused_funcs_mgr_.SetFusedFuncs(fused_funcs_mgr_);
@@ -1353,7 +1360,7 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
 #ifdef ORT_ENABLE_STREAM
   auto& eps = GetExecutionProviders();
   for (auto& ep : eps) {
-    ep->RegisterStreamHandlers(GetStreamHandleRegistryInstance(), allocators_);
+    ep->RegisterStreamHandlers(GetStreamHandleRegistryInstance(), *allocators_);
   }
 #endif
 
@@ -1575,7 +1582,7 @@ std::unique_ptr<DeviceStreamCollection> SessionState::AcquireDeviceStreamCollect
       device_stream_pool_.pop_back();
       return device_stream;
     } else {
-      auto device_stream = std::make_unique<DeviceStreamCollection>(this->GetExecutionPlan()->execution_plan.size(), allocators_, graph_viewer_->ParentNode() == nullptr);
+      auto device_stream = std::make_unique<DeviceStreamCollection>(this->GetExecutionPlan()->execution_plan.size(), *allocators_, graph_viewer_->ParentNode() == nullptr);
       BindToDeviceStream(*this->GetExecutionPlan(), *device_stream, *stream_handles_registry_);
       return device_stream;
     }

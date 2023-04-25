@@ -68,7 +68,7 @@ class IExecutionProvider {
       metadef_id_generator_ = std::make_unique<ModelMetadefIdGenerator>();
     }
   }
-  OrtDevice default_device_;
+  const OrtDevice default_device_;
 
  public:
   virtual ~IExecutionProvider() = default;
