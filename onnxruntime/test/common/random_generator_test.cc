@@ -3,13 +3,13 @@
 
 #include "gtest/gtest.h"
 #include "test/common/tensor_op_test_utils.h"
-#include<vector>
+#include <vector>
 
 namespace onnxruntime {
 namespace test {
 
-TEST(RandomTensorGenerator, DiscreteFloat) {
-  RandomValueGenerator random{};
+TEST(TensorGenerator, DiscreteFloat) {
+  FixedPatternValueGenerator random{};
   const std::vector<int64_t> shape = {2, 3};
   std::vector<float> data = random.Discrete<float>(shape, {-1.f, 0.f, 1.f});
 
@@ -19,8 +19,8 @@ TEST(RandomTensorGenerator, DiscreteFloat) {
   }
 }
 
-TEST(RandomTensorGenerator, DiscreteInt) {
-  RandomValueGenerator random{};
+TEST(TensorGenerator, DiscreteInt) {
+  FixedPatternValueGenerator random{};
   const std::vector<int64_t> shape = {2, 3};
   std::vector<int> data = random.Discrete<int>(shape, {-1, 0, 1});
 
@@ -31,8 +31,8 @@ TEST(RandomTensorGenerator, DiscreteInt) {
 }
 
 // Tests for Circular
-TEST(RandomTensorGenerator, CircularFloat) {
-  RandomValueGenerator random{};
+TEST(TensorGenerator, CircularFloat) {
+  FixedPatternValueGenerator random{};
   const std::vector<int64_t> shape = {3, 2};
   std::vector<float> data = random.Circular<float>(shape, {-1.f, 0.f, 1.f});
 
@@ -45,8 +45,8 @@ TEST(RandomTensorGenerator, CircularFloat) {
   EXPECT_EQ(data[5], 1.f);
 }
 
-TEST(RandomTensorGenerator, CircularInt) {
-  RandomValueGenerator random{};
+TEST(TensorGenerator, CircularInt) {
+  FixedPatternValueGenerator random{};
   const std::vector<int64_t> shape = {3, 2};
   std::vector<int> data = random.Circular<int>(shape, {-1, 0, 1});
 
@@ -59,8 +59,8 @@ TEST(RandomTensorGenerator, CircularInt) {
   EXPECT_EQ(data[5], 1);
 }
 
-TEST(RandomTensorGenerator, CircularBool) {
-  RandomValueGenerator random{};
+TEST(TensorGenerator, CircularBool) {
+  FixedPatternValueGenerator random{};
   const std::vector<int64_t> shape = {3, 2};
   std::vector<bool> data = random.Circular<bool>(shape, {false, true});
 
