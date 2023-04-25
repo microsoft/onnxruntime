@@ -39,6 +39,7 @@ OpBuilderRegistrations::OpBuilderRegistrations() {
     CreateSimpleOpBuilder("PRelu", *this);
     CreateSimpleOpBuilder("Relu", *this);
     CreateSimpleOpBuilder("Gelu", *this);
+    CreateSimpleOpBuilder("Elu", *this);
     CreateSimpleOpBuilder("Round", *this);
     CreateSimpleOpBuilder("Where", *this);
     CreateSimpleOpBuilder("Sigmoid", *this);
@@ -55,6 +56,8 @@ OpBuilderRegistrations::OpBuilderRegistrations() {
 
     CreateSimpleOpBuilder("QuantizeLinear", *this);
     CreateSimpleOpBuilder("DequantizeLinear", *this);
+
+    CreateSimpleOpBuilder("HardSwish", *this);
   }
 
   {

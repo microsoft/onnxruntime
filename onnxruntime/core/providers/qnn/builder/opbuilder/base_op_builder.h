@@ -140,9 +140,12 @@ class BaseOpBuilder : public IOpBuilder {
 
         {"MatMul", "MatMul"},
 
+        {"Elu", "Elu"},
         {"Relu", "Relu"},
         {"Gelu", "Gelu"},
         {"Sigmoid", "Sigmoid"},
+
+        {"HardSwish", "HardSwish"},
 
         {"Conv", "Conv2d"},
 
