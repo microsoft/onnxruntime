@@ -200,7 +200,7 @@ class FixedPatternValueGenerator {
     for (size_t i = 0; i < values.size(); ++i) {
       // To maximize stability, use constant_generator_ since
       // it's always initialized with 0.
-      auto index = distribution(constant_generator_);
+      auto index = distribution(generator_);
       values[i] = value_candidates[index];
     }
     return values;
@@ -229,7 +229,7 @@ class FixedPatternValueGenerator {
   }
 
  private:
-  std::default_random_engine constant_generator_{0};
+  std::default_random_engine generator_;
   const ::testing::ScopedTrace output_trace_;
 };
 
