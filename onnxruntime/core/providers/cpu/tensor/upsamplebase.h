@@ -42,7 +42,6 @@ enum ResizeCoordinateTransformationMode {
   ALIGN_CORNERS = 4,
   TF_CROP_AND_RESIZE = 5,
   HALF_PIXEL_SYMMETRIC = 6,
-  CoordinateTransformationModeCount = 7,
 };
 
 enum ResizeNearestMode {
@@ -51,7 +50,6 @@ enum ResizeNearestMode {
   ROUND_PREFER_CEIL = 2,
   FLOOR = 3,
   CEIL = 4,
-  NearestModeCount = 5,
 };
 
 enum class AspectRatioPolicy {
@@ -238,7 +236,7 @@ class UpsampleBase {
     if (coordinate_transform_mode_name == "half_pixel") {
       return HALF_PIXEL;
     }
-    if ("half_pixel_symmetric" == coordinate_transform_mode_name) {
+    if (coordinate_transform_mode_name == "half_pixel_symmetric") {
       return HALF_PIXEL_SYMMETRIC;
     }
     ORT_THROW("coordinate_transform_mode:[" + coordinate_transform_mode_name + "] is not supportted!");
