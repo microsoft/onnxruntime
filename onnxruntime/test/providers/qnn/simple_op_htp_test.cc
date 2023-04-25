@@ -95,6 +95,12 @@ TEST_F(QnnHTPBackendTests, TestQDQHardSwishTest) {
   RunQDQSingleInputOpTest({1, 2, 3}, "HardSwish", "TestQDQGeluTest", 14, ExpectedEPNodeAssignment::All, 1);
 }
 
+// Check that QNN compiles DQ -> HardSwish -> Q as a single unit.
+// Use an input of rank 3.
+TEST_F(QnnHTPBackendTests, TestQDQAtanTest) {
+  RunQDQSingleInputOpTest({1, 2, 3}, "Atan", "TestQDQGeluTest", 11, ExpectedEPNodeAssignment::All, 1);
+}
+
 #endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 
 }  // namespace test

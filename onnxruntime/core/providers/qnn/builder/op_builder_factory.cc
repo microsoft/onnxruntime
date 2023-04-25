@@ -15,6 +15,7 @@ namespace qnn {
 OpBuilderRegistrations::OpBuilderRegistrations() {
   {
     CreateSimpleOpBuilder("Add", *this);
+    CreateSimpleOpBuilder("Atan", *this);
     CreateSimpleOpBuilder("Mul", *this);
     CreateSimpleOpBuilder("Abs", *this);
     CreateSimpleOpBuilder("And", *this);

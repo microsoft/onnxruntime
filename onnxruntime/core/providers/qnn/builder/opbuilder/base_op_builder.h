@@ -96,6 +96,7 @@ class BaseOpBuilder : public IOpBuilder {
         {"Mul", "ElementWiseMultiply"},
         {"Abs", "ElementWiseAbs"},
         {"And", "ElementWiseAnd"},
+        {"Atan", "ElementWiseAtan"},
         {"Ceil", "ElementWiseCeil"},
         {"Cast", "Cast"},
         {"Clip", "ReluMinMax"},

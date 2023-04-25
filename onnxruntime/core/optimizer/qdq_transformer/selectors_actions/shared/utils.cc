@@ -56,6 +56,7 @@ static const OpVersionsAndSelector::OpVersionsMap GetUnaryOpVersionsMap() {
           {"Slice", {}},
           {"Softmax", {}},
           {"Sqrt", {}},
+          {"Atan", {}},
           {"Tanh", {}},
           {"Exp", {}}};
 }
