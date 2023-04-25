@@ -21,7 +21,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 
 /** Tests for the ORT training apis. */
-@EnabledIfSystemProperty(named = "ENABLE_TRAINING", matches = "1")
+@EnabledIfSystemProperty(named = "ENABLE_TRAINING_APIS", matches = "1")
 public class TrainingTest {
 
   private static final OrtEnvironment env = OrtEnvironment.getEnvironment();
