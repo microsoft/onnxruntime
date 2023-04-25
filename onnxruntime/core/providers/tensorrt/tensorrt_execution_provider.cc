@@ -822,7 +822,7 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
       LOGS_DEFAULT(WARNING) << "[TensorRT EP] Out Of Range Error (from environment variables): " << ex.what();
     } 
     catch (...) {
-      LOGS_DEFAULT(WARNING) << "[TensorRT EP] Unknown Exception (from environment variables): " << ex.what();
+      LOGS_DEFAULT(WARNING) << "[TensorRT EP] Unknown Exception (from environment variables)";
     }
   }
 
