@@ -761,7 +761,7 @@ TEST(BatchNormTest, BatchNorm2d_fp16) {
 #if defined(USE_DNNL)
 TEST(BatchNormTest, BatchNorm2d_bfloat16) {
 #ifdef USE_DNNL
-   if (!DnnlHasBF16Support()) {
+  if (!DnnlHasBF16Support()) {
     LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
     return;
   }

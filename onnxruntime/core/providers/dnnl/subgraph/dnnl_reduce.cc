@@ -13,23 +13,22 @@ DnnlReduce::DnnlReduce() {}
 
 // assume all dims are available
 void DnnlReduce::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
-
   using namespace dnnl;
 
   // get the engine, currently only support either single gpu or single cpu device
   auto dnnl_engine = sp.GetEngine();
 
   enum ReduceOp {
-      ReduceL1,
-      ReduceL2,
-      ReduceLogSum,
-      ReduceLogSumExp,
-      ReduceMax,
-      ReduceMean,
-      ReduceMin,
-      ReduceProd,
-      ReduceSum,
-      ReduceSumSquare
+    ReduceL1,
+    ReduceL2,
+    ReduceLogSum,
+    ReduceLogSumExp,
+    ReduceMax,
+    ReduceMean,
+    ReduceMin,
+    ReduceProd,
+    ReduceSum,
+    ReduceSumSquare
   };
 
   ReduceOp reduce_op = ReduceSum;
@@ -38,9 +37,9 @@ void DnnlReduce::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
     reduce_op = ReduceL1;
   } else if (node.OpType() == "ReduceL2") {
     reduce_op = ReduceL2;
-  } else if(node.OpType() == "ReduceLogSum") {
+  } else if (node.OpType() == "ReduceLogSum") {
     reduce_op = ReduceLogSum;
-  } else if(node.OpType() == "ReduceLogSumExp") {
+  } else if (node.OpType() == "ReduceLogSumExp") {
     reduce_op = ReduceLogSumExp;
   } else if (node.OpType() == "ReduceMax") {
     reduce_op = ReduceMax;
@@ -55,8 +54,6 @@ void DnnlReduce::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
   } else if (node.OpType() == "ReduceSumSquare") {
     reduce_op = ReduceSumSquare;
   }
-
-
 
   auto opset = node.SinceVersion();
   dnnl::memory::dims axes;
@@ -90,9 +87,9 @@ void DnnlReduce::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
     }
   }
 
-  //We need to calculate output tensor shape
-  //First we initialize it with input shape and then we modify it based on the attribute values
-  //This is because the DNNL primitive functionality is determined by the input and output shapes.
+  // We need to calculate output tensor shape
+  // First we initialize it with input shape and then we modify it based on the attribute values
+  // This is because the DNNL primitive functionality is determined by the input and output shapes.
   auto src_dims = src_md.get_dims();
   auto ndim = src_dims.size();
 
@@ -110,7 +107,7 @@ void DnnlReduce::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
       if (src_dims[i] != 0)
         src_dims[i] = 1;
     }
-  //If there is axis, then make the respective dimensions 1, keeping the other dimension values untouched.
+    // If there is axis, then make the respective dimensions 1, keeping the other dimension values untouched.
   } else {
     for (size_t i = 0; i < axes.size(); i++) {
       if (src_dims[axes[i]] != 0)
@@ -134,35 +131,35 @@ void DnnlReduce::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
   }
 
   /*
-  * OneDNN will return an error if a reduction algorithm is called that does not result in a
-  * shape reduction. For this reason we have code paths that are taken if the source dimensions and
-  * destination dimensions are equal that will not call the reduction op.
-  *
-  * "ReduceLogSum" is equivelent to Log(ReduceSum(input))
-  *   - if the reduction op is called then the eltwise_log post op will added to the reduction primitive.
-  *   - if the reduction op is not called then the eltwise_log primitive is added as its own primitive
-  *   - NOTE "ReduceLogSum" follows the code flow of "All other reduce ops" with the exception of the added
-  *          post op and an extra check if src_dims == dest_dims.
-  * "ReduceLogSumExp" is equivelent to Log(ReduceSum(Exp(input)))
-  *   - if the reduction op is called then the eltwise_exp primitive is added before the reduction op
-  *     the eletwise_log post op will be added to the reduction primitive
-  *   - if the reduction op is not called then the input is not modified since Log(Exp(input) == input
-  * "ReduceSumSquare" is equivelent to ReduceSum(Square(input))
-  *   - the eltwise_square primitive is added before the reduction op
-  *   - if the source and destination dimensions are not equal the reduction op is called
-  * All other reduce ops
-  *   - if the source and destination dimensions are not equal call the reduction op
-  *   - otherwise don't modify the input.
-  *
-  * After the Reduction check the "KeepDims" attribute
-  *  - if KeepDims == 1 the output is the result of the reduction op
-  *  - if KeepDims == 0 we perform a squeeze operation on the output of the reduction op
-  *  - NOTE: Even if reduction op is not called KeepDims attribute can result in the output being modified
-  */
+   * OneDNN will return an error if a reduction algorithm is called that does not result in a
+   * shape reduction. For this reason we have code paths that are taken if the source dimensions and
+   * destination dimensions are equal that will not call the reduction op.
+   *
+   * "ReduceLogSum" is equivelent to Log(ReduceSum(input))
+   *   - if the reduction op is called then the eltwise_log post op will added to the reduction primitive.
+   *   - if the reduction op is not called then the eltwise_log primitive is added as its own primitive
+   *   - NOTE "ReduceLogSum" follows the code flow of "All other reduce ops" with the exception of the added
+   *          post op and an extra check if src_dims == dest_dims.
+   * "ReduceLogSumExp" is equivelent to Log(ReduceSum(Exp(input)))
+   *   - if the reduction op is called then the eltwise_exp primitive is added before the reduction op
+   *     the eletwise_log post op will be added to the reduction primitive
+   *   - if the reduction op is not called then the input is not modified since Log(Exp(input) == input
+   * "ReduceSumSquare" is equivelent to ReduceSum(Square(input))
+   *   - the eltwise_square primitive is added before the reduction op
+   *   - if the source and destination dimensions are not equal the reduction op is called
+   * All other reduce ops
+   *   - if the source and destination dimensions are not equal call the reduction op
+   *   - otherwise don't modify the input.
+   *
+   * After the Reduction check the "KeepDims" attribute
+   *  - if KeepDims == 1 the output is the result of the reduction op
+   *  - if KeepDims == 0 we perform a squeeze operation on the output of the reduction op
+   *  - NOTE: Even if reduction op is not called KeepDims attribute can result in the output being modified
+   */
   dnnl::memory reduce_src_mem;
   dnnl::memory reduce_dst_mem;
   dnnl::primitive_attr dnnl_primitive_attr;
-  if ((reduce_op == ReduceLogSum || reduce_op == ReduceLogSumExp ) && !src_and_dst_dims_equal) {
+  if ((reduce_op == ReduceLogSum || reduce_op == ReduceLogSumExp) && !src_and_dst_dims_equal) {
     dnnl::post_ops eltwise_post_op;
     eltwise_post_op.append_eltwise(dnnl::algorithm::eltwise_log, 1.0f, 1.0f);
     dnnl_primitive_attr.set_post_ops(eltwise_post_op);
@@ -180,9 +177,9 @@ void DnnlReduce::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
 
       auto elemenwise_primitive = dnnl::eltwise_forward(elementwise_pd);
       sp.AddPrimitive(elemenwise_primitive, {{DNNL_ARG_SRC, src_mem},
-                                           {DNNL_ARG_DST, elementwise_dst_mem}});
+                                             {DNNL_ARG_DST, elementwise_dst_mem}});
       auto reduce_pd = dnnl::reduction::primitive_desc(dnnl_engine, algo, src_md, dst_md, 0.f, 0.f,
-                                                      dnnl_primitive_attr);
+                                                       dnnl_primitive_attr);
 
       reduce_dst_mem = dnnl::memory(reduce_pd.dst_desc(), dnnl_engine);
 
@@ -192,7 +189,7 @@ void DnnlReduce::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
     } else {
       reduce_dst_mem = src_mem;
     }
-  } else if(reduce_op == ReduceSumSquare) {
+  } else if (reduce_op == ReduceSumSquare) {
     auto elementwise_pd = dnnl::eltwise_forward::primitive_desc(dnnl_engine, dnnl::prop_kind::forward_inference,
                                                                 dnnl::algorithm::eltwise_square, src_md,
                                                                 dnnl::memory::desc(src_md.get_dims(),
@@ -226,7 +223,7 @@ void DnnlReduce::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
       }
 
       auto reduce_pd = dnnl::reduction::primitive_desc(dnnl_engine, algo, src_md, dst_md, p_val, 0.f,
-                                                      dnnl_primitive_attr);
+                                                       dnnl_primitive_attr);
 
       // If using GPU this will move the memory from the CPU to the GPU.
       reduce_src_mem = sp.GetMemoryAndReshape(node.Input(IN_DATA), reduce_pd.src_desc(), dnnl_engine);
@@ -254,7 +251,6 @@ void DnnlReduce::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
     }
   }
 
-
   // If keepdims != 0 set the output to the reduce op results
   auto keepdims = Keepdims(node);
   if (keepdims) {
@@ -263,7 +259,7 @@ void DnnlReduce::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
     } else {
       sp.SetMemory(node.Output(OUT_REDUCED), reduce_dst_mem);
     }
-  // if keepdims == 0 we do a squeeze operation on reduce output shape.
+    // if keepdims == 0 we do a squeeze operation on reduce output shape.
   } else {
     std::vector<int64_t> output_shape;
     size_t j = 0;

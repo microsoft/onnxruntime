@@ -12,6 +12,15 @@ cmake_policy(SET CMP0117 NEW)
 # Don't let cmake set a default value for CMAKE_CUDA_ARCHITECTURES
 cmake_policy(SET CMP0104 OLD)
 
+# Enable Hot Reload for MSVC compilers if supported.
+if (POLICY CMP0141)
+  if(${CMAKE_VERSION} VERSION_GREATER_EQUAL "3.26.0")
+    cmake_policy(SET CMP0141 NEW)
+  else()
+    cmake_policy(SET CMP0141 OLD)
+  endif()
+endif()
+
 # Project
 project(onnxruntime C CXX ASM)
 
@@ -59,6 +68,7 @@ option(onnxruntime_USE_QNN "Build with QNN support" OFF)
 option(onnxruntime_USE_SNPE "Build with SNPE support" OFF)
 option(onnxruntime_USE_RKNPU "Build with RKNPU support" OFF)
 option(onnxruntime_USE_DNNL "Build with DNNL support" OFF)
+option(onnxruntime_USE_JS "Build with JavaScript implemented kernels support" OFF)
 option(onnxruntime_BUILD_UNIT_TESTS "Build ONNXRuntime unit tests" ON)
 option(onnxruntime_BUILD_CSHARP "Build C# library" OFF)
 option(onnxruntime_BUILD_OBJC "Build Objective-C library" OFF)
@@ -80,7 +90,6 @@ option(onnxruntime_ENABLE_MICROSOFT_INTERNAL "Use this option to enable/disable 
 option(onnxruntime_USE_VITISAI "Build with Vitis-AI" OFF)
 option(onnxruntime_USE_TENSORRT "Build with TensorRT support" OFF)
 option(onnxruntime_USE_TENSORRT_BUILTIN_PARSER "Use TensorRT builtin parser" OFF)
-option(onnxruntime_TENSORRT_PLACEHOLDER_BUILDER "Instantiate Placeholder TensorRT Builder" OFF)
 option(onnxruntime_ENABLE_LTO "Enable link time optimization" OFF)
 option(onnxruntime_CROSS_COMPILING "Cross compiling onnx runtime" OFF)
 option(onnxruntime_GCOV_COVERAGE "Compile with options necessary to run code coverage" OFF)
@@ -167,9 +176,6 @@ option(onnxruntime_ENABLE_WEBASSEMBLY_OUTPUT_OPTIMIZED_MODEL "Enable this option
 
 # Enable bitcode for iOS
 option(onnxruntime_ENABLE_BITCODE "Enable bitcode for iOS only" OFF)
-
-# build eager mode
-option(onnxruntime_ENABLE_EAGER_MODE "build ort eager mode")
 
 # build Pytorch's LazyTensor support
 cmake_dependent_option(onnxruntime_ENABLE_LAZY_TENSOR "Enable ORT as a LazyTensor backend in Pytorch." ON "onnxruntime_ENABLE_TRAINING" OFF)
@@ -335,6 +341,11 @@ function(set_msvc_c_cpp_compiler_warning_level warning_level)
   endif()
 endfunction()
 
+
+if(MSVC_Z7_OVERRIDE)
+  set(CMAKE_MSVC_DEBUG_INFORMATION_FORMAT "$<$<CONFIG:Debug,RelWithDebInfo>:Embedded>")
+endif(MSVC_Z7_OVERRIDE)
+
 # set default MSVC warning level to 3 for external dependencies
 set_msvc_c_cpp_compiler_warning_level(3)
 
@@ -463,12 +474,12 @@ endif()
 if (onnxruntime_BUILD_SHARED_LIB OR onnxruntime_ENABLE_PYTHON)
   if (onnxruntime_ENABLE_PYTHON)
     if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS OR onnxruntime_REQUIRE_PYTHON_EMBED_LIB)
-      find_package(Python 3.6 COMPONENTS Interpreter Development NumPy)
+      find_package(Python 3.8 COMPONENTS Interpreter Development NumPy)
     else()
-      find_package(Python 3.6 COMPONENTS Interpreter Development.Module NumPy)
+      find_package(Python 3.8 COMPONENTS Interpreter Development.Module NumPy)
     endif()
   else()
-    find_package(Python 3.6 COMPONENTS Interpreter)
+    find_package(Python 3.8 COMPONENTS Interpreter)
   endif()
 endif()
 
@@ -487,7 +498,7 @@ if (WIN32)
     # issued by thrust nonstandard extension used: nameless struct/union
     list(APPEND ORT_WARNING_FLAGS "/wd4201")
     # warning C4800: Implicit conversion from 'X' to bool. Possible information loss
-    if (onnxruntime_USE_OPENVINO OR onnxruntime_ENABLE_EAGER_MODE)
+    if (onnxruntime_USE_OPENVINO)
        list(APPEND ORT_WARNING_FLAGS "/wd4800")
     endif()
     # operator 'operator-name': deprecated between enumerations of different types
@@ -645,6 +656,11 @@ if (onnxruntime_USE_NNAPI_BUILTIN)
     list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_NNAPI_BUILTIN=1)
     list(APPEND ONNXRUNTIME_PROVIDER_NAMES nnapi)
 endif()
+if (onnxruntime_USE_JS)
+    list(APPEND ORT_PROVIDER_FLAGS -DUSE_JS=1)
+    list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_JS=1)
+    list(APPEND ONNXRUNTIME_PROVIDER_NAMES js)
+endif()
 if (onnxruntime_USE_QNN)
     list(APPEND ORT_PROVIDER_FLAGS -DUSE_QNN=1)
     list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_QNN=1)
@@ -711,14 +727,6 @@ if (onnxruntime_USE_AZURE)
     list(APPEND ONNXRUNTIME_PROVIDER_NAMES azure)
 endif()
 
-if (onnxruntime_ENABLE_EAGER_MODE)
-  if (NOT onnxruntime_ENABLE_TRAINING OR NOT onnxruntime_ENABLE_PYTHON)
-    message(
-        FATAL_ERROR
-        "Option onnxruntime_ENABLE_EAGER_MODE can only be used when onnxruntime_ENABLE_TRAINING and onnxruntime_ENABLE_PYTHON are enabled")
-  endif()
-  set(ONNXRUNTIME_EAGER_CMAKE_FILE_NAME onnxruntime_eager)
-endif()
 
 if (onnxruntime_ENABLE_LAZY_TENSOR)
   # To support LazyTensor, ORT needs to call Python function from C/C++.
@@ -733,25 +741,9 @@ if (onnxruntime_ENABLE_LAZY_TENSOR)
   # cleaner.
 endif()
 
-if(MSVC)
-  # Replace /Zi and /ZI with /Z7
-  if(MSVC_Z7_OVERRIDE)
-    foreach(flag_var
-      CMAKE_C_FLAGS CMAKE_C_FLAGS_DEBUG  CMAKE_C_FLAGS_RELWITHDEBINFO
-      CMAKE_CXX_FLAGS CMAKE_CXX_FLAGS_DEBUG  CMAKE_CXX_FLAGS_RELWITHDEBINFO)
-      if(${flag_var} MATCHES "/Z[iI]")
-        string(REGEX REPLACE "/Z[iI]" "/Z7" ${flag_var} "${${flag_var}}")
-      endif(${flag_var} MATCHES "/Z[iI]")
-    endforeach(flag_var)
-  endif(MSVC_Z7_OVERRIDE)
-endif()
-
 function(onnxruntime_set_compile_flags target_name)
     if (CPUINFO_SUPPORTED)
       onnxruntime_add_include_to_target(${target_name} cpuinfo::cpuinfo)
-    endif()
-    if(onnxruntime_ENABLE_EAGER_MODE)
-      target_compile_definitions(${target_name} PRIVATE ENABLE_EAGER_MODE)
     endif()
     if(onnxruntime_ENABLE_LAZY_TENSOR)
       target_compile_definitions(${target_name} PRIVATE ENABLE_LAZY_TENSOR)

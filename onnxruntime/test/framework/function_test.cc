@@ -316,6 +316,34 @@ TEST(FunctionTest, AttrName) {
   Check(code, "x", {1.0, 2.0, 3.0}, "y", {3.0, 6.0, 9.0});
 }
 
+// Test function with attribute that has default value.
+TEST(FunctionTest, AttrWithDefault) {
+  const char* code = R"(
+        <
+        ir_version: 8,
+        opset_import: [ "" : 16, "local" : 1 ]
+        >
+        agraph (float[N] x) => (float[N] y)
+        {
+            y0 = local.myfun <a = 2.0> (x)
+            y1 = local.myfun (x)
+            y = Add (y0, y1)
+        }
+
+        <
+        opset_import: [ "" : 16 ],
+        domain: "local"
+        >
+        myfun <a: float=1.0> (x) => (y) {
+            x2 = Constant <value_float: float=@a>()
+            x3 = CastLike (x2, x)
+            y = Add (x, x3)
+        }
+        )";
+
+  Check(code, "x", {1.0, 2.0, 3.0}, "y", {5.0, 7.0, 9.0});
+}
+
 // Test use of constants inside sub-graphs, which are promoted to initializers by ORT.
 TEST(FunctionTest, NestedConstant) {
   const char* code = R"(
@@ -351,6 +379,26 @@ TEST(FunctionTest, Variadics) {
   InferenceSession session_object{so, GetEnvironment()};
   ASSERT_STATUS_OK(session_object.Load(model_uri));
   ASSERT_STATUS_OK(session_object.Initialize());
+}
+
+// A variation of the variadics issue above, where the first input/output of the
+// variadic list is NOT an input/output of the function.
+TEST(FunctionTest, VariadicsNonInputOutput) {
+  const char* code = R"(
+    <ir_version: 8, opset_import: ["" : 17, "local" : 1]>
+    mymodel (float[2] x) => (float[3] y) {
+      y = local.func (x)
+    }
+
+    <opset_import: ["" : 17 ],  domain: "local">
+    func (a) => (y) {
+      b = Identity(a)
+      z = Concat <axis = 0> (b, a, b)
+      y, w = Split (z)
+    }
+  )";
+
+  Check(code, "x", {1.0, 2.0}, "y", {1.0, 2.0, 1.0});
 }
 
 // Test use of outer-scope names inside sub-graphs in functions that are inlined.

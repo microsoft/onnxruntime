@@ -486,7 +486,7 @@ Status ScanImpl::TransposeOutput() {
       Tensor* output = context_.Output(output_index, new_shape);
       ORT_ENFORCE(output, "Outputs from Scan are not optional and should never be null.");
 
-      status = device_helpers_.transpose_func(permutations, temporary_output_tensor, *output, 
+      status = device_helpers_.transpose_func(permutations, temporary_output_tensor, *output,
                                               context_.GetComputeStream());
       ORT_RETURN_IF_ERROR(status);
     }

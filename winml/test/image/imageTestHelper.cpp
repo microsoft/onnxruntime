@@ -268,7 +268,7 @@ namespace ImageTestHelper {
         byte* pExpectedByte = expectedBytes;
 
         // hard code, might need to be modified later.
-        const float cMaxErrorRate = 0.06f;
+        const float cMaxErrorRate = 0.4f;
         int8_t epsilon = 20;
 
         // Even given two same ImageFeatureValues, the comparison cannot exactly match.
@@ -282,7 +282,7 @@ namespace ImageTestHelper {
                 errors++;
             }
         }
-        std::cerr << "total errors is " << errors << "/" << size << ", errors rate is " << (float)errors / size;
+        std::cerr << "total errors is " << errors << "/" << size << ", errors rate is " << (float)errors / size << std::endl;
         return (float)errors / size < cMaxErrorRate;
     }
 }

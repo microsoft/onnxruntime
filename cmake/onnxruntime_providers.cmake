@@ -114,6 +114,9 @@ endif()
 if(onnxruntime_USE_NNAPI_BUILTIN)
   set(PROVIDERS_NNAPI onnxruntime_providers_nnapi)
 endif()
+if(onnxruntime_USE_JS)
+  set(PROVIDERS_JS onnxruntime_providers_js)
+endif()
 if(onnxruntime_USE_QNN)
   set(PROVIDERS_QNN onnxruntime_providers_qnn)
 endif()
@@ -529,10 +532,12 @@ if (onnxruntime_USE_CUDA)
 
   if (WIN32)
     # *.cu cannot use PCH
-    target_precompile_headers(onnxruntime_providers_cuda PUBLIC
-      "${ONNXRUNTIME_ROOT}/core/providers/cuda/cuda_pch.h"
-      "${ONNXRUNTIME_ROOT}/core/providers/cuda/cuda_pch.cc"
-    )
+    if (NOT onnxruntime_BUILD_CACHE)
+      target_precompile_headers(onnxruntime_providers_cuda PUBLIC
+        "${ONNXRUNTIME_ROOT}/core/providers/cuda/cuda_pch.h"
+        "${ONNXRUNTIME_ROOT}/core/providers/cuda/cuda_pch.cc"
+      )
+    endif()
 
     # minimize the Windows includes.
     # this avoids an issue with CUDA 11.6 where 'small' is defined in the windows and cuda headers.
@@ -1062,6 +1067,24 @@ if (onnxruntime_USE_NNAPI_BUILTIN)
   endif()
 endif()
 
+if (onnxruntime_USE_JS)
+  add_compile_definitions(USE_JS=1)
+
+  file(GLOB_RECURSE onnxruntime_providers_js_cc_srcs
+    "${ONNXRUNTIME_ROOT}/core/providers/js/*.h"
+    "${ONNXRUNTIME_ROOT}/core/providers/js/*.cc"
+  )
+
+  source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_js_cc_srcs})
+  onnxruntime_add_static_library(onnxruntime_providers_js ${onnxruntime_providers_js_cc_srcs})
+  onnxruntime_add_include_to_target(onnxruntime_providers_js
+    onnxruntime_common onnxruntime_framework onnx onnx_proto ${PROTOBUF_LIB} flatbuffers Boost::mp11
+  )
+
+  add_dependencies(onnxruntime_providers_js ${onnxruntime_EXTERNAL_DEPENDENCIES})
+
+endif()
+
 if (onnxruntime_USE_QNN)
   add_compile_definitions(USE_QNN=1)
 
@@ -1099,7 +1122,7 @@ if (onnxruntime_USE_QNN)
   add_dependencies(onnxruntime_providers_qnn onnx ${onnxruntime_EXTERNAL_DEPENDENCIES})
   set_target_properties(onnxruntime_providers_qnn PROPERTIES CXX_STANDARD_REQUIRED ON)
   set_target_properties(onnxruntime_providers_qnn PROPERTIES FOLDER "ONNXRuntime")
-  target_include_directories(onnxruntime_providers_qnn PRIVATE ${ONNXRUNTIME_ROOT} ${onnxruntime_QNN_HOME}/include)
+  target_include_directories(onnxruntime_providers_qnn PRIVATE ${ONNXRUNTIME_ROOT} ${onnxruntime_QNN_HOME}/include/QNN ${onnxruntime_QNN_HOME}/include)
   set_target_properties(onnxruntime_providers_qnn PROPERTIES LINKER_LANGUAGE CXX)
   # ignore the warning unknown-pragmas on "pragma region"
   if(NOT MSVC)
@@ -1534,6 +1557,12 @@ if (onnxruntime_USE_ROCM)
     target_compile_definitions(onnxruntime_providers_rocm PRIVATE USE_ROCBLAS_EXTENSION_API)
     target_compile_definitions(onnxruntime_providers_rocm PRIVATE ROCBLAS_NO_DEPRECATED_WARNINGS)
     target_compile_definitions(onnxruntime_providers_rocm PRIVATE ROCBLAS_BETA_FEATURES_API)
+  endif()
+
+  if (onnxruntime_USE_HIPBLASLT)
+    find_package(hipblaslt REQUIRED)
+    target_link_libraries(onnxruntime_providers_rocm PRIVATE roc::hipblaslt)
+    target_compile_definitions(onnxruntime_providers_rocm PRIVATE USE_HIPBLASLT)
   endif()
 
   if (onnxruntime_USE_COMPOSABLE_KERNEL)
