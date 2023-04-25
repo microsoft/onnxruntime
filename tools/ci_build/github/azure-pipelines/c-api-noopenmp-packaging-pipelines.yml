@@ -705,6 +705,8 @@ stages:
     AgentPool : Onnxruntime-Linux-GPU
     ArtifactSuffix: 'GPU'
     NugetPackageName : 'Microsoft.ML.OnnxRuntime.Gpu'
+    specificArtifact: ${{ parameters.specificArtifact}}
+    runId: ${{ parameters.runId}}
 
 - template: nuget/templates/dml-vs-2019.yml
   parameters:
