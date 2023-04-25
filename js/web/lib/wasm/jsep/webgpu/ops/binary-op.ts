@@ -173,22 +173,19 @@ const createBinaryOpProgramInfoLoader =
       };
     };
 
-export const add = (context: ComputeContext): number => {
+export const add = (context: ComputeContext): void => {
   context.compute(createBinaryOpProgramInfoLoader(context.inputs, 'Add', (a, b) => `${a}+${b}`));
-  return 0;
 };
 
-export const div = (context: ComputeContext): number => {
+export const div = (context: ComputeContext): void => {
   context.compute(createBinaryOpProgramInfoLoader(context.inputs, 'Div', (a, b) => `${a}/${b}`));
-  return 0;
 };
 
-export const mul = (context: ComputeContext): number => {
+export const mul = (context: ComputeContext): void => {
   context.compute(createBinaryOpProgramInfoLoader(context.inputs, 'Mul', (a, b) => `${a}*${b}`));
-  return 0;
 };
 
-export const pow = (context: ComputeContext): number => {
+export const pow = (context: ComputeContext): void => {
   context.compute(createBinaryOpProgramInfoLoader(
       context.inputs, 'Pow', ({scalar: (a, b) => `pow_f32(${a},${b})`, vector: (a, b) => `pow_vf32(${a},${b})`}), `
     fn pow_f32(a : f32, b : f32) -> f32 {
@@ -204,10 +201,8 @@ export const pow = (context: ComputeContext): number => {
       return vec4<f32>(pow_f32(a.x, b.x), pow_f32(a.y, b.y), pow_f32(a.z, b.z), pow_f32(a.w, b.w));
     }
       `));
-  return 0;
 };
 
-export const sub = (context: ComputeContext): number => {
+export const sub = (context: ComputeContext): void => {
   context.compute(createBinaryOpProgramInfoLoader(context.inputs, 'Sub', (a, b) => `${a}-${b}`));
-  return 0;
 };

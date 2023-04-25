@@ -92,9 +92,8 @@ const validateInputs = (inputs: readonly TensorView[]): void => {
   }
 };
 
-export const matMul = (context: ComputeContext): number => {
+export const matMul = (context: ComputeContext): void => {
   validateInputs(context.inputs);
 
   context.compute(createMatmulProgramInfoLoader(context.inputs, {activation: '', activationCacheKey: ''}));
-  return 0;
 };
