@@ -557,10 +557,13 @@ def test_ortmodule_fallback_warn_message(is_training, persist_fallback):
     for i in range(3):
         with pytest.raises(RuntimeError), pytest.warns(UserWarning) as warning_record:
             ort_model(inputs)
+        # For retries, the warn message will always be logged
+        if not persist_fallback:
+            assert "Fallback to PyTorch due to exception" in str(warning_record[0].message.args[0])
+            continue
 
-        # Only log the warn message once or when retries is enabled
-        # Otherwise the warn message will be skipped
-        if i == 0 or not persist_fallback:
+        # If `retries` is not enabled, only log the warn message once
+        if i == 0:
             assert "Fallback to PyTorch due to exception" in str(warning_record[0].message.args[0])
         else:
             assert warning_record.list == []
