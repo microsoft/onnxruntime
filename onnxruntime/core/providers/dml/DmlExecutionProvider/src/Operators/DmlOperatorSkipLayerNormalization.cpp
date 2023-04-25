@@ -22,18 +22,18 @@ public:
         const uint32_t hiddenSize = inputShape.back();
 
         std::array<gsl::span<const uint32_t>, 5> inputShapes = {
-            gsl::span<const uint32_t>({batchSize, sequenceLength, hiddenSize, 1}),
-            gsl::span<const uint32_t>({batchSize, sequenceLength, hiddenSize, 1}),
-            gsl::span<const uint32_t>({1, 1, hiddenSize, 1}),
-            gsl::span<const uint32_t>({1, 1, hiddenSize, 1}),
-            gsl::span<const uint32_t>({1, 1, hiddenSize, 1}),
+            std::array<uint32_t, 4>({batchSize, sequenceLength, hiddenSize, 1}),
+            std::array<uint32_t, 4>({batchSize, sequenceLength, hiddenSize, 1}),
+            std::array<uint32_t, 4>({1, 1, hiddenSize, 1}),
+            std::array<uint32_t, 4>({1, 1, hiddenSize, 1}),
+            std::array<uint32_t, 4>({1, 1, hiddenSize, 1}),
         };
 
         std::array<gsl::span<const uint32_t>, 4> outputShapes = {
-            gsl::span<const uint32_t>({batchSize, sequenceLength, hiddenSize, 1}),
-            gsl::span<const uint32_t>({1, 1, 1, 1}),
-            gsl::span<const uint32_t>({1, 1, 1, 1}),
-            gsl::span<const uint32_t>({batchSize, sequenceLength, hiddenSize, 1}),
+            std::array<uint32_t, 4>({batchSize, sequenceLength, hiddenSize, 1}),
+            std::array<uint32_t, 4>({1, 1, 1, 1}),
+            std::array<uint32_t, 4>({1, 1, 1, 1}),
+            std::array<uint32_t, 4>({batchSize, sequenceLength, hiddenSize, 1}),
         };
 
         DmlOperator::InitializeWithShapes(
