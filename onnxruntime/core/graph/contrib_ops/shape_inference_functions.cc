@@ -10,9 +10,6 @@ namespace contrib {
 void EmbedLayerNormalizationShapeInference(::ONNX_NAMESPACE::InferenceContext& ctx) {
   propagateElemTypeFromInputToOutput(ctx, 2, 0);
   auto mask_index_type = getAttribute(ctx, "mask_index_type", 1);
-  // std::cout << "Num outputs: " << (ctx.getNumOutputs()) << std::endl;
-  // std::cout << "Mask index output is not null: " << (ctx.getOutputType(1) != nullptr) << std::endl;
-  // std::cout << "Mask index type: " << (mask_index_type) << std::endl;
   if (mask_index_type > 0) {
     propagateElemTypeFromInputToOutput(ctx, 0, 1);
   }
@@ -110,7 +107,7 @@ void EmbedLayerNormalizationShapeInference(::ONNX_NAMESPACE::InferenceContext& c
     updateOutputShape(ctx, 1, mask_index_shape);
   }
 
-  if (ctx.getNumOutputs() > 2) {
+  if (ctx.getNumOutputs() == 3 || (ctx.getNumOutputs() == 2 && mask_index_type == 0)) {
     updateOutputShape(ctx, 2, output_shape);
     propagateElemTypeFromInputToOutput(ctx, 0, 2);
   }

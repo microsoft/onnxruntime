@@ -195,7 +195,9 @@ TEST(EmbedLayerNormTest, EmbedLayerNormBatch1_EmbeddingSum_Float16) {
 }
 
 TEST(EmbedLayerNormTest, EmbedLayerNormBatch1_EmbeddingSum_NoMaskIndex) {
-  RunTest(embedlayernorm::EmbedLayerNormBatch1_EmbeddingSum_NoMaskIndex(), false, true);
+  RunTest(embedlayernorm::EmbedLayerNormBatch1_EmbeddingSum_NoMaskIndex(),
+          /* use_float16 = */ false,
+          /* sum_output = */ true);
 }
 
 TEST(EmbedLayerNormTest, EmbedLayerNormBatch2) {
