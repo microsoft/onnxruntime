@@ -22,7 +22,11 @@ stages:
     variables:
     - name: OnnxRuntimeBuildDirectory
       value: '$(Build.BinariesDirectory)'
+
     steps:
+    - script: |
+        echo {{ parameters.runId }}
+      displayName: 'Echo Run Id'
 
     - template: ../../templates/flex-downloadPipelineArtifact.yml
       parameters:
