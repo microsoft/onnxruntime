@@ -3,7 +3,7 @@ parameters:
   ArtifactSuffix: ''
   NugetPackageName : ''
   specificArtifact: false
-  runID: 0
+  runId: 0
 
 stages:
 - stage: NuGet_Test_Linux_${{ parameters.ArtifactSuffix }}

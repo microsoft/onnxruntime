@@ -18,7 +18,7 @@ parameters:
 
 steps:
   - task: DownloadPipelineArtifact@2
-    displayName: 'Download Pipeline Artifact - Win x64'
+    displayName: ${{ parameters.stepName }}}
     inputs:
       artifactName: ${{ parameters.artifactName}}
       targetPath: '${{ parameters.targetPath }}'
