@@ -58,8 +58,10 @@ struct CheckpointState;
  * @brief Module class for running training forward and backward.
  *
  * This class is responsible for running forward and backward.
- * It does NOT own the parameters but only holds a reference to the passed
- * 'named_parameters' in the constructor. During initialization, if the Parameter's
+ * It does NOT own the parameters but only holds a weak reference to the passed
+ * 'CheckpointState' in the constructor.
+ *
+ * During initialization, if the Parameter (stored in `CheckpointState`)'s
  * device does not match the target device, it will re-create the tensor on the
  * target device and update the Parameter's data in place. The 'target device'
  * is extracted from node placement.

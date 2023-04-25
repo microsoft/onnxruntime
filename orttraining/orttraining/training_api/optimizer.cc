@@ -62,7 +62,7 @@ Status GraphInputsAreExpected(gsl::span<std::string> actual_graph_inputs,
 
 }  // namespace
 
-std::shared_ptr<OptimizerAlgorithmBase> OptimizerAlorithmFactory::CreateInstance(
+std::unique_ptr<OptimizerAlgorithmBase> OptimizerAlorithmFactory::CreateInstance(
     const std::string& optim_path_or_bytes, int32_t& group_count) {
   std::shared_ptr<Model> model;
   ORT_ENFORCE(Model::Load(ToWideString(optim_path_or_bytes), model, nullptr,
@@ -86,11 +86,11 @@ std::shared_ptr<OptimizerAlgorithmBase> OptimizerAlorithmFactory::CreateInstance
   auto opt_it = opt_type_to_freq_map.begin();
   group_count = opt_it->second;
 
-  // TODO: to support multiple group, need create a mapping between each group to its parameter list.
+  // TODO: to support multiple groups, need to create a mapping between each group to its parameter list.
   if (opt_it->first == FullQualifiedName_AdamWOptimizer) {
-    return std::make_shared<AdamWOptimizerAlgorithm>();
+    return std::make_unique<AdamWOptimizerAlgorithm>();
   } else if (opt_it->first == FullQualifiedName_SGDOptimizerV2) {
-    return std::make_shared<SGDOptimizerV2Algorithm>();
+    return std::make_unique<SGDOptimizerV2Algorithm>();
   } else {
     ORT_NOT_IMPLEMENTED("Not implemented for optimizer algo: " + opt_it->first);
   }
@@ -110,7 +110,7 @@ Status Optimizer::GenerateMomentumNamedStates(OptimizerCheckpointState& optimize
     if (pair.second->RequiresGrad()) {
       param_named_optimizer_states.insert({pair.first, ParameterOptimizerState()});
       ParameterOptimizerState& cur_param_optimizer_states = param_named_optimizer_states[pair.first];
-      for (auto& state_name : optimizer_algo_shared_ptr_->momentum_keys) {
+      for (auto& state_name : optimizer_algo_ptr_->momentum_keys) {
         OrtValue param_state;
         ORT_ENFORCE(utils::CreateZeroValuedOrtValueLike(optim_sess_state, pair.second->Data(), param_state).IsOK(),
                     "Error generating moment state for ", pair.first);
@@ -130,7 +130,7 @@ Status Optimizer::ConstructInputs() {
 
   std::vector<Tensor> params, grads;
   std::vector<std::vector<Tensor>> list_of_momentums;
-  list_of_momentums.resize(optimizer_algo_shared_ptr_->momentum_keys.size());
+  list_of_momentums.resize(optimizer_algo_ptr_->momentum_keys.size());
 
   // Collect all the non-user-defined inputs from the named_parameters_.
   for (auto& [parameter_name, parameter] : state_->module_checkpoint_state.named_parameters) {
@@ -148,10 +148,10 @@ Status Optimizer::ConstructInputs() {
                  grad_tensor->MutableDataRaw(), grad_tensor->Location()));
 
       // Collect moments and prepare for tensorseq creation
-      for (size_t m_index = 0; m_index < optimizer_algo_shared_ptr_->momentum_keys.size(); ++m_index) {
+      for (size_t m_index = 0; m_index < optimizer_algo_ptr_->momentum_keys.size(); ++m_index) {
         auto* moment_tensor =
             param_named_optimizer_states.at(parameter_name)
-                .momentum_named_states.at(optimizer_algo_shared_ptr_->momentum_keys[m_index])
+                .momentum_named_states.at(optimizer_algo_ptr_->momentum_keys[m_index])
                 .GetMutable<Tensor>();
         list_of_momentums[m_index].emplace_back(
             Tensor(moment_tensor->DataType(), moment_tensor->Shape(),
@@ -194,9 +194,11 @@ Optimizer::Optimizer(const std::string& optim_path_or_bytes,
 
   ORT_ENFORCE(state != nullptr, "Checkpoint state cannot be null.");
   auto g_it = state_->optimizer_checkpoint_state.group_named_optimizer_states.find(GROUP_ZERO_NAME);
-  if (g_it == state_->optimizer_checkpoint_state.group_named_optimizer_states.end()) {
-    state_->optimizer_checkpoint_state.group_named_optimizer_states.insert(
-        {GROUP_ZERO_NAME, std::make_shared<GroupOptimizerState>()});
+  bool find_group_zero = g_it != state_->optimizer_checkpoint_state.group_named_optimizer_states.end();
+  if (!find_group_zero || g_it->second->param_named_optimizer_states.empty()) {
+    if (!find_group_zero)
+      state_->optimizer_checkpoint_state.group_named_optimizer_states.insert(
+          {GROUP_ZERO_NAME, std::make_shared<GroupOptimizerState>()});
     ORT_THROW_IF_ERROR(GenerateMomentumNamedStates(state_->optimizer_checkpoint_state));
     ORT_THROW_IF_ERROR(ConstructInputs());
   } else {
@@ -222,16 +224,16 @@ void Optimizer::Initialize(const std::string& optim_path_or_bytes,
 
   utils::GetGraphInputOutputNames(optim_sess_, input_names_, output_names_);
 
-  optimizer_algo_shared_ptr_ = OptimizerAlorithmFactory::CreateInstance(optim_path_or_bytes, group_count_);
+  optimizer_algo_ptr_ = OptimizerAlorithmFactory::CreateInstance(optim_path_or_bytes, group_count_);
   ORT_ENFORCE(group_count_ == 1, "Group count can only be 1, but got: " + std::to_string(group_count_));
-  ORT_ENFORCE(optimizer_algo_shared_ptr_, "optimizer_algo_shared_ptr_ should not be nullptr.");
+  ORT_ENFORCE(optimizer_algo_ptr_, "optimizer_algo_ptr_ should not be nullptr.");
 
   InlinedVector<std::string> all_input_names;
-  all_input_names.reserve(CommonOptimizerInputs.size() + optimizer_algo_shared_ptr_->optimizer_states_inputs.size());
+  all_input_names.reserve(CommonOptimizerInputs.size() + optimizer_algo_ptr_->optimizer_states_inputs.size());
   all_input_names.insert(all_input_names.end(), CommonOptimizerInputs.begin(),
                          CommonOptimizerInputs.end());
-  all_input_names.insert(all_input_names.end(), optimizer_algo_shared_ptr_->optimizer_states_inputs.begin(),
-                         optimizer_algo_shared_ptr_->optimizer_states_inputs.end());
+  all_input_names.insert(all_input_names.end(), optimizer_algo_ptr_->optimizer_states_inputs.begin(),
+                         optimizer_algo_ptr_->optimizer_states_inputs.end());
   ORT_THROW_IF_ERROR(GraphInputsAreExpected(input_names_, all_input_names));
 }
 
@@ -240,7 +242,7 @@ Status Optimizer::Step() {
   utils::WrapInOrtValue<float>(optimizer_state_->learning_rate, &learning_rate_input);
   // Use step count + 1 before running optimizer step.
   // This is necessary since bias correction uses the step
-  // as a power. Using power of 0 is wrong.
+  // as a power. Using the power of 0 is wrong.
   utils::WrapInOrtValue<int64_t>(optimizer_state_->step + 1, &step_input);
   std::vector<OrtValue> feeds({learning_rate_input, step_input});
   feeds.insert(feeds.end(), inputs_.begin(), inputs_.end());

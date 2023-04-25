@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #pragma once
+
 #include "core/providers/cpu/cpu_execution_provider.h"
 #include "core/session/inference_session.h"
 #include "core/session/environment.h"
@@ -65,7 +66,7 @@ struct SGDOptimizerV2Algorithm : public OptimizerAlgorithmBase {
 };
 
 struct OptimizerAlorithmFactory {
-  static std::shared_ptr<OptimizerAlgorithmBase> CreateInstance(const std::string& optim_path_or_bytes,
+  static std::unique_ptr<OptimizerAlgorithmBase> CreateInstance(const std::string& optim_path_or_bytes,
                                                                 int32_t& group_count);
 };
 
@@ -75,17 +76,20 @@ struct CheckpointState;
  * @brief Optimizer class for running gradient updates.
  *
  * This class is responsible for running gradient updates on the parameters.
- * > It does NOT own the parameters, and will not modify the passed "named_parameters" in the constructor.
+ * > It does NOT own the parameters, and will not modify the "named_parameters" in `CheckpointState`
+ *   passed from the constructor.
  *   A tensor sequence is created based on the "named_parameters" to construct parameter input (of type tensorseq).
- * > If 'optimizer_checkpoint_states' is provided in the constructor. Optimizer will reuse
- *   the data buffer from the passed in 'optimizer_checkpoint_states'.
+ * > If 'optimizer_checkpoint_states' is provided in the constructor as part of `CheckpointState`.
+ *   Optimizer will reuse the data buffer from the passed in 'optimizer_checkpoint_states'.
  *   >> If the device of momentums in 'optimizer_checkpoint_states' is not
  *     matching its parameter device, a copy will be done during the 'LoadStateDict',
  *     but reserving using the original OrtValue with the copied data buffer;
- *   >> Otherwise, it generates the optimizer state initialized as all zeros and own them.
- * > If 'optimizer_checkpoint_states' is not provided in the constructor, it owns the optimizer
- *   state initialized as all zeros.
+ *   >> Otherwise, it generates the optimizer state initialized as all zeros and owns them.
+ * > If 'optimizer_checkpoint_states' is not provided in the constructor as part of `CheckpointState`.
+ *   It owns the optimizer state initialized as all zeros on the same device of corresponding parameters.
  *
+ * Currently, we only support load checkpoints from the constructor;
+ * no public API to load state dict after Optimizer instance is created.
  */
 struct Optimizer {
   friend struct LRSchedulerBase;
@@ -110,17 +114,6 @@ struct Optimizer {
    * @return Status
    */
   Status GetStateDict(OptimizerCheckpointState& optimizer_checkpoint_states);
-
-  /**
-   * @brief Load states from optimizer_checkpoint_states into current optimizer state.
-   *
-   * Be noted Optimizer will reuse the data buffer of passed in optimizer_checkpoint_states.
-   * If the device of momentums in optimizer_checkpoint_states is not matching its parameter device,
-   * an implicit copy will be done during the LoadStateDict, but reserving using the original OrtValue
-   * with the copied data buffer.
-   * @return Status
-   */
-  Status LoadStateDict(OptimizerCheckpointState& optimizer_checkpoint_states);
 
   Status SetLearningRate(float lr) {
     optimizer_state_->learning_rate = lr;
@@ -153,7 +146,18 @@ struct Optimizer {
   // at each step.
   Status ConstructInputs();
 
-  std::shared_ptr<OptimizerAlgorithmBase> optimizer_algo_shared_ptr_;
+  /**
+   * @brief Load states from optimizer_checkpoint_states into current optimizer state.
+   *
+   * Be noted Optimizer will reuse the data buffer of passed in optimizer_checkpoint_states.
+   * If the device of momentums in optimizer_checkpoint_states is not matching its parameter device,
+   * an implicit copy will be done during the LoadStateDict, but reserving using the original OrtValue
+   * with the copied data buffer.
+   * @return Status
+   */
+  Status LoadStateDict(OptimizerCheckpointState& optimizer_checkpoint_states);
+
+  std::unique_ptr<OptimizerAlgorithmBase> optimizer_algo_ptr_;
   std::unique_ptr<onnxruntime::InferenceSession> optim_sess_;
   CheckpointState* state_;  // Non owning pointer to the state.
   std::shared_ptr<GroupOptimizerState> optimizer_state_;
