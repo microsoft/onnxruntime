@@ -10,7 +10,7 @@ import {parseTransposeAttributes, transpose} from './ops/transpose';
 import * as unaryOps from './ops/unary-op';
 import {ComputeContext} from './types';
 
-export type RunFunction = (context: ComputeContext, attribute?: unknown) => number;
+export type RunFunction = (context: ComputeContext, attribute?: unknown) => void;
 export type ParseAttributeFunction = (attributeRaw: unknown) => unknown;
 export type OperatorImplementation = [RunFunction]|[RunFunction, ParseAttributeFunction];
 

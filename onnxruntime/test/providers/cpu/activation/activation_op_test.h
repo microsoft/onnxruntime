@@ -7,6 +7,7 @@
 #include <unordered_map>
 #include <functional>
 #include <random>
+#include "core/mlas/inc/mlas.h"
 #include "core/graph/constants.h"
 #include "test/providers/provider_test_utils.h"
 
@@ -96,6 +97,17 @@ class ActivationOpTest : public ::testing::Test {
                                                         DBL_MAX, -DBL_MAX, std::numeric_limits<double>::infinity()}};            // max, -max, inf
   std::vector<std::vector<int8_t>> input_values_int8{{-1, -5, 0, 1, 5, 100, -100,                                                // normal input values for activation
                                                       std::numeric_limits<int8_t>::min(), std::numeric_limits<int8_t>::max()}};  // min, max
+#ifdef MLAS_F16VEC_INTRINSICS_SUPPORTED
+  std::vector<std::vector<MLFloat16>> input_values_fp16{{MLFloat16(-1.0f),
+                                                         MLFloat16(-5.f),
+                                                         MLFloat16(),
+                                                         MLFloat16(1.f),
+                                                         MLFloat16(5.f),
+                                                         MLFloat16(100.f),
+                                                         MLFloat16(-100.f),
+                                                         MLFloat16(65504.f),
+                                                         MLFloat16(-65504.f)}};
+#endif  // MLAS_F16VEC_INTRINSICS_SUPPORTED
 
   void SetUp() override {
     float low = -1.0f, high = 1.0f;
