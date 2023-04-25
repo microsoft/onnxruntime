@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+// Only enabled in training full build, not in on device training build.
+#ifdef ENABLE_TRAINING
 #include <random>
 #include "core/graph/onnx_protobuf.h"
 
@@ -426,3 +428,5 @@ TEST(ComputeOptimizerTests, InsertGatherBeforeSceLoss_MlmBertE2E) {
 
 }  // namespace test
 }  // namespace onnxruntime
+
+#endif

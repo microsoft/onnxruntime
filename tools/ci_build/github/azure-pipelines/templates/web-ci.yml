@@ -19,8 +19,13 @@ parameters:
   displayName: 'Build static library'
   type: boolean
   default: false
+- name: BuildJsep
+  displayName: 'Build JSEP'
+  type: boolean
+  default: true
 
 - name: ExtraBuildArgs
+  displayName: 'Extra build command line arguments'
   type: string
 
 
@@ -77,6 +82,7 @@ stages:
       BuildConfig: 'Release'
       ExtraBuildArgs: '--skip_tests --enable_wasm_api_exception_catching --disable_rtti --use_extensions --cmake_extra_defines onnxruntime_WEBASSEMBLY_DEFAULT_EXTENSION_FLAGS=ON ${{ parameters.ExtraBuildArgs }}'
       PoolName: ${{ parameters.PoolName }}
+      BuildJsep: ${{ parameters.BuildJsep }}
 
 - ${{ if eq(parameters.BuildStaticLib, 'true') }}:
   - stage: Build_wasm_Release_static_library
