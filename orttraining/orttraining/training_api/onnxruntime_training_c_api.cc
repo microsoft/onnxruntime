@@ -43,7 +43,7 @@ ORT_API_STATUS_IMPL(OrtTrainingApis::CreateTrainingSession, _In_ const OrtEnv* e
         env->GetEnvironment(),
         options == nullptr ? onnxruntime::SessionOptions() : options->value,
         options == nullptr ? ProvidersType() : CreateProviders(options->provider_factories),
-        chkpt_state->module_checkpoint_state.named_parameters,
+        chkpt_state,
         onnxruntime::training::api::ModelIdentifiers(
             onnxruntime::ToUTF8String(train_model_path),
             eval_model_path ? std::optional<std::string>(onnxruntime::ToUTF8String(eval_model_path))
@@ -270,13 +270,12 @@ ORT_API_STATUS_IMPL(OrtTrainingApis::LoadCheckpoint, _In_ const ORTCHAR_T* check
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtTrainingApis::SaveCheckpoint, _In_ const ORTCHAR_T* checkpoint_path,
-                    _In_ const OrtTrainingSession* sess, bool save_optimizer_state) {
+ORT_API_STATUS_IMPL(OrtTrainingApis::SaveCheckpoint, _In_ OrtCheckpointState* checkpoint_state,
+                    _In_ const ORTCHAR_T* checkpoint_path, const bool include_optimizer_state) {
   API_IMPL_BEGIN
-  auto session = reinterpret_cast<const onnxruntime::training::api::TrainingSession*>(sess);
-  onnxruntime::training::api::CheckpointState chkpt_state;
-  ORT_API_RETURN_IF_STATUS_NOT_OK(session->CreateCheckpointState(chkpt_state, save_optimizer_state));
-  ORT_API_RETURN_IF_STATUS_NOT_OK(onnxruntime::training::api::SaveCheckpoint(chkpt_state, checkpoint_path));
+  auto chkpt_state = reinterpret_cast<onnxruntime::training::api::CheckpointState*>(checkpoint_state);
+  ORT_API_RETURN_IF_STATUS_NOT_OK(
+      onnxruntime::training::api::SaveCheckpoint(*chkpt_state, checkpoint_path, include_optimizer_state));
 
   return nullptr;
   API_IMPL_END
@@ -403,6 +402,88 @@ ORT_API_STATUS_IMPL(OrtTrainingApis::TrainingSessionGetEvalModelInputName, _In_ 
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(OrtTrainingApis::AddProperty, _Inout_ OrtCheckpointState* checkpoint_state,
+                    _In_ const char* property_name, _In_ enum OrtPropertyType property_type,
+                    _In_ void* property_value) {
+  API_IMPL_BEGIN
+
+  OrtStatus* status = nullptr;
+
+  auto chkpt_state = reinterpret_cast<onnxruntime::training::api::CheckpointState*>(checkpoint_state);
+
+  switch (property_type) {
+    case OrtPropertyType::OrtIntProperty: {
+      int64_t* value = reinterpret_cast<int64_t*>(property_value);
+      chkpt_state->property_bag.AddProperty(property_name, *value);
+      break;
+    }
+    case OrtPropertyType::OrtFloatProperty: {
+      float* value = reinterpret_cast<float*>(property_value);
+      chkpt_state->property_bag.AddProperty(property_name, *value);
+      break;
+    }
+    case OrtPropertyType::OrtStringProperty: {
+      char* value = reinterpret_cast<char*>(property_value);
+      chkpt_state->property_bag.AddProperty(property_name, value);
+      break;
+    }
+    default: {
+      std::ostringstream stream;
+      stream << "Given property type: " << property_type << " is not supported.";
+      status = OrtApis::CreateStatus(ORT_FAIL, stream.str().c_str());
+      break;
+    }
+  }
+
+  return status;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtTrainingApis::GetProperty, _In_ const OrtCheckpointState* checkpoint_state,
+                    _In_ const char* property_name, _Inout_ OrtAllocator* allocator,
+                    _Out_ enum OrtPropertyType* property_type, _Outptr_ void** property_value) {
+  API_IMPL_BEGIN
+
+  OrtStatus* status = nullptr;
+
+  auto chkpt_state = reinterpret_cast<const onnxruntime::training::api::CheckpointState*>(checkpoint_state);
+  const auto value = chkpt_state->property_bag.GetProperty<
+      onnxruntime::training::api::PropertyDataType>(property_name);
+
+  if (std::holds_alternative<int64_t>(value)) {
+    int64_t* value_p = reinterpret_cast<int64_t*>(allocator->Alloc(allocator, sizeof(int64_t)));
+    if (!value_p) {
+      return OrtApis::CreateStatus(ORT_FAIL, "Int property value buffer allocation failed.");
+    }
+    *value_p = std::get<int64_t>(value);
+    *(reinterpret_cast<int64_t**>(property_value)) = value_p;
+    *property_type = OrtPropertyType::OrtIntProperty;
+  } else if (std::holds_alternative<float>(value)) {
+    float* value_p = reinterpret_cast<float*>(allocator->Alloc(allocator, sizeof(float)));
+    if (!value_p) {
+      return OrtApis::CreateStatus(ORT_FAIL, "Float property value buffer allocation failed.");
+    }
+    *value_p = std::get<float>(value);
+    *(reinterpret_cast<float**>(property_value)) = value_p;
+    *property_type = OrtPropertyType::OrtFloatProperty;
+  } else if (std::holds_alternative<std::string>(value)) {
+    auto property_value_str = std::get<std::string>(value);
+    // property_value_str.length() + 1 for null termination of c strings
+    auto buffer = reinterpret_cast<char*>(allocator->Alloc(allocator, property_value_str.length() + 1));
+    memcpy(buffer, property_value_str.c_str(), property_value_str.length());
+    buffer[property_value_str.length()] = '\0';
+    *(reinterpret_cast<char**>(property_value)) = buffer;
+    *property_type = OrtPropertyType::OrtStringProperty;
+  } else {
+    std::ostringstream stream;
+    stream << "Unknown type for property: " << property_name;
+    status = OrtApis::CreateStatus(ORT_FAIL, stream.str().c_str());
+  }
+
+  return status;
+  API_IMPL_END
+}
+
 static constexpr OrtTrainingApi ort_training_api = {
     // NOTE: The C# bindings depend on the API order within this struct. Since Training APIs are not officially
     // released, it is OK to change the order here, however a corresponding matching change should also be done in the
@@ -433,6 +514,8 @@ static constexpr OrtTrainingApi ort_training_api = {
     &OrtTrainingApis::TrainingSessionGetEvalModelInputCount,
     &OrtTrainingApis::TrainingSessionGetTrainingModelInputName,
     &OrtTrainingApis::TrainingSessionGetEvalModelInputName,
+    &OrtTrainingApis::AddProperty,
+    &OrtTrainingApis::GetProperty,
 };
 
 ORT_API(const OrtTrainingApi*, OrtTrainingApis::GetTrainingApi, uint32_t) {

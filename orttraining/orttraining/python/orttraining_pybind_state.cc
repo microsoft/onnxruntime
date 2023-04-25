@@ -166,14 +166,13 @@ struct TrainingConfigurationResult {
 #ifdef ENABLE_TRAINING_APIS
 // Thin wrapper over internal C++ Optimizer
 struct PyOptimizer {
-  PyOptimizer(const std::string optimizer_model_uri,
-              onnxruntime::training::api::Module* model, std::vector<std::shared_ptr<IExecutionProvider>> provider)
+  PyOptimizer(const std::string optimizer_model_uri, onnxruntime::training::api::CheckpointState* state,
+              std::vector<std::shared_ptr<IExecutionProvider>> providers)
       : optimizer_() {
     auto env = GetTrainingEnv().GetORTEnv();
     // XXX: We hope that env will be around when optimizer needs it.
-    optimizer_ = std::make_shared<onnxruntime::training::api::Optimizer>(optimizer_model_uri,
-                                                                         model->NamedParameters(), onnxruntime::SessionOptions(),
-                                                                         *env, provider);
+    optimizer_ = std::make_shared<onnxruntime::training::api::Optimizer>(
+        optimizer_model_uri, state, onnxruntime::SessionOptions(), *env, providers);
   }
 
   std::shared_ptr<onnxruntime::training::api::Optimizer> optimizer_;
@@ -882,7 +881,7 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
   py::class_<onnxruntime::training::api::Module> training_module(m, "Module", R"pbdoc(Training Module.)pbdoc");
   training_module
       .def(py::init([](const std::string& model_uri,
-                       onnxruntime::training::api::CheckpointState& state,
+                       onnxruntime::training::api::CheckpointState* state,
                        std::optional<std::string> eval_model_uri,
                        OrtDevice device) {
         onnxruntime::SessionOptions session_option;
@@ -890,9 +889,7 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
 
         auto env = GetTrainingEnv().GetORTEnv();
         return std::make_unique<onnxruntime::training::api::Module>(
-            model_uri,
-            state.module_checkpoint_state.named_parameters, session_option,
-            *env, provider, eval_model_uri);
+            model_uri, state, session_option, *env, provider, eval_model_uri);
       }))
       .def("train_step",
            [](onnxruntime::training::api::Module* model,
@@ -920,43 +917,74 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
            [](onnxruntime::training::api::Module* model, bool trainable_only) -> size_t {
              return model->GetParametersSize(trainable_only);
            })
-      .def("save_checkpoint",
-           [](onnxruntime::training::api::Module* model, const std::string& checkpoint_path) -> void {
-             onnxruntime::training::api::CheckpointState state;
-             ORT_THROW_IF_ERROR(model->GetStateDict(state.module_checkpoint_state));
-             ORT_THROW_IF_ERROR(onnxruntime::training::api::SaveCheckpoint(state,
-                                                                           ToPathString(checkpoint_path)));
-           })
       .def("export_model_for_inferencing",
            [](onnxruntime::training::api::Module* model, const std::string& inference_model_path,
               const std::vector<std::string>& graph_output_names) -> void {
              ORT_ENFORCE(model, "Received a nullptr for expected pointer to class training::api::Module");
              ORT_THROW_IF_ERROR(model->ExportModelForInferencing(inference_model_path,
                                                                  graph_output_names));
+           })
+      .def("input_names",
+           [](onnxruntime::training::api::Module* model, const bool is_training) {
+             auto count_method = [&model, is_training]() -> size_t {
+               return is_training ? model->GetTrainingModelInputCount() : model->GetEvalModelInputCount();
+             };
+
+             auto name_method = [&model, is_training](const size_t index) -> std::string {
+               return is_training ? model->GetTrainingModelInputName(index) : model->GetEvalModelInputName(index);
+             };
+
+             std::vector<std::string> names;
+             for (size_t index = 0; index < count_method(); ++index) {
+               names.push_back(name_method(index));
+             }
+
+             return names;
+           })
+      .def("output_names",
+           [](onnxruntime::training::api::Module* model, const bool is_training) {
+             auto count_method = [&model, is_training]() -> size_t {
+               return is_training ? model->GetTrainingModelOutputCount() : model->GetEvalModelOutputCount();
+             };
+
+             auto name_method = [&model, is_training](const size_t index) -> std::string {
+               return is_training ? model->GetTrainingModelOutputName(index) : model->GetEvalModelOutputName(index);
+             };
+
+             std::vector<std::string> names;
+             for (size_t index = 0; index < count_method(); ++index) {
+               names.push_back(name_method(index));
+             }
+
+             return names;
            });
 
   py::class_<onnxruntime::training::api::CheckpointState>
       checkpoint_state(m, "CheckpointState", R"pbdoc(CheckpointState.)pbdoc");
-  checkpoint_state.def(py::init([](
-                                    const std::string& ckpt_uri) {
-    onnxruntime::training::api::CheckpointState state;
-    ORT_THROW_IF_ERROR(onnxruntime::training::api::LoadCheckpoint(ToPathString(ckpt_uri), state));
-    return state;
-  }));
+  checkpoint_state
+      .def(py::init())
+      .def("add_property", [](onnxruntime::training::api::CheckpointState* state,
+                              const std::string& property_name,
+                              const std::variant<int64_t, float, std::string>& property_value) {
+        state->property_bag.AddProperty(property_name, property_value);
+      })
+      .def("get_property", [](onnxruntime::training::api::CheckpointState* state, const std::string& property_name) {
+        return state->property_bag.GetProperty<onnxruntime::training::api::PropertyDataType>(property_name);
+      })
+      .def("has_property", [](onnxruntime::training::api::CheckpointState* state, const std::string& property_name) {
+        return state->property_bag.HasProperty(property_name);
+      });
 
   py::class_<PyOptimizer>
       training_optimizer(m, "Optimizer", R"pbdoc(Training Optimizer.)pbdoc");
-  training_optimizer.def(py::init([](
-                                      const std::string optimizer_model_uri,
-                                      onnxruntime::training::api::Module* model,
-                                      OrtDevice device) {
-                      onnxruntime::SessionOptions session_option;
-                      std::vector<std::shared_ptr<IExecutionProvider>> provider = GetExecutionProvidersForTrainingApis(device);
+  training_optimizer
+      .def(py::init([](const std::string optimizer_model_uri,
+                       onnxruntime::training::api::CheckpointState* state,
+                       OrtDevice device) {
+        std::vector<std::shared_ptr<IExecutionProvider>> providers = GetExecutionProvidersForTrainingApis(device);
 
-                      return std::make_unique<PyOptimizer>(
-                          optimizer_model_uri,
-                          model, provider);
-                    }))
+        return std::make_unique<PyOptimizer>(optimizer_model_uri, state, providers);
+      }))
       .def("optimizer_step", [](PyOptimizer* optimizer) -> void {
         ORT_THROW_IF_ERROR(optimizer->optimizer_->Step());
       })
@@ -980,32 +1008,51 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
       .def("scheduler_step", [](onnxruntime::training::api::LinearLRScheduler* scheduler) -> void {
         ORT_THROW_IF_ERROR(scheduler->Step());
       });
+
+  m.def(
+      "save_checkpoint",
+      [](const std::vector<py::bytes>& trainable_tensor_protos_pybytes,
+         const std::vector<py::bytes>& non_trainable_tensor_protos_pybytes,
+         const std::string& checkpoint_path) {
+        std::vector<TensorProto> trainable_tensor_protos(trainable_tensor_protos_pybytes.size());
+        std::vector<TensorProto> non_trainable_tensor_protos(non_trainable_tensor_protos_pybytes.size());
+
+        auto parse_pybytes_to_tensor_proto =
+            [](const std::vector<py::bytes>& tensor_protos_pybytes, std::vector<TensorProto>& tensor_protos) {
+              for (size_t i = 0; i < tensor_protos_pybytes.size(); ++i) {
+                std::istringstream tensor_proto_istream(tensor_protos_pybytes[i]);
+                ORT_ENFORCE(tensor_proto_istream.good(), "Broken tensor proto istream to read.");
+                google::protobuf::io::IstreamInputStream zero_copy_input(&tensor_proto_istream);
+                const bool result =
+                    tensor_protos[i].ParseFromZeroCopyStream(&zero_copy_input) && tensor_proto_istream.eof();
+                ORT_ENFORCE(result, "Parse tensor proto failed.");
+              }
+            };
+
+        parse_pybytes_to_tensor_proto(trainable_tensor_protos_pybytes, trainable_tensor_protos);
+        parse_pybytes_to_tensor_proto(non_trainable_tensor_protos_pybytes, non_trainable_tensor_protos);
+
+        ORT_THROW_IF_ERROR(onnxruntime::training::api::SaveCheckpoint(trainable_tensor_protos,
+                                                                      non_trainable_tensor_protos,
+                                                                      ToPathString(checkpoint_path)));
+      });
+
   m.def("save_checkpoint",
-        [](const std::vector<py::bytes>& trainable_tensor_protos_pybytes,
-           const std::vector<py::bytes>& non_trainable_tensor_protos_pybytes,
-           const std::string& checkpoint_path) {
-          std::vector<TensorProto> trainable_tensor_protos(trainable_tensor_protos_pybytes.size());
-          std::vector<TensorProto> non_trainable_tensor_protos(non_trainable_tensor_protos_pybytes.size());
-
-          auto parse_pybytes_to_tensor_proto =
-              [](const std::vector<py::bytes>& tensor_protos_pybytes, std::vector<TensorProto>& tensor_protos) {
-                for (size_t i = 0; i < tensor_protos_pybytes.size(); ++i) {
-                  std::istringstream tensor_proto_istream(tensor_protos_pybytes[i]);
-                  ORT_ENFORCE(tensor_proto_istream.good(), "Broken tensor proto istream to read.");
-                  google::protobuf::io::IstreamInputStream zero_copy_input(&tensor_proto_istream);
-                  const bool result =
-                      tensor_protos[i].ParseFromZeroCopyStream(&zero_copy_input) && tensor_proto_istream.eof();
-                  ORT_ENFORCE(result, "Parse tensor proto failed.");
-                }
-              };
-
-          parse_pybytes_to_tensor_proto(trainable_tensor_protos_pybytes, trainable_tensor_protos);
-          parse_pybytes_to_tensor_proto(non_trainable_tensor_protos_pybytes, non_trainable_tensor_protos);
-
-          ORT_THROW_IF_ERROR(onnxruntime::training::api::SaveCheckpoint(trainable_tensor_protos,
-                                                                        non_trainable_tensor_protos,
-                                                                        ToPathString(checkpoint_path)));
+        [](onnxruntime::training::api::CheckpointState* checkpoint_state,
+           const std::string& checkpoint_path, const bool include_optimizer_state) -> void {
+          ORT_THROW_IF_ERROR(
+              onnxruntime::training::api::SaveCheckpoint(*checkpoint_state, ToPathString(checkpoint_path),
+                                                         include_optimizer_state));
         });
+
+  m.def("load_checkpoint",
+        [](const std::string& checkpoint_path) -> onnxruntime::training::api::CheckpointState {
+          onnxruntime::training::api::CheckpointState state;
+          ORT_THROW_IF_ERROR(
+              onnxruntime::training::api::LoadCheckpoint(ToPathString(checkpoint_path), state));
+          return state;
+        });
+
   m.def("get_model_after_loading_checkpoint",
         [](const std::string& checkpoint_path, const py::bytes& serialized_model) {
           ONNX_NAMESPACE::ModelProto model_proto;
