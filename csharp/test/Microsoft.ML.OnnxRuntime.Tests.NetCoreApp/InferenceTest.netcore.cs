@@ -315,7 +315,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 { "test_castlike_FLOAT_to_FLOAT8E5M2FNUZ", "type error"},
                 { "test_castlike_FLOAT_to_FLOAT8E5M2FNUZ_expanded", "type error"},
                 { "test_castlike_FLOAT_to_FLOAT8E5M2_expanded", "type error"},
-                { "test_castlike_FLOAT_to_STRING_expanded_model", "type error"},
+                { "test_castlike_FLOAT_to_STRING_expanded", "type error"},
                 { "test_castlike_FLOAT_to_STRING", "type error"},
                 { "test_castlike_FLOAT_to_BFLOAT16", "type error"},
                 { "test_castlike_BFLOAT16_to_FLOAT_expanded", "type error"},

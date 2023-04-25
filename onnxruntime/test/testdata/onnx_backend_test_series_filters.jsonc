@@ -715,8 +715,8 @@
         "^test_test quantizelinear_e*",
         "^test_castlike_FLOAT_to_BFLOAT16*",
         "^test_castlike_FLOAT_to_STRING*",
-        "^test_castlike_BFLOAT16_to*"
-        
+        "^test_castlike_BFLOAT16_to*",
+        "^test_castlike_FLOAT_to_BFLOAT16*"
     ],
     "failing_permanently_nodejs_binding": [
         // those test cases are no longer available in later opset version
