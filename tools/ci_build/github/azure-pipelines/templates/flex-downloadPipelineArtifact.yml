@@ -17,11 +17,6 @@ parameters:
     default: ''
 
 steps:
-  - script: |
-      set -ex
-      echo $(System.TeamProject)
-    displayName : Test step
-
   - task: DownloadPipelineArtifact@2
     displayName: 'Download Pipeline Artifact - Win x64'
     inputs:
@@ -31,7 +26,7 @@ steps:
         buildType: 'current'
       ${{ else }}:
           source: 'specific'
-          project: 'Lotus'
+          project: $(System.TeamProject)
           pipeline: $(Build.DefinitionName)
           runVersion: 'specific'
           runId: ${{ parameters.runId }}
