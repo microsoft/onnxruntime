@@ -15,6 +15,10 @@ interface BuildDefinitions {
    */
   DISABLE_WEBGL: boolean;
   /**
+   * defines whether to disable the whole WebGpu backend in the build.
+   */
+  DISABLE_WEBGPU: boolean;
+  /**
    * defines whether to disable the whole WebAssembly backend in the build.
    */
   DISABLE_WASM: boolean;

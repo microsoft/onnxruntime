@@ -1,17 +1,4 @@
-transformers==4.26.0
-numpy==1.24.1
-accelerate==0.15.0
-onnx==1.13.0
-coloredlogs
-packaging==23.0
-protobuf==3.20.3
-psutil==5.9.4
-sympy==1.11.1
-
-# Install diffusers from source
-# git clone  https://github.com/huggingface/diffusers.git
-# cd diffusers && git checkout c4892f1855097a68703ca2e949aca15829526958
-# pip install -e .
-
 # Install onnxruntime-rocm or onnxruntime_training
-# Build onnxruntime-rocm from source or install lastest onnxruntime_training rocm nightly python package
+# Build onnxruntime-rocm from source
+# Directly install pre-built onnxruntime/onnxruntime-training rocm python package is not possible at the moment.
+#   TODO: update once we have public pre-built packages

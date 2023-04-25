@@ -237,13 +237,16 @@ TEST(CheckpointApiTest, SaveOptimizerStateAsCheckpoint_ThenLoad_CUDA) {
     named_parameters.insert({it->first, param});
   }
 
+  auto state = CheckpointState();
+  state.module_checkpoint_state.named_parameters = named_parameters;
+
   onnxruntime::SessionOptions session_option;
   std::unique_ptr<Environment> env;
   ORT_THROW_IF_ERROR(Environment::Create(nullptr, env));
   std::vector<std::shared_ptr<IExecutionProvider>> cuda_provider{onnxruntime::test::DefaultCudaExecutionProvider()};
-  auto model = std::make_unique<Module>(model_uri, named_parameters, session_option,
+  auto model = std::make_unique<Module>(model_uri, &state, session_option,
                                         *env, cuda_provider);
-  auto optimizer = std::make_unique<Optimizer>(optim_uri, model->NamedParameters(), session_option,
+  auto optimizer = std::make_unique<Optimizer>(optim_uri, &state, session_option,
                                                *env, cuda_provider);
 
   /// Phase 2 - Run Optimizer.GetStateDict and call save checkpoint APIs.
@@ -262,7 +265,7 @@ TEST(CheckpointApiTest, SaveOptimizerStateAsCheckpoint_ThenLoad_CUDA) {
   // Call Save APIs.
   PathString checkpoint_path{
       ConcatPathComponent<PathChar>(tmp_dir.Path(), ORT_TSTR("e2e_ckpt_save_cpu"))};
-  ASSERT_STATUS_OK(SaveCheckpoint(checkpoint_state, checkpoint_path));
+  ASSERT_STATUS_OK(SaveCheckpoint(checkpoint_state, checkpoint_path, true));
 
   // Check the ckpt files in the directory.
   std::set<PathString> expected_file_names{
@@ -365,7 +368,7 @@ TEST(CheckpointApiTest, SaveCustomPropertyAsCheckpoint_ThenLoad_CPU) {
   // Call Save APIs.
   PathString checkpoint_path{
       ConcatPathComponent<PathChar>(tmp_dir.Path(), ORT_TSTR("e2e_ckpt_save_cpu"))};
-  ASSERT_STATUS_OK(SaveCheckpoint(checkpoint_state, checkpoint_path));
+  ASSERT_STATUS_OK(SaveCheckpoint(checkpoint_state, checkpoint_path, true));
 
   // Check the ckpt files in the directory.
   std::set<PathString> expected_file_names{
