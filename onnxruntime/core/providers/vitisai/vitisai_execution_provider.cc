@@ -78,7 +78,7 @@ void VitisAIExecutionProvider::CreateKernelRegistry() {
       def_builder.SinceVersion(1);
       if (op->version > 12) {
         auto input_count = op->GetInputTypeCount(op);
-        for (size_t i = 0; i < input_count; i++) {
+        for (auto i = 0u; i < input_count; i++) {
           def_builder.InputMemoryType(op->GetInputMemoryType(op, i), i);
         }
       }
