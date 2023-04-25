@@ -16,16 +16,17 @@ parameters:
     type: string
     default: ''
 
-- task: DownloadPipelineArtifact@2
-  displayName: 'Download Pipeline Artifact - Win x64'
-  inputs:
-    artifactName: ${{ parameters.artifactName}}
-    targetPath: '${{ parameters.targetPath }}'
-    ${{ if eq(parameters.specificArtifact, false)}}:
-      buildType: 'current'
-    ${{ else }}:
-        source: 'specific'
-        project: $(System.TeamProject)
-        pipeline: $(Build.DefinitionName)
-        runVersion: 'specific'
-        runId: ${{ parameters.runId }}
+steps:
+  - task: DownloadPipelineArtifact@2
+    displayName: 'Download Pipeline Artifact - Win x64'
+    inputs:
+      artifactName: ${{ parameters.artifactName}}
+      targetPath: '${{ parameters.targetPath }}'
+      ${{ if eq(parameters.specificArtifact, false)}}:
+        buildType: 'current'
+      ${{ else }}:
+          source: 'specific'
+          project: $(System.TeamProject)
+          pipeline: $(Build.DefinitionName)
+          runVersion: 'specific'
+          runId: ${{ parameters.runId }}
