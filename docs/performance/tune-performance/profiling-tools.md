@@ -14,11 +14,11 @@ nav_order: 1
 {:toc}
 
 
-## ONNX Go Live Tool (OLive)
+## Olive
 
-The [ONNX Go Live "OLive" tool](https://github.com/microsoft/OLive) is a Python package that automates the process of accelerating models with ONNX Runtime. It contains two parts: (1) model conversion to ONNX with correctness validation (2) auto performance tuning with ORT. Users can run these two together through a single pipeline or run them independently as needed.
+[Olive](https://github.com/microsoft/Olive) is an easy-to-use hardware-aware model optimization tool that composes industry-leading techniques across model compression, optimization, and compilation. Given a model and targeted hardware, Olive composes the best suitable optimization techniques to output the most efficient model(s) for inferencing on cloud or edge, while taking a set of constraints such as accuracy and latency into consideration.
 
-As a quickstart, please see the [notebook tutorials](https://github.com/microsoft/OLive/tree/master/notebook-tutorial) and [command line examples](https://github.com/microsoft/OLive/tree/master/cmd-example) 
+As a quickstart, please refer to [documentation](https://microsoft.github.io/Olive) and [examples](https://github.com/microsoft/Olive/tree/main/examples).
 
 ## In-code performance profiling
 
@@ -35,11 +35,14 @@ sess_options.enable_profiling = True
 
 If you are using the onnxruntime_perf_test.exe tool, you can add `-p [profile_file]` to enable performance profiling.
 
-In both cases, you will get a JSON file which contains the detailed performance data (threading, latency of each operator, etc). This file is a standard performance tracing file, and to view it in a user-friendly way, you can open it by using chrome://tracing:
+In both cases, you will get a JSON file which contains the detailed performance data (threading, latency of each operator, etc). This file is a standard performance tracing file, and to view it in a user-friendly way, you can open it by using multiple tools.
 
-* Open Chrome browser
-* Type chrome://tracing in the address bar
-* Load the generated JSON file
+* (Windows) Use the WPA GUI to open the trace using the Perfetto OSS plugin - [Microsoft-Performance-Tools-Linux-Android](https://github.com/microsoft/Microsoft-Performance-Tools-Linux-Android)
+* [Perfetto UI](https://www.ui.perfetto.dev/) - Successor to Chrome Tracing UI
+* chrome://tracing: 
+  * Open a Chromium based browser such as Edge or Chrome
+  * Type chrome://tracing in the address bar
+  * Load the generated JSON file
 
 To profile CUDA kernels, please add the cupti library to your PATH and use the onnxruntime binary built from source with `--enable_cuda_profiling`.
 To profile ROCm kernels, please add the roctracer library to your PATH and use the onnxruntime binary built from source with `--enable_rocm_profiling`. 
