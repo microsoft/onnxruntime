@@ -406,6 +406,7 @@ constexpr static std::array<const char*, 2> typeNameListAttention = {"T", "M"};
 constexpr static std::array<const char*, 2> typeNameListTwo = { "T1", "T2" };
 constexpr static std::array<const char*, 2> typeNameListLayerNorm = { "T", "U" };
 constexpr static std::array<const char*, 2> typeNameListLayerNormContrib = { "T", "V" };
+constexpr static std::array<const char*, 3> typeNameListSimplifiedLayerNorm = { "T", "U", "V" };
 constexpr static std::array<const char*, 3> typeNameListThree = { "T1", "T2", "T3" };
 constexpr static std::array<const char*, 4> typeNameListFour = { "T1", "T2", "T3", "T4" };
 constexpr static std::array<const char*, 2> typeNameListTopK = { "T", "I" };
@@ -466,6 +467,7 @@ constexpr static std::array<SupportedTensorDataTypes, 1> supportedTypeListIntege
 constexpr static std::array<SupportedTensorDataTypes, 2> supportedTypeListRoiAlign = {SupportedTensorDataTypes::Float16to32, SupportedTensorDataTypes::Int32|SupportedTensorDataTypes::Int64 };
 constexpr static std::array<SupportedTensorDataTypes, 1> supportedTypeListArgMinMax = {SupportedTensorDataTypes::Float16to32|SupportedTensorDataTypes::Ints8to64};
 constexpr static std::array<SupportedTensorDataTypes, 2> supportedTypeListLayerNormalizationContrib = {SupportedTensorDataTypes::Float16to32, SupportedTensorDataTypes::Float16to32};
+constexpr static std::array<SupportedTensorDataTypes, 3> supportedTypeListSimplifiedLayerNormalization = {SupportedTensorDataTypes::Float16to32, SupportedTensorDataTypes::Float16to32, SupportedTensorDataTypes::Float16to32};
 constexpr static std::array<SupportedTensorDataTypes, 2> supportedTypeListLayerNormalization = {SupportedTensorDataTypes::Float16to32, SupportedTensorDataTypes::Float32};
 constexpr static std::array<SupportedTensorDataTypes, 2> supportedTypeListShape = {SupportedTensorDataTypes::All, SupportedTensorDataTypes::Int64};
 constexpr static std::array<SupportedTensorDataTypes, 2> supportedTypeListSize = {SupportedTensorDataTypes::All, SupportedTensorDataTypes::Int64};
@@ -885,6 +887,7 @@ constexpr static OperatorRegistrationInformation operatorRegistrationInformation
     {REG_INFO(      7,  LayerNormalization,                 typeNameListLayerNormContrib,   supportedTypeListLayerNormalizationContrib, DmlGraphSupport::Supported, requiredConstantCpuInputs(), std::nullopt, QueryLayerNormalization)},
     {REG_INFO_MS(   1,  SkipLayerNormalization,             typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported, requiredConstantCpuInputs(), std::nullopt, QuerySkipLayerNormalization)},
     {REG_INFO_MS(   1,  EmbedLayerNormalization,            typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
+    {REG_INFO_MS(   1,  SimplifiedLayerNormalization,       typeNameListDefault,            supportedTypeListSimplifiedLayerNormalization, DmlGraphSupport::Supported)},
     {REG_INFO_MS(   1,  BiasSplitGelu,                      typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
     {REG_INFO_MS(   1,  BiasAdd,                            typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
     {REG_INFO_MS(   1,  QuickGelu,                          typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
