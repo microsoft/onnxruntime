@@ -51,12 +51,12 @@ namespace DFTHelpers {
 
     template <typename T>
     T NextPowerOf2(T in) {
-    in--;
-    T out = 1;
-    while (out <= in) {
-        out <<= 1;
-    }
-    return out;
+        in--;
+        T out = 1;
+        while (out <= in) {
+            out <<= 1;
+        }
+        return out;
     }
 
     // Gets the next number of elements to dispatch to the GPU within a loop handling a large
