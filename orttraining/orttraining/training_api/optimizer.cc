@@ -280,7 +280,7 @@ Status Optimizer::LoadStateDict(OptimizerCheckpointState& optimizer_checkpoint_s
               "Group 0 not found in the optimizer checkpoint states.");
 
   optimizer_state_ = group_optimizer_state_it->second;
-  bool strict_match = true;
+  constexpr bool strict_match = true;
 
   ORT_RETURN_IF_NOT(optim_sess_, "optimizer session not initialized");
   auto& optim_sess_state = optim_sess_->GetSessionState();
@@ -305,7 +305,7 @@ Status Optimizer::LoadStateDict(OptimizerCheckpointState& optimizer_checkpoint_s
       ORT_ENFORCE(target_allocator != nullptr);
 
       for (auto& momentum_state_pair : momentum_named_states) {
-        OrtValue& param_momentum = momentum_named_states.at(momentum_state_pair.first);
+        OrtValue& param_momentum = momentum_state_pair.second;
         ORT_ENFORCE(param_momentum.IsTensor());
         const Tensor& param_momentum_tensor = param_momentum.Get<Tensor>();
 
