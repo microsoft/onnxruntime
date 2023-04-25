@@ -1,14 +1,15 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "orttraining/training_api/optimizer.h"
 #include "core/framework/execution_provider.h"
 #include "core/framework/TensorSeq.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
 #include "core/session/inference_session.h"
 #include "core/session/environment.h"
 
+#include "orttraining/training_api/checkpoint.h"
 #include "orttraining/training_api/utils.h"
-#include "orttraining/training_api/optimizer.h"
 
 namespace onnxruntime {
 namespace training {
@@ -71,9 +72,9 @@ Status GraphInputsAreExpected(gsl::span<std::string> actual_graph_inputs,
 }  // namespace
 
 Status Optimizer::GenerateMomentumNamedStates() {
-  auto& param_named_optimizer_states = optimizer_state_.param_named_optimizer_states;
+  auto& param_named_optimizer_states = optimizer_state_->param_named_optimizer_states;
   auto& optim_sess_state = optim_sess_->GetSessionState();
-  for (auto& pair : named_parameters_) {
+  for (auto& pair : state_->module_checkpoint_state.named_parameters) {
     if (pair.second->RequiresGrad()) {
       param_named_optimizer_states.insert({pair.first, ParameterOptimizerState()});
       ParameterOptimizerState& cur_param_optimizer_states = param_named_optimizer_states[pair.first];
@@ -91,12 +92,12 @@ Status Optimizer::GenerateMomentumNamedStates() {
 // Constructs the ortvalue inputs to be fed to the graph at each step
 Status Optimizer::ConstructInputs() {
   if (optimizer_type_ == OptimizerType::AdamW) {
-    auto& param_named_optimizer_states = optimizer_state_.param_named_optimizer_states;
+    auto& param_named_optimizer_states = optimizer_state_->param_named_optimizer_states;
 
     std::vector<Tensor> params, grads, first_order_moments, second_order_moments;
 
-    // Collect all the non user defined inputs from the named_parameters_.
-    for (auto& [parameter_name, parameter] : named_parameters_) {
+    // Collect all the non user defined inputs from the state_->module_checkpoint_state.named_parameters.
+    for (auto& [parameter_name, parameter] : state_->module_checkpoint_state.named_parameters) {
       if (parameter->RequiresGrad()) {
         // Collect parameters and prepare for tensorseq creation
         auto* param_tensor = parameter->Data().GetMutable<Tensor>();
@@ -152,17 +153,25 @@ Status Optimizer::ConstructInputs() {
 }
 
 Optimizer::Optimizer(const std::string& optim_path_or_bytes,
-                     const std::unordered_map<std::string, std::shared_ptr<Parameter>>& named_parameters,
+                     CheckpointState* state,
                      const onnxruntime::SessionOptions& session_options,
                      const Environment& env,
                      const std::vector<std::shared_ptr<IExecutionProvider>>& providers)
-    : optim_sess_(std::make_unique<InferenceSession>(session_options, env)), named_parameters_(named_parameters) {
+    : optim_sess_(std::make_unique<InferenceSession>(session_options, env)), state_(state) {
+  if (state_->optimizer_checkpoint_state.group_named_optimizer_states.empty()) {
+    state_->optimizer_checkpoint_state.group_named_optimizer_states.insert(
+        {GROUP_ZERO_NAME, std::make_shared<GroupOptimizerState>()});
+  }
+  optimizer_state_ = state_->optimizer_checkpoint_state.group_named_optimizer_states.at(GROUP_ZERO_NAME);
   for (const auto& execution_provider : providers) {
     ORT_THROW_IF_ERROR(optim_sess_->RegisterExecutionProvider(execution_provider));
   }
 
   ORT_THROW_IF_ERROR(optim_sess_->Load(optim_path_or_bytes));
   ORT_THROW_IF_ERROR(optim_sess_->Initialize());
+
+  // Make sure that the checkpoint state can copy tensors
+  state_->optimizer_checkpoint_state.optimizer_session_data_transfer_mgr = &optim_sess_->GetDataTransferManager();
 
   utils::GetGraphInputOutputNames(optim_sess_, input_names_, output_names_);
 
@@ -178,11 +187,11 @@ Optimizer::Optimizer(const std::string& optim_path_or_bytes,
 
 Status Optimizer::Step() {
   OrtValue learning_rate_input, step_input;
-  utils::WrapInOrtValue<float>(optimizer_state_.learning_rate, &learning_rate_input);
+  utils::WrapInOrtValue<float>(optimizer_state_->learning_rate, &learning_rate_input);
   // Use step count + 1 before running optimizer step.
   // This is necessary since bias correction uses the step
   // as a power. Using power of 0 is wrong.
-  utils::WrapInOrtValue<int64_t>(optimizer_state_.step + 1, &step_input);
+  utils::WrapInOrtValue<int64_t>(optimizer_state_->step + 1, &step_input);
   std::vector<OrtValue> feeds({learning_rate_input, step_input});
   feeds.insert(feeds.end(), inputs_.begin(), inputs_.end());
 
@@ -192,7 +201,7 @@ Status Optimizer::Step() {
 
   // extract step output and update
   if (utils::GetValue<int64_t>(outputs[0]) == 1LL) {
-    optimizer_state_.step++;
+    optimizer_state_->step++;
   }
 
   return Status::OK();
@@ -202,7 +211,7 @@ Status Optimizer::GetStateDict(OptimizerCheckpointState& optimizer_checkpoint_st
   auto& grouped_optimizer_states = optimizer_checkpoint_state.group_named_optimizer_states;
 
   // To support multiple groups, Optimizer constructor need accept informations for groupping.
-  grouped_optimizer_states.insert({GROUP_ZERO_NAME, std::make_shared<GroupOptimizerState>(optimizer_state_)});
+  grouped_optimizer_states.insert({GROUP_ZERO_NAME, std::make_shared<GroupOptimizerState>(*optimizer_state_)});
 
   // Pass the optimizer session data transfer manager for data copying when saving.
   // An alternative is, we can do copy at this stage.
@@ -217,8 +226,8 @@ Status Optimizer::LoadStateDict(const OptimizerCheckpointState& optimizer_checkp
       optimizer_checkpoint_states.group_named_optimizer_states.find(GROUP_ZERO_NAME);
   ORT_ENFORCE(group_optimizer_state_it != optimizer_checkpoint_states.group_named_optimizer_states.cend(),
               "Group 0 not found in the optimizer checkpoint states.");
-  optimizer_state_.initial_lr = group_optimizer_state_it->second->initial_lr;
-  optimizer_state_.step = group_optimizer_state_it->second->step;
+  optimizer_state_->initial_lr = group_optimizer_state_it->second->initial_lr;
+  optimizer_state_->step = group_optimizer_state_it->second->step;
 
   // TODO(pengwa): restore the momentums state from checkpoint.
   return Status::OK();
