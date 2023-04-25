@@ -107,10 +107,14 @@ def _openvino_verify_device_type(device_read):
         print("specify the keyword HETERO or MULTI or AUTO followed by the devices ")
         print("in the order of priority you want to build\n")
         print("The different hardware devices that can be added in HETERO or MULTI or AUTO")
-        print("are ['CPU','GPU', 'VPUX']" + "\n")
-        print("An example of how to specify the hetero build type. Ex: HETERO:GPU,CPU" + "\n")
-        print("An example of how to specify the MULTI build type. Ex: MULTI:GPU,CPU" + "\n")
-        print("An example of how to specify the AUTO build type. Ex: AUTO:GPU,CPU" + "\n")
+        print("are ['CPU','GPU', 'VPUX']"
+                "\n")
+        print("An example of how to specify the hetero build type. Ex: HETERO:GPU,CPU"
+                "\n")
+        print("An example of how to specify the MULTI build type. Ex: MULTI:GPU,CPU"
+                "\n")
+        print("An example of how to specify the AUTO build type. Ex: AUTO:GPU,CPU"
+                "\n")
         sys.exit("Wrong Build Type selected")
 
     if res is False:
