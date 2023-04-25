@@ -27,7 +27,6 @@
 #define MIGX_GTEST_SKIP(message)
 #endif
 
-
 namespace onnxruntime {
 namespace test {
 
