@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#ifdef ENABLE_TRAINING
 #include <onnx/defs/attr_proto_util.h>
 
 #include "orttraining/core/optimizer/compute_optimizer/sceloss_compute_optimization.h"
@@ -223,3 +224,5 @@ Status InsertGatherBeforeSceLoss::ApplyImpl(Graph& graph, bool& modified, int /*
 }
 
 }  // namespace onnxruntime
+
+#endif

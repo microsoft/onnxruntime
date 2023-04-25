@@ -1134,13 +1134,30 @@ ORT_API_STATUS_IMPL(OrtApis::FillStringTensor, _Inout_ OrtValue* value, _In_ con
 ORT_API_STATUS_IMPL(OrtApis::FillStringTensorElement, _Inout_ OrtValue* value, _In_ const char* s, size_t index) {
   TENSOR_READWRITE_API_BEGIN
   auto* dst = tensor->MutableData<std::string>();
-  auto len = static_cast<size_t>(tensor->Shape().Size());
+  const auto len = static_cast<size_t>(tensor->Shape().Size());
   if (index >= len) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "element index is out of bounds");
   }
 
   dst[index] = s;
 
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::GetResizedStringTensorElementBuffer, _Inout_ OrtValue* value,
+                    _In_ size_t index, _In_ size_t length_in_bytes, _Inout_ char** buffer) {
+  TENSOR_READWRITE_API_BEGIN
+  auto* dst = tensor->MutableData<std::string>();
+  const auto len = static_cast<size_t>(tensor->Shape().Size());
+
+  if (index >= len) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "element index is out of bounds");
+  }
+
+  auto& s = dst[index];
+  s.resize(length_in_bytes);
+  *buffer = s.data();
   return nullptr;
   API_IMPL_END
 }
@@ -2706,7 +2723,9 @@ static constexpr OrtApi ort_api_1_to_15 = {
     &OrtApis::Logger_GetLoggingSeverityLevel,
     &OrtApis::KernelInfoGetConstantInput_tensor,
     &OrtApis::CastTypeInfoToOptionalTypeInfo,
-    &OrtApis::GetOptionalContainedTypeInfo};
+    &OrtApis::GetOptionalContainedTypeInfo,
+    &OrtApis::GetResizedStringTensorElementBuffer,
+    &OrtApis::KernelContext_GetAllocator};
 
 // Asserts to do a some checks to ensure older Versions of the OrtApi never change (will detect an addition or deletion but not if they cancel out each other)
 // If any of these asserts hit, read the above 'Rules on how to add a new Ort API version'

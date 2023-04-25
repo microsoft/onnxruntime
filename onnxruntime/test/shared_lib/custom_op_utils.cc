@@ -5,6 +5,8 @@
 
 #include "custom_op_utils.h"
 #include "core/common/common.h"
+#include "core/framework/ortdevice.h"
+#include "core/framework/ortmemoryinfo.h"
 
 #ifdef USE_CUDA
 #include <cuda_runtime.h>
@@ -30,6 +32,17 @@ void MyCustomKernel::Compute(OrtKernelContext* context) {
 
   auto output_info = output.GetTensorTypeAndShapeInfo();
   int64_t size = output_info.GetElementCount();
+
+#ifdef USE_CUDA
+  OrtMemoryInfo mem_info("", OrtAllocatorType::OrtDeviceAllocator, OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, 0));
+#else
+  OrtMemoryInfo mem_info("", OrtAllocatorType::OrtArenaAllocator, OrtDevice(OrtDevice::CPU, OrtDevice::MemType::DEFAULT, 0));
+#endif
+  OrtAllocator* allocator;
+  Ort::ThrowOnError(ort_.KernelContext_GetAllocator(context, &mem_info, &allocator));
+  void* allocated = allocator->Alloc(allocator, 2);
+  EXPECT_NE(allocated, nullptr) << "KernelContext_GetAllocator() can successfully allocate some memory";
+  allocator->Free(allocator, allocated);
 
   // Do computation
 #ifdef USE_CUDA

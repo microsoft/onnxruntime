@@ -22,6 +22,10 @@ parameters:
 - name: TimeoutInMinutes
   default: 180
 
+- name: BuildJsep
+  type: boolean
+  default: false
+
 jobs:
 - job: build_WASM
   pool: ${{ parameters.PoolName }}
@@ -95,12 +99,23 @@ jobs:
       scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
       arguments: '$(CommonBuildArgs) --build_dir $(Build.BinariesDirectory)\wasm_simd --enable_wasm_simd'
       workingDirectory: '$(Build.BinariesDirectory)'
+  - ${{ if eq(parameters.BuildJsep, true) }}:
+    - task: PythonScript@0
+      displayName: 'Build (simd + JSEP)'
+      inputs:
+        scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
+        arguments: '$(CommonBuildArgs) --build_dir $(Build.BinariesDirectory)\wasm_simd_jsep --enable_wasm_simd --use_js --target onnxruntime_webassembly'
+        workingDirectory: '$(Build.BinariesDirectory)'
   - ${{ if eq(parameters.SkipPublish, false) }}:
     - script: |
         copy $(Build.BinariesDirectory)\wasm\${{ parameters.BuildConfig }}\ort-wasm*.* $(Build.ArtifactStagingDirectory)
         copy $(Build.BinariesDirectory)\wasm_threads\${{ parameters.BuildConfig }}\ort-wasm*.* $(Build.ArtifactStagingDirectory)
         copy $(Build.BinariesDirectory)\wasm_simd_threads\${{ parameters.BuildConfig }}\ort-wasm*.* $(Build.ArtifactStagingDirectory)
         copy $(Build.BinariesDirectory)\wasm_simd\${{ parameters.BuildConfig }}\ort-wasm*.* $(Build.ArtifactStagingDirectory)
+        if exist $(Build.BinariesDirectory)\wasm_simd_jsep (
+          copy $(Build.BinariesDirectory)\wasm_simd_jsep\${{ parameters.BuildConfig }}\ort-wasm-simd.wasm $(Build.ArtifactStagingDirectory)\ort-wasm-simd.jsep.wasm
+          copy $(Build.BinariesDirectory)\wasm_simd_jsep\${{ parameters.BuildConfig }}\ort-wasm-simd.js $(Build.ArtifactStagingDirectory)\ort-wasm-simd.jsep.js
+        )
       displayName: 'Create Artifacts'
   - ${{ if eq(parameters.SkipPublish, false) }}:
     - task: PublishPipelineArtifact@0

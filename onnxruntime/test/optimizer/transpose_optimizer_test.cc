@@ -324,7 +324,10 @@ TEST(TransposeOptimizerTests, TestPadNonconst) {
 // Per tests included in #10824, the ROCM EP also generates
 // incorrect results when this handler is used, so the Resize
 // handler is not enabled even for those builds.
-#if !defined(USE_CUDA) && !defined(USE_ROCM)
+//
+// The QNN EP requires the input to be NHWC, so the Resize handler is also not enabled
+// for QNN builds.
+#if !defined(USE_CUDA) && !defined(USE_ROCM) && !defined(USE_QNN)
 TEST(TransposeOptimizerTests, TestResize) {
   auto build_test_case_1 = [&](ModelTestBuilder& builder) {
     auto* input0_arg = MakeInput<float>(builder, {{4, -1, 2, -1}}, {4, 6, 2, 10}, 0.0, 1.0);
@@ -2966,11 +2969,23 @@ TEST(TransposeOptimizerTests, TestBroadcastOpsDiv) {
     EXPECT_EQ(transpose_cost, 0);
   };
 
+#if defined(_M_ARM64) && _MSC_VER >= 1930
+  // Slight difference in Windows ARM64 VS 2022:
+  // expected 19.3678 (419af143), got 19.3678 (419af144), diff: 1.90735e-06, tol=0
+  TransformerTester(build_test_case_1,
+                    check_optimized_graph_1,
+                    TransformerLevel::Default,
+                    TransformerLevel::Level1,
+                    /*opset_version*/ {15, 18},
+                    /*per_sample_tolerance*/ 1e-07,
+                    /*relative_per_sample_tolerance*/ 1e-06);
+#else
   TransformerTester(build_test_case_1,
                     check_optimized_graph_1,
                     TransformerLevel::Default,
                     TransformerLevel::Level1,
                     /*opset_version*/ {15, 18});
+#endif  // defined(_M_ARM64) && _MSC_VER >= 1930
 }
 
 TEST(TransposeOptimizerTests, TestBroadcastOpsPRelu) {

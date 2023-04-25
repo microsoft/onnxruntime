@@ -7,6 +7,21 @@
 
 NS_ASSUME_NONNULL_BEGIN
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+/**
+ * Gets the ORT version string in format major.minor.patch.
+ *
+ * Available since 1.15.
+ */
+NSString* ORTVersion(void);
+
+#ifdef __cplusplus
+}
+#endif
+
 /**
  * The ORT environment.
  */

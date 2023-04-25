@@ -49,6 +49,27 @@ static GetTestModelFn BuildResizeTestCase(const std::vector<int64_t>& shape,
   };
 }
 
+static GetTestModelFn BuildResizeTestCaseWithScales(const std::vector<int64_t>& shape,
+                                                    const std::vector<float>& scales_data,
+                                                    const std::string& mode = "nearest",
+                                                    const std::string& coordinate_transformation_mode = "half_pixel",
+                                                    const std::string& nearest_mode = "round_prefer_floor") {
+  return [shape, scales_data, mode, coordinate_transformation_mode, nearest_mode](ModelTestBuilder& builder) {
+    auto* input = builder.MakeInput<float>(shape, 0.0f, 20.0f);
+    auto* roi = builder.MakeInitializer<float>({0}, {});
+    auto* scales = builder.Make1DInitializer<float>(scales_data);
+
+    auto* output = builder.MakeOutput();
+    Node& resize_node = builder.AddNode("Resize", {input, roi, scales}, {output});
+    resize_node.AddAttribute("mode", mode);
+    resize_node.AddAttribute("coordinate_transformation_mode", coordinate_transformation_mode);
+
+    if (mode == "nearest") {
+      resize_node.AddAttribute("nearest_mode", nearest_mode);
+    }
+  };
+}
+
 /**
  * Runs a Resize model on the QNN CPU backend. Checks the graph node assignment, and that inference
  * outputs for QNN and CPU match.
@@ -66,7 +87,7 @@ static void RunCPUResizeOpTest(const std::vector<int64_t>& shape, const std::vec
                                const std::string& mode, const std::string& coordinate_transformation_mode,
                                const std::string& nearest_mode,
                                ExpectedEPNodeAssignment expected_ep_assignment, const char* test_description,
-                               int opset = 18) {
+                               int opset = 11) {
   ProviderOptions provider_options;
 #if defined(_WIN32)
   provider_options["backend_path"] = "QnnCpu.dll";
@@ -76,6 +97,27 @@ static void RunCPUResizeOpTest(const std::vector<int64_t>& shape, const std::vec
 
   constexpr int expected_nodes_in_partition = 1;
   RunQnnModelTest(BuildResizeTestCase(shape, sizes_data, mode, coordinate_transformation_mode, nearest_mode),
+                  provider_options,
+                  opset,
+                  expected_ep_assignment,
+                  expected_nodes_in_partition,
+                  test_description);
+}
+
+static void RunCPUResizeOpTestWithScales(const std::vector<int64_t>& shape, const std::vector<float>& scales_data,
+                                         const std::string& mode, const std::string& coordinate_transformation_mode,
+                                         const std::string& nearest_mode,
+                                         ExpectedEPNodeAssignment expected_ep_assignment, const char* test_description,
+                                         int opset = 11) {
+  ProviderOptions provider_options;
+#if defined(_WIN32)
+  provider_options["backend_path"] = "QnnCpu.dll";
+#else
+  provider_options["backend_path"] = "libQnnCpu.so";
+#endif
+
+  constexpr int expected_nodes_in_partition = 1;
+  RunQnnModelTest(BuildResizeTestCaseWithScales(shape, scales_data, mode, coordinate_transformation_mode, nearest_mode),
                   provider_options,
                   opset,
                   expected_ep_assignment,
@@ -121,56 +163,56 @@ static void RunQDQResizeOpTest(const std::vector<int64_t>& shape, const std::vec
 
 // Upsample that uses "round_prefer_floor" as the "nearest_mode".
 // coordinate_transformation_mode: "half_pixel"
-TEST(QnnCPUBackendTests, DISABLED_TestResizeUpsampleNearestHalfPixel_rpf) {
+TEST_F(QnnCPUBackendTests, DISABLED_TestResizeUpsampleNearestHalfPixel_rpf) {
   RunCPUResizeOpTest({1, 2, 7, 5}, {1, 2, 21, 10}, "nearest", "half_pixel", "round_prefer_floor",
                      ExpectedEPNodeAssignment::All, "TestResizeUpsampleNearestHalfPixel_rpf");
 }
 
 // Upsample that uses "round_prefer_ceil" as the "nearest_mode".
 // coordinate_transformation_mode: "half_pixel"
-TEST(QnnCPUBackendTests, DISABLED_TestResizeUpsampleNearestHalfPixel_rpc) {
+TEST_F(QnnCPUBackendTests, DISABLED_TestResizeUpsampleNearestHalfPixel_rpc) {
   RunCPUResizeOpTest({1, 1, 2, 4}, {1, 1, 7, 5}, "nearest", "half_pixel", "round_prefer_ceil",
                      ExpectedEPNodeAssignment::All, "TestResizeUpsampleNearestHalfPixel_rpc");
 }
 
 // Downsample that uses "round_prefer_ceil" as the "nearest_mode".
 // coordinate_transformation_mode: "half_pixel"
-TEST(QnnCPUBackendTests, DISABLED_TestResizeDownsampleNearestHalfPixel_rpc) {
+TEST_F(QnnCPUBackendTests, DISABLED_TestResizeDownsampleNearestHalfPixel_rpc) {
   RunCPUResizeOpTest({1, 1, 2, 4}, {1, 1, 1, 3}, "nearest", "half_pixel", "round_prefer_ceil",
                      ExpectedEPNodeAssignment::All, "TestResizeDownsampleNearestHalfPixel_rpc");
 }
 
 // Downsample that uses "round_prefer_floor" as the "nearest_mode".
 // coordinate_transformation_mode: "half_pixel"
-TEST(QnnCPUBackendTests, DISABLED_TestResizeDownsampleNearestHalfPixel_rpf) {
+TEST_F(QnnCPUBackendTests, DISABLED_TestResizeDownsampleNearestHalfPixel_rpf) {
   RunCPUResizeOpTest({1, 1, 2, 4}, {1, 1, 1, 2}, "nearest", "half_pixel", "round_prefer_ceil",
                      ExpectedEPNodeAssignment::All, "TestResizeDownsampleNearestHalfPixel_rpf");
 }
 
 // Upsample that uses "round_prefer_floor" as the "nearest_mode".
 // coordinate_transformation_mode: "align_corners"
-TEST(QnnCPUBackendTests, DISABLED_TestResizeUpsampleNearestAlignCorners_rpf) {
+TEST_F(QnnCPUBackendTests, DISABLED_TestResizeUpsampleNearestAlignCorners_rpf) {
   RunCPUResizeOpTest({1, 2, 7, 5}, {1, 2, 21, 10}, "nearest", "align_corners", "round_prefer_floor",
                      ExpectedEPNodeAssignment::All, "TestResizeUpsampleNearestAlignCorners_rpf");
 }
 
 // Upsample that uses "round_prefer_ceil" as the "nearest_mode".
 // coordinate_transformation_mode: "align_corners"
-TEST(QnnCPUBackendTests, DISABLED_TestResizeUpsampleNearestAlignCorners_rpc) {
+TEST_F(QnnCPUBackendTests, DISABLED_TestResizeUpsampleNearestAlignCorners_rpc) {
   RunCPUResizeOpTest({1, 1, 2, 4}, {1, 1, 7, 5}, "nearest", "align_corners", "round_prefer_ceil",
                      ExpectedEPNodeAssignment::All, "TestResizeUpsampleNearestAlignCorners_rpc");
 }
 
 // Downsample that uses "round_prefer_ceil" as the "nearest_mode".
 // coordinate_transformation_mode: "align_corners"
-TEST(QnnCPUBackendTests, DISABLED_TestResizeDownsampleNearestAlignCorners_rpc) {
+TEST_F(QnnCPUBackendTests, DISABLED_TestResizeDownsampleNearestAlignCorners_rpc) {
   RunCPUResizeOpTest({1, 1, 2, 4}, {1, 1, 1, 3}, "nearest", "align_corners", "round_prefer_ceil",
                      ExpectedEPNodeAssignment::All, "TestResizeDownsampleNearestAlignCorners_rpc");
 }
 
 // Downsample that uses "round_prefer_floor" as the "nearest_mode".
 // coordinate_transformation_mode: "align_corners"
-TEST(QnnCPUBackendTests, DISABLED_TestResizeDownsampleNearestAlignCorners_rpf) {
+TEST_F(QnnCPUBackendTests, DISABLED_TestResizeDownsampleNearestAlignCorners_rpf) {
   RunCPUResizeOpTest({1, 1, 2, 4}, {1, 1, 1, 2}, "nearest", "align_corners", "round_prefer_floor",
                      ExpectedEPNodeAssignment::All, "TestResizeDownsampleNearestAlignCorners_rpf");
 }
@@ -179,26 +221,24 @@ TEST(QnnCPUBackendTests, DISABLED_TestResizeDownsampleNearestAlignCorners_rpf) {
 // Cpu tests that use the "linear" mode.
 //
 
-// TODO: Enable once we fix type/shape inferece for NHWC Resize.
-// See: https://github.com/microsoft/onnxruntime/pull/15477
-//
-// Error: [W:onnxruntime:QnnEP.TestQDQModel, graph.cc:108 MergeShapeInfo]
-// Error merging shape info for output. 'node' source:{1,4,2,4} target:{1,4,4,2}.
-// Falling back to lenient merge.
-TEST(QnnCPUBackendTests, DISABLED_TestResize2xLinearHalfPixel) {
-  RunCPUResizeOpTest({1, 2, 2, 2}, {1, 2, 4, 4}, "linear", "half_pixel", "",
+TEST_F(QnnCPUBackendTests, TestResize2xLinearHalfPixel) {
+  RunCPUResizeOpTest({1, 3, 4, 5}, {1, 3, 8, 10}, "linear", "half_pixel", "",
                      ExpectedEPNodeAssignment::All, "TestResize2xLinearHalfPixel");
 }
 
-// TODO: Enable once we fix type/shape inferece for NHWC Resize.
-// See: https://github.com/microsoft/onnxruntime/pull/15477
-//
-// Error: [W:onnxruntime:QnnEP.TestQDQModel, graph.cc:108 MergeShapeInfo]
-// Error merging shape info for output. 'node' source:{1,4,2,4} target:{1,4,4,2}.
-// Falling back to lenient merge.
-TEST(QnnCPUBackendTests, DISABLED_TestResize2xLinearAlignCorners) {
-  RunCPUResizeOpTest({1, 2, 2, 2}, {1, 2, 4, 4}, "linear", "align_corners", "",
+TEST_F(QnnCPUBackendTests, TestResize2xLinearHalfPixel_scales) {
+  RunCPUResizeOpTestWithScales({1, 3, 4, 5}, {1.0f, 1.0f, 2.0f, 2.0f}, "linear", "half_pixel", "",
+                               ExpectedEPNodeAssignment::All, "TestResize2xLinearHalfPixel_scales");
+}
+
+TEST_F(QnnCPUBackendTests, TestResize2xLinearAlignCorners) {
+  RunCPUResizeOpTest({1, 3, 4, 5}, {1, 3, 8, 10}, "linear", "align_corners", "",
                      ExpectedEPNodeAssignment::All, "TestResize2xLinearAlignCorners");
+}
+
+TEST_F(QnnCPUBackendTests, TestResize2xLinearAlignCorners_scales) {
+  RunCPUResizeOpTestWithScales({1, 3, 4, 5}, {1.0f, 1.0f, 2.0f, 2.0f}, "linear", "align_corners", "",
+                               ExpectedEPNodeAssignment::All, "TestResize2xLinearAlignCorners_scales");
 }
 
 #if defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
@@ -206,25 +246,13 @@ TEST(QnnCPUBackendTests, DISABLED_TestResize2xLinearAlignCorners) {
 // HTP tests:
 //
 
-// TODO: Enable once we fix type/shape inferece for NHWC Resize.
-// See: https://github.com/microsoft/onnxruntime/pull/15477
-//
-// Error: [W:onnxruntime:QnnEP.TestQDQModel, graph.cc:108 MergeShapeInfo]
-// Error merging shape info for output. 'node_token_5' source:{1,8,3,8} target:{1,8,8,3}.
-// Falling back to lenient merge.
-TEST_F(QnnHTPBackendTests, DISABLED_TestQDQU8Resize2xLinearPytorchHalfPixel) {
+TEST_F(QnnHTPBackendTests, TestQDQU8Resize2xLinearPytorchHalfPixel) {
   RunQDQResizeOpTest<uint8_t>({1, 3, 4, 4}, {1, 3, 8, 8}, "linear", "pytorch_half_pixel", "",
                               ExpectedEPNodeAssignment::All, 0.0031f,
                               "TestQDQU8Resize2xLinearPytorchHalfPixel");
 }
 
-// TODO: Enable once we fix type/shape inferece for NHWC Resize.
-// See: https://github.com/microsoft/onnxruntime/pull/15477
-//
-// Error: [W:onnxruntime:QnnEP.TestQDQModel, graph.cc:108 MergeShapeInfo]
-// Error merging shape info for output. 'node_token_5' source:{1,8,3,8} target:{1,8,8,3}.
-// Falling back to lenient merge.
-TEST_F(QnnHTPBackendTests, DISABLED_TestQDQU8Resize2xNearestHalfPixelRoundPreferFloor) {
+TEST_F(QnnHTPBackendTests, TestQDQU8Resize2xNearestHalfPixelRoundPreferFloor) {
   RunQDQResizeOpTest<uint8_t>({1, 3, 4, 4}, {1, 3, 8, 8}, "nearest", "half_pixel", "round_prefer_floor",
                               ExpectedEPNodeAssignment::All, 1e-5f,
                               "TestQDQU8Resize2xNearestHalfPixelRoundPreferFloor");
