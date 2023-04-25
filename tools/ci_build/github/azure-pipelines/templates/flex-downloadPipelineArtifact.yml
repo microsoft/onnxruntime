@@ -1,0 +1,31 @@
+parameters:
+  - name: stepName
+    type: string
+
+  - name: artifactName
+    type: string
+
+  - name: targetPath
+    type: string
+
+  - name: specificArtifact
+    type: boolean
+    default: false
+
+  - name: runId
+    type: string
+    default: ''
+
+- task: DownloadPipelineArtifact@2
+  displayName: 'Download Pipeline Artifact - Win x64'
+  inputs:
+    artifactName: ${{ parameters.artifactName}}
+    targetPath: '${{ parameters.targetPath }}'
+    ${{ if eq(parameters.specificArtifact, false)}}:
+      buildType: 'current'
+    ${{ else }}:
+        source: 'specific'
+        project: $(System.TeamProject)
+        pipeline: $(Build.DefinitionName)
+        runVersion: 'specific'
+        runId: ${{ parameters.runId }}
