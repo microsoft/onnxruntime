@@ -324,6 +324,13 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 { "test_dequantizelinear_e5m2", "type error"},
                 { "test_quantizelinear_e4m3fn", "type error"},
                 { "test_quantizelinear_e5m2", "type error"},
+                { "test_cast_FLOAT16_to_FLOAT8E4M3FNUZ", "type error"},
+                { "test_cast_FLOAT16_to_FLOAT8E5M2", "type error"},
+                { "test_cast_FLOAT16_to_FLOAT8E5M2FNUZ", "type error"},
+                { "test_cast_FLOAT8E4M3FNUZ_to_FLOAT", "type error"},
+                { "test_cast_FLOAT8E4M3FNUZ_to_FLOAT16", "type error"},
+                { "test_cast_FLOAT8E4M3FN_to_FLOAT", "type error"},
+                { "test_cast_FLOAT8E4M3FN_to_FLOAT16", "type error"},
 
                 { "test_bitshift_right_uint16", "Could not find an implementation for BitShift(11) nodeMeta with name ''"},
                 { "test_bitshift_left_uint16", "Could not find an implementation for BitShift(11)"},
