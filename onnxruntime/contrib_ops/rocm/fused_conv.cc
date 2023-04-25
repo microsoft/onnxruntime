@@ -278,22 +278,7 @@ class FusedConv : public onnxruntime::rocm::Conv<T, false> {
     //       to detect it?
     mutable std::unordered_set<miopenHandle_t> compiled_on;
 
-    FusedConvFusionData(const FusedConvFusionData&) = delete;
-    FusedConvFusionData& operator=(const FusedConvFusionData&) = delete;
-
-    FusedConvFusionData(FusedConvFusionData&& other) {
-      *this = std::move(other);
-    }
-    FusedConvFusionData& operator=(FusedConvFusionData&& other) {
-      std::swap(this->plan, other.plan);
-      std::swap(this->fusion_args, other.fusion_args);
-      this->conv_op = other.conv_op;
-      this->bias_b_op = other.bias_b_op;
-      this->bias_z_op = other.bias_z_op;
-      this->act_op = other.act_op;
-      this->compiled_on = std::move(other.compiled_on);
-      return *this;
-    }
+    ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(FusedConvFusionData);
 
     FusedConvFusionData() {}
     ~FusedConvFusionData() {
@@ -312,8 +297,7 @@ class FusedConv : public onnxruntime::rocm::Conv<T, false> {
     // TODO: Add a timestamp for eviction
     // std::chrono::time_point<std::chrono::high_resolution_clock> last_access;
 
-    FusionPlanCacheItem() {
-    }
+    FusionPlanCacheItem() {}
 
     miopenStatus_t CompileOnHandle(miopenHandle_t handle) const {
       if (!fusion->plan) {
