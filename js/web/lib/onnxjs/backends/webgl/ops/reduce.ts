@@ -98,6 +98,7 @@ const createReduceProgramInfo =
     };
 
 const validateInputs = (inputs: Tensor[]): void => {
+  // TODO: support Reduce* operators with 2 inputs.
   if (!inputs || inputs.length !== 1) {
     throw new Error('Reduce op requires 1 input.');
   }

@@ -19,7 +19,7 @@ version = rootProject.file('../VERSION_NUMBER').text.trim()
 def cmakeBuildDir = System.properties['cmakeBuildDir']
 def useCUDA = System.properties['USE_CUDA']
 def useROCM = System.properties['USE_ROCM']
-def enableTraining = System.properties['ENABLE_TRAINING']
+def enableTrainingApis = System.properties['ENABLE_TRAINING_APIS']
 def cmakeJavaDir = "${cmakeBuildDir}/java"
 def cmakeNativeLibDir = "${cmakeJavaDir}/native-lib"
 def cmakeNativeJniDir = "${cmakeJavaDir}/native-jni"
@@ -29,7 +29,7 @@ def cmakeBuildOutputDir = "${cmakeJavaDir}/build"
 def mavenUser = System.properties['mavenUser']
 def mavenPwd = System.properties['mavenPwd']
 
-def tmpArtifactId = enableTraining == null ? project.name : project.name + "-training"
+def tmpArtifactId = enableTrainingApis == null ? project.name : project.name + "-training"
 def mavenArtifactId = (useCUDA == null && useROCM == null) ? tmpArtifactId : tmpArtifactId + "_gpu"
 
 java {
@@ -176,7 +176,7 @@ test {
 	if (cmakeBuildDir != null) {
 		workingDir cmakeBuildDir
 	}
-	systemProperties System.getProperties().subMap(['USE_CUDA', 'USE_ROCM', 'USE_TENSORRT', 'USE_DNNL', 'USE_OPENVINO', 'JAVA_FULL_TEST', 'ENABLE_TRAINING'])
+	systemProperties System.getProperties().subMap(['USE_CUDA', 'USE_ROCM', 'USE_TENSORRT', 'USE_DNNL', 'USE_OPENVINO', 'JAVA_FULL_TEST', 'ENABLE_TRAINING_APIS'])
 	testLogging {
 		events "passed", "skipped", "failed"
 		showStandardStreams = true

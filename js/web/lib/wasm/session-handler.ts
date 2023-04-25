@@ -7,27 +7,9 @@ import {promisify} from 'util';
 
 import {SerializableModeldata} from './proxy-messages';
 import {createSession, createSessionAllocate, createSessionFinalize, endProfiling, initOrt, releaseSession, run} from './proxy-wrapper';
+import {logLevelStringToEnum} from './wasm-common';
 
 let ortInit: boolean;
-
-
-const getLogLevel = (logLevel: 'verbose'|'info'|'warning'|'error'|'fatal'): number => {
-  switch (logLevel) {
-    case 'verbose':
-      return 0;
-    case 'info':
-      return 1;
-    case 'warning':
-      return 2;
-    case 'error':
-      return 3;
-    case 'fatal':
-      return 4;
-    default:
-      throw new Error(`unsupported logging level: ${logLevel}`);
-  }
-};
-
 
 export class OnnxruntimeWebAssemblySessionHandler implements SessionHandler {
   private sessionId: number;
@@ -45,7 +27,7 @@ export class OnnxruntimeWebAssemblySessionHandler implements SessionHandler {
 
   async loadModel(pathOrBuffer: string|Uint8Array, options?: InferenceSession.SessionOptions): Promise<void> {
     if (!ortInit) {
-      await initOrt(env.wasm.numThreads!, getLogLevel(env.logLevel!));
+      await initOrt(env.wasm.numThreads!, logLevelStringToEnum(env.logLevel!));
       ortInit = true;
     }
 
