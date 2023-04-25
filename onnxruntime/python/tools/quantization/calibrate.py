@@ -6,6 +6,7 @@
 # --------------------------------------------------------------------------
 import abc
 import itertools
+import sys
 import uuid
 from enum import Enum
 from pathlib import Path
@@ -556,7 +557,6 @@ class SmoothCalibrater(CalibraterBase):
             use_external_data_format=use_external_data_format,
         )
         self.intermediate_outputs = []
-        # self.smoothing_factor = {}
         self.calibrate_tensors_range = None
         self.num_model_outputs = len(self.model.graph.output)
         self.model_original_outputs = set(output.name for output in self.model.graph.output)
@@ -599,6 +599,8 @@ class SmoothCalibrater(CalibraterBase):
         """
         while True:
             inputs = data_reader.get_next()
+            #print(f"type(inputs): {type(inputs)}")
+            #print(f"inputs: {inputs}")
             if not inputs:
                 break
             self.intermediate_outputs.append(self.infer_session.run(None, inputs))
@@ -606,17 +608,23 @@ class SmoothCalibrater(CalibraterBase):
         if len(self.intermediate_outputs) == 0:
             raise ValueError("No data is collected.")
 
+        #print(f"len(self.intermediate_outputs) : {len(self.intermediate_outputs)} for {self.augmented_model_path}")
+
         output_names = [self.infer_session.get_outputs()[i].name for i in range(len(self.intermediate_outputs[0]))]
+        #print(f"type(output_names): {type(output_names)}")
+        #print(f"len(output_names): {len(output_names)}")
+        #print(f"output_names: {output_names}")
         output_dicts_list = [
             dict(zip(output_names, intermediate_output)) for intermediate_output in self.intermediate_outputs
         ]
+        #print(f"len(output_dicts_list): {len(output_dicts_list)}")
 
         merged_dict = {}
         for d in output_dicts_list:
             for k, v in d.items():
-                merged_dict[k] = v
+                merged_dict.setdefault(k, []).append(v)
 
-        # clean_merged_dict = dict((i, merged_dict[i]) for i in merged_dict if i in self.tensors_to_calibrate)
+        clean_merged_dict = dict((i, merged_dict[i]) for i in merged_dict if i in self.tensors_to_calibrate)
 
         graph = self.model.graph
 
@@ -634,8 +642,7 @@ class SmoothCalibrater(CalibraterBase):
 
         for node in graph.node:
             if node.op_type == "MatMul":
-                input_A_name = node.input[0]
-                input_A = np.asarray(merged_dict[input_A_name])
+
                 input_B_name = node.input[1]
                 if input_B_name in initializer_dict:
                     input_B = initializer_dict[input_B_name]
@@ -644,6 +651,16 @@ class SmoothCalibrater(CalibraterBase):
                     continue
                     # input_B = np.asarray(merged_dict[input_B_name])
                     # input_B_dim = value_infos[input_B_name].type.tensor_type.shape.dim
+
+                input_A_name = node.input[0]
+                #print(f"input_A_name: {input_A_name}")
+                input_A_ndarray = None
+                for ndarray in clean_merged_dict[input_A_name]:
+                    if input_A_ndarray is None:
+                        input_A_ndarray = np.abs(ndarray)
+                    else:
+                        input_A_ndarray = np.maximum(input_A_ndarray, np.abs(ndarray))
+                input_A = np.asarray(input_A_ndarray)
 
                 assert len(input_A.shape) == 2 or (len(input_A.shape) == 3 and input_A.shape[0] == 1)
                 assert len(input_B.shape) == 2
@@ -654,22 +671,32 @@ class SmoothCalibrater(CalibraterBase):
                     self.input_A_dim_is_3.add(node.name)
                 assert len(input_A_2D.shape) == 2
 
+                #print(f"len(input_A_abs_max): {len(self.input_A_abs_max)}")
                 if node.name in self.input_A_abs_max:
+                    #print("max(input_A_abs_max)")
                     self.input_A_abs_max[node.name] = np.maximum(
-                        np.amax(abs(input_A_2D), -2), self.input_A_abs_max[node.name]
+                        np.amax(np.abs(input_A_2D), -2), self.input_A_abs_max[node.name]
                     )
                 else:
-                    self.input_A_abs_max[node.name] = np.amax(abs(input_A_2D), -2)
-                self.input_A_abs_max[node.name] = np.where(
-                    self.input_A_abs_max[node.name] == 0, 1.0, self.input_A_abs_max[node.name]
-                )
+                    self.input_A_abs_max[node.name] = np.amax(np.abs(input_A_2D), -2)
+                #self.input_A_abs_max[node.name] = np.where(
+                #    self.input_A_abs_max[node.name] == 0, 1.0, self.input_A_abs_max[node.name]
+                #)
 
+                #print(f"len(input_B_abs_max): {len(self.input_B_abs_max)}")
+                #print(f"type(input_B): {type(input_B)}")
                 if node.name in self.input_B_abs_max:
+                    #print("max(input_B_abs_max)")
                     self.input_B_abs_max[node.name] = np.maximum(
-                        np.amax(abs(input_B), -1), self.input_B_abs_max[node.name]
+                        np.amax(np.abs(input_B), -1), self.input_B_abs_max[node.name]
                     )
                 else:
-                    self.input_B_abs_max[node.name] = np.amax(abs(input_B), -1)
+                    self.input_B_abs_max[node.name] = np.amax(np.abs(input_B), -1)
+
+        #print('input_A_abs_max: {} bytes'.format(sys.getsizeof(self.input_A_abs_max)))
+        #print('input_B_abs_max: {} bytes'.format(sys.getsizeof(self.input_B_abs_max)))
+        #print('input_A_dim_is_3: {} bytes'.format(sys.getsizeof(self.input_A_dim_is_3)))
+        self.clear_collected_data()
 
     def compute_range(self):
         """
@@ -678,6 +705,9 @@ class SmoothCalibrater(CalibraterBase):
         """
         smoothing_factor = {}
         for MatMul_name in self.input_A_abs_max:
+            self.input_A_abs_max[MatMul_name] = np.where(
+                self.input_A_abs_max[MatMul_name] == 0, 1.0, self.input_A_abs_max[MatMul_name]
+            )
             smoothfactor = np.sqrt(self.input_B_abs_max[MatMul_name] / self.input_A_abs_max[MatMul_name])
             input_A_smoothfactor = np.expand_dims(smoothfactor, -2)
             if MatMul_name in self.input_A_dim_is_3:
