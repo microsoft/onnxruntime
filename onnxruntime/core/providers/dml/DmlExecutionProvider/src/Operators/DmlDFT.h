@@ -4,19 +4,29 @@
 #include "../../../OperatorAuthorHelper/OperatorHelper.h"
 
 #include "../External/D3DX12/d3dx12.h"
+#include <d3d12.h>
 
 // NOTE: When this operator's implementation is moved into DML, the associated FP16 fallback
 //       should be removed from IsCustomOpShader(...) in
 //       onnxruntime\core\providers\dml\DmlExecutionProvider\src\ExecutionProvider.cpp
 
 // The shader headers are produced using "GeneratedShaders/GenerateShaders.bat"
-namespace DFTFloat32
+namespace StockhamFFT_Float32
 {
     #include "GeneratedShaders/stockham.h"
 }
-namespace DFTFloat16
+namespace StockhamFFT_Float16
 {
     #include "GeneratedShaders/stockham_fp16.h"
+}
+
+namespace BluesteinChirp_Float32
+{
+    #include "GeneratedShaders/bluestein_chirp.h"
+}
+namespace BluesteinChirp_Float16
+{
+    #include "GeneratedShaders/bluestein_chirp_fp16.h"
 }
 
 #include <wrl/client.h>
@@ -37,6 +47,16 @@ namespace DFTHelpers {
     inline bool IsPowerOfTwo(uint32_t x)
     {
         return (x != 0) && ((x & (x - 1)) == 0);
+    }
+
+    template <typename T>
+    T NextPowerOf2(T in) {
+    in--;
+    T out = 1;
+    while (out < in) {
+        out <<= 1;
+    }
+    return out;
     }
 
     // Gets the next number of elements to dispatch to the GPU within a loop handling a large
@@ -79,23 +99,25 @@ class GpuDFTOperator : public WRL::Base<IMLOperatorKernel>
 {
 private:
     ComPtr<ID3D12Device> m_device;
-    ComPtr<ID3D12RootSignature> m_rootSignature;
-    ComPtr<ID3D12PipelineState> m_pipelineState;
+    ComPtr<ID3D12RootSignature> m_stockhamFFTRootSignature;
+    ComPtr<ID3D12PipelineState> m_stockhamFFTPipelineState;
+    ComPtr<ID3D12RootSignature> m_bluesteinChirpRootSignature;
+    ComPtr<ID3D12PipelineState> m_bluesteinChirpPipelineState;
 
     int64_t m_axis;
     bool m_isOnesided;
     bool m_isInverse;
 
+    // Allocate temporary buffers if needed
+    struct ResourceDesc
+    {
+        ComPtr<ID3D12Resource> Resource;
+        std::array<uint32_t, 4> Sizes;
+        std::array<uint32_t, 4> Strides;
+    };
+
     struct StockhamParameters
     {
-        // Allocate temporary buffers if needed
-        struct ResourceDesc
-        {
-            ComPtr<ID3D12Resource> Resource;
-            std::array<uint32_t, 4> Sizes;
-            std::array<uint32_t, 4> Strides;
-        };
-
         struct LoopRangeCalculator
         {
             unsigned Left;
@@ -116,10 +138,23 @@ private:
             }
         };
 
+        ResourceDesc Window = {};
         std::vector<ResourceDesc> ResourceLoopList = {};
         LoopRangeCalculator LoopRange = {};
         uint32_t OutputIndex = 0;
         uint32_t NumberOfPasses = 0;
+    };
+
+    struct BluesteinZChirpParameters
+    {
+        ResourceDesc ZChirp = {};
+        ResourceDesc AFFT = {};
+        ResourceDesc B = {};
+        ResourceDesc BFFT = {};
+
+        StockhamParameters AFFTParams = {};
+        StockhamParameters AFFTInverseParams = {};
+        StockhamParameters BFFTParams = {};
     };
 
     enum class DFTType
@@ -132,6 +167,7 @@ private:
     {
         DFTType Type = DFTType::Stockham;
         StockhamParameters StockhamParams = {};
+        BluesteinZChirpParameters BluesteinZChirpParams = {};
         uint32_t DFTLength = 0;
     };
 
@@ -145,8 +181,20 @@ private:
         uint32_t InputStrides[4];
         uint32_t OutputSizes[4];
         uint32_t OutputStrides[4];
+        uint32_t WindowSizes[4];
+        uint32_t WindowStrides[4];
+        uint32_t HasWindow;
+        uint32_t WeightWithChirp;
         float Scale;
         uint32_t DFTLength;
+    };
+
+    struct BluesteinZChirpShaderConstants
+    {
+        uint32_t StartIndex;
+        uint32_t ElementCount;
+        uint32_t DFTLength;
+        uint32_t IsInverse;
     };
 
 public:
@@ -156,7 +204,8 @@ public:
      , m_isOnesided(isOnesided)
      , m_isInverse(isInverse)
     {
-        PrepareGpuResources(dataType);
+        PrepareStockhamFFT(dataType);
+        PrepareBluesteinZChirp(dataType);
     }
 
     GpuDFTOperator(IMLOperatorKernelCreationContext* context)
@@ -183,13 +232,14 @@ public:
         ORT_THROW_IF_FAILED(context->GetInputEdgeDescription(0, &edgeDesc));
         assert(edgeDesc.edgeType == MLOperatorEdgeType::Tensor);
 
-        PrepareGpuResources(edgeDesc.tensorDataType);
+        PrepareStockhamFFT(edgeDesc.tensorDataType);
+        PrepareBluesteinZChirp(edgeDesc.tensorDataType);
     }
 
-    void PrepareGpuResources(MLOperatorTensorDataType dataType)
+    void PrepareBluesteinZChirp(MLOperatorTensorDataType dataType)
     {
         // Compute root signature.
-        const int uavCount = 2;
+        const int uavCount = 2; // 2 outputs: chirp, and the reflected chirp conjugate (B)
         std::vector<CD3DX12_ROOT_PARAMETER1> rootParameters;
         rootParameters.resize(uavCount + 1);
 
@@ -198,7 +248,14 @@ public:
             rootParameters[i].InitAsUnorderedAccessView(i);
         }
 
-        int constantCount = 22;
+        // cbuffer Constants
+        // {
+        //     uint StartIndex;
+        //     uint ElementCount;
+        //     uint DFTLength;
+        //     uint IsInverse;
+        // };
+        int constantCount = 4;
         rootParameters[uavCount].InitAsConstants(constantCount, 0);
 
         CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC desc;
@@ -217,17 +274,17 @@ public:
             rootSignatureBlob->GetBufferPointer(),
             rootSignatureBlob->GetBufferSize(),
             IID_ID3D12RootSignature,
-            &m_rootSignature
+            &m_bluesteinChirpRootSignature
         ));
 
         // Describe and create the compute pipeline state object (PSO).
         D3D12_COMPUTE_PIPELINE_STATE_DESC computePsoDesc = {};
-        computePsoDesc.pRootSignature = m_rootSignature.Get();
+        computePsoDesc.pRootSignature = m_bluesteinChirpRootSignature.Get();
 
         switch (dataType)
         {
             case MLOperatorTensorDataType::Float:
-            computePsoDesc.CS = CD3DX12_SHADER_BYTECODE(DFTFloat32::g_DFT, sizeof(DFTFloat32::g_DFT));
+            computePsoDesc.CS = CD3DX12_SHADER_BYTECODE(BluesteinChirp_Float32::g_DFT, sizeof(BluesteinChirp_Float32::g_DFT));
             break;
 
             case MLOperatorTensorDataType::Float16:
@@ -241,7 +298,7 @@ public:
 
                 ORT_THROW_HR_IF(E_INVALIDARG, !featureOptions.Native16BitShaderOpsSupported);
 
-                computePsoDesc.CS = CD3DX12_SHADER_BYTECODE(DFTFloat16::g_DFT, sizeof(DFTFloat16::g_DFT));
+                computePsoDesc.CS = CD3DX12_SHADER_BYTECODE(BluesteinChirp_Float16::g_DFT, sizeof(BluesteinChirp_Float16::g_DFT));
             }
             break;
 
@@ -249,7 +306,73 @@ public:
             ORT_THROW_HR(E_INVALIDARG);
         }
 
-        ORT_THROW_IF_FAILED(m_device->CreateComputePipelineState(&computePsoDesc, IID_ID3D12PipelineState, &m_pipelineState));
+        ORT_THROW_IF_FAILED(m_device->CreateComputePipelineState(&computePsoDesc, IID_ID3D12PipelineState, &m_bluesteinChirpPipelineState));
+    }
+
+    void PrepareStockhamFFT(MLOperatorTensorDataType dataType)
+    {
+        // Compute root signature.
+        const int uavCount = 3;
+        std::vector<CD3DX12_ROOT_PARAMETER1> rootParameters;
+        rootParameters.resize(uavCount + 1);
+
+        for (UINT i = 0; i < uavCount; i++)
+        {
+            rootParameters[i].InitAsUnorderedAccessView(i);
+        }
+
+        int constantCount = 32;
+        rootParameters[uavCount].InitAsConstants(constantCount, 0);
+
+        CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC desc;
+        desc.Init_1_1(static_cast<uint32_t>(rootParameters.size()), rootParameters.data());
+
+        ComPtr<ID3DBlob> rootSignatureBlob;
+        ComPtr<ID3DBlob> rootSignatureErrorBlob;
+        ORT_THROW_IF_FAILED(D3D12SerializeVersionedRootSignature(
+            &desc,
+            rootSignatureBlob.GetAddressOf(),
+            rootSignatureErrorBlob.GetAddressOf()
+        ));
+
+        ORT_THROW_IF_FAILED(m_device->CreateRootSignature(
+            0,
+            rootSignatureBlob->GetBufferPointer(),
+            rootSignatureBlob->GetBufferSize(),
+            IID_ID3D12RootSignature,
+            &m_stockhamFFTRootSignature
+        ));
+
+        // Describe and create the compute pipeline state object (PSO).
+        D3D12_COMPUTE_PIPELINE_STATE_DESC computePsoDesc = {};
+        computePsoDesc.pRootSignature = m_stockhamFFTRootSignature.Get();
+
+        switch (dataType)
+        {
+            case MLOperatorTensorDataType::Float:
+            computePsoDesc.CS = CD3DX12_SHADER_BYTECODE(StockhamFFT_Float32::g_DFT, sizeof(StockhamFFT_Float32::g_DFT));
+            break;
+
+            case MLOperatorTensorDataType::Float16:
+            {
+                D3D12_FEATURE_DATA_D3D12_OPTIONS4 featureOptions = {};
+                ORT_THROW_IF_FAILED(m_device->CheckFeatureSupport(
+                    D3D12_FEATURE_D3D12_OPTIONS4,
+                    &featureOptions,
+                    sizeof(featureOptions))
+                );
+
+                ORT_THROW_HR_IF(E_INVALIDARG, !featureOptions.Native16BitShaderOpsSupported);
+
+                computePsoDesc.CS = CD3DX12_SHADER_BYTECODE(StockhamFFT_Float16::g_DFT, sizeof(StockhamFFT_Float16::g_DFT));
+            }
+            break;
+
+            default:
+            ORT_THROW_HR(E_INVALIDARG);
+        }
+
+        ORT_THROW_IF_FAILED(m_device->CreateComputePipelineState(&computePsoDesc, IID_ID3D12PipelineState, &m_stockhamFFTPipelineState));
     }
 
     // Computes the outputs of the kernel.  This may be called multiple times
@@ -338,12 +461,12 @@ public:
             {
                 case DFTType::Stockham:
                 {
-                    StockhamFFT(dftParams, commandList);
+                    StockhamFFT(dftParams, m_isInverse, false /*weightWithChirp*/, commandList);
                     break;
                 }
                 case DFTType::BluesteinZChirp:
-                    // Remove the power-of-two check in DmlSTFTParameters (DmlSTFT.h) if this case is implemented.
-                    __fallthrough;
+                    BluesteinZChirp(dftParams, m_isInverse,commandList);
+                    break;
                 default:
                     return E_NOTIMPL;
             }
@@ -354,6 +477,135 @@ public:
         }
 
         return S_OK;
+    }
+
+    void PrepareStockhamFFTParams(
+        IMLOperatorKernelContext* context,
+        ID3D12Resource* inputResource,
+        gsl::span<const uint32_t> inputDims,
+        ID3D12Resource* outputResource,
+        gsl::span<const uint32_t> outputDims,
+        uint32_t dftLength,
+        StockhamParameters& params)
+    {
+        params = {};
+
+        // { before_dft_axis, axis, after_dft_axis, real_or_complex }
+        std::array<uint32_t, 4> reshapedInputSize = { 1, 1, 1, inputDims.back() };
+        std::array<uint32_t, 4> reshapedOutputSize = { 1, 1, 1, outputDims.back() };
+
+        size_t reshapedIndex = 0;
+        for (int i = 0; i < static_cast<int>(inputDims.size()) - 1; i++)
+        {
+            if (i == m_axis || i == (m_axis + 1))
+            {
+                reshapedIndex++;
+            }
+
+            reshapedInputSize[reshapedIndex] *= inputDims[i];
+            reshapedOutputSize[reshapedIndex] *= outputDims[i];
+        }
+
+        auto temporarySize = reshapedInputSize;
+        // In the case where the dft length does not match the dft size, the temporary output should
+        // match the dft length
+        temporarySize[1] = dftLength;
+        temporarySize.back() = reshapedOutputSize.back();
+        auto temporaryBufferByteSize = sizeof(float) * ComputeElementCountFromDimensions(temporarySize);
+
+        // Calculate elements and strides
+        std::array<uint32_t, 4> reshapedInputStrides = { 1, 1, 1, 1 };
+        std::array<uint32_t, 4> reshapedOutputStrides = { 1, 1, 1, 1 };
+        std::array<uint32_t, 4> temporaryStrides = { 1, 1, 1, 1 };
+        for (int i = static_cast<int>(reshapedInputSize.size()) - 2; i >= 0; i--)
+        {
+            reshapedInputStrides[i] = reshapedInputSize[i + 1] * reshapedInputStrides[i + 1];
+            reshapedOutputStrides[i] = reshapedOutputSize[i + 1] * reshapedOutputStrides[i + 1];
+            temporaryStrides[i] = temporarySize[i + 1] * temporaryStrides[i + 1];
+        }
+
+        bool doesTemporaryShapeMatchOutput = true;
+        for (uint32_t i = 0; i < temporarySize.size(); i++)
+        {
+            doesTemporaryShapeMatchOutput &= (temporarySize[i] == reshapedOutputSize[i]);
+            if (!doesTemporaryShapeMatchOutput)
+            {
+                break;
+            }
+        }
+
+        // Calculate passes
+        params.NumberOfPasses = static_cast<unsigned>(log2(dftLength));
+        bool hasOnePass = params.NumberOfPasses == 1;
+        bool hasOddPasses = params.NumberOfPasses % 2;
+        bool hasEvenPasses = !hasOddPasses;
+
+        // write directly input buffer to output buffer, dont create temps
+        bool writeToOutput = hasOnePass;
+        // First and final are input/output buffers, but all else ocillate between 2 temp buffers
+        bool oscillateBetweenTwoTemporaries = !hasOnePass && (m_isOnesided || !doesTemporaryShapeMatchOutput);
+        // First is input buffer, all else ocillate between temp and output, causing the final pass to write to the output buffer
+        bool oscillateFirstOutputThenTemporary = hasOddPasses && (!m_isOnesided && doesTemporaryShapeMatchOutput);
+        // First is input buffer, all else ocillate between output and temp, causing the final pass to write to the output buffer
+        bool oscillateFirstTemporaryThenOutput = hasEvenPasses && (!m_isOnesided && doesTemporaryShapeMatchOutput);
+
+        // Create the resource loop list
+        // Add the input resource to the loop list
+        params.ResourceLoopList.push_back({});
+        params.ResourceLoopList.back().Resource = inputResource;
+        params.ResourceLoopList.back().Sizes = reshapedInputSize;
+        params.ResourceLoopList.back().Strides = reshapedInputStrides;
+
+        // If 1 temporary should be placed first, or multiple temporaries, then
+        // Add a temp in the list
+        if (oscillateFirstTemporaryThenOutput || oscillateBetweenTwoTemporaries)
+        {
+            params.ResourceLoopList.push_back({});
+            params.ResourceLoopList.back().Sizes = temporarySize;
+            params.ResourceLoopList.back().Strides = temporaryStrides;
+
+            auto& resource = params.ResourceLoopList.back().Resource;
+            ORT_THROW_IF_FAILED(context->AllocateTemporaryData(temporaryBufferByteSize, &resource));
+        }
+
+        // If 2 temps, add another
+        if (oscillateBetweenTwoTemporaries)
+        {
+            params.ResourceLoopList.push_back({});
+            params.ResourceLoopList.back().Sizes = temporarySize;
+            params.ResourceLoopList.back().Strides = temporaryStrides;
+
+            auto& resource = params.ResourceLoopList.back().Resource;
+            ORT_THROW_IF_FAILED(context->AllocateTemporaryData(temporaryBufferByteSize, &resource));
+        }
+
+        // Add output resource
+        params.ResourceLoopList.push_back({});
+        params.ResourceLoopList.back().Resource = outputResource;
+        params.ResourceLoopList.back().Sizes = reshapedOutputSize;
+        params.ResourceLoopList.back().Strides = reshapedOutputStrides;
+        params.OutputIndex = static_cast<uint32_t>(params.ResourceLoopList.size() - 1);
+
+        // Add the temporary after output incase of odd number of passes
+        if (oscillateFirstOutputThenTemporary)
+        {
+            params.ResourceLoopList.push_back({});
+            params.ResourceLoopList.back().Sizes = temporarySize;
+            params.ResourceLoopList.back().Strides = temporaryStrides;
+
+            auto& resource = params.ResourceLoopList.back().Resource;
+            ORT_THROW_IF_FAILED(context->AllocateTemporaryData(temporaryBufferByteSize, &resource));
+        }
+
+        // Define the loop range
+        if (writeToOutput) { params.LoopRange = { 0, 1, params.NumberOfPasses }; }
+        if (oscillateBetweenTwoTemporaries) { params.LoopRange = { 1, 2, params.NumberOfPasses }; }
+        if (oscillateFirstOutputThenTemporary) { params.LoopRange = { 1, 2, params.NumberOfPasses + 1 }; }
+        if (oscillateFirstTemporaryThenOutput) { params.LoopRange = { 1, 2, params.NumberOfPasses + 1 }; }
+
+        params.Window.Resource = nullptr;
+        params.Window.Sizes = std::array<uint32_t, 4> {0, 0, 0, 0};
+        params.Window.Strides = std::array<uint32_t, 4> {0, 0, 0, 0};
     }
 
     DFTParameters PrepareDFT(
@@ -368,130 +620,100 @@ public:
         DFTParameters params = {};
 
         params.DFTLength = dftLength;
+        params.StockhamParams = {};
+        params.BluesteinZChirpParams = {};
 
-        if (!DFTHelpers::IsPowerOfTwo(params.DFTLength))
+        if (DFTHelpers::IsPowerOfTwo(params.DFTLength))
         {
-            params.Type = DFTType::BluesteinZChirp;
-            params.StockhamParams = {};
+            params.Type = DFTType::Stockham;
+            PrepareStockhamFFTParams(context, inputResource, inputDims, outputResource, outputDims, dftLength, params.StockhamParams);
         }
         else
         {
-            params.Type = DFTType::Stockham;
-            params.StockhamParams = {};
+            params.Type = DFTType::BluesteinZChirp;
+            auto M = DFTHelpers::NextPowerOf2(2*dftLength - 1);
+            auto batchSize = inputDims[0];
 
-            // { before_dft_axis, axis, after_dft_axis, real_or_complex }
-            std::array<uint32_t, 4> reshapedInputSize = { 1, 1, 1, inputDims.back() };
-            std::array<uint32_t, 4> reshapedOutputSize = { 1, 1, 1, outputDims.back() };
+            // Compute intermediate tensor strides
+            params.BluesteinZChirpParams.ZChirp.Sizes = std::array<uint32_t, 4> { 1, 1, dftLength, 2 };
+            params.BluesteinZChirpParams.ZChirp.Strides = std::array<uint32_t, 4> { dftLength * 2, dftLength * 2, 2, 1 };
 
-            size_t reshapedIndex = 0;
-            for (int i = 0; i < static_cast<int>(inputDims.size()) - 1; i++)
-            {
-                if (i == m_axis || i == (m_axis + 1))
-                {
-                    reshapedIndex++;
-                }
-                reshapedInputSize[reshapedIndex] *= inputDims[i];
-                reshapedOutputSize[reshapedIndex] *= outputDims[i];
-            }
+            std::copy(inputDims.begin(), inputDims.end(), params.BluesteinZChirpParams.AFFT.Sizes.data());
+            params.BluesteinZChirpParams.AFFT.Sizes[m_axis] = M;
+            params.BluesteinZChirpParams.AFFT.Sizes.back() = 2;
+            Dml::GetDescendingPackedStrides(params.BluesteinZChirpParams.AFFT.Sizes, params.BluesteinZChirpParams.AFFT.Strides);
 
-            auto temporarySize = reshapedInputSize;
-            temporarySize.back() = reshapedOutputSize.back();
-            auto temporaryBufferByteSize = sizeof(float) * ComputeElementCountFromDimensions(temporarySize);
+            params.BluesteinZChirpParams.B.Sizes = std::array<uint32_t, 4> { 1, 1, M, 2 };
+            params.BluesteinZChirpParams.B.Strides = std::array<uint32_t, 4> { M * 2, M * 2, 2, 1 };
 
-            // Calculate elements and strides
-            std::array<uint32_t, 4> reshapedInputStrides = { 1, 1, 1, 1 };
-            std::array<uint32_t, 4> reshapedOutputStrides = { 1, 1, 1, 1 };
-            std::array<uint32_t, 4> temporaryStrides = { 1, 1, 1, 1 };
-            for (int i = static_cast<int>(reshapedInputSize.size()) - 2; i >= 0; i--)
-            {
-                reshapedInputStrides[i] = reshapedInputSize[i + 1] * reshapedInputStrides[i + 1];
-                reshapedOutputStrides[i] = reshapedOutputSize[i + 1] * reshapedOutputStrides[i + 1];
-                temporaryStrides[i] = temporarySize[i + 1] * temporaryStrides[i + 1];
-            }
+            params.BluesteinZChirpParams.BFFT.Sizes = std::array<uint32_t, 4> { 1, 1, M, 2 };
+            params.BluesteinZChirpParams.BFFT.Strides = std::array<uint32_t, 4> { M * 2, M * 2, 2, 1 };
 
-            // Calculate passes
-            params.StockhamParams.NumberOfPasses = static_cast<unsigned>(log2(params.DFTLength));
-            bool hasOnePass = params.StockhamParams.NumberOfPasses == 1;
-            bool hasOddPasses = params.StockhamParams.NumberOfPasses % 2;
-            bool hasEvenPasses = !hasOddPasses;
+            auto zChirpBufferByteSize = sizeof(float) * ComputeElementCountFromDimensions(params.BluesteinZChirpParams.ZChirp.Sizes);
+            auto aIntermediateBufferByteSize = sizeof(float) * ComputeElementCountFromDimensions(params.BluesteinZChirpParams.AFFT.Sizes);
+            auto bIntermediateBufferByteSize = sizeof(float) * ComputeElementCountFromDimensions(params.BluesteinZChirpParams.BFFT.Sizes);
 
-            // write directly input buffer to output buffer, dont create temps
-            bool writeToOutput = hasOnePass;
-            // First and final are input/output buffers, but all else ocillate between 2 temp buffers
-            bool oscillateBetweenTwoTemporaries = !hasOnePass && m_isOnesided;
-            // First is input buffer, all else ocillate between temp and output, causing the final pass to write to the output buffer
-            bool oscillateFirstOutputThenTemporary = hasOddPasses && !m_isOnesided;
-            // First is input buffer, all else ocillate between output and temp, causing the final pass to write to the output buffer
-            bool oscillateFirstTemporaryThenOutput = hasEvenPasses && !m_isOnesided;
+            auto& zchirp_resource = params.BluesteinZChirpParams.ZChirp.Resource;
+            auto& afft_resource = params.BluesteinZChirpParams.AFFT.Resource;
+            auto& b_resource = params.BluesteinZChirpParams.B.Resource;
+            auto& bfft_resource = params.BluesteinZChirpParams.BFFT.Resource;
+            ORT_THROW_IF_FAILED(context->AllocateTemporaryData(zChirpBufferByteSize, &zchirp_resource));
+            ORT_THROW_IF_FAILED(context->AllocateTemporaryData(aIntermediateBufferByteSize, &afft_resource));
+            ORT_THROW_IF_FAILED(context->AllocateTemporaryData(bIntermediateBufferByteSize, &b_resource));
+            ORT_THROW_IF_FAILED(context->AllocateTemporaryData(bIntermediateBufferByteSize, &bfft_resource));
 
-            // Create the resource loop list
-            // Add the input resource to the loop list
-            params.StockhamParams.ResourceLoopList.push_back({});
-            params.StockhamParams.ResourceLoopList.back().Resource = inputResource;
-            params.StockhamParams.ResourceLoopList.back().Sizes = reshapedInputSize;
-            params.StockhamParams.ResourceLoopList.back().Strides = reshapedInputStrides;
+            // The AFFT call takes input A, and produces output A_FFT.
+            //
+            // Input A: This is a pow-2 padded and chirp-weighted representation of the signal represented by "inputResource"
+            // Therefore the dftLength is not correct for AFFT, it should be NextPowerOf2(2*dftLength-1)
+            //
+            // The weighted representation should be calculated by passing in the chirp to the dft (like a window function).
+            // Padding should be handled by the shader.
+            PrepareStockhamFFTParams(context,
+                                     inputResource, inputDims,
+                                     afft_resource.Get(), params.BluesteinZChirpParams.AFFT.Sizes,
+                                     M,
+                                     params.BluesteinZChirpParams.AFFTParams);
+            params.BluesteinZChirpParams.AFFTParams.Window = params.BluesteinZChirpParams.ZChirp;
 
-            // If 1 temporary should be placed first, or multiple temporaries, then
-            // Add a temp in the list
-            if (oscillateFirstTemporaryThenOutput || oscillateBetweenTwoTemporaries)
-            {
-                params.StockhamParams.ResourceLoopList.push_back({});
-                params.StockhamParams.ResourceLoopList.back().Sizes = temporarySize;
-                params.StockhamParams.ResourceLoopList.back().Strides = temporaryStrides;
 
-                auto& resource = params.StockhamParams.ResourceLoopList.back().Resource;
-                ORT_THROW_IF_FAILED(context->AllocateTemporaryData(temporaryBufferByteSize, &resource));
-            }
+            // This shader will be used to calculate the inverse of the A_FFT, after complex multiplication with the B_FFT.
+            // Therefore the window function logic shold hangle complex multiplication, and B_FTT should be used like a window function.
+            PrepareStockhamFFTParams(context,
+                                     afft_resource.Get(), params.BluesteinZChirpParams.AFFT.Sizes,
+                                     outputResource, outputDims,
+                                     M,
+                                     params.BluesteinZChirpParams.AFFTInverseParams);
+            // The BFFT Window is described with the reshaped sizes and strides, which is incompatible with the
+            // window parameter expected by the stockham shader.
+            // We need to reinterpret it with the same BFFT size and strides above to make it conform to the shape
+            // expected by the shader.
+            params.BluesteinZChirpParams.AFFTInverseParams.Window = params.BluesteinZChirpParams.BFFT;
+            params.BluesteinZChirpParams.AFFTInverseParams.Window.Sizes = params.BluesteinZChirpParams.BFFT.Sizes;
+            params.BluesteinZChirpParams.AFFTInverseParams.Window.Strides = params.BluesteinZChirpParams.BFFT.Strides;
 
-            // If 2 temps, add another
-            if (oscillateBetweenTwoTemporaries)
-            {
-                params.StockhamParams.ResourceLoopList.push_back({});
-                params.StockhamParams.ResourceLoopList.back().Sizes = temporarySize;
-                params.StockhamParams.ResourceLoopList.back().Strides = temporaryStrides;
-
-                auto& resource = params.StockhamParams.ResourceLoopList.back().Resource;
-                ORT_THROW_IF_FAILED(context->AllocateTemporaryData(temporaryBufferByteSize, &resource));
-            }
-
-            // Add output resource
-            params.StockhamParams.ResourceLoopList.push_back({});
-            params.StockhamParams.ResourceLoopList.back().Resource = outputResource;
-            params.StockhamParams.ResourceLoopList.back().Sizes = reshapedOutputSize;
-            params.StockhamParams.ResourceLoopList.back().Strides = reshapedOutputStrides;
-            params.StockhamParams.OutputIndex = static_cast<uint32_t>(params.StockhamParams.ResourceLoopList.size() - 1);
-
-            // Add the temporary after output incase of odd number of passes
-            if (oscillateFirstOutputThenTemporary)
-            {
-                params.StockhamParams.ResourceLoopList.push_back({});
-                params.StockhamParams.ResourceLoopList.back().Sizes = temporarySize;
-                params.StockhamParams.ResourceLoopList.back().Strides = temporaryStrides;
-
-                auto& resource = params.StockhamParams.ResourceLoopList.back().Resource;
-                ORT_THROW_IF_FAILED(context->AllocateTemporaryData(temporaryBufferByteSize, &resource));
-            }
-
-            // Define the loop range
-            if (writeToOutput) { params.StockhamParams.LoopRange = { 0, 1, params.StockhamParams.NumberOfPasses }; }
-            if (oscillateBetweenTwoTemporaries) { params.StockhamParams.LoopRange = { 1, 2, params.StockhamParams.NumberOfPasses }; }
-            if (oscillateFirstOutputThenTemporary) { params.StockhamParams.LoopRange = { 1, 2, params.StockhamParams.NumberOfPasses + 1 }; }
-            if (oscillateFirstTemporaryThenOutput) { params.StockhamParams.LoopRange = { 1, 2, params.StockhamParams.NumberOfPasses + 1 }; }
+            // The BFFT call takes input B, and produces output B_FFT.
+            PrepareStockhamFFTParams(context,
+                                     b_resource.Get(), params.BluesteinZChirpParams.B.Sizes,
+                                     bfft_resource.Get(), params.BluesteinZChirpParams.BFFT.Sizes,
+                                     M,
+                                     params.BluesteinZChirpParams.BFFTParams);
         }
 
         return params;
     }
 
-    void StockhamFFT(const DFTParameters& dftParams, ID3D12GraphicsCommandList* commandList)
+    void BluesteinZChirp(const DFTParameters& dftParams, bool isInverse, ID3D12GraphicsCommandList* commandList)
     {
-        const auto& stockhamParams = dftParams.StockhamParams;
-
-        // Create resource loop list
-        const auto& loopList = stockhamParams.ResourceLoopList;
+        const auto& bluesteinZChirpParams = dftParams.BluesteinZChirpParams;
 
         // Get input and output resources
-        auto inputResource = loopList[0].Resource.Get();
-        auto outputResource = loopList[stockhamParams.OutputIndex].Resource.Get();
+        auto inputResource =  bluesteinZChirpParams.AFFTParams.ResourceLoopList.front().Resource.Get();
+        auto outputResource = bluesteinZChirpParams.AFFTInverseParams.ResourceLoopList[bluesteinZChirpParams.AFFTInverseParams.OutputIndex].Resource.Get();
+        auto zchirp_resource = bluesteinZChirpParams.ZChirp.Resource.Get();
+        auto afft_resource = bluesteinZChirpParams.AFFT.Resource.Get();
+        auto b_resource = bluesteinZChirpParams.B.Resource.Get();
+        auto bfft_resource = bluesteinZChirpParams.BFFT.Resource.Get();
 
         // Transition resources from common to UAV state
         D3D12_RESOURCE_BARRIER barriers[2];
@@ -511,15 +733,116 @@ public:
         commandList->ResourceBarrier(2, barriers);
 
         // Set the root signature and pipeline state
-        commandList->SetComputeRootSignature(m_rootSignature.Get());
-        commandList->SetPipelineState(m_pipelineState.Get());
+        commandList->SetComputeRootSignature(m_bluesteinChirpRootSignature.Get());
+        commandList->SetPipelineState(m_bluesteinChirpPipelineState.Get());
+
+        // Create ZChirp and B Tensors
+        BluesteinZChirpShaderConstants constants = {};
+        constants.DFTLength = dftParams.DFTLength;
+        constants.IsInverse = isInverse;
+
+        auto totalElementCount =
+            std::accumulate(bluesteinZChirpParams.B.Sizes.begin(),
+                            bluesteinZChirpParams.B.Sizes.end(),
+                            1,
+                            std::multiplies<uint32_t>());
+        constants.ElementCount = totalElementCount / bluesteinZChirpParams.B.Sizes[3];
+
+        std::array<ID3D12Resource*, 2> uav_resources = { zchirp_resource, b_resource };
+        Dispatch(uav_resources, constants, commandList);
+
+        DFTParameters fft_params = {};
+        fft_params.Type = DFTType::Stockham;
+        fft_params.BluesteinZChirpParams = {};
+        fft_params.DFTLength = bluesteinZChirpParams.AFFT.Sizes[2];
+
+        // Create BFFT Tensors
+        fft_params.StockhamParams = bluesteinZChirpParams.BFFTParams;
+        StockhamFFT(fft_params, false, false /*weightWithChirp*/, commandList);
+
+        // Create AFFT Tensors
+        fft_params.StockhamParams = bluesteinZChirpParams.AFFTParams;
+        StockhamFFT(fft_params, false, false /*weightWithChirp*/, commandList);
+
+        // Should include the bfft tensor as the window funciton
+        fft_params.StockhamParams = bluesteinZChirpParams.AFFTInverseParams;
+        StockhamFFT(fft_params, true, true /*weightWithChirp*/, commandList);
+
+        // Set the root signature and pipeline state for reverse weighting with conjugate zchirp
+        // commandList->SetComputeRootSignature(m_bluesteinChirpRootSignature.Get());
+        // commandList->SetPipelineState(m_bluesteinChirpPipelineState.Get());
+
+        // // Create ZChirp and B Tensors
+        // BluesteinZChirpConjugateShaderConstants constants = {};
+        // constants.IsInverse = false;
+
+        // auto totalElementCount =
+        //     std::accumulate(bluesteinZChirpParams.ZChirp.Sizes,
+        //                     bluesteinZChirpParams.ZChirp.Sizes + std::size(bluesteinZChirpParams.ZChirp.Sizes),
+        //                     1,
+        //                     std::multiplies<uint32_t>());
+        // constants.ElementCount = totalElementCount / bluesteinZChirpParams.ZChirp.Sizes[3];
+
+        // std::array<ID3D12Resource*, 1> uav_resources = { outputResource };
+        // Dispatch(uav_resources, constants, commandList);
+
+        // Transition resources to common state
+        barriers[0] = CD3DX12_RESOURCE_BARRIER::Transition(
+                inputResource,
+                D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+                D3D12_RESOURCE_STATE_COMMON
+                );
+
+        barriers[1] = CD3DX12_RESOURCE_BARRIER::Transition(
+                outputResource,
+                D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+                D3D12_RESOURCE_STATE_COMMON
+                );
+
+        commandList->ResourceBarrier(2, barriers);
+    }
+
+    void StockhamFFT(const DFTParameters& dftParams, bool isInverse, bool weightWithChirp, ID3D12GraphicsCommandList* commandList)
+    {
+        const auto& stockhamParams = dftParams.StockhamParams;
+
+        // Create resource loop list
+        const auto& loopList = stockhamParams.ResourceLoopList;
+
+        // Get input and output resources
+        auto inputResource = loopList[0].Resource.Get();
+        auto outputResource = loopList[stockhamParams.OutputIndex].Resource.Get();
+        auto windowResource = dftParams.StockhamParams.Window.Resource.Get();
+
+        // Transition resources from common to UAV state
+        D3D12_RESOURCE_BARRIER barriers[2];
+
+        barriers[0] = CD3DX12_RESOURCE_BARRIER::Transition(
+            inputResource,
+            D3D12_RESOURCE_STATE_COMMON,
+            D3D12_RESOURCE_STATE_UNORDERED_ACCESS
+        );
+
+        barriers[1] = CD3DX12_RESOURCE_BARRIER::Transition(
+            outputResource,
+            D3D12_RESOURCE_STATE_COMMON,
+            D3D12_RESOURCE_STATE_UNORDERED_ACCESS
+        );
+
+        commandList->ResourceBarrier(2, barriers);
+
+        // Set the root signature and pipeline state
+        commandList->SetComputeRootSignature(m_stockhamFFTRootSignature.Get());
+        commandList->SetPipelineState(m_stockhamFFTPipelineState.Get());
 
         // Each iteration of the below loop represents 1 level in the Stockham DFT
         // Dispatch in a loop
         DFTShaderConstants constants = {};
         constants.DFTLength = dftParams.DFTLength;
         constants.DFTIteration = 0;
-        constants.IsInverse = m_isInverse;
+        constants.IsInverse = isInverse;
+        std::copy(dftParams.StockhamParams.Window.Sizes.begin(), dftParams.StockhamParams.Window.Sizes.end(), constants.WindowSizes);
+        std::copy(dftParams.StockhamParams.Window.Strides.begin(), dftParams.StockhamParams.Window.Strides.end(), constants.WindowStrides);
 
         for (unsigned index = 0; index < stockhamParams.NumberOfPasses; index++)
         {
@@ -534,8 +857,9 @@ public:
             std::copy(loopList[outIdx].Sizes.begin(), loopList[outIdx].Sizes.end(), constants.OutputSizes);
             std::copy(loopList[outIdx].Strides.begin(), loopList[outIdx].Strides.end(), constants.OutputStrides);
 
+            auto isFirstPass = (index == 0);
             auto isLastPass = (index == stockhamParams.NumberOfPasses - 1);
-            auto isLastInversePass = isLastPass && m_isInverse;
+            auto isLastInversePass = isLastPass && isInverse;
             auto dftLength = 1 << stockhamParams.NumberOfPasses;
             constants.Scale = isLastInversePass ? (1.f / dftLength) : 1.f;
 
@@ -546,7 +870,11 @@ public:
                                 std::multiplies<uint32_t>());
             constants.ElementCount = totalElementCount / constants.OutputSizes[3];
             constants.DFTIteration = index + 1;
-            Dispatch(in, out, constants, commandList);
+            constants.WeightWithChirp = isLastPass && weightWithChirp;
+            constants.HasWindow = isFirstPass && windowResource != nullptr;
+            auto window = constants.HasWindow ? windowResource : out;
+            std::array<ID3D12Resource*, 3> uav_resources = { in, out, window };
+            Dispatch(uav_resources, constants, commandList);
         }
 
         // Transition resources to common state
@@ -573,26 +901,38 @@ public:
         return dims;
     }
 
+    template <typename TConstants, uint32_t TSize>
     void Dispatch(
-        ID3D12Resource* inputResource,
-        ID3D12Resource* outputResource,
-        DFTShaderConstants& constants,
+        std::array<ID3D12Resource*, TSize>& resources,
+        TConstants& constants,
         ID3D12GraphicsCommandList* commandList)
     {
-        D3D12_RESOURCE_BARRIER uav_barriers[2];
-        uav_barriers[0] = CD3DX12_RESOURCE_BARRIER::UAV(inputResource);
-        uav_barriers[1] = CD3DX12_RESOURCE_BARRIER::UAV(outputResource);
-        commandList->ResourceBarrier(2, uav_barriers);
-        // Set resource views
-        commandList->SetComputeRootUnorderedAccessView(
-            0, // root parameter index
-            inputResource->GetGPUVirtualAddress()
-        );
+        D3D12_RESOURCE_BARRIER uav_barriers[TSize];
 
-        commandList->SetComputeRootUnorderedAccessView(
-            1, // root parameter index
-            outputResource->GetGPUVirtualAddress()
-        );
+        std::transform(
+            resources.begin(), resources.end(),
+            uav_barriers,
+            [](auto& resource) { return CD3DX12_RESOURCE_BARRIER::UAV(resource); } );
+        commandList->ResourceBarrier(TSize, uav_barriers);
+
+        for (uint32_t i = 0; i < TSize; i++) {
+            // Set resource views
+            if (resources[i]) {
+                commandList->SetComputeRootUnorderedAccessView(
+                    i, // root parameter index
+                    resources[i]->GetGPUVirtualAddress()
+                );
+            }
+            else
+            {
+                commandList->SetComputeRootUnorderedAccessView(
+                    i, // root parameter index
+                    {}
+                );
+
+            }
+        }
+
         auto pendingElementCount = constants.ElementCount;
 
         // Dispatch up to the maximum number of threads per iteration until
@@ -613,8 +953,8 @@ public:
 
             // Set root constants
             commandList->SetComputeRoot32BitConstants(
-                2, // root parameter index
-                22, // Constant count
+                TSize, // root parameter index
+                32, // Constant count
                 &constants,
                 0 // offset
             );
