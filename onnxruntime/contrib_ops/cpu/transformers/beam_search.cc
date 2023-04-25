@@ -264,7 +264,7 @@ Status BeamSearch::Compute(OpKernelContext* ctx) const {
           *t5_decoder_subgraph_, thread_pool, ctx->GetComputeStream(), dumper_, parameters,
           add_to_feeds_func_ ? add_to_feeds_func_ : GenerationCpuDeviceHelper::AddToFeeds,
           reorder_past_state_func_ ? reorder_past_state_func_ : nullptr,  // Only CUDA implementation needs the reorder helper for now
-          init_cache_indir_func_ ? init_cache_indir_func_ : nullptr,  // Only CUDA implementation needs the init cache_indir for now
+          init_cache_indir_func_ ? init_cache_indir_func_ : nullptr,      // Only CUDA implementation needs the init cache_indir for now
           topk_func_ ? topk_func_ : GenerationCpuDeviceHelper::TopK,
           process_logits_func_ ? process_logits_func_ : GenerationCpuDeviceHelper::ProcessLogits<float>,
           init_beam_state_func_ ? init_beam_state_func_ : GenerationCpuDeviceHelper::InitBeamState<float>,
@@ -286,7 +286,7 @@ Status BeamSearch::Compute(OpKernelContext* ctx) const {
           *t5_decoder_subgraph_, thread_pool, ctx->GetComputeStream(), dumper_, parameters,
           add_to_feeds_func_ ? add_to_feeds_func_ : GenerationCpuDeviceHelper::AddToFeeds,
           reorder_past_state_func_ ? reorder_past_state_func_ : nullptr,  // Only CUDA implementation needs the reorder helper for now
-          init_cache_indir_func_ ? init_cache_indir_func_ : nullptr,  // Only CUDA implementation needs the init cache_indir for now
+          init_cache_indir_func_ ? init_cache_indir_func_ : nullptr,      // Only CUDA implementation needs the init cache_indir for now
           topk_func_ ? topk_func_ : GenerationCpuDeviceHelper::TopK,
           process_logits_fp16_func_,
           init_beam_state_fp16_func_,
@@ -315,7 +315,7 @@ Status BeamSearch::Compute(OpKernelContext* ctx) const {
           *t5_decoder_subgraph_, thread_pool, ctx->GetComputeStream(), dumper_, parameters,
           add_to_feeds_func_ ? add_to_feeds_func_ : GenerationCpuDeviceHelper::AddToFeeds,
           reorder_past_state_func_ ? reorder_past_state_func_ : nullptr,  // Only CUDA implementation needs the reorder helper for now
-          init_cache_indir_func_ ? init_cache_indir_func_ : nullptr,  // Only CUDA implementation needs the init cache_indir for now
+          init_cache_indir_func_ ? init_cache_indir_func_ : nullptr,      // Only CUDA implementation needs the init cache_indir for now
           topk_func_ ? topk_func_ : GenerationCpuDeviceHelper::TopK,
           process_logits_func_ ? process_logits_func_ : GenerationCpuDeviceHelper::ProcessLogits<float>,
           init_beam_state_func_ ? init_beam_state_func_ : GenerationCpuDeviceHelper::InitBeamState<float>,
@@ -337,7 +337,7 @@ Status BeamSearch::Compute(OpKernelContext* ctx) const {
           *t5_decoder_subgraph_, thread_pool, ctx->GetComputeStream(), dumper_, parameters,
           add_to_feeds_func_ ? add_to_feeds_func_ : GenerationCpuDeviceHelper::AddToFeeds,
           reorder_past_state_func_ ? reorder_past_state_func_ : nullptr,  // Only CUDA implementation needs the reorder helper for now
-          init_cache_indir_func_ ? init_cache_indir_func_ : nullptr,  // Only CUDA implementation needs the init cache_indir for now
+          init_cache_indir_func_ ? init_cache_indir_func_ : nullptr,      // Only CUDA implementation needs the init cache_indir for now
           topk_func_ ? topk_func_ : GenerationCpuDeviceHelper::TopK,
           process_logits_fp16_func_,
           init_beam_state_fp16_func_,
