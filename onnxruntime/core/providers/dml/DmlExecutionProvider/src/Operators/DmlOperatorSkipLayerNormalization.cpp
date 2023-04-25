@@ -15,21 +15,46 @@ public:
         std::vector<std::optional<uint32_t>> kernelInputIndices = {0, 1, 2, 3, 4};
         std::vector<std::optional<uint32_t>> kernelOutputIndices = {0, 1, 2, 3};
 
-        DmlOperator::Initialize(
+        const auto inputShape = kernelCreationContext.GetTensorShapeDescription().GetInputTensorShape(0);
+        ML_CHECK_VALID_ARGUMENT(inputShape.size() == 2 || inputShape.size() == 3);
+        const uint32_t batchSize = inputShape[0];
+        const uint32_t sequenceLength = inputShape.size() == 3 ? inputShape[1] : 1;
+        const uint32_t hiddenSize = inputShape.back();
+
+        std::array<gsl::span<const uint32_t>, 5> inputShapes = {
+            gsl::span<const uint32_t>({batchSize, sequenceLength, hiddenSize, 1}),
+            gsl::span<const uint32_t>({batchSize, sequenceLength, hiddenSize, 1}),
+            gsl::span<const uint32_t>({1, 1, hiddenSize, 1}),
+            gsl::span<const uint32_t>({1, 1, hiddenSize, 1}),
+            gsl::span<const uint32_t>({1, 1, hiddenSize, 1}),
+        };
+
+        std::array<gsl::span<const uint32_t>, 4> outputShapes = {
+            gsl::span<const uint32_t>({batchSize, sequenceLength, hiddenSize, 1}),
+            gsl::span<const uint32_t>({1, 1, 1, 1}),
+            gsl::span<const uint32_t>({1, 1, 1, 1}),
+            gsl::span<const uint32_t>({batchSize, sequenceLength, hiddenSize, 1}),
+        };
+
+        DmlOperator::InitializeWithShapes(
             kernelCreationContext,
             kernelInputIndices,
             kernelOutputIndices,
-            kernelCreationContext.GetTensorShapeDescription().GetInputTensorShape(0),
-            std::nullopt,
-            kernelCreationContext.GetTensorShapeDescription().GetInputTensorDimensionCount(0));
+            inputShapes,
+            outputShapes);
+
+        if (m_inputTensorDescs[4].GetDmlDataType() != DML_TENSOR_TYPE_INVALID)
+        {
+            // The needs to be broadcasted since it's not used as part of MVN
+            std::array<uint32_t, 4> biasStrides = {0, 0, 1, 0};
+            m_inputTensorDescs[4] = TensorDesc(
+                m_inputTensorDescs[0].GetDmlDataType(),
+                m_inputTensorDescs[0].GetSizes(),
+                biasStrides);
+        }
 
         const float epsilon = kernelCreationContext.GetOptionalAttribute<float>(AttrName::Epsilon, DefaultEpsilon);
-
-        int32_t onnxAxis = kernelCreationContext.GetOptionalAttribute<int32_t>(AttrName::Axis, -1);
-        uint32_t inputDimCount = kernelCreationContext.GetTensorShapeDescription().GetInputTensorDimensionCount(0);
-        onnxAxis = OperatorHelper::HandleNegativeAxis(onnxAxis, inputDimCount);
-        std::vector<uint32_t> onnxAxes(static_cast<size_t>(inputDimCount) - static_cast<size_t>(onnxAxis));
-        std::iota(onnxAxes.begin(), onnxAxes.end(), onnxAxis);
+        std::array<uint32_t, 2> axes = {2, 3};
 
         assert(m_inputTensorDescs.size() == 5);
         assert(m_outputTensorDescs.size() == 4);
@@ -62,8 +87,8 @@ public:
         mvnDesc.ScaleTensor = &gammaDesc;
         mvnDesc.BiasTensor = betaDesc.Desc ? &betaDesc : nullptr;
         mvnDesc.OutputTensor = &outputDesc;
-        mvnDesc.Axes = onnxAxes.data();
-        mvnDesc.AxisCount = gsl::narrow_cast<uint32_t>(onnxAxes.size());
+        mvnDesc.Axes = axes.data();
+        mvnDesc.AxisCount = gsl::narrow_cast<uint32_t>(axes.size());
         mvnDesc.NormalizeVariance = true;
         mvnDesc.Epsilon = epsilon;
         mvnDesc.FusedActivation = nullptr;
