@@ -82,7 +82,6 @@ set(contrib_ops_excluded_files
   "tensor/image_scaler.h"
   "tensor/image_scaler_impl.cu"
   "tensor/image_scaler_impl.h"
-  "transformers/beam_search.cc"
   "transformers/greedy_search.cc"
   "transformers/greedy_search.h"
   "conv_transpose_with_dynamic_pads.cc"
