@@ -153,7 +153,7 @@ TEST(MathOpTest, Add_float) {
   test.AddInput<float>("B", dims, rhs_values);
   test.AddOutput<float>("C", dims, out_values);
 
-#if defined(OPENVINO_CONFIG_GPU_GP16) 
+#if defined(OPENVINO_CONFIG_GPU_GP16)
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
            {kOpenVINOExecutionProvider});  // OpenVINO: Disabled due to accuracy mismatch for FP16
 #else
@@ -216,7 +216,7 @@ TEST(MathOpTest, Add_Broadcast_MultidirectionalAB) {
   test.AddInput<float>("A", {3, 1}, lhs_values);
   test.AddInput<float>("B", {3}, rhs_values);
   test.AddOutput<float>("C", {3, 3}, out_values);
-#if defined(OPENVINO_CONFIG_GPU_FP32) || defined(OPENVINO_CONFIG_GPU_FP16) 
+#if defined(OPENVINO_CONFIG_GPU_FP32) || defined(OPENVINO_CONFIG_GPU_FP16)
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
            {kTensorrtExecutionProvider,
             kOpenVINOExecutionProvider});  // OpenVINO: disabled temporarily due to accurarcy issues
@@ -420,7 +420,7 @@ TEST(MathOpTest, Add_Broadcast_2x1x1_3x4) {
 
   std::unordered_set<std::string> excluded_providers;
   excluded_providers.insert(kTensorrtExecutionProvider);
-#if defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_GPU_FP32) 
+#if defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_GPU_FP32)
   // OpenVINO GPU: Disabled temporarily due to accuarcy issues
   // OpenVINO VPU: Disabled due to software limitation
   excluded_providers.insert(kOpenVINOExecutionProvider);
@@ -670,8 +670,8 @@ TEST(MathOpTest, Neg_int8) {
   test.AddInput<int8_t>("X", dims, {1, -2, 0, -10});
   test.AddOutput<int8_t>("Y", dims, {-1, 2, 0, 10});
 
-// OpenVINO EP: Disabled temporarily
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: INT8 is not supported
+  // OpenVINO EP: Disabled temporarily
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: INT8 is not supported
 }
 
 TEST(MathOpTest, Neg_int32) {
@@ -723,9 +723,9 @@ TEST(MathOpTest, Ceil) {
   test.AddOutput<float>("Y", dims,
                         {-1.0f, 1.0f,
                          0.0f, 11.0f});
-#if defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_GPU_FP32) 
-  //OpenVINO: Disabled due to software limitation for GPU and VPU Plugins.
-  //This test runs fine on CPU Plugin
+#if defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_GPU_FP32)
+  // OpenVINO: Disabled due to software limitation for GPU and VPU Plugins.
+  // This test runs fine on CPU Plugin
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});
 #else
   test.Run();
@@ -741,9 +741,9 @@ TEST(MathOpTest, Ceil_double) {
   test.AddOutput<double>("Y", dims,
                          {-1.0, 1.0,
                           0.0, 11.0});
-#if defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_GPU_FP32) 
-  //OpenVINO: Disabled due to software limitation for GPU and VPU Plugins.
-  //This test runs fine on CPU Plugin
+#if defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_GPU_FP32)
+  // OpenVINO: Disabled due to software limitation for GPU and VPU Plugins.
+  // This test runs fine on CPU Plugin
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});
 #else
   test.Run();
@@ -1233,9 +1233,9 @@ TEST(MathOpTest, Sum_8_Test1) {
                          311.0f, 312.0f, 313.0f,
                          321.0f, 322.0f, 323.0f,
                          331.0f, 332.0f, 333.0f});
-#if defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_GPU_FP32) 
-  //OpenVINO: Disabled due to software limitation for GPU and VPU Plugins.
-  //This test runs fine on CPU Plugin
+#if defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_GPU_FP32)
+  // OpenVINO: Disabled due to software limitation for GPU and VPU Plugins.
+  // This test runs fine on CPU Plugin
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
 #else
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});                    // TensorRT: Expected output shape [{3,3,3}] did not match run output shape [{3,1,1}] for sum
@@ -1259,9 +1259,9 @@ TEST(MathOpTest, Sum_8_Test1_double) {
                           311.0, 312.0, 313.0,
                           321.0, 322.0, 323.0,
                           331.0, 332.0, 333.0});
-#if defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_GPU_FP32) 
-  //OpenVINO: Disabled due to software limitation for GPU and VPU Plugins.
-  //This test runs fine on CPU Plugin
+#if defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_GPU_FP32)
+  // OpenVINO: Disabled due to software limitation for GPU and VPU Plugins.
+  // This test runs fine on CPU Plugin
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
 #else
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});                    // TensorRT: Expected output shape [{3,3,3}] did not match run output shape [{3,1,1}] for sum
@@ -1293,7 +1293,7 @@ TEST(MathOpTest, Sum_8_Test2) {
                          3.3f, 4.4f, -94.7f,
                          59.6f, 64.01f, -8.0f});
 
-#if defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_GPU_FP32) 
+#if defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_GPU_FP32)
   // OpenVINO: Disabled temporarily due to accuracy issues
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});  // TensorRT: Input batch size is inconsistent
 #else
@@ -1327,7 +1327,7 @@ TEST(MathOpTest, Sum_8_Test2_double) {
                           3.3, 4.4, -94.7,
                           59.6, 64.01, -8.0});
 
-#if defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_GPU_FP32) 
+#if defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_GPU_FP32)
   // OpenVINO: Disabled temporarily due to accuracy issues
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});  // TensorRT: Input batch size is inconsistent
 #else
@@ -2582,7 +2582,7 @@ TEST(MathOpTest, Mean_6) {
                         {1.0f, 0.0f, 2.0f,
                          -2.0f, 2.2f, 10.0f,
                          -3.0f, 0.02f, -4.0f});
-// OpenVINO: Disabled due to accuracy mismatch
+  // OpenVINO: Disabled due to accuracy mismatch
   test.Run();
 }
 
@@ -2599,8 +2599,8 @@ TEST(MathOpTest, Mean_8) {
                         {12.0f / 3.0f, 22.0f / 3.0f, 32.0f / 3.0f,
                          43.0f / 3.0f, 53.0f / 3.0f, 63.0f / 3.0f,
                          74.0f / 3.0f, 84.0f / 3.0f, 94.0f / 3.0f});
-// OpenVINO: Disabled due to accuracy mismatch
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: Input batch size is inconsistent
+  // OpenVINO: Disabled due to accuracy mismatch
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: Input batch size is inconsistent
 }
 
 #ifdef _LIBCPP_VERSION

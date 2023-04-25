@@ -107,14 +107,10 @@ def _openvino_verify_device_type(device_read):
         print("specify the keyword HETERO or MULTI or AUTO followed by the devices ")
         print("in the order of priority you want to build\n")
         print("The different hardware devices that can be added in HETERO or MULTI or AUTO")
-        print("are ['CPU','GPU', 'VPUX']"
-                "\n")
-        print("An example of how to specify the hetero build type. Ex: HETERO:GPU,CPU"
-                "\n")
-        print("An example of how to specify the MULTI build type. Ex: MULTI:GPU,CPU"
-                "\n")
-        print("An example of how to specify the AUTO build type. Ex: AUTO:GPU,CPU"
-                "\n")
+        print("are ['CPU','GPU', 'VPUX'] \n")
+        print("An example of how to specify the hetero build type. Ex: HETERO:GPU,CPU \n")
+        print("An example of how to specify the MULTI build type. Ex: MULTI:GPU,CPU \n")
+        print("An example of how to specify the AUTO build type. Ex: AUTO:GPU,CPU \n")
         sys.exit("Wrong Build Type selected")
 
     if res is False:
@@ -1103,9 +1099,7 @@ def generate_build_tree(
             + ("ON" if args.use_openvino == "CPU_FP16_NO_PARTITION" else "OFF"),
             "-Donnxruntime_USE_OPENVINO_VPUX_FP16_NP="
             + ("ON" if args.use_openvino == "VPUX_FP16_NP_PARTITION" else "OFF"),
-            "-Donnxruntime_USE_OPENVINO_VPUX_U8_NP="
-            + ("ON" if args.use_openvino == "VPUX_U8_NP_PARTITION" else "OFF"),
-
+            "-Donnxruntime_USE_OPENVINO_VPUX_U8_NP=" + ("ON" if args.use_openvino == "VPUX_U8_NP_PARTITION" else "OFF"),
             "-Donnxruntime_USE_OPENVINO_HETERO=" + ("ON" if args.use_openvino.startswith("HETERO") else "OFF"),
             "-Donnxruntime_USE_OPENVINO_DEVICE=" + (args.use_openvino),
             "-Donnxruntime_USE_OPENVINO_MULTI=" + ("ON" if args.use_openvino.startswith("MULTI") else "OFF"),

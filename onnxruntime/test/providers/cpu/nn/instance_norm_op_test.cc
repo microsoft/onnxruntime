@@ -257,8 +257,8 @@ TEST(InstanceNormalizationOpTest, InstanceNormNCHW) {
   test.AddOutput<float>("Y", input_dims, expected_output);
 
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {
-      kTensorrtExecutionProvider,
-  });
+                                                           kTensorrtExecutionProvider,
+                                                       });
 }
 
 }  // namespace test

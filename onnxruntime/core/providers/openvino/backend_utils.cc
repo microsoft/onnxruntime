@@ -59,7 +59,7 @@ CreateOVModel(const ONNX_NAMESPACE::ModelProto& model_proto, const GlobalContext
     auto cnn_network = global_context.ie_core.ReadModel(model);
     if ((subgraph_context.precision == InferenceEngine::Precision::FP16) &&
         (global_context.device_type.find("VPUX") == std::string::npos)) {
-      //FP16 transformations
+      // FP16 transformations
       ov::pass::ConvertFP32ToFP16 pass_obj;
       pass_obj.run_on_model(cnn_network);
       cnn_network->validate_nodes_and_infer_types();
@@ -96,7 +96,7 @@ CreateOVModel(const ONNX_NAMESPACE::ModelProto& model_proto, const GlobalContext
       }
     }
 #ifndef NDEBUG
-#if defined (OPENVINO_2022_3) || (OPENVINO_2023_0)
+#if defined(OPENVINO_2022_3) || (OPENVINO_2023_0)
     if (IsDebugEnabled()) {
       std::string name = cnn_network->get_friendly_name();
       ov::pass::Serialize serializer(name + ".xml", name + ".bin");

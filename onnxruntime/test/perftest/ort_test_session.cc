@@ -434,10 +434,11 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
         } else if (value.find("AUTO:") == 0) {
           device_type = value;
         } else {
-          ORT_THROW("[ERROR] [OpenVINO] You have selcted wrong configuration value for the key 'device_type'. "
-                    "Select from 'CPU_FP32', 'CPU_FP16', 'GPU_FP32', 'GPU.0_FP32', 'GPU.1_FP32', 'GPU_FP16', "
-                    "'GPU.0_FP16', 'GPU.1_FP16', 'VPUX_FP16', 'VPUX_U8', or from"
-                    " HETERO/MULTI/AUTO options available. \n");
+          ORT_THROW(
+              "[ERROR] [OpenVINO] You have selcted wrong configuration value for the key 'device_type'. "
+              "Select from 'CPU_FP32', 'CPU_FP16', 'GPU_FP32', 'GPU.0_FP32', 'GPU.1_FP32', 'GPU_FP16', "
+              "'GPU.0_FP16', 'GPU.1_FP16', 'VPUX_FP16', 'VPUX_U8', or from"
+              " HETERO/MULTI/AUTO options available. \n");
         }
       } else if (key == "device_id") {
         device_id = value;

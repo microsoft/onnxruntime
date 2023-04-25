@@ -101,7 +101,7 @@ std::vector<SupportedOp> supported_op_mode = {
     {"Constant", V_2020_4, {"CPU", "GPU"}},
     {"Constant", V_2023_0, {"VPUX"}},
     {"ConstantOfShape", V_2020_4, {"CPU", "GPU"}},
-    {"ConstantOfShape", V_2023_0, {"VPUX"}}, //Gets mapped to broadcast op in the plugin.
+    {"ConstantOfShape", V_2023_0, {"VPUX"}},  // Gets mapped to broadcast op in the plugin.
     {"Conv", V_2020_4, {"CPU", "GPU"}},
     {"Conv", V_2023_0, {"VPUX"}},
     {"ConvInteger", V_2022_1, {"CPU", "GPU"}},
@@ -124,15 +124,15 @@ std::vector<SupportedOp> supported_op_mode = {
     {"Elu", V_2020_4, {"CPU", "GPU"}},
     {"Elu", V_2023_0, {"VPUX"}},
     {"Equal", V_2020_4, {"CPU", "GPU"}},
-    {"Equal", V_2023_0, {"VPUX"}}, // Added for whisper decoder model.
+    {"Equal", V_2023_0, {"VPUX"}},  // Added for whisper decoder model.
     {"Erf", V_2020_4, {"CPU", "GPU"}},
     {"Erf", V_2023_0, {"VPUX"}},
     {"Exp", V_2020_4, {"CPU", "GPU"}},
     {"Exp", V_2023_0, {"VPUX"}},
     {"Expand", V_2022_1, {"CPU", "GPU"}},
-    {"Expand", V_2023_0, {"VPUX"}}, //Gets mapped to broadcast op and multiply op in the plugin.
+    {"Expand", V_2023_0, {"VPUX"}},  // Gets mapped to broadcast op and multiply op in the plugin.
     {"EyeLike", V_2022_1, {"CPU"}},
-    {"EyeLike", V_2023_0, {"VPUX"}}, //NoOP
+    {"EyeLike", V_2023_0, {"VPUX"}},  // NoOP
     {"Flatten", V_2020_4, {"CPU", "GPU"}},
     {"Flatten", V_2023_0, {"VPUX"}},
     {"Floor", V_2020_4, {"CPU", "GPU"}},
@@ -152,7 +152,7 @@ std::vector<SupportedOp> supported_op_mode = {
     {"GreaterOrEqual", V_2023_0, {"VPUX"}},
     {"GridSample", V_2022_3, {"CPU"}},
     {"Identity", V_2020_4, {"CPU", "GPU"}},
-    {"Identity", V_2023_0, {"VPUX"}}, //NoOP
+    {"Identity", V_2023_0, {"VPUX"}},  // NoOP
     {"If", V_2022_3, {"CPU", "GPU"}},
     {"ImageScaler", V_2022_1, {"CPU", "GPU"}},
     {"ImageScaler", V_2023_0, {"VPUX"}},
@@ -163,7 +163,7 @@ std::vector<SupportedOp> supported_op_mode = {
     {"LeakyRelu", V_2020_4, {"CPU", "GPU"}},
     {"LeakyRelu", V_2023_0, {"VPUX"}},
     {"Less", V_2020_4, {"CPU", "GPU"}},
-    {"Less", V_2023_0, {"VPUX"}}, // Added for whisper decoder model.
+    {"Less", V_2023_0, {"VPUX"}},  // Added for whisper decoder model.
     {"LessOrEqual", V_2022_1, {"CPU", "GPU"}},
     {"LessOrEqual", V_2023_0, {"VPUX"}},
     {"Log", V_2020_4, {"CPU", "GPU"}},
@@ -229,12 +229,12 @@ std::vector<SupportedOp> supported_op_mode = {
     {"Resize", V_2022_1, {"GPU"}},
     {"Reshape", V_2020_4, {"CPU", "GPU"}},
     {"Reshape", V_2023_0, {"VPUX"}},
-    {"ReverseSequence", V_2022_1, {"CPU","GPU"}},
+    {"ReverseSequence", V_2022_1, {"CPU", "GPU"}},
     {"RoiAlign", V_2021_1, {"CPU", "GPU"}},
     {"Round", V_2021_4, {"CPU", "GPU"}},
     {"Scatter", V_2022_1, {"CPU", "GPU"}},
     {"ScatterElements", V_2022_1, {"CPU", "GPU"}},
-    {"ScatterND", V_2022_1, {"CPU","GPU"}},
+    {"ScatterND", V_2022_1, {"CPU", "GPU"}},
     {"Selu", V_2020_4, {"CPU", "GPU"}},
     {"Shape", V_2020_4, {"CPU", "GPU"}},
     {"Shape", V_2023_0, {"VPUX"}},
@@ -286,7 +286,7 @@ std::vector<SupportedOp> supported_op_mode = {
     {"Upsample", V_2021_4, {"GPU"}},
     {"Upsample", V_2023_0, {"VPUX"}},
     {"Where", V_2022_1, {"CPU", "GPU"}},
-    {"Where", V_2023_0, {"VPUX"}}, // Added for whisper decoder model.
+    {"Where", V_2023_0, {"VPUX"}},  // Added for whisper decoder model.
     {"Xor", V_2022_1, {"CPU", "GPU"}},
 };
 
@@ -347,14 +347,13 @@ void DataOps::populate_op_mode_supported() {
   no_dimension_supported_.push_back({"Range", V_2021_2, {"All"}});
   no_dimension_supported_.push_back({"ReduceMax", V_2021_4, {"All"}});
   no_dimension_supported_.push_back({"ReduceMin", V_2021_4, {"All"}});
-  no_dimension_supported_.push_back({"ReduceProd", V_2022_1, {"CPU","GPU"}});
+  no_dimension_supported_.push_back({"ReduceProd", V_2022_1, {"CPU", "GPU"}});
   no_dimension_supported_.push_back({"Reshape", V_2022_1, {"All"}});
   no_dimension_supported_.push_back({"Shape", V_2022_1, {"GPU"}});
   no_dimension_supported_.push_back({"Squeeze", V_2020_4, {"All"}});
   no_dimension_supported_.push_back({"Sub", V_2020_4, {"All"}});
   no_dimension_supported_.push_back({"Unsqueeze", V_2020_4, {"All"}});
   no_dimension_supported_.push_back({"Where", V_2021_2, {"All"}});
-
 
   subgraph_supported_.push_back({"Cast", V_2020_4, {"All"}});
   subgraph_supported_.push_back({"Concat", V_2020_4, {"All"}});
@@ -412,7 +411,7 @@ void DataOps::populate_op_mode_supported() {
   }
   {
     UnsupportedOpMode obj = {{V_2022_1, V_2022_2, V_2022_3},
-                             [this](const Node* node, const InitializedTensorSet& ) {
+                             [this](const Node* node, const InitializedTensorSet&) {
                                if (device_id_.find("GPU") != std::string::npos) {
                                  bool if_bias = false;
                                  const auto& attributes = node->GetAttributes();
@@ -436,7 +435,7 @@ void DataOps::populate_op_mode_supported() {
   }
   {
     UnsupportedOpMode obj = {{V_2022_1, V_2022_2, V_2022_3},
-                             [this](const Node* node, const InitializedTensorSet& ) {
+                             [this](const Node* node, const InitializedTensorSet&) {
                                if (device_id_.find("GPU") != std::string::npos) {
                                  // If the device is GPU, only 2D dilations with 1x1 pixel are supported
                                  const auto& attributes = node->GetAttributes();
@@ -593,18 +592,18 @@ void DataOps::populate_op_mode_supported() {
   {
     UnsupportedOpMode obj = {{V_2022_1, V_2022_2, V_2022_3},
                              [this](const Node* node, const InitializedTensorSet&) {
-                                const auto& input_arg = node->InputDefs()[1];
-                                auto shape = input_arg->Shape();
-                                //Reshape op with empty dim is Rejected for Myriad
-                                //[TODO] Is this condition required anymore with Myriad removed?
-                                if (shape != nullptr) {
-                                  for (const auto& dim : input_arg->Shape()->dim()) {
-                                    if (utils::HasDimValue(dim) && dim.dim_value() == 0)
-                                      return true;
-                                  }
-                                }
-                              return false;
-                            }};
+                               const auto& input_arg = node->InputDefs()[1];
+                               auto shape = input_arg->Shape();
+                               // Reshape op with empty dim is Rejected for Myriad
+                               //[TODO] Is this condition required anymore with Myriad removed?
+                               if (shape != nullptr) {
+                                 for (const auto& dim : input_arg->Shape()->dim()) {
+                                   if (utils::HasDimValue(dim) && dim.dim_value() == 0)
+                                     return true;
+                                 }
+                               }
+                               return false;
+                             }};
     op_list_.insert({"Reshape", obj});
   }
   {
@@ -624,7 +623,7 @@ void DataOps::populate_op_mode_supported() {
     UnsupportedOpMode obj = {{V_2022_1, V_2022_2, V_2022_3},
                              [this](const Node* node, const InitializedTensorSet&) {
                                if (device_id_.find("GPU") != std::string::npos) {
-                                 //INT32 dataype is not supported as input
+                                 // INT32 dataype is not supported as input
                                  for (size_t i = 0; i < node->InputDefs().size(); i++) {
                                    if (node->InputDefs()[i]->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32)
                                      return true;

@@ -132,7 +132,7 @@ std::vector<std::unique_ptr<ComputeCapability>> GetCapability::Execute() {
     int no_of_clusters = 0;
 
     for (auto this_cluster : connected_clusters) {
-      //If subgraph has less then three, graph is considered trivial
+      // If subgraph has less then three, graph is considered trivial
       if (this_cluster.size() < 3) {
         continue;
       } else {

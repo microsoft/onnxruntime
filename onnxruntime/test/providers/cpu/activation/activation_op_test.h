@@ -37,7 +37,7 @@ inline void TestActivationOp(const char* szOp, const std::vector<std::vector<T>>
       excluded_providers.insert(kTensorrtExecutionProvider);
     }
 
-//Disabled because of accuracy issues for GPU
+// Disabled because of accuracy issues for GPU
 #if defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_GPU_FP32)
     int leaky = strcmp(szOp, "LeakyRelu");
     if (leaky == 0) {
