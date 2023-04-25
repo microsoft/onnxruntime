@@ -13,8 +13,8 @@ parameters:
     default: false
 
   - name: runId
-    type: number
-    default: 0
+    type: string
+    default: '0'
 
 steps:
   - task: DownloadPipelineArtifact@2

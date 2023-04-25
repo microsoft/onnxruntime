@@ -32,8 +32,8 @@ parameters:
 
 - name: runId
   displayName: Specific Artifact's RunId
-  type: number
-  default: 0
+  type: string
+  default: '0'
 
 resources:
   repositories:
