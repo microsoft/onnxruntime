@@ -57,6 +57,7 @@ GetQDQTestCaseFn BuildQDQSingleInputOpTestCase(const std::vector<int64_t>& input
  */
 static void RunQDQSingleInputOpTest(const std::vector<int64_t>& input_shape, const std::string& op_type,
                                     const char* test_description,
+                                    int opset_version,
                                     ExpectedEPNodeAssignment expected_ep_assignment,
                                     int num_nodes_in_graph,
                                     const std::string& domain = kOnnxDomain) {
@@ -70,7 +71,7 @@ static void RunQDQSingleInputOpTest(const std::vector<int64_t>& input_shape, con
   // Runs model with DQ-> InstanceNorm -> Q and compares the outputs of the CPU and QNN EPs.
   RunQnnModelTest(BuildQDQSingleInputOpTestCase<uint8_t>(input_shape, op_type, domain),
                   provider_options,
-                  11,
+                  opset_version,
                   expected_ep_assignment,
                   num_nodes_in_graph,
                   test_description);
@@ -79,19 +80,19 @@ static void RunQDQSingleInputOpTest(const std::vector<int64_t>& input_shape, con
 // Check that QNN compiles DQ -> Gelu -> Q as a single unit.
 // Use an input of rank 3.
 TEST_F(QnnHTPBackendTests, TestQDQGeluTest) {
-  RunQDQSingleInputOpTest({1, 2, 3}, "Gelu", "TestQDQGeluTest", ExpectedEPNodeAssignment::All, 1, kMSDomain);
+  RunQDQSingleInputOpTest({1, 2, 3}, "Gelu", "TestQDQGeluTest", 11, ExpectedEPNodeAssignment::All, 1, kMSDomain);
 }
 
 // Check that QNN compiles DQ -> Elu -> Q as a single unit.
 // Use an input of rank 3.
 TEST_F(QnnHTPBackendTests, TestQDQEluTest) {
-  RunQDQSingleInputOpTest({1, 2, 3}, "Elu", "TestQDQGeluTest", ExpectedEPNodeAssignment::All, 1);
+  RunQDQSingleInputOpTest({1, 2, 3}, "Elu", "TestQDQGeluTest", 11, ExpectedEPNodeAssignment::All, 1);
 }
 
 // Check that QNN compiles DQ -> HardSwish -> Q as a single unit.
 // Use an input of rank 3.
 TEST_F(QnnHTPBackendTests, TestQDQHardSwishTest) {
-  RunQDQSingleInputOpTest({1, 2, 3}, "HardSwish", "TestQDQGeluTest", ExpectedEPNodeAssignment::All, 1);
+  RunQDQSingleInputOpTest({1, 2, 3}, "HardSwish", "TestQDQGeluTest", 14, ExpectedEPNodeAssignment::All, 1);
 }
 
 #endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
