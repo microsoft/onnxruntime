@@ -68,7 +68,7 @@ namespace Dml
         IDMLDevice* dmlDevice,
         ID3D12CommandQueue* commandQueue,
         bool enableMetacommands) :
-            IExecutionProvider(onnxruntime::kDmlExecutionProvider)
+            IExecutionProvider(onnxruntime::kDmlExecutionProvider, OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, 0))
     {
         D3D12_COMMAND_LIST_TYPE queueType = commandQueue->GetDesc().Type;
         if (queueType != D3D12_COMMAND_LIST_TYPE_DIRECT && queueType != D3D12_COMMAND_LIST_TYPE_COMPUTE)
