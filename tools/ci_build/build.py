@@ -484,6 +484,7 @@ def parse_arguments():
     parser.add_argument(
         "--nnapi_min_api", type=int, help="Minimum Android API level to enable NNAPI, should be no less than 27"
     )
+    parser.add_argument("--use_js", action="store_true", help="Build with JavaScript kernels.")
     parser.add_argument("--use_qnn", action="store_true", help="Build with QNN support.")
     parser.add_argument("--qnn_home", help="Path to QNN SDK dir.")
     parser.add_argument("--use_rknpu", action="store_true", help="Build with RKNPU.")
@@ -502,9 +503,6 @@ def parse_arguments():
         "--use_tensorrt_builtin_parser", action="store_true", default=True, help="Use TensorRT builtin parser"
     )
     parser.add_argument("--use_tensorrt_oss_parser", action="store_true", help="Use TensorRT OSS parser")
-    parser.add_argument(
-        "--tensorrt_placeholder_builder", action="store_true", help="Instantiate Placeholder TensorRT Builder"
-    )
     parser.add_argument("--tensorrt_home", help="Path to TensorRT installation dir")
     parser.add_argument("--test_all_timeout", default="10800", help="Set timeout for onnxruntime_test_all")
     parser.add_argument("--use_migraphx", action="store_true", help="Build with MIGraphX")
@@ -911,11 +909,8 @@ def generate_build_tree(
         "-Donnxruntime_ENABLE_MICROSOFT_INTERNAL=" + ("ON" if args.enable_msinternal else "OFF"),
         "-Donnxruntime_USE_VITISAI=" + ("ON" if args.use_vitisai else "OFF"),
         "-Donnxruntime_USE_TENSORRT=" + ("ON" if args.use_tensorrt else "OFF"),
-        "-Donnxruntime_SKIP_AND_PERFORM_FILTERED_TENSORRT_TESTS="
-        + ("ON" if not args.tensorrt_placeholder_builder else "OFF"),
         "-Donnxruntime_USE_TENSORRT_BUILTIN_PARSER="
         + ("ON" if args.use_tensorrt_builtin_parser and not args.use_tensorrt_oss_parser else "OFF"),
-        "-Donnxruntime_TENSORRT_PLACEHOLDER_BUILDER=" + ("ON" if args.tensorrt_placeholder_builder else "OFF"),
         # set vars for TVM
         "-Donnxruntime_USE_TVM=" + ("ON" if args.use_tvm else "OFF"),
         "-Donnxruntime_TVM_CUDA_RUNTIME=" + ("ON" if args.use_tvm and args.tvm_cuda_runtime else "OFF"),
@@ -952,6 +947,7 @@ def generate_build_tree(
         "-Donnxruntime_USE_ARMNN=" + ("ON" if args.use_armnn else "OFF"),
         "-Donnxruntime_ARMNN_RELU_USE_CPU=" + ("OFF" if args.armnn_relu else "ON"),
         "-Donnxruntime_ARMNN_BN_USE_CPU=" + ("OFF" if args.armnn_bn else "ON"),
+        "-Donnxruntime_USE_JS=" + ("ON" if args.use_js else "OFF"),
         # Training related flags
         "-Donnxruntime_ENABLE_NVTX_PROFILE=" + ("ON" if args.enable_nvtx_profile else "OFF"),
         "-Donnxruntime_ENABLE_TRAINING=" + ("ON" if args.enable_training else "OFF"),
@@ -1749,11 +1745,6 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
             run_subprocess(ctest_cmd, cwd=cwd, dll_path=dll_path)
 
         if args.enable_pybind:
-            # Disable python tests for TensorRT on Windows due to need to enable placeholder builder
-            # to reduce test times.
-            if args.use_tensorrt and is_windows():
-                return
-
             python_path = None
             if args.use_tvm:
                 python_path = str((Path(build_dir) / config / "_deps" / "tvm-src" / "python").resolve())
