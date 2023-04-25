@@ -162,7 +162,6 @@ class RandomValueGenerator {
 
  private:
   const RandomSeedType random_seed_;
-  RandomEngine constant_generator_{0};
   RandomEngine generator_;
   // while this instance is in scope, output some context information on test failure like the random seed value
   const ::testing::ScopedTrace output_trace_;
