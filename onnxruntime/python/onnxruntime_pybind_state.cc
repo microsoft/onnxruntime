@@ -345,7 +345,7 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
     // If the environment variable 'ORT_TENSORRT_UNAVAILABLE' exists, then we do not load TensorRT. This is set by _ld_preload for the manylinux case
     // as in that case, trying to load the library itself will result in a crash due to the way that auditwheel strips dependencies.
     if (Env::Default().GetEnvironmentVar("ORT_TENSORRT_UNAVAILABLE").empty()) {
-      std::string calibration_table, cache_path, lib_path;
+      std::string calibration_table, cache_path, lib_path, value;
       auto it = provider_options_map.find(type);
       if (it != provider_options_map.end()) {
         OrtTensorRTProviderOptionsV2 params{
@@ -513,6 +513,35 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
               params.trt_layer_norm_fp32_fallback = false;
             } else {
               ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_layer_norm_fp32_fallback' should be 'True' or 'False'. Default value is 'False'.\n");
+            }
+          } else if (option.first == "trt_profile_min_shapes") {
+            if (!option.second.empty()) {
+              value = option.second;
+              params.trt_profile_min_shapes = value.c_str();
+            } else {
+              ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_profile_min_shapes' should be a string of 'input1:dim1xdimd2...,input2:dim1xdim2...,...'.\n");
+            }
+          } else if (option.first == "trt_profile_max_shapes") {
+            if (!option.second.empty()) {
+              value = option.second;
+              params.trt_profile_max_shapes = value.c_str();
+            } else {
+              ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_profile_max_shapes' should be a string of 'input1:dim1xdimd2...,input2:dim1xdim2...,...'.\n");
+            }
+          } else if (option.first == "trt_profile_opt_shapes") {
+            if (!option.second.empty()) {
+              value = option.second;
+              params.trt_profile_opt_shapes = value.c_str();
+            } else {
+              ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_profile_opt_shapes' should be a string of 'input1:dim1xdimd2...,input2:dim1xdim2...,...'.\n");
+            }
+          } else if (option.first == "trt_engine_cache_built_with_explicit_profiles") {
+            if (option.second == "True" || option.second == "true") {
+              params.trt_engine_cache_built_with_explicit_profiles = true;
+            } else if (option.second == "False" || option.second == "false") {
+              params.trt_engine_cache_built_with_explicit_profiles = false;
+            } else {
+              ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_engine_cache_built_with_explicit_profiles' should be 'True' or 'False'. Default value is 'False'.\n");
             }
           } else {
             ORT_THROW("Invalid TensorRT EP option: ", option.first);
