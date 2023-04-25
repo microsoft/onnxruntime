@@ -238,6 +238,30 @@ void PresencePenaltyLogitsProcessor<T>::Process(const ISequences*,
 #endif
 }
 
+template <typename T>
+void ForcedTokenLogitsProcessor<T>::ForcedTokenLogitsProcessor(const gsl::span<gsl::span<const int32_t>>& idx_token_pairs) {
+  // Initialize std::map from idx_token_pairs
+  assert(!idx_token_pairs.empty());
+  for (size_t i = 0; i < idx_token_pairs.size(); i++) {
+    assert(idx_token_pairs[i].size() == 2);
+    // Enforce only one forced token for each index provided
+    assert(idx_token_map.find(idx_token_pairs[i][0]) != idx_token_map.end());
+    idx_token_map[idx_token_pairs[i][0]] = idx_token_pairs[i][1]
+  }
+}
+
+template <typename T>
+void ForcedTokenLogitsProcessor<T>::Process(const ISequences*,
+                                                NextTokenScores<T>& next_token_scores) {
+  if (idx_token_map.find(sequences->GetSequenceLength()) != idx_token_map.end()) {
+    next_token_scores.SetScore(idx_token_map[sequences->GetSequenceLength()], std::numeric_limits<T>::highest());
+  }
+
+#ifdef DEBUG_GENERATION
+  DumpScores("ForcedTokenLogitsProcessor", next_token_scores);
+#endif
+}
+
 void LogitsProcessorList::Init(const BeamSearchParameters& parameters) {
   LogitsProcessorInitImpl<BeamSearchParameters>(parameters);
 }
