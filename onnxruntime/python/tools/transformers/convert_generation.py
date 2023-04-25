@@ -1304,6 +1304,24 @@ def update_decoder_subgraph_share_buffer_and_use_decoder_masked_mha(subg: GraphP
     return True
 
 
+def gpt2_switch_to_skip_layernorm_strict_mode(subg: GraphProto):
+    new_nodes = []
+    for node in subg.node:
+        if node.op_type == "SkipLayerNormalization":
+            kwargs = kwargs_of(node)
+            kwargs["strict"] = 1
+
+            node = onnx.helper.make_node(  # noqa: PLW2901
+                node.op_type, node.input, node.output, name=node.name, **kwargs
+            )
+        new_nodes.extend([node])
+
+    subg.ClearField("node")
+    subg.node.extend(new_nodes)
+
+    return True
+
+
 def update_input_shapes_for_gpt2_decoder_model(decoder_onnx_path: str, use_external_data_format: bool = True):
     """Update the input shapes for the inputs "input_ids" and "position_ids" and make the sequence length dim value 1 for each of them.
        The decoder model will be over-written.
@@ -1981,6 +1999,10 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
                     f"{len(initializers)} shared initializers ({[i.name for i in initializers]}) in decoder and init decoder subgraphs are moved to the main graph"
                 )
 
+            if args.use_gpu and args.precision == Precision.FLOAT16:
+                logger.info("*****update gpt2 init decoder subgraph to use SLN strict mode******************")
+                gpt2_switch_to_skip_layernorm_strict_mode(gpt2_init_decoder_model.graph)
+
             # Update init decoder subgraph in preparation to use past present share buffer
             if past_present_share_buffer:
                 logger.info("*****update init decoder subgraph to make past and present share buffer******************")
@@ -2000,6 +2022,10 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
             # Move initializer from subgraph to main graph could reduce memory usage in inference.
             initializers = move_initializers(decoder_model.graph)
             logger.info(f"{len(initializers)} initializers from the decoder are moved to the main graph")
+
+        if args.use_gpu and args.precision == Precision.FLOAT16:
+            logger.info("*****update gpt2 decoder subgraph to use SLN strict mode******************")
+            gpt2_switch_to_skip_layernorm_strict_mode(decoder_model.graph)
 
         # Update decoder subgraph in preparation to use past present share buffer
         if past_present_share_buffer:
