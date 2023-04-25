@@ -3,8 +3,15 @@
 
 // See docs\c_cxx\README.md on generating the Doxygen documentation from this file
 
-/** \mainpage C & C++ APIs
+/** \mainpage ONNX Runtime
  *
+ * ONNX Runtime is a high-performance inference and training graph execution engine for deeplearning models.
+ *
+ * ONNX Runtime's C, C++ APIs offer an easy to use interface to onboard and execute onnx models.
+ * - \subpage c_cpp_api "Core C, C++ APIs"
+ * - \subpage training_c_cpp_api "Training C, C++ APIs for learning on the edge"
+ *
+ * \page c_cpp_api Core C, C++ APIs
  * <h1>C</h1>
  *
  * ::OrtApi - Click here to go to the structure with all C API functions.
@@ -1347,7 +1354,7 @@ struct OrtApi {
    * \param[out] out Do not free this value, it will be valid until type_info is freed.
    *             If type_info does not represent tensor, this value will be set to nullptr.
    *
-   * \snippet{doc} snippets.dox OrtStatus Return Value. Always returns nullptr.
+   * \snippet{doc} snippets.dox OrtStatus Return Value
    */
   ORT_API2_STATUS(CastTypeInfoToTensorInfo, _In_ const OrtTypeInfo* type_info,
                   _Outptr_result_maybenull_ const OrtTensorTypeAndShapeInfo** out);
@@ -1859,7 +1866,7 @@ struct OrtApi {
    * \param[out] out A pointer to the ::OrtMapTypeInfo. Do not free this value. If type_info
    *             does not contain a map, this value will be set to nullptr.
    *
-   * \snippet{doc} snippets.dox OrtStatus Return Value. Always returns nullptr.
+   * \snippet{doc} snippets.dox OrtStatus Return Value
    */
   ORT_API2_STATUS(CastTypeInfoToMapTypeInfo, _In_ const OrtTypeInfo* type_info,
                   _Outptr_result_maybenull_ const OrtMapTypeInfo** out);
@@ -1875,7 +1882,7 @@ struct OrtApi {
    * \param[out] out A pointer to the OrtSequenceTypeInfo. Do not free this value. If type_info
    *             doesn not contain a sequence, this value will be set to nullptr.
    *
-   * \snippet{doc} snippets.dox OrtStatus Return Value. Always returns nullptr.
+   * \snippet{doc} snippets.dox OrtStatus Return Value
    */
   ORT_API2_STATUS(CastTypeInfoToSequenceTypeInfo, _In_ const OrtTypeInfo* type_info,
                   _Outptr_result_maybenull_ const OrtSequenceTypeInfo** out);
@@ -3580,18 +3587,25 @@ struct OrtApi {
    */
   ORT_CLASS_RELEASE(KernelInfo);
 
-  /* \brief: Get the training C Api
+  /// \name Ort Training
+  /// @{
+  /** \brief Gets the Training C Api struct
+   *
+   * Call this function to access the ::OrtTrainingApi structure that holds pointers to functions that enable
+   * training with onnxruntime.
+   * \note A NULL pointer will be returned and no error message will be printed if the training api
+   * is not supported with this build. A NULL pointer will be returned and an error message will be
+   * printed if the provided version is unsupported, for example when using a runtime older than the
+   * version created with this header file.
    *
    * \param[in] version Must be ::ORT_API_VERSION
-   * \return The ::OrtTrainingApi for the version requested.
-   *         nullptr will be returned and no error message will be printed if the training api is not supported with
-   *         this build.
-   *         nullptr will be returned and an error message will be printed if the provided version is unsupported, for
-   *         example when using a runtime older than the version created with this header file.
+   * \return The ::OrtTrainingApi struct for the version requested.
    *
    * \since Version 1.13
    */
   const OrtTrainingApi*(ORT_API_CALL* GetTrainingApi)(uint32_t version)NO_EXCEPTION;
+
+  /// @}
 
   /** \brief Append CANN provider to session options
    *
@@ -4125,7 +4139,7 @@ struct OrtApi {
    *                 it is owned by OrtTypeInfo instance. When the type_info does not represent
    *                 optional type, nullptr is returned in out.
    *
-   * \snippet{doc} snippets.dox OrtStatus Return Value. Always returns nullptr.
+   * \snippet{doc} snippets.dox OrtStatus Return Value
    *
    * \since Version 1.15.
    */
@@ -4144,12 +4158,36 @@ struct OrtApi {
    * \param[out] out A pointer to the ::OrtTypeInfo for what the optional value could be.
    * it is owned by OrtOptionalTypeInfo instance.
    *
-   * \snippet{doc} snippets.dox OrtStatus Return Value.
+   * \snippet{doc} snippets.dox OrtStatus Return Value
    *
    * \since Version 1.15.
    */
   ORT_API2_STATUS(GetOptionalContainedTypeInfo, _In_ const OrtOptionalTypeInfo* optional_type_info,
                   _Outptr_ OrtTypeInfo** out);
+
+  /** \brief Set a single string in a string tensor
+   *  Do not zero terminate the string data.
+   *
+   * \param[in] value A string tensor
+   * \param[in] index - flat index of the element
+   * \param[in] length_in_bytes length of the buffer in utf-8 bytes (without the null terminator)
+   * \param[inout] buffer - address of return value
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   */
+  ORT_API2_STATUS(GetResizedStringTensorElementBuffer, _Inout_ OrtValue* value, _In_ size_t index, _In_ size_t length_in_bytes, _Inout_ char** buffer);
+
+  /** \brief Get Allocator from KernelContext for a specific memoryInfo.
+   *
+   * \param[in] context OrtKernelContext instance
+   * \param[in] mem_info OrtMemoryInfo instance
+   * \param[out] out A pointer to OrtAllocator.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.15.
+   */
+  ORT_API2_STATUS(KernelContext_GetAllocator, _In_ const OrtKernelContext* context, _In_ const OrtMemoryInfo* mem_info, _Outptr_ OrtAllocator** out);
 };
 
 /*
