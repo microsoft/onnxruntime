@@ -145,13 +145,13 @@ The default AMD GPU build requires ROCm software toolkit installed on the system
 2. Create the ONNX Runtime Python wheel
 
    ```bash
-   ./build.sh --config Release --enable_training --build_wheel --parallel --skip_tests --use_rocm --rocm_home /opt/rocm
+   ./build.sh --config <Release|Debug|RelWithDebInfo> --enable_training --build_wheel --parallel --skip_tests --use_rocm --rocm_home /opt/rocm
    ```
 
-3. Install the .whl file in `./build/Linux/RelWithDebInfo/dist` for ONNX Runtime Training.
+3. Install the .whl file in `./build/Linux/<Release|Debug|RelWithDebInfo>/dist` for ONNX Runtime Training.
 
     ```bash
-    python -m pip install build/Linux/RelWithDebInfo/dist/*.whl
+    python -m pip install build/Linux/<Release|Debug|RelWithDebInfo>/dist/*.whl
     ```
 
 ## DNNL and MKLML

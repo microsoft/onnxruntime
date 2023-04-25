@@ -600,13 +600,13 @@ See more information on the ROCm Execution Provider [here](../execution-provider
 ### Build Instructions
 {: .no_toc }
 
-#### Build for inference (Linux)
+#### Linux
 
 ```bash
 ./build.sh --config <Release|Debug|RelWithDebInfo> --use_rocm --rocm_home <path to ROCm home> --build_wheel --update --build --parallel
 ```
 
-#### Build for inference (Linux, with Composable Kernel)
+#### Linux (with Composable Kernel)
 ```bash
 ./build.sh --config <Release|Debug|RelWithDebInfo> --use_rocm --rocm_home <path to ROCm home> --build_wheel --update --build --parallel --cmake_extra_defines onnxruntime_USE_COMPOSABLE_KERNEL=ON
 ```
