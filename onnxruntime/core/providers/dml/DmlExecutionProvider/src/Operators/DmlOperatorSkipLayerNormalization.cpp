@@ -21,19 +21,23 @@ public:
         const uint32_t sequenceLength = inputShape.size() == 3 ? inputShape[1] : 1;
         const uint32_t hiddenSize = inputShape.back();
 
+        std::array<uint32_t, 4> tensorShape = {batchSize, sequenceLength, hiddenSize, 1};
+        std::array<uint32_t, 4> vectorShape = {1, 1, hiddenSize, 1};
+        std::array<uint32_t, 4> scalarShape = {1, 1, 1, 1};
+
         std::array<gsl::span<const uint32_t>, 5> inputShapes = {
-            std::array<uint32_t, 4>({batchSize, sequenceLength, hiddenSize, 1}),
-            std::array<uint32_t, 4>({batchSize, sequenceLength, hiddenSize, 1}),
-            std::array<uint32_t, 4>({1, 1, hiddenSize, 1}),
-            std::array<uint32_t, 4>({1, 1, hiddenSize, 1}),
-            std::array<uint32_t, 4>({1, 1, hiddenSize, 1}),
+            tensorShape,
+            tensorShape,
+            vectorShape,
+            vectorShape,
+            vectorShape,
         };
 
         std::array<gsl::span<const uint32_t>, 4> outputShapes = {
-            std::array<uint32_t, 4>({batchSize, sequenceLength, hiddenSize, 1}),
-            std::array<uint32_t, 4>({1, 1, 1, 1}),
-            std::array<uint32_t, 4>({1, 1, 1, 1}),
-            std::array<uint32_t, 4>({batchSize, sequenceLength, hiddenSize, 1}),
+            tensorShape,
+            scalarShape,
+            scalarShape,
+            tensorShape,
         };
 
         DmlOperator::InitializeWithShapes(
@@ -67,23 +71,20 @@ public:
         auto outputDesc = m_outputTensorDescs[0].GetDmlDesc();
         auto inputSkipBiasSum = m_outputTensorDescs[3].GetDmlDesc();
 
-        TensorDesc inputSkipBiasTensorDesc(m_inputTensorDescs[0].GetDmlDataType(), m_inputTensorDescs[0].GetSizes());
-        DML_TENSOR_DESC inputSkipBiasDmlTensorDesc = inputSkipBiasTensorDesc.GetDmlDesc();
-
         DML_ELEMENT_WISE_ADD_OPERATOR_DESC inputSkipAddDesc = {};
         inputSkipAddDesc.ATensor = &inputDesc;
         inputSkipAddDesc.BTensor = &skipDesc;
-        inputSkipAddDesc.OutputTensor = &inputSkipBiasDmlTensorDesc;
+        inputSkipAddDesc.OutputTensor = &inputDesc;
         DML_OPERATOR_DESC inputSkipAddOpDesc = { DML_OPERATOR_ELEMENT_WISE_ADD, &inputSkipAddDesc };
 
         DML_ELEMENT_WISE_ADD_OPERATOR_DESC inputSkipBiasAddDesc = {};
-        inputSkipBiasAddDesc.ATensor = &inputSkipBiasDmlTensorDesc;
+        inputSkipBiasAddDesc.ATensor = &inputDesc;
         inputSkipBiasAddDesc.BTensor = &biasDesc;
-        inputSkipBiasAddDesc.OutputTensor = &inputSkipBiasDmlTensorDesc;
+        inputSkipBiasAddDesc.OutputTensor = &inputDesc;
         DML_OPERATOR_DESC inputSkipBiasAddOpDesc = { DML_OPERATOR_ELEMENT_WISE_ADD, &inputSkipBiasAddDesc };
 
         DML_MEAN_VARIANCE_NORMALIZATION1_OPERATOR_DESC mvnDesc = {};
-        mvnDesc.InputTensor = &inputSkipBiasDmlTensorDesc;
+        mvnDesc.InputTensor = &inputDesc;
         mvnDesc.ScaleTensor = &gammaDesc;
         mvnDesc.BiasTensor = betaDesc.Desc ? &betaDesc : nullptr;
         mvnDesc.OutputTensor = &outputDesc;
