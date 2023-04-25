@@ -772,24 +772,6 @@ public:
         fft_params.StockhamParams = bluesteinZChirpParams.AFFTInverseParams;
         StockhamFFT(fft_params, true, true /*weightWithChirp*/, commandList);
 
-        // Set the root signature and pipeline state for reverse weighting with conjugate zchirp
-        // commandList->SetComputeRootSignature(m_bluesteinChirpRootSignature.Get());
-        // commandList->SetPipelineState(m_bluesteinChirpPipelineState.Get());
-
-        // // Create ZChirp and B Tensors
-        // BluesteinZChirpConjugateShaderConstants constants = {};
-        // constants.IsInverse = false;
-
-        // auto totalElementCount =
-        //     std::accumulate(bluesteinZChirpParams.ZChirp.Sizes,
-        //                     bluesteinZChirpParams.ZChirp.Sizes + std::size(bluesteinZChirpParams.ZChirp.Sizes),
-        //                     1,
-        //                     std::multiplies<uint32_t>());
-        // constants.ElementCount = totalElementCount / bluesteinZChirpParams.ZChirp.Sizes[3];
-
-        // std::array<ID3D12Resource*, 1> uav_resources = { outputResource };
-        // Dispatch(uav_resources, constants, commandList);
-
         // Transition resources to common state
         barriers[0] = CD3DX12_RESOURCE_BARRIER::Transition(
                 inputResource,
