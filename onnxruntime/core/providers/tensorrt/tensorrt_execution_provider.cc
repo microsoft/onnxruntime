@@ -671,147 +671,158 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
     profile_opt_shapes = info.profile_opt_shapes;
     engine_cache_built_with_explicit_profiles_ = info.engine_cache_built_with_explicit_profiles;
   } else {
-    const std::string max_partition_iterations_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kMaxPartitionIterations);
-    if (!max_partition_iterations_env.empty()) {
-      max_partition_iterations_ = std::stoi(max_partition_iterations_env);
-    }
-
-    const std::string min_subgraph_size_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kMinSubgraphSize);
-    if (!min_subgraph_size_env.empty()) {
-      min_subgraph_size_ = std::stoi(min_subgraph_size_env);
-    }
-
-    const std::string max_workspace_size_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kMaxWorkspaceSize);
-    if (!max_workspace_size_env.empty()) {
-      max_workspace_size_ = std::stoull(max_workspace_size_env);
-    }
-
-    const std::string fp16_enable_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kFP16Enable);
-    if (!fp16_enable_env.empty()) {
-      fp16_enable_ = (std::stoi(fp16_enable_env) == 0 ? false : true);
-    }
-
-    const std::string int8_enable_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kINT8Enable);
-    if (!int8_enable_env.empty()) {
-      int8_enable_ = (std::stoi(int8_enable_env) == 0 ? false : true);
-    }
-
-    if (int8_enable_) {
-      const std::string int8_calibration_cache_name_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kINT8CalibrationTableName);
-      if (!int8_calibration_cache_name_env.empty()) {
-        int8_calibration_cache_name_ = int8_calibration_cache_name_env;
+    try {
+      const std::string max_partition_iterations_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kMaxPartitionIterations);
+      if (!max_partition_iterations_env.empty()) {
+        max_partition_iterations_ = std::stoi(max_partition_iterations_env);
       }
 
-      const std::string int8_use_native_tensorrt_calibration_table_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kINT8UseNativeTensorrtCalibrationTable);
-      if (!int8_use_native_tensorrt_calibration_table_env.empty()) {
-        int8_use_native_tensorrt_calibration_table_ = (std::stoi(int8_use_native_tensorrt_calibration_table_env) == 0 ? false : true);
-      }
-    }
-
-    if (fp16_enable_ || int8_enable_) {  // DLA can only be enabled with FP16 or INT8
-      const std::string dla_enable_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kDLAEnable);
-      if (!dla_enable_env.empty()) {
-        dla_enable_ = (std::stoi(dla_enable_env) == 0 ? false : true);
+      const std::string min_subgraph_size_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kMinSubgraphSize);
+      if (!min_subgraph_size_env.empty()) {
+        min_subgraph_size_ = std::stoi(min_subgraph_size_env);
       }
 
-      if (dla_enable_) {
-        const std::string dla_core_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kDLACore);
-        if (!dla_core_env.empty()) {
-          dla_core_ = std::stoi(dla_core_env);
+      const std::string max_workspace_size_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kMaxWorkspaceSize);
+      if (!max_workspace_size_env.empty()) {
+        max_workspace_size_ = std::stoull(max_workspace_size_env);
+      }
+
+      const std::string fp16_enable_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kFP16Enable);
+      if (!fp16_enable_env.empty()) {
+        fp16_enable_ = (std::stoi(fp16_enable_env) == 0 ? false : true);
+      }
+
+      const std::string int8_enable_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kINT8Enable);
+      if (!int8_enable_env.empty()) {
+        int8_enable_ = (std::stoi(int8_enable_env) == 0 ? false : true);
+      }
+
+      if (int8_enable_) {
+        const std::string int8_calibration_cache_name_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kINT8CalibrationTableName);
+        if (!int8_calibration_cache_name_env.empty()) {
+          int8_calibration_cache_name_ = int8_calibration_cache_name_env;
+        }
+
+        const std::string int8_use_native_tensorrt_calibration_table_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kINT8UseNativeTensorrtCalibrationTable);
+        if (!int8_use_native_tensorrt_calibration_table_env.empty()) {
+          int8_use_native_tensorrt_calibration_table_ = (std::stoi(int8_use_native_tensorrt_calibration_table_env) == 0 ? false : true);
         }
       }
-    }
 
-    const std::string dump_subgraphs_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kDumpSubgraphs);
-    if (!dump_subgraphs_env.empty()) {
-      dump_subgraphs_ = (std::stoi(dump_subgraphs_env) == 0 ? false : true);
-    }
+      if (fp16_enable_ || int8_enable_) {  // DLA can only be enabled with FP16 or INT8
+        const std::string dla_enable_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kDLAEnable);
+        if (!dla_enable_env.empty()) {
+          dla_enable_ = (std::stoi(dla_enable_env) == 0 ? false : true);
+        }
 
-    const std::string engine_cache_enable_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kEngineCacheEnable);
-    if (!engine_cache_enable_env.empty()) {
-      engine_cache_enable_ = (std::stoi(engine_cache_enable_env) == 0 ? false : true);
-    }
+        if (dla_enable_) {
+          const std::string dla_core_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kDLACore);
+          if (!dla_core_env.empty()) {
+            dla_core_ = std::stoi(dla_core_env);
+          }
+        }
+      }
 
-    const std::string timing_cache_enable_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kTimingCacheEnable);
-    if (!timing_cache_enable_env.empty()) {
-      timing_cache_enable_ = (std::stoi(timing_cache_enable_env) == 0 ? false : true);
-    }
+      const std::string dump_subgraphs_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kDumpSubgraphs);
+      if (!dump_subgraphs_env.empty()) {
+        dump_subgraphs_ = (std::stoi(dump_subgraphs_env) == 0 ? false : true);
+      }
 
-    const std::string detailed_build_log_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kDetailedBuildLog);
-    if (!detailed_build_log_env.empty()) {
-      detailed_build_log_ = (std::stoi(detailed_build_log_env) == 0 ? false : true);
-    }
+      const std::string engine_cache_enable_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kEngineCacheEnable);
+      if (!engine_cache_enable_env.empty()) {
+        engine_cache_enable_ = (std::stoi(engine_cache_enable_env) == 0 ? false : true);
+      }
 
-    const std::string timing_force_match_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kForceTimingCache);
-    if (!timing_force_match_env.empty()) {
-      force_timing_cache_match_ = (std::stoi(timing_force_match_env) == 0 ? false : true);
-    }
+      const std::string timing_cache_enable_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kTimingCacheEnable);
+      if (!timing_cache_enable_env.empty()) {
+        timing_cache_enable_ = (std::stoi(timing_cache_enable_env) == 0 ? false : true);
+      }
 
-    if (engine_cache_enable_ || int8_enable_ || timing_cache_enable_) {
-      const std::string engine_cache_path = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kEngineCachePath);
-      cache_path_ = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kCachePath);
-      if (!engine_cache_path.empty() && cache_path_.empty()) {
-        cache_path_ = engine_cache_path;
-        LOGS_DEFAULT(WARNING) << "[TensorRT EP] ORT_TENSORRT_ENGINE_CACHE_PATH is deprecated! Please use ORT_TENSORRT_CACHE_PATH to specify engine cache path";
+      const std::string detailed_build_log_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kDetailedBuildLog);
+      if (!detailed_build_log_env.empty()) {
+        detailed_build_log_ = (std::stoi(detailed_build_log_env) == 0 ? false : true);
+      }
+
+      const std::string timing_force_match_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kForceTimingCache);
+      if (!timing_force_match_env.empty()) {
+        force_timing_cache_match_ = (std::stoi(timing_force_match_env) == 0 ? false : true);
+      }
+
+      if (engine_cache_enable_ || int8_enable_ || timing_cache_enable_) {
+        const std::string engine_cache_path = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kEngineCachePath);
+        cache_path_ = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kCachePath);
+        if (!engine_cache_path.empty() && cache_path_.empty()) {
+          cache_path_ = engine_cache_path;
+          LOGS_DEFAULT(WARNING) << "[TensorRT EP] ORT_TENSORRT_ENGINE_CACHE_PATH is deprecated! Please use ORT_TENSORRT_CACHE_PATH to specify engine cache path";
+        }
+      }
+
+      const std::string engine_decryption_enable_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kDecryptionEnable);
+      if (!engine_decryption_enable_env.empty()) {
+        engine_decryption_enable_ = (std::stoi(engine_decryption_enable_env) == 0 ? false : true);
+      }
+
+      if (engine_decryption_enable_) {
+        engine_decryption_lib_path_ = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kDecryptionLibPath);
+      }
+
+      const std::string force_sequential_engine_build_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kForceSequentialEngineBuild);
+      if (!force_sequential_engine_build_env.empty()) {
+        force_sequential_engine_build_ = (std::stoi(force_sequential_engine_build_env) == 0 ? false : true);
+      }
+
+      const std::string context_memory_sharing_enable_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kContextMemorySharingEnable);
+      if (!context_memory_sharing_enable_env.empty()) {
+        context_memory_sharing_enable_ = (std::stoi(context_memory_sharing_enable_env) == 0 ? false : true);
+      }
+
+      const std::string layer_norm_fp32_fallback_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kLayerNormFP32Fallback);
+      if (!layer_norm_fp32_fallback_env.empty()) {
+        layer_norm_fp32_fallback_ = (std::stoi(layer_norm_fp32_fallback_env) == 0 ? false : true);
+      }
+
+      const std::string build_heuristics_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kBuildHeuristics);
+      if (!build_heuristics_env.empty()) {
+        build_heuristics_enable_ = (std::stoi(build_heuristics_env) == 0 ? false : true);
+      }
+
+      const std::string sparsity_enable_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kSparsityEnable);
+      if (!sparsity_enable_env.empty()) {
+        sparsity_enable_ = (std::stoi(sparsity_enable_env) == 0 ? false : true);
+      }
+
+      const std::string builder_optimization_level_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kBuilderOptimizationLevel);
+      if (!builder_optimization_level_env.empty()) {
+        builder_optimization_level_ = std::stoi(builder_optimization_level_env);
+      }
+
+      const std::string auxiliary_streams_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kAuxiliaryStreams);
+      if (!auxiliary_streams_env.empty()) {
+        auxiliary_streams_ = std::stoi(auxiliary_streams_env);
+      }
+
+      const std::string tactic_sources_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kTacticSources);
+      if (!tactic_sources_env.empty()) {
+        tactic_sources_ = tactic_sources_env;
+      }
+
+      profile_min_shapes = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kProfilesMinShapes);
+      profile_max_shapes = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kProfilesMaxShapes);
+      profile_opt_shapes = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kProfilesOptShapes);
+
+      const std::string engine_cache_built_with_explicit_profiles_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kEngineCacheBuiltWithExplicitProfiles);
+      if (!engine_cache_built_with_explicit_profiles_env.empty()) {
+        engine_cache_built_with_explicit_profiles_ = (std::stoi(engine_cache_built_with_explicit_profiles_env) == 0 ? false : true);
       }
     }
-
-    const std::string engine_decryption_enable_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kDecryptionEnable);
-    if (!engine_decryption_enable_env.empty()) {
-      engine_decryption_enable_ = (std::stoi(engine_decryption_enable_env) == 0 ? false : true);
-    }
-
-    if (engine_decryption_enable_) {
-      engine_decryption_lib_path_ = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kDecryptionLibPath);
-    }
-
-    const std::string force_sequential_engine_build_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kForceSequentialEngineBuild);
-    if (!force_sequential_engine_build_env.empty()) {
-      force_sequential_engine_build_ = (std::stoi(force_sequential_engine_build_env) == 0 ? false : true);
-    }
-
-    const std::string context_memory_sharing_enable_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kContextMemorySharingEnable);
-    if (!context_memory_sharing_enable_env.empty()) {
-      context_memory_sharing_enable_ = (std::stoi(context_memory_sharing_enable_env) == 0 ? false : true);
-    }
-
-    const std::string layer_norm_fp32_fallback_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kLayerNormFP32Fallback);
-    if (!layer_norm_fp32_fallback_env.empty()) {
-      layer_norm_fp32_fallback_ = (std::stoi(layer_norm_fp32_fallback_env) == 0 ? false : true);
-    }
-
-    const std::string build_heuristics_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kBuildHeuristics);
-    if (!build_heuristics_env.empty()) {
-      build_heuristics_enable_ = (std::stoi(build_heuristics_env) == 0 ? false : true);
-    }
-
-    const std::string sparsity_enable_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kSparsityEnable);
-    if (!sparsity_enable_env.empty()) {
-      sparsity_enable_ = (std::stoi(sparsity_enable_env) == 0 ? false : true);
-    }
-
-    const std::string builder_optimization_level_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kBuilderOptimizationLevel);
-    if (!builder_optimization_level_env.empty()) {
-      builder_optimization_level_ = std::stoi(builder_optimization_level_env);
-    }
-
-    const std::string auxiliary_streams_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kAuxiliaryStreams);
-    if (!auxiliary_streams_env.empty()) {
-      auxiliary_streams_ = std::stoi(auxiliary_streams_env);
-    }
-
-    const std::string tactic_sources_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kTacticSources);
-    if (!tactic_sources_env.empty()) {
-      tactic_sources_ = tactic_sources_env;
-    }
-
-    profile_min_shapes = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kProfilesMinShapes);
-    profile_max_shapes = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kProfilesMaxShapes);
-    profile_opt_shapes = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kProfilesOptShapes);
-
-    const std::string engine_cache_built_with_explicit_profiles_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kEngineCacheBuiltWithExplicitProfiles);
-    if (!engine_cache_built_with_explicit_profiles_env.empty()) {
-      engine_cache_built_with_explicit_profiles_ = (std::stoi(engine_cache_built_with_explicit_profiles_env) == 0 ? false : true);
+    catch (const std::invalid_argument& ex) {
+      LOGS_DEFAULT(WARNING) << "[TensorRT EP] Invalid Argument (from environment variables): " << ex.what();
+    } 
+    catch (const std::out_of_range& ex) {
+      LOGS_DEFAULT(WARNING) << "[TensorRT EP] Out Of Range Error (from environment variables): " << ex.what();
+    } 
+    catch (...) {
+      LOGS_DEFAULT(WARNING) << "[TensorRT EP] Unknown Exception (from environment variables): " << ex.what();
     }
   }
 
