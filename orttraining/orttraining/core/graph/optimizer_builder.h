@@ -54,7 +54,6 @@ inline ONNX_NAMESPACE::TensorProto CreateTensorProto(
   return CreateTensorProto(name, values, dims);
 }
 
-
 template <class T>
 inline ONNX_NAMESPACE::TensorProto CreateTensorProto(
     const std::string& name,
@@ -87,10 +86,10 @@ Status IsMatchingTypeAndShape(
     std::initializer_list<int64_t> expected_dims);
 
 /**
-   * The configuration for optimizer builder.
-   */
+ * The configuration for optimizer builder.
+ */
 struct OptimizerBuilderConfig {
-  //The ArgDefs of the weights to optimize.
+  // The ArgDefs of the weights to optimize.
   std::vector<ArgDef> weight_argdefs;
 
   // The ArgDefs of the gradient of the weight to
@@ -135,8 +134,8 @@ class OptimizerBuilder {
    * @param[out] new_initializers Any initializers that should be
    *             placed in the parent graph, if there is one.
    *             Other initializers are treated as local to the current
-   *             (sub)graph. 
-   * @param[out] weight_to_opt_mapping Mapping between weight to 
+   *             (sub)graph.
+   * @param[out] weight_to_opt_mapping Mapping between weight to
    *             their new optimizer states in new_initializers.
    * @param[out] output_weight_argdefs The output weight ArgDef. All optimizers
                  should have this output.

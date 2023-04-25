@@ -16,16 +16,16 @@ using LUID = _LUID;
 namespace onnxruntime {
 
 /**
-  * Configuration information for a session.
-  * An interface used by the onnxruntime implementation to
-  * access operating system functionality for telemetry
-  * 
-  * look at env.h and the Env objection which is the activation factory
-  * for telemetry instances
-  * 
-  * All Telemetry implementations are safe for concurrent access from
-  * multiple threads without any external synchronization.
-  */
+ * Configuration information for a session.
+ * An interface used by the onnxruntime implementation to
+ * access operating system functionality for telemetry
+ *
+ * look at env.h and the Env objection which is the activation factory
+ * for telemetry instances
+ *
+ * All Telemetry implementations are safe for concurrent access from
+ * multiple threads without any external synchronization.
+ */
 class Telemetry {
  public:
   // don't create these, use Env::GetTelemetryProvider() instead

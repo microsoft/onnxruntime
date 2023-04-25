@@ -50,7 +50,7 @@ class ROCMExternalAllocator : public ROCMAllocator {
   InlinedHashSet<void*> reserved_;
 };
 
-//TODO: add a default constructor
+// TODO: add a default constructor
 class ROCMPinnedAllocator : public IAllocator {
  public:
   ROCMPinnedAllocator(OrtDevice::DeviceId device_id, const char* name)

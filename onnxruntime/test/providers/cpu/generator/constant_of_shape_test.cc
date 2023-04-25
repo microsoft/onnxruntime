@@ -143,15 +143,15 @@ TEST(ConstantOfShape, TypeTests) {
   // our test infrastructure which makes use of
   // std::vector<T> which has a specialization for bool
   // and does not have a continuous buffer implementation
-  //RunTypedTest(TensorProto::BOOL, true);
+  // RunTypedTest(TensorProto::BOOL, true);
 
   // The following two types even though supported by the
   // operator cause a failure at
   // onnx\onnx\checker.cc tensor_checker() where these
   // two types are not listed among those that a tensor may
   // contain
-  //RunTypedTest(TensorProto::INT8, int8_t(8));
-  //RunTypedTest(TensorProto::INT16, int16_t(16));
+  // RunTypedTest(TensorProto::INT8, int8_t(8));
+  // RunTypedTest(TensorProto::INT16, int16_t(16));
 
   RunTypedTest(TensorProto::FLOAT, 1.f);
   RunTypedTest(TensorProto::FLOAT16, MLFloat16(static_cast<uint16_t>(5)));

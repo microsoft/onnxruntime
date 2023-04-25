@@ -149,7 +149,7 @@ static bool RegisterCustomSchemas() {
           }
         }
         return nodes; }()),
-          (const std::vector<OperatorSetIdProto>&)([]() {
+                    (const std::vector<OperatorSetIdProto>&)([]() {
                       std::vector<OperatorSetIdProto> operator_sets(2);
                       auto& onnx_opset = operator_sets[0];
                       onnx_opset.set_domain("");

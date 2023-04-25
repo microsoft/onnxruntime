@@ -158,9 +158,9 @@ class NodeHashSet : public std::unordered_set<T,
 
 template <typename Key, typename Value, typename Allocator>
 class NodeHashMap : public std::unordered_map<Key, Value,
-                                       std::hash<Key>,
-                                       std::equal_to<Key>,
-                                       Allocator> {
+                                              std::hash<Key>,
+                                              std::equal_to<Key>,
+                                              Allocator> {
   using Base = std::unordered_map<Key, Value,
                                   std::hash<Key>,
                                   std::equal_to<Key>,

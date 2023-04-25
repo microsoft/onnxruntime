@@ -182,8 +182,8 @@ TEST(ExpandOpTest, Expand_scalar_int32) {
   test.AddInput<int32_t>("data_0", {}, {9});
   test.AddInput<int64_t>("data_1", {3}, {2, 3, 4});
   test.AddOutput<int32_t>("result", {2, 3, 4},
-                         {9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9,
-                          9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9});
+                          {9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9,
+                           9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9});
   test.Run();
 }
 
@@ -250,5 +250,5 @@ TEST(ExpandOpTest, Strided) {
 }
 #endif
 
-}  //namespace test
-}  //namespace onnxruntime
+}  // namespace test
+}  // namespace onnxruntime

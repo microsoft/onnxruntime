@@ -34,6 +34,7 @@ Options:
  -b=<...>, --backend=<...>     Specify one or more backend(s) to run the test upon.
                                  Backends can be one or more of the following, splitted by comma:
                                    webgl
+                                   webgpu
                                    wasm
                                    xnnpack
  -e=<...>, --env=<...>         Specify the environment to run the test. Should be one of the following:
@@ -72,6 +73,7 @@ Options:
  --webgl-matmul-max-batch-size Set the WebGL matmulMaxBatchSize
  --webgl-texture-cache-mode    Set the WebGL texture cache mode (initializerOnly/full)
  --webgl-texture-pack-mode     Set the WebGL texture pack mode (true/false)
+ --webgpu-profiling-mode       Set the WebGPU profiling mode (off/default)
 
 *** Browser Options ***
 
@@ -102,7 +104,7 @@ Examples:
 
 export declare namespace TestRunnerCliArgs {
   type Mode = 'suite0'|'suite1'|'model'|'unittest'|'op';
-  type Backend = 'cpu'|'webgl'|'wasm'|'onnxruntime'|'xnnpack';
+  type Backend = 'cpu'|'webgl'|'webgpu'|'wasm'|'onnxruntime'|'xnnpack';
   type Environment = 'chrome'|'edge'|'firefox'|'electron'|'safari'|'node'|'bs';
   type BundleMode = 'prod'|'dev'|'perf';
 }
@@ -316,11 +318,20 @@ function parseWebglFlags(args: minimist.ParsedArgs): Env.WebGLFlags {
   return {contextId, matmulMaxBatchSize, textureCacheMode, pack};
 }
 
+function parseWebgpuFlags(args: minimist.ParsedArgs): Env.WebGpuFlags {
+  const profilingMode = args['webgpu-profiling-mode'];
+  if (profilingMode !== undefined && profilingMode !== 'off' && profilingMode !== 'default') {
+    throw new Error('Flag "webgpu-profiling-mode" is invalid');
+  }
+  return {profilingMode};
+}
+
 function parseGlobalEnvFlags(args: minimist.ParsedArgs): Env {
-  const wasmFlags = parseWasmFlags(args);
-  const webglFlags = parseWebglFlags(args);
+  const wasm = parseWasmFlags(args);
+  const webgl = parseWebglFlags(args);
+  const webgpu = parseWebgpuFlags(args);
   const cpuFlags = parseCpuFlags(args);
-  return {webgl: webglFlags, wasm: wasmFlags, cpuFlags};
+  return {webgl, wasm, webgpu, ...cpuFlags};
 }
 
 export function parseTestRunnerCliArgs(cmdlineArgs: string[]): TestRunnerCliArgs {
@@ -348,11 +359,16 @@ export function parseTestRunnerCliArgs(cmdlineArgs: string[]): TestRunnerCliArgs
   }
 
   // Option: -b=<...>, --backend=<...>
-  const browserBackends = ['webgl', 'wasm', 'xnnpack'];
+  const browserBackends = ['webgl', 'webgpu', 'wasm', 'xnnpack'];
+
+  // TODO: remove this when Chrome support WebGPU.
+  //       we need this for now because Chrome does not support webgpu yet,
+  //       and ChromeCanary is not in CI.
+  const defaultBrowserBackends = ['webgl', /* 'webgpu', */ 'wasm', 'xnnpack'];
   const nodejsBackends = ['cpu', 'wasm'];
   const backendArgs = args.backend || args.b;
-  const backend =
-      (typeof backendArgs !== 'string') ? (env === 'node' ? nodejsBackends : browserBackends) : backendArgs.split(',');
+  const backend = (typeof backendArgs !== 'string') ? (env === 'node' ? nodejsBackends : defaultBrowserBackends) :
+                                                      backendArgs.split(',');
   for (const b of backend) {
     if ((env !== 'node' && browserBackends.indexOf(b) === -1) || (env === 'node' && nodejsBackends.indexOf(b) === -1)) {
       throw new Error(`backend ${b} is not supported in env ${env}`);

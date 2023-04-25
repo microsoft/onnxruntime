@@ -70,12 +70,10 @@
 #include "core/optimizer/slice_elimination.h"
 #include "core/optimizer/transpose_optimizer/ort_transpose_optimizer.h"
 #include "core/optimizer/unsqueeze_elimination.h"
-#ifdef ENABLE_TRAINING_CORE
+#ifdef ENABLE_TRAINING
 #include "orttraining/core/optimizer/bias_softmax_dropout_fusion.h"
 #include "orttraining/core/optimizer/bitmask_dropout_replacement.h"
 #include "orttraining/core/optimizer/sce_loss_grad_bias_fusion.h"
-#endif
-#ifdef ENABLE_TRAINING
 #include "orttraining/core/optimizer/memory_optimizer.h"
 #endif
 
@@ -210,7 +208,8 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       for (const auto& p : session_options.initializers_to_share_map) {
         excluded_initializers.insert(p.first);
       }
-      transformers.emplace_back(std::make_unique<ConstantSharing>(cpu_ep, excluded_initializers));
+      const InlinedHashSet<std::string_view> no_limit_empty_ep_list = {};
+      transformers.emplace_back(std::make_unique<ConstantSharing>(no_limit_empty_ep_list, excluded_initializers));
 
       transformers.emplace_back(std::make_unique<CommonSubexpressionElimination>());
       transformers.emplace_back(std::make_unique<ConstantFolding>(cpu_execution_provider, !disable_quant_qdq));
@@ -298,7 +297,7 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       transformers.emplace_back(std::make_unique<BiasGeluFusion>(cpu_cuda_dml_rocm_eps));
       transformers.emplace_back(std::make_unique<BiasSoftmaxFusion>(cpu_cuda_rocm_eps));
       transformers.emplace_back(std::make_unique<BiasDropoutFusion>(cuda_rocm_eps));
-#ifdef ENABLE_TRAINING_CORE
+#ifdef ENABLE_TRAINING
       transformers.emplace_back(std::make_unique<BitmaskDropoutReplacement>(cuda_rocm_eps));
       transformers.emplace_back(std::make_unique<BiasSoftmaxDropoutFusion>(cuda_rocm_eps));
       transformers.emplace_back(std::make_unique<SceLossGradBiasFusion>(cpu_cuda_rocm_eps));
