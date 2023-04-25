@@ -34,8 +34,8 @@ void AddReductionParams(T* params, const std::vector<int64_t>& axes, bool keepdi
   for (auto& axis : axes)
     params->add_axes(axis);
 
-  if (axes.size() == 0 && noop_with_empty_axes)
-    params->reduceall();
+  if (axes.size() == 0 && !noop_with_empty_axes)
+    params->set_reduceall(true);
 }
 } // namespace
 
