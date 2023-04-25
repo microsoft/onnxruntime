@@ -101,13 +101,7 @@ class FusionT5Attention(FusionAttention):
                 "Please provide a correct input hidden size or pass in 0"
             )
 
-        # All the matrices can have the same shape or q, k matrics can have the same shape with v being different
-        # For 2d weights, the shapes would be [in_size, out_size].
-        # For 3d weights, shape would be [in_size, a, b] where a*b = out_size
         qw_out_size = np.prod(qw.shape[1:])
-        kw_out_size = np.prod(kw.shape[1:])
-        vw_out_size = np.prod(vw.shape[1:])
-
         qkv_weight = np.stack((qw, kw, vw), axis=1)
         qkv_weight_dim = 3 * qw_out_size
 
