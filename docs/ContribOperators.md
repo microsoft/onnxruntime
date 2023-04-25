@@ -1527,6 +1527,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dl>
 <dt><tt>epsilon</tt> : float</dt>
 <dd>The epsilon value to use to avoid division by zero.</dd>
+<dt><tt>mask_index_type</tt> : int</dt>
+<dd>The mask index tensor type for shape inference (0: None, 1: 1D mask_index)</dd>
 </dl>
 
 #### Inputs (7 - 9)
