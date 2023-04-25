@@ -167,7 +167,7 @@ Status ComputeInternal(OpKernelContext* context, float epsilon) {
   }
 
   // Calculate mask
-  if (nullptr != mask) {
+  if (nullptr != mask && nullptr != mask_index) {
     const int32_t* mask_data = mask->Data<int32_t>();
     int32_t* mask_index_data = mask_index->MutableData<int32_t>();
     for (int b = 0; b < batch_size; b++) {
