@@ -197,7 +197,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
         if (!value.empty()) {
           trt_int8_calibration_table_name = value;
         } else {
-          ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_int8_calibration_table_name' should be a non-emtpy string.\n");
+          ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_int8_calibration_table_name' should be a non-empty string.\n");
         }
       } else if (key == "trt_int8_use_native_calibration_table") {
         if (value == "true" || value == "True") {
@@ -241,7 +241,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
         if (!value.empty()) {
           trt_engine_cache_path = value;
         } else {
-          ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_engine_cache_path' should be a non-emtpy string.\n");
+          ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_engine_cache_path' should be a non-empty string.\n");
         }
       } else if (key == "trt_engine_decryption_enable") {
         if (value == "true" || value == "True") {
@@ -255,7 +255,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
         if (!value.empty()) {
           trt_engine_decryption_lib_path = value;
         } else {
-          ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_engine_decryption_lib_path' should be a non-emtpy string.\n");
+          ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_engine_decryption_lib_path' should be a non-empty string.\n");
         }
       } else if (key == "trt_force_sequential_engine_build") {
         if (value == "true" || value == "True") {
@@ -337,31 +337,31 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
         if (!value.empty()) {
           trt_tactic_sources = value;
         } else {
-          ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_tactic_sources' should be a non-emtpy string.\n");
+          ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_tactic_sources' should be a non-empty string.\n");
         }
       } else if (key == "trt_extra_plugin_lib_paths") {
         if (!value.empty()) {
           trt_extra_plugin_lib_paths = value;
         } else {
-          ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_extra_plugin_lib_paths' should be a non-emtpy string.\n");
+          ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_extra_plugin_lib_paths' should be a non-empty string.\n");
         }
       } else if (key == "trt_profile_min_shapes") {
         if (!value.empty()) {
           trt_profile_min_shapes = value;
         } else {
-          ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_profile_min_shapes' should be a non-emtpy string.\n");
+          ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_profile_min_shapes' should be a non-empty string.\n");
         }
       } else if (key == "trt_profile_max_shapes") {
         if (!value.empty()) {
           trt_profile_max_shapes = value;
         } else {
-          ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_profile_max_shapes' should be a non-emtpy string.\n");
+          ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_profile_max_shapes' should be a non-empty string.\n");
         }
       } else if (key == "trt_profile_opt_shapes") {
         if (!value.empty()) {
           trt_profile_opt_shapes = value;
         } else {
-          ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_profile_opt_shapes' should be a non-emtpy string.\n");
+          ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_profile_opt_shapes' should be a non-empty string.\n");
         }
       } else if (key == "trt_engine_cache_built_with_explicit_profiles") {
         if (value == "true" || value == "True") {
