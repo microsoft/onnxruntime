@@ -18,8 +18,8 @@ namespace api {
 namespace {
 
 constexpr char GROUP_ZERO_NAME[] = "group0";
-static const std::string FullQualifiedName_AdamWOptimizer(std::string(kMSDomain) + ":AdamWOptimizer");
-static const std::string FullQualifiedName_SGDOptimizerV2(std::string(kMSDomain) + ":SGDOptimizerV2");
+static std::string FullQualifiedName_AdamWOptimizer(std::string(kMSDomain) + ":AdamWOptimizer");
+static std::string FullQualifiedName_SGDOptimizerV2(std::string(kMSDomain) + ":SGDOptimizerV2");
 
 static const std::vector<std::string> CommonOptimizerInputs{"learning_rate", "step", "params", "gradients"};
 
