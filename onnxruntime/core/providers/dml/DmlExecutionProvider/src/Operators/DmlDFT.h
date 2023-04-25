@@ -53,7 +53,7 @@ namespace DFTHelpers {
     T NextPowerOf2(T in) {
     in--;
     T out = 1;
-    while (out < in) {
+    while (out <= in) {
         out <<= 1;
     }
     return out;
@@ -486,6 +486,7 @@ public:
         ID3D12Resource* outputResource,
         gsl::span<const uint32_t> outputDims,
         uint32_t dftLength,
+        int64_t axis,
         StockhamParameters& params)
     {
         params = {};
@@ -497,7 +498,7 @@ public:
         size_t reshapedIndex = 0;
         for (int i = 0; i < static_cast<int>(inputDims.size()) - 1; i++)
         {
-            if (i == m_axis || i == (m_axis + 1))
+            if (i == axis || i == (axis + 1))
             {
                 reshapedIndex++;
             }
@@ -626,12 +627,12 @@ public:
         if (DFTHelpers::IsPowerOfTwo(params.DFTLength))
         {
             params.Type = DFTType::Stockham;
-            PrepareStockhamFFTParams(context, inputResource, inputDims, outputResource, outputDims, dftLength, params.StockhamParams);
+            PrepareStockhamFFTParams(context, inputResource, inputDims, outputResource, outputDims, dftLength, m_axis, params.StockhamParams);
         }
         else
         {
             params.Type = DFTType::BluesteinZChirp;
-            auto M = DFTHelpers::NextPowerOf2(2*dftLength - 1);
+            auto M = DFTHelpers::NextPowerOf2((2*dftLength) - 1);
             auto batchSize = inputDims[0];
 
             // Compute intermediate tensor strides
@@ -673,6 +674,7 @@ public:
                                      inputResource, inputDims,
                                      afft_resource.Get(), params.BluesteinZChirpParams.AFFT.Sizes,
                                      M,
+                                     m_axis,
                                      params.BluesteinZChirpParams.AFFTParams);
             params.BluesteinZChirpParams.AFFTParams.Window = params.BluesteinZChirpParams.ZChirp;
 
@@ -683,6 +685,7 @@ public:
                                      afft_resource.Get(), params.BluesteinZChirpParams.AFFT.Sizes,
                                      outputResource, outputDims,
                                      M,
+                                     m_axis,
                                      params.BluesteinZChirpParams.AFFTInverseParams);
             // The BFFT Window is described with the reshaped sizes and strides, which is incompatible with the
             // window parameter expected by the stockham shader.
@@ -697,6 +700,7 @@ public:
                                      b_resource.Get(), params.BluesteinZChirpParams.B.Sizes,
                                      bfft_resource.Get(), params.BluesteinZChirpParams.BFFT.Sizes,
                                      M,
+                                     2,
                                      params.BluesteinZChirpParams.BFFTParams);
         }
 
@@ -754,7 +758,7 @@ public:
         DFTParameters fft_params = {};
         fft_params.Type = DFTType::Stockham;
         fft_params.BluesteinZChirpParams = {};
-        fft_params.DFTLength = bluesteinZChirpParams.AFFT.Sizes[2];
+        fft_params.DFTLength = bluesteinZChirpParams.AFFT.Sizes[1];
 
         // Create BFFT Tensors
         fft_params.StockhamParams = bluesteinZChirpParams.BFFTParams;

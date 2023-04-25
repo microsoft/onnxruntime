@@ -18,7 +18,7 @@ cbuffer Constants
 uint NextPowerOf2(uint x) {
   x--;
   uint y = 1;
-  while (y < x) {
+  while (y <= x) {
     y <<= 1;
   }
   return y;
