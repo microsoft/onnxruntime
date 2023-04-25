@@ -606,10 +606,7 @@ See more information on the ROCm Execution Provider [here](../execution-provider
 ./build.sh --config <Release|Debug|RelWithDebInfo> --use_rocm --rocm_home <path to ROCm home> --build_wheel --update --build --parallel
 ```
 
-#### Linux (with Composable Kernel)
-```bash
-./build.sh --config <Release|Debug|RelWithDebInfo> --use_rocm --rocm_home <path to ROCm home> --build_wheel --update --build --parallel --cmake_extra_defines onnxruntime_USE_COMPOSABLE_KERNEL=ON
-```
+This produces the .whl file in `./build/Linux/<Release|Debug|RelWithDebInfo>/dist`.
 
 Dockerfile instructions are available [here](https://github.com/microsoft/onnxruntime/tree/main/dockerfiles#rocm).
 
