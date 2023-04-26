@@ -35,11 +35,6 @@ namespace {
 constexpr int64_t TOTAL_STEP_COUNT = 100;
 constexpr float INITIAL_LR = 1e-3f;
 
-void CompareValue(float expected, float output, float rtol = 1e-4, float atol = 1e-5) {
-  ASSERT_NEAR(expected, output, atol);
-  ASSERT_NEAR(expected, output, rtol * std::abs(expected));
-}
-
 /**
  * @brief Prepare the model and optimizer before launching the test function.
  * Be noted: though the state might not be used by test_function, we still need to pass it to
@@ -597,7 +592,11 @@ void TestLRSchduler(const std::basic_string<ORTCHAR_T>& test_file_name,
       OptimizerCheckpointState optimizer_states;
       ASSERT_STATUS_OK(optim->GetStateDict(optimizer_states));
       auto group_optimizer_state = optimizer_states.group_named_optimizer_states["group0"];
-      CompareValue(it->second[0], group_optimizer_state->learning_rate);
+
+      constexpr const float rtol = 1e-4, atol = 1e-5;
+      ASSERT_NEAR(it->second[0], group_optimizer_state->learning_rate, atol);
+      ASSERT_NEAR(it->second[0], group_optimizer_state->learning_rate, rtol * std::abs(it->second[0]));
+
       ASSERT_EQ(it->first, group_optimizer_state->step);
 
       std::vector<OrtValue> inputs{input, target};

@@ -18,9 +18,6 @@ namespace api {
 namespace {
 
 constexpr char GROUP_ZERO_NAME[] = "group0";
-static std::string FullQualifiedName_AdamWOptimizer(std::string(kMSDomain) + ":AdamWOptimizer");
-static std::string FullQualifiedName_SGDOptimizerV2(std::string(kMSDomain) + ":SGDOptimizerV2");
-
 static constexpr std::array CommonOptimizerInputs{"learning_rate", "step", "params", "gradients"};
 
 Status GraphInputsAreExpected(gsl::span<std::string> actual_graph_inputs,
@@ -69,15 +66,15 @@ std::unique_ptr<OptimizerAlgorithmBase> OptimizerAlorithmFactory::CreateInstance
                           logging::LoggingManager::DefaultLogger())
                   .IsOK());
   Graph& graph = model->MainGraph();
-  std::unordered_map<std::string, int32_t> opt_type_to_freq_map;
+  std::map<std::pair<std::string, std::string>, int32_t> opt_type_to_freq_map;
   for (auto& node : graph.Nodes()) {
     if (node.Domain() == kMSDomain && (node.OpType() == "AdamWOptimizer" || node.OpType() == "SGDOptimizerV2")) {
-      auto opt_op_type = node.Domain() + ":" + node.OpType();
-      if (opt_type_to_freq_map.find(opt_op_type) == opt_type_to_freq_map.end()) {
-        opt_type_to_freq_map[opt_op_type] = 0;
+      auto domain_type_pair = std::make_pair(node.Domain(), node.OpType());
+      if (opt_type_to_freq_map.find(domain_type_pair) == opt_type_to_freq_map.end()) {
+        opt_type_to_freq_map[domain_type_pair] = 0;
       }
 
-      opt_type_to_freq_map[opt_op_type] += 1;
+      opt_type_to_freq_map[domain_type_pair] += 1;
     }
   }
 
@@ -85,14 +82,16 @@ std::unique_ptr<OptimizerAlgorithmBase> OptimizerAlorithmFactory::CreateInstance
                                                      std::to_string(opt_type_to_freq_map.size()));
   auto opt_it = opt_type_to_freq_map.begin();
   group_count = opt_it->second;
+  auto& domain = opt_it->first.first;
+  auto& type = opt_it->first.second;
 
   // TODO: to support multiple groups, need to create a mapping between each group to its parameter list.
-  if (opt_it->first == FullQualifiedName_AdamWOptimizer) {
+  if (domain == kMSDomain && type == "AdamWOptimizer") {
     return std::make_unique<AdamWOptimizerAlgorithm>();
-  } else if (opt_it->first == FullQualifiedName_SGDOptimizerV2) {
+  } else if (domain == kMSDomain && type == "SGDOptimizerV2") {
     return std::make_unique<SGDOptimizerV2Algorithm>();
   } else {
-    ORT_NOT_IMPLEMENTED("Not implemented for optimizer algo: " + opt_it->first);
+    ORT_NOT_IMPLEMENTED("Not implemented for optimizer algo: " + opt_it->first.second);
   }
 }
 
