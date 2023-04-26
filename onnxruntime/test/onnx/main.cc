@@ -737,8 +737,7 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
         ORT_TSTR("dequantizelinear_e4m3fn"),
         ORT_TSTR("dequantizelinear_e5m2"),
         ORT_TSTR("quantizelinear_e4m3fn"),
-        ORT_TSTR("quantizelinear_e5m2")
-        };
+        ORT_TSTR("quantizelinear_e5m2")};
     std::unordered_set<std::basic_string<ORTCHAR_T>> all_disabled_tests(std::begin(immutable_broken_tests), std::end(immutable_broken_tests));
     if (enable_cuda) {
       all_disabled_tests.insert(std::begin(cuda_flaky_tests), std::end(cuda_flaky_tests));
