@@ -238,8 +238,8 @@ MHARunner* PackedAttention<T>::TryGettingFusedRunner(const PackedAttentionParame
 
   // Assuming that num_heads and head_size do not change.
   if (nullptr == fused_fp16_runner_.get()) {
-    fused_fp16_runner_.reset(new FusedMHARunnerFP16v2(num_heads_, parameters.head_size, sm, false /* causal_mask*/,
-                                                      enable_trt_flash_attention_, parameters.scale));
+    fused_fp16_runner_ = FusedMHARunnerFP16v2::Create(num_heads_, parameters.head_size, sm, false /* causal_mask*/,
+                                                      enable_trt_flash_attention_, parameters.scale);
   }
 
   // In case some kernel not loaded due to shared memory limit, we need to double check here.
