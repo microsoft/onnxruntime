@@ -81,7 +81,7 @@ public class OnnxruntimeModule extends ReactContextBaseJavaModule {
       WritableMap resultMap = loadModel(uri, options);
       promise.resolve(resultMap);
     } catch (Exception e) {
-      promise.reject("Can't load model \"" + uri + "\": " + e.getMessage(), e);
+      promise.reject("Failed to load model \"" + uri + "\": " + e.getMessage(), e);
     }
   }
 
@@ -101,7 +101,7 @@ public class OnnxruntimeModule extends ReactContextBaseJavaModule {
       WritableMap resultMap = loadModel(modelData, options);
       promise.resolve(resultMap);
     } catch (Exception e) {
-      promise.reject("Can't load model from buffer: " + e.getMessage(), e);
+      promise.reject("Failed to load model from buffer: " + e.getMessage(), e);
     }
   }
 
