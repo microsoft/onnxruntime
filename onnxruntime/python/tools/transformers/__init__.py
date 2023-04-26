@@ -14,3 +14,5 @@ import convert_to_onnx  # noqa: E402, F401
 import gpt2_helper  # noqa: E402, F401
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "models", "t5"))
+
+sys.path.append(os.path.join(os.path.dirname(__file__), "models", "whisper"))
