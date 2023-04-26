@@ -16,12 +16,15 @@ namespace onnxruntime {
 namespace coreml {
 
 class ReductionOpBuilder : public BaseOpBuilder {
- private:
 #ifdef __APPLE__
+ public:
+  void AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const override;
+
+ private:
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
                                const logging::Logger& logger) const override;
 #endif
-
+ private:
   bool IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params,
                          const logging::Logger& logger) const override;
 };
@@ -40,6 +43,15 @@ void AddReductionParams(T* params, const std::vector<int64_t>& axes, bool keepdi
 } // namespace
 
 #ifdef __APPLE__
+void ReductionOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const {
+  const auto& input_defs(node.InputDefs());
+
+  // We have already embedded the axes into the CoreML layer.
+  // No need to copy them later to reduce memory consumption.
+  if (input_defs.size() > 1)
+    model_builder.AddInitializerToSkip(input_defs[1]->Name());
+}
+
 Status ReductionOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
                                                  const logging::Logger& /* logger */) const {
   const auto& op_type(node.OpType());
@@ -49,14 +61,14 @@ Status ReductionOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, co
   std::vector<int64_t> axes;
 
   NodeAttrHelper helper(node);
-  if (input_defs.size() > 1) {
+  if (input_defs.size() > 1 && input_defs[1]->Exists()) {
     auto& axes_tensor = *initializers.at(input_defs[1]->Name());
     const int64_t* raw_axes = axes_tensor.int64_data().empty()
       ? reinterpret_cast<const int64_t*>(axes_tensor.raw_data().data())
       : axes_tensor.int64_data().data();
     const auto size = axes_tensor.dims()[0];
     axes = std::vector<int64_t>(raw_axes, raw_axes + size);
-  } else {
+  } else if (helper.HasAttr("axes")) {
     axes = helper.Get("axes", std::vector<int64_t>{});
   }
   auto keepdims = helper.Get("keepdims", 1);
@@ -85,22 +97,13 @@ bool ReductionOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInpu
                                            const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
 
-  if (input_defs.size() == 1) {
-    NodeAttrHelper helper(node);
-
-    if (!helper.HasAttr("axes")) {
-      LOGS(logger, VERBOSE) << "Axes of reduction must be an attribute if not present in inputs";
+  if (input_defs[1]->Exists()) {
+    const auto& axes_name = input_defs[1]->Name();
+    const auto& initializers = input_params.graph_viewer.GetAllInitializedTensors();
+    if (!Contains(initializers, axes_name)) {
+      LOGS(logger, VERBOSE) << "Axes of reduction must be a constant initializer";
       return false;
     }
-
-    return true;
-  }
-
-  const auto& axes_name = input_defs[1]->Name();
-  const auto& initializers = input_params.graph_viewer.GetAllInitializedTensors();
-  if (!Contains(initializers, axes_name)) {
-    LOGS(logger, VERBOSE) << "Axes of reduction must be a constant initializer";
-    return false;
   }
 
   return true;
