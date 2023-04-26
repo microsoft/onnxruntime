@@ -229,7 +229,7 @@ namespace Onnx {
     /// Added a list of FunctionProtos local to the model
     /// Deprecated since_version and operator status from FunctionProto
     /// </summary>
-    [pbr::OriginalName("IR_VERSION_2021_7_30")] IrVersion = 8,
+    [pbr::OriginalName("IR_VERSION_2021_7_30")] IrVersion2021077 = 8,
     /// <summary>
     /// IR VERSION 8 published on &lt;TBD&gt;
     /// Added AttributeProto to FunctionProto so that default attribute values can be set.
