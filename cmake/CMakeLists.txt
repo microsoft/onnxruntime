@@ -2,12 +2,9 @@
 # Licensed under the MIT License.
 
 # Minimum CMake required
-# TODO: make the requirement the same across platforms
-if(WIN32)
-  cmake_minimum_required(VERSION 3.26)
-else()
-  cmake_minimum_required(VERSION 3.24)
-endif()
+# TODO: actually we need cmake 3.26+ on Windows but QNN EP's build machine doesn't have it
+cmake_minimum_required(VERSION 3.24)
+
 cmake_policy(SET CMP0069 NEW)
 set(CMAKE_POLICY_DEFAULT_CMP0069 NEW)
 
