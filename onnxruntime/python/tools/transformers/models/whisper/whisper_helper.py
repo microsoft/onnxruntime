@@ -229,10 +229,8 @@ class WhisperHelper:
 
         from fusion_options import FusionOptions
 
-        optimization_options = None
-        if is_float16:
-            optimization_options = FusionOptions("bart")
-            optimization_options.enable_skip_layer_norm = False
+        optimization_options = FusionOptions("bart")
+        optimization_options.use_multi_head_attention = True
 
         m = optimize_model(
             onnx_model_path,
@@ -241,7 +239,7 @@ class WhisperHelper:
             hidden_size=hidden_size,
             opt_level=2 if not use_external_data_format else None,
             optimization_options=optimization_options,
-            use_gpu=False,
+            use_gpu=use_gpu,
             only_onnxruntime=False,
         )
 
@@ -262,4 +260,4 @@ class WhisperHelper:
     ):
         """Compare the result from PyTorch and OnnxRuntime to verify the ONNX model is good."""
         # Not implemented for Whisper currently
-        return True
+        return 0

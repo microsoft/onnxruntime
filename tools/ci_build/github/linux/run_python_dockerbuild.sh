@@ -18,6 +18,7 @@ docker run --rm \
     -w /onnxruntime_src \
     -e NIGHTLY_BUILD \
     -e BUILD_BUILDNUMBER \
+    $ADDITIONAL_DOCKER_PARAMETER \
     $DOCKER_IMAGE tools/ci_build/github/linux/build_linux_arm64_python_package.sh $BUILD_EXTR_PAR
 
 sudo rm -rf $BUILD_BINARIESDIRECTORY/Release/onnxruntime $BUILD_BINARIESDIRECTORY/Release/pybind11 \

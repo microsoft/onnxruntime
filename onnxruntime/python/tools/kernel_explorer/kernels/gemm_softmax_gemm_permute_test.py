@@ -286,8 +286,8 @@ class GemmSoftmaxGemmPermuteMetric(ke.ComputeMetric):
         mask_str = f" mask_{self.mask_dim}d" if self.mask_dim != 0 else ""
         common = (
             f"{self.dtype} B={self.batch} S={self.seqlen} T={self.total_seqlen} "
-            + f"N={self.num_heads} H={self.head_size}{bias_str}{mask_str}, "
-            + f"{self.name}"
+            f"N={self.num_heads} H={self.head_size}{bias_str}{mask_str}, "
+            f"{self.name}"
         )
         if self.duration <= 0:
             return "not supported          " + common

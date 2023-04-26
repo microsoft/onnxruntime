@@ -18,8 +18,8 @@ class DataTransferManager;
 
 /**
  * @brief This is a Sparse Format enumeration
- * 
- * 
+ *
+ *
  */
 enum class SparseFormat : uint32_t {
   kUndefined = 0x0U,        // For completeness
@@ -31,7 +31,7 @@ enum class SparseFormat : uint32_t {
 std::ostream& operator<<(std::ostream&, SparseFormat);
 
 /**
- * @brief This class implements SparseTensor. 
+ * @brief This class implements SparseTensor.
  * This class holds sparse non-zero data (values) and sparse format
  * specific indices. There are two main uses for the class (similar to that of Tensor)
  * - one is to re-present model sparse inputs. Such inputs typically reside
@@ -43,7 +43,7 @@ std::ostream& operator<<(std::ostream&, SparseFormat);
  *   be used to supply pointers to format specific indices. These buffers are used as is
  *   and will not be modified or deallocated by the instance. However, the lifespan of the buffers
  *   must eclipse the lifespan of the SparseTensor instance.
- * 
+ *
  * - Represent sparse data that is a result of format conversion or a computation result. Use second constructor
  *   to supply a desired allocator. Use Make*() format specific interfaces to supply values and format
  *   specific indices. The specified data will be copied into an internally allocated buffer.
@@ -445,7 +445,6 @@ class SparseTensor final {
                              const OrtMemoryInfo& data_location,
                              const TensorShape& values_shape, const void* values_data,
                              const TensorShape& indices_shape, const int32_t* indices_data);
-
 
   /// <summary>
   /// The method allocates a single contiguous buffer and creates instances of std::strings in it, with

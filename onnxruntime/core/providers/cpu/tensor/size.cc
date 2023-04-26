@@ -42,7 +42,7 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
                                                                DataTypeImpl::GetTensorType<uint64_t>(),
                                                                DataTypeImpl::GetTensorType<std::string>(),
                                                                DataTypeImpl::GetTensorType<bool>()}))
-                      .TypeConstraint("T1", DataTypeImpl::GetTensorType<int64_t>()),
+        .TypeConstraint("T1", DataTypeImpl::GetTensorType<int64_t>()),
     Size);
 
 ONNX_CPU_OPERATOR_KERNEL(
@@ -61,7 +61,7 @@ ONNX_CPU_OPERATOR_KERNEL(
                                                                DataTypeImpl::GetTensorType<uint64_t>(),
                                                                DataTypeImpl::GetTensorType<std::string>(),
                                                                DataTypeImpl::GetTensorType<bool>()}))
-                      .TypeConstraint("T1", DataTypeImpl::GetTensorType<int64_t>()),
+        .TypeConstraint("T1", DataTypeImpl::GetTensorType<int64_t>()),
     Size);
 
 }  // namespace onnxruntime

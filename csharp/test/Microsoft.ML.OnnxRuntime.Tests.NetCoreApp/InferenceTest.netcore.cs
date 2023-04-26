@@ -80,7 +80,8 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 
                 var providerOptionsDict = new Dictionary<string, string>();
                 providerOptionsDict["device_id"] = "0";
-                providerOptionsDict["gpu_mem_limit"] = "20971520";
+                // 256MB
+                providerOptionsDict["gpu_mem_limit"] = "268435456";
                 providerOptionsDict["arena_extend_strategy"] = "kSameAsRequested";
                 providerOptionsDict["cudnn_conv_algo_search"] = "DEFAULT";
                 providerOptionsDict["do_copy_in_default_stream"] = "1";
@@ -96,7 +97,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 value = resultProviderOptionsDict["device_id"];
                 Assert.Equal("0", value);
                 value = resultProviderOptionsDict["gpu_mem_limit"];
-                Assert.Equal("20971520", value);
+                Assert.Equal("268435456", value);
                 value = resultProviderOptionsDict["arena_extend_strategy"];
                 Assert.Equal("kSameAsRequested", value);
                 value = resultProviderOptionsDict["cudnn_conv_algo_search"];
@@ -378,7 +379,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 skipModels["test_GPT2"] = "System out of memory";
                 skipModels["tf_pnasnet_large"] = "Get preallocated buffer for initializer ConvBnFusion_BN_B_cell_5/comb_iter_1/left/bn_sep_7x7_1/beta:0_203 failed";
                 skipModels["tf_nasnet_large"] = "Get preallocated buffer for initializer ConvBnFusion_BN_B_cell_11/beginning_bn/beta:0_331 failed";
-                skipModels["test_zfnet512"] = "System out of memory";
+                skipModels["ZFNet-512"] = "System out of memory";
                 skipModels["test_bvlc_reference_caffenet"] = "System out of memory";
                 skipModels["coreml_VGG16_ImageNet"] = "System out of memory";
                 skipModels["test_ssd"] = "System out of memory";

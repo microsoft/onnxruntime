@@ -317,7 +317,6 @@ common::Status RknpuExecutionProvider::Compile(const std::vector<FusedNodeAndGra
     compute_info.compute_func = [](FunctionState state,
                                    const OrtApi* /*api*/,
                                    OrtKernelContext* context) {
-
       Ort::KernelContext ctx(context);
       RknpuFuncState* rk_state = reinterpret_cast<RknpuFuncState*>(state);
       const size_t n_inputs = ctx.GetInputCount();

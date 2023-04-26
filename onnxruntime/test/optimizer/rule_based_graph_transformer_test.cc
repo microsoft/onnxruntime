@@ -69,7 +69,7 @@ TEST(RuleBasedGraphTransformerTest, TestSettingStepsInGraphTransformerManager) {
   // steps updated
   ASSERT_STATUS_OK(graph_transformation_mgr.SetSteps(10));
   ASSERT_STATUS_OK(graph_transformation_mgr.GetSteps(steps_queried));
-  ASSERT_EQ(steps_queried, static_cast<unsigned> (10));
+  ASSERT_EQ(steps_queried, static_cast<unsigned>(10));
 }
 }  // namespace test
 }  // namespace onnxruntime

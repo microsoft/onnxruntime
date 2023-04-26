@@ -12,7 +12,7 @@
 namespace onnxruntime {
 
 template <typename T1, typename T2>
-class Dropout final: public OpKernel {
+class Dropout final : public OpKernel {
  public:
   Dropout(const OpKernelInfo& info) : OpKernel{info} {
     int64_t seed = 0;

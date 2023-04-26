@@ -9,7 +9,7 @@ namespace onnxruntime {
 namespace contrib {
 
 class Recv final : public OpKernel {
-public:
+ public:
   Recv(const OpKernelInfo& info) : OpKernel(info) {
     ORT_ENFORCE(info.GetAttr<int64_t>("tag", &tag_).IsOK());
     ORT_ENFORCE(info.GetAttrs<int64_t>("element_types", element_types_).IsOK());
@@ -17,17 +17,17 @@ public:
 
   Status Compute(OpKernelContext* context) const override;
 
-private:
+ private:
   void ReceiveData(
-    const int num_tensors,
-    std::vector<Tensor*> received_tensors,
-    const int src,
-    const size_t aggregated_aligned_tensor_bytes,
-    std::vector<char>& buffer) const;
+      const int num_tensors,
+      std::vector<Tensor*> received_tensors,
+      const int src,
+      const size_t aggregated_aligned_tensor_bytes,
+      std::vector<char>& buffer) const;
   int64_t tag_;
   std::vector<int64_t> element_types_;
 };
 
-}  // namespace cuda
+}  // namespace contrib
 }  // namespace onnxruntime
 #endif

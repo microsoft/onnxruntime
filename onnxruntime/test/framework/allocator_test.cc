@@ -25,12 +25,12 @@ TEST(AllocatorTest, CPUAllocatorTest) {
   size_t size = 1024;
   auto bytes = cpu_arena->Alloc(size);
   EXPECT_TRUE(bytes);
-  //test the bytes are ok for read/write
+  // test the bytes are ok for read/write
   memset(bytes, -1, 1024);
 
   EXPECT_EQ(*((int*)bytes), -1);
   cpu_arena->Free(bytes);
-  //todo: test the used / max api.
+  // todo: test the used / max api.
 }
 #if defined(_MSC_VER) && !defined(__clang__)
 #pragma warning(disable : 26400)

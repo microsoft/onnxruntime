@@ -3,7 +3,7 @@
 
 #pragma once
 
-#include <stddef.h> // needed for size_t on some platforms
+#include <stddef.h>  // needed for size_t on some platforms
 
 namespace onnxruntime {
 
@@ -44,6 +44,7 @@ constexpr const char* kAclExecutionProvider = "ACLExecutionProvider";
 constexpr const char* kArmNNExecutionProvider = "ArmNNExecutionProvider";
 constexpr const char* kRocmExecutionProvider = "ROCMExecutionProvider";
 constexpr const char* kCoreMLExecutionProvider = "CoreMLExecutionProvider";
+constexpr const char* kJsExecutionProvider = "JsExecutionProvider";
 constexpr const char* kSnpeExecutionProvider = "SNPEExecutionProvider";
 constexpr const char* kTvmExecutionProvider = "TvmExecutionProvider";
 constexpr const char* kXnnpackExecutionProvider = "XnnpackExecutionProvider";

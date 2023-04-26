@@ -971,10 +971,12 @@ static void PermuteInput(api::GraphRef& graph, api::NodeRef& node, size_t i, con
 }
 
 static bool HandleResize([[maybe_unused]] HandlerArgs& args) {
-#if defined(USE_CUDA) || defined(USE_ROCM)
+#if defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_QNN)
   // The CUDA Resize kernel requires that the input is NCHW, so we can't push a Transpose through a Resize
   // in ORT builds with CUDA enabled.
   // The ROCm EP is generated from the CUDA EP kernel so the same applies to builds with ROCm enabled.
+  // The QNN EP requires the input to be NHWC, so the Resize handler is also not enabled for QNN builds.
+  //
   // TODO: Remove this special case once the CUDA Resize kernel is implemented "generically" (i.e.) aligning with the
   // generic nature of the ONNX spec.
   // See https://github.com/microsoft/onnxruntime/pull/10824 for a similar fix applied to the CPU Resize kernel.
@@ -1995,7 +1997,7 @@ std::optional<OptimizerCtx> MakeOptimizerContext(api::GraphRef& graph, bool allo
   if (opset == std::nullopt || *opset > kMaxSupportedOpset || *opset < kMinSupportedOpset) {
     // if the model doesn't have an ONNX opset that's fine as there are no ops we'd move around
     if (opset.has_value()) {
-      error_msg = "Unsupported ONNX opset";
+      error_msg = "Unsupported ONNX opset: " + std::to_string(*opset);
     }
 
     return std::nullopt;

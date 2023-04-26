@@ -12,7 +12,6 @@
 
 #include "core/common/common.h"
 
-
 namespace onnxruntime {
 namespace tvm {
 
@@ -37,7 +36,7 @@ class HasherSHA256Impl : public HasherImpl {
   static std::string hexdigest(const char* src, size_t size);
 };
 
-}   // namespace tvm
-}   // namespace onnxruntime
+}  // namespace tvm
+}  // namespace onnxruntime
 
 #endif  // ONNXRUNTIME_CORE_PROVIDERS_TVM_HASH_ALG_HASHER_IMPL_H_

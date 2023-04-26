@@ -38,11 +38,11 @@ static void RunTests(const vector<T>& input,
 }
 
 /*
-Test values from this script, which is based on functions in 
+Test values from this script, which is based on functions in
 https://github.com/scikit-learn/scikit-learn/blob/master/sklearn/preprocessing/data.py
 
 scikit-learn is a Python module for machine learning built on top of SciPy and
-distributed under the 3-Clause BSD license. See https://github.com/scikit-learn/scikit-learn. 
+distributed under the 3-Clause BSD license. See https://github.com/scikit-learn/scikit-learn.
 This material is licensed under the BSD License (see https://github.com/scikit-learn/scikit-learn/blob/master/COPYING);
 
 import numpy as np

@@ -22,9 +22,9 @@
 #define HWCAP_ASIMDDP (1 << 20)
 #endif
 
-#endif // ARM
+#endif  // ARM
 
-#endif // Linux
+#endif  // Linux
 
 #if _WIN32
 
@@ -36,14 +36,13 @@
 #define PF_ARM_V82_DP_INSTRUCTIONS_AVAILABLE 43
 #endif
 
-#endif // _WIN32
+#endif  // _WIN32
 
 #if defined(CPUINFO_SUPPORTED)
 #include <cpuinfo.h>
 #else
 #include "core/common/cpuid_uarch.h"
 #endif  // CPUINFO_SUPPORTED
-
 
 namespace onnxruntime {
 
@@ -66,7 +65,7 @@ static inline void GetCPUID(int function_id, int data[4]) {  // NOLINT
 
 static inline void GetCPUID(int function_id, int sub_leaf, int data[4]) {  // NOLINT
 #if defined(_MSC_VER)
-    __cpuidex(reinterpret_cast<int*>(data), function_id, sub_leaf);
+  __cpuidex(reinterpret_cast<int*>(data), function_id, sub_leaf);
 #elif defined(__GNUC__)
   __cpuid_count(function_id, sub_leaf, data[0], data[1], data[2], data[3]);
 #endif
@@ -250,7 +249,7 @@ void CPUIDInfo::ArmWindowsInit() {
         "CP 4020", RRF_RT_REG_QWORD, nullptr,
         &ID_AA64PFR0_EL1, &valsize);
     if (retCode == ERROR_SUCCESS) {
-        // AdvSIMD, bits [23:20]
+      // AdvSIMD, bits [23:20]
       auto advSimd = ID_AA64PFR0_EL1 >> 20;
       if ((advSimd & 0xfULL) == 1) {
         has_fp16_ = true;

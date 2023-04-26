@@ -1241,7 +1241,7 @@ TEST(CApiTest, test_custom_op_get_const_input) {
   auto default_allocator = std::make_unique<MockedOrtAllocator>();
 
   session.Run(Ort::RunOptions{}, input_names.data(), ort_inputs.data(), ort_inputs.size(),
-                                 &output_name, 1);
+              &output_name, 1);
 }
 #endif
 
@@ -1855,6 +1855,29 @@ TEST(CApiTest, fill_string_tensor) {
 
   int64_t len = shape_info.GetElementCount();
   ASSERT_EQ(len, expected_len);
+}
+
+TEST(CApiTest, fill_string_tensor_directly) {
+  constexpr std::string_view s[] = {"abc", "kmp"};
+  constexpr int64_t expected_len = 2;
+
+  MockedOrtAllocator default_allocator;
+  Ort::Value tensor = Ort::Value::CreateTensor(&default_allocator, &expected_len, 1U,
+                                               ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING);
+
+  for (size_t i = 0; i < static_cast<size_t>(expected_len); i++) {
+    auto* buffer = tensor.GetResizedStringTensorElementBuffer(i, s[i].size());
+    memcpy(buffer, s[i].data(), s[i].size());
+  }
+
+  auto shape_info = tensor.GetTensorTypeAndShapeInfo();
+  int64_t len = shape_info.GetElementCount();
+  ASSERT_EQ(len, expected_len);
+
+  for (size_t i = 0; i < static_cast<size_t>(expected_len); i++) {
+    auto element = tensor.GetStringTensorElement(i);
+    ASSERT_EQ(s[i], element);
+  }
 }
 
 TEST(CApiTest, get_string_tensor_element) {
@@ -2496,9 +2519,16 @@ TEST(CApiTest, ConfigureCudaArenaAndDemonstrateMemoryArenaShrinkage) {
 #endif
 
 #ifdef USE_TENSORRT
+class CApiTensorRTTest : public testing::Test, public ::testing::WithParamInterface<std::string> {};
 
 // This test uses CreateTensorRTProviderOptions/UpdateTensorRTProviderOptions APIs to configure and create a TensorRT Execution Provider
-TEST(CApiTest, TestConfigureTensorRTProviderOptions) {
+TEST_P(CApiTensorRTTest, TestConfigureTensorRTProviderOptions) {
+  std::string param = GetParam();
+  size_t pos = param.find("=");
+  std::string option_name = param.substr(0, pos);
+  std::string option_value = param.substr(pos + 1);
+  ASSERT_NE(pos, std::string::npos);
+
   const auto& api = Ort::GetApi();
   OrtTensorRTProviderOptionsV2* trt_options;
   OrtAllocator* allocator;
@@ -2508,16 +2538,19 @@ TEST(CApiTest, TestConfigureTensorRTProviderOptions) {
 
   const char* engine_cache_path = "./trt_engine_folder";
 
-  std::vector<const char*> keys{"device_id", "trt_fp16_enable", "trt_int8_enable", "trt_engine_cache_enable", "trt_engine_cache_path"};
+  std::vector<const char*> keys{"device_id", "trt_fp16_enable", "trt_int8_enable", "trt_engine_cache_enable",
+                                "trt_engine_cache_path", option_name.c_str()};
 
-  std::vector<const char*> values{"0", "1", "0", "1", engine_cache_path};
+  std::vector<const char*> values{"0", "1", "0", "1",
+                                  engine_cache_path, option_value.c_str()};
 
-  ASSERT_TRUE(api.UpdateTensorRTProviderOptions(rel_trt_options.get(), keys.data(), values.data(), 5) == nullptr);
+  ASSERT_TRUE(api.UpdateTensorRTProviderOptions(rel_trt_options.get(), keys.data(), values.data(), keys.size()) == nullptr);
 
   ASSERT_TRUE(api.GetAllocatorWithDefaultOptions(&allocator) == nullptr);
   ASSERT_TRUE(api.GetTensorRTProviderOptionsAsString(rel_trt_options.get(), allocator, &trt_options_str) == nullptr);
   std::string s(trt_options_str);
   ASSERT_TRUE(s.find(engine_cache_path) != std::string::npos);
+  ASSERT_TRUE(s.find(param.c_str()) != std::string::npos);
   ASSERT_TRUE(api.AllocatorFree(allocator, (void*)trt_options_str) == nullptr);
 
   Ort::SessionOptions session_options;
@@ -2552,6 +2585,12 @@ TEST(CApiTest, TestConfigureTensorRTProviderOptions) {
   struct stat buffer;
   ASSERT_TRUE(stat(engine_cache_path, &buffer) == 0);
 }
+
+/*
+ * The TensorrtExecutionProviderOptionsTest can be used to test TRT options
+ */
+INSTANTIATE_TEST_SUITE_P(CApiTensorRTTest, CApiTensorRTTest,
+                         ::testing::Values("trt_build_heuristics_enable=1", "trt_sparsity_enable=1", "trt_builder_optimization_level=0", "trt_tactic_sources=-CUDNN,+CUBLAS", "trt_auxiliary_streams=2"));
 #endif
 
 #ifdef USE_CUDA

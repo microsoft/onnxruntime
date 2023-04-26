@@ -39,12 +39,12 @@ void DnnlConv::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
   }
 
   /*
-  * Get any inputs required for the dnnl::convolution_forward::desc
-  * beyond the dnnl:memory::desc:
-  *  -dilations
-  *  - strides
-  *  - padding_left and padding_right
-  */
+   * Get any inputs required for the dnnl::convolution_forward::desc
+   * beyond the dnnl:memory::desc:
+   *  -dilations
+   *  - strides
+   *  - padding_left and padding_right
+   */
   auto kernel_shape = GetKernelShape(node);
   ConvShape shape = static_cast<ConvShape>(kernel_shape.size());
   assert(shape != SHAPE_UNKNOWN);

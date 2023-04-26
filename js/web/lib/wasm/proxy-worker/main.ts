@@ -63,8 +63,14 @@ self.onmessage = (ev: MessageEvent<OrtWasmMessage>): void => {
     case 'run':
       try {
         const {sessionId, inputIndices, inputs, outputIndices, options} = ev.data.in!;
-        const outputs = run(sessionId, inputIndices, inputs, outputIndices, options);
-        postMessage({type: 'run', out: outputs} as OrtWasmMessage, extractTransferableBuffers(outputs));
+        run(sessionId, inputIndices, inputs, outputIndices, options)
+            .then(
+                outputs => {
+                  postMessage({type: 'run', out: outputs} as OrtWasmMessage, extractTransferableBuffers(outputs));
+                },
+                err => {
+                  postMessage({type: 'run', err} as OrtWasmMessage);
+                });
       } catch (err) {
         postMessage({type: 'run', err} as OrtWasmMessage);
       }
