@@ -38,9 +38,14 @@ class RegistrationInfo:
     operator: str
     start_version: int
     end_version: typing.Optional[int]
+    lines: typing.List[str]
 
     def domain_and_op_str(self):
         return f"{self.domain}:{self.operator}"
+
+
+def _log_registration_error(r: RegistrationInfo, message: str):
+    log.error("Invalid registration for {}. {}\n{}".format(r.domain_and_op_str(), message, "".join(r.lines)))
 
 
 class RegistrationValidator(op_registration_utils.RegistrationProcessor):
@@ -57,13 +62,15 @@ class RegistrationValidator(op_registration_utils.RegistrationProcessor):
         type: typing.Optional[str] = None,
     ):
         self.all_registrations.append(
-            RegistrationInfo(domain=domain, operator=operator, start_version=start_version, end_version=end_version)
+            RegistrationInfo(
+                domain=domain, operator=operator, start_version=start_version, end_version=end_version, lines=lines
+            )
         )
 
     def ok(self):
         num_invalid_registrations = self._validate_all_registrations()
         if num_invalid_registrations > 0:
-            log.error(f"Found {num_invalid_registrations} invalid registrations.")
+            log.error(f"Found {num_invalid_registrations} invalid registration(s).")
             return False
 
         return True
@@ -113,9 +120,8 @@ class RegistrationValidator(op_registration_utils.RegistrationProcessor):
         returns whether it is valid.
         """
         if not (r.end_version is None or r.start_version <= r.end_version):
-            log.error(
-                f"Invalid registration for {r.domain_and_op_str()}. "
-                f"Start version ({r.start_version}) is greater than end version ({r.end_version})."
+            _log_registration_error(
+                r, f"Start version ({r.start_version}) is greater than end version ({r.end_version})."
             )
             return False
 
@@ -129,18 +135,20 @@ class RegistrationValidator(op_registration_utils.RegistrationProcessor):
 
         # This registration has no end version but it should have one if the next registration has different versions.
         if r.end_version is None:
-            log.error(
-                f"Invalid registration for {r.domain_and_op_str()}. "
+            _log_registration_error(
+                r,
                 f"Registration for opset {r.start_version} has no end version but was superseded by version "
-                f"{next_r.start_version}."
+                f"{next_r.start_version}.",
             )
             return False
 
         # This registration's end version is not adjacent to the start version of the next registration.
         if r.end_version != next_r.start_version - 1:
-            log.error(
-                f"Invalid registration for {r.domain_and_op_str()}. "
-                f"Registration for opset {r.start_version} should have end version of {next_r.start_version - 1}."
+            _log_registration_error(
+                r,
+                f"Registration end version is not adjacent to the next registration's start version. "
+                f"Current start and end versions: {(r.start_version, r.end_version)}. "
+                f"Next start and end versions: {(next_r.start_version, next_r.end_version)}.",
             )
             return False
 
