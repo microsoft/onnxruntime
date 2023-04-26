@@ -32,4 +32,4 @@ stages:
   parameters:
     NpmPackagingMode: ${{ variables.NpmPackagingMode }}
     BuildConfig: 'Release'
-    PoolName: 'onnxruntime-Linux-CPU-2019'
+    PoolName: 'onnxruntime-Linux-CPU-For-Android-CI'
