@@ -136,10 +136,9 @@ const createGemmProgramInfoLoader = (inputs: readonly TensorView[], attributes: 
   return {...metadata, get: () => createGemmProgramInfo(metadata, inputs, attributes)};
 };
 
-export const gemm = (context: ComputeContext, attributes: GemmAttributes): number => {
+export const gemm = (context: ComputeContext, attributes: GemmAttributes): void => {
   validateInputs(context.inputs);
   context.compute(createGemmProgramInfoLoader(context.inputs, attributes));
-  return 0;
 };
 
 export const parseGemmAttributes = (attributes: Record<string, unknown>): GemmAttributes =>

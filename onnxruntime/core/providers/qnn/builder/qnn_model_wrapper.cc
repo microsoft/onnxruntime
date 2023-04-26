@@ -287,7 +287,7 @@ bool QnnModelWrapper::ProcessOffset(const std::string& offset_name,
   const int32_t onnx_data_type = offset_tensor->data_type();
 
   std::vector<uint8_t> unpacked_tensor;
-  ORT_THROW_IF_ERROR(onnxruntime::utils::UnpackInitializerData(*offset_tensor, unpacked_tensor));
+  ORT_THROW_IF_ERROR(UnpackInitializerData(*offset_tensor, unpacked_tensor));
   switch (onnx_data_type) {
     // QNN use -offest for some reason
     case ONNX_NAMESPACE::TensorProto_DataType_INT8: {
@@ -329,7 +329,7 @@ bool QnnModelWrapper::ProcessScale(const std::string& scale_name,
   const auto scale_tensor = offset_it->second;
   std::vector<uint8_t> unpacked_tensor;
 
-  ORT_THROW_IF_ERROR(onnxruntime::utils::UnpackInitializerData(*scale_tensor, unpacked_tensor));
+  ORT_THROW_IF_ERROR(UnpackInitializerData(*scale_tensor, unpacked_tensor));
   const float* scale_data = reinterpret_cast<float*>(unpacked_tensor.data());
   scale_value = scale_data[0];
   return true;
@@ -418,6 +418,17 @@ void QnnModelWrapper::GetGraphInputOutputTensorWrapper(const std::vector<std::st
   }
 
   return;
+}
+
+Status QnnModelWrapper::UnpackInitializerData(const ONNX_NAMESPACE::TensorProto& initializer,
+                                              std::vector<uint8_t>& unpacked_tensor) const {
+  if (initializer.data_location() == onnx::TensorProto_DataLocation_EXTERNAL) {
+    return onnxruntime::utils::UnpackInitializerData(initializer, graph_viewer_.ModelPath(), unpacked_tensor);
+  } else {
+    return onnxruntime::utils::UnpackInitializerData(initializer, unpacked_tensor);
+  }
+
+  return Status::OK();
 }
 
 }  // namespace qnn
