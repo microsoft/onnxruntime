@@ -1231,6 +1231,17 @@ inline void ConstValueImpl<T>::GetStringTensorElement(size_t buffer_length, size
 }
 
 template <typename T>
+inline std::string ConstValueImpl<T>::GetStringTensorElement(size_t element_index) const {
+  size_t buffer_length;
+  ThrowOnError(GetApi().GetStringTensorElementLength(this->p_, element_index, &buffer_length));
+
+  std::string s;
+  s.resize(buffer_length);
+  ThrowOnError(GetApi().GetStringTensorElement(this->p_, buffer_length, element_index, &s[0]));
+  return s;
+}
+
+template <typename T>
 inline void ConstValueImpl<T>::GetStringTensorContent(void* buffer, size_t buffer_length, size_t* offsets, size_t offsets_count) const {
   ThrowOnError(GetApi().GetStringTensorContent(this->p_, buffer, buffer_length, offsets, offsets_count));
 }
@@ -1290,6 +1301,13 @@ void ValueImpl<T>::FillStringTensor(const char* const* s, size_t s_len) {
 template <typename T>
 void ValueImpl<T>::FillStringTensorElement(const char* s, size_t index) {
   ThrowOnError(GetApi().FillStringTensorElement(this->p_, s, index));
+}
+
+template <typename T>
+inline char* ValueImpl<T>::GetResizedStringTensorElementBuffer(size_t index, size_t buffer_length) {
+  char* result;
+  ThrowOnError(GetApi().GetResizedStringTensorElementBuffer(this->p_, index, buffer_length, &result));
+  return result;
 }
 
 template <typename T>
@@ -1542,6 +1560,12 @@ inline UnownedValue KernelContext::GetOutput(size_t index, const std::vector<int
 inline void* KernelContext::GetGPUComputeStream() const {
   void* out = nullptr;
   Ort::ThrowOnError(GetApi().KernelContext_GetGPUComputeStream(ctx_, &out));
+  return out;
+}
+
+inline OrtAllocator* KernelContext::GetAllocator(const OrtMemoryInfo& memory_info) const {
+  OrtAllocator* out = nullptr;
+  Ort::ThrowOnError(GetApi().KernelContext_GetAllocator(ctx_, &memory_info, &out));
   return out;
 }
 

@@ -3,9 +3,10 @@
 
 import {env, InferenceSession} from 'onnxruntime-common';
 
+import {init as initJsep} from './jsep/init';
 import {OrtWasmMessage, SerializableModeldata, SerializableSessionMetadata, SerializableTensor} from './proxy-messages';
 import * as core from './wasm-core-impl';
-import {initializeWebAssembly} from './wasm-factory';
+import {getInstance, initializeWebAssembly} from './wasm-factory';
 
 const isProxy = (): boolean => !!env.wasm.proxy && typeof document !== 'undefined';
 let proxyWorker: Worker|undefined;
@@ -141,9 +142,14 @@ export const initOrt = async(numThreads: number, loggingLevel: number): Promise<
       initOrtCallbacks = [resolve, reject];
       const message: OrtWasmMessage = {type: 'init-ort', in : {numThreads, loggingLevel}};
       proxyWorker!.postMessage(message);
+
+      // TODO: support JSEP in worker
     });
   } else {
     core.initOrt(numThreads, loggingLevel);
+
+    // init JSEP if available
+    await initJsep(getInstance());
   }
 };
 
