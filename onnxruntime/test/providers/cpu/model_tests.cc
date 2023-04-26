@@ -175,6 +175,7 @@ TEST_P(ModelTest, Run) {
       {"training_dropout_mask", "result differs", {}},          // Temporary, subsequent PR will remove this.
       {"batchnorm_epsilon_training_mode", "training only", {}},
       {"batchnorm_example_training_mode", "training only", {}},
+      /*
       {"bernoulli", "type error", {}},
       {"bernoulli_double", "type error", {}},
       {"bernoulli_double_expanded", "type error", {}},
@@ -230,6 +231,7 @@ TEST_P(ModelTest, Run) {
       {"dequantizelinear_e5m2", "type error", {}},
       {"quantizelinear_e4m3fn", "type error", {}},
       {"quantizelinear_e5m2", "type error", {}},
+      */
       {"convtranspose_autopad_same", "Test data has been corrected in ONNX 1.10.", {"opset13", "opset14"}},
       {"gru_batchwise", "type error", {}},
       {"lstm_batchwise", "type error", {}},

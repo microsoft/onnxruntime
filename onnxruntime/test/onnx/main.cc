@@ -838,6 +838,7 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
     {"sequence_insert_at_back", "onnx currently not supporting loading segment", {}},
     {"sequence_insert_at_front", "onnx currently not supporting loading segment", {}},
     {"loop13_seq", "ORT api does not currently support creating empty sequences (needed for this test)", {}},
+    /*
     {"cast_FLOAT_to_BFLOAT16", "onnx generate bfloat tensor as uint16 type", {}},
     {"cast_BFLOAT16_to_FLOAT", "onnx generate bfloat tensor as uint16 type", {}},
     {"castlike_FLOAT_to_BFLOAT16", "Depends on cast.", {}},
@@ -892,6 +893,7 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
     {"dequantizelinear_e5m2", "type error", {}},
     {"quantizelinear_e4m3fn", "type error", {}},
     {"quantizelinear_e5m2", "type error", {}},
+    */
     {"bernoulli", "By design. Test data is for informational purpose because the generator is non deterministic."},
     {"bernoulli_double", "By design. Test data is for informational purpose because the generator is non deterministic."},
     {"bernoulli_double_expanded", "By design. Test data is for informational purpose because the generator is non deterministic."},
