@@ -7,6 +7,7 @@ on:
       - main
     paths:
       - include/onnxruntime/core/session
+      - orttraining/orttraining/training_api/include/
   schedule:
     - cron: '0 0 1 * *'
   workflow_dispatch:

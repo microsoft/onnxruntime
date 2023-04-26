@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#ifdef ENABLE_TRAINING
 #pragma once
 
 #include "core/optimizer/graph_transformer.h"
@@ -75,3 +76,5 @@ class InsertGatherBeforeSceLoss : public GraphTransformer {
 };
 
 }  // namespace onnxruntime
+
+#endif

@@ -99,20 +99,23 @@ stages:
       buildJava: true
       buildJavaOption: '--build_java'
 
+#CUDA without tensorrt
 - template: templates/win-ci.yml
   parameters:
-    ort_build_pool_name: 'onnxruntime-gpu-tensorrt8-winbuild-t4'
+    ort_build_pool_name: 'onnxruntime-gpu-winbuild-T4'
     DoCompliance: ${{ parameters.DoCompliance }}
     DoEsrp: ${{ parameters.DoEsrp }}
     stage_name_suffix: gpu
-    EnvSetupScript: setup_env_gpu.bat
+    EnvSetupScript: setup_env_cuda_11.bat
     buildArch: x64
     msbuildPlatform: x64
     packageName: x64-cuda
-    buildparameter: --use_cuda --cuda_version=11.6 --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.6" --enable_onnx_tests --enable_wcos --build_java --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=52;60;61;70;75;80"
+    buildparameter: --use_cuda --cuda_version=11.8 --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.8" --enable_onnx_tests --enable_wcos --build_java --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=52;60;61;70;75;80"
     runTests: ${{ parameters.RunOnnxRuntimeTests }}
     buildJava: true
     java_artifact_id: onnxruntime_gpu
+
+# CUDA with Tensorrt
 - template: templates/win-ci.yml
   parameters:
     ort_build_pool_name: 'onnxruntime-gpu-tensorrt8-winbuild-t4'
@@ -701,13 +704,12 @@ stages:
     BuildCommand: --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --enable_onnx_tests --enable_wcos --use_telemetry --use_dml --use_winml --cmake_generator "Visual Studio 16 2019"
     BuildArch: 'x64'
     msbuildArchitecture: 'amd64'
-    EnvSetupScript: 'setup_env_cuda_11.bat'
+    EnvSetupScript: 'setup_env.bat'
     sln_platform: 'x64'
     DoDebugBuild: 'false'
     DoNugetPack : 'true'
     DoCompliance: 'false'
     DoEsrp: ${{ parameters.DoEsrp }}
-    CudaVersion: '11.6'
     OrtPackageId: 'Microsoft.ML.OnnxRuntime.DirectML'
     NuPackScript: |
      msbuild $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj /p:Configuration=RelWithDebInfo /t:CreatePackage /p:OrtPackageId=Microsoft.ML.OnnxRuntime.DirectML /p:IsReleaseBuild=${{ parameters.IsReleaseBuild }}
