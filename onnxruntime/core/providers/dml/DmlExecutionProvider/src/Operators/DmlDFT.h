@@ -461,7 +461,7 @@ public:
             {
                 case DFTType::Stockham:
                 {
-                    StockhamFFT(dftParams, m_isInverse, 0 /*chirpLength*/, commandList);
+                    StockhamFFT(dftParams, m_isInverse, 0 /*chirpLength*/, 1 /*scale*/, commandList);
                     break;
                 }
                 case DFTType::BluesteinZChirp:
@@ -772,17 +772,18 @@ public:
 
         // Create BFFT Tensors
         fft_params.StockhamParams = bluesteinZChirpParams.BFFTParams;
-        StockhamFFT(fft_params, false, 0 /*chirpLength*/, commandList);
+        StockhamFFT(fft_params, false, 0 /*chirpLength*/, 1 /*scale*/, commandList);
 
         // Create AFFT Tensors
         fft_params.StockhamParams = bluesteinZChirpParams.AFFTParams;
-        StockhamFFT(fft_params, false, 0 /*chirpLength*/, commandList);
+        StockhamFFT(fft_params, false, 0 /*chirpLength*/, 1 /*scale*/, commandList);
 
         // Should include the bfft tensor as the window funciton
         fft_params.StockhamParams = bluesteinZChirpParams.AFFTInverseParams;
         float chirpLength = static_cast<float>(bluesteinZChirpParams.ZChirp.Sizes[2]);
         chirpLength *= (m_isInverse ? 1 : -1);
-        StockhamFFT(fft_params, true,  chirpLength, commandList);
+        float scale = isInverse ? 1.f / dftParams.DFTLength : 1.f;
+        StockhamFFT(fft_params, true,  chirpLength, scale, commandList);
 
         // Transition resources to common state
         barriers[0] = CD3DX12_RESOURCE_BARRIER::Transition(
@@ -800,7 +801,12 @@ public:
         commandList->ResourceBarrier(2, barriers);
     }
 
-    void StockhamFFT(const DFTParameters& dftParams, bool isInverse, float chirpLength, ID3D12GraphicsCommandList* commandList)
+    void StockhamFFT(
+        const DFTParameters& dftParams,
+        bool isInverse,
+        float chirpLength,
+        float scale,
+        ID3D12GraphicsCommandList* commandList)
     {
         const auto& stockhamParams = dftParams.StockhamParams;
 
@@ -859,7 +865,7 @@ public:
             auto isLastPass = (index == stockhamParams.NumberOfPasses - 1);
             auto isLastInversePass = isLastPass && isInverse;
             auto dftLength = 1 << stockhamParams.NumberOfPasses;
-            constants.Scale = isLastInversePass ? (1.f / dftLength) : 1.f;
+            constants.Scale = isLastInversePass ? (scale / dftLength) : 1;
 
             auto totalElementCount =
                 std::accumulate(constants.OutputSizes,
