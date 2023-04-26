@@ -10,13 +10,10 @@ parameters:
 
 jobs:
 - job: 'build'
-  pool: 'Onnxruntime-QNNEP-Windows-2022-ARM64-CPU'
+  pool: 'onnxruntime-qnn-windows-vs-2022-arm64'
   variables:
-    MsbuildArguments: '-detailedsummary -maxcpucount -consoleloggerparameters:PerformanceSummary'
-    OnnxRuntimeBuildDirectory: '$(Build.BinariesDirectory)'
     DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
     buildArch: arm64
-    setVcvars: true
     BuildConfig: 'RelWithDebInfo'
     ALLOW_RELEASED_ONNX_OPSET_ONLY: '1'
     QNN_SDK_ROOT: 'C:\data\qnnsdk\${{parameters.QnnSdk}}'
@@ -49,30 +46,16 @@ jobs:
       versionSpec: 6.4.x
      
   - task: PythonScript@0
-    displayName: 'Generate cmake config'
-    inputs:
-      scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-      arguments: '--arm64 --config $(BuildConfig) --build_dir $(Build.BinariesDirectory) --update --cmake_generator "Visual Studio 16 2019" --use_qnn --qnn_home $(QNN_SDK_ROOT) --parallel'
-      workingDirectory: '$(Build.BinariesDirectory)'
-
-  - task: VSBuild@1
     displayName: 'Build'
     inputs:
-      solution: '$(Build.BinariesDirectory)\$(BuildConfig)\onnxruntime.sln'
-      platform: 'arm64'
-      configuration: $(BuildConfig)
-      msbuildArgs: $(MsbuildArguments)
-      msbuildArchitecture: $(buildArch)
-      maximumCpuCount: true
-      logProjectEvents: false
-      workingFolder: '$(Build.BinariesDirectory)\$(BuildConfig)'
-      createLogFile: true
+      scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
+      arguments: '--config $(BuildConfig) --build_dir $(Build.BinariesDirectory) --skip_tests --cmake_generator "Visual Studio 17 2022" --use_qnn --qnn_home $(QNN_SDK_ROOT) --parallel'
+      workingDirectory: '$(Build.BinariesDirectory)'
 
   - powershell: |
-     python $(Build.SourcesDirectory)\tools\ci_build\build.py --arm64 --config $(BuildConfig) --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --test --cmake_generator "Visual Studio 16 2019" --enable_onnx_tests
+     python $(Build.SourcesDirectory)\tools\ci_build\build.py --config $(BuildConfig) --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --test --cmake_generator "Visual Studio 17 2022" --enable_onnx_tests
     workingDirectory: '$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)'
     displayName: 'Run unit tests'
-    enabled: false
 
   - script: |
      .\$(BuildConfig)\onnx_test_runner -j 1 -c 1 -v -e qnn -i "backend_path|$(QNN_SDK_ROOT)\target\aarch64-windows-msvc\lib\QnnCpu.dll" $(Build.SourcesDirectory)\cmake\external\onnx\onnx\backend\test\data\node

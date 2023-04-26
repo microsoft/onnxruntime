@@ -301,7 +301,7 @@ TEST(PoolTest, MaxPool2D_uint8) {
   test.AddInput<uint8_t>("Input", {1, 1, 5, 5}, {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25});
 
   test.AddOutput<uint8_t>("Output", output_shape, output);
-#if defined(OPENVINO_CONFIG_GPU_FP32) || defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_MYRIAD)
+#if defined(OPENVINO_CONFIG_GPU_FP32) || defined(OPENVINO_CONFIG_GPU_FP16)
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});
 #else
   test.Run();
@@ -1011,6 +1011,32 @@ TEST(PoolTest, GlobalAveragePool) {
 
   test.AddInput<float>("X", x_dims, x_vals);
   test.AddOutput<float>("Y", expected_dims, expected_vals);
+  test.Run();
+}
+
+TEST(PoolTest, GlobalAveragePool_Large_128) {
+  OpTester test("GlobalAveragePool");
+
+  std::vector<float> x_vals(1 * 1 * 128 * 128, 2.71828f);
+  std::vector<int64_t> x_dims = {1, 1, 128, 128};
+  std::vector<int64_t> expected_dims = {1, 1, 1, 1};
+  std::vector<float> expected_vals = {2.71828f};
+  test.AddInput<float>("X", x_dims, x_vals);
+  test.AddOutput<float>("Y", expected_dims, expected_vals,
+                        /*sort_output=*/false, /*rel_error=*/1e-3f, /*abs_error=*/1e-2f);
+  test.Run();
+}
+
+TEST(PoolTest, GlobalAveragePool_Large_256) {
+  OpTester test("GlobalAveragePool");
+
+  std::vector<float> x_vals(1 * 1 * 256 * 256, 3.14159f);
+  std::vector<int64_t> x_dims = {1, 1, 256, 256};
+  std::vector<int64_t> expected_dims = {1, 1, 1, 1};
+  std::vector<float> expected_vals = {3.14159f};
+  test.AddInput<float>("X", x_dims, x_vals);
+  test.AddOutput<float>("Y", expected_dims, expected_vals,
+                        /*sort_output=*/false, /*rel_error=*/1e-3f, /*abs_error=*/1e-2f);
   test.Run();
 }
 

@@ -35,9 +35,10 @@ std::set<std::string> ops_supported_only_in_model = {
     "ConstantOfShape",
     "DequantizeLinear",
     "Dropout",
+    "Exp",
     "Expand",
     "EyeLike",
-    "Exp",
+    "GatherElements",
     "GatherND",
     "Identity",
     "Loop",
@@ -47,6 +48,7 @@ std::set<std::string> ops_supported_only_in_model = {
     "Not",
     "OneHot",
     "Pad",
+    "QuantizeLinear",
     "Range",
     "ReduceMin",
     "Resize",
@@ -55,9 +57,7 @@ std::set<std::string> ops_supported_only_in_model = {
     "Slice",
     "Split",
     "Tile",
-    "TopK",
-    "QuantizeLinear",
-    "GatherElements"};
+    "TopK"};
 
 // Ops which are supported as functions (as composite ops)
 std::set<std::string> ops_supported_as_function = {
@@ -67,166 +67,226 @@ std::set<std::string> ops_supported_as_function = {
 
 std::vector<SupportedOp> supported_op_mode = {
     {"Abs", V_2020_4, {"CPU", "GPU"}},
+    {"Abs", V_2023_0, {"VPUX"}},
     {"Acos", V_2020_4, {"CPU"}},
     {"Acos", V_2022_1, {"GPU"}},
     {"Acosh", V_2020_4, {"CPU"}},
     {"Acosh", V_2022_1, {"GPU"}},
-    {"Add", V_2020_4, {"All"}},
-    {"And", V_2020_4, {"All"}},
+    {"Add", V_2020_4, {"CPU", "GPU"}},
+    {"Add", V_2023_0, {"VPUX"}},
+    {"And", V_2020_4, {"CPU", "GPU"}},
     {"ArgMax", V_2020_4, {"CPU"}},
-    {"ArgMax", V_2021_1, {"All"}},
+    {"ArgMax", V_2021_1, {"GPU"}},
     {"ArgMin", V_2020_4, {"CPU"}},
-    {"ArgMin", V_2021_2, {"CPU", "MYRIAD"}},
-    {"ArgMin", V_2022_1, {"All"}},
+    {"ArgMin", V_2022_1, {"GPU"}},
     {"Asin", V_2020_4, {"CPU", "GPU"}},
     {"Asinh", V_2020_4, {"CPU", "GPU"}},
     {"Atan", V_2020_4, {"CPU", "GPU"}},
     {"Atanh", V_2020_4, {"CPU"}},
     {"Atanh", V_2022_1, {"GPU"}},
-    {"AveragePool", V_2020_4, {"All"}},
-    {"BatchNormalization", V_2020_4, {"All"}},
+    {"AveragePool", V_2020_4, {"CPU", "GPU"}},
+    {"AveragePool", V_2023_0, {"VPUX"}},
+    {"BatchNormalization", V_2020_4, {"CPU", "GPU"}},
+    {"BatchNormalization", V_2023_0, {"VPUX"}},
     {"BitShift", V_2022_1, {"CPU"}},
-    {"Cast", V_2020_4, {"All"}},
+    {"Cast", V_2020_4, {"CPU", "GPU"}},
+    {"Cast", V_2023_0, {"VPUX"}},
     {"Ceil", V_2020_4, {"GPU"}},
-    {"Ceil", V_2021_3, {"MYRIAD"}},
-    {"Ceil", V_2021_2, {"GPU", "MYRIAD"}},
-    {"Ceil", V_2021_4, {"All"}},
-    {"Celu", V_2022_1, {"All"}},
-    {"Clip", V_2020_4, {"All"}},
-    {"Concat", V_2020_4, {"All"}},
-    {"Constant", V_2020_4, {"All"}},
-    {"ConstantOfShape", V_2020_4, {"All"}},
-    {"Conv", V_2020_4, {"All"}},
-    {"ConvInteger", V_2022_1, {"All"}},
-    {"ConvTranspose", V_2020_4, {"All"}},
+    {"Ceil", V_2021_4, {"CPU"}},
+    {"Celu", V_2022_1, {"CPU", "GPU"}},
+    {"Clip", V_2020_4, {"CPU", "GPU"}},
+    {"Clip", V_2023_0, {"VPUX"}},
+    {"Concat", V_2020_4, {"CPU", "GPU"}},
+    {"Concat", V_2023_0, {"VPUX"}},
+    {"Constant", V_2020_4, {"CPU", "GPU"}},
+    {"Constant", V_2023_0, {"VPUX"}},
+    {"ConstantOfShape", V_2020_4, {"CPU", "GPU"}},
+    {"ConstantOfShape", V_2023_0, {"VPUX"}},  // Gets mapped to broadcast op in the plugin.
+    {"Conv", V_2020_4, {"CPU", "GPU"}},
+    {"Conv", V_2023_0, {"VPUX"}},
+    {"ConvInteger", V_2022_1, {"CPU", "GPU"}},
+    {"ConvTranspose", V_2020_4, {"CPU", "GPU"}},
     {"Cos", V_2020_4, {"CPU"}},
     {"Cos", V_2022_1, {"GPU"}},
+    {"Cos", V_2023_0, {"VPUX"}},
     {"Cosh", V_2020_4, {"CPU"}},
     {"Cosh", V_2022_1, {"GPU"}},
     {"CumSum", V_2022_1, {"CPU", "GPU"}},
-    {"DepthToSpace", V_2020_4, {"All"}},
+    {"CumSum", V_2023_0, {"VPUX"}},
+    {"DepthToSpace", V_2020_4, {"CPU", "GPU"}},
+    {"DepthToSpace", V_2023_0, {"VPUX"}},
     {"DequantizeLinear", V_2021_4, {"CPU", "GPU"}},
-    {"Div", V_2020_4, {"All"}},
-    {"Dropout", V_2020_4, {"All"}},
-    {"Elu", V_2020_4, {"All"}},
-    {"Equal", V_2020_4, {"All"}},
-    {"Erf", V_2020_4, {"All"}},
-    {"Exp", V_2020_4, {"All"}},
-    {"Expand", V_2021_1, {"MYRIAD"}},
+    {"DequantizeLinear", V_2023_0, {"VPUX"}},
+    {"Div", V_2020_4, {"CPU", "GPU"}},
+    {"Div", V_2023_0, {"VPUX"}},
+    {"Dropout", V_2020_4, {"CPU", "GPU"}},
+    {"Dropout", V_2023_0, {"VPUX"}},
+    {"Elu", V_2020_4, {"CPU", "GPU"}},
+    {"Elu", V_2023_0, {"VPUX"}},
+    {"Equal", V_2020_4, {"CPU", "GPU"}},
+    {"Equal", V_2023_0, {"VPUX"}},  // Added for whisper decoder model.
+    {"Erf", V_2020_4, {"CPU", "GPU"}},
+    {"Erf", V_2023_0, {"VPUX"}},
+    {"Exp", V_2020_4, {"CPU", "GPU"}},
+    {"Exp", V_2023_0, {"VPUX"}},
     {"Expand", V_2022_1, {"CPU", "GPU"}},
+    {"Expand", V_2023_0, {"VPUX"}},  // Gets mapped to broadcast op and multiply op in the plugin.
     {"EyeLike", V_2022_1, {"CPU"}},
-    {"Flatten", V_2020_4, {"All"}},
-    {"Floor", V_2020_4, {"All"}},
-    {"Gather", V_2020_4, {"All"}},
-    {"GatherElements", V_2021_3, {"MYRIAD"}},
+    {"EyeLike", V_2023_0, {"VPUX"}},  // NoOP
+    {"Flatten", V_2020_4, {"CPU", "GPU"}},
+    {"Flatten", V_2023_0, {"VPUX"}},
+    {"Floor", V_2020_4, {"CPU", "GPU"}},
+    {"Gather", V_2020_4, {"CPU", "GPU"}},
+    {"Gather", V_2023_0, {"VPUX"}},
     {"GatherElements", V_2022_2, {"CPU", "GPU"}},
-    {"GatherND", V_2021_2, {"MYRIAD"}},
-    {"GatherND", V_2021_4, {"All"}},
-    {"Gemm", V_2020_4, {"All"}},
-    {"GlobalAveragePool", V_2020_4, {"All"}},
+    {"GatherND", V_2021_4, {"CPU", "GPU"}},
+    {"Gemm", V_2020_4, {"CPU", "GPU"}},
+    {"Gemm", V_2023_0, {"VPUX"}},
+    {"GlobalAveragePool", V_2020_4, {"CPU", "GPU"}},
+    {"GlobalAveragePool", V_2023_0, {"VPUX"}},
     {"GlobalLpPool", V_2020_4, {"CPU", "GPU"}},
     {"GlobalMaxPool", V_2022_1, {"CPU", "GPU"}},
-    {"Greater", V_2020_4, {"All"}},
-    {"GreaterOrEqual", V_2022_1, {"All"}},
+    {"Greater", V_2020_4, {"CPU", "GPU"}},
+    {"Greater", V_2023_0, {"VPUX"}},
+    {"GreaterOrEqual", V_2022_1, {"CPU", "GPU"}},
+    {"GreaterOrEqual", V_2023_0, {"VPUX"}},
     {"GridSample", V_2022_3, {"CPU"}},
-    {"Identity", V_2020_4, {"All"}},
-    {"If", V_2022_3, {"All"}},
-    {"ImageScaler", V_2022_1, {"All"}},
-    {"InstanceNormalization", V_2020_4, {"All"}},
+    {"Identity", V_2020_4, {"CPU", "GPU"}},
+    {"Identity", V_2023_0, {"VPUX"}},  // NoOP
+    {"If", V_2022_3, {"CPU", "GPU"}},
+    {"ImageScaler", V_2022_1, {"CPU", "GPU"}},
+    {"ImageScaler", V_2023_0, {"VPUX"}},
+    {"InstanceNormalization", V_2020_4, {"CPU", "GPU"}},
+    {"InstanceNormalization", V_2023_0, {"VPUX"}},
     {"HardSigmoid", V_2020_4, {"CPU", "GPU"}},
     {"HardMax", V_2022_1, {"CPU", "GPU"}},
-    {"LeakyRelu", V_2020_4, {"All"}},
-    {"Less", V_2020_4, {"All"}},
-    {"LessOrEqual", V_2022_1, {"All"}},
-    {"Log", V_2020_4, {"All"}},
-    {"LogSoftMax", V_2022_1, {"All"}},
-    {"Loop", V_2021_3, {"MYRIAD"}},
-    {"Loop", V_2021_4, {"All"}},
-    {"LRN", V_2020_4, {"All"}},
-    {"LSTM", V_2020_4, {"All"}},
-    {"MatMul", V_2020_4, {"All"}},
+    {"LeakyRelu", V_2020_4, {"CPU", "GPU"}},
+    {"LeakyRelu", V_2023_0, {"VPUX"}},
+    {"Less", V_2020_4, {"CPU", "GPU"}},
+    {"Less", V_2023_0, {"VPUX"}},  // Added for whisper decoder model.
+    {"LessOrEqual", V_2022_1, {"CPU", "GPU"}},
+    {"LessOrEqual", V_2023_0, {"VPUX"}},
+    {"Log", V_2020_4, {"CPU", "GPU"}},
+    {"Log", V_2023_0, {"VPUX"}},
+    {"LogSoftMax", V_2022_1, {"CPU", "GPU"}},
+    {"Loop", V_2021_4, {"CPU", "GPU"}},
+    {"LRN", V_2020_4, {"CPU", "GPU"}},
+    {"LRN", V_2023_0, {"VPUX"}},
+    {"LSTM", V_2020_4, {"CPU", "GPU"}},
+    {"MatMul", V_2020_4, {"CPU", "GPU"}},
+    {"MatMul", V_2023_0, {"VPUX"}},
     {"MatMulInteger", V_2022_1, {"CPU"}},
-    {"Max", V_2020_4, {"All"}},
-    {"MaxPool", V_2020_4, {"All"}},
-    {"Mean", V_2020_4, {"All"}},
-    {"MeanVarianceNormalization", V_2022_1, {"All"}},
-    {"Min", V_2020_4, {"All"}},
+    {"Max", V_2020_4, {"CPU", "GPU"}},
+    {"Max", V_2023_0, {"VPUX"}},
+    {"MaxPool", V_2020_4, {"CPU", "GPU"}},
+    {"MaxPool", V_2023_0, {"VPUX"}},
+    {"Mean", V_2020_4, {"CPU", "GPU"}},
+    {"Mean", V_2023_0, {"VPUX"}},
+    {"MeanVarianceNormalization", V_2022_1, {"CPU", "GPU"}},
+    {"Min", V_2020_4, {"CPU", "GPU"}},
+    {"Min", V_2023_0, {"VPUX"}},
     {"Mod", V_2022_1, {"CPU", "GPU"}},
-    {"Mul", V_2020_4, {"All"}},
-    {"Neg", V_2020_4, {"All"}},
-    {"NonMaxSuppression", V_2021_1, {"All"}},
-    {"NonZero", V_2021_1, {"CPU", "MYRIAD"}},
-    {"Not", V_2021_1, {"All"}},
+    {"Mul", V_2020_4, {"CPU", "GPU"}},
+    {"Mul", V_2023_0, {"VPUX"}},
+    {"Neg", V_2020_4, {"CPU", "GPU"}},
+    {"Neg", V_2023_0, {"VPUX"}},
+    {"NonMaxSuppression", V_2021_1, {"CPU", "GPU"}},
+    {"NonZero", V_2021_1, {"CPU"}},
+    {"Not", V_2021_1, {"CPU", "GPU"}},
     {"Not", V_2020_4, {"CPU", "GPU"}},
-    {"OneHot", V_2020_4, {"All"}},
+    {"OneHot", V_2020_4, {"CPU", "GPU"}},
     {"Or", V_2022_1, {"CPU", "GPU"}},
-    {"Pad", V_2020_4, {"All"}},
-    {"Pow", V_2020_4, {"All"}},
-    {"PRelu", V_2020_4, {"All"}},
+    {"Pad", V_2020_4, {"CPU", "GPU"}},
+    {"Pad", V_2023_0, {"VPUX"}},
+    {"Pow", V_2020_4, {"CPU", "GPU"}},
+    {"Pow", V_2023_0, {"VPUX"}},
+    {"PRelu", V_2020_4, {"CPU", "GPU"}},
+    {"PRelu", V_2023_0, {"VPUX"}},
     {"QLinearMatMul", V_2022_3, {"CPU"}},
     {"QuantizeLinear", V_2021_4, {"CPU", "GPU"}},
-    {"Range", V_2021_2, {"MYRIAD"}},
-    {"Range", V_2022_1, {"All"}},
-    {"Reciprocal", V_2020_4, {"All"}},
+    {"QuantizeLinear", V_2023_0, {"VPUX"}},
+    {"Range", V_2022_1, {"CPU", "GPU"}},
+    {"Range", V_2023_0, {"VPUX"}},
+    {"Reciprocal", V_2020_4, {"CPU", "GPU"}},
+    {"Reciprocal", V_2023_0, {"VPUX"}},
     {"ReduceL1", V_2022_1, {"CPU", "GPU"}},
     {"ReduceL2", V_2022_1, {"CPU", "GPU"}},
-    {"ReduceLogSum", V_2020_4, {"CPU", "MYRIAD"}},
-    {"ReduceLogSum", V_2022_1, {"All"}},
-    {"ReduceLogSumExp", V_2022_1, {"All"}},
-    {"ReduceMax", V_2020_4, {"All"}},
-    {"ReduceMean", V_2020_4, {"All"}},
-    {"ReduceMin", V_2020_4, {"All"}},
+    {"ReduceLogSum", V_2020_4, {"CPU"}},
+    {"ReduceLogSum", V_2022_1, {"CPU", "GPU"}},
+    {"ReduceLogSumExp", V_2022_1, {"CPU", "GPU"}},
+    {"ReduceMax", V_2020_4, {"CPU", "GPU"}},
+    {"ReduceMean", V_2020_4, {"CPU", "GPU"}},
+    {"ReduceMean", V_2023_0, {"VPUX"}},
+    {"ReduceMin", V_2020_4, {"CPU", "GPU"}},
     {"ReduceProd", V_2020_4, {"CPU"}},
     {"ReduceProd", V_2022_1, {"GPU"}},
-    {"ReduceSum", V_2020_4, {"All"}},
-    {"ReduceSumSquare", V_2020_4, {"CPU", "MYRIAD"}},
-    {"ReduceSumSquare", V_2022_1, {"All"}},
-    {"Relu", V_2020_4, {"All"}},
+    {"ReduceSum", V_2020_4, {"CPU", "GPU"}},
+    {"ReduceSumSquare", V_2020_4, {"CPU"}},
+    {"ReduceSumSquare", V_2022_1, {"CPU", "GPU"}},
+    {"Relu", V_2020_4, {"CPU", "GPU"}},
+    {"Relu", V_2023_0, {"VPUX"}},
     {"Resize", V_2020_4, {"CPU"}},
-    {"Resize", V_2021_3, {"MYRIAD"}},
-    {"Resize", V_2022_1, {"All"}},
-    {"Reshape", V_2020_4, {"All"}},
+    {"Resize", V_2022_1, {"GPU"}},
+    {"Reshape", V_2020_4, {"CPU", "GPU"}},
+    {"Reshape", V_2023_0, {"VPUX"}},
     {"ReverseSequence", V_2022_1, {"CPU", "GPU"}},
-    {"RoiAlign", V_2021_1, {"All"}},
-    {"Round", V_2021_2, {"MYRIAD"}},
-    {"Round", V_2021_4, {"All"}},
-    {"Scatter", V_2021_1, {"MYRIAD"}},
-    {"Scatter", V_2022_1, {"All"}},
-    {"ScatterElements", V_2021_2, {"MYRIAD"}},
-    {"ScatterElements", V_2022_1, {"All"}},
+    {"RoiAlign", V_2021_1, {"CPU", "GPU"}},
+    {"Round", V_2021_4, {"CPU", "GPU"}},
+    {"Scatter", V_2022_1, {"CPU", "GPU"}},
+    {"ScatterElements", V_2022_1, {"CPU", "GPU"}},
     {"ScatterND", V_2022_1, {"CPU", "GPU"}},
     {"Selu", V_2020_4, {"CPU", "GPU"}},
-    {"Shape", V_2020_4, {"All"}},
+    {"Shape", V_2020_4, {"CPU", "GPU"}},
+    {"Shape", V_2023_0, {"VPUX"}},
     {"Shrink", V_2022_1, {"CPU", "GPU"}},
-    {"Sigmoid", V_2020_4, {"All"}},
+    {"Shrink", V_2023_0, {"VPUX"}},
+    {"Sigmoid", V_2020_4, {"CPU", "GPU"}},
+    {"Sigmoid", V_2023_0, {"VPUX"}},
     {"Sign", V_2020_4, {"CPU"}},
     {"Sign", V_2022_1, {"GPU"}},
+    {"Sign", V_2023_0, {"VPUX"}},
     {"Sin", V_2022_1, {"CPU", "GPU"}},
+    {"Sin", V_2023_0, {"VPUX"}},
     {"Sinh", V_2020_4, {"CPU"}},
-    {"SinFloat", V_2020_4, {"MYRIAD"}},
     {"Size", V_2022_1, {"CPU", "GPU"}},
-    {"Slice", V_2020_4, {"All"}},
-    {"Softmax", V_2020_4, {"All"}},
-    {"Softplus", V_2022_1, {"All"}},
-    {"Softsign", V_2022_1, {"All"}},
-    {"SpaceToDepth", V_2020_4, {"All"}},
-    {"Split", V_2020_4, {"All"}},
-    {"Sqrt", V_2020_4, {"All"}},
-    {"Squeeze", V_2020_4, {"All"}},
+    {"Slice", V_2020_4, {"CPU", "GPU"}},
+    {"Slice", V_2023_0, {"VPUX"}},
+    {"Softmax", V_2020_4, {"CPU", "GPU"}},
+    {"Softmax", V_2023_0, {"VPUX"}},
+    {"Softplus", V_2022_1, {"CPU", "GPU"}},
+    {"Softplus", V_2023_0, {"VPUX"}},
+    {"Softsign", V_2022_1, {"CPU", "GPU"}},
+    {"SpaceToDepth", V_2020_4, {"CPU", "GPU"}},
+    {"SpaceToDepth", V_2023_0, {"VPUX"}},
+    {"Split", V_2020_4, {"CPU", "GPU"}},
+    {"Split", V_2023_0, {"VPUX"}},
+    {"Sqrt", V_2020_4, {"CPU", "GPU"}},
+    {"Sqrt", V_2023_0, {"VPUX"}},
+    {"Squeeze", V_2020_4, {"CPU", "GPU"}},
+    {"Squeeze", V_2023_0, {"VPUX"}},
     {"Softsign", V_2020_4, {"CPU"}},
-    {"Sub", V_2020_4, {"All"}},
-    {"Sum", V_2020_4, {"All"}},
+    {"Sub", V_2020_4, {"CPU", "GPU"}},
+    {"Sub", V_2023_0, {"VPUX"}},
+    {"Sum", V_2020_4, {"CPU", "GPU"}},
+    {"Sum", V_2023_0, {"VPUX"}},
     {"Tan", V_2020_4, {"CPU", "GPU"}},
-    {"Tanh", V_2020_4, {"All"}},
-    {"ThresholdedRelu", V_2022_1, {"All"}},
-    {"Tile", V_2021_3, {"All"}},
-    {"Transpose", V_2020_4, {"All"}},
-    {"TopK", V_2020_4, {"All"}},
-    {"Unsqueeze", V_2020_4, {"All"}},
+    {"Tanh", V_2020_4, {"CPU", "GPU"}},
+    {"Tanh", V_2023_0, {"VPUX"}},
+    {"ThresholdedRelu", V_2022_1, {"CPU", "GPU"}},
+    {"ThresholdedRelu", V_2023_0, {"VPUX"}},
+    {"Tile", V_2021_3, {"CPU", "GPU"}},
+    {"Tile", V_2023_0, {"VPUX"}},
+    {"Transpose", V_2020_4, {"CPU", "GPU"}},
+    {"Transpose", V_2023_0, {"VPUX"}},
+    {"TopK", V_2020_4, {"CPU", "GPU"}},
+    {"TopK", V_2023_0, {"VPUX"}},
+    {"Unsqueeze", V_2020_4, {"CPU", "GPU"}},
+    {"Unsqueeze", V_2023_0, {"VPUX"}},
     {"Upsample", V_2021_1, {"CPU"}},
-    {"Upsample", V_2021_4, {"All"}},
-    {"Where", V_2021_2, {"MYRIAD"}},
-    {"Where", V_2022_1, {"All"}},
+    {"Upsample", V_2021_4, {"GPU"}},
+    {"Upsample", V_2023_0, {"VPUX"}},
+    {"Where", V_2022_1, {"CPU", "GPU"}},
+    {"Where", V_2023_0, {"VPUX"}},  // Added for whisper decoder model.
     {"Xor", V_2022_1, {"CPU", "GPU"}},
 };
 
@@ -267,55 +327,43 @@ void DataOps::populate_types_supported() {
 }
 
 void DataOps::populate_op_mode_supported() {
-  no_dimension_supported_.push_back({"Unsqueeze", V_2020_4, {"All"}});
-  no_dimension_supported_.push_back({"Squeeze", V_2020_4, {"All"}});
-  no_dimension_supported_.push_back({"Cast", V_2020_4, {"All"}});
-  no_dimension_supported_.push_back({"Gather", V_2020_4, {"All"}});
-  no_dimension_supported_.push_back({"Mul", V_2020_4, {"All"}});
-  no_dimension_supported_.push_back({"Sub", V_2020_4, {"All"}});
-  no_dimension_supported_.push_back({"Min", V_2020_4, {"All"}});
-  no_dimension_supported_.push_back({"Div", V_2020_4, {"All"}});
-  no_dimension_supported_.push_back({"Floor", V_2020_4, {"All"}});
-  no_dimension_supported_.push_back({"Where", V_2021_2, {"All"}});
-  no_dimension_supported_.push_back({"Range", V_2021_2, {"All"}});
-  no_dimension_supported_.push_back({"ArgMin", V_2021_2, {"MYRIAD"}});
-  no_dimension_supported_.push_back({"Max", V_2021_2, {"MYRIAD"}});
-  no_dimension_supported_.push_back({"Add", V_2021_2, {"MYRIAD"}});
   no_dimension_supported_.push_back({"Add", V_2022_1, {"All"}});
   no_dimension_supported_.push_back({"And", V_2022_1, {"All"}});
-  no_dimension_supported_.push_back({"Less", V_2021_2, {"MYRIAD"}});
-  no_dimension_supported_.push_back({"Less", V_2022_1, {"CPU"}});
-  no_dimension_supported_.push_back({"Greater", V_2021_2, {"MYRIAD"}});
-  no_dimension_supported_.push_back({"Clip", V_2021_2, {"MYRIAD"}});
-  no_dimension_supported_.push_back({"Clip", V_2022_1, {"All"}});
-  no_dimension_supported_.push_back({"Resize", V_2021_2, {"MYRIAD"}});
-  no_dimension_supported_.push_back({"Equal", V_2021_2, {"MYRIAD"}});
-  no_dimension_supported_.push_back({"Equal", V_2022_1, {"CPU"}});
-  no_dimension_supported_.push_back({"Reshape", V_2021_3, {"MYRIAD"}});
-  no_dimension_supported_.push_back({"Reshape", V_2022_1, {"All"}});
-  no_dimension_supported_.push_back({"Ceil", V_2021_3, {"MYRIAD"}});
+  no_dimension_supported_.push_back({"Cast", V_2020_4, {"All"}});
   no_dimension_supported_.push_back({"Ceil", V_2021_4, {"All"}});
-  no_dimension_supported_.push_back({"Loop", V_2021_3, {"MYRIAD"}});
-  no_dimension_supported_.push_back({"Loop", V_2021_4, {"All"}});
-  no_dimension_supported_.push_back({"ReduceMin", V_2021_3, {"MYRIAD"}});
-  no_dimension_supported_.push_back({"ReduceMin", V_2021_4, {"All"}});
-  no_dimension_supported_.push_back({"ReduceMax", V_2021_4, {"All"}});
-  no_dimension_supported_.push_back({"ReduceProd", V_2022_1, {"CPU", "GPU"}});
-  no_dimension_supported_.push_back({"QuantizeLinear", V_2021_4, {"All"}});
+  no_dimension_supported_.push_back({"Clip", V_2022_1, {"All"}});
+  no_dimension_supported_.push_back({"Div", V_2020_4, {"All"}});
   no_dimension_supported_.push_back({"DequantizeLinear", V_2021_4, {"All"}});
+  no_dimension_supported_.push_back({"Equal", V_2022_1, {"CPU"}});
+  no_dimension_supported_.push_back({"Floor", V_2020_4, {"All"}});
+  no_dimension_supported_.push_back({"Gather", V_2020_4, {"All"}});
+  no_dimension_supported_.push_back({"Greater", V_2023_0, {"VPUX"}});
+  no_dimension_supported_.push_back({"Less", V_2022_1, {"CPU"}});
+  no_dimension_supported_.push_back({"Loop", V_2021_4, {"All"}});
+  no_dimension_supported_.push_back({"Max", V_2023_0, {"VPUX"}});
+  no_dimension_supported_.push_back({"Min", V_2020_4, {"All"}});
+  no_dimension_supported_.push_back({"Mul", V_2020_4, {"All"}});
+  no_dimension_supported_.push_back({"QuantizeLinear", V_2021_4, {"All"}});
+  no_dimension_supported_.push_back({"Range", V_2021_2, {"All"}});
+  no_dimension_supported_.push_back({"ReduceMax", V_2021_4, {"All"}});
+  no_dimension_supported_.push_back({"ReduceMin", V_2021_4, {"All"}});
+  no_dimension_supported_.push_back({"ReduceProd", V_2022_1, {"CPU", "GPU"}});
+  no_dimension_supported_.push_back({"Reshape", V_2022_1, {"All"}});
   no_dimension_supported_.push_back({"Shape", V_2022_1, {"GPU"}});
+  no_dimension_supported_.push_back({"Squeeze", V_2020_4, {"All"}});
+  no_dimension_supported_.push_back({"Sub", V_2020_4, {"All"}});
+  no_dimension_supported_.push_back({"Unsqueeze", V_2020_4, {"All"}});
+  no_dimension_supported_.push_back({"Where", V_2021_2, {"All"}});
 
-  subgraph_supported_.push_back({"Mul", V_2020_4, {"All"}});
-  subgraph_supported_.push_back({"Transpose", V_2020_4, {"All"}});
-  subgraph_supported_.push_back({"Unsqueeze", V_2020_4, {"All"}});
   subgraph_supported_.push_back({"Cast", V_2020_4, {"All"}});
   subgraph_supported_.push_back({"Concat", V_2020_4, {"All"}});
-  subgraph_supported_.push_back({"Gather", V_2020_4, {"All"}});
-  subgraph_supported_.push_back({"Div", V_2020_4, {"MYRIAD"}});
-  subgraph_supported_.push_back({"Sub", V_2020_4, {"MYRIAD"}});
-  subgraph_supported_.push_back({"Identity", V_2021_1, {"CPU"}});
   subgraph_supported_.push_back({"Div", V_2021_1, {"CPU"}});
+  subgraph_supported_.push_back({"Gather", V_2020_4, {"All"}});
+  subgraph_supported_.push_back({"Identity", V_2021_1, {"CPU"}});
+  subgraph_supported_.push_back({"Mul", V_2020_4, {"All"}});
   subgraph_supported_.push_back({"Sub", V_2021_1, {"CPU"}});
+  subgraph_supported_.push_back({"Transpose", V_2020_4, {"All"}});
+  subgraph_supported_.push_back({"Unsqueeze", V_2020_4, {"All"}});
 
   // populate unsupportedmode_t
   {
@@ -357,13 +405,6 @@ void DataOps::populate_op_mode_supported() {
                                  const bool data_is_int64 = node->InputDefs()[0]->Type()->find("int64") != std::string::npos;
                                  return data_is_int64;
                                }
-                               if (device_id_.find("MYRIAD") != std::string::npos) {
-                                 // int64,int8,uint8 data type is not supported on MYRIAD
-                                 const bool data_is_int64 = node->InputDefs()[0]->Type()->find("int64") != std::string::npos;
-                                 const bool data_is_int8 = node->InputDefs()[0]->Type()->find("int8") != std::string::npos;
-                                 const bool data_is_uint8 = node->InputDefs()[0]->Type()->find("uint8") != std::string::npos;
-                                 return (data_is_int64 || data_is_int8 || data_is_uint8);
-                               }
                                return false;
                              }};
     op_list_.insert({"Clip", obj});
@@ -371,15 +412,6 @@ void DataOps::populate_op_mode_supported() {
   {
     UnsupportedOpMode obj = {{V_2022_1, V_2022_2, V_2022_3},
                              [this](const Node* node, const InitializedTensorSet&) {
-                               if (device_id_.find("MYRIAD") != std::string::npos) {
-                                 const auto& attributes = node->GetAttributes();
-                                 auto conv_filter = attributes.find("kernel_shape");
-                                 auto& ints = conv_filter->second().ints();
-                                 // If the kernel size is not 2D, the op is rejected in case of MYRIAD
-                                 if (ints.size() != 2) {
-                                   return true;
-                                 }
-                               }
                                if (device_id_.find("GPU") != std::string::npos) {
                                  bool if_bias = false;
                                  const auto& attributes = node->GetAttributes();
@@ -403,11 +435,7 @@ void DataOps::populate_op_mode_supported() {
   }
   {
     UnsupportedOpMode obj = {{V_2022_1, V_2022_2, V_2022_3},
-                             [this](const Node* node, const InitializedTensorSet& initializers) {
-                               if (device_id_.find("MYRIAD") != std::string::npos) {
-                                 if (GetInputCount(node, initializers) > 1)
-                                   return true;
-                               }
+                             [this](const Node* node, const InitializedTensorSet&) {
                                if (device_id_.find("GPU") != std::string::npos) {
                                  // If the device is GPU, only 2D dilations with 1x1 pixel are supported
                                  const auto& attributes = node->GetAttributes();
@@ -434,25 +462,6 @@ void DataOps::populate_op_mode_supported() {
     op_list_.insert({"ConvTranspose", obj});
   }
   {
-    UnsupportedOpMode obj = {{V_2022_1, V_2022_2, V_2022_3},
-                             [this](const Node* node, const InitializedTensorSet&) {
-                               if (device_id_.find("MYRIAD") != std::string::npos) {
-                                 const auto& indices_arg = node->InputDefs()[0];
-                                 const auto& output_arg = node->OutputDefs()[0];
-                                 if (indices_arg->TypeAsProto()->tensor_type().elem_type() != output_arg->TypeAsProto()->tensor_type().elem_type())
-                                   return true;
-                                 if ((indices_arg->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16) ||
-                                     (indices_arg->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT) ||
-                                     (indices_arg->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32) ||
-                                     (indices_arg->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT64)) {
-                                   return false;
-                                 }
-                               }
-                               return true;
-                             }};
-    op_list_.insert({"GatherElements", obj});
-  }
-  {
     UnsupportedOpMode obj = {{V_2022_3},
                              [this](const Node* node, const InitializedTensorSet&) {
                                if (device_id_.find("GPU") != std::string::npos && node->OpType() == "If") {
@@ -466,18 +475,6 @@ void DataOps::populate_op_mode_supported() {
                                return true;
                              }};
     op_list_.insert({"If", obj});
-  }
-  {
-    UnsupportedOpMode obj = {{V_2022_1, V_2022_2, V_2022_3},
-                             [this](const Node* node, const InitializedTensorSet&) {
-                               // If the Input size of LSTM is greater than 3, it is rejected.
-                               if (device_id_.find("MYRIAD") != std::string::npos) {
-                                 if (node->InputDefs().size() > 3)
-                                   return true;
-                               }
-                               return false;
-                             }};
-    op_list_.insert({"LSTM", obj});
   }
   {
     UnsupportedOpMode obj = {{V_2022_1, V_2022_2, V_2022_3},
@@ -598,6 +595,7 @@ void DataOps::populate_op_mode_supported() {
                                const auto& input_arg = node->InputDefs()[1];
                                auto shape = input_arg->Shape();
                                // Reshape op with empty dim is Rejected for Myriad
+                               //[TODO] Is this condition required anymore with Myriad removed?
                                if (shape != nullptr) {
                                  for (const auto& dim : input_arg->Shape()->dim()) {
                                    if (utils::HasDimValue(dim) && dim.dim_value() == 0)
@@ -624,7 +622,7 @@ void DataOps::populate_op_mode_supported() {
   {
     UnsupportedOpMode obj = {{V_2022_1, V_2022_2, V_2022_3},
                              [this](const Node* node, const InitializedTensorSet&) {
-                               if (device_id_.find("GPU") != std::string::npos || device_id_.find("MYRIAD") != std::string::npos) {
+                               if (device_id_.find("GPU") != std::string::npos) {
                                  // INT32 dataype is not supported as input
                                  for (size_t i = 0; i < node->InputDefs().size(); i++) {
                                    if (node->InputDefs()[i]->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32)
@@ -634,34 +632,6 @@ void DataOps::populate_op_mode_supported() {
                                return false;
                              }};
     op_list_.insert({"ReduceLogSumExp", obj});
-  }
-  {
-    UnsupportedOpMode obj = {{V_2022_1, V_2022_2, V_2022_3},
-                             [this](const Node* node, const InitializedTensorSet&) {
-                               if (device_id_.find("MYRIAD") != std::string::npos) {
-                                 const auto& attributes = node->GetAttributes();
-                                 auto axis_attr = attributes.find("axis");
-                                 // Negative axis is not supported
-                                 if (axis_attr->second().i() < 0)
-                                   return true;
-
-                                 const auto& input_arg = node->InputDefs()[2];
-                                 auto updates_shape = input_arg->Shape();
-                                 const auto& output_arg = node->OutputDefs()[0];
-                                 auto out_shape = output_arg->Shape();
-                                 // If updates attribute dim value greater than output_shape dim value, we reject
-                                 if (node->InputDefs()[2]->Name() == "updates") {
-                                   size_t updates_size = updates_shape->dim_size();
-                                   if (updates_size == 2) {
-                                     if (updates_shape->dim(1).dim_value() > out_shape->dim(1).dim_value())
-                                       return true;
-                                   }
-                                 }
-                               }
-                               return false;
-                             }};
-    op_list_.insert({"Scatter", obj});
-    op_list_.insert({"ScatterElements", obj});
   }
   {
     UnsupportedOpMode obj = {{V_2022_1, V_2022_2, V_2022_3},
@@ -866,7 +836,7 @@ bool DataOps::type_is_supported(const NodeArg* node_arg, bool is_initializer) {
   } else {
     auto dtype = type_proto->tensor_type().elem_type();
 
-    if (device_id_ == "MYRIAD" || device_id_ == "HDDL" || device_id_.find("HETERO") != std::string::npos ||
+    if (device_id_.find("VPUX") != std::string::npos || device_id_.find("HETERO") != std::string::npos ||
         device_id_.find("MULTI") != std::string::npos || device_id_.find("AUTO") != std::string::npos) {
       for (auto const& var : supported_types_vpu_) {
         if ((var.first <= version_id_) &&
@@ -1046,8 +1016,6 @@ bool DataOps::node_is_supported(const std::map<std::string, std::set<std::string
         // Zero dimension check
         for (const auto& dim : shape->dim()) {
           if (utils::HasDimValue(dim) && dim.dim_value() == 0) {
-            if ((device_id_.find("MYRIAD") != std::string::npos) && (optype == "Resize"))
-              return;
             if ((device_id_.find("GPU") != std::string::npos) && ((optype == "Expand") ||
                                                                   (optype == "Slice") || (optype == "Concat") || (optype == "Shape"))) {
               return;
@@ -1128,12 +1096,7 @@ bool DataOps::IsOpSupportedOnlyInModel(std::string name) {
 }
 
 bool DataOps::SpecialConditionForClusterSizeOne(std::unordered_set<std::string>& ng_required_initializers, const Node* node) {
-  if (node->OpType() == "Where") {
-    if (device_id_.find("MYRIAD") != std::string::npos) {
-      if (node->InputDefs()[1]->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT)
-        return true;
-    }
-  } else if (node->OpType() == "Reshape") {
+  if (node->OpType() == "Reshape") {
     const auto& shape_arg = node->InputDefs()[1];
     if (ng_required_initializers.find(shape_arg->Name()) == ng_required_initializers.end()) {
       return true;
@@ -1156,30 +1119,6 @@ bool DataOps::SpecialConditionForClusterSizeOne(std::unordered_set<std::string>&
         (input_2_data_type != onnx_dtype::TensorProto_DataType_FLOAT) ||
         (output_data_type != onnx_dtype::TensorProto_DataType_FLOAT16))
       return true;
-  } else if ((node->OpType() == "Greater") || (node->OpType() == "Less")) {
-    if (device_id_.find("MYRIAD") != std::string::npos) {
-      auto input_0_data_type = (ONNX_NAMESPACE::TensorProto_DataType)node->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
-      auto input_1_data_type = (ONNX_NAMESPACE::TensorProto_DataType)node->InputDefs()[1]->TypeAsProto()->tensor_type().elem_type();
-      auto output_data_type = (ONNX_NAMESPACE::TensorProto_DataType)node->OutputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
-
-      if (!((output_data_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT) ||
-            (output_data_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16))) {
-        return true;
-      }
-
-      if ((input_0_data_type != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16) ||
-          (input_1_data_type != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16)) {
-        return true;
-      }
-    }
-  } else if (node->OpType() == "MaxPool" && device_id_.find("MYRIAD") != std::string::npos) {
-    auto output_data_type = node->OutputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
-    if (output_data_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT ||
-        output_data_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16) {
-      return false;
-    } else {
-      return true;
-    }
   }
   return false;
 }
@@ -1188,17 +1127,9 @@ bool DataOps::DoNotOmitSubGraph(const std::string& name) {
   return op_is_supported(name, subgraph_supported_);
 }
 
-bool DataOps::InsertNode(const Node* node, const std::string& optype) {
+bool DataOps::InsertNode(const std::string& optype) {
   if (optype == "TopK" || optype == "NonZero") {
     return true;
-  }
-  if (optype == "Gather") {
-    if (device_id_.find("MYRIAD") != std::string::npos) {
-      auto input_data_type = node->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
-      if (input_data_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT8) {
-        return true;
-      }
-    }
   }
   return false;
 }

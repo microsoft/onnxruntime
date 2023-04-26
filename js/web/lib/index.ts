@@ -13,8 +13,12 @@ if (!BUILD_DEFS.DISABLE_WEBGL) {
   const onnxjsBackend = require('./backend-onnxjs').onnxjsBackend;
   registerBackend('webgl', onnxjsBackend, -10);
 }
+
 if (!BUILD_DEFS.DISABLE_WASM) {
   const wasmBackend = require('./backend-wasm').wasmBackend;
+  if (!BUILD_DEFS.DISABLE_WEBGPU) {
+    registerBackend('webgpu', wasmBackend, 5);
+  }
   registerBackend('cpu', wasmBackend, 10);
   registerBackend('wasm', wasmBackend, 10);
   registerBackend('xnnpack', wasmBackend, 9);

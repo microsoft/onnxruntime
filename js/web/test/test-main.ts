@@ -54,6 +54,9 @@ if (options.globalEnvFlags) {
   if (flags.wasm?.initTimeout !== undefined) {
     ort.env.wasm.initTimeout = flags.wasm.initTimeout;
   }
+  if (flags.webgpu?.profilingMode !== undefined) {
+    ort.env.webgpu.profilingMode = flags.webgpu.profilingMode;
+  }
 }
 
 // Set logging configuration
