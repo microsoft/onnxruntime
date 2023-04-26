@@ -6,6 +6,8 @@ Validate ORT kernel registrations.
 """
 
 import argparse
+import dataclasses
+import itertools
 import os
 import sys
 import typing
@@ -30,12 +32,69 @@ deprecated_ops = {
 }
 
 
+@dataclasses.dataclass
+class RegistrationInfo:
+    domain: str
+    operator: str
+    start_version: int
+    end_version: typing.Optional[int]
+
 class RegistrationValidator(op_registration_utils.RegistrationProcessor):
     def __init__(self):
         self.last_op_registrations = {}
         self.failed = False
 
+        self.all_registrations: typing.List[RegistrationInfo] = []
+
     def process_registration(
+        self,
+        lines: typing.List[str],
+        domain: str,
+        operator: str,
+        start_version: int,
+        end_version: typing.Optional[int] = None,
+        type: typing.Optional[str] = None,
+    ):
+        self.all_registrations.append(RegistrationInfo(domain=domain,
+                                                       operator=operator,
+                                                       start_version=start_version,
+                                                       end_version=end_version))
+
+    def _validate_registrations_for_domain_and_op(self, registrations: typing.Sequence[RegistrationInfo]) -> int:
+        num_invalid_registrations = 0
+        prev_start_version, prev_end_version = None, None
+        for r in registrations:
+            assert r.end_version is None or r.start_version < r.end_version
+            # TODO finish implementing this...
+
+            prev_start_version, prev_end_version = registration.start_version, registration.end_version
+
+        return num_invalid_registrations
+
+    def _validate_all_registrations(self) -> bool:
+        def registration_info_sort_key(r: RegistrationInfo):
+            return (r.domain,
+                    r.operator,
+                    r.start_version,
+                    1 if r.end_version is None else 0,  # unspecified end_version > specified end_version
+                    r.end_version)
+
+        sorted_registrations = sorted(self.all_registrations, key=registration_info_sort_key)
+
+        def domain_and_op_key(r: RegistrationInfo):
+            return (r.domain, r.operator)
+
+        num_invalid_registrations = 0
+        for _, registration_group in itertools.groupby(sorted_registrations, key=domain_and_op_key):
+            num_invalid_registrations += self._validate_registrations_for_domain_and_op(registration_group)
+
+        if num_invalid_registrations > 0:
+            log.error(f"Found {num_invalid_registrations} invalid registrations.")
+            return False
+
+        return True
+
+    def process_registration_original(
         self,
         lines: typing.List[str],
         domain: str,
