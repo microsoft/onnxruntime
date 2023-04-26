@@ -803,7 +803,7 @@ class ONNXQuantizer:
                 quantized_input_names.append(quantized_value.q_name)
                 continue
             # adding this for case embed_layernorm.py has optional segment_embedding
-            if node_input == "":
+            if node_input is "":
                 quantized_input_names.append("")
                 scale_names.append("")
                 zero_point_names.append("")
