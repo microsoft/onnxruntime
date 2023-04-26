@@ -619,7 +619,7 @@ struct OrtApiBase {
    *   older than the version created with this header file.
    */
   const OrtApi*(ORT_API_CALL* GetApi)(uint32_t version)NO_EXCEPTION;
-  const char*(ORT_API_CALL* GetVersionString)(void)NO_EXCEPTION;  ///< Returns a null terminated string of the version of the Onnxruntime library (eg: "1.8.1")
+  const char*(ORT_API_CALL* GetVersionString)(void)NO_EXCEPTION;    ///< Returns a null terminated string of the version of the Onnxruntime library (eg: "1.8.1")
   const char*(ORT_API_CALL* GetBuildInfoString)(void)NO_EXCEPTION;  ///< Returns a null terminated string of the build info including git info and cxx flags
 };
 typedef struct OrtApiBase OrtApiBase;

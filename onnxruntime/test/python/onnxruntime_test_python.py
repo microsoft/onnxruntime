@@ -71,7 +71,7 @@ class TestInferenceSession(unittest.TestCase):
 
     def testGetBuildInfo(self):  # noqa: N802
         self.assertIsNot(onnxrt.get_build_info(), None)
-        self.assertTrue("Build Info" in onnxrt.get_build_info())
+        self.assertIn("Build Info", onnxrt.get_build_info())
 
     def testModelSerialization(self):  # noqa: N802
         try:
