@@ -2,8 +2,6 @@ parameters:
   AgentPool: 'aiinfra-Linux-CPU'
   ArtifactSuffix: ''
   NugetPackageName : ''
-  specificArtifact: false
-  runId: '0'
 
 stages:
 - stage: NuGet_Test_Linux_${{ parameters.ArtifactSuffix }}
@@ -29,16 +27,12 @@ stages:
         stepName: 'Download Signed NuGet'
         artifactName: drop-signed-nuget-${{ parameters.ArtifactSuffix }}
         targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
-        specificArtifact: ${{ parameters.specificArtifact }}
-        runId: ${{ parameters.runId }}
 
     - template: ../../templates/flex-downloadPipelineArtifact.yml
       parameters:
         stepName: 'Download Linux CustomOp TestData'
         artifactName: 'onnxruntime-linux-x64'
         targetPath: '$(Build.BinariesDirectory)/testdata'
-        specificArtifact: ${{ parameters.specificArtifact }}
-        runId: ${{ parameters.runId }}
 
     - template: get-nuget-package-version-as-variable.yml
       parameters:
