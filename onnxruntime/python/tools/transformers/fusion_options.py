@@ -32,7 +32,6 @@ class FusionOptions:
         #     merged into one.
         # (2) Attention could only handle self attention; MultiHeadAttention could handle both self and cross attention.
         self.use_multi_head_attention = False
-        self.use_decoder_masked_multi_head_attention = False
 
         self.enable_skip_layer_norm = True
         self.enable_embed_layer_norm = True
@@ -232,15 +231,6 @@ class FusionOptions:
             "Note that MultiHeadAttention might be slower than Attention when qkv are not packed. ",
         )
         parser.set_defaults(use_multi_head_attention=False)
-
-        parser.add_argument(
-            "--use_decoder_masked_multi_head_attention",
-            required=False,
-            action="store_true",
-            help="Use DecoderMaskedMultiHeadAttention instead of Attention operator. Set use_multi_head_attention first!"
-            "Note that DecoderMaskedMultiHeadAttention might be slower than Attention when qkv are not packed. ",
-        )
-        parser.set_defaults(use_decoder_masked_multi_head_attention=False)
 
         parser.add_argument(
             "--disable_group_norm",

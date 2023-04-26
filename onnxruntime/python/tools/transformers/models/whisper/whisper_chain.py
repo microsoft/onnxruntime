@@ -57,7 +57,7 @@ def chain_model(args):
     )
 
     # beam graph inputs
-    float_data_type = TensorProto.FLOAT 
+    float_data_type = TensorProto.FLOAT
     if args.precision != Precision.FLOAT32:
         float_data_type = TensorProto.FLOAT16
 

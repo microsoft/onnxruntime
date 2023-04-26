@@ -1191,7 +1191,7 @@ def update_decoder_subgraph_share_buffer_and_use_decoder_masked_mha(subg: GraphP
     new_nodes = []
     old_nodes = []
     for node in subg.node:
-        if node.op_type == "MultiHeadAttention" or node.op_type == "DecoderMaskedMultiHeadAttention":
+        if node.op_type == "MultiHeadAttention":
             old_nodes.extend([node])
 
     # If not all the MultiheadAttention nodes are fused, this optimization is not applicable
@@ -1237,20 +1237,16 @@ def update_decoder_subgraph_share_buffer_and_use_decoder_masked_mha(subg: GraphP
                 node.input[0],  # query
                 node.input[1],  # key
                 node.input[2],  # value
-                node.input[4],  # 2D mask
-                node.input[5],  # relative_position_bias
             ]
 
-            if len(node.input) > 6:
-                nis.extend([node.input[6]])  # past_key
-                nis.extend([node.input[7]])  # past_value
-            else:
-                nis.extend([""])  # past_key
-                nis.extend([""])  # past_value
-
-            nis.extend(["past_sequence_length"])  # past_sequence_length
-            nis.extend(["beam_width"])  # beam_width
-            nis.extend(["cache_indirection"])  # cache_indirection
+            nis.extend([node.input[4] if len(node.input) > 4 else ""])  # 2D mask
+            nis.extend([node.input[5] if len(node.input) > 5 else ""])  # relative_position_bias
+            nis.extend([node.input[6] if len(node.input) > 6 else ""])  # past_key
+            nis.extend([node.input[7] if len(node.input) > 7 else ""])  # past_value
+            nis.extend(["past_sequence_length"])                        # past_sequence_length
+            nis.extend(["beam_width"])                                  # beam_width
+            nis.extend(["cache_indirection"])                           # cache_indirection
+            nis.extend([node.input[3] if len(node.input) > 3 else ""])  # bias
 
             kwargs["past_present_share_buffer"] = 1
 

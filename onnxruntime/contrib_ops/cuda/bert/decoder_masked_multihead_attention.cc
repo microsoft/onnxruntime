@@ -22,9 +22,7 @@ static constexpr int kBeamWidthInputIndex = 8;
 static constexpr int kCacheIndirectionInputIndex = 9;
 static constexpr int kPastInputIndex = 5;
 static constexpr int kPresentOutputIndex = 1;
-static constexpr int kBiasQ = 10;
-static constexpr int kBiasK = 11;
-static constexpr int kBiasV = 12;
+static constexpr int kBiasIndex = 10;
 
 #define REGISTER_KERNEL_TYPED(T1, T2)                                         \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                              \
@@ -66,16 +64,14 @@ Status DecoderMaskedMultiHeadAttention<T1, T2>::ComputeInternal(OpKernelContext*
   const Tensor* past_seq_len = context->Input<Tensor>(kPastSequenceLengthInputIndex);
   const Tensor* beam_width = context->Input<Tensor>(kBeamWidthInputIndex);
   const Tensor* cache_indir = context->Input<Tensor>(kCacheIndirectionInputIndex);
-  const Tensor* bias_q = context->Input<Tensor>(kBiasQ);
-  const Tensor* bias_k = context->Input<Tensor>(kBiasK);
-  const Tensor* bias_v = context->Input<Tensor>(kBiasV);
+  const Tensor* bias = context->Input<Tensor>(kBiasIndex);
 
   auto& device_prop = GetDeviceProp();
   DecoderMaskedMultiHeadAttentionParams parameters;
   ORT_RETURN_IF_ERROR(multihead_attention_helper::CheckInputs<Tensor>(query,
                                                                       key,
                                                                       value,
-                                                                      nullptr,  // bias
+                                                                      bias,
                                                                       mask_index,
                                                                       relative_position_bias,
                                                                       past_key,
@@ -88,15 +84,11 @@ Status DecoderMaskedMultiHeadAttention<T1, T2>::ComputeInternal(OpKernelContext*
                                                                       past_present_share_buffer_,
                                                                       device_prop.maxThreadsPerBlock));
 
-  // TODO: check BiasQ, BiasK, BiasV
-  if (bias_q){
-    parameters.q_bias = (void*)bias_q->template Data<T1>();
-  }
-  if (bias_k){
-    parameters.k_bias = (void*)bias_k->template Data<T1>();
-  }
-  if (bias_v){
-    parameters.v_bias = (void*)bias_v->template Data<T1>();
+  if (bias) {
+    const T1* bias_data = bias->Data<T1>();
+    parameters.q_bias = const_cast<T1*>(bias_data);
+    parameters.k_bias = const_cast<T1*>(bias_data + parameters.hidden_size);
+    parameters.v_bias = const_cast<T1*>(bias_data + 2LL * parameters.hidden_size);
   }
 
   int batch_size = parameters.batch_size;

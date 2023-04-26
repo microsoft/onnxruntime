@@ -392,7 +392,6 @@ class BertOnnxModel(OnnxModel):
                 self.attention_fusion = FusionAttention(
                     self, self.hidden_size, self.num_heads, self.attention_mask, options.use_multi_head_attention
                 )
-                self.attention_fusion.use_decoder_masked_multi_head_attention = options.use_decoder_masked_multi_head_attention
 
         if (options is None) or options.enable_attention:
             self.fuse_attention()

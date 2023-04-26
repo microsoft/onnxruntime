@@ -668,18 +668,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "M",
                OpSchema::Optional)
         .Input(10,
-               "q_bias",
-               "q_bias of shape (hidden_size)",
-               "T",
-               OpSchema::Optional)
-        .Input(11,
-               "k_bias",
-               "k_bias of shape (hidden_size)",
-               "T",
-               OpSchema::Optional)
-        .Input(12,
-               "v_bias",
-               "v_bias of shape (hidden_size)",
+               "bias",
+               "Bias tensor with shape (hidden_size + hidden_size + v_hidden_size) from input projection",
                "T",
                OpSchema::Optional)
         .Output(0,

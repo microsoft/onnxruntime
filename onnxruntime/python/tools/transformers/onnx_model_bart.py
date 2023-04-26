@@ -9,7 +9,7 @@ from fusion_attention import AttentionMask
 from fusion_bart_attention import FusionBartAttention
 from fusion_options import FusionOptions
 from fusion_reshape import FusionReshape
-from onnx import numpy_helper, TensorProto, helper
+from onnx import numpy_helper
 from onnx_model import OnnxModel
 from onnx_model_bert import BertOnnxModel
 
@@ -132,13 +132,6 @@ class BartOnnxModel(BertOnnxModel):
             self.attention_fusion.use_multi_head_attention = options.use_multi_head_attention
             self.attention_fusion.use_decoder_masked_multi_head_attention = options.use_decoder_masked_multi_head_attention
         super().optimize(options, add_dynamic_axes)
-        if self.attention_fusion.use_decoder_masked_multi_head_attention:
-            self.model.graph.input.extend([helper.make_tensor_value_info("past_sequence_length", TensorProto.INT32, shape=[1])])
-            self.model.graph.input.extend([helper.make_tensor_value_info("beam_width", TensorProto.INT32, shape=[1])])
-            self.model.graph.input.extend([helper.make_tensor_value_info(
-                        "cache_indirection", TensorProto.INT32, shape=["batch_size", "beam_width", "max_seq_len"]
-                    )
-                ])
 
     def fuse_attention(self):
         self.attention_fusion.apply()
