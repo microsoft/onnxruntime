@@ -378,9 +378,9 @@ auto const placeholder = std::unique_ptr<nvinfer1::IBuilder>(nvinfer1::createInf
  */
 bool ApplyProfileShapesFromProviderOptions(std::vector<nvinfer1::IOptimizationProfile*>& trt_profiles,
                                            nvinfer1::ITensor* input,
-                                           std::unordered_map<std::string, std::vector<std::vector<int64_t>>> profile_min_shapes,
-                                           std::unordered_map<std::string, std::vector<std::vector<int64_t>>> profile_max_shapes,
-                                           std::unordered_map<std::string, std::vector<std::vector<int64_t>>> profile_opt_shapes)
+                                           std::unordered_map<std::string, std::vector<std::vector<int64_t>>>& profile_min_shapes,
+                                           std::unordered_map<std::string, std::vector<std::vector<int64_t>>>& profile_max_shapes,
+                                           std::unordered_map<std::string, std::vector<std::vector<int64_t>>>& profile_opt_shapes)
 {
   if (trt_profiles.size() == 0) {
     LOGS_DEFAULT(WARNING) << "[TensorRT EP] Number of optimization profiles should be greater than 0, but it's 0.";
@@ -431,12 +431,18 @@ bool ApplyProfileShapesFromProviderOptions(std::vector<nvinfer1::IOptimizationPr
       LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] number of dimension of this execution tensor is " << nb_dims;
 
       for (int j = 0; j < nb_dims; j++) {
-        dims_min.d[j] = static_cast<int32_t>(profile_min_shapes[input_name][i][j]);
-        dims_max.d[j] = static_cast<int32_t>(profile_max_shapes[input_name][i][j]);
-        dims_opt.d[j] = static_cast<int32_t>(profile_opt_shapes[input_name][i][j]);
-        LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] dims_min.d[" << j << "] is " << dims_min.d[j];
-        LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] dims_max.d[" << j << "] is " << dims_max.d[j];
-        LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] dims_opt.d[" << j << "] is " << dims_opt.d[j];
+        if (dims.d[j] == -1) {
+          dims_min.d[j] = static_cast<int32_t>(profile_min_shapes[input_name][i][j]);
+          dims_max.d[j] = static_cast<int32_t>(profile_max_shapes[input_name][i][j]);
+          dims_opt.d[j] = static_cast<int32_t>(profile_opt_shapes[input_name][i][j]);
+          LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] dims_min.d[" << j << "] is " << dims_min.d[j];
+          LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] dims_max.d[" << j << "] is " << dims_max.d[j];
+          LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] dims_opt.d[" << j << "] is " << dims_opt.d[j];
+        } else {
+          dims_min.d[j] = dims.d[j];
+          dims_max.d[j] = dims.d[j];
+          dims_opt.d[j] = dims.d[j];
+        }
       }
 
       trt_profile->setDimensions(input_name.c_str(), nvinfer1::OptProfileSelector::kMIN, dims_min);
@@ -1927,9 +1933,11 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
       LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Tactic sources are limited using " << tactic_sources_;
     }
 
-    // Build TRT engine here if,
-    // (1) graph has no dynamic shape input or all the dynamic shape inputs have associted profiles specified by users.
-    // (2) engine cache built with explict profiles exists and engine cache enable flag is on.
+    // Build TRT engine (if needed) and load TRT engine if:
+    //   (1) Graph has no dynamic shape input
+    //   (2) All the dynamic shape inputs have associated explicit profiles specified by user
+    //
+    // Otherwise engine will be handled at inference time.
     std::unique_ptr<nvinfer1::ICudaEngine> trt_engine;
     std::unique_ptr<nvinfer1::IExecutionContext> trt_context;
     if (!has_dynamic_shape || engine_cache_built_with_explicit_profiles_) {
