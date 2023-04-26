@@ -162,10 +162,6 @@ vaip_core::OrtApiForVaip* create_org_api_hook() {
       graph.SetGraphResolveNeeded();
     }
     auto status = graph.Resolve();
-    if (!status.IsOK()) {
-      std::cerr << "resolve error: " << status.ErrorMessage() << std::endl;
-      std::abort();
-    }
     return status.Code();
   };
 
