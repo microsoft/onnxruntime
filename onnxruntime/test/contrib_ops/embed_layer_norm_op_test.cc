@@ -93,7 +93,7 @@ static void RunTest(const embedlayernorm::OpData& data,
                                  ToFloat16(data.beta_data),
                                  /*is_initializer=*/true);
       tester.AddAttribute("epsilon", data.epsilon);
-      if (data.has_mask) {
+      if (data.has_mask && data.mask_data.size()) {
         tester.AddInput<int32_t>("mask", mask_dims, data.mask_data);
       }
       tester.AddOutput<MLFloat16>("output", output_dims, ToFloat16(data.output_data));
@@ -117,7 +117,7 @@ static void RunTest(const embedlayernorm::OpData& data,
       tester.AddInput<float>("gamma", gamma_dims, data.gamma_data, /*is_initializer=*/true);
       tester.AddInput<float>("beta", beta_dims, data.beta_data, /*is_initializer=*/true);
       tester.AddAttribute("epsilon", data.epsilon);
-      if (data.has_mask) {
+      if (data.has_mask && data.mask_data.size()) {
         tester.AddInput<int32_t>("mask", mask_dims, data.mask_data);
       }
       tester.AddOutput<float>("output", output_dims, data.output_data);

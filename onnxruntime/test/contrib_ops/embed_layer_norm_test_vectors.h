@@ -494,8 +494,7 @@ inline OpData EmbedLayerNormBatch1_EmbeddingSum_NoMaskIndex() {
 
   std::vector<int32_t> segment_ids_data = {};
 
-  std::vector<int32_t> mask_data = {
-      1, 1};
+  std::vector<int32_t> mask_data = {};
 
   std::vector<float> word_embedding_data = {
       0.2f, 0.1f, 0.4f, -0.6f,
