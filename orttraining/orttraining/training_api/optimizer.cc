@@ -21,7 +21,7 @@ constexpr char GROUP_ZERO_NAME[] = "group0";
 static std::string FullQualifiedName_AdamWOptimizer(std::string(kMSDomain) + ":AdamWOptimizer");
 static std::string FullQualifiedName_SGDOptimizerV2(std::string(kMSDomain) + ":SGDOptimizerV2");
 
-static const std::vector<std::string> CommonOptimizerInputs{"learning_rate", "step", "params", "gradients"};
+static constexpr std::array CommonOptimizerInputs{"learning_rate", "step", "params", "gradients"};
 
 Status GraphInputsAreExpected(gsl::span<std::string> actual_graph_inputs,
                               gsl::span<std::string> expected_graph_inputs) {
