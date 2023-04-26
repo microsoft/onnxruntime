@@ -58,6 +58,8 @@ stages:
     AdditionalBuildFlags: ''
     AdditionalWinBuildFlags: '--enable_onnx_tests --enable_wcos'
     BuildVariant: 'default'
+    specificArtifact: ${{ parameters.specificArtifact }}
+    runId: ${{ parameters.runId }}
 
 - stage: Linux_C_API_Packaging_GPU_x64
   dependsOn: []

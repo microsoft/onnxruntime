@@ -38,6 +38,16 @@ parameters:
   type: string
   default: 'default'
 
+- name: specificArtifact
+  displayName: Use Specific Artifact
+  type: boolean
+  default: false
+
+- name: runId
+  displayName: Specific Artifact's RunId
+  type: string
+  default: '0'
+
 stages:
 - template: linux-cpu-packaging-pipeline.yml
   parameters:
@@ -785,6 +795,8 @@ stages:
   parameters:
     AgentPool : 'aiinfra-Linux-CPU'
     StageSuffix : 'Linux_CPU_x64'
+    specificArtifact: ${{ parameters.specificArtifact }}
+    runId: ${{ parameters.runId }}
 
 - template: ../nodejs/templates/test_macos.yml
   parameters:
@@ -918,5 +930,3 @@ stages:
     - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
       displayName: 'Clean Agent Directories'
       condition: always()
-
-
