@@ -39,11 +39,12 @@ class RegistrationInfo:
     start_version: int
     end_version: typing.Optional[int]
 
+    def domain_and_op_str(self):
+        return f"{self.domain}:{self.operator}"
+
+
 class RegistrationValidator(op_registration_utils.RegistrationProcessor):
     def __init__(self):
-        self.last_op_registrations = {}
-        self.failed = False
-
         self.all_registrations: typing.List[RegistrationInfo] = []
 
     def process_registration(
@@ -55,104 +56,122 @@ class RegistrationValidator(op_registration_utils.RegistrationProcessor):
         end_version: typing.Optional[int] = None,
         type: typing.Optional[str] = None,
     ):
-        self.all_registrations.append(RegistrationInfo(domain=domain,
-                                                       operator=operator,
-                                                       start_version=start_version,
-                                                       end_version=end_version))
+        self.all_registrations.append(
+            RegistrationInfo(domain=domain, operator=operator, start_version=start_version, end_version=end_version)
+        )
 
-    def _validate_registrations_for_domain_and_op(self, registrations: typing.Sequence[RegistrationInfo]) -> int:
-        num_invalid_registrations = 0
-        prev_start_version, prev_end_version = None, None
-        for r in registrations:
-            assert r.end_version is None or r.start_version < r.end_version
-            # TODO finish implementing this...
-
-            prev_start_version, prev_end_version = registration.start_version, registration.end_version
-
-        return num_invalid_registrations
-
-    def _validate_all_registrations(self) -> bool:
-        def registration_info_sort_key(r: RegistrationInfo):
-            return (r.domain,
-                    r.operator,
-                    r.start_version,
-                    1 if r.end_version is None else 0,  # unspecified end_version > specified end_version
-                    r.end_version)
-
-        sorted_registrations = sorted(self.all_registrations, key=registration_info_sort_key)
-
-        def domain_and_op_key(r: RegistrationInfo):
-            return (r.domain, r.operator)
-
-        num_invalid_registrations = 0
-        for _, registration_group in itertools.groupby(sorted_registrations, key=domain_and_op_key):
-            num_invalid_registrations += self._validate_registrations_for_domain_and_op(registration_group)
-
+    def ok(self):
+        num_invalid_registrations = self._validate_all_registrations()
         if num_invalid_registrations > 0:
             log.error(f"Found {num_invalid_registrations} invalid registrations.")
             return False
 
         return True
 
-    def process_registration_original(
-        self,
-        lines: typing.List[str],
-        domain: str,
-        operator: str,
-        start_version: int,
-        end_version: typing.Optional[int] = None,
-        type: typing.Optional[str] = None,
-    ):
-        key = domain + ":" + operator
-        prev_start, prev_end = self.last_op_registrations[key] if key in self.last_op_registrations else (None, None)
+    def _validate_all_registrations(self) -> int:
+        """
+        Validates all registrations added by `process_registration()` and returns the number of invalid ones.
+        """
 
-        if prev_start:
-            # a typed registration where the to/from matches for each entry so nothing to update
-            if prev_start == start_version and prev_end == end_version:
-                return
+        def registration_info_sort_key(r: RegistrationInfo):
+            return (
+                r.domain,
+                r.operator,
+                r.start_version,
+                1 if r.end_version is None else 0,  # unspecified end_version > specified end_version
+                r.end_version,
+            )
 
-            # previous registration was unversioned but should have been if we are seeing another registration
-            if not prev_end:
-                log.error(
-                    "Invalid registration for {}. Registration for opset {} has no end version but was "
-                    "superceeded by version {}.".format(key, prev_start, start_version)
-                )
-                self.failed = True
-                return
+        def domain_and_op_key(r: RegistrationInfo):
+            return (r.domain, r.operator)
 
-            # previous registration end opset is not adjacent to the start of the next registration
-            if prev_end != start_version - 1:
-                log.error(
-                    "Invalid registration for {}. Registration for opset {} should have end version of {}".format(
-                        key, prev_start, start_version - 1
-                    )
-                )
-                self.failed = True
-                return
+        sorted_registrations = sorted(self.all_registrations, key=registration_info_sort_key)
 
-        self.last_op_registrations[key] = (start_version, end_version)
+        num_invalid_registrations = 0
+        for _, registration_group in itertools.groupby(sorted_registrations, key=domain_and_op_key):
+            num_invalid_registrations += self._validate_registrations_for_domain_and_op(registration_group)
 
-    def ok(self):
-        return not self.failed
+        return num_invalid_registrations
 
-    def validate_last_registrations(self):
+    def _validate_registrations_for_domain_and_op(self, registrations: typing.Iterator[RegistrationInfo]) -> int:
+        """
+        Validates registrations in sorted order for a single domain and op and returns the number of invalid ones.
+        """
+        num_invalid_registrations = 0
+        r = next(registrations, None)
+        while r is not None:
+            next_r = next(registrations, None)
+            if not self._validate_registration(r, next_r):
+                num_invalid_registrations += 1
+            r = next_r
+
+        return num_invalid_registrations
+
+    def _validate_registration(self, r: RegistrationInfo, next_r: typing.Optional[RegistrationInfo]) -> bool:
+        """
+        Validates a registration, `r`, with the next one in sorted order for a single domain and op, `next_r`, and
+        returns whether it is valid.
+        """
+        if not (r.end_version is None or r.start_version <= r.end_version):
+            log.error(
+                f"Invalid registration for {r.domain_and_op_str()}. "
+                f"Start version ({r.start_version}) is greater than end version ({r.end_version})."
+            )
+            return False
+
+        if next_r is None:
+            return self._validate_last_registration(r)
+
+        # It is valid to match next registration start and end versions exactly.
+        # This is expected if there are multiple registrations for an opset (e.g., typed registrations).
+        if (r.start_version, r.end_version) == (next_r.start_version, next_r.end_version):
+            return True
+
+        # This registration has no end version but it should have one if the next registration has different versions.
+        if r.end_version is None:
+            log.error(
+                f"Invalid registration for {r.domain_and_op_str()}. "
+                f"Registration for opset {r.start_version} has no end version but was superseded by version "
+                f"{next_r.start_version}."
+            )
+            return False
+
+        # This registration's end version is not adjacent to the start version of the next registration.
+        if r.end_version != next_r.start_version - 1:
+            log.error(
+                f"Invalid registration for {r.domain_and_op_str()}. "
+                f"Registration for opset {r.start_version} should have end version of {next_r.start_version - 1}."
+            )
+            return False
+
+        return True
+
+    def _validate_last_registration(self, last_r: RegistrationInfo) -> bool:
+        """
+        Validates the last registration in sorted order for a single domain and op and returns whether it is valid.
+        """
         # make sure we have an unversioned last entry for each operator unless it's deprecated
-        for entry in self.last_op_registrations.items():
-            key, value = entry
-            opset_from, opset_to = value
+        domain_and_op_str = last_r.domain_and_op_str()
+        deprecation_version = deprecated_ops.get(domain_and_op_str, None)
 
-            allow_missing_unversioned_registration = key in deprecated_ops and opset_to == deprecated_ops[key] - 1
+        allow_missing_unversioned_registration = (
+            deprecation_version is not None and last_r.end_version == deprecation_version - 1
+        )
 
-            # special handling for ArgMin/ArgMax, which CUDA EP doesn't yet support for opset 12+
-            # TODO remove once CUDA EP supports ArgMin/ArgMax for opset 12+
-            ops_with_incomplete_support = ["kOnnxDomain:ArgMin", "kOnnxDomain:ArgMax"]
-            if key in ops_with_incomplete_support:
-                log.warn(f"Allowing missing unversioned registration for op with incomplete support: {key}")
-                allow_missing_unversioned_registration = True
+        # special handling for ArgMin/ArgMax, which CUDA EP doesn't yet support for opset 12+
+        # TODO remove once CUDA EP supports ArgMin/ArgMax for opset 12+
+        ops_with_incomplete_support = ["kOnnxDomain:ArgMin", "kOnnxDomain:ArgMax"]
+        if domain_and_op_str in ops_with_incomplete_support:
+            log.warning(
+                f"Allowing missing unversioned registration for op with incomplete support: {domain_and_op_str}."
+            )
+            allow_missing_unversioned_registration = True
 
-            if opset_to and not allow_missing_unversioned_registration:
-                log.error(f"Missing unversioned registration for {key}")
-                self.failed = True
+        if last_r.end_version is not None and not allow_missing_unversioned_registration:
+            log.error(f"Missing unversioned registration for {domain_and_op_str}.")
+            return False
+
+        return True
 
 
 if __name__ == "__main__":
@@ -166,17 +185,24 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    ort_root = os.path.abspath(args.ort_root) if args.ort_root else ""
+    ort_root = os.path.abspath(args.ort_root) if args.ort_root else None
     include_cuda = True  # validate CPU and CUDA EP registrations
 
     registration_files = op_registration_utils.get_kernel_registration_files(ort_root, include_cuda)
 
-    for file in registration_files:
+    def validate_registration_file(file: str) -> bool:
         log.info(f"Processing {file}")
 
         processor = RegistrationValidator()
         op_registration_utils.process_kernel_registration_file(file, processor)
-        processor.validate_last_registrations()
 
-        if not processor.ok():
-            sys.exit(-1)
+        return processor.ok()
+
+    validation_successful = all(
+        # Validate each file first by storing the validation results in a list.
+        # Otherwise, all() will exit early when it encounters the first invalid file.
+        list(map(validate_registration_file, registration_files))
+    )
+
+    log.info(f"Op kernel registration validation {'succeeded' if validation_successful else 'failed'}.")
+    sys.exit(0 if validation_successful else 1)
