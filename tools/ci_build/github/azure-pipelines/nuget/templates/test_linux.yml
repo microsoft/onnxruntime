@@ -24,10 +24,6 @@ stages:
       value: '$(Build.BinariesDirectory)'
 
     steps:
-    - script: |
-        echo ${{ parameters.runId }}
-      displayName: 'Echo Run Id'
-
     - template: ../../templates/flex-downloadPipelineArtifact.yml
       parameters:
         stepName: 'Download Signed NuGet'
