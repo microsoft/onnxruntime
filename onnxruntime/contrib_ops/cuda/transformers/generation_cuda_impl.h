@@ -119,6 +119,17 @@ void UpdateDecoderMaskedMultiHeadAttentionCacheIndirection(int32_t* tgt_indir_ca
                                                            int current_length,
                                                            cudaStream_t stream);
 
+template <typename T>
+void KeyCacheExpansionKernelLauncher(const T* key_cache,
+                                     T* key_cache_expanded,
+                                     int batch_size,
+                                     int beam_width,
+                                     int num_heads,
+                                     int sequence_length,
+                                     int max_seq_length,
+                                     int head_size,
+                                     cudaStream_t stream);
+
 }  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime

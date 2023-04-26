@@ -6,6 +6,7 @@
 #include "cub/util_type.cuh"
 #include <cub/cub.cuh>
 #include <cub/device/device_segmented_radix_sort.cuh>
+#include "contrib_ops/cuda/bert/utils.cuh"
 #include "contrib_ops/cuda/transformers/generation_cuda_impl.h"
 
 namespace onnxruntime {
@@ -805,6 +806,111 @@ void UpdateDecoderMaskedMultiHeadAttentionCacheIndirection(int32_t* tgt_indir_ca
                                                                                           max_seq_length,
                                                                                           current_length);
 }
+
+template <typename T>
+__global__ void KeyCacheExpansionKernel(const T* input,
+                                        T* output,
+                                        int beam_width,
+                                        int max_seq_length,
+                                        int head_size) {
+  const int num_heads = gridDim.y;
+  const int sequence_length = gridDim.z;
+
+  const int bbid = blockIdx.x;
+  const int batch_id = bbid / beam_width;
+  const int head_id = blockIdx.y;
+  const int s = blockIdx.z;
+  const int tidx = threadIdx.x;
+
+  const int input_offset = ((batch_id * num_heads + head_id) * sequence_length + s) * head_size + tidx;
+  const int output_offset = ((bbid * num_heads + head_id) * max_seq_length + s) * head_size + tidx;
+
+  if (tidx < head_size) {
+    output[output_offset] = input[input_offset];
+  }
+}
+
+namespace {
+template <typename T, size_t size>
+struct TypeMapper : public V_vec_m_<T, size> {};
+
+template <>
+struct TypeMapper<int32_t, 2> {
+  using Type = uint2;
+};
+
+template <>
+struct TypeMapper<int32_t, 4> {
+  using Type = uint4;
+};
+}  // namespace
+
+template <typename T>
+void KeyCacheExpansionKernelLauncher(const T* key_cache,
+                                     T* key_cache_expanded,
+                                     int batch_size,
+                                     int beam_width,
+                                     int num_heads,
+                                     int sequence_length,
+                                     int max_seq_length,
+                                     int head_size,
+                                     cudaStream_t stream) {
+  const dim3 block(256);
+  const dim3 grid(batch_size * beam_width, num_heads, sequence_length);
+
+  if (head_size % 4 == 0) {
+    using vec_type = typename TypeMapper<T, 4>::Type;
+    KeyCacheExpansionKernel<<<grid, block, 0, stream>>>(reinterpret_cast<const vec_type*>(key_cache),
+                                                        reinterpret_cast<vec_type*>(key_cache_expanded),
+                                                        beam_width,
+                                                        max_seq_length,
+                                                        head_size / 4);
+  } else if (head_size & 1 == 0) {
+    using vec_type = typename TypeMapper<T, 2>::Type;
+    KeyCacheExpansionKernel<<<grid, block, 0, stream>>>(reinterpret_cast<const vec_type*>(key_cache),
+                                                        reinterpret_cast<vec_type*>(key_cache_expanded),
+                                                        beam_width,
+                                                        max_seq_length,
+                                                        head_size / 2);
+  } else {
+    KeyCacheExpansionKernel<<<grid, block, 0, stream>>>(key_cache,
+                                                        key_cache_expanded,
+                                                        beam_width,
+                                                        max_seq_length,
+                                                        head_size);
+  }
+}
+
+template void KeyCacheExpansionKernelLauncher(const float* key_cache,
+                                              float* key_cache_expanded,
+                                              int batch_size,
+                                              int beam_width,
+                                              int num_heads,
+                                              int sequence_length,
+                                              int max_seq_length,
+                                              int head_size,
+                                              cudaStream_t stream);
+
+template void KeyCacheExpansionKernelLauncher(const half* key_cache,
+                                              half* key_cache_expanded,
+                                              int batch_size,
+                                              int beam_width,
+                                              int num_heads,
+                                              int sequence_length,
+                                              int max_seq_length,
+                                              int head_size,
+                                              cudaStream_t stream);
+
+template void KeyCacheExpansionKernelLauncher(const int32_t* key_cache,
+                                              int32_t* key_cache_expanded,
+                                              int batch_size,
+                                              int beam_width,
+                                              int num_heads,
+                                              int sequence_length,
+                                              int max_seq_length,
+                                              int head_size,
+                                              cudaStream_t stream);
+
 }  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime

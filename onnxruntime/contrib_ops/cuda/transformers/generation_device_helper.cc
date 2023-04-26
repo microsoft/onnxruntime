@@ -1153,6 +1153,16 @@ Status UpdateDecoderFeeds(
   return Status::OK();
 }
 
+namespace {
+template <typename T>
+struct ToCudaTypeWrapper : public ToCudaType<T> {};
+
+template <>
+struct ToCudaTypeWrapper<int32_t> {
+  using MappedType = int32_t;
+};
+}
+
 template <typename T>
 Status ExpandBuffer(Stream* ort_stream,
                     const OrtValue& input,
@@ -1211,27 +1221,21 @@ Status ExpandBuffer(Stream* ort_stream,
 
   ORT_ENFORCE(is_kv_cache);
 
+  using CudaT = typename ToCudaTypeWrapper<T>::MappedType;
+
   // Expand from [B, N, S, H] to [B*beam, N, S_max, H]
   const int64_t& num_heads = input_shape[1];
   const int64_t& head_size = input_shape[3];
-  const int64_t& input_offset = sequence_length * head_size;
-  const int64_t& output_offset = max_sequence_length * head_size;
-  const int64_t& NSH = input_offset * num_heads;
 
-  for (int i = 0; i < batch_size; i++) {
-    for (int j = 0; j < num_beams; j++) {
-      for (int k = 0; k < num_heads; k++) {
-        CUDA_RETURN_IF_ERROR(
-            cudaMemcpyAsync(
-                target,
-                input_data + i * NSH + k * input_offset,
-                sizeof(T) * SafeInt<size_t>(input_offset),
-                cudaMemcpyDeviceToDevice,
-                cuda_stream));
-        target += output_offset;
-      }
-    }
-  }
+  cuda::KeyCacheExpansionKernelLauncher<CudaT>(reinterpret_cast<const CudaT*>(input_data),
+                                               reinterpret_cast<CudaT*>(expanded_data),
+                                               batch_size,
+                                               num_beams,
+                                               num_heads,
+                                               sequence_length,
+                                               max_sequence_length,
+                                               head_size,
+                                               cuda_stream);
 
   return Status::OK();
 }
