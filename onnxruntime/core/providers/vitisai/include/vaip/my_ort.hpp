@@ -14,7 +14,7 @@ class Graph;
 class GraphViewer;
 class Node;
 class NodeArg;
-} // namespace onnxruntime
+}  // namespace onnxruntime
 namespace ONNX_NAMESPACE {
 class AttributeProto;
 class TensorProto;
@@ -57,7 +57,7 @@ enum AttributeProto_AttributeType : int {
 };
 #endif
 
-} // namespace ONNX_NAMESPACE
+}  // namespace ONNX_NAMESPACE
 
 namespace vaip_core {
 class GraphHolder;
@@ -116,4 +116,4 @@ using InitializedTensorSet =
     std::unordered_map<std::string, const TensorProto*>;
 
 using ModelMetaData = std::unordered_map<std::string, std::string>;
-} // namespace vaip_core
+}  // namespace vaip_core

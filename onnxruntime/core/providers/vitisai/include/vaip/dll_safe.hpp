@@ -4,8 +4,9 @@
 #include "./_sanity_check.hpp"
 #include <memory>
 namespace vaip_core {
-template <typename T> class DllSafe {
-public:
+template <typename T>
+class DllSafe {
+ public:
   DllSafe() : value_{nullptr}, deleter_{nullptr} {}
   DllSafe(const DllSafe& other) = delete;
   DllSafe(DllSafe&& other) : value_{other.value_}, deleter_{other.deleter_} {
@@ -41,8 +42,8 @@ public:
     return std::unique_ptr<T, void (*)(T*)>(value, deleter_);
   }
 
-private:
+ private:
   T* value_;
   void (*deleter_)(T*) noexcept;
 };
-} // namespace vaip_core
+}  // namespace vaip_core

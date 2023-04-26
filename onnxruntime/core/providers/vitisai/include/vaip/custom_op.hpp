@@ -15,12 +15,11 @@ class PassContext;
 class MetaDefProto;
 class CustomOp;
 class ExecutionProvider {
-
-public:
+ public:
   VAIP_DLL_SPEC ExecutionProvider();
   virtual ~ExecutionProvider();
 
-public:
+ public:
   virtual DllSafe<std::vector<std::string>> get_meta_def_inputs() const = 0;
   virtual DllSafe<std::vector<std::string>> get_meta_def_outputs() const = 0;
   virtual DllSafe<std::vector<std::string>> get_meta_def_nodes() const = 0;
@@ -30,12 +29,12 @@ public:
 };
 
 class CustomOp {
-public:
+ public:
   VAIP_DLL_SPEC CustomOp();
   VAIP_DLL_SPEC virtual ~CustomOp();
 
-public:
+ public:
   virtual void Compute(const OrtApi* api, OrtKernelContext* context) const = 0;
 };
 
-} // namespace vaip_core
+}  // namespace vaip_core
