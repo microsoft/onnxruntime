@@ -171,11 +171,12 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiHeadAttentio
     }
   }
 
+    // The offset in the bias buffer.
+    int qk_bias_offset = hi * head_size + tidx * QK_VEC_SIZE;
+
   // Trigger the loads from the Q and K bias buffers.
   if (params.q_bias) {
     Qk_vec_k q_bias;
-    // The offset in the bias buffer.
-    int qk_bias_offset = hi * head_size + tidx * QK_VEC_SIZE;
 
     zero(q_bias);
 
