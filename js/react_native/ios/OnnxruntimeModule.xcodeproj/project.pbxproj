@@ -47,7 +47,7 @@
 		DBDB57DB2603211A004F16BE /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		DBDB588A2609B18F004F16BE /* Resources */ = {isa = PBXFileReference; lastKnownFileType = folder; name = Resources; path = OnnxruntimeModuleTest/Resources; sourceTree = "<group>"; };
 		DBDB58AF262A92D6004F16BE /* OnnxruntimeModuleTest.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = OnnxruntimeModuleTest.mm; sourceTree = "<group>"; };
-		E3D7A60D29F8D87D00FF5265 /* libiconv.tbd */ = {isa = PBXFileReference; lastKnownFileType = "sourcecode.text-based-dylib-definition"; name = libiconv.tbd; path = Platforms/MacOSX.platform/Developer/SDKs/MacOSX13.3.sdk/usr/lib/libiconv.tbd; sourceTree = DEVELOPER_DIR; };
+		E3D7A60D29F8D87D00FF5265 /* libiconv.tbd */ = {isa = PBXFileReference; lastKnownFileType = "sourcecode.text-based-dylib-definition"; name = libiconv.tbd; path = Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/lib/libiconv.tbd; sourceTree = DEVELOPER_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
