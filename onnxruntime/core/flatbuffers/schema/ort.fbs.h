@@ -223,7 +223,7 @@ enum class TensorDataType : int32_t {
   MAX = FLOAT8E5M2FNUZ
 };
 
-inline const TensorDataType (&EnumValuesTensorDataType())[17] {
+inline const TensorDataType (&EnumValuesTensorDataType())[21] {
   static const TensorDataType values[] = {
     TensorDataType::UNDEFINED,
     TensorDataType::FLOAT,
@@ -251,7 +251,7 @@ inline const TensorDataType (&EnumValuesTensorDataType())[17] {
 }
 
 inline const char * const *EnumNamesTensorDataType() {
-  static const char * const names[18] = {
+  static const char * const names[22] = {
     "UNDEFINED",
     "FLOAT",
     "UINT8",
