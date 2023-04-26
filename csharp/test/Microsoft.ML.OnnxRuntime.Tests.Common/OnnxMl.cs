@@ -216,13 +216,13 @@ namespace Onnx {
     /// </summary>
     [pbr::OriginalName("IR_VERSION_2020_5_8")] IrVersion202058 = 7,
     /// <summary>
-    /// IR VERSION 8 published on July 7th, 2021
+    /// IR VERSION 8 published on July 30th, 2021
     /// Introduce TypeProto.SparseTensor
     /// Introduce TypeProto.Optional
     /// Added a list of FunctionProtos local to the model
     /// Deprecated since_version and operator status from FunctionProto
     /// </summary>
-    [pbr::OriginalName("IR_VERSION_2021_7_30")] IrVersion2021077 = 8,
+    [pbr::OriginalName("IR_VERSION_2021_7_30")] IrVersion20210730 = 8,
     /// <summary>
     /// IR VERSION 8 published on &lt;TBD&gt;
     /// Added AttributeProto to FunctionProto so that default attribute values can be set.
