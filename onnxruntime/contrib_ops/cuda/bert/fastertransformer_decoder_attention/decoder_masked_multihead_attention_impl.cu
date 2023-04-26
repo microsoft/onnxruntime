@@ -172,9 +172,8 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiHeadAttentio
   }
 
   // Trigger the loads from the Q and K bias buffers.
-  Qk_vec_k q_bias;
-  Qk_vec_k k_bias;
-  if (!params.is_mha) {
+  if (params.q_bias) {
+    Qk_vec_k q_bias;
     // The offset in the bias buffer.
     int qk_bias_offset = hi * head_size + tidx * QK_VEC_SIZE;
 
@@ -184,14 +183,18 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiHeadAttentio
       q_bias = vec_conversion<Qk_vec_k, Qk_vec_m>(*reinterpret_cast<const Qk_vec_m*>(&reinterpret_cast<T*>(params.q_bias)[qk_bias_offset]));
     }
 
+    q = add_vec(q, q_bias);
+  }
+
+  if (params.k_bias) {
+    Qk_vec_k k_bias;
+
     zero(k_bias);
 
     if (!is_masked) {
       k_bias = vec_conversion<Qk_vec_k, Qk_vec_m>(*reinterpret_cast<const Qk_vec_m*>(&reinterpret_cast<T*>(params.k_bias)[qk_bias_offset]));
     }
 
-    // Computes the Q/K values with bias.
-    q = add_vec(q, q_bias);
     k = add_vec(k, k_bias);
   }
 
@@ -442,7 +445,7 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiHeadAttentio
 
   // One group of threads computes the product(s) for the current timestep.
   V_vec_k v_bias;
-  if (!params.is_mha) {
+  if (params.v_bias) {
     zero(v_bias);
 
     T* params_v_bias = reinterpret_cast<T*>(params.v_bias);
@@ -482,7 +485,7 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiHeadAttentio
 
     V_vec_k v;
     v = vec_conversion<V_vec_k, V_vec_m>(*reinterpret_cast<const V_vec_m*>(&reinterpret_cast<T*>(params.v)[v_offset]));
-    if (!params.is_mha) {
+    if (params.v_bias) {
       v = add_vec(v, v_bias);
     }
 
