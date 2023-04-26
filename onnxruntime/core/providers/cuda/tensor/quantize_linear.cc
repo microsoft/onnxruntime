@@ -97,7 +97,7 @@ Status DequantizeLinear<T, U>::ComputeInternal(OpKernelContext* ctx) const {
 }
 
 // register QuantizeLinear kernels
-#define REGISTER_Q_KERNEL_TYPED(T)                                    \
+#define REGISTER_Q_KERNEL_TYPED_10_12(T)                              \
   ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                            \
       QuantizeLinear,                                                 \
       kOnnxDomain,                                                    \
@@ -107,7 +107,9 @@ Status DequantizeLinear<T, U>::ComputeInternal(OpKernelContext* ctx) const {
       (*KernelDefBuilder::Create())                                   \
           .TypeConstraint("T1", DataTypeImpl::GetTensorType<float>()) \
           .TypeConstraint("T2", DataTypeImpl::GetTensorType<T>()),    \
-      QuantizeLinear<T, float>);                                      \
+      QuantizeLinear<T, float>);
+
+#define REGISTER_Q_KERNEL_TYPED_13_18(T)                              \
   ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                            \
       QuantizeLinear,                                                 \
       kOnnxDomain,                                                    \
@@ -119,8 +121,12 @@ Status DequantizeLinear<T, U>::ComputeInternal(OpKernelContext* ctx) const {
           .TypeConstraint("T2", DataTypeImpl::GetTensorType<T>()),    \
       QuantizeLinear<T, float>);
 
-REGISTER_Q_KERNEL_TYPED(int8_t)
-REGISTER_Q_KERNEL_TYPED(uint8_t)
+REGISTER_Q_KERNEL_TYPED_10_12(int8_t)
+REGISTER_Q_KERNEL_TYPED_10_12(uint8_t)
+
+// CUDA implementation does not implement one distinct scale per channel.
+// REGISTER_Q_KERNEL_TYPED_13_18(int8_t)
+// REGISTER_Q_KERNEL_TYPED_13_18(uint8_t)
 
 #define REGISTER_Q_KERNEL_TYPED_19(T)                                     \
   ONNX_OPERATOR_TWO_TYPED_KERNEL_EX(                                      \
@@ -150,7 +156,7 @@ REGISTER_Q_KERNEL_TYPED_19(Float8E4M3FN)
 REGISTER_Q_KERNEL_TYPED_19(Float8E5M2)
 
 // register DequantizeLinear kernels
-#define REGISTER_DQ_KERNEL_TYPED(T)                               \
+#define REGISTER_DQ_KERNEL_TYPED_10_12(T)                         \
   ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                        \
       DequantizeLinear,                                           \
       kOnnxDomain,                                                \
@@ -159,7 +165,9 @@ REGISTER_Q_KERNEL_TYPED_19(Float8E5M2)
       kCudaExecutionProvider,                                     \
       (*KernelDefBuilder::Create())                               \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
-      DequantizeLinear<T, float>);                                \
+      DequantizeLinear<T, float>);
+
+#define REGISTER_DQ_KERNEL_TYPED_13_18(T)                         \
   ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                        \
       DequantizeLinear,                                           \
       kOnnxDomain,                                                \
@@ -170,8 +178,12 @@ REGISTER_Q_KERNEL_TYPED_19(Float8E5M2)
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       DequantizeLinear<T, float>);
 
-REGISTER_DQ_KERNEL_TYPED(int8_t)
-REGISTER_DQ_KERNEL_TYPED(uint8_t)
+REGISTER_DQ_KERNEL_TYPED_10_12(int8_t)
+REGISTER_DQ_KERNEL_TYPED_10_12(uint8_t)
+
+// CUDA implementation does not implement one distinct scale per channel.
+// REGISTER_DQ_KERNEL_TYPED_13_18(int8_t)
+// REGISTER_DQ_KERNEL_TYPED_13_18(uint8_t)
 
 #define REGISTER_DQ_KERNEL_TYPED_19(T)                                     \
   ONNX_OPERATOR_TWO_TYPED_KERNEL_EX(                                       \
