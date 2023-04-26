@@ -2,8 +2,8 @@
 // Licensed under the MIT License.
 
 #ifdef USE_AZURE
-//#include "http_client.h"
-#define CURL_STATICLIB
+#include "http_client.h"
+//#define CURL_STATICLIB
 #include "curl/curl.h"
 #include "nlohmann/json.hpp"
 #include "core/common/common.h"
@@ -19,7 +19,7 @@ using namespace onnxruntime::common;
 
 namespace onnxruntime {
 
-//namespace tc = triton::client;
+namespace tc = triton::client;
 
 const char* kAzureUri = "azure.uri";
 const char* kAzureModelName = "azure.model_name";
@@ -127,6 +127,11 @@ onnxruntime::Status OpenAIInvoker::Send(const CloudEndPointConfig& run_options,
   part1 = curl_mime_addpart(mime1);
   curl_mime_data(part1, model_name_.c_str(), CURL_ZERO_TERMINATED);
   curl_mime_name(part1, "model");
+
+  part1 = curl_mime_addpart(mime1);
+  curl_mime_data(part1, "text", CURL_ZERO_TERMINATED);
+  curl_mime_name(part1, "response_format");
+
   curl_easy_setopt(hnd, CURLOPT_MIMEPOST, mime1);
   curl_easy_setopt(hnd, CURLOPT_HTTPHEADER, slist1);
   curl_easy_setopt(hnd, CURLOPT_USERAGENT, "curl/7.83.1");
@@ -154,10 +159,13 @@ onnxruntime::Status OpenAIInvoker::Send(const CloudEndPointConfig& run_options,
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to create output tensor");
   }
 
-  nlohmann::json json_config = nlohmann::json::parse(chunk.memory);
+  //nlohmann::json json_config = nlohmann::json::parse(chunk.memory);
+  //auto* output_string = output_tensor->MutableData<std::string>();
+  //output_string->append(json_config["text"]);
+  //free(chunk.memory);
+
   auto* output_string = output_tensor->MutableData<std::string>();
-  output_string->append(json_config["text"]);
-  free(chunk.memory);
+  output_string->append(chunk.memory);
 
   ort_outputs.resize(1);
   auto tensor_type = DataTypeImpl::GetType<Tensor>();
@@ -175,7 +183,7 @@ onnxruntime::Status OpenAIInvoker::Send(const CloudEndPointConfig&,
 #endif
 
 //////////////////////////////////////////////////////////
-/*
+
 class AzureTritonInvoker : public CloudEndPointInvoker {
  public:
   AzureTritonInvoker(const CloudEndPointConfig& config, const AllocatorPtr& allocator);
@@ -409,7 +417,7 @@ onnxruntime::Status AzureTritonInvoker::Send(const CloudEndPointConfig& run_opti
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Caught exception in TritonInvokder::Send", ex.what());
   }
   return Status::OK();
-}*/
+}
 
 void CloudEndPointInvoker::ReadConfig(const char* config_name, std::string& config_val, bool required) {
   const auto iter = config_.find(config_name);
@@ -428,8 +436,7 @@ Status CloudEndPointInvoker::CreateInvoker(const CloudEndPointConfig& config,
     const auto iter = config.find(kAzureEndpointType);
     if (config.end() != iter) {
       if (iter->second == kAzureTriton) {
-        ORT_ENFORCE(false, "triton invoker not implemented");
-        //invoker = std::make_unique<AzureTritonInvoker>(config, allocator);
+        invoker = std::make_unique<AzureTritonInvoker>(config, allocator);
         return status;
       } else if (iter->second == kAzureOpenAI) {
         invoker = std::make_unique<OpenAIInvoker>(config, allocator);

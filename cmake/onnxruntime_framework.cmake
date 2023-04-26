@@ -39,24 +39,26 @@ onnxruntime_add_static_library(onnxruntime_framework ${onnxruntime_framework_src
 
 if (onnxruntime_USE_AZURE)
 
-  add_dependencies(onnxruntime_framework curl)
-  #target_include_directories(onnxruntime_framework PRIVATE ${TRITON_BIN}/include ${TRITON_THIRD_PARTY}/curl/include)
-  #link_directories(${TRITON_BIN}/lib ${TRITON_BIN}/lib64 ${TRITON_THIRD_PARTY}/curl/lib ${TRITON_THIRD_PARTY}/curl/lib64)
-
-  target_include_directories(onnxruntime_framework PRIVATE ${CURL_SRC}/include)
-  link_directories(${CURL_BIN}/lib/RelWithDebInfo ${CURL_BIN}/lib)
+  #add_dependencies(onnxruntime_framework curl)
+  add_dependencies(onnxruntime_framework triton)
+  target_include_directories(onnxruntime_framework PRIVATE ${TRITON_BIN}/include ${TRITON_THIRD_PARTY}/curl/include)
+  link_directories(${TRITON_BIN}/lib ${TRITON_BIN}/lib64 ${TRITON_THIRD_PARTY}/curl/lib ${TRITON_THIRD_PARTY}/curl/lib64)
+  #target_include_directories(onnxruntime_framework PRIVATE ${CURL_SRC}/include)
+  #link_directories(${CURL_BIN}/lib/RelWithDebInfo ${CURL_BIN}/lib)
 
   if (WIN32)
 
-    #link_directories(${VCPKG_SRC}/installed/${onnxruntime_target_platform}-windows/lib)
+    link_directories(${VCPKG_SRC}/installed/${onnxruntime_target_platform}-windows/lib)
+    target_link_libraries(onnxruntime_framework PRIVATE libcurl httpclient_static ws2_32 crypt32 Wldap32 zlib)
     #target_link_libraries(onnxruntime_framework PRIVATE libcurl httpclient_static ws2_32 crypt32 Wldap32 zlib)
     #target_link_libraries(onnxruntime_framework PRIVATE libcurl ws2_32 crypt32 Wldap32)
-    target_link_libraries(onnxruntime_framework PUBLIC libcurl ws2_32 crypt32 Wldap32)
+    #target_link_libraries(onnxruntime_framework PUBLIC libcurl ws2_32 crypt32 Wldap32)
 
   else()
 
-    #find_package(ZLIB REQUIRED)
-    #find_package(OpenSSL REQUIRED)
+    find_package(ZLIB REQUIRED)
+    find_package(OpenSSL REQUIRED)
+    target_link_libraries(onnxruntime_framework PRIVATE httpclient_static curl OpenSSL::Crypto OpenSSL::SSL)
     #target_link_libraries(onnxruntime_framework PRIVATE httpclient_static curl ZLIB::ZLIB OpenSSL::Crypto OpenSSL::SSL)
     #target_link_libraries(onnxruntime_framework PRIVATE curl OpenSSL::Crypto OpenSSL::SSL)
 
