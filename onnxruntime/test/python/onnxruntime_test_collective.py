@@ -83,7 +83,7 @@ class ORTBertPretrainTest(unittest.TestCase):
         for _ in range(size - 1):
             expected_output = np.concatenate((expected_output, np.ones((128, 128), dtype=np.float32) * (_ + 1)))
 
-        np.testing.assert_allclose(outputs[0], expected_output, err_msg='all gather on axis0: result mismatch')
+        np.testing.assert_allclose(outputs[0], expected_output, err_msg="all gather on axis0: result mismatch")
 
     def test_all_gather_axis1(self):
         model = self._create_allgather_ut_model((128, 128), 1)
@@ -101,7 +101,7 @@ class ORTBertPretrainTest(unittest.TestCase):
         for _ in range(size - 1):
             expected_output = np.concatenate((expected_output, np.ones((128, 128), dtype=np.float32) * (_ + 1)), axis=1)
 
-        np.testing.assert_allclose(outputs[0], expected_output, err_msg='all gather on axis1: result mismatch')
+        np.testing.assert_allclose(outputs[0], expected_output, err_msg="all gather on axis1: result mismatch")
 
     def test_all_to_all(self):
         model = self._create_alltoall_ut_model((128, 128))
