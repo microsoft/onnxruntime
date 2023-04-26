@@ -128,7 +128,6 @@ public class OnnxruntimeModule extends ReactContextBaseJavaModule {
       modelStream.read(modelArray);
 
       SessionOptions sessionOptions = parseSessionOptions(options);
-
       ortSession = ortEnvironment.createSession(modelArray, sessionOptions);
       sessionMap.put(uri, ortSession);
     } else {
