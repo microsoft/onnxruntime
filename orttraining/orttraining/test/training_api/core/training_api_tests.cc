@@ -593,7 +593,7 @@ void TestLRSchduler(const std::basic_string<ORTCHAR_T>& test_file_name,
       ASSERT_STATUS_OK(optim->GetStateDict(optimizer_states));
       auto group_optimizer_state = optimizer_states.group_named_optimizer_states["group0"];
 
-      constexpr const float rtol = 1e-4, atol = 1e-5;
+      constexpr const float rtol = 1e-4f, atol = 1e-5f;
       ASSERT_NEAR(it->second[0], group_optimizer_state->learning_rate, atol);
       ASSERT_NEAR(it->second[0], group_optimizer_state->learning_rate, rtol * std::abs(it->second[0]));
 
