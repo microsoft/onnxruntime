@@ -70,7 +70,7 @@ std::unordered_map<OpIdInfo, OpTransformInfo, OpIdHash> conv_table;
 static inline const OpTransformInfo* NhwcConvLookup(const api::GraphRef& graph, api::NodeRef& node){
   const auto& optype = node.OpType();
   const auto& domain = node.Domain();
-  const auto info = graph.GetValueInfo(node.Outputs()[0]);
+  const auto info = graph.GetValueInfo(node.Inputs()[0]);
   const api::DataType dtype = info->DType();
   OpIdInfo key{optype, domain, dtype};
 
@@ -82,45 +82,135 @@ static inline const OpTransformInfo* NhwcConvLookup(const api::GraphRef& graph, 
 }
 
 
-NhwcTransformer::NhwcTransformer(AllocatorPtr cpu_allocator) noexcept
+NhwcTransformer::NhwcTransformer(AllocatorPtr cpu_allocator, std::shared_ptr<KernelRegistry> cpu_kernel_registry) noexcept
     : GraphTransformer("NhwcTransformer"), cpu_allocator_(std::move(cpu_allocator))
 {
+  if (!cpu_kernel_registry) {
+      // This is a CPU op nodes optimizer, not useful if cpu EP is not available.
+    return;
+  }
+
   if (!conv_table.empty()){
     return;
   }
-  conv_table.emplace(
-      OpIdInfo("QLinearConv", kOnnxDomain, api::DataType::UINT8),
-      OpTransformInfo{"QLinearConv", kMSDomain, 1, true});
-  conv_table.emplace(
-      OpIdInfo("QLinearConv", kOnnxDomain, api::DataType::INT8),
-      OpTransformInfo{"QLinearConv", kMSDomain, 1, true});
-  conv_table.emplace(
-      OpIdInfo("QLinearConv", kMSDomain, api::DataType::UINT8),
-      OpTransformInfo{"QLinearConv", kMSDomain, 1, true});
-  conv_table.emplace(
-      OpIdInfo("QLinearConv", kMSDomain, api::DataType::INT8),
-      OpTransformInfo{"QLinearConv", kMSDomain, 1, true});
-#ifdef MLAS_F16VEC_INTRINSICS_SUPPORTED
-  if (MlasFp16AccelerationSupported()){
-    conv_table.emplace(
-        OpIdInfo("Conv", kOnnxDomain, api::DataType::FLOAT16),
-        OpTransformInfo{"NhwcFusedConv", kMSDomain, 1, false});
-    conv_table.emplace(
-        OpIdInfo("FusedConv", kMSDomain, api::DataType::FLOAT16),
-        OpTransformInfo{"NhwcFusedConv", kMSDomain, 1, false});
-    conv_table.emplace(
-        OpIdInfo("MaxPool", kOnnxDomain, api::DataType::FLOAT16),
-        OpTransformInfo{"MaxPool", kMSInternalNHWCDomain, 12, false});
-    conv_table.emplace(
-        OpIdInfo("AveragePool", kOnnxDomain, api::DataType::FLOAT16),
-        OpTransformInfo{"AveragePool", kMSInternalNHWCDomain, 11, false});
-    conv_table.emplace(
-      OpIdInfo("GlobalAveragePool", kOnnxDomain, api::DataType::FLOAT16),
-        OpTransformInfo{"GlobalAveragePool", kMSInternalNHWCDomain, 1, false});
+
+  // Make sure that the new nodes we are about to create during graph transformation,
+  // their kernels are available in the cpu EP.
+
+  {
+    // int8 qconv
+    OpKernelRegistryId qconv_int8{
+        "QLinearConv", kMSDomain, 1, {{"T1", {DataTypeImpl::GetTensorType<int8_t>()}}}};
+    const KernelCreateInfo* kernel_create_info{};
+    const auto status = cpu_kernel_registry->TryFindKernel(
+        kCpuExecutionProvider, qconv_int8.op_type_, qconv_int8.domain_,
+        qconv_int8.version_, qconv_int8.type_constraints_, &kernel_create_info);
+    if (status.IsOK() && kernel_create_info != nullptr) {
+      kernel_create_info = nullptr;
+      conv_table.emplace(
+          OpIdInfo("QLinearConv", kOnnxDomain, api::DataType::INT8),
+          OpTransformInfo{qconv_int8.op_type_, qconv_int8.domain_, qconv_int8.version_, true});
+      conv_table.emplace(
+          OpIdInfo("QLinearConv", kMSDomain, api::DataType::INT8),
+          OpTransformInfo{qconv_int8.op_type_, qconv_int8.domain_, qconv_int8.version_, true});
+    }
   }
-#endif
+
+  {
+    // uint8 qconv
+    OpKernelRegistryId qconv_uint8{
+        "QLinearConv", kMSDomain, 1, {{"T1", {DataTypeImpl::GetTensorType<uint8_t>()}}}};
+    const KernelCreateInfo* kernel_create_info{};
+    const auto status = cpu_kernel_registry->TryFindKernel(
+        kCpuExecutionProvider, qconv_uint8.op_type_, qconv_uint8.domain_,
+        qconv_uint8.version_, qconv_uint8.type_constraints_, &kernel_create_info);
+    if (status.IsOK() && kernel_create_info != nullptr) {
+      kernel_create_info = nullptr;
+      conv_table.emplace(
+          OpIdInfo("QLinearConv", kOnnxDomain, api::DataType::UINT8),
+          OpTransformInfo{qconv_uint8.op_type_, qconv_uint8.domain_, qconv_uint8.version_, true});
+      conv_table.emplace(
+          OpIdInfo("QLinearConv", kMSDomain, api::DataType::UINT8),
+          OpTransformInfo{qconv_uint8.op_type_, qconv_uint8.domain_, qconv_uint8.version_, true});
+    }
+  }
+
+  {
+    // fp16 nhwc conv
+    OpKernelRegistryId nhwc_conv_fp16{
+        "NhwcFusedConv", kMSDomain, 1, {{"T", {DataTypeImpl::GetTensorType<MLFloat16>()}}}};
+
+    const KernelCreateInfo* kernel_create_info{};
+    const auto status = cpu_kernel_registry->TryFindKernel(
+        kCpuExecutionProvider, nhwc_conv_fp16.op_type_, nhwc_conv_fp16.domain_,
+        nhwc_conv_fp16.version_, nhwc_conv_fp16.type_constraints_, &kernel_create_info);
+    if (status.IsOK() && kernel_create_info != nullptr) {
+      kernel_create_info = nullptr;
+      conv_table.emplace(
+          OpIdInfo("Conv", kOnnxDomain, api::DataType::FLOAT16),
+          OpTransformInfo{nhwc_conv_fp16.op_type_, nhwc_conv_fp16.domain_, nhwc_conv_fp16.version_, false});
+      conv_table.emplace(
+          OpIdInfo("FusedConv", kMSDomain, api::DataType::FLOAT16),
+          OpTransformInfo{nhwc_conv_fp16.op_type_, nhwc_conv_fp16.domain_, nhwc_conv_fp16.version_, false});
+    }
+  }
+
+  {
+    // fp16 nhwc maxpool
+    OpKernelRegistryId nhwc_maxpool_fp16{
+        "MaxPool", kMSInternalNHWCDomain, 12, {{"T", {DataTypeImpl::GetTensorType<MLFloat16>()}}}};
+
+    const KernelCreateInfo* kernel_create_info{};
+    const auto status = cpu_kernel_registry->TryFindKernel(
+        kCpuExecutionProvider, nhwc_maxpool_fp16.op_type_, nhwc_maxpool_fp16.domain_,
+        nhwc_maxpool_fp16.version_, nhwc_maxpool_fp16.type_constraints_, &kernel_create_info);
+    if (status.IsOK() && kernel_create_info != nullptr) {
+      kernel_create_info = nullptr;
+      conv_table.emplace(
+          OpIdInfo("MaxPool", kOnnxDomain, api::DataType::FLOAT16),
+          OpTransformInfo{nhwc_maxpool_fp16.op_type_, nhwc_maxpool_fp16.domain_, nhwc_maxpool_fp16.version_, false});
+    }
+  }
+
+  {
+    // fp16 average maxpool
+    OpKernelRegistryId nhwc_avgpool_fp16{
+        "AveragePool", kMSInternalNHWCDomain, 11, {{"T", {DataTypeImpl::GetTensorType<MLFloat16>()}}}};
+
+    const KernelCreateInfo* kernel_create_info{};
+    const auto status = cpu_kernel_registry->TryFindKernel(
+        kCpuExecutionProvider, nhwc_avgpool_fp16.op_type_, nhwc_avgpool_fp16.domain_,
+        nhwc_avgpool_fp16.version_, nhwc_avgpool_fp16.type_constraints_, &kernel_create_info);
+    if (status.IsOK() && kernel_create_info != nullptr) {
+      kernel_create_info = nullptr;
+      conv_table.emplace(
+          OpIdInfo("AveragePool", kOnnxDomain, api::DataType::FLOAT16),
+          OpTransformInfo{nhwc_avgpool_fp16.op_type_, nhwc_avgpool_fp16.domain_, nhwc_avgpool_fp16.version_, false});
+    }
+  }
+
+  {
+    // fp16 global average maxpool
+    OpKernelRegistryId nhwc_gavgpool_fp16{
+        "GlobalAveragePool", kMSInternalNHWCDomain, 1, {{"T", {DataTypeImpl::GetTensorType<MLFloat16>()}}}};
+
+    const KernelCreateInfo* kernel_create_info{};
+    const auto status = cpu_kernel_registry->TryFindKernel(
+        kCpuExecutionProvider, nhwc_gavgpool_fp16.op_type_, nhwc_gavgpool_fp16.domain_,
+        nhwc_gavgpool_fp16.version_, nhwc_gavgpool_fp16.type_constraints_, &kernel_create_info);
+    if (status.IsOK() && kernel_create_info != nullptr) {
+      kernel_create_info = nullptr;
+      conv_table.emplace(
+          OpIdInfo("GlobalAveragePool", kOnnxDomain, api::DataType::FLOAT16),
+          OpTransformInfo{nhwc_gavgpool_fp16.op_type_, nhwc_gavgpool_fp16.domain_, nhwc_gavgpool_fp16.version_, false});
+    }
+  }
+
 };
 
+bool NhwcTransformer::IsActive() {
+  return !conv_table.empty();
+}
 
 Status NhwcTransformer::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
 #if defined(ORT_MINIMAL_BUILD)
