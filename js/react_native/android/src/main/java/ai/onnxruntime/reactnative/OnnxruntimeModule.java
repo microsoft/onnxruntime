@@ -129,12 +129,6 @@ public class OnnxruntimeModule extends ReactContextBaseJavaModule {
 
       SessionOptions sessionOptions = parseSessionOptions(options);
 
-      /*
-        Optional call of sessionOptions java api to enable usage of ort extensions custom ops in
-        a react native app
-      */
-      // sessionOptions.registerCustomOpLibrary(ai.onnxruntime.extensions.OrtxPackage.getLibraryPath());
-
       ortSession = ortEnvironment.createSession(modelArray, sessionOptions);
       sessionMap.put(uri, ortSession);
     } else {
