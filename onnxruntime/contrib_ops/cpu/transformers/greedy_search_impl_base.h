@@ -212,7 +212,8 @@ Status GreedySearchBase<T, ParametersT>::CheckInputs(const OpKernelContextIntern
                                             context.Input<Tensor>(4),    // vocab_mask
                                             context.Input<Tensor>(5),    // prefix_vocab_mask
                                             context.Input<Tensor>(6),    // attention_mask
-                                            context.Input<Tensor>(7)));  // presence_mask
+                                            context.Input<Tensor>(7),    // presence_mask
+                                            nullptr));                   // forced_idx_token_pairs
 
   return Status::OK();
 }

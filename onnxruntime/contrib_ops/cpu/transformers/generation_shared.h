@@ -152,7 +152,7 @@ struct IGenerationParameters {
   gsl::span<const int32_t> vocab_mask;
   gsl::span<const int32_t> prefix_vocab_mask;
   gsl::span<const int32_t> presence_mask;
-  gsl::span<gsl::span<const int32_t>> forced_idx_token_pairs;
+  gsl::span<const int32_t> forced_idx_token_pairs;
 
   // Parameters from outputs.
   bool output_scores;  // whether scores existed in output

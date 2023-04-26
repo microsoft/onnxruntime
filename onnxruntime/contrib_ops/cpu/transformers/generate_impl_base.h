@@ -122,7 +122,8 @@ class GenerateBase {
                          const Tensor* vocab_mask,
                          const Tensor* prefix_vocab_mask,
                          const Tensor* attention_mask,
-                         const Tensor* presence_mask) const {
+                         const Tensor* presence_mask,
+                         const Tensor* forced_idx_token_pairs) const {
     const auto& dims = input_ids->Shape().GetDims();
     if (parameters->model_type == IGenerationParameters::kModelTypeWhisper) {
       if (dims.size() != 3) {
@@ -214,6 +215,23 @@ class GenerateBase {
 
       // store prefix vocab mask in parameters.
       parameters->presence_mask = presence_mask->DataAsSpan<int32_t>();
+    }
+
+    if (forced_idx_token_pairs != nullptr) {
+      const auto& dims_forced_tokens = forced_idx_token_pairs->Shape().GetDims();
+      if (dims_forced_tokens.size() != 2) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "Input 'forced_idx_token_pairs' is expected to have 2 dimensions, got ", dims_forced_tokens.size());
+      }
+
+      // forced_idx_token_pairs second dimension should be 2 - each value is [idx, token_value]
+      if (static_cast<int>(dims_forced_tokens[1]) != 2) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "Input 'forced_idx_token_pairs' shape[1] shall be 2, got", dims_forced_tokens[1]);
+      }
+
+      // store prefix vocab mask in parameters.
+      parameters->forced_idx_token_pairs = forced_idx_token_pairs->DataAsSpan<int32_t>();
     }
 
     return Status::OK();

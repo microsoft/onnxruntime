@@ -141,13 +141,13 @@ class PresencePenaltyLogitsProcessor : public ILogitsProcessor<T> {
 template <typename T>
 class ForcedTokenLogitsProcessor : public ILogitsProcessor<T> {
  public:
-  ForcedTokenLogitsProcessor(const gsl::span<gsl::span<const int32_t>>& idx_token_pairs);
+  ForcedTokenLogitsProcessor(const gsl::span<const int32_t>& idx_token_pairs);
 
   void Process(const ISequences* sequences,
                NextTokenScores<T>& next_token_scores) override;
 
  private:
-  std::map<const int32_t, const int32_t> idx_token_map;
+  std::map<int32_t, int32_t> idx_token_map;
 };
 
 class LogitsProcessorList : public ILogitsProcessorList {

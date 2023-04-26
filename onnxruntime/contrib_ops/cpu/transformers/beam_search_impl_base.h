@@ -211,7 +211,8 @@ Status BeamSearchBase<T>::CheckInputs(const OpKernelContextInternal& context) {
                                             context.Input<Tensor>(7),  // vocab_mask
                                             context.Input<Tensor>(8),  // prefix_vocab_mask
                                             context.Input<Tensor>(9),  // attention_mask
-                                            nullptr));                 // presence_mask
+                                            nullptr,                   // presence_mask
+                                            context.Input<Tensor>(10)));// forced_idx_token_pairs
 
   return Status::OK();
 }
