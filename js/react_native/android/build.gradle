@@ -62,6 +62,20 @@ android {
     sourceCompatibility JavaVersion.VERSION_1_8
     targetCompatibility JavaVersion.VERSION_1_8
   }
+
+  if (getOnnxruntimePackageName() == "onnxruntime-ext") {
+    sourceSets {
+      main {
+        java.srcDirs = ['srcExt/main/java/']
+      }
+    }
+  } else {
+    sourceSets {
+      main {
+        java.srcDirs = ['src/main/java']
+      }
+    }
+  }
 }
 
 repositories {
