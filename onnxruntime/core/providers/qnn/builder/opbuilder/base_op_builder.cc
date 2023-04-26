@@ -120,7 +120,7 @@ Status BaseOpBuilder::ProcessInput(QnnModelWrapper& qnn_model_wrapper,
   bool is_initializer_input = qnn_model_wrapper.IsInitializerInput(input_name);
   if (is_initializer_input) {
     const auto& input_tensor = qnn_model_wrapper.GetInitializerTensors().at(input_name);
-    ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackInitializerData(*input_tensor, unpacked_tensor));
+    ORT_RETURN_IF_ERROR(qnn_model_wrapper.UnpackInitializerData(*input_tensor, unpacked_tensor));
   }
 
   Qnn_TensorType_t tensor_type = GetInputTensorType(qnn_model_wrapper, input_name);
@@ -253,7 +253,8 @@ Status BaseOpBuilder::ProcessOutputs(QnnModelWrapper& qnn_model_wrapper,
   return Status::OK();
 }
 
-Status BaseOpBuilder::TransposeInitializer(const onnx::TensorProto& initializer,
+Status BaseOpBuilder::TransposeInitializer(const QnnModelWrapper& qnn_model_wrapper,
+                                           const onnx::TensorProto& initializer,
                                            const std::vector<size_t>& perm,
                                            const AllocatorPtr& cpu_allocator,
                                            std::vector<uint8_t>& transposed_data) const {
@@ -277,7 +278,7 @@ Status BaseOpBuilder::TransposeInitializer(const onnx::TensorProto& initializer,
   ORT_RETURN_IF_ERROR(onnxruntime::utils::TensorProtoToTensor(Env::Default(), nullptr, initializer, in_tensor));
   ORT_RETURN_IF_ERROR(Transpose::DoTranspose(permutations, in_tensor, out_tensor));
   onnx::TensorProto new_tensor_proto = onnxruntime::utils::TensorToTensorProto(out_tensor, "test");
-  ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackInitializerData(new_tensor_proto, transposed_data));
+  ORT_RETURN_IF_ERROR(qnn_model_wrapper.UnpackInitializerData(new_tensor_proto, transposed_data));
 
   return Status::OK();
 }
