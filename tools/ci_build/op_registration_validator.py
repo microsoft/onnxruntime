@@ -151,6 +151,11 @@ class RegistrationValidator(op_registration_utils.RegistrationProcessor):
         Validates the last registration in sorted order for a single domain and op and returns whether it is valid.
         """
         # make sure we have an unversioned last entry for each operator unless it's deprecated
+
+        # TODO If the operator is deprecated, validation is more lax. I.e., it doesn't require a versioned registration.
+        # This could be tightened up but we would need to handle the deprecated contrib ops registered in the ONNX
+        # domain that have newer registrations in a non-contrib op file differently. They should only be considered
+        # deprecated as contrib ops.
         domain_and_op_str = last_r.domain_and_op_str()
         deprecation_version = deprecated_ops.get(domain_and_op_str, None)
 
