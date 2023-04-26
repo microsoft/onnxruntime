@@ -345,7 +345,7 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
     // If the environment variable 'ORT_TENSORRT_UNAVAILABLE' exists, then we do not load TensorRT. This is set by _ld_preload for the manylinux case
     // as in that case, trying to load the library itself will result in a crash due to the way that auditwheel strips dependencies.
     if (Env::Default().GetEnvironmentVar("ORT_TENSORRT_UNAVAILABLE").empty()) {
-      std::string calibration_table, cache_path, lib_path, value;
+      std::string calibration_table, cache_path, lib_path, min_profile, max_profile, opt_profile;
       auto it = provider_options_map.find(type);
       if (it != provider_options_map.end()) {
         OrtTensorRTProviderOptionsV2 params{
@@ -516,22 +516,22 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
             }
           } else if (option.first == "trt_profile_min_shapes") {
             if (!option.second.empty()) {
-              value = option.second;
-              params.trt_profile_min_shapes = value.c_str();
+              min_profile = option.second;
+              params.trt_profile_min_shapes = min_profile.c_str();
             } else {
               ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_profile_min_shapes' should be a string of 'input1:dim1xdimd2...,input2:dim1xdim2...,...'.\n");
             }
           } else if (option.first == "trt_profile_max_shapes") {
             if (!option.second.empty()) {
-              value = option.second;
-              params.trt_profile_max_shapes = value.c_str();
+              max_profile = option.second;
+              params.trt_profile_max_shapes = max_profile.c_str();
             } else {
               ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_profile_max_shapes' should be a string of 'input1:dim1xdimd2...,input2:dim1xdim2...,...'.\n");
             }
           } else if (option.first == "trt_profile_opt_shapes") {
             if (!option.second.empty()) {
-              value = option.second;
-              params.trt_profile_opt_shapes = value.c_str();
+              opt_profile = option.second;
+              params.trt_profile_opt_shapes = opt_profile.c_str();
             } else {
               ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_profile_opt_shapes' should be a string of 'input1:dim1xdimd2...,input2:dim1xdim2...,...'.\n");
             }
