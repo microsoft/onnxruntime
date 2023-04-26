@@ -91,7 +91,7 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
     status = create_not_supported_status();
 #endif
   } else if (strcmp(provider_name, "JS") == 0) {
-#if defined(USE_JS)
+#if defined(USE_JSEP)
     options->provider_factories.push_back(JsProviderFactoryCreator::Create(provider_options));
 #else
     status = create_not_supported_status();

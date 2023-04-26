@@ -104,7 +104,7 @@ jobs:
       displayName: 'Build (simd + JSEP)'
       inputs:
         scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-        arguments: '$(CommonBuildArgs) --build_dir $(Build.BinariesDirectory)\wasm_simd_jsep --enable_wasm_simd --use_js --target onnxruntime_webassembly'
+        arguments: '$(CommonBuildArgs) --build_dir $(Build.BinariesDirectory)\wasm_simd_jsep --enable_wasm_simd --use_jsep --target onnxruntime_webassembly'
         workingDirectory: '$(Build.BinariesDirectory)'
   - ${{ if eq(parameters.SkipPublish, false) }}:
     - script: |

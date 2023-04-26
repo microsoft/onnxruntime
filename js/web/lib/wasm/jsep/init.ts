@@ -29,7 +29,7 @@ class TensorViewImpl implements TensorView {
   }
 }
 
-class OpKernelContext implements ComputeContext {
+class ComputeContextImpl implements ComputeContext {
   readonly opKernelContext: number;
   readonly inputs: readonly TensorView[];
   get customData(): {[key: string]: unknown} {
@@ -142,7 +142,7 @@ export const init = async(module: OrtWasmModule): Promise<void> => {
         // jsepRun
         (kernel: number, contextDataOffset: number) => {
           LOG_DEBUG('verbose', () => `[WebGPU] jsepRun: kernel=${kernel}, contextDataOffset=${contextDataOffset}`);
-          const context = new OpKernelContext(module, backend, contextDataOffset);
+          const context = new ComputeContextImpl(module, backend, contextDataOffset);
           return backend.computeKernel(kernel, context);
         });
   }
