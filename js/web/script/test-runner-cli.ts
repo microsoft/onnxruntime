@@ -53,8 +53,10 @@ async function main() {
 
   // The default backends and opset version lists. Those will be used in suite tests.
   const DEFAULT_BACKENDS: readonly TestRunnerCliArgs.Backend[] =
-      args.env === 'node' ? ['cpu', 'wasm'] : ['wasm', 'webgl'];
-  const DEFAULT_OPSET_VERSIONS: readonly number[] = [13, 12, 11, 10, 9, 8, 7];
+      args.env === 'node' ? ['cpu', 'wasm'] : ['wasm', 'webgl', 'webgpu'];
+  const DEFAULT_OPSET_VERSIONS = fs.readdirSync(TEST_DATA_MODEL_NODE_ROOT, {withFileTypes: true})
+                                     .filter(dir => dir.isDirectory() && dir.name.startsWith('opset'))
+                                     .map(dir => dir.name.slice(5));
 
   const FILE_CACHE_ENABLED = args.fileCache;         // whether to enable file cache
   const FILE_CACHE_MAX_FILE_SIZE = 1 * 1024 * 1024;  // The max size of the file that will be put into file cache
@@ -205,7 +207,7 @@ async function main() {
     }
   }
 
-  function loadNodeTests(backend: string, version: number): Test.ModelTestGroup {
+  function loadNodeTests(backend: string, version: string): Test.ModelTestGroup {
     return suiteFromFolder(
         `node-opset_v${version}-${backend}`, path.join(TEST_DATA_MODEL_NODE_ROOT, `opset${version}`), backend,
         testlist[backend].node);
@@ -333,7 +335,7 @@ async function main() {
         [searchPattern, path.join(TEST_DATA_MODEL_NODE_ROOT, '**', searchPattern).replace(/\\/g, '/')];
     // 4 - check the globby result of NODE root combined with opset versions and searchPattern
     globbyPattern.push(...DEFAULT_OPSET_VERSIONS.map(
-        v => path.join(TEST_DATA_MODEL_NODE_ROOT, `v${v}`, '**', searchPattern).replace(/\\/g, '/')));
+        v => path.join(TEST_DATA_MODEL_NODE_ROOT, `opset${v}`, '**', searchPattern).replace(/\\/g, '/')));
 
     folderCandidates.push(...globbySync(globbyPattern, {onlyDirectories: true, absolute: true}));
 
@@ -456,11 +458,13 @@ async function main() {
     } else {
       // STEP 5. use Karma to run test
       npmlog.info('TestRunnerCli.Run', '(4/4) Running karma to start test runner...');
+      const webgpu = args.backends.indexOf('webgpu') > -1;
       const browser = getBrowserNameFromEnv(
           args.env,
           args.bundleMode === 'perf' ? 'perf' :
               args.debug             ? 'debug' :
-                                       'test');
+                                       'test',
+          webgpu, config.options.globalEnvFlags?.webgpu?.profilingMode === 'default');
       const karmaArgs = ['karma', 'start', `--browsers ${browser}`];
       if (args.debug) {
         karmaArgs.push('--log-level info --timeout-mocha 9999999');
@@ -469,6 +473,9 @@ async function main() {
       }
       if (args.noSandbox) {
         karmaArgs.push('--no-sandbox');
+      }
+      if (webgpu) {
+        karmaArgs.push('--force-localhost');
       }
       karmaArgs.push(`--bundle-mode=${args.bundleMode}`);
       if (browser === 'Edge') {
@@ -561,10 +568,11 @@ async function main() {
     fs.writeJSONSync(path.join(TEST_ROOT, './testdata-config.json'), config);
   }
 
-  function getBrowserNameFromEnv(env: TestRunnerCliArgs['env'], mode: 'debug'|'perf'|'test') {
+  function getBrowserNameFromEnv(
+      env: TestRunnerCliArgs['env'], mode: 'debug'|'perf'|'test', webgpu: boolean, profile: boolean) {
     switch (env) {
       case 'chrome':
-        return selectChromeBrowser(mode);
+        return selectChromeBrowser(mode, webgpu, profile);
       case 'edge':
         return 'Edge';
       case 'firefox':
@@ -580,14 +588,23 @@ async function main() {
     }
   }
 
-  function selectChromeBrowser(mode: 'debug'|'perf'|'test') {
-    switch (mode) {
-      case 'debug':
-        return 'ChromeDebug';
-      case 'perf':
-        return 'ChromePerf';
-      default:
-        return 'ChromeTest';
+  function selectChromeBrowser(mode: 'debug'|'perf'|'test', webgpu: boolean, profile: boolean) {
+    if (webgpu) {
+      switch (mode) {
+        case 'debug':
+          return profile ? 'ChromeCanaryProfileDebug' : 'ChromeCanaryDebug';
+        default:
+          return profile ? 'ChromeCanaryProfileTest' : 'ChromeCanaryDebug';
+      }
+    } else {
+      switch (mode) {
+        case 'debug':
+          return 'ChromeDebug';
+        case 'perf':
+          return 'ChromePerf';
+        default:
+          return 'ChromeTest';
+      }
     }
   }
 }
