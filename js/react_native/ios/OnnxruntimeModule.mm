@@ -92,11 +92,11 @@ RCT_EXPORT_METHOD(run
 
     Ort::SessionOptions sessionOptions = [self parseSessionOptions:options];
 
-    #ifdef ENABLE_ORT_EXT
-      if (RegisterCustomOps(sessionOptions, OrtGetApiBase()) != nullptr) {
-        throw std::runtime_error("RegisterCustomOps failed");
-      }
-    #endif
+  #ifdef ENABLE_ORT_EXT
+    if (RegisterCustomOps(sessionOptions, OrtGetApiBase()) != nullptr) {
+      throw std::runtime_error("RegisterCustomOps failed");
+    }
+  #endif
 
     sessionInfo->session.reset(new Ort::Session(*ortEnv, [modelPath UTF8String], sessionOptions));
 
