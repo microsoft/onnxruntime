@@ -345,7 +345,7 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
     // If the environment variable 'ORT_TENSORRT_UNAVAILABLE' exists, then we do not load TensorRT. This is set by _ld_preload for the manylinux case
     // as in that case, trying to load the library itself will result in a crash due to the way that auditwheel strips dependencies.
     if (Env::Default().GetEnvironmentVar("ORT_TENSORRT_UNAVAILABLE").empty()) {
-      std::string calibration_table, cache_path, lib_path, value;
+      std::string calibration_table, cache_path, lib_path;
       auto it = provider_options_map.find(type);
       if (it != provider_options_map.end()) {
         OrtTensorRTProviderOptionsV2 params{
@@ -564,15 +564,13 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
             }
           } else if (option.first == "trt_tactic_sources") {
             if (!option.second.empty()) {
-              value = option.second;
-              params.trt_tactic_sources = value.c_str();
+              params.trt_tactic_sources = option.second.c_str();
             } else {
               ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_tactic_sources' should be a string. e.g. \"-CUDNN,+CUBLAS\" available keys: \"CUBLAS\"|\"CUBLAS_LT\"|\"CUDNN\"|\"EDGE_MASK_CONVOLUTIONS\".\n");
             }
           } else if (option.first == "trt_extra_plugin_lib_paths") {
             if (!option.second.empty()) {
-              lib_path = option.second;
-              params.trt_extra_plugin_lib_paths = lib_path.c_str();
+              params.trt_extra_plugin_lib_paths = option.second.c_str();
             } else {
               ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_extra_plugin_lib_paths' should be a path string.\n");
             }
