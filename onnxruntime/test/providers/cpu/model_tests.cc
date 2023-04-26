@@ -466,8 +466,8 @@ TEST_P(ModelTest, Run) {
     broken_tests.insert({"prelu_example_expanded", "not supported by TensorRT EP."});
     broken_tests_keyword_set.insert({"scatternd_add"});
     broken_tests_keyword_set.insert({"scatternd_multiply"});
-    broken_tests_keyword_set.insert({"scatter_elements_with_duplicate_indices"});  
-    
+    broken_tests_keyword_set.insert({"scatter_elements_with_duplicate_indices"});
+
     // sce op is not supported
     broken_tests_keyword_set.insert({"sce"});
 
