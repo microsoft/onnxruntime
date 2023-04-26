@@ -16,12 +16,13 @@ cbuffer Constants
 };
 
 uint NextPowerOf2(uint x) {
-  x--;
-  uint y = 1;
-  while (y <= x) {
-    y <<= 1;
-  }
-  return y;
+    x--;
+    uint y = 1;
+    while (y <= x)
+    {
+        y <<= 1;
+    }
+    return y;
 }
 
 
@@ -41,7 +42,7 @@ float2 CalculateChirp(uint n, uint N, bool isInverse)
 }
 
 [numthreads(64, 1, 1)]
-void DFT(uint3 dtid : SV_DispatchThreadId)
+void BluesteinZChirp(uint3 dtid : SV_DispatchThreadId)
 {
     uint n = StartIndex + dtid.x;
     if (n < ElementCount)

@@ -78,7 +78,7 @@ ret
 // Approximately 0 instruction slots used
 #endif
 
-const BYTE g_DFT[] =
+const BYTE g_BluesteinZChirp[] =
 {
      68,  88,  66,  67, 237, 104, 
     222, 255,  94,  46,  57, 112, 

@@ -40,7 +40,7 @@ namespace DFTHelpers {
     // Divides and rounds up
     inline uint32_t CeilDivide(uint32_t dividend, uint32_t divisor)
     {
-        UINT64 temp = static_cast<UINT64>(dividend) + divisor - 1;
+        uint64_t temp = static_cast<uint64_t>(dividend) + divisor - 1;
         return static_cast<uint32_t>(temp / divisor);
     }
 
@@ -243,7 +243,7 @@ public:
         std::vector<CD3DX12_ROOT_PARAMETER1> rootParameters;
         rootParameters.resize(uavCount + 1);
 
-        for (UINT i = 0; i < uavCount; i++)
+        for (uint32_t i = 0; i < uavCount; i++)
         {
             rootParameters[i].InitAsUnorderedAccessView(i);
         }
@@ -284,7 +284,7 @@ public:
         switch (dataType)
         {
             case MLOperatorTensorDataType::Float:
-            computePsoDesc.CS = CD3DX12_SHADER_BYTECODE(BluesteinChirp_Float32::g_DFT, sizeof(BluesteinChirp_Float32::g_DFT));
+            computePsoDesc.CS = CD3DX12_SHADER_BYTECODE(BluesteinChirp_Float32::g_BluesteinZChirp, sizeof(BluesteinChirp_Float32::g_BluesteinZChirp));
             break;
 
             case MLOperatorTensorDataType::Float16:
@@ -298,7 +298,7 @@ public:
 
                 ORT_THROW_HR_IF(E_INVALIDARG, !featureOptions.Native16BitShaderOpsSupported);
 
-                computePsoDesc.CS = CD3DX12_SHADER_BYTECODE(BluesteinChirp_Float16::g_DFT, sizeof(BluesteinChirp_Float16::g_DFT));
+                computePsoDesc.CS = CD3DX12_SHADER_BYTECODE(BluesteinChirp_Float16::g_BluesteinZChirp, sizeof(BluesteinChirp_Float16::g_BluesteinZChirp));
             }
             break;
 
@@ -316,7 +316,7 @@ public:
         std::vector<CD3DX12_ROOT_PARAMETER1> rootParameters;
         rootParameters.resize(uavCount + 1);
 
-        for (UINT i = 0; i < uavCount; i++)
+        for (uint32_t i = 0; i < uavCount; i++)
         {
             rootParameters[i].InitAsUnorderedAccessView(i);
         }
@@ -778,7 +778,7 @@ public:
         fft_params.StockhamParams = bluesteinZChirpParams.AFFTParams;
         StockhamFFT(fft_params, false, 0 /*chirpLength*/, 1 /*scale*/, commandList);
 
-        // Should include the bfft tensor as the window funciton
+        // Should include the bfft tensor as the window function
         fft_params.StockhamParams = bluesteinZChirpParams.AFFTInverseParams;
         float chirpLength = static_cast<float>(bluesteinZChirpParams.ZChirp.Sizes[2]);
         chirpLength *= (m_isInverse ? 1 : -1);
