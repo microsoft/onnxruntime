@@ -8,8 +8,9 @@
 #import <React/RCTLog.h>
 #import <onnxruntime/onnxruntime_cxx_api.h>
 
-// Optional include of ort extensions header
-// #include <onnxruntime_extensions.h>
+#ifdef ENABLE_ORT_EXT
+#include <onnxruntime_extensions.h>
+#endif
 
 @implementation OnnxruntimeModule
 
@@ -91,12 +92,11 @@ RCT_EXPORT_METHOD(run
 
     Ort::SessionOptions sessionOptions = [self parseSessionOptions:options];
 
-    /*
-      Optional call of to enable usage of ort extensions custom ops
-    */
-    // if (RegisterCustomOps(sessionOptions, OrtGetApiBase()) != nullptr) {
-    //   throw std::runtime_error("RegisterCustomOps failed");
-    // }
+    #ifdef ENABLE_ORT_EXT
+      if (RegisterCustomOps(sessionOptions, OrtGetApiBase()) != nullptr) {
+        throw std::runtime_error("RegisterCustomOps failed");
+      }
+    #endif
 
     sessionInfo->session.reset(new Ort::Session(*ortEnv, [modelPath UTF8String], sessionOptions));
 

@@ -29,6 +29,9 @@ Pod::Spec.new do |spec|
     root_package = JSON.parse(File.read(File.join(root_dir, 'package.json')))
     if (root_package["ortPackageName"] == "onnxruntime-ext")
       spec.dependency "onnxruntime-extensions-c"
+      spec.xcconfig = {
+        'OTHER_CPLUSPLUSFLAGS' => '-DENABLE_ORT_EXT=1 -Wall -Wextra',
+      }
     end
   end
 
