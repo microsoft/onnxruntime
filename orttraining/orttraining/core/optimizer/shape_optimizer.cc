@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "orttraining/core/optimizer/shape_optimizer.h"
+
 #include <limits>
 
 #include "core/common/inlined_containers.h"
@@ -8,12 +10,12 @@
 #include "core/graph/graph_utils.h"
 #include "core/optimizer/utils.h"
 
-#include "orttraining/core/optimizer/shape_optimizer.h"
-
 using namespace onnxruntime::common;
 
 namespace onnxruntime {
 
+// TODO(pengwa): better way (instead of defining MACROs locally) to enable detailed debug logs
+// for some specific graph transformers.
 // Uncomment to log debug info for SO(Shape Optimizer).
 // #define NEED_SO_LOG_DEBUG_INFO 1
 
@@ -58,7 +60,7 @@ bool IsSingleValue1DShape(const ONNX_NAMESPACE::TensorShapeProto* input_shape) {
   return false;
 }
 
-bool CanShapeNodeBeReplacedWithConstant(Node& shape_node, const TensorShapeVector& dim_values,
+bool CanShapeNodeBeReplacedWithConstant(const Node& shape_node, const TensorShapeVector& dim_values,
                                         TensorShapeVector& fold_values) {
   int64_t data_rank = static_cast<int64_t>(dim_values.size());
   int64_t start = 0;
@@ -95,14 +97,18 @@ bool CanShapeNodeBeReplacedWithConstant(Node& shape_node, const TensorShapeVecto
   return true;
 }
 
-bool CanSliceNodeBeReplacedWithConstant(Graph& graph, Node& slice_node, const TensorShapeVector& dim_values,
+bool CanSliceNodeBeReplacedWithConstant(const Graph& graph, const Node& slice_node,
+                                        const TensorShapeVector& dim_values,
                                         TensorShapeVector& fold_values) {
-  NodeArg* starts_input = slice_node.MutableInputDefs()[1];
-  NodeArg* ends_input = slice_node.MutableInputDefs()[2];
-  NodeArg* axes_input = slice_node.MutableInputDefs().size() > 3 ? slice_node.MutableInputDefs()[3] : nullptr;
-  NodeArg* steps_input = slice_node.MutableInputDefs().size() > 4 ? slice_node.MutableInputDefs()[4] : nullptr;
+  const NodeArg* starts_input = slice_node.InputDefs()[1];
+  const NodeArg* ends_input = slice_node.InputDefs()[2];
+  const NodeArg* axes_input = slice_node.InputDefs().size() > 3 ? slice_node.InputDefs()[3] : nullptr;
+  const NodeArg* steps_input = slice_node.InputDefs().size() > 4 ? slice_node.InputDefs()[4] : nullptr;
 
-  // We only support 1D slices currently, can be extended further to support other cases.
+  // TODO: We support with some constraints currently, can be extended further to support other cases.
+  // Support cases:
+  // 1. starts/ends/axes/steps are all single-value 1D tensors, axes=[0] and steps=[1].
+  // 2. starts/ends are single-value 1D tensors, axes/steps are not provided, (default value: axes=[0] and steps=[1]).
   if (!IsSingleValue1DShape(starts_input->Shape()) ||
       !IsSingleValue1DShape(ends_input->Shape()) ||
       (axes_input && !IsSingleValue1DShape(axes_input->Shape())) ||
@@ -152,15 +158,24 @@ bool CanSliceNodeBeReplacedWithConstant(Graph& graph, Node& slice_node, const Te
   return true;
 }
 
-bool CanGatherNodeBeReplacedWithConstant(Graph& graph, Node& gather_node, const TensorShapeVector& dim_values,
+bool CanGatherNodeBeReplacedWithConstant(const Graph& graph, const Node& gather_node,
+                                         const TensorShapeVector& dim_values,
                                          TensorShapeVector& fold_values, int& gather_output_rank) {
-  NodeArg* data_input = gather_node.MutableInputDefs()[0];
+  const NodeArg* data_input = gather_node.InputDefs()[0];
+
+  // TODO: We support with some constraints currently, can be extended further to support other cases.
+  // Support cases:
+  // 1. data is 1D tensor, indices is a scalar, axis=0.
+  // 2. data is 1D tensor, indices is a scalar, axis=0 or axis is not provided (default value: axis=0).
+  // 3. data is 1D tensor, indices is 1D tensor with single element, axis=0.
+  // 4. data is 1D tensor, indices is 1D tensor with single element, axis is not provided (default value: axis=0).
+
   // Gather's input MUST be 1D tensor.
   if (!data_input->Shape() || data_input->Shape()->dim_size() != 1) {
     return false;
   }
 
-  NodeArg* indices_input = gather_node.MutableInputDefs()[1];
+  const NodeArg* indices_input = gather_node.InputDefs()[1];
   auto indices_shape = indices_input->Shape();
   // Indices can be 1D tensor or scalar.
   if (!indices_shape || !(indices_shape->dim_size() == 0 || IsSingleValue1DShape(indices_shape))) {
@@ -169,7 +184,6 @@ bool CanGatherNodeBeReplacedWithConstant(Graph& graph, Node& gather_node, const 
   }
 
   // Try to parse int64 type constant initializers.
-  // We only support 1D slices currently, can be extended further to support other cases.
   InlinedVector<int64_t> indices_values;
   if (!(optimizer_utils::AppendTensorFromInitializer(graph, *indices_input, indices_values, true) &&
         indices_values.size() == 1)) {
@@ -286,7 +300,7 @@ Status ShapeOptimizer::ApplyImpl(Graph& graph, bool& modified, int graph_level, 
           continue;
         }
 
-        auto& output_node = const_cast<Node&>(*p_ip_node);
+        auto& output_node = *graph.GetNode(p_ip_node->Index());
         visited_nodes.insert(&output_node);
         ++p_ip_node;
 

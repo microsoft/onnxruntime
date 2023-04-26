@@ -147,7 +147,9 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
       transformers.emplace_back(std::make_unique<ConstantFolding>(
           execution_provider, false /*skip_dequantize_linear*/, compatible_eps, excluded_initializers));
       transformers.emplace_back(std::make_unique<ReshapeFusion>(compatible_eps));
-      // Put fine-grained optimizers after ReshapeFusion to avoid it breaks the strong patterns it defines.
+      // Put fine-grained optimizer (e.g. ShapeOptimizer) after ReshapeFusion to avoid it breaks the strong patterns
+      // it defines. ReshapeFusion depends on subgraph pattern matching and do replacement accordingly, ShapeOptimizer
+      // potentially will optimize out some nodes defined in the subgraph patterns. So we put it after ReshapeFusion.
       transformers.emplace_back(std::make_unique<ShapeOptimizer>(compatible_eps));
       transformers.emplace_back(std::make_unique<ConcatSliceElimination>(compatible_eps));
 

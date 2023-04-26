@@ -117,9 +117,8 @@ class ModelTestBuilder {
       std::visit([&dim](auto&& arg) -> void {
         using V = std::decay_t<decltype(arg)>;
         if constexpr (std::is_same_v<V, int64_t>) {
-          if (arg != -1) {
-            dim->set_dim_value(arg);
-          }
+          ORT_ENFORCE(arg >= 0, "Negative dimension is not allowed in symbolic shape");
+          dim->set_dim_value(arg);
         } else {
           dim->set_dim_param(arg);
         }
