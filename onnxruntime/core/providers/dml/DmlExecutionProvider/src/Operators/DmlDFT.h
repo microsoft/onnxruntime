@@ -184,7 +184,7 @@ private:
         uint32_t WindowSizes[4];
         uint32_t WindowStrides[4];
         uint32_t HasWindow;
-        uint32_t WeightWithChirp;
+        float ChirpLength;
         float Scale;
         uint32_t DFTLength;
     };
@@ -461,7 +461,7 @@ public:
             {
                 case DFTType::Stockham:
                 {
-                    StockhamFFT(dftParams, m_isInverse, false /*weightWithChirp*/, commandList);
+                    StockhamFFT(dftParams, m_isInverse, 0 /*chirpLength*/, commandList);
                     break;
                 }
                 case DFTType::BluesteinZChirp:
@@ -479,6 +479,23 @@ public:
         return S_OK;
     }
 
+    // { before_dft_axis, axis, after_dft_axis, real_or_complex }
+    std::array<uint32_t, 4> GetReshapedDimensions(gsl::span<const uint32_t> dims, int64_t axis)
+    {
+        std::array<uint32_t, 4> reshapedDims = { 1, 1, 1, 1 };
+        size_t reshapedIndex = 0;
+        for (int i = 0; i < static_cast<int>(dims.size()) - 1; i++)
+        {
+            if (i == axis || i == (axis + 1))
+            {
+                reshapedIndex++;
+            }
+
+            reshapedDims[reshapedIndex] *= dims[i];
+        }
+        return reshapedDims;
+    }
+
     void PrepareStockhamFFTParams(
         IMLOperatorKernelContext* context,
         ID3D12Resource* inputResource,
@@ -486,26 +503,16 @@ public:
         ID3D12Resource* outputResource,
         gsl::span<const uint32_t> outputDims,
         uint32_t dftLength,
-        int64_t axis,
+        int64_t in_axis,
+        int64_t out_axis,
         StockhamParameters& params)
     {
         params = {};
 
-        // { before_dft_axis, axis, after_dft_axis, real_or_complex }
-        std::array<uint32_t, 4> reshapedInputSize = { 1, 1, 1, inputDims.back() };
-        std::array<uint32_t, 4> reshapedOutputSize = { 1, 1, 1, outputDims.back() };
-
-        size_t reshapedIndex = 0;
-        for (int i = 0; i < static_cast<int>(inputDims.size()) - 1; i++)
-        {
-            if (i == axis || i == (axis + 1))
-            {
-                reshapedIndex++;
-            }
-
-            reshapedInputSize[reshapedIndex] *= inputDims[i];
-            reshapedOutputSize[reshapedIndex] *= outputDims[i];
-        }
+        auto reshapedInputSize = GetReshapedDimensions(inputDims, in_axis);
+        reshapedInputSize.back() = inputDims.back();
+        auto reshapedOutputSize = GetReshapedDimensions(outputDims, out_axis);
+        reshapedOutputSize.back() = outputDims.back();
 
         auto temporarySize = reshapedInputSize;
         // In the case where the dft length does not match the dft size, the temporary output should
@@ -627,7 +634,7 @@ public:
         if (DFTHelpers::IsPowerOfTwo(params.DFTLength))
         {
             params.Type = DFTType::Stockham;
-            PrepareStockhamFFTParams(context, inputResource, inputDims, outputResource, outputDims, dftLength, m_axis, params.StockhamParams);
+            PrepareStockhamFFTParams(context, inputResource, inputDims, outputResource, outputDims, dftLength, m_axis, m_axis, params.StockhamParams);
         }
         else
         {
@@ -639,8 +646,8 @@ public:
             params.BluesteinZChirpParams.ZChirp.Sizes = std::array<uint32_t, 4> { 1, 1, dftLength, 2 };
             params.BluesteinZChirpParams.ZChirp.Strides = std::array<uint32_t, 4> { dftLength * 2, dftLength * 2, 2, 1 };
 
-            std::copy(inputDims.begin(), inputDims.end(), params.BluesteinZChirpParams.AFFT.Sizes.data());
-            params.BluesteinZChirpParams.AFFT.Sizes[m_axis] = M;
+            params.BluesteinZChirpParams.AFFT.Sizes = GetReshapedDimensions(inputDims, m_axis);
+            params.BluesteinZChirpParams.AFFT.Sizes[1] = M;
             params.BluesteinZChirpParams.AFFT.Sizes.back() = 2;
             Dml::GetDescendingPackedStrides(params.BluesteinZChirpParams.AFFT.Sizes, params.BluesteinZChirpParams.AFFT.Strides);
 
@@ -675,6 +682,7 @@ public:
                                      afft_resource.Get(), params.BluesteinZChirpParams.AFFT.Sizes,
                                      M,
                                      m_axis,
+                                     1,
                                      params.BluesteinZChirpParams.AFFTParams);
             params.BluesteinZChirpParams.AFFTParams.Window = params.BluesteinZChirpParams.ZChirp;
 
@@ -685,6 +693,7 @@ public:
                                      afft_resource.Get(), params.BluesteinZChirpParams.AFFT.Sizes,
                                      outputResource, outputDims,
                                      M,
+                                     1,
                                      m_axis,
                                      params.BluesteinZChirpParams.AFFTInverseParams);
             // The BFFT Window is described with the reshaped sizes and strides, which is incompatible with the
@@ -700,6 +709,7 @@ public:
                                      b_resource.Get(), params.BluesteinZChirpParams.B.Sizes,
                                      bfft_resource.Get(), params.BluesteinZChirpParams.BFFT.Sizes,
                                      M,
+                                     2,
                                      2,
                                      params.BluesteinZChirpParams.BFFTParams);
         }
@@ -762,15 +772,17 @@ public:
 
         // Create BFFT Tensors
         fft_params.StockhamParams = bluesteinZChirpParams.BFFTParams;
-        StockhamFFT(fft_params, false, false /*weightWithChirp*/, commandList);
+        StockhamFFT(fft_params, false, 0 /*chirpLength*/, commandList);
 
         // Create AFFT Tensors
         fft_params.StockhamParams = bluesteinZChirpParams.AFFTParams;
-        StockhamFFT(fft_params, false, false /*weightWithChirp*/, commandList);
+        StockhamFFT(fft_params, false, 0 /*chirpLength*/, commandList);
 
         // Should include the bfft tensor as the window funciton
         fft_params.StockhamParams = bluesteinZChirpParams.AFFTInverseParams;
-        StockhamFFT(fft_params, true, true /*weightWithChirp*/, commandList);
+        float chirpLength = static_cast<float>(bluesteinZChirpParams.ZChirp.Sizes[2]);
+        chirpLength *= (m_isInverse ? 1 : -1);
+        StockhamFFT(fft_params, true,  chirpLength, commandList);
 
         // Transition resources to common state
         barriers[0] = CD3DX12_RESOURCE_BARRIER::Transition(
@@ -788,7 +800,7 @@ public:
         commandList->ResourceBarrier(2, barriers);
     }
 
-    void StockhamFFT(const DFTParameters& dftParams, bool isInverse, bool weightWithChirp, ID3D12GraphicsCommandList* commandList)
+    void StockhamFFT(const DFTParameters& dftParams, bool isInverse, float chirpLength, ID3D12GraphicsCommandList* commandList)
     {
         const auto& stockhamParams = dftParams.StockhamParams;
 
@@ -856,7 +868,7 @@ public:
                                 std::multiplies<uint32_t>());
             constants.ElementCount = totalElementCount / constants.OutputSizes[3];
             constants.DFTIteration = index + 1;
-            constants.WeightWithChirp = isLastPass && weightWithChirp;
+            constants.ChirpLength = isLastPass ? chirpLength : 0;
             constants.HasWindow = isFirstPass && windowResource != nullptr;
             auto window = constants.HasWindow ? windowResource : out;
             std::array<ID3D12Resource*, 3> uav_resources = { in, out, window };

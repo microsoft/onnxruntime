@@ -58,20 +58,10 @@ static void TestRadix2DFTFloat(bool onesided) {
 }
 
 TEST(SignalOpsTest, DFTFloat_naive) {
-  // TODO: Unskip when fixed #41968513
-  if (DefaultDmlExecutionProvider().get() != nullptr) {
-    GTEST_SKIP() << "Skipping because of the following error: MLOperatorAuthorImpl.cpp(1988): Not implemented";
-  }
-
   TestNaiveDFTFloat(false);
 }
 
 TEST(SignalOpsTest, DFTFloat_naive_onesided) {
-  // TODO: Unskip when fixed #41968513
-  if (DefaultDmlExecutionProvider().get() != nullptr) {
-    GTEST_SKIP() << "Skipping because of the following error: MLOperatorAuthorImpl.cpp(1988): Not implemented";
-  }
-
   TestNaiveDFTFloat(true);
 }
 
@@ -80,11 +70,6 @@ TEST(SignalOpsTest, DFTFloat_radix2) { TestRadix2DFTFloat(false); }
 TEST(SignalOpsTest, DFTFloat_radix2_onesided) { TestRadix2DFTFloat(true); }
 
 TEST(SignalOpsTest, DFTFloat_inverse) {
-  // TODO: Unskip when fixed #41968513
-  if (DefaultDmlExecutionProvider().get() != nullptr) {
-    GTEST_SKIP() << "Skipping because of the following error: MLOperatorAuthorImpl.cpp(1988): Not implemented";
-  }
-
   OpTester test("DFT", kMinOpsetVersion);
 
   vector<int64_t> shape = {1, 5, 2};
@@ -156,20 +141,10 @@ static void TestDFTInvertible(bool complex) {
 }
 
 TEST(SignalOpsTest, DFT_invertible_real) {
-  // TODO: Unskip when fixed #41968513
-  if (DefaultDmlExecutionProvider().get() != nullptr) {
-    GTEST_SKIP() << "Skipping because of the following error: MLOperatorAuthorImpl.cpp(1988): Not implemented";
-  }
-
   TestDFTInvertible(false);
 }
 
 TEST(SignalOpsTest, DFT_invertible_complex) {
-  // TODO: Unskip when fixed #41968513
-  if (DefaultDmlExecutionProvider().get() != nullptr) {
-    GTEST_SKIP() << "Skipping because of the following error: MLOperatorAuthorImpl.cpp(1988): Not implemented";
-  }
-
   TestDFTInvertible(true);
 }
 

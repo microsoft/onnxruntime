@@ -21,7 +21,7 @@ cbuffer Constants
     uint4 WindowSizes; // [1, 1, DFTLength, 1 or 2]
     uint4 WindowStrides;
     uint HasWindow;
-    uint WeightWithChirp;
+    float ChirpLength;
     float Scale;
     uint DFTLength;
 };
@@ -87,12 +87,17 @@ uint3 DecomposeIndex(uint index)
     return idx;
 }
 
-float2 CalculateChirp(uint n, uint N, bool isInverse)
+float2 CalculateChirp(uint n, float N)
 {
+    if (N == 0)
+    {
+        return float2(1, 0);
+    }
+
     static const float PI = 3.14159265f;
-    float direction = isInverse ? 1 : -1;
     // chirp[n] = e^(i * direction * pi * n * n / N)
-    float theta = direction * PI * n * n / N;
+    // the direction is encoded into the N!
+    float theta = PI * n * n / N;
     return float2(cos(theta), sin(theta));
 }
 
@@ -133,20 +138,12 @@ void DFT(uint3 dtid : SV_DispatchThreadId)
 
         uint2 outputIndex = ComputeDestIndex(index);
         float2 unweighted;
-        unweighted[outputIndex.x] = Scale * (inputEvenValue.x + (w.x * inputOddValue.x - w.y * inputOddValue.y));
-        unweighted[outputIndex.y] = Scale * (inputEvenValue.y + (w.x * inputOddValue.y + w.y * inputOddValue.x));
+        unweighted.x = Scale * (inputEvenValue.x + (w.x * inputOddValue.x - w.y * inputOddValue.y));
+        unweighted.y = Scale * (inputEvenValue.y + (w.x * inputOddValue.y + w.y * inputOddValue.x));
 
-        // This is kinda a hack...
-        if (WeightWithChirp == 1)
-        {
-            float2 chirp = CalculateChirp(k, OutputSizes[1], false);
-            dst[outputIndex.x] = (TBUFFER)(unweighted.x * chirp.x - unweighted.y * chirp.y);
-            dst[outputIndex.y] = (TBUFFER)(unweighted.x * chirp.y + unweighted.y * chirp.x);
-        }
-        else
-        {
-            dst[outputIndex.x] = (TBUFFER)(unweighted.x);
-            dst[outputIndex.y] = (TBUFFER)(unweighted.y);
-        }
+        // When ChirpLength is 0, then chirp should evaluate to (1,0), which is a no-op.
+        float2 chirp = CalculateChirp(k, ChirpLength);
+        dst[outputIndex.x] = (TBUFFER)(unweighted.x * chirp.x - unweighted.y * chirp.y);
+        dst[outputIndex.y] = (TBUFFER)(unweighted.x * chirp.y + unweighted.y * chirp.x);
     }
 }
