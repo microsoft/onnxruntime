@@ -263,6 +263,10 @@ Status GetSizeInBytesFromTensorProto(const ONNX_NAMESPACE::TensorProto& tensor_p
     CASE_PROTO_TRACE(UINT64, uint64_t);
     CASE_PROTO_TRACE(FLOAT16, MLFloat16);
     CASE_PROTO_TRACE(BFLOAT16, BFloat16);
+    CASE_PROTO_TRACE(FLOAT8E4M3FN, Float8E4M3FN);
+    CASE_PROTO_TRACE(FLOAT8E4M3FNUZ, Float8E4M3FNUZ);
+    CASE_PROTO_TRACE(FLOAT8E5M2, Float8E5M2);
+    CASE_PROTO_TRACE(FLOAT8E5M2FNUZ, Float8E5M2FNUZ);
     CASE_PROTO_TRACE(STRING, std::string);
     default:
       return Status(common::ONNXRUNTIME, common::NOT_IMPLEMENTED);
@@ -343,6 +347,10 @@ ONNXTensorElementDataType CApiElementTypeFromProtoType(int type) {
     CASE_TYPE(COMPLEX64)
     CASE_TYPE(COMPLEX128)
     CASE_TYPE(BFLOAT16)
+    CASE_TYPE(FLOAT8E4M3FN)
+    CASE_TYPE(FLOAT8E4M3FNUZ)
+    CASE_TYPE(FLOAT8E5M2)
+    CASE_TYPE(FLOAT8E5M2FNUZ)
     default:
       return ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
   }
@@ -401,6 +409,10 @@ Status TensorProtoToMLValue(const onnx::TensorProto& tensor_proto, const MemBuff
         CASE_PROTO(UINT64, uint64_t);
         CASE_PROTO(FLOAT16, MLFloat16);
         CASE_PROTO(BFLOAT16, BFloat16);
+        CASE_PROTO(FLOAT8E4M3FN, Float8E4M3FN);
+        CASE_PROTO(FLOAT8E4M3FNUZ, Float8E4M3FNUZ);
+        CASE_PROTO(FLOAT8E5M2, Float8E5M2);
+        CASE_PROTO(FLOAT8E5M2FNUZ, Float8E5M2FNUZ);
         case onnx::TensorProto_DataType::TensorProto_DataType_STRING:
           if (preallocated != nullptr) {
             OrtStatus* status = OrtInitializeBufferForTensor(preallocated, preallocated_size, ele_type);

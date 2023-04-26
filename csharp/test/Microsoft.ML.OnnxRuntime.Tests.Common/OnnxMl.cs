@@ -216,13 +216,19 @@ namespace Onnx {
     /// </summary>
     [pbr::OriginalName("IR_VERSION_2020_5_8")] IrVersion202058 = 7,
     /// <summary>
-    /// IR VERSION 8 published on &lt;TBD>
+    /// IR VERSION 8 published on July 7th, 2021
     /// Introduce TypeProto.SparseTensor
     /// Introduce TypeProto.Optional
     /// Added a list of FunctionProtos local to the model
     /// Deprecated since_version and operator status from FunctionProto
     /// </summary>
-    [pbr::OriginalName("IR_VERSION")] IrVersion = 8,
+    [pbr::OriginalName("IR_VERSION_2021_7_30")] IrVersion2021077 = 8,
+    /// <summary>
+    /// IR VERSION 8 published on &lt;TBD&gt;
+    /// Added AttributeProto to FunctionProto so that default attribute values can be set.
+    /// Introduce float 8 types (FLOAT8E4M3FN, FLOAT8E4M3FNUZ, FLOAT8E5M2, FLOAT8E5M2FNUZ).
+    /// </summary>
+    [pbr::OriginalName("IR_VERSION")] IrVersion = 9,
   }
 
   /// <summary>
@@ -4486,6 +4492,34 @@ namespace Onnx {
         /// This format has 1 sign bit, 8 exponent bits, and 7 mantissa bits.
         /// </summary>
         [pbr::OriginalName("BFLOAT16")] Bfloat16 = 16,
+        /// <summary>
+        /// Non-IEEE floating-point format based on IEEE754 single-precision
+        /// floating-point number truncated to 8 bits.
+        /// This format has 1 sign bit, 4 exponent bits, and 3 mantissa bits.
+        /// Supports nan values and negative zero but no infinite values.
+        /// </summary>
+        [pbr::OriginalName("FLOAT8E4M3FN")] Float8E4M3FN = 17,
+        /// <summary>
+        /// Non-IEEE floating-point format based on IEEE754 single-precision
+        /// floating-point number truncated to 8 bits.
+        /// This format has 1 sign bit, 4 exponent bits, and 3 mantissa bits.
+        /// Supports nan values, no negative zero and no infinite values.
+        /// </summary>
+        [pbr::OriginalName("FLOAT8E4M3FNUZ")] Float8E4m3FNUZ = 18,
+        /// <summary>
+        /// Non-IEEE floating-point format based on IEEE754 single-precision
+        /// floating-point number truncated to 8 bits.
+        /// This format has 1 sign bit, 5 exponent bits, and 2 mantissa bits.
+        /// Supports nan values, negative zero, infinite values.
+        /// </summary>
+        [pbr::OriginalName("FLOAT8E5M2")] Float8E5M2 = 19,
+        /// <summary>
+        /// Non-IEEE floating-point format based on IEEE754 single-precision
+        /// floating-point number truncated to 8 bits.
+        /// This format has 1 sign bit, 5 exponent bits, and 2 mantissa bits.
+        /// Supports nan values, no negative zero and no infinite values.
+        /// </summary>
+        [pbr::OriginalName("FLOAT8E5M2FNUZ")] Float8E5M2FNUZ = 20,
       }
 
       /// <summary>
