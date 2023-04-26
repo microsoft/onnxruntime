@@ -96,6 +96,7 @@ class BaseOpBuilder : public IOpBuilder {
         {"Mul", "ElementWiseMultiply"},
         {"Abs", "ElementWiseAbs"},
         {"And", "ElementWiseAnd"},
+        {"Atan", "ElementWiseAtan"},
         {"Ceil", "ElementWiseCeil"},
         {"Cast", "Cast"},
         {"Clip", "ReluMinMax"},
@@ -140,9 +141,12 @@ class BaseOpBuilder : public IOpBuilder {
 
         {"MatMul", "MatMul"},
 
+        {"Elu", "Elu"},
         {"Relu", "Relu"},
         {"Gelu", "Gelu"},
         {"Sigmoid", "Sigmoid"},
+
+        {"HardSwish", "HardSwish"},
 
         {"Conv", "Conv2d"},
 

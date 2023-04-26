@@ -15,6 +15,7 @@ namespace qnn {
 OpBuilderRegistrations::OpBuilderRegistrations() {
   {
     CreateSimpleOpBuilder("Add", *this);
+    CreateSimpleOpBuilder("Atan", *this);
     CreateSimpleOpBuilder("Mul", *this);
     CreateSimpleOpBuilder("Abs", *this);
     CreateSimpleOpBuilder("And", *this);
@@ -39,6 +40,7 @@ OpBuilderRegistrations::OpBuilderRegistrations() {
     CreateSimpleOpBuilder("PRelu", *this);
     CreateSimpleOpBuilder("Relu", *this);
     CreateSimpleOpBuilder("Gelu", *this);
+    CreateSimpleOpBuilder("Elu", *this);
     CreateSimpleOpBuilder("Round", *this);
     CreateSimpleOpBuilder("Where", *this);
     CreateSimpleOpBuilder("Sigmoid", *this);
@@ -55,6 +57,8 @@ OpBuilderRegistrations::OpBuilderRegistrations() {
 
     CreateSimpleOpBuilder("QuantizeLinear", *this);
     CreateSimpleOpBuilder("DequantizeLinear", *this);
+
+    CreateSimpleOpBuilder("HardSwish", *this);
   }
 
   {
