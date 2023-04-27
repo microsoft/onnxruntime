@@ -81,7 +81,7 @@ Status OrtModuleGraphBuilder::Build(const std::vector<std::vector<int64_t>>* inp
   ORT_RETURN_IF_ERROR(OptimizeForwardGraph(x_node_arg_names));
 
   // If this graph will be used only for inferencing, stop right here.
-  // No need to apply the optimizations for training or build a gradient graph.
+  // No need to build a gradient graph.
   if (!config_.build_gradient_graph) {
     return Status::OK();
   }
