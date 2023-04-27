@@ -340,8 +340,8 @@ Status Environment::CreateAndRegisterCudaAllocator(const OrtMemoryInfo& mem_info
   CUDAExecutionProviderInfo cuda_ep_info;
   GetProviderInfo_CUDA().CUDAExecutionProviderInfo__FromProviderOptions(options, cuda_ep_info);
   CUDAExecutionProviderExternalAllocatorInfo external_info = cuda_ep_info.external_allocator_info;
-  AllocatorPtr allocator_ptr = GetProviderInfo_CUDA().CreateCudaAllocator(static_cast<int16_t>(mem_info.device.Id()), arena_cfg->max_mem, static_cast<ArenaExtendStrategy>(arena_cfg->arena_extend_strategy), 
-                                                                          cuda_ep_info.external_allocator_info, const_cast<OrtArenaCfg*>(arena_cfg));   
+  AllocatorPtr allocator_ptr = GetProviderInfo_CUDA().CreateCudaAllocator(static_cast<int16_t>(mem_info.device.Id()), arena_cfg->max_mem, static_cast<ArenaExtendStrategy>(arena_cfg->arena_extend_strategy),
+                                                                          external_info, const_cast<OrtArenaCfg*>(arena_cfg));
   return RegisterAllocator(allocator_ptr);
 }
 #endif  // USE_CUDA
