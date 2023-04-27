@@ -73,16 +73,15 @@ _check_python_version()
 
 
 def _openvino_verify_device_type(device_read):
-    choices = ["CPU_FP32", "CPU_FP16", "GPU_FP32", "GPU_FP16", "VAD-M_FP16", "MYRIAD_FP16", "VAD-F_FP32"]
+    choices = ["CPU_FP32", "CPU_FP16", "GPU_FP32", "GPU_FP16", "VPUX_FP16", "VPUX_U8"]
 
     choices1 = [
         "CPU_FP32_NO_PARTITION",
         "CPU_FP16_NO_PARTITION",
         "GPU_FP32_NO_PARTITION",
         "GPU_FP16_NO_PARTITION",
-        "VAD-M_FP16_NO_PARTITION",
-        "MYRIAD_FP16_NO_PARTITION",
-        "VAD-F_FP32_NO_PARTITION",
+        "VPUX_FP16_NO_PARTITION",
+        "VPUX_U8_NO_PARTITION",
     ]
     status_hetero = True
     res = False
@@ -97,7 +96,7 @@ def _openvino_verify_device_type(device_read):
         if len(comma_separated_devices) < 2:
             print("At least two devices required in Hetero/Multi/Auto Mode")
             status_hetero = False
-        dev_options = ["CPU", "GPU", "MYRIAD", "FPGA", "HDDL"]
+        dev_options = ["CPU", "GPU", "VPUX"]
         for dev in comma_separated_devices:
             if dev not in dev_options:
                 status_hetero = False
@@ -108,10 +107,10 @@ def _openvino_verify_device_type(device_read):
         print("specify the keyword HETERO or MULTI or AUTO followed by the devices ")
         print("in the order of priority you want to build\n")
         print("The different hardware devices that can be added in HETERO or MULTI or AUTO")
-        print("are ['CPU','GPU','MYRIAD','FPGA','HDDL']\n")
-        print("An example of how to specify the hetero build type. Ex: HETERO:GPU,CPU\n")
-        print("An example of how to specify the MULTI build type. Ex: MULTI:MYRIAD,CPU\n")
-        print("An example of how to specify the AUTO build type. Ex: AUTO:GPU,CPU\n")
+        print("are ['CPU','GPU', 'VPUX'] \n")
+        print("An example of how to specify the hetero build type. Ex: HETERO:GPU,CPU \n")
+        print("An example of how to specify the MULTI build type. Ex: MULTI:GPU,CPU \n")
+        print("An example of how to specify the AUTO build type. Ex: AUTO:GPU,CPU \n")
         sys.exit("Wrong Build Type selected")
 
     if res is False:
@@ -484,6 +483,7 @@ def parse_arguments():
     parser.add_argument(
         "--nnapi_min_api", type=int, help="Minimum Android API level to enable NNAPI, should be no less than 27"
     )
+    parser.add_argument("--use_jsep", action="store_true", help="Build with JavaScript kernels.")
     parser.add_argument("--use_qnn", action="store_true", help="Build with QNN support.")
     parser.add_argument("--qnn_home", help="Path to QNN SDK dir.")
     parser.add_argument("--use_rknpu", action="store_true", help="Build with RKNPU.")
@@ -502,9 +502,6 @@ def parse_arguments():
         "--use_tensorrt_builtin_parser", action="store_true", default=True, help="Use TensorRT builtin parser"
     )
     parser.add_argument("--use_tensorrt_oss_parser", action="store_true", help="Use TensorRT OSS parser")
-    parser.add_argument(
-        "--tensorrt_placeholder_builder", action="store_true", help="Instantiate Placeholder TensorRT Builder"
-    )
     parser.add_argument("--tensorrt_home", help="Path to TensorRT installation dir")
     parser.add_argument("--test_all_timeout", default="10800", help="Set timeout for onnxruntime_test_all")
     parser.add_argument("--use_migraphx", action="store_true", help="Build with MIGraphX")
@@ -911,11 +908,8 @@ def generate_build_tree(
         "-Donnxruntime_ENABLE_MICROSOFT_INTERNAL=" + ("ON" if args.enable_msinternal else "OFF"),
         "-Donnxruntime_USE_VITISAI=" + ("ON" if args.use_vitisai else "OFF"),
         "-Donnxruntime_USE_TENSORRT=" + ("ON" if args.use_tensorrt else "OFF"),
-        "-Donnxruntime_SKIP_AND_PERFORM_FILTERED_TENSORRT_TESTS="
-        + ("ON" if not args.tensorrt_placeholder_builder else "OFF"),
         "-Donnxruntime_USE_TENSORRT_BUILTIN_PARSER="
         + ("ON" if args.use_tensorrt_builtin_parser and not args.use_tensorrt_oss_parser else "OFF"),
-        "-Donnxruntime_TENSORRT_PLACEHOLDER_BUILDER=" + ("ON" if args.tensorrt_placeholder_builder else "OFF"),
         # set vars for TVM
         "-Donnxruntime_USE_TVM=" + ("ON" if args.use_tvm else "OFF"),
         "-Donnxruntime_TVM_CUDA_RUNTIME=" + ("ON" if args.use_tvm and args.tvm_cuda_runtime else "OFF"),
@@ -952,6 +946,7 @@ def generate_build_tree(
         "-Donnxruntime_USE_ARMNN=" + ("ON" if args.use_armnn else "OFF"),
         "-Donnxruntime_ARMNN_RELU_USE_CPU=" + ("OFF" if args.armnn_relu else "ON"),
         "-Donnxruntime_ARMNN_BN_USE_CPU=" + ("OFF" if args.armnn_bn else "ON"),
+        "-Donnxruntime_USE_JSEP=" + ("ON" if args.use_jsep else "OFF"),
         # Training related flags
         "-Donnxruntime_ENABLE_NVTX_PROFILE=" + ("ON" if args.enable_nvtx_profile else "OFF"),
         "-Donnxruntime_ENABLE_TRAINING=" + ("ON" if args.enable_training else "OFF"),
@@ -1088,15 +1083,12 @@ def generate_build_tree(
     if args.use_openvino:
         cmake_args += [
             "-Donnxruntime_USE_OPENVINO=ON",
-            "-Donnxruntime_USE_OPENVINO_MYRIAD=" + ("ON" if args.use_openvino == "MYRIAD_FP16" else "OFF"),
             "-Donnxruntime_USE_OPENVINO_GPU_FP32=" + ("ON" if args.use_openvino == "GPU_FP32" else "OFF"),
             "-Donnxruntime_USE_OPENVINO_GPU_FP16=" + ("ON" if args.use_openvino == "GPU_FP16" else "OFF"),
             "-Donnxruntime_USE_OPENVINO_CPU_FP32=" + ("ON" if args.use_openvino == "CPU_FP32" else "OFF"),
             "-Donnxruntime_USE_OPENVINO_CPU_FP16=" + ("ON" if args.use_openvino == "CPU_FP16" else "OFF"),
-            "-Donnxruntime_USE_OPENVINO_VAD_M=" + ("ON" if args.use_openvino == "VAD-M_FP16" else "OFF"),
-            "-Donnxruntime_USE_OPENVINO_VAD_F=" + ("ON" if args.use_openvino == "VAD-F_FP32" else "OFF"),
-            "-Donnxruntime_USE_OPENVINO_MYRIAD_NP="
-            + ("ON" if args.use_openvino == "MYRIAD_FP16_NO_PARTITION" else "OFF"),
+            "-Donnxruntime_USE_OPENVINO_VPUX_FP16=" + ("ON" if args.use_openvino == "VPUX_FP16" else "OFF"),
+            "-Donnxruntime_USE_OPENVINO_VPUX_U8=" + ("ON" if args.use_openvino == "VPUX_U8" else "OFF"),
             "-Donnxruntime_USE_OPENVINO_GPU_FP32_NP="
             + ("ON" if args.use_openvino == "GPU_FP32_NO_PARTITION" else "OFF"),
             "-Donnxruntime_USE_OPENVINO_GPU_FP16_NP="
@@ -1105,10 +1097,9 @@ def generate_build_tree(
             + ("ON" if args.use_openvino == "CPU_FP32_NO_PARTITION" else "OFF"),
             "-Donnxruntime_USE_OPENVINO_CPU_FP16_NP="
             + ("ON" if args.use_openvino == "CPU_FP16_NO_PARTITION" else "OFF"),
-            "-Donnxruntime_USE_OPENVINO_VAD_M_NP="
-            + ("ON" if args.use_openvino == "VAD-M_FP16_NO_PARTITION" else "OFF"),
-            "-Donnxruntime_USE_OPENVINO_VAD_F_NP="
-            + ("ON" if args.use_openvino == "VAD-F_FP32_NO_PARTITION" else "OFF"),
+            "-Donnxruntime_USE_OPENVINO_VPUX_FP16_NP="
+            + ("ON" if args.use_openvino == "VPUX_FP16_NP_PARTITION" else "OFF"),
+            "-Donnxruntime_USE_OPENVINO_VPUX_U8_NP=" + ("ON" if args.use_openvino == "VPUX_U8_NP_PARTITION" else "OFF"),
             "-Donnxruntime_USE_OPENVINO_HETERO=" + ("ON" if args.use_openvino.startswith("HETERO") else "OFF"),
             "-Donnxruntime_USE_OPENVINO_DEVICE=" + (args.use_openvino),
             "-Donnxruntime_USE_OPENVINO_MULTI=" + ("ON" if args.use_openvino.startswith("MULTI") else "OFF"),
@@ -1749,11 +1740,6 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
             run_subprocess(ctest_cmd, cwd=cwd, dll_path=dll_path)
 
         if args.enable_pybind:
-            # Disable python tests for TensorRT on Windows due to need to enable placeholder builder
-            # to reduce test times.
-            if args.use_tensorrt and is_windows():
-                return
-
             python_path = None
             if args.use_tvm:
                 python_path = str((Path(build_dir) / config / "_deps" / "tvm-src" / "python").resolve())
@@ -2368,12 +2354,7 @@ def main():
     if args.gen_api_doc and len(args.config) != 1:
         raise BuildError("Using --get-api-doc requires a single build config")
 
-    # Disabling unit tests for VAD-F as FPGA only supports
-    # models with NCHW layout
-    if args.use_openvino == "VAD-F_FP32":
-        args.test = False
-
-    # Disabling unit tests for GPU and MYRIAD on nuget creation
+    # Disabling unit tests for GPU on nuget creation
     if args.use_openvino != "CPU_FP32" and args.build_nuget:
         args.test = False
 

@@ -7,12 +7,11 @@
 
 namespace Ort {
 
-inline TrainingSession::TrainingSession(const SessionOptions& session_options,
+inline TrainingSession::TrainingSession(const Env& env, const SessionOptions& session_options,
                                         CheckpointState& checkpoint_state,
                                         const std::basic_string<ORTCHAR_T>& train_model_path,
                                         const std::optional<std::basic_string<ORTCHAR_T>>& eval_model_path,
                                         const std::optional<std::basic_string<ORTCHAR_T>>& optimizer_model_path) {
-  Env env = Env();
   ThrowOnError(GetTrainingApi().CreateTrainingSession(
       env, session_options, checkpoint_state,
       train_model_path.c_str(),

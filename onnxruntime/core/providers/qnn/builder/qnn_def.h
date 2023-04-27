@@ -427,6 +427,7 @@ const std::string rounding_mode = "rounding_mode";
 const std::string topk = "k";
 const std::string multiples = "multiples";
 const std::string epsilon = "epsilon";
+const std::string alpha = "alpha";
 }  // namespace qnn_def
 
 }  // namespace qnn

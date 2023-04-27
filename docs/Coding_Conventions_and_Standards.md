@@ -167,7 +167,13 @@ If you want to see what lintrunner init will install, run
 To lint local changes:
 
 ```bash
-lintrunner -m main
+lintrunner
+```
+
+To format files and apply suggestions:
+
+```bash
+lintrunner -a
 ```
 
 To lint all files:
@@ -176,10 +182,10 @@ To lint all files:
 lintrunner --all-files
 ```
 
-To format files:
+To show help text:
 
 ```bash
-lintrunner -a --all-files
+lintrunner -h
 ```
 
 To read more about lintrunner, see [wiki](https://github.com/pytorch/pytorch/wiki/lintrunner).
