@@ -161,6 +161,10 @@ export const erf = (context: ComputeContext): void => {
   }`));
 };
 
+export const exp = (context: ComputeContext): void => {
+  context.compute(createElementwiseProgramInfoLoader(context.inputs[0], 'Exp', 'exp'));
+};
+
 export const floor = (context: ComputeContext): void => {
   context.compute(createElementwiseProgramInfoLoader(context.inputs[0], 'Floor', 'floor'));
 };
