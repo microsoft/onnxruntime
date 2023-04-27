@@ -3,7 +3,6 @@
 
 #ifdef USE_AZURE
 #include "http_client.h"
-//#define CURL_STATICLIB
 #include "curl/curl.h"
 #include "nlohmann/json.hpp"
 #include "core/common/common.h"
@@ -80,92 +79,80 @@ WriteMemoryCallback(void* contents, size_t size, size_t nmemb, void* userp) {
   return realsize;
 }
 
+//todo - rename this to ...audio
 onnxruntime::Status OpenAIInvoker::Send(const CloudEndPointConfig& run_options,
                                         const InlinedVector<std::string>& /*input_names*/,
-                                        gsl::span<const OrtValue> /*ort_inputs*/,
+                                        gsl::span<const OrtValue> ort_inputs,
                                         const InlinedVector<std::string>& /*output_names*/,
                                         std::vector<OrtValue>& ort_outputs) const {
-
   const auto auth_key_iter = run_options.find(kAzureAuthKey);
   if (run_options.end() == auth_key_iter || auth_key_iter->second.empty()) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "auth key must be specified for openai client");
   }
 
-  const auto audio_file_iter = run_options.find(kAzureAudioFile);
-  if (run_options.end() == audio_file_iter || audio_file_iter->second.empty()) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "audio file must be specified for openai client");
-  }
- 
-  CURLcode ret;
-  CURL* hnd;
-  curl_mime* mime1;
-  curl_mimepart* part1;
-  struct curl_slist* slist1;
+  const auto audio_file_iter = run_options.find(kAzureAudioFile);  // might not be there
+
+  CURLcode ret{};
+  CURL* curl{};
+  curl_mime* mime1{};
+  struct curl_slist* headers{};
 
   struct MemoryStruct chunk;
   chunk.memory = (char*)malloc(1); /* will be grown as needed by the realloc above */
   chunk.size = 0;
 
   mime1 = NULL;
-  slist1 = NULL;
   std::string full_auth = std::string{"Authorization: Bearer "} + auth_key_iter->second;
-  slist1 = curl_slist_append(slist1, full_auth.c_str());
-  slist1 = curl_slist_append(slist1, "Content-Type: multipart/form-data");
+  headers = curl_slist_append(headers, full_auth.c_str());
+  headers = curl_slist_append(headers, "Content-Type: multipart/form-data");
 
-  hnd = curl_easy_init();
-  curl_easy_setopt(hnd, CURLOPT_BUFFERSIZE, 102400L);
-  curl_easy_setopt(hnd, CURLOPT_URL, uri_.c_str());
-  curl_easy_setopt(hnd, CURLOPT_NOPROGRESS, 1L);
-  mime1 = curl_mime_init(hnd);
-  
-  part1 = curl_mime_addpart(mime1);
-  curl_mime_filedata(part1, audio_file_iter->second.c_str());
-  curl_mime_name(part1, "file");
+  struct curl_httppost* post = NULL;
+  struct curl_httppost* last = NULL;
+  curl_formadd(&post, &last, CURLFORM_COPYNAME, "model", CURLFORM_COPYCONTENTS, model_name_.c_str(), CURLFORM_END);
+  curl_formadd(&post, &last, CURLFORM_COPYNAME, "response_format", CURLFORM_COPYCONTENTS, "text", CURLFORM_END);
+  const auto& tensor = ort_inputs[0].Get<Tensor>();
+  auto data_size = tensor.SizeInBytes();
+  if (audio_file_iter == run_options.end()) {
+    curl_formadd(&post, &last, CURLFORM_COPYNAME, "file", CURLFORM_BUFFER, "non_exist.wav", CURLFORM_BUFFERPTR, tensor.DataRaw(),
+                 CURLFORM_BUFFERLENGTH, data_size, CURLFORM_END);
+  } else {
+    // a temporary backdoor to allow a file as input
+    curl_formadd(&post, &last, CURLFORM_COPYNAME, "file", CURLFORM_FILE, audio_file_iter->second.c_str(), CURLFORM_END);
+  }
+  curl = curl_easy_init();
+  curl_easy_setopt(curl, CURLOPT_BUFFERSIZE, 102400L);
+  curl_easy_setopt(curl, CURLOPT_URL, uri_.c_str());
+  curl_easy_setopt(curl, CURLOPT_NOPROGRESS, 1L);
+  curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+  curl_easy_setopt(curl, CURLOPT_USERAGENT, "curl/7.83.1");
+  curl_easy_setopt(curl, CURLOPT_MAXREDIRS, 50L);
+  curl_easy_setopt(curl, CURLOPT_FTP_SKIP_PASV_IP, 1L);
+  curl_easy_setopt(curl, CURLOPT_TCP_KEEPALIVE, 1L);
+  curl_easy_setopt(curl, CURLOPT_HTTPPOST, post);
+  curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteMemoryCallback);
+  curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void*)&chunk);
 
-  part1 = curl_mime_addpart(mime1);
-  curl_mime_data(part1, model_name_.c_str(), CURL_ZERO_TERMINATED);
-  curl_mime_name(part1, "model");
-
-  part1 = curl_mime_addpart(mime1);
-  curl_mime_data(part1, "text", CURL_ZERO_TERMINATED);
-  curl_mime_name(part1, "response_format");
-
-  curl_easy_setopt(hnd, CURLOPT_MIMEPOST, mime1);
-  curl_easy_setopt(hnd, CURLOPT_HTTPHEADER, slist1);
-  curl_easy_setopt(hnd, CURLOPT_USERAGENT, "curl/7.83.1");
-  curl_easy_setopt(hnd, CURLOPT_MAXREDIRS, 50L);
-  curl_easy_setopt(hnd, CURLOPT_FTP_SKIP_PASV_IP, 1L);
-  curl_easy_setopt(hnd, CURLOPT_TCP_KEEPALIVE, 1L);
-
-  curl_easy_setopt(hnd, CURLOPT_WRITEFUNCTION, WriteMemoryCallback);
-  curl_easy_setopt(hnd, CURLOPT_WRITEDATA, (void*)&chunk);
-
-  ret = curl_easy_perform(hnd);
+  ret = curl_easy_perform(curl);
   if (ret != CURLE_OK) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, curl_easy_strerror(ret));
   }
 
-  curl_easy_cleanup(hnd);
-  hnd = NULL;
+  curl_easy_cleanup(curl);
+  curl = NULL;
   curl_mime_free(mime1);
   mime1 = NULL;
-  curl_slist_free_all(slist1);
-  slist1 = NULL;
+  curl_slist_free_all(headers);
+  headers = NULL;
 
   auto output_tensor = std::make_unique<Tensor>(onnxruntime::DataTypeImpl::GetType<std::string>(), TensorShape{1}, allocator_);
   if (!output_tensor) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to create output tensor");
   }
 
-  //nlohmann::json json_config = nlohmann::json::parse(chunk.memory);
-  //auto* output_string = output_tensor->MutableData<std::string>();
-  //output_string->append(json_config["text"]);
-  //free(chunk.memory);
-
   auto* output_string = output_tensor->MutableData<std::string>();
   output_string->append(chunk.memory);
+  free(chunk.memory);
 
   ort_outputs.resize(1);
   auto tensor_type = DataTypeImpl::GetType<Tensor>();
@@ -441,7 +428,7 @@ Status CloudEndPointInvoker::CreateInvoker(const CloudEndPointConfig& config,
       } else if (iter->second == kAzureOpenAI) {
         invoker = std::make_unique<OpenAIInvoker>(config, allocator);
         return status;
-      } // else other endpoint types ...
+      }  // else other endpoint types ...
     }
     status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                              "Cannot create azure invoker due to missed or mismatched endpoint type.");
