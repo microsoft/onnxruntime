@@ -885,6 +885,7 @@ def generate_build_tree(
         cmake_args += ["--compile-no-warning-as-error"]
 
     cmake_args += [
+        "-G" + "CodeBlocks - Unix Makefiles", #slx
         "-Donnxruntime_RUN_ONNX_TESTS=" + ("ON" if args.enable_onnx_tests else "OFF"),
         "-Donnxruntime_GENERATE_TEST_REPORTS=ON",
         # There are two ways of locating python C API header file. "find_package(PythonLibs 3.5 REQUIRED)"

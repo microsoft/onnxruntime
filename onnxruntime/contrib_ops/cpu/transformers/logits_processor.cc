@@ -238,6 +238,46 @@ void PresencePenaltyLogitsProcessor<T>::Process(const ISequences*,
 #endif
 }
 
+//slx
+// Interface for all scorers for beam search or beam sample.
+template <typename T>
+TSLogitsProcessor<T>::TSLogitsProcessor(int min_length, int eos_token_id)
+    : min_length_(min_length), eos_token_id_(eos_token_id) {}
+
+template <typename T>
+void TSLogitsProcessor<T>::Process(const ISequences* sequences,
+                                          NextTokenScores<T>& next_token_scores) {
+  if (sequences->GetSequenceLength() < min_length_) {
+    next_token_scores.SetScore(eos_token_id_, std::numeric_limits<T>::lowest());
+  }
+
+#ifdef DEBUG_GENERATION
+  DumpScores("TSLogitsProcessor", next_token_scores);
+#endif
+
+//
+  const int batch_beam_size = next_token_scores.batch_beam_size;
+  for (int i = 0; i < batch_beam_size; i++) {
+    gsl::span<T> beam_token_scores = next_token_scores.GetScores(i);
+    gsl::span<const int32_t> sequence = sequences->GetSequence(i);
+
+    // Find unique word IDs in sequence.
+    std::unordered_set<int32_t> unique_word_ids;
+    for (const auto& word_id : sequence) {
+      unique_word_ids.insert(word_id);
+    }
+
+    for (const int32_t word_id : unique_word_ids) {
+      T score = beam_token_scores[word_id];
+
+      // If score < 0, then repetition penalty > 1.0 has to multiplied to reduce the previous token probability,
+      // This assumes that scores are either positive (like ctrl) or negative (like GPT-2), but not a mixture.
+      beam_token_scores[word_id] = score; ///(score < 0 ? score * penalty_ : score / penalty_);
+    }
+  }
+}
+//slx
+
 void LogitsProcessorList::Init(const BeamSearchParameters& parameters) {
   LogitsProcessorInitImpl<BeamSearchParameters>(parameters);
 }

@@ -138,6 +138,21 @@ class PresencePenaltyLogitsProcessor : public ILogitsProcessor<T> {
   float presence_penalty_;
 };
 
+//slx
+template <typename T>
+class TSLogitsProcessor : public ILogitsProcessor<T> {
+ public:
+  TSLogitsProcessor(int min_length, int eos_token_id);
+
+  void Process(const ISequences* sequences,
+               NextTokenScores<T>& next_token_scores) override;
+
+ private:
+  int min_length_;
+  int eos_token_id_;
+};
+//slx
+
 class LogitsProcessorList : public ILogitsProcessorList {
  public:
   LogitsProcessorList() = default;
@@ -193,6 +208,11 @@ class LogitsProcessorList : public ILogitsProcessorList {
       processor_list_.push_back(presence_penalty_processor_.get());
     }
 
+//slx
+      ts_processor_ = std::make_unique<TSLogitsProcessor<float>>(parameters.min_length,
+                                                                                parameters.eos_token_id);
+      processor_list_.push_back(ts_processor_.get());
+//slx
     batch_beam_size_ = parameters.BatchBeamSize();
     vocab_size_ = parameters.vocab_size;
   }
@@ -208,6 +228,7 @@ class LogitsProcessorList : public ILogitsProcessorList {
   std::unique_ptr<MinLengthLogitsProcessor<float>> min_length_processor_;
   std::unique_ptr<TemperatureLogitsProcessor<float>> temperature_processor_;
   std::unique_ptr<PresencePenaltyLogitsProcessor<float>> presence_penalty_processor_;
+  std::unique_ptr<TSLogitsProcessor<float>> ts_processor_;//slx
 };
 
 }  // namespace transformers
