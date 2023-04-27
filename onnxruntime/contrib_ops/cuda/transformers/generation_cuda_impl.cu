@@ -859,14 +859,14 @@ void KeyCacheExpansionKernelLauncher(const T* key_cache,
   const dim3 grid(batch_size * beam_width, num_heads, sequence_length);
 
 #ifndef USE_ROCM
-  if (head_size % 4 == 0) {
+  if ((head_size % 4) == 0) {
     using vec_type = typename TypeMapper<T, 4>::Type;
     KeyCacheExpansionKernel<<<grid, block, 0, stream>>>(reinterpret_cast<const vec_type*>(key_cache),
                                                         reinterpret_cast<vec_type*>(key_cache_expanded),
                                                         beam_width,
                                                         max_seq_length,
                                                         head_size / 4);
-  } else if (head_size & 1 == 0) {
+  } else if ((head_size & 1) == 0) {
     using vec_type = typename TypeMapper<T, 2>::Type;
     KeyCacheExpansionKernel<<<grid, block, 0, stream>>>(reinterpret_cast<const vec_type*>(key_cache),
                                                         reinterpret_cast<vec_type*>(key_cache_expanded),
@@ -943,13 +943,13 @@ void BufferExpansionKernelLauncher(const T* input,
   const dim3 block(128);
 
 #ifndef USE_ROCM
-  if (chunk_size % 4 == 0) {
+  if ((chunk_size % 4) == 0) {
     using vec_type = typename TypeMapper<T, 4>::Type;
     const dim3 grid(batch_size, beam_width, (chunk_size / 4 + block.x - 1) / block.x);
     BufferExpansionKernel<<<grid, block, 0, stream>>>(reinterpret_cast<const vec_type*>(input),
                                                       reinterpret_cast<vec_type*>(output),
                                                       chunk_size / 4);
-  } else if (chunk_size & 1 == 0) {
+  } else if ((chunk_size & 1) == 0) {
     using vec_type = typename TypeMapper<T, 2>::Type;
     const dim3 grid(batch_size, beam_width, (chunk_size / 2 + block.x - 1) / block.x);
     BufferExpansionKernel<<<grid, block, 0, stream>>>(reinterpret_cast<const vec_type*>(input),
