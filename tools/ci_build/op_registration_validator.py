@@ -7,6 +7,7 @@ Validate ORT kernel registrations.
 
 import argparse
 import os
+import re
 import sys
 import typing
 
@@ -64,11 +65,26 @@ class RegistrationValidator(op_registration_utils.RegistrationProcessor):
 
             # previous registration end opset is not adjacent to the start of the next registration
             if prev_end != start_version - 1:
-                log.error(
-                    "Invalid registration for {}. Registration for opset {} should have end version of {}".format(
-                        key, prev_start, start_version - 1
+                reg = re.compile("k([A-Za-z]+)ExecutionProvider")
+                findall = reg.findall("".join(lines))
+                if len(findall) == 0:
+                    provider = None
+                else:
+                    provider = findall[0]
+                if provider == "Cuda" and {"kOnnxDomain:DequantizeLinear", "kOnnxDomain:QuantizeLinear"}:
+                    # QuantizeLinear, DequantizeLinear do not support multiple scales
+                    # (one per channel), CPU does. But the opset 19 is needed to enable support
+                    # for float 8. This exception should be removed once the implementations of
+                    # QuantizeLinear, DequantizeLinear support the use of multiple scales.
+                    log.warning(
+                        f"Invalid registration for {key}. Registration for opset {prev_start} "
+                        f"should have end version of {start_version - 1}"
                     )
-                )
+                else:
+                    log.error(
+                        f"Invalid registration for {key}. Registration for opset {prev_start} "
+                        f"should have end version of {start_version - 1}"
+                    )
                 self.failed = True
                 return
 
@@ -87,7 +103,12 @@ class RegistrationValidator(op_registration_utils.RegistrationProcessor):
 
             # special handling for ArgMin/ArgMax, which CUDA EP doesn't yet support for opset 12+
             # TODO remove once CUDA EP supports ArgMin/ArgMax for opset 12+
-            ops_with_incomplete_support = ["kOnnxDomain:ArgMin", "kOnnxDomain:ArgMax"]
+            ops_with_incomplete_support = {
+                "kOnnxDomain:ArgMin",
+                "kOnnxDomain:ArgMax",
+                "kOnnxDomain:QuantizeLinear",
+                "kOnnxDomain:DequantizeLinear",
+            }
             if key in ops_with_incomplete_support:
                 log.warning(f"Allowing missing unversioned registration for op with incomplete support: {key}")
                 allow_missing_unversioned_registration = True
