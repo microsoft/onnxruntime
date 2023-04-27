@@ -85,7 +85,7 @@ class RegistrationValidator(op_registration_utils.RegistrationProcessor):
                         f"Invalid registration for {key}. Registration for opset {prev_start} "
                         f"should have end version of {start_version - 1}"
                     )
-                self.failed = True
+                    self.failed = True
                 return
 
         self.last_op_registrations[key] = (start_version, end_version)
