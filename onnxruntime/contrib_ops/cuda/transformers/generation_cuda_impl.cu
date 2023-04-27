@@ -807,6 +807,21 @@ void UpdateDecoderMaskedMultiHeadAttentionCacheIndirection(int32_t* tgt_indir_ca
                                                                                           current_length);
 }
 
+namespace {
+template <typename T, size_t size>
+struct TypeMapper : public V_vec_m_<T, size> {};
+
+template <>
+struct TypeMapper<int32_t, 2> {
+  using Type = uint2;
+};
+
+template <>
+struct TypeMapper<int32_t, 4> {
+  using Type = uint4;
+};
+}  // namespace
+
 template <typename T>
 __global__ void KeyCacheExpansionKernel(const T* input,
                                         T* output,
@@ -829,21 +844,6 @@ __global__ void KeyCacheExpansionKernel(const T* input,
     output[output_offset] = input[input_offset];
   }
 }
-
-namespace {
-template <typename T, size_t size>
-struct TypeMapper : public V_vec_m_<T, size> {};
-
-template <>
-struct TypeMapper<int32_t, 2> {
-  using Type = uint2;
-};
-
-template <>
-struct TypeMapper<int32_t, 4> {
-  using Type = uint4;
-};
-}  // namespace
 
 template <typename T>
 void KeyCacheExpansionKernelLauncher(const T* key_cache,
@@ -910,6 +910,74 @@ template void KeyCacheExpansionKernelLauncher(const int32_t* key_cache,
                                               int max_seq_length,
                                               int head_size,
                                               cudaStream_t stream);
+
+template <typename T>
+__global__ void BufferExpansionKernel(const T* input,
+                                      T* output,
+                                      int chunk_size) {
+  const int batch_id = blockIdx.x;
+  const int beam_id = blockIdx.y;
+  const int tidx = threadIdx.x;
+  const int beam_size = gridDim.y;
+  const int idx = blockIdx.z * blockDim.x + tidx;
+
+  const int input_offset = batch_id * chunk_size + idx;
+  const int output_offset = batch_id * beam_size * chunk_size + beam_id * chunk_size + idx;
+
+  if (idx < chunk_size) {
+    output[output_offset] = input[input_offset];
+  }
+}
+
+template <typename T>
+void BufferExpansionKernelLauncher(const T* input,
+                                   T* output,
+                                   int batch_size,
+                                   int beam_width,
+                                   int chunk_size,
+                                   cudaStream_t stream) {
+  const dim3 block(128);
+
+  if (chunk_size % 4 == 0) {
+    using vec_type = typename TypeMapper<T, 4>::Type;
+    const dim3 grid(batch_size, beam_width, (chunk_size / 4 + block.x - 1) / block.x);
+    BufferExpansionKernel<<<grid, block, 0, stream>>>(reinterpret_cast<const vec_type*>(input),
+                                                      reinterpret_cast<vec_type*>(output),
+                                                      chunk_size / 4);
+  } else if (chunk_size & 1 == 0) {
+    using vec_type = typename TypeMapper<T, 2>::Type;
+    const dim3 grid(batch_size, beam_width, (chunk_size / 2 + block.x - 1) / block.x);
+    BufferExpansionKernel<<<grid, block, 0, stream>>>(reinterpret_cast<const vec_type*>(input),
+                                                      reinterpret_cast<vec_type*>(output),
+                                                      chunk_size / 2);
+  } else {
+    const dim3 grid(batch_size, beam_width, (chunk_size + block.x - 1) / block.x);
+    BufferExpansionKernel<<<grid, block, 0, stream>>>(input,
+                                                      output,
+                                                      chunk_size);
+  }
+}
+
+template void BufferExpansionKernelLauncher(const float* input,
+                                            float* output,
+                                            int batch_size,
+                                            int beam_width,
+                                            int chunk_size,
+                                            cudaStream_t stream);
+
+template void BufferExpansionKernelLauncher(const half* input,
+                                            half* output,
+                                            int batch_size,
+                                            int beam_width,
+                                            int chunk_size,
+                                            cudaStream_t stream);
+
+template void BufferExpansionKernelLauncher(const int32_t* input,
+                                            int32_t* output,
+                                            int batch_size,
+                                            int beam_width,
+                                            int chunk_size,
+                                            cudaStream_t stream);
 
 }  // namespace cuda
 }  // namespace contrib

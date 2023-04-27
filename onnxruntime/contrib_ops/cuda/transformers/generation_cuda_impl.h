@@ -130,6 +130,14 @@ void KeyCacheExpansionKernelLauncher(const T* key_cache,
                                      int head_size,
                                      cudaStream_t stream);
 
+template <typename T>
+void BufferExpansionKernelLauncher(const T* input,
+                                   T* output,
+                                   int batch_size,
+                                   int beam_width,
+                                   int chunk_size,
+                                   cudaStream_t stream);
+
 }  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime

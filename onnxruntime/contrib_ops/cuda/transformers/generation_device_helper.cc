@@ -1161,7 +1161,7 @@ template <>
 struct ToCudaTypeWrapper<int32_t> {
   using MappedType = int32_t;
 };
-}
+}  // namespace
 
 template <typename T>
 Status ExpandBuffer(Stream* ort_stream,
@@ -1199,29 +1199,22 @@ Status ExpandBuffer(Stream* ort_stream,
 
   const T* input_data = input.Get<Tensor>().Data<T>();
   T* expanded_data = expanded.GetMutable<Tensor>()->MutableData<T>();
-  T* target = expanded_data;
+
+  using CudaT = typename ToCudaTypeWrapper<T>::MappedType;
 
   if (max_sequence_length == 0) {
     const int64_t& chunk_size = static_cast<int64_t>(input_shape.Size() / batch_size);
 
-    for (int i = 0; i < batch_size; i++) {
-      for (int j = 0; j < num_beams; j++) {
-        CUDA_RETURN_IF_ERROR(
-            cudaMemcpyAsync(
-                target,
-                input_data + i * chunk_size,
-                sizeof(T) * chunk_size,
-                cudaMemcpyDeviceToDevice,
-                cuda_stream));
-        target += chunk_size;
-      }
-    }
+    cuda::BufferExpansionKernelLauncher<CudaT>(reinterpret_cast<const CudaT*>(input_data),
+                                               reinterpret_cast<CudaT*>(expanded_data),
+                                               batch_size,
+                                               num_beams,
+                                               chunk_size,
+                                               cuda_stream);
     return Status::OK();
   }
 
   ORT_ENFORCE(is_kv_cache);
-
-  using CudaT = typename ToCudaTypeWrapper<T>::MappedType;
 
   // Expand from [B, N, S, H] to [B*beam, N, S_max, H]
   const int64_t& num_heads = input_shape[1];
