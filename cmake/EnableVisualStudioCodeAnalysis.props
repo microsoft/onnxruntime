@@ -6,7 +6,7 @@
          Also need to exclude things under \cmake such as \cmake\external\protobuf, and the easiest way to do that in all
          environments is to use the directory this file is in.
          -->
-    <CAExcludePath>$(SolutionDir);$(MSBuildThisFileDirectory);"C:\Program Files\Microsoft Visual Studio"</CAExcludePath>
+    <CAExcludePath>$(SolutionDir);$(MSBuildThisFileDirectory)</CAExcludePath>
 	<RunCodeAnalysis>true</RunCodeAnalysis>
   </PropertyGroup>  
 </Project>
