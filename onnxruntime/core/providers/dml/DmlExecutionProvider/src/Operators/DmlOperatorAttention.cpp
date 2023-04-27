@@ -153,7 +153,7 @@ public:
 
         MLOperatorTensorDataType maskTensorDataType = MLOperatorTensorDataType::Undefined;
         bool hasMaxSequenceMask = false;
-        DML_MULTI_HEAD_ATTENTION_MASK_TYPE maskType = DML_MULTI_HEAD_ATTENTION_MASK_TYPE_NONE;
+        DML_MULTIHEAD_ATTENTION_MASK_TYPE maskType = DML_MULTIHEAD_ATTENTION_MASK_TYPE_NONE;
         if (hasMask)
         {
             if (hasUnpaddedBounds)
@@ -170,15 +170,15 @@ public:
                     desiredShape);
 
                 maskType = batchGroupCount == 1
-                    ? DML_MULTI_HEAD_ATTENTION_MASK_TYPE_KEY_SEQUENCE_LENGTH
-                    : DML_MULTI_HEAD_ATTENTION_MASK_TYPE_KEY_SEQUENCE_END_START;
+                    ? DML_MULTIHEAD_ATTENTION_MASK_TYPE_KEY_SEQUENCE_LENGTH
+                    : DML_MULTIHEAD_ATTENTION_MASK_TYPE_KEY_SEQUENCE_END_START;
             }
             else
             {
                 auto maskIndexTensorShape = m_inputTensorDescs[dmlMaskIndex].GetSizes();
                 ML_CHECK_VALID_ARGUMENT(maskIndexTensorShape.size() > 1 && maskIndexTensorShape.size() <= 4);
 
-                maskType = DML_MULTI_HEAD_ATTENTION_MASK_TYPE_BOOLEAN;
+                maskType = DML_MULTIHEAD_ATTENTION_MASK_TYPE_BOOLEAN;
                 std::vector<uint32_t> reshapedMaskIndexTensorShape(maskIndexTensorShape.begin(), maskIndexTensorShape.end());
                 if (maskIndexTensorShape.size() == 4 && maskIndexTensorShape[2] != sequenceLength)
                 {
@@ -344,7 +344,7 @@ public:
         }
         const DML_OPERATOR_DESC maskSlicedDesc = { DML_OPERATOR_SLICE1, &maskSlicedOperatorDesc};
 
-        DML_MULTI_HEAD_ATTENTION_OPERATOR_DESC mhaOperatorDesc = {};
+        DML_MULTIHEAD_ATTENTION_OPERATOR_DESC mhaOperatorDesc = {};
         mhaOperatorDesc.ValueTensor = hasSlicedValue ? &namedValueSlicedInputTensorDesc : nullptr;
         mhaOperatorDesc.StackedQueryKeyTensor = hasSlicedValue ? &namedQueryKeyTransposedOutputTensorDesc : nullptr;
         mhaOperatorDesc.StackedQueryKeyValueTensor = hasSlicedValue ? nullptr : &namedQueryKeyValueTransposedOutputTensorDesc;
@@ -364,7 +364,7 @@ public:
         mhaOperatorDesc.MaskFilterValue = kernelCreationContext.GetOptionalAttribute<float>(AttrName::MaskFilterValue, -10'000.0f);
         mhaOperatorDesc.HeadCount = numHeads;
         mhaOperatorDesc.MaskType = maskType;
-        const DML_OPERATOR_DESC mhaDesc = { DML_OPERATOR_MULTI_HEAD_ATTENTION, &mhaOperatorDesc };
+        const DML_OPERATOR_DESC mhaDesc = { DML_OPERATOR_MULTIHEAD_ATTENTION, &mhaOperatorDesc };
 
         // Construct the graph
         std::vector<DML_INPUT_GRAPH_EDGE_DESC> inputEdges;

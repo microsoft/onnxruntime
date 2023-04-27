@@ -181,7 +181,7 @@ public:
             ML_CHECK_VALID_ARGUMENT(m_inputTensorDescs[dmlBiasIndex].GetSizes()[0] == hiddenSize + hiddenSize + vHiddenSize);
         }
 
-        DML_MULTI_HEAD_ATTENTION_MASK_TYPE maskType = DML_MULTI_HEAD_ATTENTION_MASK_TYPE_NONE;
+        DML_MULTIHEAD_ATTENTION_MASK_TYPE maskType = DML_MULTIHEAD_ATTENTION_MASK_TYPE_NONE;
         if (hasMask)
         {
             if (kernelCreationContext.GetInputTensorDimensionCount(maskIndex) == 1)
@@ -191,10 +191,10 @@ public:
                 ML_CHECK_VALID_ARGUMENT(unpaddedKeyBoundsShape[0] == batchSize || unpaddedKeyBoundsShape[0] == batchSize * 3 + 2);
 
                 maskType = unpaddedKeyBoundsShape[0] == batchSize
-                    ? DML_MULTI_HEAD_ATTENTION_MASK_TYPE_KEY_SEQUENCE_LENGTH
-                    : DML_MULTI_HEAD_ATTENTION_MASK_TYPE_KEY_QUERY_SEQUENCE_LENGTH_START_END;
+                    ? DML_MULTIHEAD_ATTENTION_MASK_TYPE_KEY_SEQUENCE_LENGTH
+                    : DML_MULTIHEAD_ATTENTION_MASK_TYPE_KEY_QUERY_SEQUENCE_LENGTH_START_END;
 
-                if (maskType == DML_MULTI_HEAD_ATTENTION_MASK_TYPE_KEY_SEQUENCE_LENGTH)
+                if (maskType == DML_MULTIHEAD_ATTENTION_MASK_TYPE_KEY_SEQUENCE_LENGTH)
                 {
                     uint32_t desiredShape[2] = {1, batchSize};
                     m_inputTensorDescs[dmlMaskIndex] = TensorDesc(
@@ -217,7 +217,7 @@ public:
                     desiredShape,
                     actualShape);
 
-                maskType = DML_MULTI_HEAD_ATTENTION_MASK_TYPE_BOOLEAN;
+                maskType = DML_MULTIHEAD_ATTENTION_MASK_TYPE_BOOLEAN;
             }
         }
 
@@ -253,7 +253,7 @@ public:
         std::vector<DML_TENSOR_DESC> inputDescs = GetDmlInputDescs();
         std::vector<DML_TENSOR_DESC> outputDescs = GetDmlOutputDescs();
 
-        DML_MULTI_HEAD_ATTENTION_OPERATOR_DESC mhaDesc = {};
+        DML_MULTIHEAD_ATTENTION_OPERATOR_DESC mhaDesc = {};
         mhaDesc.QueryTensor = stackedQkv ? nullptr : &inputDescs[dmlQueryIndex];
         mhaDesc.KeyTensor = hasKey ? &inputDescs[dmlKeyIndex] : nullptr;
         mhaDesc.ValueTensor = hasValue ? &inputDescs[dmlValueIndex] : nullptr;
@@ -272,7 +272,7 @@ public:
         mhaDesc.HeadCount = numHeads;
         mhaDesc.MaskType = maskType;
 
-        DML_OPERATOR_DESC opDesc = { DML_OPERATOR_MULTI_HEAD_ATTENTION, &mhaDesc };
+        DML_OPERATOR_DESC opDesc = { DML_OPERATOR_MULTIHEAD_ATTENTION, &mhaDesc };
         SetDmlOperatorDesc(opDesc, kernelCreationContext);
     }
 };
