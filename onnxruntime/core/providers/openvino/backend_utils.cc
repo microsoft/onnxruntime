@@ -58,7 +58,7 @@ CreateOVModel(const ONNX_NAMESPACE::ModelProto& model_proto, const GlobalContext
   try {
     auto cnn_network = global_context.ie_core.ReadModel(model);
     if ((subgraph_context.precision == InferenceEngine::Precision::FP16) &&
-        (global_context.device_type.find("MYRIAD") == std::string::npos)) {
+        (global_context.device_type.find("VPUX") == std::string::npos)) {
       // FP16 transformations
       ov::pass::ConvertFP32ToFP16 pass_obj;
       pass_obj.run_on_model(cnn_network);
@@ -96,7 +96,7 @@ CreateOVModel(const ONNX_NAMESPACE::ModelProto& model_proto, const GlobalContext
       }
     }
 #ifndef NDEBUG
-#if defined OPENVINO_2022_3
+#if defined(OPENVINO_2022_3) || (OPENVINO_2023_0)
     if (IsDebugEnabled()) {
       std::string name = cnn_network->get_friendly_name();
       ov::pass::Serialize serializer(name + ".xml", name + ".bin");
@@ -111,7 +111,7 @@ CreateOVModel(const ONNX_NAMESPACE::ModelProto& model_proto, const GlobalContext
   }
 }
 
-InferenceEngine::Precision ConvertPrecisionONNXToOpenVINO(const ONNX_NAMESPACE::TypeProto& onnx_type, std::string device) {
+InferenceEngine::Precision ConvertPrecisionONNXToOpenVINO(const ONNX_NAMESPACE::TypeProto& onnx_type) {
   ONNX_NAMESPACE::DataType type_string = ONNX_NAMESPACE::Utils::DataTypeUtils::ToType(onnx_type);
   if (*type_string == "float" || *type_string == "tensor(float)") {
     return InferenceEngine::Precision::FP32;
@@ -128,11 +128,7 @@ InferenceEngine::Precision ConvertPrecisionONNXToOpenVINO(const ONNX_NAMESPACE::
   } else if (*type_string == "uint8" || *type_string == "tensor(uint8)") {
     return InferenceEngine::Precision::U8;
   } else if (*type_string == "bool" || *type_string == "tensor(bool)") {
-    if (device == "MYRIAD") {
-      return InferenceEngine::Precision::I32;
-    } else {
-      return InferenceEngine::Precision::U8;
-    }
+    return InferenceEngine::Precision::U8;
   } else if (*type_string == "int64" || *type_string == "tensor(int64)") {
     return InferenceEngine::Precision::I32;
   } else {

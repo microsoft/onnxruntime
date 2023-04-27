@@ -158,6 +158,9 @@ class QnnModelWrapper {
                             tensor_data_type, quantize_param, is_for_input, is_for_output);
   }
 
+  Status UnpackInitializerData(const ONNX_NAMESPACE::TensorProto& initializer,
+                               std::vector<uint8_t>& unpacked_tensor) const;
+
  private:
   bool CreateQnnInputOutputTensors(const std::string& qnn_node_name,
                                    const std::vector<std::string>& names,

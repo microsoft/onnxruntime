@@ -25,12 +25,123 @@
 #pragma once
 
 #include "core/providers/cuda/cuda_common.h"
-#include "decoder_masked_multihead_attention_impl_utils.h"
+#include "core/providers/cuda/cu_inc/common.cuh"
+
+using namespace onnxruntime::cuda;
 
 namespace onnxruntime {
-namespace contrib {
 namespace cuda {
-namespace decoder_masked_self_attention_details {
+
+struct __align__(8) Half4 {
+  half2 x;
+  half2 y;
+};
+
+__device__ __forceinline__ Half4 operator+(const Half4& a, const Half4& b) {
+  Half4 r;
+  r.x = a.x + b.x;
+  r.y = a.y + b.y;
+  return r;
+}
+
+__device__ __forceinline__ float2 operator+(const float2& a, const float2& b) {
+  return make_float2(a.x + b.x, a.y + b.y);
+}
+
+__device__ __forceinline__ float4 operator+(const float4& a, const float4& b) {
+  return make_float4(a.x + b.x, a.y + b.y, a.z + b.z, a.w + b.w);
+}
+
+struct Float8_ {
+  float2 x;
+  float2 y;
+  float2 z;
+  float2 w;
+};
+
+struct Float4_ {
+  float2 x;
+  float2 y;
+};
+
+#ifndef USE_ROCM
+
+template <typename T>
+struct num_elems;
+template <>
+struct num_elems<float> {
+  static constexpr int value = 1;
+};
+template <>
+struct num_elems<float2> {
+  static constexpr int value = 2;
+};
+template <>
+struct num_elems<float4> {
+  static constexpr int value = 4;
+};
+template <>
+struct num_elems<Float4_> {
+  static constexpr int value = 4;
+};
+template <>
+struct num_elems<Float8_> {
+  static constexpr int value = 8;
+};
+
+template <>
+struct num_elems<uint32_t> {
+  static constexpr int value = 2;
+};
+template <>
+struct num_elems<uint2> {
+  static constexpr int value = 4;
+};
+template <>
+struct num_elems<uint4> {
+  static constexpr int value = 8;
+};
+
+template <typename T>
+struct Vec_t {
+  static constexpr int size = 0;
+};
+
+template <>
+struct Vec_t<float> {
+  using Type = float2;
+  static constexpr int size = 2;
+};
+
+template <>
+struct Vec_t<float2> {
+  using Type = float4;
+  static constexpr int size = 4;
+};
+
+template <>
+struct Vec_t<float4> {
+  using Type = Float8_;
+  static constexpr int size = 8;
+};
+
+template <>
+struct Vec_t<half> {
+  using Type = uint32_t;
+  static constexpr int size = 2;
+};
+
+template <>
+struct Vec_t<half2> {
+  using Type = uint2;
+  static constexpr int size = 4;
+};
+
+template <>
+struct Vec_t<Half4> {
+  using Type = uint4;
+  static constexpr int size = 8;
+};
 
 //------------------------------------------------------------
 // Qk_vec
@@ -163,6 +274,16 @@ struct V_vec_m_<uint16_t, 8> {
   using Type = uint4;
 };
 
+template <>
+struct V_vec_m_<half, 2> {
+  using Type = half2;
+};
+
+template <>
+struct V_vec_m_<half, 4> {
+  using Type = Half4;
+};
+
 template <typename T, int V_VEC_SIZE>
 struct V_vec_k_ {
   using Type = typename V_vec_m_<T, V_VEC_SIZE>::Type;
@@ -190,18 +311,6 @@ struct V_vec_acum_fp32_<float4> {
   using Type = float4;
 };
 
-struct Float8_ {
-  float2 x;
-  float2 y;
-  float2 z;
-  float2 w;
-};
-
-struct Float4_ {
-  float2 x;
-  float2 y;
-};
-
 template <>
 struct V_vec_acum_fp32_<uint32_t> {
   using Type = float2;
@@ -219,7 +328,9 @@ struct V_vec_acum_fp32_<uint4> {
 // Zero
 //------------------------------------------------------------
 
-// TODO: fp16 ?
+inline __device__ void zero(uint16_t& dst) {
+  dst = uint16_t(0);
+}
 
 template <typename T>
 inline __device__ void zero(T& dst) {
@@ -233,6 +344,14 @@ inline __device__ void zero(T& dst) {
     tmp.words[ii] = 0u;
   }
   dst = tmp.raw;
+}
+
+inline __device__ uint32_t h0_h0(uint16_t a) {
+  uint32_t b;
+  asm volatile("mov.b32 %0, {%1, %1};"
+               : "=r"(b)
+               : "h"(a));
+  return b;
 }
 
 //------------------------------------------------------------
@@ -261,6 +380,15 @@ inline __device__ float2 add_vec(float2 a, float2 b) {
 
 inline __device__ float4 add_vec(float4 a, float4 b) {
   float4 c;
+  c.x = add_vec(a.x, b.x);
+  c.y = add_vec(a.y, b.y);
+  c.z = add_vec(a.z, b.z);
+  c.w = add_vec(a.w, b.w);
+  return c;
+}
+
+inline __device__ Float8_ add_vec(Float8_ a, Float8_ b) {
+  Float8_ c;
   c.x = add_vec(a.x, b.x);
   c.y = add_vec(a.y, b.y);
   c.z = add_vec(a.z, b.z);
@@ -378,6 +506,14 @@ inline __device__ float sum(uint4 v) {
   return sum(c);
 }
 
+inline __device__ float sum(Float4_ v) {
+  return v.x.x + v.x.y + v.y.x + v.y.y;
+}
+
+inline __device__ float sum(Float8_ v) {
+  return v.x.x + v.x.y + v.y.x + v.y.y + v.z.x + v.z.y + v.w.x + v.w.y;
+}
+
 //------------------------------------------------------------
 // Mul
 //------------------------------------------------------------
@@ -401,12 +537,40 @@ inline __device__ float2 mul(float2 a, float2 b) {
 }
 
 template <>
+inline __device__ float2 mul(float a, float2 b) {
+  float2 c;
+  c.x = a * b.x;
+  c.y = a * b.y;
+  return c;
+}
+
+template <>
 inline __device__ float4 mul(float4 a, float4 b) {
   float4 c;
   c.x = a.x * b.x;
   c.y = a.y * b.y;
   c.z = a.z * b.z;
   c.w = a.w * b.w;
+  return c;
+}
+
+template <>
+inline __device__ float4 mul(float a, float4 b) {
+  float4 c;
+  c.x = a * b.x;
+  c.y = a * b.y;
+  c.z = a * b.z;
+  c.w = a * b.w;
+  return c;
+}
+
+template <>
+inline __device__ Float8_ mul(float a, Float8_ b) {
+  Float8_ c;
+  c.x = make_float2(a * b.x.x, a * b.x.y);
+  c.y = make_float2(a * b.y.x, a * b.y.y);
+  c.z = make_float2(a * b.z.x, a * b.z.y);
+  c.w = make_float2(a * b.w.x, a * b.w.y);
   return c;
 }
 
@@ -429,10 +593,24 @@ inline __device__ uint32_t mul(uint32_t a, uint32_t b) {
 }
 
 template <>
+inline __device__ uint32_t mul(uint16_t a, uint32_t b) {
+  return mul<uint32_t, uint32_t, uint32_t>(h0_h0(a), b);
+}
+
+template <>
 inline __device__ uint2 mul(uint2 a, uint2 b) {
   uint2 c;
   c.x = mul<uint32_t, uint32_t, uint32_t>(a.x, b.x);
   c.y = mul<uint32_t, uint32_t, uint32_t>(a.y, b.y);
+  return c;
+}
+
+template <>
+inline __device__ uint2 mul(uint16_t a, uint2 b) {
+  uint32_t s = h0_h0(a);
+  uint2 c;
+  c.x = mul<uint32_t, uint32_t, uint32_t>(s, b.x);
+  c.y = mul<uint32_t, uint32_t, uint32_t>(s, b.y);
   return c;
 }
 
@@ -444,6 +622,79 @@ inline __device__ uint4 mul(uint4 a, uint4 b) {
   c.z = mul<uint32_t, uint32_t, uint32_t>(a.z, b.z);
   c.w = mul<uint32_t, uint32_t, uint32_t>(a.w, b.w);
   return c;
+}
+
+template <>
+inline __device__ uint4 mul(uint16_t a, uint4 b) {
+  uint32_t s = h0_h0(a);
+  uint4 c;
+  c.x = mul<uint32_t, uint32_t, uint32_t>(s, b.x);
+  c.y = mul<uint32_t, uint32_t, uint32_t>(s, b.y);
+  c.z = mul<uint32_t, uint32_t, uint32_t>(s, b.z);
+  c.w = mul<uint32_t, uint32_t, uint32_t>(s, b.w);
+  return c;
+}
+
+template <>
+inline __device__ float mul(uint16_t a, float b) {
+  return HalfToFloat(a) * b;
+}
+
+template <>
+inline __device__ float mul(uint16_t a, uint16_t b) {
+  float fa = HalfToFloat(a);
+  float fb = HalfToFloat(b);
+  return fa * fb;
+}
+
+template <>
+inline __device__ float2 mul(uint32_t a, uint32_t b) {
+  float2 fa = Half2ToFloat2(a);
+  float2 fb = Half2ToFloat2(b);
+  return mul<float2, float2, float2>(fa, fb);
+}
+
+template <>
+inline __device__ float2 mul(uint16_t a, uint32_t b) {
+  return mul<float2, uint32_t, uint32_t>(h0_h0(a), b);
+}
+
+template <>
+inline __device__ Float4_ mul(uint2 a, uint2 b) {
+  Float4_ fc;
+  fc.x = mul<float2, uint32_t, uint32_t>(a.x, b.x);
+  fc.y = mul<float2, uint32_t, uint32_t>(a.y, b.y);
+  return fc;
+}
+
+template <>
+inline __device__ Float4_ mul(uint16_t a, uint2 b) {
+  uint32_t s = h0_h0(a);
+  Float4_ fc;
+  fc.x = mul<float2, uint32_t, uint32_t>(s, b.x);
+  fc.y = mul<float2, uint32_t, uint32_t>(s, b.y);
+  return fc;
+}
+
+template <>
+inline __device__ Float8_ mul(uint4 a, uint4 b) {
+  Float8_ fc;
+  fc.x = mul<float2, uint32_t, uint32_t>(a.x, b.x);
+  fc.y = mul<float2, uint32_t, uint32_t>(a.y, b.y);
+  fc.z = mul<float2, uint32_t, uint32_t>(a.z, b.z);
+  fc.w = mul<float2, uint32_t, uint32_t>(a.w, b.w);
+  return fc;
+}
+
+template <>
+inline __device__ Float8_ mul(uint16_t a, uint4 b) {
+  uint32_t s = h0_h0(a);
+  Float8_ fc;
+  fc.x = mul<float2, uint32_t, uint32_t>(s, b.x);
+  fc.y = mul<float2, uint32_t, uint32_t>(s, b.y);
+  fc.z = mul<float2, uint32_t, uint32_t>(s, b.z);
+  fc.w = mul<float2, uint32_t, uint32_t>(s, b.w);
+  return fc;
 }
 
 //------------------------------------------------------------
@@ -483,14 +734,6 @@ inline __device__ float4 fma(float a, float4 b, float4 c) {
   d.z = fma(a, b.z, c.z);
   d.w = fma(a, b.w, c.w);
   return d;
-}
-
-inline __device__ uint32_t h0_h0(uint16_t a) {
-  uint32_t b;
-  asm volatile("mov.b32 %0, {%1, %1};"
-               : "=r"(b)
-               : "h"(a));
-  return b;
 }
 
 inline __device__ uint32_t fma(uint32_t a, uint32_t b, uint32_t c) {
@@ -555,11 +798,27 @@ inline __device__ float2 fma(uint16_t a, uint32_t b, float2 fc) {
   return fma(h0_h0(a), b, fc);
 }
 
+inline __device__ Float4_ fma(uint2 a, uint2 b, Float4_ fc) {
+  Float4_ fd;
+  fd.x = fma(a.x, b.x, fc.x);
+  fd.y = fma(a.y, b.y, fc.y);
+  return fd;
+}
+
 inline __device__ Float4_ fma(uint16_t a, uint2 b, Float4_ fc) {
   uint32_t s = h0_h0(a);
   Float4_ fd;
   fd.x = fma(s, b.x, fc.x);
   fd.y = fma(s, b.y, fc.y);
+  return fd;
+}
+
+inline __device__ Float8_ fma(uint4 a, uint4 b, Float8_ fc) {
+  Float8_ fd;
+  fd.x = fma(a.x, b.x, fc.x);
+  fd.y = fma(a.y, b.y, fc.y);
+  fd.z = fma(a.z, b.z, fc.z);
+  fd.w = fma(a.w, b.w, fc.w);
   return fd;
 }
 
@@ -572,103 +831,6 @@ inline __device__ Float8_ fma(uint16_t a, uint4 b, Float8_ fc) {
   fd.w = fma(s, b.w, fc.w);
   return fd;
 }
-
-//------------------------------------------------------------
-// Block_sum
-//------------------------------------------------------------
-
-template <int WARPS_PER_BLOCK, int WARP_SIZE = 32>
-inline __device__ float block_sum(float* red_smem, float sum) {
-  // Decompose the thread index into warp / lane.
-  int warp = threadIdx.x / WARP_SIZE;
-  int lane = threadIdx.x % WARP_SIZE;
-
-  // Compute the sum per warp.
-#pragma unroll
-  for (int mask = WARP_SIZE / 2; mask >= 1; mask /= 2) {
-    sum += __shfl_xor_sync(uint32_t(-1), sum, mask);
-  }
-
-  // Warp leaders store the data to shared memory.
-  if (lane == 0) {
-    red_smem[warp] = sum;
-  }
-
-  // Make sure the data is in shared memory.
-  __syncthreads();
-
-  // The warps compute the final sums.
-  if (lane < WARPS_PER_BLOCK) {
-    sum = red_smem[lane];
-  }
-
-  // Parallel reduction inside the warp.
-#pragma unroll
-  for (int mask = WARPS_PER_BLOCK / 2; mask >= 1; mask /= 2) {
-    sum += __shfl_xor_sync(uint32_t(-1), sum, mask);
-  }
-
-  // Broadcast to other threads.
-  return __shfl_sync(uint32_t(-1), sum, 0);
-}
-
-//------------------------------------------------------------
-// Shfl_Mask
-//------------------------------------------------------------
-
-inline __device__ constexpr uint32_t shfl_mask(int threads) {
-  return threads == 32 ? uint32_t(-1) : (1u << threads) - 1u;
-}
-
-//------------------------------------------------------------
-// Dot
-//------------------------------------------------------------
-
-template <typename A, typename T>
-inline __device__ float dot(T a, T b) {
-  return sum(mul<A, T, T>(a, b));
-}
-
-//------------------------------------------------------------
-// Qk_Dot
-//------------------------------------------------------------
-
-template <int THREADS_PER_KEY, typename K_vec, int N>
-inline __device__ float qk_dot_(const K_vec (&q)[N], const K_vec (&k)[N]) {
-  using K_vec_acum = K_vec;
-
-  // Compute the parallel products for Q*K^T (treat vector lanes separately).
-  K_vec_acum qk_vec = mul<K_vec_acum, K_vec, K_vec>(q[0], k[0]);
-#pragma unroll
-  for (int ii = 1; ii < N; ++ii) {
-    qk_vec = fma(q[ii], k[ii], qk_vec);
-  }
-
-  // Finalize the reduction across lanes.
-  float qk = sum(qk_vec);
-#pragma unroll
-  for (int mask = THREADS_PER_KEY / 2; mask >= 1; mask /= 2) {
-    qk += __shfl_xor_sync(uint32_t(-1), qk, mask);
-  }
-  return qk;
-}
-
-template <typename T, int THREADS_PER_KEY>
-struct Qk_dot {
-  template <typename K_vec, int N>
-  static inline __device__ float dot(const K_vec (&q)[N], const K_vec (&k)[N]) {
-    return qk_dot_<THREADS_PER_KEY>(q, k);
-  }
-};
-
-//------------------------------------------------------------
-// ThreadsPerValue
-//------------------------------------------------------------
-
-template <typename T, int head_size>
-struct ThreadsPerValue {
-  static const int value = head_size * sizeof(T) / 16;
-};
 
 //------------------------------------------------------------
 // ConvertFromFloat
@@ -691,9 +853,14 @@ inline __device__ uint16_t FloatToHalf(float f) {
     uint32_t u32;
     uint16_t u16[2];
   } tmp;
+#if 0 && defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800  // Is it better?
+      float zero = 0.f;
+      asm volatile("cvt.rn.f16x2.f32 %0, %1, %2;\n" : "=r"(tmp.u32) : "f"(zero), "f"(f));
+#else
   asm volatile("cvt.rn.f16.f32 %0, %1;\n"
                : "=h"(tmp.u16[0])
                : "f"(f));
+#endif
   return tmp.u16[0];
 }
 
@@ -736,39 +903,8 @@ inline __device__ void ConvertFromFloat(uint4& dst, Float8_ src) {
   dst.z = Float2ToHalf2(src.z);
   dst.w = Float2ToHalf2(src.w);
 }
-//------------------------------------------------------------
-// CalcDynamicBlockMemory
-//------------------------------------------------------------
 
-template <typename T>
-inline size_t CalcDynamicBlockMemory(const DecoderMaskedMultiHeadAttentionParams& params,
-                                     int threads_per_value, int threads_per_block) {
-  // The amount of shared memory needed to store the Q*K^T values in float.
+#endif
 
-  const int total_sequence_length = params.total_sequence_length;
-  size_t qk_sz = (((total_sequence_length + 3) / 4) * 16);
-
-  // The extra memory needed if we are not using floats for the final logits.
-  size_t logits_sz = 0;
-
-  if (sizeof(T) != 4) {
-    logits_sz = (((total_sequence_length + 3) / 4) * 4 * sizeof(T));
-  }
-
-  // The total size needed during softmax.
-  size_t softmax_sz = qk_sz + logits_sz;
-
-  // The number of partial rows to reduce in the final reduction.
-  int rows_per_red = threads_per_block / threads_per_value;
-
-  // The amount of storage needed to finalize the outputs.
-  size_t red_sz = rows_per_red * params.head_size * sizeof(T) / 2;
-
-  // The max.
-  return std::max(softmax_sz, red_sz);
-}
-
-}  // namespace decoder_masked_self_attention_details
 }  // namespace cuda
-}  // namespace contrib
 }  // namespace onnxruntime

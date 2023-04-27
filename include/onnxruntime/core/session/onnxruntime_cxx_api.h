@@ -1702,6 +1702,7 @@ struct KernelContext {
   UnownedValue GetOutput(size_t index, const std::vector<int64_t>& dims) const;
   void* GetGPUComputeStream() const;
   Logger GetLogger() const;
+  OrtAllocator* GetAllocator(const OrtMemoryInfo& memory_info) const;
 
  private:
   OrtKernelContext* ctx_;
