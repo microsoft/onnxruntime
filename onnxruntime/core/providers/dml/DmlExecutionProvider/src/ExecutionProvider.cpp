@@ -241,7 +241,7 @@ namespace Dml
         {
         assert(!m_closed);
 
-        m_context->AddUAVBarrier();
+        m_context->UavBarrier();
 
         return S_OK;
         }
