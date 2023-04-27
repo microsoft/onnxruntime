@@ -10,32 +10,20 @@ Abbreviations: B is batch_size, S is sequence_length, W is hidden_size
 
      M               A  B  C    // M, A, B, and C are Inputs
      |                \ |  /
-    Cast               Gemm
+     |                 Gemm
      |                / |   \
      |               /  |    \
      |              /   |     \
      |          Slice  Slice  Slice
-  Identity        |     |       |
+     |            |     |       |
      |            |     |       |
      |      Identity Identity Identity // The identities are used to transpose NCHW -> NHCW while
      |            |     |       |      // keeping the GEMM strides as NCHW to better target metacommands
      |            |     |       |
-     |             -----        |
-     -----------    |           |
-                 \  |           |
-                  Gemm          |
-                    |           |
-                    |           |
-                Softmax         |
-                    |          /
-                    |         /
-                     \       /
-                       \    /
-                        Gemm
-                          |
-                   ActivationLinear
-                          |
-                        Output  // Final output
+     ----------------- MHA -----
+                        |
+                        |
+                      Output  // Final output
 
  This kernel creates a DML_GRAPH, as mentioned above.
  For reference, refer to this Doc:
