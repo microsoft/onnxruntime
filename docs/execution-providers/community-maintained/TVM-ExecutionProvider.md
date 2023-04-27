@@ -218,8 +218,6 @@ https://tvm.apache.org/docs/how_to/tune_with_autotvm/index.html
 Ansor (Autoscheduling):
 https://tvm.apache.org/docs/how_to/tune_with_autoscheduler/index.html
 
-or by using logs generated through the OctoML platform (https://onnx.octoml.ai) using instructions [here](https://help.octoml.ai/en/articles/5814452-using-octoml-platform-logs-with-onnx-rt-tvm-ep)
-
 Using the TVM EP with TVM tuning logs also requires users to turn off ONNX Runtime preprocessing.  To do this, the following `SessionOptions()` can be used:
 ```python
 so = onnxruntime.SessionOptions()
