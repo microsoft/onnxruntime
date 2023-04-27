@@ -858,6 +858,7 @@ void KeyCacheExpansionKernelLauncher(const T* key_cache,
   const dim3 block(256);
   const dim3 grid(batch_size * beam_width, num_heads, sequence_length);
 
+#ifndef USE_ROCM
   if (head_size % 4 == 0) {
     using vec_type = typename TypeMapper<T, 4>::Type;
     KeyCacheExpansionKernel<<<grid, block, 0, stream>>>(reinterpret_cast<const vec_type*>(key_cache),
@@ -873,12 +874,15 @@ void KeyCacheExpansionKernelLauncher(const T* key_cache,
                                                         max_seq_length,
                                                         head_size / 2);
   } else {
+#endif
     KeyCacheExpansionKernel<<<grid, block, 0, stream>>>(key_cache,
                                                         key_cache_expanded,
                                                         beam_width,
                                                         max_seq_length,
                                                         head_size);
+#ifndef USE_ROCM
   }
+#endif
 }
 
 template void KeyCacheExpansionKernelLauncher(const float* key_cache,
@@ -938,6 +942,7 @@ void BufferExpansionKernelLauncher(const T* input,
                                    cudaStream_t stream) {
   const dim3 block(128);
 
+#ifndef USE_ROCM
   if (chunk_size % 4 == 0) {
     using vec_type = typename TypeMapper<T, 4>::Type;
     const dim3 grid(batch_size, beam_width, (chunk_size / 4 + block.x - 1) / block.x);
@@ -951,11 +956,14 @@ void BufferExpansionKernelLauncher(const T* input,
                                                       reinterpret_cast<vec_type*>(output),
                                                       chunk_size / 2);
   } else {
+#endif
     const dim3 grid(batch_size, beam_width, (chunk_size + block.x - 1) / block.x);
     BufferExpansionKernel<<<grid, block, 0, stream>>>(input,
                                                       output,
                                                       chunk_size);
+#ifndef USE_ROCM
   }
+#endif
 }
 
 template void BufferExpansionKernelLauncher(const float* input,

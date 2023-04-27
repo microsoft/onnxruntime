@@ -1207,9 +1207,9 @@ Status ExpandBuffer(Stream* ort_stream,
 
     cuda::BufferExpansionKernelLauncher<CudaT>(reinterpret_cast<const CudaT*>(input_data),
                                                reinterpret_cast<CudaT*>(expanded_data),
-                                               batch_size,
+                                               static_cast<int>(batch_size),
                                                num_beams,
-                                               chunk_size,
+                                               static_cast<int>(chunk_size),
                                                cuda_stream);
     return Status::OK();
   }
@@ -1222,12 +1222,12 @@ Status ExpandBuffer(Stream* ort_stream,
 
   cuda::KeyCacheExpansionKernelLauncher<CudaT>(reinterpret_cast<const CudaT*>(input_data),
                                                reinterpret_cast<CudaT*>(expanded_data),
-                                               batch_size,
+                                               static_cast<int>(batch_size),
                                                num_beams,
-                                               num_heads,
-                                               sequence_length,
+                                               static_cast<int>(num_heads),
+                                               static_cast<int>(sequence_length),
                                                max_sequence_length,
-                                               head_size,
+                                               static_cast<int>(head_size),
                                                cuda_stream);
 
   return Status::OK();
