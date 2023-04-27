@@ -66,13 +66,15 @@ android {
   if (getOnnxruntimePackageName() == "onnxruntime-ext") {
     sourceSets {
       main {
-        java.srcDirs = ['srcExt/main/java']
+        java.srcDirs = ['src/main/java/']
+        java.exclude '**/OnnxruntimeExtensionsDisabled.java'
       }
     }
   } else {
     sourceSets {
       main {
-        java.srcDirs = ['src/main/java']
+        java.srcDirs = ['src/main/java/']
+        java.exclude '**/OnnxruntimeExtensionsEnabled.java'
       }
     }
   }
