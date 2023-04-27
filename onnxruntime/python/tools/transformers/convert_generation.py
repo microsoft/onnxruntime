@@ -1214,6 +1214,16 @@ def update_decoder_subgraph_share_buffer_and_use_decoder_masked_mha(subg: GraphP
         "domain",
     ]
 
+    #hacking
+    cast_node = onnx.helper.make_node(
+        "Cast",
+        ["past_sequence_length"],
+        ["past_sequence_length_int64"],
+        name="d_/decoder/model/decoder/Gather_1_output_0",
+        to=TensorProto.INT64,
+    )
+    new_nodes.extend([cast_node])
+
     for node in subg.node:
         if len(node.output) > 0 and rel_pos_bias_node is not None and node.output[0] == rel_pos_bias_node.input[1]:
             cast_node = onnx.helper.make_node(
@@ -1254,7 +1264,8 @@ def update_decoder_subgraph_share_buffer_and_use_decoder_masked_mha(subg: GraphP
                 "DecoderMaskedMultiHeadAttention", nis, node.output, name=node.name, **kwargs
             )
 
-        new_nodes.extend([node])
+        if node.name not in ["/decoder/model/decoder/Shape_1", "/decoder/model/decoder/Gather_1"]:
+            new_nodes.extend([node])
 
     subg.ClearField("node")
     subg.node.extend(new_nodes)
