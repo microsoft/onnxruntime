@@ -32,7 +32,7 @@ class QGemm : protected GemmBase, public MatMulIntegerBase {
     size_t N = SafeInt<size_t>(helper.N());
     size_t K = SafeInt<size_t>(helper.K());
 
-    //validate scales and zero points
+    // validate scales and zero points
     const auto* a_zp = context->Input<Tensor>(IN_A_ZERO_POINT);
     const auto* b_zp = context->Input<Tensor>(IN_B_ZERO_POINT);
     const auto* y_zp = context->Input<Tensor>(IN_Y_ZERO_POINT);
@@ -47,14 +47,14 @@ class QGemm : protected GemmBase, public MatMulIntegerBase {
     bool a_is_signed = a->IsDataType<int8_t>();
     const uint8_t* a_data = static_cast<const uint8_t*>(a->DataRaw());
 
-    BufferUniquePtr a_trans_buffer;
+    std::unique_ptr<Tensor> a_trans_buffer;
     if (trans_A_ == CblasTrans) {
       a_data = quantization::TransPoseInputData(a_data, a_trans_buffer, allocator, K, M);
     }
 
     bool b_is_signed;
     const uint8_t* b_data = nullptr;
-    BufferUniquePtr b_trans_buffer;
+    std::unique_ptr<Tensor> b_trans_buffer;
     if (nullptr == b) {
       b_data = static_cast<const uint8_t*>(packed_b_.get());
       b_is_signed = b_is_signed_;
@@ -71,11 +71,12 @@ class QGemm : protected GemmBase, public MatMulIntegerBase {
 
     // prepare output buffer of GEMM
     int32_t* gemm_output_data = nullptr;
-    BufferUniquePtr gemm_output_buffer;
+    std::unique_ptr<Tensor> gemm_output_buffer;
     bool need_requant = y_scale != nullptr;
     if (need_requant) {
-      gemm_output_data = static_cast<int32_t*>(allocator->Alloc(SafeInt<size_t>(M * N) * sizeof(int32_t)));
-      gemm_output_buffer.reset(gemm_output_data);
+      TensorShape outputshape{static_cast<int64_t>(M), static_cast<int64_t>(N)};
+      gemm_output_buffer = std::make_unique<Tensor>(DataTypeImpl::GetType<int32_t>(), outputshape, allocator);
+      gemm_output_data = gemm_output_buffer->MutableData<int32_t>();
     } else {
       gemm_output_data = static_cast<int32_t*>(y->MutableDataRaw());
     }

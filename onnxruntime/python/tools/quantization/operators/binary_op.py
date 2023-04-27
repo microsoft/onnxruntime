@@ -29,7 +29,7 @@ class QLinearBinaryOp(QuantOperatorBase):
             return super().quantize()
 
         qlinear_binary_math_output = node.output[0] + TENSOR_NAME_QUANT_SUFFIX
-        qlinear_binary_math_name = node.name + "_quant" if node.name != "" else ""
+        qlinear_binary_math_name = node.name + "_quant" if node.name else ""
 
         kwargs = {}
         for attribute in node.attribute:

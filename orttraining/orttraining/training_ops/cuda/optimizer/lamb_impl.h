@@ -162,5 +162,5 @@ struct LambMultiTensorUpdateFunctor {
       const float ratio_max);
 };
 
-}
+}  // namespace cuda
 }  // namespace onnxruntime

@@ -39,7 +39,7 @@ def _test_ios_packages(args):
         raise FileNotFoundError(f"{c_framework_dir} does not have onnxruntime.framework/xcframework")
 
     if has_framework and has_xcframework:
-        raise ValueError("Cannot proceed when both onnxruntime.framework " "and onnxruntime.xcframework exist")
+        raise ValueError("Cannot proceed when both onnxruntime.framework and onnxruntime.xcframework exist")
 
     framework_name = "onnxruntime.framework" if has_framework else "onnxruntime.xcframework"
 

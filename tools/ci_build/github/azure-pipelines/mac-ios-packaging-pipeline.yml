@@ -188,6 +188,28 @@ jobs:
         "$(ORT_SHOULD_UPLOAD_ARCHIVES)"
     displayName: "Assemble artifacts"
 
+  - script: |
+      set -e -x
+      ls -R "$(Build.ArtifactStagingDirectory)"
+    displayName: "List staged artifacts"
+
+  - script: |
+      set -e -x
+      shasum -a 256 "$(Build.ArtifactStagingDirectory)/pod-archive-onnxruntime-c-${ORT_POD_VERSION}.zip"
+    displayName: "Print ORT iOS Pod checksum"
+
+
+  # copy the pod archive to a path relative to Package.swift and set the env var required by Package.swift to use that.
+  # xcodebuild will implicitly use Package.swift and build/run the .testTarget (tests in swift/onnxTests).
+  # once that's done cleanup the copy of the pod zip file
+  - script: |
+      set -e -x
+      cp "$(Build.ArtifactStagingDirectory)/pod-archive-onnxruntime-c-${ORT_POD_VERSION}.zip" swift/
+      export ORT_IOS_POD_LOCAL_PATH="swift/pod-archive-onnxruntime-c-${ORT_POD_VERSION}.zip"
+      xcodebuild test -scheme onnxruntime -destination 'platform=iOS Simulator'
+      rm swift/pod-archive-onnxruntime-c-*.zip
+    displayName: "Test Package.swift usage"
+
   - publish: "$(Build.ArtifactStagingDirectory)"
     artifact: ios_packaging_artifacts
     displayName: "Publish artifacts"

@@ -108,20 +108,20 @@ Status BatchNorm<T>::ComputeInternal(OpKernelContext* p_op_kernel_context) const
     Impl_Cast<CudaT, float>(Stream(p_op_kernel_context), var_data, f_var.get(), C);
 
     CUDNN_RETURN_IF_ERROR(BatchNormalizationForwardInferenceHelper(
-                              GetCudnnHandle(p_op_kernel_context),
-                              cudnn_batch_norm_mode_,
-                              &alpha,
-                              &beta,
-                              data_desc,
-                              x_data,
-                              data_desc,
-                              y_data,
-                              bn_tensor_desc,
-                              f_scale.get(),
-                              f_B.get(),
-                              f_mean.get(),
-                              f_var.get(),
-                              epsilon_));
+        GetCudnnHandle(p_op_kernel_context),
+        cudnn_batch_norm_mode_,
+        &alpha,
+        &beta,
+        data_desc,
+        x_data,
+        data_desc,
+        y_data,
+        bn_tensor_desc,
+        f_scale.get(),
+        f_B.get(),
+        f_mean.get(),
+        f_var.get(),
+        epsilon_));
 
     return Status::OK();
   }
@@ -137,40 +137,40 @@ Status BatchNorm<T>::ComputeInternal(OpKernelContext* p_op_kernel_context) const
     auto saved_inv_var_data = reinterpret_cast<CudaT*>(saved_var->MutableData<T>());
 
     CUDNN_RETURN_IF_ERROR(BatchNormalizationForwardTrainingHelper(
-                              GetCudnnHandle(p_op_kernel_context),
-                              cudnn_batch_norm_mode_,
-                              &alpha,
-                              &beta,
-                              data_desc,
-                              x_data,
-                              data_desc,
-                              y_data,
-                              bn_tensor_desc,
-                              scale_data,
-                              b_data,
-                              momentum_,
-                              running_mean_data,
-                              running_var_data,
-                              epsilon_,
-                              saved_mean_data,
-                              saved_inv_var_data));
+        GetCudnnHandle(p_op_kernel_context),
+        cudnn_batch_norm_mode_,
+        &alpha,
+        &beta,
+        data_desc,
+        x_data,
+        data_desc,
+        y_data,
+        bn_tensor_desc,
+        scale_data,
+        b_data,
+        momentum_,
+        running_mean_data,
+        running_var_data,
+        epsilon_,
+        saved_mean_data,
+        saved_inv_var_data));
     // in BatchNorm Forward Inference mode if only Y output present
   } else {
     CUDNN_RETURN_IF_ERROR(BatchNormalizationForwardInferenceHelper(
-                              GetCudnnHandle(p_op_kernel_context),
-                              cudnn_batch_norm_mode_,
-                              &alpha,
-                              &beta,
-                              data_desc,
-                              x_data,
-                              data_desc,
-                              y_data,
-                              bn_tensor_desc,
-                              scale_data,
-                              b_data,
-                              mean_data,
-                              var_data,
-                              epsilon_));
+        GetCudnnHandle(p_op_kernel_context),
+        cudnn_batch_norm_mode_,
+        &alpha,
+        &beta,
+        data_desc,
+        x_data,
+        data_desc,
+        y_data,
+        bn_tensor_desc,
+        scale_data,
+        b_data,
+        mean_data,
+        var_data,
+        epsilon_));
   }
   return Status::OK();
 }

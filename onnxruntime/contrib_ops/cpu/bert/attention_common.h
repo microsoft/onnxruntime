@@ -21,8 +21,9 @@ enum AttentionMaskType {
 };
 
 enum AttentionQkvFormat {
-  Q_K_V_BNSH,            // for unfused attention
-  Q_K_V_BSNH,            // for memory efficient attention, or format of query, key and value for MultiHeadAttention
+  UNKNOWN,               // enum value not set, or depends on qkv projection implementation details
+  Q_K_V_BNSH,            // for non-packed qkv, permuted
+  Q_K_V_BSNH,            // for non-packed qkv, not permuted, used by memory efficient attention or MultiHeadAttention
   QKV_BSN3H,             // for TRT fused attention, qkv are packed
   Q_K_V_BNSH_QKV_BS3NH,  // for TRT fused causal attention, data has two formats (qkv is 3BNSH, gemm_buffer is BS3NH)
   Q_KV_BSNH_BSN2H,       // for TRT fused cross attention, kv are packed
@@ -41,16 +42,16 @@ enum AttentionKernelType {
 struct AttentionParameters {
   int batch_size;
   int sequence_length;
-  int kv_sequence_length;            // input sequence length of K or V
-  int past_sequence_length;          // sequence length in past state of K or V
-  int original_past_sequence_length; // original sequence length in past state of K or V
-  int total_sequence_length;         // total sequence length of K or V
-  int max_sequence_length;           // max sequence length from 4D mask
-  int input_hidden_size;             // first dimension of weights for input projection
-  int hidden_size;                   // hidden size of Q or K
-  int head_size;                     // hidden size per head of Q or K
-  int v_hidden_size;                 // hidden size of V
-  int v_head_size;                   // hidden size per head of V
+  int kv_sequence_length;             // input sequence length of K or V
+  int past_sequence_length;           // sequence length in past state of K or V
+  int original_past_sequence_length;  // original sequence length in past state of K or V
+  int total_sequence_length;          // total sequence length of K or V
+  int max_sequence_length;            // max sequence length from 4D mask
+  int input_hidden_size;              // first dimension of weights for input projection
+  int hidden_size;                    // hidden size of Q or K
+  int head_size;                      // hidden size per head of Q or K
+  int v_hidden_size;                  // hidden size of V
+  int v_head_size;                    // hidden size per head of V
   int num_heads;
   bool is_unidirectional;
   bool past_present_share_buffer;
@@ -60,6 +61,7 @@ struct AttentionParameters {
   float mask_filter_value;
   float scale;
   AttentionMaskType mask_type;
+  AttentionQkvFormat qkv_format;
 };
 
 // Parameters deduced from node attributes and inputs/outputs.

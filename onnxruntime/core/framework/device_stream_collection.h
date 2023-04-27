@@ -20,7 +20,7 @@ class DeviceStreamCollection {
   // and set the current collection as the owner of the device stream.
   void AddDeviceStream(size_t stream_idx, std::unique_ptr<Stream> stream);
 
-  // user an external device stream instance at given index.
+  // Use an external device stream instance at given index.
   // the current collection is not the owner.
   // this is mainly used in subgraph execution, when we want the
   // subgraph nodes execute on the same stream as parent node.
@@ -33,15 +33,14 @@ class DeviceStreamCollection {
   // logic sequence doesn't support Stream.
   Stream* GetStream(size_t stream_idx) const;
 
-  // Get the index device stream instances.
-  gsl::span<Stream*> GetStreams() const;
-
   // get the number of device stream instances.
   size_t NumStreams() const;
 
   // Since the collection may be reused for future iteration,
   // This API is used to cleanup some resources at the end of an iteration.
   Status CleanUp(bool sync_streams);
+
+  Stream* GetRootStream() const;
 
  private:
   std::unique_ptr<DeviceStreamCollectionImpl> impl_;

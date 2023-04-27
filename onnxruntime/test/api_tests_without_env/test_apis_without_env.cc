@@ -38,7 +38,7 @@ int main(int argc, char** argv) {
   }
 
 #ifndef USE_ONNXRUNTIME_DLL
-  //make memory leak checker happy
+  // make memory leak checker happy
   ::google::protobuf::ShutdownProtobufLibrary();
 #endif
   return status;

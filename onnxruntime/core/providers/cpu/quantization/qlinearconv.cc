@@ -11,7 +11,6 @@
 #include "core/util/qmath.h"
 #include "core/mlas/inc/mlas.h"
 
-
 namespace onnxruntime {
 
 using ConvPadVector = ConvAttributes::ConvPadVector;
@@ -123,7 +122,7 @@ class QLinearConv : public OpKernel {
    * @param kernel_dim             Dimension of a filter
    * @param comp_kernel_stride     Best stride to fully utilize hand tuned computing kernel.
    * @return
-  */
+   */
   static int32_t ComputeOutputStride(int32_t degree_of_parallelism,
                                      int64_t output_image_size,
                                      int64_t group_output_channels,
@@ -159,9 +158,9 @@ class QLinearConv : public OpKernel {
     // We need a better partiton when we have a big filter tensor and very small activation tensor
     // TODO!! we should partition the weight tensor instead
     constexpr int64_t BIG_WEIGHT = 1024 * 1024;
-    if (weights >= BIG_WEIGHT && task_count < (degree_of_parallelism / 8) ) {
-        int32_t s1 = static_cast<int32_t>((output_image_size + degree_of_parallelism - 1) / degree_of_parallelism);
-        output_stride = std::max(s1, min_stride);
+    if (weights >= BIG_WEIGHT && task_count < (degree_of_parallelism / 8)) {
+      int32_t s1 = static_cast<int32_t>((output_image_size + degree_of_parallelism - 1) / degree_of_parallelism);
+      output_stride = std::max(s1, min_stride);
     }
 
     return output_stride;
@@ -673,7 +672,7 @@ Status QLinearConv<ActType>::Compute(OpKernelContext* context) const {
     // the im2col transform.
     ind_buf_length = SafeInt<size_t>(sizeof(const ActType*)) * kernel_size * output_image_size;
     if (parallel_batch)
-      ind_buf_length *= SafeInt<size_t>(N); // ind buffer per each image in the batch
+      ind_buf_length *= SafeInt<size_t>(N);  // ind buffer per each image in the batch
     auto* indirection_data = alloc->Alloc(ind_buf_length);
     indirection_buffer = BufferUniquePtr(indirection_data, BufferDeleter(alloc));
     padding_data.resize(static_cast<size_t>(C), X_zero_point_value);
@@ -682,16 +681,16 @@ Status QLinearConv<ActType>::Compute(OpKernelContext* context) const {
   concurrency::ThreadPool* thread_pool = context->GetOperatorThreadPool();
 
   /*************************************
-  * Thread partition idea: we are essentially partition a GEMM A[M,K] x B[K,N].
-  * Here B contains the conv filters, which are usually not big, so we assume
-  * it can be in cache entirely. Then we simply partition A horizontally into
-  * thin slices along M dimension. This would ensure that the slice of A fits
-  * into the cache and reduce the chance of kernel waiting for memory.
-  *
-  * The thickness of A slice should be multiple of kernel stride M. Since
-  * we have to choose from many different kernels, the logic of finding
-  * the stride M is hacky.
-  */
+   * Thread partition idea: we are essentially partition a GEMM A[M,K] x B[K,N].
+   * Here B contains the conv filters, which are usually not big, so we assume
+   * it can be in cache entirely. Then we simply partition A horizontally into
+   * thin slices along M dimension. This would ensure that the slice of A fits
+   * into the cache and reduce the chance of kernel waiting for memory.
+   *
+   * The thickness of A slice should be multiple of kernel stride M. Since
+   * we have to choose from many different kernels, the logic of finding
+   * the stride M is hacky.
+   */
 
   // The following convoluted branches must match the kernel selection logic
   // in conv_worker.
@@ -716,7 +715,7 @@ Status QLinearConv<ActType>::Compute(OpKernelContext* context) const {
   const int32_t stride_m = ComputeOutputStride(degree_of_par, output_image_size, group_output_channels, kernel_dim, compute_stride);
   const int64_t task_count = (output_image_size + stride_m - 1) / stride_m;
 
-  if (parallel_batch) // process all batch images in the same parallel section
+  if (parallel_batch)  // process all batch images in the same parallel section
   {
     auto conv_worker = [&](ptrdiff_t batch) {
       int64_t image_id = batch / task_count;
@@ -732,19 +731,19 @@ Status QLinearConv<ActType>::Compute(OpKernelContext* context) const {
         worker_indirection_buffer = static_cast<ActType const**>(indirection_buffer.get()) + offset;
 
         math::Im2col<ActType, StorageOrder::NHWC>()(
-          worker_input_image,
-          C,
-          input_shape.GetDims().data(),
-          output_shape.GetDims().data(),
-          kernel_shape.data(),
-          strides.data(),
-          dilations.data(),
-          pads.data(),
-          static_cast<ptrdiff_t>(kernel_rank),
-          output_start,
-          output_count,
-          worker_indirection_buffer,
-          padding_data.data());
+            worker_input_image,
+            C,
+            input_shape.GetDims().data(),
+            output_shape.GetDims().data(),
+            kernel_shape.data(),
+            strides.data(),
+            dilations.data(),
+            pads.data(),
+            static_cast<ptrdiff_t>(kernel_rank),
+            output_start,
+            output_count,
+            worker_indirection_buffer,
+            padding_data.data());
       }
 
       auto* worker_output = Ydata + Y_offset * image_id + output_start * M;

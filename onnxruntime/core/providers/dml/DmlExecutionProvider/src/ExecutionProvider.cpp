@@ -443,7 +443,7 @@ namespace Dml
             ID3D12Resource* dstData = dstAllocInfo->GetResource();
             const void* srcData = src->GetData();
 
-            const uint64_t dstOffset = 0;
+            constexpr uint64_t dstOffset = 0;
             const auto dstState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS; // GPU resources are always kept in UAV state
 
             m_uploadHeap->BeginUploadToGpu(dstData, dstOffset, dstState, AsByteSpan(srcData, dataSizeInBytes));

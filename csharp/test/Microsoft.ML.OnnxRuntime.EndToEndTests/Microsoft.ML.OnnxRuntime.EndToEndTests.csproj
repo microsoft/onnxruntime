@@ -14,6 +14,7 @@
     <AllowUnsafeBlocks>True</AllowUnsafeBlocks>
     <SignAssembly>true</SignAssembly>
     <AssemblyOriginatorKeyFile>..\..\OnnxRuntime.snk</AssemblyOriginatorKeyFile>
+    <TargetFramework>net6.0</TargetFramework>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(IsLinuxBuild)'=='true'">
@@ -48,6 +49,7 @@
 
     <Compile Include="..\Microsoft.ML.OnnxRuntime.Tests.Common\InferenceTest.cs"/>
     <Compile Include="..\Microsoft.ML.OnnxRuntime.Tests.Common\OnnxMl.cs"/>
+    <Compile Include="..\Microsoft.ML.OnnxRuntime.Tests.Common\OnnxData.cs"/>
     <Compile Include="..\Microsoft.ML.OnnxRuntime.Tests.NetCoreApp\InferenceTest.netcore.cs" />
     <Compile Include="..\Microsoft.ML.OnnxRuntime.Tests.Common\TestDataLoader.cs" />
 

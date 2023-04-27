@@ -1,6 +1,6 @@
-# Tag: nvidia/cuda:11.6.1-cudnn8-devel-ubuntu20.04
-# Label: com.nvidia.cuda.version: 11.6.1
-# Label: com.nvidia.cudnn.version: 8.4.0
+# Tag: nvidia/cuda:11.8.0-cudnn8-devel-ubuntu20.04
+# Label: com.nvidia.cuda.version: 11.8.0
+# Label: com.nvidia.cudnn.version: 8.7.0
 # Ubuntu 20.04
 FROM nvidia/cuda:11.8.0-cudnn8-devel-ubuntu20.04
 
@@ -34,3 +34,4 @@ ARG BUILD_UID=1000
 WORKDIR /home/$BUILD_USER
 RUN adduser --gecos 'onnxruntime Build User' --disabled-password $BUILD_USER --uid $BUILD_UID
 USER $BUILD_USER
+ENV CUDA_MODULE_LOADING "LAZY"

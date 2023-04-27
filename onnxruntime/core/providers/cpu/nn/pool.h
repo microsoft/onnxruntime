@@ -31,8 +31,7 @@ class Pool : public OpKernel, public PoolBase {
 // version 11: Added dilations
 // version 12: Added int8/uint8 support
 class MaxPoolV8 : public OpKernel, public PoolBase {
-
- template <typename T>
+  template <typename T>
   struct ComputeHelper {
     Status operator()(const MaxPoolV8* inst, OpKernelContext* context) const {
       return inst->ComputeImpl<T>(context);
@@ -42,6 +41,7 @@ class MaxPoolV8 : public OpKernel, public PoolBase {
  public:
   MaxPoolV8(const OpKernelInfo& info) : OpKernel(info), PoolBase(info) {}
   Status Compute(OpKernelContext* context) const override;
+
  private:
   template <typename T>
   Status ComputeImpl(OpKernelContext* context) const;
@@ -58,7 +58,7 @@ class LpPoolV18 : public OpKernel, public PoolBase {
 
   Status Compute(OpKernelContext* context) const override;
 
-private:
+ private:
   int64_t p_;
 };
 

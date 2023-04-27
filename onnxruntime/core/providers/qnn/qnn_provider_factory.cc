@@ -9,7 +9,7 @@
 
 namespace onnxruntime {
 struct QNNProviderFactory : IExecutionProviderFactory {
-  QNNProviderFactory(const ProviderOptions& provider_options_map) :provider_options_map_(provider_options_map) {
+  QNNProviderFactory(const ProviderOptions& provider_options_map) : provider_options_map_(provider_options_map) {
   }
 
   ~QNNProviderFactory() override {

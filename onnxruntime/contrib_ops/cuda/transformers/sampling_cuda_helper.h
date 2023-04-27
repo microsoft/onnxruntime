@@ -11,8 +11,8 @@
 #include <iostream>
 #endif
 
-using onnxruntime::cuda::ToCudaType;
 using onnxruntime::cuda::dispatch_blockwise_softmax_forward;
+using onnxruntime::cuda::ToCudaType;
 
 namespace onnxruntime {
 namespace contrib {
@@ -54,7 +54,7 @@ Status Sample(AllocatorPtr& allocator,
                                   cuda_stream);
 
 #ifdef DEBUG_GENERATION
-  dumper->Print("d_offset_buffer", d_offset.data(), parameters->batch_size + 1, 1);
+    dumper->Print("d_offset_buffer", d_offset.data(), parameters->batch_size + 1, 1);
 #endif
 
     void* temp_storage = allocator->Alloc(sampling_state->temp_storage_bytes);
@@ -66,7 +66,7 @@ Status Sample(AllocatorPtr& allocator,
   gsl::span<int>& d_index_out = sampling_state->d_index_out;
 
 #ifdef DEBUG_GENERATION
-    dumper->Print("temp_storage_bytes", sampling_state->temp_storage_bytes, true);
+  dumper->Print("temp_storage_bytes", sampling_state->temp_storage_bytes, true);
 #endif
 
   cuda::LaunchSortPairs<CudaT>(storage_buffer.get(),
@@ -83,9 +83,9 @@ Status Sample(AllocatorPtr& allocator,
 
 #ifdef DEBUG_GENERATION
   dumper->Print("d_sorted_score_buffer",
-                 reinterpret_cast<T*>(d_sorted_score.data()),
-                 parameters->batch_size,
-                 parameters->vocab_size);
+                reinterpret_cast<T*>(d_sorted_score.data()),
+                parameters->batch_size,
+                parameters->vocab_size);
   dumper->Print("d_index_buffer_in", d_index_in.data(), parameters->batch_size, parameters->vocab_size);
   dumper->Print("d_index_buffer_out", d_index_out.data(), parameters->batch_size, parameters->vocab_size);
 #endif
@@ -98,12 +98,12 @@ Status Sample(AllocatorPtr& allocator,
                                                                                       parameters->vocab_size,
                                                                                       parameters->vocab_size,
                                                                                       parameters->batch_size)));
- 
+
 #ifdef DEBUG_GENERATION
   dumper->Print("d_sorted_softmaxed_score_buffer",
-                 d_sorted_softmaxed_score.data(),
-                 parameters->batch_size,
-                 parameters->vocab_size);
+                d_sorted_softmaxed_score.data(),
+                parameters->batch_size,
+                parameters->vocab_size);
 #endif
 
   cuda::LaunchFilterLogitsKernel<CudaT>(d_sorted_softmaxed_score.data(),
@@ -119,9 +119,9 @@ Status Sample(AllocatorPtr& allocator,
 
 #ifdef DEBUG_GENERATION
   dumper->Print("next_token_scores after filtering logits",
-                 reinterpret_cast<T*>(next_token_scores.data()),
-                 parameters->batch_size,
-                 parameters->vocab_size);
+                reinterpret_cast<T*>(next_token_scores.data()),
+                parameters->batch_size,
+                parameters->vocab_size);
 #endif
 
   gsl::span<float>& d_softmaxed_score = sampling_state->d_softmaxed_score;
@@ -135,9 +135,9 @@ Status Sample(AllocatorPtr& allocator,
 
 #ifdef DEBUG_GENERATION
   dumper->Print("d_softmaxed_score_buffer",
-                 d_softmaxed_score.data(),
-                 parameters->batch_size,
-                 parameters->vocab_size);
+                d_softmaxed_score.data(),
+                parameters->batch_size,
+                parameters->vocab_size);
 #endif
 
   // Multinomial sampling
@@ -185,6 +185,6 @@ Status Sample(AllocatorPtr& allocator,
   return Status::OK();
 }
 
-} // namespace SamplingCudaHelper
-} // namespace contrib
-} // namespace onnxruntime
+}  // namespace SamplingCudaHelper
+}  // namespace contrib
+}  // namespace onnxruntime

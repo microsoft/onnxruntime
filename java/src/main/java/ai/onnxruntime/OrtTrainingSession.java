@@ -250,34 +250,8 @@ public final class OrtTrainingSession implements AutoCloseable {
    */
   public void saveCheckpoint(Path outputPath, boolean saveOptimizer) throws OrtException {
     checkClosed();
-    String outputStr = outputPath.toString();
-    saveCheckpoint(
-        OnnxRuntime.ortApiHandle,
-        OnnxRuntime.ortTrainingApiHandle,
-        nativeHandle,
-        outputStr,
-        saveOptimizer);
+    checkpoint.saveCheckpoint(outputPath, saveOptimizer);
   }
-
-  /*
-   * \brief Save the training session states to a checkpoint directory on disk.
-   *
-   * <p>This function retrieves the training session states from the training session and serializes
-   * them to a checkpoint directory on disk. This checkpoint can later be loaded by invoking
-   * LoadCheckpoint to continue the training with the same states.
-   *
-   * <p>\param[in] checkpoint_path Path to the checkpoint directory \param[in] session The training
-   * session from where the checkpoint states are to be retrieved. \param[in] save_optimizer_state
-   * Boolean flag indicating whether or not to save the optimizer states to the checkpoint.
-   *
-   * <p>\snippet{doc} snippets.dox OrtStatus Return Value
-   *
-   * <p>ORT_API2_STATUS(SaveCheckpoint, _In_ const ORTCHAR_T* checkpoint_path, _In_ const
-   * OrtTrainingSession* session, bool save_optimizer_state);
-   */
-  private native void saveCheckpoint(
-      long apiHandle, long trainingHandle, long nativeHandle, String path, boolean saveOptimizer)
-      throws OrtException;
 
   /*
    * \brief Retrieves the number of user outputs in the training model.
@@ -935,6 +909,24 @@ public final class OrtTrainingSession implements AutoCloseable {
       }
     }
 
+    /**
+     * Saves the checkpoint out to disk.
+     *
+     * @param outputPath The path to save.
+     * @param saveOptimizer Save the optimizer state as well?
+     * @throws OrtException If the checkpoint failed to save.
+     */
+    public void saveCheckpoint(Path outputPath, boolean saveOptimizer) throws OrtException {
+      Objects.requireNonNull(outputPath, "checkpoint path must not be null");
+      String outputStr = outputPath.toString();
+      saveCheckpoint(
+          OnnxRuntime.ortApiHandle,
+          OnnxRuntime.ortTrainingApiHandle,
+          nativeHandle,
+          outputStr,
+          saveOptimizer);
+    }
+
     @Override
     public void close() {
       close(OnnxRuntime.ortTrainingApiHandle, nativeHandle);
@@ -957,6 +949,24 @@ public final class OrtTrainingSession implements AutoCloseable {
      * OrtCheckpointState** checkpoint_state);
      */
     private static native long loadCheckpoint(long apiHandle, long trainingApiHandle, String path)
+        throws OrtException;
+
+    /* \brief Save the given state to a checkpoint directory on disk.
+     *
+     * This function serializes the provided checkpoint state to a directory on disk.
+     * This checkpoint can later be loaded by invoking LoadCheckpoint to continue the training with the same state.
+     *
+     * \param[in] checkpoint_state The checkpoint state to save.
+     * \param[in] checkpoint_path Path to the checkpoint directory.
+     * \param[in] include_optimizer_state Flag to indicate whether to save the optimizer state or not.
+     *
+     * \snippet{doc} snippets.dox OrtStatus Return Value
+     *
+     * ORT_API2_STATUS(SaveCheckpoint, _In_ OrtCheckpointState* checkpoint_state, _In_ const ORTCHAR_T* checkpoint_path,
+     *              const bool include_optimizer_state);
+     */
+    private native void saveCheckpoint(
+        long apiHandle, long trainingHandle, long nativeHandle, String path, boolean saveOptimizer)
         throws OrtException;
 
     private native void close(long trainingApiHandle, long nativeHandle);

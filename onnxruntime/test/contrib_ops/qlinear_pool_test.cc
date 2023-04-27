@@ -351,8 +351,8 @@ TEST(QLinearPoolTest, AveragePool3D_IncludePadPixel) {
 }
 
 /*************************************************
-* Channels last test
-**************************************************/
+ * Channels last test
+ **************************************************/
 TEST(QLinearPoolTest, AveragePool1D_ExcludePadPixel_nhwc) {
   RunQLinearAveragePoolNhwc(
       {1, 1, 5},  // x shape
@@ -534,8 +534,8 @@ TEST(QLinearPoolTest, AveragePool3D_IncludePadPixel_S8) {
 }
 
 /*************************************************
-* Channels last test
-**************************************************/
+ * Channels last test
+ **************************************************/
 TEST(QLinearPoolTest, AveragePool1D_ExcludePadPixel_nhwc_S8) {
   RunQLinearAveragePoolNhwc<int8_t>(
       {1, 1, 5},  // x shape

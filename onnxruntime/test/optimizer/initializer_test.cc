@@ -152,7 +152,6 @@ std::vector<BFloat16> GetInitializerData<BFloat16>() {
   return data;
 }
 
-
 template <typename T>
 void TestInitializerRawData() {
   std::vector<T> data = GetInitializerData<T>();
@@ -196,7 +195,6 @@ template <>
 void AddData<BFloat16>(const std::vector<BFloat16>& data, size_t idx, ONNX_NAMESPACE::TensorProto& tensor_proto) {
   tensor_proto.add_int32_data(data[idx].val);
 }
-
 
 template <typename T>
 void TestInitializerDataField() {

@@ -28,7 +28,7 @@ ONNX_CPU_OPERATOR_KERNEL(
         .TypeConstraint("T",
                         BuildKernelDefConstraintsFromTypeList<EnabledShrinkDataTypes>()),
     Shrink);
-//TODO: fix the warnings
+// TODO: fix the warnings
 #if defined(_MSC_VER) && !defined(__clang__)
 #pragma warning(disable : 26451)
 #endif

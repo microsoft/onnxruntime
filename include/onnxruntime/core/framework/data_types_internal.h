@@ -29,17 +29,17 @@
 namespace onnxruntime {
 namespace utils {
 
-  // The following primitives are strongly recommended for switching on tensor input datatypes for
-  // kernel implementations.
-  //
-  //  1) If you need to handle all of the primitive tensor contained datatypes, the best choice would be macros
-  //     DispatchOnTensorType or DispatchOnTensorTypeWithReturn. Use inline wrappers so your function can be invoked as function<T>().
-  //  2) if you have a few types, use Tensor.IsDataType<T>()/IsDataTypeString() or use utils::IsPrimitiveDataType<T>()
-  //     if you have a standalone MLDatatType with a sequence of if/else statements.
-  //  3) For something in between, we suggest to use CallDispatcher pattern.
-  //
-  // Invoking DataTypeImpl::GetType<T>() for switching on input types is discouraged and should be avoided.
-  // Every primitive type carries with it an integer constant that can be used for quick switching on types.
+// The following primitives are strongly recommended for switching on tensor input datatypes for
+// kernel implementations.
+//
+//  1) If you need to handle all of the primitive tensor contained datatypes, the best choice would be macros
+//     DispatchOnTensorType or DispatchOnTensorTypeWithReturn. Use inline wrappers so your function can be invoked as function<T>().
+//  2) if you have a few types, use Tensor.IsDataType<T>()/IsDataTypeString() or use utils::IsPrimitiveDataType<T>()
+//     if you have a standalone MLDatatType with a sequence of if/else statements.
+//  3) For something in between, we suggest to use CallDispatcher pattern.
+//
+// Invoking DataTypeImpl::GetType<T>() for switching on input types is discouraged and should be avoided.
+// Every primitive type carries with it an integer constant that can be used for quick switching on types.
 
 #define DispatchOnTensorType(tensor_type, function, ...)          \
   switch (tensor_type->AsPrimitiveDataType()->GetDataType()) {    \
@@ -498,11 +498,10 @@ class ContainerChecker {
         ORT_ENFORCE(++index < c.size(), "Sequence is missing type entry for its element");
         constexpr int32_t prim_type = ToTensorProtoElementType<T>();
         // Check if this is a primitive type and it matches
-        if constexpr(prim_type != ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED) {
+        if constexpr (prim_type != ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED) {
           return c[index].IsType(data_types_internal::ContainerType::kTensor) &&
                  c[index].IsPrimType(prim_type);
-        }
-        else {
+        } else {
           // T is not primitive, check next entry for non-primitive proto
           return IsContainerOfType<T>::check(c, index);
         }
@@ -528,11 +527,11 @@ class ContainerChecker {
       }
       ORT_ENFORCE(++index < c.size(), "Map is missing type entry for its value");
       constexpr int32_t val_type = ToTensorProtoElementType<V>();
-      if constexpr(val_type != ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED) {
+      if constexpr (val_type != ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED) {
         return c[index].IsType(data_types_internal::ContainerType::kTensor) &&
                c[index].IsPrimType(val_type);
-      }
-      else return IsContainerOfType<V>::check(c, index);
+      } else
+        return IsContainerOfType<V>::check(c, index);
     }
   };
 
