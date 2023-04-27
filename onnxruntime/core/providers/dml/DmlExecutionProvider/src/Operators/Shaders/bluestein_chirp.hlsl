@@ -15,7 +15,8 @@ cbuffer Constants
     uint IsInverse;
 };
 
-uint NextPowerOf2(uint x) {
+uint NextPowerOf2(uint x)
+{
     x--;
     uint y = 1;
     while (y <= x)
@@ -55,24 +56,24 @@ void BluesteinZChirp(uint3 dtid : SV_DispatchThreadId)
 
         if (n < N)
         {
-          float2 chirp_n = CalculateChirp(n, N, isInverse);
-          float2 chirp_n_conj = float2(chirp_n.x, -chirp_n.y);
-          chirp[outputIndex.x] = (TBUFFER)(chirp_n.x);
-          chirp[outputIndex.y] = (TBUFFER)(chirp_n.y);
-          b[outputIndex.x] = (TBUFFER)(chirp_n_conj.x);
-          b[outputIndex.y] = (TBUFFER)(chirp_n_conj.y);
+            float2 chirp_n = CalculateChirp(n, N, isInverse);
+            float2 chirp_n_conj = float2(chirp_n.x, -chirp_n.y);
+            chirp[outputIndex.x] = (TBUFFER)(chirp_n.x);
+            chirp[outputIndex.y] = (TBUFFER)(chirp_n.y);
+            b[outputIndex.x] = (TBUFFER)(chirp_n_conj.x);
+            b[outputIndex.y] = (TBUFFER)(chirp_n_conj.y);
         }
         else if (n >= M - N + 1 && n < M)
         {
-          float2 chirp_n = CalculateChirp(M - n, N, isInverse);
-          float2 chirp_n_conj = float2(chirp_n.x, -chirp_n.y);
-          b[outputIndex.x] = (TBUFFER)(chirp_n_conj.x);
-          b[outputIndex.y] = (TBUFFER)(chirp_n_conj.y);
+            float2 chirp_n = CalculateChirp(M - n, N, isInverse);
+            float2 chirp_n_conj = float2(chirp_n.x, -chirp_n.y);
+            b[outputIndex.x] = (TBUFFER)(chirp_n_conj.x);
+            b[outputIndex.y] = (TBUFFER)(chirp_n_conj.y);
         }
         else
         {
-          b[outputIndex.x] = (TBUFFER)(0);
-          b[outputIndex.y] = (TBUFFER)(0);
+            b[outputIndex.x] = (TBUFFER)(0);
+            b[outputIndex.y] = (TBUFFER)(0);
         }
     }
 }

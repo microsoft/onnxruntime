@@ -46,9 +46,10 @@ float2 ReadSourceValue(uint3 index)
     {
         uint windowIndexReal = index.y * WindowStrides[2];
         window_value.x = window[windowIndexReal];
-        [branch]
-        if (WindowSizes[3] == 2) {
-            uint windowIndexImaginary = windowIndexReal + WindowStrides[3];
+
+        uint windowIndexImaginary = windowIndexReal + WindowStrides[3];
+        if (WindowSizes[3] == 2)
+        {
             window_value.y = window[windowIndexImaginary];
         }
     }
