@@ -8,219 +8,317 @@
 namespace Dml
 {
     ExecutionContext::ExecutionContext(
-        ID3D12Device* d3d12Device,
-        IDMLDevice* dmlDevice,
-        ID3D12CommandQueue* queue
-        )
-        : m_queue(std::make_shared<CommandQueue>(queue))
-        , m_dmlRecorder(d3d12Device, dmlDevice, m_queue)
+        ID3D12Device* d3d_device,
+        IDMLDevice* dml_device,
+        ID3D12CommandQueue* queue)
     {
-        ORT_THROW_IF_FAILED(dmlDevice->GetParentDevice(IID_GRAPHICS_PPV_ARGS(m_d3dDevice.GetAddressOf())));
+        dml_command_queue_ = std::make_shared<CommandQueue>(queue);
+
+        batch_state_ = std::make_shared<BatchState>();
+        batch_state_->next_flush_event = dml_command_queue_->GetCurrentCompletionEvent();
+        ++batch_state_->next_flush_event.fenceValue;
+
+        uint32_t batch_flush_size = default_batch_flush_size;
+        uint32_t batch_flush_time_us = default_batch_flush_time_us;
+
+        dml_command_list_ = std::make_shared<DmlCommandList>(
+            d3d_device,
+            dml_device,
+            dml_command_queue_);
+
+        execution_thread_ = std::thread(
+            ExecutionThreadProc,
+            batch_state_,
+            dml_command_list_,
+            dml_command_queue_,
+            batch_flush_size,
+            batch_flush_time_us);
     }
 
-    void ExecutionContext::SetAllocator(std::weak_ptr<BucketizedBufferAllocator> allocator)
+    ExecutionContext::~ExecutionContext()
     {
-        m_dmlRecorder.SetAllocator(allocator);
+        // Request exit of the background thread
+        std::unique_lock<std::mutex> lock(batch_state_->mutex);
+        batch_state_->exit_requested = true;
+        batch_state_->command_added.notify_all(); // wake the thread
+        lock.unlock();
+
+        // detach() rather than join(), because we don't want (or need) to wait for
+        // it to complete. This prevents blocking in a destructor, which would be
+        // bad.
+        execution_thread_.detach();
     }
 
-    void ExecutionContext::CopyBufferRegion(
-        ID3D12Resource* dstBuffer,
-        uint64_t dstOffset,
-        D3D12_RESOURCE_STATES dstState,
-        ID3D12Resource* srcBuffer,
-        uint64_t srcOffset,
-        D3D12_RESOURCE_STATES srcState,
-        uint64_t byteCount)
+    GpuEvent ExecutionContext::CopyBufferRegionRaw(
+        ID3D12Resource* dst_buffer,
+        uint64_t dst_offset,
+        D3D12_RESOURCE_STATES dst_state,
+        ID3D12Resource* src_buffer,
+        uint64_t src_offset,
+        D3D12_RESOURCE_STATES src_state,
+        uint64_t byte_count)
     {
-        assert(!m_closed);
+        std::unique_lock<std::mutex> lock(batch_state_->mutex);
 
-        SetCommandRecorder(&m_dmlRecorder);
-
-        std::vector<D3D12_RESOURCE_BARRIER> barriers;
-
-        if (!(dstState & D3D12_RESOURCE_STATE_COPY_DEST))
-        {
-            barriers.push_back(CD3DX12_RESOURCE_BARRIER::Transition(dstBuffer, dstState, D3D12_RESOURCE_STATE_COPY_DEST));
-        }
-        if (!(srcState & D3D12_RESOURCE_STATE_COPY_SOURCE))
-        {
-            barriers.push_back(CD3DX12_RESOURCE_BARRIER::Transition(srcBuffer, srcState, D3D12_RESOURCE_STATE_COPY_SOURCE));
-        }
-
-        if (!barriers.empty())
-        {
-            m_dmlRecorder.ResourceBarrier(barriers);
-        }
-
-        m_dmlRecorder.CopyBufferRegion(dstBuffer, dstOffset, srcBuffer, srcOffset, byteCount);
-
-        // Reset barrier state
-        if (!barriers.empty())
-        {
-            for (auto& barrier : barriers)
+        batch_state_->WriteBatch().emplace_back(
+            [=](DmlCommandList& command_list)
             {
-                std::swap(barrier.Transition.StateBefore, barrier.Transition.StateAfter);
-            }
+                command_list.CopyBufferRegion(
+                    dst_buffer,
+                    dst_offset,
+                    dst_state,
+                    src_buffer,
+                    src_offset,
+                    src_state,
+                    byte_count);
+            });
 
-            m_dmlRecorder.ResourceBarrier(barriers);
-        }
+        batch_state_->command_added.notify_all();
+
+        return batch_state_->next_flush_event;
     }
 
-    void ExecutionContext::FillBufferWithPattern(
+    GpuEvent ExecutionContext::CopyBufferRegion(
+        ID3D12Resource* dst_buffer,
+        uint64_t dst_offset,
+        D3D12_RESOURCE_STATES dst_state,
+        ID3D12Resource* src_buffer,
+        uint64_t src_offset,
+        D3D12_RESOURCE_STATES src_state,
+        uint64_t byte_count)
+    {
+        return CopyBufferRegionRaw(
+            dst_buffer,
+            dst_offset,
+            dst_state,
+            src_buffer,
+            src_offset,
+            src_state,
+            byte_count);
+    }
+
+    GpuEvent ExecutionContext::FillBufferWithPatternRaw(
+        ID3D12Resource* dst,
+        uint64_t dst_offset,
+        uint64_t dst_size_in_bytes,
+        absl::Span<const std::byte> value)
+    {
+        std::unique_lock<std::mutex> lock(batch_state_->mutex);
+
+        absl::InlinedVector<std::byte, 16> value_copy(value.begin(), value.end());
+        batch_state_->WriteBatch().emplace_back(
+            [=, value = std::move(value_copy)](DmlCommandList& command_list)
+            {
+                command_list.FillBufferWithPattern(
+                    dst,
+                    dst_offset,
+                    dst_size_in_bytes,
+                    value);
+            });
+
+        batch_state_->command_added.notify_all();
+
+        return batch_state_->next_flush_event;
+    }
+
+    GpuEvent ExecutionContext::FillBufferWithPattern(
         ID3D12Resource* dstBuffer,
         gsl::span<const std::byte> value /* Data type agnostic value, treated as raw bits */)
     {
-        SetCommandRecorder(&m_dmlRecorder);
-        m_dmlRecorder.FillBufferWithPattern(dstBuffer, value);
+        return FillBufferWithPatternRaw(
+            dstBuffer,
+            0,
+            dstBuffer->GetDesc().Width,
+            value);
     }
 
-    void ExecutionContext::ExecuteCommandList(
-        ID3D12GraphicsCommandList* commandList,
-        _Outptr_ ID3D12Fence** fence,
-        _Out_ uint64_t* completionValue
-        )
-    {
-        assert(!m_closed);
-
-        SetCommandRecorder(&m_dmlRecorder);
-        m_dmlRecorder.ExecuteCommandList(commandList, fence, completionValue);
-    }
-
-    void ExecutionContext::InitializeOperator(
+    GpuEvent ExecutionContext::InitializeOperator(
         IDMLCompiledOperator* op,
-        const DML_BINDING_DESC& persistentResourceBinding,
-        const DML_BINDING_DESC& inputArrayBinding)
+        Microsoft::WRL::ComPtr<IDMLBindingTable>&& binding_table,
+        ID3D12DescriptorHeap* descriptor_heap)
     {
-        assert(!m_closed);
-        SetCommandRecorder(&m_dmlRecorder);
+        std::unique_lock<std::mutex> lock(batch_state_->mutex);
 
-        m_dmlRecorder.InitializeOperator(op, persistentResourceBinding, inputArrayBinding);
-    }
-
-    void ExecutionContext::ExecuteOperator(
-        IDMLCompiledOperator* op,
-        const DML_BINDING_DESC& persistentResourceBinding,
-        gsl::span<const DML_BINDING_DESC> inputBindings,
-        gsl::span<const DML_BINDING_DESC> outputBindings)
-    {
-        assert(!m_closed);
-        SetCommandRecorder(&m_dmlRecorder);
-
-        m_dmlRecorder.ExecuteOperator(op, persistentResourceBinding, inputBindings, outputBindings);
-    }
-
-    void ExecutionContext::AddUAVBarrier()
-    {
-        assert(!m_closed);
-        SetCommandRecorder(&m_dmlRecorder);
-
-        m_dmlRecorder.AddUAVBarrier();
-    }
-
-    void ExecutionContext::ResourceBarrier(gsl::span<const D3D12_RESOURCE_BARRIER> barriers)
-    {
-        assert(!m_closed);
-        SetCommandRecorder(&m_dmlRecorder);
-
-        m_dmlRecorder.ResourceBarrier(barriers);
-    }
-
-    void ExecutionContext::GetCommandListForRecordingAndInvalidateState(ID3D12GraphicsCommandList** commandList)
-    {
-        assert(!m_closed);
-        SetCommandRecorder(&m_dmlRecorder);
-
-        // Ensure the descriptor heap is reset to D3D as something external may change it before recording
-        m_dmlRecorder.InvalidateDescriptorHeap();
-
-        m_dmlRecorder.GetCommandList().CopyTo(commandList);
-    }
-
-    void ExecutionContext::SetCommandRecorder(DmlCommandList* newRecorder)
-    {
-        assert(!m_closed);
-
-        // If changing which recorder is the current one, we need to flush the old one first. This is to ensure correct
-        // ordering of operations on the command queue.
-        if (m_currentRecorder != newRecorder)
-        {
-            Flush();
-            m_currentRecorder = newRecorder;
-
-            if (m_currentRecorder != nullptr)
+        batch_state_->WriteBatch().emplace_back(
+            [=,
+            binding_table = std::move(binding_table)](DmlCommandList& command_list)
             {
-                m_currentRecorder->Open();
-            }
-        }
+                command_list.InitializeOperator(
+                    op,
+                    binding_table.Get(),
+                    descriptor_heap);
+            });
+
+        batch_state_->command_added.notify_all();
+
+        return batch_state_->next_flush_event;
     }
 
-    void ExecutionContext::Flush()
+    GpuEvent ExecutionContext::ExecuteOperator(
+        IDMLCompiledOperator* op,
+        Microsoft::WRL::ComPtr<IDMLBindingTable>&& binding_table,
+        ID3D12DescriptorHeap* descriptor_heap)
     {
-        assert(!m_closed);
+        std::unique_lock<std::mutex> lock(batch_state_->mutex);
 
-        if (!m_currentRecorder || !m_currentRecorder->HasUnsubmittedWork())
+        batch_state_->WriteBatch().emplace_back(
+            [=, binding_table = std::move(binding_table)](
+                DmlCommandList& command_list) {
+                command_list.ExecuteOperator(
+                    op,
+                    binding_table.Get(),
+                    descriptor_heap);
+            });
+
+        batch_state_->command_added.notify_all();
+
+        return batch_state_->next_flush_event;
+    }
+
+    GpuEvent ExecutionContext::ResourceBarrier(
+        absl::Span<const D3D12_RESOURCE_BARRIER> barriers)
+    {
+        std::unique_lock<std::mutex> lock(batch_state_->mutex);
+
+        // The caller may not keep the barriers referenced by the span alive for
+        // longer than this function call, so make a copy and transfer ownership to
+        // the lambda.
+        absl::InlinedVector<D3D12_RESOURCE_BARRIER, 4> barriers_copy(
+            barriers.begin(),
+            barriers.end());
+        batch_state_->WriteBatch().emplace_back(
+            [=, barriers = std::move(barriers_copy)](DmlCommandList& command_list)
+            { command_list.ResourceBarrier(barriers); });
+
+        batch_state_->command_added.notify_all();
+
+        return batch_state_->next_flush_event;
+    }
+
+    GpuEvent ExecutionContext::UavBarrier()
+    {
+        std::unique_lock<std::mutex> lock(batch_state_->mutex);
+
+        batch_state_->WriteBatch().emplace_back([=](DmlCommandList& command_list)
+                                                { command_list.UavBarrier(); });
+
+        batch_state_->command_added.notify_all();
+
+        return batch_state_->next_flush_event;
+    }
+
+    GpuEvent ExecutionContext::Flush()
+    {
+        std::unique_lock<std::mutex> lock(batch_state_->mutex);
+        auto event = batch_state_->next_flush_event;
+        if (batch_state_->WriteBatch().empty())
         {
-            // Nothing to flush
-            return;
+            --event.fenceValue;
         }
 
-        m_currentRecorder->CloseAndExecute();
-        ReleaseCompletedReferences();
-
-        // Pre-emptively set the DML command recorder.  It's the only command recorder right now,
-        // and doing this here causes work and allocations resetting the command list to occur at
-        // a point where it's going to be parallelized with GPU work.
-        m_currentRecorder = nullptr;
-        SetCommandRecorder(&m_dmlRecorder);
+        batch_state_->flush_requested = true;
+        batch_state_->command_added.notify_all();
+        return event;
     }
 
-    void ExecutionContext::QueueReference(IUnknown* object)
+    Status ExecutionContext::GetCommandRecorderStatus() const
     {
-        assert(!m_closed);
-        // If something has been recorded into a command list but not submitted yet, it means that the *next* fence
-        // value is the one to signal completion.
-        bool waitForUnsubmittedWork = (m_currentRecorder != nullptr);
-        m_queue->QueueReference(object, waitForUnsubmittedWork);
-    }
-
-    void ExecutionContext::Close()
-    {
-        assert(!m_closed);
-
-        // Discard unflushed work and clear queued references.  This prevents the circular reference:
-        // Kernel --> ProviderImpl -->  Context --> QueuedRefs --> Kernel
-        m_queue->Close();
-        m_currentRecorder = nullptr;
-        m_closed = true;
+        std::unique_lock<std::mutex> lock(batch_state_->mutex);
+        return batch_state_->status;
     }
 
     GpuEvent ExecutionContext::GetCurrentCompletionEvent()
     {
-        assert(!m_closed);
-
-        GpuEvent event = m_queue->GetCurrentCompletionEvent();
-
-        // If something has been recorded into a command list but not submitted yet, it means that the *next* fence
-        // value is the one to signal completion.
-        const bool unflushedWorkExists = (m_currentRecorder != nullptr) && m_currentRecorder->HasUnsubmittedWork();
-        if (unflushedWorkExists)
+        std::unique_lock<std::mutex> lock(batch_state_->mutex);
+        auto event = batch_state_->next_flush_event;
+        if (batch_state_->WriteBatch().empty())
         {
-            ++event.fenceValue;
+            --event.fenceValue;
         }
-
         return event;
-    }
-
-    void ExecutionContext::ReleaseCompletedReferences()
-    {
-        assert(!m_closed);
-        m_queue->ReleaseCompletedReferences();
     }
 
     D3D12_COMMAND_LIST_TYPE ExecutionContext::GetCommandListTypeForQueue() const
     {
-        assert(!m_closed);
-        return m_queue->GetType();
+        // No need to acquire the lock since the queue type is immutable once the
+        // queue is constructed.
+        return dml_command_queue_->GetType();
     }
 
+    /*static*/ void ExecutionContext::ExecutionThreadProc(
+        std::shared_ptr<BatchState> state,
+        std::shared_ptr<DmlCommandList> command_list,
+        std::shared_ptr<CommandQueue> command_queue,
+        uint32_t batch_flush_size,
+        uint32_t batch_flush_time_us)
+    {
+        auto last_flush_time = std::chrono::steady_clock::now();
+
+        while (true)
+        {
+            std::chrono::duration<double> elapsed =
+                std::chrono::steady_clock::now() - last_flush_time;
+            auto elapsed_us = elapsed.count() * 1e6;
+
+            std::unique_lock<std::mutex> lock(state->mutex);
+            if (state->exit_requested)
+            {
+                break;
+            }
+
+            auto& batch = state->WriteBatch();
+
+            if (batch.empty())
+            {
+                // Wait for new work to be batched.
+                state->command_added.wait(lock);
+
+                // Return to the top in case of spurious wakeup.
+                continue;
+            }
+
+            // Check if it's time to swap the write/execute batches and flush work
+            // to the GPU: this occurs if a flush is explicitly requested, the batch
+            // has reached a certain size, or enough time has elapsed since the last
+            // flush. The goal here is to balance feeding the GPU work while the CPU
+            // is processing more commands and avoiding many small packets.
+            bool flush = false;
+            if (state->flush_requested || batch.size() >= batch_flush_size ||
+                elapsed_us >= batch_flush_time_us)
+            {
+                state->write_batch_index = (state->write_batch_index + 1) % 2;
+                flush = true;
+                ++state->next_flush_event.fenceValue;
+            }
+            state->flush_requested = false;
+
+            // Unlock to allow kernels to resume writing to the new write batch.
+            lock.unlock();
+
+            if (flush)
+            {
+                // Record the commands into the command list.
+                command_list->Open();
+                for (auto& command : batch)
+                {
+                    command(*command_list);
+                }
+                auto status = command_list->Close();
+
+                if (!status.IsOK())
+                {
+                    lock.lock();
+                    state->status = status;
+                    lock.unlock();
+                    break;
+                }
+
+                ID3D12CommandList* command_lists[] = {command_list->Get()};
+                command_queue->ExecuteCommandLists(command_lists);
+
+                batch.clear();
+                last_flush_time = std::chrono::steady_clock::now();
+            }
+        }
+    }
 } // namespace Dml

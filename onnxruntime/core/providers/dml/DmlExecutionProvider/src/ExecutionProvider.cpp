@@ -100,11 +100,6 @@ namespace Dml
 #endif
     }
 
-    void ExecutionProviderImpl::Close()
-    {
-        m_context->Close();
-    }
-
     void ExecutionProviderImpl::WaitForOutstandingWork()
     {
         Flush();
@@ -199,8 +194,6 @@ namespace Dml
             D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
             D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
             std::make_unique<DmlCommittedResourceAllocator>(m_d3d12Device.Get()));
-
-        m_context->SetAllocator(m_allocator);
 
         m_uploadHeap = std::make_unique<PooledUploadHeap>(m_d3d12Device.Get(), m_context);
         m_readbackHeap = std::make_unique<ReadbackHeap>(m_d3d12Device.Get(), m_context);

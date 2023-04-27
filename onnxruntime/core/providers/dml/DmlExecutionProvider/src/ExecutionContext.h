@@ -8,95 +8,135 @@
 
 namespace Dml
 {
+    class DmlAllocator;
     class CommandQueue;
 
-    // Asynchronously performs GPU work, and automatically manages command list recording and submission to queues.
-    // Work submitted to the ExecutionContext is typically recorded onto a command list and may not immediately begin
-    // execution on the GPU. Call Flush() to force all recorded work to be submitted to the command queue for execution
-    // on the GPU.
+    // A thread-safe object for recording and executing GPU commands. Calls to
+    // this class are batched to minimize lock contention, and the batched
+    // commands are periodically flushed by a background thread (or by explicitly
+    // calling Flush). Unless otherwise stated, it is the caller's responsibility to
+    // keep GPU resource arguments (buffers, heaps, DML ops, etc.) alive until they
+    // have finished executing on the GPU; the returned GPU event, when signaled,
+    // indicates when the submitted work has finished and the associated objects are
+    // safe to release.
     class ExecutionContext
     {
     public:
-        // Constructs an ExecutionContext that executes on the supplied queue.
         ExecutionContext(
-            ID3D12Device* d3d12Device,
-            IDMLDevice* dmlDevice,
+            ID3D12Device* d3d12_device,
+            IDMLDevice* dml_device,
             ID3D12CommandQueue* queue);
 
-        void SetAllocator(std::weak_ptr<BucketizedBufferAllocator> allocator);
+        ~ExecutionContext();
 
-        // Waits for flushed work, discards unflushed work, and discards associated references to
-        // prevent circular references.  Must be the last call on the object before destruction.
-        void Close();
+        // NOTE: the caller is responsible for keeping the dst_buffer/src_buffer
+        // resources alive until the returned GPU event has completed.
+        GpuEvent CopyBufferRegionRaw(
+            ID3D12Resource* dst_buffer,
+            uint64_t dst_offset,
+            D3D12_RESOURCE_STATES dst_state,
+            ID3D12Resource* src_buffer,
+            uint64_t src_offset,
+            D3D12_RESOURCE_STATES src_state,
+            uint64_t byte_count);
 
-        // Queues a CopyBufferRegion (see ID3D12GraphicsCommandList::CopyBufferRegion) for execution. Transition
-        // barriers are automatically inserted to transition the source and destination resources to COPY_SOURCE and
-        // COPY_DEST if necessary.
-        void CopyBufferRegion(
-            ID3D12Resource* dstBuffer,
-            uint64_t dstOffset,
-            D3D12_RESOURCE_STATES dstState,
-            ID3D12Resource* srcBuffer,
-            uint64_t srcOffset,
-            D3D12_RESOURCE_STATES srcState,
-            uint64_t byteCount);
+        GpuEvent CopyBufferRegion(
+            ID3D12Resource* dst_buffer,
+            uint64_t dst_offset,
+            D3D12_RESOURCE_STATES dst_state,
+            ID3D12Resource* src_buffer,
+            uint64_t src_offset,
+            D3D12_RESOURCE_STATES src_state,
+            uint64_t byte_count);
 
-        void FillBufferWithPattern(
+        // NOTE: the caller is responsible for keeping the dst resource alive until
+        // the returned GPU event has completed. A copy of the value span will be
+        // made, so the pointed-to value is safe to release immediately after
+        // calling this method.
+        GpuEvent FillBufferWithPatternRaw(
+            ID3D12Resource* dst,
+            uint64_t dst_offset,
+            uint64_t dst_size_in_bytes,
+            absl::Span<const std::byte> value);
+
+        GpuEvent FillBufferWithPattern(
             ID3D12Resource* dstBuffer,
             gsl::span<const std::byte> value /* Data type agnostic value, treated as raw bits */);
 
-        void InitializeOperator(
+        // NOTE: the caller is responsible for keeping the initializer and
+        // descriptor_heap alive until the returned GPU event has completed. This
+        // class takes ownership of the binding table.
+        GpuEvent InitializeOperator(
             IDMLCompiledOperator* op,
-            const DML_BINDING_DESC& persistentResourceBinding,
-            const DML_BINDING_DESC& inputArrayBinding);
+            Microsoft::WRL::ComPtr<IDMLBindingTable>&& binding_table,
+            ID3D12DescriptorHeap* descriptor_heap);
 
-        void ExecuteOperator(
+        // NOTE: the caller is responsible for keeping the op and descriptor_heap
+        // alive until the returned GPU event has completed. This class takes
+        // ownership of the binding table.
+        GpuEvent ExecuteOperator(
             IDMLCompiledOperator* op,
-            const DML_BINDING_DESC& persistentResourceBinding,
-            gsl::span<const DML_BINDING_DESC> inputBindings,
-            gsl::span<const DML_BINDING_DESC> outputBindings);
+            Microsoft::WRL::ComPtr<IDMLBindingTable>&& binding_table,
+            ID3D12DescriptorHeap* descriptor_heap);
 
-        void ExecuteCommandList(
-            ID3D12GraphicsCommandList* commandList,
-            _Outptr_ ID3D12Fence** fence,
-            _Out_ uint64_t* completionValue
-            );
+        // NOTE: A copy of the barriers span will be made, so the pointed-to value
+        // is safe to release immediately after calling this method.
+        GpuEvent ResourceBarrier(
+            absl::Span<const D3D12_RESOURCE_BARRIER> barriers);
 
-        void AddUAVBarrier();
-        void ResourceBarrier(gsl::span<const D3D12_RESOURCE_BARRIER> barriers);
+        // A slightly more efficient version of ResourceBarrier when the barrier
+        // span only includes a UAV barrier (elides an extra copy).
+        GpuEvent UavBarrier();
 
-        void GetCommandListForRecordingAndInvalidateState(ID3D12GraphicsCommandList** commandList);
+        // Indicates that any batched commands should be recorded and executed as
+        // soon as possible, even if the batch is small. This is a no-op if nothing
+        // is batched.
+        GpuEvent Flush();
 
-        // Forces all queued work to begin executing on the GPU. This method returns immediately and does not wait
-        // for the submitted work to complete execution on the GPU.
-        void Flush();
+        Status GetCommandRecorderStatus() const;
 
-        // Returns an event which will become signaled when everything submitted to the execution context thus far has
-        // completed execution on the GPU, including work that has yet to be flushed to the queue.
         GpuEvent GetCurrentCompletionEvent();
-
-        // Adds a reference which will be released when queued GPU work is completed
-        void QueueReference(IUnknown* object);
-
-        // Release any accumulated references who corresponding GPU fence values have
-        // been reached.
-        void ReleaseCompletedReferences();
 
         D3D12_COMMAND_LIST_TYPE GetCommandListTypeForQueue() const;
 
     private:
-        ComPtr<ID3D12Device> m_d3dDevice;
+        static constexpr uint32_t default_batch_flush_size = 100;
+        static constexpr uint32_t default_batch_flush_time_us = 1000;
 
-        void SetCommandRecorder(DmlCommandList* newRecorder);
+        using Command = std::function<void(DmlCommandList&)>;
+        using Batch = absl::InlinedVector<Command, default_batch_flush_size>;
 
-        std::shared_ptr<CommandQueue> m_queue;
+        // State related to the batching of commands, which may be accessed by
+        // both external threads (e.g. DML kernels) and the internal execution
+        // thread.
+        struct BatchState
+        {
+            std::mutex mutex;
+            GpuEvent next_flush_event;
+            std::condition_variable command_added;
 
-        DmlCommandList* m_currentRecorder = nullptr;
+            // Commands are double buffered: callers extend the "write batch" while
+            // the execution thread records and executes the "execute batch".
+            Batch batches[2];
+            uint32_t write_batch_index = 0;
+            Batch& WriteBatch() { return batches[write_batch_index]; }
 
-        // Up to one of these is active at a time
-        DmlCommandList m_dmlRecorder;
+            bool exit_requested = false;
+            bool flush_requested = false;
 
-        bool m_closed = false;
+            Status status;
+        };
+
+        std::shared_ptr<BatchState> batch_state_;
+        std::shared_ptr<CommandQueue> dml_command_queue_;
+        std::shared_ptr<DmlCommandList> dml_command_list_;
+        std::thread execution_thread_;
+
+        static void ExecutionThreadProc(
+            std::shared_ptr<BatchState> batch_state,
+            std::shared_ptr<DmlCommandList> command_list,
+            std::shared_ptr<CommandQueue> command_queue,
+            uint32_t batch_flush_size,
+            uint32_t batch_flush_time_us);
     };
-
 } // namespace Dml

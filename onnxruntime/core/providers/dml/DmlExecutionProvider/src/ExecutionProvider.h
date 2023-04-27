@@ -128,10 +128,6 @@ namespace Dml
 
         void SetDefaultRoundingMode(AllocatorRoundingMode roundingMode);
 
-        // Waits for flushed work, discards unflushed work, and discards associated references to
-        // prevent circular references.  Must be the last call on the object before destruction.
-        void Close() override;
-
         void WaitForOutstandingWork();
 
         // Allocate a resource from pools.  Releasing pooledResource returns it to the pool.

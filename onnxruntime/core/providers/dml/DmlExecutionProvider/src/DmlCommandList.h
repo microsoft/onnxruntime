@@ -7,98 +7,89 @@
 
 namespace Dml
 {
+    class DmlAllocator;
     class CommandQueue;
-    class BucketizedBufferAllocator;
 
+    // Helper that manages and wraps an ID3D12GraphicsCommandList and its backing
+    // command allocator. This class is NOT thread safe.
     class DmlCommandList
     {
     public:
+        // Constructs a command list.
         DmlCommandList(
-            ID3D12Device* d3dDevice,
-            IDMLDevice* device,
-            std::shared_ptr<CommandQueue> commandQueue);
+            ID3D12Device* d3d12_device,
+            IDMLDevice* dml_device,
+            std::shared_ptr<CommandQueue> queue);
 
+        // Records a CopyBufferRegion (see
+        // ID3D12GraphicsCommandList::CopyBufferRegion) for execution. Transition
+        // barriers are automatically inserted to transition the source and
+        // destination resources to COPY_SOURCE and COPY_DEST if necessary.
+        void CopyBufferRegion(
+            ID3D12Resource* dst_buffer,
+            uint64_t dst_offset,
+            D3D12_RESOURCE_STATES dst_state,
+            ID3D12Resource* src_buffer,
+            uint64_t src_offset,
+            D3D12_RESOURCE_STATES src_state,
+            uint64_t byte_count);
+
+        // Records a ClearUAV with the specified value into the command list.
+        void FillBufferWithPattern(
+            ID3D12Resource* dst,
+            uint64_t dst_offset,
+            uint64_t dst_size_in_bytes,
+            absl::Span<const std::byte> value /* Data type agnostic value, treated as raw bits */);
+
+        // Records DML operator initialization into the command list. It's safe to
+        // release the binding table immediately after this is called.
         void InitializeOperator(
-            IDMLCompiledOperator* op,
-            const DML_BINDING_DESC& persistentResourceBinding,
-            const DML_BINDING_DESC& inputArrayBinding);
+            IDMLCompiledOperator* initializer,
+            IDMLBindingTable* binding_table,
+            ID3D12DescriptorHeap* descriptor_heap);
 
+        // Records DML operator execution into the command list. It's safe to
+        // release the binding table immediately after this is called.
         void ExecuteOperator(
             IDMLCompiledOperator* op,
-            const DML_BINDING_DESC& persistentResourceBinding,
-            gsl::span<const DML_BINDING_DESC> inputBindings,
-            gsl::span<const DML_BINDING_DESC> outputBindings);
+            IDMLBindingTable* binding_table,
+            ID3D12DescriptorHeap* descriptor_heap);
 
-        void CopyBufferRegion(
-            ID3D12Resource* dstBuffer,
-            uint64_t dstOffset,
-            ID3D12Resource* srcBuffer,
-            uint64_t srcOffset,
-            uint64_t byteCount);
+        // Records a resoruce barrier into the command list.
+        void ResourceBarrier(absl::Span<const D3D12_RESOURCE_BARRIER> barriers);
 
-        void FillBufferWithPattern(
-            ID3D12Resource* dstBuffer,
-            gsl::span<const std::byte> value /* Data type agnostic value, treated as raw bits */);
+        // Records a UAV barrier on all resources into the command list.
+        void UavBarrier();
 
-        void ExecuteCommandList(
-            ID3D12GraphicsCommandList* commandList,
-            _Outptr_ ID3D12Fence** fence,
-            _Out_ uint64_t* completionValue);
-
-        ComPtr<ID3D12GraphicsCommandList> GetCommandList();
-
-        void ResourceBarrier(gsl::span<const D3D12_RESOURCE_BARRIER> barriers);
-        void AddUAVBarrier();
-
+        // Opens the command list for recording, which is required before any of the
+        // above methods can be called.
         void Open();
-        void CloseAndExecute();
 
-        void SetAllocator(std::weak_ptr<BucketizedBufferAllocator> allocator);
+        // Closes the command list for recording, which is required before the
+        // command list can be executed on a command queue. If any errors occur
+        // while recording they will be reported as a status here.
+        Status Close();
 
-        bool HasUnsubmittedWork()
-        {
-            return m_operationsRecordedInCurrentCommandList || !m_pendingCommandLists.empty();
-        }
-
-        // Forces the descriptor heap to be reset to D3D before executing future operations
-        void InvalidateDescriptorHeap()
-        {
-            m_currentDescriptorHeap = nullptr;
-        }
+        // Returns a pointer to the underlying D3D command list.
+        ID3D12CommandList* Get() { return d3d_command_list_.Get(); }
 
     private:
+        Microsoft::WRL::ComPtr<ID3D12Device> d3d_device_;
+        Microsoft::WRL::ComPtr<IDMLDevice> dml_device_;
+        Microsoft::WRL::ComPtr<IDMLCommandRecorder> recorder_;
+        Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList> d3d_command_list_;
+        std::shared_ptr<CommandQueue> queue_;
 
-        std::shared_ptr<CommandQueue> m_queue;
-        ComPtr<ID3D12Device> m_d3dDevice;
-        ComPtr<IDMLDevice> m_dmlDevice;
-        ComPtr<IDMLOperatorInitializer> m_initializer;
-        ComPtr<IDMLCommandRecorder> m_recorder;
+        // Descriptors are allocated from a pool. The current heap pointer is only
+        // used to avoid redundantly setting the same heap; it does not have
+        // ownership of the heap object.
+        DescriptorPool descriptor_pool_;
+        ID3D12DescriptorHeap* current_descriptor_heap_ = nullptr;
+        GpuEvent current_completion_event_;
 
-        // Descriptors are allocated from a pool. The current heap pointer is only used to avoid redundantly
-        // setting the same heap; it does not have ownership of the heap object.
-        DescriptorPool m_descriptorPool;
-        ID3D12DescriptorHeap* m_currentDescriptorHeap = nullptr;
+        CommandAllocatorRing<2> command_allocator_ring_;
 
-        // The weak pointer avoids a circular reference from context->recorder->allocator->context
-        std::weak_ptr<BucketizedBufferAllocator> m_bufferAllocator;
-
-        CommandAllocatorRing<2> m_commandAllocatorRing;
-
-        // The command list currently being recorded into, and whether any command have been recorded yet.
-        ComPtr<ID3D12GraphicsCommandList> m_currentCommandList;
-        bool m_operationsRecordedInCurrentCommandList = false;
-
-        // Command lists which have been batched up for execution.  The values in
-        // m_pendingCommandListsCacheable indicate whether they can be moved into this
-        // class's cache after execution, versus if they belong to the caller and were
-        // passed to ExecuteCommandList.
-        std::vector<ComPtr<ID3D12GraphicsCommandList>> m_pendingCommandLists;
-        std::vector<bool> m_pendingCommandListsCacheable;
-
-        // A pool of cached command lists which may be re-used.
-        std::deque<ComPtr<ID3D12GraphicsCommandList>> m_cachedCommandLists;
-
-        void SetDescriptorHeap(ID3D12DescriptorHeap* descriptorHeap);
+        void SetDescriptorHeap(ID3D12DescriptorHeap* descriptor_heap);
     };
 
 } // namespace Dml
