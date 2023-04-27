@@ -29,6 +29,7 @@ union __half2_uint32_t_union {
 
 void set_alpha_fp16(uint32_t& alpha, float norm) {
   __half2_uint32_t_union temp;
+  memset(&temp, 0, sizeof(__half2_uint32_t_union));
   temp.fp162 = __float2half2_rn(norm);
   alpha = temp.u32;
 }
