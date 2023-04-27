@@ -161,18 +161,8 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiHeadAttentio
     q = vec_conversion<Qk_vec_k, Qk_vec_m>(*reinterpret_cast<const Qk_vec_m*>(&reinterpret_cast<T*>(params.q)[qk_offset]));
   }
 
-  Qk_vec_k k;
-
-  if (!params.is_cross_attention) {
-    zero(k);
-
-    if (!is_masked) {
-      k = vec_conversion<Qk_vec_k, Qk_vec_m>(*reinterpret_cast<const Qk_vec_m*>(&reinterpret_cast<T*>(params.k)[qk_offset]));
-    }
-  }
-
-    // The offset in the bias buffer.
-    int qk_bias_offset = hi * head_size + tidx * QK_VEC_SIZE;
+  // The offset in the bias buffer.
+  int qk_bias_offset = hi * head_size + tidx * QK_VEC_SIZE;
 
   // Trigger the loads from the Q and K bias buffers.
   if (params.q_bias) {
@@ -187,17 +177,29 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiHeadAttentio
     q = add_vec(q, q_bias);
   }
 
-  if (params.k_bias) {
-    Qk_vec_k k_bias;
 
-    zero(k_bias);
+  Qk_vec_k k;
+
+  if (!params.is_cross_attention) {
+    zero(k);
 
     if (!is_masked) {
-      k_bias = vec_conversion<Qk_vec_k, Qk_vec_m>(*reinterpret_cast<const Qk_vec_m*>(&reinterpret_cast<T*>(params.k_bias)[qk_bias_offset]));
+      k = vec_conversion<Qk_vec_k, Qk_vec_m>(*reinterpret_cast<const Qk_vec_m*>(&reinterpret_cast<T*>(params.k)[qk_offset]));
     }
 
-    k = add_vec(k, k_bias);
+    if (params.k_bias) {
+      Qk_vec_k k_bias;
+
+      zero(k_bias);
+
+      if (!is_masked) {
+        k_bias = vec_conversion<Qk_vec_k, Qk_vec_m>(*reinterpret_cast<const Qk_vec_m*>(&reinterpret_cast<T*>(params.k_bias)[qk_bias_offset]));
+      }
+
+      k = add_vec(k, k_bias);
+    }
   }
+
 
   T* params_k_cache = reinterpret_cast<T*>(params.k_cache);
 
@@ -234,7 +236,7 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiHeadAttentio
       qk = dot<Qk_vec_acum, Qk_vec_k>(q, k);
 
       if (QK_VECS_PER_WARP <= WARP_SIZE) {
-  #pragma unroll
+        #pragma unroll
         for (int mask = QK_VECS_PER_WARP / 2; mask >= 1; mask /= 2) {
           qk += __shfl_xor_sync(shfl_mask(QK_VECS_PER_WARP), qk, mask);
         }
