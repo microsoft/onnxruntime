@@ -30,12 +30,12 @@ std::unique_ptr<IExecutionProvider> VitisAIProviderFactory::CreateProvider() {
 
 std::shared_ptr<IExecutionProviderFactory>
 CreateExecutionProviderFactory_VITISAI(const VitisAIExecutionProviderInfo& info) {
-  [[maybe_unused]] auto status = OrtExecutionProviderInitialize_VITISAI();
+  initialize_vitisai_ep();
   return std::make_shared<VitisAIProviderFactory>(info);
 }
 
 std::shared_ptr<IExecutionProviderFactory> VitisAIProviderFactoryCreator::Create(const VitisAIExecutionProviderInfo& info) {
-  [[maybe_unused]] auto status = OrtExecutionProviderInitialize_VITISAI();
+  initialize_vitisai_ep();
   return std::make_shared<VitisAIProviderFactory>(info);
 }
 
@@ -47,9 +47,5 @@ ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_VITISAI,
   auto info = VitisAIExecutionProviderInfo(opt_str);
   options->provider_factories.push_back(
       onnxruntime::CreateExecutionProviderFactory_VITISAI(info));
-  return nullptr;
-}
-ORT_API_STATUS_IMPL(OrtExecutionProviderInitialize_VITISAI) {
-  initialize_vitisai_ep();
   return nullptr;
 }
