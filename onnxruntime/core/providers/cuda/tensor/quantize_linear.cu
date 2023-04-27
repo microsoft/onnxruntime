@@ -130,6 +130,30 @@ __global__ void QuantizeLinearKernelStd(const InT* input, OutT* output, const In
 }
 
 template <int NumThreadsPerBlock, int NumElementsPerThread, typename OutT, typename InT>
+__global__ void QuantizeLinearKernelAxisStd(const InT* input, OutT* output, const InT* scale_ptr, const OutT* zero_point_ptr, CUDA_LONG N, size_t batch_size, size_t n_scales, RoundStd<InT, OutT> round) {
+  CUDA_LONG id = NumElementsPerThread * NumThreadsPerBlock * blockIdx.x + threadIdx.x;
+  // The scale needs to change every n_same_scale.
+  CUDA_LONG n_same_scale = N / (batch_size * n_scales);
+  int scale_id;
+  // int origin = (id / n_same_scale + 1) * n_same_scale;
+
+#pragma unroll
+  for (int i = 0; i < NumElementsPerThread; i++) {
+    if (id < N) {
+      scale_id = (id / n_same_scale) % n_scales;
+      output[id] = round(input[id], scale_ptr[scale_id], zero_point_ptr == nullptr ? static_cast<OutT>(0) : zero_point_ptr[scale_id]);
+      id += NumThreadsPerBlock;
+      /*
+      if (id > origin) {
+        origin = (id / n_same_scale + 1) * n_same_scale;
+        scale_id = (id / n_same_scale) % n_scales;
+      }
+      */
+    }
+  }
+}
+
+template <int NumThreadsPerBlock, int NumElementsPerThread, typename OutT, typename InT>
 __global__ void QuantizeLinearKernelSat(const InT* input, OutT* output, const InT* scale_ptr, const OutT* zero_point_ptr, CUDA_LONG N, RoundSat<InT, OutT> round, bool saturate) {
   CUDA_LONG id = NumElementsPerThread * NumThreadsPerBlock * blockIdx.x + threadIdx.x;
 
@@ -139,6 +163,24 @@ __global__ void QuantizeLinearKernelSat(const InT* input, OutT* output, const In
   for (int i = 0; i < NumElementsPerThread; i++) {
     if (id < N) {
       output[id] = round(input[id], scale, zero_point, saturate);
+      id += NumThreadsPerBlock;
+    }
+  }
+}
+
+template <int NumThreadsPerBlock, int NumElementsPerThread, typename OutT, typename InT>
+__global__ void QuantizeLinearKernelAxisSat(const InT* input, OutT* output, const InT* scale_ptr, const OutT* zero_point_ptr, CUDA_LONG N,
+                                            size_t batch_size, size_t n_scales, RoundSat<InT, OutT> round, bool saturate) {
+  CUDA_LONG id = NumElementsPerThread * NumThreadsPerBlock * blockIdx.x + threadIdx.x;
+  // The scale needs to change every n_same_scale.
+  CUDA_LONG n_same_scale = N / (batch_size * n_scales);
+  int scale_id;
+
+#pragma unroll
+  for (int i = 0; i < NumElementsPerThread; i++) {
+    if (id < N) {
+      scale_id = (id / n_same_scale) % n_scales;
+      output[id] = round(input[id], scale_ptr[scale_id], zero_point_ptr == nullptr ? OutT(0, true) : zero_point_ptr[scale_id], saturate);
       id += NumThreadsPerBlock;
     }
   }
@@ -161,6 +203,25 @@ Status CudaQuantizeLinearStd(cudaStream_t stream, const InT* input, OutT* output
 }
 
 template <class OutT, class InT>
+Status CudaQuantizeLinearAxisStd(cudaStream_t stream, const InT* input, OutT* output, const InT* scale, const OutT* zero_point, size_t num_of_element,
+                                 size_t batch_size, size_t n_scales) {
+  if (num_of_element <= 0)
+    return Status::OK();
+
+  int blocksPerGrid = static_cast<int>(CeilDiv(num_of_element, GridDim::maxThreadsPerBlock * GridDim::maxElementsPerThread));
+  QuantizeLinearKernelAxisStd<GridDim::maxThreadsPerBlock, GridDim::maxElementsPerThread><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
+      input,
+      output,
+      scale,
+      zero_point,
+      static_cast<int>(num_of_element),
+      batch_size,
+      n_scales,
+      RoundStd<InT, OutT>());
+  return Status::OK();
+}
+
+template <class OutT, class InT>
 Status CudaQuantizeLinearSat(cudaStream_t stream, const InT* input, OutT* output, const InT* scale, const OutT* zero_point, size_t num_of_element, bool saturate) {
   if (num_of_element <= 0)
     return Status::OK();
@@ -177,6 +238,26 @@ Status CudaQuantizeLinearSat(cudaStream_t stream, const InT* input, OutT* output
   return Status::OK();
 }
 
+template <class OutT, class InT>
+Status CudaQuantizeLinearAxisSat(cudaStream_t stream, const InT* input, OutT* output, const InT* scale, const OutT* zero_point, size_t num_of_element,
+                                 size_t batch_size, size_t n_scales, bool saturate) {
+  if (num_of_element <= 0)
+    return Status::OK();
+
+  int blocksPerGrid = static_cast<int>(CeilDiv(num_of_element, GridDim::maxThreadsPerBlock * GridDim::maxElementsPerThread));
+  QuantizeLinearKernelAxisSat<GridDim::maxThreadsPerBlock, GridDim::maxElementsPerThread><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
+      input,
+      output,
+      scale,
+      zero_point,
+      static_cast<int>(num_of_element),
+      batch_size,
+      n_scales,
+      RoundSat<InT, OutT>(),
+      saturate);
+  return Status::OK();
+}
+
 template <class InT, class OutT, int NumThreadsPerBlock, int NumElementsPerThread>
 __global__ void DequantizeLinearKernelStd(const InT* input, OutT* output, const OutT* scale_ptr, const InT* zero_point_ptr, CUDA_LONG N) {
   CUDA_LONG id = NumElementsPerThread * NumThreadsPerBlock * blockIdx.x + threadIdx.x;
@@ -187,6 +268,24 @@ __global__ void DequantizeLinearKernelStd(const InT* input, OutT* output, const 
   for (int i = 0; i < NumElementsPerThread; i++) {
     if (id < N) {
       output[id] = static_cast<OutT>(input[id] - zero_point) * scale;
+      id += NumThreadsPerBlock;
+    }
+  }
+}
+
+template <class InT, class OutT, int NumThreadsPerBlock, int NumElementsPerThread>
+__global__ void DequantizeLinearKernelAxisStd(const InT* input, OutT* output, const OutT* scale_ptr, const InT* zero_point_ptr, CUDA_LONG N,
+                                              size_t batch_size, size_t n_scales) {
+  CUDA_LONG id = NumElementsPerThread * NumThreadsPerBlock * blockIdx.x + threadIdx.x;
+  // The scale needs to change every n_same_scale.
+  CUDA_LONG n_same_scale = N / (batch_size * n_scales);
+  int scale_id;
+
+#pragma unroll
+  for (int i = 0; i < NumElementsPerThread; i++) {
+    if (id < N) {
+      scale_id = (id / n_same_scale) % n_scales;
+      output[id] = (zero_point_ptr == nullptr ? static_cast<OutT>(input[id]) : static_cast<OutT>(input[id] - zero_point_ptr[scale_id])) * scale_ptr[scale_id];
       id += NumThreadsPerBlock;
     }
   }
@@ -273,6 +372,24 @@ __global__ void DequantizeLinearKernelSat(const InT* input, OutT* output, const 
   }
 }
 
+template <class InT, class OutT, int NumThreadsPerBlock, int NumElementsPerThread>
+__global__ void DequantizeLinearKernelAxisSat(const InT* input, OutT* output, const OutT* scale_ptr, const InT* zero_point_ptr, CUDA_LONG N,
+                                              size_t batch_size, size_t n_scales) {
+  CUDA_LONG id = NumElementsPerThread * NumThreadsPerBlock * blockIdx.x + threadIdx.x;
+  // The scale needs to change every n_same_scale.
+  CUDA_LONG n_same_scale = N / (batch_size * n_scales);
+  int scale_id;
+
+#pragma unroll
+  for (int i = 0; i < NumElementsPerThread; i++) {
+    if (id < N) {
+      scale_id = (id / n_same_scale) % n_scales;
+      output[id] = DQFloat8<InT, OutT>()(input[id], scale_ptr[scale_id]);
+      id += NumThreadsPerBlock;
+    }
+  }
+}
+
 template <class InT, class OutT>
 Status CudaDequantizeLinearStd(cudaStream_t stream, const InT* input, OutT* output, const OutT* scale, const InT* zero_point, size_t num_of_element) {
   if (num_of_element <= 0)
@@ -285,6 +402,24 @@ Status CudaDequantizeLinearStd(cudaStream_t stream, const InT* input, OutT* outp
       scale,
       zero_point,
       static_cast<int>(num_of_element));
+  return Status::OK();
+}
+
+template <class InT, class OutT>
+Status CudaDequantizeLinearAxisStd(cudaStream_t stream, const InT* input, OutT* output, const OutT* scale, const InT* zero_point, size_t num_of_element,
+                                   size_t batch_size, size_t n_scales) {
+  if (num_of_element <= 0)
+    return Status::OK();
+
+  int blocksPerGrid = static_cast<int>(CeilDiv(num_of_element, GridDim::maxThreadsPerBlock * GridDim::maxElementsPerThread));
+  DequantizeLinearKernelAxisStd<InT, OutT, GridDim::maxThreadsPerBlock, GridDim::maxElementsPerThread><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
+      input,
+      output,
+      scale,
+      zero_point,
+      static_cast<int>(num_of_element),
+      batch_size,
+      n_scales);
   return Status::OK();
 }
 
@@ -303,25 +438,63 @@ Status CudaDequantizeLinearSat(cudaStream_t stream, const InT* input, OutT* outp
   return Status::OK();
 }
 
+template <class InT, class OutT>
+Status CudaDequantizeLinearAxisSat(cudaStream_t stream, const InT* input, OutT* output, const OutT* scale, const InT* zero_point, size_t num_of_element,
+                                   size_t batch_size, size_t n_scales) {
+  if (num_of_element <= 0)
+    return Status::OK();
+
+  int blocksPerGrid = static_cast<int>(CeilDiv(num_of_element, GridDim::maxThreadsPerBlock * GridDim::maxElementsPerThread));
+  DequantizeLinearKernelAxisSat<InT, OutT, GridDim::maxThreadsPerBlock, GridDim::maxElementsPerThread><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
+      input,
+      output,
+      scale,
+      zero_point,
+      static_cast<int>(num_of_element),
+      batch_size,
+      n_scales);
+  return Status::OK();
+}
+
 template Status CudaQuantizeLinearStd<int8_t, float>(cudaStream_t stream, const float* input, int8_t* output, const float* scale, const int8_t* zero_point, size_t num_of_element);
 template Status CudaQuantizeLinearStd<uint8_t, float>(cudaStream_t stream, const float* input, uint8_t* output, const float* scale, const uint8_t* zero_point, size_t num_of_element);
 template Status CudaQuantizeLinearStd<int8_t, half>(cudaStream_t stream, const half* input, int8_t* output, const half* scale, const int8_t* zero_point, size_t num_of_element);
 template Status CudaQuantizeLinearStd<uint8_t, half>(cudaStream_t stream, const half* input, uint8_t* output, const half* scale, const uint8_t* zero_point, size_t num_of_element);
+
+template Status CudaQuantizeLinearAxisStd<int8_t, float>(cudaStream_t stream, const float* input, int8_t* output, const float* scale, const int8_t* zero_point, size_t num_of_element, size_t batch_size, size_t n_scales);
+template Status CudaQuantizeLinearAxisStd<uint8_t, float>(cudaStream_t stream, const float* input, uint8_t* output, const float* scale, const uint8_t* zero_point, size_t num_of_element, size_t batch_size, size_t n_scales);
+template Status CudaQuantizeLinearAxisStd<int8_t, half>(cudaStream_t stream, const half* input, int8_t* output, const half* scale, const int8_t* zero_point, size_t num_of_element, size_t batch_size, size_t n_scales);
+template Status CudaQuantizeLinearAxisStd<uint8_t, half>(cudaStream_t stream, const half* input, uint8_t* output, const half* scale, const uint8_t* zero_point, size_t num_of_element, size_t batch_size, size_t n_scales);
 
 template Status CudaQuantizeLinearSat<Float8E4M3FN, float>(cudaStream_t stream, const float* input, Float8E4M3FN* output, const float* scale, const Float8E4M3FN* zero_point, size_t num_of_element, bool saturate);
 template Status CudaQuantizeLinearSat<Float8E5M2, float>(cudaStream_t stream, const float* input, Float8E5M2* output, const float* scale, const Float8E5M2* zero_point, size_t num_of_element, bool saturate);
 template Status CudaQuantizeLinearSat<Float8E4M3FN, half>(cudaStream_t stream, const half* input, Float8E4M3FN* output, const half* scale, const Float8E4M3FN* zero_point, size_t num_of_element, bool saturate);
 template Status CudaQuantizeLinearSat<Float8E5M2, half>(cudaStream_t stream, const half* input, Float8E5M2* output, const half* scale, const Float8E5M2* zero_point, size_t num_of_element, bool saturate);
 
+template Status CudaQuantizeLinearAxisSat<Float8E4M3FN, float>(cudaStream_t stream, const float* input, Float8E4M3FN* output, const float* scale, const Float8E4M3FN* zero_point, size_t num_of_element, size_t batch_size, size_t n_scales, bool saturate);
+template Status CudaQuantizeLinearAxisSat<Float8E5M2, float>(cudaStream_t stream, const float* input, Float8E5M2* output, const float* scale, const Float8E5M2* zero_point, size_t num_of_element, size_t batch_size, size_t n_scales, bool saturate);
+template Status CudaQuantizeLinearAxisSat<Float8E4M3FN, half>(cudaStream_t stream, const half* input, Float8E4M3FN* output, const half* scale, const Float8E4M3FN* zero_point, size_t num_of_element, size_t batch_size, size_t n_scales, bool saturate);
+template Status CudaQuantizeLinearAxisSat<Float8E5M2, half>(cudaStream_t stream, const half* input, Float8E5M2* output, const half* scale, const Float8E5M2* zero_point, size_t num_of_element, size_t batch_size, size_t n_scales, bool saturate);
+
 template Status CudaDequantizeLinearStd<int8_t, float>(cudaStream_t stream, const int8_t* input, float* output, const float* scale, const int8_t* zero_point, size_t num_of_element);
 template Status CudaDequantizeLinearStd<uint8_t, float>(cudaStream_t stream, const uint8_t* input, float* output, const float* scale, const uint8_t* zero_point, size_t num_of_element);
 template Status CudaDequantizeLinearStd<int8_t, half>(cudaStream_t stream, const int8_t* input, half* output, const half* scale, const int8_t* zero_point, size_t num_of_element);
 template Status CudaDequantizeLinearStd<uint8_t, half>(cudaStream_t stream, const uint8_t* input, half* output, const half* scale, const uint8_t* zero_point, size_t num_of_element);
 
+template Status CudaDequantizeLinearAxisStd<int8_t, float>(cudaStream_t stream, const int8_t* input, float* output, const float* scale, const int8_t* zero_point, size_t num_of_element, size_t batch_size, size_t n_scales);
+template Status CudaDequantizeLinearAxisStd<uint8_t, float>(cudaStream_t stream, const uint8_t* input, float* output, const float* scale, const uint8_t* zero_point, size_t num_of_element, size_t batch_size, size_t n_scales);
+template Status CudaDequantizeLinearAxisStd<int8_t, half>(cudaStream_t stream, const int8_t* input, half* output, const half* scale, const int8_t* zero_point, size_t num_of_element, size_t batch_size, size_t n_scales);
+template Status CudaDequantizeLinearAxisStd<uint8_t, half>(cudaStream_t stream, const uint8_t* input, half* output, const half* scale, const uint8_t* zero_point, size_t num_of_element, size_t batch_size, size_t n_scales);
+
 template Status CudaDequantizeLinearSat<Float8E4M3FN, float>(cudaStream_t stream, const Float8E4M3FN* input, float* output, const float* scale, const Float8E4M3FN* zero_point, size_t num_of_element);
 template Status CudaDequantizeLinearSat<Float8E5M2, float>(cudaStream_t stream, const Float8E5M2* input, float* output, const float* scale, const Float8E5M2* zero_point, size_t num_of_element);
 template Status CudaDequantizeLinearSat<Float8E4M3FN, half>(cudaStream_t stream, const Float8E4M3FN* input, half* output, const half* scale, const Float8E4M3FN* zero_point, size_t num_of_element);
 template Status CudaDequantizeLinearSat<Float8E5M2, half>(cudaStream_t stream, const Float8E5M2* input, half* output, const half* scale, const Float8E5M2* zero_point, size_t num_of_element);
+
+template Status CudaDequantizeLinearAxisSat<Float8E4M3FN, float>(cudaStream_t stream, const Float8E4M3FN* input, float* output, const float* scale, const Float8E4M3FN* zero_point, size_t num_of_element, size_t batch_size, size_t n_scales);
+template Status CudaDequantizeLinearAxisSat<Float8E5M2, float>(cudaStream_t stream, const Float8E5M2* input, float* output, const float* scale, const Float8E5M2* zero_point, size_t num_of_element, size_t batch_size, size_t n_scales);
+template Status CudaDequantizeLinearAxisSat<Float8E4M3FN, half>(cudaStream_t stream, const Float8E4M3FN* input, half* output, const half* scale, const Float8E4M3FN* zero_point, size_t num_of_element, size_t batch_size, size_t n_scales);
+template Status CudaDequantizeLinearAxisSat<Float8E5M2, half>(cudaStream_t stream, const Float8E5M2* input, half* output, const half* scale, const Float8E5M2* zero_point, size_t num_of_element, size_t batch_size, size_t n_scales);
 
 }  // namespace cuda
 }  // namespace onnxruntime

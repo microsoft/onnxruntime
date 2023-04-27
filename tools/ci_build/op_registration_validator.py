@@ -71,21 +71,11 @@ class RegistrationValidator(op_registration_utils.RegistrationProcessor):
                     provider = None
                 else:
                     provider = findall[0]
-                if provider == "Cuda" and {"kOnnxDomain:DequantizeLinear", "kOnnxDomain:QuantizeLinear"}:
-                    # QuantizeLinear, DequantizeLinear do not support multiple scales
-                    # (one per channel), CPU does. But the opset 19 is needed to enable support
-                    # for float 8. This exception should be removed once the implementations of
-                    # QuantizeLinear, DequantizeLinear support the use of multiple scales.
-                    log.warning(
-                        f"Invalid registration for {key}. Registration for opset {prev_start} "
-                        f"should have end version of {start_version - 1}"
-                    )
-                else:
-                    log.error(
-                        f"Invalid registration for {key}. Registration for opset {prev_start} "
-                        f"should have end version of {start_version - 1}"
-                    )
-                    self.failed = True
+                log.error(
+                    f"Invalid registration for {key}. Registration for opset {prev_start} "
+                    f"should have end version of {start_version - 1}"
+                )
+                self.failed = True
                 return
 
         self.last_op_registrations[key] = (start_version, end_version)
@@ -106,8 +96,6 @@ class RegistrationValidator(op_registration_utils.RegistrationProcessor):
             ops_with_incomplete_support = {
                 "kOnnxDomain:ArgMin",
                 "kOnnxDomain:ArgMax",
-                "kOnnxDomain:QuantizeLinear",
-                "kOnnxDomain:DequantizeLinear",
             }
             if key in ops_with_incomplete_support:
                 log.warning(f"Allowing missing unversioned registration for op with incomplete support: {key}")
