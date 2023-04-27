@@ -76,15 +76,17 @@ Status OrtModuleGraphBuilder::Build(const std::vector<std::vector<int64_t>>* inp
     ORT_RETURN_IF_ERROR(SetConcreteInputShapes(*input_shapes_ptr));
   }
 
+  // Optimize the inference graph
+  std::unordered_set<std::string> x_node_arg_names;
+  ORT_RETURN_IF_ERROR(OptimizeForwardGraph(x_node_arg_names));
+
   // If this graph will be used only for inferencing, stop right here.
   // No need to apply the optimizations for training or build a gradient graph.
   if (!config_.build_gradient_graph) {
     return Status::OK();
   }
 
-  // Optimize the inference graph and build the gradient graph.
-  std::unordered_set<std::string> x_node_arg_names;
-  ORT_RETURN_IF_ERROR(OptimizeForwardGraph(x_node_arg_names));
+  // Build the gradient graph.
   ORT_RETURN_IF_ERROR(BuildGradientGraph(x_node_arg_names));
 
   if (config_.enable_caching) {
