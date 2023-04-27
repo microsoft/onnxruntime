@@ -9,7 +9,7 @@ variables:
 - name: LINUX_CPU_BUILD_MACHINE_POOL_NAME  # name of a variable
   # The public ADO project
   ${{ if startsWith(variables['System.CollectionUri'], 'https://dev.azure.com/onnxruntime/') }}:
-    value: 'onnxruntime-Linux-CPU-2019'
+    value: 'onnxruntime-Ubuntu2004-AMD-CPU'
   # The private ADO project
   ${{ if or(startsWith(variables['System.CollectionUri'], 'https://dev.azure.com/aiinfra/'),startsWith(variables['System.CollectionUri'], 'https://aiinfra.visualstudio.com/')) }}:
     value: 'aiinfra-Linux-CPU'
