@@ -1146,9 +1146,16 @@ public:
     {
         m_outputSizeW = info.template GetOptionalAttribute<uint32_t>(AttrName::OutputWidth, 1);
         m_outputSizeH = info.template GetOptionalAttribute<uint32_t>(AttrName::OutputHeight, 1);
+        m_coordinateTransformMode = "half_pixel";
+        if(opsetVersion >= 16){
+            m_coordinateTransformMode = info.GetAttribute(AttrName::CoordinateTransformationMode);
+        }
     }
 
     std::vector<EdgeShapes> GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const;
+
+protected:
+    std::string m_coordinateTransformMode;
 };
 
 class SqueezeHelper
@@ -1449,6 +1456,7 @@ using ShapeInferenceHelper_LpPool = PoolingHelper;
 using ShapeInferenceHelper_GlobalLpPool = GlobalPoolingHelper;
 using ShapeInferenceHelper_MaxRoiPool = RoiPoolingHelper;
 using ShapeInferenceHelper_RoiAlign10 = VersionedOpsetHelper<RoiAlignHelper, 10>;
+using ShapeInferenceHelper_RoiAlign16 = VersionedOpsetHelper<RoiAlignHelper, 16>;
 using ShapeInferenceHelper_InstanceNormalization = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_BatchNormalization = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_BatchNormalization15 = BatchNormalizationHelper;

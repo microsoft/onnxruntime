@@ -11,7 +11,7 @@ namespace test {
 TEST(RoiAlignTest, AvgModePositive) {
   // TODO: Unskip when fixed #41968513
   if (DefaultDmlExecutionProvider().get() != nullptr) {
-    GTEST_SKIP() << "Skipping because of the following error: The difference between expected[i] and output[i] is 2.9583299160003662, which exceeds threshold";
+    //GTEST_SKIP() << "Skipping because of the following error: The difference between expected[i] and output[i] is 2.9583299160003662, which exceeds threshold";
   }
 
   OpTester test("RoiAlign", 10);
@@ -237,7 +237,7 @@ static void BasicTest() {
 TEST(RoiAlignTest, OnnxTest) {
   // TODO: Unskip when fixed #41968513
   if (DefaultDmlExecutionProvider().get() != nullptr) {
-    GTEST_SKIP() << "Skipping because of the following error: The difference between expected[i] and output[i] is 0.051382988691329956, which exceeds threshold";
+    //GTEST_SKIP() << "Skipping because of the following error: The difference between expected[i] and output[i] is 0.051382988691329956, which exceeds threshold";
   }
 
   BasicTest<double>();
@@ -247,7 +247,7 @@ TEST(RoiAlignTest, OnnxTest) {
 TEST(RoiAlignTest, MaxModePositive) {
   // TODO: Unskip when fixed #41968513
   if (DefaultDmlExecutionProvider().get() != nullptr) {
-    GTEST_SKIP() << "Skipping because of the following error: The difference between expected[i] and output[i] is 2.1093800067901611, which exceeds threshold";
+    //GTEST_SKIP() << "Skipping because of the following error: The difference between expected[i] and output[i] is 2.1093800067901611, which exceeds threshold";
   }
 
   OpTester test("RoiAlign", 10);

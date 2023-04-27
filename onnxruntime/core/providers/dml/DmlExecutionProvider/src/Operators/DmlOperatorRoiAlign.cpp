@@ -36,7 +36,7 @@ public:
         ML_CHECK_VALID_ARGUMENT(samplesPerOutput >= 0, "sampling_ratio must be 0 or positive.");
         ML_CHECK_VALID_ARGUMENT(!!optionalReductionFunction, "Unsupported RoiAlign mode.");
 
-        DML_ROI_ALIGN_OPERATOR_DESC operatorDesc = {};
+        DML_ROI_ALIGN1_OPERATOR_DESC operatorDesc = {};
         operatorDesc.InputTensor = &inputDescs[0];
         operatorDesc.ROITensor = &inputDescs[1];
         operatorDesc.BatchIndicesTensor = &inputDescs[2];
@@ -48,12 +48,15 @@ public:
         operatorDesc.MaximumSamplesPerOutput = (samplesPerOutput == 0) ? UINT32_MAX : samplesPerOutput;
         operatorDesc.ReductionFunction = *optionalReductionFunction;
         operatorDesc.InterpolationMode = DML_INTERPOLATION_MODE_LINEAR;
-        DML_OPERATOR_DESC opDesc = { DML_OPERATOR_ROI_ALIGN, &operatorDesc };
+        operatorDesc.InputPixelOffset = m_coordinateTransformMode == "half_pixel" ? -0.5f : 0.0f;
+        operatorDesc.OutputPixelOffset = 0.5f;
+        DML_OPERATOR_DESC opDesc = { DML_OPERATOR_ROI_ALIGN1, &operatorDesc };
 
         SetDmlOperatorDesc(opDesc, kernelCreationContext);
     }
 };
 
 DML_OP_DEFINE_CREATION_FUNCTION(RoiAlign10, VersionedKernel<DmlOperatorRegionOfInterestAlign, 10>);
+DML_OP_DEFINE_CREATION_FUNCTION(RoiAlign16, VersionedKernel<DmlOperatorRegionOfInterestAlign, 16>);
 
 } // namespace Dml
