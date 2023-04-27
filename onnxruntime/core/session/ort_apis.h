@@ -4,8 +4,8 @@
 namespace OrtApis {
 
 ORT_API(const OrtApi*, GetApi, uint32_t version);
-ORT_API(const char*, GetVersionString);
-ORT_API(const char*, GetBuildInfoString);
+ORT_API(const ORTCHAR_T*, GetVersionString);
+ORT_API(const ORTCHAR_T*, GetBuildInfoString);
 
 ORT_API(void, ReleaseEnv, OrtEnv*);
 ORT_API(void, ReleaseStatus, _Frees_ptr_opt_ OrtStatus*);

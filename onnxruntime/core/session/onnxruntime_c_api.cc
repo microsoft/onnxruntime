@@ -2763,11 +2763,11 @@ ORT_API(const OrtApi*, OrtApis::GetApi, uint32_t version) {
   return nullptr;  // Unsupported version
 }
 
-ORT_API(const char*, OrtApis::GetVersionString) {
+ORT_API(const ORTCHAR_T*, OrtApis::GetVersionString) {
   return ORT_VERSION;
 }
 
-ORT_API(const char*, OrtApis::GetBuildInfoString) {
+ORT_API(const ORTCHAR_T*, OrtApis::GetBuildInfoString) {
   return ORT_BUILD_INFO;
 }
 
