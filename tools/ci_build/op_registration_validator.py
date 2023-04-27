@@ -73,7 +73,7 @@ class RegistrationValidator(op_registration_utils.RegistrationProcessor):
                     provider = findall[0]
                 log.error(
                     f"Invalid registration for {key}. Registration for opset {prev_start} "
-                    f"should have end version of {start_version - 1}"
+                    f"should have end version of {start_version - 1} for provider {provider}."
                 )
                 self.failed = True
                 return
