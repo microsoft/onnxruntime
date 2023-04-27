@@ -203,7 +203,7 @@ export declare namespace InferenceSession {
   }
   export interface WebNNExecutionProviderOption extends ExecutionProviderOption {
     readonly name: 'webnn';
-    deviceType?: number;  // 0 - auto, 1 - gpu, 2 - cpu
+    deviceType?: number;       // 0 - auto, 1 - gpu, 2 - cpu
     powerPreference?: number;  // 0 - auto, 1 - high-performance, 2 - low-power
   }
   // #endregion
