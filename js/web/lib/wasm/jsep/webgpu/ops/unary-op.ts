@@ -58,38 +58,31 @@ const createElementwiseProgramInfoLoader =
       };
     };
 
-export const abs = (context: ComputeContext): number => {
+export const abs = (context: ComputeContext): void => {
   context.compute(createElementwiseProgramInfoLoader(context.inputs[0], 'Abs', 'abs'));
-  return 0;
 };
 
-export const acos = (context: ComputeContext): number => {
+export const acos = (context: ComputeContext): void => {
   context.compute(createElementwiseProgramInfoLoader(context.inputs[0], 'Acos', 'acos'));
-  return 0;
 };
 
-export const acosh = (context: ComputeContext): number => {
+export const acosh = (context: ComputeContext): void => {
   context.compute(createElementwiseProgramInfoLoader(context.inputs[0], 'Acosh', 'acosh'));
-  return 0;
 };
 
-export const asin = (context: ComputeContext): number => {
+export const asin = (context: ComputeContext): void => {
   context.compute(createElementwiseProgramInfoLoader(context.inputs[0], 'Asin', 'asin'));
-  return 0;
 };
 
-export const asinh = (context: ComputeContext): number => {
+export const asinh = (context: ComputeContext): void => {
   context.compute(createElementwiseProgramInfoLoader(context.inputs[0], 'Asinh', 'asinh'));
-  return 0;
 };
 
-export const atan = (context: ComputeContext): number => {
+export const atan = (context: ComputeContext): void => {
   context.compute(createElementwiseProgramInfoLoader(context.inputs[0], 'Atan', 'atan'));
-  return 0;
 };
-export const atanh = (context: ComputeContext): number => {
+export const atanh = (context: ComputeContext): void => {
   context.compute(createElementwiseProgramInfoLoader(context.inputs[0], 'Atanh', 'atanh'));
-  return 0;
 };
 
 export interface ClipAttributes extends AttributeWithCacheKey {
@@ -97,7 +90,7 @@ export interface ClipAttributes extends AttributeWithCacheKey {
   readonly max: number;
 }
 
-export const clipV10 = (context: ComputeContext, attributes: ClipAttributes): number => {
+export const clipV10 = (context: ComputeContext, attributes: ClipAttributes): void => {
   context.compute(
       createElementwiseProgramInfoLoader(
           context.inputs[0], 'Clip', a => `clamp(${a}, clip_min_, clip_max_)`, `
@@ -106,7 +99,6 @@ export const clipV10 = (context: ComputeContext, attributes: ClipAttributes): nu
 `,
           attributes.cacheKey),
       {inputs: [0]});
-  return 0;
 };
 const generateClipAttributesFromInputs = (inputs: readonly TensorView[]): ClipAttributes => {
   const min = (inputs.length >= 2) ? inputs[1].getFloat32Array()[0] : MIN_CLIP;
@@ -114,31 +106,31 @@ const generateClipAttributesFromInputs = (inputs: readonly TensorView[]): ClipAt
   return createAttributeWithCacheKey({min, max});
 };
 
-export const clip = (context: ComputeContext): number => {
+export const clip = (context: ComputeContext): void => {
   const attributes = generateClipAttributesFromInputs(context.inputs);
-  return clipV10(context, attributes);
+  clipV10(context, attributes);
 };
 
-export const ceil = (context: ComputeContext): number => {
+export const ceil = (context: ComputeContext): void => {
   context.compute(createElementwiseProgramInfoLoader(context.inputs[0], 'Ceil', 'ceil'));
-  return 0;
 };
 
-export const cos = (context: ComputeContext): number => {
+export const cos = (context: ComputeContext): void => {
   context.compute(createElementwiseProgramInfoLoader(context.inputs[0], 'Cos', 'cos'));
-  return 0;
 };
 
-export const cosh = (context: ComputeContext): number => {
+export const cosh = (context: ComputeContext): void => {
   context.compute(createElementwiseProgramInfoLoader(context.inputs[0], 'Cosh', 'cosh'));
-  return 0;
 };
 
-export interface EluAttributes extends AttributeWithCacheKey {
+export interface AlphaAttributes extends AttributeWithCacheKey {
   readonly alpha: number;
 }
 
-export const elu = (context: ComputeContext, attributes: EluAttributes): number => {
+export const parseAlphaAttributes = (attributes: Record<string, unknown>): AlphaAttributes =>
+    createAttributeWithCacheKey(attributes as {alpha: number});
+
+export const elu = (context: ComputeContext, attributes: AlphaAttributes): void => {
   context.compute(createElementwiseProgramInfoLoader(
       context.inputs[0], 'Elu', a => `elu_vf32(${a})`, `
   const elu_alpha_: f32 = f32(${attributes.alpha});
@@ -151,13 +143,9 @@ export const elu = (context: ComputeContext, attributes: EluAttributes): number 
   return vec4(elu_f32(v.x), elu_f32(v.y), elu_f32(v.z), elu_f32(v.w));
   }`,
       attributes.cacheKey));
-  return 0;
 };
 
-export const parseEluAttributes = (attributes: Record<string, unknown>): EluAttributes =>
-    createAttributeWithCacheKey(attributes as {alpha: number});
-
-export const erf = (context: ComputeContext): number => {
+export const erf = (context: ComputeContext): void => {
   context.compute(createElementwiseProgramInfoLoader(context.inputs[0], 'Erf', a => `erf_vf32(${a})`, `
   const r0: f32 = 0.3275911;
   const r1: f32 = 0.254829592;
@@ -171,50 +159,62 @@ export const erf = (context: ComputeContext): number => {
     let x = 1.0 / (1.0 + r0 * absv);
     return sign(v) * (1.0 - ((((r5 * x + r4) * x + r3) * x + r2) * x + r1) * x * exp(-absv * absv));
   }`));
-  return 0;
 };
 
-export const floor = (context: ComputeContext): number => {
+export const exp = (context: ComputeContext): void => {
+  context.compute(createElementwiseProgramInfoLoader(context.inputs[0], 'Exp', 'exp'));
+};
+
+export const floor = (context: ComputeContext): void => {
   context.compute(createElementwiseProgramInfoLoader(context.inputs[0], 'Floor', 'floor'));
-  return 0;
 };
 
-export const neg = (context: ComputeContext): number => {
+export const leakyRelu = (context: ComputeContext, attributes: AlphaAttributes): void => {
+  context.compute(createElementwiseProgramInfoLoader(
+      context.inputs[0], 'LeakyRelu', a => `select(leaky_relu_alpha_ * ${a}, ${a}, ${a} >= vec4<f32>(0.0))`,
+      `const leaky_relu_alpha_: f32 = f32(${attributes.alpha});`, attributes.cacheKey));
+};
+
+export const neg = (context: ComputeContext): void => {
   context.compute(createElementwiseProgramInfoLoader(context.inputs[0], 'Neg', a => `-${a}`));
-  return 0;
 };
 
-export const reciprocal = (context: ComputeContext): number => {
+export const reciprocal = (context: ComputeContext): void => {
   context.compute(createElementwiseProgramInfoLoader(context.inputs[0], 'Reciprocal', a => `1.0/${a}`));
-  return 0;
 };
 
-export const sigmoid = (context: ComputeContext): number => {
+export const relu = (context: ComputeContext): void => {
+  context.compute(createElementwiseProgramInfoLoader(
+      context.inputs[0], 'Relu', a => `select(vec4<f32>(0.0), ${a}, ${a} > vec4<f32>(0.0))`));
+};
+
+export const sigmoid = (context: ComputeContext): void => {
   context.compute(createElementwiseProgramInfoLoader(context.inputs[0], 'Sigmoid', a => `(1.0 / (1.0 + exp(-${a})))`));
-  return 0;
 };
 
-export const sin = (context: ComputeContext): number => {
+export const sin = (context: ComputeContext): void => {
   context.compute(createElementwiseProgramInfoLoader(context.inputs[0], 'Sin', 'sin'));
-  return 0;
 };
 
-export const sinh = (context: ComputeContext): number => {
+export const sinh = (context: ComputeContext): void => {
   context.compute(createElementwiseProgramInfoLoader(context.inputs[0], 'Sinh', 'sinh'));
-  return 0;
 };
 
-export const sqrt = (context: ComputeContext): number => {
+export const sqrt = (context: ComputeContext): void => {
   context.compute(createElementwiseProgramInfoLoader(context.inputs[0], 'Sqrt', 'sqrt'));
-  return 0;
 };
 
-export const tan = (context: ComputeContext): number => {
+export const tan = (context: ComputeContext): void => {
   context.compute(createElementwiseProgramInfoLoader(context.inputs[0], 'Tan', 'tan'));
-  return 0;
 };
 
-export const tanh = (context: ComputeContext): number => {
+export const tanh = (context: ComputeContext): void => {
   context.compute(createElementwiseProgramInfoLoader(context.inputs[0], 'Tanh', 'tanh'));
+};
+
+export const thresholdedRelu = (context: ComputeContext, attributes: AlphaAttributes): number => {
+  context.compute(createElementwiseProgramInfoLoader(
+      context.inputs[0], 'ThresholdedRelu', a => `select(vec4<f32>(0.0), ${a}, ${a} > thresholded_relu_alpha_)`,
+      `const thresholded_relu_alpha_: vec4<f32> = vec4<f32>(${attributes.alpha});`, attributes.cacheKey));
   return 0;
 };

@@ -47,7 +47,7 @@ class RegistrationValidator(op_registration_utils.RegistrationProcessor):
         key = domain + ":" + operator
         prev_start, prev_end = self.last_op_registrations[key] if key in self.last_op_registrations else (None, None)
 
-        if prev_start:
+        if prev_start and start_version > prev_start:
             # a typed registration where the to/from matches for each entry so nothing to update
             if prev_start == start_version and prev_end == end_version:
                 return

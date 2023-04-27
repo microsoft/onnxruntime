@@ -440,7 +440,7 @@ namespace OperatorHelper
             // if pads are not specified, assume all pad values are 0
             if (pads.empty())
             {
-                pads.resize(2 * spatialDimensionCount);
+                pads.resize(2 * static_cast<uint64_t>(spatialDimensionCount));
             }
 
             ML_CHECK_VALID_ARGUMENT(pads.size() >= 2 * spatialDimensionCount);

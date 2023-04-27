@@ -46,7 +46,7 @@
 #include "core/providers/nnapi/nnapi_provider_factory_creator.h"
 #endif
 
-#if defined(USE_JS)
+#if defined(USE_JSEP)
 #include "core/providers/js/js_provider_factory_creator.h"
 #endif
 
