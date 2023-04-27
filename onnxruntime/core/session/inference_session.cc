@@ -492,10 +492,17 @@ common::Status InferenceSession::RegisterExecutionProvider(const std::shared_ptr
   if (provider_type == onnxruntime::kDmlExecutionProvider) {
     // DML's memory is not byte addressable and hence mem pattern doesn't work.
     if (session_options_.enable_mem_pattern) {
-      LOGS(*session_logger_, WARNING)
-          << "Having memory pattern enabled is not supported while using the DML Execution Provider. "
-          << "So disabling it for this session since it uses the DML Execution Provider.";
       session_options_.enable_mem_pattern = false;
+    }
+
+    // Default this option to true when the DML EP is registered.
+    // This should be removed if QDQ is supported for DML through QDQSelectorActionTransformer and the DML EP does not 
+    // rely on the constant folding pass for DequantizeLinear.
+    if (session_options_.config_options.GetConfigEntry(kOrtSessionOptionsDisableQuantQDQ) == std::nullopt) {
+        auto st = session_options_.config_options.AddConfigEntry(kOrtSessionOptionsDisableQuantQDQ, "1");
+        if (!st.IsOK()) {
+            return st;
+        }
     }
 
     // Parallel execution mode does not support DML EP
