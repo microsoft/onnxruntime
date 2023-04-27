@@ -1215,14 +1215,20 @@ def update_decoder_subgraph_share_buffer_and_use_decoder_masked_mha(subg: GraphP
     ]
 
     #hacking
+    squeeze_node = onnx.helper.make_node(
+        "Squeeze",
+        ["past_sequence_length"],
+        ["past_sequence_length_squeezed"],
+        name="past_sequence_length_cast_squeeze"
+    )
     cast_node = onnx.helper.make_node(
         "Cast",
-        ["past_sequence_length"],
-        ["d_/decoder/model/decoder/Gather_1_output_0"],
+        ["past_sequence_length_squeezed"],
+        ["/decoder/model/decoder/Gather_1_output_0"],
         name="past_sequence_length_cast_renamed",
         to=TensorProto.INT64,
     )
-    new_nodes.extend([cast_node])
+    new_nodes.extend([squeeze_node, cast_node])
 
     for node in subg.node:
         if len(node.output) > 0 and rel_pos_bias_node is not None and node.output[0] == rel_pos_bias_node.input[1]:

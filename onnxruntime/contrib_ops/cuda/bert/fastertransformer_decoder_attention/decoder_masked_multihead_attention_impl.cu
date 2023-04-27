@@ -165,39 +165,12 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiHeadAttentio
   int qk_bias_offset = hi * head_size + tidx * QK_VEC_SIZE;
 
   // Trigger the loads from the Q and K bias buffers.
-  if (params.q_bias) {
+  if (params.q_bias && !is_masked) {
     Qk_vec_k q_bias;
 
-    zero(q_bias);
-
-    if (!is_masked) {
-      q_bias = vec_conversion<Qk_vec_k, Qk_vec_m>(*reinterpret_cast<const Qk_vec_m*>(&reinterpret_cast<T*>(params.q_bias)[qk_bias_offset]));
-    }
+    q_bias = vec_conversion<Qk_vec_k, Qk_vec_m>(*reinterpret_cast<const Qk_vec_m*>(&reinterpret_cast<T*>(params.q_bias)[qk_bias_offset]));
 
     q = add_vec(q, q_bias);
-  }
-
-
-  Qk_vec_k k;
-
-  if (!params.is_cross_attention) {
-    zero(k);
-
-    if (!is_masked) {
-      k = vec_conversion<Qk_vec_k, Qk_vec_m>(*reinterpret_cast<const Qk_vec_m*>(&reinterpret_cast<T*>(params.k)[qk_offset]));
-    }
-
-    if (params.k_bias) {
-      Qk_vec_k k_bias;
-
-      zero(k_bias);
-
-      if (!is_masked) {
-        k_bias = vec_conversion<Qk_vec_k, Qk_vec_m>(*reinterpret_cast<const Qk_vec_m*>(&reinterpret_cast<T*>(params.k_bias)[qk_bias_offset]));
-      }
-
-      k = add_vec(k, k_bias);
-    }
   }
 
 
@@ -211,6 +184,22 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiHeadAttentio
   }
 
   if (!params.is_cross_attention) {
+    Qk_vec_k k;
+
+    zero(k);
+
+    if (!is_masked) {
+      k = vec_conversion<Qk_vec_k, Qk_vec_m>(*reinterpret_cast<const Qk_vec_m*>(&reinterpret_cast<T*>(params.k)[qk_offset]));
+
+      if (params.k_bias) {
+        Qk_vec_k k_bias;
+
+        k_bias = vec_conversion<Qk_vec_k, Qk_vec_m>(*reinterpret_cast<const Qk_vec_m*>(&reinterpret_cast<T*>(params.k_bias)[qk_bias_offset]));
+
+        k = add_vec(k, k_bias);
+      }
+    }
+
     if (!is_masked) {
       // Write the K values to the global memory cache.
       // NOTE: The stores are uncoalesced as we have multiple chunks of 16B spread across the memory
@@ -448,7 +437,7 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiHeadAttentio
 
   // One group of threads computes the product(s) for the current timestep.
   V_vec_k v_bias;
-  if (params.v_bias) {
+  if (params.v_bias && !params.is_cross_attention) {
     zero(v_bias);
 
     T* params_v_bias = reinterpret_cast<T*>(params.v_bias);

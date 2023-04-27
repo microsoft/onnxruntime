@@ -149,6 +149,9 @@ Status DecoderMaskedMultiHeadAttention<T1, T2>::ComputeInternal(OpKernelContext*
     // parameters.k and paraneters.v are nullptr
     parameters.k_cache = const_cast<T1*>(key->Data<T1>());
     parameters.v_cache = const_cast<T1*>(value->Data<T1>());
+    parameters.k_bias = nullptr;
+    parameters.v_bias = nullptr;
+
   } else {
     // Sanity check
     ORT_ENFORCE(past_present_share_buffer_);
