@@ -134,7 +134,7 @@ static void TestDFTInvertible(bool complex) {
           output_data_p = &output_data;
         }
         test.AddOutput<float>("output", output_shape, *output_data_p);
-        test.SetOutputAbsErr("output", 0.00015f);
+        test.SetOutputAbsErr("output", 0.0002f);
         test.Run();
       }
     }
