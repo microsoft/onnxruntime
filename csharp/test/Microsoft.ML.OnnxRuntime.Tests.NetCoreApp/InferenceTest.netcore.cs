@@ -28,6 +28,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             return str.IndexOf(substring, comp) >= 0;
         }
     }
+
     public partial class InferenceTest
     {
         private const string module = "onnxruntime.dll";
@@ -67,7 +68,6 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         }
 
 #if USE_CUDA
-
         [Fact(DisplayName = "TestCUDAProviderOptions")]
         private void TestCUDAProviderOptions()
         {
@@ -925,6 +925,40 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 
                 // Safe to unload the custom op shared library now
                 UnloadLibrary(libraryHandle);
+            }
+        }
+
+        // test registration by the alternative function name in the custom ops library.
+        // We use DllImport and Marshal.Prelink to make sure the library is loaded and
+        // the symbol is available.
+        internal static class CustomOpLibrary
+        {
+            internal const string ExtensionsDllName = "custom_op_library";
+
+            [DllImport(ExtensionsDllName, CharSet = CharSet.Ansi,
+                       CallingConvention = CallingConvention.Winapi)]
+            public static extern IntPtr /* OrtStatus* */ RegisterCustomOpsAltName(
+                IntPtr /* OrtSessionOptions* */ sessionOptions,
+                ref OrtApiBase /* OrtApiBase* */ ortApiBase);
+        }
+
+        [SkipNonPackageTests(DisplayName = "TestRegisterCustomOpsWithFunction")]
+        private void TestRegisterCustomOpsWithFunction()
+        {
+            using (var option = new SessionOptions())
+            {
+                try
+                {
+                    Marshal.Prelink(typeof(CustomOpLibrary).GetMethod("RegisterCustomOpsAltName"));
+                    option.RegisterCustomOpsUsingFunction("RegisterCustomOpsAltName");
+                }
+                catch (Exception ex)
+                {
+                    var msg = $"Failed to load custom op library, error = {ex.Message}";
+                    throw new Exception(msg + "\n" + ex.StackTrace);
+                }
+
+                ValidateModelWithCustomOps(option);
             }
         }
 
