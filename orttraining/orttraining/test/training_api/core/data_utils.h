@@ -3,14 +3,15 @@
 
 #pragma once
 
+#include <random>
 #include <vector>
 
 #include "core/framework/ort_value.h"
 #include "core/framework/tensor.h"
+#include "test/framework/test_utils.h"
+#include "test/util/include/test_utils.h"
 
-namespace onnxruntime {
-namespace training {
-namespace test {
+namespace onnxruntime::training::test {
 
 template <typename T>
 void OrtValueToVec(const OrtValue& val, std::vector<T>& output) {
@@ -39,6 +40,22 @@ void CudaOrtValueToCpuVec(const OrtValue& val, std::vector<T>& output,
   output.assign(val_ptr, val_ptr + src_tensor.Shape().Size());
 }
 
-}  // namespace test
-}  // namespace training
-}  // namespace onnxruntime
+inline void GenerateRandomData(std::vector<float>& data) {
+  float scale = 1.f;
+  float mean = 0.f;
+  float seed = 123.f;
+
+  std::default_random_engine generator_float{gsl::narrow_cast<uint32_t>(seed)};
+  std::normal_distribution<float> distribution_float{mean, scale};
+  std::for_each(data.begin(), data.end(),
+                [&generator_float, &distribution_float](float& value) { value = distribution_float(generator_float); });
+}
+
+inline void GenerateRandomInput(gsl::span<const int64_t> dims, OrtValue& input) {
+  TensorShape shape(dims);
+  std::vector<float> data(shape.Size());
+  GenerateRandomData(data);
+  onnxruntime::test::CreateInputOrtValueOnCPU<float>(dims, data, &input);
+}
+
+}  // namespace onnxruntime::training::test

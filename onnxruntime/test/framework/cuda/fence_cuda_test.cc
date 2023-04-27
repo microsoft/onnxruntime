@@ -107,7 +107,7 @@ TEST(CUDAFenceTests, DISABLED_PartOnCPU) {
   TensorShape shape({2, 2});
   float data[4] = {-1, 2, 3, -4};
 
-  //create fake ml value with owned buffer.
+  // create fake ml value with owned buffer.
   OrtValue value;
   Tensor::InitOrtValue(element_type, shape, cpu_allocator, value);
   memcpy(value.GetMutable<Tensor>()->MutableData<float>(), data, sizeof(data));
@@ -153,14 +153,13 @@ TEST(CUDAFenceTests, TileWithInitializer) {
   TensorShape shape({2, 2});
   float data[4] = {-1, 2, 3, -4};
 
-  //create fake ml value with owned buffer.
+  // create fake ml value with owned buffer.
   OrtValue value;
   Tensor::InitOrtValue(element_type,
                        shape,
                        cpu_allocator,
                        value);
   memcpy(value.GetMutable<Tensor>()->MutableData<float>(), data, sizeof(data));
-
 
   SessionOptions so;
   FenceCudaTestInferenceSession session(so, GetEnvironment());
@@ -214,7 +213,7 @@ TEST(CUDAFenceTests, TileWithComputedInput) {
   TensorShape shape({2, 2});
   float data[4] = {-1, 2, 3, -4};
 
-  //create fake ml value with owned buffer.
+  // create fake ml value with owned buffer.
   OrtValue value;
   Tensor::InitOrtValue(element_type,
                        shape,

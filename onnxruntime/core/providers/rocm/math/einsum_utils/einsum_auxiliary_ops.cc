@@ -26,8 +26,8 @@ Status DataCopy(const Tensor& input, Tensor& output, void* einsum_rocm_assets) {
               "Einsum op: The candidate output does not match the actual output's shape");
   // There are no string tensors in Einsum's case - so safely use memcpy
   HIP_RETURN_IF_ERROR(hipMemcpyAsync(output.MutableDataRaw(), input.DataRaw(), input.SizeInBytes(),
-                                       hipMemcpyDeviceToDevice,
-                                       static_cast<EinsumRocmAssets*>(einsum_rocm_assets)->GetRocmStream()));
+                                     hipMemcpyDeviceToDevice,
+                                     static_cast<EinsumRocmAssets*>(einsum_rocm_assets)->GetRocmStream()));
 
   return Status::OK();
 }

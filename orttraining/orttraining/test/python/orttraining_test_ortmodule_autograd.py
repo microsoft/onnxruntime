@@ -126,7 +126,7 @@ def test_gelu_custom_func_rets_not_as_module_output():
         def forward(self, model_input):
             out = self.relu(model_input, self.bias)
             # add * 9 by intention to make custom function's output
-            # NOT as module outputs (which are consumed by subsquent computations).
+            # NOT as module outputs (which are consumed by subsequent computations).
             # This aims to trigger a GC for "out", saying, out is released,
             # the underlying std::shared<PyNode> still have other references.
             # Otherwise, a segment fault will be triggered.

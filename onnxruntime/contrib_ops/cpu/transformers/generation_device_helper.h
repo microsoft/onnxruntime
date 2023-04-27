@@ -39,6 +39,10 @@ using ReorderPastStateFunc = std::function<Status(
     Tensor& past_state_staging,
     Stream* stream)>;  // cublasHandle_t
 
+using InitCacheIndirFunc = std::function<Status(
+    Tensor& cache_indir,
+    Stream* stream)>;
+
 using TopkFunc = std::function<Status(
     const Tensor* input, const int axis, const unsigned k, bool largest, bool sorted,
     AllocatorPtr allocator,
@@ -328,7 +332,6 @@ Status CreateWhisperEncoderInputs(
     OrtValue& encoder_input_ids,
     OrtValue& encoder_attention_mask,
     OrtValue& decoder_input_ids);
-
 
 // ---------------------------------------------------------------
 // Utility Functions

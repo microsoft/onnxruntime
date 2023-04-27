@@ -16,7 +16,7 @@ stages:
       OnnxruntimeCFlags: '-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all'
       OnnxruntimeCXXFlags: '-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all'
       OnnxruntimeNodejsBindingArch: 'x64'
-      PoolName: 'Linux-CPU'
+      PoolName: 'aiinfra-Linux-CPU'
   - template: c-api-linux-cpu.yml
     parameters:
       AdditionalBuildFlags: ${{ parameters.AdditionalBuildFlags }}

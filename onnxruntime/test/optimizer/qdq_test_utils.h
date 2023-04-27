@@ -187,7 +187,7 @@ GetQDQTestCaseFn BuildQDQReduceOpTestCase(const std::string& reduce_op_type, con
     auto* q_output = builder.MakeIntermediate();
     builder.AddQuantizeLinearNode<QuantType>(reduce_sum_output, .039f,
                                              (QuantTypeLimits::min() + QuantTypeLimits::max()) / 2 + 1,
-                                              q_output);
+                                             q_output);
 
     builder.AddDequantizeLinearNode<QuantType>(q_output, .039f,
                                                (QuantTypeLimits::min() + QuantTypeLimits::max()) / 2 + 1,
@@ -207,7 +207,6 @@ GetQDQTestCaseFn BuildQDQGatherOpTestCase(const std::vector<int64_t>& input_shap
                                           const std::vector<int64_t>& indices_shape,
                                           int64_t axis) {
   return [input_shape, indices, indices_shape, axis](ModelTestBuilder& builder) {
-
     auto* input_data = builder.MakeInput<float>(input_shape, -1.0f, 1.0f);
     auto* final_output = builder.MakeOutput();
 
@@ -570,7 +569,7 @@ GetQDQTestCaseFn BuildConsolidationTestCase(
     const std::vector<int64_t>& input_shape,
     const int64_t& axis) {
   return [input_shape, axis](ModelTestBuilder& builder) {
-    auto* input_arg = builder.MakeInput<float>(input_shape,std::numeric_limits<float>::min(),std::numeric_limits<float>::max());
+    auto* input_arg = builder.MakeInput<float>(input_shape, std::numeric_limits<float>::min(), std::numeric_limits<float>::max());
     InputType dq_zp = std::numeric_limits<InputType>::max() / 2;
     OutputType q_zp = std::numeric_limits<OutputType>::max() / 2;
     auto* upper_dq_output = builder.MakeIntermediate();
@@ -683,17 +682,15 @@ template <typename InputType>
 GetQDQTestCaseFn BuildQDQWhereTestCase(
     const std::vector<int64_t>& cond_shape,
     const std::vector<int64_t>& x_shape,
-    const std::vector<int64_t>& y_shape
-    ) {
-  return [cond_shape,x_shape,y_shape](ModelTestBuilder& builder)
-  {
+    const std::vector<int64_t>& y_shape) {
+  return [cond_shape, x_shape, y_shape](ModelTestBuilder& builder) {
     auto* input_cond_arg = builder.MakeInputBool(cond_shape);
     auto* input_x_arg = builder.MakeInput<InputType>(x_shape,
-                                                   std::numeric_limits<InputType>::min(),
-                                                   std::numeric_limits<InputType>::max());
+                                                     std::numeric_limits<InputType>::min(),
+                                                     std::numeric_limits<InputType>::max());
     auto* input_y_arg = builder.MakeInput<InputType>(y_shape,
-                                                   std::numeric_limits<InputType>::min(),
-                                                   std::numeric_limits<InputType>::max());
+                                                     std::numeric_limits<InputType>::min(),
+                                                     std::numeric_limits<InputType>::max());
     InputType zp = std::numeric_limits<InputType>::max() / 2;
     constexpr float scale = 0.003f;
     auto* dq_x_output = builder.MakeIntermediate();
@@ -703,7 +700,7 @@ GetQDQTestCaseFn BuildQDQWhereTestCase(
     // add Where
 
     auto* where_output = builder.MakeIntermediate();
-    builder.AddNode("Where", {input_cond_arg,dq_x_output,dq_y_output}, {where_output});
+    builder.AddNode("Where", {input_cond_arg, dq_x_output, dq_y_output}, {where_output});
 
     // add Q
     auto* q_where_output = builder.MakeOutput();

@@ -28,7 +28,7 @@ namespace Microsoft.ML.OnnxRuntime
         {
             if (NativeTrainingMethods.TrainingEnabled())
             {
-                var envHandle = OrtEnv.Handle; // just so it is initialized
+                var envHandle = OrtEnv.Instance().Handle; // just so it is initialized
                 LoadCheckpoint(checkpointPath);
             }
             else
@@ -50,6 +50,16 @@ namespace Microsoft.ML.OnnxRuntime
         private void LoadCheckpoint(string checkpointPath)
         {
             NativeApiStatus.VerifySuccess(NativeTrainingMethods.OrtLoadCheckpoint(NativeOnnxValueHelper.GetPlatformSerializedString(checkpointPath), out handle));
+        }
+
+        /// <summary>
+        /// Saves the checkpoint
+        /// <param name="checkpointPath"> absolute path to the checkpoint file.</param>
+        /// <param name="includeOptimizerState"> absolute path to the checkpoint file.</param>
+        /// </summary>
+        public void SaveCheckpoint(string checkpointPath, bool includeOptimizerState = false)
+        {
+            NativeApiStatus.VerifySuccess(NativeTrainingMethods.OrtSaveCheckpoint(handle, NativeOnnxValueHelper.GetPlatformSerializedString(checkpointPath), includeOptimizerState));
         }
 
 #region SafeHandle

@@ -106,6 +106,18 @@ ORT_API_STATUS_IMPL(OrtApis::KernelContext_GetGPUComputeStream, _In_ const OrtKe
   API_IMPL_END
 };
 
+ORT_API_STATUS_IMPL(OrtApis::KernelContext_GetAllocator, _In_ const OrtKernelContext* context, _In_ const OrtMemoryInfo* mem_info, _Outptr_ OrtAllocator** out) {
+  API_IMPL_BEGIN
+  onnxruntime::AllocatorPtr allocator = reinterpret_cast<const onnxruntime::OpKernelContext*>(context)->GetAllocator(*mem_info);
+  if (!allocator) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "No requested allocator available");
+  }
+  std::unique_ptr<onnxruntime::OrtAllocatorImplWrappingIAllocator> p = std::make_unique<onnxruntime::OrtAllocatorImplWrappingIAllocator>(std::move(allocator));
+  *out = p.release();
+  return nullptr;
+  API_IMPL_END
+};
+
 #ifdef _WIN32
 #pragma warning(pop)
 #endif
@@ -256,7 +268,9 @@ ORT_API_STATUS_IMPL(OrtApis::KernelInfo_GetInputTypeInfo, _In_ const OrtKernelIn
     return OrtApis::CreateStatus(ORT_INVALID_GRAPH, "::OrtKernelInfo input does not have a type");
   }
 
-  return OrtTypeInfo::FromTypeProto(type_proto, type_info);
+  auto type_info_ret = OrtTypeInfo::FromTypeProto(*type_proto);
+  *type_info = type_info_ret.release();
+  return nullptr;
   API_IMPL_END
 }
 
@@ -277,7 +291,9 @@ ORT_API_STATUS_IMPL(OrtApis::KernelInfo_GetOutputTypeInfo, _In_ const OrtKernelI
     return OrtApis::CreateStatus(ORT_INVALID_GRAPH, "::OrtKernelInfo output does not have a type");
   }
 
-  return OrtTypeInfo::FromTypeProto(type_proto, type_info);
+  auto type_info_ret = OrtTypeInfo::FromTypeProto(*type_proto);
+  *type_info = type_info_ret.release();
+  return nullptr;
   API_IMPL_END
 }
 
@@ -313,7 +329,8 @@ ORT_API_STATUS_IMPL(OrtApis::KernelInfo_GetLogger, _In_ const OrtKernelInfo* inf
   const auto* ep_logger = ep->GetLogger();
 
   if (ep_logger == nullptr) {
-    return OrtApis::CreateStatus(ORT_INVALID_GRAPH, "::OrtKernelInfo cannot get a valid logger from "
+    return OrtApis::CreateStatus(ORT_INVALID_GRAPH,
+                                 "::OrtKernelInfo cannot get a valid logger from "
                                  "its execution provider");
   }
 
@@ -352,7 +369,9 @@ ORT_API_STATUS_IMPL(OrtApis::Logger_LogMessage, _In_ const OrtLogger* logger, Or
         severity,
         onnxruntime::logging::Category::onnxruntime,
         log_data_type,
-        location).Stream() << message;
+        location)
+            .Stream()
+        << message;
   }
 
   return nullptr;
@@ -489,12 +508,12 @@ common::Status CreateCustomRegistry(gsl::span<OrtCustomOpDomain* const> op_domai
         const auto type = op->GetOutputType(op, i);
         if (ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED == type) {  // Dynamic typed output
           if (op->GetOutputCharacteristic(op, i) == OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_REQUIRED) {
-              ORT_ENFORCE(type_id_counter == 1,
-                          "There must be one (and only one) dynamic typed input to the custom op. "
-                          "Its type info at runtime will be used to infer the type info of this dynamic typed output "
-                          "which is required for the success of the model loading step. "
-                          "More than one dynamic typed inputs are currently not supported as differing types at runtime means the output type "
-                          "cannot be inferred without which model loading cannot proceed.");
+            ORT_ENFORCE(type_id_counter == 1,
+                        "There must be one (and only one) dynamic typed input to the custom op. "
+                        "Its type info at runtime will be used to infer the type info of this dynamic typed output "
+                        "which is required for the success of the model loading step. "
+                        "More than one dynamic typed inputs are currently not supported as differing types at runtime means the output type "
+                        "cannot be inferred without which model loading cannot proceed.");
           }
 
           schema.Output(i, "Output" + std::to_string(i), "", "T0", option, is_homogeneous, min_arity);

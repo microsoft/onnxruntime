@@ -66,8 +66,8 @@ void ConfigureGatherGradRandomDataOpTester(
   const auto output = CalculateOutput(axis, X_shape, grad, indices);
 
   test.AddAttribute<int64_t>("axis", axis);
-  //auto shape_dims = X_shape.GetDims();
-  //std::vector<int64_t> v_dims(shape_dims.cbegin(), shape_dims.cend());
+  // auto shape_dims = X_shape.GetDims();
+  // std::vector<int64_t> v_dims(shape_dims.cbegin(), shape_dims.cend());
   test.AddInput<int64_t>(
       "shape", {static_cast<int64_t>(X_shape.NumDimensions())}, X_shape.AsShapeVector());
   test.AddInput<int64_t>("indices", indices_shape.AsShapeVector(), indices);
@@ -100,7 +100,7 @@ void RunGatherGradTestWithRandomData(
 }  // namespace
 
 #if defined(USE_CUDA) || defined(USE_ROCM)
-//TODO: Currently this cannot pass CI, due to GPU architecture problem
+// TODO: Currently this cannot pass CI, due to GPU architecture problem
 TEST(GatherOpTest, Gather_axis0_indices2d_half) {
 #ifdef USE_CUDA
   if (NeedSkipIfCudaArchLowerThan(700)) {

@@ -3,7 +3,7 @@
 
 // The optimization here ideally is applicable to both training and inferencing,
 // while so far we mainly validate on training during cooking the optimization.
-#ifdef ENABLE_TRAINING_CORE
+#ifdef ENABLE_TRAINING
 #pragma once
 
 #include <initializer_list>
@@ -155,6 +155,24 @@ enum class DimCompare {
 std::pair<bool, std::vector<DimCompare>> CompareInputShapeWithOutputShape(
     const ONNX_NAMESPACE::TensorShapeProto* full_broadcasted_shape,
     const ONNX_NAMESPACE::TensorShapeProto* target_shape);
+
+/**
+ * @brief Get opset version from the graph.
+ */
+int GetONNXOpSetVersion(const Graph& graph);
+
+/**
+ * @brief Create an initializer from given dims/value vector and name.
+ *
+ * @param dims A int vector as the shape of the created initializer. If we want to create a scalar initializer,
+ *   we should pass an empty vector.
+ * @param values A int vector containing the value buffer.
+ */
+
+NodeArg* CreateInitializerFromVector(Graph& graph,
+                                     const InlinedVector<int64_t>& dims,
+                                     const InlinedVector<int64_t>& values,
+                                     const std::string& name);
 
 }  // namespace onnxruntime::optimizer::compute_optimizer
 #endif

@@ -189,7 +189,7 @@ class PackingMode:
 
 def _parse_arguments():
     parser = argparse.ArgumentParser(
-        description="Convert to packing mode tool for ONNX Runtime." "It converts BERT like model to use packing mode."
+        description="Convert to packing mode tool for ONNX Runtime. It converts BERT like model to use packing mode."
     )
     parser.add_argument("--input", required=True, type=str, help="input onnx model path")
 

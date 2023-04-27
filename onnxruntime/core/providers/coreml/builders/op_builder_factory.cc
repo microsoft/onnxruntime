@@ -15,8 +15,12 @@ namespace coreml {
 static OpBuilderRegistrations CreateOpBuilderRegistrations() {
   OpBuilderRegistrations op_registrations;
 
-  {  // Add
+  {  // Add/Mul/Pow/Sub/Div
     CreateBinaryOpBuilder("Add", op_registrations);
+    CreateBinaryOpBuilder("Mul", op_registrations);
+    CreateBinaryOpBuilder("Pow", op_registrations);
+    CreateBinaryOpBuilder("Sub", op_registrations);
+    CreateBinaryOpBuilder("Div", op_registrations);
   }
 
   {  // Activations

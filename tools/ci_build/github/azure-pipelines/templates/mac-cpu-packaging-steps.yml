@@ -32,14 +32,25 @@ parameters:
   type: string
   default: ''
 
+- name: Today
+  type: string
+  default: ""
+
 steps:
-- script: |
-    rm -rf $(Build.BinariesDirectory)/Release
-    python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --update --build ${{ parameters.AdditionalBuildFlags }} --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --parallel --build_shared_lib --config Release
-  displayName: 'Build ${{ parameters.MacosArch }}'
-  ${{ if eq(parameters.WithCache, true) }}:
-    env:
-      CCACHE_DIR: ${{ parameters.CacheDir }}
+- template: mac-build-step-with-cache.yml
+  parameters:
+    WithCache: ${{ parameters.WithCache }}
+    Today: ${{ parameters.Today }}
+    AdditionalKey: onnxruntime_${{ parameters.MacosArch }}
+    CacheDir: ${{ parameters.CacheDir }}
+    ChangeEveryCommit: true
+    BuildStep:
+      - script: |
+          rm -rf $(Build.BinariesDirectory)/Release
+          python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --update --build ${{ parameters.AdditionalBuildFlags }} --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --parallel --build_shared_lib --config Release
+        displayName: 'Build ${{ parameters.MacosArch }}'
+        env:
+          CCACHE_DIR: ${{ parameters.CacheDir }}
 
 - ${{ if eq(parameters.MacosArch, 'x86_64') }}:
   - script: |

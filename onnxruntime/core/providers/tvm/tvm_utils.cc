@@ -9,7 +9,6 @@
 
 #include "tvm_utils.h"  // NOLINT(build/include_subdir)
 
-
 namespace onnxruntime {
 namespace tvm {
 
@@ -22,11 +21,11 @@ std::string readFromFile(const std::string& file_path) {
   t.seekg(0, std::ios::beg);
 
   str.assign((std::istreambuf_iterator<char>(t)),
-              std::istreambuf_iterator<char>());
+             std::istreambuf_iterator<char>());
   return str;
 }
 
-}   // namespace tvm
-}   // namespace onnxruntime
+}  // namespace tvm
+}  // namespace onnxruntime
 
 #endif  // TVM_UTILS_H
