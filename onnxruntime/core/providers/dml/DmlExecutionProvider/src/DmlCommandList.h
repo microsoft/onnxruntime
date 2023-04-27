@@ -3,7 +3,6 @@
 
 #pragma once
 
-#include "ICommandRecorder.h"
 #include "CommandAllocatorRing.h"
 
 namespace Dml
@@ -11,12 +10,12 @@ namespace Dml
     class CommandQueue;
     class BucketizedBufferAllocator;
 
-    class DmlCommandRecorder : public ICommandRecorder
+    class DmlCommandList
     {
     public:
-        DmlCommandRecorder(
+        DmlCommandList(
             ID3D12Device* d3dDevice,
-            IDMLDevice* device, 
+            IDMLDevice* device,
             std::shared_ptr<CommandQueue> commandQueue);
 
         void InitializeOperator(
@@ -47,16 +46,16 @@ namespace Dml
             _Out_ uint64_t* completionValue);
 
         ComPtr<ID3D12GraphicsCommandList> GetCommandList();
-        
+
         void ResourceBarrier(gsl::span<const D3D12_RESOURCE_BARRIER> barriers);
         void AddUAVBarrier();
 
-        void Open() final;
-        void CloseAndExecute() final;
-        
+        void Open();
+        void CloseAndExecute();
+
         void SetAllocator(std::weak_ptr<BucketizedBufferAllocator> allocator);
 
-        bool HasUnsubmittedWork() override
+        bool HasUnsubmittedWork()
         {
             return m_operationsRecordedInCurrentCommandList || !m_pendingCommandLists.empty();
         }
@@ -89,7 +88,7 @@ namespace Dml
         ComPtr<ID3D12GraphicsCommandList> m_currentCommandList;
         bool m_operationsRecordedInCurrentCommandList = false;
 
-        // Command lists which have been batched up for execution.  The values in 
+        // Command lists which have been batched up for execution.  The values in
         // m_pendingCommandListsCacheable indicate whether they can be moved into this
         // class's cache after execution, versus if they belong to the caller and were
         // passed to ExecuteCommandList.

@@ -191,7 +191,7 @@ namespace Dml::GraphDescBuilder
         std::vector<DML_OUTPUT_GRAPH_EDGE_DESC> graphOutputEdges;
 
         // Avoid using separate command lists for small graphs. This value can be reduced by tuning the
-        // flushing behavior of DmlCommandRecorder.  Its current behavior is to assume that graphs contain
+        // flushing behavior of DmlCommandList.  Its current behavior is to assume that graphs contain
         // enough GPU work to be worth flushing immediately.
         const uint32_t minNodeCountToReuseCommandList = 5;
         bool reuseCommandList = false;

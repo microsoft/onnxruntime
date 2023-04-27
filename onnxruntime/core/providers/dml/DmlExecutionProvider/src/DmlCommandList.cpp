@@ -2,15 +2,15 @@
 // Licensed under the MIT License.
 
 #include "precomp.h"
-#include "DmlCommandRecorder.h"
+#include "DmlCommandList.h"
 #include "CommandQueue.h"
 #include "BucketizedBufferAllocator.h"
 
 using namespace Dml;
 
-DmlCommandRecorder::DmlCommandRecorder(
+DmlCommandList::DmlCommandList(
     ID3D12Device* d3dDevice,
-    IDMLDevice* dmlDevice, 
+    IDMLDevice* dmlDevice,
     std::shared_ptr<CommandQueue> commandQueue)
     : m_queue(std::move(commandQueue)),
       m_d3dDevice(d3dDevice),
@@ -22,12 +22,12 @@ DmlCommandRecorder::DmlCommandRecorder(
     ORT_THROW_IF_FAILED(dmlDevice->CreateCommandRecorder(IID_PPV_ARGS(&m_recorder)));
 }
 
-void DmlCommandRecorder::SetAllocator(std::weak_ptr<BucketizedBufferAllocator> allocator)
+void DmlCommandList::SetAllocator(std::weak_ptr<BucketizedBufferAllocator> allocator)
 {
     m_bufferAllocator = allocator;
 }
 
-void DmlCommandRecorder::InitializeOperator(
+void DmlCommandList::InitializeOperator(
     IDMLCompiledOperator* op,
     const DML_BINDING_DESC& persistentResourceBinding,
     const DML_BINDING_DESC& inputArrayBinding)
@@ -106,7 +106,7 @@ void DmlCommandRecorder::InitializeOperator(
     }
 }
 
-void DmlCommandRecorder::ExecuteOperator(
+void DmlCommandList::ExecuteOperator(
     IDMLCompiledOperator* op,
     const DML_BINDING_DESC& persistentResourceBinding,
     gsl::span<const DML_BINDING_DESC> inputBindings,
@@ -173,7 +173,7 @@ void DmlCommandRecorder::ExecuteOperator(
     #pragma warning(pop)
 }
 
-void DmlCommandRecorder::CopyBufferRegion(
+void DmlCommandList::CopyBufferRegion(
     ID3D12Resource* dstBuffer,
     uint64_t dstOffset,
     ID3D12Resource* srcBuffer,
@@ -183,8 +183,8 @@ void DmlCommandRecorder::CopyBufferRegion(
     m_currentCommandList->CopyBufferRegion(dstBuffer, dstOffset, srcBuffer, srcOffset, byteCount);
     m_operationsRecordedInCurrentCommandList = true;
 }
-    
-void DmlCommandRecorder::FillBufferWithPattern(
+
+void DmlCommandList::FillBufferWithPattern(
     ID3D12Resource* dstBuffer,
     gsl::span<const std::byte> value /* Data type agnostic value, treated as raw bits */)
 {
@@ -245,16 +245,16 @@ void DmlCommandRecorder::FillBufferWithPattern(
     #pragma warning(pop)
 }
 
-void DmlCommandRecorder::ExecuteCommandList(
+void DmlCommandList::ExecuteCommandList(
     ID3D12GraphicsCommandList* commandList,
     _Outptr_ ID3D12Fence** fence,
     _Out_ uint64_t* completionValue
     )
-{    
+{
     ORT_THROW_IF_FAILED(m_currentCommandList->Close());
 
     if (m_operationsRecordedInCurrentCommandList)
-    {            
+    {
         m_pendingCommandLists.push_back(m_currentCommandList.Get());
         m_pendingCommandListsCacheable.push_back(true);
     }
@@ -289,28 +289,28 @@ void DmlCommandRecorder::ExecuteCommandList(
     SetDescriptorHeap(heap);
 }
 
-ComPtr<ID3D12GraphicsCommandList> DmlCommandRecorder::GetCommandList()
-{ 
+ComPtr<ID3D12GraphicsCommandList> DmlCommandList::GetCommandList()
+{
     // Assume operations are added by the caller after this returns
-    m_operationsRecordedInCurrentCommandList = true; 
-    return m_currentCommandList; 
+    m_operationsRecordedInCurrentCommandList = true;
+    return m_currentCommandList;
 }
 
-void DmlCommandRecorder::ResourceBarrier(gsl::span<const D3D12_RESOURCE_BARRIER> barriers)
+void DmlCommandList::ResourceBarrier(gsl::span<const D3D12_RESOURCE_BARRIER> barriers)
 {
     m_currentCommandList->ResourceBarrier(gsl::narrow_cast<uint32_t>(barriers.size()), barriers.data());
-    m_operationsRecordedInCurrentCommandList = true; 
+    m_operationsRecordedInCurrentCommandList = true;
 }
 
-void DmlCommandRecorder::AddUAVBarrier()
+void DmlCommandList::AddUAVBarrier()
 {
     #pragma warning(suppress: 6387)
     auto barrier = CD3DX12_RESOURCE_BARRIER::UAV(nullptr);
     m_currentCommandList->ResourceBarrier(1, &barrier);
-    m_operationsRecordedInCurrentCommandList = true; 
+    m_operationsRecordedInCurrentCommandList = true;
 }
 
-void DmlCommandRecorder::Open()
+void DmlCommandList::Open()
 {
     assert(m_currentDescriptorHeap == nullptr);
 
@@ -323,7 +323,7 @@ void DmlCommandRecorder::Open()
             m_queue->GetType(),
             allocator,
             nullptr,
-            IID_GRAPHICS_PPV_ARGS(m_currentCommandList.ReleaseAndGetAddressOf())));   
+            IID_GRAPHICS_PPV_ARGS(m_currentCommandList.ReleaseAndGetAddressOf())));
     }
     else
     {
@@ -333,12 +333,12 @@ void DmlCommandRecorder::Open()
     }
 }
 
-void DmlCommandRecorder::CloseAndExecute()
+void DmlCommandList::CloseAndExecute()
 {
     ORT_THROW_IF_FAILED(m_currentCommandList->Close());
 
     if (m_operationsRecordedInCurrentCommandList)
-    {            
+    {
         m_pendingCommandLists.push_back(m_currentCommandList.Get());
         m_pendingCommandListsCacheable.push_back(true);
     }
@@ -377,7 +377,7 @@ void DmlCommandRecorder::CloseAndExecute()
     ORT_THROW_IF_FAILED(m_d3dDevice->GetDeviceRemovedReason());
 }
 
-void DmlCommandRecorder::SetDescriptorHeap(ID3D12DescriptorHeap* descriptorHeap)
+void DmlCommandList::SetDescriptorHeap(ID3D12DescriptorHeap* descriptorHeap)
 {
     if (descriptorHeap != nullptr && descriptorHeap != m_currentDescriptorHeap)
     {
