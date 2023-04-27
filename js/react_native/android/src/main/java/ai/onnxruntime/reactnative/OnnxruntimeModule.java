@@ -158,20 +158,21 @@ public class OnnxruntimeModule extends ReactContextBaseJavaModule {
     OrtSession ortSession;
     SessionOptions sessionOptions = parseSessionOptions(options);
 
-    // Optional call for registering custom ops when ort extensions enabled
+    // optional call for registering custom ops when ort extensions enabled
     OnnxruntimeExtensions ortExt = new OnnxruntimeExtensions();
     ortExt.registerOrtExtensionsIfEnabled(sessionOptions);
 
-    if (modelData != null && modelData.length > 0) { // load model via model data array
+    if (modelData != null && modelData.length > 0) {
+      // load model via model data array
       ortSession = ortEnvironment.createSession(modelData, sessionOptions);
-    } else { // load model via model path string uri
+    } else {
+      // load model via model path string uri
       InputStream modelStream =
           reactContext.getApplicationContext().getContentResolver().openInputStream(Uri.parse(uri));
       Reader reader = new BufferedReader(new InputStreamReader(modelStream));
       byte[] modelArray = new byte[modelStream.available()];
       modelStream.read(modelArray);
       modelStream.close();
-
       ortSession = ortEnvironment.createSession(modelArray, sessionOptions);
     }
 
