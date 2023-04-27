@@ -8,10 +8,6 @@ on:
       - gh-pages
   workflow_dispatch:
     
-concurrency:
-  group: "pages"
-  cancel-in-progress: true
-
 jobs:
   checklinks:
     name: Check website links
