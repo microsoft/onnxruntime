@@ -376,6 +376,11 @@ export function parseTestRunnerCliArgs(cmdlineArgs: string[]): TestRunnerCliArgs
     }
   }
 
+  if (backend.includes('webnn') && args['wasm-enable-proxy'] !== 'true') {
+    throw new Error(
+        'backend webnn is restricted in the dedicated worker, set "--wasm-enable-proxy true" to enable proxy worker');
+  }
+
   const globalEnvFlags = parseGlobalEnvFlags(args);
 
   if (backend.includes('webnn') && !globalEnvFlags.wasm.proxy) {
