@@ -1,5 +1,5 @@
 parameters:
-  AgentPool : 'onnxruntime-Linux-CPU-2019'
+  AgentPool : 'onnxruntime-Ubuntu2004-AMD-CPU'
   StageName : 'Linux_CI_Dev'
   SubmoduleCheckoutMode: ''
   RunDockerBuildArgs: '-o ubuntu20.04 -d cpu -x "--build_wheel"'
