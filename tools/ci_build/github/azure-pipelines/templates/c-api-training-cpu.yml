@@ -115,7 +115,7 @@ stages:
   - template: android-java-api-aar.yml
     parameters:
       buildConfig: 'Release'
-      buildSettings: '$(Build.SourcesDirectory)/tools/ci_build/github/android/default_full_training_aar_build_settings.json'
+      buildSettings: '$(Build.SourcesDirectory)/tools/ci_build/github/android/training_full_aar_build_settings.json'
       artifactName: 'onnxruntime-training-android-full-aar'
       job_name_suffix: 'Training_Full'
       publish_executables: '1'

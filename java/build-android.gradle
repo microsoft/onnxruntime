@@ -40,7 +40,7 @@ def defaultDescription = 'ONNX Runtime is a performance-focused inference engine
 	'types and operators, for ONNX format models. All standard ONNX models can be executed with this package. ' +
 	'As such the binary size and memory usage will be larger than the onnxruntime-mobile package.'
 def trainingDescription = 'The ONNX Runtime Training package is a size optimized training + inference engine for ' +
-    'ONNX (Open Neural Network Exchange) models on Android. This package contains the Android (aar) build of ONNX ' +
+	'ONNX (Open Neural Network Exchange) models on Android. This package contains the Android (aar) build of ONNX ' +
 	'Runtime. All standard ONNX models can be executed with this package. ' +
 	'This package enables Learning on The Edge aka On-Device Training for Android. ' +
 	'See https://github.com/microsoft/onnxruntime-training-examples/tree/master/on_device_training for more details.'
