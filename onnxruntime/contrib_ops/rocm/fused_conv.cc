@@ -133,7 +133,7 @@ class FusedConv : public onnxruntime::rocm::Conv<T, false> {
     }
 
     if (fusion_args_) {
-        miopenDestroyOperatorArgs(fusion_args_);
+      miopenDestroyOperatorArgs(fusion_args_);
     }
   }
 
