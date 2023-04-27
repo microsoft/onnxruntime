@@ -90,7 +90,7 @@ TEST(DequantizeLinearOpTest, Without_Zero_Point) {
 }
 
 // 1d zero & scale with default axis
-TEST(DequantizeLinearOpTest, DISABLED_Per_Channel_Axis_Default) {
+TEST(DequantizeLinearOpTest, Per_Channel_Axis_Default) {
   OpTester test("DequantizeLinear", 13);
   std::vector<int64_t> dims{2, 3, 2, 4};
   test.AddInput<int8_t>("X", dims,
@@ -136,7 +136,7 @@ TEST(DequantizeLinearOpTest, DISABLED_Per_Channel_Axis_Default) {
 }
 
 // 1d zero & scale with uint8 broadcast axis 0
-TEST(DequantizeLinearOpTest, DISABLED_Per_Channel_Axis_0) {
+TEST(DequantizeLinearOpTest, Per_Channel_Axis_0) {
   OpTester test("DequantizeLinear", 13);
   std::vector<int64_t> dims{3, 4};
   test.AddInput<uint8_t>("X", dims,
@@ -160,7 +160,7 @@ TEST(DequantizeLinearOpTest, DISABLED_Per_Channel_Axis_0) {
 }
 
 // 1d zero & scale with int8 broadcast axis 1
-TEST(DequantizeLinearOpTest, DISABLED_Per_Channel_Axis_1_int8) {
+TEST(DequantizeLinearOpTest, Per_Channel_Axis_1_int8) {
   OpTester test("DequantizeLinear", 13);
   std::vector<int64_t> dims{3, 4};
   test.AddInput<int8_t>("X", dims,
@@ -198,7 +198,7 @@ TEST(DequantizeLinearOpTest, Per_Channel_Axis_1_int32) {
 }
 
 // 1d zero & scale with uint8 broadcast axis -2 (-2 resolves to axis 0)
-TEST(DequantizeLinearOpTest, DISABLED_Per_Channel_Neg_2) {
+TEST(DequantizeLinearOpTest, Per_Channel_Neg_2) {
   OpTester test("DequantizeLinear", 13);
   std::vector<int64_t> dims{3, 4};
   test.AddInput<uint8_t>("X", dims,
@@ -319,7 +319,7 @@ TEST(QuantizeLinearOpTest, QuantizeLinear_Without_Zero_Point) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT doesn't support support UINT8 for quantization
 }
 
-TEST(QuantizeLinearOpTest, DISABLED_Per_Channel_Axis_Default) {
+TEST(QuantizeLinearOpTest, Per_Channel_Axis_Default) {
   OpTester test("QuantizeLinear", 13);
   std::vector<int64_t> dims{3, 4};
   test.AddInput<float>("X", dims,
@@ -335,7 +335,7 @@ TEST(QuantizeLinearOpTest, DISABLED_Per_Channel_Axis_Default) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT doesn't support support UINT8 for quantization
 }
 
-TEST(QuantizeLinearOpTest, DISABLED_Per_Channel_Axis_0) {
+TEST(QuantizeLinearOpTest, Per_Channel_Axis_0) {
   OpTester test("QuantizeLinear", 13);
   std::vector<int64_t> dims{3, 4};
   test.AddInput<float>("X", dims,
@@ -353,7 +353,7 @@ TEST(QuantizeLinearOpTest, DISABLED_Per_Channel_Axis_0) {
 }
 
 // quantize with per-channel and negative axis (-2 resolves to axis 0)
-TEST(QuantizeLinearOpTest, DISABLED_Per_Channel_Axis_neg) {
+TEST(QuantizeLinearOpTest, Per_Channel_Axis_neg) {
   OpTester test("QuantizeLinear", 13);
   std::vector<int64_t> dims{3, 4};
   test.AddInput<float>("X", dims,
