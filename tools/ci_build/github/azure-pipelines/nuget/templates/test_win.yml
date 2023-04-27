@@ -3,11 +3,14 @@ parameters:
   NugetPackageName : ''
   ArtifactSuffix: ''
   Skipx86Tests: 'false'
+  StageSuffix: 'CPU'
+  # default is for inference packages, for training packages use '-training'
+  ExtraArtifactNameSuffix: ''
 
 stages:
-- stage: NuGet_Test_Win_${{ parameters.ArtifactSuffix }}
+- stage: NuGet_Test_Win_${{ parameters.StageSuffix }}
   dependsOn:
-  - NuGet_Packaging_${{ parameters.ArtifactSuffix }}
+  - NuGet_Packaging_${{ parameters.StageSuffix }}
   condition: succeeded()
   jobs:
   - job:
@@ -58,7 +61,7 @@ stages:
     - task: DownloadPipelineArtifact@0
       displayName: 'Download Pipeline Artifact - testdata'
       inputs:
-        artifactName: 'drop-nuget'
+        artifactName: 'drop-nuget${{ parameters.ExtraArtifactNameSuffix }}'
         targetPath: '$(Build.BinariesDirectory)\testdata'
 
     - template: get-nuget-package-version-as-variable.yml

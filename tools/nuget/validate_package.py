@@ -35,6 +35,14 @@ dmlep_related_header_files = [
     "onnxruntime_cxx_inline.h",
     "dml_provider_factory.h",
 ]
+training_related_header_files = [
+    "onnxruntime_c_api.h",
+    "onnxruntime_cxx_api.h",
+    "onnxruntime_cxx_inline.h",
+    "onnxruntime_training_c_api.h",
+    "onnxruntime_training_cxx_api.h",
+    "onnxruntime_training_cxx_inline.h",
+]
 
 
 def parse_arguments():
@@ -84,7 +92,14 @@ def check_if_headers_are_present(header_files, header_folder, file_list_in_packa
 
 
 def check_if_dlls_are_present(
-    package_type, is_windows_ai_package, is_gpu_package, is_dml_package, platforms_supported, zip_file, package_path
+    package_type,
+    is_windows_ai_package,
+    is_gpu_package,
+    is_dml_package,
+    is_training_package,
+    platforms_supported,
+    zip_file,
+    package_path,
 ):
     platforms = platforms_supported.strip().split(",")
     if package_type == "tarball":
@@ -122,6 +137,11 @@ def check_if_dlls_are_present(
 
             if is_dml_package:
                 check_if_headers_are_present(dmlep_related_header_files, header_folder, file_list_in_package, platform)
+
+            if is_training_package:
+                check_if_headers_are_present(
+                    training_related_header_files, header_folder, file_list_in_package, platform
+                )
 
         elif platform.startswith("linux"):
             if package_type == "nuget":
@@ -204,6 +224,7 @@ def validate_tarball(args):
         is_windows_ai_package,
         is_gpu_package,
         is_dml_package,
+        False,
         args.platforms_supported,
         zip_file,
         package_folder,
@@ -233,6 +254,7 @@ def validate_zip(args):
         is_windows_ai_package,
         is_gpu_package,
         is_dml_package,
+        False,
         args.platforms_supported,
         zip_file,
         package_folder,
@@ -258,6 +280,11 @@ def validate_nuget(args):
         is_dml_package = True
     else:
         is_dml_package = False
+
+    if "Training" in nuget_file_name:
+        is_training_package = True
+    else:
+        is_training_package = False
 
     exit_code = 0
 
@@ -290,6 +317,7 @@ def validate_nuget(args):
             is_windows_ai_package,
             is_gpu_package,
             is_dml_package,
+            is_training_package,
             args.platforms_supported,
             zip_file,
             None,

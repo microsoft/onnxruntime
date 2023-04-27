@@ -29,8 +29,13 @@ def cmakeBuildOutputDir = "${cmakeJavaDir}/build"
 def mavenUser = System.properties['mavenUser']
 def mavenPwd = System.properties['mavenPwd']
 
-def tmpArtifactId = enableTrainingApis == null ? project.name : project.name + "-training"
+def tmpArtifactId = enableTrainingApis == "1" ? project.name + "-training" : project.name
 def mavenArtifactId = (useCUDA == null && useROCM == null) ? tmpArtifactId : tmpArtifactId + "_gpu"
+
+def defaultDescription = 'ONNX Runtime is a performance-focused inference engine for ONNX (Open Neural Network Exchange) models.'
+def trainingDescription = 'ONNX Runtime Training is a training + inference package for ONNX ' +
+	'(Open Neural Network Exchange) models. This package is targeted for Learning on The Edge aka On-Device Training ' +
+	'See https://github.com/microsoft/onnxruntime-training-examples/tree/master/on_device_training for more details.'
 
 java {
 	sourceCompatibility = JavaVersion.VERSION_1_8
@@ -201,8 +206,8 @@ publishing {
 
 			from components.java
 			pom {
-				name = 'onnx-runtime'
-				description = 'ONNX Runtime is a performance-focused inference engine for ONNX (Open Neural Network Exchange) models.'
+				name = enableTrainingApis == "1" ? 'onnxruntime-training' : 'onnx-runtime'
+				description = enableTrainingApis == "1" ? trainingDescription : defaultDescription
 				url = 'https://microsoft.github.io/onnxruntime/'
 				licenses {
 					license {
