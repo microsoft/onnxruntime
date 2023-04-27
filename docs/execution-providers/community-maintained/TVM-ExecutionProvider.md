@@ -210,10 +210,12 @@ input_shapes = "[1 3 224 224] [1 2]"
 ```
 
 ## Performance Tuning
-TVM optimizes machine learning models through an automated tuning process that produces model variants specific to targeted hardware architectures.  This process also generates 'tuning logs' that the TVM EP relies on to maximize model performance. These logs can be acquired for your model by either using TVM as described here:
+TVM optimizes machine learning models through an automated tuning process that produces model variants specific to targeted hardware architectures.  This process also generates 'tuning logs' that the TVM EP relies on to maximize model performance. These logs can be acquired for your model either by using TVM as described here:
 
 AutoTVM:
 https://tvm.apache.org/docs/how_to/tune_with_autotvm/index.html
+
+Or
 
 Ansor (Autoscheduling):
 https://tvm.apache.org/docs/how_to/tune_with_autoscheduler/index.html
