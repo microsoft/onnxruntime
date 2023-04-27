@@ -185,11 +185,10 @@ template <typename T>
 T next_power_of_2(T in) {
   in--;
   T out = 1;
-  while (out < in) {
-    in |= in >> out;
+  while (out <= in) {
     out <<= 1;
   }
-  return in + 1;
+  return out;
 }
 
 template <typename T, typename U>
