@@ -7,10 +7,9 @@ import ai.onnxruntime.OrtException;
 import ai.onnxruntime.OrtSession.SessionOptions;
 import android.util.Log;
 
-
 class OnnxruntimeExtensions {
-    public void registerOrtExtensionsIfEnabled(SessionOptions sessionOptions) {
-        Log.d("Info", "ORT Extensions is not enabled.");
-        return;
-    }
+  public void registerOrtExtensionsIfEnabled(SessionOptions sessionOptions) {
+    Log.d("Info", "ORT Extensions is not enabled.");
+    return;
+  }
 }

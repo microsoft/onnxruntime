@@ -8,7 +8,7 @@ import ai.onnxruntime.OrtSession.SessionOptions;
 import ai.onnxruntime.extensions.OrtxPackage;
 
 class OnnxruntimeExtensions {
-    public void registerOrtExtensionsIfEnabled(SessionOptions sessionOptions) throws OrtException{
-        sessionOptions.registerCustomOpLibrary(OrtxPackage.getLibraryPath());
-    }
+  public void registerOrtExtensionsIfEnabled(SessionOptions sessionOptions) throws OrtException {
+    sessionOptions.registerCustomOpLibrary(OrtxPackage.getLibraryPath());
+  }
 }
