@@ -1218,8 +1218,8 @@ def update_decoder_subgraph_share_buffer_and_use_decoder_masked_mha(subg: GraphP
     cast_node = onnx.helper.make_node(
         "Cast",
         ["past_sequence_length"],
-        ["past_sequence_length_int64"],
-        name="d_/decoder/model/decoder/Gather_1_output_0",
+        ["d_/decoder/model/decoder/Gather_1_output_0"],
+        name="past_sequence_length_cast_renamed",
         to=TensorProto.INT64,
     )
     new_nodes.extend([cast_node])
