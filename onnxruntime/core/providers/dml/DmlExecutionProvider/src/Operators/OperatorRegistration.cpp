@@ -400,10 +400,6 @@ DML_OP_EXTERN_QUERY_FUNCTION(LayerNormalization);
 DML_OP_EXTERN_QUERY_FUNCTION(SkipLayerNormalization);
 DML_OP_EXTERN_QUERY_FUNCTION(QLinearSigmoid);
 DML_OP_EXTERN_QUERY_FUNCTION(Attention);
-DML_OP_EXTERN_QUERY_FUNCTION(SkipLayerNormalization);
-
-// TODO (pavignol): Remove
-DML_OP_EXTERN_QUERY_FUNCTION(MultiHeadAttention);
 
 constexpr static std::array<const char*, 1> typeNameListDefault = {"T"};
 constexpr static std::array<const char*, 1> typeNameListDefaultV = {"V"};

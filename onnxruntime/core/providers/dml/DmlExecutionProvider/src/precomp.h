@@ -40,8 +40,7 @@
 
 #include "GraphicsUnknownHelper.h"
 
-#include "DirectML2.h"
-// #include <DirectML.h>
+#include <DirectML.h>
 #include "core/common/common.h"
 #include "ErrorHandling.h"
 

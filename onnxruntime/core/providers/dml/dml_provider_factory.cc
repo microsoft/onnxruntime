@@ -1,8 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "DirectML2.h"
-// #include <DirectML.h>
+#include <DirectML.h>
 #ifndef _GAMING_XBOX
 #include <dxgi1_4.h>
 #endif

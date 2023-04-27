@@ -7,7 +7,7 @@
 namespace onnxruntime {
 namespace test {
 
-// #if !defined(_MSC_VER) || defined(USE_DML)
+#if !defined(_MSC_VER) || defined(USE_DML)
 void GetWeight_64_3_64(std::vector<float>& weight_data) {
   weight_data = {
       -0.004707f, -0.006775f, 0.0009236f, 0.003067f, -0.00806f, 0.00779f, 0.0004425f, 0.00846f, 0.00048f,
@@ -2701,7 +2701,7 @@ void GetSelfAttentionData_Batch2_HeadSize32_NoBias_NoMask_PackedQKV(AttentionTes
         3.11096096f, -0.17414713f};
   }
 }
-// #endif
+#endif
 
 void GetCrossAttentionData_HeadSize16_8(AttentionTestData& data) {
   data.hidden_size = 48;
