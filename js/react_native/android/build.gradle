@@ -20,23 +20,22 @@ def getExtOrIntegerDefault(name) {
   return rootProject.ext.has(name) ? rootProject.ext.get(name) : (project.properties['OnnxruntimeModule_' + name]).toInteger()
 }
 
-def getOnnxruntimePackageName() {
+def checkIfOrtExtensionsEnabled() {
   // locate user's project dir
   def reactnativeRootDir = project.rootDir.parentFile
   // get package.json file in root directory
   def packageJsonFile = new File(reactnativeRootDir, 'package.json')
-  // read field 'ortPackageName'
+  // read field 'ortExtensionsEnabled'
   if (packageJsonFile.exists()) {
     def packageJsonContents = packageJsonFile.getText()
     def packageJson = new groovy.json.JsonSlurper().parseText(packageJsonContents)
-    def packageName = packageJson.ortPackageName
-    return packageName
+    return packageJson.ortExtensionsEnabled
   } else {
     throw new GradleException(
-        "Unable to find the package.json file the project root directory."
+        "Unable to find the package.json file in the project root directory."
     )
   }
-  return ""
+  return false
 }
 
 android {
@@ -63,17 +62,12 @@ android {
     targetCompatibility JavaVersion.VERSION_1_8
   }
 
-  if (getOnnxruntimePackageName() == "onnxruntime-ext") {
-    sourceSets {
-      main {
-        java.srcDirs = ['src/main/java/']
+  sourceSets {
+    main {
+      java.srcDirs = ['src/main/java/']
+      if (checkIfOrtExtensionsEnabled()) {
         java.exclude '**/OnnxruntimeExtensionsDisabled.java'
-      }
-    }
-  } else {
-    sourceSets {
-      main {
-        java.srcDirs = ['src/main/java/']
+      } else {
         java.exclude '**/OnnxruntimeExtensionsEnabled.java'
       }
     }
@@ -173,7 +167,7 @@ dependencies {
   implementation "com.microsoft.onnxruntime:onnxruntime-android:latest.integration@aar"
 
   // By default it will just include onnxruntime full aar package
-  if (getOnnxruntimePackageName() == "onnxruntime-ext") {
+  if (checkIfOrtExtensionsEnabled()) {
     implementation "com.microsoft.onnxruntime:onnxruntime-extensions-android:latest.integration@aar"
   }
 }

@@ -10,7 +10,7 @@ import android.util.Log;
 
 class OnnxruntimeExtensions {
     public void registerOrtExtensionsIfEnabled(SessionOptions sessionOptions) {
-        Log.d("Info", "This is a dummy call for registering ort extensions.");
+        Log.d("Info", "ORT Extensions is not enabled.");
         return;
     }
 }

@@ -8,7 +8,7 @@
 #import <React/RCTLog.h>
 #import <onnxruntime/onnxruntime_cxx_api.h>
 
-#ifdef ENABLE_ORT_EXT
+#ifdef ORT_ENABLE_EXTENSIONS
 #include <onnxruntime_extensions.h>
 #endif
 
@@ -92,7 +92,7 @@ RCT_EXPORT_METHOD(run
 
     Ort::SessionOptions sessionOptions = [self parseSessionOptions:options];
 
-  #ifdef ENABLE_ORT_EXT
+  #ifdef ORT_ENABLE_EXTENSIONS
     if (RegisterCustomOps(sessionOptions, OrtGetApiBase()) != nullptr) {
       throw std::runtime_error("RegisterCustomOps failed");
     }
