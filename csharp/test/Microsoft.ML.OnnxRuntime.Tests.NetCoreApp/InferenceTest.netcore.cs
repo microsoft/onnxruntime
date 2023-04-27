@@ -892,6 +892,13 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                     throw new Exception(msg + "\n" + ex.StackTrace);
                 }
 
+                var ortEnvInstance = OrtEnv.Instance();
+                string[] providers = ortEnvInstance.GetAvailableProviders();
+                if (Array.Exists(providers, provider => provider == "CUDAExecutionProvider"))
+                {
+                    option.AppendExecutionProvider_CUDA(0);
+                }
+
                 ValidateModelWithCustomOps(option);
             }
         }
@@ -956,6 +963,13 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 {
                     var msg = $"Failed to load custom op library, error = {ex.Message}";
                     throw new Exception(msg + "\n" + ex.StackTrace);
+                }
+
+                var ortEnvInstance = OrtEnv.Instance();
+                string[] providers = ortEnvInstance.GetAvailableProviders();
+                if (Array.Exists(providers, provider => provider == "CUDAExecutionProvider"))
+                {
+                    option.AppendExecutionProvider_CUDA(0);
                 }
 
                 ValidateModelWithCustomOps(option);
