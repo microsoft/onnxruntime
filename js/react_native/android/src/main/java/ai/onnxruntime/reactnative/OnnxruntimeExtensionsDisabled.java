@@ -3,7 +3,6 @@
 
 package ai.onnxruntime.reactnative;
 
-import ai.onnxruntime.OrtException;
 import ai.onnxruntime.OrtSession.SessionOptions;
 import android.util.Log;
 
