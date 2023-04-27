@@ -144,8 +144,10 @@ export class WebGpuBackend {
   }
 
   dispose(): void {
-    // TODO: uninitialization
-    // this.glContext.dispose();
+    // currently, we do not do anything in this function. In all known use cases, we don't have the requirement to
+    // actually dispose the WebGpuBackend instance, because it's always used as a singleton.
+    //
+    // revisit this place if we get real requirement to dispose the instance.
   }
 
   getCommandEncoder(): GPUCommandEncoder {
@@ -333,7 +335,11 @@ export class WebGpuBackend {
 
     this.temporaryData = [];
     try {
-      return kernelEntry(context, attributes[1]);
+      kernelEntry(context, attributes[1]);
+      return 0;  // ORT_OK
+    } catch (e) {
+      LOG_DEBUG('warning', `[WebGPU] Kernel "${name}" failed. Error: ${e}`);
+      return 1;  // ORT_FAIL
     } finally {
       for (const data of this.temporaryData) {
         this.gpuDataManager.release(data.id);

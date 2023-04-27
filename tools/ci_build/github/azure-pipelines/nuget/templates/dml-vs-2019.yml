@@ -12,7 +12,6 @@ parameters:
   BuildArch: 'x64' # Optional. Options: x86, x64
   sln_platform: 'x64' # Options: Win32, x64, arm, arm64
   EnvSetupScript: 'setup_env.bat'
-  CudaVersion: ''
   AgentPool: 'Win-CPU-2021'
   AgentDemands: []
   OrtPackageId: Microsoft.ML.OnnxRuntime
@@ -44,7 +43,6 @@ stages:
       BuildCommand: ${{ parameters.BuildCommand }}
       OnnxRuntimeBuildDirectory: '$(Build.BinariesDirectory)'
       DotNetExe: 'dotnet.exe'
-      CUDA_VERSION: ${{ parameters.CudaVersion }}
       runCodesignValidationInjection: and(${{ parameters.DoNodejsPack }},${{ parameters. DoEsrp}}) #For the others, code sign is in a separated job
       DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
       ALLOW_RELEASED_ONNX_OPSET_ONLY: ${{ parameters.AllowReleasedOpsetOnly }}
