@@ -44,7 +44,12 @@ RUN v="8.4.1-1+cuda11.6" &&\
 # Compile trtexec
 RUN cd /usr/src/tensorrt/samples/trtexec && make
 
+ARG BUILD_USER=onnxruntimedev
+ARG BUILD_UID=1000
+RUN adduser --gecos 'onnxruntime Build User' --disabled-password $BUILD_USER --uid $BUILD_UID
+USER $BUILD_USER
 WORKDIR /code
+ENV CUDA_MODULE_LOADING "LAZY"
 
 # Prepare onnxruntime repository & build onnxruntime with TensorRT
 RUN git clone --single-branch --branch ${ONNXRUNTIME_BRANCH} --recursive ${ONNXRUNTIME_REPO} onnxruntime &&\
