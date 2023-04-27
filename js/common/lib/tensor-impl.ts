@@ -192,7 +192,7 @@ export class Tensor implements TensorInterface {
     if (options.height === undefined || options.width === undefined) {
       throw new Error('Image height and width must be defined');
     }
-    if (options.tensorLayout === 'NHWC'){
+    if (options.tensorLayout === 'NHWC') {
       throw new Error('NHWC Tensor layout is not supported yet');
     }
 
