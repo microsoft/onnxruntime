@@ -2171,38 +2171,6 @@ def get_protobuf_rid():
     return None
 
 
-def build_protoc_for_host(cmake_path, source_dir, build_dir, args):
-    if (args.arm or args.arm64 or args.arm64ec) and not (is_windows() or is_cross_compiling_on_apple(args)):
-        raise BuildError(
-            "Currently only support building protoc for Windows host while "
-            "cross-compiling for ARM/ARM64/Store and linux cross-compiling iOS"
-        )
-
-    rid = get_protobuf_rid()
-    if rid is None:
-        return None
-    run_subprocess(
-        [
-            "nuget.exe" if is_windows() else "nuget",
-            "restore",
-            os.path.join(source_dir, "packages.config"),
-            "-ConfigFile",
-            os.path.join(source_dir, "NuGet.config"),
-            "-PackagesDirectory",
-            build_dir,
-        ]
-    )
-
-    protoc_path = list(Path(build_dir).glob("Google.Protobuf.Tools.*"))[0] / "tools" / rid
-    if is_windows():
-        protoc_path = protoc_path / "protoc.exe"
-    else:
-        protoc_path = protoc_path / "protoc"
-    if not protoc_path.exists():
-        return None
-    return protoc_path.absolute()
-
-
 def generate_documentation(source_dir, build_dir, configs, validate):
     # Randomly choose one build config
     config = next(iter(configs))
@@ -2440,11 +2408,7 @@ def main():
                         "Tools Command Prompt for VS)"
                     )
                 cmake_extra_args = ["-G", args.cmake_generator]
-            elif args.arm or args.arm64 or args.arm64ec:
-                # Cross-compiling for ARM(64) architecture
-                # First build protoc for host to use during cross-compilation
-                if path_to_protoc_exe is None:
-                    path_to_protoc_exe = build_protoc_for_host(cmake_path, source_dir, build_dir, args)
+            elif args.arm or args.arm64 or args.arm64ec:                
                 if args.arm:
                     cmake_extra_args = ["-A", "ARM"]
                 elif args.arm64:
@@ -2500,12 +2464,6 @@ def main():
             run_subprocess([emsdk_file, "install", emsdk_version], cwd=emsdk_dir)
             log.info("Activating emsdk...")
             run_subprocess([emsdk_file, "activate", emsdk_version], cwd=emsdk_dir)
-
-        if (
-            args.android or args.ios or args.build_wasm or is_cross_compiling_on_apple(args)
-        ) and args.path_to_protoc_exe is None:
-            # Cross-compiling for Android, iOS, and WebAssembly
-            path_to_protoc_exe = build_protoc_for_host(cmake_path, source_dir, build_dir, args)
 
         if is_ubuntu_1604():
             if args.arm or args.arm64:
