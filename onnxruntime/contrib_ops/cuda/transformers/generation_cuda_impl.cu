@@ -807,6 +807,7 @@ void UpdateDecoderMaskedMultiHeadAttentionCacheIndirection(int32_t* tgt_indir_ca
                                                                                           current_length);
 }
 
+#ifndef USE_ROCM
 namespace {
 template <typename T, size_t size>
 struct TypeMapper : public V_vec_m_<T, size> {};
@@ -821,6 +822,7 @@ struct TypeMapper<int32_t, 4> {
   using Type = uint4;
 };
 }  // namespace
+#endif
 
 template <typename T>
 __global__ void KeyCacheExpansionKernel(const T* input,
