@@ -161,8 +161,9 @@ class WhisperDecoderInputs:
         encoder_inputs = WhisperEncoderInputs.create_dummy(
             batch_size,
             encode_sequence_length,
-            vocab_size,
-            device,
+            #vocab_size,
+            feature_size=config.num_mel_bins,
+            device=device,
             # sequence_length=3000,
             # feature_size=config.num_mel_bins,
             # device=device,
