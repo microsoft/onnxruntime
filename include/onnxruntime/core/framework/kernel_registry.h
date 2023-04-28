@@ -44,6 +44,25 @@ class KernelRegistry {
                        const TypeConstraintMap& type_constraints,
                        const KernelCreateInfo** out) const;
 
+  /**
+   * @brief Find out whether a kernel is registered, without a node.
+   *        This should be useful in graph optimizers, to check whether
+   *        the node it is about to generate, is supported or not.
+   * @param exec_provider
+   * @param op_type
+   * @param domain
+   * @param version
+   * @param type_constraints
+   * @param out
+   * @return
+   */
+  Status TryFindKernel(ProviderType exec_provider,
+                       std::string_view op_type,
+                       std::string_view domain,
+                       int version,
+                       const KernelRegistry::TypeConstraintMap& type_constraints,
+                       const KernelCreateInfo** out) const;
+
   static bool HasImplementationOf(const KernelRegistry& r, const Node& node,
                                   ProviderType exec_provider,
                                   const IKernelTypeStrResolver& kernel_type_str_resolver) {

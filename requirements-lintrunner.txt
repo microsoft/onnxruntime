@@ -1,5 +1,5 @@
 # This file is auto updated by dependabot
-lintrunner-adapters
+lintrunner-adapters>=0.8.0
 # RUFF, RUFF-FIX
 ruff==0.0.261
 # BLACK-ISORT

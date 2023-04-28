@@ -84,14 +84,13 @@ export const createTransposeProgramInfo = (input: TensorView, permAttr: number[]
   };
 };
 
-export const transpose = (context: ComputeContext, attributes: TransposeAttributes): number => {
+export const transpose = (context: ComputeContext, attributes: TransposeAttributes): void => {
   validateInputs(context.inputs);
   context.compute({
     ...transposeProgramMetadata,
     cacheHint: attributes.cacheKey,
     get: () => createTransposeProgramInfo(context.inputs[0], attributes.perm)
   });
-  return 0;
 };
 
 export const parseTransposeAttributes = (attributes: Record<string, unknown>): TransposeAttributes =>

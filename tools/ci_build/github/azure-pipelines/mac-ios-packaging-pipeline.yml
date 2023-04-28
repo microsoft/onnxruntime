@@ -206,7 +206,7 @@ jobs:
       set -e -x
       cp "$(Build.ArtifactStagingDirectory)/pod-archive-onnxruntime-c-${ORT_POD_VERSION}.zip" swift/
       export ORT_IOS_POD_LOCAL_PATH="swift/pod-archive-onnxruntime-c-${ORT_POD_VERSION}.zip"
-      xcodebuild test -scheme onnxruntime -destination 'platform=iOS Simulator'
+      xcodebuild test -scheme onnxruntime -destination 'platform=iOS Simulator,name=iPhone 14'
       rm swift/pod-archive-onnxruntime-c-*.zip
     displayName: "Test Package.swift usage"
 

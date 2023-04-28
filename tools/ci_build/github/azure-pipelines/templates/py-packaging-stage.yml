@@ -519,7 +519,7 @@ stages:
       - template: py-linux-ubuntu.yml
         parameters:
           arch: 'x86_64'
-          machine_pool: 'Linux-CPU'
+          machine_pool: 'aiinfra-Linux-CPU'
           base_image: 'ubuntu:18.04'
           ${{ if contains(parameters.build_py_parameters, '--use_azure') }}:
             device: '-d AZURE'
