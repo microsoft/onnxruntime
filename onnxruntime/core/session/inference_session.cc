@@ -492,6 +492,9 @@ common::Status InferenceSession::RegisterExecutionProvider(const std::shared_ptr
   if (provider_type == onnxruntime::kDmlExecutionProvider) {
     // DML's memory is not byte addressable and hence mem pattern doesn't work.
     if (session_options_.enable_mem_pattern) {
+      LOGS(*session_logger_, INFO)
+          << "Having memory pattern enabled is not supported while using the DML Execution Provider. "
+          << "So disabling it for this session since it uses the DML Execution Provider.";
       session_options_.enable_mem_pattern = false;
     }
 
@@ -501,6 +504,10 @@ common::Status InferenceSession::RegisterExecutionProvider(const std::shared_ptr
     optional<std::string> disable_quant_qdq = session_options_.config_options.GetConfigEntry(kOrtSessionOptionsDisableQuantQDQ);
 
     if (disable_quant_qdq == std::nullopt) {
+      LOGS(*session_logger_, INFO)
+          << "QDQ quantization is not supported while using the DML Execution Provider. "
+          << "So disabling it for this session since it uses the DML Execution Provider.";
+
       auto st = session_options_.config_options.AddConfigEntry(kOrtSessionOptionsDisableQuantQDQ, "1");
       if (!st.IsOK()) {
         return st;
@@ -508,12 +515,13 @@ common::Status InferenceSession::RegisterExecutionProvider(const std::shared_ptr
     }
     else if (*disable_quant_qdq != "1") {
       LOGS(*session_logger_, WARNING)
-        << "QDQ quantization is not currently supported by the DirectML EP and may lead to performance degradation if enabled in session options.";
+        << "QDQ quantization is not supported while using the DML Execution Provider. "
+        << "It is enabled within session options which may result in lower performance.";
     }
 
     // Parallel execution mode does not support DML EP
     if (session_options_.execution_mode != ExecutionMode::ORT_SEQUENTIAL) {
-      LOGS(*session_logger_, WARNING)
+      LOGS(*session_logger_, INFO)
           << "Parallel execution mode does not support the DML Execution Provider. "
           << "So making the execution mode sequential for this session since it uses the DML Execution Provider.";
 
