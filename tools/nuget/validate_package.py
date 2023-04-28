@@ -219,12 +219,13 @@ def validate_tarball(args):
     is_windows_ai_package = False
     zip_file = None
     is_dml_package = False
+    is_training_package = False
     check_if_dlls_are_present(
         args.package_type,
         is_windows_ai_package,
         is_gpu_package,
         is_dml_package,
-        False,
+        is_training_package,
         args.platforms_supported,
         zip_file,
         package_folder,

@@ -151,8 +151,9 @@ def generate_description(line_list, package_name):
         description = "This package contains Windows ML binaries."
     elif "Microsoft.ML.OnnxRuntime.Training" in package_name:  # This is a Microsoft.ML.OnnxRuntime.Training.* package
         description = (
-            "This package contains native shared library artifacts to enable Learning on The Edge aka On-Device "
-            + "training for all supported platforms of ONNX Runtime Training. "
+            "The onnxruntime-training native shared library artifacts are designed to efficiently train and infer "
+            + "a wide range of ONNX models on edge devices, such as client machines, gaming consoles, and other "
+            + "portable devices with a focus on minimizing resource usage and maximizing accuracy."
             + "See https://github.com/microsoft/onnxruntime-training-examples/tree/master/on_device_training for "
             + "more details."
         )

@@ -19,7 +19,7 @@ version = rootProject.file('../VERSION_NUMBER').text.trim()
 def cmakeBuildDir = System.properties['cmakeBuildDir']
 def useCUDA = System.properties['USE_CUDA']
 def useROCM = System.properties['USE_ROCM']
-def enableTrainingApis = System.properties['ENABLE_TRAINING_APIS']
+boolean enableTrainingApis = (System.properties['ENABLE_TRAINING_APIS'] ?: "0") == "1"
 def cmakeJavaDir = "${cmakeBuildDir}/java"
 def cmakeNativeLibDir = "${cmakeJavaDir}/native-lib"
 def cmakeNativeJniDir = "${cmakeJavaDir}/native-jni"
@@ -29,11 +29,11 @@ def cmakeBuildOutputDir = "${cmakeJavaDir}/build"
 def mavenUser = System.properties['mavenUser']
 def mavenPwd = System.properties['mavenPwd']
 
-def tmpArtifactId = enableTrainingApis == "1" ? project.name + "-training" : project.name
+def tmpArtifactId = enableTrainingApis ? project.name + "-training" : project.name
 def mavenArtifactId = (useCUDA == null && useROCM == null) ? tmpArtifactId : tmpArtifactId + "_gpu"
 
 def defaultDescription = 'ONNX Runtime is a performance-focused inference engine for ONNX (Open Neural Network Exchange) models.'
-def trainingDescription = 'ONNX Runtime Training is a training + inference package for ONNX ' +
+def trainingDescription = 'ONNX Runtime Training is a training and inference package for ONNX ' +
 	'(Open Neural Network Exchange) models. This package is targeted for Learning on The Edge aka On-Device Training ' +
 	'See https://github.com/microsoft/onnxruntime-training-examples/tree/master/on_device_training for more details.'
 
@@ -206,8 +206,8 @@ publishing {
 
 			from components.java
 			pom {
-				name = enableTrainingApis == "1" ? 'onnxruntime-training' : 'onnx-runtime'
-				description = enableTrainingApis == "1" ? trainingDescription : defaultDescription
+				name = enableTrainingApis ? 'onnxruntime-training' : 'onnx-runtime'
+				description = enableTrainingApis ? trainingDescription : defaultDescription
 				url = 'https://microsoft.github.io/onnxruntime/'
 				licenses {
 					license {

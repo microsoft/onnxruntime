@@ -203,7 +203,7 @@
     <DefineConstants>$(DefineConstants);$(OrtConstants)</DefineConstants>
   </PropertyGroup>
 
-  <!-- debug output - makes finding/fixing any issues with the the conditions easy.-->
+  <!-- debug output - makes finding/fixing any issues with the the conditions easy.
   <Target Name="DumpValues" BeforeTargets="PreBuildEvent">
     <Message Text="TargetPlatform='$(TargetPlatform)' TargetPlatformIdentifier='$(TargetPlatformIdentifier)' " />
     <Message Text="TargetFramework='$(TargetFramework)' TargetFrameworkIdentifier='$(TargetFrameworkIdentifier)' " />
@@ -213,6 +213,7 @@
     <Message Text="OrtConstants='$(OrtConstants)' " />
     <Message Text="TargetFrameworks='$(TargetFrameworks)' " />
   </Target>
+  -->
 
   <ItemGroup>
     <None Include="$(OnnxRuntimeCsharpRoot)\..\include\onnxruntime\core\session\onnxruntime_*.h"

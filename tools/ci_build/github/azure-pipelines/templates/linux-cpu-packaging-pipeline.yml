@@ -5,7 +5,7 @@ parameters:
   default: ''
 
 - name: stage_name_suffix
-  displayName: job name for nuget
+  displayName: Suffix for stage name as every stage name needs to be unique
   type: string
   default: 'CPU'
 

@@ -359,7 +359,7 @@ stages:
     NugetPackageName : 'Microsoft.ML.OnnxRuntime.Training'
     ArtifactSuffix: 'Training-CPU'
     StageSuffix: 'Training_CPU'
-    ExtraArtifactNameSuffix: '-training'
+    TestDataArtifactSuffix: '-training'
 
 - template: ../nuget/templates/test_linux.yml
   parameters:

@@ -2,10 +2,12 @@ parameters:
   AgentPool : 'Win-CPU'
   NugetPackageName : ''
   ArtifactSuffix: ''
-  Skipx86Tests: 'false'
   StageSuffix: 'CPU'
-  # default is for inference packages, for training packages use '-training'
-  ExtraArtifactNameSuffix: ''
+  # For inference packages, the test data artifact name is drop-nuget and no suffix is required.
+  # For training packages, to differentiate the artifact name we add '-training' suffix. This needs to be passed from
+  # the parent pipeline.
+  TestDataArtifactSuffix: ''
+  Skipx86Tests: 'false'
 
 stages:
 - stage: NuGet_Test_Win_${{ parameters.StageSuffix }}
@@ -61,7 +63,7 @@ stages:
     - task: DownloadPipelineArtifact@0
       displayName: 'Download Pipeline Artifact - testdata'
       inputs:
-        artifactName: 'drop-nuget${{ parameters.ExtraArtifactNameSuffix }}'
+        artifactName: 'drop-nuget${{ parameters.TestDataArtifactSuffix }}'
         targetPath: '$(Build.BinariesDirectory)\testdata'
 
     - template: get-nuget-package-version-as-variable.yml
