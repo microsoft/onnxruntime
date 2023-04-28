@@ -26,8 +26,14 @@ std::unique_ptr<IExecutionProvider> WebNNProviderFactory::CreateProvider() {
 
 std::shared_ptr<IExecutionProviderFactory> WebNNProviderFactoryCreator::Create(
     const ProviderOptions& provider_options) {
-  return std::make_shared<onnxruntime::WebNNProviderFactory>(provider_options.at("deviceType"),
-                                                             provider_options.at("powerPreference"));
+  std::string webnn_device_flags = "cpu", webnn_power_flags = "default";
+  if (auto it = provider_options.find("deviceType"); it != provider_options.end()) {
+    webnn_device_flags = it->second;
+  }
+  if (auto it = provider_options.find("powerPreference"); it != provider_options.end()) {
+    webnn_power_flags = it->second;
+  }
+  return std::make_shared<onnxruntime::WebNNProviderFactory>(webnn_device_flags, webnn_power_flags);
 }
 
 }  // namespace onnxruntime
