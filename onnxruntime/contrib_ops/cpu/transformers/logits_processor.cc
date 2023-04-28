@@ -247,19 +247,79 @@ TSLogitsProcessor<T>::TSLogitsProcessor(int min_length, int eos_token_id)
 template <typename T>
 void TSLogitsProcessor<T>::Process(const ISequences* sequences,
                                           NextTokenScores<T>& next_token_scores) {
-  if (sequences->GetSequenceLength() < min_length_) {
-    next_token_scores.SetScore(eos_token_id_, std::numeric_limits<T>::lowest());
-  }
+  std::cout << "TSLogitsProcessor process" << std::endl;
+  //assert(!vocab_mask_.empty());
+
+  const bool suppress_blank = true;
+
+  const int beg_token_id_ = 50363;
+  const int eot_token_id_ = 50256;
+  const int not_token_id_ = 50362;
+  const int sot_token_id_ = 50257;
+  const int solm_token_id_ = 50361;
+  const int translate_token_id_ = 50358;
+  const int transcribe_token_id_ = 50359;
+  //const int blank_token_id_
+
+  const int batch_beam_size = next_token_scores.batch_beam_size;
+  const int vocab_size = next_token_scores.vocab_size;
+  for (int i = 0; i < batch_beam_size; i++) {
+    gsl::span<T> beam_token_scores = next_token_scores.GetScores(i);///logits: (vocab size)
+    gsl::span<const int32_t> sequence = sequences->GetSequence(i);///tokens_cur: (seq length)
+    const int seq_length = sequence.size();
+    const bool is_initial = seq_length == 0;
+    const bool last_was_timestamp = seq_length > 0 && sequence.back() >= beg_token_id_;
+    const bool penultimate_was_timestamp = seq_length < 2 || sequence[seq_length - 2] >= beg_token_id_;
+
+    for (int j = 0; j < vocab_size; j++) {//, p++
+      //suppress blank
+      if (suppress_blank && is_initial && (j == eot_token_id_)) {// || j == blank_token_id_ //suppress_blank from parameters
+        beam_token_scores[j] = std::numeric_limits<T>::lowest();
+      }
+
+      //suppress notimestamps, sot, solm, translate and transcribe tokens
+      //if (j == TOKEN_NOT || j == TOKEN_SOT || j == TOKEN_SOLM || j == TOKEN_TRANSLATE || j == TOKEN_TRANSCRIBE) {
+      if (j == not_token_id_ || j == sot_token_id_ || j == solm_token_id_ || j == translate_token_id_ || j == transcribe_token_id_) {//add beam search attributes??
+        beam_token_scores[j] = std::numeric_limits<T>::lowest();
+        //*p = std::numeric_limits<T>::lowest();
+      }
+
+      //suppress token in non_speech_tokens: "token" or " token". non_speech_tokens defined in whisper.cpp L3484; suppress_non_speech_tokens from parameters
+
+      //suppress hyphen and single quotes between words: " -" and " '"
+
+      //mask timestamp logits. Timestamps appears in pairs except directly before EOT
+
+      }
+
+      if (last_was_timestamp) {
+        if (penultimate_was_timestamp) {
+          for (int j = beg_token_id_; j < vocab_size; j++) {//n_logits
+            beam_token_scores[j] = std::numeric_limits<T>::lowest();
+          }
+        } else {
+          for (int j = 0; j < eot_token_id_; j++) {
+            beam_token_scores[j] = std::numeric_limits<T>::lowest();
+          }
+        }
+      }
+
+    }
 
 #ifdef DEBUG_GENERATION
   DumpScores("TSLogitsProcessor", next_token_scores);
 #endif
 
 //
+/*
+  if (sequences->GetSequenceLength() < min_length_) {
+    next_token_scores.SetScore(eos_token_id_, std::numeric_limits<T>::lowest());
+  }
+
   const int batch_beam_size = next_token_scores.batch_beam_size;
   for (int i = 0; i < batch_beam_size; i++) {
-    gsl::span<T> beam_token_scores = next_token_scores.GetScores(i);
-    gsl::span<const int32_t> sequence = sequences->GetSequence(i);
+    gsl::span<T> beam_token_scores = next_token_scores.GetScores(i);///logits: (vocab size)
+    gsl::span<const int32_t> sequence = sequences->GetSequence(i);///tokens_cur: (seq length)
 
     // Find unique word IDs in sequence.
     std::unordered_set<int32_t> unique_word_ids;
@@ -275,6 +335,33 @@ void TSLogitsProcessor<T>::Process(const ISequences* sequences,
       beam_token_scores[word_id] = score; ///(score < 0 ? score * penalty_ : score / penalty_);
     }
   }
+
+  T* p = next_token_scores.scores.data();
+  for (size_t i = 0; i < next_token_scores.scores.size(); i++) {
+    *p -= presence_mask_[i] * presence_penalty_;
+  }
+
+  T* p = next_token_scores.scores.data();
+  for (size_t i = 0; i < next_token_scores.scores.size(); i++) {
+    *p /= temperature_;
+    ++p;
+  }
+
+
+  bool is_initial =
+  // Process vocabulary mask and set tokens with mask value 0 to -inf.
+  T* p = next_token_scores.scores.data();
+  // next_token_scores shape (batch_size * num_beams, vocab_size)
+  // vocab_mask shape (vocab_size).
+  for (int i = 0; i < next_token_scores.batch_beam_size; i++) {
+    for (int j = 0; j < next_token_scores.vocab_size; j++, p++) {
+      if (j == TOKEN_NOT || j == TOKEN_SOT || j == TOKEN_SOLM || j == TOKEN_TRANSLATE || j == TOKEN_TRANSCRIBE) {
+        *p = std::numeric_limits<T>::lowest();
+      }
+    }
+  }
+*/
+//
 }
 //slx
 
