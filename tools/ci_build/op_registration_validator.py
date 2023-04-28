@@ -9,7 +9,7 @@ import argparse
 import dataclasses
 import itertools
 import os
-import sys
+pyimport sys
 import typing
 
 import op_registration_utils
