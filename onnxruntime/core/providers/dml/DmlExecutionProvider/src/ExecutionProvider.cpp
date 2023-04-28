@@ -248,7 +248,7 @@ namespace Dml
         ORT_CATCH_RETURN
     }
 
-    HRESULT __stdcall ExecutionProviderImpl::InitializeOperator(
+    HRESULT __stdcall ExecutionProviderImpl::BindAndInitializeOperator(
         IDMLCompiledOperator* op,
         _In_opt_ const DML_BUFFER_BINDING* persistentResourceBinding,
         gsl::span<const DML_BUFFER_BINDING> inputBindings

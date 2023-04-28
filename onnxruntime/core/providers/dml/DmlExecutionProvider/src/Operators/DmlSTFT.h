@@ -344,7 +344,7 @@ public:
             }
 
             std::vector<DML_BUFFER_BINDING> initializationInputBindings(params.hasWindowTensor ? 2 : 1);
-            ORT_THROW_IF_FAILED(m_dmlProvider->InitializeOperator(
+            ORT_THROW_IF_FAILED(m_dmlProvider->BindAndInitializeOperator(
                 m_framingOperator.op.Get(),
                 m_framingOperator.persistentResourceBinding ? &*m_framingOperator.persistentResourceBinding : nullptr,
                 gsl::make_span(initializationInputBindings)

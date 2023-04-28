@@ -44,7 +44,7 @@ namespace Dml
         // Records DML operator initialization into the command list. It's safe to
         // release the binding table immediately after this is called.
         void InitializeOperator(
-            IDMLCompiledOperator* initializer,
+            IDMLOperatorInitializer* initializer,
             IDMLBindingTable* binding_table,
             ID3D12DescriptorHeap* descriptor_heap);
 
@@ -72,6 +72,17 @@ namespace Dml
 
         // Returns a pointer to the underlying D3D command list.
         ID3D12CommandList* Get() { return d3d_command_list_.Get(); }
+
+        // Forces the descriptor heap to be reset to D3D before executing future operations
+        void InvalidateDescriptorHeap()
+        {
+            current_descriptor_heap_ = nullptr;
+        }
+
+        ComPtr<ID3D12GraphicsCommandList> GetCommandList() const
+        {
+            return d3d_command_list_;
+        }
 
     private:
         Microsoft::WRL::ComPtr<ID3D12Device> d3d_device_;

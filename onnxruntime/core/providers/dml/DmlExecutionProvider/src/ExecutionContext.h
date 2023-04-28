@@ -67,7 +67,7 @@ namespace Dml
         // descriptor_heap alive until the returned GPU event has completed. This
         // class takes ownership of the binding table.
         GpuEvent InitializeOperator(
-            IDMLCompiledOperator* op,
+            IDMLOperatorInitializer* initializer,
             Microsoft::WRL::ComPtr<IDMLBindingTable>&& binding_table,
             ID3D12DescriptorHeap* descriptor_heap);
 
@@ -88,6 +88,12 @@ namespace Dml
         // span only includes a UAV barrier (elides an extra copy).
         GpuEvent UavBarrier();
 
+        // Release any accumulated references who corresponding GPU fence values have
+        // been reached.
+        void ReleaseCompletedReferences();
+
+        void GetCommandListForRecordingAndInvalidateState(ID3D12GraphicsCommandList** commandList);
+
         // Indicates that any batched commands should be recorded and executed as
         // soon as possible, even if the batch is small. This is a no-op if nothing
         // is batched.
@@ -98,6 +104,13 @@ namespace Dml
         GpuEvent GetCurrentCompletionEvent();
 
         D3D12_COMMAND_LIST_TYPE GetCommandListTypeForQueue() const;
+
+        void QueueReference(IUnknown* object);
+
+        void ExecuteCommandList(
+            ID3D12GraphicsCommandList* commandList,
+            _Outptr_ ID3D12Fence** fence,
+            _Out_ uint64_t* completionValue);
 
     private:
         static constexpr uint32_t default_batch_flush_size = 100;
@@ -130,6 +143,7 @@ namespace Dml
         std::shared_ptr<BatchState> batch_state_;
         std::shared_ptr<CommandQueue> dml_command_queue_;
         std::shared_ptr<DmlCommandList> dml_command_list_;
+        ComPtr<IDMLOperatorInitializer> m_initializer;
         std::thread execution_thread_;
 
         static void ExecutionThreadProc(
@@ -138,5 +152,10 @@ namespace Dml
             std::shared_ptr<CommandQueue> command_queue,
             uint32_t batch_flush_size,
             uint32_t batch_flush_time_us);
+
+        static Status RecordAndExecute(
+            CommandQueue* command_queue,
+            DmlCommandList* command_list,
+            Batch& batch);
     };
 } // namespace Dml

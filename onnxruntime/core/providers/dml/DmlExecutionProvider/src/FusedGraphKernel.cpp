@@ -72,7 +72,7 @@ namespace Dml
                 m_persistentResourceBinding = DML_BUFFER_BINDING { m_persistentResource.Get(), 0, persistentResourceSize };
             }
 
-            ORT_THROW_IF_FAILED(m_provider->InitializeOperator(
+            ORT_THROW_IF_FAILED(m_provider->BindAndInitializeOperator(
                 m_compiledExecutionPlanOperator.Get(),
                 m_persistentResourceBinding ? &*m_persistentResourceBinding : nullptr,
                 gsl::make_span(initInputBindings)));

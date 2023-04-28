@@ -167,7 +167,7 @@ namespace Dml
     }
 
     void DmlCommandList::InitializeOperator(
-        IDMLCompiledOperator* op,
+        IDMLOperatorInitializer* initializer,
         IDMLBindingTable* binding_table,
         ID3D12DescriptorHeap* descriptor_heap)
     {
@@ -175,12 +175,12 @@ namespace Dml
         SetDescriptorHeap(descriptor_heap);
         recorder_->RecordDispatch(
             d3d_command_list_.Get(),
-            op,
+            initializer,
             binding_table);
 
         // Barrier if there's an output (i.e. persistent resource), or if any temps
         // are used.
-        DML_BINDING_PROPERTIES binding_props = op->GetBindingProperties();
+        DML_BINDING_PROPERTIES binding_props = initializer->GetBindingProperties();
         if ((binding_props.PersistentResourceSize > 0) ||
             (binding_props.TemporaryResourceSize > 0))
         {

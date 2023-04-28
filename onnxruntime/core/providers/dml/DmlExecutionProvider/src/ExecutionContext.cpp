@@ -132,8 +132,34 @@ namespace Dml
             value);
     }
 
+    void ExecutionContext::ExecuteCommandList(
+        ID3D12GraphicsCommandList* commandList,
+        _Outptr_ ID3D12Fence** fence,
+        _Out_ uint64_t* completionValue)
+    {
+        std::unique_lock<std::mutex> lock(batch_state_->mutex);
+
+        // We have to close and execute the current command list right away, regardless of whether a flush
+        // was requested or not
+        auto& batch = batch_state_->WriteBatch();
+
+        if (!batch.empty())
+        {
+            batch_state_->flush_requested = false;
+            RecordAndExecute(dml_command_queue_.get(), dml_command_list_.get(), batch);
+        }
+
+        // The caller can re-use relevant resources after the next set of work to be
+        // flushed has completed.  Its command list hasn't been executed yet, just batched.
+        GpuEvent gpuEvent = dml_command_queue_->GetNextCompletionEvent();
+        gpuEvent.fence.CopyTo(fence);
+        *completionValue = gpuEvent.fenceValue;
+
+        dml_command_queue_->ExecuteCommandList(commandList);
+    }
+
     GpuEvent ExecutionContext::InitializeOperator(
-        IDMLCompiledOperator* op,
+        IDMLOperatorInitializer* initializer,
         Microsoft::WRL::ComPtr<IDMLBindingTable>&& binding_table,
         ID3D12DescriptorHeap* descriptor_heap)
     {
@@ -144,7 +170,7 @@ namespace Dml
             binding_table = std::move(binding_table)](DmlCommandList& command_list)
             {
                 command_list.InitializeOperator(
-                    op,
+                    initializer,
                     binding_table.Get(),
                     descriptor_heap);
             });
@@ -245,6 +271,23 @@ namespace Dml
         return dml_command_queue_->GetType();
     }
 
+    void ExecutionContext::QueueReference(IUnknown* object)
+    {
+        dml_command_queue_->QueueReference(object, true);
+    }
+
+    void ExecutionContext::ReleaseCompletedReferences()
+    {
+        dml_command_queue_->ReleaseCompletedReferences();
+    }
+
+    void ExecutionContext::GetCommandListForRecordingAndInvalidateState(ID3D12GraphicsCommandList** commandList)
+    {
+        // Ensure the descriptor heap is reset to D3D as something external may change it before recording
+        dml_command_list_->InvalidateDescriptorHeap();
+        dml_command_list_->GetCommandList().CopyTo(commandList);
+    }
+
     /*static*/ void ExecutionContext::ExecutionThreadProc(
         std::shared_ptr<BatchState> state,
         std::shared_ptr<DmlCommandList> command_list,
@@ -297,13 +340,7 @@ namespace Dml
 
             if (flush)
             {
-                // Record the commands into the command list.
-                command_list->Open();
-                for (auto& command : batch)
-                {
-                    command(*command_list);
-                }
-                auto status = command_list->Close();
+                auto status = RecordAndExecute(command_queue.get(), command_list.get(), batch);
 
                 if (!status.IsOK())
                 {
@@ -313,12 +350,35 @@ namespace Dml
                     break;
                 }
 
-                ID3D12CommandList* command_lists[] = {command_list->Get()};
-                command_queue->ExecuteCommandLists(command_lists);
-
-                batch.clear();
                 last_flush_time = std::chrono::steady_clock::now();
             }
         }
     }
+
+    /*static*/ Status ExecutionContext::RecordAndExecute(
+        CommandQueue* command_queue,
+        DmlCommandList* command_list,
+        Batch& batch)
+    {
+        // Record the commands into the command list.
+        command_list->Open();
+        for (auto& command : batch)
+        {
+            command(*command_list);
+        }
+        auto status = command_list->Close();
+
+        if (!status.IsOK())
+        {
+            return status;
+        }
+
+        ID3D12CommandList* command_lists[] = {command_list->Get()};
+        command_queue->ExecuteCommandLists(command_lists);
+        command_queue->ReleaseCompletedReferences();
+        batch.clear();
+
+        return Status::OK();
+    }
+
 } // namespace Dml

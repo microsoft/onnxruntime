@@ -51,7 +51,7 @@ namespace Dml
 
         STDMETHOD(AddUAVBarrier)() const noexcept final;
 
-        STDMETHOD(InitializeOperator)(
+        STDMETHOD(BindAndInitializeOperator)(
             IDMLCompiledOperator* op,
             _In_opt_ const DML_BUFFER_BINDING* persistentResourceBinding,
             gsl::span<const DML_BUFFER_BINDING> inputBindings
