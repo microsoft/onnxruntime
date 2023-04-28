@@ -36,6 +36,8 @@ Pod::Spec.new do |spec|
         'OTHER_CPLUSPLUSFLAGS' => '-DORT_ENABLE_EXTENSIONS=1 -Wall -Wextra',
       }
     end
+  else
+    raise 'No package.json file found applicable in the project root directory.'
   end
 
 end
