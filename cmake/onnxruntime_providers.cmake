@@ -779,13 +779,13 @@ if (onnxruntime_USE_VITISAI)
   file(GLOB onnxruntime_providers_vitisai_cc_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/core/providers/vitisai/*.cc"
     "${ONNXRUNTIME_ROOT}/core/providers/vitisai/*.h"
-    "${ONNXRUNTIME_ROOT}/core/providers/vitisai/imp/*.cpp"
-    "${ONNXRUNTIME_ROOT}/core/providers/vitisai/imp/*.hpp"
+    "${ONNXRUNTIME_ROOT}/core/providers/vitisai/imp/*.cc"
+    "${ONNXRUNTIME_ROOT}/core/providers/vitisai/imp/*.h"
   )
   source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_vitisai_cc_srcs})
   onnxruntime_add_static_library(onnxruntime_providers_vitisai ${onnxruntime_providers_vitisai_cc_srcs})
   onnxruntime_add_include_to_target(onnxruntime_providers_vitisai onnxruntime_common onnxruntime_framework onnx onnx_proto)
-  add_library(onnxruntime_vitisai_ep SHARED ${ONNXRUNTIME_ROOT}/core/providers/vitisai/onnxruntime_vitisai_ep_stub.cpp)
+  onnxruntime_add_shared_library_module(onnxruntime_vitisai_ep ${ONNXRUNTIME_ROOT}/core/providers/vitisai/onnxruntime_vitisai_ep_stub.cc)
   onnxruntime_add_include_to_target(onnxruntime_vitisai_ep onnxruntime_common)
   target_include_directories(onnxruntime_vitisai_ep PRIVATE "${ONNXRUNTIME_ROOT}" "${ONNXRUNTIME_ROOT}/core/providers/vitisai/include")
   target_link_libraries(onnxruntime_providers_vitisai PUBLIC onnxruntime_vitisai_ep PRIVATE onnx protobuf::libprotobuf)
