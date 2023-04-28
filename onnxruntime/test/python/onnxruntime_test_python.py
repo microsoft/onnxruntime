@@ -255,6 +255,8 @@ class TestInferenceSession(unittest.TestCase):
 
                 test_get_and_set_option_with_values("tunable_op_tuning_enable", ["1", "0"])
 
+                test_get_and_set_option_with_values("enable_skip_layer_norm_strict_mode", [0, 1])
+
                 option["gpu_external_alloc"] = "0"
                 option["gpu_external_free"] = "0"
                 option["gpu_external_empty_cache"] = "0"

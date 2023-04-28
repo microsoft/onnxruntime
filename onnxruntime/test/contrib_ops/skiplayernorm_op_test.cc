@@ -60,9 +60,6 @@ static void RunTest(
       }
     }
     test.AddAttribute("epsilon", epsilon);
-    if (strict) {
-      test.AddAttribute("strict", static_cast<int64_t>(1));
-    }
     if (!bias_data.empty()) {
       test.AddInput<float>("bias", bias_dims, bias_data);
     }
@@ -95,9 +92,6 @@ static void RunTest(
       }
     }
     test.AddAttribute("epsilon", epsilon);
-    if (strict) {
-      test.AddAttribute("strict", static_cast<int64_t>(1));
-    }
     if (!bias_data.empty()) {
       test.AddInput<MLFloat16>("bias", bias_dims, ToFloat16(bias_data));
     }
@@ -120,7 +114,13 @@ static void RunTest(
     } else if (rocm_ep != nullptr) {
       execution_providers.push_back(DefaultRocmExecutionProvider());
     } else {
-      execution_providers.push_back(DefaultCudaExecutionProvider());
+      if (strict) {
+        OrtCUDAProviderOptions provider_options{};
+        provider_options.enable_skip_layer_norm_strict_mode = true;
+        execution_providers.push_back(CudaExecutionProviderWithOptions(&provider_options));
+      } else {
+        execution_providers.push_back(DefaultCudaExecutionProvider());
+      }
     }
 
     test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);

@@ -396,7 +396,8 @@ typedef struct OrtCUDAProviderOptions {
         user_compute_stream{},
         default_memory_arena_cfg{},
         tunable_op_enable{false},
-        tunable_op_tuning_enable{false} {}
+        tunable_op_tuning_enable{false},
+        enable_skip_layer_norm_strict_mode{0} {}
 #endif
 
   /** \brief CUDA device Id
@@ -458,6 +459,11 @@ typedef struct OrtCUDAProviderOptions {
    *   This option can be overriden by environment variable ORT_CUDA_TUNABLE_OP_TUNING_ENABLE.
    */
   int tunable_op_tuning_enable;
+
+  /** \brief Enable strict mode for SkipLayerNorm.
+   *   Set it to 1/0 to enable/disable strict mode for SkipLayerNorm. Otherwise, it is disabled by default.
+   */
+  int enable_skip_layer_norm_strict_mode;
 
 } OrtCUDAProviderOptions;
 

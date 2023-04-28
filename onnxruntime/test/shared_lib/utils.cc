@@ -15,6 +15,7 @@ OrtCUDAProviderOptions CreateDefaultOrtCudaProviderOptionsWithCustomStream(void*
   cuda_options.has_user_compute_stream = cuda_compute_stream != nullptr ? 1 : 0;
   cuda_options.user_compute_stream = cuda_compute_stream;
   cuda_options.default_memory_arena_cfg = nullptr;
+  cuda_options.enable_skip_layer_norm_strict_mode = false;
 
   return cuda_options;
 }

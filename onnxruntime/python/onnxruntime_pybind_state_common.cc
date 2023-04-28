@@ -29,6 +29,8 @@ onnxruntime::cuda::TunableOpInfo tunable_op{};
 onnxruntime::CUDAExecutionProviderExternalAllocatorInfo external_allocator_info{};
 // TODO remove deprecated global config
 onnxruntime::ArenaExtendStrategy arena_extend_strategy = onnxruntime::ArenaExtendStrategy::kNextPowerOfTwo;
+// TODO remove deprecated global config
+bool enable_skip_layer_norm_strict_mode = false;
 #endif
 
 #ifdef USE_ROCM

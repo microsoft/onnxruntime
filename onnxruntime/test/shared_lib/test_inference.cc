@@ -2604,14 +2604,15 @@ TEST(CApiTest, TestConfigureCUDAProviderOptions) {
   std::unique_ptr<OrtCUDAProviderOptionsV2, decltype(api.ReleaseCUDAProviderOptions)> rel_cuda_options(cuda_options, api.ReleaseCUDAProviderOptions);
 
   std::vector<const char*> keys{
-      "device_id", "gpu_mem_limit", "arena_extend_strategy",
-      "cudnn_conv_algo_search", "do_copy_in_default_stream", "cudnn_conv_use_max_workspace", "cudnn_conv1d_pad_to_nc1d"};
+      "device_id", "gpu_mem_limit", "arena_extend_strategy", "cudnn_conv_algo_search",
+      "do_copy_in_default_stream", "cudnn_conv_use_max_workspace", "enable_skip_layer_norm_strict_mode",
+      "cudnn_conv1d_pad_to_nc1d"};
 
   std::vector<const char*> values{
       "0", "1024", "kSameAsRequested",
-      "DEFAULT", "1", "1"};
+      "DEFAULT", "1", "1", "1"};
 
-  ASSERT_TRUE(api.UpdateCUDAProviderOptions(rel_cuda_options.get(), keys.data(), values.data(), 6) == nullptr);
+  ASSERT_TRUE(api.UpdateCUDAProviderOptions(rel_cuda_options.get(), keys.data(), values.data(), 7) == nullptr);
 
   OrtAllocator* allocator;
   ASSERT_TRUE(api.GetAllocatorWithDefaultOptions(&allocator) == nullptr);
@@ -2628,6 +2629,7 @@ TEST(CApiTest, TestConfigureCUDAProviderOptions) {
   ASSERT_TRUE(s.find("cudnn_conv_algo_search=DEFAULT") != std::string::npos);
   ASSERT_TRUE(s.find("do_copy_in_default_stream=1") != std::string::npos);
   ASSERT_TRUE(s.find("cudnn_conv_use_max_workspace=1") != std::string::npos);
+  ASSERT_TRUE(s.find("enable_skip_layer_norm_strict_mode=1") != std::string::npos);
   ASSERT_TRUE(s.find("cudnn_conv1d_pad_to_nc1d") != std::string::npos);
 
   ASSERT_TRUE(api.AllocatorFree(allocator, (void*)cuda_options_str) == nullptr);

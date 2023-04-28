@@ -110,6 +110,14 @@ std::unique_ptr<IExecutionProvider> DefaultCudaExecutionProvider() {
   return nullptr;
 }
 
+std::unique_ptr<IExecutionProvider> CudaExecutionProviderWithOptions(const OrtCUDAProviderOptions* provider_options) {
+#ifdef USE_CUDA
+  if (auto factory = CudaProviderFactoryCreator::Create(provider_options))
+    return factory->CreateProvider();
+#endif
+  return nullptr;
+}
+
 std::unique_ptr<IExecutionProvider> DefaultDnnlExecutionProvider() {
 #ifdef USE_DNNL
   OrtDnnlProviderOptions dnnl_options;
