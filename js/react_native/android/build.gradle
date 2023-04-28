@@ -25,11 +25,11 @@ def checkIfOrtExtensionsEnabled() {
   def reactnativeRootDir = project.rootDir.parentFile
   // get package.json file in root directory
   def packageJsonFile = new File(reactnativeRootDir, 'package.json')
-  // read field 'ortExtensionsEnabled'
+  // read field 'onnxruntimeExtensionsEnabled'
   if (packageJsonFile.exists()) {
     def packageJsonContents = packageJsonFile.getText()
     def packageJson = new groovy.json.JsonSlurper().parseText(packageJsonContents)
-    return packageJson.ortExtensionsEnabled
+    return packageJson.onnxruntimeExtensionsEnabled == 'true'
   } else {
     throw new GradleException(
         "Unable to find the package.json file in the project root directory."

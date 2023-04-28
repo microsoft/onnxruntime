@@ -30,7 +30,7 @@ Pod::Spec.new do |spec|
   if (File.exist?(File.join(root_dir, 'package.json')))
     # Read the react native root project directory package.json file
     root_package = JSON.parse(File.read(File.join(root_dir, 'package.json')))
-    if (root_package["ortExtensionsEnabled"])
+    if (root_package["onnxruntimeExtensionsEnabled"])
       spec.dependency "onnxruntime-extensions-c"
       spec.xcconfig = {
         'OTHER_CPLUSPLUSFLAGS' => '-DORT_ENABLE_EXTENSIONS=1 -Wall -Wextra',
