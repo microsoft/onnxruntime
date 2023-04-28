@@ -15,6 +15,7 @@ import numpy
 import onnx
 import torch
 from transformers import WhisperConfig, file_utils
+from whisper_encoder import WhisperEncoderInputs
 
 from onnxruntime import InferenceSession
 
@@ -23,7 +24,6 @@ from io_binding_helper import TypeHelper  # noqa: E402
 from models.t5.past_helper import PastKeyValuesHelper  # noqa: E402
 from onnx_model import OnnxModel  # noqa: E402
 from torch_onnx_export_helper import torch_onnx_export  # noqa: E402
-from whisper_encoder import WhisperEncoderInputs
 
 logger = logging.getLogger(__name__)
 

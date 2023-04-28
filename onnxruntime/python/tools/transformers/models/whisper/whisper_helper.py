@@ -12,6 +12,9 @@ from typing import Dict, Tuple, Union
 
 import torch
 from transformers import WhisperForConditionalGeneration
+from whisper_decoder import WhisperDecoder, WhisperDecoderHelper, WhisperDecoderInit
+from whisper_encoder import WhisperEncoder, WhisperEncoderHelper
+from whisper_encoder_decoder_init import WhisperEncoderDecoderInit, WhisperEncoderDecoderInitHelper
 
 from onnxruntime import InferenceSession
 
@@ -19,9 +22,6 @@ sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 from float16 import float_to_float16_max_diff  # noqa: E402
 from onnx_model import OnnxModel  # noqa: E402
 from optimizer import optimize_model  # noqa: E402
-from whisper_decoder import WhisperDecoder, WhisperDecoderHelper, WhisperDecoderInit
-from whisper_encoder import WhisperEncoder, WhisperEncoderHelper
-from whisper_encoder_decoder_init import WhisperEncoderDecoderInit, WhisperEncoderDecoderInitHelper
 
 logger = logging.getLogger(__name__)
 

@@ -15,6 +15,8 @@ import numpy
 import onnx
 import torch
 from transformers import WhisperConfig
+from whisper_decoder import WhisperDecoderInit
+from whisper_encoder import WhisperEncoder, WhisperEncoderInputs
 
 from onnxruntime import InferenceSession
 
@@ -22,8 +24,6 @@ sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 from models.t5.past_helper import PastKeyValuesHelper  # noqa: E402
 from onnx_model import OnnxModel  # noqa: E402
 from torch_onnx_export_helper import torch_onnx_export  # noqa: E402
-from whisper_decoder import WhisperDecoderInit
-from whisper_encoder import WhisperEncoder, WhisperEncoderInputs
 
 logger = logging.getLogger(__name__)
 
