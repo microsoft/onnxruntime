@@ -164,66 +164,6 @@ std::unordered_map<std::string, std::unordered_map<size_t, std::pair<int64_t, in
 }
 
 /*
- * Deserialize engine profile. (This function starts from ORT 1.15)
- *
- *
- * For example, assume tensor_a has two dynamic shape dimensions: dim_0 and dim_2, and tensor_b
- * has one dynamic shape dimension: dim_1.
- *
- * The data in profile file will be:
- * {
- *   tensor_a: [[dim_0, min_shape, max_shape, opt_shape, dim_2, min_shape, max_shape, opt_shape]]
- *   tensor_b: [[dim_1, min_shape, max_shape, opt_shape]]
- * }
- *
- * The data after deserialization will be:
- * {
- *   tensor_a: {
- *     dim_0: [[min_shape, max_shape, opt_shape]],
- *     dim_2: [[min_shape, max_shape, opt_shape]]
- *   },
- *   tensor_b: {
- *     dim_1: [[min_shape, max_shape, opt_shape]]
- *   }
- * }
- */
-std::unordered_map<std::string, std::unordered_map<int64_t, std::vector<std::vector<int64_t>>>> DeserializeProfileV2(std::ifstream& infile) {
-  // Load flexbuffer
-  infile.seekg(0, std::ios::end);
-  size_t length = infile.tellg();
-  infile.seekg(0, std::ios::beg);
-  std::unique_ptr<char[]> data{new char[length]};
-  infile.read((char*)data.get(), length);
-  infile.close();
-
-  // Deserialize profile
-  std::unordered_map<std::string, std::unordered_map<int64_t, std::vector<std::vector<int64_t>>>> shape_ranges;
-  auto tensors_range_entries = flexbuffers::GetRoot((const uint8_t*)data.get(), length).AsMap();
-  auto keys = tensors_range_entries.Keys();
-  auto values = tensors_range_entries.Values();
-  for (size_t i = 0; i < keys.size(); i++) { // iterate tensors
-    auto profiles_vector = values[i].AsTypedVector();
-    std::unordered_map<int64_t, std::vector<std::vector<int64_t>>> inner_map;
-    std::vector<std::vector<int64_t>> outer_vector(profiles_vector.size());
-
-    for (size_t j = 0; j < profiles_vector.size(); j++) { // iterate profiles
-      auto dim_range_vector = profiles_vector[j].AsTypedVector();
-
-      for (size_t k = 0; k < (dim_range_vector.size() / 4); k ++) { // iterate dim, min, max, opt
-        std::vector<int64_t> inner_vector;
-        auto idx = 4 * k;
-        inner_vector.push_back(dim_range_vector[idx + 1].AsInt64()); // min shape
-        inner_vector.push_back(dim_range_vector[idx + 2].AsInt64()); // max shape
-        inner_vector.push_back(dim_range_vector[idx + 3].AsInt64()); // opt shape
-        inner_map[dim_range_vector[idx].AsInt64()][j] = inner_vector;
-      }
-    }
-    shape_ranges[keys[i].AsString().c_str()] = inner_map;
-  }
-  return shape_ranges;
-}
-
-/*
  * Seralize engine profile. (This function starts from ORT 1.15)
  *
  *
@@ -250,7 +190,7 @@ std::unordered_map<std::string, std::unordered_map<int64_t, std::vector<std::vec
  */
 void SerializeProfileV2(const std::string& file_name,
                         int num_profiles,
-                        std::unordered_map<std::string, std::unordered_map<int64_t, std::vector<std::vector<int64_t>>>>& shape_ranges)
+                        std::unordered_map<std::string, std::unordered_map<size_t, std::vector<std::vector<int64_t>>>>& shape_ranges)
 {
   // Serialize profile
   flexbuffers::Builder builder;
@@ -278,6 +218,157 @@ void SerializeProfileV2(const std::string& file_name,
   size_t size = builder.GetSize();
   file.write(reinterpret_cast<const char*>(&buf[0]), size);
   file.close();
+}
+
+/*
+ * Deserialize engine profile. (This function starts from ORT 1.15)
+ *
+ *
+ * For example, assume tensor_a has two dynamic shape dimensions: dim_0 and dim_2, and tensor_b
+ * has one dynamic shape dimension: dim_1.
+ *
+ * The data in profile file will be:
+ * {
+ *   tensor_a: [[dim_0, min_shape, max_shape, opt_shape, dim_2, min_shape, max_shape, opt_shape]]
+ *   tensor_b: [[dim_1, min_shape, max_shape, opt_shape]]
+ * }
+ *
+ * The data after deserialization will be:
+ * {
+ *   tensor_a: {
+ *     dim_0: [[min_shape, max_shape, opt_shape]],
+ *     dim_2: [[min_shape, max_shape, opt_shape]]
+ *   },
+ *   tensor_b: {
+ *     dim_1: [[min_shape, max_shape, opt_shape]]
+ *   }
+ * }
+ */
+std::unordered_map<std::string, std::unordered_map<size_t, std::vector<std::vector<int64_t>>>> DeserializeProfileV2(std::ifstream& infile) {
+  // Load flexbuffer
+  infile.seekg(0, std::ios::end);
+  size_t length = infile.tellg();
+  infile.seekg(0, std::ios::beg);
+  std::unique_ptr<char[]> data{new char[length]};
+  infile.read((char*)data.get(), length);
+  infile.close();
+
+  // Deserialize profile
+  std::unordered_map<std::string, std::unordered_map<size_t, std::vector<std::vector<int64_t>>>> shape_ranges;
+  auto tensors_range_entries = flexbuffers::GetRoot((const uint8_t*)data.get(), length).AsMap();
+  auto keys = tensors_range_entries.Keys();
+  auto values = tensors_range_entries.Values();
+  for (size_t i = 0; i < keys.size(); i++) { // iterate tensors
+    auto profiles_vector = values[i].AsTypedVector();
+    std::unordered_map<size_t, std::vector<std::vector<int64_t>>> inner_map;
+    std::vector<std::vector<int64_t>> outer_vector(profiles_vector.size());
+
+    for (size_t j = 0; j < profiles_vector.size(); j++) { // iterate profiles
+      auto dim_range_vector = profiles_vector[j].AsTypedVector();
+
+      for (size_t k = 0; k < (dim_range_vector.size() / 4); k ++) { // iterate dim, min, max, opt
+        std::vector<int64_t> inner_vector;
+        auto idx = 4 * k;
+        inner_vector.push_back(dim_range_vector[idx + 1].AsInt64()); // min shape
+        inner_vector.push_back(dim_range_vector[idx + 2].AsInt64()); // max shape
+        inner_vector.push_back(dim_range_vector[idx + 3].AsInt64()); // opt shape
+        inner_map[dim_range_vector[idx].AsInt64()][j] = inner_vector;
+      }
+    }
+    shape_ranges[keys[i].AsString().c_str()] = inner_map;
+  }
+  return shape_ranges;
+}
+
+/*
+ * Compare profile shapes from profile file (.profile) with explicit profile min/max/opt shapes.
+ * Return false meaning no need to rebuild engine if everything is same.
+ * Otherwise return true and engine needs to be rebuilt. 
+ */
+bool CompareProfiles(const std::string& file_name, 
+                     std::unordered_map<std::string, std::vector<std::vector<int64_t>>>& profile_min_shapes,
+                     std::unordered_map<std::string, std::vector<std::vector<int64_t>>>& profile_max_shapes,
+                     std::unordered_map<std::string, std::vector<std::vector<int64_t>>>& profile_opt_shapes) {
+
+  std::ifstream profile_file(file_name, std::ios::binary | std::ios::in);
+  if (!profile_file) {
+    LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] " << file_name << " doesn't exist.";
+    return true;
+  }
+
+  std::unordered_map<std::string, std::unordered_map<size_t, std::vector<std::vector<int64_t>>>> shape_ranges;
+  shape_ranges = DeserializeProfileV2(profile_file);
+
+  /* The format of the two data structures are below, for example:
+   * 
+   * shape_ranges:
+   * {
+   *   tensor_a: {
+   *     dim_0: [[min_shape, max_shape, opt_shape]],
+   *     dim_2: [[min_shape, max_shape, opt_shape]]
+   *   },
+   *   tensor_b: {
+   *     dim_1: [[min_shape, max_shape, opt_shape]]
+   *   }
+   * }
+   *
+   * profile_min_shapes:
+   * {
+   *   tensor_a: [[dim_0_value_0, dim_1_value_1, dim_2_value_2]],
+   *   tensor_b: [[dim_0_value_3, dim_1_value_4, dim_2_value_5]]
+   * }
+   *
+   */
+
+  // Check number of dynamic shape inputs
+  if (profile_min_shapes.size() != shape_ranges.size()) {
+    LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Numbers of dynamic shape inputs are not the same.";
+    return true;
+  }
+
+  // Iterate through shape_ranges map
+  for (auto tensor_it = shape_ranges.begin(); tensor_it != shape_ranges.end(); tensor_it++) { // iterate tensors
+    auto tensor_name = tensor_it->first;
+    if (profile_min_shapes.find(tensor_name) == profile_min_shapes.end())
+    {
+      LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Tensor name '" << tensor_name << "' doesn't exist in trt_profile_min_shapes." ;
+      return true;
+    }
+
+    for (auto dim_it = tensor_it->second.begin(); dim_it != tensor_it->second.end(); dim_it++) { // iterate dimensions
+      auto dim = dim_it->first;
+      auto num_profiles = GetNumProfiles(profile_min_shapes); 
+
+      if (dim_it->second.size() != static_cast<size_t>(num_profiles)) {
+        LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Numbers of profiles are not the same.";
+        return true;
+      }
+
+      for (size_t i = 0; i < dim_it->second.size(); i++) { // iterate (multiple) profile(s)
+        auto shape_values = dim_it->second[i]; 
+        if (dim > (profile_min_shapes[tensor_name][i].size() - 1)) {
+          LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] dimension " << dim << " of " << tensor_name << " in " << file_name << " exceeds the total dimension of trt_profile_min_shapes.";
+          return true;
+        }
+
+        if (profile_min_shapes[tensor_name][i][dim] != shape_values[0]) {
+          LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] min shape values of dimension " << dim << " of " << tensor_name << "are not the same";
+          return true;
+        }
+
+        if (profile_max_shapes[tensor_name][i][dim] != shape_values[1]) {
+          LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] max shape values of dimension " << dim << " of " << tensor_name << "are not the same";
+          return true;
+        }
+
+        if (profile_opt_shapes[tensor_name][i][dim] != shape_values[2]) {
+          LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] opt shape values of dimension " << dim << " of " << tensor_name << "are not the same";
+          return true;
+        }
+      }
+    }
+  }
+  return false;
 }
 
 /*
