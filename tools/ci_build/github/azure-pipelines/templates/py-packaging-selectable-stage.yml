@@ -114,7 +114,7 @@ stages:
 
   - ${{ if eq(parameters.enable_windows_cpu, true) }}:
     - job: Windows_CPU_py_Wheels
-      pool: 'onnxruntime-cpu-openvino-winbuild'
+      pool: 'Win-CPU-2021'
       strategy:
         matrix:
           ${{ each PythonVersion in parameters.python_version }}:
@@ -145,12 +145,6 @@ stages:
           filename: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\$(EnvSetupScript)'
           modifyEnvironment: true
           workingFolder: '$(Build.BinariesDirectory)'
-
-      - task: BatchScript@1
-        displayName: 'setup OpenVino env'
-        inputs:
-          filename: 'C:\Program Files\Intel\openvino_2021.4.752\bin\setupvars.bat'
-          modifyEnvironment: true
 
       - task: PythonScript@0
         inputs:
