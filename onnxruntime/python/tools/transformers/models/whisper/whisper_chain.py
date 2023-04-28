@@ -5,7 +5,6 @@ import onnx
 from onnx import TensorProto, helper
 from transformers import WhisperConfig
 
-sys.path.append(os.path.join(os.path.dirname(__file__)))
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 from convert_generation import get_shared_initializers  # noqa: E402
 

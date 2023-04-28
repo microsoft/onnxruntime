@@ -18,7 +18,6 @@ from transformers import WhisperConfig
 
 from onnxruntime import InferenceSession
 
-sys.path.append(os.path.join(os.path.dirname(__file__)))
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 from models.t5.past_helper import PastKeyValuesHelper  # noqa: E402
 from onnx_model import OnnxModel  # noqa: E402

@@ -15,7 +15,6 @@ from transformers import WhisperForConditionalGeneration
 
 from onnxruntime import InferenceSession
 
-sys.path.append(os.path.join(os.path.dirname(__file__)))
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 from float16 import float_to_float16_max_diff  # noqa: E402
 from onnx_model import OnnxModel  # noqa: E402
