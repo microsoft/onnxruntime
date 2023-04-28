@@ -29,14 +29,15 @@ def checkIfOrtExtensionsEnabled() {
   if (packageJsonFile.exists()) {
     def packageJsonContents = packageJsonFile.getText()
     def packageJson = new groovy.json.JsonSlurper().parseText(packageJsonContents)
-    return packageJson.onnxruntimeExtensionsEnabled == 'true'
+    return packageJson.onnxruntimeExtensionsEnabled == "true"
   } else {
-    throw new GradleException(
-        "Unable to find the package.json file in the project root directory."
-    )
+    logger.error("Could not find package.json file in the expected directory. expected root directory:
+                ${reactnativeRootDir}")
   }
   return false
 }
+
+boolean ortExtensionsEnabled = checkIfOrtExtensionsEnabled()
 
 android {
   compileSdkVersion getExtOrIntegerDefault('compileSdkVersion')
@@ -65,7 +66,7 @@ android {
   sourceSets {
     main {
       java.srcDirs = ['src/main/java/']
-      if (checkIfOrtExtensionsEnabled()) {
+      if (ortExtensionsEnabled) {
         java.exclude '**/OnnxruntimeExtensionsDisabled.java'
       } else {
         java.exclude '**/OnnxruntimeExtensionsEnabled.java'
@@ -167,7 +168,7 @@ dependencies {
   implementation "com.microsoft.onnxruntime:onnxruntime-android:latest.integration@aar"
 
   // By default it will just include onnxruntime full aar package
-  if (checkIfOrtExtensionsEnabled()) {
+  if (ortExtensionsEnabled) {
     implementation "com.microsoft.onnxruntime:onnxruntime-extensions-android:latest.integration@aar"
   }
 }
