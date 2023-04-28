@@ -69,14 +69,16 @@ Status QuantizeLinear<T, U>::ComputeInternal(OpKernelContext* ctx) const {
     ORT_ENFORCE(y_scale.Shape().NumDimensions() == 1);
     ORT_ENFORCE(y_zero_point == nullptr || (y_scale.Shape().Size() == y_zero_point->Shape().Size()), "scale and zero_point must have the same shape.");
     ORT_ENFORCE(x_shape.NumDimensions() > 1);
-    ORT_ENFORCE(y_scale.Shape().Size() == x_shape[axis_], "scale must have ", x_shape[axis_], " elements.");
+    auto axis = axis_ >= 0 ? axis_ : axis_ + x_shape[axis_];
+    ORT_ENFORCE(axis >= 0 && axis < x_shape.Size());
+    ORT_ENFORCE(y_scale.Shape().Size() == x_shape[axis], "scale must have ", x_shape[axis], " elements.");
 
     const T* zero_point = y_zero_point != nullptr ? y_zero_point->Data<T>() : nullptr;
     const CudaU* scale = reinterpret_cast<const CudaU*>(y_scale.Data<U>());
     const auto num_of_elements = x_shape.Size();
 
     ORT_RETURN_IF_ERROR(CudaQuantizeLinearAxis(Stream(ctx), input, output, scale, zero_point, num_of_elements,
-                                               x_shape.SizeToDimension(axis_), y_scale.Shape().Size(), saturate_));
+                                               x_shape.SizeToDimension(axis), y_scale.Shape().Size(), saturate_));
     return Status::OK();
   }
 }
@@ -139,14 +141,16 @@ Status DequantizeLinear<T, U>::ComputeInternal(OpKernelContext* ctx) const {
     ORT_ENFORCE(y_scale.Shape().NumDimensions() == 1);
     ORT_ENFORCE(y_zero_point == nullptr || (y_scale.Shape().Size() == y_zero_point->Shape().Size()), "scale and zero_point must have the same shape.");
     ORT_ENFORCE(x_shape.NumDimensions() > 1);
-    ORT_ENFORCE(y_scale.Shape().Size() == x_shape[axis_], "scale must have ", x_shape[axis_], " elements.");
+    auto axis = axis_ >= 0 ? axis_ : axis_ + x_shape[axis_];
+    ORT_ENFORCE(axis >= 0 && axis < x_shape.Size());
+    ORT_ENFORCE(y_scale.Shape().Size() == x_shape[axis], "scale must have ", x_shape[axis], " elements.");
 
     const T* zero_point = y_zero_point != nullptr ? y_zero_point->Data<T>() : nullptr;
     const CudaU* scale = reinterpret_cast<const CudaU*>(y_scale.Data<U>());
     const auto num_of_elements = x_shape.Size();
 
     ORT_RETURN_IF_ERROR(CudaDequantizeLinearAxis(Stream(ctx), input, output, scale, zero_point, num_of_elements,
-                                                 x_shape.SizeToDimension(axis_), y_scale.Shape().Size()));
+                                                 x_shape.SizeToDimension(axis), y_scale.Shape().Size()));
     return Status::OK();
   }
 }
