@@ -4547,8 +4547,6 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dl>
 <dt><tt>epsilon</tt> : float</dt>
 <dd>The epsilon value to use to avoid division by zero.</dd>
-<dt><tt>strict</tt> : int</dt>
-<dd>Use standard LayerNorm implementation</dd>
 </dl>
 
 #### Inputs (3 - 5)
