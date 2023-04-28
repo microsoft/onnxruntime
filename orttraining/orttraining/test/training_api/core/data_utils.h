@@ -24,8 +24,8 @@ void CpuOrtValueToVec(const OrtValue& src_cpu_ortvalue, std::vector<T>& output) 
 
 template <typename T>
 void CudaOrtValueToCpuVec(const OrtValue& src_cuda_ortvalue, std::vector<T>& output) {
-  static std::unique_ptr<IExecutionProvider> cuda_provider = onnxruntime::test::DefaultCudaExecutionProvider();
-  static std::unique_ptr<IExecutionProvider> cpu_provider = onnxruntime::test::DefaultCpuExecutionProvider();
+  std::unique_ptr<IExecutionProvider> cuda_provider = onnxruntime::test::DefaultCudaExecutionProvider();
+  std::unique_ptr<IExecutionProvider> cpu_provider = onnxruntime::test::DefaultCpuExecutionProvider();
 
   const Tensor& src_tensor = src_cuda_ortvalue.Get<Tensor>();
 
