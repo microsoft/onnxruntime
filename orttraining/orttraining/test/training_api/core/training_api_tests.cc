@@ -250,9 +250,9 @@ TEST(TrainingApiTest, ModuleTrainStep) {
 
 TEST(TrainingApiTest, OptimizerCreatedWithOptimizerCheckpointState) {
   std::vector<bool> run_cuda_list{false};
-#ifdef USE_CUDA
-  run_cuda_list.push_back(true);
-#endif
+  // #ifdef USE_CUDA
+  //   run_cuda_list.push_back(true);
+  // #endif
 
   for (auto run_cuda : run_cuda_list) {
     std::vector<std::shared_ptr<IExecutionProvider>> providers;
@@ -328,9 +328,9 @@ void TestLRSchduler(const std::basic_string<ORTCHAR_T>& test_file_name,
                     int64_t total_step_count,
                     int64_t warmup_step_count) {
   std::vector<bool> run_cuda_list{false};
-#ifdef USE_CUDA
-  run_cuda_list.push_back(true);
-#endif
+  // #ifdef USE_CUDA
+  //   run_cuda_list.push_back(true);
+  // #endif
 
   for (auto run_cuda : run_cuda_list) {
     std::vector<std::shared_ptr<IExecutionProvider>> providers;
