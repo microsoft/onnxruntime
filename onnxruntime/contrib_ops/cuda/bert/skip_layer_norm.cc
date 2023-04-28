@@ -141,6 +141,7 @@ Status SkipLayerNorm<T, Simplified>::ComputeInternal(OpKernelContext* ctx) const
   int64_t element_count = input_dims[0] * sequence_length * hidden_size;
   size_t element_size = sizeof(T);
   typedef typename ToCudaType<T>::MappedType CudaT;
+
   return LaunchSkipLayerNormKernel<CudaT, Simplified>(
       Stream(ctx),
       reinterpret_cast<CudaT*>(output->MutableData<T>()),

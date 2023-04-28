@@ -665,7 +665,9 @@ def create_ort_session(model_path: str, use_gpu: bool, use_sln_strict_mode: bool
         if use_sln_strict_mode:
             cuda_provider_options = {"enable_skip_layer_norm_strict_mode": True}
             provider_options = {"CUDAExecutionProvider": cuda_provider_options}
-            execution_providers = [(name, provider_options[name]) if name in provider_options else name for name in execution_providers]
+            execution_providers = [
+                (name, provider_options[name]) if name in provider_options else name for name in execution_providers
+            ]
 
     ort_session = InferenceSession(model_path, sess_options, providers=execution_providers)
     return ort_session

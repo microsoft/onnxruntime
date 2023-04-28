@@ -1235,11 +1235,11 @@ OrtCUDAProviderOptionsV2 OrtCUDAProviderOptionsToOrtCUDAProviderOptionsV2(const 
   cuda_options_converted.has_user_compute_stream = legacy_cuda_options->has_user_compute_stream;
   cuda_options_converted.user_compute_stream = legacy_cuda_options->user_compute_stream;
   cuda_options_converted.default_memory_arena_cfg = legacy_cuda_options->default_memory_arena_cfg;
-  cuda_options_converted.enable_skip_layer_norm_strict_mode = legacy_cuda_options->enable_skip_layer_norm_strict_mode;
   // Use default value as this field is not available in OrtCUDAProviderOptions
   cuda_options_converted.cudnn_conv_use_max_workspace = 1;
   cuda_options_converted.enable_cuda_graph = 0;
   cuda_options_converted.cudnn_conv1d_pad_to_nc1d = 0;
+  cuda_options_converted.enable_skip_layer_norm_strict_mode = 0;
 
   return cuda_options_converted;
 }
