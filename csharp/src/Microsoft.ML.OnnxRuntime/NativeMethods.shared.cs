@@ -1946,7 +1946,6 @@ namespace Microsoft.ML.OnnxRuntime
         internal const string ExtensionsDllName = "ortextensions";
 #endif
 
-        // OrtStatus* ORT_API_CALL RegisterCustomOps(OrtSessionOptions* options, const OrtApiBase* api
         [DllImport(ExtensionsDllName, CharSet = CharSet.Ansi,
                    CallingConvention = CallingConvention.Winapi)]
         public static extern IntPtr /* OrtStatus* */ RegisterCustomOps(IntPtr /* OrtSessionOptions* */ sessionOptions,
