@@ -10,6 +10,7 @@ namespace Dml
 {
     class DmlAllocator;
     class CommandQueue;
+    class BucketizedBufferAllocator;
 
     // A thread-safe object for recording and executing GPU commands. Calls to
     // this class are batched to minimize lock contention, and the batched

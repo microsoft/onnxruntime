@@ -225,7 +225,7 @@ namespace Dml
     class ExecutionProvider : public onnxruntime::IExecutionProvider
     {
     public:
-        virtual ~ExecutionProvider();
+        virtual ~ExecutionProvider() = default;
         ExecutionProvider() = delete;
 
         explicit ExecutionProvider(

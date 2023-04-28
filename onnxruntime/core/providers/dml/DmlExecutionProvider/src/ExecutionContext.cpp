@@ -155,7 +155,8 @@ namespace Dml
         if (!batch.empty())
         {
             batch_state_->flush_requested = false;
-            RecordAndExecute(dml_command_queue_.get(), dml_command_list_.get(), batch);
+            auto status = RecordAndExecute(dml_command_queue_.get(), dml_command_list_.get(), batch);
+            THROW_HR_IF(E_INVALIDARG, !status.IsOK());
         }
 
         // The caller can re-use relevant resources after the next set of work to be

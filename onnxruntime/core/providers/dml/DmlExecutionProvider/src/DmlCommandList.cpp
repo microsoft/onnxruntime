@@ -75,7 +75,7 @@ namespace Dml
         // aliasing barrier
         barriers.push_back(CD3DX12_RESOURCE_BARRIER::Aliasing(nullptr, nullptr));
 
-        d3d_command_list_->ResourceBarrier(barriers.size(), barriers.data());
+        d3d_command_list_->ResourceBarrier(static_cast<uint32_t>(barriers.size()), barriers.data());
     }
 
     void DmlCommandList::FillBufferWithPattern(
