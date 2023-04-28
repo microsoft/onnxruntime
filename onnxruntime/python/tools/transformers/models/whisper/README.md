@@ -41,8 +41,8 @@ $ python3 -m onnxruntime.transformers.models.convert_to_onnx -m openai/whisper-t
 Export + Quantize for INT8
 ```
 # From source:
-$ python3 convert_to_onnx.py -m openai/whisper-tiny --output whispertiny --use_external_data_format --quantize_embedding_layer
+$ python3 convert_to_onnx.py -m openai/whisper-tiny --output whispertiny --use_external_data_format --precision int8 --quantize_embedding_layer
 
 # From wheel:
-$ python3 -m onnxruntime.transformers.models.convert_to_onnx -m openai/whisper-tiny --output whispertiny --use_external_data_format --quantize_embedding_layer
+$ python3 -m onnxruntime.transformers.models.convert_to_onnx -m openai/whisper-tiny --output whispertiny --use_external_data_format --precision int8 --quantize_embedding_layer
 ```
