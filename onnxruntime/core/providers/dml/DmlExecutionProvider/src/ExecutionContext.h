@@ -29,6 +29,8 @@ namespace Dml
 
         ~ExecutionContext();
 
+        void SetAllocator(std::weak_ptr<BucketizedBufferAllocator> allocator);
+
         // NOTE: the caller is responsible for keeping the dst_buffer/src_buffer
         // resources alive until the returned GPU event has completed.
         GpuEvent CopyBufferRegionRaw(
@@ -67,9 +69,9 @@ namespace Dml
         // descriptor_heap alive until the returned GPU event has completed. This
         // class takes ownership of the binding table.
         GpuEvent InitializeOperator(
-            IDMLOperatorInitializer* initializer,
-            Microsoft::WRL::ComPtr<IDMLBindingTable>&& binding_table,
-            ID3D12DescriptorHeap* descriptor_heap);
+            IDMLCompiledOperator* op,
+            const DML_BINDING_DESC& persistentResourceBinding,
+            const DML_BINDING_DESC& inputArrayBinding);
 
         // NOTE: the caller is responsible for keeping the op and descriptor_heap
         // alive until the returned GPU event has completed. This class takes
@@ -144,7 +146,11 @@ namespace Dml
         std::shared_ptr<CommandQueue> dml_command_queue_;
         std::shared_ptr<DmlCommandList> dml_command_list_;
         ComPtr<IDMLOperatorInitializer> m_initializer;
+        ComPtr<IDMLDevice> m_dmlDevice;
         std::thread execution_thread_;
+
+        // The weak pointer avoids a circular reference from context->recorder->allocator->context
+        std::weak_ptr<BucketizedBufferAllocator> m_bufferAllocator;
 
         static void ExecutionThreadProc(
             std::shared_ptr<BatchState> batch_state,

@@ -4,6 +4,7 @@
 #include "precomp.h"
 #include "ExecutionContext.h"
 #include "CommandQueue.h"
+#include "BucketizedBufferAllocator.h"
 
 namespace Dml
 {
@@ -11,7 +12,10 @@ namespace Dml
         ID3D12Device* d3d_device,
         IDMLDevice* dml_device,
         ID3D12CommandQueue* queue)
+        : m_dmlDevice(dml_device)
     {
+        ORT_THROW_IF_FAILED(dml_device->CreateOperatorInitializer(0, nullptr, IID_PPV_ARGS(&m_initializer)));
+
         dml_command_queue_ = std::make_shared<CommandQueue>(queue);
 
         batch_state_ = std::make_shared<BatchState>();
@@ -33,6 +37,11 @@ namespace Dml
             dml_command_queue_,
             batch_flush_size,
             batch_flush_time_us);
+    }
+
+    void ExecutionContext::SetAllocator(std::weak_ptr<BucketizedBufferAllocator> allocator)
+    {
+        m_bufferAllocator = allocator;
     }
 
     ExecutionContext::~ExecutionContext()
@@ -159,20 +168,81 @@ namespace Dml
     }
 
     GpuEvent ExecutionContext::InitializeOperator(
-        IDMLOperatorInitializer* initializer,
-        Microsoft::WRL::ComPtr<IDMLBindingTable>&& binding_table,
-        ID3D12DescriptorHeap* descriptor_heap)
+        IDMLCompiledOperator* op,
+        const DML_BINDING_DESC& persistentResourceBinding,
+        const DML_BINDING_DESC& inputArrayBinding)
     {
+        // Reset the initializer to reference the input operator.
+        IDMLCompiledOperator* ops[] = { op };
+        ORT_THROW_IF_FAILED(m_initializer->Reset(ARRAYSIZE(ops), ops));
+
+        DML_BINDING_PROPERTIES initBindingProps = m_initializer->GetBindingProperties();
+
+        const uint32_t numDescriptors = initBindingProps.RequiredDescriptorCount;
+        DescriptorRange descriptorRange = dml_command_list_->GetDescriptorPool().AllocDescriptors(
+            numDescriptors,
+            dml_command_queue_->GetNextCompletionEvent());
+
+        // Create a binding table for initialization.
+        DML_BINDING_TABLE_DESC bindingTableDesc = {};
+        bindingTableDesc.Dispatchable = m_initializer.Get();
+        bindingTableDesc.CPUDescriptorHandle = descriptorRange.cpuHandle;
+        bindingTableDesc.GPUDescriptorHandle = descriptorRange.gpuHandle;
+        bindingTableDesc.SizeInDescriptors = numDescriptors;
+
+        ComPtr<IDMLBindingTable> bindingTable;
+        ORT_THROW_IF_FAILED(m_dmlDevice->CreateBindingTable(&bindingTableDesc, IID_PPV_ARGS(&bindingTable)));
+
+        // Create a temporary resource for initializing the op, if it's required.
+        UINT64 temporaryResourceSize = initBindingProps.TemporaryResourceSize;
+        if (temporaryResourceSize > 0)
+        {
+            auto allocator = m_bufferAllocator.lock();
+
+            // Allocate and immediately free a temporary buffer. The buffer resource will still be
+            // alive (managed by the pool); freeing allows the resource to be shared with other operators.
+            void* tempResourceHandle = allocator->Alloc(static_cast<size_t>(temporaryResourceSize), AllocatorRoundingMode::Enabled);
+            if (!tempResourceHandle)
+            {
+                ORT_THROW_HR(E_OUTOFMEMORY);
+            }
+
+            ID3D12Resource* buffer = allocator->DecodeDataHandle(tempResourceHandle)->GetResource();
+            allocator->Free(tempResourceHandle);
+
+            // Bind the temporary resource.
+            DML_BUFFER_BINDING bufferBinding = { buffer, 0, temporaryResourceSize };
+            DML_BINDING_DESC bindingDesc = { DML_BINDING_TYPE_BUFFER, &bufferBinding };
+            bindingTable->BindTemporaryResource(&bindingDesc);
+        }
+
+        // Bind inputs, if provided.
+        if (inputArrayBinding.Type != DML_BINDING_TYPE_NONE)
+        {
+            // An operator with inputs to bind MUST use a BUFFER_ARRAY.
+            assert(inputArrayBinding.Type == DML_BINDING_TYPE_BUFFER_ARRAY);
+            bindingTable->BindInputs(1, &inputArrayBinding);
+        }
+
+        // Bind the persistent resource, which is an output of initialization.
+        if (persistentResourceBinding.Type != DML_BINDING_TYPE_NONE)
+        {
+            // Persistent resources MUST be bound as buffers.
+            assert(persistentResourceBinding.Type == DML_BINDING_TYPE_BUFFER);
+            bindingTable->BindOutputs(1, &persistentResourceBinding);
+        }
+
         std::unique_lock<std::mutex> lock(batch_state_->mutex);
 
         batch_state_->WriteBatch().emplace_back(
             [=,
-            binding_table = std::move(binding_table)](DmlCommandList& command_list)
+            binding_table = std::move(bindingTable),
+            initializer = m_initializer](DmlCommandList& command_list)
             {
                 command_list.InitializeOperator(
-                    initializer,
+                    initializer.Get(),
                     binding_table.Get(),
-                    descriptor_heap);
+                    descriptorRange.heap);
             });
 
         batch_state_->command_added.notify_all();

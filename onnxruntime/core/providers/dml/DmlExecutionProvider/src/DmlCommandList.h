@@ -84,6 +84,8 @@ namespace Dml
             return d3d_command_list_;
         }
 
+        DescriptorPool& GetDescriptorPool() { return descriptor_pool_; }
+
     private:
         Microsoft::WRL::ComPtr<ID3D12Device> d3d_device_;
         Microsoft::WRL::ComPtr<IDMLDevice> dml_device_;
