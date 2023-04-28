@@ -70,7 +70,12 @@ std::unordered_map<OpIdInfo, OpTransformInfo, OpIdHash> conv_table;
 static inline const OpTransformInfo* NhwcConvLookup(const api::GraphRef& graph, api::NodeRef& node){
   const auto& optype = node.OpType();
   const auto& domain = node.Domain();
-  const auto info = graph.GetValueInfo(node.Inputs()[0]);
+  const auto inputs = node.Inputs();
+  if (inputs.empty()) {
+    // node with no input, can't be our transformation candidate.
+    return nullptr;
+  }
+  const auto info = graph.GetValueInfo(inputs[0]);
   const api::DataType dtype = info->DType();
   OpIdInfo key{optype, domain, dtype};
 
