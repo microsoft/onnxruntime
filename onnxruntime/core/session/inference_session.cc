@@ -499,7 +499,7 @@ common::Status InferenceSession::RegisterExecutionProvider(const std::shared_ptr
     }
 
     // Default this option to true when the DML EP is registered.
-    // This should be removed if QDQ is supported for DML through QDQSelectorActionTransformer and the DML EP does not 
+    // This should be removed if QDQ is supported for DML through QDQSelectorActionTransformer and the DML EP does not
     // rely on the constant folding pass for DequantizeLinear.
     optional<std::string> disable_quant_qdq = session_options_.config_options.GetConfigEntry(kOrtSessionOptionsDisableQuantQDQ);
 
@@ -512,11 +512,10 @@ common::Status InferenceSession::RegisterExecutionProvider(const std::shared_ptr
       if (!st.IsOK()) {
         return st;
       }
-    }
-    else if (*disable_quant_qdq != "1") {
+    } else if (*disable_quant_qdq != "1") {
       LOGS(*session_logger_, WARNING)
-        << "QDQ quantization is not supported while using the DML Execution Provider. "
-        << "It is enabled within session options which may result in lower performance.";
+          << "QDQ quantization is not supported while using the DML Execution Provider. "
+          << "It is enabled within session options which may result in lower performance.";
     }
 
     // Parallel execution mode does not support DML EP
