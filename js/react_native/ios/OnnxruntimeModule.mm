@@ -69,9 +69,6 @@ RCT_EXPORT_METHOD(loadModelFromBase64EncodedBuffer
                   : (RCTPromiseResolveBlock)resolve rejecter
                   : (RCTPromiseRejectBlock)reject) {
   @try {
-    // Choices: if not working, use 3rd party library for base64 encoding/decoding:
-    // https://github.com/nicklockwood/Base64/ (may be deprecated)
-    // https://github.com/l4u/NSData-Base64
     NSData *modelDataDecoded = [[NSData alloc] initWithBase64EncodedString:modelDataBase64EncodedString options:0];
     NSDictionary *resultMap = [self loadModelFromBuffer:modelDataDecoded options:options];
     resolve(resultMap);
@@ -139,8 +136,6 @@ RCT_EXPORT_METHOD(run
   Ort::SessionOptions sessionOptions = [self parseSessionOptions:options];
 
   if (modelData == nil) {
-    // Question: can we still use the modelPath api call to load ort session
-    // (given we know that we can not use the model file path as the key)
     sessionInfo->session.reset(new Ort::Session(*ortEnv, [modelPath UTF8String], sessionOptions));
   } else {
     NSUInteger dataLength = [modelData length];
