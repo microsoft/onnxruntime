@@ -782,6 +782,7 @@ if (onnxruntime_USE_VITISAI)
     "${ONNXRUNTIME_ROOT}/core/providers/vitisai/imp/*.cc"
     "${ONNXRUNTIME_ROOT}/core/providers/vitisai/imp/*.h"
   )
+  list(REMOVE_ITEM onnxruntime_providers_vitisai_cc_srcs "${ONNXRUNTIME_ROOT}/core/providers/vitisai/onnxruntime_vitisai_ep_stub.cc")
   source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_vitisai_cc_srcs})
   onnxruntime_add_static_library(onnxruntime_providers_vitisai ${onnxruntime_providers_vitisai_cc_srcs})
   onnxruntime_add_include_to_target(onnxruntime_providers_vitisai onnxruntime_common onnxruntime_framework onnx onnx_proto)

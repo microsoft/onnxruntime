@@ -668,7 +668,29 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
 #endif
   } else if (provider_name == onnxruntime::kVitisAIExecutionProvider) {
 #ifdef USE_VITISAI
-    session_options.AppendExecutionProvider("VitisAI", {});
+#ifdef _MSC_VER
+    std::string option_string = ToUTF8String(performance_test_config.run_config.ep_runtime_config_string);
+#else
+    std::string option_string = performance_test_config.run_config.ep_runtime_config_string;
+#endif
+    std::istringstream ss(option_string);
+    std::string token;
+    std::unordered_map<std::string, std::string> vitisai_session_options;
+
+    while (ss >> token) {
+      if (token == "") {
+        continue;
+      }
+      auto pos = token.find("|");
+      if (pos == std::string::npos || pos == 0 || pos == token.length()) {
+        ORT_THROW("[ERROR] [VitisAI] Use a '|' to separate the key and value for the run-time option you are trying to use.\n");
+      }
+
+      std::string key(token.substr(0, pos));
+      std::string value(token.substr(pos + 1));
+      vitisai_session_options[key] = value;
+      }
+    session_options.AppendExecutionProvider("VitisAI", vitisai_session_options);
 #else
     ORT_THROW("VitisAI is not supported in this build\n");
 #endif

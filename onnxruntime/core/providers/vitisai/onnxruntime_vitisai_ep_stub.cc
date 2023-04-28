@@ -21,7 +21,9 @@ void initialize_onnxruntime_vitisai_ep(OrtApiForVaip* /*api*/, std::vector<OrtCu
 DllSafe<std::vector<std::unique_ptr<vaip_core::ExecutionProvider>>>
 compile_onnx_model_3(const std::string& /*model_path*/, const Graph& /*graph*/,
                      const char* /*json_config*/) {
-  my_abort();
+  if (1) { // suppress dead code warning
+    my_abort();
+  }
   return DllSafe<std::vector<std::unique_ptr<vaip_core::ExecutionProvider>>>();
 }
 
