@@ -668,7 +668,7 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
 #endif
   } else if (provider_name == onnxruntime::kVitisAIExecutionProvider) {
 #ifdef USE_VITISAI
-    Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_VITISAI(session_options, nullptr));
+    session_options.AppendExecutionProvider("VitisAI", {});
 #else
     ORT_THROW("VitisAI is not supported in this build\n");
 #endif

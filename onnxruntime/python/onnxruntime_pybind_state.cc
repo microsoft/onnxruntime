@@ -673,17 +673,12 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
 #endif
   } else if (type == kVitisAIExecutionProvider) {
 #if USE_VITISAI
-    // Retrieve Vitis AI provider options
-    onnxruntime::VitisAIExecutionProviderInfo info(nullptr);
     const auto it = provider_options_map.find(type);
     if (it != provider_options_map.end()) {
-      auto vitis_option_map = it->second;
-      const auto vitis_option_it = vitis_option_map.find("json_config");
-      if (vitis_option_it != vitis_option_map.end()) {
-        info = onnxruntime::VitisAIExecutionProviderInfo(vitis_option_it->second.c_str());
-      }
+      LOGS_DEFAULT(FATAL) << "cannot find provider options for VitisAIExecutionProvider";
     }
-    return onnxruntime::VitisAIProviderFactoryCreator::Create(info)
+    const auto& vitis_option_map = it->second;
+    return onnxruntime::VitisAIProviderFactoryCreator::Create(vitis_option_map)
         ->CreateProvider();
 #endif
   } else if (type == kAclExecutionProvider) {

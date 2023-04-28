@@ -98,9 +98,9 @@ std::shared_ptr<KernelRegistry> VitisAIExecutionProvider::GetKernelRegistry() co
 std::vector<std::unique_ptr<ComputeCapability>>
 VitisAIExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
                                         const IKernelLookup& /*kernel_lookup*/) const {
+  auto opt_str = info_.get_json_config_str();  // String
   exectuion_providers_ =
-      std::make_unique<my_ep_t>(compile_onnx_model(graph, *GetLogger(), info_.opt_str_));
-
+      std::make_unique<my_ep_t>(compile_onnx_model(graph, *GetLogger(), opt_str));
   auto result = vaip::GetComputeCapabilityOps(graph, exectuion_providers_.get(), vitisai_optypes_);
   size_t index = 0u;
   for (auto& ep : **exectuion_providers_) {

@@ -20,8 +20,15 @@ namespace onnxruntime {
 
 // Information needed to construct execution providers.
 struct VitisAIExecutionProviderInfo {
-  VitisAIExecutionProviderInfo(const char* opt_str) : opt_str_(opt_str){};
-  const char* opt_str_;
+  VitisAIExecutionProviderInfo(const ProviderOptions& provider_options);
+
+  const char* get_json_config_str() const {
+    return json_config_.c_str();
+  }
+
+ private:
+  ProviderOptions provider_options_;
+  const std::string json_config_;
 };
 
 // Logical device representation.
