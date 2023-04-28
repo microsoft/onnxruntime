@@ -87,7 +87,7 @@ jobs:
   - job: OnnxRuntime_QNNNuget_Win_Arm64
     timeoutInMinutes: 120
 
-    pool: 'Onnxruntime-QNNEP-Windows-2022-ARM64-CPU'
+    pool: 'Onnxruntime-QNNEP-Windows-2022-CPU'
     variables:
       MsbuildArguments: '-detailedsummary -maxcpucount -consoleloggerparameters:PerformanceSummary'
       OnnxRuntimeBuildDirectory: '$(Build.BinariesDirectory)'
@@ -103,26 +103,16 @@ jobs:
         inputs:
           forceReinstallCredentialProvider: true  
 
-      - script: |
-          MKDIR $(Agent.ToolsDirectory)\Python\3.11.0\arm64
-          XCOPY /s /y /h /e /c /q "C:\Python\Python311\*.*" $(Agent.ToolsDirectory)\Python\3.11.0\arm64\
-          COPY NUL $(Agent.ToolsDirectory)\Python\3.11.0\arm64.complete
-          DIR $(Agent.ToolsDirectory)\Python
-          DIR $(Agent.ToolsDirectory)\Python\3.11.0
-          DIR $(Agent.ToolsDirectory)\Python\3.11.0\arm64
-        displayName: Copy python 3.11.0 version to agent tools directory
-
       - task: UsePythonVersion@0
         inputs:
-          versionSpec: '3.x'
+          versionSpec: '3.8'
           addToPath: true
-          architecture: ARM64
 
       - task: PythonScript@0
         displayName: 'Generate CMake Configuration for arm64'
         inputs:
           scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-          arguments: '--update --disable_ml_ops --build_dir $(Build.BinariesDirectory)\Win_arm64 --skip_submodule_sync --skip_tests --build_shared_lib --cmake_generator "Visual Studio 17 2022" --config ${{ parameters.build_config }} --use_qnn --qnn_home ${{parameters.qnn_sdk_path_win}}'
+          arguments: '--update --arm64 --disable_ml_ops --build_dir $(Build.BinariesDirectory)\Win_arm64 --skip_submodule_sync --skip_tests --build_shared_lib --cmake_generator "Visual Studio 17 2022" --config ${{ parameters.build_config }} --use_qnn --qnn_home ${{parameters.qnn_sdk_path_win}}'
 
       - task: VSBuild@1
         displayName: 'Build onnxruntime arm64'
