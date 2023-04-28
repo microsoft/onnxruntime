@@ -2,8 +2,8 @@
 
 // Copyright (c) 2023 Advanced Micro Devices, Inc. All rights reserved.
 // Licensed under the MIT License.
-#include "./register_xir_ops.hpp"
-#include "./vai_assert.hpp"
+#include "./register_xir_ops.h"
+#include "./vai_assert.h"
 
 #include "core/common/logging/logging.h"
 #include "core/common/status.h"

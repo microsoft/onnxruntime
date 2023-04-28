@@ -4,7 +4,7 @@
 
 #include "core/framework/compute_capability.h"
 #include "core/graph/graph_viewer.h"
-#include "vaip/custom_op.hpp"
+#include "vaip/custom_op.h"
 namespace vaip {
 using namespace ::onnxruntime;
 std::unique_ptr<ComputeCapability> XirSubgraphToComputeCapability1(const onnxruntime::GraphViewer& graph, vaip_core::ExecutionProvider* ep, size_t index);

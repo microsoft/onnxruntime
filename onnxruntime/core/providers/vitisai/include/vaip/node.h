@@ -6,8 +6,8 @@
 #include <core/graph/model.h>
 
 #include "core/graph/node_arg.h"
-#include "vaip/dll_safe.hpp"
-#include "vaip/my_ort.hpp"
+#include "vaip/dll_safe.h"
+#include "vaip/my_ort.h"
 namespace vaip {
 
 using namespace onnxruntime;

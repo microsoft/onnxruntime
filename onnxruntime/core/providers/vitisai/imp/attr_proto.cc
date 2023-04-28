@@ -1,8 +1,8 @@
 // Copyright (c) 2023 Advanced Micro Devices, Inc. All rights reserved.
 // Licensed under the MIT License.
-#include "./attr_proto.hpp"
+#include "./attr_proto.h"
 
-#include "./vai_assert.hpp"
+#include "./vai_assert.h"
 
 #include <cmath>
 #include <functional>

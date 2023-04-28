@@ -10,12 +10,12 @@
 
 #include "core/common/common.h"
 
-#include "vaip/capability.hpp"
-#include "vaip/global_api.hpp"
+#include "vaip/capability.h"
+#include "vaip/global_api.h"
 #include "core/session/custom_ops.h"
 #include "core/session/inference_session.h"
 
-#include "onnxruntime_vitisai_ep/onnxruntime_vitisai_ep.hpp"
+#include "onnxruntime_vitisai_ep/onnxruntime_vitisai_ep.h"
 
 using namespace ONNX_NAMESPACE;
 

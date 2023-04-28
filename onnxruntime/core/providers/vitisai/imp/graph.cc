@@ -1,10 +1,10 @@
 // Copyright (c) 2023 Advanced Micro Devices, Inc. All rights reserved.
 // Licensed under the MIT License.
-#include "vaip/graph.hpp"
+#include "vaip/graph.h"
 
 #include <core/graph/graph_viewer.h>
 
-#include "./vai_assert.hpp"
+#include "./vai_assert.h"
 #include <codecvt>
 #include <fstream>
 #include <filesystem>
@@ -24,8 +24,8 @@
 using convert_t = std::codecvt_utf8<wchar_t>;
 std::wstring_convert<convert_t, wchar_t> strconverter;
 
-#include "vaip/node.hpp"
-#include "vaip/node_arg.hpp"
+#include "vaip/node.h"
+#include "vaip/node_arg.h"
 
 namespace vaip {
 

@@ -1,11 +1,11 @@
 // Copyright (c) 2023 Advanced Micro Devices, Inc. All rights reserved.
 // Licensed under the MIT License.
-#include "vaip/node_arg.hpp"
-#include "./vai_assert.hpp"
+#include "vaip/node_arg.h"
+#include "./vai_assert.h"
 
 #include <cstdint>
 
-#include "./tensor_proto.hpp"
+#include "./tensor_proto.h"
 #include "core/graph/node_arg.h"
 
 namespace vaip {

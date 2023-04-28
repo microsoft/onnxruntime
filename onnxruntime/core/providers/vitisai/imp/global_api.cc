@@ -1,8 +1,8 @@
 
 // Copyright (c) 2023 Advanced Micro Devices, Inc. All rights reserved.
 // Licensed under the MIT License.
-#include "vaip/global_api.hpp"
-#include "./vai_assert.hpp"
+#include "vaip/global_api.h"
+#include "./vai_assert.h"
 #include "core/common/exceptions.h"
 #include "core/common/logging/logging.h"
 
@@ -14,20 +14,20 @@
 #include <atomic>
 
 #include "core/session/onnxruntime_cxx_api.h"
-#include "vaip/dll_safe.hpp"
-#include "vaip/vaip_ort_api.hpp"
-#include "vaip/graph.hpp"
-#include "vaip/node.hpp"
-#include "vaip/node_arg.hpp"
+#include "vaip/dll_safe.h"
+#include "vaip/vaip_ort_api.h"
+#include "vaip/graph.h"
+#include "vaip/node.h"
+#include "vaip/node_arg.h"
 
-#include "./tensor_proto.hpp"
-#include "./attr_proto.hpp"
-#include "./register_xir_ops.hpp"
+#include "./tensor_proto.h"
+#include "./attr_proto.h"
+#include "./register_xir_ops.h"
 
-#include "onnxruntime_vitisai_ep/onnxruntime_vitisai_ep.hpp"
+#include "onnxruntime_vitisai_ep/onnxruntime_vitisai_ep.h"
 
 #include "onnxruntime_config.h"
-#include "version_info.hpp"  // version_info.hpp.in
+#include "version_info.h"  // version_info.hpp.in
 
 using namespace onnxruntime;
 vaip_core::OrtApiForVaip* create_org_api_hook();

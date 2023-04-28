@@ -1,10 +1,9 @@
 // Copyright (c) 2023 Advanced Micro Devices, Inc. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/vitisai/vitisai_provider_factory.h"
 #include "vitisai_provider_factory_creator.h"
 
-#include "vaip/global_api.hpp"
+#include "vaip/global_api.h"
 #include "./vitisai_execution_provider.h"
 #include "core/framework/execution_provider.h"
 
