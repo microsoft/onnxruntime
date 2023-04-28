@@ -3,6 +3,7 @@
 #define ORT_API_MANUAL_INIT
 #include "onnxruntime_cxx_api.h"
 #undef ORT_API_MANUAL_INIT
+#include "onnxruntime_lite_custom_op.h"
 
 #include <vector>
 #include <cmath>
@@ -101,6 +102,140 @@ struct CustomOpTwo : Ort::CustomOpBase<CustomOpTwo, KernelTwo> {
   ONNXTensorElementDataType GetOutputType(size_t /*index*/) const { return ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32; };
 };
 
+////////////////////////////////////////////////
+
+template <typename T>
+T MulTopCompute(const T& input_0, const T& input_1) {
+  return input_0 * input_1;
+}
+
+struct MulTopKernelFloat {
+  MulTopKernelFloat(const OrtKernelInfo*){};
+  ~MulTopKernelFloat() = default;
+  void Compute(OrtKernelContext* context) {
+    Ort::KernelContext ctx(context);
+    auto tensor_in = ctx.GetInput(0);
+    const float* float_in = tensor_in.GetTensorData<float>();
+    int64_t output_shape = 1;
+    auto tensor_out = ctx.GetOutput(0, &output_shape, 1);
+    auto float_out = tensor_out.GetTensorMutableData<float>();
+    *float_out = MulTopCompute(float_in[0], float_in[1]);
+  }
+};
+
+struct MulTopOpFloat : Ort::CustomOpBase<MulTopOpFloat, MulTopKernelFloat> {
+  void* CreateKernel(const OrtApi&, const OrtKernelInfo* info) const { return new MulTopKernelFloat(info); }
+  const char* GetName() const { return "MulTop"; }
+  const char* GetExecutionProviderType() const { return "CPUExecutionProvider"; }
+  size_t GetInputTypeCount() const { return 1; }
+  ONNXTensorElementDataType GetInputType(size_t) const { return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT; }
+  size_t GetOutputTypeCount() const { return 1; }
+  ONNXTensorElementDataType GetOutputType(size_t) const { return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT; }
+};
+
+////////////////////////////////////////////////
+
+struct MulTopKernelInt32 {
+  MulTopKernelInt32(const OrtKernelInfo*){};
+  ~MulTopKernelInt32() = default;
+  void Compute(OrtKernelContext* context) {
+    Ort::KernelContext ctx(context);
+    auto tensor_in = ctx.GetInput(0);
+    const int32_t* int_in = tensor_in.GetTensorData<int32_t>();
+    int64_t output_shape = 1;
+    auto tensor_out = ctx.GetOutput(0, &output_shape, 1);
+    auto int_out = tensor_out.GetTensorMutableData<int32_t>();
+    *int_out = MulTopCompute(int_in[0], int_in[1]);
+  }
+};
+
+struct MulTopOpInt32 : Ort::CustomOpBase<MulTopOpInt32, MulTopKernelInt32> {
+  void* CreateKernel(const OrtApi&, const OrtKernelInfo* info) const { return new MulTopKernelInt32(info); }
+  const char* GetName() const { return "MulTop"; }
+  const char* GetExecutionProviderType() const { return "CPUExecutionProvider"; }
+  size_t GetInputTypeCount() const { return 1; }
+  ONNXTensorElementDataType GetInputType(size_t) const { return ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32; }
+  size_t GetOutputTypeCount() const { return 1; }
+  ONNXTensorElementDataType GetOutputType(size_t) const { return ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32; }
+};
+
+void Fuse(
+    OrtKernelContext*,
+    const Ort::Custom::Span<float>& vector_1,
+    const Ort::Custom::Span<float>& vector_2,
+    int32_t alpha,
+    Ort::Custom::TensorT<float>& vector_output) {
+  auto len_output = std::min(vector_1.size(), vector_2.size());
+  float* floats_out = static_cast<float*>(vector_output.Allocate({(int64_t)len_output}));
+  for (size_t i = 0; i < len_output; ++i) {
+    floats_out[i] = (vector_1[i] + vector_2[i]) * alpha;
+  }
+}
+
+void Select(const Ort::Custom::Span<int32_t>& indices_in,
+            Ort::Custom::TensorT<int32_t>& indices_out) {
+  std::vector<int32_t> selected_indices;
+  for (size_t i = 0; i < indices_in.size(); ++i) {
+    if (indices_in[i] % 2 == 0) {
+      selected_indices.push_back(indices_in[i]);
+    }
+  }
+
+  int32_t* int_out = static_cast<int32_t*>(indices_out.Allocate({static_cast<int64_t>(selected_indices.size())}));
+  for (size_t j = 0; j < selected_indices.size(); ++j) {
+    int_out[j] = selected_indices[j];
+  }
+}
+
+void Filter(const Ort::Custom::TensorT<float>& floats_in,
+            Ort::Custom::TensorT<float>& floats_out) {
+  const float* in = floats_in.Data();
+  auto in_len = floats_in.NumberOfElement();
+
+  std::vector<float> filter_floats;
+  for (int64_t i = 0; i < in_len; ++i) {
+    if (in[i] > 1.f) {
+      filter_floats.push_back(in[i]);
+    }
+  }
+
+  float* out = static_cast<float*>(floats_out.Allocate({static_cast<int64_t>(filter_floats.size())}));
+  for (size_t j = 0; j < filter_floats.size(); ++j) {
+    out[j] = filter_floats[j];
+  }
+}
+
+void Box(const Ort::Custom::TensorT<float>* float_in_1,
+         const Ort::Custom::TensorT<float>* float_in_2,
+         std::optional<const Ort::Custom::TensorT<float>*> float_in_3,
+         Ort::Custom::TensorT<float>* float_out_1,
+         std::optional<Ort::Custom::TensorT<float>*> float_out_2) {
+  auto raw_in_1 = float_in_1->Data();
+  auto raw_in_2 = float_in_2->Data();
+
+  auto l_in_1 = float_in_1->Shape()[0];
+  auto l_in_2 = float_in_2->Shape()[0];
+  auto l_out_1 = l_in_1 + l_in_2;
+
+  auto raw_out_1 = float_out_1->Allocate({l_out_1});
+
+  for (int64_t i = 0; i < l_out_1; ++i) {
+    raw_out_1[i] = i < l_in_1 ? raw_in_1[i] : raw_in_2[i - l_in_1];
+  }
+
+  if (float_in_3.has_value() && float_out_2.has_value()) {
+    auto raw_in_3 = float_in_3.value()->Data();
+    auto l_in_3 = float_in_3.value()->Shape()[0];
+    auto l_out_2 = l_in_2 + l_in_3;
+    auto raw_out_2 = float_out_2.value()->Allocate({l_out_2});
+    for (int64_t i = 0; i < l_out_2; ++i) {
+      raw_out_2[i] = i < l_in_2 ? raw_in_2[i] : raw_in_3[i - l_in_2];
+    }
+  }
+}
+
+////////////////////////////////////////////////
+
 static void AddOrtCustomOpDomainToContainer(Ort::CustomOpDomain&& domain) {
   static std::vector<Ort::CustomOpDomain> ort_custom_op_domain_container;
   static std::mutex ort_custom_op_domain_mutex;
@@ -114,6 +249,14 @@ OrtStatus* ORT_API_CALL RegisterCustomOps(OrtSessionOptions* options, const OrtA
   static const CustomOpOne c_CustomOpOne;
   static const CustomOpTwo c_CustomOpTwo;
 
+  static const MulTopOpFloat c_MulTopOpFloat;
+  static const MulTopOpInt32 c_MulTopOpInt32;
+
+  static const std::unique_ptr<OrtCustomOp> fus_op_ptr{Ort::Custom::CreateCustomOp("Fuse", "CPUExecutionProvider", Fuse)};
+  static const std::unique_ptr<OrtCustomOp> sel_op_ptr{Ort::Custom::CreateCustomOp("Select", "CPUExecutionProvider", Select)};
+  static const std::unique_ptr<OrtCustomOp> fil_op_ptr{Ort::Custom::CreateCustomOp("Filter", "CPUExecutionProvider", Filter)};
+  static const std::unique_ptr<OrtCustomOp> box_op_ptr{Ort::Custom::CreateCustomOp("Box", "CPUExecutionProvider", Box)};
+
   OrtStatus* result = nullptr;
 
   ORT_TRY {
@@ -121,9 +264,19 @@ OrtStatus* ORT_API_CALL RegisterCustomOps(OrtSessionOptions* options, const OrtA
     domain.Add(&c_CustomOpOne);
     domain.Add(&c_CustomOpTwo);
 
+    Ort::CustomOpDomain domain_v2{"v2"};
+    domain_v2.Add(&c_MulTopOpFloat);
+    domain_v2.Add(&c_MulTopOpInt32);
+    domain_v2.Add(fus_op_ptr.get());
+    domain_v2.Add(sel_op_ptr.get());
+    domain_v2.Add(fil_op_ptr.get());
+    domain_v2.Add(box_op_ptr.get());
+
     Ort::UnownedSessionOptions session_options(options);
     session_options.Add(domain);
+    session_options.Add(domain_v2);
     AddOrtCustomOpDomainToContainer(std::move(domain));
+    AddOrtCustomOpDomainToContainer(std::move(domain_v2));
   }
   ORT_CATCH(const std::exception& e) {
     ORT_HANDLE_EXCEPTION([&]() {

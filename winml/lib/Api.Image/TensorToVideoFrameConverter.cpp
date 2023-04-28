@@ -579,7 +579,7 @@ void TensorToVideoFrameConverter::ConvertGPUTensorToSoftwareBitmap(
   auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(pInputTensor, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_SOURCE);
   command_list_->ResourceBarrier(1, &barrier);
 
-  command_list_->CopyBufferRegion(readback_heap_.Get(), 0, pInputTensor, singleVideoFramebufferSize * batchIdx, singleVideoFramebufferSize);
+  command_list_->CopyBufferRegion(readback_heap_.Get(), 0, pInputTensor, static_cast<uint64_t>(singleVideoFramebufferSize) * batchIdx, singleVideoFramebufferSize);
 
   WINML_THROW_IF_FAILED(command_list_->Close());
   ID3D12CommandList* ppCommandLists[] = {command_list_.Get()};

@@ -31,11 +31,12 @@ class OpData {
       const std::vector<float>& output_data,
       const std::vector<int32_t>& mask_index_data,
       float epsilon = kEpsilon,
+      int mask_index_type = 1,
       bool has_mask = true,
       bool has_segment = true,
       const std::vector<float>& embedding_sum_data = {},
       const std::vector<int32_t>& position_ids_data = {})
-      : batch_size(batch_size), sequence_size(sequence_size), hidden_size(hidden_size), input_ids_data(input_ids_data), segment_ids_data(segment_ids_data), mask_data(mask_data), word_embedding_data(word_embedding_data), position_embedding_data(position_embedding_data), segment_embedding_data(segment_embedding_data), gamma_data(gamma_data), beta_data(beta_data), output_data(output_data), mask_index_data(mask_index_data), epsilon(epsilon), has_mask(has_mask), has_segment(has_segment), embedding_sum_data(embedding_sum_data), position_ids_data(position_ids_data) {}
+      : batch_size(batch_size), sequence_size(sequence_size), hidden_size(hidden_size), input_ids_data(input_ids_data), segment_ids_data(segment_ids_data), mask_data(mask_data), word_embedding_data(word_embedding_data), position_embedding_data(position_embedding_data), segment_embedding_data(segment_embedding_data), gamma_data(gamma_data), beta_data(beta_data), output_data(output_data), mask_index_data(mask_index_data), epsilon(epsilon), mask_index_type(mask_index_type), has_mask(has_mask), has_segment(has_segment), embedding_sum_data(embedding_sum_data), position_ids_data(position_ids_data) {}
 
   const int batch_size;
   const int sequence_size;
@@ -51,6 +52,7 @@ class OpData {
   const std::vector<float> output_data;
   const std::vector<int32_t> mask_index_data;
   const float epsilon;
+  const int mask_index_type;
   const bool has_mask = true;
   const bool has_segment = true;
   const std::vector<float> embedding_sum_data;
@@ -110,6 +112,7 @@ inline OpData EmbedLayerNormBatch2(bool has_mask = true) {
   int batch_size = 3;
   int sequence_size = 2;
   int hidden_size = 4;
+  int mask_index_type = 1;
 
   std::vector<int32_t> input_ids_data = {
       1, 3,
@@ -169,7 +172,7 @@ inline OpData EmbedLayerNormBatch2(bool has_mask = true) {
 
   return OpData(batch_size, sequence_size, hidden_size, input_ids_data, segment_ids_data,
                 mask_data, word_embedding_data, position_embedding_data, segment_embedding_data,
-                gamma_data, beta_data, output_data, mask_index_data, kEpsilon, has_mask);
+                gamma_data, beta_data, output_data, mask_index_data, kEpsilon, mask_index_type, has_mask);
 }
 
 inline OpData EmbedLayerNormLargeBatchSmallHiddenSize() {
@@ -245,6 +248,7 @@ inline OpData EmbedLayerNormBatch_Distill() {
   int batch_size = 3;
   int sequence_size = 2;
   int hidden_size = 4;
+  int mask_index_type = 1;
 
   std::vector<int32_t> input_ids_data = {
       1, 3,
@@ -292,7 +296,7 @@ inline OpData EmbedLayerNormBatch_Distill() {
 
   return OpData(batch_size, sequence_size, hidden_size, input_ids_data, segment_ids_data,
                 mask_data, word_embedding_data, position_embedding_data, segment_embedding_data,
-                gamma_data, beta_data, output_data, mask_index_data, kEpsilon,
+                gamma_data, beta_data, output_data, mask_index_data, kEpsilon, mask_index_type,
                 /*has_mask=*/true,
                 /*has_segment=*/false);
 }
@@ -301,6 +305,7 @@ inline OpData EmbedLayerNormBatch1_PositionIds(bool diff_order = false) {
   int batch_size = 1;
   int sequence_size = 2;
   int hidden_size = 4;
+  int mask_index_type = 1;
 
   std::vector<int32_t> input_ids_data = {
       1, 3};
@@ -356,7 +361,7 @@ inline OpData EmbedLayerNormBatch1_PositionIds(bool diff_order = false) {
 
   return OpData(batch_size, sequence_size, hidden_size, input_ids_data, segment_ids_data,
                 mask_data, word_embedding_data, position_embedding_data, segment_embedding_data,
-                gamma_data, beta_data, output_data, mask_index_data, kEpsilon,
+                gamma_data, beta_data, output_data, mask_index_data, kEpsilon, mask_index_type,
                 /*has_mask=*/true,
                 /*has_segment=*/false,
                 embedding_sum_output_data,
@@ -367,6 +372,7 @@ inline OpData EmbedLayerNormBatch3_PositionIds_BroadCast() {
   int batch_size = 3;
   int sequence_size = 2;
   int hidden_size = 4;
+  int mask_index_type = 1;
 
   std::vector<int32_t> input_ids_data = {
       1, 3, 1, 3, 1, 3};
@@ -416,7 +422,7 @@ inline OpData EmbedLayerNormBatch3_PositionIds_BroadCast() {
 
   return OpData(batch_size, sequence_size, hidden_size, input_ids_data, segment_ids_data,
                 mask_data, word_embedding_data, position_embedding_data, segment_embedding_data,
-                gamma_data, beta_data, output_data, mask_index_data, kEpsilon,
+                gamma_data, beta_data, output_data, mask_index_data, kEpsilon, mask_index_type,
                 /*has_mask=*/true,
                 /*has_segment=*/false,
                 embedding_sum_output_data,
@@ -427,6 +433,7 @@ inline OpData EmbedLayerNormBatch1_EmbeddingSum() {
   int batch_size = 1;
   int sequence_size = 2;
   int hidden_size = 4;
+  int mask_index_type = 1;
 
   std::vector<int32_t> input_ids_data = {
       1, 3};
@@ -470,11 +477,64 @@ inline OpData EmbedLayerNormBatch1_EmbeddingSum() {
 
   return OpData(batch_size, sequence_size, hidden_size, input_ids_data, segment_ids_data,
                 mask_data, word_embedding_data, position_embedding_data, segment_embedding_data,
-                gamma_data, beta_data, output_data, mask_index_data, kEpsilon,
+                gamma_data, beta_data, output_data, mask_index_data, kEpsilon, mask_index_type,
                 /*has_mask=*/true,
                 /*has_segment=*/false,
                 embedding_sum_data);
 }
+
+inline OpData EmbedLayerNormBatch1_EmbeddingSum_NoMaskIndex() {
+  int batch_size = 1;
+  int sequence_size = 2;
+  int hidden_size = 4;
+  int mask_index_type = 0;
+
+  std::vector<int32_t> input_ids_data = {
+      1, 3};
+
+  std::vector<int32_t> segment_ids_data = {};
+
+  std::vector<int32_t> mask_data = {};
+
+  std::vector<float> word_embedding_data = {
+      0.2f, 0.1f, 0.4f, -0.6f,
+      0.3f, 0.2f, 0.5f, 0.6f,
+      0.6f, 0.7f, 0.0f, -0.1f,
+      0.8f, 0.6f, 0.9f, 1.2f,
+      0.1f, 0.3f, 0.5f, 0.9f,
+      1.0f, -2.0f, 1.1f, 0.8f};
+
+  std::vector<float> position_embedding_data = {
+      0.1f, 0.1f, 0.4f, 0.6f,
+      0.6f, 0.0f, 0.8f, 0.6f,
+      0.3f, 0.9f, -2.0f, 0.8f};
+
+  std::vector<float> segment_embedding_data = {};
+
+  std::vector<float> gamma_data = {
+      0.25f, 0.15f, 0.45f, -0.66f};
+
+  std::vector<float> beta_data = {
+      0.6f, 0.2f, 0.5f, -0.6f};
+
+  std::vector<float> output_data = {
+      0.39587587118148804, 0.03670068085193634, 0.7449488639831543, -1.4981462955474854,
+      0.61326867341995239, -0.046796366572380066, 0.81048583984375, -1.1954958438873291};
+
+  std::vector<int32_t> mask_index_data = {};
+
+  std::vector<float> embedding_sum_data = {
+      0.40000000596046448, 0.30000001192092896, 0.89999997615814209, 1.2000000476837158,
+      1.4000000953674316, 0.60000002384185791, 1.7000000476837158, 1.8000000715255737};
+
+  return OpData(batch_size, sequence_size, hidden_size, input_ids_data, segment_ids_data,
+                mask_data, word_embedding_data, position_embedding_data, segment_embedding_data,
+                gamma_data, beta_data, output_data, mask_index_data, kEpsilon, mask_index_type,
+                /*has_mask=*/true,
+                /*has_segment=*/false,
+                embedding_sum_data);
+}
+
 }  // namespace embedlayernorm
 }  // namespace test
 }  // namespace onnxruntime

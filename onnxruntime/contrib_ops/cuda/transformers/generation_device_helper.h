@@ -28,6 +28,10 @@ Status ReorderPastState(
     Tensor& past_state_staging,
     Stream* stream);
 
+Status InitCacheIndir(
+    Tensor& cache_indir,
+    Stream* stream);
+
 Status TopK(const Tensor* input, const int axis, const unsigned k, bool largest, bool sorted,
             AllocatorPtr allocator,
             Stream* stream,

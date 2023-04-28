@@ -317,12 +317,6 @@ namespace Microsoft.ML.OnnxRuntime
                 throw new OnnxRuntimeException(ErrorCode.Fail, "Cast to Tensor<string> failed. BUG check!");
             }
 
-            int totalLength = 0;
-            for (int i = 0; i < tensor.Length; i++)
-            {
-                totalLength += System.Text.Encoding.UTF8.GetByteCount(tensor.GetValue(i));
-            }
-
             long[] shape = new long[tensor.Dimensions.Length];
             for (int i = 0; i < tensor.Dimensions.Length; i++)
             {
@@ -330,39 +324,29 @@ namespace Microsoft.ML.OnnxRuntime
             }
 
             // allocate the native tensor
-            IntPtr valueHandle = IntPtr.Zero;
             NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateTensorAsOrtValue(
                                 OrtAllocator.DefaultInstance.Pointer,
                                 shape,
                                 (UIntPtr)(shape.Length),
                                 TensorElementType.String,
-                                out valueHandle
+                                out IntPtr valueHandle
                                 ));
 
+            // We must take possession of valueHande, so we can dispose of it if we fail
             var ortValue = new OrtValue(valueHandle);
             try
             {
-
-                // fill the native tensor, using GetValue(index) from the Tensor<string>
                 var len = tensor.Length;
-                var nativeStrings = new IntPtr[len];
-                using (var pinnedHandles = new DisposableList<IDisposable>((int)len))
+                for(int i = 0; i < len; ++i)
                 {
-                    for (int i = 0; i < len; i++)
-                    {
-                        var utf8str = NativeOnnxValueHelper.StringToZeroTerminatedUtf8(tensor.GetValue(i));
-                        var pinnedUtf8 = new Memory<byte>(utf8str).Pin();
-                        unsafe
-                        {
-                            nativeStrings[i] = (IntPtr)pinnedUtf8.Pointer;
-                        }
-                        pinnedHandles.Add(pinnedUtf8);
-                    }
-
-                    NativeApiStatus.VerifySuccess(NativeMethods.OrtFillStringTensor(ortValue.Handle, nativeStrings, (UIntPtr)len));
+                    var str = tensor.GetValue(i);
+                    var bytesCount = System.Text.Encoding.UTF8.GetByteCount(str);
+                    NativeApiStatus.VerifySuccess(NativeMethods.OrtGetResizedStringTensorElementBuffer(valueHandle,
+                        (UIntPtr)i, (UIntPtr)bytesCount, out IntPtr buffer));
+                    NativeOnnxValueHelper.StringToUtf8NativeMemory(str, buffer, bytesCount);
                 }
             }
-            catch (OnnxRuntimeException)
+            catch (Exception)
             {
                 ortValue.Dispose();
                 throw;

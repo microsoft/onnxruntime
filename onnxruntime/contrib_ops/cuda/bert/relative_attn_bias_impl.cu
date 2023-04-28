@@ -21,7 +21,7 @@ Licensed under the MIT License.
 #include <cuda_fp16.h>
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "contrib_ops/cuda/bert/relative_attn_bias_impl.h"
-#include "contrib_ops/cuda/bert/rotary_embedding_util.h"
+#include "contrib_ops/cuda/bert/utils.cuh"
 
 namespace onnxruntime {
 namespace contrib {
@@ -149,29 +149,11 @@ template Status LaunchRelPosAttnBiasKernel<half>(cudaStream_t stream,
                                                  const int max_threads_per_block);
 
 namespace {
+
 template <typename T, size_t size>
-struct TypeMapper;
+struct TypeMapper : public V_vec_m_<T, size> {};
 
-template <>
-struct TypeMapper<float, 2> {
-  using type = float2;
-};
-
-template <>
-struct TypeMapper<float, 4> {
-  using type = float4;
-};
-
-template <>
-struct TypeMapper<half, 2> {
-  using type = half2;
-};
-
-template <>
-struct TypeMapper<half, 4> {
-  using type = Half4;
-};
-
+// The following operator overriding is not common so we put it in anonymous namespace
 #if defined(__CUDA_ARCH__) && __CUDA_ARCH__ > 530
 inline __device__ half2 operator*(const float a, const half2 b) {
   return __hmul2_rn(__float2half2_rn(a), b);
@@ -292,13 +274,13 @@ Status LaunchGatedRelativePositionBiasKernel(
   dim3 grid(seq_len, num_heads, batch_size);
 
   if (seq_len % 4 == 0) {
-    using vec_type = typename TypeMapper<T, 4>::type;
+    using vec_type = typename TypeMapper<T, 4>::Type;
     GatedRelativePositionBiasKernelSmallD<<<grid, block, sizeof(float), stream>>>(
         reinterpret_cast<vec_type*>(output),
         reinterpret_cast<const vec_type*>(rel_pos),
         qw, bias, eco_a, D, ldqw, equiv_seq_len);
   } else if (seq_len & 1 == 0) {
-    using vec_type = typename TypeMapper<T, 2>::type;
+    using vec_type = typename TypeMapper<T, 2>::Type;
     GatedRelativePositionBiasKernelSmallD<<<grid, block, sizeof(float), stream>>>(
         reinterpret_cast<vec_type*>(output),
         reinterpret_cast<const vec_type*>(rel_pos),

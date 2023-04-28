@@ -188,6 +188,7 @@ static constexpr PATH_TYPE VARIADIC_INPUT_OUTPUT_CUSTOM_OP_MODEL_URI = TSTR("tes
 static constexpr PATH_TYPE VARIADIC_UNDEF_INPUT_OUTPUT_CUSTOM_OP_MODEL_URI = TSTR(
     "testdata/custom_op_variadic_undef_io.onnx");
 static constexpr PATH_TYPE CUSTOM_OP_MODEL_WITH_ATTRIBUTES_URI = TSTR("testdata/foo_bar_3.onnx");
+static constexpr PATH_TYPE CUSTOM_OP_SINGLE_SCHEMA_MULTI_KERNEL = TSTR("testdata/custom_op_single_schema_multi_kernel.onnx");
 #if !defined(DISABLE_SPARSE_TENSORS)
 static constexpr PATH_TYPE SPARSE_OUTPUT_MODEL_URI = TSTR("testdata/sparse_initializer_as_output.onnx");
 #ifndef DISABLE_CONTRIB_OPS
@@ -1048,7 +1049,7 @@ TEST(CApiTest, invalid_variadic_input_homogeneity_custom_op) {
     Ort::Session session(*ort_env, VARIADIC_UNDEF_INPUT_OUTPUT_CUSTOM_OP_MODEL_URI, session_options);
     FAIL();
   } catch (const Ort::Exception& excpt) {
-    ASSERT_THAT(excpt.what(), testing::HasSubstr("Type Error: Type parameter (T0) of Optype (VariadicNode) bound "
+    ASSERT_THAT(excpt.what(), testing::HasSubstr("Type Error: Type parameter (Input0) of Optype (VariadicNode) bound "
                                                  "to different types"));
   }
 }
@@ -1856,6 +1857,29 @@ TEST(CApiTest, fill_string_tensor) {
 
   int64_t len = shape_info.GetElementCount();
   ASSERT_EQ(len, expected_len);
+}
+
+TEST(CApiTest, fill_string_tensor_directly) {
+  constexpr std::string_view s[] = {"abc", "kmp"};
+  constexpr int64_t expected_len = 2;
+
+  MockedOrtAllocator default_allocator;
+  Ort::Value tensor = Ort::Value::CreateTensor(&default_allocator, &expected_len, 1U,
+                                               ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING);
+
+  for (size_t i = 0; i < static_cast<size_t>(expected_len); i++) {
+    auto* buffer = tensor.GetResizedStringTensorElementBuffer(i, s[i].size());
+    memcpy(buffer, s[i].data(), s[i].size());
+  }
+
+  auto shape_info = tensor.GetTensorTypeAndShapeInfo();
+  int64_t len = shape_info.GetElementCount();
+  ASSERT_EQ(len, expected_len);
+
+  for (size_t i = 0; i < static_cast<size_t>(expected_len); i++) {
+    auto element = tensor.GetStringTensorElement(i);
+    ASSERT_EQ(s[i], element);
+  }
 }
 
 TEST(CApiTest, get_string_tensor_element) {
@@ -2804,69 +2828,18 @@ TEST(CApiTest, TestMultiStreamInferenceSimpleSSD) {
 }
 #endif
 
-/////////////////////////// test lite custom ops ///////////////////////////
-
-void Fuse(
-    OrtKernelContext*,
-    const Ort::Custom::Span<float>& vector_1,
-    const Ort::Custom::Span<float>& vector_2,
-    int32_t alpha,
-    Ort::Custom::TensorT<float>& vector_output) {
-  auto len_output = std::min(vector_1.size(), vector_2.size());
-  float* floats_out = static_cast<float*>(vector_output.Allocate({(int64_t)len_output}));
-  for (size_t i = 0; i < len_output; ++i) {
-    floats_out[i] = (vector_1[i] + vector_2[i]) * alpha;
-  }
-}
-
-void Select(const Ort::Custom::Span<int32_t>& indices_in,
-            Ort::Custom::TensorT<int32_t>& indices_out) {
-  std::vector<int32_t> selected_indices;
-  for (size_t i = 0; i < indices_in.size(); ++i) {
-    if (indices_in[i] % 2 == 0) {
-      selected_indices.push_back(indices_in[i]);
-    }
-  }
-
-  int32_t* int_out = static_cast<int32_t*>(indices_out.Allocate({static_cast<int64_t>(selected_indices.size())}));
-  for (size_t j = 0; j < selected_indices.size(); ++j) {
-    int_out[j] = selected_indices[j];
-  }
-}
-
-void Filter(const Ort::Custom::TensorT<float>& floats_in,
-            Ort::Custom::TensorT<float>& floats_out) {
-  const float* in = floats_in.Data();
-  auto in_len = floats_in.NumberOfElement();
-
-  std::vector<float> filter_floats;
-  for (int64_t i = 0; i < in_len; ++i) {
-    if (in[i] > 1.f) {
-      filter_floats.push_back(in[i]);
-    }
-  }
-
-  float* out = static_cast<float*>(floats_out.Allocate({static_cast<int64_t>(filter_floats.size())}));
-  for (size_t j = 0; j < filter_floats.size(); ++j) {
-    out[j] = filter_floats[j];
-  }
-}
-
 TEST(LiteCustomOpTest, CustomFunc) {
-  Ort::CustomOpDomain v2_domain{"v2"};
-  std::unique_ptr<OrtCustomOp> fus_op_ptr{Ort::Custom::CreateCustomOp("Fuse", "CPUExecutionProvider", Fuse)};
-  std::unique_ptr<OrtCustomOp> sel_op_ptr{Ort::Custom::CreateCustomOp("Select", "CPUExecutionProvider", Select)};
-  std::unique_ptr<OrtCustomOp> fil_op_ptr{Ort::Custom::CreateCustomOp("Filter", "CPUExecutionProvider", Filter)};
-
-  v2_domain.Add(fus_op_ptr.get());
-  v2_domain.Add(sel_op_ptr.get());
-  v2_domain.Add(fil_op_ptr.get());
-
   Ort::SessionOptions session_options;
   session_options.SetIntraOpNumThreads(1);
   session_options.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_EXTENDED);
-  session_options.Add(v2_domain);
   session_options.SetLogSeverityLevel(0);
+#if defined(_WIN32)
+  session_options.RegisterCustomOpsLibrary(ORT_TSTR("custom_op_library.dll"));
+#elif defined(__APPLE__)
+  session_options.RegisterCustomOpsLibrary(ORT_TSTR("libcustom_op_library.dylib"));
+#else
+  session_options.RegisterCustomOpsLibrary(ORT_TSTR("./libcustom_op_library.so"));
+#endif
 
   Ort::Session session{*ort_env, TSTR("testdata/fuse_select_filter.onnx"), session_options};
 
@@ -2971,45 +2944,18 @@ TEST(LiteCustomOpTest, CustomStruct) {
   ASSERT_TRUE(strncmp(chars.data(), "gfedcba", 7) == 0);
 }
 
-void Box(const Ort::Custom::TensorT<float>* float_in_1,
-         const Ort::Custom::TensorT<float>* float_in_2,
-         std::optional<const Ort::Custom::TensorT<float>*> float_in_3,
-         Ort::Custom::TensorT<float>* float_out_1,
-         std::optional<Ort::Custom::TensorT<float>*> float_out_2) {
-  auto raw_in_1 = float_in_1->Data();
-  auto raw_in_2 = float_in_2->Data();
-
-  auto l_in_1 = float_in_1->Shape()[0];
-  auto l_in_2 = float_in_2->Shape()[0];
-  auto l_out_1 = l_in_1 + l_in_2;
-
-  auto raw_out_1 = float_out_1->Allocate({l_out_1});
-
-  for (int64_t i = 0; i < l_out_1; ++i) {
-    raw_out_1[i] = i < l_in_1 ? raw_in_1[i] : raw_in_2[i - l_in_1];
-  }
-
-  if (float_in_3.has_value() && float_out_2.has_value()) {
-    auto raw_in_3 = float_in_3.value()->Data();
-    auto l_in_3 = float_in_3.value()->Shape()[0];
-    auto l_out_2 = l_in_2 + l_in_3;
-    auto raw_out_2 = float_out_2.value()->Allocate({l_out_2});
-    for (int64_t i = 0; i < l_out_2; ++i) {
-      raw_out_2[i] = i < l_in_2 ? raw_in_2[i] : raw_in_3[i - l_in_2];
-    }
-  }
-}
-
 TEST(LiteCustomOpTest, MissingOptional) {
-  Ort::CustomOpDomain v2_domain{"v2"};
-  std::unique_ptr<OrtCustomOp> box_op_ptr{Ort::Custom::CreateCustomOp("Box", "CPUExecutionProvider", Box)};
-  v2_domain.Add(box_op_ptr.get());
-
   Ort::SessionOptions session_options;
   session_options.SetIntraOpNumThreads(1);
   session_options.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_EXTENDED);
-  session_options.Add(v2_domain);
   session_options.SetLogSeverityLevel(0);
+#if defined(_WIN32)
+  session_options.RegisterCustomOpsLibrary(ORT_TSTR("custom_op_library.dll"));
+#elif defined(__APPLE__)
+  session_options.RegisterCustomOpsLibrary(ORT_TSTR("libcustom_op_library.dylib"));
+#else
+  session_options.RegisterCustomOpsLibrary(ORT_TSTR("./libcustom_op_library.so"));
+#endif
 
   Ort::Session session(*ort_env, TSTR("testdata/optional_2.onnx"), session_options);
 
@@ -3034,15 +2980,17 @@ TEST(LiteCustomOpTest, MissingOptional) {
 }
 
 TEST(LiteCustomOpTest, HasOptional) {
-  Ort::CustomOpDomain v2_domain{"v2"};
-  std::unique_ptr<OrtCustomOp> box_op_ptr{Ort::Custom::CreateCustomOp("Box", "CPUExecutionProvider", Box)};
-  v2_domain.Add(box_op_ptr.get());
-
   Ort::SessionOptions session_options;
   session_options.SetIntraOpNumThreads(1);
   session_options.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_EXTENDED);
-  session_options.Add(v2_domain);
   session_options.SetLogSeverityLevel(0);
+#if defined(_WIN32)
+  session_options.RegisterCustomOpsLibrary(ORT_TSTR("custom_op_library.dll"));
+#elif defined(__APPLE__)
+  session_options.RegisterCustomOpsLibrary(ORT_TSTR("libcustom_op_library.dylib"));
+#else
+  session_options.RegisterCustomOpsLibrary(ORT_TSTR("./libcustom_op_library.so"));
+#endif
 
   Ort::Session session(*ort_env, TSTR("testdata/optional_3.onnx"), session_options);
 
@@ -3070,3 +3018,109 @@ TEST(LiteCustomOpTest, HasOptional) {
   auto output_tensors = session.Run(run_options, input_names, input_tensors, 3, output_names, 2);
   ASSERT_TRUE(output_tensors.size() == 2);
 }
+
+#if !defined(ORT_MINIMAL_BUILD)
+TEST(MultiKernelSingleSchemaTest, valid) {
+  Ort::SessionOptions session_options;
+  session_options.SetIntraOpNumThreads(1);
+  session_options.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_EXTENDED);
+  session_options.SetLogSeverityLevel(0);
+#if defined(_WIN32)
+  session_options.RegisterCustomOpsLibrary(ORT_TSTR("custom_op_library.dll"));
+#elif defined(__APPLE__)
+  session_options.RegisterCustomOpsLibrary(ORT_TSTR("libcustom_op_library.dylib"));
+#else
+  session_options.RegisterCustomOpsLibrary(ORT_TSTR("./libcustom_op_library.so"));
+#endif
+
+  Ort::Session session(*ort_env, CUSTOM_OP_SINGLE_SCHEMA_MULTI_KERNEL, session_options);
+
+  const char* input_names[] = {"X"};
+  const char* output_names[] = {"Y", "Z"};
+  float x_value[] = {0.f, 1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f, 8.f, 9.f};
+  int64_t x_dim[] = {10};
+  auto memory_info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
+
+  Ort::Value input_tensors[1] = {
+      Ort::Value::CreateTensor<float>(memory_info, x_value, 10, x_dim, 1),
+  };
+
+  Ort::RunOptions run_optoins;
+  auto output_tensors = session.Run(run_optoins, input_names, input_tensors, 1, output_names, 2);
+  ASSERT_TRUE(*output_tensors[1].GetTensorData<int32_t>() == 72);
+}
+
+// expect input count mismatch exception
+TEST(MultiKernelSingleSchemaTest, InputCountMismatch) {
+  Ort::CustomOpDomain v2_domain("v2");
+  MulTopOpFloat mul_top_f32;
+  MulTopOpDouble mul_top_double;
+
+  v2_domain.Add(&mul_top_f32);
+  v2_domain.Add(&mul_top_double);
+
+  Ort::SessionOptions session_options;
+  session_options.SetIntraOpNumThreads(1);
+  session_options.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_EXTENDED);
+  session_options.SetLogSeverityLevel(0);
+  session_options.Add(v2_domain);
+
+  EXPECT_THROW(Ort::Session session(*ort_env, CUSTOM_OP_SINGLE_SCHEMA_MULTI_KERNEL, session_options), std::exception);
+}
+
+// expect output count mismatch exception
+TEST(MultiKernelSingleSchemaTest, OutputMismatch) {
+  Ort::CustomOpDomain v2_domain("v2");
+  MulTopOpFloat mul_top_f32;
+  MulTopOpInt16 mul_top_int64;
+
+  v2_domain.Add(&mul_top_f32);
+  v2_domain.Add(&mul_top_int64);
+
+  Ort::SessionOptions session_options;
+  session_options.SetIntraOpNumThreads(1);
+  session_options.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_EXTENDED);
+  session_options.SetLogSeverityLevel(0);
+  session_options.Add(v2_domain);
+
+  EXPECT_THROW(Ort::Session session(*ort_env, CUSTOM_OP_SINGLE_SCHEMA_MULTI_KERNEL, session_options), std::exception);
+}
+
+// expect characteristic mismatch exception
+TEST(MultiKernelSingleSchemaTest, CharacterMismatch) {
+  Ort::CustomOpDomain v2_domain("v2");
+  MulTopOpFloat mul_top_f32;
+  MulTopOpFloat16 mul_top_f16;
+
+  v2_domain.Add(&mul_top_f32);
+  v2_domain.Add(&mul_top_f16);
+
+  Ort::SessionOptions session_options;
+  session_options.SetIntraOpNumThreads(1);
+  session_options.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_EXTENDED);
+  session_options.SetLogSeverityLevel(0);
+  session_options.Add(v2_domain);
+
+  EXPECT_THROW(Ort::Session session(*ort_env, CUSTOM_OP_SINGLE_SCHEMA_MULTI_KERNEL, session_options), std::exception);
+}
+
+TEST(MultiKernelSingleSchemaTest, DuplicateKernel) {
+  Ort::CustomOpDomain v2_domain("v2");
+  MulTopOpFloat mul_top_f32_1;
+  MulTopOpFloat mul_top_f32_2;
+  MulTopOpInt32 mul_top_i32;
+
+  v2_domain.Add(&mul_top_f32_1);
+  v2_domain.Add(&mul_top_f32_2);
+  v2_domain.Add(&mul_top_i32);
+
+  Ort::SessionOptions session_options;
+  session_options.SetIntraOpNumThreads(1);
+  session_options.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_EXTENDED);
+  session_options.SetLogSeverityLevel(0);
+  session_options.Add(v2_domain);
+
+  EXPECT_NO_THROW(Ort::Session session(*ort_env, CUSTOM_OP_SINGLE_SCHEMA_MULTI_KERNEL, session_options));
+}
+
+#endif

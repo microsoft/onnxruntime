@@ -102,6 +102,16 @@ Status ReorderPastState(
                                                    &transpose_output_shape_override);
 }
 
+Status InitCacheIndir(Tensor& cache_indir, Stream* stream) {
+  ORT_ENFORCE(stream);
+  cudaStream_t cuda_stream = reinterpret_cast<cudaStream_t>(stream->GetHandle());
+
+  // Initialize the cache_indir tensor to all 0s
+  CUDA_RETURN_IF_ERROR(cudaMemsetAsync(cache_indir.MutableDataRaw(), 0, cache_indir.SizeInBytes(), cuda_stream));
+
+  return Status::OK();
+}
+
 Status TopK(const Tensor* input, const int axis, const unsigned k, bool largest, bool sorted,
             AllocatorPtr allocator,
             Stream* stream,

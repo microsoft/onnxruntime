@@ -62,37 +62,7 @@ init_command = [
     'run',
     'pip_init',
     '--dry-run={{DRYRUN}}',
-    'ruff==0.0.261',
-]
-
-[[linter]]
-code = 'RUFF-FIX'
-include_patterns = [
-    '**/*.py',
-    '**/*.pyi',
-]
-exclude_patterns = [
-    'cmake/external/**',
-    # ignore generated flatbuffers code
-    'onnxruntime/core/flatbuffers/ort_flatbuffers_py/**',
-]
-command = [
-    'python',
-    '-m',
-    'lintrunner_adapters',
-    'run',
-    'ruff_fix_linter',
-    '--config=pyproject.toml',
-    '@{{PATHSFILE}}'
-]
-init_command = [
-    'python',
-    '-m',
-    'lintrunner_adapters',
-    'run',
-    'pip_init',
-    '--dry-run={{DRYRUN}}',
-    'ruff==0.0.261',
+    '--requirement=requirements-lintrunner.txt',
 ]
 is_formatter = true
 
@@ -108,7 +78,7 @@ exclude_patterns = [
     'onnxruntime/core/flatbuffers/**',
 ]
 command = [
-    'python3',
+    'python',
     '-m',
     'lintrunner_adapters',
     'run',
@@ -117,14 +87,13 @@ command = [
     '@{{PATHSFILE}}'
 ]
 init_command = [
-    'python3',
+    'python',
     '-m',
     'lintrunner_adapters',
     'run',
     'pip_init',
     '--dry-run={{DRYRUN}}',
-    'black==23.1.0',
-    'isort==5.10.1',
+    '--requirement=requirements-lintrunner.txt',
 ]
 is_formatter = true
 
@@ -136,7 +105,7 @@ include_patterns = [
 exclude_patterns = [
 ]
 command = [
-    'python3',
+    'python',
     '-m',
     'lintrunner_adapters',
     'run',
@@ -146,13 +115,13 @@ command = [
     '@{{PATHSFILE}}'
 ]
 init_command = [
-    'python3',
+    'python',
     '-m',
     'lintrunner_adapters',
     'run',
     'pip_init',
     '--dry-run={{DRYRUN}}',
-    'pylint==2.15.5',
+    '--requirement=requirements-lintrunner.txt',
 ]
 
 [[linter]]
@@ -208,6 +177,6 @@ init_command = [
     'run',
     'pip_init',
     '--dry-run={{DRYRUN}}',
-    'clang-format==16.0.1',
+    '--requirement=requirements-lintrunner.txt',
 ]
 is_formatter = true

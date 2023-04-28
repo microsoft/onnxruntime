@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #pragma once
+
 #include "core/providers/cpu/cpu_execution_provider.h"
 #include "core/session/inference_session.h"
 #include "core/session/environment.h"
@@ -27,8 +28,11 @@ struct ParameterOptimizerState {
  */
 struct GroupOptimizerState {
   int64_t step = 0;
-  float initial_lr = 0.001f;        // Default value used in torch AdamW
-  float learning_rate{initial_lr};  // Adaptive learning rate as training proceeds.
+  float initial_lr = 0.001f;  // Default value used in torch AdamW
+
+  // Adaptive learning rate as training proceeds. Be noted, learning_rate can be
+  // restored by lr scheduler from given step and initial_lr, though, we still save/load this in checkpoint.
+  float learning_rate{initial_lr};
   std::unordered_map<std::string, ParameterOptimizerState> param_named_optimizer_states;
 };
 
@@ -43,12 +47,50 @@ struct OptimizerCheckpointState {
   const DataTransferManager* optimizer_session_data_transfer_mgr;
 };
 
-enum class OptimizerType {
-  AdamW,
-  // More optimizers can be added later as:
-  // Lamb,
+struct OptimizerAlgorithmBase {
+  OptimizerAlgorithmBase(const std::vector<std::string>& momentum_keys,
+                         const std::vector<std::string>& optimizer_states_inputs)
+      : momentum_keys(momentum_keys), optimizer_states_inputs(optimizer_states_inputs) {}
+  std::vector<std::string> momentum_keys;
+  std::vector<std::string> optimizer_states_inputs;
 };
 
+struct AdamWOptimizerAlgorithm : public OptimizerAlgorithmBase {
+  AdamWOptimizerAlgorithm() : OptimizerAlgorithmBase({"momentum0", "momentum1"},
+                                                     {"first_order_moments", "second_order_moments"}) {}
+};
+
+struct SGDOptimizerV2Algorithm : public OptimizerAlgorithmBase {
+  SGDOptimizerV2Algorithm() : OptimizerAlgorithmBase({"momentum0"},
+                                                     {"first_order_moments"}) {}
+};
+
+struct OptimizerAlorithmFactory {
+  static std::unique_ptr<OptimizerAlgorithmBase> CreateInstance(const std::string& optim_path_or_bytes,
+                                                                int32_t& group_count);
+};
+
+struct CheckpointState;
+
+/**
+ * @brief Optimizer class for running gradient updates.
+ *
+ * This class is responsible for running gradient updates on the parameters.
+ * > It does NOT own the parameters, and will not modify the "named_parameters" in `CheckpointState`
+ *   passed from the constructor.
+ *   A tensor sequence is created based on the "named_parameters" to construct parameter input (of type tensorseq).
+ * > If 'optimizer_checkpoint_states' is provided in the constructor as part of `CheckpointState`.
+ *   Optimizer will reuse the data buffer from the passed in 'optimizer_checkpoint_states'.
+ *   >> If the device of momentums in 'optimizer_checkpoint_states' is not
+ *     matching its parameter device, a copy will be done during the 'LoadStateDict',
+ *     but reserving using the original OrtValue with the copied data buffer;
+ *   >> Otherwise, it generates the optimizer state initialized as all zeros and owns them.
+ * > If 'optimizer_checkpoint_states' is not provided in the constructor as part of `CheckpointState`.
+ *   The optimizer states are initialized as all zeros on the same device of corresponding parameters.
+ *
+ * Currently, we only support load checkpoints from the constructor;
+ * no public API to load state dict after Optimizer instance is created.
+ */
 struct Optimizer {
   friend struct LRSchedulerBase;
 
@@ -57,51 +99,73 @@ struct Optimizer {
   // training ONNX model For each parameter, initialize the OptimizerState based
   // on the graph input's ValueInfoProto if the parameter doesn't have it already.
   Optimizer(const std::string& optim_path_or_bytes,
-            const std::unordered_map<std::string, std::shared_ptr<Parameter>>& named_parameters,
+            CheckpointState* state,
             const onnxruntime::SessionOptions& session_options,
             const Environment& env,
             const std::vector<std::shared_ptr<IExecutionProvider>>& providers);
 
   Status Step();
 
+  /**
+   * @brief Get the current optimizer state.
+   *
+   * Be noted the returned optimizer_checkpoint_states will hold new references to
+   * original momentum states.
+   * @return Status
+   */
   Status GetStateDict(OptimizerCheckpointState& optimizer_checkpoint_states);
 
-  Status LoadStateDict(const OptimizerCheckpointState& optimizer_checkpoint_states);
-
   Status SetLearningRate(float lr) {
-    optimizer_state_.learning_rate = lr;
+    optimizer_state_->learning_rate = lr;
     return Status::OK();
   }
 
   float GetLearningRate() const noexcept {
-    return optimizer_state_.learning_rate;
+    return optimizer_state_->learning_rate;
   }
 
   Status SetInitialLearningRate(float initial_lr) {
-    optimizer_state_.initial_lr = initial_lr;
-    optimizer_state_.learning_rate = initial_lr;
+    optimizer_state_->initial_lr = initial_lr;
+    optimizer_state_->learning_rate = initial_lr;
     return Status::OK();
   }
 
  private:
+  void Initialize(const std::string& optim_path_or_bytes,
+                  const onnxruntime::SessionOptions& session_options,
+                  const Environment& env,
+                  const std::vector<std::shared_ptr<IExecutionProvider>>& providers);
+
   int64_t GetStep() const {
-    return optimizer_state_.step;
+    return optimizer_state_->step;
   }
 
-  // Generates optimizer momentum states for applicable optimizer types
-  Status GenerateMomentumNamedStates();
+  // Generates optimizer momentum states for parameters that require grad.
+  Status GenerateMomentumNamedStates(OptimizerCheckpointState& optimizer_checkpoint_states);
   // Constructs the ortvalue inputs to be fed to the graph
-  // at each step
+  // at each step.
   Status ConstructInputs();
 
-  // TODO: load this info from checkpoint
-  OptimizerType optimizer_type_ = OptimizerType::AdamW;
+  /**
+   * @brief Load states from optimizer_checkpoint_states into current optimizer state.
+   *
+   * Be noted Optimizer will reuse the data buffer of passed in optimizer_checkpoint_states.
+   * If the device of momentums in optimizer_checkpoint_states is not matching its parameter device,
+   * an implicit copy will be done during the LoadStateDict, but reserving using the original OrtValue
+   * with the copied data buffer.
+   * @return Status
+   */
+  Status LoadStateDict(OptimizerCheckpointState& optimizer_checkpoint_states);
+
+  std::unique_ptr<OptimizerAlgorithmBase> optimizer_algo_ptr_;
   std::unique_ptr<onnxruntime::InferenceSession> optim_sess_;
-  const std::unordered_map<std::string, std::shared_ptr<Parameter>>& named_parameters_;
-  GroupOptimizerState optimizer_state_;
+  CheckpointState* state_;  // Non owning pointer to the state.
+  std::shared_ptr<GroupOptimizerState> optimizer_state_;
   std::vector<std::string> input_names_;
   std::vector<std::string> output_names_;
   std::vector<OrtValue> inputs_;
+
+  int32_t group_count_{0};
 };
 
 }  // namespace api

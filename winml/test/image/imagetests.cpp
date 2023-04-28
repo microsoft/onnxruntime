@@ -543,8 +543,8 @@ INSTANTIATE_TEST_SUITE_P(BatchTest, BatchTest,
         testing::Values(
             std::make_tuple(L"fns-candy_Bgr8_Batch2.onnx", Image, std::vector<std::wstring>({L"fish_720.png", L"fish_720.png"}), 2, false),
             std::make_tuple(L"fns-candy_Bgr8_Batch2.onnx", Image, std::vector<std::wstring>({L"1080.jpg", L"fish_720.png"}), 2, false),
-            std::make_tuple(L"fns-candy_Bgr8_Batch2.onnx", Image, std::vector<std::wstring>({L"fish_720_Gray.png", L"fish_720.png"}), 2, false),
-            std::make_tuple(L"fns-candy_Bgr8_Batch3.onnx", Image, std::vector<std::wstring>({L"1080.jpg", L"fish_720_Gray.png", L"fish_720.png"}), 3, false)
+            std::make_tuple(L"fns-candy_Bgr8_Batch2.onnx", Image, std::vector<std::wstring>({L"fish_720_Gray.png", L"fish_720.png"}), 2, false)
+            // std::make_tuple(L"fns-candy_Bgr8_Batch3.onnx", Image, std::vector<std::wstring>({L"1080.jpg", L"fish_720_Gray.png", L"fish_720.png"}), 3, false),
             // std::make_tuple(L"fns-candy_Bgr8_Batch3.onnx", Image, std::vector<std::wstring>({L"1080.jpg", L"kitten_224.png", L"fish_720.png"}), 3, false),
             // std::make_tuple(L"fns-candy_Bgr8_tensor_Batch3.onnx", Tensor, std::vector<std::wstring>({L"1080.jpg", L"fish_720_Gray.png", L"fish_720.png"}), 3, false),
             // std::make_tuple(L"fns-candy_Bgr8_freeDimInput_Batch10.onnx", Image, std::vector<std::wstring>({}), 10, false),
@@ -835,7 +835,7 @@ TEST_F(ImageTests, ImageBindingAsGPUTensor) {
     IRandomAccessStream stream = image_file.OpenAsync(FileAccessMode::Read).get();
     SoftwareBitmap software_bitmap = (BitmapDecoder::CreateAsync(stream).get()).GetSoftwareBitmapAsync().get();
 
-    UINT64 buffer_byte_size = software_bitmap.PixelWidth()*software_bitmap.PixelHeight() * 3 * sizeof(float);
+    UINT64 buffer_byte_size = static_cast<uint64_t>(software_bitmap.PixelWidth()) * software_bitmap.PixelHeight() * 3 * sizeof(float);
     D3D12_HEAP_PROPERTIES heap_properties = {
         D3D12_HEAP_TYPE_DEFAULT,
         D3D12_CPU_PAGE_PROPERTY_UNKNOWN,

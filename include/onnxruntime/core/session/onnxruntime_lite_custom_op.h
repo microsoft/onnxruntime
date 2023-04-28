@@ -1,6 +1,19 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+// Summary
+// The header has APIs to save custom op authors the trouble of defining schemas,
+// which will be inferred by functions' signature, as long as their argument list has types supported here.
+// Input could be:
+// 1. Tensor of onnx data types.
+// 2. Span of onnx data types.
+// 3. Scalar of onnx data types.
+// A input could be optional if indicated as std::optional<...>.
+// For an output, it must be a tensor of onnx data types.
+// Further, the header also has utility for a simple custom struct, where resources could be kept, to be registered as a custom op.
+// For concrete examples, please search keyword "LiteCustomOpTest" under "<cloned_src_dir>/onnxruntime/test/".
+// Note - all APIs in this header are ABI.
+
 #pragma once
 #include "onnxruntime_cxx_api.h"
 #include <optional>
@@ -531,7 +544,15 @@ struct OrtCustomOpBase : public OrtCustomOp {
 };
 
 //////////////////////////// OrtCustomFunc ////////////////////////////////
-
+// The struct is to implement function-as-op.
+// E.g. a function might be defined as:
+//   void Filter(const Ort::Custom::TensorT<float>& floats_in, Ort::Custom::TensorT<float>& floats_out) { ... }
+// It could be registered this way:
+//   Ort::CustomOpDomain v2_domain{"v2"};
+//   std::unique_ptr<OrtCustomOp> fil_op_ptr{Ort::Custom::CreateCustomOp("Filter", "CPUExecutionProvider", Filter)};
+//   v2_domain.Add(fil_op_ptr.get());
+//   session_options.Add(v2_domain);
+// For full example, please search keyword "LiteCustomOpTest" under "<cloned_src_dir>/onnxruntime/test/".
 template <typename... Args>
 struct OrtCustomFunc : public OrtCustomOpBase {
   using ComputeFn = void (*)(Args...);
@@ -576,7 +597,21 @@ struct OrtCustomFunc : public OrtCustomOpBase {
 };  // struct OrtCustomFunc
 
 /////////////////////////// OrtCustomStruct ///////////////////////////
-
+// The struct is to implement struct-as-op.
+// E.g. a struct might be defined as:
+//   struct Merge {
+//      Merge(const OrtApi* ort_api, const OrtKernelInfo* info) {...}
+//      void Compute(const Ort::Custom::TensorT<std::string_view>& strings_in,
+//                   std::string_view string_in,
+//                   Ort::Custom::TensorT<std::string>* strings_out) {...}
+//      bool reverse_ = false;
+//   };
+// It could be registered this way:
+//   Ort::CustomOpDomain v2_domain{"v2"};
+//   std::unique_ptr<OrtCustomOp> mrg_op_ptr{Ort::Custom::CreateCustomOp<Merge>("Merge", "CPUExecutionProvider")};
+//   v2_domain.Add(mrg_op_ptr.get());
+//   session_options.Add(v2_domain);
+// For full example, please search keyword "LiteCustomOpTest" under "<cloned_src_dir>/onnxruntime/test/".
 template <typename CustomOp>
 struct OrtCustomStruct : public OrtCustomOpBase {
   template <typename... Args>
