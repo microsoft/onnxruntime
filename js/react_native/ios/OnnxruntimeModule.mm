@@ -9,7 +9,15 @@
 #import <onnxruntime/onnxruntime_cxx_api.h>
 
 #ifdef ORT_ENABLE_EXTENSIONS
-#include <onnxruntime_extensions.h>
+#if __cplusplus
+extern "C" {
+#endif
+
+// Note: declared in onnxruntime_extensions.h but doing local to work around a build issue
+OrtStatus *RegisterCustomOps(OrtSessionOptions *options, const OrtApiBase *api);
+#if __cplusplus
+} // Extern C
+#endif
 #endif
 
 @implementation OnnxruntimeModule
