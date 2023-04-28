@@ -78,8 +78,9 @@ namespace Dml
         // ownership of the binding table.
         GpuEvent ExecuteOperator(
             IDMLCompiledOperator* op,
-            Microsoft::WRL::ComPtr<IDMLBindingTable>&& binding_table,
-            ID3D12DescriptorHeap* descriptor_heap);
+            const DML_BINDING_DESC& persistentResourceBinding,
+            gsl::span<const DML_BINDING_DESC> inputBindings,
+            gsl::span<const DML_BINDING_DESC> outputBindings);
 
         // NOTE: A copy of the barriers span will be made, so the pointed-to value
         // is safe to release immediately after calling this method.

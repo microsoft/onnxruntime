@@ -252,18 +252,67 @@ namespace Dml
 
     GpuEvent ExecutionContext::ExecuteOperator(
         IDMLCompiledOperator* op,
-        Microsoft::WRL::ComPtr<IDMLBindingTable>&& binding_table,
-        ID3D12DescriptorHeap* descriptor_heap)
+        const DML_BINDING_DESC& persistentResourceBinding,
+        gsl::span<const DML_BINDING_DESC> inputBindings,
+        gsl::span<const DML_BINDING_DESC> outputBindings)
     {
+        DML_BINDING_PROPERTIES execBindingProps = op->GetBindingProperties();
+
+        const uint32_t numDescriptors = execBindingProps.RequiredDescriptorCount;
+        DescriptorRange descriptorRange = dml_command_list_->GetDescriptorPool().AllocDescriptors(
+            numDescriptors,
+            dml_command_queue_->GetNextCompletionEvent());
+
+        // Create a binding table for execution.
+        DML_BINDING_TABLE_DESC bindingTableDesc = {};
+        bindingTableDesc.Dispatchable = op;
+        bindingTableDesc.CPUDescriptorHandle = descriptorRange.cpuHandle;
+        bindingTableDesc.GPUDescriptorHandle = descriptorRange.gpuHandle;
+        bindingTableDesc.SizeInDescriptors = numDescriptors;
+
+        ComPtr<IDMLBindingTable> bindingTable;
+        ORT_THROW_IF_FAILED(m_dmlDevice->CreateBindingTable(&bindingTableDesc, IID_PPV_ARGS(&bindingTable)));
+
+        // Create a temporary resource for executing the op, if it's required.
+        UINT64 temporaryResourceSize = execBindingProps.TemporaryResourceSize;
+        if (temporaryResourceSize > 0)
+        {
+            auto allocator = m_bufferAllocator.lock();
+
+            // Allocate and immediately free a temporary buffer. The buffer resource will still be
+            // alive (managed by the pool); freeing allows the resource to be shared with other operators.
+            void* tempResourceHandle = allocator->Alloc(static_cast<size_t>(temporaryResourceSize), AllocatorRoundingMode::Enabled);
+            if (!tempResourceHandle)
+            {
+                ORT_THROW_HR(E_OUTOFMEMORY);
+            }
+
+            ID3D12Resource* buffer = allocator->DecodeDataHandle(tempResourceHandle)->GetResource();
+            allocator->Free(tempResourceHandle);
+
+            // Bind the temporary resource.
+            DML_BUFFER_BINDING bufferBinding = { buffer, 0, temporaryResourceSize };
+            DML_BINDING_DESC bindingDesc = { DML_BINDING_TYPE_BUFFER, &bufferBinding };
+            bindingTable->BindTemporaryResource(&bindingDesc);
+        }
+
+        if (persistentResourceBinding.Type != DML_BINDING_TYPE_NONE)
+        {
+            bindingTable->BindPersistentResource(&persistentResourceBinding);
+        }
+
+        bindingTable->BindInputs(gsl::narrow<uint32_t>(inputBindings.size()), inputBindings.data());
+        bindingTable->BindOutputs(gsl::narrow<uint32_t>(outputBindings.size()), outputBindings.data());
+
         std::unique_lock<std::mutex> lock(batch_state_->mutex);
 
         batch_state_->WriteBatch().emplace_back(
-            [=, binding_table = std::move(binding_table)](
+            [=, bindingTable = std::move(bindingTable)](
                 DmlCommandList& command_list) {
                 command_list.ExecuteOperator(
                     op,
-                    binding_table.Get(),
-                    descriptor_heap);
+                    bindingTable.Get(),
+                    descriptorRange.heap);
             });
 
         batch_state_->command_added.notify_all();
