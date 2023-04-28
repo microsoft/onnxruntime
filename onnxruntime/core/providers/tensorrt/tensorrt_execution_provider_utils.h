@@ -95,6 +95,15 @@ bool ReadDynamicRange(const std::string file_name, const bool is_trt_calibration
   return true;
 }
 
+int GetNumProfiles(std::unordered_map<std::string, std::vector<std::vector<int64_t>>>& profile_shapes) {
+
+  std::unordered_map<std::string, std::vector<std::vector<int64_t>>>::iterator it;
+  for (it = profile_shapes.begin(); it != profile_shapes.end(); it ++) {
+    return static_cast<int>(it->second.size());
+  }
+  return 0;
+}
+
 /*
  * Seralize engine profile
  * The profile contains min/max shape ranges of dynamic shape dimensions of each input tensor
@@ -152,6 +161,123 @@ std::unordered_map<std::string, std::unordered_map<size_t, std::pair<int64_t, in
     shape_ranges[keys[i].AsString().c_str()] = inner_map;
   }
   return shape_ranges;
+}
+
+/*
+ * Deserialize engine profile. (This function starts from ORT 1.15)
+ *
+ *
+ * For example, assume tensor_a has two dynamic shape dimensions: dim_0 and dim_2, and tensor_b
+ * has one dynamic shape dimension: dim_1.
+ *
+ * The data in profile file will be:
+ * {
+ *   tensor_a: [[dim_0, min_shape, max_shape, opt_shape, dim_2, min_shape, max_shape, opt_shape]]
+ *   tensor_b: [[dim_1, min_shape, max_shape, opt_shape]]
+ * }
+ *
+ * The data after deserialization will be:
+ * {
+ *   tensor_a: {
+ *     dim_0: [[min_shape, max_shape, opt_shape]],
+ *     dim_2: [[min_shape, max_shape, opt_shape]]
+ *   },
+ *   tensor_b: {
+ *     dim_1: [[min_shape, max_shape, opt_shape]]
+ *   }
+ * }
+ */
+std::unordered_map<std::string, std::unordered_map<int64_t, std::vector<std::vector<int64_t>>>> DeserializeProfileV2(std::ifstream& infile) {
+  // Load flexbuffer
+  infile.seekg(0, std::ios::end);
+  size_t length = infile.tellg();
+  infile.seekg(0, std::ios::beg);
+  std::unique_ptr<char[]> data{new char[length]};
+  infile.read((char*)data.get(), length);
+  infile.close();
+
+  // Deserialize profile
+  std::unordered_map<std::string, std::unordered_map<int64_t, std::vector<std::vector<int64_t>>>> shape_ranges;
+  auto tensors_range_entries = flexbuffers::GetRoot((const uint8_t*)data.get(), length).AsMap();
+  auto keys = tensors_range_entries.Keys();
+  auto values = tensors_range_entries.Values();
+  for (size_t i = 0; i < keys.size(); i++) { // iterate tensors
+    auto profiles_vector = values[i].AsTypedVector();
+    std::unordered_map<int64_t, std::vector<std::vector<int64_t>>> inner_map;
+    std::vector<std::vector<int64_t>> outer_vector(profiles_vector.size());
+
+    for (size_t j = 0; j < profiles_vector.size(); j++) { // iterate profiles
+      auto dim_range_vector = profiles_vector[j].AsTypedVector();
+
+      for (size_t k = 0; k < (dim_range_vector.size() / 4); k ++) { // iterate dim, min, max, opt
+        std::vector<int64_t> inner_vector;
+        auto idx = 4 * k;
+        inner_vector.push_back(dim_range_vector[idx + 1].AsInt64()); // min shape
+        inner_vector.push_back(dim_range_vector[idx + 2].AsInt64()); // max shape
+        inner_vector.push_back(dim_range_vector[idx + 3].AsInt64()); // opt shape
+        inner_map[dim_range_vector[idx].AsInt64()][j] = inner_vector;
+      }
+    }
+    shape_ranges[keys[i].AsString().c_str()] = inner_map;
+  }
+  return shape_ranges;
+}
+
+/*
+ * Seralize engine profile. (This function starts from ORT 1.15)
+ *
+ *
+ * The profile contains min/max/opt shape ranges of dynamic shape dimensions of each input tensor
+ * For example, assume tensor_a has two dynamic shape dimensions: dim_0 and dim_2, and tensor_b
+ * has one dynamic shape dimension: dim_1.
+ *
+ * The data before serialization will be:
+ * {
+ *   tensor_a: {
+ *     dim_0: [[min_shape, max_shape, opt_shape]],
+ *     dim_2: [[min_shape, max_shape, opt_shape]]
+ *   },
+ *   tensor_b: {
+ *     dim_1: [[min_shape, max_shape, opt_shape]]
+ *   }
+ * }
+ *
+ * The data after serialization will be:
+ * {
+ *   tensor_a: [[dim_0, min_shape, max_shape, opt_shape, dim_2, min_shape, max_shape, opt_shape]]
+ *   tensor_b: [[dim_1, min_shape, max_shape, opt_shape]]
+ * }
+ */
+void SerializeProfileV2(const std::string& file_name,
+                        int num_profiles,
+                        std::unordered_map<std::string, std::unordered_map<int64_t, std::vector<std::vector<int64_t>>>>& shape_ranges)
+{
+  // Serialize profile
+  flexbuffers::Builder builder;
+  auto profile_start = builder.StartMap();
+  for (auto tensor_it = shape_ranges.begin(); tensor_it != shape_ranges.end(); tensor_it++) {
+    builder.TypedVector(tensor_it->first.c_str(), [&] {
+      for (int i = 0; i < num_profiles; i++) {
+        builder.TypedVector([&] {
+          for (auto dim_it = shape_ranges[tensor_it->first].begin(); dim_it != shape_ranges[tensor_it->first].end(); dim_it++) {
+            builder.Int(dim_it->first);
+            builder.Int(dim_it->second[i][0]);
+            builder.Int(dim_it->second[i][1]);
+            builder.Int(dim_it->second[i][2]);
+          }
+        });
+      }
+    });
+  }
+  builder.EndMap(profile_start);
+  builder.Finish();
+
+  // Save flexbuffer
+  std::ofstream file(file_name, std::ios::binary | std::ios::out);
+  auto buf = builder.GetBuffer();
+  size_t size = builder.GetSize();
+  file.write(reinterpret_cast<const char*>(&buf[0]), size);
+  file.close();
 }
 
 /*
@@ -290,15 +416,6 @@ HashValue TRTGenerateId(const GraphViewer& graph_viewer) {
   return model_hash;
 }
 
-int GetNumProfiles(std::unordered_map<std::string, std::vector<std::vector<int64_t>>>& profile_shapes) {
-    
-  std::unordered_map<std::string, std::vector<std::vector<int64_t>>>::iterator it;
-  for (it = profile_shapes.begin(); it != profile_shapes.end(); it ++) {
-    return static_cast<int>(it->second.size());
-  }
-  return 0;
-}
-
 bool ValidateProfileShapes(std::unordered_map<std::string, std::vector<std::vector<int64_t>>>& profile_min_shapes,
                            std::unordered_map<std::string, std::vector<std::vector<int64_t>>>& profile_max_shapes,
                            std::unordered_map<std::string, std::vector<std::vector<int64_t>>>& profile_opt_shapes) {
@@ -335,9 +452,9 @@ bool ValidateProfileShapes(std::unordered_map<std::string, std::vector<std::vect
   return true;
 }
 
-/* 
+/*
  * Make input-name and shape as a pair.
- * This helper function is being used by ParseProfileShapes().  
+ * This helper function is being used by ParseProfileShapes().
  *
  * For example:
  * The input string is "input_id:32x1",
@@ -379,13 +496,13 @@ bool MakeInputNameShapePair(std::string pair_string, std::pair<std::string, std:
   return true;
 }
 
-/* 
+/*
  * Parse explicit profile min/max/opt shapes from TensorRT EP provider options.
  *
  * For example:
  * The provider option is --trt_profile_min_shapes="input_id:32x1,attention_mask:32x1,input_id:32x41,attention_mask:32x41",
  * after string is being parsed, the profile shapes has two profiles and is being represented as below.
- * {"input_id": [[32, 1], [32, 41]], "attention_mask": [[32, 1], [32, 41]]} 
+ * {"input_id": [[32, 1], [32, 41]], "attention_mask": [[32, 1], [32, 41]]}
  *
  * Return true if string can be successfully parsed or false if string has wrong format.
  */
