@@ -37,7 +37,7 @@ Pod::Spec.new do |spec|
       }
     end
   else
-    puts "File not found: No package.json file found applicable in the expected project root directory. #{root_dir}"
+    puts "File not found: No package.json file found applicable in the expected project root directory. Expected:#{root_dir}"
   end
 
 end
