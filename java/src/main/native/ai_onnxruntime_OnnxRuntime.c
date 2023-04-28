@@ -79,7 +79,7 @@ JNIEXPORT jstring JNICALL Java_ai_onnxruntime_OnnxRuntime_initialiseVersion
   const ORTCHAR_T* version = OrtGetApiBase()->GetVersionString();
   assert(version != NULL);
 #ifdef _WIN32
-  size_t len = wcslen(version);
+  jsize len = (jsize)(wcslen(version));
   jstring versionStr = (*jniEnv)->NewString(jniEnv, (const jchar*)version, len);
 #else
   jstring versionStr = (*jniEnv)->NewStringUTF(jniEnv, version);
