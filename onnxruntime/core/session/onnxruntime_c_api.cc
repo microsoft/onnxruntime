@@ -2699,6 +2699,7 @@ static constexpr OrtApi ort_api_1_to_15 = {
     &OrtApis::ReleaseDnnlProviderOptions,
 
     &OrtApis::KernelContext_GetAllocator,
+    &OrtApis::KernelContext_CGetAllocator,
     &OrtApis::CreateAndRegisterCudaAllocator,
 };
 

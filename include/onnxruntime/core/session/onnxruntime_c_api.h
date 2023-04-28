@@ -3963,6 +3963,7 @@ struct OrtApi {
   void(ORT_API_CALL* ReleaseDnnlProviderOptions)(_Frees_ptr_opt_ OrtDnnlProviderOptions* input);
 
   ORT_API2_STATUS(KernelContext_GetAllocator, _In_ const OrtKernelContext* context, _In_ const OrtMemoryInfo*, _Outptr_ void** out);
+  ORT_API2_STATUS(KernelContext_CGetAllocator, _In_ const OrtKernelContext* context, _In_ const OrtMemoryInfo*, _Outptr_ OrtAllocator** out);
 
   ORT_API2_STATUS(CreateAndRegisterCudaAllocator, _Inout_ OrtEnv* env, _In_ const OrtMemoryInfo* mem_info, _In_ const OrtArenaCfg* arena_cfg, 
                   _In_reads_(num_keys) const char* const* provider_options_keys, _In_reads_(num_keys) const char* const* provider_options_values, _In_ size_t num_keys);

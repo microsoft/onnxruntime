@@ -79,6 +79,12 @@ void KernelComputeTester::Run(std::unordered_set<int> strided_outputs) {
 
   node.SetExecutionProviderType(ep_type);
   std::map<OrtDevice, AllocatorPtr> allocators;
+  for (std::shared_ptr<IExecutionProvider> ep : execution_providers) {
+    std::vector<AllocatorPtr> ep_allocators = ep->CreatePreferredAllocators();
+    for (AllocatorPtr& alloc : ep_allocators) {
+      allocators.insert({alloc->Info().device, alloc});
+    }
+  }
   OptimizerExecutionFrame::Info info({&node}, initializer_map, graph.ModelPath(), *execution_providers.Get(ep_type),
                                      [](std::string const&) { return false; }, allocators);
   const KernelCreateInfo* kernel_create_info = nullptr;

@@ -168,6 +168,13 @@ ORT_API_STATUS_IMPL(OrtApis::CreateAndRegisterCudaAllocator, _Inout_ OrtEnv* env
   if (!st.IsOK()) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, st.ErrorMessage().c_str());
   }
+#else
+  ORT_UNUSED_PARAMETER(env);
+  ORT_UNUSED_PARAMETER(mem_info);
+  ORT_UNUSED_PARAMETER(arena_cfg);
+  ORT_UNUSED_PARAMETER(num_keys);
+  ORT_UNUSED_PARAMETER(provider_options_keys);
+  ORT_UNUSED_PARAMETER(provider_options_values);
 #endif  // USE_CUDA
   return nullptr;
 }
