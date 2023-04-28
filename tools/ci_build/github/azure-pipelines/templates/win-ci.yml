@@ -43,10 +43,11 @@ parameters:
   type: string
   default: ''
 
-#for inference packages 'onnxruntime', for training packages 'onnxruntime-training'
-- name: artifact_name_prefix
+# for inference packages '', for training packages '-training'
+# used for drop-extra and c api artifacts (onnxruntime-win-* or onnxrutime-training-win-*)
+- name: artifact_name_suffix
   type: string
-  default: 'onnxruntime'
+  default: ''
 
 - name: ort_build_pool_name
   type: string
@@ -56,11 +57,6 @@ parameters:
 - name: java_artifact_id
   type: string
   default: 'onnxruntime'
-
-#for inference packages '', for training packages '-training'
-- name: extraArtifactNameSuffix
-  type: string
-  default: ''
 
 - name: UseIncreasedTimeoutForTests
   displayName: Increase timeout for tests? Set it to false if you are doing an Onnx Runtime release.
@@ -161,8 +157,8 @@ stages:
       - template: c-api-artifacts-package-and-publish-steps-windows.yml
         parameters:
           buildConfig: RelWithDebInfo
-          artifactName: '${{ parameters.artifact_name_prefix }}-win-${{ parameters.packageName }}-$(OnnxRuntimeVersion)'
-          artifactNameNoVersionString: '${{ parameters.artifact_name_prefix }}-win-${{ parameters.packageName }}'
+          artifactName: 'onnxruntime${{ parameters.artifact_name_suffix }}-win-${{ parameters.packageName }}-$(OnnxRuntimeVersion)'
+          artifactNameNoVersionString: 'onnxruntime${{ parameters.artifact_name_suffix }}-win-${{ parameters.packageName }}'
           commitId: $(OnnxRuntimeGitCommitHash)
           DoEsrp: ${{ parameters.DoEsrp }}
 
@@ -178,7 +174,7 @@ stages:
         condition: and(succeeded(), eq('${{ parameters.packageName}}', 'x64'))
         inputs:
           targetPath: '$(Build.BinariesDirectory)\RelWithDebInfo\installed\bin\protoc.exe'
-          artifactName: 'drop-extra${{ parameters.extraArtifactNameSuffix }}'
+          artifactName: 'drop-extra${{ parameters.artifact_name_suffix }}'
 
 
       - task: CopyFiles@2
@@ -194,7 +190,7 @@ stages:
         condition: and(succeeded(), eq('${{ parameters.packageName}}', 'x64'))
         inputs:
           targetPath: '$(Build.BinariesDirectory)\RelWithDebInfo\installed\bin\protoc.exe'
-          artifactName: 'drop-nuget${{ parameters.extraArtifactNameSuffix }}'
+          artifactName: 'drop-nuget${{ parameters.artifact_name_suffix }}'
 
       - task: CmdLine@2
         condition: and(succeeded(), eq('${{ parameters.buildJava}}', true))

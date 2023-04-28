@@ -64,6 +64,8 @@ if (Test-Path -Path $nuget_artifacts_dir\onnxruntime-training-win-x64-*) {
   Write-Output "onnxruntime-training-win-x64-* dir exists. This is a training pipeline."
 }
 
+# Copy onnxruntime and protoc binaries to the binaries dir as these are required
+# by Microsoft.ML.OnnxRuntime.Tests.NetCoreApp
 if ($is_training_pipeline) {
   Copy-Item -Path $nuget_artifacts_dir\onnxruntime-training-win-x64-*\lib\* -Destination $Env:BUILD_BINARIESDIRECTORY\RelWithDebInfo\RelWithDebInfo
 }

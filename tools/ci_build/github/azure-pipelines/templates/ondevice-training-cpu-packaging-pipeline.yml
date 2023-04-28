@@ -52,7 +52,7 @@ stages:
     DoCompliance: ${{ parameters.DoCompliance }}
     DoEsrp: ${{ parameters.DoEsrp }}
     stage_name_suffix: Training_CPU_x86_${{ parameters.BuildVariant }}
-    artifact_name_prefix: onnxruntime-training
+    artifact_name_suffix: -training
     EnvSetupScript: setup_env_x86.bat
     buildArch: x86
     msbuildPlatform: Win32
@@ -67,7 +67,7 @@ stages:
     DoCompliance: ${{ parameters.DoCompliance }}
     DoEsrp: ${{ parameters.DoEsrp }}
     stage_name_suffix: Training_CPU_arm_${{ parameters.BuildVariant }}
-    artifact_name_prefix: onnxruntime-training
+    artifact_name_suffix: -training
     EnvSetupScript: setup_env.bat
     buildArch: x64
     msbuildPlatform: arm
@@ -82,7 +82,7 @@ stages:
     DoCompliance: ${{ parameters.DoCompliance }}
     DoEsrp: ${{ parameters.DoEsrp }}
     stage_name_suffix: Training_CPU_arm64_${{ parameters.BuildVariant }}
-    artifact_name_prefix: onnxruntime-training
+    artifact_name_suffix: -training
     EnvSetupScript: setup_env.bat
     buildArch: x64
     msbuildPlatform: arm64
@@ -97,7 +97,7 @@ stages:
     DoCompliance: ${{ parameters.DoCompliance }}
     DoEsrp: ${{ parameters.DoEsrp }}
     stage_name_suffix: Training_CPU_x64_${{ parameters.BuildVariant }}
-    artifact_name_prefix: onnxruntime-training
+    artifact_name_suffix: -training
     EnvSetupScript: setup_env.bat
     buildArch: x64
     msbuildPlatform: x64
@@ -106,8 +106,6 @@ stages:
     runTests: ${{ parameters.RunOnnxRuntimeTests }}
     buildJava: false
     buildNodejs: false
-    # This artifact is only created for x64 builds. So we only need to specify for the x64 build task.
-    extraArtifactNameSuffix: '-training'
 
 - stage: Android_Java_API_AAR_Packaging_Training_Full
   dependsOn: []

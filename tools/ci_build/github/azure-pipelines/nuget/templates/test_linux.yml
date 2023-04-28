@@ -9,8 +9,6 @@ stages:
 - stage: NuGet_Test_Linux_${{ parameters.StageSuffix }}
   dependsOn:
   - NuGet_Packaging_${{ parameters.StageSuffix }}
-  # For downloading Linux CustomOp TestData
-  - Linux_C_API_Packaging_CPU
   condition: succeeded()
   jobs:
   - job:

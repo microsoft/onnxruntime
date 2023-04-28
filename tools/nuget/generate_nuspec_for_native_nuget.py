@@ -297,7 +297,7 @@ def generate_metadata(line_list, args):
     generate_tags(
         metadata_list, "ONNX ONNX Runtime Machine Learning"
     ) if "Microsoft.ML.OnnxRuntime.Training." in args.package_name else generate_tags(
-        metadata_list, "ONNX ONNXRuntime-Training Learning-on-The-Edge On-Device-Training MachineLearning"
+        metadata_list, "native ONNX ONNXRuntime-Training Learning-on-The-Edge On-Device-Training MachineLearning"
     )
     generate_icon(metadata_list, "ORT_icon_for_light_bg.png")
     generate_license(metadata_list)

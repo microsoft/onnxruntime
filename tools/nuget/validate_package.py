@@ -249,13 +249,14 @@ def validate_zip(args):
 
     is_windows_ai_package = False
     is_dml_package = False
+    is_training_package = False
     zip_file = zipfile.ZipFile(package_name)
     check_if_dlls_are_present(
         args.package_type,
         is_windows_ai_package,
         is_gpu_package,
         is_dml_package,
-        False,
+        is_training_package,
         args.platforms_supported,
         zip_file,
         package_folder,
