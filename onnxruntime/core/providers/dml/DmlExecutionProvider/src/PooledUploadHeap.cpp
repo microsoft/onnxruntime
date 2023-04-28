@@ -152,7 +152,7 @@ namespace Dml
 
         InvariantChecker checker(this);
 
-        ReclaimAllocations();
+        Trim();
 
         // Allocate space from the upload heap
         Chunk* chunk = nullptr;

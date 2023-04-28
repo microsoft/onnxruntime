@@ -232,7 +232,10 @@ namespace DmlGraphFusionHelper
                     }
                     else
                     {
-                        initializeInputBuffer = CreateCpuResource(providerImpl, tensorPtr, tensorByteSize);
+                        // initializeInputBuffer = CreateCpuResource(providerImpl, tensorPtr, tensorByteSize);
+
+                        // Always use the MCDM path for now, since LLM can't afford to batch all weight uploads in a single batch
+                        initializeInputBuffer = CreateResource(providerImpl, tensorPtr, tensorByteSize);
                     }
 
                     // Set the binding for operator initialization to the buffer
