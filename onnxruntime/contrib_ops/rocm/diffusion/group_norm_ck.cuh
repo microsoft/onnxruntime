@@ -18,13 +18,13 @@
 
 #include "contrib_ops/rocm/diffusion/group_norm_common.h"
 
-using onnxruntime::rocm::CKDataTypeAdaptor;
-
 namespace onnxruntime {
 namespace contrib {
 namespace rocm {
 
 #ifdef USE_COMPOSABLE_KERNEL
+
+using onnxruntime::rocm::CKDataTypeAdaptor;
 
 using Swish = ck::tensor_operation::element_wise::Swish;
 using Pass = ck::tensor_operation::element_wise::PassThrough;

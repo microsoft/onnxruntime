@@ -20,7 +20,6 @@
 
 #include "contrib_ops/rocm/bert/gemm_fast_gelu_common.h"
 
-using onnxruntime::rocm::CKDataTypeAdaptor;
 using onnxruntime::rocm::ToHipType;
 
 namespace onnxruntime {
@@ -30,6 +29,8 @@ namespace blas {
 namespace internal {
 
 #ifdef USE_COMPOSABLE_KERNEL
+
+using onnxruntime::rocm::CKDataTypeAdaptor;
 
 using Row = ck::tensor_layout::gemm::RowMajor;
 using Col = ck::tensor_layout::gemm::ColumnMajor;
