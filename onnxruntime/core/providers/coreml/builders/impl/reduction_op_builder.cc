@@ -97,7 +97,7 @@ bool ReductionOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInpu
                                            const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
 
-  if (input_defs.size() > 1) {
+  if (input_defs.size() > 1 && input_defs[1]->Exists()) {
     const auto& axes_name = input_defs[1]->Name();
     const auto& initializers = input_params.graph_viewer.GetAllInitializedTensors();
     if (!Contains(initializers, axes_name)) {
