@@ -9,7 +9,6 @@ import argparse
 import dataclasses
 import itertools
 import os
-import re
 import sys
 import typing
 
