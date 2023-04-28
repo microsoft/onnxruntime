@@ -8,25 +8,36 @@ This converts GPT2 or T5 model to onnx with beam search operator.
 Example 1: convert gpt2 model with beam search:
     python convert_generation.py -m gpt2 --output gpt2_beam_search.onnx
 
-Example 2: convert T5 model with beam search in two steps:
+Example 2: convert gpt2 model with beam search containing specific cuda optimizations:
+    python convert_generation.py -m gpt2 --output gpt2_beam_search.onnx --use_gpu               \
+        --past_present_share_buffer --use_decoder_masked_attention
+
+Example 3: convert gpt2 model with beam search with mixed precision and enable SkipLayerNorm strict mode:
+    python convert_generation.py -m gpt2 --output gpt2_beam_search.onnx --use_gpu -p fp16 --use_sln_strict_mode
+
+Example 4: convert T5 model with beam search in two steps:
     cd ./models/t5
     python convert_to_onnx.py -m t5-small
     cd ../..
-    python convert_generation.py -m t5-small --model_type t5                                   \
+    python convert_generation.py -m t5-small --model_type t5                                    \
         --decoder_onnx ./models/t5/onnx_models/t5-small_decoder.onnx                            \
         --encoder_decoder_init_onnx ./models/t5/onnx_models/t5-small_encoder_decoder_init.onnx  \
         --output ./models/t5/onnx_models/t5_small_beam_search.onnx
 
-Example 3: convert T5 model with beam search. All in one step:
+Example 5: convert T5 model with beam search. All in one step:
     python convert_generation.py -m t5-small --model_type t5 --output ./models/t5/onnx_models/t5_small_beam_search.onnx
 
-Example 4: convert MT5 model with external data file like mt5-base-beamsearch.onnx.data in below example.
+Example 6: convert T5 model with beam search containing specific cuda optimizations. All in one step:
+    python convert_generation.py -m t5-small --model_type t5 --output ./models/t5/onnx_models/t5_small_beam_search.onnx   \
+        --use_gpu --past_present_share_buffer --use_decoder_masked_attention
+
+Example 7: convert MT5 model with external data file like mt5-base-beamsearch.onnx.data in below example.
     python convert_generation.py -m google/mt5-base --model_type mt5 --output mt5-base-beamsearch.onnx -e
 
-Example 5: convert gpt2 model with greedy search:
+Example 8: convert gpt2 model with greedy search:
     python convert_generation.py -m gpt2 --output gpt2_greedy_search.onnx --num_beams 1 --num_return_sequences 1
 
-Example 6: convert gpt2 model with sampling:
+Example 9: convert gpt2 model with sampling:
     python convert_generation.py -m gpt2 --output gpt2_sampling.onnx --num_beams 1 --num_return_sequences 1 --top_p 0.6
 """
 

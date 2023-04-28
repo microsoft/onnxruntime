@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "gtest/gtest.h"
+#include "core/session/onnxruntime_cxx_api.h"
 #include "test/common/tensor_op_test_utils.h"
 #include "test/common/cuda_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
@@ -115,9 +116,15 @@ static void RunTest(
       execution_providers.push_back(DefaultRocmExecutionProvider());
     } else {
       if (strict) {
-        OrtCUDAProviderOptions provider_options{};
-        provider_options.enable_skip_layer_norm_strict_mode = true;
-        execution_providers.push_back(CudaExecutionProviderWithOptions(&provider_options));
+        const auto& api = Ort::GetApi();
+        OrtCUDAProviderOptionsV2* cuda_options = nullptr;
+        api.CreateCUDAProviderOptions(&cuda_options);
+        std::unique_ptr<OrtCUDAProviderOptionsV2, decltype(api.ReleaseCUDAProviderOptions)>
+            rel_cuda_options(cuda_options, api.ReleaseCUDAProviderOptions);
+        std::vector<const char*> keys{"enable_skip_layer_norm_strict_mode"};
+        std::vector<const char*> values{"1"};
+        api.UpdateCUDAProviderOptions(rel_cuda_options.get(), keys.data(), values.data(), 1);
+        execution_providers.push_back(CudaExecutionProviderWithOptions(std::move(rel_cuda_options.get())));
       } else {
         execution_providers.push_back(DefaultCudaExecutionProvider());
       }

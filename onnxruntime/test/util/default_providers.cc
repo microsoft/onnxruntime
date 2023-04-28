@@ -110,7 +110,7 @@ std::unique_ptr<IExecutionProvider> DefaultCudaExecutionProvider() {
   return nullptr;
 }
 
-std::unique_ptr<IExecutionProvider> CudaExecutionProviderWithOptions(const OrtCUDAProviderOptions* provider_options) {
+std::unique_ptr<IExecutionProvider> CudaExecutionProviderWithOptions(const OrtCUDAProviderOptionsV2* provider_options) {
 #ifdef USE_CUDA
   if (auto factory = CudaProviderFactoryCreator::Create(provider_options))
     return factory->CreateProvider();
