@@ -87,7 +87,6 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 providerOptionsDict["do_copy_in_default_stream"] = "1";
                 providerOptionsDict["cudnn_conv_use_max_workspace"] = "1";
                 providerOptionsDict["cudnn_conv1d_pad_to_nc1d"] = "1";
-                providerOptionsDict["enable_skip_layer_norm_strict_mode"] = "0";
                 cudaProviderOptions.UpdateOptions(providerOptionsDict);
 
                 var resultProviderOptionsDict = new Dictionary<string, string>();
@@ -109,8 +108,6 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 Assert.Equal("1", value);
                 value = resultProviderOptionsDict["cudnn_conv1d_pad_to_nc1d"];
                 Assert.Equal("1", value);
-                value = resultProviderOptionsDict["enable_skip_layer_norm_strict_mode"];
-                Assert.Equal("0", value);
 
                 // test correctness of provider options
                 SessionOptions options = SessionOptions.MakeSessionOptionWithCudaProvider(cudaProviderOptions);
