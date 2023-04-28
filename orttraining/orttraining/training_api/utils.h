@@ -25,7 +25,7 @@ bool GetParamNameFromSuffix(const std::string& name, const std::string& suffix, 
 bool GetParamNameFromGradient(const std::string& grad_name, std::string& param_name);
 
 // Allocate OrtValue like the input ortvalue on the same device
-Status OrtValueLike(const SessionState& sess_state, const OrtValue& input_val, OrtValue& output_val);
+Status CreateZeroValuedOrtValueLike(const SessionState& sess_state, const OrtValue& input_val, OrtValue& output_val);
 
 // Create OrtValue from a single value of type T
 template <typename T>
@@ -48,8 +48,12 @@ void WrapInOrtValue(T value,
 }
 
 template <typename T>
-T GetValue(OrtValue& ort_value) {
+T GetScalarFromOrtValue(OrtValue& ort_value) {
   const Tensor& tensor = ort_value.Get<Tensor>();
+  const TensorShape& shape = tensor.Shape();
+  size_t dim_count = shape.NumDimensions();
+  // Be noted: TensorShape returns 1 for rank 0 tensor.
+  ORT_ENFORCE(shape.Size() == 1 && (dim_count == 0 || dim_count == 1));
   T val;
   if (DataTypeImpl::GetType<T>() == tensor.DataType()) {
     val = *(tensor.template Data<T>());
