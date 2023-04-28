@@ -86,8 +86,8 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
 #endif
   } else if (strcmp(provider_name, "WEBNN") == 0) {
 #if defined(USE_WEBNN)
-    std::string deviceType = options->value.config_options.GetConfigOrDefault("deviceType", "2");
-    std::string powerPreference = options->value.config_options.GetConfigOrDefault("powerPreference", "0");
+    std::string deviceType = options->value.config_options.GetConfigOrDefault("deviceType", "cpu");
+    std::string powerPreference = options->value.config_options.GetConfigOrDefault("powerPreference", "default");
     provider_options["deviceType"] = deviceType;
     provider_options["powerPreference"] = powerPreference;
     options->provider_factories.push_back(WebNNProviderFactoryCreator::Create(provider_options));

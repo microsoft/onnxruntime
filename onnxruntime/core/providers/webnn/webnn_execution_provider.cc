@@ -20,7 +20,8 @@ namespace onnxruntime {
 
 constexpr const char* WEBNN = "WebNN";
 
-WebNNExecutionProvider::WebNNExecutionProvider(uint32_t webnn_device_flags, uint32_t webnn_power_flags)
+WebNNExecutionProvider::WebNNExecutionProvider(
+    const std::string& webnn_device_flags, const std::string& webnn_power_flags)
     : IExecutionProvider{onnxruntime::kWebNNExecutionProvider, true} {
   AllocatorCreationInfo device_info(
       [](int) {
@@ -38,12 +39,6 @@ WebNNExecutionProvider::WebNNExecutionProvider(uint32_t webnn_device_flags, uint
   InsertAllocator(CreateAllocator(cpu_memory_info));
 
   // Create WebNN context and graph builder.
-  InlinedHashMap<uint32_t, std::string> device_type_name_s = {
-      {0, "auto"}, {1, "gpu"}, {2, "cpu"}};
-  InlinedHashMap<uint32_t, std::string> power_preference_name_s = {
-      {0, "auto"}, {1, "high-performance"}, {2, "low-power"}};
-  std::string device_type_name_ = device_type_name_s[webnn_device_flags];
-  std::string power_preference_name_ = power_preference_name_s[webnn_power_flags];
   const emscripten::val ml = emscripten::val::global("navigator")["ml"];
   if (!ml.as<bool>()) {
     ORT_THROW("Failed to get ml from navigator.");
@@ -53,8 +48,10 @@ WebNNExecutionProvider::WebNNExecutionProvider(uint32_t webnn_device_flags, uint
   // defined in Model Loader API, which uses MLDevicePreference instead of MLDeviceType
   // defined in WebNN. Because there's an ongoing spec discussion to simplify this API at
   // https://github.com/webmachinelearning/webnn/issues/302.
-  context_options.set("devicePreference", emscripten::val(device_type_name_));
-  context_options.set("powerPreference", emscripten::val(power_preference_name_));
+  context_options.set("devicePreference", emscripten::val(webnn_device_flags));
+  if (webnn_power_flags.compare("default") != 0) {
+    context_options.set("powerPreference", emscripten::val(webnn_power_flags));
+  }
   wnn_context_ = ml.call<emscripten::val>("createContextSync", context_options);
   if (!wnn_context_.as<bool>()) {
     ORT_THROW("Failed to create WebNN context.");
