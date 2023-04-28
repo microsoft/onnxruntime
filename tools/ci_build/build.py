@@ -2140,37 +2140,6 @@ def is_cross_compiling_on_apple(args):
     return False
 
 
-# RID is short for runtime identifier. If a nuget package has native binaries,
-# the RID designates on which platforms the package can be restored. However, Google's
-# protobuf package doesn't use standard RIDs from .NET RID catalog. This function is
-# specific for "google.protobuf.tools" nuget package
-# We do not care which CPU arch this ONNX Runtime build is targeting, we only care
-# the "host" CPU type.
-def get_protobuf_rid():
-    cpu_arch = platform.architecture()[0]
-    if is_windows():
-        if platform.machine() == "AMD64":
-            # Even if cpu_arch is "32bit", we still use a 64-bit protoc binary because the CPU can run it
-            return "windows_x64"
-        # No ARM32/ARM64 support yet
-        # If you ran a x64 python exe on a Windows ARM64 machine, it will fall into the "windows_x64" branch above.
-        # If you ran native ARM64 python exe, we use "windows_x64" protoc.exe instead.
-        if platform.machine() == "ARM64":
-            return "windows_x64"
-        return None
-    if is_linux():
-        # TODO: exclude ARM
-        if cpu_arch == "64bit":
-            return "linux_x64"
-        if cpu_arch == "32bit":
-            return "linux_x86"
-        return None
-    if is_macOS():
-        # TODO: exclude ARM
-        return "macosx_x64"
-    return None
-
-
 def generate_documentation(source_dir, build_dir, configs, validate):
     # Randomly choose one build config
     config = next(iter(configs))
@@ -2408,7 +2377,7 @@ def main():
                         "Tools Command Prompt for VS)"
                     )
                 cmake_extra_args = ["-G", args.cmake_generator]
-            elif args.arm or args.arm64 or args.arm64ec:                
+            elif args.arm or args.arm64 or args.arm64ec:
                 if args.arm:
                     cmake_extra_args = ["-A", "ARM"]
                 elif args.arm64:
