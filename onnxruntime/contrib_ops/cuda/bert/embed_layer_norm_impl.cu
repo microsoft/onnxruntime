@@ -212,11 +212,14 @@ Status LaunchEmbedLayerNormKernel(
     void* embedding_sum,
     const int* position_ids,
     const bool broadcast_position_ids) {
-  if (nullptr == input_mask) {
-    CUDA_RETURN_IF_ERROR(cudaMemsetAsync(mask_index, 0, sizeof(int) * batch_size, stream));
-  } else {
-    ORT_RETURN_IF_ERROR(
-      ComputeMaskIndex(stream, sequence_length, batch_size, input_mask, static_cast<int*>(mask_index)));
+
+  if (mask_index != nullptr) {
+    if (nullptr == input_mask) {
+      CUDA_RETURN_IF_ERROR(cudaMemsetAsync(mask_index, 0, sizeof(int) * batch_size, stream));
+    } else {
+      ORT_RETURN_IF_ERROR(
+        ComputeMaskIndex(stream, sequence_length, batch_size, input_mask, static_cast<int*>(mask_index)));
+    }
   }
 
   if (element_size == 2) {
