@@ -71,7 +71,7 @@ namespace Dml
                 m_winmlProvider->QueueReference(m_managedPersistentBuffer.Get());
             }
 
-            ORT_THROW_IF_FAILED(m_provider->InitializeOperator(
+            ORT_THROW_IF_FAILED(m_provider->BindAndInitializeOperator(
                 m_compiledExecutionPlanOperator.Get(),
                 m_persistentResourceBinding ? &*m_persistentResourceBinding : nullptr,
                 gsl::make_span(initInputBindings)));

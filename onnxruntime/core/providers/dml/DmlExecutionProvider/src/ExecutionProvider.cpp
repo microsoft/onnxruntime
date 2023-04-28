@@ -46,14 +46,6 @@ namespace Dml
 {
     using namespace onnxruntime::common;
 
-    ExecutionProvider::~ExecutionProvider()
-    {
-        if (m_impl)
-        {
-            m_impl->Close();
-        }
-    }
-
     static void CreateDmlKernelRegistry(
         _Out_ std::shared_ptr<onnxruntime::KernelRegistry>* registry,
         _Out_ std::shared_ptr<const InternalRegistrationInfoMap>* internalRegInfoMap)
@@ -107,11 +99,6 @@ namespace Dml
 #endif
     }
 
-    void ExecutionProviderImpl::Close()
-    {
-        m_context->Close();
-    }
-
     void ExecutionProviderImpl::WaitForOutstandingWork()
     {
         Flush();
@@ -152,7 +139,6 @@ namespace Dml
           m_dmlDevice(dmlDevice),
           m_areMetacommandsEnabled(enableMetacommands)
     {
-
         D3D12_FEATURE_DATA_FEATURE_LEVELS featureLevels = {};
 
         D3D_FEATURE_LEVEL featureLevelsList[] = {
@@ -252,14 +238,14 @@ namespace Dml
         {
         assert(!m_closed);
 
-        m_context->AddUAVBarrier();
+        m_context->UavBarrier();
 
         return S_OK;
         }
         ORT_CATCH_RETURN
     }
 
-    HRESULT __stdcall ExecutionProviderImpl::InitializeOperator(
+    HRESULT __stdcall ExecutionProviderImpl::BindAndInitializeOperator(
         IDMLCompiledOperator* op,
         _In_opt_ const DML_BUFFER_BINDING* persistentResourceBinding,
         gsl::span<const DML_BUFFER_BINDING> inputBindings

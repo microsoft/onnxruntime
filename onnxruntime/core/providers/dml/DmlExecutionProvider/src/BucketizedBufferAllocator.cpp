@@ -329,20 +329,15 @@ namespace Dml
 
     void BucketizedBufferAllocator::FreeResource(AllocationInfo* allocInfo, uint64_t pooledResourceId)
     {
-        // Since this allocator is warapped by ORT's BFC allocator, it's possible that the context is already
-        // close at this point if the application is winding down.
-        if (!m_context->Closed())
+        assert(allocInfo != nullptr); // Can't free nullptr
+
+        if (allocInfo->GetOwner() != this)
         {
-            assert(allocInfo != nullptr); // Can't free nullptr
-
-            if (allocInfo->GetOwner() != this)
-            {
-                // This allocation doesn't belong to this allocator!
-                ORT_THROW_HR(E_INVALIDARG);
-            }
-
-            m_context->QueueReference(allocInfo);
+            // This allocation doesn't belong to this allocator!
+            ORT_THROW_HR(E_INVALIDARG);
         }
+
+        m_context->QueueReference(allocInfo);
     }
 
     absl::optional<uint32_t> BucketizedBufferAllocator::TryReserveAllocationID()

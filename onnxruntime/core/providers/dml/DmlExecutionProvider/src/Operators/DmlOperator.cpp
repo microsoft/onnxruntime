@@ -106,7 +106,7 @@ namespace Dml
 
             std::vector<DML_BUFFER_BINDING> initializationInputBindings(m_kernelInputIndices.size());
 
-            ORT_THROW_IF_FAILED(m_executionProvider->InitializeOperator(
+            ORT_THROW_IF_FAILED(m_executionProvider->BindAndInitializeOperator(
                 m_compiledOperator.Get(),
                 m_persistentResourceBinding ? &*m_persistentResourceBinding : nullptr,
                 gsl::make_span(initializationInputBindings)));
@@ -206,7 +206,7 @@ namespace Dml
 
             std::vector<DML_BUFFER_BINDING> initializationInputBindings(m_kernelInputIndices.size());
 
-            ORT_THROW_IF_FAILED(m_executionProvider->InitializeOperator(
+            ORT_THROW_IF_FAILED(m_executionProvider->BindAndInitializeOperator(
                 m_compiledOperator.Get(),
                 m_persistentResourceBinding ? &*m_persistentResourceBinding : nullptr,
                 gsl::make_span(initializationInputBindings)));
@@ -237,7 +237,7 @@ namespace Dml
             }
         }
 
-        ORT_THROW_IF_FAILED(m_executionProvider->InitializeOperator(
+        ORT_THROW_IF_FAILED(m_executionProvider->BindAndInitializeOperator(
             m_compiledOperator.Get(),
             m_persistentResourceBinding ? &*m_persistentResourceBinding : nullptr,
             gsl::span<const DML_BUFFER_BINDING>() // Empty input bindings since ownedByDml is not used.
