@@ -12,8 +12,11 @@
 #if __cplusplus
 extern "C" {
 #endif
-
-// Note: declared in onnxruntime_extensions.h but doing local to work around a build issue
+// Note: Declared in onnxruntime_extensions.h but forward declared here to resolve a build issue:
+// (A compliation error happened while building an expo react native ios app, onnxruntime_c_api.h header
+// included in the onnxruntime_extensions.h leads to a redefinition conflicts with multiple object defined in the ORT C
+// API.) So doing a forward declaration here instead of #include "onnxruntime_extensions.h" as a workaround for now
+// before we have a fix.
 OrtStatus *RegisterCustomOps(OrtSessionOptions *options, const OrtApiBase *api);
 #if __cplusplus
 } // Extern C
