@@ -857,12 +857,12 @@ void KeyCacheExpansionKernelLauncher(const T* key_cache,
                                      int max_seq_length,
                                      int head_size,
                                      cudaStream_t stream) {
-  const dim3 block(256);
   const dim3 grid(batch_size * beam_width, num_heads, sequence_length);
 
   int equiv_head_size = (head_size & 1) == 0 ? (head_size >> 1) : head_size;
   equiv_head_size = (equiv_head_size & 1) == 0 ? (equiv_head_size >> 1) : equiv_head_size;
 
+  // Here we know head_size is smaller than max_thread_num_per_block
   int tpb = std::max(32, equiv_head_size);
 
   // round up tpb to power of 2
@@ -877,6 +877,7 @@ void KeyCacheExpansionKernelLauncher(const T* key_cache,
 #ifndef USE_ROCM
   if ((head_size % 4) == 0) {
     using vec_type = typename TypeMapper<T, 4>::Type;
+    const dim3 block(tpb);
     KeyCacheExpansionKernel<<<grid, block, 0, stream>>>(reinterpret_cast<const vec_type*>(key_cache),
                                                         reinterpret_cast<vec_type*>(key_cache_expanded),
                                                         beam_width,
@@ -884,6 +885,7 @@ void KeyCacheExpansionKernelLauncher(const T* key_cache,
                                                         equiv_head_size);
   } else if ((head_size & 1) == 0) {
     using vec_type = typename TypeMapper<T, 2>::Type;
+    const dim3 block(tpb);
     KeyCacheExpansionKernel<<<grid, block, 0, stream>>>(reinterpret_cast<const vec_type*>(key_cache),
                                                         reinterpret_cast<vec_type*>(key_cache_expanded),
                                                         beam_width,
@@ -891,6 +893,7 @@ void KeyCacheExpansionKernelLauncher(const T* key_cache,
                                                         equiv_head_size);
   } else {
 #endif
+    const dim3 block(tpb);
     KeyCacheExpansionKernel<<<grid, block, 0, stream>>>(key_cache,
                                                         key_cache_expanded,
                                                         beam_width,
