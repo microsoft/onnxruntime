@@ -118,12 +118,12 @@ static void RunTest(
       if (strict) {
         const auto& api = Ort::GetApi();
         OrtCUDAProviderOptionsV2* cuda_options = nullptr;
-        api.CreateCUDAProviderOptions(&cuda_options);
+        ASSERT_TRUE(api.CreateCUDAProviderOptions(&cuda_options) == nullptr);
         std::unique_ptr<OrtCUDAProviderOptionsV2, decltype(api.ReleaseCUDAProviderOptions)>
             rel_cuda_options(cuda_options, api.ReleaseCUDAProviderOptions);
         std::vector<const char*> keys{"enable_skip_layer_norm_strict_mode"};
         std::vector<const char*> values{"1"};
-        api.UpdateCUDAProviderOptions(rel_cuda_options.get(), keys.data(), values.data(), 1);
+        ASSERT_TRUE(api.UpdateCUDAProviderOptions(rel_cuda_options.get(), keys.data(), values.data(), 1) == nullptr);
         execution_providers.push_back(CudaExecutionProviderWithOptions(std::move(rel_cuda_options.get())));
       } else {
         execution_providers.push_back(DefaultCudaExecutionProvider());
