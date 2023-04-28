@@ -70,7 +70,7 @@ Status QuantizeLinear<T, U>::ComputeInternal(OpKernelContext* ctx) const {
     ORT_ENFORCE(y_zero_point == nullptr || (y_scale.Shape().Size() == y_zero_point->Shape().Size()), "scale and zero_point must have the same shape.");
     ORT_ENFORCE(x_shape.NumDimensions() > 1);
     auto axis = axis_ >= static_cast<int64_t>(0) ? axis_ : axis_ + x_shape.NumDimensions();
-    ORT_ENFORCE(axis >= static_cast<int64_t>(0) && axis < x_shape.Size());
+    ORT_ENFORCE(axis >= static_cast<int64_t>(0) && axis < static_cast<int64_t>(x_shape.Size()));
     ORT_ENFORCE(y_scale.Shape().Size() == x_shape[axis], "scale must have ", x_shape[axis], " elements (axis=", axis, ").");
 
     const T* zero_point = y_zero_point != nullptr ? y_zero_point->Data<T>() : nullptr;
@@ -142,7 +142,7 @@ Status DequantizeLinear<T, U>::ComputeInternal(OpKernelContext* ctx) const {
     ORT_ENFORCE(y_zero_point == nullptr || (y_scale.Shape().Size() == y_zero_point->Shape().Size()), "scale and zero_point must have the same shape.");
     ORT_ENFORCE(x_shape.NumDimensions() > 1);
     auto axis = axis_ >= static_cast<int64_t>(0) ? axis_ : axis_ + x_shape.NumDimensions();
-    ORT_ENFORCE(axis >= static_cast<int64_t>(0) && axis < x_shape.Size());
+    ORT_ENFORCE(axis >= static_cast<int64_t>(0) && axis < static_cast<int64_t>(x_shape.Size()));
     ORT_ENFORCE(y_scale.Shape().Size() == x_shape[axis], "scale must have ", x_shape[axis], " elements (axis=", axis, ").");
 
     const T* zero_point = y_zero_point != nullptr ? y_zero_point->Data<T>() : nullptr;
