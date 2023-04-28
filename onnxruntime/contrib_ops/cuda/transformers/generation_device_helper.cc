@@ -1058,9 +1058,9 @@ Status UpdateDecoderFeeds(
   // Only need copy beam next tokens to input_ids, and copy present_*_self_* to past_*_self_*,
 
   // Update input_ids with next tokens.
-  size_t batch_beam_size = beam_next_tokens.size();
-  size_t sequence_length = !use_sequence_as_input_ids ? 1 : current_length;
-  TensorShape input_ids_shape{static_cast<int64_t>(batch_beam_size), static_cast<int64_t>(sequence_length)};
+  int batch_beam_size = gsl::narrow<int>(beam_next_tokens.size());
+  int sequence_length = !use_sequence_as_input_ids ? 1 : current_length;
+  TensorShape input_ids_shape{batch_beam_size, sequence_length};
   auto element_type = DataTypeImpl::GetType<int32_t>();
   OrtValue input_ids;
   Tensor::InitOrtValue(element_type, input_ids_shape, allocator, input_ids);
@@ -1072,11 +1072,11 @@ Status UpdateDecoderFeeds(
                                          cudaMemcpyHostToDevice, cuda_stream));
   } else {
     int32_t* input_ids_data = input_ids.GetMutable<Tensor>()->MutableData<int32_t>();
-    for (size_t i = 0; i < batch_beam_size; i++) {
-      gsl::span<const int32_t> sequence = sequences.GetSequence(gsl::narrow<int>(i));
+    for (int i = 0; i < batch_beam_size; i++) {
+      gsl::span<const int32_t> sequence = sequences.GetSequence(i);
       const int32_t* sequence_data = sequence.data();
       CUDA_RETURN_IF_ERROR(
-          cudaMemcpyAsync(input_ids_data + i * current_length,
+          cudaMemcpyAsync(input_ids_data + static_cast<ptrdiff_t>(i) * current_length,
                           sequence_data,
                           current_length * sizeof(int32_t),
                           cudaMemcpyHostToDevice,
