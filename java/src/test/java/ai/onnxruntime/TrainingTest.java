@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2022, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2022, 2023, Oracle and/or its affiliates. All rights reserved.
  * Licensed under the MIT License.
  */
 package ai.onnxruntime;
@@ -45,15 +45,34 @@ public class TrainingTest {
       Assertions.assertNotNull(trainingSession);
       Set<String> inputNames = trainingSession.getTrainInputNames();
       Assertions.assertFalse(inputNames.isEmpty());
+      Assertions.assertTrue(inputNames.contains("input-0"));
       Set<String> outputNames = trainingSession.getTrainOutputNames();
       Assertions.assertFalse(outputNames.isEmpty());
+      Assertions.assertTrue(outputNames.contains("onnx::loss::21273"));
+    }
+  }
+
+  @Test
+  public void testCreateTrainingSessionWithEval() throws OrtException {
+    String ckptPath = TestHelpers.getResourcePath("/checkpoint.ckpt").toString();
+    String trainPath = TestHelpers.getResourcePath("/training_model.onnx").toString();
+    String evalPath = TestHelpers.getResourcePath("/eval_model.onnx").toString();
+    try (OrtTrainingSession trainingSession =
+        env.createTrainingSession(ckptPath, trainPath, evalPath, null)) {
+      Assertions.assertNotNull(trainingSession);
+      Set<String> inputNames = trainingSession.getEvalInputNames();
+      Assertions.assertFalse(inputNames.isEmpty());
+      Assertions.assertTrue(inputNames.contains("input-0"));
+      Set<String> outputNames = trainingSession.getEvalOutputNames();
+      Assertions.assertFalse(outputNames.isEmpty());
+      Assertions.assertTrue(outputNames.contains("onnx::loss::21273"));
     }
   }
 
   // this test is not enabled as ORT Java doesn't support supplying an output buffer
   @Disabled
   @Test
-  public void TestTrainingSessionTrainStep() throws OrtException {
+  public void testTrainingSessionTrainStep() throws OrtException {
     String checkpointPath = TestHelpers.getResourcePath("/checkpoint.ckpt").toString();
     String trainingPath = TestHelpers.getResourcePath("/training_model.onnx").toString();
     float[] expectedOutput =
@@ -134,7 +153,7 @@ public class TrainingTest {
   }
 
   @Test
-  public void TestTrainingSessionTrainStepOrtOutput() throws OrtException {
+  public void testTrainingSessionTrainStepOrtOutput() throws OrtException {
     String checkpointPath = TestHelpers.getResourcePath("/checkpoint.ckpt").toString();
     String trainingPath = TestHelpers.getResourcePath("/training_model.onnx").toString();
     try (OrtTrainingSession trainingSession =
@@ -144,7 +163,7 @@ public class TrainingTest {
   }
 
   @Test
-  public void TestSaveCheckpoint() throws IOException, OrtException {
+  public void testSaveCheckpoint() throws IOException, OrtException {
     String checkpointPath = TestHelpers.getResourcePath("/checkpoint.ckpt").toString();
     String trainingPath = TestHelpers.getResourcePath("/training_model.onnx").toString();
 
@@ -168,7 +187,7 @@ public class TrainingTest {
   }
 
   @Test
-  public void TestTrainingSessionOptimizerStep() throws OrtException {
+  public void testTrainingSessionOptimizerStep() throws OrtException {
     String checkpointPath = TestHelpers.getResourcePath("/checkpoint.ckpt").toString();
     String trainingPath = TestHelpers.getResourcePath("/training_model.onnx").toString();
     String optimizerPath = TestHelpers.getResourcePath("/adamw.onnx").toString();
@@ -214,7 +233,7 @@ public class TrainingTest {
   }
 
   @Test
-  public void TestTrainingSessionSetLearningRate() throws OrtException {
+  public void testTrainingSessionSetLearningRate() throws OrtException {
     String checkpointPath = TestHelpers.getResourcePath("/checkpoint.ckpt").toString();
     String trainingPath = TestHelpers.getResourcePath("/training_model.onnx").toString();
     String optimizerPath = TestHelpers.getResourcePath("/adamw.onnx").toString();
@@ -229,7 +248,7 @@ public class TrainingTest {
   }
 
   @Test
-  public void TestTrainingSessionLinearLRScheduler() throws OrtException {
+  public void testTrainingSessionLinearLRScheduler() throws OrtException {
     String checkpointPath = TestHelpers.getResourcePath("/checkpoint.ckpt").toString();
     String trainingPath = TestHelpers.getResourcePath("/training_model.onnx").toString();
     String optimizerPath = TestHelpers.getResourcePath("/adamw.onnx").toString();
@@ -251,6 +270,102 @@ public class TrainingTest {
       trainingSession.optimizerStep();
       trainingSession.schedulerStep();
       Assertions.assertEquals(0.0f, trainingSession.getLearningRate());
+    }
+  }
+
+  @Test
+  public void testTrainingSessionExportModelForInferencing() throws IOException, OrtException {
+
+    String ckptPath = TestHelpers.getResourcePath("/checkpoint.ckpt").toString();
+    String trainPath = TestHelpers.getResourcePath("/training_model.onnx").toString();
+    String evalPath = TestHelpers.getResourcePath("/eval_model.onnx").toString();
+    try (OrtTrainingSession trainingSession =
+        env.createTrainingSession(ckptPath, trainPath, evalPath, null)) {
+      String[] graphOutputs = new String[] {"output-0"};
+
+      Path inferencePath = Files.createTempFile("inference_model", ".onnx");
+
+      trainingSession.exportModelForInference(inferencePath, graphOutputs);
+      Assertions.assertTrue(inferencePath.toFile().exists());
+      inferencePath.toFile().delete();
+    }
+  }
+
+  @Test
+  public void testCheckpointStateAddIntProperty() throws OrtException {
+    Path ckptPath = TestHelpers.getResourcePath("/checkpoint.ckpt");
+    try (OrtCheckpointState ckpt = OrtCheckpointState.loadCheckpoint(ckptPath)) {
+      String propertyName = "days in a week";
+      ckpt.addProperty(propertyName, 7);
+
+      int value = ckpt.getIntProperty(env.defaultAllocator, propertyName);
+      Assertions.assertEquals(7, value);
+
+      try {
+        String strVal = ckpt.getStringProperty(env.defaultAllocator, propertyName);
+        Assertions.fail("Should have thrown");
+      } catch (OrtException e) {
+        // pass
+      }
+
+      try {
+        float floatVal = ckpt.getFloatProperty(env.defaultAllocator, propertyName);
+        Assertions.fail("Should have thrown");
+      } catch (OrtException e) {
+        // pass
+      }
+    }
+  }
+
+  @Test
+  public void testCheckpointStateAddFloatProperty() throws OrtException {
+    Path ckptPath = TestHelpers.getResourcePath("/checkpoint.ckpt");
+    try (OrtCheckpointState ckpt = OrtCheckpointState.loadCheckpoint(ckptPath)) {
+      String propertyName = "pi";
+      ckpt.addProperty(propertyName, 3.14f);
+
+      float value = ckpt.getFloatProperty(env.defaultAllocator, propertyName);
+      Assertions.assertEquals(3.14f, value);
+
+      try {
+        String strVal = ckpt.getStringProperty(env.defaultAllocator, propertyName);
+        Assertions.fail("Should have thrown");
+      } catch (OrtException e) {
+        // pass
+      }
+
+      try {
+        int intVal = ckpt.getIntProperty(env.defaultAllocator, propertyName);
+        Assertions.fail("Should have thrown");
+      } catch (OrtException e) {
+        // pass
+      }
+    }
+  }
+
+  @Test
+  public void testCheckpointStateAddStringProperty() throws OrtException {
+    Path ckptPath = TestHelpers.getResourcePath("/checkpoint.ckpt");
+    try (OrtCheckpointState ckpt = OrtCheckpointState.loadCheckpoint(ckptPath)) {
+      String propertyName = "best ai framework";
+      ckpt.addProperty(propertyName, "onnxruntime");
+
+      String value = ckpt.getStringProperty(env.defaultAllocator, propertyName);
+      Assertions.assertEquals("onnxruntime", value);
+
+      try {
+        float floatVal = ckpt.getFloatProperty(env.defaultAllocator, propertyName);
+        Assertions.fail("Should have thrown");
+      } catch (OrtException e) {
+        // pass
+      }
+
+      try {
+        int intVal = ckpt.getIntProperty(env.defaultAllocator, propertyName);
+        Assertions.fail("Should have thrown");
+      } catch (OrtException e) {
+        // pass
+      }
     }
   }
 }
