@@ -29,6 +29,7 @@ class BeamSearchT5 : public BeamSearchBase<T> {
                BeamSearchParameters& params,
                const GenerationDeviceHelper::AddToFeedsFunc& add_to_feeds_func,
                const GenerationDeviceHelper::ReorderPastStateFunc& reorder_past_state_func,
+               const GenerationDeviceHelper::InitCacheIndirFunc& init_cache_indir_func,
                const GenerationDeviceHelper::TopkFunc& topk_func,
                const GenerationDeviceHelper::ProcessLogitsFunc<T>& process_logits_func,
                const GenerationDeviceHelper::InitBeamStateFunc<T>& init_beam_state_func,
@@ -50,6 +51,7 @@ class BeamSearchT5 : public BeamSearchBase<T> {
         add_to_feeds_func_(add_to_feeds_func),
         init_beam_state_func_(init_beam_state_func),
         reorder_past_state_func_(reorder_past_state_func),
+        init_cache_indir_func_(init_cache_indir_func),
         create_encoder_inputs_func_(create_encoder_inputs_func),
         update_decoder_feeds_func_(update_decoder_feeds_func),
         expand_buffer_int32_func_(expand_buffer_int32_func),
@@ -80,6 +82,7 @@ class BeamSearchT5 : public BeamSearchBase<T> {
   GenerationDeviceHelper::AddToFeedsFunc add_to_feeds_func_;
   GenerationDeviceHelper::InitBeamStateFunc<T> init_beam_state_func_;
   GenerationDeviceHelper::ReorderPastStateFunc reorder_past_state_func_;
+  GenerationDeviceHelper::InitCacheIndirFunc init_cache_indir_func_;
   GenerationDeviceHelper::CreateEncoderInputsFunc create_encoder_inputs_func_;
   GenerationDeviceHelper::UpdateDecoderFeedsFunc<T> update_decoder_feeds_func_;
   GenerationDeviceHelper::ExpandBufferFunc<int32_t> expand_buffer_int32_func_;
@@ -284,6 +287,8 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
                                                      beam_state.staging_for_past_state_reorder,
                                                      this->ort_stream_));
       }
+      size_t cache_indir_input_offset = static_cast<size_t>(decoder_subgraph_.GetFirstPastInputIndex()) + 4 * static_cast<size_t>(decoder_subgraph_.num_layers) + 2;
+      ORT_RETURN_IF_ERROR(init_cache_indir_func_(*decoder_feeds[cache_indir_input_offset].GetMutable<Tensor>(), this->ort_stream_));
     }
   }
 
@@ -302,7 +307,7 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
     dumper->Print("", decoder_feeds[offset]);
     dumper->Print("beam_width", offset + 1, true);
     dumper->Print("", decoder_feeds[offset + 1]);
-    dumper->Print("past_sequence_length", offset + 2, true);
+    dumper->Print("cache_redir", offset + 2, true);
     dumper->Print("", decoder_feeds[offset + 2]);
 #endif
 

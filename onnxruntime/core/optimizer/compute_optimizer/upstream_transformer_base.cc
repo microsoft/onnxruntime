@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#ifdef ENABLE_TRAINING_CORE
+#ifdef ENABLE_TRAINING
 
 #include <onnx/defs/attr_proto_util.h>
 #include "core/common/safeint.h"
