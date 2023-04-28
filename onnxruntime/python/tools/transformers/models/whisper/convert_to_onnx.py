@@ -9,14 +9,14 @@ import copy
 import logging
 import os
 import sys
-
 import torch
+
+sys.path.append(os.path.join(os.path.dirname(__file__)))
+sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 from whisper_chain import chain_model
 from whisper_helper import PRETRAINED_WHISPER_MODELS, WhisperHelper
 
 from onnxruntime import quantization
-
-sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 from benchmark_helper import Precision, create_onnxruntime_session, prepare_environment, setup_logger  # noqa: E402
 
 logger = logging.getLogger("")

@@ -18,6 +18,7 @@ from transformers import WhisperConfig
 
 from onnxruntime import InferenceSession
 
+sys.path.append(os.path.join(os.path.dirname(__file__)))
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 from onnx_model import OnnxModel  # noqa: E402
 from torch_onnx_export_helper import torch_onnx_export  # noqa: E402

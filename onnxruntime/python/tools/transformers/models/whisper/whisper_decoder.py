@@ -15,11 +15,11 @@ import numpy
 import onnx
 import torch
 from transformers import WhisperConfig, file_utils
-from whisper_encoder import WhisperEncoderInputs
-
 from onnxruntime import InferenceSession
 
+sys.path.append(os.path.join(os.path.dirname(__file__)))
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
+from whisper_encoder import WhisperEncoderInputs
 from io_binding_helper import TypeHelper  # noqa: E402
 from models.t5.past_helper import PastKeyValuesHelper  # noqa: E402
 from onnx_model import OnnxModel  # noqa: E402
