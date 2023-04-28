@@ -1790,7 +1790,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
           // Deserialize profile
           shape_ranges = DeserializeProfile(profile_file);
           LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] DeSerialized " + profile_cache_path;
-          
+
           size_t engine_size = 0;
           std::unique_ptr<char[]> engine_buf;
           trt_state->context->reset();
@@ -1798,8 +1798,8 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
           // Read/Decrypt engine file
           if (trt_state->engine_decryption_enable) {
             if (!trt_state->engine_decryption(engine_cache_path.c_str(), nullptr, &engine_size)) {
-            return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-                                   "TensorRT EP could not get engine buffer size");
+              return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+                                     "TensorRT EP could not get engine buffer size");
             }
             engine_buf = std::unique_ptr<char[]>(new char[engine_size]);
             if (!trt_state->engine_decryption(engine_cache_path.c_str(), &engine_buf[0], &engine_size)) {
@@ -1807,8 +1807,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
                                      "TensorRT EP could not call engine decryption function decrypt");
             }
             LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Decrypted " + engine_cache_path;
-          }
-          else {
+          } else {
             engine_file.seekg(0, std::ios::end);
             engine_size = engine_file.tellg();
             engine_file.seekg(0, std::ios::beg);
