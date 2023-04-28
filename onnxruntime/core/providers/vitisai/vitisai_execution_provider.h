@@ -46,7 +46,7 @@ class VitisAIExecutionProvider : public IExecutionProvider {
   common::Status Compile(
       const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
       std::vector<NodeComputeInfo>& node_compute_funcs) override;
-  virtual std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
+  std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
 
  private:
   void CreateKernelRegistry();
