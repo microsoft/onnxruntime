@@ -305,7 +305,7 @@ namespace Microsoft.ML.OnnxRuntime
             DOrtGetApi OrtGetApi = (DOrtGetApi)Marshal.GetDelegateForFunctionPointer(OrtGetApiBase().GetApi, typeof(DOrtGetApi));
 
             // TODO: Make this save the pointer, and not copy the whole structure across
-            api_ = (OrtApi)OrtGetApi(4 /*ORT_API_VERSION*/);
+            api_ = (OrtApi)OrtGetApi(14 /*ORT_API_VERSION*/);
             OrtGetVersionString = (DOrtGetVersionString)Marshal.GetDelegateForFunctionPointer(OrtGetApiBase().GetVersionString, typeof(DOrtGetVersionString));
 
             OrtCreateEnv = (DOrtCreateEnv)Marshal.GetDelegateForFunctionPointer(api_.CreateEnv, typeof(DOrtCreateEnv));
@@ -361,6 +361,8 @@ namespace Microsoft.ML.OnnxRuntime
             OrtSetIntraOpNumThreads = (DOrtSetIntraOpNumThreads)Marshal.GetDelegateForFunctionPointer(api_.SetIntraOpNumThreads, typeof(DOrtSetIntraOpNumThreads));
             OrtSetSessionGraphOptimizationLevel = (DOrtSetSessionGraphOptimizationLevel)Marshal.GetDelegateForFunctionPointer(api_.SetSessionGraphOptimizationLevel, typeof(DOrtSetSessionGraphOptimizationLevel));
             OrtRegisterCustomOpsLibrary = (DOrtRegisterCustomOpsLibrary)Marshal.GetDelegateForFunctionPointer(api_.RegisterCustomOpsLibrary, typeof(DOrtRegisterCustomOpsLibrary));
+            OrtRegisterCustomOpsLibrary_V2 = (DOrtRegisterCustomOpsLibrary_V2)Marshal.GetDelegateForFunctionPointer(api_.RegisterCustomOpsLibrary_V2, typeof(DOrtRegisterCustomOpsLibrary_V2));
+            OrtRegisterCustomOpsUsingFunction = (DOrtRegisterCustomOpsUsingFunction)Marshal.GetDelegateForFunctionPointer(api_.RegisterCustomOpsUsingFunction, typeof(DOrtRegisterCustomOpsUsingFunction));
             OrtAddSessionConfigEntry = (DOrtAddSessionConfigEntry)Marshal.GetDelegateForFunctionPointer(api_.AddSessionConfigEntry, typeof(DOrtAddSessionConfigEntry));
             OrtAddInitializer = (DOrtAddInitializer)Marshal.GetDelegateForFunctionPointer(api_.AddInitializer, typeof(DOrtAddInitializer));
             SessionOptionsAppendExecutionProvider_TensorRT = (DSessionOptionsAppendExecutionProvider_TensorRT)Marshal.GetDelegateForFunctionPointer(
@@ -496,17 +498,15 @@ namespace Microsoft.ML.OnnxRuntime
         internal class NativeLib
         {
 #if __ANDROID__
-        // define the library name required for android
-        internal const string DllName = "libonnxruntime.so";
+            // define the library name required for android
+            internal const string DllName = "libonnxruntime.so";
 #elif __IOS__
-        // define the library name required for iOS
-        internal const string DllName = "__Internal";
+            // define the library name required for iOS
+            internal const string DllName = "__Internal";
 #else
             internal const string DllName = "onnxruntime";
 #endif
-            // TODO: Does macos need special handling or will 'onnxruntime' -> libonnxruntime.dylib?
         }
-
 
         [DllImport(NativeLib.DllName, CharSet = CharSet.Ansi)]
         public static extern ref OrtApiBase OrtGetApiBase();
@@ -1078,6 +1078,29 @@ namespace Microsoft.ML.OnnxRuntime
                                                                             out IntPtr /*(void**)*/ libraryHandle);
 
         public static DOrtRegisterCustomOpsLibrary OrtRegisterCustomOpsLibrary;
+
+        /// <summary>
+        /// Register custom op library. ORT will manage freeing the library.
+        /// </summary>
+        /// <param name="options">Native SessionOptions instance</param>
+        /// <param name="libraryPath">Library path</param>
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr /*(OrtStatus*)*/DOrtRegisterCustomOpsLibrary_V2(IntPtr /*(OrtSessionOptions*) */ options,
+                                                                               byte[] /*(const ORTCHAR_T*)*/ libraryPath);
+
+        public static DOrtRegisterCustomOpsLibrary_V2 OrtRegisterCustomOpsLibrary_V2;
+
+        /// <summary>
+        /// Register custom op library using a function name. ORT will lookup the function name using dlsym.
+        /// Library containing the function must be loaded and the function name must be globally visible.
+        /// </summary>
+        /// <param name="options">Native SessionOptions instance</param>
+        /// <param name="functionName">Function name to call to register the custom ops.</param>
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr /*(OrtStatus*)*/DOrtRegisterCustomOpsUsingFunction(IntPtr /*(OrtSessionOptions*) */ options,
+                                                                                  byte[] /*(const char*)*/ functionName);
+
+        public static DOrtRegisterCustomOpsUsingFunction OrtRegisterCustomOpsUsingFunction;
 
         /// <summary>
         /// Add initializer that is shared across Sessions using this SessionOptions (by denotation)
@@ -1907,4 +1930,27 @@ namespace Microsoft.ML.OnnxRuntime
 
         #endregion
     } //class NativeMethods
+
+    // onnxruntime-extensions helpers to make usage simpler.
+    // The onnxruntime-extensions nuget package containing the native library can be optionally added to the app.
+    // If added, SessionOptions.RegisterOrtExtensions can be called to add the custom ops to the session options.
+    // We handle the DllImport and platform specific aspects so the user code doesn't require that.
+    // adjust the library name based on platform.
+    internal static class OrtExtensionsNativeMethods
+    {
+#if __ANDROID__
+        internal const string ExtensionsDllName = "libortextensions.so";
+#elif __IOS__
+        internal const string ExtensionsDllName = "__Internal";
+#else
+        internal const string ExtensionsDllName = "ortextensions";
+#endif
+
+        [DllImport(ExtensionsDllName, CharSet = CharSet.Ansi,
+                   CallingConvention = CallingConvention.Winapi)]
+        public static extern IntPtr /* OrtStatus* */ RegisterCustomOps(IntPtr /* OrtSessionOptions* */ sessionOptions,
+                                                                       ref OrtApiBase /* OrtApiBase* */ ortApiBase);
+
+
+    }
 } //namespace

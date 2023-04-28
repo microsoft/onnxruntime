@@ -394,19 +394,22 @@ namespace Microsoft.ML.OnnxRuntime
 
         #region Public Methods
         /// <summary>
-        /// (Deprecated) Loads a DLL named 'libraryPath' and looks for this entry point:
-        /// OrtStatus* RegisterCustomOps(OrtSessionOptions* options, const OrtApiBase* api);
+        /// Loads a DLL named 'libraryPath' and looks for this entry point:
+        ///   OrtStatus* RegisterCustomOps(OrtSessionOptions* options, const OrtApiBase* api);
         /// It then passes in the provided session options to this function along with the api base.
-        /// Deprecated in favor of RegisterCustomOpLibraryV2() because it provides users with the library handle
-        /// to release when all sessions relying on it are destroyed
+        /// 
+        /// Prior to v1.15 this leaked the library handle and RegisterCustomOpLibraryV2 
+        /// was added to resolve that. 
+        /// 
+        /// From v1.15 on ONNX Runtime will manage the lifetime of the handle.
         /// </summary>
         /// <param name="libraryPath">path to the custom op library</param>
-        [ObsoleteAttribute("RegisterCustomOpLibrary(...) is obsolete. Use RegisterCustomOpLibraryV2(...) instead.", false)]
         public void RegisterCustomOpLibrary(string libraryPath)
         {
-            var utf8Path = NativeOnnxValueHelper.StringToZeroTerminatedUtf8(libraryPath);
-            // The handle is leaking in this version
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtRegisterCustomOpsLibrary(handle, utf8Path, out IntPtr libraryHandle));
+            NativeApiStatus.VerifySuccess(
+                NativeMethods.OrtRegisterCustomOpsLibrary_V2(
+                    handle, NativeOnnxValueHelper.GetPlatformSerializedString(libraryPath))
+            );
         }
 
         /// <summary>
@@ -422,8 +425,70 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="libraryHandle">out parameter, library handle</param>
         public void RegisterCustomOpLibraryV2(string libraryPath, out IntPtr libraryHandle)
         {
+            // NOTE: This is confusing due to the history.
+            // SessionOptions.RegisterCustomOpLibrary initially called NativeMethods.OrtRegisterCustomOpsLibrary
+            // and leaked the handle.
+            // SessionOptions.RegisterCustomOpLibraryV2 was added to resolve that by returning the handle.
+            // Later, NativeMethods.OrtRegisterCustomOpsLibrary_V2 was added with ORT owning the handle.
+            //
+            // End result of that is
+            //   SessionOptions.RegisterCustomOpLibrary calls NativeMethods.OrtRegisterCustomOpsLibrary_V2
+            //   SessionOptions.RegisterCustomOpLibraryV2 calls NativeMethods.OrtRegisterCustomOpsLibrary
             var utf8Path = NativeOnnxValueHelper.StringToZeroTerminatedUtf8(libraryPath);
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtRegisterCustomOpsLibrary(handle, utf8Path, out libraryHandle));
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtRegisterCustomOpsLibrary(handle, utf8Path, 
+                                                                                    out libraryHandle));
+        }
+
+        /// <summary>
+        /// Register custom ops by calling the C function with functionName. 
+        /// The C function has the signature
+        ///   OrtStatus* RegisterCustomOps(OrtSessionOptions* options, const OrtApiBase* api);
+        /// 
+        /// The function must be available in the global symbols so ONNX Runtime can find it using GetProcAddress or
+        /// dlsym. This will require your app to 'DllImport' the native library containing the function and use 
+        /// Marshal.Prelink to ensure the function is loaded.
+        ///
+        /// Example usage:
+        ///   static class NativeCustomOps {
+        ///     [DllImport("YourLibraryName", CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Winapi)]
+        ///     public static extern IntPtr /* OrtStatus* */ 
+        ///         YourRegisterCustomOpsFunctionName(IntPtr /* OrtSessionOptions* */ sessionOptions,
+        ///                                           IntPtr /* OrtApiBase*        */ ortApiBase);
+        ///   }
+        ///   ...
+        ///   var sessionOptions = new SessionOptions();
+        ///   Marshal.Prelink(typeof(NativeCustomOps).GetMethod("YourRegisterCustomOpsFunctionName"));
+        ///   sessionOptions.RegisterCustomOpsUsingFunction("YourRegisterCustomOpsFunctionName");
+        /// 
+        /// </summary>
+        /// <param name="functionName">Function name to call to register custom operators.</param>
+        public void RegisterCustomOpsUsingFunction(string functionName)
+        {
+            var utf8FuncName = NativeOnnxValueHelper.StringToZeroTerminatedUtf8(functionName);
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtRegisterCustomOpsUsingFunction(this.handle, utf8FuncName));
+        }
+
+        /// <summary>
+        /// Register the custom operators from the Microsoft.ML.OnnxRuntime.Extensions NuGet package.
+        /// A reference to Microsoft.ML.OnnxRuntime.Extensions must be manually added to your project. 
+        /// </summary>
+        /// <exception cref="OnnxRuntimeException">Throws if the extensions library is not found.</exception>
+        public void RegisterOrtExtensions()
+        {
+            try
+            {
+                var ortApiBase = NativeMethods.OrtGetApiBase();
+                NativeApiStatus.VerifySuccess(
+                    OrtExtensionsNativeMethods.RegisterCustomOps(this.handle, ref ortApiBase)
+                );
+            }
+            catch (DllNotFoundException)
+            {
+                throw new OnnxRuntimeException(
+                    ErrorCode.NoSuchFile,
+                    "The ONNX Runtime extensions library was not found. The Microsoft.ML.OnnxRuntime.Extensions " +
+                    "NuGet package must be referenced by the project to use 'OrtExtensions.RegisterCustomOps.");
+            }
         }
 
         /// <summary>
