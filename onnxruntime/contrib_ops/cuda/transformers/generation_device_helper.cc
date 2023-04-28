@@ -1073,7 +1073,7 @@ Status UpdateDecoderFeeds(
   } else {
     int32_t* input_ids_data = input_ids.GetMutable<Tensor>()->MutableData<int32_t>();
     for (size_t i = 0; i < batch_beam_size; i++) {
-      gsl::span<const int32_t> sequence = sequences.GetSequence(i);
+      gsl::span<const int32_t> sequence = sequences.GetSequence(gsl::narrow<int>(i));
       const int32_t* sequence_data = sequence.data();
       CUDA_RETURN_IF_ERROR(
           cudaMemcpyAsync(input_ids_data + i * current_length,
