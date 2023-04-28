@@ -87,7 +87,7 @@ jobs:
   - job: OnnxRuntime_QNNNuget_Win_Arm64
     timeoutInMinutes: 120
 
-    pool: 'onnxruntime-qnn-windows-vs-2022-arm64'
+    pool: 'Onnxruntime-QNNEP-Windows-2022-ARM64-CPU'
     variables:
       MsbuildArguments: '-detailedsummary -maxcpucount -consoleloggerparameters:PerformanceSummary'
       OnnxRuntimeBuildDirectory: '$(Build.BinariesDirectory)'
