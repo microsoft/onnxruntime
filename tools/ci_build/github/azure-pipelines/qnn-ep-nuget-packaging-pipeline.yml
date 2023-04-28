@@ -12,7 +12,7 @@ parameters:
 - name: ort_package_version
   displayName: OnnxRuntime Nuget package version
   type: string
-  default: 1.13.1
+  default: 1.15.0
   
 - name: build_config
   displayName: Build Configuration
