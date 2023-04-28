@@ -2764,11 +2764,11 @@ ORT_API(const OrtApi*, OrtApis::GetApi, uint32_t version) {
 }
 
 ORT_API(const ORTCHAR_T*, OrtApis::GetVersionString) {
-  return ORT_VERSION;
+  return ORT_TSTR(ORT_VERSION);
 }
 
 ORT_API(const ORTCHAR_T*, OrtApis::GetBuildInfoString) {
-  return ORT_BUILD_INFO;
+  return ORT_TSTR(ORT_BUILD_INFO);
 }
 
 const OrtApiBase* ORT_API_CALL OrtGetApiBase(void) NO_EXCEPTION {
