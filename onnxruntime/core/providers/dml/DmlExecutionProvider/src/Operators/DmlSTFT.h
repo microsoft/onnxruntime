@@ -99,13 +99,6 @@ struct DmlSTFTParameters
 
         ML_CHECK_VALID_ARGUMENT(this->frameSize > 0, "Either the window or frame_length must be set.");
 
-        // This limitation is a result of GpuDFTOperator in DmlDFT.h only implementing the stockham path.
-        // Remove this check if GpuDFTOperator is updated to support BluesteinZChirp.
-        ML_CHECK_VALID_ARGUMENT(
-            DFTHelpers::IsPowerOfTwo(this->frameSize),
-            "DML STFT only supports power-of-two window/frame sizes."
-        );
-
         this->frameCount = (this->signalSize - this->frameSize) / this->frameStep + 1;
         this->frameDftElementCount = this->isOnesided ? this->frameSize / 2 + 1 : this->frameSize;
     }
