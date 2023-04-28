@@ -8,6 +8,8 @@
 #include <vector>
 
 #ifdef USE_COMPOSABLE_KERNEL
+#include "core/providers/rocm/composable_kernel_common.h"
+
 #include "ck/ck.hpp"
 #include "ck/tensor_operation/gpu/device/tensor_layout.hpp"
 #include "ck/tensor_operation/gpu/element/element_wise_operation.hpp"
@@ -16,21 +18,13 @@
 
 #include "contrib_ops/rocm/diffusion/group_norm_common.h"
 
+using onnxruntime::rocm::CKDataTypeAdaptor;
+
 namespace onnxruntime {
 namespace contrib {
 namespace rocm {
 
 #ifdef USE_COMPOSABLE_KERNEL
-
-template <typename T>
-struct DataTypeAdaptor {
-  using type = T;
-};
-
-template <>
-struct DataTypeAdaptor<half> {
-  using type = ck::half_t;
-};
 
 using Swish = ck::tensor_operation::element_wise::Swish;
 using Pass = ck::tensor_operation::element_wise::PassThrough;
@@ -40,9 +34,9 @@ constexpr int NumReduceDim = 3;
 
 template <typename T, typename AccT, bool WithSwish>
 auto GetCKGroupNormNHWCTypeStringAndOps() {
-  using InDataType = typename DataTypeAdaptor<T>::type;
-  using OutDataType = typename DataTypeAdaptor<T>::type;
-  using AccDataType = typename DataTypeAdaptor<AccT>::type;
+  using InDataType = typename CKDataTypeAdaptor<T>::type;
+  using OutDataType = typename CKDataTypeAdaptor<T>::type;
+  using AccDataType = typename CKDataTypeAdaptor<AccT>::type;
   using GammaDataType = float;
   using BetaDataType = float;
 
