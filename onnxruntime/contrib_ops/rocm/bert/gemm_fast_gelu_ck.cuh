@@ -20,8 +20,9 @@
 
 #include "contrib_ops/rocm/bert/gemm_fast_gelu_common.h"
 
-using onnxruntime::rocm::ToHipType;
 using onnxruntime::rocm::CKDataTypeAdaptor;
+using onnxruntime::rocm::ToHipType;
+
 namespace onnxruntime {
 namespace contrib {
 namespace rocm {
