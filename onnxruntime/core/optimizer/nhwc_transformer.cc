@@ -38,12 +38,10 @@ NhwcConvLookup(
   return &(iter->second);
 }
 
-
 NhwcTransformer::NhwcTransformer(AllocatorPtr cpu_allocator, std::shared_ptr<KernelRegistry> cpu_kernel_registry) noexcept
-    : GraphTransformer("NhwcTransformer"), cpu_allocator_(std::move(cpu_allocator))
-{
+    : GraphTransformer("NhwcTransformer"), cpu_allocator_(std::move(cpu_allocator)) {
   if (!cpu_kernel_registry) {
-      // This is a CPU op nodes optimizer, not useful if cpu EP is not available.
+    // This is a CPU op nodes optimizer, not useful if cpu EP is not available.
     return;
   }
 
@@ -161,7 +159,6 @@ NhwcTransformer::NhwcTransformer(AllocatorPtr cpu_allocator, std::shared_ptr<Ker
           OpTransformInfo{nhwc_gavgpool_fp16.op_type_, nhwc_gavgpool_fp16.domain_, nhwc_gavgpool_fp16.version_, false});
     }
   }
-
 };
 
 Status NhwcTransformer::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
@@ -219,8 +216,8 @@ Status NhwcTransformer::ApplyImpl(Graph& graph, bool& modified, int graph_level,
         node->OpType() != transform->optype_ ||
         node->SinceVersion() != transform->version_) {
       SwapNodeOpTypeDomainAndSinceVersion(
-        *api_graph, *node, transform->optype_,
-        transform->domain_, transform->version_);
+          *api_graph, *node, transform->optype_,
+          transform->domain_, transform->version_);
     }
 
     modified = true;

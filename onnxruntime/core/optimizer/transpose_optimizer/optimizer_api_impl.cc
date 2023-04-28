@@ -172,6 +172,10 @@ std::optional<std::vector<int64_t>> ApiValueInfo::Shape() const {
 
 api::DataType ApiValueInfo::DType() const {
   const auto* type = node_arg_.TypeAsProto();
+  if (!type) {
+    return api::DataType::UNDEFINED;
+  }
+
   if (!utils::HasTensorType(*type)) {
     return api::DataType::UNDEFINED;
   }

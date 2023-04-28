@@ -73,7 +73,7 @@ class GraphTransformer {
 
 /**
  * @brief Immutable object to identify a kernel registration.
- * 
+ *
  * This data structure is used by the graph transformers to check whether
  * a kernel is registered with the execution provider (i.e. has an
  * implementation). If not, the transformer can not generate a node with

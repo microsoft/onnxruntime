@@ -534,7 +534,7 @@ std::vector<MLFloat16> randomfp16(const std::vector<int64_t>& shape, MLFloat16 m
   return val;
 }
 
-template<>
+template <>
 NodeArg* ModelTestBuilder::MakeInput<MLFloat16>(const std::vector<int64_t>& shape, MLFloat16 min, MLFloat16 max) {
   return MakeInput<MLFloat16>(shape, randomfp16(shape, min, max));
 }
@@ -543,7 +543,6 @@ template <>
 NodeArg* ModelTestBuilder::MakeInitializer(const std::vector<int64_t>& shape, MLFloat16 min, MLFloat16 max) {
   return MakeInitializer(shape, randomfp16(shape, min, max));
 }
-
 
 TEST(NhwcTransformerTests, ConvFp16) {
   auto test_case = [&](const std::vector<int64_t>& input_shape, const std::vector<int64_t>& weights_shape) {
@@ -675,7 +674,6 @@ TEST(NhwcTransformerTests, ConvAveragePoolFp16) {
                     TransformerLevel::Level2,
                     TransformerLevel::Level3);
 }
-
 
 #endif  // MLAS_F16VEC_INTRINSICS_SUPPORTED
 

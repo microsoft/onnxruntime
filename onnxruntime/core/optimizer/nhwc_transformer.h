@@ -15,7 +15,7 @@
 // an implementation class. But it would add an extra pointer
 // chasing during runtime.
 //
-namespace nhwc_map_internal{
+namespace nhwc_map_internal {
 
 /**
  * @brief For identifying layout sensive operators
@@ -62,8 +62,7 @@ struct OpTransformInfo {
 
 using OpTransformMap = std::unordered_map<OpIdInfo, OpTransformInfo, OpIdHash>;
 
-}
-
+}  // namespace nhwc_map_internal
 
 namespace onnxruntime {
 
@@ -75,15 +74,14 @@ and inserts nodes to transpose tensors as needed.
 */
 class NhwcTransformer : public GraphTransformer {
  private:
-
  public:
   explicit NhwcTransformer(AllocatorPtr cpu_allocator, std::shared_ptr<KernelRegistry> cpu_kernel_registry) noexcept;
 
   /**
    * @brief Usually called right after constructor, it shows whether
    *        this transformer should be used under current hardware configuration.
-   * 
-   * @return whether this transformer would be useful under current hardware config 
+   *
+   * @return whether this transformer would be useful under current hardware config
    */
   bool IsActive() {
     return !conv_table_.empty();
