@@ -179,8 +179,6 @@ extern bool do_copy_in_default_stream;
 extern onnxruntime::cuda::TunableOpInfo tunable_op;
 extern onnxruntime::CUDAExecutionProviderExternalAllocatorInfo external_allocator_info;
 extern onnxruntime::ArenaExtendStrategy arena_extend_strategy;
-// TODO remove deprecated global config
-extern bool enable_skip_layer_norm_strict_mode;
 }  // namespace python
 }  // namespace onnxruntime
 #endif

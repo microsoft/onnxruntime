@@ -413,6 +413,14 @@ def parse_arguments(argv: Optional[List[str]] = None) -> argparse.Namespace:
     test_group = parser.add_argument_group("Other options for testing parity and performance")
 
     test_group.add_argument(
+        "--use_sln_strict_mode",
+        required=False,
+        action="store_true",
+        help="Enable strict mode for SLN in CUDA provider. This ensures a better accuracy but will be slower.",
+    )
+    test_group.set_defaults(use_sln_strict_mode=False)
+
+    test_group.add_argument(
         "--use_gpu", required=False, action="store_true", help="use GPU for inference. Required for fp16."
     )
     test_group.set_defaults(use_gpu=False)
@@ -632,12 +640,13 @@ def pad_weights_of_logits_matmul(onnx_path: str, use_external_data_format: bool 
     return True
 
 
-def create_ort_session(model_path: str, use_gpu: bool) -> InferenceSession:
+def create_ort_session(model_path: str, use_gpu: bool, use_sln_strict_mode: bool) -> InferenceSession:
     """Create OnnxRuntime session.
 
     Args:
         model_path (str): onnx model path
         use_gpu (bool): use GPU or not
+        use_sln_strict_mode (bool): use strict mode for skip layer normalization or not
 
     Raises:
         RuntimeError: CUDAExecutionProvider is not available when --use_gpu is specified.
@@ -653,6 +662,10 @@ def create_ort_session(model_path: str, use_gpu: bool) -> InferenceSession:
             raise RuntimeError("CUDAExecutionProvider is not available for --use_gpu!")
         else:
             logger.info("use CUDAExecutionProvider")
+        if use_sln_strict_mode:
+            cuda_provider_options = {"enable_skip_layer_norm_strict_mode": True}
+            provider_options = {"CUDAExecutionProvider": cuda_provider_options}
+            execution_providers = [(name, provider_options[name]) if name in provider_options else name for name in execution_providers]
 
     ort_session = InferenceSession(model_path, sess_options, providers=execution_providers)
     return ort_session
@@ -1300,24 +1313,6 @@ def update_decoder_subgraph_share_buffer_and_use_decoder_masked_mha(subg: GraphP
         new_outputs.extend([vi])
     subg.ClearField("output")
     subg.output.extend(new_outputs)
-
-    return True
-
-
-def gpt2_switch_to_skip_layernorm_strict_mode(subg: GraphProto):
-    new_nodes = []
-    for node in subg.node:
-        if node.op_type == "SkipLayerNormalization":
-            kwargs = kwargs_of(node)
-            kwargs["strict"] = 1
-
-            node = onnx.helper.make_node(  # noqa: PLW2901
-                node.op_type, node.input, node.output, name=node.name, **kwargs
-            )
-        new_nodes.extend([node])
-
-    subg.ClearField("node")
-    subg.node.extend(new_nodes)
 
     return True
 
@@ -1999,10 +1994,6 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
                     f"{len(initializers)} shared initializers ({[i.name for i in initializers]}) in decoder and init decoder subgraphs are moved to the main graph"
                 )
 
-            if args.use_gpu and args.precision == Precision.FLOAT16:
-                logger.info("*****update gpt2 init decoder subgraph to use SLN strict mode******************")
-                gpt2_switch_to_skip_layernorm_strict_mode(gpt2_init_decoder_model.graph)
-
             # Update init decoder subgraph in preparation to use past present share buffer
             if past_present_share_buffer:
                 logger.info("*****update init decoder subgraph to make past and present share buffer******************")
@@ -2022,10 +2013,6 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
             # Move initializer from subgraph to main graph could reduce memory usage in inference.
             initializers = move_initializers(decoder_model.graph)
             logger.info(f"{len(initializers)} initializers from the decoder are moved to the main graph")
-
-        if args.use_gpu and args.precision == Precision.FLOAT16:
-            logger.info("*****update gpt2 decoder subgraph to use SLN strict mode******************")
-            gpt2_switch_to_skip_layernorm_strict_mode(decoder_model.graph)
 
         # Update decoder subgraph in preparation to use past present share buffer
         if past_present_share_buffer:
@@ -2372,7 +2359,7 @@ def test_gpt_model(args: argparse.Namespace, sentences: Optional[List[str]] = No
         return
 
     logger.debug("Creating ort session......")
-    ort_session = create_ort_session(args.output, args.use_gpu)
+    ort_session = create_ort_session(args.output, args.use_gpu, args.use_sln_strict_mode)
 
     logger.debug("Run ort session......")
     result = ort_session.run(None, inputs)
@@ -2574,7 +2561,7 @@ def test_t5_model(args: argparse.Namespace, sentences: Optional[List[str]] = Non
 
     logger.debug("ORT inputs", inputs)  # noqa: PLE1205
 
-    ort_session = create_ort_session(args.output, args.use_gpu)
+    ort_session = create_ort_session(args.output, args.use_gpu, args.use_sln_strict_mode)
 
     # Test performance
     latency = []

@@ -294,7 +294,6 @@ const CUDAExecutionProviderInfo GetCudaExecutionProviderInfo(ProviderInfo_CUDA* 
     info.do_copy_in_default_stream = do_copy_in_default_stream;
     info.external_allocator_info = external_allocator_info;
     info.tunable_op = tunable_op;
-    info.enable_skip_layer_norm_strict_mode = enable_skip_layer_norm_strict_mode;
   }
   return info;
 }
@@ -1015,17 +1014,6 @@ void addGlobalMethods(py::module& m) {
     ORT_THROW("set_do_copy_in_default_stream is not supported in ROCM");
 #else
         do_copy_in_default_stream = use_single_stream;
-#endif
-  });
-  // TODO remove deprecated global config
-  m.def("set_enable_skip_layer_norm_strict_mode", [](const bool enable_sln_strict_mode) {
-    LogDeprecationWarning(
-        "set_enable_skip_layer_norm_strict_mode", "CUDA execution provider option \"enable_skip_layer_norm_strict_mode\"");
-#ifdef USE_ROCM
-    ORT_UNUSED_PARAMETER(enable_skip_layer_norm_strict_mode);
-    ORT_THROW("set_enable_skip_layer_norm_strict_mode is not supported in ROCM");
-#else
-        enable_skip_layer_norm_strict_mode = enable_sln_strict_mode;
 #endif
   });
   // TODO remove deprecated global config

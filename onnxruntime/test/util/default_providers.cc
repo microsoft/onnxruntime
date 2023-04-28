@@ -114,6 +114,8 @@ std::unique_ptr<IExecutionProvider> CudaExecutionProviderWithOptions(const OrtCU
 #ifdef USE_CUDA
   if (auto factory = CudaProviderFactoryCreator::Create(provider_options))
     return factory->CreateProvider();
+#else
+  ORT_UNUSED_PARAMETER(provider_options);
 #endif
   return nullptr;
 }
