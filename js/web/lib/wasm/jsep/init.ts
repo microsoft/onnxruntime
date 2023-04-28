@@ -124,13 +124,11 @@ export const init = async(module: OrtWasmModule): Promise<void> => {
         // jsepCopyAsync(src, dst, size)
         async(gpuDataId: number, dataOffset: number, size: number):
             Promise<void> => {
-              const data = module.HEAPU8.subarray(dataOffset, dataOffset + size);
-
               LOG_DEBUG(
                   'verbose',
                   () => `[WebGPU] jsepCopyGpuToCpu: gpuDataId=${gpuDataId}, dataOffset=${dataOffset}, size=${size}`);
 
-              await backend.download(gpuDataId, data);
+              await backend.download(gpuDataId, () => module.HEAPU8.subarray(dataOffset, dataOffset + size));
             },
 
         // jsepCreateKernel
