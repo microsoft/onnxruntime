@@ -37,7 +37,7 @@ Pod::Spec.new do |spec|
       }
     end
   else
-    puts "File not found: No package.json file found applicable in the expected project root directory. Expected:#{root_dir}"
+    puts "Could not find package.json file in the expected directory: #{root_dir}. ONNX Runtime Extensions will not be enabled."
   end
 
 end

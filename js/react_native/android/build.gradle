@@ -31,7 +31,7 @@ def checkIfOrtExtensionsEnabled() {
     def packageJson = new groovy.json.JsonSlurper().parseText(packageJsonContents)
     return packageJson.onnxruntimeExtensionsEnabled == "true"
   } else {
-    logger.error("Could not find package.json file in the expected directory. Expected: ${reactnativeRootDir}")
+    logger.warn("Could not find package.json file in the expected directory: ${reactnativeRootDir}. ONNX Runtime Extensions will not be enabled.")
   }
   return false
 }
