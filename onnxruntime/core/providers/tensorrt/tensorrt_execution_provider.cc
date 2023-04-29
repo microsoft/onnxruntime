@@ -366,7 +366,7 @@ std::unique_lock<OrtMutex> TensorrtExecutionProvider::GetApiLock() const {
 /*
  * Apply TensorRT optimization profile shapes from provider options.
  *
- * This function handles single/multiple profile(s).
+ * This function supports single/multiple profile(s).
  * (Note: An optimization profile describes a range of dimensions for each network input)
  *
  */
@@ -375,8 +375,7 @@ bool ApplyProfileShapesFromProviderOptions(std::vector<nvinfer1::IOptimizationPr
                                            std::unordered_map<std::string, std::vector<std::vector<int64_t>>>& profile_min_shapes,
                                            std::unordered_map<std::string, std::vector<std::vector<int64_t>>>& profile_max_shapes,
                                            std::unordered_map<std::string, std::vector<std::vector<int64_t>>>& profile_opt_shapes,
-                                           std::unordered_map<std::string, std::unordered_map<size_t, std::vector<std::vector<int64_t>>>>& input_explicit_shape_ranges)
-{
+                                           std::unordered_map<std::string, std::unordered_map<size_t, std::vector<std::vector<int64_t>>>>& input_explicit_shape_ranges){
   if (trt_profiles.size() == 0) {
     LOGS_DEFAULT(WARNING) << "[TensorRT EP] Number of optimization profiles should be greater than 0, but it's 0.";
     return false;
@@ -420,8 +419,8 @@ bool ApplyProfileShapesFromProviderOptions(std::vector<nvinfer1::IOptimizationPr
         LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] shapes_opt.d[" << j << "] is " << shapes_opt[j];
 
         if (input_explicit_shape_ranges[input_name].find(j) == input_explicit_shape_ranges[input_name].end()) {
-          std::vector<std::vector<int64_t>> inner_vector(trt_profiles.size());
-          input_explicit_shape_ranges[input_name][j] = inner_vector;
+          std::vector<std::vector<int64_t>> profile_vector(trt_profiles.size());
+          input_explicit_shape_ranges[input_name][j] = profile_vector;
         }
         input_explicit_shape_ranges[input_name][static_cast<int64_t>(j)][i].push_back(min_value);
         input_explicit_shape_ranges[input_name][static_cast<int64_t>(j)][i].push_back(max_value);
@@ -454,8 +453,8 @@ bool ApplyProfileShapesFromProviderOptions(std::vector<nvinfer1::IOptimizationPr
           LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] dims_opt.d[" << j << "] is " << dims_opt.d[j];
 
           if (input_explicit_shape_ranges[input_name].find(j) == input_explicit_shape_ranges[input_name].end()) {
-            std::vector<std::vector<int64_t>> inner_vector(trt_profiles.size());
-            input_explicit_shape_ranges[input_name][j] = inner_vector;
+            std::vector<std::vector<int64_t>> profile_vector(trt_profiles.size());
+            input_explicit_shape_ranges[input_name][j] = profile_vector;
           }
           input_explicit_shape_ranges[input_name][static_cast<int64_t>(j)][i].push_back(min_value);
           input_explicit_shape_ranges[input_name][static_cast<int64_t>(j)][i].push_back(max_value);
@@ -478,7 +477,7 @@ bool ApplyProfileShapesFromProviderOptions(std::vector<nvinfer1::IOptimizationPr
 /*
  * Apply TensorRT optimization profile shapes from input tensor value.
  *
- * This function handles single/multiple profile(s).
+ * This function supports single/multiple profile(s).
  * (Note: An optimization profile describes a range of dimensions for each network input)
  *
  */
@@ -489,8 +488,7 @@ Status ApplyProfileShapesFromInputTensorValue(std::vector<nvinfer1::IOptimizatio
                                               const std::unordered_map<std::string, size_t>& input_indexes,
                                               std::unordered_map<std::string, std::vector<int32_t>>& tensor_shape_values,
                                               cudaStream_t stream,
-                                              bool* engine_update)
-{
+                                              bool* engine_update){
   for (size_t i = 0; i < trt_profiles.size(); i++) {
     const std::string& input_name = input->getName();
     nvinfer1::Dims dims = input->getDimensions();
@@ -510,6 +508,7 @@ Status ApplyProfileShapesFromInputTensorValue(std::vector<nvinfer1::IOptimizatio
     auto trt_profile = trt_profiles[i];
 
     // If there are multiple profiles, for second and rest of profiles, simply copy the min/max/opt profile values from the first profile.
+    // Following "if statement" won't be executed since TRT EP currently only allows single profile for non-explicit profiles case. 
     if (i > 0) {
       if (input->isShapeTensor()) {
         // shape tensor
@@ -573,7 +572,7 @@ Status ApplyProfileShapesFromInputTensorValue(std::vector<nvinfer1::IOptimizatio
       if (shape_size == shape_range_size) {
         // If shape size matches, check/update shape range
         for (int j = 0; j < shape_size; ++j) {
-          auto& shape_range = shape_ranges_per_input[j][0]; // only has one profile
+          auto& shape_range = shape_ranges_per_input[j][0];// only has one profile
           shapes_min[j] = static_cast<int32_t>(shape_range[0]);
           shapes_max[j] = static_cast<int32_t>(shape_range[1]);
           shapes_opt[j] = static_cast<int32_t>(shape_range[2]);
@@ -601,7 +600,7 @@ Status ApplyProfileShapesFromInputTensorValue(std::vector<nvinfer1::IOptimizatio
           const auto& tensor_shape_value = tensor_shape_values[input_name][j];
           std::vector<std::vector<int64_t>> profile_vector;
           std::vector<int64_t> shape_vector{tensor_shape_value, tensor_shape_value, tensor_shape_value};
-          profile_vector.push_back(shape_vector); // only one profile needed
+          profile_vector.push_back(shape_vector);// only one profile needed
           shape_ranges_per_input[j] = profile_vector;
           shapes_min[j] = tensor_shape_value;
           shapes_opt[j] = tensor_shape_value;
@@ -618,7 +617,7 @@ Status ApplyProfileShapesFromInputTensorValue(std::vector<nvinfer1::IOptimizatio
       for (int j = 0, end = nb_dims; j < end; ++j) {
         const auto& tensor_shape = tensor_shapes[j];
         if (shape_ranges_per_input.find(j) != shape_ranges_per_input.end()) {
-          auto& shape_range = shape_ranges_per_input[j][0]; // only has one profile
+          auto& shape_range = shape_ranges_per_input[j][0];// only has one profile
           dims_min.d[j] = static_cast<int32_t>(shape_range[0]);
           dims_max.d[j] = static_cast<int32_t>(shape_range[1]);
           dims_opt.d[j] = static_cast<int32_t>(shape_range[2]);
@@ -849,14 +848,11 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
       if (!engine_cache_built_with_explicit_profiles_env.empty()) {
         engine_cache_built_with_explicit_profiles_ = (std::stoi(engine_cache_built_with_explicit_profiles_env) == 0 ? false : true);
       }
-    }
-    catch (const std::invalid_argument& ex) {
+    }catch (const std::invalid_argument& ex) {
       LOGS_DEFAULT(WARNING) << "[TensorRT EP] Invalid Argument (from environment variables): " << ex.what();
-    }
-    catch (const std::out_of_range& ex) {
+    }catch (const std::out_of_range& ex) {
       LOGS_DEFAULT(WARNING) << "[TensorRT EP] Out Of Range Error (from environment variables): " << ex.what();
-    }
-    catch (...) {
+    }catch (...) {
       LOGS_DEFAULT(WARNING) << "[TensorRT EP] Unknown Exception (from environment variables)";
     }
   }
@@ -1798,7 +1794,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
      *   2) As long as one of the dynamic shape input tensors has no explicitly associated profile, TRT EP will create default shape as described above,
      *      and all the profiles won't be applied and engine won't be built until EP compute time.
      */
-    bool has_dynamic_shape = false; // True if input tensor has dynamic shape and no explicit profile is specified, otherwise false.
+    bool has_dynamic_shape = false;// True if input tensor has dynamic shape and no explicit profile is specified, otherwise false.
     bool has_explicit_profile = false;
     bool apply_explicit_profile = false;
     int num_profiles = 0;
@@ -1849,18 +1845,18 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
       int nb_dims = dims.nbDims;
 
       // Apply explicit optimization profiles provided by user
-      if(has_explicit_profile) {
+      if (has_explicit_profile) {
         apply_explicit_profile = ApplyProfileShapesFromProviderOptions(trt_profiles, input, profile_min_shapes_, profile_max_shapes_, profile_opt_shapes_, input_explicit_shape_ranges);
       }
 
       // If no explicit optimization profile is being applied, TRT EP will later set min/max/opt shape values based on input tensor values at EP compute time
-      if(!apply_explicit_profile) {
+      if (!apply_explicit_profile) {
         std::vector<std::vector<int64_t>> profile_vector;
 
         if (input->isShapeTensor()) {
           // Shape tensor
           std::vector<int64_t> shape_vector{INT_MAX, INT_MIN, INT_MIN};
-          profile_vector.push_back(shape_vector); // only one profile needed
+          profile_vector.push_back(shape_vector);// only one profile needed
           input_implicit_shape_ranges[input_name][0] = profile_vector;
           has_dynamic_shape = true;
         } else {
@@ -1868,7 +1864,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
           for (int j = 0, end = nb_dims; j < end; ++j) {
             if (dims.d[j] == -1) {
               std::vector<int64_t> shape_vector{INT_MAX, INT_MIN, INT_MIN};
-              profile_vector.push_back(shape_vector); // only one profile needed
+              profile_vector.push_back(shape_vector);// only one profile needed
               input_implicit_shape_ranges[input_name][j] = profile_vector;
               has_dynamic_shape = true;
             }
@@ -2024,8 +2020,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
           engine_update = CompareProfiles(profile_cache_path, profile_min_shapes_, profile_max_shapes_, profile_opt_shapes_);
           if (engine_update) {
             LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Engine will be built";
-          }
-          else {
+          }else {
             LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Engine won't be rebuilt";
           }
         }
