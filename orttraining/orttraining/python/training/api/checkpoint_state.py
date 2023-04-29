@@ -1,19 +1,77 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
-# checkpoint_state.py
+
+from __future__ import annotations
+
+import os
 
 from onnxruntime.capi import _pybind_state as C
 
 
 class CheckpointState:
-    """
-    Class for Loading CheckpointState.
-    This class is a wrapper of CheckpointState Class.
+    """Class that holds the state of the training session state
+
+    Args:
+        state (CheckpointState): The C.Checkpoint state object that holds the underlying session state.
     """
 
-    def __init__(self, ckpt_uri) -> None:
+    def __init__(self, state: C.CheckpointState):
+        if not isinstance(state, C.CheckpointState):
+            raise TypeError(f"Invalid argument for CheckpointState received {type(state)}")
+        self._state = state
+
+    @classmethod
+    def load_checkpoint(cls, checkpoint_uri: str | os.PathLike) -> CheckpointState:
+        """Loads the checkpoint state from the checkpoint file
+
+        Args:
+            checkpoint_uri: The path to the checkpoint file.
+
+        Returns:
+            CheckpointState: The checkpoint state object.
         """
-        Initializes CheckpointState object with the given checkpoint uri.
-        The returned object will be used to initialize the Module.
+        return cls(C.load_checkpoint(os.fspath(checkpoint_uri)))
+
+    @classmethod
+    def save_checkpoint(
+        cls, state: CheckpointState, checkpoint_uri: str | os.PathLike, include_optimizer_state: bool = False
+    ) -> None:
+        """Saves the checkpoint state to the checkpoint file
+
+        Args:
+            state: The checkpoint state object.
+            checkpoint_uri: The path to the checkpoint file.
+            include_optimizer_state: If True, the optimizer state is also saved to the checkpoint file.
         """
-        self._state = C.CheckpointState(ckpt_uri)
+        C.save_checkpoint(state._state, os.fspath(checkpoint_uri), include_optimizer_state)
+
+    def __getitem__(self, name: str) -> int | float | str:
+        """Gets the property associated with the given name
+
+        Args:
+            name: The name of the property
+
+        Returns:
+            The value of the property
+        """
+        return self._state.get_property(name)
+
+    def __setitem__(self, name: str, value: int | float | str) -> None:
+        """Sets the property value for the given name
+
+        Args:
+            name: The name of the property
+            value: The value of the property
+        """
+        self._state.add_property(name, value)
+
+    def __contains__(self, name: str) -> bool:
+        """Checks if the property exists in the state
+
+        Args:
+            name: The name of the property
+
+        Returns:
+            True if the property exists, False otherwise
+        """
+        return self._state.has_property(name)

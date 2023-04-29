@@ -388,6 +388,19 @@ namespace OperatorHelper
         static const int sc_sinceVer_LayerNormalization = 17;
     } // namespace OnnxOperatorSet17
 
+    namespace OnnxOperatorSet18
+    {
+        static const int sc_sinceVer_ReduceL1 = 18;
+        static const int sc_sinceVer_ReduceL2 = 18;
+        static const int sc_sinceVer_ReduceLogSum = 18;
+        static const int sc_sinceVer_ReduceLogSumExp = 18;
+        static const int sc_sinceVer_ReduceMax = 18;
+        static const int sc_sinceVer_ReduceMean = 18;
+        static const int sc_sinceVer_ReduceMin = 18;
+        static const int sc_sinceVer_ReduceProd = 18;
+        static const int sc_sinceVer_ReduceSumSquare = 18;
+    }
+
     namespace MsftOperatorSet1
     {
         static const int sc_sinceVer_DmlFusedConv = 1;

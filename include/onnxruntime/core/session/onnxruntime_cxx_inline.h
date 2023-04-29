@@ -1563,6 +1563,12 @@ inline void* KernelContext::GetGPUComputeStream() const {
   return out;
 }
 
+inline OrtAllocator* KernelContext::GetAllocator(const OrtMemoryInfo& memory_info) const {
+  OrtAllocator* out = nullptr;
+  Ort::ThrowOnError(GetApi().KernelContext_GetAllocator(ctx_, &memory_info, &out));
+  return out;
+}
+
 inline Logger KernelContext::GetLogger() const {
   const OrtLogger* out = nullptr;
   ThrowOnError(GetApi().KernelContext_GetLogger(this->ctx_, &out));
@@ -1981,8 +1987,13 @@ inline void CustomOpApi::ReleaseKernelInfo(_Frees_ptr_opt_ OrtKernelInfo* info_c
   api_.ReleaseKernelInfo(info_copy);
 }
 
-inline std::string GetVersionString() {
-  std::string result = OrtGetApiBase()->GetVersionString();
+inline std::basic_string<ORTCHAR_T> GetVersionString() {
+  std::basic_string<ORTCHAR_T> result = OrtGetApiBase()->GetVersionString();
+  return result;
+}
+
+inline std::basic_string<ORTCHAR_T> GetBuildInfoString() {
+  std::basic_string<ORTCHAR_T> result = OrtGetApiBase()->GetBuildInfoString();
   return result;
 }
 

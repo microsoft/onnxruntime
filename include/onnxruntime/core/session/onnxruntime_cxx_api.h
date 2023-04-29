@@ -125,7 +125,14 @@ inline const OrtApi& GetApi() noexcept { return *Global<void>::api_; }
 /// This function returns the onnxruntime version string
 /// </summary>
 /// <returns>version string major.minor.rev</returns>
-std::string GetVersionString();
+std::basic_string<ORTCHAR_T> GetVersionString();
+
+/// <summary>
+/// This function returns the onnxruntime build information: including git branch,
+/// git commit id, build type(Debug/Release/RelWithDebInfo) and cmake cpp flags.
+/// </summary>
+/// <returns>string</returns>
+std::basic_string<ORTCHAR_T> GetBuildInfoString();
 
 /// <summary>
 /// This is a C++ wrapper for OrtApi::GetAvailableProviders() and
@@ -1702,6 +1709,7 @@ struct KernelContext {
   UnownedValue GetOutput(size_t index, const std::vector<int64_t>& dims) const;
   void* GetGPUComputeStream() const;
   Logger GetLogger() const;
+  OrtAllocator* GetAllocator(const OrtMemoryInfo& memory_info) const;
 
  private:
   OrtKernelContext* ctx_;

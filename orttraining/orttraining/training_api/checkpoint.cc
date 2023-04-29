@@ -306,7 +306,7 @@ Status OrtSaveOptimizerStatesInternal(OptimizerCheckpointState& optimizer_state,
 }
 
 Status OrtSaveInternal(
-    CheckpointState& state, const PathString& checkpoint_path) {
+    CheckpointState& state, const PathString& checkpoint_path, const bool include_optimizer_state) {
   LOGS_DEFAULT(INFO) << "Saving model checkpoint files to " << ToUTF8String(checkpoint_path);
   LOGS_DEFAULT_IF(Env::Default().FolderExists(checkpoint_path), WARNING)
       << "Checkpoint directory exists - data may be overwritten.";
@@ -316,7 +316,9 @@ Status OrtSaveInternal(
   ORT_RETURN_IF_ERROR(OrtSaveModuleStatesInternal(state.module_checkpoint_state, checkpoint_path));
 
   // Write optimizer state tensors files.
-  ORT_RETURN_IF_ERROR(OrtSaveOptimizerStatesInternal(state.optimizer_checkpoint_state, checkpoint_path));
+  if (include_optimizer_state) {
+    ORT_RETURN_IF_ERROR(OrtSaveOptimizerStatesInternal(state.optimizer_checkpoint_state, checkpoint_path));
+  }
 
   // Write properties file
   const PropertyBag& property_bag = state.property_bag;
@@ -560,8 +562,9 @@ Status SaveCheckpoint(const std::vector<ONNX_NAMESPACE::TensorProto>& trainable_
   return OrtSaveInternal(trainable_tensor_protos, non_trainable_tensor_protos, checkpoint_path);
 }
 
-Status SaveCheckpoint(CheckpointState& states, const PathString& checkpoint_path) {
-  return OrtSaveInternal(states, checkpoint_path);
+Status SaveCheckpoint(CheckpointState& states, const PathString& checkpoint_path,
+                      const bool include_optimizer_state) {
+  return OrtSaveInternal(states, checkpoint_path, include_optimizer_state);
 }
 
 Status LoadCheckpoint(const PathString& checkpoint_path, CheckpointState& checkpoint_states) {
