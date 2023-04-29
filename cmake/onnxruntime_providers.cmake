@@ -1190,7 +1190,10 @@ if (onnxruntime_USE_DML)
     ${ONNXRUNTIME_ROOT}
   )
 
-  add_definitions(-DDML_TARGET_VERSION_USE_LATEST=1)
+  target_compile_definitions(onnxruntime_providers_dml PRIVATE DML_TARGET_VERSION_USE_LATEST=1)
+  if(WIN32)
+    target_compile_options(onnxruntime_providers_dml PRIVATE "/wd4100" "/wd4238" "/wd4189" "/wd4702")
+  endif()
 
   if (NOT onnxruntime_USE_CUSTOM_DIRECTML)
     foreach(file "DirectML.dll" "DirectML.pdb" "DirectML.Debug.dll" "DirectML.Debug.pdb")
