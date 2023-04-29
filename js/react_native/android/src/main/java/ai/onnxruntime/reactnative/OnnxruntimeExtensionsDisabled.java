@@ -8,8 +8,9 @@ import android.util.Log;
 
 class OnnxruntimeExtensions {
   public void registerOrtExtensionsIfEnabled(SessionOptions sessionOptions) {
-    Log.d("Info", "ORT Extensions is not enabled in the current configuration. If you want to enable this support, +
-          please add \"onnxruntimeEnableExtensions\": \"true\" in your project root directory package.json.");
+    Log.d("Info",
+          "ORT Extensions is not enabled in the current configuration. If you want to enable this support,"
+              + "please add \"onnxruntimeEnableExtensions\": \"true\" in your project root directory package.json.");
     return;
   }
 }
