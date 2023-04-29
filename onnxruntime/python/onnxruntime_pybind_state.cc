@@ -577,7 +577,8 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
               params.trt_extra_plugin_lib_paths = option.second.c_str();
             } else {
               ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_extra_plugin_lib_paths' should be a path string.\n");
-                        } else if (option.first == "trt_profile_min_shapes") {
+            }
+          } else if (option.first == "trt_profile_min_shapes") {
             if (!option.second.empty()) {
               min_profile = option.second;
               params.trt_profile_min_shapes = min_profile.c_str();
