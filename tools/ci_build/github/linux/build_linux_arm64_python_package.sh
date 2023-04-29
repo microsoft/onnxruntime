@@ -51,7 +51,7 @@ elif [ "$BUILD_DEVICE" == "AZURE" ]; then
         apt-get install -y libipc-system-simple-perl python3 libssl-dev
     else
         # for redhat
-        yum install -y perl-IPC-Cmd python3 openssl-devel
+        sudo yum install -y perl-IPC-Cmd python3 openssl-devel
     fi
 fi
 
