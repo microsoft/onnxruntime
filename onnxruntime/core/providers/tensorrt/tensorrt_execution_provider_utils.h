@@ -111,31 +111,8 @@ int GetNumProfiles(std::unordered_map<std::string, std::vector<std::vector<int64
  * has one dynamic shape dimension: dim_1. The data in profile will be,
  * key: tensor_a, value: dim_0 min_shape max_shape dim_2 min_shape max_shape
  * key: tensor_b, value: dim_1 min_shape max_shape
- */
-/*
- * Seralize engine profile.is function starts from ORT 1.15)
  *
- *
- * The profile contains min/max/opt shape ranges of dynamic shape dimensions of each input tensor
- * For example, assume tensor_a has two dynamic shape dimensions: dim_0 and dim_2, and tensor_b
- * has one dynamic shape dimension: dim_1.
- *
- * The data before serialization will be:
- * {
- *   tensor_a: {
- *     dim_0: [[min_shape_0, max_shape_1, opt_shape_2]],
- *     dim_2: [[min_shape_6, max_shape_7, opt_shape_8]]
- *   },
- *   tensor_b: {
- *     dim_1: [[min_shape_3, max_shape_4, opt_shape_5]]
- *   }
- * }
- *
- * The data after serialization will be:
- * {
- *   tensor_a: [dim_0, min_shape_0, max_shape_1, opt_shape_2, dim_2, min_shape_6, max_shape_7, opt_shape_8]
- *   tensor_b: [dim_1, min_shape_3, max_shape_4, opt_shape_5]
- * }
+ * [Deprecated] Use SerializeProfileV2
  */
 void SerializeProfile(const std::string& file_name, std::unordered_map<std::string, std::unordered_map<size_t, std::pair<int64_t, int64_t>>>& shape_ranges) {
   // Serialize profile
@@ -162,6 +139,8 @@ void SerializeProfile(const std::string& file_name, std::unordered_map<std::stri
 }
 
 // Deserialize engine profile
+//
+// [Deprecated] Use DeserializeProfileV2
 std::unordered_map<std::string, std::unordered_map<size_t, std::pair<int64_t, int64_t>>> DeserializeProfile(std::ifstream& infile) {
   // Load flexbuffer
   infile.seekg(0, std::ios::end);
@@ -245,6 +224,7 @@ void SerializeProfileV2(const std::string& file_name,
   flexbuffers::Builder builder;
   auto tensor_map_start = builder.StartMap();
   for (auto tensor_it = shape_ranges.begin(); tensor_it != shape_ranges.end(); tensor_it++) { // iterate tensors
+    LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] input tensor is '" << tensor_it->first.c_str() << "'";
     builder.TypedVector(tensor_it->first.c_str(), [&] {
       int num_profiles = tensor_it->second.size(); 
       for (auto dim_it = tensor_it->second.begin(); dim_it != tensor_it->second.end(); dim_it++) {
@@ -268,7 +248,6 @@ void SerializeProfileV2(const std::string& file_name,
   size_t size = builder.GetSize();
   file.write(reinterpret_cast<const char*>(&buf[0]), size);
   file.close();
-  LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] End SerializeProfileV2()";
 }
 
 /*
@@ -335,6 +314,7 @@ std::unordered_map<std::string, std::unordered_map<size_t, std::vector<std::vect
   auto keys = tensors_range_entries.Keys();
   auto values = tensors_range_entries.Values();
   for (size_t i = 0, end = keys.size(); i < end; ++i) { // iterate tensors
+    LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] input tensor is '" << keys[i].AsString().c_str() << "'";
     auto dim_range_vector = values[i].AsTypedVector();
     std::unordered_map<size_t, std::vector<std::vector<int64_t>>> inner_map;
     std::vector<std::vector<int64_t>> outer_vector;
@@ -355,7 +335,6 @@ std::unordered_map<std::string, std::unordered_map<size_t, std::vector<std::vect
     }
     shape_ranges[keys[i].AsString().c_str()] = inner_map;
   }
-  LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] End DeserializeProfileV2()";
   return shape_ranges;
 }
 

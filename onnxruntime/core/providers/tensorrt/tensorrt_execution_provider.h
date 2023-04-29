@@ -106,7 +106,7 @@ struct TensorrtFuncState {
   std::unique_ptr<nvinfer1::INetworkDefinition>* network = nullptr;
   std::vector<std::unordered_map<std::string, size_t>> input_info;
   std::vector<std::unordered_map<std::string, size_t>> output_info;
-  std::unordered_map<std::string, std::unordered_map<size_t, std::pair<int64_t, int64_t>>> input_shape_ranges;
+  std::unordered_map<std::string, std::unordered_map<size_t, std::vector<std::vector<int64_t>>>> input_shape_ranges;
   OrtMutex* tensorrt_mu_ptr = nullptr;
   bool fp16_enable = false;
   bool int8_enable = false;
@@ -221,7 +221,7 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   std::unordered_map<std::string, std::vector<std::vector<int64_t>>> profile_min_shapes_;
   std::unordered_map<std::string, std::vector<std::vector<int64_t>>> profile_max_shapes_;
   std::unordered_map<std::string, std::vector<std::vector<int64_t>>> profile_opt_shapes_;
-  std::unordered_map<std::string, std::unordered_map<std::string, std::unordered_map<size_t, std::pair<int64_t, int64_t>>>> input_shape_ranges_;
+  std::unordered_map<std::string, std::unordered_map<std::string, std::unordered_map<size_t, std::vector<std::vector<int64_t>>>>> input_shape_ranges_;
   std::unordered_map<std::string, std::vector<nvinfer1::IOptimizationProfile*>> profiles_;
 
   // for external stream, we need to create its cudnn/cublass handle before cuda EP enable cuda graph capture
