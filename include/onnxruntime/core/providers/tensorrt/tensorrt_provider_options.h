@@ -44,5 +44,4 @@ struct OrtTensorRTProviderOptionsV2 {
   const char* trt_profile_min_shapes;           // Specify the range of the input shapes to build the engine with
   const char* trt_profile_max_shapes;           // Specify the range of the input shapes to build the engine with
   const char* trt_profile_opt_shapes;           // Specify the range of the input shapes to build the engine with
-  int trt_engine_cache_built_with_explicit_profiles; // Whether the engine cache is built with explicit profiles provided by user. Default 0 = false, nonzero = true
 };

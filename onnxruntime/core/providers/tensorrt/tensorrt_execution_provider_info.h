@@ -47,7 +47,6 @@ struct TensorrtExecutionProviderInfo {
   std::string profile_min_shapes{""};
   std::string profile_max_shapes{""};
   std::string profile_opt_shapes{""};
-  bool engine_cache_built_with_explicit_profiles{false};
 
   static TensorrtExecutionProviderInfo FromProviderOptions(const ProviderOptions& options);
   static ProviderOptions ToProviderOptions(const TensorrtExecutionProviderInfo& info);
