@@ -98,8 +98,11 @@ extern "C" {
 #ifndef ORT_TSTR
 #ifdef _WIN32
 #define ORT_TSTR(X) L##X
+// When X is a macro, L##X is not defined. In this case, we need to use ORT_TSTR_ON_MACRO.
+#define ORT_TSTR_ON_MACRO(X) L"" X
 #else
 #define ORT_TSTR(X) X
+#define ORT_TSTR_ON_MACRO(X) X
 #endif
 #endif
 
@@ -626,7 +629,8 @@ struct OrtApiBase {
    *   older than the version created with this header file.
    */
   const OrtApi*(ORT_API_CALL* GetApi)(uint32_t version)NO_EXCEPTION;
-  const char*(ORT_API_CALL* GetVersionString)(void)NO_EXCEPTION;  ///< Returns a null terminated string of the version of the Onnxruntime library (eg: "1.8.1")
+  const ORTCHAR_T*(ORT_API_CALL* GetVersionString)(void)NO_EXCEPTION;    ///< Returns a null terminated string of the version of the Onnxruntime library (eg: "1.8.1")
+  const ORTCHAR_T*(ORT_API_CALL* GetBuildInfoString)(void)NO_EXCEPTION;  ///< Returns a null terminated string of the build info including git info and cxx flags
 };
 typedef struct OrtApiBase OrtApiBase;
 
