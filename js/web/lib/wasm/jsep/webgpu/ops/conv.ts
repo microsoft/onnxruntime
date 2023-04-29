@@ -138,7 +138,7 @@ export const parseConvAttributes = (attributes: Record<string, unknown>): ConvAt
       {autoPad, format, dilations, group, kernelShape, pads, strides, wIsConst, ...activationAttributes});
 };
 
-const conv2d = (context: ComputeContext, inputs: readonly TensorView[], attributes: ConvAttributes): number => {
+const conv2d = (context: ComputeContext, inputs: readonly TensorView[], attributes: ConvAttributes): void => {
   const adjustedAttributes = getAdjustedConvAttributes(attributes, inputs);
 
   // check attributes
@@ -170,12 +170,12 @@ const conv2d = (context: ComputeContext, inputs: readonly TensorView[], attribut
         attributes.autoPad === 'VALID'))) {
     // TODO: implement conv2dByMatMul()
     context.compute(createGroupedConvProgramInfoLoader(inputs, adjustedAttributes));
-    return 0;
+    return;
   }
 
   if (!isChannelsLast || attributes.group !== 1) {
     context.compute(createGroupedConvProgramInfoLoader(inputs, adjustedAttributes));
-    return 0;
+    return;
   }
 
   // TODO: implement conv2dWithIm2Col()
@@ -215,10 +215,9 @@ const conv2d = (context: ComputeContext, inputs: readonly TensorView[], attribut
           convInputs, adjustedAttributes, outputShape, dimAOuter, dimBOuter, dimInner, hasBias,
           sequentialAccessByThreads),
       {inputs: convInputs});
-  return 0;
 };
 
-const conv1d = (context: ComputeContext, attributes: ConvAttributes): number => {
+const conv1d = (context: ComputeContext, attributes: ConvAttributes): void => {
   // extend the input to 2D by adding H dimension
   const isChannelLast = attributes.format === 'NHWC';
   const inputs = [
@@ -242,11 +241,13 @@ const conv1d = (context: ComputeContext, attributes: ConvAttributes): number => 
   context.compute(createGroupedConvProgramInfoLoader(
       inputs, adjustedAttributes,
       outputShape => isChannelLast ? [outputShape[0], outputShape[2], outputShape[3]] : []));
-  return 0;
 };
 
-export const conv = (context: ComputeContext, attributes: ConvAttributes): number => {
+export const conv = (context: ComputeContext, attributes: ConvAttributes): void => {
   validateInputs(context.inputs, attributes);  // currently will fail if not conv1D/2D
-  return context.inputs[0].dims.length === 3 ? conv1d(context, attributes) :
-                                               conv2d(context, context.inputs, attributes);
+  if (context.inputs[0].dims.length === 3) {
+    conv1d(context, attributes);
+  } else {
+    conv2d(context, context.inputs, attributes);
+  }
 };

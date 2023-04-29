@@ -108,13 +108,13 @@ TEST_P(ModelTest, Run) {
   }
 
   std::unique_ptr<OnnxModelInfo> model_info = std::make_unique<OnnxModelInfo>(model_path.c_str());
-  if (model_info->GetONNXOpSetVersion() != 14 && model_info->GetONNXOpSetVersion() != 15 &&
+  if ((model_info->GetONNXOpSetVersion() < 14 || model_info->GetONNXOpSetVersion() > 17) &&
       provider_name == "tensorrt") {
     // TensorRT can run most of the model tests, but only part of
     // them is enabled here to save CI build time.
     // Besides saving CI build time, TRT isn’t able to support full ONNX ops spec and therefore some testcases will
     // fail. That's one of reasons we skip those testcases and only test latest ONNX opsets.
-    SkipTest(" tensorrt only support opset 14 or 15");
+    SkipTest(" tensorrt: only enable opset 14 to 17 of onnx tests");
     return;
   }
 
@@ -451,6 +451,22 @@ TEST_P(ModelTest, Run) {
 
     broken_tests.insert({"conv_with_autopad_same",
                          "Internal Error (node_of_y: Cannot set more than one input unless network has Q/DQ layers.)"});
+
+    // unsupported tests since opset16
+    broken_tests.insert({"sequence_map_add_2_sequences", "not supported by TensorRT EP"});
+    broken_tests.insert({"sequence_map_extract_shapes", "not supported by TensorRT EP."});
+    broken_tests.insert({"sequence_map_add_1_sequence_1_tensor", "not supported by TensorRT EP."});
+    broken_tests.insert({"sequence_map_identity_1_sequence", "not supported by TensorRT EP."});
+    broken_tests.insert({"sequence_map_identity_2_sequences", "not supported by TensorRT EP."});
+    broken_tests.insert({"sequence_map_identity_1_sequence_1_tensor", "not supported by TensorRT EP."});
+    broken_tests.insert({"leakyrelu_expanded", "not supported by TensorRT EP."});
+    broken_tests.insert({"leakyrelu_default_expanded", "not supported by TensorRT EP."});
+    broken_tests.insert({"leakyrelu_example_expanded", "not supported by TensorRT EP."});
+    broken_tests.insert({"prelu_broadcast_expanded", "not supported by TensorRT EP."});
+    broken_tests.insert({"prelu_example_expanded", "not supported by TensorRT EP."});
+    broken_tests_keyword_set.insert({"scatternd_add"});
+    broken_tests_keyword_set.insert({"scatternd_multiply"});
+    broken_tests_keyword_set.insert({"scatter_elements_with_duplicate_indices"});
 
     // sce op is not supported
     broken_tests_keyword_set.insert({"sce"});

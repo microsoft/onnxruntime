@@ -102,7 +102,7 @@ constexpr ProviderInfo kProvidersInPriorityOrder[] =
         },
         {
             kJsExecutionProvider,
-#ifdef USE_JS
+#ifdef USE_JSEP
             true,
 #else
             false,
