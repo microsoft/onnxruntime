@@ -48,9 +48,9 @@ const OnnxAttrInfo<int64_t> LRNOpBuilder::onnx_size_attr = {"size", 0};
 // The nodes from 2nd call of GetCapability get their layout transformed to NHWC.
 // Therefore, we need to check the node domain to determine if the layout has been transformed.
 Status LRNOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
-                                            const NodeUnit& node_unit,
-                                            const logging::Logger& logger,
-                                            bool is_quantized_model) const {
+                                   const NodeUnit& node_unit,
+                                   const logging::Logger& logger,
+                                   bool is_quantized_model) const {
   if (node_unit.Domain() == kMSInternalNHWCDomain) {
     return AddToModelBuilder(qnn_model_wrapper, node_unit, logger, is_quantized_model, true);
   }

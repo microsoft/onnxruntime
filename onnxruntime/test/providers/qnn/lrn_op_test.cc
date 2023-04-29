@@ -111,7 +111,6 @@ static void RunQDQLRNOpTest(const std::vector<int64_t>& shape, int64_t size,
 // CPU tests:
 //
 
-
 TEST_F(QnnCPUBackendTests, TestCPULRNSize3) {
   RunCPULRNOpTest({1, 128, 4, 5}, 3, ExpectedEPNodeAssignment::All, "TestCPULRNSize3");
 }
@@ -123,8 +122,6 @@ TEST_F(QnnCPUBackendTests, TestCPULRNSize5) {
 TEST_F(QnnCPUBackendTests, TestCPULRN_size_larger_than_channel) {
   RunCPULRNOpTest({1, 128, 4, 5}, 255, ExpectedEPNodeAssignment::All, "TestCPULRN_size_larger_than_channel");
 }
-
-
 
 #if defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 //
