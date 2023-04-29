@@ -112,6 +112,31 @@ int GetNumProfiles(std::unordered_map<std::string, std::vector<std::vector<int64
  * key: tensor_a, value: dim_0 min_shape max_shape dim_2 min_shape max_shape
  * key: tensor_b, value: dim_1 min_shape max_shape
  */
+/*
+ * Seralize engine profile.is function starts from ORT 1.15)
+ *
+ *
+ * The profile contains min/max/opt shape ranges of dynamic shape dimensions of each input tensor
+ * For example, assume tensor_a has two dynamic shape dimensions: dim_0 and dim_2, and tensor_b
+ * has one dynamic shape dimension: dim_1.
+ *
+ * The data before serialization will be:
+ * {
+ *   tensor_a: {
+ *     dim_0: [[min_shape_0, max_shape_1, opt_shape_2]],
+ *     dim_2: [[min_shape_6, max_shape_7, opt_shape_8]]
+ *   },
+ *   tensor_b: {
+ *     dim_1: [[min_shape_3, max_shape_4, opt_shape_5]]
+ *   }
+ * }
+ *
+ * The data after serialization will be:
+ * {
+ *   tensor_a: [dim_0, min_shape_0, max_shape_1, opt_shape_2, dim_2, min_shape_6, max_shape_7, opt_shape_8]
+ *   tensor_b: [dim_1, min_shape_3, max_shape_4, opt_shape_5]
+ * }
+ */
 void SerializeProfile(const std::string& file_name, std::unordered_map<std::string, std::unordered_map<size_t, std::pair<int64_t, int64_t>>>& shape_ranges) {
   // Serialize profile
   flexbuffers::Builder builder;
@@ -167,33 +192,52 @@ std::unordered_map<std::string, std::unordered_map<size_t, std::pair<int64_t, in
  * Seralize engine profile. (This function starts from ORT 1.15)
  *
  *
- * The profile contains min/max/opt shape ranges of dynamic shape dimensions of each input tensor
- * For example, assume tensor_a has two dynamic shape dimensions: dim_0 and dim_2, and tensor_b
- * has one dynamic shape dimension: dim_1.
+ * (1) Single profile case:
+ * Assume tensor_a has two dynamic shape dimensions: dim_0 and dim_2,
+ * and tensor_b has one dynamic shape dimension: dim_1.
  *
  * The data before serialization will be:
  * {
  *   tensor_a: {
- *     dim_0: [[min_shape_0, max_shape_1, opt_shape_2]],
- *     dim_2: [[min_shape_6, max_shape_7, opt_shape_8]]
+ *     dim_0: [[min_shape_0, max_shape_0, opt_shape_0]],
+ *     dim_2: [[min_shape_2, max_shape_2, opt_shape_2]]
  *   },
  *   tensor_b: {
- *     dim_1: [[min_shape_3, max_shape_4, opt_shape_5]]
+ *     dim_1: [[min_shape_1, max_shape_1, opt_shape_1]]
  *   }
  * }
  *
  * The data after serialization will be:
  * {
+ *   tensor_a: [dim_0, min_shape_0, max_shape_0, opt_shape_0, dim_2, min_shape_2, max_shape_2, opt_shape_2]
+ *   tensor_b: [dim_1, min_shape_1, max_shape_1, opt_shape_1]
+ * }
+ *
+ *
+ * (2) Multiple profiles case:
+ * For example, if the data before serialization is:
+ * {
  *   tensor_a: {
- *     "0": [dim_0, min_shape_0, max_shape_1, opt_shape_2, dim_2, min_shape_6, max_shape_7, opt_shape_8] // "0" means profile #0, "1" means profile #1 ...
- *   }
+ *     dim_0: [[min_shape_0, max_shape_0, opt_shape_0], [min_shape_1, max_shape_1, opt_shape_1]]
+ *   },
  *   tensor_b: {
- *     "0": [dim_1, min_shape_3, max_shape_4, opt_shape_5]
+ *     dim_1: [[min_shape_2, max_shape_2, opt_shape_2], [min_shape_3, max_shape_3, opt_shape_3]]
  *   }
  * }
+ *
+ * The data after serialization will be:
+ * {
+ *   tensor_a: [dim_0, min_shape_0, max_shape_0, opt_shape_0, dim_0, min_shape_1, max_shape_1, opt_shape_1]
+ *              |                                          |  |                                          |
+ *              ---------------- profile 0 -----------------  ---------------- profile 1 -----------------
+ *
+ *   tensor_b: [dim_1, min_shape_2, max_shape_2, opt_shape_2, dim_1, min_shape_3, max_shape_3, opt_shape_3]
+ *              |                                          |  |                                          |
+ *              ---------------- profile 0 -----------------  ---------------- profile 1 -----------------
+ * }
+ *
  */
 void SerializeProfileV2(const std::string& file_name,
-                        int num_profiles,
                         std::unordered_map<std::string, std::unordered_map<size_t, std::vector<std::vector<int64_t>>>>& shape_ranges)
 {
   LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] In SerializeProfileV2()";
@@ -201,20 +245,19 @@ void SerializeProfileV2(const std::string& file_name,
   flexbuffers::Builder builder;
   auto tensor_map_start = builder.StartMap();
   for (auto tensor_it = shape_ranges.begin(); tensor_it != shape_ranges.end(); tensor_it++) { // iterate tensors
-    auto profile_map_start = builder.StartMap(tensor_it->first.c_str());
-    for (int i = 0; i < num_profiles; i++) {
-      LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] profile #" << i;
-      auto dim_shape_vector_start = builder.StartVector(std::to_string(i).c_str());
+    builder.TypedVector(tensor_it->first.c_str(), [&] {
+      int num_profiles = tensor_it->second.size(); 
       for (auto dim_it = tensor_it->second.begin(); dim_it != tensor_it->second.end(); dim_it++) {
-        builder.Int(dim_it->first);
-        builder.Int(dim_it->second[i][0]);
-        builder.Int(dim_it->second[i][1]);
-        builder.Int(dim_it->second[i][2]);
-        LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] " << dim_it->first << ", " << dim_it->second[i][0] << ", " << dim_it->second[i][1] << ", " << dim_it->second[i][2];
+        for (int i = 0; i < num_profiles; i++) {
+          LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] profile #" << i;
+          builder.Int(dim_it->first);
+          builder.Int(dim_it->second[i][0]);
+          builder.Int(dim_it->second[i][1]);
+          builder.Int(dim_it->second[i][2]);
+          LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] " << dim_it->first << ", " << dim_it->second[i][0] << ", " << dim_it->second[i][1] << ", " << dim_it->second[i][2];
+        }
       }
-      builder.EndVector(dim_shape_vector_start, true /*typed*/, false /*fixed*/);
-    }
-    builder.EndMap(profile_map_start);
+    });
   }
   builder.EndMap(tensor_map_start);
   builder.Finish();
@@ -232,27 +275,47 @@ void SerializeProfileV2(const std::string& file_name,
  * Deserialize engine profile. (This function starts from ORT 1.15)
  *
  *
- * For example, assume tensor_a has two dynamic shape dimensions: dim_0 and dim_2, and tensor_b
- * has one dynamic shape dimension: dim_1.
+ * (1) Single profile case:
+ * Assume tensor_a has two dynamic shape dimensions: dim_0 and dim_2,
+ * and tensor_b has one dynamic shape dimension: dim_1.
  *
  * The data in profile file will be:
  * {
- *   tensor_a: {
- *     "0": [dim_0, min_shape_0, max_shape_1, opt_shape_2, dim_2, min_shape_6, max_shape_7, opt_shape_8] // "0" means profile #0, "1" means profile #1 ...
- *   }
- *   tensor_b: {
- *     "0": [dim_1, min_shape_3, max_shape_4, opt_shape_5]
- *   }
+ *   tensor_a: [dim_0, min_shape_0, max_shape_0, opt_shape_0, dim_2, min_shape_2, max_shape_2, opt_shape_2]
+ *   tensor_b: [dim_1, min_shape_1, max_shape_1, opt_shape_1]
  * }
  *
  * The data after deserialization will be:
  * {
  *   tensor_a: {
- *     dim_0: [[min_shape_0, max_shape_1, opt_shape_2]],
- *     dim_2: [[min_shape_6, max_shape_7, opt_shape_8]]
+ *     dim_0: [[min_shape_0, max_shape_0, opt_shape_0]],
+ *     dim_2: [[min_shape_2, max_shape_2, opt_shape_2]]
  *   },
  *   tensor_b: {
- *     dim_1: [[min_shape_3, max_shape_4, opt_shape_5]]
+ *     dim_1: [[min_shape_1, max_shape_1, opt_shape_1]]
+ *   }
+ * }
+ *
+ *
+ * (2) Multiple profiles case:
+ * For example, if the data in profile file is:
+ * {
+ *   tensor_a: [dim_0, min_shape_0, max_shape_0, opt_shape_0, dim_0, min_shape_1, max_shape_1, opt_shape_1]
+ *              |                                          |  |                                          |
+ *              ---------------- profile 0 -----------------  ---------------- profile 1 -----------------
+ *
+ *   tensor_b: [dim_1, min_shape_2, max_shape_2, opt_shape_2, dim_1, min_shape_3, max_shape_3, opt_shape_3]
+ *              |                                          |  |                                          |
+ *              ---------------- profile 0 -----------------  ---------------- profile 1 -----------------
+ * }
+ *
+ * The data after deserialization will be:
+ * {
+ *   tensor_a: {
+ *     dim_0: [[min_shape_0, max_shape_0, opt_shape_0], [min_shape_1, max_shape_1, opt_shape_1]]
+ *   },
+ *   tensor_b: {
+ *     dim_1: [[min_shape_2, max_shape_2, opt_shape_2], [min_shape_3, max_shape_3, opt_shape_3]]
  *   }
  * }
  */
@@ -271,34 +334,24 @@ std::unordered_map<std::string, std::unordered_map<size_t, std::vector<std::vect
   auto tensors_range_entries = flexbuffers::GetRoot((const uint8_t*)data.get(), length).AsMap();
   auto keys = tensors_range_entries.Keys();
   auto values = tensors_range_entries.Values();
-  for (size_t i = 0; i < keys.size(); i++) { // iterate tensors
-    auto tensor_name = keys[i].AsString().c_str();
-    auto profile_map = values[i].AsMap();
+  for (size_t i = 0, end = keys.size(); i < end; ++i) { // iterate tensors
+    auto dim_range_vector = values[i].AsTypedVector();
     std::unordered_map<size_t, std::vector<std::vector<int64_t>>> inner_map;
-    std::vector<std::vector<int64_t>> outer_vector(profile_map.size());
+    std::vector<std::vector<int64_t>> outer_vector;
 
-    auto inner_keys = profile_map.Keys();
-    auto inner_values = profile_map.Values();
-    for (size_t j = 0; j < inner_keys.size(); j++) { // iterate profiles
-      auto profile_idx = std::stoi(inner_keys[j].AsString().c_str());
-      auto dim_range_vector = inner_values[j].AsTypedVector();
-      LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] #" << profile_idx << " profile";
-      LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] " << tensor_name;
+    for (size_t k = 0; k < (dim_range_vector.size() / 4); k ++) { // iterate dim, min, max, opt for all profiles
+      std::vector<int64_t> inner_vector;
+      auto idx = 4 * k;
+      auto dim = dim_range_vector[idx].AsInt64();
+      inner_vector.push_back(dim_range_vector[idx + 1].AsInt64()); // min shape
+      inner_vector.push_back(dim_range_vector[idx + 2].AsInt64()); // max shape
+      inner_vector.push_back(dim_range_vector[idx + 3].AsInt64()); // opt shape
 
-      for (size_t k = 0; k < (dim_range_vector.size() / 4); k ++) { // iterate dim, min, max, opt
-        std::vector<int64_t> inner_vector;
-        auto idx = 4 * k;
-        auto dim = dim_range_vector[idx].AsInt64();
-        inner_vector.push_back(dim_range_vector[idx + 1].AsInt64()); // min shape
-        inner_vector.push_back(dim_range_vector[idx + 2].AsInt64()); // max shape
-        inner_vector.push_back(dim_range_vector[idx + 3].AsInt64()); // opt shape
-
-        if(inner_map.find(dim) == inner_map.end()) {
-           inner_map[dim] = outer_vector;
-        }
-        inner_map[dim][profile_idx] = inner_vector;
-        LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] " << dim << ", " << inner_vector[0] << ", " << inner_vector[1] << ", " << inner_vector[2];
+      if (inner_map.find(dim) == inner_map.end()) {
+         inner_map[dim] = outer_vector;
       }
+      inner_map[dim].push_back(inner_vector);
+      LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] " << dim << ", " << inner_vector[0] << ", " << inner_vector[1] << ", " << inner_vector[2];
     }
     shape_ranges[keys[i].AsString().c_str()] = inner_map;
   }

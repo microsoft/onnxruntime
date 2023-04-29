@@ -2083,7 +2083,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
           if (engine_cache_enable_) {
             // Serialize engine profile if it has explicit profiles
             if (has_explicit_profile) {
-              SerializeProfileV2(profile_cache_path, num_profiles, input_explicit_shape_ranges);
+              SerializeProfileV2(profile_cache_path, input_explicit_shape_ranges);
               LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Serialized " + profile_cache_path;
             }
 
