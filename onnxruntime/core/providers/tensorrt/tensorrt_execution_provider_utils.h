@@ -174,42 +174,49 @@ std::unordered_map<std::string, std::unordered_map<size_t, std::pair<int64_t, in
  * The data before serialization will be:
  * {
  *   tensor_a: {
- *     dim_0: [[min_shape, max_shape, opt_shape]],
- *     dim_2: [[min_shape, max_shape, opt_shape]]
+ *     dim_0: [[min_shape_0, max_shape_1, opt_shape_2]],
+ *     dim_2: [[min_shape_6, max_shape_7, opt_shape_8]]
  *   },
  *   tensor_b: {
- *     dim_1: [[min_shape, max_shape, opt_shape]]
+ *     dim_1: [[min_shape_3, max_shape_4, opt_shape_5]]
  *   }
  * }
  *
  * The data after serialization will be:
  * {
- *   tensor_a: [[dim_0, min_shape, max_shape, opt_shape, dim_2, min_shape, max_shape, opt_shape]]
- *   tensor_b: [[dim_1, min_shape, max_shape, opt_shape]]
+ *   tensor_a: {
+ *     "0": [dim_0, min_shape_0, max_shape_1, opt_shape_2, dim_2, min_shape_6, max_shape_7, opt_shape_8] // "0" means profile #0, "1" means profile #1 ...
+ *   }
+ *   tensor_b: {
+ *     "0": [dim_1, min_shape_3, max_shape_4, opt_shape_5]
+ *   }
  * }
  */
 void SerializeProfileV2(const std::string& file_name,
                         int num_profiles,
                         std::unordered_map<std::string, std::unordered_map<size_t, std::vector<std::vector<int64_t>>>>& shape_ranges)
 {
+  LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] In SerializeProfileV2()";
   // Serialize profile
   flexbuffers::Builder builder;
-  auto profile_start = builder.StartMap();
-  for (auto tensor_it = shape_ranges.begin(); tensor_it != shape_ranges.end(); tensor_it++) {
-    builder.TypedVector(tensor_it->first.c_str(), [&] {
-      for (int i = 0; i < num_profiles; i++) {
-        builder.TypedVector([&] {
-          for (auto dim_it = shape_ranges[tensor_it->first].begin(); dim_it != shape_ranges[tensor_it->first].end(); dim_it++) {
-            builder.Int(dim_it->first);
-            builder.Int(dim_it->second[i][0]);
-            builder.Int(dim_it->second[i][1]);
-            builder.Int(dim_it->second[i][2]);
-          }
-        });
+  auto tensor_map_start = builder.StartMap();
+  for (auto tensor_it = shape_ranges.begin(); tensor_it != shape_ranges.end(); tensor_it++) { // iterate tensors
+    auto profile_map_start = builder.StartMap(tensor_it->first.c_str());
+    for (int i = 0; i < num_profiles; i++) {
+      LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] profile #" << i;
+      auto dim_shape_vector_start = builder.StartVector(std::to_string(i).c_str());
+      for (auto dim_it = tensor_it->second.begin(); dim_it != tensor_it->second.end(); dim_it++) {
+        builder.Int(dim_it->first);
+        builder.Int(dim_it->second[i][0]);
+        builder.Int(dim_it->second[i][1]);
+        builder.Int(dim_it->second[i][2]);
+        LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] " << dim_it->first << ", " << dim_it->second[i][0] << ", " << dim_it->second[i][1] << ", " << dim_it->second[i][2];
       }
-    });
+      builder.EndVector(dim_shape_vector_start, true /*typed*/, false /*fixed*/);
+    }
+    builder.EndMap(profile_map_start);
   }
-  builder.EndMap(profile_start);
+  builder.EndMap(tensor_map_start);
   builder.Finish();
 
   // Save flexbuffer
@@ -218,6 +225,7 @@ void SerializeProfileV2(const std::string& file_name,
   size_t size = builder.GetSize();
   file.write(reinterpret_cast<const char*>(&buf[0]), size);
   file.close();
+  LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] End SerializeProfileV2()";
 }
 
 /*
@@ -229,22 +237,27 @@ void SerializeProfileV2(const std::string& file_name,
  *
  * The data in profile file will be:
  * {
- *   tensor_a: [[dim_0, min_shape, max_shape, opt_shape, dim_2, min_shape, max_shape, opt_shape]]
- *   tensor_b: [[dim_1, min_shape, max_shape, opt_shape]]
+ *   tensor_a: {
+ *     "0": [dim_0, min_shape_0, max_shape_1, opt_shape_2, dim_2, min_shape_6, max_shape_7, opt_shape_8] // "0" means profile #0, "1" means profile #1 ...
+ *   }
+ *   tensor_b: {
+ *     "0": [dim_1, min_shape_3, max_shape_4, opt_shape_5]
+ *   }
  * }
  *
  * The data after deserialization will be:
  * {
  *   tensor_a: {
- *     dim_0: [[min_shape, max_shape, opt_shape]],
- *     dim_2: [[min_shape, max_shape, opt_shape]]
+ *     dim_0: [[min_shape_0, max_shape_1, opt_shape_2]],
+ *     dim_2: [[min_shape_6, max_shape_7, opt_shape_8]]
  *   },
  *   tensor_b: {
- *     dim_1: [[min_shape, max_shape, opt_shape]]
+ *     dim_1: [[min_shape_3, max_shape_4, opt_shape_5]]
  *   }
  * }
  */
 std::unordered_map<std::string, std::unordered_map<size_t, std::vector<std::vector<int64_t>>>> DeserializeProfileV2(std::ifstream& infile) {
+  LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] In DeserializeProfileV2()";
   // Load flexbuffer
   infile.seekg(0, std::ios::end);
   size_t length = infile.tellg();
@@ -259,24 +272,37 @@ std::unordered_map<std::string, std::unordered_map<size_t, std::vector<std::vect
   auto keys = tensors_range_entries.Keys();
   auto values = tensors_range_entries.Values();
   for (size_t i = 0; i < keys.size(); i++) { // iterate tensors
-    auto profiles_vector = values[i].AsTypedVector();
+    auto tensor_name = keys[i].AsString().c_str();
+    auto profile_map = values[i].AsMap();
     std::unordered_map<size_t, std::vector<std::vector<int64_t>>> inner_map;
-    std::vector<std::vector<int64_t>> outer_vector(profiles_vector.size());
+    std::vector<std::vector<int64_t>> outer_vector(profile_map.size());
 
-    for (size_t j = 0; j < profiles_vector.size(); j++) { // iterate profiles
-      auto dim_range_vector = profiles_vector[j].AsTypedVector();
+    auto inner_keys = profile_map.Keys();
+    auto inner_values = profile_map.Values();
+    for (size_t j = 0; j < inner_keys.size(); j++) { // iterate profiles
+      auto profile_idx = std::stoi(inner_keys[j].AsString().c_str());
+      auto dim_range_vector = inner_values[j].AsTypedVector();
+      LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] #" << profile_idx << " profile";
+      LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] " << tensor_name;
 
       for (size_t k = 0; k < (dim_range_vector.size() / 4); k ++) { // iterate dim, min, max, opt
         std::vector<int64_t> inner_vector;
         auto idx = 4 * k;
+        auto dim = dim_range_vector[idx].AsInt64();
         inner_vector.push_back(dim_range_vector[idx + 1].AsInt64()); // min shape
         inner_vector.push_back(dim_range_vector[idx + 2].AsInt64()); // max shape
         inner_vector.push_back(dim_range_vector[idx + 3].AsInt64()); // opt shape
-        inner_map[dim_range_vector[idx].AsInt64()][j] = inner_vector;
+
+        if(inner_map.find(dim) == inner_map.end()) {
+           inner_map[dim] = outer_vector;
+        }
+        inner_map[dim][profile_idx] = inner_vector;
+        LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] " << dim << ", " << inner_vector[0] << ", " << inner_vector[1] << ", " << inner_vector[2];
       }
     }
     shape_ranges[keys[i].AsString().c_str()] = inner_map;
   }
+  LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] End DeserializeProfileV2()";
   return shape_ranges;
 }
 
@@ -347,22 +373,28 @@ bool CompareProfiles(const std::string& file_name,
       for (size_t i = 0; i < dim_it->second.size(); i++) { // iterate (multiple) profile(s)
         auto shape_values = dim_it->second[i]; 
         if (dim > (profile_min_shapes[tensor_name][i].size() - 1)) {
-          LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] dimension " << dim << " of " << tensor_name << " in " << file_name << " exceeds the total dimension of trt_profile_min_shapes.";
+          LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] dimension " << dim << " of '" << tensor_name << "' in " << file_name << " exceeds the total dimension of trt_profile_min_shapes.";
           return true;
         }
 
+        LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] min shape value of dimension " << dim << " of '" << tensor_name << "' is " << profile_min_shapes[tensor_name][i][dim];
+        LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] min shape value of dimension " << dim << " of '" << tensor_name << "' is " << shape_values[0] << " in " << file_name;
         if (profile_min_shapes[tensor_name][i][dim] != shape_values[0]) {
-          LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] min shape values of dimension " << dim << " of " << tensor_name << "are not the same";
+          LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] min shape values of dimension " << dim << " of '" << tensor_name << "' are not the same";
           return true;
         }
 
+        LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] max shape value of dimension " << dim << " of '" << tensor_name << "' is " << profile_max_shapes[tensor_name][i][dim];
+        LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] max shape value of dimension " << dim << " of '" << tensor_name << "' is " << shape_values[1] << " in " << file_name;
         if (profile_max_shapes[tensor_name][i][dim] != shape_values[1]) {
-          LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] max shape values of dimension " << dim << " of " << tensor_name << "are not the same";
+          LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] max shape values of dimension " << dim << " of '" << tensor_name << "' are not the same";
           return true;
         }
 
+        LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] opt shape value of dimension " << dim << " of '" << tensor_name << "' is " << profile_opt_shapes[tensor_name][i][dim];
+        LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] opt shape value of dimension " << dim << " of '" << tensor_name << "' is " << shape_values[2] << " in " << file_name;
         if (profile_opt_shapes[tensor_name][i][dim] != shape_values[2]) {
-          LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] opt shape values of dimension " << dim << " of " << tensor_name << "are not the same";
+          LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] opt shape values of dimension " << dim << " of '" << tensor_name << "' are not the same";
           return true;
         }
       }
@@ -511,7 +543,7 @@ bool ValidateProfileShapes(std::unordered_map<std::string, std::vector<std::vect
                            std::unordered_map<std::string, std::vector<std::vector<int64_t>>>& profile_max_shapes,
                            std::unordered_map<std::string, std::vector<std::vector<int64_t>>>& profile_opt_shapes) {
 
-  if (profile_min_shapes.empty() && profile_min_shapes.empty() && profile_opt_shapes.empty()) {
+  if (profile_min_shapes.empty() && profile_max_shapes.empty() && profile_opt_shapes.empty()) {
     return true;
   }
 
