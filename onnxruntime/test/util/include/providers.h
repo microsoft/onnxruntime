@@ -40,6 +40,3 @@
 #ifdef USE_CANN
 #include "core/providers/cann/cann_provider_factory.h"
 #endif
-#ifdef USE_VITISAI
-#include "core/providers/vitisai/vitisai_provider_factory.h"
-#endif
