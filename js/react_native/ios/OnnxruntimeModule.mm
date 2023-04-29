@@ -15,6 +15,7 @@ extern "C" {
 // included in the onnxruntime_extensions.h leads to a redefinition conflicts with multiple object defined in the ORT C
 // API.) So doing a forward declaration here instead of #include "onnxruntime_extensions.h" as a workaround for now
 // before we have a fix.
+// TODO: Investigate if we can include onnxruntime_extensions.h here
 OrtStatus *RegisterCustomOps(OrtSessionOptions *options, const OrtApiBase *api);
 } // Extern C
 #endif
