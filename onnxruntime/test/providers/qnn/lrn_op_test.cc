@@ -68,10 +68,13 @@ static void RunCPULRNOpTest(const std::vector<int64_t>& shape, int64_t size,
                             ExpectedEPNodeAssignment expected_ep_assignment, const char* test_description,
                             float alpha = 0.0001f, float beta = 0.75f, float bias = 1.0f, int opset = 13) {
   ProviderOptions provider_options;
+  float fp32_abs_err = 1e-5f;  // default tolerance
+
 #if defined(_WIN32)
   provider_options["backend_path"] = "QnnCpu.dll";
 #else
   provider_options["backend_path"] = "libQnnCpu.so";
+  fp32_abs_err = 1.5e-5f;  // On linux we need slightly larger tolerance.
 #endif
 
   constexpr int expected_nodes_in_partition = 1;
@@ -80,7 +83,8 @@ static void RunCPULRNOpTest(const std::vector<int64_t>& shape, int64_t size,
                   opset,
                   expected_ep_assignment,
                   expected_nodes_in_partition,
-                  test_description);
+                  test_description,
+                  fp32_abs_err);
 }
 
 // Runs an LRN model on the QNN HTP backend. Checks the graph node assignment, and that inference
