@@ -952,27 +952,31 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         [SkipNonPackageTests(DisplayName = "TestRegisterCustomOpsWithFunction")]
         private void TestRegisterCustomOpsWithFunction()
         {
-            using (var option = new SessionOptions())
+            // TODO(scmckay): Validate on Linus and OS X. Marshal.Prelink seems to work differently on at least Linux.
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
             {
-                try
+                using (var option = new SessionOptions())
                 {
-                    Marshal.Prelink(typeof(CustomOpLibrary).GetMethod("RegisterCustomOpsAltName"));
-                    option.RegisterCustomOpsUsingFunction("RegisterCustomOpsAltName");
-                }
-                catch (Exception ex)
-                {
-                    var msg = $"Failed to load custom op library, error = {ex.Message}";
-                    throw new Exception(msg + "\n" + ex.StackTrace);
-                }
+                    try
+                    {
+                        Marshal.Prelink(typeof(CustomOpLibrary).GetMethod("RegisterCustomOpsAltName"));
+                        option.RegisterCustomOpsUsingFunction("RegisterCustomOpsAltName");
+                    }
+                    catch (Exception ex)
+                    {
+                        var msg = $"Failed to load custom op library, error = {ex.Message}";
+                        throw new Exception(msg + "\n" + ex.StackTrace);
+                    }
 
-                var ortEnvInstance = OrtEnv.Instance();
-                string[] providers = ortEnvInstance.GetAvailableProviders();
-                if (Array.Exists(providers, provider => provider == "CUDAExecutionProvider"))
-                {
-                    option.AppendExecutionProvider_CUDA(0);
-                }
+                    var ortEnvInstance = OrtEnv.Instance();
+                    string[] providers = ortEnvInstance.GetAvailableProviders();
+                    if (Array.Exists(providers, provider => provider == "CUDAExecutionProvider"))
+                    {
+                        option.AppendExecutionProvider_CUDA(0);
+                    }
 
-                ValidateModelWithCustomOps(option);
+                    ValidateModelWithCustomOps(option);
+                }
             }
         }
 
