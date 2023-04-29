@@ -8,6 +8,18 @@
 #import <React/RCTLog.h>
 #import <onnxruntime/onnxruntime_cxx_api.h>
 
+#ifdef ORT_ENABLE_EXTENSIONS
+extern "C" {
+// Note: Declared in onnxruntime_extensions.h but forward declared here to resolve a build issue:
+// (A compilation error happened while building an expo react native ios app, onnxruntime_c_api.h header
+// included in the onnxruntime_extensions.h leads to a redefinition conflicts with multiple object defined in the ORT C
+// API.) So doing a forward declaration here instead of #include "onnxruntime_extensions.h" as a workaround for now
+// before we have a fix.
+// TODO: Investigate if we can include onnxruntime_extensions.h here
+OrtStatus *RegisterCustomOps(OrtSessionOptions *options, const OrtApiBase *api);
+} // Extern C
+#endif
+
 @implementation OnnxruntimeModule
 
 struct SessionInfo {
@@ -134,6 +146,10 @@ RCT_EXPORT_METHOD(run
   SessionInfo *sessionInfo = nullptr;
   sessionInfo = new SessionInfo();
   Ort::SessionOptions sessionOptions = [self parseSessionOptions:options];
+
+#ifdef ORT_ENABLE_EXTENSIONS
+  Ort::ThrowOnError(RegisterCustomOps(sessionOptions, OrtGetApiBase()));
+#endif
 
   if (modelData == nil) {
     sessionInfo->session.reset(new Ort::Session(*ortEnv, [modelPath UTF8String], sessionOptions));
