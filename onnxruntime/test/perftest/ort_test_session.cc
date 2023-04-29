@@ -689,7 +689,7 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
       std::string key(token.substr(0, pos));
       std::string value(token.substr(pos + 1));
       vitisai_session_options[key] = value;
-      }
+    }
     session_options.AppendExecutionProvider("VitisAI", vitisai_session_options);
 #else
     ORT_THROW("VitisAI is not supported in this build\n");
