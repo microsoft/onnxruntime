@@ -488,6 +488,7 @@ packages = [
     "onnxruntime.transformers.models.longformer",
     "onnxruntime.transformers.models.t5",
     "onnxruntime.transformers.models.stable_diffusion",
+    "onnxruntime.transformers.models.whisper",
 ]
 
 package_data = {"onnxruntime.tools.mobile_helpers": ["*.md", "*.config"]}

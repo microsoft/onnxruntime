@@ -510,6 +510,70 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
             } else {
               ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_layer_norm_fp32_fallback' should be 'True' or 'False'. Default value is 'False'.\n");
             }
+          } else if (option.first == "trt_timing_cache_enable") {
+            if (option.second == "True" || option.second == "true") {
+              params.trt_timing_cache_enable = true;
+            } else if (option.second == "False" || option.second == "false") {
+              params.trt_timing_cache_enable = false;
+            } else {
+              ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_timing_cache_enable' should be 'True' or 'False'. Default value is 'False'.\n");
+            }
+          } else if (option.first == "trt_force_timing_cache") {
+            if (option.second == "True" || option.second == "true") {
+              params.trt_force_timing_cache = true;
+            } else if (option.second == "False" || option.second == "false") {
+              params.trt_force_timing_cache = false;
+            } else {
+              ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_force_timing_cache' should be 'True' or 'False'. Default value is 'False'.\n");
+            }
+          } else if (option.first == "trt_detailed_build_log") {
+            if (option.second == "True" || option.second == "true") {
+              params.trt_detailed_build_log = true;
+            } else if (option.second == "False" || option.second == "false") {
+              params.trt_detailed_build_log = false;
+            } else {
+              ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_detailed_build_log' should be 'True' or 'False'. Default value is 'False'.\n");
+            }
+          } else if (option.first == "trt_build_heuristics_enable") {
+            if (option.second == "True" || option.second == "true") {
+              params.trt_build_heuristics_enable = true;
+            } else if (option.second == "False" || option.second == "false") {
+              params.trt_build_heuristics_enable = false;
+            } else {
+              ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_build_heuristics_enable' should be 'True' or 'False'. Default value is 'False'.\n");
+            }
+          } else if (option.first == "trt_sparsity_enable") {
+            if (option.second == "True" || option.second == "true") {
+              params.trt_sparsity_enable = true;
+            } else if (option.second == "False" || option.second == "false") {
+              params.trt_sparsity_enable = false;
+            } else {
+              ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_sparsity_enable' should be 'True' or 'False'. Default value is 'False'.\n");
+            }
+          } else if (option.first == "trt_builder_optimization_level") {
+            if (!option.second.empty()) {
+              params.trt_builder_optimization_level = std::stoi(option.second);
+            } else {
+              ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_builder_optimization_level' should be a number i.e. '0'.\n");
+            }
+          } else if (option.first == "trt_auxiliary_streams") {
+            if (!option.second.empty()) {
+              params.trt_auxiliary_streams = std::stoi(option.second);
+            } else {
+              ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_auxiliary_streams' should be a number i.e. '0'.\n");
+            }
+          } else if (option.first == "trt_tactic_sources") {
+            if (!option.second.empty()) {
+              params.trt_tactic_sources = option.second.c_str();
+            } else {
+              ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_tactic_sources' should be a string. e.g. \"-CUDNN,+CUBLAS\" available keys: \"CUBLAS\"|\"CUBLAS_LT\"|\"CUDNN\"|\"EDGE_MASK_CONVOLUTIONS\".\n");
+            }
+          } else if (option.first == "trt_extra_plugin_lib_paths") {
+            if (!option.second.empty()) {
+              params.trt_extra_plugin_lib_paths = option.second.c_str();
+            } else {
+              ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_extra_plugin_lib_paths' should be a path string.\n");
+            }
           } else {
             ORT_THROW("Invalid TensorRT EP option: ", option.first);
           }
