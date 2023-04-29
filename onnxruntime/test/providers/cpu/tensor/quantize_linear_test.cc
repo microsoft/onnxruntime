@@ -337,12 +337,11 @@ TEST(QuantizeLinearOpTest, QuantizeLinear_With_Zero_Point0) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT doesn't support support UINT8 for quantization
 }
 
-TEST(QuantizeLinearOpTest, QuantizeLinear_With_Zero_PointEmpty) {
+TEST(QuantizeLinearOpTest, QuantizeLinear_With_Zero_Dim1) {
   OpTester test("QuantizeLinear", 10);
-  test.AddInput<float>("x", {}, {3});
-  test.AddInput<float>("y_scale", {}, {2.0f});
-  test.AddInput<uint8_t>("y_zero_point", {}, {});
-  test.AddOutput<uint8_t>("y", {}, {2});
+  test.AddInput<float>("x", {1}, {3});
+  test.AddInput<float>("y_scale", {1}, {2.0f});
+  test.AddOutput<uint8_t>("y", {1}, {2});
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT doesn't support support UINT8 for quantization
 }
 
