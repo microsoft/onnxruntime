@@ -339,10 +339,16 @@ namespace Microsoft.ML.OnnxRuntime
         }
 
         /// <summary>
-        /// Gets the current training session state. The state can be saved to a checkpoint file
-        /// by calling <see cref="SaveCheckpoint"/>
+        /// Export a model that can be used for inferencing.
+        /// If the training session was provided with an eval model, the training session can generate
+        /// an inference model if it knows the inference graph outputs. The input inference graph outputs
+        /// are used to prune the eval model so that the inference model's outputs align with the provided outputs.
+        /// The exported model is saved at the path provided and can be used for inferencing with Ort::Session.
+        /// Note that the function re-loads the eval model from the path provided to Ort::TrainingSession
+        /// and expects that this path still be valid.
         /// </summary>
-        /// <param name="includeOptimizerState">Flag indicating whether to include optimizer state or not.</param>
+        /// <param name="inference_model_path">Path where the inference model should be serialized to.</param>
+        /// <param name="graphOutputNames">Names of the outputs that are needed in the inference model.</param>
         public void ExportModelForInferencing(string inferenceModelPath, IReadOnlyCollection<string> graphOutputNames)
         {
             using (var cleanupList = new DisposableList<IDisposable>())
@@ -450,7 +456,7 @@ namespace Microsoft.ML.OnnxRuntime
         {
             if (!NativeTrainingMethods.TrainingEnabled())
             {
-                throw new InvalidOperationException("Training is disabled in the current build. Please build ONNXRuntime from source with the build flags enable_training_apis. \n");
+                throw new InvalidOperationException("This package does not contain the training API. Please install the Microsoft.ML.OnnxRuntime.Training package.\n");
             }
             var options = sessOptions;
             if (sessOptions == null)
@@ -477,7 +483,7 @@ namespace Microsoft.ML.OnnxRuntime
 
                 _trainInputNames = new List<string>();
                 UIntPtr inputCount = UIntPtr.Zero;
-                NativeApiStatus.VerifySuccess(NativeTrainingMethods.OrtGetTrainingModelOutputCount(_nativeHandle, out inputCount));
+                NativeApiStatus.VerifySuccess(NativeTrainingMethods.OrtGetTrainingModelInputCount(_nativeHandle, out inputCount));
                 for (ulong i = 0; i < inputCount.ToUInt64(); i++)
                 {
                     _trainInputNames.Add(GetInputName(i, true));
@@ -496,10 +502,10 @@ namespace Microsoft.ML.OnnxRuntime
 
                     _evalInputNames = new List<string>();
                     inputCount = UIntPtr.Zero;
-                    NativeApiStatus.VerifySuccess(NativeTrainingMethods.OrtGetTrainingModelOutputCount(_nativeHandle, out inputCount));
+                    NativeApiStatus.VerifySuccess(NativeTrainingMethods.OrtGetEvalModelInputCount(_nativeHandle, out inputCount));
                     for (ulong i = 0; i < inputCount.ToUInt64(); i++)
                     {
-                        _evalInputNames.Add(GetInputName(i, true));
+                        _evalInputNames.Add(GetInputName(i, false));
                     }
                 }
 

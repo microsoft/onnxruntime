@@ -398,8 +398,9 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 
                 var inputNames = trainingSession.InputNames(true);
 
-                Assert.Single(inputNames);
+                Assert.True(inputNames.Count == 2);
                 Assert.Equal("input-0", inputNames[0]);
+                Assert.Equal("labels", inputNames[1]);
             }
         }
 
@@ -421,8 +422,9 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 
                 var inputNames = trainingSession.InputNames(false);
 
-                Assert.Single(inputNames);
+                Assert.True(inputNames.Count == 2);
                 Assert.Equal("input-0", inputNames[0]);
+                Assert.Equal("labels", inputNames[1]);
             }
         }
 
