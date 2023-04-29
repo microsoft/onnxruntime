@@ -3,10 +3,7 @@ parameters:
 - name: QnnSdk
   displayName: QNN SDK version
   type: string
-  default: qnn-v2.8.0.230223123141_52150
-  values:
-  - qnn-v2.6.0.221227110525_42395
-  - qnn-v2.8.0.230223123141_52150
+  default: qnn-v2.9.0.230327191003_53330
 
 jobs:
   - job: Build_QNN_EP
