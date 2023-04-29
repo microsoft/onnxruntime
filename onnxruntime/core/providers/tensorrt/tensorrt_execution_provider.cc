@@ -363,12 +363,6 @@ std::unique_lock<OrtMutex> TensorrtExecutionProvider::GetApiLock() const {
   return std::unique_lock<OrtMutex>(singleton);
 }
 
-#ifdef ORT_TENSORRT_PLACEHOLDER_BUILDER
-// instantiate global unused builder object which keeps the TRT kernel library in memory
-// so that subsequent builders avoid the expensive load / unload process.
-auto const placeholder = std::unique_ptr<nvinfer1::IBuilder>(nvinfer1::createInferBuilder(GetTensorrtLogger()));
-#endif
-
 /*
  * Apply TensorRT optimization profile shapes from provider options.
  *
