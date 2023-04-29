@@ -2628,7 +2628,6 @@ TEST(CApiTest, TestConfigureCUDAProviderOptions) {
   ASSERT_TRUE(s.find("cudnn_conv_algo_search=DEFAULT") != std::string::npos);
   ASSERT_TRUE(s.find("do_copy_in_default_stream=1") != std::string::npos);
   ASSERT_TRUE(s.find("cudnn_conv_use_max_workspace=1") != std::string::npos);
-  ASSERT_TRUE(s.find("enable_skip_layer_norm_strict_mode=1") != std::string::npos);
   ASSERT_TRUE(s.find("cudnn_conv1d_pad_to_nc1d") != std::string::npos);
 
   ASSERT_TRUE(api.AllocatorFree(allocator, (void*)cuda_options_str) == nullptr);
