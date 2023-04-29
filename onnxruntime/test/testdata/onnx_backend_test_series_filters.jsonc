@@ -699,7 +699,21 @@
     "failing_permanently_nodejs_binding": [
         // those test cases are no longer available in later opset version
         ["opset10", "^test_mod_float_mixed_sign_example"],
-        ["opset11", "^test_unique_not_sorted_without_axis"]
+        ["opset11", "^test_unique_not_sorted_without_axis"],
+        // No support for float8 in numpy
+        ["opset19", "^test_cast_no_saturate*"],
+        ["opset19", "^test_cast_FLOAT8*"],
+        ["opset19", "^test_castlike_FLOAT8*"],
+        ["opset19", "^test_cast_FLOAT_to_FLOAT8*"],
+        ["opset19", "^test_castlike_FLOAT_to_FLOAT8*"],
+        ["opset19", "^test_cast_FLOAT16_to_FLOAT8*"],
+        ["opset19", "^test_castlike_FLOAT16_to_FLOAT8*"],
+        ["opset19", "^test_dequantizelinear_e*"],
+        ["opset19", "^test_quantizelinear_e*"],
+        ["opset19", "^test_castlike_FLOAT_to_BFLOAT16*"],
+        ["opset19", "^test_castlike_FLOAT_to_STRING*"],
+        ["opset19", "^test_castlike_BFLOAT16_to*"],
+        ["opset19", "^test_castlike_FLOAT_to_BFLOAT16*"]
     ],
     "test_with_types_disabled_due_to_binary_size_concerns": [
         "^test_bitshift_right_uint16",

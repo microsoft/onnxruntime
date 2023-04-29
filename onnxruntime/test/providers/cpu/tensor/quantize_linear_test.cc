@@ -312,10 +312,36 @@ TEST(QuantizeLinearOpTest, Scalar) {
 }
 
 // quantize with scalar data
-TEST(QuantizeLinearOpTest, QuantizeLinear_Without_Zero_Point) {
+TEST(QuantizeLinearOpTest, QuantizeLinear_Without_Zero_Point_Opset10) {
   OpTester test("QuantizeLinear", 10);
   test.AddInput<float>("x", {}, {3});
   test.AddInput<float>("y_scale", {}, {2.0f});
+  test.AddOutput<uint8_t>("y", {}, {2});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT doesn't support support UINT8 for quantization
+}
+
+TEST(QuantizeLinearOpTest, QuantizeLinear_Without_Zero_Point_Opset13) {
+  OpTester test("QuantizeLinear", 13);
+  test.AddInput<float>("x", {}, {3});
+  test.AddInput<float>("y_scale", {}, {2.0f});
+  test.AddOutput<uint8_t>("y", {}, {2});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT doesn't support support UINT8 for quantization
+}
+
+TEST(QuantizeLinearOpTest, QuantizeLinear_With_Zero_Point0) {
+  OpTester test("QuantizeLinear", 10);
+  test.AddInput<float>("x", {}, {3});
+  test.AddInput<float>("y_scale", {}, {2.0f});
+  test.AddInput<uint8_t>("y_zero_point", {}, {0});
+  test.AddOutput<uint8_t>("y", {}, {2});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT doesn't support support UINT8 for quantization
+}
+
+TEST(QuantizeLinearOpTest, QuantizeLinear_With_Zero_PointEmpty) {
+  OpTester test("QuantizeLinear", 10);
+  test.AddInput<float>("x", {}, {3});
+  test.AddInput<float>("y_scale", {}, {2.0f});
+  test.AddInput<uint8_t>("y_zero_point", {}, {});
   test.AddOutput<uint8_t>("y", {}, {2});
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT doesn't support support UINT8 for quantization
 }
