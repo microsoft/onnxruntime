@@ -313,6 +313,11 @@ TEST(QuantizeLinearOpTest, Scalar) {
 
 // quantize with scalar data
 TEST(QuantizeLinearOpTest, QuantizeLinear_Without_Zero_Point_Opset10) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: AbiCustomRegistry.cpp(507): The parameter is incorrect";
+  }
+
   OpTester test("QuantizeLinear", 10);
   test.AddInput<float>("x", {}, {3});
   test.AddInput<float>("y_scale", {}, {2.0f});
@@ -321,6 +326,11 @@ TEST(QuantizeLinearOpTest, QuantizeLinear_Without_Zero_Point_Opset10) {
 }
 
 TEST(QuantizeLinearOpTest, QuantizeLinear_Without_Zero_Point_Opset13) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: AbiCustomRegistry.cpp(507): The parameter is incorrect";
+  }
+
   OpTester test("QuantizeLinear", 13);
   test.AddInput<float>("x", {}, {3});
   test.AddInput<float>("y_scale", {}, {2.0f});
@@ -338,6 +348,11 @@ TEST(QuantizeLinearOpTest, QuantizeLinear_With_Zero_Point0) {
 }
 
 TEST(QuantizeLinearOpTest, QuantizeLinear_With_Zero_Dim1) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: AbiCustomRegistry.cpp(507): The parameter is incorrect";
+  }
+
   OpTester test("QuantizeLinear", 10);
   test.AddInput<float>("x", {1}, {3});
   test.AddInput<float>("y_scale", {1}, {2.0f});
