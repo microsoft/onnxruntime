@@ -375,7 +375,7 @@ bool ApplyProfileShapesFromProviderOptions(std::vector<nvinfer1::IOptimizationPr
                                            std::unordered_map<std::string, std::vector<std::vector<int64_t>>>& profile_min_shapes,
                                            std::unordered_map<std::string, std::vector<std::vector<int64_t>>>& profile_max_shapes,
                                            std::unordered_map<std::string, std::vector<std::vector<int64_t>>>& profile_opt_shapes,
-                                           std::unordered_map<std::string, std::unordered_map<size_t, std::vector<std::vector<int64_t>>>>& input_explicit_shape_ranges){
+                                           std::unordered_map<std::string, std::unordered_map<size_t, std::vector<std::vector<int64_t>>>>& input_explicit_shape_ranges) {
   if (trt_profiles.size() == 0) {
     LOGS_DEFAULT(WARNING) << "[TensorRT EP] Number of optimization profiles should be greater than 0, but it's 0.";
     return false;
@@ -488,7 +488,7 @@ Status ApplyProfileShapesFromInputTensorValue(std::vector<nvinfer1::IOptimizatio
                                               const std::unordered_map<std::string, size_t>& input_indexes,
                                               std::unordered_map<std::string, std::vector<int32_t>>& tensor_shape_values,
                                               cudaStream_t stream,
-                                              bool* engine_update){
+                                              bool* engine_update) {
   for (size_t i = 0; i < trt_profiles.size(); i++) {
     const std::string& input_name = input->getName();
     nvinfer1::Dims dims = input->getDimensions();
@@ -508,7 +508,7 @@ Status ApplyProfileShapesFromInputTensorValue(std::vector<nvinfer1::IOptimizatio
     auto trt_profile = trt_profiles[i];
 
     // If there are multiple profiles, for second and rest of profiles, simply copy the min/max/opt profile values from the first profile.
-    // Following "if statement" won't be executed since TRT EP currently only allows single profile for non-explicit profiles case. 
+    // Following "if statement" won't be executed since TRT EP currently only allows single profile for non-explicit profiles case.
     if (i > 0) {
       if (input->isShapeTensor()) {
         // shape tensor
@@ -572,7 +572,7 @@ Status ApplyProfileShapesFromInputTensorValue(std::vector<nvinfer1::IOptimizatio
       if (shape_size == shape_range_size) {
         // If shape size matches, check/update shape range
         for (int j = 0; j < shape_size; ++j) {
-          auto& shape_range = shape_ranges_per_input[j][0];// only has one profile
+          auto& shape_range = shape_ranges_per_input[j][0];  // only has one profile
           shapes_min[j] = static_cast<int32_t>(shape_range[0]);
           shapes_max[j] = static_cast<int32_t>(shape_range[1]);
           shapes_opt[j] = static_cast<int32_t>(shape_range[2]);
@@ -617,7 +617,7 @@ Status ApplyProfileShapesFromInputTensorValue(std::vector<nvinfer1::IOptimizatio
       for (int j = 0, end = nb_dims; j < end; ++j) {
         const auto& tensor_shape = tensor_shapes[j];
         if (shape_ranges_per_input.find(j) != shape_ranges_per_input.end()) {
-          auto& shape_range = shape_ranges_per_input[j][0];// only has one profile
+          auto& shape_range = shape_ranges_per_input[j][0];  // only has one profile
           dims_min.d[j] = static_cast<int32_t>(shape_range[0]);
           dims_max.d[j] = static_cast<int32_t>(shape_range[1]);
           dims_opt.d[j] = static_cast<int32_t>(shape_range[2]);
@@ -703,7 +703,6 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
     profile_min_shapes = info.profile_min_shapes;
     profile_max_shapes = info.profile_max_shapes;
     profile_opt_shapes = info.profile_opt_shapes;
-    engine_cache_built_with_explicit_profiles_ = info.engine_cache_built_with_explicit_profiles;
   } else {
     try {
       const std::string max_partition_iterations_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kMaxPartitionIterations);
@@ -843,16 +842,11 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
       profile_min_shapes = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kProfilesMinShapes);
       profile_max_shapes = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kProfilesMaxShapes);
       profile_opt_shapes = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kProfilesOptShapes);
-
-      const std::string engine_cache_built_with_explicit_profiles_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kEngineCacheBuiltWithExplicitProfiles);
-      if (!engine_cache_built_with_explicit_profiles_env.empty()) {
-        engine_cache_built_with_explicit_profiles_ = (std::stoi(engine_cache_built_with_explicit_profiles_env) == 0 ? false : true);
-      }
-    }catch (const std::invalid_argument& ex) {
+    } catch (const std::invalid_argument& ex) {
       LOGS_DEFAULT(WARNING) << "[TensorRT EP] Invalid Argument (from environment variables): " << ex.what();
-    }catch (const std::out_of_range& ex) {
+    } catch (const std::out_of_range& ex) {
       LOGS_DEFAULT(WARNING) << "[TensorRT EP] Out Of Range Error (from environment variables): " << ex.what();
-    }catch (...) {
+    } catch (...) {
       LOGS_DEFAULT(WARNING) << "[TensorRT EP] Unknown Exception (from environment variables)";
     }
   }
@@ -1794,7 +1788,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
      *   2) As long as one of the dynamic shape input tensors has no explicitly associated profile, TRT EP will create default shape as described above,
      *      and all the profiles won't be applied and engine won't be built until EP compute time.
      */
-    bool has_dynamic_shape = false;// True if input tensor has dynamic shape and no explicit profile is specified, otherwise false.
+    bool has_dynamic_shape = false;  // True if input tensor has dynamic shape and no explicit profile is specified, otherwise false.
     bool has_explicit_profile = false;
     bool apply_explicit_profile = false;
     int num_profiles = 0;
@@ -1856,7 +1850,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
         if (input->isShapeTensor()) {
           // Shape tensor
           std::vector<int64_t> shape_vector{INT_MAX, INT_MIN, INT_MIN};
-          profile_vector.push_back(shape_vector);// only one profile needed
+          profile_vector.push_back(shape_vector);  // only one profile needed
           input_implicit_shape_ranges[input_name][0] = profile_vector;
           has_dynamic_shape = true;
         } else {
@@ -1864,7 +1858,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
           for (int j = 0, end = nb_dims; j < end; ++j) {
             if (dims.d[j] == -1) {
               std::vector<int64_t> shape_vector{INT_MAX, INT_MIN, INT_MIN};
-              profile_vector.push_back(shape_vector);// only one profile needed
+              profile_vector.push_back(shape_vector);  // only one profile needed
               input_implicit_shape_ranges[input_name][j] = profile_vector;
               has_dynamic_shape = true;
             }
@@ -1999,7 +1993,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
     // Otherwise engine will be handled at inference time.
     std::unique_ptr<nvinfer1::ICudaEngine> trt_engine;
     std::unique_ptr<nvinfer1::IExecutionContext> trt_context;
-    if (!has_dynamic_shape || engine_cache_built_with_explicit_profiles_) {
+    if (!has_dynamic_shape) {
       const std::string cache_path = GetCachePath(cache_path_, trt_node_name_with_precision);
       const std::string engine_cache_path = cache_path + ".engine";
       const std::string profile_cache_path = cache_path + ".profile";
@@ -2020,7 +2014,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
           engine_update = CompareProfiles(profile_cache_path, profile_min_shapes_, profile_max_shapes_, profile_opt_shapes_);
           if (engine_update) {
             LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Engine will be built";
-          }else {
+          } else {
             LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Engine won't be rebuilt";
           }
         }

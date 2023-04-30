@@ -214,13 +214,12 @@ std::unordered_map<std::string, std::unordered_map<size_t, std::pair<int64_t, in
  * }
  *
  */
-void SerializeProfileV2(const std::string& file_name,
-                        std::unordered_map<std::string, std::unordered_map<size_t, std::vector<std::vector<int64_t>>>>& shape_ranges){
+void SerializeProfileV2(const std::string& file_name, std::unordered_map<std::string, std::unordered_map<size_t, std::vector<std::vector<int64_t>>>>& shape_ranges) {
   LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] In SerializeProfileV2()";
   // Serialize profile
   flexbuffers::Builder builder;
   auto tensor_map_start = builder.StartMap();
-  for (auto tensor_it = shape_ranges.begin(); tensor_it != shape_ranges.end(); tensor_it++) {// iterate tensors
+  for (auto tensor_it = shape_ranges.begin(); tensor_it != shape_ranges.end(); tensor_it++) {  // iterate tensors
     LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] input tensor is '" << tensor_it->first.c_str() << "'";
     builder.TypedVector(tensor_it->first.c_str(), [&] {
       int num_profiles = tensor_it->second.size();
@@ -310,22 +309,22 @@ std::unordered_map<std::string, std::unordered_map<size_t, std::vector<std::vect
   auto tensors_range_entries = flexbuffers::GetRoot((const uint8_t*)data.get(), length).AsMap();
   auto keys = tensors_range_entries.Keys();
   auto values = tensors_range_entries.Values();
-  for (size_t i = 0, end = keys.size(); i < end; ++i) {// iterate tensors
+  for (size_t i = 0, end = keys.size(); i < end; ++i) {  // iterate tensors
     LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] input tensor is '" << keys[i].AsString().c_str() << "'";
     auto dim_range_vector = values[i].AsTypedVector();
     std::unordered_map<size_t, std::vector<std::vector<int64_t>>> inner_map;
     std::vector<std::vector<int64_t>> profile_vector;
 
-    for (size_t k = 0; k < (dim_range_vector.size() / 4); k ++) {// iterate dim, min, max, opt for all profiles
+    for (size_t k = 0; k < (dim_range_vector.size() / 4); k ++) {  // iterate dim, min, max, opt for all profiles
       std::vector<int64_t> shape_vector;
       auto idx = 4 * k;
       auto dim = dim_range_vector[idx].AsInt64();
-      shape_vector.push_back(dim_range_vector[idx + 1].AsInt64());// min shape
-      shape_vector.push_back(dim_range_vector[idx + 2].AsInt64());// max shape
-      shape_vector.push_back(dim_range_vector[idx + 3].AsInt64());// opt shape
+      shape_vector.push_back(dim_range_vector[idx + 1].AsInt64());  // min shape
+      shape_vector.push_back(dim_range_vector[idx + 2].AsInt64());  // max shape
+      shape_vector.push_back(dim_range_vector[idx + 3].AsInt64());  // opt shape
 
       if (inner_map.find(dim) == inner_map.end()) {
-         inner_map[dim] = profile_vector;
+        inner_map[dim] = profile_vector;
       }
       inner_map[dim].push_back(shape_vector);
       LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] " << dim << ", " << shape_vector[0] << ", " << shape_vector[1] << ", " << shape_vector[2];
@@ -340,7 +339,7 @@ std::unordered_map<std::string, std::unordered_map<size_t, std::vector<std::vect
  * Return false meaning no need to rebuild engine if everything is same.
  * Otherwise return true and engine needs to be rebuilt.
  */
-bool CompareProfiles(const std::string& file_name, 
+bool CompareProfiles(const std::string& file_name,
                      std::unordered_map<std::string, std::vector<std::vector<int64_t>>>& profile_min_shapes,
                      std::unordered_map<std::string, std::vector<std::vector<int64_t>>>& profile_max_shapes,
                      std::unordered_map<std::string, std::vector<std::vector<int64_t>>>& profile_opt_shapes) {
@@ -381,25 +380,24 @@ bool CompareProfiles(const std::string& file_name,
   }
 
   // Iterate through shape_ranges map
-  for (auto tensor_it = shape_ranges.begin(); tensor_it != shape_ranges.end(); tensor_it++) {// iterate tensors
+  for (auto tensor_it = shape_ranges.begin(); tensor_it != shape_ranges.end(); tensor_it++) {  // iterate tensors
     auto tensor_name = tensor_it->first;
-    if (profile_min_shapes.find(tensor_name) == profile_min_shapes.end())
-    {
+    if (profile_min_shapes.find(tensor_name) == profile_min_shapes.end()) {
       LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Tensor name '" << tensor_name << "' doesn't exist in trt_profile_min_shapes." ;
       return true;
     }
 
     for (auto dim_it = tensor_it->second.begin(); dim_it != tensor_it->second.end(); dim_it++) { // iterate dimensions
       auto dim = dim_it->first;
-      auto num_profiles = GetNumProfiles(profile_min_shapes); 
+      auto num_profiles = GetNumProfiles(profile_min_shapes);
 
       if (dim_it->second.size() != static_cast<size_t>(num_profiles)) {
         LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Numbers of profiles are not the same.";
         return true;
       }
 
-      for (size_t i = 0; i < dim_it->second.size(); i++) { // iterate (multiple) profile(s)
-        auto shape_values = dim_it->second[i]; 
+      for (size_t i = 0; i < dim_it->second.size(); i++) {  // iterate (multiple) profile(s)
+        auto shape_values = dim_it->second[i];
         if (dim > (profile_min_shapes[tensor_name][i].size() - 1)) {
           LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] dimension " << dim << " of '" << tensor_name << "' in " << file_name << " exceeds the total dimension of trt_profile_min_shapes.";
           return true;
@@ -582,7 +580,7 @@ bool ValidateProfileShapes(std::unordered_map<std::string, std::vector<std::vect
   }
 
   std::unordered_map<std::string, std::vector<std::vector<int64_t>>>::iterator it;
-  for (it = profile_min_shapes.begin(); it != profile_min_shapes.end(); it++){
+  for (it = profile_min_shapes.begin(); it != profile_min_shapes.end(); it++) {
     auto input_name = it->first;
     auto num_profile = it->second.size();
 
@@ -663,7 +661,7 @@ bool ParseProfileShapes(std::string profile_shapes_string, std::unordered_map<st
 
   std::stringstream input_string_stream(profile_shapes_string);
   char delim = ',';
-  std::string input_name_with_shape;// input_name:shape, ex: "input_id:32x1"
+  std::string input_name_with_shape;  // input_name:shape, ex: "input_id:32x1"
   while (std::getline(input_string_stream, input_name_with_shape, delim)) {
     std::pair<std::string, std::vector<int64_t>> pair;
     if (!MakeInputNameShapePair(input_name_with_shape, pair)) {

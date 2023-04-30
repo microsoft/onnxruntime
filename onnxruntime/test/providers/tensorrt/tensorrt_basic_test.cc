@@ -540,18 +540,20 @@ TEST_P(TensorrtExecutionProviderCacheTest, Run) {
       profile_files = GetCachesByType("./", ".profile");
       ASSERT_EQ(profile_files.size(), 1);
       std::ifstream profile_file(profile_files[0], std::ios::binary | std::ios::in);
-      auto shape_ranges = DeserializeProfile(profile_file);
+      auto shape_ranges = DeserializeProfileV2(profile_file);
 
-      // check min/max shape ranges of dynamic shape dimensions
+      // check min/max/opt shape ranges of dynamic shape dimensions
       for (auto it = shape_ranges.cbegin(); it != shape_ranges.cend(); ++it) {
         auto ranges = it->second;
         for (auto it2 = ranges.cbegin(); it2 != ranges.cend(); ++it2) {
           if (it2->first == 1) {
-            ASSERT_EQ(it2->second.first, 3);
-            ASSERT_EQ(it2->second.second, 3);
+            ASSERT_EQ(it2->second[0][0], 3);
+            ASSERT_EQ(it2->second[0][1], 3);
+            ASSERT_EQ(it2->second[0][2], 3);
           } else if (it2->first == 2) {
-            ASSERT_EQ(it2->second.first, 2);
-            ASSERT_EQ(it2->second.second, 2);
+            ASSERT_EQ(it2->second[0][0], 2);
+            ASSERT_EQ(it2->second[0][1], 2);
+            ASSERT_EQ(it2->second[0][2], 2);
           }
         }
       }
@@ -597,11 +599,13 @@ TEST_P(TensorrtExecutionProviderCacheTest, Run) {
         auto ranges = it->second;
         for (auto it2 = ranges.cbegin(); it2 != ranges.cend(); ++it2) {
           if (it2->first == 1) {
-            ASSERT_EQ(it2->second.first, 1);
-            ASSERT_EQ(it2->second.second, 3);
+            ASSERT_EQ(it2->second[0][0], 1);
+            ASSERT_EQ(it2->second[0][1], 3);
+            ASSERT_EQ(it2->second[0][2], 3);
           } else if (it2->first == 2) {
-            ASSERT_EQ(it2->second.first, 2);
-            ASSERT_EQ(it2->second.second, 6);
+            ASSERT_EQ(it2->second[0][0], 2);
+            ASSERT_EQ(it2->second[0][1], 6);
+            ASSERT_EQ(it2->second[0][2], 6);
           }
         }
       }
