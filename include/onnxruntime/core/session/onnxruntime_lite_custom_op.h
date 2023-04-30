@@ -129,7 +129,7 @@ class Tensor<std::string> : public TensorBase {
       // note - there will be copy ...
       std::vector<char> chars(num_chars + 1, '\0');
       auto num_strings = static_cast<size_t>(NumberOfElement());
-      std::vector<size_t> offsets(NumberOfElement());
+      std::vector<size_t> offsets(num_strings);
       const_value.GetStringTensorContent(static_cast<void*>(chars.data()), num_chars, offsets.data(), offsets.size());
       auto upper_bound = static_cast<int64_t>(num_strings) - 1;
       input_strings_.resize(num_strings);
