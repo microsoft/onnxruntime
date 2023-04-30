@@ -93,7 +93,7 @@ class Tensor : public TensorBase {
       ORT_CXX_API_THROW("invalid shape while trying to get a span out of Ort::Custom::Tensor",
                         OrtErrorCode::ORT_RUNTIME_EXCEPTION);
     }
-    span_.Assign(Data(), (*shape_)[0]);
+    span_.Assign(Data(), static_cast<size_t>((*shape_)[0]));
     return span_;
   }
   const T& AsScalar() {
@@ -201,7 +201,7 @@ class Tensor<std::string_view> : public TensorBase {
       chars_.resize(num_chars + 1, '\0');
       auto num_strings = static_cast<size_t>(NumberOfElement());
       if (num_strings) {
-        std::vector<size_t> offsets(NumberOfElement());
+        std::vector<size_t> offsets(num_strings);
         const_value.GetStringTensorContent(static_cast<void*>(chars_.data()), num_chars, offsets.data(), offsets.size());
         offsets.push_back(num_chars);
         for (size_t i = 0; i < num_strings; ++i) {
