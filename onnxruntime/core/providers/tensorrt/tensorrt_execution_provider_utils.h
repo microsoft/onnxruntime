@@ -315,7 +315,7 @@ std::unordered_map<std::string, std::unordered_map<size_t, std::vector<std::vect
     std::unordered_map<size_t, std::vector<std::vector<int64_t>>> inner_map;
     std::vector<std::vector<int64_t>> profile_vector;
 
-    for (size_t k = 0; k < (dim_range_vector.size() / 4); k ++) {  // iterate dim, min, max, opt for all profiles
+    for (size_t k = 0; k < (dim_range_vector.size() / 4); k++) {  // iterate dim, min, max, opt for all profiles
       std::vector<int64_t> shape_vector;
       auto idx = 4 * k;
       auto dim = dim_range_vector[idx].AsInt64();
@@ -383,11 +383,11 @@ bool CompareProfiles(const std::string& file_name,
   for (auto tensor_it = shape_ranges.begin(); tensor_it != shape_ranges.end(); tensor_it++) {  // iterate tensors
     auto tensor_name = tensor_it->first;
     if (profile_min_shapes.find(tensor_name) == profile_min_shapes.end()) {
-      LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Tensor name '" << tensor_name << "' doesn't exist in trt_profile_min_shapes." ;
+      LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Tensor name '" << tensor_name << "' doesn't exist in trt_profile_min_shapes.";
       return true;
     }
 
-    for (auto dim_it = tensor_it->second.begin(); dim_it != tensor_it->second.end(); dim_it++) { // iterate dimensions
+    for (auto dim_it = tensor_it->second.begin(); dim_it != tensor_it->second.end(); dim_it++) {  // iterate dimensions
       auto dim = dim_it->first;
       auto num_profiles = GetNumProfiles(profile_min_shapes);
 
@@ -568,7 +568,6 @@ HashValue TRTGenerateId(const GraphViewer& graph_viewer) {
 bool ValidateProfileShapes(std::unordered_map<std::string, std::vector<std::vector<int64_t>>>& profile_min_shapes,
                            std::unordered_map<std::string, std::vector<std::vector<int64_t>>>& profile_max_shapes,
                            std::unordered_map<std::string, std::vector<std::vector<int64_t>>>& profile_opt_shapes) {
-
   if (profile_min_shapes.empty() && profile_max_shapes.empty() && profile_opt_shapes.empty()) {
     return true;
   }

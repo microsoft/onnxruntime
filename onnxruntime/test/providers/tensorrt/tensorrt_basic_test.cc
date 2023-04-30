@@ -592,7 +592,7 @@ TEST_P(TensorrtExecutionProviderCacheTest, Run) {
       profile_files = GetCachesByType("./", ".profile");
       ASSERT_EQ(profile_files.size(), 1);
       std::ifstream profile_file2(profile_files[0], std::ios::binary | std::ios::in);
-      auto shape_ranges2 = DeserializeProfile(profile_file2);
+      auto shape_ranges2 = DeserializeProfileV2(profile_file2);
 
       // check min/max shape ranges of dynamic shape dimensions
       for (auto it = shape_ranges2.cbegin(); it != shape_ranges2.cend(); ++it) {

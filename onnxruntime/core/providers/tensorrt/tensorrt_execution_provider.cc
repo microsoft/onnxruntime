@@ -600,7 +600,7 @@ Status ApplyProfileShapesFromInputTensorValue(std::vector<nvinfer1::IOptimizatio
           const auto& tensor_shape_value = tensor_shape_values[input_name][j];
           std::vector<std::vector<int64_t>> profile_vector;
           std::vector<int64_t> shape_vector{tensor_shape_value, tensor_shape_value, tensor_shape_value};
-          profile_vector.push_back(shape_vector);// only one profile needed
+          profile_vector.push_back(shape_vector);  // only one profile needed
           shape_ranges_per_input[j] = profile_vector;
           shapes_min[j] = tensor_shape_value;
           shapes_opt[j] = tensor_shape_value;
