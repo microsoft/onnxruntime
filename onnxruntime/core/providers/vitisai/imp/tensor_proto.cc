@@ -18,7 +18,7 @@ gsl::span<const char> tensor_proto_as_raw(
     return gsl::span<const char>((char*)tensor.float_data().data(), tensor.float_data().size() * sizeof(float));
   } else if (tensor.int32_data_size() > 0 && data_type == ONNX_NAMESPACE::TensorProto::INT32) {
     return gsl::span<const char>((char*)tensor.int32_data().data(), tensor.int32_data().size() * sizeof(int));
-    //test case: graph_opt model #43
+    // test case: graph_opt model #43
   } else if (tensor.int64_data_size() > 0 && data_type == ONNX_NAMESPACE::TensorProto::INT64) {
     return gsl::span<const char>((char*)tensor.int64_data().data(), tensor.int64_data().size() * sizeof(int64_t));
   } else if (data_type == ONNX_NAMESPACE::TensorProto::INT8) {
