@@ -114,7 +114,7 @@ endif()
 if(onnxruntime_USE_NNAPI_BUILTIN)
   set(PROVIDERS_NNAPI onnxruntime_providers_nnapi)
 endif()
-if(onnxruntime_USE_JS)
+if(onnxruntime_USE_JSEP)
   set(PROVIDERS_JS onnxruntime_providers_js)
 endif()
 if(onnxruntime_USE_QNN)
@@ -1067,8 +1067,8 @@ if (onnxruntime_USE_NNAPI_BUILTIN)
   endif()
 endif()
 
-if (onnxruntime_USE_JS)
-  add_compile_definitions(USE_JS=1)
+if (onnxruntime_USE_JSEP)
+  add_compile_definitions(USE_JSEP=1)
 
   file(GLOB_RECURSE onnxruntime_providers_js_cc_srcs
     "${ONNXRUNTIME_ROOT}/core/providers/js/*.h"
@@ -1190,7 +1190,10 @@ if (onnxruntime_USE_DML)
     ${ONNXRUNTIME_ROOT}
   )
 
-  add_definitions(-DDML_TARGET_VERSION_USE_LATEST=1)
+  target_compile_definitions(onnxruntime_providers_dml PRIVATE DML_TARGET_VERSION_USE_LATEST=1)
+  if(WIN32)
+    target_compile_options(onnxruntime_providers_dml PRIVATE "/wd4100" "/wd4238" "/wd4189" "/wd4702")
+  endif()
 
   if (NOT onnxruntime_USE_CUSTOM_DIRECTML)
     foreach(file "DirectML.dll" "DirectML.pdb" "DirectML.Debug.dll" "DirectML.Debug.pdb")

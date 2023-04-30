@@ -57,7 +57,7 @@ bool GetParamNameFromGradient(const std::string& grad_name, std::string& param_n
   return false;
 }
 
-Status OrtValueLike(const SessionState& sess_state, const OrtValue& input_val, OrtValue& output_val) {
+Status CreateZeroValuedOrtValueLike(const SessionState& sess_state, const OrtValue& input_val, OrtValue& output_val) {
   const auto& param_tensor = input_val.template Get<Tensor>();
   const TensorShape& shape = param_tensor.Shape();
   auto& tensor_location = param_tensor.Location();

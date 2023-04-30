@@ -321,7 +321,7 @@ TEST(CheckpointApiTest, SaveOptimizerStateAsCheckpoint_ThenLoad_CUDA) {
       ASSERT_EQ(param_tensor.DataType(), restored_tensor.DataType());
 
       std::vector<float> state_vect;
-      OrtValueToVec(restored_ort_value, state_vect);
+      CpuOrtValueToVec(restored_ort_value, state_vect);
       for (size_t i = 0; i < state_vect.size(); i++) {
         ASSERT_EQ(state_vect[i], 0.0f);
       }

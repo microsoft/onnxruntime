@@ -92,6 +92,11 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 var ex = Assert.Throws<OnnxRuntimeException>(() => { opt.AddSessionConfigEntry("", "invalid key"); });
                 Assert.Contains("[ErrorCode:InvalidArgument] Config key is empty", ex.Message);
 
+                // SessionOptions.RegisterOrtExtensions can be manually tested by referencing the
+                // Microsoft.ML.OnnxRuntime.Extensions nuget package. After that is done, this should not throw.                
+                ex = Assert.Throws<OnnxRuntimeException>(() => { opt.RegisterOrtExtensions(); });
+                Assert.Contains("Microsoft.ML.OnnxRuntime.Extensions NuGet package must be referenced", ex.Message);
+
 #if USE_CUDA
                 opt.AppendExecutionProvider_CUDA(0);
 #endif
