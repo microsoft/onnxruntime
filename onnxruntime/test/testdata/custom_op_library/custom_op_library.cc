@@ -73,7 +73,7 @@ void KernelTwo(const Ort::Custom::Tensor<float>& X,
   const auto& shape = X.Shape();
   auto X_raw = X.Data();
   auto Y_raw = Y.Allocate(shape);
-  auto total = std::accumulate(shape.begin(), shape.end(), 1LL, std::multiplies<size_t>());
+  auto total = std::accumulate(shape.begin(), shape.end(), 1LL, std::multiplies<int64_t>());
   for (int64_t i = 0; i < total; i++) {
     Y_raw[i] = static_cast<int32_t>(round(X_raw[i]));
   }
