@@ -20,17 +20,17 @@ stages:
     variables:
     - name: OnnxRuntimeBuildDirectory
       value: '$(Build.BinariesDirectory)'
-
     steps:
-    - template: ../../templates/flex-downloadPipelineArtifact.yml
-      parameters:
-        stepName: 'Download Signed NuGet'
+
+    - task: DownloadPipelineArtifact@0
+      displayName: 'Download Signed NuGet'
+      inputs:
         artifactName: drop-signed-nuget-${{ parameters.ArtifactSuffix }}
         targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
 
-    - template: ../../templates/flex-downloadPipelineArtifact.yml
-      parameters:
-        stepName: 'Download Linux CustomOp TestData'
+    - task: DownloadPipelineArtifact@0
+      displayName: 'Download Linux CustomOp TestData'
+      inputs:
         artifactName: 'onnxruntime-linux-x64'
         targetPath: '$(Build.BinariesDirectory)/testdata'
 
