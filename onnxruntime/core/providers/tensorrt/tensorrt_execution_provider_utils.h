@@ -222,10 +222,10 @@ void SerializeProfileV2(const std::string& file_name, std::unordered_map<std::st
   for (auto tensor_it = shape_ranges.begin(); tensor_it != shape_ranges.end(); tensor_it++) {  // iterate tensors
     LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] input tensor is '" << tensor_it->first.c_str() << "'";
     builder.TypedVector(tensor_it->first.c_str(), [&] {
-      int num_profiles = tensor_it->second.size();
       for (auto dim_it = tensor_it->second.begin(); dim_it != tensor_it->second.end(); dim_it++) {
-        for (int i = 0; i < num_profiles; i++) {
-          LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] profile #" << i;
+        size_t num_profiles = dim_it->second.size();
+        for (size_t i = 0; i < num_profiles; i++) {
+          LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] profile #" << i << ", dim is " << dim_it->first;
           builder.Int(dim_it->first);
           builder.Int(dim_it->second[i][0]);
           builder.Int(dim_it->second[i][1]);

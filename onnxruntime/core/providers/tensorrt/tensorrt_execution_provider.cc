@@ -1845,10 +1845,9 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
 
       // If no explicit optimization profile is being applied, TRT EP will later set min/max/opt shape values based on input tensor values at EP compute time
       if (!apply_explicit_profile) {
-        std::vector<std::vector<int64_t>> profile_vector;
-
         if (input->isShapeTensor()) {
           // Shape tensor
+          std::vector<std::vector<int64_t>> profile_vector;
           std::vector<int64_t> shape_vector{INT_MAX, INT_MIN, INT_MIN};
           profile_vector.push_back(shape_vector);  // only one profile needed
           input_implicit_shape_ranges[input_name][0] = profile_vector;
@@ -1857,6 +1856,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
           // Execution tensor
           for (int j = 0, end = nb_dims; j < end; ++j) {
             if (dims.d[j] == -1) {
+              std::vector<std::vector<int64_t>> profile_vector;
               std::vector<int64_t> shape_vector{INT_MAX, INT_MIN, INT_MIN};
               profile_vector.push_back(shape_vector);  // only one profile needed
               input_implicit_shape_ranges[input_name][j] = profile_vector;
