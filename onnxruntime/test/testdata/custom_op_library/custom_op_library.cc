@@ -68,8 +68,8 @@ struct CustomOpOne : Ort::CustomOpBase<CustomOpOne, KernelOne> {
 };
 
 // lite custom op as a function
-void KernelTwo(const Ort::Custom::TensorT<float>& X,
-               Ort::Custom::TensorT<int32_t>& Y) {
+void KernelTwo(const Ort::Custom::Tensor<float>& X,
+               Ort::Custom::Tensor<int32_t>& Y) {
   const auto& shape = X.Shape();
   auto X_raw = X.Data();
   auto Y_raw = Y.Allocate(shape);
@@ -80,7 +80,7 @@ void KernelTwo(const Ort::Custom::TensorT<float>& X,
 }
 
 template <typename T>
-void MulTop(const Ort::Custom::Span<T>& in, Ort::Custom::TensorT<T>& out) {
+void MulTop(const Ort::Custom::Span<T>& in, Ort::Custom::Tensor<T>& out) {
   out.Allocate({1})[0] = in[0] * in[1];
 }
 
@@ -89,7 +89,7 @@ void Fuse(
     const Ort::Custom::Span<float>& vector_1,
     const Ort::Custom::Span<float>& vector_2,
     int32_t alpha,
-    Ort::Custom::TensorT<float>& vector_output) {
+    Ort::Custom::Tensor<float>& vector_output) {
   auto len_output = std::min(vector_1.size(), vector_2.size());
   float* floats_out = static_cast<float*>(vector_output.Allocate({(int64_t)len_output}));
   for (size_t i = 0; i < len_output; ++i) {
@@ -98,7 +98,7 @@ void Fuse(
 }
 
 void Select(const Ort::Custom::Span<int32_t>& indices_in,
-            Ort::Custom::TensorT<int32_t>& indices_out) {
+            Ort::Custom::Tensor<int32_t>& indices_out) {
   std::vector<int32_t> selected_indices;
   for (size_t i = 0; i < indices_in.size(); ++i) {
     if (indices_in[i] % 2 == 0) {
@@ -112,8 +112,8 @@ void Select(const Ort::Custom::Span<int32_t>& indices_in,
   }
 }
 
-void Filter(const Ort::Custom::TensorT<float>& floats_in,
-            Ort::Custom::TensorT<float>& floats_out) {
+void Filter(const Ort::Custom::Tensor<float>& floats_in,
+            Ort::Custom::Tensor<float>& floats_out) {
   const float* in = floats_in.Data();
   auto in_len = floats_in.NumberOfElement();
 
@@ -130,11 +130,11 @@ void Filter(const Ort::Custom::TensorT<float>& floats_in,
   }
 }
 
-void Box(const Ort::Custom::TensorT<float>* float_in_1,
-         const Ort::Custom::TensorT<float>* float_in_2,
-         std::optional<const Ort::Custom::TensorT<float>*> float_in_3,
-         Ort::Custom::TensorT<float>* float_out_1,
-         std::optional<Ort::Custom::TensorT<float>*> float_out_2) {
+void Box(const Ort::Custom::Tensor<float>* float_in_1,
+         const Ort::Custom::Tensor<float>* float_in_2,
+         std::optional<const Ort::Custom::Tensor<float>*> float_in_3,
+         Ort::Custom::Tensor<float>* float_out_1,
+         std::optional<Ort::Custom::Tensor<float>*> float_out_2) {
   auto raw_in_1 = float_in_1->Data();
   auto raw_in_2 = float_in_2->Data();
 

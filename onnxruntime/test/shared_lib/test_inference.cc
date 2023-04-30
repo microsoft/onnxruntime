@@ -2881,9 +2881,9 @@ struct Merge {
     ORT_ENFORCE(ort_api->KernelInfoGetAttribute_int64(info, "reverse", &reverse) == nullptr);
     reverse_ = reverse != 0;
   }
-  void Compute(const Ort::Custom::TensorT<std::string_view>& strings_in,
+  void Compute(const Ort::Custom::Tensor<std::string_view>& strings_in,
                std::string_view string_in,
-               Ort::Custom::TensorT<std::string>* strings_out) {
+               Ort::Custom::Tensor<std::string>* strings_out) {
     std::vector<std::string> string_pool;
     for (const auto& s : strings_in.Data()) {
       string_pool.emplace_back(s.data(), s.size());
