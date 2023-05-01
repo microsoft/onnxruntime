@@ -31,6 +31,7 @@ namespace Dml
         bool enableMetacommands = true);
 
     ID3D12Resource* GetD3D12ResourceFromAllocation(onnxruntime::IAllocator* allocator, void* ptr);
+    void FlushContext(onnxruntime::IExecutionProvider* provider);
     void SetDefaultRoundingMode(onnxruntime::IExecutionProvider* provider, AllocatorRoundingMode roundingMode);
     void ReleaseCompletedReferences(onnxruntime::IExecutionProvider* provider);
 

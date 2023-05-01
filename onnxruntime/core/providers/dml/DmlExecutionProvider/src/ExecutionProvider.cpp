@@ -1117,6 +1117,12 @@ namespace Dml
         return pAllocationInfo->DecodeDataHandle(ptr)->GetResource();
     }
 
+    void FlushContext(onnxruntime::IExecutionProvider* provider)
+    {
+        ExecutionProvider* dmlexecutionprovider = static_cast<Dml::ExecutionProvider*>(provider);
+        dmlexecutionprovider->Flush();
+    }
+
     void SetDefaultRoundingMode(onnxruntime::IExecutionProvider* provider, AllocatorRoundingMode roundingMode)
     {
         ExecutionProvider* dmlexecutionprovider = static_cast<Dml::ExecutionProvider*>(provider);
