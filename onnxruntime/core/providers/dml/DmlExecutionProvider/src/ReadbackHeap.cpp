@@ -90,8 +90,8 @@ namespace Dml
             dst.size());
 
         // Wait for completion and map the result
-        m_executionContext->Flush();
-        m_executionContext->GetCurrentCompletionEvent().WaitForSignal();
+        auto event = m_executionContext->Flush();
+        event.WaitForSignal();
         m_executionContext->ReleaseCompletedReferences();
 
         // Map the readback heap and copy it into the destination
@@ -141,8 +141,8 @@ namespace Dml
         }
 
         // Wait for completion and map the result
-        m_executionContext->Flush();
-        m_executionContext->GetCurrentCompletionEvent().WaitForSignal();
+        auto event = m_executionContext->Flush();
+        event.WaitForSignal();
         m_executionContext->ReleaseCompletedReferences();
 
         // Map the readback heap and copy it into the destination

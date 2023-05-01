@@ -118,7 +118,7 @@ namespace Dml
         ) override;
 
         STDMETHOD_(D3D12_COMMAND_LIST_TYPE, GetCommandListTypeForQueue)() const override;
-        STDMETHOD_(void, Flush)() const override;
+        STDMETHOD_(GpuEvent, Flush)() const override;
 
         void SetDefaultRoundingMode(AllocatorRoundingMode roundingMode);
 
@@ -267,7 +267,7 @@ namespace Dml
             return Status::OK();
         }
 
-        void Flush()
+        GpuEvent Flush()
         {
             return m_impl->Flush();
         }

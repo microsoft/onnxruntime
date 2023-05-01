@@ -19,7 +19,7 @@ public:
     {
     }
 
-    void Initialize( 
+    void Initialize(
         const MLOperatorKernelCreationContext& kernelInfo,
         uint32_t sequenceLengthInputIndex,
         gsl::span<const std::string> defaultActivations,
@@ -41,7 +41,7 @@ public:
                 break;
             }
         }
-          
+
         if (!hasOutput)
         {
             ML_INVALID_ARGUMENT("At least one output should be requested.");
@@ -60,7 +60,7 @@ public:
         if (direction == AttrValue::DirectionForward) { return DML_RECURRENT_NETWORK_DIRECTION_FORWARD; }
         if (direction == AttrValue::DirectionReverse) { return DML_RECURRENT_NETWORK_DIRECTION_BACKWARD; }
         if (direction == AttrValue::DirectionBidirectional) { return DML_RECURRENT_NETWORK_DIRECTION_BIDIRECTIONAL; }
-         
+
         ML_INVALID_ARGUMENT("Unsupported direction"); // throws
         return DML_RECURRENT_NETWORK_DIRECTION_FORWARD;
     }
@@ -84,20 +84,20 @@ public:
         descs.resize(activations.size());
         m_activationDescs.resize(activations.size());
 
-        // Some functions have additional parameters. It is assumed the alpha/beta values will 
+        // Some functions have additional parameters. It is assumed the alpha/beta values will
         // be ordered by function, so this treats the respective operator attributes as stacks.
-        std::vector<float> alphas; 
+        std::vector<float> alphas;
         if (kernelInfo.HasAttribute(AttrName::ActivationAlpha, MLOperatorAttributeType::FloatArray))
         {
             alphas = kernelInfo.GetAttributeVector<float>(AttrName::ActivationAlpha);
         }
-        
+
         std::vector<float> betas;
         if (kernelInfo.HasAttribute(AttrName::ActivationBeta, MLOperatorAttributeType::FloatArray))
         {
             betas = kernelInfo.GetAttributeVector<float>(AttrName::ActivationBeta);
         }
-        
+
         size_t currentAlpha = 0;
         size_t currentBeta = 0;
 
@@ -129,50 +129,50 @@ public:
             desc.Desc = &activationDesc;
 
             if (activationName == AttrValue::ActivationRelu)
-            { 
+            {
                 desc.Type = DML_OPERATOR_ACTIVATION_RELU;
             }
             else if (activationName == AttrValue::ActivationLeakyRelu)
-            { 
+            {
                 desc.Type = DML_OPERATOR_ACTIVATION_LEAKY_RELU;
                 activationDesc.leakyRelu.Alpha = NextAlpha(desc.Type);
             }
             else if (activationName == AttrValue::ActivationThresholdedRelu)
-            { 
+            {
                 desc.Type = DML_OPERATOR_ACTIVATION_THRESHOLDED_RELU;
                 activationDesc.thresholdedRelu.Alpha = NextAlpha(desc.Type);
             }
             else if (activationName == AttrValue::ActivationTanh)
-            { 
+            {
                 desc.Type = DML_OPERATOR_ACTIVATION_TANH;
             }
             else if (activationName == AttrValue::ActivationScaledTanh)
-            { 
+            {
                 desc.Type = DML_OPERATOR_ACTIVATION_SCALED_TANH;
                 activationDesc.scaledTanh.Alpha = NextAlpha(desc.Type);
                 activationDesc.scaledTanh.Beta = NextBeta(desc.Type);
             }
             else if (activationName == AttrValue::ActivationSigmoid)
-            { 
+            {
                 desc.Type = DML_OPERATOR_ACTIVATION_SIGMOID;
             }
             else if (activationName == AttrValue::ActivationSigmoidHard)
-            { 
+            {
                 desc.Type = DML_OPERATOR_ACTIVATION_HARD_SIGMOID;
                 activationDesc.hardSigmoid.Alpha = NextAlpha(desc.Type);
                 activationDesc.hardSigmoid.Beta = NextBeta(desc.Type);
             }
             else if (activationName == AttrValue::ActivationElu)
-            { 
+            {
                 desc.Type = DML_OPERATOR_ACTIVATION_ELU;
                 activationDesc.elu.Alpha = NextAlpha(desc.Type);
             }
             else if (activationName == AttrValue::ActivationSoftsign)
-            { 
+            {
                 desc.Type = DML_OPERATOR_ACTIVATION_SOFTSIGN;
             }
             else if (activationName == AttrValue::ActivationSoftplus)
-            { 
+            {
                 desc.Type = DML_OPERATOR_ACTIVATION_SOFTPLUS;
             }
             else
@@ -180,14 +180,6 @@ public:
                 ML_INVALID_ARGUMENT("Unsupported activation function");
             }
         }
-    }
-    
-    void Compute(const MLOperatorKernelContext& kernelContext) override
-    {
-        // Assume that enough GPU work has been queued up after the RNN operator that it is worth
-        // kicking it off, to enable subsequent CPU work to be parallelized with this GPU work.
-        DmlOperator::Compute(kernelContext);
-        m_executionProvider->Flush();
     }
 
 protected:
@@ -198,7 +190,7 @@ protected:
 };
 
 // Simple RNN
-// 
+//
 class DmlOperatorRecurrentNeuralNetwork : public DmlOperatorRecurrentBase
 {
 public:
@@ -217,7 +209,7 @@ public:
         std::vector<DML_TENSOR_DESC> outputDescs = GetDmlOutputDescs();
 
         DML_RNN_OPERATOR_DESC rnnDesc = {};
-        
+
         rnnDesc.InputTensor             = &inputDescs[IN_X];
         rnnDesc.WeightTensor            = &inputDescs[IN_WEIGHTS];
         rnnDesc.RecurrenceTensor        = &inputDescs[IN_RECURRENCE];
@@ -238,8 +230,8 @@ public:
 
 private:
     // Inputs in DML's order, which is different from ONNX.
-    enum InputTensors 
-    { 
+    enum InputTensors
+    {
         IN_X, // X
         IN_WEIGHTS, // W
         IN_RECURRENCE, // R
@@ -247,16 +239,16 @@ private:
         IN_HIDDEN_INIT, // initial_h
         IN_SEQUENCE_LENGTHS,  // sequence_lens
     };
-        
+
     enum OutputTensors
-    { 
+    {
         OUT_SEQUENCE, // Y
         OUT_SINGLE
     };
 };
 
 // GRU
-// 
+//
 class DmlOperatorGatedRecurrentUnit : public DmlOperatorRecurrentBase
 {
 public:
@@ -276,7 +268,7 @@ public:
         std::vector<DML_TENSOR_DESC> outputDescs = GetDmlOutputDescs();
 
         DML_GRU_OPERATOR_DESC rnnDesc = {};
-        
+
         rnnDesc.InputTensor             = &inputDescs[IN_X];
         rnnDesc.WeightTensor            = &inputDescs[IN_WEIGHTS];
         rnnDesc.RecurrenceTensor        = &inputDescs[IN_RECURRENCE];
@@ -298,8 +290,8 @@ public:
 
 private:
     // Inputs in DML's order, which is different from ONNX.
-    enum InputTensors 
-    { 
+    enum InputTensors
+    {
         IN_X,
         IN_WEIGHTS,
         IN_RECURRENCE,
@@ -307,16 +299,16 @@ private:
         IN_HIDDEN_INIT,
         IN_SEQUENCE_LENGTHS,
     };
-        
+
     enum OutputTensors
-    { 
+    {
         OUT_SEQUENCE, // Y
         OUT_SINGLE
     };
 };
 
 // LSTM
-// 
+//
 class DmlOperatorLongShortTermUnit : public DmlOperatorRecurrentBase
 {
 public:
@@ -329,11 +321,11 @@ public:
         float clipThreshold = kernelInfo.GetOptionalAttribute<float>(AttrName::Clip, 0.0f);
         bool coupleInputForget = kernelInfo.GetOptionalAttribute<bool>(AttrName::InputForget, false);
 
-        std::vector<std::optional<uint32_t>> kernelInputIndices = 
+        std::vector<std::optional<uint32_t>> kernelInputIndices =
         {
             0, // DML Input tensor is ONNX input 0
-            1, // DML Weight tensor is ONNX input 1 
-            2, // DML Recurrence tensor is ONNX input 2 
+            1, // DML Weight tensor is ONNX input 1
+            2, // DML Recurrence tensor is ONNX input 2
             3, // DML Bias tensor is ONNX input 3
             5, // DML HiddenInit tensor is ONNX input 5
             6, // DML CellMem tensor is ONNX input 6
@@ -341,7 +333,7 @@ public:
             7  // DML Peephole tensor is ONNX input 7
         };
 
-        std::vector<std::optional<uint32_t>> kernelOutputIndices = 
+        std::vector<std::optional<uint32_t>> kernelOutputIndices =
         {
             0, // DML OutputSequence tensor is ONNX input 0
             1, // DML OutputSingle tensor is ONNX input 1
@@ -354,7 +346,7 @@ public:
         std::vector<DML_TENSOR_DESC> outputDescs = GetDmlOutputDescs();
 
         DML_LSTM_OPERATOR_DESC rnnDesc = {};
-        
+
         rnnDesc.InputTensor             = &inputDescs[IN_X];
         rnnDesc.WeightTensor            = &inputDescs[IN_WEIGHTS];
         rnnDesc.RecurrenceTensor        = &inputDescs[IN_RECURRENCE];
@@ -384,8 +376,8 @@ public:
 
 private:
     // Inputs in DML's order, which is different from ONNX.
-    enum InputTensors 
-    { 
+    enum InputTensors
+    {
         IN_X,
         IN_WEIGHTS,
         IN_RECURRENCE,
@@ -395,9 +387,9 @@ private:
         IN_SEQUENCE_LENGTHS,
         IN_PEEPHOLE
     };
-        
+
     enum OutputTensors
-    { 
+    {
         OUT_SEQUENCE, // Y
         OUT_SINGLE,
         OUT_CELL_SINGLE

@@ -149,7 +149,6 @@ namespace Dml
         std::shared_ptr<BatchState> batch_state_;
         std::shared_ptr<CommandQueue> dml_command_queue_;
         std::shared_ptr<DmlCommandList> dml_command_list_;
-        ComPtr<IDMLOperatorInitializer> m_initializer;
         ComPtr<IDMLDevice> m_dmlDevice;
         std::thread execution_thread_;
 
