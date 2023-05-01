@@ -11,4 +11,3 @@ or the `Github project <https://github.com/microsoft/onnxruntime/>`_.
 
     tutorial
     api_summary
-    operators/index
