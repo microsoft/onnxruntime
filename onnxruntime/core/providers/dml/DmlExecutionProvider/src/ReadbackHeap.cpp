@@ -48,7 +48,7 @@ namespace Dml
         return newCapacity;
     }
 
-    void ReadbackHeap::EnsureReadbackHeap(size_t size) 
+    void ReadbackHeap::EnsureReadbackHeap(size_t size)
     {
         if (!m_readbackHeap)
         {
@@ -76,7 +76,7 @@ namespace Dml
         D3D12_RESOURCE_STATES srcState)
     {
         assert(!dst.empty());
-        
+
         EnsureReadbackHeap(dst.size());
 
         // Copy from the source resource into the readback heap
@@ -90,8 +90,8 @@ namespace Dml
             dst.size());
 
         // Wait for completion and map the result
-        m_executionContext->Flush();
-        m_executionContext->GetCurrentCompletionEvent().WaitForSignal();
+        auto event = m_executionContext->Flush();
+        event.WaitForSignal();
         m_executionContext->ReleaseCompletedReferences();
 
         // Map the readback heap and copy it into the destination
@@ -100,7 +100,7 @@ namespace Dml
         memcpy(dst.data(), readbackHeapData, dst.size());
         m_readbackHeap->Unmap(0, nullptr);
     }
-    
+
     void ReadbackHeap::ReadbackFromGpu(
         gsl::span<void*> dst,
         gsl::span<const uint32_t > dstSizes,
@@ -140,8 +140,8 @@ namespace Dml
         }
 
         // Wait for completion and map the result
-        m_executionContext->Flush();
-        m_executionContext->GetCurrentCompletionEvent().WaitForSignal();
+        auto event = m_executionContext->Flush();
+        event.WaitForSignal();
         m_executionContext->ReleaseCompletedReferences();
 
         // Map the readback heap and copy it into the destination

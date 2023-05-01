@@ -495,7 +495,6 @@ namespace Dml
 
         ID3D12CommandList* command_lists[] = {command_list->Get()};
         command_queue->ExecuteCommandLists(command_lists);
-        command_queue->ReleaseCompletedReferences();
         batch.clear();
 
         return Status::OK();
