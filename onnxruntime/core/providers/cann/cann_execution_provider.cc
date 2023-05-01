@@ -1021,7 +1021,7 @@ Status RegisterCANNKernels(KernelRegistry& kernel_registry) {
 }  // namespace cann
 
 CANNExecutionProvider::CANNExecutionProvider(const CANNExecutionProviderInfo& info)
-    : IExecutionProvider{onnxruntime::kCannExecutionProvider, true}, info_{info} {
+    : IExecutionProvider{onnxruntime::kCannExecutionProvider, OrtDevice(OrtDevice::NPU, OrtDevice::MemType::DEFAULT, info.device_id), true}, info_{info} {
   InitProviderOrtApi();
 
   CANN_CALL_THROW(aclrtSetDevice(info_.device_id));
@@ -1507,6 +1507,13 @@ void CANNExecutionProvider::RegisterAllocator(AllocatorManager& allocator_manage
 
 void CANNExecutionProvider::RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry) const {
   RegisterCannStreamHandles(stream_handle_registry, OrtDevice::NPU);
+}
+
+OrtDevice CANNExecutionProvider::GetOrtDeviceByMemType(OrtMemType mem_type) const {
+  if (mem_type == OrtMemTypeCPUInput || mem_type == OrtMemTypeCPUOutput) {
+    return OrtDevice(OrtDevice::CPU, OrtDevice::MemType::CANN_PINNED, default_device_.Id());
+  }
+  return default_device_;
 }
 
 }  // namespace onnxruntime

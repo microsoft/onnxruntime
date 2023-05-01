@@ -169,6 +169,8 @@ class TensorrtExecutionProvider : public IExecutionProvider {
 
   void GetCustomOpDomainList(std::vector<OrtCustomOpDomain*>& custom_op_domain_list) const override;
 
+  OrtDevice GetOrtDeviceByMemType(OrtMemType mem_type) const override;
+
  private:
   TensorrtExecutionProviderInfo info_;
   bool external_stream_ = false;

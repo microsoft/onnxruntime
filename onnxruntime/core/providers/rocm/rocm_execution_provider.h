@@ -106,6 +106,8 @@ class ROCMExecutionProvider : public IExecutionProvider {
 
   void RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry) const override;
 
+  OrtDevice GetOrtDeviceByMemType(OrtMemType mem_type) const override;
+
  private:
   ROCMExecutionProviderInfo info_;
   hipDeviceProp_t device_prop_;
