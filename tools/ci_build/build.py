@@ -1310,9 +1310,6 @@ def generate_build_tree(
     if args.use_azure:
         add_default_definition(cmake_extra_defines, "onnxruntime_USE_AZURE", "ON")
 
-    if is_windows():
-        add_default_definition(cmake_extra_defines, "CMake_MSVC_PARALLEL", "ON")
-
     cmake_args += [f"-D{define}" for define in cmake_extra_defines]
 
     cmake_args += cmake_extra_args
