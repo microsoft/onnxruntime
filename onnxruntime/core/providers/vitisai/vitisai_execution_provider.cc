@@ -99,11 +99,11 @@ std::vector<std::unique_ptr<ComputeCapability>>
 VitisAIExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
                                         const IKernelLookup& /*kernel_lookup*/) const {
   auto opt_str = info_.get_json_config_str();  // String
-  exectuion_providers_ =
+  execution_providers_ =
       std::make_unique<my_ep_t>(compile_onnx_model(graph, *GetLogger(), opt_str));
-  auto result = vaip::GetComputeCapabilityOps(graph, exectuion_providers_.get(), vitisai_optypes_);
+  auto result = vaip::GetComputeCapabilityOps(graph, execution_providers_.get(), vitisai_optypes_);
   size_t index = 0u;
-  for (auto& ep : **exectuion_providers_) {
+  for (auto& ep : **execution_providers_) {
     result.emplace_back(vaip::XirSubgraphToComputeCapability1(graph, ep.get(), index));
     index = index + 1;
   }
@@ -120,7 +120,7 @@ common::Status VitisAIExecutionProvider::Compile(
     size_t index = (size_t)attr->i();
     compute_info.create_state_func = [this, index](ComputeContext* context,
                                                    FunctionState* state) {
-      auto* p = (**this->exectuion_providers_)[index]->compile().release();
+      auto* p = (**this->execution_providers_)[index]->compile().release();
       *state = p;
       return 0;
     };

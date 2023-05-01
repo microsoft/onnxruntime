@@ -83,7 +83,7 @@ struct TensorProtoDeleter {
 };
 using TensorProtoPtr = std::unique_ptr<TensorProto, TensorProtoDeleter>;
 
-/// I cannot forward delcare a using directive, because
+/// I cannot forward declare a using directive, because
 /// std::unorderd_map required AttributeProto must be defiend.
 class NodeAttributes;
 struct NodeAttributesDeleter {

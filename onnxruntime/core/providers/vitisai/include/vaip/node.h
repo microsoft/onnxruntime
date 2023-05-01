@@ -18,7 +18,7 @@ vaip_core::DllSafe<std::vector<NodeInput>> node_get_inputs(const Node& node);
 /// to support multiple outputs
 vaip_core::DllSafe<std::vector<const NodeArg*>> node_get_output_node_args(const Node& node);
 /// get output shape
-/// index is usally zero, because most operators only have a single output.
+/// index is usually zero, because most operators only have a single output.
 vaip_core::DllSafe<std::vector<int64_t>> node_get_output_shape(const Node& node, int index = 0);
 
 }  // namespace vaip
