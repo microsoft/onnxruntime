@@ -24,7 +24,7 @@ namespace Microsoft.ML.OnnxRuntime
         {
         }
 
-        public enum PropertyType : long
+        internal enum PropertyType : long
         {
             Int = 0,
             Float = 1,
