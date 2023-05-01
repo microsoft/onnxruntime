@@ -48,8 +48,8 @@ public:
         operatorDesc.MaximumSamplesPerOutput = (samplesPerOutput == 0) ? UINT32_MAX : samplesPerOutput;
         operatorDesc.ReductionFunction = *optionalReductionFunction;
         operatorDesc.InterpolationMode = DML_INTERPOLATION_MODE_LINEAR;
-        operatorDesc.InputPixelOffset = m_coordinateTransformMode == "half_pixel" ? -0.5f : 0.0f;
-        operatorDesc.OutputPixelOffset = 0.5f;
+        operatorDesc.InputPixelOffset = m_coordinateTransformMode == "half_pixel" ? 0.5f : 0.0f;
+        operatorDesc.OutputPixelOffset = -0.5f;
         DML_OPERATOR_DESC opDesc = { DML_OPERATOR_ROI_ALIGN1, &operatorDesc };
 
         SetDmlOperatorDesc(opDesc, kernelCreationContext);
