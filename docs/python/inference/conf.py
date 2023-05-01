@@ -38,7 +38,6 @@ extensions = [
     "sphinx.ext.graphviz",
     "pyquickhelper.sphinxext.sphinx_runpython_extension",
     "sphinxcontrib.googleanalytics",
-    "sphinx_tabs.tabs",
     "onnx_sphinx",
 ]
 
