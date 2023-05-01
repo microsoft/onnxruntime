@@ -57,18 +57,18 @@ Status UnaryElementwise::Prepare(OpKernelContext* context, UnaryElementwisePrepa
       (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       Not<T>);
 
-#define UNARY_ELEMENTWISE_COMPUTE(x, T)                                                                    \
-  template <>                                                                                              \
-  Status x<T>::ComputeInternal(OpKernelContext* context) const {                                           \
-    UnaryElementwisePreparation p;                                                                         \
-    ORT_RETURN_IF_ERROR(UnaryElementwise::Prepare(context, &p));                                           \
-    Impl_##x(                                                                                              \
-        Stream(context),                                                                                   \
+#define UNARY_ELEMENTWISE_COMPUTE(x, T)                                                           \
+  template <>                                                                                     \
+  Status x<T>::ComputeInternal(OpKernelContext* context) const {                                  \
+    UnaryElementwisePreparation p;                                                                \
+    ORT_RETURN_IF_ERROR(UnaryElementwise::Prepare(context, &p));                                  \
+    Impl_##x(                                                                                     \
+        Stream(context),                                                                          \
         reinterpret_cast<const typename ToCudaType<T>::MappedType*>(p.input_tensor->Data<T>()),   \
         reinterpret_cast<typename ToCudaType<T>::MappedType*>(p.output_tensor->MutableData<T>()), \
-        p.output_tensor->Shape().Size());                                                                  \
-                                                                                                           \
-    return Status::OK();                                                                                   \
+        p.output_tensor->Shape().Size());                                                         \
+                                                                                                  \
+    return Status::OK();                                                                          \
   }
 
 #define UNARY_OP_VERSIONED_TYPED(name, startver, endver, T) \

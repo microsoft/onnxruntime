@@ -32,7 +32,7 @@ TEST(ResizeOpTest, ResizeOpLinearDownSampleTest_tf_crop_and_resize) {
 
   test.AddInput<float>("X", {H, W}, X);
   test.AddInput<float>("roi", {4}, roi);
-  test.AddInput<float>("", {0}, scales); // opset13 requires either 'sizes' or 'scales' must be provided, but not both of them
+  test.AddInput<float>("", {0}, scales);  // opset13 requires either 'sizes' or 'scales' must be provided, but not both of them
   test.AddInput<int64_t>("sizes", {2}, sizes);
 
   std::vector<float> Y = {7.600004f, 7.9f, 8.2f,
@@ -96,10 +96,10 @@ TEST(ResizeOpTest, NhwcResizeOpLinearDownSampleTest_tf_crop_and_resize_with_extr
                           10.0f, 10.0f, 10.0f};
 
   test.AddOutput<float>("Y", {N, static_cast<int64_t>(H * scales[1]), static_cast<int64_t>(W * scales[2]), C}, Y);
-  //CUDA: result mismatch due to not implementing NHWC support
-  //TensorRT: results mismatch
-  //ROCm: results mismatch
-  //QNN: conflict with layout transformer, need furture investigation
+  // CUDA: result mismatch due to not implementing NHWC support
+  // TensorRT: results mismatch
+  // ROCm: results mismatch
+  // QNN: conflict with layout transformer, need furture investigation
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
            {kCudaExecutionProvider, kTensorrtExecutionProvider, kRocmExecutionProvider, kQnnExecutionProvider});
 }
@@ -237,7 +237,7 @@ TEST(ResizeOpTest, ResizeOpLinearDownSampleTest_4DBilinear) {
   std::vector<float> Y = {2.66666651f, 4.3333331f};
 
   test.AddOutput<float>("Y", {N, C, static_cast<int64_t>(H * scales[2]), static_cast<int64_t>(W * scales[3])}, Y);
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kQnnExecutionProvider}); // QNN: result diff
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kQnnExecutionProvider});  // QNN: result diff
 }
 
 TEST(ResizeOpTest, NhwcResizeOpLinearDownSampleTest_4DBilinear) {
@@ -1079,7 +1079,7 @@ TEST(ResizeOpTest, ResizeOpNearestUpSample_Floor_Align_Corners) {
                           13.0f, 13.0f, 13.0f, 14.0f, 14.0f, 15.0f, 15.0f, 16.0f};
 
   test.AddOutput<float>("Y", {N, C, static_cast<int64_t>(H * scales[2]), static_cast<int64_t>(W * scales[3])}, Y);
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kQnnExecutionProvider}); // QNN: result diff
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kQnnExecutionProvider});  // QNN: result diff
 }
 
 TEST(ResizeOpTest, ResizeOpNearest_OneToOneMappingBetweenInputAndOutputDataDims) {
@@ -1496,7 +1496,7 @@ TEST(ResizeOpTest, ResizeOpLinearDownSampleTest_4DBilinear_Ver10) {
   std::vector<float> Y = {1.0f, 2.66666651f};
 
   test.AddOutput<float>("Y", {N, C, static_cast<int64_t>(H * scales[2]), static_cast<int64_t>(W * scales[3])}, Y);
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kQnnExecutionProvider}); // QNN: result diff
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kQnnExecutionProvider});  // QNN: result diff
 }
 
 TEST(ResizeOpTest, ResizeOpLinearDownSampleTest_2DBilinear_Ver10) {
@@ -1556,7 +1556,7 @@ TEST(ResizeOpTest, ResizeOpLinearUpSampleTest_4DBilinear_Ver10) {
       7.0f, 8.0f, 9.0f, 10.0f, 11.0f, 11.0f, 11.0f, 11.0f};
 
   test.AddOutput<float>("Y", {N, C, static_cast<int64_t>(H * scales[2]), static_cast<int64_t>(W * scales[3])}, Y);
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kQnnExecutionProvider}); // QNN: result diff
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kQnnExecutionProvider});  // QNN: result diff
 }
 
 TEST(ResizeOpTest, ResizeOpLinearUpSampleTest_2DBilinear_Ver10) {
@@ -1772,6 +1772,48 @@ TEST(ResizeOpTest, ResizeOpTypeCheck_Ver18) {
   ResizeOpTypeCheck_Ver_11_13_18<uint8_t>(18);
 }
 
+TEST(ResizeOpTest, ResizeOpHalfPixelSymmetricDownSample_ver19) {
+  OpTester test("Resize", 19);
+  test.AddAttribute("mode", "linear");
+  test.AddAttribute("coordinate_transformation_mode", "half_pixel_symmetric");
+
+  constexpr int64_t N = 1, C = 1, H = 1, W = 4;
+  std::vector<float> X = {1.0f, 2.0f, 3.0f, 4.0f};
+  test.AddInput<float>("X", {N, C, H, W}, X);
+  std::vector<float> roi{};
+  test.AddInput<float>("roi", {0}, roi);
+  std::vector<float> scales{1.0f, 1.0f, 1.0f, 0.6f};
+  test.AddInput<float>("scales", {4}, scales);
+
+  std::vector<float> Y = {1.666667f, 3.333333f};
+
+  test.AddOutput<float>("Y", {N, C, static_cast<int64_t>(H * scales[2]), static_cast<int64_t>(W * scales[3])}, Y);
+  test.Run();
+}
+
+TEST(ResizeOpTest, ResizeOpHalfPixelSymmetricUpSample_ver19) {
+  OpTester test("Resize", 19);
+  test.AddAttribute("mode", "linear");
+  test.AddAttribute("coordinate_transformation_mode", "half_pixel_symmetric");
+
+  constexpr int64_t N = 1, C = 1, H = 2, W = 2;
+  std::vector<float> X = {1.0f, 2.0f, 3.0f, 4.0f};
+
+  test.AddInput<float>("X", {N, C, H, W}, X);
+  std::vector<float> roi{};
+  test.AddInput<float>("roi", {0}, roi);
+  std::vector<float> scales{1.0f, 1.0f, 2.3f, 2.94f};
+  test.AddInput<float>("scales", {4}, scales);
+
+  std::vector<float> Y = {1.0f, 1.159864f, 1.5f, 1.840136f, 2.0f,
+                          1.565217f, 1.725081f, 2.065217f, 2.405353f, 2.565217f,
+                          2.434782f, 2.594647f, 2.934783f, 3.274919f, 3.434783f,
+                          3.0f, 3.159864f, 3.5f, 3.840136f, 4.0f};
+
+  test.AddOutput<float>("Y", {N, C, static_cast<int64_t>(H * scales[2]), static_cast<int64_t>(W * scales[3])}, Y);
+  test.Run();
+}
+
 /*
  * Most of TestCase against Anti-aliasing will have the attribute of "exclude_outside" as 1.
  * It's as Pillow 's Resize is corresponding to ONNX op with exclude_outside equaling 1.
@@ -1844,7 +1886,7 @@ void TestAntialiasing(std::map<std::string, std::string> attributes,
   }
 
   test.AddOutput<T>("Y", output_shape, output_data);
-  // TensorRT 8.5 supports operators up to Opset 17. Temporarily exclude TensorRT EP due to accurarcy issue.  
+  // TensorRT 8.5 supports operators up to Opset 17. Temporarily exclude TensorRT EP due to accurarcy issue.
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kQnnExecutionProvider});
 }
 
@@ -2186,6 +2228,5 @@ TEST(ResizeOpTest, Antialias_Use_Extrapolation) {
       },
       {4, 4, 4}, X, {3, 3, 3}, Y);
 }
-
 }  // namespace test
 }  // namespace onnxruntime

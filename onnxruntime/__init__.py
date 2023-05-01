@@ -38,6 +38,7 @@ try:
     from onnxruntime.capi._pybind_state import enable_telemetry_events  # noqa: F401
     from onnxruntime.capi._pybind_state import get_all_providers  # noqa: F401
     from onnxruntime.capi._pybind_state import get_available_providers  # noqa: F401
+    from onnxruntime.capi._pybind_state import get_build_info  # noqa: F401
     from onnxruntime.capi._pybind_state import get_device  # noqa: F401
     from onnxruntime.capi._pybind_state import get_version_string  # noqa: F401
     from onnxruntime.capi._pybind_state import set_default_logger_severity  # noqa: F401

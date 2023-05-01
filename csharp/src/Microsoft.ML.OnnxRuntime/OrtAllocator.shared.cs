@@ -176,14 +176,11 @@ namespace Microsoft.ML.OnnxRuntime
         public OrtMemoryInfo(byte[] utf8AllocatorName, OrtAllocatorType allocatorType, int deviceId, OrtMemType memoryType)
             : base(IntPtr.Zero, true)
         {
-            using (var pinnedName = new PinnedGCHandle(GCHandle.Alloc(utf8AllocatorName, GCHandleType.Pinned)))
-            {
-                NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateMemoryInfo(pinnedName.Pointer,
-                                                                                allocatorType,
-                                                                                deviceId,
-                                                                                memoryType,
-                                                                                out handle));
-            }
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateMemoryInfo(utf8AllocatorName,
+                                                                            allocatorType,
+                                                                            deviceId,
+                                                                            memoryType,
+                                                                            out handle));
             _owned = true;
         }
 
@@ -206,8 +203,7 @@ namespace Microsoft.ML.OnnxRuntime
         {
             get
             {
-                IntPtr utf8Name = IntPtr.Zero;
-                NativeApiStatus.VerifySuccess(NativeMethods.OrtMemoryInfoGetName(handle, out utf8Name));
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtMemoryInfoGetName(handle, out IntPtr utf8Name));
                 return NativeOnnxValueHelper.StringFromNativeUtf8(utf8Name);
             }
         }
@@ -335,7 +331,7 @@ namespace Microsoft.ML.OnnxRuntime
             int width;
             if (!TensorElementTypeConverter.GetTypeAndWidth(elementType, out type, out width))
             {
-                throw new OnnxRuntimeException(ErrorCode.InvalidArgument, 
+                throw new OnnxRuntimeException(ErrorCode.InvalidArgument,
                     "Unable to query type information for data type: " + elementType.ToString());
             }
 

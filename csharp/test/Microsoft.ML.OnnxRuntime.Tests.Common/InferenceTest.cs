@@ -15,6 +15,9 @@ using Xunit.Abstractions;
 // of Onnxruntime package
 namespace Microsoft.ML.OnnxRuntime.Tests
 {
+    // This is to make sure it does not run in parallel with OrtEnvTests
+    // or any other test class within the same collection
+    [Collection("Ort Inference Tests")]
     public partial class InferenceTest
     {
         private readonly ITestOutputHelper output;
@@ -70,8 +73,8 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 opt.LogVerbosityLevel = 1;
                 Assert.Equal(1, opt.LogVerbosityLevel);
 
-                opt.LogSeverityLevel = OrtLoggingLevel.ORT_LOGGING_LEVEL_ERROR;
-                Assert.Equal(OrtLoggingLevel.ORT_LOGGING_LEVEL_ERROR, opt.LogSeverityLevel);
+                opt.LogSeverityLevel = OrtLoggingLevel.ORT_LOGGING_LEVEL_WARNING;
+                Assert.Equal(OrtLoggingLevel.ORT_LOGGING_LEVEL_WARNING, opt.LogSeverityLevel);
 
                 opt.IntraOpNumThreads = 4;
                 Assert.Equal(4, opt.IntraOpNumThreads);
@@ -88,6 +91,11 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 
                 var ex = Assert.Throws<OnnxRuntimeException>(() => { opt.AddSessionConfigEntry("", "invalid key"); });
                 Assert.Contains("[ErrorCode:InvalidArgument] Config key is empty", ex.Message);
+
+                // SessionOptions.RegisterOrtExtensions can be manually tested by referencing the
+                // Microsoft.ML.OnnxRuntime.Extensions nuget package. After that is done, this should not throw.                
+                ex = Assert.Throws<OnnxRuntimeException>(() => { opt.RegisterOrtExtensions(); });
+                Assert.Contains("Microsoft.ML.OnnxRuntime.Extensions NuGet package must be referenced", ex.Message);
 
 #if USE_CUDA
                 opt.AppendExecutionProvider_CUDA(0);
@@ -145,6 +153,12 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 ex = Assert.Throws<OnnxRuntimeException>(() => { opt.AppendExecutionProvider("SNPE"); });
                 Assert.Contains("SNPE execution provider is not supported in this build", ex.Message);
 #endif
+#if USE_QNN
+                opt.AppendExecutionProvider("QNN");
+#else
+                ex = Assert.Throws<OnnxRuntimeException>(() => { opt.AppendExecutionProvider("QNN"); });
+                Assert.Contains("QNN execution provider is not supported in this build", ex.Message);
+#endif
 
                 opt.AppendExecutionProvider_CPU(1);
             }
@@ -184,8 +198,8 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 opt.LogVerbosityLevel = 1;
                 Assert.Equal(1, opt.LogVerbosityLevel);
 
-                opt.LogSeverityLevel = OrtLoggingLevel.ORT_LOGGING_LEVEL_ERROR;
-                Assert.Equal(OrtLoggingLevel.ORT_LOGGING_LEVEL_ERROR, opt.LogSeverityLevel);
+                opt.LogSeverityLevel = OrtLoggingLevel.ORT_LOGGING_LEVEL_WARNING;
+                Assert.Equal(OrtLoggingLevel.ORT_LOGGING_LEVEL_WARNING, opt.LogSeverityLevel);
 
                 opt.LogId = "MyLogTag";
                 Assert.Equal("MyLogTag", opt.LogId);
@@ -197,49 +211,19 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             }
         }
 
-        [Fact(DisplayName = "EnablingAndDisablingTelemetryEventCollection")]
-        public void EnablingAndDisablingTelemetryEventCollection()
+        [Fact(DisplayName = "TestThreadingOptions")]
+        public void TestThreadingOptions()
         {
-            var ortEnvInstance = OrtEnv.Instance();
-            ortEnvInstance.DisableTelemetryEvents();
+            using (var opt = new OrtThreadingOptions())
+            {
+                Assert.NotNull(opt);
 
-            // no-op on non-Windows builds
-            // may be no-op on certain Windows builds based on build configuration
-
-            ortEnvInstance.EnableTelemetryEvents();
-        }
-
-        [Fact(DisplayName = "GetVersionString")]
-        public void GetVersionString()
-        {
-            var ortEnvInstance = OrtEnv.Instance();
-            string versionString = ortEnvInstance.GetVersionString();
-            Assert.False(versionString.Length == 0);
-        }
-
-        [Fact(DisplayName = "GetAvailableProviders")]
-        public void GetAvailableProviders()
-        {
-            var ortEnvInstance = OrtEnv.Instance();
-            string[] providers = ortEnvInstance.GetAvailableProviders();
-
-            Assert.True(providers.Length > 0);
-            Assert.Equal("CPUExecutionProvider", providers[providers.Length - 1]);
-
-#if USE_CUDA
-            Assert.True(Array.Exists(providers, provider => provider == "CUDAExecutionProvider"));
-#endif
-#if USE_ROCM
-            Assert.True(Array.Exists(providers, provider => provider == "ROCMExecutionProvider"));
-#endif
-        }
-
-        [Fact(DisplayName = "TestUpdatingEnvWithCustomLogLevel")]
-        public void TestUpdatingEnvWithCustomLogLevel()
-        {
-            var ortEnvInstance = OrtEnv.Instance();
-            ortEnvInstance.EnvLogLevel = LogLevel.Verbose;
-            Assert.Equal(LogLevel.Verbose, ortEnvInstance.EnvLogLevel);
+                //verify default options
+                opt.GlobalSpinControl = false;
+                opt.GlobalInterOpNumThreads = 1;
+                opt.GlobalIntraOpNumThreads = 1;
+                opt.SetGlobalDenormalAsZero();
+            }
         }
 
         [Fact(DisplayName = "CanCreateAndDisposeSessionWithModel")]
@@ -653,7 +637,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             var inputs = new List<NamedOnnxValue> { NamedOnnxValue.CreateFromTensor<float>("data_0", inputTensor) };
             var outputTensor = new DenseTensor<float>((ReadOnlySpan<int>)new[] { 1, 2 });
             // var outputs = new List<NamedOnnxValue> { NamedOnnxValue.CreateFromTensor<float>("bad_output_name", outputTensor) };
-            var bad_names = new string[] {"bad_output_name"};
+            var bad_names = new string[] { "bad_output_name" };
             var ex = Assert.Throws<OnnxRuntimeException>(() => session.Run(inputs, bad_names));
             Assert.Contains("Output name: 'bad_output_name' is not in the metadata", ex.Message);
             session.Dispose();
@@ -2121,7 +2105,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         public DisposableListTest() { }
         public DisposableListTest(int count) : base(count) { }
 
-#region IDisposable Support
+        #region IDisposable Support
         private bool disposedValue = false; // To detect redundant calls
 
         protected virtual void Dispose(bool disposing)
@@ -2154,6 +2138,6 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             Dispose(true);
             GC.SuppressFinalize(this);
         }
-#endregion
+        #endregion
     }
 }

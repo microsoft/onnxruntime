@@ -162,7 +162,7 @@ class SessionState {
 #endif
 
 #ifdef ENABLE_TRAINING
-// This is referenced in training::TrainingSession. Should be removed when this class is removed.
+  // This is referenced in training::TrainingSession. Should be removed when this class is removed.
   /**
     Get some initialized tensors (weights).
     @param interested_weights The names of the weights to retrieve.
@@ -388,7 +388,7 @@ class SessionState {
                                   const SessionOptions& session_options,
                                   bool remove_initializers,
                                   InlinedHashMap<std::string, size_t>& constant_initializers_use_count,
-                                  const InlinedHashMap<OrtValueName, OrtMemoryInfo>& outer_scope_node_arg_to_location_map = {},
+                                  const InlinedHashMap<OrtValueName, OrtDevice>& outer_scope_node_arg_to_location_map = {},
                                   bool graph_info_already_created = false);
 
 #ifdef ENABLE_TRAINING

@@ -694,7 +694,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                         {"tensor(int32)"},
                         "Constrain mask index to integer types")
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-           MultiHeadAttentionTypeAndShapeInference(ctx, 5);
+          MultiHeadAttentionTypeAndShapeInference(ctx, 5);
         }));
 
 constexpr const char* MultiHeadAttention_ver1_doc = R"DOC(
@@ -855,6 +855,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
     OpSchema()
         .SetDoc(EmbedLayerNormalization_ver1_doc)
         .Attr("epsilon", "The epsilon value to use to avoid division by zero.", AttributeProto::FLOAT, kDefaultEmbedLayerNormEpsilon)
+        .Attr("mask_index_type", "The mask index tensor type for shape inference (0: None, 1: 1D mask_index)", AttributeProto::INT, OPTIONAL_VALUE)
         .Input(0, "input_ids", "2D words IDs with shape (batch_size, sequence_length)", "T1")
         .Input(1, "segment_ids", "2D segment IDs with shape (batch_size, sequence_length)", "T1", OpSchema::Optional)
         .Input(2, "word_embedding", "2D with shape (,hidden_size)", "T")
@@ -865,7 +866,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Input(7, "mask", "2D attention mask with shape (batch_size, sequence_length)", "T1", OpSchema::Optional)
         .Input(8, "position_ids", "2D position ids with shape (batch_size, sequence_length) or (1, sequence_length)", "T1", OpSchema::Optional)
         .Output(0, "output", "3D output tensor with shape (batch_size, sequence_length, hidden_size)", "T")
-        .Output(1, "mask_index", "1D mask_index tensor with shape (batch_size)", "T1")
+        .Output(1, "mask_index", "1D mask_index tensor with shape (batch_size)", "T1", OpSchema::Optional)
         .Output(2, "embedding_sum", "sum of word_embedding and position_embedding without layer normalization", "T", OpSchema::Optional)
         .TypeConstraint("T1", {"tensor(int32)"}, "Constrain input and output integer tensors types")
         .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output float tensors types.")
@@ -968,8 +969,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "Or 2D input tensor with shape (token_count, hidden_size)",
                "T")
         .Input(1,
-              "skip",
-              "3D input tensor with shape (batch_size, sequence_length, hidden_size)"
+               "skip",
+               "3D input tensor with shape (batch_size, sequence_length, hidden_size)"
                "Or 2D input tensor with shape (token_count, hidden_size)",
                "T")
         .Input(2,
@@ -977,10 +978,10 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "1D input tensor with shape (hidden_size)",
                "T")
         .Input(3,
-              "bias",
-              "1D bias tensor with shape (hidden_size",
-              "T",
-              OpSchema::Optional)
+               "bias",
+               "1D bias tensor with shape (hidden_size",
+               "T",
+               OpSchema::Optional)
         .Output(0,
                 "output",
                 "3D output tensor with shape (batch_size, sequence_length, hidden_size)"

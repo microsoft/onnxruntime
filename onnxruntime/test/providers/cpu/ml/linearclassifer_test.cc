@@ -15,7 +15,7 @@ TEST(MLOpTest, LinearClassifierMulticlass) {
   int64_t multi_class = 0;
   std::vector<float> X = {1.f, 0.f, 3.f, 44.f, 23.f, 11.3f};
 
-  //three estimates, for 3 points each, so 9 predictions
+  // three estimates, for 3 points each, so 9 predictions
   std::vector<float> predictions = {-4.14164229f, 1.1092185f, -0.06021539f,
                                     10.45007543f, -27.46673545f, 1.19408663f,
                                     -5.24206713f, 8.45549693f, -3.98224414f};
@@ -42,7 +42,7 @@ TEST(MLOpTest, LinearClassifierMulticlassProb) {
   std::vector<int64_t> classes = {1, 2, 3};
   std::vector<float> X = {1.f, 0.f, 3.f, 44.f, 23.f, 11.3f};
 
-  //three estimates, for 3 points each, so 9 predictions
+  // three estimates, for 3 points each, so 9 predictions
   std::vector<float> predictions = {-4.14164229f, 1.1092185f, -0.06021539f,
                                     10.45007543f, -27.46673545f, 1.19408663f,
                                     -5.24206713f, 8.45549693f, -3.98224414f};
@@ -68,7 +68,7 @@ TEST(MLOpTest, LinearClassifierMulticlassProbSigmoid) {
   std::vector<int64_t> classes = {1, 2, 3};
   std::vector<float> X = {1.f, 0.f, 3.f, 44.f, 23.f, 11.3f};
 
-  //three estimates, for 3 points each, so 9 predictions
+  // three estimates, for 3 points each, so 9 predictions
   std::vector<float> predictions = {0.015647972f, 0.751983387f, 0.484950699f,
                                     0.999971055f, 1.17855E-12f, 0.767471158f,
                                     0.005261482f, 0.999787317f, 0.018302525f};
@@ -136,7 +136,7 @@ void LinearClassifierMulticlass() {
   int64_t multi_class = 0;
   std::vector<T> X = {1, 0, 3, 44, 23, 11};
 
-  //three estimates, for 3 points each, so 9 predictions
+  // three estimates, for 3 points each, so 9 predictions
   std::vector<float> predictions = {-4.14164229f, 1.1092185f, -0.06021539f,
                                     10.45007543f, -27.46673545f, 1.19408663f,
                                     -5.3446321487426758f, 8.6596536636352539f, -3.9934897422790527};

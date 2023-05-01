@@ -13,7 +13,7 @@ struct ReluShapeInferrer : winrt::implements<ReluShapeInferrer, IMLOperatorShape
         uint32_t inputDimsSize;
         context->GetInputTensorDimensionCount(0, &inputDimsSize);
         
-        uint32_t *inputDims = new uint32_t[inputDimsSize];
+        auto inputDims = new uint32_t[inputDimsSize];
         context->GetInputTensorShape(0, inputDimsSize, inputDims);
         
         context->SetOutputTensorShape(0, inputDimsSize, inputDims);

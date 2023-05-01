@@ -97,7 +97,7 @@ Status BiasGeluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, 
     gelu_add_fusion_node.SetExecutionProviderType(gelu_node.GetExecutionProviderType());
 
     // move output definitions and edges from gelu_node to gelu_add_fusion_node
-    //delete add_node and gelu_node.
+    // delete add_node and gelu_node.
     graph_utils::FinalizeNodeFusion(graph, {add_node, gelu_node}, gelu_add_fusion_node);
 
     modified = true;

@@ -9,7 +9,6 @@
 #include "core/providers/common.h"
 #include "core/providers/shared/utils/utils.h"
 #include "core/framework/endian_utils.h"
-#include "core/framework/tensorprotoutils.h"
 #include "core/providers/qnn/builder/qnn_model_wrapper.h"
 #include "core/providers/qnn/builder/op_builder_factory.h"
 #include "core/common/safeint.h"
@@ -84,11 +83,11 @@ class ReduceOpBuilder : public BaseOpBuilder {
 };
 
 const std::array<int, REDUCE_OP_TYPE_COUNT> ReduceOpBuilder::opset_with_axes_as_input = {
-  18,  // ReduceMax
-  18,  // ReduceMin
-  18,  // ReduceMean
-  18,  // ReduceProd
-  13   // ReduceSum
+    18,  // ReduceMax
+    18,  // ReduceMin
+    18,  // ReduceMean
+    18,  // ReduceProd
+    13   // ReduceSum
 };
 
 Status ReduceOpBuilder::GetAxesSet(QnnModelWrapper& qnn_model_wrapper, const NodeUnit& node_unit,
@@ -143,7 +142,7 @@ Status ReduceOpBuilder::GetAxesSet(QnnModelWrapper& qnn_model_wrapper, const Nod
       const auto& axes_tensor = qnn_model_wrapper.GetInitializerTensors().at(axes_input_name);
       std::vector<uint8_t> axes_bytes;
 
-      ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackInitializerData(*axes_tensor, axes_bytes));
+      ORT_RETURN_IF_ERROR(qnn_model_wrapper.UnpackInitializerData(*axes_tensor, axes_bytes));
       ORT_ENFORCE(input_rank * sizeof(AxesOnnxIntType) >= axes_bytes.size(),
                   "Expect QNN Reduce* operator to have at most rank(input[0]) axes elements.");
       reduce_axes.resize(axes_bytes.size() / sizeof(AxesOnnxIntType));
@@ -250,7 +249,6 @@ Status ReduceOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_w
   QnnParamWrapper keep_dims_param(node_unit.Index(), node_unit.Name(), qnn_def::keep_dims, scalar_param);
   param_tensor_names.push_back(keep_dims_param.GetParamTensorName());
   qnn_model_wrapper.AddParamWrapper(std::move(keep_dims_param));
-
 
   ORT_RETURN_IF_ERROR(ProcessOutputs(qnn_model_wrapper, node_unit,
                                      std::move(input_names),

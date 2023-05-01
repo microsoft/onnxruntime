@@ -180,6 +180,12 @@ class OpKernelContext {
     return true;
   }
 
+  /**
+  Returns Allocator from a specific OrtMemoryInfo object.
+  TODO(leca): Replace GetTempSpaceAllocator() and GetTempSpaceCPUAllocator() with this API in the future
+  */
+  AllocatorPtr GetAllocator(const OrtDevice& device) const;
+
  protected:
   OpKernelContext(concurrency::ThreadPool* threadpool, const logging::Logger& logger, Stream* stream);
 

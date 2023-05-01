@@ -21,7 +21,7 @@ ARG TAR_CUDNN_VERSION
 # Directory containing TensorRT tar.gz installation package
 ARG TRT_BINS_DIR=.
 
-ENV PATH /usr/local/nvidia/bin:/usr/local/cuda/bin:/code/cmake-3.24.3-linux-x86_64/bin:/opt/miniconda/bin:${PATH}
+ENV PATH /usr/local/nvidia/bin:/usr/local/cuda/bin:/code/cmake-3.26.3-linux-x86_64/bin:/opt/miniconda/bin:${PATH}
 
 ENV DEBIAN_FRONTEND=noninteractive
 

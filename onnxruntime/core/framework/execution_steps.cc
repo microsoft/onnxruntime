@@ -4,7 +4,7 @@
 #include "core/framework/sequential_executor.h"
 namespace onnxruntime {
 BarrierStep::BarrierStep(size_t id, NodeIndex node_index) : SequentialExecutionPlan::ExecutionStep(node_index),
-                                      barrier_id_{id} {}
+                                                            barrier_id_{id} {}
 
 Status BarrierStep::Execute(StreamExecutionContext& ctx,
                             size_t /*stream_idx*/,
@@ -22,8 +22,8 @@ std::string BarrierStep::ToString() const {
 
 WaitOnEPStep::WaitOnEPStep(WaitNotificationFn handle,
                            NotificationIndex idx, NodeIndex node_index) : SequentialExecutionPlan::ExecutionStep(node_index),
-                                                    wait_handle_(handle),
-                                                    notification_idx_(idx) {}
+                                                                          wait_handle_(handle),
+                                                                          notification_idx_(idx) {}
 
 Status WaitOnEPStep::Execute(StreamExecutionContext& ctx,
                              size_t stream_idx,
@@ -72,7 +72,7 @@ std::string LaunchKernelStep::ToString() const {
 
 ActivateNotificationStep::ActivateNotificationStep(
     NotificationIndex notification_index, NodeIndex node_index) : SequentialExecutionPlan::ExecutionStep(node_index),
-                                            notification_idx_(notification_index) {}
+                                                                  notification_idx_(notification_index) {}
 
 Status ActivateNotificationStep::Execute(StreamExecutionContext& ctx,
                                          size_t stream_idx,
@@ -94,7 +94,7 @@ std::string ActivateNotificationStep::ToString() const {
 }
 
 TriggerDownstreamStep::TriggerDownstreamStep(size_t trigger_point_index, NodeIndex node_index) : SequentialExecutionPlan::ExecutionStep(node_index),
-                                                                           trigger_point_index_(trigger_point_index) {}
+                                                                                                 trigger_point_index_(trigger_point_index) {}
 
 Status TriggerDownstreamStep::Execute(StreamExecutionContext& ctx,
                                       size_t /*stream_idx*/,

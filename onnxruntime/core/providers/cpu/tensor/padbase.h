@@ -65,9 +65,9 @@ class PadBase {
   ~PadBase() = default;
 
   Mode mode_{Mode::Constant};
-  PadsVector pads_;              // After construction, only >=0 values are in here
+  PadsVector pads_;    // After construction, only >=0 values are in here
   PadsVector slices_;  // All of the negative padding values are separated out into slices_
-  const float value_;            // will always be float (when 'value' parsed from attribute - opset 10 and below)
+  const float value_;  // will always be float (when 'value' parsed from attribute - opset 10 and below)
 
   // flag used to differentiate the cases where some input values to the op are
   // to be obtained from (is_dynamic_ = false) attributes vs (is_dynamic_ = true) inputs

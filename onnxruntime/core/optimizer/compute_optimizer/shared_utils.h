@@ -3,7 +3,7 @@
 
 // The optimization here ideally is applicable to both training and inferencing,
 // while so far we mainly validate on training during cooking the optimization.
-#ifdef ENABLE_TRAINING_CORE
+#ifdef ENABLE_TRAINING
 #pragma once
 
 #include <initializer_list>

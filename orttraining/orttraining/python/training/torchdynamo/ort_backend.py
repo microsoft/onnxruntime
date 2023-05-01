@@ -448,8 +448,8 @@ def _assert_allclose_with_detailed_error_message(
     if not allclose:
         raise RuntimeError(
             "ONNX output doesn't match baseline output with "
-            + f"actual rtol={real_rtol} and actual atol={real_atol} "
-            + f"but expected rtol={rtol} and expected atol={atol}."
+            f"actual rtol={real_rtol} and actual atol={real_atol} "
+            f"but expected rtol={rtol} and expected atol={atol}."
         )
 
 
@@ -627,7 +627,9 @@ class OrtBackend:
         if graph_module in self._partitioner_cache:
             partitioned_prim_graph_module = self._partitioner_cache[graph_module]
         else:
-            prim_graph_module = make_fx(graph_module, decomposition_table=_ATEN2ATEN_DECOMP)(*args)
+            prim_graph_module = make_fx(
+                graph_module, tracing_mode="fake", _allow_non_fake_inputs=True, decomposition_table=_ATEN2ATEN_DECOMP
+            )(*args)
             # TODO(wechi): this is required for removing aten::_to_copy in _replace_to_copy_with_to.
             # We need input and output tensors' devices to decide if aten::_to_copy is just a Cast.
             FakeTensorProp(prim_graph_module).propagate(*args)

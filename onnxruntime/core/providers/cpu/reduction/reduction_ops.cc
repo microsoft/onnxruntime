@@ -7,7 +7,7 @@
 #include "core/common/narrow.h"
 #include "core/common/span_utils.h"
 #include "core/providers/common.h"
-//TODO: fix the warnings
+// TODO: fix the warnings
 #if defined(_MSC_VER) && !defined(__clang__)
 #pragma warning(disable : 26451)
 #endif
@@ -664,7 +664,7 @@ FastReduceKind OptimizeShapeForFastReduce(gsl::span<const int64_t> input_shape,
     fast_axes.push_back(0);
   for (int64_t i = 1; i < input_shape_size; ++i) {
     if (reduce[onnxruntime::narrow<size_t>(i)] == reduce[onnxruntime::narrow<size_t>(i - 1)]) {
-      fast_shape[onnxruntime::narrow<size_t>(fast_shape.size()- 1)] *= input_shape[onnxruntime::narrow<size_t>(i)];
+      fast_shape[onnxruntime::narrow<size_t>(fast_shape.size() - 1)] *= input_shape[onnxruntime::narrow<size_t>(i)];
     } else {
       if (reduce[onnxruntime::narrow<size_t>(i)]) {
         fast_axes.push_back(onnxruntime::narrow<int64_t>(fast_shape.size()));
@@ -690,7 +690,7 @@ void ValidateCommonFastReduce(const Tensor* axes_tensor) {
               "An axes tensor must be a vector tensor.");
 }
 
-//template <typename T, typename TVAL>
+// template <typename T, typename TVAL>
 bool CommonFastReduceCopy(OpKernelContext* ctx, TensorShapeVector& input_axes, bool noop_with_empty_axes) {
   if (ctx->InputCount() == 2) {
     // second input holds the axes.
