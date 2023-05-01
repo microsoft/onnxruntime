@@ -94,8 +94,8 @@ namespace Dml
 
     void ExecutionProviderImpl::WaitForOutstandingWork()
     {
-        Flush();
-        m_context->GetCurrentCompletionEvent().WaitForSignal();
+        auto event = Flush();
+        event.WaitForSignal();
     }
 
     HRESULT __stdcall ExecutionProviderImpl::AllocatePooledResource(
@@ -926,10 +926,10 @@ namespace Dml
         return onnxruntime::common::Status::OK();
     }
 
-    void __stdcall ExecutionProviderImpl::Flush() const
+    GpuEvent ExecutionProviderImpl::Flush() const
     {
         assert(!m_closed);
-        m_context->Flush();
+        return m_context->Flush();
     }
 
     void ExecutionProviderImpl::SetDefaultRoundingMode(AllocatorRoundingMode roundingMode)
@@ -1095,8 +1095,8 @@ namespace Dml
         // Flush and trim resources, including staging memory used to upload weights.
         // This reduces memory usage immediately after session creation, and avoids
         // performance impact of deallocation during first evaluation.
-        Flush();
-        m_context->GetCurrentCompletionEvent().WaitForSignal();
+        auto event = Flush();
+        event.WaitForSignal();
         m_context->ReleaseCompletedReferences();
         m_uploadHeap->Trim();
 
@@ -1115,12 +1115,6 @@ namespace Dml
     {
         Dml::BucketizedBufferAllocator* pAllocationInfo = static_cast<Dml::BucketizedBufferAllocator*>(allocator);
         return pAllocationInfo->DecodeDataHandle(ptr)->GetResource();
-    }
-
-    void FlushContext(onnxruntime::IExecutionProvider* provider)
-    {
-        ExecutionProvider* dmlexecutionprovider = static_cast<Dml::ExecutionProvider*>(provider);
-        dmlexecutionprovider->Flush();
     }
 
     void SetDefaultRoundingMode(onnxruntime::IExecutionProvider* provider, AllocatorRoundingMode roundingMode)
