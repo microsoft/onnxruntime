@@ -71,7 +71,11 @@ class WhisperHelper:
 
     @staticmethod
     def load_model(
-        model_name_or_path: str, cache_dir: str, device: torch.device, merge_encoder_and_decoder_init: bool = True, state_dict_path: str = ""
+        model_name_or_path: str, 
+        cache_dir: str, 
+        device: torch.device, 
+        merge_encoder_and_decoder_init: bool = True, 
+        state_dict_path: str = "",
     ) -> Dict[str, torch.nn.Module]:
         """Load model given a pretrained name or path, then build models for ONNX conversion.
 
