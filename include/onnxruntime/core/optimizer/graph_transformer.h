@@ -6,6 +6,7 @@
 
 #include "core/common/common.h"
 #include "core/common/inlined_containers.h"
+#include "core/framework/data_types.h"
 #include "core/graph/graph_viewer.h"
 #include "core/optimizer/graph_transformer_level.h"
 
@@ -69,4 +70,27 @@ class GraphTransformer {
   const std::string name_;
   const InlinedHashSet<std::string_view> compatible_provider_types_;
 };
+
+/**
+ * @brief Immutable object to identify a kernel registration.
+ *
+ * This data structure is used by the graph transformers to check whether
+ * a kernel is registered with the execution provider (i.e. has an
+ * implementation). If not, the transformer can not generate a node with
+ * such kernel.
+ */
+struct OpKernelRegistryId {
+  const std::string op_type_;
+  const std::string domain_;
+  const int version_;
+  const InlinedHashMap<std::string, MLDataType> type_constraints_;
+
+  OpKernelRegistryId(
+      const std::basic_string_view<char>& op,
+      const std::basic_string_view<char>& domain,
+      const int version,
+      std::initializer_list<std::pair<std::string, MLDataType>> init_list)
+      : op_type_(op), domain_(domain), version_(version), type_constraints_(init_list) {}
+};
+
 }  // namespace onnxruntime
