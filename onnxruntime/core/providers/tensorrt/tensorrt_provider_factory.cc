@@ -91,6 +91,9 @@ struct Tensorrt_Provider : Provider {
     info.auxiliary_streams = options.trt_auxiliary_streams;
     info.tactic_sources = options.trt_tactic_sources == nullptr ? "" : options.trt_tactic_sources;
     info.extra_plugin_lib_paths = options.trt_extra_plugin_lib_paths == nullptr ? "" : options.trt_extra_plugin_lib_paths;
+    info.profile_min_shapes = options.trt_profile_min_shapes == nullptr ? "" : options.trt_profile_min_shapes;
+    info.profile_max_shapes = options.trt_profile_max_shapes == nullptr ? "" : options.trt_profile_max_shapes;
+    info.profile_opt_shapes = options.trt_profile_opt_shapes == nullptr ? "" : options.trt_profile_opt_shapes;
 
     common::Status status = CreateTensorRTCustomOpDomainList(info);
     if (!status.IsOK()) {
@@ -183,6 +186,48 @@ struct Tensorrt_Provider : Provider {
 #endif
       dest[str_size] = '\0';
       trt_options.trt_tactic_sources = (const char*)dest;
+    }
+
+    str_size = internal_options.profile_min_shapes.size();
+    if (str_size == 0) {
+      trt_options.trt_profile_min_shapes = nullptr;
+    } else {
+      dest = new char[str_size + 1];
+#ifdef _MSC_VER
+      strncpy_s(dest, str_size + 1, internal_options.profile_min_shapes.c_str(), str_size);
+#else
+      strncpy(dest, internal_options.profile_min_shapes.c_str(), str_size);
+#endif
+      dest[str_size] = '\0';
+      trt_options.trt_profile_min_shapes = (const char*)dest;
+    }
+
+    str_size = internal_options.profile_max_shapes.size();
+    if (str_size == 0) {
+      trt_options.trt_profile_max_shapes = nullptr;
+    } else {
+      dest = new char[str_size + 1];
+#ifdef _MSC_VER
+      strncpy_s(dest, str_size + 1, internal_options.profile_max_shapes.c_str(), str_size);
+#else
+      strncpy(dest, internal_options.profile_max_shapes.c_str(), str_size);
+#endif
+      dest[str_size] = '\0';
+      trt_options.trt_profile_max_shapes = (const char*)dest;
+    }
+
+    str_size = internal_options.profile_opt_shapes.size();
+    if (str_size == 0) {
+      trt_options.trt_profile_opt_shapes = nullptr;
+    } else {
+      dest = new char[str_size + 1];
+#ifdef _MSC_VER
+      strncpy_s(dest, str_size + 1, internal_options.profile_opt_shapes.c_str(), str_size);
+#else
+      strncpy(dest, internal_options.profile_opt_shapes.c_str(), str_size);
+#endif
+      dest[str_size] = '\0';
+      trt_options.trt_profile_opt_shapes = (const char*)dest;
     }
   }
 
