@@ -1850,28 +1850,30 @@ class PlannerImpl {
           for (auto it = node->OutputNodesBegin(); it != node->OutputNodesEnd(); ++it) {
             for (auto* output : node->OutputDefs()) {
               if (output->Exists()) {
-                if (it->OpType() == "If" || std::find(it->InputDefs().begin(), it->InputDefs().end(), output) != it->InputDefs().end()) {
-                  OrtValueIndex output_arg_idx;
-                  ORT_THROW_IF_ERROR(ort_value_name_idx_map_.GetIdx(output->Name(), output_arg_idx));
-                  // there are two cases we need notification:
-                  // 1. the consumer is not in the same stream
-                  // 2. the consumer is in the same stream(non-cpu device), but it consumes a CPU tensor from an non-shape op.
-                  //    for example, a resize cuda kernel consumer a tensor from MemCpyToHost cuda kernel on the same stream.
-                  //    in this case, the FIFO can't guarantee the cpu tensor is ready when resize kernel is launching
-                  OrtDevice::DeviceType output_arg_device = plan_.allocation_plan[output_arg_idx].location.device.Type();
-                  WaitNotificationFn wait_handle = it->OpType() == "If" ? 
-                      stream_handle_registry.GetWaitHandle(execution_plan[i]->device_.Type(), OrtDevice::CPU) :
-                      stream_handle_registry.GetWaitHandle(execution_plan[i]->device_.Type(), output_arg_device);
-                  if ((node_stream_map_[it->Index()] != i || output_arg_device == OrtDevice::CPU) && wait_handle != nullptr) {
-                    if (node_to_notification.find(node_index) == node_to_notification.end()) {
-                      node_to_notification[node_index] = plan_.notification_owners.size();
-                      plan_.notification_owners.push_back(i);
-                    }
-                    // if node_index is already in the map, it will NOT be overwritten by insert()
-                    node_to_wait[it->Index()].insert({node_index, wait_handle});
-                  }
+                OrtValueIndex output_arg_idx;
+                ORT_THROW_IF_ERROR(ort_value_name_idx_map_.GetIdx(output->Name(), output_arg_idx));
+                // there are two cases we need notification:
+                // 1. the consumer is not in the same stream
+                // 2. the consumer is in the same stream(non-cpu device), but it consumes a CPU tensor from an non-shape op.
+                //    for example, a resize cuda kernel consumer a tensor from MemCpyToHost cuda kernel on the same stream.
+                //    in this case, the FIFO can't guarantee the cpu tensor is ready when resize kernel is launching
+                OrtDevice::DeviceType target_device = plan_.allocation_plan[output_arg_idx].location.device.Type();
+                if (std::find(it->InputDefs().begin(), it->InputDefs().end(), output) == it->InputDefs().end()) {
+                  // if output is consumed in a subgraph, reset target device
+                  OrtValueIndex input_arg_idx;
+                  ORT_THROW_IF_ERROR(ort_value_name_idx_map_.GetIdx((*it->InputDefs().begin())->Name(), input_arg_idx));
+                  target_device = plan_.allocation_plan[input_arg_idx].location.device.Type();
                 }
-              }
+                WaitNotificationFn wait_handle = stream_handle_registry.GetWaitHandle(execution_plan[i]->device_.Type(), target_device);
+                if ((node_stream_map_[it->Index()] != i || target_device == OrtDevice::CPU) && wait_handle != nullptr) {
+                  if (node_to_notification.find(node_index) == node_to_notification.end()) {
+                    node_to_notification[node_index] = plan_.notification_owners.size();
+                    plan_.notification_owners.push_back(i);
+                  }
+                  // if node_index is already in the map, it will NOT be overwritten by insert()
+                  node_to_wait[it->Index()].insert({node_index, wait_handle});
+                }
+              }  // output->Exists
             }
           }
         }

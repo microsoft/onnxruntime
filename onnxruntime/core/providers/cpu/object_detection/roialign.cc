@@ -299,10 +299,6 @@ Status CheckROIAlignValidInput(const Tensor* X_ptr, const Tensor* rois_ptr, cons
 
 template <typename T>
 Status RoiAlign<T>::Compute(OpKernelContext* context) const {
-
-  const auto name = Info().node().Name();
-  std::cout << "RoiAlign node: " << name << std::endl;
-
   const auto* X_ptr = context->Input<Tensor>(0);
   const auto* rois_ptr = context->Input<Tensor>(1);
   const auto* batch_indices_ptr = context->Input<Tensor>(2);
