@@ -160,7 +160,7 @@ def parse_arguments():
     parser.add_argument("--no_repeat_ngram_size", type=int, default=3, help="default to 3")
 
     parser.add_argument(
-        "--state_dict",
+        "--state_dict_path",
         type=str,
         default=None,
         help="filepath to load pre-trained model with custom state dictionary (e.g. pytorch_model.bin)",
