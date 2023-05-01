@@ -20,5 +20,5 @@ void MaxPoolWithIndex(
     const T* p_input,
     T* p_output,
     int64_t* p_indices);
-}  //namespace cuda
-}  //namespace onnxruntime
+}  // namespace cuda
+}  // namespace onnxruntime

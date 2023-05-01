@@ -11,9 +11,6 @@ in ONNX format than looking into its node with
 how to draw a model and to retrieve it in *json*
 format.
 
-.. contents::
-    :local:
-
 Retrieve a model in JSON format
 +++++++++++++++++++++++++++++++
 

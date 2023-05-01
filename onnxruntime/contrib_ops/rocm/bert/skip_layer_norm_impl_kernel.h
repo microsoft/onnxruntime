@@ -36,8 +36,7 @@ __global__ void SkipLayerNormKernel(
 
   for (int i = threadIdx.x; i < ld; i += TPB) {
     const int idx = offset + i;
-    const U val = (bias == nullptr) ? static_cast<U>(input[idx]) + static_cast<U>(skip[idx]) :
-                                      static_cast<U>(input[idx]) + static_cast<U>(skip[idx]) + static_cast<U>(bias[i]);
+    const U val = (bias == nullptr) ? static_cast<U>(input[idx]) + static_cast<U>(skip[idx]) : static_cast<U>(input[idx]) + static_cast<U>(skip[idx]) + static_cast<U>(bias[i]);
     const U rldval = reverse_ld * val;
     thread_data = pair_sum(thread_data, hipcub::KeyValuePair<U, U>(rldval, rldval * val));
 
@@ -75,10 +74,9 @@ __global__ void SkipLayerNormKernelVec(
       const VecT bias_v = hasBias ? *reinterpret_cast<const VecT*>(bias + i) : VecT();
       VecT skip_input_bias_add_output_v, output_v;
 
-      #pragma unroll
+#pragma unroll
       for (int k = 0; k < ILP; k++) {
-        const U val = hasBias ? static_cast<U>(input_v.val[k]) + static_cast<U>(skip_v.val[k]) + static_cast<U>(bias_v.val[k]) :
-                                static_cast<U>(input_v.val[k]) + static_cast<U>(skip_v.val[k]);
+        const U val = hasBias ? static_cast<U>(input_v.val[k]) + static_cast<U>(skip_v.val[k]) + static_cast<U>(bias_v.val[k]) : static_cast<U>(input_v.val[k]) + static_cast<U>(skip_v.val[k]);
         const U rldval = reverse_ld * val;
 
         if (hasSkipInputBiasAdditionOutput) {
@@ -120,10 +118,9 @@ __global__ void SkipLayerNormKernelSmall(
 
     U rldval_sum = U(0.f);
     U rldvalsq_sum = U(0.f);
-    #pragma unroll
+#pragma unroll
     for (int i = 0; i < ILP; i++) {
-      const U val = hasBias ? static_cast<U>(input_v.val[i]) + static_cast<U>(skip_v.val[i]) + static_cast<U>(bias_v.val[i]) :
-                              static_cast<U>(input_v.val[i]) + static_cast<U>(skip_v.val[i]);
+      const U val = hasBias ? static_cast<U>(input_v.val[i]) + static_cast<U>(skip_v.val[i]) + static_cast<U>(bias_v.val[i]) : static_cast<U>(input_v.val[i]) + static_cast<U>(skip_v.val[i]);
 
       if (hasSkipInputBiasAdditionOutput) {
         skip_input_bias_add_output_v.val[i] = static_cast<T>(val);

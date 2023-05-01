@@ -21,7 +21,7 @@ TEST(Identity, StringType) {
   std::vector<int64_t> dims{2, 2};
   test.AddInput<std::string>("X", dims, {"a", "b", "x", "y"});
   test.AddOutput<std::string>("Y", dims, {"a", "b", "x", "y"});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: unsupported data type
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: unsupported data type
 }
 
 TEST(Identity, SequenceType) {
@@ -45,7 +45,7 @@ TEST(Identity, OptionalTensorType_NonNone) {
   std::initializer_list<float> data = {-1.0856307f, 0.99734545f};
   test.AddOptionalTypeTensorInput<float>("A", {2}, &data);
   test.AddOptionalTypeTensorOutput<float>("Y", {2}, &data);
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: opset 16 is not supported yet
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: opset 16 is not supported yet
 }
 
 TEST(Identity, OptionalTensorType_None) {
@@ -56,7 +56,7 @@ TEST(Identity, OptionalTensorType_None) {
 
   test.AddOptionalTypeTensorInput<float>("A", {}, nullptr);                            // None
   test.AddOptionalTypeTensorOutput<float>("Y", {}, nullptr);                           // None
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: opset 16 is not supported yet
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: opset 16 is not supported yet
 }
 
 TEST(Identity, OptionalTensorSequenceType_NonNone) {
@@ -71,7 +71,7 @@ TEST(Identity, OptionalTensorSequenceType_NonNone) {
 
   test.AddOptionalTypeSeqInput<int64_t>("A", &input);
   test.AddOptionalTypeSeqOutput<int64_t>("Y", &input);
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: opset 16 is not supported yet
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: opset 16 is not supported yet
 }
 
 TEST(Identity, OptionalTensorSequenceType_None) {
@@ -82,7 +82,7 @@ TEST(Identity, OptionalTensorSequenceType_None) {
 
   test.AddOptionalTypeSeqInput<float>("A", nullptr);                                   // None
   test.AddOptionalTypeSeqOutput<float>("Y", nullptr);                                  // None
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: opset 16 is not supported yet
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: opset 16 is not supported yet
 }
 
 #endif

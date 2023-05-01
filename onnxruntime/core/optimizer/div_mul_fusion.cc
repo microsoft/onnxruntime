@@ -87,7 +87,7 @@ Status DivMulFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_eff
   const auto& div_output = div_node.OutputDefs();
   auto& mul_inputs = mul_node.MutableInputDefs();
 
-  //get other input of mul
+  // get other input of mul
   auto& mul_other_input = mul_inputs[0] == div_output[0] ? mul_inputs[1] : mul_inputs[0];
 
   graph_utils::ReplaceNodeInput(div_node, 0, *mul_other_input);

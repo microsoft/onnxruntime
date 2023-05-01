@@ -103,7 +103,7 @@ Status SplitTraining::ComputeImpl(OpKernelContext& context, const Tensor& input)
   int after_dims_including_split_axis = 0;
   int after_dims_excluding_split = 0;
 
-  //override the attribute value with the input value for split_split
+  // override the attribute value with the input value for split_split
   const Tensor* split_tensor = context.Input<Tensor>(1);
   ORT_ENFORCE(split_tensor->Shape().NumDimensions() == 1, "An split tensor must be a vector tensor.");
   auto nDims = static_cast<size_t>(split_tensor->Shape()[0]);

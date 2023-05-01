@@ -172,9 +172,8 @@ class SessionScope {
 #endif
 #ifdef DEBUG_NODE_INPUTS_OUTPUTS
         ,
-        dump_context_ {
-    session_state_.GetGraphExecutionCounter(), 0
-  }
+        dump_context_{
+            session_state_.GetGraphExecutionCounter(), 0}
 #endif
   {
     if (session_state_.Profiler().IsEnabled()) {
@@ -218,10 +217,10 @@ class SessionScope {
 
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
     if (flush_memory_info_) {
-        session_state_.GetMemoryProfiler()->CreateEvents(
-            "dynamic activations_" + std::to_string(session_state_.GetMemoryProfiler()->GetMemoryInfo().GetIteration()),
-            session_state_.GetMemoryProfiler()->GetAndIncreasePid(), MemoryInfo::MapType::DynamicActivation, "", 0);
-        session_state_.GetMemoryProfiler()->Clear();
+      session_state_.GetMemoryProfiler()->CreateEvents(
+          "dynamic activations_" + std::to_string(session_state_.GetMemoryProfiler()->GetMemoryInfo().GetIteration()),
+          session_state_.GetMemoryProfiler()->GetAndIncreasePid(), MemoryInfo::MapType::DynamicActivation, "", 0);
+      session_state_.GetMemoryProfiler()->Clear();
     }
 #endif
 
@@ -248,7 +247,7 @@ class SessionScope {
   }
 #endif
 
-private:
+ private:
   const SessionState& session_state_;
   TimePoint session_start_;
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
@@ -298,9 +297,8 @@ class KernelScope {
 #endif
 #ifdef DEBUG_NODE_INPUTS_OUTPUTS
         ,
-        dump_context_ {
-    session_scope_.dump_context_.iteration, kernel_.Node().Index()
-  }
+        dump_context_{
+            session_scope_.dump_context_.iteration, kernel_.Node().Index()}
 #endif
   {
 #ifdef CONCURRENCY_VISUALIZER

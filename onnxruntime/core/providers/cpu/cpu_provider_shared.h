@@ -194,6 +194,12 @@ struct ProviderHostCPU {
   virtual Status contrib__AdamWOptimizerBase__PrepareForCompute(const contrib::AdamWOptimizerBase* p, OpKernelContext* ctx, contrib__AdamWOptimizerBase__Prepare& prepare) = 0;
   // From cpu/optimizer/sgdbase.h
   virtual Status contrib__SGDOptimizerV2Base__PrepareForCompute(const contrib::SGDOptimizerV2Base* p, OpKernelContext* ctx, contrib__SGDOptimizerV2Base__Prepare& prepare) = 0;
+
+  // Should remove the shrunken_gather include from ENABLE_TRAINING_OPS once 1). compute optimizer is enabled for inference or
+  // 2). this is needed by inference for other purpose.
+  virtual void contrib__ShrunkenGatherCommon__CheckInput(const contrib::ShrunkenGatherCommon* p,
+                                                         const Tensor* input_tensor, const Tensor* indices_tensor,
+                                                         int64_t axis_in) const = 0;
 #endif
 
 #ifdef ENABLE_TRAINING

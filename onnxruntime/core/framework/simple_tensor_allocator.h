@@ -24,7 +24,7 @@ class SimpleTensorAllocator : public ITensorAllocator {
       : ITensorAllocator(session_state),
         seq_plan_(execution_plan) {}
 
-  common::Status FinalizePlan(InlinedHashMap<std::string, size_t>& planned_memory_sizes_in_byte) override {
+  common::Status FinalizePlan(InlinedHashMap<OrtDevice, size_t>& planned_memory_sizes_in_byte) override {
     // There is no memory plan to allocate a big block of memory, so
     // planned memory sizes in different locations are all empty.
     planned_memory_sizes_in_byte.clear();

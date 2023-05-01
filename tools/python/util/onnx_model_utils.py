@@ -319,7 +319,7 @@ def get_producer_consumer_maps(graph: onnx.GraphProto):
     # top level graph should have no implicit inputs
     if implicit_inputs:
         raise ValueError(
-            "This appears to be an invalid model with missing inputs of " f'{",".join(sorted(implicit_inputs))}'
+            f'This appears to be an invalid model with missing inputs of {",".join(sorted(implicit_inputs))}'
         )
 
     return node_to_producers, node_to_consumers

@@ -31,7 +31,6 @@ class FusionOptions:
         # (1) Attention has merged weights for Q/K/V projection, which might be faster in some cases since 3 MatMul is
         #     merged into one.
         # (2) Attention could only handle self attention; MultiHeadAttention could handle both self and cross attention.
-        # (3) MultiHeadAttention has only cuda implementation right now.
         self.use_multi_head_attention = False
 
         self.enable_skip_layer_norm = True
@@ -46,9 +45,11 @@ class FusionOptions:
 
         # Set default to sequence length for BERT model to use fused attention to speed up.
         # Note that embed layer normalization will convert 2D mask to 1D when mask type is MaskIndexEnd.
-        self.attention_mask_format = (
-            AttentionMaskFormat.MaskIndexEnd if model_type == "bert" else AttentionMaskFormat.AttentionMask
-        )
+        self.attention_mask_format = AttentionMaskFormat.AttentionMask
+        if model_type == "bert":
+            self.attention_mask_format = AttentionMaskFormat.MaskIndexEnd
+        elif model_type == "vit":
+            self.attention_mask_format = AttentionMaskFormat.NoMask
 
         # options for stable diffusion
         if model_type in ["unet", "vae", "clip"]:
@@ -227,8 +228,7 @@ class FusionOptions:
             required=False,
             action="store_true",
             help="Use MultiHeadAttention instead of Attention operator for testing purpose. "
-            "Note that MultiHeadAttention might be slower than Attention since MatMul of input projection is excluded. "
-            "MultiHeadAttention has only CUDA implementation so the model can only run with cuda execution provider.",
+            "Note that MultiHeadAttention might be slower than Attention when qkv are not packed. ",
         )
         parser.set_defaults(use_multi_head_attention=False)
 

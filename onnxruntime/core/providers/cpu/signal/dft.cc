@@ -181,50 +181,133 @@ static Status fft_radix2(OpKernelContext* /*ctx*/, const Tensor* X, Tensor* Y, s
   return Status::OK();
 }
 
+template <typename T>
+T next_power_of_2(T in) {
+  in--;
+  T out = 1;
+  while (out <= in) {
+    out <<= 1;
+  }
+  return out;
+}
+
 template <typename T, typename U>
-static Status dft_naive(const Tensor* X, Tensor* Y, size_t X_offset, size_t X_stride, size_t Y_offset, size_t Y_stride,
-                        int64_t axis, size_t dft_length, const Tensor* window, bool inverse) {
-  // Get shape and significant bits
-  const auto& X_shape = X->Shape();
-  size_t number_of_samples = static_cast<size_t>(X_shape[onnxruntime::narrow<size_t>(axis)]);
-  const auto& Y_shape = Y->Shape();
-  size_t dft_output_size = static_cast<size_t>(Y_shape[onnxruntime::narrow<size_t>(axis)]);
+static Status dft_bluestein_z_chirp(
+    OpKernelContext* ctx, const Tensor* X, Tensor* Y, Tensor& b_fft, Tensor& chirp, size_t X_offset, size_t X_stride, size_t Y_offset, size_t Y_stride,
+    int64_t axis, size_t dft_length, const Tensor* window, bool inverse, InlinedVector<std::complex<T>>& V,
+    InlinedVector<std::complex<T>>& temp_output) {
+  static constexpr T pi = static_cast<T>(3.14159265);
+
+  AllocatorPtr alloc;
+  ORT_RETURN_IF_ERROR(ctx->GetTempSpaceAllocator(&alloc));
+
+  size_t N = static_cast<size_t>(dft_length);
+  size_t M = next_power_of_2(2 * N - 1);
+  auto dft_input_shape = onnxruntime::TensorShape({1, (int64_t)M, 2});
+  T scale = inverse ? 1.f / N : 1.f;
+  T direction = inverse ? 1.f : -1.f;
+
+  bool should_recreate_b_fft = b_fft.Shape().Size() != dft_input_shape.Size();
+  bool should_recreate_chirp = chirp.Shape().Size() != dft_input_shape.Size();
+  bool should_recreate = should_recreate_b_fft || should_recreate_chirp;
+  if (should_recreate) {
+    auto b = onnxruntime::Tensor(X->DataType(), dft_input_shape, alloc);
+    b_fft = onnxruntime::Tensor(Y->DataType(), dft_input_shape, alloc);
+    chirp = onnxruntime::Tensor(X->DataType(), dft_input_shape, alloc);
+
+    std::complex<T>* b_data = reinterpret_cast<std::complex<T>*>(b.MutableDataRaw());
+    std::complex<T>* b_fft_data = reinterpret_cast<std::complex<T>*>(b_fft.MutableDataRaw());
+    std::complex<T>* chirp_data = reinterpret_cast<std::complex<T>*>(chirp.MutableDataRaw());
+    memset(reinterpret_cast<void*>(b_data), 0, b.SizeInBytes());
+    memset(reinterpret_cast<void*>(b_fft_data), 0, b_fft.SizeInBytes());
+    memset(reinterpret_cast<void*>(chirp_data), 0, chirp.SizeInBytes());
+
+    for (size_t n = 0; n < N; n++) {
+      std::complex<T>& chirp_n = *(chirp_data + n);
+      // chirp
+      auto exponent = direction * pi * n * n / N;
+      chirp_n = std::complex<T>(cos(exponent), sin(exponent));
+
+      // b
+      std::complex<T>& b_n = *(b_data + n);
+      b_n = std::conj(chirp_n);
+    }
+
+    for (size_t n = M - N + 1; n < M; n++) {
+      std::complex<T>& b_n = *(b_data + n);
+      std::complex<T>& b_m_minus_n = *(b_data + M - n);
+      b_n = b_m_minus_n;
+    }
+
+    // Forward FFT radix2 for the "b" signal
+    // This will be cached and reused!
+    ORT_RETURN_IF_ERROR((fft_radix2<T, std::complex<T>>(ctx, &b, &b_fft, 0, 1, 0, 1, 1, M, nullptr,
+                                                        false, false, V, temp_output)));
+  }
 
   // Get data
   auto* X_data = const_cast<U*>(reinterpret_cast<const U*>(X->DataRaw())) + X_offset;
   auto* Y_data = reinterpret_cast<std::complex<T>*>(Y->MutableDataRaw()) + Y_offset;
-
   U* window_data = nullptr;
   if (window) {
     window_data = const_cast<U*>(reinterpret_cast<const U*>(window->DataRaw()));
   }
 
-  auto angular_velocity = compute_angular_velocity<T>(dft_length, inverse);
+  auto a = onnxruntime::Tensor(X->DataType(), dft_input_shape, alloc);
+  auto a_fft = onnxruntime::Tensor(Y->DataType(), dft_input_shape, alloc);
+  std::complex<T>* a_data = reinterpret_cast<std::complex<T>*>(a.MutableDataRaw());
+  std::complex<T>* a_fft_data = reinterpret_cast<std::complex<T>*>(a_fft.MutableDataRaw());
+  std::complex<T>* b_fft_data = reinterpret_cast<std::complex<T>*>(b_fft.MutableDataRaw());
+  std::complex<T>* chirp_data = reinterpret_cast<std::complex<T>*>(chirp.MutableDataRaw());
+  memset(reinterpret_cast<void*>(a_data), 0, a.SizeInBytes());
 
-  for (size_t i = 0; i < dft_output_size; i++) {
-    std::complex<T>& out = *(Y_data + i * Y_stride);
-    out.real(0);
-    out.imag(0);
+  const auto& X_shape = X->Shape();
+  size_t number_of_samples = static_cast<size_t>(X_shape[onnxruntime::narrow<size_t>(axis)]);
 
-    for (size_t j = 0; j < dft_length; j++) {  // vectorize over this loop
-      auto exponential = compute_exponential(i * j, angular_velocity);
-      auto window_element = window_data ? *(window_data + j) : 1;
-      auto x = (j < number_of_samples) ? *(X_data + j * X_stride) : 0;
-      auto element = x * window_element;
-      out += exponential * element;
-    }
-
-    if (inverse) {
-      out /= static_cast<T>(dft_length);
-    }
+  // Prepare "a" signal
+  for (size_t n = 0; n < number_of_samples; n++) {
+    std::complex<T>& a_n = *(a_data + n);
+    std::complex<T>& chirp_n = *(chirp_data + n);
+    auto window_n = window_data ? *(window_data + n) : 1;
+    a_n = *(X_data + n * X_stride);  // input
+    a_n *= window_n;
+    a_n *= chirp_n;
   }
 
+  // Forward FFT radix2 for the "a" signal
+  ORT_RETURN_IF_ERROR((fft_radix2<T, std::complex<T>>(ctx, &a, &a_fft, 0, 1, 0, 1, 1, M, nullptr,
+                                                      false, false, V, temp_output)));
+
+  for (size_t i = 0; i < M; i++) {
+    std::complex<T>& a_i = *(a_fft_data + i);
+    std::complex<T>& b_i = *(b_fft_data + i);
+    a_i *= b_i;
+  }
+
+  // Inverse FFT radix2 for the "a" signal
+  ORT_RETURN_IF_ERROR((fft_radix2<T, std::complex<T>>(ctx, &a_fft, &a, 0, 1, 0, 1, 1, M, nullptr,
+                                                      false, true, V, temp_output)));
+  const auto& Y_shape = Y->Shape();
+  size_t dft_output_size = static_cast<size_t>(Y_shape[onnxruntime::narrow<size_t>(axis)]);
+
+  for (size_t i = 0; i < dft_output_size; i++) {
+    std::complex<T>& chirp_i = *(chirp_data + i);
+    std::complex<T>& out = *(Y_data + i * Y_stride);
+    std::complex<T>& c_i = *(a_data + i);
+    if (i > 0) {
+      // The inverse fft is computed using the same cached vandermonde matrix (V) created by the
+      // forward fft. This reversal causes the output to be reversed as well.
+      // Therefore we undo the reversal when writing the output back out.
+      c_i = *(a_data + M - i);
+    }
+    out = c_i * chirp_i * scale;
+  }
   return Status::OK();
 }
 
 template <typename T, typename U>
-static Status discrete_fourier_transform(OpKernelContext* ctx, const Tensor* X, Tensor* Y, int64_t axis,
-                                         int64_t dft_length, const Tensor* window, bool is_onesided, bool inverse,
+static Status discrete_fourier_transform(OpKernelContext* ctx, const Tensor* X, Tensor* Y, Tensor& b_fft, Tensor& chirp,
+                                         int64_t axis, int64_t dft_length, const Tensor* window, bool is_onesided, bool inverse,
                                          InlinedVector<std::complex<T>>& V,
                                          InlinedVector<std::complex<T>>& temp_output) {
   // Get shape
@@ -276,7 +359,7 @@ static Status discrete_fourier_transform(OpKernelContext* ctx, const Tensor* X, 
                                             is_onesided, inverse, V, temp_output)));
     } else {
       ORT_RETURN_IF_ERROR(
-          (dft_naive<T, U>(X, Y, X_offset, X_stride, Y_offset, Y_stride, axis, onnxruntime::narrow<size_t>(dft_length), window, inverse)));
+          (dft_bluestein_z_chirp<T, U>(ctx, X, Y, b_fft, chirp, X_offset, X_stride, Y_offset, Y_stride, axis, onnxruntime::narrow<size_t>(dft_length), window, inverse, V, temp_output)));
     }
   }
 
@@ -317,16 +400,17 @@ static Status discrete_fourier_transform(OpKernelContext* ctx, int64_t axis, boo
   // Get data type
   auto data_type = X->DataType();
 
+  Tensor b_fft, chirp;
   auto element_size = data_type->Size();
   if (element_size == sizeof(float)) {
     InlinedVector<std::complex<float>> V;
     InlinedVector<std::complex<float>> temp_output;
     if (is_real_valued) {
-      ORT_RETURN_IF_ERROR((discrete_fourier_transform<float, float>(ctx, X, Y, axis, number_of_samples, nullptr,
+      ORT_RETURN_IF_ERROR((discrete_fourier_transform<float, float>(ctx, X, Y, b_fft, chirp, axis, number_of_samples, nullptr,
                                                                     is_onesided, inverse, V, temp_output)));
     } else if (is_complex_valued) {
       ORT_RETURN_IF_ERROR((discrete_fourier_transform<float, std::complex<float>>(
-          ctx, X, Y, axis, number_of_samples, nullptr, is_onesided, inverse, V, temp_output)));
+          ctx, X, Y, b_fft, chirp, axis, number_of_samples, nullptr, is_onesided, inverse, V, temp_output)));
     } else {
       ORT_THROW(
           "Unsupported input signal shape. The signal's first dimension must be the batch dimension and its second "
@@ -338,11 +422,11 @@ static Status discrete_fourier_transform(OpKernelContext* ctx, int64_t axis, boo
     InlinedVector<std::complex<double>> V;
     InlinedVector<std::complex<double>> temp_output;
     if (is_real_valued) {
-      ORT_RETURN_IF_ERROR((discrete_fourier_transform<double, double>(ctx, X, Y, axis, number_of_samples, nullptr,
+      ORT_RETURN_IF_ERROR((discrete_fourier_transform<double, double>(ctx, X, Y, b_fft, chirp, axis, number_of_samples, nullptr,
                                                                       is_onesided, inverse, V, temp_output)));
     } else if (is_complex_valued) {
       ORT_RETURN_IF_ERROR((discrete_fourier_transform<double, std::complex<double>>(
-          ctx, X, Y, axis, number_of_samples, nullptr, is_onesided, inverse, V, temp_output)));
+          ctx, X, Y, b_fft, chirp, axis, number_of_samples, nullptr, is_onesided, inverse, V, temp_output)));
     } else {
       ORT_THROW(
           "Unsupported input signal shape. The signal's first dimension must be the batch dimension and its second "
@@ -431,6 +515,7 @@ static Status short_time_fourier_transform(OpKernelContext* ctx, bool is_oneside
   auto dft_input_shape = onnxruntime::TensorShape({1, window_size, signal_components});
   auto dft_output_shape = onnxruntime::TensorShape({1, dft_output_size, output_components});
 
+  Tensor b_fft, chirp;
   InlinedVector<std::complex<T>> V;
   InlinedVector<std::complex<T>> temp_output;
 
@@ -449,7 +534,7 @@ static Status short_time_fourier_transform(OpKernelContext* ctx, bool is_oneside
       auto output = onnxruntime::Tensor(Y->DataType(), dft_output_shape, output_frame_begin, Y->Location(), 0);
 
       // Run individual dft
-      ORT_RETURN_IF_ERROR((discrete_fourier_transform<T, U>(ctx, &input, &output, 1, window_size, window, is_onesided,
+      ORT_RETURN_IF_ERROR((discrete_fourier_transform<T, U>(ctx, &input, &output, b_fft, chirp, 1, window_size, window, is_onesided,
                                                             false, V, temp_output)));
     }
   }

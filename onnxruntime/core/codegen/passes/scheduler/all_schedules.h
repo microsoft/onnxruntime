@@ -13,7 +13,7 @@ DECLARE_TVM_SCHEDULER_CLASS(AlwaysRoot, GenericTVMRule)
 DECLARE_TVM_SCHEDULER_CLASS(Extern, GenericTVMRule)
 DECLARE_TVM_SCHEDULER_CLASS(Reduce, GenericTVMRule)
 
-//Crete scheduler for ORT OpType, Softmax
+// Crete scheduler for ORT OpType, Softmax
 DECLARE_TVM_SCHEDULER_CLASS(Softmax, GenericOrtOpType)
 
 }  // namespace tvm_codegen

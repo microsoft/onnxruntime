@@ -49,9 +49,13 @@ class TestTuningContext : public ITuningContext {
  public:
   using ITuningContext::ITuningContext;
 
-  void EnableTunableOp() override { tuning_enabled_ = true; }
-  void DisableTunableOp() override { tuning_enabled_ = false; }
-  bool IsTunableOpEnabled() const override { return tuning_enabled_; }
+  void EnableTunableOp() override { op_enabled_ = true; }
+  void DisableTunableOp() override { op_enabled_ = false; }
+  bool IsTunableOpEnabled() const override { return op_enabled_; }
+
+  void EnableTuning() override { tuning_enabled_ = true; }
+  void DisableTuning() override { tuning_enabled_ = false; }
+  bool IsTuningEnabled() const override { return tuning_enabled_; }
 
   TuningResultsManager& GetTuningResultsManager() override { return manager_; }
   const TuningResultsManager& GetTuningResultsManager() const override { return manager_; }
@@ -61,6 +65,7 @@ class TestTuningContext : public ITuningContext {
   void ClearCache() { manager_.Clear(); }
 
  private:
+  bool op_enabled_{false};
   bool tuning_enabled_{false};
   TuningResultsManager manager_{};
   TestTuningResultsValidator validator_{};
@@ -374,7 +379,7 @@ class TunableVecAddSelectFast : public TunableOp<VecAddParamsRecordLastRun> {
   constexpr static int kFastFullId = 1;
 };
 
-TEST(TunableOp, SelectFast) {
+TEST(TunableOp, SelectFastIfTuning) {
 #ifdef ORT_NO_RTTI
   GTEST_SKIP() << "TunableOp needs RTTI to work correctly";
 #else
@@ -386,9 +391,15 @@ TEST(TunableOp, SelectFast) {
   params.last_run = &last_run;
 
   TunableVecAddSelectFast op{};
+  // Only enable op usage, slow (default) should be selected
   params.TuningContext()->EnableTunableOp();
-
   auto status = op(&params);
+  ASSERT_TRUE(status.IsOK());
+  ASSERT_EQ(last_run, "SlowFull");
+
+  // Also enable tuning, fast should be selected
+  params.TuningContext()->EnableTuning();
+  status = op(&params);
   ASSERT_TRUE(status.IsOK());
   ASSERT_EQ(last_run, "FastFull");
 #endif
@@ -414,7 +425,7 @@ TEST(TunableOp, SelectSupported) {
   params.last_run = &last_run;
 
   TunableVecAddSelectSupported op{};
-  params.TuningContext()->EnableTunableOp();
+  params.TuningContext()->EnableTunableOpAndTuning();
 
   auto status = op(&params);
   ASSERT_TRUE(status.IsOK());
@@ -445,7 +456,7 @@ TEST(TunableOp, SelectFastestIfSupported) {
   params.last_run = &last_run;
 
   TunableVecAddSelectFastestIfSupported op{};
-  params.TuningContext()->EnableTunableOp();
+  params.TuningContext()->EnableTunableOpAndTuning();
 
   auto status = op(&params);
   ASSERT_TRUE(status.IsOK());
@@ -530,7 +541,7 @@ TEST(TunableOp, HandleInplaceUpdate) {
     c = 4200;
     VecAddParamsRecordLastRun params(&a, &b, &c, 1, /*beta=*/0);
     TunableVecAddNotHandleInplaceUpdate op_not_handle_inplace_update{};
-    params.TuningContext()->EnableTunableOp();
+    params.TuningContext()->EnableTunableOpAndTuning();
     auto status = op_not_handle_inplace_update(&params);
     ASSERT_TRUE(status.IsOK());
     ASSERT_EQ(c, 7500042);
@@ -541,7 +552,7 @@ TEST(TunableOp, HandleInplaceUpdate) {
     c = 4200;
     VecAddParamsRecordLastRun params(&a, &b, &c, 1, /*beta=*/1);
     TunableVecAddNotHandleInplaceUpdate op_not_handle_inplace_update{};
-    params.TuningContext()->EnableTunableOp();
+    params.TuningContext()->EnableTunableOpAndTuning();
     auto status = op_not_handle_inplace_update(&params);
     ASSERT_TRUE(status.IsOK());
     ASSERT_NE(c, 4200);     // value should be changed
@@ -553,7 +564,7 @@ TEST(TunableOp, HandleInplaceUpdate) {
     c = 4200;
     VecAddParamsRecordLastRun params(&a, &b, &c, 1, /*beta=*/0);
     TunableVecAddHandleInplaceUpdate op{};
-    params.TuningContext()->EnableTunableOp();
+    params.TuningContext()->EnableTunableOpAndTuning();
     auto status = op(&params);
     ASSERT_TRUE(status.IsOK());
     ASSERT_EQ(c, 7500042);
@@ -565,7 +576,7 @@ TEST(TunableOp, HandleInplaceUpdate) {
     c = 4200;
     VecAddParamsRecordLastRun params(&a, &b, &c, 1, /*beta=*/1);
     TunableVecAddHandleInplaceUpdate op{};
-    params.TuningContext()->EnableTunableOp();
+    params.TuningContext()->EnableTunableOpAndTuning();
     auto status = op(&params);
     ASSERT_TRUE(status.IsOK());
     ASSERT_EQ(c, 7504242);
@@ -629,7 +640,7 @@ TEST(TuningContext, TunableOpRespectTuningContext) {
   tuning::TunableVecAddSelectFast op{};
   auto* ctx = params.TuningContext();
   auto& mgr = ctx->GetTuningResultsManager();
-  ctx->EnableTunableOp();
+  ctx->EnableTunableOpAndTuning();
 
   {
     // Before TunableOp(...), there is no entry in it.
@@ -683,7 +694,7 @@ TEST(TuningContext, GetAndLoadTuningResults) {
 
   tuning::TunableVecAddSelectFast op{};
   auto* ctx = params.TuningContext();
-  ctx->EnableTunableOp();
+  ctx->EnableTunableOpAndTuning();
 
   auto status = op(&params);
   ASSERT_TRUE(status.IsOK());

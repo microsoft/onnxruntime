@@ -306,7 +306,7 @@ Status OrtSaveOptimizerStatesInternal(OptimizerCheckpointState& optimizer_state,
 }
 
 Status OrtSaveInternal(
-    CheckpointState& state, const PathString& checkpoint_path) {
+    CheckpointState& state, const PathString& checkpoint_path, const bool include_optimizer_state) {
   LOGS_DEFAULT(INFO) << "Saving model checkpoint files to " << ToUTF8String(checkpoint_path);
   LOGS_DEFAULT_IF(Env::Default().FolderExists(checkpoint_path), WARNING)
       << "Checkpoint directory exists - data may be overwritten.";
@@ -316,7 +316,9 @@ Status OrtSaveInternal(
   ORT_RETURN_IF_ERROR(OrtSaveModuleStatesInternal(state.module_checkpoint_state, checkpoint_path));
 
   // Write optimizer state tensors files.
-  ORT_RETURN_IF_ERROR(OrtSaveOptimizerStatesInternal(state.optimizer_checkpoint_state, checkpoint_path));
+  if (include_optimizer_state) {
+    ORT_RETURN_IF_ERROR(OrtSaveOptimizerStatesInternal(state.optimizer_checkpoint_state, checkpoint_path));
+  }
 
   // Write properties file
   const PropertyBag& property_bag = state.property_bag;
@@ -535,8 +537,9 @@ Status OrtLoadInternal(const PathString& checkpoint_path,
   for (auto& init : *(model_proto.mutable_graph()->mutable_initializer())) {
     ORT_ENFORCE(init.has_name(), "An initializer should have a name.");
     auto it = param_tensor_protos.find(init.name());
-    ORT_ENFORCE(it != param_tensor_protos.end(),
-                "The initializer name was not found in the checkpoint file loaded.");
+    if (it == param_tensor_protos.end()) {
+      continue;
+    }
     init = it->second;
   }
 
@@ -544,7 +547,7 @@ Status OrtLoadInternal(const PathString& checkpoint_path,
 }
 
 Status OrtLoadInternal(const PathString& checkpoint_path, CheckpointState& state) {
-  ORT_ENFORCE(Env::Default().FolderExists(checkpoint_path), "Checkpoint folder not exit");
+  ORT_ENFORCE(Env::Default().FolderExists(checkpoint_path), "Checkpoint folder does not exist.");
   ORT_RETURN_IF_ERROR(OrtLoadModuleStatesInternal(checkpoint_path, state.module_checkpoint_state));
   ORT_RETURN_IF_ERROR(OrtLoadOptimizerStatesInternal(checkpoint_path, state.optimizer_checkpoint_state));
   ORT_RETURN_IF_ERROR(OrtLoadCustomPropertyInternal(checkpoint_path, state.property_bag));
@@ -559,8 +562,9 @@ Status SaveCheckpoint(const std::vector<ONNX_NAMESPACE::TensorProto>& trainable_
   return OrtSaveInternal(trainable_tensor_protos, non_trainable_tensor_protos, checkpoint_path);
 }
 
-Status SaveCheckpoint(CheckpointState& states, const PathString& checkpoint_path) {
-  return OrtSaveInternal(states, checkpoint_path);
+Status SaveCheckpoint(CheckpointState& states, const PathString& checkpoint_path,
+                      const bool include_optimizer_state) {
+  return OrtSaveInternal(states, checkpoint_path, include_optimizer_state);
 }
 
 Status LoadCheckpoint(const PathString& checkpoint_path, CheckpointState& checkpoint_states) {

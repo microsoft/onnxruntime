@@ -1,18 +1,18 @@
 /**
-* Copyright (c) 2016-present, Facebook, Inc.
-*
-* Licensed under the Apache License, Version 2.0 (the "License");
-* you may not use this file except in compliance with the License.
-* You may obtain a copy of the License at
-*
-*     http://www.apache.org/licenses/LICENSE-2.0
-*
-* Unless required by applicable law or agreed to in writing, software
-* distributed under the License is distributed on an "AS IS" BASIS,
-* WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-* See the License for the specific language governing permissions and
-* limitations under the License.
-*/
+ * Copyright (c) 2016-present, Facebook, Inc.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 /* Modifications Copyright (c) Microsoft. */
 
 #include "orttraining/training_ops/cpu/nn/conv_grad.h"
@@ -79,7 +79,6 @@ Status ConvGrad<T>::Compute(OpKernelContext* context) const {
   const T* Wdata = W->template Data<T>();
   const T* dYdata = dY->template Data<T>();
 
-
   BufferUniquePtr bias_multiplier(alloc->Alloc(sizeof(T) * output_image_size), BufferDeleter(alloc));
   T* bias_multiplier_data = nullptr;
   Tensor* dB = context->Output(2, {M});
@@ -94,7 +93,7 @@ Status ConvGrad<T>::Compute(OpKernelContext* context) const {
                               bias_multiplier_data,
                               &CPUMathUtil::Instance());
   }
-  
+
   T* dWdata = nullptr;
   if (dW) {
     dWdata = dW->template MutableData<T>();
@@ -188,7 +187,6 @@ Status ConvGrad<T>::Compute(OpKernelContext* context) const {
     dYdata += Y_offset * conv_attrs_.group;
   }
 
-
   Tensor* dX = context->Output(0, X->Shape());
   if (dX) {
     T* dXdata = dX->template MutableData<T>();
@@ -260,4 +258,3 @@ ONNX_OPERATOR_KERNEL_EX(
 
 }  // namespace contrib
 }  // namespace onnxruntime
-

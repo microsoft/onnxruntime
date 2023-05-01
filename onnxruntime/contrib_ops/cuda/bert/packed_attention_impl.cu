@@ -18,7 +18,7 @@
 #include "contrib_ops/cuda/bert/rotary_embedding_util.h"
 
 using namespace onnxruntime::cuda;
-using namespace cub;
+using namespace onnxruntime::contrib::attention_softmax_cuda;
 
 #define CHECK_CUDA(expr) CUDA_RETURN_IF_ERROR(expr)
 
@@ -460,7 +460,7 @@ Status FusedScaledDotProductAttention(
   const int qk_head_size = parameters.head_size;
   const int v_head_size = parameters.v_head_size;
   void* fused_runner = data.fused_runner;
-  assert(nullptr != fused_runner);
+  ORT_RETURN_IF_NOT(nullptr != fused_runner, "fused_runner cannot be NULL");
 
   LaunchAddBiasTranspose(data.gemm_buffer, data.bias, data.workspace,
                          batch_size, sequence_length,

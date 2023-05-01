@@ -3289,13 +3289,13 @@ Return true if all elements are true and false otherwise.
 
         Dim num_channels;
 
-        // Add support for 1D input X, in which case num_channels should default to 1.
-        auto& input_shape = getInputShape(ctx, 0);
-        if (input_shape.dim_size() <= 1) {
-          num_channels.set_dim_value(1);
-        } else {
-          unifyInputDim(ctx, 0, 1, num_channels);
+        if (hasInputShape(ctx, 0)) {
+          if (getInputShape(ctx, 0).dim_size() > 1)
+            unifyInputDim(ctx, 0, 1, num_channels);
+          else
+            unifyDim(num_channels, 1);
         }
+
         unifyInputDim(ctx, 1, 0, num_channels);
         unifyInputDim(ctx, 2, 0, num_channels);
         unifyInputDim(ctx, 3, 0, num_channels);
@@ -4583,6 +4583,7 @@ void RegisterOrtOpSchemas() {
   }
   domainToVersionRangeInstance.AddDomainToVersion(onnxruntime::kMSExperimentalDomain, 1, 1);
   domainToVersionRangeInstance.AddDomainToVersion(onnxruntime::kMSNchwcDomain, 1, 1);
+  domainToVersionRangeInstance.AddDomainToVersion(onnxruntime::kPytorchAtenDomain, 1, 1);
 
   onnxruntime::contrib::RegisterContribSchemas();
   onnxruntime::training::RegisterTrainingOpSchemas();
