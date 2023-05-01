@@ -456,7 +456,7 @@ namespace Dml
             state->flush_requested = false;
 
             // Unlock to allow kernels to resume writing to the new write batch.
-            lock.unlock();
+            // lock.unlock();
 
             if (flush)
             {
@@ -464,9 +464,9 @@ namespace Dml
 
                 if (!status.IsOK())
                 {
-                    lock.lock();
+                    // lock.lock();
                     state->status = status;
-                    lock.unlock();
+                    // lock.unlock();
                     break;
                 }
 
@@ -495,6 +495,7 @@ namespace Dml
 
         ID3D12CommandList* command_lists[] = {command_list->Get()};
         command_queue->ExecuteCommandLists(command_lists);
+        command_queue->ReleaseCompletedReferences();
         batch.clear();
 
         return Status::OK();
