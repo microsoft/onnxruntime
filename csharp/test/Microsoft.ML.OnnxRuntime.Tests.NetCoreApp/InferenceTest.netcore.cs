@@ -28,6 +28,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             return str.IndexOf(substring, comp) >= 0;
         }
     }
+
     public partial class InferenceTest
     {
         private const string module = "onnxruntime.dll";
@@ -67,7 +68,6 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         }
 
 #if USE_CUDA
-
         [Fact(DisplayName = "TestCUDAProviderOptions")]
         private void TestCUDAProviderOptions()
         {
@@ -805,28 +805,110 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             }
         }
 
+        private string GetCustomOpLibFullPath()
+        {
+            string libName = "custom_op_library.dll";
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            {
+                libName = "custom_op_library.dll";
+            }
+            else if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
+            {
+                libName = "libcustom_op_library.so";
+            }
+            else if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+            {
+                libName = "libcustom_op_library.dylib";
+            }
+
+            string libFullPath = Path.Combine(Directory.GetCurrentDirectory(), libName);
+            Assert.True(File.Exists(libFullPath), $"Expected lib {libFullPath} does not exist.");
+
+            return libFullPath;
+        }
+
+        private void ValidateModelWithCustomOps(SessionOptions options) 
+        {
+            string modelPath = "custom_op_test.onnx";
+
+            using (var session = new InferenceSession(modelPath, options))
+            {
+                var inputContainer = new List<NamedOnnxValue>();
+                inputContainer.Add(NamedOnnxValue.CreateFromTensor<float>("input_1",
+                    new DenseTensor<float>(
+                        new float[]
+                        {
+                                1.1f,   2.2f,   3.3f,   4.4f,   5.5f,
+                                6.6f,   7.7f,   8.8f,   9.9f,   10.0f,
+                                11.1f,  12.2f,  13.3f,  14.4f,  15.5f
+                        },
+                        new int[] { 3, 5 }
+                        )));
+
+                inputContainer.Add(NamedOnnxValue.CreateFromTensor<float>("input_2",
+                    new DenseTensor<float>(
+                        new float[]
+                        {
+                                15.5f,   14.4f,   13.3f,   12.2f,   11.1f,
+                                10.0f,   9.9f,    8.8f,    7.7f,    6.6f,
+                                5.5f,    4.4f,    3.3f,    2.2f,    1.1f
+                        },
+                        new int[] { 3, 5 }
+                        )));
+
+                using (var result = session.Run(inputContainer))
+                {
+                    Assert.Equal("output", result.First().Name);
+                    var tensorOut = result.First().AsTensor<int>();
+
+                    var expectedOut = new DenseTensor<int>(
+                        new int[]
+                        {
+                                17, 17, 17, 17, 17,
+                                17, 18, 18, 18, 17,
+                                17, 17, 17, 17, 17
+                        },
+                        new int[] { 3, 5 }
+                        );
+                    Assert.True(tensorOut.SequenceEqual(expectedOut));
+                }
+            }
+        }
+
         [SkipNonPackageTests(DisplayName = "TestRegisterCustomOpLibrary")]
         private void TestRegisterCustomOpLibrary()
         {
             using (var option = new SessionOptions())
             {
-                string libName = "custom_op_library.dll";
-                string modelPath = "custom_op_test.onnx";
-                if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+                string libFullPath = GetCustomOpLibFullPath();
+
+                try
                 {
-                    libName = "custom_op_library.dll";
+                    option.RegisterCustomOpLibrary(libFullPath);
                 }
-                else if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
+                catch (Exception ex)
                 {
-                    libName = "libcustom_op_library.so";
-                }
-                else if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
-                {
-                    libName = "libcustom_op_library.dylib";
+                    var msg = $"Failed to load custom op library {libFullPath}, error = {ex.Message}";
+                    throw new Exception(msg + "\n" + ex.StackTrace);
                 }
 
-                string libFullPath = Path.Combine(Directory.GetCurrentDirectory(), libName);
-                Assert.True(File.Exists(libFullPath), $"Expected lib {libFullPath} does not exist.");
+                var ortEnvInstance = OrtEnv.Instance();
+                string[] providers = ortEnvInstance.GetAvailableProviders();
+                if (Array.Exists(providers, provider => provider == "CUDAExecutionProvider"))
+                {
+                    option.AppendExecutionProvider_CUDA(0);
+                }
+
+                ValidateModelWithCustomOps(option);
+            }
+        }
+
+        [SkipNonPackageTests(DisplayName = "TestRegisterCustomOpLibraryV2")]
+        private void TestRegisterCustomOpLibraryV2()
+        {
+            using (var option = new SessionOptions())
+            {
+                string libFullPath = GetCustomOpLibFullPath();
 
                 var ortEnvInstance = OrtEnv.Instance();
                 string[] providers = ortEnvInstance.GetAvailableProviders();
@@ -846,52 +928,55 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                     throw new Exception(msg + "\n" + ex.StackTrace);
                 }
 
-
-                using (var session = new InferenceSession(modelPath, option))
-                {
-                    var inputContainer = new List<NamedOnnxValue>();
-                    inputContainer.Add(NamedOnnxValue.CreateFromTensor<float>("input_1",
-                        new DenseTensor<float>(
-                            new float[]
-                            {
-                                1.1f,   2.2f,   3.3f,   4.4f,   5.5f,
-                                6.6f,   7.7f,   8.8f,   9.9f,   10.0f,
-                                11.1f,  12.2f,  13.3f,  14.4f,  15.5f
-                            },
-                            new int[] { 3, 5 }
-                            )));
-
-                    inputContainer.Add(NamedOnnxValue.CreateFromTensor<float>("input_2",
-                        new DenseTensor<float>(
-                            new float[]
-                            {
-                                15.5f,   14.4f,   13.3f,   12.2f,   11.1f,
-                                10.0f,   9.9f,    8.8f,    7.7f,    6.6f,
-                                5.5f,    4.4f,    3.3f,    2.2f,    1.1f
-                            },
-                            new int[] { 3, 5 }
-                            )));
-
-                    using (var result = session.Run(inputContainer))
-                    {
-                        Assert.Equal("output", result.First().Name);
-                        var tensorOut = result.First().AsTensor<int>();
-
-                        var expectedOut = new DenseTensor<int>(
-                            new int[]
-                            {
-                                17, 17, 17, 17, 17,
-                                17, 18, 18, 18, 17,
-                                17, 17, 17, 17, 17
-                            },
-                            new int[] { 3, 5 }
-                            );
-                        Assert.True(tensorOut.SequenceEqual(expectedOut));
-                    }
-                }
+                ValidateModelWithCustomOps(option);
 
                 // Safe to unload the custom op shared library now
                 UnloadLibrary(libraryHandle);
+            }
+        }
+
+        // test registration by the alternative function name in the custom ops library.
+        // We use DllImport and Marshal.Prelink to make sure the library is loaded and
+        // the symbol is available.
+        internal static class CustomOpLibrary
+        {
+            internal const string ExtensionsDllName = "custom_op_library";
+
+            [DllImport(ExtensionsDllName, CharSet = CharSet.Ansi,
+                       CallingConvention = CallingConvention.Winapi)]
+            public static extern IntPtr /* OrtStatus* */ RegisterCustomOpsAltName(
+                IntPtr /* OrtSessionOptions* */ sessionOptions,
+                ref OrtApiBase /* OrtApiBase* */ ortApiBase);
+        }
+
+        [SkipNonPackageTests(DisplayName = "TestRegisterCustomOpsWithFunction")]
+        private void TestRegisterCustomOpsWithFunction()
+        {
+            // TODO(scmckay): Validate on Linus and OS X. Marshal.Prelink seems to work differently on at least Linux.
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            {
+                using (var option = new SessionOptions())
+                {
+                    try
+                    {
+                        Marshal.Prelink(typeof(CustomOpLibrary).GetMethod("RegisterCustomOpsAltName"));
+                        option.RegisterCustomOpsUsingFunction("RegisterCustomOpsAltName");
+                    }
+                    catch (Exception ex)
+                    {
+                        var msg = $"Failed to load custom op library, error = {ex.Message}";
+                        throw new Exception(msg + "\n" + ex.StackTrace);
+                    }
+
+                    var ortEnvInstance = OrtEnv.Instance();
+                    string[] providers = ortEnvInstance.GetAvailableProviders();
+                    if (Array.Exists(providers, provider => provider == "CUDAExecutionProvider"))
+                    {
+                        option.AppendExecutionProvider_CUDA(0);
+                    }
+
+                    ValidateModelWithCustomOps(option);
+                }
             }
         }
 

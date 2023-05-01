@@ -232,7 +232,7 @@ jobs:
         CCACHE_DIR: $(ORT_CACHE_DIR)
 
   - powershell: |
-      Get-Volume D
+      Get-Volume $("$(Build.BinariesDirectory)")[0]
     displayName: check disk size
 
   - task: DeleteFiles@1
@@ -243,7 +243,7 @@ jobs:
         **/*.obj
 
   - powershell: |
-      Get-Volume D
+      Get-Volume $("$(Build.BinariesDirectory)")[0]
     displayName: check disk size
 
   - ${{ if eq(parameters.EnablePython, true) }}:

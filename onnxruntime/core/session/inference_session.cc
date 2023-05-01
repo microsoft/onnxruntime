@@ -976,7 +976,13 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
 
   // Insert cast node/s.
   {
-    InsertCastTransformer insert_cast_transformer{"CastFloat16Transformer"};
+    const InlinedVector<gsl::not_null<const KernelRegistry*>> kernel_regs =
+        kernel_registry_manager_.GetKernelRegistriesByProviderType(kCpuExecutionProvider);
+    const KernelRegistry* cpu_regs = nullptr;
+    if (!kernel_regs.empty()) {
+      cpu_regs = kernel_regs[0];
+    }
+    InsertCastTransformer insert_cast_transformer{"CastFloat16Transformer", cpu_regs};
     ORT_RETURN_IF_ERROR_SESSIONID_(apply_transformer_once(insert_cast_transformer, *session_logger_, graph));
   }
 

@@ -125,7 +125,14 @@ inline const OrtApi& GetApi() noexcept { return *Global<void>::api_; }
 /// This function returns the onnxruntime version string
 /// </summary>
 /// <returns>version string major.minor.rev</returns>
-std::string GetVersionString();
+std::basic_string<ORTCHAR_T> GetVersionString();
+
+/// <summary>
+/// This function returns the onnxruntime build information: including git branch,
+/// git commit id, build type(Debug/Release/RelWithDebInfo) and cmake cpp flags.
+/// </summary>
+/// <returns>string</returns>
+std::basic_string<ORTCHAR_T> GetBuildInfoString();
 
 /// <summary>
 /// This is a C++ wrapper for OrtApi::GetAvailableProviders() and
@@ -1934,16 +1941,16 @@ struct CustomOpApi {
    * This interface is not exception safe.
    */
   [[deprecated("use Ort::Op")]] OrtOp* CreateOp(_In_ const OrtKernelInfo* info,
-                                                _In_ const char* op_name,
-                                                _In_ const char* domain,
-                                                _In_ int version,
-                                                _In_opt_ const char** type_constraint_names,
-                                                _In_opt_ const ONNXTensorElementDataType* type_constraint_values,
-                                                _In_opt_ int type_constraint_count,
-                                                _In_opt_ const OrtOpAttr* const* attr_values,
-                                                _In_opt_ int attr_count,
-                                                _In_ int input_count,
-                                                _In_ int output_count);
+                                                _In_z_ const char* op_name,
+                                                _In_z_ const char* domain,
+                                                int version,
+                                                _In_reads_(type_constraint_count) const char** type_constraint_names,
+                                                _In_reads_(type_constraint_count) const ONNXTensorElementDataType* type_constraint_values,
+                                                int type_constraint_count,
+                                                _In_reads_(attr_count) const OrtOpAttr* const* attr_values,
+                                                int attr_count,
+                                                int input_count,
+                                                int output_count);
 
   /** \deprecated use Ort::Op::Invoke
    * [[deprecated]]

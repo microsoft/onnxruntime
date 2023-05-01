@@ -703,8 +703,16 @@ static void DiscreteFourierTransform(
   for (uint32_t i = 0; i < y_ivv.Size(); i += 2) {
     // Check results
     constexpr float error_threshold = .001f;
-    WINML_EXPECT_TRUE(abs(y_ivv.GetAt(i) - expected_output[i / 2].real()) < error_threshold);
-    WINML_EXPECT_TRUE(abs(y_ivv.GetAt(i + 1) - expected_output[i / 2].imag()) < error_threshold);
+
+    auto inRealRange = abs(y_ivv.GetAt(i) - expected_output[i / 2].real()) < error_threshold;
+    auto inImagRange = abs(y_ivv.GetAt(i + 1) - expected_output[i / 2].imag()) < error_threshold;
+    auto inRange = inRealRange && inImagRange;
+
+    if (!inRange) {
+      printf("[%d] ACTUAL(%f  +  %fi) EXPECTED(%f  +  %fi)\n", (int)i/2, y_ivv.GetAt(i), y_ivv.GetAt(i + 1), expected_output[i / 2].real(), expected_output[i / 2].imag());
+    }
+
+    WINML_EXPECT_TRUE(inRange);
   }
   printf("\n\n");
 }
@@ -1118,7 +1126,6 @@ static void ModelBuilding_ConstantMatmul() {
 
 #if !defined(BUILD_INBOX)
 static void ModelBuilding_DiscreteFourierTransform_Internal(LearningModelDeviceKind kind) {
-  bool isCPU = (kind == LearningModelDeviceKind::Default || kind == LearningModelDeviceKind::Cpu);
   std::vector<float> real_input =
   {
       1.00f, 2.00, 3.00f, 4.00f, 5.00f, 6.00f, 7.00f, 8.00f,
@@ -1135,11 +1142,7 @@ static void ModelBuilding_DiscreteFourierTransform_Internal(LearningModelDeviceK
     {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f},
     {-0.000f, 0.000f}, {-0.000f, 0.000f}, {-0.000f, 0.000f}, {-0.000f, 0.000f}, {-0.000f, 0.000f}, {-0.000f, 0.000f}, {-0.000f, 0.000f}, {-0.000f, 0.000f},
   };
-  if (isCPU)
-  {
-    // Only enabled for CPU, as GPU does not support non-power2 DFTs yet.
-    DiscreteFourierTransform(kind, real_input, {1, 5, 8, 1}, real_expected_axis_0_two_sided, 1, 5, false /*onesided*/);
-  }
+  DiscreteFourierTransform(kind, real_input, {1, 5, 8, 1}, real_expected_axis_0_two_sided, 1, 5, false /*onesided*/);
 
   std::vector<std::complex<float>> real_expected_axis_1_two_sided = {
     {36.000f, 0.000f}, {-4.000f, 9.657f}, {-4.000f, 4.000f}, {-4.000f, 1.657f}, {-4.000f, 0.000f}, {-4.000f, -1.657f}, {-4.000f, -4.000f}, {-4.000f, -9.657f},
@@ -1178,11 +1181,8 @@ static void ModelBuilding_DiscreteFourierTransform_Internal(LearningModelDeviceK
     {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f},
     {-0.000f, 0.000f}, {-0.000f, 0.000f}, {-0.000f, 0.000f}, {-0.000f, 0.000f}, {-0.000f, 0.000f}, {-0.000f, 0.000f}, {-0.000f, 0.000f}, {-0.000f, 0.000f}
   };
-  if (isCPU)
-  {
-    // Only enabled for CPU, as GPU does not support non-power2 DFTs yet.
-    DiscreteFourierTransform(kind, input, {2, 5, 8, 2}, expected_axis_0_two_sided, 1, 5, false /*onesided*/);
-  }
+
+  DiscreteFourierTransform(kind, input, {2, 5, 8, 2}, expected_axis_0_two_sided, 1, 5, false /*onesided*/);
 
   std::vector<std::complex<float>> expected_axis_0_two_sided_small_dft_length = {
     {4.000f, 0.000f}, {8.000f, 0.000f}, {12.000f, 0.000f}, {16.000f, 0.000f}, {20.000f, 0.000f}, {24.000f, 0.000f}, {28.000f, 0.000f}, {32.000f, 0.000f},
@@ -1212,11 +1212,8 @@ static void ModelBuilding_DiscreteFourierTransform_Internal(LearningModelDeviceK
     {0.133975f, 2.232051f},   {0.267951f, 4.464102f},   {0.401926f, 6.696153f},   {0.535901f, 8.928205f},   {0.669876f, 11.160257f},   {0.803851f, 13.392306f},   {0.937826f, 15.624360f},   {1.071802f, 17.856409f},
     {-1.866026f, 1.232052f},  {-3.732052f, 2.464104f},  {-5.598077f, 3.696155f},  {-7.464104f, 4.928207f},  {-9.330130f, 6.160261f},   {-11.196154f, 7.392309f},  {-13.062180f, 8.624363f},  {-14.928207f, 9.856415f},
   };
-  if (isCPU)
-  {
-    // Only enabled for CPU, as GPU does not support non-power2 DFTs yet.
-    DiscreteFourierTransform(kind, input, {2, 5, 8, 2}, expected_axis_0_two_sided_bigger_dft_length, 1, 6, false /*onesided*/);
-  }
+
+  DiscreteFourierTransform(kind, input, {2, 5, 8, 2}, expected_axis_0_two_sided_bigger_dft_length, 1, 6, false /*onesided*/);
 
   std::vector<std::complex<float>> expected_axis_0_one_sided = {
     {5.000f, 0.000f}, {10.000f, 0.000f}, {15.000f, 0.000f}, {20.000f, 0.000f}, {25.000f, 0.000f}, {30.000f, 0.000f}, {35.000f, 0.000f}, {40.000f, 0.000f},
@@ -1227,11 +1224,7 @@ static void ModelBuilding_DiscreteFourierTransform_Internal(LearningModelDeviceK
     {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {-0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f},
     {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {-0.000f, 0.000f}, {0.000f, 0.000f}, {-0.000f, 0.000f}, {0.000f, 0.000f},
   };
-  if (isCPU)
-  {
-    // Only enabled for CPU, as GPU does not support non-power2 DFTs yet.
-    DiscreteFourierTransform(kind, input, {2, 5, 8, 2}, expected_axis_0_one_sided, 1, 5, true /*onesided*/);
-  }
+  DiscreteFourierTransform(kind, input, {2, 5, 8, 2}, expected_axis_0_one_sided, 1, 5, true /*onesided*/);
 
   std::vector<std::complex<float>> expected_axis_1_two_sided = {
     {36.000f, 0.000f}, {-4.000f, 9.657f}, {-4.000f, 4.000f}, {-4.000f, 1.657f}, {-4.000f, 0.000f}, {-4.000f, -1.657f}, {-4.000f, -4.000f}, {-4.000f, -9.657f},
