@@ -397,25 +397,28 @@ namespace Microsoft.ML.OnnxRuntime
             NativeApiStatus.VerifySuccess(NativeMethods.OrtGetDimensionsCount(typeAndShapeInfo, out numDimensions));
             if (numDimensions.ToUInt64() != 1)
             {
-                throw new ArgumentException("Incorrect buffer received. Expected a contiguous tensor buffer.");
+                string errorMessage = "Incorrect buffer shape received. Expected a contiguous tensor buffer. Expected number of dimensions: 1, Actual: " + numDimensions.ToString();
+                throw new ArgumentException(errorMessage);
             }
 
-            IntPtr numElements = IntPtr.Zero;
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtGetTensorShapeElementCount(typeAndShapeInfo, out numElements));
+            IntPtr numElementsTrainingOnly = IntPtr.Zero;
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtGetTensorShapeElementCount(typeAndShapeInfo, out numElementsTrainingOnly));
 
             UIntPtr bufferSize = UIntPtr.Zero;
             NativeApiStatus.VerifySuccess(NativeTrainingMethods.OrtGetParametersSize(_nativeHandle, out bufferSize, true));
-            if ((long)bufferSize.ToUInt64() == (long)numElements)
+            if ((long)bufferSize.ToUInt64() == numElementsTrainingOnly.ToInt64())
             {
                 NativeApiStatus.VerifySuccess(NativeTrainingMethods.OrtCopyBufferToParameters(_nativeHandle, buffer.Value.Handle, true));
                 return;
             }
 
+            IntPtr numElements = IntPtr.Zero;
             bufferSize = UIntPtr.Zero;
             NativeApiStatus.VerifySuccess(NativeTrainingMethods.OrtGetParametersSize(_nativeHandle, out bufferSize, false));
-            if ((long)bufferSize.ToUInt64() != (long)numElements)
+            if ((long)bufferSize.ToUInt64() != numElements.ToInt64())
             {
-                throw new ArgumentException("Incorrect buffer size received.");
+                string errorMessage = "Incorrect buffer size received. Expected size to be one of " + numElementsTrainingOnly.ToString() + " (training only) or " + numElements.ToString() + " (all parameters). Actual size: " + bufferSize.ToString();
+                throw new ArgumentException(errorMessage);
             }
 
             NativeApiStatus.VerifySuccess(NativeTrainingMethods.OrtCopyBufferToParameters(_nativeHandle, buffer.Value.Handle, false));
@@ -427,12 +430,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="training">Whether the training model output names are requested or eval model output names.</param>
         public List<string> OutputNames(bool training)
         {
-            if (training)
-            {
-                return _trainOutputNames;
-            }
-
-            return _evalOutputNames;
+            return training ? _trainOutputNames : _evalOutputNames;
         }
 
         /// <summary>
@@ -441,12 +439,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="training">Whether the training model input names are requested or eval model input names.</param>
         public List<string> InputNames(bool training)
         {
-            if (training)
-            {
-                return _trainInputNames;
-            }
-
-            return _evalInputNames;
+            return training ? _trainInputNames : _evalInputNames;
         }
 
     #endregion
@@ -456,7 +449,7 @@ namespace Microsoft.ML.OnnxRuntime
         {
             if (!NativeTrainingMethods.TrainingEnabled())
             {
-                throw new InvalidOperationException("This package does not contain the training API. Please install the Microsoft.ML.OnnxRuntime.Training package.\n");
+                throw new InvalidOperationException("This package does not contain the training API. Please install the Microsoft.ML.OnnxRuntime.Training NuGet package.\n");
             }
             var options = sessOptions;
             if (sessOptions == null)

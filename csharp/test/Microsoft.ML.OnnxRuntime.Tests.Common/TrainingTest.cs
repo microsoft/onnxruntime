@@ -29,7 +29,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         {
             string path = Path.Combine(Directory.GetCurrentDirectory(), "checkpoint.ckpt");
             var ex = Assert.Throws<InvalidOperationException>(() => { var opt = CheckpointState.LoadCheckpoint(path); });
-            Assert.Contains("Please install the Microsoft.ML.OnnxRuntime.Training package.", ex.Message);
+            Assert.Contains("Please install the Microsoft.ML.OnnxRuntime.Training NuGet package.", ex.Message);
         }
 #endif
 

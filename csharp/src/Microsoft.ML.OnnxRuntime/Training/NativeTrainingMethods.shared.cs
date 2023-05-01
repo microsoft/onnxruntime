@@ -340,7 +340,7 @@ namespace Microsoft.ML.OnnxRuntime
             public delegate IntPtr /*(OrtStatus*)*/ DOrtAddProperty(
                                                     IntPtr /*(OrtCheckpointState*)*/ checkpointState,
                                                     byte[] /*(const char*)*/ propertyName,
-                                                    long propertyType,
+                                                    CheckpointState.PropertyType propertyType,
                                                     IntPtr /*(const void*)*/ propertyValue
                                                     );
 
@@ -351,7 +351,7 @@ namespace Microsoft.ML.OnnxRuntime
                                                     IntPtr /*(OrtCheckpointState*)*/ checkpointState,
                                                     byte[] /*(const char*)*/ propertyName,
                                                     IntPtr /*(OrtAllocator*)*/ allocator,
-                                                    out long propertyType,
+                                                    out CheckpointState.PropertyType propertyType,
                                                     out IntPtr /*(const void**)*/ propertyValue
                                                     );
 

@@ -24,11 +24,28 @@ namespace Microsoft.ML.OnnxRuntime
         {
         }
 
-        public enum PropertyType
+        public enum PropertyType : long
         {
             Int = 0,
             Float = 1,
             String = 2
+        }
+
+        private void AddPropertyImpl<T>(string propertyName, PropertyType propertyType, T propertyValue)
+        {
+            var propertyNameUtf8 = NativeOnnxValueHelper.StringToZeroTerminatedUtf8(propertyName);
+            T[] value = new T[1];
+            value[0] = propertyValue;
+            Memory<T> memory = value;
+            using (var memHandle = memory.Pin())
+            {
+                IntPtr memPtr;
+                unsafe
+                {
+                    memPtr = (IntPtr)memHandle.Pointer;
+                }
+                NativeApiStatus.VerifySuccess(NativeTrainingMethods.OrtAddProperty(handle, propertyNameUtf8, propertyType, memPtr));
+            }
         }
 
         /// <summary>
@@ -45,7 +62,7 @@ namespace Microsoft.ML.OnnxRuntime
         {
             if (!NativeTrainingMethods.TrainingEnabled())
             {
-                throw new InvalidOperationException("This package does not contain the training API. Please install the Microsoft.ML.OnnxRuntime.Training package.\n");
+                throw new InvalidOperationException("This package does not contain the training API. Please install the Microsoft.ML.OnnxRuntime.Training NuGet package.\n");
             }
 
             var envHandle = OrtEnv.Instance().Handle; // just so it is initialized
@@ -72,19 +89,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// </summary>
         public void AddProperty(string propertyName, long propertyValue)
         {
-            var propertyNameUtf8 = NativeOnnxValueHelper.StringToZeroTerminatedUtf8(propertyName);
-            long[] value = new long[1];
-            value[0] = propertyValue;
-            Memory<long> memory = value;
-            using (var memHandle = memory.Pin())
-            {
-                IntPtr memPtr;
-                unsafe
-                {
-                    memPtr = (IntPtr)memHandle.Pointer;
-                }
-                NativeApiStatus.VerifySuccess(NativeTrainingMethods.OrtAddProperty(handle, propertyNameUtf8, (long)PropertyType.Int, memPtr));
-            }
+            AddPropertyImpl(propertyName, PropertyType.Int, propertyValue);
         }
 
         /// <summary>
@@ -94,19 +99,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// </summary>
         public void AddProperty(string propertyName, float propertyValue)
         {
-            var propertyNameUtf8 = NativeOnnxValueHelper.StringToZeroTerminatedUtf8(propertyName);
-            float[] value = new float[1];
-            value[0] = propertyValue;
-            Memory<float> memory = value;
-            using (var memHandle = memory.Pin())
-            {
-                IntPtr memPtr;
-                unsafe
-                {
-                    memPtr = (IntPtr)memHandle.Pointer;
-                }
-                NativeApiStatus.VerifySuccess(NativeTrainingMethods.OrtAddProperty(handle, propertyNameUtf8, (long)PropertyType.Float, memPtr));
-            }
+            AddPropertyImpl(propertyName, PropertyType.Float, propertyValue);
         }
 
         /// <summary>
@@ -123,7 +116,7 @@ namespace Microsoft.ML.OnnxRuntime
             try
             {
                 Marshal.Copy(propertyValueUtf8, 0, unmanagedPointer, propertyValueUtf8.Length);
-                NativeApiStatus.VerifySuccess(NativeTrainingMethods.OrtAddProperty(handle, propertyNameUtf8, (long)PropertyType.String, unmanagedPointer));
+                NativeApiStatus.VerifySuccess(NativeTrainingMethods.OrtAddProperty(handle, propertyNameUtf8, PropertyType.String, unmanagedPointer));
             }
             finally
             {
@@ -140,27 +133,27 @@ namespace Microsoft.ML.OnnxRuntime
             var propertyNameUtf8 = NativeOnnxValueHelper.StringToZeroTerminatedUtf8(propertyName);
             var allocator = OrtAllocator.DefaultInstance;
             IntPtr propertyValue = IntPtr.Zero;
-            NativeApiStatus.VerifySuccess(NativeTrainingMethods.OrtGetProperty(handle, propertyNameUtf8, allocator.Pointer, out long propertyType, out propertyValue));
+            NativeApiStatus.VerifySuccess(NativeTrainingMethods.OrtGetProperty(handle, propertyNameUtf8, allocator.Pointer, out PropertyType propertyType, out propertyValue));
 
-            if (propertyType == (long)PropertyType.Int)
+            if (propertyType == PropertyType.Int)
             {
                 var longPropertyValue = Marshal.ReadInt64(propertyValue);
                 allocator.FreeMemory(propertyValue);
                 return longPropertyValue;
             }
-            else if (propertyType == (long)PropertyType.Float)
+            else if (propertyType == PropertyType.Float)
             {
                 float[] value = new float[1];
                 Marshal.Copy(propertyValue, value, 0, 1);
                 allocator.FreeMemory(propertyValue);
                 return value[0];
             }
-            else if (propertyType == (long)PropertyType.String)
+            else if (propertyType == PropertyType.String)
             {
                 return NativeOnnxValueHelper.StringFromNativeUtf8(propertyValue, allocator);
             }
 
-            throw new ArgumentException("Expected the property type to be one of long, float or string. Unknown type retrieved.");
+            throw new ArgumentException("Expected the property type to be one of long, float or string. Unknown type retrieved " + propertyValue.ToString());
         }
 
 #region SafeHandle
