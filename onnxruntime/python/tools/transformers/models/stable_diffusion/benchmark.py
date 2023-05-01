@@ -19,6 +19,7 @@ SD_MODELS = {
 PROVIDERS = {
     "cuda": "CUDAExecutionProvider",
     "rocm": "ROCMExecutionProvider",
+    "migraphx": "MIGraphXExecutionProvider",
 }
 
 
