@@ -37,10 +37,7 @@ extensions = [
     "sphinx_gallery.gen_gallery",
     "sphinx.ext.graphviz",
     "pyquickhelper.sphinxext.sphinx_runpython_extension",
-    "sphinxcontrib.googleanalytics",
-    "sphinx_exec_code",
-    "sphinx_tabs.tabs",
-    "onnx_sphinx",
+    "sphinxcontrib.googleanalytics"
 ]
 
 templates_path = ["_templates"]
