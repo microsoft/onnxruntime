@@ -761,33 +761,12 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
 #endif
   } else if (type == kVitisAIExecutionProvider) {
 #if USE_VITISAI
-    // Retrieve Vitis AI provider options
-    // `target`: The name of the DPU target (default is DPUCADX8G for backward compatibility).
-    // `export_runtime_module`: export a Vitis AI PyXIR runtime module to the specified file.
-    //    This can be used for cross compilation or saving state.
-    // `load_runtime_module`: Load an exported runtime module from disk.
-    std::string target = "DPUCADX8G";
-    std::string export_runtime_module = "";
-    std::string load_runtime_module = "";
-    auto it = provider_options_map.find(type);
+    const auto it = provider_options_map.find(type);
     if (it != provider_options_map.end()) {
-      auto vitis_ai_provider_options = it->second;
-      auto vai_options_it = vitis_ai_provider_options.find("target");
-      if (vai_options_it != vitis_ai_provider_options.end()) {
-        target = vai_options_it->second;
-      }
-      vai_options_it = vitis_ai_provider_options.find("export_runtime_module");
-      if (vai_options_it != vitis_ai_provider_options.end()) {
-        export_runtime_module = vai_options_it->second;
-      }
-      vai_options_it = vitis_ai_provider_options.find("load_runtime_module");
-      if (vai_options_it != vitis_ai_provider_options.end()) {
-        load_runtime_module = vai_options_it->second;
-      }
+      LOGS_DEFAULT(FATAL) << "cannot find provider options for VitisAIExecutionProvider";
     }
-    return onnxruntime::VitisAIProviderFactoryCreator::Create(target.c_str(), 0,
-                                                              export_runtime_module.c_str(),
-                                                              load_runtime_module.c_str())
+    const auto& vitis_option_map = it->second;
+    return onnxruntime::VitisAIProviderFactoryCreator::Create(vitis_option_map)
         ->CreateProvider();
 #endif
   } else if (type == kAclExecutionProvider) {
