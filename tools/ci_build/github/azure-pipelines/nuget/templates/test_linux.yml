@@ -2,13 +2,13 @@ parameters:
   AgentPool: 'aiinfra-Linux-CPU'
   ArtifactSuffix: ''
   NugetPackageName : ''
+  StageSuffix: 'CPU'
+  NativePackagePrefix: 'onnxruntime'
 
 stages:
-- stage: NuGet_Test_Linux_${{ parameters.ArtifactSuffix }}
+- stage: NuGet_Test_Linux_${{ parameters.StageSuffix }}
   dependsOn:
-  - NuGet_Packaging_${{ parameters.ArtifactSuffix }}
-  # For downloading Linux CustomOp TestData
-  - Linux_C_API_Packaging_CPU
+  - NuGet_Packaging_${{ parameters.StageSuffix }}
   condition: succeeded()
   jobs:
   - job:
@@ -31,7 +31,7 @@ stages:
     - task: DownloadPipelineArtifact@0
       displayName: 'Download Linux CustomOp TestData'
       inputs:
-        artifactName: 'onnxruntime-linux-x64'
+        artifactName: '${{ parameters.NativePackagePrefix }}-linux-x64'
         targetPath: '$(Build.BinariesDirectory)/testdata'
 
     - template: get-nuget-package-version-as-variable.yml
