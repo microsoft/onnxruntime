@@ -188,7 +188,7 @@ def export_onnx_models(
     quantize_embedding_layer: bool = False,
     quantize_per_channel: bool = False,
     quantize_reduce_range: bool = False,
-    state_dict_path: str
+    state_dict_path: str = ""
 ):
     device = torch.device("cuda:0" if use_gpu else "cpu")
 
