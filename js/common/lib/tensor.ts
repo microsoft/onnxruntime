@@ -261,10 +261,12 @@ export interface TensorToImageDataOptions {
   width?: number;
   /**
    * Describes normalization parameters to ImageData conversion from tensor - default values - Bias: 0, Mean: 255
+   * Supports computation base on single parameter (extended to all channels) up to value per channel
+   * Example - tesnor.toImageData({norm:{bias:[2/5,3/6,9/17,5/8],mean:[5,6,17,8]}})
    */
   norm?: {
-    bias?: number;  // Todo add support - |[number,number,number]|[number,number,number,number];
-    mean?: number;  // Todo add support - |[number,number,number]|[number,number,number,number];
+    bias?: number|[number, number, number]|[number, number, number, number];
+    mean?: number | [number, number, number] | [number, number, number, number];
   };
 }
 /**
@@ -284,7 +286,7 @@ export interface TensorFromImageOptions {
    */
   dataType?: 'float32'|'uint8';
   /**
-   * Tensor channel layout - default is 'NHWC'
+   * Tensor channel layout - default is 'NCHW' - TODO: add support for 'NHWC'
    */
   tensorLayout?: 'NHWC'|'NCHW';
   /**
@@ -305,10 +307,12 @@ export interface TensorFromImageOptions {
   resizedWidth?: number;
   /**
    * Describes normalization parameters to tensor conversion from image data - default values - Bias: 0, Mean: 255
+   * Supports computation base on single parameter (extended to all channels) up to value per channel
+   * Example - Tensor.fromImage(img, {norm:{bias:[2,3,9,5],mean:[5,6,17,8]}});
    */
   norm?: {
-    bias?: number;  // Todo add support - |[number,number,number]|[number,number,number,number];
-    mean?: number;  // Todo add support - |[number,number,number]|[number,number,number,number];
+    bias?: number|[number, number, number]|[number, number, number, number];
+    mean?: number | [number, number, number] | [number, number, number, number];
   };
 }
 export interface TensorFactory {
@@ -335,12 +339,12 @@ export interface TensorFactory {
   /**
    * create a tensor from image object - HTMLImageElement, ImageData, ImageBitmap, URL
    *
-   * @param url - {string} - Assuming the string is a URL to an image
+   * @param urlSource - {string} - Assuming the string is a URL to an image or Data URL
    * @param options - Optional - Interface describing input image & output tensor -
    * Input Defaults: RGBA, 3 channels, 0-255, NHWC - Output Defaults: same as input parameters
    * @returns A promise that resolves to a tensor object
    */
-  fromImage(url: string, options?: TensorFromImageOptions): Promise<Tensor>;
+  fromImage(urlSource: string, options?: TensorFromImageOptions): Promise<Tensor>;
 
   /**
    * create a tensor from image object - HTMLImageElement, ImageData, ImageBitmap, URL
