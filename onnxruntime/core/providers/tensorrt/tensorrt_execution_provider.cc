@@ -648,7 +648,7 @@ Status ApplyProfileShapesFromInputTensorValue(std::vector<nvinfer1::IOptimizatio
 }
 
 TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProviderInfo& info)
-    : IExecutionProvider{onnxruntime::kTensorrtExecutionProvider, true}, info_(info), device_id_(info.device_id) {
+    : IExecutionProvider{onnxruntime::kTensorrtExecutionProvider, OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, info.device_id), true}, info_(info), device_id_(info.device_id) {
   InitProviderOrtApi();
 
   CUDA_CALL_THROW(cudaSetDevice(device_id_));
@@ -2840,6 +2840,13 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
 void TensorrtExecutionProvider::RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry) const {
   auto allocator = GetAllocator(OrtMemTypeCPU);
   RegisterCudaStreamHandles(stream_handle_registry, OrtDevice::GPU, allocator, true, stream_, external_stream_, external_cudnn_handle_, external_cublas_handle_);
+}
+
+OrtDevice TensorrtExecutionProvider::GetOrtDeviceByMemType(OrtMemType mem_type) const {
+  if (mem_type == OrtMemTypeCPUInput || mem_type == OrtMemTypeCPUOutput) {
+    return OrtDevice(OrtDevice::CPU, OrtDevice::MemType::CUDA_PINNED, default_device_.Id());
+  }
+  return default_device_;
 }
 
 }  // namespace onnxruntime

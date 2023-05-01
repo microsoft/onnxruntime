@@ -28,14 +28,12 @@ OpKernelInfo::OpKernelInfo(const OpKernelInfo& other)
     : OpKernelInfo(other.node_, other.kernel_def_, *other.execution_provider_, other.constant_initialized_tensors_,
                    other.ort_value_name_idx_map_, other.data_transfer_mgr_) {}
 
-const OrtMemoryInfo& OpKernelInfo::GetMemoryInfo(OrtMemType mem_type) const {
-  AllocatorPtr alloc = GetAllocator(mem_type);
-  if (alloc == nullptr) ORT_THROW("cannot find allocator");
-  return alloc->Info();
-}
-
 AllocatorPtr OpKernelInfo::GetAllocator(OrtMemType mem_type) const {
   return execution_provider_->GetAllocator(mem_type);
+}
+
+const OrtDevice OpKernelInfo::GetDevice(OrtMemType mem_type) const {
+  return execution_provider_->GetOrtDeviceByMemType(mem_type);
 }
 
 const KernelDef& OpKernelInfo::GetKernelDef() const {
