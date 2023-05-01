@@ -134,6 +134,12 @@ std::shared_ptr<IExecutionProviderFactory> DMLProviderFactoryCreator::Create(int
 
   ComPtr<ID3D12Device> d3d12_device;
   HRESULT hr = D3D12CreateDevice(adapter.Get(), D3D_FEATURE_LEVEL_11_0, IID_GRAPHICS_PPV_ARGS(d3d12_device.ReleaseAndGetAddressOf()));
+
+  if (FAILED(hr))
+  {
+    printf("************LALALALALALA\n");
+  }
+
   ORT_THROW_IF_FAILED(hr);
 #endif
 
@@ -144,7 +150,10 @@ std::shared_ptr<IExecutionProviderFactory> DMLProviderFactoryCreator::Create(int
   ComPtr<ID3D12CommandQueue> cmd_queue;
   HRESULT hr2 = d3d12_device->CreateCommandQueue(&cmd_queue_desc, IID_GRAPHICS_PPV_ARGS(cmd_queue.ReleaseAndGetAddressOf()));
 
-  printf("%#010x\n", hr);
+  if (FAILED(hr2))
+  {
+    printf("***********LOLOLOLOLOLO\n");
+  }
 
   ORT_THROW_IF_FAILED(hr2);
 

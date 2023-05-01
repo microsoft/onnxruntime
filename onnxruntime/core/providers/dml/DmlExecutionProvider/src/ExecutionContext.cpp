@@ -398,7 +398,7 @@ namespace Dml
 
     void ExecutionContext::ReleaseCompletedReferences()
     {
-        dml_command_queue_->ReleaseCompletedReferences();
+        // dml_command_queue_->ReleaseCompletedReferences();
     }
 
     void ExecutionContext::GetCommandListForRecordingAndInvalidateState(ID3D12GraphicsCommandList** commandList)
