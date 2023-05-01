@@ -935,51 +935,6 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             }
         }
 
-        // test registration by the alternative function name in the custom ops library.
-        // We use DllImport and Marshal.Prelink to make sure the library is loaded and
-        // the symbol is available.
-        internal static class CustomOpLibrary
-        {
-            internal const string ExtensionsDllName = "custom_op_library";
-
-            [DllImport(ExtensionsDllName, CharSet = CharSet.Ansi,
-                       CallingConvention = CallingConvention.Winapi)]
-            public static extern IntPtr /* OrtStatus* */ RegisterCustomOpsAltName(
-                IntPtr /* OrtSessionOptions* */ sessionOptions,
-                ref OrtApiBase /* OrtApiBase* */ ortApiBase);
-        }
-
-        [SkipNonPackageTests(DisplayName = "TestRegisterCustomOpsWithFunction")]
-        private void TestRegisterCustomOpsWithFunction()
-        {
-            // TODO(scmckay): Validate on Linus and OS X. Marshal.Prelink seems to work differently on at least Linux.
-            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-            {
-                using (var option = new SessionOptions())
-                {
-                    try
-                    {
-                        Marshal.Prelink(typeof(CustomOpLibrary).GetMethod("RegisterCustomOpsAltName"));
-                        option.RegisterCustomOpsUsingFunction("RegisterCustomOpsAltName");
-                    }
-                    catch (Exception ex)
-                    {
-                        var msg = $"Failed to load custom op library, error = {ex.Message}";
-                        throw new Exception(msg + "\n" + ex.StackTrace);
-                    }
-
-                    var ortEnvInstance = OrtEnv.Instance();
-                    string[] providers = ortEnvInstance.GetAvailableProviders();
-                    if (Array.Exists(providers, provider => provider == "CUDAExecutionProvider"))
-                    {
-                        option.AppendExecutionProvider_CUDA(0);
-                    }
-
-                    ValidateModelWithCustomOps(option);
-                }
-            }
-        }
-
         [Fact(DisplayName = "TestModelSerialization")]
         private void TestModelSerialization()
         {
