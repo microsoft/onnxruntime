@@ -1001,20 +1001,6 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
     // the input fused_node
     migraphx::program prog;
 
-    if (!no_input_shape) {
-      prog = migraphx::parse_onnx_buffer(onnx_string_buffer, options);
-      if (fp16_enable_) {
-        migraphx::quantize_fp16(prog);
-      }
-
-      prog.compile(t_);
-      auto prog_output_shapes = prog.get_output_shapes();
-      for (std::size_t i = 0; i < output_names.size(); ++i) {
-        auto out_len = prog_output_shapes[i].lengths();
-        options.set_input_parameter_shape(output_names[i], out_len);
-      }
-    }
-
     // compile the program
     map_progs_[fused_node.Name()] = prog;
 
