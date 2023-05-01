@@ -14,8 +14,6 @@ namespace Dml
         ID3D12CommandQueue* queue)
         : m_dmlDevice(dml_device)
     {
-        ORT_THROW_IF_FAILED(dml_device->CreateOperatorInitializer(0, nullptr, IID_PPV_ARGS(&m_initializer)));
-
         dml_command_queue_ = std::make_shared<CommandQueue>(queue);
 
         batch_state_ = std::make_shared<BatchState>();
@@ -173,20 +171,23 @@ namespace Dml
         const DML_BINDING_DESC& persistentResourceBinding,
         const DML_BINDING_DESC& inputArrayBinding)
     {
-        // Reset the initializer to reference the input operator.
-        IDMLCompiledOperator* ops[] = { op };
-        ORT_THROW_IF_FAILED(m_initializer->Reset(ARRAYSIZE(ops), ops));
+        // TODO (pavignol): Check if there's a way to move this lower, to avoid locking the entire method
+        std::unique_lock<std::mutex> lock(batch_state_->mutex);
 
-        DML_BINDING_PROPERTIES initBindingProps = m_initializer->GetBindingProperties();
+        ComPtr<IDMLOperatorInitializer> initializer;
+        IDMLCompiledOperator* ops[] = { op };
+        ORT_THROW_IF_FAILED(m_dmlDevice->CreateOperatorInitializer(ARRAYSIZE(ops), ops, IID_PPV_ARGS(&initializer)));
+
+        DML_BINDING_PROPERTIES initBindingProps = initializer->GetBindingProperties();
 
         const uint32_t numDescriptors = initBindingProps.RequiredDescriptorCount;
         DescriptorRange descriptorRange = dml_command_list_->GetDescriptorPool().AllocDescriptors(
             numDescriptors,
-            dml_command_queue_->GetNextCompletionEvent());
+            batch_state_->next_flush_event);
 
         // Create a binding table for initialization.
         DML_BINDING_TABLE_DESC bindingTableDesc = {};
-        bindingTableDesc.Dispatchable = m_initializer.Get();
+        bindingTableDesc.Dispatchable = initializer.Get();
         bindingTableDesc.CPUDescriptorHandle = descriptorRange.cpuHandle;
         bindingTableDesc.GPUDescriptorHandle = descriptorRange.gpuHandle;
         bindingTableDesc.SizeInDescriptors = numDescriptors;
@@ -233,12 +234,14 @@ namespace Dml
             bindingTable->BindOutputs(1, &persistentResourceBinding);
         }
 
-        std::unique_lock<std::mutex> lock(batch_state_->mutex);
+        // Queue the initializer and the heap to make sure it stays alive until work on the GPU has been executed
+        dml_command_queue_->QueueReference(initializer.Get(), true);
+
+        // TODO (pavignol): Check if this is necessary
+        dml_command_queue_->QueueReference(descriptorRange.heap, true);
 
         batch_state_->WriteBatch().emplace_back(
-            [=,
-            binding_table = std::move(bindingTable),
-            initializer = m_initializer](DmlCommandList& command_list)
+            [=, binding_table = std::move(bindingTable)](DmlCommandList& command_list)
             {
                 command_list.InitializeOperator(
                     initializer.Get(),
@@ -257,12 +260,15 @@ namespace Dml
         gsl::span<const DML_BINDING_DESC> inputBindings,
         gsl::span<const DML_BINDING_DESC> outputBindings)
     {
+        // TODO (pavignol): Check if there's a way to move this lower, to avoid locking the entire method
+        std::unique_lock<std::mutex> lock(batch_state_->mutex);
+
         DML_BINDING_PROPERTIES execBindingProps = op->GetBindingProperties();
 
         const uint32_t numDescriptors = execBindingProps.RequiredDescriptorCount;
         DescriptorRange descriptorRange = dml_command_list_->GetDescriptorPool().AllocDescriptors(
             numDescriptors,
-            dml_command_queue_->GetNextCompletionEvent());
+            batch_state_->next_flush_event);
 
         // Create a binding table for execution.
         DML_BINDING_TABLE_DESC bindingTableDesc = {};
@@ -305,7 +311,8 @@ namespace Dml
         bindingTable->BindInputs(gsl::narrow<uint32_t>(inputBindings.size()), inputBindings.data());
         bindingTable->BindOutputs(gsl::narrow<uint32_t>(outputBindings.size()), outputBindings.data());
 
-        std::unique_lock<std::mutex> lock(batch_state_->mutex);
+        // Queue the heap to make sure it stays alive until work on the GPU has been executed
+        dml_command_queue_->QueueReference(descriptorRange.heap, true);
 
         batch_state_->WriteBatch().emplace_back(
             [=, bindingTable = std::move(bindingTable)](
@@ -393,11 +400,13 @@ namespace Dml
 
     void ExecutionContext::QueueReference(IUnknown* object)
     {
+        std::unique_lock<std::mutex> lock(batch_state_->mutex);
         dml_command_queue_->QueueReference(object, true);
     }
 
     void ExecutionContext::ReleaseCompletedReferences()
     {
+        std::unique_lock<std::mutex> lock(batch_state_->mutex);
         dml_command_queue_->ReleaseCompletedReferences();
     }
 
@@ -456,7 +465,7 @@ namespace Dml
             state->flush_requested = false;
 
             // Unlock to allow kernels to resume writing to the new write batch.
-            lock.unlock();
+            // lock.unlock();
 
             if (flush)
             {
@@ -464,9 +473,9 @@ namespace Dml
 
                 if (!status.IsOK())
                 {
-                    lock.lock();
+                    // lock.lock();
                     state->status = status;
-                    lock.unlock();
+                    // lock.unlock();
                     break;
                 }
 
@@ -495,6 +504,10 @@ namespace Dml
 
         ID3D12CommandList* command_lists[] = {command_list->Get()};
         command_queue->ExecuteCommandLists(command_lists);
+
+        // TODO (pavignol): Check if this is necessary
+        command_queue->ReleaseCompletedReferences();
+
         batch.clear();
 
         return Status::OK();

@@ -18,7 +18,7 @@ namespace Dml
     }
 
     std::optional<DescriptorRange> DescriptorHeap::TryAllocDescriptors(
-        uint32_t numDescriptors, 
+        uint32_t numDescriptors,
         GpuEvent completionEvent,
         D3D12_DESCRIPTOR_HEAP_FLAGS heapFlags
         )
@@ -57,7 +57,7 @@ namespace Dml
     }
 
 
-    DescriptorPool::DescriptorPool(ID3D12Device* device, uint32_t initialCapacity) : 
+    DescriptorPool::DescriptorPool(ID3D12Device* device, uint32_t initialCapacity) :
         m_device(device),
         m_initialHeapCapacity(initialCapacity)
     {
@@ -65,7 +65,7 @@ namespace Dml
     }
 
     DescriptorRange DescriptorPool::AllocDescriptors(
-        uint32_t numDescriptors, 
+        uint32_t numDescriptors,
         GpuEvent completionEvent,
         D3D12_DESCRIPTOR_HEAP_FLAGS heapFlags
         )
