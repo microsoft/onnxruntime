@@ -1310,6 +1310,9 @@ def generate_build_tree(
     if args.use_azure:
         add_default_definition(cmake_extra_defines, "onnxruntime_USE_AZURE", "ON")
 
+    if is_windows():
+        add_default_definition(cmake_extra_defines, "CMake_MSVC_PARALLEL", "ON")
+
     cmake_args += [f"-D{define}" for define in cmake_extra_defines]
 
     cmake_args += cmake_extra_args
@@ -2482,6 +2485,8 @@ def main():
                     toolset = "host=" + host_arch
                 if args.cuda_version:
                     toolset += ",cuda=" + args.cuda_version
+                elif args.cuda_home:
+                    toolset += ",cuda=" + args.cuda_home
                 cmake_extra_args = ["-A", target_arch, "-T", toolset, "-G", args.cmake_generator]
             if args.enable_wcos:
                 cmake_extra_defines.append("CMAKE_USER_MAKE_RULES_OVERRIDE=wcos_rules_override.cmake")
@@ -2520,12 +2525,6 @@ def main():
         if args.enable_pybind and is_windows():
             install_python_deps(args.numpy_version)
 
-        if args.use_cuda and args.cuda_version is None:
-            if is_windows():
-                # cuda_version is used while generating version_info.py on Windows.
-                raise BuildError("cuda_version must be specified on Windows.")
-            else:
-                args.cuda_version = ""
         if args.use_rocm and args.rocm_version is None:
             args.rocm_version = ""
 
