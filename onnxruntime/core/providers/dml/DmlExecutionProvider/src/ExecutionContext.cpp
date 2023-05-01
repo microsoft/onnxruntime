@@ -393,12 +393,14 @@ namespace Dml
 
     void ExecutionContext::QueueReference(IUnknown* object)
     {
+        std::unique_lock<std::mutex> lock(batch_state_->mutex);
         dml_command_queue_->QueueReference(object, true);
     }
 
     void ExecutionContext::ReleaseCompletedReferences()
     {
-        // dml_command_queue_->ReleaseCompletedReferences();
+        std::unique_lock<std::mutex> lock(batch_state_->mutex);
+        dml_command_queue_->ReleaseCompletedReferences();
     }
 
     void ExecutionContext::GetCommandListForRecordingAndInvalidateState(ID3D12GraphicsCommandList** commandList)
