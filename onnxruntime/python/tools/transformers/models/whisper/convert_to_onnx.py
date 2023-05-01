@@ -162,7 +162,7 @@ def parse_arguments():
     parser.add_argument(
         "--state_dict_path",
         type=str,
-        default=None,
+        default="",
         help="filepath to load pre-trained model with custom state dictionary (e.g. pytorch_model.bin)",
     )
 
@@ -188,7 +188,7 @@ def export_onnx_models(
     quantize_embedding_layer: bool = False,
     quantize_per_channel: bool = False,
     quantize_reduce_range: bool = False,
-    state_dict_path: str = None
+    state_dict_path: str
 ):
     device = torch.device("cuda:0" if use_gpu else "cpu")
 
