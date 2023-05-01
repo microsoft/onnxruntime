@@ -1847,7 +1847,8 @@ class PlannerImpl {
                 //    for example, a resize cuda kernel consumer a tensor from MemCpyToHost cuda kernel on the same stream.
                 //    in this case, the FIFO can't guarantee the cpu tensor is ready when resize kernel is launching
                 OrtDevice::DeviceType target_device = plan_.allocation_plan[output_arg_idx].location.Type();
-                if (std::find(it->InputDefs().begin(), it->InputDefs().end(), output) == it->InputDefs().end()) {
+                if (it->InputDefs().size() > 0 && !(*it->InputDefs().begin())->Name().empty() &&
+                    std::find(it->InputDefs().begin(), it->InputDefs().end(), output) == it->InputDefs().end()) {
                   // if output is consumed in a subgraph, reset target device
                   OrtValueIndex input_arg_idx;
                   ORT_THROW_IF_ERROR(ort_value_name_idx_map_.GetIdx((*it->InputDefs().begin())->Name(), input_arg_idx));
