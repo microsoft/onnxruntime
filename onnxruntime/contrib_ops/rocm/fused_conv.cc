@@ -121,6 +121,7 @@ class FusedConv : public onnxruntime::rocm::Conv<T, false> {
     ORT_THROW_IF_ERROR(MapMode(activation));
     MIOPEN_CALL_THROW(miopenCreateActivationDescriptor(&activation_desc_));
     MIOPEN_CALL_THROW(miopenSetActivationDescriptor(activation_desc_, activation_mode_, 0.0, 0.0, 0.0));
+    MIOPEN_CALL_THROW(miopenCreateOperatorArgs(&fusion_args_));
   }
 
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(FusedConv);
@@ -129,6 +130,10 @@ class FusedConv : public onnxruntime::rocm::Conv<T, false> {
     if (activation_desc_) {
       MIOPEN_CALL_THROW(miopenDestroyActivationDescriptor(activation_desc_));
       activation_desc_ = nullptr;
+    }
+
+    if (fusion_args_) {
+      miopenDestroyOperatorArgs(fusion_args_);
     }
   }
 
@@ -157,20 +162,20 @@ class FusedConv : public onnxruntime::rocm::Conv<T, false> {
 
     if (should_try_fusion_api) {
       auto& fusion_info = *cached_item.fusion;
-      MIOPEN_RETURN_IF_ERROR(miopenSetOpArgsConvForward(fusion_info.fusion_args,
+      MIOPEN_RETURN_IF_ERROR(miopenSetOpArgsConvForward(fusion_args_,
                                                         fusion_info.conv_op,
                                                         &alpha,
                                                         &beta,
                                                         Base::s_.w_data));
       if (has_z) {
-        MIOPEN_RETURN_IF_ERROR(miopenSetOpArgsBiasForward(fusion_info.fusion_args,
+        MIOPEN_RETURN_IF_ERROR(miopenSetOpArgsBiasForward(fusion_args_,
                                                           fusion_info.bias_z_op,
                                                           &alpha,
                                                           &beta,
                                                           Base::s_.z_data));
       }
       if (has_b) {
-        MIOPEN_RETURN_IF_ERROR(miopenSetOpArgsBiasForward(fusion_info.fusion_args,
+        MIOPEN_RETURN_IF_ERROR(miopenSetOpArgsBiasForward(fusion_args_,
                                                           fusion_info.bias_b_op,
                                                           &alpha,
                                                           &beta,
@@ -178,7 +183,7 @@ class FusedConv : public onnxruntime::rocm::Conv<T, false> {
       }
       if (activation_desc_) {
         const float relu_notused = 0.0;
-        MIOPEN_RETURN_IF_ERROR(miopenSetOpArgsActivForward(fusion_info.fusion_args,
+        MIOPEN_RETURN_IF_ERROR(miopenSetOpArgsActivForward(fusion_args_,
                                                            fusion_info.act_op,
                                                            &alpha,
                                                            &beta,
@@ -192,7 +197,7 @@ class FusedConv : public onnxruntime::rocm::Conv<T, false> {
                                               Base::s_.x_data,
                                               Base::s_.y_tensor,
                                               Base::s_.y_data,
-                                              fusion_info.fusion_args);
+                                              fusion_args_);
     }
     if (miopenStatusSuccess != fusion_status) {
       MIOPEN_RETURN_IF_ERROR(miopenConvolutionForward(this->GetMiopenHandle(context),
@@ -258,6 +263,8 @@ class FusedConv : public onnxruntime::rocm::Conv<T, false> {
   miopenActivationMode_t activation_mode_;
   miopenActivationDescriptor_t activation_desc_ = nullptr;
 
+  miopenOperatorArgs_t fusion_args_ = nullptr;
+
   // MIOpen Fusion API
   // TODO: create one fusion descriptor shared by multiple FusedConv
   //       objects
@@ -271,37 +278,18 @@ class FusedConv : public onnxruntime::rocm::Conv<T, false> {
     miopenFusionOpDescriptor_t bias_b_op = nullptr;
     miopenFusionOpDescriptor_t bias_z_op = nullptr;
     miopenFusionOpDescriptor_t act_op = nullptr;
-    miopenOperatorArgs_t fusion_args = nullptr;
 
     // TODO: There is a potential problem. miopenHandle_t may be destroyed and
     //       re-created later, sharing the same address. Currently there is any way
     //       to detect it?
     mutable std::unordered_set<miopenHandle_t> compiled_on;
 
-    FusedConvFusionData(const FusedConvFusionData&) = delete;
-    FusedConvFusionData& operator=(const FusedConvFusionData&) = delete;
-
-    FusedConvFusionData(FusedConvFusionData&& other) {
-      *this = std::move(other);
-    }
-    FusedConvFusionData& operator=(FusedConvFusionData&& other) {
-      std::swap(this->plan, other.plan);
-      std::swap(this->fusion_args, other.fusion_args);
-      this->conv_op = other.conv_op;
-      this->bias_b_op = other.bias_b_op;
-      this->bias_z_op = other.bias_z_op;
-      this->act_op = other.act_op;
-      this->compiled_on = std::move(other.compiled_on);
-      return *this;
-    }
+    ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(FusedConvFusionData);
 
     FusedConvFusionData() {}
     ~FusedConvFusionData() {
       if (plan) {
         miopenDestroyFusionPlan(plan);
-      }
-      if (fusion_args) {
-        miopenDestroyOperatorArgs(fusion_args);
       }
     }
   };
@@ -312,8 +300,7 @@ class FusedConv : public onnxruntime::rocm::Conv<T, false> {
     // TODO: Add a timestamp for eviction
     // std::chrono::time_point<std::chrono::high_resolution_clock> last_access;
 
-    FusionPlanCacheItem() {
-    }
+    FusionPlanCacheItem() {}
 
     miopenStatus_t CompileOnHandle(miopenHandle_t handle) const {
       if (!fusion->plan) {
@@ -334,7 +321,7 @@ class FusedConv : public onnxruntime::rocm::Conv<T, false> {
       if (Status::OK() != creation_result) {
         return false;
       }
-      if (!fusion || !fusion->plan || !fusion->fusion_args) {
+      if (!fusion || !fusion->plan) {
         return false;
       }
       auto compiling_status = CompileOnHandle(handle);
@@ -377,7 +364,6 @@ class FusedConv : public onnxruntime::rocm::Conv<T, false> {
     MIOPEN_RETURN_IF_ERROR(miopenCreateFusionPlan(&fusion.plan,
                                                   miopenVerticalFusion,
                                                   Base::s_.x_tensor));
-    MIOPEN_RETURN_IF_ERROR(miopenCreateOperatorArgs(&fusion.fusion_args));
     auto status = miopenCreateOpConvForward(fusion.plan, &fusion.conv_op, Base::s_.conv_desc, Base::s_.w_desc);
     if (status == miopenStatusUnsupportedOp) {
       auto msg = MakeString("MIOpen does not support the conv fusion for node \"",

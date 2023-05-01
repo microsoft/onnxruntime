@@ -44,7 +44,7 @@ static const char* const kOrtSessionOptionsConfigSetDenormalAsZero = "session.se
 // It controls to run quantization model in QDQ (QuantizelinearDeQuantizelinear) format or not.
 // "0": enable. ORT does fusion logic for QDQ format.
 // "1": disable. ORT doesn't do fusion logic for QDQ format.
-// Its default value is "0"
+// Its default value is "0" unless the DirectML execution provider is registered, in which case it defaults to "1".
 static const char* const kOrtSessionOptionsDisableQuantQDQ = "session.disable_quant_qdq";
 
 // It controls whether to enable Double QDQ remover and Identical Children Consolidation

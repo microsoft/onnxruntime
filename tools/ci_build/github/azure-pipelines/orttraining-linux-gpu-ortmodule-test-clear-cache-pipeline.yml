@@ -4,7 +4,7 @@ jobs:
 - job: Onnxruntime_Linux_GPU_ORTTraining_Clear_Cache
 
   timeoutInMinutes: 15
-  pool: 'onnxruntime-Linux-CPU-2019'
+  pool: 'onnxruntime-Ubuntu2004-AMD-CPU'
 
   steps:
   - checkout: self

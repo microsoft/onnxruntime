@@ -492,15 +492,35 @@ common::Status InferenceSession::RegisterExecutionProvider(const std::shared_ptr
   if (provider_type == onnxruntime::kDmlExecutionProvider) {
     // DML's memory is not byte addressable and hence mem pattern doesn't work.
     if (session_options_.enable_mem_pattern) {
-      LOGS(*session_logger_, WARNING)
+      LOGS(*session_logger_, INFO)
           << "Having memory pattern enabled is not supported while using the DML Execution Provider. "
           << "So disabling it for this session since it uses the DML Execution Provider.";
       session_options_.enable_mem_pattern = false;
     }
 
+    // Default this option to true when the DML EP is registered.
+    // This should be removed if QDQ is supported for DML through QDQSelectorActionTransformer and the DML EP does not
+    // rely on the constant folding pass for DequantizeLinear.
+    optional<std::string> disable_quant_qdq = session_options_.config_options.GetConfigEntry(kOrtSessionOptionsDisableQuantQDQ);
+
+    if (disable_quant_qdq == std::nullopt) {
+      LOGS(*session_logger_, INFO)
+          << "QDQ quantization is not supported while using the DML Execution Provider. "
+          << "So disabling it for this session since it uses the DML Execution Provider.";
+
+      auto st = session_options_.config_options.AddConfigEntry(kOrtSessionOptionsDisableQuantQDQ, "1");
+      if (!st.IsOK()) {
+        return st;
+      }
+    } else if (*disable_quant_qdq != "1") {
+      LOGS(*session_logger_, WARNING)
+          << "QDQ quantization is not supported while using the DML Execution Provider. "
+          << "It is enabled within session options which may result in lower performance.";
+    }
+
     // Parallel execution mode does not support DML EP
     if (session_options_.execution_mode != ExecutionMode::ORT_SEQUENTIAL) {
-      LOGS(*session_logger_, WARNING)
+      LOGS(*session_logger_, INFO)
           << "Parallel execution mode does not support the DML Execution Provider. "
           << "So making the execution mode sequential for this session since it uses the DML Execution Provider.";
 
@@ -976,7 +996,13 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
 
   // Insert cast node/s.
   {
-    InsertCastTransformer insert_cast_transformer{"CastFloat16Transformer"};
+    const InlinedVector<gsl::not_null<const KernelRegistry*>> kernel_regs =
+        kernel_registry_manager_.GetKernelRegistriesByProviderType(kCpuExecutionProvider);
+    const KernelRegistry* cpu_regs = nullptr;
+    if (!kernel_regs.empty()) {
+      cpu_regs = kernel_regs[0];
+    }
+    InsertCastTransformer insert_cast_transformer{"CastFloat16Transformer", cpu_regs};
     ORT_RETURN_IF_ERROR_SESSIONID_(apply_transformer_once(insert_cast_transformer, *session_logger_, graph));
   }
 

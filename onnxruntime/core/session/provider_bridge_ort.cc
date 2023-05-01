@@ -1308,6 +1308,10 @@ OrtTensorRTProviderOptionsV2 OrtTensorRTProviderOptionsToOrtTensorRTProviderOpti
   trt_options_converted.trt_auxiliary_streams = -1;
   trt_options_converted.trt_tactic_sources = "";
   trt_options_converted.trt_extra_plugin_lib_paths = "";
+  trt_options_converted.trt_profile_min_shapes = "";
+  trt_options_converted.trt_profile_max_shapes = "";
+  trt_options_converted.trt_profile_opt_shapes = "";
+
   return trt_options_converted;
 }
 
@@ -1660,6 +1664,9 @@ ORT_API_STATUS_IMPL(OrtApis::CreateTensorRTProviderOptions, _Outptr_ OrtTensorRT
   (*out)->trt_force_timing_cache = false;
   (*out)->trt_detailed_build_log = false;
   (*out)->trt_extra_plugin_lib_paths = nullptr;
+  (*out)->trt_profile_min_shapes = nullptr;
+  (*out)->trt_profile_max_shapes = nullptr;
+  (*out)->trt_profile_opt_shapes = nullptr;
   return nullptr;
 #else
   ORT_UNUSED_PARAMETER(out);

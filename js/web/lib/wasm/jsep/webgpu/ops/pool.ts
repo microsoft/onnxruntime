@@ -289,11 +289,10 @@ export const parseAveragePoolAttributes = (attributes: Record<string, unknown>):
   return createAttributeWithCacheKey({countIncludePad, ...attr});
 };
 
-export const averagePool = (context: ComputeContext, attributes: AveragePoolAttributes): number => {
+export const averagePool = (context: ComputeContext, attributes: AveragePoolAttributes): void => {
   validateInputs(context.inputs);
   const metadata = {name: 'AveragePool', inputTypes: [GpuDataType.default], cacheHint: attributes.cacheKey};
   context.compute({...metadata, get: () => createAveragePoolProgramInfo(context.inputs, metadata, false, attributes)});
-  return 0;
 };
 
 const globalPoolAttributes = {
@@ -313,11 +312,10 @@ export const parseGlobalAveragePoolAttributes = (attributes: Record<string, unkn
   return {format, ...globalPoolAttributes, cacheKey: format};
 };
 
-export const globalAveragePool = (context: ComputeContext, attributes: AveragePoolAttributes): number => {
+export const globalAveragePool = (context: ComputeContext, attributes: AveragePoolAttributes): void => {
   validateInputs(context.inputs);
   const metadata = {name: 'GlobalAveragePool', inputTypes: [GpuDataType.default], cacheHint: attributes.cacheKey};
   context.compute({...metadata, get: () => createAveragePoolProgramInfo(context.inputs, metadata, true, attributes)});
-  return 0;
 };
 
 export interface MaxPoolAttributes extends PoolCommonAttributes, AttributeWithCacheKey {
@@ -343,11 +341,10 @@ const createMaxPoolProgramInfo =
       };
     };
 
-export const maxPool = (context: ComputeContext, attributes: MaxPoolAttributes): number => {
+export const maxPool = (context: ComputeContext, attributes: MaxPoolAttributes): void => {
   validateInputs(context.inputs);
   const metadata = {name: 'MaxPool', inputTypes: [GpuDataType.default], cacheHint: attributes.cacheKey};
   context.compute({...metadata, get: () => createMaxPoolProgramInfo(context.inputs, metadata, false, attributes)});
-  return 0;
 };
 
 export const parseMaxPoolAttributes = (attributes: Record<string, unknown>): MaxPoolAttributes => {
@@ -371,9 +368,8 @@ export const parseGlobalMaxPoolAttributes = (attributes: Record<string, unknown>
   return {format, ...globalPoolAttributes, cacheKey: format};
 };
 
-export const globalMaxPool = (context: ComputeContext, attributes: MaxPoolAttributes): number => {
+export const globalMaxPool = (context: ComputeContext, attributes: MaxPoolAttributes): void => {
   validateInputs(context.inputs);
   const metadata = {name: 'GlobalMaxPool', inputTypes: [GpuDataType.default], cacheHint: attributes.cacheKey};
   context.compute({...metadata, get: () => createMaxPoolProgramInfo(context.inputs, metadata, true, attributes)});
-  return 0;
 };

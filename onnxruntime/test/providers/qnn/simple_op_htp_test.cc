@@ -23,8 +23,10 @@ namespace test {
 //
 // Currently used to test QNN EP.
 template <typename InputQType>
-GetQDQTestCaseFn BuildQDQSingleInputOpTestCase(const std::vector<int64_t>& input_shape, const std::string& op_type) {
-  return [input_shape, op_type](ModelTestBuilder& builder) {
+GetQDQTestCaseFn BuildQDQSingleInputOpTestCase(const std::vector<int64_t>& input_shape,
+                                               const std::string& op_type,
+                                               const std::string& domain = kOnnxDomain) {
+  return [input_shape, op_type, domain](ModelTestBuilder& builder) {
     const InputQType quant_zero_point = 0;
     const float quant_scale = 1.0f;
 
@@ -34,7 +36,7 @@ GetQDQTestCaseFn BuildQDQSingleInputOpTestCase(const std::vector<int64_t>& input
     builder.AddDequantizeLinearNode<InputQType>(input, quant_scale, quant_zero_point, dq_input);
 
     auto* op_output = builder.MakeIntermediate();
-    builder.AddNode(op_type, {dq_input}, {op_output}, kMSDomain);
+    builder.AddNode(op_type, {dq_input}, {op_output}, domain);
 
     auto* q_output = builder.MakeIntermediate();
     builder.AddQuantizeLinearNode<InputQType>(op_output, quant_scale, quant_zero_point, q_output);
@@ -45,7 +47,7 @@ GetQDQTestCaseFn BuildQDQSingleInputOpTestCase(const std::vector<int64_t>& input
 }
 
 /**
- * Runs an BatchNormalization model on the QNN HTP backend. Checks the graph node assignment, and that inference
+ * Runs an Simple Op model on the QNN HTP backend. Checks the graph node assignment, and that inference
  * outputs for QNN and CPU match.
  *
  * \param input_shape The input's shape.
@@ -55,7 +57,10 @@ GetQDQTestCaseFn BuildQDQSingleInputOpTestCase(const std::vector<int64_t>& input
  */
 static void RunQDQSingleInputOpTest(const std::vector<int64_t>& input_shape, const std::string& op_type,
                                     const char* test_description,
-                                    ExpectedEPNodeAssignment expected_ep_assignment, int num_nodes_in_graph) {
+                                    int opset_version,
+                                    ExpectedEPNodeAssignment expected_ep_assignment,
+                                    int num_nodes_in_graph,
+                                    const std::string& domain = kOnnxDomain) {
   ProviderOptions provider_options;
 #if defined(_WIN32)
   provider_options["backend_path"] = "QnnHtp.dll";
@@ -64,18 +69,36 @@ static void RunQDQSingleInputOpTest(const std::vector<int64_t>& input_shape, con
 #endif
 
   // Runs model with DQ-> InstanceNorm -> Q and compares the outputs of the CPU and QNN EPs.
-  RunQnnModelTest(BuildQDQSingleInputOpTestCase<uint8_t>(input_shape, op_type),
+  RunQnnModelTest(BuildQDQSingleInputOpTestCase<uint8_t>(input_shape, op_type, domain),
                   provider_options,
-                  11,
+                  opset_version,
                   expected_ep_assignment,
                   num_nodes_in_graph,
                   test_description);
 }
 
-// Check that QNN compiles DQ -> BatchNormalization -> Q as a single unit.
+// Check that QNN compiles DQ -> Gelu -> Q as a single unit.
 // Use an input of rank 3.
 TEST_F(QnnHTPBackendTests, TestQDQGeluTest) {
-  RunQDQSingleInputOpTest({1, 2, 3}, "Gelu", "TestQDQGeluTest", ExpectedEPNodeAssignment::All, 1);
+  RunQDQSingleInputOpTest({1, 2, 3}, "Gelu", "TestQDQGeluTest", 11, ExpectedEPNodeAssignment::All, 1, kMSDomain);
+}
+
+// Check that QNN compiles DQ -> Elu -> Q as a single unit.
+// Use an input of rank 3.
+TEST_F(QnnHTPBackendTests, TestQDQEluTest) {
+  RunQDQSingleInputOpTest({1, 2, 3}, "Elu", "TestQDQGeluTest", 11, ExpectedEPNodeAssignment::All, 1);
+}
+
+// Check that QNN compiles DQ -> HardSwish -> Q as a single unit.
+// Use an input of rank 3.
+TEST_F(QnnHTPBackendTests, TestQDQHardSwishTest) {
+  RunQDQSingleInputOpTest({1, 2, 3}, "HardSwish", "TestQDQGeluTest", 14, ExpectedEPNodeAssignment::All, 1);
+}
+
+// Check that QNN compiles DQ -> HardSwish -> Q as a single unit.
+// Use an input of rank 3.
+TEST_F(QnnHTPBackendTests, TestQDQAtanTest) {
+  RunQDQSingleInputOpTest({1, 2, 3}, "Atan", "TestQDQGeluTest", 11, ExpectedEPNodeAssignment::All, 1);
 }
 
 #endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
