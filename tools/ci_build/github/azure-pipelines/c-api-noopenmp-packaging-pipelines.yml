@@ -48,6 +48,17 @@ stages:
     AdditionalWinBuildFlags: '--enable_onnx_tests --enable_wcos'
     BuildVariant: 'default'
 
+- template: templates/ondevice-training-cpu-packaging-pipeline.yml
+  parameters:
+    RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
+    DoCompliance: ${{ parameters.DoCompliance }}
+    DoEsrp: ${{ parameters.DoEsrp }}
+    IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
+    OrtNugetPackageId: 'Microsoft.ML.OnnxRuntime.Training'
+    AdditionalBuildFlags: '--enable_training_apis'
+    AdditionalWinBuildFlags: '--enable_onnx_tests --enable_wcos'
+    BuildVariant: 'default'
+
 - stage: Linux_C_API_Packaging_GPU_x64
   dependsOn: []
   jobs:
@@ -687,12 +698,14 @@ stages:
     AgentPool : 'onnxruntime-gpu-tensorrt8-winbuild-t4'
     NugetPackageName : 'Microsoft.ML.OnnxRuntime.Gpu'
     ArtifactSuffix: 'GPU'
+    StageSuffix: 'GPU'
     Skipx86Tests: 'true'
 
 - template: nuget/templates/test_linux.yml
   parameters:
     AgentPool : Onnxruntime-Linux-GPU
     ArtifactSuffix: 'GPU'
+    StageSuffix: 'GPU'
     NugetPackageName : 'Microsoft.ML.OnnxRuntime.Gpu'
 
 - template: nuget/templates/dml-vs-2019.yml
