@@ -203,12 +203,25 @@ AllocatorPtr IExecutionFrame::GetAllocator(const OrtMemoryInfo& info) const {
 
 Status IExecutionFrame::ReleaseMLValue(int ort_value_idx) { return ReleaseMLValueImpl(ort_value_idx); }
 
+size_t release_count = 0;
+
 Status IExecutionFrame::ReleaseMLValueImpl(int ort_value_idx) {
   if (ort_value_idx == NodeIndexInfo::kInvalidEntry || static_cast<size_t>(ort_value_idx) >= all_values_size_) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "invalid index ", ort_value_idx);
   }
 
-  all_values_[ort_value_idx] = OrtValue();
+  if (release_count == 243) {
+    all_values_[ort_value_idx] = OrtValue();
+    std::string value_name;
+    ORT_ENFORCE(ort_value_idx_map_.GetName(ort_value_idx, value_name).IsOK());
+    std::cout << "243: " << value_name << std::endl;
+  } else {
+    all_values_[ort_value_idx] = OrtValue();
+    //std::string value_name;
+    //ORT_ENFORCE(ort_value_idx_map_.GetName(ort_value_idx, value_name).IsOK());
+    //std::cout << value_name << " released" << std::endl;
+  }
+  release_count++;
   return Status::OK();
 }
 
