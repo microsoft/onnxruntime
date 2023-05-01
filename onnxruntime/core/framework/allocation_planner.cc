@@ -329,7 +329,6 @@ class PlannerImpl {
           auto p_input_arg = input_args[pair.first];
           if (p_input_arg->Exists()) {
             *reusable_input = Index(p_input_arg->Name());
-            std::cout << p_input_arg->Name() << " reused by " << p_output_arg->Name() << std::endl;
             return true;
           }
         }
@@ -346,7 +345,6 @@ class PlannerImpl {
         auto p_input_arg = input_args[alias_input_index];
         if (p_input_arg->Exists()) {
           *reusable_input = Index(p_input_arg->Name());
-          std::cout << p_input_arg->Name() << " reused by " << p_output_arg->Name() << std::endl;
           return true;
         }
       }
@@ -364,7 +362,6 @@ class PlannerImpl {
               if (SameSize(*p_input_arg, *p_output_arg)) {
                 // we can reuse this input since it is its last use and permitted for in-place update
                 *reusable_input = input_arg_index;  // or original; both should be okay
-                std::cout << p_input_arg->Name() << " reused by " << p_output_arg->Name() << std::endl;
                 return true;
               }
             }
@@ -516,7 +513,6 @@ class PlannerImpl {
         if (SameSize(*p_available_buffer_shape, *p_node_arg,
                      *p_required_buffer_shape, output_arg)) {
           *reusable_tensor = it->ml_value;
-          std::cout << p_node_arg->Name() << " reused by " << output_arg.Name() << std::endl;
           freelist_.erase(it);
           return true;
         }
@@ -1844,9 +1840,6 @@ class PlannerImpl {
         // Neither trigger ActivateNotification/WaitOnEPStep for Shape op (whose output is ready for all the EPs), nor
         // upstream is on CPU device (As currently we never invoke RegisterWaitFn(CPU, ...) for all kinds of EP, thus no wait_handle can be retrieved for this case)
         if (node->OpType() != "Shape" && execution_plan[i]->device_.Type() != OrtDevice::CPU) {
-          if (node->Name() == "/roi_heads/box_roi_pool/Gather_9") {
-            std::cout << "/roi_heads/box_roi_pool/Gather_9" << std::endl;
-          }
           for (auto it = node->OutputNodesBegin(); it != node->OutputNodesEnd(); ++it) {
             for (auto* output : node->OutputDefs()) {
               if (output->Exists()) {
