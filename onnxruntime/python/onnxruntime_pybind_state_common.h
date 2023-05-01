@@ -149,9 +149,6 @@ extern std::string openvino_device_type;
 #ifdef USE_TVM
 #include "core/providers/tvm/tvm_ep_options.h"
 #endif
-#ifdef USE_VITISAI
-#include "core/providers/vitisai/vitisai_provider_factory.h"
-#endif
 #ifdef USE_ACL
 #include "core/providers/acl/acl_provider_factory.h"
 #endif
