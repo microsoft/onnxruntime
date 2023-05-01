@@ -120,7 +120,7 @@ def parse_arguments():
         required=False,
         default="None",
         type=str,
-        choices=["cuda", "dnnl", "openvino", "tensorrt", "snpe", "tvm", "None"],
+        choices=["cuda", "dnnl", "openvino", "tensorrt", "snpe", "tvm", "qnn", "None"],
         help="The selected execution provider for this build.",
     )
     parser.add_argument("--sdk_info", required=False, default="", type=str, help="dependency SDK information.")
@@ -307,6 +307,7 @@ def generate_files(line_list, args):
     is_dml_package = args.package_name == "Microsoft.ML.OnnxRuntime.DirectML"
     is_windowsai_package = args.package_name == "Microsoft.AI.MachineLearning"
     is_snpe_package = args.package_name == "Microsoft.ML.OnnxRuntime.Snpe"
+    is_qnn_package = args.package_name == "Microsoft.ML.OnnxRuntime.QNN"
     is_training_package = args.package_name in [
         "Microsoft.ML.OnnxRuntime.Training",
         "Microsoft.ML.OnnxRuntime.Training.Gpu",
@@ -496,7 +497,7 @@ def generate_files(line_list, args):
                 + '" target="lib\\net5.0\\Microsoft.AI.MachineLearning.Interop.pdb" />'
             )
 
-    if args.package_name == "Microsoft.ML.OnnxRuntime.Snpe":
+    if args.package_name == "Microsoft.ML.OnnxRuntime.Snpe" or args.package_name == "Microsoft.ML.OnnxRuntime.QNN":
         files_list.append(
             "<file src=" + '"' + os.path.join(args.native_build_path, "onnx_test_runner.exe") + runtimes + " />"
         )
@@ -844,7 +845,7 @@ def generate_files(line_list, args):
             files_list.append("<file src=" + '"' + windowsai_net50_props + '" target="build\\net5.0" />')
             files_list.append("<file src=" + '"' + windowsai_net50_targets + '" target="build\\net5.0" />')
 
-    if is_cpu_package or is_cuda_gpu_package or is_dml_package or is_mklml_package or is_snpe_package:
+    if is_cpu_package or is_cuda_gpu_package or is_dml_package or is_mklml_package or is_snpe_package or is_qnn_package:
         # Process props file
         source_props = os.path.join(
             args.sources_path, "csharp", "src", "Microsoft.ML.OnnxRuntime", "targets", "netstandard", "props.xml"
@@ -860,7 +861,7 @@ def generate_files(line_list, args):
         )
         os.system(copy_command + " " + source_props + " " + target_props)
         files_list.append("<file src=" + '"' + target_props + '" target="build\\native" />')
-        if not is_snpe_package:
+        if not is_snpe_package and not is_qnn_package:
             files_list.append("<file src=" + '"' + target_props + '" target="build\\netstandard1.1" />')
             files_list.append("<file src=" + '"' + target_props + '" target="build\\netstandard2.0" />')
 
@@ -879,7 +880,7 @@ def generate_files(line_list, args):
         )
         os.system(copy_command + " " + source_targets + " " + target_targets)
         files_list.append("<file src=" + '"' + target_targets + '" target="build\\native" />')
-        if not is_snpe_package:
+        if not is_snpe_package and not is_qnn_package:
             files_list.append("<file src=" + '"' + target_targets + '" target="build\\netstandard1.1" />')
             files_list.append("<file src=" + '"' + target_targets + '" target="build\\netstandard2.0" />')
 

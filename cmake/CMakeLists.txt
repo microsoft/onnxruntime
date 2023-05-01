@@ -338,7 +338,7 @@ function(set_msvc_c_cpp_compiler_warning_level warning_level)
     # only match the generator expression added by this function
     list(FILTER opts
          EXCLUDE REGEX "^\\$<\\$<OR:\\$<COMPILE_LANGUAGE:C>,\\$<COMPILE_LANGUAGE:CXX>>:/W[0-4]>$")
-    list(APPEND opts "$<$<OR:$<COMPILE_LANGUAGE:C>,$<COMPILE_LANGUAGE:CXX>>:${warning_flag}>")
+    list(APPEND opts "$<$<COMPILE_LANGUAGE:CXX,C>:${warning_flag}>")
     set_property(DIRECTORY PROPERTY COMPILE_OPTIONS "${opts}")
   endif()
 endfunction()
@@ -791,8 +791,9 @@ function(onnxruntime_set_compile_flags target_name)
     endif()
     if (MSVC)
       foreach(CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORY ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
-        target_compile_options(${target_name} PRIVATE "$<$<OR:$<COMPILE_LANGUAGE:C>,$<COMPILE_LANGUAGE:CXX>>:/external:I${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORY}>")
+        target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CXX,C>:/external:I${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORY}>")
       endforeach()
+
       foreach(onnxruntime_external_lib IN LISTS onnxruntime_EXTERNAL_LIBRARIES)
         #TODO: the list contains cmake keywords like "debug". We should exclude them.
         if(TARGET ${onnxruntime_external_lib})
@@ -802,11 +803,11 @@ function(onnxruntime_set_compile_flags target_name)
               if(onnxruntime_external_lib_include_dir MATCHES "^\\$<BUILD_INTERFACE:([^>]+)>$")
                 string(REGEX REPLACE "^\\$<BUILD_INTERFACE:([^>]+)>$" "\\1" onnxruntime_external_lib_include_dir_cmake "${onnxruntime_external_lib_include_dir}")
                 cmake_path(NATIVE_PATH onnxruntime_external_lib_include_dir_cmake NORMALIZE onnxruntime_external_lib_include_dir_native)
-                target_compile_options(${target_name} PRIVATE "$<$<OR:$<COMPILE_LANGUAGE:C>,$<COMPILE_LANGUAGE:CXX>>:/external:I${onnxruntime_external_lib_include_dir_native}>")
+                target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CXX,C>:/external:I${onnxruntime_external_lib_include_dir_native}>")
               endif()
             else()
               cmake_path(NATIVE_PATH onnxruntime_external_lib_include_dir NORMALIZE onnxruntime_external_lib_include_dir_native)
-              target_compile_options(${target_name} PRIVATE "$<$<OR:$<COMPILE_LANGUAGE:C>,$<COMPILE_LANGUAGE:CXX>>:/external:I${onnxruntime_external_lib_include_dir_native}>")
+              target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CXX,C>:/external:I${onnxruntime_external_lib_include_dir_native}>")
             endif()
           endforeach()
         endif()
@@ -815,13 +816,20 @@ function(onnxruntime_set_compile_flags target_name)
       if (onnxruntime_ENABLE_MEMLEAK_CHECKER)
         target_compile_definitions(${target_name} PUBLIC -DONNXRUNTIME_ENABLE_MEMLEAK_CHECK)
       endif()
-      target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /utf-8>" "$<$<OR:$<COMPILE_LANGUAGE:C>,$<COMPILE_LANGUAGE:CXX>>:/utf-8>")
-      target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /sdl>" "$<$<OR:$<COMPILE_LANGUAGE:C>,$<COMPILE_LANGUAGE:CXX>>:/sdl>")
+      target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /utf-8>" "$<$<COMPILE_LANGUAGE:CXX,C>:/utf-8>")
+      target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /sdl>" "$<$<COMPILE_LANGUAGE:CXX,C>:/sdl>")
       set_target_properties(${target_name}
                       PROPERTIES VS_GLOBAL_CAExcludePath "${ORT_BINARY_DIR};${ORT_SOURCE_DIR}")
+      # We do not treat warnings from 3rd-party libraries as errors. In order to do that, we need to add their header files locations to /external:I.
+      target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CXX,C>:/experimental:external>" "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /experimental:external>")
+      target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CXX,C>:/external:W0>" "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /external:W0>")
+      target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CXX,C>:/external:templates->" "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /external:templates->")
+      target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CXX,C>:/external:I${CMAKE_CURRENT_SOURCE_DIR}>" "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /external:I${CMAKE_CURRENT_SOURCE_DIR}>")
+      target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CXX,C>:/external:I${CMAKE_CURRENT_BINARY_DIR}>" "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /external:I${CMAKE_CURRENT_BINARY_DIR}>")
       if (onnxruntime_ENABLE_STATIC_ANALYSIS)
-        target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /analyze>" "$<$<OR:$<COMPILE_LANGUAGE:C>,$<COMPILE_LANGUAGE:CXX>>:/analyze>")
-        target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /analyze:external->" "$<$<OR:$<COMPILE_LANGUAGE:C>,$<COMPILE_LANGUAGE:CXX>>:/analyze:external->")
+        target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /analyze>" "$<$<COMPILE_LANGUAGE:CXX,C>:/analyze>")
+        target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /analyze:external->" "$<$<COMPILE_LANGUAGE:CXX,C>:/analyze:external->")
+        target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /wd6385>" )
       endif()
     else()
       # Enable warning
@@ -1236,6 +1244,19 @@ if (onnxruntime_USE_VITISAI)
   endif()
 endif()
 
+set(ORT_BUILD_INFO "ORT Build Info: ")
+find_package(Git)
+if (Git_FOUND)
+  execute_process(COMMAND ${GIT_EXECUTABLE} log -1 --format=%h
+      OUTPUT_VARIABLE ORT_GIT_COMMIT)
+  string(STRIP "${ORT_GIT_COMMIT}" ORT_GIT_COMMIT)
+  execute_process(COMMAND ${GIT_EXECUTABLE} rev-parse --abbrev-ref HEAD
+      OUTPUT_VARIABLE ORT_GIT_BRANCH)
+  string(STRIP "${ORT_GIT_BRANCH}" ORT_GIT_BRANCH)
+  string(APPEND ORT_BUILD_INFO "git-branch=${ORT_GIT_BRANCH}, git-commit-id=${ORT_GIT_COMMIT}, ")
+endif()
+string(APPEND ORT_BUILD_INFO "build type=${CMAKE_BUILD_TYPE}")
+string(APPEND ORT_BUILD_INFO ", cmake cxx flags: ${CMAKE_CXX_FLAGS}")
 configure_file(onnxruntime_config.h.in ${CMAKE_CURRENT_BINARY_DIR}/onnxruntime_config.h)
 if (WIN32)
   configure_file(../requirements.txt.in ${CMAKE_CURRENT_BINARY_DIR}/Debug/requirements.txt)
@@ -1267,9 +1288,9 @@ if (onnxruntime_USE_CUDA)
         set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_30,code=sm_30") # K series
       endif()
       if (CMAKE_CUDA_COMPILER_VERSION VERSION_LESS 12)
-	# 37, 50 still work in CUDA 11 but are marked deprecated and will be removed in future CUDA version.
-	set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_37,code=sm_37") # K80
-	set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_50,code=sm_50") # M series
+        # 37, 50 still work in CUDA 11 but are marked deprecated and will be removed in future CUDA version.
+        set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_37,code=sm_37") # K80
+        set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_50,code=sm_50") # M series
       endif()
       set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_52,code=sm_52") # M60
       set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_60,code=sm_60") # P series

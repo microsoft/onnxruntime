@@ -97,7 +97,7 @@ class MyIExecutionFrame : public IExecutionFrame {
   Status CreateNodeOutputMLValueImpl(OrtValue& /*ort_value*/, int /*ort_value_idx*/, const TensorShape* /*shape*/) override {
     abort();
   }
-  AllocatorPtr GetAllocatorImpl(const OrtMemoryInfo& info) const {
+  AllocatorPtr GetAllocatorImpl(const OrtMemoryInfo& info) const override {
     return a_.GetAllocator(info.mem_type);
   }
 
@@ -126,7 +126,7 @@ class MyIExecutionFrame : public IExecutionFrame {
     return Status::OK();
   }
 
-  Status CopyTensor(const Tensor& /*src*/, Tensor& /*dest*/) const {
+  Status CopyTensor(const Tensor& /*src*/, Tensor& /*dest*/) const override {
     return Status::OK();
   }
 };

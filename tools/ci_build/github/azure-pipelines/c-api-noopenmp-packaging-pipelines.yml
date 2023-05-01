@@ -24,17 +24,6 @@ parameters:
   type: boolean
   default: false
 
-# these 2 parameters are used for debugging.
-- name: SpecificArtifact
-  displayName: Use Specific Artifact (Debugging only)
-  type: boolean
-  default: false
-
-- name: BuildId
-  displayName: Pipeline BuildId, you could find it in the URL
-  type: string
-  default: '0'
-
 resources:
   repositories:
   - repository: onnxruntime-inference-examples # The name used to reference this repository in the checkout step
@@ -46,12 +35,6 @@ resources:
     endpoint: Microsoft
     name: pypa/manylinux
     ref: aead4d751c2101e23336aa73f2380df83e7a13f3
-
-variables:
-  - name: specificArtifact
-    value: ${{ parameters.SpecificArtifact }}
-  - name: otherRunId
-    value: ${{ parameters.BuildId }}
 
 stages:
 - template: templates/c-api-cpu.yml
@@ -74,14 +57,14 @@ stages:
     timeoutInMinutes: 120
     pool: 'Onnxruntime-Linux-GPU'
     variables:
-      CUDA_VERSION: '11.6'
+      CUDA_VERSION: '11.8'
     steps:
     - template: templates/set-version-number-variables-step.yml
     - template: templates/get-docker-image-steps.yml
       parameters:
         Dockerfile: tools/ci_build/github/linux/docker/inference/x64/default/cpu/Dockerfile
         Context: tools/ci_build/github/linux/docker/inference/x64/default/cpu
-        DockerBuildArgs: "--build-arg BUILD_UID=$( id -u ) --build-arg BASEIMAGE=nvidia/cuda:11.6.2-cudnn8-devel-centos7"
+        DockerBuildArgs: "--build-arg BUILD_UID=$( id -u ) --build-arg BASEIMAGE=nvidia/cuda:11.8.0-cudnn8-devel-centos7"
         Repository: onnxruntimecuda11centosbuild
 
     - script: $(Build.SourcesDirectory)/tools/ci_build/github/linux/build_cuda_c_api_package.sh
@@ -168,21 +151,24 @@ stages:
       submodules: false
     - template: templates/set-version-number-variables-step.yml
 
-    - template: templates/flex-downloadPipelineArtifact.yml
-      parameters:
-        stepName: 'Download Pipeline Artifact - Win x64'
+    - task: DownloadPipelineArtifact@2
+      displayName: 'Download Pipeline Artifact - Win x64'
+      inputs:
+        buildType: 'current'
         artifactName: 'drop-onnxruntime-java-win-x64-tensorrt'
         targetPath: '$(Build.BinariesDirectory)\java-artifact\onnxruntime-java-win-x64'
 
-    - template: templates/flex-downloadPipelineArtifact.yml
-      parameters:
-        stepName: 'Download Pipeline Artifact - Linux x64'
+    - task: DownloadPipelineArtifact@2
+      displayName: 'Download Pipeline Artifact - Linux x64'
+      inputs:
+        buildType: 'current'
         artifactName: 'drop-onnxruntime-java-linux-x64-cuda'
         targetPath: '$(Build.BinariesDirectory)\java-artifact\onnxruntime-java-linux-x64'
 
-    - template: templates/flex-downloadPipelineArtifact.yml
-      parameters:
-        stepName: 'Download Pipeline Artifact - Linux x64'
+    - task: DownloadPipelineArtifact@2
+      displayName: 'Download Pipeline Artifact - Linux x64'
+      inputs:
+        buildType: 'current'
         artifactName: 'drop-onnxruntime-java-linux-x64-tensorrt'
         targetPath: '$(Build.BinariesDirectory)\java-artifact\onnxruntime-java-linux-x64-tensorrt'
 
@@ -853,31 +839,31 @@ stages:
                 rename %%~ni.nupkg %%~ni.zip
                 unzip %%~ni.zip -d %%~ni
                 del /Q %%~ni.zip
-
+        
                 unzip win-dml-x86.zip -d win-x86
                 mkdir %%~ni\runtimes\win-x86
                 mkdir %%~ni\runtimes\win-x86\native
-
+        
                 move win-x86\runtimes\win-x86\native\onnxruntime.dll %%~ni\runtimes\win-x86\native\onnxruntime.dll
                 move win-x86\runtimes\win-x86\native\onnxruntime.lib %%~ni\runtimes\win-x86\native\onnxruntime.lib
                 move win-x86\runtimes\win-x86\native\onnxruntime.pdb %%~ni\runtimes\win-x86\native\onnxruntime.pdb
-
+        
                 unzip win-dml-arm64.zip -d win-arm64
                 mkdir %%~ni\runtimes\win-arm64
                 mkdir %%~ni\runtimes\win-arm64\native
-
+        
                 move win-arm64\runtimes\win-arm64\native\onnxruntime.dll %%~ni\runtimes\win-arm64\native\onnxruntime.dll
                 move win-arm64\runtimes\win-arm64\native\onnxruntime.lib %%~ni\runtimes\win-arm64\native\onnxruntime.lib
                 move win-arm64\runtimes\win-arm64\native\onnxruntime.pdb %%~ni\runtimes\win-arm64\native\onnxruntime.pdb
-
+        
                 unzip win-dml-arm.zip -d win-arm
                 mkdir %%~ni\runtimes\win-arm
                 mkdir %%~ni\runtimes\win-arm\native
-
+        
                 move win-arm\runtimes\win-arm\native\onnxruntime.dll %%~ni\runtimes\win-arm\native\onnxruntime.dll
                 move win-arm\runtimes\win-arm\native\onnxruntime.lib %%~ni\runtimes\win-arm\native\onnxruntime.lib
                 move win-arm\runtimes\win-arm\native\onnxruntime.pdb %%~ni\runtimes\win-arm\native\onnxruntime.pdb
-
+        
                 pushd %%~ni
                 zip -r ..\%%~ni.zip .
                 popd
