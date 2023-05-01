@@ -402,7 +402,6 @@ if is_manylinux:
         ov_libs = [
             "libopenvino_intel_cpu_plugin.so",
             "libopenvino_intel_gpu_plugin.so",
-            "libopenvino_intel_myriad_plugin.so",
             "libopenvino_auto_plugin.so",
             "libopenvino_hetero_plugin.so",
             "libtbb.so.2",
@@ -489,6 +488,7 @@ packages = [
     "onnxruntime.transformers.models.longformer",
     "onnxruntime.transformers.models.t5",
     "onnxruntime.transformers.models.stable_diffusion",
+    "onnxruntime.transformers.models.whisper",
 ]
 
 package_data = {"onnxruntime.tools.mobile_helpers": ["*.md", "*.config"]}

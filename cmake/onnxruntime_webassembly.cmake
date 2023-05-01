@@ -199,7 +199,7 @@ else()
   endif()
 
   set(EXPORTED_RUNTIME_METHODS "['stackAlloc','stackRestore','stackSave','UTF8ToString','stringToUTF8','lengthBytesUTF8']")
-  if (onnxruntime_USE_JS)
+  if (onnxruntime_USE_JSEP)
     set(EXPORTED_FUNCTIONS "_malloc,_free,_JsepOutput")
   else()
     set(EXPORTED_FUNCTIONS "_malloc,_free")
@@ -219,12 +219,12 @@ else()
     --no-entry
   )
 
-  if (onnxruntime_USE_JS)
+  if (onnxruntime_USE_JSEP)
     # NOTE: "-s ASYNCIFY=1" is required for JSEP to work with WebGPU
     #       This flag allows async functions to be called from sync functions, in the cost of binary size and
     #       build time. See https://emscripten.org/docs/porting/asyncify.html for more details.
 
-    target_compile_definitions(onnxruntime_webassembly PRIVATE USE_JS=1)
+    target_compile_definitions(onnxruntime_webassembly PRIVATE USE_JSEP=1)
     target_link_options(onnxruntime_webassembly PRIVATE
       --pre-js "${ONNXRUNTIME_ROOT}/wasm/js_internal_api.js"
       "SHELL:-s ASYNCIFY=1"

@@ -76,8 +76,13 @@ JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_OnnxRuntime_getAvailableProvi
 JNIEXPORT jstring JNICALL Java_ai_onnxruntime_OnnxRuntime_initialiseVersion
   (JNIEnv * jniEnv, jclass clazz) {
   (void)clazz;  // required JNI parameter not needed by functions which don't access their host class.
-  const char* version = OrtGetApiBase()->GetVersionString();
+  const ORTCHAR_T* version = OrtGetApiBase()->GetVersionString();
   assert(version != NULL);
+#ifdef _WIN32
+  jsize len = (jsize)(wcslen(version));
+  jstring versionStr = (*jniEnv)->NewString(jniEnv, (const jchar*)version, len);
+#else
   jstring versionStr = (*jniEnv)->NewStringUTF(jniEnv, version);
+#endif
   return versionStr;
 }

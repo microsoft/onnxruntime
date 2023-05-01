@@ -50,12 +50,16 @@ static const OpVersionsAndSelector::OpVersionsMap GetUnaryOpVersionsMap() {
           {"ReduceSum", {}},
           {"Relu", {}},
           {"Gelu", {}},
+          {"Elu", {}},
+          {"HardSwish", {}},
           {"Sigmoid", {}},
           {"Slice", {}},
           {"Softmax", {}},
           {"Sqrt", {}},
+          {"Atan", {}},
           {"Tanh", {}},
-          {"Exp", {}}};
+          {"Exp", {}},
+          {"LRN", {}}};
 }
 static const OpVersionsAndSelector::OpVersionsMap GetBinaryOpVersionsMap() {
   return {{"Add", {}},

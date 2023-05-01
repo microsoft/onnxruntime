@@ -151,8 +151,7 @@ const createConcatProgramInfoLoader =
       return {...metadata, get: () => createConcatProgramInfo(metadata, inputs, attributes.axis)};
     };
 
-export const concat = (context: ComputeContext, attributes: ConcatAttributes): number => {
+export const concat = (context: ComputeContext, attributes: ConcatAttributes): void => {
   validateInputs(context.inputs);
   context.compute(createConcatProgramInfoLoader(context.inputs, attributes));
-  return 0;
 };

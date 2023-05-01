@@ -3,7 +3,6 @@
 
 #include "core/providers/common.h"
 #include "core/providers/shared/utils/utils.h"
-#include "core/framework/tensorprotoutils.h"
 #include "core/providers/qnn/builder/qnn_model_wrapper.h"
 #include "core/providers/qnn/builder/op_builder_factory.h"
 #include "core/common/safeint.h"
@@ -115,12 +114,13 @@ Status GemmOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
     if (is_initializer_input) {
       const auto& input_tensor = qnn_model_wrapper.GetInitializerTensors().at(input_name);
       if (1 == input_trans_flag.at(input_i)) {
-        ORT_RETURN_IF_ERROR(TwoDimensionTranspose(input_shape,
+        ORT_RETURN_IF_ERROR(TwoDimensionTranspose(qnn_model_wrapper,
+                                                  input_shape,
                                                   *input_tensor,
                                                   qnn_model_wrapper.GetAllocator(),
                                                   unpacked_tensor));
       } else {
-        ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackInitializerData(*input_tensor, unpacked_tensor));
+        ORT_RETURN_IF_ERROR(qnn_model_wrapper.UnpackInitializerData(*input_tensor, unpacked_tensor));
       }
     }
 

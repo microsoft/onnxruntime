@@ -8,6 +8,7 @@
 #include "gtest/gtest.h"
 #include "test_utils.h"
 #include "test/test_environment.h"
+#include "test/util/include/default_providers.h"
 #include "test/util/include/inference_session_wrapper.h"
 #include "test/util/include/asserts.h"
 
@@ -38,7 +39,7 @@ TEST(TransformerTest, InsertCastGPUTest) {
 
   auto status = graph.Resolve();
   ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
-  InsertCastTransformer transformer("Test");
+  InsertCastTransformer transformer("Test", DefaultCpuExecutionProvider()->GetKernelRegistry().get());
 
   bool modified = true;
   status = transformer.Apply(graph, modified, DefaultLoggingManager().DefaultLogger());
@@ -86,7 +87,7 @@ TEST(TransformerTest, InsertCastAllCPUTest) {
   auto status = graph.Resolve();
   ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
 
-  InsertCastTransformer transformer("Test");
+  InsertCastTransformer transformer("Test", DefaultCpuExecutionProvider()->GetKernelRegistry().get());
 
   bool modified = true;
   EXPECT_TRUE(transformer.Apply(graph, modified, DefaultLoggingManager().DefaultLogger()).IsOK());
@@ -123,7 +124,7 @@ TEST(TransformerTest, ThreeInARowRemoval) {
   // we want to remove 2 of the first 3
   ASSERT_TRUE(op_to_count["Cast"] == 4);
 
-  InsertCastTransformer transformer("Test");
+  InsertCastTransformer transformer("Test", DefaultCpuExecutionProvider()->GetKernelRegistry().get());
 
   bool modified = false;
   status = transformer.Apply(graph, modified, DefaultLoggingManager().DefaultLogger());
@@ -146,7 +147,7 @@ TEST(TransformerTest, RandomNormalLikeWithFloat16Inputs) {
   ASSERT_TRUE(status.IsOK()) << status;
 
   Graph& graph = model->MainGraph();
-  InsertCastTransformer transformer("Test");
+  InsertCastTransformer transformer("Test", DefaultCpuExecutionProvider()->GetKernelRegistry().get());
 
   bool modified = false;
   status = transformer.Apply(graph, modified, DefaultLoggingManager().DefaultLogger());
@@ -166,7 +167,7 @@ TEST(TransformerTest, MultinomialWithFloat16Input) {
   ASSERT_TRUE(status.IsOK()) << status;
 
   Graph& graph = model->MainGraph();
-  InsertCastTransformer transformer("Test");
+  InsertCastTransformer transformer("Test", DefaultCpuExecutionProvider()->GetKernelRegistry().get());
 
   bool modified = false;
   status = transformer.Apply(graph, modified, DefaultLoggingManager().DefaultLogger());
@@ -186,7 +187,7 @@ TEST(TransformerTest, InsertCastNodeTwice) {
   ASSERT_TRUE(status.IsOK()) << status;
 
   Graph& graph = model->MainGraph();
-  InsertCastTransformer transformer("Test");
+  InsertCastTransformer transformer("Test", DefaultCpuExecutionProvider()->GetKernelRegistry().get());
 
   // First insert
   bool modified = false;
@@ -279,7 +280,7 @@ TEST(TransformerTest, IsIsolatedFp16NodeOnCpuTest) {
   auto status = graph.Resolve();
   ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
 
-  InsertCastTransformer transformer("Test");
+  InsertCastTransformer transformer("Test", DefaultCpuExecutionProvider()->GetKernelRegistry().get());
 
   bool modified = true;
   EXPECT_TRUE(transformer.Apply(graph, modified, DefaultLoggingManager().DefaultLogger()).IsOK());

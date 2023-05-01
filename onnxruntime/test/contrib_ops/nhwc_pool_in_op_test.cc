@@ -168,7 +168,7 @@ class NhwcFp16PoolOpTester {
     std::vector<int64_t> Y_shape;
     ComputeExpectedOutput(Y_data, Y_shape);
 
-    OpTester test(is_max_pool_ ? "MaxPool" : "AveragePool", 11, onnxruntime::kMSInternalNHWCDomain);
+    OpTester test(is_max_pool_ ? "MaxPool" : "AveragePool", is_max_pool_ ? 12 : 11, onnxruntime::kMSInternalNHWCDomain);
     test.AddInput<MLFloat16>("x", X_shape_, X_data_);
     test.AddOutput<MLFloat16>("y", Y_shape, Y_data);
     test.AddAttribute("kernel_shape", kernel_shape_);

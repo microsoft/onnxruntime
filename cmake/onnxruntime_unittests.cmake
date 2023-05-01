@@ -504,7 +504,7 @@ if(onnxruntime_USE_NNAPI_BUILTIN)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_nnapi)
 endif()
 
-if(onnxruntime_USE_JS)
+if(onnxruntime_USE_JSEP)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_js)
 endif()
 
@@ -556,6 +556,7 @@ set(ONNXRUNTIME_TEST_LIBS
     # CUDA, ROCM, TENSORRT, MIGRAPHX, DNNL, and OpenVINO are dynamically loaded at runtime
     ${PROVIDERS_NNAPI}
     ${PROVIDERS_JS}
+    ${PROVIDERS_VITISAI}
     ${PROVIDERS_QNN}
     ${PROVIDERS_SNPE}
     ${PROVIDERS_RKNPU}
@@ -609,7 +610,7 @@ if(onnxruntime_USE_NNAPI_BUILTIN)
   list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_nnapi)
 endif()
 
-if(onnxruntime_USE_JS)
+if(onnxruntime_USE_JSEP)
   list(APPEND onnxruntime_test_framework_src_patterns  ${TEST_SRC_DIR}/providers/js/*)
   list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_js)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_js)
@@ -851,7 +852,7 @@ if (onnxruntime_BUILD_WEBASSEMBLY)
   if (onnxruntime_ENABLE_WEBASSEMBLY_THREADS)
     set_property(TARGET onnxruntime_test_all APPEND_STRING PROPERTY LINK_FLAGS " -s USE_PTHREADS=1 -s PROXY_TO_PTHREAD=1")
   endif()
-  if (onnxruntime_USE_JS)
+  if (onnxruntime_USE_JSEP)
     set_property(TARGET onnxruntime_test_all APPEND_STRING PROPERTY LINK_FLAGS " --pre-js \"${ONNXRUNTIME_ROOT}/wasm/js_internal_api.js\"")
   endif()
 endif()
