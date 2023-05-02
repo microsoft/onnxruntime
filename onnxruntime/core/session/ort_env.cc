@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-//this file contains implementations of the C API
+// this file contains implementations of the C API
 
 #include <cassert>
 

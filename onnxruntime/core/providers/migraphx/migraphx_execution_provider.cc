@@ -9,14 +9,15 @@
 #include "migraphx_execution_provider.h"
 #include "migraphx_execution_provider_utils.h"
 #include "hip_allocator.h"
-#include "hip_fence.h"
 #include "gpu_data_transfer.h"
-#include "migraphx_call.h"
 #include "migraphx_inc.h"
 
 #include <fstream>
 #include <algorithm>
 #include <iterator>
+
+// TODO: find a better way to share this
+#include "core/providers/rocm/rocm_stream_handle.h"
 
 #if defined(_MSC_VER)
 #pragma warning(disable : 4244 4245)
@@ -40,9 +41,13 @@ class Memcpy final : public OpKernel {
 
   Status Compute(OpKernelContext* ctx) const override {
     const auto* X = ctx->Input<Tensor>(0);
+    ORT_ENFORCE(X != nullptr, "Memcpy: Input tensor is nullptr.");
     Tensor* Y = ctx->Output(0, X->Shape());
-    Status retval = Info().GetDataTransferManager().CopyTensor(*X, *Y, Info().GetKernelDef().ExecQueueId());
-    return retval;
+    ORT_ENFORCE(Y != nullptr, "Memcpy: Failed to allocate output tensor.");
+    const IDataTransfer* gpu_data_transfer = Info().GetDataTransferManager().GetDataTransfer(X->Location().device, Y->Location().device);
+    if (!gpu_data_transfer)
+      return Status(common::ONNXRUNTIME, common::EP_FAIL, "gpu data transfer is missing in Migraphx EP.");
+    return gpu_data_transfer->CopyTensorAsync(*X, *Y, *(ctx->GetComputeStream()));
   }
 };
 
@@ -56,7 +61,6 @@ ONNX_OPERATOR_KERNEL_EX(
     kMIGraphXExecutionProvider,
     (*KernelDefBuilder::Create())
         .InputMemoryType(OrtMemTypeCPUInput, 0)
-        .ExecQueueId(kHipStreamCopyIn)
         .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
     Memcpy);
 
@@ -67,7 +71,6 @@ ONNX_OPERATOR_KERNEL_EX(
     kMIGraphXExecutionProvider,
     (*KernelDefBuilder::Create())
         .OutputMemoryType(OrtMemTypeCPUOutput, 0)
-        .ExecQueueId(kHipStreamCopyOut)
         .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
     Memcpy);
 
@@ -98,7 +101,7 @@ std::shared_ptr<KernelRegistry> MIGraphXExecutionProvider::GetKernelRegistry() c
 }
 
 MIGraphXExecutionProvider::MIGraphXExecutionProvider(const MIGraphXExecutionProviderInfo& info)
-    : IExecutionProvider{onnxruntime::kMIGraphXExecutionProvider, true}, device_id_(info.device_id) {
+    : IExecutionProvider{onnxruntime::kMIGraphXExecutionProvider, OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, info.device_id), true}, device_id_(info.device_id) {
   InitProviderOrtApi();
   // Set GPU device to be used
   HIP_CALL_THROW(hipSetDevice(device_id_));
@@ -115,13 +118,24 @@ MIGraphXExecutionProvider::MIGraphXExecutionProvider(const MIGraphXExecutionProv
   if (!dump_model_ops_env.empty()) {
     dump_model_ops_ = (std::stoi(dump_model_ops_env) == 0 ? false : true);
   }
+
+  ROCBLAS_CALL_THROW(rocblas_create_handle(&external_rocblas_handle_));
+  ROCBLAS_CALL_THROW(rocblas_set_stream(external_rocblas_handle_, stream_));
+
+  MIOPEN_CALL_THROW(miopenCreate(&external_miopen_handle_));
+  MIOPEN_CALL_THROW(miopenSetStream(external_miopen_handle_, stream_));
 }
 
-AllocatorPtr MIGraphXExecutionProvider::GetAllocator(int id, OrtMemType mem_type) const {
+MIGraphXExecutionProvider::~MIGraphXExecutionProvider() {
+  ORT_IGNORE_RETURN_VALUE(ROCBLAS_CALL(rocblas_destroy_handle(external_rocblas_handle_)));
+  ORT_IGNORE_RETURN_VALUE(MIOPEN_CALL(miopenDestroy(external_miopen_handle_)));
+}
+
+AllocatorPtr MIGraphXExecutionProvider::GetAllocator(OrtMemType mem_type) const {
   if (mem_type == OrtMemTypeDefault) {
     return allocator_;
   } else {
-    return IExecutionProvider::GetAllocator(id, mem_type);
+    return IExecutionProvider::GetAllocator(mem_type);
   }
 }
 
@@ -152,7 +166,7 @@ void MIGraphXExecutionProvider::RegisterAllocator(AllocatorManager& allocator_ma
   // OrtMemTypeCPUOutput -- allocated by hipMallocHost, used to copy HIP device memory to CPU
   // Use pinned memory instead of pageable memory make the data transfer faster
   // Used by node MemcpyToHost only
-  auto hip_pinned_alloc = GetAllocator(pinned_device.Id(), OrtMemTypeCPUOutput);
+  auto hip_pinned_alloc = GetAllocator(OrtMemTypeCPUOutput);
   if (!hip_pinned_alloc) {
     hip_pinned_alloc = allocator_manager.GetAllocator(OrtMemTypeCPUOutput, pinned_device);
 
@@ -169,7 +183,7 @@ void MIGraphXExecutionProvider::RegisterAllocator(AllocatorManager& allocator_ma
     InsertAllocator(hip_pinned_alloc);
   }
 
-  auto hip_cpu_alloc = GetAllocator(cpu_device.Id(), OrtMemTypeCPUInput);
+  auto hip_cpu_alloc = GetAllocator(OrtMemTypeCPUInput);
   if (!hip_cpu_alloc) {
     hip_cpu_alloc = allocator_manager.GetAllocator(OrtMemTypeCPUInput, cpu_device);
 
@@ -194,7 +208,7 @@ void MIGraphXExecutionProvider::RegisterAllocator(AllocatorManager& allocator_ma
 }
 
 std::unique_ptr<onnxruntime::IDataTransfer> MIGraphXExecutionProvider::GetDataTransfer() const {
-  return std::make_unique<onnxruntime::GPUDataTransfer>(static_cast<hipStream_t>(GetComputeStream()));
+  return std::make_unique<onnxruntime::GPUDataTransfer>();
 }
 
 static bool IsTypeSupported(const NodeArg* node_arg) {
@@ -527,12 +541,6 @@ static bool IsUnsupportedOpMode(const onnxruntime::GraphViewer& graph_viewer, co
 }
 
 void SubgraphPostProcessing(const onnxruntime::GraphViewer& graph_viewer, std::vector<std::vector<NodeIndex>>& clusters, const logging::Logger& logger) {
-  // If the number of nodes in the graph is less than 5, do nothing
-  // this is to deal with onnx unit tests
-  if (graph_viewer.NumberOfNodes() <= 5) {
-    return;
-  }
-
   // Then check whether a subgraph should fallback to CPU
   // 1. Check whether a subgraph contains a RNN operator
   std::unordered_set<std::string> rnn_names = {"RNN", "GRU", "LSTM"};
@@ -554,11 +562,6 @@ void SubgraphPostProcessing(const onnxruntime::GraphViewer& graph_viewer, std::v
           }
         }
       }
-    }
-
-    // if 6 operators or more
-    if (git.size() > 5) {
-      return false;
     }
 
     // rnn operators, run on GPU
@@ -808,18 +811,18 @@ GetUnsupportedNodeIndices(const GraphViewer& graph_viewer,
                                                     "BatchNormalization", "Cast", "Ceil", "Celu", "Clip", "Concat", "Constant", "ConstantFill",
                                                     "ConstantOfShape", "Conv", "ConvInteger", "ConvTranspose", "Cos", "Cosh", "CumSum",
                                                     "DepthToSpace", "DequantizeLinear", "Div", "Dropout", "Elu", "Equal", "Erf", "Exp",
-                                                    "Expand", "EyeLike", "Flatten", "Floor", "GRU", "Gather", "GatherElements", "Gemm", "GlobalAveragePool",
+                                                    "Expand", "EyeLike", "Flatten", "Floor", "GRU", "Gather", "GatherElements", "GatherND", "Gemm", "GlobalAveragePool",
                                                     "GlobalMaxPool", "Greater", "GreaterOrEqual", "HardSigmoid", "HardSwish", "Identity",
-                                                    "If", "ImageScaler", "InstanceNormalization", "LeakyRelu", "Less", "LessOrEqual",
+                                                    "If", "ImageScaler", "InstanceNormalization", "IsNan", "LeakyRelu", "Less", "LessOrEqual",
                                                     "Log", "LogSoftmax", "Loop", "LpNormalization", "LRN", "LSTM", "MatMul", "MatMulInteger", "Max", "MaxPool",
-                                                    "Mean", "Min", "Mul", "Multinomial", "Neg", "NonMaxSuppression", "NonZero", "Not",
+                                                    "Mean", "Min", "Mod", "Mul", "Multinomial", "Neg", "NonMaxSuppression", "NonZero", "Not",
                                                     "OneHot", "Or", "Pad", "Pow", "PRelu", "QuantizeLinear", "RandomNormal", "RandomNormalLike",
                                                     "RandomUniform", "RandomUniformLike", "Range", "Reciprocal", "ReduceL1", "ReduceL2",
                                                     "ReduceLogSum", "ReduceLogSumExp", "ReduceMax", "ReduceMean", "ReduceMin", "ReduceProd",
-                                                    "ReduceSum", "ReduceSumSquare", "Relu", "Reshape", "Resize", "RNN", "Roialign", "Round",
+                                                    "ReduceSum", "ReduceSumSquare", "Relu", "Reshape", "Resize", "ReverseSequence", "RNN", "Roialign", "Round",
                                                     "Scatter", "ScatterElements", "ScatterND", "Selu", "Shape", "Sigmoid", "Sign", "Sin", "Sinh", "Slice", "Softmax", "Softplus",
                                                     "Softsign", "SpaceToDepth", "Split", "Sqrt", "Squeeze", "Sub", "Sum", "Tan", "Tanh",
-                                                    "ThresholdedRelu", "Tile", "TopK", "Transpose", "Unsqueeze", "Upsample", "Where", "Xor"};
+                                                    "ThresholdedRelu", "Tile", "TopK", "Transpose", "Trilu", "Unsqueeze", "Upsample", "Where", "Xor"};
   std::vector<NodeIndex> unsupported_nodes_idx;
   for (const auto& node_idx : graph_viewer.GetNodesInTopologicalOrder()) {
     if (IsNodeSupported(mgx_supported_ops, graph_viewer, node_idx, logger)) {
@@ -1040,7 +1043,7 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
         delete static_cast<MIGraphXFuncState*>(state);
     };
 
-    compute_info.compute_func = [this](FunctionState state, const OrtApi* /* api */, OrtKernelContext* context) {
+    compute_info.compute_func = [this](FunctionState state, const OrtApi* api, OrtKernelContext* context) {
       Ort::KernelContext ctx(context);
       MIGraphXFuncState* mgx_state = reinterpret_cast<MIGraphXFuncState*>(state);
 
@@ -1167,12 +1170,14 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
         // lock to avoid race condition
         std::lock_guard<OrtMutex> lock(*(mgx_state->mgx_mu_ptr));
 
-        #ifdef MIGRAPHX_STREAM_SYNC
-        auto prog_outputs = prog.run_async(m, static_cast<hipStream_t>(GetComputeStream()));
-        #else
+#ifdef MIGRAPHX_STREAM_SYNC
+        void* rocm_stream;
+        Ort::ThrowOnError(api->KernelContext_GetGPUComputeStream(context, &rocm_stream));
+        auto prog_outputs = prog.run_async(m, static_cast<hipStream_t>(rocm_stream));
+#else
         auto prog_outputs = prog.eval(m);
         HIP_CALL_THROW(hipDeviceSynchronize());
-        #endif
+#endif
         // In case of input parameters are reused as output parameter call hipMemcpy
         auto output_num = prog_outputs.size();
         if (prog_output_indices.size() < output_num) {
@@ -1198,32 +1203,41 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
   return Status::OK();
 }
 
+void MIGraphXExecutionProvider::RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry) const {
+  auto allocator = GetAllocator(OrtMemTypeCPU);
+  RegisterRocmStreamHandles(stream_handle_registry, OrtDevice::GPU, allocator, true, stream_, false /*TODO:external_stream_*/, external_miopen_handle_, external_rocblas_handle_);
+}
+
+OrtDevice MIGraphXExecutionProvider::GetOrtDeviceByMemType(OrtMemType mem_type) const {
+  if (mem_type == OrtMemTypeCPUInput || mem_type == OrtMemTypeCPUOutput) {
+    return OrtDevice(OrtDevice::CPU, OrtDevice::MemType::HIP_PINNED, default_device_.Id());
+  }
+  return default_device_;
+}
 #ifdef MIGRAPHX_STREAM_SYNC
 
 Status MIGraphXExecutionProvider::Sync() const {
   HIP_CALL_THROW(hipStreamSynchronize(static_cast<hipStream_t>(nullptr)));
 
-  auto status = hipStreamQuery(static_cast<hipStream_t>(GetComputeStream()));
+  auto status = hipStreamQuery(stream_);
   if (status != hipSuccess) {
     return Status(onnxruntime::common::ONNXRUNTIME, onnxruntime::common::EP_FAIL);
   }
   return Status::OK();
 }
 
-Status MIGraphXExecutionProvider::OnRunStart()
-{
+Status MIGraphXExecutionProvider::OnRunStart() {
   return Status::OK();
 }
 
 Status MIGraphXExecutionProvider::OnRunEnd(bool) {
-  auto status = hipStreamQuery(static_cast<hipStream_t>(GetComputeStream()));
+  auto status = hipStreamQuery(stream_);
 
   if (status != hipSuccess) {
-    HIP_CALL_THROW(hipStreamSynchronize(static_cast<hipStream_t>(GetComputeStream())));
+    HIP_CALL_THROW(hipStreamSynchronize(stream_));
   }
   return Status::OK();
 }
 
 #endif
-
 }  // namespace onnxruntime

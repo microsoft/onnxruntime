@@ -4,7 +4,7 @@
 /// <reference lib="webworker" />
 
 import {OrtWasmMessage} from '../proxy-messages';
-import {createSession, endProfiling, extractTransferableBuffers, initOrt, releaseSession, run} from '../wasm-core-impl';
+import {createSession, createSessionAllocate, createSessionFinalize, endProfiling, extractTransferableBuffers, initOrt, releaseSession, run} from '../wasm-core-impl';
 import {initializeWebAssembly} from '../wasm-factory';
 
 self.onmessage = (ev: MessageEvent<OrtWasmMessage>): void => {
@@ -22,6 +22,24 @@ self.onmessage = (ev: MessageEvent<OrtWasmMessage>): void => {
         postMessage({type: 'init-ort'} as OrtWasmMessage);
       } catch (err) {
         postMessage({type: 'init-ort', err} as OrtWasmMessage);
+      }
+      break;
+    case 'create_allocate':
+      try {
+        const {model} = ev.data.in!;
+        const modeldata = createSessionAllocate(model);
+        postMessage({type: 'create_allocate', out: modeldata} as OrtWasmMessage);
+      } catch (err) {
+        postMessage({type: 'create_allocate', err} as OrtWasmMessage);
+      }
+      break;
+    case 'create_finalize':
+      try {
+        const {modeldata, options} = ev.data.in!;
+        const sessionMetadata = createSessionFinalize(modeldata, options);
+        postMessage({type: 'create_finalize', out: sessionMetadata} as OrtWasmMessage);
+      } catch (err) {
+        postMessage({type: 'create_finalize', err} as OrtWasmMessage);
       }
       break;
     case 'create':
@@ -45,8 +63,14 @@ self.onmessage = (ev: MessageEvent<OrtWasmMessage>): void => {
     case 'run':
       try {
         const {sessionId, inputIndices, inputs, outputIndices, options} = ev.data.in!;
-        const outputs = run(sessionId, inputIndices, inputs, outputIndices, options);
-        postMessage({type: 'run', out: outputs} as OrtWasmMessage, extractTransferableBuffers(outputs));
+        run(sessionId, inputIndices, inputs, outputIndices, options)
+            .then(
+                outputs => {
+                  postMessage({type: 'run', out: outputs} as OrtWasmMessage, extractTransferableBuffers(outputs));
+                },
+                err => {
+                  postMessage({type: 'run', err} as OrtWasmMessage);
+                });
       } catch (err) {
         postMessage({type: 'run', err} as OrtWasmMessage);
       }

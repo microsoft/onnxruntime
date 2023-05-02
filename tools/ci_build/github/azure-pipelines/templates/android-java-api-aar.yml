@@ -33,7 +33,7 @@ parameters:
 - name: pool_name
   displayName: Pool name
   type: string
-  default: 'Linux-CPU'
+  default: 'aiinfra-Linux-CPU'
 
 - name: packageName
   # now we can build onnxruntime or onnxruntime-mobile for Android, need specify it here
@@ -54,7 +54,7 @@ jobs:
   steps:
   - checkout: self
     clean: true
-    submodules: recursive
+    submodules: none
 
   - task: CmdLine@2
     displayName: Create artifacts directory

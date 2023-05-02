@@ -3,6 +3,7 @@
 
 #include "activation_op_test.h"
 #include "core/providers/cpu/activation/activations.h"
+#include "test/common/dnnl_op_test_utils.h"
 #include "test/common/cuda_op_test_utils.h"
 #include "test/common/tensor_op_test_utils.h"
 
@@ -120,6 +121,18 @@ TEST_F(ActivationOpTest, Relu) {
       {},
       /*is_tensorrt_supported=*/false,
       /*opset_version= */ 14);
+#ifdef MLAS_F16VEC_INTRINSICS_SUPPORTED
+  TestActivationOp<MLFloat16>(
+      "Relu",
+      input_values_fp16,
+      [](MLFloat16 x) {
+        if (x.ToFloat() > 0.0f) return x;
+        return MLFloat16();
+      },
+      {},
+      /*is_tensorrt_supported=*/false,
+      /*opset_version= */ 11);
+#endif  // MLAS_F16VEC_INTRINSICS_SUPPORTED
 }
 
 #if defined(USE_CUDA) || defined(USE_ROCM)
@@ -212,12 +225,18 @@ TEST_F(ActivationOpTest, Relu_fp16) {
 }
 #endif
 
-#if defined(USE_CUDA) || defined(USE_ROCM)
+#if defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_DNNL)
 TEST_F(ActivationOpTest, Sigmoid_bfloat16) {
 #ifdef USE_CUDA
   int min_cuda_architecture = 530;
   if (!HasCudaEnvironment(min_cuda_architecture)) {
     LOGS_DEFAULT(WARNING) << "Hardware NOT support BFP16";
+    return;
+  }
+#endif
+#ifdef USE_DNNL
+  if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
     return;
   }
 #endif
@@ -245,6 +264,8 @@ TEST_F(ActivationOpTest, Sigmoid_bfloat16) {
   execution_providers.push_back(DefaultCudaExecutionProvider());
 #elif USE_ROCM
   execution_providers.push_back(DefaultRocmExecutionProvider());
+#elif USE_DNNL
+  execution_providers.push_back(DefaultDnnlExecutionProvider());
 #endif
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
@@ -254,6 +275,12 @@ TEST_F(ActivationOpTest, Tanh_bfloat16) {
   int min_cuda_architecture = 530;
   if (!HasCudaEnvironment(min_cuda_architecture)) {
     LOGS_DEFAULT(WARNING) << "Hardware NOT support BFP16";
+    return;
+  }
+#endif
+#ifdef USE_DNNL
+  if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
     return;
   }
 #endif
@@ -277,6 +304,8 @@ TEST_F(ActivationOpTest, Tanh_bfloat16) {
   execution_providers.push_back(DefaultCudaExecutionProvider());
 #elif USE_ROCM
   execution_providers.push_back(DefaultRocmExecutionProvider());
+#elif USE_DNNL
+  execution_providers.push_back(DefaultDnnlExecutionProvider());
 #endif
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
@@ -286,6 +315,12 @@ TEST_F(ActivationOpTest, Relu_bfloat16) {
   int min_cuda_architecture = 530;
   if (!HasCudaEnvironment(min_cuda_architecture)) {
     LOGS_DEFAULT(WARNING) << "Hardware NOT support BFP16";
+    return;
+  }
+#endif
+#ifdef USE_DNNL
+  if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
     return;
   }
 #endif
@@ -309,10 +344,43 @@ TEST_F(ActivationOpTest, Relu_bfloat16) {
   execution_providers.push_back(DefaultCudaExecutionProvider());
 #elif USE_ROCM
   execution_providers.push_back(DefaultRocmExecutionProvider());
+#elif USE_DNNL
+  execution_providers.push_back(DefaultDnnlExecutionProvider());
 #endif
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
+#endif  // USE_CUDA || USE_ROCM || USE_DNNL
+
+#if defined(USE_DNNL)
+TEST_F(ActivationOpTest, LeakyRelu_bfloat16) {
+#ifdef USE_DNNL
+  if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
 #endif
+  OpTester test("LeakyRelu", 16);
+  float alpha = 0.01f;  // oneDNN set alpha equal to 0.01
+  auto formula = [alpha](float x) { return (x >= 0) ? x : alpha * x; };
+
+  std::vector<float> X = input_values.front();
+  std::vector<float> Y;
+  for (unsigned i = 0; i < X.size(); i++)
+    Y.push_back(formula(X[i]));
+  std::vector<int64_t> dims{(int64_t)X.size()};
+
+  std::vector<BFloat16> bf_X = FloatsToBFloat16s(X);
+  std::vector<BFloat16> bf_Y = FloatsToBFloat16s(Y);
+
+  test.AddInput<BFloat16>("X", dims, bf_X);
+  test.AddOutput<BFloat16>("Y", dims, bf_Y);
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+#ifdef USE_DNNL
+  execution_providers.push_back(DefaultDnnlExecutionProvider());
+#endif
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+#endif  // USE_DNNL
 
 TEST_F(ActivationOpTest, Elu) {
   float alpha = 0.1f;
@@ -339,6 +407,29 @@ TEST_F(ActivationOpTest, LeakyRelu) {
                           [alpha](float x) { return (x >= 0) ? x : alpha * x; },
                           {{"alpha", alpha}});
 }
+
+#ifdef MLAS_F16VEC_INTRINSICS_SUPPORTED
+TEST_F(ActivationOpTest, LeakyRelu_fp16) {
+  OpTester test("LeakyRelu", 11);
+  float alpha = 0.01f;  // oneDNN set alpha equal to 0.01
+  auto formula = [alpha](float x) { return (x >= 0) ? x : alpha * x; };
+
+  std::vector<float> X = input_values.front();
+  std::vector<float> Y;
+  for (unsigned i = 0; i < X.size(); i++)
+    Y.push_back(formula(X[i]));
+  std::vector<int64_t> dims{(int64_t)X.size()};
+
+  std::vector<MLFloat16> bf_X(X.size());
+  ConvertFloatToMLFloat16(X.data(), bf_X.data(), (int)X.size());
+  std::vector<MLFloat16> bf_Y(Y.size());
+  ConvertFloatToMLFloat16(Y.data(), bf_Y.data(), (int)Y.size());
+
+  test.AddInput<MLFloat16>("X", dims, bf_X);
+  test.AddOutput<MLFloat16>("Y", dims, bf_Y);
+  test.Run();
+}
+#endif  // MLAS_F16VEC_INTRINSICS_SUPPORTED
 
 TEST_F(ActivationOpTest, ThresholdedRelu) {
   float alpha = 0.1f;
@@ -441,7 +532,8 @@ TEST_F(ActivationOpTest, PRelu_MultiChannel3D) {
   test.AddInput<float>("X", x_dims, inputs);
   test.AddInput<float>("slope", slope_dims, slopes);
   test.AddOutput<float>("Y", x_dims, outputs);
-  test.Run();
+  // QNN has some issue with the broadcast support
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kQnnExecutionProvider});
 }
 
 TEST_F(ActivationOpTest, PRelu_MultiChannel4D) {
@@ -468,7 +560,8 @@ TEST_F(ActivationOpTest, PRelu_MultiChannel4D) {
     test.AddInput<float>("X", x_dims, inputs);
     test.AddInput<float>("slope", slope_dims, slopes, slope_is_initializer);
     test.AddOutput<float>("Y", x_dims, outputs);
-    test.Run();
+    // QNN has some issue with the broadcast support
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kQnnExecutionProvider});
   };
 
   test(true /* slope_is_initializer */, 5, 4, 3, 2);

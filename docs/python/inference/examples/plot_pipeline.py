@@ -11,9 +11,6 @@ in ONNX format than looking into its node with
 how to draw a model and to retrieve it in *json*
 format.
 
-.. contents::
-    :local:
-
 Retrieve a model in JSON format
 +++++++++++++++++++++++++++++++
 
@@ -24,7 +21,7 @@ from onnxruntime.datasets import get_example
 
 example1 = get_example("mul_1.onnx")
 
-import onnx
+import onnx  # noqa: E402
 
 model = onnx.load(example1)  # model is a ModelProto protobuf message
 
@@ -40,7 +37,7 @@ print(model)
 # in a different way than before.
 
 
-from onnx import ModelProto
+from onnx import ModelProto  # noqa: E402
 
 model = ModelProto()
 with open(example1, "rb") as fid:
@@ -49,7 +46,7 @@ with open(example1, "rb") as fid:
 
 ###################################
 # We convert it into a graph.
-from onnx.tools.net_drawer import GetOpNodeProducer, GetPydotGraph
+from onnx.tools.net_drawer import GetOpNodeProducer, GetPydotGraph  # noqa: E402
 
 pydot_graph = GetPydotGraph(
     model.graph, name=model.graph.name, rankdir="LR", node_producer=GetOpNodeProducer("docstring")
@@ -58,13 +55,13 @@ pydot_graph.write_dot("graph.dot")
 
 #######################################
 # Then into an image
-import os
+import os  # noqa: E402
 
 os.system("dot -O -Tpng graph.dot")
 
 ################################
 # Which we display...
-import matplotlib.pyplot as plt
+import matplotlib.pyplot as plt  # noqa: E402
 
 image = plt.imread("graph.dot.png")
 plt.imshow(image)

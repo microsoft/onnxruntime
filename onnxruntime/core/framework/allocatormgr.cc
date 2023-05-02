@@ -57,12 +57,28 @@ AllocatorPtr CreateAllocator(const AllocatorCreationInfo& info) {
         return nullptr;
     }
 
-    return AllocatorPtr(std::make_unique<BFCArena>(std::move(device_allocator),
-                                                   max_mem,
-                                                   arena_extend_str,
-                                                   initial_chunk_size_bytes,
-                                                   max_dead_bytes_per_chunk,
-                                                   initial_growth_chunk_size_bytes));
+    if (info.use_stream_aware_arena) {
+#ifdef ORT_ENABLE_STREAM
+      return AllocatorPtr(
+          std::make_unique<StreamAwareArena>(std::move(device_allocator),
+                                             max_mem,
+                                             info.enable_cross_stream_reusing,
+                                             arena_extend_str,
+                                             initial_chunk_size_bytes,
+                                             max_dead_bytes_per_chunk,
+                                             initial_growth_chunk_size_bytes));
+#else
+      ORT_THROW("StreamAwareArena should be transparent to minimal build.");
+#endif
+    } else {
+      return AllocatorPtr(
+          std::make_unique<BFCArena>(std::move(device_allocator),
+                                     max_mem,
+                                     arena_extend_str,
+                                     initial_chunk_size_bytes,
+                                     max_dead_bytes_per_chunk,
+                                     initial_growth_chunk_size_bytes));
+    }
   } else {
     return device_allocator;
   }

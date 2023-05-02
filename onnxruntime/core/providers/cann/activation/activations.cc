@@ -20,8 +20,8 @@ Status Activations::Prepare(OpKernelContext* ctx, CannPreparation& prepare) cons
     CANN_PREPARE_INPUTDESC(prepare, aclType, X->Shape().NumDimensions(), X->Shape().GetDims().data(), format);
     CANN_PREPARE_OUTPUTDESC(prepare, aclType, X->Shape().NumDimensions(), X->Shape().GetDims().data(), format);
 
-    CANN_PREPARE_INPUTBUFFER(prepare, const_cast<T*>(X->template Data<T>()), X->SizeInBytes());
-    CANN_PREPARE_OUTPUTBUFFER(prepare, Y->template MutableData<T>(), Y->SizeInBytes());
+    CANN_PREPARE_INPUTBUFFER(prepare, const_cast<void*>(X->DataRaw()), X->SizeInBytes());
+    CANN_PREPARE_OUTPUTBUFFER(prepare, Y->MutableDataRaw(), Y->SizeInBytes());
   }
   ORT_CATCH(const std::exception& e) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, e.what());
@@ -32,9 +32,9 @@ Status Activations::Prepare(OpKernelContext* ctx, CannPreparation& prepare) cons
 
 #define REGISTER_ACTIVATION_TYPED_COMPUTE(x, T)                                \
   template <>                                                                  \
-  Status x<T>::ComputeInternal(OpKernelContext* context) const {               \
+  Status x<T>::ComputeInternal(OpKernelContext* ctx) const {                   \
     CannPreparation prepare;                                                   \
-    ORT_RETURN_IF_ERROR(Prepare<T>(context, prepare));                         \
+    ORT_RETURN_IF_ERROR(Prepare<T>(ctx, prepare));                             \
     CANN_RETURN_IF_ERROR(aclopCompileAndExecute(#x,                            \
                                                 prepare.inputDesc_.size(),     \
                                                 prepare.inputDesc_.data(),     \
@@ -46,7 +46,7 @@ Status Activations::Prepare(OpKernelContext* ctx, CannPreparation& prepare) cons
                                                 ACL_ENGINE_SYS,                \
                                                 ACL_COMPILE_SYS,               \
                                                 NULL,                          \
-                                                Stream()));                    \
+                                                Stream(ctx)));                 \
     return Status::OK();                                                       \
   }
 
@@ -87,6 +87,7 @@ Status Activations::Prepare(OpKernelContext* ctx, CannPreparation& prepare) cons
   REGISTER_ACTIVATION_TYPED(name, ver, int8_t)    \
   REGISTER_ACTIVATION_TYPED(name, ver, int16_t)   \
   REGISTER_ACTIVATION_TYPED(name, ver, int32_t)   \
+  REGISTER_ACTIVATION_TYPED(name, ver, int64_t)   \
   REGISTER_ACTIVATION_TYPED(name, ver, MLFloat16) \
   REGISTER_ACTIVATION_TYPED(name, ver, float)     \
   REGISTER_ACTIVATION_TYPED(name, ver, double)

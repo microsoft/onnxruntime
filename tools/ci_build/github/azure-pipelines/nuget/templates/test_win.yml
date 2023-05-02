@@ -2,112 +2,120 @@ parameters:
   AgentPool : 'Win-CPU'
   NugetPackageName : ''
   ArtifactSuffix: ''
+  StageSuffix: 'CPU'
+  # For inference packages, the test data artifact name is drop-nuget and no suffix is required.
+  # For training packages, to differentiate the artifact name we add '-training' suffix. This needs to be passed from
+  # the parent pipeline.
+  TestDataArtifactSuffix: ''
   Skipx86Tests: 'false'
 
-jobs:
-- job: NuGet_Test_Win_${{ parameters.ArtifactSuffix }}
-  workspace:
-    clean: all
-  pool: ${{ parameters.AgentPool }}
+stages:
+- stage: NuGet_Test_Win_${{ parameters.StageSuffix }}
   dependsOn:
-  - NuGet_Packaging_${{ parameters.ArtifactSuffix }}
+  - NuGet_Packaging_${{ parameters.StageSuffix }}
   condition: succeeded()
-  variables:
-  - name: OnnxRuntimeBuildDirectory
-    value: '$(Build.BinariesDirectory)'
-  - name: SKIPNONPACKAGETESTS
-    value: 'ON'
-  - name: runCodesignValidationInjection
-    value: false
+  jobs:
+  - job:
+    workspace:
+      clean: all
+    pool: ${{ parameters.AgentPool }}
 
-  steps:
-  - task: UsePythonVersion@0
-    inputs:
-      versionSpec: '3.7'
-      addToPath: true
-      architecture: x64
+    variables:
+    - name: OnnxRuntimeBuildDirectory
+      value: '$(Build.BinariesDirectory)'
+    - name: SKIPNONPACKAGETESTS
+      value: 'ON'
+    - name: runCodesignValidationInjection
+      value: false
 
-  - task: NuGetToolInstaller@0
-    displayName: Use Nuget 5.7.0
-    inputs:
-      versionSpec: 5.7.0
+    steps:
+    - task: UsePythonVersion@0
+      inputs:
+        versionSpec: '3.8'
+        addToPath: true
+        architecture: x64
 
-  - task: BatchScript@1
-    displayName: 'setup env'
-    inputs:
-      filename: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\setup_env_gpu.bat'
-      modifyEnvironment: true
-      workingFolder: '$(Build.BinariesDirectory)'
+    - task: NuGetToolInstaller@0
+      displayName: Use Nuget 5.7.0
+      inputs:
+        versionSpec: 5.7.0
 
-  - task: BatchScript@1
-    displayName: 'Setup VS2019 env vars'
-    inputs:
-      filename: 'C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\VC\Auxiliary\Build\vcvarsall.bat'
-      arguments: 'amd64'
-      modifyEnvironment: true
+    - task: BatchScript@1
+      displayName: 'setup env'
+      inputs:
+        filename: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\setup_env_gpu.bat'
+        modifyEnvironment: true
+        workingFolder: '$(Build.BinariesDirectory)'
 
-  - task: DownloadPipelineArtifact@0
-    displayName: 'Download Pipeline Artifact'
-    inputs:
-      artifactName: drop-signed-nuget-${{ parameters.ArtifactSuffix }}
-      targetPath: '$(Build.BinariesDirectory)\nuget-artifact'
+    - task: BatchScript@1
+      displayName: 'Setup VS2019 env vars'
+      inputs:
+        filename: 'C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\VC\Auxiliary\Build\vcvarsall.bat'
+        arguments: 'amd64'
+        modifyEnvironment: true
 
-  - task: DownloadPipelineArtifact@0
-    displayName: 'Download Pipeline Artifact - testdata'
-    inputs:
-      artifactName: 'drop-nuget'
-      targetPath: '$(Build.BinariesDirectory)\testdata'
+    - task: DownloadPipelineArtifact@0
+      displayName: 'Download Pipeline Artifact'
+      inputs:
+        artifactName: drop-signed-nuget-${{ parameters.ArtifactSuffix }}
+        targetPath: '$(Build.BinariesDirectory)\nuget-artifact'
 
-  - template: get-nuget-package-version-as-variable.yml
-    parameters:
-      packageFolder: '$(Build.BinariesDirectory)\nuget-artifact'
+    - task: DownloadPipelineArtifact@0
+      displayName: 'Download Pipeline Artifact - testdata'
+      inputs:
+        artifactName: 'drop-nuget${{ parameters.TestDataArtifactSuffix }}'
+        targetPath: '$(Build.BinariesDirectory)\testdata'
 
-  - script: |
-     mklink /D /J models C:\local\models
-    workingDirectory: '$(Build.BinariesDirectory)'
-    displayName: 'Create models link'
+    - template: get-nuget-package-version-as-variable.yml
+      parameters:
+        packageFolder: '$(Build.BinariesDirectory)\nuget-artifact'
 
-  # TODO: Add .Net Core AnyCPU test task
+    - script: |
+       mklink /D /J models C:\local\models
+      workingDirectory: '$(Build.BinariesDirectory)'
+      displayName: 'Create models link'
 
-  - script: |
-     @echo "Running Runtest.bat"
-     test\Microsoft.ML.OnnxRuntime.EndToEndTests\runtest.bat $(Build.BinariesDirectory)\nuget-artifact netcoreapp5.0 x64 $(NuGetPackageVersionNumber)
-    workingDirectory: '$(Build.SourcesDirectory)\csharp'
-    displayName: 'Run End to End Test (C#) .Net Core x64'
-    env:
-      PACKAGENAME: ${{ parameters.NugetPackageName }}
+    # TODO: Add .Net Core AnyCPU test task
 
-  - ${{ if ne(parameters['Skipx86Tests'], 'true') }}:
-      - script: |
-         @echo "Running Runtest.bat"
-         test\Microsoft.ML.OnnxRuntime.EndToEndTests\runtest.bat $(Build.BinariesDirectory)\nuget-artifact netcoreapp5.0 x86 $(NuGetPackageVersionNumber)
-        workingDirectory: '$(Build.SourcesDirectory)\csharp'
-        displayName: 'Run End to End Test (C#) .Net Core x86'
-        env:
-          PACKAGENAME: ${{ parameters.NugetPackageName }}
+    - script: |
+       @echo "Running Runtest.bat"
+       test\Microsoft.ML.OnnxRuntime.EndToEndTests\runtest.bat $(Build.BinariesDirectory)\nuget-artifact netcoreapp5.0 x64 $(NuGetPackageVersionNumber)
+      workingDirectory: '$(Build.SourcesDirectory)\csharp'
+      displayName: 'Run End to End Test (C#) .Net Core x64'
+      env:
+        PACKAGENAME: ${{ parameters.NugetPackageName }}
 
-  # TODO: Add .Net Framework AnyCPU test task
+    - ${{ if ne(parameters['Skipx86Tests'], 'true') }}:
+        - script: |
+           @echo "Running Runtest.bat"
+           test\Microsoft.ML.OnnxRuntime.EndToEndTests\runtest.bat $(Build.BinariesDirectory)\nuget-artifact netcoreapp5.0 x86 $(NuGetPackageVersionNumber)
+          workingDirectory: '$(Build.SourcesDirectory)\csharp'
+          displayName: 'Run End to End Test (C#) .Net Core x86'
+          env:
+            PACKAGENAME: ${{ parameters.NugetPackageName }}
 
-  - script: |
-     @echo "Running Runtest.bat"
-     test\Microsoft.ML.OnnxRuntime.EndToEndTests\runtest.bat $(Build.BinariesDirectory)\nuget-artifact net461 x64 $(NuGetPackageVersionNumber)
-    workingDirectory: '$(Build.SourcesDirectory)\csharp'
-    displayName: 'Run End to End Test (C#) .NetFramework x64'
-    env:
-      PACKAGENAME: ${{ parameters.NugetPackageName }}
+    # TODO: Add .Net Framework AnyCPU test task
 
-  - ${{ if ne(parameters['Skipx86Tests'], 'true') }}:
-      - script: |
-         @echo "Running Runtest.bat"
-         test\Microsoft.ML.OnnxRuntime.EndToEndTests\runtest.bat $(Build.BinariesDirectory)\nuget-artifact net461 x86 $(NuGetPackageVersionNumber)
-        workingDirectory: '$(Build.SourcesDirectory)\csharp'
-        displayName: 'Run End to End Test (C#) .NetFramework x86'
-        enabled: false
-        env:
-          PACKAGENAME: ${{ parameters.NugetPackageName }}
+    - script: |
+       @echo "Running Runtest.bat"
+       test\Microsoft.ML.OnnxRuntime.EndToEndTests\runtest.bat $(Build.BinariesDirectory)\nuget-artifact net461 x64 $(NuGetPackageVersionNumber)
+      workingDirectory: '$(Build.SourcesDirectory)\csharp'
+      displayName: 'Run End to End Test (C#) .NetFramework x64'
+      env:
+        PACKAGENAME: ${{ parameters.NugetPackageName }}
 
-  - template: ../../templates/component-governance-component-detection-steps.yml
-    parameters :
-      condition : 'always'
+    - ${{ if ne(parameters['Skipx86Tests'], 'true') }}:
+        - script: |
+           @echo "Running Runtest.bat"
+           test\Microsoft.ML.OnnxRuntime.EndToEndTests\runtest.bat $(Build.BinariesDirectory)\nuget-artifact net461 x86 $(NuGetPackageVersionNumber)
+          workingDirectory: '$(Build.SourcesDirectory)\csharp'
+          displayName: 'Run End to End Test (C#) .NetFramework x86'
+          enabled: false
+          env:
+            PACKAGENAME: ${{ parameters.NugetPackageName }}
 
-  - template: ../../templates/clean-agent-build-directory-step.yml
+    - template: ../../templates/component-governance-component-detection-steps.yml
+      parameters :
+        condition : 'always'
+
+    - template: ../../templates/clean-agent-build-directory-step.yml

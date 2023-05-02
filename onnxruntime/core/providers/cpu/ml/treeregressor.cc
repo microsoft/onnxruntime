@@ -38,15 +38,31 @@ ONNX_CPU_OPERATOR_TYPED_ML_KERNEL(
 
 template <typename T>
 TreeEnsembleRegressor<T>::TreeEnsembleRegressor(const OpKernelInfo& info) : OpKernel(info) {
-  if constexpr(std::is_same<T, double>::value) {
+  if constexpr (std::is_same<T, double>::value) {
     p_tree_ensemble_ = std::make_unique<detail::TreeEnsembleCommon<T, double, OutputType>>();
-  }
-  else {
+  } else {
     p_tree_ensemble_ = std::make_unique<detail::TreeEnsembleCommon<T, float, OutputType>>();
   }
   ORT_THROW_IF_ERROR(p_tree_ensemble_->Init(info));
-} 
+}
 
+template <typename T>
+Status TreeEnsembleRegressor<T>::GetRemovableAttributes(InlinedVector<std::string>& removable_attributes) const {
+  InlinedVector<std::string> names {
+    "base_values", "nodes_falsenodeids", "nodes_featureids", "nodes_hitrates",
+        "nodes_missing_value_tracks_true", "nodes_modes", "nodes_nodeids", "nodes_treeids",
+        "nodes_truenodeids", "nodes_values",
+        "target_ids", "target_treeids", "target_nodeids",
+        "target_weights"
+#if !defined(ORT_MINIMAL_BUILD)
+        "base_values_as_tensor",
+        "nodes_hitrates_as_tensor", "nodes_values_as_tensor",
+        "class_weights_as_tensor"
+#endif
+  };
+  removable_attributes.swap(names);
+  return Status::OK();
+}
 
 template <typename T>
 common::Status TreeEnsembleRegressor<T>::Compute(OpKernelContext* context) const {

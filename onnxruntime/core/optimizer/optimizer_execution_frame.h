@@ -35,7 +35,7 @@ class OptimizerExecutionFrame final : public IExecutionFrame {
     ~Info() = default;
 
     AllocatorPtr GetAllocator(const OrtMemoryInfo& info) const {
-      return execution_provider_.GetAllocator(info.id, info.mem_type);
+      return execution_provider_.GetAllocator(info.mem_type);
     }
 
     const AllocatorPtr& GetAllocator() const {
@@ -68,8 +68,6 @@ class OptimizerExecutionFrame final : public IExecutionFrame {
     }
 
    private:
-    // The optimizer is running on CPU execution provider by default.
-    const int device_id_{0};
     const OrtMemType mem_type_{OrtMemTypeDefault};
     AllocatorPtr allocator_ptr_;
     DataTransferManager data_transfer_mgr_;
@@ -94,7 +92,7 @@ class OptimizerExecutionFrame final : public IExecutionFrame {
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(OptimizerExecutionFrame);
 
-  AllocatorPtr GetAllocatorImpl(const OrtMemoryInfo& info) const override;
+  AllocatorPtr GetAllocatorImpl(const OrtDevice& info) const override;
 
   Status CreateNodeOutputMLValueImpl(OrtValue& ort_value, int ort_value_idx, const TensorShape* shape) override;
 

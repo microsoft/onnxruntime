@@ -29,6 +29,9 @@ class Node;
 #include "core/framework/allocatormgr.h"
 #include "core/framework/func_api.h"
 #include "core/framework/provider_options.h"
+#include "core/framework/framework_provider_common.h"
+#include "core/framework/stream_handles.h"
+#include "core/framework/tuning_context.h"
 
 namespace onnxruntime {
 
@@ -57,11 +60,19 @@ enum class DataLayout {
 class IExecutionProvider {
  protected:
   IExecutionProvider(const std::string& type, bool use_metadef_id_creator = false)
-      : type_{type} {
+      : IExecutionProvider(type, OrtDevice(), use_metadef_id_creator) {}
+
+  IExecutionProvider(const std::string& type, OrtDevice device, bool use_metadef_id_creator = false)
+      : default_device_(device), type_{type} {
     if (use_metadef_id_creator) {
       metadef_id_generator_ = std::make_unique<ModelMetadefIdGenerator>();
     }
   }
+
+  /*
+     default device for this ExecutionProvider
+  */
+  const OrtDevice default_device_;
 
  public:
   virtual ~IExecutionProvider() = default;
@@ -76,7 +87,7 @@ class IExecutionProvider {
   /**
    * Get an allocator with specified device id and MemType. Return nullptr if it doesn't exist
    */
-  virtual AllocatorPtr GetAllocator(int device_id, OrtMemType mem_type) const;
+  virtual AllocatorPtr GetAllocator(OrtMemType mem_type) const;
 
   /**
    * Returns a data transfer object that implements methods to copy to and
@@ -137,12 +148,26 @@ class IExecutionProvider {
   /**
      Get the device id of current execution provider
   */
-  virtual int GetDeviceId() const { return -1; };
+  virtual int GetDeviceId() const { return 0; };
 
   /**
      Get execution provider's configuration options.
    */
   virtual ProviderOptions GetProviderOptions() const { return {}; }
+
+  /**
+     Get provider specific custom op domain list.
+     Provider has the responsibility to release OrtCustomOpDomain instances it creates.
+
+     NOTE: In the case of ONNX model having EP specific custom nodes and don't want to ask user to register those nodes,
+     EP might need to a way to register those custom nodes. This API is added for the purpose where EP can use it to
+     leverage ORT custom op to register those custom nodes with one or more custom op domains.
+
+     For example, TensorRT EP uses this API to support TRT plugins where each custom op is mapped to TRT plugin and no
+     kernel implementation is needed for custom op since the real implementation is inside TRT. This custom op acts as
+     a role to help pass ONNX model validation.
+   */
+  virtual void GetCustomOpDomainList(std::vector<OrtCustomOpDomain*>& /*provider custom op domain list*/) const {};
 
   /**
      Returns an opaque handle whose exact type varies based on the provider
@@ -208,9 +233,6 @@ class IExecutionProvider {
      clean up its temporary resources to reduce memory and ensure the first run is fast.
   */
   virtual common::Status OnSessionInitializationEnd() { return Status::OK(); }
-
-  virtual common::Status SetComputeStream(void*) { return Status::OK(); }
-  virtual void* GetComputeStream() const { return nullptr; }
 
   void InsertAllocator(AllocatorPtr allocator);
   void ReplaceAllocator(AllocatorPtr allocator);
@@ -296,9 +318,28 @@ class IExecutionProvider {
     return DataLayout::NCHW;
   }
 
+  virtual void RegisterStreamHandlers(IStreamCommandHandleRegistry& /*stream_handle_registry*/) const {}
+
   /** Does the EP support concurrent calls to InferenceSession::Run to execute the model.
    */
   virtual bool ConcurrentRunSupported() const { return true; }
+
+  /**
+   * Return the tuning context which holds all TunableOp state.
+   */
+  virtual ITuningContext* GetTuningContext() const {
+    return nullptr;
+  }
+
+  /**
+   * Return the appropriate OrtDevice object given OrtMemType.
+   */
+  virtual OrtDevice GetOrtDeviceByMemType(OrtMemType mem_type) const {
+    if (mem_type == OrtMemTypeCPUInput || mem_type == OrtMemTypeCPUOutput) {
+      return OrtDevice();  // default return CPU device.
+    }
+    return default_device_;
+  };
 
  private:
   const std::string type_;

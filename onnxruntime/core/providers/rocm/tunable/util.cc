@@ -9,7 +9,7 @@ namespace onnxruntime {
 namespace rocm {
 namespace tunable {
 
-Timer::Timer(hipStream_t stream) : stream_(stream) {
+Timer::Timer(hipStream_t stream) : TimerBase(stream) {
   HIP_CALL_THROW(hipEventCreate(&start_));
   HIP_CALL_THROW(hipEventCreate(&end_));
 }

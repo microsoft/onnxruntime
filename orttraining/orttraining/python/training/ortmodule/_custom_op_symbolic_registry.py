@@ -3,6 +3,8 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
+import warnings  # noqa: F401
+
 import torch
 import torch.onnx.symbolic_helper as sym_help
 from packaging.version import Version
@@ -10,6 +12,51 @@ from torch.onnx import register_custom_op_symbolic
 from torch.onnx.symbolic_helper import _get_tensor_dim_size, _get_tensor_sizes, parse_args
 
 from onnxruntime.training import ortmodule
+
+# Mapping from pytorch scalar type to onnx scalar type.
+_CAST_PYTORCH_TO_ONNX = {
+    "Byte": torch.onnx.TensorProtoDataType.UINT8,
+    "Char": torch.onnx.TensorProtoDataType.INT8,
+    "Double": torch.onnx.TensorProtoDataType.DOUBLE,
+    "Float": torch.onnx.TensorProtoDataType.FLOAT,
+    "Half": torch.onnx.TensorProtoDataType.FLOAT16,
+    "Int": torch.onnx.TensorProtoDataType.INT32,
+    "Long": torch.onnx.TensorProtoDataType.INT64,
+    "Short": torch.onnx.TensorProtoDataType.INT16,
+    "Bool": torch.onnx.TensorProtoDataType.BOOL,
+    "ComplexFloat": torch.onnx.TensorProtoDataType.COMPLEX64,
+    "ComplexDouble": torch.onnx.TensorProtoDataType.COMPLEX128,
+    "BFloat16": torch.onnx.TensorProtoDataType.BFLOAT16,
+    "Undefined": torch.onnx.TensorProtoDataType.UNDEFINED,
+}
+
+
+def pytorch_type_to_onnx(scalar_type: str) -> torch.onnx.TensorProtoDataType:
+    try:
+        return torch.onnx.JitScalarType.from_name(scalar_type).onnx_type()
+    except AttributeError:
+        return _CAST_PYTORCH_TO_ONNX[scalar_type]
+
+
+def wrap_custom_export_function(original_func):
+    # Starting from PyTorch 1.11, there has been a change to symbolic function signature
+    # in terms of how additional context is accessed. More info at
+    # https://github.com/pytorch/pytorch/blob/6b02648479d3615fa3260961e24f38dd0f22da94/torch/onnx/symbolic_helper.py#L48
+    # This code can be cleaned up once support for PyTorch version < 1.11 is dropped.
+    try:
+        from torch.onnx import SymbolicContext
+
+        def _export_with_ctx(ctx: SymbolicContext, graph, *args, **kwargs):
+            node = ctx.cur_node
+            return original_func(graph, node, *args, **kwargs)
+
+        return _export_with_ctx
+    except ImportError:
+
+        def _export_with_no_ctx(graph, *args, **kwargs):
+            return original_func(graph, None, *args, **kwargs)
+
+        return _export_with_no_ctx
 
 
 class CustomOpSymbolicRegistry:
@@ -30,7 +77,7 @@ class CustomOpSymbolicRegistry:
             )
 
 
-def register_symbolic(name, domain="", torch_version_start=None, torch_version_end=None):
+def register_symbolic(name, domain="", torch_version_start=None, torch_version_end=None, need_node=False):
     def symbolic_wrapper(fn):
         need_register = True
         if torch_version_start is not None and Version(torch.__version__) < Version(torch_version_start):
@@ -38,35 +85,70 @@ def register_symbolic(name, domain="", torch_version_start=None, torch_version_e
         # torch_version_end is exclusive.
         if torch_version_end is not None and Version(torch.__version__) >= Version(torch_version_end):
             need_register = False
+
+        updated_fn = fn
+        if need_node is True:
+            updated_fn = wrap_custom_export_function(fn)
+
         if need_register:
-            CustomOpSymbolicRegistry.register(name, domain, fn)
-        return fn
+            CustomOpSymbolicRegistry.register(name, domain, updated_fn)
+        return updated_fn
 
     return symbolic_wrapper
 
 
-@register_symbolic("cross_entropy_loss")
-@parse_args("v", "v", "v", "i", "v", "v")
-def cross_entropy_loss(g, self, target, weight, reduction, ignore_index, label_smoothing=0.0):
+@register_symbolic("cross_entropy_loss", need_node=True)
+def cross_entropy_loss(g, node, logits, target, weight, reduction, ignore_index, label_smoothing=0.0):
     label_smoothing = sym_help._maybe_get_const(label_smoothing, "f")
     if label_smoothing > 0.0:
         raise RuntimeError("Unsupported: ONNX does not support label_smoothing")
+
+    logits_casted = logits
+    weight_casted = weight
+    output_type = None
+
+    #####################################################################################################
+    # cross_entropy_loss takes fp16 as input and generates fp32 output.
+    # sample aten graph:
+    #     %target : Long(16, strides=[1], requires_grad=0, device=cuda:0)
+    #     %input : Half(16, 3, strides=[3, 1], requires_grad=0, device=cuda:0) = aten::linear(%18, %13, %19)
+    #     Float(requires_grad=0, device=cuda:0) = aten::cross_entropy_loss(%input, %target, %21, %22, %23, %24)
+    #
+    # So here if we could get node, then explicitly set output type that might be different with input type;
+    # otherwise, we do the cast (because there is no good way to define a float output type without inheriting from
+    # existing node)
+    if not node:
+        # For lower version torch we cannot get node output types, we do the type promotion for safety.
+        if logits.type().scalarType() == "Half":
+            logits_casted = g.op("Cast", logits, to_i=torch.onnx.TensorProtoDataType.FLOAT)
+
+        if not weight.node().mustBeNone() and weight.type().scalarType() == "Half":
+            weight_casted = g.op("Cast", weight, to_i=torch.onnx.TensorProtoDataType.FLOAT)
+
+        output_type = logits_casted.type()
+    else:
+        # For higher version torch we can get node output types
+        loss_output = list(node.outputs())[0]
+        output_type = loss_output.type()
+    ##################################
 
     # reduction: 0->none, 1->mean, 2->sum
     reduction = sym_help._maybe_get_const(reduction, "i")
     reduction_vals = ["none", "mean", "sum"]
     reduction = reduction_vals[reduction]
+
     output, log_prob = g.op(
         "com.microsoft::SoftmaxCrossEntropyLossInternal",
-        self,
+        logits_casted,
         target,
-        weight,
+        weight_casted,
         ignore_index,
         reduction_s=reduction,
+        output_type_i=pytorch_type_to_onnx(output_type.scalarType()),
         outputs=2,
     )
-    output.setType(self.type())
-    log_prob.setType(self.type())
+    output.setType(output_type)
+    log_prob.setType(output_type)
     return output
 
 
@@ -91,7 +173,7 @@ def embedding(g, weight, indices, padding_idx, scale_grad_by_freq, sparse):
     )
     indices_shape = _get_tensor_sizes(indices)
     if indices_shape is not None and hasattr(weight.type(), "with_sizes"):
-        output_type = weight.type().with_sizes(indices_shape + [_get_tensor_dim_size(weight, 1)])
+        output_type = weight.type().with_sizes([*indices_shape, _get_tensor_dim_size(weight, 1)])
         output.setType(output_type)
     return output
 
@@ -189,7 +271,7 @@ def adaptive_avg_pool2d(g, self, output_size):
 
 
 @register_symbolic("numpy_T")
-def numpy_T(g, self):
+def numpy_T(g, self):  # noqa: N802
     # Numpy-style `a.T`: returns the tensor
     # with dims reversed
     rank = sym_help._get_tensor_rank(self)
@@ -219,7 +301,7 @@ def squeeze(g, self, dim=None):
 # exporting to Split with SplitGrad as gradient graph.
 # Exporter will fail to register symbolic with non-empty domain when torch version is < 1.11.0.
 @register_symbolic("ConstantChunk", "prim", torch_version_start="1.11.0")
-def prim_ConstantChunk(g, self, chunks, dim):
+def prim_ConstantChunk(g, self, chunks, dim):  # noqa: N802
     if chunks == 1:
         return self
     input_shape_dim = g.op(
@@ -468,7 +550,7 @@ def einsum_internal(g, equation, tensor_list):
     # After process contraction labels, contraction_labels = [k],
     # label_perm_map = {(s, 0), (m, 1), (k, 2)}, out_size = 2, perm_size = 3.
     out_size = len(result_labels)
-    label_perm_map = dict([(label, idx) for idx, label in enumerate(result_labels)])
+    label_perm_map = {label: idx for idx, label in enumerate(result_labels)}
     perm_size = out_size
     contraction_labels = []
     lhs_reduce_sum_axes = []
@@ -677,9 +759,9 @@ def group_norm(g, input, num_groups, weight, bias, eps, cudnn_enabled):
 
     shape = g.op("Shape", input)
     size = g.op("Size", input)
-    N = g.op("Gather", shape, g.op("Constant", value_t=torch.tensor(0, dtype=torch.long)), axis_i=0)
-    C = g.op("Gather", shape, g.op("Constant", value_t=torch.tensor(1, dtype=torch.long)), axis_i=0)
-    HxW = g.op("Div", size, g.op("Mul", N, C))
+    N = g.op("Gather", shape, g.op("Constant", value_t=torch.tensor(0, dtype=torch.long)), axis_i=0)  # noqa: N806
+    C = g.op("Gather", shape, g.op("Constant", value_t=torch.tensor(1, dtype=torch.long)), axis_i=0)  # noqa: N806
+    HxW = g.op("Div", size, g.op("Mul", N, C))  # noqa: N806
     return g.op(
         "org.pytorch.aten::ATen",
         input,
@@ -719,3 +801,16 @@ def upsample_nearest2d(g, input, output_size, scale_factors):
 @register_symbolic("upsample_nearest3d")
 def upsample_nearest3d(g, input, output_size, scale_factors):
     return _upsample_nearest(g, input, output_size, scale_factors, "upsample_nearest3d")
+
+
+@register_symbolic("upsample_bilinear2d")
+def upsample_bilinear2d(g, input, output_size, align_corners, scale_factors):
+    return g.op(
+        "org.pytorch.aten::ATen",
+        input,
+        output_size,
+        align_corners,
+        scale_factors,
+        operator_s="upsample_bilinear2d",
+        overload_name_s="vec",
+    )

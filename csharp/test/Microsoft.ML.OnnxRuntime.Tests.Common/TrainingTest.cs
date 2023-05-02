@@ -23,11 +23,22 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             this.output = o;
         }
 
+#if !__TRAINING_ENABLED_NATIVE_BUILD__
+        [Fact(DisplayName = "TestLoadCheckpointThrows")]
+        public void TestLoadCheckpointThrows()
+        {
+            string path = Path.Combine(Directory.GetCurrentDirectory(), "checkpoint.ckpt");
+            var ex = Assert.Throws<InvalidOperationException>(() => { var opt = CheckpointState.LoadCheckpoint(path); });
+            Assert.Contains("Please install the Microsoft.ML.OnnxRuntime.Training NuGet package.", ex.Message);
+        }
+#endif
+
+#if __TRAINING_ENABLED_NATIVE_BUILD__
         [Fact(DisplayName = "TestLoadCheckpoint")]
         public void TestLoadCheckpoint()
         {
             string path = Path.Combine(Directory.GetCurrentDirectory(), "checkpoint.ckpt");
-            using (var opt = new CheckpointState(path))
+            using (var opt = CheckpointState.LoadCheckpoint(path))
             {
                 Assert.NotNull(opt);
             }
@@ -39,7 +50,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             string checkpointPath = Path.Combine(Directory.GetCurrentDirectory(), "checkpoint.ckpt");
             using (var cleanUp = new DisposableListTest<IDisposable>())
             {
-                var state = new CheckpointState(checkpointPath);
+                var state = CheckpointState.LoadCheckpoint(checkpointPath);
                 cleanUp.Add(state);
                 Assert.NotNull(state);
                 string trainingPath = Path.Combine(Directory.GetCurrentDirectory(), "training_model.onnx");
@@ -55,7 +66,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             string checkpointPath = Path.Combine(Directory.GetCurrentDirectory(), "checkpoint.ckpt");
             using (var cleanUp = new DisposableListTest<IDisposable>())
             {
-                var state = new CheckpointState(checkpointPath);
+                var state = CheckpointState.LoadCheckpoint(checkpointPath);
                 cleanUp.Add(state);
                 Assert.NotNull(state);
                 string trainingPath = Path.Combine(Directory.GetCurrentDirectory(), "training_model.onnx");
@@ -118,17 +129,17 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                     TensorElementType.Int32, labelsShape, labels.Length * sizeof(Int32)));
 
                 var outputs = trainingSession.TrainStep(pinnedInputs);
-                trainingSession.ResetGrad();
+                trainingSession.LazyResetGrad();
                 outputs = trainingSession.TrainStep(pinnedInputs);
                 var outputBuffer = outputs.ElementAtOrDefault(0);
 
-                Assert.Equal("542.loss", outputBuffer.Name);
+                Assert.Equal("onnx::loss::21273", outputBuffer.Name);
                 Assert.Equal(OnnxValueType.ONNX_TYPE_TENSOR, outputBuffer.ValueType);
                 Assert.Equal(TensorElementType.Float, outputBuffer.ElementType);
 
                 var outLabelTensor = outputBuffer.AsTensor<float>();
                 Assert.NotNull(outLabelTensor);
-                Assert.Equal(expectedOutput, outLabelTensor, new FloatComparer());
+                Assert.Equal(expectedOutput, outLabelTensor.ToArray(), new FloatComparer());
             }
         }
 
@@ -138,7 +149,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             string checkpointPath = Path.Combine(Directory.GetCurrentDirectory(), "checkpoint.ckpt");
             using (var cleanUp = new DisposableListTest<IDisposable>())
             {
-                var state = new CheckpointState(checkpointPath);
+                var state = CheckpointState.LoadCheckpoint(checkpointPath);
                 cleanUp.Add(state);
                 Assert.NotNull(state);
                 string trainingPath = Path.Combine(Directory.GetCurrentDirectory(), "training_model.onnx");
@@ -156,7 +167,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             string checkpointPath = Path.Combine(Directory.GetCurrentDirectory(), "checkpoint.ckpt");
             using (var cleanUp = new DisposableListTest<IDisposable>())
             {
-                var state = new CheckpointState(checkpointPath);
+                var state = CheckpointState.LoadCheckpoint(checkpointPath);
                 cleanUp.Add(state);
                 Assert.NotNull(state);
                 string trainingPath = Path.Combine(Directory.GetCurrentDirectory(), "training_model.onnx");
@@ -165,10 +176,10 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 
                 // Save checkpoint
                 string savedCheckpointPath = Path.Combine(Directory.GetCurrentDirectory(), "saved_checkpoint.ckpt");
-                trainingSession.SaveCheckpoint(savedCheckpointPath, false);
+                CheckpointState.SaveCheckpoint(state, savedCheckpointPath, true);
 
                 // Load checkpoint and run train step
-                var loadedState = new CheckpointState(savedCheckpointPath);
+                var loadedState = CheckpointState.LoadCheckpoint(savedCheckpointPath);
                 cleanUp.Add(loadedState);
                 var newTrainingSession = new TrainingSession(loadedState, trainingPath);
                 cleanUp.Add(newTrainingSession);
@@ -182,7 +193,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             string checkpointPath = Path.Combine(Directory.GetCurrentDirectory(), "checkpoint.ckpt");
             using (var cleanUp = new DisposableListTest<IDisposable>())
             {
-                var state = new CheckpointState(checkpointPath);
+                var state = CheckpointState.LoadCheckpoint(checkpointPath);
                 cleanUp.Add(state);
                 Assert.NotNull(state);
                 string trainingPath = Path.Combine(Directory.GetCurrentDirectory(), "training_model.onnx");
@@ -222,7 +233,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                     trainingSession.TrainStep(pinnedInputs, pinnedOutputs);
                     Assert.Equal(expectedOutput_1, outputBuffer, new FloatComparer());
 
-                    trainingSession.ResetGrad();
+                    trainingSession.LazyResetGrad();
 
                     trainingSession.TrainStep(pinnedInputs, pinnedOutputs);
                     Assert.Equal(expectedOutput_1, outputBuffer, new FloatComparer());
@@ -241,7 +252,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             string checkpointPath = Path.Combine(Directory.GetCurrentDirectory(), "checkpoint.ckpt");
             using (var cleanUp = new DisposableListTest<IDisposable>())
             {
-                var state = new CheckpointState(checkpointPath);
+                var state = CheckpointState.LoadCheckpoint(checkpointPath);
                 cleanUp.Add(state);
                 Assert.NotNull(state);
                 string trainingPath = Path.Combine(Directory.GetCurrentDirectory(), "training_model.onnx");
@@ -263,7 +274,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             string checkpointPath = Path.Combine(Directory.GetCurrentDirectory(), "checkpoint.ckpt");
             using (var cleanUp = new DisposableListTest<IDisposable>())
             {
-                var state = new CheckpointState(checkpointPath);
+                var state = CheckpointState.LoadCheckpoint(checkpointPath);
                 cleanUp.Add(state);
                 Assert.NotNull(state);
                 string trainingPath = Path.Combine(Directory.GetCurrentDirectory(), "training_model.onnx");
@@ -290,6 +301,226 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             }
         }
 
+        [Fact(DisplayName = "TestTrainingSessionExportModelForInferencing")]
+        public void TestTrainingSessionExportModelForInferencing()
+        {
+            string checkpointPath = Path.Combine(Directory.GetCurrentDirectory(), "checkpoint.ckpt");
+            using (var cleanUp = new DisposableListTest<IDisposable>())
+            {
+                var state = CheckpointState.LoadCheckpoint(checkpointPath);
+                cleanUp.Add(state);
+                Assert.NotNull(state);
+                string trainingPath = Path.Combine(Directory.GetCurrentDirectory(), "training_model.onnx");
+                string evalPath = Path.Combine(Directory.GetCurrentDirectory(), "eval_model.onnx");
+                string optimizerPath = Path.Combine(Directory.GetCurrentDirectory(), "adamw.onnx");
+
+                var trainingSession = new TrainingSession(state, trainingPath, evalPath, optimizerPath);
+                cleanUp.Add(trainingSession);
+
+                var graphOutputs = new List<string>(){"output-0"};
+
+                string inferencePath = Path.Combine(Directory.GetCurrentDirectory(), "inference_model.onnx");
+
+                trainingSession.ExportModelForInferencing(inferencePath, graphOutputs);
+                Assert.True(File.Exists(inferencePath));
+            }
+        }
+
+        [Fact(DisplayName = "TestCheckpointStateAddProperty")]
+        public void TestCheckpointStateAddProperty()
+        {
+            string checkpointPath = Path.Combine(Directory.GetCurrentDirectory(), "checkpoint.ckpt");
+            using (var cleanUp = new DisposableListTest<IDisposable>())
+            {
+                var state = CheckpointState.LoadCheckpoint(checkpointPath);
+                cleanUp.Add(state);
+                Assert.NotNull(state);
+
+                string propertyName = "days in a week";
+                state.AddProperty(propertyName, (long)7);
+
+                var value = state.GetProperty(propertyName);
+                Assert.True(value is long);
+                Assert.Equal((long)7, value);
+            }
+        }
+
+        [Fact(DisplayName = "TestCheckpointStateAddFloatProperty")]
+        public void TestCheckpointStateAddFloatProperty()
+        {
+            string checkpointPath = Path.Combine(Directory.GetCurrentDirectory(), "checkpoint.ckpt");
+            using (var cleanUp = new DisposableListTest<IDisposable>())
+            {
+                var state = CheckpointState.LoadCheckpoint(checkpointPath);
+                cleanUp.Add(state);
+                Assert.NotNull(state);
+
+                string propertyName = "pi";
+                state.AddProperty(propertyName, (float)3.14);
+
+                var value = state.GetProperty(propertyName);
+                Assert.True(value is float);
+                Assert.Equal((float)3.14, value);
+            }
+        }
+
+        [Fact(DisplayName = "TestCheckpointStateAddStringProperty")]
+        public void TestCheckpointStateAddStringProperty()
+        {
+            string checkpointPath = Path.Combine(Directory.GetCurrentDirectory(), "checkpoint.ckpt");
+            using (var cleanUp = new DisposableListTest<IDisposable>())
+            {
+                var state = CheckpointState.LoadCheckpoint(checkpointPath);
+                cleanUp.Add(state);
+                Assert.NotNull(state);
+
+                string propertyName = "best ai framework";
+                state.AddProperty(propertyName, "onnxruntime");
+
+                var value = state.GetProperty(propertyName);
+                Assert.True(value is string);
+                Assert.Equal("onnxruntime", value);
+            }
+        }
+
+        [Fact(DisplayName = "TestTrainModelInputNames")]
+        public void TestTrainModelInputNames()
+        {
+            string checkpointPath = Path.Combine(Directory.GetCurrentDirectory(), "checkpoint.ckpt");
+            using (var cleanUp = new DisposableListTest<IDisposable>())
+            {
+                var state = CheckpointState.LoadCheckpoint(checkpointPath);
+                cleanUp.Add(state);
+                Assert.NotNull(state);
+                string trainingPath = Path.Combine(Directory.GetCurrentDirectory(), "training_model.onnx");
+                var trainingSession = new TrainingSession(state, trainingPath);
+                cleanUp.Add(trainingSession);
+
+                var inputNames = trainingSession.InputNames(true);
+
+                Assert.True(inputNames.Count == 2);
+                Assert.Equal("input-0", inputNames[0]);
+                Assert.Equal("labels", inputNames[1]);
+            }
+        }
+
+        [Fact(DisplayName = "TestEvalModelInputNames")]
+        public void TestEvalModelInputNames()
+        {
+            string checkpointPath = Path.Combine(Directory.GetCurrentDirectory(), "checkpoint.ckpt");
+            using (var cleanUp = new DisposableListTest<IDisposable>())
+            {
+                var state = CheckpointState.LoadCheckpoint(checkpointPath);
+                cleanUp.Add(state);
+                Assert.NotNull(state);
+                string trainingPath = Path.Combine(Directory.GetCurrentDirectory(), "training_model.onnx");
+                string evalPath = Path.Combine(Directory.GetCurrentDirectory(), "eval_model.onnx");
+                string optimizerPath = Path.Combine(Directory.GetCurrentDirectory(), "adamw.onnx");
+
+                var trainingSession = new TrainingSession(state, trainingPath, evalPath, optimizerPath);
+                cleanUp.Add(trainingSession);
+
+                var inputNames = trainingSession.InputNames(false);
+
+                Assert.True(inputNames.Count == 2);
+                Assert.Equal("input-0", inputNames[0]);
+                Assert.Equal("labels", inputNames[1]);
+            }
+        }
+
+        [Fact(DisplayName = "TestTrainModelOutputNames")]
+        public void TestTrainModelOutputNames()
+        {
+            string checkpointPath = Path.Combine(Directory.GetCurrentDirectory(), "checkpoint.ckpt");
+            using (var cleanUp = new DisposableListTest<IDisposable>())
+            {
+                var state = CheckpointState.LoadCheckpoint(checkpointPath);
+                cleanUp.Add(state);
+                Assert.NotNull(state);
+                string trainingPath = Path.Combine(Directory.GetCurrentDirectory(), "training_model.onnx");
+                var trainingSession = new TrainingSession(state, trainingPath);
+                cleanUp.Add(trainingSession);
+
+                var outputNames = trainingSession.OutputNames(true);
+
+                Assert.Single(outputNames);
+                Assert.Equal("onnx::loss::21273", outputNames[0]);
+            }
+        }
+
+        [Fact(DisplayName = "TestEvalModelOutputNames")]
+        public void TestEvalModelOutputNames()
+        {
+            string checkpointPath = Path.Combine(Directory.GetCurrentDirectory(), "checkpoint.ckpt");
+            using (var cleanUp = new DisposableListTest<IDisposable>())
+            {
+                var state = CheckpointState.LoadCheckpoint(checkpointPath);
+                cleanUp.Add(state);
+                Assert.NotNull(state);
+                string trainingPath = Path.Combine(Directory.GetCurrentDirectory(), "training_model.onnx");
+                string evalPath = Path.Combine(Directory.GetCurrentDirectory(), "eval_model.onnx");
+                string optimizerPath = Path.Combine(Directory.GetCurrentDirectory(), "adamw.onnx");
+
+                var trainingSession = new TrainingSession(state, trainingPath, evalPath, optimizerPath);
+                cleanUp.Add(trainingSession);
+
+                var outputNames = trainingSession.OutputNames(false);
+
+                Assert.Single(outputNames);
+                Assert.Equal("onnx::loss::21273", outputNames[0]);
+            }
+        }
+
+        [Fact(DisplayName = "TestToBuffer")]
+        public void TestToBuffer()
+        {
+            string checkpointPath = Path.Combine(Directory.GetCurrentDirectory(), "checkpoint.ckpt");
+            using (var cleanUp = new DisposableListTest<IDisposable>())
+            {
+                var state = CheckpointState.LoadCheckpoint(checkpointPath);
+                cleanUp.Add(state);
+                Assert.NotNull(state);
+                string trainingPath = Path.Combine(Directory.GetCurrentDirectory(), "training_model.onnx");
+                string evalPath = Path.Combine(Directory.GetCurrentDirectory(), "eval_model.onnx");
+                string optimizerPath = Path.Combine(Directory.GetCurrentDirectory(), "adamw.onnx");
+
+                var trainingSession = new TrainingSession(state, trainingPath, evalPath, optimizerPath);
+                cleanUp.Add(trainingSession);
+
+                var buffer = trainingSession.ToBuffer(true);
+                cleanUp.Add(buffer);
+            }
+        }
+
+        [Fact(DisplayName = "TestFromBuffer")]
+        public void TestFromBuffer()
+        {
+            string checkpointPath = Path.Combine(Directory.GetCurrentDirectory(), "checkpoint.ckpt");
+            using (var cleanUp = new DisposableListTest<IDisposable>())
+            {
+                var state = CheckpointState.LoadCheckpoint(checkpointPath);
+                cleanUp.Add(state);
+                Assert.NotNull(state);
+                string trainingPath = Path.Combine(Directory.GetCurrentDirectory(), "training_model.onnx");
+                string evalPath = Path.Combine(Directory.GetCurrentDirectory(), "eval_model.onnx");
+                string optimizerPath = Path.Combine(Directory.GetCurrentDirectory(), "adamw.onnx");
+
+                var trainingSession = new TrainingSession(state, trainingPath, evalPath, optimizerPath);
+                cleanUp.Add(trainingSession);
+
+                var buffer = trainingSession.ToBuffer(true);
+                cleanUp.Add(buffer);
+
+                trainingSession.FromBuffer(buffer);
+            }
+        }
+
+        [Fact(DisplayName = "TestSetSeed")]
+        public void TestSetSeed()
+        {
+            TrainingUtils.SetSeed(8888);
+        }
+
         internal class FloatComparer : IEqualityComparer<float>
         {
             private float atol = 1e-3f;
@@ -304,5 +535,6 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 return x.GetHashCode();
             }
         }
+#endif
     }
 }

@@ -40,24 +40,28 @@ namespace contrib {
 namespace rocm {
 
 template <typename T>
-Status LaunchFastGeluKernel(hipStream_t stream, int input_length, int bias_length,
-                          const T* input, const T* bias, T* output, bool tuning) {
-  static FastGeluTunableOp<T> op;
-  if (tuning) {
-    op.EnableTuning();
+Status LaunchFastGeluKernel(RocmTuningContext* tuning_ctx, hipStream_t stream, int input_length, int bias_length,
+                            const T* input, const T* bias, T* output) {
+  FastGeluParams<T> params(tuning_ctx, stream, input, bias, output, input_length, bias_length);
+  if (tuning_ctx->IsTunableOpEnabled()) {
+    static FastGeluTunableOp<T> op;
+    return op(&params);
   }
-  FastGeluParams<T> op_params(stream, input, bias, output, input_length, bias_length);
-  return op(&op_params);
+
+  return FastGeluStaticSelection<T>(&params);
 }
 
-template Status LaunchFastGeluKernel<float>(hipStream_t stream, int input_length, int bias_length,
-                                          const float* input, const float* bias, float* output, bool tuning);
+template Status LaunchFastGeluKernel<float>(RocmTuningContext* tuning_ctx, hipStream_t stream,
+                                            int input_length, int bias_length,
+                                            const float* input, const float* bias, float* output);
 
-template Status LaunchFastGeluKernel<BFloat16>(hipStream_t stream, int input_length, int bias_length,
-                                             const BFloat16* input, const BFloat16* bias, BFloat16* output, bool tuning);
+template Status LaunchFastGeluKernel<BFloat16>(RocmTuningContext* tuning_ctx, hipStream_t stream,
+                                               int input_length, int bias_length,
+                                               const BFloat16* input, const BFloat16* bias, BFloat16* output);
 
-template Status LaunchFastGeluKernel<half>(hipStream_t stream, int input_length, int bias_length,
-                                         const half* input, const half* bias, half* output, bool tuning);
+template Status LaunchFastGeluKernel<half>(RocmTuningContext* tuning_ctx, hipStream_t stream,
+                                           int input_length, int bias_length,
+                                           const half* input, const half* bias, half* output);
 
 }  // namespace rocm
 }  // namespace contrib

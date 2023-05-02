@@ -106,7 +106,7 @@ Status CastMap::ComputeImpl(OpKernelContext& context, TTo pad_value) const {
 
   // create a span for the output
   Tensor* Y = context.Output(0, {1, num_dims});
-  auto out = gsl::make_span(Y->MutableData<TTo>(), Y->Shape().Size());
+  auto out = gsl::make_span(Y->MutableData<TTo>(), onnxruntime::narrow<size_t>(Y->Shape().Size()));
   auto out_iter = out.begin();
 
   // for each item in the entry, use the template specialized Cast function to convert

@@ -30,21 +30,43 @@ void Selectors::RegisterSelector(const OpVersionsAndSelector::OpVersionsMap& ops
 static const OpVersionsAndSelector::OpVersionsMap GetMiscOpVersionsMap() {
   return {{"Gather", {}},
           {"Reshape", {}},
+          {"Flatten", {}},
           {"Transpose", {}},
           {"MaxPool", {12}},
           {"Resize", {}},
+          {"Split", {}},
           {"Squeeze", {}},
           {"Unsqueeze", {}}};
 }
 
 static const OpVersionsAndSelector::OpVersionsMap GetUnaryOpVersionsMap() {
   return {{"AveragePool", {}},
+          {"GlobalAveragePool", {}},
+          {"LeakyRelu", {}},
+          {"ReduceMean", {}},
+          {"ReduceMin", {}},
+          {"ReduceMax", {}},
+          {"ReduceProd", {}},
+          {"ReduceSum", {}},
+          {"Relu", {}},
+          {"Gelu", {}},
+          {"Elu", {}},
+          {"HardSwish", {}},
+          {"Sigmoid", {}},
+          {"Slice", {}},
           {"Softmax", {}},
-          {"LeakyRelu", {}}};
+          {"Sqrt", {}},
+          {"Atan", {}},
+          {"Tanh", {}},
+          {"Exp", {}},
+          {"LRN", {}}};
 }
 static const OpVersionsAndSelector::OpVersionsMap GetBinaryOpVersionsMap() {
   return {{"Add", {}},
-          {"Mul", {}}};
+          {"Div", {}},
+          {"Mul", {}},
+          {"Pow", {}},
+          {"Sub", {}}};
 }
 static const OpVersionsAndSelector::OpVersionsMap GetVariadicOpVersionsMap() {
   return {{"Concat", {}}};
@@ -52,11 +74,20 @@ static const OpVersionsAndSelector::OpVersionsMap GetVariadicOpVersionsMap() {
 static const OpVersionsAndSelector::OpVersionsMap GetConvOpVersionsMap() {
   return {{"Conv", {}}};
 }
+static const OpVersionsAndSelector::OpVersionsMap GetConvTransposeOpVersionsMap() {
+  return {{"ConvTranspose", {}}};
+}
 static const OpVersionsAndSelector::OpVersionsMap GetMatMulOpVersionsMap() {
   return {{"MatMul", {}}};
 }
 static const OpVersionsAndSelector::OpVersionsMap GetGemmOpVersionsMap() {
   return {{"Gemm", {}}};
+}
+static const OpVersionsAndSelector::OpVersionsMap GetInstanceNormalizationOpVersionsMap() {
+  return {{"InstanceNormalization", {}}};
+}
+static const OpVersionsAndSelector::OpVersionsMap GetBatchNormalizationOpVersionsMap() {
+  return {{"BatchNormalization", {}}};
 }
 
 /* Selector rules registration related */
@@ -95,6 +126,14 @@ void RegisterConvSelector(Selectors& qdq_selectors) {
                                  std::move(selector));
 }
 
+void RegisterConvTransposeSelector(Selectors& qdq_selectors) {
+  // register selector for ConvTranspose op
+  // it shares selector with Conv op, they have the same input/output def.
+  std::unique_ptr<NodeGroupSelector> selector = std::make_unique<ConvNodeGroupSelector>();
+  qdq_selectors.RegisterSelector(GetConvTransposeOpVersionsMap(),
+                                 std::move(selector));
+}
+
 void RegisterMatMulSelector(Selectors& qdq_selectors) {
   /* register selector for matmul op */
   std::unique_ptr<NodeGroupSelector> selector = std::make_unique<MatMulNodeGroupSelector>();
@@ -109,14 +148,31 @@ void RegisterGemmSelector(Selectors& qdq_selectors) {
                                  std::move(selector));
 }
 
+void RegisterInstanceNormalizationSelector(Selectors& qdq_selectors) {
+  /* register selector for InstanceNormalization op */
+  std::unique_ptr<NodeGroupSelector> selector = std::make_unique<InstanceNormalizationNodeGroupSelector>();
+  qdq_selectors.RegisterSelector(GetInstanceNormalizationOpVersionsMap(),
+                                 std::move(selector));
+}
+
+void RegisterBatchNormalizationSelector(Selectors& qdq_selectors) {
+  /* register selector for BatchNormalization op */
+  std::unique_ptr<NodeGroupSelector> selector = std::make_unique<BatchNormalizationNodeGroupSelector>();
+  qdq_selectors.RegisterSelector(GetBatchNormalizationOpVersionsMap(),
+                                 std::move(selector));
+}
+
 void SelectorManager::CreateSelectors() {
   RegisterMiscSelectors(qdq_selectors_);
   RegisterUnarySelectors(qdq_selectors_);
   RegisterBinarySelectors(qdq_selectors_);
   RegisterVariadicSelectors(qdq_selectors_);
   RegisterConvSelector(qdq_selectors_);
+  RegisterConvTransposeSelector(qdq_selectors_);
   RegisterMatMulSelector(qdq_selectors_);
   RegisterGemmSelector(qdq_selectors_);
+  RegisterInstanceNormalizationSelector(qdq_selectors_);
+  RegisterBatchNormalizationSelector(qdq_selectors_);
 }
 
 void SelectorManager::InitializeSelectorsMap() {
@@ -139,7 +195,8 @@ std::vector<NodeGroup> SelectorManager::GetQDQSelections(const GraphViewer& grap
     const auto* node = graph_viewer.GetNode(index);
     // post layout transformation all the layout sensitive nodes are converted to domain
     // kMSInternalNHWCDomain. Therefore need to allow this domain as well.
-    if (node->Domain() != kOnnxDomain && node->Domain() != kMSInternalNHWCDomain) {
+    // Allow kMSDomain for contrib op like Gelu
+    if (node->Domain() != kOnnxDomain && node->Domain() != kMSInternalNHWCDomain && node->Domain() != kMSDomain) {
       continue;
     }
 
@@ -167,6 +224,30 @@ std::vector<NodeGroup> SelectorManager::GetQDQSelections(const GraphViewer& grap
   }
 
   return qdq_selections;
+}
+
+Status ValidateNodeGroupDQNodes(const GraphViewer& graph_viewer,
+                                const Node& target_node,
+                                gsl::span<const Node* const> dq_nodes) {
+  // Within a QDQ node group, a target node input is the only consumer of each DQ.
+  // This should have been ensured by the EnsureUniqueDQForNodeUnit graph transformer, but other graph modifications
+  // may have happened since. Verify that this is still true.
+  for (const auto* dq_node : dq_nodes) {
+    const bool dq_produces_graph_output = graph_viewer.NodeProducesGraphOutput(*dq_node);
+    ORT_RETURN_IF(dq_produces_graph_output,
+                  "QDQ node group cannot have DQ node that produces a graph output. DQ node: ", dq_node->Name(),
+                  ", target node: ", target_node.Name());
+
+    const bool dq_has_single_output_edge_to_target =
+        dq_node->GetOutputEdgesCount() == 1 &&
+        dq_node->OutputEdgesBegin()->GetNode().Index() == target_node.Index();
+    ORT_RETURN_IF_NOT(dq_has_single_output_edge_to_target,
+                      "QDQ node group cannot have DQ that doesn't have a single output edge to the target node. "
+                      "DQ node: ",
+                      dq_node->Name(), ", target node: ", target_node.Name());
+  }
+
+  return Status::OK();
 }
 
 }  // namespace QDQ

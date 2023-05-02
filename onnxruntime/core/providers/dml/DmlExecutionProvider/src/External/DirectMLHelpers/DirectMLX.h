@@ -97,7 +97,7 @@ inline UINT64 DMLCalcBufferTensorSize(
     }
     else
     {
-        UINT indexOfLastElement = 0;
+        UINT64 indexOfLastElement = 0;
         for (UINT i = 0; i < dimensionCount; ++i)
         {
             indexOfLastElement += (sizes[i] - 1) * strides[i];

@@ -1,4 +1,4 @@
-FROM rocm/pytorch:rocm5.2.3_ubuntu20.04_py3.7_pytorch_1.12.1
+FROM rocm/pytorch:rocm5.4_ubuntu20.04_py3.7_pytorch_1.12.1
 
 WORKDIR /stage
 
@@ -14,6 +14,13 @@ ENV CMAKE_VERSION=3.24.2
 RUN cd /usr/local && \
     wget -q -O - https://github.com/Kitware/CMake/releases/download/v${CMAKE_VERSION}/cmake-${CMAKE_VERSION}-Linux-x86_64.tar.gz | tar zxf -
 ENV PATH=/usr/local/cmake-${CMAKE_VERSION}-linux-x86_64/bin:${PATH}
+
+# ccache
+RUN mkdir -p /tmp/ccache && \
+    cd /tmp/ccache && \
+    wget -q -O - https://github.com/ccache/ccache/releases/download/v4.7.4/ccache-4.7.4-linux-x86_64.tar.xz | tar --strip 1 -J -xf - && \
+    cp /tmp/ccache/ccache /usr/bin && \
+    rm -rf /tmp/ccache
 
 # rocm-ci branch contains instrumentation needed for loss curves and perf
 RUN git clone https://github.com/microsoft/huggingface-transformers.git &&\
@@ -33,12 +40,13 @@ RUN pip install \
       sacremoses \
       scipy \
       scikit-learn \
-      sklearn \
       tokenizers \
       sentencepiece \
       dill==0.3.4 \
       wget \
-      pytorch_lightning==1.6.0
+      pytorch_lightning==1.6.0 \
+      pytest-xdist \
+      pytest-rerunfailures
 
 RUN pip install torch-ort --no-dependencies
 ENV ORTMODULE_ONNX_OPSET_VERSION=15

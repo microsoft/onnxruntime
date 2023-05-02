@@ -4,13 +4,13 @@
 # --------------------------------------------------------------------------
 
 import sys
-import torch
 
+import torch
 from torch.utils.dlpack import from_dlpack, to_dlpack
 
-from ._fallback import _FallbackManager, ORTModuleFallbackException, ORTModuleIOError, wrap_exception
-
 from onnxruntime.training.ortmodule.torch_cpp_extensions import torch_interop_utils
+
+from ._fallback import ORTModuleFallbackException, ORTModuleIOError, _FallbackManager, wrap_exception  # noqa: F401
 
 
 def wrap_as_dlpack_or_not(grad_flag, tensor_flag, inplace_flag, training_mode_flag, arg):
@@ -30,7 +30,13 @@ def wrap_as_dlpack_or_not(grad_flag, tensor_flag, inplace_flag, training_mode_fl
     if tensor_flag:
         # Got a tensor. Assume it's a DLPack tensor
         # and convert it to Pytorch tensor.
-        wrapped_arg = from_dlpack(arg)
+        if training_mode_flag:
+            wrapped_arg = from_dlpack(arg).detach().clone()
+            # TODO: This clone is just a workround to fix the bug that
+            # input saved for backward may be "released" by ORT.
+            # we need a follow up fix to avoid the copy overhead.
+        else:
+            wrapped_arg = from_dlpack(arg)
 
         # Only requires gradient when running under training mode
         # and the associated tensor has grad_flag=True (i.e.,
@@ -38,9 +44,9 @@ def wrap_as_dlpack_or_not(grad_flag, tensor_flag, inplace_flag, training_mode_fl
         wrapped_arg.requires_grad = training_mode_flag and grad_flag
 
         return wrapped_arg
-    else:
-        # Use non-tensor as is. It's a PyObject*.
-        return arg
+
+    # Use non-tensor as is. It's a PyObject*.
+    return arg
 
 
 def call_python_forward_function(
@@ -133,7 +139,7 @@ def call_python_forward_function(
         if isinstance(result, torch.Tensor):
             ctx = register_context([result])
             return [ctx, to_dlpack(result)]
-        elif isinstance(result, tuple) or isinstance(result, list):
+        elif isinstance(result, (tuple, list)):
             ctx = register_context(result)
             wrapped = [ctx]
             wrapped.extend(list(to_dlpack(value) if value is not None else None for value in result))
@@ -171,7 +177,7 @@ def call_python_forward_function(
         print("Exception happens when running ", forward_function)
         sys.stdout.flush()
         sys.stderr.flush()
-        raise wrap_exception(ORTModuleFallbackException, e)
+        raise wrap_exception(ORTModuleFallbackException, e)  # noqa: B904
 
 
 def call_python_backward_function(
@@ -196,7 +202,7 @@ def call_python_backward_function(
         def wrap_all_outputs(result):
             if isinstance(result, torch.Tensor):
                 return [to_dlpack(result)]
-            elif isinstance(result, tuple) or isinstance(result, list):
+            elif isinstance(result, (tuple, list)):
                 return [to_dlpack(value) if value is not None else None for value in result]
             else:
                 raise wrap_exception(
@@ -229,4 +235,4 @@ def call_python_backward_function(
             print("Exception happens when running ", backward_function)
             sys.stdout.flush()
             sys.stderr.flush()
-            raise wrap_exception(ORTModuleFallbackException, e)
+            raise wrap_exception(ORTModuleFallbackException, e)  # noqa: B904

@@ -21,8 +21,6 @@ y) YOCTO_VERSION=${OPTARG};;
 esac
 done
 
-export PATH=$PATH:/usr/local/gradle/bin
-
 if [ $BUILD_OS = "yocto" ]; then
     YOCTO_FOLDER="4.19-warrior"
     if [ $YOCTO_VERSION = "4.14" ]; then
@@ -50,17 +48,14 @@ else
             --cudnn_home /usr/local/cudnn-$_CUDNN_VERSION/cuda $BUILD_EXTR_PAR
     elif [[ $BUILD_DEVICE = "tensorrt"* ]]; then
         if [ $BUILD_DEVICE = "tensorrt-v7.1" ]; then
-            CUR_PWD=$(pwd)
-            cd $SCRIPT_DIR/../../../../cmake/external/onnx-tensorrt/
-            git remote update
-            git checkout 7.1
-            cd $CUR_PWD
-            COMMON_BUILD_ARGS=${COMMON_BUILD_ARGS/"--skip_submodule_sync"}
+            pushd .
+            cd $SCRIPT_DIR/../../../../cmake
+            sed -i "s/^onnx_tensorrt.*$/onnx_tensorrt;https:\/\/github.com\/onnx\/onnx-tensorrt\/archive\/refs\/tags\/release\/7.1.zip;e23bf76bbe4748c49951d6b401cf5e1006d86cce/g" deps.txt
+            popd
         fi
         _CUDNN_VERSION=$(echo $CUDNN_VERSION | cut -d. -f1-2)
         python3 $SCRIPT_DIR/../../build.py --build_dir /build \
             --config Release $COMMON_BUILD_ARGS \
-            --tensorrt_placeholder_builder \
             --use_tensorrt --tensorrt_home /usr/lib/x86_64-linux-gnu/ \
             --cuda_home /usr/local/cuda \
             --cudnn_home /usr/lib/x86_64-linux-gnu/ $BUILD_EXTR_PAR
@@ -69,4 +64,3 @@ else
             --config Release $COMMON_BUILD_ARGS $BUILD_EXTR_PAR
     fi
 fi
-

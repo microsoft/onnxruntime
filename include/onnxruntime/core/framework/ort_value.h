@@ -10,12 +10,12 @@
 #include "core/framework/allocator.h"
 #include "core/framework/data_types.h"
 #include "core/framework/tensor.h"
-#include "core/framework/TensorSeq.h"
 
 namespace onnxruntime {
 #if !defined(DISABLE_SPARSE_TENSORS)
 class SparseTensor;
 #endif
+class TensorSeq;
 }  // namespace onnxruntime
 
 #endif
@@ -79,22 +79,9 @@ struct OrtValue {
     return type_;
   }
 
-  onnxruntime::Fence_t Fence() const {
-    return fence_.get();
-  }
-
-  void SetFence(onnxruntime::FencePtr fence) {
-    fence_ = fence;
-  }
-
-  void ShareFenceWith(OrtValue& v) {
-    fence_ = v.fence_;
-  }
-
  private:
   std::shared_ptr<void> data_;
   onnxruntime::MLDataType type_{nullptr};
-  onnxruntime::FencePtr fence_;
 };
 
 template <>

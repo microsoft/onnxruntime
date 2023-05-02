@@ -34,6 +34,7 @@ Abstract:
 
 #include <sstream>
 #include <string>
+#include <cstdlib>
 
 //
 // Define the default striding parameters used for the quantized integer
@@ -169,8 +170,8 @@ MlasGemmQuantKernel(
 
 /**
  * @brief Usually a wrapper of assembly/intrinsic kernel
- *        of symmetric quant gemm 
- * @tparam KernelType 
+ *        of symmetric quant gemm
+ * @tparam KernelType
  * @param A                   Left hand side matrix
  * @param B                   Prepacked right hand side matrix
  * @param C                   Result matrix
@@ -222,6 +223,28 @@ MlasGemmQuantScaleSumBuffer(
     return MlasGemmQuantScaleSumBuffer(SumBuffer, SumBuffer, N, Scale);
 }
 
+template<typename KernelType>
+MLAS_FORCEINLINE
+void
+MlasGemmQuantThreadInit()
+{
+    constexpr MLAS_GEMM_QUANT_STRIDES Strides = KernelType::Strides;
+    constexpr size_t packASize =
+        UpAlignSize(Strides.M * Strides.K * sizeof(typename KernelType::PackedAType));
+    constexpr size_t packBSize =
+        UpAlignSize(Strides.N * Strides.K * sizeof(typename KernelType::PackedBType));
+    constexpr size_t rowSumSize = UpAlignSize(Strides.M * sizeof(int32_t));
+    constexpr size_t colSumSize = UpAlignSize(Strides.N * sizeof(int32_t));
+    constexpr size_t zpbSize = UpAlignSize(Strides.N * sizeof(int32_t));
+
+    constexpr MLAS_GEMM_QUANT_STRIDES PackedStrides = KernelType::PackedStrides;
+    constexpr size_t packedASize =
+        UpAlignSize(PackedStrides.M * PackedStrides.K * sizeof(typename KernelType::PackedAType));
+
+    constexpr size_t bufsize = std::max(packASize + packBSize, packedASize) + rowSumSize + colSumSize + zpbSize;
+
+    MlasThreadedBufAlloc(bufsize);
+}
 
 template<typename KernelType>
 void
@@ -261,13 +284,28 @@ Return Value:
 --*/
 {
     constexpr MLAS_GEMM_QUANT_STRIDES Strides = KernelType::Strides;
+    constexpr size_t packASize =
+        UpAlignSize(Strides.M * Strides.K * sizeof(typename KernelType::PackedAType));
+    constexpr size_t packBSize =
+        UpAlignSize(Strides.N * Strides.K * sizeof(typename KernelType::PackedBType));
+    constexpr size_t rowSumSize = UpAlignSize(Strides.M * sizeof(int32_t));
+    constexpr size_t colSumSize = UpAlignSize(Strides.N * sizeof(int32_t));
 
-    MLAS_DECLSPEC_ALIGN(typename KernelType::PackedAType PanelA[Strides.M * Strides.K], 64);
-    MLAS_DECLSPEC_ALIGN(typename KernelType::PackedBType PanelB[Strides.N * Strides.K], 64);
+    MlasGemmQuantThreadInit<KernelType>();
 
-    MLAS_DECLSPEC_ALIGN(int32_t RowSumBuffer[Strides.M], 64);
-    MLAS_DECLSPEC_ALIGN(int32_t ColumnSumBuffer[Strides.N], 64);
-    MLAS_DECLSPEC_ALIGN(int32_t ZeroPointBBuffer[Strides.N], 64);
+    uint8_t* p = ThreadedBufHolder.get();
+    typename KernelType::PackedAType* PanelA =
+        reinterpret_cast<typename KernelType::PackedAType*>(p);
+    p += packASize;
+    typename KernelType::PackedBType* PanelB =
+        reinterpret_cast<typename KernelType::PackedBType*>(p);
+    p += packBSize;
+    int32_t* RowSumBuffer = reinterpret_cast<int32_t*>(p);
+    p += rowSumSize;
+    int32_t* ColumnSumBuffer = reinterpret_cast<int32_t*>(p);
+    p += colSumSize;
+    int32_t* ZeroPointBBuffer = reinterpret_cast<int32_t*>(p);
+
 
     const size_t K = Shape->K;
 
@@ -497,12 +535,22 @@ Return Value:
 --*/
 {
     constexpr MLAS_GEMM_QUANT_STRIDES Strides = KernelType::PackedStrides;
+    constexpr size_t packASize =
+        UpAlignSize(Strides.M * Strides.K * sizeof(typename KernelType::PackedAType));
+    constexpr size_t rowSumSize = UpAlignSize(Strides.M * sizeof(int32_t));
+    constexpr size_t colSumSize = UpAlignSize(Strides.N * sizeof(int32_t));
 
-    MLAS_DECLSPEC_ALIGN(typename KernelType::PackedAType PanelA[Strides.M * Strides.K], 64);
+    MlasGemmQuantThreadInit<KernelType>();
 
-    MLAS_DECLSPEC_ALIGN(int32_t RowSumBuffer[Strides.M], 64);
-    MLAS_DECLSPEC_ALIGN(int32_t ColumnSumBuffer[Strides.N], 64);
-    MLAS_DECLSPEC_ALIGN(int32_t ZeroPointBBuffer[Strides.N], 64);
+    uint8_t* p = ThreadedBufHolder.get();
+    typename KernelType::PackedAType* PanelA =
+        reinterpret_cast<typename KernelType::PackedAType*>(p);
+    p += packASize;
+    int32_t* RowSumBuffer = reinterpret_cast<int32_t*>(p);
+    p += rowSumSize;
+    int32_t* ColumnSumBuffer = reinterpret_cast<int32_t*>(p);
+    p += colSumSize;
+    int32_t* ZeroPointBBuffer = reinterpret_cast<int32_t*>(p);
 
     const size_t K = Shape->K;
 
@@ -689,12 +737,12 @@ Return Value:
 /**
  * @brief Operation for Quantized GEMM where B is symmetrically
  *          quantized and packed matrix
- * @param Shape 
- * @param Data 
- * @param RangeStartM 
- * @param RangeCountM 
- * @param RangeStartN 
- * @param RangeCountN 
+ * @param Shape
+ * @param Data
+ * @param RangeStartM
+ * @param RangeCountM
+ * @param RangeStartN
+ * @param RangeCountN
 */
 template<typename KernelType>
 void
@@ -725,7 +773,7 @@ MlasSymmQGemmPackedOperation(
     const int32_t* PackedColumnSumBuffer = (const int32_t*)PackedB;
     PackedB = (const int8_t*)(PackedColumnSumBuffer + AlignedN);
     PackedColumnSumBuffer += RangeStartN;
-    
+
     const size_t PackedCountK = (K + KernelType::PackedK - 1) / KernelType::PackedK;
 
     //
@@ -859,13 +907,10 @@ MlasGemmQuantGetDispatch(
 #endif
 
     if (nullptr == GemmQuantDispatch) {
-#if defined(MLAS_NO_EXCEPTION)
-        abort();
-#else
         std::stringstream ss;
-        ss << "Quant GEMM format: AIsSigned(" << AIsSigned << "), BIsSigned(" << BIsSigned << ") is not supported on this device";
-        throw std::invalid_argument(ss.str());
-#endif
+        ss << "Quant GEMM format: AIsSigned(" << AIsSigned << "), BIsSigned(" << BIsSigned
+           << ") is not supported on this device";
+        MLAS_THROW_EX(std::invalid_argument, ss.str());
     }
 
     return GemmQuantDispatch;

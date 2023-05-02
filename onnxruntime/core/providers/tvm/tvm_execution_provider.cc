@@ -20,7 +20,6 @@
 #include "tvm_utils.h"
 #include "tvm_api.h"
 
-
 using namespace ONNX_NAMESPACE;
 
 namespace onnxruntime {
@@ -69,8 +68,7 @@ TvmExecutionProvider::GetCapability(const GraphViewer& graph_viewer,
   const std::vector<NodeIndex>& sorted_nodes = graph_viewer.GetNodesInTopologicalOrder();
   std::unique_ptr<IndexedSubGraph> sub_graph = std::make_unique<IndexedSubGraph>();
   for (auto& node_idx : sorted_nodes) {
-    graph_viewer.GetNode(node_idx)->ForEachDef([&required_initializers, &init_tensors]
-                                               (const NodeArg& node_arg, bool is_input) {
+    graph_viewer.GetNode(node_idx)->ForEachDef([&required_initializers, &init_tensors](const NodeArg& node_arg, bool is_input) {
               if(is_input && init_tensors.count(node_arg.Name())) {
                   required_initializers.insert(node_arg.Name());
               } }, true);
@@ -113,7 +111,7 @@ common::Status TvmExecutionProvider::Compile(const std::vector<FusedNodeAndGraph
     const std::string func_name = fused_node.Name();
     Model model(graph_body_viewer.Name(), true, ModelMetaData(), PathString(),
                 IOnnxRuntimeOpSchemaRegistryList(), graph_body_viewer.DomainToVersionMap(),
-                             std::vector<ONNX_NAMESPACE::FunctionProto>(), *GetLogger());
+                std::vector<ONNX_NAMESPACE::FunctionProto>(), *GetLogger());
     ONNX_NAMESPACE::ModelProto model_proto = model.ToProto();
     // TVM EP is using static lib approach, so invoke serializer directly.
     GraphViewerToProto(graph_body_viewer, *model_proto.mutable_graph(), true, true);
@@ -124,8 +122,8 @@ common::Status TvmExecutionProvider::Compile(const std::vector<FusedNodeAndGraph
     std::string onnx_model_str;
     model_proto.SerializeToString(&onnx_model_str);
     compilers_[func_name] = std::make_shared<TVMCompiler>(std::move(onnx_model_str),
-                              ToUTF8String(fused_node.ModelPath().ToPathString()),
-                              int(opset->version()));
+                                                          ToUTF8String(fused_node.ModelPath().ToPathString()),
+                                                          int(opset->version()));
     InputsInfoMap all_input_shapes;
     auto mod = compileModel(func_name, graph_body_viewer, all_input_shapes);
 
@@ -135,9 +133,9 @@ common::Status TvmExecutionProvider::Compile(const std::vector<FusedNodeAndGraph
     runners_[func_name] = std::make_shared<Runner>(options_, mod, all_input_shapes, output_tensors);
 
     if (dump_subgraphs_) {
-        std::fstream dump("/tmp/" + func_name + ".onnx",
-                          std::ios::out | std::ios::trunc | std::ios::binary);
-        model_proto.SerializeToOstream(&dump);
+      std::fstream dump("/tmp/" + func_name + ".onnx",
+                        std::ios::out | std::ios::trunc | std::ios::binary);
+      model_proto.SerializeToOstream(&dump);
     }
 
     // TODO(vvchernov): implement ops checking and mechanism of gracefully passing the responsibility to other EPs
@@ -150,7 +148,7 @@ common::Status TvmExecutionProvider::Compile(const std::vector<FusedNodeAndGraph
 }
 
 std::unique_ptr<IDataTransfer> TvmExecutionProvider::GetDataTransfer() const {
-  //TODO(vvchernov): target or target host?
+  // TODO(vvchernov): target or target host?
   if (TvmEPOptionsHelper::checkGPUTarget(options_.target)) {
     return std::make_unique<XPUDataTransfer>();
   } else if (TvmEPOptionsHelper::checkCPUTarget(options_.target)) {
@@ -160,7 +158,7 @@ std::unique_ptr<IDataTransfer> TvmExecutionProvider::GetDataTransfer() const {
   }
 }
 
-AllocatorPtr TvmExecutionProvider::GetAllocator(int id, OrtMemType mem_type) const {
+AllocatorPtr TvmExecutionProvider::GetAllocator(OrtMemType mem_type) const {
   return allocator_;
 }
 
@@ -216,16 +214,16 @@ void TvmExecutionProvider::setInputShapesForUnfreezedNN(const GraphViewer& graph
 }
 
 TensorShapeVector TvmExecutionProvider::getInputShape(const NodeArg* node) {
-    TensorShapeVector shape;
-    const auto& node_name = node->Name();
-    if(!options_.input_shapes.empty() &&
-        options_.input_shapes.count(node_name)) {
-      shape = options_.input_shapes[node_name];
-    } else {
-      shape = convertTensorShape(*node->Shape());
-    }
+  TensorShapeVector shape;
+  const auto& node_name = node->Name();
+  if (!options_.input_shapes.empty() &&
+      options_.input_shapes.count(node_name)) {
+    shape = options_.input_shapes[node_name];
+  } else {
+    shape = convertTensorShape(*node->Shape());
+  }
 
-    return shape;
+  return shape;
 }
 
 TensorShapeVector TvmExecutionProvider::convertTensorShape(const TensorShapeProto& shape_proto) {
@@ -236,7 +234,7 @@ TensorShapeVector TvmExecutionProvider::convertTensorShape(const TensorShapeProt
   for (size_t j = 0; j < dims; ++j) {
     int64_t dim = int64_t(ort_shape[j]);
     ORT_ENFORCE(dim > 0, "Input dimension is not positive value (dim = " + std::to_string(dim) + "). " +
-      "Please use provider options to setup input_names and input_shapes");
+                             "Please use provider options to setup input_names and input_shapes");
     shape[j] = dim;
   }
 
@@ -276,9 +274,9 @@ void TvmExecutionProvider::prepareOutputTensors(const std::shared_ptr<TvmModule>
 NodeComputeInfo TvmExecutionProvider::prepareComputeInfo(const std::string& func_name) {
   NodeComputeInfo compute_info;
   compute_info.create_state_func = std::bind(&TvmExecutionProvider::createStateFunc,
-                                              this,
-                                              std::placeholders::_1,
-                                              std::placeholders::_2);
+                                             this,
+                                             std::placeholders::_1,
+                                             std::placeholders::_2);
 
   compute_info.release_state_func = [](FunctionState state) {
     if (state)

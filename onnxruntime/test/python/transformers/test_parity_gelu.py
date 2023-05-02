@@ -28,7 +28,7 @@ import os
 import unittest
 
 import torch
-from parity_utilities import *
+from parity_utilities import *  # noqa: F403
 from torch import nn
 
 
@@ -85,6 +85,7 @@ def run(
     formula=0,
     sequence_length=2,
     fp32_gelu_op=True,
+    verbose=False,
 ):
     test_name = f"device={device}, float16={float16}, optimized={optimized}, batch_size={batch_size}, sequence_length={sequence_length}, hidden_size={hidden_size}, formula={formula}, fp32_gelu_op={fp32_gelu_op}"
     print(f"\nTesting: {test_name}")
@@ -97,23 +98,24 @@ def run(
 
     # Do not re-use onnx file from previous test since weights of model are random.
     onnx_model_path = "./temp/gelu_{}_{}.onnx".format(formula, "fp16" if float16 else "fp32")
-    export_onnx(model, onnx_model_path, float16, hidden_size, device)
+    export_onnx(model, onnx_model_path, float16, hidden_size, device)  # noqa: F405
 
     if optimized:
         optimized_onnx_path = "./temp/gelu_{}_opt_{}.onnx".format(formula, "fp16" if float16 else "fp32")
         use_gpu = float16 and not fp32_gelu_op
-        optimize_onnx(
+        optimize_onnx(  # noqa: F405
             onnx_model_path,
             optimized_onnx_path,
             Gelu.get_fused_op(formula),
             use_gpu=use_gpu,
             opt_level=2 if use_gpu else None,
+            verbose=verbose,
         )
         onnx_path = optimized_onnx_path
     else:
         onnx_path = onnx_model_path
 
-    num_failure = run_parity(
+    num_failure = run_parity(  # noqa: F405
         model,
         onnx_path,
         batch_size,
@@ -123,7 +125,7 @@ def run(
         device,
         optimized,
         test_cases,
-        verbose=False,
+        verbose,
     )
 
     # clean up onnx file
@@ -135,8 +137,10 @@ def run(
 
 
 class TestGeluParity(unittest.TestCase):
+    verbose = False
+    optimized = True
+
     def setUp(self):
-        self.optimized = True  # Change it to False if you want to test parity of non optimized ONNX
         self.test_cases = 100  # Number of test cases per test run
         self.sequence_length = 2
         self.hidden_size = 768
@@ -159,6 +163,7 @@ class TestGeluParity(unittest.TestCase):
         formula,
         enable_assert=True,
         fp32_gelu_op=True,
+        verbose=False,
     ):
         if float16 and device.type == "cpu":  # CPU does not support FP16
             return
@@ -172,11 +177,12 @@ class TestGeluParity(unittest.TestCase):
             formula,
             self.sequence_length,
             fp32_gelu_op,
+            verbose,
         )
         if enable_assert:
             self.assertTrue(num_failure == 0, "Failed: " + test_name)
 
-    def run_one(self, optimized, device, hidden_size=768, formula=0):
+    def run_one(self, optimized, device, hidden_size=768, formula=0, verbose=False):
         for batch_size in [4]:
             self.run_test(
                 batch_size,
@@ -186,6 +192,7 @@ class TestGeluParity(unittest.TestCase):
                 device=device,
                 formula=formula,
                 enable_assert=formula in self.formula_must_pass,
+                verbose=verbose,
             )
 
             self.run_test(
@@ -197,6 +204,7 @@ class TestGeluParity(unittest.TestCase):
                 formula=formula,
                 enable_assert=formula in self.formula_must_pass,
                 fp32_gelu_op=True,
+                verbose=verbose,
             )
 
             self.run_test(
@@ -208,12 +216,13 @@ class TestGeluParity(unittest.TestCase):
                 formula=formula,
                 enable_assert=formula in self.formula_must_pass,
                 fp32_gelu_op=False,
+                verbose=verbose,
             )
 
     def test_cpu(self):
         cpu = torch.device("cpu")
         for i in self.formula_to_test:
-            self.run_one(self.optimized, cpu, hidden_size=self.hidden_size, formula=i)
+            self.run_one(self.optimized, cpu, hidden_size=self.hidden_size, formula=i, verbose=self.verbose)
 
     def test_cuda(self):
         if not torch.cuda.is_available():
@@ -223,8 +232,13 @@ class TestGeluParity(unittest.TestCase):
         else:
             gpu = torch.device("cuda")
             for i in self.formula_to_test:
-                self.run_one(self.optimized, gpu, hidden_size=self.hidden_size, formula=i)
+                self.run_one(self.optimized, gpu, hidden_size=self.hidden_size, formula=i, verbose=self.verbose)
 
 
 if __name__ == "__main__":
-    unittest.main()
+    args, remaining_args = parse_arguments(namespace_filter=unittest)  # noqa: F405
+
+    TestGeluParity.verbose = args.log_verbose
+    TestGeluParity.optimized = args.optimize
+
+    unittest.main(argv=remaining_args)

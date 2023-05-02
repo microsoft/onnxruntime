@@ -54,7 +54,7 @@ Status Clip_6<T>::ComputeInternal(OpKernelContext* ctx) const {
   if (count > 0) {
     auto* y_data = Y->MutableData<T>();
     const auto* x_data = X.Data<T>();
-    ClipImpl<T>(Stream(), x_data, y_data, nullptr, nullptr, this->min_, this->max_, count);
+    ClipImpl<T>(Stream(ctx), x_data, y_data, nullptr, nullptr, this->min_, this->max_, count);
   }
   return Status::OK();
 }
@@ -118,7 +118,7 @@ Status Clip::ComputeInternal(OpKernelContext* ctx) const {
   utils::MLTypeCallDispatcher<float, double, MLFloat16, int8_t, uint8_t, int64_t, uint64_t>
       t_disp(X->GetElementType());
 
-  t_disp.Invoke<ComputeImpl>(Stream(), X, min, max, Y);
+  t_disp.Invoke<ComputeImpl>(Stream(ctx), X, min, max, Y);
 
   return Status::OK();
 }

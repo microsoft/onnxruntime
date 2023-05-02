@@ -2,9 +2,10 @@ autopep8
 matplotlib
 scikit-learn
 skl2onnx
-sphinx
+sphinx==5.3.0
 sphinx-gallery
 sphinxcontrib.imagesvg
+sphinxcontrib.googleanalytics
 sphinx_rtd_theme
 pyquickhelper
 pandas

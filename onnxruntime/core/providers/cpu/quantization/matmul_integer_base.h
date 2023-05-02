@@ -4,6 +4,7 @@
 #include "core/framework/op_kernel.h"
 #include "core/mlas/inc/mlas.h"
 #include "core/providers/common.h"
+#include "core/common/safeint.h"
 #include "core/quantization/quantization.h"
 
 namespace onnxruntime {
@@ -36,7 +37,7 @@ class MatMulIntegerBase : public OpKernel {
 
       const auto* b_data = static_cast<const uint8_t*>(tensor.DataRaw());
 
-      BufferUniquePtr b_trans_buffer;
+      std::unique_ptr<Tensor> b_trans_buffer;
       if (IsBTransposed()) {
         std::swap(K, N);
         b_data = quantization::TransPoseInputData(b_data, b_trans_buffer, alloc, N, K);
@@ -82,8 +83,8 @@ class MatMulIntegerBase : public OpKernel {
 
  protected:
   /**
-   * @return input index of Matrix B, the weight tensor 
-  */
+   * @return input index of Matrix B, the weight tensor
+   */
   virtual int GetAIdx() const { return 0; }
   virtual int GetBIdx() const = 0;
 
@@ -99,26 +100,26 @@ class MatMulIntegerBase : public OpKernel {
   bool IsBQuantParamSupported(const TensorShape& B_quant_param_shape, const TensorShape& B_shape) const {
     int64_t B_quant_param_rank = B_quant_param_shape.NumDimensions();
     int64_t B_shape_rank = B_shape.NumDimensions();
-    if (B_quant_param_rank == 0 ||                                       //scalar
+    if (B_quant_param_rank == 0 ||                                       // scalar
         (B_quant_param_rank == 1 && B_quant_param_shape.Size() == 1)) {  // 1D tensor with size 1
       return true;
     }
 
     if (B_quant_param_rank == 1 &&
         B_shape_rank == 2 &&
-        B_quant_param_shape[B_quant_param_rank - 1] == B_shape[B_shape_rank - 1]) {
+        B_quant_param_shape[0] == B_shape[1]) {
       return true;
     }
 
     if (B_quant_param_rank != B_shape_rank ||
         B_quant_param_rank <= 1 ||
-        B_quant_param_shape[B_quant_param_rank - 2] != 1) {
+        B_quant_param_shape[SafeInt<size_t>(B_quant_param_rank) - 2] != 1) {
       return false;
     }
 
     for (int64_t rank = 0; rank < B_quant_param_rank; rank++) {
       if (rank != B_quant_param_rank - 2 &&
-          B_quant_param_shape[rank] != B_shape[rank]) {
+          B_quant_param_shape[onnxruntime::narrow<size_t>(rank)] != B_shape[onnxruntime::narrow<size_t>(rank)]) {
         return false;
       }
     }

@@ -35,9 +35,9 @@ transformers::CudaTensorConsoleDumper g_cuda_dumper;
 
 BeamSearch::BeamSearch(const OpKernelInfo& info)
     : onnxruntime::contrib::transformers::BeamSearch(info) {
-  SetComputeStream(static_cast<void*>(info.GetExecutionProvider()->GetComputeStream()));
-
-  SetDeviceHelpers(GenerationCudaDeviceHelper::AddToFeeds,
+  SetDeviceHelpers(GenerationCudaDeviceHelper::ReorderPastState,
+                   GenerationCudaDeviceHelper::InitCacheIndir,
+                   GenerationCudaDeviceHelper::AddToFeeds,
                    GenerationCudaDeviceHelper::TopK,
                    GenerationCudaDeviceHelper::DeviceCopy<float>,
                    GenerationCudaDeviceHelper::DeviceCopy<int32_t>,
@@ -56,6 +56,13 @@ BeamSearch::BeamSearch(const OpKernelInfo& info)
                                   GenerationCudaDeviceHelper::ExpandBuffer<MLFloat16>);
 
   SetConsoleDumper(&g_cuda_dumper);
+
+#ifndef USE_ROCM
+  cuda_device_prop_ = &reinterpret_cast<const CUDAExecutionProvider*>(info.GetExecutionProvider())->GetDeviceProp();
+
+  cuda_device_arch_ = static_cast<const cudaDeviceProp*>(cuda_device_prop_)->major * 100 +
+                      static_cast<const cudaDeviceProp*>(cuda_device_prop_)->minor * 10;
+#endif
 }
 
 Status BeamSearch::ComputeInternal(OpKernelContext* context) const {

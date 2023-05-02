@@ -6,4 +6,4 @@
 namespace onnxruntime {
 // Throw if "ptr" is not allocated on the CUDA device obtained by cudaGetDevice.
 void CheckIfMemoryOnCurrentGpuDevice(const void* ptr);
-}  // onnxruntime
+}  // namespace onnxruntime

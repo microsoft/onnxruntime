@@ -46,6 +46,7 @@
 #endif
 #include "core/graph/graph_nodes.h"
 #include "core/graph/node_arg.h"
+#include "core/graph/ort_format_load_options.h"
 
 namespace flatbuffers {
 class FlatBufferBuilder;
@@ -83,7 +84,7 @@ class Node {
 
   explicit Node() = default;
 
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
   Node(std::string_view name,
        std::string_view op_type,
        std::string_view description,
@@ -406,6 +407,12 @@ class Node {
   bool ClearAttribute(const std::string& attr_name);
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
+  /**
+   * Clears removable attributes. These are no longer needed after the initialization
+   * of the session. The function returns the number of removed attributes.
+   */
+  int PruneRemovableAttributes(gsl::span<const std::string> removable_attributes);
+
 #if !defined(ORT_MINIMAL_BUILD)
   /** Gets the Node's mutable attributes. */
   NodeAttributes& GetMutableAttributes() noexcept { return attributes_; }
@@ -487,11 +494,11 @@ class Node {
 #endif
 
   static Status LoadFromOrtFormat(const onnxruntime::fbs::Node& fbs_node, Graph& graph,
-                                  bool can_use_flatbuffer_for_initializers,
+                                  const OrtFormatLoadOptions& load_options,
                                   const logging::Logger& logger, std::unique_ptr<Node>& node);
 
   Status LoadFromOrtFormat(const onnxruntime::fbs::Node& fbs_node,
-                           bool can_use_flatbuffer_for_initializers,
+                           const OrtFormatLoadOptions& load_options,
                            const logging::Logger& logger);
   Status LoadEdgesFromOrtFormat(const onnxruntime::fbs::NodeEdge& fbs_node_edgs, const Graph& graph);
 
@@ -559,12 +566,12 @@ class Node {
   // NOTE: This friendship relationship should ONLY be used for calling methods of the Node class and not accessing
   // the data members directly, so that the Node can maintain its internal invariants.
   friend class Graph;
-  Node(NodeIndex index, Graph& graph) : index_(index), graph_(&graph) {}
+  Node(NodeIndex index, Graph& graph) : index_(index), graph_(&graph), can_be_saved_(true) {}
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Node);
 
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
   void Init(const std::string& name,
             const std::string& op_type,
             const std::string& description,
@@ -572,7 +579,9 @@ class Node {
             const std::vector<NodeArg*>& output_args,
             const NodeAttributes* attributes,
             const std::string& domain);
+#endif
 
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   // internal only method to allow selected classes to directly alter the input/output definitions and arg counts
   Definitions& MutableDefinitions() noexcept;
 
@@ -648,6 +657,9 @@ class Node {
 
   // Graph instances for subgraphs that are owned by this Node
   std::vector<std::unique_ptr<Graph>> subgraphs_;
+
+  // Can be saved? The node cannot be saved anymore if removable attributes have been cleared.
+  bool can_be_saved_;
 };
 
 /**
@@ -1312,18 +1324,18 @@ class Graph {
 
   virtual ~Graph();
 
-  static common::Status LoadFromOrtFormat(const onnxruntime::fbs::Graph& fbs_graph, const Model& owning_model,
-                                          const std::unordered_map<std::string, int>& domain_to_version,
+  static Status LoadFromOrtFormat(const onnxruntime::fbs::Graph& fbs_graph, const Model& owning_model,
+                                  const std::unordered_map<std::string, int>& domain_to_version,
 #if !defined(ORT_MINIMAL_BUILD)
-                                          IOnnxRuntimeOpSchemaCollectionPtr schema_registry,
+                                  IOnnxRuntimeOpSchemaCollectionPtr schema_registry,
 #endif
-                                          bool can_use_flatbuffer_for_initializers,
-                                          const logging::Logger& logger, std::unique_ptr<Graph>& graph);
+                                  const OrtFormatLoadOptions& load_options,
+                                  const logging::Logger& logger, std::unique_ptr<Graph>& graph);
 
   // deserialize a subgraph
   static Status LoadFromOrtFormat(const onnxruntime::fbs::Graph& fbs_graph,
                                   Graph& parent_graph, const Node& parent_node,
-                                  bool can_use_flatbuffer_for_initializers,
+                                  const OrtFormatLoadOptions& load_options,
                                   const logging::Logger& logger, std::unique_ptr<Graph>& graph);
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
@@ -1353,8 +1365,8 @@ class Graph {
         bool strict_shape_type_inference);
 
   // Populate Graph instance from ORT format serialized data.
-  common::Status LoadFromOrtFormat(const onnxruntime::fbs::Graph& fbs_graph,
-                                   bool can_use_flatbuffer_for_initializers);
+  Status LoadFromOrtFormat(const onnxruntime::fbs::Graph& fbs_graph,
+                           const OrtFormatLoadOptions& load_options);
 
 #if !defined(ORT_MINIMAL_BUILD)
   // Constructor: Given a <GraphProto> loaded from model file, construct

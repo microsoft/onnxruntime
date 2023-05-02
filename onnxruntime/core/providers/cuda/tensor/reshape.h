@@ -32,16 +32,17 @@ class Reshape final : public CudaKernel {
     Tensor* Y = context->Output(0, TensorShape(shape));
     const void* source = X->DataRaw();
     void* target = Y->MutableDataRaw();
-    //If source and target pointers are not equal (non-inplace operation), we need to copy the data.
+    // If source and target pointers are not equal (non-inplace operation), we need to copy the data.
     if (target != source) {
-      ORT_RETURN_IF_ERROR(CopyTensor(*X, *Y));
+      ORT_ENFORCE(context->GetComputeStream());
+      ORT_RETURN_IF_ERROR(CopyTensor(*X, *Y, *context->GetComputeStream()));
     }
 
     return Status::OK();
   }
 
-  private:
-   bool allow_zero_;
+ private:
+  bool allow_zero_;
 };
 
 class Reshape_1 final : public CudaKernel {
@@ -61,9 +62,10 @@ class Reshape_1 final : public CudaKernel {
     Tensor* Y = context->Output(0, TensorShape(shape));
     const void* source = X->DataRaw();
     void* target = Y->MutableDataRaw();
-    //If source and target pointers are not equal (non-inplace operation), we need to copy the data.
+    // If source and target pointers are not equal (non-inplace operation), we need to copy the data.
     if (target != source) {
-      ORT_RETURN_IF_ERROR(CopyTensor(*X, *Y));
+      ORT_ENFORCE(context->GetComputeStream());
+      ORT_RETURN_IF_ERROR(CopyTensor(*X, *Y, *context->GetComputeStream()));
     }
 
     return Status::OK();

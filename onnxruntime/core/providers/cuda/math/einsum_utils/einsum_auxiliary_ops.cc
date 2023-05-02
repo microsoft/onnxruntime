@@ -26,7 +26,7 @@ Status DataCopy(const Tensor& input, Tensor& output, void* einsum_cuda_assets) {
   // There are no string tensors in Einsum's case - so safely use memcpy
   CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(output.MutableDataRaw(), input.DataRaw(), input.SizeInBytes(),
                                        cudaMemcpyDeviceToDevice,
-                                       static_cast<cudaStream_t>(static_cast<EinsumCudaAssets*>(einsum_cuda_assets)->cuda_ep_->GetComputeStream())));
+                                       static_cast<EinsumCudaAssets*>(einsum_cuda_assets)->GetCudaStream()));
 
   return Status::OK();
 }
@@ -35,7 +35,7 @@ Status DataCopy(const Tensor& input, Tensor& output, void* einsum_cuda_assets) {
 Status Transpose(const gsl::span<const size_t>& permutation, const Tensor& input,
                  Tensor& output, const TensorShape* input_shape_override, void* einsum_cuda_assets) {
   return cuda::Transpose::DoTranspose(static_cast<EinsumCudaAssets*>(einsum_cuda_assets)->cuda_ep_->GetDeviceProp(),
-                                      static_cast<cudaStream_t>(static_cast<EinsumCudaAssets*>(einsum_cuda_assets)->cuda_ep_->GetComputeStream()),
+                                      static_cast<EinsumCudaAssets*>(einsum_cuda_assets)->GetCudaStream(),
                                       static_cast<EinsumCudaAssets*>(einsum_cuda_assets)->cublas_handle_,
                                       permutation, input, output, input_shape_override);
 }
@@ -83,7 +83,8 @@ std::unique_ptr<Tensor> ReduceSum(const Tensor& input, gsl::span<const int64_t> 
   return cuda::ReductionOps::ReduceCompute<T>(*static_cast<EinsumCudaAssets*>(einsum_cuda_assets)->cuda_ep_, CUDNN_REDUCE_TENSOR_ADD,
                                               allocator, input, reduce_axes,
                                               keep_dims, false, false, false,
-                                              true, input_shape_override);
+                                              true, static_cast<EinsumCudaAssets*>(einsum_cuda_assets)->ort_stream_,
+                                              input_shape_override);
 }
 
 // CUDA EP specific Diagonal helper
@@ -125,7 +126,7 @@ std::unique_ptr<Tensor> Diagonal(const Tensor& input, int64_t dim_1, int64_t dim
   }
 
   DiagonalImpl(
-      static_cast<cudaStream_t>(static_cast<EinsumCudaAssets*>(einsum_cuda_assets)->cuda_ep_->GetComputeStream()),
+      static_cast<EinsumCudaAssets*>(einsum_cuda_assets)->GetCudaStream(),
       input.DataRaw(),
       input.Shape().GetDims().size(),
       first_dim,

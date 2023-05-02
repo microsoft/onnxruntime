@@ -24,24 +24,23 @@ using IntervalT = std::pair<size_t, size_t>;
 #endif
 
 class SessionState;
+class StreamExecutionContext;
+class SessionScope;
 
 // Captures information required to allocate/reuse buffer for a ml-value
 struct AllocPlanPerValue {
   AllocKind alloc_kind{AllocKind::kNotSet};
   MLDataType value_type{nullptr};
-  OrtMemoryInfo location;
+  OrtDevice location;
   // reused_buffer is valid only if alloc_kind == kReuse. It indicates
   // which OrtValue's buffer must be reused for this OrtValue.
   OrtValueIndex reused_buffer{0};
-  // if the value is used in async kernel, a fence object would be created
-  // note the fence object would be shared between MLValues reusing the same buffer
-  bool create_fence_if_async{false};
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
   IntervalT life_interval{0, 0};
   IntervalT allocate_interval{0, 0};
-  OrtValueIndex inplace_reuse{-1}; //No in-place reuse
+  OrtValueIndex inplace_reuse{-1};  // No in-place reuse
 #endif
-#ifdef ENABLE_TRAINING
+#ifdef ENABLE_STRIDED_TENSORS
   // is_strided_tensor indicates if this OrtValue is strided tensor.
   // If alloc_kind is kReuse, it reuses one of the node inputs (like Expand),
   // if alloc_kind is kAllocate, it will only allocate required buffer size (like ConstantOfShape).
@@ -80,8 +79,10 @@ struct AllocPlanPerValue {
   ProgramCounter program_counter;
 
  public:
-  AllocPlanPerValue() : location(CPU, OrtInvalidAllocator) {}
+  AllocPlanPerValue() : location() {}
 };
+
+using NotificationIndex = size_t;
 
 // SequentialExecutionPlan: This is the data that is produced by a static
 // planner for a sequential execution, to be used by a SequentialExecutor.
@@ -99,42 +100,94 @@ struct SequentialExecutionPlan : public ExecutionPlanBase {
   // The following vector contains any activation tensors that must be allocated sequentially.
   std::vector<OrtValueIndex> activation_allocation_order;
 
-  // The following indicates the order in which nodes should be executed and the
-  // ml-values to be free after each node's execution:
+  // A execution step in the execution step.
+  // we explicitly encoding the cross-stream synchronization
+  // in the execution pan, so we wwill mainly have following
+  // types of steps:
+  // 1. Kernel Launch
+  // 2. Activate notification
+  // 3. Wait on a notificaiton
+  class ExecutionStep {
+   public:
+    ExecutionStep(NodeIndex node_index) : node_index_(node_index) {}
+    virtual ~ExecutionStep() {}
+    virtual Status Execute(StreamExecutionContext& ctx,
+                           size_t stream_idx,
+                           SessionScope& session_scope,
+                           const bool& terminate_flag,
+                           bool& continue_flag) = 0;
+    virtual std::string ToString() const = 0;
+    inline NodeIndex GetNodeIndex() { return node_index_; }
 
-  // NodeExecutionPlan: represents execution data for a single node
-  struct NodeExecutionPlan {
-    // node to be executed;
-    onnxruntime::NodeIndex node_index;
+   protected:
+    NodeIndex node_index_;
+  };
+  // LogicStream is a sequence of execution steps that can be executed independetly.
+  // The steps within a sequence are executed in order, and happened on the same device.
+  struct LogicStream {
+    std::vector<std::unique_ptr<ExecutionStep>> steps_;
+    const OrtDevice device_;
 
-    // ml-values to be freed after node execution:
-    // for (auto i = free_from_index; i <= free_to_index; i++)
-    //    free ml-value corresponding to ml-value-index to_be_freed[i]
-    int free_from_index;
-    int free_to_index;
+   public:
+    LogicStream(const OrtDevice device) : device_(device) {}
+  };
+  // a execution plan is composed by multiple logic stream.
+  // by default all the nodes with the same device will be group in to the same stream.
+  InlinedVector<std::unique_ptr<LogicStream>> execution_plan;
+  // the map from ort_value index to the logic stream index.
+  InlinedHashMap<size_t, size_t> value_to_stream_map;
 
-    explicit NodeExecutionPlan(onnxruntime::NodeIndex index) : node_index(index), free_from_index(1), free_to_index(0) {}
+  // If a tensor is consumed by multiple logic streams,
+  // we can't static predict when will this tensor can be
+  // released. So we design this ref-count based release plan.
+  // if the ref count is 1, we still can static determin when
+  // the tensor can be released.
+  struct ReleaseAction {
+    size_t value_index;
+    // 0 - no release needed
+    // 1 - can be statically determined where to release
+    // >1 - can't statically determined, need ref counting.
+    size_t ref_count{0};
   };
 
-  // Execution_plan: represents the nodes in the sequential order to be executed
-  std::vector<NodeExecutionPlan> execution_plan;
+  std::vector<ReleaseAction> release_actions;
 
-  // Records whether a given node has fence on its input or output, key is node index.
-  InlinedVector<bool> node_has_fence;
+  // for each node, which values need to be freed after kernel execution.
+  // indexed by node index
+  // elements in node_release_list[i] is the index in release_actions.
+  std::vector<std::vector<size_t>> node_release_list;
+  // for each notification, what is the stream-idx of the its owner.
+  std::vector<size_t> notification_owners;
+  // key: notification index.
+  // value:  {stream_idx, step_idx}
+  // giving a notificaiton, we used this map to figure out what is the downstream steps it need to trigger.
+  InlinedHashMap<onnxruntime::NotificationIndex, std::vector<std::pair<size_t, size_t>>> downstream_map;
 
-  // to_be_freed: vector elements represent indices of ml-values to be freed (as described above)
-  InlinedVector<OrtValueIndex> to_be_freed;
+  size_t num_barriers{0};
 
-  const OrtMemoryInfo& GetLocation(size_t ort_value_index) const override {
+#ifdef ENABLE_TRAINING
+  InlinedVector<NodeIndex> node_execution_order_in_training;
+  InlinedHashMap<NodeIndex, size_t> node_index_2_toposort_index;
+#endif
+
+  const std::vector<AllocPlanPerValue>& GetAllocationPlan() const {
+    return allocation_plan;
+  }
+
+  const InlinedHashMap<size_t, size_t>& GetValueToStreamMap() const {
+    return value_to_stream_map;
+  }
+
+  const OrtDevice& GetLocation(size_t ort_value_index) const override {
     return allocation_plan[ort_value_index].location;
   }
 
-  void SetLocation(size_t ort_value_index, const struct OrtMemoryInfo& info) override {
+  void SetLocation(size_t ort_value_index, const struct OrtDevice& info) override {
     allocation_plan[ort_value_index].location = info;
   }
 
-  InlinedHashSet<OrtMemoryInfo> GetAllLocations() const override {
-    InlinedHashSet<OrtMemoryInfo> locations;
+  InlinedHashSet<OrtDevice> GetAllLocations() const override {
+    InlinedHashSet<OrtDevice> locations;
     locations.reserve(allocation_plan.size());
     for (auto& alloc_plan : allocation_plan) {
       locations.insert(alloc_plan.location);
@@ -142,9 +195,13 @@ struct SequentialExecutionPlan : public ExecutionPlanBase {
     return locations;
   }
 
-  // Whether a given node needs fence check or not.
-  bool NodeHasFence(onnxruntime::NodeIndex node_index) const {
-    return node_has_fence[node_index];
+  size_t NumberOfValidStreams() const {
+    size_t count = 0;
+    for (auto& stream : execution_plan) {
+      if (!stream->steps_.empty())
+        count++;
+    }
+    return count;
   }
 };
 

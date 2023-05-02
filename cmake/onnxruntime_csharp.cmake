@@ -50,6 +50,10 @@ if (onnxruntime_USE_XNNPACK)
   STRING(APPEND CSHARP_PREPROCESSOR_DEFINES "USE_XNNPACK;")
 endif()
 
+if (onnxruntime_ENABLE_TRAINING_APIS)
+  STRING(APPEND CSHARP_PREPROCESSOR_DEFINES "__TRAINING_ENABLED_NATIVE_BUILD__;")
+endif()
+
 include(CSharpUtilities)
 
 # generate Directory.Build.props

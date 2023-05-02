@@ -57,6 +57,7 @@ function defaultTerserPluginOptions(target) {
 
 const DEFAULT_BUILD_DEFS = {
   DISABLE_WEBGL: false,
+  DISABLE_WEBGPU: false,
   DISABLE_WASM: false,
   DISABLE_WASM_PROXY: false,
   DISABLE_WASM_THREAD: false,
@@ -80,6 +81,7 @@ function buildConfig({ filename, format, target, mode, devtool, build_defs }) {
         "util": false,
       },
       fallback: {
+        "crypto": false,
         "fs": false,
         "path": false,
         "util": false,

@@ -156,9 +156,6 @@ void RunQLinearAveragePoolNchw(
 
     auto q8checker = [&](const std::vector<OrtValue>& fetches, const std::string& provider_type) {
       const OrtValue& ort_value = fetches[0];
-      if (ort_value.Fence()) {
-        ort_value.Fence()->BeforeUsingAsInput(onnxruntime::kCpuExecutionProvider, 0);
-      }
 
       auto y_shape = TensorShape(y_dims);
       const Tensor& output_tensor = ort_value.Get<Tensor>();
@@ -262,9 +259,6 @@ void RunQLinearAveragePoolNhwc(
 
   auto q8checker = [&](const std::vector<OrtValue>& fetches, const std::string& provider_type) {
     const OrtValue& ort_value = fetches[0];
-    if (ort_value.Fence()) {
-      ort_value.Fence()->BeforeUsingAsInput(onnxruntime::kCpuExecutionProvider, 0);
-    }
 
     auto y_shape = TensorShape(y_dims_nhwc);
     const Tensor& output_tensor = ort_value.Get<Tensor>();
@@ -357,8 +351,8 @@ TEST(QLinearPoolTest, AveragePool3D_IncludePadPixel) {
 }
 
 /*************************************************
-* Channels last test
-**************************************************/
+ * Channels last test
+ **************************************************/
 TEST(QLinearPoolTest, AveragePool1D_ExcludePadPixel_nhwc) {
   RunQLinearAveragePoolNhwc(
       {1, 1, 5},  // x shape
@@ -540,8 +534,8 @@ TEST(QLinearPoolTest, AveragePool3D_IncludePadPixel_S8) {
 }
 
 /*************************************************
-* Channels last test
-**************************************************/
+ * Channels last test
+ **************************************************/
 TEST(QLinearPoolTest, AveragePool1D_ExcludePadPixel_nhwc_S8) {
   RunQLinearAveragePoolNhwc<int8_t>(
       {1, 1, 5},  // x shape

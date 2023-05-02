@@ -35,7 +35,7 @@ ONNX_OPERATOR_KERNEL_EX(RandomUniformLike, kOnnxDomain, 1, kCudaExecutionProvide
     void operator()(const cudaDeviceProp& prop, cudaStream_t stream, const int64_t N, const float alpha, \
                     const float beta, PhiloxGenerator& generator, Tensor& Y) const {                     \
       typedef typename ToCudaType<T>::MappedType CudaT;                                                  \
-      CudaT* Y_data = reinterpret_cast<CudaT*>(Y.MutableData<T>());                             \
+      CudaT* Y_data = reinterpret_cast<CudaT*>(Y.MutableData<T>());                                      \
       name##KernelImpl<CudaT>(prop, stream, N, alpha, beta, generator, Y_data);                          \
     }                                                                                                    \
   };
@@ -50,7 +50,7 @@ Status RandomNormalBase::ComputeNormal(const CudaKernel& cuda_kernel, OpKernelCo
   const int64_t N = shape.Size();
   PhiloxGenerator& generator = GetPhiloxGenerator();
   utils::MLTypeCallDispatcher<float, MLFloat16, double> t_disp(dtype);
-  t_disp.Invoke<RandomNormalComputeImpl>(cuda_kernel.GetDeviceProp(), cuda_kernel.Stream(), N, scale_, mean_, generator, Y);
+  t_disp.Invoke<RandomNormalComputeImpl>(cuda_kernel.GetDeviceProp(), cuda_kernel.Stream(&ctx), N, scale_, mean_, generator, Y);
   return Status::OK();
 }
 
@@ -80,7 +80,7 @@ Status RandomUniformBase::ComputeUniform(const CudaKernel& cuda_kernel, OpKernel
   const int64_t N = shape.Size();
   PhiloxGenerator& generator = GetPhiloxGenerator();
   utils::MLTypeCallDispatcher<float, MLFloat16, double> t_disp(dtype);
-  t_disp.Invoke<RandomUniformComputeImpl>(cuda_kernel.GetDeviceProp(), cuda_kernel.Stream(), N, range_, from_, generator, Y);
+  t_disp.Invoke<RandomUniformComputeImpl>(cuda_kernel.GetDeviceProp(), cuda_kernel.Stream(&ctx), N, range_, from_, generator, Y);
   return Status::OK();
 }
 

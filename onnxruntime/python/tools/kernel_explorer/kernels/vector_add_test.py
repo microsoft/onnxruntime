@@ -4,20 +4,12 @@
 # --------------------------------------------------------------------------
 
 import sys
-
-sys.path.append("../build")
+from dataclasses import dataclass
 
 import kernel_explorer as ke
 import numpy as np
 import pytest
-
-
-def dtype_to_bytes(dtype):
-    type_map = {
-        "float16": 2,
-        "float32": 4,
-    }
-    return type_map[dtype]
+from utils import dtype_to_bytes
 
 
 def dtype_to_funcs(dtype):
@@ -38,8 +30,8 @@ def run_vector_add(size, dtype, func):
     y_d = ke.DeviceArray(y)
     z_d = ke.DeviceArray(z)
     f = getattr(ke, func)
-    va = f(x_d, y_d, z_d, size)
-    va.Run()
+    my_op = f(x_d, y_d, z_d, size)
+    my_op.Run()
     z_d.UpdateHostNumpyArray()
 
     z_ref = x + y
@@ -57,6 +49,14 @@ def test_vector_add(size, dtype):
             run_vector_add(size, dtype, f)
 
 
+@dataclass
+class VectorAddMetric(ke.BandwidthMetric):
+    size: int
+
+    def report(self):
+        return f"{self.name :<50} {self.dtype} size={self.size:<4}, {self.duration:.2f} us, {self.gbps:.2f} GB/s"
+
+
 def profile_vector_add_func(size, dtype, func):
     np.random.seed(0)
     x = np.random.rand(size).astype(dtype)
@@ -67,23 +67,25 @@ def profile_vector_add_func(size, dtype, func):
     y_d = ke.DeviceArray(y)
     z_d = ke.DeviceArray(z)
     f = getattr(ke, func)
-    va = f(x_d, y_d, z_d, size)
-    t = va.Profile()
-    print(dtype, size, f, f"{t*1000:.2f} us", f"{size*3*(dtype_to_bytes(dtype))*1e3/t/1e9:.2f} GB/s")
+    my_op = f(x_d, y_d, z_d, size)
+    duration_ms = my_op.Profile()
+    total_bytes = size * 3 * (dtype_to_bytes(dtype))
+
+    ke.report(VectorAddMetric(func, dtype, duration_ms, total_bytes, size))
 
 
-def profile_with_args(size, dtype):
-    for func in dtype_to_funcs(dtype):
-        profile_vector_add_func(size, dtype, func)
-    print()
+def profile_with_args(size, dtype, sort):
+    with ke.benchmark(sort):
+        for func in dtype_to_funcs(dtype):
+            profile_vector_add_func(size, dtype, func)
 
 
 def profile():
     sizes = [10000, 100000, 1000000, 10000000]
     for dt in dtypes:
         for s in sizes:
-            profile_with_args(s, dt)
-        print()
+            profile_with_args(s, dt, True)
+            print()
 
 
 if __name__ == "__main__":
@@ -93,8 +95,10 @@ if __name__ == "__main__":
     group = parser.add_argument_group("profile with args")
     group.add_argument("size", type=int)
     group.add_argument("dtype", choices=dtypes)
+    group.add_argument("--sort", action="store_true")
+
     if len(sys.argv) == 1:
         profile()
     else:
         args = parser.parse_args()
-        profile_with_args(args.size, args.dtype)
+        profile_with_args(args.size, args.dtype, args.sort)

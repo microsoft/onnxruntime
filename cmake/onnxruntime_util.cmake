@@ -10,7 +10,7 @@ source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_util_srcs})
 
 onnxruntime_add_static_library(onnxruntime_util ${onnxruntime_util_srcs})
 target_include_directories(onnxruntime_util PRIVATE ${ONNXRUNTIME_ROOT} PUBLIC ${eigen_INCLUDE_DIRS})
-onnxruntime_add_include_to_target(onnxruntime_util onnxruntime_common onnx onnx_proto ${PROTOBUF_LIB})
+onnxruntime_add_include_to_target(onnxruntime_util onnxruntime_common onnx onnx_proto ${PROTOBUF_LIB} Boost::mp11)
 if(UNIX)
     target_compile_options(onnxruntime_util PUBLIC "-Wno-error=comment")
 endif()

@@ -127,7 +127,6 @@ struct TensorOpCost {
   double compute_cycles;
 };
 
-
 namespace concurrency {
 
 template <typename Environment>
@@ -197,11 +196,11 @@ class ThreadPool {
   // parallel loops.
 
   class ParallelSection {
-  public:
-    explicit ParallelSection(ThreadPool *tp);
+   public:
+    explicit ParallelSection(ThreadPool* tp);
     ~ParallelSection();
 
-  private:
+   private:
     friend class ThreadPool;
 
     // Owning reference for the underlying ThreadPoolParallelSection
@@ -210,7 +209,7 @@ class ThreadPool {
     // ThreadPoolParallelSection does not need to be available at this
     // point to avoid a dependence on the Eigen headers.
     ThreadPoolParallelSection* ps_{nullptr};
-    ThreadPool *tp_;
+    ThreadPool* tp_;
     ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ParallelSection);
   };
 

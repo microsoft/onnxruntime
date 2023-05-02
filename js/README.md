@@ -149,64 +149,7 @@ This project is a library for running ONNX models on browsers. It is the success
 
 ### Build
 
-1. Install NPM packages
-
-   1. in `<ORT_ROOT>/js/`, run `npm ci`.
-   2. in `<ORT_ROOT>/js/common/`, run `npm ci`.
-   3. in `<ORT_ROOT>/js/web/`, run `npm ci`.
-
-2. Prepare ONNX Runtime WebAssembly artifacts.
-
-   You can either use the prebuilt artifacts or build it by yourself.
-
-   - Setup by script.
-
-     In `<ORT_ROOT>/js/web/`, run `npm run pull:wasm` to pull WebAssembly artifacts for latest main branch from CI pipeline.
-
-   - Download artifacts from pipeline manually.
-
-     you can download prebuilt WebAssembly artifacts from [Windows WebAssembly CI Pipeline](https://dev.azure.com/onnxruntime/onnxruntime/_build?definitionId=161&_a=summary). Select a build, download artifacts "Release_ort-wasm" and "Release_ort-wasm-threaded" and unzip. See instructions below to put files into destination folders.
-
-   - Build WebAssembly artifacts.
-
-     1. Build ONNX Runtime WebAssembly
-
-        ~~Follow [instructions](https://www.onnxruntime.ai/docs/how-to/build.html#apis-and-language-bindings) for building ONNX Runtime WebAssembly. (TODO: document is not ready. we are working on it. Please see steps described as below.)~~
-
-        in `<ORT_ROOT>/`, run one of the following commands to build WebAssembly:
-
-        ```sh
-        # In windows, use 'build' to replace './build.sh'
-
-        # The following command build debug.
-        ./build.sh --build_wasm
-
-        # The following command build debug with debug info.
-        ./build.sh --build_wasm --skip_tests --enable_wasm_debug_info
-
-        # The following command build release.
-        ./build.sh --config Release --build_wasm --skip_tests --disable_wasm_exception_catching --disable_rtti
-        ```
-
-        To build with multi-thread support, append flag `--enable_wasm_threads` to the command. To build with SIMD support, append flag `--enable_wasm_simd` to the command. Make sure to build both single-thread and multi-thread with and without SIMD before next step.
-
-     2. Copy following files from build output folder to `<ORT_ROOT>/js/web/dist/`:
-
-        - ort-wasm.wasm
-        - ort-wasm-threaded.wasm (build with flag '--enable_wasm_threads')
-        - ort-wasm-simd.wasm (build with flag '--enable_wasm_simd')
-        - ort-wasm-simd-threaded.wasm (build with flags '--enable_wasm_threads --enable_wasm_simd')
-
-     3. Copy following files from build output folder to `<ORT_ROOT>/js/web/lib/wasm/binding/`:
-
-        - ort-wasm.js
-        - ort-wasm-threaded.js (build with flag '--enable_wasm_threads')
-        - ort-wasm-threaded.worker.js (build with flag '--enable_wasm_threads')
-
-3. Use following command in folder `<ORT_ROOT>/js/web` to build:
-   ```
-   npm run build
-   ```
+[onnxruntime-web build instructions](https://onnxruntime.ai/docs/build/web.html)
 
 ### Test
 
@@ -300,7 +243,7 @@ It should be able to consumed by both from projects that uses NPM packages (thro
 
 #### Reduced WebAssembly artifacts
 
-By default, the WebAssembly artifacts from onnxruntime-web package allows use of both standard ONNX models (.onnx) and ORT format models (.ort). There is an option to use a minimal build of ONNX Runtime to reduce the binary size, which only supports ORT format models. See also [ORT format model](https://onnxruntime.ai/docs/tutorials/mobile/overview.html) for more information.
+By default, the WebAssembly artifacts from onnxruntime-web package allows use of both standard ONNX models (.onnx) and ORT format models (.ort). There is an option to use a minimal build of ONNX Runtime to reduce the binary size, which only supports ORT format models. See also [ORT format model](https://onnxruntime.ai/docs/reference/ort-format-models.html) for more information.
 
 #### Reduced JavaScript bundle file fize
 
@@ -454,19 +397,71 @@ From ORT v1.13 onwards the 'full' ONNX Runtime package is used. It supports both
      - replace `com.microsoft.onnxruntime:onnxruntime-android` with `com.microsoft.onnxruntime:onnxruntime-mobile` in /js/react_native/e2e/android/app/build.gradle
      - replace `onnxruntime-c` with `onnxruntime-mobile-c` in /js/react_native/e2e/ios/Podfile
 
-   From `<ORT_ROOT>/js/react_native/e2e/android`, run e2e Android tests as follows,
+  - Run E2E Testing with Detox framework
 
-   ```sh
-   ./gradlew :app:connectedDebugAndroidTest
-   ```
+    When testing with integrated [Detox](https://wix.github.io/Detox/docs/next/introduction/getting-started) framework for Android and iOS e2e apps:
+    - Detox prerequisites:
 
-   From `<ORT_ROOT>/js/react_native/e2e/ios`, run e2e iOS tests as follows,
+      Install detox command line tools:
+      ```
+      yarn global add detox-cli
+      ```
+      Install applesimutils which is required by Detox to work with iOS simulators. (Requires a MacOS device)
+      ```
+      brew tap wix/brew
+      brew install applesimutils
+      ```
+      Main Detox project files:
+        - `.detoxrc.js` -Detox config file;
+        - `e2e/jest.config.js` -Jest configuration;
+        - `e2e/OnnxruntimeModuleExample.test.js` - initial react native onnxruntimemodule e2e detox test.
+    - Build the detox e2e testing app.
 
-   ```sh
-   xcrun xcodebuild test -workspace OnnxruntimeModuleExample.xcworkspace -scheme OnnxruntimeModuleExample -destination 'platform=iOS Simulator,OS=latest,name=iPhone 13'
-   ```
+      From `<ORT_ROOT>/js/react_native/e2e`, run the command to build the e2e testing app. Before that ensure you have android emulator/ios simulator started locally.
 
-   ***`yarn bootstrap` changes `packages.json` and `yarn.lock` files. Once testing is done, restore changes to avoid unwanted commit.***
+      iOS (Debug):
+
+      ```
+      detox build --configuration ios.sim.debug
+      ```
+      
+      Android (Debug):
+
+      ```
+      detox build --configuration android.emu.debug
+      ```
+      
+      * Note: If names of local testing android/ios devices do not match the default setting in `.detoxrc.js` file, 
+      modify the device name in config files accordingly to match local device name otherwise would cause a build failure.
+
+    - Run the detox e2e tests.
+      
+      In a debug configuration, you need to have React Native packager running in parallel before you start Detox tests:
+
+      ```
+      npm start
+
+      > react-native start
+      ```
+      
+      From `<ORT_ROOT>/js/react_native/e2e`, run Detox tests using the following command:
+
+      iOS (Debug):
+
+      ```
+      detox test --configuration ios.sim.debug
+      ```
+
+      Android (Debug):
+
+      ```
+      detox test --configuration android.emu.debug
+      ```
+
+      To record logs for testing results, add `--record-logs`. Output logs and test results will be produced in the `e2e/artifacts/` folder.
+      See: [Detox/logger#artifacts](https://wix.github.io/Detox/docs/api/logger#artifacts)
+    
+      ***`yarn bootstrap` changes `packages.json` and `yarn.lock` files. Once testing is done, restore changes to avoid unwanted commit.***
 
 5. Run Android and iOS apps.
 
@@ -474,7 +469,6 @@ From ORT v1.13 onwards the 'full' ONNX Runtime package is used. It supports both
    yarn e2e android
    yarn e2e ios
    ```
-
 ### NPM Packaging
 
 1. Update a version using `npm version <version>` from `<ORT_ROOT>/js/react_native` folder. If it's for a dev, use `npm version <version>-dev.<subversion>`

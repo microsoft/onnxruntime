@@ -105,7 +105,8 @@ Status T5EncoderSubgraph::CreateInitialFeeds(
     const GenerationDeviceHelper::CreateEncoderInputsFunc& create_encoder_inputs_func,
     const GenerationDeviceHelper::AddToFeedsFunc& add_to_feeds_func,
     IAllocatorUniquePtr<char>& buffer,
-    OrtValue& decoder_input_ids) {
+    OrtValue& decoder_input_ids,
+    Stream* ort_stream) {
   ORT_ENFORCE(session_state_ != nullptr, "Setup must be called before CreateInitialFeeds");
 
   // The ordering is the same as used in Setup.
@@ -115,7 +116,7 @@ Status T5EncoderSubgraph::CreateInitialFeeds(
   AllocatorPtr cpu_allocator = session_state_->GetAllocator(original_encoder_input_ids.Location());
   if (cpu_allocator == nullptr) {
     const IExecutionProvider* provider = GetProvider();
-    cpu_allocator = provider->GetAllocator(0, OrtMemTypeDefault);
+    cpu_allocator = provider->GetAllocator(OrtMemTypeDefault);
   }
   ORT_RETURN_IF(cpu_allocator == nullptr, "cpu_allocator shouldn't be nullptr");
 
@@ -134,6 +135,7 @@ Status T5EncoderSubgraph::CreateInitialFeeds(
   const IExecutionProvider* provider = GetProvider();
   ORT_RETURN_IF_ERROR(add_to_feeds_func(
       provider,
+      ort_stream,
       {encoder_input_ids, encoder_attention_mask, decoder_input_ids},
       feeds,
       buffer));

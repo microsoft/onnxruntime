@@ -84,7 +84,7 @@ class FusionLayerNormalization(Fusion):
             return
 
         pow_node = parent_nodes[3]
-        if not self.model.find_constant_input(pow_node, 2.0) == 1:
+        if self.model.find_constant_input(pow_node, 2.0) != 1:
             return
 
         mul_node = input_name_to_nodes[div_node.output[0]][0]
@@ -106,7 +106,7 @@ class FusionLayerNormalization(Fusion):
             input_name_to_nodes,
             output_name_to_node,
         ):
-            logger.debug(f"It is not safe to fuse LayerNormalization node. Skip")
+            logger.debug("It is not safe to fuse LayerNormalization node. Skip")
             return
 
         weight_input = mul_node.input[1 - self.model.input_index(div_node.output[0], mul_node)]

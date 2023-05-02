@@ -140,9 +140,9 @@ void Scan<8>::Init(const OpKernelInfo& info) {
 
   ORT_ENFORCE(info.GetAttr<int64_t>("num_scan_inputs", &num_scan_inputs_).IsOK());
 
-  ReadDirections(info, "directions", input_directions_, num_scan_inputs_);
+  ReadDirections(info, "directions", input_directions_, onnxruntime::narrow<size_t>(num_scan_inputs_));
 
-  device_helpers_.transpose_func = [](const gsl::span<const size_t>&, const Tensor&, Tensor&) -> Status {
+  device_helpers_.transpose_func = [](const gsl::span<const size_t>&, const Tensor&, Tensor&, Stream*) -> Status {
     ORT_NOT_IMPLEMENTED("Scan<8> spec does not support transpose of output. This should never be called.");
   };
 
@@ -302,7 +302,7 @@ Status Scan8Impl::ValidateInput() {
     }
 
   } else {
-    sequence_lens_ = std::vector<int64_t>(batch_size_, max_sequence_len_);
+    sequence_lens_ = std::vector<int64_t>(onnxruntime::narrow<size_t>(batch_size_), max_sequence_len_);
   }
 
   return Status::OK();
@@ -358,7 +358,7 @@ Status Scan8Impl::CreateLoopStateVariables(std::vector<std::vector<LoopStateVari
   }
 
   batch_loop_state_variables.clear();
-  batch_loop_state_variables.resize(batch_size_);
+  batch_loop_state_variables.resize(onnxruntime::narrow<size_t>(batch_size_));
 
   AllocatorPtr alloc;
   auto status = context_.GetTempSpaceAllocator(&alloc);
@@ -366,14 +366,14 @@ Status Scan8Impl::CreateLoopStateVariables(std::vector<std::vector<LoopStateVari
 
   // setup the loop state variables for each batch row
   for (int64_t b = 0; b < batch_size_; ++b) {
-    std::vector<LoopStateVariable>& variables = batch_loop_state_variables[b];
+    std::vector<LoopStateVariable>& variables = batch_loop_state_variables[onnxruntime::narrow<size_t>(b)];
     variables.reserve(info_.num_loop_state_variables);
 
     for (int i = 0; i < info_.num_loop_state_variables; ++i) {
       auto& input_iter = loop_state_input_iterators[i];
       auto& output_iter = *output_iterators_[i];
 
-      variables.emplace_back(*input_iter, *output_iter, sequence_lens_[b], alloc);
+      variables.emplace_back(*input_iter, *output_iter, sequence_lens_[onnxruntime::narrow<size_t>(b)], alloc);
 
       ++input_iter;
       ++output_iter;
@@ -392,7 +392,7 @@ Status Scan8Impl::Execute(const FeedsFetchesManager& ffm) {
   ORT_RETURN_IF_ERROR(status);
 
   for (int64_t b = 0; b < batch_size_; ++b) {
-    auto sequence_len = sequence_lens_[b];
+    auto sequence_len = sequence_lens_[onnxruntime::narrow<size_t>(b)];
 
     // Setup input OrtValue streams
     std::vector<OrtValueTensorSlicer<const OrtValue>::Iterator> scan_input_stream_iterators;
@@ -411,13 +411,13 @@ Status Scan8Impl::Execute(const FeedsFetchesManager& ffm) {
         auto offset = max_sequence_len_ - sequence_len;
         if (offset > 0) {
           // reverse iterator so += moves backwards through the input
-          scan_input_stream_iterators.back() += offset;
+          scan_input_stream_iterators.back() += onnxruntime::narrow<size_t>(offset);
         }
       }
     }
 
     // Call the subgraph for each item in the sequence
-    status = IterateSequence(context_, session_state_, batch_loop_state_variables[b], scan_input_stream_iterators,
+    status = IterateSequence(context_, session_state_, batch_loop_state_variables[onnxruntime::narrow<size_t>(b)], scan_input_stream_iterators,
                              sequence_len, info_.num_loop_state_variables, info_.num_variadic_inputs, info_.num_outputs,
                              implicit_inputs_, output_iterators_, ffm);
 

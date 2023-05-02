@@ -10,8 +10,8 @@
 #include "core/common/safeint.h"
 #include "core/platform/threadpool.h"
 
+using onnxruntime::narrow;
 using onnxruntime::concurrency::ThreadPool;
-
 namespace onnxruntime {
 namespace contrib {
 
@@ -59,7 +59,7 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(
     Attention<float>);
 
 template <typename T>
-Attention<T>::Attention(const OpKernelInfo& info) : OpKernel(info), AttentionCPUBase(info, false, true) {
+Attention<T>::Attention(const OpKernelInfo& info) : OpKernel(info), AttentionCPUBase(info, false) {
 }
 
 template <typename T>
@@ -75,12 +75,12 @@ bool Attention<T>::IsPackWeightsSuccessful(int qkv_index,
     return false;
   }
 
-  size_t loop_len = gsl::narrow_cast<size_t>(num_heads_);
+  size_t loop_len = narrow<size_t>(num_heads_);
   size_t packed_weights_data_size = packb_size * loop_len;  // The same size would be computed by AllocArray() below
   auto* packed_weights_data = static_cast<uint8_t*>(alloc->AllocArray(packb_size, loop_len));
 
   // Initialize memory to 0 as there could be some padding associated with pre-packed
-  // buffer memory and we don not want it uninitialized and generate different hashes
+  // buffer memory and we do not want it uninitialized and generate different hashes
   // if and when we try to cache this pre-packed buffer for sharing between sessions.
   memset(packed_weights_data, 0, packed_weights_data_size);
   packed_weights_[qkv_index] = BufferUniquePtr(packed_weights_data, BufferDeleter(std::move(alloc)));
@@ -124,13 +124,13 @@ Status Attention<T>::PrePack(const Tensor& weights, int input_idx, AllocatorPtr 
   }
 
   const auto* weights_data = weights.Data<T>();
-  const size_t input_hidden_size = gsl::narrow_cast<size_t>(weights_dims[0]);
+  const size_t input_hidden_size = narrow<size_t>(weights_dims[0]);
   size_t q_hidden_size, k_hidden_size, v_hidden_size;
 
   if (qkv_hidden_sizes_.size() != 0) {
-    q_hidden_size = gsl::narrow_cast<size_t>(qkv_hidden_sizes_[0]);
-    k_hidden_size = gsl::narrow_cast<size_t>(qkv_hidden_sizes_[1]);
-    v_hidden_size = gsl::narrow_cast<size_t>(qkv_hidden_sizes_[2]);
+    q_hidden_size = narrow<size_t>(qkv_hidden_sizes_[0]);
+    k_hidden_size = narrow<size_t>(qkv_hidden_sizes_[1]);
+    v_hidden_size = narrow<size_t>(qkv_hidden_sizes_[2]);
 
     if (q_hidden_size == 0 || k_hidden_size == 0 || v_hidden_size == 0) {
       return Status::OK();
@@ -140,7 +140,7 @@ Status Attention<T>::PrePack(const Tensor& weights, int input_idx, AllocatorPtr 
       return Status::OK();
     }
   } else {
-    const size_t hidden_size_x3 = gsl::narrow_cast<size_t>(weights_dims[1]);
+    const size_t hidden_size_x3 = narrow<size_t>(weights_dims[1]);
     const size_t hidden_size = hidden_size_x3 / 3;
 
     if (hidden_size % num_heads_ != 0) {
@@ -198,22 +198,17 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
 
   const Tensor* mask_index = context->Input<Tensor>(3);
   const Tensor* past = context->Input<Tensor>(4);
-  const Tensor* extra_add_qk = context->Input<Tensor>(5);
-
-  const Tensor* key = context->Input<Tensor>(6);
-  const Tensor* value = context->Input<Tensor>(7);
+  const Tensor* relative_position_bias = context->Input<Tensor>(5);
 
   const TensorShape& weights_shape = (weights ? weights->Shape() : weight_shape_);
 
   AttentionParameters parameters;
   ORT_RETURN_IF_ERROR(CheckInputs(input->Shape(),
-                                  (nullptr != weights || is_prepack_) ? &weights_shape : nullptr,
+                                  weights_shape,
                                   bias->Shape(),
                                   mask_index,
                                   past,
-                                  extra_add_qk,
-                                  key,
-                                  value,
+                                  relative_position_bias,
                                   &parameters));
 
   const int batch_size = parameters.batch_size;
@@ -240,8 +235,8 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
   BufferUniquePtr gemm_buffer(gemm_data, BufferDeleter(std::move(allocator)));
 
   auto Q = reinterpret_cast<T*>(gemm_data);
-  auto K = Q + gsl::narrow_cast<size_t>(batch_size) * sequence_length * parameters.hidden_size;
-  auto V = K + gsl::narrow_cast<size_t>(batch_size) * sequence_length * parameters.hidden_size;
+  auto K = Q + narrow<size_t>(batch_size) * sequence_length * parameters.hidden_size;
+  auto V = K + narrow<size_t>(batch_size) * sequence_length * parameters.hidden_size;
 
   T* QKV[3] = {Q, K, V};
   const int qkv_head_size[3] = {parameters.head_size, parameters.head_size, parameters.v_head_size};
@@ -333,10 +328,11 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
   }
 
   // Compute the attention score and apply the score to V
-  return ApplyAttention(Q, K, V, mask_index, past, output,
-                        batch_size, sequence_length,
+  return ApplyAttention(Q, K, V, mask_index, past, nullptr /* past_key */, nullptr /* past_value */,
+                        output, nullptr /* present_key */, nullptr /* present_value */,
+                        batch_size, sequence_length, sequence_length,
                         parameters.head_size, parameters.v_head_size, parameters.v_hidden_size,
-                        extra_add_qk, context);
+                        relative_position_bias, context);
 }
 }  // namespace contrib
 }  // namespace onnxruntime

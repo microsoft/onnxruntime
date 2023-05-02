@@ -73,7 +73,7 @@ inline T FloatingImpl(T val) {
 template <>
 struct CallSignImpl<MLFloat16> {
   void operator()(const Tensor* input, Tensor* output) const {
-    auto span = gsl::make_span(input->Data<MLFloat16>(), input->Shape().Size());
+    auto span = gsl::make_span(input->Data<MLFloat16>(), onnxruntime::narrow<size_t>(input->Shape().Size()));
     auto output_data = output->MutableData<MLFloat16>();
     std::transform(span.begin(), span.end(), output_data, [](const MLFloat16& val) {
       float fl = math::halfToFloat(val.val);
@@ -85,7 +85,7 @@ struct CallSignImpl<MLFloat16> {
 template <>
 struct CallSignImpl<BFloat16> {
   void operator()(const Tensor* input, Tensor* output) const {
-    auto span = gsl::make_span(input->Data<BFloat16>(), input->Shape().Size());
+    auto span = gsl::make_span(input->Data<BFloat16>(), onnxruntime::narrow<size_t>(input->Shape().Size()));
     auto output_data = output->MutableData<BFloat16>();
     std::transform(span.begin(), span.end(), output_data, [](const BFloat16& val) {
       float fl = val.ToFloat();

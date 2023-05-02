@@ -17,9 +17,25 @@
 #include "core/graph/op.h"
 #include "core/mlas/inc/mlas.h"
 #include "core/graph/contrib_ops/onnx_function_util.h"
+#include "contrib_ops/cpu/transformers/beam_search_parameters.h"
 #include "onnx/defs/function.h"
-
+// Suppress a warning: global initializer calls a non-constexpr function 'symbol' which is from
+// ONNX_OPERATOR_SET_SCHEMA_EX macro and only happens in debug build
+#if defined(_WIN32) && !defined(NDEBUG)
+#pragma warning(disable : 26426)
+#endif
 namespace ONNX_NAMESPACE {
+
+inline int64_t HandleNegativeAxis(int64_t axis, int64_t rank) {
+  if (rank < 0 || axis >= rank || axis < -rank) {
+    fail_shape_inference("axis ", axis,
+                         " is not in valid range [-", rank, ",", rank - 1, "]");
+  }
+
+  // Handle negative axis
+  return axis < 0 ? axis + rank : axis;
+}
+
 void convPoolShapeInference(
     ONNX_NAMESPACE::InferenceContext& ctx,
     bool use_dilation, bool require_kernel_shape,
@@ -132,7 +148,7 @@ void convTransposeWithDynamicPadsShapeInference(InferenceContext& ctx) {
   *final_output_shape->add_dim() =
       ctx.getInputType(1)->tensor_type().shape().dim(1) *
       group;  // channels should be the second dim of second input multiply
-              // group.
+  // group.
 
   int size_of_output;
   if (output_shape_presented) {
@@ -406,8 +422,17 @@ void BeamSearchShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) {
   }
   auto& input_ids_shape = getInputShape(ctx, 0);
   auto& input_ids_dims = input_ids_shape.dim();
-  if (input_ids_dims.size() != 2) {
-    fail_shape_inference("Inputs 0 shall be 2 dimensions");
+  auto model_type_attr = ctx.getAttribute("model_type");
+  int64_t model_type = model_type_attr ? static_cast<int64_t>(model_type_attr->i()) : -1;
+  if (model_type == onnxruntime::contrib::transformers::IGenerationParameters::kModelTypeWhisper) {
+    if (input_ids_dims.size() != 3) {
+      fail_shape_inference("Inputs 0 shall be 3 dimensions in whisper graph");
+    }
+    if (!(input_ids_dims[0].has_dim_value() && input_ids_dims[1].has_dim_value() && input_ids_dims[2].has_dim_value())) {
+      return;
+    }
+  } else if (input_ids_dims.size() != 2) {
+    fail_shape_inference("Inputs 0 shall be 2 dimensions", model_type);
   }
   if (!(input_ids_dims[0].has_dim_value() && input_ids_dims[1].has_dim_value())) {
     return;
@@ -451,11 +476,20 @@ void BeamSearchShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) {
     updateOutputShape(ctx, 1, sequences_scores_shape);
 
     if (ctx.getNumOutputs() > 2) {
+      auto vocab_size_attr = ctx.getAttribute("vocab_size");
+      int64_t vocab_size = vocab_size_attr ? static_cast<int64_t>(vocab_size_attr->i()) : -1;
+
       ONNX_NAMESPACE::TensorShapeProto scores_shape;
       scores_shape.add_dim()->set_dim_value(max_length_value - sequence_length);
       scores_shape.add_dim()->set_dim_value(batch_size);
       scores_shape.add_dim()->set_dim_value(num_beams_value);
-      scores_shape.add_dim();  // vocab_size is unknown
+      if (vocab_size != -1) {
+        // vocab_size is provided by the user - use that
+        scores_shape.add_dim()->set_dim_value(vocab_size);
+      } else {
+        // vocab_size is unknown
+        scores_shape.add_dim();
+      }
       updateOutputShape(ctx, 2, scores_shape);
     }
   }
@@ -497,6 +531,13 @@ void GreedySearchShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) {
   sequences_shape.add_dim()->set_dim_value(batch_size);
   sequences_shape.add_dim()->set_dim_value(max_length_value);
   updateOutputShape(ctx, 0, sequences_shape);
+
+  if (ctx.getNumOutputs() > 1) {
+    ONNX_NAMESPACE::TensorShapeProto logits_to_debug_shape;
+    logits_to_debug_shape.add_dim()->set_dim_value(batch_size);
+    logits_to_debug_shape.add_dim();
+    updateOutputShape(ctx, 1, logits_to_debug_shape);
+  }
 }
 
 constexpr const char* Gelu_ver1_doc =
@@ -792,7 +833,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(BiasSoftmax, 1,
                                     "Y = softmax(scores + bias)) with simple broadcast on bias. "
                                     "Intended to specialize softmax(scores + additive_mask) commonly found in transformer models.")
                                 .Attr("axis", "apply softmax to elements for dimensions axis or higher", AttributeProto::INT, static_cast<int64_t>(1))
-                                .Attr("is_inner_broadcast", "true if broadcast bias across input for dimensions broadcast_axis to axis-1, "
+                                .Attr("is_inner_broadcast",
+                                      "true if broadcast bias across input for dimensions broadcast_axis to axis-1, "
                                       "otherwise broadcast bias across input for dimensions 0 to broadcast_axis - 1",
                                       AttributeProto::INT)
                                 .Input(0, "data", "The input data as Tensor.", "T")
@@ -1030,8 +1072,16 @@ ONNX_MS_OPERATOR_SET_SCHEMA(BeamSearch, 1,
                                 .Attr("early_stopping", "early stop or not", AttributeProto::INT, static_cast<int64_t>(0))
                                 .Attr("model_type", "model type: 0 for GPT-2; 1 for encoder decoder like T5", AttributeProto::INT, static_cast<int64_t>(0))
                                 .Attr("encoder", "The subgraph for initialization of encoder and decoder. It will be called once before decoder subgraph.", AttributeProto::GRAPH, OPTIONAL_VALUE)
+                                .Attr("init_decoder",
+                                      "The subgraph for the first decoding run. It will be called once before `decoder` subgraph. "
+                                      "This is relevant only for the GPT2 model. If this attribute is missing, the `decoder` subgraph will be used for all decoding runs",
+                                      AttributeProto::GRAPH, OPTIONAL_VALUE)
                                 .Attr("decoder", "Decoder subgraph to execute in a loop.", AttributeProto::GRAPH)
-                                .Input(0, "input_ids", "The sequence used as a prompt for the generation. Shape is (batch_size, sequence_length)", "I")
+                                .Attr("vocab_size",
+                                      "Size of the vocabulary. "
+                                      "If not provided, it will be inferred from the decoder subgraph's output shape",
+                                      AttributeProto::INT, static_cast<int64_t>(-1))
+                                .Input(0, "input_ids", "The sequence used as a prompt for the generation. Shape is (batch_size, sequence_length)", "F")
                                 .Input(1, "max_length", "The maximum length of the sequence to be generated. Shape is (1)", "I")
                                 .Input(2, "min_length", "The minimum length below which the score of eos_token_id is set to -Inf. Shape is (1)", "I", OpSchema::Optional)
                                 .Input(3, "num_beams", "Number of beams for beam search. 1 means no beam search. Shape is (1)", "I")
@@ -1052,7 +1102,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(BeamSearch, 1,
                                         "Beam scores consisting of log softmax scores for each vocabulary token and sum of log softmax of previously generated tokens in this beam."
                                         "Shape is (max_length - sequence_length, batch_size, num_beams, vocab_size)",
                                         "T", OpSchema::Optional)
-                                .TypeConstraint("T", {"tensor(float)"}, "Constrain input and output types to float tensors.")
+                                .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain to float tensors.")
+                                .TypeConstraint("F", {"tensor(float)", "tensor(int32)", "tensor(float16)"}, "Constrain input type to float or int tensors.")
                                 .TypeConstraint("I", {"tensor(int32)"}, "Constrain to integer types")
                                 .TypeConstraint("M", {"tensor(int32)"}, "Constrain mask to integer types")
                                 .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
@@ -1067,8 +1118,16 @@ ONNX_MS_OPERATOR_SET_SCHEMA(GreedySearch, 1,
                                 .Attr("decoder_start_token_id", "The id of the token that indicates decoding starts.", AttributeProto::INT, static_cast<int64_t>(-1))
                                 .Attr("no_repeat_ngram_size", "no repeat ngrams size", AttributeProto::INT, static_cast<int64_t>(0))
                                 .Attr("model_type", "model type: 0 for decoder only like GPT-2; 1 for encoder decoder like Bart", AttributeProto::INT, static_cast<int64_t>(0))
-                                .Attr("encoder", "The subgraph for initialization of encoder and decoder. It will be called once before decoder subgraph.", AttributeProto::GRAPH, OPTIONAL_VALUE)
+                                .Attr("encoder", "The subgraph for initialization of encoder and decoder. It will be called once before `decoder` subgraph.", AttributeProto::GRAPH, OPTIONAL_VALUE)
+                                .Attr("init_decoder",
+                                      "The subgraph for the first decoding run. It will be called once before `decoder` subgraph. "
+                                      "This is relevant only for the GPT2 model. If this attribute is missing, the `decoder` subgraph will be used for all decoding runs",
+                                      AttributeProto::GRAPH, OPTIONAL_VALUE)
                                 .Attr("decoder", "Decoder subgraph to execute in a loop.", AttributeProto::GRAPH)
+                                .Attr("vocab_size",
+                                      "Size of the vocabulary. "
+                                      "If not provided, it will be inferred from the decoder subgraph's output shape",
+                                      AttributeProto::INT, static_cast<int64_t>(-1))
                                 .Input(0, "input_ids", "The sequence used as a prompt for the generation. Shape is (batch_size, sequence_length)", "I")
                                 .Input(1, "max_length", "The maximum length of the sequence to be generated. Shape is (1)", "I")
                                 .Input(2, "min_length", "The minimum length below which the score of eos_token_id is set to -Inf. Shape is (1)", "I", OpSchema::Optional)
@@ -1078,6 +1137,49 @@ ONNX_MS_OPERATOR_SET_SCHEMA(GreedySearch, 1,
                                 .Input(6, "attention_mask", "Custom attention mask. Shape is (batch_size, sequence_length)", "I", OpSchema::Optional)
                                 .Output(0, "sequences", "Word IDs of generated sequences. Shape is (batch_size, max_sequence_length)", "I")
                                 // TODO(wy): support scores if needed.
+                                .TypeConstraint("T", {"tensor(float)"}, "Constrain input and output types to float tensors.")
+                                .TypeConstraint("I", {"tensor(int32)"}, "Constrain to integer types")
+                                .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+                                  GreedySearchShapeInference(ctx);
+                                }));
+
+ONNX_MS_OPERATOR_SET_SCHEMA(Sampling, 1,
+                            OpSchema()
+                                .SetDoc("Greedy Sampling for text generation.")
+                                .Attr("eos_token_id", "The id of the end-of-sequence token", AttributeProto::INT)
+                                .Attr("pad_token_id", "The id of the padding token", AttributeProto::INT)
+                                .Attr("decoder_start_token_id", "The id of the token that indicates decoding starts.", AttributeProto::INT, static_cast<int64_t>(-1))
+                                .Attr("no_repeat_ngram_size", "no repeat ngrams size", AttributeProto::INT, static_cast<int64_t>(0))
+                                .Attr("temperature", "The value used to module the next token probabilities.", AttributeProto::FLOAT, 1.0f)
+                                .Attr("top_p",
+                                      "If set to float < 1, only the smallest set of most probable tokens with probabilities that add up to `top_p` or higher are kept for generation.",
+                                      AttributeProto::FLOAT, 0.0f)
+                                .Attr("filter_value", "All filtered values will be set to this float value.", AttributeProto::FLOAT, -1e20f)
+                                .Attr("min_tokens_to_keep", "Minimumber of tokens we keep per batch example in the output.", AttributeProto::INT, static_cast<int64_t>(0))
+                                .Attr("presence_penalty", "Presence penalty for custom sampling", AttributeProto::FLOAT, 0.0f)
+                                .Attr("custom", "If 1 custom sampling logic", AttributeProto::INT, static_cast<int64_t>(0))
+                                .Attr("model_type", "Model type: 0 for decoder only like GPT-2; 1 for encoder decoder like Bart", AttributeProto::INT, static_cast<int64_t>(0))
+                                .Attr("encoder", "The subgraph for initialization of encoder and decoder. It will be called once before decoder subgraph.", AttributeProto::GRAPH, OPTIONAL_VALUE)
+                                .Attr("init_decoder",
+                                      "The subgraph for the first decoding run. It will be called once before `decoder` subgraph. "
+                                      "This is relevant only for the GPT2 model. If this attribute is missing, the `decoder` subgraph will be used for all decoding runs",
+                                      AttributeProto::GRAPH, OPTIONAL_VALUE)
+                                .Attr("decoder", "Decoder subgraph to execute in a loop.", AttributeProto::GRAPH)
+                                .Attr("vocab_size",
+                                      "Size of the vocabulary. "
+                                      "If not provided, it will be inferred from the decoder subgraph's output shape",
+                                      AttributeProto::INT, static_cast<int64_t>(-1))
+                                .Input(0, "input_ids", "The sequence used as a prompt for the generation. Shape is (batch_size, sequence_length)", "I")
+                                .Input(1, "max_length", "The maximum length of the sequence to be generated. Shape is (1)", "I")
+                                .Input(2, "min_length", "The minimum length below which the score of eos_token_id is set to -Inf. Shape is (1)", "I", OpSchema::Optional)
+                                .Input(3, "repetition_penalty", "The parameter for repetition penalty. Default value 1.0 means no penalty. Accepts value > 0.0. Shape is (1)", "T", OpSchema::Optional)
+                                .Input(4, "vocab_mask", "Mask of vocabulary. Words that masked with 0 are not allowed to be generated, and 1 is allowed. Shape is (vacab_size)", "I", OpSchema::Optional)
+                                .Input(5, "prefix_vocab_mask", "Mask of vocabulary for first step. Words that masked with 0 are not allowed to be generated, and 1 is allowed. Shape is (batch_size, vocab_size)", "I", OpSchema::Optional)
+                                .Input(6, "attention_mask", "Custom attention mask. Shape is (batch_size, sequence_length)", "I", OpSchema::Optional)
+                                .Input(7, "presence_mask", "Presence penalty mask. Shape is (batch_size, vocab_size)", "I", OpSchema::Optional)
+                                .Input(8, "seed", "Seed for random number generator. Shape is (1)", "I", OpSchema::Optional)
+                                .Output(0, "sequences", "Word IDs of generated sequences. Shape is (batch_size, max_sequence_length)", "I")
+                                .Output(1, "filtered_logits", "Filtered logits as input to the mutinomial function for debug purpose. Shape is (batch_size, vocab_size)", "T", OpSchema::Optional)
                                 .TypeConstraint("T", {"tensor(float)"}, "Constrain input and output types to float tensors.")
                                 .TypeConstraint("I", {"tensor(int32)"}, "Constrain to integer types")
                                 .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
@@ -1593,6 +1695,10 @@ constexpr const char* FusedMatMul_doc = R"DOC(
 Matrix product that behaves like numpy.matmul: https://docs.scipy.org/doc/numpy-1.13.0/reference/generated/numpy.matmul.html
 )DOC";
 
+constexpr const char* FusedMatMulActivation_doc = R"DOC(
+Executes the same operation as FusedMatMul, but also has an activation function fused to its output.
+)DOC";
+
 ONNX_MS_OPERATOR_SET_SCHEMA(TransposeMatMul, 1,
                             OpSchema()
                                 .Input(0, "A", "N-dimensional matrix A", "T")
@@ -1643,6 +1749,53 @@ ONNX_MS_OPERATOR_SET_SCHEMA(FusedMatMul, 1,
                                 .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
                                                 "Constrain input and output types to float tensors.")
                                 .SetDoc(FusedMatMul_doc)
+                                .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) { FusedMatMulShapeInference(ctx); }));
+
+ONNX_MS_OPERATOR_SET_SCHEMA(FusedMatMulActivation, 1,
+                            OpSchema()
+                                .Input(0, "A", "N-dimensional matrix A", "T")
+                                .Input(1, "B", "N-dimensional matrix B", "T")
+                                .Attr("alpha", "Scalar multiplier for the product of the input tensors.", AttributeProto::FLOAT, 1.0f)
+                                .Attr("transA", "Whether A should be transposed on the last two dimensions before doing multiplication",
+                                      AttributeProto::INT, static_cast<int64_t>(0))
+                                .Attr("transB", "Whether B should be transposed on the last two dimensions before doing multiplication",
+                                      AttributeProto::INT, static_cast<int64_t>(0))
+                                .Attr("transBatchA",
+                                      "Whether A should be transposed on the 1st dimension and batch dimensions (dim-1 to dim-rank-2) before "
+                                      "doing multiplication",
+                                      AttributeProto::INT, static_cast<int64_t>(0))
+                                .Attr("transBatchB",
+                                      "Whether B should be transposed on the 1st dimension and batch dimensions (dim-1 to dim-rank-2) before "
+                                      "doing multiplication",
+                                      AttributeProto::INT, static_cast<int64_t>(0))
+                                .Attr(
+                                    "activation",
+                                    "",
+                                    AttributeProto::STRING)
+                                .Attr(
+                                    "activation_alpha",
+                                    "",
+                                    AttributeProto::FLOAT,
+                                    OPTIONAL_VALUE)
+                                .Attr(
+                                    "activation_beta",
+                                    "",
+                                    AttributeProto::FLOAT,
+                                    OPTIONAL_VALUE)
+                                .Attr(
+                                    "activation_gamma",
+                                    "",
+                                    AttributeProto::FLOAT,
+                                    OPTIONAL_VALUE)
+                                .Attr(
+                                    "activation_axis",
+                                    "",
+                                    AttributeProto::INT,
+                                    OPTIONAL_VALUE)
+                                .Output(0, "Y", "Matrix multiply results", "T")
+                                .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
+                                                "Constrain input and output types to float tensors.")
+                                .SetDoc(FusedMatMulActivation_doc)
                                 .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) { FusedMatMulShapeInference(ctx); }));
 
 ONNX_MS_OPERATOR_SET_SCHEMA(SparseToDenseMatMul, 1,
@@ -2156,9 +2309,7 @@ void RegisterContribSchemas() {
         if (axis_proto) {
           axis = axis_proto->i();
         }
-        if (axis < 0) {
-          axis += input_ndim;
-        }
+        axis = HandleNegativeAxis(axis, input_ndim);
 
         if (ctx.getNumOutputs() > 1) {
           auto saved_mean_shape = ctx.getOutputType(1)->mutable_tensor_type()->mutable_shape();
@@ -2300,9 +2451,7 @@ void RegisterContribSchemas() {
         if (axis_proto) {
           axis = axis_proto->i();
         }
-        if (axis < 0) {
-          axis += input_ndim;
-        }
+        axis = HandleNegativeAxis(axis, input_ndim);
 
         if (ctx.getNumOutputs() > 1) {
           auto saved_inv_std_var_shape = ctx.getOutputType(1)->mutable_tensor_type()->mutable_shape();
@@ -2310,6 +2459,12 @@ void RegisterContribSchemas() {
           saved_inv_std_var_shape->mutable_dim(static_cast<int>(axis))->set_dim_value(1);
         }
       });
+
+  // ORT will not regsiter TRT plugins as contrib ops, instead it will use custom ops handled by TRT EP.
+  // In order not to break the old models using those TRT plugins which were registered with ONNX domain and maintain backward compatible,
+  // we still keep EfficientNMS_TRT, MultilevelCropAndResize_TRT, PyramidROIAlign_TRT and DisentangledAttention_TRT as legacy code.
+  // We don't need to add new schema definition when a new TRT plugin is introduced, TRT EP will register it as custom op for us.
+  // Moving forward, please create TRT plugin node with "trt.plugins" domain.
 
   static const char* EfficientNMS_TRT_ver1_doc =
       R"DOC(Efficient NMS TensorRT Plugin.)DOC";
@@ -2513,6 +2668,8 @@ void RegisterContribSchemas() {
         propagateShapeFromInputToOutput(ctx, 0, 0);
       });
 
+  // Please note that we don't need to add new schema definition when a new TRT plugin is introduced, TRT EP will register it as custom op for us.
+
   ONNX_CONTRIB_OPERATOR_SCHEMA(Snpe)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
@@ -2622,11 +2779,98 @@ This op functions in much the same was as Dropout-11 and Dropout-13 do, execpt t
                       "Allow inputs and outputs to be any kind of tensor.");
 #endif
 
+#ifdef ENABLE_TRAINING_OPS
+  // Should remove the shrunken_gather include from ENABLE_TRAINING_OPS once 1). compute optimizer is enabled for inference or
+  // 2). this is needed by inference for other purpose.
+
+  static const char* ShrunkenGather_ver1_doc = R"DOC(
+    This op is a specialised case of Gather-13, adding additional constraint including: indices being 1D,
+and indices count < input element count on the specified axis.
+
+Having this op allows runtime to do operator re-ordering to reduce compute FLOPs.
+)DOC";
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(ShrunkenGather)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
+      .SetDoc(ShrunkenGather_ver1_doc)
+      .AllowUncheckedAttributes()
+      .Attr(
+          "axis",
+          "Which axis to gather on. Negative value means "
+          "counting dimensions from the back. Accepted range is [-r, r-1] where r = rank(data).",
+          AttributeProto::INT,
+          static_cast<int64_t>(0))
+      .Input(0, "data", "Tensor of rank r >= 1.", "T", OpSchema::Single, true, 1, OpSchema::Differentiable)
+      .Input(
+          1,
+          "indices",
+          "Tensor of int64 indices, with rank = 1. All index values are expected to be within bounds [-s, s-1] "
+          "along axis of size s. It is an error if any of the index values are out of bounds."
+          "The number of elements in indices must be less than the number of elements in the input tensor,"
+          "which is the reason why this op is called ShrunkenGather.",
+          "Tind",
+          OpSchema::Single,
+          true,
+          1,
+          OpSchema::NonDifferentiable)
+      .Output(0, "output", "Tensor of rank r.", "T", OpSchema::Single, true, 1, OpSchema::Differentiable)
+      .TypeConstraint(
+          "T",
+          OpSchema::all_tensor_types_with_bfloat(),
+          "Constrain input and output types to any tensor type.")
+      .TypeConstraint("Tind", {"tensor(int32)", "tensor(int64)"}, "Constrain indices to integer types")
+      .TypeAndShapeInferenceFunction([](InferenceContext& ctx) {
+        propagateElemTypeFromInputToOutput(ctx, 0, 0);
+
+        if (!hasNInputShapes(ctx, 2)) {
+          return;
+        }
+
+        const TensorShapeProto& data_shape = ctx.getInputType(0)->tensor_type().shape();
+        const TensorShapeProto& indices_shape = ctx.getInputType(1)->tensor_type().shape();
+        int r = data_shape.dim_size();
+        if (r < 1) {
+          fail_shape_inference("data tensor must have rank >= 1");
+        }
+        int q = indices_shape.dim_size();
+        int axis = static_cast<int>(getAttribute(ctx, "axis", 0));
+        if (axis < -r || axis >= r) {
+          fail_shape_inference("axis must be in [-r, r-1]");
+        }
+        if (axis < 0) {
+          axis += r;
+        }
+
+        int out_rank = q + r - 1;
+        auto final_output_shape = ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape();
+
+        int i = 0;
+        for (; i < axis; ++i) {
+          *final_output_shape->add_dim() = data_shape.dim(i);
+        }
+
+        for (; i < axis + q; ++i) {
+          *final_output_shape->add_dim() = indices_shape.dim(i - axis);
+        }
+
+        for (; i < out_rank; ++i) {
+          *final_output_shape->add_dim() = data_shape.dim(i - q + 1);
+        }
+      });
+
+#endif
+
 #ifndef _OPSCHEMA_LIB_
   // Register the NCHWc schemas if supported by the platform.
   if (MlasNchwcGetBlockSize() > 1) {
     RegisterNchwcSchemas();
   }
+#endif
+
+#ifdef USE_MPI
+  RegisterCollectiveOps();
 #endif
 }
 

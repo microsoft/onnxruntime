@@ -45,6 +45,12 @@ const appendDefaultOptions = (options: InferenceSession.SessionOptions): void =>
     // eslint-disable-next-line camelcase
     session.use_ort_model_bytes_directly = '1';
   }
+
+  // if using JSEP with WebGPU, always disable memory pattern
+  if (options.executionProviders &&
+      options.executionProviders.some(ep => (typeof ep === 'string' ? ep : ep.name) === 'webgpu')) {
+    options.enableMemPattern = false;
+  }
 };
 
 const setExecutionProviders =
@@ -57,6 +63,9 @@ const setExecutionProviders =
         switch (epName) {
           case 'xnnpack':
             epName = 'XNNPACK';
+            break;
+          case 'webgpu':
+            epName = 'JS';
             break;
           case 'wasm':
           case 'cpu':
@@ -81,61 +90,39 @@ export const setSessionOptions = (options?: InferenceSession.SessionOptions): [n
   appendDefaultOptions(sessionOptions);
 
   try {
-    if (options?.graphOptimizationLevel === undefined) {
-      sessionOptions.graphOptimizationLevel = 'all';
-    }
-    const graphOptimizationLevel = getGraphOptimzationLevel(sessionOptions.graphOptimizationLevel!);
+    const graphOptimizationLevel = getGraphOptimzationLevel(sessionOptions.graphOptimizationLevel ?? 'all');
+    const executionMode = getExecutionMode(sessionOptions.executionMode ?? 'sequential');
+    const logIdDataOffset =
+        typeof sessionOptions.logId === 'string' ? allocWasmString(sessionOptions.logId, allocs) : 0;
 
-    if (options?.enableCpuMemArena === undefined) {
-      sessionOptions.enableCpuMemArena = true;
-    }
-
-    if (options?.enableMemPattern === undefined) {
-      sessionOptions.enableMemPattern = true;
+    const logSeverityLevel = sessionOptions.logSeverityLevel ?? 2;  // Default to 2 - warning
+    if (!Number.isInteger(logSeverityLevel) || logSeverityLevel < 0 || logSeverityLevel > 4) {
+      throw new Error(`log serverity level is not valid: ${logSeverityLevel}`);
     }
 
-    if (options?.executionMode === undefined) {
-      sessionOptions.executionMode = 'sequential';
-    }
-    const executionMode = getExecutionMode(sessionOptions.executionMode!);
-
-    let logIdDataOffset = 0;
-    if (options?.logId !== undefined) {
-      logIdDataOffset = allocWasmString(options.logId, allocs);
+    const logVerbosityLevel = sessionOptions.logVerbosityLevel ?? 0;  // Default to 0 - verbose
+    if (!Number.isInteger(logVerbosityLevel) || logVerbosityLevel < 0 || logVerbosityLevel > 4) {
+      throw new Error(`log verbosity level is not valid: ${logVerbosityLevel}`);
     }
 
-    if (options?.logSeverityLevel === undefined) {
-      sessionOptions.logSeverityLevel = 2;  // Default to warning
-    } else if (
-        typeof options.logSeverityLevel !== 'number' || !Number.isInteger(options.logSeverityLevel) ||
-        options.logSeverityLevel < 0 || options.logSeverityLevel > 4) {
-      throw new Error(`log serverity level is not valid: ${options.logSeverityLevel}`);
-    }
-
-    if (options?.logVerbosityLevel === undefined) {
-      sessionOptions.logVerbosityLevel = 0;  // Default to 0
-    } else if (typeof options.logVerbosityLevel !== 'number' || !Number.isInteger(options.logVerbosityLevel)) {
-      throw new Error(`log verbosity level is not valid: ${options.logVerbosityLevel}`);
-    }
-
-    if (options?.enableProfiling === undefined) {
-      sessionOptions.enableProfiling = false;
-    }
+    const optimizedModelFilePathOffset = typeof sessionOptions.optimizedModelFilePath === 'string' ?
+        allocWasmString(sessionOptions.optimizedModelFilePath, allocs) :
+        0;
 
     sessionOptionsHandle = wasm._OrtCreateSessionOptions(
-        graphOptimizationLevel, !!sessionOptions.enableCpuMemArena!, !!sessionOptions.enableMemPattern!, executionMode,
-        !!sessionOptions.enableProfiling!, 0, logIdDataOffset, sessionOptions.logSeverityLevel!,
-        sessionOptions.logVerbosityLevel!);
+        graphOptimizationLevel, !!sessionOptions.enableCpuMemArena, !!sessionOptions.enableMemPattern, executionMode,
+        !!sessionOptions.enableProfiling, 0, logIdDataOffset, logSeverityLevel, logVerbosityLevel,
+        optimizedModelFilePathOffset);
     if (sessionOptionsHandle === 0) {
       throw new Error('Can\'t create session options');
     }
 
-    if (options?.executionProviders) {
-      setExecutionProviders(sessionOptionsHandle, options.executionProviders, allocs);
+    if (sessionOptions.executionProviders) {
+      setExecutionProviders(sessionOptionsHandle, sessionOptions.executionProviders, allocs);
     }
 
-    if (options?.extra !== undefined) {
-      iterateExtraOptions(options.extra, '', new WeakSet<Record<string, unknown>>(), (key, value) => {
+    if (sessionOptions.extra !== undefined) {
+      iterateExtraOptions(sessionOptions.extra, '', new WeakSet<Record<string, unknown>>(), (key, value) => {
         const keyDataOffset = allocWasmString(key, allocs);
         const valueDataOffset = allocWasmString(value, allocs);
 

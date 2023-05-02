@@ -6,7 +6,6 @@
 #include "xpu_data_transfer.h"
 #include "tvm_utils.h"
 
-
 namespace onnxruntime {
 namespace tvm {
 
@@ -18,11 +17,10 @@ XPUDataTransfer::~XPUDataTransfer() {
 
 bool XPUDataTransfer::CanCopy(const OrtDevice& src_device, const OrtDevice& dst_device) const {
   return (src_device.Type() == OrtDevice::CPU && dst_device.Type() == OrtDevice::CPU) ||
-  (src_device.Type() == OrtDevice::GPU || dst_device.Type() == OrtDevice::GPU);
+         (src_device.Type() == OrtDevice::GPU || dst_device.Type() == OrtDevice::GPU);
 }
 
-common::Status XPUDataTransfer::CopyTensor(const Tensor& src, Tensor& dst, int _exec_queue_id) const {
-  _exec_queue_id = _exec_queue_id + 1;
+common::Status XPUDataTransfer::CopyTensor(const Tensor& src, Tensor& dst) const {
   size_t bytes = src.SizeInBytes();
   const void* src_data = src.DataRaw();
   void* dst_data = dst.MutableDataRaw();
@@ -61,8 +59,7 @@ common::Status XPUDataTransfer::CopyTensor(const Tensor& src, Tensor& dst, int _
   return Status::OK();
 }
 
-DLDevice XPUDataTransfer::get_context(const OrtDevice& device) const
-{
+DLDevice XPUDataTransfer::get_context(const OrtDevice& device) const {
   return GetDLDevice(static_cast<OrtMemoryInfoDeviceType>(device.Type()));
 }
 
@@ -70,7 +67,7 @@ bool TvmCPUDataTransfer::CanCopy(const OrtDevice& src_device, const OrtDevice& d
   return src_device.Type() == OrtDevice::CPU && dst_device.Type() == OrtDevice::CPU;
 }
 
-common::Status TvmCPUDataTransfer::CopyTensor(const Tensor& src, Tensor& dst, int /*exec_queue_id*/) const {
+common::Status TvmCPUDataTransfer::CopyTensor(const Tensor& src, Tensor& dst) const {
   const void* src_data = src.DataRaw();
   void* dst_data = dst.MutableDataRaw();
   if (src_data == dst_data) {
@@ -83,5 +80,5 @@ common::Status TvmCPUDataTransfer::CopyTensor(const Tensor& src, Tensor& dst, in
   return Status::OK();
 }
 
-}   // namespace tvm
-}   // namespace onnxruntime
+}  // namespace tvm
+}  // namespace onnxruntime

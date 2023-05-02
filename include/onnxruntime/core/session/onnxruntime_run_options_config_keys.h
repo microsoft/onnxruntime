@@ -25,3 +25,8 @@
 // Example usage: "cpu:0;gpu:0" (or) "gpu:0"
 // By default, the value for this key is empty (i.e.) no memory arenas are shrunk
 static const char* const kOrtRunOptionsConfigEnableMemoryArenaShrinkage = "memory.enable_memory_arena_shrinkage";
+
+// Set to '1' to not synchronize execution providers with CPU at the end of session run.
+// Per default it will be set to '0'
+// Taking CUDA EP as an example, it omit triggering cudaStreamSynchronize on the compute stream.
+static const char* const kOrtRunOptionsConfigDisableSynchronizeExecutionProviders = "disable_synchronize_execution_providers";

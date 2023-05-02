@@ -308,7 +308,7 @@ inline cublasStatus_t cublasGemmStridedBatchedHelper(cublasHandle_t handle,
                                                      long long int strideC,
                                                      int batch_count,
                                                      const cudaDeviceProp& prop) {
-#ifdef ENABLE_TRAINING
+#ifdef ENABLE_TRAINING_OPS
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
   onnxruntime::cuda::CublasMathModeSetter math_mode_setter(prop, handle, CUBLAS_TF32_TENSOR_OP_MATH);
 #else
@@ -403,7 +403,6 @@ inline cublasStatus_t cublasGemmStridedBatchedHelper(cublasHandle_t handle,
                                       CUBLAS_GEMM_DEFAULT);
   }
 }
-
 
 inline cublasStatus_t cublasGemmStridedBatchedHelper(cublasHandle_t handle,
                                                      cublasOperation_t transa,

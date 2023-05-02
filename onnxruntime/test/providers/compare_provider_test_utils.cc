@@ -31,6 +31,8 @@ std::unique_ptr<IExecutionProvider> GetExecutionProvider(const std::string& prov
     execution_provider = DefaultAclExecutionProvider();
   else if (provider_type == onnxruntime::kRocmExecutionProvider)
     execution_provider = DefaultRocmExecutionProvider();
+  else if (provider_type == onnxruntime::kDmlExecutionProvider)
+    execution_provider = DefaultDmlExecutionProvider();
   // skip if execution provider is disabled
   if (execution_provider == nullptr) {
     return nullptr;
@@ -56,12 +58,12 @@ void CompareOpTester::CompareWithCPU(const std::string& target_provider_type,
   Status status;
 
   // In InferenceSession::Initialize(), the call to graph partitioner, which is responsible
-  // for Inlining function bodies for ops whose kernel is missing happens before the 
+  // for Inlining function bodies for ops whose kernel is missing happens before the
   // Cast Transformer. As a result, for MLFloat16 tests where the node is missing a CPU kernel,
-  // the function body is instead used for CPU pass. This option allows the comparison with 
+  // the function body is instead used for CPU pass. This option allows the comparison with
   // the CPU kernel by adding the input/output casts before looking for a registered CPU kernel.
   if (need_cpu_cast) {
-    InsertCastTransformer transformer("Test");
+    InsertCastTransformer transformer("Test", GetExecutionProvider(kCpuExecutionProvider)->GetKernelRegistry().get());
     bool modified = false;
     status = transformer.Apply(graph, modified, DefaultLoggingManager().DefaultLogger());
     ASSERT_TRUE(status.IsOK());
@@ -151,7 +153,7 @@ void CompareOpTester::CompareWithCPU(const std::string& target_provider_type,
   status = target_session_object.Run(run_options, feeds, output_names, &target_fetches);
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
 
-  //compare
+  // compare
   ASSERT_TRUE(cpu_fetches.size() == target_fetches.size());
   for (size_t i = 0; i < cpu_fetches.size(); i++) {
     auto ret = CompareOrtValue(target_fetches[i], cpu_fetches[i], per_sample_tolerance, relative_per_sample_tolerance, false);

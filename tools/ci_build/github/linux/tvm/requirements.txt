@@ -4,10 +4,11 @@ scipy
 wheel
 setuptools
 onnx==1.11.0
-protobuf==3.18.3
+protobuf==3.20.2
 flatbuffers
 tornado
 psutil
 xgboost
 cloudpickle
 pytest
+attrs

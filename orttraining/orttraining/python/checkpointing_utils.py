@@ -1,4 +1,5 @@
 import os
+
 import torch
 
 
@@ -14,8 +15,8 @@ def list_checkpoint_files(checkpoint_dir, checkpoint_prefix, extension=".ort.pt"
 
 
 def get_checkpoint_name(prefix, is_partitioned, world_rank=None, world_size=None):
-    SINGLE_CHECKPOINT_FILENAME = "{prefix}.ort.pt"
-    MULTIPLE_CHECKPOINT_FILENAME = "{prefix}.ZeRO.{world_rank}.{world_size}.ort.pt"
+    SINGLE_CHECKPOINT_FILENAME = "{prefix}.ort.pt"  # noqa: N806
+    MULTIPLE_CHECKPOINT_FILENAME = "{prefix}.ZeRO.{world_rank}.{world_size}.ort.pt"  # noqa: N806
 
     if is_partitioned:
         filename = MULTIPLE_CHECKPOINT_FILENAME.format(
@@ -42,9 +43,8 @@ def _split_state_dict(state_dict):
     return split_sd
 
 
-class CombineZeroCheckpoint(object):
+class CombineZeroCheckpoint:
     def __init__(self, checkpoint_files, clean_state_dict=None):
-
         assert len(checkpoint_files) > 0, "No checkpoint files passed"
         self.checkpoint_files = checkpoint_files
         self.clean_state_dict = clean_state_dict
@@ -69,7 +69,7 @@ class CombineZeroCheckpoint(object):
         elif name_split[0].endswith("_fp16"):
             mp_suffix = "_fp16"
         param_name = name_split[0]
-        if optimizer_key != "":
+        if optimizer_key != "":  # noqa: PLC1901
             param_name = param_name.split(optimizer_key)[1]
         param_name = param_name.split("_fp16")[0]
         return param_name, optimizer_key, view_num, mp_suffix

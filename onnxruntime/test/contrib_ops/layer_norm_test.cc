@@ -6,7 +6,7 @@
 namespace onnxruntime {
 namespace test {
 
-#if defined(USE_CUDA) || defined(USE_ROCM)
+#if defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_DML)
 constexpr auto k_epsilon_default = 1e-5f;
 constexpr auto k_random_data_min = -10.0f;
 constexpr auto k_random_data_max = 10.0f;
@@ -80,6 +80,8 @@ static void TestLayerNorm(const std::vector<int64_t>& x_dims,
   test.CompareWithCPU(kCudaExecutionProvider);
 #elif USE_ROCM
   test.CompareWithCPU(kRocmExecutionProvider);
+#elif USE_DML
+  test.CompareWithCPU(kDmlExecutionProvider);
 #endif
 }
 
@@ -106,6 +108,16 @@ TEST(CudaKernelTest, LayerNorm_MidSizeTensor) {
 
 TEST(CudaKernelTest, LayerNorm_LargeSizeTensor) {
   std::vector<int64_t> X_dims{16, 512, 1024};
+  TestLayerNorm(X_dims, LAYER_NORM_OP, k_epsilon_default);
+}
+
+TEST(CudaKernelTest, LayerNorm_4KTensor) {
+  std::vector<int64_t> X_dims{3, 10, 4096};
+  TestLayerNorm(X_dims, LAYER_NORM_OP, k_epsilon_default);
+}
+
+TEST(CudaKernelTest, LayerNorm_8KTensor) {
+  std::vector<int64_t> X_dims{3, 10, 8192};
   TestLayerNorm(X_dims, LAYER_NORM_OP, k_epsilon_default);
 }
 
@@ -138,14 +150,11 @@ TEST(CudaKernelTest, SimplifiedLayerNorm_LargeSizeTensor) {
   TestLayerNorm(X_dims, SIMPLIFIED_LAYER_NORM_OP, k_epsilon_default);
 }
 
-// TODO: Generate the ROCM implementation of ONNX LayerNorm
-#ifdef USE_CUDA
 // LayerNormalization is an ONNX operator in opset 17. It uses the same implementation so this is just a sanity check.
 TEST(CudaKernelTest, LayerNorm_SmallSizeTensor_Opset17) {
   const std::vector<int64_t> X_dims{4, 20, 128};
   TestLayerNorm(X_dims, LAYER_NORM_OP, k_epsilon_default, -1, 1, false, 17);
 }
-#endif
 
 #endif
 }  // namespace test

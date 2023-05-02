@@ -28,22 +28,7 @@ namespace {
 
 class WindowsEnvTime : public EnvTime {
  public:
-#if WINVER >= _WIN32_WINNT_WIN8
   WindowsEnvTime() : GetSystemTimePreciseAsFileTime_(GetSystemTimePreciseAsFileTime) {}
-#else
-  WindowsEnvTime() : GetSystemTimePreciseAsFileTime_(NULL) {
-    // GetSystemTimePreciseAsFileTime function is only available in
-    // Windows >= 8. For that reason, we try to look it up in
-    // kernel32.dll at runtime and use an alternative option if the function
-    // is not available.
-    HMODULE module = GetModuleHandleW(L"kernel32.dll");
-    if (module != NULL) {
-      auto func = (FnGetSystemTimePreciseAsFileTime)GetProcAddress(
-          module, "GetSystemTimePreciseAsFileTime");
-      GetSystemTimePreciseAsFileTime_ = func;
-    }
-  }
-#endif
 
   uint64_t NowMicros() override {
     if (GetSystemTimePreciseAsFileTime_ != NULL) {
@@ -111,8 +96,8 @@ void AccumulateTimeSpec(TIME_SPEC* base, const TIME_SPEC* start, const TIME_SPEC
   *base += std::max<TIME_SPEC>(0, *end - *start);
 }
 
-//Return the interval in seconds.
-//If the function fails, the return value is zero
+// Return the interval in seconds.
+// If the function fails, the return value is zero
 double TimeSpecToSeconds(const TIME_SPEC* value) {
   BOOL initState = InitOnceExecuteOnce(&g_InitOnce, InitHandleFunction, nullptr, nullptr);
   if (!initState) return 0;

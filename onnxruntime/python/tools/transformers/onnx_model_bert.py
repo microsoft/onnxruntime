@@ -6,7 +6,9 @@
 from logging import getLogger
 from typing import List, Optional
 
+from convert_to_packing_mode import PackingMode
 from fusion_attention import AttentionMask, FusionAttention
+from fusion_bart_attention import FusionBartAttention
 from fusion_biasgelu import FusionBiasGelu
 from fusion_embedlayer import FusionEmbedLayerNormalization
 from fusion_fastgelu import FusionFastGelu
@@ -14,7 +16,7 @@ from fusion_gelu import FusionGelu
 from fusion_gelu_approximation import FusionGeluApproximation
 from fusion_gemmfastgelu import FusionGemmFastGelu
 from fusion_layernorm import FusionLayerNormalization, FusionLayerNormalizationTF
-from fusion_options import FusionOptions
+from fusion_options import AttentionMaskFormat, FusionOptions
 from fusion_qordered_attention import FusionQOrderedAttention
 from fusion_qordered_gelu import FusionQOrderedGelu
 from fusion_qordered_layernorm import FusionQOrderedLayerNormalization
@@ -33,7 +35,7 @@ class BertOptimizationOptions(FusionOptions):
     """This class is deprecated"""
 
     def __init__(self, model_type):
-        logger.warning(f"BertOptimizationOptions is depreciated. Please use FusionOptions instead.")
+        logger.warning("BertOptimizationOptions is depreciated. Please use FusionOptions instead.")
         super().__init__(model_type)
 
 
@@ -97,8 +99,8 @@ class BertOnnxModel(OnnxModel):
         fusion = FusionShape(self)
         fusion.apply()
 
-    def fuse_embed_layer(self):
-        fusion = FusionEmbedLayerNormalization(self)
+    def fuse_embed_layer(self, use_mask_index):
+        fusion = FusionEmbedLayerNormalization(self, use_mask_index)
         fusion.apply()
 
     def fuse_layer_norm(self):
@@ -235,7 +237,6 @@ class BertOnnxModel(OnnxModel):
             casted=True
         ) + self.get_graph_inputs_from_fused_nodes(casted=False)
 
-        dynamic_batch_inputs = {}
         for input in self.model.graph.input:
             if input.name in bert_graph_inputs:
                 dim_proto = input.type.tensor_type.shape.dim[0]
@@ -256,7 +257,7 @@ class BertOnnxModel(OnnxModel):
         nodes_to_remove = []
         for node in self.nodes():
             if node.op_type == "Reshape":
-                # Clean up unneccessary reshape nodes.
+                # Clean up unnecessary reshape nodes.
                 # Find reshape nodes with no actually data in "shape" attribute and remove.
                 reshape_shape = self.get_constant_value(node.input[1])
                 if reshape_shape is not None and reshape_shape.size == 0:
@@ -324,7 +325,7 @@ class BertOnnxModel(OnnxModel):
                 if parent_nodes is not None:
                     (
                         cast,
-                        constantOfShape,
+                        constantOfShape,  # noqa: N806
                         concat,
                         unsqueeze,
                         gather,
@@ -385,9 +386,14 @@ class BertOnnxModel(OnnxModel):
         if (options is None) or options.enable_skip_layer_norm:
             self.fuse_skip_layer_norm()
 
+        if options is not None:
+            self.attention_mask.set_mask_format(options.attention_mask_format)
+            if options.use_multi_head_attention and not isinstance(self.attention_fusion, FusionBartAttention):
+                self.attention_fusion = FusionAttention(
+                    self, self.hidden_size, self.num_heads, self.attention_mask, options.use_multi_head_attention
+                )
+
         if (options is None) or options.enable_attention:
-            if options is not None:
-                self.attention_mask.set_mask_format(options.attention_mask_format)
             self.fuse_attention()
 
         # Perform the MatMul fusion after the Attention fusion as we do not
@@ -398,7 +404,8 @@ class BertOnnxModel(OnnxModel):
         self.fuse_shape()
 
         if (options is None) or options.enable_embed_layer_norm:
-            self.fuse_embed_layer()
+            use_mask_index = options.attention_mask_format == AttentionMaskFormat.MaskIndexEnd
+            self.fuse_embed_layer(use_mask_index)
 
         # Remove reshape nodes that having same shape of input and output based on symbolic shape inference.
         self.utils.remove_useless_reshape_nodes()
@@ -437,20 +444,19 @@ class BertOnnxModel(OnnxModel):
         ops = [
             "EmbedLayerNormalization",
             "Attention",
-            "QOrderedAttention",
+            "MultiHeadAttention",
             "Gelu",
-            "QOrderedGelu",
             "FastGelu",
             "BiasGelu",
             "GemmFastGelu",
             "LayerNormalization",
-            "QOrderedLayerNormalization",
             "SkipLayerNormalization",
-            "QOrderedMatMul",
         ]
-        for op in ops:
+        q_ops = ["QOrderedAttention", "QOrderedGelu", "QOrderedLayerNormalization", "QOrderedMatMul"]
+        for op in ops + q_ops:
             nodes = self.get_nodes_by_op_type(op)
             op_count[op] = len(nodes)
+
         logger.info(f"Optimized operators:{op_count}")
         return op_count
 
@@ -460,7 +466,7 @@ class BertOnnxModel(OnnxModel):
         """
         op_count = self.get_fused_operator_statistics()
         embed = op_count["EmbedLayerNormalization"]
-        attention = op_count["Attention"] + op_count["QOrderedAttention"]
+        attention = op_count["Attention"] + op_count["MultiHeadAttention"] + op_count["QOrderedAttention"]
         gelu = op_count["Gelu"] + op_count["BiasGelu"] + op_count["FastGelu"]
         layer_norm = op_count["LayerNormalization"] + op_count["SkipLayerNormalization"]
         is_perfect = (embed > 0) and (attention > 0) and (attention == gelu) and (layer_norm >= 2 * attention)
@@ -478,3 +484,7 @@ class BertOnnxModel(OnnxModel):
             logger.warning("Attention not fused")
 
         return is_perfect
+
+    def convert_to_packing_mode(self, use_symbolic_shape_infer: bool = False):
+        packing_mode = PackingMode(self)
+        packing_mode.convert(use_symbolic_shape_infer)

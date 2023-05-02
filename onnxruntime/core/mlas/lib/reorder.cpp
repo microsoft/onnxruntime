@@ -1,6 +1,7 @@
 /*++
 
 Copyright (c) Microsoft Corporation. All rights reserved.
+Copyright (c) 2019, 2022, Oracle and/or its affiliates. All rights reserved.
 
 Licensed under the MIT License.
 
@@ -16,6 +17,20 @@ Abstract:
 --*/
 
 #include "mlasi.h"
+
+//
+// Define the parameters to execute segments of a NCHW output reordering
+// operation on worker threads.
+//
+
+struct MLAS_REORDER_OUTPUT_NCHW_BLOCK {
+    ptrdiff_t TargetThreadCount;
+    const float* S;
+    float* D;
+    size_t OutputChannels;
+    size_t OutputSize;
+    size_t TasksCount;
+};
 
 MLAS_FORCEINLINE
 void
@@ -396,11 +411,133 @@ Return Value:
 }
 
 void
+MlasReorderOutputNchwThreaded(
+    void* Context,
+    ptrdiff_t Index
+    )
+/*++
+
+Routine Description:
+
+    This routine is invoked from a worker thread to execute a segment of a
+    NCHW output reordering operation.
+
+Arguments:
+
+    Context - Supplies the pointer to the context for the threaded operation.
+
+    Index - Supplies the current index of the threaded operation.
+
+Return Value:
+
+    None.
+
+--*/
+{
+    const auto* WorkBlock = (MLAS_REORDER_OUTPUT_NCHW_BLOCK*)Context;
+
+    const size_t OutputChannels = WorkBlock->OutputChannels;
+    const size_t OutputSize = WorkBlock->OutputSize;
+    const float* S = WorkBlock->S;
+    float* D =  WorkBlock->D;
+
+    const size_t BlockSize = MlasNchwcGetBlockSize();
+    const size_t TasksPerBatch = size_t(ceil(((float)OutputChannels) / BlockSize));
+    const size_t LastTaskInBatchIndex = TasksPerBatch - 1;
+
+    //
+    // Compute the range of task indices to use for this thread.
+    //
+
+    size_t TaskStart;
+    size_t TasksRemaining;
+
+    MlasPartitionWork(Index, WorkBlock->TargetThreadCount, WorkBlock->TasksCount,
+        &TaskStart, &TasksRemaining);
+
+    size_t TaskEnd = TaskStart + TasksRemaining;
+   
+    //
+    // Rebase the pointers to the source and destination buffers for this thread.
+    //
+
+    size_t FirstBatchIndex = TaskStart / TasksPerBatch;
+    size_t FirstTaskInBatchIndex = TaskStart % TasksPerBatch;
+    S += BlockSize * OutputSize * (FirstBatchIndex * TasksPerBatch + FirstTaskInBatchIndex);
+    D += OutputSize * (FirstBatchIndex * OutputChannels + BlockSize * FirstTaskInBatchIndex);
+
+    //
+    // Transpose NCHWc blocks associated with tasks in the range [TaskStart, TaskEnd)
+    // from the source buffer to the destination buffer.
+    //
+
+    for (size_t t = TaskStart; t < TaskEnd; t++) {
+        size_t TaskInBatchIndex = t % TasksPerBatch;
+
+        const size_t OutputChannelsThisIteration = (TaskInBatchIndex < LastTaskInBatchIndex) ?
+            BlockSize : OutputChannels - BlockSize * LastTaskInBatchIndex;
+        const size_t AlignedOutputChannelsThisIteration = OutputChannelsThisIteration & (~3);
+
+        const float* s = S;
+        float* d = D;
+        size_t OutputSizeRemaining = OutputSize;
+
+        for (; OutputSizeRemaining >= 4; OutputSizeRemaining -= 4) {
+
+            const float* ss = s;
+            float* dd = d;
+            size_t bc = 0;
+
+            for (; bc < AlignedOutputChannelsThisIteration; bc += 4) {
+                MlasReorderTransposeFloat32x4x4(ss, dd, BlockSize, OutputSize);
+                ss += 4;
+                dd += 4 * OutputSize;
+            }
+
+            for (; bc < OutputChannelsThisIteration; bc += 1) {
+                MlasReorderGatherFloat32x4(ss, dd, BlockSize);
+                ss += 1;
+                dd += OutputSize;
+            }
+
+            s += 4 * BlockSize;
+            d += 4;
+        }
+
+        for (; OutputSizeRemaining > 0; OutputSizeRemaining--) {
+
+            const float* ss = s;
+            float* dd = d;
+            size_t bc = 0;
+
+            for (; bc < AlignedOutputChannelsThisIteration; bc += 4) {
+                MlasReorderScatterFloat32x4(ss, dd, OutputSize);
+                ss += 4;
+                dd += 4 * OutputSize;
+            }
+
+            for (; bc < OutputChannelsThisIteration; bc += 1) {
+                *dd = *ss++;
+                dd += OutputSize;
+            }
+
+            s += BlockSize;
+            d += 1;
+        }
+
+        S += BlockSize * OutputSize;
+        D += OutputChannelsThisIteration * OutputSize;
+    }
+}
+
+
+void
 MLASCALL
 MlasReorderOutputNchw(
     const int64_t* OutputShape,
     const float* S,
-    float* D
+    float* D,
+    MLAS_THREADPOOL* ThreadPool
     )
 /*++
 
@@ -422,75 +559,41 @@ Return Value:
 
 --*/
 {
+    MLAS_REORDER_OUTPUT_NCHW_BLOCK WorkBlock;
+
+    //
+    // Capture the NCHW reorder output operation parameters to the work block.
+    //
+
+    WorkBlock.S = S;
+    WorkBlock.D = D;
+    
+    WorkBlock.OutputChannels = size_t(OutputShape[1]);
+    WorkBlock.OutputSize = size_t(OutputShape[2]) * size_t(OutputShape[3]);
+
     const size_t BlockSize = MlasNchwcGetBlockSize();
-
+    const size_t TasksPerBatch = size_t(ceil(((float)WorkBlock.OutputChannels) / BlockSize));
     const size_t BatchCount = size_t(OutputShape[0]);
-    const size_t OutputChannels = size_t(OutputShape[1]);
-    const size_t OutputSize = size_t(OutputShape[2]) * size_t(OutputShape[3]);
+    const size_t TasksCount = BatchCount * TasksPerBatch;    
+    WorkBlock.TasksCount = TasksCount;
 
     //
-    // Transpose NCHWc blocks from the source buffer to the destination buffer.
+    // Schedule the operation across a set of worker threads if the output 
+    // tensor is sufficienly large. Limit the number of threads to at least
+    // the number of available tasks.
     //
 
-    for (size_t batch = 0; batch < BatchCount; batch++) {
-
-        for (size_t o = OutputChannels; o > 0;) {
-
-            const size_t OutputChannelsThisIteration = std::min(o, BlockSize);
-            const size_t AlignedOutputChannelsThisIteration = OutputChannelsThisIteration & (~3);
-            o -= OutputChannelsThisIteration;
-
-            const float* s = S;
-            float* d = D;
-            size_t OutputSizeRemaining = OutputSize;
-
-            for (; OutputSizeRemaining >= 4; OutputSizeRemaining -= 4) {
-
-                const float* ss = s;
-                float* dd = d;
-                size_t bc = 0;
-
-                for (; bc < AlignedOutputChannelsThisIteration; bc += 4) {
-                    MlasReorderTransposeFloat32x4x4(ss, dd, BlockSize, OutputSize);
-                    ss += 4;
-                    dd += 4 * OutputSize;
-                }
-
-                for (; bc < OutputChannelsThisIteration; bc += 1) {
-                    MlasReorderGatherFloat32x4(ss, dd, BlockSize);
-                    ss += 1;
-                    dd += OutputSize;
-                }
-
-                s += 4 * BlockSize;
-                d += 4;
-            }
-
-            for (; OutputSizeRemaining > 0; OutputSizeRemaining--) {
-
-                const float* ss = s;
-                float* dd = d;
-                size_t bc = 0;
-
-                for (; bc < AlignedOutputChannelsThisIteration; bc += 4) {
-                    MlasReorderScatterFloat32x4(ss, dd, OutputSize);
-                    ss += 4;
-                    dd += 4 * OutputSize;
-                }
-
-                for (; bc < OutputChannelsThisIteration; bc += 1) {
-                    *dd = *ss++;
-                    dd += OutputSize;
-                }
-
-                s += BlockSize;
-                d += 1;
-            }
-
-            S += BlockSize * OutputSize;
-            D += OutputChannelsThisIteration * OutputSize;
+    ptrdiff_t TargetThreadCount = 1;
+    const size_t BufferSize = BatchCount * WorkBlock.OutputChannels * WorkBlock.OutputSize;
+    if (BufferSize > 1024 && TasksCount > 1) {
+        TargetThreadCount = MlasGetMaximumThreadCount(ThreadPool);
+        if (size_t(TargetThreadCount) > TasksCount) {
+            TargetThreadCount = ptrdiff_t(TasksCount);
         }
-    }
+    }     
+    WorkBlock.TargetThreadCount = TargetThreadCount;
+
+    MlasExecuteThreaded(MlasReorderOutputNchwThreaded, &WorkBlock, TargetThreadCount, ThreadPool);
 }
 
 void

@@ -27,7 +27,7 @@ SVMRegressor<T>::SVMRegressor(const OpKernelInfo& info)
   one_class_ = (onec != 0);
 
   if (vector_count_ > 0) {
-    feature_count_ = support_vectors_.size() / vector_count_;  //length of each support vector
+    feature_count_ = support_vectors_.size() / vector_count_;  // length of each support vector
     mode_ = SVM_TYPE::SVM_SVC;
   } else {
     feature_count_ = coefficients_.size();
@@ -60,8 +60,8 @@ Status SVMRegressor<T>::Compute(OpKernelContext* ctx) const {
     auto status = ctx->GetTempSpaceAllocator(&allocator);
     ORT_RETURN_IF_ERROR(status);
 
-    auto tmp_data = IAllocator::MakeUniquePtr<T>(allocator, num_batches * vector_count_);
-    auto tmp_data_span = gsl::make_span<T>(tmp_data.get(), num_batches * vector_count_);
+    auto tmp_data = IAllocator::MakeUniquePtr<T>(allocator, num_batches * SafeInt<size_t>(vector_count_));
+    auto tmp_data_span = gsl::make_span<T>(tmp_data.get(), num_batches * SafeInt<size_t>(vector_count_));
 
     // combine the input data with the support vectors and apply the kernel type
     // output is {num_batches, vector_count_}

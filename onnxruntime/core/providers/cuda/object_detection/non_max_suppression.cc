@@ -62,10 +62,10 @@ Status NonMaxSuppression::ComputeInternal(OpKernelContext* ctx) const {
       IAllocatorUniquePtr<void> d_selected_indices{};
       IAllocatorUniquePtr<void> h_number_selected_ptr{AllocateBufferOnCPUPinned<void>(sizeof(int))};
       auto* h_number_selected = static_cast<int*>(h_number_selected_ptr.get());
-
+      auto* stream = ctx->GetComputeStream();
       ORT_RETURN_IF_ERROR(NonMaxSuppressionImpl(
-          Stream(),
-          [this](size_t bytes) { return GetScratchBuffer<void>(bytes); },
+          Stream(ctx),
+          [this, stream](size_t bytes) { return GetScratchBuffer<void>(bytes, stream); },
           pc,
           GetCenterPointBox(),
           batch_index,
@@ -114,12 +114,12 @@ Status NonMaxSuppression::ComputeInternal(OpKernelContext* ctx) const {
       }
     }
 
-    ORT_RETURN_IF_ERROR(concat_sizes_gpu.CopyToGpu());
-    ORT_RETURN_IF_ERROR(axis_dimension_input_output_mapping_gpu.CopyToGpu());
-    ORT_RETURN_IF_ERROR(concat_sizes_range_gpu.CopyToGpu());
-    ORT_RETURN_IF_ERROR(input_ptr.CopyToGpu());
+    ORT_RETURN_IF_ERROR(concat_sizes_gpu.CopyToGpu(ctx->GetComputeStream()));
+    ORT_RETURN_IF_ERROR(axis_dimension_input_output_mapping_gpu.CopyToGpu(ctx->GetComputeStream()));
+    ORT_RETURN_IF_ERROR(concat_sizes_range_gpu.CopyToGpu(ctx->GetComputeStream()));
+    ORT_RETURN_IF_ERROR(input_ptr.CopyToGpu(ctx->GetComputeStream()));
 
-    ORT_RETURN_IF_ERROR(ConcatImpl(Stream(),
+    ORT_RETURN_IF_ERROR(ConcatImpl(Stream(ctx),
                                    sizeof(int64_t),
                                    num_elements,
                                    last_dim,

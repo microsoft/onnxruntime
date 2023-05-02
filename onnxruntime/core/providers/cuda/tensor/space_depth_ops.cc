@@ -116,7 +116,7 @@ Status SpaceToDepth::ComputeInternal(OpKernelContext* context) const {
 
   std::vector<size_t> permutation = {0, 3, 5, 1, 2, 4};
 
-  ORT_RETURN_IF_ERROR(SpaceDepthOpCudaImpl(GetDeviceProp(), Stream(), CublasHandle(), input, output, permutation, batch,
+  ORT_RETURN_IF_ERROR(SpaceDepthOpCudaImpl(GetDeviceProp(), Stream(context), GetCublasHandle(context), input, output, permutation, batch,
                                            input_depth, input_height / blocksize_, blocksize_, input_width / blocksize_, blocksize_,
                                            virtual_output_shape));
 
@@ -173,7 +173,7 @@ Status DepthToSpace::ComputeInternal(OpKernelContext* context) const {
   int64_t dim1 = is_dcr_ ? blocksize_ : input_depth / blocksize_ / blocksize_;
   int64_t dim3 = is_dcr_ ? input_depth / blocksize_ / blocksize_ : blocksize_;
 
-  ORT_RETURN_IF_ERROR(SpaceDepthOpCudaImpl(GetDeviceProp(), Stream(), CublasHandle(), input, output,
+  ORT_RETURN_IF_ERROR(SpaceDepthOpCudaImpl(GetDeviceProp(), Stream(context), GetCublasHandle(context), input, output,
                                            permutation,
                                            batch,
                                            dim1, blocksize_, dim3, input_height, input_width,

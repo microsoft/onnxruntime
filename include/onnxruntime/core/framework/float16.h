@@ -41,7 +41,7 @@ inline bool operator<(const MLFloat16& left, const MLFloat16& right) { return le
 // BFloat16
 struct BFloat16 {
   uint16_t val{0};
-#if defined(USE_ROCM)
+#if defined(__HIP__)
   ORT_HOST_DEVICE BFloat16() = default;
 #else
   BFloat16() = default;
@@ -54,7 +54,7 @@ struct BFloat16 {
   inline ORT_HOST_DEVICE BFloat16(float v) {
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 11000 && defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800
     val = __bfloat16_as_ushort(__float2bfloat16(v));
-#elif defined(USE_ROCM)
+#elif defined(__HIP__)
     // We should be using memcpy in order to respect the strict aliasing rule but it fails in the HIP environment.
     if (v != v) {  // isnan
       val = UINT16_C(0x7FC0);
@@ -69,10 +69,9 @@ struct BFloat16 {
       val = static_cast<uint16_t>((U32 + rounding_bias) >> 16);
     }
 #else
-    if constexpr(endian::native == endian::little) {
+    if constexpr (endian::native == endian::little) {
       std::memcpy(&val, reinterpret_cast<char*>(&v) + sizeof(uint16_t), sizeof(uint16_t));
-    }
-    else {
+    } else {
       std::memcpy(&val, &v, sizeof(uint16_t));
     }
 #endif
@@ -81,7 +80,7 @@ struct BFloat16 {
   inline ORT_HOST_DEVICE float ToFloat() const {
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
     return __bfloat162float(*reinterpret_cast<const __nv_bfloat16*>(&val));
-#elif defined(USE_ROCM)
+#elif defined(__HIP__)
     // We should be using memcpy in order to respect the strict aliasing rule but it fails in the HIP environment.
     float result = 0;
     uint32_t tmp = val;
@@ -93,11 +92,10 @@ struct BFloat16 {
     float result;
     char* const first = reinterpret_cast<char*>(&result);
     char* const second = first + sizeof(uint16_t);
-    if constexpr(endian::native == endian::little) {
+    if constexpr (endian::native == endian::little) {
       std::memset(first, 0, sizeof(uint16_t));
       std::memcpy(second, &val, sizeof(uint16_t));
-    }
-    else {
+    } else {
       std::memcpy(first, &val, sizeof(uint16_t));
       std::memset(second, 0, sizeof(uint16_t));
     }
@@ -116,7 +114,6 @@ struct BFloat16 {
 inline ORT_HOST_DEVICE bool operator==(const BFloat16& left, const BFloat16& right) { return left.val == right.val; }
 inline ORT_HOST_DEVICE bool operator!=(const BFloat16& left, const BFloat16& right) { return left.val != right.val; }
 inline ORT_HOST_DEVICE bool operator<(const BFloat16& left, const BFloat16& right) { return left.val < right.val; }
-
 
 // User defined suffixes to make it easier to declare
 // initializers with MLFloat16 and BFloat16 from unsigned short

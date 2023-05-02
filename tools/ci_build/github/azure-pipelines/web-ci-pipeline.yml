@@ -28,5 +28,6 @@ stages:
   parameters:
     NpmPackagingMode: ${{ variables.NpmPackagingMode }}
     IsReleasePipeline: false
-    PoolName: 'Win-CPU-2019'
+    PoolName: 'onnxruntime-Win-CPU-2022-web'
     BuildStaticLib: true
+    ExtraBuildArgs: $(ExtraBuildArgs)

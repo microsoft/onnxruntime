@@ -97,7 +97,7 @@ Status Range::ComputeInternal(OpKernelContext* ctx) const {
 
   utils::MLTypeCallDispatcher<int32_t, float, int64_t, double, int16_t>
       t_disp(input_tensor->GetElementType());
-  return t_disp.InvokeRet<Status, cuda_range_internal::CallCudaRangeImpl>(Stream(), ctx);
+  return t_disp.InvokeRet<Status, cuda_range_internal::CallCudaRangeImpl>(Stream(ctx), ctx);
 }
 
 }  // namespace cuda

@@ -1,18 +1,18 @@
 /**
-* Copyright (c) 2016-present, Facebook, Inc.
-*
-* Licensed under the Apache License, Version 2.0 (the "License");
-* you may not use this file except in compliance with the License.
-* You may obtain a copy of the License at
-*
-*     http://www.apache.org/licenses/LICENSE-2.0
-*
-* Unless required by applicable law or agreed to in writing, software
-* distributed under the License is distributed on an "AS IS" BASIS,
-* WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-* See the License for the specific language governing permissions and
-* limitations under the License.
-*/
+ * Copyright (c) 2016-present, Facebook, Inc.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 /* Modifications Copyright (c) Microsoft. */
 
 #pragma once
@@ -44,7 +44,7 @@ class BatchNorm : public OpKernel {
     // From opset 9 onwards, by default, only the spatial case (spatial == 1) is defined per spec
     // For opset 14 onwards, training is an attribute.
     // For opset < 14, since no training attribute is present we assume optional outputs indicate training mode.
-    if (op_kernel_info.node().SinceVersion() == 14) {
+    if (op_kernel_info.node().SinceVersion() >= 14) {
       is_train_ = op_kernel_info.GetAttrOrDefault<int64_t>("training_mode", 0) == 1;
     } else {
       is_train_ = op_kernel_info.GetOutputCount() > 1;
@@ -76,8 +76,8 @@ class BatchNorm : public OpKernel {
     Tensor* Y = p_op_kernel_context->Output(0, x_shape);
 
     const auto& dims_vec = x_shape.GetDims();
-    const size_t N = dims_vec[0];
-    const size_t C = dims_vec[1];  // assume NCHW as per the spec
+    const size_t N = onnxruntime::narrow<size_t>(dims_vec[0]);
+    const size_t C = onnxruntime::narrow<size_t>(dims_vec[1]);  // assume NCHW as per the spec
 
     // calculate sample_size (per individual channel)
     size_t sample_size = 1;

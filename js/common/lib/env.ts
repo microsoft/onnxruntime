@@ -2,12 +2,15 @@
 // Licensed under the MIT License.
 
 import {EnvImpl} from './env-impl';
+
 export declare namespace Env {
   export type WasmPrefixOrFilePaths = string|{
+    /* eslint-disable @typescript-eslint/naming-convention */
     'ort-wasm.wasm'?: string;
     'ort-wasm-threaded.wasm'?: string;
     'ort-wasm-simd.wasm'?: string;
     'ort-wasm-simd-threaded.wasm'?: string;
+    /* eslint-enable @typescript-eslint/naming-convention */
   };
   export interface WebAssemblyFlags {
     /**
@@ -83,6 +86,10 @@ export declare namespace Env {
      */
     async?: boolean;
   }
+
+  export interface WebGpuFlags {
+    profilingMode?: 'off'|'default';
+  }
 }
 
 export interface Env {
@@ -108,6 +115,11 @@ export interface Env {
    * Represent a set of flags for WebGL
    */
   webgl: Env.WebGLFlags;
+
+  /**
+   * Represent a set of flags for WebGPU
+   */
+  webgpu: Env.WebGpuFlags;
 
   [name: string]: unknown;
 }

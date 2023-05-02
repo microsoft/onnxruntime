@@ -51,13 +51,13 @@ Status FastGelu<T>::ComputeInternal(OpKernelContext* context) const {
   typedef typename ToCudaType<T>::MappedType CudaT;
 
   return LaunchFastGeluKernel<CudaT>(GetDeviceProp(),
-                                   Stream(),
-                                   static_cast<int>(input_length),
-                                   static_cast<int>(bias_length),
-                                   reinterpret_cast<const CudaT*>(input->Data<T>()),
-                                   (nullptr != bias) ? reinterpret_cast<const CudaT*>(bias->Data<T>()) : nullptr,
-                                   reinterpret_cast<CudaT*>(output->MutableData<T>()),
-                                   use_half2_);
+                                     Stream(context),
+                                     static_cast<int>(input_length),
+                                     static_cast<int>(bias_length),
+                                     reinterpret_cast<const CudaT*>(input->Data<T>()),
+                                     (nullptr != bias) ? reinterpret_cast<const CudaT*>(bias->Data<T>()) : nullptr,
+                                     reinterpret_cast<CudaT*>(output->MutableData<T>()),
+                                     use_half2_);
 }
 
 }  // namespace cuda

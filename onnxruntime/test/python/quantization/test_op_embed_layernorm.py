@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# coding: utf-8
 # -------------------------------------------------------------------------
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License. See License.txt in the project root for
@@ -19,7 +18,7 @@ from onnxruntime.quantization import quantize_dynamic
 class TestOpEmbedLayerNormalization(unittest.TestCase):
     def input_feeds_int32(self, n, name2shape):
         input_data_list = []
-        for i in range(n):
+        for _i in range(n):
             inputs = {}
             for name, shape in name2shape.items():
                 inputs.update({name: np.ones(shape).astype(np.int32)})
@@ -28,7 +27,7 @@ class TestOpEmbedLayerNormalization(unittest.TestCase):
         dr = TestDataFeeds(input_data_list)
         return dr
 
-    def construct_model(self, batch, hidden_size, sequence_length, model_path):
+    def construct_model(self, batch, hidden_size, sequence_length, model_path, empty_segment=False):
         #    <segment_ids>    <input_ids>
         #              \        /
         #       (EmbedLayerNormalization)
@@ -73,10 +72,10 @@ class TestOpEmbedLayerNormalization(unittest.TestCase):
         # EmbedLayerNormalization Node:
         embed_layer_norm_inputs = [
             "input_ids",
-            "segment_ids",
+            "segment_ids" if not empty_segment else "",
             "word_embed",
             "pos_embed",
-            "seg_embed",
+            "seg_embed" if not empty_segment else "",
             "gamma",
             "beta",
         ]
@@ -93,13 +92,17 @@ class TestOpEmbedLayerNormalization(unittest.TestCase):
         graph_name = "embed_layernorm_graph"
         inputs = [input_ids_tensor, segment_ids_tensor]
         outputs = [layernorm_out_tensor, mask_index_out_tensor]
-        initializers = [
-            word_embed_initializer,
-            pos_embed_initializer,
-            seg_embed_initializer,
-            gamma_initializer,
-            beta_initializer,
-        ]
+        initializers = (
+            [
+                word_embed_initializer,
+                pos_embed_initializer,
+                seg_embed_initializer,
+                gamma_initializer,
+                beta_initializer,
+            ]
+            if not empty_segment
+            else [word_embed_initializer, pos_embed_initializer, gamma_initializer, beta_initializer]
+        )
 
         graph = helper.make_graph(nodes, graph_name, inputs, outputs, initializer=initializers)
         model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 14)])
@@ -133,6 +136,33 @@ class TestOpEmbedLayerNormalization(unittest.TestCase):
 
         check_model_correctness(self, model_f32_path, model_uint8_path, data_reader.get_next())
 
+    def test_quantize_batch_size_1_empty_segment(self):
+        batch = 1
+        hidden_size = 4
+        sequence_length = 4
+
+        model_f32_path = "test_embed_layer_norm_unit_test_batch1_empty_segment.onnx"
+        model_uint8_path = "test_embed_layer_norm_unit_test_batch1_uint8_empty_segment.onnx"
+
+        self.construct_model(batch, hidden_size, sequence_length, model_f32_path, empty_segment=True)
+
+        data_reader = self.input_feeds_int32(
+            1,
+            {
+                "input_ids": [batch, sequence_length],
+                "segment_ids": [batch, sequence_length],
+            },
+        )
+
+        quantize_dynamic(model_f32_path, model_uint8_path)
+
+        # Quantization should not have any DequantizeLinear nodes:
+        qnode_counts = {"DequantizeLinear": 0, "QEmbedLayerNormalization": 1}
+        check_op_type_count(self, model_uint8_path, **qnode_counts)
+        data_reader.rewind()
+
+        check_model_correctness(self, model_f32_path, model_uint8_path, data_reader.get_next())
+
     def test_quantize_batch_size_2(self):
         batch = 2
         hidden_size = 4
@@ -142,6 +172,33 @@ class TestOpEmbedLayerNormalization(unittest.TestCase):
         model_uint8_path = "test_embed_layer_norm_unit_test_batch2_uint8.onnx"
 
         self.construct_model(batch, hidden_size, sequence_length, model_f32_path)
+
+        data_reader = self.input_feeds_int32(
+            1,
+            {
+                "input_ids": [batch, sequence_length],
+                "segment_ids": [batch, sequence_length],
+            },
+        )
+
+        quantize_dynamic(model_f32_path, model_uint8_path)
+
+        # Quantization should not have any DequantizeLinear nodes:
+        qnode_counts = {"DequantizeLinear": 0, "QEmbedLayerNormalization": 1}
+        check_op_type_count(self, model_uint8_path, **qnode_counts)
+        data_reader.rewind()
+
+        check_model_correctness(self, model_f32_path, model_uint8_path, data_reader.get_next())
+
+    def test_quantize_batch_size_2_empty_segment(self):
+        batch = 2
+        hidden_size = 4
+        sequence_length = 4
+
+        model_f32_path = "test_embed_layer_norm_unit_test_batch2_empty_segment.onnx"
+        model_uint8_path = "test_embed_layer_norm_unit_test_batch2_uint8_empty_segment.onnx"
+
+        self.construct_model(batch, hidden_size, sequence_length, model_f32_path, empty_segment=True)
 
         data_reader = self.input_feeds_int32(
             1,

@@ -63,7 +63,7 @@ Status ConcatTraining::ComputeInternal(OpKernelContext* ctx) const {
       for (int i = 0; i < input_count; ++i) {
         input_table[i] = input_ptr_cpuspan[i];
       }
-      ORT_RETURN_IF_ERROR(ConcatSameConcatDimImpl(Stream(),
+      ORT_RETURN_IF_ERROR(ConcatSameConcatDimImpl(Stream(ctx),
                                                   element_bytes,
                                                   block_size_including_axis_dim,
                                                   block_size_inside_axis_dim,
@@ -73,8 +73,8 @@ Status ConcatTraining::ComputeInternal(OpKernelContext* ctx) const {
                                                   p.output_num_elements));
     } else {
       // too many inputs, so copy sizes to device memory
-      ORT_RETURN_IF_ERROR(input_ptr.CopyToGpu());
-      ORT_RETURN_IF_ERROR(ConcatSameConcatDimImpl(Stream(),
+      ORT_RETURN_IF_ERROR(input_ptr.CopyToGpu(ctx->GetComputeStream()));
+      ORT_RETURN_IF_ERROR(ConcatSameConcatDimImpl(Stream(ctx),
                                                   element_bytes,
                                                   block_size_including_axis_dim,
                                                   block_size_inside_axis_dim,
@@ -86,15 +86,15 @@ Status ConcatTraining::ComputeInternal(OpKernelContext* ctx) const {
   } else {
     // input sizes vary, copy input sizes and range metadata to device
     // todo: pass by value when few inputs
-    ORT_RETURN_IF_ERROR(input_ptr.CopyToGpu());
+    ORT_RETURN_IF_ERROR(input_ptr.CopyToGpu(ctx->GetComputeStream()));
     CudaAsyncBuffer<int64_t> concat_sizes_gpu(this, concat_sizes);
     CudaAsyncBuffer<int64_t> axis_dimension_input_output_mapping_gpu(this, axis_dimension_input_output_mapping);
     CudaAsyncBuffer<int64_t> concat_sizes_range_gpu(this, concat_sizes_range);
-    ORT_RETURN_IF_ERROR(concat_sizes_gpu.CopyToGpu());
-    ORT_RETURN_IF_ERROR(axis_dimension_input_output_mapping_gpu.CopyToGpu());
-    ORT_RETURN_IF_ERROR(concat_sizes_range_gpu.CopyToGpu());
+    ORT_RETURN_IF_ERROR(concat_sizes_gpu.CopyToGpu(ctx->GetComputeStream()));
+    ORT_RETURN_IF_ERROR(axis_dimension_input_output_mapping_gpu.CopyToGpu(ctx->GetComputeStream()));
+    ORT_RETURN_IF_ERROR(concat_sizes_range_gpu.CopyToGpu(ctx->GetComputeStream()));
 
-    ORT_RETURN_IF_ERROR(ConcatImpl(Stream(),
+    ORT_RETURN_IF_ERROR(ConcatImpl(Stream(ctx),
                                    element_bytes,
                                    block_size_including_axis_dim,
                                    block_size_inside_axis_dim,

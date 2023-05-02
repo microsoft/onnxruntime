@@ -9,7 +9,7 @@
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/default_providers.h"
 
-#if defined(ENABLE_TRAINING) && (defined(USE_CUDA) || defined(USE_ROCM))
+#if defined(ENABLE_STRIDED_TENSORS) && (defined(USE_CUDA) || defined(USE_ROCM))
 #include "test/providers/kernel_compute_test_utils.h"
 #endif
 
@@ -210,7 +210,7 @@ void RunTestWrapper<std::string>() {
   test8.Run();
 }
 
-#if defined(ENABLE_TRAINING) && (defined(USE_CUDA) || defined(USE_ROCM))
+#if defined(ENABLE_STRIDED_TENSORS) && (defined(USE_CUDA) || defined(USE_ROCM))
 template <typename T, typename TIndex>
 void RunKernelComputeTest(std::initializer_list<int64_t> input_dims, std::initializer_list<int64_t> indices_dims,
                           std::initializer_list<int64_t> indices_strides = {}, bool has_axis = false,
@@ -405,7 +405,7 @@ TEST(GatherElementsOpTest, BigIndices) {
   test1.Run();
 }
 
-#if defined(ENABLE_TRAINING) && (defined(USE_CUDA) || defined(USE_ROCM))
+#if defined(ENABLE_STRIDED_TENSORS) && (defined(USE_CUDA) || defined(USE_ROCM))
 TEST(GatherElementsOpTest, Strided_float) { RunKernelComputeTestWrapper<float>(); }
 
 TEST(GatherElementsOpTest, Strided_double) { RunKernelComputeTestWrapper<double>(); }

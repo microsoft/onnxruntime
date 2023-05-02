@@ -21,14 +21,12 @@ namespace transformers {
 
 using namespace onnxruntime::controlflow;  // namespace of IControlFlowKernel
 
-// bugbug: refactor
 class GreedySearch : public IControlFlowKernel {
  public:
   explicit GreedySearch(const OpKernelInfo& info)
       : IControlFlowKernel(info),
         // encoder_feeds_fetches_manager_(nullptr),
         decoder_feeds_fetches_manager_(nullptr),
-        cuda_stream_(nullptr),
         dumper_(nullptr) {
     Init(info);
   }
@@ -42,11 +40,11 @@ class GreedySearch : public IControlFlowKernel {
                                     const SessionState& subgraph_session_state) override;
 
  protected:
-  void SetComputeStream(void* stream) { cuda_stream_ = stream; }
   void SetConsoleDumper(IConsoleDumper* dumper) { dumper_ = dumper; }
 
   // device helpers that is same for both GPT and encoder-decoder models.
   void SetDeviceHelpers(
+      const GenerationDeviceHelper::ReorderPastStateFunc& reorder_past_state_func,
       const GenerationDeviceHelper::AddToFeedsFunc& add_to_feeds_func,
       const GenerationDeviceHelper::TopkFunc& topk_func,
       const GenerationDeviceHelper::DeviceCopyFunc<float>& device_copy_func,
@@ -54,6 +52,7 @@ class GreedySearch : public IControlFlowKernel {
       const GenerationDeviceHelper::GreedySearchProcessLogitsFunc<MLFloat16>& process_logits_fp16_func,
       const GenerationDeviceHelper::InitGreedyStateFunc<float>& init_greedy_state_func,
       const GenerationDeviceHelper::InitGreedyStateFunc<MLFloat16>& init_greedy_state_fp16_func) {
+    reorder_past_state_func_ = reorder_past_state_func;
     add_to_feeds_func_ = add_to_feeds_func;
     topk_func_ = topk_func;
     device_copy_func_ = device_copy_func;
@@ -70,8 +69,12 @@ class GreedySearch : public IControlFlowKernel {
     update_gpt_feeds_fp16_func_ = update_gpt_feeds_fp16_func;
   }
 
+  const void* cuda_device_prop_ = nullptr;
+  int cuda_device_arch_ = 0;
+
  private:
   // Device specific functions
+  GenerationDeviceHelper::ReorderPastStateFunc reorder_past_state_func_;
   GenerationDeviceHelper::AddToFeedsFunc add_to_feeds_func_;
   GenerationDeviceHelper::TopkFunc topk_func_;
   GenerationDeviceHelper::DeviceCopyFunc<float> device_copy_func_;
@@ -91,17 +94,32 @@ class GreedySearch : public IControlFlowKernel {
   //------------------------------------------------------------
   // Subgraph and FeedsFetchesManager re-used for each subgraph execution.
   //------------------------------------------------------------
+
+  // Relevant only for GPT2
+  // The init_run_gpt_subgraph_ (if the `init_decoder` attribute is present) will be
+  // used for the first decoding run and the gpt_subgraph_ will be used
+  // for subsequent runs.
+  // If the `init_decoder` attribute is missing, the `gpt_subgraph_` will be
+  // used for all decoding runs.
+  std::unique_ptr<GptSubgraph> init_run_gpt_subgraph_;
   std::unique_ptr<GptSubgraph> gpt_subgraph_;
+
+  // Relevant only for T5
+  // Same concept as above.
+  // The encoder will be used for the first run and the decoder will
+  // be used for subsequent runs.
   // std::unique_ptr<T5EncoderSubgraph> t5_encoder_subgraph_;
   // std::unique_ptr<T5DecoderSubgraph> t5_decoder_subgraph_;
+
   // FeedsFetchesManager* encoder_feeds_fetches_manager_;
   FeedsFetchesManager* decoder_feeds_fetches_manager_;
-
-  void* cuda_stream_;
+  FeedsFetchesManager* init_run_decoder_feeds_fetches_manager_;
 
   IConsoleDumper* dumper_;
 
   GreedySearchParameters parameters_;
+
+  bool has_init_decoder_ = false;
 };
 
 }  // namespace transformers

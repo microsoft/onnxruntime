@@ -12,11 +12,11 @@ namespace onnxruntime {
 namespace xnnpack {
 namespace {
 Status CreateXnnpackKernel(const PoolAttributes& pool_attrs,
-                                  int64_t C,
-                                  const std::optional<std::pair<float, float>>& clip_min_max,
-                                  struct xnn_operator*& p,
-                                  const OpQuantParam& quant_param,
-                                  OpComputeType avgpool_type) {
+                           int64_t C,
+                           const std::optional<std::pair<float, float>>& clip_min_max,
+                           struct xnn_operator*& p,
+                           const OpQuantParam& quant_param,
+                           OpComputeType avgpool_type) {
   uint32_t input_padding_top = gsl::narrow<uint32_t>(pool_attrs.pads[0]);
   uint32_t input_padding_left = gsl::narrow<uint32_t>(pool_attrs.pads[1]);
   uint32_t input_padding_bottom = gsl::narrow<uint32_t>(pool_attrs.pads[2]);
@@ -66,9 +66,9 @@ Status CreateXnnpackKernel(const PoolAttributes& pool_attrs,
 }
 
 bool IsQuantAvgPoolSupported(const NodeUnit& node_unit, const GraphViewer& graph) {
-    TensorQuantType x_input_type = GetTensorQuantType(node_unit, 0, false, graph);
-    TensorQuantType output_type = GetTensorQuantType(node_unit, 0, true, graph);
-    return (x_input_type == TensorTypeUint8 && output_type == TensorTypeUint8);
+  TensorQuantType x_input_type = GetTensorQuantType(node_unit, 0, false, graph);
+  TensorQuantType output_type = GetTensorQuantType(node_unit, 0, true, graph);
+  return (x_input_type == TensorTypeUint8 && output_type == TensorTypeUint8);
 }
 
 bool IsQuantizedAvgPool(QuantizedOpType quant_op_type) {
@@ -78,8 +78,8 @@ bool IsQuantizedAvgPool(QuantizedOpType quant_op_type) {
 
 }  // namespace
 
-bool AveragePool::IsAveragePoolOnnxNodeSupported(const NodeUnit& node_unit,
-                                                 const GraphViewer& graph) {
+bool AveragePool::IsOnnxNodeSupported(const NodeUnit& node_unit,
+                                      const GraphViewer& graph) {
   bool supported = false;
   auto qtype = GetQuantizedOpType(node_unit);
   // we check quant-conditions first, if this quant-node is not supported, return directly.

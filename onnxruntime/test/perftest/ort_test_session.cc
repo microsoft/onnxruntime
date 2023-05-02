@@ -6,6 +6,7 @@
 #include <core/session/onnxruntime_cxx_api.h>
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/providers/tensorrt/tensorrt_provider_options.h"
+#include "core/providers/dnnl/dnnl_provider_options.h"
 #include <assert.h>
 #include "providers.h"
 #include "TestCase.h"
@@ -39,9 +40,54 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
   const std::string& provider_name = performance_test_config.machine_config.provider_type_name;
   if (provider_name == onnxruntime::kDnnlExecutionProvider) {
 #ifdef USE_DNNL
-    Ort::ThrowOnError(
-        OrtSessionOptionsAppendExecutionProvider_Dnnl(session_options,
-                                                      performance_test_config.run_config.enable_cpu_mem_arena ? 1 : 0));
+    // Generate provider options
+    OrtDnnlProviderOptions dnnl_options;
+    dnnl_options.use_arena = 1;
+    dnnl_options.threadpool_args = nullptr;
+
+#if !defined(DNNL_ORT_THREAD)
+#if defined(_MSC_VER)
+    std::string ov_string = ToUTF8String(performance_test_config.run_config.ep_runtime_config_string);
+#else
+    std::string ov_string = performance_test_config.run_config.ep_runtime_config_string;
+#endif  // defined(_MSC_VER)
+    int num_threads = 0;
+    std::istringstream ss(ov_string);
+    std::string token;
+    while (ss >> token) {
+      if (token == "") {
+        continue;
+      }
+      auto pos = token.find("|");
+      if (pos == std::string::npos || pos == 0 || pos == token.length()) {
+        ORT_THROW(
+            "[ERROR] [OneDNN] Use a '|' to separate the key and value for the "
+            "run-time option you are trying to use.\n");
+      }
+
+      auto key = token.substr(0, pos);
+      auto value = token.substr(pos + 1);
+
+      if (key == "num_of_threads") {
+        std::stringstream sstream(value);
+        sstream >> num_threads;
+        if (num_threads < 0) {
+          ORT_THROW(
+              "[ERROR] [OneDNN] Invalid entry for the key 'num_of_threads',"
+              " set number of threads or use '0' for default\n");
+          // If the user doesnt define num_threads, auto detect threads later
+        }
+      } else {
+        ORT_THROW(
+            "[ERROR] [OneDNN] wrong key type entered. "
+            "Choose from the following runtime key options that are available for OneDNN. ['num_of_threads']\n");
+      }
+    }
+    dnnl_options.threadpool_args = static_cast<void*>(&num_threads);
+#endif  // !defined(DNNL_ORT_THREAD)
+    dnnl_options.use_arena = performance_test_config.run_config.enable_cpu_mem_arena ? 1 : 0;
+
+    session_options.AppendExecutionProvider_Dnnl(dnnl_options);
 #else
     ORT_THROW("DNNL is not supported in this build\n");
 #endif
@@ -74,6 +120,19 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
     std::string trt_engine_decryption_lib_path = "";
     bool trt_force_sequential_engine_build = false;
     bool trt_context_memory_sharing_enable = false;
+    bool trt_layer_norm_fp32_fallback = false;
+    bool trt_timing_cache_enable = false;
+    bool trt_force_timing_cache = false;
+    bool trt_detailed_build_log = false;
+    bool trt_build_heuristics_enable = false;
+    bool trt_sparsity_enable = false;
+    int trt_builder_optimization_level = 2;
+    int trt_auxiliary_streams = -1;
+    std::string trt_tactic_sources = "";
+    std::string trt_extra_plugin_lib_paths = "";
+    std::string trt_profile_min_shapes = "";
+    std::string trt_profile_max_shapes = "";
+    std::string trt_profile_opt_shapes = "";
 
 #ifdef _MSC_VER
     std::string ov_string = ToUTF8String(performance_test_config.run_config.ep_runtime_config_string);
@@ -137,7 +196,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
         if (!value.empty()) {
           trt_int8_calibration_table_name = value;
         } else {
-          ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_int8_calibration_table_name' should be a non-emtpy string.\n");
+          ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_int8_calibration_table_name' should be a non-empty string.\n");
         }
       } else if (key == "trt_int8_use_native_calibration_table") {
         if (value == "true" || value == "True") {
@@ -181,7 +240,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
         if (!value.empty()) {
           trt_engine_cache_path = value;
         } else {
-          ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_engine_cache_path' should be a non-emtpy string.\n");
+          ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_engine_cache_path' should be a non-empty string.\n");
         }
       } else if (key == "trt_engine_decryption_enable") {
         if (value == "true" || value == "True") {
@@ -195,7 +254,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
         if (!value.empty()) {
           trt_engine_decryption_lib_path = value;
         } else {
-          ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_engine_decryption_lib_path' should be a non-emtpy string.\n");
+          ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_engine_decryption_lib_path' should be a non-empty string.\n");
         }
       } else if (key == "trt_force_sequential_engine_build") {
         if (value == "true" || value == "True") {
@@ -213,8 +272,98 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
         } else {
           ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_context_memory_sharing_enable' should be a boolean i.e. true or false. Default value is false.\n");
         }
+      } else if (key == "trt_layer_norm_fp32_fallback") {
+        if (value == "true" || value == "True") {
+          trt_layer_norm_fp32_fallback = true;
+        } else if (value == "false" || value == "False") {
+          trt_layer_norm_fp32_fallback = false;
+        } else {
+          ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_layer_norm_fp32_fallback' should be a boolean i.e. true or false. Default value is false.\n");
+        }
+      } else if (key == "trt_timing_cache_enable") {
+        if (value == "true" || value == "True") {
+          trt_timing_cache_enable = true;
+        } else if (value == "false" || value == "False") {
+          trt_timing_cache_enable = false;
+        } else {
+          ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_timing_cache_enable' should be a boolean i.e. true or false. Default value is false.\n");
+        }
+      } else if (key == "trt_force_timing_cache") {
+        if (value == "true" || value == "True") {
+          trt_force_timing_cache = true;
+        } else if (value == "false" || value == "False") {
+          trt_force_timing_cache = false;
+        } else {
+          ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_force_timing_cache' should be a boolean i.e. true or false. Default value is false.\n");
+        }
+      } else if (key == "trt_detailed_build_log") {
+        if (value == "true" || value == "True") {
+          trt_detailed_build_log = true;
+        } else if (value == "false" || value == "False") {
+          trt_detailed_build_log = false;
+        } else {
+          ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_detailed_build_log' should be a boolean i.e. true or false. Default value is false.\n");
+        }
+      } else if (key == "trt_build_heuristics_enable") {
+        if (value == "true" || value == "True") {
+          trt_build_heuristics_enable = true;
+        } else if (value == "false" || value == "False") {
+          trt_build_heuristics_enable = false;
+        } else {
+          ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_build_heuristics_enable' should be a boolean i.e. true or false. Default value is false.\n");
+        }
+      } else if (key == "trt_sparsity_enable") {
+        if (value == "true" || value == "True") {
+          trt_sparsity_enable = true;
+        } else if (value == "false" || value == "False") {
+          trt_sparsity_enable = false;
+        } else {
+          ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_sparsity_enable' should be a boolean i.e. true or false. Default value is false.\n");
+        }
+      } else if (key == "trt_builder_optimization_level") {
+        if (!value.empty()) {
+          trt_builder_optimization_level = std::stoi(value);
+        } else {
+          ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_builder_optimization_level' should be a number and default to 2.\n");
+        }
+      } else if (key == "trt_auxiliary_streams") {
+        if (!value.empty()) {
+          trt_auxiliary_streams = std::stoi(value);
+        } else {
+          ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_auxiliary_streams' should be a number.\n");
+        }
+      } else if (key == "trt_tactic_sources") {
+        if (!value.empty()) {
+          trt_tactic_sources = value;
+        } else {
+          ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_tactic_sources' should be a non-empty string.\n");
+        }
+      } else if (key == "trt_extra_plugin_lib_paths") {
+        if (!value.empty()) {
+          trt_extra_plugin_lib_paths = value;
+        } else {
+          ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_extra_plugin_lib_paths' should be a non-empty string.\n");
+        }
+      } else if (key == "trt_profile_min_shapes") {
+        if (!value.empty()) {
+          trt_profile_min_shapes = value;
+        } else {
+          ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_profile_min_shapes' should be a non-empty string.\n");
+        }
+      } else if (key == "trt_profile_max_shapes") {
+        if (!value.empty()) {
+          trt_profile_max_shapes = value;
+        } else {
+          ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_profile_max_shapes' should be a non-empty string.\n");
+        }
+      } else if (key == "trt_profile_opt_shapes") {
+        if (!value.empty()) {
+          trt_profile_opt_shapes = value;
+        } else {
+          ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_profile_opt_shapes' should be a non-empty string.\n");
+        }
       } else {
-        ORT_THROW("[ERROR] [TensorRT] wrong key type entered. Choose from the following runtime key options that are available for TensorRT. ['device_id', 'trt_max_partition_iterations', 'trt_min_subgraph_size', 'trt_max_workspace_size', 'trt_fp16_enable', 'trt_int8_enable', 'trt_int8_calibration_table_name', 'trt_int8_use_native_calibration_table', 'trt_dla_enable', 'trt_dla_core', 'trt_dump_subgraphs', 'trt_engine_cache_enable', 'trt_engine_cache_path', 'trt_engine_decryption_enable', 'trt_engine_decryption_lib_path', 'trt_force_sequential_engine_build', 'trt_context_memory_sharing_enable'] \n");
+        ORT_THROW("[ERROR] [TensorRT] wrong key type entered. Choose from the following runtime key options that are available for TensorRT. ['device_id', 'trt_max_partition_iterations', 'trt_min_subgraph_size', 'trt_max_workspace_size', 'trt_fp16_enable', 'trt_int8_enable', 'trt_int8_calibration_table_name', 'trt_int8_use_native_calibration_table', 'trt_dla_enable', 'trt_dla_core', 'trt_dump_subgraphs', 'trt_engine_cache_enable', 'trt_engine_cache_path', 'trt_engine_decryption_enable', 'trt_engine_decryption_lib_path', 'trt_force_sequential_engine_build', 'trt_context_memory_sharing_enable', 'trt_layer_norm_fp32_fallback', 'trt_timing_cache_enable', 'trt_force_timing_cache', 'trt_detailed_build_log', 'trt_build_heuristics_enable', 'trt_sparsity_enable', 'trt_builder_optimization_level', 'trt_auxiliary_streams', 'trt_tactic_sources', 'trt_extra_plugin_lib_paths', 'trt_profile_min_shapes', 'trt_profile_max_shapes', 'trt_profile_opt_shapes'] \n");
       }
     }
     OrtTensorRTProviderOptionsV2 tensorrt_options;
@@ -237,6 +386,20 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
     tensorrt_options.trt_engine_decryption_lib_path = trt_engine_decryption_lib_path.c_str();
     tensorrt_options.trt_force_sequential_engine_build = trt_force_sequential_engine_build;
     tensorrt_options.trt_context_memory_sharing_enable = trt_context_memory_sharing_enable;
+    tensorrt_options.trt_layer_norm_fp32_fallback = trt_layer_norm_fp32_fallback;
+    tensorrt_options.trt_timing_cache_enable = trt_timing_cache_enable;
+    tensorrt_options.trt_force_timing_cache = trt_force_timing_cache;
+    tensorrt_options.trt_detailed_build_log = trt_detailed_build_log;
+    tensorrt_options.trt_build_heuristics_enable = trt_build_heuristics_enable;
+    tensorrt_options.trt_sparsity_enable = trt_sparsity_enable;
+    tensorrt_options.trt_builder_optimization_level = trt_builder_optimization_level;
+    tensorrt_options.trt_auxiliary_streams = trt_auxiliary_streams;
+    tensorrt_options.trt_tactic_sources = trt_tactic_sources.c_str();
+    tensorrt_options.trt_extra_plugin_lib_paths = trt_extra_plugin_lib_paths.c_str();
+    tensorrt_options.trt_profile_min_shapes = trt_profile_min_shapes.c_str();
+    tensorrt_options.trt_profile_max_shapes = trt_profile_max_shapes.c_str();
+    tensorrt_options.trt_profile_opt_shapes = trt_profile_opt_shapes.c_str();
+
     session_options.AppendExecutionProvider_TensorRT_V2(tensorrt_options);
 
     OrtCUDAProviderOptions cuda_options;
@@ -250,21 +413,19 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
 #endif
   } else if (provider_name == onnxruntime::kOpenVINOExecutionProvider) {
 #ifdef USE_OPENVINO
-    std::string device_type = "";          // [device_type]: Overrides the accelerator hardware type and precision
-                                           //   with these values at runtime.
-    bool enable_vpu_fast_compile = false;  // [enable_vpu_fast_compile]: Fast-compile may be optionally enabled to
-                                           // speeds up the model's compilation to VPU device specific format.
-    std::string device_id = "";            // [device_id]: Selects a particular hardware device for inference.
-    size_t num_of_threads = 8;             // [num_of_threads]: Overrides the accelerator default value of number of
-                                           //  threads with this value at runtime.
-    bool use_compiled_network = false;     // [use_compiled_network]: Can be enabled to directly import pre-compiled
-                                           // blobs if exists.
-    std::string blob_dump_path = "";       // [blob_dump_path]: Explicitly specify the path where you would like to
-                                           // dump and load the blobs for the use_compiled_network(save/load blob)
-                                           // feature. This overrides the default path.
-    bool enable_opencl_throttling = false;    // [enable_opencl_throttling]: Enables OpenCL queue throttling for GPU
-                                              // device (Reduces CPU Utilization when using GPU)
-    bool enable_dynamic_shapes = false;    // [enable_dynamic_shapes]: Enables Dynamic Shapes feature for CPU device)
+    std::string device_type = "";           // [device_type]: Overrides the accelerator hardware type and precision
+                                            //   with these values at runtime.
+    bool enable_vpu_fast_compile = false;   // [enable_vpu_fast_compile]: Fast-compile may be optionally enabled to
+                                            // speeds up the model's compilation to VPU device specific format.
+    std::string device_id = "";             // [device_id]: Selects a particular hardware device for inference.
+    size_t num_of_threads = 8;              // [num_of_threads]: Overrides the accelerator default value of number of
+                                            //  threads with this value at runtime.
+    std::string cache_dir = "";             // [cache_dir]: specify the path to
+                                            // dump and load the blobs for the model caching/kernel caching (GPU)
+                                            // feature. If blob files are already present, it will be directly loaded.
+    bool enable_opencl_throttling = false;  // [enable_opencl_throttling]: Enables OpenCL queue throttling for GPU
+                                            // device (Reduces CPU Utilization when using GPU)
+    bool enable_dynamic_shapes = false;     // [enable_dynamic_shapes]: Enables Dynamic Shapes feature for CPU device)
 #ifdef _MSC_VER
     std::string ov_string = ToUTF8String(performance_test_config.run_config.ep_runtime_config_string);
 #else
@@ -287,8 +448,8 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
       if (key == "device_type") {
         std::set<std::string> ov_supported_device_types = {"CPU_FP32", "CPU_FP16", "GPU_FP32",
                                                            "GPU.0_FP32", "GPU.1_FP32", "GPU_FP16",
-                                                           "GPU.0_FP16", "GPU.1_FP16", "VAD-M_FP16",
-                                                           "MYRIAD_FP16", "VAD-F_FP32"};
+                                                           "GPU.0_FP16", "GPU.1_FP16",
+                                                           "VPUX_FP16", "VPUX_U8"};
         if (ov_supported_device_types.find(value) != ov_supported_device_types.end()) {
           device_type = value;
         } else if (value.find("HETERO:") == 0) {
@@ -298,10 +459,11 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
         } else if (value.find("AUTO:") == 0) {
           device_type = value;
         } else {
-          ORT_THROW("[ERROR] [OpenVINO] You have selcted wrong configuration value for the key 'device_type'. "
-                    "Select from 'CPU_FP32', 'CPU_FP16', 'GPU_FP32', 'GPU.0_FP32', 'GPU.1_FP32', 'GPU_FP16', "
-                    "'GPU.0_FP16', 'GPU.1_FP16', 'VAD-M_FP16', 'MYRIAD_FP16', 'VAD-F_FP32' or from"
-                    " HETERO/MULTI/AUTO options available. \n");
+          ORT_THROW(
+              "[ERROR] [OpenVINO] You have selcted wrong configuration value for the key 'device_type'. "
+              "Select from 'CPU_FP32', 'CPU_FP16', 'GPU_FP32', 'GPU.0_FP32', 'GPU.1_FP32', 'GPU_FP16', "
+              "'GPU.0_FP16', 'GPU.1_FP16', 'VPUX_FP16', 'VPUX_U8', or from"
+              " HETERO/MULTI/AUTO options available. \n");
         }
       } else if (key == "device_id") {
         device_id = value;
@@ -312,14 +474,6 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
           enable_vpu_fast_compile = false;
         } else {
           ORT_THROW("[ERROR] [OpenVINO] The value for the key 'enable_vpu_fast_compile' should be a boolean i.e. true or false. Default value is false.\n");
-        }
-      } else if (key == "use_compiled_network") {
-        if (value == "true" || value == "True") {
-          use_compiled_network = true;
-        } else if (value == "false" || value == "False") {
-          use_compiled_network = false;
-        } else {
-          ORT_THROW("[ERROR] [OpenVINO] The value for the key 'use_compiled_network' should be a boolean i.e. true or false. Default value is false.\n");
         }
       } else if (key == "enable_opencl_throttling") {
         if (value == "true" || value == "True") {
@@ -335,8 +489,9 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
         } else if (value == "false" || value == "False") {
           enable_dynamic_shapes = false;
         } else {
-          ORT_THROW("[ERROR] [OpenVINO] The value for the key 'enable_dynamic_shapes' "
-                    "should be a boolean i.e. true or false. Default value is false.\n");
+          ORT_THROW(
+              "[ERROR] [OpenVINO] The value for the key 'enable_dynamic_shapes' "
+              "should be a boolean i.e. true or false. Default value is false.\n");
         }
       } else if (key == "num_of_threads") {
         std::stringstream sstream(value);
@@ -344,24 +499,66 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
         if ((int)num_of_threads <= 0) {
           ORT_THROW("[ERROR] [OpenVINO] The value for the key 'num_of_threads' should be greater than 0\n");
         }
-      } else if (key == "blob_dump_path") {
-        blob_dump_path = value;
+      } else if (key == "cache_dir") {
+        cache_dir = value;
       } else {
-        ORT_THROW("[ERROR] [OpenVINO] wrong key type entered. Choose from the following runtime key options that are available for OpenVINO. ['device_type', 'device_id', 'enable_vpu_fast_compile', 'num_of_threads', 'use_compiled_network', 'blob_dump_path', 'enable_opencl_throttling|true'] \n");
+        ORT_THROW("[ERROR] [OpenVINO] wrong key type entered. Choose from the following runtime key options that are available for OpenVINO. ['device_type', 'device_id', 'enable_vpu_fast_compile', 'num_of_threads', 'cache_dir', 'enable_opencl_throttling|true'] \n");
       }
     }
     OrtOpenVINOProviderOptions options;
-    options.device_type = device_type.c_str();                  // To set the device_type
-    options.device_id = device_id.c_str();                      // To set the device_id
-    options.enable_vpu_fast_compile = enable_vpu_fast_compile;  // To enable_vpu_fast_compile, default is false
-    options.num_of_threads = num_of_threads;                    // To set number of free InferRequests, default is 8
-    options.use_compiled_network = use_compiled_network;        // To use_compiled_network, default is false
-    options.blob_dump_path = blob_dump_path.c_str();            // sets the blob_dump_path, default is ""
-    options.enable_opencl_throttling = enable_opencl_throttling;    // Enables GPU Throttling (Reduces CPU Utilization)
-    options.enable_dynamic_shapes = enable_dynamic_shapes;      // Enables Dynamic Shapes feature
+    options.device_type = device_type.c_str();                    // To set the device_type
+    options.device_id = device_id.c_str();                        // To set the device_id
+    options.enable_vpu_fast_compile = enable_vpu_fast_compile;    // To enable_vpu_fast_compile, default is false
+    options.num_of_threads = num_of_threads;                      // To set number of free InferRequests, default is 8
+    options.cache_dir = cache_dir.c_str();                        // sets the cache_dir, default is ""
+    options.enable_opencl_throttling = enable_opencl_throttling;  // Enables GPU Throttling (Reduces CPU Utilization)
+    options.enable_dynamic_shapes = enable_dynamic_shapes;        // Enables Dynamic Shapes feature
     session_options.AppendExecutionProvider_OpenVINO(options);
 #else
     ORT_THROW("OpenVINO is not supported in this build\n");
+#endif
+  } else if (provider_name == onnxruntime::kQnnExecutionProvider) {
+#ifdef USE_QNN
+#ifdef _MSC_VER
+    std::string option_string = ToUTF8String(performance_test_config.run_config.ep_runtime_config_string);
+#else
+    std::string option_string = performance_test_config.run_config.ep_runtime_config_string;
+#endif
+    std::istringstream ss(option_string);
+    std::string token;
+    std::unordered_map<std::string, std::string> qnn_options;
+
+    while (ss >> token) {
+      if (token == "") {
+        continue;
+      }
+      auto pos = token.find("|");
+      if (pos == std::string::npos || pos == 0 || pos == token.length()) {
+        ORT_THROW("Use a '|' to separate the key and value for the run-time option you are trying to use.");
+      }
+
+      std::string key(token.substr(0, pos));
+      std::string value(token.substr(pos + 1));
+
+      if (key == "backend_path") {
+        std::set<std::string> qnn_backend_path;
+        if (value.empty()) {
+          ORT_THROW("Please provide the QNN backend path.");
+        } else {
+          qnn_options[key] = value;
+        }
+      } else if (key == "profiling_level") {
+        qnn_options[key] = value;
+      } else if (key == "rpc_control_latency") {
+        qnn_options[key] = value;
+      } else {
+        ORT_THROW(R"(Wrong key type entered. Choose from options:
+['backend_path', 'profiling_level', 'rpc_control_latency'])");
+      }
+    }
+    session_options.AppendExecutionProvider("QNN", qnn_options);
+#else
+    ORT_THROW("QNN is not supported in this build\n");
 #endif
   } else if (provider_name == onnxruntime::kSnpeExecutionProvider) {
 #ifdef USE_SNPE
@@ -494,6 +691,34 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
 #else
     ORT_THROW("Xnnpack is not supported in this build\n");
 #endif
+  } else if (provider_name == onnxruntime::kVitisAIExecutionProvider) {
+#ifdef USE_VITISAI
+#ifdef _MSC_VER
+    std::string option_string = ToUTF8String(performance_test_config.run_config.ep_runtime_config_string);
+#else
+    std::string option_string = performance_test_config.run_config.ep_runtime_config_string;
+#endif
+    std::istringstream ss(option_string);
+    std::string token;
+    std::unordered_map<std::string, std::string> vitisai_session_options;
+
+    while (ss >> token) {
+      if (token == "") {
+        continue;
+      }
+      auto pos = token.find("|");
+      if (pos == std::string::npos || pos == 0 || pos == token.length()) {
+        ORT_THROW("[ERROR] [VitisAI] Use a '|' to separate the key and value for the run-time option you are trying to use.\n");
+      }
+
+      std::string key(token.substr(0, pos));
+      std::string value(token.substr(pos + 1));
+      vitisai_session_options[key] = value;
+    }
+    session_options.AppendExecutionProvider("VitisAI", vitisai_session_options);
+#else
+    ORT_THROW("VitisAI is not supported in this build\n");
+#endif
   } else if (!provider_name.empty() && provider_name != onnxruntime::kCpuExecutionProvider) {
     ORT_THROW("This backend is not included in perf test runner.\n");
   }
@@ -512,6 +737,21 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
   if (performance_test_config.run_config.intra_op_num_threads > 0) {
     fprintf(stdout, "Setting intra_op_num_threads to %d\n", performance_test_config.run_config.intra_op_num_threads);
     session_options.SetIntraOpNumThreads(performance_test_config.run_config.intra_op_num_threads);
+  }
+
+  if (!performance_test_config.run_config.intra_op_thread_affinities.empty()) {
+    fprintf(stdout, "Setting intra op thread affinity as %s\n", performance_test_config.run_config.intra_op_thread_affinities.c_str());
+    session_options.AddConfigEntry(kOrtSessionOptionsConfigIntraOpThreadAffinities, performance_test_config.run_config.intra_op_thread_affinities.c_str());
+  }
+
+  if (performance_test_config.run_config.disable_spinning) {
+    fprintf(stdout, "Disabling intra-op thread spinning entirely\n");
+    session_options.AddConfigEntry(kOrtSessionOptionsConfigAllowIntraOpSpinning, "0");
+  }
+
+  if (performance_test_config.run_config.disable_spinning_between_run) {
+    fprintf(stdout, "Disabling intra-op thread spinning between runs\n");
+    session_options.AddConfigEntry(kOrtSessionOptionsConfigForceSpinningStop, "1");
   }
 
   if (performance_test_config.run_config.execution_mode == ExecutionMode::ORT_PARALLEL && performance_test_config.run_config.inter_op_num_threads > 0) {

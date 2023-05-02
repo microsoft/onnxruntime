@@ -1,10 +1,10 @@
-from enum import Enum
+from enum import Enum  # noqa: F401
 
 import onnx
 from onnx import TensorProto, helper
 
 
-def GenerateModel(model_name, b_has_zp=True, has_bias=False, bias_ND=False):
+def GenerateModel(model_name, b_has_zp=True, has_bias=False, bias_ND=False):  # noqa: N802
     mul_output = "Mul_output" if has_bias else "output"
     nodes = [  # construct graph
         helper.make_node(

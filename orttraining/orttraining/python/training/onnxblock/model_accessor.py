@@ -1,21 +1,25 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
-# model_accessor.py
 
+import copy
 from contextlib import contextmanager
+from typing import Optional
 
 import onnx
 
 
 class ModelAccessor:
-    """This class stores the onnx model that is manipulated by the onnx blocks."""
+    """This class stores the onnx model that is manipulated by the onnx blocks.
 
-    def __init__(self, model):
+    Attributes:
+        model: The onnx model that is manipulated by the onnx blocks.
+    """
+
+    def __init__(self, model: onnx.ModelProto):
         self._model = model
-        self._eval_model = None
 
     @property
-    def model(self):
+    def model(self) -> onnx.ModelProto:
         """ModelAccessor property that gets the modified model."""
 
         if self._model is None:
@@ -24,43 +28,90 @@ class ModelAccessor:
             )
         return self._model
 
-    @property
-    def eval_model(self):
-        """ModelAccessor property that gets the eval model."""
-
-        if self._eval_model is None:
-            raise RuntimeError("The eval onnx model was not set.")
-        return self._eval_model
-
-    @eval_model.setter
-    def eval_model(self, value):
-        """ModelAccessor property that sets the eval model."""
-        self._eval_model = value
-
 
 # This variable resides in the global namespace.
 # Different methods can access this global model and manipulate it.
-# Its construction and destruction is managed by the onnx_model contextmanager
-global_accessor = None
+# Its construction and destruction is managed by the base and empty_base contextmanagers
+_GLOBAL_ACCESSOR = None
 
 
 @contextmanager
-def onnx_model(model=None):
-    """Context manager that is the entry point to graph manipulations on model.
+def base(model: onnx.ModelProto):
+    """Registers the base model to be manipulated by the onnx blocks.
 
-    Manages the construction and destruction of the global model.
+    Example:
+    >>> with onnxblock.base(model) as model_handle:
+    >>>     # manipulate the model using blocks
+    >>>     ...
+    >>>     # get the modified model
+    >>>     model = model_handle.model
+
+    In this example, base will register the given input model to be manipulated by the onnx blocks.
+
+    Args:
+        model: The base model to be manipulated by the onnx blocks.
+
+    Returns:
+        ModelAccessor: The model accessor that contains the modified model.
     """
-    global global_accessor
-    if global_accessor is not None:
+    global _GLOBAL_ACCESSOR  # pylint: disable=global-statement  # noqa: PLW0603
+    if _GLOBAL_ACCESSOR is not None:
         raise RuntimeError("Base onnx model already exists. Cannot create multiple ModelAccessors.")
 
-    # If the user did not provide a model, then assume that they want to build from scratch.
-    # It is the duty of the caller to fill the model however they deem fit.
-    if model is None:
-        model = onnx.ModelProto()
+    model_clone = copy.deepcopy(model)
 
-    global_accessor = ModelAccessor(model)
+    if model_clone is None:
+        raise RuntimeError(
+            "Base onnx model cannot be None. Please use onnxblock.empty_base if you would like to build a "
+            "model from scratch."
+        )
+
+    _GLOBAL_ACCESSOR = ModelAccessor(model_clone)  # noqa: PLW0603
     try:
-        yield global_accessor
+        yield _GLOBAL_ACCESSOR
     finally:
-        global_accessor = None
+        _GLOBAL_ACCESSOR = None
+
+
+@contextmanager
+def empty_base(opset_version: Optional[int] = None):
+    """Registers an empty base model to be manipulated by the onnx blocks.
+
+    Example:
+    >>> with onnxblock.empty_base() as model_handle:
+    >>>     # manipulate the model using blocks
+    >>>     ...
+    >>>     # get the modified model
+    >>>     model = model_handle.model
+
+    In this example, empty_base will register a new ModelProto as the base model. Blocks
+    will manipulate this model. The user can then retrieve the modified model from the
+    model_handle.
+
+    Args:
+        opset_version (int, optional): The opset version to use for the model.
+                                       Defaults to onnx.defs.onnx_opset_version()
+
+    Returns:
+        ModelAccessor: The model accessor that contains the modified model.
+    """
+    global _GLOBAL_ACCESSOR  # pylint: disable=global-statement  # noqa: PLW0603
+    if _GLOBAL_ACCESSOR is not None:
+        raise RuntimeError("Base onnx model already exists. Cannot create multiple ModelAccessors.")
+
+    model = onnx.ModelProto()
+    model.ir_version = onnx.IR_VERSION
+    model.producer_name = "orttraining"
+    model.graph.name = "graph"
+    model.opset_import.extend(
+        (
+            onnx.helper.make_opsetid("com.microsoft", 1),
+            onnx.helper.make_opsetid("", opset_version or onnx.defs.onnx_opset_version()),
+        )
+    )
+
+    _GLOBAL_ACCESSOR = ModelAccessor(model)  # noqa: PLW0603
+    try:
+        yield _GLOBAL_ACCESSOR
+    finally:
+        _GLOBAL_ACCESSOR = None

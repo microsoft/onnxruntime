@@ -7,51 +7,60 @@
 namespace onnxruntime {
 namespace cuda {
 
-constexpr unsigned int NUM_ELE_PER_THREAD = 4;
+constexpr unsigned int kNumElementsPerThread = 4;
+constexpr unsigned int kTileSize = 32;
 
-template <typename T, unsigned int TILE_DIM>
-__global__ void Transpose3DKernel(const TArray<int64_t> input_shape, const TArray<int64_t> input_strides,
-                                  const T* input_data, T* output_data) {
-  __shared__ T tile[TILE_DIM][TILE_DIM + 1];
+// TileSize for current implementation is always 32, but still use template parameter to make it flexible for future.
+// For each batch, transpose matrix [m, n] to [n, m].
+template <typename T, unsigned int TileSize>
+__global__ void Transpose3DKernel(const int64_t m, const int64_t n, const int64_t batch_stride, const T* input_data,
+                                  T* output_data) {
+  __shared__ T tile[TileSize][TileSize + 1];
 
-  int x = blockIdx.x * TILE_DIM + threadIdx.x;
-  int y = blockIdx.y * TILE_DIM + threadIdx.y;
+  int x = blockIdx.x * TileSize + threadIdx.x;
+  int y = blockIdx.y * TileSize + threadIdx.y;
 
+  if (x < n) {
 #pragma unroll
-  for (unsigned int i = 0; i < TILE_DIM; i += (TILE_DIM / NUM_ELE_PER_THREAD)) {
-    tile[threadIdx.y + i][threadIdx.x] = input_data[blockIdx.z * input_strides[0] + (y + i) * input_shape[2] + x];
+    for (unsigned int i = 0; i < TileSize; i += (TileSize / kNumElementsPerThread)) {
+      int y_idx = y + i;
+      if (y_idx < m) {
+        tile[threadIdx.y + i][threadIdx.x] = input_data[blockIdx.z * batch_stride + y_idx * n + x];
+      }
+    }
   }
   __syncthreads();
 
-  x = blockIdx.y * TILE_DIM + threadIdx.x;
-  y = blockIdx.x * TILE_DIM + threadIdx.y;
+  x = blockIdx.y * TileSize + threadIdx.x;
+  y = blockIdx.x * TileSize + threadIdx.y;
 
+  if (x < m) {
 #pragma unroll
-  for (unsigned int i = 0; i < TILE_DIM; i += (TILE_DIM / NUM_ELE_PER_THREAD)) {
-    output_data[blockIdx.z * input_strides[0] + (y + i) * input_shape[1] + x] = tile[threadIdx.x][threadIdx.y + i];
+    for (unsigned int i = 0; i < TileSize; i += (TileSize / kNumElementsPerThread)) {
+      int y_idx = y + i;
+      if (y_idx < n) {
+        output_data[blockIdx.z * batch_stride + y_idx * m + x] = tile[threadIdx.x][threadIdx.y + i];
+      }
+    }
   }
 }
 
 bool CanDoTranspose3D(const cudaDeviceProp& prop, size_t rank, const gsl::span<const int64_t>& input_dims,
                       const gsl::span<const size_t>& permutations, dim3& grid_size, dim3& block_size) {
-  // Permutation is done in the last two dimensions and the last two dimensions are aligned with TILE_DIM.
+  // Permutation is done in the last two dimensions.
   if (rank == 3 && permutations[rank - 2] == (rank - 1) && permutations[rank - 1] == (rank - 2)) {
-    unsigned int tile_dim = 0;
-    if (input_dims[rank - 2] % 32 == 0 && input_dims[rank - 1] % 32 == 0) {
-      tile_dim = 32;
-    } else if (input_dims[rank - 2] % 16 == 0 && input_dims[rank - 1] % 16 == 0) {
-      tile_dim = 16;
-    } else {
-      return false;
-    }
-
-    int grid_size_x = static_cast<int>(input_dims[2] / tile_dim);
-    int grid_size_y = static_cast<int>(input_dims[1] / tile_dim);
+    // Normally maxGridSize.x is a large number but maxGridSize.y and maxGridSize.z are limited. Ideally we can check
+    // the input sizes to see if a dimension is too large so that we can use grid.x for it to avoid returning false.
+    // But this requires different versions of kernel implementation with different index compute logics.
+    // Below code is good enough for most of the cases for now, and if we see any case that input_dims[0] or
+    // input_dims[1] is too large in the future, we will handle it accordingly.
+    int grid_size_x = CeilDiv(static_cast<int>(input_dims[2]), kTileSize);
+    int grid_size_y = CeilDiv(static_cast<int>(input_dims[1]), kTileSize);
     int grid_size_z = static_cast<int>(input_dims[0]);
 
     if (grid_size_x <= prop.maxGridSize[0] && grid_size_y <= prop.maxGridSize[1] &&
         grid_size_z <= prop.maxGridSize[2]) {
-      block_size = dim3(tile_dim, tile_dim / NUM_ELE_PER_THREAD);
+      block_size = dim3(kTileSize, kTileSize / kNumElementsPerThread);
       grid_size = dim3(static_cast<unsigned int>(grid_size_x), static_cast<unsigned int>(grid_size_y),
                        static_cast<unsigned int>(grid_size_z));
       return true;
@@ -62,18 +71,12 @@ bool CanDoTranspose3D(const cudaDeviceProp& prop, size_t rank, const gsl::span<c
   return false;
 }
 
-#define CALL_TRANSPOSE_3D(type, tile_dim)                                                            \
-  Transpose3DKernel<type, tile_dim><<<grid_size, block_size, 0, stream>>>(                           \
-      input_shape, input_strides, reinterpret_cast<const ToCudaType<type>::MappedType*>(input_data), \
-      reinterpret_cast<ToCudaType<type>::MappedType*>(output_data))
-
-#define HANDLE_TRANSPOSE_3D_TILE_DIM(type) \
-  case sizeof(type): {                     \
-    if (block_size.x == 32) {              \
-      CALL_TRANSPOSE_3D(type, 32);         \
-    } else {                               \
-      CALL_TRANSPOSE_3D(type, 16);         \
-    }                                      \
+#define HANDLE_TRANSPOSE_3D_TILE_DIM(type)                                                                        \
+  case sizeof(type): {                                                                                            \
+    Transpose3DKernel<type, kTileSize>                                                                            \
+        <<<grid_size, block_size, 0, stream>>>(input_shape[1], input_shape[2], input_strides[0],                  \
+                                               reinterpret_cast<const ToCudaType<type>::MappedType*>(input_data), \
+                                               reinterpret_cast<ToCudaType<type>::MappedType*>(output_data));     \
   } break
 
 Status Transpose3DImpl(cudaStream_t stream, size_t element_size, const TArray<int64_t>& input_shape,

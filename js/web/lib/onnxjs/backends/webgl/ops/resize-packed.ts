@@ -95,6 +95,19 @@ const createPackedResizeProgramInfo =
                     }
                 `;
           break;
+        case 'pytorch_half_pixel':
+          getSourceFracIndex = `
+                    vec4 getSourceFracIndex(ivec4 coords) {
+                        vec4 fcoords = vec4(coords);
+                        return vec4(
+                            ${outputWidth}.0 > 1.0 ? (fcoords.x + 0.5) / scaleWHWH.x - 0.5 : 0.0,
+                            ${outputHeight}.0 > 1.0 ? (fcoords.y + 0.5) / scaleWHWH.y - 0.5 : 0.0,
+                            ${outputWidth}.0 > 1.0 ? (fcoords.z + 0.5) / scaleWHWH.z - 0.5 : 0.0,
+                            ${outputHeight}.0 > 1.0 ? (fcoords.w + 0.5) / scaleWHWH.w - 0.5 : 0.0
+                          );
+                    }
+                `;
+          break;
         case 'align_corners':
           getSourceFracIndex = `
                     vec4 getSourceFracIndex(ivec4 coords) {

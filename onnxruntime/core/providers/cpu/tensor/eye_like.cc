@@ -37,8 +37,8 @@ struct ComputeDispatchTarget {
     const auto& output_shape = output.Shape();
     auto output_mat = EigenMatrixMapRowMajor<T>(
         output.MutableData<T>(),
-        output_shape[0],
-        output_shape[1]);
+        onnxruntime::narrow<size_t>(output_shape[0]),
+        onnxruntime::narrow<size_t>(output_shape[1]));
 
     output_mat.setZero();
 
@@ -46,7 +46,7 @@ struct ComputeDispatchTarget {
       return;
     }
 
-    output_mat.diagonal(k).array() = static_cast<T>(1);
+    output_mat.diagonal(onnxruntime::narrow<ptrdiff_t>(k)).array() = static_cast<T>(1);
   }
 };
 }  // namespace

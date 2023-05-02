@@ -1,0 +1,73 @@
+parameters:
+- name: artifactName  
+  type: string
+  default: 'onnxruntime-linux-x64-gpu-tensorrt-$(OnnxRuntimeVersion)'
+
+- name: artifactNameNoVersionString
+  type: string
+  default: 'onnxruntime-linux-x64-gpu-tensorrt'
+
+- name: buildJava
+  type: boolean
+  default: false
+
+- name: buildJavaOption
+  type: string
+  default: ''
+
+stages:
+- stage: Linux_C_API_Packaging_GPU_TensorRT_x64
+  dependsOn: []
+  jobs:
+  - job:
+    dependsOn: []
+    workspace:
+      clean: all
+    timeoutInMinutes:  180
+    pool: 'Onnxruntime-Linux-GPU'
+    variables:
+      CUDA_VERSION: '11.8'
+    steps:
+      - checkout: self
+        clean: true
+        submodules: recursive
+      - template: get-docker-image-steps.yml
+        parameters:
+          Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_cuda11_8_tensorrt8_6
+          Context: tools/ci_build/github/linux/docker
+          DockerBuildArgs: "--network=host --build-arg POLICY=manylinux2014 --build-arg PLATFORM=x86_64 --build-arg DEVTOOLSET_ROOTPATH=/opt/rh/devtoolset-11/root --build-arg PREPEND_PATH=/opt/rh/devtoolset-11/root/usr/bin: --build-arg LD_LIBRARY_PATH_ARG=/opt/rh/devtoolset-11/root/usr/lib64:/opt/rh/devtoolset-11/root/usr/lib:/opt/rh/devtoolset-11/root/usr/lib64/dyninst:/opt/rh/devtoolset-11/root/usr/lib/dyninst:/usr/local/lib64 --build-arg BUILD_UID=$( id -u )"
+          Repository: onnxruntimecuda118xtrt86build
+      - template: set-version-number-variables-step.yml
+
+      - task: CmdLine@2
+        inputs:
+          script: |
+            mkdir -p $HOME/.onnx
+            docker run --gpus all -e CC=/opt/rh/devtoolset-11/root/usr/bin/cc -e CXX=/opt/rh/devtoolset-11/root/usr/bin/c++ -e CFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" -e CXXFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" -e NVIDIA_VISIBLE_DEVICES=all --rm --volume /data/onnx:/data/onnx:ro --volume $(Build.SourcesDirectory):/onnxruntime_src --volume $(Build.BinariesDirectory):/build \
+            --volume /data/models:/build/models:ro --volume $HOME/.onnx:/home/onnxruntimedev/.onnx -e NIGHTLY_BUILD onnxruntimecuda118xtrt86build \
+            /opt/python/cp38-cp38/bin/python3 /onnxruntime_src/tools/ci_build/build.py --build_dir /build --config Release \
+            --skip_submodule_sync --parallel --build_shared_lib ${{ parameters.buildJavaOption }} --use_tensorrt --cuda_version=$(CUDA_VERSION) --cuda_home=/usr/local/cuda-$(CUDA_VERSION) --cudnn_home=/usr --tensorrt_home=/usr --cmake_extra_defines CMAKE_CUDA_HOST_COMPILER=/opt/rh/devtoolset-11/root/usr/bin/cc 'CMAKE_CUDA_ARCHITECTURES=52;60;61;70;75;80'
+          workingDirectory: $(Build.SourcesDirectory)
+
+      - ${{ if eq(parameters.buildJava, true) }}:
+          - template: java-api-artifacts-package-and-publish-steps-posix.yml
+            parameters:
+                arch: 'linux-x64'
+                buildConfig: 'Release'
+                artifactName: 'onnxruntime-java-linux-x64-tensorrt'
+                version: '$(OnnxRuntimeVersion)'
+                libraryName: 'libonnxruntime.so'
+                nativeLibraryName: 'libonnxruntime4j_jni.so'
+
+      - template: c-api-artifacts-package-and-publish-steps-posix.yml
+        parameters:
+            buildConfig: 'Release'
+            artifactName: ${{ parameters.artifactName }}
+            artifactNameNoVersionString: ${{ parameters.artifactNameNoVersionString }}
+            libraryName: 'libonnxruntime.so.$(OnnxRuntimeVersion)'
+
+
+      - template: component-governance-component-detection-steps.yml
+        parameters :
+          condition : 'succeeded'
+      - template: clean-agent-build-directory-step.yml

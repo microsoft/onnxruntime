@@ -124,9 +124,10 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
   const int ldc = helper.Ldc();
   int64_t stride_A, stride_B, stride_C, batch_count;
   auto& device_prop = GetDeviceProp();
+
   if (helper.OutputOffsets().size() == 1) {
     CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
-        Base::CublasHandle(),
+        GetCublasHandle(ctx),
         transB,
         transA,
         static_cast<int>(helper.N()),
@@ -144,7 +145,7 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
     return Status::OK();
   } else if (CanUseStridedBatchedGemm(left_X->Shape(), right_X->Shape(),
                                       transa, transb, trans_batch_a_, trans_batch_b_, stride_A, stride_B, stride_C, batch_count)) {
-    CUBLAS_RETURN_IF_ERROR(cublasGemmStridedBatchedHelper(Base::CublasHandle(),
+    CUBLAS_RETURN_IF_ERROR(cublasGemmStridedBatchedHelper(GetCublasHandle(ctx),
                                                           transB,
                                                           transA,
                                                           static_cast<int>(helper.N()),
@@ -175,14 +176,14 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
   MatMulComputeHelper::OffsetToArrays(reinterpret_cast<const CudaT*>(left_X->Data<T>()), helper.LeftOffsets(), left_arrays.CpuSpan());
   MatMulComputeHelper::OffsetToArrays(reinterpret_cast<const CudaT*>(right_X->Data<T>()), helper.RightOffsets(), right_arrays.CpuSpan());
   MatMulComputeHelper::OffsetToArrays(reinterpret_cast<CudaT*>(Y->MutableData<T>()), helper.OutputOffsets(), output_arrays.CpuSpan());
-  ORT_RETURN_IF_ERROR(left_arrays.CopyToGpu());
-  ORT_RETURN_IF_ERROR(right_arrays.CopyToGpu());
-  ORT_RETURN_IF_ERROR(output_arrays.CopyToGpu());
+  ORT_RETURN_IF_ERROR(left_arrays.CopyToGpu(ctx->GetComputeStream()));
+  ORT_RETURN_IF_ERROR(right_arrays.CopyToGpu(ctx->GetComputeStream()));
+  ORT_RETURN_IF_ERROR(output_arrays.CopyToGpu(ctx->GetComputeStream()));
 
   // note that onnxruntime OrtValue is row major, while cublas is column major,
   // so swap left/right operands
   CUBLAS_RETURN_IF_ERROR(cublasGemmBatchedHelper(
-      Base::CublasHandle(),
+      GetCublasHandle(ctx),
       transB,
       transA,
       static_cast<int>(helper.N()),

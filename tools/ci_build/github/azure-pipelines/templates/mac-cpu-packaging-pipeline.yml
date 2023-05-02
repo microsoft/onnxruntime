@@ -1,0 +1,99 @@
+parameters:
+- name: AdditionalBuildFlags
+  displayName: Additional build flags for build.py
+  type: string
+  default: ''
+
+# Must be 1 or 0
+- name: AllowReleasedOpsetOnly
+  displayName: Whether unreleased onnx opsets are allowed
+  type: number
+  default: 1
+  values:
+  - 1
+  - 0
+
+- name: BuildForAllArchs
+  displayName: Build for all CPU ARCHs
+  type: boolean
+
+- name: WithCache
+  displayName: Build with Cache
+  type: boolean
+  default: false
+
+stages:
+- stage: MacOS_C_API_Packaging_CPU
+  dependsOn: []
+  jobs:
+  - ${{ if eq(parameters.BuildForAllArchs, true) }}:
+    - template: mac-cpu-packing-jobs.yml
+      parameters:
+        MacosArch: 'x86_64'
+        AllowReleasedOpsetOnly: ${{ parameters.AllowReleasedOpsetOnly }}
+        AdditionalBuildFlags: ${{ parameters.AdditionalBuildFlags }}
+        WithCache: ${{ parameters.WithCache }}
+    - template: mac-cpu-packing-jobs.yml
+      parameters:
+        MacosArch: 'arm64'
+        AllowReleasedOpsetOnly: ${{ parameters.AllowReleasedOpsetOnly }}
+        AdditionalBuildFlags: ${{ parameters.AdditionalBuildFlags }}
+        WithCache: ${{ parameters.WithCache }}
+    - template: mac-cpu-packing-jobs.yml
+      parameters:
+        MacosArch: 'universal2'
+        AllowReleasedOpsetOnly: ${{ parameters.AllowReleasedOpsetOnly }}
+        AdditionalBuildFlags: ${{ parameters.AdditionalBuildFlags }}
+        WithCache: ${{ parameters.WithCache }}
+    - job: MacOS_C_API_Package_Publish_All
+      dependsOn:
+      - MacOS_C_API_Packaging_CPU_x86_64
+      - MacOS_C_API_Packaging_CPU_arm64
+      - MacOS_C_API_Packaging_CPU_universal2
+      pool:
+        vmImage: 'macOS-12'
+      steps:
+      - task: DownloadPipelineArtifact@2
+        inputs:
+          artifact: 'onnxruntime-osx-x86_64'
+          targetPath: '$(Build.ArtifactStagingDirectory)'
+      - task: DownloadPipelineArtifact@2
+        inputs:
+          artifact: 'onnxruntime-osx-arm64'
+          targetPath: '$(Build.ArtifactStagingDirectory)'
+      - task: DownloadPipelineArtifact@2
+        inputs:
+          artifact: 'onnxruntime-osx-universal2'
+          targetPath: '$(Build.ArtifactStagingDirectory)'
+      - task: PublishPipelineArtifact@1
+        inputs:
+          targetPath: '$(Build.ArtifactStagingDirectory)'
+          artifact: 'onnxruntime-osx'
+          condition: 'succeededOrFailed()'
+      - template: component-governance-component-detection-steps.yml
+        parameters:
+          condition: 'succeeded'
+  - ${{ if ne(parameters.BuildForAllArchs, true) }}:
+    - template: mac-cpu-packing-jobs.yml
+      parameters:
+        MacosArch: 'x86_64'
+        AllowReleasedOpsetOnly: ${{ parameters.AllowReleasedOpsetOnly }}
+        AdditionalBuildFlags: ${{ parameters.AdditionalBuildFlags }}
+        WithCache: ${{ parameters.WithCache }}
+    - job: MacOS_C_API_Package_Publish_x86_64
+      dependsOn: MacOS_C_API_Packaging_CPU_x86_64
+      pool:
+        vmImage: 'macOS-12'
+      steps:
+      - task: DownloadPipelineArtifact@2
+        inputs:
+          artifact: 'onnxruntime-osx-x86_64'
+          targetPath: '$(Build.ArtifactStagingDirectory)'
+      - task: PublishPipelineArtifact@1
+        inputs:
+          targetPath: '$(Build.ArtifactStagingDirectory)'
+          artifact: 'onnxruntime-osx'
+          condition: 'succeededOrFailed()'
+      - template: component-governance-component-detection-steps.yml
+        parameters:
+          condition: 'succeeded'

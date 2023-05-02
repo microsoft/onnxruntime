@@ -21,7 +21,6 @@ class AdamWOptimizer final : public OpKernel, public AdamWOptimizerBase {
   Status Compute(OpKernelContext* context) const override;
 
  private:
-  Status CopyInputTensorToOutputTensor(const Tensor& source_tensor, Tensor& dest_tensor) const override;
   Status AdamWComputeMode0(Tensor& weight, Tensor& gradient, Tensor& momentums_1, Tensor& momentums_2, float lr,
                            float alpha_correction,
                            float beta_correction) const;

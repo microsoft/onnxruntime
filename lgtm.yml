@@ -13,7 +13,7 @@ extraction:
     after_prepare:
       # Install cmake
       - mkdir custom_cmake
-      - wget --quiet -O - "https://github.com/Kitware/CMake/releases/download/v3.23.1/cmake-3.23.1-linux-x86_64.tar.gz" | tar --strip-components=1 -xz -C custom_cmake
+      - wget --quiet -O - "https://github.com/Kitware/CMake/releases/download/v3.24.3/cmake-3.24.3-linux-x86_64.tar.gz" | tar --strip-components=1 -xz -C custom_cmake
       - "export PATH=$(pwd)/custom_cmake/bin:${PATH}"
     index:
       build_command:

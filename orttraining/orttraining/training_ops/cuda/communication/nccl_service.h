@@ -187,7 +187,7 @@ class NcclService final : public INcclService {
   // Search the next unfinished communication group to work on.
   int FindNextCommunicationTime() const;
 
-  // Mutex to gurantee thread-safe access to this class.
+  // Mutex to guarantee thread-safe access to this class.
   std::mutex mutex_;
   // Conditional variable used to wait for the mutex.
   std::condition_variable cv_;

@@ -335,7 +335,7 @@ void DumpTensor(
     if (tensor_location.device.Type() == OrtDevice::GPU) {
       const auto& execution_providers = session_state.GetExecutionProviders();
       const auto* cpu_execution_provider = execution_providers.Get(onnxruntime::kCpuExecutionProvider);
-      auto cpu_allocator = cpu_execution_provider->GetAllocator(0, OrtMemTypeDefault);
+      auto cpu_allocator = cpu_execution_provider->GetAllocator(OrtMemTypeDefault);
       Tensor cpu_tensor{data_type, tensor.Shape(), cpu_allocator};
       const auto& data_transfer_mgr = session_state.GetDataTransferMgr();
       auto status = data_transfer_mgr.CopyTensor(tensor, cpu_tensor);
@@ -453,6 +453,9 @@ void DumpNodeInputs(
 
   if (!FilterNode(dump_options, node)) return;
 
+  if (context.GetComputeStream())
+    context.GetComputeStream()->Flush();
+
   bool should_dump_node_placement = (dump_options.dump_flags & NodeDumpOptions::DumpFlags::NodePlacement) != 0;
   if (dump_context.iteration == 1 && should_dump_node_placement) {
     PrintIf(should_dump_node_placement, MakeString(" Placement: ", node.GetExecutionProviderType(), "\n"));
@@ -475,23 +478,26 @@ void DumpNodeInputs(
 
       if (type) {
         if (type->IsTensorType()) {
-          const auto& tensor = *context.Input<Tensor>(i);
-          const auto& shape = tensor.Shape();
+          if (const auto* tensor = context.Input<Tensor>(i); tensor != nullptr) {
+            const auto& shape = tensor->Shape();
 
-          const bool is_shape_set = (dump_options.dump_flags & NodeDumpOptions::DumpFlags::Shape) != 0;
-          PrintIf(is_shape_set, MakeString(" Shape: ", shape, "\n"));
+            const bool is_shape_set = (dump_options.dump_flags & NodeDumpOptions::DumpFlags::Shape) != 0;
+            PrintIf(is_shape_set, MakeString(" Shape: ", shape, "\n"));
 
-          if ((dump_options.dump_flags & NodeDumpOptions::DumpFlags::InputData) != 0) {
-            tensor_metadata.name = input_defs[i]->Name();
-            tensor_metadata.step = dump_context.iteration;
-            tensor_metadata.consumer = node.Name() + ":" + std::to_string(i);
-            DumpTensor(dump_options, tensor, tensor_metadata, session_state);
+            if ((dump_options.dump_flags & NodeDumpOptions::DumpFlags::InputData) != 0) {
+              tensor_metadata.name = input_defs[i]->Name();
+              tensor_metadata.step = dump_context.iteration;
+              tensor_metadata.consumer = node.Name() + ":" + std::to_string(i);
+              DumpTensor(dump_options, *tensor, tensor_metadata, session_state);
+            }
+          } else {
+            std::cout << " is empty optional tensor.\n";
           }
         } else {
           std::cout << " is non-tensor type.\n";
         }
       } else {
-        // should never happen...
+        // this could happen with an empty Optional input
         std::cout << " was missing data type\n";
       }
     } else {
@@ -521,6 +527,9 @@ void DumpNodeOutputs(
 
   if (!FilterNode(dump_options, node)) return;
 
+  if (context.GetComputeStream())
+    context.GetComputeStream()->Flush();
+
   bool should_dump_node_placement = (dump_options.dump_flags & NodeDumpOptions::DumpFlags::NodePlacement) != 0;
   if (dump_context.iteration == 1 && should_dump_node_placement) {
     PrintIf(should_dump_node_placement, MakeString(" Placement: ", node.GetExecutionProviderType(), "\n"));
@@ -540,23 +549,26 @@ void DumpNodeOutputs(
       const auto* type = context.OutputType(i);
       if (type) {
         if (type->IsTensorType()) {
-          const auto& tensor = *context.Output<Tensor>(i);
-          const auto& shape = tensor.Shape();
+          if (const auto* tensor = context.Output<Tensor>(i); tensor != nullptr) {
+            const auto& shape = tensor->Shape();
 
-          const bool is_shape_set = (dump_options.dump_flags & NodeDumpOptions::DumpFlags::Shape) != 0;
-          PrintIf(is_shape_set, MakeString(" Shape: ", shape, "\n"));
+            const bool is_shape_set = (dump_options.dump_flags & NodeDumpOptions::DumpFlags::Shape) != 0;
+            PrintIf(is_shape_set, MakeString(" Shape: ", shape, "\n"));
 
-          if ((dump_options.dump_flags & NodeDumpOptions::DumpFlags::OutputData) != 0) {
-            tensor_metadata.name = output_defs[i]->Name();
-            tensor_metadata.step = dump_context.iteration;
-            tensor_metadata.producer = node.Name() + ":" + std::to_string(i);
-            DumpTensor(dump_options, tensor, tensor_metadata, session_state);
+            if ((dump_options.dump_flags & NodeDumpOptions::DumpFlags::OutputData) != 0) {
+              tensor_metadata.name = output_defs[i]->Name();
+              tensor_metadata.step = dump_context.iteration;
+              tensor_metadata.producer = node.Name() + ":" + std::to_string(i);
+              DumpTensor(dump_options, *tensor, tensor_metadata, session_state);
+            }
+          } else {
+            std::cout << " is empty optional tensor.\n";
           }
         } else {
           std::cout << " is non-tensor type.\n";
         }
       } else {
-        // should never happen...
+        // should never happen in a successful run
         std::cout << "missing data type\n";
       }
     } else {

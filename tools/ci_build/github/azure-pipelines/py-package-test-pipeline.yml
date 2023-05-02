@@ -2,51 +2,98 @@ resources:
   pipelines:
   - pipeline: build
     source: 'Python packaging pipeline'
-    trigger: true 
-    
-jobs:
-- template: templates/py-packaging-linux-test.yml
-  parameters:
-    arch: 'x86_64'
-    machine_pool: 'Linux-CPU'
-    device: 'CPU'
+    trigger: true
 
-- template: templates/py-packaging-linux-test.yml
-  parameters:
-    arch: 'aarch64'
-    machine_pool: 'aiinfra-linux-ARM64-CPU-2019'
-    device: 'CPU'
+stages:
+- stage: Linux_Test_CPU_x86_64_stage
+  jobs:
+  - template: templates/py-packaging-linux-test.yml
+    parameters:
+      arch: 'x86_64'
+      machine_pool: 'aiinfra-Linux-CPU'
+      device: 'CPU'
 
-- template: templates/py-packaging-linux-test.yml
-  parameters:
-    arch: 'x86_64'
-    machine_pool: 'Onnxruntime-Linux-GPU'
-    device: 'GPU'
-    python_wheel_suffix: '_gpu'
+- stage: Linux_Test_CPU_aarch64_stage
+  dependsOn: []
+  jobs:
+  - template: templates/py-packaging-linux-test.yml
+    parameters:
+      arch: 'aarch64'
+      machine_pool: 'aiinfra-linux-ARM64-CPU-2019'
+      device: 'CPU'
 
-- job: Final
+- stage: Packages_Somking_Test
+  dependsOn: []
+  jobs:
+    - template: templates/py-package-smoking-test.yml
+      parameters:
+        job_name: Test_MAC_Wheels
+        machine_pool:
+          vmImage: 'macOS-12'
+        itemPattern: '*/*mac*x86_64.whl'
+    - template: templates/py-package-smoking-test.yml
+      parameters:
+        job_name: Test_WIN_64_Wheels
+        itemPattern: '*/*win_amd64.whl'
+        machine_pool:
+          vmImage: 'windows-2022'
+    - template: templates/py-package-smoking-test.yml
+      parameters:
+        job_name: Test_WIN_32_Wheels
+        itemPattern: '*/*win32.whl'
+        python_arch: 'x86'
+        machine_pool:
+          vmImage: 'windows-2022'
+    - template: templates/py-package-smoking-test.yml
+      parameters:
+        job_name: Test_LINUX_x86_64_Wheels
+        itemPattern: '*/*manylinux*x86_64.whl'
+        machine_pool:
+          vmImage: 'ubuntu-22.04'
+
+# ****The following Stage depend on all previous tags. ***
+
+# GPU resources are very limited,
+# To utilize gpu resource more efficiently, run GPU job only after all cpus jobs succeed
+- stage: Linux_Test_GPU_x86_64_stage
   dependsOn:
-  - Linux_Test_CPU_x86_64
-  - Linux_Test_CPU_aarch64
-  - Linux_Test_GPU_x86_64
-  #Run this step only if all previous steps are succeeded and (this build was triggered by a resource trigger or it was triggered by another build).
-  condition: and(succeeded(), eq(variables['Build.Reason'], 'ResourceTrigger'))
-  timeoutInMinutes: 60
-  variables:
-    skipComponentGovernanceDetection: true
-  workspace:
-    clean: all
-  pool: Azure-Pipelines-EO-Windows2022-aiinfra
-  steps:
-  - task: PowerShell@2
-    displayName: 'Add Build Tag'    
-    env:
-      SYSTEM_ACCESSTOKEN: $(System.AccessToken)
-    inputs:
-      targetType: inline
-      script: |
-        $headers = New-Object "System.Collections.Generic.Dictionary[[String],[String]]"
-        $headers.Add("Authorization", "Bearer $env:SYSTEM_ACCESSTOKEN")
-        $headers.Add("Content-Type", "application/json")
-        $uri = "https://dev.azure.com/aiinfra/Lotus/_apis/build/builds/$(resources.pipeline.build.runID)/tags/test%20pass?api-version=6.0"
-        Invoke-RestMethod -Uri $uri -Headers $headers -Method PUT
+    - Linux_Test_CPU_x86_64_stage
+    - Linux_Test_CPU_aarch64_stage
+    - Packages_Somking_Test
+  jobs:
+  - template: templates/py-packaging-linux-test.yml
+    parameters:
+      arch: 'x86_64'
+      machine_pool: 'Onnxruntime-Linux-GPU'
+      device: 'GPU'
+      python_wheel_suffix: '_gpu'
+      timeout: 480
+
+
+# if final job not extecuted, it will not run nightlly build
+- stage: Final
+  dependsOn:
+    - Linux_Test_GPU_x86_64_stage
+  jobs:
+  - job: Final
+    # Run this step only if all previous steps are succeeded and (this build was triggered by a resource trigger or it was triggered by another build).
+    condition: and(succeeded(), eq(variables['Build.Reason'], 'ResourceTrigger'))
+    timeoutInMinutes: 60
+    variables:
+      skipComponentGovernanceDetection: true
+    workspace:
+      clean: all
+    pool: Azure-Pipelines-EO-Windows2022-aiinfra
+    steps:
+    - task: PowerShell@2
+      displayName: 'Add Build Tag'
+      env:
+        SYSTEM_ACCESSTOKEN: $(System.AccessToken)
+      inputs:
+        targetType: inline
+        script: |
+          $headers = New-Object "System.Collections.Generic.Dictionary[[String],[String]]"
+          $headers.Add("Authorization", "Bearer $env:SYSTEM_ACCESSTOKEN")
+          $headers.Add("Content-Type", "application/json")
+          $uri = "https://dev.azure.com/aiinfra/Lotus/_apis/build/builds/$(resources.pipeline.build.runID)/tags/test%20pass?api-version=6.0"
+          Invoke-RestMethod -Uri $uri -Headers $headers -Method PUT

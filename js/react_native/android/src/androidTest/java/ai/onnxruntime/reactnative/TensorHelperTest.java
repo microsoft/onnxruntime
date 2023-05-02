@@ -109,6 +109,37 @@ public class TensorHelperTest {
   }
 
   @Test
+  public void createInputTensor_uint8() throws Exception {
+    OnnxTensor outputTensor = OnnxTensor.createTensor(ortEnvironment, ByteBuffer.wrap(new byte[] {0, 2, (byte)255}),
+                                                      new long[] {3}, OnnxJavaType.UINT8);
+
+    JavaOnlyMap inputTensorMap = new JavaOnlyMap();
+
+    JavaOnlyArray dims = new JavaOnlyArray();
+    dims.pushInt(3);
+    inputTensorMap.putArray("dims", dims);
+
+    inputTensorMap.putString("type", TensorHelper.JsTensorTypeUnsignedByte);
+
+    ByteBuffer dataByteBuffer = ByteBuffer.allocate(3);
+    dataByteBuffer.put((byte)0);
+    dataByteBuffer.put((byte)2);
+    dataByteBuffer.put((byte)255);
+    String dataEncoded = Base64.encodeToString(dataByteBuffer.array(), Base64.DEFAULT);
+    inputTensorMap.putString("data", dataEncoded);
+
+    OnnxTensor inputTensor = TensorHelper.createInputTensor(inputTensorMap, ortEnvironment);
+
+    Assert.assertEquals(inputTensor.getInfo().onnxType, TensorInfo.OnnxTensorType.ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8);
+    Assert.assertEquals(outputTensor.getInfo().onnxType, TensorInfo.OnnxTensorType.ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8);
+    Assert.assertEquals(inputTensor.toString(), outputTensor.toString());
+    Assert.assertArrayEquals(inputTensor.getByteBuffer().array(), outputTensor.getByteBuffer().array());
+
+    inputTensor.close();
+    outputTensor.close();
+  }
+
+  @Test
   public void createInputTensor_int32() throws Exception {
     OnnxTensor outputTensor =
         OnnxTensor.createTensor(ortEnvironment, new int[] {Integer.MIN_VALUE, 2, Integer.MAX_VALUE});

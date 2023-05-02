@@ -50,8 +50,8 @@ bool IsQuantizedSoftmax(QuantizedOpType quant_op_type) {
 }
 }  // namespace
 
-bool Softmax::IsSoftmaxOnnxNodeSupported(const NodeUnit& node_unit,
-                                         const GraphViewer& graph) {
+bool Softmax::IsOnnxNodeSupported(const NodeUnit& node_unit,
+                                  const GraphViewer& graph) {
   bool supported = false;
   if (IsQuantizedSoftmax(GetQuantizedOpType(node_unit)) &&
       IsQuantSoftmaxSupported(node_unit, graph) == false) {

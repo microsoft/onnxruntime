@@ -94,7 +94,6 @@ cublasLtOrder_t GetCublasLtOrderAttr(const OpKernelInfo& info, const char* order
 #endif
 
 QuantizeWithOrder::QuantizeWithOrder(const OpKernelInfo& info) : CudaKernel(info) {
-
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 11040
   int cuda_runtime_version = 0;
   CUDA_CALL_THROW(cudaRuntimeGetVersion(&cuda_runtime_version));
@@ -136,7 +135,6 @@ DequantizeWithOrder::DequantizeWithOrder(const OpKernelInfo& info) : CudaKernel(
   ORT_ENFORCE(false, "Compiling with CUDA_VERSION >= 11.4 is needed!");
 
 #endif
-
 }
 
 Status QuantizeWithOrder::ComputeInternal(OpKernelContext* context) const {
@@ -149,7 +147,7 @@ Status QuantizeWithOrder::ComputeInternal(OpKernelContext* context) const {
   const float* scale = context->Input<Tensor>(1)->Data<float>();
   Tensor* output_tensor = context->Output(0, input_tensor.Shape());
   cublasLtHandle_t cublasLt = CublasLtHandle();
-  cudaStream_t stream = Stream();
+  cudaStream_t stream = Stream(context);
   const auto& device_prop = GetDeviceProp();
 
   // Note that order_input_ == CUBLASLT_ORDER_ROW
@@ -164,7 +162,7 @@ Status QuantizeWithOrder::ComputeInternal(OpKernelContext* context) const {
           *scale, gsl::narrow<unsigned>(batch), gsl::narrow<unsigned>(rows), gsl::narrow<unsigned>(cols)));
     }
   } else {
-    auto q8_buffer = GetScratchBuffer<int8_t>(order_input_ == order_output_ ? 0LL : n);
+    auto q8_buffer = GetScratchBuffer<int8_t>(order_input_ == order_output_ ? 0LL : n, context->GetComputeStream());
     int8_t* dst = (order_input_ == order_output_ ? output_tensor->MutableData<int8_t>() : q8_buffer.get());
     if (input_tensor.IsDataType<MLFloat16>()) {
       ORT_RETURN_IF_ERROR(QOrderQuantize_Strict(stream, device_prop, (const __half*)input_tensor.Data<MLFloat16>(), dst, *scale, n));
@@ -200,7 +198,7 @@ Status DequantizeWithOrder::ComputeInternal(OpKernelContext* context) const {
   const Tensor& scale_tensor = *context->Input<Tensor>(1);
   const float* scale = scale_tensor.Data<float>();
   Tensor* output_tensor = context->Output(0, input_tensor.Shape());
-  cudaStream_t stream = Stream();
+  cudaStream_t stream = Stream(context);
   const auto& device_prop = GetDeviceProp();
 
   // Note that order_output_ == CUBLASLT_ORDER_ROW

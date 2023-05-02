@@ -3,7 +3,6 @@
 
 #pragma once
 
-
 #include "core/common/inlined_containers.h"
 #include "core/framework/allocator.h"
 #include "core/platform/ort_mutex.h"
@@ -19,7 +18,6 @@ class CUDAAllocator : public IAllocator {
                           device_id, OrtMemTypeDefault)) {}
   void* Alloc(size_t size) override;
   void Free(void* p) override;
-  FencePtr CreateFence(const SessionState* session_state) override;
 
  private:
   void CheckDevice(bool throw_when_fail) const;
@@ -51,7 +49,7 @@ class CUDAExternalAllocator : public CUDAAllocator {
   InlinedHashSet<void*> reserved_;
 };
 
-//TODO: add a default constructor
+// TODO: add a default constructor
 class CUDAPinnedAllocator : public IAllocator {
  public:
   CUDAPinnedAllocator(OrtDevice::DeviceId device_id, const char* name)
@@ -62,6 +60,5 @@ class CUDAPinnedAllocator : public IAllocator {
 
   void* Alloc(size_t size) override;
   void Free(void* p) override;
-  FencePtr CreateFence(const SessionState* session_state) override;
 };
 }  // namespace onnxruntime

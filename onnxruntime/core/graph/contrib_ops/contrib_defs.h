@@ -13,7 +13,7 @@
 #define ONNX_MS_OPERATOR_SET_SCHEMA(name, ver, impl) \
   ONNX_OPERATOR_SET_SCHEMA_EX(name, Microsoft, ::onnxruntime::kMSDomain, ver, true, impl)
 
-//They are in ONNX domain but they are in our source code
+// They are in ONNX domain but they are in our source code
 #define ONNX_CONTRIB_OPERATOR_SET_SCHEMA(name, ver, impl) \
   ONNX_OPERATOR_SET_SCHEMA_EX(name, Onnx, ::ONNX_NAMESPACE::ONNX_DOMAIN, ver, true, impl)
 
@@ -29,7 +29,7 @@ inline bool HasRawData(const ONNX_NAMESPACE::TensorProto& ten_proto) {
   return ten_proto.data_type() != ONNX_NAMESPACE::TensorProto::UNDEFINED &&
          ten_proto.has_raw_data();  // XXX: Figure out how to do in proto3
 }
-}
+}  // namespace utils
 
 #define ONNX_CONTRIB_OPERATOR_SCHEMA(name) \
   ONNX_CONTRIB_OPERATOR_SCHEMA_UNIQ_HELPER(__COUNTER__, name)
@@ -52,6 +52,10 @@ inline bool HasRawData(const ONNX_NAMESPACE::TensorProto& ten_proto) {
 void RegisterContribSchemas();
 void RegisterNchwcSchemas();
 void RegisterQuantizationSchemas();
+
+#if defined(USE_MPI)
+void RegisterCollectiveOps();
+#endif
 
 constexpr const float kDefaultSkipLayerNormEpsilon = 1e-12f;
 constexpr const float kDefaultEmbedLayerNormEpsilon = 1e-12f;

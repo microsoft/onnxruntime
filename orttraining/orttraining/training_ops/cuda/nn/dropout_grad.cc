@@ -79,7 +79,7 @@ Status DropoutGrad<UseBitmask>::ComputeInternal(OpKernelContext* context) const 
   auto dX = context->Output(0, shape);
 
   utils::MLTypeCallDispatcher<float, MLFloat16, double, BFloat16> t_disp(dY->GetElementType());
-  t_disp.Invoke<DropoutGradComputeImpl>(Stream(), N, *dY, mask_data, ratio_data, *dX, UseBitmask);
+  t_disp.Invoke<DropoutGradComputeImpl>(Stream(context), N, *dY, mask_data, ratio_data, *dX, UseBitmask);
   return Status::OK();
 }
 

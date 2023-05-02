@@ -3,45 +3,21 @@
 #include <vector>
 #include <map>
 
-#include "core/common/profiler_common.h"
+#include "core/common/gpu_profiler_common.h"
+#include "roctracer_manager.h"
 
 #if defined(USE_ROCM) && defined(ENABLE_ROCM_PROFILING)
 
-class RoctracerLogger;
-class roctracerRow;
-
 namespace onnxruntime {
-
 namespace profiling {
 
 using Events = std::vector<onnxruntime::profiling::EventRecord>;
 
-class RocmProfiler final : public EpProfiler {
+class RocmProfiler final : public GPUProfilerBase<RoctracerManager> {
  public:
   RocmProfiler();
-  RocmProfiler(const RocmProfiler&) = delete;
-  RocmProfiler& operator=(const RocmProfiler&) = delete;
-#if 0
-  RocmProfiler(RocmProfiler&& rocm_profiler) noexcept {
-    initialized_ = rocm_profiler.initialized_;
-    rocm_profiler.initialized_ = false;
-  }
-  RocmProfiler& operator=(RocmProfiler&& rocm_profiler) noexcept {
-    initialized_ = rocm_profiler.initialized_;
-    rocm_profiler.initialized_ = false;
-    return *this;
-  }
-#endif
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(RocmProfiler);
   ~RocmProfiler();
-  bool StartProfiling() override;
-  void EndProfiling(TimePoint start_time, Events& events) override;
-  void Start(uint64_t) override;
-  void Stop(uint64_t) override;
-
- private:
-  void addEventRecord(const roctracerRow &item, int64_t pstart, const std::initializer_list<std::pair<std::string, std::string>> &args, std::map<uint64_t, std::vector<EventRecord>> &event_map);
-
-  RoctracerLogger *d;
 };
 
 }  // namespace profiling
@@ -50,21 +26,20 @@ class RocmProfiler final : public EpProfiler {
 #else
 
 namespace onnxruntime {
-
 namespace profiling {
 
 class RocmProfiler final : public EpProfiler {
  public:
-  bool StartProfiling() override { return true; }
+  RocmProfiler() = default;
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(RocmProfiler);
+  ~RocmProfiler() {}
+  bool StartProfiling(TimePoint) override { return true; }
   void EndProfiling(TimePoint, Events&) override{};
   void Start(uint64_t) override{};
   void Stop(uint64_t) override{};
 };
 
-}
-}
-
-
-
+}  // namespace profiling
+}  // namespace onnxruntime
 
 #endif

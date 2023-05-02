@@ -23,106 +23,122 @@ half maybe2half(float x) {
   return __float2half_rn(x);
 }
 
-template <typename T, unsigned TPB>
+template <typename T, typename U, typename V, unsigned TPB>
 __global__ void SkipLayerNormKernel(
-    const int ld, const T* input, const T* skip, const T* beta, const T* gamma, const T* bias,
-    const T epsilon, T* output) {
-  const T reverse_ld = T(1.f / ld);
+    const int ld, const T* input, const T* skip, const V* beta, const V* gamma, const T* bias,
+    const U epsilon, V* output, T* skip_input_bias_add_output) {
+  const U reverse_ld = U(1.f / ld);
   const int offset = blockIdx.x * ld;
 
   KeyValuePairSum pair_sum;
   // reduce x and x^2
-  hipcub::KeyValuePair<T, T> thread_data(0, 0);
+  hipcub::KeyValuePair<U, U> thread_data(U(0.f), U(0.f));
 
   for (int i = threadIdx.x; i < ld; i += TPB) {
     const int idx = offset + i;
-    const T val = (bias == nullptr) ? input[idx] + skip[idx] : input[idx] + skip[idx] + bias[i];
-    const T rldval = reverse_ld * val;
-    thread_data = pair_sum(thread_data, hipcub::KeyValuePair<T, T>(rldval, rldval * val));
-    output[idx] = val;
+    const U val = (bias == nullptr) ? static_cast<U>(input[idx]) + static_cast<U>(skip[idx]) : static_cast<U>(input[idx]) + static_cast<U>(skip[idx]) + static_cast<U>(bias[i]);
+    const U rldval = reverse_ld * val;
+    thread_data = pair_sum(thread_data, hipcub::KeyValuePair<U, U>(rldval, rldval * val));
+
+    if (skip_input_bias_add_output != nullptr) {
+      skip_input_bias_add_output[idx] = static_cast<T>(val);
+    }
+
+    output[idx] = static_cast<V>(val);
   }
 
-  LayerNorm<T, TPB>(thread_data, ld, offset, beta, gamma, epsilon, output);
+  LayerNorm<U, V, TPB>(thread_data, ld, offset, beta, gamma, epsilon, output);
 }
 
 // Vectorized kernel
-template <typename T, unsigned TPB, int ILP>
+template <typename T, typename U, typename V, unsigned TPB, int ILP>
 __global__ void SkipLayerNormKernelVec(
-    const int ld, const T* input, const T* skip, const T* beta, const T* gamma,
-    const T* bias, const T epsilon, T* output, bool hasBias) {
-  const T reverse_ld = T(1.f / ld);
+    const int ld, const T* input, const T* skip, const V* beta, const V* gamma,
+    const T* bias, const U epsilon, V* output, T* skip_input_bias_add_output,
+    bool hasBias, bool hasSkipInputBiasAdditionOutput) {
+  const U reverse_ld = U(1.f / ld);
   const int offset = blockIdx.x * ld;
 
   KeyValuePairSum pair_sum;
   // reduce x and x^2
-  hipcub::KeyValuePair<T, T> thread_data(0, 0);
+  hipcub::KeyValuePair<U, U> thread_data(U(0.f), U(0.f));
 
   using VecT = aligned_vector<T, ILP>;
-  T input_v[ILP], skip_v[ILP], bias_v[ILP];
+  using VecV = aligned_vector<V, ILP>;
   if (threadIdx.x * ILP < ld) {
-    VecT* input_val = reinterpret_cast<VecT*>(&input_v);
-    VecT* skip_val = reinterpret_cast<VecT*>(&skip_v);
-
     for (int i = threadIdx.x * ILP; i < ld; i += TPB * ILP) {
       int idx = offset + i;
 
-      *input_val = *reinterpret_cast<const VecT*>(&input[idx]);
-      *skip_val = *reinterpret_cast<const VecT*>(&skip[idx]);
-      if (hasBias) {
-        VecT* bias_val = reinterpret_cast<VecT*>(&bias_v);
-        *bias_val = *reinterpret_cast<const VecT*>(&bias[i]);
+      const VecT input_v = *reinterpret_cast<const VecT*>(input + idx);
+      const VecT skip_v = *reinterpret_cast<const VecT*>(skip + idx);
+      const VecT bias_v = hasBias ? *reinterpret_cast<const VecT*>(bias + i) : VecT();
+      VecT skip_input_bias_add_output_v, output_v;
+
+#pragma unroll
+      for (int k = 0; k < ILP; k++) {
+        const U val = hasBias ? static_cast<U>(input_v.val[k]) + static_cast<U>(skip_v.val[k]) + static_cast<U>(bias_v.val[k]) : static_cast<U>(input_v.val[k]) + static_cast<U>(skip_v.val[k]);
+        const U rldval = reverse_ld * val;
+
+        if (hasSkipInputBiasAdditionOutput) {
+          skip_input_bias_add_output_v.val[k] = static_cast<T>(val);
+        }
+        thread_data = pair_sum(thread_data, hipcub::KeyValuePair<U, U>(rldval, rldval * val));
+        output_v.val[k] = static_cast<V>(val);
       }
 
-      #pragma unroll
-      for (int k = 0; k < ILP; k++) {
-        input_v[k] += hasBias ? skip_v[k] + bias_v[k] : skip_v[k];
-        const T rldval = reverse_ld * input_v[k];
-        thread_data = pair_sum(thread_data, hipcub::KeyValuePair<T, T>(rldval, rldval * input_v[k]));
+      if (hasSkipInputBiasAdditionOutput) {
+        *(reinterpret_cast<VecT*>(skip_input_bias_add_output + idx)) = skip_input_bias_add_output_v;
       }
-      *(reinterpret_cast<VecT*>(&output[idx])) = *reinterpret_cast<VecT*>(&input_v[0]);
+
+      *(reinterpret_cast<VecV*>(output + idx)) = output_v;
     }
   }
 
-  LayerNormVec<T, TPB, ILP>(thread_data, ld, offset, beta, gamma, epsilon, output);
+  LayerNormVec<U, V, TPB, ILP>(thread_data, ld, offset, beta, gamma, epsilon, output);
 }
 
 // Vectorized kernel
-template <typename T, unsigned TPB, int ILP>
+template <typename T, typename U, typename V, unsigned TPB, int ILP>
 __global__ void SkipLayerNormKernelSmall(
-    const int ld, const T* input, const T* skip, const T* beta, const T* gamma,
-    const T* bias, const T epsilon, T* output, bool hasBias) {
-  const T rld = T(1.f / ld);
+    const int ld, const T* input, const T* skip, const V* beta, const V* gamma,
+    const T* bias, const U epsilon, V* output, T* skip_input_bias_add_output,
+    bool hasBias, bool hasSkipInputBiasAdditionOutput) {
+  const U rld = U(1.f / ld);
   const int idx = blockIdx.x * ld + threadIdx.x * ILP;  // grid_size = n / ld
 
   using VecT = aligned_vector<T, ILP>;
-  T input_v[ILP], skip_v[ILP], bias_v[ILP];
+  hipcub::KeyValuePair<U, U> thread_data(U(0.f), U(0.f));
 
-  hipcub::KeyValuePair<T, T> thread_data(T(0.f), T(0.f));
-
+  VecT input_v;
   if (ILP * threadIdx.x < ld) {
-    VecT* input_val = reinterpret_cast<VecT*>(&input_v);
-    *input_val = *reinterpret_cast<const VecT*>(&input[idx]);
+    input_v = *reinterpret_cast<const VecT*>(input + idx);
+    const VecT skip_v = *reinterpret_cast<const VecT*>(skip + idx);
+    const VecT bias_v = hasBias ? *reinterpret_cast<const VecT*>(bias + threadIdx.x * ILP) : VecT();
+    VecT skip_input_bias_add_output_v;
 
-    VecT* skip_val = reinterpret_cast<VecT*>(&skip_v);
-    *skip_val = *reinterpret_cast<const VecT*>(&skip[idx]);
-
-    if (hasBias) {
-      VecT* bias_val = reinterpret_cast<VecT*>(&bias_v);
-      *bias_val = *reinterpret_cast<const VecT*>(&bias[threadIdx.x * ILP]);
-    }
-
-    T rldval_sum = T(0.f);
-    T rldvalsq_sum = T(0.f);
-    #pragma unroll
+    U rldval_sum = U(0.f);
+    U rldvalsq_sum = U(0.f);
+#pragma unroll
     for (int i = 0; i < ILP; i++) {
-      input_v[i] += hasBias ? skip_v[i] + bias_v[i] : skip_v[i];
-      const T rldval = rld * input_v[i];
+      const U val = hasBias ? static_cast<U>(input_v.val[i]) + static_cast<U>(skip_v.val[i]) + static_cast<U>(bias_v.val[i]) : static_cast<U>(input_v.val[i]) + static_cast<U>(skip_v.val[i]);
+
+      if (hasSkipInputBiasAdditionOutput) {
+        skip_input_bias_add_output_v.val[i] = static_cast<T>(val);
+      }
+
+      const U rldval = rld * val;
       rldval_sum += rldval;
-      rldvalsq_sum += rldval * input_v[i];
+      rldvalsq_sum += rldval * val;
+      input_v.val[i] = static_cast<T>(val);
     }
-    thread_data = hipcub::KeyValuePair<T, T>(rldval_sum, rldvalsq_sum);
+
+    if (hasSkipInputBiasAdditionOutput) {
+      *(reinterpret_cast<VecT*>(skip_input_bias_add_output + idx)) = skip_input_bias_add_output_v;
+    }
+
+    thread_data = hipcub::KeyValuePair<U, U>(rldval_sum, rldvalsq_sum);
   }
-  LayerNormSmall<T, TPB, ILP>(input_v, thread_data, ld, idx, beta, gamma, epsilon, output);
+  LayerNormSmall<T, U, V, TPB, ILP>(input_v.val, thread_data, ld, idx, beta, gamma, epsilon, output);
 }
 
 }  // namespace rocm

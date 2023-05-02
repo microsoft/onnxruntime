@@ -73,7 +73,7 @@ def parse_args():
         action="append",
         dest="build_ios_framework_extra_args",
         default=[],
-        help="Pass an argument through to build_ios_framework.py. " "This may be specified multiple times.",
+        help="Pass an argument through to build_ios_framework.py. This may be specified multiple times.",
     )
 
     args = parser.parse_args()
@@ -87,9 +87,7 @@ def run(arg_list, cwd=None):
     import subprocess
 
     log.info(
-        "Running subprocess in '{0}'\n  {1}".format(
-            cwd or os.getcwd(), " ".join([shlex.quote(arg) for arg in arg_list])
-        )
+        "Running subprocess in '{}'\n  {}".format(cwd or os.getcwd(), " ".join([shlex.quote(arg) for arg in arg_list]))
     )
 
     return subprocess.run(arg_list, check=True, cwd=cwd)
@@ -110,7 +108,8 @@ def main():
     build_ios_framework_args = [
         sys.executable,
         str(SCRIPT_DIR / "build_ios_framework.py"),
-    ] + args.build_ios_framework_extra_args
+        *args.build_ios_framework_extra_args,
+    ]
 
     if args.include_ops_by_config is not None:
         build_ios_framework_args += ["--include_ops_by_config", args.include_ops_by_config]

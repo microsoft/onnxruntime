@@ -54,6 +54,9 @@ if (options.globalEnvFlags) {
   if (flags.wasm?.initTimeout !== undefined) {
     ort.env.wasm.initTimeout = flags.wasm.initTimeout;
   }
+  if (flags.webgpu?.profilingMode !== undefined) {
+    ort.env.webgpu.profilingMode = flags.webgpu.profilingMode;
+  }
 }
 
 // Set logging configuration
@@ -103,7 +106,8 @@ for (const group of ORT_WEB_TEST_CONFIG.model) {
         let context: ModelTestContext;
 
         before('prepare session', async () => {
-          context = await ModelTestContext.create(test, ORT_WEB_TEST_CONFIG.profile);
+          context = await ModelTestContext.create(
+              test, ORT_WEB_TEST_CONFIG.profile, ORT_WEB_TEST_CONFIG.options.sessionOptions);
         });
 
         after('release session', () => {

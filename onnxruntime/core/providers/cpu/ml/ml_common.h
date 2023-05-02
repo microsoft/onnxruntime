@@ -20,14 +20,14 @@ enum class OUTPUT_MODE {
   ALL_SCORES
 };
 
-enum class NODE_MODE {
-  BRANCH_LEQ,
-  BRANCH_LT,
-  BRANCH_GTE,
-  BRANCH_GT,
-  BRANCH_EQ,
-  BRANCH_NEQ,
-  LEAF
+enum NODE_MODE : uint8_t {
+  LEAF = 1,
+  BRANCH_LEQ = 2,
+  BRANCH_LT = 4,
+  BRANCH_GTE = 6,
+  BRANCH_GT = 8,
+  BRANCH_EQ = 10,
+  BRANCH_NEQ = 12
 };
 
 static inline NODE_MODE MakeTreeNodeMode(const std::string& input) {
@@ -185,42 +185,44 @@ static inline float ErfInv(float x) {
   return x;
 }
 
-//https://www.csie.ntu.edu.tw/~cjlin/papers/svmprob/svmprob.pdf
+// https://www.csie.ntu.edu.tw/~cjlin/papers/svmprob/svmprob.pdf
 static inline void multiclass_probability(int64_t classcount,
                                           const gsl::span<const float>& r,
                                           const gsl::span<float>& p) {
-  int64_t sized2 = classcount * classcount;
+  auto safe_int_classcount = SafeInt<size_t>(classcount);
+  size_t sized2 = safe_int_classcount * classcount;
   std::vector<float> Q;
   std::vector<float> Qp;
   Q.assign(sized2, 0.f);
-  Qp.assign(classcount, 0.f);
+  Qp.assign(safe_int_classcount, 0.f);
 
   float eps = 0.005f / static_cast<float>(classcount);
-  for (int64_t i = 0; i < classcount; i++) {
-    p[i] = 1.0f / static_cast<float>(classcount);  // Valid if k = 1
-    for (int64_t j = 0; j < i; j++) {
-      Q[i * classcount + i] += r[j * classcount + i] * r[j * classcount + i];
-      Q[i * classcount + j] = Q[j * classcount + i];
+
+  for (size_t i = 0; i < safe_int_classcount; i++) {
+    p[i] = 1.0f / onnxruntime::narrow<float>(classcount);  // Valid if k = 1
+    for (size_t j = 0; j < i; j++) {
+      Q[i * safe_int_classcount + i] += r[j * safe_int_classcount + i] * r[j * safe_int_classcount + i];
+      Q[i * safe_int_classcount + j] = Q[j * safe_int_classcount + i];
     }
-    for (int64_t j = i + 1; j < classcount; j++) {
-      Q[i * classcount + i] += r[j * classcount + i] * r[j * classcount + i];
-      Q[i * classcount + j] = -r[j * classcount + i] * r[i * classcount + j];
+    for (size_t j = i + 1; j < safe_int_classcount; j++) {
+      Q[i * safe_int_classcount + i] += r[j * safe_int_classcount + i] * r[j * safe_int_classcount + i];
+      Q[i * safe_int_classcount + j] = -r[j * safe_int_classcount + i] * r[i * safe_int_classcount + j];
     }
   }
 
-  for (int64_t loop = 0; loop < 100; loop++) {
+  for (size_t loop = 0; loop < 100; loop++) {
     // stopping condition, recalculate QP,pQP for numerical accuracy
     float pQp = 0;
-    for (int64_t i = 0; i < classcount; i++) {
+    for (size_t i = 0; i < safe_int_classcount; i++) {
       Qp[i] = 0;
-      for (int64_t j = 0; j < classcount; j++) {
-        Qp[i] += Q[i * classcount + j] * p[j];
+      for (size_t j = 0; j < safe_int_classcount; j++) {
+        Qp[i] += Q[i * safe_int_classcount + j] * p[j];
       }
       pQp += p[i] * Qp[i];
     }
 
     float max_error = 0;
-    for (int64_t i = 0; i < classcount; i++) {
+    for (size_t i = 0; i < safe_int_classcount; i++) {
       float error = std::fabs(Qp[i] - pQp);
       if (error > max_error) {
         max_error = error;
@@ -230,12 +232,12 @@ static inline void multiclass_probability(int64_t classcount,
     if (max_error < eps)
       break;
 
-    for (int64_t i = 0; i < classcount; i++) {
-      float diff = (-Qp[i] + pQp) / Q[i * classcount + i];
+    for (size_t i = 0; i < safe_int_classcount; i++) {
+      float diff = (-Qp[i] + pQp) / Q[i * safe_int_classcount + i];
       p[i] += diff;
-      pQp = (pQp + diff * (diff * Q[i * classcount + i] + 2 * Qp[i])) / (1 + diff) / (1 + diff);
-      for (int64_t j = 0; j < classcount; j++) {
-        Qp[j] = (Qp[j] + diff * Q[i * classcount + j]) / (1 + diff);
+      pQp = (pQp + diff * (diff * Q[i * safe_int_classcount + i] + 2 * Qp[i])) / (1 + diff) / (1 + diff);
+      for (size_t j = 0; j < safe_int_classcount; j++) {
+        Qp[j] = (Qp[j] + diff * Q[i * safe_int_classcount + j]) / (1 + diff);
         p[j] /= (1 + diff);
       }
     }
@@ -277,7 +279,7 @@ static inline void ComputeSoftmax(gsl::span<T>& values) {
     *it = static_cast<float>(*it) / this_sum;
 }
 
-//this function skips zero values (since exp(0) is non zero)
+// this function skips zero values (since exp(0) is non zero)
 template <typename T>
 static inline void ComputeSoftmaxZero(gsl::span<T>& values) {
   // compute exp with negative number to be numerically stable
@@ -333,26 +335,26 @@ static void write_scores(InlinedVector<IT>& scores, POST_EVAL_TRANSFORM post_tra
           *Z = static_cast<T>(*it);
         break;
     }
-  } else if (scores.size() == 1) {  //binary case
+  } else if (scores.size() == 1) {  // binary case
     if (post_transform == POST_EVAL_TRANSFORM::PROBIT) {
       scores[0] = ComputeProbit(static_cast<float>(scores[0]));
       *Z = static_cast<T>(scores[0]);
     } else {
       switch (add_second_class) {
-        case 0:  //0=all positive weights, winning class is positive
+        case 0:  // 0=all positive weights, winning class is positive
           scores.push_back(scores[0]);
-          scores[0] = 1 - scores[0];  //put opposite score in positive slot
+          scores[0] = 1 - scores[0];  // put opposite score in positive slot
           *Z = static_cast<T>(scores[0]);
           *(Z + 1) = static_cast<T>(scores[1]);
           break;
-        case 1:  //1 = all positive weights, winning class is negative
+        case 1:  // 1 = all positive weights, winning class is negative
           scores.push_back(scores[0]);
-          scores[0] = 1 - scores[0];  //put opposite score in positive slot
+          scores[0] = 1 - scores[0];  // put opposite score in positive slot
           *Z = static_cast<T>(scores[0]);
           *(Z + 1) = static_cast<T>(scores[1]);
           break;
         case 2:
-        case 3:  //2 = mixed weights, winning class is positive
+        case 3:  // 2 = mixed weights, winning class is positive
           if (post_transform == POST_EVAL_TRANSFORM::LOGISTIC) {
             scores.resize(2);
             scores[1] = static_cast<T>(ComputeLogistic(static_cast<float>(scores[0])));
@@ -439,7 +441,7 @@ void batched_update_scores_inplace(gsl::span<T> scores, int64_t num_batches_in, 
         }
 
         if (use_mlas) {
-          MlasComputeSoftmax(s, s, num_batches, batch_size, false, threadpool);
+          MlasComputeSoftmax(s, s, num_batches, onnxruntime::narrow<size_t>(batch_size), false, threadpool);
         } else {
           while (s < s_end) {
             gsl::span<float> scores_for_batch(s, s + batch_size);
@@ -483,8 +485,8 @@ void batched_update_scores_inplace(gsl::span<T> scores, int64_t num_batches_in, 
           };
           break;
 
-        case 2:  //2 = mixed weights, winning class is positive
-        case 3:  //3 = mixed weights, winning class is negative
+        case 2:  // 2 = mixed weights, winning class is positive
+        case 3:  // 3 = mixed weights, winning class is negative
           if (post_transform == POST_EVAL_TRANSFORM::LOGISTIC) {
             update_scores = [](const float score, float* output) {
               *output++ = ComputeLogistic(-score);

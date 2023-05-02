@@ -3,30 +3,33 @@
 
 #pragma once
 
+#include <random>
 #include <vector>
 
 #include "core/framework/ort_value.h"
 #include "core/framework/tensor.h"
+#include "default_providers.h"
+#include "test/framework/test_utils.h"
+#include "test/util/include/test_utils.h"
 
-namespace onnxruntime {
-namespace training {
-namespace test {
+namespace onnxruntime::training::test {
 
 template <typename T>
-void OrtValueToVec(const OrtValue& val, std::vector<T>& output) {
-  const Tensor& tensor = val.Get<Tensor>();
+void CpuOrtValueToVec(const OrtValue& src_cpu_ortvalue, std::vector<T>& output) {
+  const Tensor& tensor = src_cpu_ortvalue.Get<Tensor>();
   int64_t num_elem = tensor.Shape().Size();
   const T* val_ptr = tensor.template Data<T>();
   output.assign(val_ptr, val_ptr + num_elem);
 }
 
 template <typename T>
-void CudaOrtValueToCpuVec(const OrtValue& val, std::vector<T>& output,
-                          std::shared_ptr<IExecutionProvider> cuda_provider,
-                          std::shared_ptr<IExecutionProvider> cpu_provider) {
-  const Tensor& src_tensor = val.Get<Tensor>();
+void CudaOrtValueToCpuVec(const OrtValue& src_cuda_ortvalue, std::vector<T>& output) {
+  std::unique_ptr<IExecutionProvider> cuda_provider = onnxruntime::test::DefaultCudaExecutionProvider();
+  std::unique_ptr<IExecutionProvider> cpu_provider = onnxruntime::test::DefaultCpuExecutionProvider();
 
-  auto allocator = cpu_provider->GetAllocator(0, OrtMemTypeDefault);
+  const Tensor& src_tensor = src_cuda_ortvalue.Get<Tensor>();
+
+  auto allocator = cpu_provider->GetAllocator(OrtMemTypeDefault);
   ORT_ENFORCE(allocator, "Cpu allocator is a nullptr.");
   auto dst_tensor = std::make_unique<Tensor>(src_tensor.DataType(), src_tensor.Shape(), allocator);
 
@@ -39,6 +42,22 @@ void CudaOrtValueToCpuVec(const OrtValue& val, std::vector<T>& output,
   output.assign(val_ptr, val_ptr + src_tensor.Shape().Size());
 }
 
-}  // namespace test
-}  // namespace training
-}  // namespace onnxruntime
+inline void GenerateRandomData(std::vector<float>& data) {
+  float scale = 1.f;
+  float mean = 0.f;
+  float seed = 123.f;
+
+  std::default_random_engine generator_float{gsl::narrow_cast<uint32_t>(seed)};
+  std::normal_distribution<float> distribution_float{mean, scale};
+  std::for_each(data.begin(), data.end(),
+                [&generator_float, &distribution_float](float& value) { value = distribution_float(generator_float); });
+}
+
+inline void GenerateRandomInput(gsl::span<const int64_t> dims, OrtValue& input) {
+  TensorShape shape(dims);
+  std::vector<float> data(shape.Size());
+  GenerateRandomData(data);
+  onnxruntime::test::CreateInputOrtValueOnCPU<float>(dims, data, &input);
+}
+
+}  // namespace onnxruntime::training::test

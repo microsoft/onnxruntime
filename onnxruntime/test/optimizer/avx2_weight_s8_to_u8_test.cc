@@ -28,12 +28,11 @@
 namespace onnxruntime {
 namespace test {
 
-static void RunModel(ModelTestBuilder& helper, const std::string& model_data,
-    std::vector<OrtValue>& outputs, bool enable_s8u8_convertor = true) {
-
+static Status RunModel(ModelTestBuilder& helper, const std::string& model_data,
+                       std::vector<OrtValue>& outputs, bool enable_s8u8_convertor = true) {
   SessionOptions session_options;
   if (enable_s8u8_convertor) {
-    ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
+    ORT_RETURN_IF_ERROR(session_options.config_options.AddConfigEntry(
         kOrtSessionOptionsAvx2PrecisionMode, "1"));
     session_options.graph_optimization_level = TransformerLevel::Level2;
   }
@@ -43,26 +42,26 @@ static void RunModel(ModelTestBuilder& helper, const std::string& model_data,
         ToPathString("model" + std::to_string(static_cast<int>(level)) + ".onnx");
 #endif
   InferenceSessionWrapper session{session_options, GetEnvironment()};
-  ASSERT_STATUS_OK(session.Load(model_data.data(), static_cast<int>(model_data.size())));
+  ORT_RETURN_IF_ERROR(session.Load(model_data.data(), static_cast<int>(model_data.size())));
 
-  ASSERT_STATUS_OK(session.Initialize());
+  ORT_RETURN_IF_ERROR(session.Initialize());
 
   RunOptions run_options;
-  ASSERT_STATUS_OK(session.Run(run_options,
-                               helper.feeds_,
-                               helper.output_names_,
-                               &outputs));
+  ORT_RETURN_IF_ERROR(session.Run(run_options,
+                                  helper.feeds_,
+                                  helper.output_names_,
+                                  &outputs));
+  return Status::OK();
 }
 
 template <typename WeightType>
-void BuildMatMulIntegerToFloatGraph(ModelTestBuilder& helper, 
-    const std::vector<int64_t> A_dims, const std::vector<int64_t> B_dims,
-    const std::vector<uint8_t>& A_data, const std::vector<WeightType>& B_data,
-    const std::vector<float>& A_scale, const std::vector<float>& B_scale,
-    const std::vector<uint8_t>& A_zero_point,
-    const std::vector<WeightType>& B_zero_point,
-    const std::vector<float>& Bias
-) {
+void BuildMatMulIntegerToFloatGraph(ModelTestBuilder& helper,
+                                    const std::vector<int64_t> A_dims, const std::vector<int64_t> B_dims,
+                                    const std::vector<uint8_t>& A_data, const std::vector<WeightType>& B_data,
+                                    const std::vector<float>& A_scale, const std::vector<float>& B_scale,
+                                    const std::vector<uint8_t>& A_zero_point,
+                                    const std::vector<WeightType>& B_zero_point,
+                                    const std::vector<float>& Bias) {
   auto* input_A = helper.MakeInput<uint8_t>(A_dims, A_data);
   auto* input_B = helper.MakeInitializer<WeightType>(B_dims, B_data);
   auto* input_a_scale = helper.MakeInitializer<float>({1}, A_scale);
@@ -81,6 +80,10 @@ void BuildMatMulIntegerToFloatGraph(ModelTestBuilder& helper,
   helper.SetGraphOutputs();
 }
 
+#ifdef _MSC_VER
+#pragma warning(push)
+#pragma warning(disable : 6262)
+#endif
 TEST(CPU_U8S8_Precision_Tests, MatMulIntegerToFloat) {
   std::unordered_map<std::string, int> domain_to_version;
   domain_to_version[kOnnxDomain] = 12;
@@ -121,11 +124,10 @@ TEST(CPU_U8S8_Precision_Tests, MatMulIntegerToFloat) {
 
     // Serialize the model to a string.
     std::string model_data;
-    model.ToProto().SerializeToString(&model_data);
+    ASSERT_TRUE(model.ToProto().SerializeToString(&model_data));
 
-    RunModel(helper, model_data, baseline_fetches, false);
+    ASSERT_STATUS_OK(RunModel(helper, model_data, baseline_fetches, false));
   }
-
 
   std::vector<int8_t> s8_B_data;
   std::transform(B_data.begin(), B_data.end(),
@@ -144,9 +146,9 @@ TEST(CPU_U8S8_Precision_Tests, MatMulIntegerToFloat) {
                 IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {},
                 DefaultLoggingManager().DefaultLogger());
     Graph& graph = model.MainGraph();
-    ModelTestBuilder helper(graph);
+    std::unique_ptr<ModelTestBuilder> helper = std::make_unique<ModelTestBuilder>(graph);
 
-    BuildMatMulIntegerToFloatGraph<int8_t>(helper, A_dims, B_dims, A_data,
+    BuildMatMulIntegerToFloatGraph<int8_t>(*helper, A_dims, B_dims, A_data,
                                            s8_B_data, A_scale, B_scale,
                                            A_zero_point, s8_b_zero_point, Bias);
 
@@ -154,9 +156,9 @@ TEST(CPU_U8S8_Precision_Tests, MatMulIntegerToFloat) {
 
     // Serialize the model to a string.
     std::string model_data;
-    model.ToProto().SerializeToString(&model_data);
+    ASSERT_TRUE(model.ToProto().SerializeToString(&model_data));
 
-    RunModel(helper, model_data, outputs);
+    ASSERT_STATUS_OK(RunModel(*helper, model_data, outputs));
   }
 
   for (size_t i = 0; i < outputs.size(); i++) {
@@ -169,6 +171,9 @@ TEST(CPU_U8S8_Precision_Tests, MatMulIntegerToFloat) {
     EXPECT_EQ(ret.first, COMPARE_RESULT::SUCCESS) << ret.second;
   }
 }
+#ifdef _MSC_VER
+#pragma warning(pop)
+#endif
 
 template <typename WeightType>
 void BuildDynamicQuantizeMatMulGraph(
@@ -192,7 +197,6 @@ void BuildDynamicQuantizeMatMulGraph(
   helper.SetGraphOutputs();
 }
 
-
 TEST(CPU_U8S8_Precision_Tests, DynamicQuantizeMatMul) {
   std::unordered_map<std::string, int> domain_to_version;
   domain_to_version[kOnnxDomain] = 12;
@@ -202,7 +206,6 @@ TEST(CPU_U8S8_Precision_Tests, DynamicQuantizeMatMul) {
   std::vector<int64_t> A_dims{4, 128};
   std::vector<int64_t> B_dims{128, 128};
   RandomValueGenerator random{};
-
 
   std::vector<float> A_data = random.Uniform<float>(A_dims, -1.0f, 1.0f);
 
@@ -221,18 +224,18 @@ TEST(CPU_U8S8_Precision_Tests, DynamicQuantizeMatMul) {
                 IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {},
                 DefaultLoggingManager().DefaultLogger());
     Graph& graph = model.MainGraph();
-    ModelTestBuilder helper(graph);
+    std::unique_ptr<ModelTestBuilder> helper = std::make_unique<ModelTestBuilder>(graph);
 
-    BuildDynamicQuantizeMatMulGraph<uint8_t>(helper, A_dims, B_dims, A_data, B_data,
-                                            B_scale, B_zero_point, Bias);
+    BuildDynamicQuantizeMatMulGraph<uint8_t>(*helper, A_dims, B_dims, A_data, B_data,
+                                             B_scale, B_zero_point, Bias);
 
     ASSERT_STATUS_OK(model.MainGraph().Resolve());
 
     // Serialize the model to a string.
     std::string model_data;
-    model.ToProto().SerializeToString(&model_data);
+    ASSERT_TRUE(model.ToProto().SerializeToString(&model_data));
 
-    RunModel(helper, model_data, baseline_fetches, false);
+    ASSERT_STATUS_OK(RunModel(*helper, model_data, baseline_fetches, false));
   }
 
   std::vector<int8_t> s8_B_data;
@@ -261,9 +264,9 @@ TEST(CPU_U8S8_Precision_Tests, DynamicQuantizeMatMul) {
 
     // Serialize the model to a string.
     std::string model_data;
-    model.ToProto().SerializeToString(&model_data);
+    ASSERT_TRUE(model.ToProto().SerializeToString(&model_data));
 
-    RunModel(helper, model_data, outputs);
+    ASSERT_STATUS_OK(RunModel(helper, model_data, outputs));
   }
 
   for (size_t i = 0; i < outputs.size(); i++) {
@@ -277,9 +280,7 @@ TEST(CPU_U8S8_Precision_Tests, DynamicQuantizeMatMul) {
   }
 }
 
-
 TEST(CPU_U8S8_Precision_Tests, QGemm) {
-
   // Essentially copied QGemm unit test, where the original unit test
   // use reduced range int8_t to avoid possible overflow in SSE4.1, AVX2
   // or AVX512, we intentionally use big numbers to trigger it.
@@ -360,9 +361,8 @@ TEST(CPU_U8S8_Precision_Tests, QGemm) {
       kOrtSessionOptionsAvx2PrecisionMode, "1"));
   so.graph_optimization_level = TransformerLevel::Level2;
   test.Run(so, OpTester::ExpectResult::kExpectSuccess, "",
-             {kTensorrtExecutionProvider}, nullptr, &execution_providers);
+           {kTensorrtExecutionProvider}, nullptr, &execution_providers);
 }
-
 
 TEST(CPU_U8S8_Precision_Tests, MatMulInteger) {
   // Essentially copied unit test, where the original unit test
@@ -418,7 +418,6 @@ TEST(CPU_U8S8_Precision_Tests, MatMulInteger) {
            {kTensorrtExecutionProvider}, nullptr, &execution_providers);
 }
 
-
 template <typename WeightType>
 void BuildQLinearMatMulGraph(ModelTestBuilder& helper,
                              const std::vector<int64_t> A_dims, const std::vector<int64_t> B_dims,
@@ -446,7 +445,6 @@ void BuildQLinearMatMulGraph(ModelTestBuilder& helper,
   helper.SetGraphOutputs();
 }
 
-
 TEST(CPU_U8S8_Precision_Tests, QLinearMatMul) {
   std::unordered_map<std::string, int> domain_to_version;
   domain_to_version[kOnnxDomain] = 12;
@@ -469,16 +467,15 @@ TEST(CPU_U8S8_Precision_Tests, QLinearMatMul) {
   float y_scale = 0.17f;
   uint8_t y_zero_point = 105;
 
-
   std::vector<OrtValue> baseline_fetches;
   {
     Model model("AVX2S8U8TransformerBase", false, ModelMetaData(), PathString(),
                 IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {},
                 DefaultLoggingManager().DefaultLogger());
     Graph& graph = model.MainGraph();
-    ModelTestBuilder helper(graph);
+    std::unique_ptr<ModelTestBuilder> helper = std::make_unique<ModelTestBuilder>(graph);
 
-    BuildQLinearMatMulGraph<uint8_t>(helper, A_dims, B_dims, A_data, B_data,
+    BuildQLinearMatMulGraph<uint8_t>(*helper, A_dims, B_dims, A_data, B_data,
                                      a_scale, b_scale, a_zero_point,
                                      b_zero_point, y_scale, y_zero_point);
 
@@ -486,11 +483,10 @@ TEST(CPU_U8S8_Precision_Tests, QLinearMatMul) {
 
     // Serialize the model to a string.
     std::string model_data;
-    model.ToProto().SerializeToString(&model_data);
+    ASSERT_TRUE(model.ToProto().SerializeToString(&model_data));
 
-    RunModel(helper, model_data, baseline_fetches, false);
+    ASSERT_STATUS_OK(RunModel(*helper, model_data, baseline_fetches, false));
   }
-
 
   std::vector<int8_t> s8_B_data;
   std::transform(B_data.begin(), B_data.end(),
@@ -508,16 +504,16 @@ TEST(CPU_U8S8_Precision_Tests, QLinearMatMul) {
     ModelTestBuilder helper(graph);
 
     BuildQLinearMatMulGraph<int8_t>(helper, A_dims, B_dims, A_data, s8_B_data,
-                                     a_scale, b_scale, a_zero_point,
-                                     s8_b_zero_point, y_scale, y_zero_point);
+                                    a_scale, b_scale, a_zero_point,
+                                    s8_b_zero_point, y_scale, y_zero_point);
 
     ASSERT_STATUS_OK(model.MainGraph().Resolve());
 
     // Serialize the model to a string.
     std::string model_data;
-    model.ToProto().SerializeToString(&model_data);
+    ASSERT_TRUE(model.ToProto().SerializeToString(&model_data));
 
-    RunModel(helper, model_data, outputs);
+    ASSERT_STATUS_OK(RunModel(helper, model_data, outputs));
   }
 
   for (size_t i = 0; i < outputs.size(); i++) {
@@ -531,7 +527,6 @@ TEST(CPU_U8S8_Precision_Tests, QLinearMatMul) {
   }
 }
 
-
 template <typename FilterType>
 void BuildQLinearConvGraph(
     ModelTestBuilder& helper,
@@ -539,7 +534,6 @@ void BuildQLinearConvGraph(
     const std::vector<uint8_t>& x_data, const std::vector<FilterType>& w_data,
     float x_scale, float w_scale, float y_scale,
     uint8_t x_zero_point, FilterType w_zero_point, uint8_t y_zero_point) {
-
   auto* input_x = helper.MakeInput<uint8_t>(x_dims, x_data);
   auto* input_w = helper.MakeInitializer<FilterType>(w_dims, w_data);
   auto* input_x_scale = helper.MakeInitializer<float>({1}, {x_scale});
@@ -587,9 +581,9 @@ TEST(CPU_U8S8_Precision_Tests, QLinearConv) {
                 IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {},
                 DefaultLoggingManager().DefaultLogger());
     Graph& graph = model.MainGraph();
-    ModelTestBuilder helper(graph);
+    std::unique_ptr<ModelTestBuilder> helper = std::make_unique<ModelTestBuilder>(graph);
 
-    BuildQLinearConvGraph<uint8_t>(helper, x_dims, w_dims, x_data, w_data,
+    BuildQLinearConvGraph<uint8_t>(*helper, x_dims, w_dims, x_data, w_data,
                                    x_scale, w_scale, y_scale, x_zero_point,
                                    w_zero_point, y_zero_point);
 
@@ -597,9 +591,9 @@ TEST(CPU_U8S8_Precision_Tests, QLinearConv) {
 
     // Serialize the model to a string.
     std::string model_data;
-    model.ToProto().SerializeToString(&model_data);
+    ASSERT_TRUE(model.ToProto().SerializeToString(&model_data));
 
-    RunModel(helper, model_data, baseline_fetches, false);
+    ASSERT_STATUS_OK(RunModel(*helper, model_data, baseline_fetches, false));
   }
 
   std::vector<int8_t> s8_w_data;
@@ -618,16 +612,16 @@ TEST(CPU_U8S8_Precision_Tests, QLinearConv) {
     ModelTestBuilder helper(graph);
 
     BuildQLinearConvGraph<int8_t>(helper, x_dims, w_dims, x_data, s8_w_data,
-                                   x_scale, w_scale, y_scale, x_zero_point,
-                                   s8_w_zero_point, y_zero_point);
+                                  x_scale, w_scale, y_scale, x_zero_point,
+                                  s8_w_zero_point, y_zero_point);
 
     ASSERT_STATUS_OK(model.MainGraph().Resolve());
 
     // Serialize the model to a string.
     std::string model_data;
-    model.ToProto().SerializeToString(&model_data);
+    ASSERT_TRUE(model.ToProto().SerializeToString(&model_data));
 
-    RunModel(helper, model_data, outputs);
+    ASSERT_STATUS_OK(RunModel(helper, model_data, outputs));
   }
 
   for (size_t i = 0; i < outputs.size(); i++) {
@@ -641,8 +635,6 @@ TEST(CPU_U8S8_Precision_Tests, QLinearConv) {
   }
 }
 
-
-
 template <typename QType>
 void BuildDynamicQuantizeLSTMGraph(
     ModelTestBuilder& helper, int64_t seq_len, int64_t hidden_size,
@@ -655,7 +647,6 @@ void BuildDynamicQuantizeLSTMGraph(
     const std::vector<int64_t>& initial_h_dims, const std::vector<float>& initial_h_data,
     const std::vector<int64_t>& i_c_dims, const std::vector<float>& i_c_data,
     const std::vector<int64_t>& p_dims, const std::vector<float>& p_data) {
-
   auto* input_x = helper.MakeInput<float>(x_dims, x_data);
   auto* input_w = helper.MakeInitializer<QType>(w_dims, w_data);
   auto* input_r = helper.MakeInitializer<QType>(r_dims, r_data);
@@ -681,10 +672,10 @@ void BuildDynamicQuantizeLSTMGraph(
   auto* output_arg = helper.MakeOutput();
 
   auto& node = helper.AddNode("DynamicQuantizeLSTM",
-                 {input_x, input_w, input_r, input_b, input_sq,
-                  input_init_h, input_init_c, input_p, input_w_scale,
-                  input_w_zero_point, input_r_scale, input_r_zero_point},
-                 {output_arg}, kMSDomain);
+                              {input_x, input_w, input_r, input_b, input_sq,
+                               input_init_h, input_init_c, input_p, input_w_scale,
+                               input_w_zero_point, input_r_scale, input_r_zero_point},
+                              {output_arg}, kMSDomain);
 
   node.AddAttribute("activations", std::vector<std::string>{"sigmoid", "tanh", "tanh"});
 
@@ -712,7 +703,6 @@ TEST(CPU_U8S8_Precision_Tests, DynamicQuantizeLSTM) {
   std::vector<int64_t> x_dims = {seq_len, batch_size, input_size};
   std::vector<float> x_data = random.Gaussian<float>(x_dims, 0.0f, 0.25f);
 
-
   std::vector<int64_t> w_dims{num_directions, input_size, 4 * hidden_size};
   std::vector<uint8_t> w_data = random.Uniform<uint8_t>(w_dims, 1, 255);
 
@@ -731,7 +721,6 @@ TEST(CPU_U8S8_Precision_Tests, DynamicQuantizeLSTM) {
   std::vector<int64_t> p_dims = {num_directions, 3 * hidden_size};
   std::vector<float> p_data = random.Gaussian<float>(p_dims, 0.0f, 0.25f);
 
-
   float w_scale = 0.022f;
   uint8_t w_zero_point = 102;
 
@@ -744,10 +733,10 @@ TEST(CPU_U8S8_Precision_Tests, DynamicQuantizeLSTM) {
                 IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {},
                 DefaultLoggingManager().DefaultLogger());
     Graph& graph = model.MainGraph();
-    ModelTestBuilder helper(graph);
+    std::unique_ptr<ModelTestBuilder> helper = std::make_unique<ModelTestBuilder>(graph);
 
     BuildDynamicQuantizeLSTMGraph<uint8_t>(
-        helper, seq_len, hidden_size, x_dims, x_data, w_dims, w_data,
+        *helper, seq_len, hidden_size, x_dims, x_data, w_dims, w_data,
         w_scale, w_zero_point,
         r_dims, r_data, r_scale, r_zero_point, b_dims, b_data,
         initial_h_dims, initial_h_data,
@@ -757,9 +746,9 @@ TEST(CPU_U8S8_Precision_Tests, DynamicQuantizeLSTM) {
 
     // Serialize the model to a string.
     std::string model_data;
-    model.ToProto().SerializeToString(&model_data);
+    ASSERT_TRUE(model.ToProto().SerializeToString(&model_data));
 
-    RunModel(helper, model_data, baseline_fetches, false);
+    ASSERT_STATUS_OK(RunModel(*helper, model_data, baseline_fetches, false));
   }
 
   std::vector<int8_t> s8_w_data;
@@ -769,7 +758,7 @@ TEST(CPU_U8S8_Precision_Tests, DynamicQuantizeLSTM) {
                  });
   int8_t s8_w_zero_point = w_zero_point - 128;
 
-   std::vector<int8_t> s8_r_data;
+  std::vector<int8_t> s8_r_data;
   std::transform(r_data.begin(), r_data.end(),
                  std::back_inserter(s8_r_data), [](uint8_t v) -> int8_t {
                    return static_cast<int8_t>(v ^ 0x80);
@@ -795,9 +784,9 @@ TEST(CPU_U8S8_Precision_Tests, DynamicQuantizeLSTM) {
 
     // Serialize the model to a string.
     std::string model_data;
-    model.ToProto().SerializeToString(&model_data);
+    ASSERT_TRUE(model.ToProto().SerializeToString(&model_data));
 
-    RunModel(helper, model_data, outputs);
+    ASSERT_STATUS_OK(RunModel(helper, model_data, outputs));
   }
 
   for (size_t i = 0; i < outputs.size(); i++) {
@@ -810,7 +799,6 @@ TEST(CPU_U8S8_Precision_Tests, DynamicQuantizeLSTM) {
     EXPECT_EQ(ret.first, COMPARE_RESULT::SUCCESS) << ret.second;
   }
 }
-
 
 // input:      [batch_size, sequence_length, hidden_size]
 // weights:    [hidden_size, 3 * hidden_size]
@@ -828,7 +816,6 @@ void RunQAttention(const std::vector<float>& input_data,
                    int sequence_length,
                    int hidden_size,
                    int number_of_heads) {
-
   OpTester tester("QAttention", 1, onnxruntime::kMSDomain);
   tester.AddAttribute<int64_t>("num_heads", static_cast<int64_t>(number_of_heads));
 
@@ -866,7 +853,7 @@ void RunQAttention(const std::vector<float>& input_data,
   so.graph_optimization_level = TransformerLevel::Level2;
   ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsAvx2PrecisionMode, "1"));
   tester.Run(so, OpTester::ExpectResult::kExpectSuccess, "",
-               {kTensorrtExecutionProvider}, nullptr, &execution_providers);
+             {kTensorrtExecutionProvider}, nullptr, &execution_providers);
 }
 
 // AVX2/AVX512 CPU has overflow problem with U8S8 matrix multiplication
@@ -907,7 +894,6 @@ TEST(CPU_U8S8_Precision_Tests, QAttention) {
       input_data, weight_data, bias_data, mask_index_data, output_data, input_quant_params, weights_quant_params,
       batch_size, sequence_length, hidden_size, number_of_heads);
 }
-
 
 }  // namespace test
 }  // namespace onnxruntime

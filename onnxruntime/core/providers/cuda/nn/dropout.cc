@@ -90,17 +90,17 @@ Status Dropout<UseBitmask>::ComputeInternal(OpKernelContext* context) const {
     const void* X_data = X->DataRaw();
     void* Y_data = Y->MutableDataRaw();
     if (Y_data != X_data) {
-      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(Y_data, X_data, X->SizeInBytes(), cudaMemcpyDeviceToDevice, Stream()));
+      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(Y_data, X_data, X->SizeInBytes(), cudaMemcpyDeviceToDevice, Stream(context)));
     }
 
     // If mask is requested, return all 1s.
     if (mask) {
       if (UseBitmask) {
         CUDA_RETURN_IF_ERROR(
-            cudaMemsetAsync(mask->MutableDataRaw(), -1, mask_element_count * sizeof(BitmaskElementType), Stream()));
+            cudaMemsetAsync(mask->MutableDataRaw(), -1, mask_element_count * sizeof(BitmaskElementType), Stream(context)));
       } else {
         CUDA_RETURN_IF_ERROR(
-            cudaMemsetAsync(mask->MutableData<bool>(), true, mask_element_count * sizeof(bool), Stream()));
+            cudaMemsetAsync(mask->MutableData<bool>(), true, mask_element_count * sizeof(bool), Stream(context)));
       }
     }
 
@@ -108,17 +108,17 @@ Status Dropout<UseBitmask>::ComputeInternal(OpKernelContext* context) const {
   }
 
   IAllocatorUniquePtr<void> temp_mask_buffer{};  // buffer to use if mask is not provided
-  void* const mask_data = [this, mask_element_count, mask, &temp_mask_buffer]() {
+  void* const mask_data = [this, mask_element_count, mask, &temp_mask_buffer, context]() {
     if (mask) return mask->MutableDataRaw();
     temp_mask_buffer =
-        GetScratchBuffer<void>(mask_element_count * (UseBitmask ? sizeof(BitmaskElementType) : sizeof(bool)));
+        GetScratchBuffer<void>(mask_element_count * (UseBitmask ? sizeof(BitmaskElementType) : sizeof(bool)), context->GetComputeStream());
     return temp_mask_buffer.get();
   }();
 
   PhiloxGenerator& generator = generator_ ? *generator_ : PhiloxGenerator::Default();
 
   utils::MLTypeCallDispatcher<float, MLFloat16, double, BFloat16> t_disp(X->GetElementType());
-  t_disp.Invoke<DropoutComputeImpl>(GetDeviceProp(), Stream(), N, mask_element_count, ratio_data, generator, *X, *Y,
+  t_disp.Invoke<DropoutComputeImpl>(GetDeviceProp(), Stream(context), N, mask_element_count, ratio_data, generator, *X, *Y,
                                     mask_data, UseBitmask);
 
   return Status::OK();

@@ -32,6 +32,7 @@ namespace AttrName
     static constexpr const char* Dilations = "dilations";
     static constexpr const char* Direction = "direction";
     static constexpr const char* Dtype = "dtype";
+    static constexpr const char* End = "end";
     static constexpr const char* Ends = "ends";
     static constexpr const char* Epsilon = "epsilon";
     static constexpr const char* Equation = "equation";
@@ -59,6 +60,7 @@ namespace AttrName
     static constexpr const char* Min = "min";
     static constexpr const char* Mode = "mode";
     static constexpr const char* NearestMode = "nearest_mode";
+    static constexpr const char* NewAxis = "new_axis";
     static constexpr const char* NoopWithEmptyAxes = "noop_with_empty_axes";
     static constexpr const char* NormalizeVariance = "normalize_variance";
     static constexpr const char* P = "p";
@@ -68,6 +70,7 @@ namespace AttrName
     static constexpr const char* OutputWidth = "output_width";
     static constexpr const char* Pads = "pads";
     static constexpr const char* PooledShape = "pooled_shape";
+    static constexpr const char* Reduction = "reduction";
     static constexpr const char* Reverse = "reverse";
     static constexpr const char* SampleSize = "sample_size";
     static constexpr const char* SamplingRatio = "sampling_ratio";
@@ -81,6 +84,7 @@ namespace AttrName
     static constexpr const char* Spatial = "spatial";
     static constexpr const char* SpatialScale = "spatial_scale";
     static constexpr const char* Split = "split";
+    static constexpr const char* Start = "start";
     static constexpr const char* Starts = "starts";
     static constexpr const char* Steepness = "steepness";
     static constexpr const char* StorageOrder = "storage_order";
@@ -107,6 +111,11 @@ namespace AttrName
     static constexpr const char* FusedBeta = "fused_beta";
     static constexpr const char* FusedGamma = "fused_gamma";
     static constexpr const char* FusedRatio = "fused_ratio";
+    static constexpr const char* Activation = "activation";
+    static constexpr const char* Groups = "groups";
+
+    static constexpr const char* GraphFusedActivation = "activation";
+    static constexpr const char* GraphFusedAxis = "activation_axis";
 
 } // namespace AttrName
 
@@ -132,8 +141,5 @@ namespace AttrValue
     static constexpr const char* NearestNeighbor = "NN";
     static constexpr const char* NotSet = "NOTSET";
     static constexpr const char* Reflect = "reflect";
-    static constexpr const char* SameLower = "SAME_LOWER";
-    static constexpr const char* SameUpper = "SAME_UPPER";
-    static constexpr const char* Valid = "VALID";
 
 } // namespace AttrValue

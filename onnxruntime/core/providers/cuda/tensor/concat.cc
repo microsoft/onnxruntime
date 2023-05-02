@@ -73,12 +73,12 @@ Status Concat::ComputeInternal(OpKernelContext* ctx) const {
       TArray<const void*, 32> input_ptr_array(input_count);
       for (int i = 0; i < input_count; ++i) input_ptr_array[i] = input_ptr_cpuspan[i];
       ORT_RETURN_IF_ERROR(ConcatSameConcatDimImpl(
-          Stream(), element_bytes, block_size_including_axis_dim, block_size_inside_axis_dim, concat_sizes[0],
+          Stream(ctx), element_bytes, block_size_including_axis_dim, block_size_inside_axis_dim, concat_sizes[0],
           p.output_tensor->MutableDataRaw(), input_ptr_array, static_cast<size_t>(p.output_num_elements)));
     } else {
-      ORT_RETURN_IF_ERROR(input_ptr.CopyToGpu());
+      ORT_RETURN_IF_ERROR(input_ptr.CopyToGpu(ctx->GetComputeStream()));
       ORT_RETURN_IF_ERROR(ConcatSameConcatDimImpl(
-          Stream(), element_bytes, block_size_including_axis_dim, block_size_inside_axis_dim, concat_sizes[0],
+          Stream(ctx), element_bytes, block_size_including_axis_dim, block_size_inside_axis_dim, concat_sizes[0],
           p.output_tensor->MutableDataRaw(), input_ptr.GpuPtr(), static_cast<size_t>(p.output_num_elements)));
     }
   } else {
@@ -89,11 +89,11 @@ Status Concat::ComputeInternal(OpKernelContext* ctx) const {
       concat_sizes_range[i] += concat_sizes_range[i - 1];
     }
     CudaAsyncBuffer<int64_t> concat_sizes_range_gpu(this, concat_sizes_range);
-    ORT_RETURN_IF_ERROR(concat_sizes_gpu.CopyToGpu());
-    ORT_RETURN_IF_ERROR(axis_dimension_input_output_mapping_gpu.CopyToGpu());
-    ORT_RETURN_IF_ERROR(concat_sizes_range_gpu.CopyToGpu());
-    ORT_RETURN_IF_ERROR(input_ptr.CopyToGpu());
-    ORT_RETURN_IF_ERROR(ConcatImpl(Stream(), element_bytes, block_size_including_axis_dim, block_size_inside_axis_dim,
+    ORT_RETURN_IF_ERROR(concat_sizes_gpu.CopyToGpu(ctx->GetComputeStream()));
+    ORT_RETURN_IF_ERROR(axis_dimension_input_output_mapping_gpu.CopyToGpu(ctx->GetComputeStream()));
+    ORT_RETURN_IF_ERROR(concat_sizes_range_gpu.CopyToGpu(ctx->GetComputeStream()));
+    ORT_RETURN_IF_ERROR(input_ptr.CopyToGpu(ctx->GetComputeStream()));
+    ORT_RETURN_IF_ERROR(ConcatImpl(Stream(ctx), element_bytes, block_size_including_axis_dim, block_size_inside_axis_dim,
                                    concat_sizes_gpu.GpuPtr(), concat_sizes_range_gpu.GpuPtr(),
                                    axis_dimension_input_output_mapping_gpu.GpuPtr(), p.output_tensor->MutableDataRaw(),
                                    input_ptr.GpuPtr(), static_cast<size_t>(p.output_num_elements)));

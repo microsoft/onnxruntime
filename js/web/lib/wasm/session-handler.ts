@@ -1,29 +1,15 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+import {readFile} from 'fs';
 import {env, InferenceSession, SessionHandler, Tensor} from 'onnxruntime-common';
+import {promisify} from 'util';
 
-import {createSession, endProfiling, initOrt, releaseSession, run} from './proxy-wrapper';
+import {SerializableModeldata} from './proxy-messages';
+import {createSession, createSessionAllocate, createSessionFinalize, endProfiling, initOrt, releaseSession, run} from './proxy-wrapper';
+import {logLevelStringToEnum} from './wasm-common';
 
 let ortInit: boolean;
-
-
-const getLogLevel = (logLevel: 'verbose'|'info'|'warning'|'error'|'fatal'): number => {
-  switch (logLevel) {
-    case 'verbose':
-      return 0;
-    case 'info':
-      return 1;
-    case 'warning':
-      return 2;
-    case 'error':
-      return 3;
-    case 'fatal':
-      return 4;
-    default:
-      throw new Error(`unsupported logging level: ${logLevel}`);
-  }
-};
 
 export class OnnxruntimeWebAssemblySessionHandler implements SessionHandler {
   private sessionId: number;
@@ -31,13 +17,35 @@ export class OnnxruntimeWebAssemblySessionHandler implements SessionHandler {
   inputNames: string[];
   outputNames: string[];
 
-  async loadModel(model: Uint8Array, options?: InferenceSession.SessionOptions): Promise<void> {
+  async createSessionAllocate(path: string): Promise<SerializableModeldata> {
+    // fetch model from url and move to wasm heap. The arraybufffer that held the http
+    // response is freed once we return
+    const response = await fetch(path);
+    const arrayBuffer = await response.arrayBuffer();
+    return createSessionAllocate(new Uint8Array(arrayBuffer));
+  }
+
+  async loadModel(pathOrBuffer: string|Uint8Array, options?: InferenceSession.SessionOptions): Promise<void> {
     if (!ortInit) {
-      await initOrt(env.wasm.numThreads!, getLogLevel(env.logLevel!));
+      await initOrt(env.wasm.numThreads!, logLevelStringToEnum(env.logLevel!));
       ortInit = true;
     }
 
-    [this.sessionId, this.inputNames, this.outputNames] = await createSession(model, options);
+    if (typeof pathOrBuffer === 'string') {
+      if (typeof fetch === 'undefined') {
+        // node
+        const model = await promisify(readFile)(pathOrBuffer);
+        [this.sessionId, this.inputNames, this.outputNames] = await createSession(model, options);
+      } else {
+        // browser
+        // fetch model and move to wasm heap.
+        const modelData: SerializableModeldata = await this.createSessionAllocate(pathOrBuffer);
+        // create the session
+        [this.sessionId, this.inputNames, this.outputNames] = await createSessionFinalize(modelData, options);
+      }
+    } else {
+      [this.sessionId, this.inputNames, this.outputNames] = await createSession(pathOrBuffer, options);
+    }
   }
 
   async dispose(): Promise<void> {

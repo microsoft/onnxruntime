@@ -9,6 +9,7 @@
 #include <string>
 #include "core/common/path.h"
 #include "core/graph/graph_viewer.h"
+#include "core/graph/ort_format_load_options.h"
 #include "core/session/onnxruntime_c_api.h"
 #if !defined(ORT_MINIMAL_BUILD)
 #include "core/graph/function_template.h"
@@ -297,7 +298,7 @@ class Model {
 #if !defined(ORT_MINIMAL_BUILD)
                                           const IOnnxRuntimeOpSchemaRegistryList* local_registries,
 #endif
-                                          bool can_use_flatbuffer_for_initializers,
+                                          const OrtFormatLoadOptions& load_options,
                                           const logging::Logger& logger,
                                           std::unique_ptr<Model>& model);
 
