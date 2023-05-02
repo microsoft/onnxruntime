@@ -1,6 +1,5 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
-// This file is excluded from the build if onnxruntime_PYBIND_EXPORT_OPSCHEMA not defined
 
 #include "python/onnxruntime_pybind_state_common.h"
 #include "core/framework/kernel_registry.h"
