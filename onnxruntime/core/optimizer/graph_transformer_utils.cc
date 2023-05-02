@@ -283,7 +283,7 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       transformers.emplace_back(std::make_unique<MatMulIntegerToFloatFusion>(cpu_ep));
       transformers.emplace_back(std::make_unique<DynamicQuantizeMatMulFusion>(cpu_ep));
 
-      transformers.emplace_back(std::make_unique<ConvActivationFusion>(cpu_cuda_rocm_acl_armnn_eps));
+      transformers.emplace_back(std::make_unique<ConvActivationFusion>(cpu_execution_provider.GetKernelRegistry(),cpu_cuda_rocm_acl_armnn_eps));
 
       transformers.emplace_back(std::make_unique<GeluFusion>(cpu_cuda_dml_rocm_eps));
       transformers.emplace_back(std::make_unique<LayerNormFusion>(cpu_cuda_dml_rocm_eps));
@@ -361,7 +361,7 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       // we will prefer NhwcTransformer once ort runs on x86-64 CPU, otherwise ConvAddActivationFusion is enabled.
       // PR #6351 implemented similar fusion-pattern for CUDA only, and can only fuse conv-add-relu,
       // while we can fuse more activation.
-      transformers.emplace_back(std::make_unique<ConvAddActivationFusion>(cpu_ep));
+      transformers.emplace_back(std::make_unique<ConvAddActivationFusion>(std::move(cpu_registry),cpu_ep));
 #endif
 
     } break;
@@ -406,7 +406,7 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformersForMinimalB
         transformers.emplace_back(std::make_unique<QDQSelectorActionTransformer>(qdq_is_int8_allowed, apply_context));
       }
 
-      transformers.emplace_back(std::make_unique<ConvActivationFusion>(cpu_ep, apply_context));
+      transformers.emplace_back(std::make_unique<ConvActivationFusion>(cpu_execution_provider.GetKernelRegistry(),cpu_ep, apply_context));
 #else   // !defined(DISABLE_CONTRIB_OPS)
       ORT_UNUSED_PARAMETER(apply_context);
 #endif  // !defined(DISABLE_CONTRIB_OPS)
