@@ -404,7 +404,6 @@ void addGlobalSchemaFunctions(pybind11::module& m);
 void addOpKernelSubmodule(pybind11::module& m);
 
 void addOpSchemaSubmodule(pybind11::module& m);
-#endif
 
 const char* GetDeviceName(const OrtDevice& device);
 
