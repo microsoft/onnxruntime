@@ -72,7 +72,7 @@ export const addCopyrightBannerPlugin = (mode, packageName, esVersion) => {
  * Licensed under the MIT License.
  */`;
 
- if (mode === 'production') {
+  if (mode === 'production') {
     // in 'production' mode, webpack uses terser to minimize the code.
     // we set options.format.preamble to make sure terser generates correct copyright banner.
     return new TerserPlugin({

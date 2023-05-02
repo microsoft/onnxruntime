@@ -3,10 +3,9 @@
 
 'use strict';
 
-import { writeFileSync } from "node:fs";
-import { execSync } from "node:child_process";
+import {execSync} from 'node:child_process';
+import {writeFileSync} from 'node:fs';
 import {resolve, dirname} from 'node:path';
-import {readFileSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
