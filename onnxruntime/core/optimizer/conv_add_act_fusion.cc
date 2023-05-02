@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 
 #include <deque>
-#include "core/framework/kernel_registry.h"
 #include "core/graph/graph_utils.h"
 #include "core/optimizer/initializer.h"
 #include "core/optimizer/conv_add_act_fusion.h"
@@ -42,19 +41,15 @@ const Node* GetLoneConsumerNode(const GraphViewer& graph_viewer, const Node& nod
 }
 
 class ConvAddActivation : public NodeSelector {
- private:
-  [[maybe_unused]] bool support_fp16_{false};
-
  public:
   ConvAddActivation() = default;
-  ConvAddActivation(bool support_fp16) : support_fp16_(support_fp16) {}
-  // #define MLAS_F16VEC_INTRINSICS_SUPPORTED
+
   std::optional<NodesToOptimizeIndices> Select(const GraphViewer& graph_viewer, const Node& node) const override {
     const std::string_view node_ep = node.GetExecutionProviderType();
 #ifdef MLAS_F16VEC_INTRINSICS_SUPPORTED
     if (node_ep != kCpuExecutionProvider ||
         (!HasElementDataType(*node.InputDefs()[0], ONNX_NAMESPACE::TensorProto_DataType_FLOAT) &&
-         (support_fp16_ && !HasElementDataType(*node.InputDefs()[0], ONNX_NAMESPACE::TensorProto_DataType_FLOAT16)))) {
+         !HasElementDataType(*node.InputDefs()[0], ONNX_NAMESPACE::TensorProto_DataType_FLOAT16))) {
       return std::nullopt;
     }
 #else
@@ -62,7 +57,7 @@ class ConvAddActivation : public NodeSelector {
         !HasElementDataType(*node.InputDefs()[0], ONNX_NAMESPACE::TensorProto_DataType_FLOAT)) {
       return std::nullopt;
     }
-#endif  // MLAS_F16VEC_INTRINSICS_SUPPORTED
+#endif // MLAS_F16VEC_INTRINSICS_SUPPORTED
     // we can't assign `conv_node` as the producer-node, even it is, because we have to make sure
     // 1. Its type is 'conv', 2. it has to satisfy the other requirements,like shape, please refer to SelectConvProducer for more info
     const Node* conv_node = nullptr;
@@ -275,42 +270,24 @@ class FuseConvAddActivation : public ReplaceWithNew {
 };
 }  // namespace actions
 
-void RegisterConvAddActivationFusionRules(SelectorActionRegistry& registry, bool support_fp16 = false) {
+void RegisterConvAddActivationFusionRules(SelectorActionRegistry& registry) {
   const auto name = "ConvAddAct";
   auto action = std::make_unique<actions::FuseConvAddActivation>();
-  auto selector = std::make_unique<selectors::ConvAddActivation>(support_fp16);
+  auto selector = std::make_unique<selectors::ConvAddActivation>();
   registry.RegisterSelectorAndAction(name, {{"Conv", {1, 11}}},
                                      std::move(selector), std::move(action));
 }
 
-SelectorActionRegistry CreateSelectorActionRegistry(bool support_fp16 = false) {
+SelectorActionRegistry CreateSelectorActionRegistry() {
   SelectorActionRegistry registry{};
-  RegisterConvAddActivationFusionRules(registry, support_fp16);
+  RegisterConvAddActivationFusionRules(registry);
   return registry;
 }
 
 }  // namespace
-ConvAddActivationFusion::ConvAddActivationFusion(
-    std::shared_ptr<KernelRegistry> cpu_kernel_registry,
-    const InlinedHashSet<std::string_view>& compatible_execution_providers,
-    const SatApplyContextVariant& apply_context) noexcept
+ConvAddActivationFusion::ConvAddActivationFusion(const InlinedHashSet<std::string_view>& compatible_execution_providers,
+                                                 const SatApplyContextVariant& apply_context)
     : SelectorActionTransformer{
-          "ConvAddActivationFusion",
-          CreateSelectorActionRegistry(), apply_context, compatible_execution_providers} {
-  if (!cpu_kernel_registry) {
-    return;
-  }
-  const KernelCreateInfo* kernel_create_info{};
-  const auto status = cpu_kernel_registry->TryFindKernel(
-      kCpuExecutionProvider,
-      "FusedConv",
-      kMSDomain,
-      1,
-      {{"T", {DataTypeImpl::GetTensorType<MLFloat16>()}}},
-      &kernel_create_info);
-  if (status.IsOK() && kernel_create_info != nullptr) {
-    kernel_create_info = nullptr;
-    UpdateSelectorActionRegistry(CreateSelectorActionRegistry(true));
-  }
+          "ConvAddActivationFusion", CreateSelectorActionRegistry(), apply_context, compatible_execution_providers} {
 }
 }  // namespace onnxruntime
