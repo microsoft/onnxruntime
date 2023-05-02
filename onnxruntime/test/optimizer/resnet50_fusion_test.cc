@@ -16,8 +16,8 @@
 
 namespace onnxruntime {
 namespace test {
-//#define ORT_RUN_EXTERNAL_ONNX_TESTS
-//#define MLAS_F16VEC_INTRINSICS_SUPPORTED
+// #define ORT_RUN_EXTERNAL_ONNX_TESTS
+// #define MLAS_F16VEC_INTRINSICS_SUPPORTED
 
 #define MODEL_FOLDER ORT_TSTR("testdata/transform/")
 #if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) && !defined(DISABLE_CONTRIB_OPS)
@@ -71,9 +71,9 @@ TEST_F(ResNet50FusionTests, FuseConvIntegrationTest) {
   //  std::cout << "-------Op Counts After Fusion---------" << std::endl;
   fp32_op_count = CountOpsInGraph(fp32_graph);
   fp16_op_count = CountOpsInGraph(fp16_graph);
-//  for (auto& op : fp32_op_count) {
-//    ASSERT_EQ(op.second, fp16_op_count[op.first]);
-//  }
+  //  for (auto& op : fp32_op_count) {
+  //    ASSERT_EQ(op.second, fp16_op_count[op.first]);
+  //  }
 }
 #endif  // defined(ORT_RUN_EXTERNAL_ONNX_TESTS)
 TEST_F(ResNet50FusionTests, FuseConvAddReluUnitTest) {
@@ -110,7 +110,7 @@ TEST_F(ResNet50FusionTests, FuseConvAddUnitTest) {
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level3, *logger));
   op_to_count = CountOpsInGraph(graph);
   ASSERT_STATUS_OK(Model::Save(*p_model, "conv_add_fp16_fused.onnx"));
-  ASSERT_TRUE(op_to_count["Add"] == 0);   // Add removed from graph
+  ASSERT_TRUE(op_to_count["Add"] == 0);  // Add removed from graph
 }
 #endif  // defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) && !defined(DISABLE_CONTRIB_OPS)
 }  // namespace test
