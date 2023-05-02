@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {Tensor, TensorToImageDataOptions, TypedTensor} from './tensor';
+import {Tensor, TensorToImageDataOptions, TypedTensor} from './tensor.js';
 
 interface Properties {
   /**

@@ -1,8 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {Tensor as TensorImpl} from './tensor-impl';
-import {TypedTensorUtils} from './tensor-utils';
+import {Tensor as TensorImpl} from './tensor-impl.js';
+import {TypedTensorUtils} from './tensor-utils.js';
 
 /* eslint-disable @typescript-eslint/no-redeclare */
 

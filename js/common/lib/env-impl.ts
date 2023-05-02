@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {Env} from './env';
+import {Env} from './env.js';
 
 type LogLevelType = Env['logLevel'];
 export class EnvImpl implements Env {

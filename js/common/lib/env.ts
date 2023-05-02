@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {EnvImpl} from './env-impl';
+import {EnvImpl} from './env-impl.js';
 
 export declare namespace Env {
   export type WasmPrefixOrFilePaths = string|{

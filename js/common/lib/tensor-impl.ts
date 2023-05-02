@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {Tensor as TensorInterface, TensorFromImageOptions, TensorToImageDataOptions} from './tensor';
+import {Tensor as TensorInterface, TensorFromImageOptions, TensorToImageDataOptions} from './tensor.js';
 
 type TensorType = TensorInterface.Type;
 type TensorDataType = TensorInterface.DataType;

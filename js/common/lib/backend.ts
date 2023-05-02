@@ -1,8 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {InferenceSession} from './inference-session';
-import {OnnxValue} from './onnx-value';
+import {InferenceSession} from './inference-session.js';
+import {OnnxValue} from './onnx-value.js';
 
 /**
  * @internal
@@ -46,4 +46,4 @@ export interface Backend {
       Promise<SessionHandler>;
 }
 
-export {registerBackend} from './backend-impl';
+export {registerBackend} from './backend-impl.js';
