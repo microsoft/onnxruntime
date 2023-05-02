@@ -10,8 +10,6 @@ import os
 import shutil  # noqa: F401
 import sys
 
-import onnxruntime
-
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", "_common"))
 
 # import recommonmark
