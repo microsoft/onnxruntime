@@ -247,41 +247,42 @@ TSLogitsProcessor<T>::TSLogitsProcessor(int min_length, int eos_token_id)
 template <typename T>
 void TSLogitsProcessor<T>::Process(const ISequences* sequences,
                                           NextTokenScores<T>& next_token_scores) {
-  std::cout << "TSLogitsProcessor process" << std::endl;
+  std::cout << "TSLogitsProcessor process: ts only, +1, suppress notimestamp, no pair check" << std::endl;
   //assert(!vocab_mask_.empty());
 
-  const bool suppress_blank = true;
-
-  const int beg_token_id_ = 50363;
-  const int eot_token_id_ = 50256;
-  const int not_token_id_ = 50362;
-  const int sot_token_id_ = 50257;
-  const int solm_token_id_ = 50361;
+  ////const int beg_token_id_ = 50363 + 1;
+  ////const int eot_token_id_ = 50256 + 1;
+  const int not_token_id_ = 50362 + 1;
+/*
+  const int sot_token_id_ = 50257 + 1;
+  const int solm_token_id_ = 50361 + 1;
   const int translate_token_id_ = 50358;
   const int transcribe_token_id_ = 50359;
-  //const int blank_token_id_
-
+  //const int blank_token_id
+  const bool suppress_blank = true;
+*/
   const int batch_beam_size = next_token_scores.batch_beam_size;
   const int vocab_size = next_token_scores.vocab_size;
   for (int i = 0; i < batch_beam_size; i++) {
     gsl::span<T> beam_token_scores = next_token_scores.GetScores(i);///logits: (vocab size)
     gsl::span<const int32_t> sequence = sequences->GetSequence(i);///tokens_cur: (seq length)
-    const int seq_length = sequence.size();
-    const bool is_initial = seq_length == 0;
-    const bool last_was_timestamp = seq_length > 0 && sequence.back() >= beg_token_id_;
-    const bool penultimate_was_timestamp = seq_length < 2 || sequence[seq_length - 2] >= beg_token_id_;
+    ////const int seq_length = sequence.size();
+    ///const bool last_was_timestamp = seq_length > 0 && sequence.back() >= beg_token_id_;
+    ///const bool penultimate_was_timestamp = seq_length < 2 || sequence[seq_length - 2] >= beg_token_id_;
 
+
+    //const bool is_initial = seq_length == 0;
     for (int j = 0; j < vocab_size; j++) {//, p++
       //suppress blank
-      if (suppress_blank && is_initial && (j == eot_token_id_)) {// || j == blank_token_id_ //suppress_blank from parameters
-        beam_token_scores[j] = std::numeric_limits<T>::lowest();
-      }
+      //if (suppress_blank && is_initial && (j == eot_token_id_)) {// || j == blank_token_id_ //suppress_blank from parameters
+      //  beam_token_scores[j] = std::numeric_limits<T>::lowest();
+      //}
 
       //suppress notimestamps, sot, solm, translate and transcribe tokens
       //if (j == TOKEN_NOT || j == TOKEN_SOT || j == TOKEN_SOLM || j == TOKEN_TRANSLATE || j == TOKEN_TRANSCRIBE) {
-      if (j == not_token_id_ || j == sot_token_id_ || j == solm_token_id_ || j == translate_token_id_ || j == transcribe_token_id_) {//add beam search attributes??
+      if (j == not_token_id_) {///} || j == sot_token_id_ || j == solm_token_id_ || j == translate_token_id_ || j == transcribe_token_id_) {//add beam search attributes??
         beam_token_scores[j] = std::numeric_limits<T>::lowest();
-        //*p = std::numeric_limits<T>::lowest();
+        // *p = std::numeric_limits<T>::lowest();
       }
 
       //suppress token in non_speech_tokens: "token" or " token". non_speech_tokens defined in whisper.cpp L3484; suppress_non_speech_tokens from parameters
@@ -291,7 +292,7 @@ void TSLogitsProcessor<T>::Process(const ISequences* sequences,
       //mask timestamp logits. Timestamps appears in pairs except directly before EOT
 
       }
-
+/*
       if (last_was_timestamp) {
         if (penultimate_was_timestamp) {
           for (int j = beg_token_id_; j < vocab_size; j++) {//n_logits
@@ -303,7 +304,7 @@ void TSLogitsProcessor<T>::Process(const ISequences* sequences,
           }
         }
       }
-
+*/
     }
 
 #ifdef DEBUG_GENERATION
