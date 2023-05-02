@@ -100,6 +100,7 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
 
   const BeamSearchParameters* parameters = this->parameters_;
   ORT_ENFORCE(parameters->sequence_length == 1);
+  int32_t init_seq_len = 4; //hack
 
   // Allocate output tensors.
   int64_t sequences_dims[] = {parameters->batch_size, parameters->num_return_sequences, parameters->max_length};
@@ -112,7 +113,7 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
   Tensor* output_sequences_scores = this->context_.Output(1, sequences_scores_shape);
 
   int64_t scores_dims[] = {
-      static_cast<int64_t>(parameters->max_length) - static_cast<int64_t>(parameters->sequence_length),
+      static_cast<int64_t>(parameters->max_length) - static_cast<int64_t>(init_seq_len),
       parameters->batch_size, parameters->num_beams, parameters->vocab_size};
   TensorShape scores_shape(&scores_dims[0], sizeof(scores_dims) / sizeof(scores_dims[0]));
   Tensor* output_scores = this->context_.Output(2, scores_shape);
@@ -135,7 +136,7 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
   cpu_state.Init(this->cpu_allocator_,
                  static_cast<size_t>(parameters->BatchBeamSize()),
                  parameters->max_length,
-                 parameters->sequence_length,
+                 init_seq_len,
                  this->IsCuda());
 
   IAllocatorUniquePtr<char> buffer;
@@ -188,7 +189,7 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
                         static_cast<size_t>(parameters->BatchBeamSize()),
                         parameters->num_beams,
                         parameters->max_length,
-                        parameters->sequence_length);
+                        init_seq_len);
 
   onnxruntime::OrtStlAllocator<HypothesisScore> hypothesis_score_allocator(this->cpu_allocator_);
   onnxruntime::OrtStlAllocator<BeamHypotheses> beam_hyps_allocator(this->cpu_allocator_);
@@ -202,7 +203,7 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
                                                           parameters->eos_token_id,
                                                           hypothesis_score_allocator,
                                                           beam_hyps_allocator);
-  this->beam_scorer_->Initialize(this->cpu_allocator_, parameters->sequence_length);
+  this->beam_scorer_->Initialize(this->cpu_allocator_, init_seq_len);
 
   BeamSearchState<T> beam_state;
   constexpr bool use_position = false;
@@ -210,7 +211,7 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
                   parameters->batch_size,
                   parameters->num_beams,
                   parameters->vocab_size,
-                  parameters->sequence_length,
+                  init_seq_len,
                   parameters->max_length,
                   parameters->num_heads,
                   parameters->head_size,
@@ -232,7 +233,7 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
 
   int iteration_counter = 0;
   std::vector<OrtValue> decoder_feeds;
-  int current_length = parameters->sequence_length;
+  int current_length = init_seq_len;
 
   std::vector<OrtValue> decoder_fetches;
 
@@ -374,7 +375,7 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
           decoder_subgraph_.GetFirstPresentOutputIndex(),
           decoder_subgraph_.UseSequenceAsInputIds(),
           current_length,
-          parameters->sequence_length,
+          init_seq_len,
           decoder_subgraph_.past_present_share_buffer_,
           decoder_subgraph_.has_decoder_masked_attention_,
           cpu_state.sequences,

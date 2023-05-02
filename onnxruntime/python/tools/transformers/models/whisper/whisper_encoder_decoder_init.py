@@ -86,7 +86,7 @@ class WhisperEncoderDecoderInitInputs:
         ).type(torch.int8)
         if use_decoder_input_ids:
             dtype = torch.int32 if use_int32_inputs else torch.int64
-            decoder_input_ids = torch.ones((batch_size, 1), dtype=dtype, device=device) * config.decoder_start_token_id
+            decoder_input_ids = torch.ones((batch_size, 4), dtype=dtype, device=device) * config.decoder_start_token_id
 
         return WhisperEncoderDecoderInitInputs(encoder_inputs.input_ids, encoder_attention_mask, decoder_input_ids)
 
@@ -153,7 +153,7 @@ class WhisperEncoderDecoderInitHelper:
 
         # ONNX exporter might mark dimension like 'Transposepresent_value_self_1_dim_2' in shape inference.
         # We use a workaround here: first use dim_param "1" for sequence_length, and later change to dim_value.
-        sequence_length = "1"
+        sequence_length = "4"
         num_heads = str(model.config.encoder_attention_heads)
         hidden_size = str(model.config.d_model)
         head_size = str(model.config.d_model // model.config.encoder_attention_heads)
