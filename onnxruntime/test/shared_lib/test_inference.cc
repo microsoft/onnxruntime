@@ -2904,7 +2904,7 @@ TEST(LiteCustomOpTest, CustomStruct) {
   const auto& ortApi = Ort::GetApi();
 
   Ort::CustomOpDomain v2_domain{"v2"};
-  std::unique_ptr<OrtCustomOp> mrg_op_ptr{Ort::Custom::CreateCustomOp<Merge>("Merge", "CPUExecutionProvider")};
+  std::unique_ptr<Ort::Custom::OrtLiteCustomOp> mrg_op_ptr{Ort::Custom::CreateLiteCustomOp<Merge>("Merge", "CPUExecutionProvider")};
   v2_domain.Add(mrg_op_ptr.get());
 
   Ort::SessionOptions session_options;
