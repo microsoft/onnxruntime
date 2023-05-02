@@ -139,10 +139,12 @@ Status PoolFp16::Compute(OpKernelContext* context) const {
 
   // Allocate indirection buffer pointers and prepare a padding vector for the
   // im2col transform.
-  constexpr int64_t output_batch_count = 512;
-  int64_t col_buffer_batch_count = std::min(output_image_size, output_batch_count);
-  auto* col_data = alloc->Alloc(SafeInt<size_t>(sizeof(const MLFloat16*)) * kernel_size * col_buffer_batch_count);
+  auto* col_data = alloc->Alloc(SafeInt<size_t>(sizeof(const MLFloat16*)) * kernel_size * output_image_size);
   BufferUniquePtr col_buffer(col_data, BufferDeleter(std::move(alloc)));
+
+  const int64_t output_stride = std::max((int64_t)2, (int64_t)8192 / (kernel_size * C));
+  const int64_t task_count = (output_image_size + output_stride - 1) / output_stride;
+  concurrency::ThreadPool* thread_pool = context->GetOperatorThreadPool();
 
   for (int64_t image_id = 0; image_id < N; ++image_id) {
     const auto* input_data = Xdata;
@@ -159,9 +161,12 @@ Status PoolFp16::Compute(OpKernelContext* context) const {
       output_data = static_cast<MLFloat16*>(transpose_output_buffer.get());
     }
 
-    auto* outputptr = output_data;
-    for (int64_t output_start = 0; output_start < output_image_size;) {
-      int64_t output_count = std::min(output_image_size - output_start, output_batch_count);
+    auto worker = [&](ptrdiff_t batch) {
+      int64_t output_start = (int64_t)batch * (int64_t)output_stride;
+      int64_t output_count = std::min((int64_t)output_stride, output_image_size - output_start);
+      auto* outputptr = output_data + output_stride * C * batch;
+      auto indirection_buffer = static_cast<MLFloat16 const**>(col_buffer.get()) + output_start * kernel_size;
+
       math::Im2col<MLFloat16, StorageOrder::NHWC>()(
           input_data,
           C,
@@ -174,27 +179,26 @@ Status PoolFp16::Compute(OpKernelContext* context) const {
           static_cast<ptrdiff_t>(spatial_dims),
           output_start,
           output_count,
-          static_cast<MLFloat16 const**>(col_buffer.get()),
+          indirection_buffer,
           need_padding ? padding_data.data() : nullptr);
+
       if (is_max_pool_) {
         MlasNhwcMaxPool(
-            static_cast<MLFloat16 const**>(col_buffer.get()),
+            indirection_buffer,
             outputptr,
             static_cast<size_t>(C),
             static_cast<size_t>(output_count),
             static_cast<size_t>(kernel_size));
       } else {
         MlasNhwcAvgPool(
-            static_cast<MLFloat16 const**>(col_buffer.get()),
+            indirection_buffer,
             outputptr,
             static_cast<size_t>(C),
             static_cast<size_t>(output_count),
             static_cast<size_t>(kernel_size));
       }
-
-      outputptr += output_count * C;
-      output_start += output_count;
-    }
+    };
+    concurrency::ThreadPool::TrySimpleParallelFor(thread_pool, onnxruntime::narrow<ptrdiff_t>(task_count), worker);
 
     if (!channels_last_) {
       // Transpose the output from channels last (NHWC) to channels first (NCHW).
