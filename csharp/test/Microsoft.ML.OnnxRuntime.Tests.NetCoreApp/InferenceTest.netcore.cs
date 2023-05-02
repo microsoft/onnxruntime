@@ -308,7 +308,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 
                 // the expansion of Softplus uses Exp(1). ORT has a Softplus kernel, so testing the expansion is
                 // unnecessary and fails as ORT support for Exp started at opset 6 (as ORT didn't exist until opset 7).
-                
+
                 { "test_clip_default_int8_max_expanded", "Could not find an implementation for Less(13) nodeMeta with name ''" },
                 { "test_softplus_expanded", "Could not find an implementation for Exp(1) node with name ''"},
                 { "test_softplus_example_expanded", "Could not find an implementation for Exp(1) node with name ''"},
