@@ -7,6 +7,7 @@
 
 #include "core/common/inlined_containers.h"
 #include "core/framework/tensorprotoutils.h"
+#include "core/mlas/inc/mlas.h"
 #include "core/graph/graph_utils.h"
 #include "core/graph/node_attr_utils.h"
 #include "core/optimizer/utils.h"
@@ -55,10 +56,16 @@ bool ConvFusionDataTypeCheck(const Node& conv_node) {
     }
   }
   if (node_ep == kCpuExecutionProvider) {
+#ifdef MLAS_F16VEC_INTRINSICS_SUPPORTED
     if (!HasElementDataType(*conv_node.InputDefs()[0], ONNX_NAMESPACE::TensorProto_DataType_FLOAT) &&
         !HasElementDataType(*conv_node.InputDefs()[0], ONNX_NAMESPACE::TensorProto_DataType_FLOAT16)) {
       return false;
     }
+#else
+    if (!HasElementDataType(*conv_node.InputDefs()[0], ONNX_NAMESPACE::TensorProto_DataType_FLOAT)) {
+      return false;
+    }
+#endif  // MLAS_F16VEC_INTRINSICS_SUPPORTED
   }
 
   return true;
