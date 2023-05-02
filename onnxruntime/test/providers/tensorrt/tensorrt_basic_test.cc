@@ -162,6 +162,9 @@ void RunWithOneSessionSingleThreadInference(std::string model_name, std::string 
       2,
       -1,
       nullptr,
+      nullptr,
+      nullptr,
+      nullptr,
       nullptr};
 
   params.trt_engine_cache_enable = 1;
@@ -241,6 +244,9 @@ void RunWithOneSessionMultiThreadsInference(std::string model_name, std::string 
       0,
       2,
       -1,
+      nullptr,
+      nullptr,
+      nullptr,
       nullptr,
       nullptr};
 
@@ -393,6 +399,9 @@ TEST(TensorrtExecutionProviderTest, TRTPluginsCustomOpTest) {
       2,
       -1,
       nullptr,
+      nullptr,
+      nullptr,
+      nullptr,
       nullptr};
 
   std::unique_ptr<IExecutionProvider> execution_provider = TensorrtExecutionProviderWithOptions(&params);
@@ -485,6 +494,9 @@ TEST_P(TensorrtExecutionProviderCacheTest, Run) {
       2,
       -1,
       nullptr,
+      nullptr,
+      nullptr,
+      nullptr,
       nullptr};
 
   if (cache_type.compare("engine") == 0) {
@@ -509,9 +521,9 @@ TEST_P(TensorrtExecutionProviderCacheTest, Run) {
     // TRT engine will be created and cached
     // TRT profile will be created and cached only for dynamic input shape
     // Data in profile,
-    // X: 1, 3, 3, 2, 2, 2
-    // Y: 1, 3, 3, 2, 2, 2
-    // Z: 1, 3, 3, 2, 2, 2
+    // X: 1, 3, 3, 3, 2, 2, 2, 2
+    // Y: 1, 3, 3, 3, 2, 2, 2, 2
+    // Z: 1, 3, 3, 3, 2, 2, 2, 2
     status = session_object.Run(run_options, feeds, output_names, &fetches);
     ASSERT_TRUE(status.IsOK());
     VerifyOutputs(fetches, expected_dims_mul_m, expected_values_mul_m);
@@ -528,18 +540,20 @@ TEST_P(TensorrtExecutionProviderCacheTest, Run) {
       profile_files = GetCachesByType("./", ".profile");
       ASSERT_EQ(profile_files.size(), 1);
       std::ifstream profile_file(profile_files[0], std::ios::binary | std::ios::in);
-      auto shape_ranges = DeserializeProfile(profile_file);
+      auto shape_ranges = DeserializeProfileV2(profile_file);
 
-      // check min/max shape ranges of dynamic shape dimensions
+      // check min/max/opt shape ranges of dynamic shape dimensions
       for (auto it = shape_ranges.cbegin(); it != shape_ranges.cend(); ++it) {
         auto ranges = it->second;
         for (auto it2 = ranges.cbegin(); it2 != ranges.cend(); ++it2) {
           if (it2->first == 1) {
-            ASSERT_EQ(it2->second.first, 3);
-            ASSERT_EQ(it2->second.second, 3);
+            ASSERT_EQ(it2->second[0][0], 3);
+            ASSERT_EQ(it2->second[0][1], 3);
+            ASSERT_EQ(it2->second[0][2], 3);
           } else if (it2->first == 2) {
-            ASSERT_EQ(it2->second.first, 2);
-            ASSERT_EQ(it2->second.second, 2);
+            ASSERT_EQ(it2->second[0][0], 2);
+            ASSERT_EQ(it2->second[0][1], 2);
+            ASSERT_EQ(it2->second[0][2], 2);
           }
         }
       }
@@ -548,9 +562,9 @@ TEST_P(TensorrtExecutionProviderCacheTest, Run) {
     // another inference run with input shape {1, 1, 6}
     // TRT engine and profile will be updated
     // Data in profile,
-    // X: 1, 1, 3, 2, 2, 6
-    // Y: 1, 1, 3, 2, 2, 6
-    // Z: 1, 1, 3, 2, 2, 6
+    // X: 1, 1, 3, 3, 2, 2, 6, 6
+    // Y: 1, 1, 3, 3, 2, 2, 6, 6
+    // Z: 1, 1, 3, 3, 2, 2, 6, 6
     dims_mul_x = {1, 1, 6};
     CreateMLValue<float>(cpu_allocator, dims_mul_x, values_mul_x, &ml_value_x);
     CreateMLValue<float>(cpu_allocator, dims_mul_x, values_mul_x, &ml_value_y);
@@ -578,22 +592,78 @@ TEST_P(TensorrtExecutionProviderCacheTest, Run) {
       profile_files = GetCachesByType("./", ".profile");
       ASSERT_EQ(profile_files.size(), 1);
       std::ifstream profile_file2(profile_files[0], std::ios::binary | std::ios::in);
-      auto shape_ranges2 = DeserializeProfile(profile_file2);
+      auto shape_ranges2 = DeserializeProfileV2(profile_file2);
 
-      // check min/max shape ranges of dynamic shape dimensions
+      // check min/max/opt shape ranges of dynamic shape dimensions
       for (auto it = shape_ranges2.cbegin(); it != shape_ranges2.cend(); ++it) {
         auto ranges = it->second;
         for (auto it2 = ranges.cbegin(); it2 != ranges.cend(); ++it2) {
           if (it2->first == 1) {
-            ASSERT_EQ(it2->second.first, 1);
-            ASSERT_EQ(it2->second.second, 3);
+            ASSERT_EQ(it2->second[0][0], 1);
+            ASSERT_EQ(it2->second[0][1], 3);
+            ASSERT_EQ(it2->second[0][2], 3);
           } else if (it2->first == 2) {
-            ASSERT_EQ(it2->second.first, 2);
-            ASSERT_EQ(it2->second.second, 6);
+            ASSERT_EQ(it2->second[0][0], 2);
+            ASSERT_EQ(it2->second[0][1], 6);
+            ASSERT_EQ(it2->second[0][2], 6);
           }
         }
       }
     }
+
+    // Test explicit min/max/opt profile shapes
+    // create another session object with TRT EP provider options:
+    // trt_profile_min_shapes=X:1x1x1,Y:1x1x1,Z:1x1x1
+    // trt_profile_max_shapes=X:1x6x6,Y:1x6x6,Z:1x6x6
+    // trt_profile_opt_shapes=X:1x2x3,Y:1x2x3,Z:1x2x3
+    //
+    // TRT engine and profile will be updated
+    // Data in profile,
+    // X: 1, 1, 6, 2, 2, 1, 6, 3
+    // Y: 1, 1, 6, 2, 2, 1, 6, 3
+    // Y: 1, 1, 6, 2, 2, 1, 6, 3
+    InferenceSession session_object2{so, GetEnvironment()};
+    params.trt_profile_min_shapes = "X:1x1x1,Y:1x1x1,Z:1x1x1";
+    params.trt_profile_max_shapes = "X:1x6x6,Y:1x6x6,Z:1x6x6";
+    params.trt_profile_opt_shapes = "X:1x2x3,Y:1x2x3,Z:1x2x3";
+    std::unique_ptr<IExecutionProvider> execution_provider2 = TensorrtExecutionProviderWithOptions(&params);
+    EXPECT_TRUE(session_object2.RegisterExecutionProvider(std::move(execution_provider2)).IsOK());
+    status = session_object2.Load(model_name);
+    ASSERT_TRUE(status.IsOK());
+    status = session_object2.Initialize();
+    ASSERT_TRUE(status.IsOK());
+
+    status = session_object2.Run(run_options, feeds, output_names, &fetches);
+
+    if (input_type.compare("static") == 0) {
+      // Can't run inference since input shape changes but the engine is built with static input
+      ASSERT_FALSE(status.IsOK());
+    } else {
+      ASSERT_TRUE(status.IsOK());
+      VerifyOutputs(fetches, expected_dims_mul_m, expected_values_mul_m);
+
+      profile_files = GetCachesByType("./", ".profile");
+      ASSERT_EQ(profile_files.size(), 1);
+      std::ifstream profile_file2(profile_files[0], std::ios::binary | std::ios::in);
+      auto shape_ranges2 = DeserializeProfileV2(profile_file2);
+
+      // check min/max/opt shape ranges of dynamic shape dimensions
+      for (auto it = shape_ranges2.cbegin(); it != shape_ranges2.cend(); ++it) {
+        auto ranges = it->second;
+        for (auto it2 = ranges.cbegin(); it2 != ranges.cend(); ++it2) {
+          if (it2->first == 1) {
+            ASSERT_EQ(it2->second[0][0], 1);
+            ASSERT_EQ(it2->second[0][1], 6);
+            ASSERT_EQ(it2->second[0][2], 2);
+          } else if (it2->first == 2) {
+            ASSERT_EQ(it2->second[0][0], 1);
+            ASSERT_EQ(it2->second[0][1], 6);
+            ASSERT_EQ(it2->second[0][2], 3);
+          }
+        }
+      }
+    }
+
   } else if (cache_type.compare("timing") == 0) {
     /* Following code block tests the functionality of timing cache, including:
      * - timing cache cache serialization/de-serialization

@@ -353,7 +353,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 
                 // the expansion of Softplus uses Exp(1). ORT has a Softplus kernel, so testing the expansion is
                 // unnecessary and fails as ORT support for Exp started at opset 6 (as ORT didn't exist until opset 7).
-                
+
                 { "test_clip_default_int8_max_expanded", "Could not find an implementation for Less(13) nodeMeta with name ''" },
                 { "test_softplus_expanded", "Could not find an implementation for Exp(1) node with name ''"},
                 { "test_softplus_example_expanded", "Could not find an implementation for Exp(1) node with name ''"},
@@ -977,47 +977,6 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 
                 // Safe to unload the custom op shared library now
                 UnloadLibrary(libraryHandle);
-            }
-        }
-
-        // test registration by the alternative function name in the custom ops library.
-        // We use DllImport and Marshal.Prelink to make sure the library is loaded and
-        // the symbol is available.
-        internal static class CustomOpLibrary
-        {
-            internal const string ExtensionsDllName = "custom_op_library";
-
-            [DllImport(ExtensionsDllName, CharSet = CharSet.Ansi,
-                       CallingConvention = CallingConvention.Winapi)]
-            public static extern IntPtr /* OrtStatus* */ RegisterCustomOpsAltName(
-                IntPtr /* OrtSessionOptions* */ sessionOptions,
-                ref OrtApiBase /* OrtApiBase* */ ortApiBase);
-        }
-
-        [SkipNonPackageTests(DisplayName = "TestRegisterCustomOpsWithFunction")]
-        private void TestRegisterCustomOpsWithFunction()
-        {
-            using (var option = new SessionOptions())
-            {
-                try
-                {
-                    Marshal.Prelink(typeof(CustomOpLibrary).GetMethod("RegisterCustomOpsAltName"));
-                    option.RegisterCustomOpsUsingFunction("RegisterCustomOpsAltName");
-                }
-                catch (Exception ex)
-                {
-                    var msg = $"Failed to load custom op library, error = {ex.Message}";
-                    throw new Exception(msg + "\n" + ex.StackTrace);
-                }
-
-                var ortEnvInstance = OrtEnv.Instance();
-                string[] providers = ortEnvInstance.GetAvailableProviders();
-                if (Array.Exists(providers, provider => provider == "CUDAExecutionProvider"))
-                {
-                    option.AppendExecutionProvider_CUDA(0);
-                }
-
-                ValidateModelWithCustomOps(option);
             }
         }
 

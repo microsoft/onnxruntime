@@ -440,35 +440,6 @@ namespace Microsoft.ML.OnnxRuntime
         }
 
         /// <summary>
-        /// Register custom ops by calling the C function with functionName. 
-        /// The C function has the signature
-        ///   OrtStatus* RegisterCustomOps(OrtSessionOptions* options, const OrtApiBase* api);
-        /// 
-        /// The function must be available in the global symbols so ONNX Runtime can find it using GetProcAddress or
-        /// dlsym. This will require your app to 'DllImport' the native library containing the function and use 
-        /// Marshal.Prelink to ensure the function is loaded.
-        ///
-        /// Example usage:
-        ///   static class NativeCustomOps {
-        ///     [DllImport("YourLibraryName", CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Winapi)]
-        ///     public static extern IntPtr /* OrtStatus* */ 
-        ///         YourRegisterCustomOpsFunctionName(IntPtr /* OrtSessionOptions* */ sessionOptions,
-        ///                                           IntPtr /* OrtApiBase*        */ ortApiBase);
-        ///   }
-        ///   ...
-        ///   var sessionOptions = new SessionOptions();
-        ///   Marshal.Prelink(typeof(NativeCustomOps).GetMethod("YourRegisterCustomOpsFunctionName"));
-        ///   sessionOptions.RegisterCustomOpsUsingFunction("YourRegisterCustomOpsFunctionName");
-        /// 
-        /// </summary>
-        /// <param name="functionName">Function name to call to register custom operators.</param>
-        public void RegisterCustomOpsUsingFunction(string functionName)
-        {
-            var utf8FuncName = NativeOnnxValueHelper.StringToZeroTerminatedUtf8(functionName);
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtRegisterCustomOpsUsingFunction(this.handle, utf8FuncName));
-        }
-
-        /// <summary>
         /// Register the custom operators from the Microsoft.ML.OnnxRuntime.Extensions NuGet package.
         /// A reference to Microsoft.ML.OnnxRuntime.Extensions must be manually added to your project. 
         /// </summary>

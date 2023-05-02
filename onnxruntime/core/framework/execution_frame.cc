@@ -102,7 +102,7 @@ void IExecutionFrame::UpdateFetches(gsl::span<const int> fetch_mlvalue_idxs,
         OrtValue& dest = all_values_[ort_value_idx];
 
         if (!dest.IsAllocated()) {
-          AllocatorPtr allocator = GetAllocator(src.Location());
+          AllocatorPtr allocator = GetAllocator(src.Location().device);
           auto p_tensor = std::make_unique<Tensor>(src.DataType(), src.Shape(), allocator);
           auto ml_tensor = DataTypeImpl::GetType<Tensor>();
           dest.Init(p_tensor.release(), ml_tensor, ml_tensor->GetDeleteFunc());
@@ -197,7 +197,7 @@ bool IExecutionFrame::TryGetInferredShape(int /*index*/, TensorShape& /*shape*/)
   return false;
 }
 
-AllocatorPtr IExecutionFrame::GetAllocator(const OrtMemoryInfo& info) const {
+AllocatorPtr IExecutionFrame::GetAllocator(const OrtDevice& info) const {
   return GetAllocatorImpl(info);
 }
 
@@ -226,8 +226,7 @@ void IExecutionFrame::Init(gsl::span<const int> feed_mlvalue_idxs, gsl::span<con
   ORT_ENFORCE(fetches.empty() || fetches.size() == fetch_mlvalue_idxs_.size());
 
   // Need this for sparse conversions in host memory
-  OrtMemoryInfo cpu_mem_info("Cpu", OrtDeviceAllocator);
-  AllocatorPtr cpu_allocator = GetAllocator(cpu_mem_info);
+  AllocatorPtr cpu_allocator = GetAllocator(OrtDevice());
 
   // 1. resize the all_value_ vector
   all_values_.resize(all_values_size_);
@@ -278,7 +277,7 @@ void IExecutionFrame::Init(gsl::span<const int> feed_mlvalue_idxs, gsl::span<con
         }
 
         // Outputting Coo format because initializers are Constant nodes, and they are converted to dense.
-        AllocatorPtr allocator = GetAllocator(src.Location());
+        AllocatorPtr allocator = GetAllocator(src.Location().device);
         constexpr bool has_linear_coo_index = true;
         ORT_THROW_IF_ERROR(sparse_utils::DenseTensorToSparseCoo(GetDataTransferManager(), src,
                                                                 cpu_allocator, allocator, has_linear_coo_index,
@@ -291,7 +290,7 @@ void IExecutionFrame::Init(gsl::span<const int> feed_mlvalue_idxs, gsl::span<con
           // NOTE: This doesn't need to support ExecutionFrame custom allocators as they only come into play
           // for a subgraph with an output of unknown shape that needs to be accumulated by the control flow node.
           // If the initializer is providing the output, the shape is known.
-          AllocatorPtr allocator = GetAllocator(src.Location());
+          AllocatorPtr allocator = GetAllocator(src.Location().device);
           Tensor::InitOrtValue(src.DataType(), src.Shape(), std::move(allocator), dest);
         }
         ORT_THROW_IF_ERROR(CopyTensor(src, *dest.GetMutable<Tensor>()));
@@ -494,7 +493,7 @@ const DataTransferManager& ExecutionFrame::GetDataTransferManager() const {
 }
 
 Status ExecutionFrame::AllocateMLValueTensorSelfOwnBuffer(OrtValue& ort_value, int ort_value_index,
-                                                          MLDataType element_type, const OrtMemoryInfo& location,
+                                                          MLDataType element_type, const OrtDevice& location,
                                                           const TensorShape& shape) {
   return AllocateMLValueTensorSelfOwnBufferHelper(ort_value, ort_value_index, element_type, location, shape);
 }
@@ -514,7 +513,7 @@ Stream* ExecutionFrame::GetValueStream(int ort_value_idx) const {
 
 Status ExecutionFrame::AllocateMLValueTensorSelfOwnBufferHelper(OrtValue& ort_value, int ort_value_index,
                                                                 MLDataType element_type,
-                                                                const OrtMemoryInfo& location,
+                                                                const OrtDevice& location,
                                                                 const TensorShape& shape) {
   if (ort_value_index == NodeIndexInfo::kInvalidEntry) {
     return Status(ONNXRUNTIME, FAIL, "Trying to allocate memory for unused optional inputs/outputs");
@@ -616,7 +615,7 @@ Status ExecutionFrame::AllocateMLValueTensorSelfOwnBufferHelper(OrtValue& ort_va
 }
 
 Status ExecutionFrame::AllocateMLValueTensorPreAllocateBuffer(OrtValue& ort_value, int ort_value_index_reuse,
-                                                              MLDataType element_type, const OrtMemoryInfo& location,
+                                                              MLDataType element_type, const OrtDevice& location,
                                                               const TensorShape& shape,
                                                               bool is_strided_tensor) {
   OrtValue& ort_value_reuse = GetMutableMLValue(ort_value_index_reuse);
@@ -661,9 +660,9 @@ Status ExecutionFrame::AllocateMLValueTensorPreAllocateBuffer(OrtValue& ort_valu
 
 Status ExecutionFrame::AllocateTensorWithPreAllocateBufferHelper(OrtValue& ort_value, void* pBuffer,
                                                                  MLDataType element_type,
-                                                                 const OrtMemoryInfo& location,
+                                                                 const OrtDevice& location,
                                                                  const TensorShape& shape) {
-  Tensor::InitOrtValue(element_type, shape, pBuffer, location, ort_value, 0L);
+  Tensor::InitOrtValue(element_type, shape, pBuffer, GetAllocator(location)->Info(), ort_value, 0L);
   return Status::OK();
 }
 
@@ -821,7 +820,7 @@ Status ExecutionFrame::AllocateAsPerAllocationPlan(OrtValue& ort_value, int ort_
   }
 }
 
-AllocatorPtr ExecutionFrame::GetAllocatorImpl(const OrtMemoryInfo& info) const {
+AllocatorPtr ExecutionFrame::GetAllocatorImpl(const OrtDevice& info) const {
   return session_state_.GetAllocator(info);
 }
 

@@ -53,7 +53,7 @@ void addGlobalSchemaFunctions(pybind11::module& m) {
             onnxruntime::MIGraphXProviderFactoryCreator::Create(0),
 #endif
 #ifdef USE_VITISAI
-            onnxruntime::VitisAIProviderFactoryCreator::Create("DPUCADX8G", 0, "", ""),
+            onnxruntime::VitisAIProviderFactoryCreator::Create(),
 #endif
 #ifdef USE_ACL
             onnxruntime::ACLProviderFactoryCreator::Create(0),
