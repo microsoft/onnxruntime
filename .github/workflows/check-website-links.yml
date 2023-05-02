@@ -6,17 +6,12 @@ on:
   pull_request:
     branches:
       - gh-pages
-
-concurrency:
-  group: "pages"
-  cancel-in-progress: true
-
+  workflow_dispatch:
+    
 jobs:
   checklinks:
     name: Check website links
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
     steps:
       - uses: actions/checkout@v2
       - name: Ruby
