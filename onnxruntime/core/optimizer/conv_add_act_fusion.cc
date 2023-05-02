@@ -167,28 +167,28 @@ class ConvAddActivation : public NodeSelector {
       }
     }
 
-  // If one of the inputs to the Add node is a convolution, then
-  // attempt to fuse the addition into the convolution itself.
-  for (size_t n = 0; (n < inputs_node.size()) && inputs_node[n]; n++) {
-    const auto& producer_input_defs = inputs_node[n]->InputDefs();
-    const auto& producer_input_args_count = inputs_node[n]->InputArgCount();
-    size_t pre_input_defs_count = producer_input_defs.size();
-    // Check if this is a single use convolution that hasn't already
-    // been fused with another Add/Sum node. The Add/Sum can also only be
-    // fused if the convolution isn't itself fused with an activation.
-    if ((inputs_node[n]->OpType() == "Conv") && (pre_input_defs_count < 4) && (producer_input_args_count.size() < 4) &&
-        (graph_utils::GetNodeAttribute(*inputs_node[n], "activation") == nullptr) && (inputs_node[n]->GetOutputEdgesCount() == 1)) {
-      if (pre_input_defs_count < 3) {
-        // The optional bias parameter is empty so set to an empty string.
-        // TODO, add a new null arguments for bias
-        continue;
+    // If one of the inputs to the Add node is a convolution, then
+    // attempt to fuse the addition into the convolution itself.
+    for (size_t n = 0; (n < inputs_node.size()) && inputs_node[n]; n++) {
+      const auto& producer_input_defs = inputs_node[n]->InputDefs();
+      const auto& producer_input_args_count = inputs_node[n]->InputArgCount();
+      size_t pre_input_defs_count = producer_input_defs.size();
+      // Check if this is a single use convolution that hasn't already
+      // been fused with another Add/Sum node. The Add/Sum can also only be
+      // fused if the convolution isn't itself fused with an activation.
+      if ((inputs_node[n]->OpType() == "Conv") && (pre_input_defs_count < 4) && (producer_input_args_count.size() < 4) &&
+          (graph_utils::GetNodeAttribute(*inputs_node[n], "activation") == nullptr) && (inputs_node[n]->GetOutputEdgesCount() == 1)) {
+        if (pre_input_defs_count < 3) {
+          // The optional bias parameter is empty so set to an empty string.
+          // TODO, add a new null arguments for bias
+          continue;
+        }
+        return inputs_node[n];
       }
-      return inputs_node[n];
     }
-  }
 
-  return nullptr;
-}
+    return nullptr;
+  }
 };
 
 }  // namespace selectors
