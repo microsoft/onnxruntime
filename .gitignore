@@ -11,4 +11,5 @@ _site
 .vscode
 
 build
+!/docs/build
 cmake
