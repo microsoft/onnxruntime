@@ -802,7 +802,12 @@ class ONNXQuantizer:
                 zero_point_names.append(quantized_value.zp_name)
                 quantized_input_names.append(quantized_value.q_name)
                 continue
-
+            # adding this for case embed_layernorm.py has optional segment_embedding
+            if not node_input:
+                quantized_input_names.append("")
+                scale_names.append("")
+                zero_point_names.append("")
+                continue
             # Quantize the input
             initializer = find_by_name(node_input, self.model.initializer())
             if initializer is not None:

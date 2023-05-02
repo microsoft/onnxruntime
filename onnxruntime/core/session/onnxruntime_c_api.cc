@@ -2381,6 +2381,7 @@ ORT_API(const OrtTrainingApi*, OrtApis::GetTrainingApi, uint32_t version) {
 static constexpr OrtApiBase ort_api_base = {
     &OrtApis::GetApi,
     &OrtApis::GetVersionString,
+    &OrtApis::GetBuildInfoString,
 };
 
 /* Rules on how to add a new Ort API version
@@ -2763,8 +2764,12 @@ ORT_API(const OrtApi*, OrtApis::GetApi, uint32_t version) {
   return nullptr;  // Unsupported version
 }
 
-ORT_API(const char*, OrtApis::GetVersionString) {
-  return ORT_VERSION;
+ORT_API(const ORTCHAR_T*, OrtApis::GetVersionString) {
+  return ORT_TSTR_ON_MACRO(ORT_VERSION);
+}
+
+ORT_API(const ORTCHAR_T*, OrtApis::GetBuildInfoString) {
+  return ORT_TSTR_ON_MACRO(ORT_BUILD_INFO);
 }
 
 const OrtApiBase* ORT_API_CALL OrtGetApiBase(void) NO_EXCEPTION {

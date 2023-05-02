@@ -227,7 +227,7 @@ class CpuDetensorizer {
       xChannel += 8;
       yChannel += 8;
       zChannel += 8;
-      pPixel += 8 * bytesPerPixel;
+      pPixel += 8 * static_cast<uint64_t>(bytesPerPixel);
       tensorWidthRemaining -= 8;
     }
 
@@ -238,7 +238,7 @@ class CpuDetensorizer {
       pPixel[2] = DetensorizeValue(zChannel, nominalRangeConverter);
       pPixel[3] = 255;
 
-      pPixel += bytesPerPixel;
+      pPixel += static_cast<uint64_t>(bytesPerPixel);
       xChannel++;
       yChannel++;
       zChannel++;

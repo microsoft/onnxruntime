@@ -110,7 +110,7 @@ HRESULT OnnxruntimeValue::IsCpu(bool* out) {
   return S_OK;
 }
 
-static int64_t ShapeSize(const int64_t* shape, size_t count) {
+static uint64_t ShapeSize(const int64_t* shape, size_t count) {
   // for each dim
   int64_t size = 1;
   for (size_t i = 0; i < count; i++) {
@@ -151,7 +151,7 @@ static auto GetStrings(const OrtApi* ort_api, const OrtValue* ort_value,
                       ort_api);
 
   // now go build all the strings
-  for (auto i = 0; i < length; ++i) {
+  for (size_t i = 0; i < length; ++i) {
     size_t str_len = 0;
     // are we on the last one?
     if (i == (length - 1)) {

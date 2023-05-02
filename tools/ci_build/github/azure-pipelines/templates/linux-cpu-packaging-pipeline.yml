@@ -4,8 +4,26 @@ parameters:
   type: string
   default: ''
 
+- name: stage_name_suffix
+  displayName: Suffix for stage name as every stage name needs to be unique
+  type: string
+  default: 'CPU'
+
+- name: ArtifactNamePrefix
+  displayName: Prefix for artifact name
+  type: string
+  default: onnxruntime
+
+- name: PackageJava
+  type: boolean
+  default: true
+
+- name: PackageNodejs
+  type: boolean
+  default: true
+
 stages:
-- stage: Linux_C_API_Packaging_CPU
+- stage: Linux_C_API_Packaging_${{ parameters.stage_name_suffix }}
   dependsOn: [ ]
   jobs:
   - template: c-api-linux-cpu.yml
@@ -17,6 +35,10 @@ stages:
       OnnxruntimeCXXFlags: '-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all'
       OnnxruntimeNodejsBindingArch: 'x64'
       PoolName: 'aiinfra-Linux-CPU'
+      ArtifactNamePrefix: ${{ parameters.ArtifactNamePrefix }}
+      PackageJava: ${{ parameters.PackageJava }}
+      PackageNodeJS: ${{ parameters.PackageNodeJS }}
+
   - template: c-api-linux-cpu.yml
     parameters:
       AdditionalBuildFlags: ${{ parameters.AdditionalBuildFlags }}
@@ -26,3 +48,6 @@ stages:
       OnnxruntimeCXXFlags: '-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -O3 -Wl,--strip-all'
       OnnxruntimeNodejsBindingArch: 'arm64'
       PoolName: 'aiinfra-linux-ARM64-CPU-2019'
+      ArtifactNamePrefix: ${{ parameters.ArtifactNamePrefix }}
+      PackageJava: ${{ parameters.PackageJava }}
+      PackageNodeJS: ${{ parameters.PackageNodeJS }}

@@ -101,7 +101,7 @@ std::shared_ptr<KernelRegistry> MIGraphXExecutionProvider::GetKernelRegistry() c
 }
 
 MIGraphXExecutionProvider::MIGraphXExecutionProvider(const MIGraphXExecutionProviderInfo& info)
-    : IExecutionProvider{onnxruntime::kMIGraphXExecutionProvider, true}, device_id_(info.device_id) {
+    : IExecutionProvider{onnxruntime::kMIGraphXExecutionProvider, OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, info.device_id), true}, device_id_(info.device_id) {
   InitProviderOrtApi();
   // Set GPU device to be used
   HIP_CALL_THROW(hipSetDevice(device_id_));
@@ -1208,6 +1208,12 @@ void MIGraphXExecutionProvider::RegisterStreamHandlers(IStreamCommandHandleRegis
   RegisterRocmStreamHandles(stream_handle_registry, OrtDevice::GPU, allocator, true, stream_, false /*TODO:external_stream_*/, external_miopen_handle_, external_rocblas_handle_);
 }
 
+OrtDevice MIGraphXExecutionProvider::GetOrtDeviceByMemType(OrtMemType mem_type) const {
+  if (mem_type == OrtMemTypeCPUInput || mem_type == OrtMemTypeCPUOutput) {
+    return OrtDevice(OrtDevice::CPU, OrtDevice::MemType::HIP_PINNED, default_device_.Id());
+  }
+  return default_device_;
+}
 #ifdef MIGRAPHX_STREAM_SYNC
 
 Status MIGraphXExecutionProvider::Sync() const {
