@@ -946,6 +946,12 @@ bool get_input_output_names(const GraphViewer& graph,
     if(sptr->dim_size() == 0)
       return true;
 
+    for (int i = 0; i < sptr->dim_size(); i++)
+    {
+      if (sptr->mutable_dim(i) == nullptr)
+        return true;
+    }
+
     return false;
   });
 
