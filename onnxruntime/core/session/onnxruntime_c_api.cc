@@ -2747,7 +2747,7 @@ static_assert(offsetof(OrtApi, SessionOptionsAppendExecutionProvider_MIGraphX) /
 static_assert(offsetof(OrtApi, ReleaseKernelInfo) / sizeof(void*) == 218, "Size of version 12 API cannot change");
 static_assert(offsetof(OrtApi, ReleaseCANNProviderOptions) / sizeof(void*) == 224, "Size of version 13 API cannot change");
 static_assert(offsetof(OrtApi, GetSessionConfigEntry) / sizeof(void*) == 238, "Size of version 14 API cannot change");
-static_assert(offsetof(OrtApi, GetSessionConfigEntry) / sizeof(void*) == 253, "Size of version 15 API cannot change");
+static_assert(offsetof(OrtApi, KernelContext_GetAllocator) / sizeof(void*) == 253, "Size of version 15 API cannot change");
 
 // So that nobody forgets to finish an API version, this check will serve as a reminder:
 static_assert(std::string_view(ORT_VERSION) == "1.16.0",
