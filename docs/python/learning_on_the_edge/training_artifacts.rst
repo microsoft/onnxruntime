@@ -1,5 +1,5 @@
-Generating the Training Artifacts
-==================================
+Prepare for training
+=====================
 
 Before the training can start on edge devices, the training artifacts need to be generated in an offline step.
 

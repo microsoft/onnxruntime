@@ -1,5 +1,5 @@
-Training the Model on the Device
-=================================
+Train the Model on the Device
+==============================
 
 Once the training artifacts are generated, the model can be trained on the device using the onnxruntime training python API.
 
