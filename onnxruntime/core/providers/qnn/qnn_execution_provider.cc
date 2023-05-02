@@ -15,14 +15,20 @@
 #include "core/providers/qnn/builder/qnn_model_wrapper.h"
 #include "core/providers/qnn/builder/op_builder_factory.h"
 
-#define MEMCPY_S(dest, src, destsz, srcsz) memcpy(dest, src, std::min(destsz, srcsz))
-
 namespace onnxruntime {
 
 constexpr const char* QNN = "QNN";
 
 QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_options_map)
     : IExecutionProvider{onnxruntime::kQnnExecutionProvider, true}, runtime_options_(provider_options_map) {
+  static const std::string DUMP_CONTEXT = "dump_context";
+  auto dump_context_pos = runtime_options_.find(DUMP_CONTEXT);
+  if (dump_context_pos != runtime_options_.end()) {
+    if (dump_context_pos->second == "true") {
+      dump_context_ = true;
+    }
+  }
+
   static const std::string BACKEND_PATH = "backend_path";
   auto backend_path_pos = runtime_options_.find(BACKEND_PATH);
 
@@ -257,10 +263,14 @@ Status QNNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused
                                      std::vector<NodeComputeInfo>& node_compute_funcs) {
   const auto& logger = *GetLogger();
   bool is_npu_backend = qnn_backend_manager_->IsNpuBackend();
+  onnxruntime::PathString model_path;
 
   for (const auto& fused_node_and_graph : fused_nodes_and_graphs) {
     Node& fused_node = fused_node_and_graph.fused_node;
     const onnxruntime::GraphViewer& graph_viewer(fused_node_and_graph.filtered_graph);
+    if (model_path.empty()) {
+      model_path = graph_viewer.ModelPath().ToPathString();
+    }
 
     std::unique_ptr<qnn::QnnModel> qnn_model = std::make_unique<qnn::QnnModel>(logger,
                                                                                qnn_backend_manager_.get(),
@@ -294,6 +304,10 @@ Status QNNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused
     };
 
     node_compute_funcs.push_back(compute_info);
+  }
+
+  if (is_npu_backend && dump_context_) {
+    ORT_RETURN_IF_ERROR(qnn_backend_manager_->DumpQnnContext(model_path));
   }
 
   return Status::OK();

@@ -3,6 +3,7 @@
 
 #include "qnn_backend_manager.h"
 #include <iostream>
+#include <fstream>
 #include "QnnOpDef.h"
 #include "DSP/QnnDspPerfInfrastructure.h"
 #include "DSP/QnnDspBackend.h"
@@ -198,6 +199,60 @@ Status QnnBackendManager::ReleaseContext() {
   ORT_RETURN_IF(QNN_CONTEXT_NO_ERROR != result, "Failed to release context.");
 
   context_created_ = false;
+  return Status::OK();
+}
+
+Status QnnBackendManager::DumpQnnContext(const onnxruntime::PathString& model_path) {
+  if (nullptr == qnn_interface_.contextGetBinarySize ||
+      nullptr == qnn_interface_.contextGetBinary) {
+    LOGS(*logger_, ERROR) << "Failed to get valid function pointer.";
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to get valid function pointer.");
+  }
+
+  uint64_t required_buffer_size(0);
+  Qnn_ErrorHandle_t rt = qnn_interface_.contextGetBinarySize(context_, &required_buffer_size);
+  if (QNN_CONTEXT_NO_ERROR != rt) {
+    LOGS(*logger_, ERROR) << "Failed to get QNN context binary size. Error code: " << rt;
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to get QNN context binary size.");
+  }
+
+  std::unique_ptr<uint8_t[]> context_buffer(new uint8_t[required_buffer_size]);
+  if (nullptr == context_buffer) {
+    LOGS(*logger_, ERROR) << "Failed to allocate buffer for context cache.";
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to allocate buffer for context cache.");
+  }
+
+  uint64_t written_buffer_size(0);
+  rt = qnn_interface_.contextGetBinary(context_,
+                                       reinterpret_cast<void*>(context_buffer.get()),
+                                       required_buffer_size,
+                                       &written_buffer_size);
+  if (QNN_CONTEXT_NO_ERROR != rt) {
+    LOGS(*logger_, ERROR) << "Failed to get context binary.";
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to get context binary.");
+  }
+
+  if (required_buffer_size < written_buffer_size) {
+    LOGS(*logger_, ERROR) << "Context written buffer size: " << written_buffer_size
+                        << " exceeds allocated buffer size: " << required_buffer_size;
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Context written buffer exceeds allocated buffer size.");
+  }
+
+  //const std::wstring context_cache_file(L"qnn_context_cache.bin");
+  PathString context_cache_file(model_path + ToPathString(".bin"));
+  std::ofstream of_stream(context_cache_file, std::ofstream::binary);
+  if (!of_stream) {
+    LOGS(*logger_, ERROR) << "Failed to open cached context file.";
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to open context cache file.");
+  }
+  of_stream.write(reinterpret_cast<char*>(context_buffer.get()), written_buffer_size);
+  of_stream.close();
+
+  LOGS(*logger_, VERBOSE) << "Dump QNN Context completed.";
+  return Status::OK();
+}
+
+Status QnnBackendManager::LoadFromCachedQnnContext() {
   return Status::OK();
 }
 

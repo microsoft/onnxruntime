@@ -50,6 +50,7 @@ void usage() {
       "\t-a: Specify custom absolute tolerance values for output value comparison. default: 1e-5\n"
       "\t-i: Specify EP specific runtime options as key value pairs. Different runtime options available are: \n"
       "\t    [QNN only] [backend_path]: QNN backend path. e.g '/folderpath/libQnnHtp.so', '/folderpath/libQnnCpu.so'.\n"
+      "\t    [QNN only] [dump_context]: true to enable dump QNN context. Default to false.\n"
       "\t    [QNN only] [profiling_level]: QNN profiling level, options:  'basic', 'detailed', default 'off'.\n"
       "\t    [QNN only] [rpc_control_latency]: QNN rpc control latency. default to 10.\n"
       "\t [Usage]: -e <provider_name> -i '<key1>|<value1> <key2>|<value2>' \n\n"
@@ -450,13 +451,15 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
           } else {
             qnn_options[key] = value;
           }
+        } else if (key == "dump_context") {
+          qnn_options[key] = value;
         } else if (key == "profiling_level") {
           qnn_options[key] = value;
         } else if (key == "rpc_control_latency") {
           qnn_options[key] = value;
         } else {
           ORT_THROW(R"(Wrong key type entered. Choose from options:
-['backend_path', 'profiling_level', 'rpc_control_latency'])");
+['backend_path', 'dump_context', 'profiling_level', 'rpc_control_latency'])");
         }
       }
       sf.AppendExecutionProvider("QNN", qnn_options);

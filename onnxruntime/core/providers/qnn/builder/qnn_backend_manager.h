@@ -13,6 +13,7 @@
 #include "QnnLog.h"
 #include "core/common/status.h"
 #include "core/common/logging/logging.h"
+#include "core/common/path_string.h"
 #include "core/providers/qnn/builder/qnn_def.h"
 
 namespace onnxruntime {
@@ -61,6 +62,10 @@ class QnnBackendManager {
 
     return CreateContext();
   }
+
+  Status DumpQnnContext(const onnxruntime::PathString& model_path);
+
+  Status LoadFromCachedQnnContext();
 
   Status SetupBackend(const logging::Logger& logger);
 
