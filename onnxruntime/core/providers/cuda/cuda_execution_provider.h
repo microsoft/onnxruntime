@@ -96,6 +96,7 @@ class CUDAExecutionProvider : public IExecutionProvider {
   bool DoCopyOnDefaultStream() const { return info_.do_copy_in_default_stream; }
   bool GetCudnnConvUseMaxWorkspace() const { return info_.cudnn_conv_use_max_workspace; }
   bool GetCudnnConv1dPadToNc1d() const { return info_.cudnn_conv1d_pad_to_nc1d; }
+  bool IsSkipLayerNormInStrictMode() const { return info_.enable_skip_layer_norm_strict_mode; }
 
   ProviderOptions GetProviderOptions() const override {
     return CUDAExecutionProviderInfo::ToProviderOptions(info_);
