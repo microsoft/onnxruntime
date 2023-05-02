@@ -882,7 +882,7 @@ def _generate_op_doc(app):
 def setup(app):
     """
     Sphinx extension `onnx_sphinx` displays documentation
-    on ONN Operators.
+    of all ONNX Operators.
     """
     import sphinx
 
