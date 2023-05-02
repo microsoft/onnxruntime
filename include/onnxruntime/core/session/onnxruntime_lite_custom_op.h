@@ -537,7 +537,7 @@ struct OrtLiteCustomOp : public OrtCustomOp {
     OrtCustomOp::GetVariadicOutputHomogeneity = [](const OrtCustomOp*) { return 0; };
   }
 
-  ~OrtLiteCustomOp() {}
+  ~OrtLiteCustomOp() = default;
 
   const std::string op_name_;
   const std::string execution_provider_;
