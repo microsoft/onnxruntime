@@ -26,6 +26,7 @@ namespace Custom {
 class TensorBase {
  public:
   TensorBase(OrtKernelContext* ctx) : ctx_(ctx) {}
+  virtual ~TensorBase() {}
   operator bool() const {
     return shape_.has_value();
   }
