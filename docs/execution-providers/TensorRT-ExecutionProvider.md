@@ -111,6 +111,32 @@ Following environment variables can be set for TensorRT execution provider.
 
 * `ORT_TENSORRT_CONTEXT_MEMORY_SHARING_ENABLE`: Share execution context memory between TensorRT subgraphs. Default 0 = false, nonzero = true.
 
+* `ORT_TENSORRT_LAYER_NORM_FP32_FALLBACK`: Force Pow + Reduce ops in layer norm to FP32. Default 0 = false, nonzero = true.
+
+* `ORT_TENSORRT_TIMING_CACHE_ENABLE`: Enable TensorRT timing cache. Default 0 = false, nonzero = true.
+
+* `ORT_TENSORRT_FORCE_TIMING_CACHE_ENABLE`: Force the TensorRT cache to be used even if device profile does not match. Default 0 = false, nonzero = true.
+
+* `ORT_TENSORRT_DETAILED_BUILD_LOG_ENABLE`: Enable detailed build step logging on TensorRT EP with timing for each engine build. Default 0 = false, nonzero = true.
+
+* `ORT_TENSORRT_BUILD_HEURISTICS_ENABLE`: Build engine using heuristics to reduce build time. Default 0 = false, nonzero = true.
+
+* `ORT_TENSORRT_SPARSITY_ENABLE`: Control if sparsity can be used by TRT. Default 0 = false, 1 = true.
+
+* `ORT_TENSORRT_BUILDER_OPTIMIZATION_LEVEL`: Set the builder optimization level. WARNING: levels below 2 do not guarantee good engine performance, but greatly improve build time.  Default 2, valid range [0-4].
+
+* `ORT_TENSORRT_AUXILIARY_STREAMS`: Set maximum number of auxiliary streams per inference stream. Setting this value to 0 will lead to optimal memory usage. Default -1 = heuristics.
+
+* `ORT_TENSORRT_TACTIC_SOURCES`: Specify the tactics to be used by adding (+) or removing (-) tactics from the default tactic sources (default = all available tactics) e.g. "-CUDNN,+CUBLAS" available keys: "CUBLAS"|"CUBLAS_LT"|"CUDNN"|"EDGE_MASK_CONVOLUTIONS".
+
+* `ORT_TENSORRT_EXTRA_PLUGIN_LIB_PATHS`: Specify extra TensorRT plugin library paths.
+
+* `ORT_TENSORRT_PROFILE_MIN_SHAPES`: Build with dynamic shapes using a profile with the min shapes provided.
+
+* `ORT_TENSORRT_PROFILE_MAX_SHAPES`: Build with dynamic shapes using a profile with the max shapes provided.
+
+* `ORT_TENSORRT_PROFILE_OPT_SHAPES`: Build with dynamic shapes using a profile with the opt shapes provided.
+
 One can override default values by setting environment variables. e.g. on Linux:
 
 ```bash
@@ -171,6 +197,19 @@ There are one-to-one mappings between **environment variables** and **execution 
 | ORT_TENSORRT_DUMP_SUBGRAPHS                    | trt_dump_subgraphs                    | bool   |
 | ORT_TENSORRT_FORCE_SEQUENTIAL_ENGINE_BUILD     | trt_force_sequential_engine_build     | bool   |
 | ORT_TENSORRT_CONTEXT_MEMORY_SHARING_ENABLE     | trt_context_memory_sharing_enable     | bool   |
+| ORT_TENSORRT_LAYER_NORM_FP32_FALLBACK          | trt_layer_norm_fp32_fallback          | bool   |
+| ORT_TENSORRT_TIMING_CACHE_ENABLE               | trt_timing_cache_enable               | bool   |
+| ORT_TENSORRT_FORCE_TIMING_CACHE_ENABLE         | trt_force_timing_cache                | bool   |
+| ORT_TENSORRT_DETAILED_BUILD_LOG_ENABLE         | trt_detailed_build_log                | bool   |
+| ORT_TENSORRT_BUILD_HEURISTICS_ENABLE           | trt_build_heuristics_enable           | bool   |
+| ORT_TENSORRT_SPARSITY_ENABLE                   | trt_sparsity_enable                   | bool   |
+| ORT_TENSORRT_BUILDER_OPTIMIZATION_LEVEL        | trt_builder_optimization_level        | bool   |
+| ORT_TENSORRT_AUXILIARY_STREAMS                 | trt_auxiliary_streams                 | bool   |
+| ORT_TENSORRT_TACTIC_SOURCES                    | trt_tactic_sources                    | string |
+| ORT_TENSORRT_EXTRA_PLUGIN_LIB_PATHS            | trt_extra_plugin_lib_paths            | string |
+| ORT_TENSORRT_PROFILE_MIN_SHAPES                | trt_profile_min_shapes                | string |
+| ORT_TENSORRT_PROFILE_MAX_SHAPES                | trt_profile_max_shapes                | string |
+| ORT_TENSORRT_PROFILE_OPT_SHAPES                | trt_profile_opt_shapes                | string |
 
 Besides, `device_id` can also be set by execution provider option.
 
