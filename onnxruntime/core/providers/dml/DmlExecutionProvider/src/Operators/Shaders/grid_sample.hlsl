@@ -175,8 +175,9 @@ float PixelAtGrid(float4 inputIdx, float4 border) {
 
   if (PaddingMode == Zeros)
   {
-    if (inputIdx.x >= 0 && inputIdx.x < float(InputSizes.w) &&
-        inputIdx.y >= 0 && inputIdx.y < float(InputSizes.z)) {
+    if (inputIdx.w >= 0 && (uint)inputIdx.w < (uint)InputSizes.w &&
+        inputIdx.z >= 0 && (uint)inputIdx.z < (uint)InputSizes.z)
+    {
       pixel = FetchInputPixel(inputIdx);
     }
   }
@@ -186,7 +187,8 @@ float PixelAtGrid(float4 inputIdx, float4 border) {
     uint z = clamp(inputIdx.z, 0, InputSizes.z - 1);
     pixel = FetchInputPixel(float4(inputIdx.xy, z, w));
   }
-  else {  // (PaddingMode == Reflection)
+  else if (PaddingMode == Reflection)
+  {
     uint w = Reflect(inputIdx.w, border.x, border.z);
     uint z = Reflect(inputIdx.z, border.y, border.w);
     pixel = FetchInputPixel(float4(inputIdx.xy, z, w));
@@ -249,8 +251,8 @@ void GridSample(uint3 dtid : SV_DispatchThreadId)
         }
         else if (Mode == Bicubic)
         {
-            float x0 = floor(inputIdx.z) - 1;
-            float y0 = floor(inputIdx.w) - 1;
+            float x0 = floor(inputIdx.w) - 1;
+            float y0 = floor(inputIdx.z) - 1;
 
             float f00 = PixelAtGrid(float4(index.x, index.y, y0 + 0, x0 + 0), border);
             float f01 = PixelAtGrid(float4(index.x, index.y, y0 + 0, x0 + 1), border);
@@ -269,14 +271,14 @@ void GridSample(uint3 dtid : SV_DispatchThreadId)
             float f32 = PixelAtGrid(float4(index.x, index.y, y0 + 3, x0 + 2), border);
             float f33 = PixelAtGrid(float4(index.x, index.y, y0 + 3, x0 + 3), border);
 
-            float tx = frac(inputIdx.z);
-            float ty = frac(inputIdx.w);
+            float tx = frac(inputIdx.w);
+            float ty = frac(inputIdx.z);
 
-            float bminus1 = BicubicConvolutionPFunction(tx, f00, f10, f20, f30);
-            float b0      = BicubicConvolutionPFunction(tx, f01, f11, f21, f31);
-            float b1      = BicubicConvolutionPFunction(tx, f02, f12, f22, f32);
-            float b2      = BicubicConvolutionPFunction(tx, f03, f13, f23, f33);
-            float p       = BicubicConvolutionPFunction(ty, bminus1, b0, b1, b2);
+            float bminus1 = BicubicConvolutionPFunction(ty, f00, f10, f20, f30);
+            float b0      = BicubicConvolutionPFunction(ty, f01, f11, f21, f31);
+            float b1      = BicubicConvolutionPFunction(ty, f02, f12, f22, f32);
+            float b2      = BicubicConvolutionPFunction(ty, f03, f13, f23, f33);
+            float p       = BicubicConvolutionPFunction(tx, bminus1, b0, b1, b2);
 
             output[n] = (TBUFFER1)(p);
         }

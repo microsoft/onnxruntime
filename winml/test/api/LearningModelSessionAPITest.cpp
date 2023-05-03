@@ -1306,19 +1306,26 @@ static void ModelBuilding_GridSample_Internal(LearningModelDeviceKind kind) {
   std::vector<int64_t> input_dims = {1, 1, 4, 4};
   std::vector<int64_t> grid_dims = {1, 5, 5, 2};
 
+  printf("Mode::Bilinear, PaddingMode::Zeros\n");
   GridSample(kind, input, input_dims, grid, grid_dims, false, Mode::Bilinear, PaddingMode::Zeros, bilinear_zeros_output);
+  printf("Mode::Bilinear, PaddingMode::Border\n");
   GridSample(kind, input, input_dims, grid, grid_dims, false, Mode::Bilinear, PaddingMode::Border, bilinear_border_output);
+  printf("Mode::Bilinear, PaddingMode::Reflection\n");
   GridSample(kind, input, input_dims, grid, grid_dims, false, Mode::Bilinear, PaddingMode::Reflection, bilinear_reflection_output);
 
+  printf("Mode::Nearest, PaddingMode::Zeros\n");
   GridSample(kind, input, input_dims, grid, grid_dims, false, Mode::Nearest, PaddingMode::Zeros, nearest_zeros_output);
+  printf("Mode::Nearest, PaddingMode::Border\n");
   GridSample(kind, input, input_dims, grid, grid_dims, false, Mode::Nearest, PaddingMode::Border, nearest_border_output);
+  printf("Mode::Nearest, PaddingMode::Reflection\n");
   GridSample(kind, input, input_dims, grid, grid_dims, false, Mode::Nearest, PaddingMode::Reflection, nearest_reflection_output);
 
+  printf("Mode::Bicubic, PaddingMode::Zeros\n");
   GridSample(kind, input, input_dims, grid, grid_dims, false, Mode::Bicubic, PaddingMode::Zeros, bicubic_zeros_output);
-  //GridSample(kind, input, input_dims, grid, grid_dims, false, Mode::Bicubic, PaddingMode::Border, bicubic_border_output);
-  //GridSample(kind, input, input_dims, grid, grid_dims, false, Mode::Bicubic, PaddingMode::Reflection, bicubic_reflection_output);
-
-
+  printf("Mode::Bicubic, PaddingMode::Border\n");
+  GridSample(kind, input, input_dims, grid, grid_dims, false, Mode::Bicubic, PaddingMode::Border, bicubic_border_output);
+  printf("Mode::Bicubic, PaddingMode::Reflection\n");
+  GridSample(kind, input, input_dims, grid, grid_dims, false, Mode::Bicubic, PaddingMode::Reflection, bicubic_reflection_output);
 }
 
 static void ModelBuilding_DiscreteFourierTransform_Internal(LearningModelDeviceKind kind) {
