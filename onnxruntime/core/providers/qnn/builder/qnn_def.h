@@ -72,6 +72,7 @@ Qnn_DataType_t GetQnnTensorDataType(const Qnn_Tensor_t& qnn_tensor);
 Qnn_TensorMemType_t GetQnnTensorMemType(const Qnn_Tensor_t& qnn_tensor);
 uint32_t GetQnnTensorRank(const Qnn_Tensor_t& qnn_tensor);
 uint32_t* GetQnnTensorDims(const Qnn_Tensor_t& qnn_tensor);
+uint32_t CalcQnnTensorNumElems(const Qnn_Tensor_t& qnn_tensor);
 const Qnn_ClientBuffer_t& GetQnnTensorClientBuf(const Qnn_Tensor_t& qnn_tensor);
 const Qnn_QuantizeParams_t& GetQnnTensorQParams(const Qnn_Tensor_t& qnn_tensor);
 
@@ -278,7 +279,7 @@ class QnnOpConfigWrapper {
 
   ~QnnOpConfigWrapper() = default;
 
-  const Qnn_OpConfig_t& GetQnnOpConfig() { return op_config_; }
+  const Qnn_OpConfig_t& GetQnnOpConfig() const { return op_config_; }
 
   void SetNames(const char* op_name,
                 const char* package_name,

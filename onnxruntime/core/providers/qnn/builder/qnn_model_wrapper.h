@@ -10,6 +10,7 @@
 #include "core/common/status.h"
 #include "QnnInterface.h"
 #include "qnn_def.h"
+#include "qnn_utils.h"
 #include "core/common/logging/logging.h"
 #include "core/graph/graph_viewer.h"
 #include "core/framework/allocator.h"
@@ -62,7 +63,7 @@ class QnnModelWrapper {
                      std::vector<std::string>&& param_tensor_names,
                      bool do_op_validation = false);
 
-  bool ComposeQnnGraph();
+  bool ComposeQnnGraph(bool build_debug_json_graph = false);
 
   Qnn_GraphHandle_t GetQnnGraph() { return graph_; }
 
@@ -113,6 +114,10 @@ class QnnModelWrapper {
       LOGS_DEFAULT(ERROR) << "cpu_allocator is null!";
     }
     return cpu_allocator_;
+  }
+
+  const nlohmann::json& GetQnnJSONGraph() {
+    return debug_json_graph_.Finalize();
   }
 
   Status AddTransposeNode(NodeIndex node_index,
@@ -198,6 +203,7 @@ class QnnModelWrapper {
   const Qnn_BackendHandle_t& backend_handle_;
   Qnn_GraphHandle_t graph_ = nullptr;
   std::string graph_name_ = "";
+  utils::QnnJSONGraph debug_json_graph_;
 
   std::vector<std::string> model_input_names_;
   std::vector<std::string> model_output_names_;

@@ -30,7 +30,8 @@ class QnnModel {
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(QnnModel);
 
   Status ComposeGraph(const GraphViewer& graph_viewer,
-                      const onnxruntime::Node& fused_node);
+                      const onnxruntime::Node& fused_node,
+                      const std::string& debug_json_graph_path = "");
 
   Status FinalizeGraphs();
 

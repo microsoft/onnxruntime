@@ -4,6 +4,8 @@
 #include "qnn_model.h"
 
 #include <iostream>
+#include <fstream>
+
 #include "QnnOpDef.h"
 
 #include "core/providers/qnn/builder/op_builder_factory.h"
@@ -88,7 +90,8 @@ const NodeUnit& QnnModel::GetNodeUnit(const Node* node,
 }
 
 Status QnnModel::ComposeGraph(const GraphViewer& graph_viewer,
-                              const onnxruntime::Node& fused_node) {
+                              const onnxruntime::Node& fused_node,
+                              const std::string& debug_json_graph_path) {
   LOGS(logger_, VERBOSE) << "ComposeGraph Graph name: " << graph_viewer.Name();
   const onnxruntime::AllocatorPtr& cpu_allocator = GetAllocator();
 
@@ -137,7 +140,20 @@ Status QnnModel::ComposeGraph(const GraphViewer& graph_viewer,
     }
   }
 
-  ORT_RETURN_IF_NOT(qnn_model_wrapper.ComposeQnnGraph(), "Failed to compose Qnn graph.");
+  const bool build_debug_json_graph = !debug_json_graph_path.empty();
+  ORT_RETURN_IF_NOT(qnn_model_wrapper.ComposeQnnGraph(build_debug_json_graph), "Failed to compose Qnn graph.");
+
+  if (build_debug_json_graph) {
+    const nlohmann::json& json_graph = qnn_model_wrapper.GetQnnJSONGraph();
+    std::ofstream ofs(debug_json_graph_path);
+
+    if (ofs.is_open()) {
+      ofs << json_graph.dump();
+      ofs.close();
+    } else {
+      LOGS(logger_, WARNING) << "Could not open JSON graph file: " << debug_json_graph_path;
+    }
+  }
 
   rt = GetGraphInfoFromModel(qnn_model_wrapper);
   if (!rt) {

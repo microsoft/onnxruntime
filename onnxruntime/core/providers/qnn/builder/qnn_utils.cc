@@ -363,6 +363,205 @@ std::ostream& operator<<(std::ostream& out, const QnnOpConfigWrapper& op_conf_wr
   return out;
 }
 
+template <typename T>
+static inline nlohmann::json JSONFromSpan(gsl::span<const T> elems) {
+  nlohmann::json json_array = nlohmann::json::array();
+
+  for (auto elem : elems) {
+    json_array.push_back(elem);
+  }
+
+  return json_array;
+}
+
+template <typename T>
+static inline nlohmann::json JSONFromRawArray(const void* ptr, uint32_t num_bytes) {
+  gsl::span<const T> elems{reinterpret_cast<const T*>(ptr), num_bytes / sizeof(T)};
+  return JSONFromSpan(elems);
+}
+
+static nlohmann::json GetQnnClientBufJSON(const Qnn_ClientBuffer_t& buf, Qnn_DataType_t data_type) {
+  switch (data_type) {
+    case QNN_DATATYPE_BOOL_8:  // Print bool the same as int8 (0 or 1)
+    case QNN_DATATYPE_INT_8:
+      return JSONFromRawArray<int8_t>(buf.data, buf.dataSize);
+    case QNN_DATATYPE_INT_16:
+      return JSONFromRawArray<int16_t>(buf.data, buf.dataSize);
+    case QNN_DATATYPE_INT_32:
+      return JSONFromRawArray<int32_t>(buf.data, buf.dataSize);
+    case QNN_DATATYPE_INT_64:
+      return JSONFromRawArray<int64_t>(buf.data, buf.dataSize);
+    case QNN_DATATYPE_UINT_8:
+      return JSONFromRawArray<uint8_t>(buf.data, buf.dataSize);
+    case QNN_DATATYPE_UINT_16:
+      return JSONFromRawArray<uint16_t>(buf.data, buf.dataSize);
+    case QNN_DATATYPE_UINT_32:
+      return JSONFromRawArray<uint32_t>(buf.data, buf.dataSize);
+    case QNN_DATATYPE_UINT_64:
+      return JSONFromRawArray<uint64_t>(buf.data, buf.dataSize);
+    case QNN_DATATYPE_FLOAT_16:  // Print float16 as float32 in JSON
+    case QNN_DATATYPE_FLOAT_32:
+      return JSONFromRawArray<float>(buf.data, buf.dataSize);
+    default:
+      return nlohmann::json::array();  // Default to empty array for unsupported types.
+  }
+}
+
+static nlohmann::json GetQnnTensorJSON(const Qnn_Tensor_t& tensor, bool include_static_data = false) {
+  using json = nlohmann::json;
+  json tensor_json = json::object();
+
+  if (tensor.version != QNN_TENSOR_VERSION_1) {
+    ORT_THROW("QNN tensor version not supported, QNN tensor version: ", tensor.version);
+  }
+
+  tensor_json["id"] = tensor.v1.id;
+  tensor_json["type"] = tensor.v1.type;
+  tensor_json["dataFormat"] = tensor.v1.dataFormat;
+  tensor_json["data_type"] = tensor.v1.dataType;
+  tensor_json["src_axis_format"] = "NOT_YET_DEFINED";
+  tensor_json["axis_format"] = "NOT_YET_DEFINED";
+
+  const Qnn_QuantizeParams_t& quant_params = tensor.v1.quantizeParams;
+  tensor_json["quant_params"] = {
+      {"definition", quant_params.encodingDefinition},
+      {"encoding", quant_params.quantizationEncoding},
+      {"scale_offset", {{"scale", quant_params.scaleOffsetEncoding.scale}, {"offset", quant_params.scaleOffsetEncoding.offset}}}};
+
+  gsl::span<const uint32_t> dims{tensor.v1.dimensions, tensor.v1.rank};
+  tensor_json["dims"] = JSONFromSpan(dims);
+
+  if (tensor.v1.type == Qnn_TensorType_t::QNN_TENSOR_TYPE_STATIC) {
+    if (include_static_data) {
+      tensor_json["data"] = GetQnnClientBufJSON(tensor.v1.clientBuf, tensor.v1.dataType);
+    } else {
+      std::stringstream ss;
+      ss << CalcQnnTensorNumElems(tensor);
+      tensor_json["params_count"] = ss.str();
+    }
+  }
+
+  return tensor_json;
+}
+
+static nlohmann::json GetQnnScalarParamJSON(const Qnn_Scalar_t& param) {
+  nlohmann::json param_json = nlohmann::json::object();
+  std::stringstream ss;
+  ss << static_cast<uint64_t>(param.dataType);
+
+  switch (param.dataType) {
+    case QNN_DATATYPE_BOOL_8:  // Print bool the same as int8 (0 or 1)
+    case QNN_DATATYPE_INT_8:
+      param_json[ss.str()] = param.int8Value;
+      break;
+    case QNN_DATATYPE_INT_16:
+      param_json[ss.str()] = param.int16Value;
+      break;
+    case QNN_DATATYPE_INT_32:
+      param_json[ss.str()] = param.int32Value;
+      break;
+    case QNN_DATATYPE_UINT_8:
+      param_json[ss.str()] = param.uint8Value;
+      break;
+    case QNN_DATATYPE_UINT_16:
+      param_json[ss.str()] = param.uint16Value;
+      break;
+    case QNN_DATATYPE_UINT_32:
+      param_json[ss.str()] = param.uint32Value;
+      break;
+    case QNN_DATATYPE_FLOAT_32:
+      param_json[ss.str()] = param.floatValue;
+      break;
+    default:
+      // Do nothing for unsupported types.
+      break;
+  }
+
+  return param_json;
+}
+
+static nlohmann::json GetQnnTensorNamesJSON(gsl::span<const Qnn_Tensor_t> tensors) {
+  nlohmann::json names_json = nlohmann::json::array();
+
+  for (const auto& tensor : tensors) {
+    names_json.push_back(tensor.v1.name);
+  }
+
+  return names_json;
+}
+
+static nlohmann::json GetQnnOpJSON(const Qnn_OpConfig_t& node) {
+  using json = nlohmann::json;
+  json op_json = json::object();
+  op_json["package"] = node.v1.packageName;
+  op_json["type"] = node.v1.typeName;
+
+  json tensor_params_json = json::object();
+  json scalar_params_json = json::object();
+
+  gsl::span<const Qnn_Param_t> params{node.v1.params, node.v1.numOfParams};
+  for (const auto& param : params) {
+    if (param.paramType == QNN_PARAMTYPE_SCALAR) {
+      scalar_params_json[param.name] = GetQnnScalarParamJSON(param.scalarParam);
+    } else if (param.paramType == QNN_PARAMTYPE_TENSOR) {
+      tensor_params_json[param.name][param.tensorParam.v1.name] = GetQnnTensorJSON(param.tensorParam, true);
+    }
+  }
+
+  op_json["tensor_params"] = std::move(tensor_params_json);
+  op_json["scalar_params"] = std::move(scalar_params_json);
+  op_json["input_names"] = GetQnnTensorNamesJSON(gsl::span<const Qnn_Tensor_t>{node.v1.inputTensors, node.v1.numOfInputs});
+  op_json["output_names"] = GetQnnTensorNamesJSON(gsl::span<const Qnn_Tensor_t>{node.v1.outputTensors, node.v1.numOfOutputs});
+  op_json["macs_per_inference"] = "";  // Don't know what this is.
+
+  return op_json;
+}
+
+QnnJSONGraph::QnnJSONGraph() {
+  using json = nlohmann::json;
+
+  json_ = {
+      {"model.cpp", ""},
+      {"model.bin", ""},
+      {"converter_command", ""},
+      {"copyright_str", ""},
+      {"op_types", json::array()},
+      {"Total parameters", ""},
+      {"Total MACs per inference", ""},
+      {"graph", {{"tensors", json::object()}, {"nodes", json::object()}}}
+  };
+}
+
+void QnnJSONGraph::AddOp(const QnnOpConfigWrapper& op_conf_wrapper) {
+  // Serialize inputs and outputs.
+  AddOpTensors({op_conf_wrapper.GetInputTensors(), op_conf_wrapper.GetInputsNum()});
+  AddOpTensors({op_conf_wrapper.GetOutputTensors(), op_conf_wrapper.GetOutputsNum()});
+
+  // Track unique op types (serialized in Finalize()).
+  const std::string& op_type = op_conf_wrapper.GetTypeName();
+  if (seen_op_types_.count(op_type) == 0) {
+    seen_op_types_.insert(op_type);
+  }
+
+  // Serialize op
+  json_["graph"]["nodes"][op_conf_wrapper.GetOpName()] = GetQnnOpJSON(op_conf_wrapper.GetQnnOpConfig());
+}
+
+void QnnJSONGraph::AddOpTensors(gsl::span<const Qnn_Tensor_t> tensors) {
+  for (const auto& tensor : tensors) {
+    std::string name = GetQnnTensorName(tensor);  // Copies name into std::string, which is moved into seen_tensors_.
+    if (seen_tensors_.count(name) == 0) {
+      json_["graph"]["tensors"][name] = GetQnnTensorJSON(tensor);
+      seen_tensors_.insert(std::move(name));
+    }
+  }
+}
+
+const nlohmann::json& QnnJSONGraph::Finalize() {
+  json_["op_types"] = seen_op_types_;
+  return json_;
+}
+
 }  // namespace utils
 }  // namespace qnn
 }  // namespace onnxruntime
