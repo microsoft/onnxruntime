@@ -48,7 +48,6 @@ stages:
     DoCompliance: ${{ parameters.DoCompliance }}
     DoEsrp: ${{ parameters.DoEsrp }}
     IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
-    ReleaseVersionSuffix: ${{ parameters.ReleaseVersionSuffix }}
     OrtNugetPackageId: 'Microsoft.ML.OnnxRuntime'
     AdditionalBuildFlags: ''
     AdditionalWinBuildFlags: '--enable_onnx_tests --enable_wcos'
@@ -60,7 +59,6 @@ stages:
     DoCompliance: ${{ parameters.DoCompliance }}
     DoEsrp: ${{ parameters.DoEsrp }}
     IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
-    ReleaseVersionSuffix: ${{ parameters.ReleaseVersionSuffix }}
     OrtNugetPackageId: 'Microsoft.ML.OnnxRuntime.Training'
     AdditionalBuildFlags: '--enable_training_apis'
     AdditionalWinBuildFlags: '--enable_onnx_tests --enable_wcos'
@@ -582,7 +580,7 @@ stages:
         #
         # 'Any CPU' is the default (first 'mixed' platform specified in the csproj) so this should be fine.
         script: |
-          dotnet build .\src\Microsoft.ML.OnnxRuntime\Microsoft.ML.OnnxRuntime.csproj -p:SelectedTargets=Net6 -p:Configuration=RelWithDebInfo -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId="Microsoft.ML.OnnxRuntime.Gpu" -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }} -p:ReleaseVersionSuffix=${{ parameters.ReleaseVersionSuffix }} -p:ReleaseVersionSuffix=${{ parameters.ReleaseVersionSuffix }}
+          dotnet build .\src\Microsoft.ML.OnnxRuntime\Microsoft.ML.OnnxRuntime.csproj -p:SelectedTargets=Net6 -p:Configuration=RelWithDebInfo -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId="Microsoft.ML.OnnxRuntime.Gpu" -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }} -p:ReleaseVersionSuffix=${{ parameters.ReleaseVersionSuffix }}
         workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
     - task: MSBuild@1
