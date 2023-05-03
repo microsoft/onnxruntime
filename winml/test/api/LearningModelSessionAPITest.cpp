@@ -1388,12 +1388,6 @@ static void ModelBuilding_DiscreteFourierTransform_Internal(LearningModelDeviceK
 }
 #endif
 
-static void ModelBuilding_GridSample() {
-#if !defined(BUILD_INBOX)
-  ModelBuilding_GridSample_Internal(LearningModelDeviceKind::DirectX);
-#endif
-}
-
 static void ModelBuilding_GridSampleDeviceDirectX() {
 #if !defined(BUILD_INBOX)
   ModelBuilding_GridSample_Internal(LearningModelDeviceKind::DirectX);
@@ -1704,7 +1698,6 @@ const LearningModelSessionAPITestsApi& getapi() {
     ModelBuilding_DiscreteFourierTransformInverseIdentity,
     ModelBuilding_DiscreteFourierTransformDeviceDirectX,
     ModelBuilding_DiscreteFourierTransformInverseIdentityDeviceDirectX,
-    ModelBuilding_GridSample,
     ModelBuilding_GridSampleDeviceDirectX,
     ModelBuilding_HannWindow,
     ModelBuilding_HammingWindow,

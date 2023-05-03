@@ -30,7 +30,6 @@ struct LearningModelSessionAPITestsApi {
   VoidTest ModelBuilding_DiscreteFourierTransformInverseIdentity;
   VoidTest ModelBuilding_DiscreteFourierTransformDeviceDirectX;
   VoidTest ModelBuilding_DiscreteFourierTransformInverseIdentityDeviceDirectX;
-  VoidTest ModelBuilding_GridSample;
   VoidTest ModelBuilding_GridSampleDeviceDirectX;
   VoidTest ModelBuilding_HannWindow;
   VoidTest ModelBuilding_HammingWindow;
@@ -70,7 +69,6 @@ WINML_TEST(LearningModelSessionAPITests, ModelBuilding_DiscreteFourierTransform)
 WINML_TEST(LearningModelSessionAPITests, ModelBuilding_DiscreteFourierTransformInverseIdentity)
 WINML_TEST(LearningModelSessionAPITests, ModelBuilding_DiscreteFourierTransformDeviceDirectX)
 WINML_TEST(LearningModelSessionAPITests, ModelBuilding_DiscreteFourierTransformInverseIdentityDeviceDirectX)
-WINML_TEST(LearningModelSessionAPITests, ModelBuilding_GridSample)
 WINML_TEST(LearningModelSessionAPITests, ModelBuilding_GridSampleDeviceDirectX)
 WINML_TEST(LearningModelSessionAPITests, ModelBuilding_HannWindow)
 WINML_TEST(LearningModelSessionAPITests, ModelBuilding_HammingWindow)
