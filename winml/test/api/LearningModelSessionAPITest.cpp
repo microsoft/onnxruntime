@@ -1148,8 +1148,7 @@ static void GridSample(
     const std::vector<int64_t>& grid_dims,
     bool align_corners,
     Mode mode,
-    PaddingMode padding_mode,
-    const std::vector<T>& expected_output
+    PaddingMode padding_mode
     ) {
   const hstring modes[] = {
       L"bilinear",
@@ -1161,7 +1160,11 @@ static void GridSample(
       L"border",
       L"reflection"};
 
-  printf("Grid Sample");
+  printf("GridSample[Mode=%ls, PaddingMode=%ls, AlignCorners=%s] ",
+         modes[static_cast<uint32_t>(mode)].c_str(),
+         padding_modes[static_cast<uint32_t>(padding_mode)].c_str(),
+         align_corners ? "True":"False"
+      );
   auto model =
     LearningModelBuilder::Create(17)
       .Inputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Input", TensorKind::Float, input_dims))
@@ -1175,32 +1178,37 @@ static void GridSample(
         .SetAttribute(L"padding_mode", TensorString::CreateFromArray({ }, { padding_modes[static_cast<uint32_t>(padding_mode)] }))
         .SetOutput(L"Y", L"Output"))
       .CreateModel();
+  auto cpu_device = LearningModelDevice(LearningModelDeviceKind::Cpu);
   auto device = LearningModelDevice(kind);
-  LearningModelSession session(model, device);
-  LearningModelBinding binding(session);
+  LearningModelSession device_session(model, device);
+  LearningModelBinding device_binding(device_session);
+  LearningModelSession cpu_session(model, cpu_device);
+  LearningModelBinding cpu_binding(cpu_session);
 
-  binding.Bind(L"Input", TensorFloat::CreateFromShapeArrayAndDataArray(input_dims, input));
-  binding.Bind(L"Grid", TensorFloat::CreateFromShapeArrayAndDataArray(grid_dims, grid));
+  device_binding.Bind(L"Input", TensorFloat::CreateFromShapeArrayAndDataArray(input_dims, input));
+  device_binding.Bind(L"Grid", TensorFloat::CreateFromShapeArrayAndDataArray(grid_dims, grid));
+  cpu_binding.Bind(L"Input", TensorFloat::CreateFromShapeArrayAndDataArray(input_dims, input));
+  cpu_binding.Bind(L"Grid", TensorFloat::CreateFromShapeArrayAndDataArray(grid_dims, grid));
+
+  auto cpu_result = cpu_session.Evaluate(cpu_binding, L"");
 
   // Evaluate
   auto start = std::chrono::high_resolution_clock::now();
-  auto result = session.Evaluate(binding, L"");
+  auto device_result = device_session.Evaluate(device_binding, L"");
   auto end = std::chrono::high_resolution_clock::now();
   std::chrono::duration<double, std::micro> evaluate_duration_in_microseconds = end - start;
-  printf("\n  Evaluate Took: %fus", evaluate_duration_in_microseconds.count());
+  printf("took %fus.\n", evaluate_duration_in_microseconds.count());
 
   // Check results
   constexpr float error_threshold = .001f;
-  auto y_tensor = result.Outputs().Lookup(L"Output").as<TensorFloat>();
-  auto y_ivv = y_tensor.GetAsVectorView();
-  for (uint32_t i = 0; i < y_ivv.Size(); i ++) {
-    auto inRange = abs(y_ivv.GetAt(i) - expected_output[i]) < error_threshold;
-    if (!inRange) {
-      printf("[%d] ACTUAL(%f) EXPECTED(%f)\n", (int)i, y_ivv.GetAt(i), expected_output[i]);
-    }
-    WINML_EXPECT_TRUE(inRange);
+  auto device_y_tensor = device_result.Outputs().Lookup(L"Output").as<TensorFloat>();
+  auto device_y_ivv = device_y_tensor.GetAsVectorView();
+  auto cpu_y_tensor = cpu_result.Outputs().Lookup(L"Output").as<TensorFloat>();
+  auto cpu_y_ivv = cpu_y_tensor.GetAsVectorView();
+  WINML_EXPECT_EQUAL(device_y_ivv.Size(), cpu_y_ivv.Size());
+  for (uint32_t i = 0; i < device_y_ivv.Size(); i++) {
+    WINML_EXPECT_TRUE(abs(device_y_ivv.GetAt(i) - cpu_y_ivv.GetAt(i)) < error_threshold);
   }
-  printf("\n\n");
 }
 
 static void ModelBuilding_GridSample_Internal(LearningModelDeviceKind kind) {
@@ -1222,110 +1230,28 @@ static void ModelBuilding_GridSample_Internal(LearningModelDeviceKind kind) {
   };
   std::transform(grid.begin(), grid.end(), grid.begin(), [&](auto& in) { return in / grid.size(); });
 
-  std::vector<float> bilinear_zeros_output =
-  {
-      7.6600f,  8.0600f,  8.4600f,  8.8600f,  9.2600f,
-       9.6600f, 10.0600f, 10.4600f, 10.8600f, 11.2600f,
-      11.6600f, 12.0600f, 12.4600f, 12.8600f, 13.2600f,
-      13.6600f, 14.0600f, 14.4600f, 14.8600f, 13.8180f,
-      11.6100f,  9.5940f,  7.7700f,  6.1380f,  4.6980f,
-  };
-
-  std::vector<float> bilinear_border_output =
-  {
-      7.6600f,  8.0600f,  8.4600f,  8.8600f,  9.2600f,
-       9.6600f, 10.0600f, 10.4600f, 10.8600f, 11.2600f,
-      11.6600f, 12.0600f, 12.4600f, 12.8600f, 13.2600f,
-      13.6600f, 14.0600f, 14.4600f, 14.8600f, 15.0000f,
-      15.0000f, 15.0000f, 15.0000f, 15.0000f, 15.0000f,
-  };
-
-  std::vector<float> bilinear_reflection_output =
-  {
-      7.6600f,  8.0600f,  8.4600f,  8.8600f,  9.2600f,
-      9.6600f,  10.0600f, 10.4600f, 10.8600f, 11.2600f,
-      11.6600f, 12.0600f, 12.4600f, 12.8600f, 13.2600f,
-      13.6600f, 14.0600f, 14.4600f, 14.8600f, 15.0000f,
-      15.0000f, 15.0000f, 15.0000f, 15.0000f, 15.0000f,
-  };
-
-  std::vector<float> nearest_zeros_output =
-  {
-      10.0f, 10.0f, 10.0f, 10.0f, 10.0f,
-      10.0f, 10.0f, 10.0f, 10.0f, 10.0f,
-      10.0f, 10.0f, 10.0f, 15.0f, 15.0f,
-      15.0f, 15.0f, 15.0f, 15.0f, 15.0f,
-      15.0f, 15.0f, 15.0f, 15.0f, 15.0f,
-  };
-
-  std::vector<float> nearest_border_output =
-  {
-      10.0f, 10.0f, 10.0f, 10.0f, 10.0f,
-      10.0f, 10.0f, 10.0f, 10.0f, 10.0f,
-      10.0f, 10.0f, 10.0f, 15.0f, 15.0f,
-      15.0f, 15.0f, 15.0f, 15.0f, 15.0f,
-      15.0f, 15.0f, 15.0f, 15.0f, 15.0f,
-  };
-
-  std::vector<float> nearest_reflection_output =
-  {
-      10.0f, 10.0f, 10.0f, 10.0f, 10.0f,
-      10.0f, 10.0f, 10.0f, 10.0f, 10.0f,
-      10.0f, 10.0f, 10.0f, 15.0f, 15.0f,
-      15.0f, 15.0f, 15.0f, 15.0f, 15.0f,
-      15.0f, 15.0f, 15.0f, 15.0f, 15.0f,
-  };
-
-  std::vector<float> bicubic_zeros_output =
-  {
-      7.6203f,  7.9274f,  8.2561f,  8.6216f,  9.0394f,
-      9.5247f,  10.0935f, 10.7831f, 11.6228f, 12.5738f,
-      13.5873f, 14.6056f, 15.5619f, 16.3817f, 16.9848f,
-      17.2901f, 17.2206f, 16.7104f, 15.7130f, 14.2379f,
-      12.4794f, 10.5861f, 8.6663f,  6.8162f,  5.1159f,
-  };
-
-  std::vector<float> bicubic_border_output =
-  {
-      7.6203f,  7.9274f,  8.2561f,  8.6216f,  9.0394f,
-      9.5247f,  10.0894f, 10.6584f, 11.1846f, 11.6711f,
-      12.1217f, 12.5403f, 12.9306f, 13.2966f, 13.6420f,
-      13.9707f, 14.2865f, 14.5933f, 14.8949f, 15.1734f,
-      15.3714f, 15.4923f, 15.5478f, 15.5493f, 15.5084f,
-  };
-
-  std::vector<float> bicubic_reflection_output =
-  {
-      7.6203f,  7.9274f,  8.2561f,  8.6216f,  9.0394f,
-      9.5247f,  10.0894f, 10.6584f, 11.1846f, 11.6711f,
-      12.1217f, 12.5403f, 12.9306f, 13.2966f, 13.6420f,
-      13.9707f, 14.2865f, 14.5933f, 14.8949f, 15.1839f,
-      15.4287f, 15.6255f, 15.7743f, 15.8751f, 15.9279f,
-  };
-
   std::vector<int64_t> input_dims = {1, 1, 4, 4};
   std::vector<int64_t> grid_dims = {1, 5, 5, 2};
 
-  printf("Mode::Bilinear, PaddingMode::Zeros\n");
-  GridSample(kind, input, input_dims, grid, grid_dims, false, Mode::Bilinear, PaddingMode::Zeros, bilinear_zeros_output);
-  printf("Mode::Bilinear, PaddingMode::Border\n");
-  GridSample(kind, input, input_dims, grid, grid_dims, false, Mode::Bilinear, PaddingMode::Border, bilinear_border_output);
-  printf("Mode::Bilinear, PaddingMode::Reflection\n");
-  GridSample(kind, input, input_dims, grid, grid_dims, false, Mode::Bilinear, PaddingMode::Reflection, bilinear_reflection_output);
+  GridSample(kind, input, input_dims, grid, grid_dims, false, Mode::Bilinear, PaddingMode::Zeros);
+  GridSample(kind, input, input_dims, grid, grid_dims, false, Mode::Bilinear, PaddingMode::Border);
+  GridSample(kind, input, input_dims, grid, grid_dims, false, Mode::Bilinear, PaddingMode::Reflection);
+  GridSample(kind, input, input_dims, grid, grid_dims, false, Mode::Nearest, PaddingMode::Zeros);
+  GridSample(kind, input, input_dims, grid, grid_dims, false, Mode::Nearest, PaddingMode::Border);
+  GridSample(kind, input, input_dims, grid, grid_dims, false, Mode::Nearest, PaddingMode::Reflection);
+  GridSample(kind, input, input_dims, grid, grid_dims, false, Mode::Bicubic, PaddingMode::Zeros);
+  GridSample(kind, input, input_dims, grid, grid_dims, false, Mode::Bicubic, PaddingMode::Border);
+  GridSample(kind, input, input_dims, grid, grid_dims, false, Mode::Bicubic, PaddingMode::Reflection);
 
-  printf("Mode::Nearest, PaddingMode::Zeros\n");
-  GridSample(kind, input, input_dims, grid, grid_dims, false, Mode::Nearest, PaddingMode::Zeros, nearest_zeros_output);
-  printf("Mode::Nearest, PaddingMode::Border\n");
-  GridSample(kind, input, input_dims, grid, grid_dims, false, Mode::Nearest, PaddingMode::Border, nearest_border_output);
-  printf("Mode::Nearest, PaddingMode::Reflection\n");
-  GridSample(kind, input, input_dims, grid, grid_dims, false, Mode::Nearest, PaddingMode::Reflection, nearest_reflection_output);
-
-  printf("Mode::Bicubic, PaddingMode::Zeros\n");
-  GridSample(kind, input, input_dims, grid, grid_dims, false, Mode::Bicubic, PaddingMode::Zeros, bicubic_zeros_output);
-  printf("Mode::Bicubic, PaddingMode::Border\n");
-  GridSample(kind, input, input_dims, grid, grid_dims, false, Mode::Bicubic, PaddingMode::Border, bicubic_border_output);
-  printf("Mode::Bicubic, PaddingMode::Reflection\n");
-  GridSample(kind, input, input_dims, grid, grid_dims, false, Mode::Bicubic, PaddingMode::Reflection, bicubic_reflection_output);
+  GridSample(kind, input, input_dims, grid, grid_dims, true, Mode::Bilinear, PaddingMode::Zeros);
+  GridSample(kind, input, input_dims, grid, grid_dims, true, Mode::Bilinear, PaddingMode::Border);
+  GridSample(kind, input, input_dims, grid, grid_dims, true, Mode::Bilinear, PaddingMode::Reflection);
+  GridSample(kind, input, input_dims, grid, grid_dims, true, Mode::Nearest, PaddingMode::Zeros);
+  GridSample(kind, input, input_dims, grid, grid_dims, true, Mode::Nearest, PaddingMode::Border);
+  GridSample(kind, input, input_dims, grid, grid_dims, true, Mode::Nearest, PaddingMode::Reflection);
+  GridSample(kind, input, input_dims, grid, grid_dims, true, Mode::Bicubic, PaddingMode::Zeros);
+  GridSample(kind, input, input_dims, grid, grid_dims, true, Mode::Bicubic, PaddingMode::Border);
+  GridSample(kind, input, input_dims, grid, grid_dims, true, Mode::Bicubic, PaddingMode::Reflection);
 }
 
 static void ModelBuilding_DiscreteFourierTransform_Internal(LearningModelDeviceKind kind) {
@@ -1464,7 +1390,7 @@ static void ModelBuilding_DiscreteFourierTransform_Internal(LearningModelDeviceK
 
 static void ModelBuilding_GridSample() {
 #if !defined(BUILD_INBOX)
-  ModelBuilding_GridSample_Internal(LearningModelDeviceKind::Cpu);
+  ModelBuilding_GridSample_Internal(LearningModelDeviceKind::DirectX);
 #endif
 }
 
