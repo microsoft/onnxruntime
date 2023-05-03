@@ -345,7 +345,7 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
     // If the environment variable 'ORT_TENSORRT_UNAVAILABLE' exists, then we do not load TensorRT. This is set by _ld_preload for the manylinux case
     // as in that case, trying to load the library itself will result in a crash due to the way that auditwheel strips dependencies.
     if (Env::Default().GetEnvironmentVar("ORT_TENSORRT_UNAVAILABLE").empty()) {
-      std::string calibration_table, cache_path, lib_path;
+      std::string calibration_table, cache_path, lib_path, min_profile, max_profile, opt_profile;
       auto it = provider_options_map.find(type);
       if (it != provider_options_map.end()) {
         OrtTensorRTProviderOptionsV2 params{
@@ -376,6 +376,9 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
             0,
             2,
             -1,
+            nullptr,
+            nullptr,
+            nullptr,
             nullptr,
             nullptr};
         for (auto option : it->second) {
@@ -574,6 +577,27 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
             } else {
               ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_extra_plugin_lib_paths' should be a path string.\n");
             }
+          } else if (option.first == "trt_profile_min_shapes") {
+            if (!option.second.empty()) {
+              min_profile = option.second;
+              params.trt_profile_min_shapes = min_profile.c_str();
+            } else {
+              ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_profile_min_shapes' should be a string of 'input1:dim1xdimd2...,input2:dim1xdim2...,...'.\n");
+            }
+          } else if (option.first == "trt_profile_max_shapes") {
+            if (!option.second.empty()) {
+              max_profile = option.second;
+              params.trt_profile_max_shapes = max_profile.c_str();
+            } else {
+              ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_profile_max_shapes' should be a string of 'input1:dim1xdimd2...,input2:dim1xdim2...,...'.\n");
+            }
+          } else if (option.first == "trt_profile_opt_shapes") {
+            if (!option.second.empty()) {
+              opt_profile = option.second;
+              params.trt_profile_opt_shapes = opt_profile.c_str();
+            } else {
+              ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_profile_opt_shapes' should be a string of 'input1:dim1xdimd2...,input2:dim1xdim2...,...'.\n");
+            }
           } else {
             ORT_THROW("Invalid TensorRT EP option: ", option.first);
           }
@@ -737,33 +761,12 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
 #endif
   } else if (type == kVitisAIExecutionProvider) {
 #if USE_VITISAI
-    // Retrieve Vitis AI provider options
-    // `target`: The name of the DPU target (default is DPUCADX8G for backward compatibility).
-    // `export_runtime_module`: export a Vitis AI PyXIR runtime module to the specified file.
-    //    This can be used for cross compilation or saving state.
-    // `load_runtime_module`: Load an exported runtime module from disk.
-    std::string target = "DPUCADX8G";
-    std::string export_runtime_module = "";
-    std::string load_runtime_module = "";
-    auto it = provider_options_map.find(type);
+    const auto it = provider_options_map.find(type);
     if (it != provider_options_map.end()) {
-      auto vitis_ai_provider_options = it->second;
-      auto vai_options_it = vitis_ai_provider_options.find("target");
-      if (vai_options_it != vitis_ai_provider_options.end()) {
-        target = vai_options_it->second;
-      }
-      vai_options_it = vitis_ai_provider_options.find("export_runtime_module");
-      if (vai_options_it != vitis_ai_provider_options.end()) {
-        export_runtime_module = vai_options_it->second;
-      }
-      vai_options_it = vitis_ai_provider_options.find("load_runtime_module");
-      if (vai_options_it != vitis_ai_provider_options.end()) {
-        load_runtime_module = vai_options_it->second;
-      }
+      LOGS_DEFAULT(FATAL) << "cannot find provider options for VitisAIExecutionProvider";
     }
-    return onnxruntime::VitisAIProviderFactoryCreator::Create(target.c_str(), 0,
-                                                              export_runtime_module.c_str(),
-                                                              load_runtime_module.c_str())
+    const auto& vitis_option_map = it->second;
+    return onnxruntime::VitisAIProviderFactoryCreator::Create(vitis_option_map)
         ->CreateProvider();
 #endif
   } else if (type == kAclExecutionProvider) {

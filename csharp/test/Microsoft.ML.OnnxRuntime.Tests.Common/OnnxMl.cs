@@ -71,7 +71,7 @@ namespace Onnx {
             "X2luZm8YDSADKAsyFC5vbm54LlZhbHVlSW5mb1Byb3RvEjcKF3F1YW50aXph",
             "dGlvbl9hbm5vdGF0aW9uGA4gAygLMhYub25ueC5UZW5zb3JBbm5vdGF0aW9u",
             "SgQIAxAESgQIBBAFSgQIBhAKUgppcl92ZXJzaW9uUhBwcm9kdWNlcl92ZXJz",
-            "aW9uUgxwcm9kdWNlcl90YWdSBmRvbWFpbiK4BQoLVGVuc29yUHJvdG8SDAoE",
+            "aW9uUgxwcm9kdWNlcl90YWdSBmRvbWFpbiKCBgoLVGVuc29yUHJvdG8SDAoE",
             "ZGltcxgBIAMoAxIRCglkYXRhX3R5cGUYAiABKAUSKgoHc2VnbWVudBgDIAEo",
             "CzIZLm9ubnguVGVuc29yUHJvdG8uU2VnbWVudBIWCgpmbG9hdF9kYXRhGAQg",
             "AygCQgIQARIWCgppbnQzMl9kYXRhGAUgAygFQgIQARITCgtzdHJpbmdfZGF0",
@@ -81,46 +81,50 @@ namespace Onnx {
             "bxI1Cg1kYXRhX2xvY2F0aW9uGA4gASgOMh4ub25ueC5UZW5zb3JQcm90by5E",
             "YXRhTG9jYXRpb24SFwoLZG91YmxlX2RhdGEYCiADKAFCAhABEhcKC3VpbnQ2",
             "NF9kYXRhGAsgAygEQgIQARolCgdTZWdtZW50Eg0KBWJlZ2luGAEgASgDEgsK",
-            "A2VuZBgCIAEoAyLaAQoIRGF0YVR5cGUSDQoJVU5ERUZJTkVEEAASCQoFRkxP",
+            "A2VuZBgCIAEoAyKkAgoIRGF0YVR5cGUSDQoJVU5ERUZJTkVEEAASCQoFRkxP",
             "QVQQARIJCgVVSU5UOBACEggKBElOVDgQAxIKCgZVSU5UMTYQBBIJCgVJTlQx",
             "NhAFEgkKBUlOVDMyEAYSCQoFSU5UNjQQBxIKCgZTVFJJTkcQCBIICgRCT09M",
             "EAkSCwoHRkxPQVQxNhAKEgoKBkRPVUJMRRALEgoKBlVJTlQzMhAMEgoKBlVJ",
             "TlQ2NBANEg0KCUNPTVBMRVg2NBAOEg4KCkNPTVBMRVgxMjgQDxIMCghCRkxP",
-            "QVQxNhAQIikKDERhdGFMb2NhdGlvbhILCgdERUZBVUxUEAASDAoIRVhURVJO",
-            "QUwQASJoChFTcGFyc2VUZW5zb3JQcm90bxIhCgZ2YWx1ZXMYASABKAsyES5v",
-            "bm54LlRlbnNvclByb3RvEiIKB2luZGljZXMYAiABKAsyES5vbm54LlRlbnNv",
-            "clByb3RvEgwKBGRpbXMYAyADKAMilQEKEFRlbnNvclNoYXBlUHJvdG8SLQoD",
-            "ZGltGAEgAygLMiAub25ueC5UZW5zb3JTaGFwZVByb3RvLkRpbWVuc2lvbhpS",
-            "CglEaW1lbnNpb24SEwoJZGltX3ZhbHVlGAEgASgDSAASEwoJZGltX3BhcmFt",
-            "GAIgASgJSAASEgoKZGVub3RhdGlvbhgDIAEoCUIHCgV2YWx1ZSKlBQoJVHlw",
-            "ZVByb3RvEi0KC3RlbnNvcl90eXBlGAEgASgLMhYub25ueC5UeXBlUHJvdG8u",
-            "VGVuc29ySAASMQoNc2VxdWVuY2VfdHlwZRgEIAEoCzIYLm9ubnguVHlwZVBy",
-            "b3RvLlNlcXVlbmNlSAASJwoIbWFwX3R5cGUYBSABKAsyEy5vbm54LlR5cGVQ",
-            "cm90by5NYXBIABIxCg1vcHRpb25hbF90eXBlGAkgASgLMhgub25ueC5UeXBl",
-            "UHJvdG8uT3B0aW9uYWxIABI6ChJzcGFyc2VfdGVuc29yX3R5cGUYCCABKAsy",
-            "HC5vbm54LlR5cGVQcm90by5TcGFyc2VUZW5zb3JIABItCgtvcGFxdWVfdHlw",
-            "ZRgHIAEoCzIWLm9ubnguVHlwZVByb3RvLk9wYXF1ZUgAEhIKCmRlbm90YXRp",
-            "b24YBiABKAkaQgoGVGVuc29yEhEKCWVsZW1fdHlwZRgBIAEoBRIlCgVzaGFw",
-            "ZRgCIAEoCzIWLm9ubnguVGVuc29yU2hhcGVQcm90bxouCghTZXF1ZW5jZRIi",
-            "CgllbGVtX3R5cGUYASABKAsyDy5vbm54LlR5cGVQcm90bxo8CgNNYXASEAoI",
-            "a2V5X3R5cGUYASABKAUSIwoKdmFsdWVfdHlwZRgCIAEoCzIPLm9ubnguVHlw",
-            "ZVByb3RvGi4KCE9wdGlvbmFsEiIKCWVsZW1fdHlwZRgBIAEoCzIPLm9ubngu",
-            "VHlwZVByb3RvGkgKDFNwYXJzZVRlbnNvchIRCgllbGVtX3R5cGUYASABKAUS",
-            "JQoFc2hhcGUYAiABKAsyFi5vbm54LlRlbnNvclNoYXBlUHJvdG8aJgoGT3Bh",
-            "cXVlEg4KBmRvbWFpbhgBIAEoCRIMCgRuYW1lGAIgASgJQgcKBXZhbHVlIjUK",
-            "Ek9wZXJhdG9yU2V0SWRQcm90bxIOCgZkb21haW4YASABKAkSDwoHdmVyc2lv",
-            "bhgCIAEoAyLlAQoNRnVuY3Rpb25Qcm90bxIMCgRuYW1lGAEgASgJEg0KBWlu",
-            "cHV0GAQgAygJEg4KBm91dHB1dBgFIAMoCRIRCglhdHRyaWJ1dGUYBiADKAkS",
-            "HQoEbm9kZRgHIAMoCzIPLm9ubnguTm9kZVByb3RvEhIKCmRvY19zdHJpbmcY",
-            "CCABKAkSLgoMb3BzZXRfaW1wb3J0GAkgAygLMhgub25ueC5PcGVyYXRvclNl",
-            "dElkUHJvdG8SDgoGZG9tYWluGAogASgJSgQIAhADSgQIAxAEUg1zaW5jZV92",
-            "ZXJzaW9uUgZzdGF0dXMq5AEKB1ZlcnNpb24SEgoOX1NUQVJUX1ZFUlNJT04Q",
-            "ABIZChVJUl9WRVJTSU9OXzIwMTdfMTBfMTAQARIZChVJUl9WRVJTSU9OXzIw",
-            "MTdfMTBfMzAQAhIYChRJUl9WRVJTSU9OXzIwMTdfMTFfMxADEhgKFElSX1ZF",
-            "UlNJT05fMjAxOV8xXzIyEAQSGAoUSVJfVkVSU0lPTl8yMDE5XzNfMTgQBRIY",
-            "ChRJUl9WRVJTSU9OXzIwMTlfOV8xORAGEhcKE0lSX1ZFUlNJT05fMjAyMF81",
-            "XzgQBxIOCgpJUl9WRVJTSU9OEAgqLgoOT3BlcmF0b3JTdGF0dXMSEAoMRVhQ",
-            "RVJJTUVOVEFMEAASCgoGU1RBQkxFEAFCAkgDYgZwcm90bzM="));
+            "QVQxNhAQEhAKDEZMT0FUOEU0TTNGThAREhIKDkZMT0FUOEU0TTNGTlVaEBIS",
+            "DgoKRkxPQVQ4RTVNMhATEhIKDkZMT0FUOEU1TTJGTlVaEBQiKQoMRGF0YUxv",
+            "Y2F0aW9uEgsKB0RFRkFVTFQQABIMCghFWFRFUk5BTBABImgKEVNwYXJzZVRl",
+            "bnNvclByb3RvEiEKBnZhbHVlcxgBIAEoCzIRLm9ubnguVGVuc29yUHJvdG8S",
+            "IgoHaW5kaWNlcxgCIAEoCzIRLm9ubnguVGVuc29yUHJvdG8SDAoEZGltcxgD",
+            "IAMoAyKVAQoQVGVuc29yU2hhcGVQcm90bxItCgNkaW0YASADKAsyIC5vbm54",
+            "LlRlbnNvclNoYXBlUHJvdG8uRGltZW5zaW9uGlIKCURpbWVuc2lvbhITCglk",
+            "aW1fdmFsdWUYASABKANIABITCglkaW1fcGFyYW0YAiABKAlIABISCgpkZW5v",
+            "dGF0aW9uGAMgASgJQgcKBXZhbHVlIqUFCglUeXBlUHJvdG8SLQoLdGVuc29y",
+            "X3R5cGUYASABKAsyFi5vbm54LlR5cGVQcm90by5UZW5zb3JIABIxCg1zZXF1",
+            "ZW5jZV90eXBlGAQgASgLMhgub25ueC5UeXBlUHJvdG8uU2VxdWVuY2VIABIn",
+            "CghtYXBfdHlwZRgFIAEoCzITLm9ubnguVHlwZVByb3RvLk1hcEgAEjEKDW9w",
+            "dGlvbmFsX3R5cGUYCSABKAsyGC5vbm54LlR5cGVQcm90by5PcHRpb25hbEgA",
+            "EjoKEnNwYXJzZV90ZW5zb3JfdHlwZRgIIAEoCzIcLm9ubnguVHlwZVByb3Rv",
+            "LlNwYXJzZVRlbnNvckgAEi0KC29wYXF1ZV90eXBlGAcgASgLMhYub25ueC5U",
+            "eXBlUHJvdG8uT3BhcXVlSAASEgoKZGVub3RhdGlvbhgGIAEoCRpCCgZUZW5z",
+            "b3ISEQoJZWxlbV90eXBlGAEgASgFEiUKBXNoYXBlGAIgASgLMhYub25ueC5U",
+            "ZW5zb3JTaGFwZVByb3RvGi4KCFNlcXVlbmNlEiIKCWVsZW1fdHlwZRgBIAEo",
+            "CzIPLm9ubnguVHlwZVByb3RvGjwKA01hcBIQCghrZXlfdHlwZRgBIAEoBRIj",
+            "Cgp2YWx1ZV90eXBlGAIgASgLMg8ub25ueC5UeXBlUHJvdG8aLgoIT3B0aW9u",
+            "YWwSIgoJZWxlbV90eXBlGAEgASgLMg8ub25ueC5UeXBlUHJvdG8aSAoMU3Bh",
+            "cnNlVGVuc29yEhEKCWVsZW1fdHlwZRgBIAEoBRIlCgVzaGFwZRgCIAEoCzIW",
+            "Lm9ubnguVGVuc29yU2hhcGVQcm90bxomCgZPcGFxdWUSDgoGZG9tYWluGAEg",
+            "ASgJEgwKBG5hbWUYAiABKAlCBwoFdmFsdWUiNQoST3BlcmF0b3JTZXRJZFBy",
+            "b3RvEg4KBmRvbWFpbhgBIAEoCRIPCgd2ZXJzaW9uGAIgASgDIpQCCg1GdW5j",
+            "dGlvblByb3RvEgwKBG5hbWUYASABKAkSDQoFaW5wdXQYBCADKAkSDgoGb3V0",
+            "cHV0GAUgAygJEhEKCWF0dHJpYnV0ZRgGIAMoCRItCg9hdHRyaWJ1dGVfcHJv",
+            "dG8YCyADKAsyFC5vbm54LkF0dHJpYnV0ZVByb3RvEh0KBG5vZGUYByADKAsy",
+            "Dy5vbm54Lk5vZGVQcm90bxISCgpkb2Nfc3RyaW5nGAggASgJEi4KDG9wc2V0",
+            "X2ltcG9ydBgJIAMoCzIYLm9ubnguT3BlcmF0b3JTZXRJZFByb3RvEg4KBmRv",
+            "bWFpbhgKIAEoCUoECAIQA0oECAMQBFINc2luY2VfdmVyc2lvblIGc3RhdHVz",
+            "Kv4BCgdWZXJzaW9uEhIKDl9TVEFSVF9WRVJTSU9OEAASGQoVSVJfVkVSU0lP",
+            "Tl8yMDE3XzEwXzEwEAESGQoVSVJfVkVSU0lPTl8yMDE3XzEwXzMwEAISGAoU",
+            "SVJfVkVSU0lPTl8yMDE3XzExXzMQAxIYChRJUl9WRVJTSU9OXzIwMTlfMV8y",
+            "MhAEEhgKFElSX1ZFUlNJT05fMjAxOV8zXzE4EAUSGAoUSVJfVkVSU0lPTl8y",
+            "MDE5XzlfMTkQBhIXChNJUl9WRVJTSU9OXzIwMjBfNV84EAcSGAoUSVJfVkVS",
+            "U0lPTl8yMDIxXzdfMzAQCBIOCgpJUl9WRVJTSU9OEAkqLgoOT3BlcmF0b3JT",
+            "dGF0dXMSEAoMRVhQRVJJTUVOVEFMEAASCgoGU1RBQkxFEAFCAkgDYgZwcm90",
+            "bzM="));
       descriptor = pbr::FileDescriptor.FromGeneratedCode(descriptorData,
           new pbr::FileDescriptor[] { },
           new pbr::GeneratedClrTypeInfo(new[] {typeof(global::Onnx.Version), typeof(global::Onnx.OperatorStatus), }, null, new pbr::GeneratedClrTypeInfo[] {
@@ -142,7 +146,7 @@ namespace Onnx {
             new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.TypeProto.Types.SparseTensor), global::Onnx.TypeProto.Types.SparseTensor.Parser, new[]{ "ElemType", "Shape" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.TypeProto.Types.Opaque), global::Onnx.TypeProto.Types.Opaque.Parser, new[]{ "Domain", "Name" }, null, null, null, null)}),
             new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.OperatorSetIdProto), global::Onnx.OperatorSetIdProto.Parser, new[]{ "Domain", "Version" }, null, null, null, null),
-            new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.FunctionProto), global::Onnx.FunctionProto.Parser, new[]{ "Name", "Input", "Output", "Attribute", "Node", "DocString", "OpsetImport", "Domain" }, null, null, null, null)
+            new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.FunctionProto), global::Onnx.FunctionProto.Parser, new[]{ "Name", "Input", "Output", "Attribute", "AttributeProto", "Node", "DocString", "OpsetImport", "Domain" }, null, null, null, null)
           }));
     }
     #endregion
@@ -216,13 +220,19 @@ namespace Onnx {
     /// </summary>
     [pbr::OriginalName("IR_VERSION_2020_5_8")] IrVersion202058 = 7,
     /// <summary>
-    /// IR VERSION 8 published on &lt;TBD>
+    /// IR VERSION 8 published on July 30, 2021
     /// Introduce TypeProto.SparseTensor
     /// Introduce TypeProto.Optional
     /// Added a list of FunctionProtos local to the model
     /// Deprecated since_version and operator status from FunctionProto
     /// </summary>
-    [pbr::OriginalName("IR_VERSION")] IrVersion = 8,
+    [pbr::OriginalName("IR_VERSION_2021_7_30")] IrVersion2021730 = 8,
+    /// <summary>
+    /// IR VERSION 9 published on TBD
+    /// Added AttributeProto to FunctionProto so that default attribute values can be set.
+    /// Added FLOAT8E4M3FN, FLOAT8E4M3FNUZ, FLOAT8E5M2, FLOAT8E5M2FNUZ.
+    /// </summary>
+    [pbr::OriginalName("IR_VERSION")] IrVersion = 9,
   }
 
   /// <summary>
@@ -3860,11 +3870,11 @@ namespace Onnx {
         = pb::FieldCodec.ForInt32(42);
     private readonly pbc::RepeatedField<int> int32Data_ = new pbc::RepeatedField<int>();
     /// <summary>
-    /// For int32, uint8, int8, uint16, int16, bool, and float16 values
-    /// float16 values must be bit-wise converted to an uint16_t prior
+    /// For int32, uint8, int8, uint16, int16, bool, float8, and float16 values
+    /// float16 and float8 values must be bit-wise converted to an uint16_t prior
     /// to writing to the buffer.
     /// When this field is present, the data_type field MUST be
-    /// INT32, INT16, INT8, UINT16, UINT8, BOOL, FLOAT16 or BFLOAT16
+    /// INT32, INT16, INT8, UINT16, UINT8, BOOL, FLOAT16, BFLOAT16, FLOAT8E4M3FN, FLOAT8E4M3FNUZ, FLOAT8E5M2, FLOAT8E5M2FNUZ
     /// </summary>
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
@@ -4486,6 +4496,27 @@ namespace Onnx {
         /// This format has 1 sign bit, 8 exponent bits, and 7 mantissa bits.
         /// </summary>
         [pbr::OriginalName("BFLOAT16")] Bfloat16 = 16,
+        /// <summary>
+        /// Non-IEEE floating-point format based on papers
+        /// FP8 Formats for Deep Learning, https://arxiv.org/abs/2209.05433,
+        /// 8-bit Numerical Formats For Deep Neural Networks, https://arxiv.org/pdf/2206.02915.pdf.
+        /// Operators supported FP8 are Cast, CastLike, QuantizeLinear, DequantizeLinear.
+        /// The computation usually happens inside a block quantize / dequantize
+        /// fused by the runtime.
+        /// </summary>
+        [pbr::OriginalName("FLOAT8E4M3FN")] Float8E4M3Fn = 17,
+        /// <summary>
+        /// float 8, mostly used for coefficients, supports nan, not inf, no negative zero 
+        /// </summary>
+        [pbr::OriginalName("FLOAT8E4M3FNUZ")] Float8E4M3Fnuz = 18,
+        /// <summary>
+        /// follows IEEE 754, supports nan, inf, mostly used for gradients
+        /// </summary>
+        [pbr::OriginalName("FLOAT8E5M2")] Float8E5M2 = 19,
+        /// <summary>
+        /// follows IEEE 754, supports nan, inf, mostly used for gradients, no negative zero
+        /// </summary>
+        [pbr::OriginalName("FLOAT8E5M2FNUZ")] Float8E5M2Fnuz = 20,
       }
 
       /// <summary>
@@ -7743,6 +7774,7 @@ namespace Onnx {
       input_ = other.input_.Clone();
       output_ = other.output_.Clone();
       attribute_ = other.attribute_.Clone();
+      attributeProto_ = other.attributeProto_.Clone();
       node_ = other.node_.Clone();
       docString_ = other.docString_;
       opsetImport_ = other.opsetImport_.Clone();
@@ -7804,12 +7836,30 @@ namespace Onnx {
         = pb::FieldCodec.ForString(50);
     private readonly pbc::RepeatedField<string> attribute_ = new pbc::RepeatedField<string>();
     /// <summary>
-    /// The attributes of the function.
+    /// The attribute parameters of the function.
+    /// It is for function parameters without default values.
     /// </summary>
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public pbc::RepeatedField<string> Attribute {
       get { return attribute_; }
+    }
+
+    /// <summary>Field number for the "attribute_proto" field.</summary>
+    public const int AttributeProtoFieldNumber = 11;
+    private static readonly pb::FieldCodec<global::Onnx.AttributeProto> _repeated_attributeProto_codec
+        = pb::FieldCodec.ForMessage(90, global::Onnx.AttributeProto.Parser);
+    private readonly pbc::RepeatedField<global::Onnx.AttributeProto> attributeProto_ = new pbc::RepeatedField<global::Onnx.AttributeProto>();
+    /// <summary>
+    /// The attribute protos of the function.
+    /// It is for function attributes with default values.
+    /// A function attribute shall be represented either as
+    /// a string attribute or an AttributeProto, not both.
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public pbc::RepeatedField<global::Onnx.AttributeProto> AttributeProto {
+      get { return attributeProto_; }
     }
 
     /// <summary>Field number for the "node" field.</summary>
@@ -7887,6 +7937,7 @@ namespace Onnx {
       if(!input_.Equals(other.input_)) return false;
       if(!output_.Equals(other.output_)) return false;
       if(!attribute_.Equals(other.attribute_)) return false;
+      if(!attributeProto_.Equals(other.attributeProto_)) return false;
       if(!node_.Equals(other.node_)) return false;
       if (DocString != other.DocString) return false;
       if(!opsetImport_.Equals(other.opsetImport_)) return false;
@@ -7902,6 +7953,7 @@ namespace Onnx {
       hash ^= input_.GetHashCode();
       hash ^= output_.GetHashCode();
       hash ^= attribute_.GetHashCode();
+      hash ^= attributeProto_.GetHashCode();
       hash ^= node_.GetHashCode();
       if (DocString.Length != 0) hash ^= DocString.GetHashCode();
       hash ^= opsetImport_.GetHashCode();
@@ -7941,6 +7993,7 @@ namespace Onnx {
         output.WriteRawTag(82);
         output.WriteString(Domain);
       }
+      attributeProto_.WriteTo(output, _repeated_attributeProto_codec);
       if (_unknownFields != null) {
         _unknownFields.WriteTo(output);
       }
@@ -7968,6 +8021,7 @@ namespace Onnx {
         output.WriteRawTag(82);
         output.WriteString(Domain);
       }
+      attributeProto_.WriteTo(ref output, _repeated_attributeProto_codec);
       if (_unknownFields != null) {
         _unknownFields.WriteTo(ref output);
       }
@@ -7984,6 +8038,7 @@ namespace Onnx {
       size += input_.CalculateSize(_repeated_input_codec);
       size += output_.CalculateSize(_repeated_output_codec);
       size += attribute_.CalculateSize(_repeated_attribute_codec);
+      size += attributeProto_.CalculateSize(_repeated_attributeProto_codec);
       size += node_.CalculateSize(_repeated_node_codec);
       if (DocString.Length != 0) {
         size += 1 + pb::CodedOutputStream.ComputeStringSize(DocString);
@@ -8010,6 +8065,7 @@ namespace Onnx {
       input_.Add(other.input_);
       output_.Add(other.output_);
       attribute_.Add(other.attribute_);
+      attributeProto_.Add(other.attributeProto_);
       node_.Add(other.node_);
       if (other.DocString.Length != 0) {
         DocString = other.DocString;
@@ -8065,6 +8121,10 @@ namespace Onnx {
             Domain = input.ReadString();
             break;
           }
+          case 90: {
+            attributeProto_.AddEntriesFrom(input, _repeated_attributeProto_codec);
+            break;
+          }
         }
       }
     #endif
@@ -8110,6 +8170,10 @@ namespace Onnx {
           }
           case 82: {
             Domain = input.ReadString();
+            break;
+          }
+          case 90: {
+            attributeProto_.AddEntriesFrom(ref input, _repeated_attributeProto_codec);
             break;
           }
         }

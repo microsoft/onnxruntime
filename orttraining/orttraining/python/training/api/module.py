@@ -25,6 +25,9 @@ class Module:
         - The optimizer model (optional)
         - The checkpoint file
 
+    Attributes:
+        training: True if the model is in training mode, False if it is in evaluation mode.
+
     Args:
         train_model_uri: The path to the training model.
         state: The checkpoint state object.
@@ -63,9 +66,9 @@ class Module:
         """Invokes either the training or the evaluation step of the model.
 
         Args:
-            user_inputs: The inputs to the model.
+            *user_inputs: The inputs to the model.
         Returns:
-            fetches : The outputs of the model.
+            The outputs of the model.
         """
         is_np_input = False
         forward_inputs = OrtValueVector()
@@ -97,8 +100,7 @@ class Module:
         """Sets the Module in training mode.
 
         Args:
-            mode: whether to set training mode (True) or evaluation
-                            mode (False). Default: True.
+            mode: whether to set the model to training mode (True) or evaluation mode (False). Default: True.
 
         Returns:
             self
@@ -170,6 +172,7 @@ class Module:
 
         Once training is complete, this function can be used to drop the training specific nodes in the onnx model.
         In particular, this function does the following:
+
         - Parse over the training graph and identify nodes that generate the given output names.
         - Drop all subsequent nodes in the graph since they are not relevant to the inference graph.
 

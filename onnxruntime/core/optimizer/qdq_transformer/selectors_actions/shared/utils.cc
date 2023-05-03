@@ -58,7 +58,8 @@ static const OpVersionsAndSelector::OpVersionsMap GetUnaryOpVersionsMap() {
           {"Sqrt", {}},
           {"Atan", {}},
           {"Tanh", {}},
-          {"Exp", {}}};
+          {"Exp", {}},
+          {"LRN", {}}};
 }
 static const OpVersionsAndSelector::OpVersionsMap GetBinaryOpVersionsMap() {
   return {{"Add", {}},

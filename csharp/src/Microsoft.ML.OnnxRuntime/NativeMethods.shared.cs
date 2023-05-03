@@ -362,7 +362,6 @@ namespace Microsoft.ML.OnnxRuntime
             OrtSetSessionGraphOptimizationLevel = (DOrtSetSessionGraphOptimizationLevel)Marshal.GetDelegateForFunctionPointer(api_.SetSessionGraphOptimizationLevel, typeof(DOrtSetSessionGraphOptimizationLevel));
             OrtRegisterCustomOpsLibrary = (DOrtRegisterCustomOpsLibrary)Marshal.GetDelegateForFunctionPointer(api_.RegisterCustomOpsLibrary, typeof(DOrtRegisterCustomOpsLibrary));
             OrtRegisterCustomOpsLibrary_V2 = (DOrtRegisterCustomOpsLibrary_V2)Marshal.GetDelegateForFunctionPointer(api_.RegisterCustomOpsLibrary_V2, typeof(DOrtRegisterCustomOpsLibrary_V2));
-            OrtRegisterCustomOpsUsingFunction = (DOrtRegisterCustomOpsUsingFunction)Marshal.GetDelegateForFunctionPointer(api_.RegisterCustomOpsUsingFunction, typeof(DOrtRegisterCustomOpsUsingFunction));
             OrtAddSessionConfigEntry = (DOrtAddSessionConfigEntry)Marshal.GetDelegateForFunctionPointer(api_.AddSessionConfigEntry, typeof(DOrtAddSessionConfigEntry));
             OrtAddInitializer = (DOrtAddInitializer)Marshal.GetDelegateForFunctionPointer(api_.AddInitializer, typeof(DOrtAddInitializer));
             SessionOptionsAppendExecutionProvider_TensorRT = (DSessionOptionsAppendExecutionProvider_TensorRT)Marshal.GetDelegateForFunctionPointer(
@@ -1089,18 +1088,6 @@ namespace Microsoft.ML.OnnxRuntime
                                                                                byte[] /*(const ORTCHAR_T*)*/ libraryPath);
 
         public static DOrtRegisterCustomOpsLibrary_V2 OrtRegisterCustomOpsLibrary_V2;
-
-        /// <summary>
-        /// Register custom op library using a function name. ORT will lookup the function name using dlsym.
-        /// Library containing the function must be loaded and the function name must be globally visible.
-        /// </summary>
-        /// <param name="options">Native SessionOptions instance</param>
-        /// <param name="functionName">Function name to call to register the custom ops.</param>
-        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
-        public delegate IntPtr /*(OrtStatus*)*/DOrtRegisterCustomOpsUsingFunction(IntPtr /*(OrtSessionOptions*) */ options,
-                                                                                  byte[] /*(const char*)*/ functionName);
-
-        public static DOrtRegisterCustomOpsUsingFunction OrtRegisterCustomOpsUsingFunction;
 
         /// <summary>
         /// Add initializer that is shared across Sessions using this SessionOptions (by denotation)

@@ -178,7 +178,7 @@ void OverrideTunableOpInfoByEnv(ROCMExecutionProviderInfo& info) {
 }
 
 ROCMExecutionProvider::ROCMExecutionProvider(const ROCMExecutionProviderInfo& info)
-    : IExecutionProvider{onnxruntime::kRocmExecutionProvider},
+    : IExecutionProvider{onnxruntime::kRocmExecutionProvider, OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, info.device_id)},
       info_{info},
       tuning_context_(this, &info_.tunable_op) {
   HIP_CALL_THROW(hipSetDevice(info_.device_id));
@@ -2334,5 +2334,12 @@ void ROCMExecutionProvider::RegisterStreamHandlers(IStreamCommandHandleRegistry&
                             use_ep_level_unified_stream_,
                             GetPerThreadContext().MiopenHandle(),
                             GetPerThreadContext().RocblasHandle());
+}
+
+OrtDevice ROCMExecutionProvider::GetOrtDeviceByMemType(OrtMemType mem_type) const {
+  if (mem_type == OrtMemTypeCPUInput || mem_type == OrtMemTypeCPUOutput) {
+    return OrtDevice(OrtDevice::CPU, OrtDevice::MemType::HIP_PINNED, default_device_.Id());
+  }
+  return default_device_;
 }
 }  // namespace onnxruntime

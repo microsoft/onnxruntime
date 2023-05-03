@@ -8,6 +8,8 @@
 #include "core/providers/qnn/builder/op_builder.h"
 #include "core/framework/allocator.h"
 
+#include "QnnOpDef.h"
+
 namespace onnxruntime {
 namespace qnn {
 
@@ -91,6 +93,7 @@ class BaseOpBuilder : public IOpBuilder {
   }
 
   static const std::string& GetQnnOpType(const std::string& onnx_op_type) {
+    // TODO: Use QNN operator names defined in "QnnOpDef.h"
     static const std::unordered_map<std::string, std::string> onnx_op_type_to_qnn_op_type = {
         {"Add", "ElementWiseAdd"},
         {"Mul", "ElementWiseMultiply"},
@@ -171,7 +174,9 @@ class BaseOpBuilder : public IOpBuilder {
         {"Tile", "Tile"},
         {"TopK", "TopK"},
         {"InstanceNormalization", "InstanceNorm"},
-        {"BatchNormalization", "Batchnorm"}};
+        {"BatchNormalization", "Batchnorm"},
+
+        {"LRN", QNN_OP_LRN}};
     auto it = onnx_op_type_to_qnn_op_type.find(onnx_op_type);
     ORT_ENFORCE(it != onnx_op_type_to_qnn_op_type.end());
     return it->second;
