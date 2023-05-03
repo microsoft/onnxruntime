@@ -1160,11 +1160,6 @@ static void GridSample(
       L"border",
       L"reflection"};
 
-  printf("GridSample[Mode=%ls, PaddingMode=%ls, AlignCorners=%s] ",
-         modes[static_cast<uint32_t>(mode)].c_str(),
-         padding_modes[static_cast<uint32_t>(padding_mode)].c_str(),
-         align_corners ? "True":"False"
-      );
   auto model =
     LearningModelBuilder::Create(17)
       .Inputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Input", TensorKind::Float, input_dims))
@@ -1197,7 +1192,11 @@ static void GridSample(
   auto device_result = device_session.Evaluate(device_binding, L"");
   auto end = std::chrono::high_resolution_clock::now();
   std::chrono::duration<double, std::micro> evaluate_duration_in_microseconds = end - start;
-  printf("took %fus.\n", evaluate_duration_in_microseconds.count());
+  printf("GridSample[Mode=%ls, PaddingMode=%ls, AlignCorners=%s] took %fus.\n",
+         modes[static_cast<uint32_t>(mode)].c_str(),
+         padding_modes[static_cast<uint32_t>(padding_mode)].c_str(),
+         align_corners ? "True" : "False",
+         evaluate_duration_in_microseconds.count());
 
   // Check results
   constexpr float error_threshold = .001f;
