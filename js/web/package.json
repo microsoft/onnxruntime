@@ -73,6 +73,6 @@
     },
     "./webgpu": "./dist/ort.webgpu.min.js"
   },
-  "types": "./types/lib/index.d.ts",
+  "types": "./types.d.ts",
   "description": "A Javascript library for running ONNX models on browsers"
 }

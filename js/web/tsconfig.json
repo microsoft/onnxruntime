@@ -3,7 +3,6 @@
   "compilerOptions": {
     "module": "CommonJS",
     "downlevelIteration": true,
-    "declarationDir": "./types",
     "typeRoots": ["./node_modules/@webgpu/types", "./node_modules/@types"]
   },
   "include": ["lib", "script", "test"],
