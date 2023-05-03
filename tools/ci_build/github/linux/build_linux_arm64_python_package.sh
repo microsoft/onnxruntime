@@ -45,7 +45,7 @@ if [ "$BUILD_DEVICE" == "GPU" ]; then
     ONNXRUNTIME_CUDA_VERSION="11.8"
     BUILD_ARGS+=("--use_cuda" "--use_tensorrt" "--cuda_version=$ONNXRUNTIME_CUDA_VERSION" "--tensorrt_home=/usr" "--cuda_home=/usr/local/cuda-$ONNXRUNTIME_CUDA_VERSION" "--cudnn_home=/usr/local/cuda-$ONNXRUNTIME_CUDA_VERSION" "--cmake_extra_defines" "CMAKE_CUDA_ARCHITECTURES=52;60;61;70;75;80")
 elif [ "$BUILD_DEVICE" == "AZURE" ]; then
-    BUILD_ARGS+=("--use_azure")
+    BUILD_ARGS+=("--use_azure" "--allow_running_as_root")
     if [ -f /etc/lsb-release ]; then
         # for ubuntu
         apt-get install -y libipc-system-simple-perl python3 libssl-dev
