@@ -2827,7 +2827,7 @@ TEST(CApiTest, TestMultiStreamInferenceSimpleSSD) {
 }
 #endif
 
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(ORT_MINIMAL_BUILD) && !defined(REDUCED_OPS_BUILD)
 TEST(MultiKernelSingleSchemaTest, valid) {
   Ort::SessionOptions session_options;
   session_options.SetIntraOpNumThreads(1);
