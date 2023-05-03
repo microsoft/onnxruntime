@@ -69,6 +69,7 @@ class QNNExecutionProvider : public IExecutionProvider {
   AllocatorPtr cpu_allocator_;
   uint32_t rpc_control_latency_;
   bool dump_context_ = false;
+  bool use_cached_context_ = false;
 };
 
 }  // namespace onnxruntime

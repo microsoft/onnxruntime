@@ -29,6 +29,14 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
     }
   }
 
+  static const std::string LOAD_CACHE = "use_cached_context";
+  auto use_cached_context_pos = runtime_options_.find(LOAD_CACHE);
+  if (use_cached_context_pos != runtime_options_.end()) {
+    if (use_cached_context_pos->second == "true") {
+      use_cached_context_ = true;
+    }
+  }
+
   static const std::string BACKEND_PATH = "backend_path";
   auto backend_path_pos = runtime_options_.find(BACKEND_PATH);
 
@@ -197,7 +205,7 @@ QNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer
 
   const auto& logger = *GetLogger();
 
-  auto rt = qnn_backend_manager_->SetupBackend(logger);
+  auto rt = qnn_backend_manager_->SetupBackend(logger, use_cached_context_);
   if (Status::OK() != rt) {
     LOGS(logger, ERROR) << "QNN SetupBackend failed " << rt.ErrorMessage();
     return result;

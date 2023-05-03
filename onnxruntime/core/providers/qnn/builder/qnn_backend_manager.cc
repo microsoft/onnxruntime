@@ -4,6 +4,7 @@
 #include "qnn_backend_manager.h"
 #include <iostream>
 #include <fstream>
+#include <filesystem>
 #include "QnnOpDef.h"
 #include "DSP/QnnDspPerfInfrastructure.h"
 #include "DSP/QnnDspBackend.h"
@@ -19,22 +20,42 @@ namespace qnn {
 
 typedef Qnn_ErrorHandle_t (*QnnInterfaceGetProvidersFn_t)(const QnnInterface_t*** providerList,
                                                           uint32_t* numProviders);
-
-Status QnnBackendManager::LoadBackend() {
-  std::string error_msg = "";
-  backend_lib_handle_ = LoadLib(backend_path_.c_str(),
+typedef Qnn_ErrorHandle_t (*QnnSystemInterfaceGetProvidersFn_t)(const QnnSystemInterface_t*** providerList,
+                                                                uint32_t* numProviders);
+template <typename F, class T>
+Status QnnBackendManager::GetQnnInterfaceProviders(const char* lib_path,
+                                                 const char* interface_provider_name,
+                                                 void** backend_lib_handle,
+                                                 T*** interface_providers,
+                                                 uint32_t& num_providers) {
+  std::string error_msg;
+  *backend_lib_handle = LoadLib(lib_path,
                                 static_cast<int>(DlOpenFlag::DL_NOW) | static_cast<int>(DlOpenFlag::DL_LOCAL),
                                 error_msg);
-  ORT_RETURN_IF(nullptr == backend_lib_handle_, "Unable to load backend, error: ", error_msg, " ", DlError());
+  ORT_RETURN_IF(nullptr == *backend_lib_handle, "Unable to load backend, error: ", error_msg, " ", DlError());
 
-  // Get QNN Interface
-  QnnInterfaceGetProvidersFn_t GetInterfaceProviders{nullptr};
-  GetInterfaceProviders = ResolveSymbol<QnnInterfaceGetProvidersFn_t>(backend_lib_handle_, "QnnInterface_getProviders", *logger_);
+  // Get QNN Interface providers
+  F GetInterfaceProviders{nullptr};
+  GetInterfaceProviders = ResolveSymbol<F>(*backend_lib_handle, interface_provider_name, *logger_);
   ORT_RETURN_IF(nullptr == GetInterfaceProviders, "Failed to get QNN providers!");
+
+  auto result = GetInterfaceProviders((const T***)interface_providers, &num_providers);
+  ORT_RETURN_IF((QNN_SUCCESS != result || nullptr == *interface_providers || 0 == num_providers),
+                "Failed to get QNN providers.");
+
+  return Status::OK();
+}
+
+Status QnnBackendManager::LoadBackend() {
   QnnInterface_t** interface_providers{nullptr};
   uint32_t num_providers{0};
-  auto result = GetInterfaceProviders((const QnnInterface_t***)&interface_providers, &num_providers);
-  ORT_RETURN_IF((QNN_SUCCESS != result || nullptr == interface_providers || 0 == num_providers), "Failed to get interface providers.");
+  auto rt = GetQnnInterfaceProviders<QnnInterfaceGetProvidersFn_t,
+                                     QnnInterface_t>(backend_path_.c_str(),
+                                                     "QnnInterface_getProviders",
+                                                     &backend_lib_handle_,
+                                                     &interface_providers,
+                                                     num_providers);
+  ORT_RETURN_IF_ERROR(rt);
 
   bool found_valid_interface{false};
   LOGS_DEFAULT(VERBOSE) << "QNN_API_VERSION_MAJOR: " << QNN_API_VERSION_MAJOR
@@ -59,6 +80,43 @@ Status QnnBackendManager::LoadBackend() {
   }
 
   ORT_RETURN_IF_NOT(found_valid_interface, "Unable to find a valid interface.");
+
+  return Status::OK();
+}
+
+Status QnnBackendManager::LoadQnnSystemLib() {
+  std::string system_lib_file = "libQnnSystem.so";
+#ifdef _WIN32
+  system_lib_file = "QnnSystem.dll";
+#endif
+  std::filesystem::path lib_file_path(backend_path_.c_str());
+  std::string sys_file_path(lib_file_path.remove_filename().string() + system_lib_file);
+  QnnSystemInterface_t** system_interface_providers{nullptr};
+  uint32_t num_providers = 0;
+  auto rt = GetQnnInterfaceProviders<QnnSystemInterfaceGetProvidersFn_t,
+                                     QnnSystemInterface_t>(sys_file_path.c_str(),
+                                                           "QnnSystemInterface_getProviders",
+                                                           &system_lib_handle_,
+                                                           &system_interface_providers,
+                                                           num_providers);
+  ORT_RETURN_IF_ERROR(rt);
+
+  bool found_valid_interface{false};
+  for (size_t pIdx = 0; pIdx < num_providers; pIdx++) {
+    LOGS_DEFAULT(VERBOSE) << "system_interface_providers major: " << system_interface_providers[pIdx]->systemApiVersion.major
+                          << " system_interface_providers minor: " << system_interface_providers[pIdx]->systemApiVersion.minor;
+    if (QNN_SYSTEM_API_VERSION_MAJOR == system_interface_providers[pIdx]->systemApiVersion.major &&
+        QNN_SYSTEM_API_VERSION_MINOR <= system_interface_providers[pIdx]->systemApiVersion.minor) {
+      found_valid_interface = true;
+      qnn_sys_interface_ = system_interface_providers[pIdx]->QNN_SYSTEM_INTERFACE_VER_NAME;
+      LOGS_DEFAULT(INFO) << "Found valid system interface, version: " << QNN_API_VERSION_MAJOR
+                         << "." << QNN_API_VERSION_MINOR
+                         << " backend provider name: " << system_interface_providers[pIdx]->providerName;
+      break;
+    }
+  }
+
+  ORT_RETURN_IF_NOT(found_valid_interface, "Unable to find a valid system interface.");
 
   return Status::OK();
 }
@@ -238,9 +296,8 @@ Status QnnBackendManager::DumpQnnContext(const onnxruntime::PathString& model_pa
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Context written buffer exceeds allocated buffer size.");
   }
 
-  //const std::wstring context_cache_file(L"qnn_context_cache.bin");
   PathString context_cache_file(model_path + ToPathString(".bin"));
-  std::ofstream of_stream(context_cache_file, std::ofstream::binary);
+  std::ofstream of_stream(context_cache_file.c_str(), std::ofstream::binary);
   if (!of_stream) {
     LOGS(*logger_, ERROR) << "Failed to open cached context file.";
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to open context cache file.");
@@ -252,11 +309,63 @@ Status QnnBackendManager::DumpQnnContext(const onnxruntime::PathString& model_pa
   return Status::OK();
 }
 
-Status QnnBackendManager::LoadFromCachedQnnContext() {
+Status QnnBackendManager::LoadFromCachedQnnContext(const onnxruntime::PathString& model_path) {
+  ORT_RETURN_IF(nullptr == qnn_sys_interface_.systemContextCreate ||
+                    nullptr == qnn_sys_interface_.systemContextGetBinaryInfo ||
+                    nullptr == qnn_sys_interface_.systemContextFree,
+                "Failed to get valid function pointer.");
+
+  uint64_t buffer_size{0};
+  PathString context_cache_file(model_path + ToPathString(".bin"));
+  std::ifstream cache_file(context_cache_file.c_str(), std::ifstream::binary);
+  ORT_RETURN_IF(!cache_file, "Failed to open cache file.");
+  cache_file.seekg(0, cache_file.end);
+  buffer_size = cache_file.tellg();
+  ORT_RETURN_IF(0 == buffer_size, "Empty cache file encountered.");
+  cache_file.seekg(0, cache_file.beg);
+
+  std::shared_ptr<uint8_t> buffer(new uint8_t[buffer_size], std::default_delete<uint8_t[]>());
+  ORT_RETURN_IF(nullptr == buffer, "Failed to allocate memory for cache file.");
+
+  // Load file into buffer
+  const auto& read_result = cache_file.read(reinterpret_cast<char*>(buffer.get()), buffer_size);
+  ORT_RETURN_IF(!read_result, "Failed to read contents from cached context file.");
+
+  QnnSystemContext_Handle_t sys_ctx_handle{nullptr};
+  auto rt = qnn_sys_interface_.systemContextCreate(&sys_ctx_handle);
+  ORT_RETURN_IF(QNN_SUCCESS != rt, "Failed to create system handle.");
+
+  const QnnSystemContext_BinaryInfo_t* binary_info{nullptr};
+  Qnn_ContextBinarySize_t binary_info_size{0};
+  rt = qnn_sys_interface_.systemContextGetBinaryInfo(sys_ctx_handle,
+                                                     static_cast<void*>(buffer.get()),
+                                                     buffer_size,
+                                                     &binary_info,
+                                                     &binary_info_size);
+  ORT_RETURN_IF(QNN_SUCCESS != rt, "Failed to get context binary infor.");
+
+  // Binary info to graph info
+
+   qnn_sys_interface_.systemContextFree(sys_ctx_handle);
+   sys_ctx_handle = nullptr;
+  
+   ORT_RETURN_IF(nullptr == qnn_interface_.contextCreateFromBinary,
+                 "Invalid function pointer for contextCreateFromBinary.");
+   rt = qnn_interface_.contextCreateFromBinary(backend_handle_,
+                                               device_handle_,
+                                               (const QnnContext_Config_t**)&context_config_,
+                                               static_cast<void*>(buffer.get()),
+                                               buffer_size,
+                                               &context_,
+                                               profile_backend_handle_);
+   ORT_RETURN_IF(QNN_SUCCESS != rt, "Failed to create context from binary.");
+   ORT_RETURN_IF_ERROR(ExtractBackendProfilingInfo());
+
+  LOGS(*logger_, VERBOSE) << "Load from cached QNN Context completed.";
   return Status::OK();
 }
 
-Status QnnBackendManager::SetupBackend(const logging::Logger& logger) {
+Status QnnBackendManager::SetupBackend(const logging::Logger& logger, bool use_cached_context_) {
   if (backend_setup_completed_) {
     LOGS(logger, VERBOSE) << "Backend setup already!";
     return Status::OK();
@@ -264,6 +373,10 @@ Status QnnBackendManager::SetupBackend(const logging::Logger& logger) {
 
   ORT_RETURN_IF_ERROR(LoadBackend());
   LOGS(logger, VERBOSE) << "LoadBackend succeed.";
+
+  if (use_cached_context_) {
+    ORT_RETURN_IF_ERROR(LoadQnnSystemLib());
+  }
 
   LOGS(logger, VERBOSE) << "Backend build version: "
                         << GetBackendBuildId();

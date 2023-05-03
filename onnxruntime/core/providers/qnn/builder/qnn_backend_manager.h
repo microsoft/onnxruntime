@@ -11,6 +11,7 @@
 #endif
 
 #include "QnnLog.h"
+#include "System/QnnSystemInterface.h"
 #include "core/common/status.h"
 #include "core/common/logging/logging.h"
 #include "core/common/path_string.h"
@@ -65,9 +66,9 @@ class QnnBackendManager {
 
   Status DumpQnnContext(const onnxruntime::PathString& model_path);
 
-  Status LoadFromCachedQnnContext();
+  Status LoadFromCachedQnnContext(const onnxruntime::PathString& model_path);
 
-  Status SetupBackend(const logging::Logger& logger);
+  Status SetupBackend(const logging::Logger& logger, bool use_cached_context_);
 
   Status SetDspPowerConfig();
 
@@ -142,6 +143,8 @@ class QnnBackendManager {
  private:
   void* LoadLib(const char* file_name, int flags, std::string& error_msg);
 
+  Status LoadQnnSystemLib();
+
   Status UnloadLib(void* handle);
 
   void* LibFunction(void* handle, const char* symbol, std::string& error_msg);
@@ -156,13 +159,22 @@ class QnnBackendManager {
     return ptr;
   }
 
+  template <typename F, class T>
+  Status GetQnnInterfaceProviders(const char* lib_path,
+                                  const char* interface_provider_name,
+                                  void** backend_lib_handle,
+                                  T*** interface_providers,
+                                  uint32_t& num_providers);
+
   bool IsDevicePropertySupported();
 
  private:
   const std::string backend_path_;
   const logging::Logger* logger_ = nullptr;
   QNN_INTERFACE_VER_TYPE qnn_interface_ = QNN_INTERFACE_VER_TYPE_INIT;
+  QNN_SYSTEM_INTERFACE_VER_TYPE qnn_sys_interface_ = QNN_SYSTEM_INTERFACE_VER_TYPE_INIT;
   void* backend_lib_handle_ = nullptr;
+  void* system_lib_handle_ = nullptr;
   Qnn_BackendHandle_t backend_handle_ = nullptr;
   QnnBackend_Config_t** backend_config_ = nullptr;
   Qnn_LogHandle_t log_handle_ = nullptr;

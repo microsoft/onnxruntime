@@ -258,7 +258,7 @@ Status QnnModel::GetQnnTensorDataLength(const std::vector<uint32_t>& dims,
 }
 
 // Setup details for Qnn_Tensor_t for execution
-// based on information in QnnTensorWrapper provided by model.so.
+// based on information in QnnTensorWrapper
 Status QnnModel::SetupTensors(std::vector<Qnn_Tensor_t>& qnn_tensors,
                               const std::vector<QnnTensorWrapper>& tensor_wrappers,
                               bool is_input) {
