@@ -571,17 +571,62 @@ function ot_buildMatcher() {
 
 var ot_validCombos = {
 
-    "ot_linux,ot_large_model,ot_ORTModule,ot_X64,ot_CUDA":
+    "ot_linux,ot_large_model,ot_python,ot_X64,ot_CUDA":
     "pip install onnxruntime-training -f https://downloads.onnxruntime.ai/onnxruntime_stable_<b>&lt;cu_version*</b>&gt;.html<br/>pip install torch-ort<br/>python -m torch_ort.configure<br/><br/>*</b><a href='https://download.onnxruntime.ai/' target='blank'>Available versions</a>",
 
-    "ot_linux,ot_large_model,ot_ORTModule,ot_X64,ot_ROCm":
+    "ot_linux,ot_large_model,ot_python,ot_X64,ot_ROCm":
     "pip install onnxruntime-training -f https://downloads.onnxruntime.ai/onnxruntime_stable_<b>&lt;rocm_version*</b>&gt;.html<br/>pip install torch-ort<br/>python -m torch_ort.configure<br/><br/>*<a href='https://download.onnxruntime.ai/' target='blank'>Available versions</a>",
     
-    "ot_linux,ot_on_device,ot_ORTModule,ot_X64,ot_CUDA":
-    "pip install onnxruntime-training -f https://downloads.onnxruntime.ai/onnxruntime_stable_<b>&lt;cu_version*</b>&gt;.html<br/>pip install torch-ort<br/>python -m torch_ort.configure<br/><br/>*</b><a href='https://download.onnxruntime.ai/' target='blank'>Available versions</a>",
+    "ot_linux,ot_on_device,ot_python,ot_X64,ot_CPU":
+    "pip install onnxruntime-training -f https://downloads.onnxruntime.ai/onnxruntime_stable_<b>&lt;cu_version*</b>&gt;.html<br/><br/>*</b><a href='https://download.onnxruntime.ai/' target='blank'>Available versions</a>",
 
-    "ot_linux,ot_on_device,ot_ORTModule,ot_X64,ot_ROCm":
-    "pip install onnxruntime-training -f https://downloads.onnxruntime.ai/onnxruntime_stable_<b>&lt;rocm_version*</b>&gt;.html<br/>pip install torch-ort<br/>python -m torch_ort.configure<br/><br/>*<a href='https://download.onnxruntime.ai/' target='blank'>Available versions</a>",
+    "ot_linux,ot_on_device,ot_python,ot_X64,ot_CUDA":
+    "Follow build instructions from&nbsp;<a href='https://onnxruntime.ai/docs/build/training.html' target='_blank'>here</a>",
+
+    "ot_windows,ot_on_device,ot_c,ot_X64,ot_CPU":
+    "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Training' target='_blank'>Microsoft.ML.OnnxRuntime.Training</a>",
+
+    "ot_windows,ot_on_device,ot_cplusplus,ot_X64,ot_CPU":
+    "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Training' target='_blank'>Microsoft.ML.OnnxRuntime.Training</a>",
+
+    "ot_windows,ot_on_device,ot_csharp,ot_X64,ot_CPU":
+    "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Training' target='_blank'>Microsoft.ML.OnnxRuntime.Training</a>",
+
+    "ot_linux,ot_on_device,ot_c,ot_X64,ot_CPU":
+    "Download .tgz file from&nbsp;<a href='https://github.com/microsoft/onnxruntime/releases' target='_blank'>Github</a> <br/>Refer to <a href='http://www.onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html#requirements' target='_blank'>docs</a> for requirements.",
+
+    "ot_linux,ot_on_device,ot_cplusplus,ot_X64,ot_CPU":
+    "Download .tgz file from&nbsp;<a href='https://github.com/microsoft/onnxruntime/releases' target='_blank'>Github</a> <br/>Refer to <a href='http://www.onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html#requirements' target='_blank'>docs</a> for requirements.",
+    
+    "ot_linux,ot_on_device,ot_csharp,ot_X64,ot_CPU":
+    "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Training' target='_blank'>Microsoft.ML.OnnxRuntime.Training</a>",
+
+    "ot_linux,ot_on_device,ot_c,ot_X64,ot_CUDA":
+    "Follow build instructions from&nbsp;<a href='https://onnxruntime.ai/docs/build/training.html' target='_blank'>here</a>",
+
+    "ot_linux,ot_on_device,ot_cplusplus,ot_X64,ot_CUDA":
+    "Follow build instructions from&nbsp;<a href='https://onnxruntime.ai/docs/build/training.html' target='_blank'>here</a>",
+    
+    "ot_linux,ot_on_device,ot_csharp,ot_X64,ot_CUDA":
+    "Follow build instructions from&nbsp;<a href='https://onnxruntime.ai/docs/build/training.html' target='_blank'>here</a>",
+
+    "ot_windows,ot_on_device,ot_c,ot_X64,ot_CUDA":
+    "Follow build instructions from&nbsp;<a href='https://onnxruntime.ai/docs/build/training.html' target='_blank'>here</a>",
+
+    "ot_windows,ot_on_device,ot_cplusplus,ot_X64,ot_CUDA":
+    "Follow build instructions from&nbsp;<a href='https://onnxruntime.ai/docs/build/training.html' target='_blank'>here</a>",
+    
+    "ot_windows,ot_on_device,ot_csharp,ot_X64,ot_CUDA":
+    "Follow build instructions from&nbsp;<a href='https://onnxruntime.ai/docs/build/training.html' target='_blank'>here</a>",
+
+    "ot_android,ot_on_device,ot_c,ot_X64,ot_CPU":
+    "Follow build instructions from&nbsp;<a href='https://onnxruntime.ai/docs/build/training.html' target='_blank'>here</a>",
+
+    "ot_android,ot_on_device,ot_cplusplus,ot_X64,ot_CPU":
+    "Follow build instructions from&nbsp;<a href='https://onnxruntime.ai/docs/build/training.html' target='_blank'>here</a>",
+    
+    "ot_android,ot_on_device,ot_java,ot_X64,ot_CPU":
+    "Add a dependency on <a href='https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-training-android' target='_blank'>com.microsoft.onnxruntime:onnxruntime-training-android</a> using Maven/Gradle and refer to the <a href='https://github.com/microsoft/onnxruntime-training-examples' target='_blank'>training examples.</a>",
 };
 
 function ot_commandMessage(key) {
