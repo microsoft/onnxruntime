@@ -29,7 +29,8 @@ namespace Dml
             return std::nullopt;
         }
 
-        if ((m_completionEvent.fence != nullptr) && (m_completionEvent.IsSignaled()))
+        // TODO (pavinol): Investigate why we have a "DestDescriptor points to a descriptor that is bound as STATIC (not-DESCRIPTORS_VOLATILE) on a command list." error
+        if (false && (m_completionEvent.fence != nullptr) && (m_completionEvent.IsSignaled()))
         {
             // This class always allocates descriptors from the end of the heap.
             // If the most recent completion event is signaled, then all previous
