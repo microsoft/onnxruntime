@@ -6,7 +6,7 @@ on:
     branches:
       - main
     paths:
-      - csharp
+      - csharp/**
   schedule:
     - cron: '0 0 1 * *'
   workflow_dispatch:

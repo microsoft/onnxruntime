@@ -159,6 +159,13 @@ def parse_arguments():
 
     parser.add_argument("--no_repeat_ngram_size", type=int, default=3, help="default to 3")
 
+    parser.add_argument(
+        "--state_dict_path",
+        type=str,
+        default="",
+        help="filepath to load pre-trained model with custom state dictionary (e.g. pytorch_model.bin)",
+    )
+
     args = parser.parse_args()
 
     return args
@@ -181,10 +188,13 @@ def export_onnx_models(
     quantize_embedding_layer: bool = False,
     quantize_per_channel: bool = False,
     quantize_reduce_range: bool = False,
+    state_dict_path: str = "",
 ):
     device = torch.device("cuda:0" if use_gpu else "cpu")
 
-    models = WhisperHelper.load_model(model_name_or_path, cache_dir, device, merge_encoder_and_decoder_init)
+    models = WhisperHelper.load_model(
+        model_name_or_path, cache_dir, device, merge_encoder_and_decoder_init, state_dict_path
+    )
     config = models["decoder"].config
 
     if (not use_external_data_format) and (config.num_layers > 24):
