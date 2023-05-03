@@ -24,6 +24,16 @@ parameters:
   type: boolean
   default: false
 
+- name: NugetPackageSuffix
+  displayName: Suffix to append to nuget package
+  type: string
+  default: ''
+
+- name: AdditionalBuildFlag
+  displayName: Build flags to append to build command
+  type: string
+  default: ''
+
 resources:
   repositories:
   - repository: onnxruntime-inference-examples # The name used to reference this repository in the checkout step
@@ -43,9 +53,9 @@ stages:
     DoCompliance: ${{ parameters.DoCompliance }}
     DoEsrp: ${{ parameters.DoEsrp }}
     IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
-    OrtNugetPackageId: 'Microsoft.ML.OnnxRuntime'
+    OrtNugetPackageId: 'Microsoft.ML.OnnxRuntime${{ parameters.NugetPackageSuffix }}'
     AdditionalBuildFlags: ''
-    AdditionalWinBuildFlags: '--enable_onnx_tests --enable_wcos'
+    AdditionalWinBuildFlags: '--enable_onnx_tests --enable_wcos ${{parameters.AdditionalBuildFlag}}'
     BuildVariant: 'default'
 
 - template: templates/ondevice-training-cpu-packaging-pipeline.yml

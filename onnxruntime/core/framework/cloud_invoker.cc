@@ -3,6 +3,7 @@
 
 #ifdef USE_AZURE
 #include "http_client.h"
+#include "curl/curl.h"
 #include "core/common/common.h"
 #include "core/framework/cloud_invoker.h"
 #include "core/framework/ort_value.h"
@@ -25,6 +26,8 @@ const char* kAzureVerbose = "azure.verbose";
 const char* kAzureEndpointType = "azure.endpoint_type";
 const char* kAzureAuthKey = "azure.auth_key";
 const char* kAzureTriton = "triton";
+const char* kAzureOpenAI = "openai";
+const char* kAzureAudioFile = "azure.audio_file";
 
 CloudEndPointInvoker::CloudEndPointInvoker(const CloudEndPointConfig& config,
                                            const AllocatorPtr& allocator) : config_(config), allocator_(allocator) {
@@ -33,6 +36,122 @@ CloudEndPointInvoker::CloudEndPointInvoker(const CloudEndPointConfig& config,
   }
 }
 
+// OpenAIInvoker
+class OpenAIInvoker : public CloudEndPointInvoker {
+ public:
+  OpenAIInvoker(const CloudEndPointConfig& config, const AllocatorPtr& allocator);
+  onnxruntime::Status Send(const CloudEndPointConfig& run_options,
+                           const InlinedVector<std::string>& input_names,
+                           gsl::span<const OrtValue> ort_inputs,
+                           const InlinedVector<std::string>& output_names,
+                           std::vector<OrtValue>& ort_outputs) const override;
+
+ private:
+  std::string uri_;
+  std::string model_name_;
+};
+
+OpenAIInvoker::OpenAIInvoker(const CloudEndPointConfig& config,
+                             const AllocatorPtr& allocator) : CloudEndPointInvoker(config, allocator) {
+  ReadConfig(kAzureUri, uri_);
+  ReadConfig(kAzureModelName, model_name_);
+}
+
+struct MemoryStruct {
+  char* memory;
+  size_t size;
+};
+
+static size_t
+WriteMemoryCallback(void* contents, size_t size, size_t nmemb, void* userp) {
+  size_t realsize = size * nmemb;
+  struct MemoryStruct* mem = (struct MemoryStruct*)userp;
+
+  char* ptr = (char*)realloc(mem->memory, mem->size + realsize + 1);
+  ORT_ENFORCE(ptr, "not enough memory (realloc returned NULL)");
+
+  mem->memory = ptr;
+  memcpy(&(mem->memory[mem->size]), contents, realsize);
+  mem->size += realsize;
+  mem->memory[mem->size] = 0;
+
+  return realsize;
+}
+
+onnxruntime::Status OpenAIInvoker::Send(const CloudEndPointConfig& run_options,
+                                        const InlinedVector<std::string>& /*input_names*/,
+                                        gsl::span<const OrtValue> ort_inputs,
+                                        const InlinedVector<std::string>& /*output_names*/,
+                                        std::vector<OrtValue>& ort_outputs) const {
+  const auto auth_key_iter = run_options.find(kAzureAuthKey);
+  if (run_options.end() == auth_key_iter || auth_key_iter->second.empty()) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "auth key must be specified for openai client");
+  }
+
+  CURLcode ret{};
+  CURL* curl{};
+  curl_mime* mime1{};
+  struct curl_slist* headers{};
+
+  struct MemoryStruct chunk;
+  chunk.memory = (char*)malloc(1); /* will be grown as needed by the realloc above */
+  chunk.size = 0;
+
+  mime1 = NULL;
+  std::string full_auth = std::string{"Authorization: Bearer "} + auth_key_iter->second;
+  headers = curl_slist_append(headers, full_auth.c_str());
+  headers = curl_slist_append(headers, "Content-Type: multipart/form-data");
+
+  struct curl_httppost* post = NULL;
+  struct curl_httppost* last = NULL;
+  curl_formadd(&post, &last, CURLFORM_COPYNAME, "model", CURLFORM_COPYCONTENTS, model_name_.c_str(), CURLFORM_END);
+  curl_formadd(&post, &last, CURLFORM_COPYNAME, "response_format", CURLFORM_COPYCONTENTS, "text", CURLFORM_END);
+  const auto& tensor = ort_inputs[0].Get<Tensor>();
+  auto data_size = tensor.SizeInBytes();
+  curl_formadd(&post, &last, CURLFORM_COPYNAME, "file", CURLFORM_BUFFER, "non_exist.wav", CURLFORM_BUFFERPTR, tensor.DataRaw(),
+               CURLFORM_BUFFERLENGTH, data_size, CURLFORM_END);
+  curl = curl_easy_init();
+  curl_easy_setopt(curl, CURLOPT_BUFFERSIZE, 102400L);
+  curl_easy_setopt(curl, CURLOPT_URL, uri_.c_str());
+  curl_easy_setopt(curl, CURLOPT_NOPROGRESS, 1L);
+  curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+  curl_easy_setopt(curl, CURLOPT_USERAGENT, "curl/7.83.1");
+  curl_easy_setopt(curl, CURLOPT_MAXREDIRS, 50L);
+  curl_easy_setopt(curl, CURLOPT_FTP_SKIP_PASV_IP, 1L);
+  curl_easy_setopt(curl, CURLOPT_TCP_KEEPALIVE, 1L);
+  curl_easy_setopt(curl, CURLOPT_HTTPPOST, post);
+  curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteMemoryCallback);
+  curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void*)&chunk);
+
+  ret = curl_easy_perform(curl);
+  if (ret != CURLE_OK) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, curl_easy_strerror(ret));
+  }
+
+  curl_easy_cleanup(curl);
+  curl = NULL;
+  curl_mime_free(mime1);
+  mime1 = NULL;
+  curl_slist_free_all(headers);
+  headers = NULL;
+
+  auto output_tensor = std::make_unique<Tensor>(onnxruntime::DataTypeImpl::GetType<std::string>(), TensorShape{1}, allocator_);
+  if (!output_tensor) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to create output tensor");
+  }
+
+  auto* output_string = output_tensor->MutableData<std::string>();
+  output_string->append(chunk.memory);
+  free(chunk.memory);
+
+  ort_outputs.resize(1);
+  auto tensor_type = DataTypeImpl::GetType<Tensor>();
+  ort_outputs[0].Init(output_tensor.release(), tensor_type, tensor_type->GetDeleteFunc());
+  return Status::OK();
+}
+
+// AzureTritonInvoker
 class AzureTritonInvoker : public CloudEndPointInvoker {
  public:
   AzureTritonInvoker(const CloudEndPointConfig& config, const AllocatorPtr& allocator);
@@ -286,6 +405,9 @@ Status CloudEndPointInvoker::CreateInvoker(const CloudEndPointConfig& config,
     if (config.end() != iter) {
       if (iter->second == kAzureTriton) {
         invoker = std::make_unique<AzureTritonInvoker>(config, allocator);
+        return status;
+      } else if (iter->second == kAzureOpenAI) {
+        invoker = std::make_unique<OpenAIInvoker>(config, allocator);
         return status;
       }  // else other endpoint types ...
     }
