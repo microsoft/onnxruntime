@@ -106,6 +106,13 @@ jobs:
         scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
         arguments: '$(CommonBuildArgs) --build_dir $(Build.BinariesDirectory)\wasm_simd_jsep --enable_wasm_simd --use_jsep --target onnxruntime_webassembly'
         workingDirectory: '$(Build.BinariesDirectory)'
+  - ${{ if eq(parameters.BuildJsep, true) }}:
+    - task: PythonScript@0
+      displayName: 'Build (simd + threads + JSEP)'
+      inputs:
+        scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
+        arguments: '$(CommonBuildArgs) --build_dir $(Build.BinariesDirectory)\wasm_simd_threads_jsep --enable_wasm_simd --enable_wasm_threads --use_jsep --target onnxruntime_webassembly'
+        workingDirectory: '$(Build.BinariesDirectory)'
   - ${{ if eq(parameters.SkipPublish, false) }}:
     - script: |
         copy $(Build.BinariesDirectory)\wasm\${{ parameters.BuildConfig }}\ort-wasm*.* $(Build.ArtifactStagingDirectory)
@@ -115,6 +122,11 @@ jobs:
         if exist $(Build.BinariesDirectory)\wasm_simd_jsep (
           copy $(Build.BinariesDirectory)\wasm_simd_jsep\${{ parameters.BuildConfig }}\ort-wasm-simd.wasm $(Build.ArtifactStagingDirectory)\ort-wasm-simd.jsep.wasm
           copy $(Build.BinariesDirectory)\wasm_simd_jsep\${{ parameters.BuildConfig }}\ort-wasm-simd.js $(Build.ArtifactStagingDirectory)\ort-wasm-simd.jsep.js
+        )
+        if exist $(Build.BinariesDirectory)\wasm_simd_threads_jsep (
+          copy $(Build.BinariesDirectory)\wasm_simd_threads_jsep\${{ parameters.BuildConfig }}\ort-wasm-simd-threaded.wasm $(Build.ArtifactStagingDirectory)\ort-wasm-simd-threaded.jsep.wasm
+          copy $(Build.BinariesDirectory)\wasm_simd_threads_jsep\${{ parameters.BuildConfig }}\ort-wasm-simd-threaded.js $(Build.ArtifactStagingDirectory)\ort-wasm-simd-threaded.jsep.js
+          copy $(Build.BinariesDirectory)\wasm_simd_threads_jsep\${{ parameters.BuildConfig }}\ort-wasm-simd-threaded.worker.js $(Build.ArtifactStagingDirectory)\ort-wasm-simd-threaded.jsep.worker.js
         )
       displayName: 'Create Artifacts'
   - ${{ if eq(parameters.SkipPublish, false) }}:
