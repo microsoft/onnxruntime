@@ -1833,9 +1833,10 @@ class PlannerImpl {
     for (size_t i = 0; i < num_logic_streams_; ++i) {
       for (auto node_index : stream_nodes_[i]) {
         auto* node = graph_viewer_.GetNode(node_index);
+        auto stream_device = execution_plan[i]->device_.Type();
         // Neither trigger ActivateNotification/WaitOnEPStep for Shape op (whose output is ready for all the EPs), nor
         // upstream is on CPU device (As currently we never invoke RegisterWaitFn(CPU, ...) for all kinds of EP, thus no wait_handle can be retrieved for this case)
-        if (node->OpType() != "Shape" && execution_plan[i]->device_.Type() != OrtDevice::CPU) {
+        if (node->OpType() != "Shape" && stream_device != OrtDevice::CPU) {
           for (auto it = node->OutputNodesBegin(); it != node->OutputNodesEnd(); ++it) {
             bool output_consumed_in_subgraph = true;
             for (auto* output : node->OutputDefs()) {
@@ -1850,32 +1851,29 @@ class PlannerImpl {
                   //    for example, a resize cuda kernel consumer a tensor from MemCpyToHost cuda kernel on the same stream.
                   //    in this case, the FIFO can't guarantee the cpu tensor is ready when resize kernel is launching
                   OrtDevice::DeviceType output_arg_device = plan_.allocation_plan[output_arg_idx].location.Type();
-                  WaitNotificationFn wait_handle = stream_handle_registry.GetWaitHandle(execution_plan[i]->device_.Type(), output_arg_device);
+                  WaitNotificationFn wait_handle = stream_handle_registry.GetWaitHandle(stream_device, output_arg_device);
                   if ((node_stream_map_[it->Index()] != i || output_arg_device == OrtDevice::CPU) && wait_handle != nullptr) {
                     if (node_to_notification.find(node_index) == node_to_notification.end()) {
                       node_to_notification[node_index] = plan_.notification_owners.size();
                       plan_.notification_owners.push_back(i);
                     }
-
                     // if node_index is already in the map, it will NOT be overwritten by insert()
                     node_to_wait[it->Index()].insert({node_index, wait_handle});
                   }
                 }
               }  // output->Exists
-            }
+            }    //for each output
             if (output_consumed_in_subgraph) {
-              if (it->InputDefs().size() > 0 && !(*it->InputDefs().begin())->Name().empty()) {
-                OrtValueIndex input_arg_idx;
-                ORT_THROW_IF_ERROR(ort_value_name_idx_map_.GetIdx((*it->InputDefs().begin())->Name(), input_arg_idx));
-                auto target_device = plan_.allocation_plan[input_arg_idx].location.Type();
-                WaitNotificationFn wait_handle = stream_handle_registry.GetWaitHandle(execution_plan[i]->device_.Type(), target_device);
-                if ((node_stream_map_[it->Index()] != i || target_device == OrtDevice::CPU) && wait_handle != nullptr) {
-                  if (node_to_notification.find(node_index) == node_to_notification.end()) {
-                    node_to_notification[node_index] = plan_.notification_owners.size();
-                    plan_.notification_owners.push_back(i);
-                  }
-                  node_to_wait[it->Index()].insert({node_index, wait_handle});
+              const auto downstream = node_stream_map_[it->Index()];
+              if (downstream != i) {
+                auto downstream_device = execution_plan[downstream]->device_.Type();
+                WaitNotificationFn wait_handle = stream_handle_registry.GetWaitHandle(stream_device, downstream_device);
+                ORT_ENFORCE(wait_handle, "wait handle not initialized among device ", stream_device, " and ", downstream_device);
+                if (node_to_notification.find(node_index) == node_to_notification.end()) {
+                  node_to_notification[node_index] = plan_.notification_owners.size();
+                  plan_.notification_owners.push_back(i);
                 }
+                node_to_wait[it->Index()].insert({node_index, wait_handle});
               }
             }
           }
