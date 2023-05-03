@@ -21,7 +21,7 @@ var ot_opts = {
     // os: getAnchorSelectedOS() || getDefaultSelectedOS(),
     ot_scenario: '',
     ot_os: '',
-    ot_architecture: '',
+    ot_architecture: 'ot_X64',
     ot_language: '',
     ot_hardwareAcceleration: '',
 };
