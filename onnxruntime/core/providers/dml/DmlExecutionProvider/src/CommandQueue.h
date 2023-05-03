@@ -44,7 +44,6 @@ namespace Dml
         }
 #endif
 
-        void Close();
         void ReleaseCompletedReferences();
 
     private:

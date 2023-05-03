@@ -169,7 +169,7 @@ namespace Dml
         chunk->resource->Unmap(0, nullptr);
 
         // Copy from the upload heap into the destination resource
-        m_executionContext->CopyBufferRegion(
+        GpuEvent doneEvent = m_executionContext->CopyBufferRegion(
             dst,
             dstOffset,
             dstState,
@@ -177,8 +177,6 @@ namespace Dml
             offsetInChunk,
             D3D12_RESOURCE_STATE_GENERIC_READ,
             src.size());
-
-        GpuEvent doneEvent = m_executionContext->GetCurrentCompletionEvent();
 
         // Add an allocation entry to the chunk
         chunk->allocations.push_back(Allocation{ static_cast<size_t>(src.size()), offsetInChunk, doneEvent });
