@@ -31,7 +31,7 @@ RUN pip install --upgrade pip
 RUN pip install setuptools>=41.0.0
 
 # Install TensorRT
-RUN v="8.6.0.12-1+cuda11.8" &&\
+RUN v="8.6.1.6-1+cuda11.8" &&\
     apt-key adv --fetch-keys https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2004/x86_64/7fa2af80.pub &&\
     apt-get update &&\
     sudo apt-get install -y libnvinfer8=${v} libnvonnxparsers8=${v} libnvparsers8=${v} libnvinfer-plugin8=${v} libnvinfer-lean8=${v} libnvinfer-vc-plugin8=${v} libnvinfer-dispatch8=${v}\
