@@ -95,7 +95,7 @@ struct BeamSearchCpuState : public IBeamSearchCpuState {
   Sequences sequences;
 
   void Init(AllocatorPtr allocator, size_t batch_beam_size, int max_length, int sequence_length, bool is_cuda) {
-    this->sequence_lengths = AllocateBuffer<int32_t>(allocator, sequence_lengths_buffer_, batch_beam_size);
+    this->sequence_lengths = AllocateBuffer<int32_t>(allocator, sequence_lengths_buffer_, batch_beam_size, true, sequence_length);
 
     size_t sequences_bytes = SafeInt<size_t>(2) * batch_beam_size * max_length;
     this->sequences_space = AllocateBuffer<int32_t>(allocator, sequences_space_buffer_, sequences_bytes);

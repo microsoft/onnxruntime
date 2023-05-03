@@ -38,7 +38,7 @@ void BeamSearchParameters::ParseFromInputs(OpKernelContext* context) {
   }
   batch_size = static_cast<int>(dims[0]);
 
-  // For T5, output sequence starts with decoder_start_token_id, so its sequence length is 1
+  // For T5, output sequence starts with decoder_start_token_id, so its sequence length is 1 (Change assumption)
   sequence_length = (this->model_type == IGenerationParameters::kModelTypeGpt) ? static_cast<int>(dims[1]) : 1;
 
   auto* max_length_tensor = context->Input<Tensor>(1);

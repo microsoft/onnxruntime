@@ -271,7 +271,7 @@ Status T5DecoderSubgraph::CreateInitialFeeds(
   // TODO: This part shares the similar logic with CreateInitialFeeds() in subgraph_gpt.cc. We should refactor it.
   if (past_present_share_buffer_) {
     // Past sequence length feed
-    ORT_RETURN_IF_ERROR(AppendPastSequenceLength(decoder_feeds, cpu_allocator, 1));
+    ORT_RETURN_IF_ERROR(AppendPastSequenceLength(decoder_feeds, cpu_allocator, cur_len - 1));
     // Add beam search specific inputs
     if (need_cache_indir) {
       const int64_t batch_size = static_cast<int64_t>(batch_beam_size / num_beam);

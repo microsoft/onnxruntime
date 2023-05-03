@@ -100,7 +100,7 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
 
   const BeamSearchParameters* parameters = this->parameters_;
   ORT_ENFORCE(parameters->sequence_length == 1);
-  int32_t init_seq_len = 4; //hack
+  const int32_t init_seq_len = 2; //hack
 
   // Allocate output tensors.
   int64_t sequences_dims[] = {parameters->batch_size, parameters->num_return_sequences, parameters->max_length};
@@ -206,7 +206,7 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
   this->beam_scorer_->Initialize(this->cpu_allocator_, init_seq_len);
 
   BeamSearchState<T> beam_state;
-  constexpr bool use_position = false;
+  constexpr bool use_position = true;
   beam_state.Init(this->temp_space_allocator_,
                   parameters->batch_size,
                   parameters->num_beams,
