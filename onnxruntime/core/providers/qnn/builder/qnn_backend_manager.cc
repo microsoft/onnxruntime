@@ -346,20 +346,20 @@ Status QnnBackendManager::LoadFromCachedQnnContext(const onnxruntime::PathString
 
   // Binary info to graph info
 
-   qnn_sys_interface_.systemContextFree(sys_ctx_handle);
-   sys_ctx_handle = nullptr;
-  
-   ORT_RETURN_IF(nullptr == qnn_interface_.contextCreateFromBinary,
-                 "Invalid function pointer for contextCreateFromBinary.");
-   rt = qnn_interface_.contextCreateFromBinary(backend_handle_,
-                                               device_handle_,
-                                               (const QnnContext_Config_t**)&context_config_,
-                                               static_cast<void*>(buffer.get()),
-                                               buffer_size,
-                                               &context_,
-                                               profile_backend_handle_);
-   ORT_RETURN_IF(QNN_SUCCESS != rt, "Failed to create context from binary.");
-   ORT_RETURN_IF_ERROR(ExtractBackendProfilingInfo());
+  qnn_sys_interface_.systemContextFree(sys_ctx_handle);
+  sys_ctx_handle = nullptr;
+
+  ORT_RETURN_IF(nullptr == qnn_interface_.contextCreateFromBinary,
+                "Invalid function pointer for contextCreateFromBinary.");
+  rt = qnn_interface_.contextCreateFromBinary(backend_handle_,
+                                              device_handle_,
+                                              (const QnnContext_Config_t**)&context_config_,
+                                              static_cast<void*>(buffer.get()),
+                                              buffer_size,
+                                              &context_,
+                                              profile_backend_handle_);
+  ORT_RETURN_IF(QNN_SUCCESS != rt, "Failed to create context from binary.");
+  ORT_RETURN_IF_ERROR(ExtractBackendProfilingInfo());
 
   LOGS(*logger_, VERBOSE) << "Load from cached QNN Context completed.";
   return Status::OK();
@@ -393,8 +393,10 @@ Status QnnBackendManager::SetupBackend(const logging::Logger& logger, bool use_c
   ORT_RETURN_IF_ERROR(InitializeProfiling());
   LOGS(logger, VERBOSE) << "InitializeProfiling succeed.";
 
-  ORT_RETURN_IF_ERROR(CreateContext());
-  LOGS(logger, VERBOSE) << "CreateContext succeed.";
+  if (!use_cached_context_) {
+    ORT_RETURN_IF_ERROR(CreateContext());
+    LOGS(logger, VERBOSE) << "CreateContext succeed.";
+  }
 
   // TODO: failed to createPowerConfigId with Qnn v2, need future investigation
   // Disable it for now since it doen't impact any existing feature
