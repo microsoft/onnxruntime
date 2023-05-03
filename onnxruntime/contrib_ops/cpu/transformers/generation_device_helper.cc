@@ -932,8 +932,8 @@ Status CreateWhisperEncoderInputs(
   // decoder_input_ids is optional.
   if (start_token_id >= 0) {
     // Filled decoder_input_ids with start token ID
-    int32_t hacked_ids[] = {50257, 50362};
-    // int32_t hacked_ids[] = {50258, 50259, 50359, 50363};
+    //int32_t hacked_ids[] = {50257, 50362};
+    int32_t hacked_ids[] = {50258, 50259, 50359, 50363};
     int64_t dims[] = {batch_size, (int64_t)(sizeof(hacked_ids) / sizeof(hacked_ids[0]))};
     TensorShape decoder_input_ids_shape(&dims[0], 2);
     Tensor::InitOrtValue(element_type, decoder_input_ids_shape, allocator, decoder_input_ids);

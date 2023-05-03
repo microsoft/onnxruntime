@@ -153,7 +153,7 @@ class WhisperEncoderDecoderInitHelper:
 
         # ONNX exporter might mark dimension like 'Transposepresent_value_self_1_dim_2' in shape inference.
         # We use a workaround here: first use dim_param "1" for sequence_length, and later change to dim_value.
-        sequence_length = "2"
+        sequence_length = "4"
         num_heads = str(model.config.encoder_attention_heads)
         hidden_size = str(model.config.d_model)
         head_size = str(model.config.d_model // model.config.encoder_attention_heads)
