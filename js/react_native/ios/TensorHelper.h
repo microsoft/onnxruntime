@@ -5,6 +5,12 @@
 #define TensorHelper_h
 
 #import <Foundation/Foundation.h>
+
+// Note: DO NOT CHANGE the following line for including ORT C API headers.
+// Switched from using syntax `#import <onnxruntime/onnxruntime_cxx_api.h>` to using below syntax for including headers
+// so as to match how we include the ort c api headers in other places. Otherwise, it will trigger an edge case when compiling
+// a react native ios app with ort extensions included and cause the compiler to allow both ORT C APIs to be included.
+// (can lead to a redefinition error of multiple types defined within ORT C API header.)
 #include "onnxruntime_cxx_api.h"
 
 @interface TensorHelper : NSObject
