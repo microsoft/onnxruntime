@@ -19,11 +19,11 @@ var opts = {
 };
 var ot_opts = {
     // os: getAnchorSelectedOS() || getDefaultSelectedOS(),
-    ot_scenario: 'ot_large_model',
-    ot_os: 'ot_linux',
-    ot_architecture: 'ot_X64',
-    ot_language: 'ot_python',
-    ot_hardwareAcceleration: 'ot_CUDA',
+    ot_scenario: '',
+    ot_os: '',
+    ot_architecture: '',
+    ot_language: '',
+    ot_hardwareAcceleration: '',
 };
 
 var os = $(".os > .r-option");
