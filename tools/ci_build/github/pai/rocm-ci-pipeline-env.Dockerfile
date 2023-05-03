@@ -10,7 +10,7 @@ RUN cd /opt/mpi_install/ucx/build &&\
       make install
 
 # CMake
-ENV CMAKE_VERSION=3.24.2
+ENV CMAKE_VERSION=3.26.3
 RUN cd /usr/local && \
     wget -q -O - https://github.com/Kitware/CMake/releases/download/v${CMAKE_VERSION}/cmake-${CMAKE_VERSION}-Linux-x86_64.tar.gz | tar zxf -
 ENV PATH=/usr/local/cmake-${CMAKE_VERSION}-linux-x86_64/bin:${PATH}
