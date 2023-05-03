@@ -6,17 +6,19 @@
 #include <string_view>
 
 #include "core/common/inlined_containers.h"
+#include "core/framework/kernel_registry.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/mlas/inc/mlas.h"
 #include "core/graph/graph_utils.h"
 #include "core/graph/node_attr_utils.h"
+#include "core/optimizer/graph_transformer.h"
 #include "core/optimizer/utils.h"
 #include "core/optimizer/selectors_actions/actions.h"
 
 namespace onnxruntime {
 
 namespace {
-
+// #define MLAS_F16VEC_INTRINSICS_SUPPORTED
 #if !defined(ORT_MINIMAL_BUILD)
 namespace selectors {
 const Node* GetLoneConsumerNode(const GraphViewer& graph_viewer, const Node& node) {
@@ -44,7 +46,7 @@ bool HasElementDataType(const NodeArg& node_arg, int32_t data_type) {
   return data_type == actual_data_type;
 }
 
-bool ConvFusionDataTypeCheck(const Node& conv_node) {
+bool ConvFusionDataTypeCheck(const Node& conv_node, bool support_fp16) {
   // TODO(hasesh): The CPU and CUDA EP only support float type for the Conv+Activation
   // and the Conv+Add+Relu fusions.
   // Assess the support level for the other compatible EPs and if they also
@@ -58,7 +60,7 @@ bool ConvFusionDataTypeCheck(const Node& conv_node) {
   if (node_ep == kCpuExecutionProvider) {
 #ifdef MLAS_F16VEC_INTRINSICS_SUPPORTED
     if (!HasElementDataType(*conv_node.InputDefs()[0], ONNX_NAMESPACE::TensorProto_DataType_FLOAT) &&
-        !HasElementDataType(*conv_node.InputDefs()[0], ONNX_NAMESPACE::TensorProto_DataType_FLOAT16)) {
+        (!HasElementDataType(*conv_node.InputDefs()[0], ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) && support_fp16_)) {
       return false;
     }
 #else
@@ -72,9 +74,12 @@ bool ConvFusionDataTypeCheck(const Node& conv_node) {
 }
 
 class ConvActivation : public NodeSelector {
+ private:
+  bool support_fp16_{false};
+
  public:
   ConvActivation() = default;
-
+  ConvActivation(bool support_fp16) : support_fp16_(support_fp16) {}
   std::optional<NodesToOptimizeIndices> Select(const GraphViewer& graph_viewer, const Node& node) const override {
     const std::string_view node_ep = node.GetExecutionProviderType();
     const auto* next_node = GetLoneConsumerNode(graph_viewer, node);
@@ -102,7 +107,7 @@ class ConvActivation : public NodeSelector {
       return false;
     };
 
-    if (!ConvFusionDataTypeCheck(node)) {
+    if (!ConvFusionDataTypeCheck(node, support_fp16_)) {
       return std::nullopt;
     }
 
@@ -130,9 +135,12 @@ class ConvActivation : public NodeSelector {
 };
 
 class ConvAddRelu : public NodeSelector {
+ private:
+  bool support_fp16_{false};
+
  public:
   ConvAddRelu() = default;
-
+  ConvAddRelu(bool support_fp16) : support_fp16_(support_fp16) {}
   std::optional<NodesToOptimizeIndices> Select(const GraphViewer& graph_viewer, const Node& node) const override {
     const std::string_view node_ep = node.GetExecutionProviderType();
     // only for CUDA EP
@@ -140,7 +148,7 @@ class ConvAddRelu : public NodeSelector {
       return std::nullopt;
     }
 
-    if (!ConvFusionDataTypeCheck(node)) {
+    if (!ConvFusionDataTypeCheck(node, support_fp16_)) {
       return std::nullopt;
     }
 
@@ -256,11 +264,11 @@ class FuseConvAddRelu : public ReplaceWithNew {
 };
 }  // namespace actions
 
-void RegisterConvActivationFusionRules(SelectorActionRegistry& registry) {
+void RegisterConvActivationFusionRules(SelectorActionRegistry& registry, bool support_fp16 = false) {
   const auto name = "ConvAct";
   auto action = std::make_unique<actions::FuseConvActivation>();
 #if !defined(ORT_MINIMAL_BUILD)
-  auto selector = std::make_unique<selectors::ConvActivation>();
+  auto selector = std::make_unique<selectors::ConvActivation>(support_fp16);
   registry.RegisterSelectorAndAction(name, {{"Conv", {1, 11}}},
                                      std::move(selector), std::move(action));
 #else
@@ -268,11 +276,11 @@ void RegisterConvActivationFusionRules(SelectorActionRegistry& registry) {
 #endif
 }
 
-void RegisterConvAddReluFusionRules(SelectorActionRegistry& registry) {
+void RegisterConvAddReluFusionRules(SelectorActionRegistry& registry, bool support_fp16 = false) {
   const auto name = "ConvAddRelu";
   auto action = std::make_unique<actions::FuseConvAddRelu>();
 #if !defined(ORT_MINIMAL_BUILD)
-  auto selector = std::make_unique<selectors::ConvAddRelu>();
+  auto selector = std::make_unique<selectors::ConvAddRelu>(support_fp16);
   registry.RegisterSelectorAndAction(name, {{"Conv", {1, 11}}},
                                      std::move(selector), std::move(action));
 #else
@@ -280,19 +288,36 @@ void RegisterConvAddReluFusionRules(SelectorActionRegistry& registry) {
 #endif
 }
 
-SelectorActionRegistry CreateSelectorActionRegistry() {
+SelectorActionRegistry CreateSelectorActionRegistry(bool support_fp16 = false) {
   SelectorActionRegistry registry{};
-  RegisterConvActivationFusionRules(registry);
-  RegisterConvAddReluFusionRules(registry);
+  RegisterConvActivationFusionRules(registry, support_fp16);
+  RegisterConvAddReluFusionRules(registry, support_fp16);
   return registry;
 }
 
 }  // namespace
 
-ConvActivationFusion::ConvActivationFusion(const InlinedHashSet<std::string_view>& compatible_execution_providers,
-                                           const SatApplyContextVariant& apply_context)
+ConvActivationFusion::ConvActivationFusion(
+    std::shared_ptr<KernelRegistry> cpu_kernel_registry,
+    const InlinedHashSet<std::string_view>& compatible_execution_providers,
+    const SatApplyContextVariant& apply_context) noexcept
     : SelectorActionTransformer{
           "ConvActivationFusion", CreateSelectorActionRegistry(), apply_context, compatible_execution_providers} {
+  if (!cpu_kernel_registry) {
+    return;
+  }
+  const KernelCreateInfo* kernel_create_info{};
+  const auto status = cpu_kernel_registry->TryFindKernel(
+      kCpuExecutionProvider,
+      "FusedConv",
+      kMSDomain,
+      1,
+      {{"T", {DataTypeImpl::GetTensorType<MLFloat16>()}}},
+      &kernel_create_info);
+  if (status.IsOK() && kernel_create_info != nullptr) {
+    kernel_create_info = nullptr;
+    UpdateSelectorActionRegistry(CreateSelectorActionRegistry(true));
+  }
 }
 
 }  // namespace onnxruntime

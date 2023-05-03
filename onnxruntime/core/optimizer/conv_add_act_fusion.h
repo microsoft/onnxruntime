@@ -18,8 +18,10 @@ is that we assume the graph would be executed by sequential executor. then the o
 */
 class ConvAddActivationFusion : public SelectorActionTransformer {
  public:
-  ConvAddActivationFusion(const InlinedHashSet<std::string_view>& compatible_execution_providers = {},
-                          const SatApplyContextVariant& apply_context = {});
+  explicit ConvAddActivationFusion(
+      std::shared_ptr<KernelRegistry> cpu_kernel_registry = {},
+      const InlinedHashSet<std::string_view>& compatible_execution_providers = {},
+      const SatApplyContextVariant& apply_context = {}) noexcept;
 };
 
 }  // namespace onnxruntime
