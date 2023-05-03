@@ -22,7 +22,7 @@ var ot_opts = {
     ot_scenario: 'ot_large_model',
     ot_os: 'ot_linux',
     ot_architecture: 'ot_X64',
-    ot_language: 'ot_ORTModule',
+    ot_language: 'ot_python',
     ot_hardwareAcceleration: 'ot_CUDA',
 };
 
@@ -581,6 +581,12 @@ var ot_validCombos = {
     "pip install onnxruntime-training -f https://downloads.onnxruntime.ai/onnxruntime_stable_<b>&lt;cu_version*</b>&gt;.html<br/><br/>*</b><a href='https://download.onnxruntime.ai/' target='blank'>Available versions</a>",
 
     "ot_linux,ot_on_device,ot_python,ot_X64,ot_CUDA":
+    "Follow build instructions from&nbsp;<a href='https://onnxruntime.ai/docs/build/training.html' target='_blank'>here</a>",
+
+    "ot_windows,ot_on_device,ot_python,ot_X64,ot_CPU":
+    "pip install onnxruntime-training -f https://downloads.onnxruntime.ai/onnxruntime_stable_<b>&lt;cu_version*</b>&gt;.html<br/><br/>*</b><a href='https://download.onnxruntime.ai/' target='blank'>Available versions</a>",
+
+    "ot_windows,ot_on_device,ot_python,ot_X64,ot_CUDA":
     "Follow build instructions from&nbsp;<a href='https://onnxruntime.ai/docs/build/training.html' target='_blank'>here</a>",
 
     "ot_windows,ot_on_device,ot_c,ot_X64,ot_CPU":
