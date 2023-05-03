@@ -157,13 +157,16 @@ namespace Dml
             THROW_HR_IF(E_INVALIDARG, !status.IsOK());
         }
 
+        dml_command_queue_->ExecuteCommandList(commandList);
+
         // The caller can re-use relevant resources after the next set of work to be
         // flushed has completed.  Its command list hasn't been executed yet, just batched.
-        GpuEvent gpuEvent = dml_command_queue_->GetNextCompletionEvent();
+        GpuEvent gpuEvent = dml_command_queue_->GetCurrentCompletionEvent();
         gpuEvent.fence.CopyTo(fence);
         *completionValue = gpuEvent.fenceValue;
 
-        dml_command_queue_->ExecuteCommandList(commandList);
+        batch_state_->next_flush_event = gpuEvent;
+        ++batch_state_->next_flush_event.fenceValue;
     }
 
     GpuEvent ExecutionContext::InitializeOperator(
