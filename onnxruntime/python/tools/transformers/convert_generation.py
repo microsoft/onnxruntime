@@ -1344,10 +1344,6 @@ def pack_qkv_for_decoder_masked_mha(model_proto: ModelProto):
             k_matmul = output_name_to_node[node.input[1]]
             v_matmul = output_name_to_node[node.input[2]]
 
-            print(q_matmul.name, q_matmul.input[1])
-            print(k_matmul.name, k_matmul.input[1])
-            print(v_matmul.name, v_matmul.input[1])
-
             q_weight = onnx_model.get_initializer(q_matmul.input[1])
             k_weight = onnx_model.get_initializer(k_matmul.input[1])
             v_weight = onnx_model.get_initializer(v_matmul.input[1])
@@ -1368,8 +1364,7 @@ def pack_qkv_for_decoder_masked_mha(model_proto: ModelProto):
                 vals=qkv_weight.flatten().tolist(),
             )
 
-            # This line assumes the onnx model does not have any subgraphs
-            onnx_model.add_initializer(weight)
+            model_proto.graph.initializer.extend([weight])
 
             matmul_node = onnx.helper.make_node(
                 "MatMul",
@@ -1387,6 +1382,7 @@ def pack_qkv_for_decoder_masked_mha(model_proto: ModelProto):
 
     onnx_model.add_nodes(nodes_to_add)
     onnx_model.remove_nodes(nodes_to_remove)
+    onnx_model.update_graph()
 
     onnx_model.topological_sort()
 

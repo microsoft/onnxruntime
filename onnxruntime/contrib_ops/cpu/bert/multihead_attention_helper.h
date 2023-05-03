@@ -57,8 +57,8 @@ Status CheckInputs(const T* query,
 
   int batch_size = static_cast<int>(query_dims[0]);
   int sequence_length = static_cast<int>(query_dims[1]);
-  int hidden_size = query_dims.size() == 3
-                        ? (dmmha_packing ? static_cast<int>(query_dims[2]) / 3 : static_cast<int>(query_dims[2]))
+  int hidden_size = (query_dims.size() == 3)
+                        ? (dmmha_packing ? (static_cast<int>(query_dims[2]) / 3) : static_cast<int>(query_dims[2]))
                         : (num_heads * static_cast<int>(query_dims[4]));
   int head_size = static_cast<int>(hidden_size) / num_heads;
   int kv_sequence_length = sequence_length;
