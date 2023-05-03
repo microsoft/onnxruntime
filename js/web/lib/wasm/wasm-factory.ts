@@ -100,9 +100,10 @@ export const initializeWebAssembly = async(flags: Env.WebAssemblyFlags): Promise
   const useThreads = numThreads > 1 && isMultiThreadSupported();
   const useSimd = simd && isSimdSupported();
 
-  const wasmPrefixOverride = typeof flags.wasmPaths === 'string' ? flags.wasmPaths : undefined;
+  const wasmPaths = flags.wasmPaths;
+  const wasmPrefixOverride = typeof wasmPaths === 'string' ? wasmPaths : undefined;
   const wasmFileName = getWasmFileName(useSimd, useThreads);
-  const wasmPathOverride = typeof flags.wasmPaths === 'object' ? flags.wasmPaths[wasmFileName] : undefined;
+  const wasmPathOverride = typeof wasmPaths === 'object' ? wasmPaths[wasmFileName] : undefined;
 
   let isTimeout = false;
 
