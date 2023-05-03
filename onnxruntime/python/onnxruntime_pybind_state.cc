@@ -1828,11 +1828,9 @@ void CreateInferencePybindStateModule(py::module& m) {
   }
 #endif
 
-#ifdef onnxruntime_PYBIND_EXPORT_OPSCHEMA
   addGlobalSchemaFunctions(m);
   addOpSchemaSubmodule(m);
   addOpKernelSubmodule(m);
-#endif
 }
 
 void InitArray() {
