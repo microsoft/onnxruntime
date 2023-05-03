@@ -52,7 +52,7 @@ The default NVIDIA GPU build requires CUDA runtime libraries installed on the sy
 * [OpenMPI](https://www.open-mpi.org/) 4.0.4
   * See [install_openmpi.sh](https://github.com/microsoft/onnxruntime/blob/main/tools/ci_build/github/linux/docker/scripts/install_openmpi.sh)
 
-These dependency versions should reflect what is in the [Dockerfiles](https://github.com/pytorch/ort/tree/main/docker).
+These dependency versions should reflect what is in the [Dockerfiles](https://github.com/pytorch/ort/tree/main/torch_ort/docker).
 
 ### Build instructions
 {: .no_toc }
