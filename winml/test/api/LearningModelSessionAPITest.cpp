@@ -1464,7 +1464,7 @@ static void ModelBuilding_DiscreteFourierTransform_Internal(LearningModelDeviceK
 
 static void ModelBuilding_GridSample() {
 #if !defined(BUILD_INBOX)
-  ModelBuilding_GridSample_Internal(LearningModelDeviceKind::DirectX);
+  ModelBuilding_GridSample_Internal(LearningModelDeviceKind::Cpu);
 #endif
 }
 
