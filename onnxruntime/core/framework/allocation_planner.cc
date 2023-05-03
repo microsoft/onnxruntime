@@ -1862,18 +1862,19 @@ class PlannerImpl {
                   }
                 }
               }  // output->Exists
-            }    //for each output
+            }    // for each output
             if (output_consumed_in_subgraph) {
               const auto downstream = node_stream_map_[it->Index()];
               if (downstream != i) {
                 auto downstream_device = execution_plan[downstream]->device_.Type();
                 WaitNotificationFn wait_handle = stream_handle_registry.GetWaitHandle(stream_device, downstream_device);
-                ORT_ENFORCE(wait_handle, "wait handle not initialized among device ", stream_device, " and ", downstream_device);
-                if (node_to_notification.find(node_index) == node_to_notification.end()) {
-                  node_to_notification[node_index] = plan_.notification_owners.size();
-                  plan_.notification_owners.push_back(i);
+                if (wait_handle) {
+                  if (node_to_notification.find(node_index) == node_to_notification.end()) {
+                    node_to_notification[node_index] = plan_.notification_owners.size();
+                    plan_.notification_owners.push_back(i);
+                  }
+                  node_to_wait[it->Index()].insert({node_index, wait_handle});
                 }
-                node_to_wait[it->Index()].insert({node_index, wait_handle});
               }
             }
           }
