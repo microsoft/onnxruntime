@@ -567,9 +567,9 @@ struct OrtLiteCustomFunc : public OrtLiteCustomOp {
   };
 
   OrtLiteCustomFunc(const char* op_name,
-                const char* execution_provider,
-                ComputeFn compute_fn) : OrtLiteCustomOp(op_name, execution_provider),
-                                        compute_fn_(compute_fn) {
+                    const char* execution_provider,
+                    ComputeFn compute_fn) : OrtLiteCustomOp(op_name, execution_provider),
+                                            compute_fn_(compute_fn) {
     ParseArgs<Args...>(input_types_, output_types_);
 
     OrtCustomOp::KernelCompute = [](void* op_kernel, OrtKernelContext* context) {
@@ -627,8 +627,8 @@ struct OrtLiteCustomStruct : public OrtLiteCustomOp {
   };
 
   OrtLiteCustomStruct(const char* op_name,
-                  const char* execution_provider) : OrtLiteCustomOp(op_name,
-                                                                    execution_provider) {
+                      const char* execution_provider) : OrtLiteCustomOp(op_name,
+                                                                        execution_provider) {
     init(&CustomOp::Compute);
   }
 
