@@ -184,12 +184,12 @@ __global__ void AddBiasTransposeQKVPackedCutlass(
       q[i] = input[i] + biases[i];
     }
 
-    for (int i = threadIdx.x + D_QK; i < D_QK + D_QK; i += blockDim.x) {
-      k[i] = input[i] + biases[i];
+    for (int i = threadIdx.x; i < D_QK; i += blockDim.x) {
+      k[i] = input[D_QK + i] + biases[D_QK + i];
     }
 
-    for (int i = threadIdx.x + D_QK + D_QK; i < D_QK + D_QK + D_V; i += blockDim.x) {
-      v[i] = input[i] + biases[i];
+    for (int i = threadIdx.x; i < +D_V; i += blockDim.x) {
+      v[i] = input[D_QK + D_QK + i] + biases[D_QK + D_QK + i];
     }
   }
 }
@@ -511,7 +511,7 @@ Status FusedScaledDotProductAttentionCutlass(
   p.scale = parameters.scale;
   p.seqlen_k_ptr = nullptr;
   p.seqstart_q_ptr = const_cast<int32_t*>(data.cumulative_sequence_length);
-  p.seqstart_k_ptr = const_cast<int32_t*> (data.cumulative_sequence_length);
+  p.seqstart_k_ptr = const_cast<int32_t*>(data.cumulative_sequence_length);
   p.query = query;
   p.key = key;
   p.value = value;

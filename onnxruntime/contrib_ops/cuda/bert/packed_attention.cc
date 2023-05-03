@@ -275,6 +275,8 @@ Status PackedAttention<T>::ComputeInternal(OpKernelContext* context) const {
   MHARunner* fused_runner = TryGettingFusedRunner(parameters);
 
   bool use_memory_efficient_attention = false;
+
+  fused_runner = nullptr;
 #if USE_FLASH_ATTENTION
   if (nullptr == fused_runner) {
     auto& device_prop = GetDeviceProp();
