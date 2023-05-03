@@ -388,7 +388,7 @@ class SessionState {
                                   const SessionOptions& session_options,
                                   bool remove_initializers,
                                   InlinedHashMap<std::string, size_t>& constant_initializers_use_count,
-                                  const InlinedHashMap<OrtValueName, OrtMemoryInfo>& outer_scope_node_arg_to_location_map = {},
+                                  const InlinedHashMap<OrtValueName, OrtDevice>& outer_scope_node_arg_to_location_map = {},
                                   bool graph_info_already_created = false);
 
 #ifdef ENABLE_TRAINING

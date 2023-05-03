@@ -360,6 +360,8 @@ PYBIND11_MODULE(onnxruntime_pybind11_state, m) {
 
   m.def("get_version_string", []() -> std::string { return ORT_VERSION; });
 
+  m.def("get_build_info", []() -> std::string { return ORT_BUILD_INFO; });
+
   m.def(
       "clear_training_ep_instances", []() -> void {
         GetTrainingEnv().ClearExecutionProviderInstances();

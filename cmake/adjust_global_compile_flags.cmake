@@ -272,10 +272,7 @@ if (MSVC)
     string(APPEND CMAKE_CXX_FLAGS " /wd26812")
     string(APPEND CMAKE_C_FLAGS " /wd26812")
   endif()
-  # We do not treat 3rd-party libraries' warnings as errors. In order to do that, we need to add their header files locations to /external:I.
-  # However, if a 3rd-party library was installed to a non-standard location and cmake find it and use it from there, you may see build errors
-  # like: "error C2220: the following warning is treated as an error"
-  string(APPEND CMAKE_CXX_FLAGS " /experimental:external /external:W0 /external:templates- /external:I ${CMAKE_CURRENT_SOURCE_DIR} /external:I ${CMAKE_CURRENT_BINARY_DIR}")
+
   if (onnxruntime_USE_AVX)
     string(APPEND CMAKE_CXX_FLAGS " /arch:AVX")
     string(APPEND CMAKE_C_FLAGS " /arch:AVX")

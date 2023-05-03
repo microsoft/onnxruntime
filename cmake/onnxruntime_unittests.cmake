@@ -556,6 +556,7 @@ set(ONNXRUNTIME_TEST_LIBS
     # CUDA, ROCM, TENSORRT, MIGRAPHX, DNNL, and OpenVINO are dynamically loaded at runtime
     ${PROVIDERS_NNAPI}
     ${PROVIDERS_JS}
+    ${PROVIDERS_VITISAI}
     ${PROVIDERS_QNN}
     ${PROVIDERS_SNPE}
     ${PROVIDERS_RKNPU}
@@ -1355,7 +1356,12 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
   endif()
 
   # Training API Tests
-  if (onnxruntime_ENABLE_TRAINING_APIS)
+  # Disabling training_api_test_trainer. CXXOPT generates a ton of warnings because of which nuget pipeline is failing.
+  # TODO(askhade): Fix the warnings.
+  # This has no impact on the release as the release package and the pipeline, both do not use this.
+  # This is used by devs for testing training apis.
+  #if (onnxruntime_ENABLE_TRAINING_APIS)
+  if (0)
     # Only files in the trainer and common folder will be compiled into test trainer.
     file(GLOB training_api_test_trainer_src
       "${ORTTRAINING_SOURCE_DIR}/test/training_api/common/*.cc"

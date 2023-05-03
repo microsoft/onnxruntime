@@ -2209,9 +2209,9 @@ TEST(CApiTest, get_available_providers_cpp) {
 }
 
 TEST(CApiTest, get_version_string_cpp) {
-  std::string version_string = Ort::GetVersionString();
+  std::basic_string<ORTCHAR_T> version_string = Ort::GetVersionString();
   ASSERT_FALSE(version_string.empty());
-  ASSERT_EQ(version_string, ORT_VERSION);
+  ASSERT_EQ(version_string, std::basic_string<ORTCHAR_T>(ORT_TSTR_ON_MACRO(ORT_VERSION)));
 }
 
 TEST(CApiTest, TestSharedAllocators) {
@@ -2828,6 +2828,8 @@ TEST(CApiTest, TestMultiStreamInferenceSimpleSSD) {
 }
 #endif
 
+#if !defined(REDUCED_OPS_BUILD) && !defined(DISABLE_OPTIONAL_TYPE)
+
 TEST(LiteCustomOpTest, CustomFunc) {
   Ort::SessionOptions session_options;
   session_options.SetIntraOpNumThreads(1);
@@ -3019,7 +3021,6 @@ TEST(LiteCustomOpTest, HasOptional) {
   ASSERT_TRUE(output_tensors.size() == 2);
 }
 
-#if !defined(ORT_MINIMAL_BUILD)
 TEST(MultiKernelSingleSchemaTest, valid) {
   Ort::SessionOptions session_options;
   session_options.SetIntraOpNumThreads(1);

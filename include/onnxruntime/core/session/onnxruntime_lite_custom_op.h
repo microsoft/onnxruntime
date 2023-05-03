@@ -665,15 +665,15 @@ template <typename... Args>
 OrtLiteCustomOp* CreateLiteCustomOp(const char* op_name,
                                     const char* execution_provider,
                                     void (*custom_compute_fn)(Args...)) {
-  using OrtCustomOpTPtr = OrtLiteCustomFunc<Args...>;
-  return std::make_unique<OrtCustomOpTPtr>(op_name, execution_provider, custom_compute_fn).release();
+  using LiteOp = OrtLiteCustomFunc<Args...>;
+  return std::make_unique<LiteOp>(op_name, execution_provider, custom_compute_fn).release();
 }
 
 template <typename CustomOp>
 OrtLiteCustomOp* CreateLiteCustomOp(const char* op_name,
                                     const char* execution_provider) {
-  using OrtCustomOpTPtr = OrtLiteCustomStruct<CustomOp>;
-  return std::make_unique<OrtCustomOpTPtr>(op_name, execution_provider).release();
+  using LiteOp = OrtLiteCustomStruct<CustomOp>;
+  return std::make_unique<LiteOp>(op_name, execution_provider).release();
 }
 
 }  // namespace Custom

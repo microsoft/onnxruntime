@@ -29,6 +29,7 @@ using namespace onnxruntime;
 
 namespace {
 void usage() {
+  auto version_string = ToUTF8String(OrtGetApiBase()->GetVersionString());
   printf(
       "onnx_test_runner [options...] <data_root>\n"
       "Options:\n"
@@ -64,7 +65,7 @@ void usage() {
       "\t-h: help\n"
       "\n"
       "onnxruntime version: %s\n",
-      OrtGetApiBase()->GetVersionString());
+      version_string.c_str());
 }
 
 static TestTolerances LoadTestTolerances(bool enable_cuda, bool enable_openvino, bool useCustom, double atol, double rtol) {

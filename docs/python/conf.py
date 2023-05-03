@@ -10,8 +10,6 @@ import os
 import shutil  # noqa: F401
 import sys
 
-import onnxruntime
-
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", "_common"))
 
 # import recommonmark
@@ -21,13 +19,10 @@ sys.path.append(os.path.join(os.path.dirname(__file__), "..", "_common"))
 project = "Python API"
 copyright = "2018-2023, Microsoft"
 author = "Microsoft"
-version = onnxruntime.__version__
-release = version
 
 # -- General configuration ---------------------------------------------------
 
 extensions = [
-    "alabaster",
     "sphinx.ext.intersphinx",
     "sphinx.ext.imgmath",
     "sphinx.ext.ifconfig",
@@ -38,9 +33,7 @@ extensions = [
     "sphinx.ext.graphviz",
     "pyquickhelper.sphinxext.sphinx_runpython_extension",
     "sphinxcontrib.googleanalytics",
-    "sphinx_exec_code",
-    "sphinx_tabs.tabs",
-    "onnx_sphinx",
+    "sphinx.ext.napoleon",
 ]
 
 templates_path = ["_templates"]
@@ -100,7 +93,11 @@ googleanalytics_id = "UA-156955408-1"
 # -- Options for intersphinx extension ---------------------------------------
 
 # Example configuration for intersphinx: refer to the Python standard library.
-intersphinx_mapping = {"https://docs.python.org/": None}
+intersphinx_mapping = {
+    "python": ("https://docs.python.org/3", None),
+    "numpy": ("https://numpy.org/doc/stable", None),
+    "torch": ("https://pytorch.org/docs/stable/", None),
+}
 
 # -- Options for Sphinx Gallery ----------------------------------------------
 
