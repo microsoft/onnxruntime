@@ -19,11 +19,6 @@ class ConcatOpBuilder : public BaseOpBuilder {
  private:
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
                                const logging::Logger& logger) const override ORT_MUST_USE_RESULT;
-
-  // Operator support related.
- private:
-  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
-                         const logging::Logger& logger) const override;
 };
 
 // Add operator related.
@@ -51,24 +46,6 @@ Status ConcatOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 
   model_builder.AddOperand(node.OutputDefs()[0]->Name(), std::move(output));
   return Status::OK();
-}
-
-// Operator support related.
-bool ConcatOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /* initializers */, const Node& node,
-                                        const logging::Logger& logger) const {
-  std::vector<int64_t> input_shape;
-  const auto& input_defs(node.InputDefs());
-  if (!GetShape(*input_defs[0], input_shape, logger))
-    return false;
-
-  const auto input_size = input_shape.size();
-  if (input_size > 4 || input_size == 0) {
-    LOGS_DEFAULT(VERBOSE) << "Concat only supports up to 1-4d shape, input is "
-                          << input_size << "d shape";
-    return false;
-  }
-
-  return true;
 }
 
 void CreateConcatOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {

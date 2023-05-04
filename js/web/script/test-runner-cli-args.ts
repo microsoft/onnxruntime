@@ -379,8 +379,8 @@ export function parseTestRunnerCliArgs(cmdlineArgs: string[]): TestRunnerCliArgs
   const globalEnvFlags = parseGlobalEnvFlags(args);
 
   if (backend.includes('webnn') && !globalEnvFlags.wasm.proxy) {
-    throw new Error(
-        'backend webnn is restricted in the dedicated worker, set "--wasm-enable-proxy true" to enable proxy worker');
+    // Backend webnn is restricted in the dedicated worker.
+    globalEnvFlags.wasm.proxy = true;
   }
 
   // Options:
