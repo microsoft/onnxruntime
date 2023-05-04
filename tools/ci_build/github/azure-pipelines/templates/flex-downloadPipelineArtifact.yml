@@ -8,17 +8,25 @@ parameters:
   - name: targetPath
     type: string
 
+  - name: specificArtifact
+    type: boolean
+    default: false
+
+  - name: runId
+    type: string
+    default: '0'
+
 steps:
   - task: DownloadPipelineArtifact@2
     displayName: ${{ parameters.stepName }}}
     inputs:
       artifactName: ${{ parameters.artifactName}}
       targetPath: '${{ parameters.targetPath }}'
-      ${{ if eq(variables.specificArtifact, false)}}:
+      ${{ if eq(parameters.specificArtifact, false)}}:
         buildType: 'current'
       ${{ else }}:
           source: 'specific'
           project: $(System.TeamProject)
           pipeline: $(Build.DefinitionName)
           runVersion: 'specific'
-          runId: $(otherRunId)
+          runId: ${{ parameters.runId }}

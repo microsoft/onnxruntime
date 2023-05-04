@@ -47,12 +47,6 @@ resources:
     name: pypa/manylinux
     ref: aead4d751c2101e23336aa73f2380df83e7a13f3
 
-variables:
-  - name: sepcificArtifact
-    value: ${{ parameters.specificArtifact }}
-  - name: otherRunId
-    value: ${{ parameters.runId }}
-
 stages:
 - template: templates/c-api-cpu.yml
   parameters:
@@ -64,6 +58,8 @@ stages:
     AdditionalBuildFlags: ''
     AdditionalWinBuildFlags: '--enable_onnx_tests --enable_wcos'
     BuildVariant: 'default'
+    specificArtifact: ${{ parameters.specificArtifact }}
+    runId: ${{ parameters.runId }}
 
 - template: templates/ondevice-training-cpu-packaging-pipeline.yml
   parameters:
@@ -184,18 +180,24 @@ stages:
         stepName: 'Download Pipeline Artifact - Win x64'
         artifactName: 'drop-onnxruntime-java-win-x64-tensorrt'
         targetPath: '$(Build.BinariesDirectory)\java-artifact\onnxruntime-java-win-x64'
+        specificArtifact: ${{ parameters.specificArtifact }}
+        runId: ${{ parameters.runId }}
 
     - template: templates/flex-downloadPipelineArtifact.yml
       parameters:
         stepName: 'Download Pipeline Artifact - Linux x64'
         artifactName: 'drop-onnxruntime-java-linux-x64-cuda'
         targetPath: '$(Build.BinariesDirectory)\java-artifact\onnxruntime-java-linux-x64'
+        specificArtifact: ${{ parameters.specificArtifact }}
+        runId: ${{ parameters.runId }}
 
     - template: templates/flex-downloadPipelineArtifact.yml
       parameters:
         stepName: 'Download Pipeline Artifact - Linux x64'
         artifactName: 'drop-onnxruntime-java-linux-x64-tensorrt'
         targetPath: '$(Build.BinariesDirectory)\java-artifact\onnxruntime-java-linux-x64-tensorrt'
+        specificArtifact: ${{ parameters.specificArtifact }}
+        runId: ${{ parameters.runId }}
 
     - task: PowerShell@2
       displayName: 'PowerShell Script'
@@ -721,6 +723,8 @@ stages:
     ArtifactSuffix: 'GPU'
     StageSuffix: 'GPU'
     NugetPackageName : 'Microsoft.ML.OnnxRuntime.Gpu'
+    specificArtifact: ${{ parameters.specificArtifact}}
+    runId: ${{ parameters.runId}}
 
 - template: nuget/templates/dml-vs-2019.yml
   parameters:
