@@ -25,13 +25,13 @@ parameters:
   default: false
 
 # these 2 parameters are used for debugging.
-- name: specificArtifact
-  displayName: Use Specific Artifact
+- name: SpecificArtifact
+  displayName: Use Specific Artifact (Debugging only)
   type: boolean
   default: false
 
-- name: runId
-  displayName: Specific Artifact's RunId
+- name: BuildId
+  displayName: Pipeline BuildId, you could find it in the URL
   type: string
   default: '0'
 
@@ -58,8 +58,8 @@ stages:
     AdditionalBuildFlags: ''
     AdditionalWinBuildFlags: '--enable_onnx_tests --enable_wcos'
     BuildVariant: 'default'
-    specificArtifact: ${{ parameters.specificArtifact }}
-    runId: ${{ parameters.runId }}
+    SpecificArtifact: ${{ parameters.SpecificArtifact }}
+    BuildId: ${{ parameters.BuildId }}
 
 - template: templates/ondevice-training-cpu-packaging-pipeline.yml
   parameters:
@@ -177,27 +177,27 @@ stages:
 
     - template: templates/flex-downloadPipelineArtifact.yml
       parameters:
-        stepName: 'Download Pipeline Artifact - Win x64'
-        artifactName: 'drop-onnxruntime-java-win-x64-tensorrt'
-        targetPath: '$(Build.BinariesDirectory)\java-artifact\onnxruntime-java-win-x64'
-        specificArtifact: ${{ parameters.specificArtifact }}
-        runId: ${{ parameters.runId }}
+        StepName: 'Download Pipeline Artifact - Win x64'
+        ArtifactName: 'drop-onnxruntime-java-win-x64-tensorrt'
+        TargetPath: '$(Build.BinariesDirectory)\java-artifact\onnxruntime-java-win-x64'
+        SpecificArtifact: ${{ parameters.specificArtifact }}
+        BuildId: ${{ parameters.BuildId }}
 
     - template: templates/flex-downloadPipelineArtifact.yml
       parameters:
         stepName: 'Download Pipeline Artifact - Linux x64'
         artifactName: 'drop-onnxruntime-java-linux-x64-cuda'
         targetPath: '$(Build.BinariesDirectory)\java-artifact\onnxruntime-java-linux-x64'
-        specificArtifact: ${{ parameters.specificArtifact }}
-        runId: ${{ parameters.runId }}
+        SpecificArtifact: ${{ parameters.specificArtifact }}
+        BuildId: ${{ parameters.BuildId }}
 
     - template: templates/flex-downloadPipelineArtifact.yml
       parameters:
-        stepName: 'Download Pipeline Artifact - Linux x64'
-        artifactName: 'drop-onnxruntime-java-linux-x64-tensorrt'
+        StepName: 'Download Pipeline Artifact - Linux x64'
+        ArtifactName: 'drop-onnxruntime-java-linux-x64-tensorrt'
         targetPath: '$(Build.BinariesDirectory)\java-artifact\onnxruntime-java-linux-x64-tensorrt'
-        specificArtifact: ${{ parameters.specificArtifact }}
-        runId: ${{ parameters.runId }}
+        SpecificArtifact: ${{ parameters.specificArtifact }}
+        BuildId: ${{ parameters.BuildId }}
 
     - task: PowerShell@2
       displayName: 'PowerShell Script'
@@ -723,8 +723,8 @@ stages:
     ArtifactSuffix: 'GPU'
     StageSuffix: 'GPU'
     NugetPackageName : 'Microsoft.ML.OnnxRuntime.Gpu'
-    specificArtifact: ${{ parameters.specificArtifact}}
-    runId: ${{ parameters.runId}}
+    SpecificArtifact: ${{ parameters.specificArtifact }}
+    BuildId: ${{ parameters.BuildId }}
 
 - template: nuget/templates/dml-vs-2019.yml
   parameters:
