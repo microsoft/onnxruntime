@@ -635,7 +635,10 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
             ORT_TSTR("operator_pow"),
             ORT_TSTR("bernoulli"),
             ORT_TSTR("bernoulli_double"),
+            ORT_TSTR("bernoulli_expanded"),
+            ORT_TSTR("bernoulli_double_expanded"),
             ORT_TSTR("bernoulli_seed"),
+            ORT_TSTR("bernoulli_seed_expanded"),
             // float 8 types
             ORT_TSTR("cast_BFLOAT16_to_FLOAT"),
             ORT_TSTR("cast_FLOAT16_to_FLOAT8E4M3FN"),
@@ -655,6 +658,7 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
             ORT_TSTR("cast_FLOAT_to_FLOAT8E4M3FNUZ"),
             ORT_TSTR("cast_FLOAT_to_FLOAT8E5M2"),
             ORT_TSTR("cast_FLOAT_to_FLOAT8E5M2FNUZ"),
+            ORT_TSTR("cast_FLOAT_to_STRING"),
             ORT_TSTR("cast_no_saturate_FLOAT16_to_FLOAT8E4M3FN"),
             ORT_TSTR("cast_no_saturate_FLOAT16_to_FLOAT8E4M3FNUZ"),
             ORT_TSTR("cast_no_saturate_FLOAT16_to_FLOAT8E5M2"),
@@ -673,6 +677,7 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
             ORT_TSTR("castlike_FLOAT8E5M2FNUZ_to_FLOAT_expanded"),
             ORT_TSTR("castlike_FLOAT8E5M2_to_FLOAT"),
             ORT_TSTR("castlike_FLOAT8E5M2_to_FLOAT_expanded"),
+            ORT_TSTR("castlike_FLOAT_to_BFLOAT16"),
             ORT_TSTR("castlike_FLOAT_to_BFLOAT16_expanded"),
             ORT_TSTR("castlike_FLOAT_to_FLOAT8E4M3FN"),
             ORT_TSTR("castlike_FLOAT_to_FLOAT8E4M3FNUZ"),
@@ -735,7 +740,16 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
         ORT_TSTR("sce_NCd1d2d3_sum_weight_high_ii"),
         ORT_TSTR("sce_NCd1d2d3_sum_weight_high_ii_expanded"),
         ORT_TSTR("sce_none_weights_log_prob_expanded"),
-        ORT_TSTR("sce_none_weights_expanded")};
+        ORT_TSTR("sce_none_weights_expanded"),
+        // onnx==1.14.0
+        ORT_TSTR("loop13_seq"),
+        ORT_TSTR("maxunpool_export_with_output_shape"),
+        ORT_TSTR("resize_downsample_scales_cubic_align_corners"),
+        ORT_TSTR("resize_downsample_scales_linear_align_corners"),
+        ORT_TSTR("training_dropout"),
+        ORT_TSTR("training_dropout_default"),
+        ORT_TSTR("training_dropout_default_mask"),
+        ORT_TSTR("training_dropout_mask")};
     std::unordered_set<std::basic_string<ORTCHAR_T>> all_disabled_tests(std::begin(immutable_broken_tests), std::end(immutable_broken_tests));
     if (enable_cuda) {
       all_disabled_tests.insert(std::begin(cuda_flaky_tests), std::end(cuda_flaky_tests));
