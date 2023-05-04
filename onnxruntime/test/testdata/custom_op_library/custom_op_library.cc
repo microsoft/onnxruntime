@@ -123,7 +123,7 @@ struct MulTopKernelFloat {
 };
 
 struct MulTopOpFloat : Ort::CustomOpBase<MulTopOpFloat, MulTopKernelFloat> {
-  void* CreateKernel(const OrtApi&, const OrtKernelInfo* info) const { return new MulTopKernelFloat(info); }
+  void* CreateKernel(const OrtApi&, const OrtKernelInfo* info) const { return std::make_unique<MulTopKernelFloat>(info).get(); }
   const char* GetName() const { return "MulTop"; }
   const char* GetExecutionProviderType() const { return "CPUExecutionProvider"; }
   size_t GetInputTypeCount() const { return 1; }
@@ -149,7 +149,7 @@ struct MulTopKernelInt32 {
 };
 
 struct MulTopOpInt32 : Ort::CustomOpBase<MulTopOpInt32, MulTopKernelInt32> {
-  void* CreateKernel(const OrtApi&, const OrtKernelInfo* info) const { return new MulTopKernelInt32(info); }
+  void* CreateKernel(const OrtApi&, const OrtKernelInfo* info) const { return std::make_unique<MulTopKernelInt32>(info).get(); }
   const char* GetName() const { return "MulTop"; }
   const char* GetExecutionProviderType() const { return "CPUExecutionProvider"; }
   size_t GetInputTypeCount() const { return 1; }

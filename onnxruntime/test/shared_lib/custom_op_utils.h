@@ -38,7 +38,7 @@ struct MyCustomKernelSecondInputOnCpu {
 
 struct MyCustomOp : Ort::CustomOpBase<MyCustomOp, MyCustomKernel> {
   explicit MyCustomOp(const char* provider) : provider_(provider) {}
-  void* CreateKernel(const OrtApi& api, const OrtKernelInfo* info) const { return new MyCustomKernel(api, info); };
+  void* CreateKernel(const OrtApi& api, const OrtKernelInfo* info) const { return std::make_unique<MyCustomKernel>(api, info).get(); };
   const char* GetName() const { return "Foo"; };
   const char* GetExecutionProviderType() const { return provider_; };
 
@@ -60,7 +60,7 @@ struct MyCustomOpSecondInputOnCpu : Ort::CustomOpBase<MyCustomOpSecondInputOnCpu
       : provider_(provider), compute_stream_(compute_stream) {}
 
   void* CreateKernel(const OrtApi& /* api */, const OrtKernelInfo* info) const {
-    return new MyCustomKernelSecondInputOnCpu(info, compute_stream_);
+    return std::make_unique<MyCustomKernelSecondInputOnCpu>(info, compute_stream_).get();
   };
 
   const char* GetName() const { return "Foo"; };
@@ -102,7 +102,7 @@ struct MyCustomOpMultipleDynamicInputs : Ort::CustomOpBase<MyCustomOpMultipleDyn
                                                            MyCustomKernelMultipleDynamicInputs> {
   explicit MyCustomOpMultipleDynamicInputs(const char* provider) : provider_(provider) {}
   void* CreateKernel(const OrtApi& api, const OrtKernelInfo* info) const {
-    return new MyCustomKernelMultipleDynamicInputs(api, info);
+    return std::make_unique<MyCustomKernelMultipleDynamicInputs>(api, info).get();
   };
   const char* GetName() const { return "Foo"; };
   const char* GetExecutionProviderType() const { return provider_; };

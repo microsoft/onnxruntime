@@ -31,7 +31,7 @@ struct TensorRTCustomKernel {
 struct TensorRTCustomOp : Ort::CustomOpBase<TensorRTCustomOp, TensorRTCustomKernel> {
   explicit TensorRTCustomOp(const char* provider, void* compute_stream) : provider_(provider), compute_stream_(compute_stream) {}
 
-  void* CreateKernel(const OrtApi& /* api */, const OrtKernelInfo* info) const { return new TensorRTCustomKernel(info, compute_stream_); };
+  void* CreateKernel(const OrtApi& /* api */, const OrtKernelInfo* info) const { return make_unique<TensorRTCustomKernel>(info, compute_stream_).get(); };
 
   const char* GetName() const { return name_; };
 
