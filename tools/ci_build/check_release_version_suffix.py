@@ -8,12 +8,15 @@ import semver
 
 input = sys.argv[1]
 
-ver = semver.Version.parse(input)
+output = input.strip()
 
-if ver.prerelease:
+if output != '':
 
+  ver = semver.Version.parse(output)
+
+  if ver.prerelease:
     prefix = ver.prerelease.split('.')[0]
-
     if not prefix in ('alpha', 'beta', 'rc'):
-
         raise ValueError(f"Invalid pre-release: {ver}. (alpha|beta|rc) accepted.")
+
+print(f'##vso[task.setvariable variable={ReleaseVersionSuffix};]{output}')
