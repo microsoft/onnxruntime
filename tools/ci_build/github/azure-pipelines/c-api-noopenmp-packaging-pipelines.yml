@@ -24,10 +24,20 @@ parameters:
   type: boolean
   default: false
 
-- name: ReleaseVersionSuffix
-  displayName: Suffix added to release package name -alpha, -rc etc.
+- name: ReleaseVersionSuffixString
+  displayName: Suffix added to pre-release package name -alpha, -rc etc. Set it to none if you are doing an Onnx Runtime release.
   type: string
-  default: ' '
+  values:
+  - alpha
+  - beta
+  - rc
+  - none
+  default: none
+
+- name: ReleaseVersionSuffixNumber
+  displayName: Number added to pre-release package name. Set it to 0 if you are doing an Onnx Runtime release.
+  type: number
+  default: 0
 
 resources:
   repositories:
@@ -42,16 +52,13 @@ resources:
     ref: aead4d751c2101e23336aa73f2380df83e7a13f3
 
 stages:
-- stage: Check_Pipeline_Parameters
+- stage: Set_release_version_suffix
   jobs:
   - job:
     steps:
-    - script: python -m pip install --upgrade pip semver
-      displayName: 'Install pip and semver'
-    - script: python $(Build.SourcesDirectory)/tools/ci_build/check_release_version_suffix.py ${{ parameters.ReleaseVersionSuffix }}
-      workingDirectory: $(Build.SourcesDirectory)
-      displayName: 'Check release version suffix'
-    - bash:  "echo my favorite color is: $(ReleaseVersionSuffix)"
+    - bash: |
+        echo "##vso[task.setvariable variable=ReleaseVersionSuffix;]${{ parameters.ReleaseVersionSuffixString }}.${{ parameters.ReleaseVersionSuffixNumber }}"
+        echo "Release version suffix is: $(ReleaseVersionSuffix)"
 
 - template: templates/c-api-cpu.yml
   parameters:
