@@ -14,6 +14,10 @@ from ._utils import get_attribute, get_reduce_info, next_power_of_2
 
 
 class CodegenContext:
+    """
+    record variable name mapping in term of IRnodes.
+    """
+
     def __init__(self, var_map: Dict[str, str]):
         self._var_map: Dict[str, str] = {**var_map}
 
@@ -34,6 +38,10 @@ class NodeVisitor:
 
 
 class TensorInfo:
+    """
+    Represent a input/output tensor of a node.
+    """
+
     def __init__(self, dtype: TensorProto.DataType, shape: List[Any]):
         self._dtype: TensorProto.DataType = dtype
         self._shape: List[sympy.Expr] = parse_shape(shape)
@@ -120,11 +128,14 @@ class TypeAndShapeInfer:
         return cls._INFER_FUNC_MAP[node.op_type](node, input_infos, graph)
 
 
-# Generate all autotune configs for a kernel function by it's xnumel and rnumel.
-# A config is a tuple of (xblock, rblock, num_warps).
-# If it's elementwise kernel, the rnumel is 1.
-# If it's reduction kernel on last contiguous dimensions, the contiguous flag is True.
 class AutotuneConfigs:
+    """
+    Generate all autotune configs for a kernel function by it's xnumel and rnumel.
+    A config is a tuple of (xblock, rblock, num_warps).
+    If it's elementwise kernel, the rnumel is 1.
+    If it's reduction kernel on last contiguous dimensions, the contiguous flag is True.
+    """
+
     def __init__(self, x_numel: int, r_numel: int, contiguous: bool):
         self.configs: List[Tuple[int, int, int]] = self._gen_autotune_configs(x_numel, r_numel, contiguous)
         self.requires_for_loop: bool = any(config[1] < r_numel for config in self.configs)

@@ -3,7 +3,14 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
-# Generate code for each IR node.
+"""
+Generate code for each IR node.
+Mostly, Nodes are classified into two categories:
+    1. ElementwiseKernelNode: compute a tensor from other tensors, e.g. ElementwiseKernelNode
+    2. ReduceKernelNode: perform a reduction computation on a tensor, e.g. reduce_sum/max/min
+        one or more axes are supported
+
+"""
 
 from typing import Tuple
 
@@ -34,6 +41,10 @@ from ._utils import may_add_brackets
 
 
 class TritonCodegen(NodeVisitor):
+    """
+    Specialized codegen for Triton backend.
+    """
+
     def __init__(self):
         super().__init__()
 
@@ -240,7 +251,7 @@ class TritonCodegen(NodeVisitor):
         "Mul": "{indent}{o0} = {i0} * {i1}\n",
         "Div": "{indent}{o0} = {i0} / {i1}\n",
         "Relu": "{indent}{o0} = tl.maximum({i0}, 0.0)\n",
-        "Pow": "{indent}{o0} = tl.libdevice.pow({i0}, {i1})\n",
+        "Pow": "{indent}{o0} = tl.math.pow({i0}, {i1})\n",
         "Pow2": "{indent}{o0} = {i0} * {i0}\n",
         "Pow3": "{indent}{o0} = {i0} * {i0} * {i0}\n",
         "Sqrt": "{indent}{o0} = tl.sqrt({i0})\n",
@@ -297,8 +308,16 @@ class TritonCodegen(NodeVisitor):
         input_var_name = context.get_internal_variable_name(node.inputs[0].name)
         output_var_name = context.get_internal_variable_name(node.outputs[0].name)
         src_code = ""
+        masks = []
+        if node.offset_calc.requires_x_mask:
+            masks.append("xmask")
         if node.offset_calc.requires_r_mask:
-            src_code += f"{space_indent}{input_var_name} = tl.where(rmask, {input_var_name}, {node.default_value})\n"
+            masks.append("rmask")
+        if len(masks) > 0:
+            masks_str = " & ".join(masks)
+            src_code += (
+                f"{space_indent}{input_var_name} = " f"tl.where({masks_str}, {input_var_name}, {node.default_value})\n"
+            )
         src_code += f"{space_indent}{output_var_name} = {node.triton_func}({input_var_name}, axis=1)[:, None]\n"
         return src_code
 

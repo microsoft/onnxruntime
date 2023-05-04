@@ -1233,24 +1233,168 @@ TEST_F(GraphTransformationTests, TritonFusion) {
   ASSERT_TRUE(op_to_count["Sub"] == 1);
   ASSERT_TRUE(op_to_count["Mul"] == 7);
   ASSERT_TRUE(op_to_count["Div"] == 3);
-  ASSERT_TRUE(op_to_count["Unsqueeze"] == 2);
   ASSERT_TRUE(op_to_count["Cast"] == 7);
+  ASSERT_TRUE(op_to_count["Dropout"] == 4);
   ASSERT_TRUE(op_to_count["Softmax"] == 1);
+  ASSERT_TRUE(op_to_count["LayerNormalization"] == 4);
 
-  std::unique_ptr<GraphTransformer> transformer = std::make_unique<TritonFusion>();
-  onnxruntime::GraphTransformerManager graph_transformation_mgr{1};
-  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::move(transformer), TransformerLevel::Level1));
-  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+  {
+    auto model_uri = MODEL_FOLDER "bert_toy_opset14.onnx";
+    std::shared_ptr<Model> model;
+    ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, *logger_));
+    Graph& graph = model->MainGraph();
+    const char* config = R"(
+      {
+        "ops": {
+          "Add": { "versions": [13, 14] },
+          "Sub": { "versions": [13, 14] },
+          "Mul": { "versions": [13, 14] },
+          "Div": { "versions": [13, 14] },
+          "Cast": { "versions": [13] },
+          "Dropout": { "versions": [13] },
+          "Softmax": { "versions": [13], "conditions": { "axis": "-1" } },
+          "LayerNormalization": { "versions": [1], "conditions": { "axis": "-1" } }
+        },
+        "initializer": "scalar",
+        "min_nodes": 2
+      }
+    )";
 
-  op_to_count = CountOpsInGraph(graph);
-  ASSERT_TRUE(op_to_count["Add"] == 10);
-  ASSERT_TRUE(op_to_count["Sub"] == 0);
-  ASSERT_TRUE(op_to_count["Mul"] == 2);
-  ASSERT_TRUE(op_to_count["Div"] == 0);
-  ASSERT_TRUE(op_to_count["Unsqueeze"] == 0);
-  ASSERT_TRUE(op_to_count["Cast"] == 6);
-  ASSERT_TRUE(op_to_count["Softmax"] == 0);
-  ASSERT_TRUE(op_to_count["com.microsoft.TritonOp"] == 6);
+    std::unique_ptr<GraphTransformer> transformer = std::make_unique<TritonFusion>(config);
+    onnxruntime::GraphTransformerManager graph_transformation_mgr{1};
+    ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::move(transformer), TransformerLevel::Level1));
+    ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+
+    op_to_count = CountOpsInGraph(graph);
+    ASSERT_TRUE(op_to_count["Add"] == 6);
+    ASSERT_TRUE(op_to_count["Sub"] == 0);
+    ASSERT_TRUE(op_to_count["Mul"] == 0);
+    ASSERT_TRUE(op_to_count["Div"] == 0);
+    ASSERT_TRUE(op_to_count["Cast"] == 4);
+    ASSERT_TRUE(op_to_count["Dropout"] == 0);
+    ASSERT_TRUE(op_to_count["Softmax"] == 0);
+    ASSERT_TRUE(op_to_count["LayerNormalization"] == 0);
+    ASSERT_TRUE(op_to_count["com.microsoft.TritonOp"] == 10);
+  }
+
+  // No Dropout.
+  {
+    auto model_uri = MODEL_FOLDER "bert_toy_opset14.onnx";
+    std::shared_ptr<Model> model;
+    ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, *logger_));
+    Graph& graph = model->MainGraph();
+    const char* config = R"(
+      {
+        "ops": {
+          "Add": { "versions": [13, 14] },
+          "Sub": { "versions": [13, 14] },
+          "Mul": { "versions": [13, 14] },
+          "Div": { "versions": [13, 14] },
+          "Cast": { "versions": [13] },
+          "Softmax": { "versions": [13], "conditions": { "axis": "-1" } },
+          "LayerNormalization": { "versions": [1], "conditions": { "axis": "-1" } }
+        },
+        "initializer": "scalar",
+        "min_nodes": 2
+      }
+    )";
+
+    std::unique_ptr<GraphTransformer> transformer = std::make_unique<TritonFusion>(config);
+    onnxruntime::GraphTransformerManager graph_transformation_mgr{1};
+    ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::move(transformer), TransformerLevel::Level1));
+    ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+
+    op_to_count = CountOpsInGraph(graph);
+    ASSERT_TRUE(op_to_count["Add"] == 8);
+    ASSERT_TRUE(op_to_count["Sub"] == 0);
+    ASSERT_TRUE(op_to_count["Mul"] == 0);
+    ASSERT_TRUE(op_to_count["Div"] == 0);
+    ASSERT_TRUE(op_to_count["Cast"] == 4);
+    ASSERT_TRUE(op_to_count["Dropout"] == 4);
+    ASSERT_TRUE(op_to_count["Softmax"] == 0);
+    ASSERT_TRUE(op_to_count["LayerNormalization"] == 0);
+    ASSERT_TRUE(op_to_count["com.microsoft.TritonOp"] == 10);
+  }
+
+  // Ignore min nodes.
+  {
+    auto model_uri = MODEL_FOLDER "bert_toy_opset14.onnx";
+    std::shared_ptr<Model> model;
+    ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, *logger_));
+    Graph& graph = model->MainGraph();
+    const char* config = R"(
+      {
+        "ops": {
+          "Add": { "versions": [13, 14] },
+          "Sub": { "versions": [13, 14] },
+          "Mul": { "versions": [13, 14] },
+          "Div": { "versions": [13, 14] },
+          "Cast": { "versions": [13], "ignore_min_nodes": true },
+          "Dropout": { "versions": [13] },
+          "Softmax": { "versions": [13], "conditions": { "axis": "-1" } },
+          "LayerNormalization": { "versions": [1], "conditions": { "axis": "-1" } }
+        },
+        "initializer": "scalar",
+        "min_nodes": 2
+      }
+    )";
+
+    std::unique_ptr<GraphTransformer> transformer = std::make_unique<TritonFusion>(config);
+    onnxruntime::GraphTransformerManager graph_transformation_mgr{1};
+    ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::move(transformer), TransformerLevel::Level1));
+    ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+
+    op_to_count = CountOpsInGraph(graph);
+    ASSERT_TRUE(op_to_count["Add"] == 6);
+    ASSERT_TRUE(op_to_count["Sub"] == 0);
+    ASSERT_TRUE(op_to_count["Mul"] == 0);
+    ASSERT_TRUE(op_to_count["Div"] == 0);
+    ASSERT_TRUE(op_to_count["Cast"] == 0);
+    ASSERT_TRUE(op_to_count["Dropout"] == 0);
+    ASSERT_TRUE(op_to_count["Softmax"] == 0);
+    ASSERT_TRUE(op_to_count["LayerNormalization"] == 0);
+    ASSERT_TRUE(op_to_count["com.microsoft.TritonOp"] == 14);
+  }
+
+  // Exclude Softmax using axis attribute.
+  {
+    auto model_uri = MODEL_FOLDER "bert_toy_opset14.onnx";
+    std::shared_ptr<Model> model;
+    ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, *logger_));
+    Graph& graph = model->MainGraph();
+    const char* config = R"(
+      {
+        "ops": {
+          "Add": { "versions": [13, 14] },
+          "Sub": { "versions": [13, 14] },
+          "Mul": { "versions": [13, 14] },
+          "Div": { "versions": [13, 14] },
+          "Cast": { "versions": [13]},
+          "Dropout": { "versions": [13] },
+          "Softmax": { "versions": [13], "conditions": { "axis": "1" } },
+          "LayerNormalization": { "versions": [1], "conditions": { "axis": "-1" } }
+        },
+        "initializer": "scalar",
+        "min_nodes": 2
+      }
+    )";
+
+    std::unique_ptr<GraphTransformer> transformer = std::make_unique<TritonFusion>(config);
+    onnxruntime::GraphTransformerManager graph_transformation_mgr{1};
+    ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::move(transformer), TransformerLevel::Level1));
+    ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+
+    op_to_count = CountOpsInGraph(graph);
+    ASSERT_TRUE(op_to_count["Add"] == 6);
+    ASSERT_TRUE(op_to_count["Sub"] == 0);
+    ASSERT_TRUE(op_to_count["Mul"] == 0);
+    ASSERT_TRUE(op_to_count["Div"] == 0);
+    ASSERT_TRUE(op_to_count["Cast"] == 4);
+    ASSERT_TRUE(op_to_count["Dropout"] == 1);
+    ASSERT_TRUE(op_to_count["Softmax"] == 1);
+    ASSERT_TRUE(op_to_count["LayerNormalization"] == 0);
+    ASSERT_TRUE(op_to_count["com.microsoft.TritonOp"] == 10);
+  }
 }
 #endif
 

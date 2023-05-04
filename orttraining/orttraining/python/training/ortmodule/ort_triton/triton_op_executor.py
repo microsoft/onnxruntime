@@ -33,8 +33,12 @@ def _gen_module(sorted_graph: SortedGraph) -> Tuple[str, str, ModuleType]:
     return func_name, src_code, PyCodeCache().load(src_code)
 
 
-# Compiled Triton module cache by onnx_key and input tensor shapes.
 class ModuleCache:
+    """
+    Compiled Triton module cache by onnx_key and input tensor shapes.
+
+    """
+
     cache = dict()
     clear = staticmethod(cache.clear)
 
@@ -89,6 +93,7 @@ def execute_triton_op(func_name: str, onnx_key: int, onnx_str: bytes, *tensors):
         output = func(*torch_tensors)
     except Exception as e:
         import traceback
+
         traceback.print_exc()
         raise e
     if isinstance(output, tuple):
