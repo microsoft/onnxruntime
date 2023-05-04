@@ -48,7 +48,7 @@ stages:
     steps:
     - script: python -m pip install --upgrade pip semver
       displayName: 'Install pip and semver'
-    - script: python $(Build.SourcesDirectory)/tools/ci_build/check_release_version_suffix.py $(ReleaseVersionSuffix)
+    - script: python $(Build.SourcesDirectory)/tools/ci_build/check_release_version_suffix.py ${{ parameters.ReleaseVersionSuffix }}
       workingDirectory: $(Build.SourcesDirectory)
       displayName: 'Check release version suffix'
 
