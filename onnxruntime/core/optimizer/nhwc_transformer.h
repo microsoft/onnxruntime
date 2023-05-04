@@ -51,13 +51,15 @@ class OpIdHash {
 };
 
 /**
- * @brief Information needed for operator layout transformation
+ * @brief Information needed for operator layout transformation:
+ * how to replace the existing node and add transpose
  */
 struct OpTransformInfo {
   const std::string optype_;
   const std::string domain_;
   const int version_;
   const bool has_channels_last_attrib_;
+  const std::vector<uint16_t> transpose_inputs_ {{0}};
 };
 
 using OpTransformMap = std::unordered_map<OpIdInfo, OpTransformInfo, OpIdHash>;

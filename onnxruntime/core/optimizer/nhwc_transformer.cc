@@ -103,9 +103,11 @@ NhwcTransformer::NhwcTransformer(AllocatorPtr cpu_allocator, std::shared_ptr<Ker
       conv_table_.emplace(
           OpIdInfo("Conv", kOnnxDomain, api::DataType::FLOAT16),
           OpTransformInfo{nhwc_conv_fp16.op_type_, nhwc_conv_fp16.domain_, nhwc_conv_fp16.version_, false});
+
+      // FusedConv, when 'Add' operation is fused in, input 3 should be a tensor, same shape with output.
       conv_table_.emplace(
           OpIdInfo("FusedConv", kMSDomain, api::DataType::FLOAT16),
-          OpTransformInfo{nhwc_conv_fp16.op_type_, nhwc_conv_fp16.domain_, nhwc_conv_fp16.version_, false});
+          OpTransformInfo{nhwc_conv_fp16.op_type_, nhwc_conv_fp16.domain_, nhwc_conv_fp16.version_, false, {0, 3}});
     }
   }
 
@@ -197,7 +199,9 @@ Status NhwcTransformer::ApplyImpl(Graph& graph, bool& modified, int graph_level,
     }
 
     // Skip if unknown rank
-    auto shape = NodeFromApiNode(*node).InputDefs()[0]->Shape();
+    const auto& inputs = NodeFromApiNode(*node).InputDefs();
+    const auto num_inputs = inputs.size();
+    auto shape = inputs[0]->Shape();
     if (shape == nullptr) {
       continue;
     }
@@ -209,7 +213,15 @@ Status NhwcTransformer::ApplyImpl(Graph& graph, bool& modified, int graph_level,
     size_t rank = shape->dim_size();
     std::vector<int64_t> input_perm = ChannelFirstToLastPerm(rank);
     std::vector<int64_t> output_perm = ChannelLastToFirstPerm(rank);
-    WrapTransposesAroundNode(*api_graph, *node, {&input_perm}, {&output_perm});
+    std::vector<const std::vector<int64_t>*> input_perm_vect(num_inputs);
+    for (auto input_idx : transform->transpose_inputs_) {
+      if (input_idx >= num_inputs) {
+        break;
+      }
+      input_perm_vect[input_idx] = &input_perm;
+    }
+
+    WrapTransposesAroundNode(*api_graph, *node, input_perm_vect, {&output_perm});
 
     // Replace the operator if needed
     if (node->Domain() != transform->domain_ ||

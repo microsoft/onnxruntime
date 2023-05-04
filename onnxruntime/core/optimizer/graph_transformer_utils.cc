@@ -349,12 +349,7 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       if (MlasNchwcGetBlockSize() > 1) {
         transformers.emplace_back(std::make_unique<NchwcTransformer>());
       }
-      auto cpu_allocator = cpu_execution_provider.GetAllocator(OrtMemTypeDefault);
-      auto cpu_registry = cpu_execution_provider.GetKernelRegistry();
-      auto nhwc_transformer = std::make_unique<NhwcTransformer>(std::move(cpu_allocator), std::move(cpu_registry));
-      if (nhwc_transformer->IsActive()) {
-        transformers.emplace_back(std::move(nhwc_transformer));
-      }
+
       // NCHWCtransformer should have a higher priority versus this. Because NCHWCtransformer also do the similar things
       // of fusion patterns and target on CPU. However, NCHWCtransformer will reorder the layout to nchwc which is only available for
       // x86-64 cpu, not edge cpu like arm. But This transformer could be used by opencl-ep/cpu-ep. So
@@ -362,6 +357,14 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       // PR #6351 implemented similar fusion-pattern for CUDA only, and can only fuse conv-add-relu,
       // while we can fuse more activation.
       transformers.emplace_back(std::make_unique<ConvAddActivationFusion>(cpu_ep));
+
+      // Register the NHWC layout transformer
+      auto cpu_allocator = cpu_execution_provider.GetAllocator(OrtMemTypeDefault);
+      auto cpu_registry = cpu_execution_provider.GetKernelRegistry();
+      auto nhwc_transformer = std::make_unique<NhwcTransformer>(std::move(cpu_allocator), std::move(cpu_registry));
+      if (nhwc_transformer->IsActive()) {
+        transformers.emplace_back(std::move(nhwc_transformer));
+      }
 #endif
 
     } break;
