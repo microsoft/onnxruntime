@@ -82,7 +82,7 @@ using AllFloat8 =
         Float8E5M2,
         Float8E5M2FNUZ>;
 
-using AllIeeeFloat = 
+using AllIeeeFloat =
     TypeList<
         float,
         double,
