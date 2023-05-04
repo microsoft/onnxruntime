@@ -1,5 +1,5 @@
 ---
-title: Olive 
+title: End to end optimization with Olive
 description: Hardware-aware model optimization tool
 parent: Performance
 nav_order: 5
