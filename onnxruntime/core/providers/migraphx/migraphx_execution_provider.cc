@@ -943,11 +943,10 @@ bool get_input_output_names(const GraphViewer& graph,
     if (sptr == nullptr)
       return true;
 
-    if(sptr->dim_size() == 0)
+    if (sptr->dim_size() == 0)
       return true;
 
-    for (int i = 0; i < sptr->dim_size(); i++)
-    {
+    for (int i = 0; i < sptr->dim_size(); i++) {
       if (sptr->dim(i).has_dim_param())
         return true;
     }
