@@ -280,5 +280,15 @@ Status QnnModel::SetupTensors(std::vector<Qnn_Tensor_t>& qnn_tensors,
   return Status::OK();
 }
 
+// Deserialize cached Qnn Context, retrieve Qnn graph infor from binary info
+Status QnnModel::DeserializeFromCachedContext(const onnxruntime::PathString& model_path) {
+  const QnnSystemContext_BinaryInfo_t* binary_info = nullptr;
+  ORT_RETURN_IF_ERROR(qnn_backend_manager_->LoadCachedQnnContext(model_path, &binary_info));
+
+  //retrieve Qnn graph infor from binary info
+
+  return Status::OK();
+}
+
 }  // namespace qnn
 }  // namespace onnxruntime

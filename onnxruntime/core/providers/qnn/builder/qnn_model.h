@@ -71,6 +71,8 @@ class QnnModel {
     return GetInputOutputIndex(name, outputs_info_);
   }
 
+  Status DeserializeFromCachedContext(const onnxruntime::PathString& model_path);
+
  private:
   const NodeUnit& GetNodeUnit(const Node* node,
                               const std::unordered_map<const Node*, const NodeUnit*>& node_unit_map) const;

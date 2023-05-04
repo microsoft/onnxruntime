@@ -274,7 +274,7 @@ Status QnnBackendManager::DumpQnnContext(const onnxruntime::PathString& model_pa
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to get QNN context binary size.");
   }
 
-  std::unique_ptr<uint8_t[]> context_buffer(new uint8_t[required_buffer_size]);
+  std::unique_ptr<unsigned char[]> context_buffer = std::make_unique<unsigned char[]>(required_buffer_size);
   if (nullptr == context_buffer) {
     LOGS(*logger_, ERROR) << "Failed to allocate buffer for context cache.";
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to allocate buffer for context cache.");
@@ -309,10 +309,10 @@ Status QnnBackendManager::DumpQnnContext(const onnxruntime::PathString& model_pa
   return Status::OK();
 }
 
-Status QnnBackendManager::LoadFromCachedQnnContext(const onnxruntime::PathString& model_path) {
+Status QnnBackendManager::LoadCachedQnnContext(const onnxruntime::PathString& model_path, const QnnSystemContext_BinaryInfo_t** binary_info) {
   ORT_RETURN_IF(nullptr == qnn_sys_interface_.systemContextCreate ||
-                    nullptr == qnn_sys_interface_.systemContextGetBinaryInfo ||
-                    nullptr == qnn_sys_interface_.systemContextFree,
+                nullptr == qnn_sys_interface_.systemContextGetBinaryInfo ||
+                nullptr == qnn_sys_interface_.systemContextFree,
                 "Failed to get valid function pointer.");
 
   uint64_t buffer_size{0};
@@ -324,7 +324,7 @@ Status QnnBackendManager::LoadFromCachedQnnContext(const onnxruntime::PathString
   ORT_RETURN_IF(0 == buffer_size, "Empty cache file encountered.");
   cache_file.seekg(0, cache_file.beg);
 
-  std::shared_ptr<uint8_t> buffer(new uint8_t[buffer_size], std::default_delete<uint8_t[]>());
+  std::unique_ptr<unsigned char[]> buffer = std::make_unique<unsigned char[]>(buffer_size);
   ORT_RETURN_IF(nullptr == buffer, "Failed to allocate memory for cache file.");
 
   // Load file into buffer
@@ -335,12 +335,12 @@ Status QnnBackendManager::LoadFromCachedQnnContext(const onnxruntime::PathString
   auto rt = qnn_sys_interface_.systemContextCreate(&sys_ctx_handle);
   ORT_RETURN_IF(QNN_SUCCESS != rt, "Failed to create system handle.");
 
-  const QnnSystemContext_BinaryInfo_t* binary_info{nullptr};
+  //const QnnSystemContext_BinaryInfo_t* binary_info{nullptr};
   Qnn_ContextBinarySize_t binary_info_size{0};
   rt = qnn_sys_interface_.systemContextGetBinaryInfo(sys_ctx_handle,
                                                      static_cast<void*>(buffer.get()),
                                                      buffer_size,
-                                                     &binary_info,
+                                                     binary_info,
                                                      &binary_info_size);
   ORT_RETURN_IF(QNN_SUCCESS != rt, "Failed to get context binary infor.");
 

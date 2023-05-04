@@ -66,7 +66,7 @@ class QnnBackendManager {
 
   Status DumpQnnContext(const onnxruntime::PathString& model_path);
 
-  Status LoadFromCachedQnnContext(const onnxruntime::PathString& model_path);
+  Status LoadCachedQnnContext(const onnxruntime::PathString& model_path, const QnnSystemContext_BinaryInfo_t** binary_info);
 
   Status SetupBackend(const logging::Logger& logger, bool use_cached_context_);
 
