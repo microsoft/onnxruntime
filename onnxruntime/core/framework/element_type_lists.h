@@ -52,7 +52,7 @@ using AllFixedSizeIR4 =
 
 using AllFixedSizeIR9 =
     boost::mp11::mp_push_back<
-        AllFixedSize,
+        AllFixedSizeIR4,
         Float8E4M3FN,
         Float8E4M3FNUZ,
         Float8E5M2,
@@ -67,7 +67,7 @@ using AllIR4 =
 
 using AllIR9 =
     boost::mp11::mp_push_back<
-        All,
+        AllIR4,
         Float8E4M3FN,
         Float8E4M3FNUZ,
         Float8E5M2,
@@ -75,22 +75,18 @@ using AllIR9 =
 
 using All = AllIR4;
 
-using AllIeeeFloatIR4 =
+using AllFloat8 =
     TypeList<
-        float,
-        double>;
-
-using AllIeeeFloatIR9 =
-    TypeList<
-        float,
-        double,
-        MLFloat16,
         Float8E4M3FN,
         Float8E4M3FNUZ,
         Float8E5M2,
         Float8E5M2FNUZ>;
 
-using AllIeeeFloat = AllIeeeFloatIR4;
+using AllIeeeFloat = 
+    TypeList<
+        float,
+        double,
+        MLFloat16>;
 
 using AllNumericIR4 =
     TypeList<

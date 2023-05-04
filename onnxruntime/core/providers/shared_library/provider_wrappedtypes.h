@@ -555,8 +555,6 @@ class DataTypeImpl final {
   static const std::vector<MLDataType>& AllTensorTypesIR9() { return g_host->DataTypeImpl__AllTensorTypesIR9(); }
 
   static const std::vector<MLDataType>& AllIEEEFloatTensorTypes() { return g_host->DataTypeImpl__AllIEEEFloatTensorTypes(); }
-  static const std::vector<MLDataType>& AllIEEEFloatTensorTypesIR4() { return g_host->DataTypeImpl__AllIEEEFloatTensorTypesIR4(); }
-  static const std::vector<MLDataType>& AllIEEEFloatTensorTypesIR9() { return g_host->DataTypeImpl__AllIEEEFloatTensorTypesIR9(); }
 
   static const std::vector<MLDataType>& AllTensorAndSequenceTensorTypes() { return g_host->DataTypeImpl__AllTensorAndSequenceTensorTypes(); }
   static const std::vector<MLDataType>& AllTensorAndSequenceTensorTypesIR4() { return g_host->DataTypeImpl__AllTensorAndSequenceTensorTypesIR4(); }

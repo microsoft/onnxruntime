@@ -700,8 +700,6 @@ struct ProviderHostImpl : ProviderHost {
   const std::vector<MLDataType>& DataTypeImpl__AllTensorTypesIR9() override { return DataTypeImpl::AllTensorTypesIR9(); }
 
   const std::vector<MLDataType>& DataTypeImpl__AllIEEEFloatTensorTypes() override { return DataTypeImpl::AllIEEEFloatTensorTypes(); }
-  const std::vector<MLDataType>& DataTypeImpl__AllIEEEFloatTensorTypesIR4() override { return DataTypeImpl::AllIEEEFloatTensorTypesIR4(); }
-  const std::vector<MLDataType>& DataTypeImpl__AllIEEEFloatTensorTypesIR9() override { return DataTypeImpl::AllIEEEFloatTensorTypesIR9(); }
 
   const std::vector<MLDataType>& DataTypeImpl__AllTensorAndSequenceTensorTypes() override { return DataTypeImpl::AllTensorAndSequenceTensorTypes(); }
   const std::vector<MLDataType>& DataTypeImpl__AllTensorAndSequenceTensorTypesIR4() override { return DataTypeImpl::AllTensorAndSequenceTensorTypesIR4(); }

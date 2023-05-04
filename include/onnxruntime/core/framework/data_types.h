@@ -230,9 +230,7 @@ class DataTypeImpl {
   static const std::vector<MLDataType>& AllNumericTensorTypesIR4();
   static const std::vector<MLDataType>& AllNumericTensorTypesIR9();
 
-  static const std::vector<MLDataType>& AllIEEEFloatTensorTypes();  // up to IR4 (no float 8), deprecated
-  static const std::vector<MLDataType>& AllIEEEFloatTensorTypesIR4();
-  static const std::vector<MLDataType>& AllIEEEFloatTensorTypesIR9();
+  static const std::vector<MLDataType>& AllIEEEFloatTensorTypes();  // float16, float, double
 
   static const std::vector<MLDataType>& AllTensorAndSequenceTensorTypes();  // up to IR4 (no float 8), deprecated
   static const std::vector<MLDataType>& AllTensorAndSequenceTensorTypesIR4();
