@@ -86,11 +86,6 @@ namespace Dml
             const MLOperatorKernelCreationContext& kernelInfo
             );
 
-        void SetDmlOperatorDesc(
-            const DML_OPERATOR_DESC& operatorDesc,
-            const MLOperatorKernelContext& kernelInfo
-            );
-
         // Tensors ordered based on index arrays passed to Initialize
         std::vector<IMLOperatorTensor*> GetInputTensors(const MLOperatorKernelContext& kernelContext);
         std::vector<IMLOperatorTensor*> GetOutputTensors(const MLOperatorKernelContext& kernelContext);

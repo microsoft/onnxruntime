@@ -215,42 +215,6 @@ namespace Dml
         }
     }
 
-    void DmlOperator::SetDmlOperatorDesc(
-        const DML_OPERATOR_DESC& operatorDesc,
-        const MLOperatorKernelContext& kernelInfo
-        )
-    {
-        // Create and compile the operator.
-        // Unlike SetDmlOperatorDesc which takes a MLOperatorKernelCreationContext, it is okay to
-        // call this method more than once, since Compute may take different inputs each execution.
-        m_compiledOperator.Reset();
-        ComPtr<IDMLOperator> dmlOperator;
-        ORT_THROW_IF_FAILED(m_dmlDevice->CreateOperator(&operatorDesc, IID_PPV_ARGS(&dmlOperator)));
-        ORT_THROW_IF_FAILED(m_dmlDevice->CompileOperator(dmlOperator.Get(), GetExecutionFlags(), IID_PPV_ARGS(&m_compiledOperator)));
-
-        UINT64 persistentResourceSize = m_compiledOperator->GetBindingProperties().PersistentResourceSize;
-        if (persistentResourceSize > 0)
-        {
-            if (!m_persistentResource || m_persistentResource->GetDesc().Width < persistentResourceSize)
-            {
-                m_persistentResource = nullptr;
-                ORT_THROW_IF_FAILED(m_executionProvider->AllocatePooledResource(
-                    static_cast<size_t>(persistentResourceSize),
-                    AllocatorRoundingMode::Enabled,
-                    m_persistentResource.GetAddressOf(),
-                    m_persistentResourcePoolingUnk.GetAddressOf()));
-            }
-
-            m_persistentResourceBinding = DML_BUFFER_BINDING{ m_persistentResource.Get(), 0, persistentResourceSize };
-        }
-
-        ORT_THROW_IF_FAILED(m_executionProvider->InitializeOperator(
-            m_compiledOperator.Get(),
-            m_persistentResourceBinding ? &*m_persistentResourceBinding : nullptr,
-            gsl::span<const DML_BUFFER_BINDING>() // Empty input bindings since ownedByDml is not used.
-            ));
-    }
-
     void DmlOperator::Initialize(
         const MLOperatorKernelCreationContext& kernelInfo,
         uint32_t minDimensionCount

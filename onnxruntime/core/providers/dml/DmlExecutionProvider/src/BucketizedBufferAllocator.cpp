@@ -82,11 +82,6 @@ namespace Dml
 
     void* BucketizedBufferAllocator::Alloc(size_t size)
     {
-        return Alloc(size, m_defaultRoundingMode);
-    }
-
-    void* BucketizedBufferAllocator::Alloc(size_t size, AllocatorRoundingMode roundingMode)
-    {
         // For some reason lotus likes requesting 0 bytes of memory
         size = std::max<size_t>(1, size);
 

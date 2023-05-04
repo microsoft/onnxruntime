@@ -386,13 +386,13 @@ struct WinmlAdapterApi {
     */
   OrtStatus*(ORT_API_CALL* DmlCopyTensor)(_In_ OrtExecutionProvider* provider, _In_ OrtValue* src, _In_ OrtValue* dst)NO_EXCEPTION;
 
-  /**
+ /**
     * GetProviderMemoryInfo
-	 * This api gets the memory info object associated with an EP.
+        * This api gets the memory info object associated with an EP.
     *
     * WinML uses this to manage caller specified D3D12 inputs/outputs. It uses the memory info here to call DmlCreateGPUAllocationFromD3DResource.
     */
-  OrtStatus*(ORT_API_CALL* GetProviderMemoryInfo)(_In_ OrtExecutionProvider* provider, OrtMemoryInfo** memory_info)NO_EXCEPTION;
+ OrtStatus*(ORT_API_CALL* GetProviderMemoryInfo)(_In_ OrtExecutionProvider* provider, OrtMemoryInfo** memory_info)NO_EXCEPTION;
 
   /**
     * GetProviderAllocator
@@ -400,7 +400,7 @@ struct WinmlAdapterApi {
     *
     * WinML uses this to create tensors, and needs to hold onto the allocator for the duration of the associated value's lifetime.
     */
-  OrtStatus*(ORT_API_CALL* GetProviderAllocator)(_In_ OrtExecutionProvider* provider, OrtAllocator** allocator)NO_EXCEPTION;
+  OrtStatus*(ORT_API_CALL* GetProviderAllocator)(_In_ OrtSession* session, _In_ OrtExecutionProvider* provider, OrtAllocator** allocator)NO_EXCEPTION;
 
   /**
     * FreeProviderAllocator

@@ -69,7 +69,7 @@ ORT_API_STATUS(DmlExecutionProviderReleaseCompletedReferences, _In_ OrtExecution
 // note: this returns a weak ref
 
 ORT_API_STATUS(GetProviderMemoryInfo, _In_ OrtExecutionProvider* provider, OrtMemoryInfo** memory_info);
-ORT_API_STATUS(GetProviderAllocator, _In_ OrtExecutionProvider* provider, OrtAllocator** allocator);
+ORT_API_STATUS(GetProviderAllocator, _In_ OrtSession* session, _In_ OrtExecutionProvider* provider, OrtAllocator** allocator);
 ORT_API_STATUS(FreeProviderAllocator, _In_ OrtAllocator* allocator);
 
 // ExecutionProvider Methods
