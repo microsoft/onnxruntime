@@ -57,6 +57,7 @@ jobs:
           sarif_file: ${{ github.workspace }}\output\MergeResult.sarif
           category: VS_SCA
 
+  # No python
   Onnxruntime-SCA-win32-WINML-x64:
     runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-vs2022-mms"]
     steps:
@@ -93,7 +94,8 @@ jobs:
         with:
           sarif_file: ${{ github.workspace }}\output\MergeResult.sarif
           category: VS_SCA_WIN32_WINML_X64
-          
+
+  # No java, No python
   Onnxruntime-SCA-win32-WINML-x86:
     runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-vs2022-mms"]
     steps:
@@ -118,7 +120,7 @@ jobs:
       - name: Build code
         env:
            CAExcludePath: 'C:\Program Files;D:\b;${{ github.workspace }}\cmake'
-        run:  python tools\ci_build\build.py --enable_training --build_java --compile_no_warning_as_error --config Debug --build_dir D:\b --skip_submodule_sync --build_csharp --update --build --parallel --cmake_generator "Visual Studio 17 2022" --build_shared_lib --cmake_extra_defines onnxruntime_USE_CUSTOM_STATIC_ANALYSIS_RULES=ON --cmake_extra_defines onnxruntime_ENABLE_STATIC_ANALYSIS=ON --cmake_extra_defines onnxruntime_REDIRECT_STATIC_ANALYSIS_OUTPUTS_TO_FILE=ON --ms_experimental --use_dml --use_winml --disable_rtti --enable_wcos --build_shared_lib
+        run:  python tools\ci_build\build.py --enable_training --compile_no_warning_as_error --config Debug --build_dir D:\b --skip_submodule_sync --build_csharp --update --build --parallel --cmake_generator "Visual Studio 17 2022" --build_shared_lib --cmake_extra_defines onnxruntime_USE_CUSTOM_STATIC_ANALYSIS_RULES=ON --cmake_extra_defines onnxruntime_ENABLE_STATIC_ANALYSIS=ON --cmake_extra_defines onnxruntime_REDIRECT_STATIC_ANALYSIS_OUTPUTS_TO_FILE=ON --ms_experimental --use_dml --use_winml --disable_rtti --enable_wcos --build_shared_lib
         
       - name: Generate sarif
         working-directory: D:\b
