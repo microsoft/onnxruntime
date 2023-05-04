@@ -82,7 +82,7 @@ jobs:
         continue-on-error: true
         with:
           sarif_file: ${{ github.workspace }}\output\MergeResult.sarif
-          category: VS_SCA
+          category: VS_SCA_WIN32_WINML_X64
           
   Onnxruntime-SCA-win32-WINML-x86:
     runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-vs2022-mms"]
@@ -114,4 +114,4 @@ jobs:
         continue-on-error: true
         with:
           sarif_file: ${{ github.workspace }}\output\MergeResult.sarif
-          category: VS_SCA
+          category: VS_SCA_WIN32_WINML_X86
