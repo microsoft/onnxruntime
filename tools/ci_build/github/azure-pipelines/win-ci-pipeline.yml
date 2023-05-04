@@ -23,7 +23,8 @@ stages:
         ORT_EP_NAME: CPU
         GenerateDocumentation: false
         WITH_CACHE: true
-        MachinePool: 'onnxruntime-Win-CPU-2019'
+        MachinePool: 'onnxruntime-Win-CPU-2022
+'
 
 - stage: x64_release
   dependsOn: []
@@ -45,7 +46,8 @@ stages:
         ORT_EP_NAME: CPU
         GenerateDocumentation: false
         WITH_CACHE: true
-        MachinePool: 'onnxruntime-Win-CPU-2019'
+        MachinePool: 'onnxruntime-Win-CPU-2022
+'
 
 - stage: x64_release_dnnl
   dependsOn: []
@@ -87,7 +89,8 @@ stages:
         ORT_EP_NAME: XNNPACK
         GenerateDocumentation: false
         WITH_CACHE: true
-        MachinePool: 'onnxruntime-Win-CPU-2019'
+        MachinePool: 'onnxruntime-Win-CPU-2022
+'
 
 - stage: x64_release_winml
   dependsOn: []
@@ -109,7 +112,8 @@ stages:
         ORT_EP_NAME: CPU
         GenerateDocumentation: false
         WITH_CACHE: true
-        MachinePool: 'onnxruntime-Win-CPU-2019'
+        MachinePool: 'onnxruntime-Win-CPU-2022
+'
 
 - stage: x86_release
   dependsOn: []
@@ -129,7 +133,8 @@ stages:
         ORT_EP_NAME: CPU
         GenerateDocumentation: false
         WITH_CACHE: true
-        MachinePool: 'onnxruntime-Win-CPU-2019'
+        MachinePool: 'onnxruntime-Win-CPU-2022
+'
 
 - stage: training_x64_debug
   dependsOn: []
@@ -149,7 +154,7 @@ stages:
         ORT_EP_NAME: CPU
         GenerateDocumentation: false
         WITH_CACHE: true
-        MachinePool: 'onnxruntime-Win2019-CPU-training'
+        MachinePool: 'onnxruntime-Win2022-CPU-training-AMD'
 
 - stage: training_x64_release
   dependsOn: []
@@ -169,7 +174,7 @@ stages:
         ORT_EP_NAME: CPU
         GenerateDocumentation: false
         WITH_CACHE: true
-        MachinePool: 'onnxruntime-Win2019-CPU-training-AMD'
+        MachinePool: 'onnxruntime-Win2022-CPU-training-AMD'
 
 - stage: ort_training_apis_x64_release
   dependsOn: []
@@ -190,4 +195,4 @@ stages:
         ORT_EP_NAME: CPU
         GenerateDocumentation: false
         WITH_CACHE: true
-        MachinePool: 'onnxruntime-Win2019-CPU-training-AMD'
+        MachinePool: 'onnxruntime-Win2022-CPU-training-AMD'
