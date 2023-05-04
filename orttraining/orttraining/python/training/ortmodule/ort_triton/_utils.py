@@ -132,11 +132,12 @@ def may_add_brackets(name: str) -> str:
     return name
 
 
-def sort_reduce_axes(axes: List[int], rank: int) -> List[int]:
+def sort_reduce_axes(axes: List[int], rank: int, check_contiguous: bool = True) -> List[int]:
     axes = [axis + rank if axis < 0 else axis for axis in axes]
     axes.sort()
-    for i in range(1, len(axes)):
-        assert axes[i] == axes[i - 1] + 1
+    if check_contiguous:
+        for i in range(1, len(axes)):
+            assert axes[i] == axes[i - 1] + 1
     return axes
 
 
@@ -155,7 +156,7 @@ def get_reduce_info(node: NodeProto, graph: GraphProto, input_rank: int) -> Tupl
         axes = to_numpy_array(axes_initializer).tolist()
     if axes is None:
         axes = list(range(input_rank)) if noop_with_empty_axes == 0 else []
-    axes = sort_reduce_axes(axes, input_rank)
+    axes = sort_reduce_axes(axes, input_rank, check_contiguous=False)
     return keep_dims, axes
 
 

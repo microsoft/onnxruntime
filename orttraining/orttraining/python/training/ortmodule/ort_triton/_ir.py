@@ -15,9 +15,13 @@ from ._sympy_utils import parse_shape
 from ._utils import gen_unique_name, gen_variable_name, sort_reduce_axes, to_numpy_type
 
 
-# A TensorArg represents a tensor argument in the kernel function. It contains a name (from ONNX graph),
-# the data type, the shape. If it's constant (initializer or constant node), it also contains the data in numpy array.
 class TensorArg:
+    """
+    A TensorArg represents a tensor argument in the kernel function.
+    It contains a name (from ONNX graph), the data type, the shape.
+    If it's constant (initializer or constant node), it also contains the data in numpy array.
+    """
+
     def __init__(self, name: str, tensor_info: Optional[TensorInfo] = None, data: Optional[np.ndarray] = None):
         self._name: str = name
         self._data: Optional[np.ndarray] = data
@@ -47,12 +51,16 @@ class TensorArg:
         return self._data
 
 
-# OffsetCalculator maps tensor arguments to the target shape of a kernel. It' used to generate the offset
-# code for data load/store for a tensor argument in a kernel with specific target shape.
-# If the reduce_axes is not empty, it means the kernel is a reduction kernel, otherwise it's an elementwise kernel.
-# It requires the axes in reduce_axes are contiguous. If a reduce node has non-contiguous axes, need to decompose it
-# into multiple reduce nodes before codegen.
 class OffsetCalculator:
+    """
+    OffsetCalculator maps tensor arguments to the target shape of a kernel.
+    It' used to generate the offset
+    code for data load/store for a tensor argument in a kernel with specific target shape.
+    If the reduce_axes is not empty, it means the kernel is a reduction kernel, otherwise it's an elementwise kernel.
+    It requires the axes in reduce_axes are contiguous.
+    If a reduce node has non-contiguous axes, need to decompose it into multiple reduce nodes before codegen.
+    """
+
     def __init__(self, target_shape: List[sympy.Expr], reduce_axes: List[int]):
         self.target_shape: List[sympy.Expr] = target_shape
         self.is_reduction: bool = len(reduce_axes) > 0
@@ -100,7 +108,12 @@ class OffsetCalculator:
 
     # Whether the x shape of the tensor argument is contiguous and is same as the target shape.
     def is_same_x_shape(self, name: str) -> bool:
-        if self.is_reduction and self.reduce_axes[0] != 0 and self.reduce_axes[-1] != self.rank - 1:
+        if (
+            self.is_reduction
+            and self.reduce_axes[0] != 0
+            and self.reduce_axes[-1] != self.rank - 1
+            and not self.is_r_reduced(name)
+        ):
             return False
         return all(dim != sympy.Integer(0) for dim in self.get_x_input_strides(name))
 
@@ -108,11 +121,19 @@ class OffsetCalculator:
     def is_same_r_shape(self, name: str) -> bool:
         return all(dim != sympy.Integer(0) for dim in self.get_r_input_strides(name))
 
-    def register_tensor_arg(self, tensor_arg: TensorArg):
+    def register_tensor_arg(self, tensor_arg: TensorArg, is_reduce_output: bool):
         if tensor_arg.name in self.input_strides:
             return
         strides = []
         input_shape = tensor_arg.shape
+        # Reduce output with keepdims is False.
+        if is_reduce_output and len(input_shape) != len(self.target_shape):
+            assert self.is_reduction
+            input_shape = (
+                input_shape[: self.reduce_axes[0]]
+                + ([sympy.Integer(1)] * len(self.reduce_axes))
+                + input_shape[self.reduce_axes[0] :]
+            )
         pos1 = len(self.target_shape) - 1
         pos2 = len(input_shape) - 1
         assert pos1 >= pos2
@@ -144,8 +165,11 @@ class OffsetCalculator:
         return all(dim == sympy.Integer(0) for idx, dim in enumerate(strides) if idx in self.reduce_axes)
 
 
-# The base class for all IR nodes.
 class IRNode:
+    """
+    The base class for all IR nodes.
+    """
+
     def __init__(self, inputs: List[TensorArg], outputs: List[TensorArg]):
         self.inputs: List[TensorArg] = inputs
         self.outputs: List[TensorArg] = outputs
@@ -155,8 +179,11 @@ class IRNode:
         return visitor.codegen(self, context, indent)
 
 
-# Each operator is represented as a ComputeNode.
 class ComputeNode(IRNode):
+    """
+    Each operator is represented as a ComputeNode.
+    """
+
     def __init__(self, op_type: str, inputs: List[TensorArg], outputs: List[TensorArg]):
         super().__init__(inputs, outputs)
         self._op_type: str = op_type
@@ -179,9 +206,12 @@ class ReduceNode(ComputeNode):
         self.offset_calc: OffsetCalculator = offset_calc
 
 
-# For reduce kernels that need for loop to compute, ReduceForLoopStart and ReduceForLoopEnd are used to
-# represent the start and end of the for loop.
 class ReduceForLoopStart(ComputeNode):
+    """
+    For reduce kernels that need for loop to compute, ReduceForLoopStart and ReduceForLoopEnd are used to
+    represent the start and end of the for loop.
+    """
+
     def __init__(self, reduce_nodes: List[ReduceNode], offset_calc: OffsetCalculator):
         super().__init__("", [], [])
         self.reduce_nodes: List[ReduceNode] = reduce_nodes
@@ -195,28 +225,40 @@ class ReduceForLoopEnd(ComputeNode):
         self.offset_calc: OffsetCalculator = offset_calc
 
 
-# DropoutNode is used to represent the dropout operator. It is special because we need to track the global offset
-# if there are more than one dropout operators in the subgraph.
 class DropoutNode(ComputeNode):
+    """
+    DropoutNode is used to represent the dropout operator. It is special because we need to track the global offset
+    if there are more than one dropout operators in the subgraph.
+    """
+
     def __init__(self, inputs: List[TensorArg], outputs: List[TensorArg], offset_calc: OffsetCalculator):
         super().__init__("Dropout", inputs, outputs)
         self.offset_calc: OffsetCalculator = offset_calc
-        self.offset_calc.register_tensor_arg(inputs[0])
+        self.offset_calc.register_tensor_arg(inputs[0], False)
         self.global_offset: sympy.Expr = sympy.Integer(0)
 
 
-# The IONode is used to represent the input and output of the subgraph, which is used to generate data load/store code.
 class IONode(IRNode):
-    def __init__(self, tensor_arg: TensorArg, offset_calc: OffsetCalculator, is_load: bool):
+    """
+    The IONode is used to represent the input and output of the subgraph,
+    which is used to generate data load/store code.
+
+    """
+
+    def __init__(self, tensor_arg: TensorArg, offset_calc: OffsetCalculator, is_load: bool, is_reduce_output: bool):
         super().__init__([], [])
         self.tensor_arg: TensorArg = tensor_arg
         self.is_load: bool = is_load
         self.offset_calc: OffsetCalculator = offset_calc
-        self.offset_calc.register_tensor_arg(tensor_arg)
+        self.offset_calc.register_tensor_arg(tensor_arg, is_reduce_output)
 
 
-# The KernelNode is used to represent a single kernel. Each kernel has a unique target shape.
 class KernelNode(IRNode):
+    """
+    The KernelNode is used to represent a single kernel. Each kernel has a unique target shape.
+
+    """
+
     def __init__(self, inputs: List[TensorArg], outputs: List[TensorArg], target_shape: List, reduce_axes: List[int]):
         super().__init__(inputs, outputs)
         self.name: str = gen_unique_name("triton")
@@ -245,7 +287,8 @@ class KernelNode(IRNode):
             self.var_map[constant_name] = gen_variable_name(constant_name, "c", existing_names)
             if self.constants[constant_name].data is not None:
                 value = self.constants[constant_name].data
-                if value is not None and value.size == 1:
+                if value is not None:
+                    assert value.size == 1, f"unsupported constant array {value}"
                     variable_name = self.var_map[constant_name]
                     assert variable_name not in self.var_map
                     self.var_map[variable_name] = str(np.array(value.item(), value.dtype))
@@ -269,8 +312,12 @@ class ReduceKernelNode(KernelNode):
         super().__init__(inputs, outputs, target_shape, reduce_axes)
 
 
-# The ModuleNode is used to represent the whole subgraph. It may contain multiple kernels.
 class ModuleNode(IRNode):
+    """
+    The ModuleNode is used to represent the whole subgraph. It may contain multiple kernels.
+
+    """
+
     def __init__(
         self,
         func_name: str,

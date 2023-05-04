@@ -30,8 +30,12 @@ from ._sorted_graph import SortedGraph
 from ._utils import get_reduce_info, sort_reduce_axes, to_numpy_array
 
 
-# A NodeGroup contains nodes that can be lowered to a single Triton kernel node.
 class NodeGroup:
+    """
+    A NodeGroup contains nodes that can be lowered to a single Triton kernel node.
+
+    """
+
     def __init__(self, node: NodeProto, reduce_axes: List[int], node_arg_infos: Dict[str, TensorInfo]):
         self._node_arg_infos = node_arg_infos
         self.nodes_groups: List[Any] = [node]
@@ -140,6 +144,10 @@ class NodeGroup:
 
 
 class KernelIO:
+    """
+    Used to represent the inputs and outputs of a kernel(triton kernel).
+    """
+
     def __init__(self):
         self.module_inputs: List[str] = []
         self.cross_kernel_inputs: List[str] = []
@@ -151,6 +159,10 @@ class KernelIO:
 
 # GraphLowering is a pass to lower a SortedGraph to a ModuleNode, which contains one or more KernelNodes.
 class GraphLowering:
+    """
+    calling lowering pass to translate from onnx graph to irnode.
+    """
+
     def __init__(self, sorted_graph: SortedGraph):
         self._sorted_graph: SortedGraph = sorted_graph
         self._node_arg_infos: Dict[str, TensorInfo] = sorted_graph.node_arg_infos
@@ -342,13 +354,15 @@ class GraphLowering:
                     if input.name in kernel_node.constants or input.name in input_names:
                         if (input.data is not None and input.data.size == 1) or input.name in load_cache:
                             continue
-                        load_nodes.append(IONode(input, kernel_node.offset_calc, True))
+                        load_nodes.append(IONode(input, kernel_node.offset_calc, True, False))
                         load_cache.add(input.name)
                 for output in sub_nodes[idx].outputs:
                     if output.name in output_name_map:
                         output_name_map[output.name] -= 1
                         if output_name_map[output.name] == 0:
-                            store_nodes.append(IONode(output, kernel_node.offset_calc, False))
+                            store_nodes.append(
+                                IONode(output, kernel_node.offset_calc, False, isinstance(sub_nodes[idx], ReduceNode))
+                            )
             if isinstance(sub_nodes[cur], ReduceForLoopStart):
                 new_sub_nodes.append(sub_nodes[cur])
                 cur += 1
@@ -359,7 +373,7 @@ class GraphLowering:
                     if input.name in kernel_node.constants or input.name in input_names:
                         if (input.data is not None and input.data.size == 1) or input.name in load_cache:
                             continue
-                        load_nodes.append(IONode(input, kernel_node.offset_calc, True))
+                        load_nodes.append(IONode(input, kernel_node.offset_calc, True, False))
                         load_cache.add(input.name)
             new_sub_nodes.extend(load_nodes)
             new_sub_nodes.extend(sub_nodes[cur:nxt])
@@ -368,7 +382,7 @@ class GraphLowering:
                 assert isinstance(sub_nodes[nxt], ReduceForLoopEnd)
                 for reduce_node in sub_nodes[nxt].reduce_nodes:
                     if reduce_node.outputs[0].name in output_name_map:
-                        reduce_store_nodes.append(IONode(reduce_node.outputs[0], kernel_node.offset_calc, False))
+                        reduce_store_nodes.append(IONode(reduce_node.outputs[0], kernel_node.offset_calc, False, True))
                 new_sub_nodes.append(sub_nodes[nxt])
                 nxt += 1
             cur = nxt

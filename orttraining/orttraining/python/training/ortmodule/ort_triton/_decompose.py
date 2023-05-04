@@ -15,6 +15,12 @@ from ._utils import get_attribute, get_reduce_info
 
 
 class DecomposeDispatch(object):
+    """
+    A node does only responsible for a single computation or a type of triton ops.
+    For those compound Onnx nodes, like softmax/layernorm/groupnorm, etc., we need to decompose them into a series of
+    simple ops.
+    """
+
     def __init__(self):
         super().__init__()
         self.count = 0
@@ -45,6 +51,33 @@ class DecomposeDispatch(object):
 
     def _filter_none_nodes(self, nodes):
         return [node for node in nodes if node is not None]
+
+    def _elementwise_compute_on_float32(self, node: NodeProto, graph: GraphProto, **kwargs):
+        x = node.input[0]
+        dtype, _ = self._get_dtype_and_shape(x, **kwargs)
+        is_half = dtype == TensorProto.FLOAT16 or dtype == TensorProto.BFLOAT16
+        if not is_half:
+            return [node]
+        node_name = node.name
+        y = node.output[0]
+        op_type = node.op_type
+        inputs = [input for input in node.input]
+        cast_nodes = []
+        for idx, input in enumerate(inputs):
+            dtype, _ = self._get_dtype_and_shape(input, **kwargs)
+            if dtype == TensorProto.FLOAT16 or dtype == TensorProto.BFLOAT16:
+                cast_out, cast_node = self._new_node(node_name, "Cast", [input], to=TensorProto.FLOAT)
+                inputs[idx] = cast_out
+                cast_nodes.append(cast_node)
+        op_out, op_node = self._new_node(node_name, op_type, inputs)
+        _, cast_node1 = self._new_node(node_name, "Cast", [op_out], outputs=[y], to=dtype)
+        return self._filter_none_nodes(cast_nodes + [op_node, cast_node1])
+
+    def Exp(self, node: NodeProto, graph: GraphProto, **kwargs):
+        return self._elementwise_compute_on_float32(node, graph, **kwargs)
+
+    def Pow(self, node: NodeProto, graph: GraphProto, **kwargs):
+        return self._elementwise_compute_on_float32(node, graph, **kwargs)
 
     def LayerNormalization(self, node: NodeProto, graph: GraphProto, **kwargs):
         node_name = node.name
@@ -261,7 +294,10 @@ class DecomposeDispatch(object):
             end = start
             start = end - 1
         if len(splited_axes) == 1:
-            return [node]
+            if len(node.input) <= 1:
+                return [node]
+            _, reduce_node = self._new_node(node_name, op_type, [x], outputs=[y], axes=axes, keepdims=keep_dims)
+            return [reduce_node]
         result = []
         for idx, axes in enumerate(splited_axes):
             outputs = [y] if idx == len(splited_axes) - 1 else None

@@ -16,9 +16,12 @@ from ._decompose import DecomposeDispatch
 from ._utils import get_attribute, to_numpy_array, topological_sort
 
 
-# This class is used to decompose complex operators into premilinary operators, sort the operators in topological order,
-# and infer the type and shape of each node inputs and outputs.
 class SortedGraph(object):
+    """
+    This class is used to decompose complex operators into premilinary operators, sort the operators in topological order,
+    and infer the type and shape of each node inputs and outputs.
+    """
+
     def __init__(self, model: ModelProto, input_shapes: List[List[Any]]):
         self._model: ModelProto = model
         self._graph: GraphProto = model.graph
@@ -59,9 +62,11 @@ class SortedGraph(object):
         self._const_nodes: List[NodeProto] = [node for node in self._sorted_nodes if node.op_type == "Constant"]
         self._sorted_nodes: List[NodeProto] = [node for node in self._sorted_nodes if node.op_type != "Constant"]
 
-    # Generate a unique key for the model based on the graph structure, ignoring the node args names.
-    # We try to reuse Triton module for different ONNX models with same graph structure.
     def __str__(self):
+        """
+        Generate a unique key for the model based on the graph structure, ignoring the node args names.
+        We try to reuse Triton module for different ONNX models with same graph structure.
+        """
         graph_inputs = []
         name_map = {}
         for idx, input in enumerate(self._graph.input):
