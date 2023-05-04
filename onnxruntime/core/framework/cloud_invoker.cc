@@ -19,15 +19,14 @@ namespace onnxruntime {
 
 namespace tc = triton::client;
 
-const char* kAzureUri = "azure.uri";
-const char* kAzureModelName = "azure.model_name";
-const char* kAzureModelVer = "azure.model_version";
-const char* kAzureVerbose = "azure.verbose";
-const char* kAzureEndpointType = "azure.endpoint_type";
-const char* kAzureAuthKey = "azure.auth_key";
-const char* kAzureTriton = "triton";
-const char* kAzureOpenAI = "openai";
-const char* kAzureAudioFile = "azure.audio_file";
+constexpr const char* kAzureUri = "azure.uri";
+constexpr const char* kAzureModelName = "azure.model_name";
+constexpr const char* kAzureModelVer = "azure.model_version";
+constexpr const char* kAzureVerbose = "azure.verbose";
+constexpr const char* kAzureEndpointType = "azure.endpoint_type";
+constexpr const char* kAzureAuthKey = "azure.auth_key";
+constexpr const char* kAzureTriton = "triton";
+constexpr const char* kAzureOpenAI = "openai";
 
 CloudEndPointInvoker::CloudEndPointInvoker(const CloudEndPointConfig& config,
                                            const AllocatorPtr& allocator) : config_(config), allocator_(allocator) {
@@ -57,24 +56,25 @@ OpenAIInvoker::OpenAIInvoker(const CloudEndPointConfig& config,
   ReadConfig(kAzureModelName, model_name_);
 }
 
-struct MemoryStruct {
-  char* memory;
-  size_t size;
+struct ResponseBuffer {
+  ResponseBuffer() = default;
+  ~ResponseBuffer() = default;
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ResponseBuffer);
+
+  using Chunk = std::unique_ptr<char[]>;
+  std::list<Chunk> chunks_;
+
+  void Fill(std::string& s) const {
+    std::for_each(chunks_.begin(), chunks_.end(), [&](const Chunk& chunk) { s.append(chunk.get()); });
+  }
 };
 
-static size_t
-WriteMemoryCallback(void* contents, size_t size, size_t nmemb, void* userp) {
+static size_t WriteResponseCallback(void* contents, size_t size, size_t nmemb, void* userp) {
   size_t realsize = size * nmemb;
-  struct MemoryStruct* mem = (struct MemoryStruct*)userp;
-
-  char* ptr = (char*)realloc(mem->memory, mem->size + realsize + 1);
-  ORT_ENFORCE(ptr, "not enough memory (realloc returned NULL)");
-
-  mem->memory = ptr;
-  memcpy(&(mem->memory[mem->size]), contents, realsize);
-  mem->size += realsize;
-  mem->memory[mem->size] = 0;
-
+  auto response = reinterpret_cast<struct ResponseBuffer*>(userp);
+  response->chunks_.push_back(std::make_unique<char[]>(realsize + 1));
+  memcpy(response->chunks_.back().get(), contents, realsize);
+  response->chunks_.back()[realsize] = '\0';
   return realsize;
 }
 
@@ -88,15 +88,17 @@ onnxruntime::Status OpenAIInvoker::Send(const CloudEndPointConfig& run_options,
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "auth key must be specified for openai client");
   }
+  long verbose = 0;
+  const auto verbose_iter = run_options.find(kAzureVerbose);
+  if (run_options.end() != verbose_iter) {
+    verbose = verbose_iter->second != "0" ? 1L : 0L;
+  }
 
   CURLcode ret{};
   CURL* curl{};
   curl_mime* mime1{};
   struct curl_slist* headers{};
-
-  struct MemoryStruct chunk;
-  chunk.memory = (char*)malloc(1); /* will be grown as needed by the realloc above */
-  chunk.size = 0;
+  ResponseBuffer response_buffer;
 
   mime1 = NULL;
   std::string full_auth = std::string{"Authorization: Bearer "} + auth_key_iter->second;
@@ -120,9 +122,10 @@ onnxruntime::Status OpenAIInvoker::Send(const CloudEndPointConfig& run_options,
   curl_easy_setopt(curl, CURLOPT_MAXREDIRS, 50L);
   curl_easy_setopt(curl, CURLOPT_FTP_SKIP_PASV_IP, 1L);
   curl_easy_setopt(curl, CURLOPT_TCP_KEEPALIVE, 1L);
+  curl_easy_setopt(curl, CURLOPT_VERBOSE, verbose);
   curl_easy_setopt(curl, CURLOPT_HTTPPOST, post);
-  curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteMemoryCallback);
-  curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void*)&chunk);
+  curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteResponseCallback);
+  curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void*)&response_buffer);
 
   ret = curl_easy_perform(curl);
   if (ret != CURLE_OK) {
@@ -142,8 +145,7 @@ onnxruntime::Status OpenAIInvoker::Send(const CloudEndPointConfig& run_options,
   }
 
   auto* output_string = output_tensor->MutableData<std::string>();
-  output_string->append(chunk.memory);
-  free(chunk.memory);
+  response_buffer.Fill(*output_string);
 
   ort_outputs.resize(1);
   auto tensor_type = DataTypeImpl::GetType<Tensor>();
