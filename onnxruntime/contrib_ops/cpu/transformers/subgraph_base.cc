@@ -68,8 +68,7 @@ Status Subgraph::Setup(const SessionState& session_state,
   feed_names.reserve(static_cast<size_t>(num_subgraph_inputs) + static_cast<size_t>(num_implicit_inputs));
 
   // Use the first output (logits) to find device location.
-  const OrtMemoryInfo& default_location = utils::FindMemoryInfoForValue(subgraph_session_state,
-                                                                        subgraph_output_names[0]);
+  const OrtDevice& default_location = utils::FindDeviceForValue(subgraph_session_state, subgraph_output_names[0]);
 
   // The position_ids, attention_mask, past_0, ... are created by this operator so the name doesn't matter.
   feed_names.insert(feed_names.end(), subgraph_input_names.begin(), subgraph_input_names.end());
@@ -83,8 +82,8 @@ Status Subgraph::Setup(const SessionState& session_state,
 
   for (size_t i = 0, end = feed_names.size(); i < end; ++i) {
     if (i >= subgraph_input_names.size()) {  // Implicit inputs
-      const auto& location = utils::FindMemoryInfoForValue(session_state, feed_names[i]);
-      feed_locations.push_back(location.device);
+      const auto& location = utils::FindDeviceForValue(session_state, feed_names[i]);
+      feed_locations.push_back(location);
     } else {
       if (feed_names[i] == "past_sequence_length") {
         // when past_sequence_length is needed in subgraph, treat it as past_present_share_buffer
@@ -95,7 +94,7 @@ Status Subgraph::Setup(const SessionState& session_state,
         // beam_width is on CPU memory
         feed_locations.push_back(OrtDevice());
       } else {
-        feed_locations.push_back(default_location.device);
+        feed_locations.push_back(default_location);
       }
     }
   }
@@ -105,7 +104,7 @@ Status Subgraph::Setup(const SessionState& session_state,
   ORT_RETURN_IF_ERROR(utils::InitializeFeedFetchCopyInfo(subgraph_session_state, *feeds_fetches_manager_));
 
   // Setup the locations where we want the subgraph output to end up on
-  InlinedVector<const OrtMemoryInfo*> fetch_locations;
+  InlinedVector<const OrtDevice*> fetch_locations;
   fetch_locations.reserve(num_subgraph_outputs);
 
   // Past state need to be where we can feed them in to the next iteration, so set the location to match the feed.

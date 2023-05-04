@@ -123,11 +123,14 @@ export const cosh = (context: ComputeContext): void => {
   context.compute(createElementwiseProgramInfoLoader(context.inputs[0], 'Cosh', 'cosh'));
 };
 
-export interface EluAttributes extends AttributeWithCacheKey {
+export interface AlphaAttributes extends AttributeWithCacheKey {
   readonly alpha: number;
 }
 
-export const elu = (context: ComputeContext, attributes: EluAttributes): void => {
+export const parseAlphaAttributes = (attributes: Record<string, unknown>): AlphaAttributes =>
+    createAttributeWithCacheKey(attributes as {alpha: number});
+
+export const elu = (context: ComputeContext, attributes: AlphaAttributes): void => {
   context.compute(createElementwiseProgramInfoLoader(
       context.inputs[0], 'Elu', a => `elu_vf32(${a})`, `
   const elu_alpha_: f32 = f32(${attributes.alpha});
@@ -141,9 +144,6 @@ export const elu = (context: ComputeContext, attributes: EluAttributes): void =>
   }`,
       attributes.cacheKey));
 };
-
-export const parseEluAttributes = (attributes: Record<string, unknown>): EluAttributes =>
-    createAttributeWithCacheKey(attributes as {alpha: number});
 
 export const erf = (context: ComputeContext): void => {
   context.compute(createElementwiseProgramInfoLoader(context.inputs[0], 'Erf', a => `erf_vf32(${a})`, `
@@ -161,8 +161,18 @@ export const erf = (context: ComputeContext): void => {
   }`));
 };
 
+export const exp = (context: ComputeContext): void => {
+  context.compute(createElementwiseProgramInfoLoader(context.inputs[0], 'Exp', 'exp'));
+};
+
 export const floor = (context: ComputeContext): void => {
   context.compute(createElementwiseProgramInfoLoader(context.inputs[0], 'Floor', 'floor'));
+};
+
+export const leakyRelu = (context: ComputeContext, attributes: AlphaAttributes): void => {
+  context.compute(createElementwiseProgramInfoLoader(
+      context.inputs[0], 'LeakyRelu', a => `select(leaky_relu_alpha_ * ${a}, ${a}, ${a} >= vec4<f32>(0.0))`,
+      `const leaky_relu_alpha_: f32 = f32(${attributes.alpha});`, attributes.cacheKey));
 };
 
 export const neg = (context: ComputeContext): void => {
@@ -171,6 +181,11 @@ export const neg = (context: ComputeContext): void => {
 
 export const reciprocal = (context: ComputeContext): void => {
   context.compute(createElementwiseProgramInfoLoader(context.inputs[0], 'Reciprocal', a => `1.0/${a}`));
+};
+
+export const relu = (context: ComputeContext): void => {
+  context.compute(createElementwiseProgramInfoLoader(
+      context.inputs[0], 'Relu', a => `select(vec4<f32>(0.0), ${a}, ${a} > vec4<f32>(0.0))`));
 };
 
 export const sigmoid = (context: ComputeContext): void => {
@@ -195,4 +210,11 @@ export const tan = (context: ComputeContext): void => {
 
 export const tanh = (context: ComputeContext): void => {
   context.compute(createElementwiseProgramInfoLoader(context.inputs[0], 'Tanh', 'tanh'));
+};
+
+export const thresholdedRelu = (context: ComputeContext, attributes: AlphaAttributes): number => {
+  context.compute(createElementwiseProgramInfoLoader(
+      context.inputs[0], 'ThresholdedRelu', a => `select(vec4<f32>(0.0), ${a}, ${a} > thresholded_relu_alpha_)`,
+      `const thresholded_relu_alpha_: vec4<f32> = vec4<f32>(${attributes.alpha});`, attributes.cacheKey));
+  return 0;
 };

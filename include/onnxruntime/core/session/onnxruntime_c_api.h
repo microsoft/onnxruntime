@@ -98,8 +98,11 @@ extern "C" {
 #ifndef ORT_TSTR
 #ifdef _WIN32
 #define ORT_TSTR(X) L##X
+// When X is a macro, L##X is not defined. In this case, we need to use ORT_TSTR_ON_MACRO.
+#define ORT_TSTR_ON_MACRO(X) L"" X
 #else
 #define ORT_TSTR(X) X
+#define ORT_TSTR_ON_MACRO(X) X
 #endif
 #endif
 
@@ -626,7 +629,8 @@ struct OrtApiBase {
    *   older than the version created with this header file.
    */
   const OrtApi*(ORT_API_CALL* GetApi)(uint32_t version)NO_EXCEPTION;
-  const char*(ORT_API_CALL* GetVersionString)(void)NO_EXCEPTION;  ///< Returns a null terminated string of the version of the Onnxruntime library (eg: "1.8.1")
+  const ORTCHAR_T*(ORT_API_CALL* GetVersionString)(void)NO_EXCEPTION;    ///< Returns a null terminated string of the version of the Onnxruntime library (eg: "1.8.1")
+  const ORTCHAR_T*(ORT_API_CALL* GetBuildInfoString)(void)NO_EXCEPTION;  ///< Returns a null terminated string of the build info including git info and cxx flags
 };
 typedef struct OrtApiBase OrtApiBase;
 
@@ -3482,16 +3486,16 @@ struct OrtApi {
    */
   ORT_API2_STATUS(CreateOp,
                   _In_ const OrtKernelInfo* info,
-                  _In_ const char* op_name,
-                  _In_ const char* domain,
-                  _In_ int version,
-                  _In_opt_ const char** type_constraint_names,
-                  _In_opt_ const ONNXTensorElementDataType* type_constraint_values,
-                  _In_opt_ int type_constraint_count,
-                  _In_opt_ const OrtOpAttr* const* attr_values,
-                  _In_opt_ int attr_count,
-                  _In_ int input_count,
-                  _In_ int output_count,
+                  _In_z_ const char* op_name,
+                  _In_z_ const char* domain,
+                  int version,
+                  _In_reads_(type_constraint_count) const char** type_constraint_names,
+                  _In_reads_(type_constraint_count) const ONNXTensorElementDataType* type_constraint_values,
+                  int type_constraint_count,
+                  _In_reads_(attr_count) const OrtOpAttr* const* attr_values,
+                  int attr_count,
+                  int input_count,
+                  int output_count,
                   _Outptr_ OrtOp** ort_op);
 
   /** \brief: Invoke the operator created by OrtApi::CreateOp

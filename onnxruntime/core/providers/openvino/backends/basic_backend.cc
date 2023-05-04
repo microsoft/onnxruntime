@@ -73,7 +73,7 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
 #endif
 #else
 #if defined(OPENVINO_2023_0)
-      if (subgraph_context.precision != InferenceEngine::Precision::FP16) {
+      if (subgraph_context.precision != InferenceEngine::Precision::FP16 && global_context_.enable_dynamic_shapes == false) {
         const std::string model = model_proto.SerializeAsString();
         exe_network_ = global_context_.ie_core.LoadNetwork(model, hw_target, device_config, subgraph_context_.subgraph_name);
         LOGS_DEFAULT(INFO) << log_tag << "Loaded model to the plugin";
@@ -130,6 +130,13 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
 #ifndef NDEBUG
     if (openvino_ep::backend_utils::IsDebugEnabled()) {
       device_config.emplace(ov::enable_profiling(true));
+    }
+#endif
+#if defined(OPENVINO_2023_0)
+    if (global_context_.device_type.find("VPUX") != std::string::npos) {
+      std::pair<std::string, ov::Any> device_property;
+      device_property = std::make_pair("VPUX_COMPILER_TYPE", "MLIR");
+      device_config.emplace(ov::device::properties("VPUX", device_property));
     }
 #endif
   }

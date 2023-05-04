@@ -82,7 +82,7 @@ TEST_F(ExecutionFrameTest, TensorAllocationTest) {
 
   TensorShape shape(std::vector<int64_t>{2, 3});
   OrtValue& mlvalue0 = *frame.GetMutableNodeInputOrOutputMLValue(start_index);
-  const auto& memory_info = execution_providers.Get(xp_typ)->GetAllocator(OrtMemTypeDefault)->Info();
+  const auto& memory_info = execution_providers.Get(xp_typ)->GetOrtDeviceByMemType(OrtMemTypeDefault);
   ASSERT_STATUS_OK(frame.AllocateMLValueTensorSelfOwnBuffer(mlvalue0, start_index, DataTypeImpl::GetType<float>(),
                                                             memory_info, shape));
 
@@ -99,7 +99,7 @@ TEST_F(ExecutionFrameTest, TensorAllocationTest) {
   ASSERT_STATUS_OK(frame.AllocateMLValueTensorPreAllocateBuffer(mlvalue1,
                                                                 start_index,
                                                                 DataTypeImpl::GetType<float>(),
-                                                                p_tensor->Location(),
+                                                                p_tensor->Location().device,
                                                                 shape2));
 
   const OrtValue* p_ml_value_const = frame.GetNodeInputOrOutputMLValue(1);
@@ -307,24 +307,24 @@ TEST_F(ExecutionFrameTest, MemPatternTest) {
 
   ASSERT_STATUS_OK(frame.AllocateMLValueTensorSelfOwnBuffer(mlvalue3, 3,
                                                             DataTypeImpl::GetType<float>(),
-                                                            cpu_allocator->Info(),
+                                                            cpu_allocator->Info().device,
                                                             TensorShape(std::vector<int64_t>{2, 2})));
 
   ASSERT_STATUS_OK(frame.AllocateMLValueTensorSelfOwnBuffer(mlvalue4, 4,
                                                             DataTypeImpl::GetType<float>(),
-                                                            cpu_allocator->Info(),
+                                                            cpu_allocator->Info().device,
                                                             TensorShape(std::vector<int64_t>{2, 3})));
 
   ASSERT_STATUS_OK(frame.AllocateMLValueTensorSelfOwnBuffer(mlvalue5, 5,
                                                             DataTypeImpl::GetType<float>(),
-                                                            cpu_allocator->Info(),
+                                                            cpu_allocator->Info().device,
                                                             TensorShape(std::vector<int64_t>{2, 3})));
   MemoryPatternGroup pattern;
   ASSERT_STATUS_OK(frame.GeneratePatterns(pattern));
 
   ASSERT_EQ(pattern.patterns.size(), pattern.locations.size());
   ASSERT_EQ(pattern.patterns.size(), 1u);
-  auto p = pattern.GetPatterns(cpu_allocator->Info());
+  auto p = pattern.GetPatterns(cpu_allocator->Info().device);
   ASSERT_EQ(p->PeakSize(), 2u * kAllocAlignment);  // each allocation is kAllocAlignment-byte aligned
   ASSERT_EQ(p->GetBlock(3)->offset_, 0u);
   ASSERT_EQ(p->GetBlock(4)->offset_, kAllocAlignment);
@@ -396,14 +396,14 @@ TEST_F(ExecutionFrameTest, MemPatternWithExternalOutputsTest) {
 
   OrtValue& y_value = *frame.GetMutableNodeInputOrOutputMLValue(y_idx);
   ASSERT_STATUS_OK(frame.AllocateMLValueTensorSelfOwnBuffer(
-      y_value, y_idx, DataTypeImpl::GetType<float>(), cpu_allocator->Info(), TensorShape(std::vector<int64_t>{2, 2})));
+      y_value, y_idx, DataTypeImpl::GetType<float>(), cpu_allocator->Info().device, TensorShape(std::vector<int64_t>{2, 2})));
 
   MemoryPatternGroup pattern;
   ASSERT_STATUS_OK(frame.GeneratePatterns(pattern));
 
   ASSERT_EQ(pattern.patterns.size(), pattern.locations.size());
   ASSERT_EQ(pattern.patterns.size(), 1u);
-  auto p = pattern.GetPatterns(cpu_allocator->Info());
+  auto p = pattern.GetPatterns(cpu_allocator->Info().device);
   ASSERT_EQ(p->PeakSize(), 0u);  // Peak size is 0.
 }
 #endif

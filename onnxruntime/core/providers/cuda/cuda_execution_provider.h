@@ -116,6 +116,8 @@ class CUDAExecutionProvider : public IExecutionProvider {
 #endif
   void RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry) const override;
 
+  OrtDevice GetOrtDeviceByMemType(OrtMemType mem_type) const override;
+
  private:
   CUDAExecutionProviderInfo info_;
   cudaDeviceProp device_prop_;
