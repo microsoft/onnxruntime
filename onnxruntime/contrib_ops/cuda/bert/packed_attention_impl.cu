@@ -486,17 +486,26 @@ Status FusedScaledDotProductAttentionCutlass(
                          num_heads, qk_head_size, v_head_size,
                          AttentionQkvFormat::Q_K_V_BSNH, data.token_offset,
                          parameters.token_count, stream);
+  DUMP_TENSOR_INIT();
+
+  DUMP_TENSOR_D("data.gemm_buffer", data.gemm_buffer, batch_size * sequence_length, 3, num_heads * qk_head_size);
+  DUMP_TENSOR_D("data.bias", data.bias, 1, 3 * num_heads * qk_head_size);
 
   // Q, K and V pointers
-  const int size_per_batch_qk = sequence_length * qk_head_size;
-  const int size_per_batch_v = sequence_length * v_head_size;
-  const size_t elements_qk = static_cast<size_t>(parameters.token_count) * static_cast<size_t>(size_per_batch_qk);
-  const size_t elements_v = static_cast<size_t>(parameters.token_count) * static_cast<size_t>(size_per_batch_v);
+  const int model_dimension_qk = num_heads * qk_head_size;
+  const int model_dimension_v = num_heads * v_head_size;
+  const size_t elements_qk = static_cast<size_t>(parameters.token_count) * static_cast<size_t>(model_dimension_qk);
+  const size_t elements_v = static_cast<size_t>(parameters.token_count) * static_cast<size_t>(model_dimension_v);
   T* qkv = data.workspace;
   T* query = qkv;
   T* key = query + elements_qk;
   T* value = key + elements_qk;
   T* accum_workspace = value + elements_v;
+
+  DUMP_TENSOR_D("q(BSNH)", query, batch_size * sequence_length, num_heads * qk_head_size);
+  DUMP_TENSOR_D("k(BSNH)", key, batch_size * sequence_length, num_heads * qk_head_size);
+  DUMP_TENSOR_D("v(BSNH)", value, batch_size * sequence_length, num_heads * v_head_size);
+  DUMP_TENSOR_D("cumulative_sequence_length", data.cumulative_sequence_length, 1, batch_size + 1);
 
   MemoryEfficientAttentionParams p;
   p.sm = device_prop.major * 10 + device_prop.minor;
