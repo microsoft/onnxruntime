@@ -102,6 +102,16 @@ Status ReorderPastState(
                                                    &transpose_output_shape_override);
 }
 
+Status InitCacheIndir(Tensor& cache_indir, Stream* stream) {
+  ORT_ENFORCE(stream);
+  cudaStream_t cuda_stream = reinterpret_cast<cudaStream_t>(stream->GetHandle());
+
+  // Initialize the cache_indir tensor to all 0s
+  CUDA_RETURN_IF_ERROR(cudaMemsetAsync(cache_indir.MutableDataRaw(), 0, cache_indir.SizeInBytes(), cuda_stream));
+
+  return Status::OK();
+}
+
 Status TopK(const Tensor* input, const int axis, const unsigned k, bool largest, bool sorted,
             AllocatorPtr allocator,
             Stream* stream,
@@ -672,7 +682,7 @@ Status GreedySearchProcessLogits(
     // Move the pointer in increments of padded_vocab_size to account for any padding
     // if any in the logits weight of the MatMul.
     const CudaT* current_logits = logits_data + (input_length - 1) * padded_vocab_size;
-    for (int i = 0; i < batch_beam_size; i++) {
+    for (ptrdiff_t i = 0; i < batch_beam_size; i++) {
       // We only copy what is relevant (i.e.) vocab_size as padded_vocab_size will contain
       // some logits corresponding to the "padded" vocab size which we will ignore
       // for token generation.
@@ -820,10 +830,10 @@ Status PickGptPastState(const std::vector<OrtValue>& last_outputs,
                         std::vector<OrtValue>& next_inputs,
                         gsl::span<const int32_t>& beam_indices,
                         AllocatorPtr allocator,
-                        int gpt_subgraph_first_past_input_idx,
-                        int gpt_subgraph_first_present_output_idx,
+                        ptrdiff_t gpt_subgraph_first_past_input_idx,
+                        ptrdiff_t gpt_subgraph_first_present_output_idx,
                         Stream* ort_stream) {
-  int num_present_tensors = static_cast<int>(last_outputs.size()) - gpt_subgraph_first_present_output_idx;
+  ptrdiff_t num_present_tensors = static_cast<ptrdiff_t>(last_outputs.size()) - gpt_subgraph_first_present_output_idx;
   for (int i = 0; i < num_present_tensors; ++i) {
     const OrtValue& present = last_outputs[gpt_subgraph_first_present_output_idx + i];
 
@@ -868,8 +878,8 @@ Status PickT5PastState(const std::vector<OrtValue>& last_outputs,
                        int num_present_tensors,
                        gsl::span<const int32_t>& beam_indices,
                        AllocatorPtr allocator,
-                       int t5_decoder_first_past_input_idx,
-                       int t5_decoder_first_present_output_idx,
+                       ptrdiff_t t5_decoder_first_past_input_idx,
+                       ptrdiff_t t5_decoder_first_present_output_idx,
                        Stream* ort_stream) {
   cudaStream_t cuda_stream = ort_stream ? static_cast<cudaStream_t>(ort_stream->GetHandle()) : nullptr;
   for (int i = 0; i < num_present_tensors; ++i) {
@@ -961,7 +971,7 @@ Status UpdateGptFeeds(
 
   if (past_present_share_buffer) {
     // Update past sequence length input
-    const int past_sequence_length_idx = (static_cast<int>(last_outputs.size()) - gpt_subgraph_first_present_output_idx) + gpt_subgraph_first_past_input_idx;
+    const ptrdiff_t past_sequence_length_idx = (static_cast<ptrdiff_t>(last_outputs.size()) - gpt_subgraph_first_present_output_idx) + gpt_subgraph_first_past_input_idx;
     *(next_inputs[past_sequence_length_idx].GetMutable<Tensor>()->MutableData<int32_t>()) = past_sequence_len;
 
     // Update beam search specific input for DecoderMaskedSelfAttention (cache indirection) if present
@@ -1048,10 +1058,9 @@ Status UpdateDecoderFeeds(
   // Only need copy beam next tokens to input_ids, and copy present_*_self_* to past_*_self_*,
 
   // Update input_ids with next tokens.
-  int batch_beam_size = static_cast<int>(beam_next_tokens.size());
+  int batch_beam_size = gsl::narrow<int>(beam_next_tokens.size());
   int sequence_length = !use_sequence_as_input_ids ? 1 : current_length;
-  int64_t dims[] = {batch_beam_size, sequence_length};
-  TensorShape input_ids_shape(&dims[0], 2);
+  TensorShape input_ids_shape{batch_beam_size, sequence_length};
   auto element_type = DataTypeImpl::GetType<int32_t>();
   OrtValue input_ids;
   Tensor::InitOrtValue(element_type, input_ids_shape, allocator, input_ids);
@@ -1062,12 +1071,11 @@ Status UpdateDecoderFeeds(
     CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(input_ids_data, beam_next_tokens.data(), beam_next_tokens.size_bytes(),
                                          cudaMemcpyHostToDevice, cuda_stream));
   } else {
-    int32_t* input_ids_data = input_ids.GetMutable<Tensor>()->MutableData<int32_t>();
     for (int i = 0; i < batch_beam_size; i++) {
       gsl::span<const int32_t> sequence = sequences.GetSequence(i);
       const int32_t* sequence_data = sequence.data();
       CUDA_RETURN_IF_ERROR(
-          cudaMemcpyAsync(input_ids_data + i * current_length,
+          cudaMemcpyAsync(input_ids_data + static_cast<ptrdiff_t>(i) * current_length,
                           sequence_data,
                           current_length * sizeof(int32_t),
                           cudaMemcpyHostToDevice,
@@ -1083,11 +1091,11 @@ Status UpdateDecoderFeeds(
 #endif
 
   // Update past state
-  ORT_ENFORCE(last_outputs.size() >= static_cast<size_t>(1 + num_present_tensors));
+  ORT_ENFORCE(last_outputs.size() >= static_cast<size_t>(num_present_tensors) + 1);
 
   if (past_present_share_buffer) {
     // Update past sequence length input
-    const int past_sequence_length_idx = 2 * (static_cast<int>(last_outputs.size()) - t5_decoder_first_present_output_idx) + t5_decoder_first_past_input_idx;
+    const ptrdiff_t past_sequence_length_idx = 2 * (static_cast<ptrdiff_t>(last_outputs.size()) - t5_decoder_first_present_output_idx) + t5_decoder_first_past_input_idx;
     *(next_inputs[past_sequence_length_idx].GetMutable<Tensor>()->MutableData<int32_t>()) = current_length - 1;
 
     // Update beam search specific input for DecoderMaskedSelfAttention (cache indirection) if present
@@ -1126,7 +1134,7 @@ Status UpdateDecoderFeeds(
     // TODO(tianleiwu): remove num_beams==1 once GreedySearch operator is available.
     if (num_beams == 1) {
       // feed present_* output to past_* inputs one by one
-      for (int i = 0; i < num_present_tensors; ++i) {
+      for (ptrdiff_t i = 0; i < num_present_tensors; ++i) {
         next_inputs[t5_decoder_first_past_input_idx + i] =
             last_outputs[t5_decoder_first_present_output_idx + i];
       }
@@ -1142,6 +1150,16 @@ Status UpdateDecoderFeeds(
 
   return Status::OK();
 }
+
+namespace {
+template <typename T>
+struct ToCudaTypeWrapper : public ToCudaType<T> {};
+
+template <>
+struct ToCudaTypeWrapper<int32_t> {
+  using MappedType = int32_t;
+};
+}  // namespace
 
 template <typename T>
 Status ExpandBuffer(Stream* ort_stream,
@@ -1179,23 +1197,18 @@ Status ExpandBuffer(Stream* ort_stream,
 
   const T* input_data = input.Get<Tensor>().Data<T>();
   T* expanded_data = expanded.GetMutable<Tensor>()->MutableData<T>();
-  T* target = expanded_data;
+
+  using CudaT = typename ToCudaTypeWrapper<T>::MappedType;
 
   if (max_sequence_length == 0) {
     const int64_t& chunk_size = static_cast<int64_t>(input_shape.Size() / batch_size);
 
-    for (int i = 0; i < batch_size; i++) {
-      for (int j = 0; j < num_beams; j++) {
-        CUDA_RETURN_IF_ERROR(
-            cudaMemcpyAsync(
-                target,
-                input_data + i * chunk_size,
-                sizeof(T) * chunk_size,
-                cudaMemcpyDeviceToDevice,
-                cuda_stream));
-        target += chunk_size;
-      }
-    }
+    cuda::BufferExpansionKernelLauncher<CudaT>(reinterpret_cast<const CudaT*>(input_data),
+                                               reinterpret_cast<CudaT*>(expanded_data),
+                                               static_cast<int>(batch_size),
+                                               num_beams,
+                                               static_cast<int>(chunk_size),
+                                               cuda_stream);
     return Status::OK();
   }
 
@@ -1204,24 +1217,16 @@ Status ExpandBuffer(Stream* ort_stream,
   // Expand from [B, N, S, H] to [B*beam, N, S_max, H]
   const int64_t& num_heads = input_shape[1];
   const int64_t& head_size = input_shape[3];
-  const int64_t& input_offset = sequence_length * head_size;
-  const int64_t& output_offset = max_sequence_length * head_size;
-  const int64_t& NSH = input_offset * num_heads;
 
-  for (int i = 0; i < batch_size; i++) {
-    for (int j = 0; j < num_beams; j++) {
-      for (int k = 0; k < num_heads; k++) {
-        CUDA_RETURN_IF_ERROR(
-            cudaMemcpyAsync(
-                target,
-                input_data + i * NSH + k * input_offset,
-                sizeof(T) * SafeInt<size_t>(input_offset),
-                cudaMemcpyDeviceToDevice,
-                cuda_stream));
-        target += output_offset;
-      }
-    }
-  }
+  cuda::KeyCacheExpansionKernelLauncher<CudaT>(reinterpret_cast<const CudaT*>(input_data),
+                                               reinterpret_cast<CudaT*>(expanded_data),
+                                               static_cast<int>(batch_size),
+                                               num_beams,
+                                               static_cast<int>(num_heads),
+                                               static_cast<int>(sequence_length),
+                                               max_sequence_length,
+                                               static_cast<int>(head_size),
+                                               cuda_stream);
 
   return Status::OK();
 }

@@ -44,6 +44,9 @@ struct TensorrtExecutionProviderInfo {
   int auxiliary_streams{-1};
   std::string tactic_sources{""};
   std::string extra_plugin_lib_paths{""};
+  std::string profile_min_shapes{""};
+  std::string profile_max_shapes{""};
+  std::string profile_opt_shapes{""};
 
   static TensorrtExecutionProviderInfo FromProviderOptions(const ProviderOptions& options);
   static ProviderOptions ToProviderOptions(const TensorrtExecutionProviderInfo& info);

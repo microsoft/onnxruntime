@@ -64,36 +64,6 @@ init_command = [
     '--dry-run={{DRYRUN}}',
     '--requirement=requirements-lintrunner.txt',
 ]
-
-[[linter]]
-code = 'RUFF-FIX'
-include_patterns = [
-    '**/*.py',
-    '**/*.pyi',
-]
-exclude_patterns = [
-    'cmake/external/**',
-    # ignore generated flatbuffers code
-    'onnxruntime/core/flatbuffers/ort_flatbuffers_py/**',
-]
-command = [
-    'python',
-    '-m',
-    'lintrunner_adapters',
-    'run',
-    'ruff_fix_linter',
-    '--config=pyproject.toml',
-    '@{{PATHSFILE}}'
-]
-init_command = [
-    'python',
-    '-m',
-    'lintrunner_adapters',
-    'run',
-    'pip_init',
-    '--dry-run={{DRYRUN}}',
-    '--requirement=requirements-lintrunner.txt',
-]
 is_formatter = true
 
 

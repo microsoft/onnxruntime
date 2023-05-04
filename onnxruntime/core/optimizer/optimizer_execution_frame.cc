@@ -175,8 +175,8 @@ OptimizerExecutionFrame::OptimizerExecutionFrame(const Info& info,
   Init(gsl::span<const int>(), gsl::span<const OrtValue>(), info.GetInitializers(), info.GetSparseInitializerLookupFunc(), fetches);
 }
 
-AllocatorPtr OptimizerExecutionFrame::GetAllocatorImpl(const OrtMemoryInfo& info) const {
-  return info_.GetAllocator(info);
+AllocatorPtr OptimizerExecutionFrame::GetAllocatorImpl(const OrtDevice&) const {
+  return info_.GetAllocator();
 }
 
 Status OptimizerExecutionFrame::CopyTensor(const Tensor& src, Tensor& dest) const {

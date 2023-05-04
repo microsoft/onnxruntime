@@ -84,5 +84,7 @@ void CreateReduceOpBuilder(const std::string& op_type, OpBuilderRegistrations& o
 
 void CreateBatchNormOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 
+void CreateLRNOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
+
 }  // namespace qnn
 }  // namespace onnxruntime

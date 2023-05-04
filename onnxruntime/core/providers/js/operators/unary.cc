@@ -116,5 +116,17 @@ ONNX_OPERATOR_KERNEL_EX(Clip, kOnnxDomain, 13, kJsExecutionProvider,
 JSEP_CLASS_IMPL_ATTRIBUTE_FLOAT_DEFAULT(Elu, Elu, alpha, 1.0)
 JSEP_ELEMENTWISE_KERNEL(Elu, 6, float, Elu)
 
+JSEP_KERNEL_IMPL(Relu, Relu)
+JSEP_ELEMENTWISE_VERSIONED_KERNEL(Relu, 6, 12, float, Relu)
+JSEP_ELEMENTWISE_VERSIONED_KERNEL(Relu, 13, 13, float, Relu)
+JSEP_ELEMENTWISE_KERNEL(Relu, 14, float, Relu)
+
+JSEP_CLASS_IMPL_ATTRIBUTE_FLOAT_DEFAULT(LeakyRelu, LeakyRelu, alpha, 0.01)
+JSEP_ELEMENTWISE_VERSIONED_KERNEL(LeakyRelu, 6, 15, float, LeakyRelu)
+JSEP_ELEMENTWISE_KERNEL(LeakyRelu, 16, float, LeakyRelu)
+
+JSEP_CLASS_IMPL_ATTRIBUTE_FLOAT_DEFAULT(ThresholdedRelu, ThresholdedRelu, alpha, 1.0)
+JSEP_ELEMENTWISE_KERNEL(ThresholdedRelu, 10, float, ThresholdedRelu)
+
 }  // namespace js
 }  // namespace onnxruntime
