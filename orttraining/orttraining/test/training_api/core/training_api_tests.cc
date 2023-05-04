@@ -42,7 +42,7 @@ constexpr float INITIAL_LR = 1e-3f;
  */
 Status CreateFakeOptimizerCheckpointStateOnCPU(
     const std::unordered_map<std::string, std::shared_ptr<Parameter>>& named_parameters,
-    const std::vector<std::string>& momentum_keys,
+    const InlinedVector<std::string>& momentum_keys,
     OptimizerCheckpointState& optimizer_checkpoint_state) {
   auto& grouped_optimizer_states = optimizer_checkpoint_state.group_named_optimizer_states;
   grouped_optimizer_states.insert({"group0", std::make_shared<GroupOptimizerState>()});
@@ -58,7 +58,7 @@ Status CreateFakeOptimizerCheckpointStateOnCPU(
         OrtValue param = pair.second->Data();
         const auto& param_tensor = param.template Get<Tensor>();
         GenerateRandomInput(param_tensor.Shape().GetDims(), param_moment_state);
-        cur_param_optimizer_states.momentum_named_states.insert({state_name, std::move(param_moment_state)});
+        cur_param_optimizer_states.insert({state_name, std::move(param_moment_state)});
       }
     }
   }
@@ -299,19 +299,19 @@ TEST(TrainingApiTest, OptimizerCreatedWithOptimizerCheckpointState) {
       ParameterOptimizerState& external_param_state =
           external_optimizer_checkpoint_state.group_named_optimizer_states["group0"]
               ->param_named_optimizer_states.at(param_name);
-      for (auto& param_p : param_state.momentum_named_states) {
+      for (auto& param_p : param_state) {
         std::vector<float> moment_vec;
         if (run_cuda) {
-          CudaOrtValueToCpuVec(param_state.momentum_named_states.at(param_p.first), moment_vec);
+          CudaOrtValueToCpuVec(param_state.at(param_p.first), moment_vec);
         } else {
-          CpuOrtValueToVec(param_state.momentum_named_states.at(param_p.first), moment_vec);
+          CpuOrtValueToVec(param_state.at(param_p.first), moment_vec);
         }
         std::vector<float> external_moment_vect;
 
         if (run_cuda) {
-          CudaOrtValueToCpuVec(external_param_state.momentum_named_states.at(param_p.first), external_moment_vect);
+          CudaOrtValueToCpuVec(external_param_state.at(param_p.first), external_moment_vect);
         } else {
-          CpuOrtValueToVec(external_param_state.momentum_named_states.at(param_p.first), external_moment_vect);
+          CpuOrtValueToVec(external_param_state.at(param_p.first), external_moment_vect);
         }
 
         ASSERT_EQ(moment_vec.size(), external_moment_vect.size());
@@ -497,7 +497,7 @@ TEST(TrainingApiTest, OptimStep) {
   ASSERT_STATUS_OK(optim->GetStateDict(optimizer_states));
   onnxruntime::training::api::ParameterOptimizerState& param_state =
       optimizer_states.group_named_optimizer_states["group0"]->param_named_optimizer_states.at(param_name);
-  OrtValue& moment_1 = param_state.momentum_named_states.at("momentum0");
+  OrtValue& moment_1 = param_state.at("momentum0");
 
   std::vector<float> param_vec_before_optimizer_step;
   CudaOrtValueToCpuVec(model->NamedParameters().at(param_name)->Data(), param_vec_before_optimizer_step);

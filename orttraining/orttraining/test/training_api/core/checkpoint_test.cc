@@ -296,20 +296,20 @@ TEST(CheckpointApiTest, SaveOptimizerStateAsCheckpoint_ThenLoad_CUDA) {
   CheckpointState checkpoint_state_to_load;
   ASSERT_STATUS_OK(LoadCheckpoint(checkpoint_path, checkpoint_state_to_load));
   OptimizerCheckpointState optimizer_state = checkpoint_state_to_load.optimizer_checkpoint_state;
-  std::unordered_map<std::string, std::shared_ptr<GroupOptimizerState>>&
+  InlinedHashMap<std::string, std::shared_ptr<GroupOptimizerState>>&
       group_optimizer_states = optimizer_state.group_named_optimizer_states;
 
   ASSERT_EQ(group_optimizer_states.size(), 1);
   ASSERT_EQ(group_optimizer_states.begin()->first, "group0");
 
-  std::unordered_map<std::string, ParameterOptimizerState>&
+  InlinedHashMap<std::string, ParameterOptimizerState>&
       param_named_optimizer_states = group_optimizer_states["group0"]->param_named_optimizer_states;
 
   ASSERT_EQ(param_named_optimizer_states.size(), named_parameters.size());
 
   for (auto it = param_named_optimizer_states.begin(); it != param_named_optimizer_states.end(); ++it) {
     ASSERT_TRUE(named_parameters.find(it->first) != named_parameters.end());
-    for (auto& [momentum_name, restored_ort_value] : it->second.momentum_named_states) {
+    for (auto& [momentum_name, restored_ort_value] : it->second) {
       ASSERT_TRUE(momentum_name == "momentum0" || momentum_name == "momentum1");
       const OrtValue& param_ort_value = name_to_ort_value[it->first];
       ASSERT_TRUE(restored_ort_value.IsTensor() && param_ort_value.IsTensor());
