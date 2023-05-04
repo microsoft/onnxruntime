@@ -57,7 +57,11 @@ stages:
   - job:
     steps:
     - bash: |
-        echo "##vso[task.setvariable variable=ReleaseVersionSuffix;]${{ parameters.ReleaseVersionSuffixString }}.${{ parameters.ReleaseVersionSuffixNumber }}"
+        if [ "${{ parameters.ReleaseVersionSuffixString }}" != "none"  ]; then
+          echo "##vso[task.setvariable variable=ReleaseVersionSuffix;]${{ parameters.ReleaseVersionSuffixString }}.${{ parameters.ReleaseVersionSuffixNumber }}"
+        else
+          echo "##vso[task.setvariable variable=ReleaseVersionSuffix;]''"
+        fi
     - bash: |
         echo "Release version suffix is: $(ReleaseVersionSuffix)"
 
