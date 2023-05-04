@@ -103,6 +103,38 @@ class QnnTensorWrapper {
     SetQnnTensorQParams(qnn_tensor_, quantize_params);
   }
 
+  QnnTensorWrapper(const Qnn_Tensor_t& qnn_tensor) : tensor_name_(GetQnnTensorName(qnn_tensor)),
+                                                     client_buf_{} {
+    SetQnnTensorName(qnn_tensor_, tensor_name_.c_str());
+
+    Qnn_TensorType_t tensor_type = GetQnnTensorType(qnn_tensor);
+    SetQnnTensorType(qnn_tensor_, tensor_type);
+
+    Qnn_DataType_t qnn_data_type = GetQnnTensorDataType(qnn_tensor);
+    SetQnnTensorDataType(qnn_tensor_, qnn_data_type);
+
+    Qnn_QuantizeParams_t quantize_param = QNN_QUANTIZE_PARAMS_INIT;
+    const auto& src_quantize_param = GetQnnTensorQParams(qnn_tensor);
+    // quantization only support SCALE_OFFSET encoding
+    quantize_param.encodingDefinition = src_quantize_param.encodingDefinition;
+    quantize_param.quantizationEncoding = src_quantize_param.quantizationEncoding;
+    quantize_param.scaleOffsetEncoding = src_quantize_param.scaleOffsetEncoding;
+    SetQnnTensorQParams(qnn_tensor_, quantize_param);
+
+    uint32_t shape_rank = GetQnnTensorRank(qnn_tensor);
+    uint32_t* shape_data = GetQnnTensorDims(qnn_tensor);
+    //std::vector<uint32_t> tensor_shape(shape_data, shape_data + shape_rank);
+    dimensions_.assign(shape_data, shape_data + shape_rank);
+    SetQnnTensorDim(qnn_tensor_, dimensions_);
+
+    // This method is only used for graph inputs/outputs when desearilize from cached context
+    // no client buffer should be set
+
+    Qnn_TensorMemType_t mem_type = GetQnnTensorMemType(qnn_tensor);
+    SetQnnTensorMemType(qnn_tensor_, mem_type);
+  }
+  
+
   QnnTensorWrapper() = default;
 
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(QnnTensorWrapper);
@@ -360,7 +392,7 @@ class QnnOpProperty {
 
 class GraphInfo {
  public:
-  GraphInfo(Qnn_GraphHandle_t graph,
+  GraphInfo(const Qnn_GraphHandle_t graph,
             const std::string& name,
             std::vector<QnnTensorWrapper>&& input_tensors,
             std::vector<QnnTensorWrapper>&& output_tensors) : graph_name_(name),

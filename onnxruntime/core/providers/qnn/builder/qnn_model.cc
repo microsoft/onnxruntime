@@ -280,12 +280,44 @@ Status QnnModel::SetupTensors(std::vector<Qnn_Tensor_t>& qnn_tensors,
   return Status::OK();
 }
 
-// Deserialize cached Qnn Context, retrieve Qnn graph infor from binary info
-Status QnnModel::DeserializeFromCachedContext(const onnxruntime::PathString& model_path) {
-  const QnnSystemContext_BinaryInfo_t* binary_info = nullptr;
-  ORT_RETURN_IF_ERROR(qnn_backend_manager_->LoadCachedQnnContext(model_path, &binary_info));
 
-  //retrieve Qnn graph infor from binary info
+
+Status QnnModel::DeserializeGraphInforFromBinaryInfo(const QnnSystemContext_GraphInfo_t& qnn_sys_ctx_graph_info) {
+  std::vector<QnnTensorWrapper> input_tensor_wrappers;
+  std::vector<QnnTensorWrapper> output_tensor_wrappers;
+
+  std::string graph_name;
+  if (qnn_sys_ctx_graph_info.version == QNN_SYSTEM_CONTEXT_GRAPH_INFO_VERSION_1) {
+    graph_name.assign(qnn_sys_ctx_graph_info.graphInfoV1.graphName);
+    auto graph_input_num = qnn_sys_ctx_graph_info.graphInfoV1.numGraphInputs;
+    auto graph_output_num = qnn_sys_ctx_graph_info.graphInfoV1.numGraphOutputs;
+    ORT_RETURN_IF(nullptr == qnn_sys_ctx_graph_info.graphInfoV1.graphInputs, "Graph from cached context doesn't have any inputs.");
+    ORT_RETURN_IF(nullptr == qnn_sys_ctx_graph_info.graphInfoV1.graphOutputs, "Graph from cached context doesn't have any outputs.");
+
+    // Copy graph input
+    Qnn_Tensor_t* input_tensors = qnn_sys_ctx_graph_info.graphInfoV1.graphInputs;
+    for (size_t i = 0; i < graph_input_num; ++i) {
+      QnnTensorWrapper tensorwrapper(input_tensors[i]);
+      input_tensor_wrappers.push_back(std::move(tensorwrapper));
+    }
+
+    // Copy graph output
+    Qnn_Tensor_t* output_tensors = qnn_sys_ctx_graph_info.graphInfoV1.graphOutputs;
+    for (size_t i = 0; i < graph_output_num; ++i) {
+      QnnTensorWrapper tensorwrapper(output_tensors[i]);
+      output_tensor_wrappers.push_back(std::move(tensorwrapper));
+    }
+  }
+  Qnn_GraphHandle_t graph;
+  auto qnn_interface = qnn_backend_manager_->GetQnnInterface();
+  qnn_interface.graphRetrieve(qnn_backend_manager_->GetQnnContext(),
+                              graph_name.c_str(), &graph);
+
+  graph_info_ = std::make_unique<GraphInfo>(graph,
+                                            graph_name,
+                                            std::move(input_tensor_wrappers),
+                                            std::move(output_tensor_wrappers));
+  ORT_RETURN_IF(graph_info_ == nullptr, "Failed to allocate GraphInfo");
 
   return Status::OK();
 }

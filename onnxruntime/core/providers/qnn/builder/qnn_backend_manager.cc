@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "qnn_backend_manager.h"
+#include "qnn_model.h"
 #include <iostream>
 #include <fstream>
 #include <filesystem>
@@ -309,7 +310,7 @@ Status QnnBackendManager::DumpQnnContext(const onnxruntime::PathString& model_pa
   return Status::OK();
 }
 
-Status QnnBackendManager::LoadCachedQnnContext(const onnxruntime::PathString& model_path, const QnnSystemContext_BinaryInfo_t** binary_info) {
+Status QnnBackendManager::LoadCachedQnnContext(const onnxruntime::PathString& model_path, QnnModel& qnn_model) {
   ORT_RETURN_IF(nullptr == qnn_sys_interface_.systemContextCreate ||
                 nullptr == qnn_sys_interface_.systemContextGetBinaryInfo ||
                 nullptr == qnn_sys_interface_.systemContextFree,
@@ -331,23 +332,35 @@ Status QnnBackendManager::LoadCachedQnnContext(const onnxruntime::PathString& mo
   const auto& read_result = cache_file.read(reinterpret_cast<char*>(buffer.get()), buffer_size);
   ORT_RETURN_IF(!read_result, "Failed to read contents from cached context file.");
 
-  QnnSystemContext_Handle_t sys_ctx_handle{nullptr};
+  QnnSystemContext_Handle_t sys_ctx_handle = nullptr;
   auto rt = qnn_sys_interface_.systemContextCreate(&sys_ctx_handle);
   ORT_RETURN_IF(QNN_SUCCESS != rt, "Failed to create system handle.");
 
-  //const QnnSystemContext_BinaryInfo_t* binary_info{nullptr};
+  const QnnSystemContext_BinaryInfo_t* binary_info =nullptr;
   Qnn_ContextBinarySize_t binary_info_size{0};
   rt = qnn_sys_interface_.systemContextGetBinaryInfo(sys_ctx_handle,
                                                      static_cast<void*>(buffer.get()),
                                                      buffer_size,
-                                                     binary_info,
+                                                     &binary_info,
                                                      &binary_info_size);
   ORT_RETURN_IF(QNN_SUCCESS != rt, "Failed to get context binary infor.");
 
+  // binary_info life cycle is here
   // Binary info to graph info
+  //retrieve Qnn graph infor from binary info
+  ORT_RETURN_IF(nullptr == binary_info, "Qnn cached binary infor is nullptr.");
+  uint32_t graph_count = 0;
+  QnnSystemContext_GraphInfo_t* graphs_info = nullptr;
+  if (binary_info->version == QNN_SYSTEM_CONTEXT_BINARY_INFO_VERSION_1) {
+    graph_count = binary_info->contextBinaryInfoV1.numGraphs;
+    graphs_info = binary_info->contextBinaryInfoV1.graphs;
+  } else if (binary_info->version == QNN_SYSTEM_CONTEXT_BINARY_INFO_VERSION_2) {
+    graph_count = binary_info->contextBinaryInfoV2.numGraphs;
+    graphs_info = binary_info->contextBinaryInfoV2.graphs;
+  }
 
-  qnn_sys_interface_.systemContextFree(sys_ctx_handle);
-  sys_ctx_handle = nullptr;
+  ORT_RETURN_IF(graph_count > 1, "Load from Qnn cached context only support 1 sub-graph.");
+  ORT_RETURN_IF(graphs_info == nullptr, "Failed to get graph info from Qnn cached context.");
 
   ORT_RETURN_IF(nullptr == qnn_interface_.contextCreateFromBinary,
                 "Invalid function pointer for contextCreateFromBinary.");
@@ -359,6 +372,12 @@ Status QnnBackendManager::LoadCachedQnnContext(const onnxruntime::PathString& mo
                                               &context_,
                                               profile_backend_handle_);
   ORT_RETURN_IF(QNN_SUCCESS != rt, "Failed to create context from binary.");
+
+  ORT_RETURN_IF_ERROR(qnn_model.DeserializeGraphInforFromBinaryInfo(graphs_info[0]));
+
+  qnn_sys_interface_.systemContextFree(sys_ctx_handle);
+  sys_ctx_handle = nullptr;
+
   ORT_RETURN_IF_ERROR(ExtractBackendProfilingInfo());
 
   LOGS(*logger_, VERBOSE) << "Load from cached QNN Context completed.";

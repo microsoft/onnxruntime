@@ -20,6 +20,8 @@
 namespace onnxruntime {
 namespace qnn {
 
+class QnnModel;
+
 class QnnBackendManager {
  public:
   QnnBackendManager(std::string backend_path,
@@ -66,7 +68,7 @@ class QnnBackendManager {
 
   Status DumpQnnContext(const onnxruntime::PathString& model_path);
 
-  Status LoadCachedQnnContext(const onnxruntime::PathString& model_path, const QnnSystemContext_BinaryInfo_t** binary_info);
+  Status LoadCachedQnnContext(const onnxruntime::PathString& model_path, QnnModel& qnn_model);
 
   Status SetupBackend(const logging::Logger& logger, bool use_cached_context_);
 

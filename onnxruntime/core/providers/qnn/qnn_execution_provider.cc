@@ -287,7 +287,7 @@ Status QNNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused
                                                                                qnn_backend_manager_.get(),
                                                                                cpu_allocator_,
                                                                                is_npu_backend);
-    ORT_RETURN_IF_ERROR(qnn_model->DeserializeFromCachedContext(model_path));
+    ORT_RETURN_IF_ERROR(qnn_backend_manager_->LoadCachedQnnContext(model_path, *(qnn_model.get())));
 
     Node& fused_node = fused_nodes_and_graphs[0].fused_node;
     LOGS(logger, VERBOSE) << "fused node name: " << fused_node.Name();

@@ -71,7 +71,7 @@ class QnnModel {
     return GetInputOutputIndex(name, outputs_info_);
   }
 
-  Status DeserializeFromCachedContext(const onnxruntime::PathString& model_path);
+  Status DeserializeGraphInforFromBinaryInfo(const QnnSystemContext_GraphInfo_t& qnn_sys_ctx_graph_info);
 
  private:
   const NodeUnit& GetNodeUnit(const Node* node,
