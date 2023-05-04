@@ -23,6 +23,7 @@ import torch
 from packaging.version import Version
 
 # Import autocasting libs
+from torch import nn
 from torch.cuda import amp
 from transformers import AdamW, AutoConfig, BertForSequenceClassification, Trainer
 from transformers.modeling_outputs import SequenceClassifierOutput
@@ -5741,3 +5742,117 @@ def test_runtime_inspector_label_and_embed_sparsity_detection(embed_is_sparse, l
 
     if embed_is_sparse:
         assert found_embed_is_sparse
+
+
+def test_padding_elimination():
+    class OneLayer(torch.nn.Module):
+        def __init__(self, hidden_size, num_attention_heads):
+            super().__init__()
+            self.num_attention_heads = num_attention_heads
+            self.attention_head_size = int(hidden_size / num_attention_heads)
+            self.all_head_size = num_attention_heads * self.attention_head_size
+            self.query = nn.Linear(hidden_size, self.all_head_size)
+            self.key = nn.Linear(hidden_size, self.all_head_size)
+            self.value = nn.Linear(hidden_size, self.all_head_size)
+            self.dropout1 = nn.Dropout(0.0)
+            self.dense = nn.Linear(hidden_size, hidden_size)
+            self.LayerNorm = nn.LayerNorm(hidden_size, eps=1e-05)
+            self.dropout2 = nn.Dropout(0.0)
+
+        def transpose_for_scores(self, x: torch.Tensor) -> torch.Tensor:
+            new_x_shape = x.size()[:-1] + (self.num_attention_heads, self.attention_head_size)
+            x = x.view(new_x_shape)
+            return x.permute(0, 2, 1, 3)
+
+        def forward(self, hidden_states, attention_mask):
+            query_layer = self.transpose_for_scores(self.query(hidden_states))
+            key_layer = self.transpose_for_scores(self.key(hidden_states))
+            value_layer = self.transpose_for_scores(self.value(hidden_states))
+            attention_scores = torch.matmul(query_layer, key_layer.transpose(-1, -2))
+            attention_scores = attention_scores / math.sqrt(self.attention_head_size)
+            attention_scores = attention_scores + attention_mask
+            attention_probs = nn.functional.softmax(attention_scores, dim=-1)
+            attention_probs = self.dropout1(attention_probs)
+            context_layer = torch.matmul(attention_probs, value_layer)
+            context_layer = context_layer.permute(0, 2, 1, 3).contiguous()
+            new_context_layer_shape = context_layer.size()[:-2] + (self.all_head_size,)
+            context_layer = context_layer.view(new_context_layer_shape)
+
+            output = self.dense(context_layer)
+            output = self.dropout2(output)
+            output = self.LayerNorm(output + hidden_states)
+            return output
+
+    class ToyModel(torch.nn.Module):
+        def __init__(self, num_hidden_layers, vocab_size, hidden_size, num_attention_heads, pad_token_id, num_labels):
+            super().__init__()
+            self.word_embeddings = nn.Embedding(vocab_size, hidden_size, padding_idx=pad_token_id)
+            self.token_type_embeddings = nn.Embedding(1, hidden_size)
+            self.LayerNorm = nn.LayerNorm(hidden_size, eps=1e-05)
+            self.dropout = nn.Dropout(0.0)
+            self.layer = nn.ModuleList([OneLayer(hidden_size, num_attention_heads) for _ in range(num_hidden_layers)])
+            self.out_proj = nn.Linear(hidden_size, num_labels)
+
+        def forward(self, input_ids, attention_mask, target):
+            input_shape = input_ids.size()
+            token_type_ids = torch.zeros(input_shape, dtype=torch.long).to(device)
+            inputs_embeds = self.word_embeddings(input_ids)
+            token_type_embeddings = self.token_type_embeddings(token_type_ids)
+            embeddings = inputs_embeds + token_type_embeddings
+            embeddings = self.LayerNorm(embeddings)
+            hidden_states = self.dropout(embeddings)
+            extended_attention_mask = attention_mask[:, None, None, :]
+            extended_attention_mask = extended_attention_mask.to(dtype=torch.float32)
+            extended_attention_mask = (1.0 - extended_attention_mask) * torch.finfo(torch.float32).min
+            for _, layer_module in enumerate(self.layer):
+                hidden_states = layer_module(hidden_states, extended_attention_mask)
+            x = hidden_states[:, 0, :]
+            x = self.out_proj(x)
+            loss_fct = torch.nn.CrossEntropyLoss()
+            return loss_fct(x, target)
+
+    def run_step(model, inputs, mask, target):
+        loss = model(inputs, mask, target)
+        loss.backward()
+        return loss
+
+    def run_optim_step(optimizer):
+        optimizer.step()
+        optimizer.zero_grad()
+
+    def generate_inputs(batch_size, max_seq_length, vocab_size):
+        batched_inputs = []
+        batched_masks = []
+        for _ in range(batch_size):
+            seq_len = random.randint(1, max_seq_length)
+            input_id = torch.randint(2, vocab_size, (seq_len,), dtype=torch.long, device=device)
+            padding = torch.ones((max_seq_length-seq_len,), dtype=torch.long, device=device)
+            mask_ones = torch.ones((seq_len,), device=device)
+            mask_zeros = torch.zeros((max_seq_length-seq_len,), device=device)
+            batched_inputs.append(torch.cat((input_id, padding)))
+            batched_masks.append(torch.cat((mask_ones, mask_zeros)))
+        return torch.stack(batched_inputs), torch.stack(batched_masks)
+
+    num_layers, vocab_size, hidden_size, num_attention_heads = 1, 50265, 768, 12
+    batch_size, max_seq_length = 8, 128
+    device = "cuda"
+    pt_model = ToyModel(num_layers, vocab_size, hidden_size, num_attention_heads, 1, 3).to(device)
+    ort_model = ORTModule(copy.deepcopy(pt_model))
+    pt_optimizer = torch.optim.Adam(pt_model.parameters())
+    ort_optimizer = torch.optim.Adam(ort_model.parameters())
+
+    for _ in range(10):
+        pt_input, pt_mask = generate_inputs(batch_size, max_seq_length, vocab_size)
+        ort_input = copy.deepcopy(pt_input)
+        ort_mask = copy.deepcopy(pt_mask)
+        pt_target = torch.randint(3, (batch_size, ), device=device)
+        ort_target = copy.deepcopy(pt_target)
+        pt_prediction = run_step(pt_model, pt_input, pt_mask, pt_target)
+        ort_prediction = run_step(ort_model, ort_input, ort_mask, ort_target)
+        for pt_param, ort_param in zip(pt_model.parameters(), ort_model.parameters()):
+            _test_helpers.assert_values_are_close(pt_param.grad, ort_param.grad, atol=1e-4, rtol=1e-5)
+
+        run_optim_step(pt_optimizer)
+        run_optim_step(ort_optimizer)
+
+        _test_helpers.assert_values_are_close(ort_prediction, pt_prediction)
