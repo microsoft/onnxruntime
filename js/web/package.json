@@ -66,6 +66,13 @@
     "strip-json-comments": "^5.0.0"
   },
   "main": "dist/ort-web.node.js",
-  "types": "./types/lib/index.d.ts",
+  "exports": {
+    ".": {
+      "node": "./dist/ort-web.node.js",
+      "default": "./dist/ort.min.js"
+    },
+    "./webgpu": "./dist/ort.webgpu.min.js"
+  },
+  "types": "./types.d.ts",
   "description": "A Javascript library for running ONNX models on browsers"
 }

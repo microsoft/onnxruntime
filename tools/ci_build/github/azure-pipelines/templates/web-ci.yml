@@ -61,6 +61,7 @@ stages:
       BuildConfig: 'Debug'
       ExtraBuildArgs: '--use_extensions --cmake_extra_defines onnxruntime_WEBASSEMBLY_DEFAULT_EXTENSION_FLAGS=ON ${{ parameters.ExtraBuildArgs }}'
       PoolName: ${{ parameters.PoolName }}
+      BuildJsep: ${{ parameters.BuildJsep }}
 
 - stage: Build_web_Debug
   dependsOn: Build_wasm_Debug
