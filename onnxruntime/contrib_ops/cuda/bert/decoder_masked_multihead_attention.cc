@@ -167,6 +167,7 @@ Status DecoderMaskedMultiHeadAttention<T1, T2>::ComputeInternal(OpKernelContext*
     }
 
     parameters.is_cross_attention = false;
+    parameters.is_packed_qkv = is_dmmha_packing;
 
     parameters.k = is_dmmha_packing
                        ? const_cast<T1*>(query->Data<T1>() + parameters.hidden_size)
