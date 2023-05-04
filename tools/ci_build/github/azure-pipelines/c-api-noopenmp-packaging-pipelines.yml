@@ -25,13 +25,13 @@ parameters:
   default: false
 
 # these 2 parameters are used for debugging.
-- name: SpecificArtifact
-  displayName: Use Specific Artifact (Debugging only)
+- name: specificArtifact
+  displayName: Use Specific Artifact
   type: boolean
   default: false
 
-- name: BuildId
-  displayName: Pipeline BuildId, you could find it in the URL
+- name: runId
+  displayName: Specific Artifact's RunId
   type: string
   default: '0'
 
@@ -48,10 +48,10 @@ resources:
     ref: aead4d751c2101e23336aa73f2380df83e7a13f3
 
 variables:
-  - name: specificArtifact
-    value: ${{ parameters.SpecificArtifact }}
+  - name: sepcificArtifact
+    value: ${{ parameters.specificArtifact }}
   - name: otherRunId
-    value: ${{ parameters.BuildId }}
+    value: ${{ parameters.runId }}
 
 stages:
 - template: templates/c-api-cpu.yml
