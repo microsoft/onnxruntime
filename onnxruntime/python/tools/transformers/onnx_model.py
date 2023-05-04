@@ -205,18 +205,12 @@ class OnnxModel:
         for node in self.model.graph.node:
             OnnxModel.replace_node_output(node, old_output_name, new_output_name)
 
-    def get_initializer(self, name, initializers=None):
-        if initializers is None:
-            for graph in self.graphs():
-                for tensor in graph.initializer:
-                    if tensor.name == name:
-                        return tensor
-            return None
-        else:
-            for tensor in initializers:
+    def get_initializer(self, name):
+        for graph in self.graphs():
+            for tensor in graph.initializer:
                 if tensor.name == name:
                     return tensor
-            return None
+        return None
 
     def get_nodes_by_op_type(self, op_type):
         nodes = []
