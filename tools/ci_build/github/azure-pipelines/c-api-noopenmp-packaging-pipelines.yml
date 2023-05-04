@@ -27,7 +27,7 @@ parameters:
 - name: ReleaseVersionSuffix
   displayName: Suffix added to release package name -alpha, -rc etc.
   type: string
-  default: ""
+  default: ''
 
 resources:
   repositories:
@@ -44,13 +44,14 @@ resources:
 stages:
 - stage: Check_Pipeline_Parameters
   jobs:
-  - job:
-    steps:
-    - script: python -m pip install --upgrade pip semver
-      displayName: 'Install pip and semver'
-    - script: python $(Build.SourcesDirectory)/tools/ci_build/check_release_version_suffix.py ${{ parameters.ReleaseVersionSuffix }}
-      workingDirectory: $(Build.SourcesDirectory)
-      displayName: 'Check release version suffix'
+  - ${{ if !equals(parameters.ReleaseVersionSuffix, '') }}:
+    - job:
+      steps:
+      - script: python -m pip install --upgrade pip semver
+        displayName: 'Install pip and semver'
+      - script: python $(Build.SourcesDirectory)/tools/ci_build/check_release_version_suffix.py ${{ parameters.ReleaseVersionSuffix }}
+        workingDirectory: $(Build.SourcesDirectory)
+        displayName: 'Check release version suffix'
 
 - template: templates/c-api-cpu.yml
   parameters:
