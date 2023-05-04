@@ -208,7 +208,7 @@ TEST_P(ModelTest, Run) {
       {"cast_FLOAT8E4M3FN_to_FLOAT16", "Unexpected input data type"},
       {"cast_FLOAT8E5M2FNUZ_to_FLOAT", "Unexpected input data type"},
       {"cast_FLOAT8E5M2FNUZ_to_FLOAT16", "Unexpected input data type"},
-      // {"cast_FLOAT8E5M2_to_FLOAT", "Unexpected input data type"},
+      {"cast_FLOAT8E5M2_to_FLOAT", "Unexpected input data type"},
       {"cast_FLOAT8E5M2_to_FLOAT16", "Unexpected input data type"},
       {"cast_FLOAT_to_BFLOAT16", "expect uint16 got bfloat16"},
       {"cast_FLOAT_to_FLOAT8E4M3FN", "Unexpected input data type"},

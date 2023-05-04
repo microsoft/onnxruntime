@@ -279,7 +279,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 { "test_cast_FLOAT16_to_FLOAT8E4M3FNUZ", "Output mismatch"},
                 { "test_cast_FLOAT16_to_FLOAT8E5M2", "Output mismatch"},
                 { "test_cast_FLOAT16_to_FLOAT8E5M2FNUZ", "Output mismatch"},
-                // { "test_cast_FLOAT8E4M3FNUZ_to_FLOAT", "Output mismatch"},
+                { "test_cast_FLOAT8E4M3FNUZ_to_FLOAT", "Output mismatch"},
                 { "test_cast_FLOAT8E4M3FNUZ_to_FLOAT16", "Output mismatch"},
                 { "test_cast_FLOAT8E4M3FN_to_FLOAT", "Output mismatch"},
                 { "test_cast_FLOAT8E4M3FN_to_FLOAT16", "Output mismatch"},
