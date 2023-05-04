@@ -48,10 +48,10 @@ uint4 DecomposeIndex(uint index)
     uint channel_denominator = w * h;
     uint batch_denominator   = w * h * c;
 
-    idx.x = (index)                                           / batch_denominator; // batch
-    idx.y = (index - (idx.x * n))                             / channel_denominator; // channel
-    idx.z = (index - (idx.x * n) - (idx.y * c))               / height_denominator; // height
-    idx.w = (index - (idx.x * n) - (idx.y * c) - (idx.z * h)) / width_denominator; // width
+    idx.x = (index)                                                                                     / batch_denominator; // batch
+    idx.y = (index - (idx.x * OutputStrides.x))                                                         / channel_denominator; // channel
+    idx.z = (index - (idx.x * OutputStrides.x) - (idx.y * OutputStrides.y))                             / height_denominator; // height
+    idx.w = (index - (idx.x * OutputStrides.x) - (idx.y * OutputStrides.y) - (idx.z * OutputStrides.z)) / width_denominator; // width
     return idx;
 }
 // Returns the indices for the real and complex output uav
@@ -64,8 +64,8 @@ float2 FetchGridVector(uint4 index)
     uint h = index.z;
     uint w = index.w;
 
-    uint4 gridIdx = uint4(n, h, w, 0);
-    uint2 flattenedGridIndex = uint2(0, 0);
+    float4 gridIdx = float4(n, h, w, 0);
+    float2 flattenedGridIndex = float2(0, 0);
     flattenedGridIndex.x = dot(gridIdx, GridStrides);
     flattenedGridIndex.y = flattenedGridIndex.x + GridStrides.w;
     return float2((float)grid[flattenedGridIndex.x],
@@ -244,9 +244,12 @@ void GridSample(uint3 dtid : SV_DispatchThreadId)
             float p21 = PixelAtGrid(float4(index.x, index.y, y2, x1), border);
             float p22 = PixelAtGrid(float4(index.x, index.y, y2, x2), border);
 
-            float p1 = lerp(p11, p12, inputIdx.w - x1);
-            float p2 = lerp(p21, p22, inputIdx.w - x1);
-            float p = lerp(p1, p2, inputIdx.z - y1);
+            // p11--p12
+            //  |    |
+            // p21--p22
+            float p1 = lerp(p11, p12, frac(inputIdx.w));
+            float p2 = lerp(p21, p22, frac(inputIdx.w));
+            float p = lerp(p1, p2, frac(inputIdx.z));
             output[n] = (TBUFFER1)(p);
         }
         else if (Mode == Bicubic)

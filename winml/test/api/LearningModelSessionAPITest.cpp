@@ -1206,8 +1206,39 @@ static void GridSample(
   auto cpu_y_ivv = cpu_y_tensor.GetAsVectorView();
   WINML_EXPECT_EQUAL(device_y_ivv.Size(), cpu_y_ivv.Size());
   for (uint32_t i = 0; i < device_y_ivv.Size(); i++) {
-    WINML_EXPECT_TRUE(abs(device_y_ivv.GetAt(i) - cpu_y_ivv.GetAt(i)) < error_threshold);
+    bool in_range = abs(device_y_ivv.GetAt(i) - cpu_y_ivv.GetAt(i)) < error_threshold;
+    if (!in_range) {
+      printf("[%d] ACTUAL(%f) EXPECTED(%f)\n", (int)i, device_y_ivv.GetAt(i), cpu_y_ivv.GetAt(i));
+    }
+    WINML_EXPECT_TRUE(in_range);
   }
+}
+
+static void GridSampleRunner(LearningModelDeviceKind kind,
+    const std::vector<float>& input,
+    const std::vector<int64_t>& input_dims,
+    const std::vector<float>& grid,
+    const std::vector<int64_t>& grid_dims)
+{
+  GridSample(kind, input, input_dims, grid, grid_dims, false, Mode::Bilinear, PaddingMode::Zeros);
+  GridSample(kind, input, input_dims, grid, grid_dims, false, Mode::Bilinear, PaddingMode::Border);
+  GridSample(kind, input, input_dims, grid, grid_dims, false, Mode::Bilinear, PaddingMode::Reflection);
+  GridSample(kind, input, input_dims, grid, grid_dims, false, Mode::Nearest, PaddingMode::Zeros);
+  GridSample(kind, input, input_dims, grid, grid_dims, false, Mode::Nearest, PaddingMode::Border);
+  GridSample(kind, input, input_dims, grid, grid_dims, false, Mode::Nearest, PaddingMode::Reflection);
+  GridSample(kind, input, input_dims, grid, grid_dims, false, Mode::Bicubic, PaddingMode::Zeros);
+  GridSample(kind, input, input_dims, grid, grid_dims, false, Mode::Bicubic, PaddingMode::Border);
+  GridSample(kind, input, input_dims, grid, grid_dims, false, Mode::Bicubic, PaddingMode::Reflection);
+
+  GridSample(kind, input, input_dims, grid, grid_dims, true, Mode::Bilinear, PaddingMode::Zeros);
+  GridSample(kind, input, input_dims, grid, grid_dims, true, Mode::Bilinear, PaddingMode::Border);
+  GridSample(kind, input, input_dims, grid, grid_dims, true, Mode::Bilinear, PaddingMode::Reflection);
+  GridSample(kind, input, input_dims, grid, grid_dims, true, Mode::Nearest, PaddingMode::Zeros);
+  GridSample(kind, input, input_dims, grid, grid_dims, true, Mode::Nearest, PaddingMode::Border);
+  GridSample(kind, input, input_dims, grid, grid_dims, true, Mode::Nearest, PaddingMode::Reflection);
+  GridSample(kind, input, input_dims, grid, grid_dims, true, Mode::Bicubic, PaddingMode::Zeros);
+  GridSample(kind, input, input_dims, grid, grid_dims, true, Mode::Bicubic, PaddingMode::Border);
+  GridSample(kind, input, input_dims, grid, grid_dims, true, Mode::Bicubic, PaddingMode::Reflection);
 }
 
 static void ModelBuilding_GridSample_Internal(LearningModelDeviceKind kind) {
@@ -1228,29 +1259,28 @@ static void ModelBuilding_GridSample_Internal(LearningModelDeviceKind kind) {
       40.00f, 41.00f,   42.00f, 43.00f,   44.00f, 45.00f,   46.00f, 47.00f,   48.00f, 49.00f,
   };
   std::transform(grid.begin(), grid.end(), grid.begin(), [&](auto& in) { return in / grid.size(); });
-
   std::vector<int64_t> input_dims = {1, 1, 4, 4};
   std::vector<int64_t> grid_dims = {1, 5, 5, 2};
 
-  GridSample(kind, input, input_dims, grid, grid_dims, false, Mode::Bilinear, PaddingMode::Zeros);
-  GridSample(kind, input, input_dims, grid, grid_dims, false, Mode::Bilinear, PaddingMode::Border);
-  GridSample(kind, input, input_dims, grid, grid_dims, false, Mode::Bilinear, PaddingMode::Reflection);
-  GridSample(kind, input, input_dims, grid, grid_dims, false, Mode::Nearest, PaddingMode::Zeros);
-  GridSample(kind, input, input_dims, grid, grid_dims, false, Mode::Nearest, PaddingMode::Border);
-  GridSample(kind, input, input_dims, grid, grid_dims, false, Mode::Nearest, PaddingMode::Reflection);
-  GridSample(kind, input, input_dims, grid, grid_dims, false, Mode::Bicubic, PaddingMode::Zeros);
-  GridSample(kind, input, input_dims, grid, grid_dims, false, Mode::Bicubic, PaddingMode::Border);
-  GridSample(kind, input, input_dims, grid, grid_dims, false, Mode::Bicubic, PaddingMode::Reflection);
+  GridSampleRunner(kind, input, input_dims, grid, grid_dims);
 
-  GridSample(kind, input, input_dims, grid, grid_dims, true, Mode::Bilinear, PaddingMode::Zeros);
-  GridSample(kind, input, input_dims, grid, grid_dims, true, Mode::Bilinear, PaddingMode::Border);
-  GridSample(kind, input, input_dims, grid, grid_dims, true, Mode::Bilinear, PaddingMode::Reflection);
-  GridSample(kind, input, input_dims, grid, grid_dims, true, Mode::Nearest, PaddingMode::Zeros);
-  GridSample(kind, input, input_dims, grid, grid_dims, true, Mode::Nearest, PaddingMode::Border);
-  GridSample(kind, input, input_dims, grid, grid_dims, true, Mode::Nearest, PaddingMode::Reflection);
-  GridSample(kind, input, input_dims, grid, grid_dims, true, Mode::Bicubic, PaddingMode::Zeros);
-  GridSample(kind, input, input_dims, grid, grid_dims, true, Mode::Bicubic, PaddingMode::Border);
-  GridSample(kind, input, input_dims, grid, grid_dims, true, Mode::Bicubic, PaddingMode::Reflection);
+  input = { 0.0f, 1.0f, 2.0f, 3.0f, 4.0, 5.0f };
+  grid =
+  {
+    -10.0000f, -10.0000f,
+     -5.0000f,  -5.0000f,
+     -0.2000f,  -0.2000f,
+     10.0000f,  10.0000f,
+
+    10.0000f,   10.0000f,
+    -0.2000f,   -0.2000f,
+     5.0000f,    5.0000f,
+    10.0000f,   10.0000f
+  };
+  input_dims = {1, 1, 3, 2};
+  grid_dims = {1, 2, 4, 2};
+
+  GridSampleRunner(kind, input, input_dims, grid, grid_dims);
 }
 
 static void ModelBuilding_DiscreteFourierTransform_Internal(LearningModelDeviceKind kind) {
