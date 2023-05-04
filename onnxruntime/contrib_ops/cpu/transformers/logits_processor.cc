@@ -247,11 +247,11 @@ TSLogitsProcessor<T>::TSLogitsProcessor(int min_length, int eos_token_id)
 template <typename T>
 void TSLogitsProcessor<T>::Process(const ISequences* sequences,
                                           NextTokenScores<T>& next_token_scores) {
-  std::cout << "TSLogitsProcessor process: ts only, +1, suppress notimestamp, no pair check" << std::endl;
+  std::cout << "TSLogitsProcessor process: ts only, +1, suppress notimestamp, seq_length < 5, pair check" << std::endl;
   //assert(!vocab_mask_.empty());
 
-  ////const int beg_token_id_ = 50363 + 1;
-  ////const int eot_token_id_ = 50256 + 1;
+  const int beg_token_id_ = 50363 + 1;
+  const int eot_token_id_ = 50256 + 1;
   const int not_token_id_ = 50362 + 1;
 /*
   const int sot_token_id_ = 50257 + 1;
@@ -266,9 +266,14 @@ void TSLogitsProcessor<T>::Process(const ISequences* sequences,
   for (int i = 0; i < batch_beam_size; i++) {
     gsl::span<T> beam_token_scores = next_token_scores.GetScores(i);///logits: (vocab size)
     gsl::span<const int32_t> sequence = sequences->GetSequence(i);///tokens_cur: (seq length)
-    ////const int seq_length = sequence.size();
-    ///const bool last_was_timestamp = seq_length > 0 && sequence.back() >= beg_token_id_;
-    ///const bool penultimate_was_timestamp = seq_length < 2 || sequence[seq_length - 2] >= beg_token_id_;
+    const int seq_length = sequence.size();
+    std::cout << "i: " << i << ", seq_length: " << seq_length << std::endl;
+    for (int j = 0; j < seq_length; j++) {
+        std::cout << sequence[j] << ", ";
+    }
+    std::cout << std::endl;
+    const bool last_was_timestamp = seq_length > 0 && sequence.back() >= beg_token_id_;//0
+    const bool penultimate_was_timestamp = seq_length < 5 || sequence[seq_length - 2] >= beg_token_id_;//2  first 4: sot:50258, lang:50259, transcribe:50359, beg:50364
 
 
     //const bool is_initial = seq_length == 0;
@@ -292,7 +297,7 @@ void TSLogitsProcessor<T>::Process(const ISequences* sequences,
       //mask timestamp logits. Timestamps appears in pairs except directly before EOT
 
       }
-/*
+
       if (last_was_timestamp) {
         if (penultimate_was_timestamp) {
           for (int j = beg_token_id_; j < vocab_size; j++) {//n_logits
@@ -304,7 +309,7 @@ void TSLogitsProcessor<T>::Process(const ISequences* sequences,
           }
         }
       }
-*/
+
     }
 
 #ifdef DEBUG_GENERATION
