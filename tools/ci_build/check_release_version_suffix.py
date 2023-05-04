@@ -19,4 +19,4 @@ if output != '':
     if not prefix in ('alpha', 'beta', 'rc'):
         raise ValueError(f"Invalid pre-release: {ver}. (alpha|beta|rc) accepted.")
 
-print(f'##vso[task.setvariable variable={ReleaseVersionSuffix};]{output}')
+print(f'##vso[task.setvariable variable=ReleaseVersionSuffix;]{output}')

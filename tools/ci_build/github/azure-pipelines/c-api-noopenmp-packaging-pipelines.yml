@@ -52,6 +52,7 @@ stages:
       - script: python $(Build.SourcesDirectory)/tools/ci_build/check_release_version_suffix.py ${{ parameters.ReleaseVersionSuffix }}
         workingDirectory: $(Build.SourcesDirectory)
         displayName: 'Check release version suffix'
+      - bash:  "echo my favorite color is: $(ReleaseVersionSuffix)"
 
 - template: templates/c-api-cpu.yml
   parameters:
