@@ -78,6 +78,43 @@ static size_t WriteResponseCallback(void* contents, size_t size, size_t nmemb, v
   return realsize;
 }
 
+struct CurlHandler {
+  CurlHandler() {
+    curl_ = curl_easy_init();
+    curl_easy_setopt(curl_, CURLOPT_BUFFERSIZE, 102400L);
+    curl_easy_setopt(curl_, CURLOPT_NOPROGRESS, 1L);
+    curl_easy_setopt(curl_, CURLOPT_USERAGENT, "curl/7.83.1");
+    curl_easy_setopt(curl_, CURLOPT_MAXREDIRS, 50L);
+    curl_easy_setopt(curl_, CURLOPT_FTP_SKIP_PASV_IP, 1L);
+    curl_easy_setopt(curl_, CURLOPT_TCP_KEEPALIVE, 1L);
+    curl_easy_setopt(curl_, CURLOPT_WRITEFUNCTION, WriteResponseCallback);
+  }
+  ~CurlHandler() {
+    if (curl_) {
+      curl_easy_cleanup(curl_);
+      curl_ = {};
+    }
+    if (mime1_) {
+      curl_mime_free(mime1_);
+      mime1_ = {};
+    }
+    if (headers_) {
+      curl_slist_free_all(headers_);
+      headers_ = {};
+    }
+    if (from_) {
+      curl_formfree(from_);
+      from_ = {};
+    }
+  }
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(CurlHandler);
+  CURL* curl_{};
+  curl_mime* mime1_{};
+  struct curl_slist* headers_{};
+  struct curl_httppost* from_{};
+  struct curl_httppost* last_{};
+};
+
 onnxruntime::Status OpenAIInvoker::Send(const CloudEndPointConfig& run_options,
                                         const InlinedVector<std::string>& /*input_names*/,
                                         gsl::span<const OrtValue> ort_inputs,
@@ -95,49 +132,30 @@ onnxruntime::Status OpenAIInvoker::Send(const CloudEndPointConfig& run_options,
   }
 
   CURLcode ret{};
-  CURL* curl{};
-  curl_mime* mime1{};
-  struct curl_slist* headers{};
+  CurlHandler curl_handler;
   ResponseBuffer response_buffer;
 
-  mime1 = NULL;
   std::string full_auth = std::string{"Authorization: Bearer "} + auth_key_iter->second;
-  headers = curl_slist_append(headers, full_auth.c_str());
-  headers = curl_slist_append(headers, "Content-Type: multipart/form-data");
+  curl_handler.headers_ = curl_slist_append(curl_handler.headers_, full_auth.c_str());
+  curl_handler.headers_ = curl_slist_append(curl_handler.headers_, "Content-Type: multipart/form-data");
 
-  struct curl_httppost* post = NULL;
-  struct curl_httppost* last = NULL;
-  curl_formadd(&post, &last, CURLFORM_COPYNAME, "model", CURLFORM_COPYCONTENTS, model_name_.c_str(), CURLFORM_END);
-  curl_formadd(&post, &last, CURLFORM_COPYNAME, "response_format", CURLFORM_COPYCONTENTS, "text", CURLFORM_END);
   const auto& tensor = ort_inputs[0].Get<Tensor>();
   auto data_size = tensor.SizeInBytes();
-  curl_formadd(&post, &last, CURLFORM_COPYNAME, "file", CURLFORM_BUFFER, "non_exist.wav", CURLFORM_BUFFERPTR, tensor.DataRaw(),
+  curl_formadd(&curl_handler.from_, &curl_handler.last_, CURLFORM_COPYNAME, "model", CURLFORM_COPYCONTENTS, model_name_.c_str(), CURLFORM_END);
+  curl_formadd(&curl_handler.from_, &curl_handler.last_, CURLFORM_COPYNAME, "response_format", CURLFORM_COPYCONTENTS, "text", CURLFORM_END);
+  curl_formadd(&curl_handler.from_, &curl_handler.last_, CURLFORM_COPYNAME, "file", CURLFORM_BUFFER, "non_exist.wav", CURLFORM_BUFFERPTR, tensor.DataRaw(),
                CURLFORM_BUFFERLENGTH, data_size, CURLFORM_END);
-  curl = curl_easy_init();
-  curl_easy_setopt(curl, CURLOPT_BUFFERSIZE, 102400L);
-  curl_easy_setopt(curl, CURLOPT_URL, uri_.c_str());
-  curl_easy_setopt(curl, CURLOPT_NOPROGRESS, 1L);
-  curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
-  curl_easy_setopt(curl, CURLOPT_USERAGENT, "curl/7.83.1");
-  curl_easy_setopt(curl, CURLOPT_MAXREDIRS, 50L);
-  curl_easy_setopt(curl, CURLOPT_FTP_SKIP_PASV_IP, 1L);
-  curl_easy_setopt(curl, CURLOPT_TCP_KEEPALIVE, 1L);
-  curl_easy_setopt(curl, CURLOPT_VERBOSE, verbose);
-  curl_easy_setopt(curl, CURLOPT_HTTPPOST, post);
-  curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteResponseCallback);
-  curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void*)&response_buffer);
 
-  ret = curl_easy_perform(curl);
+  curl_easy_setopt(curl_handler.curl_, CURLOPT_URL, uri_.c_str());
+  curl_easy_setopt(curl_handler.curl_, CURLOPT_HTTPHEADER, curl_handler.headers_);
+  curl_easy_setopt(curl_handler.curl_, CURLOPT_VERBOSE, verbose);
+  curl_easy_setopt(curl_handler.curl_, CURLOPT_HTTPPOST, curl_handler.from_);
+  curl_easy_setopt(curl_handler.curl_, CURLOPT_WRITEDATA, (void*)&response_buffer);
+
+  ret = curl_easy_perform(curl_handler.curl_);
   if (ret != CURLE_OK) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, curl_easy_strerror(ret));
   }
-
-  curl_easy_cleanup(curl);
-  curl = NULL;
-  curl_mime_free(mime1);
-  mime1 = NULL;
-  curl_slist_free_all(headers);
-  headers = NULL;
 
   auto output_tensor = std::make_unique<Tensor>(onnxruntime::DataTypeImpl::GetType<std::string>(), TensorShape{1}, allocator_);
   if (!output_tensor) {
