@@ -698,7 +698,7 @@ def parse_arguments():
         args.enable_wasm_exception_throwing_override = True
 
     if args.cmake_generator is None and is_windows():
-        args.cmake_generator = "Ninja" if args.build_wasm else "Visual Studio 17 2022"
+        args.cmake_generator = "Ninja" if args.build_wasm else "Visual Studio 16 2019"
 
     return args
 
