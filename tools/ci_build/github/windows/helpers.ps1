@@ -17,7 +17,7 @@ Get the name of a temporary folder under the native install directory
 function Get-TempDirectory {
   if (-not [string]::IsNullOrWhitespace($Env:AGENT_TEMPDIRECTORY)){
     return $Env:AGENT_TEMPDIRECTORY
-  } else if (-not [string]::IsNullOrWhitespace($Env:RUNNER_TEMP)){
+  } elseif (-not [string]::IsNullOrWhitespace($Env:RUNNER_TEMP)){
     return $Env:RUNNER_TEMP
   } else {
     return $Env:TEMP
