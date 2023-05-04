@@ -14,7 +14,7 @@ jobs:
   variables:
     CCACHE_DIR: $(Agent.TempDirectory)/ccache
     TODAY: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
-  pool: onnxruntime-Linux-CPU-2019
+  pool: onnxruntime-Ubuntu2004-AMD-CPU
   steps:
   - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
     displayName: 'Clean Agent Directories'

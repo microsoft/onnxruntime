@@ -1,5 +1,6 @@
 
 
+#include "core/framework/tensor_shape.h"
 #include "contrib_ops/cuda/quantization/qordered_ops/qordered_qdq.h"
 #include "contrib_ops/cuda/quantization/qordered_ops/qordered_qdq_impl.h"
 #include "gsl/gsl"

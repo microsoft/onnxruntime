@@ -279,8 +279,12 @@ export class WebGpuBackend {
     this.gpuDataManager.memcpy(src, dst);
   }
 
-  async download(gpuDataId: number, data: Uint8Array): Promise<void> {
+  async download(gpuDataId: number, getTargetBuffer: () => Uint8Array): Promise<void> {
     const arrayBuffer = await this.gpuDataManager.download(gpuDataId);
+
+    // the underlying buffer may be changed after the async function is called. so we use a getter function to make sure
+    // the buffer is up-to-date.
+    const data = getTargetBuffer();
     data.set(new Uint8Array(arrayBuffer));
   }
 

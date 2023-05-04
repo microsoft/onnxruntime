@@ -33,7 +33,7 @@ class OrtValuePatternPlanner {
  private:
   // This map itself is const after the construction
   // MemPatternPlanner has copying disabled to using node map
-  NodeHashMap<OrtMemoryInfo, MemPatternPlanner> planner_map_;
+  NodeHashMap<OrtDevice, MemPatternPlanner> planner_map_;
   const ExecutionPlanBase& execution_planner_;
 };
 }  // namespace onnxruntime

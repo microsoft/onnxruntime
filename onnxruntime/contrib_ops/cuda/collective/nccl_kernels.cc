@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 #include "nccl_kernels.h"
 #include "mpi_include.h"
+#include "core/providers/cuda/tensor/transpose.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -99,14 +100,14 @@ Status AllReduce::ComputeInternal(OpKernelContext* context) const {
   void* output_data = context->Output(0, in_shape)->MutableDataRaw();
 
   ncclDataType_t dtype = GetNcclDataType(input_tensor->DataType());
-#ifdef ORT_USE_NCCL
   NCCL_RETURN_IF_ERROR(ncclAllReduce(input_data, output_data, input_count, dtype, ncclSum, comm, Stream(context)));
-#endif
   return Status::OK();
 }
 
 AllGather::AllGather(const OpKernelInfo& info) : NcclKernel(info) {
   info.GetAttrOrDefault("group_size", &group_size_, static_cast<int64_t>(1));
+  info.GetAttrOrDefault("axis", &axis_, static_cast<int64_t>(0));
+  cuda_ep_ = static_cast<const CUDAExecutionProvider*>(info.GetExecutionProvider());
 }
 
 Status AllGather::ComputeInternal(OpKernelContext* context) const {
@@ -114,19 +115,67 @@ Status AllGather::ComputeInternal(OpKernelContext* context) const {
 
   auto input_tensor = context->Input<Tensor>(0);
   const void* input_data = input_tensor->DataRaw();
-  const auto in_shape = input_tensor->Shape();
+  const auto& in_shape = input_tensor->Shape();
   int64_t input_count = in_shape.Size();
-  // construct output shape
-  TensorShape out_shape(in_shape);
-  out_shape[0] = group_size_ * out_shape[0];
 
-  void* output_data = context->Output(0, out_shape)->MutableDataRaw();
+  if (axis_ > 0) {
+    // Need transpose
+    // TODO: fuse transpose with allgather
+    std::vector<size_t> permutation(in_shape.NumDimensions());
+    AllocatorPtr alloc;
+    auto status = context->GetTempSpaceAllocator(&alloc);
+    if (!status.IsOK())
+      return status;
 
-  ncclDataType_t dtype = GetNcclDataType(input_tensor->DataType());
-#ifdef ORT_USE_NCCL
-  NCCL_RETURN_IF_ERROR(ncclAllGather(input_data, output_data, input_count, dtype, comm, Stream(context)));
-#endif
-  return Status::OK();
+    std::iota(std::begin(permutation), std::end(permutation), 0);
+
+    // swap rank 0 and rank axis
+    permutation[axis_] = 0;
+    permutation[0] = axis_;
+    std::vector<int64_t> transposed_input_dims;
+    transposed_input_dims.reserve(in_shape.NumDimensions());
+    for (auto e : permutation) {
+      transposed_input_dims.push_back(in_shape[e]);
+    }
+
+    // Allocate a temporary tensor to hold transposed input
+    auto temp_input = Tensor::Create(input_tensor->DataType(), TensorShape(transposed_input_dims), alloc);
+
+    // Perform the transpose
+    ORT_RETURN_IF_ERROR(onnxruntime::cuda::Transpose::DoTranspose(cuda_ep_->GetDeviceProp(),
+                                                                  Stream(context),
+                                                                  GetCublasHandle(context),
+                                                                  permutation, *input_tensor, *temp_input));
+    // Allocate a tempoarary buffer for all gather
+    TensorShape all_gather_out_shape(transposed_input_dims);
+    all_gather_out_shape[0] = group_size_ * all_gather_out_shape[0];
+    auto all_gather_output = Tensor::Create(temp_input->DataType(), all_gather_out_shape, alloc);
+    ncclDataType_t dtype = GetNcclDataType(temp_input->DataType());
+    NCCL_RETURN_IF_ERROR(ncclAllGather(temp_input->DataRaw(),
+                                       all_gather_output->MutableDataRaw(),
+                                       input_count, dtype, comm, Stream(context)));
+    // release temp_input
+    temp_input.release();
+    // transpose to output
+    TensorShape out_shape(in_shape);
+    out_shape[axis_] = group_size_ * out_shape[axis_];
+    auto* output_tensor = context->Output(0, out_shape);
+
+    return onnxruntime::cuda::Transpose::DoTranspose(cuda_ep_->GetDeviceProp(),
+                                                     Stream(context),
+                                                     GetCublasHandle(context),
+                                                     permutation, *all_gather_output, *output_tensor);
+  } else {
+    // construct output shape
+    TensorShape out_shape(in_shape);
+    out_shape[axis_] = group_size_ * out_shape[axis_];
+
+    void* output_data = context->Output(0, out_shape)->MutableDataRaw();
+
+    ncclDataType_t dtype = GetNcclDataType(input_tensor->DataType());
+    NCCL_RETURN_IF_ERROR(ncclAllGather(input_data, output_data, input_count, dtype, comm, Stream(context)));
+    return Status::OK();
+  }
 }
 
 AllToAll::AllToAll(const OpKernelInfo& info) : NcclKernel(info) {
@@ -146,7 +195,6 @@ Status AllToAll::ComputeInternal(OpKernelContext* context) const {
 
   char* output_data = static_cast<char*>(context->Output(0, out_shape)->MutableDataRaw());
 
-#ifdef ORT_USE_NCCL
   NCCL_RETURN_IF_ERROR(ncclGroupStart());
   for (int32_t r = 0; r < group_size_; r++) {
     NCCL_RETURN_IF_ERROR(ncclSend(input_data, rank_stride, dtype, r, comm, Stream(context)));
@@ -155,7 +203,6 @@ Status AllToAll::ComputeInternal(OpKernelContext* context) const {
     output_data += (rank_stride * element_size);
   }
   NCCL_RETURN_IF_ERROR(ncclGroupEnd());
-#endif
 
   return Status::OK();
 }
