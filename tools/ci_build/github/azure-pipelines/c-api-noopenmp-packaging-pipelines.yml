@@ -42,6 +42,14 @@ resources:
     ref: aead4d751c2101e23336aa73f2380df83e7a13f3
 
 stages:
+- stage: Check pipeline parameters
+  jobs:
+  - job:
+    steps:
+    - script: python $(Build.SourcesDirectory)/tools/ci_build/check_release_version_suffix.py $(ReleaseVersionSuffix)
+      workingDirectory: $(Build.SourcesDirectory)
+      displayName: 'Check release version suffix'
+
 - template: templates/c-api-cpu.yml
   parameters:
     RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
