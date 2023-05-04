@@ -119,7 +119,7 @@ ONNX_OPERATOR_KERNEL_EX(Scan,
                         (*KernelDefBuilder::Create())
                             // 'I' is in the ONNX spec but is not used for any inputs or outputs
                             // .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
-                            .TypeConstraint("V", DataTypeImpl::AllFixedSizeTensorTypesWithFloat8()),
+                            .TypeConstraint("V", DataTypeImpl::AllFixedSizeTensorTypesIR9()),
                         Scan<9>);
 
 }  // namespace cuda

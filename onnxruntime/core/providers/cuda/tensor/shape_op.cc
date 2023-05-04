@@ -52,7 +52,7 @@ ONNX_OPERATOR_KERNEL_EX(
     (*KernelDefBuilder::Create())
         // properly force CPU/GPU synch inside the kernel
         .OutputMemoryType(OrtMemTypeCPUInput, 0)
-        .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypesWithFloat8())
+        .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypesIR9())
         .TypeConstraint("T1", DataTypeImpl::GetTensorType<int64_t>()),
     Shape);
 

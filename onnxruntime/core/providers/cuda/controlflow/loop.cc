@@ -61,7 +61,7 @@ ONNX_OPERATOR_KERNEL_EX(Loop,
                             .InputMemoryType(OrtMemTypeCPUInput, 1)  // 'cond' needs to be on CPU
                             .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
                             .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>())
-                            .TypeConstraint("V", DataTypeImpl::AllTensorAndSequenceTensorTypesWithFloat8()),
+                            .TypeConstraint("V", DataTypeImpl::AllTensorAndSequenceTensorTypesIR9()),
                         Loop);
 
 static Status ConcatenateGpuOutput(void* stream, std::vector<OrtValue>& per_iteration_output,

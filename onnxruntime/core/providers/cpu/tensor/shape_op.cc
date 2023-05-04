@@ -27,7 +27,7 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
 ONNX_CPU_OPERATOR_KERNEL(
     Shape,
     19,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::AllTensorTypesWithFloat8()).TypeConstraint("T1", DataTypeImpl::GetTensorType<int64_t>()),
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::AllTensorTypesIR9()).TypeConstraint("T1", DataTypeImpl::GetTensorType<int64_t>()),
     Shape);
 
 }  // namespace onnxruntime

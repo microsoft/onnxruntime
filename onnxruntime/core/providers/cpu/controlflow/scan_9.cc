@@ -529,6 +529,6 @@ ONNX_CPU_OPERATOR_KERNEL(Scan,
                          KernelDefBuilder()
                              // 'I' is in the ONNX spec but is not actually used for any inputs or outputs
                              //.TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
-                             .TypeConstraint("V", DataTypeImpl::AllTensorTypesWithFloat8()),
+                             .TypeConstraint("V", DataTypeImpl::AllTensorTypesIR9()),
                          Scan<9>);
 }  // namespace onnxruntime

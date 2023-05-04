@@ -18,7 +18,7 @@ namespace onnxruntime {
 // Element type refers to the element type of a Tensor, Sequence, etc.
 namespace element_type_lists {
 
-using AllFixedSizeExceptHalf =
+using AllFixedSizeExceptHalfIR4 =
     TypeList<
         float,
         double,
@@ -32,7 +32,9 @@ using AllFixedSizeExceptHalf =
         uint8_t,
         bool>;
 
-using AllFixedSize =
+using AllFixedSizeExceptHalf = AllFixedSizeExceptHalfIR4;
+
+using AllFixedSizeIR4 =
     TypeList<
         float,
         double,
@@ -48,27 +50,22 @@ using AllFixedSize =
         BFloat16,
         bool>;
 
-using All =
+using AllFixedSizeIR9 =
     boost::mp11::mp_push_back<
         AllFixedSize,
+        Float8E4M3FN,
+        Float8E4M3FNUZ,
+        Float8E5M2,
+        Float8E5M2FNUZ>;
+
+using AllFixedSize = AllFixedSizeIR4;
+
+using AllIR4 =
+    boost::mp11::mp_push_back<
+        AllFixedSizeIR4,
         std::string>;
 
-using AllFloat8 =
-    TypeList<
-        Float8E4M3FN,
-        Float8E4M3FNUZ,
-        Float8E5M2,
-        Float8E5M2FNUZ>;
-
-using AllFixedSizeWithFloat8 =
-    boost::mp11::mp_push_back<
-        AllFixedSize,
-        Float8E4M3FN,
-        Float8E4M3FNUZ,
-        Float8E5M2,
-        Float8E5M2FNUZ>;
-
-using AllWithFloat8 =
+using AllIR9 =
     boost::mp11::mp_push_back<
         All,
         Float8E4M3FN,
@@ -76,12 +73,14 @@ using AllWithFloat8 =
         Float8E5M2,
         Float8E5M2FNUZ>;
 
-using AllIeeeFloatExceptHalf =
+using All = AllIR4;
+
+using AllIeeeFloatIR4 =
     TypeList<
         float,
         double>;
 
-using AllIeeeFloat =
+using AllIeeeFloatIR9 =
     TypeList<
         float,
         double,
@@ -91,7 +90,9 @@ using AllIeeeFloat =
         Float8E5M2,
         Float8E5M2FNUZ>;
 
-using AllNumeric =
+using AllIeeeFloat = AllIeeeFloatIR4;
+
+using AllNumericIR4 =
     TypeList<
         float,
         double,
@@ -105,6 +106,8 @@ using AllNumeric =
         uint8_t,
         MLFloat16,
         BFloat16>;
+
+using AllNumeric = AllNumericIR4;
 
 }  // namespace element_type_lists
 

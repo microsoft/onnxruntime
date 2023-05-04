@@ -208,26 +208,51 @@ class DataTypeImpl {
   static void RegisterDataType(MLDataType);
   static MLDataType GetDataType(const std::string&);
 
-  static const std::vector<MLDataType>& AllTensorTypes();
-  static const std::vector<MLDataType>& AllTensorTypesWithFloat8();
-  static const std::vector<MLDataType>& AllFixedSizeTensorTypes();
-  static const std::vector<MLDataType>& AllFixedSizeTensorTypesWithFloat8();
-  static const std::vector<MLDataType>& AllSequenceTensorTypes();
-  static const std::vector<MLDataType>& AllSequenceTensorTypesWithFloat8();
-  static const std::vector<MLDataType>& AllFixedSizeSequenceTensorTypes();
-  static const std::vector<MLDataType>& AllFixedSizeSequenceTensorTypesWithFloat8();
-  static const std::vector<MLDataType>& AllNumericTensorTypes();
-  static const std::vector<MLDataType>& AllIEEEFloatTensorTypes();
-  static const std::vector<MLDataType>& AllFixedSizeTensorExceptHalfTypes();
-  static const std::vector<MLDataType>& AllIEEEFloatTensorExceptHalfTypes();
-  static const std::vector<MLDataType>& AllTensorAndSequenceTensorTypes();
-  static const std::vector<MLDataType>& AllTensorAndSequenceTensorTypesWithFloat8();
-  static const std::vector<MLDataType>& AllOptionalAndTensorAndSequenceTensorTypes();
-  static const std::vector<MLDataType>& AllFixedSizeTensorAndSequenceTensorTypes();
-  static const std::vector<MLDataType>& AllFixedSizeTensorAndSequenceTensorTypesWithFloat8();
-  static const std::vector<MLDataType>& AllOptionalTypes();
-  static const std::vector<MLDataType>& AllTensorAndSequenceTensorAndOptionalTypes();
-  static const std::vector<MLDataType>& AllTensorAndSequenceTensorAndOptionalTypesWithFloat8();
+  // IR4: includes all float types, includes float16, bfloat16
+  // IR9: includes float 8 types as well
+  static const std::vector<MLDataType>& AllTensorTypes();  // up to IR4 (no float 8), deprecated
+  static const std::vector<MLDataType>& AllTensorTypesIR4();
+  static const std::vector<MLDataType>& AllTensorTypesIR9();
+
+  static const std::vector<MLDataType>& AllFixedSizeTensorTypes();  // up to IR4 (no float 8), deprecated
+  static const std::vector<MLDataType>& AllFixedSizeTensorTypesIR4();
+  static const std::vector<MLDataType>& AllFixedSizeTensorTypesIR9();
+
+  static const std::vector<MLDataType>& AllSequenceTensorTypes();  // up to IR4 (no float 8), deprecated
+  static const std::vector<MLDataType>& AllSequenceTensorTypesIR4();
+  static const std::vector<MLDataType>& AllSequenceTensorTypesIR9();
+
+  static const std::vector<MLDataType>& AllFixedSizeSequenceTensorTypes();  // up to IR4 (no float 8), deprecated
+  static const std::vector<MLDataType>& AllFixedSizeSequenceTensorTypesIR4();
+  static const std::vector<MLDataType>& AllFixedSizeSequenceTensorTypesIR9();
+
+  static const std::vector<MLDataType>& AllNumericTensorTypes();  // up to IR4 (no float 8), deprecated
+  static const std::vector<MLDataType>& AllNumericTensorTypesIR4();
+  static const std::vector<MLDataType>& AllNumericTensorTypesIR9();
+
+  static const std::vector<MLDataType>& AllIEEEFloatTensorTypes();  // up to IR4 (no float 8), deprecated
+  static const std::vector<MLDataType>& AllIEEEFloatTensorTypesIR4();
+  static const std::vector<MLDataType>& AllIEEEFloatTensorTypesIR9();
+
+  static const std::vector<MLDataType>& AllTensorAndSequenceTensorTypes();  // up to IR4 (no float 8), deprecated
+  static const std::vector<MLDataType>& AllTensorAndSequenceTensorTypesIR4();
+  static const std::vector<MLDataType>& AllTensorAndSequenceTensorTypesIR9();
+
+  static const std::vector<MLDataType>& AllOptionalAndTensorAndSequenceTensorTypes();  // up to IR4 (no float 8), deprecated
+  static const std::vector<MLDataType>& AllOptionalAndTensorAndSequenceTensorTypesIR4();
+  static const std::vector<MLDataType>& AllOptionalAndTensorAndSequenceTensorTypesIR9();
+
+  static const std::vector<MLDataType>& AllFixedSizeTensorAndSequenceTensorTypes();  // up to IR4 (no float 8), deprecated
+  static const std::vector<MLDataType>& AllFixedSizeTensorAndSequenceTensorTypesIR4();
+  static const std::vector<MLDataType>& AllFixedSizeTensorAndSequenceTensorTypesIR9();
+
+  static const std::vector<MLDataType>& AllOptionalTypes();  // up to IR4 (no float 8), deprecated
+  static const std::vector<MLDataType>& AllOptionalTypesIR4();
+  static const std::vector<MLDataType>& AllOptionalTypesIR9();
+
+  static const std::vector<MLDataType>& AllTensorAndSequenceTensorAndOptionalTypes();  // up to IR4 (no float 8), deprecated
+  static const std::vector<MLDataType>& AllTensorAndSequenceTensorAndOptionalTypesIR4();
+  static const std::vector<MLDataType>& AllTensorAndSequenceTensorAndOptionalTypesIR9();
 };
 
 std::ostream& operator<<(std::ostream& out, MLDataType data_type);

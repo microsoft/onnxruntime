@@ -547,17 +547,36 @@ class DataTypeImpl final {
   DeleteFunc GetDeleteFunc() const { return g_host->DataTypeImpl__GetDeleteFunc(this); }
 
   static const std::vector<MLDataType>& AllFixedSizeTensorTypes() { return g_host->DataTypeImpl__AllFixedSizeTensorTypes(); }
-  static const std::vector<MLDataType>& AllFixedSizeTensorTypesWithFloat8() { return g_host->DataTypeImpl__AllFixedSizeTensorTypesWithFloat8(); }
+  static const std::vector<MLDataType>& AllFixedSizeTensorTypesIR4() { return g_host->DataTypeImpl__AllFixedSizeTensorTypesIR4(); }
+  static const std::vector<MLDataType>& AllFixedSizeTensorTypesIR9() { return g_host->DataTypeImpl__AllFixedSizeTensorTypesIR9(); }
+
   static const std::vector<MLDataType>& AllTensorTypes() { return g_host->DataTypeImpl__AllTensorTypes(); }
+  static const std::vector<MLDataType>& AllTensorTypesIR4() { return g_host->DataTypeImpl__AllTensorTypesIR4(); }
+  static const std::vector<MLDataType>& AllTensorTypesIR9() { return g_host->DataTypeImpl__AllTensorTypesIR9(); }
+
   static const std::vector<MLDataType>& AllIEEEFloatTensorTypes() { return g_host->DataTypeImpl__AllIEEEFloatTensorTypes(); }
+  static const std::vector<MLDataType>& AllIEEEFloatTensorTypesIR4() { return g_host->DataTypeImpl__AllIEEEFloatTensorTypesIR4(); }
+  static const std::vector<MLDataType>& AllIEEEFloatTensorTypesIR9() { return g_host->DataTypeImpl__AllIEEEFloatTensorTypesIR9(); }
+
   static const std::vector<MLDataType>& AllTensorAndSequenceTensorTypes() { return g_host->DataTypeImpl__AllTensorAndSequenceTensorTypes(); }
-  static const std::vector<MLDataType>& AllTensorAndSequenceTensorTypesWithFloat8() { return g_host->DataTypeImpl__AllTensorAndSequenceTensorTypesWithFloat8(); }
+  static const std::vector<MLDataType>& AllTensorAndSequenceTensorTypesIR4() { return g_host->DataTypeImpl__AllTensorAndSequenceTensorTypesIR4(); }
+  static const std::vector<MLDataType>& AllTensorAndSequenceTensorTypesIR9() { return g_host->DataTypeImpl__AllTensorAndSequenceTensorTypesIR9(); }
+
   static const std::vector<MLDataType>& AllOptionalAndTensorAndSequenceTensorTypes() { return g_host->DataTypeImpl__AllOptionalAndTensorAndSequenceTensorTypes(); }
+  static const std::vector<MLDataType>& AllOptionalAndTensorAndSequenceTensorTypesIR4() { return g_host->DataTypeImpl__AllOptionalAndTensorAndSequenceTensorTypesIR4(); }
+  static const std::vector<MLDataType>& AllOptionalAndTensorAndSequenceTensorTypesIR9() { return g_host->DataTypeImpl__AllOptionalAndTensorAndSequenceTensorTypesIR9(); }
+
   static const std::vector<MLDataType>& AllFixedSizeTensorAndSequenceTensorTypes() { return g_host->DataTypeImpl__AllFixedSizeTensorAndSequenceTensorTypes(); }
-  static const std::vector<MLDataType>& AllFixedSizeTensorAndSequenceTensorTypesWithFloat8() { return g_host->DataTypeImpl__AllFixedSizeTensorAndSequenceTensorTypesWithFloat8(); }
+  static const std::vector<MLDataType>& AllFixedSizeTensorAndSequenceTensorTypesIR4() { return g_host->DataTypeImpl__AllFixedSizeTensorAndSequenceTensorTypesIR4(); }
+  static const std::vector<MLDataType>& AllFixedSizeTensorAndSequenceTensorTypesIR9() { return g_host->DataTypeImpl__AllFixedSizeTensorAndSequenceTensorTypesIR9(); }
+
   static const std::vector<MLDataType>& AllSequenceTensorTypes() { return g_host->DataTypeImpl__AllSequenceTensorTypes(); }
+  static const std::vector<MLDataType>& AllSequenceTensorTypesIR4() { return g_host->DataTypeImpl__AllSequenceTensorTypesIR4(); }
+  static const std::vector<MLDataType>& AllSequenceTensorTypesIR9() { return g_host->DataTypeImpl__AllSequenceTensorTypesIR9(); }
+
   static const std::vector<MLDataType>& AllFixedSizeSequenceTensorTypes() { return g_host->DataTypeImpl__AllFixedSizeSequenceTensorTypes(); }
-  static const std::vector<MLDataType>& AllFixedSizeSequenceTensorTypesWihtFloat8() { return g_host->DataTypeImpl__AllFixedSizeSequenceTensorTypesWithFloat8(); }
+  static const std::vector<MLDataType>& AllFixedSizeSequenceTensorTypesIR4() { return g_host->DataTypeImpl__AllFixedSizeSequenceTensorTypesIR4(); }
+  static const std::vector<MLDataType>& AllFixedSizeSequenceTensorTypesIR9() { return g_host->DataTypeImpl__AllFixedSizeSequenceTensorTypesIR9(); }
 
   const PrimitiveDataTypeBase* AsPrimitiveDataType() const { return g_host->DataTypeImpl__AsPrimitiveDataType(this); }
 
