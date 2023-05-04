@@ -517,7 +517,8 @@ Status FusedScaledDotProductAttentionCutlass(
   p.qk_head_size = parameters.head_size;
   p.v_head_size = parameters.v_head_size;
   p.causal = false;
-  p.scale = parameters.scale;
+  p.scale = parameters.scale == 0.0f ? 1.f / sqrt(static_cast<float>(qk_head_size))
+                                     : parameters.scale;
   p.seqlen_k_ptr = nullptr;
   p.seqstart_q_ptr = const_cast<int32_t*>(data.cumulative_sequence_length);
   p.seqstart_k_ptr = const_cast<int32_t*>(data.cumulative_sequence_length);
@@ -530,6 +531,8 @@ Status FusedScaledDotProductAttentionCutlass(
   p.workspace = MemoryEfficientAttentionParams::need_workspace(v_head_size, sizeof(T) == sizeof(float)) ? accum_workspace : nullptr;
   p.stream = stream;
   run_memory_efficient_attention(p);
+
+  DUMP_TENSOR("cutlass output", data.output, batch_size * sequence_length, num_heads, v_head_size);
   return Status::OK();
 }
 #endif

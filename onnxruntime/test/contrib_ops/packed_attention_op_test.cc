@@ -396,7 +396,7 @@ static void RunModelWithRandomInput(
   RandomValueGenerator random{234};
 
   constexpr int hidden_size = 192;
-  constexpr int num_heads = 6;
+  constexpr int num_heads = 12;
 
   int token_count = 0;
   std::vector<int32_t> cum_seq_len(batch_size + 1);
@@ -433,7 +433,8 @@ static void RunModelWithRandomInput(
   std::vector<float> weight_data = random.Gaussian<float>(weight_dims, 0.0f, 0.3f);
 
   std::vector<int64_t> bias_dims{3 * hidden_size};
-  std::vector<float> bias_data = random.Gaussian<float>(bias_dims, 0.0f, 0.1f);
+  // std::vector<float> bias_data = random.Gaussian<float>(bias_dims, 0.0f, 0.1f);
+  std::vector<float> bias_data(3 * hidden_size, 0.f);
 
   std::vector<int64_t> token_offset_dims{batch_size, sequence_length};
   std::vector<int64_t> cum_seq_len_dims{batch_size + 1};
