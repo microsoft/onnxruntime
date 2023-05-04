@@ -287,39 +287,7 @@ TEST(TrainingApiTest, OptimizerCreatedWithOptimizerCheckpointState) {
     std::shared_ptr<Optimizer> optim = std::make_shared<Optimizer>(
         ToUTF8String(optim_uri), &new_state, session_option, *env, providers);
 
-    // After loading state dict, check if optim state is updated to new states.
-    OptimizerCheckpointState optimizer_states;
-    ASSERT_STATUS_OK(optim->GetStateDict(optimizer_states));
-
-    for (auto& p : model->NamedParameters()) {
-      auto param_name = p.first;
-      ParameterOptimizerState& param_state =
-          optimizer_states.group_named_optimizer_states["group0"]->param_named_optimizer_states.at(param_name);
-
-      ParameterOptimizerState& external_param_state =
-          external_optimizer_checkpoint_state.group_named_optimizer_states["group0"]
-              ->param_named_optimizer_states.at(param_name);
-      for (auto& param_p : param_state) {
-        std::vector<float> moment_vec;
-        if (run_cuda) {
-          CudaOrtValueToCpuVec(param_state.at(param_p.first), moment_vec);
-        } else {
-          CpuOrtValueToVec(param_state.at(param_p.first), moment_vec);
-        }
-        std::vector<float> external_moment_vect;
-
-        if (run_cuda) {
-          CudaOrtValueToCpuVec(external_param_state.at(param_p.first), external_moment_vect);
-        } else {
-          CpuOrtValueToVec(external_param_state.at(param_p.first), external_moment_vect);
-        }
-
-        ASSERT_EQ(moment_vec.size(), external_moment_vect.size());
-        for (size_t i = 0; i < moment_vec.size(); i++) {
-          ASSERT_EQ(moment_vec[i], external_moment_vect[i]);
-        }
-      }
-    }
+    ASSERT_TRUE(optim.get() != nullptr);
   }
 }
 
@@ -392,8 +360,7 @@ void TestLRSchduler(const std::basic_string<ORTCHAR_T>& test_file_name,
         optim, warmup_step_count, total_step_count);
 
     for (auto it = test_data.begin(); it != test_data.end(); ++it) {
-      OptimizerCheckpointState optimizer_states;
-      ASSERT_STATUS_OK(optim->GetStateDict(optimizer_states));
+      OptimizerCheckpointState& optimizer_states = state.optimizer_checkpoint_state;
       auto group_optimizer_state = optimizer_states.group_named_optimizer_states["group0"];
 
       constexpr const float rtol = 1e-4f, atol = 1e-5f;
@@ -493,8 +460,7 @@ TEST(TrainingApiTest, OptimStep) {
   std::string param_name = "fc2.weight";
 
   // before training, check if optim state is initialized to 0
-  onnxruntime::training::api::OptimizerCheckpointState optimizer_states;
-  ASSERT_STATUS_OK(optim->GetStateDict(optimizer_states));
+  onnxruntime::training::api::OptimizerCheckpointState& optimizer_states = state.optimizer_checkpoint_state;
   onnxruntime::training::api::ParameterOptimizerState& param_state =
       optimizer_states.group_named_optimizer_states["group0"]->param_named_optimizer_states.at(param_name);
   OrtValue& moment_1 = param_state.at("momentum0");

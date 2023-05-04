@@ -104,15 +104,6 @@ struct Optimizer {
 
   Status Step();
 
-  /**
-   * @brief Get the current optimizer state.
-   *
-   * Be noted the returned optimizer_checkpoint_states will hold new references to
-   * original momentum states.
-   * @return Status
-   */
-  Status GetStateDict(OptimizerCheckpointState& optimizer_checkpoint_states);
-
   Status SetLearningRate(float lr) {
     optimizer_state_->learning_rate = lr;
     return Status::OK();
@@ -158,7 +149,7 @@ struct Optimizer {
   std::unique_ptr<OptimizerAlgorithmBase> optimizer_algo_ptr_;
   std::unique_ptr<onnxruntime::InferenceSession> optim_sess_;
 
-  CheckpointState* state_;  // Non owning pointer to the state.
+  CheckpointState* state_;  // Non owning pointer to the state
   std::shared_ptr<GroupOptimizerState> optimizer_state_;
 
   InlinedVector<std::string> input_names_;

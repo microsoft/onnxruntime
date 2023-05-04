@@ -191,8 +191,8 @@ TEST(CheckpointApiTest, LoadCheckpointToModel) {
 }
 
 /**
- * Create Module with sets of parameters,
- * Create Optimizer passing in Module's parameters.
+ * Create Module passing in checkpoint state,
+ * Create Optimizer passing in checkpoint state.
  * Save Optimizer states into ORT checkpoint files,
  * Then load it into ORT, compare with the initial optimizer states values.
  */
@@ -206,7 +206,8 @@ TEST(CheckpointApiTest, SaveOptimizerStateAsCheckpoint_ThenLoad_CUDA) {
   auto optim_uri = "testdata/training_api/adamw.onnx";
 
   // Generate randomized weight values using synthetic data generator.
-  constexpr int64_t fc2_weight_dim_in = 10, fc2_weight_dim_out = 500, fc1_weight_dim_in = 500, fc1_weight_dim_out = 784;
+  constexpr int64_t fc2_weight_dim_in = 10, fc2_weight_dim_out = 500,
+                    fc1_weight_dim_in = 500, fc1_weight_dim_out = 784;
   const std::vector<int64_t> fc1_weight_shape{fc1_weight_dim_in, fc1_weight_dim_out};
   const std::vector<int64_t> fc1_bias_shape{fc1_weight_dim_in};
   const std::vector<int64_t> fc2_weight_shape{fc2_weight_dim_in, fc2_weight_dim_out};
@@ -249,12 +250,6 @@ TEST(CheckpointApiTest, SaveOptimizerStateAsCheckpoint_ThenLoad_CUDA) {
   auto optimizer = std::make_unique<Optimizer>(optim_uri, &state, session_option,
                                                *env, cuda_provider);
 
-  /// Phase 2 - Run Optimizer.GetStateDict and call save checkpoint APIs.
-  /// And check the result checkpoint files.
-
-  CheckpointState checkpoint_state;
-  ORT_ENFORCE(optimizer->GetStateDict(checkpoint_state.optimizer_checkpoint_state).IsOK());
-
   // Remove the temporary directory if it already exists.
   auto ckpt_test_root_dir = ORT_TSTR("checkpointing_api_test_dir");
   if (Env::Default().FolderExists(ckpt_test_root_dir)) {
@@ -265,13 +260,14 @@ TEST(CheckpointApiTest, SaveOptimizerStateAsCheckpoint_ThenLoad_CUDA) {
   // Call Save APIs.
   PathString checkpoint_path{
       ConcatPathComponent<PathChar>(tmp_dir.Path(), ORT_TSTR("e2e_ckpt_save_cpu"))};
-  ASSERT_STATUS_OK(SaveCheckpoint(checkpoint_state, checkpoint_path, true));
+  ASSERT_STATUS_OK(SaveCheckpoint(state, checkpoint_path, true));
 
   // Check the ckpt files in the directory.
   std::set<PathString> expected_file_names{
       ORT_TSTR("optim_group0_momentum0_tensors.pbseq"),
       ORT_TSTR("optim_group0_momentum1_tensors.pbseq"),
       ORT_TSTR("optim_group0_properties.pbseq"),
+      ORT_TSTR("paramtrain_tensors.pbseq"),
   };
 
   std::set<PathString> valid_file_names;
@@ -289,7 +285,7 @@ TEST(CheckpointApiTest, SaveOptimizerStateAsCheckpoint_ThenLoad_CUDA) {
 
   ASSERT_EQ(expected_file_names, valid_file_names);
 
-  /// Phase 3 - Run load checkpoint APIs.
+  /// Phase 2 - Run load checkpoint APIs.
   /// Validate the result matches with initial optimizer state values.
 
   // Call Load APIs

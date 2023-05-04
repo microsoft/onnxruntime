@@ -258,20 +258,6 @@ Status Optimizer::Step() {
   return Status::OK();
 }
 
-Status Optimizer::GetStateDict(OptimizerCheckpointState& optimizer_checkpoint_state) {
-  auto& grouped_optimizer_states = optimizer_checkpoint_state.group_named_optimizer_states;
-
-  // To support multiple groups, the Optimizer constructor needs to accept information for grouping.
-  grouped_optimizer_states.insert({GROUP_ZERO_NAME, std::make_shared<GroupOptimizerState>(*optimizer_state_)});
-
-  // Pass the optimizer session data transfer manager for data copying when saving.
-  // An alternative is, we can do copy at this stage.
-  ORT_RETURN_IF_NOT(optim_sess_, "optimizer session not initialized");
-  const DataTransferManager& sess_data_transfer_manager = optim_sess_->GetDataTransferManager();
-  optimizer_checkpoint_state.optimizer_session_data_transfer_mgr = &sess_data_transfer_manager;
-  return Status::OK();
-}
-
 Status Optimizer::LoadStateDict(OptimizerCheckpointState& optimizer_checkpoint_states) {
   auto group_optimizer_state_it =
       optimizer_checkpoint_states.group_named_optimizer_states.find(GROUP_ZERO_NAME);
