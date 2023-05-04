@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #ifdef USE_AZURE
+#define CURL_STATICLIB
 #include "http_client.h"
 #include "curl/curl.h"
 #include "core/common/common.h"
@@ -35,6 +36,25 @@ CloudEndPointInvoker::CloudEndPointInvoker(const CloudEndPointConfig& config,
   }
 }
 
+class CurlGlobal {
+ public:
+  static void Init() {
+    static CurlGlobal curl_global;
+  }
+
+ private:
+  CurlGlobal() {
+    // Thread-safety is a must since curl might also be initialized in triton client.
+    const auto* info = curl_version_info(CURLVERSION_NOW);
+    ORT_ENFORCE(info->features & CURL_VERSION_THREADSAFE, "curl global init not thread-safe, need to upgrade curl version!");
+    ORT_ENFORCE(curl_global_init(CURL_GLOBAL_DEFAULT) == CURLE_OK, "Failed to initialize curl global env!");
+  }
+  ~CurlGlobal() {
+    curl_global_cleanup();
+  }
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(CurlGlobal);
+};
+
 // OpenAIInvoker
 class OpenAIInvoker : public CloudEndPointInvoker {
  public:
@@ -52,34 +72,31 @@ class OpenAIInvoker : public CloudEndPointInvoker {
 
 OpenAIInvoker::OpenAIInvoker(const CloudEndPointConfig& config,
                              const AllocatorPtr& allocator) : CloudEndPointInvoker(config, allocator) {
+  CurlGlobal::Init();
   ReadConfig(kAzureUri, uri_);
   ReadConfig(kAzureModelName, model_name_);
 }
 
-struct ResponseBuffer {
-  ResponseBuffer() = default;
-  ~ResponseBuffer() = default;
-  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ResponseBuffer);
-
-  using Chunk = std::unique_ptr<char[]>;
-  std::list<Chunk> chunks_;
-
-  void Fill(std::string& s) const {
-    std::for_each(chunks_.begin(), chunks_.end(), [&](const Chunk& chunk) { s.append(chunk.get()); });
-  }
+struct StringBuffer {
+  StringBuffer() = default;
+  ~StringBuffer() = default;
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(StringBuffer);
+  std::stringstream ss_;
 };
 
-static size_t WriteResponseCallback(void* contents, size_t size, size_t nmemb, void* userp) {
+// applies only when contents is a string
+static size_t WriteStringCallback(void* contents, size_t size, size_t nmemb, void* userp) {
   size_t realsize = size * nmemb;
-  auto response = reinterpret_cast<struct ResponseBuffer*>(userp);
-  response->chunks_.push_back(std::make_unique<char[]>(realsize + 1));
-  memcpy(response->chunks_.back().get(), contents, realsize);
-  response->chunks_.back()[realsize] = '\0';
+  auto buffer = reinterpret_cast<struct StringBuffer*>(userp);
+  buffer->ss_ << reinterpret_cast<const char*>(contents);
   return realsize;
 }
 
-struct CurlHandler {
-  CurlHandler() {
+using CurlWriteCallBack = size_t (*)(void*, size_t, size_t, void*);
+
+class CurlHandler {
+ public:
+  CurlHandler(CurlWriteCallBack call_back) {
     curl_ = curl_easy_init();
     curl_easy_setopt(curl_, CURLOPT_BUFFERSIZE, 102400L);
     curl_easy_setopt(curl_, CURLOPT_NOPROGRESS, 1L);
@@ -87,7 +104,7 @@ struct CurlHandler {
     curl_easy_setopt(curl_, CURLOPT_MAXREDIRS, 50L);
     curl_easy_setopt(curl_, CURLOPT_FTP_SKIP_PASV_IP, 1L);
     curl_easy_setopt(curl_, CURLOPT_TCP_KEEPALIVE, 1L);
-    curl_easy_setopt(curl_, CURLOPT_WRITEFUNCTION, WriteResponseCallback);
+    curl_easy_setopt(curl_, CURLOPT_WRITEFUNCTION, call_back);
   }
   ~CurlHandler() {
     if (curl_) {
@@ -107,7 +124,25 @@ struct CurlHandler {
       from_ = {};
     }
   }
+  void AddHeader(const char* data) {
+    headers_ = curl_slist_append(headers_, data);
+  }
+  template <typename... Args>
+  void AddForm(Args... args) {
+    curl_formadd(&from_, &last_, args...);
+  }
+  template <typename T>
+  void SetOption(CURLoption opt, T val) {
+    curl_easy_setopt(curl_, opt, val);
+  }
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(CurlHandler);
+  CURLcode Perform() {
+    SetOption(CURLOPT_HTTPHEADER, headers_);
+    SetOption(CURLOPT_HTTPPOST, from_);
+    return curl_easy_perform(curl_);
+  }
+
+ private:
   CURL* curl_{};
   curl_mime* mime1_{};
   struct curl_slist* headers_{};
@@ -132,27 +167,25 @@ onnxruntime::Status OpenAIInvoker::Send(const CloudEndPointConfig& run_options,
   }
 
   CURLcode ret{};
-  CurlHandler curl_handler;
-  ResponseBuffer response_buffer;
+  CurlHandler curl_handler(WriteStringCallback);
+  StringBuffer string_buffer;
 
   std::string full_auth = std::string{"Authorization: Bearer "} + auth_key_iter->second;
-  curl_handler.headers_ = curl_slist_append(curl_handler.headers_, full_auth.c_str());
-  curl_handler.headers_ = curl_slist_append(curl_handler.headers_, "Content-Type: multipart/form-data");
+  curl_handler.AddHeader(full_auth.c_str());
+  curl_handler.AddHeader("Content-Type: multipart/form-data");
 
   const auto& tensor = ort_inputs[0].Get<Tensor>();
   auto data_size = tensor.SizeInBytes();
-  curl_formadd(&curl_handler.from_, &curl_handler.last_, CURLFORM_COPYNAME, "model", CURLFORM_COPYCONTENTS, model_name_.c_str(), CURLFORM_END);
-  curl_formadd(&curl_handler.from_, &curl_handler.last_, CURLFORM_COPYNAME, "response_format", CURLFORM_COPYCONTENTS, "text", CURLFORM_END);
-  curl_formadd(&curl_handler.from_, &curl_handler.last_, CURLFORM_COPYNAME, "file", CURLFORM_BUFFER, "non_exist.wav", CURLFORM_BUFFERPTR, tensor.DataRaw(),
-               CURLFORM_BUFFERLENGTH, data_size, CURLFORM_END);
+  curl_handler.AddForm(CURLFORM_COPYNAME, "model", CURLFORM_COPYCONTENTS, model_name_.c_str(), CURLFORM_END);
+  curl_handler.AddForm(CURLFORM_COPYNAME, "response_format", CURLFORM_COPYCONTENTS, "text", CURLFORM_END);
+  curl_handler.AddForm(CURLFORM_COPYNAME, "file", CURLFORM_BUFFER, "non_exist.wav", CURLFORM_BUFFERPTR, tensor.DataRaw(),
+                       CURLFORM_BUFFERLENGTH, data_size, CURLFORM_END);
 
-  curl_easy_setopt(curl_handler.curl_, CURLOPT_URL, uri_.c_str());
-  curl_easy_setopt(curl_handler.curl_, CURLOPT_HTTPHEADER, curl_handler.headers_);
-  curl_easy_setopt(curl_handler.curl_, CURLOPT_VERBOSE, verbose);
-  curl_easy_setopt(curl_handler.curl_, CURLOPT_HTTPPOST, curl_handler.from_);
-  curl_easy_setopt(curl_handler.curl_, CURLOPT_WRITEDATA, (void*)&response_buffer);
+  curl_handler.SetOption(CURLOPT_URL, uri_.c_str());
+  curl_handler.SetOption(CURLOPT_VERBOSE, verbose);
+  curl_handler.SetOption(CURLOPT_WRITEDATA, (void*)&string_buffer);
 
-  ret = curl_easy_perform(curl_handler.curl_);
+  ret = curl_handler.Perform();
   if (ret != CURLE_OK) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, curl_easy_strerror(ret));
   }
@@ -163,7 +196,7 @@ onnxruntime::Status OpenAIInvoker::Send(const CloudEndPointConfig& run_options,
   }
 
   auto* output_string = output_tensor->MutableData<std::string>();
-  response_buffer.Fill(*output_string);
+  *output_string = string_buffer.ss_.str();
 
   ort_outputs.resize(1);
   auto tensor_type = DataTypeImpl::GetType<Tensor>();
