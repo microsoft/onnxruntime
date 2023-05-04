@@ -11,7 +11,7 @@ steps:
       packageType: upack
       feed: '/7424c8e4-5c62-490e-95c4-79446f31017c'
       definition: '517c4f6f-5437-4392-a70d-4f15ec5be2f0'
-      version: 1.0.52
+      version: 1.0.51
       downloadPath: $(Build.BinariesDirectory)/deps
 
 # The private ADO project
