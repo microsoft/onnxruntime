@@ -396,7 +396,7 @@ def parse_arguments():
     # WebAssembly build
     parser.add_argument("--build_wasm", action="store_true", help="Build for WebAssembly")
     parser.add_argument("--build_wasm_static_lib", action="store_true", help="Build for WebAssembly static library")
-    parser.add_argument("--emsdk_version", default="3.1.32", help="Specify version of emsdk")
+    parser.add_argument("--emsdk_version", default="3.1.19", help="Specify version of emsdk")
 
     parser.add_argument("--enable_wasm_simd", action="store_true", help="Enable WebAssembly SIMD")
     parser.add_argument("--enable_wasm_threads", action="store_true", help="Enable WebAssembly multi-threads support")
@@ -1245,9 +1245,6 @@ def generate_build_tree(
             add_default_definition(emscripten_settings, "MALLOC", args.wasm_malloc)
         add_default_definition(emscripten_settings, "MALLOC", "dlmalloc")
 
-        # set -s STACK_SIZE=1048576
-        add_default_definition(emscripten_settings, "STACK_SIZE", "1048576")
-
         if emscripten_settings:
             cmake_args += [f"-Donnxruntime_EMSCRIPTEN_SETTINGS={';'.join(emscripten_settings)}"]
 
@@ -1293,13 +1290,6 @@ def generate_build_tree(
             "-Donnxruntime_FUZZ_TEST=ON",
             "-Donnxruntime_USE_FULL_PROTOBUF=ON",
         ]
-
-    if args.gen_doc:
-        if args.enable_training:
-            raise BuildError("--gen_doc is not supported along with --enable_training")
-        add_default_definition(cmake_extra_defines, "onnxruntime_PYBIND_EXPORT_OPSCHEMA", "ON")
-    else:
-        add_default_definition(cmake_extra_defines, "onnxruntime_PYBIND_EXPORT_OPSCHEMA", "OFF")
 
     if args.enable_lazy_tensor:
         import torch
