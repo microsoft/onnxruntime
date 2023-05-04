@@ -514,7 +514,7 @@ function Install-ONNX {
     }
     Write-Host "Installing the newly built ONNX python package"
     Get-ChildItem -Path dist/*.whl | foreach {
-        "python.exe" "-m" "pip" "--disable-pip-version-check" "install" "--upgrade" $_.fullname
+        python.exe -m pip --disable-pip-version-check install --upgrade $_.fullname
         if ($lastExitCode -ne 0) {
           Write-Host -Object "Generate wheel file failed. Exitcode: $exitCode"
           exit $lastExitCode
