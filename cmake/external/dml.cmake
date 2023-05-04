@@ -77,7 +77,7 @@ else()
     ExternalProject_Add(
         directml_repo
         GIT_REPOSITORY https://dev.azure.com/microsoft/WindowsAI/_git/DirectML
-        GIT_TAG 2290bd6495fdf8c35822816213516d13f3742cc9
+        GIT_TAG 67665c1c315fc90bdf2fdde199aa154b0ed515cc
         GIT_SHALLOW OFF # not allowed when GIT_TAG is a commit SHA, which is preferred (it's stable, unlike branches)
         GIT_PROGRESS ON
         BUILD_IN_SOURCE ON
