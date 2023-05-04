@@ -120,7 +120,7 @@ def parse_arguments():
         required=False,
         default="None",
         type=str,
-        choices=["cuda", "dnnl", "openvino", "tensorrt", "snpe", "tvm", "qnn", "None"],
+        choices=["cuda", "dnnl", "openvino", "tensorrt", "snpe", "tvm", "qnn", "dml", "None"],
         help="The selected execution provider for this build.",
     )
     parser.add_argument("--sdk_info", required=False, default="", type=str, help="dependency SDK information.")
