@@ -261,7 +261,7 @@ Status QnnBackendManager::ReleaseContext() {
   return Status::OK();
 }
 
-Status QnnBackendManager::DumpQnnContext(const onnxruntime::PathString& model_path) {
+Status QnnBackendManager::DumpQnnContext(const onnxruntime::PathString& context_cache_pathstring) {
   if (nullptr == qnn_interface_.contextGetBinarySize ||
       nullptr == qnn_interface_.contextGetBinary) {
     LOGS(*logger_, ERROR) << "Failed to get valid function pointer.";
@@ -297,8 +297,7 @@ Status QnnBackendManager::DumpQnnContext(const onnxruntime::PathString& model_pa
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Context written buffer exceeds allocated buffer size.");
   }
 
-  PathString context_cache_file(model_path + ToPathString(".bin"));
-  std::ofstream of_stream(context_cache_file.c_str(), std::ofstream::binary);
+  std::ofstream of_stream(context_cache_pathstring.c_str(), std::ofstream::binary);
   if (!of_stream) {
     LOGS(*logger_, ERROR) << "Failed to open cached context file.";
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to open context cache file.");
@@ -310,16 +309,15 @@ Status QnnBackendManager::DumpQnnContext(const onnxruntime::PathString& model_pa
   return Status::OK();
 }
 
-Status QnnBackendManager::LoadCachedQnnContext(const onnxruntime::PathString& model_path, QnnModel& qnn_model) {
+Status QnnBackendManager::LoadCachedQnnContext(const onnxruntime::PathString& context_cache_pathstring, QnnModel& qnn_model) {
   ORT_RETURN_IF(nullptr == qnn_sys_interface_.systemContextCreate ||
                 nullptr == qnn_sys_interface_.systemContextGetBinaryInfo ||
                 nullptr == qnn_sys_interface_.systemContextFree,
                 "Failed to get valid function pointer.");
 
   uint64_t buffer_size{0};
-  PathString context_cache_file(model_path + ToPathString(".bin"));
-  std::ifstream cache_file(context_cache_file.c_str(), std::ifstream::binary);
-  ORT_RETURN_IF(!cache_file, "Failed to open cache file.");
+  std::ifstream cache_file(context_cache_pathstring.c_str(), std::ifstream::binary);
+  ORT_RETURN_IF(!cache_file || !cache_file.good(), "Failed to open cache file.");
   cache_file.seekg(0, cache_file.end);
   buffer_size = cache_file.tellg();
   ORT_RETURN_IF(0 == buffer_size, "Empty cache file encountered.");
@@ -331,6 +329,7 @@ Status QnnBackendManager::LoadCachedQnnContext(const onnxruntime::PathString& mo
   // Load file into buffer
   const auto& read_result = cache_file.read(reinterpret_cast<char*>(buffer.get()), buffer_size);
   ORT_RETURN_IF(!read_result, "Failed to read contents from cached context file.");
+  cache_file.close();
 
   QnnSystemContext_Handle_t sys_ctx_handle = nullptr;
   auto rt = qnn_sys_interface_.systemContextCreate(&sys_ctx_handle);
@@ -379,12 +378,13 @@ Status QnnBackendManager::LoadCachedQnnContext(const onnxruntime::PathString& mo
   sys_ctx_handle = nullptr;
 
   ORT_RETURN_IF_ERROR(ExtractBackendProfilingInfo());
+  load_from_cached_context_ = true;
 
   LOGS(*logger_, VERBOSE) << "Load from cached QNN Context completed.";
   return Status::OK();
 }
 
-Status QnnBackendManager::SetupBackend(const logging::Logger& logger, bool use_cached_context_) {
+Status QnnBackendManager::SetupBackend(const logging::Logger& logger, bool load_from_cached_context) {
   if (backend_setup_completed_) {
     LOGS(logger, VERBOSE) << "Backend setup already!";
     return Status::OK();
@@ -393,7 +393,7 @@ Status QnnBackendManager::SetupBackend(const logging::Logger& logger, bool use_c
   ORT_RETURN_IF_ERROR(LoadBackend());
   LOGS(logger, VERBOSE) << "LoadBackend succeed.";
 
-  if (use_cached_context_) {
+  if (load_from_cached_context) {
     ORT_RETURN_IF_ERROR(LoadQnnSystemLib());
   }
 
@@ -412,7 +412,7 @@ Status QnnBackendManager::SetupBackend(const logging::Logger& logger, bool use_c
   ORT_RETURN_IF_ERROR(InitializeProfiling());
   LOGS(logger, VERBOSE) << "InitializeProfiling succeed.";
 
-  if (!use_cached_context_) {
+  if (!load_from_cached_context) {
     ORT_RETURN_IF_ERROR(CreateContext());
     LOGS(logger, VERBOSE) << "CreateContext succeed.";
   }
@@ -517,9 +517,12 @@ void QnnBackendManager::ReleaseResources() {
     ORT_THROW("Failed to ReleaseProfilehandle.");
   }
 
-  result = ReleaseDevice();
-  if (Status::OK() != result) {
-    ORT_THROW("Failed to ReleaseDevice.");
+  // TODO: Failed to release device if load from cached context, need further investigation
+  if (!load_from_cached_context_) {
+    result = ReleaseDevice();
+    if (Status::OK() != result) {
+      ORT_THROW("Failed to ReleaseDevice.");
+    }
   }
 
   result = ShutdownBackend();

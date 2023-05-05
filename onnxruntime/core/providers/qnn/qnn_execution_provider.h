@@ -58,10 +58,18 @@ class QNNExecutionProvider : public IExecutionProvider {
   std::unordered_set<const Node*> GetSupportedNodes(const GraphViewer& graph_viewer,
                                                     const std::unordered_map<const Node*, const NodeUnit*>& node_unit_map,
                                                     const size_t node_unit_size,
+                                                    bool load_from_cached_context,
                                                     const logging::Logger& logger) const;
 
   Status CreateComputeFunc(std::vector<NodeComputeInfo>& node_compute_funcs,
                            const logging::Logger& logger);
+
+  Status CompileFromOrtGraph(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
+                             std::vector<NodeComputeInfo>& node_compute_funcs,
+                             const logging::Logger& logger);
+
+  bool IsContextCacheFileExists(const onnxruntime::PathString& model_pathstring,
+                                onnxruntime::PathString& context_cache_pathstring) const;
 
  private:
   ProviderOptions runtime_options_;
@@ -71,8 +79,8 @@ class QNNExecutionProvider : public IExecutionProvider {
   std::unordered_map<std::string, std::unique_ptr<qnn::QnnModel>> qnn_models_;
   AllocatorPtr cpu_allocator_;
   uint32_t rpc_control_latency_;
-  bool dump_context_ = false;
-  bool use_cached_context_ = false;
+  bool context_cache_enabled_ = false;
+  std::string context_cache_path_;
 };
 
 }  // namespace onnxruntime

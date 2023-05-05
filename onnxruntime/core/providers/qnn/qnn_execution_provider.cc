@@ -3,6 +3,7 @@
 
 #include "qnn_execution_provider.h"
 
+#include <fstream>
 #include "core/providers/common.h"
 #include "core/framework/allocatormgr.h"
 #include "core/framework/compute_capability.h"
@@ -20,21 +21,21 @@ namespace onnxruntime {
 constexpr const char* QNN = "QNN";
 
 QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_options_map)
-    : IExecutionProvider{onnxruntime::kQnnExecutionProvider, true}, runtime_options_(provider_options_map) {
-  static const std::string DUMP_CONTEXT = "dump_context";
-  auto dump_context_pos = runtime_options_.find(DUMP_CONTEXT);
-  if (dump_context_pos != runtime_options_.end()) {
-    if (dump_context_pos->second == "true") {
-      dump_context_ = true;
+    : IExecutionProvider{onnxruntime::kQnnExecutionProvider, true},
+      runtime_options_(provider_options_map),
+      context_cache_path_("") {
+  static const std::string CONTEXT_CACHE_ENABLED = "qnn_context_cache_enable";
+  auto context_cache_enabled_pos = runtime_options_.find(CONTEXT_CACHE_ENABLED);
+  if (context_cache_enabled_pos != runtime_options_.end()) {
+    if (context_cache_enabled_pos->second == "1") {
+      context_cache_enabled_ = true;
     }
   }
 
-  static const std::string LOAD_CACHE = "use_cached_context";
-  auto use_cached_context_pos = runtime_options_.find(LOAD_CACHE);
-  if (use_cached_context_pos != runtime_options_.end()) {
-    if (use_cached_context_pos->second == "true") {
-      use_cached_context_ = true;
-    }
+  static const std::string CONTEXT_CACHE_PATH = "qnn_context_cache_path";
+  auto context_cache_path_pos = runtime_options_.find(CONTEXT_CACHE_PATH);
+  if (context_cache_path_pos != runtime_options_.end()) {
+    context_cache_path_ = context_cache_path_pos->second;
   }
 
   static const std::string BACKEND_PATH = "backend_path";
@@ -148,10 +149,12 @@ std::unordered_set<const Node*>
 QNNExecutionProvider::GetSupportedNodes(const GraphViewer& graph_viewer,
                                         const std::unordered_map<const Node*, const NodeUnit*>& node_unit_map,
                                         const size_t node_unit_size,
+                                        bool load_from_cached_context,
                                         const logging::Logger& logger) const {
   std::unordered_set<const Node*> supported_nodes{};
-  // Load from cached Qnn context requires the whole graph partitioned to Qnn EP
-  if (use_cached_context_) {
+  // Enable Qnn context cache requires the whole graph partitioned to Qnn EP
+  // Blindly filter in all nodes if context cache is enabled
+  if (load_from_cached_context) {
     for (const auto& node : graph_viewer.Nodes()) {
       supported_nodes.insert(&node);
     }
@@ -212,10 +215,22 @@ QNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer
   }
 
   const auto& logger = *GetLogger();
+  bool load_from_cached_context = false;
+  if (context_cache_enabled_) {
+    onnxruntime::PathString context_cache_pathstring;
+    load_from_cached_context = IsContextCacheFileExists(graph_viewer.ModelPath().ToPathString(),
+                                                        context_cache_pathstring);
+  }
 
-  auto rt = qnn_backend_manager_->SetupBackend(logger, use_cached_context_);
+  // Load from cached context will load the QnnSystem lib and skip the Qnn context creation
+  auto rt = qnn_backend_manager_->SetupBackend(logger, load_from_cached_context);
   if (Status::OK() != rt) {
     LOGS(logger, ERROR) << "QNN SetupBackend failed " << rt.ErrorMessage();
+    return result;
+  }
+
+  if (context_cache_enabled_ && !qnn_backend_manager_->IsNpuBackend()) {
+    LOGS(logger, ERROR) << "Qnn context cache only works for NPU backend.";
     return result;
   }
 
@@ -225,7 +240,8 @@ QNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer
 
   std::tie(node_unit_holder, node_unit_map) = GetAllNodeUnits(graph_viewer);
 
-  const auto supported_nodes = GetSupportedNodes(graph_viewer, node_unit_map, node_unit_holder.size(), logger);
+  const auto supported_nodes = GetSupportedNodes(graph_viewer, node_unit_map, node_unit_holder.size(),
+                                                 load_from_cached_context, logger);
 
   if (supported_nodes.empty()) {
     LOGS(logger, INFO) << "Number of partitions supported by QNN EP: 0";
@@ -301,54 +317,79 @@ Status QNNExecutionProvider::CreateComputeFunc(std::vector<NodeComputeInfo>& nod
   return Status::OK();
 }
 
-Status QNNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
-                                     std::vector<NodeComputeInfo>& node_compute_funcs) {
-  const auto& logger = *GetLogger();
-  bool is_npu_backend = qnn_backend_manager_->IsNpuBackend();
-  onnxruntime::PathString model_path;
-  if (use_cached_context_) {
-    Node& fused_node = fused_nodes_and_graphs[0].fused_node;
-    const onnxruntime::GraphViewer& graph_viewer(fused_nodes_and_graphs[0].filtered_graph);
-    model_path = graph_viewer.ModelPath().ToPathString();
+Status QNNExecutionProvider::CompileFromOrtGraph(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
+                                                 std::vector<NodeComputeInfo>& node_compute_funcs,
+                                                 const logging::Logger& logger) {
+  for (const auto& fused_node_and_graph : fused_nodes_and_graphs) {
+    Node& fused_node = fused_node_and_graph.fused_node;
+    const onnxruntime::GraphViewer& graph_viewer(fused_node_and_graph.filtered_graph);
+
     std::unique_ptr<qnn::QnnModel> qnn_model = std::make_unique<qnn::QnnModel>(logger,
                                                                                qnn_backend_manager_.get(),
                                                                                cpu_allocator_,
-                                                                               is_npu_backend);
-    ORT_RETURN_IF_ERROR(qnn_backend_manager_->LoadCachedQnnContext(model_path, *(qnn_model.get())));
-    ORT_RETURN_IF_ERROR(qnn_model->SetGraphInputOutputInfo(graph_viewer, fused_node));
+                                                                               qnn_backend_manager_->IsNpuBackend());
+
+    ORT_RETURN_IF_ERROR(qnn_model->ComposeGraph(graph_viewer, fused_node));
+    ORT_RETURN_IF_ERROR(qnn_model->FinalizeGraphs());
     ORT_RETURN_IF_ERROR(qnn_model->SetupQnnInputOutput());
 
     LOGS(logger, VERBOSE) << "fused node name: " << fused_node.Name();
     qnn_models_.emplace(fused_node.Name(), std::move(qnn_model));
 
     ORT_RETURN_IF_ERROR(CreateComputeFunc(node_compute_funcs, logger));
-  } else {
-    for (const auto& fused_node_and_graph : fused_nodes_and_graphs) {
-      Node& fused_node = fused_node_and_graph.fused_node;
-      const onnxruntime::GraphViewer& graph_viewer(fused_node_and_graph.filtered_graph);
-      if (model_path.empty()) {
-        model_path = graph_viewer.ModelPath().ToPathString();
-      }
+  }
+  return Status::OK();
+}
 
+bool QNNExecutionProvider::IsContextCacheFileExists(const onnxruntime::PathString& model_pathstring,
+                                                    onnxruntime::PathString& context_cache_pathstring) const {
+  // Use user provided context cache file path if exist, otherwise try model_file.onnx.bin by default
+  if (!context_cache_path_.empty()) {
+    context_cache_pathstring = ToPathString(context_cache_path_);
+  } else {
+    context_cache_pathstring = model_pathstring + ToPathString(".bin");
+  }
+  std::fstream context_cache_fs(context_cache_pathstring.c_str());
+  bool context_cache_file_exist = context_cache_fs.good() ? true : false;
+  context_cache_fs.close();
+
+  return context_cache_file_exist;
+}
+
+Status QNNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
+                                     std::vector<NodeComputeInfo>& node_compute_funcs) {
+  const auto& logger = *GetLogger();
+  bool is_npu_backend = qnn_backend_manager_->IsNpuBackend();
+
+  if (context_cache_enabled_) {
+    Node& fused_node = fused_nodes_and_graphs[0].fused_node;
+    const onnxruntime::GraphViewer& graph_viewer(fused_nodes_and_graphs[0].filtered_graph);
+    onnxruntime::PathString context_cache_pathstring;
+    bool load_from_cached_context = IsContextCacheFileExists(graph_viewer.ModelPath().ToPathString(),
+                                                             context_cache_pathstring);
+    // Load and execute from cached context if exist
+    if (load_from_cached_context) {
       std::unique_ptr<qnn::QnnModel> qnn_model = std::make_unique<qnn::QnnModel>(logger,
                                                                                  qnn_backend_manager_.get(),
                                                                                  cpu_allocator_,
                                                                                  is_npu_backend);
-
-      ORT_RETURN_IF_ERROR(qnn_model->ComposeGraph(graph_viewer, fused_node));
-      ORT_RETURN_IF_ERROR(qnn_model->FinalizeGraphs());
+      ORT_RETURN_IF_ERROR(qnn_backend_manager_->LoadCachedQnnContext(context_cache_pathstring, *(qnn_model.get())));
+      ORT_RETURN_IF_ERROR(qnn_model->SetGraphInputOutputInfo(graph_viewer, fused_node));
       ORT_RETURN_IF_ERROR(qnn_model->SetupQnnInputOutput());
 
       LOGS(logger, VERBOSE) << "fused node name: " << fused_node.Name();
       qnn_models_.emplace(fused_node.Name(), std::move(qnn_model));
 
       ORT_RETURN_IF_ERROR(CreateComputeFunc(node_compute_funcs, logger));
+      return Status::OK();
+    } else { // Load and execute from Onnx model if not exit and dump the context
+      ORT_RETURN_IF_ERROR(CompileFromOrtGraph(fused_nodes_and_graphs, node_compute_funcs, logger));
+      ORT_RETURN_IF_ERROR(qnn_backend_manager_->DumpQnnContext(context_cache_pathstring));
     }
+    return Status::OK();
   }
 
-  if (is_npu_backend && dump_context_) {
-    ORT_RETURN_IF_ERROR(qnn_backend_manager_->DumpQnnContext(model_path));
-  }
+  ORT_RETURN_IF_ERROR(CompileFromOrtGraph(fused_nodes_and_graphs, node_compute_funcs, logger));
 
   return Status::OK();
 }

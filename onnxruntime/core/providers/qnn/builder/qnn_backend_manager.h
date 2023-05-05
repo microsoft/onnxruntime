@@ -70,7 +70,7 @@ class QnnBackendManager {
 
   Status LoadCachedQnnContext(const onnxruntime::PathString& model_path, QnnModel& qnn_model);
 
-  Status SetupBackend(const logging::Logger& logger, bool use_cached_context_);
+  Status SetupBackend(const logging::Logger& logger, bool load_from_cached_context);
 
   Status SetDspPowerConfig();
 
@@ -193,6 +193,7 @@ class QnnBackendManager {
   Qnn_ProfileHandle_t profile_backend_handle_ = nullptr;
   std::vector<std::string> op_package_paths_;
   uint32_t rpc_control_latency_;
+  bool load_from_cached_context_ = false;
 #ifdef _WIN32
   std::set<HMODULE> mod_handles_;
 #endif
