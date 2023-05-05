@@ -609,9 +609,19 @@ set(CMAKE_C_COMPILER aarch64-linux-gnu-gcc)
 ---
 
 ## Vitis-AI
-See more information on the Xilinx Vitis-AI execution provider [here](../execution-providers/community-maintained/Vitis-AI-ExecutionProvider.md).
+See more information on the AMD Vitis-AI execution provider [here](../execution-providers/community-maintained/Vitis-AI-ExecutionProvider.md).
 
 For instructions to setup the hardware environment: [Hardware setup](../execution-providers/community-maintained/Vitis-AI-ExecutionProvider.md#hardware-setup)
+
+### Cross compilation environment
+Vitis-AI provides a compiled installation package from V3.5. Please download the package from [here](https://docs.xilinx.com/r/en-US/ug1414-vitis-ai/Programming-with-VOE).
+
+### Windows
+{: .no_toc }
+
+```bash
+.\build.bat --use_vitisai
+```
 
 ### Linux
 {: .no_toc }
@@ -620,11 +630,6 @@ For instructions to setup the hardware environment: [Hardware setup](../executio
 ```bash
 ./build.sh --use_vitisai
 ```
-
-### Notes
-{: .no_toc }
-
-The Vitis-AI execution provider is only supported on Linux.
 
 ---
 

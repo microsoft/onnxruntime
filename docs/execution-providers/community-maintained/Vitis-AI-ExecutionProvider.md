@@ -1,6 +1,6 @@
 ---
-title: Xilinx - Vitis AI
-description: Instructions to execute ONNX Runtime on Xilinx devices with the Vitis AI execution provider
+title: AMD - Vitis AI
+description: Instructions to execute ONNX Runtime on AMD devices with the Vitis AI execution provider
 grand_parent: Execution Providers
 parent: Community-maintained
 nav_order: 6
@@ -10,9 +10,9 @@ redirect_from: /docs/reference/execution-providers/Vitis-AI-ExecutionProvider
 # Vitis-AI Execution Provider
 {: .no_toc }
 
-[Vitis-AI](https://github.com/Xilinx/Vitis-AI) is Xilinx's development stack for hardware-accelerated AI inference on Xilinx platforms, including both edge devices and Alveo cards. It consists of optimized IP, tools, libraries, models, and example designs. It is designed with high efficiency and ease of use in mind, unleashing the full potential of AI acceleration on Xilinx FPGA and ACAP.
+[Vitis-AI](https://github.com/Xilinx/Vitis-AI) is AMD's development stack for hardware-accelerated AI inference on AMD platforms, including both edge devices and Alveo cards. It consists of optimized IP, tools, libraries, models, and example designs. It is designed with high efficiency and ease of use in mind, unleashing the full potential of AI acceleration on AMD FPGA and ACAP.
 
-The current Vitis-AI execution provider inside ONNXRuntime enables acceleration of Neural Network model inference using DPUv1. DPUv1 is a hardware accelerator for Convolutional Neural Networks (CNN) on top of the Xilinx [Alveo](https://www.xilinx.com/products/boards-and-kits/alveo.html) platform and targets U200 and U250 accelerator cards.
+The current Vitis-AI execution provider inside ONNXRuntime enables acceleration of Neural Network model inference using embedded devices such as Zynq® UltraScale+™ MPSoC, Versal, Versal AI Edge and Kria cards.
 
 
 ## Contents
@@ -22,107 +22,123 @@ The current Vitis-AI execution provider inside ONNXRuntime enables acceleration 
 {:toc}
 
 ## Requirements
+Note: Vitis-AI Execution Provider is enabled from Vitis AI 3.5.
 
-The following table lists system requirements for running docker containers as well as Alveo cards.  
-
-
-| **Component**                                       | **Requirement**                                            |
-|-----------------------------------------------------|------------------------------------------------------------|
-| Motherboard                                         | PCI Express 3\.0\-compliant with one dual\-width x16 slot  |
-| System Power Supply                                 | 225W                                                       |
-| Operating System                                    | Ubuntu 16\.04, 18\.04                                      |
-|                                                     | CentOS 7\.4, 7\.5                                          |
-|                                                     | RHEL 7\.4, 7\.5                                            |
-| CPU                                                 | Intel i3/i5/i7/i9/Xeon 64-bit CPU                          |
-| GPU \(Optional to accelerate quantization\)         | NVIDIA GPU with a compute capability > 3.0                 |
-| CUDA Driver \(Optional to accelerate quantization\) | nvidia\-410                                                |
-| FPGA                                                | Xilinx Alveo U200 or U250                                  |
-| Docker Version                                      | 19\.03\.1                                                  |
+The following table lists target Edge boards that are supported with ONNXRuntime Vitis-AI Execution Provider.
+| **Family**                                       | **Supported Boards**                                       |
+|--------------------------------------------------|------------------------------------------------------------|
+| Zynq® UltraScale+™ MPSoC                         | ZCU102 and ZCU104 Boards                                   |
+| Versal                                           | VCK190                                                     |
+| Versal AI Edge                                   | VEK280                                                     |
+| Kria                                             | KV260                                                      |
 
 ## Build
 See [Build instructions](../../build/eps.md#vitis-ai).
 
 ### Hardware setup
 
-1. Clone the Vitis AI repository:
-    ```
-    git clone https://github.com/xilinx/vitis-ai
-    ```
-2. Install the Docker, and add the user to the docker group. Link the user to docker installation instructions from the following docker's website:
-    * https://docs.docker.com/install/linux/docker-ce/ubuntu/
-    * https://docs.docker.com/install/linux/docker-ce/centos/
-    * https://docs.docker.com/install/linux/linux-postinstall/
-3. Any GPU instructions will have to be separated from Vitis AI.
-4. Set up Vitis AI to target Alveo cards. To target Alveo cards with Vitis AI for machine learning workloads, you must install the following software components:
-    * Xilinx Runtime (XRT)
-    * Alveo Deployment Shells (DSAs)
-    * Xilinx Resource Manager (XRM) (xbutler)
-    * Xilinx Overlaybins (Accelerators to Dynamically Load - binary programming files)
+On Edge, you only need to download the image and installation package related to the developemnt board, burn the image, and install the required package according to the [Target Setup Instructions](https://xilinx.github.io/Vitis-AI/docs/board_setup/board_setup.html).
 
-    While it is possible to install all of these software components individually, a script has been provided to automatically install them at once. To do so:
-      * Run the following commands:
-        ```
-        cd Vitis-AI/alveo/packages
-        sudo su
-        ./install.sh
-        ```
-      * Power cycle the system.
-5. Build and start the ONNXRuntime Vitis-AI Docker Container.
-   ```
-   cd {onnxruntime-root}/dockerfiles
-   docker build -t onnxruntime-vitisai -f Dockerfile.vitisai .
-   ./scripts/docker_run_vitisai.sh
-   ```
-   
-   Setup inside container
-   ```
-   source /opt/xilinx/xrt/setup.sh
-   conda activate vitis-ai-tensorflow
-   ```
+On Windows, please download the `voe-[version]-win_amd64.zip` which VOE (Vitis-AI ONNXRuntime Engine) release package from [Programming with VOE](https://docs.xilinx.com/r/en-US/ug1414-vitis-ai/Programming-with-VOE).
+
+If you are using C++,  first please unzip the `voe-[version]-win_amd64.zip` file and copy `bin\\*.dll`  to `C:\\Program Files\\onnxruntime\\bin` to install the VOE's dll files  and then install VOE's python modules.
+```
+pip install voe-[version]-cp39-cp39-win_amd64.whl
+```
+If you are using python, please install VOE python modules.
+```
+ pip install voe-[version]-cp39-cp39-win_amd64.whl
+```
 
 ## Usage
-
-### On-the-fly quantization
-
-Usually, to be able to accelerate inference of Neural Network models with Vitis-AI DPU accelerators, those models need to quantized upfront. In the ONNXRuntime Vitis-AI execution provider we make use of on-the-fly quantization to remove this additional preprocessing step. In this flow, one doesn't need to quantize his/her model upfront but can make use of the typical inference execution calls (InferenceSession.run) to quantize the model on-the-fly using the first N inputs that are provided (see more information below). This will set up and calibrate the Vitis-AI DPU and from that point onwards inference will be accelerated for all next inputs.
+### Quantization
+To accelerate the inference of Neural Network models with Vitis-AI DPU accelerators, these models need to be quantized beforehand.
+Currently users need to use the Vitis-AI quantization tools to quantize Pytorch/TensorFlow model and output quantized ONNX model. See [Vitis AI model quantization](https://xilinx.github.io/Vitis-AI/docs/workflow-model-development.html#model-quantization) for details.
+In the future, the Vitis-AI quantization tools plan to support quantization based on ONNX, and the Vitis-AI execution provider for ONNXRuntime will support on-the-fly quantization. With this flow, users won't need to quantize their models beforehand.
 
 ## Configuration Options
+The model is compiled when the session is created. The compilatioin stage usually takes a long time. Vitis-AI uses cache to store the compiled model.
 
-A couple of environment variables can be used to customize the Vitis-AI execution provider.
+A config file path can be used to customize the config file and configuration variables can be used to customize the cache path.
 
-| **Environment Variable**   | **Default if unset**      | **Explanation**                                         |
-|----------------------------|---------------------------|---------------------------------------------------------|
-| PX_QUANT_SIZE              | 128                    | The number of inputs that will be used for quantization (necessary for Vitis-AI acceleration) |
-| PX_BUILD_DIR               | Use the on-the-fly quantization flow | Loads the quantization and compilation information from the provided build directory and immediately starts Vitis-AI hardware acceleration. This configuration can be used if the model has been executed before using on-the-fly quantization during which the quantization and comilation information was cached in a build directory. |
+| **Configuration Variable**   | **Default if unset**           | **Explanation**                          |
+|----------------------------|--------------------------------|------------------------------------------|
+| config_file                | ""                             | required,  the configuration file path, the configuration file `vaip_config.json` is contained in the `voe-[version]-win_amd64.zip`.       |
+| CacheDir                   | Linux: "/tmp/{user}/vaip/.cache/" <br/>   Windows: "C:\\temp\\{user}\\vaip\\.cache"        | optional, cache directory                |
+| CacheKey                   | {onnx_model_md5}               | optional, cache key, used to distinguish between different models.                      |
+
+The final cache directory is `{CacheDir}/{CacheKey}`.
+Please refer to the following C++ example for usage.
+
+A couple of environment variables can be used to customize the Vitis-AI Execution provider.
+
+| **Environment Variable**   | **Default if unset** | **Explanation**                                    |
+|----------------------------|----------------------|----------------------------------------------------|
+| XLNX_ENABLE_CACHE          | 1                    | Whether to use cache, if it is 0, it will ignore the cache files and the model will be recompiled|
+| XLNX_TARGET_NAME           | ""                   | DPU target name. On Edge, if not set, the DPU target name will be read automatically; On Windows, default value is "AMD_AIE2_Nx4_Overlay" which is the DPU target name of IPU.                                |
+
 
 ## Samples
+If you are using C++, you can use the following example as a reference:
+```C++
+// ...
+#include <experimental_onnxruntime_cxx_api.h>
+// include other header files
+// ...
 
-When using python, you can base yourself on the following example:
+auto onnx_model_path = "resnet50_pt.onnx"
+Ort::Env env(ORT_LOGGING_LEVEL_WARNING, "resnet50_pt");
+auto session_options = Ort::SessionOptions();
 
+auto options = std::unorderd_map<std::string,std::string>({});
+options["config_file"] = "/etc/vaip_config.json";
+// optional, eg: cache path : /tmp/my_cache/abcdefg
+options["CacheDir"] = "/tmp/my_cache";
+options["CacheKey"] = "abcdefg";
+
+session_options.AppendExecutionProvider("VitisAI", options);
+
+auto session = Ort::Experimental::Session(env, model_name, session_options);
+
+auto input_shapes = session.GetInputShapes();
+// preprocess input data
+// ...
+
+// create input tensors and fillin input data
+std::vector<Ort::Value> input_tensors;
+input_tensors.push_back(Ort::Experimental::Value::CreateTensor<float>(
+      input_data.data(), input_data.size(), input_shapes[0]));
+
+auto output_tensors = session.Run(session.GetInputNames(), input_tensors,
+                                      session.GetOutputNames());
+// postprocess output data
+// ...
+
+```
+
+If you are using python, you can use the following example as a reference:
 ```python
-# Import pyxir before onnxruntime
-import pyxir
-import pyxir.frontend.onnx
-import pyxir.contrib.dpuv1.dpuv1
-
 import onnxruntime
 
-# Add other imports 
+# Add other imports
 # ...
 
 # Load inputs and do preprocessing
 # ...
 
 # Create an inference session using the Vitis-AI execution provider
-session = onnxruntime.InferenceSession('[model_file].onnx', None,["VitisAIExecutionProvider"])
 
-# First N (default = 128) inputs are used for quantization calibration and will
-#   be executed on the CPU
-# This config can be changed by setting the 'PX_QUANT_SIZE' (e.g. export PX_QUANT_SIZE=64)
-imput_name = [...]
-outputs = [session.run([], {input_name: calib_inputs[i]})[0] for i in range(128)]
+session = onnxruntime.InferenceSession(
+    '[model_file].onnx',
+    providers=["VitisAIExecutionProvider"],
+    provider_options=[{"config_file":"/etc/vaip_config.json"}])
 
-# Afterwards, computations will be accelerated on the FPGA
+input_shape = session.get_inputs()[0].shape
+input_name = session.get_inputs()[0].name
+
+# Load inputs and do preprocessing by input_shape
 input_data = [...]
 result = session.run([], {input_name: input_data})
+
 ```
+For more complete examples, please refer to  [ONNXRuntime Vitis-AI Execution Provider examples](https://github.com/Xilinx/Vitis-AI/tree/master/examples/vai_library/samples_onnx).
