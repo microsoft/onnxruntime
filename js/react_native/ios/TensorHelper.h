@@ -16,7 +16,6 @@
 // https://microsoft.github.io/objc-guide/Headers/ImportAndInclude.html
 #ifdef ORT_ENABLE_EXTENSIONS
 #include "onnxruntime_cxx_api.h"
-#include "onnxruntime_extensions.h"
 #else
 #include "onnxruntime/onnxruntime_cxx_api.h"
 #endif
