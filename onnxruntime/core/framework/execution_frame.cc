@@ -214,7 +214,7 @@ Status IExecutionFrame::ReleaseMLValueImpl(int ort_value_idx) {
 }
 
 int IExecutionFrame::GetNodeIdxToMLValueIdx(int index) const {
-  //The validity of the index is checked by GetMLValueIndex
+  // The validity of the index is checked by GetMLValueIndex
   int ort_value_idx = node_index_info_.GetMLValueIndex(index);
   return ort_value_idx;
 }
@@ -252,16 +252,16 @@ void IExecutionFrame::Init(gsl::span<const int> feed_mlvalue_idxs, gsl::span<con
   for (const auto& entry : initializers) {
     int ort_value_index = entry.first;
 
-    //If the initializer is an output we need to allocate or use a provided fetch buffer and copy the data
-    // so it can be returned to the caller.
+    // If the initializer is an output we need to allocate or use a provided fetch buffer and copy the data
+    //  so it can be returned to the caller.
     //
-    // The alternative to handling this as a special case would be to disallow an initializer providing a graph output.
-    // There's nothing in the ONNX spec that says a graph output must come from a node output though.
-    // If we took that approach we'd need to:
-    //   - reject a model with an initializer or Constant node (as we convert those to initializers in Graph::Graph)
-    //     that produces a graph output even though it conforms to the ONNX spec
-    //   - update optimizers to not convert something to an initializer that is a graph output
-    //     (e.g. constant folding)
+    //  The alternative to handling this as a special case would be to disallow an initializer providing a graph output.
+    //  There's nothing in the ONNX spec that says a graph output must come from a node output though.
+    //  If we took that approach we'd need to:
+    //    - reject a model with an initializer or Constant node (as we convert those to initializers in Graph::Graph)
+    //      that produces a graph output even though it conforms to the ONNX spec
+    //    - update optimizers to not convert something to an initializer that is a graph output
+    //      (e.g. constant folding)
     if (IsOutput(ort_value_index)) {
       std::string name;
       ORT_THROW_IF_ERROR(ort_value_idx_map_.GetName(ort_value_index, name));
@@ -360,7 +360,7 @@ ExecutionFrame::ExecutionFrame(gsl::span<const int> feed_mlvalue_idxs, gsl::span
         return false;
       },
 #else
-      [&](const std::string & /*name*/) -> bool {
+      [&](const std::string& /*name*/) -> bool {
         return false;
       },
 #endif

@@ -1759,7 +1759,7 @@ class PlannerImpl {
     num_logic_streams_ = stream_nodes_.size();
   }
 
-  //Build each logic streams
+  // Build each logic streams
   Status BuildExecutionPlan(const ExecutionProviders& execution_providers,
                             const IStreamCommandHandleRegistry& stream_handle_registry) {
     // 1. create logic stream instance
