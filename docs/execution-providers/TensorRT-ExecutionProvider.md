@@ -113,7 +113,7 @@ Following environment variables can be set for TensorRT execution provider.
 
 * `ORT_TENSORRT_LAYER_NORM_FP32_FALLBACK`: Force Pow + Reduce ops in layer norm to FP32. Default 0 = false, nonzero = true.
 
-* `ORT_TENSORRT_TIMING_CACHE_ENABLE`: Enable TensorRT timing cache. Default 0 = false, nonzero = true.
+* `ORT_TENSORRT_TIMING_CACHE_ENABLE`: Enable TensorRT timing cache. Default 0 = false, nonzero = true. Check [Timing cache](#timing-cache) for details.
 
 * `ORT_TENSORRT_FORCE_TIMING_CACHE_ENABLE`: Force the TensorRT cache to be used even if device profile does not match. Default 0 = false, nonzero = true.
 
@@ -259,7 +259,50 @@ sess = ort.InferenceSession(model_path, sess_options=sess_opt, providers=provide
 ## Performance Tuning
 For performance tuning, please see guidance on this page: [ONNX Runtime Perf Tuning](./../performance/tune-performance/index.md)
 
-When/if using [onnxruntime_perf_test](https://github.com/microsoft/onnxruntime/tree/main/onnxruntime/test/perftest#onnxruntime-performance-test), use the flag `-e tensorrt`. Check below for sample. 
+When/if using [onnxruntime_perf_test](https://github.com/microsoft/onnxruntime/tree/main/onnxruntime/test/perftest#onnxruntime-performance-test), use the flag `-e tensorrt`. Check below for sample.
+
+### Timing cache
+Enabling `trt_timing_cache_enable` will enable ORT TRT to use TensorRT timing cache to accelerate engine build time on a device with the same compute capability. This will work across models as it simply stores kernel latencies for specific configurations. Those files are usually very small (only a few KB or MB) which makes them very easy to ship with an application to accelerate the build time on the user end.
+
+Following exapmles shows build time reduction with timing cache:
+
+|Model | no Cache | with Cache|
+| ------------- | ------------- | ------------- |
+|efficientnet-lite4-11 | 34.6 s | 7.7 s|
+|yolov4 | 108.62 s | 9.4 s|
+
+Here is a python example:
+
+```python
+import onnxruntime as ort
+
+ort.set_default_logger_severity(0) # Turn on verbose mode for ORT TRT
+sess_options = ort.SessionOptions()
+
+trt_ep_options = {
+    "trt_timing_cache_enable": True,
+}
+
+sess = ort.InferenceSession(
+    "my_model.onnx",
+    providers=[
+        ("TensorrtExecutionProvider", trt_ep_options),
+        "CUDAExecutionProvider",
+    ],
+)
+
+# Once inference session initialization is done (assume no dynamic shape input, otherwise you have to wait until inference run is done)
+# you can find timing cache is saved in the 'trt_engine_cache_path' directory, e.g. TensorrtExecutionProvider_cache_cc75.timing, please note
+# that the name contains information of compute capability.
+
+sess.run(
+    None,
+    {"input_ids": np.zeros((1, 77), dtype=np.int32)}
+)
+
+
+
+```
 
 ### Explicit shape range for dynamic shape input 
 
