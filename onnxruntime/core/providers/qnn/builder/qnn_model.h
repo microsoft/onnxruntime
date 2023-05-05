@@ -59,8 +59,16 @@ class QnnModel {
     return initializer_inputs_.find(input_name) != initializer_inputs_.end();
   }
 
-  size_t GetInputIndex(const std::string& name) const {
+  // Return the input index within Ort graph which has initializers included
+  size_t GetOrtInputIndex(const std::string& name) const {
     return GetInputOutputIndex(name, inputs_info_);
+  }
+
+  // Return the pure input index which doesn't cover initializers
+  size_t GetGraphInputIndex(const std::string& name) const {
+    auto it = model_input_index_map_.find(name);
+    ORT_ENFORCE(it != model_input_index_map_.end(), "Input name not found.");
+    return it->second;
   }
 
   size_t GetOutputIndex(const std::string& name) const {
