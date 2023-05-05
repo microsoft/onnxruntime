@@ -278,7 +278,7 @@ Status QnnModel::SetupTensors(std::vector<Qnn_Tensor_t>& qnn_tensors,
 
 
 
-Status QnnModel::DeserializeGraphInforFromBinaryInfo(const QnnSystemContext_GraphInfo_t& qnn_sys_ctx_graph_info) {
+Status QnnModel::DeserializeGraphInfoFromBinaryInfo(const QnnSystemContext_GraphInfo_t& qnn_sys_ctx_graph_info) {
   std::vector<QnnTensorWrapper> input_tensor_wrappers;
   std::vector<QnnTensorWrapper> output_tensor_wrappers;
 

@@ -3,7 +3,6 @@
 
 #include "qnn_execution_provider.h"
 
-#include <fstream>
 #include <filesystem>
 #include "core/providers/common.h"
 #include "core/framework/allocatormgr.h"

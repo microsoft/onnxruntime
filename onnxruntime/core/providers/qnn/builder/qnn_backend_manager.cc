@@ -373,7 +373,7 @@ Status QnnBackendManager::LoadCachedQnnContext(const onnxruntime::PathString& co
                                               profile_backend_handle_);
   ORT_RETURN_IF(QNN_SUCCESS != rt, "Failed to create context from binary.");
 
-  ORT_RETURN_IF_ERROR(qnn_model.DeserializeGraphInforFromBinaryInfo(graphs_info[0]));
+  ORT_RETURN_IF_ERROR(qnn_model.DeserializeGraphInfoFromBinaryInfo(graphs_info[0]));
 
   qnn_sys_interface_.systemContextFree(sys_ctx_handle);
   sys_ctx_handle = nullptr;
