@@ -1147,7 +1147,8 @@ public:
         m_outputSizeW = info.template GetOptionalAttribute<uint32_t>(AttrName::OutputWidth, 1);
         m_outputSizeH = info.template GetOptionalAttribute<uint32_t>(AttrName::OutputHeight, 1);
         m_coordinateTransformMode = "half_pixel";
-        if(opsetVersion >= 16){
+if (opsetVersion >= 16)
+{
             m_coordinateTransformMode = info.GetAttribute(AttrName::CoordinateTransformationMode);
         }
     }
