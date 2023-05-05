@@ -264,6 +264,62 @@ For performance tuning, please see guidance on this page: [ONNX Runtime Perf Tun
 
 When/if using [onnxruntime_perf_test](https://github.com/microsoft/onnxruntime/tree/main/onnxruntime/test/perftest#onnxruntime-performance-test), use the flag `-e tensorrt`. Check below for sample. 
 
+### Explicit range of dynamic input shape for TRT optimization profiles  
+
+An optimization profile describes a range of dimensions for each TRT network input and the dimensions that the auto-tuner will use for optimization. When using runtime dimensions, you must create at least one optimization profile at build time.
+ORT TRT lets you explicitly specify min/max/opt values(range) for each dynamic shape input's dimension through three provider options, `trt_profile_min_shapes`, `trt_profile_max_shapes` and `trt_profile_opt_shapes`. If these three provider options are not specified 
+and model has dynamic shape input, ORT TRT will determine the min/max/opt values for the dynamic shape input based on incoming input tensor.
+
+To use the engine cache built with optimization profiles specified by explicit shape ranges, user still needs to provide the three provider options as well as engine cache flag.
+ORT TRT will firstly compare the shape ranges of the three provider options with the shape ranges saved in the .profile files, and will rebuild the engine if the shape ranges mismatch.
+
+Here is a python example:
+
+```python
+import onnxruntime as ort
+
+ort.set_default_logger_severity(0) # Turn on verbose mode for ORT TRT
+sess_options = ort.SessionOptions()
+
+trt_ep_options = {
+    "trt_fp16_enable": True,
+    "trt_engine_cache_enable": True,
+    "trt_profile_min_shapes": "sample:2x4x64x64,encoder_hidden_states:2x77x1024",
+    "trt_profile_max_shapes": "sample:32x4x64x64,encoder_hidden_states:32x77x1024",
+    "trt_profile_opt_shapes": "sample:2x4x64x64,encoder_hidden_states:2x77x1024",
+}
+
+sess = ort.InferenceSession(
+    "my_model.onnx"),
+    providers=[
+        ("TensorrtExecutionProvider", trt_ep_options),
+        "CUDAExecutionProvider",
+    ],
+)
+
+batch_size = 1
+unet_dim = 4
+max_text_len = 77
+embed_dim = 768
+latent_height = 64
+latent_width = 64
+
+args = {
+    "sample": np.zeros(
+        (2 * batch_size, unet_dim, latent_height, latent_width), dtype=np.float32
+    ),
+    "timestep": np.ones((1,), dtype=np.float32),
+    "encoder_hidden_states": np.zeros(
+        (2 * batch_size, max_text_len, embed_dim),
+        dtype=np.float16 if args.denoising_prec == "fp16" else np.float32,
+    ),
+}
+sess.run(None, args)
+
+```
+
+Please note that there is a constrain of using this explict shape range feautre, i.e., all the dimensions of the all the dynamic shape input should be provided with corresponding min/max/opt values(range).
+
 
 ## Samples
 
