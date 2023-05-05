@@ -15,17 +15,17 @@ parameters:
   default: true
 
 - name: DoEsrp
-  displayName: Run code sign tasks? Must be true if you are doing an Onnx Runtime release.
+  displayName: Run code sign tasks? Must be true if you are doing an ONNX Runtime release
   type: boolean
   default: true
 
 - name: IsReleaseBuild
-  displayName: Is a release build? Set it to true if you are doing an Onnx Runtime release.
+  displayName: Is a release build? Set it to true if you are doing an ONNX Runtime release.
   type: boolean
   default: false
 
 - name: ReleaseVersionSuffixString
-  displayName: Suffix added to pre-release package name -alpha, -rc etc. Set it to none if you are doing an Onnx Runtime release.
+  displayName: Suffix added to pre-release package version -alpha, -rc etc. Only used if IsReleaseBuild is true. Denotes the type of pre-release package.
   type: string
   values:
   - -alpha
@@ -35,7 +35,7 @@ parameters:
   default: none
 
 - name: ReleaseVersionSuffixNumber
-  displayName: Number added to pre-release package name. Set it to 0 if you are doing an Onnx Runtime release.
+  displayName: Number added to pre-release package version. Only used if IsReleaseBuild is true. Denotes the sequence of a pre-release package.
   type: number
   default: 0
 
