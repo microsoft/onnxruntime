@@ -266,8 +266,8 @@ When/if using [onnxruntime_perf_test](https://github.com/microsoft/onnxruntime/t
 
 ### Explicit shape range for dynamic shape input 
 
-ORT TRT lets you explicitly specify min/max/opt shapes for each dynamic shape input's dimension through three provider options, `trt_profile_min_shapes`, `trt_profile_max_shapes` and `trt_profile_opt_shapes`. If these three provider options are not specified 
-and model has dynamic shape input, ORT TRT will determine the min/max/opt values for the dynamic shape input based on incoming input tensor. The min/max/opt shapes are required for TRT optimization profile (An optimization profile describes a range of dimensions for each TRT network input and the dimensions that the auto-tuner will use for optimization. When using runtime dimensions, you must create at least one optimization profile at build time.)
+ORT TRT lets you explicitly specify min/max/opt shapes for each dynamic shape input through three provider options, `trt_profile_min_shapes`, `trt_profile_max_shapes` and `trt_profile_opt_shapes`. If these three provider options are not specified 
+and model has dynamic shape input, ORT TRT will determine the min/max/opt shapes for the dynamic shape input based on incoming input tensor. The min/max/opt shapes are required for TRT optimization profile (An optimization profile describes a range of dimensions for each TRT network input and the dimensions that the auto-tuner will use for optimization. When using runtime dimensions, you must create at least one optimization profile at build time.)
 
 To use the engine cache built with optimization profiles specified by explicit shape ranges, user still needs to provide those three provider options as well as engine cache enable flag.
 ORT TRT will firstly compare the shape ranges of the three provider options with the shape ranges saved in the .profile files, and will rebuild the engine if the shape ranges mismatch.
@@ -317,7 +317,7 @@ sess.run(None, args)
 
 ```
 
-Please note that there is a constrain of using this explict shape range feautre, i.e., all the dimensions of the all the dynamic shape input should be provided with corresponding min/max/opt values(range).
+Please note that there is a constrain of using this explict shape range feautre, i.e., all the dynamic shape inputs should be provided with corresponding min/max/opt shapes.
 
 
 ## Samples
