@@ -1,7 +1,7 @@
 Overview
 =========
 
-Learning on the edge refers to the process of training a model on an edge device, such as mobile phones, embedded devices, gaming consoles, web browsers, etc. This is in contrast to training a model on a server or a cloud. Training on the edge is useful when the data is sensitive and cannot be shared with a server or a cloud. It is also useful for the task of personalization where the model needs to be trained on the user's device.
+`On-Device Training` refers to the process of training a model on an edge device, such as mobile phones, embedded devices, gaming consoles, web browsers, etc. This is in contrast to training a model on a server or a cloud. Training on the edge is useful when the data is sensitive and cannot be shared with a server or a cloud. It is also useful for the task of personalization where the model needs to be trained on the user's device.
 
 `onnxruntime-training` offers an easy way to efficiently train and infer a wide range of ONNX models on edge devices. The training process is divided into two phases:
 
