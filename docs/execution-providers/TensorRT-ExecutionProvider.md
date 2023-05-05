@@ -131,11 +131,8 @@ Following environment variables can be set for TensorRT execution provider.
 
 * `ORT_TENSORRT_EXTRA_PLUGIN_LIB_PATHS`: Specify extra TensorRT plugin library paths.
 
-* `ORT_TENSORRT_PROFILE_MIN_SHAPES`: Build with dynamic shapes using a profile with the min shapes provided.
-
-* `ORT_TENSORRT_PROFILE_MAX_SHAPES`: Build with dynamic shapes using a profile with the max shapes provided.
-
-* `ORT_TENSORRT_PROFILE_OPT_SHAPES`: Build with dynamic shapes using a profile with the opt shapes provided.
+* `ORT_TENSORRT_PROFILE_MIN_SHAPES`, `ORT_TENSORRT_PROFILE_MAX_SHAPES` and `ORT_TENSORRT_PROFILE_OPT_SHAPES` : Build with dynamic shapes using a profile with the min/max/opt shapes provided. The format of the profile shapes is "input_tensor_1:dim_1xdim_2x...,input_tensor_2:dim_3xdim_4x...,..." and these three flags should be all provided in order to enable explict TRT profile shapes feature.   
+Check [Explicit shape range for dynamic shape input](#explicit-shape-range-for-dynamic-shape-input) for details on what this flag does.
 
 One can override default values by setting environment variables. e.g. on Linux:
 
@@ -270,7 +267,7 @@ ORT TRT lets you explicitly specify min/max/opt shapes for each dynamic shape in
 and model has dynamic shape input, ORT TRT will determine the min/max/opt shapes for the dynamic shape input based on incoming input tensor. The min/max/opt shapes are required for TRT optimization profile (An optimization profile describes a range of dimensions for each TRT network input and the dimensions that the auto-tuner will use for optimization. When using runtime dimensions, you must create at least one optimization profile at build time.)
 
 To use the engine cache built with optimization profiles specified by explicit shape ranges, user still needs to provide those three provider options as well as engine cache enable flag.
-ORT TRT will firstly compare the shape ranges of the three provider options with the shape ranges saved in the .profile files, and will rebuild the engine if the shape ranges mismatch.
+ORT TRT will firstly compare the shape ranges of those three provider options with the shape ranges saved in the .profile file, and then rebuild the engine if the shape ranges don't match.
 
 Here is a python example:
 
