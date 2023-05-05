@@ -850,10 +850,19 @@ if (onnxruntime_BUILD_WEBASSEMBLY)
   set_target_properties(onnxruntime_test_all PROPERTIES LINK_DEPENDS ${TEST_SRC_DIR}/wasm/onnxruntime_test_all_adapter.js)
   set_target_properties(onnxruntime_test_all PROPERTIES LINK_FLAGS "-s STACK_SIZE=5242880 -s ALLOW_MEMORY_GROWTH=1 --pre-js \"${TEST_SRC_DIR}/wasm/onnxruntime_test_all_adapter.js\" -s \"EXPORTED_RUNTIME_METHODS=['FS']\" --preload-file ${CMAKE_CURRENT_BINARY_DIR}/testdata@/testdata -s EXIT_RUNTIME=1")
   if (onnxruntime_ENABLE_WEBASSEMBLY_THREADS)
-    set_property(TARGET onnxruntime_test_all APPEND_STRING PROPERTY LINK_FLAGS " -s PROXY_TO_PTHREAD=1")
+    set_property(TARGET onnxruntime_test_all APPEND_STRING PROPERTY LINK_FLAGS " -s DEFAULT_PTHREAD_STACK_SIZE=131072 -s PROXY_TO_PTHREAD=1")
   endif()
   if (onnxruntime_USE_JSEP)
     set_property(TARGET onnxruntime_test_all APPEND_STRING PROPERTY LINK_FLAGS " --pre-js \"${ONNXRUNTIME_ROOT}/wasm/js_internal_api.js\"")
+  endif()
+  if (CMAKE_BUILD_TYPE STREQUAL "Debug")
+    set_property(TARGET onnxruntime_test_all APPEND_STRING PROPERTY LINK_FLAGS
+      " -s ASSERTIONS=2 -s SAFE_HEAP=1 -s STACK_OVERFLOW_CHECK=2 -s DEMANGLE_SUPPORT=1"
+    )
+  else()
+    set_property(TARGET onnxruntime_test_all APPEND_STRING PROPERTY LINK_FLAGS
+      " -s ASSERTIONS=0 -s SAFE_HEAP=0 -s STACK_OVERFLOW_CHECK=0 -s DEMANGLE_SUPPORT=0"
+    )
   endif()
 endif()
 
