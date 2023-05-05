@@ -105,13 +105,8 @@ class QnnTensorWrapper {
 
   QnnTensorWrapper(const Qnn_Tensor_t& qnn_tensor) : tensor_name_(GetQnnTensorName(qnn_tensor)),
                                                      client_buf_{} {
+    qnn_tensor_ = qnn_tensor;
     SetQnnTensorName(qnn_tensor_, tensor_name_.c_str());
-
-    Qnn_TensorType_t tensor_type = GetQnnTensorType(qnn_tensor);
-    SetQnnTensorType(qnn_tensor_, tensor_type);
-
-    Qnn_DataType_t qnn_data_type = GetQnnTensorDataType(qnn_tensor);
-    SetQnnTensorDataType(qnn_tensor_, qnn_data_type);
 
     Qnn_QuantizeParams_t quantize_param = QNN_QUANTIZE_PARAMS_INIT;
     const auto& src_quantize_param = GetQnnTensorQParams(qnn_tensor);
@@ -123,15 +118,13 @@ class QnnTensorWrapper {
 
     uint32_t shape_rank = GetQnnTensorRank(qnn_tensor);
     uint32_t* shape_data = GetQnnTensorDims(qnn_tensor);
-    //std::vector<uint32_t> tensor_shape(shape_data, shape_data + shape_rank);
     dimensions_.assign(shape_data, shape_data + shape_rank);
     SetQnnTensorDim(qnn_tensor_, dimensions_);
 
     // This method is only used for graph inputs/outputs when desearilize from cached context
     // no client buffer should be set
 
-    Qnn_TensorMemType_t mem_type = GetQnnTensorMemType(qnn_tensor);
-    SetQnnTensorMemType(qnn_tensor_, mem_type);
+    SetQnnTensorMemType(qnn_tensor_, QNN_TENSORMEMTYPE_RAW);
   }
   
 

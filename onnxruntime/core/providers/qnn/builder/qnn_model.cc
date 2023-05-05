@@ -36,11 +36,10 @@ Status QnnModel::SetGraphInputOutputInfo(const GraphViewer& graph_viewer,
     initializer_inputs_.emplace(graph_ini.first);
   }
   auto input_defs = fused_node.InputDefs();
-  ORT_RETURN_IF_ERROR(ParseGraphInputOrOutput(input_defs, inputs_info_, model_input_index_map_, model_input_index_map_without_initializers_, true));
+  ORT_RETURN_IF_ERROR(ParseGraphInputOrOutput(input_defs, inputs_info_, model_input_index_map_, true));
 
   auto output_defs = fused_node.OutputDefs();
-  std::unordered_map<std::string, size_t> dummy;
-  ORT_RETURN_IF_ERROR(ParseGraphInputOrOutput(output_defs, outputs_info_, model_output_index_map_, dummy));
+  ORT_RETURN_IF_ERROR(ParseGraphInputOrOutput(output_defs, outputs_info_, model_output_index_map_));
 
   return Status::OK();
 }
@@ -48,15 +47,12 @@ Status QnnModel::SetGraphInputOutputInfo(const GraphViewer& graph_viewer,
 Status QnnModel::ParseGraphInputOrOutput(ConstPointerContainer<std::vector<NodeArg*>>& input_output_defs,
                                          std::unordered_map<std::string, OnnxTensorInfo>& input_output_info_table,
                                          std::unordered_map<std::string, size_t>& input_output_index_map,
-                                         std::unordered_map<std::string, size_t>& input_output_index_map_without_initializers,
                                          bool is_input) {
-  for (size_t i = 0, end = input_output_defs.size(), index = 0; i < end; ++i) {
+  for (size_t i = 0, end = input_output_defs.size(); i < end; ++i) {
     const auto& name = input_output_defs[i]->Name();
     if (is_input) {
       if (IsGraphInitializerInput(name)) {
         continue;  // exclude initializer inputs
-      } else {
-        input_output_index_map_without_initializers.emplace(name, index++);
       }
     }
     // Validate input/output shape
@@ -186,11 +182,11 @@ Status QnnModel::ExecuteGraph(const Ort::KernelContext& context) {
   LOGS(logger_, VERBOSE) << "QnnModel::ExecuteGraphs";
   const size_t num_inputs = context.GetInputCount();
   const size_t num_outputs = context.GetOutputCount();
-  ORT_RETURN_IF_NOT(model_input_index_map_.size() <= num_inputs, "Inconsistent input sizes");
-  ORT_RETURN_IF_NOT(model_output_index_map_.size() == num_outputs, "Inconsistent output sizes");
+  ORT_RETURN_IF_NOT(qnn_inputs_.size() <= num_inputs, "Inconsistent input sizes");
+  ORT_RETURN_IF_NOT(qnn_outputs_.size() == num_outputs, "Inconsistent output sizes");
 
   using namespace qnn::utils;
-  auto data_size = [&](auto ort_tensor) -> size_t {
+  auto TensorDataSize = [&](auto ort_tensor) -> size_t {
     auto tensor_type_and_shape = ort_tensor.GetTensorTypeAndShapeInfo();
     size_t length = tensor_type_and_shape.GetElementCount();
     ONNXTensorElementDataType element_type = tensor_type_and_shape.GetElementType();
@@ -198,28 +194,27 @@ Status QnnModel::ExecuteGraph(const Ort::KernelContext& context) {
     return element_size * length;
   };
 
-  for (const auto& tensor_wrapper : graph_info_->InputTensors()) {
-    const std::string& model_input = tensor_wrapper.GetName();
-    auto index = GetInputIndex(model_input);
-    LOGS(logger_, VERBOSE) << "model_input = " << model_input << " index = " << index;
-    auto input_tensor = context.GetInput(index);
-    index = model_input_index_map_without_initializers_[model_input];
-    ORT_ENFORCE(GetQnnTensorClientBuf(qnn_inputs_[index]).dataSize == data_size(input_tensor),
+  for (auto& qnn_input_tensor : qnn_inputs_) {
+    const std::string& model_input_name(GetQnnTensorName(qnn_input_tensor));
+    auto index = GetInputIndex(model_input_name);
+    LOGS(logger_, VERBOSE) << "model_input = " << model_input_name << " index = " << index;
+    auto ort_input_tensor = context.GetInput(index);
+    ORT_ENFORCE(GetQnnTensorClientBuf(qnn_input_tensor).dataSize == TensorDataSize(ort_input_tensor),
                 "ORT Tensor data size does not match QNN tensor data size");
-    SetQnnTensorClientBufData(qnn_inputs_[index],
-                              const_cast<void*>(input_tensor.GetTensorData<void>()));
+    SetQnnTensorClientBufData(qnn_input_tensor,
+                              const_cast<void*>(ort_input_tensor.GetTensorData<void>()));
   }
 
-  for (const auto& tensor_wrapper : graph_info_->OutputTensors()) {
-    const std::string& tensor_name = tensor_wrapper.GetName();
-    auto index = GetOutputIndex(tensor_name);
-    LOGS(logger_, VERBOSE) << "model_output = " << tensor_name << " index = " << index;
-    const auto& output_info = GetOutputInfo(tensor_name);
+  for (auto& qnn_output_tensor : qnn_outputs_) {
+    const std::string& model_output_name(GetQnnTensorName(qnn_output_tensor));
+    auto index = GetOutputIndex(model_output_name);
+    LOGS(logger_, VERBOSE) << "model_output = " << model_output_name << " index = " << index;
+    const auto& output_info = GetOutputInfo(model_output_name);
     const std::vector<int64_t>& output_shape = output_info->shape_;
     auto output_tensor = context.GetOutput(index, output_shape.data(), output_shape.size());
-    ORT_ENFORCE(GetQnnTensorClientBuf(qnn_outputs_[index]).dataSize == data_size(output_tensor),
+    ORT_ENFORCE(GetQnnTensorClientBuf(qnn_output_tensor).dataSize == TensorDataSize(output_tensor),
                 "ORT Tensor data size does not match QNN tensor data size");
-    SetQnnTensorClientBufData(qnn_outputs_[index],
+    SetQnnTensorClientBufData(qnn_output_tensor,
                               const_cast<void*>(output_tensor.GetTensorData<void>()));
   }
 
@@ -272,8 +267,8 @@ Status QnnModel::SetupTensors(std::vector<Qnn_Tensor_t>& qnn_tensors,
     ORT_RETURN_IF_ERROR(GetQnnTensorDataLength(tensor_wrapper.GetTensorDims(),
                                                tensor_wrapper.GetTensorDataType(),
                                                length));
-    auto name = tensor_wrapper.GetName();
-    auto index = is_input ? model_input_index_map_without_initializers_[name] : model_output_index_map_[name];
+    auto tensor_name = tensor_wrapper.GetName();
+    auto index = is_input ? GetInputIndex(tensor_name) : GetOutputIndex(tensor_name);
     qnn_tensors[index] = tensor_wrapper.GetQnnTensor();
     SetQnnTensorClientBufSize(qnn_tensors[index], static_cast<uint32_t>(length));
   }

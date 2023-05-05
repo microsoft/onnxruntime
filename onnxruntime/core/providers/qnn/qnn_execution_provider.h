@@ -60,6 +60,9 @@ class QNNExecutionProvider : public IExecutionProvider {
                                                     const size_t node_unit_size,
                                                     const logging::Logger& logger) const;
 
+  Status CreateComputeFunc(std::vector<NodeComputeInfo>& node_compute_funcs,
+                           const logging::Logger& logger);
+
  private:
   ProviderOptions runtime_options_;
   std::string backend_path_;

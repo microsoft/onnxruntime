@@ -275,12 +275,39 @@ DataLayout QNNExecutionProvider::GetPreferredLayout() const {
   return DataLayout::NHWC;
 }
 
+Status QNNExecutionProvider::CreateComputeFunc(std::vector<NodeComputeInfo>& node_compute_funcs,
+                                               const logging::Logger& logger) {
+  NodeComputeInfo compute_info;
+  compute_info.create_state_func = [&](ComputeContext* context, FunctionState* state) {
+    LOGS(logger, VERBOSE) << "compute_info.create_state_func context->node_name: " << context->node_name;
+    *state = qnn_models_[context->node_name].get();
+    return 0;
+  };
+
+  compute_info.release_state_func = [](FunctionState state) {
+    // the 'state' is a qnn::QnnModel managed by unique_ptr
+    ORT_UNUSED_PARAMETER(state);
+  };
+
+  compute_info.compute_func = [](FunctionState state, const OrtApi*, OrtKernelContext* context) {
+    Ort::KernelContext ctx(context);
+    qnn::QnnModel* model = reinterpret_cast<qnn::QnnModel*>(state);
+    Status result = model->ExecuteGraph(ctx);
+    return result;
+  };
+
+  node_compute_funcs.push_back(compute_info);
+
+  return Status::OK();
+}
+
 Status QNNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
                                      std::vector<NodeComputeInfo>& node_compute_funcs) {
   const auto& logger = *GetLogger();
   bool is_npu_backend = qnn_backend_manager_->IsNpuBackend();
   onnxruntime::PathString model_path;
   if (use_cached_context_) {
+    Node& fused_node = fused_nodes_and_graphs[0].fused_node;
     const onnxruntime::GraphViewer& graph_viewer(fused_nodes_and_graphs[0].filtered_graph);
     model_path = graph_viewer.ModelPath().ToPathString();
     std::unique_ptr<qnn::QnnModel> qnn_model = std::make_unique<qnn::QnnModel>(logger,
@@ -288,31 +315,13 @@ Status QNNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused
                                                                                cpu_allocator_,
                                                                                is_npu_backend);
     ORT_RETURN_IF_ERROR(qnn_backend_manager_->LoadCachedQnnContext(model_path, *(qnn_model.get())));
+    ORT_RETURN_IF_ERROR(qnn_model->SetGraphInputOutputInfo(graph_viewer, fused_node));
+    ORT_RETURN_IF_ERROR(qnn_model->SetupQnnInputOutput());
 
-    Node& fused_node = fused_nodes_and_graphs[0].fused_node;
     LOGS(logger, VERBOSE) << "fused node name: " << fused_node.Name();
     qnn_models_.emplace(fused_node.Name(), std::move(qnn_model));
 
-    NodeComputeInfo compute_info;
-    compute_info.create_state_func = [&](ComputeContext* context, FunctionState* state) {
-      LOGS(logger, VERBOSE) << "compute_info.create_state_func context->node_name: " << context->node_name;
-      *state = qnn_models_[context->node_name].get();
-      return 0;
-    };
-
-    compute_info.release_state_func = [](FunctionState state) {
-      // the 'state' is a qnn::QnnModel managed by unique_ptr
-      ORT_UNUSED_PARAMETER(state);
-    };
-
-    compute_info.compute_func = [](FunctionState state, const OrtApi*, OrtKernelContext* context) {
-      Ort::KernelContext ctx(context);
-      qnn::QnnModel* model = reinterpret_cast<qnn::QnnModel*>(state);
-      Status result = model->ExecuteGraph(ctx);
-      return result;
-    };
-
-    node_compute_funcs.push_back(compute_info);
+    ORT_RETURN_IF_ERROR(CreateComputeFunc(node_compute_funcs, logger));
   } else {
     for (const auto& fused_node_and_graph : fused_nodes_and_graphs) {
       Node& fused_node = fused_node_and_graph.fused_node;
@@ -333,26 +342,7 @@ Status QNNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused
       LOGS(logger, VERBOSE) << "fused node name: " << fused_node.Name();
       qnn_models_.emplace(fused_node.Name(), std::move(qnn_model));
 
-      NodeComputeInfo compute_info;
-      compute_info.create_state_func = [&](ComputeContext* context, FunctionState* state) {
-        LOGS(logger, VERBOSE) << "compute_info.create_state_func context->node_name: " << context->node_name;
-        *state = qnn_models_[context->node_name].get();
-        return 0;
-      };
-
-      compute_info.release_state_func = [](FunctionState state) {
-        // the 'state' is a qnn::QnnModel managed by unique_ptr
-        ORT_UNUSED_PARAMETER(state);
-      };
-
-      compute_info.compute_func = [](FunctionState state, const OrtApi*, OrtKernelContext* context) {
-        Ort::KernelContext ctx(context);
-        qnn::QnnModel* model = reinterpret_cast<qnn::QnnModel*>(state);
-        Status result = model->ExecuteGraph(ctx);
-        return result;
-      };
-
-      node_compute_funcs.push_back(compute_info);
+      ORT_RETURN_IF_ERROR(CreateComputeFunc(node_compute_funcs, logger));
     }
   }
 
