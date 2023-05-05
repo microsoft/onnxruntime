@@ -354,6 +354,9 @@ args = {
 }
 sess.run(None, args)
 
+# you can find engine cache and profile cache are saved in the 'trt_engine_cache_path' directory, e.g.
+# TensorrtExecutionProvider_TRTKernel_graph_torch_jit_1843998305741310361_0_0_fp16.engine and TensorrtExecutionProvider_TRTKernel_graph_torch_jit_1843998305741310361_0_0_fp16.profile.
+
 ```
 
 Please note that there is a constrain of using this explict shape range feautre, i.e., all the dynamic shape inputs should be provided with corresponding min/max/opt shapes.
