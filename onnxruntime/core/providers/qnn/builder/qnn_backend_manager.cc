@@ -25,10 +25,10 @@ typedef Qnn_ErrorHandle_t (*QnnSystemInterfaceGetProvidersFn_t)(const QnnSystemI
                                                                 uint32_t* numProviders);
 template <typename F, class T>
 Status QnnBackendManager::GetQnnInterfaceProviders(const char* lib_path,
-                                                 const char* interface_provider_name,
-                                                 void** backend_lib_handle,
-                                                 T*** interface_providers,
-                                                 uint32_t& num_providers) {
+                                                   const char* interface_provider_name,
+                                                   void** backend_lib_handle,
+                                                   T*** interface_providers,
+                                                   uint32_t& num_providers) {
   std::string error_msg;
   *backend_lib_handle = LoadLib(lib_path,
                                 static_cast<int>(DlOpenFlag::DL_NOW) | static_cast<int>(DlOpenFlag::DL_LOCAL),
@@ -86,10 +86,11 @@ Status QnnBackendManager::LoadBackend() {
 }
 
 Status QnnBackendManager::LoadQnnSystemLib() {
-  std::string system_lib_file = "libQnnSystem.so";
 #ifdef _WIN32
-  system_lib_file = "QnnSystem.dll";
-#endif
+  std::string system_lib_file = "QnnSystem.dll";
+#else
+  std::string system_lib_file = "libQnnSystem.so";
+#endif  // #ifdef _WIN32
   std::filesystem::path lib_file_path(backend_path_.c_str());
   std::string sys_file_path(lib_file_path.remove_filename().string() + system_lib_file);
   QnnSystemInterface_t** system_interface_providers{nullptr};

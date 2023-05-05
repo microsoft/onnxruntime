@@ -4,6 +4,7 @@
 #include "qnn_execution_provider.h"
 
 #include <fstream>
+#include <filesystem>
 #include "core/providers/common.h"
 #include "core/framework/allocatormgr.h"
 #include "core/framework/compute_capability.h"
@@ -280,6 +281,7 @@ QNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer
   // we want to give users a summary message at warning level.
   if (num_of_partitions > 1) {
     LOGS(logger, WARNING) << summary_msg;
+    ORT_ENFORCE(!context_cache_enabled_, "Only support singel partition for context cache feature.");
   } else {
     LOGS(logger, INFO) << summary_msg;
   }
@@ -344,14 +346,12 @@ Status QNNExecutionProvider::CompileFromOrtGraph(const std::vector<FusedNodeAndG
 bool QNNExecutionProvider::IsContextCacheFileExists(const onnxruntime::PathString& model_pathstring,
                                                     onnxruntime::PathString& context_cache_pathstring) const {
   // Use user provided context cache file path if exist, otherwise try model_file.onnx.bin by default
-  if (!context_cache_path_.empty()) {
-    context_cache_pathstring = ToPathString(context_cache_path_);
-  } else {
+  if (context_cache_path_.empty()) {
     context_cache_pathstring = model_pathstring + ToPathString(".bin");
+  } else {
+    context_cache_pathstring = ToPathString(context_cache_path_);
   }
-  std::fstream context_cache_fs(context_cache_pathstring.c_str());
-  bool context_cache_file_exist = context_cache_fs.good() ? true : false;
-  context_cache_fs.close();
+  bool context_cache_file_exist = std::filesystem::exists(context_cache_pathstring.c_str()) ? true : false;
 
   return context_cache_file_exist;
 }
