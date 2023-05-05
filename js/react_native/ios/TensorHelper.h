@@ -8,10 +8,9 @@
 
 // Note: Using below syntax for including ort c api and ort extensions headers to resolve a compiling error happened
 // in an expo react native ios app (a redefinition error happened with multiple object types defined within
-// ORT C API header). It's an edge case that the compiler allows both ort c api headers to be included when #include syntax
-// doesn't match.
-// For the case when extensions not enabled, it still requires a onnxruntime prefix directory for searching paths.
-// Also in general, it's a convention to use #include for C/C++ headers rather then #import. See:
+// ORT C API header). It's an edge case that the compiler allows both ort c api headers to be included when #include
+// syntax doesn't match. For the case when extensions not enabled, it still requires a onnxruntime prefix directory for
+// searching paths. Also in general, it's a convention to use #include for C/C++ headers rather then #import. See:
 // https://google.github.io/styleguide/objcguide.html#import-and-include
 // https://microsoft.github.io/objc-guide/Headers/ImportAndInclude.html
 #ifdef ORT_ENABLE_EXTENSIONS
