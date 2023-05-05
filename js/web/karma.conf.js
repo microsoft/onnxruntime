@@ -63,6 +63,8 @@ module.exports = function (config) {
       { pattern: 'dist/ort-wasm-threaded.wasm', included: false },
       { pattern: 'dist/ort-wasm-simd.wasm', included: false },
       { pattern: 'dist/ort-wasm-simd-threaded.wasm', included: false },
+      { pattern: 'dist/ort-wasm-simd.jsep.wasm', included: false },
+      { pattern: 'dist/ort-wasm-simd-threaded.jsep.wasm', included: false },
       { pattern: 'dist/ort-wasm-threaded.worker.js', included: false },
     ],
     proxies: {
@@ -70,6 +72,8 @@ module.exports = function (config) {
       '/base/test/ort-wasm-threaded.wasm': '/base/dist/ort-wasm-threaded.wasm',
       '/base/test/ort-wasm-simd.wasm': '/base/dist/ort-wasm-simd.wasm',
       '/base/test/ort-wasm-simd-threaded.wasm': '/base/dist/ort-wasm-simd-threaded.wasm',
+      '/base/test/ort-wasm-simd.jsep.wasm': '/base/dist/ort-wasm-simd.jsep.wasm',
+      '/base/test/ort-wasm-simd-threaded.jsep.wasm': '/base/dist/ort-wasm-simd-threaded.jsep.wasm',
       '/base/test/ort-wasm-threaded.worker.js': '/base/dist/ort-wasm-threaded.worker.js',
     },
     plugins: karmaPlugins,
