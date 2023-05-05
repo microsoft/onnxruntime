@@ -78,7 +78,7 @@ stages:
 - stage: Mimalloc
   dependsOn: [ ]
   jobs:
-  - template: templates/win-ci-vs-2022.yml
+  - template: templates/jobs/win-ci-vs-2022-job.yml
     parameters:
       BuildConfig: 'Debug'
       EnvSetupScript: setup_env.bat
@@ -98,7 +98,7 @@ stages:
 - stage: NoAbseil
   dependsOn: [ ]
   jobs:
-  - template: templates/win-ci-vs-2022.yml
+  - template: templates/jobs/win-ci-vs-2022-job.yml
     parameters:
       BuildConfig: 'Debug'
       EnvSetupScript: setup_env.bat
@@ -118,7 +118,7 @@ stages:
 - stage: MinimalBuildWithNoExceptions
   dependsOn: [ ]
   jobs:
-  - template: templates/win-ci-vs-2022.yml
+  - template: templates/jobs/win-ci-vs-2022-job.yml
     parameters:
       BuildConfig: 'Debug'
       EnvSetupScript: setup_env.bat
@@ -138,7 +138,7 @@ stages:
 - stage: DebugNodeInputsOutputs
   dependsOn: [ ]
   jobs:
-  - template: templates/win-ci-vs-2022.yml
+  - template: templates/jobs/win-ci-vs-2022-job.yml
     parameters:
       BuildConfig: 'Debug'
       EnvSetupScript: setup_env.bat
