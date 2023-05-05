@@ -22,6 +22,15 @@ export interface TypedShapeUtils<T extends Tensor.Type> {
 // TODO: add more tensor utilities
 export interface TypedTensorUtils<T extends Tensor.Type> extends Properties, TypedShapeUtils<T> {
   /**
+   * creates an DataURL instance from tensor
+   *
+   * @param options - Interface describing tensor instance - Defaults: RGB, 3 channels, 0-255, NHWC
+   * 0-255, NHWC
+   * @returns An DataURL instance which can be used to draw on canvas
+   */
+  toDataURL(options?: TensorToImageDataOptions): string;
+
+  /**
    * creates an ImageData instance from tensor
    *
    * @param tensorFormat - Interface describing tensor instance - Defaults: RGB, 3 channels, 0-255, NHWC

@@ -14,7 +14,7 @@ jobs:
     CCACHE_DIR: $(Pipeline.Workspace)/ccache
   workspace:
     clean: all
-  pool: onnxruntime-Linux-CPU-2019
+  pool: onnxruntime-Ubuntu2004-AMD-CPU
   steps:
   - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
     displayName: 'Clean Agent Directories'

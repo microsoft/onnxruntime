@@ -560,7 +560,7 @@ Status FusedConvFp16::Compute(OpKernelContext* context) const {
               static_cast<size_t>(output_count),
               static_cast<size_t>(group_output_channels),
               static_cast<size_t>(kernel_dim),
-              1, &gemm_params, thread_pool);
+              1, &gemm_params, nullptr);
         }
       }
     };

@@ -212,7 +212,7 @@ common::Status If::SetupSubgraphExecutionInfo(const SessionState& session_state,
   std::vector<OrtDevice> feed_locations;
   ORT_RETURN_IF_ERROR(controlflow::detail::FindDevicesForValues(session_state, feed_names, feed_locations));
 
-  std::vector<const OrtMemoryInfo*> fetch_locations;
+  std::vector<const OrtDevice*> fetch_locations;
   fetch_locations.reserve(info->num_outputs);
 
   // we need the allocator info for each output from the If node
@@ -220,7 +220,7 @@ common::Status If::SetupSubgraphExecutionInfo(const SessionState& session_state,
   const auto& outputs = node.OutputDefs();
   for (int i = 0, end = info->num_outputs; i < end; ++i) {
     // const auto& alloc_info = controlflow::detail::FindMemoryInfoForValue(session_state, outputs[i]->Name());
-    const auto& alloc_info = utils::FindMemoryInfoForValue(session_state, outputs[i]->Name());
+    const auto& alloc_info = utils::FindDeviceForValue(session_state, outputs[i]->Name());
     fetch_locations.push_back(&alloc_info);
   }
 
@@ -384,7 +384,7 @@ Status IfImpl::Execute(const FeedsFetchesManager& ffm) {
     if (outputs_[i].first == AllocationType::Delayed) {
       // functor to forward the allocation request from the subgraph to the If node's context so that the
       // allocation plan for the If node's output is used.
-      fetch_allocators[i] = [this, i, &fetches](const TensorShape& shape, const OrtMemoryInfo& location,
+      fetch_allocators[i] = [this, i, &fetches](const TensorShape& shape, const OrtDevice& location,
                                                 OrtValue& ort_value, bool& allocated) {
         // if the device the If output is allocated on does not match the required device for the subgraph output
         // we don't update the provided OrtValue and return false for 'allocated'.
@@ -397,7 +397,7 @@ Status IfImpl::Execute(const FeedsFetchesManager& ffm) {
 
         const OrtValue& value = *context_.GetOutputMLValue(i);
 
-        if (tensor->Location().device == location.device) {
+        if (tensor->Location().device == location) {
           // return OrtValue for allocated tensor
           ort_value = value;
           allocated = true;

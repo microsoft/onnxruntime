@@ -4,7 +4,8 @@
 namespace OrtApis {
 
 ORT_API(const OrtApi*, GetApi, uint32_t version);
-ORT_API(const char*, GetVersionString);
+ORT_API(const ORTCHAR_T*, GetVersionString);
+ORT_API(const ORTCHAR_T*, GetBuildInfoString);
 
 ORT_API(void, ReleaseEnv, OrtEnv*);
 ORT_API(void, ReleaseStatus, _Frees_ptr_opt_ OrtStatus*);
@@ -355,16 +356,16 @@ ORT_API(void, ReleaseOpAttr, _Frees_ptr_opt_ OrtOpAttr* op_attr);
 
 ORT_API_STATUS_IMPL(CreateOp,
                     _In_ const OrtKernelInfo* info,
-                    _In_ const char* op_name,
-                    _In_ const char* domain,
-                    _In_ int version,
-                    _In_opt_ const char** type_constraint_names,
-                    _In_opt_ const ONNXTensorElementDataType* type_constraint_values,
-                    _In_opt_ int type_constraint_count,
-                    _In_opt_ const OrtOpAttr* const* attr_values,
-                    _In_opt_ int attr_count,
-                    _In_ int input_count,
-                    _In_ int output_count,
+                    _In_z_ const char* op_name,
+                    _In_z_ const char* domain,
+                    int version,
+                    _In_reads_(type_constraint_count) const char** type_constraint_names,
+                    _In_reads_(type_constraint_count) const ONNXTensorElementDataType* type_constraint_values,
+                    int type_constraint_count,
+                    _In_reads_(attr_count) const OrtOpAttr* const* attr_values,
+                    int attr_count,
+                    int input_count,
+                    int output_count,
                     _Outptr_ OrtOp** ort_op);
 
 ORT_API_STATUS_IMPL(InvokeOp,

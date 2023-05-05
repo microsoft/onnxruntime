@@ -27,7 +27,7 @@
     <AndroidHttpClientHandlerType>Xamarin.Android.Net.AndroidClientHandler</AndroidHttpClientHandlerType>
     <SignAssembly>true</SignAssembly>
     <AssemblyOriginatorKeyFile>..\..\OnnxRuntime.snk</AssemblyOriginatorKeyFile>
-    <AndroidSupportedAbis>armeabi-v7a;arm64-v8a</AndroidSupportedAbis>
+    <AndroidSupportedAbis>armeabi-v7a;arm64-v8a;x86;x86_64</AndroidSupportedAbis>
   </PropertyGroup>
   <PropertyGroup>
     <AutoGenerateBindingRedirects>True</AutoGenerateBindingRedirects>
@@ -65,7 +65,6 @@
     <AndroidEnableProfiledAot>true</AndroidEnableProfiledAot>
     <EnableLLVM>true</EnableLLVM>
     <AndroidLinkTool>r8</AndroidLinkTool>
-    <AndroidSupportedAbis>arm64-v8a;armeabi-v7a;x86</AndroidSupportedAbis>
     <AndroidLinkSkip>Microsoft.ML.OnnxRuntime.Tests.Common;Microsoft.ML.OnnxRuntime.Tests.Devices;</AndroidLinkSkip>
   </PropertyGroup>
   <ItemGroup>

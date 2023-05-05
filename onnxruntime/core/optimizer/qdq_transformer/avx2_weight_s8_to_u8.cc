@@ -129,7 +129,7 @@ static bool TryConvertDynamicQuantizeLSTM(Node& op_node, Graph& graph) {
   weights_proto_u8.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_UINT8);
   weights_proto_u8.set_name(weight_tensor_proto->name() + "_s8_2_u8");
   weights_proto_u8.mutable_dims()->CopyFrom(weight_tensor_proto->dims());
-  weights_proto_u8.set_raw_data(w_temp.data<int8_t>(), w_temp.size());
+  weights_proto_u8.set_raw_data(w_temp.data<int8_t>(), static_cast<size_t>(w_temp.size()));
   input_defs[w_idx] = &graph_utils::AddInitializer(graph, weights_proto_u8);
 
   ONNX_NAMESPACE::TensorProto weight_zp_proto_u8;
@@ -140,7 +140,7 @@ static bool TryConvertDynamicQuantizeLSTM(Node& op_node, Graph& graph) {
   r_proto_u8.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_UINT8);
   r_proto_u8.set_name(r_tensor_proto->name() + "_s8_2_u8");
   r_proto_u8.mutable_dims()->CopyFrom(r_tensor_proto->dims());
-  r_proto_u8.set_raw_data(r_temp.data<int8_t>(), r_temp.size());
+  r_proto_u8.set_raw_data(r_temp.data<int8_t>(), static_cast<size_t>(r_temp.size()));
   input_defs[r_idx] = &graph_utils::AddInitializer(graph, r_proto_u8);
 
   ONNX_NAMESPACE::TensorProto r_zp_proto_u8;
