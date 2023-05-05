@@ -397,16 +397,18 @@ fn prepare_libort_dir() -> PathBuf {
     );
     match strategy.as_ref().map(String::as_str) {
         Ok("download") => prepare_libort_dir_prebuilt(&version),
-        Ok("system") => PathBuf::from(match env::var(ORT_RUST_ENV_SYSTEM_LIB_LOCATION) {
+        Ok("compile") => prepare_libort_dir_compiled(),
+        Ok("system") | Err(_) => PathBuf::from(match env::var(ORT_RUST_ENV_SYSTEM_LIB_LOCATION) {
             Ok(p) => p,
-            Err(e) => {
-                panic!(
-                    "Could not get value of environment variable {:?}: {:?}",
-                    ORT_RUST_ENV_SYSTEM_LIB_LOCATION, e
-                );
+            Err(_) => {
+                println!("No value set for '{}', defaulting to /usr", ORT_RUST_ENV_SYSTEM_LIB_LOCATION);
+                "/usr".to_string()
+                // panic!(
+                //     "Could not get value of environment variable {:?}: {:?}",
+                //     ORT_RUST_ENV_SYSTEM_LIB_LOCATION, e
+                // );
             }
         }),
-        Ok("compile") | Err(_) => prepare_libort_dir_compiled(),
         _ => panic!("Unknown value for {:?}", ORT_RUST_ENV_STRATEGY),
     }
 }
