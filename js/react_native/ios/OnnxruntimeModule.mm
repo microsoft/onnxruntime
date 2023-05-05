@@ -7,15 +7,19 @@
 #import <Foundation/Foundation.h>
 #import <React/RCTLog.h>
 
-// Note: DO NOT CHANGE the following line for including ORT C API headers.
-// Switched from using syntax `#import <onnxruntime/onnxruntime_cxx_api.h>` to using below syntax for including headers
-// so as to match how we include the ort c api headers in other places. Otherwise, it will trigger an edge case when compiling
-// a react native ios app with ort extensions included and cause the compiler to allow both ORT C APIs to be included.
-// (can lead to a redefinition error of multiple types defined within ORT C API header.)
-#include "onnxruntime_cxx_api.h"
-
+// Note: Using below syntax for including ort c api and ort extensions headers to resolve a compiling error happened
+// in an expo react native ios app when ort extensions enabled (a redefinition error of multiple object types defined within
+// ORT C API header). It's an edge case that compiler allows both ort c api headers to be included when #include syntax
+// doesn't match.
+// For the case when extensions not enabled, it still requires a onnxruntime prefix directory for searching paths.
+// Also in general, it's a convention to use #include for C/C++ headers rather then #import. See:
+// https://google.github.io/styleguide/objcguide.html#import-and-include
+// https://microsoft.github.io/objc-guide/Headers/ImportAndInclude.html
 #ifdef ORT_ENABLE_EXTENSIONS
+#include "onnxruntime_cxx_api.h"
 #include "onnxruntime_extensions.h"
+#else
+#include "onnxruntime/onnxruntime_cxx_api.h"
 #endif
 
 @implementation OnnxruntimeModule
