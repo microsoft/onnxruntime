@@ -129,10 +129,9 @@ Following environment variables can be set for TensorRT execution provider.
 
 * `ORT_TENSORRT_TACTIC_SOURCES`: Specify the tactics to be used by adding (+) or removing (-) tactics from the default tactic sources (default = all available tactics) e.g. "-CUDNN,+CUBLAS" available keys: "CUBLAS"|"CUBLAS_LT"|"CUDNN"|"EDGE_MASK_CONVOLUTIONS".
 
-* `ORT_TENSORRT_EXTRA_PLUGIN_LIB_PATHS`: Specify extra TensorRT plugin library paths.
+* `ORT_TENSORRT_EXTRA_PLUGIN_LIB_PATHS`: Specify extra TensorRT plugin library paths. ORT TRT by default supports any TRT plugins registered in TRT registry in TRT plugin library (i.e. `libnvinfer_plugin.so`). Moreover, if user wants to use other TRT plugins that are not in TRT plugin library, for example, FasterTransformer has many TRT plugin implementations for different models, user can specify like this `ORT_TENSORRT_EXTRA_PLUGIN_LIB_PATHS=libvit_plugin.so;libvit_int8_plugin.so`.  
 
-* `ORT_TENSORRT_PROFILE_MIN_SHAPES`, `ORT_TENSORRT_PROFILE_MAX_SHAPES` and `ORT_TENSORRT_PROFILE_OPT_SHAPES` : Build with dynamic shapes using a profile with the min/max/opt shapes provided. The format of the profile shapes is "input_tensor_1:dim_1xdim_2x...,input_tensor_2:dim_3xdim_4x...,..." and these three flags should be all provided in order to enable explict profile shapes feature.   
-Check [Explicit shape range for dynamic shape input](#explicit-shape-range-for-dynamic-shape-input) and TRT doc [optimization profiles](https://docs.nvidia.com/deeplearning/tensorrt/developer-guide/index.html#opt_profiles) for more details.
+* `ORT_TENSORRT_PROFILE_MIN_SHAPES`, `ORT_TENSORRT_PROFILE_MAX_SHAPES` and `ORT_TENSORRT_PROFILE_OPT_SHAPES` : Build with dynamic shapes using a profile with the min/max/opt shapes provided. The format of the profile shapes is "input_tensor_1:dim_1xdim_2x...,input_tensor_2:dim_3xdim_4x...,..." and these three flags should be all provided in order to enable explict profile shapes feature. Check [Explicit shape range for dynamic shape input](#explicit-shape-range-for-dynamic-shape-input) and TRT doc [optimization profiles](https://docs.nvidia.com/deeplearning/tensorrt/developer-guide/index.html#opt_profiles) for more details.
 
 One can override default values by setting environment variables. e.g. on Linux:
 
