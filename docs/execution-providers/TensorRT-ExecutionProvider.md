@@ -270,7 +270,7 @@ An optimization profile describes a range of dimensions for each TRT network inp
 ORT TRT lets you explicitly specify min/max/opt values(range) for each dynamic shape input's dimension through three provider options, `trt_profile_min_shapes`, `trt_profile_max_shapes` and `trt_profile_opt_shapes`. If these three provider options are not specified 
 and model has dynamic shape input, ORT TRT will determine the min/max/opt values for the dynamic shape input based on incoming input tensor.
 
-To use the engine cache built with optimization profiles specified by explicit shape ranges, user still needs to provide the three provider options as well as engine cache flag.
+To use the engine cache built with optimization profiles specified by explicit shape ranges, user still needs to provide those three provider options as well as engine cache enable flag.
 ORT TRT will firstly compare the shape ranges of the three provider options with the shape ranges saved in the .profile files, and will rebuild the engine if the shape ranges mismatch.
 
 Here is a python example:
@@ -290,7 +290,7 @@ trt_ep_options = {
 }
 
 sess = ort.InferenceSession(
-    "my_model.onnx"),
+    "my_model.onnx",
     providers=[
         ("TensorrtExecutionProvider", trt_ep_options),
         "CUDAExecutionProvider",
