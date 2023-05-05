@@ -172,8 +172,9 @@ class SessionScope {
 #endif
 #ifdef DEBUG_NODE_INPUTS_OUTPUTS
         ,
-        dump_context_{
-            session_state_.GetGraphExecutionCounter(), 0}
+        dump_context_ {
+    session_state_.GetGraphExecutionCounter(), 0
+  }
 #endif
   {
     if (session_state_.Profiler().IsEnabled()) {
@@ -297,8 +298,9 @@ class KernelScope {
 #endif
 #ifdef DEBUG_NODE_INPUTS_OUTPUTS
         ,
-        dump_context_{
-            session_scope_.dump_context_.iteration, kernel_.Node().Index()}
+        dump_context_ {
+    session_scope_.dump_context_.iteration, kernel_.Node().Index()
+  }
 #endif
   {
 #ifdef CONCURRENCY_VISUALIZER
