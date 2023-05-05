@@ -57,7 +57,7 @@ stages:
   - job:
     steps:
     - bash: |
-        if [[ "${{ parameters.IsReleaseBuild }}" = true && "${{ parameters.PreReleaseVersionSuffixString }}" != "none"  ]]; then
+        if [[ "${{ parameters.IsReleaseBuild }}" = True && "${{ parameters.PreReleaseVersionSuffixString }}" != "none"  ]]; then
           echo "##vso[task.setvariable variable=ReleaseVersionSuffix;]${{ parameters.PreReleaseVersionSuffixString }}.${{ parameters.PreReleaseVersionSuffixNumber }}"
         else
           echo "##vso[task.setvariable variable=ReleaseVersionSuffix;]''"
