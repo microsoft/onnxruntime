@@ -84,11 +84,11 @@ struct StringBuffer {
   std::stringstream ss_;
 };
 
-// applies only when contents is a string
+// apply the callback only when response is for sure to be a '/0' terminated string
 static size_t WriteStringCallback(void* contents, size_t size, size_t nmemb, void* userp) {
   size_t realsize = size * nmemb;
   auto buffer = reinterpret_cast<struct StringBuffer*>(userp);
-  buffer->ss_ << reinterpret_cast<const char*>(contents);
+  buffer->ss_.write(reinterpret_cast<const char*>(contents), realsize);
   return realsize;
 }
 
@@ -166,7 +166,6 @@ onnxruntime::Status OpenAIInvoker::Send(const CloudEndPointConfig& run_options,
     verbose = verbose_iter->second != "0" ? 1L : 0L;
   }
 
-  CURLcode ret{};
   CurlHandler curl_handler(WriteStringCallback);
   StringBuffer string_buffer;
 
@@ -185,9 +184,9 @@ onnxruntime::Status OpenAIInvoker::Send(const CloudEndPointConfig& run_options,
   curl_handler.SetOption(CURLOPT_VERBOSE, verbose);
   curl_handler.SetOption(CURLOPT_WRITEDATA, (void*)&string_buffer);
 
-  ret = curl_handler.Perform();
-  if (ret != CURLE_OK) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, curl_easy_strerror(ret));
+  auto curl_ret = curl_handler.Perform();
+  if (CURLE_OK != curl_ret) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, curl_easy_strerror(curl_ret));
   }
 
   auto output_tensor = std::make_unique<Tensor>(onnxruntime::DataTypeImpl::GetType<std::string>(), TensorShape{1}, allocator_);
