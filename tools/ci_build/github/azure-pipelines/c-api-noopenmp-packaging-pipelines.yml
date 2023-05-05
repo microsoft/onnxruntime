@@ -24,8 +24,8 @@ parameters:
   type: boolean
   default: false
 
-- name: ReleaseVersionSuffixString
-  displayName: Suffix added to pre-release package version -alpha, -rc etc. Only used if IsReleaseBuild is true. Denotes the type of pre-release package.
+- name: PreReleaseVersionSuffixString
+  displayName: Suffix added to pre-release package version. Only used if IsReleaseBuild is true. Denotes the type of pre-release package.
   type: string
   values:
   - -alpha
@@ -34,7 +34,7 @@ parameters:
   - none
   default: none
 
-- name: ReleaseVersionSuffixNumber
+- name: PreReleaseVersionSuffixNumber
   displayName: Number added to pre-release package version. Only used if IsReleaseBuild is true. Denotes the sequence of a pre-release package.
   type: number
   default: 0
@@ -57,12 +57,14 @@ stages:
   - job:
     steps:
     - bash: |
-        if [ "${{ parameters.ReleaseVersionSuffixString }}" != "none"  ]; then
+        if [ ${{ parameters.IsReleaseBuild }} && "${{ parameters.PreReleaseVersionSuffixString }}" != "none"  ]; then
           echo "##vso[task.setvariable variable=ReleaseVersionSuffix;]${{ parameters.ReleaseVersionSuffixString }}.${{ parameters.ReleaseVersionSuffixNumber }}"
         else
           echo "##vso[task.setvariable variable=ReleaseVersionSuffix;]''"
         fi
     - bash: |
+        echo "Pre-release version suffix is: $(PreReleaseVersionSuffixString)"
+        echo "Pre-release version number is: $(PreReleaseVersionSuffixNumber)"
         echo "Release version suffix is: $(ReleaseVersionSuffix)"
 
 - template: templates/c-api-cpu.yml
