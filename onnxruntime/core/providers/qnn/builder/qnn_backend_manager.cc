@@ -343,12 +343,12 @@ Status QnnBackendManager::LoadCachedQnnContext(const onnxruntime::PathString& co
                                                      buffer_size,
                                                      &binary_info,
                                                      &binary_info_size);
-  ORT_RETURN_IF(QNN_SUCCESS != rt, "Failed to get context binary infor.");
+  ORT_RETURN_IF(QNN_SUCCESS != rt, "Failed to get context binary info.");
 
   // binary_info life cycle is here
   // Binary info to graph info
   //retrieve Qnn graph infor from binary info
-  ORT_RETURN_IF(nullptr == binary_info, "Qnn cached binary infor is nullptr.");
+  ORT_RETURN_IF(nullptr == binary_info, "Qnn cached binary info is nullptr.");
   uint32_t graph_count = 0;
   QnnSystemContext_GraphInfo_t* graphs_info = nullptr;
   if (binary_info->version == QNN_SYSTEM_CONTEXT_BINARY_INFO_VERSION_1) {
