@@ -1779,7 +1779,7 @@ class PlannerImpl {
         execution_plan.emplace_back(nullptr);
       }
     }
-    // 2. Determing following things:
+    // 2. Determining following things:
     //    a. which node needs to generate the notification
     //    b. which node needs to trigger downstream
 #ifdef ENABLE_TRAINING
