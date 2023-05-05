@@ -29,12 +29,23 @@ public:
             {"max", DML_REDUCE_FUNCTION_MAX},
             {"avg", DML_REDUCE_FUNCTION_AVERAGE},
         };
+
+        constexpr NameAndIndex coordinateTransformationModes[] =
+        {
+            {"half_pixel", 0},
+            {"output_half_pixel", 1},
+        };
+
+        std::string coordinateTransformationMode = kernelCreationContext.GetOptionalAttribute<std::string>(AttrName::CoordinateTransformationMode, "half_pixel");
+        auto optionalCoordinateTransformationModeValue = TryMapStringToIndex(coordinateTransformationMode, coordinateTransformationModes);
         const std::string mode = kernelCreationContext.GetOptionalAttribute<std::string>(AttrName::Mode, "avg");
         const auto optionalReductionFunction = TryMapStringToIndex<DML_REDUCE_FUNCTION>(mode, mapping);
         const float spatialScale = kernelCreationContext.GetOptionalAttribute<float>(AttrName::SpatialScale, 1.0f);
         const int32_t samplesPerOutput = kernelCreationContext.GetOptionalAttribute<int32_t>(AttrName::SamplingRatio, 0u);
         ML_CHECK_VALID_ARGUMENT(samplesPerOutput >= 0, "sampling_ratio must be 0 or positive.");
         ML_CHECK_VALID_ARGUMENT(!!optionalReductionFunction, "Unsupported RoiAlign mode.");
+        ML_CHECK_VALID_ARGUMENT(!!optionalCoordinateTransformationModeValue, "Unsupported RoiAlign coordinate_transformation_mode.");
+
 
         DML_ROI_ALIGN1_OPERATOR_DESC operatorDesc = {};
         operatorDesc.InputTensor = &inputDescs[0];
@@ -48,7 +59,7 @@ public:
         operatorDesc.MaximumSamplesPerOutput = (samplesPerOutput == 0) ? UINT32_MAX : samplesPerOutput;
         operatorDesc.ReductionFunction = *optionalReductionFunction;
         operatorDesc.InterpolationMode = DML_INTERPOLATION_MODE_LINEAR;
-        operatorDesc.InputPixelOffset = m_coordinateTransformMode == "half_pixel" ? 0.5f : 0.0f;
+        operatorDesc.InputPixelOffset = (*optionalCoordinateTransformationModeValue == 0)? 0.5f : 0.0f;
         operatorDesc.OutputPixelOffset = -0.5f;
         DML_OPERATOR_DESC opDesc = { DML_OPERATOR_ROI_ALIGN1, &operatorDesc };
 
