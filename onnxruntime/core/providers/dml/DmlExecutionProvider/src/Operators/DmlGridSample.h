@@ -189,7 +189,7 @@ enum DmlGridSamplePaddingMode : uint32_t
     Reflection
 };
 
-// Helper to derive dimensions and attributes from either the STFT shape inferrer or the STFT kernel constructor.
+// Helper to derive dimensions and attributes from either the GridSample shape inferrer or the GridSample kernel constructor.
 struct DmlGridSampleParameters
 {
     uint32_t batchSize = 0;
