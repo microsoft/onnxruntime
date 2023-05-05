@@ -265,7 +265,6 @@ else()
   if (onnxruntime_ENABLE_WEBASSEMBLY_THREADS)
     target_link_options(onnxruntime_webassembly PRIVATE
       "SHELL:-s EXPORT_NAME=ortWasmThreaded"
-      "SHELL:-s USE_PTHREADS=1"
     )
     if (onnxruntime_ENABLE_WEBASSEMBLY_SIMD)
       set_target_properties(onnxruntime_webassembly PROPERTIES OUTPUT_NAME "ort-wasm-simd-threaded")
