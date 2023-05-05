@@ -466,15 +466,13 @@ static void RunModelWithRandomInput(
 TEST(PackedAttentionTest, test_on_random_data) {
   std::string onnx_model = "testdata/packed_attention_fp32.onnx";
   std::string onnx_model_fp16 = "testdata/packed_attention_fp16.onnx";
-  // for (int batch_size : std::vector<int>({1, 2, 3, 4, 5, 6, 7, 8})) {
-  //   for (int sequence_length : std::vector<int>({32, 48, 64, 95, 128})) {
-  for (int batch_size : std::vector<int>({1, 2, 3, 4})) {
-    for (int sequence_length : std::vector<int>({32, 48})) {
-      // RunModelWithRandomInput(
-      //     batch_size,
-      //     sequence_length,
-      //     onnx_model,
-      //     false);
+  for (int batch_size : std::vector<int>({1, 2, 3, 4, 5, 6, 7, 8})) {
+    for (int sequence_length : std::vector<int>({32, 48, 64, 95, 128})) {
+      RunModelWithRandomInput(
+          batch_size,
+          sequence_length,
+          onnx_model,
+          false);
       RunModelWithRandomInput(
           batch_size,
           sequence_length,
