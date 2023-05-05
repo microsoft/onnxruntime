@@ -115,17 +115,17 @@ Following environment variables can be set for TensorRT execution provider.
 
 * `ORT_TENSORRT_TIMING_CACHE_ENABLE`: Enable TensorRT timing cache. Default 0 = false, nonzero = true. Check [Timing cache](#timing-cache) for details.
 
-* `ORT_TENSORRT_FORCE_TIMING_CACHE_ENABLE`: Force the TensorRT cache to be used even if device profile does not match. Default 0 = false, nonzero = true.
+* `ORT_TENSORRT_FORCE_TIMING_CACHE_ENABLE`: Force the TensorRT timing cache to be used even if device profile does not match. Default 0 = false, nonzero = true.
 
 * `ORT_TENSORRT_DETAILED_BUILD_LOG_ENABLE`: Enable detailed build step logging on TensorRT EP with timing for each engine build. Default 0 = false, nonzero = true.
 
 * `ORT_TENSORRT_BUILD_HEURISTICS_ENABLE`: Build engine using heuristics to reduce build time. Default 0 = false, nonzero = true.
 
-* `ORT_TENSORRT_SPARSITY_ENABLE`: Control if sparsity can be used by TRT. Default 0 = false, 1 = true.
+* `ORT_TENSORRT_SPARSITY_ENABLE`: Control if sparsity can be used by TRT. Default 0 = false, 1 = true. Check `--sparsity` in `trtexec` command-line flags for [details](https://docs.nvidia.com/deeplearning/tensorrt/developer-guide/index.html#trtexec-flags).
 
-* `ORT_TENSORRT_BUILDER_OPTIMIZATION_LEVEL`: Set the builder optimization level. WARNING: levels below 2 do not guarantee good engine performance, but greatly improve build time.  Default 2, valid range [0-4].
+* `ORT_TENSORRT_BUILDER_OPTIMIZATION_LEVEL`: Set the builder optimization level. WARNING: levels below 2 do not guarantee good engine performance, but greatly improve build time.  Default 2, valid range [0-4]. Check `--builderOptimizationLevel` in `trtexec` command-line flags for [details](https://docs.nvidia.com/deeplearning/tensorrt/developer-guide/index.html#trtexec-flags).
 
-* `ORT_TENSORRT_AUXILIARY_STREAMS`: Set maximum number of auxiliary streams per inference stream. Setting this value to 0 will lead to optimal memory usage. Default -1 = heuristics.
+* `ORT_TENSORRT_AUXILIARY_STREAMS`: Set maximum number of auxiliary streams per inference stream. Setting this value to 0 will lead to optimal memory usage. Default -1 = heuristics. Check `--maxAuxStreams` in `trtexec` command-line flags for [details](https://docs.nvidia.com/deeplearning/tensorrt/developer-guide/index.html#trtexec-flags).
 
 * `ORT_TENSORRT_TACTIC_SOURCES`: Specify the tactics to be used by adding (+) or removing (-) tactics from the default tactic sources (default = all available tactics) e.g. "-CUDNN,+CUBLAS" available keys: "CUBLAS"|"CUBLAS_LT"|"CUDNN"|"EDGE_MASK_CONVOLUTIONS".
 
