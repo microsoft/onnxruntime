@@ -131,8 +131,8 @@ Following environment variables can be set for TensorRT execution provider.
 
 * `ORT_TENSORRT_EXTRA_PLUGIN_LIB_PATHS`: Specify extra TensorRT plugin library paths.
 
-* `ORT_TENSORRT_PROFILE_MIN_SHAPES`, `ORT_TENSORRT_PROFILE_MAX_SHAPES` and `ORT_TENSORRT_PROFILE_OPT_SHAPES` : Build with dynamic shapes using a profile with the min/max/opt shapes provided. The format of the profile shapes is "input_tensor_1:dim_1xdim_2x...,input_tensor_2:dim_3xdim_4x...,..." and these three flags should be all provided in order to enable explict TRT profile shapes feature.   
-Check [Explicit shape range for dynamic shape input](#explicit-shape-range-for-dynamic-shape-input) for details on what this flag does.
+* `ORT_TENSORRT_PROFILE_MIN_SHAPES`, `ORT_TENSORRT_PROFILE_MAX_SHAPES` and `ORT_TENSORRT_PROFILE_OPT_SHAPES` : Build with dynamic shapes using a profile with the min/max/opt shapes provided. The format of the profile shapes is "input_tensor_1:dim_1xdim_2x...,input_tensor_2:dim_3xdim_4x...,..." and these three flags should be all provided in order to enable explict profile shapes feature.   
+Check [Explicit shape range for dynamic shape input](#explicit-shape-range-for-dynamic-shape-input) for details on what these flags do .Also, check TRT doc [TRT optimization profiles](https://docs.nvidia.com/deeplearning/tensorrt/developer-guide/index.html#opt_profiles) for more details.
 
 One can override default values by setting environment variables. e.g. on Linux:
 
