@@ -65,6 +65,9 @@ fn generate_bindings(include_dir: &Path) {
     ];
 
     let path = include_dir
+        .join("onnxruntime")
+        .join("core")
+        .join("session")
         .join("onnxruntime_c_api.h");
 
     // The bindgen::Builder is the main entry point
