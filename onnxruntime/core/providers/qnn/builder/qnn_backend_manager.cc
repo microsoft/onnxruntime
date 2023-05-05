@@ -342,7 +342,7 @@ Status QnnBackendManager::LoadCachedQnnContext(const onnxruntime::PathString& co
                                                      buffer_size,
                                                      &binary_info,
                                                      &binary_info_size);
-  ORT_RETURN_IF(QNN_SUCCESS != rt, "Failed to get context binary infor.");
+  ORT_RETURN_IF(QNN_SUCCESS != rt, "Failed to get context binary info.");
 
   // binary_info life cycle is here
   // Binary info to graph info
