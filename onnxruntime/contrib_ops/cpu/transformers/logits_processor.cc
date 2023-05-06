@@ -12,6 +12,7 @@
 #include <vector>
 #include <numeric>
 #include <algorithm>
+#include <math.h>
 
 namespace onnxruntime {
 namespace contrib {
@@ -247,12 +248,13 @@ TSLogitsProcessor<T>::TSLogitsProcessor(int min_length, int eos_token_id)
 template <typename T>
 void TSLogitsProcessor<T>::Process(const ISequences* sequences,
                                           NextTokenScores<T>& next_token_scores) {
-  std::cout << "TSLogitsProcessor process: ts only, +1, suppress notimestamp, seq_length < 5, pair check" << std::endl;
+  std::cout << "TSLogitsProcessor process: +1, suppress notimestamp, seq_length < 5, pair check and others" << std::endl;
   //assert(!vocab_mask_.empty());
 
   const int beg_token_id_ = 50363 + 1;
   const int eot_token_id_ = 50256 + 1;
   const int not_token_id_ = 50362 + 1;
+  const int max_initial_timestamp_index = 0;
 /*
   const int sot_token_id_ = 50257 + 1;
   const int solm_token_id_ = 50361 + 1;
@@ -265,17 +267,22 @@ void TSLogitsProcessor<T>::Process(const ISequences* sequences,
   const int vocab_size = next_token_scores.vocab_size;
   for (int i = 0; i < batch_beam_size; i++) {
     gsl::span<T> beam_token_scores = next_token_scores.GetScores(i);///logits: (vocab size)
+    //assert beam_token_scores.size() == vocab_size
+    std::cout << "vocab_size: " << vocab_size << ", beam_token_scores.size(): " << beam_token_scores.size() << std::endl;
     gsl::span<const int32_t> sequence = sequences->GetSequence(i);///tokens_cur: (seq length)
     const int seq_length = sequence.size();
+    const int sample_begin = 3;
+    //TODO: sequence should either be empty or start with 50364!!, sample_begin = 3
+
     std::cout << "i: " << i << ", seq_length: " << seq_length << std::endl;
     for (int j = 0; j < seq_length; j++) {
-        std::cout << sequence[j] << ", ";
+      std::cout << sequence[j] << ", ";
     }
     std::cout << std::endl;
+
     const bool last_was_timestamp = seq_length > 0 && sequence.back() >= beg_token_id_;//0
-    const bool penultimate_was_timestamp = seq_length < 5 || sequence[seq_length - 2] >= beg_token_id_;//2  first 4: sot:50258, lang:50259, transcribe:50359, beg:50364
-
-
+    const bool penultimate_was_timestamp = seq_length < 2 + sample_begin || sequence[seq_length - 2] >= beg_token_id_;//2  first 4: sot:50258, lang:50259, transcribe:50359, beg:50364
+    std::cout << "last_was_timestamp: " << last_was_timestamp << ", penultimate_was_timestamp: " << penultimate_was_timestamp << std::endl;
     //const bool is_initial = seq_length == 0;
     for (int j = 0; j < vocab_size; j++) {//, p++
       //suppress blank
@@ -296,21 +303,124 @@ void TSLogitsProcessor<T>::Process(const ISequences* sequences,
 
       //mask timestamp logits. Timestamps appears in pairs except directly before EOT
 
-      }
+    }
 
-      if (last_was_timestamp) {
-        if (penultimate_was_timestamp) {
-          for (int j = beg_token_id_; j < vocab_size; j++) {//n_logits
-            beam_token_scores[j] = std::numeric_limits<T>::lowest();
-          }
-        } else {
-          for (int j = 0; j < eot_token_id_; j++) {
-            beam_token_scores[j] = std::numeric_limits<T>::lowest();
-          }
+    std::cout << "timestamp pair check" << std::endl;
+    if (last_was_timestamp) {
+      if (penultimate_was_timestamp) {
+        //if timestamps show up in pair, or it's the first timestamp, no more timestamp should be generated
+        for (int j = beg_token_id_; j < vocab_size; j++) {//n_logits
+          beam_token_scores[j] = std::numeric_limits<T>::lowest();
+        }
+      } else {
+        //if timestamp doesn't show up in pair, generate timestamp (suppress text)
+        for (int j = 0; j < eot_token_id_; j++) {
+          beam_token_scores[j] = std::numeric_limits<T>::lowest();
         }
       }
-
     }
+
+
+    //find timestamps
+    std::vector<int32_t> timestamps;
+    for (const auto& word_id : sequence) {
+      if (word_id >= beg_token_id_) {
+        timestamps.push_back(word_id);
+      }
+    }
+
+    //timestamps should not decrease; forbid timestamp tokens smaller than the last
+    //also force each segment to have a nonzero length to prevent infinite loop
+    std::cout << "timestamp increase check" << std::endl;
+    const int timestamps_len = timestamps.size();
+    if (timestamps_len > 0) {
+      //changes in whisper v20230314
+      //for (int j = beg_token_id_; j < timestamps.back(); j++) {
+      //  beam_token_scores[j] = std::numeric_limits<T>::lowest();
+      //}
+
+      //latest changes in whisper main
+      int timestamp_last;
+      if (last_was_timestamp && !penultimate_was_timestamp) {
+        timestamp_last = timestamps.back();
+      } else {
+        timestamp_last = timestamps.back() + 1;
+      }
+
+      for (int j = beg_token_id_; j < timestamp_last; j++) {//n_logits
+        beam_token_scores[j] = std::numeric_limits<T>::lowest();
+      }
+    }
+
+    std::cout << "apply max_initial_timestamp" << std::endl;
+    if (seq_length == sample_begin) {
+      //suppress generating non-timestamp tokens at the beginning
+      for (int j = 0; j < beg_token_id_; j++) {//n_logits
+        beam_token_scores[j] = std::numeric_limits<T>::lowest();
+      }
+
+      //apply the max_initial_timestamp option
+      const int last_allowed = beg_token_id_ + max_initial_timestamp_index + 1;
+      for (int j = last_allowed; j < vocab_size; j++) {//n_logits
+        beam_token_scores[j] = std::numeric_limits<T>::lowest();
+      }
+    }
+
+    //whisper.cpp L3602
+    // populate the logprobs array (log_softmax)
+    std::cout << "calculate logprobs" << std::endl;
+    gsl::span<float> logprobs;
+    {
+        const float logit_max = *std::max_element(beam_token_scores.begin(), beam_token_scores.end());
+        float logsumexp = 0.0f;
+        for (int j = 0; j < vocab_size; ++j) {
+            if (beam_token_scores[j] > std::numeric_limits<T>::lowest()) {
+                logsumexp += expf(beam_token_scores[i] - logit_max);
+            }
+        }
+        logsumexp = logf(logsumexp) + logit_max;
+
+        for (int j = 0; j < vocab_size; ++j) {
+            if (beam_token_scores[j] > std::numeric_limits<T>::lowest()) {
+                logprobs[j] = beam_token_scores[j] - logsumexp;
+            } else {
+                logprobs[j] = std::numeric_limits<T>::lowest();
+            }
+        }
+    }
+
+    // if sum of probability over timestamps is above any other token, sample timestamp
+    // ref: https://github.com/openai/whisper/blob/0b1ba3d46ebf7fe6f953acfd8cad62a4f851b49f/whisper/decoding.py#L431-L437
+    std::cout << "sample timestamp" << std::endl;
+    {
+        // logsumexp over timestamps
+        float timestamp_logprob = std::numeric_limits<T>::lowest();
+        {
+            float logsumexp = 0.0f;
+            const float logprob_max = *std::max_element(logprobs.begin() + beg_token_id_, logprobs.end());
+            for (int j = beg_token_id_; j < vocab_size; ++j) {
+                if (logprobs[j] > std::numeric_limits<T>::lowest()) {
+                    logsumexp += expf(logprobs[j] - logprob_max);
+                }
+            }
+            if (logsumexp > 0.0f) {
+                timestamp_logprob = logf(logsumexp) + logprob_max;
+            }
+        }
+
+        const float max_text_token_logprob = *std::max_element(logprobs.begin(), logprobs.begin() + beg_token_id_);
+
+        //fprintf(stderr, "timestamp_logprob=%f max_text_token_logprob=%f\n", timestamp_logprob, max_text_token_logprob);
+
+        if (timestamp_logprob > max_text_token_logprob) {
+            for (int j = 0; j < beg_token_id_; ++j) {
+                beam_token_scores[j]   = std::numeric_limits<T>::lowest();
+                logprobs[i] = std::numeric_limits<T>::lowest();
+            }
+        }
+    }
+
+  }
 
 #ifdef DEBUG_GENERATION
   DumpScores("TSLogitsProcessor", next_token_scores);
