@@ -52,9 +52,9 @@ resources:
     ref: aead4d751c2101e23336aa73f2380df83e7a13f3
 
 stages:
-- stage: Set_Release_Version_Suffix
+- stage: Set_Variables
   jobs:
-  - job:
+  - job: Set_Release_Version_Suffix
     steps:
     - bash: |
         if [[ "${{ parameters.IsReleaseBuild }}" = True && "${{ parameters.PreReleaseVersionSuffixString }}" != "none"  ]]; then
@@ -69,12 +69,14 @@ stages:
         echo "Release version suffix is: $(ReleaseVersionSuffix)"
 
 - template: templates/c-api-cpu.yml
+  variables:
+    ReleaseVersionSuffix: $[ stageDependencies.Set_Variables.Set_Release_Version_Suffix.outputs['ReleaseVersionSuffix'] ]
   parameters:
     RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
     DoCompliance: ${{ parameters.DoCompliance }}
     DoEsrp: ${{ parameters.DoEsrp }}
     IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
-    ReleaseVersionSuffix: $(ReleaseVersionSuffix)
+    ReleaseVersionSuffix: ${{ variables.ReleaseVersionSuffix }}
     OrtNugetPackageId: 'Microsoft.ML.OnnxRuntime'
     AdditionalBuildFlags: ''
     AdditionalWinBuildFlags: '--enable_onnx_tests --enable_wcos'
