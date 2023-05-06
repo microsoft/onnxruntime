@@ -517,7 +517,7 @@ stages:
 
 - stage: NuGet_Packaging_GPU
   dependsOn:
-  - Set_Release_Version_Suffix
+  - Set_Variables
   - Windows_Packaging_gpu
   - Windows_Packaging_tensorrt
   - Linux_C_API_Packaging_GPU_x64
@@ -835,7 +835,7 @@ stages:
 
 - stage: NuGet_Packaging_DML
   dependsOn:
-  - Set_Release_Version_Suffix
+  - Set_Variables
   - Windows_CI_GPU_DML_Dev
   - Windows_CI_GPU_DML_Dev_x86
   - Windows_CI_GPU_DML_Dev_arm64
