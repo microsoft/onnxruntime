@@ -112,10 +112,14 @@ downloadJson(
                 extractFile(zip, WASM_FOLDER, 'ort-wasm-threaded.wasm', 'Release_wasm');
                 extractFile(zip, WASM_FOLDER, 'ort-wasm-simd.wasm', 'Release_wasm');
                 extractFile(zip, WASM_FOLDER, 'ort-wasm-simd-threaded.wasm', 'Release_wasm');
+                extractFile(zip, WASM_FOLDER, 'ort-wasm-simd.jsep.wasm', 'Release_wasm');
+                extractFile(zip, WASM_FOLDER, 'ort-wasm-simd-threaded.jsep.wasm', 'Release_wasm');
 
                 extractFile(zip, JS_FOLDER, 'ort-wasm.js', 'Release_wasm');
                 extractFile(zip, JS_FOLDER, 'ort-wasm-threaded.js', 'Release_wasm');
                 extractFile(zip, JS_FOLDER, 'ort-wasm-threaded.worker.js', 'Release_wasm');
+                extractFile(zip, JS_FOLDER, 'ort-wasm-simd.jsep.js', 'Release_wasm');
+                extractFile(zip, JS_FOLDER, 'ort-wasm-simd-threaded.jsep.js', 'Release_wasm');
               });
             });
           });
