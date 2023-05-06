@@ -9,7 +9,7 @@ jobs:
     TODAY: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
   timeoutInMinutes: 150
   steps:
-    - template: templates/mac-build-step-with-cache.yml
+    - template: stages/jobs/steps/mac-build-step-with-cache-step.yml
       parameters:
         WithCache: true
         Today: $(TODAY)
@@ -24,7 +24,7 @@ jobs:
             env:
               CCACHE_DIR: $(PROTO_CACHE_DIR)
 
-    - template: templates/mac-build-step-with-cache.yml
+    - template: stages/jobs/steps/mac-build-step-with-cache-step.yml
       parameters:
         WithCache: true
         Today: $(TODAY)

@@ -44,7 +44,7 @@ stages:
     - script: sudo apt-get update -y && sudo apt-get install -y coreutils ninja-build
       displayName: Install coreutils and ninja
 
-    - template: "templates/use-android-ndk.yml"
+    - template: "stages/jobs/steps/use-android-ndk-step.yml"
 
     # We build the host protoc to <ORT_ROOT>/protobuf_install
     - script: |
@@ -102,7 +102,7 @@ stages:
         pathToPublish: $(Build.ArtifactStagingDirectory)
         artifactName: CPUBuildOutput
 
-    - template: templates/clean-agent-build-directory-step.yml
+    - template: stages/jobs/steps/clean-agent-build-directory-step.yml
 
   - job: Build_NNAPI_EP
     pool: onnxruntime-Linux-CPU-For-Android-CI
@@ -126,7 +126,7 @@ stages:
     - script: sudo apt-get update -y && sudo apt-get install -y coreutils ninja-build
       displayName: Install coreutils and ninja
 
-    - template: "templates/use-android-ndk.yml"
+    - template: "stages/jobs/steps/use-android-ndk-step.yml"
 
     # We build the host protoc to <ORT_ROOT>/protobuf_install
     - script: |
@@ -185,7 +185,7 @@ stages:
         pathToPublish: $(Build.ArtifactStagingDirectory)
         artifactName: NNAPIBuildOutput
 
-    - template: templates/clean-agent-build-directory-step.yml
+    - template: stages/jobs/steps/clean-agent-build-directory-step.yml
 
 - stage: TEST_STAGE
   dependsOn: BUILD_STAGE
@@ -227,7 +227,7 @@ stages:
           jdkArchitectureOption: 'x64'
           jdkSourceOption: 'PreInstalled'
 
-      - template: "templates/use-android-ndk.yml"
+      - template: "stages/jobs/steps/use-android-ndk-step.yml"
 
       - script: |
           python3 tools/python/run_android_emulator.py \
@@ -257,7 +257,7 @@ stages:
         displayName: Stop Android emulator
         condition: always()
 
-      - template: templates/clean-agent-build-directory-step.yml
+      - template: stages/jobs/steps/clean-agent-build-directory-step.yml
 
   - job: Test_NNAPI_EP
     pool:
@@ -297,7 +297,7 @@ stages:
           jdkArchitectureOption: 'x64'
           jdkSourceOption: 'PreInstalled'
 
-      - template: "templates/use-android-ndk.yml"
+      - template: "stages/jobs/steps/use-android-ndk-step.yml"
 
       - script: |
           python3 tools/python/run_android_emulator.py \
@@ -343,7 +343,7 @@ stages:
             --emulator-pid-file $(Build.BinariesDirectory)/emulator.pid
         displayName: Stop Android emulator
         condition: always()
-      - template: templates/clean-agent-build-directory-step.yml
+      - template: stages/jobs/steps/clean-agent-build-directory-step.yml
 
 - stage: MASTER_BUILD_STAGE
   # The below jobs only run on master build.
@@ -377,7 +377,7 @@ stages:
           jdkArchitectureOption: 'x64'
           jdkSourceOption: 'PreInstalled'
 
-      - template: "templates/use-android-ndk.yml"
+      - template: "stages/jobs/steps/use-android-ndk-step.yml"
 
       # used by Build Minimal ORT
       - script: brew install coreutils ninja
@@ -444,7 +444,7 @@ stages:
             --emulator-pid-file $(Build.BinariesDirectory)/emulator.pid
         displayName: Stop Android emulator
         condition: always()
-      - template: templates/clean-agent-build-directory-step.yml
+      - template: stages/jobs/steps/clean-agent-build-directory-step.yml
 
   - job: Update_Dashboard
     workspace:
@@ -472,4 +472,4 @@ stages:
           arguments: '"$(Build.BinariesDirectory)/coverage_rpt.txt" "https://dev.azure.com/onnxruntime/onnxruntime/_build/results?buildId=$(Build.BuildId)" arm android nnapi'
           workingDirectory: '$(Build.BinariesDirectory)'
 
-      - template: templates/clean-agent-build-directory-step.yml
+      - template: stages/jobs/steps/clean-agent-build-directory-step.yml

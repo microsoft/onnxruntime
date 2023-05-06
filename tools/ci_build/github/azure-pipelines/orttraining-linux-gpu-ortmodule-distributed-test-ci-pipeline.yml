@@ -14,7 +14,7 @@ stages:
       clean: true
       submodules: recursive
 
-    - template: templates/run-docker-build-steps.yml
+    - template: stages/jobs/run-docker-build-steps.yml
       parameters:
         RunDockerBuildArgs: |
           -o ubuntu20.04 -d gpu \
@@ -51,11 +51,11 @@ stages:
       condition: succeededOrFailed()
       timeoutInMinutes: 30
 
-    - template: templates/component-governance-component-detection-steps.yml
+    - template: stages/jobs/steps/component-governance-component-detection-steps.yml
       parameters:
         condition: 'succeeded'
 
-    - template: templates/clean-agent-build-directory-step.yml
+    - template: stages/jobs/steps/clean-agent-build-directory-step.yml
 
 - stage: DistributedInferenceTest
   dependsOn: []
@@ -70,7 +70,7 @@ stages:
       clean: true
       submodules: recursive
 
-    - template: templates/run-docker-build-steps.yml
+    - template: stages/jobs/run-docker-build-steps.yml
       parameters:
         RunDockerBuildArgs: |
           -o ubuntu20.04 -d gpu \
@@ -102,8 +102,8 @@ stages:
       condition: succeededOrFailed()
       timeoutInMinutes: 30
 
-    - template: templates/component-governance-component-detection-steps.yml
+    - template: stages/jobs/steps/component-governance-component-detection-steps.yml
       parameters:
         condition: 'succeeded'
 
-    - template: templates/clean-agent-build-directory-step.yml
+    - template: stages/jobs/steps/clean-agent-build-directory-step.yml

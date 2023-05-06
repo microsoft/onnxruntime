@@ -28,7 +28,7 @@ jobs:
     clean: true
     submodules: recursive
 
-  - template: templates/get-docker-image-steps.yml
+  - template: stages/get-docker-image-steps.yml
     parameters:
       Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_lort_cpu
       Context: tools/ci_build/github/linux/docker
@@ -73,4 +73,4 @@ jobs:
       workingDirectory: $(Build.SourcesDirectory)
       condition: succeededOrFailed()
 
-  - template: templates/clean-agent-build-directory-step.yml
+  - template: stages/jobs/steps/clean-agent-build-directory-step.yml

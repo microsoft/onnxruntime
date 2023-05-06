@@ -18,8 +18,8 @@ jobs:
   - bash: rm /hf_models_cache/huggingface/transformers/*
     displayName: 'Clear huggingface transformers cache'
 
-  - template: templates/component-governance-component-detection-steps.yml
+  - template: stages/jobs/steps/component-governance-component-detection-steps.yml
     parameters:
       condition: 'succeeded'
 
-  - template: templates/clean-agent-build-directory-step.yml
+  - template: stages/jobs/steps/clean-agent-build-directory-step.yml

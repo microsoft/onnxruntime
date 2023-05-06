@@ -13,7 +13,7 @@ jobs:
   - script: brew install coreutils ninja
     displayName: Install coreutils and ninja
 
-  - template: templates/mac-build-step-with-cache.yml
+  - template: stages/jobs/steps/mac-build-step-with-cache-step.yml
     parameters:
       WithCache: true
       Today: $(TODAY)

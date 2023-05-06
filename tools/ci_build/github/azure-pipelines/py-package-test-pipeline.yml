@@ -7,7 +7,7 @@ resources:
 stages:
 - stage: Linux_Test_CPU_x86_64_stage
   jobs:
-  - template: templates/py-packaging-linux-test.yml
+  - template: stages/jobs/py-packaging-linux-test-job.yml
     parameters:
       arch: 'x86_64'
       machine_pool: 'aiinfra-Linux-CPU'
@@ -16,7 +16,7 @@ stages:
 - stage: Linux_Test_CPU_aarch64_stage
   dependsOn: []
   jobs:
-  - template: templates/py-packaging-linux-test.yml
+  - template: stages/jobs/py-packaging-linux-test-job.yml
     parameters:
       arch: 'aarch64'
       machine_pool: 'aiinfra-linux-ARM64-CPU-2019'
@@ -25,26 +25,26 @@ stages:
 - stage: Packages_Somking_Test
   dependsOn: []
   jobs:
-    - template: templates/py-package-smoking-test.yml
+    - template: stages/jobs/py-package-smoking-test-job.yml
       parameters:
         job_name: Test_MAC_Wheels
         machine_pool:
           vmImage: 'macOS-12'
         itemPattern: '*/*mac*x86_64.whl'
-    - template: templates/py-package-smoking-test.yml
+    - template: stages/jobs/py-package-smoking-test-job.yml
       parameters:
         job_name: Test_WIN_64_Wheels
         itemPattern: '*/*win_amd64.whl'
         machine_pool:
           vmImage: 'windows-2022'
-    - template: templates/py-package-smoking-test.yml
+    - template: stages/jobs/py-package-smoking-test-job.yml
       parameters:
         job_name: Test_WIN_32_Wheels
         itemPattern: '*/*win32.whl'
         python_arch: 'x86'
         machine_pool:
           vmImage: 'windows-2022'
-    - template: templates/py-package-smoking-test.yml
+    - template: stages/jobs/py-package-smoking-test-job.yml
       parameters:
         job_name: Test_LINUX_x86_64_Wheels
         itemPattern: '*/*manylinux*x86_64.whl'
@@ -61,7 +61,7 @@ stages:
     - Linux_Test_CPU_aarch64_stage
     - Packages_Somking_Test
   jobs:
-  - template: templates/py-packaging-linux-test.yml
+  - template: stages/jobs/py-packaging-linux-test-job.yml
     parameters:
       arch: 'x86_64'
       machine_pool: 'Onnxruntime-Linux-GPU'

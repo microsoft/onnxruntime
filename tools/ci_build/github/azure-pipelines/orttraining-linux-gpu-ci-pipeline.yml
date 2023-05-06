@@ -1,7 +1,7 @@
 trigger: none
 
 jobs:
-- template: templates/linux-ci.yml
+- template: stages/jobs/linux-ci-job.yml
   parameters:
     AgentPool : 'Onnxruntime-Linux-GPU-NC6sv3'
     JobName: 'Onnxruntime_Linux_GPU_Training'

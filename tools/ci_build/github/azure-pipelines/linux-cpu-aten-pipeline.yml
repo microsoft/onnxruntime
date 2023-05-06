@@ -28,7 +28,7 @@ jobs:
     inputs:
       versionSpec: '16.x'
 
-  - template: templates/get-docker-image-steps.yml
+  - template: stages/get-docker-image-steps.yml
     parameters:
       Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_aten_cpu
       Context: tools/ci_build/github/linux/docker
@@ -37,7 +37,7 @@ jobs:
       UseImageCacheContainerRegistry: true
       UsePipelineCache: false
 
-  - template: templates/linux-build-step-with-cache.yml
+  - template: stages/jobs/steps/linux-build-step-with-cache-step.yml
     parameters:
       WithCache: true
       Today: $(TODAY)
@@ -107,7 +107,7 @@ jobs:
                 --cmake_extra_defines onnxruntime_ENABLE_ATEN=ON"
       workingDirectory: $(Build.SourcesDirectory)
 
-  - template: templates/explicitly-defined-final-tasks.yml
+  - template: stages/jobs/steps/explicitly-defined-final-step.yml
 
   - script: |
       df -h

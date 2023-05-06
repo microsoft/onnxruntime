@@ -24,7 +24,7 @@ jobs:
     clean: true
     submodules: none
 
-  - template: templates/get-docker-image-steps.yml
+  - template: stages/get-docker-image-steps.yml
     parameters:
       Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_cuda11
       Context: tools/ci_build/github/linux/docker
@@ -97,7 +97,7 @@ jobs:
       artifactName: 'drop-linux'
       targetPath: '$(Build.BinariesDirectory)/Release'
 
-  - template: templates/explicitly-defined-final-tasks.yml
+  - template: stages/jobs/steps/explicitly-defined-final-step.yml
 
 - job: Linux_Test
   timeoutInMinutes: 180
@@ -146,4 +146,4 @@ jobs:
               --enable_onnx_tests --use_cuda --cuda_version=11.6 --cuda_home=/usr/local/cuda-11.6 --cudnn_home=/usr/local/cuda-11.6 \
               --enable_pybind --build_java --ctest_path ''
 
-  - template: templates/clean-agent-build-directory-step.yml
+  - template: stages/jobs/steps/clean-agent-build-directory-step.yml

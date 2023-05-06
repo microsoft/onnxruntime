@@ -9,7 +9,7 @@ resources:
     ref: aead4d751c2101e23336aa73f2380df83e7a13f3
 
 stages:
-- template: templates/py-packaging-training-cuda-stage.yml
+- template: stages/py-packaging-training-cuda-stage.yml
   parameters:
     build_py_parameters: --enable_training --update --build
     torch_version: '2.0.0'
@@ -22,7 +22,7 @@ stages:
     upload_wheel: 'yes'
     debug_build: false
 
-- template: templates/py-packaging-training-cuda-stage.yml
+- template: stages/py-packaging-training-cuda-stage.yml
   parameters:
     build_py_parameters: --enable_training --update --build
     torch_version: '2.0.0'
@@ -35,7 +35,7 @@ stages:
     upload_wheel: 'no'
     debug_build: true
 
-- template: templates/py-packaging-stage.yml
+- template: stages/py-packaging-stage.yml
   parameters:
     build_py_parameters: --enable_training
     enable_linux_gpu: false

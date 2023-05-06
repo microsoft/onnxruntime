@@ -16,7 +16,7 @@ variables:
 
 stages:
 - ${{ if or(startsWith(variables['System.CollectionUri'], 'https://dev.azure.com/aiinfra/'),startsWith(variables['System.CollectionUri'], 'https://aiinfra.visualstudio.com/')) }}:
-  - template: templates/web-ci.yml
+  - template: stages/web-ci-stage.yml
     parameters:
       NpmPackagingMode: 'dev'
       IsReleasePipeline: true
@@ -30,7 +30,7 @@ stages:
 # o Windows x64
 # o Windows x86
 # Now we don't have coverage for ARM64EC yet. Will add it.
-- template: templates/win-ci.yml
+- template: stages/win-ci-stage.yml
   parameters:
     DoCompliance: false
     DoEsrp: false
@@ -45,7 +45,7 @@ stages:
     buildNodejs: false
     ort_build_pool_name: ${{variables.WIN_CPU_BUILD_MACHINE_POOL_NAME}}
 
-- template: templates/win-ci.yml
+- template: stages/win-ci-stage.yml
   parameters:
     DoCompliance: false
     DoEsrp: false
@@ -60,7 +60,7 @@ stages:
     buildNodejs: true
     ort_build_pool_name: ${{variables.WIN_CPU_BUILD_MACHINE_POOL_NAME}}
 
-- template: templates/win-ci.yml
+- template: stages/win-ci-stage.yml
   parameters:
     DoCompliance: false
     DoEsrp: false
@@ -78,7 +78,7 @@ stages:
 - stage: Mimalloc
   dependsOn: [ ]
   jobs:
-  - template: templates/win-ci-vs-2019.yml
+  - template: stages/win-ci-vs-2019.yml
     parameters:
       BuildConfig: 'Debug'
       EnvSetupScript: setup_env.bat
@@ -98,7 +98,7 @@ stages:
 - stage: NoAbseil
   dependsOn: [ ]
   jobs:
-  - template: templates/win-ci-vs-2019.yml
+  - template: stages/win-ci-vs-2019.yml
     parameters:
       BuildConfig: 'Debug'
       EnvSetupScript: setup_env.bat
@@ -118,7 +118,7 @@ stages:
 - stage: MinimalBuildWithNoExceptions
   dependsOn: [ ]
   jobs:
-  - template: templates/win-ci-vs-2019.yml
+  - template: stages/win-ci-vs-2019.yml
     parameters:
       BuildConfig: 'Debug'
       EnvSetupScript: setup_env.bat
@@ -138,7 +138,7 @@ stages:
 - stage: DebugNodeInputsOutputs
   dependsOn: [ ]
   jobs:
-  - template: templates/win-ci-vs-2019.yml
+  - template: stages/win-ci-vs-2019.yml
     parameters:
       BuildConfig: 'Debug'
       EnvSetupScript: setup_env.bat
@@ -167,7 +167,7 @@ stages:
       skipComponentGovernanceDetection: true
     pool: ${{variables.LINUX_CPU_BUILD_MACHINE_POOL_NAME}}
     steps:
-    - template: templates/set-version-number-variables-step.yml
+    - template: stages/jobs/steps/set-version-number-variables-step.yml
 
     - task: CmdLine@2
       inputs:
@@ -203,7 +203,7 @@ stages:
           targetPath: '$(Build.ArtifactStagingDirectory)'
           artifact: html
   - ${{ if or(startsWith(variables['System.CollectionUri'], 'https://dev.azure.com/aiinfra/'),startsWith(variables['System.CollectionUri'], 'https://aiinfra.visualstudio.com/')) }}:
-    - template: templates/upload-code-coverage-data.yml
+    - template: stages/jobs/steps/upload-code-coverage-data-job.yml
 
 - stage: AndroidCustomBuildScript
   dependsOn: [ ]

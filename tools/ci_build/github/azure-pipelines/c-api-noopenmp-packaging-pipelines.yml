@@ -68,7 +68,7 @@ stages:
         echo "Pre-release version number is: ${{ parameters.PreReleaseVersionSuffixNumber }}"
         echo "Release version suffix is: $(ReleaseVersionSuffix)"
 
-- template: templates/c-api-cpu.yml
+- template: stages/c-api-cpu-stage.yml
   parameters:
     RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
     DoCompliance: ${{ parameters.DoCompliance }}
@@ -80,7 +80,7 @@ stages:
     AdditionalWinBuildFlags: '--enable_onnx_tests --enable_wcos'
     BuildVariant: 'default'
 
-- template: templates/ondevice-training-cpu-packaging-pipeline.yml
+- template: stages/ondevice-training-cpu-packaging-pipeline.yml
   parameters:
     RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
     DoCompliance: ${{ parameters.DoCompliance }}
@@ -102,8 +102,8 @@ stages:
     variables:
       CUDA_VERSION: '11.8'
     steps:
-    - template: templates/set-version-number-variables-step.yml
-    - template: templates/get-docker-image-steps.yml
+    - template: stages/jobs/steps/set-version-number-variables-step.yml
+    - template: stages/get-docker-image-steps.yml
       parameters:
         Dockerfile: tools/ci_build/github/linux/docker/inference/x64/default/cpu/Dockerfile
         Context: tools/ci_build/github/linux/docker/inference/x64/default/cpu
@@ -114,7 +114,7 @@ stages:
       workingDirectory: $(Build.SourcesDirectory)
       displayName: 'Build and Test'
 
-    - template: templates/java-api-artifacts-package-and-publish-steps-posix.yml
+    - template: stages/jobs/steps/get-docker-image-steps.yml
       parameters:
           arch: 'linux-x64'
           buildConfig: 'Release'
@@ -123,19 +123,19 @@ stages:
           libraryName: 'libonnxruntime.so'
           nativeLibraryName: 'libonnxruntime4j_jni.so'
 
-    - template: templates/c-api-artifacts-package-and-publish-steps-posix.yml
+    - template: stages/jobs/steps/c-api-artifacts-package-and-publish-steps-posix.yml
       parameters:
         buildConfig: 'Release'
         artifactName: 'onnxruntime-linux-x64-cuda-$(OnnxRuntimeVersion)'
         artifactNameNoVersionString: 'onnxruntime-linux-x64-cuda'
         libraryName: 'libonnxruntime.so.$(OnnxRuntimeVersion)'
 
-    - template: templates/component-governance-component-detection-steps.yml
+    - template: stages/jobs/steps/component-governance-component-detection-steps.yml
       parameters:
         condition: 'succeeded'
-    - template: templates/clean-agent-build-directory-step.yml
+    - template: stages/jobs/steps/clean-agent-build-directory-step.yml
 
-- template: templates/linux-gpu-tensorrt-packaging-pipeline.yml
+- template: stages/linux-gpu-tensorrt-packaging-stage.yml
   parameters:
       artifactName: 'onnxruntime-linux-x64-tensorrt-$(OnnxRuntimeVersion)'
       artifactNameNoVersionString: 'onnxruntime-linux-x64-tensorrt'
@@ -143,7 +143,7 @@ stages:
       buildJavaOption: '--build_java'
 
 #CUDA without tensorrt
-- template: templates/win-ci.yml
+- template: stages/win-ci-stage.yml
   parameters:
     ort_build_pool_name: 'onnxruntime-gpu-winbuild-T4'
     DoCompliance: ${{ parameters.DoCompliance }}
@@ -159,7 +159,7 @@ stages:
     java_artifact_id: onnxruntime_gpu
 
 # CUDA with Tensorrt
-- template: templates/win-ci.yml
+- template: stages/win-ci-stage.yml
   parameters:
     ort_build_pool_name: 'onnxruntime-gpu-tensorrt8-winbuild-t4'
     DoCompliance: ${{ parameters.DoCompliance }}
@@ -192,7 +192,7 @@ stages:
     steps:
     - checkout: self
       submodules: false
-    - template: templates/set-version-number-variables-step.yml
+    - template: stages/jobs/steps/set-version-number-variables-step.yml
 
     - task: DownloadPipelineArtifact@2
       displayName: 'Download Pipeline Artifact - Win x64'
@@ -236,7 +236,7 @@ stages:
         targetPath: '$(Build.ArtifactStagingDirectory)'
         artifact: 'onnxruntime-java-gpu'
 
-    - template: templates/component-governance-component-detection-steps.yml
+    - template: stages/jobs/steps/component-governance-component-detection-steps.yml
       parameters :
         condition : 'succeeded'
     - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
@@ -258,7 +258,7 @@ stages:
       value: false
 
     steps:
-    - template: templates/set-version-number-variables-step.yml
+    - template: stages/jobs/steps/set-version-number-variables-step.yml
 
     - task: BatchScript@1
       displayName: 'setup env'
@@ -286,7 +286,7 @@ stages:
           java -DUSE_CUDA=1 -jar junit-platform-console-standalone-1.6.2.jar -cp .;.\test;protobuf-java-3.21.7.jar;onnxruntime_gpu-$(OnnxRuntimeVersion).jar --scan-class-path --fail-if-no-tests --disable-banner
         workingDirectory: '$(Build.BinariesDirectory)\final-jar'
 
-    - template: templates/component-governance-component-detection-steps.yml
+    - template: stages/jobs/steps/component-governance-component-detection-steps.yml
       parameters:
         condition: 'succeeded'
     - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
@@ -310,7 +310,7 @@ stages:
     steps:
     - checkout: self
       submodules: false
-    - template: templates/set-version-number-variables-step.yml
+    - template: stages/jobs/steps/set-version-number-variables-step.yml
     - task: DownloadPipelineArtifact@2
       displayName: 'Download Final Jar'
       inputs:
@@ -325,7 +325,7 @@ stages:
         filePath: 'tools/ci_build/github/linux/java_linux_final_test.sh'
         arguments: '-r $(Build.BinariesDirectory) -v $(OnnxRuntimeVersion)'
 
-    - template: templates/component-governance-component-detection-steps.yml
+    - template: stages/jobs/steps/component-governance-component-detection-steps.yml
       parameters:
         condition: 'succeeded'
     - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
@@ -357,7 +357,7 @@ stages:
         mv manylinux onnxruntime
         ls
 
-    - template: templates/with-container-registry-steps.yml
+    - template: stages/jobs/win-web-multi-browsers.yml
       parameters:
         Steps:
         - script: |
@@ -372,7 +372,7 @@ stages:
           workingDirectory: $(Build.SourcesDirectory)/onnxruntime
         ContainerRegistry: onnxruntimebuildcache
 
-    - template: templates/set-version-number-variables-step.yml
+    - template: stages/jobs/steps/set-version-number-variables-step.yml
       parameters:
         versionFileDirectory: '$(Build.SourcesDirectory)/onnxruntime'
         workingDirectory: '$(Build.SourcesDirectory)/onnxruntime'
@@ -404,7 +404,7 @@ stages:
         archiveFile: '$(Build.ArtifactStagingDirectory)/onnxruntime-linux-x64-gpu-$(OnnxRuntimeVersion).tgz'
         replaceExistingArchive: true
 
-    - template: templates/validate-package.yml
+    - template: stages/jobs/steps/validate-package-step.yml
       parameters:
         PackageType: 'tarball'
         PackagePath: '$(Build.ArtifactStagingDirectory)'
@@ -451,7 +451,7 @@ stages:
         filename: '$(Build.SourcesDirectory)\onnxruntime\tools\ci_build\github\windows\setup_env_gpu.bat'
         modifyEnvironment: true
         workingFolder: '$(Build.BinariesDirectory)'
-    - template: templates/set-version-number-variables-step.yml
+    - template: stages/jobs/steps/set-version-number-variables-step.yml
       parameters:
         versionFileDirectory: '$(Build.SourcesDirectory)\onnxruntime'
         workingDirectory: '$(Build.SourcesDirectory)\onnxruntime'
@@ -491,7 +491,7 @@ stages:
         Contents: 'onnxruntime-win-x64-gpu-*.zip'
         TargetFolder: '$(Build.ArtifactStagingDirectory)'
 
-    - template: templates/validate-package.yml
+    - template: stages/jobs/steps/validate-package-step.yml
       parameters:
         PackageType: 'zip'
         PackagePath: '$(Build.ArtifactStagingDirectory)'
@@ -628,7 +628,7 @@ stages:
         msbuildArguments: '-p:SelectedTargets=PreNet6 -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId="Microsoft.ML.OnnxRuntime.Gpu" -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }} -p:ReleaseVersionSuffix=${ReleaseVersionSuffix}'
         workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
-    - template: templates/win-esrp-dll.yml
+    - template: stages/jobs/steps/win-esrp-dll-step.yml
       parameters:
         FolderPath: '$(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo'
         DisplayName: 'ESRP - Sign C# dlls'
@@ -679,13 +679,13 @@ stages:
         Contents: '*.nupkg'
         TargetFolder: '$(Build.ArtifactStagingDirectory)'
 
-    - template: templates/esrp_nuget.yml
+    - template: stages/jobs/steps/esrp_nuget-step.yml
       parameters:
         DisplayName: 'ESRP - sign NuGet package'
         FolderPath: '$(Build.ArtifactStagingDirectory)'
         DoEsrp: ${{ parameters.DoEsrp }}
 
-    - template: templates/validate-package.yml
+    - template: stages/jobs/steps/validate-package-step.yml
       parameters:
         PackageType: 'nuget'
         PackagePath: '$(Build.ArtifactStagingDirectory)'
@@ -717,7 +717,7 @@ stages:
         msBuildCommandline: '"C:\Program Files\Microsoft Visual Studio\2022\Enterprise\MSBuild\Current\Bin\msbuild.exe" $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln -p:configuration="RelWithDebInfo" -p:Platform="Any CPU" -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=Microsoft.ML.OnnxRuntime.Gpu'
       condition: and(succeeded(), eq('${{ parameters.DoCompliance }}', true))
 
-    - template: templates/component-governance-component-detection-steps.yml
+    - template: stages/jobs/steps/component-governance-component-detection-steps.yml
       parameters :
         condition : 'succeeded'
 
@@ -725,7 +725,7 @@ stages:
       displayName: 'Clean Agent Directories'
       condition: always()
 
-- template: nuget/templates/test_win.yml
+- template: nuget/stages/test_win.yml
   parameters:
     AgentPool : 'onnxruntime-gpu-tensorrt8-winbuild-t4'
     NugetPackageName : 'Microsoft.ML.OnnxRuntime.Gpu'
@@ -733,14 +733,14 @@ stages:
     StageSuffix: 'GPU'
     Skipx86Tests: 'true'
 
-- template: nuget/templates/test_linux.yml
+- template: nuget/stages/test_linux.yml
   parameters:
     AgentPool : Onnxruntime-Linux-GPU
     ArtifactSuffix: 'GPU'
     StageSuffix: 'GPU'
     NugetPackageName : 'Microsoft.ML.OnnxRuntime.Gpu'
 
-- template: nuget/templates/dml-vs-2019.yml
+- template: nuget/stages/dml-vs-2019.yml
   parameters:
     AgentPool : 'aiinfra-dml-winbuild'
     IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
@@ -763,7 +763,7 @@ stages:
      mkdir $(Build.ArtifactStagingDirectory)\testdata
      copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\custom_op_library.* $(Build.ArtifactStagingDirectory)\testdata
 
-- template: nuget/templates/dml-vs-2019.yml
+- template: nuget/stages/dml-vs-2019.yml
   parameters:
     AgentPool : 'aiinfra-dml-winbuild'
     IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
@@ -786,7 +786,7 @@ stages:
      mkdir $(Build.ArtifactStagingDirectory)\testdata
      copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\custom_op_library.* $(Build.ArtifactStagingDirectory)\testdata
 
-- template: nuget/templates/dml-vs-2019.yml
+- template: nuget/stages/dml-vs-2019.yml
   parameters:
     AgentPool : 'Win-CPU-2021'
     IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
@@ -809,7 +809,7 @@ stages:
      mkdir $(Build.ArtifactStagingDirectory)\testdata
      copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\custom_op_library.* $(Build.ArtifactStagingDirectory)\testdata
 
-- template: nuget/templates/dml-vs-2019.yml
+- template: nuget/stages/dml-vs-2019.yml
   parameters:
     AgentPool : 'Win-CPU-2021'
     IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
@@ -919,13 +919,13 @@ stages:
         copy $(Build.BinariesDirectory)\nuget-artifact-dml\Microsoft.ML.OnnxRuntime.DirectML*nupkg $(Build.ArtifactStagingDirectory)
       displayName: 'Bundle DML NuGet and other binaries'
 
-    - template: templates/esrp_nuget.yml
+    - template: stages/jobs/steps/esrp_nuget-step.yml
       parameters:
         DisplayName: 'ESRP - sign NuGet package'
         FolderPath: '$(Build.ArtifactStagingDirectory)'
         DoEsrp: ${{ parameters.DoEsrp }}
 
-    - template: templates/validate-package.yml
+    - template: stages/jobs/steps/validate-package-step.yml
       parameters:
         PackageType: 'nuget'
         PackagePath: '$(Build.ArtifactStagingDirectory)'
@@ -939,4 +939,4 @@ stages:
         artifactName: 'drop-signed-nuget-dml'
         targetPath: '$(Build.ArtifactStagingDirectory)'
 
-- template: templates/publish-nuget.yml
+- template: stages/publish-nuget-stage.yml

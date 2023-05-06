@@ -50,7 +50,7 @@ resources:
     ref: aead4d751c2101e23336aa73f2380df83e7a13f3
 
 stages:
-- template: templates/py-packaging-selectable-stage.yml
+- template: stages/py-packaging-selectable-stage.yml
   parameters:
     enable_linux_gpu: ${{ parameters.enable_linux_gpu }}
     enable_linux_cpu: ${{ parameters.enable_linux_cpu }}

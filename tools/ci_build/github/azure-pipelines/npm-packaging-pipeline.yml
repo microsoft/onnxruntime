@@ -37,7 +37,7 @@ resources:
     ref: aead4d751c2101e23336aa73f2380df83e7a13f3
 
 stages:
-- template: templates/web-ci.yml
+- template: stages/web-ci-stage.yml
   parameters:
     NpmPackagingMode: ${{ variables.NpmPackagingMode }}
     IsReleasePipeline: true
@@ -45,7 +45,7 @@ stages:
     PackageName: 'onnxruntime-web'
     ExtraBuildArgs: ''
 
-- template: templates/react-native-ci.yml
+- template: stages/react-native-ci-stage.yml
   parameters:
     NpmPackagingMode: ${{ variables.NpmPackagingMode }}
     BuildConfig: 'Release'
