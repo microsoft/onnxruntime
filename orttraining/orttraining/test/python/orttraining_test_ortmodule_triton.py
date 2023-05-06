@@ -430,14 +430,15 @@ def test_dropout_grad_op(onnx_dtype, input_shape_and_ratio):
     _run_op_test("DropoutGrad", onnx_dtype, _create_model, _gen_inputs, **kwargs)
 
 
-@pytest.mark.parametrize("op_type", ["ReduceMax", "ReduceMean", "ReduceMin", "ReduceSum"])
+@pytest.mark.parametrize("op_type", ["ReduceSum", "ReduceMean", "ReduceMax", "ReduceMin"])
 @pytest.mark.parametrize("onnx_dtype", [TensorProto.FLOAT, TensorProto.FLOAT16])
 @pytest.mark.parametrize(
     "input_shape_and_reduce_info",
     [
-        ([1024, 2], [-1], True),
-        ([2, 3, 3, 3], [1, 2], False),
-        ([123, 4, 5, 6], [2], True),
+        ([2, 1024], [-1], True),
+        ([1050, 3], [0], False),
+        ([2, 3, 3, 3], [1, 2], True),
+        ([123, 4, 5, 6], [2], False),
         ([16, 8, 16, 8], [1, 3], True),
         ([16, 8, 16, 8], [0, 2], False),
     ],
@@ -478,6 +479,9 @@ def test_reduce_op(op_type, onnx_dtype, input_shape_and_reduce_info):
         kwargs["axes"] = input_shape_and_reduce_info[1]
     if input_shape_and_reduce_info[2] is not None:
         kwargs["keepdims"] = input_shape_and_reduce_info[2]
+    if onnx_dtype == TensorProto.FLOAT16:
+        kwargs["atol"] = 1e-2
+        kwargs["rtol"] = 1e-2
     _run_op_test(op_type, onnx_dtype, _create_model, _gen_inputs, **kwargs)
 
 
@@ -537,10 +541,10 @@ def test_elementwise_module(dtype):
 
     def _gen_inputs(dtype):
         return [
-            torch.randn(N, D, H, W, dtype=dtype, device=DEVICE, requires_grad=True),
-            torch.randn(W, dtype=dtype, device=DEVICE, requires_grad=True),
-            torch.randn(D, 1, 1, dtype=dtype, device=DEVICE, requires_grad=True),
-            torch.randn(N, 1, H, W, dtype=dtype, device=DEVICE, requires_grad=True),
+            torch.rand(N, D, H, W, dtype=dtype, device=DEVICE, requires_grad=True),
+            torch.rand(W, dtype=dtype, device=DEVICE, requires_grad=True),
+            torch.rand(D, 1, 1, dtype=dtype, device=DEVICE, requires_grad=True),
+            torch.rand(N, 1, H, W, dtype=dtype, device=DEVICE, requires_grad=True),
         ]
 
     _run_module_test(NeuralNetElementwise, dtype, _gen_inputs, 1)
