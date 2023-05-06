@@ -192,10 +192,13 @@ class AnotherLayerOfToyModel(nn.Module):
         embed_val = self.embedding(x)
         return self.t(embed_val)
 
-'''
+
+"""
 `Mixed device allocation` here means ORT backend allocates output tensors on CPU for some nodes and
 on CUDA for other nodes. This test could help catch regression when ORT allocation planner logic got changed with bugs.
-'''
+"""
+
+
 def demo_mixed_device_allocation_training(rank, world_size, use_ort_module):
     torch.manual_seed(0)
     print(f"Running basic DDP example on rank {rank}.")
