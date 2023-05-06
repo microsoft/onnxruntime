@@ -67,6 +67,7 @@ are in composable kernels. The scale and add logic is performed via Acc0ElementO
 #include "contrib_ops/rocm/bert/attention_softmax.h"
 #ifdef USE_COMPOSABLE_KERNEL
 #include "contrib_ops/rocm/bert/batched_gemm_softmax_gemm_permute_ck_impl/impl.cuh"
+#include "core/providers/rocm/composable_kernel_common.h"
 
 #include "ck/ck.hpp"
 #include "ck/tensor_operation/gpu/device/tensor_layout.hpp"
@@ -451,22 +452,6 @@ class GemmSoftmaxGemmPermuteTunableOp : public tunable::TunableOp<GemmSoftmaxGem
 };
 
 #ifdef USE_COMPOSABLE_KERNEL
-namespace {
-template <typename T>
-struct DataTypeAdaptor {
-  using type = T;
-};
-
-template <>
-struct DataTypeAdaptor<half> {
-  using type = ck::half_t;
-};
-
-template <>
-struct DataTypeAdaptor<BFloat16> {
-  using type = ck::bhalf16_t;
-};
-}  // namespace
 
 template <typename T, bool USE_BIAS, bool USE_MASK>
 auto GetCKGemmSoftmaxGemmPermuteTypeStringAndOps() {
@@ -475,7 +460,7 @@ auto GetCKGemmSoftmaxGemmPermuteTypeStringAndOps() {
   using Nop = ck::tensor_operation::element_wise::PassThrough;
   using Acc0ElementOp = internal::PreSoftmaxAttentionScoreOp;
 
-  using CKDataType = typename DataTypeAdaptor<T>::type;
+  using CKDataType = typename CKDataTypeAdaptor<T>::type;
   using D0DataType = typename ck::detail::tuple_concat<
       std::conditional_t<USE_BIAS, ck::Tuple<CKDataType>, ck::Tuple<>>,
       std::conditional_t<USE_MASK, ck::Tuple<CKDataType>, ck::Tuple<>>>::type;
