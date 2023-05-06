@@ -16,8 +16,8 @@
 
 namespace onnxruntime {
 namespace test {
- #define ORT_RUN_EXTERNAL_ONNX_TESTS
- #define MLAS_F16VEC_INTRINSICS_SUPPORTED
+// #define ORT_RUN_EXTERNAL_ONNX_TESTS
+// #define MLAS_F16VEC_INTRINSICS_SUPPORTED
 
 #define MODEL_FOLDER ORT_TSTR("testdata/transform/")
 #if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) && !defined(DISABLE_CONTRIB_OPS)
