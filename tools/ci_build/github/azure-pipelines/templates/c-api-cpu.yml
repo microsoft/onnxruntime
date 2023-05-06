@@ -279,6 +279,7 @@ stages:
 
 - stage: NuGet_Packaging_CPU
   dependsOn:
+  - Set_Release_Version_Suffix
   - Linux_C_API_Packaging_CPU
   - MacOS_C_API_Packaging_CPU
   - Windows_Packaging_CPU_x86_${{ parameters.BuildVariant }}
