@@ -19,6 +19,7 @@ SD_MODELS = {
 PROVIDERS = {
     "cuda": "CUDAExecutionProvider",
     "rocm": "ROCMExecutionProvider",
+    "migraphx": "MIGraphXExecutionProvider",
 }
 
 
@@ -570,7 +571,7 @@ def parse_arguments():
         "--batch_size",
         type=int,
         default=1,
-        choices=[1, 2, 4, 8, 10, 16, 32],
+        choices=[1, 2, 3, 4, 8, 10, 16, 32],
         help="Number of images per batch. Default is 1.",
     )
 
