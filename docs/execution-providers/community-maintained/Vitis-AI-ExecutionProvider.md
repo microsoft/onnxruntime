@@ -75,7 +75,7 @@ A couple of environment variables can be used to customize the Vitis-AI Executio
 | **Environment Variable**   | **Default if unset** | **Explanation**                                    |
 |----------------------------|----------------------|----------------------------------------------------|
 | XLNX_ENABLE_CACHE          | 1                    | Whether to use cache, if it is 0, it will ignore the cache files and the model will be recompiled|
-| XLNX_TARGET_NAME           | ""                   | DPU target name. On Edge, if not set, the DPU target name will be read automatically; On Windows, default value is "AMD_AIE2_Nx4_Overlay" which is the DPU target name of IPU.                                |
+| XLNX_TARGET_NAME           | ""                   | DPU target name. On Edge, if not set, the DPU target name will be read automatically.                                |
 
 
 ## Samples
