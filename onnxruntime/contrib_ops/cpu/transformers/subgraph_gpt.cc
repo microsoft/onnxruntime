@@ -47,7 +47,7 @@ Status GptSubgraph::CreateInitialFeeds(
   AllocatorPtr cpu_allocator = session_state_->GetAllocator(input_ids.Location());
 
   // Store allocator, which will be used in remaining feeds
-  auto default_allocator = provider->GetAllocator(OrtMemTypeDefault);
+  auto default_allocator = session_state_->GetAllocator(provider->GetOrtDeviceByMemType(OrtMemTypeDefault));
   allocator_ = default_allocator;
 
   // The ordering is the same as used in Setup
@@ -65,11 +65,15 @@ Status GptSubgraph::CreateInitialFeeds(
                                              expanded_position_ids,
                                              expanded_attention_mask));
 
-  ORT_RETURN_IF_ERROR(add_to_feeds_func(provider,
-                                        ort_stream,
+  AllocatorPtr pinned_allocator = session_state_->GetAllocator(provider->GetOrtDeviceByMemType(OrtMemTypeCPU));
+  const OrtMemoryInfo& location = default_allocator->Info();
+  ORT_RETURN_IF_ERROR(add_to_feeds_func(ort_stream,
                                         {expanded_input_ids, expanded_position_ids, expanded_attention_mask},
                                         feeds,
-                                        buffer));
+                                        buffer,
+                                        default_allocator,
+                                        pinned_allocator,
+                                        location));
 
   auto past_type = IsOutputFloat16() ? DataTypeImpl::GetType<MLFloat16>() : DataTypeImpl::GetType<float>();
   if (!past_present_share_buffer_) {

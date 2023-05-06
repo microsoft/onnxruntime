@@ -472,6 +472,21 @@ inline Env& Env::CreateAndRegisterAllocator(const OrtMemoryInfo* mem_info, const
   return *this;
 }
 
+inline Env& Env::CreateAndRegisterCudaAllocator(const OrtMemoryInfo* mem_info, const std::unordered_map<std::string, std::string>& options, const OrtArenaCfg* arena_cfg) {
+  std::vector<const char*> keys, values;
+  auto num_entries = options.size();
+  if (num_entries > 0) {
+    keys.reserve(num_entries);
+    values.reserve(num_entries);
+    for (const auto& entry : options) {
+      keys.push_back(entry.first.c_str());
+      values.push_back(entry.second.c_str());
+    }
+  }
+  ThrowOnError(GetApi().CreateAndRegisterCudaAllocator(p_, mem_info, arena_cfg, keys.data(), values.data(), num_entries));
+  return *this;
+}
+
 inline CustomOpDomain::CustomOpDomain(const char* domain) {
   ThrowOnError(GetApi().CreateCustomOpDomain(domain, &p_));
 }

@@ -116,3 +116,9 @@ onnxruntime::common::Status OrtEnv::CreateAndRegisterAllocator(const OrtMemoryIn
 onnxruntime::common::Status OrtEnv::UnregisterAllocator(const OrtMemoryInfo& mem_info) {
   return value_->UnregisterAllocator(mem_info);
 }
+
+#ifdef USE_CUDA
+onnxruntime::common::Status OrtEnv::CreateAndRegisterCudaAllocator(const OrtMemoryInfo& mem_info, const std::unordered_map<std::string, std::string>& options, const OrtArenaCfg* arena_cfg) {
+  return value_->CreateAndRegisterCudaAllocator(mem_info, options, arena_cfg);
+}
+#endif  // USE_CUDA

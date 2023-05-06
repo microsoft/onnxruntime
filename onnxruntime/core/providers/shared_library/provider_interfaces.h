@@ -222,8 +222,6 @@ struct ProviderHost {
   virtual bool IAllocator__CalcMemSizeForArrayWithAlignment(size_t nmemb, size_t size, size_t alignment, size_t* out) = 0;
 
   // IExecutionProvider
-  virtual AllocatorPtr IExecutionProvider__GetAllocator(const IExecutionProvider* p, OrtMemType mem_type) = 0;
-  virtual void IExecutionProvider__InsertAllocator(IExecutionProvider* p, AllocatorPtr allocator) = 0;
   virtual std::vector<std::unique_ptr<ComputeCapability>> IExecutionProvider__GetCapability(const IExecutionProvider* p, const onnxruntime::GraphViewer& graph_viewer,
                                                                                             const IExecutionProvider::IKernelLookup& kernel_lookup) = 0;
 
@@ -231,7 +229,6 @@ struct ProviderHost {
 
   virtual int IExecutionProvider__GenerateMetaDefId(const IExecutionProvider* p, const onnxruntime::GraphViewer& graph_viewer, HashValue& model_hash) = 0;
 
-  virtual void IExecutionProvider__RegisterAllocator(IExecutionProvider* p, AllocatorManager& allocator_manager) = 0;
   // Status
   virtual std::string Status__ToString(const Status* p) = 0;
 
@@ -738,7 +735,6 @@ struct ProviderHost {
   // OpKernelInfo
   virtual std::unique_ptr<OpKernelInfo> CopyOpKernelInfo(const OpKernelInfo& info) = 0;
   virtual void OpKernelInfo__operator_delete(OpKernelInfo* p) = 0;
-  virtual AllocatorPtr OpKernelInfo__GetAllocator(const OpKernelInfo* p, OrtMemType mem_type) = 0;
   virtual const IExecutionProvider* OpKernelInfo__GetExecutionProvider(const OpKernelInfo* p) = 0;
   virtual Status OpKernelInfo__GetAttr_int64(const OpKernelInfo* p, const std::string& name, int64_t* value) = 0;
   virtual Status OpKernelInfo__GetAttr_float(const OpKernelInfo* p, const std::string& name, float* value) = 0;
@@ -748,6 +744,8 @@ struct ProviderHost {
   virtual Status OpKernelInfo__GetAttrs(const OpKernelInfo* p, const std::string& name, std::vector<float>& values) = 0;
   virtual Status OpKernelInfo__GetAttrs(const OpKernelInfo* p, const std::string& name, std::vector<std::string>& values) = 0;
   virtual Status OpKernelInfo__GetAttrsAsSpan(const OpKernelInfo* p, const std::string& name, gsl::span<const int64_t>& values) = 0;
+  virtual AllocatorPtr OpKernelInfo__GetDeviceAllocator(const OpKernelInfo* p) = 0;
+  virtual AllocatorPtr OpKernelInfo__GetPinnedAllocator(const OpKernelInfo* p) = 0;
 
   virtual const DataTransferManager& OpKernelInfo__GetDataTransferManager(const OpKernelInfo* p) noexcept = 0;
   virtual const KernelDef& OpKernelInfo__GetKernelDef(const OpKernelInfo* p) = 0;

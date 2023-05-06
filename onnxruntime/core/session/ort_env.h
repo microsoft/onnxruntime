@@ -75,6 +75,9 @@ struct OrtEnv {
   onnxruntime::common::Status UnregisterAllocator(const OrtMemoryInfo& mem_info);
   OrtEnv(std::unique_ptr<onnxruntime::Environment> value);
   ~OrtEnv();
+#ifdef USE_CUDA
+  onnxruntime::common::Status CreateAndRegisterCudaAllocator(const OrtMemoryInfo& mem_info, const std::unordered_map<std::string, std::string>& options, const OrtArenaCfg* arena_cfg = nullptr);
+#endif  // USE_CUDA
 
  private:
   static std::unique_ptr<OrtEnv> p_instance_;

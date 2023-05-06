@@ -300,8 +300,6 @@ struct ProviderHostImpl : ProviderHost {
   bool IAllocator__CalcMemSizeForArrayWithAlignment(size_t nmemb, size_t size, size_t alignment, size_t* out) override { return IAllocator::CalcMemSizeForArrayWithAlignment(nmemb, size, alignment, out); }
 
   // IExecutionProvider (direct)
-  AllocatorPtr IExecutionProvider__GetAllocator(const IExecutionProvider* p, OrtMemType mem_type) override { return p->IExecutionProvider::GetAllocator(mem_type); }
-  void IExecutionProvider__InsertAllocator(IExecutionProvider* p, AllocatorPtr allocator) override { return p->IExecutionProvider::InsertAllocator(allocator); }
   std::vector<std::unique_ptr<ComputeCapability>> IExecutionProvider__GetCapability(
       const IExecutionProvider* p, const onnxruntime::GraphViewer& graph_viewer,
       const IExecutionProvider::IKernelLookup& kernel_lookup) override {
@@ -314,10 +312,6 @@ struct ProviderHostImpl : ProviderHost {
 
   int IExecutionProvider__GenerateMetaDefId(const IExecutionProvider* p, const onnxruntime::GraphViewer& graph_viewer, HashValue& model_hash) override {
     return p->IExecutionProvider::GenerateMetaDefId(graph_viewer, model_hash);
-  }
-
-  void IExecutionProvider__RegisterAllocator(IExecutionProvider* p, AllocatorManager& allocator_manager) override {
-    return p->IExecutionProvider::RegisterAllocator(allocator_manager);
   }
 
   // Status (direct)
@@ -861,7 +855,6 @@ struct ProviderHostImpl : ProviderHost {
   // OpKernelInfo (wrapped)
   std::unique_ptr<OpKernelInfo> CopyOpKernelInfo(const OpKernelInfo& info) override { return onnxruntime::CopyOpKernelInfo(info); }
   void OpKernelInfo__operator_delete(OpKernelInfo* p) override { delete p; }
-  AllocatorPtr OpKernelInfo__GetAllocator(const OpKernelInfo* p, OrtMemType mem_type) override { return p->GetAllocator(mem_type); }
   const IExecutionProvider* OpKernelInfo__GetExecutionProvider(const OpKernelInfo* p) override { return p->GetExecutionProvider(); }
   Status OpKernelInfo__GetAttr_int64(const OpKernelInfo* p, const std::string& name, int64_t* value) override { return p->GetAttr(name, value); }
   Status OpKernelInfo__GetAttr_float(const OpKernelInfo* p, const std::string& name, float* value) override { return p->GetAttr(name, value); }
@@ -873,6 +866,8 @@ struct ProviderHostImpl : ProviderHost {
   Status OpKernelInfo__GetAttrsAsSpan(const OpKernelInfo* p, const std::string& name, gsl::span<const int64_t>& values) override {
     return p->GetAttrsAsSpan(name, values);
   }
+  AllocatorPtr OpKernelInfo__GetDeviceAllocator(const OpKernelInfo* p) override { return p->GetDeviceAllocator(); }
+  AllocatorPtr OpKernelInfo__GetPinnedAllocator(const OpKernelInfo* p) override { return p->GetPinnedAllocator(); }
 
   const DataTransferManager& OpKernelInfo__GetDataTransferManager(const OpKernelInfo* p) noexcept override { return p->GetDataTransferManager(); }
   const KernelDef& OpKernelInfo__GetKernelDef(const OpKernelInfo* p) override { return p->GetKernelDef(); }

@@ -99,7 +99,8 @@ class SessionState {
                const logging::Logger& logger,
                profiling::Profiler& profiler,
                const SessionOptions& sess_options,
-               PrepackedWeightsContainer* prepacked_weights_container = nullptr);
+               PrepackedWeightsContainer* prepacked_weights_container = nullptr,
+               std::shared_ptr<std::map<OrtDevice, AllocatorPtr>> parent_allocators = nullptr);
 
   ~SessionState() {
     for (auto& kvp : deleter_for_initialized_tensors_) {
@@ -129,7 +130,12 @@ class SessionState {
   AllocatorPtr GetAllocator(const OrtMemoryInfo& location) const noexcept;
 
   /** Get the allocator for a given OrtDevice. The first allocator that matches will be returned. */
-  AllocatorPtr GetAllocator(OrtDevice device) const noexcept;
+  AllocatorPtr GetAllocator(const OrtDevice& device) const noexcept;
+
+  /*
+  * Get allocators. CANNOT be const member function as allocators_ will be changed after SessionState's initialization for shared allocator scenario (InferenceSession::UpdateSessionStateAllocatorsWithSharedAllocators())
+  */
+  std::map<OrtDevice, AllocatorPtr>& GetAllocators() { return *allocators_; }
 
   const OrtValueNameIdxMap& GetOrtValueNameIdxMap() const noexcept { return ort_value_name_idx_map_; }
 
@@ -353,8 +359,6 @@ class SessionState {
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(SessionState);
 
-  void SetupAllocators();
-
   // Populate OrtValueNameIdxMap and create the graph viewer.
   void CreateGraphInfo();
 
@@ -451,9 +455,7 @@ class SessionState {
   // for internal allocations by CUDAExecutionProvider::GetScratchBuffer, but could access the per-thread allocator
   // directly instead of going through CUDAExecutionProvider::GetAllocator.
   // If that can be validated we could simply store the AllocatorPtr here and get rid of the delegate.
-  std::map<OrtMemoryInfo, std::function<AllocatorPtr(OrtMemType mem_type)>,
-           OrtMemoryInfoLessThanIgnoreNameAndAllocType>
-      allocators_;
+  std::shared_ptr<std::map<OrtDevice, AllocatorPtr>> allocators_;
 
   OrtValueNameIdxMap ort_value_name_idx_map_;
 

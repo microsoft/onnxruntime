@@ -53,11 +53,11 @@ class ROCMExternalAllocator : public ROCMAllocator {
 // TODO: add a default constructor
 class ROCMPinnedAllocator : public IAllocator {
  public:
-  ROCMPinnedAllocator(OrtDevice::DeviceId device_id, const char* name)
+  ROCMPinnedAllocator(const char* name)
       : IAllocator(
             OrtMemoryInfo(name, OrtAllocatorType::OrtDeviceAllocator,
-                          OrtDevice(OrtDevice::CPU, OrtDevice::MemType::HIP_PINNED, device_id),
-                          device_id, OrtMemTypeCPUOutput)) {}
+                          OrtDevice(OrtDevice::CPU, OrtDevice::MemType::HIP_PINNED, 0),
+                          0, OrtMemTypeCPUOutput)) {}
 
   void* Alloc(size_t size) override;
   void Free(void* p) override;

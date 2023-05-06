@@ -911,9 +911,9 @@ PostLayoutTransformCostCheck(const api::GraphRef& graph, const api::NodeRef& nod
 }
 
 Status TransformLayoutForEP(Graph& graph, bool& modified, const IExecutionProvider& execution_provider,
-                            const DebugGraphFn& debug_graph_fn) {
+                            AllocatorPtr allocator, const DebugGraphFn& debug_graph_fn) {
   // sub graph recurse will be added later
-  auto api_graph = MakeApiGraph(graph, execution_provider.GetAllocator(OrtMemTypeDefault), nullptr);
+  auto api_graph = MakeApiGraph(graph, allocator, nullptr);
   const auto& layout_sensitive_ops = GetORTLayoutSensitiveOps();
 
   for (auto& node : api_graph->Nodes()) {

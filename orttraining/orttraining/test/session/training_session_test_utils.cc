@@ -47,14 +47,14 @@ void GenerateOptimizerInitialState(const std::string& optimizer_op_name, const T
       optim_state.insert(std::make_pair(param_prefix, std::move(mlValue)));
     }
     if (optimizer_op_name == k_adam_optimizer_op_name) {
-      CreateMLValue<int64_t>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault), {1}, uc_value, &mlValue);
+      CreateMLValue<int64_t>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0], {1}, uc_value, &mlValue);
       optim_state.insert(std::make_pair(ADAM_UC_PREFIX, std::move(mlValue)));
     }
     result.insert(std::make_pair(weight_name, std::move(optim_state)));
   }
   if (optimizer_op_name == k_lamb_optimizer_op_name) {
     // add "Step" for lamb
-    CreateMLValue<int64_t>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault), {1}, uc_value, &mlValue);
+    CreateMLValue<int64_t>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0], {1}, uc_value, &mlValue);
     shared_states.insert(std::make_pair(LAMB_STEP_TENSOR_NAME, std::move(mlValue)));
     result.insert(std::make_pair(onnxruntime::training::SHARED_OPTIMIZER_STATES_KEY, std::move(shared_states)));
   }
@@ -105,7 +105,7 @@ void VerifyState(const DataTransferManager& data_transfer_mgr, const NameMLValMa
     auto& actual_gpu_tensor = a_state_it.second.Get<Tensor>();
 
     // Copying tensor to CPU when cuda is enabled.
-    auto cpu_allocator = TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault);
+    auto cpu_allocator = TestCPUExecutionProvider()->CreatePreferredAllocators()[0];
     Tensor actual_tensor{actual_gpu_tensor.DataType(), actual_gpu_tensor.Shape(), cpu_allocator};
     ORT_ENFORCE(data_transfer_mgr.CopyTensor(actual_gpu_tensor, actual_tensor).IsOK());
 #else

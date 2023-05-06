@@ -939,9 +939,10 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
     // create a lambda to combine the two operations in the layout transformation function
     transform_layout_fn = [this](Graph& graph_to_transform, bool& modified,
                                  const IExecutionProvider& execution_provider,
+                                 AllocatorPtr allocator,
                                  const layout_transformer::DebugGraphFn& debug_graph_fn) -> Status {
       ORT_RETURN_IF_ERROR_SESSIONID_(
-          layout_transformer::TransformLayoutForEP(graph_to_transform, modified, execution_provider,
+          layout_transformer::TransformLayoutForEP(graph_to_transform, modified, execution_provider, allocator,
                                                    debug_graph_fn));
 
       if (modified) {
@@ -985,7 +986,7 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
   // Do partitioning based on execution providers' capabilities.
   GraphPartitioner partitioner(kernel_registry_manager_, execution_providers_);
   ORT_RETURN_IF_ERROR_SESSIONID_(partitioner.Partition(graph, session_state_->GetMutableFuncMgr(), transform_layout_fn,
-                                                       mode, debug_graph_fn));
+                                                       session_state_->GetAllocators(), mode, debug_graph_fn));
 
   // apply Level2 and higher transformers.
   // we do not run Level 1 again as those transformers assume partitioning will run later to do node assignment.
@@ -1279,6 +1280,7 @@ Status PartitionOrtFormatModel(onnxruntime::Graph& graph,
   ORT_RETURN_IF_ERROR(partitioner.Partition(graph,
                                             session_state.GetMutableFuncMgr(),
                                             transform_layout_fn,
+                                            session_state.GetAllocators(),
                                             GraphPartitioner::Mode::kOrtFormatLoad));
 
   return Status::OK();
@@ -1287,14 +1289,14 @@ Status PartitionOrtFormatModel(onnxruntime::Graph& graph,
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 Status ApplyOrtFormatModelRuntimeOptimizations(
     onnxruntime::Graph& graph, const logging::Logger& logger, const SessionOptions& session_options,
-    const InlinedHashSet<std::string>& optimizers_to_disable, const IExecutionProvider& cpu_ep) {
+    const InlinedHashSet<std::string>& optimizers_to_disable, const IExecutionProvider& cpu_ep, const AllocatorPtr& allocator) {
   bool modified = false;
 
   for (int level = static_cast<int>(TransformerLevel::Level2);
        level <= static_cast<int>(session_options.graph_optimization_level);
        ++level) {
     const auto transformers = optimizer_utils::GenerateTransformersForMinimalBuild(
-        static_cast<TransformerLevel>(level), session_options, SatRuntimeOptimizationLoadContext{}, cpu_ep,
+        static_cast<TransformerLevel>(level), session_options, SatRuntimeOptimizationLoadContext{}, cpu_ep, allocator,
         optimizers_to_disable);
 
     for (const auto& transformer : transformers) {
@@ -1383,37 +1385,6 @@ common::Status InferenceSession::Initialize() {
     }
 #endif
 
-    // Ensure all registered EPs have created their allocators and shared them where possible.
-    // Allocator creation may be delayed until IExecutionProvider::RegisterAllocator is called.
-    {
-      AllocatorManager allocator_manager;
-      for (const auto& provider : execution_providers_) {
-        provider->RegisterAllocator(allocator_manager);
-      }
-    }
-
-    // At this time we know all the providers that will be part of this session.
-    // Read shared allocators from the environment and update them in the respective providers.
-    //
-    // The reason for updating the providers is so that when the session state is created the allocators
-    // are setup appropriately keyed by OrtMemoryInfo with delegates going to the respective providers.
-    // Secondly, the GetAllocator() method inside IExecutionProvider is still used in various places, hence
-    // it doesn't make sense to just update the allocator map inside session state with these shared allocators; doing
-    // so would cause inconsistency between the allocator map inside session sate and that inside the providers.
-    // TODO: we could refactor the allocators to not require the call to GetAllocator but that change is much bigger
-    // since we've to take into account the per-thread cuda allocators.
-    // TODO (contd.) We could also possibly absorb the per-thread logic in a new allocator decorator that derives
-    // from IAllocator to keep things clean.
-    //
-    // NOTE: UpdateProvidersWithSharedAllocators is replace-only and will not insert a new allocator into the EP, so
-    // it must be called after RegisterAllocator.
-    bool use_env_allocators =
-        session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigUseEnvAllocators, "0") == "1";
-    if (use_env_allocators) {
-      LOGS(*session_logger_, INFO) << "This session will use the allocator registered with the environment.";
-      UpdateProvidersWithSharedAllocators();
-    }
-
 #ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
     TraceLoggingWriteStart(session_activity, "OrtInferenceSessionActivity");
     session_activity_started_ = true;
@@ -1430,6 +1401,13 @@ common::Status InferenceSession::Initialize() {
         session_profiler_,
         session_options_,
         prepacked_weights_container_);
+
+    bool use_env_allocators =       // TODO(leca): review
+        session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigUseEnvAllocators, "0") == "1";
+    if (use_env_allocators) {
+      LOGS(*session_logger_, INFO) << "This session will use the allocator registered with the environment.";
+      UpdateSessionStateAllocatorsWithSharedAllocators();
+    }
 
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
     // Don't want to pollute SessionState constructor since memory profile is enabled optionally.
@@ -1564,9 +1542,9 @@ common::Status InferenceSession::Initialize() {
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
       const auto& cpu_ep = *execution_providers_.Get(onnxruntime::kCpuExecutionProvider);
+      AllocatorPtr allocator = session_state_->GetAllocator(cpu_ep.GetOrtDeviceByMemType(OrtMemTypeDefault));
       ORT_RETURN_IF_ERROR_SESSIONID_(
-          ApplyOrtFormatModelRuntimeOptimizations(graph, *session_logger_, session_options_, optimizers_to_disable_,
-                                                  cpu_ep));
+          ApplyOrtFormatModelRuntimeOptimizations(graph, *session_logger_, session_options_, optimizers_to_disable_, cpu_ep, allocator));
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
     }
 
@@ -1668,15 +1646,10 @@ common::Status InferenceSession::Initialize() {
 #pragma warning(pop)
 #endif
 
-// This method should be called from within Initialize() only and before the creation of the session state.
-// This ensures all providers have been registered in the session and the session state is consistent with the providers.
-void InferenceSession::UpdateProvidersWithSharedAllocators() {
-  const auto& provider_ids = execution_providers_.GetIds();
-  for (const auto& one_shared_alloc : environment_.GetRegisteredSharedAllocators()) {
-    for (const auto& id : provider_ids) {
-      auto* provider_ptr = execution_providers_.Get(id);
-      provider_ptr->ReplaceAllocator(one_shared_alloc);
-    }
+void InferenceSession::UpdateSessionStateAllocatorsWithSharedAllocators() {
+  std::map<OrtDevice, AllocatorPtr>& session_allocators = session_state_->GetAllocators();
+  for (const auto& shared_alloc : environment_.GetRegisteredSharedAllocators()) {
+    session_allocators[shared_alloc->Info().device] = shared_alloc;
   }
 }
 
@@ -2569,7 +2542,7 @@ common::Status InferenceSession::AddPredefinedTransformers(
             minimal_build_optimization_handling == MinimalBuildOptimizationHandling::ApplyFullBuildOptimizations;
 
         if (use_full_build_optimizations) {
-          return optimizer_utils::GenerateTransformers(level, session_options_, cpu_ep,
+          return optimizer_utils::GenerateTransformers(level, session_options_, cpu_ep, session_state_->GetAllocators(),
                                                        optimizers_to_disable_);
         } else {
           const auto sat_context =
@@ -2578,7 +2551,8 @@ common::Status InferenceSession::AddPredefinedTransformers(
                   ? SatApplyContextVariant{SatRuntimeOptimizationSaveContext{
                         record_runtime_optimization_produced_op_schema_fn}}
                   : SatApplyContextVariant{SatDirectApplicationContext{}};
-          return optimizer_utils::GenerateTransformersForMinimalBuild(level, session_options_, sat_context, cpu_ep,
+          AllocatorPtr allocator = session_state_->GetAllocator(cpu_ep.GetOrtDeviceByMemType(OrtMemTypeDefault));
+          return optimizer_utils::GenerateTransformersForMinimalBuild(level, session_options_, sat_context, cpu_ep, allocator,
                                                                       optimizers_to_disable_);
         }
       }();

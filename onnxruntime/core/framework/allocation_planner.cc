@@ -825,10 +825,8 @@ class PlannerImpl {
 
     const KernelCreateInfo& kernel_create_info = GetKernelCreateInfo(kernel_create_info_map, node.Index());
 
-    if (utils::IsInputOnCpu(node, &kernel_create_info, input_index))
-      // weights are not output from any node, so it's OK to put its location on CPU provider
-      return execution_providers_.GetDefaultCpuMemoryInfo().device;
-    return p_provider->GetOrtDeviceByMemType(OrtMemTypeDefault);
+    // weights are not output from any node, so it's OK to put its location on CPU provider
+    return p_provider->GetOrtDeviceByMemType(utils::IsInputOnCpu(node, &kernel_create_info, input_index) ? OrtMemTypeCPUInput : OrtMemTypeDefault);
   }
 
   void GeneratePlanForWeightsHelper(const GraphViewer& graph_viewer,

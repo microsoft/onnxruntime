@@ -386,8 +386,6 @@ class PlannerTest : public ::testing::Test {
     onnxruntime::ProviderInfo_CUDA& ep = onnxruntime::GetProviderInfo_CUDA();
     auto epFactory = ep.CreateExecutionProviderFactory(epi);
     std::unique_ptr<IExecutionProvider> execution_provider = epFactory->CreateProvider();
-    AllocatorManager am;
-    execution_provider->RegisterAllocator(am);
     ORT_THROW_IF_ERROR(GetExecutionProviders().Add("CUDAExecutionProvider", std::move(execution_provider)));
 
     if (partitionConfigFile != nullptr) SetNodePartitionConfigFilePath(partitionConfigFile);
@@ -1223,8 +1221,6 @@ TEST_F(PlannerTest, MultiStream) {
   onnxruntime::ProviderInfo_CUDA& ep = onnxruntime::GetProviderInfo_CUDA();
   auto epFactory = ep.CreateExecutionProviderFactory(epi);
   std::unique_ptr<IExecutionProvider> execution_provider = epFactory->CreateProvider();
-  AllocatorManager am;
-  execution_provider->RegisterAllocator(am);
   ORT_THROW_IF_ERROR(GetExecutionProviders().Add("CUDAExecutionProvider", std::move(execution_provider)));
 
   CreatePlan({}, false);
@@ -1264,8 +1260,6 @@ TEST_F(PlannerTest, MultiStream1StreamWaitFor2Streams) {
   onnxruntime::ProviderInfo_CUDA& ep = onnxruntime::GetProviderInfo_CUDA();
   auto epFactory = ep.CreateExecutionProviderFactory(epi);
   std::unique_ptr<IExecutionProvider> execution_provider = epFactory->CreateProvider();
-  AllocatorManager am;
-  execution_provider->RegisterAllocator(am);
   ORT_THROW_IF_ERROR(GetExecutionProviders().Add("CUDAExecutionProvider", std::move(execution_provider)));
 
   SetNodePartitionConfigFilePath("./testdata/multi_stream_models/3_gpu_streams.json");
@@ -1328,8 +1322,6 @@ TEST_F(PlannerTest, MultiStreamMultiOutput) {
   onnxruntime::ProviderInfo_CUDA& ep = onnxruntime::GetProviderInfo_CUDA();
   auto epFactory = ep.CreateExecutionProviderFactory(epi);
   std::unique_ptr<IExecutionProvider> execution_provider = epFactory->CreateProvider();
-  AllocatorManager am;
-  execution_provider->RegisterAllocator(am);
   ORT_THROW_IF_ERROR(GetExecutionProviders().Add("CUDAExecutionProvider", std::move(execution_provider)));
 
   CreatePlan({}, false);
@@ -1368,8 +1360,6 @@ TEST_F(PlannerTest, MultiStream2NodesSameStreamConsumedBy1NodeInDifferentStream)
   onnxruntime::ProviderInfo_CUDA& ep = onnxruntime::GetProviderInfo_CUDA();
   auto epFactory = ep.CreateExecutionProviderFactory(epi);
   std::unique_ptr<IExecutionProvider> execution_provider = epFactory->CreateProvider();
-  AllocatorManager am;
-  execution_provider->RegisterAllocator(am);
   ORT_THROW_IF_ERROR(GetExecutionProviders().Add("CUDAExecutionProvider", std::move(execution_provider)));
 
   CreatePlan({}, false);

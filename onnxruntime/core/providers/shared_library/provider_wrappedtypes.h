@@ -821,9 +821,11 @@ inline const Tensor& OpKernelContext::RequiredInput(int index) const {
 struct OpKernelInfo final {
   static void operator delete(void* p) { g_host->OpKernelInfo__operator_delete(reinterpret_cast<OpKernelInfo*>(p)); }
 
-  AllocatorPtr GetAllocator(OrtMemType mem_type) const { return g_host->OpKernelInfo__GetAllocator(this, mem_type); }
-
   const IExecutionProvider* GetExecutionProvider() const noexcept { return g_host->OpKernelInfo__GetExecutionProvider(this); }
+
+  AllocatorPtr GetDeviceAllocator() const { return g_host->OpKernelInfo__GetDeviceAllocator(this); }
+
+  AllocatorPtr GetPinnedAllocator() const { return g_host->OpKernelInfo__GetPinnedAllocator(this); }
 
   template <typename T>
   Status GetAttr(const std::string& name, T* value) const;

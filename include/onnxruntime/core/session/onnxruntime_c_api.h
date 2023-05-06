@@ -4192,6 +4192,13 @@ struct OrtApi {
    * \since Version 1.15.
    */
   ORT_API2_STATUS(KernelContext_GetAllocator, _In_ const OrtKernelContext* context, _In_ const OrtMemoryInfo* mem_info, _Outptr_ OrtAllocator** out);
+
+  /** \brief Create and register Cuda Allocator
+  *  \param[in] env OrtEnv instance
+  *  \param[in] mem_info OrtMemoryInfo instance
+  */
+  ORT_API2_STATUS(CreateAndRegisterCudaAllocator, _Inout_ OrtEnv* env, _In_ const OrtMemoryInfo* mem_info, _In_ const OrtArenaCfg* arena_cfg,
+                  _In_reads_(num_keys) const char* const* provider_options_keys, _In_reads_(num_keys) const char* const* provider_options_values, _In_ size_t num_keys);
 };
 
 /*

@@ -81,6 +81,10 @@ class Environment {
 
   Environment() = default;
 
+#ifdef USE_CUDA
+  Status CreateAndRegisterCudaAllocator(const OrtMemoryInfo& mem_info, const std::unordered_map<std::string, std::string>& options, const OrtArenaCfg* arena_cfg = nullptr);
+#endif  // USE_CUDA
+
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Environment);
   Status Initialize(std::unique_ptr<logging::LoggingManager> logging_manager,

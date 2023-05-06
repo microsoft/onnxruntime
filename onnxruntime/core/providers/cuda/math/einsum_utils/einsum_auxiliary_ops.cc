@@ -80,8 +80,8 @@ std::unique_ptr<Tensor> ReduceSum(const Tensor& input, gsl::span<const int64_t> 
                                   bool keep_dims, AllocatorPtr allocator,
                                   const TensorShape* input_shape_override,
                                   concurrency::ThreadPool* /*tp*/, void* einsum_cuda_assets) {
-  return cuda::ReductionOps::ReduceCompute<T>(*static_cast<EinsumCudaAssets*>(einsum_cuda_assets)->cuda_ep_, CUDNN_REDUCE_TENSOR_ADD,
-                                              allocator, input, reduce_axes,
+  return cuda::ReductionOps::ReduceCompute<T>(static_cast<EinsumCudaAssets*>(einsum_cuda_assets)->gpu_allocator_, CUDNN_REDUCE_TENSOR_ADD,
+                                              allocator, input, reduce_axes,  // TODO(leca): is this allocator the same as the 1st parameter?
                                               keep_dims, false, false, false,
                                               true, static_cast<EinsumCudaAssets*>(einsum_cuda_assets)->ort_stream_,
                                               input_shape_override);

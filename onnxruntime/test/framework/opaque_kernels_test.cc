@@ -376,17 +376,17 @@ TEST_F(OpaqueTypeTests, RunModel) {
   std::vector<int64_t> values = {1, 2};
   // prepare inputs
   OrtValue ml_values;
-  CreateMLValue<int64_t>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault), val_dims, values, &ml_values);
+  CreateMLValue<int64_t>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0], val_dims, values, &ml_values);
 
   std::vector<int64_t> ind_dims = {2};
   std::vector<int64_t> indicies = {1, 4};
   OrtValue ml_indicies;
-  CreateMLValue<int64_t>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault), ind_dims, indicies, &ml_indicies);
+  CreateMLValue<int64_t>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0], ind_dims, indicies, &ml_indicies);
 
   std::vector<int64_t> shape_dims = {1};
   std::vector<int64_t> shape = {5};
   OrtValue ml_shape;
-  CreateMLValue<int64_t>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault), shape_dims, shape, &ml_shape);
+  CreateMLValue<int64_t>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0], shape_dims, shape, &ml_shape);
 
   NameMLValMap feeds;
   feeds.insert(std::make_pair("sparse_values", ml_values));

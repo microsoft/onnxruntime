@@ -107,7 +107,6 @@ namespace Dml
         void SetDefaultRoundingMode(AllocatorRoundingMode roundingMode);
 
     public: // onnxruntime::IAllocator
-        void* Alloc(size_t size, AllocatorRoundingMode roundingMode);
         void* Alloc(size_t size) final;
         void Free(void* p) final;
 
@@ -130,12 +129,6 @@ namespace Dml
 
         static gsl::index GetBucketIndexFromSize(uint64_t size);
         static uint64_t GetBucketSizeFromIndex(gsl::index index);
-
-        AllocationInfo* DecodeDataHandleInternal(void* opaqueHandle)
-        {
-            // Implement in terms of const version
-            return const_cast<AllocationInfo*>(DecodeDataHandle(static_cast<const void*>(opaqueHandle)));
-        }
 
         friend class AllocationInfo;
         void FreeResource(void* p, uint64_t resourceId);

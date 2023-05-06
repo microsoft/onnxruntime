@@ -154,7 +154,6 @@ namespace Dml
         STDMETHOD_(bool, MetacommandsEnabled)() const noexcept final;
         std::shared_ptr<onnxruntime::IAllocator> GetGpuAllocator();
         std::shared_ptr<onnxruntime::IAllocator> GetCpuInputAllocator();
-        std::shared_ptr<onnxruntime::IAllocator> GetCpuOutputAllocator();
 
         std::shared_ptr<const Windows::AI::MachineLearning::Adapter::InternalRegistrationInfoMap>
         GetInternalRegistrationInfoMap() const;
@@ -170,6 +169,7 @@ namespace Dml
         }
 
         onnxruntime::common::Status OnSessionInitializationEnd();
+        std::vector<onnxruntime::AllocatorPtr> CreatePreferredAllocators();
 
     private:
         void Initialize(ID3D12CommandQueue* queue, ExecutionProvider& executionProvider);
@@ -190,11 +190,11 @@ namespace Dml
         std::unique_ptr<ReadbackHeap> m_readbackHeap;
         std::shared_ptr<BucketizedBufferAllocator> m_allocator;
         std::shared_ptr<CPUAllocator> m_cpuInputAllocator;
-        std::shared_ptr<CPUAllocator> m_cpuOutputAllocator;
         std::shared_ptr<onnxruntime::KernelRegistry> m_kernelRegistry;
         std::shared_ptr<const Windows::AI::MachineLearning::Adapter::InternalRegistrationInfoMap> m_internalRegInfoMap;
         mutable uint64_t m_partitionKernelPrefixVal = 0;
         bool m_closed = false;
+        AllocatorRoundingMode m_defaultRoundingMode = AllocatorRoundingMode::Enabled;
     };
 
     class DataTransfer : public onnxruntime::IDataTransfer
@@ -306,6 +306,11 @@ namespace Dml
         void MetacommandsEnabled()
         {
             m_impl->MetacommandsEnabled();
+        }
+
+        virtual std::vector<onnxruntime::AllocatorPtr> CreatePreferredAllocators() override
+        {
+            return m_impl->CreatePreferredAllocators();
         }
 
     private:

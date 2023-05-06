@@ -42,11 +42,18 @@
 #include "orttraining/core/optimizer/graph_transformer_registry.h"
 #endif
 
+#ifdef USE_CUDA
+#include "core/providers/cuda/cuda_provider_factory.h"
+#include "core/providers/cuda/cuda_execution_provider_info.h"
+#endif
 namespace onnxruntime {
 using namespace ::onnxruntime::common;
 using namespace ONNX_NAMESPACE;
 
 std::once_flag schemaRegistrationOnceFlag;
+#ifdef USE_CUDA
+ProviderInfo_CUDA& GetProviderInfo_CUDA();
+#endif  // USE_CUDA
 
 Status Environment::Create(std::unique_ptr<logging::LoggingManager> logging_manager,
                            std::unique_ptr<Environment>& environment,
@@ -77,12 +84,6 @@ static bool AreOrtMemoryInfosEquivalent(
 
 Status Environment::RegisterAllocator(AllocatorPtr allocator) {
   const auto& mem_info = allocator->Info();
-
-  if (mem_info.device.Type() != OrtDevice::CPU) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Only CPU allocators can be shared between "
-                           "multiple sessions for now.");
-  }
 
   // We don't expect millions of allocators getting registered. Hence linear search should be fine.
   auto ite = std::find_if(std::begin(shared_allocators_),
@@ -328,5 +329,16 @@ Internal copy node
   }
   return status;
 }
+
+#ifdef USE_CUDA
+Status Environment::CreateAndRegisterCudaAllocator(const OrtMemoryInfo& mem_info, const std::unordered_map<std::string, std::string>& options, const OrtArenaCfg* arena_cfg) {
+  CUDAExecutionProviderInfo cuda_ep_info;
+  GetProviderInfo_CUDA().CUDAExecutionProviderInfo__FromProviderOptions(options, cuda_ep_info);
+  CUDAExecutionProviderExternalAllocatorInfo external_info = cuda_ep_info.external_allocator_info;
+  AllocatorPtr allocator_ptr = GetProviderInfo_CUDA().CreateCudaAllocator(static_cast<int16_t>(mem_info.device.Id()), arena_cfg->max_mem, static_cast<ArenaExtendStrategy>(arena_cfg->arena_extend_strategy),
+                                                                          external_info, const_cast<OrtArenaCfg*>(arena_cfg));
+  return RegisterAllocator(allocator_ptr);
+}
+#endif  // USE_CUDA
 
 }  // namespace onnxruntime

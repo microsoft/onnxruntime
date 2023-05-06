@@ -400,7 +400,7 @@ struct WinmlAdapterApi {
     *
     * WinML uses this to create tensors, and needs to hold onto the allocator for the duration of the associated value's lifetime.
     */
-  OrtStatus*(ORT_API_CALL* GetProviderAllocator)(_In_ OrtExecutionProvider* provider, OrtAllocator** allocator)NO_EXCEPTION;
+  OrtStatus*(ORT_API_CALL* GetProviderAllocator)(_In_ OrtSession* session, _In_ OrtExecutionProvider* provider, OrtAllocator** allocator)NO_EXCEPTION;
 
   /**
     * FreeProviderAllocator

@@ -57,7 +57,7 @@ void KernelComputeTester::Run(std::unordered_set<int> strided_outputs) {
       OrtValue gpu_value;
       const Tensor& tensor = data.value_.Get<Tensor>();
       Tensor::InitOrtValue(tensor.DataType(), tensor.Shape(),
-                           execution_providers.Get(ep_type)->GetAllocator(OrtMemTypeDefault), gpu_value,
+                           execution_providers.Get(ep_type)->CreatePreferredAllocators()[0], gpu_value,
                            tensor.Strides());
       ASSERT_STATUS_OK(dtm.CopyTensor(tensor, *gpu_value.GetMutable<Tensor>()));
       initializer_map[name] = gpu_value;
@@ -78,8 +78,15 @@ void KernelComputeTester::Run(std::unordered_set<int> strided_outputs) {
   ASSERT_STATUS_OK(graph.Resolve());
 
   node.SetExecutionProviderType(ep_type);
+  std::map<OrtDevice, AllocatorPtr> allocators;
+  for (std::shared_ptr<IExecutionProvider> ep : execution_providers) {
+    std::vector<AllocatorPtr> ep_allocators = ep->CreatePreferredAllocators();
+    for (AllocatorPtr& alloc : ep_allocators) {
+      allocators.insert({alloc->Info().device, alloc});
+    }
+  }
   OptimizerExecutionFrame::Info info({&node}, initializer_map, graph.ModelPath(), *execution_providers.Get(ep_type),
-                                     [](std::string const&) { return false; });
+                                     [](std::string const&) { return false; }, allocators);
   const KernelCreateInfo* kernel_create_info = nullptr;
   ASSERT_STATUS_OK(info.TryFindKernel(&node, &kernel_create_info));
   ASSERT_TRUE(kernel_create_info);
@@ -100,7 +107,7 @@ void KernelComputeTester::Run(std::unordered_set<int> strided_outputs) {
                                initializer_map[input_data_[static_cast<size_t>(pair.first)].def_.Name()]
                                    .GetMutable<Tensor>()
                                    ->MutableDataRaw(),
-                               execution_providers.Get(ep_type)->GetAllocator(OrtMemTypeDefault)->Info(), output);
+                               execution_providers.Get(ep_type)->CreatePreferredAllocators()[0]->Info(), output);
           is_may_strided_output = true;
           break;
         }
@@ -108,7 +115,7 @@ void KernelComputeTester::Run(std::unordered_set<int> strided_outputs) {
       ASSERT_TRUE(is_may_strided_output);
     } else {
       Tensor::InitOrtValue(tensor.DataType(), tensor.Shape(),
-                           execution_providers.Get(ep_type)->GetAllocator(OrtMemTypeDefault), output);
+                           execution_providers.Get(ep_type)->CreatePreferredAllocators()[0], output);
     }
     outputs.emplace_back(output);
   }
@@ -160,7 +167,7 @@ void KernelComputeTester::Run(std::unordered_set<int> strided_outputs) {
       } else {
         const Tensor& tensor = outputs[i].Get<Tensor>();
         Tensor::InitOrtValue(tensor.DataType(), tensor.Shape(),
-                             execution_providers.Get(cpu_ep_type)->GetAllocator(OrtMemTypeDefault), cpu_value,
+                             execution_providers.Get(cpu_ep_type)->CreatePreferredAllocators()[0], cpu_value,
                              tensor.Strides());
         ASSERT_STATUS_OK(dtm.CopyTensor(tensor, *cpu_value.GetMutable<Tensor>()));
       }

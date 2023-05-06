@@ -99,7 +99,7 @@ void EnsureQuantizedTensorParam(const float scale, const T zero_point) {
   TensorShape shape({1});
 
   // First, create the scale tensor:
-  auto alloc = TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault);
+  auto alloc = TestCPUExecutionProvider()->CreatePreferredAllocators()[0];
   auto num_bytes = shape.Size() * sizeof(float);
   void* data = alloc->Alloc(num_bytes);
   float* float_data = static_cast<float*>(data);

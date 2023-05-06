@@ -23,20 +23,6 @@ constexpr const char* COREML = "CoreML";
 CoreMLExecutionProvider::CoreMLExecutionProvider(uint32_t coreml_flags)
     : IExecutionProvider{onnxruntime::kCoreMLExecutionProvider, true},
       coreml_flags_(coreml_flags) {
-  AllocatorCreationInfo device_info(
-      [](int) {
-        return std::make_unique<CPUAllocator>(OrtMemoryInfo(COREML, OrtAllocatorType::OrtDeviceAllocator));
-      });
-
-  InsertAllocator(CreateAllocator(device_info));
-
-  AllocatorCreationInfo cpu_memory_info(
-      [](int) {
-        return std::make_unique<CPUAllocator>(
-            OrtMemoryInfo(COREML, OrtAllocatorType::OrtDeviceAllocator, OrtDevice(), 0, OrtMemTypeCPUOutput));
-      });
-
-  InsertAllocator(CreateAllocator(cpu_memory_info));
 }
 
 CoreMLExecutionProvider::~CoreMLExecutionProvider() {}
