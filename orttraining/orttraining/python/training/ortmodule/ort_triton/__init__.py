@@ -8,8 +8,8 @@ from functools import wraps
 
 from onnxruntime.capi import _pybind_state as _C
 
-from .manual import *
-from .triton_op_executor import execute_triton_op, get_config
+from .kernel import *
+from .triton_op_executor import call_triton_by_name, call_triton_by_onnx, get_config
 
 
 def run_once_register_triton_op_executor(f):
@@ -34,4 +34,4 @@ def run_once_register_triton_op_executor(f):
 
 @run_once_register_triton_op_executor
 def register_triton_op_executor():
-    _C.register_triton_op_executor(get_config, execute_triton_op)
+    _C.register_triton_op_executor(get_config, call_triton_by_name, call_triton_by_onnx)

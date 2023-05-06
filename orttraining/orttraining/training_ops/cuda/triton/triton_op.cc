@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#ifdef ENABLE_TRITONOP
+#ifdef ENABLE_TRITON
 
 #include "core/providers/shared_library/provider_api.h"
 #include "orttraining/training_ops/cpu/triton/triton_op.h"
@@ -17,4 +17,4 @@ ONNX_OPERATOR_KERNEL_EX(TritonOp, kMSDomain, 1, kCudaExecutionProvider,
 }  // namespace cuda
 }  // namespace onnxruntime
 
-#endif  // ENABLE_TRITONOP
+#endif  // ENABLE_TRITON

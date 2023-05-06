@@ -4,6 +4,7 @@
 # --------------------------------------------------------------------------
 
 import itertools
+import warnings
 from collections import defaultdict
 from typing import Any, Dict, List, Set, Tuple
 
@@ -36,24 +37,33 @@ class NodeGroup:
 
     """
 
-    def __init__(self, node: NodeProto, reduce_axes: List[int], node_arg_infos: Dict[str, TensorInfo]):
+    def __init__(self, node: NodeProto, reduce_axes: List[int], keep_dims: int, node_arg_infos: Dict[str, TensorInfo]):
         self._node_arg_infos = node_arg_infos
         self.nodes_groups: List[Any] = [node]
         self.target_shape: List[sympy.Expr] = self._get_target_shape(node)
         rank = len(self.target_shape)
-        self.reduce_axes = sort_reduce_axes(reduce_axes, rank)
+        self.reduce_axes: List[int] = sort_reduce_axes(reduce_axes, rank)
         x_dims = [self.target_shape[dim] for dim in range(rank) if dim not in self.reduce_axes]
+        # x_numel is meant to hint how many rows of tensor will be processed by each kernel.
+        # x is same as CUDA block in X direction.
         x_numel: sympy.Expr = sympy.prod(x_dims) if len(x_dims) > 0 else sympy.Integer(1)
         r_dims: List[sympy.Expr] = [self.target_shape[dim] for dim in self.reduce_axes]
+        # r_numel is meant to hint how many elements in a row of tensor will be processed by each kernel.
+        # r is a abbreviation of reduction, so, it's only used for reduction nodes.
         r_numel: sympy.Expr = sympy.prod(r_dims) if len(r_dims) > 0 else sympy.Integer(1)
         # Support concrete shape only for now.
         assert x_numel.is_integer and r_numel.is_integer
-        self.autotune_configs = AutotuneConfigs(
+        self.autotune_configs: AutotuneConfigs = AutotuneConfigs(
             int(x_numel), int(r_numel), len(self.reduce_axes) == 0 or self.reduce_axes[-1] == rank - 1
         )
+        self.reduced_args: Set[str] = set()
+        if keep_dims != 1:
+            self.reduced_args.add(node.output[0])
 
     # Check if shape can be broadcasted to target_shape.
-    def _compatable_shape(self, shape: List[sympy.Expr]) -> bool:
+    # For example, [1, 3, 1, 1] can be broadcasted to [1, 3, 5, 7].
+    # and we support `keepdims = false``, so [1, 3, 5, 7] is compatible with [1, 3, 5].
+    def _compatible_shape(self, shape: List[sympy.Expr]) -> bool:
         if len(shape) > len(self.target_shape):
             return False
         shape = [sympy.Integer(1)] * (len(self.target_shape) - len(shape)) + shape
@@ -64,13 +74,28 @@ class NodeGroup:
                 return False
         return True
 
+    # Only we consider reduction or elementwise nodes.
+    # target shape does effect how we block the tensor in a triton kernel
+    # for reduction, it's possible to set keepdims=False
+    # for element-wise, output shape is always the target shape.
     def _get_target_shape(self, node):
         name = node.input[0] if is_reduction_node(node) else node.output[0]
         return self._node_arg_infos[name].shape
 
-    def compatible(self, node: NodeProto, keep_dims: int, reduce_axes: List[int]) -> bool:
+    # Check if a node can be added to this group.
+    # a group represents a single kernel.
+    # Theoretically, we should fuse as more nodes as possible to benefit most from memory access pattern.
+    # But we have to consider the following factors:
+    #     1. We have to keep the order of nodes, so that we can't fuse nodes that are not adjacent.
+    #     2. The target shape of a group is determined by the first node in the group.
+    #       we call it dominators, and it determinate the partition strategy of X_numel/R_numel.
+    #       A group can't have multiple dominators.
+    def compatible(self, node: NodeProto, reduce_axes: List[int], keep_dims: int) -> bool:
         target_shape = self._get_target_shape(node)
         if is_reduction_node(node):
+            # If the following nodes are all elementwise nodes on reduce output shape.
+            if len(self.reduce_axes) == 0 and self.target_shape == self._node_arg_infos[node.output[0]].shape:
+                return True
             if keep_dims != 1:
                 return False
             if (
@@ -78,19 +103,27 @@ class NodeGroup:
             ) or self.target_shape != target_shape:
                 return False
             return True
-        return self._compatable_shape(target_shape)
+        return self._compatible_shape(target_shape)
 
-    def add_node(self, node: NodeProto, reduce_axes: List[int]):
+    # 1. Create a new group with the reduction node.
+    # 2. Add this node to the current group.
+    def add_node(self, node: NodeProto, reduce_axes: List[int], keep_dims: int):
         if is_reduction_node(node):
-            group = NodeGroup(node, reduce_axes, self._node_arg_infos)
+            group = NodeGroup(node, reduce_axes, keep_dims, self._node_arg_infos)
             self.nodes_groups.append(group)
             if len(self.reduce_axes) == 0:
+                self.target_shape = group.target_shape
                 self.reduce_axes = group.reduce_axes
                 self.autotune_configs = group.autotune_configs
+                if keep_dims != 1:
+                    for idx in range(len(self.nodes_groups) - 1):
+                        self.reduced_args.update(self.nodes_groups[idx].input)
+                        self.reduced_args.update(self.nodes_groups[idx].output)
             return group
         self.nodes_groups.append(node)
         return self
 
+    #
     def dependent_nodes(self, keep_reduce_node: bool):
         node_map = dict()
         reduce_nodes = []
@@ -103,6 +136,7 @@ class NodeGroup:
                 reduce_nodes.append(item)
         return node_map, reduce_nodes
 
+    # finalize the group, and return the flatten nodes
     def flatten(self, sorted_nodes: List[NodeProto]) -> Tuple[List[NodeProto], List[List[int]]]:
         if self.autotune_configs.requires_for_loop:
             layers = []
@@ -140,6 +174,7 @@ class NodeGroup:
         if self.target_shape != other.target_shape or self.reduce_axes != other.reduce_axes:
             return False
         self.nodes_groups.extend(other.nodes_groups)
+        self.reduced_args.update(other.reduced_args)
         return True
 
 
@@ -157,10 +192,18 @@ class KernelIO:
         self.internal_args: List[str] = []
 
 
-# GraphLowering is a pass to lower a SortedGraph to a ModuleNode, which contains one or more KernelNodes.
 class GraphLowering:
     """
-    calling lowering pass to translate from onnx graph to irnode.
+    GraphLowering does manager all steps of lowering onnx graph to triton irnode.
+    1. partition the graph into kernels (one or more kernels).
+        Manager to allocate inputs, outputs and buffers reuse between kernels.
+        we call it Module
+    2. convert kernel to irnodes.
+    3. analyze the IR relationship and buffer/Tensor inside a kernel.
+    4. Generate the Auto-Tune configs for each kernel, Tunning speed/Running faster depends.
+
+    we will end up getting a tree-liked IR structure with explicit input/output and intermediate buffer.
+
     """
 
     def __init__(self, sorted_graph: SortedGraph):
@@ -185,6 +228,7 @@ class GraphLowering:
         self._kernel_io_list: List[KernelIO] = []
         self._lower()
 
+    # A module is map to a real onnx graph.
     def _extract_module_io(self):
         graph = self._sorted_graph.original_graph
         self._module_inputs = [TensorArg(input.name, self._node_arg_infos[input.name]) for input in graph.input]
@@ -218,8 +262,8 @@ class GraphLowering:
             reduce_axes = []
             if is_reduction_node(precessor):
                 keep_dims, reduce_axes = self._get_reduce_info(precessor)
-            if group.compatible(precessor, keep_dims, reduce_axes):
-                next_group = group.add_node(precessor, reduce_axes)
+            if group.compatible(precessor, reduce_axes, keep_dims):
+                next_group = group.add_node(precessor, reduce_axes, keep_dims)
                 dependent_nodes.update(self._process_node(precessor, precessors, next_group))
         return dependent_nodes
 
@@ -241,9 +285,10 @@ class GraphLowering:
             node = sorted_nodes[idx]
             if node.name not in processed:
                 reduce_axes = []
+                keep_dims = 1
                 if is_reduction_node(node):
-                    _, reduce_axes = self._get_reduce_info(node)
-                groups.append(NodeGroup(node, reduce_axes, self._node_arg_infos))
+                    keep_dims, reduce_axes = self._get_reduce_info(node)
+                groups.append(NodeGroup(node, reduce_axes, keep_dims, self._node_arg_infos))
                 processed.update(self._process_node(node, precessors, groups[-1]))
 
         # Merge groups with same target shape and reduce axes without dependency.
@@ -354,15 +399,13 @@ class GraphLowering:
                     if input.name in kernel_node.constants or input.name in input_names:
                         if (input.data is not None and input.data.size == 1) or input.name in load_cache:
                             continue
-                        load_nodes.append(IONode(input, kernel_node.offset_calc, True, False))
+                        load_nodes.append(IONode(input, kernel_node.offset_calc, True))
                         load_cache.add(input.name)
                 for output in sub_nodes[idx].outputs:
                     if output.name in output_name_map:
                         output_name_map[output.name] -= 1
                         if output_name_map[output.name] == 0:
-                            store_nodes.append(
-                                IONode(output, kernel_node.offset_calc, False, isinstance(sub_nodes[idx], ReduceNode))
-                            )
+                            store_nodes.append(IONode(output, kernel_node.offset_calc, False))
             if isinstance(sub_nodes[cur], ReduceForLoopStart):
                 new_sub_nodes.append(sub_nodes[cur])
                 cur += 1
@@ -373,7 +416,7 @@ class GraphLowering:
                     if input.name in kernel_node.constants or input.name in input_names:
                         if (input.data is not None and input.data.size == 1) or input.name in load_cache:
                             continue
-                        load_nodes.append(IONode(input, kernel_node.offset_calc, True, False))
+                        load_nodes.append(IONode(input, kernel_node.offset_calc, True))
                         load_cache.add(input.name)
             new_sub_nodes.extend(load_nodes)
             new_sub_nodes.extend(sub_nodes[cur:nxt])
@@ -382,7 +425,7 @@ class GraphLowering:
                 assert isinstance(sub_nodes[nxt], ReduceForLoopEnd)
                 for reduce_node in sub_nodes[nxt].reduce_nodes:
                     if reduce_node.outputs[0].name in output_name_map:
-                        reduce_store_nodes.append(IONode(reduce_node.outputs[0], kernel_node.offset_calc, False, True))
+                        reduce_store_nodes.append(IONode(reduce_node.outputs[0], kernel_node.offset_calc, False))
                 new_sub_nodes.append(sub_nodes[nxt])
                 nxt += 1
             cur = nxt
@@ -397,7 +440,7 @@ class GraphLowering:
             target_shape = group.target_shape
             # The inputs and outputs will be initialized later.
             kernel_node = (
-                ReduceKernelNode([], [], target_shape, group.reduce_axes)
+                ReduceKernelNode([], [], target_shape, group.reduce_axes, group.reduced_args)
                 if is_reduction_kernel
                 else ElementwiseKernelNode([], [], target_shape)
             )
@@ -427,6 +470,9 @@ class GraphLowering:
                     if node.op_type == "Dropout":
                         self._kernel_nodes[-1].has_dropout = True
             self._kernel_nodes[-1].sub_nodes = sub_nodes
+
+        if any(kernel_node.has_dropout for kernel_node in self._kernel_nodes):
+            warnings.warn("Use triton's random for Dropout, ignore the random seed from ORT.", UserWarning)
 
         self._analyze_kernel_io_list()
         cross_kernel_arg_map = dict()

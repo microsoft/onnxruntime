@@ -4094,7 +4094,7 @@ Return true if all elements are true and false otherwise.
         }
       });
 
-#ifdef ENABLE_TRITONOP
+#ifdef ENABLE_TRITON
   ONNX_CONTRIB_OPERATOR_SCHEMA(TritonOp)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
@@ -4110,7 +4110,7 @@ Return true if all elements are true and false otherwise.
               /*min_arity*/ 1)
       .TypeConstraint("T", OpSchema::all_tensor_types_with_bfloat(),
                       "Allow inputs and outputs to be any kind of tensor.");
-#endif  // ENABLE_TRITONOP
+#endif  // ENABLE_TRITON
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(SoftmaxCrossEntropyLossInternal)
       .SetDomain(kMSDomain)

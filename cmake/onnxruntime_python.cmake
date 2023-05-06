@@ -123,9 +123,16 @@ else()
   set(ONNXRUNTIME_SO_LINK_FLAG "-DEF:${ONNXRUNTIME_ROOT}/python/pybind.def")
 endif()
 
+if (onnxruntime_ENABLE_ATEN OR onnxruntime_ENABLE_TRITON)
+  target_include_directories(onnxruntime_pybind11_state PRIVATE ${dlpack_SOURCE_DIR}/include)
+endif()
+
 if (onnxruntime_ENABLE_ATEN)
   target_compile_definitions(onnxruntime_pybind11_state PRIVATE ENABLE_ATEN)
-  target_include_directories(onnxruntime_pybind11_state PRIVATE ${dlpack_SOURCE_DIR}/include)
+endif()
+
+if (onnxruntime_ENABLE_TRITON)
+  target_compile_definitions(onnxruntime_pybind11_state PRIVATE ENABLE_TRITON)
 endif()
 
 if (onnxruntime_ENABLE_TRAINING)
@@ -390,8 +397,8 @@ if (onnxruntime_ENABLE_TRAINING)
   file(GLOB onnxruntime_python_ortmodule_ort_triton_srcs CONFIGURE_DEPENDS
     "${ORTTRAINING_SOURCE_DIR}/python/training/ortmodule/ort_triton/*.py"
   )
-  file(GLOB onnxruntime_python_ortmodule_ort_triton_manual_srcs CONFIGURE_DEPENDS
-    "${ORTTRAINING_SOURCE_DIR}/python/training/ortmodule/ort_triton/manual/*.py"
+  file(GLOB onnxruntime_python_ortmodule_ort_triton_kernel_srcs CONFIGURE_DEPENDS
+    "${ORTTRAINING_SOURCE_DIR}/python/training/ortmodule/ort_triton/kernel/*.py"
   )
   file(GLOB onnxruntime_python_utils_data_srcs CONFIGURE_DEPENDS
     "${ORTTRAINING_SOURCE_DIR}/python/training/utils/data/*"
@@ -732,7 +739,7 @@ if (onnxruntime_ENABLE_TRAINING)
     COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/ortmodule/torch_cpp_extensions/cuda/torch_gpu_allocator
     COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/ortmodule/torch_cpp_extensions/cuda/fused_ops
     COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/ortmodule/ort_triton
-    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/ortmodule/ort_triton/manual
+    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/ortmodule/ort_triton/kernel
     COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/utils/data/
     COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/utils/hooks/
     COMMAND ${CMAKE_COMMAND} -E copy
@@ -787,8 +794,8 @@ if (onnxruntime_ENABLE_TRAINING)
         ${onnxruntime_python_ortmodule_ort_triton_srcs}
         $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/ortmodule/ort_triton/
     COMMAND ${CMAKE_COMMAND} -E copy
-        ${onnxruntime_python_ortmodule_ort_triton_manual_srcs}
-        $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/ortmodule/ort_triton/manual/
+        ${onnxruntime_python_ortmodule_ort_triton_kernel_srcs}
+        $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/ortmodule/ort_triton/kernel/
     COMMAND ${CMAKE_COMMAND} -E copy
         ${onnxruntime_python_utils_data_srcs}
         $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/utils/data/

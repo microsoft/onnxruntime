@@ -59,7 +59,7 @@
 
 #endif
 
-#ifdef ENABLE_TRITONOP
+#ifdef ENABLE_TRITON
 #include "orttraining/training_ops/cpu/triton/triton_op.h"
 #endif
 
@@ -713,7 +713,7 @@ void RefCountTracker::DumpDetails(const std::string& phase_name) const {
 
 #endif
 
-#ifdef ENABLE_TRITONOP
+#ifdef ENABLE_TRITON
 namespace contrib {
 Status TritonOp::Compute(OpKernelContext* context) const {
   return g_host_cpu.contrib__TritonOp__Compute(this, context);

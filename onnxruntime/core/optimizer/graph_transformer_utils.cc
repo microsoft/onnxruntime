@@ -77,10 +77,10 @@
 #include "orttraining/core/optimizer/sce_loss_grad_bias_fusion.h"
 #include "orttraining/core/optimizer/memory_optimizer.h"
 #endif
-#ifdef ENABLE_TRITONOP
+#ifdef ENABLE_TRITON
 #include "orttraining/core/optimizer/triton_fusion.h"
 #include "orttraining/training_ops/cpu/triton/triton_op_executor.h"
-#endif  // ENABLE_TRITONOP
+#endif  // ENABLE_TRITON
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
@@ -316,13 +316,13 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
         transformers.emplace_back(std::make_unique<GeluApproximation>(cpu_cuda_rocm_eps));
       }
 
-#ifdef ENABLE_TRITONOP
+#ifdef ENABLE_TRITON
       if (onnxruntime::contrib::TritonOpExecutor::Instance().IsInitialized()) {
         transformers.emplace_back(
             std::make_unique<TritonFusion>(onnxruntime::contrib::TritonOpExecutor::Instance().GetConfigJson(),
                                            InlinedHashSet<std::string_view>{onnxruntime::kCudaExecutionProvider}));
       }
-#endif  // ENABLE_TRITONOP
+#endif  // ENABLE_TRITON
 
       transformers.emplace_back( std::make_unique<BiasSoftmaxFusion>(cpu_cuda_rocm_eps));
       transformers.emplace_back(std::make_unique<BiasDropoutFusion>(cuda_rocm_eps));

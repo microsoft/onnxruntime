@@ -2,7 +2,9 @@
 # Licensed under the MIT License.
 
 import copy
+import json
 import os
+import random
 
 import _test_helpers
 import onnx
@@ -13,7 +15,7 @@ from torch._C import _from_dlpack
 from torch.utils.dlpack import to_dlpack
 
 from onnxruntime.training.ortmodule import DebugOptions, ORTModule
-from onnxruntime.training.ortmodule.ort_triton import execute_triton_op
+from onnxruntime.training.ortmodule.ort_triton import call_triton_by_name, call_triton_by_onnx
 
 pytest.importorskip("triton")
 
@@ -169,7 +171,7 @@ def _run_op_test(op_type, onnx_dtype, create_model_func, gen_inputs_func, **kwar
     ort_inputs = [tensor.to(torch.uint8) if tensor.dtype == torch.bool else tensor for tensor in ort_inputs]
     pt_outputs = TorchFuncExecutor.run(op_type, *pt_inputs, **kwargs)
     model_str = create_model_func(op_type, onnx_dtype, **kwargs).SerializeToString()
-    ort_outputs = execute_triton_op("", hash(model_str), model_str, *[to_dlpack(tensor) for tensor in ort_inputs])
+    ort_outputs = call_triton_by_onnx(hash(model_str), model_str, *[to_dlpack(tensor) for tensor in ort_inputs])
     if isinstance(pt_outputs, tuple):
         assert isinstance(ort_outputs, tuple)
         assert len(pt_outputs) == len(ort_outputs)
@@ -179,23 +181,23 @@ def _run_op_test(op_type, onnx_dtype, create_model_func, gen_inputs_func, **kwar
         _test_helpers.assert_values_are_close(pt_outputs, _from_dlpack(ort_outputs), rtol=rtol, atol=atol)
 
 
+def _run_step(model, *tensors):
+    prediction = model(*tensors)
+    loss = prediction.sum()
+    loss.backward()
+    return prediction
+
+
 def _run_module_test(module_cls, dtype, gen_inputs_func, triton_op_count, **kwargs):
-    pt_model = module_cls().to(DEVICE)
+    pt_model = module_cls().to(DEVICE).to(dtype)
     ort_model = ORTModule(copy.deepcopy(pt_model), DebugOptions(save_onnx=True, onnx_prefix="triton_model"))
-
-    def run_step(model, *tensors):
-        prediction = model(*tensors)
-        loss = prediction.sum()
-        loss.backward()
-        return prediction
-
     rtol = kwargs.get("rtol", 1e-03 if dtype == torch.float16 else 1e-04)
     atol = kwargs.get("atol", 1e-03 if dtype == torch.float16 else 1e-05)
     for _ in range(10):
         pt_inputs = gen_inputs_func(dtype)
         ort_inputs = copy.deepcopy(pt_inputs)
-        pt_output = run_step(pt_model, *pt_inputs)
-        ort_output = run_step(ort_model, *ort_inputs)
+        pt_output = _run_step(pt_model, *pt_inputs)
+        ort_output = _run_step(ort_model, *ort_inputs)
         _test_helpers.assert_values_are_close(pt_output, ort_output, rtol=rtol, atol=atol)
         _test_helpers.assert_gradients_match_and_reset_gradient(pt_model, ort_model, rtol=rtol, atol=atol)
 
@@ -213,6 +215,50 @@ def _run_module_test(module_cls, dtype, gen_inputs_func, triton_op_count, **kwar
     os.remove(os.path.join(os.getcwd(), "triton_model_optimized_training.onnx"))
     os.remove(os.path.join(os.getcwd(), "triton_model_optimized_pre_grad_training.onnx"))
     os.remove(os.path.join(os.getcwd(), "triton_model_execution_model_training.onnx"))
+
+
+def _run_tunable_op_test(module_cls, dtype, gen_inputs_func, tunable_op, impl_count, **kwargs):
+    pt_model = module_cls().to(DEVICE).to(dtype)
+    ort_model = ORTModule(copy.deepcopy(pt_model))
+    rtol = kwargs.get("rtol", 1e-03 if dtype == torch.float16 else 1e-04)
+    atol = kwargs.get("atol", 1e-03 if dtype == torch.float16 else 1e-05)
+    os.environ["ORTMODULE_ENABLE_TUNING"] = "1"
+    os.environ["ORTMODULE_TUNING_RESULTS_PATH"] = "./"
+    for _ in range(5):
+        pt_inputs = gen_inputs_func(dtype)
+        ort_inputs = copy.deepcopy(pt_inputs)
+        pt_output = _run_step(pt_model, *pt_inputs)
+        ort_output = _run_step(ort_model, *ort_inputs)
+        _test_helpers.assert_values_are_close(pt_output, ort_output, rtol=rtol, atol=atol)
+        _test_helpers.assert_gradients_match_and_reset_gradient(pt_model, ort_model, rtol=rtol, atol=atol)
+    tunable_results_file = os.path.join(os.getcwd(), "tuning_results_training.json")
+    assert os.path.exists(tunable_results_file)
+    with open(tunable_results_file, "r") as f:
+        tunable_results = json.load(f)
+    assert tunable_op in str(tunable_results)
+    del os.environ["ORTMODULE_ENABLE_TUNING"]
+    for i in range(impl_count - 1):
+        new_tunable_results = copy.deepcopy(tunable_results)
+        for k, v in new_tunable_results[0]["results"].items():
+            if tunable_op in k:
+                for param, impl in v.items():
+                    v[param] = (impl + 1 + i) % impl_count
+        with open(tunable_results_file, "w") as f:
+            json.dump(new_tunable_results, f)
+        ort_model = ORTModule(copy.deepcopy(pt_model))
+        for _ in range(5):
+            pt_inputs = gen_inputs_func(dtype)
+            ort_inputs = copy.deepcopy(pt_inputs)
+            pt_output = _run_step(pt_model, *pt_inputs)
+            ort_output = _run_step(ort_model, *ort_inputs)
+            _test_helpers.assert_values_are_close(pt_output, ort_output, rtol=rtol, atol=atol)
+            _test_helpers.assert_gradients_match_and_reset_gradient(pt_model, ort_model, rtol=rtol, atol=atol)
+        assert (
+            new_tunable_results
+            == ort_model._torch_module._execution_manager(True)._execution_agent._inference_session.get_tuning_results()
+        )
+    os.remove(tunable_results_file)
+    del os.environ["ORTMODULE_TUNING_RESULTS_PATH"]
 
 
 @pytest.mark.parametrize("op_type", ["Add", "Sub", "Mul", "Div"])
@@ -379,7 +425,7 @@ def test_dropout_op(onnx_dtype, input_shape_and_ratio):
         torch.randn(*input_shape_and_ratio[0], dtype=torch_dtype, device=DEVICE),
         torch.randn(*input_shape_and_ratio[0], dtype=torch_dtype, device=DEVICE),
     ]
-    outputs = execute_triton_op("", hash(model_str), model_str, *[to_dlpack(t) for t in input_tensor])
+    outputs = call_triton_by_onnx(hash(model_str), model_str, *[to_dlpack(t) for t in input_tensor])
     y1, mask1, y2, mask2 = tuple([_from_dlpack(o).detach().cpu().numpy().flatten() for o in outputs])
     x1 = (input_tensor[0] + input_tensor[1]).detach().cpu().numpy().flatten()
     x2 = y1 * mask1 + input_tensor[2].detach().cpu().numpy().flatten()
@@ -430,14 +476,15 @@ def test_dropout_grad_op(onnx_dtype, input_shape_and_ratio):
     _run_op_test("DropoutGrad", onnx_dtype, _create_model, _gen_inputs, **kwargs)
 
 
-@pytest.mark.parametrize("op_type", ["ReduceMax", "ReduceMean", "ReduceMin", "ReduceSum"])
+@pytest.mark.parametrize("op_type", ["ReduceSum", "ReduceMean", "ReduceMax", "ReduceMin"])
 @pytest.mark.parametrize("onnx_dtype", [TensorProto.FLOAT, TensorProto.FLOAT16])
 @pytest.mark.parametrize(
     "input_shape_and_reduce_info",
     [
-        ([1024, 2], [-1], True),
-        ([2, 3, 3, 3], [1, 2], False),
-        ([123, 4, 5, 6], [2], True),
+        ([2, 1024], [-1], True),
+        ([1050, 3], [0], False),
+        ([2, 3, 3, 3], [1, 2], True),
+        ([123, 4, 5, 6], [2], False),
         ([16, 8, 16, 8], [1, 3], True),
         ([16, 8, 16, 8], [0, 2], False),
     ],
@@ -478,6 +525,9 @@ def test_reduce_op(op_type, onnx_dtype, input_shape_and_reduce_info):
         kwargs["axes"] = input_shape_and_reduce_info[1]
     if input_shape_and_reduce_info[2] is not None:
         kwargs["keepdims"] = input_shape_and_reduce_info[2]
+    if onnx_dtype == TensorProto.FLOAT16:
+        kwargs["atol"] = 1e-2
+        kwargs["rtol"] = 1e-2
     _run_op_test(op_type, onnx_dtype, _create_model, _gen_inputs, **kwargs)
 
 
@@ -527,6 +577,95 @@ def test_layer_norm_op(onnx_dtype, input_shape_and_axis):
     _run_op_test("LayerNormalization", onnx_dtype, _create_model, _gen_inputs, **kwargs)
 
 
+@pytest.mark.parametrize("dtype", [torch.float, torch.float16])
+@pytest.mark.parametrize(
+    "input_info",
+    [
+        ([32, 64], False, [64, 16], False, 1.0),
+        ([33, 68], False, [18, 68], True, 1.5),
+        ([128, 64], True, [128, 32], False, 1.5),
+        ([123, 234], True, [345, 123], True, -1.0),
+        ([22, 33, 44], False, [44, 55], False, 1.0),
+        ([22, 33, 44], False, [666, 44], True, 2.0),
+        ([22, 33, 44], True, [33, 666], False, -2.0),
+        ([64, 128], False, [16, 64, 128], True, 1.5),
+        ([16, 32, 64], False, [16, 64, 32], False, 1.0),
+        ([8, 16, 32, 16], True, [8, 16, 32, 32], True, 1.0),
+    ],
+)
+def test_matmul(dtype, input_info):
+    pt_inputs = [
+        torch.rand(*input_info[0], dtype=dtype, device=DEVICE),
+        torch.rand(*input_info[2], dtype=dtype, device=DEVICE),
+    ]
+    ort_inputs = copy.deepcopy(pt_inputs)
+    kwargs = {}
+    if input_info[1]:
+        pt_inputs[0] = pt_inputs[0].transpose(-1, -2)
+        kwargs["trans_a"] = True
+    if input_info[3]:
+        pt_inputs[1] = pt_inputs[1].transpose(-1, -2)
+        kwargs["trans_b"] = True
+    if input_info[4] != 1.0:
+        kwargs["alpha"] = input_info[4]
+    pt_output = torch.matmul(*pt_inputs) * input_info[4]
+    alloc_out = random.choice([True, False])
+    if alloc_out:
+        ort_output = torch.empty(pt_output.shape, dtype=dtype, device=DEVICE)
+        ort_inputs.append(ort_output)
+        call_triton_by_name("triton_matmul_out", *[to_dlpack(tensor) for tensor in ort_inputs], **kwargs)
+    else:
+        ort_output = _from_dlpack(
+            call_triton_by_name("triton_matmul", *[to_dlpack(tensor) for tensor in ort_inputs], **kwargs)
+        )
+    rtol = 1e-03 if dtype == torch.float16 else 1e-04
+    atol = 1e-03 if dtype == torch.float16 else 1e-05
+    _test_helpers.assert_values_are_close(pt_output, ort_output, rtol=rtol, atol=atol)
+
+
+@pytest.mark.parametrize("dtype", [torch.float, torch.float16])
+@pytest.mark.parametrize(
+    "input_info",
+    [
+        ([64, 32], False, [32, 64], False, [64, 64], 1.0, 1.0),
+        ([65, 129], False, [65, 129], True, [65, 1], 1.5, -1.0),
+        ([127, 63], True, [127, 127], False, [127], -1.0, 2.0),
+        ([256, 64], True, [128, 256], True, [1], 2.0, 1.5),
+    ],
+)
+def test_gemm(dtype, input_info):
+    pt_inputs = [
+        torch.rand(*input_info[0], dtype=dtype, device=DEVICE),
+        torch.rand(*input_info[2], dtype=dtype, device=DEVICE),
+        torch.rand(*input_info[4], dtype=dtype, device=DEVICE),
+    ]
+    ort_inputs = copy.deepcopy(pt_inputs)
+    kwargs = {}
+    if input_info[1]:
+        pt_inputs[0] = pt_inputs[0].transpose(-1, -2)
+        kwargs["trans_a"] = True
+    if input_info[3]:
+        pt_inputs[1] = pt_inputs[1].transpose(-1, -2)
+        kwargs["trans_b"] = True
+    if input_info[5] != 1.0:
+        kwargs["alpha"] = input_info[5]
+    if input_info[6] != 1.0:
+        kwargs["beta"] = input_info[6]
+    pt_output = torch.matmul(pt_inputs[0], pt_inputs[1]) * input_info[5] + pt_inputs[2] * input_info[6]
+    alloc_out = random.choice([True, False])
+    if alloc_out:
+        ort_output = torch.empty(pt_output.shape, dtype=dtype, device=DEVICE)
+        ort_inputs.append(ort_output)
+        call_triton_by_name("triton_gemm_out", *[to_dlpack(tensor) for tensor in ort_inputs], **kwargs)
+    else:
+        ort_output = _from_dlpack(
+            call_triton_by_name("triton_gemm", *[to_dlpack(tensor) for tensor in ort_inputs], **kwargs)
+        )
+    rtol = 1e-03 if dtype == torch.float16 else 1e-04
+    atol = 1e-03 if dtype == torch.float16 else 1e-05
+    _test_helpers.assert_values_are_close(pt_output, ort_output, rtol=rtol, atol=atol)
+
+
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16])
 def test_elementwise_module(dtype):
     N, D, H, W = 8, 768, 12, 64
@@ -537,10 +676,10 @@ def test_elementwise_module(dtype):
 
     def _gen_inputs(dtype):
         return [
-            torch.randn(N, D, H, W, dtype=dtype, device=DEVICE, requires_grad=True),
-            torch.randn(W, dtype=dtype, device=DEVICE, requires_grad=True),
-            torch.randn(D, 1, 1, dtype=dtype, device=DEVICE, requires_grad=True),
-            torch.randn(N, 1, H, W, dtype=dtype, device=DEVICE, requires_grad=True),
+            torch.rand(N, D, H, W, dtype=dtype, device=DEVICE, requires_grad=True),
+            torch.rand(W, dtype=dtype, device=DEVICE, requires_grad=True),
+            torch.rand(D, 1, 1, dtype=dtype, device=DEVICE, requires_grad=True),
+            torch.rand(N, 1, H, W, dtype=dtype, device=DEVICE, requires_grad=True),
         ]
 
     _run_module_test(NeuralNetElementwise, dtype, _gen_inputs, 1)
@@ -563,13 +702,15 @@ def test_softmax_module(dtype, input_shapes_and_axis):
 
 
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16])
-@pytest.mark.parametrize("input_shapes_and_axis", [([2, 3, 3, 3], [3, 3], 2), ([2, 1024], [2, 1024], -1)])
+@pytest.mark.parametrize(
+    "input_shapes_and_axis", [([2, 1024], [2, 1024], -1), ([2, 2049], [2, 1], -1), ([2, 3, 3, 3], [3, 3], 2)]
+)
 def test_layer_norm_module(dtype, input_shapes_and_axis):
     class NeuralNetLayerNorm(torch.nn.Module):
         def __init__(self):
             super().__init__()
             self.layer_norm = torch.nn.LayerNorm(
-                *input_shapes_and_axis[0][input_shapes_and_axis[2] :], device=DEVICE, dtype=dtype
+                input_shapes_and_axis[0][input_shapes_and_axis[2] :], device=DEVICE, dtype=dtype
             )
 
         def forward(self, input1, input2):
@@ -582,3 +723,36 @@ def test_layer_norm_module(dtype, input_shapes_and_axis):
         ]
 
     _run_module_test(NeuralNetLayerNorm, dtype, _gen_inputs, 2)
+
+
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float16])
+@pytest.mark.parametrize("input_shapes", [([128, 64], [64, 64]), ([16, 64, 128], [16, 128, 64])])
+def test_matmul_tunable_op(dtype, input_shapes):
+    class NeuralNetMatmul(torch.nn.Module):
+        def forward(self, input1, input2):
+            return torch.matmul(input1, input2)
+
+    def _gen_inputs(dtype):
+        return [
+            torch.rand(*input_shapes[0], dtype=dtype, device=DEVICE, requires_grad=True),
+            torch.rand(*input_shapes[1], dtype=dtype, device=DEVICE, requires_grad=True),
+        ]
+
+    _run_tunable_op_test(NeuralNetMatmul, dtype, _gen_inputs, "MatMulTunableOp", 2)
+
+
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float16])
+@pytest.mark.parametrize("m_n_k", [(64, 64, 64)])
+def test_gemm_tunable_op(dtype, m_n_k):
+    class NeuralNetGemm(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.linear = torch.nn.Linear(m_n_k[2], m_n_k[1])
+
+        def forward(self, input):
+            return self.linear(input)
+
+    def _gen_inputs(dtype):
+        return [torch.rand(m_n_k[0], m_n_k[2], dtype=dtype, device=DEVICE, requires_grad=True)]
+
+    _run_tunable_op_test(NeuralNetGemm, dtype, _gen_inputs, "GemmTunableOp", 2)

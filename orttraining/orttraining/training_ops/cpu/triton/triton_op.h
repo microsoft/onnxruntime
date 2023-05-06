@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#if ENABLE_TRITONOP
+#if ENABLE_TRITON
 
 #pragma once
 
@@ -30,7 +30,12 @@ class TritonOp final : public OpKernel {
   std::string onnx_string_;
 };
 
+bool IsTritonOpExecutorInitialized();
+Status ExecuteTritonOpByFuncName(OpKernelContext* p_ctx, const std::string& func_name, size_t input_count,
+                                 size_t output_count,
+                                 const InlinedHashMap<std::string, std::pair<std::string, int>>& kwargs);
+
 }  // namespace contrib
 }  // namespace onnxruntime
 
-#endif  // ENABLE_TRITONOP
+#endif  // ENABLE_TRITON

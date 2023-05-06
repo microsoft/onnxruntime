@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#ifdef ENABLE_TRITONOP
+#ifdef ENABLE_TRITON
 
 #pragma once
 
@@ -46,4 +46,4 @@ class TritonFusion : public GraphTransformer {
 
 }  // namespace onnxruntime
 
-#endif  // ENABLE_TRITONOP
+#endif  // ENABLE_TRITON

@@ -898,6 +898,10 @@ if (onnxruntime_ENABLE_ATEN)
   target_compile_definitions(onnxruntime_test_all PRIVATE ENABLE_ATEN)
 endif()
 
+if (onnxruntime_ENABLE_TRITON)
+  target_compile_definitions(onnxruntime_test_all PRIVATE ENABLE_TRITON)
+endif()
+
 set(test_data_target onnxruntime_test_all)
 
 onnxruntime_add_static_library(onnx_test_data_proto ${TEST_SRC_DIR}/proto/tml.proto)

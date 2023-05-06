@@ -141,7 +141,7 @@ class GraphExecutionManager(GraphExecutionInterface):
             except ImportError:
                 pass
             else:
-                from onnxruntime.training.ortmodule.ort_triton import register_triton_op_executor
+                from .ort_triton import register_triton_op_executor
 
                 register_triton_op_executor()
 
@@ -208,6 +208,11 @@ class GraphExecutionManager(GraphExecutionInterface):
                 provider_option_map["cudnn_conv_algo_search"] = self._runtime_options.conv_algo_search
                 provider_option_map["cudnn_conv_use_max_workspace"] = "1"
                 provider_option_map["cudnn_conv1d_pad_to_nc1d"] = "1"
+                if ortmodule._defined_from_envvar("ORTMODULE_ENABLE_TUNING", 0) != 0:
+                    provider_option_map["tunable_op_enable"] = "1"
+                    provider_option_map["tunable_op_tuning_enable"] = "1"
+                elif ortmodule._defined_from_envvar("ORTMODULE_TUNING_RESULTS_PATH", "") != "":
+                    provider_option_map["tunable_op_enable"] = "1"
             if self._runtime_options.use_external_gpu_allocator:
                 provider_option_map["gpu_external_alloc"] = str(self._torch_alloc)
                 provider_option_map["gpu_external_free"] = str(self._torch_free)

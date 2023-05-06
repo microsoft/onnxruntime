@@ -29,7 +29,7 @@
 #include "orttraining/core/optimizer/sce_loss_grad_bias_fusion.h"
 #include "orttraining/core/optimizer/qdq_fusion.h"
 #include "orttraining/core/optimizer/lstm_replacement.h"
-#ifdef ENABLE_TRITONOP
+#ifdef ENABLE_TRITON
 #include "orttraining/core/optimizer/triton_fusion.h"
 #endif
 
@@ -1222,7 +1222,7 @@ TEST_F(GraphTransformationTests, MegatronBARTSelfAttentionPartitionCorrectnessTe
 // end of DISABLE_CONTRIB_OPS
 #endif
 
-#ifdef ENABLE_TRITONOP
+#ifdef ENABLE_TRITON
 TEST_F(GraphTransformationTests, TritonFusion) {
   auto model_uri = MODEL_FOLDER "bert_toy_opset14.onnx";
   std::shared_ptr<Model> model;

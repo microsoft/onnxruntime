@@ -18,8 +18,14 @@ from ._utils import get_attribute, to_numpy_array, topological_sort
 
 class SortedGraph(object):
     """
-    This class is used to decompose complex operators into premilinary operators, sort the operators in topological order,
-    and infer the type and shape of each node inputs and outputs.
+    This class is used to
+        1. decompose complex operators into preliminary operators,
+        2. sort the operators in topological order,
+        3. infer the type and shape of each node inputs and outputs.
+
+    input args:
+        model: the ONNX model.
+        input_shapes: the shapes of the model inputs. Can be numeric values or symbolic values.
     """
 
     def __init__(self, model: ModelProto, input_shapes: List[List[Any]]):
@@ -45,9 +51,10 @@ class SortedGraph(object):
         # Decompose complex operators.
         self._decompose()
 
-        # Sort the initializers in reference order. We try to reuse Triton module for different ONNX models with
-        # same graph structure, even the node args names in the models are different.
-        # Sorting the initailizers can help to generate same model key for different ONNX models.
+        # Sort the initializers in reference order.
+        # We try to reuse Triton module for different ONNX models with same graph structure,
+        # even the node args names in the models are different.
+        # Sorting the initializers can help to generate same model key for different ONNX models.
         initializers = {}
         for initializer in self._graph.initializer:
             initializers[initializer.name] = initializer
@@ -74,19 +81,23 @@ class SortedGraph(object):
             graph_inputs.append(f"({str(input.type.tensor_type.elem_type)},{shape_str})")
             name_map[input.name] = f"i{idx}"
         graph_inputs_str = ",".join(graph_inputs)
+
         constants = []
         for idx, initializer in enumerate(self._sorted_initializers):
             data_str = np.array2string(to_numpy_array(initializer), separator=",").replace("\n", "").replace(" ", "")
             constants.append(f"({initializer.data_type},{data_str})")
             name_map[initializer.name] = f"c{idx}"
+
         for idx, node in enumerate(self._const_nodes):
             value_attr = get_attribute(node, "value")
             data_str = np.array2string(to_numpy_array(value_attr), separator=",").replace("\n", "").replace(" ", "")
             constants.append(f"({value_attr.data_type},{data_str})")
             name_map[node.output[0]] = f"c{idx + len(self._sorted_initializers)}"
         constants_str = ",".join(constants)
+
         for idx, output in enumerate(self._graph.output):
             name_map[output.name] = f"o{idx}"
+
         nodes = []
         for node_idx, node in enumerate(self._sorted_nodes):
             inputs = []
@@ -164,7 +175,7 @@ class SortedGraph(object):
             pos += 1
 
     # Save the ONNX graphs for debug purpose. The original ONNX graph is the subgraph from backend.
-    # The processed ONNX graph is the subgraph after decompose, it also contains the conrete shapes for each arg.
+    # The processed ONNX graph is the subgraph after decompose, it also contains the concrete shapes for each arg.
     def save_onnx(self, file_path_prefix):
         onnx.save(self._model, file_path_prefix + "_original.onnx")
         processed_model = copy.deepcopy(self._model)

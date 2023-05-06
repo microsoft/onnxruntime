@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#ifdef ENABLE_TRITONOP
+#ifdef ENABLE_TRITON
 
 #include <nlohmann/json.hpp>
 #include <string_view>
@@ -429,4 +429,4 @@ Status TritonFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, co
 
 }  // namespace onnxruntime
 
-#endif  // ENABLE_TRITONOP
+#endif  // ENABLE_TRITON
