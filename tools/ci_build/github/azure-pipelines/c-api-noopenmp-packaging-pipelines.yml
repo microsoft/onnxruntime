@@ -74,11 +74,11 @@ stages:
   jobs:
   - job: Print_Variables
     variables:
-      ReleaseVersionSuffix: $[ stageDependencies.Set_Variables.Set_Release_Version_Suffix.outputs['Set_Release_Version_Suffix.ReleaseVersionSuffix'] ]
+      ReleaseVersionSuffix_Var: $[ stageDependencies.Set_Variables.Set_Release_Version_Suffix.outputs['Set_Release_Version_Suffix.ReleaseVersionSuffix'] ]
     steps:
     - checkout: none
     - bash: |
-        echo $(ReleaseVersionSuffix)
+        echo $(ReleaseVersionSuffix_Var)
       name: Print_InterStage_Variables
 
 - template: templates/c-api-cpu.yml
