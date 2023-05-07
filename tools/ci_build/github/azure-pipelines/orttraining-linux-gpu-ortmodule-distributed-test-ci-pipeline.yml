@@ -70,7 +70,7 @@ stages:
       clean: true
       submodules: recursive
 
-    - template: stages/jobs/run-docker-build-steps.yml
+    - template: stages/jobs/steps/run-docker-build-steps.yml
       parameters:
         RunDockerBuildArgs: |
           -o ubuntu20.04 -d gpu \
