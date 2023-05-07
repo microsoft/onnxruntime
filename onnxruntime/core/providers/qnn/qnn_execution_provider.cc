@@ -350,7 +350,7 @@ bool QNNExecutionProvider::IsContextCacheFileExists(const onnxruntime::PathStrin
   } else {
     context_cache_pathstring = ToPathString(context_cache_path_);
   }
-  bool context_cache_file_exist = std::filesystem::exists(context_cache_pathstring.c_str()) ? true : false;
+  bool context_cache_file_exist = std::filesystem::exists(context_cache_pathstring.c_str());
 
   return context_cache_file_exist;
 }
