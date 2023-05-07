@@ -59,9 +59,9 @@ stages:
     - checkout: none
     - bash: |
         if [[ "${{ parameters.IsReleaseBuild }}" = True && "${{ parameters.PreReleaseVersionSuffixString }}" != "none"  ]]; then
-          echo "##vso[task.setvariable variable=ReleaseVersionSuffix;]${{ parameters.PreReleaseVersionSuffixString }}.${{ parameters.PreReleaseVersionSuffixNumber }}"
+          echo "##vso[task.setvariable variable=ReleaseVersionSuffix isoutput=True;]${{ parameters.PreReleaseVersionSuffixString }}.${{ parameters.PreReleaseVersionSuffixNumber }}"
         else
-          echo "##vso[task.setvariable variable=ReleaseVersionSuffix;]''"
+          echo "##vso[task.setvariable variable=ReleaseVersionSuffix isoutput=True;]''"
         fi
       name: Set_Release_Version_Suffix_Step
     - bash: |
@@ -71,16 +71,12 @@ stages:
         echo "Release version suffix is: $(ReleaseVersionSuffix)"
 
 - stage: Debug
-  variables:
-    # stageDependencies.{stageName}.outputs['{jobName}.{stepName}.{variableName}']
-    ReleaseVersionSuffix_Variable: $[ stageDependencies.Set_Variables.Set_Release_Version_Suffix.outputs['Set_Release_Version_Suffix_Step.ReleaseVersionSuffix'] ]
   jobs:
   - job: Print_Variables
     steps:
     - checkout: none
     - bash: |
-        # echo $[ stageDependencies.Set_Variables.outputs['Set_Release_Version_Suffix.Set_Release_Version_Suffix.ReleaseVersionSuffix'] ]
-        echo $(ReleaseVersionSuffix_Variable)
+        echo $(Set_Release_Version_Suffix_Step.ReleaseVersionSuffix)
       name: Print_InterStage_Variables
 
 - template: templates/c-api-cpu.yml
