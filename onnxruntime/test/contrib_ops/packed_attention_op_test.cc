@@ -388,10 +388,10 @@ static void RunModelWithRandomInput(
     bool is_float16) {
   // ORT enables TF32 in GEMM for A100. TF32 will cause precsion loss and fail this test.
   // Do not run this test unless TF32 is disabled explicitly.
-  if (HasCudaEnvironment(800) && ParseEnvironmentVariableWithDefault<int>("NVIDIA_TF32_OVERRIDE", 1) != 0) {
-    GTEST_SKIP() << "Skipping RunModelWithRandomInput in A100 since TF32 is enabled";
-    return;
-  }
+  // if (HasCudaEnvironment(800) && ParseEnvironmentVariableWithDefault<int>("NVIDIA_TF32_OVERRIDE", 1) != 0) {
+  //   GTEST_SKIP() << "Skipping RunModelWithRandomInput in A100 since TF32 is enabled";
+  //   return;
+  // }
 
   RandomValueGenerator random{234};
 
