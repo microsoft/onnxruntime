@@ -9,6 +9,7 @@
 #endif
 #include "core/providers/coreml/builders/helper.h"
 #include "core/providers/coreml/builders/op_builder_factory.h"
+#include "core/optimizer/initializer.h"
 
 #include "base_op_builder.h"
 
@@ -63,11 +64,11 @@ Status ReductionOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, co
   NodeAttrHelper helper(node);
   if (input_defs.size() > 1 && input_defs[1]->Exists()) {
     auto& axes_tensor = *initializers.at(input_defs[1]->Name());
-    const int64_t* raw_axes = axes_tensor.int64_data().empty()
-      ? reinterpret_cast<const int64_t*>(axes_tensor.raw_data().data())
-      : axes_tensor.int64_data().data();
-    const auto size = axes_tensor.dims()[0];
-    axes = std::vector<int64_t>(raw_axes, raw_axes + size);
+    Initializer axes_initializer(axes_tensor);
+    int64_t* data = axes_initializer.data<int64_t>();
+    int64_t size = axes_initializer.size();
+
+    axes = std::vector<int64_t>(data, data + size);
   } else if (helper.HasAttr("axes")) {
     axes = helper.Get("axes", std::vector<int64_t>{});
   }
