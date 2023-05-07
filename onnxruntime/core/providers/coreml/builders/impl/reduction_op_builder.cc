@@ -30,6 +30,7 @@ class ReductionOpBuilder : public BaseOpBuilder {
                          const logging::Logger& logger) const override;
 };
 
+#ifdef __APPLE__
 namespace {
 template <typename T>
 void AddReductionParams(T* params, const std::vector<int64_t>& axes, bool keepdims, bool noop_with_empty_axes) {
@@ -43,7 +44,6 @@ void AddReductionParams(T* params, const std::vector<int64_t>& axes, bool keepdi
 }
 } // namespace
 
-#ifdef __APPLE__
 void ReductionOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const {
   const auto& input_defs(node.InputDefs());
 
