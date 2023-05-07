@@ -275,9 +275,9 @@ Status PackedAttention<T>::ComputeInternal(OpKernelContext* context) const {
   MHARunner* fused_runner = TryGettingFusedRunner(parameters);
 
   bool use_memory_efficient_attention = false;
+  auto& device_prop = GetDeviceProp();
 #if USE_FLASH_ATTENTION
   if (nullptr == fused_runner) {
-    auto& device_prop = GetDeviceProp();
     int sm = device_prop.major * 10 + device_prop.minor;
     bool is_good_for_rpb = !parameters.has_relative_position_bias || parameters.sequence_length % (4 * sizeof(T)) == 0;
     use_memory_efficient_attention = is_good_for_rpb &&
@@ -298,7 +298,6 @@ Status PackedAttention<T>::ComputeInternal(OpKernelContext* context) const {
   int k = parameters.input_hidden_size;
   gemm_buffer = GetScratchBuffer<T>(static_cast<size_t>(m) * n, context->GetComputeStream());
 
-  auto& device_prop = GetDeviceProp();
   cublasHandle_t cublas = GetCublasHandle(context);
 
   // Gemm, note that CUDA assumes col-major, so result(N, M) = 1 * weights x input + 1 x bias

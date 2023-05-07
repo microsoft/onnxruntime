@@ -182,13 +182,10 @@ __global__ void AddBiasTransposeQKVPackedCutlass(
   if (token_idx < token_count) {
     for (int i = threadIdx.x; i < D_QK; i += blockDim.x) {
       q[i] = input[i] + biases[i];
-    }
-
-    for (int i = threadIdx.x; i < D_QK; i += blockDim.x) {
       k[i] = input[D_QK + i] + biases[D_QK + i];
     }
 
-    for (int i = threadIdx.x; i < +D_V; i += blockDim.x) {
+    for (int i = threadIdx.x; i < D_V; i += blockDim.x) {
       v[i] = input[D_QK + D_QK + i] + biases[D_QK + D_QK + i];
     }
   }
