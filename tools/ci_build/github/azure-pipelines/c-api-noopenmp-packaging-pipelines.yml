@@ -59,9 +59,9 @@ stages:
     - checkout: none
     - bash: |
         if [[ "${{ parameters.IsReleaseBuild }}" = True && "${{ parameters.PreReleaseVersionSuffixString }}" != "none"  ]]; then
-          echo "##vso[task.setvariable variable=ReleaseVersionSuffix; isoutput=True]${{ parameters.PreReleaseVersionSuffixString }}.${{ parameters.PreReleaseVersionSuffixNumber }}"
+          echo "##vso[task.setvariable variable=ReleaseVersionSuffix; isoutput=true]${{ parameters.PreReleaseVersionSuffixString }}.${{ parameters.PreReleaseVersionSuffixNumber }}"
         else
-          echo "##vso[task.setvariable variable=ReleaseVersionSuffix; isoutput=True]''"
+          echo "##vso[task.setvariable variable=ReleaseVersionSuffix; isoutput=true]''"
         fi
       name: Set_Release_Version_Suffix_Step
     - bash: |
