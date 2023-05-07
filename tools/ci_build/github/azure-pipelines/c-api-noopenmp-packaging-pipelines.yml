@@ -51,16 +51,23 @@ resources:
     name: pypa/manylinux
     ref: aead4d751c2101e23336aa73f2380df83e7a13f3
 
+variables:
+- name: ReleaseVersionSuffix
+  value: ''
+
 stages:
 - stage: Set_Variables
   jobs:
   - job: Set_Release_Version_Suffix
     steps:
+    - checkout: none
     - bash: |
         if [[ "${{ parameters.IsReleaseBuild }}" = True && "${{ parameters.PreReleaseVersionSuffixString }}" != "none"  ]]; then
           echo "##vso[task.setvariable variable=ReleaseVersionSuffix;]${{ parameters.PreReleaseVersionSuffixString }}.${{ parameters.PreReleaseVersionSuffixNumber }}"
+          ReleaseVersionSuffix=${{ parameters.PreReleaseVersionSuffixString }}.${{ parameters.PreReleaseVersionSuffixNumber }}
         else
           echo "##vso[task.setvariable variable=ReleaseVersionSuffix;]''"
+          ReleaseVersionSuffix=''
         fi
       name: Set_Release_Version_Suffix
     - bash: |
@@ -70,15 +77,12 @@ stages:
         echo "Release version suffix is: $(ReleaseVersionSuffix)"
 
 - stage: Debug
-  dependsOn:
-  - Set_Variables
-  variables:
-    ReleaseVersionSuffix_Variable: $[ stageDependencies.Set_Variables.Set_Release_Version_Suffix.outputs['Set_Release_Version_Suffix.ReleaseVersionSuffix'] ]
   jobs:
   - job: Print_Variables
     steps:
+    - checkout: none
     - bash: |
-        echo $(ReleaseVersionSuffix_Variable)
+        echo $(ReleaseVersionSuffix)
       name: Print_InterStage_Variables
 
 - template: templates/c-api-cpu.yml
