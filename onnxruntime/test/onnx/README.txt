@@ -26,7 +26,7 @@ How to run node tests:
 
 How to run model tests:
 1. Download the test data from Azure
-   You can get the latest url from tools/ci_build/github/azure-pipelines/templates/set-test-data-variables-steps.yml
+   You can get the latest url from tools/ci_build/github/azure-pipelines/templates/set-test-data-variables-step.yml
    After downloading, please unzip the downloaded file
 
 2. compile onnx_test_runner and run
