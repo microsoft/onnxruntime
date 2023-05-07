@@ -647,8 +647,7 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
         ORT_TSTR("castlike_BFLOAT16_to_FLOAT"),
         ORT_TSTR("castlike_BFLOAT16_to_FLOAT_expanded"),
         ORT_TSTR("castlike_FLOAT_to_STRING"),
-        ORT_TSTR("castlike_FLOAT_to_STRING_expanded"),
-    }
+        ORT_TSTR("castlike_FLOAT_to_STRING_expanded")};
 
     static const ORTCHAR_T* float8_tests[] = {
         ORT_TSTR("cast_FLOAT16_to_FLOAT8E4M3FN"),
@@ -697,7 +696,6 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
         ORT_TSTR("dequantizelinear_e5m2"),
         ORT_TSTR("quantizelinear_e4m3fn"),
         ORT_TSTR("quantizelinear_e5m2")};
-    };
 
     static const ORTCHAR_T* cuda_flaky_tests[] = {
         ORT_TSTR("fp16_inception_v1"),
@@ -757,8 +755,8 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
         ORT_TSTR("training_dropout_mask")};
 
     std::unordered_set<std::basic_string<ORTCHAR_T>> all_disabled_tests(std::begin(immutable_broken_tests), std::end(immutable_broken_tests));
-    all_disabled_tests.insert(blfoat16_string_cast_tests.begin(), blfoat16_string_cast_tests.end());
-    all_disabled_tests.insert(float8_tests.begin(), float8_tests.end());
+    all_disabled_tests.insert(std::begin(blfoat16_string_cast_tests), std::end(blfoat16_string_cast_tests));
+    all_disabled_tests.insert(std::begin(float8_tests), std::end(float8_tests));
 
     if (enable_cuda) {
       all_disabled_tests.insert(std::begin(cuda_flaky_tests), std::end(cuda_flaky_tests));
