@@ -78,7 +78,7 @@ jobs:
             CCACHE_DIR: $(PROTO_CACHE_DIR)
 
   - ${{ if eq(parameters.MacosArch, 'universal2') }}:
-    - template: steps/get-docker-image-steps.yml
+    - template: steps/mac-cpu-packaging-steps.yml
       parameters:
         MacosArch: ${{ parameters.MacosArch }}
         AdditionalBuildFlags: ${{ parameters.AdditionalBuildFlags }} --use_coreml --cmake_extra_defines CMAKE_OSX_ARCHITECTURES="arm64;x86_64"
@@ -90,7 +90,7 @@ jobs:
           CacheDir: $(ORT_CACHE_DIR)
 
   - ${{ if eq(parameters.MacosArch, 'arm64') }}:
-    - template: steps/get-docker-image-steps.yml
+    - template: steps/mac-cpu-packaging-steps.yml
       parameters:
         MacosArch: ${{ parameters.MacosArch }}
         AdditionalBuildFlags: ${{ parameters.AdditionalBuildFlags }} --build_nodejs --build_java --use_coreml --cmake_extra_defines CMAKE_OSX_ARCHITECTURES=arm64
@@ -102,7 +102,7 @@ jobs:
           CacheDir: $(ORT_CACHE_DIR)
 
   - ${{ if eq(parameters.MacosArch, 'x86_64') }}:
-    - template: steps/get-docker-image-steps.yml
+    - template: steps/mac-cpu-packaging-steps.yml
       parameters:
         MacosArch: ${{ parameters.MacosArch }}
         AdditionalBuildFlags: ${{ parameters.AdditionalBuildFlags }} --build_nodejs --build_java --use_coreml
