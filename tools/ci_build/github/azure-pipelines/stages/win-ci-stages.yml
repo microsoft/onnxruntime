@@ -100,7 +100,7 @@ stages:
           modifyEnvironment: true
           workingFolder: '$(Build.BinariesDirectory)'
 
-      - template: jobs/steps/tasks/download-deps-steps.yml
+      - template: jobs/steps/download-deps-steps.yml
 
       - task: PythonScript@0
         displayName: 'Update deps.txt'
