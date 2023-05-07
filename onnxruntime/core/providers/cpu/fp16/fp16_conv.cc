@@ -32,7 +32,7 @@ using ConvPadVector = ConvAttributes::ConvPadVector;
  * 2. Activation
  * It takes an operator attribute 'activation', which supplies the activation info.
  *
- * Add is performed AFTER activation.
+ * Add is performed BEFORE activation.
  *
  * The implementation supports both NCHW and NHWC. It runs faster with NHWC.
  *
@@ -281,12 +281,10 @@ Status FusedConvFp16::Compute(OpKernelContext* context) const {
   if (Y->Shape().Size() == 0) {
     return Status::OK();
   }
-  if (Sum) {
-    if (Sum->Shape() != Y->Shape()) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Z shape does not match output shape.",
-                             " Z: ", Sum->Shape().ToString().c_str(),
-                             " Output: ", Y->Shape().ToString().c_str());
-    }
+  if (Sum && Sum->Shape() != Y->Shape()) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Z shape does not match output shape.",
+                           " Z: ", Sum->Shape().ToString().c_str(),
+                           " Output: ", Y->Shape().ToString().c_str());
   }
 
   const int64_t input_image_size = input_shape.Size();
@@ -478,7 +476,7 @@ Status FusedConvFp16::Compute(OpKernelContext* context) const {
             static_cast<size_t>(M),
             static_cast<size_t>(output_count),
             static_cast<size_t>(kernel_size),
-            &act);
+            channels_last_ ? &act : nullptr);
       } else {
         for (int64_t group_id = 0; group_id < group_count; ++group_id) {
           // Prepare the im2col transformation or use the input buffer directly for
@@ -554,7 +552,7 @@ Status FusedConvFp16::Compute(OpKernelContext* context) const {
           gemm_params.C = worker_output + group_id * group_output_channels;
           gemm_params.ldc = static_cast<size_t>(M);
           gemm_params.Bias = Bdata;
-          gemm_params.OutputProcessor = &act;  // process fused activation and add
+          gemm_params.OutputProcessor = channels_last_ ? &act : nullptr;  // process fused activation and add
 
           MlasHalfGemmBatch(
               static_cast<size_t>(output_count),
@@ -575,9 +573,7 @@ Status FusedConvFp16::Compute(OpKernelContext* context) const {
           static_cast<size_t>(output_image_size),
           static_cast<size_t>(M));
       if (SumData != nullptr) {
-        MLAS_ACTIVATION activation;
-        activation.ActivationKind = MlasIdentityActivation;
-        MLAS_HALF_GEMM_ACTIVATION_PROCESSOR proc(activation, SumData);
+        MLAS_HALF_GEMM_ACTIVATION_PROCESSOR proc(activation_, SumData);
         proc.Process(Ydata, 0, 0, static_cast<size_t>(M),
                      static_cast<size_t>(output_image_size),
                      static_cast<size_t>(output_image_size));
