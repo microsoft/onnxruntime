@@ -51,10 +51,6 @@ resources:
     name: pypa/manylinux
     ref: aead4d751c2101e23336aa73f2380df83e7a13f3
 
-variables:
-- name: ReleaseVersionSuffix
-  value: ''
-
 stages:
 - stage: Set_Variables
   jobs:
@@ -64,10 +60,8 @@ stages:
     - bash: |
         if [[ "${{ parameters.IsReleaseBuild }}" = True && "${{ parameters.PreReleaseVersionSuffixString }}" != "none"  ]]; then
           echo "##vso[task.setvariable variable=ReleaseVersionSuffix;]${{ parameters.PreReleaseVersionSuffixString }}.${{ parameters.PreReleaseVersionSuffixNumber }}"
-          ReleaseVersionSuffix=${{ parameters.PreReleaseVersionSuffixString }}.${{ parameters.PreReleaseVersionSuffixNumber }}
         else
           echo "##vso[task.setvariable variable=ReleaseVersionSuffix;]''"
-          ReleaseVersionSuffix=''
         fi
       name: Set_Release_Version_Suffix
     - bash: |
