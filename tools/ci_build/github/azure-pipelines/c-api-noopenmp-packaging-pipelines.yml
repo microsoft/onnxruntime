@@ -82,6 +82,7 @@ stages:
     steps:
     - checkout: none
     - bash: |
+        echo $[ stageDependencies.Set_Variables.Set_Release_Version_Suffix.outputs['Set_Release_Version_Suffix.ReleaseVersionSuffix'] ]
         echo $(ReleaseVersionSuffix)
       name: Print_InterStage_Variables
 
