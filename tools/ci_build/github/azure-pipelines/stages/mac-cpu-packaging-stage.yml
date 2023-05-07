@@ -27,19 +27,19 @@ stages:
   dependsOn: []
   jobs:
   - ${{ if eq(parameters.BuildForAllArchs, true) }}:
-    - template: jobs/steps/get-docker-image-steps.yml
+    - template: jobs/mac-cpu-packing-jobs.yml
       parameters:
         MacosArch: 'x86_64'
         AllowReleasedOpsetOnly: ${{ parameters.AllowReleasedOpsetOnly }}
         AdditionalBuildFlags: ${{ parameters.AdditionalBuildFlags }}
         WithCache: ${{ parameters.WithCache }}
-    - template: jobs/steps/get-docker-image-steps.yml
+    - template: jobs/mac-cpu-packing-jobs.yml
       parameters:
         MacosArch: 'arm64'
         AllowReleasedOpsetOnly: ${{ parameters.AllowReleasedOpsetOnly }}
         AdditionalBuildFlags: ${{ parameters.AdditionalBuildFlags }}
         WithCache: ${{ parameters.WithCache }}
-    - template: jobs/steps/get-docker-image-steps.yml
+    - template: jobs/mac-cpu-packing-jobs.yml
       parameters:
         MacosArch: 'universal2'
         AllowReleasedOpsetOnly: ${{ parameters.AllowReleasedOpsetOnly }}
@@ -74,7 +74,7 @@ stages:
         parameters:
           condition: 'succeeded'
   - ${{ if ne(parameters.BuildForAllArchs, true) }}:
-    - template: jobs/steps/get-docker-image-steps.yml
+    - template: jobs/mac-cpu-packing-jobs.yml
       parameters:
         MacosArch: 'x86_64'
         AllowReleasedOpsetOnly: ${{ parameters.AllowReleasedOpsetOnly }}

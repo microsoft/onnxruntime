@@ -55,7 +55,7 @@ stages:
 - stage: Build_wasm_Debug
   dependsOn: Extract_commit
   jobs:
-  - template: jobs/steps/win-esrp-dll-step.yml
+  - template: jobs/win-wasm-ci-job.yml
     parameters:
       CommitOverride: true
       BuildConfig: 'Debug'
@@ -66,7 +66,7 @@ stages:
 - stage: Build_web_Debug
   dependsOn: Build_wasm_Debug
   jobs:
-  - template: win-web-ci-stage.yml
+  - template: jobs/win-web-ci-job.yml
     parameters:
       CommitOverride: true
       BuildConfig: 'Debug'
@@ -77,7 +77,7 @@ stages:
 - stage: Build_wasm_Release
   dependsOn: Extract_commit
   jobs:
-  - template: jobs/steps/win-esrp-dll-step.yml
+  - template: jobs/win-wasm-ci-job.yml
     parameters:
       CommitOverride: true
       BuildConfig: 'Release'
@@ -89,7 +89,7 @@ stages:
   - stage: Build_wasm_Release_static_library
     dependsOn: Extract_commit
     jobs:
-    - template: jobs/steps/win-esrp-dll-step.yml
+    - template: jobs/win-wasm-ci-job.yml
       parameters:
         CommitOverride: true
         BuildConfig: 'Release'
@@ -101,7 +101,7 @@ stages:
 - stage: Build_web_Release
   dependsOn: Build_wasm_Release
   jobs:
-  - template: win-web-ci-stage.yml
+  - template: jobs/win-web-ci-job.yml
     parameters:
       CommitOverride: true
       BuildConfig: 'Release'
