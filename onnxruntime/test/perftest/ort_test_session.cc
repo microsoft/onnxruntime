@@ -547,6 +547,10 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
         } else {
           qnn_options[key] = value;
         }
+      } else if (key == "qnn_context_cache_enable") {
+        qnn_options[key] = value;
+      } else if (key == "qnn_context_cache_path") {
+        qnn_options[key] = value;
       } else if (key == "profiling_level") {
         qnn_options[key] = value;
       } else if (key == "rpc_control_latency") {
