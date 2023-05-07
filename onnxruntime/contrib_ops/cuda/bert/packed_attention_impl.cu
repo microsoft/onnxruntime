@@ -488,8 +488,8 @@ Status FusedScaledDotProductAttentionCutlass(
                          parameters.token_count, stream);
   DUMP_TENSOR_INIT();
 
-  DUMP_TENSOR_D("data.gemm_buffer", data.gemm_buffer, batch_size * sequence_length, 3, num_heads * qk_head_size);
-  DUMP_TENSOR_D("data.bias", data.bias, 1, 3 * num_heads * qk_head_size);
+  DUMP_TENSOR_D("PackedAttention cutlass data.gemm_buffer", data.gemm_buffer, parameters.token_count, 3, num_heads * qk_head_size);
+  DUMP_TENSOR_D("PackedAttention cutlass data.bias", data.bias, 1, 3 * num_heads * qk_head_size);
 
   // Q, K and V pointers
   const int model_dimension_qk = num_heads * qk_head_size;
@@ -502,10 +502,10 @@ Status FusedScaledDotProductAttentionCutlass(
   T* value = key + elements_qk;
   T* accum_workspace = value + elements_v;
 
-  DUMP_TENSOR_D("q(BSNH)", query, batch_size * sequence_length, num_heads * qk_head_size);
-  DUMP_TENSOR_D("k(BSNH)", key, batch_size * sequence_length, num_heads * qk_head_size);
-  DUMP_TENSOR_D("v(BSNH)", value, batch_size * sequence_length, num_heads * v_head_size);
-  DUMP_TENSOR_D("cumulative_sequence_length", data.cumulative_sequence_length, 1, batch_size + 1);
+  DUMP_TENSOR_D("PackedAttention cutlass q(BSNH)", query, parameters.token_count, num_heads * qk_head_size);
+  DUMP_TENSOR_D("PackedAttention cutlass k(BSNH)", key, parameters.token_count, num_heads * qk_head_size);
+  DUMP_TENSOR_D("PackedAttention cutlass v(BSNH)", value, parameters.token_count, num_heads * v_head_size);
+  DUMP_TENSOR_D("PackedAttention cutlass cumulative_sequence_length", data.cumulative_sequence_length, 1, batch_size + 1);
 
   MemoryEfficientAttentionParams p;
   p.sm = device_prop.major * 10 + device_prop.minor;
@@ -532,7 +532,7 @@ Status FusedScaledDotProductAttentionCutlass(
   p.stream = stream;
   run_memory_efficient_attention(p);
 
-  DUMP_TENSOR("cutlass output", data.output, batch_size * sequence_length, num_heads, v_head_size);
+  DUMP_TENSOR("PackedAttention cutlass output", data.output, parameters.token_count, num_heads, v_head_size);
   return Status::OK();
 }
 #endif
@@ -576,8 +576,8 @@ Status UnfusedScaledDotProductAttention(
   // Q, K and V are ready now
   DUMP_TENSOR_INIT();
 
-  DUMP_TENSOR_D("gemm_buffer", data.gemm_buffer, parameters.token_count, (num_heads * (qk_head_size * 2 + v_head_size)));
-  DUMP_TENSOR_D("data.workspace", data.workspace, 3 * batch_size, num_heads, sequence_length, qk_head_size);
+  DUMP_TENSOR_D("PackedAttention unfused gemm_buffer", data.gemm_buffer, parameters.token_count, (num_heads * (qk_head_size * 2 + v_head_size)));
+  DUMP_TENSOR_D("PackedAttention unfused data.workspace", data.workspace, 3 * batch_size, num_heads, sequence_length, qk_head_size);
 
   // Compute Q*K' (as K'*Q), scaled by 1/sqrt(H) and store in scaled_qk: BxNxSxT
   // Q: BxNxSxH, K: BxNxSxH, Q*K': BxNxSxS
@@ -598,7 +598,7 @@ Status UnfusedScaledDotProductAttention(
       scaled_qk, sequence_length, sequence_length * sequence_length,
       batches, device_prop));
 
-  DUMP_TENSOR_D("QK", scaled_qk, batch_size * num_heads, sequence_length, sequence_length);
+  DUMP_TENSOR_D("PackedAttention unfused QK", scaled_qk, batch_size * num_heads, sequence_length, sequence_length);
 
   const size_t bytes = GetAttentionScratchSize(element_size, batch_size, num_heads,
                                                sequence_length);
@@ -615,7 +615,7 @@ Status UnfusedScaledDotProductAttention(
       num_heads,
       attention_score, stream));
 
-  DUMP_TENSOR_D("Softmax", attention_score, batch_size * num_heads, sequence_length, sequence_length);
+  DUMP_TENSOR_D("PackedAttention unfused Softmax", attention_score, batch_size * num_heads, sequence_length, sequence_length);
 
   // compute R*V (as V*R), and store in temp_output (space used by Q): BxNxSxH_v
   T* temp_output = qkv;
@@ -633,7 +633,7 @@ Status UnfusedScaledDotProductAttention(
       batch_size, sequence_length, num_heads, v_head_size,
       stream);
 
-  DUMP_TENSOR("unfused output", data.output, parameters.token_count, num_heads, v_head_size);
+  DUMP_TENSOR("PackedAttention unfused output", data.output, parameters.token_count, num_heads, v_head_size);
   return result;
 }
 
