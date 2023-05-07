@@ -62,15 +62,22 @@ stages:
     steps:
     - bash: |
         if [[ "${{ parameters.IsReleaseBuild }}" = True && "${{ parameters.PreReleaseVersionSuffixString }}" != "none"  ]]; then
-          echo "##vso[task.setvariable variable=ReleaseVersionSuffix;]${{ parameters.PreReleaseVersionSuffixString }}.${{ parameters.PreReleaseVersionSuffixNumber }}"
+          echo "##vso[task.setvariable variable=ReleaseVersionSuffix; isoutput=true]${{ parameters.PreReleaseVersionSuffixString }}.${{ parameters.PreReleaseVersionSuffixNumber }}"
         else
-          echo "##vso[task.setvariable variable=ReleaseVersionSuffix;]''"
+          echo "##vso[task.setvariable variable=ReleaseVersionSuffix; isoutput=true]''"
         fi
     - bash: |
         echo "IsReleaseBuild is: ${{ parameters.IsReleaseBuild }}"
         echo "Pre-release version suffix is: ${{ parameters.PreReleaseVersionSuffixString }}"
         echo "Pre-release version number is: ${{ parameters.PreReleaseVersionSuffixNumber }}"
         echo "Release version suffix is: $(ReleaseVersionSuffix)"
+
+- stage: Debug
+  jobs:
+  - job:
+    steps:
+    - bash: |
+        echo "Release version suffix is: $(ReleaseVersionSuffix)
 
 - template: templates/c-api-cpu.yml
   parameters:
