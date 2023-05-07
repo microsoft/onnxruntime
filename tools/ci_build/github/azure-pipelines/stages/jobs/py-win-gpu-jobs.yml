@@ -58,7 +58,7 @@ jobs:
           workingDirectory: '$(Build.BinariesDirectory)'
           displayName: 'Install python modules'
 
-      - template: steps/tasks/download-deps-steps.yml
+      - template: steps/download-deps-steps.yml
 
       - task: PythonScript@0
         displayName: 'Update deps.txt'
