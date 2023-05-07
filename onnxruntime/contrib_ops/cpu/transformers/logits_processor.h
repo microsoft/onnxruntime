@@ -142,14 +142,16 @@ class PresencePenaltyLogitsProcessor : public ILogitsProcessor<T> {
 template <typename T>
 class TSLogitsProcessor : public ILogitsProcessor<T> {
  public:
-  TSLogitsProcessor(int min_length, int eos_token_id);
+  TSLogitsProcessor(int eos_token_id, int beg_token_id, int not_token_id, int max_initial_timestamp_index);
 
   void Process(const ISequences* sequences,
                NextTokenScores<T>& next_token_scores) override;
 
  private:
-  int min_length_;
   int eos_token_id_;
+  int beg_token_id_;
+  int not_token_id_;
+  int max_initial_timestamp_index_;
 };
 //slx
 
@@ -209,9 +211,11 @@ class LogitsProcessorList : public ILogitsProcessorList {
     }
 
 //slx
-      ts_processor_ = std::make_unique<TSLogitsProcessor<float>>(parameters.min_length,
-                                                                                parameters.eos_token_id);
+    if (parameters.model_type == IGenerationParameters::kModelTypeWhisper) {//parameters.timestamp_rules
+      //eos: 50257, beg: 50364, not: 50363, max_initial_timestamp_index: 50
+      ts_processor_ = std::make_unique<TSLogitsProcessor<float>>(parameters.eos_token_id, 50364, 50363, 50);
       processor_list_.push_back(ts_processor_.get());
+    }
 //slx
     batch_beam_size_ = parameters.BatchBeamSize();
     vocab_size_ = parameters.vocab_size;

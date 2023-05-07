@@ -242,8 +242,8 @@ void PresencePenaltyLogitsProcessor<T>::Process(const ISequences*,
 //slx
 // Interface for all scorers for beam search or beam sample.
 template <typename T>
-TSLogitsProcessor<T>::TSLogitsProcessor(int min_length, int eos_token_id)
-    : min_length_(min_length), eos_token_id_(eos_token_id) {}
+TSLogitsProcessor<T>::TSLogitsProcessor(int eos_token_id, int beg_token_id, int not_token_id, int max_initial_timestamp_index)
+    : eos_token_id_(eos_token_id), beg_token_id_(beg_token_id), not_token_id_(not_token_id), max_initial_timestamp_index_(max_initial_timestamp_index) {}
 
 template <typename T>
 void TSLogitsProcessor<T>::Process(const ISequences* sequences,
@@ -251,9 +251,9 @@ void TSLogitsProcessor<T>::Process(const ISequences* sequences,
   std::cout << "TSLogitsProcessor process: +1, suppress notimestamp, seq_length < 5, pair check and others" << std::endl;
   //assert(!vocab_mask_.empty());
 
-  const int beg_token_id_ = 50363 + 1;
-  const int eot_token_id_ = 50256 + 1;
-  const int not_token_id_ = 50362 + 1;
+  ///const int beg_token_id_ = 50363 + 1;
+  ///const int eot_token_id_ = 50256 + 1;//==eos_token_id
+  ///const int not_token_id_ = 50362 + 1;
 /*
   const int sot_token_id_ = 50257 + 1;
   const int solm_token_id_ = 50361 + 1;
@@ -262,13 +262,13 @@ void TSLogitsProcessor<T>::Process(const ISequences* sequences,
   //const int blank_token_id
   const bool suppress_blank = true;
 */
-  const float max_initial_timestamp  = 1.0f;//s
-  const float chunk_length = 30.0f;//s
-  const int n_audio_ctx = 1500;
+  ///const float max_initial_timestamp  = 1.0f;//s
+  ///const float chunk_length = 30.0f;//s
+  ///const int n_audio_ctx = 1500;
   //if(is_initial && max_initial_ts > 0.0f) {//whisper.cpp L3583 ??
-  const float precision = float(chunk_length/n_audio_ctx);//30/1500 = 0.02 s
-  const int max_initial_timestamp_index = std::round(max_initial_timestamp / precision);
-  std::cout << "precision: " << precision << ", max_initial_timestamp_index: " << max_initial_timestamp_index << std::endl;
+  ///const float precision = float(chunk_length/n_audio_ctx);//30/1500 = 0.02 s
+  ///const int max_initial_timestamp_index_ = std::round(max_initial_timestamp / precision);
+  ///std::cout << "precision: " << precision << ", max_initial_timestamp_index: " << max_initial_timestamp_index << std::endl;
   //}
 
   const int batch_beam_size = next_token_scores.batch_beam_size;
@@ -294,7 +294,7 @@ void TSLogitsProcessor<T>::Process(const ISequences* sequences,
     //const bool is_initial = seq_length == 0;
     for (int j = 0; j < vocab_size; j++) {//, p++
       //suppress blank
-      //if (suppress_blank && is_initial && (j == eot_token_id_)) {// || j == blank_token_id_ //suppress_blank from parameters
+      //if (suppress_blank && is_initial && (j == eos_token_id)) {// || j == blank_token_id_ //suppress_blank from parameters
       //  beam_token_scores[j] = std::numeric_limits<T>::lowest();
       //}
 
@@ -322,7 +322,7 @@ void TSLogitsProcessor<T>::Process(const ISequences* sequences,
         }
       } else {
         //if timestamp doesn't show up in pair, generate timestamp (suppress text)
-        for (int j = 0; j < eot_token_id_; j++) {
+        for (int j = 0; j < eos_token_id_; j++) {
           beam_token_scores[j] = std::numeric_limits<T>::lowest();
         }
       }
@@ -368,7 +368,7 @@ void TSLogitsProcessor<T>::Process(const ISequences* sequences,
       //}
 
       //apply the max_initial_timestamp option
-      const int last_allowed = beg_token_id_ + max_initial_timestamp_index;//max_initial_timestamp_index:50
+      const int last_allowed = beg_token_id_ + max_initial_timestamp_index_;//max_initial_timestamp_index:50
       std::cout << "seq_length: " << seq_length << ", sample_begin: " << sample_begin << ", last_allowed: " << last_allowed << std::endl;
       for (int j = last_allowed + 1; j < vocab_size; j++) {//n_logits
         beam_token_scores[j] = std::numeric_limits<T>::lowest();
