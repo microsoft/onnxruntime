@@ -53,7 +53,7 @@ stages:
 
       - template: stages/jobs/steps/set-python-manylinux-variables-step.yml
 
-      - template: stages/get-docker-image-steps.yml
+      - template: stages/jobs/steps/get-docker-image-steps.yml
         parameters:
           Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_cpu
           Context: tools/ci_build/github/linux/docker
