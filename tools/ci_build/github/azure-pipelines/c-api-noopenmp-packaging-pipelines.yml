@@ -69,6 +69,17 @@ stages:
         echo "Pre-release version number is: ${{ parameters.PreReleaseVersionSuffixNumber }}"
         echo "Release version suffix is: $(ReleaseVersionSuffix)"
 
+- stage: Debug
+  dependsOn:
+  - Set_Variables
+  variables:
+    ReleaseVersionSuffix: $[ stageDependencies.Set_Variables.Set_Release_Version_Suffix.outputs['Set_Release_Version_Suffix.ReleaseVersionSuffix'] ]
+  jobs:
+  - job: Print_Variables
+    steps:
+    - bash: |
+        echo $(ReleaseVersionSuffix)
+
 - template: templates/c-api-cpu.yml
   parameters:
     RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
