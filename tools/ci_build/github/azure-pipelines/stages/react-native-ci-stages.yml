@@ -29,7 +29,7 @@ stages:
   displayName: Build Android AAR
   dependsOn: '${{parameters.BuildAndroidAARStageDependsOn}}'
   jobs:
-  - template: jobs/android-java-api-aar-job.yml
+  - template: jobs/android-java-api-aar-jobs.yml
     parameters:
       buildConfig: '${{parameters.BuildConfig}}'
       # Mobile build:
@@ -100,7 +100,7 @@ stages:
         python -m pip install -q flatbuffers
       displayName: Install python modules
 
-    - template: jobs/steps/mac-build-step-with-cache-step.yml
+    - template: jobs/steps/mac-build-step-with-cache-steps.yml
       parameters:
         WithCache: true
         Today: $(TODAY)
@@ -115,7 +115,7 @@ stages:
             env:
               CCACHE_DIR: $(PROTO_CACHE_DIR)
 
-    - template: jobs/steps/mac-build-step-with-cache-step.yml
+    - template: jobs/steps/mac-build-step-with-cache-steps.yml
       parameters:
         WithCache: true
         Today: $(TODAY)
@@ -385,4 +385,4 @@ stages:
       parameters :
         condition : 'succeeded'
 
-    - template: jobs/steps/explicitly-defined-final-step.yml
+    - template: jobs/steps/explicitly-defined-final-steps.yml

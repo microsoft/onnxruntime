@@ -87,7 +87,7 @@ jobs:
       addToPath: true
       architecture: ${{ parameters.buildArch }}
 
-  - template: jobs/steps/tasks/download-deps-task.yml
+  - template: jobs/steps/tasks/download-deps-steps.yml
 
   - task: PythonScript@0
     displayName: 'Update deps.txt'

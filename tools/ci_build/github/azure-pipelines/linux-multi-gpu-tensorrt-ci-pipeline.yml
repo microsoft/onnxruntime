@@ -1,5 +1,5 @@
 jobs:
-- template: stages/jobs/linux-ci-job.yml
+- template: stages/jobs/linux-ci-jobs.yml
   parameters:
     AgentPool : 'Linux-Multi-GPU'
     JobName: 'Linux_CI_Multi_GPU_TensorRT_Dev'

@@ -44,7 +44,7 @@ parameters:
   default: 'default'
 
 stages:
-- template: linux-cpu-packaging-stage.yml
+- template: linux-cpu-packaging-stages.yml
   parameters:
     AdditionalBuildFlags: ${{ parameters.AdditionalBuildFlags }}
     stage_name_suffix: Training_CPU
@@ -52,7 +52,7 @@ stages:
     PackageJava: false
     PackageNodeJS: false
 
-- template: win-ci-stage.yml
+- template: win-ci-stages.yml
   parameters:
     DoCompliance: ${{ parameters.DoCompliance }}
     DoEsrp: ${{ parameters.DoEsrp }}
@@ -67,7 +67,7 @@ stages:
     buildJava: false
     buildNodejs: false
 
-- template: win-ci-stage.yml
+- template: win-ci-stages.yml
   parameters:
     DoCompliance: ${{ parameters.DoCompliance }}
     DoEsrp: ${{ parameters.DoEsrp }}
@@ -82,7 +82,7 @@ stages:
     buildJava: false
     buildNodejs: false
 
-- template: win-ci-stage.yml
+- template: win-ci-stages.yml
   parameters:
     DoCompliance: ${{ parameters.DoCompliance }}
     DoEsrp: ${{ parameters.DoEsrp }}
@@ -97,7 +97,7 @@ stages:
     buildJava: false
     buildNodejs: false
 
-- template: win-ci-stage.yml
+- template: win-ci-stages.yml
   parameters:
     DoCompliance: ${{ parameters.DoCompliance }}
     DoEsrp: ${{ parameters.DoEsrp }}
@@ -115,7 +115,7 @@ stages:
 - stage: Android_Java_API_AAR_Packaging_Training_Full
   dependsOn: []
   jobs:
-  - template: jobs/android-java-api-aar-job.yml
+  - template: jobs/android-java-api-aar-jobs.yml
     parameters:
       buildConfig: 'Release'
       buildSettings: '$(Build.SourcesDirectory)/tools/ci_build/github/android/training_full_aar_build_settings.json'
@@ -123,7 +123,7 @@ stages:
       job_name_suffix: 'Training_Full'
       publish_executables: '1'
       packageName: onnxruntime-training-android
-  - template: jobs/android-java-api-aar-test-job.yml
+  - template: jobs/android-java-api-aar-test-jobs.yml
     parameters:
       artifactName: 'onnxruntime-training-android-full-aar'
       job_name_suffix: 'Training_Full'
@@ -265,7 +265,7 @@ stages:
         workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
     - ${{ if eq(parameters.DoEsrp, true) }}:
-      - template: jobs/steps/win-esrp-dll-step.yml
+      - template: jobs/steps/win-esrp-dll-steps.yml
         parameters:
           FolderPath: '$(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo'
           DisplayName: 'ESRP - Sign C# dlls'
@@ -310,13 +310,13 @@ stages:
         Contents: '*.nupkg'
         TargetFolder: '$(Build.ArtifactStagingDirectory)'
 
-    - template: jobs/steps/esrp_nuget-step.yml
+    - template: jobs/steps/esrp_nuget-steps.yml
       parameters:
         DisplayName: 'ESRP - sign NuGet package'
         FolderPath: '$(Build.ArtifactStagingDirectory)'
         DoEsrp: ${{ parameters.DoEsrp }}
 
-    - template: jobs/steps/validate-package-step.yml
+    - template: jobs/steps/validate-package-steps.yml
       parameters:
         PackageType: 'nuget'
         PackagePath: '$(Build.ArtifactStagingDirectory)'

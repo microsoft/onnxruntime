@@ -66,7 +66,7 @@ jobs:
         touch $(test_data_directory)/include_no_operators.config
       workingDirectory: $(Build.SourcesDirectory)
 
-  - template: stages/jobs/steps/linux-build-step-with-cache-step.yml
+  - template: stages/jobs/steps/linux-build-step-with-cache-steps.yml
     parameters:
       WithCache: true
       Today: $(TODAY)
@@ -320,4 +320,4 @@ jobs:
               --skip_tests --path_to_protoc_exe /usr/bin/protoc
       workingDirectory: $(Build.SourcesDirectory)
 
-  - template: stages/jobs/steps/explicitly-defined-final-step.yml
+  - template: stages/jobs/steps/explicitly-defined-final-steps.yml

@@ -37,7 +37,7 @@ parameters:
   default: ""
 
 steps:
-- template: mac-build-step-with-cache-step.yml
+- template: mac-build-step-with-cache-steps.yml
   parameters:
     WithCache: ${{ parameters.WithCache }}
     Today: ${{ parameters.Today }}
@@ -84,7 +84,7 @@ steps:
   artifact: 'onnxruntime-osx-${{ parameters.MacosArch }}'
 
 - ${{ if eq(parameters.BuildJava, true) }}:
-    - template: java-api-artifacts-package-and-publish-steps-posix.yml
+    - template: java-api-artifacts-package-and-publish-posix-steps.yml
       parameters:
           arch: 'osx-${{ parameters.MacosArch }}'
           buildConfig: 'Release'
@@ -94,7 +94,7 @@ steps:
           nativeLibraryName: 'libonnxruntime4j_jni.dylib'
 
 - ${{ if eq(parameters.BuildNodejs, true) }}:
-    - template: nodejs-artifacts-package-and-publish-steps-posix.yml
+    - template: nodejs-artifacts-package-and-publish-posix-steps.yml
       parameters:
           ${{ if eq(parameters.MacosArch, 'x86_64') }}:
               arch: x64

@@ -100,7 +100,7 @@ stages:
           modifyEnvironment: true
           workingFolder: '$(Build.BinariesDirectory)'
 
-      - template: jobs/steps/tasks/download-deps-task.yml
+      - template: jobs/steps/tasks/download-deps-steps.yml
 
       - task: PythonScript@0
         displayName: 'Update deps.txt'
@@ -116,7 +116,7 @@ stages:
           workingDirectory: '$(Build.BinariesDirectory)'
           arguments: -cpu_arch ${{ parameters.buildArch }} -install_prefix $(Build.BinariesDirectory)\RelWithDebInfo\installed -build_config RelWithDebInfo
 
-      - template: jobs/steps/set-version-number-variables-step.yml
+      - template: jobs/steps/set-version-number-variables-steps.yml
 
       - task: PythonScript@0
         displayName: 'Generate cmake config'
@@ -154,7 +154,7 @@ stages:
         workingDirectory: '$(Build.BinariesDirectory)/RelWithDebInfo/RelWithDebInfo'
         displayName: 'List built DLLs'
 
-      - template: jobs/steps/c-api-artifacts-package-and-publish-steps-windows.yml
+      - template: jobs/steps/c-api-artifacts-package-and-publish-windows-steps.yml
         parameters:
           buildConfig: RelWithDebInfo
           artifactName: 'onnxruntime${{ parameters.artifact_name_suffix }}-win-${{ parameters.packageName }}-$(OnnxRuntimeVersion)'
@@ -163,7 +163,7 @@ stages:
           DoEsrp: ${{ parameters.DoEsrp }}
 
       - ${{ if eq(parameters.buildNodejs, true) }}:
-        - template: jobs/steps/nodejs-artifacts-package-and-publish-steps-posix.yml
+        - template: jobs/steps/nodejs-artifacts-package-and-publish-posix-steps.yml
           parameters:
             arch: ${{ parameters.packageName }}
             artifactName: 'drop-onnxruntime-nodejs-win-${{ parameters.packageName }}'

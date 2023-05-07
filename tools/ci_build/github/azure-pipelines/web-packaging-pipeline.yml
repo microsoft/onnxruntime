@@ -24,7 +24,7 @@ variables:
     NpmPackagingMode: '$(VersionSuffix)'
 
 stages:
-- template: stages/web-ci-stage.yml
+- template: stages/web-ci-stages.yml
   parameters:
     NpmPackagingMode: ${{ variables.NpmPackagingMode }}
     IsReleasePipeline: true

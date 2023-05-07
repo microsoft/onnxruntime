@@ -26,7 +26,7 @@ stages:
 - stage: Linux_C_API_Packaging_${{ parameters.stage_name_suffix }}
   dependsOn: [ ]
   jobs:
-  - template: jobs/c-api-linux-cpu-job.yml
+  - template: jobs/c-api-linux-cpu-jobs.yml
     parameters:
       AdditionalBuildFlags: ${{ parameters.AdditionalBuildFlags }}
       BaseImage: 'centos:7'
@@ -39,7 +39,7 @@ stages:
       PackageJava: ${{ parameters.PackageJava }}
       PackageNodeJS: ${{ parameters.PackageNodeJS }}
 
-  - template: jobs/c-api-linux-cpu-job.yml
+  - template: jobs/c-api-linux-cpu-jobs.yml
     parameters:
       AdditionalBuildFlags: ${{ parameters.AdditionalBuildFlags }}
       BaseImage: 'arm64v8/centos:7'

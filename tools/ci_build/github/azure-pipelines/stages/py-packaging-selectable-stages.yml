@@ -110,7 +110,7 @@ stages:
         parameters:
           condition: 'succeeded'
 
-      - template: jobs/steps/clean-agent-build-directory-step.yml
+      - template: jobs/steps/clean-agent-build-directory-steps.yml
 
   - ${{ if eq(parameters.enable_windows_cpu, true) }}:
     - job: Windows_CPU_py_Wheels
@@ -199,7 +199,7 @@ stages:
           createLogFile: true
 
       # Esrp signing
-      - template: jobs/steps/win-esrp-dll-step.yml
+      - template: jobs/steps/win-esrp-dll-steps.yml
         parameters:
           FolderPath: '$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)\onnxruntime\capi'
           DisplayName: 'ESRP - Sign Native dlls'
@@ -303,7 +303,7 @@ stages:
         clean: true
         submodules: recursive
 
-      - template: jobs/steps/set-python-manylinux-variables-step.yml
+      - template: jobs/steps/set-python-manylinux-variables-steps.yml
 
       - template: jobs/steps/get-docker-image-steps.yml
         parameters:
@@ -381,7 +381,7 @@ stages:
         parameters:
           condition: 'succeeded'
 
-      - template: jobs/steps/clean-agent-build-directory-step.yml
+      - template: jobs/steps/clean-agent-build-directory-steps.yml
 
   - ${{ if eq(parameters.enable_windows_gpu, true) }}:
     - job: Windows_py_GPU_Wheels
@@ -465,7 +465,7 @@ stages:
           createLogFile: true
 
       # Esrp signing
-      - template: jobs/steps/win-esrp-dll-step.yml
+      - template: jobs/steps/win-esrp-dll-steps.yml
         parameters:
           FolderPath: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\onnxruntime\capi'
           DisplayName: 'ESRP - Sign Native dlls'

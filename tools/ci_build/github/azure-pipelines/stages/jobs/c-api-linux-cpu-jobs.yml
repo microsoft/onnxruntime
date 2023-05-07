@@ -50,7 +50,7 @@ jobs:
     - checkout: self
       clean: true
       submodules: none
-    - template: steps/set-version-number-variables-step.yml
+    - template: steps/set-version-number-variables-steps.yml
     - template: get-docker-image-steps.yml
       parameters:
         Dockerfile: tools/ci_build/github/linux/docker/inference/${{parameters.OnnxruntimeArch}}/default/cpu/Dockerfile
@@ -79,7 +79,7 @@ jobs:
       displayName: 'Create Artifacts'
 
     - ${{ if eq(parameters.PackageJava, 'true') }}:
-      - template: steps/java-api-artifacts-package-and-publish-steps-posix.yml
+      - template: steps/java-api-artifacts-package-and-publish-posix-steps.yml
         parameters:
           arch: 'linux-${{parameters.OnnxruntimeArch}}'
           buildConfig: 'Release'
@@ -88,7 +88,7 @@ jobs:
           libraryName: 'libonnxruntime.so'
           nativeLibraryName: 'libonnxruntime4j_jni.so'
 
-    - template: steps/c-api-artifacts-package-and-publish-steps-posix.yml
+    - template: steps/c-api-artifacts-package-and-publish-posix-steps.yml
       parameters:
           buildConfig: 'Release'
           artifactName: '${{parameters.ArtifactNamePrefix}}-linux-${{parameters.OnnxruntimeArch}}-$(OnnxRuntimeVersion)'
@@ -96,7 +96,7 @@ jobs:
           libraryName: 'libonnxruntime.so.$(OnnxRuntimeVersion)'
 
     - ${{ if eq(parameters.PackageNodejs, 'true') }}:
-      - template: steps/nodejs-artifacts-package-and-publish-steps-posix.yml
+      - template: steps/nodejs-artifacts-package-and-publish-posix-steps.yml
         parameters:
           arch: '${{parameters.OnnxruntimeNodejsBindingArch}}'
           os: 'linux'

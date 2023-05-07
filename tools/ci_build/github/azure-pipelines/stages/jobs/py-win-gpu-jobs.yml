@@ -58,7 +58,7 @@ jobs:
           workingDirectory: '$(Build.BinariesDirectory)'
           displayName: 'Install python modules'
 
-      - template: steps/tasks/download-deps-task.yml
+      - template: steps/tasks/download-deps-steps.yml
 
       - task: PythonScript@0
         displayName: 'Update deps.txt'
@@ -74,7 +74,7 @@ jobs:
           workingDirectory: '$(Build.BinariesDirectory)'
           arguments: -cpu_arch x64 -install_prefix $(Build.BinariesDirectory)\RelWithDebInfo\installed -build_config RelWithDebInfo
 
-      - template: steps/set-nightly-build-option-variable-step.yml
+      - template: steps/set-nightly-build-option-variable-steps.yml
 
 
       - task: PythonScript@0
@@ -105,7 +105,7 @@ jobs:
           createLogFile: true
 
       # Esrp signing
-      - template: steps/win-esrp-dll-step.yml
+      - template: steps/win-esrp-dll-steps.yml
         parameters:
           FolderPath: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\onnxruntime\capi'
           DisplayName: 'ESRP - Sign Native dlls'

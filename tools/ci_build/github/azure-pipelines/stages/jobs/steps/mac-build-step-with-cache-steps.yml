@@ -55,6 +55,6 @@ steps:
   - ${{ parameters.BuildStep }}
 
   - ${{ if eq(parameters.WithCache, true) }}:
-    - template: check-cache-stats-step.yml
+    - template: check-cache-stats-steps.yml
       parameters:
         CacheDir: ${{ parameters.CacheDir }}

@@ -11,77 +11,77 @@ resources:
 stages:
 - stage: Python_Packaging
   jobs:
-  - template: stages/jobs/rocm-job.yml
+  - template: stages/jobs/rocm-jobs.yml
     parameters:
       PythonVersion: '3.8'
       RocmVersion: '5.2.3'
-  - template: stages/jobs/rocm-job.yml
+  - template: stages/jobs/rocm-jobs.yml
     parameters:
       PythonVersion: '3.9'
       RocmVersion: '5.2.3'
-  - template: stages/jobs/rocm-job.yml
+  - template: stages/jobs/rocm-jobs.yml
     parameters:
       PythonVersion: '3.10'
       RocmVersion: '5.2.3'
-  - template: stages/jobs/rocm-job.yml
+  - template: stages/jobs/rocm-jobs.yml
     parameters:
       PythonVersion: '3.8'
       RocmVersion: '5.3.2'
-  - template: stages/jobs/rocm-job.yml
+  - template: stages/jobs/rocm-jobs.yml
     parameters:
       PythonVersion: '3.9'
       RocmVersion: '5.3.2'
-  - template: stages/jobs/rocm-job.yml
+  - template: stages/jobs/rocm-jobs.yml
     parameters:
       PythonVersion: '3.10'
       RocmVersion: '5.3.2'
-  - template: stages/jobs/rocm-job.yml
+  - template: stages/jobs/rocm-jobs.yml
     parameters:
       PythonVersion: '3.8'
       RocmVersion: '5.4'
-  - template: stages/jobs/rocm-job.yml
+  - template: stages/jobs/rocm-jobs.yml
     parameters:
       PythonVersion: '3.9'
       RocmVersion: '5.4'
-  - template: stages/jobs/rocm-job.yml
+  - template: stages/jobs/rocm-jobs.yml
     parameters:
       PythonVersion: '3.10'
       RocmVersion: '5.4'
-  - template: stages/jobs/rocm-job.yml
+  - template: stages/jobs/rocm-jobs.yml
     parameters:
       PythonVersion: '3.8'
       RocmVersion: '5.4.2'
-  - template: stages/jobs/rocm-job.yml
+  - template: stages/jobs/rocm-jobs.yml
     parameters:
       PythonVersion: '3.9'
       RocmVersion: '5.4.2'
-  - template: stages/jobs/rocm-job.yml
+  - template: stages/jobs/rocm-jobs.yml
     parameters:
       PythonVersion: '3.10'
       RocmVersion: '5.4.2'
-  - template: stages/jobs/rocm-job.yml
+  - template: stages/jobs/rocm-jobs.yml
     parameters:
       PythonVersion: '3.8'
       RocmVersion: '5.5'
-  - template: stages/jobs/rocm-job.yml
+  - template: stages/jobs/rocm-jobs.yml
     parameters:
       PythonVersion: '3.9'
       RocmVersion: '5.5'
-  - template: stages/jobs/rocm-job.yml
+  - template: stages/jobs/rocm-jobs.yml
     parameters:
       PythonVersion: '3.10'
       RocmVersion: '5.5'
-  - template: stages/jobs/rocm-job.yml
+  - template: stages/jobs/rocm-jobs.yml
     parameters:
       PythonVersion: '3.8'
       RocmVersion: '5.5'
       BuildConfig: 'RelWithDebInfo'
-  - template: stages/jobs/rocm-job.yml
+  - template: stages/jobs/rocm-jobs.yml
     parameters:
       PythonVersion: '3.9'
       RocmVersion: '5.5'
       BuildConfig: 'RelWithDebInfo'
-  - template: stages/jobs/rocm-job.yml
+  - template: stages/jobs/rocm-jobs.yml
     parameters:
       PythonVersion: '3.10'
       RocmVersion: '5.5'

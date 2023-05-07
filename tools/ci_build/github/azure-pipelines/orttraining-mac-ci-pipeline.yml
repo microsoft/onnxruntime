@@ -1,5 +1,5 @@
 stages:
-- template: stages/mac-cpu-packaging-stage.yml
+- template: stages/mac-cpu-packaging-stages.yml
   parameters:
     AllowReleasedOpsetOnly: 0
     BuildForAllArchs: false

@@ -37,7 +37,7 @@ stages:
       clean: true
       submodules: none
 
-    - template: jobs/steps/use-android-ndk-step.yml
+    - template: jobs/steps/use-android-ndk-steps.yml
 
     - template: jobs/steps/get-docker-image-steps.yml
       parameters:
@@ -158,4 +158,4 @@ stages:
           targetPath: $(Build.BinariesDirectory)/1b/MinSizeRel/libonnxruntime.so
           artifactName: $(BuildConfigOs)-$(BuildConfigType)-binary-with-debug-info
 
-    - template: jobs/steps/clean-agent-build-directory-step.yml
+    - template: jobs/steps/clean-agent-build-directory-steps.yml

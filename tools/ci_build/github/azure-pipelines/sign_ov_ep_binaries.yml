@@ -18,7 +18,7 @@ jobs:
       displayName: 'Unzip dll files'
       workingDirectory: '$(Build.SourcesDirectory)\Artifact'
 
-    - template: stages/jobs/steps/win-esrp-dll-step.yml
+    - template: stages/jobs/steps/win-esrp-dll-steps.yml
       parameters:
         DisplayName: 'ESRP - sign NuGet package'
         FolderPath: '$(Build.SourcesDirectory)\Artifact'
@@ -30,4 +30,4 @@ jobs:
         pathtoPublish: '$(Build.SourcesDirectory)\Artifact'
         artifactName: 'Signed Dlls'
         
-    - template: stages/jobs/steps/clean-agent-build-directory-step.yml
+    - template: stages/jobs/steps/clean-agent-build-directory-steps.yml

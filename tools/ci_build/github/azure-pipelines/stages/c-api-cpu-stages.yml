@@ -44,11 +44,11 @@ parameters:
   default: 'default'
 
 stages:
-- template: linux-cpu-packaging-stage.yml
+- template: linux-cpu-packaging-stages.yml
   parameters:
     AdditionalBuildFlags: ${{ parameters.AdditionalBuildFlags }}
 
-- template: mac-cpu-packaging-stage.yml
+- template: mac-cpu-packaging-stages.yml
   parameters:
     AllowReleasedOpsetOnly: 1
     BuildForAllArchs: true
@@ -56,7 +56,7 @@ stages:
 - stage: Android_Java_API_AAR_Packaging_Mobile
   dependsOn: []
   jobs:
-  - template: jobs/android-java-api-aar-job.yml
+  - template: jobs/android-java-api-aar-jobs.yml
     parameters:
       buildConfig: 'Release'
       buildSettings: '$(Build.SourcesDirectory)/tools/ci_build/github/android/default_mobile_aar_build_settings.json'
@@ -64,7 +64,7 @@ stages:
       artifactName: 'onnxruntime-android-mobile-aar'
       job_name_suffix: 'Mobile'
       packageName: 'onnxruntime-mobile'
-  - template: jobs/android-java-api-aar-test-job.yml
+  - template: jobs/android-java-api-aar-test-jobs.yml
     parameters:
       artifactName: 'onnxruntime-android-mobile-aar'
       job_name_suffix: 'Mobile'
@@ -74,14 +74,14 @@ stages:
 - stage: Android_Java_API_AAR_Packaging_Full
   dependsOn: []
   jobs:
-  - template: jobs/android-java-api-aar-job.yml
+  - template: jobs/android-java-api-aar-jobs.yml
     parameters:
       buildConfig: 'Release'
       buildSettings: '$(Build.SourcesDirectory)/tools/ci_build/github/android/default_full_aar_build_settings.json'
       artifactName: 'onnxruntime-android-full-aar'
       job_name_suffix: 'Full'
       publish_executables: '1'
-  - template: jobs/android-java-api-aar-test-job.yml
+  - template: jobs/android-java-api-aar-test-jobs.yml
     parameters:
       artifactName: 'onnxruntime-android-full-aar'
       job_name_suffix: 'Full'
@@ -96,7 +96,7 @@ stages:
       vmImage: 'macOS-12'
     timeoutInMinutes: 300
     steps:
-    - template: jobs/steps/set-version-number-variables-step.yml
+    - template: jobs/steps/set-version-number-variables-steps.yml
 
     - script: |
         /bin/bash $(Build.SourcesDirectory)/tools/ci_build/github/apple/build_host_protoc.sh \
@@ -138,7 +138,7 @@ stages:
       parameters:
         condition: 'succeeded'
 
-- template: win-ci-stage.yml
+- template: win-ci-stages.yml
   parameters:
     DoCompliance: ${{ parameters.DoCompliance }}
     DoEsrp: ${{ parameters.DoEsrp }}
@@ -152,7 +152,7 @@ stages:
     buildJava: false
     buildNodejs: false
 
-- template: win-ci-stage.yml
+- template: win-ci-stages.yml
   parameters:
     DoCompliance: ${{ parameters.DoCompliance }}
     DoEsrp: ${{ parameters.DoEsrp }}
@@ -166,7 +166,7 @@ stages:
     buildJava: false
     buildNodejs: false
 
-- template: win-ci-stage.yml
+- template: win-ci-stages.yml
   parameters:
     DoCompliance: ${{ parameters.DoCompliance }}
     DoEsrp: ${{ parameters.DoEsrp }}
@@ -180,7 +180,7 @@ stages:
     buildJava: false
     buildNodejs: true
 
-- template: win-ci-stage.yml
+- template: win-ci-stages.yml
   parameters:
     DoCompliance: ${{ parameters.DoCompliance }}
     DoEsrp: ${{ parameters.DoEsrp }}
@@ -212,7 +212,7 @@ stages:
     steps:
     - checkout: self
       submodules: false
-    - template: jobs/steps/set-version-number-variables-step.yml
+    - template: jobs/steps/set-version-number-variables-steps.yml
 
     - task: DownloadPipelineArtifact@2
       displayName: 'Download Pipeline Artifact - Win x64'
@@ -426,7 +426,7 @@ stages:
         workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
     - ${{ if eq(parameters.DoEsrp, true) }}:
-      - template: jobs/steps/win-esrp-dll-step.yml
+      - template: jobs/steps/win-esrp-dll-steps.yml
         parameters:
           FolderPath: '$(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo'
           DisplayName: 'ESRP - Sign C# dlls'
@@ -471,13 +471,13 @@ stages:
         Contents: '*.nupkg'
         TargetFolder: '$(Build.ArtifactStagingDirectory)'
 
-    - template: jobs/steps/esrp_nuget-step.yml
+    - template: jobs/steps/esrp_nuget-steps.yml
       parameters:
         DisplayName: 'ESRP - sign NuGet package'
         FolderPath: '$(Build.ArtifactStagingDirectory)'
         DoEsrp: ${{ parameters.DoEsrp }}
 
-    - template: jobs/steps/validate-package-step.yml
+    - template: jobs/steps/validate-package-steps.yml
       parameters:
         PackageType: 'nuget'
         PackagePath: '$(Build.ArtifactStagingDirectory)'
@@ -808,7 +808,7 @@ stages:
       value: false
 
     steps:
-    - template: jobs/steps/set-version-number-variables-step.yml
+    - template: jobs/steps/set-version-number-variables-steps.yml
 
     - task: DownloadPipelineArtifact@2
       displayName: 'Download Final Jar'
@@ -849,7 +849,7 @@ stages:
     timeoutInMinutes: 60
 
     steps:
-    - template: jobs/steps/set-version-number-variables-step.yml
+    - template: jobs/steps/set-version-number-variables-steps.yml
     - task: DownloadPipelineArtifact@2
       displayName: 'Download Final Jar'
       inputs:
@@ -892,7 +892,7 @@ stages:
       value: false
     timeoutInMinutes: 60
     steps:
-    - template: jobs/steps/set-version-number-variables-step.yml
+    - template: jobs/steps/set-version-number-variables-steps.yml
 
     - task: DownloadPipelineArtifact@2
       displayName: 'Download Final Jar'

@@ -44,7 +44,7 @@ jobs:
       ALLOW_RELEASED_ONNX_OPSET_ONLY: '1'
 
     steps:
-      - template: stages/jobs/steps/set-version-number-variables-step.yml
+      - template: stages/jobs/steps/set-version-number-variables-steps.yml
 
       - task: NuGetAuthenticate@0
         inputs:
@@ -61,7 +61,7 @@ jobs:
           scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
           arguments: '--compile_no_warning_as_error --disable_ml_ops --build_dir $(Build.BinariesDirectory)\Windows --skip_submodule_sync --build_shared_lib --cmake_generator "Visual Studio 17 2022" --config ${{ parameters.build_config }} --use_qnn --qnn_home ${{parameters.qnn_sdk_path_win}}'
 
-      - template: stages/jobs/steps/win-esrp-dll-step.yml
+      - template: stages/jobs/steps/win-esrp-dll-steps.yml
         parameters:
           FolderPath: '$(Build.BinariesDirectory)\Windows\${{ parameters.build_config }}\${{ parameters.build_config }}'
           DisplayName: 'ESRP - Sign dlls'
@@ -97,7 +97,7 @@ jobs:
       ALLOW_RELEASED_ONNX_OPSET_ONLY: '1'
 
     steps:
-      - template: stages/jobs/steps/set-version-number-variables-step.yml
+      - template: stages/jobs/steps/set-version-number-variables-steps.yml
 
       - task: NuGetAuthenticate@0
         inputs:
@@ -150,7 +150,7 @@ jobs:
           workingFolder: '$(Build.BinariesDirectory)\Win_arm64\${{ parameters.build_config }}'
           createLogFile: true
 
-      - template: stages/jobs/steps/win-esrp-dll-step.yml
+      - template: stages/jobs/steps/win-esrp-dll-steps.yml
         parameters:
           FolderPath: '$(Build.BinariesDirectory)\Win_arm64\${{ parameters.build_config }}\${{ parameters.build_config }}'
           DisplayName: 'ESRP - Sign dlls'
@@ -243,7 +243,7 @@ jobs:
             Start-Process -FilePath $zip_tool -ArgumentList "-r $merged_nuget ." -WorkingDirectory $x64_nupkg_unzipped_directory -NoNewWindow -Wait
           workingDirectory: $(Build.BinariesDirectory)
 
-      - template: stages/jobs/steps/esrp_nuget-step.yml
+      - template: stages/jobs/steps/esrp_nuget-steps.yml
         parameters:
           DisplayName: 'ESRP - sign NuGet package'
           FolderPath: '$(Build.ArtifactStagingDirectory)/merged'

@@ -191,14 +191,14 @@ stages:
             arguments: ${{ parameters.BuildArch }}
             modifyEnvironment: true
         # Esrp signing
-        - template: ../../stages/jobs/steps/win-esrp-dll-step.yml
+        - template: ../../stages/jobs/steps/win-esrp-dll-steps.yml
           parameters:
             FolderPath: '$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)'
             DisplayName: 'ESRP - Sign Native dlls'
             DoEsrp: ${{ parameters.DoEsrp }}
             Pattern: 'onnx_test_runner.exe, onnxruntime_perf_test.exe,*.dll' #keep sync with src/Microsoft.ML.OnnxRuntime/Microsoft.ML.OnnxRuntime.csproj
 
-        - template: ../../stages/jobs/steps/win-esrp-dll-step.yml
+        - template: ../../stages/jobs/steps/win-esrp-dll-steps.yml
           parameters:
             FolderPath: '$(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\$(BuildConfig)'
             DisplayName: 'ESRP - Sign C# dlls'
@@ -232,7 +232,7 @@ stages:
             filename: 'C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\VC\Auxiliary\Build\vcvarsall.bat'
             arguments: ${{ parameters.BuildArch }}
             modifyEnvironment: true
-        - template: ../../stages/jobs/steps/win-esrp-dll-step.yml
+        - template: ../../stages/jobs/steps/win-esrp-dll-steps.yml
           parameters:
             FolderPath: '$(Build.SourcesDirectory)\js\node\bin\napi-v3\win32\x64'
             DisplayName: 'ESRP - Sign Node.js binding binaries'

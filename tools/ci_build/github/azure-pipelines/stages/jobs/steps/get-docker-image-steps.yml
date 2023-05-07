@@ -29,7 +29,7 @@ parameters:
 steps:
 
 - ${{ if eq(parameters.UpdateDepsTxt, true)}}:
-  - template: tasks/download-deps-task.yml
+  - template: download-deps-steps.yml
 
 - ${{ if contains(parameters.Dockerfile, 'manylinux') }}:
     - checkout: manylinux

@@ -51,7 +51,7 @@ stages:
         clean: true
         submodules: recursive
 
-      - template: stages/jobs/steps/set-python-manylinux-variables-step.yml
+      - template: stages/jobs/steps/set-python-manylinux-variables-steps.yml
 
       - template: stages/jobs/steps/get-docker-image-steps.yml
         parameters:
@@ -115,4 +115,4 @@ stages:
         parameters:
           condition: 'succeeded'
 
-      - template: stages/jobs/steps/clean-agent-build-directory-step.yml
+      - template: stages/jobs/steps/clean-agent-build-directory-steps.yml

@@ -73,4 +73,4 @@ jobs:
       workingDirectory: $(Build.SourcesDirectory)
       condition: succeededOrFailed()
 
-  - template: stages/jobs/steps/clean-agent-build-directory-step.yml
+  - template: stages/jobs/steps/clean-agent-build-directory-steps.yml

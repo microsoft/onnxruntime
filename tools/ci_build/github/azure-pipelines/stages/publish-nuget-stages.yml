@@ -27,7 +27,7 @@ stages:
     steps:
     - checkout: self
       submodules: false
-    - template: jobs/steps/set-version-number-variables-step.yml
+    - template: jobs/steps/set-version-number-variables-steps.yml
 
     - task: DownloadPipelineArtifact@0
       displayName: 'Download Pipeline Artifact - Signed NuGet Package'

@@ -53,9 +53,9 @@ jobs:
     inputs:
       versionSpec: '16.x'
 
-  - template: steps/set-version-number-variables-step.yml
+  - template: steps/set-version-number-variables-steps.yml
 
-  - template: steps/mac-build-step-with-cache-step.yml
+  - template: steps/mac-build-step-with-cache-steps.yml
     parameters:
       WithCache: ${{ parameters.WithCache }}
       Today: $(TODAY)

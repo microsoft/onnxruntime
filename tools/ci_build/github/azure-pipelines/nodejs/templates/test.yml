@@ -35,4 +35,4 @@ steps:
   parameters :
     condition : 'always'
 
-- template: ../../stages/jobs/steps/clean-agent-build-directory-step.yml
+- template: ../../stages/jobs/steps/clean-agent-build-directory-steps.yml

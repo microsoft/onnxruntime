@@ -19,7 +19,7 @@ jobs:
       clean: true
       submodules: recursive
 
-    - template: steps/set-nightly-build-option-variable-step.yml
+    - template: steps/set-nightly-build-option-variable-steps.yml
 
     - template: steps/get-docker-image-steps.yml
       parameters:

@@ -71,7 +71,7 @@ steps:
         workingDirectory: '$(Build.BinariesDirectory)\${{parameters.buildConfig}}'
 
     - ${{ if eq(parameters.DoEsrp, true) }}:
-      - template: win-esrp-dll-step.yml
+      - template: win-esrp-dll-steps.yml
         parameters:
           FolderPath: '$(Build.BinariesDirectory)\${{parameters.artifactName}}'
           DisplayName: 'ESRP - Sign Native dlls'

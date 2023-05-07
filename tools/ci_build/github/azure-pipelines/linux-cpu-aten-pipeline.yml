@@ -37,7 +37,7 @@ jobs:
       UseImageCacheContainerRegistry: true
       UsePipelineCache: false
 
-  - template: stages/jobs/steps/linux-build-step-with-cache-step.yml
+  - template: stages/jobs/steps/linux-build-step-with-cache-steps.yml
     parameters:
       WithCache: true
       Today: $(TODAY)
@@ -107,7 +107,7 @@ jobs:
                 --cmake_extra_defines onnxruntime_ENABLE_ATEN=ON"
       workingDirectory: $(Build.SourcesDirectory)
 
-  - template: stages/jobs/steps/explicitly-defined-final-step.yml
+  - template: stages/jobs/steps/explicitly-defined-final-steps.yml
 
   - script: |
       df -h

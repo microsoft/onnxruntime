@@ -97,7 +97,7 @@ jobs:
       artifactName: 'drop-linux'
       targetPath: '$(Build.BinariesDirectory)/Release'
 
-  - template: stages/jobs/steps/explicitly-defined-final-step.yml
+  - template: stages/jobs/steps/explicitly-defined-final-steps.yml
 
 - job: Linux_Test
   timeoutInMinutes: 180
@@ -146,4 +146,4 @@ jobs:
               --enable_onnx_tests --use_cuda --cuda_version=11.6 --cuda_home=/usr/local/cuda-11.6 --cudnn_home=/usr/local/cuda-11.6 \
               --enable_pybind --build_java --ctest_path ''
 
-  - template: stages/jobs/steps/clean-agent-build-directory-step.yml
+  - template: stages/jobs/steps/clean-agent-build-directory-steps.yml
