@@ -254,7 +254,6 @@ void TSLogitsProcessor<T>::Process(const ISequences* sequences,
   const int beg_token_id_ = 50363 + 1;
   const int eot_token_id_ = 50256 + 1;
   const int not_token_id_ = 50362 + 1;
-  const int max_initial_timestamp_index = 0;
 /*
   const int sot_token_id_ = 50257 + 1;
   const int solm_token_id_ = 50361 + 1;
@@ -263,6 +262,15 @@ void TSLogitsProcessor<T>::Process(const ISequences* sequences,
   //const int blank_token_id
   const bool suppress_blank = true;
 */
+  const float max_initial_timestamp  = 1.0f;//s
+  const float chunk_length = 30.0f;//s
+  const int n_audio_ctx = 1500;
+  //if(is_initial && max_initial_ts > 0.0f) {//whisper.cpp L3583 ??
+  const float precision = float(chunk_length/n_audio_ctx);//30/1500 = 0.02 s
+  const int max_initial_timestamp_index = std::round(max_initial_timestamp / precision);
+  std::cout << "precision: " << precision << ", max_initial_timestamp_index: " << max_initial_timestamp_index << std::endl;
+  //}
+
   const int batch_beam_size = next_token_scores.batch_beam_size;
   const int vocab_size = next_token_scores.vocab_size;
   for (int i = 0; i < batch_beam_size; i++) {
@@ -320,7 +328,6 @@ void TSLogitsProcessor<T>::Process(const ISequences* sequences,
       }
     }
 
-
     //find timestamps
     std::vector<int32_t> timestamps;
     for (const auto& word_id : sequence) {
@@ -340,28 +347,30 @@ void TSLogitsProcessor<T>::Process(const ISequences* sequences,
       //}
 
       //latest changes in whisper main
-      int timestamp_last;
+      int timestamp_last = 0;
       if (last_was_timestamp && !penultimate_was_timestamp) {
         timestamp_last = timestamps.back();
       } else {
         timestamp_last = timestamps.back() + 1;
       }
 
+      std::cout << "last_was_timestamp: " << last_was_timestamp << ", penultimate_was_timestamp: " << penultimate_was_timestamp << ", timestamp_last: " << timestamp_last << std::endl;
       for (int j = beg_token_id_; j < timestamp_last; j++) {//n_logits
         beam_token_scores[j] = std::numeric_limits<T>::lowest();
       }
     }
 
-    std::cout << "apply max_initial_timestamp" << std::endl;
+    std::cout << "apply max_initial_timestamp: " << std::endl;
     if (seq_length == sample_begin) {
-      //suppress generating non-timestamp tokens at the beginning
-      for (int j = 0; j < beg_token_id_; j++) {//n_logits
-        beam_token_scores[j] = std::numeric_limits<T>::lowest();
-      }
+      //suppress generating non-timestamp tokens at the beginning. Doesn't work. All tokens after 50364 are 0s???
+      //for (int j = 0; j < beg_token_id_; j++) {//n_logits
+      //  beam_token_scores[j] = std::numeric_limits<T>::lowest();
+      //}
 
       //apply the max_initial_timestamp option
-      const int last_allowed = beg_token_id_ + max_initial_timestamp_index + 1;
-      for (int j = last_allowed; j < vocab_size; j++) {//n_logits
+      const int last_allowed = beg_token_id_ + max_initial_timestamp_index;//max_initial_timestamp_index:50
+      std::cout << "seq_length: " << seq_length << ", sample_begin: " << sample_begin << ", last_allowed: " << last_allowed << std::endl;
+      for (int j = last_allowed + 1; j < vocab_size; j++) {//n_logits
         beam_token_scores[j] = std::numeric_limits<T>::lowest();
       }
     }
@@ -369,7 +378,8 @@ void TSLogitsProcessor<T>::Process(const ISequences* sequences,
     //whisper.cpp L3602
     // populate the logprobs array (log_softmax)
     std::cout << "calculate logprobs" << std::endl;
-    gsl::span<float> logprobs;
+    //constexpr int prob_len = vocab_size;
+    gsl::span<T> logprobs = beam_token_scores;
     {
         const float logit_max = *std::max_element(beam_token_scores.begin(), beam_token_scores.end());
         float logsumexp = 0.0f;
