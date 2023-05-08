@@ -32,6 +32,20 @@ static bool IsSupportedDataType(const Node& node, int first_n_inputs = -1) {
   return true;
 }
 
+static bool IsFP16OutputDataType(const Node& node, int first_n_outputs = -1) {
+  int output_index = 0;
+  for (const auto& output_arg : node.OutputDefs()) {
+    if (first_n_outputs != -1 && output_index >= first_n_outputs) {
+      return true;
+    }
+    if (*(output_arg->Type()) != "tensor(float16)") {
+      return false;
+    }
+    ++output_index;
+  }
+  return true;
+}
+
 /**
 Layer Normalization will fuse LayerNormalization into one node :
 +---------------------+
