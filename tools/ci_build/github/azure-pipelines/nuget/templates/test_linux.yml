@@ -4,6 +4,8 @@ parameters:
   NugetPackageName : ''
   StageSuffix: 'CPU'
   NativePackagePrefix: 'onnxruntime'
+  SpecificArtifact: false
+  BuildId: '0'
 
 stages:
 - stage: NuGet_Test_Linux_${{ parameters.StageSuffix }}
@@ -20,19 +22,23 @@ stages:
     variables:
     - name: OnnxRuntimeBuildDirectory
       value: '$(Build.BinariesDirectory)'
+
     steps:
+    - template: ../../templates/flex-downloadPipelineArtifact.yml
+      parameters:
+        StepName: 'Download Signed NuGet'
+        ArtifactName: drop-signed-nuget-${{ parameters.ArtifactSuffix }}
+        TargetPath: '$(Build.BinariesDirectory)/nuget-artifact'
+        SpecificArtifact: ${{ parameters.SpecificArtifact }}
+        BuildId: ${{ parameters.BuildId }}
 
-    - task: DownloadPipelineArtifact@0
-      displayName: 'Download Signed NuGet'
-      inputs:
-        artifactName: drop-signed-nuget-${{ parameters.ArtifactSuffix }}
-        targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
-
-    - task: DownloadPipelineArtifact@0
-      displayName: 'Download Linux CustomOp TestData'
-      inputs:
-        artifactName: '${{ parameters.NativePackagePrefix }}-linux-x64'
-        targetPath: '$(Build.BinariesDirectory)/testdata'
+    - template: ../../templates/flex-downloadPipelineArtifact.yml
+      parameters:
+        StepName: 'Download Linux CustomOp TestData'
+        ArtifactName: 'onnxruntime-linux-x64'
+        TargetPath: '$(Build.BinariesDirectory)/testdata'
+        SpecificArtifact: ${{ parameters.specificArtifact }}
+        BuildId: ${{ parameters.BuildId }}
 
     - template: get-nuget-package-version-as-variable.yml
       parameters:
