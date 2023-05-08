@@ -75,15 +75,12 @@ stages:
         echo "Release version suffix is: $(ReleaseVersionSuffix)"
 
 - stage: Debug
-  dependsOn:
-  - Setup
+  dependsOn: Setup
   jobs:
   - job:
     variables:
       - name: depsJson
         value: $[ convertToJson(stageDependencies) ]
-      - name: depsJson2
-        value: $[ convertToJson(dependencies) ]
       - name: MyVar
         value: $[ stageDependencies.Setup.Set_Variables.outputs['Set_Release_Version_Suffix.ReleaseVersionSuffix'] ]
     steps:
@@ -92,7 +89,6 @@ stages:
         echo "Release version suffix is: $(ReleaseVersionSuffix)"
         echo "MyVar is: $(MyVar)"
         echo "depsJson is: $(depsJson)"
-        echo "depsJson2 is: $(depsJson2)"
 
 - template: templates/c-api-cpu.yml
   parameters:
