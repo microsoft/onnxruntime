@@ -1175,6 +1175,7 @@ TEST_F(GraphTransformationTests, FuseCpuConvAddRelu) {
   op_to_count = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count["Add"] == 0);   // Add removed from graph
   ASSERT_TRUE(op_to_count["Relu"] == 0);  // Relu removed from graph
+
 }
 
 // Conv->Add->Relu will be partly fused  to Conv_Add->Relu since there is Identity depend on Add

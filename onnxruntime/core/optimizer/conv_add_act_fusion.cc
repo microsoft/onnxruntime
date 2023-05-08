@@ -201,7 +201,7 @@ class FuseConvAddActivationAction : public ReplaceWithNew {
 
  private:
   std::string OpType(const RuntimeState& runtimeState) const override {
-    return runtimeState.selected_nodes.Target().OpType();
+    return (runtimeState.selected_nodes.Target().OpType() == "Conv") ? "FusedConv" : "NhwcFusedConv";
   }
 
   std::string Domain(const RuntimeState&) const override { return kMSDomain; }
