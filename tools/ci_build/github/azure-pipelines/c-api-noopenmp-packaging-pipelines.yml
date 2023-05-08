@@ -81,7 +81,7 @@ stages:
   - job:
     variables:
       - name: depsJson
-        value: $[ convertToJson($[stageDependencies]) ]
+        value: $[ convertToJson(stageDependencies) ]
       - name: MyVar
         value: $[stageDependencies.Setup.Set_Variables.outputs['Set_Release_Version_Suffix.ReleaseVersionSuffix']]
     steps:
