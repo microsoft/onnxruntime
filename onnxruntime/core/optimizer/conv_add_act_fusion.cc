@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 
 #include <deque>
-#include <string_view>
 #include "core/graph/graph_utils.h"
 #include "core/optimizer/initializer.h"
 #include "core/optimizer/conv_add_act_fusion.h"
@@ -62,7 +61,7 @@ class ConvAddActivationSelector : public NodeSelector {
     // 1. Its type is 'conv', 2. it has to satisfy the other requirements,like shape, please refer to SelectConvProducer for more info
     const Node* conv_node = nullptr;
     const auto* add_node = GetLoneConsumerNode(graph_viewer, node);
-    if (!add_node) {
+    if (add_node == nullptr) {
       return std::nullopt;
     }
     // Let's support addition first, leave any-element-wise-op fusion in the future.
