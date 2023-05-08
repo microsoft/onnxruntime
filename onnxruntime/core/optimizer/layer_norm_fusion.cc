@@ -254,17 +254,28 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
 
     // Traceback the sqrt node to find add --> sqrt
     Node& add2_node = *graph.GetNode(sqrt_node.InputNodesBegin()->Index());
-    if (!graph_utils::IsSupportedOptypeVersionAndDomain(add2_node, "Add", {7, 13, 14}) ||
-        add2_node.GetExecutionProviderType() != reduce_mean_node.GetExecutionProviderType() ||
-        !optimizer_utils::CheckOutputEdges(graph, add2_node, 1) ||
-        !IsSupportedDataType(add2_node)) {
+    const Node* p_reduce_mean2 = nullptr;
+    if add2_node.OpType() == "Add" {
+      if (!graph_utils::IsSupportedOptypeVersionAndDomain(add2_node, "Add", {7, 13, 14}) ||
+          add2_node.GetExecutionProviderType() != reduce_mean_node.GetExecutionProviderType() ||
+          !optimizer_utils::CheckOutputEdges(graph, add2_node, 1) ||
+          !IsSupportedDataType(add2_node)) {
+        continue;
+      }
+      nodes_to_remove.push_back(add2_node);
+      // Traceback the add node to find reduceMean --> add
+
+      p_reduce_mean2 = graph_utils::FirstParentByType(add2_node, "ReduceMean");
+    } else if add2_node.OpType() == "ReduceMean" {
+      if (IsFP16OutputDataType(add2_node)) {
+        p_reduce_mean2 = &add2_node;
+      } else {
+        continue;
+      }
+    } else {
       continue;
     }
-    nodes_to_remove.push_back(add2_node);
-    // Traceback the add node to find reduceMean --> add
-    const Node* p_reduce_mean2 = nullptr;
 
-    p_reduce_mean2 = graph_utils::FirstParentByType(add2_node, "ReduceMean");
     if (p_reduce_mean2 == nullptr) {
       continue;
     }
