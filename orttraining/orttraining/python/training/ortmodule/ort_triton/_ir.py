@@ -90,11 +90,12 @@ class OffsetCalculator:
         self.input_strides: Dict[str, List[sympy.Expr]] = dict()
         # Support concrete shape only for now.
         assert self.x_numel.is_integer and self.r_numel.is_integer
-        self.autotune_configs = AutotuneConfigs(
+        self.autotune_configs: AutotuneConfigs = AutotuneConfigs(
             int(self.x_numel), int(self.r_numel), not self.is_reduction or self.reduce_axes[-1] == self.rank - 1
         )
-        self.requires_x_mask = any(int(self.x_numel) % config[0] != 0 for config in self.autotune_configs.configs)
-        self.requires_r_mask = any(int(self.r_numel) % config[1] != 0 for config in self.autotune_configs.configs)
+        self.requires_x_mask: bool = any(int(self.x_numel) % config[0] != 0 for config in self.autotune_configs.configs)
+        self.requires_r_mask: bool = any(int(self.r_numel) % config[1] != 0 for config in self.autotune_configs.configs)
+        self.reduced_args: Set[str] = set()
 
     def get_input_strides(self, name: str) -> List[sympy.Expr]:
         assert name in self.input_strides
@@ -121,31 +122,30 @@ class OffsetCalculator:
     def is_same_r_shape(self, name: str) -> bool:
         return all(dim != sympy.Integer(0) for dim in self.get_r_input_strides(name))
 
-    def register_tensor_arg(self, tensor_arg: TensorArg, is_reduce_output: bool):
+    def register_tensor_arg(self, tensor_arg: TensorArg):
         if tensor_arg.name in self.input_strides:
             return
         strides = []
         input_shape = tensor_arg.shape
-        # Reduce output with keepdims is False.
-        if is_reduce_output and len(input_shape) != len(self.target_shape):
+        if tensor_arg.name in self.reduced_args:
             assert self.is_reduction
+            reduced_rank = len(input_shape) - len(self.reduce_axes)
+            if len(input_shape) < reduced_rank:
+                input_shape = [sympy.Integer(1)] * (reduced_rank - len(input_shape)) + input_shape
             input_shape = (
                 input_shape[: self.reduce_axes[0]]
                 + ([sympy.Integer(1)] * len(self.reduce_axes))
                 + input_shape[self.reduce_axes[0] :]
             )
-        pos1 = len(self.target_shape) - 1
-        pos2 = len(input_shape) - 1
-        assert pos1 >= pos2
+        elif len(input_shape) < len(self.target_shape):
+            input_shape = [sympy.Integer(1)] * (len(self.target_shape) - len(input_shape)) + input_shape
         running_stride = sympy.Integer(1)
-        while pos1 >= 0:
-            if pos2 >= 0 and self.target_shape[pos1] == input_shape[pos2]:
+        for i in range(len(self.target_shape) - 1, -1, -1):
+            if self.target_shape[i] == input_shape[i]:
                 strides.insert(0, running_stride)
-                running_stride = running_stride * input_shape[pos2]
+                running_stride = running_stride * input_shape[i]
             else:
                 strides.insert(0, sympy.Integer(0))
-            pos1 -= 1
-            pos2 -= 1
         self.input_strides[tensor_arg.name] = strides
         if not self.is_same_x_shape(tensor_arg.name):
             for idx, dim in enumerate(self.get_x_input_strides(tensor_arg.name)):
@@ -234,7 +234,7 @@ class DropoutNode(ComputeNode):
     def __init__(self, inputs: List[TensorArg], outputs: List[TensorArg], offset_calc: OffsetCalculator):
         super().__init__("Dropout", inputs, outputs)
         self.offset_calc: OffsetCalculator = offset_calc
-        self.offset_calc.register_tensor_arg(inputs[0], False)
+        self.offset_calc.register_tensor_arg(inputs[0])
         self.global_offset: sympy.Expr = sympy.Integer(0)
 
 
@@ -245,12 +245,12 @@ class IONode(IRNode):
 
     """
 
-    def __init__(self, tensor_arg: TensorArg, offset_calc: OffsetCalculator, is_load: bool, is_reduce_output: bool):
+    def __init__(self, tensor_arg: TensorArg, offset_calc: OffsetCalculator, is_load: bool):
         super().__init__([], [])
         self.tensor_arg: TensorArg = tensor_arg
         self.is_load: bool = is_load
         self.offset_calc: OffsetCalculator = offset_calc
-        self.offset_calc.register_tensor_arg(tensor_arg, is_reduce_output)
+        self.offset_calc.register_tensor_arg(tensor_arg)
 
 
 class KernelNode(IRNode):
@@ -308,8 +308,10 @@ class ReduceKernelNode(KernelNode):
         outputs: List[TensorArg],
         target_shape: List[sympy.Expr],
         reduce_axes: List[int],
+        reduced_args: Set[str],
     ):
         super().__init__(inputs, outputs, target_shape, reduce_axes)
+        self.offset_calc.reduced_args.update(reduced_args)
 
 
 class ModuleNode(IRNode):

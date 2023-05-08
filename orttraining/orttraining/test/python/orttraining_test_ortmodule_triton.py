@@ -567,7 +567,7 @@ def test_softmax_module(dtype, input_shapes_and_axis):
 
 
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16])
-@pytest.mark.parametrize("input_shapes_and_axis", [([2, 3, 3, 3], [3, 3], 2), ([2, 1024], [2, 1024], -1)])
+@pytest.mark.parametrize("input_shapes_and_axis", [([2, 1024], [2, 1024], -1), ([2, 2049], [2, 1], -1)])
 def test_layer_norm_module(dtype, input_shapes_and_axis):
     class NeuralNetLayerNorm(torch.nn.Module):
         def __init__(self):
