@@ -15,7 +15,7 @@ parameters:
   
 steps:
   - ${{ if eq(parameters.DoEsrp, true) }}:
-    - template: win-esrp-dll.yml
+    - template: win-esrp-dll-steps.yml
       parameters:
         FolderPath: '$(Build.SourcesDirectory)\js\node\bin\napi-v3\win32\${{ parameters.arch }}'
         DisplayName: 'ESRP - Sign Node.js binding binaries'
