@@ -61,6 +61,42 @@ The C API details are [here](../get-started/with-c.md).
 ### Shape Inference for TensorRT Subgraphs
 If some operators in the model are not supported by TensorRT, ONNX Runtime will partition the graph and only send supported subgraphs to TensorRT execution provider. Because TensorRT requires that all inputs of the subgraphs have shape specified, ONNX Runtime will throw error if there is no input shape info. In this case please run shape inference for the entire model first by running script [here](https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/python/tools/symbolic_shape_infer.py) (Check below for sample).
 
+### TensorRT Plugins Support
+ORT TRT can leverage the TRT plugins which come with TRT plugins library in official release. To use TRT plugins, firstly users need to create the custom node (a one-to-one mapping to TRT plugin) with a registered plugin name and `trt.plugins` domain in the ONNX model. So, ORT TRT can recognize this custom node and pass the node together with the subgraph to TRT. Please see following python example to create a new custom node in the ONNX model:
+
+```python
+from onnx import TensorProto, helper
+
+def generate_model(model_name):
+    nodes = [
+        helper.make_node(
+            "DisentangledAttention_TRT", # The registered name is from https://github.com/NVIDIA/TensorRT/blob/main/plugin/disentangledAttentionPlugin/disentangledAttentionPlugin.cpp#L36
+            ["input1", "input2", "input3"],
+            ["output"],
+            "DisentangledAttention_TRT",
+            domain="trt.plugins", # The domain has to be "trt.plugins"
+            factor=0.123,
+            span=128,
+        ),
+    ]
+
+    graph = helper.make_graph(
+        nodes,
+        "trt_plugin_custom_op",
+        [  # input
+            helper.make_tensor_value_info("input1", TensorProto.FLOAT, [12, 256, 256]),
+            helper.make_tensor_value_info("input2", TensorProto.FLOAT, [12, 256, 256]),
+            helper.make_tensor_value_info("input3", TensorProto.FLOAT, [12, 256, 256]),
+        ],
+        [  # output
+            helper.make_tensor_value_info("output", TensorProto.FLOAT, [12, 256, 256]),
+        ],
+    )
+
+    model = helper.make_model(graph)
+    onnx.save(model, model_name)
+```
+
 ### Python
 To use TensorRT execution provider, you must explicitly register TensorRT execution provider when instantiating the `InferenceSession`.
 Note that it is recommended you also register `CUDAExecutionProvider` to allow Onnx Runtime to assign nodes to CUDA execution provider that TensorRT does not support.
