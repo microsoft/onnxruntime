@@ -10,15 +10,22 @@ import {initializeWebAssembly} from '../wasm-factory';
 self.onmessage = (ev: MessageEvent<OrtWasmMessage>): void => {
   switch (ev.data.type) {
     case 'init-wasm':
-      initializeWebAssembly(ev.data.in)
-          .then(
-              () => postMessage({type: 'init-wasm'} as OrtWasmMessage),
-              err => postMessage({type: 'init-wasm', err} as OrtWasmMessage));
+      try {
+        initializeWebAssembly(ev.data.in)
+            .then(
+                () => postMessage({type: 'init-wasm'} as OrtWasmMessage),
+                err => postMessage({type: 'init-wasm', err} as OrtWasmMessage));
+      } catch (err) {
+        postMessage({type: 'init-wasm', err} as OrtWasmMessage);
+      }
       break;
     case 'init-ort':
       try {
         const {numThreads, loggingLevel} = ev.data.in!;
-        initOrt(numThreads, loggingLevel);
+        initOrt(numThreads, loggingLevel)
+            .then(
+                () => postMessage({type: 'init-ort'} as OrtWasmMessage),
+                err => postMessage({type: 'init-ort', err} as OrtWasmMessage));
         postMessage({type: 'init-ort'} as OrtWasmMessage);
       } catch (err) {
         postMessage({type: 'init-ort', err} as OrtWasmMessage);

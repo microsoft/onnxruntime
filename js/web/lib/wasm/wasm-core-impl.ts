@@ -3,6 +3,7 @@
 
 import {InferenceSession, Tensor} from 'onnxruntime-common';
 
+import {init as initJsep} from './jsep/init';
 import {SerializableModeldata, SerializableSessionMetadata, SerializableTensor} from './proxy-messages';
 import {setRunOptions} from './run-options';
 import {setSessionOptions} from './session-options';
@@ -15,11 +16,14 @@ import {getInstance} from './wasm-factory';
  * @param numThreads SetGlobalIntraOpNumThreads(numThreads)
  * @param loggingLevel CreateEnv(static_cast<OrtLoggingLevel>(logging_level))
  */
-export const initOrt = (numThreads: number, loggingLevel: number): void => {
+export const initOrt = async(numThreads: number, loggingLevel: number): Promise<void> => {
   const errorCode = getInstance()._OrtInit(numThreads, loggingLevel);
   if (errorCode !== 0) {
     throw new Error(`Can't initialize onnxruntime. error code = ${errorCode}`);
   }
+
+  // init JSEP if available
+  await initJsep(getInstance());
 };
 
 /**
