@@ -284,12 +284,10 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
       // Traceback the add node to find reduceMean --> add
 
       p_reduce_mean2 = graph_utils::FirstParentByType(add2_node, "ReduceMean");
-    } else if (add2_node.OpType() == "ReduceMean") { // add node was removed by CommonSubexpressionElimination
-      if (IsFP16OutputDataType(add2_node)) { // if in fp16 mode, account for removal
+    } else if (add2_node.OpType() == "ReduceMean" && IsFP16OutputDataType(add2_node)) {
+        // add2_node was removed by CommonSubexpressionElimination duing mixed precision training
+        // allow fusion to proceed without add2_node
         p_reduce_mean2 = &add2_node;
-      } else {
-        continue;
-      }
     } else {
       continue;
     }
