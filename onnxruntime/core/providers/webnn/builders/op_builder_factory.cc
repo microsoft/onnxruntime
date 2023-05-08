@@ -27,6 +27,7 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
     CreateBinaryOpBuilder("Sub", op_registrations);
     CreateBinaryOpBuilder("Mul", op_registrations);
     CreateBinaryOpBuilder("Div", op_registrations);
+    CreateBinaryOpBuilder("Pow", op_registrations);
   }
 
   {  // Activations

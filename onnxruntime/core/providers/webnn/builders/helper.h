@@ -36,6 +36,7 @@ static const InlinedHashMap<std::string, std::string> op_map = {
     {"Sub", "sub"},
     {"Mul", "mul"},
     {"Div", "div"},
+    {"Pow", "pow"},
     {"Cos", "cos"},
     {"Floor", "floor"},
     {"Sin", "sin"},
