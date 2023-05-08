@@ -79,12 +79,16 @@ stages:
   jobs:
   - job:
     variables:
-      MyVar: $[stageDependencies.Setup.Set_Variables.outputs['Set_Release_Version_Suffix.ReleaseVersionSuffix']]
+      - name: depsJson
+        value: $[ convertToJson(stageDependencies) ]
+      - name: MyVar
+        value: $[stageDependencies.Setup.Set_Variables.outputs['Set_Release_Version_Suffix.ReleaseVersionSuffix']]
     steps:
     - checkout: none
     - bash: |
         echo "Release version suffix is: $(ReleaseVersionSuffix)"
         echo "MyVar is: $(MyVar)"
+        echo "depsJson is: $(depsJson)"
 
 - template: templates/c-api-cpu.yml
   parameters:
