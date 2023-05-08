@@ -452,11 +452,11 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
           } else {
             qnn_options[key] = value;
           }
-        }  else if (key == "qnn_context_cache_enable") {
+        } else if (key == "qnn_context_cache_enable") {
           qnn_options[key] = value;
         } else if (key == "qnn_context_cache_path") {
           qnn_options[key] = value;
-        }else if (key == "profiling_level") {
+        } else if (key == "profiling_level") {
           qnn_options[key] = value;
         } else if (key == "rpc_control_latency") {
           qnn_options[key] = value;

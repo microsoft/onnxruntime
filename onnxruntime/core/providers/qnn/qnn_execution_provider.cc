@@ -381,7 +381,8 @@ Status QNNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused
 
       ORT_RETURN_IF_ERROR(CreateComputeFunc(node_compute_funcs, logger));
       return Status::OK();
-    } else { // Load and execute from Onnx model if not exit and dump the context
+    } else {
+      // Load and execute from Onnx model if not exit and dump the context
       ORT_RETURN_IF_ERROR(CompileFromOrtGraph(fused_nodes_and_graphs, node_compute_funcs, logger));
       ORT_RETURN_IF_ERROR(qnn_backend_manager_->DumpQnnContext(context_cache_pathstring));
     }

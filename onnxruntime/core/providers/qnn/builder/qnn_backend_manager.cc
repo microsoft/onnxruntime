@@ -107,8 +107,10 @@ Status QnnBackendManager::LoadQnnSystemLib() {
   for (size_t pIdx = 0; pIdx < num_providers; pIdx++) {
     LOGS_DEFAULT(VERBOSE) << "system_interface_providers major: " << system_interface_providers[pIdx]->systemApiVersion.major
                           << " system_interface_providers minor: " << system_interface_providers[pIdx]->systemApiVersion.minor;
-    if (QNN_SYSTEM_API_VERSION_MAJOR == system_interface_providers[pIdx]->systemApiVersion.major &&
-        QNN_SYSTEM_API_VERSION_MINOR <= static_cast<int64_t>(system_interface_providers[pIdx]->systemApiVersion.minor)) {
+    int64_t systems_version_major = static_cast<int64_t>(system_interface_providers[pIdx]->systemApiVersion.major);
+    int64_t systems_version_minor = static_cast<int64_t>(system_interface_providers[pIdx]->systemApiVersion.minor);
+    if (systems_version_major == QNN_SYSTEM_API_VERSION_MAJOR &&
+        systems_version_minor >= QNN_SYSTEM_API_VERSION_MINOR) {
       found_valid_interface = true;
       qnn_sys_interface_ = system_interface_providers[pIdx]->QNN_SYSTEM_INTERFACE_VER_NAME;
       LOGS_DEFAULT(INFO) << "Found valid system interface, version: " << QNN_API_VERSION_MAJOR
@@ -294,7 +296,7 @@ Status QnnBackendManager::DumpQnnContext(const onnxruntime::PathString& context_
 
   if (required_buffer_size < written_buffer_size) {
     LOGS(*logger_, ERROR) << "Context written buffer size: " << written_buffer_size
-                        << " exceeds allocated buffer size: " << required_buffer_size;
+                          << " exceeds allocated buffer size: " << required_buffer_size;
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Context written buffer exceeds allocated buffer size.");
   }
 
@@ -336,7 +338,7 @@ Status QnnBackendManager::LoadCachedQnnContext(const onnxruntime::PathString& co
   auto rt = qnn_sys_interface_.systemContextCreate(&sys_ctx_handle);
   ORT_RETURN_IF(QNN_SUCCESS != rt, "Failed to create system handle.");
 
-  const QnnSystemContext_BinaryInfo_t* binary_info =nullptr;
+  const QnnSystemContext_BinaryInfo_t* binary_info = nullptr;
   Qnn_ContextBinarySize_t binary_info_size{0};
   rt = qnn_sys_interface_.systemContextGetBinaryInfo(sys_ctx_handle,
                                                      static_cast<void*>(buffer.get()),
@@ -347,7 +349,7 @@ Status QnnBackendManager::LoadCachedQnnContext(const onnxruntime::PathString& co
 
   // binary_info life cycle is here
   // Binary info to graph info
-  //retrieve Qnn graph infor from binary info
+  // retrieve Qnn graph infor from binary info
   ORT_RETURN_IF(nullptr == binary_info, "Qnn cached binary info is nullptr.");
   uint32_t graph_count = 0;
   QnnSystemContext_GraphInfo_t* graphs_info = nullptr;
