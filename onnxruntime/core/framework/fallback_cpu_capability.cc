@@ -108,6 +108,7 @@ std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewe
       continue;
 
     auto* node = graph.GetNode(cur);
+
     if (provider_nodes.find(cur) == provider_nodes.end()) {
       // Nodes not in provider_nodes are either have EP assigned or no kernel found on target EP.
       // we assume these nodes will fallback to CPU, so add all direct consumers of all outputs to candidates.

@@ -1393,7 +1393,6 @@ TEST_F(PlannerTest, MultiStream2NodesSameStreamConsumedBy1NodeInDifferentStream)
 #endif
 
 #if !defined(__wasm__) && defined(ORT_ENABLE_STREAM)
-
 TEST_F(PlannerTest, ParaPlanCreation) {
   TypeProto graph_in_type;
   graph_in_type.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
@@ -1946,7 +1945,42 @@ TEST_F(PlannerTest, TestMultiStreamMismatchDevice) {
   status = sess.Initialize();
   ASSERT_TRUE(!status.IsOK());
 }
+#endif
 
+#ifdef USE_CUDA
+TEST_F(PlannerTest, TestCpuIf) {
+  constexpr const char* config_file_path = "./cpu_if.json";
+  SessionOptions sess_opt;
+  sess_opt.graph_optimization_level = TransformerLevel::Default;
+  ASSERT_TRUE(sess_opt.config_options.AddConfigEntry(kNodePartitionConfigFile,
+                                                     config_file_path)
+                  .IsOK());
+  {
+    InferenceSession sess(sess_opt, GetEnvironment(), ORT_TSTR("./testdata/multi_stream_models/cpu_if.onnx"));
+    auto status = sess.RegisterExecutionProvider(DefaultCudaExecutionProvider());
+    ASSERT_TRUE(status.IsOK());
+
+    status = sess.Load();
+    ASSERT_TRUE(status.IsOK());
+
+    status = sess.Initialize();
+    ASSERT_TRUE(status.IsOK());
+  }
+  std::ifstream f(config_file_path);
+  ASSERT_TRUE(f.is_open());
+  try {
+    auto json_config = json::parse(f);
+    auto execution_plan = json_config["execution_plan"]["1"];
+    ASSERT_TRUE(execution_plan.is_array());
+    ASSERT_TRUE(execution_plan.size() == 9);
+    ASSERT_TRUE(execution_plan[6].is_string());
+    ASSERT_TRUE(execution_plan[6] == "WaitOnEPStep: wait on notification with id: 0. ");  // a wait step, rightly before the cpu "if" node
+    ASSERT_TRUE(execution_plan[7] == "Launch kernel with node id: 7. ");                  // the cpu "if" node
+  } catch (...) {
+    ASSERT_TRUE(false);
+  }
+  f.close();
+}
 #endif
 
 }  // namespace test

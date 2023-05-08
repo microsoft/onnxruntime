@@ -1745,7 +1745,7 @@ class PlannerImpl {
 
 #else
 
-  void
+  std::unique_ptr<IGraphPartitioner>
   PartitionIntoStreams(const logging::Logger& logger, const ExecutionProviders& execution_providers,
                        const PathString& partition_config_file) {
     auto partitioner = IGraphPartitioner::CreateGraphPartitioner(logger, partition_config_file);
@@ -1758,8 +1758,21 @@ class PlannerImpl {
       }
     }
     num_logic_streams_ = stream_nodes_.size();
+    return partitioner;
   }
 
+  void SaveBuildPlan(const std::unique_ptr<IGraphPartitioner>& partitoner) {
+    if (partitoner) {
+      for (size_t i = 0; i < plan_.execution_plan.size(); ++i) {
+        InlinedVector<std::string> keys = {"execution_plan", std::to_string(i)};
+        InlinedVector<std::string> steps;
+        for (const auto& step : plan_.execution_plan[i]->steps_) {
+          steps.push_back(step->ToString());
+        }
+        partitoner->SaveKeyValue(keys, steps);
+      }
+    }
+  }
   // build each logic streams
   Status BuildExecutionPlan(const ExecutionProviders& execution_providers,
                             const IStreamCommandHandleRegistry& stream_handle_registry) {
@@ -2112,7 +2125,7 @@ Status PlannerImpl::CreatePlan(
     const PathString& partition_config_file,
     const logging::Logger& logger) {
   // 1. partition graph into streams
-  PartitionIntoStreams(logger, execution_providers_, partition_config_file);
+  auto partitioner = PartitionIntoStreams(logger, execution_providers_, this->parent_node_ ? PathString{}: partition_config_file); // config file is not for subgraphs
 
   // 2. initialize the plan based on stream partition result
   int num_ml_values = ort_value_name_idx_map_.MaxIdx() + 1;
@@ -2129,6 +2142,8 @@ Status PlannerImpl::CreatePlan(
 #else
   ORT_RETURN_IF_ERROR(BuildExecutionPlan(execution_providers_));
 #endif
+
+  SaveBuildPlan(partitioner);
 
   // determine sharing/reuse among ml-values
   ORT_RETURN_IF_ERROR(ComputeReusePlan());
@@ -2230,6 +2245,7 @@ class DeviceBasedPartitioner : public IGraphPartitioner {
 
   const char* Type() const override { return "DeviceBasedPartitioner"; }
   size_t Streams() const override { return node_names_by_stream_.size(); }
+  void SaveKeyValue(const InlinedVector<std::string>& key, const InlinedVector<std::string>& value);
 
  private:
   void Initialize();
@@ -2237,6 +2253,11 @@ class DeviceBasedPartitioner : public IGraphPartitioner {
   std::vector<OrtDevice::DeviceType> device_types_;
   std::vector<InlinedVector<std::string>> node_names_by_stream_;
   bool need_save_ = false;
+
+  using KEY = InlinedVector<std::string>;
+  using VAL = InlinedVector<std::string>;
+  using MAP = InlinedHashMap<KEY, VAL>;
+  MAP key_val_map_;
 };
 
 #define EXIT_ON_ERR(warning)         \
@@ -2338,9 +2359,10 @@ void DeviceBasedPartitioner::Initialize() {
 }
 
 void DeviceBasedPartitioner::SaveConfig() const {
-  try {
+  ORT_TRY {
     json json_config;
     json_config["type"] = "DeviceBasedPartitioner";
+    // first, save partition info
     if (!node_names_by_stream_.empty()) {
       json_config["streams"] = json::array();
       for (const auto& node_stream : node_names_by_stream_) {
@@ -2349,6 +2371,50 @@ void DeviceBasedPartitioner::SaveConfig() const {
           node_array.insert(node_array.end(), node_name);
         }
         json_config["streams"].insert(json_config["streams"].end(), node_array);
+      }
+    }
+    // next, save k-v pairs set by external caller
+    for (const auto& kv_it : key_val_map_) {
+      const auto& keys = kv_it.first;
+      json* tail = {};
+      if (keys.size() == 1) {
+        auto json_it = json_config.find(keys.front());
+        if (json_it == json_config.end()) {
+          json_config[keys.front()] = json::array();
+          tail = &json_config[keys.front()];
+        } else {
+          tail = &json_it.value();
+        }
+      } else if (keys.size() > 1) {
+        for (auto k_it = kv_it.first.begin(); k_it != std::prev(kv_it.first.end()); k_it = std::next(k_it)) {
+          if (tail) {
+            auto json_it = tail->find(*k_it);
+            if (json_it == tail->end()) {
+              (*tail)[*k_it] = json::object();
+              tail = &(*tail)[*k_it];
+            } else {
+              tail = &json_it.value();
+            }
+          } else {
+            auto json_it = json_config.find(*k_it);
+            if (json_it == json_config.end()) {
+              json_config[*k_it] = json::object();
+              tail = &json_config[*k_it];
+            } else {
+              tail = &json_it.value();
+            }
+          }
+        } // for
+        auto json_it = tail->find(kv_it.first.back());
+        if (json_it == tail->end()) {
+          (*tail)[kv_it.first.back()] = json::array();
+        }
+        tail = &(*tail)[kv_it.first.back()];
+      }
+      if (tail) {
+        for (const auto& v : kv_it.second) {
+          tail->insert(tail->end(), v);
+        }
       }
     }
     if (!device_types_.empty()) {
@@ -2362,9 +2428,15 @@ void DeviceBasedPartitioner::SaveConfig() const {
       of_stream << json_config.dump();
       of_stream.close();
     }
-  } catch (const std::exception& ex) {
+  }
+  ORT_CATCH(const std::exception& ex) {
     LOGS(logger_, WARNING) << "Caught exception during saving DeviceBasedPartitioner config: " << ex.what();
   }
+}
+
+void DeviceBasedPartitioner::SaveKeyValue(const InlinedVector<std::string>& key,
+                                            const InlinedVector<std::string>& value) {
+  key_val_map_[key] = value;
 }
 
 std::unique_ptr<IGraphPartitioner> IGraphPartitioner::CreateGraphPartitioner(const logging::Logger& logger,
