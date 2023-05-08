@@ -92,7 +92,7 @@ stages:
     - bash: |
         echo "Release version suffix is: $(ReleaseVersionSuffix)"
 
-- template: templates/c-api-cpu.yml
+- template: templates/c-api-cpu-stages.yml
   parameters:
     RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
     DoCompliance: ${{ parameters.DoCompliance }}
