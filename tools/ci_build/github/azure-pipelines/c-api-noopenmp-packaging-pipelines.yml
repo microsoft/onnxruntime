@@ -75,7 +75,8 @@ stages:
         echo "Release version suffix is: $(ReleaseVersionSuffix)"
 
 - stage: Debug
-  dependsOn: Setup
+  dependsOn:
+  - Setup
   jobs:
   - job:
     variables:
