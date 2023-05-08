@@ -238,6 +238,106 @@ void PresencePenaltyLogitsProcessor<T>::Process(const ISequences*,
 #endif
 }
 
+template <typename T>
+TimestampLogitsProcessor<T>::TimestampLogitsProcessor(int eos_token_id, int max_initial_timestamp_index)
+    : eos_token_id_(eos_token_id), max_initial_timestamp_index_(max_initial_timestamp_index) {}
+
+template <typename T>
+void TimestampLogitsProcessor<T>::Process(const ISequences* sequences,
+                                          NextTokenScores<T>& next_token_scores) {
+  const int beg_token_id_ = eos_token_id_ + 107;//50364
+  const int not_token_id_ = eos_token_id_ + 106;//50363
+  const int solm_token_id_ = eos_token_id_ + 105;//50362
+  const int sot_token_id_ = eos_token_id_ + 1;//50258
+  const int translate_token_id_ = 50358;
+  const int transcribe_token_id_ = 50359;
+
+  const int batch_beam_size = next_token_scores.batch_beam_size;
+  const int vocab_size = next_token_scores.vocab_size;
+  for (int i = 0; i < batch_beam_size; i++) {
+    gsl::span<T> beam_token_scores = next_token_scores.GetScores(i);
+    gsl::span<const int32_t> sequence = sequences->GetSequence(i);
+    const int seq_length = sequence.size();
+
+    // Find first timestamp
+    int sample_begin = 0;
+    for (int j = 0; j < seq_length; j++) {
+      sample_begin++;
+      if (sequence[j] >= beg_token_id_) {
+        break;
+      }
+    }
+
+    // Suppress tokens
+    for (int j = 0; j < vocab_size; j++) {
+      // Suppress notimestamps and solm tokens
+      if (j == not_token_id_ || j == solm_token_id_) {
+        beam_token_scores[j] = std::numeric_limits<T>::lowest();
+      }
+
+      // Suppress sot, translate and transcribe tokens
+      if (seq_length > sample_begin) {
+        if (j == sot_token_id_ || j == translate_token_id_ || j == transcribe_token_id_) {
+          beam_token_scores[j] = std::numeric_limits<T>::lowest();
+        }
+      }
+    }
+
+    // Timestamps should be in pair except the first one
+    const bool last_was_timestamp = seq_length > 0 && sequence.back() >= beg_token_id_;//0
+    const bool penultimate_was_timestamp = seq_length <= sample_begin || sequence[seq_length - 2] >= beg_token_id_;
+    if (last_was_timestamp) {
+      if (penultimate_was_timestamp) {
+        // If timestamps show up in pair, or it's the first timestamp, no more timestamp is generated
+        for (int j = beg_token_id_; j < vocab_size; j++) {//n_logits
+          beam_token_scores[j] = std::numeric_limits<T>::lowest();
+        }
+      } else {
+        // If timestamp doesn't show up in pair, generate timestamp
+        for (int j = 0; j < eos_token_id_; j++) {
+          beam_token_scores[j] = std::numeric_limits<T>::lowest();
+        }
+      }
+    }
+
+    // Find timestamp tokens
+    std::vector<int32_t> timestamps;
+    for (const auto& word_id : sequence) {
+      if (word_id >= beg_token_id_) {
+        timestamps.push_back(word_id);
+      }
+    }
+
+    // Timestamps should not decrease; forbid timestamp tokens smaller than the last
+    const int timestamps_len = timestamps.size();
+    if (timestamps_len > 0) {
+      int timestamp_last = 0;
+      if (last_was_timestamp && !penultimate_was_timestamp) {
+        // For single timestamp at the end, next timestamp must be the same or greater
+        timestamp_last = timestamps.back();
+      } else {
+        // For paired timestamp at the end, next timestamp must be greater
+        timestamp_last = timestamps.back() + 1;
+      }
+
+      for (int j = beg_token_id_; j < timestamp_last; j++) {
+        beam_token_scores[j] = std::numeric_limits<T>::lowest();
+      }
+    }
+
+    if (seq_length == sample_begin) {
+      const int last_allowed = beg_token_id_ + max_initial_timestamp_index_;
+      for (int j = last_allowed + 1; j < vocab_size; j++) {
+        beam_token_scores[j] = std::numeric_limits<T>::lowest();
+      }
+    }
+  }
+
+#ifdef DEBUG_GENERATION
+  DumpScores("TimestampLogitsProcessor", next_token_scores);
+#endif
+}
+
 void LogitsProcessorList::Init(const BeamSearchParameters& parameters) {
   LogitsProcessorInitImpl<BeamSearchParameters>(parameters);
 }
