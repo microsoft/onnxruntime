@@ -441,7 +441,10 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
                                           {}, {}, kOnnxDomain);
 
     // Get constant "epsilon" from "Add2" node if available. Else, default value will be used.
-    if (!IsFP16OutputDataType(add2_node)) {
+    // If add2_node was removed, use default value of epsilon
+    if (add2_node.OpType() == "ReduceMean" && IsFP16OutputDataType(add2_node)) {
+      layer_norm_node.AddAttribute("epsilon", DEFAULT_LAYERNORM_EPSILON);
+    } else {
       const ONNX_NAMESPACE::TensorProto* tensor_proto = graph_utils::GetConstantInitializer(graph, add2_node.MutableInputDefs()[1]->Name());
       if (tensor_proto != nullptr &&
           tensor_proto->data_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
@@ -450,8 +453,6 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
       } else {
         layer_norm_node.AddAttribute("epsilon", DEFAULT_LAYERNORM_EPSILON);
       }
-    } else {
-      layer_norm_node.AddAttribute("epsilon", DEFAULT_LAYERNORM_EPSILON);
     }
 
     // Set stash_type to double if any input is double, default value if float.
