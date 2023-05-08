@@ -62,7 +62,7 @@ The C API details are [here](../get-started/with-c.md).
 If some operators in the model are not supported by TensorRT, ONNX Runtime will partition the graph and only send supported subgraphs to TensorRT execution provider. Because TensorRT requires that all inputs of the subgraphs have shape specified, ONNX Runtime will throw error if there is no input shape info. In this case please run shape inference for the entire model first by running script [here](https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/python/tools/symbolic_shape_infer.py) (Check below for sample).
 
 ### TensorRT Plugins Support
-ORT TRT can leverage the TRT plugins which come with TRT plugins library in official release. To use TRT plugins, firstly users need to create the custom node (a one-to-one mapping to TRT plugin) with a registered plugin name and `trt.plugins` domain in the ONNX model. So, ORT TRT can recognize this custom node and pass the node together with the subgraph to TRT. Please see following python example to create a new custom node in the ONNX model:
+ORT TRT can leverage the TRT plugins which come with TRT plugin library in official release. To use TRT plugins, firstly users need to create the custom node (a one-to-one mapping to TRT plugin) with a registered plugin name and `trt.plugins` domain in the ONNX model. So, ORT TRT can recognize this custom node and pass the node together with the subgraph to TRT. Please see following python example to create a new custom node in the ONNX model:
 
 ```python
 from onnx import TensorProto, helper
@@ -96,6 +96,7 @@ def generate_model(model_name):
     model = helper.make_model(graph)
     onnx.save(model, model_name)
 ```
+Note: If users want to use TRT plugins that are not in the TRT plugin library in official release, please see the ORT TRT provider option `trt_extra_plugin_lib_paths` for more details.
 
 ### Python
 To use TensorRT execution provider, you must explicitly register TensorRT execution provider when instantiating the `InferenceSession`.
