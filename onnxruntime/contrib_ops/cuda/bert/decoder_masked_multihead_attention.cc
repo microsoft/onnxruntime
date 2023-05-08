@@ -173,7 +173,7 @@ Status DecoderMaskedMultiHeadAttention<T1, T2>::ComputeInternal(OpKernelContext*
                        ? const_cast<T1*>(query->Data<T1>() + parameters.hidden_size)
                        : const_cast<T1*>(key->Data<T1>());
     parameters.v = is_dmmha_packing
-                       ? const_cast<T1*>(query->Data<T1>() + 2 * parameters.hidden_size)
+                       ? const_cast<T1*>(query->Data<T1>() + 2 * static_cast<size_t>(parameters.hidden_size))
                        : const_cast<T1*>(value->Data<T1>());
     parameters.k_cache = present_key_data;
     parameters.v_cache = present_value_data;
