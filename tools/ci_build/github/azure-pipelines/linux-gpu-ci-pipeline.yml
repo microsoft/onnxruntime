@@ -138,10 +138,10 @@ jobs:
           onnxruntimecuda11build \
           /bin/bash -c "
             set -ex; \
-            cp /onnxruntime_src/tools/ci_build/github/linux/docker/scripts/manylinux/requirements.txt /build/requirements.txt
-            sed -i "s/git+http:\/\/github\.com\/onnx\/onnx.*/onnx/" /build/requirements.txt; \
+            cp /onnxruntime_src/tools/ci_build/github/linux/docker/scripts/manylinux/requirements.txt /tmp/requirements.txt; \
+            sed -i "s/git+http:\/\/github\.com\/onnx\/onnx.*/onnx/" /tmp/requirements.txt; \
             alias python3=/opt/python/cp38-cp38/bin/python3; \
-            python3 -m pip install -r /build/requirements.txt; \
+            python3 -m pip install -r /tmp/requirements.txt; \
             python3 -m pip install /build/Release/dist/*.whl; \
             python3 /onnxruntime_src/tools/ci_build/build.py; \
             cd /build/Release && xargs -a build/Release/perms.txt chmod a+x; \
