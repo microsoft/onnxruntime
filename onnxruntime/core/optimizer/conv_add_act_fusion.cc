@@ -44,8 +44,6 @@ const Node* GetLoneConsumerNode(const GraphViewer& graph_viewer, const Node& nod
 class ConvAddActivationSelector : public NodeSelector {
  public:
   ConvAddActivationSelector() = default;
-  ConvAddActivationSelector(bool isNhwc) : isNhwc_(isNhwc) {}
-  bool isNhwc_ = false;
   std::optional<NodesToOptimizeIndices> Select(const GraphViewer& graph_viewer, const Node& node) const override {
     const std::string_view node_ep = node.GetExecutionProviderType();
 #ifdef MLAS_F16VEC_INTRINSICS_SUPPORTED
@@ -73,15 +71,15 @@ class ConvAddActivationSelector : public NodeSelector {
     // 3 find the next node and check if it's a activation node, if yes, we will fuse conv+add+activation or conv+add
     //
     if (graph_utils::IsSupportedOptypeVersionAndDomain(*add_node, "Add", {7, 13, 14})) {
-      conv_node = SelectProducerConv(*add_node, isNhwc_);
+      conv_node = SelectProducerConv(*add_node);
     }
-    if (!conv_node) {
+    if (conv_node == nullptr) {
       return std::nullopt;
     }
     // GetLoneConsumerNode will ensure outputedge_count is 1
     const auto* act_node = GetLoneConsumerNode(graph_viewer, *add_node);
     // even the next node is not a activation node, it's also fine.
-    if (!act_node) {
+    if (act_node == nullptr) {
       // we can't fuse add-activation when add_node has multiple consumer nodes
       act_node = nullptr;
     } else if (SelectActivation(graph_viewer, *act_node)) {
@@ -93,7 +91,7 @@ class ConvAddActivationSelector : public NodeSelector {
     NodesToOptimizeIndicesBuilder builder{};
     builder.target_node = conv_node->Index();
     builder.output_nodes = {add_node->Index()};
-    if (act_node) {
+    if (act_node != nullptr) {
       builder.output_nodes.push_back(act_node->Index());
     }
     return builder.Build();
@@ -124,7 +122,7 @@ class ConvAddActivationSelector : public NodeSelector {
     return is_supported_cpu_ep_activation(activation_node);
   }
 
-  const Node* SelectProducerConv(const Node& node, bool isNhwc) const {
+  const Node* SelectProducerConv(const Node& node) const {
     InlinedVector<const Node*> inputs_node;
     constexpr int32_t kTensorDims = 4;  // NCHW
     const auto& input_defs = node.InputDefs();
@@ -178,9 +176,8 @@ class ConvAddActivationSelector : public NodeSelector {
       // Check if this is a single use convolution that hasn't already
       // been fused with another Add/Sum node. The Add/Sum can also only be
       // fused if the convolution isn't itself fused with an activation.
-      std::string_view conv_op_type = isNhwc ? "NhwcFusedConv" : "Conv";
-      if ((inputs_node[n]->OpType() == conv_op_type) && (pre_input_defs_count < 4) && (producer_input_args_count.size() < 4) &&
-          (graph_utils::GetNodeAttribute(*inputs_node[n], "activation") == nullptr) && (inputs_node[n]->GetOutputEdgesCount() == 1)) {
+      if (
+          (inputs_node[n]->OpType() == "Conv" || inputs_node[n]->OpType() == "NhwcFusedConv") && (pre_input_defs_count < 4) && (producer_input_args_count.size() < 4) && (graph_utils::GetNodeAttribute(*inputs_node[n], "activation") == nullptr) && (inputs_node[n]->GetOutputEdgesCount() == 1)) {
         if (pre_input_defs_count < 3) {
           // The optional bias parameter is empty so set to an empty string.
           // TODO, add a new null arguments for bias
@@ -202,11 +199,11 @@ using NTO = NodesToOptimize;
 class FuseConvAddActivationAction : public ReplaceWithNew {
  public:
   FuseConvAddActivationAction() = default;
-  FuseConvAddActivationAction(bool isNhwc) : isNhwc_(isNhwc){};
-  bool isNhwc_ = false;
 
  private:
-  std::string OpType(const RuntimeState&) const override { return isNhwc_ ? "NhwcFusedConv" : "FusedConv"; }
+  std::string OpType(const RuntimeState& runtimeState) const override {
+    return runtimeState.selected_nodes.Target().OpType();
+  }
 
   std::string Domain(const RuntimeState&) const override { return kMSDomain; }
 
@@ -280,15 +277,10 @@ class FuseConvAddActivationAction : public ReplaceWithNew {
 
 void RegisterConvAddActivationFusionRules(SelectorActionRegistry& registry) {
   const auto name = "ConvAddAct";
-  auto action = std::make_unique<actions::FuseConvAddActivationAction>(false);
-  auto selector = std::make_unique<selectors::ConvAddActivationSelector>(false);
-  const auto nhwc_name = "NhwcConvAddAct";
-  auto nhwc_action = std::make_unique<actions::FuseConvAddActivationAction>(true);
-  auto nhwc_selector = std::make_unique<selectors::ConvAddActivationSelector>(true);
+  auto action = std::make_unique<actions::FuseConvAddActivationAction>();
+  auto selector = std::make_unique<selectors::ConvAddActivationSelector>();
   registry.RegisterSelectorAndAction(name, {{"Conv", {1, 11}}},
                                      std::move(selector), std::move(action));
-  registry.RegisterSelectorAndAction(nhwc_name, {{"NhwcFusedConv", {1}}},
-                                     std::move(nhwc_selector), std::move(nhwc_action));
 }
 
 SelectorActionRegistry CreateSelectorActionRegistry() {
