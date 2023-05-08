@@ -370,7 +370,7 @@ stages:
         mv manylinux onnxruntime
         ls
 
-    - template: stages/jobs/with-container-registry-steps.yml
+    - template: stages/jobs/steps/with-container-registry-steps.yml
       parameters:
         Steps:
         - script: |
