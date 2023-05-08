@@ -107,14 +107,27 @@ Status ModelBuilder::RegisterInitializers() {
     desc.set("dimensions", emscripten::val::array(dims));
     auto data_type = tensor.data_type();
     emscripten::val operand = emscripten::val::object();
-    if (data_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
+    if (data_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16 ||
+        data_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
       unpacked_tensors_.push_back({});
       std::vector<uint8_t>& unpacked_tensor = unpacked_tensors_.back();
       ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackInitializerData(tensor, unpacked_tensor));
       auto num_elements = SafeInt<size_t>(Product(tensor.dims()));
-      desc.set("type", emscripten::val("float32"));
-      emscripten::val view{emscripten::typed_memory_view(num_elements,
-                                                         reinterpret_cast<float*>(unpacked_tensor.data()))};
+      emscripten::val view = emscripten::val::undefined();
+      switch (data_type) {
+        case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16:
+          desc.set("type", emscripten::val("float16"));
+          view = emscripten::val{emscripten::typed_memory_view(num_elements,
+                                                             reinterpret_cast<uint16_t*>(unpacked_tensor.data()))};
+          break;
+        case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
+          desc.set("type", emscripten::val("float32"));
+          view = emscripten::val{emscripten::typed_memory_view(num_elements,
+                                                             reinterpret_cast<float*>(unpacked_tensor.data()))};
+          break;
+        default:
+          break;
+      }
 #ifdef ENABLE_WEBASSEMBLY_THREADS
       // Workaround for WebAssembly multi-threads enabled since WebNN API only accepts non-shared ArrayBufferView.
       // https://www.w3.org/TR/webnn/#typedefdef-mlnamedarraybufferviews
@@ -191,6 +204,9 @@ Status ModelBuilder::RegisterModelInputOutput(const NodeArg& node_arg, bool is_i
 
     data_type = type_proto->tensor_type().elem_type();
     switch (data_type) {
+      case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16:
+        desc.set("type", emscripten::val("float16"));
+        break;
       case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
         desc.set("type", emscripten::val("float32"));
         break;
@@ -248,10 +264,21 @@ Status ModelBuilder::AddOperandFromPersistMemoryBuffer(
   auto persist_buffer = std::make_unique<uint8_t[]>(size);
   uint8_t* dest = persist_buffer.get();
   memcpy(dest, buffer, size);
-  emscripten::val view{emscripten::typed_memory_view(size / element_size, reinterpret_cast<const float*>(dest))};
+  emscripten::val view = emscripten::val::undefined();
   emscripten::val desc = emscripten::val::object();
+  if (element_size == 2) {
+    view = emscripten::val{emscripten::typed_memory_view(size / element_size, reinterpret_cast<const uint16_t*>(dest))};
+  } else if (element_size == 4) {
+    view = emscripten::val{emscripten::typed_memory_view(size / element_size, reinterpret_cast<const float*>(dest))};
+  }
+
   desc.set("dimensions", emscripten::val::array(shape));
-  desc.set("type", emscripten::val("float32"));
+  if (element_size == 2) {
+    desc.set("type", emscripten::val("float16"));
+  } else if (element_size == 4) {
+    desc.set("type", emscripten::val("float32"));
+  }
+
   emscripten::val operand = emscripten::val::object();
 #ifdef ENABLE_WEBASSEMBLY_THREADS
   // Workaround for WebAssembly multi-threads enabled since WebNN API only accepts non-shared ArrayBufferView.
@@ -262,6 +289,8 @@ Status ModelBuilder::AddOperandFromPersistMemoryBuffer(
 #endif
   AddOperand(name, operand);
   mem_persist_buffers_.push_back(std::move(persist_buffer));
+  emscripten::val console = emscripten::val::global("console");
+  console.call<void>("log", operand);
   return Status::OK();
 }
 

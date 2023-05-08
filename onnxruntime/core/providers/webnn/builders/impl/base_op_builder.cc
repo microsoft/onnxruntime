@@ -83,7 +83,8 @@ bool BaseOpBuilder::HasSupportedInputsImpl(const Node& node, const logging::Logg
   if (!GetType(input, input_type, logger))
     return false;
 
-  if (input_type != ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
+  if (input_type != ONNX_NAMESPACE::TensorProto_DataType_FLOAT &&
+      input_type != ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
     LOGS(logger, VERBOSE) << "[" << node.OpType()
                           << "] Input type: [" << input_type
                           << "] is not supported for now";

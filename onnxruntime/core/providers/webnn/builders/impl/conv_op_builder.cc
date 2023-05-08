@@ -95,7 +95,8 @@ Status AddInitializerInNewLayout(ModelBuilder& model_builder,
                                  bool is_conv) {
   const auto& tensor = *model_builder.GetInitializerTensors().at(name);
   auto data_type = tensor.data_type();
-  if (data_type != ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
+  if (data_type != ONNX_NAMESPACE::TensorProto_DataType_FLOAT16 &&
+      data_type != ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "The initializer of graph has unsupported type, name: ",
                            tensor.name(), " type: ", data_type);
@@ -122,7 +123,18 @@ Status AddInitializerInNewLayout(ModelBuilder& model_builder,
 
   SafeInt<size_t> num_elements = SafeInt<size_t>(Product(dest_shape));
 
-  size_t element_size = 4;
+  size_t element_size{0};
+  switch (data_type)
+  {
+  case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16:
+    element_size = sizeof(uint16_t);
+    break;
+  case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
+    element_size = sizeof(float);
+    break;
+  default:
+    break;
+  }
   std::unique_ptr<uint8_t[]> buffer_holder(new uint8_t[element_size * num_elements]);
   uint8_t* buffer = buffer_holder.get();
 
@@ -156,7 +168,7 @@ Status AddInitializerInNewLayout(ModelBuilder& model_builder,
     }
   }
   ORT_RETURN_IF_ERROR(model_builder.AddOperandFromPersistMemoryBuffer(name, buffer, num_elements * element_size,
-                                                                      dest_shape, 4));
+                                                                      dest_shape, element_size));
   return Status::OK();
 }
 

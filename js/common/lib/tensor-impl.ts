@@ -17,6 +17,7 @@ const NUMERIC_TENSOR_TYPE_TO_TYPEDARRAY_MAP = new Map<string, SupportedTypedArra
   ['uint8', Uint8Array],
   ['int8', Int8Array],
   ['uint16', Uint16Array],
+  ['float16', Uint16Array],
   ['int16', Int16Array],
   ['int32', Int32Array],
   ['bool', Uint8Array],
