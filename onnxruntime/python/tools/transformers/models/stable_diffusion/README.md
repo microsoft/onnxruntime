@@ -108,7 +108,7 @@ pip3 install torch-1.12.1+rocm5.4-cp38-cp38-linux_x86_64.whl
 pip3 install -r requirements-rocm.txt
 ```
 
-AMD GPU version of torch build can be installed from [AMD Radeon repo](https://repo.radeon.com/rocm/manylinux/rocm-rel-5.4/), user need to download the whl file and `pip install <file.whl>` manually.
+AMD GPU version of PyTorch can be installed from [pytorch.org](https://pytorch.org/get-started/locally/) or [AMD Radeon repo](https://repo.radeon.com/rocm/manylinux/rocm-rel-5.4/).
 
 #### Install onnxruntime-rocm
 
