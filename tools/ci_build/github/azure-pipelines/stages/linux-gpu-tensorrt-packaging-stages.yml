@@ -50,7 +50,7 @@ stages:
           workingDirectory: $(Build.SourcesDirectory)
 
       - ${{ if eq(parameters.buildJava, true) }}:
-          - template: jobs/steps/get-docker-image-steps.yml
+          - template: jobs/steps/java-api-artifacts-package-and-publish-posix-steps.yml
             parameters:
                 arch: 'linux-x64'
                 buildConfig: 'Release'
