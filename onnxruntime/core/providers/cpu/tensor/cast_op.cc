@@ -348,7 +348,7 @@ struct SrcDispatcherStd {
   void operator()(
       int32_t to, const OpKernelContext& context, const TensorShape& shape, const Tensor& src, Tensor& dst) {
     using EnabledDstTypeWithoutFloat8 = boost::mp11::mp_set_difference<
-        EnabledSrcTypes,
+        EnabledDstTypes,
         boost::mp11::mp_list<Float8E4M3FN, Float8E4M3FNUZ, Float8E5M2, Float8E5M2FNUZ>>;
     using EnabledDstTypesWithoutSrcType =
         boost::mp11::mp_remove_if_q<EnabledDstTypeWithoutFloat8, boost::mp11::mp_bind_front<std::is_same, TSrc>>;
