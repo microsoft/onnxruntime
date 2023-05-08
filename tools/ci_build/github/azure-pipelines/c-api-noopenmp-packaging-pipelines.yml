@@ -56,9 +56,9 @@ variables:
   value: ''
 
 stages:
-- stage: Set_release_version_suffix
+- stage: Setup
   jobs:
-  - job:
+  - job: Set_Variables
     steps:
     - checkout: none
     - bash: |
@@ -67,6 +67,7 @@ stages:
         else
           echo "##vso[task.setvariable variable=ReleaseVersionSuffix; isoutput=true]''"
         fi
+      name: Set_Release_Version_Suffix
     - bash: |
         echo "IsReleaseBuild is: ${{ parameters.IsReleaseBuild }}"
         echo "Pre-release version suffix is: ${{ parameters.PreReleaseVersionSuffixString }}"
@@ -76,10 +77,13 @@ stages:
 - stage: Debug
   jobs:
   - job:
+    variables:
+      MyVar: $[stageDependencies.Setup.Set_Variables.outputs['Set_Release_Version_Suffix.ReleaseVersionSuffix']]
     steps:
     - checkout: none
     - bash: |
         echo "Release version suffix is: $(ReleaseVersionSuffix)"
+        echo "MyVar is: $(MyVar)"
 
 - template: templates/c-api-cpu.yml
   parameters:
