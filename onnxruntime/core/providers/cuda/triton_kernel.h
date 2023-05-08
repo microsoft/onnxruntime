@@ -3,16 +3,16 @@
 
 #pragma once
 
-#include "core/providers/rocm/rocm_common.h"
-#include "hip/hip_runtime_api.h"
+#include "core/providers/cuda/cuda_common.h"
+#include <cuda.h>
 
 namespace onnxruntime {
-namespace rocm {
+namespace cuda {
 
 struct TritonKernelMetaData {
   int num_warps;
   int shared_mem_size;
-  hipFunction_t func;
+  CUfunction func;
   std::unordered_map<std::string, int> constants;
   std::string name;
 };
@@ -40,15 +40,15 @@ const std::string GetDataTypeName() {
   return DataTypeToName<T>::value;
 }
 
-void LoadRocmTritonKernel();
+void LoadOrtTritonKernel();
 
-Status LaunchTritonKernel(hipStream_t stream, std::string fname, int grid0, int grid1, int grid2, void* args, size_t args_size);
+Status LaunchTritonKernel(cudaStream_t stream, std::string fname, int grid0, int grid1, int grid2, void* args, size_t args_size);
 
-const TritonKernelMetaData* GetRocmTritonKernelMetadata(size_t idx);
+const TritonKernelMetaData* GetOrtTritonKernelMetadata(size_t idx);
 
-const std::vector<int>* GetRocmTritonKernelByGroup(std::string group_name);
+const std::vector<int>* GetOrtTritonKernelByGroup(std::string group_name);
 
-Status LaunchTritonKernel(hipStream_t stream, size_t idx, int grid0, int grid1, int grid2, void* args, size_t args_size);
+Status LaunchTritonKernel(cudaStream_t stream, size_t idx, int grid0, int grid1, int grid2, void* args, size_t args_size);
 
-}  // namespace rocm
+}  // namespace cuda
 }  // namespace onnxruntime

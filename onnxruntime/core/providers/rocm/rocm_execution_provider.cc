@@ -214,7 +214,7 @@ ROCMExecutionProvider::ROCMExecutionProvider(const ROCMExecutionProviderInfo& in
   OverrideTunableOpInfoByEnv(info_);
 
 #ifdef USE_TRITON_KERNEL
-  onnxruntime::rocm::LoadRocmTritonKernel();
+  onnxruntime::rocm::LoadOrtTritonKernel();
 #endif
 }
 

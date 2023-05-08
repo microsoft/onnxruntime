@@ -113,8 +113,7 @@ def profile_with_args(batch_count, softmax_elements, is_log_softmax, dtype, sort
         profile_softmax_func(batch_count, softmax_elements, is_log_softmax, dtype, ck_f_name)
 
 
-# profile_size = [(1, 2048), (8, 2048), (65536, 4096)]
-profile_size = [(65536, 4096)]
+profile_size = [(1, 2048), (8, 2048), (65536, 4096)]
 
 
 def profile():

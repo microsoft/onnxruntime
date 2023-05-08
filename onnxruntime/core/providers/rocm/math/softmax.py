@@ -8,7 +8,7 @@ import triton.language as tl
 
 
 @triton.jit
-def log_softmax_kernel(output_ptr, input_ptr, input_row_stride, output_row_stride, n_cols, BLOCK_SIZE: tl.constexpr):
+def softmax_kernel(output_ptr, input_ptr, input_row_stride, output_row_stride, n_cols, BLOCK_SIZE: tl.constexpr):
     # The rows of the softmax are independent, so we parallelize across those
     row_idx = tl.program_id(0)
     # The stride represents how much we need to increase the pointer to advance 1 row
@@ -24,7 +24,7 @@ def log_softmax_kernel(output_ptr, input_ptr, input_row_stride, output_row_strid
     # Note that exponentials in Triton are fast but approximate (i.e., think __expf in CUDA)
     numerator = tl.exp(row_minus_max)
     denominator = tl.sum(numerator, axis=0)
-    softmax_output = tl.log(numerator / denominator)
+    softmax_output = numerator / denominator
     # Write back output to DRAM
     output_row_start_ptr = output_ptr + row_idx * output_row_stride
     output_ptrs = output_row_start_ptr + col_offsets
@@ -35,12 +35,12 @@ def log_softmax_kernel(output_ptr, input_ptr, input_row_stride, output_row_strid
 
 dtypes = ["fp32", "fp16"]
 blocks = [1024, 2048, 4096, 8192, 16384]
-name_pattern = "log_softmax_{}_{}"
+name_pattern = "softmax_{}_{}"
 sig_pattern = "*{},*{},i32,i32,i32"
-group_pattern = "log_softmax_{}"
+group_pattern = "softmax_{}"
 
 
-def logsoftmax_function_table():
+def get_funcion_table():
     func_table = []
 
     def get_num_warps(block_size):
@@ -58,7 +58,7 @@ def logsoftmax_function_table():
             sig = sig_pattern.format(dtype, dtype)
             num_warps = get_num_warps(b)
             kwargs = {"num_warps": num_warps, "constants": {"BLOCK_SIZE": b}}
-            func_desc = {"name": name, "group": group, "func": log_softmax_kernel, "sig": sig, "kwargs": kwargs}
+            func_desc = {"name": name, "group": group, "func": softmax_kernel, "sig": sig, "kwargs": kwargs}
             func_table.append(func_desc)
 
     return func_table

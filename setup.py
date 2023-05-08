@@ -501,7 +501,6 @@ enable_training_apis = parse_arg_remove_boolean(sys.argv, "--enable_training_api
 enable_rocm_profiling = parse_arg_remove_boolean(sys.argv, "--enable_rocm_profiling")
 disable_auditwheel_repair = parse_arg_remove_boolean(sys.argv, "--disable_auditwheel_repair")
 default_training_package_device = parse_arg_remove_boolean(sys.argv, "--default_training_package_device")
-use_triton_kernel = parse_arg_remove_boolean(sys.argv, "--use_triton_kernel")
 
 classifiers = [
     "Development Status :: 5 - Production/Stable",
@@ -604,10 +603,6 @@ if package_name == "onnxruntime-tvm":
     packages += ["onnxruntime.providers.tvm"]
 
 package_data["onnxruntime"] = data + examples + extra
-
-if use_triton_kernel:
-    packages += ["onnxruntime.triton_libs"]
-    package_data["onnxruntime"].extend(["triton_libs/*.json", "triton_libs/*.hsaco"])
 
 version_number = ""
 with open("VERSION_NUMBER") as f:

@@ -30,14 +30,14 @@ template <typename T, typename OutputT>
 auto GetSoftmaxTritonOps() {
   std::vector<std::pair<std::string, tunable::Op<SoftmaxParams<T, OutputT>>>> ret;
   auto group_name = GetSoftmaxTritonGroupName<T>();
-  auto *kernel_list = GetRocmTritonKernelByGroup(group_name);
+  auto *kernel_list = GetOrtTritonKernelByGroup(group_name);
   if (kernel_list == nullptr) {
     return ret;
   }
 
   for (auto i : *kernel_list) {
     // check params match
-    auto *metadata = GetRocmTritonKernelMetadata(i);
+    auto *metadata = GetOrtTritonKernelMetadata(i);
     auto block_size = -1;
     const std::string block_name = "BLOCK_SIZE";
     if (metadata->constants.count(block_name) != 0) {

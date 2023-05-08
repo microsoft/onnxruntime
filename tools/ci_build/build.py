@@ -1896,7 +1896,6 @@ def build_python_wheel(
     use_ninja=False,
     enable_training_apis=False,
     enable_rocm_profiling=False,
-    use_triton_kernel=False,
 ):
     for config in configs:
         cwd = get_config_build_dir(build_dir, config)
@@ -1918,8 +1917,6 @@ def build_python_wheel(
             args.append("--enable_training_apis")
         if enable_rocm_profiling:
             args.append("--enable_rocm_profiling")
-        if use_triton_kernel:
-            args.append("--use_triton_kernel")
 
         # The following arguments are mutually exclusive
         if use_cuda:
@@ -2623,7 +2620,6 @@ def main():
                 use_ninja=(args.cmake_generator == "Ninja"),
                 enable_training_apis=args.enable_training_apis,
                 enable_rocm_profiling=args.enable_rocm_profiling,
-                use_triton_kernel=args.use_triton_kernel,
             )
         if args.build_nuget:
             build_nuget_package(

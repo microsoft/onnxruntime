@@ -1566,7 +1566,22 @@ if (onnxruntime_USE_ROCM)
   endif()
 
   if (onnxruntime_USE_TRITON_KERNEL)
+    # compile triton kernel, generate .a and .h files
+    set(triton_kernel_compiler "${REPO_ROOT}/tools/ci_build/compile_triton.py")
+    set(triton_kernel_obj "${CMAKE_CURRENT_BINARY_DIR}/triton_kernels/triton_kernel_infos.a")
+    set(triton_kernel_header "${CMAKE_CURRENT_BINARY_DIR}/triton_kernels/triton_kernel_infos.h")
+    add_custom_target(
+      onnxruntime_triton_kernel
+      COMMAND Python3::Interpreter ${triton_kernel_compiler}
+              --header ${triton_kernel_header}
+	      --ort_root ${ONNXRUNTIME_ROOT}
+	      --obj_file ${triton_kernel_obj}
+      COMMENT "Triton compile generates: ${triton_kernel_obj}"
+    )
+    add_dependencies(onnxruntime_providers_rocm onnxruntime_triton_kernel)
     target_compile_definitions(onnxruntime_providers_rocm PRIVATE USE_TRITON_KERNEL)
+    target_include_directories(onnxruntime_providers_rocm PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/triton_kernels")
+    target_link_libraries(onnxruntime_providers_rocm PUBLIC -Wl,--whole-archive ${triton_kernel_obj} -Wl,--no-whole-archive)
   endif()
 
   if (onnxruntime_USE_COMPOSABLE_KERNEL)
