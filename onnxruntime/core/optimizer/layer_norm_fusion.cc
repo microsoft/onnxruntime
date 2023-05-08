@@ -286,7 +286,7 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
       p_reduce_mean2 = graph_utils::FirstParentByType(add2_node, "ReduceMean");
     } else if (add2_node.OpType() == "ReduceMean") {
       if (IsFP16OutputDataType(add2_node)) {
-        p_reduce_mean2 = graph.GetNode(sqrt_node.InputNodesBegin()->Index());
+        p_reduce_mean2 = &add2_node;
       } else {
         continue;
       }
