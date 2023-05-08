@@ -272,7 +272,7 @@ class StandAloneKernelContext : public OpKernelContext {
     }
   }
 
-  OrtValue* OutputMLValue(int index, const TensorShape& shape) override {
+  OrtValue* OutputMLValue(int index, const TensorShape& shape, const std::unordered_map<int, std::vector<int64_t> >&) override {
     if (index >= output_count_) {
       return nullptr;
     }
@@ -299,7 +299,7 @@ class StandAloneKernelContext : public OpKernelContext {
     return &ort_value;
   }
 
-  OrtValue* GetOrCreateOutputMLValue(int index) override {
+  OrtValue* GetOrCreateOutputMLValue(int index, const std::unordered_map<int, std::vector<int64_t> >&) override {
     if (index >= output_count_) {
       return nullptr;
     } else {

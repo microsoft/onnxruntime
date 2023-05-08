@@ -766,7 +766,10 @@ struct OpKernelContext final {
   template <typename T>
   T* Output(int index);
 
-  Tensor* Output(int index, const TensorShape& shape) { return g_host->OpKernelContext__Output(this, index, shape); }
+  Tensor* Output(int index, const TensorShape& shape,
+                 const std::unordered_map<int, std::vector<int64_t>>& dim_values_on_var_shape = {}) {
+    return g_host->OpKernelContext__Output(this, index, shape, dim_values_on_var_shape);
+  }
 #if !defined(DISABLE_SPARSE_TENSORS)
   SparseTensor* OutputSparse(int index, const TensorShape& shape) { return g_host->OpKernelContext__OutputSparse(this, index, shape); }
 #endif
@@ -916,8 +919,9 @@ struct Tensor final {
 
   static void operator delete(void* p) noexcept { g_host->Tensor__operator_delete(reinterpret_cast<Tensor*>(p)); }
 
-  static void InitOrtValue(MLDataType elt_type, const TensorShape& shape, std::shared_ptr<IAllocator> allocator, OrtValue& ort_value) {
-    g_host->Tensor__InitOrtValue(elt_type, shape, std::move(allocator), ort_value);
+  static void InitOrtValue(MLDataType elt_type, const TensorShape& shape, std::shared_ptr<IAllocator> allocator, OrtValue& ort_value,
+                           gsl::span<const int64_t> strides = {}, const std::unordered_map<int, std::vector<int64_t>>& dim_values_on_var_shape = {}) {
+    g_host->Tensor__InitOrtValue(elt_type, shape, std::move(allocator), ort_value, strides, dim_values_on_var_shape);
   }
 
   static void InitOrtValue(MLDataType p_type, const TensorShape& shape, void* p_data, const OrtMemoryInfo& location, OrtValue& ort_value) {
@@ -956,6 +960,15 @@ struct Tensor final {
   void SetShapeAndStrides(const TensorShape& new_shape, gsl::span<const int64_t> new_strides) {
     return g_host->Tensor__SetShapeAndStrides(this, new_shape, new_strides);
   }
+#endif
+
+#ifdef ENABLE_FLATTEN_TENSORS
+  int GetBatchEndAxis() const { return g_host->Tensor__GetBatchEndAxis(this); }
+  const std::vector<std::vector<int64_t>>& VariantStrides() const { return g_host->Tensor__VariantStrides(this); }
+  gsl::span<const int64_t> BatchOffset() const { return g_host->Tensor__BatchOffset(this); }
+  bool IsVariantDim(int64_t dim) const { return g_host->Tensor__IsVariantDim(this, dim); }
+  bool IsGroupStrided() const { return g_host->Tensor__IsGroupStrided(this); }
+  void GetShapeForBatch(int64_t batch, std::vector<int64_t>& shape) const { return g_host->Tensor__GetShapeForBatch(this, batch, shape); }
 #endif
 
   template <class T>
@@ -1061,7 +1074,7 @@ struct SparseTensor final {
 
 // TensorSeq
 class TensorSeq final {
-public:
+ public:
   MLDataType DataType() const noexcept { return g_host->TensorSeq__DataType(this); }
   void SetType(MLDataType elem_type) { g_host->TensorSeq__SetType(this, elem_type); }
   size_t Size() const noexcept { return g_host->TensorSeq__Size(this); }

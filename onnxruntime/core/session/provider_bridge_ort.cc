@@ -827,7 +827,10 @@ struct ProviderHostImpl : ProviderHost {
   MLDataType OpKernelContext__InputType(const OpKernelContext* p, int index) override { return p->InputType(index); }
   Tensor* OpKernelContext__Output_Tensor(OpKernelContext* p, int index) override { return p->Output<Tensor>(index); }
   TensorSeq* OpKernelContext__Output_TensorSeq(OpKernelContext* p, int index) override { return p->Output<TensorSeq>(index); }
-  Tensor* OpKernelContext__Output(OpKernelContext* p, int index, const TensorShape& shape) override { return p->Output(index, shape); }
+  Tensor* OpKernelContext__Output(OpKernelContext* p, int index, const TensorShape& shape,
+                                  const std::unordered_map<int, std::vector<int64_t>>& dim_values_on_var_shape = {}) override {
+    return p->Output(index, shape, dim_values_on_var_shape);
+  }
 #if !defined(DISABLE_SPARSE_TENSORS)
   SparseTensor* OpKernelContext__OutputSparse(OpKernelContext* p, int index, const TensorShape& shape) override { return p->OutputSparse(index, shape); }
 #endif
@@ -887,13 +890,26 @@ struct ProviderHostImpl : ProviderHost {
 
   void Tensor__operator_delete(Tensor* p) noexcept override { delete p; }
 
-  void Tensor__InitOrtValue(MLDataType elt_type, const TensorShape& shape, std::shared_ptr<IAllocator> allocator, OrtValue& ort_value) override {
-    Tensor::InitOrtValue(elt_type, shape, std::move(allocator), ort_value);
+  void Tensor__InitOrtValue(MLDataType elt_type, const TensorShape& shape, std::shared_ptr<IAllocator> allocator, OrtValue& ort_value,
+                            gsl::span<const int64_t> strides, const std::unordered_map<int, std::vector<int64_t>>& dim_values_on_var_shape) override {
+    Tensor::InitOrtValue(elt_type, shape, std::move(allocator), ort_value, strides, dim_values_on_var_shape);
   }
 
   void Tensor__InitOrtValue(MLDataType p_type, const TensorShape& shape, void* p_data, const OrtMemoryInfo& location, OrtValue& ort_value) override {
     Tensor::InitOrtValue(p_type, shape, p_data, location, ort_value);
   }
+
+  // void Tensor__InitOrtValue(MLDataType p_type, const TensorShape& shape, void* p_data, const OrtMemoryInfo& location, OrtValue& ort_value) override {
+  //   Tensor::InitOrtValue(p_type, shape, p_data, location, ort_value);
+  // }
+#ifdef ENABLE_FLATTEN_TENSORS
+  int Tensor__GetBatchEndAxis(const Tensor* p) const override { return p->GetBatchEndAxis(); }
+  const std::vector<std::vector<int64_t>>& Tensor__VariantStrides(const Tensor* p) const override { return p->VariantStrides(); }
+  gsl::span<const int64_t> Tensor__BatchOffset(const Tensor* p) const override { return p->BatchOffset(); }
+  bool Tensor__IsVariantDim(const Tensor* p, int64_t dim) const override { return p->IsVariantDim(dim); }
+  bool Tensor__IsGroupStrided(const Tensor* p) const override { return p->IsGroupStrided(); }
+  void Tensor__GetShapeForBatch(const Tensor* p, int64_t batch, std::vector<int64_t>& shape) const override { return p->GetShapeForBatch(batch, shape); }
+#endif
 
   bool* Tensor__MutableData_bool(Tensor* p) override { return p->MutableData<bool>(); }
   int8_t* Tensor__MutableData_int8(Tensor* p) override { return p->MutableData<int8_t>(); }
@@ -1936,7 +1952,7 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_Dnnl,
   auto factory = onnxruntime::DnnlProviderFactoryCreator::Create(dnnl_options);
   if (!factory) {
     return OrtApis::CreateStatus(ORT_FAIL,
-                    "SessionOptionsAppendExecutionProvider_Dnnl: Failed to load shared library");
+                                 "SessionOptionsAppendExecutionProvider_Dnnl: Failed to load shared library");
   }
 
   options->provider_factories.push_back(factory);

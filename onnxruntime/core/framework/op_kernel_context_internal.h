@@ -60,8 +60,9 @@ class OpKernelContextInternal : public OpKernelContext {
   }
 #endif
 
-  OrtValue* OutputMLValue(int index, const TensorShape& shape) override {
-    return OpKernelContext::OutputMLValue(index, shape);
+  OrtValue* OutputMLValue(int index, const TensorShape& shape,
+                          const std::unordered_map<int, std::vector<int64_t>>& dim_values_on_var_shape = {}) override {
+    return OpKernelContext::OutputMLValue(index, shape, dim_values_on_var_shape);
   }
 
   // Get the OrtValue's for all implicit inputs. Order is same as Node::ImplicitInputDefs(). No nullptr entries.

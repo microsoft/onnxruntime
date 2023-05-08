@@ -1736,6 +1736,293 @@ ONNX_MS_OPERATOR_SET_SCHEMA(FusedMatMul, 1,
                                 .SetDoc(FusedMatMul_doc)
                                 .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) { FusedMatMulShapeInference(ctx); }));
 
+constexpr const char* TruncateElements_doc = R"DOC(
+Truncate the input tensor on axis to the specified lengths.
+The axes before axis for `input` are batch dimensions, which are equal to the dimensions for 'lengths'.
+)DOC";
+
+ONNX_MS_OPERATOR_SET_SCHEMA(TruncateElements, 1,
+                            OpSchema()
+                                .SetDoc(TruncateElements_doc)
+                                .Input(0,
+                                       "input",
+                                       "Input tensor with shape (d0, d1, ..., d<n-1>). n >= 2",
+                                       "T")
+                                .Input(1,
+                                       "lengths",
+                                       "Variant lengths tensor with shape (d0, .., d<axis-1>).",
+                                       "TI")
+                                .Attr("axis", "The axis the truncation is applied.", AttributeProto::INT,
+                                      static_cast<int64_t>(0))
+                                .Output(0,
+                                        "output",
+                                        "output tensor with shape (N)."
+                                        "b = d0 X d1... X d<axis - 1>;                 // batch size"
+                                        "s = d<axis + 1> X d<axis + 2>... X d<n - 1>;  // stride for variant sub array"
+                                        "// l<i> is the length of i-th batch's dim value."
+                                        "N = (l<1> + l<2> + ... + l<b - 1>)X s;",
+                                        "T")
+                                // .Output(1,
+                                //         "length",
+                                //         "The dim value of input tensor on axis. Its shape is (1)",
+                                //         "TI")
+                                .TypeConstraint("T",
+                                                {"tensor(float)", "tensor(float16)"},
+                                                "Constrain input and output types to float tensors.")
+                                .TypeConstraint("TI",
+                                                {"tensor(int64)"},
+                                                "Constrain sequence_token_count and token_offset to integer types")
+                                .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+                                  ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 0);
+                                  ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 1, 1);
+
+                                  if (hasInputShape(ctx, 0) && hasInputShape(ctx, 1)) {
+                                    // type inference
+                                    auto axis_attr = ctx.getAttribute("axis");
+                                    if (axis_attr == nullptr) {
+                                      fail_shape_inference("axis attribute is required");
+                                    }
+                                    int axis = static_cast<int>(axis_attr->i());
+
+                                    auto& input_shape = getInputShape(ctx, 0);
+                                    auto& lengths_shape = getInputShape(ctx, 1);
+
+                                    if (axis >= input_shape.dim().size()) {
+                                      fail_shape_inference("axis should be less than input rank");
+                                    }
+
+                                    if (axis != lengths_shape.dim().size()) {
+                                      fail_shape_inference("axis should be equal to lengths rank");
+                                    }
+
+                                    if (input_shape.dim().size() <= lengths_shape.dim().size()) {
+                                      fail_shape_inference("input rank should be larger than lengths rank");
+                                    }
+                                    static size_t index = 0;
+                                    index += 1;
+                                    ONNX_NAMESPACE::TensorShapeProto output_shape;
+                                    std::stringstream ss;
+                                    ss << "elem_count_" << index;
+                                    output_shape.add_dim()->set_dim_param(ss.str());
+                                    updateOutputShape(ctx, 0, output_shape);
+
+                                    // ONNX_NAMESPACE::TensorShapeProto max_seq_len_shape;
+                                    // max_seq_len_shape.add_dim()->set_dim_value(1);
+                                    // updateOutputShape(ctx, 1, max_seq_len_shape);
+                                  }
+                                }));
+
+constexpr const char* PadElements_doc = R"DOC(
+Truncate the input tensor on axis to the specified lengths.
+The axes before axis for `input` are batch dimensions, which are equal to the dimensions for 'lengths'.
+)DOC";
+
+ONNX_MS_OPERATOR_SET_SCHEMA(PadElements, 1,
+                            OpSchema()
+                                .SetDoc(PadElements_doc)
+                                .Input(0,
+                                       "input",
+                                       "output tensor with shape (N)."
+                                       "b = d0 X d1... X d<axis - 1>;                 // batch size"
+                                       "s = d<axis + 1> X d<axis + 2>... X d<n - 1>;  // stride for variant sub array"
+                                       "// l<i> is the length of i-th batch's dim value."
+                                       "N = (l<1> + l<2> + ... + l<b - 1>)X s;",
+                                       "T")
+                                .Input(1,
+                                       "shape",
+                                       "Output shape (d0, ..., d<axis-1>, ..., d<n-1>).",
+                                       "TI")
+                                // .Input(2,
+                                //        "lengths",
+                                //        "Variant lengths tensor with shape (d0, ..., d<axis-1>).",
+                                //        "TI")
+                                .Attr("axis", "The axis the truncation is applied.", AttributeProto::INT,
+                                      static_cast<int64_t>(0))
+                                .Output(0,
+                                        "output",
+                                        "Input tensor with shape (d0, d1, ..., d<n-1>). n >= 2",
+                                        "T")
+                                .TypeConstraint("T",
+                                                {"tensor(float)", "tensor(float16)"},
+                                                "Constrain input and output types to float tensors.")
+                                .TypeConstraint("TI",
+                                                {"tensor(int64)"},
+                                                "Constrain sequence_token_count and token_offset to integer types")
+                                .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+                                  ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 0);
+                                  ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 1, 1);
+
+                                  if (hasInputShape(ctx, 0) && hasInputShape(ctx, 1)) {
+                                    // type inference
+                                    auto axis_attr = ctx.getAttribute("axis");
+                                    if (axis_attr == nullptr) {
+                                      fail_shape_inference("axis attribute is required");
+                                    }
+                                    int axis = static_cast<int>(axis_attr->i());
+
+                                    auto& input_shape = getInputShape(ctx, 0);
+                                    auto& lengths_shape = getInputShape(ctx, 1);
+
+                                    if (axis >= input_shape.dim().size()) {
+                                      fail_shape_inference("axis should be less than input rank");
+                                    }
+
+                                    if (axis != lengths_shape.dim().size()) {
+                                      fail_shape_inference("axis should be equal to lengths rank");
+                                    }
+
+                                    if (input_shape.dim().size() <= lengths_shape.dim().size()) {
+                                      fail_shape_inference("input rank should be larger than lengths rank");
+                                    }
+
+                                    ONNX_NAMESPACE::TensorShapeProto output_shape;
+                                    updateOutputShape(ctx, 0, output_shape);
+
+                                    ONNX_NAMESPACE::TensorShapeProto max_seq_len_shape;
+                                    max_seq_len_shape.add_dim()->set_dim_value(1);
+                                    updateOutputShape(ctx, 1, max_seq_len_shape);
+                                  }
+                                }));
+
+constexpr const char* SelectIndex_doc = R"DOC(
+Truncate the input tensor on the axis to the specified lengths.
+The axes before the axis for `input` are batch dimensions, which are equal to the dimensions for 'lengths'.
+)DOC";
+
+ONNX_MS_OPERATOR_SET_SCHEMA(SelectIndex, 1,
+                            OpSchema()
+                                .SetDoc(SelectIndex_doc)
+                                .Input(0,
+                                       "input",
+                                       "Input tensor with shape (d0, d1, ..., d<n-1>). n >= 2",
+                                       "TI")
+                                .Attr("ignore_idx", "The value to ignore.", AttributeProto::INT,
+                                      static_cast<int64_t>(0))
+                                .Attr("axis", "The axis where variant dim starts.", AttributeProto::INT,
+                                      static_cast<int64_t>(0))
+                                .Output(0,
+                                        "flatten_indices",
+                                        "output tensor with shape (N). "
+                                        "N is the number of elements in the input tensor that is not equal to ignore_idx.",
+                                        "TI")
+                                .Output(1,
+                                        "lengths",
+                                        "Variant lengths tensor with shape (d0, .., d<axis-1>, R)."
+                                        "R is the number of dimensions including and after axis, R >= 1.",
+                                        "TI")
+                                .TypeConstraint("TI",
+                                                {"tensor(int64)"},
+                                                "Constrain sequence_token_count and token_offset to integer types")
+                                .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+                                  ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 0);
+                                  ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 1);
+
+                                  if (hasInputShape(ctx, 0)) {
+                                    // type inference
+                                    auto axis_attr = ctx.getAttribute("axis");
+                                    if (axis_attr == nullptr) {
+                                      fail_shape_inference("axis attribute is required");
+                                    }
+                                    int axis = static_cast<int>(axis_attr->i());
+
+                                    auto& input_shape = getInputShape(ctx, 0);
+
+                                    if (axis >= input_shape.dim().size()) {
+                                      fail_shape_inference("axis should be less than input rank");
+                                    }
+
+                                    static size_t index = 0;
+                                    index += 1;
+                                    ONNX_NAMESPACE::TensorShapeProto flatten_output_shape;
+                                    std::stringstream ss;
+                                    ss << "valid_index_count_" << index;
+                                    flatten_output_shape.add_dim()->set_dim_param(ss.str());
+                                    updateOutputShape(ctx, 0, flatten_output_shape);
+
+                                    ONNX_NAMESPACE::TensorShapeProto output_shape;
+                                    for (int i = 0; i < axis; ++i) {
+                                      output_shape.add_dim()->CopyFrom(input_shape.dim(i));
+                                    }
+                                    size_t last_dim_value = input_shape.dim().size() - axis;
+                                    output_shape.add_dim()->set_dim_value(last_dim_value);
+                                    updateOutputShape(ctx, 1, output_shape);
+                                  }
+                                }));
+
+ONNX_MS_OPERATOR_SET_SCHEMA(GroupGemm, 1,
+                            OpSchema()
+                                .Input(0, "A1", "N-dimensional matrix A", "T")
+                                .Input(1, "B1", "N-dimensional matrix B", "T")
+                                .Input(2, "A2", "", "T", OpSchema::Optional)
+                                .Input(3, "B2", "", "T", OpSchema::Optional)
+                                .Input(4, "A3", "", "T", OpSchema::Optional)
+                                .Input(5, "B3", "", "T", OpSchema::Optional)
+                                .Output(0, "Y", "Matrix multiply results", "T")
+                                .TypeConstraint(
+                                    "T", {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
+                                    "Constrain input and output types to float tensors.")
+                                .SetDoc(FusedMatMul_doc)
+                                .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+                                  propagateElemTypeFromInputToOutput(ctx, 0, 0);
+                                  int input1Idx = 0;
+                                  int input2Idx = 1;
+                                  if (!hasInputShape(ctx, input1Idx) || !hasInputShape(ctx, input2Idx)) {
+                                    return;
+                                  }
+
+                                  const auto shapeL = getInputShape(ctx, input1Idx);
+                                  const auto shapeR = getInputShape(ctx, input2Idx);
+
+                                  if (shapeL.dim_size() <= 2 || shapeR.dim_size() <= 2) {
+                                    fail_shape_inference("Input tensors of wrong rank. Expected rank > 2, got rank " +
+                                                         std::to_string(shapeL.dim_size()) + " and " +
+                                                         std::to_string(shapeR.dim_size()));
+                                  }
+
+                                  if (shapeL.dim_size() != shapeR.dim_size()) {
+                                    fail_shape_inference("Input tensor rank did not match, got rank " +
+                                                         std::to_string(shapeL.dim_size()) + " and " +
+                                                         std::to_string(shapeR.dim_size()));
+                                  }
+
+                                  // Check for compatible matrix multiply dimensions
+                                  for (int i = 0; i < shapeL.dim_size() - 2; ++i) {
+                                    if (shapeL.dim(i).has_dim_value() && shapeR.dim(i).has_dim_value() &&
+                                        shapeL.dim(i).dim_value() != shapeR.dim(i).dim_value()) {
+                                      fail_shape_inference("Incompatible batch dimensions for matrix multiplication");
+                                    }
+                                  }
+
+                                  auto dimL = shapeL.dim(shapeL.dim_size() - 1);
+                                  auto dimR = shapeR.dim(shapeR.dim_size() - 2);
+                                  if (dimL.has_dim_value() && dimR.has_dim_value() &&
+                                      dimL.dim_value() != dimR.dim_value()) {
+                                    fail_shape_inference("Incompatible last two dimensions for matrix multiplication");
+                                  }
+
+                                  ONNX_NAMESPACE::TensorShapeProto resultShape;
+
+                                  // Now call out to generic multidimensional broadcasting for
+                                  // the broadcastable prefixes.
+                                  {
+                                    ONNX_NAMESPACE::TensorShapeProto prefixShapeL, prefixShapeR;
+                                    for (int i = 0; i < shapeL.dim_size() - 2; ++i) {
+                                      *prefixShapeL.add_dim() = shapeL.dim(i);
+                                    }
+                                    for (int i = 0; i < shapeR.dim_size() - 2; ++i) {
+                                      *prefixShapeR.add_dim() = shapeR.dim(i);
+                                    }
+                                    bidirectionalBroadcastShapeInference(
+                                        prefixShapeL, prefixShapeR, resultShape);
+
+                                    // Back to matmul-specific. Add the trailing dimensions back in.
+                                    *resultShape.add_dim() = shapeL.dim(shapeL.dim_size() - 2);
+                                    *resultShape.add_dim() = shapeR.dim(shapeR.dim_size() - 1);
+                                  }
+
+                                  updateOutputShape(ctx, 0, resultShape);
+                                }));
+
 ONNX_MS_OPERATOR_SET_SCHEMA(SparseToDenseMatMul, 1,
                             OpSchema()
                                 .Input(0, "A", "2-dimensional sparse matrix A. Either COO or CSR format", "T")

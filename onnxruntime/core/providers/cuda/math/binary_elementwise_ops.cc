@@ -10,7 +10,8 @@ namespace onnxruntime {
 namespace cuda {
 
 template <>
-Status BinaryElementwise<ShouldNotBroadcast>::Prepare(OpKernelContext* context, BinaryElementwisePreparation* p) const {
+Status BinaryElementwise<ShouldNotBroadcast>::Prepare(OpKernelContext* context,
+                                                      BinaryElementwisePreparation* p) const {
   p->lhs_tensor = context->Input<Tensor>(0);
   p->rhs_tensor = context->Input<Tensor>(1);
   if (!(p->lhs_tensor->Shape() == p->rhs_tensor->Shape()))
@@ -21,7 +22,8 @@ Status BinaryElementwise<ShouldNotBroadcast>::Prepare(OpKernelContext* context, 
   return Status::OK();
 }
 
-Status ComputeOutputShape(const std::string& node_name, const TensorShape& lhs_shape, const TensorShape& rhs_shape, TensorShape& out_shape) {
+Status ComputeOutputShape(const std::string& node_name, const TensorShape& lhs_shape, const TensorShape& rhs_shape,
+                          TensorShape& out_shape) {
   size_t lhs_rank = lhs_shape.NumDimensions();
   size_t rhs_rank = rhs_shape.NumDimensions();
   size_t out_rank = std::max(lhs_rank, rhs_rank);
@@ -150,24 +152,24 @@ Status BinaryElementwise<ShouldBroadcast>::Prepare(OpKernelContext* context, Bin
       (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()),           \
       class_name<T>);
 
-#define BINARY_ELEMENTWISE_COMPUTE(x, T)                                                                         \
-  template <>                                                                                                    \
-  Status x<T>::ComputeInternal(OpKernelContext* context) const {                                                 \
-    BinaryElementwisePreparation prepare;                                                                        \
-    ORT_RETURN_IF_ERROR(Prepare(context, &prepare));                                                             \
-    Impl_##x<typename ToCudaType<T>::MappedType>(                                                                \
-        Stream(context),                                                                                         \
-        prepare.output_rank_or_simple_broadcast,                                                                 \
-        &prepare.lhs_padded_strides,                                                                             \
+#define BINARY_ELEMENTWISE_COMPUTE(x, T)                                                                \
+  template <>                                                                                           \
+  Status x<T>::ComputeInternal(OpKernelContext* context) const {                                        \
+    BinaryElementwisePreparation prepare;                                                               \
+    ORT_RETURN_IF_ERROR(Prepare(context, &prepare));                                                    \
+    Impl_##x<typename ToCudaType<T>::MappedType>(                                                       \
+        Stream(context),                                                                                \
+        prepare.output_rank_or_simple_broadcast,                                                        \
+        &prepare.lhs_padded_strides,                                                                    \
         reinterpret_cast<const typename ToCudaType<T>::MappedType*>(prepare.lhs_tensor->Data<T>()),     \
-        &prepare.rhs_padded_strides,                                                                             \
+        &prepare.rhs_padded_strides,                                                                    \
         reinterpret_cast<const typename ToCudaType<T>::MappedType*>(prepare.rhs_tensor->Data<T>()),     \
-        &prepare.fdm_output_strides,                                                                             \
-        prepare.fdm_H,                                                                                           \
-        prepare.fdm_C,                                                                                           \
+        &prepare.fdm_output_strides,                                                                    \
+        prepare.fdm_H,                                                                                  \
+        prepare.fdm_C,                                                                                  \
         reinterpret_cast<typename ToCudaType<T>::MappedType*>(prepare.output_tensor->MutableData<T>()), \
-        prepare.output_tensor->Shape().Size());                                                                  \
-    return Status::OK();                                                                                         \
+        prepare.output_tensor->Shape().Size());                                                         \
+    return Status::OK();                                                                                \
   }
 
 #define BINARY_OP_VERSIONED_TYPED(name, startver, endver, T) \

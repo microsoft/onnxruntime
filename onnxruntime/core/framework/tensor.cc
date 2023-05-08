@@ -63,7 +63,7 @@ Tensor::Tensor(MLDataType p_type, const TensorShape& shape, void* p_data, const 
 }
 
 Tensor::Tensor(MLDataType p_type, const TensorShape& shape, std::shared_ptr<IAllocator> allocator,
-               gsl::span<const int64_t> strides)
+               gsl::span<const int64_t> strides, const std::unordered_map<int, std::vector<int64_t>>& dim_values_on_var_shape)
     : alloc_info_(allocator->Info()) {
   ORT_ENFORCE(p_type != nullptr);
   size_t len = Tensor::CalculateTensorStorageSize(p_type, shape, strides);
@@ -73,6 +73,12 @@ Tensor::Tensor(MLDataType p_type, const TensorShape& shape, std::shared_ptr<IAll
     p_data = allocator->Alloc(len);
   }
   Init(p_type, shape, p_data, allocator, 0L, strides);
+
+  if (dim_values_on_var_shape.size() > 0) {
+    dim_values_on_var_shape_ = dim_values_on_var_shape;
+    is_group_strided_ = true;
+    FlattenTensorSpecificInit();
+  }
 }
 
 Tensor::Tensor(MLDataType p_type, const TensorShape& shape, void* p_data, std::shared_ptr<IAllocator> deleter,
@@ -83,8 +89,9 @@ Tensor::Tensor(MLDataType p_type, const TensorShape& shape, void* p_data, std::s
 }
 
 void Tensor::InitOrtValue(MLDataType elt_type, const TensorShape& shape, std::shared_ptr<IAllocator> allocator,
-                          OrtValue& ort_value, gsl::span<const int64_t> strides) {
-  auto p_tensor = std::make_unique<Tensor>(elt_type, shape, std::move(allocator), strides);
+                          OrtValue& ort_value, gsl::span<const int64_t> strides,
+                          const std::unordered_map<int, std::vector<int64_t>>& dim_values_on_var_shape) {
+  auto p_tensor = std::make_unique<Tensor>(elt_type, shape, std::move(allocator), strides, dim_values_on_var_shape);
   auto ml_tensor = DataTypeImpl::GetType<Tensor>();
   ort_value.Init(p_tensor.release(), ml_tensor, ml_tensor->GetDeleteFunc());
 }
@@ -247,6 +254,65 @@ void Tensor::SetShapeAndStrides(const TensorShape& new_shape, gsl::span<const in
   strides_ = ToShapeVector(new_strides);
   is_contiguous_ = CheckIsContiguous();
 }
+
+#endif
+
+#ifdef ENABLE_FLATTEN_TENSORS
+
+const std::vector<std::vector<int64_t>>& Tensor::VariantStrides() const {
+  return variant_shape_strides_;
+}
+
+gsl::span<const int64_t> Tensor::BatchOffset() const {
+  return gsl::make_span(batch_strides_);
+}
+
+void Tensor::FlattenTensorSpecificInit() {
+  // variant_axes_batch_shape_.clear();
+  // variant_axes_batch_stride_.clear();
+  int64_t batch_size = 1;
+  for (size_t i = 0; i < shape_.NumDimensions(); ++i) {
+    if (dim_values_on_var_shape_.find(i) == dim_values_on_var_shape_.end()) {
+      batch_size *= shape_[i];
+      batch_end_axis_ = i;
+    }
+
+    break;
+  }
+
+  auto build_stride = [this](int64_t start, int64_t end, int64_t flatten_batch_idex,
+                             std::vector<int64_t>& strides) -> void {
+    ORT_ENFORCE(start >= end);
+    int64_t factor = 1;
+    strides.clear();
+    for (int64_t i = end; i >= start; --i) {
+      // strides.push_front(factor);
+      strides.insert(strides.begin(), factor);
+      if (this->dim_values_on_var_shape_.find(i) == this->dim_values_on_var_shape_.end()) {
+        factor *= this->shape_[i];
+      } else {
+        factor *= this->dim_values_on_var_shape_[i][flatten_batch_idex];
+      }
+    }
+  };
+
+  int64_t variant_axis_start = batch_end_axis_;
+  int64_t variant_axis_end = shape_.NumDimensions() - 1;
+
+  variant_shape_strides_.resize(batch_size);
+  for (int64_t i = 0; i < batch_size; ++i) {
+    variant_shape_strides_[i].resize(variant_axis_end - variant_axis_start + 1);
+    build_stride(variant_axis_start, variant_axis_end, i, variant_shape_strides_[i]);
+  }
+
+  int64_t buffer_offset = 0;
+  batch_strides_.resize(batch_size);
+  for (int64_t i = 0; i < batch_size; ++i) {
+    batch_strides_.push_back(buffer_offset);
+    buffer_offset += variant_shape_strides_[i][0];
+  }
+}
+
 #endif
 
 }  // namespace onnxruntime

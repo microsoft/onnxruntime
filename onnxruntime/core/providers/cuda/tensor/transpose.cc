@@ -269,6 +269,11 @@ Status Transpose::ComputeInternal(OpKernelContext* ctx) const {
   if (X_ptr == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "input count mismatch");
   const Tensor& X = *X_ptr;
   const TensorShape& input_shape = X.Shape();
+
+  if (X_ptr->IsGroupStrided()) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Transpose doesn't support string tensors with group striding.");
+  }
+
   int32_t rank = gsl::narrow_cast<int32_t>(input_shape.NumDimensions());
 
   TensorShapeVector output_dims(rank);

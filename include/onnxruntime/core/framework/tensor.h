@@ -95,7 +95,23 @@ class Tensor final {
    * However, this function will allocate the buffer for the shape, and do placement new if p_type is string tensor.
    */
   Tensor(MLDataType p_type, const TensorShape& shape, std::shared_ptr<IAllocator> allocator,
-         gsl::span<const int64_t> strides = {});
+         gsl::span<const int64_t> strides = {},
+         const std::unordered_map<int, std::vector<int64_t>>& dim_values_on_var_shape = {});
+
+  // /// <summary>
+  // /// Creates an instance of Tensor on the heap using the appropriate __ctor and
+  // /// initializes OrtValue with it.
+  // /// </summary>
+  // /// <param name="elt_type"></param>
+  // /// <param name="shape"></param>
+  // /// <param name="allocator"></param>
+  // /// <param name="ort_value"></param>
+  // /// <param name="strides"></param>
+  // static void InitOrtValue(MLDataType elt_type,
+  //                          const TensorShape& shape,
+  //                          std::shared_ptr<IAllocator> allocator,
+  //                          OrtValue& ort_value,
+  //                          gsl::span<const int64_t> strides = {});
 
   /// <summary>
   /// Creates an instance of Tensor on the heap using the appropriate __ctor and
@@ -110,7 +126,8 @@ class Tensor final {
                            const TensorShape& shape,
                            std::shared_ptr<IAllocator> allocator,
                            OrtValue& ort_value,
-                           gsl::span<const int64_t> strides = {});
+                           gsl::span<const int64_t> strides = {},
+                           const std::unordered_map<int, std::vector<int64_t>>& dim_values_on_var_shape = {});
 
   /// <summary>
   /// Creates an instance of Tensor on the heap using the appropriate __ctor and
@@ -292,6 +309,36 @@ class Tensor final {
   void SetShapeAndStrides(const TensorShape& new_shape, gsl::span<const int64_t> new_strides);
 #endif
 
+#ifdef ENABLE_FLATTEN_TENSORS
+
+  int GetBatchEndAxis() const {
+    return batch_end_axis_;
+  }
+
+  const std::vector<std::vector<int64_t>>& VariantStrides() const;
+
+  gsl::span<const int64_t> BatchOffset() const;
+
+  bool IsVariantDim(int64_t dim) const {
+    return dim_values_on_var_shape_.find(dim) != dim_values_on_var_shape_.end();
+  }
+
+  void GetShapeForBatch(int64_t batch, std::vector<int64_t>& shape) const {
+    shape.clear();
+    for (size_t i = batch_end_axis_ + 1; i < shape_.NumDimensions(); ++i) {
+      if (IsVariantDim(i)) {
+        shape.push_back(dim_values_on_var_shape_.at(i)[batch]);
+      } else {
+        shape.push_back(shape_[i]);
+      }
+    }
+  }
+
+  bool IsGroupStrided() const {
+    return is_group_strided_;
+  }
+#endif
+
   // More API methods.
  private:
   void Init(MLDataType p_type,
@@ -307,6 +354,11 @@ class Tensor final {
   bool CheckIsContiguous() const;
 #endif
 
+#ifdef ENABLE_FLATTEN_TENSORS
+  void FlattenTensorSpecificInit();
+
+#endif
+
   void* p_data_;
   /**
      if buffer_deleter_ is null, it means tensor does not own the buffer.
@@ -319,6 +371,25 @@ class Tensor final {
 #ifdef ENABLE_STRIDED_TENSORS
   mutable TensorShapeVector strides_;
   bool is_contiguous_ = true;
+#endif
+
+#ifdef ENABLE_FLATTEN_TENSORS
+  // std::vector<int64_t> variant_axes_;  // A list of axes that have variant dim values.
+  //                                      // For shape_, the dim value variant axes is -1.
+
+  // For each variant axis, there are 'batch''s value of dim values
+  std::unordered_map<int, std::vector<int64_t>> dim_values_on_var_shape_;
+  // std::vector<int64_t> variant_axes_batch_shape_;
+  int batch_end_axis_ = -1;
+
+  std::vector<std::vector<int64_t>> variant_shape_strides_;
+  std::vector<int64_t> batch_strides_;
+
+  bool is_group_strided_ = false;
+
+  // std::vector<int64_t> batch_shape_;
+  // std::vector<int64_t> variant_axes_batch_stride_;
+
 #endif
 
   const PrimitiveDataTypeBase* dtype_;

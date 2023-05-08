@@ -11,7 +11,7 @@ namespace cuda {
 
 // broadcast by computing output coordinate from offset, using fast_divmod
 template <typename T, typename T1, typename T2, typename FuncT,
-  bool lhs_need_compute, bool rhs_need_compute, int NumThreadsPerBlock, int NumElementsPerThread>
+          bool lhs_need_compute, bool rhs_need_compute, int NumThreadsPerBlock, int NumElementsPerThread>
 __global__ void _BinaryElementWise(
     int32_t output_rank,
     const TArray<int64_t> lhs_padded_strides,
@@ -69,7 +69,8 @@ __global__ void _BinaryElementWise(
 }
 
 // for scalar broadcast or non-broadcast case
-template <bool IncL, bool IncR, typename T, typename T1, typename T2, typename FuncT, int NumThreadsPerBlock, int NumElementsPerThread>
+template <bool IncL, bool IncR, typename T, typename T1, typename T2, typename FuncT,
+          int NumThreadsPerBlock, int NumElementsPerThread>
 __global__ void _BinaryElementWiseSimple(
     const T1* lhs_data,
     const T2* rhs_data,
@@ -189,13 +190,13 @@ void BinaryElementWiseNoBroadcastImpl(
   if (count == 0)  // special case where there's a dim value of 0 in the output shape
     return;
 
-  #ifdef USE_ROCM
+#ifdef USE_ROCM
   const int num_elements_per_thread = 2;
   const int num_threads_per_block = 512;
-  #else
+#else
   const int num_elements_per_thread = GridDim::maxElementsPerThread;
   const int num_threads_per_block = GridDim::maxThreadsPerBlock;
-  #endif
+#endif
 
   int blocksPerGrid = static_cast<int>(CeilDiv(count, num_threads_per_block * num_elements_per_thread));
   CUDA_LONG N = static_cast<CUDA_LONG>(count);
@@ -205,7 +206,6 @@ void BinaryElementWiseNoBroadcastImpl(
       output_data,
       func,
       N);
-
 }
 
 template <typename T, typename T1, typename T2, typename FuncT>
@@ -225,13 +225,13 @@ void BinaryElementWiseImpl(
   if (count == 0)  // special case where there's a dim value of 0 in the output shape
     return;
 
-  #ifdef USE_ROCM
+#ifdef USE_ROCM
   const int num_elements_per_thread = 2;
   const int num_threads_per_block = 512;
-  #else
+#else
   const int num_elements_per_thread = GridDim::maxElementsPerThread;
   const int num_threads_per_block = GridDim::maxThreadsPerBlock;
-  #endif
+#endif
 
   int blocksPerGrid = static_cast<int>(CeilDiv(count, num_threads_per_block * num_elements_per_thread));
   CUDA_LONG N = static_cast<CUDA_LONG>(count);
@@ -290,7 +290,7 @@ void BinaryElementWiseImpl(
           output_rank_or_simple_broadcast,
           *lhs_padded_strides,
           lhs_data,
-          TArray<int64_t>(), // rhs is not computed, so no need to deference rhs_padded_strides
+          TArray<int64_t>(),  // rhs is not computed, so no need to deference rhs_padded_strides
           rhs_data,
           *fdm_output_strides,
           output_data,
@@ -299,7 +299,7 @@ void BinaryElementWiseImpl(
     else if (rhs_padded_strides && rhs_padded_strides->Size())
       _BinaryElementWise<T, T1, T2, FuncT, false, true, num_threads_per_block, num_elements_per_thread><<<blocksPerGrid, num_threads_per_block, 0, stream>>>(
           output_rank_or_simple_broadcast,
-          TArray<int64_t>(), // lhs is not computed, so no need to deference lhs_padded_strides
+          TArray<int64_t>(),  // lhs is not computed, so no need to deference lhs_padded_strides
           lhs_data,
           *rhs_padded_strides,
           rhs_data,

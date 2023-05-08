@@ -71,7 +71,8 @@ class IExecutionFrame {
   // Return S_OK and nullptr if index map to an value that is an unused optional input/output
   // Shape is required for tensors but not traditional ML values.
   Status GetOrCreateNodeOutputMLValue(const int index, int output_arg_index, const TensorShape* shape,
-                                      OrtValue*& p_ort_value, const Node& node);
+                                      OrtValue*& p_ort_value, const Node& node,
+                                      const std::unordered_map<int, std::vector<int64_t>>& dim_values_on_var_shape = {});
 
   // This function try retrieve the inferred shapes for the given NodeArg index.
   // If the retrieval is successful, this function returns true and false otherwise.
@@ -112,7 +113,9 @@ class IExecutionFrame {
 
   virtual AllocatorPtr GetAllocatorImpl(const OrtMemoryInfo& info) const = 0;
 
-  virtual Status CreateNodeOutputMLValueImpl(OrtValue& ort_value, int ort_value_idx, const TensorShape* shape) = 0;
+  virtual Status CreateNodeOutputMLValueImpl(
+      OrtValue& ort_value, int ort_value_idx, const TensorShape* shape,
+      const std::unordered_map<int, std::vector<int64_t>>& dim_values_on_var_shape = {}) = 0;
 
   virtual Status CopyTensor(const Tensor& src, Tensor& dest) const = 0;
 
@@ -147,7 +150,9 @@ class ExecutionFrame final : public IExecutionFrame {
   // Fix the unit tests so they set an execution plan that results in these methods being called by
   // GetOrCreateNodeOutputMLValue instead
   Status AllocateMLValueTensorSelfOwnBuffer(OrtValue& ort_value, int ort_value_index, MLDataType element_type,
-                                            const OrtMemoryInfo& location, const TensorShape& shape);
+                                            const OrtMemoryInfo& location, const TensorShape& shape,
+                                            const std::unordered_map<int, std::vector<int64_t>>&
+                                                dim_values_on_var_shape = {});
 
   Status AllocateMLValueTensorPreAllocateBuffer(OrtValue& ort_value, int ort_value_index_reuse, MLDataType element_type,
                                                 const OrtMemoryInfo& location, const TensorShape& shape,
@@ -191,17 +196,24 @@ class ExecutionFrame final : public IExecutionFrame {
 
   AllocatorPtr GetAllocatorImpl(const OrtMemoryInfo& info) const override;
   Status ReleaseMLValueImpl(int ort_value_idx) override;
-  Status CreateNodeOutputMLValueImpl(OrtValue& ort_value, int ort_value_idx, const TensorShape* shape) override;
+  Status CreateNodeOutputMLValueImpl(OrtValue& ort_value, int ort_value_idx, const TensorShape* shape,
+                                     const std::unordered_map<int, std::vector<int64_t>>& dim_values_on_var_shape = {}) override;
   void VerifyOutputSizes(int output_index, const Node& node, const TensorShape& output_shape) override;
   Status CopyTensor(const Tensor& src, Tensor& dest) const override;
   const DataTransferManager& GetDataTransferManager() const override;
 
-  common::Status AllocateReusedOrtValueIfNotAllocatedHelper(int reuse_mlvalue_index, const TensorShape* shape);
+  common::Status AllocateReusedOrtValueIfNotAllocatedHelper(
+      int reuse_mlvalue_index, const TensorShape* shape,
+      const std::unordered_map<int, std::vector<int64_t>>& dim_values_on_var_shape);
 
-  common::Status AllocateAsPerAllocationPlan(OrtValue& ort_value, int ort_value_index, const TensorShape* shape);
+  common::Status AllocateAsPerAllocationPlan(
+      OrtValue& ort_value, int ort_value_index, const TensorShape* shape,
+      const std::unordered_map<int, std::vector<int64_t>>& dim_values_on_var_shape = {});
 
-  Status AllocateMLValueTensorSelfOwnBufferHelper(OrtValue& ort_value, int ort_value_index, MLDataType element_type,
-                                                  const OrtMemoryInfo& location, const TensorShape& shape);
+  Status AllocateMLValueTensorSelfOwnBufferHelper(
+      OrtValue& ort_value, int ort_value_index, MLDataType element_type,
+      const OrtMemoryInfo& location, const TensorShape& shape,
+      const std::unordered_map<int, std::vector<int64_t>>& dim_values_on_var_shape = {});
 
   Status AllocateTensorWithPreAllocateBufferHelper(OrtValue& ort_value, void* pBuffer, MLDataType element_type,
                                                    const OrtMemoryInfo& location, const TensorShape& shape);

@@ -94,7 +94,8 @@ class OptimizerExecutionFrame final : public IExecutionFrame {
 
   AllocatorPtr GetAllocatorImpl(const OrtMemoryInfo& info) const override;
 
-  Status CreateNodeOutputMLValueImpl(OrtValue& ort_value, int ort_value_idx, const TensorShape* shape) override;
+  Status CreateNodeOutputMLValueImpl(OrtValue& ort_value, int ort_value_idx, const TensorShape* shape,
+                                     const std::unordered_map<int, std::vector<int64_t>>& dim_values_on_var_shape = {}) override;
 
   Status CopyTensor(const Tensor& src, Tensor& dest) const override;
 

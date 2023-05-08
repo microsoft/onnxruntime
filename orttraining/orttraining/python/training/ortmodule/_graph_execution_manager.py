@@ -379,7 +379,8 @@ class GraphExecutionManager(GraphExecutionInterface):
             output_names,
             output_dynamic_axes,
             self._module_output_schema,
-        ) = _io.parse_outputs_for_onnx_export_and_extract_schema(self._original_module, inputs, kwargs)
+        ) = _io.parse_outputs_for_onnx_export_and_extract_schema(self._original_module, inputs, kwargs,
+                                                                 self._debug_options.logging.log_level)
         self._input_info.dynamic_axes.update(output_dynamic_axes)
 
         # FlattenedModule needs _InputInfo to expand user input from *args to *args + **kwargs

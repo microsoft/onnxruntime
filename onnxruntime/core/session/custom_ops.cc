@@ -63,7 +63,7 @@ ORT_API_STATUS_IMPL(OrtApis::KernelContext_GetInput, _In_ const OrtKernelContext
 ORT_API_STATUS_IMPL(OrtApis::KernelContext_GetOutput, _Inout_ OrtKernelContext* context, _In_ size_t index, _In_ const int64_t* dim_values, size_t dim_count, _Out_ OrtValue** out) {
   API_IMPL_BEGIN
   onnxruntime::TensorShape shape(dim_values, dim_count);
-  *out = reinterpret_cast<OrtValue*>(reinterpret_cast<onnxruntime::OpKernelContextInternal*>(context)->OutputMLValue(index, shape));
+  *out = reinterpret_cast<OrtValue*>(reinterpret_cast<onnxruntime::OpKernelContextInternal*>(context)->OutputMLValue(index, shape, {}));
   return nullptr;
   API_IMPL_END
 };
@@ -313,7 +313,8 @@ ORT_API_STATUS_IMPL(OrtApis::KernelInfo_GetLogger, _In_ const OrtKernelInfo* inf
   const auto* ep_logger = ep->GetLogger();
 
   if (ep_logger == nullptr) {
-    return OrtApis::CreateStatus(ORT_INVALID_GRAPH, "::OrtKernelInfo cannot get a valid logger from "
+    return OrtApis::CreateStatus(ORT_INVALID_GRAPH,
+                                 "::OrtKernelInfo cannot get a valid logger from "
                                  "its execution provider");
   }
 
@@ -352,7 +353,9 @@ ORT_API_STATUS_IMPL(OrtApis::Logger_LogMessage, _In_ const OrtLogger* logger, Or
         severity,
         onnxruntime::logging::Category::onnxruntime,
         log_data_type,
-        location).Stream() << message;
+        location)
+            .Stream()
+        << message;
   }
 
   return nullptr;
@@ -489,12 +492,12 @@ common::Status CreateCustomRegistry(gsl::span<OrtCustomOpDomain* const> op_domai
         const auto type = op->GetOutputType(op, i);
         if (ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED == type) {  // Dynamic typed output
           if (op->GetOutputCharacteristic(op, i) == OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_REQUIRED) {
-              ORT_ENFORCE(type_id_counter == 1,
-                          "There must be one (and only one) dynamic typed input to the custom op. "
-                          "Its type info at runtime will be used to infer the type info of this dynamic typed output "
-                          "which is required for the success of the model loading step. "
-                          "More than one dynamic typed inputs are currently not supported as differing types at runtime means the output type "
-                          "cannot be inferred without which model loading cannot proceed.");
+            ORT_ENFORCE(type_id_counter == 1,
+                        "There must be one (and only one) dynamic typed input to the custom op. "
+                        "Its type info at runtime will be used to infer the type info of this dynamic typed output "
+                        "which is required for the success of the model loading step. "
+                        "More than one dynamic typed inputs are currently not supported as differing types at runtime means the output type "
+                        "cannot be inferred without which model loading cannot proceed.");
           }
 
           schema.Output(i, "Output" + std::to_string(i), "", "T0", option, is_homogeneous, min_arity);

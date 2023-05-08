@@ -719,7 +719,8 @@ struct ProviderHost {
   virtual const Tensor& OpKernelContext__RequiredInput_Tensor(const OpKernelContext* p, int index) = 0;
   virtual Tensor* OpKernelContext__Output_Tensor(OpKernelContext* p, int index) = 0;
   virtual TensorSeq* OpKernelContext__Output_TensorSeq(OpKernelContext* p, int index) = 0;
-  virtual Tensor* OpKernelContext__Output(OpKernelContext* p, int index, const TensorShape& shape) = 0;
+  virtual Tensor* OpKernelContext__Output(OpKernelContext* p, int index, const TensorShape& shape,
+                                          const std::unordered_map<int, std::vector<int64_t>>& dim_values_on_var_shape = {}) = 0;
 #if !defined(DISABLE_SPARSE_TENSORS)
   virtual SparseTensor* OpKernelContext__OutputSparse(OpKernelContext* p, int index, const TensorShape& shape) = 0;
 #endif
@@ -766,8 +767,16 @@ struct ProviderHost {
   virtual void Tensor__move_assign(Tensor& lhs, Tensor&& rhs) noexcept = 0;
   virtual void Tensor__operator_delete(Tensor* p) noexcept = 0;
 
-  virtual void Tensor__InitOrtValue(MLDataType elt_type, const TensorShape& shape, std::shared_ptr<IAllocator> allocator, OrtValue& ort_value) = 0;
+  virtual void Tensor__InitOrtValue(MLDataType elt_type, const TensorShape& shape, std::shared_ptr<IAllocator> allocator, OrtValue& ort_value,
+                                    gsl::span<const int64_t> strides = {}, const std::unordered_map<int, std::vector<int64_t>>& dim_values_on_var_shape = {}) = 0;
   virtual void Tensor__InitOrtValue(MLDataType p_type, const TensorShape& shape, void* p_data, const OrtMemoryInfo& location, OrtValue& ort_value) = 0;
+
+  virtual int Tensor__GetBatchEndAxis(const Tensor* p) const = 0;
+  virtual const std::vector<std::vector<int64_t>>& Tensor__VariantStrides(const Tensor* p) const = 0;
+  virtual gsl::span<const int64_t> Tensor__BatchOffset(const Tensor* p) const = 0;
+  virtual bool Tensor__IsVariantDim(const Tensor* p, int64_t dim) const = 0;
+  virtual bool Tensor__IsGroupStrided(const Tensor* p) const = 0;
+  virtual void Tensor__GetShapeForBatch(const Tensor* p, int64_t batch, std::vector<int64_t>& shape) const = 0;
 
   virtual bool* Tensor__MutableData_bool(Tensor* p) = 0;
   virtual int8_t* Tensor__MutableData_int8(Tensor* p) = 0;

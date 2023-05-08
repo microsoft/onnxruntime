@@ -94,14 +94,16 @@ class MyIExecutionFrame : public IExecutionFrame {
     abort();
   }
 
-  Status CreateNodeOutputMLValueImpl(OrtValue& /*ort_value*/, int /*ort_value_idx*/, const TensorShape* /*shape*/) override {
+  Status CreateNodeOutputMLValueImpl(OrtValue& /*ort_value*/, int /*ort_value_idx*/, const TensorShape* /*shape*/,
+                                     const std::unordered_map<int, std::vector<int64_t>>&) override {
     abort();
   }
   AllocatorPtr GetAllocatorImpl(const OrtMemoryInfo& info) const {
     return a_.GetAllocator(info.mem_type);
   }
 
-  Status CreateNodeOutputMLValueImpl(OrtValue& ort_value, int ort_value_index, const TensorShape* shape, size_t) {
+  Status CreateNodeOutputMLValueImpl(OrtValue& ort_value, int ort_value_index, const TensorShape* shape, size_t,
+                                     const std::unordered_map<int, std::vector<int64_t>>&) {
     using T = float;
     if (ort_value_index == NodeIndexInfo::kInvalidEntry) {
       return Status(ONNXRUNTIME, FAIL, "Trying to allocate memory for unused optional inputs/outputs");

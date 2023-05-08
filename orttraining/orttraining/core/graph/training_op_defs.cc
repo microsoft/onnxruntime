@@ -3923,7 +3923,7 @@ Return true if all elements are true and false otherwise.
           // same as a normal PythonOp when execution. The only difference is that:
           // 1). those ops having the same number of tensor inputs and tensor outputs;
           // 2). and the i-th output tensor's shape is the same as i-th input tensor's shape.
-          // Be noted, the count of custom autograd function might be bigger than the output count, because there might
+          // Be noted, the count of custom autograd function might be bigger than the input count, because there might
           // be other non-tensor constant inputs (string, object, int, tuple, etc). But we did not make those constant
           // inputs as ONNX op's input, instead they are stored in the attributes.
           ORT_ENFORCE(ctx.getNumOutputs() == ctx.getNumInputs() + 1);  // The output contains one extra context info.
@@ -4569,6 +4569,82 @@ Return true if all elements are true and false otherwise.
           three.set_dim_value(3);
           // Gradient with respect to the peephole weight tensor
           updateOutputShape(ctx, 6, {num_directions, three * hidden_size});
+        }
+      });
+
+  constexpr const char* UnfusedScaledDotProductAttentionVariableSeqlen_ver1_doc = R"DOC(
+Unfused version of scaled dot product attention, leveraging variable length sequences for computation.
+)DOC";
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(UnfusedScaledDotProductAttentionVariableSeqlen)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc(UnfusedScaledDotProductAttentionVariableSeqlen_ver1_doc)
+      .Attr("training_mode", "By default False.", AttributeProto::INT, static_cast<int64_t>(0))
+      .Attr(
+          "pre_scale",
+          "String representation of the pre-scale lamda function. For example 'pre_v * 8.0'"
+          "",
+          AttributeProto::GRAPH,
+          false)
+      .Attr(
+          "mid_scale",
+          "String representation of the mid-scale lamda function. For example 'add(float(mid_v / 8.0), @input3)'"
+          "",
+          AttributeProto::GRAPH,
+          false)
+      .Attr(
+          "post_scale",
+          "String representation of the post-scale lamda function. For example 'half(pst_v)'"
+          "",
+          AttributeProto::GRAPH,
+          false)
+      .Input(0,
+             "query",
+             "Query with shape (token_count, head, hidden_size_per_head)",
+             "T")
+      .Input(1,
+             "key",
+             "Key with shape (token_count, head, hidden_size_per_head)",
+             "T")
+      .Input(2,
+             "value",
+             "Value with shape (token_count, head, hidden_size_per_head)",
+             "T")
+      .Input(3,
+             "q_cum_seq_len",
+             "Cumulated sequence lengths. Its shape is (batch_size + 1)",
+             "TI")
+      .Input(4,
+             "k_cum_seq_len",
+             "Cumulated sequence lengths. Its shape is (batch_size + 1)",
+             "TI")
+      .Input(5,
+             "v_cum_seq_len",
+             "Cumulated sequence lengths. Its shape is (batch_size + 1)",
+             "TI")
+      .Input(6,
+             "mask",
+             "Key padding mask with shape broadcastable with (batch_size, head, sequence_length, sequence_length)",
+             "M")
+      .Input(7,
+             "full_shape",
+             "1-D tensor containing (batch_size, sequence_length, head, hidden_size_per_head)",
+             "TI")
+      .Output(0,
+              "output",
+              "2-D output tensor with shape (token_count, head, hidden_size_per_head)",
+              "T")
+      .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output to float tensors.")
+      .TypeConstraint("M", {"tensor(int32)", "tensor(int64)"}, "Constrain mask to integer types")
+      .TypeConstraint("TI", {"tensor(int32)", "tensor(int64)"}, "Constrain full_shape to integer types")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        // Type inference
+        ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 0);
+
+        // Shape inference
+        if (hasInputShape(ctx, 0)) {
+          ONNX_NAMESPACE::propagateShapeFromInputToOutput(ctx, 0, 0);
         }
       });
 }

@@ -41,17 +41,20 @@ OpKernelContext::OpKernelContext(concurrency::ThreadPool* threadpool,
                                  const logging::Logger& logger,
                                  Stream* stream) : threadpool_(threadpool), logger_(&logger), stream_(stream) {}
 
-Tensor* OpKernelContext::Output(int index, const TensorShape& shape) {
-  auto p_ml_value = OutputMLValue(index, shape);
+Tensor* OpKernelContext::Output(int index, const TensorShape& shape,
+                                const std::unordered_map<int, std::vector<int64_t>>& dim_values_on_var_shape) {
+  auto p_ml_value = OutputMLValue(index, shape, dim_values_on_var_shape);
   return p_ml_value ? p_ml_value->GetMutable<Tensor>() : nullptr;
 }
 
-Tensor* OpKernelContext::Output(int index, const std::vector<int64_t>& shape) {
-  return Output(index, TensorShape(shape));
+Tensor* OpKernelContext::Output(int index, const std::vector<int64_t>& shape,
+                                const std::unordered_map<int, std::vector<int64_t>>& dim_values_on_var_shape) {
+  return Output(index, TensorShape(shape), dim_values_on_var_shape);
 }
 
-Tensor* OpKernelContext::Output(int index, const std::initializer_list<int64_t>& shape) {
-  return Output(index, TensorShape(shape));
+Tensor* OpKernelContext::Output(int index, const std::initializer_list<int64_t>& shape,
+                                const std::unordered_map<int, std::vector<int64_t>>& dim_values_on_var_shape) {
+  return Output(index, TensorShape(shape), dim_values_on_var_shape);
 }
 
 #if !defined(DISABLE_SPARSE_TENSORS)
@@ -69,17 +72,21 @@ bool OpKernelContext::TryGetInferredOutputShape(int index, TensorShape& shape) c
   return execution_frame_->TryGetInferredShape(GetOutputArgIndex(index), shape);
 }
 
-OrtValue* OpKernelContext::OutputMLValue(int index, const TensorShape& shape) {
+OrtValue* OpKernelContext::OutputMLValue(int index, const TensorShape& shape,
+                                         const std::unordered_map<int, std::vector<int64_t>>& dim_values_on_var_shape) {
   if (index < 0 || index >= OutputCount())
     return nullptr;
 
   //: Though we don't need to give 'ret' an initial value, GCC would generate a warning if we don't do that
   //"error: 'ret' may be used uninitialized in this function"
-  //This warning only exists in Release build.
-  //I believe it's a false alarm.
+  // This warning only exists in Release build.
+  // I believe it's a false alarm.
 
   OrtValue* p_ml_value = nullptr;
-  Status status = execution_frame_->GetOrCreateNodeOutputMLValue(index, GetOutputArgIndex(index), &shape, p_ml_value, kernel_->Node());
+  Status status = execution_frame_->GetOrCreateNodeOutputMLValue(index,
+                                                                 GetOutputArgIndex(index), &shape, p_ml_value,
+                                                                 kernel_->Node(),
+                                                                 dim_values_on_var_shape);
   ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
   return p_ml_value;
 }
@@ -123,10 +130,12 @@ MLDataType OpKernelContext::OutputType(int index) const {
   return p_ml_value ? p_ml_value->Type() : nullptr;
 }
 
-OrtValue* OpKernelContext::GetOrCreateOutputMLValue(int index) {
+OrtValue* OpKernelContext::GetOrCreateOutputMLValue(
+    int index, const std::unordered_map<int, std::vector<int64_t>>& dim_values_on_var_shape) {
   auto output_arg_index = GetOutputArgIndex(index);
   OrtValue* value = nullptr;
-  auto status = execution_frame_->GetOrCreateNodeOutputMLValue(index, output_arg_index, nullptr, value, kernel_->Node());
+  auto status = execution_frame_->GetOrCreateNodeOutputMLValue(
+      index, output_arg_index, nullptr, value, kernel_->Node(), dim_values_on_var_shape);
   ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
   return value;
 }

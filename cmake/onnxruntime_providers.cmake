@@ -493,7 +493,7 @@ if (onnxruntime_USE_CUDA)
     target_include_directories(onnxruntime_providers_cuda PRIVATE ${onnxruntime_CUDNN_HOME}/include)
   endif()
 
-  if (onnxruntime_USE_FLASH_ATTENTION)
+  if (onnxruntime_USE_FLASH_ATTENTION OR onnxruntime_ENABLE_TRAINING)
     include(cutlass)
     target_include_directories(onnxruntime_providers_cuda PRIVATE ${cutlass_SOURCE_DIR}/include ${cutlass_SOURCE_DIR}/examples)
   endif()

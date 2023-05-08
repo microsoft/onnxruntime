@@ -8,7 +8,7 @@ Convergence issues can be identified by:
 
 Before looking into further, we should clarify few things (if possible):
 - If we change seed for baseline run, whether the metric diff is big?
-  (Make sure the discrepancy is not introduced by random)
+  (Make sure the discrepancy is not introduced by randomness)
 - What's the very first steps we see obvious diverges?
 - Still repro once remove randomness?
 	- Set same seeds
@@ -22,7 +22,8 @@ Add codes:
 
 ```diff
 +	from onnxruntime.training.utils.hooks import SubscriberManager, StatisticsSubscriber
-+	SubscriberManager.subscribe(model, [StatisticsSubscriber("pt_out", override_output_dir=True)])
++	sub_manager = SubscriberManager()
++	sub_manager.subscribe(model, [StatisticsSubscriber("pt_out", override_output_dir=True)])
 
 ```
 Run training script to the steps that triggered the divergence. A folder named `pt_out` is created in current working directory. For each step, there is a folder containing summaries for every activation tensor.
@@ -31,12 +32,13 @@ Run training script to the steps that triggered the divergence. A folder named `
 Add few lines of code:
 ```diff
 	from onnxruntime.training.ortmodule import ORTModule
-	from onnxruntime.training.utils.hooks import SubscriberManager, StatisticsSubscriber
 	model = ORTModule(model)
-+	SubscriberManager.subscribe(model, [StatisticsSubscriber("ort_out", override_output_dir=True)])
++	from onnxruntime.training.utils.hooks import SubscriberManager, StatisticsSubscriber
++	sub_manager = SubscriberManager()
++	sub_manager.subscribe(model, [StatisticsSubscriber("ort_out", override_output_dir=True)])
 ```
 
-> `StatisticsSubscriber` can be initialized before OR after wrapping ORTModule.
+> `StatisticsSubscriber` can be subscribed before OR after wrapping ORTModule.
 
 Run training script to the steps that triggered the divergence. Similarly, a folder named `ort_out` is created in current working directory.
 

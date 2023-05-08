@@ -64,9 +64,9 @@ class OpKernelContext {
   // In the case that memory allocation has not been done for an output tensor,
   // The memory allocation will be done on-the-fly with given tensor shape.
   // Return nullptr if the output is an unused optional output.
-  Tensor* Output(int index, const TensorShape& shape);
-  Tensor* Output(int index, const std::vector<int64_t>& shape);
-  Tensor* Output(int index, const std::initializer_list<int64_t>& shape);
+  Tensor* Output(int index, const TensorShape& shape, const std::unordered_map<int, std::vector<int64_t>>& dim_values_on_var_shape = {});
+  Tensor* Output(int index, const std::vector<int64_t>& shape, const std::unordered_map<int, std::vector<int64_t>>& dim_values_on_var_shape = {});
+  Tensor* Output(int index, const std::initializer_list<int64_t>& shape, const std::unordered_map<int, std::vector<int64_t>>& dim_values_on_var_shape = {});
 
   // Fetch a required tensor output, enforcing that it is present.
   Tensor& RequiredOutput(int index, const TensorShape& shape) {
@@ -194,9 +194,12 @@ class OpKernelContext {
 #endif
 
   // Creates the OrtValue* based on the shape, if it does not exist
-  virtual OrtValue* OutputMLValue(int index, const TensorShape& shape);
+  virtual OrtValue* OutputMLValue(int index, const TensorShape& shape,
+                                  const std::unordered_map<int, std::vector<int64_t>>& dim_values_on_var_shape = {});
 
-  virtual OrtValue* GetOrCreateOutputMLValue(int index);
+  virtual OrtValue* GetOrCreateOutputMLValue(
+      int index,
+      const std::unordered_map<int, std::vector<int64_t>>& dim_values_on_var_shape = {});
 
  private:
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(OpKernelContext);
@@ -219,7 +222,8 @@ class OpKernelContext {
 
 // Fetching output tensor without shape is not allowed except when it already exists
 template <>
-inline Tensor* OpKernelContext::Output<Tensor>(int index) {
+inline Tensor* OpKernelContext::Output<Tensor>(
+    int index) {
   OrtValue* p_ml_value = GetOutputMLValue(index);
   ORT_ENFORCE(p_ml_value, "Please fetch output tensor with specified shape.");
   return p_ml_value->GetMutable<Tensor>();

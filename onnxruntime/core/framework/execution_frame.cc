@@ -153,7 +153,8 @@ OrtValue* IExecutionFrame::GetMutableNodeInputOrOutputMLValue(int index) {
 
 Status IExecutionFrame::GetOrCreateNodeOutputMLValue(const int output_index, int output_arg_index,
                                                      const TensorShape* shape, OrtValue*& p_ort_value,
-                                                     const Node& node) {
+                                                     const Node& node,
+                                                     const std::unordered_map<int, std::vector<int64_t>>& dim_values_on_var_shape) {
   auto status = Status::OK();
   int ort_value_idx = GetNodeIdxToMLValueIdx(output_arg_index);
 
@@ -183,7 +184,7 @@ Status IExecutionFrame::GetOrCreateNodeOutputMLValue(const int output_index, int
       if (shape != nullptr && IsOutput(ort_value_idx)) {
         VerifyOutputSizes(output_index, node, *shape);
       }
-      status = CreateNodeOutputMLValueImpl(*p_ort_value, ort_value_idx, shape);
+      status = CreateNodeOutputMLValueImpl(*p_ort_value, ort_value_idx, shape, dim_values_on_var_shape);
     }
   }
 
@@ -479,8 +480,10 @@ const DataTransferManager& ExecutionFrame::GetDataTransferManager() const {
 
 Status ExecutionFrame::AllocateMLValueTensorSelfOwnBuffer(OrtValue& ort_value, int ort_value_index,
                                                           MLDataType element_type, const OrtMemoryInfo& location,
-                                                          const TensorShape& shape) {
-  return AllocateMLValueTensorSelfOwnBufferHelper(ort_value, ort_value_index, element_type, location, shape);
+                                                          const TensorShape& shape,
+                                                          const std::unordered_map<int, std::vector<int64_t>>& dim_values_on_var_shape) {
+  return AllocateMLValueTensorSelfOwnBufferHelper(ort_value, ort_value_index, element_type, location, shape,
+                                                  dim_values_on_var_shape);
 }
 
 Stream* ExecutionFrame::GetValueStream(int ort_value_idx) const {
@@ -495,7 +498,8 @@ Stream* ExecutionFrame::GetValueStream(int ort_value_idx) const {
 Status ExecutionFrame::AllocateMLValueTensorSelfOwnBufferHelper(OrtValue& ort_value, int ort_value_index,
                                                                 MLDataType element_type,
                                                                 const OrtMemoryInfo& location,
-                                                                const TensorShape& shape) {
+                                                                const TensorShape& shape,
+                                                                const std::unordered_map<int, std::vector<int64_t>>& dim_values_on_var_shape) {
   if (ort_value_index == NodeIndexInfo::kInvalidEntry) {
     return Status(ONNXRUNTIME, FAIL, "Trying to allocate memory for unused optional inputs/outputs");
   }
@@ -571,7 +575,7 @@ Status ExecutionFrame::AllocateMLValueTensorSelfOwnBufferHelper(OrtValue& ort_va
     ORT_THROW("Ort value is associated with a Stream but Stream is not enabled in the build.");
 #endif
   } else {
-    Tensor::InitOrtValue(element_type, shape, std::move(alloc), ort_value);
+    Tensor::InitOrtValue(element_type, shape, std::move(alloc), ort_value, {}, dim_values_on_var_shape);
   }
 
   // trace the memory allocation.
@@ -672,20 +676,22 @@ static Status AllocateSparseTensor(OrtValue& mlvalue, const DataTypeImpl& ml_typ
 }
 #endif
 
-Status ExecutionFrame::AllocateReusedOrtValueIfNotAllocatedHelper(int reuse_mlvalue_index, const TensorShape* shape) {
+Status ExecutionFrame::AllocateReusedOrtValueIfNotAllocatedHelper(int reuse_mlvalue_index, const TensorShape* shape,
+                                                                  const std::unordered_map<int, std::vector<int64_t>>& dim_values_on_var_shape) {
   // In case OrtRunOptions.only_execute_path_to_fetches == true, it is possible that 'reuse_value'
   // is not allocated (its upstream op is not executed due to the option).
   // In this case we need to allocate 'reuse_value' and then let 'ort_value' to reuse it.
   OrtValue& reuse_value = GetMutableMLValue(reuse_mlvalue_index);
   if (!reuse_value.IsAllocated()) {
-    ORT_RETURN_IF_ERROR(AllocateAsPerAllocationPlan(reuse_value, reuse_mlvalue_index, shape));
+    ORT_RETURN_IF_ERROR(AllocateAsPerAllocationPlan(reuse_value, reuse_mlvalue_index, shape, dim_values_on_var_shape));
   }
 
   return Status::OK();
 }
 
 // This method is not thread safe!
-Status ExecutionFrame::AllocateAsPerAllocationPlan(OrtValue& ort_value, int ort_value_index, const TensorShape* shape) {
+Status ExecutionFrame::AllocateAsPerAllocationPlan(OrtValue& ort_value, int ort_value_index, const TensorShape* shape,
+                                                   const std::unordered_map<int, std::vector<int64_t>>& dim_values_on_var_shape) {
   const auto& alloc_plan = session_state_.GetPerValueAllocPlan();
   ORT_ENFORCE(ort_value_index >= 0 && static_cast<size_t>(ort_value_index) < alloc_plan.size());
   const auto& per_alloc_plan = alloc_plan[ort_value_index];
@@ -732,13 +738,13 @@ Status ExecutionFrame::AllocateAsPerAllocationPlan(OrtValue& ort_value, int ort_
       case AllocKind::kAllocateOutput:
       case AllocKind::kAllocate: {
         ORT_RETURN_IF_ERROR(AllocateMLValueTensorSelfOwnBuffer(ort_value, ort_value_index, ml_data_type, alloc_info,
-                                                               *shape));
+                                                               *shape, dim_values_on_var_shape));
         break;
       }
       case AllocKind::kReuse: {
         int reuse_mlvalue_index = per_alloc_plan.reused_buffer;
 
-        ORT_RETURN_IF_ERROR(AllocateReusedOrtValueIfNotAllocatedHelper(reuse_mlvalue_index, shape));
+        ORT_RETURN_IF_ERROR(AllocateReusedOrtValueIfNotAllocatedHelper(reuse_mlvalue_index, shape, dim_values_on_var_shape));
 
         bool is_strided_tensor = false;
 #ifdef ENABLE_STRIDED_TENSORS
@@ -785,7 +791,7 @@ Status ExecutionFrame::AllocateAsPerAllocationPlan(OrtValue& ort_value, int ort_
     if (alloc_kind == AllocKind::kReuse) {
       int reuse_mlvalue_index = per_alloc_plan.reused_buffer;
 
-      ORT_RETURN_IF_ERROR(AllocateReusedOrtValueIfNotAllocatedHelper(reuse_mlvalue_index, shape));
+      ORT_RETURN_IF_ERROR(AllocateReusedOrtValueIfNotAllocatedHelper(reuse_mlvalue_index, shape, dim_values_on_var_shape));
 
       OrtValue& reuse_value = GetMutableMLValue(reuse_mlvalue_index);
 
@@ -807,8 +813,9 @@ AllocatorPtr ExecutionFrame::GetAllocatorImpl(const OrtMemoryInfo& info) const {
 
 // This method is not thread safe!
 // Return S_OK and nullptr if index map to an value that is an unused optional input/output
-Status ExecutionFrame::CreateNodeOutputMLValueImpl(OrtValue& ort_value, int ort_value_idx, const TensorShape* shape) {
-  return AllocateAsPerAllocationPlan(ort_value, ort_value_idx, shape);
+Status ExecutionFrame::CreateNodeOutputMLValueImpl(OrtValue& ort_value, int ort_value_idx, const TensorShape* shape,
+                                                   const std::unordered_map<int, std::vector<int64_t>>& dim_values_on_var_shape) {
+  return AllocateAsPerAllocationPlan(ort_value, ort_value_idx, shape, dim_values_on_var_shape);
 }
 
 void ExecutionFrame::VerifyOutputSizes(int output_index, const Node& node, const TensorShape& output_shape) {
