@@ -75,6 +75,7 @@ stages:
         echo "Release version suffix is: $(ReleaseVersionSuffix)"
 
 - stage: Debug
+  condition: in(dependencies.Setup.state, 'Finished')
   dependsOn: Setup
   jobs:
   - job:
