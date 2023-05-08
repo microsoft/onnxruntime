@@ -2,8 +2,8 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cuda/triton_kernel.h"
-#include "core/platform/env_var_utils.h"
 #include "core/framework/tunable.h"
+#include <dlfcn.h>
 #include <fstream>
 #include <thread>
 
@@ -36,6 +36,26 @@ static std::unordered_map<std::string, std::vector<int>> ort_triton_kernel_group
 
 const int GPU_WARP_SIZE = 32;
 
+#ifdef USE_TRITON_KERNEL
+Status GetSymbolFromLibrary(const std::string& symbol_name, void** symbol) {
+  dlerror();  // clear any old error str
+
+  // USe RTLD_DEFAULT for search current lib.so
+  // value of RTLD_DEFAULT differs across posix platforms (-2 on macos, 0 on linux).
+  void* handle = RTLD_DEFAULT;
+  *symbol = dlsym(handle, symbol_name.c_str());
+
+  char* error_str = dlerror();
+  if (error_str) {
+    Status status = ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+		    "Failed to get symbol " + symbol_name + " with error: " + error_str);
+    return status;
+  }
+  // it's possible to get a NULL symbol in our case when Schemas are not custom.
+  return Status::OK();
+}
+#endif
+
 
 /*
  *  Try to load HIP kernels that compiled by triton.
@@ -53,7 +73,7 @@ void TryToLoadKernel() {
       auto k_i = kernel_infos[i];
 
       void *buff;
-      ORT_THROW_IF_ERROR(onnxruntime::Env::Default().GetSymbolFromLibrary(nullptr, k_i.name_start, &buff));
+      ORT_THROW_IF_ERROR(GetSymbolFromLibrary(k_i.name_start, &buff));
 
       // try to load module and get function
       CUmodule module;
