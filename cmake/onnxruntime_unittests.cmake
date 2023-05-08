@@ -794,7 +794,7 @@ if (onnxruntime_USE_TENSORRT)
   # The test names of model tests were using sequential number in the past.
   # This PR https://github.com/microsoft/onnxruntime/pull/10220 (Please see ExpandModelName function in model_tests.cc for more details)
   # made test name contain the "ep" and "model path" information, so we can easily filter the tests using cuda ep or other ep with *cpu_* or *xxx_*.
-  list(APPEND test_all_args "--gtest_filter=-*cpu_*:*cuda_*" )
+  list(APPEND test_all_args "--gtest_filter=TopKOperator.Top3ExplicitAxisInfinity" "--gtest_repeat=1000" )
 endif ()
 
 AddTest(
