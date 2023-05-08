@@ -90,6 +90,7 @@ stages:
         echo "Release version suffix is: $(ReleaseVersionSuffix)"
         echo "MyVar is: $(MyVar)"
         echo "depsJson is: $(depsJson)"
+    - bash: "env | sort"
 
 - template: templates/c-api-cpu.yml
   parameters:
