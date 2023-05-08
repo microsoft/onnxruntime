@@ -124,16 +124,15 @@ Status AddInitializerInNewLayout(ModelBuilder& model_builder,
   SafeInt<size_t> num_elements = SafeInt<size_t>(Product(dest_shape));
 
   size_t element_size{0};
-  switch (data_type)
-  {
-  case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16:
-    element_size = sizeof(uint16_t);
-    break;
-  case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
-    element_size = sizeof(float);
-    break;
-  default:
-    break;
+  switch (data_type) {
+    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16:
+      element_size = sizeof(uint16_t);
+      break;
+    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
+      element_size = sizeof(float);
+      break;
+    default:
+      break;
   }
   std::unique_ptr<uint8_t[]> buffer_holder(new uint8_t[element_size * num_elements]);
   uint8_t* buffer = buffer_holder.get();
@@ -168,7 +167,7 @@ Status AddInitializerInNewLayout(ModelBuilder& model_builder,
     }
   }
   ORT_RETURN_IF_ERROR(model_builder.AddOperandFromPersistMemoryBuffer(name, buffer, num_elements * element_size,
-                                                                      dest_shape, element_size));
+                                                                      dest_shape, data_type));
   return Status::OK();
 }
 

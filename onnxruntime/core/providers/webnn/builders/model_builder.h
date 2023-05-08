@@ -39,7 +39,7 @@ class ModelBuilder {
   // Add a constant operand (allocate persist buffer and move the ownership to mem_persist_buffers_).
   Status AddOperandFromPersistMemoryBuffer(
       const std::string& name, const void* buffer,
-      const size_t size, const std::vector<uint32_t> shape, const size_t element_size = 4);
+      const size_t size, const std::vector<uint32_t> shape, const int32_t data_type);
   // Find if an output has a fuseable activation (e.g., Relu).
   emscripten::val FindActivation(const Node& node, const NodeArg& output,
                                  const InlinedHashSet<std::string> supported_nodes = {});
