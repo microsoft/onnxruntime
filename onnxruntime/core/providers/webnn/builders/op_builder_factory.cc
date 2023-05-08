@@ -15,6 +15,13 @@ namespace webnn {
 static OpBuilderRegistrations CreateOpBuilderRegistrations() {
   OpBuilderRegistrations op_registrations;
 
+  {  // Unary
+    CreateUnaryOpBuilder("Cos", op_registrations);
+    CreateUnaryOpBuilder("Floor", op_registrations);
+    CreateUnaryOpBuilder("Sin", op_registrations);
+    CreateUnaryOpBuilder("Sqrt", op_registrations);
+  }
+
   {  // Binary
     CreateBinaryOpBuilder("Add", op_registrations);
     CreateBinaryOpBuilder("Sub", op_registrations);
@@ -58,6 +65,10 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
 
   {  // Resize
     CreateResizeOpBuilder("Resize", op_registrations);
+  }
+
+  {  // Softmax
+    CreateSoftmaxOpBuilder("Softmax", op_registrations);
   }
 
   {  // Transpose
