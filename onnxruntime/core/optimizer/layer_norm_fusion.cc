@@ -108,7 +108,7 @@ Such Cast Op can be the input of the sub-graph, or an Cast Op between the Div an
 
 Optional[Add]: In mixed precision training setting, if epsilon is less than 1e-5 (default value) then downcasting from fp32 to fp16
 sets the epsilon to 0. Consequently, the add node will be removed during round 1 of optimizations (since adding 0 is a no-op).
-Thus, we account for this removal by making the add node check optional while doing mixed precision training.
+Thus, we account for this removal by making the add node check optional if performing mixed precision training.
 */
 Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
   GraphViewer graph_viewer(graph);
