@@ -142,15 +142,16 @@ class PresencePenaltyLogitsProcessor : public ILogitsProcessor<T> {
 template <typename T>
 class TSLogitsProcessor : public ILogitsProcessor<T> {
  public:
-  TSLogitsProcessor(int eos_token_id, int beg_token_id, int not_token_id, int max_initial_timestamp_index);
+  ///TSLogitsProcessor(int eos_token_id, int beg_token_id, int not_token_id, int max_initial_timestamp_index);
+  TSLogitsProcessor(int eos_token_id, int max_initial_timestamp_index);
 
   void Process(const ISequences* sequences,
                NextTokenScores<T>& next_token_scores) override;
 
  private:
   int eos_token_id_;
-  int beg_token_id_;
-  int not_token_id_;
+  ///int beg_token_id_;
+  ///int not_token_id_;
   int max_initial_timestamp_index_;
 };
 //slx
@@ -212,8 +213,10 @@ class LogitsProcessorList : public ILogitsProcessorList {
 
 //slx
     if (parameters.model_type == IGenerationParameters::kModelTypeWhisper) {//parameters.timestamp_rules
-      //eos: 50257, beg: 50364, not: 50363, max_initial_timestamp_index: 50
-      ts_processor_ = std::make_unique<TSLogitsProcessor<float>>(parameters.eos_token_id, 50364, 50363, 50);
+      //eos: 50257, beg: +107=50364, not: +106=50363, max_initial_timestamp_index: 50
+      //ts_processor_ = std::make_unique<TSLogitsProcessor<float>>(parameters.eos_token_id, 50364, 50363, 50);
+      const int max_initial_timestamp_index = 50;
+      ts_processor_ = std::make_unique<TSLogitsProcessor<float>>(parameters.eos_token_id, max_initial_timestamp_index);
       processor_list_.push_back(ts_processor_.get());
     }
 //slx

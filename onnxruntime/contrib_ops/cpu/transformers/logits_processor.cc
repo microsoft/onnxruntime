@@ -242,23 +242,26 @@ void PresencePenaltyLogitsProcessor<T>::Process(const ISequences*,
 //slx
 // Interface for all scorers for beam search or beam sample.
 template <typename T>
-TSLogitsProcessor<T>::TSLogitsProcessor(int eos_token_id, int beg_token_id, int not_token_id, int max_initial_timestamp_index)
-    : eos_token_id_(eos_token_id), beg_token_id_(beg_token_id), not_token_id_(not_token_id), max_initial_timestamp_index_(max_initial_timestamp_index) {}
+///TSLogitsProcessor<T>::TSLogitsProcessor(int eos_token_id, int beg_token_id, int not_token_id, int max_initial_timestamp_index)
+///    : eos_token_id_(eos_token_id), beg_token_id_(beg_token_id), not_token_id_(not_token_id), max_initial_timestamp_index_(max_initial_timestamp_index) {}
+TSLogitsProcessor<T>::TSLogitsProcessor(int eos_token_id, int max_initial_timestamp_index)
+    : eos_token_id_(eos_token_id), max_initial_timestamp_index_(max_initial_timestamp_index) {}
 
 template <typename T>
 void TSLogitsProcessor<T>::Process(const ISequences* sequences,
                                           NextTokenScores<T>& next_token_scores) {
   std::cout << "TSLogitsProcessor process: all: +1, suppress notimestamp/solm, pair check, increase check, max_initial_timestamp and logprob" << std::endl;
-  std::cout << "eos_token_id_: " << eos_token_id_ << ", beg_token_id_: " << beg_token_id_ << ", not_token_id_: " << not_token_id_ << ", max_initial_timestamp_index_: " << max_initial_timestamp_index_ << std::endl;
   //assert(!vocab_mask_.empty());
 
-  ///const int beg_token_id_ = 50363 + 1;
-  ///const int eot_token_id_ = 50256 + 1;//==eos_token_id
-  ///const int not_token_id_ = 50362 + 1;
-  const int solm_token_id_ = 50361 + 1;
-  const int sot_token_id_ = 50257 + 1;
+  const int beg_token_id_ = eos_token_id_ + 107;//50364
+  ///const int eot_token_id_ = 50256 + 1;//==eos_token_id//50257
+  const int not_token_id_ = eos_token_id_ + 106;//50363
+  const int solm_token_id_ = eos_token_id_ + 105;//50362
+  const int sot_token_id_ = eos_token_id_ + 1;//50258
   const int translate_token_id_ = 50358;
   const int transcribe_token_id_ = 50359;
+  std::cout << "eos_token_id_: " << eos_token_id_ << ", beg_token_id_: " << beg_token_id_ << ", not_token_id_: " << not_token_id_ << ", max_initial_timestamp_index_: " << max_initial_timestamp_index_ << std::endl;
+
 /*
   const int sot_token_id_ = 50257 + 1;
   const int solm_token_id_ = 50361 + 1;
