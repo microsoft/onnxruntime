@@ -64,7 +64,7 @@ jobs:
         mkdir -p $(artifacts_directory)
       workingDirectory: $(Build.BinariesDirectory)
 
-  - template: get-docker-image-steps.yml
+  - template: steps/get-docker-image-steps.yml
     parameters:
       Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_cpu
       Context: tools/ci_build/github/linux/docker
