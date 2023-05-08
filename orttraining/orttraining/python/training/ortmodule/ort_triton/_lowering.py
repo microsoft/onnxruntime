@@ -43,8 +43,12 @@ class NodeGroup:
         rank = len(self.target_shape)
         self.reduce_axes: List[int] = sort_reduce_axes(reduce_axes, rank)
         x_dims = [self.target_shape[dim] for dim in range(rank) if dim not in self.reduce_axes]
+        # x_numel is meant to hint how many rows of tensor will be processed by each kernel.
+        # x is same as CUDA block in X direction.
         x_numel: sympy.Expr = sympy.prod(x_dims) if len(x_dims) > 0 else sympy.Integer(1)
         r_dims: List[sympy.Expr] = [self.target_shape[dim] for dim in self.reduce_axes]
+        # r_numel is meant to hint how many elements in a row of tensor will be processed by each kernel.
+        # r is a abbreviation of reduction, so, it's only used for reduction nodes.
         r_numel: sympy.Expr = sympy.prod(r_dims) if len(r_dims) > 0 else sympy.Integer(1)
         # Support concrete shape only for now.
         assert x_numel.is_integer and r_numel.is_integer
@@ -56,7 +60,9 @@ class NodeGroup:
             self.reduced_args.add(node.output[0])
 
     # Check if shape can be broadcasted to target_shape.
-    def _compatable_shape(self, shape: List[sympy.Expr]) -> bool:
+    # For example, [1, 3, 1, 1] can be broadcasted to [1, 3, 5, 7].
+    # and we support `keepdims = false``, so [1, 3, 5, 7] is compatible with [1, 3, 5].
+    def _compatible_shape(self, shape: List[sympy.Expr]) -> bool:
         if len(shape) > len(self.target_shape):
             return False
         shape = [sympy.Integer(1)] * (len(self.target_shape) - len(shape)) + shape
@@ -67,10 +73,22 @@ class NodeGroup:
                 return False
         return True
 
+    # Only we consider reduction or elementwise nodes.
+    # target shape does effect how we block the tensor in a triton kernel
+    # for reduction, it's possible to set keepdims=False
+    # for element-wise, output shape is always the target shape.
     def _get_target_shape(self, node):
         name = node.input[0] if is_reduction_node(node) else node.output[0]
         return self._node_arg_infos[name].shape
 
+    # Check if a node can be added to this group.
+    # a group represents a single kernel.
+    # Theoretically, we should fuse as more nodes as possible to benefit most from memory access pattern.
+    # But we have to consider the following factors:
+    #     1. We have to keep the order of nodes, so that we can't fuse nodes that are not adjacent.
+    #     2. The target shape of a group is determined by the first node in the group.
+    #       we call it dominators, and it determinate the partition strategy of X_numel/R_numel.
+    #       A group can't have multiple dominators.
     def compatible(self, node: NodeProto, reduce_axes: List[int], keep_dims: int) -> bool:
         target_shape = self._get_target_shape(node)
         if is_reduction_node(node):
@@ -84,8 +102,10 @@ class NodeGroup:
             ) or self.target_shape != target_shape:
                 return False
             return True
-        return self._compatable_shape(target_shape)
+        return self._compatible_shape(target_shape)
 
+    # 1. Create a new group with the reduction node.
+    # 2. Add this node to the current group.
     def add_node(self, node: NodeProto, reduce_axes: List[int], keep_dims: int):
         if is_reduction_node(node):
             group = NodeGroup(node, reduce_axes, keep_dims, self._node_arg_infos)
@@ -102,6 +122,7 @@ class NodeGroup:
         self.nodes_groups.append(node)
         return self
 
+    #
     def dependent_nodes(self, keep_reduce_node: bool):
         node_map = dict()
         reduce_nodes = []
@@ -114,6 +135,7 @@ class NodeGroup:
                 reduce_nodes.append(item)
         return node_map, reduce_nodes
 
+    # finalize the group, and return the flatten nodes
     def flatten(self, sorted_nodes: List[NodeProto]) -> Tuple[List[NodeProto], List[List[int]]]:
         if self.autotune_configs.requires_for_loop:
             layers = []
@@ -169,10 +191,18 @@ class KernelIO:
         self.internal_args: List[str] = []
 
 
-# GraphLowering is a pass to lower a SortedGraph to a ModuleNode, which contains one or more KernelNodes.
 class GraphLowering:
     """
-    calling lowering pass to translate from onnx graph to irnode.
+    GraphLowering does manager all steps of lowering onnx graph to triton irnode.
+    1. partition the graph into kernels (one or more kernels).
+        Manager to allocate inputs, outputs and buffers reuse between kernels.
+        we call it Module
+    2. convert kernel to irnodes.
+    3. analyze the IR relationship and buffer/Tensor inside a kernel.
+    4. Generate the Auto-Tune configs for each kernel, Tunning speed/Running faster depends.
+
+    we will end up getting a tree-liked IR structure with explicit input/output and intermediate buffer.
+
     """
 
     def __init__(self, sorted_graph: SortedGraph):
@@ -197,6 +227,7 @@ class GraphLowering:
         self._kernel_io_list: List[KernelIO] = []
         self._lower()
 
+    # A module is map to a real onnx graph.
     def _extract_module_io(self):
         graph = self._sorted_graph.original_graph
         self._module_inputs = [TensorArg(input.name, self._node_arg_infos[input.name]) for input in graph.input]

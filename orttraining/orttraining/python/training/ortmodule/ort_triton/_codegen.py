@@ -110,11 +110,11 @@ class TritonCodegen(NodeVisitor):
         ), f"variable name {var_name} and its internal variable name should not be the same."
 
         offset_str, mask_str = self._get_offset_mask(node.offset_calc, node.tensor_arg.name)
-        if offset_str != "":
+        if offset_str:
             offset_str = f" + {offset_str}"
-        if mask_str != "":
+        if mask_str:
             mask_str = f", {mask_str}"
-        if node.is_load and mask_str != "":
+        if node.is_load and mask_str:
             mask_str += ", other=0.0"
 
         if node.is_load:
@@ -138,7 +138,7 @@ class TritonCodegen(NodeVisitor):
         keys_str = '"xnumel", "rnumel"' if is_reduction else '"xnumel"'
         input_args = [context.get_variable_name(input.name) for input in node.inputs]
         input_args_str = ", ".join(input_args)
-        if input_args_str != "":
+        if input_args_str:
             input_args_str += ", "
 
         output_args = [context.get_variable_name(output.name) for output in node.outputs]
@@ -147,7 +147,7 @@ class TritonCodegen(NodeVisitor):
         other_input_args = "seed_cuda, " if node.has_dropout else ""
         # Support symbolic shape if any.
         symbolic_shape_args_str = ", ".join(node.symbolic_shape_variables)
-        if symbolic_shape_args_str != "":
+        if symbolic_shape_args_str:
             other_input_args += f"{symbolic_shape_args_str}, "
 
         blocks_str = (
@@ -369,7 +369,7 @@ class TritonCodegen(NodeVisitor):
                     )
             else:
                 op_str = " < " if reduce_node.op_type == "ReduceMax" else " > "
-                if masks_str != "":
+                if masks_str:
                     masks_str += " & "
                 src_code += (
                     f"{space_indent}{tmp_output_var_name} = tl.where("
@@ -440,7 +440,7 @@ class TritonCodegen(NodeVisitor):
                     f'torch.empty({tuple(output.shape)}, dtype={torch_dtype}, device="cuda")\n'
                 )
             kernel_args_str = ", ".join([context.get_variable_name(input.name) for input in kernel_node.inputs])
-            if kernel_args_str != "":
+            if kernel_args_str:
                 kernel_args_str += ", "
             kernel_args_str += ", ".join([context.get_variable_name(output.name) for output in kernel_node.outputs])
             # TODO: support other kinds of variable args, such as symbolic shape variable.

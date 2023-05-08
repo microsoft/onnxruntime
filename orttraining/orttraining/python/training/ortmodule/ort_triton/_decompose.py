@@ -3,7 +3,10 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
-# Decompose a complicated op into a series of simple ops.
+"""
+Decompose a complicated op into a series of simple ops.
+"simple ops" can be executed in one pass
+"""
 
 from typing import List
 

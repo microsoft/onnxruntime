@@ -54,11 +54,11 @@ class TensorArg:
 class OffsetCalculator:
     """
     OffsetCalculator maps tensor arguments to the target shape of a kernel.
-    It' used to generate the offset
-    code for data load/store for a tensor argument in a kernel with specific target shape.
-    If the reduce_axes is not empty, it means the kernel is a reduction kernel, otherwise it's an elementwise kernel.
+    It' used to generate the offset code for data load/store for a tensor argument in a kernel with
+    specific target shape.
+    If the reduce_axes is not empty, it means the kernel is a reduction kernel, otherwise it's an element-wise kernel.
     It requires the axes in reduce_axes are contiguous.
-    If a reduce node has non-contiguous axes, need to decompose it into multiple reduce nodes before codegen.
+    If a reduce node has non-contiguous axes, need to decompose it into multiple reduce nodes before code-gen.
     """
 
     def __init__(self, target_shape: List[sympy.Expr], reduce_axes: List[int]):
@@ -210,6 +210,8 @@ class ReduceForLoopStart(ComputeNode):
     """
     For reduce kernels that need for loop to compute, ReduceForLoopStart and ReduceForLoopEnd are used to
     represent the start and end of the for loop.
+
+    shared-memory declaration
     """
 
     def __init__(self, reduce_nodes: List[ReduceNode], offset_calc: OffsetCalculator):
@@ -219,6 +221,9 @@ class ReduceForLoopStart(ComputeNode):
 
 
 class ReduceForLoopEnd(ComputeNode):
+    """
+    shared-memory reduction
+    """
     def __init__(self, reduce_nodes: List[ReduceNode], offset_calc: OffsetCalculator):
         super().__init__("", [], [])
         self.reduce_nodes: List[ReduceNode] = reduce_nodes
