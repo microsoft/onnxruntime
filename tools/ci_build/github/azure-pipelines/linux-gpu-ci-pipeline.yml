@@ -131,7 +131,7 @@ jobs:
     inputs:
       script: |
         set -e -x
-        docker run --gpus all --rm
+        docker run --gpus all --rm \
           --volume  $(Build.SourcesDirectory):/onnxruntime_src \
           --volume $(Build.BinariesDirectory)/Release:/build/Release \
           --volume /data/models:/build/data/models \
