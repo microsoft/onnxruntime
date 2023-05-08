@@ -635,10 +635,7 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
             ORT_TSTR("operator_pow"),
             ORT_TSTR("bernoulli"),
             ORT_TSTR("bernoulli_double"),
-            ORT_TSTR("bernoulli_expanded"),
-            ORT_TSTR("bernoulli_double_expanded"),
-            ORT_TSTR("bernoulli_seed"),
-            ORT_TSTR("bernoulli_seed_expanded")};
+            ORT_TSTR("bernoulli_seed")};
 
     static const ORTCHAR_T* blfoat16_string_cast_tests[] = {
         ORT_TSTR("cast_BFLOAT16_to_FLOAT"),
