@@ -23,6 +23,15 @@ function compareTensors(tensorA, tensorB, msg){
   }
 }
 
+// TODO: this testing need to be revised
+//
+// work item list:
+// - format the code
+// - remove 'wasm' from file name
+// - test depending on public website (https://media.istockphoto.com/) should be changed to depends on a localhost
+// - the test is composed by 3 different test cases. split them to 3 different cases.
+// - some test cases are wriiten incorrectly.
+//
 it('Browser E2E testing - Tensor <--> Image E2E test', async function () {
 
   // Creating Image HTML Image Element
@@ -56,6 +65,12 @@ it('Browser E2E testing - Tensor <--> Image E2E test', async function () {
     // ImageData to tensor API
     let inputTensorImageData = await ort.Tensor.fromImage(newImage, options={norm:{bias:[2,3,9,5],mean:[5,6,17,8]}});
 
+    // TODO: fix this test case
+    //
+    // the line above does not return as expected because syntax error.
+    // the reason why it does not fail is because it throws exception, and the exception is not caught. the line below is not executed.
+    // to fix this, wrap a try-catch to deal with exceptions.
+
     compareTensors(inputTensorHTML,inputTensorImageData,'BUG in HTML image element & ImageData use case');
   }
 
@@ -68,7 +83,12 @@ it('Browser E2E testing - Tensor <--> Image E2E test', async function () {
   // Tensor to ImageDAta API
   let newImage = inputTensorDataURL.toDataURL({norm:{bias:[1/5,10/7,5/11,0],mean:[5,7,11,0]}});
   // ImageData to tensor API
-  let inputTensorImageData = await ort.Tensor.fromImage(newImage,{format:'RGB', norm:{bias:[1,10,5,0],mean:[5,7,11,0]}});
+  let inputTensorImageData = await ort.Tensor.fromImage(newImage,{format:'RGBA', norm:{bias:[1,10,5,0],mean:[5,7,11,0]}});
+
+  // TODO: fix this
+  // creating tensor from image data should not depend on `options.format`.
+  // data url with type 'image/png' has a determined 'RGBA' format
+
   compareTensors(inputTensorDataURL,inputTensorImageData,'BUG in ImageData & Data URL use case');
 
   // Testing URL --> Tensor --> ImageData --> Tensor
