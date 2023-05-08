@@ -61,14 +61,14 @@ stages:
   - job: Set_Variables
     steps:
     - checkout: none
-    - bash: |
+    - script: |
         if [[ "${{ parameters.IsReleaseBuild }}" = True && "${{ parameters.PreReleaseVersionSuffixString }}" != "none"  ]]; then
           echo "##vso[task.setvariable variable=ReleaseVersionSuffix; isOutput=true]${{ parameters.PreReleaseVersionSuffixString }}.${{ parameters.PreReleaseVersionSuffixNumber }}"
         else
           echo "##vso[task.setvariable variable=ReleaseVersionSuffix; isOutput=true]''"
         fi
       name: Set_Release_Version_Suffix
-    - bash: |
+    - script: |
         echo "IsReleaseBuild is: ${{ parameters.IsReleaseBuild }}"
         echo "Pre-release version suffix is: ${{ parameters.PreReleaseVersionSuffixString }}"
         echo "Pre-release version number is: ${{ parameters.PreReleaseVersionSuffixNumber }}"
@@ -85,7 +85,7 @@ stages:
         value: $[ stageDependencies.Setup.Set_Variables.outputs['Set_Release_Version_Suffix.ReleaseVersionSuffix'] ]
     steps:
     - checkout: none
-    - bash: |
+    - script: |
         echo "Release version suffix is: $(ReleaseVersionSuffix)"
         echo "MyVar is: $(MyVar)"
         echo "depsJson is: $(depsJson)"
