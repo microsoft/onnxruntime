@@ -18,9 +18,9 @@ def softmax_kernel(
 ```
 This is a very simple implementation. The `n_cols` parameter should be smaller than BLOCK_SIZE. And BLOCK_SIZE MUST be determined at compile time.
 
-In order to support different input shape, we compile mulitple kernels with different BLOCK_SIZE. 
+In order to support different input shape, we compile mulitple kernels with different BLOCK_SIZE.
 
-Each kernel generate different BLOCK_SIZE, num_warps and shared memory usage, we call them as `metadata`, and these metadata are needed when launching kernels in onnxruntime. 
+Each kernel with different BLOCK_SIZE generates different num_warps and shared memory usage, we call them as `metadata`, and these metadata are needed when launching kernels in onnxruntime.
 
 We develop a script `tools/ci_build/compile_triton.py` to compile kernel and generate metadata for kernel launching.
 
@@ -39,7 +39,7 @@ def get_funcion_table():
     ......
 ```
 
-When compiling onnxruntime with `--use_triton_kernel` flag, this softmax kernel will be compiled and combined into libonnxruntime_provider_rocm.so.
+When compiling onnxruntime with `--use_triton_kernel` flag, this softmax kernel will be compiled and combined into libonnxruntime_providers_rocm.so for rocm or libonnxruntime_providers_cuda.so for cuda.
 
 ### onnxruntime c++ code moidfication
 To use the triton kernels in onnxruntime, we need to implement a c++ op that calls these triton kernels.
