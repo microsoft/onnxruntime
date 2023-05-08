@@ -249,8 +249,8 @@ void TimestampLogitsProcessor<T>::Process(const ISequences* sequences,
   const int not_token_id_ = eos_token_id_ + 106;//50363
   const int solm_token_id_ = eos_token_id_ + 105;//50362
   const int sot_token_id_ = eos_token_id_ + 1;//50258
-  const int translate_token_id_ = 50358;
-  const int transcribe_token_id_ = 50359;
+  constexpr int translate_token_id_ = 50358;
+  constexpr int transcribe_token_id_ = 50359;
 
   const int batch_beam_size = next_token_scores.batch_beam_size;
   const int vocab_size = next_token_scores.vocab_size;
