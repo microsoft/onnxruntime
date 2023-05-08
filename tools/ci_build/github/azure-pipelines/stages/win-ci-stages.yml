@@ -163,7 +163,7 @@ stages:
           DoEsrp: ${{ parameters.DoEsrp }}
 
       - ${{ if eq(parameters.buildNodejs, true) }}:
-        - template: jobs/steps/nodejs-artifacts-package-and-publish-posix-steps.yml
+        - template: jobs/steps/nodejs-artifacts-package-and-publish-windows-steps.yml
           parameters:
             arch: ${{ parameters.packageName }}
             artifactName: 'drop-onnxruntime-nodejs-win-${{ parameters.packageName }}'
