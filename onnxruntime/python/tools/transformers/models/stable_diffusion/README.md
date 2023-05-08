@@ -74,58 +74,82 @@ Below is an example to optimize Stable Diffusion 1.5 in Linux. For Windows OS, p
 
 ### Setup Environment (CUDA)
 
+It is recommended to create a Conda environment with Python 3.8, 3.9 or 3.10, and run the model with [CUDA 11.7](https://developer.nvidia.com/cuda-11-7-0-download-archive) or 11.8.
 ```
 conda create -n py310 python=3.10
 conda activate py310
-pip install -r requirements.txt
-pip install -r requirements-cuda.txt
+pip3 install torch==1.13.1+cu117 --extra-index-url https://download.pytorch.org/whl/cu117
+pip3 install -r requirements-cuda.txt
 ```
 
-For Windows, the torch package installed from PyPI is CPU only. To enable support for GPU, it is necessary to install PyTorch version 1.13.1+cu117 or above using the following method:
-```
-pip install torch==1.13.1+cu117 --extra-index-url https://download.pytorch.org/whl/cu117
-```
-
-ONNX Runtime requires CUDA and [cuDNN](https://developer.nvidia.com/rdp/cudnn-download) for GPU inference. See https://onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html for compatible versions (like [CUDA 11.7](https://developer.nvidia.com/cuda-11-7-0-download-archive) and cuDNN 8.5.0.96 in Windows).
+ONNX Runtime requires CUDA and [cuDNN](https://developer.nvidia.com/rdp/cudnn-download) for GPU inference. See https://onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html for compatible versions.
 
 #### Install Nightly (Optional)
 
-Skip this step if you use onnxruntime-gpu 1.14.* release package.
+Skip this step if you use onnxruntime-gpu package from official releases.
 
 To try latest optimizations, you can install [ort-nightly-gpu](https://aiinfra.visualstudio.com/PublicPackages/_artifacts/feed/ORT-Nightly/PyPI/ort-nightly-gpu/) package like the following:
 
 ```
-pip uninstall onnxruntime-gpu
-pip install ort-nightly-gpu -i https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT-Nightly/pypi/simple/
+pip3 uninstall onnxruntime-gpu
+pip3 install ort-nightly-gpu -i https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT-Nightly/pypi/simple/
 ```
 
 ### Setup Environment (ROCm)
 
-It is recommended that the users should run the model with ROCm 5.4 or newer and Python 3.9. Note that Windows is not
-supported for ROCm at the moment.
+It is recommended that the users run the model with ROCm 5.4 or newer and Python 3.8, 3.9 or 3.10.
+Note that Windows is not supported for ROCm at the moment.
 
 ```
-conda create -n py39 python=3.9
-conda activate py39
-pip install -r requirements.txt
-pip install -r requirements-rocm.txt
+conda create -n py38 python=3.8
+conda activate py38
+wget https://repo.radeon.com/rocm/manylinux/rocm-rel-5.4/torch-1.12.1%2Brocm5.4-cp38-cp38-linux_x86_64.whl
+pip3 install torch-1.12.1+rocm5.4-cp38-cp38-linux_x86_64.whl
+pip3 install -r requirements-rocm.txt
 ```
 
-AMD GPU version of torch build can be installed from [AMD Radeon repo](https://repo.radeon.com/rocm/manylinux/rocm-rel-5.4/),
-user need to download the whl file and `pip install <file.whl>` manually. Or directly from https://download.pytorch.org/whl/rocm5.4.2 via
+AMD GPU version of torch build can be installed from [AMD Radeon repo](https://repo.radeon.com/rocm/manylinux/rocm-rel-5.4/), user need to download the whl file and `pip install <file.whl>` manually.
+
+#### Install onnxruntime-rocm
+
+We install [ROCm 5.4.2](https://docs.amd.com/bundle/ROCm-Installation-Guide-v5.4.2/page/How_to_Install_ROCm.html) since that is also used in PyTorch 2.0 ROCm package.
+
+Here is an example to build onnxruntime from source with Rocm 5.4.2, and install the wheel.
 ```
-pip install torch==2.0.0 --index-url https://download.pytorch.org/whl/rocm5.4.2
+sudo apt-get update
+sudo apt-get install -y --no-install-recommends \
+        wget \
+        zip \
+        ca-certificates \
+        build-essential \
+        curl \
+        libcurl4-openssl-dev \
+        libssl-dev \
+        python3-dev
+pip3 install numpy packaging "wheel>=0.35.1"
+wget --quiet https://github.com/Kitware/CMake/releases/download/v3.26.3/cmake-3.26.3-linux-x86_64.tar.gz
+tar zxf cmake-3.26.3-linux-x86_64.tar.gz
+export PATH=${PWD}/cmake-3.26.3-linux-x86_64/bin:${PATH}
+
+git clone https://github.com/microsoft/onnxruntime
+cd onnxruntime
+sh build.sh --config Release --cmake_extra_defines onnxruntime_USE_COMPOSABLE_KERNEL=ON  \
+            --use_rocm --rocm_home /opt/rocm --rocm_version 5.4.2 --build_wheel --allow_running_as_root
+pip3 install build/Linux/Release/dist/*.whl
 ```
 
-Please follow the [official docs](https://onnxruntime.ai/docs/build/eps.html#amd-rocm) to build ONNXRuntime from source.
+You can also follow the [official docs](https://onnxruntime.ai/docs/build/eps.html#amd-rocm) to build with docker.
 
 ### Export ONNX pipeline
+This step will export stable diffusion 1.5 to ONNX model in float32 using script from diffusers.
 
-This step will export stable diffusion 1.5 to ONNX model in float32 using script from diffusers. Before running the script, you need to be logged in via `huggingface-cli login`.
+It is recommended to use PyTorch 1.12.1 or 1.13.1 in this step. Using PyTorch 2.0 will encounter issue in exporting onnx.
+
+Before running the script, you need to be logged in via `huggingface-cli login`.
 
 ```
 curl https://raw.githubusercontent.com/huggingface/diffusers/v0.15.1/scripts/convert_stable_diffusion_checkpoint_to_onnx.py > convert_sd_onnx.py
-python convert_sd_onnx.py --model_path runwayml/stable-diffusion-v1-5  --output_path  ./sd-v1-5
+python3 convert_sd_onnx.py --model_path runwayml/stable-diffusion-v1-5  --output_path  ./sd_onnx_fp32
 ```
 
 ### Optimize ONNX Pipeline
@@ -133,13 +157,10 @@ python convert_sd_onnx.py --model_path runwayml/stable-diffusion-v1-5  --output_
 Example to optimize the exported float32 ONNX models, and save to float16 models:
 
 ```
-python -m onnxruntime.transformers.models.stable_diffusion.optimize_pipeline -i ./sd-v1-5 -o ./sd-v1-5-fp16 --float16
+python3 -m onnxruntime.transformers.models.stable_diffusion.optimize_pipeline -i ./sd_onnx_fp32 -o ./sd --float16
 ```
 
 If you installed ONNX Runtime v1.14, some optimizations (packed QKV and BiasAdd) will be disabled automatically since they are not available in v1.14.
-
-For Stable Diffusion 2.1 model with CUDA EP, you will need force Attention to run in float32 to avoid black image by appending `--force_fp32_ops unet:Attention` to the command line.
-If you are using nightly package, append `--force_fp32_ops unet:MultiHeadAttention` instead.
 
 ### Run Benchmark
 
@@ -147,17 +168,22 @@ The benchmark.py script will run a warm-up prompt twice, and measure the peak GP
 
 Note that the first run might need more time and memory: For example, cuDNN convolution algorithm search or model compile happens in the first run.
 
+To avoid black image output for Stable Diffusion 2.1 with CUDA EP, we can set an environment variable before inferencing:
+```
+export ORT_DISABLE_TRT_FLASH_ATTENTION=1
+```
+
 Example to benchmark the optimized pipeline with batch size 1 on CUDA EP:
 ```
-python -m onnxruntime.transformers.models.stable_diffusion.benchmark -p ./sd-v1-5-fp16/ -b 1
+python3 -m onnxruntime.transformers.models.stable_diffusion.benchmark -p ./sd -b 1
 ```
 
 On ROCm EP, use the following command instead:
 ```
-python -m onnxruntime.transformers.models.stable_diffusion.benchmark -p ./sd-v1-5-fp16/ -b 1 --tuning --provider=rocm
+python3 -m onnxruntime.transformers.models.stable_diffusion.benchmark -p ./sd -b 1 --tuning --provider rocm
 ```
 
-Note: you can substitute `python -m onnxruntime.transformers.models.stable_diffusion.benchmark` with `python benchmark.py` if your current working directory is this files directory.
+Note: you can substitute `python -m onnxruntime.transformers.models.stable_diffusion.benchmark` with `python benchmark.py` if your current working directory is this directory.
 In the following, we will use it interchangeably.
 
 For ROCm EP, the `--tuning` is mandatory because we heavily rely on tuning to find the runable kernels for ORT `OpKernel`s.
@@ -169,20 +195,22 @@ The default parameters are stable diffusion version=1.5, height=512, width=512, 
 Run PyTorch 1.13.1+cu117 with xFormers like the following
 
 ```
-python benchmark.py -e torch -b 1 --use_xformers
+pip3 install xformers==0.0.16
+python3 benchmark.py -e torch -b 1 --use_xformers
 ```
 
 ### Run Benchmark with PyTorch 2.0 with torch.compile
 
-Let's create a new environment to run PyTorch 2.0:
-
+For CUDA:
 ```
-conda create -n pt2 python=3.10
-conda activate pt2
-pip install torch --index-url https://download.pytorch.org/whl/cu117
-pip install -r requirements.txt
-pip install -r requirements_cuda.txt  # or requirements_rocm.txt
-python benchmark.py -e torch -b 1 --enable_torch_compile
+pip3 install torch --upgrade --index-url https://download.pytorch.org/whl/cu117
+python3 benchmark.py -e torch -b 1 --enable_torch_compile
+```
+
+For ROCm:
+```
+pip3 install torch --upgrade --index-url https://download.pytorch.org/whl/rocm5.4.2
+python3 benchmark.py -e torch -b 1 --enable_torch_compile --provider rocm
 ```
 
 Sometime, it complains ptxas not found when there are multiple CUDA versions installed. It can be fixed like `export TRITON_PTXAS_PATH=/usr/local/cuda-11.7/bin/ptxas` before running benchmark.
