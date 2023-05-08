@@ -51,21 +51,34 @@ resources:
     name: pypa/manylinux
     ref: aead4d751c2101e23336aa73f2380df83e7a13f3
 
+variables:
+- name: ReleaseVersionSuffix
+  value: ''
+
 stages:
 - stage: Set_release_version_suffix
   jobs:
   - job:
     steps:
+    - checkout: none
     - bash: |
         if [[ "${{ parameters.IsReleaseBuild }}" = True && "${{ parameters.PreReleaseVersionSuffixString }}" != "none"  ]]; then
-          echo "##vso[task.setvariable variable=ReleaseVersionSuffix;]${{ parameters.PreReleaseVersionSuffixString }}.${{ parameters.PreReleaseVersionSuffixNumber }}"
+          echo "##vso[task.setvariable variable=ReleaseVersionSuffix; isoutput=true]${{ parameters.PreReleaseVersionSuffixString }}.${{ parameters.PreReleaseVersionSuffixNumber }}"
         else
-          echo "##vso[task.setvariable variable=ReleaseVersionSuffix;]''"
+          echo "##vso[task.setvariable variable=ReleaseVersionSuffix; isoutput=true]''"
         fi
     - bash: |
         echo "IsReleaseBuild is: ${{ parameters.IsReleaseBuild }}"
         echo "Pre-release version suffix is: ${{ parameters.PreReleaseVersionSuffixString }}"
         echo "Pre-release version number is: ${{ parameters.PreReleaseVersionSuffixNumber }}"
+        echo "Release version suffix is: $(ReleaseVersionSuffix)"
+
+- stage: Debug
+  jobs:
+  - job:
+    steps:
+    - checkout: none
+    - bash: |
         echo "Release version suffix is: $(ReleaseVersionSuffix)"
 
 - template: templates/c-api-cpu.yml
@@ -74,7 +87,7 @@ stages:
     DoCompliance: ${{ parameters.DoCompliance }}
     DoEsrp: ${{ parameters.DoEsrp }}
     IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
-    ReleaseVersionSuffix: ${ReleaseVersionSuffix}
+    ReleaseVersionSuffix: $(ReleaseVersionSuffix)
     OrtNugetPackageId: 'Microsoft.ML.OnnxRuntime'
     AdditionalBuildFlags: ''
     AdditionalWinBuildFlags: '--enable_onnx_tests --enable_wcos'
@@ -607,7 +620,7 @@ stages:
         #
         # 'Any CPU' is the default (first 'mixed' platform specified in the csproj) so this should be fine.
         script: |
-          dotnet build .\src\Microsoft.ML.OnnxRuntime\Microsoft.ML.OnnxRuntime.csproj -p:SelectedTargets=Net6 -p:Configuration=RelWithDebInfo -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId="Microsoft.ML.OnnxRuntime.Gpu" -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }} -p:ReleaseVersionSuffix=${ReleaseVersionSuffix}
+          dotnet build .\src\Microsoft.ML.OnnxRuntime\Microsoft.ML.OnnxRuntime.csproj -p:SelectedTargets=Net6 -p:Configuration=RelWithDebInfo -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId="Microsoft.ML.OnnxRuntime.Gpu" -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }} -p:ReleaseVersionSuffix=$(ReleaseVersionSuffix)
         workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
     - task: MSBuild@1
@@ -625,7 +638,7 @@ stages:
         solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
         configuration: RelWithDebInfo
         platform: 'Any CPU'
-        msbuildArguments: '-p:SelectedTargets=PreNet6 -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId="Microsoft.ML.OnnxRuntime.Gpu" -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }} -p:ReleaseVersionSuffix=${ReleaseVersionSuffix}'
+        msbuildArguments: '-p:SelectedTargets=PreNet6 -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId="Microsoft.ML.OnnxRuntime.Gpu" -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }} -p:ReleaseVersionSuffix=$(ReleaseVersionSuffix)'
         workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
     - template: templates/win-esrp-dll.yml
@@ -649,7 +662,7 @@ stages:
         solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj'
         configuration: RelWithDebInfo
         platform: 'Any CPU'
-        msbuildArguments: '-t:CreatePackage -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=Microsoft.ML.OnnxRuntime.Gpu -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }} -p:ReleaseVersionSuffix=${ReleaseVersionSuffix}'
+        msbuildArguments: '-t:CreatePackage -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=Microsoft.ML.OnnxRuntime.Gpu -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }} -p:ReleaseVersionSuffix=$(ReleaseVersionSuffix)'
         workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
     - task: BatchScript@1
