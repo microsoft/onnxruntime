@@ -108,7 +108,7 @@ Status QnnBackendManager::LoadQnnSystemLib() {
     LOGS_DEFAULT(VERBOSE) << "system_interface_providers major: " << system_interface_providers[pIdx]->systemApiVersion.major
                           << " system_interface_providers minor: " << system_interface_providers[pIdx]->systemApiVersion.minor;
     if (QNN_SYSTEM_API_VERSION_MAJOR == system_interface_providers[pIdx]->systemApiVersion.major &&
-        static_cast<int64_t>(QNN_SYSTEM_API_VERSION_MINOR) <= static_cast<int64_t>(system_interface_providers[pIdx]->systemApiVersion.minor)) {
+        QNN_SYSTEM_API_VERSION_MINOR <= static_cast<int64_t>(system_interface_providers[pIdx]->systemApiVersion.minor)) {
       found_valid_interface = true;
       qnn_sys_interface_ = system_interface_providers[pIdx]->QNN_SYSTEM_INTERFACE_VER_NAME;
       LOGS_DEFAULT(INFO) << "Found valid system interface, version: " << QNN_API_VERSION_MAJOR
