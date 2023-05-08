@@ -286,7 +286,7 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
       p_reduce_mean2 = graph_utils::FirstParentByType(add2_node, "ReduceMean");
     } else if (add2_node.OpType() == "ReduceMean") {
       if (IsFP16OutputDataType(add2_node)) {
-        p_reduce_mean2 = &add2_node;
+        p_reduce_mean2 = graph.GetNode(sqrt_node.InputNodesBegin()->Index());
       } else {
         continue;
       }
@@ -443,11 +443,15 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
                                           {}, {}, kOnnxDomain);
 
     // Get constant "epsilon" from "Add2" node if available. Else, default value will be used.
-    const ONNX_NAMESPACE::TensorProto* tensor_proto = graph_utils::GetConstantInitializer(graph, add2_node.MutableInputDefs()[1]->Name());
-    if (tensor_proto != nullptr &&
-        tensor_proto->data_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
-      Initializer initializer{*tensor_proto, graph.ModelPath()};
-      layer_norm_node.AddAttribute("epsilon", initializer.data<float>()[0]);
+    if (!IsFP16OutputDataType(add2_node)) {
+      const ONNX_NAMESPACE::TensorProto* tensor_proto = graph_utils::GetConstantInitializer(graph, add2_node.MutableInputDefs()[1]->Name());
+      if (tensor_proto != nullptr &&
+          tensor_proto->data_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
+        Initializer initializer{*tensor_proto, graph.ModelPath()};
+        layer_norm_node.AddAttribute("epsilon", initializer.data<float>()[0]);
+      } else {
+        layer_norm_node.AddAttribute("epsilon", DEFAULT_LAYERNORM_EPSILON);
+      }
     } else {
       layer_norm_node.AddAttribute("epsilon", DEFAULT_LAYERNORM_EPSILON);
     }
