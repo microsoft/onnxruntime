@@ -71,14 +71,14 @@ due to restriction in older opsets. Therefore, Layer Normalization will also han
 +---------------------+
 |                     |
 |                     v
-X --> ReduceMean --> Sub --> Cast --> Pow --> ReduceMean --> Add --> Sqrt --> Div --> Mul --> Add
+X --> ReduceMean --> Sub --> Cast --> Pow --> ReduceMean --> Optional[Add] --> Sqrt --> Div --> Mul --> Add
                               |                                                ^
                               |                                                |
                               +------------------------------------------------+
 +---------------------+       Cast
 |                     |        |
 |                     v        v
-X --> ReduceMean --> Sub -->  Pow --> ReduceMean --> Add --> Sqrt --> Div --> Mul --> Add
+X --> ReduceMean --> Sub -->  Pow --> ReduceMean --> Optional[Add] --> Sqrt --> Div --> Mul --> Add
                       |                                                ^
                       |                                                |
                       +------------------------------------------------+
@@ -87,7 +87,7 @@ When using Apex O2, a Cast node may be inserted between Div and Mul, Layer Norma
 +---------------------+
 |                     |
 |                     v
-X --> ReduceMean --> Sub --> Pow --> ReduceMean --> Add --> Sqrt --> Div --> Cast --> Mul --> Add
+X --> ReduceMean --> Sub --> Pow --> ReduceMean --> Optional[Add] --> Sqrt --> Div --> Cast --> Mul --> Add
                       |                                               ^
                       |                                               |
                       +-----------------------------------------------+
@@ -97,7 +97,7 @@ OR
          +---------------------+
          |                     |
          |                     v
-X --> Cast --> ReduceMean --> Sub --> Pow --> ReduceMean --> Add --> Sqrt --> Div --> Cast --> Mul --> Add
+X --> Cast --> ReduceMean --> Sub --> Pow --> ReduceMean --> Optional[Add] --> Sqrt --> Div --> Cast --> Mul --> Add
                                |                                               ^
                                |                                               |
                                +-----------------------------------------------+
@@ -105,6 +105,10 @@ X --> Cast --> ReduceMean --> Sub --> Pow --> ReduceMean --> Add --> Sqrt --> Di
 Logically since LayerNormalization supports input and scale/bias in different data types, and during the kernel execution,
 data are casted to float/double to calculate for precision, so if there is any Cast Ops in the sub-graph, we can remove it.
 Such Cast Op can be the input of the sub-graph, or an Cast Op between the Div and Mul nodes.
+
+Optional[Add]: In mixed precision training setting, if epsilon is less than 1e-5 (default value) then downcasting from fp32 to fp16
+sets the epsilon to 0. Consequently, the add node will be removed during round 1 of optimizations (since adding 0 is a no-op).
+Thus, we account for this removal by making the add node check optional while doing mixed precision training.
 */
 Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
   GraphViewer graph_viewer(graph);
@@ -269,7 +273,7 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
     // Traceback the sqrt node to find add --> sqrt
     Node& add2_node = *graph.GetNode(sqrt_node.InputNodesBegin()->Index());
     const Node* p_reduce_mean2 = nullptr;
-    if add2_node.OpType() == "Add" {
+    if (add2_node.OpType() == "Add") {
       if (!graph_utils::IsSupportedOptypeVersionAndDomain(add2_node, "Add", {7, 13, 14}) ||
           add2_node.GetExecutionProviderType() != reduce_mean_node.GetExecutionProviderType() ||
           !optimizer_utils::CheckOutputEdges(graph, add2_node, 1) ||
@@ -280,7 +284,7 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
       // Traceback the add node to find reduceMean --> add
 
       p_reduce_mean2 = graph_utils::FirstParentByType(add2_node, "ReduceMean");
-    } else if add2_node.OpType() == "ReduceMean" {
+    } else if (add2_node.OpType() == "ReduceMean") {
       if (IsFP16OutputDataType(add2_node)) {
         p_reduce_mean2 = &add2_node;
       } else {
