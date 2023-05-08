@@ -43,6 +43,16 @@ parameters:
   type: string
   default: 'default'
 
+- name: SpecificArtifact
+  displayName: Use Specific Artifact
+  type: boolean
+  default: false
+
+- name: BuildId
+  displayName: Specific Artifact's BuildId
+  type: string
+  default: '0'
+
 stages:
 - template: linux-cpu-packaging-pipeline.yml
   parameters:
@@ -775,6 +785,8 @@ stages:
     AgentPool : aiinfra-Linux-CPU
     NugetPackageName : 'Microsoft.ML.OnnxRuntime'
     ArtifactSuffix: 'CPU'
+    SpecificArtifact: ${{ parameters.SpecificArtifact }}
+    BuildId: ${{ parameters.BuildId }}
 
 - template: ../nuget/templates/test_macos.yml
   parameters:
