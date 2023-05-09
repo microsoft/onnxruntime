@@ -24,17 +24,6 @@ parameters:
   type: boolean
   default: false
 
-<<<<<<< HEAD
-- name: NugetPackageSuffix
-  displayName: Suffix to append to nuget package
-  type: string
-  default: ''
-
-- name: AdditionalBuildFlag
-  displayName: Build flags to append to build command
-  type: string
-  default: ''
-=======
 - name: PreReleaseVersionSuffixString
   displayName: Suffix added to pre-release package version. Only used if IsReleaseBuild is true. Denotes the type of pre-release package.
   type: string
@@ -60,7 +49,16 @@ parameters:
   displayName: Pipeline BuildId, you could find it in the URL
   type: string
   default: '0'
->>>>>>> main
+
+- name: NugetPackageSuffix
+  displayName: Suffix to append to nuget package
+  type: string
+  default: ''
+
+- name: AdditionalBuildFlag
+  displayName: Build flags to append to build command
+  type: string
+  default: ''
 
 resources:
   repositories:
