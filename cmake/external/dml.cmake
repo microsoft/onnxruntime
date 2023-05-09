@@ -20,6 +20,7 @@
 
 set(onnxruntime_USE_CUSTOM_DIRECTML OFF CACHE BOOL "Depend on a custom/internal build of DirectML.")
 set(dml_EXTERNAL_PROJECT OFF CACHE BOOL "Build DirectML as a source dependency.")
+set(DML_SHARED_LIB DirectML.dll)
 
 if (NOT onnxruntime_USE_CUSTOM_DIRECTML)
   if (NOT(MSVC) OR NOT(WIN32))
@@ -41,7 +42,6 @@ if (NOT onnxruntime_USE_CUSTOM_DIRECTML)
   set(PACKAGES_CONFIG ${PROJECT_SOURCE_DIR}/../packages.config)
   get_filename_component(PACKAGES_DIR ${CMAKE_CURRENT_BINARY_DIR}/../packages ABSOLUTE)
   set(DML_PACKAGE_DIR ${PACKAGES_DIR}/Microsoft.AI.DirectML.1.10.1)
-  set(DML_SHARED_LIB DirectML.dll)
 
   # Restore nuget packages, which will pull down the DirectML redist package.
   add_custom_command(
@@ -89,6 +89,7 @@ else()
 
     # Target that consumers can use to link with the internal build of DirectML.
     set(directml_install_path ${CMAKE_BINARY_DIR}/directml_repo-prefix/src/directml_repo/build/${dml_preset_name}/install)
+    set(DML_PACKAGE_DIR ${directml_install_path})
     add_library(DirectML INTERFACE)
     target_link_libraries(DirectML INTERFACE ${directml_install_path}/lib/DirectML.lib)
     add_dependencies(DirectML directml_repo-install)

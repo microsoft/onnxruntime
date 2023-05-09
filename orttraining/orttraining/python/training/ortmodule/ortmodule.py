@@ -110,8 +110,7 @@ class ORTModule(torch.nn.Module):
     # This declaration is for automatic document generation purposes only
     # The actual forward implementation is bound during ORTModule initialization
     def forward(self, *inputs, **kwargs):
-        """Delegate the :meth:`~torch.nn.Module.forward` pass of PyTorch training to
-        ONNX Runtime.
+        """Delegate the :meth:`~torch.nn.Module.forward` pass of PyTorch training to ONNX Runtime.
 
         The first call to forward performs setup and checking steps. During this call,
         ORTModule determines whether the module can be trained with ONNX Runtime. For
@@ -119,9 +118,8 @@ class ORTModule(torch.nn.Module):
         Execution is interupted if ONNX Runtime cannot process the model for training.
 
         Args:
-            *inputs and **kwargs represent the positional, variable positional, keyword
-            and variable keyword arguments defined in the user's PyTorch module's forward
-            method. Values can be torch tensors and primitive types.
+            inputs:  positional, variable positional inputs to the PyTorch module's forward method.
+            kwargs: keyword and variable keyword arguments to the PyTorch module's forward method.
 
         Returns:
             The output as expected from the forward method defined by the user's

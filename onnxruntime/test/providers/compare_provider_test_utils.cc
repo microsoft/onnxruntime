@@ -63,7 +63,7 @@ void CompareOpTester::CompareWithCPU(const std::string& target_provider_type,
   // the function body is instead used for CPU pass. This option allows the comparison with
   // the CPU kernel by adding the input/output casts before looking for a registered CPU kernel.
   if (need_cpu_cast) {
-    InsertCastTransformer transformer("Test");
+    InsertCastTransformer transformer("Test", GetExecutionProvider(kCpuExecutionProvider)->GetKernelRegistry().get());
     bool modified = false;
     status = transformer.Apply(graph, modified, DefaultLoggingManager().DefaultLogger());
     ASSERT_TRUE(status.IsOK());

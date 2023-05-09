@@ -9,7 +9,7 @@ MAINTAINER Changming Sun "chasun@microsoft.com"
 ADD . /code
 
 ENV DEBIAN_FRONTEND=noninteractive
-RUN apt-get update && apt-get install -y --no-install-recommends python3-dev ca-certificates g++ python3-numpy gcc make git python3-setuptools python3-wheel python3-pip aria2 && aria2c -q -d /tmp -o cmake-3.24.3-linux-x86_64.tar.gz https://github.com/Kitware/CMake/releases/download/v3.24.3/cmake-3.24.3-linux-x86_64.tar.gz && tar -zxf /tmp/cmake-3.24.3-linux-x86_64.tar.gz --strip=1 -C /usr
+RUN apt-get update && apt-get install -y --no-install-recommends python3-dev ca-certificates g++ python3-numpy gcc make git python3-setuptools python3-wheel python3-pip aria2 && aria2c -q -d /tmp -o cmake-3.26.3-linux-x86_64.tar.gz https://github.com/Kitware/CMake/releases/download/v3.26.3/cmake-3.26.3-linux-x86_64.tar.gz && tar -zxf /tmp/cmake-3.26.3-linux-x86_64.tar.gz --strip=1 -C /usr
 
 # Prepare onnxruntime repository & build onnxruntime
 RUN cd /code && /bin/bash ./build.sh --allow_running_as_root --skip_submodule_sync --config Release --build_wheel --update --build --parallel --cmake_extra_defines ONNXRUNTIME_VERSION=$(cat ./VERSION_NUMBER)

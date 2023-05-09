@@ -66,8 +66,7 @@ common::Status CopyOneInputAcrossDevices(const SessionState& session_state, cons
                                          const OrtValue& orig_mlvalue, OrtValue& new_mlvalue);
 
 // Searches the allocation plan from the session_state to find the OrtMemoryInfo for the value 'name'.
-const OrtMemoryInfo& FindMemoryInfoForValue(const SessionState& session_state,
-                                            std::string_view name);
+const OrtDevice& FindDeviceForValue(const SessionState& session_state, std::string_view name);
 
 // Initialize the feed and fetch copy info using session_state.
 // Determines the device that each graph input that will be fed will be consumed on,
@@ -79,7 +78,7 @@ common::Status InitializeFeedFetchCopyInfo(const SessionState& session_state,
 // and fetches that will be used in graph execution.
 void FinalizeFeedFetchCopyInfo(FeedsFetchesManager& feeds_fetches_manager,
                                gsl::span<const OrtDevice> feed_locations,
-                               gsl::span<const OrtMemoryInfo* const> fetch_alloc_info);
+                               gsl::span<const OrtDevice* const> fetch_alloc_info);
 
 // Execute the main graph. The feed_fetches_manager will be finalized based on the provided feeds and fetches.
 common::Status ExecuteGraph(const SessionState& session_state, FeedsFetchesManager& feeds_fetches_manager,

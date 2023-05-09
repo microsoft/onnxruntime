@@ -703,8 +703,16 @@ static void DiscreteFourierTransform(
   for (uint32_t i = 0; i < y_ivv.Size(); i += 2) {
     // Check results
     constexpr float error_threshold = .001f;
-    WINML_EXPECT_TRUE(abs(y_ivv.GetAt(i) - expected_output[i / 2].real()) < error_threshold);
-    WINML_EXPECT_TRUE(abs(y_ivv.GetAt(i + 1) - expected_output[i / 2].imag()) < error_threshold);
+
+    auto inRealRange = abs(y_ivv.GetAt(i) - expected_output[i / 2].real()) < error_threshold;
+    auto inImagRange = abs(y_ivv.GetAt(i + 1) - expected_output[i / 2].imag()) < error_threshold;
+    auto inRange = inRealRange && inImagRange;
+
+    if (!inRange) {
+      printf("[%d] ACTUAL(%f  +  %fi) EXPECTED(%f  +  %fi)\n", (int)i/2, y_ivv.GetAt(i), y_ivv.GetAt(i + 1), expected_output[i / 2].real(), expected_output[i / 2].imag());
+    }
+
+    WINML_EXPECT_TRUE(inRange);
   }
   printf("\n\n");
 }
@@ -1116,17 +1124,174 @@ static void ModelBuilding_ConstantMatmul() {
 #endif
 }
 
+
 #if !defined(BUILD_INBOX)
+
+enum class Mode : uint32_t {
+  Bilinear,
+  Nearest,
+  Bicubic,
+};
+
+enum class PaddingMode : uint32_t {
+  Zeros,
+  Border,
+  Reflection,
+};
+
+template <typename T, typename U>
+static void GridSample(
+    LearningModelDeviceKind kind,
+    const std::vector<T>& input,
+    const std::vector<int64_t>& input_dims,
+    const std::vector<U>& grid,
+    const std::vector<int64_t>& grid_dims,
+    bool align_corners,
+    Mode mode,
+    PaddingMode padding_mode
+    ) {
+  const hstring modes[] = {
+      L"bilinear",
+      L"nearest",
+      L"bicubic"};
+
+  const hstring padding_modes[] = {
+      L"zeros",
+      L"border",
+      L"reflection"};
+
+  auto model =
+    LearningModelBuilder::Create(17)
+      .Inputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Input", TensorKind::Float, input_dims))
+      .Inputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Grid", TensorKind::Float, grid_dims))
+      .Outputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Output", TensorKind::Float, {-1, -1, -1, -1}))
+      .Operators().Add(Operator(L"GridSample")
+        .SetInput(L"X", L"Input")
+        .SetInput(L"grid", L"Grid")
+        .SetAttribute(L"align_corners", TensorInt64Bit::CreateFromArray({ }, {INT64(align_corners)}))
+        .SetAttribute(L"mode", TensorString::CreateFromArray({ }, { modes[static_cast<uint32_t>(mode)] }))
+        .SetAttribute(L"padding_mode", TensorString::CreateFromArray({ }, { padding_modes[static_cast<uint32_t>(padding_mode)] }))
+        .SetOutput(L"Y", L"Output"))
+      .CreateModel();
+  auto cpu_device = LearningModelDevice(LearningModelDeviceKind::Cpu);
+  auto device = LearningModelDevice(kind);
+  LearningModelSession device_session(model, device);
+  LearningModelBinding device_binding(device_session);
+  LearningModelSession cpu_session(model, cpu_device);
+  LearningModelBinding cpu_binding(cpu_session);
+
+  device_binding.Bind(L"Input", TensorFloat::CreateFromShapeArrayAndDataArray(input_dims, input));
+  device_binding.Bind(L"Grid", TensorFloat::CreateFromShapeArrayAndDataArray(grid_dims, grid));
+  cpu_binding.Bind(L"Input", TensorFloat::CreateFromShapeArrayAndDataArray(input_dims, input));
+  cpu_binding.Bind(L"Grid", TensorFloat::CreateFromShapeArrayAndDataArray(grid_dims, grid));
+
+  auto cpu_result = cpu_session.Evaluate(cpu_binding, L"");
+
+  // Evaluate
+  auto start = std::chrono::high_resolution_clock::now();
+  auto device_result = device_session.Evaluate(device_binding, L"");
+  auto end = std::chrono::high_resolution_clock::now();
+  std::chrono::duration<double, std::micro> evaluate_duration_in_microseconds = end - start;
+  printf("GridSample[Mode=%ls, PaddingMode=%ls, AlignCorners=%s] took %fus.\n",
+         modes[static_cast<uint32_t>(mode)].c_str(),
+         padding_modes[static_cast<uint32_t>(padding_mode)].c_str(),
+         align_corners ? "True" : "False",
+         evaluate_duration_in_microseconds.count());
+
+  // Check results
+  constexpr float error_threshold = .001f;
+  auto device_y_tensor = device_result.Outputs().Lookup(L"Output").as<TensorFloat>();
+  auto device_y_ivv = device_y_tensor.GetAsVectorView();
+  auto cpu_y_tensor = cpu_result.Outputs().Lookup(L"Output").as<TensorFloat>();
+  auto cpu_y_ivv = cpu_y_tensor.GetAsVectorView();
+  WINML_EXPECT_EQUAL(device_y_ivv.Size(), cpu_y_ivv.Size());
+  for (uint32_t i = 0; i < device_y_ivv.Size(); i++) {
+    bool in_range = abs(device_y_ivv.GetAt(i) - cpu_y_ivv.GetAt(i)) < error_threshold;
+    if (!in_range) {
+      printf("[%d] ACTUAL(%f) EXPECTED(%f)\n", (int)i, device_y_ivv.GetAt(i), cpu_y_ivv.GetAt(i));
+    }
+    WINML_EXPECT_TRUE(in_range);
+  }
+}
+
+static void GridSampleRunner(LearningModelDeviceKind kind,
+    const std::vector<float>& input,
+    const std::vector<int64_t>& input_dims,
+    const std::vector<float>& grid,
+    const std::vector<int64_t>& grid_dims)
+{
+  GridSample(kind, input, input_dims, grid, grid_dims, false, Mode::Bilinear, PaddingMode::Zeros);
+  GridSample(kind, input, input_dims, grid, grid_dims, false, Mode::Bilinear, PaddingMode::Border);
+  GridSample(kind, input, input_dims, grid, grid_dims, false, Mode::Bilinear, PaddingMode::Reflection);
+  GridSample(kind, input, input_dims, grid, grid_dims, false, Mode::Nearest, PaddingMode::Zeros);
+  GridSample(kind, input, input_dims, grid, grid_dims, false, Mode::Nearest, PaddingMode::Border);
+  GridSample(kind, input, input_dims, grid, grid_dims, false, Mode::Nearest, PaddingMode::Reflection);
+  GridSample(kind, input, input_dims, grid, grid_dims, false, Mode::Bicubic, PaddingMode::Zeros);
+  GridSample(kind, input, input_dims, grid, grid_dims, false, Mode::Bicubic, PaddingMode::Border);
+  GridSample(kind, input, input_dims, grid, grid_dims, false, Mode::Bicubic, PaddingMode::Reflection);
+
+  GridSample(kind, input, input_dims, grid, grid_dims, true, Mode::Bilinear, PaddingMode::Zeros);
+  GridSample(kind, input, input_dims, grid, grid_dims, true, Mode::Bilinear, PaddingMode::Border);
+  GridSample(kind, input, input_dims, grid, grid_dims, true, Mode::Bilinear, PaddingMode::Reflection);
+  GridSample(kind, input, input_dims, grid, grid_dims, true, Mode::Nearest, PaddingMode::Zeros);
+  GridSample(kind, input, input_dims, grid, grid_dims, true, Mode::Nearest, PaddingMode::Border);
+  GridSample(kind, input, input_dims, grid, grid_dims, true, Mode::Nearest, PaddingMode::Reflection);
+  GridSample(kind, input, input_dims, grid, grid_dims, true, Mode::Bicubic, PaddingMode::Zeros);
+  GridSample(kind, input, input_dims, grid, grid_dims, true, Mode::Bicubic, PaddingMode::Border);
+  GridSample(kind, input, input_dims, grid, grid_dims, true, Mode::Bicubic, PaddingMode::Reflection);
+}
+
+static void ModelBuilding_GridSample_Internal(LearningModelDeviceKind kind) {
+  std::vector<float> input =
+  {
+      0.00f,  1.00f,  2.00f,  3.00f,
+      4.00f,  5.00f,  6.00f,  7.00f,
+      8.00f,  9.00f,  10.00f, 11.00f,
+      12.00f, 13.00f, 14.00f, 15.00f,
+  };
+
+  std::vector<float> grid =
+  {
+      0.00f,  1.00f,    2.00f,  3.00f,    4.00f,  5.00f,    6.00f,  7.00f,    8.00f,  9.00f,
+      10.00f, 11.00f,   12.00f, 13.00f,   14.00f, 15.00f,   16.00f, 17.00f,   18.00f, 19.00f,
+      20.00f, 21.00f,   22.00f, 23.00f,   24.00f, 25.00f,   26.00f, 27.00f,   28.00f, 29.00f,
+      30.00f, 31.00f,   32.00f, 33.00f,   34.00f, 35.00f,   36.00f, 37.00f,   38.00f, 39.00f,
+      40.00f, 41.00f,   42.00f, 43.00f,   44.00f, 45.00f,   46.00f, 47.00f,   48.00f, 49.00f,
+  };
+  std::transform(grid.begin(), grid.end(), grid.begin(), [&](auto& in) { return in / grid.size(); });
+  std::vector<int64_t> input_dims = {1, 1, 4, 4};
+  std::vector<int64_t> grid_dims = {1, 5, 5, 2};
+
+  GridSampleRunner(kind, input, input_dims, grid, grid_dims);
+
+  input = { 0.0f, 1.0f, 2.0f, 3.0f, 4.0, 5.0f };
+  grid =
+  {
+    -10.0000f, -10.0000f,
+     -5.0000f,  -5.0000f,
+     -0.2000f,  -0.2000f,
+     10.0000f,  10.0000f,
+
+    10.0000f,   10.0000f,
+    -0.2000f,   -0.2000f,
+     5.0000f,    5.0000f,
+    10.0000f,   10.0000f
+  };
+  input_dims = {1, 1, 3, 2};
+  grid_dims = {1, 2, 4, 2};
+
+  GridSampleRunner(kind, input, input_dims, grid, grid_dims);
+}
+
 static void ModelBuilding_DiscreteFourierTransform_Internal(LearningModelDeviceKind kind) {
-  bool isCPU = (kind == LearningModelDeviceKind::Default || kind == LearningModelDeviceKind::Cpu);
   std::vector<float> real_input =
   {
-      1.00f, 2.00, 3.00f, 4.00f, 5.00f, 6.00f, 7.00f, 8.00f,
-      1.00f, 2.00, 3.00f, 4.00f, 5.00f, 6.00f, 7.00f, 8.00f,
-      1.00f, 2.00, 3.00f, 4.00f, 5.00f, 6.00f, 7.00f, 8.00f,
-      1.00f, 2.00, 3.00f, 4.00f, 5.00f, 6.00f, 7.00f, 8.00f,
-      1.00f, 2.00, 3.00f, 4.00f, 5.00f, 6.00f, 7.00f, 8.00f,
-    };
+      1.00f, 2.00f, 3.00f, 4.00f, 5.00f, 6.00f, 7.00f, 8.00f,
+      1.00f, 2.00f, 3.00f, 4.00f, 5.00f, 6.00f, 7.00f, 8.00f,
+      1.00f, 2.00f, 3.00f, 4.00f, 5.00f, 6.00f, 7.00f, 8.00f,
+      1.00f, 2.00f, 3.00f, 4.00f, 5.00f, 6.00f, 7.00f, 8.00f,
+      1.00f, 2.00f, 3.00f, 4.00f, 5.00f, 6.00f, 7.00f, 8.00f,
+  };
 
   std::vector<std::complex<float>> real_expected_axis_0_two_sided = {
     {5.000f, 0.000f}, {10.000f, 0.000f}, {15.000f, 0.000f}, {20.000f, 0.000f}, {25.000f, 0.000f}, {30.000f, 0.000f}, {35.000f, 0.000f}, {40.000f, 0.000f},
@@ -1135,11 +1300,7 @@ static void ModelBuilding_DiscreteFourierTransform_Internal(LearningModelDeviceK
     {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f},
     {-0.000f, 0.000f}, {-0.000f, 0.000f}, {-0.000f, 0.000f}, {-0.000f, 0.000f}, {-0.000f, 0.000f}, {-0.000f, 0.000f}, {-0.000f, 0.000f}, {-0.000f, 0.000f},
   };
-  if (isCPU)
-  {
-    // Only enabled for CPU, as GPU does not support non-power2 DFTs yet.
-    DiscreteFourierTransform(kind, real_input, {1, 5, 8, 1}, real_expected_axis_0_two_sided, 1, 5, false /*onesided*/);
-  }
+  DiscreteFourierTransform(kind, real_input, {1, 5, 8, 1}, real_expected_axis_0_two_sided, 1, 5, false /*onesided*/);
 
   std::vector<std::complex<float>> real_expected_axis_1_two_sided = {
     {36.000f, 0.000f}, {-4.000f, 9.657f}, {-4.000f, 4.000f}, {-4.000f, 1.657f}, {-4.000f, 0.000f}, {-4.000f, -1.657f}, {-4.000f, -4.000f}, {-4.000f, -9.657f},
@@ -1152,17 +1313,17 @@ static void ModelBuilding_DiscreteFourierTransform_Internal(LearningModelDeviceK
 
   std::vector<std::complex<float>> input =
   {
-      {1.00f, 0.00f}, {2.00, 0.00f}, {3.00f, 0.00f}, {4.00f, 0.00f}, {5.00f, 0.00f}, {6.00f, 0.00f}, {7.00f, 0.00f}, {8.00f, 0.00f},
-      {1.00f, 0.00f}, {2.00, 0.00f}, {3.00f, 0.00f}, {4.00f, 0.00f}, {5.00f, 0.00f}, {6.00f, 0.00f}, {7.00f, 0.00f}, {8.00f, 0.00f},
-      {1.00f, 0.00f}, {2.00, 0.00f}, {3.00f, 0.00f}, {4.00f, 0.00f}, {5.00f, 0.00f}, {6.00f, 0.00f}, {7.00f, 0.00f}, {8.00f, 0.00f},
-      {1.00f, 0.00f}, {2.00, 0.00f}, {3.00f, 0.00f}, {4.00f, 0.00f}, {5.00f, 0.00f}, {6.00f, 0.00f}, {7.00f, 0.00f}, {8.00f, 0.00f},
-      {1.00f, 0.00f}, {2.00, 0.00f}, {3.00f, 0.00f}, {4.00f, 0.00f}, {5.00f, 0.00f}, {6.00f, 0.00f}, {7.00f, 0.00f}, {8.00f, 0.00f},
+      {1.00f, 0.00f}, {2.00f, 0.00f}, {3.00f, 0.00f}, {4.00f, 0.00f}, {5.00f, 0.00f}, {6.00f, 0.00f}, {7.00f, 0.00f}, {8.00f, 0.00f},
+      {1.00f, 0.00f}, {2.00f, 0.00f}, {3.00f, 0.00f}, {4.00f, 0.00f}, {5.00f, 0.00f}, {6.00f, 0.00f}, {7.00f, 0.00f}, {8.00f, 0.00f},
+      {1.00f, 0.00f}, {2.00f, 0.00f}, {3.00f, 0.00f}, {4.00f, 0.00f}, {5.00f, 0.00f}, {6.00f, 0.00f}, {7.00f, 0.00f}, {8.00f, 0.00f},
+      {1.00f, 0.00f}, {2.00f, 0.00f}, {3.00f, 0.00f}, {4.00f, 0.00f}, {5.00f, 0.00f}, {6.00f, 0.00f}, {7.00f, 0.00f}, {8.00f, 0.00f},
+      {1.00f, 0.00f}, {2.00f, 0.00f}, {3.00f, 0.00f}, {4.00f, 0.00f}, {5.00f, 0.00f}, {6.00f, 0.00f}, {7.00f, 0.00f}, {8.00f, 0.00f},
 
-      {2.00f, 1.00f}, {4.00, 2.00f}, {6.00f, 3.00f}, {8.00f, 4.00f}, {10.00f, 5.00f}, {12.00f, 6.00f}, {14.00f, 7.00f}, {16.00f, 8.00f},
-      {2.00f, 1.00f}, {4.00, 2.00f}, {6.00f, 3.00f}, {8.00f, 4.00f}, {10.00f, 5.00f}, {12.00f, 6.00f}, {14.00f, 7.00f}, {16.00f, 8.00f},
-      {2.00f, 1.00f}, {4.00, 2.00f}, {6.00f, 3.00f}, {8.00f, 4.00f}, {10.00f, 5.00f}, {12.00f, 6.00f}, {14.00f, 7.00f}, {16.00f, 8.00f},
-      {2.00f, 1.00f}, {4.00, 2.00f}, {6.00f, 3.00f}, {8.00f, 4.00f}, {10.00f, 5.00f}, {12.00f, 6.00f}, {14.00f, 7.00f}, {16.00f, 8.00f},
-      {2.00f, 1.00f}, {4.00, 2.00f}, {6.00f, 3.00f}, {8.00f, 4.00f}, {10.00f, 5.00f}, {12.00f, 6.00f}, {14.00f, 7.00f}, {16.00f, 8.00f},
+      {2.00f, 1.00f}, {4.00f, 2.00f}, {6.00f, 3.00f}, {8.00f, 4.00f}, {10.00f, 5.00f}, {12.00f, 6.00f}, {14.00f, 7.00f}, {16.00f, 8.00f},
+      {2.00f, 1.00f}, {4.00f, 2.00f}, {6.00f, 3.00f}, {8.00f, 4.00f}, {10.00f, 5.00f}, {12.00f, 6.00f}, {14.00f, 7.00f}, {16.00f, 8.00f},
+      {2.00f, 1.00f}, {4.00f, 2.00f}, {6.00f, 3.00f}, {8.00f, 4.00f}, {10.00f, 5.00f}, {12.00f, 6.00f}, {14.00f, 7.00f}, {16.00f, 8.00f},
+      {2.00f, 1.00f}, {4.00f, 2.00f}, {6.00f, 3.00f}, {8.00f, 4.00f}, {10.00f, 5.00f}, {12.00f, 6.00f}, {14.00f, 7.00f}, {16.00f, 8.00f},
+      {2.00f, 1.00f}, {4.00f, 2.00f}, {6.00f, 3.00f}, {8.00f, 4.00f}, {10.00f, 5.00f}, {12.00f, 6.00f}, {14.00f, 7.00f}, {16.00f, 8.00f},
     };
 
   std::vector<std::complex<float>> expected_axis_0_two_sided = {
@@ -1178,11 +1339,8 @@ static void ModelBuilding_DiscreteFourierTransform_Internal(LearningModelDeviceK
     {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f},
     {-0.000f, 0.000f}, {-0.000f, 0.000f}, {-0.000f, 0.000f}, {-0.000f, 0.000f}, {-0.000f, 0.000f}, {-0.000f, 0.000f}, {-0.000f, 0.000f}, {-0.000f, 0.000f}
   };
-  if (isCPU)
-  {
-    // Only enabled for CPU, as GPU does not support non-power2 DFTs yet.
-    DiscreteFourierTransform(kind, input, {2, 5, 8, 2}, expected_axis_0_two_sided, 1, 5, false /*onesided*/);
-  }
+
+  DiscreteFourierTransform(kind, input, {2, 5, 8, 2}, expected_axis_0_two_sided, 1, 5, false /*onesided*/);
 
   std::vector<std::complex<float>> expected_axis_0_two_sided_small_dft_length = {
     {4.000f, 0.000f}, {8.000f, 0.000f}, {12.000f, 0.000f}, {16.000f, 0.000f}, {20.000f, 0.000f}, {24.000f, 0.000f}, {28.000f, 0.000f}, {32.000f, 0.000f},
@@ -1212,11 +1370,8 @@ static void ModelBuilding_DiscreteFourierTransform_Internal(LearningModelDeviceK
     {0.133975f, 2.232051f},   {0.267951f, 4.464102f},   {0.401926f, 6.696153f},   {0.535901f, 8.928205f},   {0.669876f, 11.160257f},   {0.803851f, 13.392306f},   {0.937826f, 15.624360f},   {1.071802f, 17.856409f},
     {-1.866026f, 1.232052f},  {-3.732052f, 2.464104f},  {-5.598077f, 3.696155f},  {-7.464104f, 4.928207f},  {-9.330130f, 6.160261f},   {-11.196154f, 7.392309f},  {-13.062180f, 8.624363f},  {-14.928207f, 9.856415f},
   };
-  if (isCPU)
-  {
-    // Only enabled for CPU, as GPU does not support non-power2 DFTs yet.
-    DiscreteFourierTransform(kind, input, {2, 5, 8, 2}, expected_axis_0_two_sided_bigger_dft_length, 1, 6, false /*onesided*/);
-  }
+
+  DiscreteFourierTransform(kind, input, {2, 5, 8, 2}, expected_axis_0_two_sided_bigger_dft_length, 1, 6, false /*onesided*/);
 
   std::vector<std::complex<float>> expected_axis_0_one_sided = {
     {5.000f, 0.000f}, {10.000f, 0.000f}, {15.000f, 0.000f}, {20.000f, 0.000f}, {25.000f, 0.000f}, {30.000f, 0.000f}, {35.000f, 0.000f}, {40.000f, 0.000f},
@@ -1227,11 +1382,7 @@ static void ModelBuilding_DiscreteFourierTransform_Internal(LearningModelDeviceK
     {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {-0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f},
     {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {-0.000f, 0.000f}, {0.000f, 0.000f}, {-0.000f, 0.000f}, {0.000f, 0.000f},
   };
-  if (isCPU)
-  {
-    // Only enabled for CPU, as GPU does not support non-power2 DFTs yet.
-    DiscreteFourierTransform(kind, input, {2, 5, 8, 2}, expected_axis_0_one_sided, 1, 5, true /*onesided*/);
-  }
+  DiscreteFourierTransform(kind, input, {2, 5, 8, 2}, expected_axis_0_one_sided, 1, 5, true /*onesided*/);
 
   std::vector<std::complex<float>> expected_axis_1_two_sided = {
     {36.000f, 0.000f}, {-4.000f, 9.657f}, {-4.000f, 4.000f}, {-4.000f, 1.657f}, {-4.000f, 0.000f}, {-4.000f, -1.657f}, {-4.000f, -4.000f}, {-4.000f, -9.657f},
@@ -1265,6 +1416,12 @@ static void ModelBuilding_DiscreteFourierTransform_Internal(LearningModelDeviceK
   DiscreteFourierTransform_2D(kind);
 }
 #endif
+
+static void ModelBuilding_GridSampleDeviceDirectX() {
+#if !defined(BUILD_INBOX)
+  ModelBuilding_GridSample_Internal(LearningModelDeviceKind::DirectX);
+#endif
+}
 
 static void ModelBuilding_DiscreteFourierTransform() {
 #if !defined(BUILD_INBOX)
@@ -1570,6 +1727,7 @@ const LearningModelSessionAPITestsApi& getapi() {
     ModelBuilding_DiscreteFourierTransformInverseIdentity,
     ModelBuilding_DiscreteFourierTransformDeviceDirectX,
     ModelBuilding_DiscreteFourierTransformInverseIdentityDeviceDirectX,
+    ModelBuilding_GridSampleDeviceDirectX,
     ModelBuilding_HannWindow,
     ModelBuilding_HammingWindow,
     ModelBuilding_BlackmanWindow,
@@ -1588,6 +1746,7 @@ const LearningModelSessionAPITestsApi& getapi() {
     api.AdapterIdAndDevice = SkipTest;
     api.ModelBuilding_DiscreteFourierTransformDeviceDirectX = SkipTest;
     api.ModelBuilding_DiscreteFourierTransformInverseIdentityDeviceDirectX = SkipTest;
+    api.ModelBuilding_GridSampleDeviceDirectX = SkipTest;
   }
   if (RuntimeParameterExists(L"EdgeCore")) {
     api.AdapterIdAndDevice = SkipTest;

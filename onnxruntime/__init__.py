@@ -7,7 +7,7 @@ ONNX Runtime is a performance-focused scoring engine for Open Neural Network Exc
 For more information on ONNX Runtime, please see `aka.ms/onnxruntime <https://aka.ms/onnxruntime/>`_
 or the `Github project <https://github.com/microsoft/onnxruntime/>`_.
 """
-__version__ = "1.15.0"
+__version__ = "1.16.0"
 __author__ = "Microsoft"
 
 # we need to do device version validation (for example to check Cuda version for an onnxruntime-training package).
@@ -38,6 +38,7 @@ try:
     from onnxruntime.capi._pybind_state import enable_telemetry_events  # noqa: F401
     from onnxruntime.capi._pybind_state import get_all_providers  # noqa: F401
     from onnxruntime.capi._pybind_state import get_available_providers  # noqa: F401
+    from onnxruntime.capi._pybind_state import get_build_info  # noqa: F401
     from onnxruntime.capi._pybind_state import get_device  # noqa: F401
     from onnxruntime.capi._pybind_state import get_version_string  # noqa: F401
     from onnxruntime.capi._pybind_state import set_default_logger_severity  # noqa: F401
