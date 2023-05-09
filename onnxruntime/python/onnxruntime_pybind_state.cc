@@ -762,7 +762,7 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
   } else if (type == kVitisAIExecutionProvider) {
 #if USE_VITISAI
     const auto it = provider_options_map.find(type);
-    if (it != provider_options_map.end()) {
+    if (it == provider_options_map.end()) {
       LOGS_DEFAULT(FATAL) << "cannot find provider options for VitisAIExecutionProvider";
     }
     const auto& vitis_option_map = it->second;

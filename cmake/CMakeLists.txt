@@ -132,6 +132,7 @@ option(onnxruntime_TVM_CUDA_RUNTIME "Build TVM with CUDA support" OFF)
 option(onnxruntime_TVM_USE_LLVM "Build TVM with LLVM. Set customized path to llvm-config.exe here if need" OFF)
 option(onnxruntime_TVM_USE_HASH "Build ipp-crypto library for support hash algorithm. It is defined for TVM only")
 option(onnxruntime_USE_XNNPACK "Build with XNNPACK support. Provides an alternative math library on ARM, WebAssembly and x86." OFF)
+option(onnxruntime_USE_WEBNN "Build with WebNN support. Enable hardware acceleration in web browsers." OFF)
 
 # Options related to reducing the binary size produced by the build
 # XNNPACK EP requires the internal NHWC contrib ops to be available, so this option must be OFF when onnxruntime_USE_XNNPACK is ON
@@ -274,6 +275,9 @@ if (onnxruntime_USE_ROCM)
 
   file(GLOB rocm_cmake_components ${onnxruntime_ROCM_HOME}/lib/cmake/*)
   list(APPEND CMAKE_PREFIX_PATH ${rocm_cmake_components})
+  # Force cmake to accept the configured HIP compiler. Because the configured CMAKE_PREFIX_PATH does not work during
+  # enable_language(HIP), we might need to move configuring of CMAKE_PREFIX_PATH to build.py (in the future).
+  set(CMAKE_HIP_COMPILER_FORCED ON)
 
   enable_language(HIP)
   # NOTE: Flags -mllvm -amdgpu-early-inline-all=true are critical for gpu kernel code performance. -mllvm passes the
@@ -731,6 +735,11 @@ if (onnxruntime_USE_XNNPACK)
   list(APPEND ORT_PROVIDER_FLAGS -DUSE_XNNPACK=1)
   list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_XNNPACK=1)
   list(APPEND ONNXRUNTIME_PROVIDER_NAMES xnnpack)
+endif()
+if (onnxruntime_USE_WEBNN)
+  list(APPEND ORT_PROVIDER_FLAGS -DUSE_WEBNN=1)
+  list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_WEBNN=1)
+  list(APPEND ONNXRUNTIME_PROVIDER_NAMES webnn)
 endif()
 if (onnxruntime_USE_CANN)
     list(APPEND ORT_PROVIDER_FLAGS  -DUSE_CANN=1)
