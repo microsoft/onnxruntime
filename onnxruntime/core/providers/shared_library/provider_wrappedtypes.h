@@ -823,9 +823,7 @@ struct OpKernelInfo final {
 
   const IExecutionProvider* GetExecutionProvider() const noexcept { return g_host->OpKernelInfo__GetExecutionProvider(this); }
 
-  AllocatorPtr GetDeviceAllocator() const { return g_host->OpKernelInfo__GetDeviceAllocator(this); }
-
-  AllocatorPtr GetPinnedAllocator() const { return g_host->OpKernelInfo__GetPinnedAllocator(this); }
+  AllocatorPtr GetAllocator(OrtMemType mem_type) const { return g_host->OpKernelInfo__GetAllocator(this, mem_type); }
 
   template <typename T>
   Status GetAttr(const std::string& name, T* value) const;

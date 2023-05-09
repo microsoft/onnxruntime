@@ -51,7 +51,7 @@ class RocmKernel : public OpKernel {
   template <typename T>
   inline IAllocatorUniquePtr<T> GetScratchBuffer(size_t count_or_bytes, onnxruntime::Stream* stream) const {
     if (count_or_bytes == 0) return nullptr;
-    return IAllocator::MakeUniquePtr<T>(Info().GetDeviceAllocator(), count_or_bytes, false, stream, WaitRocmNotificationOnDevice);
+    return IAllocator::MakeUniquePtr<T>(Info().GetAllocator(OrtMemType::OrtMemTypeDefault), count_or_bytes, false, stream, WaitRocmNotificationOnDevice);
   }
 
   // Different from GetScratchBuffer which use IAllocator::Alloc() to allocate memory,
@@ -61,13 +61,13 @@ class RocmKernel : public OpKernel {
   template <typename T>
   inline IAllocatorUniquePtr<T> GetTransientScratchBuffer(size_t count_or_bytes) const {
     if (count_or_bytes == 0) return nullptr;
-    return IAllocator::MakeUniquePtr<T>(Info().GetDeviceAllocator(), count_or_bytes, true);
+    return IAllocator::MakeUniquePtr<T>(Info().GetAllocator(OrtMemType::OrtMemTypeDefault), count_or_bytes, true);
   }
 
   template <typename T>
   inline IAllocatorUniquePtr<T> AllocateBufferOnCPUPinned(size_t count_or_bytes) const {
     if (count_or_bytes == 0) return nullptr;
-    return IAllocator::MakeUniquePtr<T>(Info().GetPinnedAllocator(), count_or_bytes);
+    return IAllocator::MakeUniquePtr<T>(Info().GetAllocator(OrtMemType::OrtMemTypeCPU), count_or_bytes);
   }
 
   inline void AddDeferredReleaseCPUPtr(void* p, onnxruntime::Stream* ort_stream) const {

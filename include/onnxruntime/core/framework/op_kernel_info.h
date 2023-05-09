@@ -28,11 +28,13 @@ class OpKernelInfo : public OpNodeProtoHelper<ProtoHelperNodeContext> {
                         const std::unordered_map<int, OrtValue>& constant_initialized_tensors,
                         const OrtValueNameIdxMap& mlvalue_name_idx_map,
                         const DataTransferManager& data_transfer_mgr,
-                        AllocatorPtr device_allocator = nullptr, AllocatorPtr pinned_allocator = nullptr);
+                        const std::map<OrtDevice, AllocatorPtr>& allocators = {});
 
   OpKernelInfo(const OpKernelInfo& other);
 
   const OrtDevice GetDevice(OrtMemType mem_type) const;
+
+  AllocatorPtr GetAllocator(OrtMemType mem_type) const;
 
   const KernelDef& GetKernelDef() const;
 
@@ -45,10 +47,6 @@ class OpKernelInfo : public OpNodeProtoHelper<ProtoHelperNodeContext> {
   bool TryGetConstantInput(int input_index, const Tensor** constant_input_value) const;
 
   bool TryGetConstantInput(int input_index, const OrtValue** constant_input_value) const;
-
-  AllocatorPtr GetDeviceAllocator() const { return device_allocator_; }
-
-  AllocatorPtr GetPinnedAllocator() const { return pinned_allocator_; }
 
  private:
   ORT_DISALLOW_MOVE(OpKernelInfo);
@@ -63,8 +61,7 @@ class OpKernelInfo : public OpNodeProtoHelper<ProtoHelperNodeContext> {
   const OrtValueNameIdxMap& ort_value_name_idx_map_;
   const DataTransferManager& data_transfer_mgr_;
   ProtoHelperNodeContext proto_helper_context_;
-  AllocatorPtr device_allocator_;
-  AllocatorPtr pinned_allocator_;
+  const std::map<OrtDevice, AllocatorPtr>& allocators_;
 };
 
 }  // namespace onnxruntime

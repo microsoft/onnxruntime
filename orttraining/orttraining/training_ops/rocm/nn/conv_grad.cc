@@ -343,7 +343,7 @@ template <typename T>
 Status ConvGrad<T>::ComputeInputGradient(onnxruntime::Stream* stream) const {
   return AlgoIterator<T_BwdDataAlgo>(args_).TryAll(
       static_cast<const ROCMExecutionProvider*>(Info().GetExecutionProvider()),
-      Info().GetDeviceAllocator(),
+      Info().GetAllocator(OrtMemType::OrtMemTypeDefault),
       [&](const T_BwdDataPerf& algo_perf) -> Status {
         const auto one = Consts<HipT>::One;
         const auto zero = Consts<HipT>::Zero;
@@ -359,7 +359,7 @@ template <typename T>
 Status ConvGrad<T>::ComputeWeightGradient(onnxruntime::Stream* stream) const {
   return AlgoIterator<T_BwdFilterAlgo>(args_).TryAll(
       static_cast<const ROCMExecutionProvider*>(Info().GetExecutionProvider()),
-      Info().GetDeviceAllocator(),
+      Info().GetAllocator(OrtMemType::OrtMemTypeDefault),
       [&](const T_BwdFilterPerf& algo_perf) -> Status {
         const auto one = Consts<HipT>::One;
         const auto zero = Consts<HipT>::Zero;

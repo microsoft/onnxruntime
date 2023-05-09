@@ -168,7 +168,7 @@ class IAllocator {
         [allocator = std::move(allocator)](T* p) { allocator->Free(p); }};
   }
 
-  template<typename T>
+  template <typename T>
   static IAllocatorUniquePtr<T> MakeUniquePtrFromOrtAllocator(OrtAllocator* ort_allocator, size_t count_or_bytes) {
     if (!ort_allocator) return nullptr;
 
@@ -183,7 +183,7 @@ class IAllocator {
       }
     }
     T* p = static_cast<T*>(ort_allocator->Alloc(ort_allocator, count_or_bytes));
-    return IAllocatorUniquePtr<T>{p, [ort_allocator](T* p) {ort_allocator->Free(ort_allocator, p); }};
+    return IAllocatorUniquePtr<T>{p, [ort_allocator](T* p) { ort_allocator->Free(ort_allocator, p); }};
   }
 
  private:

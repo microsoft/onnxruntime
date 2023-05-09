@@ -27,7 +27,7 @@ class Allocs : public IExecutionProvider {
 
  public:
   Allocs() : IExecutionProvider("fake"){};
-  virtual AllocatorPtr GetAllocator(OrtMemType) const {
+  AllocatorPtr GetAllocator(OrtMemType) const {
     return alloc;
   }
 };
@@ -98,7 +98,7 @@ class MyIExecutionFrame : public IExecutionFrame {
     abort();
   }
   AllocatorPtr GetAllocatorImpl(const OrtDevice&) const override {
-    return a_.GetAllocator(OrtMemTypeDefault);
+    return static_cast<Allocs&>(a_).GetAllocator(OrtMemTypeDefault);
   }
 
   Status CreateNodeOutputMLValueImpl(OrtValue& ort_value, int ort_value_index, const TensorShape* shape, size_t) {
@@ -118,7 +118,7 @@ class MyIExecutionFrame : public IExecutionFrame {
     if (!IAllocator::CalcMemSizeForArrayWithAlignment<0>(static_cast<size_t>(len), sizeof(T), &size)) {
       return Status(ONNXRUNTIME, FAIL, "size overflow");
     }
-    auto alloc = a_.GetAllocator(OrtMemTypeDefault);
+    auto alloc = static_cast<Allocs&>(a_).GetAllocator(OrtMemTypeDefault);
     std::unique_ptr<Tensor> p_tensor = std::make_unique<Tensor>(DataTypeImpl::GetType<T>(), *shape, alloc);
 
     auto ml_tensor = DataTypeImpl::GetType<Tensor>();

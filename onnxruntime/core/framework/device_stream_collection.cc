@@ -24,6 +24,7 @@ class DeviceStreamCollectionImpl {
   DeviceStreamCollectionImpl(size_t num_streams, const std::map<OrtDevice, AllocatorPtr>& allocators, bool is_main_graph) : num_streams_(num_streams), allocators_(allocators), is_main_graph_(is_main_graph) {
     device_streams_.resize(num_streams, nullptr);
     owned_streams_.reserve(num_streams);
+    root_stream_ = std::make_unique<DummyStream>(nullptr, root_stream_device_);
   }
 
   ~DeviceStreamCollectionImpl() {
