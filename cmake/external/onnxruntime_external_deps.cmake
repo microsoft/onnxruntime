@@ -113,7 +113,7 @@ if(CMAKE_CROSSCOMPILING AND NOT ONNX_CUSTOM_PROTOC_EXECUTABLE AND NOT CMAKE_OSX_
     elseif(CMAKE_HOST_SYSTEM_PROCESSOR STREQUAL "x86")
       FetchContent_Declare(protoc_binary URL ${DEP_URL_protoc_win32} URL_HASH SHA1=${DEP_SHA1_protoc_win32})
       FetchContent_Populate(protoc_binary)
-    endif() 
+    endif()
     if(protoc_binary_SOURCE_DIR)
       message("Use prebuilt protoc")
       set(ONNX_CUSTOM_PROTOC_EXECUTABLE ${protoc_binary_SOURCE_DIR}/bin/protoc.exe)
@@ -327,6 +327,18 @@ namespace std { using ::getenv; }
     if(TARGET flatc)
       target_compile_options(flatc PRIVATE /FI${CMAKE_BINARY_DIR}/gdk_cstdlib_wrapper.h)
     endif()
+  endif()
+endif()
+
+# allow warning from flatbuffers 1.12.0 flatc code
+# idl_gen_rust.cpp:409:12: error: variable 'i' set but not used [-Werror,-Wunused-but-set-variable]
+#    size_t i = 0;
+#           ^
+# https://github.com/google/flatbuffers/blob/6df40a2471737b27271bdd9b900ab5f3aec746c7/src/idl_gen_rust.cpp#L409
+# TODO remove when we update our flatbuffers version
+if(TARGET flatc)
+  if(HAS_UNUSED_BUT_SET_VARIABLE)
+    target_compile_options(flatc PRIVATE -Wno-error=unused-but-set-variable)
   endif()
 endif()
 
