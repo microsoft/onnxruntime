@@ -26,7 +26,8 @@ public:
         }
         inputIndices.resize(bindableInputCount);
 
-        DmlOperator::Initialize(kernelCreationContext, inputIndices, outputIndices);
+        constexpr uint32_t dimCount = 2;
+        DmlOperator::Initialize(kernelCreationContext, inputIndices, outputIndices, std::nullopt, std::nullopt, dimCount);
 
         std::vector<DML_TENSOR_DESC> inputDescs = GetDmlInputDescs();
         std::vector<DML_TENSOR_DESC> outputDescs = GetDmlOutputDescs();
@@ -47,12 +48,12 @@ public:
 
         case RecognizedOperatorType::OuterProduct:
             {
-                std::array<uint32_t, 4> aSizes = {1, 1, m_inputTensorDescs[0].GetSizes().back(), 1};
-                TensorDesc& aTensorDesc = TensorDesc(m_inputTensorDescs[0].GetDmlDataType(), aSizes);
+                std::array<uint32_t, 2> aSizes = {m_inputTensorDescs[0].GetSizes().back(), 1};
+                TensorDesc aTensorDesc = TensorDesc(m_inputTensorDescs[0].GetDmlDataType(), aSizes);
                 auto aDmlTensorDesc = aTensorDesc.GetDmlDesc();
 
-                std::array<uint32_t, 4> bSizes = {1, 1, 1, m_inputTensorDescs[1].GetSizes().back()};
-                TensorDesc& bTensorDesc = TensorDesc(m_inputTensorDescs[1].GetDmlDataType(), bSizes);
+                std::array<uint32_t, 2> bSizes = {1, m_inputTensorDescs[1].GetSizes().back()};
+                TensorDesc bTensorDesc = TensorDesc(m_inputTensorDescs[1].GetDmlDataType(), bSizes);
                 auto bDmlTensorDesc = bTensorDesc.GetDmlDesc();
 
                 DML_GEMM_OPERATOR_DESC operatorDesc = {};
