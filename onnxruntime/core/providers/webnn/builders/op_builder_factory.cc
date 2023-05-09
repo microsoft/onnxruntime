@@ -60,6 +60,11 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
     CreatePoolOpBuilder("MaxPool", op_registrations);
   }
 
+  {  // Reduction
+    CreateReductionOpBuilder("ReduceMax", op_registrations);
+    CreateReductionOpBuilder("ReduceMean", op_registrations);
+  }
+
   {  // Reshape
     CreateReshapeOpBuilder("Reshape", op_registrations);
   }

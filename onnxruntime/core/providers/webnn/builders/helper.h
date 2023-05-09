@@ -54,6 +54,8 @@ static const InlinedHashMap<std::string, std::string> op_map = {
     {"GlobalMaxPool", "maxPool2d"},
     {"AveragePool", "averagePool2d"},
     {"MaxPool", "maxPool2d"},
+    {"ReduceMax", "reduceMax"},
+    {"ReduceMean", "reduceMean"},
     {"Reshape", "reshape"},
     {"Resize", "resample2d"},
     {"Transpose", "transpose"}};
