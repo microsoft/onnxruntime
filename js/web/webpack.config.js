@@ -49,7 +49,7 @@ function defaultTerserPluginOptions(target) {
         passes: 2
       },
       mangle: {
-        reserved: ["_scriptDir"]
+        reserved: ["_scriptDir","startWorker"]
       }
     }
   };
