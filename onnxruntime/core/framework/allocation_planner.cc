@@ -2248,7 +2248,7 @@ class DeviceBasedPartitioner : public IGraphPartitioner {
 
   const char* Type() const override { return "DeviceBasedPartitioner"; }
   size_t Streams() const override { return node_names_by_stream_.size(); }
-  void SaveKeyValue(const InlinedVector<std::string>& key, const InlinedVector<std::string>& value);
+  void SaveKeyValue(const InlinedVector<std::string>& key, const InlinedVector<std::string>& value) override;
 
  private:
   void Initialize();
