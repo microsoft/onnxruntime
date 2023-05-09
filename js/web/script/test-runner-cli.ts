@@ -53,7 +53,7 @@ async function main() {
 
   // The default backends and opset version lists. Those will be used in suite tests.
   const DEFAULT_BACKENDS: readonly TestRunnerCliArgs.Backend[] =
-      args.env === 'node' ? ['cpu', 'wasm'] : ['wasm', 'webgl', 'webgpu'];
+      args.env === 'node' ? ['cpu', 'wasm'] : ['wasm', 'webgl', 'webgpu', 'webnn'];
   const DEFAULT_OPSET_VERSIONS = fs.readdirSync(TEST_DATA_MODEL_NODE_ROOT, {withFileTypes: true})
                                      .filter(dir => dir.isDirectory() && dir.name.startsWith('opset'))
                                      .map(dir => dir.name.slice(5));
@@ -459,12 +459,13 @@ async function main() {
       // STEP 5. use Karma to run test
       npmlog.info('TestRunnerCli.Run', '(4/4) Running karma to start test runner...');
       const webgpu = args.backends.indexOf('webgpu') > -1;
+      const webnn = args.backends.indexOf('webnn') > -1;
       const browser = getBrowserNameFromEnv(
           args.env,
           args.bundleMode === 'perf' ? 'perf' :
               args.debug             ? 'debug' :
                                        'test',
-          webgpu, config.options.globalEnvFlags?.webgpu?.profilingMode === 'default');
+          webgpu, webnn, config.options.globalEnvFlags?.webgpu?.profilingMode === 'default');
       const karmaArgs = ['karma', 'start', `--browsers ${browser}`];
       if (args.debug) {
         karmaArgs.push('--log-level info --timeout-mocha 9999999');
@@ -474,7 +475,7 @@ async function main() {
       if (args.noSandbox) {
         karmaArgs.push('--no-sandbox');
       }
-      if (webgpu) {
+      if (webgpu || webnn) {
         karmaArgs.push('--force-localhost');
       }
       karmaArgs.push(`--bundle-mode=${args.bundleMode}`);
@@ -569,10 +570,10 @@ async function main() {
   }
 
   function getBrowserNameFromEnv(
-      env: TestRunnerCliArgs['env'], mode: 'debug'|'perf'|'test', webgpu: boolean, profile: boolean) {
+      env: TestRunnerCliArgs['env'], mode: 'debug'|'perf'|'test', webgpu: boolean, webnn: boolean, profile: boolean) {
     switch (env) {
       case 'chrome':
-        return selectChromeBrowser(mode, webgpu, profile);
+        return selectChromeBrowser(mode, webgpu, webnn, profile);
       case 'edge':
         return 'Edge';
       case 'firefox':
@@ -588,13 +589,20 @@ async function main() {
     }
   }
 
-  function selectChromeBrowser(mode: 'debug'|'perf'|'test', webgpu: boolean, profile: boolean) {
+  function selectChromeBrowser(mode: 'debug'|'perf'|'test', webgpu: boolean, webnn: boolean, profile: boolean) {
     if (webgpu) {
       switch (mode) {
         case 'debug':
           return profile ? 'ChromeCanaryProfileDebug' : 'ChromeCanaryDebug';
         default:
           return profile ? 'ChromeCanaryProfileTest' : 'ChromeCanaryDebug';
+      }
+    } else if (webnn) {
+      switch (mode) {
+        case 'debug':
+          return 'ChromeCanaryDebug';
+        default:
+          return 'ChromeCanaryTest';
       }
     } else {
       switch (mode) {
