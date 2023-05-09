@@ -53,7 +53,7 @@ resources:
 
 variables:
 - name: ReleaseVersionSuffix
-  value: 'TestValue'
+  value: ''
 
 stages:
 - stage: Setup
@@ -79,7 +79,7 @@ stages:
   jobs:
   - job:
     variables:
-      stageDepsJson: $[ convertToJson(stageDependencies) ]
+      stageDepsJson: convertToJson($[ stageDependencies ])
       MyVar: $[ stageDependencies.Setup.Set_Variables.outputs['Set_Release_Version_Suffix.ReleaseVersionSuffix'] ]
       MyVarViaDependancies : $[ dependencies.Setup.outputs['Set_Variables.Set_Release_Version_Suffix.ReleaseVersionSuffix'] ]
 
