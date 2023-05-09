@@ -108,6 +108,9 @@ class IGraphPartitioner {
   const logging::Logger& logger_;
   PathString config_file_;
 };
+#else
+class IGraphPartitioner {
+};
 #endif
 
 class SequentialPlanner {
