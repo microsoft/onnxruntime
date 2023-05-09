@@ -449,10 +449,10 @@ static void RunModelWithRandomInput(
     test.AddInput<int32_t>("token_offset", token_offset_dims, token_offset);
     test.AddInput<int32_t>("cumulative_sequence_length", cum_seq_len_dims, cum_seq_len);
 
-    if(has_rbp) {
+    if (has_rbp) {
       std::vector<int64_t> rbp_dims{1, num_heads, sequence_length, sequence_length};
       std::vector<float> rbp_data = random.Gaussian<float>(rbp_dims, 0.0f, 0.1f);
-      if(is_float16) {
+      if (is_float16) {
         test.AddInput<MLFloat16>("rbp", rbp_dims, ToFloat16(rbp_data));
       } else {
         test.AddInput<float>("rbp", rbp_dims, rbp_data);
@@ -486,7 +486,7 @@ TEST(PackedAttentionTest, TestWithRandomData) {
 }
 
 TEST(PackedAttentionTest, TestWithRandomDataWithRBP) {
-  std::string onnx_model_fp16 = "testdata/packed_attention_fp16.rbp.onnx"; // mainly for cutlass
+  std::string onnx_model_fp16 = "testdata/packed_attention_fp16.rbp.onnx";  // mainly for cutlass
   for (int batch_size : std::vector<int>({1, 2, 3, 4, 5, 6, 7, 8})) {
     for (int sequence_length : std::vector<int>({32, 48, 64, 95, 128})) {
       RunModelWithRandomInput(
