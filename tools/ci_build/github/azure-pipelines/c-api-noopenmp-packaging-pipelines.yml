@@ -65,7 +65,7 @@ stages:
         if [[ "${{ parameters.IsReleaseBuild }}" = True && "${{ parameters.PreReleaseVersionSuffixString }}" != "none"  ]]; then
           echo "##vso[task.setvariable variable=ReleaseVersionSuffix;isOutput=true]${{ parameters.PreReleaseVersionSuffixString }}.${{ parameters.PreReleaseVersionSuffixNumber }}"
         else
-          echo "##vso[task.setvariable variable=ReleaseVersionSuffix;isOutput=true]''"
+          echo "##vso[task.setvariable variable=ReleaseVersionSuffix;isOutput=true]"
         fi
       name: Set_Release_Version_Suffix
 
