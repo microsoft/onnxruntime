@@ -28,15 +28,16 @@ namespace {
 // a vector of kernel metadata
 static std::vector<TritonKernelMetaData> ort_triton_kernel_metadata;
 
-// store func_name -> kernel metadata id
-static std::unordered_map<std::string, int> ort_triton_kernel_map;
-
 // store group_name -> [kernel metadata id vector]
 static std::unordered_map<std::string, std::vector<int>> ort_triton_kernel_group_map;
 
+#ifdef USE_TRITON_KERNEL
+
+// store func_name -> kernel metadata id
+static std::unordered_map<std::string, int> ort_triton_kernel_map;
+
 const int GPU_WARP_SIZE = 32;
 
-#ifdef USE_TRITON_KERNEL
 Status GetSymbolFromLibrary(const std::string& symbol_name, void** symbol) {
   dlerror();  // clear any old error str
 
