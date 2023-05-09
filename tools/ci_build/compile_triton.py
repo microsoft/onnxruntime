@@ -5,7 +5,6 @@
 
 import argparse
 import importlib.util
-import json
 import os
 import shutil
 
@@ -158,7 +157,7 @@ def main(args):
 
     print("compile done.")
 
-    # save metadata into json file
+    # save metadata into header file
     convert_and_save(metadata, args.header, out_dir, out_obj_file)
     print("save into file done.")
 
