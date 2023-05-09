@@ -53,7 +53,7 @@ resources:
 
 variables:
 - name: ReleaseVersionSuffix
-  value: ''
+  value: 'TestValue'
 
 stages:
 - stage: Setup
