@@ -36,6 +36,10 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
     CreateActivationOpBuilder("Sigmoid", op_registrations);
   }
 
+  {  // Cast
+    CreateCastOpBuilder("Cast", op_registrations);
+  }
+
   {  // Clip
     CreateClipOpBuilder("Clip", op_registrations);
   }
