@@ -129,6 +129,7 @@ void LoadOrtTritonKernel() {
 }
 
 Status LaunchTritonKernel(cudaStream_t stream, std::string fname, int grid0, int grid1, int grid2, void* args, size_t args_size) {
+#ifdef USE_TRITON_KERNEL
   if (ort_triton_kernel_map.count(fname) == 0) {
     // return unsupported status when not found function name in registry
     // this error status will be used by tunableOp
@@ -150,11 +151,13 @@ Status LaunchTritonKernel(cudaStream_t stream, std::string fname, int grid0, int
                                   stream,
                                   nullptr,
                                   (void**)&config), "launch kernel failed.");
+#endif
 
   return Status::OK();
 }
 
 Status LaunchTritonKernel(cudaStream_t stream, size_t idx, int grid0, int grid1, int grid2, void* args, size_t args_size) {
+#ifdef USE_TRITON_KERNEL
   if (idx >= ort_triton_kernel_metadata.size()) {
     // return unsupported status when not found function name in registry
     // this error status will be used by tunableOp
@@ -175,6 +178,7 @@ Status LaunchTritonKernel(cudaStream_t stream, size_t idx, int grid0, int grid1,
                                   stream,
                                   nullptr,
                                   (void**)&config), "launch kernel failed.");
+#endif
 
   return Status::OK();
 }

@@ -497,6 +497,11 @@ if (onnxruntime_USE_CUDA)
     target_link_directories(onnxruntime_providers_cuda PRIVATE ${onnxruntime_CUDNN_HOME}/lib)
   endif()
 
+  if (onnxruntime_USE_TRITON_KERNEL)
+    # needed by cuLaunchKernel
+    target_link_libraries(onnxruntime_providers_cuda PRIVATE cuda)
+  endif()
+
   if (onnxruntime_USE_FLASH_ATTENTION)
     include(cutlass)
     target_include_directories(onnxruntime_providers_cuda PRIVATE ${cutlass_SOURCE_DIR}/include ${cutlass_SOURCE_DIR}/examples)
