@@ -204,6 +204,8 @@ TEST_P(ModelTest, Run) {
       {"shape_start_negative_1", "type error", {}},
       {"simple_rnn_batchwise", "type error", {}},
       {"mod_float_mixed_sign_example", "fmod attribute must be true for floating point types", {}},
+      {"mask_rcnn_R_50_FPN_1x", "mask_rcnn generated incorrectly https://github.com/microsoft/onnxruntime/pull/7354. "
+        "ONNX issue: https://github.com/onnx/onnx/issues/3428."},
       {"col2im_pads", "result mismatch", {"opset18"}},
 #ifdef ENABLE_TRAINING_CORE
       {"adagrad", "not a registered function/op", {}},                  // Op not registered.

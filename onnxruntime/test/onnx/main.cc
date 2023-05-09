@@ -803,6 +803,7 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
     {"test_scatternd_add", "Opset 16 not supported yet."},
     {"test_scatternd_multiply", "Opset 16 not supported yet."},
     {"test_scatter_elements_with_duplicate_indices", "Opset 16 not supported yet."},
+    {"mask_rcnn_R_50_FPN_1x", "mask_rcnn generated incorrectly https://github.com/microsoft/onnxruntime/pull/7354. ONNX issue: https://github.com/onnx/onnx/issues/3428."},
     {"col2im_pads", "onnx 18 test data error."},
 
 #if defined(DISABLE_OPTIONAL_TYPE)

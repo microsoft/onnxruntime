@@ -827,7 +827,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             return libFullPath;
         }
 
-        private void ValidateModelWithCustomOps(SessionOptions options) 
+        private void ValidateModelWithCustomOps(SessionOptions options)
         {
             string modelPath = "custom_op_test.onnx";
 
