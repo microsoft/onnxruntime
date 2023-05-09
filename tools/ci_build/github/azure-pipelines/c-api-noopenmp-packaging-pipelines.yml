@@ -51,9 +51,9 @@ resources:
     name: pypa/manylinux
     ref: aead4d751c2101e23336aa73f2380df83e7a13f3
 
-variables:
-- name: ReleaseVersionSuffix
-  value: ''
+#variables:
+#- name: ReleaseVersionSuffix
+#  value: ''
 
 stages:
 - stage: Setup
