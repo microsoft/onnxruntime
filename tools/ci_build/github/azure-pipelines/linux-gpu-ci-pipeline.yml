@@ -110,7 +110,7 @@ jobs:
   - Linux_Build
   steps:
   - task: DownloadPipelineArtifact@2
-    displayName: 'Download Pexiipeline Artifact'
+    displayName: 'Download Pipeline Artifact'
     inputs:
       buildType: 'current'
       artifactName: 'drop-linux'
@@ -131,10 +131,12 @@ jobs:
     inputs:
       script: |
         set -e -x
+        mkdir -p $HOME/.onnx
         docker run --gpus all --rm \
           --volume  $(Build.SourcesDirectory):/onnxruntime_src \
           --volume $(Build.BinariesDirectory)/Release:/build/Release \
-          --volume /data/models:/build/data/models \
+          --volume /data/models:/build/models:ro \
+          --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
           onnxruntimecuda11build \
           /bin/bash -c "
             set -ex; \
