@@ -148,7 +148,7 @@ Status DequantizeLinear<T>::Compute(OpKernelContext* ctx) const {
   PrepareForQDQ(x.Shape(), x_scale, x_zero_point, axis_, N, broadcast_dim, block_size);
 
   const T* zero_point = x_zero_point ? x_zero_point->Data<T>() : nullptr;
-  if (boost::mp11::mp_contains<TypeList<int32_t, Float8E4M3FN, Float8E4M3FNUZ, Float8E5M2, Float8E5M2FNUZ>, T>::value) {
+  if (boost::mp11::mp_contains<boost::mp11::mp_append<element_type_lists::AllFloat8, int32_t>, T>::value) {
     ORT_ENFORCE(zero_point == nullptr ||
                     std::all_of(zero_point,
                                 zero_point + x_zero_point->Shape().Size(),

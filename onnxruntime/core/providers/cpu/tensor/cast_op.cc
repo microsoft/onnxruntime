@@ -57,7 +57,7 @@ template <typename T>
 using IsOrtFloat16Type = boost::mp11::mp_contains<TypeList<BFloat16, MLFloat16>, T>;
 
 template <typename T>
-using IsOrtFloat8Type = boost::mp11::mp_contains<TypeList<Float8E4M3FN, Float8E4M3FNUZ, Float8E5M2, Float8E5M2FNUZ>, T>;
+using IsOrtFloat8Type = boost::mp11::mp_contains<element_type_lists::AllFloat8, T>;
 
 // string cast helpers
 // Note: when C++17 is available, use <charconv> functions
@@ -114,16 +114,18 @@ CastToString(const SrcType& input, std::string& output) {
 }
 
 template <typename SrcType>
-typename std::enable_if<IsOrtFloat16Type<SrcType>::value, void>::type
+typename std::enable_if<IsOrtFloat16Type<SrcType>::value || IsOrtFloat8Type<SrcType>::value, void>::type
 CastToString(const SrcType& input, std::string& output) {
   CastToString(static_cast<float>(input), output);
 }
 
+/*
 template <typename SrcType>
 typename std::enable_if<IsOrtFloat8Type<SrcType>::value, void>::type
 CastToString(const SrcType& input, std::string& output) {
   CastToString(input.ToFloat(), output);
 }
+*/
 
 template <typename DstType>
 typename std::enable_if<std::is_floating_point<DstType>::value, void>::type
@@ -309,15 +311,12 @@ class Cast final : public OpKernel {
     ORT_ENFORCE(status.IsOK(), "Attribute to is not set.");
     to_ = gsl::narrow_cast<ONNX_NAMESPACE::TensorProto_DataType>(to);
 
-    int64_t saturate;
-    status = info.GetAttr("saturate", &saturate);
-    if (!status.IsOK()) {
-      saturate = 1;
-    } else if (saturate == 0 && (to != ONNX_NAMESPACE::TensorProto::FLOAT8E4M3FN &&
-                                 to != ONNX_NAMESPACE::TensorProto::FLOAT8E4M3FNUZ &&
-                                 to != ONNX_NAMESPACE::TensorProto::FLOAT8E5M2 &&
-                                 to != ONNX_NAMESPACE::TensorProto::FLOAT8E5M2FNUZ)) {
-      ORT_THROW("Parameter saturate is only used for cast to float 8 types.");
+    int64_t saturate = info.GetAttrOrDefault("saturate",  int64_t{1});
+    if (saturate == 0 && (to != ONNX_NAMESPACE::TensorProto::FLOAT8E4M3FN &&
+                          to != ONNX_NAMESPACE::TensorProto::FLOAT8E4M3FNUZ &&
+                          to != ONNX_NAMESPACE::TensorProto::FLOAT8E5M2 &&
+                          to != ONNX_NAMESPACE::TensorProto::FLOAT8E5M2FNUZ)) {
+      ORT_THROW("Attribute saturate is only used for cast to float 8 types.");
     }
     saturate_ = saturate == 1;
   }
@@ -348,8 +347,7 @@ struct SrcDispatcherStd {
   void operator()(
       int32_t to, const OpKernelContext& context, const TensorShape& shape, const Tensor& src, Tensor& dst) {
     using EnabledDstTypeWithoutFloat8 = boost::mp11::mp_set_difference<
-        EnabledDstTypes,
-        boost::mp11::mp_list<Float8E4M3FN, Float8E4M3FNUZ, Float8E5M2, Float8E5M2FNUZ>>;
+        EnabledDstTypes, element_type_lists::AllFloat8>;
     using EnabledDstTypesWithoutSrcType =
         boost::mp11::mp_remove_if_q<EnabledDstTypeWithoutFloat8, boost::mp11::mp_bind_front<std::is_same, TSrc>>;
     utils::MLTypeCallDispatcherFromTypeList<EnabledDstTypesWithoutSrcType> dispatcher{to};
@@ -362,8 +360,7 @@ struct SrcDispatcherSat {
   void operator()(
       int32_t to, const OpKernelContext& context, const TensorShape& shape, const Tensor& src, Tensor& dst, bool saturate) {
     using EnabledDstTypeOnlyFloat8 = boost::mp11::mp_set_intersection<
-        EnabledDstTypes,
-        boost::mp11::mp_list<Float8E4M3FN, Float8E4M3FNUZ, Float8E5M2, Float8E5M2FNUZ>>;
+        EnabledDstTypes, element_type_lists::AllFloat8>;
     using EnabledDstTypesWithoutSrcType =
         boost::mp11::mp_remove_if_q<EnabledDstTypeOnlyFloat8, boost::mp11::mp_bind_front<std::is_same, TSrc>>;
     utils::MLTypeCallDispatcherFromTypeList<EnabledDstTypesWithoutSrcType> dispatcher{to};

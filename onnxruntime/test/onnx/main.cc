@@ -637,7 +637,9 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
             ORT_TSTR("bernoulli_double"),
             ORT_TSTR("bernoulli_seed")};
 
-    static const ORTCHAR_T* blfoat16_string_cast_tests[] = {
+    // bfloat16 is not a standard type.
+    // rounding when casting to string is not constant accross platforms.
+    static const ORTCHAR_T* blfoat16_or_string_cast_tests[] = {
         ORT_TSTR("cast_BFLOAT16_to_FLOAT"),
         ORT_TSTR("cast_FLOAT_to_BFLOAT16"),
         ORT_TSTR("cast_FLOAT_to_STRING"),
@@ -646,6 +648,7 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
         ORT_TSTR("castlike_FLOAT_to_STRING"),
         ORT_TSTR("castlike_FLOAT_to_STRING_expanded")};
 
+    // float 8 types are not supported by any language.
     static const ORTCHAR_T* float8_tests[] = {
         ORT_TSTR("cast_FLOAT16_to_FLOAT8E4M3FN"),
         ORT_TSTR("cast_FLOAT16_to_FLOAT8E4M3FNUZ"),
@@ -740,7 +743,8 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
         ORT_TSTR("sce_NCd1d2d3_sum_weight_high_ii"),
         ORT_TSTR("sce_NCd1d2d3_sum_weight_high_ii_expanded"),
         ORT_TSTR("sce_none_weights_log_prob_expanded"),
-        ORT_TSTR("sce_none_weights_expanded"),
+        ORT_TSTR("sce_none_weights_expanded")};
+        /*
         // onnx==1.14.0
         ORT_TSTR("loop13_seq"),
         ORT_TSTR("maxunpool_export_with_output_shape"),
@@ -750,9 +754,10 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
         ORT_TSTR("training_dropout_default"),
         ORT_TSTR("training_dropout_default_mask"),
         ORT_TSTR("training_dropout_mask")};
+        */
 
     std::unordered_set<std::basic_string<ORTCHAR_T>> all_disabled_tests(std::begin(immutable_broken_tests), std::end(immutable_broken_tests));
-    all_disabled_tests.insert(std::begin(blfoat16_string_cast_tests), std::end(blfoat16_string_cast_tests));
+    all_disabled_tests.insert(std::begin(blfoat16_string_cast_tests), std::end(blfoat16_or_string_cast_tests));
     all_disabled_tests.insert(std::begin(float8_tests), std::end(float8_tests));
 
     if (enable_cuda) {
