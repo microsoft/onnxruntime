@@ -1,0 +1,32 @@
+parameters:
+  - name: StepName
+    type: string
+
+  - name: ArtifactName
+    type: string
+
+  - name: TargetPath
+    type: string
+
+  - name: SpecificArtifact
+    type: boolean
+    default: false
+
+  - name: BuildId
+    type: string
+    default: '0'
+
+steps:
+  - task: DownloadPipelineArtifact@2
+    displayName: ${{ parameters.StepName }}}
+    inputs:
+      artifactName: ${{ parameters.ArtifactName}}
+      targetPath: '${{ parameters.TargetPath }}'
+      ${{ if eq(parameters.SpecificArtifact, false)}}:
+        buildType: 'current'
+      ${{ else }}:
+          source: 'specific'
+          project: $(System.TeamProject)
+          pipeline: $(Build.DefinitionName)
+          runVersion: 'specific'
+          buildId: ${{ parameters.BuildId }}

@@ -110,6 +110,7 @@ if (onnxruntime_BUILD_WEBASSEMBLY_STATIC_LIB)
       onnxruntime_providers
       ${PROVIDERS_JS}
       ${PROVIDERS_XNNPACK}
+      ${PROVIDERS_WEBNN}
       onnxruntime_session
       onnxruntime_util
       re2::re2
@@ -186,12 +187,17 @@ else()
     onnxruntime_providers
     ${PROVIDERS_JS}
     ${PROVIDERS_XNNPACK}
+    ${PROVIDERS_WEBNN}
     onnxruntime_session
     onnxruntime_util
     re2::re2
   )
   if (onnxruntime_USE_XNNPACK)
     target_link_libraries(onnxruntime_webassembly PRIVATE XNNPACK)
+  endif()
+
+  if(onnxruntime_USE_WEBNN)
+    target_link_libraries(onnxruntime_webassembly PRIVATE onnxruntime_providers_webnn)
   endif()
 
   if (onnxruntime_ENABLE_TRAINING)
@@ -242,7 +248,7 @@ else()
     target_link_options(onnxruntime_webassembly PRIVATE
       "SHELL:-s ASSERTIONS=2"
       "SHELL:-s SAFE_HEAP=1"
-      "SHELL:-s STACK_OVERFLOW_CHECK=1"
+      "SHELL:-s STACK_OVERFLOW_CHECK=2"
       "SHELL:-s DEMANGLE_SUPPORT=1"
     )
   else()
@@ -255,6 +261,10 @@ else()
     )
   endif()
 
+  if (onnxruntime_USE_WEBNN)
+   set_property(TARGET onnxruntime_webassembly APPEND_STRING PROPERTY LINK_FLAGS " --bind")
+  endif()
+
   # Set link flag to enable exceptions support, this will override default disabling exception throwing behavior when disable exceptions.
   target_link_options(onnxruntime_webassembly PRIVATE "SHELL:-s DISABLE_EXCEPTION_THROWING=0")
 
@@ -265,7 +275,7 @@ else()
   if (onnxruntime_ENABLE_WEBASSEMBLY_THREADS)
     target_link_options(onnxruntime_webassembly PRIVATE
       "SHELL:-s EXPORT_NAME=ortWasmThreaded"
-      "SHELL:-s USE_PTHREADS=1"
+      "SHELL:-s DEFAULT_PTHREAD_STACK_SIZE=131072"
     )
     if (onnxruntime_ENABLE_WEBASSEMBLY_SIMD)
       set_target_properties(onnxruntime_webassembly PROPERTIES OUTPUT_NAME "ort-wasm-simd-threaded")
