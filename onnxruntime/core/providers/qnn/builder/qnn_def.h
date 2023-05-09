@@ -126,7 +126,6 @@ class QnnTensorWrapper {
 
     SetQnnTensorMemType(qnn_tensor_, QNN_TENSORMEMTYPE_RAW);
   }
-  
 
   QnnTensorWrapper() = default;
 
