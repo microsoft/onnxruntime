@@ -9,10 +9,17 @@ from onnxruntime.capi import _pybind_state as C
 
 
 class CheckpointState:
-    """Class that holds the state of the training session state
+    """Class that holds the state of the training session
+
+    This class holds all the state information of the training session such as the model parameters,
+    its gradients, the optimizer state and user defined properties.
+
+    User defined properties can be indexed by name from the `CheckpointState` object.
+
+    To create the `CheckpointState`, use the `CheckpointState.load_checkpoint` method.
 
     Args:
-        state (CheckpointState): The C.Checkpoint state object that holds the underlying session state.
+        state: The C.Checkpoint state object that holds the underlying session state.
     """
 
     def __init__(self, state: C.CheckpointState):

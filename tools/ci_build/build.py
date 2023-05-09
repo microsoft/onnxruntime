@@ -396,7 +396,7 @@ def parse_arguments():
     # WebAssembly build
     parser.add_argument("--build_wasm", action="store_true", help="Build for WebAssembly")
     parser.add_argument("--build_wasm_static_lib", action="store_true", help="Build for WebAssembly static library")
-    parser.add_argument("--emsdk_version", default="3.1.32", help="Specify version of emsdk")
+    parser.add_argument("--emsdk_version", default="3.1.37", help="Specify version of emsdk")
 
     parser.add_argument("--enable_wasm_simd", action="store_true", help="Enable WebAssembly SIMD")
     parser.add_argument("--enable_wasm_threads", action="store_true", help="Enable WebAssembly multi-threads support")
@@ -477,6 +477,7 @@ def parse_arguments():
         help="Build with OpenVINO for specific hardware.",
     )
     parser.add_argument("--use_coreml", action="store_true", help="Build with CoreML support.")
+    parser.add_argument("--use_webnn", action="store_true", help="Build with WebNN support.")
     parser.add_argument("--use_snpe", action="store_true", help="Build with SNPE support.")
     parser.add_argument("--snpe_root", help="Path to SNPE SDK root.")
     parser.add_argument("--use_nnapi", action="store_true", help="Build with NNAPI support.")
@@ -979,6 +980,7 @@ def generate_build_tree(
         "-Donnxruntime_ENABLE_CUDA_PROFILING=" + ("ON" if args.enable_cuda_profiling else "OFF"),
         "-Donnxruntime_ENABLE_ROCM_PROFILING=" + ("ON" if args.enable_rocm_profiling else "OFF"),
         "-Donnxruntime_USE_XNNPACK=" + ("ON" if args.use_xnnpack else "OFF"),
+        "-Donnxruntime_USE_WEBNN=" + ("ON" if args.use_webnn else "OFF"),
         "-Donnxruntime_USE_CANN=" + ("ON" if args.use_cann else "OFF"),
     ]
 
@@ -1194,6 +1196,15 @@ def generate_build_tree(
     if args.use_coreml:
         cmake_args += ["-Donnxruntime_USE_COREML=ON"]
 
+    if args.use_webnn:
+        if not args.build_wasm:
+            raise BuildError("WebNN is only available for WebAssembly build.")
+        if args.disable_rtti:
+            # Avoid unboundTypeError for WebNN EP since unbound type names are illegal with RTTI disabled
+            # in Embind API, relevant issue: https://github.com/emscripten-core/emscripten/issues/16911
+            raise BuildError("WebNN is not supported with RTTI disabled.")
+        cmake_args += ["-Donnxruntime_USE_WEBNN=ON"]
+
     if args.use_snpe:
         cmake_args += ["-Donnxruntime_USE_SNPE=ON"]
 
@@ -1245,8 +1256,8 @@ def generate_build_tree(
             add_default_definition(emscripten_settings, "MALLOC", args.wasm_malloc)
         add_default_definition(emscripten_settings, "MALLOC", "dlmalloc")
 
-        # set -s STACK_SIZE=1048576
-        add_default_definition(emscripten_settings, "STACK_SIZE", "1048576")
+        # set -s STACK_SIZE=5242880
+        add_default_definition(emscripten_settings, "STACK_SIZE", "5242880")
 
         if emscripten_settings:
             cmake_args += [f"-Donnxruntime_EMSCRIPTEN_SETTINGS={';'.join(emscripten_settings)}"]
@@ -1293,13 +1304,6 @@ def generate_build_tree(
             "-Donnxruntime_FUZZ_TEST=ON",
             "-Donnxruntime_USE_FULL_PROTOBUF=ON",
         ]
-
-    if args.gen_doc:
-        if args.enable_training:
-            raise BuildError("--gen_doc is not supported along with --enable_training")
-        add_default_definition(cmake_extra_defines, "onnxruntime_PYBIND_EXPORT_OPSCHEMA", "ON")
-    else:
-        add_default_definition(cmake_extra_defines, "onnxruntime_PYBIND_EXPORT_OPSCHEMA", "OFF")
 
     if args.enable_lazy_tensor:
         import torch

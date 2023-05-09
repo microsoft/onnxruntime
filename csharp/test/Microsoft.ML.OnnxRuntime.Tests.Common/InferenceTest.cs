@@ -108,7 +108,19 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 
                 var directml_dll_path = AppDomain.CurrentDomain.BaseDirectory;
                 SetDllDirectory(directml_dll_path);
-                opt.AppendExecutionProvider_DML(0);
+                
+                try
+                {
+                    opt.AppendExecutionProvider_DML(0);
+                }
+                catch (OnnxRuntimeException ortException)
+                {
+                    // if we run on a CI machine with the incorrect hardware we might get an error due to that.
+                    // allow that as the call made it through to the DML EP so the C# layer is working correctly. 
+                    // any other exception type or error message is considered a failure.
+                    Assert.Contains("The specified device interface or feature level is not supported on this system.",
+                                    ortException.Message);
+                }
 
                 // Restore the default dll search order
                 SetDllDirectory(null);

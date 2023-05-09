@@ -2423,7 +2423,7 @@ Second example, if we wanted to add and remove some members, we'd do this:
     In GetApi we now make it return ort_api_3 for version 3.
 */
 
-static constexpr OrtApi ort_api_1_to_15 = {
+static constexpr OrtApi ort_api_1_to_16 = {
     // NOTE: The ordering of these fields MUST not change after that version has shipped since existing binaries depend on this ordering.
 
     // Shipped as version 1 - DO NOT MODIFY (see above text for more information)
@@ -2727,6 +2727,7 @@ static constexpr OrtApi ort_api_1_to_15 = {
     &OrtApis::GetOptionalContainedTypeInfo,
     &OrtApis::GetResizedStringTensorElementBuffer,
     &OrtApis::KernelContext_GetAllocator};
+// End of Version 15 - DO NOT MODIFY ABOVE (see above text for more information)
 
 // Asserts to do a some checks to ensure older Versions of the OrtApi never change (will detect an addition or deletion but not if they cancel out each other)
 // If any of these asserts hit, read the above 'Rules on how to add a new Ort API version'
@@ -2745,18 +2746,20 @@ static_assert(offsetof(OrtApi, SynchronizeBoundOutputs) / sizeof(void*) == 203, 
 static_assert(offsetof(OrtApi, SessionOptionsAppendExecutionProvider_MIGraphX) / sizeof(void*) == 209, "Size of version 11 API cannot change");
 static_assert(offsetof(OrtApi, ReleaseKernelInfo) / sizeof(void*) == 218, "Size of version 12 API cannot change");
 static_assert(offsetof(OrtApi, ReleaseCANNProviderOptions) / sizeof(void*) == 224, "Size of version 13 API cannot change");
+static_assert(offsetof(OrtApi, GetSessionConfigEntry) / sizeof(void*) == 238, "Size of version 14 API cannot change");
+static_assert(offsetof(OrtApi, KernelContext_GetAllocator) / sizeof(void*) == 253, "Size of version 15 API cannot change");
 
 // So that nobody forgets to finish an API version, this check will serve as a reminder:
-static_assert(std::string_view(ORT_VERSION) == "1.15.0",
+static_assert(std::string_view(ORT_VERSION) == "1.16.0",
               "ORT_Version change detected, please follow below steps to ensure OrtApi is updated properly");
 // 1. Update the hardcoded version string in above static_assert to silence it
-// 2. If there were any APIs added to ort_api_1_to_15 above:
+// 2. If there were any APIs added to ort_api_1_to_16 above:
 //    a. Add the 'End of version #' markers (pattern above should be obvious)
 //    b. Add a static_assert in the directly above list of version sizes to ensure nobody adds any more functions to the just shipped API version
 
 ORT_API(const OrtApi*, OrtApis::GetApi, uint32_t version) {
   if (version >= 1 && version <= ORT_API_VERSION)
-    return &ort_api_1_to_15;
+    return &ort_api_1_to_16;
 
   fprintf(stderr, "The given version [%u] is not supported, only version 1 to %u is supported in this build.\n",
           version, ORT_API_VERSION);
