@@ -311,7 +311,7 @@ class Cast final : public OpKernel {
     ORT_ENFORCE(status.IsOK(), "Attribute to is not set.");
     to_ = gsl::narrow_cast<ONNX_NAMESPACE::TensorProto_DataType>(to);
 
-    int64_t saturate = info.GetAttrOrDefault("saturate",  int64_t{1});
+    int64_t saturate = info.GetAttrOrDefault("saturate", int64_t{1});
     if (saturate == 0 && (to != ONNX_NAMESPACE::TensorProto::FLOAT8E4M3FN &&
                           to != ONNX_NAMESPACE::TensorProto::FLOAT8E4M3FNUZ &&
                           to != ONNX_NAMESPACE::TensorProto::FLOAT8E5M2 &&

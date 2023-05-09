@@ -744,17 +744,6 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
         ORT_TSTR("sce_NCd1d2d3_sum_weight_high_ii_expanded"),
         ORT_TSTR("sce_none_weights_log_prob_expanded"),
         ORT_TSTR("sce_none_weights_expanded")};
-        /*
-        // onnx==1.14.0
-        ORT_TSTR("loop13_seq"),
-        ORT_TSTR("maxunpool_export_with_output_shape"),
-        ORT_TSTR("resize_downsample_scales_cubic_align_corners"),
-        ORT_TSTR("resize_downsample_scales_linear_align_corners"),
-        ORT_TSTR("training_dropout"),
-        ORT_TSTR("training_dropout_default"),
-        ORT_TSTR("training_dropout_default_mask"),
-        ORT_TSTR("training_dropout_mask")};
-        */
 
     std::unordered_set<std::basic_string<ORTCHAR_T>> all_disabled_tests(std::begin(immutable_broken_tests), std::end(immutable_broken_tests));
     all_disabled_tests.insert(std::begin(blfoat16_or_string_cast_tests), std::end(blfoat16_or_string_cast_tests));
