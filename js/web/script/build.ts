@@ -86,7 +86,7 @@ if (WASM) {
         'npx',
         [
           'terser', WASM_BINDING_THREADED_JS_PATH, '--compress', 'passes=2', '--format', 'comments=false', '--mangle',
-          'reserved=[_scriptDir]', '--module'
+          'reserved=[_scriptDir,startWorker]', '--module'
         ],
         {shell: true, encoding: 'utf-8', cwd: ROOT_FOLDER});
     if (terser.status !== 0) {
