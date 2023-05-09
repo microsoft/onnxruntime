@@ -46,13 +46,13 @@ if (onnxruntime_USE_AZURE)
   if (WIN32)
 
     link_directories(${VCPKG_SRC}/installed/${onnxruntime_target_platform}-windows/lib)
-    target_link_libraries(onnxruntime_framework PRIVATE libcurl httpclient_static ws2_32 crypt32 Wldap32 zlib)
+    target_link_libraries(onnxruntime_framework PRIVATE libcurl httpclient_static ws2_32 crypt32 Wldap32)
 
   else()
 
     find_package(ZLIB REQUIRED)
     find_package(OpenSSL REQUIRED)
-    target_link_libraries(onnxruntime_framework PRIVATE httpclient_static curl ZLIB::ZLIB OpenSSL::Crypto OpenSSL::SSL)
+    target_link_libraries(onnxruntime_framework PRIVATE httpclient_static curl OpenSSL::Crypto OpenSSL::SSL)
 
   endif() #if (WIN32)
 
