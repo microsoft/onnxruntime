@@ -24,7 +24,6 @@
 #include "test/optimizer/graph_transform_test_fixture.h"
 #include "test/providers/provider_test_utils.h"
 
-
 using namespace std;
 using namespace ONNX_NAMESPACE;
 
