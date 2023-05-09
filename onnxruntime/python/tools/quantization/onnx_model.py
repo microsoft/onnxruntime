@@ -3,6 +3,7 @@ from pathlib import Path
 import onnx
 import onnx.helper as onnx_helper
 import onnx.numpy_helper as onnx_numpy_helper
+from onnx.onnx_pb import ModelProto
 
 from .quant_utils import attribute_to_kwarg, find_by_name
 
@@ -86,7 +87,7 @@ def _clean_initializers_helper(graph, model):
 
 
 class ONNXModel:
-    def __init__(self, model):
+    def __init__(self, model: ModelProto):
         self.model = model
 
     def nodes(self):
