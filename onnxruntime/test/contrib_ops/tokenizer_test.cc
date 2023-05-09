@@ -10,7 +10,7 @@ namespace test {
 namespace tokenizer_test {
 const std::string start_mark{0x2};
 const std::string end_mark{0x3};
-const std::string padval("0xdeadbeaf");
+const std::string padval(u8"0xdeadbeaf");
 
 constexpr const char* domain = onnxruntime::kMSDomain;
 constexpr int opset_ver = 1;
@@ -220,7 +220,7 @@ TEST(ContribOpTest, TokenizerCharLevel_CyrillicCharsWithMarkersC) {
     InitTestAttr(test, true, {""}, 1);
 
     std::vector<int64_t> dims{2};
-    std::vector<std::string> input{"Абсурд", "Кома"};
+    std::vector<std::string> input{u8"Абсурд", u8"Кома"};
     test.AddInput<std::string>("T", dims, input);
 
     std::vector<int64_t> output_dims(dims);
@@ -229,10 +229,10 @@ TEST(ContribOpTest, TokenizerCharLevel_CyrillicCharsWithMarkersC) {
     output_dims.push_back(int64_t(6 + 2));
     std::vector<std::string> output{
         start_mark,
-        "А", "б", "с", "у", "р", "д",
+        u8"А", u8"б", u8"с", u8"у", u8"р", u8"д",
         end_mark,
         start_mark,
-        "К", "о", "м", "а",
+        u8"К", u8"о", u8"м", u8"а",
         end_mark,
         padval,
         padval};
@@ -254,7 +254,7 @@ TEST(ContribOpTest, TokenizerCharLevel_MixedCharsWithMarkersC) {
     InitTestAttr(test, true, {""}, 1);
 
     std::vector<int64_t> dims{2};
-    std::vector<std::string> input{"Абсу中文", "Коñó"};
+    std::vector<std::string> input{u8"Абсу中文", u8"Коñó"};
     test.AddInput<std::string>("T", dims, input);
 
     std::vector<int64_t> output_dims(dims);
@@ -263,10 +263,10 @@ TEST(ContribOpTest, TokenizerCharLevel_MixedCharsWithMarkersC) {
     output_dims.push_back(int64_t(6 + 2));
     std::vector<std::string> output{
         start_mark,
-        "А", "б", "с", "у", "中", "文",
+        u8"А", u8"б", u8"с", u8"у", u8"中", u8"文",
         end_mark,
         start_mark,
-        "К", "о", "ñ", "ó",
+        u8"К", u8"о", u8"ñ", u8"ó",
         end_mark,
         padval,
         padval};
@@ -285,7 +285,7 @@ TEST(ContribOpTest, TokenizerCharLevel_EmptyOutputC) {
     InitTestAttr(test, true, {""}, 1);
 
     std::vector<int64_t> dims{2};
-    std::vector<std::string> input{"", ""};
+    std::vector<std::string> input{u8"", u8""};
     test.AddInput<std::string>("T", dims, input);
 
     std::vector<int64_t> output_dims(dims);
@@ -306,7 +306,7 @@ TEST(ContribOpTest, TokenizerCharLevel_EmptyOutputNC) {
     InitTestAttr(test, true, {""}, 1);
 
     std::vector<int64_t> dims{2, 2};
-    std::vector<std::string> input{"", "", "", ""};
+    std::vector<std::string> input{u8"", u8"", u8"", u8""};
     test.AddInput<std::string>("T", dims, input);
 
     std::vector<int64_t> output_dims(dims);
@@ -325,13 +325,13 @@ TEST(ContribOpTest, TokenizerWithSeparators_MixCharsWithMarkersC) {
   // [C] dimensions
   // Output [C][D]
   {
-    std::string sepexp = "(у|ñ)";
+    std::string sepexp = u8"(у|ñ)";
 
     OpTester test("Tokenizer", opset_ver, domain);
     InitTestAttr(test, true, {sepexp}, 1);
 
     std::vector<int64_t> dims{2};
-    std::vector<std::string> input{"Абсу中文", "Коñó"};
+    std::vector<std::string> input{u8"Абсу中文", u8"Коñó"};
     test.AddInput<std::string>("T", dims, input);
 
     std::vector<int64_t> output_dims(dims);
@@ -339,10 +339,10 @@ TEST(ContribOpTest, TokenizerWithSeparators_MixCharsWithMarkersC) {
     output_dims.push_back(int64_t(2 + 2));
     std::vector<std::string> output{
         start_mark,
-        "Абс", "中文",
+        u8"Абс", u8"中文",
         end_mark,
         start_mark,
-        "Ко", "ó",
+        u8"Ко", u8"ó",
         end_mark};
 
     test.AddOutput<std::string>("Y", output_dims, output);
@@ -355,13 +355,13 @@ TEST(ContribOpTest, TokenizerWithSeparators_MixCharsWithMarkersCompleteMatchEmpt
   // Test entire separators match so we get nothing
   // in the output
   {
-    std::string sepexp = "(Абсу中文)|(Коñó)";
+    std::string sepexp = u8"(Абсу中文)|(Коñó)";
 
     OpTester test("Tokenizer", opset_ver, domain);
     InitTestAttr(test, true, {sepexp}, 1);
 
     std::vector<int64_t> dims{2};
-    std::vector<std::string> input{"Абсу中文", "Коñó"};
+    std::vector<std::string> input{u8"Абсу中文", u8"Коñó"};
     test.AddInput<std::string>("T", dims, input);
 
     std::vector<int64_t> output_dims(dims);
@@ -378,13 +378,13 @@ TEST(ContribOpTest, TokenizerWithSeparators_MixCharsWithMarkersCompleteMatchEmpt
 TEST(ContribOpTest, TokenizerWithSeparators_MixCharsWithMarkersStartMatchC) {
   // Match the start
   {
-    std::string sepexp = "(А)|(К)";
+    std::string sepexp = u8"(А)|(К)";
 
     OpTester test("Tokenizer", opset_ver, domain);
     InitTestAttr(test, true, {sepexp}, 1);
 
     std::vector<int64_t> dims{2};
-    std::vector<std::string> input{"Абсу中文", "Коñó"};
+    std::vector<std::string> input{u8"Абсу中文", u8"Коñó"};
     test.AddInput<std::string>("T", dims, input);
 
     std::vector<int64_t> output_dims(dims);
@@ -392,10 +392,10 @@ TEST(ContribOpTest, TokenizerWithSeparators_MixCharsWithMarkersStartMatchC) {
     output_dims.push_back(int64_t(3));
     std::vector<std::string> output{
         start_mark,
-        "бсу中文",
+        u8"бсу中文",
         end_mark,
         start_mark,
-        "оñó",
+        u8"оñó",
         end_mark};
 
     test.AddOutput<std::string>("Y", output_dims, output);
@@ -407,13 +407,13 @@ TEST(ContribOpTest, TokenizerWithSeparators_MixCharsWithMarkersStartMatchC) {
 TEST(ContribOpTest, TokenizerWithSeparators_MixCharsWithMarkersEndMatchC) {
   // Match the end
   {
-    std::string sepexp = "(文)|(ó)";
+    std::string sepexp = u8"(文)|(ó)";
 
     OpTester test("Tokenizer", opset_ver, domain);
     InitTestAttr(test, true, {sepexp}, 1);
 
     std::vector<int64_t> dims{2};
-    std::vector<std::string> input{"Абсу中文", "Коñó"};
+    std::vector<std::string> input{u8"Абсу中文", u8"Коñó"};
     test.AddInput<std::string>("T", dims, input);
 
     std::vector<int64_t> output_dims(dims);
@@ -421,10 +421,10 @@ TEST(ContribOpTest, TokenizerWithSeparators_MixCharsWithMarkersEndMatchC) {
     output_dims.push_back(int64_t(3));
     std::vector<std::string> output{
         start_mark,
-        "Абсу中",
+        u8"Абсу中",
         end_mark,
         start_mark,
-        "Коñ",
+        u8"Коñ",
         end_mark};
 
     test.AddOutput<std::string>("Y", output_dims, output);
@@ -436,13 +436,13 @@ TEST(ContribOpTest, TokenizerWithSeparators_MixCharsWithMarkersEndMatchC) {
 TEST(ContribOpTest, TokenizerWithSeparators_MixCharsWithMarkersEndMatchAtLeast4CharsC) {
   // Match the end, require at least 4 chars
   {
-    std::string sepexp = "(文)|(ó)";
+    std::string sepexp = u8"(文)|(ó)";
 
     OpTester test("Tokenizer", opset_ver, domain);
     InitTestAttr(test, true, {sepexp}, 4);
 
     std::vector<int64_t> dims{2};
-    std::vector<std::string> input{"Абсу中文", "Коñó"};
+    std::vector<std::string> input{u8"Абсу中文", u8"Коñó"};
     test.AddInput<std::string>("T", dims, input);
 
     std::vector<int64_t> output_dims(dims);
@@ -451,7 +451,7 @@ TEST(ContribOpTest, TokenizerWithSeparators_MixCharsWithMarkersEndMatchAtLeast4C
     output_dims.push_back(int64_t(3));
     std::vector<std::string> output{
         start_mark,
-        "Абсу中",
+        u8"Абсу中",
         end_mark,
         start_mark,
         end_mark,
@@ -466,13 +466,13 @@ TEST(ContribOpTest, TokenizerWithSeparators_MixCharsWithMarkersEndMatchAtLeast4C
 TEST(ContribOpTest, TokenizerWithSeparators_MixCharsWithMarkersEmptyInputEmptyOutputC) {
   // Empty input for [C] should produce [C][0]
   {
-    std::string sepexp = "(文)|(ó)";
+    std::string sepexp = u8"(文)|(ó)";
 
     OpTester test("Tokenizer", opset_ver, domain);
     InitTestAttr(test, true, {sepexp}, 4);
 
     std::vector<int64_t> dims{2};
-    std::vector<std::string> input{"", ""};
+    std::vector<std::string> input{u8"", u8""};
     test.AddInput<std::string>("T", dims, input);
 
     std::vector<int64_t> output_dims(dims);
@@ -488,13 +488,13 @@ TEST(ContribOpTest, TokenizerWithSeparators_MixCharsWithMarkersEmptyInputEmptyOu
 TEST(ContribOpTest, TokenizerWithSeparators_MixCharsWithMarkersEmptyInputEmptyOutputNC) {
   // Empty input for [N][C] should produce [N][C][0]
   {
-    std::string sepexp = "(文)|(ó)";
+    std::string sepexp = u8"(文)|(ó)";
 
     OpTester test("Tokenizer", opset_ver, domain);
     InitTestAttr(test, true, {sepexp}, 4);
 
     std::vector<int64_t> dims{2, 2};
-    std::vector<std::string> input{"", "文", "ó", ""};
+    std::vector<std::string> input{u8"", u8"文", u8"ó", u8""};
     test.AddInput<std::string>("T", dims, input);
 
     std::vector<int64_t> output_dims(dims);
@@ -514,20 +514,20 @@ TEST(ContribOpTest, TokenizerWithSeparators_MixCharsNoMarkersSeparatorsOverlapSh
   {
     // In this case the first pattern must match first
     // and there would be no match for the second
-    std::vector<std::string> separators = {"су", "Абсу"};
+    std::vector<std::string> separators = {u8"су", u8"Абсу"};
 
     OpTester test("Tokenizer", opset_ver, domain);
     InitTestAttr(test, false, separators, 1);
 
     std::vector<int64_t> dims{1};
-    std::vector<std::string> input{"Абсу中文"};
+    std::vector<std::string> input{u8"Абсу中文"};
     test.AddInput<std::string>("T", dims, input);
 
     std::vector<int64_t> output_dims(dims);
     // must split in 2 with no two middle characters
     output_dims.push_back(int64_t(2));
     std::vector<std::string> output{
-        "Аб", "中文"};
+        u8"Аб", u8"中文"};
 
     test.AddOutput<std::string>("Y", output_dims, output);
 
@@ -543,21 +543,21 @@ TEST(ContribOpTest, TokenizerWithSeparators_MixCharsNoMarkersSeparatorsOverlapLo
     // In this case the first pattern must match first
     // and there would be no match for the second
     std::vector<std::string> separators = {
-        "Абсу",
-        "су"};
+        u8"Абсу",
+        u8"су"};
 
     OpTester test("Tokenizer", opset_ver, domain);
     InitTestAttr(test, false, separators, 1);
 
     std::vector<int64_t> dims{1};
-    std::vector<std::string> input{"Абсу中文"};
+    std::vector<std::string> input{u8"Абсу中文"};
     test.AddInput<std::string>("T", dims, input);
 
     std::vector<int64_t> output_dims(dims);
     // Must drop the beginning of the word that
     // also contains the second separator
     output_dims.push_back(int64_t(1));
-    std::vector<std::string> output{"中文"};
+    std::vector<std::string> output{u8"中文"};
 
     test.AddOutput<std::string>("Y", output_dims, output);
 
@@ -573,21 +573,21 @@ TEST(ContribOpTest, TokenizerWithSeparators_MixCharsNoMarkersSeparatorsOverlapLo
     // In this case the first pattern must match first
     // and there would be no match for the second
     std::vector<std::string> separators = {
-        "Абсу",
-        "су"};
+        u8"Абсу",
+        u8"су"};
 
     OpTester test("Tokenizer", opset_ver, domain);
     InitTestAttr(test, false, separators, 1);
 
     std::vector<int64_t> dims{1};
-    std::vector<std::string> input{"Абсусусу中文"};
+    std::vector<std::string> input{u8"Абсусусу中文"};
     test.AddInput<std::string>("T", dims, input);
 
     std::vector<int64_t> output_dims(dims);
     // Must drop the beginning of the word that
     // also contains the second separator
     output_dims.push_back(int64_t(1));
-    std::vector<std::string> output{"中文"};
+    std::vector<std::string> output{u8"中文"};
 
     test.AddOutput<std::string>("Y", output_dims, output);
 
@@ -605,21 +605,21 @@ TEST(ContribOpTest, TokenizerWithSeparators_MixCharsNoMarkersSeparatorsOverlapin
     // so the earlier match for the first wins.
     // and there would be no match for the second
     std::vector<std::string> separators = {
-        "усу",
-        "Абсу"};
+        u8"усу",
+        u8"Абсу"};
 
     OpTester test("Tokenizer", opset_ver, domain);
     InitTestAttr(test, false, separators, 1);
 
     std::vector<int64_t> dims{1};
-    std::vector<std::string> input{"Абсусусу中文"};
+    std::vector<std::string> input{u8"Абсусусу中文"};
     test.AddInput<std::string>("T", dims, input);
 
     std::vector<int64_t> output_dims(dims);
     // Must drop the beginning of the word that
     // also contains the second separator
     output_dims.push_back(int64_t(2));
-    std::vector<std::string> output{"Абс", "су中文"};
+    std::vector<std::string> output{u8"Абс", u8"су中文"};
 
     test.AddOutput<std::string>("Y", output_dims, output);
 
@@ -633,14 +633,14 @@ TEST(ContribOpTest, TokenizerWithSeparators_MixCharCommonPrefixC) {
   // [C] dimensions
   // Output [C][D]
   std::vector<std::string> separators = {
-      ";",
-      ";;;"};
+      u8";",
+      u8";;;"};
 
   OpTester test("Tokenizer", opset_ver, domain);
   InitTestAttr(test, true, separators, 1);
 
   std::vector<int64_t> dims{4};
-  std::vector<std::string> input{"a;b", "a;;;b", "b;c;;;d;e", "a;;b;;;c"};
+  std::vector<std::string> input{u8"a;b", u8"a;;;b", u8"b;c;;;d;e", u8"a;;b;;;c"};
   test.AddInput<std::string>("T", dims, input);
 
   std::vector<int64_t> output_dims(dims);
@@ -648,27 +648,27 @@ TEST(ContribOpTest, TokenizerWithSeparators_MixCharCommonPrefixC) {
   output_dims.push_back(int64_t(6));
   std::vector<std::string> output{
       start_mark,
-      "a",
-      "b",
+      u8"a",
+      u8"b",
       end_mark,
       padval,
       padval,
       start_mark,
-      "a",
-      "b",
+      u8"a",
+      u8"b",
       end_mark,
       padval,
       padval,
       start_mark,
-      "b",
-      "c",
-      "d",
-      "e",
+      u8"b",
+      u8"c",
+      u8"d",
+      u8"e",
       end_mark,
       start_mark,
-      "a",
-      "b",
-      "c",
+      u8"a",
+      u8"b",
+      u8"c",
       end_mark,
       padval,
   };
@@ -679,27 +679,27 @@ TEST(ContribOpTest, TokenizerWithSeparators_MixCharCommonPrefixC) {
 
 TEST(ContribOpTest, TokenizerExpression_RegEx) {
   OpTester test("Tokenizer", opset_ver, domain);
-  const std::string tokenexp("a.");
+  const std::string tokenexp(u8"a.");
   InitTestAttr(test, true, {}, 1, tokenexp);
 
   std::vector<int64_t> dims{4};
-  std::vector<std::string> input{"a;b", "a;;;b", "b;c;;;d;e", "a;;b;;;c"};
+  std::vector<std::string> input{u8"a;b", u8"a;;;b", u8"b;c;;;d;e", u8"a;;b;;;c"};
   test.AddInput<std::string>("T", dims, input);
 
   std::vector<int64_t> output_dims(dims);
   output_dims.push_back(int64_t(3));
   std::vector<std::string> output{
       start_mark,
-      "a;",
+      u8"a;",
       end_mark,
       start_mark,
-      "a;",
+      u8"a;",
       end_mark,
       start_mark,
       end_mark,
       padval,
       start_mark,
-      "a;",
+      u8"a;",
       end_mark,
   };
 
@@ -709,11 +709,11 @@ TEST(ContribOpTest, TokenizerExpression_RegEx) {
 
 TEST(ContribOpTest, TokenizerExpression_RegRep) {
   OpTester test("Tokenizer", opset_ver, domain);
-  const std::string tokenexp("c;+");
+  const std::string tokenexp(u8"c;+");
   InitTestAttr(test, true, {}, 1, tokenexp);
 
   std::vector<int64_t> dims{4};
-  std::vector<std::string> input{"a;b", "a;;;b", "b;c;;;d;e", "a;;b;;;c"};
+  std::vector<std::string> input{u8"a;b", u8"a;;;b", u8"b;c;;;d;e", u8"a;;b;;;c"};
   test.AddInput<std::string>("T", dims, input);
 
   std::vector<int64_t> output_dims(dims);
@@ -726,7 +726,7 @@ TEST(ContribOpTest, TokenizerExpression_RegRep) {
       end_mark,
       padval,
       start_mark,
-      "c;;;",
+      u8"c;;;",
       end_mark,
       start_mark,
       end_mark,
@@ -738,31 +738,31 @@ TEST(ContribOpTest, TokenizerExpression_RegRep) {
 
 TEST(ContribOpTest, TokenizerExpression_Grouping) {
   OpTester test("Tokenizer", opset_ver, domain);
-  const std::string tokenexp("(a;)|(b;)");
+  const std::string tokenexp(u8"(a;)|(b;)");
   InitTestAttr(test, true, {}, 1, tokenexp);
 
   std::vector<int64_t> dims{4};
-  std::vector<std::string> input{"a;b", "a;;;b", "b;c;;;d;e", "a;;b;;;c"};
+  std::vector<std::string> input{u8"a;b", u8"a;;;b", u8"b;c;;;d;e", u8"a;;b;;;c"};
   test.AddInput<std::string>("T", dims, input);
 
   std::vector<int64_t> output_dims(dims);
   output_dims.push_back(int64_t(4));
   std::vector<std::string> output{
       start_mark,
-      "a;",
+      u8"a;",
       end_mark,
       padval,
       start_mark,
-      "a;",
+      u8"a;",
       end_mark,
       padval,
       start_mark,
-      "b;",
+      u8"b;",
       end_mark,
       padval,
       start_mark,
-      "a;",
-      "b;",
+      u8"a;",
+      u8"b;",
       end_mark};
 
   test.AddOutput<std::string>("Y", output_dims, output);
@@ -771,22 +771,22 @@ TEST(ContribOpTest, TokenizerExpression_Grouping) {
 
 TEST(ContribOpTest, TokenizerExpression_RegDot) {
   OpTester test("Tokenizer", opset_ver, domain);
-  const std::string tokenexp(".");
+  const std::string tokenexp(u8".");
   InitTestAttr(test, true, {}, 1, tokenexp);
 
   std::vector<int64_t> dims{1};
-  std::vector<std::string> input{"a;;;b"};
+  std::vector<std::string> input{u8"a;;;b"};
   test.AddInput<std::string>("T", dims, input);
 
   std::vector<int64_t> output_dims(dims);
   output_dims.push_back(int64_t(7));
   std::vector<std::string> output{
       start_mark,
-      "a",
-      ";",
-      ";",
-      ";",
-      "b",
+      u8"a",
+      u8";",
+      u8";",
+      u8";",
+      u8"b",
       end_mark};
 
   test.AddOutput<std::string>("Y", output_dims, output);
@@ -795,19 +795,19 @@ TEST(ContribOpTest, TokenizerExpression_RegDot) {
 
 TEST(ContribOpTest, TokenizerExpression_RegChar) {
   OpTester test("Tokenizer", opset_ver, domain);
-  const std::string tokenexp("\\w");
+  const std::string tokenexp(u8"\\w");
   InitTestAttr(test, true, {}, 1, tokenexp);
 
   std::vector<int64_t> dims{1};
-  std::vector<std::string> input{"a;;;b"};
+  std::vector<std::string> input{u8"a;;;b"};
   test.AddInput<std::string>("T", dims, input);
 
   std::vector<int64_t> output_dims(dims);
   output_dims.push_back(int64_t(4));
   std::vector<std::string> output{
       start_mark,
-      "a",
-      "b",
+      u8"a",
+      u8"b",
       end_mark};
 
   test.AddOutput<std::string>("Y", output_dims, output);

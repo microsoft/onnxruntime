@@ -258,7 +258,6 @@ TEST(TunableOp, OpWrapsMutableFunctor) {
 class VecAddMoveOnlyFunctor {
  public:
   VecAddMoveOnlyFunctor(VecAddMoveOnlyFunctor&&) = default;
-  VecAddMoveOnlyFunctor() {};
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(VecAddMoveOnlyFunctor);
 
   Status operator()(const VecAddParams* params) {
@@ -284,7 +283,6 @@ TEST(TunableOp, OpWrapsMoveOnlyFunctor) {
 class VecAddWithIsSupportedMethod {
  public:
   VecAddWithIsSupportedMethod(VecAddWithIsSupportedMethod&&) = default;
-  VecAddWithIsSupportedMethod() {};
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(VecAddWithIsSupportedMethod);
 
   Status operator()(const VecAddParams* params) {
