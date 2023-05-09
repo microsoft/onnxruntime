@@ -11,7 +11,11 @@
       ],
       "dest": "api",
       "disableGitFeatures": false,
-      "disableDefaultFilter": false
+      "disableDefaultFilter": false,
+      "properties": {
+          "AllowUnsafeBlocks: "true"
+      }
+
     }
   ],
   "build": {
