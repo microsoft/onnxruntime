@@ -51,27 +51,9 @@ resources:
     name: pypa/manylinux
     ref: aead4d751c2101e23336aa73f2380df83e7a13f3
 
-#variables:
-#- name: ReleaseVersionSuffix
-#  value: ''
-
-stages:
-- stage: A
-  jobs:
-  - job: A1
-    steps:
-     - checkout: none
-     - bash: echo "##vso[task.setvariable variable=myStageVal;isOutput=true]this is a stage output variable"
-       name: MyOutputVar
-- stage: B
-  dependsOn: A
-  jobs:
-  - job: B1
-    variables:
-      myStageAVar: $[stageDependencies.A.A1.outputs['MyOutputVar.myStageVal']]
-    steps:
-      - checkout: none
-      - bash: echo $(myStageAVar)
+variables:
+- name: ReleaseVersionSuffix
+  value: ''
 
 - stage: C
   jobs:
