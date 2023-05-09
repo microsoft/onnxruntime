@@ -79,12 +79,11 @@ stages:
     steps:
     - checkout: none
     - bash: |
-        #if [[ "${{ parameters.IsReleaseBuild }}" = True && "${{ parameters.PreReleaseVersionSuffixString }}" != "none"  ]]; then
-        #  echo "##vso[task.setvariable variable=ReleaseVersionSuffix;isOutput=true]${{ parameters.PreReleaseVersionSuffixString }}.${{ parameters.PreReleaseVersionSuffixNumber }}"
-        #else
-        #  echo "##vso[task.setvariable variable=ReleaseVersionSuffix;isOutput=true]''"
-        #fi
-        echo "##vso[task.setvariable variable=myStageVal;isOutput=true]${{ parameters.PreReleaseVersionSuffixString }}.${{ parameters.PreReleaseVersionSuffixNumber }}"
+        if [[ "${{ parameters.IsReleaseBuild }}" = True && "${{ parameters.PreReleaseVersionSuffixString }}" != "none"  ]]; then
+          echo "##vso[task.setvariable variable=ReleaseVersionSuffix;isOutput=true]${{ parameters.PreReleaseVersionSuffixString }}.${{ parameters.PreReleaseVersionSuffixNumber }}"
+        else
+          echo "##vso[task.setvariable variable=ReleaseVersionSuffix;isOutput=true]''"
+        fi
       name: Set
 
 - stage: D
@@ -92,7 +91,7 @@ stages:
   jobs:
   - job: D1
     variables:
-      MyVar: $[stageDependencies.C.C1.outputs['Set.myStageVal']]
+      MyVar: $[stageDependencies.C.C1.outputs['Set.ReleaseVersionSuffix']]
     steps:
     - checkout: none
     - bash: echo $(MyVar)
