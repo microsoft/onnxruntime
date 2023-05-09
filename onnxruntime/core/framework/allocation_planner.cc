@@ -1713,8 +1713,9 @@ class PlannerImpl {
   }
 
 #ifndef ORT_ENABLE_STREAM
-  void PartitionIntoStreams(const logging::Logger& /*logger*/, const ExecutionProviders& /*execution_providers*/,
-                            const PathString& /*partition_config_file*/) {
+  std::unique_ptr<IGraphPartitioner> PartitionIntoStreams(const logging::Logger& /*logger*/,
+                                                          const ExecutionProviders& /*execution_providers*/,
+                                                          const PathString& /*partition_config_file*/) {
     stream_nodes_.push_back({});
     node_stream_map_.resize(SafeInt<size_t>(graph_viewer_.MaxNodeIndex()) + 1);
     for (auto node_index : graph_viewer_.GetNodesInTopologicalOrder()) {
@@ -1722,6 +1723,7 @@ class PlannerImpl {
       node_stream_map_[node_index] = 0;
     }
     num_logic_streams_ = 1;
+    return {};
   }
 
   Status BuildExecutionPlan(const ExecutionProviders& execution_providers) {
@@ -1743,6 +1745,7 @@ class PlannerImpl {
     return Status::OK();
   }
 
+  void SaveBuildPlan(const std::unique_ptr<IGraphPartitioner>&) {}
 #else
 
   std::unique_ptr<IGraphPartitioner>
