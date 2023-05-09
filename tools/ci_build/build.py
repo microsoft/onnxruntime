@@ -396,7 +396,7 @@ def parse_arguments():
     # WebAssembly build
     parser.add_argument("--build_wasm", action="store_true", help="Build for WebAssembly")
     parser.add_argument("--build_wasm_static_lib", action="store_true", help="Build for WebAssembly static library")
-    parser.add_argument("--emsdk_version", default="3.1.32", help="Specify version of emsdk")
+    parser.add_argument("--emsdk_version", default="3.1.37", help="Specify version of emsdk")
 
     parser.add_argument("--enable_wasm_simd", action="store_true", help="Enable WebAssembly SIMD")
     parser.add_argument("--enable_wasm_threads", action="store_true", help="Enable WebAssembly multi-threads support")
@@ -477,6 +477,7 @@ def parse_arguments():
         help="Build with OpenVINO for specific hardware.",
     )
     parser.add_argument("--use_coreml", action="store_true", help="Build with CoreML support.")
+    parser.add_argument("--use_webnn", action="store_true", help="Build with WebNN support.")
     parser.add_argument("--use_snpe", action="store_true", help="Build with SNPE support.")
     parser.add_argument("--snpe_root", help="Path to SNPE SDK root.")
     parser.add_argument("--use_nnapi", action="store_true", help="Build with NNAPI support.")
@@ -979,6 +980,7 @@ def generate_build_tree(
         "-Donnxruntime_ENABLE_CUDA_PROFILING=" + ("ON" if args.enable_cuda_profiling else "OFF"),
         "-Donnxruntime_ENABLE_ROCM_PROFILING=" + ("ON" if args.enable_rocm_profiling else "OFF"),
         "-Donnxruntime_USE_XNNPACK=" + ("ON" if args.use_xnnpack else "OFF"),
+        "-Donnxruntime_USE_WEBNN=" + ("ON" if args.use_webnn else "OFF"),
         "-Donnxruntime_USE_CANN=" + ("ON" if args.use_cann else "OFF"),
     ]
 
@@ -1194,6 +1196,15 @@ def generate_build_tree(
     if args.use_coreml:
         cmake_args += ["-Donnxruntime_USE_COREML=ON"]
 
+    if args.use_webnn:
+        if not args.build_wasm:
+            raise BuildError("WebNN is only available for WebAssembly build.")
+        if args.disable_rtti:
+            # Avoid unboundTypeError for WebNN EP since unbound type names are illegal with RTTI disabled
+            # in Embind API, relevant issue: https://github.com/emscripten-core/emscripten/issues/16911
+            raise BuildError("WebNN is not supported with RTTI disabled.")
+        cmake_args += ["-Donnxruntime_USE_WEBNN=ON"]
+
     if args.use_snpe:
         cmake_args += ["-Donnxruntime_USE_SNPE=ON"]
 
@@ -1245,8 +1256,8 @@ def generate_build_tree(
             add_default_definition(emscripten_settings, "MALLOC", args.wasm_malloc)
         add_default_definition(emscripten_settings, "MALLOC", "dlmalloc")
 
-        # set -s STACK_SIZE=1048576
-        add_default_definition(emscripten_settings, "STACK_SIZE", "1048576")
+        # set -s STACK_SIZE=5242880
+        add_default_definition(emscripten_settings, "STACK_SIZE", "5242880")
 
         if emscripten_settings:
             cmake_args += [f"-Donnxruntime_EMSCRIPTEN_SETTINGS={';'.join(emscripten_settings)}"]
@@ -1293,13 +1304,6 @@ def generate_build_tree(
             "-Donnxruntime_FUZZ_TEST=ON",
             "-Donnxruntime_USE_FULL_PROTOBUF=ON",
         ]
-
-    if args.gen_doc:
-        if args.enable_training:
-            raise BuildError("--gen_doc is not supported along with --enable_training")
-        add_default_definition(cmake_extra_defines, "onnxruntime_PYBIND_EXPORT_OPSCHEMA", "ON")
-    else:
-        add_default_definition(cmake_extra_defines, "onnxruntime_PYBIND_EXPORT_OPSCHEMA", "OFF")
 
     if args.enable_lazy_tensor:
         import torch
@@ -2144,69 +2148,6 @@ def is_cross_compiling_on_apple(args):
     return False
 
 
-# RID is short for runtime identifier. If a nuget package has native binaries,
-# the RID designates on which platforms the package can be restored. However, Google's
-# protobuf package doesn't use standard RIDs from .NET RID catalog. This function is
-# specific for "google.protobuf.tools" nuget package
-# We do not care which CPU arch this ONNX Runtime build is targeting, we only care
-# the "host" CPU type.
-def get_protobuf_rid():
-    cpu_arch = platform.architecture()[0]
-    if is_windows():
-        if platform.machine() == "AMD64":
-            # Even if cpu_arch is "32bit", we still use a 64-bit protoc binary because the CPU can run it
-            return "windows_x64"
-        # No ARM32/ARM64 support yet
-        # If you ran a x64 python exe on a Windows ARM64 machine, it will fall into the "windows_x64" branch above.
-        # If you ran native ARM64 python exe, we use "windows_x64" protoc.exe instead.
-        if platform.machine() == "ARM64":
-            return "windows_x64"
-        return None
-    if is_linux():
-        # TODO: exclude ARM
-        if cpu_arch == "64bit":
-            return "linux_x64"
-        if cpu_arch == "32bit":
-            return "linux_x86"
-        return None
-    if is_macOS():
-        # TODO: exclude ARM
-        return "macosx_x64"
-    return None
-
-
-def build_protoc_for_host(cmake_path, source_dir, build_dir, args):
-    if (args.arm or args.arm64 or args.arm64ec) and not (is_windows() or is_cross_compiling_on_apple(args)):
-        raise BuildError(
-            "Currently only support building protoc for Windows host while "
-            "cross-compiling for ARM/ARM64/Store and linux cross-compiling iOS"
-        )
-
-    rid = get_protobuf_rid()
-    if rid is None:
-        return None
-    run_subprocess(
-        [
-            "nuget.exe" if is_windows() else "nuget",
-            "restore",
-            os.path.join(source_dir, "packages.config"),
-            "-ConfigFile",
-            os.path.join(source_dir, "NuGet.config"),
-            "-PackagesDirectory",
-            build_dir,
-        ]
-    )
-
-    protoc_path = list(Path(build_dir).glob("Google.Protobuf.Tools.*"))[0] / "tools" / rid
-    if is_windows():
-        protoc_path = protoc_path / "protoc.exe"
-    else:
-        protoc_path = protoc_path / "protoc"
-    if not protoc_path.exists():
-        return None
-    return protoc_path.absolute()
-
-
 def generate_documentation(source_dir, build_dir, configs, validate):
     # Randomly choose one build config
     config = next(iter(configs))
@@ -2445,10 +2386,6 @@ def main():
                     )
                 cmake_extra_args = ["-G", args.cmake_generator]
             elif args.arm or args.arm64 or args.arm64ec:
-                # Cross-compiling for ARM(64) architecture
-                # First build protoc for host to use during cross-compilation
-                if path_to_protoc_exe is None:
-                    path_to_protoc_exe = build_protoc_for_host(cmake_path, source_dir, build_dir, args)
                 if args.arm:
                     cmake_extra_args = ["-A", "ARM"]
                 elif args.arm64:
@@ -2506,12 +2443,6 @@ def main():
             run_subprocess([emsdk_file, "install", emsdk_version], cwd=emsdk_dir)
             log.info("Activating emsdk...")
             run_subprocess([emsdk_file, "activate", emsdk_version], cwd=emsdk_dir)
-
-        if (
-            args.android or args.ios or args.build_wasm or is_cross_compiling_on_apple(args)
-        ) and args.path_to_protoc_exe is None:
-            # Cross-compiling for Android, iOS, and WebAssembly
-            path_to_protoc_exe = build_protoc_for_host(cmake_path, source_dir, build_dir, args)
 
         if is_ubuntu_1604():
             if args.arm or args.arm64:
