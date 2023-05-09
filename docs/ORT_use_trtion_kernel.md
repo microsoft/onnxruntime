@@ -18,7 +18,7 @@ def softmax_kernel(
 ```
 This is a very simple implementation. The `n_cols` parameter should be smaller than BLOCK_SIZE. And BLOCK_SIZE MUST be determined at compile time.
 
-In order to support different input shape, we compile mulitple kernels with different BLOCK_SIZE.
+In order to support different input shape, we compile multiple kernels with different BLOCK_SIZE.
 
 Each kernel with different BLOCK_SIZE generates different num_warps and shared memory usage, we call them as `metadata`, and these metadata are needed when launching kernels in onnxruntime.
 

@@ -4,10 +4,10 @@
 # --------------------------------------------------------------------------
 
 import argparse
+import importlib.util
 import json
 import os
 import shutil
-import importlib.util
 
 import triton
 
@@ -26,7 +26,7 @@ function_table = [
 
 """
 _TRITON_SCRIPT_FILES = [
-  "core/providers/rocm/math/softmax.py",
+    "core/providers/rocm/math/softmax.py",
 ]
 
 
@@ -64,8 +64,9 @@ def compile(function_table, out_dir):
 
     return metadata
 
+
 def convert_lib_to_obj(lib_file, out_dir):
-    obj_file = lib_file.split('.')[0] + '.o'
+    obj_file = lib_file.split(".")[0] + ".o"
     command = f"cd {out_dir}; objcopy -I binary -O elf64-x86-64 -B i386:x86-64 {lib_file} {obj_file}; cd -"
     ret = os.system(command)
 
@@ -77,8 +78,9 @@ def convert_lib_to_obj(lib_file, out_dir):
 
     return obj_file
 
+
 def archive_obj_files(obj_files, out_dir, out_obj_file):
-    obj_files = ' '.join(obj_files)
+    obj_files = " ".join(obj_files)
     command = f"cd {out_dir}; ar rcs {out_obj_file} {obj_files}; cd -"
     ret = os.system(command)
 
@@ -88,28 +90,29 @@ def archive_obj_files(obj_files, out_dir, out_obj_file):
     if not os.path.exists(f"{out_dir}/{out_obj_file}"):
         raise Exception(f"the output file not exist, after exec comamnd: {command}")
 
+
 def convert_and_save(metadata, header_file, out_dir, out_obj_file):
     c_metadata = []
     binary_files = []
     for m in metadata:
         meta_ele = []
-        obj_file = convert_lib_to_obj(m['lib_file'], out_dir)
+        obj_file = convert_lib_to_obj(m["lib_file"], out_dir)
         binary_files.append(obj_file)
 
-        lib_name = m['lib_file'].replace('.', '_')
-        meta_ele.append(f"\"_binary_{lib_name}_start\"")
+        lib_name = m["lib_file"].replace(".", "_")
+        meta_ele.append(f'"_binary_{lib_name}_start"')
         meta_ele.append(f"\"{m['func_name']}\"")
         meta_ele.append(f"\"{m['group']}\"")
         meta_ele.append(f"\"{m['name']}\"")
-        meta_ele.append(str(m['num_warps']))
-        meta_ele.append(str(m['shared']))
+        meta_ele.append(str(m["num_warps"]))
+        meta_ele.append(str(m["shared"]))
 
-        # convert constans
+        # convert constants
         constants = []
-        for k,v in m['constants'].items():
-            constants.append(f"{{ \"{k}\", {str(v)}}}")
+        for k, v in m["constants"].items():
+            constants.append(f'{{ "{k}", {str(v)}}}')
         meta_ele.append(f"{{ { ', '.join(constants) } }}")
-        
+
         c_metadata.append(f"{{ { ', '.join(meta_ele) } }}")
 
     archive_obj_files(binary_files, out_dir, out_obj_file)
@@ -162,7 +165,9 @@ def main(args):
 
 def get_arges():
     parser = argparse.ArgumentParser(description="PyTorch Template Finetune Example")
-    parser.add_argument("--header", type=str, default="triton_kernel_infos.h", help="the header file that should be generated.")
+    parser.add_argument(
+        "--header", type=str, default="triton_kernel_infos.h", help="the header file that should be generated."
+    )
     parser.add_argument("--ort_root", type=str, default="onnxruntime", help="the root dir of onnxruntime.")
     parser.add_argument("--obj_file", type=str, default="triton_kernel_infos.a", help="output target object files.")
 
