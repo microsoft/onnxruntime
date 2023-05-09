@@ -39,7 +39,7 @@ def chain_model(args):
         "repetition_penalty",
         "",
         "",
-        "attention_mask",
+        "attention_mask", #"attention_mask",
     ]
     beam_outputs = ["sequences"]
 
