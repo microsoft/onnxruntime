@@ -491,12 +491,13 @@ class SymbolicShapeInference:
 
         for i_o in range(len(node.output)):
             o = node.output[i_o]
-            vi = self.out_mp_.graph.value_info.add()
-            if not skip_infer:
-                vi.CopyFrom(self.tmp_mp_.graph.output[i_o])
-            else:
-                vi.name = o
-            self.known_vi_[o] = vi
+            if o:  # skip optional output
+                vi = self.out_mp_.graph.value_info.add()
+                if not skip_infer:
+                    vi.CopyFrom(self.tmp_mp_.graph.output[i_o])
+                else:
+                    vi.name = o
+                self.known_vi_[o] = vi
 
     def _onnx_infer_subgraph(self, node, subgraph, use_node_input=True, inc_subgraph_id=True):
         if self.verbose_ > 2:

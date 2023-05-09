@@ -746,6 +746,7 @@ public:
         None,
         Identity,
         Multiply,
+        OuterProduct,
         MatMul,
         MatMulTransposeA,
         MatMulTransposeB,
