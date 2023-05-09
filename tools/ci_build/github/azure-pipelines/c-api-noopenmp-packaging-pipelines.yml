@@ -79,10 +79,10 @@ stages:
   jobs:
   - job:
     variables:
-      - name: stageDepsJson
-        value: $[ convertToJson(stageDependencies) ]
-      - name: MyVar
-        value: $[ stageDependencies.Setup.Set_Variables.outputs['Set_Release_Version_Suffix.ReleaseVersionSuffix'] ]
+      - stageDepsJson: $[ convertToJson(stageDependencies) ]
+      - MyVar: $[ stageDependencies.Setup.Set_Variables.outputs['Set_Release_Version_Suffix.ReleaseVersionSuffix'] ]
+      - MyVarViaDependancies : $[ dependencies.Setup.outputs['Set_Variables.Set_Release_Version_Suffix.ReleaseVersionSuffix'] ]
+
     steps:
     - checkout: none
     - script: |
