@@ -55,6 +55,7 @@ variables:
 - name: ReleaseVersionSuffix
   value: ''
 
+stages:
 - stage: C
   jobs:
   - job: C1
