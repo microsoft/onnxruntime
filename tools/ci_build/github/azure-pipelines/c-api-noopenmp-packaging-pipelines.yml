@@ -59,25 +59,25 @@ stages:
 - stage: A
   jobs:
   - job: A1
-    checkout: none
     steps:
+     - checkout: none
      - bash: echo "##vso[task.setvariable variable=myStageVal;isOutput=true]this is a stage output variable"
        name: MyOutputVar
 - stage: B
   dependsOn: A
   jobs:
   - job: B1
-    checkout: none
     variables:
       myStageAVar: $[stageDependencies.A.A1.outputs['MyOutputVar.myStageVal']]
     steps:
+      - checkout: none
       - bash: echo $(myStageAVar)
 
 - stage: C
   jobs:
   - job: C1
-    checkout: none
     steps:
+    - checkout: none
     - bash: |
         #if [[ "${{ parameters.IsReleaseBuild }}" = True && "${{ parameters.PreReleaseVersionSuffixString }}" != "none"  ]]; then
         #  echo "##vso[task.setvariable variable=ReleaseVersionSuffix; isOutput=true]${{ parameters.PreReleaseVersionSuffixString }}.${{ parameters.PreReleaseVersionSuffixNumber }}"
@@ -91,10 +91,10 @@ stages:
   dependsOn: C
   jobs:
   - job: D1
-    checkout: none
     variables:
       MyVar: $[stageDependencies.C.C1.outputs['Set_Release_Version_Suffix.MyStageVal']]
     steps:
+    - checkout: none
     - bash: echo $(MyVar)
 
 - template: templates/c-api-cpu.yml
