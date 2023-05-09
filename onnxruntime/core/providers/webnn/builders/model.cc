@@ -122,7 +122,7 @@ void Model::AllocateInputOutputBuffers() {
   for (const auto& input : inputs_) {
     const auto& input_info = input_output_info_.at(input);
     const auto input_shape = input_info.shape;
-    const auto num_elements = SafeInt<size_t>(Product(input_shape));
+    const auto num_elements = static_cast<int32_t>(SafeInt<size_t>(Product(input_shape)));
     const auto data_type = input_info.data_type;
     switch (data_type) {
       case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16:
@@ -138,7 +138,7 @@ void Model::AllocateInputOutputBuffers() {
   for (const auto& output : outputs_) {
     const auto& output_info = input_output_info_.at(output);
     const auto output_shape = output_info.shape;
-    const auto num_elements = SafeInt<size_t>(Product(output_shape));
+    const auto num_elements = static_cast<int32_t>(SafeInt<size_t>(Product(output_shape)));
     const auto data_type = output_info.data_type;
     switch (data_type) {
       case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16:
