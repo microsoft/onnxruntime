@@ -313,10 +313,10 @@ Status QnnBackendManager::DumpQnnContext(const onnxruntime::PathString& context_
 }
 
 Status QnnBackendManager::LoadCachedQnnContext(const onnxruntime::PathString& context_cache_pathstring, QnnModel& qnn_model) {
-  ORT_RETURN_IF(nullptr == qnn_sys_interface_.systemContextCreate ||
+  bool result = nullptr == qnn_sys_interface_.systemContextCreate ||
                 nullptr == qnn_sys_interface_.systemContextGetBinaryInfo ||
-                nullptr == qnn_sys_interface_.systemContextFree,
-                "Failed to get valid function pointer.");
+                nullptr == qnn_sys_interface_.systemContextFree;
+  ORT_RETURN_IF(result, "Failed to get valid function pointer.");
 
   uint64_t buffer_size{0};
   std::ifstream cache_file(context_cache_pathstring.c_str(), std::ifstream::binary);

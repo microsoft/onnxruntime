@@ -29,6 +29,7 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
   if (context_cache_enabled_pos != runtime_options_.end()) {
     if (context_cache_enabled_pos->second == "1") {
       context_cache_enabled_ = true;
+      LOGS_DEFAULT(VERBOSE) << "Context cache enabled.";
     }
   }
 
@@ -36,6 +37,7 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
   auto context_cache_path_pos = runtime_options_.find(CONTEXT_CACHE_PATH);
   if (context_cache_path_pos != runtime_options_.end()) {
     context_cache_path_ = context_cache_path_pos->second;
+    LOGS_DEFAULT(VERBOSE) << "User specified context cache path: " << context_cache_path_;
   }
 
   static const std::string BACKEND_PATH = "backend_path";
@@ -43,7 +45,7 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
 
   if (backend_path_pos != runtime_options_.end()) {
     backend_path_ = backend_path_pos->second;
-    LOGS_DEFAULT(INFO) << "Backend path: " << backend_path_;
+    LOGS_DEFAULT(VERBOSE) << "Backend path: " << backend_path_;
   } else {
     LOGS_DEFAULT(ERROR) << "No backend path provided.";
   }
@@ -53,7 +55,7 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
   auto profiling_level_pos = runtime_options_.find(PROFILING_LEVEL);
   if (profiling_level_pos != runtime_options_.end()) {
     ParseProfilingLevel(profiling_level_pos->second);
-    LOGS_DEFAULT(INFO) << "profiling_level: " << static_cast<uint8_t>(profiling_level_);
+    LOGS_DEFAULT(VERBOSE) << "profiling_level: " << static_cast<uint8_t>(profiling_level_);
   }
 
   rpc_control_latency_ = 10;
@@ -61,7 +63,7 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
   auto latency_pos = runtime_options_.find(RPC_CONTROL_LANTENCY);
   if (latency_pos != runtime_options_.end()) {
     rpc_control_latency_ = static_cast<uint32_t>(std::stoul(latency_pos->second));
-    LOGS_DEFAULT(INFO) << "rpc_control_latency: " << rpc_control_latency_;
+    LOGS_DEFAULT(VERBOSE) << "rpc_control_latency: " << rpc_control_latency_;
   }
 
   AllocatorCreationInfo device_info(
