@@ -757,7 +757,7 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
         */
 
     std::unordered_set<std::basic_string<ORTCHAR_T>> all_disabled_tests(std::begin(immutable_broken_tests), std::end(immutable_broken_tests));
-    all_disabled_tests.insert(std::begin(blfoat16_string_cast_tests), std::end(blfoat16_or_string_cast_tests));
+    all_disabled_tests.insert(std::begin(blfoat16_or_string_cast_tests), std::end(blfoat16_or_string_cast_tests));
     all_disabled_tests.insert(std::begin(float8_tests), std::end(float8_tests));
 
     if (enable_cuda) {
