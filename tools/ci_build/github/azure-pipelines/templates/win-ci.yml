@@ -43,6 +43,12 @@ parameters:
   type: string
   default: ''
 
+# for inference packages '', for training packages '-training'
+# used for drop-extra and c api artifacts (onnxruntime-win-* or onnxrutime-training-win-*)
+- name: artifact_name_suffix
+  type: string
+  default: ''
+
 - name: ort_build_pool_name
   type: string
   default: 'Win-CPU-2021'
@@ -151,8 +157,8 @@ stages:
       - template: c-api-artifacts-package-and-publish-steps-windows.yml
         parameters:
           buildConfig: RelWithDebInfo
-          artifactName: 'onnxruntime-win-${{ parameters.packageName }}-$(OnnxRuntimeVersion)'
-          artifactNameNoVersionString: 'onnxruntime-win-${{ parameters.packageName }}'
+          artifactName: 'onnxruntime${{ parameters.artifact_name_suffix }}-win-${{ parameters.packageName }}-$(OnnxRuntimeVersion)'
+          artifactNameNoVersionString: 'onnxruntime${{ parameters.artifact_name_suffix }}-win-${{ parameters.packageName }}'
           commitId: $(OnnxRuntimeGitCommitHash)
           DoEsrp: ${{ parameters.DoEsrp }}
 
@@ -168,7 +174,7 @@ stages:
         condition: and(succeeded(), eq('${{ parameters.packageName}}', 'x64'))
         inputs:
           targetPath: '$(Build.BinariesDirectory)\RelWithDebInfo\installed\bin\protoc.exe'
-          artifactName: 'drop-extra'
+          artifactName: 'drop-extra${{ parameters.artifact_name_suffix }}'
 
 
       - task: CopyFiles@2
@@ -184,8 +190,7 @@ stages:
         condition: and(succeeded(), eq('${{ parameters.packageName}}', 'x64'))
         inputs:
           targetPath: '$(Build.BinariesDirectory)\RelWithDebInfo\installed\bin\protoc.exe'
-          artifactName: 'drop-nuget'
-
+          artifactName: 'drop-nuget${{ parameters.artifact_name_suffix }}'
 
       - task: CmdLine@2
         condition: and(succeeded(), eq('${{ parameters.buildJava}}', true))

@@ -18,6 +18,11 @@
 // Modified based on FasterTransformer 5.2
 #pragma once
 
+#if defined(_MSC_VER)
+#pragma warning(push)
+// Global initializer accesses extern object cubin_fmha_v2_fp16_Causal_64_40_sm86_cu_cubin_len
+#pragma warning(disable : 26427)
+#endif
 #include "contrib_ops/cuda/bert/tensorrt_fused_multihead_attention/fused_multihead_attention.h"
 #include <cstdint>
 
@@ -3233,3 +3238,6 @@ inline const FusedMultiHeadAttentionXMMAKernelV2* getXMMAKernelsV2(Data_type typ
 }  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime
+#if defined(_MSC_VER)
+#pragma warning(pop)
+#endif

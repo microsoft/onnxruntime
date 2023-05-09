@@ -26,6 +26,7 @@ namespace Custom {
 class TensorBase {
  public:
   TensorBase(OrtKernelContext* ctx) : ctx_(ctx) {}
+  virtual ~TensorBase() {}
   operator bool() const {
     return shape_.has_value();
   }
@@ -250,9 +251,9 @@ class Tensor<std::string_view> : public TensorBase {
 
 using TensorPtr = std::unique_ptr<Custom::TensorBase>;
 
-//////////////////////////// OrtCustomOpBase ////////////////////////////////
+//////////////////////////// OrtLiteCustomOp ////////////////////////////////
 
-struct OrtCustomOpBase : public OrtCustomOp {
+struct OrtLiteCustomOp : public OrtCustomOp {
   using ConstOptionalFloatTensor = std::optional<const Custom::Tensor<float>&>;
   using OptionalFloatTensor = std::optional<Custom::Tensor<float>>;
 
@@ -493,32 +494,32 @@ struct OrtCustomOpBase : public OrtCustomOp {
   PARSE_ARGS(std::string, ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING)
   PARSE_ARGS(std::string_view, ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING)  // todo - remove string_view output
 
-  OrtCustomOpBase(const char* op_name,
+  OrtLiteCustomOp(const char* op_name,
                   const char* execution_provider) : op_name_(op_name),
                                                     execution_provider_(execution_provider) {
     OrtCustomOp::version = ORT_API_VERSION;
 
-    OrtCustomOp::GetName = [](const OrtCustomOp* op) { return static_cast<const OrtCustomOpBase*>(op)->op_name_.c_str(); };
-    OrtCustomOp::GetExecutionProviderType = [](const OrtCustomOp* op) { return ((OrtCustomOpBase*)op)->execution_provider_.c_str(); };
+    OrtCustomOp::GetName = [](const OrtCustomOp* op) { return static_cast<const OrtLiteCustomOp*>(op)->op_name_.c_str(); };
+    OrtCustomOp::GetExecutionProviderType = [](const OrtCustomOp* op) { return ((OrtLiteCustomOp*)op)->execution_provider_.c_str(); };
     OrtCustomOp::GetInputMemoryType = [](const OrtCustomOp*, size_t) { return OrtMemTypeDefault; };
 
     OrtCustomOp::GetInputTypeCount = [](const OrtCustomOp* op) {
-      auto self = reinterpret_cast<const OrtCustomOpBase*>(op);
+      auto self = reinterpret_cast<const OrtLiteCustomOp*>(op);
       return self->input_types_.size();
     };
 
     OrtCustomOp::GetInputType = [](const OrtCustomOp* op, size_t indice) {
-      auto self = reinterpret_cast<const OrtCustomOpBase*>(op);
+      auto self = reinterpret_cast<const OrtLiteCustomOp*>(op);
       return self->input_types_[indice];
     };
 
     OrtCustomOp::GetOutputTypeCount = [](const OrtCustomOp* op) {
-      auto self = reinterpret_cast<const OrtCustomOpBase*>(op);
+      auto self = reinterpret_cast<const OrtLiteCustomOp*>(op);
       return self->output_types_.size();
     };
 
     OrtCustomOp::GetOutputType = [](const OrtCustomOp* op, size_t indice) {
-      auto self = reinterpret_cast<const OrtCustomOpBase*>(op);
+      auto self = reinterpret_cast<const OrtLiteCustomOp*>(op);
       return self->output_types_[indice];
     };
 
@@ -543,20 +544,20 @@ struct OrtCustomOpBase : public OrtCustomOp {
   std::vector<ONNXTensorElementDataType> output_types_;
 };
 
-//////////////////////////// OrtCustomFunc ////////////////////////////////
+//////////////////////////// OrtLiteCustomFunc ////////////////////////////////
 // The struct is to implement function-as-op.
 // E.g. a function might be defined as:
 //   void Filter(const Ort::Custom::Tensor<float>& floats_in, Ort::Custom::Tensor<float>& floats_out) { ... }
 // It could be registered this way:
 //   Ort::CustomOpDomain v2_domain{"v2"};
-//   std::unique_ptr<OrtCustomOp> fil_op_ptr{Ort::Custom::CreateCustomOp("Filter", "CPUExecutionProvider", Filter)};
+//   std::unique_ptr<OrtLiteCustomOp> fil_op_ptr{Ort::Custom::CreateLiteCustomOp("Filter", "CPUExecutionProvider", Filter)};
 //   v2_domain.Add(fil_op_ptr.get());
 //   session_options.Add(v2_domain);
 // For the complete example, please search keyword "LiteCustomOpTest" under "<cloned_src_dir>/onnxruntime/test/".
 template <typename... Args>
-struct OrtCustomFunc : public OrtCustomOpBase {
+struct OrtLiteCustomFunc : public OrtLiteCustomOp {
   using ComputeFn = void (*)(Args...);
-  using MyType = OrtCustomFunc<Args...>;
+  using MyType = OrtLiteCustomFunc<Args...>;
 
   struct Kernel {
     size_t num_input_{};
@@ -565,10 +566,10 @@ struct OrtCustomFunc : public OrtCustomOpBase {
     std::string ep_{};
   };
 
-  OrtCustomFunc(const char* op_name,
-                const char* execution_provider,
-                ComputeFn compute_fn) : OrtCustomOpBase(op_name, execution_provider),
-                                        compute_fn_(compute_fn) {
+  OrtLiteCustomFunc(const char* op_name,
+                    const char* execution_provider,
+                    ComputeFn compute_fn) : OrtLiteCustomOp(op_name, execution_provider),
+                                            compute_fn_(compute_fn) {
     ParseArgs<Args...>(input_types_, output_types_);
 
     OrtCustomOp::KernelCompute = [](void* op_kernel, OrtKernelContext* context) {
@@ -583,7 +584,7 @@ struct OrtCustomFunc : public OrtCustomOpBase {
       kernel->compute_fn_ = static_cast<const MyType*>(this_)->compute_fn_;
       Ort::ThrowOnError(ort_api->KernelInfo_GetInputCount(info, &kernel->num_input_));
       Ort::ThrowOnError(ort_api->KernelInfo_GetOutputCount(info, &kernel->num_output_));
-      auto self = static_cast<const OrtCustomFunc*>(this_);
+      auto self = static_cast<const OrtLiteCustomFunc*>(this_);
       kernel->ep_ = self->execution_provider_;
       return reinterpret_cast<void*>(kernel.release());
     };
@@ -594,9 +595,9 @@ struct OrtCustomFunc : public OrtCustomOpBase {
   }
 
   ComputeFn compute_fn_;
-};  // struct OrtCustomFunc
+};  // struct OrtLiteCustomFunc
 
-/////////////////////////// OrtCustomStruct ///////////////////////////
+/////////////////////////// OrtLiteCustomStruct ///////////////////////////
 // The struct is to implement struct-as-op.
 // E.g. a struct might be defined as:
 //   struct Merge {
@@ -608,15 +609,15 @@ struct OrtCustomFunc : public OrtCustomOpBase {
 //   };
 // It could be registered this way:
 //   Ort::CustomOpDomain v2_domain{"v2"};
-//   std::unique_ptr<OrtCustomOp> mrg_op_ptr{Ort::Custom::CreateCustomOp<Merge>("Merge", "CPUExecutionProvider")};
+//   std::unique_ptr<OrtLiteCustomOp> mrg_op_ptr{Ort::Custom::CreateLiteCustomOp<Merge>("Merge", "CPUExecutionProvider")};
 //   v2_domain.Add(mrg_op_ptr.get());
 //   session_options.Add(v2_domain);
 // For the complete example, please search keyword "LiteCustomOpTest" under "<cloned_src_dir>/onnxruntime/test/".
 template <typename CustomOp>
-struct OrtCustomStruct : public OrtCustomOpBase {
+struct OrtLiteCustomStruct : public OrtLiteCustomOp {
   template <typename... Args>
   using CustomComputeFn = void (CustomOp::*)(Args...);
-  using MyType = OrtCustomStruct<CustomOp>;
+  using MyType = OrtLiteCustomStruct<CustomOp>;
 
   struct Kernel {
     size_t num_input_{};
@@ -625,9 +626,9 @@ struct OrtCustomStruct : public OrtCustomOpBase {
     std::string ep_{};
   };
 
-  OrtCustomStruct(const char* op_name,
-                  const char* execution_provider) : OrtCustomOpBase(op_name,
-                                                                    execution_provider) {
+  OrtLiteCustomStruct(const char* op_name,
+                      const char* execution_provider) : OrtLiteCustomOp(op_name,
+                                                                        execution_provider) {
     init(&CustomOp::Compute);
   }
 
@@ -647,7 +648,7 @@ struct OrtCustomStruct : public OrtCustomOpBase {
       Ort::ThrowOnError(ort_api->KernelInfo_GetInputCount(info, &kernel->num_input_));
       Ort::ThrowOnError(ort_api->KernelInfo_GetOutputCount(info, &kernel->num_output_));
       kernel->custom_op_ = std::make_unique<CustomOp>(ort_api, info);
-      auto self = static_cast<const OrtCustomStruct*>(this_);
+      auto self = static_cast<const OrtLiteCustomStruct*>(this_);
       kernel->ep_ = self->execution_provider_;
       return reinterpret_cast<void*>(kernel.release());
     };
@@ -656,23 +657,23 @@ struct OrtCustomStruct : public OrtCustomOpBase {
       delete reinterpret_cast<Kernel*>(op_kernel);
     };
   }
-};  // struct OrtCustomStruct
+};  // struct OrtLiteCustomStruct
 
-/////////////////////////// CreateCustomOp ////////////////////////////
+/////////////////////////// CreateLiteCustomOp ////////////////////////////
 
 template <typename... Args>
-OrtCustomOp* CreateCustomOp(const char* op_name,
-                            const char* execution_provider,
-                            void (*custom_compute_fn)(Args...)) {
-  using OrtCustomOpTPtr = OrtCustomFunc<Args...>;
-  return std::make_unique<OrtCustomOpTPtr>(op_name, execution_provider, custom_compute_fn).release();
+OrtLiteCustomOp* CreateLiteCustomOp(const char* op_name,
+                                    const char* execution_provider,
+                                    void (*custom_compute_fn)(Args...)) {
+  using LiteOp = OrtLiteCustomFunc<Args...>;
+  return std::make_unique<LiteOp>(op_name, execution_provider, custom_compute_fn).release();
 }
 
 template <typename CustomOp>
-OrtCustomOp* CreateCustomOp(const char* op_name,
-                            const char* execution_provider) {
-  using OrtCustomOpTPtr = OrtCustomStruct<CustomOp>;
-  return std::make_unique<OrtCustomOpTPtr>(op_name, execution_provider).release();
+OrtLiteCustomOp* CreateLiteCustomOp(const char* op_name,
+                                    const char* execution_provider) {
+  using LiteOp = OrtLiteCustomStruct<CustomOp>;
+  return std::make_unique<LiteOp>(op_name, execution_provider).release();
 }
 
 }  // namespace Custom

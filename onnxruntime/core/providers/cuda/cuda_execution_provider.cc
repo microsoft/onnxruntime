@@ -2375,21 +2375,6 @@ CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
       continue;
 
     const auto& node = *p_node;
-
-    if (p_node->Name() == "/roi_heads/box_roi_pool/If" || p_node->Name() == "if") {
-      std::cout << "caught if" << std::endl;
-    }
-
-    if (p_node->Name() == "/roi_heads/box_roi_pool/Identity") {
-      std::cout << "caught identity" << std::endl;
-    }
-
-    if (p_node->Name() == "/roi_heads/box_roi_pool/Squeeze_1" ||
-        p_node->Name() == "squeeze_0" || 
-        p_node->Name() == "squeeze_1") {
-      std::cout << "caught Squeeze" << std::endl;
-    }
-
     if (!node.GetExecutionProviderType().empty()) {
       continue;
     }
@@ -2548,7 +2533,7 @@ void CUDAExecutionProvider::RegisterStreamHandlers(IStreamCommandHandleRegistry&
 
 OrtDevice CUDAExecutionProvider::GetOrtDeviceByMemType(OrtMemType mem_type) const {
   if (mem_type == OrtMemTypeCPUInput || mem_type == OrtMemTypeCPUOutput) {
-    return OrtDevice(OrtDevice::CPU, OrtDevice::MemType::CUDA_PINNED, default_device_.Id());
+    return OrtDevice(OrtDevice::CPU, OrtDevice::MemType::CUDA_PINNED, 0 /*CPU device id always be 0*/);
   }
   return default_device_;
 }
