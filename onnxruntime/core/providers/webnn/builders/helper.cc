@@ -103,5 +103,9 @@ std::vector<std::vector<NodeIndex>> GetSupportedNodes(const GraphViewer& graph_v
   return supported_node_groups;
 }
 
+bool IsSupportedDataType(int32_t data_type) {
+  return std::find(supported_data_types.begin(), supported_data_types.end(), data_type) != supported_data_types.end();
+}
+
 }  // namespace webnn
 }  // namespace onnxruntime

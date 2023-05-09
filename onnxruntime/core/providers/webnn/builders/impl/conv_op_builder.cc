@@ -95,8 +95,7 @@ Status AddInitializerInNewLayout(ModelBuilder& model_builder,
                                  bool is_conv) {
   const auto& tensor = *model_builder.GetInitializerTensors().at(name);
   auto data_type = tensor.data_type();
-  if (data_type != ONNX_NAMESPACE::TensorProto_DataType_FLOAT16 &&
-      data_type != ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
+  if (!IsSupportedDataType(data_type)) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "The initializer of graph has unsupported type, name: ",
                            tensor.name(), " type: ", data_type);

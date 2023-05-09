@@ -107,8 +107,7 @@ Status ModelBuilder::RegisterInitializers() {
     desc.set("dimensions", emscripten::val::array(dims));
     auto data_type = tensor.data_type();
     emscripten::val operand = emscripten::val::object();
-    if (data_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16 ||
-        data_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
+    if (IsSupportedDataType(data_type)) {
       unpacked_tensors_.push_back({});
       std::vector<uint8_t>& unpacked_tensor = unpacked_tensors_.back();
       ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackInitializerData(tensor, unpacked_tensor));
@@ -268,12 +267,12 @@ Status ModelBuilder::AddOperandFromPersistMemoryBuffer(
   emscripten::val desc = emscripten::val::object();
   switch (data_type) {
     case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16:
-      view = emscripten::val{emscripten::typed_memory_view(size / 2,
+      view = emscripten::val{emscripten::typed_memory_view(size / sizeof(uint16_t),
                                                            reinterpret_cast<const uint16_t*>(dest))};
       desc.set("type", emscripten::val("float16"));
       break;
     case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
-      view = emscripten::val{emscripten::typed_memory_view(size / 4,
+      view = emscripten::val{emscripten::typed_memory_view(size / sizeof(float),
                                                            reinterpret_cast<const float*>(dest))};
       desc.set("type", emscripten::val("float32"));
       break;
