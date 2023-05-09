@@ -85,14 +85,14 @@ stages:
         #  echo "##vso[task.setvariable variable=ReleaseVersionSuffix; isOutput=true]''"
         #fi
         echo "##vso[task.setvariable variable=myStageVal; isOutput=true]${{ parameters.PreReleaseVersionSuffixString }}.${{ parameters.PreReleaseVersionSuffixNumber }}"
-      name: Set_Release_Version_Suffix
+      name: Set
 
 - stage: D
   dependsOn: C
   jobs:
   - job: D1
     variables:
-      MyVar: $[stageDependencies.C.C1.outputs['Set_Release_Version_Suffix.MyStageVal']]
+      MyVar: $[stageDependencies.C.C1.outputs['Set.MyStageVal']]
     steps:
     - checkout: none
     - bash: echo $(MyVar)
