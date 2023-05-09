@@ -143,7 +143,7 @@ jobs:
             ln -s /opt/python/cp38-cp38/bin/python3 /tmp/python3; \
             /tmp/python3 -m pip install -r /tmp/requirements.txt; \
             /tmp/python3 -m pip install /build/Release/dist/*.whl; \
-            cd /build/Release && xargs -a build/Release/perms.txt chmod a+x; \
+            cd /build/Release && xargs -a /build/Release/perms.txt chmod a+x; \
             cd /onnxruntime_src/java && /onnxruntime_src//java/gradlew \"cmakeCheck\" \"-DcmakeBuildDir=$(Build.BinariesDirectory)/Release\" \"-DUSE_CUDA=1\"; \
             cd /tmp; \
             /tmp/python3 /onnxruntime_src/tools/ci_build/build.py \
