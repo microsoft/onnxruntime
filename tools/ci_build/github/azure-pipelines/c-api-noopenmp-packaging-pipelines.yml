@@ -56,9 +56,9 @@ variables:
   value: ''
 
 stages:
-- stage: C
+- stage: Setup
   jobs:
-  - job: C1
+  - job: Set_Variables
     steps:
     - checkout: none
     - bash: |
@@ -67,14 +67,14 @@ stages:
         else
           echo "##vso[task.setvariable variable=ReleaseVersionSuffix;isOutput=true]''"
         fi
-      name: Set
+      name: Set_Release_Version_Suffix
 
-- stage: D
-  dependsOn: C
+- stage: Debug
+  dependsOn: Setup
   jobs:
   - job: D1
     variables:
-      MyVar: $[stageDependencies.C.C1.outputs['Set.ReleaseVersionSuffix']]
+      MyVar: $[stageDependencies.Setup.Set_Variables.outputs['Set_Release_Version_Suffix.ReleaseVersionSuffix']]
     steps:
     - checkout: none
     - bash: echo $(MyVar)
