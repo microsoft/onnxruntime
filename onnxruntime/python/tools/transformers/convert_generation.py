@@ -1359,7 +1359,7 @@ def pack_qkv_for_decoder_masked_mha(model_proto: ModelProto):
             matmul_node_name = onnx_model.create_node_name("MatMul", name_prefix="MatMul_QKV")
             weight = onnx.helper.make_tensor(
                 name=matmul_node_name + "_weight",
-                data_type=TensorProto.FLOAT,
+                data_type=TensorProto.FLOAT if q_weight.data_type == 1 else TensorProto.FLOAT16,
                 dims=[qkv_weight.shape[0], qkv_weight.shape[1]],
                 vals=qkv_weight.flatten().tolist(),
             )
