@@ -242,7 +242,7 @@ else()
     target_link_options(onnxruntime_webassembly PRIVATE
       "SHELL:-s ASSERTIONS=2"
       "SHELL:-s SAFE_HEAP=1"
-      "SHELL:-s STACK_OVERFLOW_CHECK=1"
+      "SHELL:-s STACK_OVERFLOW_CHECK=2"
       "SHELL:-s DEMANGLE_SUPPORT=1"
     )
   else()
@@ -265,7 +265,7 @@ else()
   if (onnxruntime_ENABLE_WEBASSEMBLY_THREADS)
     target_link_options(onnxruntime_webassembly PRIVATE
       "SHELL:-s EXPORT_NAME=ortWasmThreaded"
-      "SHELL:-s USE_PTHREADS=1"
+      "SHELL:-s DEFAULT_PTHREAD_STACK_SIZE=131072"
     )
     if (onnxruntime_ENABLE_WEBASSEMBLY_SIMD)
       set_target_properties(onnxruntime_webassembly PROPERTIES OUTPUT_NAME "ort-wasm-simd-threaded")
