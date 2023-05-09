@@ -79,7 +79,8 @@ stages:
   jobs:
   - job:
     variables:
-      stageDepsJson: convertToJson($[ stageDependencies ])
+      stageDepsJson: $[ convertToJson(stageDependencies) ]
+      Outputs: $[ stageDependencies.Setup.Set_Variables.outputs]
       MyVar: $[ stageDependencies.Setup.Set_Variables.outputs['Set_Release_Version_Suffix.ReleaseVersionSuffix'] ]
       MyVarViaDependancies : $[ dependencies.Setup.outputs['Set_Variables.Set_Release_Version_Suffix.ReleaseVersionSuffix'] ]
 
