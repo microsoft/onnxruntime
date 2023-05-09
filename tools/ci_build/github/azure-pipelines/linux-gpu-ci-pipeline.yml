@@ -140,14 +140,14 @@ jobs:
             set -ex; \
             cp /onnxruntime_src/tools/ci_build/github/linux/docker/scripts/manylinux/requirements.txt /tmp/requirements.txt; \
             sed -i \"s/git+http:\/\/github\.com\/onnx\/onnx.*/onnx/\" /tmp/requirements.txt; \
-            alias python3=/opt/python/cp38-cp38/bin/python3; \
-            python3 -m pip install -r /tmp/requirements.txt; \
-            python3 -m pip install /build/Release/dist/*.whl; \
-            python3 /onnxruntime_src/tools/ci_build/build.py; \
+            ln -s /opt/python/cp38-cp38/bin/python3 /tmp/python3; \
+            /tmp/python3 -m pip install -r /tmp/requirements.txt; \
+            /tmp/python3 -m pip install /build/Release/dist/*.whl; \
+            /tmp/python3 /onnxruntime_src/tools/ci_build/build.py; \
             cd /build/Release && xargs -a build/Release/perms.txt chmod a+x; \
             cd /onnxruntime_src/java && /onnxruntime_src//java/gradlew \"cmakeCheck\" \"-DcmakeBuildDir=$(Build.BinariesDirectory)/Release\" \"-DUSE_CUDA=1\"; \
             cd /tmp; \
-            python3 /onnxruntime_src/tools/ci_build/build.py \
+            /tmp/python3 /onnxruntime_src/tools/ci_build/build.py \
               --build_dir /build --config Release --test --skip_submodule_sync --build_shared_lib --parallel --build_wheel --enable_onnx_tests \
               --use_cuda --cuda_version=11.6 --cuda_home=/usr/local/cuda --cudnn_home=/usr/local/cuda \
               --enable_pybind --build_java --ctest_path '' "
