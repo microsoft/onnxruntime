@@ -92,7 +92,7 @@ stages:
   jobs:
   - job: D1
     variables:
-      MyVar: $[stageDependencies.C.C1.outputs['Set.MyStageVal']]
+      MyVar: $[stageDependencies.C.C1.outputs['Set.myStageVal']]
     steps:
     - checkout: none
     - bash: echo $(MyVar)
