@@ -13,7 +13,9 @@
       "disableGitFeatures": false,
       "disableDefaultFilter": false,
       "properties": {
-        "AllowUnsafeBlocks": true
+        "AllowUnsafeBlocks": "true",
+        "TargetFramework" : "net6.0",
+        "Nullable" : "enable"
       }
     }
   ],
