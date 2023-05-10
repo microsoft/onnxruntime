@@ -26,6 +26,7 @@ constexpr const char* kEnableCudaGraph = "enable_cuda_graph";
 constexpr const char* kCudnnConv1dPadToNc1d = "cudnn_conv1d_pad_to_nc1d";
 constexpr const char* kTunableOpEnable = "tunable_op_enable";
 constexpr const char* kTunableOpTuningEnable = "tunable_op_tuning_enable";
+constexpr const char* kEnableSkipLayerNormStrictMode = "enable_skip_layer_norm_strict_mode";
 }  // namespace provider_option_names
 }  // namespace cuda
 
@@ -94,6 +95,7 @@ CUDAExecutionProviderInfo CUDAExecutionProviderInfo::FromProviderOptions(const P
           .AddAssignmentToReference(cuda::provider_option_names::kCudnnConvUseMaxWorkspace, info.cudnn_conv_use_max_workspace)
           .AddAssignmentToReference(cuda::provider_option_names::kEnableCudaGraph, info.enable_cuda_graph)
           .AddAssignmentToReference(cuda::provider_option_names::kCudnnConv1dPadToNc1d, info.cudnn_conv1d_pad_to_nc1d)
+          .AddAssignmentToReference(cuda::provider_option_names::kEnableSkipLayerNormStrictMode, info.enable_skip_layer_norm_strict_mode)
           .AddValueParser(
               cuda::provider_option_names::kTunableOpEnable,
               [&info](const std::string& value_str) -> Status {
@@ -130,6 +132,7 @@ ProviderOptions CUDAExecutionProviderInfo::ToProviderOptions(const CUDAExecution
       {cuda::provider_option_names::kCudnnConv1dPadToNc1d, MakeStringWithClassicLocale(info.cudnn_conv1d_pad_to_nc1d)},
       {cuda::provider_option_names::kTunableOpEnable, MakeStringWithClassicLocale(info.tunable_op.enable)},
       {cuda::provider_option_names::kTunableOpTuningEnable, MakeStringWithClassicLocale(info.tunable_op.tuning_enable)},
+      {cuda::provider_option_names::kEnableSkipLayerNormStrictMode, MakeStringWithClassicLocale(info.enable_skip_layer_norm_strict_mode)},
   };
 
   return options;

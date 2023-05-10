@@ -1239,6 +1239,7 @@ OrtCUDAProviderOptionsV2 OrtCUDAProviderOptionsToOrtCUDAProviderOptionsV2(const 
   cuda_options_converted.cudnn_conv_use_max_workspace = 1;
   cuda_options_converted.enable_cuda_graph = 0;
   cuda_options_converted.cudnn_conv1d_pad_to_nc1d = 0;
+  cuda_options_converted.enable_skip_layer_norm_strict_mode = 0;
 
   return cuda_options_converted;
 }
@@ -1308,6 +1309,10 @@ OrtTensorRTProviderOptionsV2 OrtTensorRTProviderOptionsToOrtTensorRTProviderOpti
   trt_options_converted.trt_auxiliary_streams = -1;
   trt_options_converted.trt_tactic_sources = "";
   trt_options_converted.trt_extra_plugin_lib_paths = "";
+  trt_options_converted.trt_profile_min_shapes = "";
+  trt_options_converted.trt_profile_max_shapes = "";
+  trt_options_converted.trt_profile_opt_shapes = "";
+
   return trt_options_converted;
 }
 
@@ -1660,6 +1665,9 @@ ORT_API_STATUS_IMPL(OrtApis::CreateTensorRTProviderOptions, _Outptr_ OrtTensorRT
   (*out)->trt_force_timing_cache = false;
   (*out)->trt_detailed_build_log = false;
   (*out)->trt_extra_plugin_lib_paths = nullptr;
+  (*out)->trt_profile_min_shapes = nullptr;
+  (*out)->trt_profile_max_shapes = nullptr;
+  (*out)->trt_profile_opt_shapes = nullptr;
   return nullptr;
 #else
   ORT_UNUSED_PARAMETER(out);
@@ -1789,6 +1797,7 @@ ORT_API_STATUS_IMPL(OrtApis::CreateCUDAProviderOptions, _Outptr_ OrtCUDAProvider
   (*out)->cudnn_conv_use_max_workspace = 1;
   (*out)->enable_cuda_graph = 0;
   (*out)->cudnn_conv1d_pad_to_nc1d = 0;
+  (*out)->enable_skip_layer_norm_strict_mode = 0;
   return nullptr;
 #else
   ORT_UNUSED_PARAMETER(out);

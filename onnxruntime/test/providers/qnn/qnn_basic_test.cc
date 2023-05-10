@@ -129,25 +129,25 @@ static void RunNHWCResizeModel(const ORTCHAR_T* ort_model_path, bool use_htp) {
 
 // Test shape inference of NHWC Resize operator (opset 11) that uses
 // the scales input. Use the QNN CPU backend.
-TEST(QnnCPUBackendTests, TestNHWCResizeShapeInference_scales_opset11) {
+TEST_F(QnnCPUBackendTests, TestNHWCResizeShapeInference_scales_opset11) {
   RunNHWCResizeModel(ORT_MODEL_FOLDER "nhwc_resize_scales_opset11.onnx", false);
 }
 
 // Test shape inference of NHWC Resize operator (opset 18) that uses
 // the scales input. Use the QNN CPU backend.
-TEST(QnnCPUBackendTests, TestNHWCResizeShapeInference_scales_opset18) {
+TEST_F(QnnCPUBackendTests, TestNHWCResizeShapeInference_scales_opset18) {
   RunNHWCResizeModel(ORT_MODEL_FOLDER "nhwc_resize_scales_opset18.onnx", false);
 }
 
 // Test shape inference of NHWC Resize operator (opset 11) that uses
 // the sizes input. Use the QNN CPU backend.
-TEST(QnnCPUBackendTests, TestNHWCResizeShapeInference_sizes_opset11) {
+TEST_F(QnnCPUBackendTests, TestNHWCResizeShapeInference_sizes_opset11) {
   RunNHWCResizeModel(ORT_MODEL_FOLDER "nhwc_resize_sizes_opset11.onnx", false);
 }
 
 // Test shape inference of NHWC Resize operator (opset 18) that uses
 // the sizes input. Use the QNN CPU backend.
-TEST(QnnCPUBackendTests, TestNHWCResizeShapeInference_sizes_opset18) {
+TEST_F(QnnCPUBackendTests, TestNHWCResizeShapeInference_sizes_opset18) {
   RunNHWCResizeModel(ORT_MODEL_FOLDER "nhwc_resize_sizes_opset18.onnx", false);
 }
 

@@ -15,14 +15,40 @@ parameters:
   default: true
 
 - name: DoEsrp
-  displayName: Run code sign tasks? Must be true if you are doing an Onnx Runtime release.
+  displayName: Run code sign tasks? Must be true if you are doing an ONNX Runtime release
   type: boolean
   default: true
 
 - name: IsReleaseBuild
-  displayName: Is a release build? Set it to true if you are doing an Onnx Runtime release.
+  displayName: Is a release build? Set it to true if you are doing an ONNX Runtime release.
   type: boolean
   default: false
+
+- name: PreReleaseVersionSuffixString
+  displayName: Suffix added to pre-release package version. Only used if IsReleaseBuild is true. Denotes the type of pre-release package.
+  type: string
+  values:
+  - alpha
+  - beta
+  - rc
+  - none
+  default: none
+
+- name: PreReleaseVersionSuffixNumber
+  displayName: Number added to pre-release package version. Only used if IsReleaseBuild is true. Denotes the sequence of a pre-release package.
+  type: number
+  default: 0
+
+# these 2 parameters are used for debugging.
+- name: SpecificArtifact
+  displayName: Use Specific Artifact (Debugging only)
+  type: boolean
+  default: false
+
+- name: BuildId
+  displayName: Pipeline BuildId, you could find it in the URL
+  type: string
+  default: '0'
 
 resources:
   repositories:
@@ -36,7 +62,38 @@ resources:
     name: pypa/manylinux
     ref: aead4d751c2101e23336aa73f2380df83e7a13f3
 
+variables:
+- name: ReleaseVersionSuffix
+  value: ''
+
 stages:
+- stage: Setup
+  jobs:
+  - job: Set_Variables
+    steps:
+    - checkout: none
+    - bash: |
+        if [[ "${{ parameters.IsReleaseBuild }}" = True && "${{ parameters.PreReleaseVersionSuffixString }}" != "none"  ]]; then
+          if [[ "${{ parameters.PreReleaseVersionSuffixNumber }}" -eq 0 ]]; then
+            echo "##vso[task.setvariable variable=ReleaseVersionSuffix;isOutput=true]-${{ parameters.PreReleaseVersionSuffixString }}"
+          else
+            echo "##vso[task.setvariable variable=ReleaseVersionSuffix;isOutput=true]-${{ parameters.PreReleaseVersionSuffixString }}.${{ parameters.PreReleaseVersionSuffixNumber }}"
+          fi
+        else
+          echo "##vso[task.setvariable variable=ReleaseVersionSuffix;isOutput=true]"
+        fi
+      name: Set_Release_Version_Suffix
+
+- stage: Debug
+  dependsOn: Setup
+  jobs:
+  - job: D1
+    variables:
+      MyVar: $[stageDependencies.Setup.Set_Variables.outputs['Set_Release_Version_Suffix.ReleaseVersionSuffix']]
+    steps:
+    - checkout: none
+    - bash: echo $(MyVar)
+
 - template: templates/c-api-cpu.yml
   parameters:
     RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
@@ -45,6 +102,19 @@ stages:
     IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
     OrtNugetPackageId: 'Microsoft.ML.OnnxRuntime'
     AdditionalBuildFlags: ''
+    AdditionalWinBuildFlags: '--enable_onnx_tests --enable_wcos'
+    BuildVariant: 'default'
+    SpecificArtifact: ${{ parameters.SpecificArtifact }}
+    BuildId: ${{ parameters.BuildId }}
+
+- template: templates/ondevice-training-cpu-packaging-pipeline.yml
+  parameters:
+    RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
+    DoCompliance: ${{ parameters.DoCompliance }}
+    DoEsrp: ${{ parameters.DoEsrp }}
+    IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
+    OrtNugetPackageId: 'Microsoft.ML.OnnxRuntime.Training'
+    AdditionalBuildFlags: '--enable_training_apis'
     AdditionalWinBuildFlags: '--enable_onnx_tests --enable_wcos'
     BuildVariant: 'default'
 
@@ -57,14 +127,14 @@ stages:
     timeoutInMinutes: 120
     pool: 'Onnxruntime-Linux-GPU'
     variables:
-      CUDA_VERSION: '11.6'
+      CUDA_VERSION: '11.8'
     steps:
     - template: templates/set-version-number-variables-step.yml
     - template: templates/get-docker-image-steps.yml
       parameters:
         Dockerfile: tools/ci_build/github/linux/docker/inference/x64/default/cpu/Dockerfile
         Context: tools/ci_build/github/linux/docker/inference/x64/default/cpu
-        DockerBuildArgs: "--build-arg BUILD_UID=$( id -u ) --build-arg BASEIMAGE=nvidia/cuda:11.6.2-cudnn8-devel-centos7"
+        DockerBuildArgs: "--build-arg BUILD_UID=$( id -u ) --build-arg BASEIMAGE=nvidia/cuda:11.8.0-cudnn8-devel-centos7"
         Repository: onnxruntimecuda11centosbuild
 
     - script: $(Build.SourcesDirectory)/tools/ci_build/github/linux/build_cuda_c_api_package.sh
@@ -99,20 +169,23 @@ stages:
       buildJava: true
       buildJavaOption: '--build_java'
 
+#CUDA without tensorrt
 - template: templates/win-ci.yml
   parameters:
-    ort_build_pool_name: 'onnxruntime-gpu-tensorrt8-winbuild-t4'
+    ort_build_pool_name: 'onnxruntime-gpu-winbuild-T4'
     DoCompliance: ${{ parameters.DoCompliance }}
     DoEsrp: ${{ parameters.DoEsrp }}
     stage_name_suffix: gpu
-    EnvSetupScript: setup_env_gpu.bat
+    EnvSetupScript: setup_env_cuda_11.bat
     buildArch: x64
     msbuildPlatform: x64
     packageName: x64-cuda
-    buildparameter: --use_cuda --cuda_version=11.6 --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.6" --enable_onnx_tests --enable_wcos --build_java --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=52;60;61;70;75;80"
+    buildparameter: --use_cuda --cuda_version=11.8 --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.8" --enable_onnx_tests --enable_wcos --build_java --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=52;60;61;70;75;80"
     runTests: ${{ parameters.RunOnnxRuntimeTests }}
     buildJava: true
     java_artifact_id: onnxruntime_gpu
+
+# CUDA with Tensorrt
 - template: templates/win-ci.yml
   parameters:
     ort_build_pool_name: 'onnxruntime-gpu-tensorrt8-winbuild-t4'
@@ -123,7 +196,7 @@ stages:
     buildArch: x64
     msbuildPlatform: x64
     packageName: x64-tensorrt
-    buildparameter: --use_tensorrt --use_tensorrt_builtin_parser --tensorrt_home="C:\local\TensorRT-8.6.0.12.Windows10.x86_64.cuda-11.8" --cuda_version=11.6 --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.6"  --enable_onnx_tests --enable_wcos --build_java --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=52;60;61;70;75;80"
+    buildparameter: --use_tensorrt --use_tensorrt_builtin_parser --tensorrt_home="C:\local\TensorRT-8.6.0.12.Windows10.x86_64.cuda-11.8" --cuda_version=11.8 --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.8"  --enable_onnx_tests --enable_wcos --build_java --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=52;60;61;70;75;80"
     runTests: ${{ parameters.RunOnnxRuntimeTests }}
     buildJava: true
     java_artifact_id: onnxruntime_gpu
@@ -148,26 +221,29 @@ stages:
       submodules: false
     - template: templates/set-version-number-variables-step.yml
 
-    - task: DownloadPipelineArtifact@2
-      displayName: 'Download Pipeline Artifact - Win x64'
-      inputs:
-        buildType: 'current'
-        artifactName: 'drop-onnxruntime-java-win-x64-tensorrt'
-        targetPath: '$(Build.BinariesDirectory)\java-artifact\onnxruntime-java-win-x64'
+    - template: templates/flex-downloadPipelineArtifact.yml
+      parameters:
+        StepName: 'Download Pipeline Artifact - Win x64'
+        ArtifactName: 'drop-onnxruntime-java-win-x64-tensorrt'
+        TargetPath: '$(Build.BinariesDirectory)\java-artifact\onnxruntime-java-win-x64'
+        SpecificArtifact: ${{ parameters.specificArtifact }}
+        BuildId: ${{ parameters.BuildId }}
 
-    - task: DownloadPipelineArtifact@2
-      displayName: 'Download Pipeline Artifact - Linux x64'
-      inputs:
-        buildType: 'current'
+    - template: templates/flex-downloadPipelineArtifact.yml
+      parameters:
+        stepName: 'Download Pipeline Artifact - Linux x64'
         artifactName: 'drop-onnxruntime-java-linux-x64-cuda'
         targetPath: '$(Build.BinariesDirectory)\java-artifact\onnxruntime-java-linux-x64'
+        SpecificArtifact: ${{ parameters.specificArtifact }}
+        BuildId: ${{ parameters.BuildId }}
 
-    - task: DownloadPipelineArtifact@2
-      displayName: 'Download Pipeline Artifact - Linux x64'
-      inputs:
-        buildType: 'current'
-        artifactName: 'drop-onnxruntime-java-linux-x64-tensorrt'
+    - template: templates/flex-downloadPipelineArtifact.yml
+      parameters:
+        StepName: 'Download Pipeline Artifact - Linux x64'
+        ArtifactName: 'drop-onnxruntime-java-linux-x64-tensorrt'
         targetPath: '$(Build.BinariesDirectory)\java-artifact\onnxruntime-java-linux-x64-tensorrt'
+        SpecificArtifact: ${{ parameters.specificArtifact }}
+        BuildId: ${{ parameters.BuildId }}
 
     - task: PowerShell@2
       displayName: 'PowerShell Script'
@@ -471,6 +547,7 @@ stages:
 
 - stage: NuGet_Packaging_GPU
   dependsOn:
+  - Setup
   - Windows_Packaging_gpu
   - Windows_Packaging_tensorrt
   - Linux_C_API_Packaging_GPU_x64
@@ -485,6 +562,7 @@ stages:
     pool: 'Azure-Pipelines-EO-Windows2022-aiinfra'
     variables:
       breakCodesignValidationInjection: ${{ parameters.DoEsrp }}
+      ReleaseVersionSuffix: $[stageDependencies.Setup.Set_Variables.outputs['Set_Release_Version_Suffix.ReleaseVersionSuffix']]
 
     steps:
     - checkout: self
@@ -561,7 +639,7 @@ stages:
         #
         # 'Any CPU' is the default (first 'mixed' platform specified in the csproj) so this should be fine.
         script: |
-          dotnet build .\src\Microsoft.ML.OnnxRuntime\Microsoft.ML.OnnxRuntime.csproj -p:SelectedTargets=Net6 -p:Configuration=RelWithDebInfo -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId="Microsoft.ML.OnnxRuntime.Gpu" -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }}
+          dotnet build .\src\Microsoft.ML.OnnxRuntime\Microsoft.ML.OnnxRuntime.csproj -p:SelectedTargets=Net6 -p:Configuration=RelWithDebInfo -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId="Microsoft.ML.OnnxRuntime.Gpu" -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }} -p:ReleaseVersionSuffix=$(ReleaseVersionSuffix)
         workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
     - task: MSBuild@1
@@ -579,7 +657,7 @@ stages:
         solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
         configuration: RelWithDebInfo
         platform: 'Any CPU'
-        msbuildArguments: '-p:SelectedTargets=PreNet6 -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId="Microsoft.ML.OnnxRuntime.Gpu" -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }}'
+        msbuildArguments: '-p:SelectedTargets=PreNet6 -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId="Microsoft.ML.OnnxRuntime.Gpu" -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }} -p:ReleaseVersionSuffix=$(ReleaseVersionSuffix)'
         workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
     - template: templates/win-esrp-dll.yml
@@ -603,7 +681,7 @@ stages:
         solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj'
         configuration: RelWithDebInfo
         platform: 'Any CPU'
-        msbuildArguments: '-t:CreatePackage -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=Microsoft.ML.OnnxRuntime.Gpu -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }}'
+        msbuildArguments: '-t:CreatePackage -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=Microsoft.ML.OnnxRuntime.Gpu -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }} -p:ReleaseVersionSuffix=$(ReleaseVersionSuffix)'
         workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
     - task: BatchScript@1
@@ -684,13 +762,17 @@ stages:
     AgentPool : 'onnxruntime-gpu-tensorrt8-winbuild-t4'
     NugetPackageName : 'Microsoft.ML.OnnxRuntime.Gpu'
     ArtifactSuffix: 'GPU'
+    StageSuffix: 'GPU'
     Skipx86Tests: 'true'
 
 - template: nuget/templates/test_linux.yml
   parameters:
     AgentPool : Onnxruntime-Linux-GPU
     ArtifactSuffix: 'GPU'
+    StageSuffix: 'GPU'
     NugetPackageName : 'Microsoft.ML.OnnxRuntime.Gpu'
+    SpecificArtifact: ${{ parameters.specificArtifact }}
+    BuildId: ${{ parameters.BuildId }}
 
 - template: nuget/templates/dml-vs-2019.yml
   parameters:
@@ -701,13 +783,12 @@ stages:
     BuildCommand: --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --enable_onnx_tests --enable_wcos --use_telemetry --use_dml --use_winml --cmake_generator "Visual Studio 16 2019"
     BuildArch: 'x64'
     msbuildArchitecture: 'amd64'
-    EnvSetupScript: 'setup_env_cuda_11.bat'
+    EnvSetupScript: 'setup_env.bat'
     sln_platform: 'x64'
     DoDebugBuild: 'false'
     DoNugetPack : 'true'
     DoCompliance: 'false'
     DoEsrp: ${{ parameters.DoEsrp }}
-    CudaVersion: '11.6'
     OrtPackageId: 'Microsoft.ML.OnnxRuntime.DirectML'
     NuPackScript: |
      msbuild $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj /p:Configuration=RelWithDebInfo /t:CreatePackage /p:OrtPackageId=Microsoft.ML.OnnxRuntime.DirectML /p:IsReleaseBuild=${{ parameters.IsReleaseBuild }}
@@ -837,31 +918,31 @@ stages:
                 rename %%~ni.nupkg %%~ni.zip
                 unzip %%~ni.zip -d %%~ni
                 del /Q %%~ni.zip
-        
+
                 unzip win-dml-x86.zip -d win-x86
                 mkdir %%~ni\runtimes\win-x86
                 mkdir %%~ni\runtimes\win-x86\native
-        
+
                 move win-x86\runtimes\win-x86\native\onnxruntime.dll %%~ni\runtimes\win-x86\native\onnxruntime.dll
                 move win-x86\runtimes\win-x86\native\onnxruntime.lib %%~ni\runtimes\win-x86\native\onnxruntime.lib
                 move win-x86\runtimes\win-x86\native\onnxruntime.pdb %%~ni\runtimes\win-x86\native\onnxruntime.pdb
-        
+
                 unzip win-dml-arm64.zip -d win-arm64
                 mkdir %%~ni\runtimes\win-arm64
                 mkdir %%~ni\runtimes\win-arm64\native
-        
+
                 move win-arm64\runtimes\win-arm64\native\onnxruntime.dll %%~ni\runtimes\win-arm64\native\onnxruntime.dll
                 move win-arm64\runtimes\win-arm64\native\onnxruntime.lib %%~ni\runtimes\win-arm64\native\onnxruntime.lib
                 move win-arm64\runtimes\win-arm64\native\onnxruntime.pdb %%~ni\runtimes\win-arm64\native\onnxruntime.pdb
-        
+
                 unzip win-dml-arm.zip -d win-arm
                 mkdir %%~ni\runtimes\win-arm
                 mkdir %%~ni\runtimes\win-arm\native
-        
+
                 move win-arm\runtimes\win-arm\native\onnxruntime.dll %%~ni\runtimes\win-arm\native\onnxruntime.dll
                 move win-arm\runtimes\win-arm\native\onnxruntime.lib %%~ni\runtimes\win-arm\native\onnxruntime.lib
                 move win-arm\runtimes\win-arm\native\onnxruntime.pdb %%~ni\runtimes\win-arm\native\onnxruntime.pdb
-        
+
                 pushd %%~ni
                 zip -r ..\%%~ni.zip .
                 popd

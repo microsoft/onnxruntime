@@ -49,7 +49,7 @@ function defaultTerserPluginOptions(target) {
         passes: 2
       },
       mangle: {
-        reserved: ["_scriptDir"]
+        reserved: ["_scriptDir","startWorker"]
       }
     }
   };
@@ -57,6 +57,7 @@ function defaultTerserPluginOptions(target) {
 
 const DEFAULT_BUILD_DEFS = {
   DISABLE_WEBGL: false,
+  DISABLE_WEBGPU: true,
   DISABLE_WASM: false,
   DISABLE_WASM_PROXY: false,
   DISABLE_WASM_THREAD: false,
@@ -122,6 +123,7 @@ function buildConfig({ filename, format, target, mode, devtool, build_defs }) {
 
   if (mode === 'production') {
     config.resolve.alias['./binding/ort-wasm-threaded.js'] = './binding/ort-wasm-threaded.min.js';
+    config.resolve.alias['./binding/ort-wasm-threaded-simd.jsep.js'] = './binding/ort-wasm-threaded-simd.jsep.min.js';
     config.resolve.alias['./binding/ort-wasm-threaded.worker.js'] = './binding/ort-wasm-threaded.min.worker.js';
 
     const options = defaultTerserPluginOptions(target);
@@ -210,7 +212,8 @@ function buildTestRunnerConfig({
   format = 'umd',
   target = 'es2017',
   mode = 'production',
-  devtool = 'source-map'
+  devtool = 'source-map',
+  build_defs = DEFAULT_BUILD_DEFS
 }) {
   const config = {
     target: ['web', target],
@@ -243,7 +246,7 @@ function buildTestRunnerConfig({
       }
     },
     plugins: [
-      new webpack.DefinePlugin({ BUILD_DEFS: DEFAULT_BUILD_DEFS }),
+      new webpack.DefinePlugin({ BUILD_DEFS: build_defs }),
       new webpack.WatchIgnorePlugin({ paths: [/\.js$/, /\.d\.ts$/] }),
       new NodePolyfillPlugin({
         excludeAliases: ["console", "Buffer"]
@@ -314,6 +317,13 @@ module.exports = () => {
             DISABLE_WASM_THREAD: true,
           }
         }),
+        // ort.webgpu.min.js
+        buildOrtConfig({
+          suffix: '.webgpu.min', build_defs: {
+            ...DEFAULT_BUILD_DEFS,
+            DISABLE_WEBGPU: false,
+          }
+        }),
 
         // ort-web.min.js
         buildOrtWebConfig({ suffix: '.min' }),
@@ -332,10 +342,20 @@ module.exports = () => {
       );
       break;
     case 'dev':
-      builds.push(buildTestRunnerConfig({ suffix: '.dev', mode: 'development', devtool: 'inline-source-map' }));
+      builds.push(buildTestRunnerConfig({
+        suffix: '.dev', mode: 'development', devtool: 'inline-source-map', build_defs: {
+          ...DEFAULT_BUILD_DEFS,
+          DISABLE_WEBGPU: false,
+        }
+      }));
       break;
     case 'perf':
-      builds.push(buildTestRunnerConfig({ suffix: '.perf' }));
+      builds.push(buildTestRunnerConfig({
+        suffix: '.perf', build_defs: {
+          ...DEFAULT_BUILD_DEFS,
+          DISABLE_WEBGPU: false,
+        }
+      }));
       break;
     default:
       throw new Error(`unsupported bundle mode: ${bundleMode}`);

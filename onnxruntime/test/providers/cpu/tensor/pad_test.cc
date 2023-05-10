@@ -47,14 +47,7 @@ static void RunOnnxOpsetTypedTest(
   if (expect != OpTester::ExpectResult::kExpectSuccess) {
     ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsConfigStrictShapeTypeInference, "0"));
   }
-  if constexpr (opset >= 11) {
-    test.Run(so, expect, error_msg, provider_types);
-  } else {
-#if defined(OPENVINO_CONFIG_MYRIAD) || defined(OPENVINO_CONFIG_VAD_M)
-    provider_types.insert(kOpenVINOExecutionProvider);
-#endif
-    test.Run(so, expect, error_msg, provider_types);
-  }
+  test.Run(so, expect, error_msg, provider_types);
 }
 
 template <typename T>

@@ -88,7 +88,7 @@ class CublasMathModeSetter {
 
  private:
   cublasHandle_t handle_;
-  cublasMath_t mode_;
+  cublasMath_t mode_ = CUBLAS_DEFAULT_MATH;
   bool enable_;
 };
 

@@ -71,7 +71,11 @@ class WhisperHelper:
 
     @staticmethod
     def load_model(
-        model_name_or_path: str, cache_dir: str, device: torch.device, merge_encoder_and_decoder_init: bool = True
+        model_name_or_path: str,
+        cache_dir: str,
+        device: torch.device,
+        merge_encoder_and_decoder_init: bool = True,
+        state_dict_path: str = "",
     ) -> Dict[str, torch.nn.Module]:
         """Load model given a pretrained name or path, then build models for ONNX conversion.
 
@@ -84,6 +88,8 @@ class WhisperHelper:
             Dict[str, torch.nn.Module]: mapping from name to modules for ONNX conversion.
         """
         model = WhisperForConditionalGeneration.from_pretrained(model_name_or_path, cache_dir=cache_dir)
+        if state_dict_path:
+            model.load_state_dict(torch.load(state_dict_path), strict=False)
 
         decoder = WhisperDecoder(model, None, model.config)
         decoder.eval().to(device)
@@ -229,10 +235,8 @@ class WhisperHelper:
 
         from fusion_options import FusionOptions
 
-        optimization_options = None
-        if is_float16:
-            optimization_options = FusionOptions("bart")
-            optimization_options.enable_skip_layer_norm = False
+        optimization_options = FusionOptions("bart")
+        optimization_options.use_multi_head_attention = True
 
         m = optimize_model(
             onnx_model_path,
@@ -241,7 +245,7 @@ class WhisperHelper:
             hidden_size=hidden_size,
             opt_level=2 if not use_external_data_format else None,
             optimization_options=optimization_options,
-            use_gpu=False,
+            use_gpu=use_gpu,
             only_onnxruntime=False,
         )
 
@@ -262,4 +266,4 @@ class WhisperHelper:
     ):
         """Compare the result from PyTorch and OnnxRuntime to verify the ONNX model is good."""
         # Not implemented for Whisper currently
-        return True
+        return 0

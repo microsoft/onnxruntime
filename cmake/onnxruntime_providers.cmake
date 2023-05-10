@@ -114,6 +114,9 @@ endif()
 if(onnxruntime_USE_NNAPI_BUILTIN)
   set(PROVIDERS_NNAPI onnxruntime_providers_nnapi)
 endif()
+if(onnxruntime_USE_JSEP)
+  set(PROVIDERS_JS onnxruntime_providers_js)
+endif()
 if(onnxruntime_USE_QNN)
   set(PROVIDERS_QNN onnxruntime_providers_qnn)
 endif()
@@ -143,6 +146,9 @@ if (onnxruntime_USE_TVM)
 endif()
 if (onnxruntime_USE_XNNPACK)
   set(PROVIDERS_XNNPACK onnxruntime_providers_xnnpack)
+endif()
+if(onnxruntime_USE_WEBNN)
+  set(PROVIDERS_WEBNN onnxruntime_providers_webnn)
 endif()
 if(onnxruntime_USE_SNPE)
     include(onnxruntime_snpe_provider.cmake)
@@ -765,22 +771,46 @@ if (onnxruntime_USE_TENSORRT)
 endif()
 
 if (onnxruntime_USE_VITISAI)
-  file(GLOB_RECURSE onnxruntime_providers_vitisai_cc_srcs CONFIGURE_DEPENDS
-    "${ONNXRUNTIME_ROOT}/core/providers/vitisai/*.h"
+  if ("${GIT_COMMIT_ID}" STREQUAL "")
+  execute_process(
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+    COMMAND git rev-parse HEAD
+    OUTPUT_VARIABLE GIT_COMMIT_ID
+    OUTPUT_STRIP_TRAILING_WHITESPACE)
+  endif()
+  configure_file(${ONNXRUNTIME_ROOT}/core/providers/vitisai/imp/version_info.hpp.in ${CMAKE_CURRENT_BINARY_DIR}/VitisAI/version_info.h)
+  file(GLOB onnxruntime_providers_vitisai_cc_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/core/providers/vitisai/*.cc"
+    "${ONNXRUNTIME_ROOT}/core/providers/vitisai/*.h"
+    "${ONNXRUNTIME_ROOT}/core/providers/vitisai/imp/*.cc"
+    "${ONNXRUNTIME_ROOT}/core/providers/vitisai/imp/*.h"
   )
-
+  list(REMOVE_ITEM onnxruntime_providers_vitisai_cc_srcs "${ONNXRUNTIME_ROOT}/core/providers/vitisai/onnxruntime_vitisai_ep_stub.cc")
   source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_vitisai_cc_srcs})
   onnxruntime_add_static_library(onnxruntime_providers_vitisai ${onnxruntime_providers_vitisai_cc_srcs})
-  onnxruntime_add_include_to_target(onnxruntime_providers_vitisai
-    onnxruntime_common onnxruntime_framework onnx onnx_proto ${PROTOBUF_LIB} flatbuffers::flatbuffers Boost::mp11 safeint_interface
-  )
-  add_dependencies(onnxruntime_providers_vitisai ${onnxruntime_EXTERNAL_DEPENDENCIES})
+  onnxruntime_add_include_to_target(onnxruntime_providers_vitisai onnxruntime_common onnxruntime_framework onnx onnx_proto)
+  onnxruntime_add_shared_library(onnxruntime_vitisai_ep ${ONNXRUNTIME_ROOT}/core/providers/vitisai/onnxruntime_vitisai_ep_stub.cc)
+  onnxruntime_add_include_to_target(onnxruntime_vitisai_ep onnxruntime_common)
+  target_include_directories(onnxruntime_vitisai_ep PRIVATE "${ONNXRUNTIME_ROOT}" "${ONNXRUNTIME_ROOT}/core/providers/vitisai/include")
+  target_link_libraries(onnxruntime_providers_vitisai PUBLIC onnxruntime_vitisai_ep PRIVATE onnx protobuf::libprotobuf nlohmann_json::nlohmann_json )
+  target_compile_definitions(onnxruntime_vitisai_ep
+                           PRIVATE "-DONNXRUNTIME_VITISAI_EP_STUB=1" "-DONNXRUNTIME_VITISAI_EP_EXPORT_DLL=1")
+  if(NOT MSVC)
+    target_compile_options(onnxruntime_providers_vitisai PUBLIC $<$<CONFIG:DEBUG>:-U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=0>)
+  endif(NOT MSVC)
+
+  target_include_directories(onnxruntime_providers_vitisai PRIVATE "${ONNXRUNTIME_ROOT}/core/providers/vitisai/include" ${XRT_INCLUDE_DIRS} ${CMAKE_CURRENT_BINARY_DIR}/VitisAI)
+  if(MSVC)
+    target_compile_options(onnxruntime_providers_vitisai PRIVATE "/Zc:__cplusplus")
+    # for dll interface warning.
+    target_compile_options(onnxruntime_providers_vitisai PRIVATE "/wd4251")
+    # for unused formal parameter
+    target_compile_options(onnxruntime_providers_vitisai PRIVATE "/wd4100")
+  else(MSVC)
+    target_compile_options(onnxruntime_providers_vitisai PRIVATE -Wno-unused-parameter)
+  endif(MSVC)
+
   set_target_properties(onnxruntime_providers_vitisai PROPERTIES FOLDER "ONNXRuntime")
-  target_include_directories(onnxruntime_providers_vitisai PRIVATE ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS} ${VITISAI_INCLUDE_DIR})
-  install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/vitisai
-    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers
-  )
   set_target_properties(onnxruntime_providers_vitisai PROPERTIES LINKER_LANGUAGE CXX)
 
   if (NOT onnxruntime_BUILD_SHARED_LIB)
@@ -980,6 +1010,31 @@ if (onnxruntime_USE_COREML)
   endif()
 endif()
 
+if (onnxruntime_USE_WEBNN)
+  if (onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_EXTENDED_MINIMAL_BUILD)
+    message(FATAL_ERROR "WebNN EP can not be used in a basic minimal build. Please build with '--minimal_build extended'")
+  endif()
+
+  add_compile_definitions(USE_WEBNN=1)
+  if (onnxruntime_ENABLE_WEBASSEMBLY_THREADS)
+    add_definitions(-DENABLE_WEBASSEMBLY_THREADS=1)
+  endif()
+  file(GLOB_RECURSE onnxruntime_providers_webnn_cc_srcs CONFIGURE_DEPENDS
+    "${ONNXRUNTIME_ROOT}/core/providers/webnn/*.h"
+    "${ONNXRUNTIME_ROOT}/core/providers/webnn/*.cc"
+    "${ONNXRUNTIME_ROOT}/core/providers/shared/utils/utils.h"
+    "${ONNXRUNTIME_ROOT}/core/providers/shared/utils/utils.cc"
+  )
+
+  source_group(TREE ${REPO_ROOT} FILES ${onnxruntime_providers_webnn_cc_srcs})
+  onnxruntime_add_static_library(onnxruntime_providers_webnn ${onnxruntime_providers_webnn_cc_srcs})
+  onnxruntime_add_include_to_target(onnxruntime_providers_webnn onnxruntime_common onnx onnx_proto Boost::mp11)
+
+  add_dependencies(onnxruntime_providers_webnn onnx ${onnxruntime_EXTERNAL_DEPENDENCIES})
+  set_target_properties(onnxruntime_providers_webnn PROPERTIES FOLDER "ONNXRuntime")
+  set_target_properties(onnxruntime_providers_webnn PROPERTIES LINKER_LANGUAGE CXX)
+endif()
+
 if (onnxruntime_USE_NNAPI_BUILTIN)
   if (onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_EXTENDED_MINIMAL_BUILD)
     message(FATAL_ERROR "NNAPI can not be used in a basic minimal build. Please build with '--minimal_build extended'")
@@ -1064,6 +1119,24 @@ if (onnxruntime_USE_NNAPI_BUILTIN)
   endif()
 endif()
 
+if (onnxruntime_USE_JSEP)
+  add_compile_definitions(USE_JSEP=1)
+
+  file(GLOB_RECURSE onnxruntime_providers_js_cc_srcs
+    "${ONNXRUNTIME_ROOT}/core/providers/js/*.h"
+    "${ONNXRUNTIME_ROOT}/core/providers/js/*.cc"
+  )
+
+  source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_js_cc_srcs})
+  onnxruntime_add_static_library(onnxruntime_providers_js ${onnxruntime_providers_js_cc_srcs})
+  onnxruntime_add_include_to_target(onnxruntime_providers_js
+    onnxruntime_common onnxruntime_framework onnx onnx_proto ${PROTOBUF_LIB} flatbuffers Boost::mp11
+  )
+
+  add_dependencies(onnxruntime_providers_js ${onnxruntime_EXTERNAL_DEPENDENCIES})
+
+endif()
+
 if (onnxruntime_USE_QNN)
   add_compile_definitions(USE_QNN=1)
 
@@ -1101,7 +1174,7 @@ if (onnxruntime_USE_QNN)
   add_dependencies(onnxruntime_providers_qnn onnx ${onnxruntime_EXTERNAL_DEPENDENCIES})
   set_target_properties(onnxruntime_providers_qnn PROPERTIES CXX_STANDARD_REQUIRED ON)
   set_target_properties(onnxruntime_providers_qnn PROPERTIES FOLDER "ONNXRuntime")
-  target_include_directories(onnxruntime_providers_qnn PRIVATE ${ONNXRUNTIME_ROOT} ${onnxruntime_QNN_HOME}/include)
+  target_include_directories(onnxruntime_providers_qnn PRIVATE ${ONNXRUNTIME_ROOT} ${onnxruntime_QNN_HOME}/include/QNN ${onnxruntime_QNN_HOME}/include)
   set_target_properties(onnxruntime_providers_qnn PROPERTIES LINKER_LANGUAGE CXX)
   # ignore the warning unknown-pragmas on "pragma region"
   if(NOT MSVC)
@@ -1169,7 +1242,10 @@ if (onnxruntime_USE_DML)
     ${ONNXRUNTIME_ROOT}
   )
 
-  add_definitions(-DDML_TARGET_VERSION_USE_LATEST=1)
+  target_compile_definitions(onnxruntime_providers_dml PRIVATE DML_TARGET_VERSION_USE_LATEST=1)
+  if(WIN32)
+    target_compile_options(onnxruntime_providers_dml PRIVATE "/wd4100" "/wd4238" "/wd4189" "/wd4702")
+  endif()
 
   if (NOT onnxruntime_USE_CUSTOM_DIRECTML)
     foreach(file "DirectML.dll" "DirectML.pdb" "DirectML.Debug.dll" "DirectML.Debug.pdb")

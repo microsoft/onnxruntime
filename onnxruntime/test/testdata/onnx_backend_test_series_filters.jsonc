@@ -105,6 +105,7 @@
         "^test_col2im_pads*",           // remove this when using ONNX with this: https://github.com/onnx/onnx/pull/4769
         // Following tests are for opset 16 ops and are not yet implemented in ORT
         "^test_roialign_aligned_*",
+        "^test_roialign_mode_max", // TODO: Remove once onnx test is fixed
         //GPU failures
         "^test_batchnorm_epsilon_training_mode_cuda",
         "^test_batchnorm_example_training_mode_cuda",
@@ -374,28 +375,6 @@
         "^test_negative_log_likelihood.*",
         "^test_softmax_cross_entropy.*"
     ],
-    "current_failing_tests_OPENVINO_MYRIAD": [
-        "^test_range",
-        "^test_dynamicquantizelinear",
-        "^test_operator_index",
-        "^test_scatter_elements_with_negative_indices", // Does not support negative indices
-        "^test_pow", // Runs disabled pow tests from the "current_failing_tests" list at the top
-        "^test_pow_types_float", // Runs disabled pow tests from the "current_failing_tests" list at the top
-        "^test_neg",
-        "^test_basic_conv_with_padding",
-        "^test_basic_conv_without_padding",
-        "^test_conv_with_strides_and_asymmetric_padding",
-        "^test_conv_with_strides_no_padding",
-        "^test_conv_with_strides_padding",
-        "^test_sequence_insert_at_back",
-        "^test_sequence_insert_at_front",
-        "^test_min_one_input",
-        "^test_max_one_input",
-        "^test_sum_one_input",
-        "^test_loop13_seq",
-        "^test_if_seq",
-        "^test_gather_elements_negative_indices"
-    ],
     "current_failing_tests_OPENVINO_GPU": [
         "^test_div",
         // temporarily exclude vgg19 test which comsumes too much memory, run out of memory on Upsquared device.
@@ -496,7 +475,9 @@
         "^test_resize_downsample_scales_linear", // Runs but there's accuracy mismatch
         "^test_training_dropout_default_mask", // Runs but there's accuracy mismatch
         "^test_training_dropout_mask", // Runs but there's accuracy mismatch
-        "^test_training_dropout_default" // Runs but there's accuracy mismatch
+        "^test_training_dropout_default", // Runs but there's accuracy mismatch
+        "^test_center_crop_pad_crop_negative_axes_hwc*", // failed due to new types or shape infer with negative axis for CenterCropPad.
+        "^test_center_crop_pad_crop_negative_axes_hwc_expanded*" // failed due to new types or shape infer with negative axis for CenterCropPad.
     ],
     "current_failing_tests_OPENVINO_opset18": [
         // pending opset 18 support, RUNTIME_EXCEPTION : Encountered unknown exception in Initialize()

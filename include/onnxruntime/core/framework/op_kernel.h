@@ -132,7 +132,7 @@ class OpKernel {
     return Status::OK();
   }
 
-  const OrtMemoryInfo& Allocator(OrtMemType mem_type) const;
+  const OrtDevice GetDevice(OrtMemType mem_type) const;
   const OpKernelInfo& Info() const {
     return *op_kernel_info_;
   }

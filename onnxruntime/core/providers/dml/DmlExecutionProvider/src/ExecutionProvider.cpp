@@ -68,7 +68,7 @@ namespace Dml
         IDMLDevice* dmlDevice,
         ID3D12CommandQueue* commandQueue,
         bool enableMetacommands) :
-            IExecutionProvider(onnxruntime::kDmlExecutionProvider)
+            IExecutionProvider(onnxruntime::kDmlExecutionProvider, OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, 0))
     {
         D3D12_COMMAND_LIST_TYPE queueType = commandQueue->GetDesc().Type;
         if (queueType != D3D12_COMMAND_LIST_TYPE_DIRECT && queueType != D3D12_COMMAND_LIST_TYPE_COMPUTE)
@@ -443,7 +443,7 @@ namespace Dml
             ID3D12Resource* dstData = dstAllocInfo->GetResource();
             const void* srcData = src->GetData();
 
-            const uint64_t dstOffset = 0;
+            constexpr uint64_t dstOffset = 0;
             const auto dstState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS; // GPU resources are always kept in UAV state
 
             m_uploadHeap->BeginUploadToGpu(dstData, dstOffset, dstState, AsByteSpan(srcData, dataSizeInBytes));
@@ -661,9 +661,10 @@ namespace Dml
 
     bool IsCustomOpShader(const onnxruntime::Node& node)
     {
-        auto custom_ops = std::array<char*, 2>{
+        auto custom_ops = std::array<char*, 3>{
             "DFT",
-            "STFT"
+            "STFT",
+            "GridSample"
         };
 
         for (auto& custom_op : custom_ops)

@@ -8,25 +8,36 @@ This converts GPT2 or T5 model to onnx with beam search operator.
 Example 1: convert gpt2 model with beam search:
     python convert_generation.py -m gpt2 --output gpt2_beam_search.onnx
 
-Example 2: convert T5 model with beam search in two steps:
+Example 2: convert gpt2 model with beam search containing specific cuda optimizations:
+    python convert_generation.py -m gpt2 --output gpt2_beam_search.onnx --use_gpu               \
+        --past_present_share_buffer --use_decoder_masked_attention
+
+Example 3: convert gpt2 model with beam search with mixed precision and enable SkipLayerNorm strict mode:
+    python convert_generation.py -m gpt2 --output gpt2_beam_search.onnx --use_gpu -p fp16 --use_sln_strict_mode
+
+Example 4: convert T5 model with beam search in two steps:
     cd ./models/t5
     python convert_to_onnx.py -m t5-small
     cd ../..
-    python convert_generation.py -m t5-small --model_type t5                                   \
+    python convert_generation.py -m t5-small --model_type t5                                    \
         --decoder_onnx ./models/t5/onnx_models/t5-small_decoder.onnx                            \
         --encoder_decoder_init_onnx ./models/t5/onnx_models/t5-small_encoder_decoder_init.onnx  \
         --output ./models/t5/onnx_models/t5_small_beam_search.onnx
 
-Example 3: convert T5 model with beam search. All in one step:
+Example 5: convert T5 model with beam search. All in one step:
     python convert_generation.py -m t5-small --model_type t5 --output ./models/t5/onnx_models/t5_small_beam_search.onnx
 
-Example 4: convert MT5 model with external data file like mt5-base-beamsearch.onnx.data in below example.
+Example 6: convert T5 model with beam search containing specific cuda optimizations. All in one step:
+    python convert_generation.py -m t5-small --model_type t5 --output ./models/t5/onnx_models/t5_small_beam_search.onnx   \
+        --use_gpu --past_present_share_buffer --use_decoder_masked_attention
+
+Example 7: convert MT5 model with external data file like mt5-base-beamsearch.onnx.data in below example.
     python convert_generation.py -m google/mt5-base --model_type mt5 --output mt5-base-beamsearch.onnx -e
 
-Example 5: convert gpt2 model with greedy search:
+Example 8: convert gpt2 model with greedy search:
     python convert_generation.py -m gpt2 --output gpt2_greedy_search.onnx --num_beams 1 --num_return_sequences 1
 
-Example 6: convert gpt2 model with sampling:
+Example 9: convert gpt2 model with sampling:
     python convert_generation.py -m gpt2 --output gpt2_sampling.onnx --num_beams 1 --num_return_sequences 1 --top_p 0.6
 """
 
@@ -413,6 +424,14 @@ def parse_arguments(argv: Optional[List[str]] = None) -> argparse.Namespace:
     test_group = parser.add_argument_group("Other options for testing parity and performance")
 
     test_group.add_argument(
+        "--use_sln_strict_mode",
+        required=False,
+        action="store_true",
+        help="Enable strict mode for SLN in CUDA provider. This ensures a better accuracy but will be slower.",
+    )
+    test_group.set_defaults(use_sln_strict_mode=False)
+
+    test_group.add_argument(
         "--use_gpu", required=False, action="store_true", help="use GPU for inference. Required for fp16."
     )
     test_group.set_defaults(use_gpu=False)
@@ -632,12 +651,13 @@ def pad_weights_of_logits_matmul(onnx_path: str, use_external_data_format: bool 
     return True
 
 
-def create_ort_session(model_path: str, use_gpu: bool) -> InferenceSession:
+def create_ort_session(model_path: str, use_gpu: bool, use_sln_strict_mode: bool) -> InferenceSession:
     """Create OnnxRuntime session.
 
     Args:
         model_path (str): onnx model path
         use_gpu (bool): use GPU or not
+        use_sln_strict_mode (bool): use strict mode for skip layer normalization or not
 
     Raises:
         RuntimeError: CUDAExecutionProvider is not available when --use_gpu is specified.
@@ -653,6 +673,12 @@ def create_ort_session(model_path: str, use_gpu: bool) -> InferenceSession:
             raise RuntimeError("CUDAExecutionProvider is not available for --use_gpu!")
         else:
             logger.info("use CUDAExecutionProvider")
+        if use_sln_strict_mode:
+            cuda_provider_options = {"enable_skip_layer_norm_strict_mode": True}
+            provider_options = {"CUDAExecutionProvider": cuda_provider_options}
+            execution_providers = [
+                (name, provider_options[name]) if name in provider_options else name for name in execution_providers
+            ]
 
     ort_session = InferenceSession(model_path, sess_options, providers=execution_providers)
     return ort_session
@@ -2346,7 +2372,7 @@ def test_gpt_model(args: argparse.Namespace, sentences: Optional[List[str]] = No
         return
 
     logger.debug("Creating ort session......")
-    ort_session = create_ort_session(args.output, args.use_gpu)
+    ort_session = create_ort_session(args.output, args.use_gpu, args.use_sln_strict_mode)
 
     logger.debug("Run ort session......")
     result = ort_session.run(None, inputs)
@@ -2548,7 +2574,7 @@ def test_t5_model(args: argparse.Namespace, sentences: Optional[List[str]] = Non
 
     logger.debug("ORT inputs", inputs)  # noqa: PLE1205
 
-    ort_session = create_ort_session(args.output, args.use_gpu)
+    ort_session = create_ort_session(args.output, args.use_gpu, args.use_sln_strict_mode)
 
     # Test performance
     latency = []

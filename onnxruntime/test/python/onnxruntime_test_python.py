@@ -69,6 +69,10 @@ class TestInferenceSession(unittest.TestCase):
     def testGetVersionString(self):  # noqa: N802
         self.assertIsNot(onnxrt.get_version_string(), None)
 
+    def testGetBuildInfo(self):  # noqa: N802
+        self.assertIsNot(onnxrt.get_build_info(), None)
+        self.assertIn("Build Info", onnxrt.get_build_info())
+
     def testModelSerialization(self):  # noqa: N802
         try:
             so = onnxrt.SessionOptions()

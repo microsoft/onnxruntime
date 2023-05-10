@@ -440,7 +440,7 @@ namespace OperatorHelper
             // if pads are not specified, assume all pad values are 0
             if (pads.empty())
             {
-                pads.resize(2 * spatialDimensionCount);
+                pads.resize(2 * static_cast<uint64_t>(spatialDimensionCount));
             }
 
             ML_CHECK_VALID_ARGUMENT(pads.size() >= 2 * spatialDimensionCount);
@@ -1525,6 +1525,7 @@ namespace OperatorHelper
             {RecognizedOperatorType::MatMul,               {2,2,2},{0,1, 1,2, 0,2}}, // ij,jk->ik
             {RecognizedOperatorType::MatMul,               {3,3,3},{0,1,2, 0,2,3, 0,1,3}}, // bij,bjk->bik
             {RecognizedOperatorType::MatMul,               {4,4,4},{0,1,2,3, 0,1,3,4, 0,1,2,4}}, // abij,abjk->abik
+            {RecognizedOperatorType::OuterProduct,         {1,1,2},{0, 1, 0,1}}, // i,j->ij
             {RecognizedOperatorType::MatMulTransposeA,     {2,2,2},{0,1, 0,2, 1,2}}, // ji,jk->ik
             {RecognizedOperatorType::MatMulTransposeA,     {3,3,3},{0,1,2, 0,1,3, 0,2,3}}, // bji,bjk->bik
             {RecognizedOperatorType::MatMulTransposeA,     {4,4,4},{0,1,2,3, 0,1,2,4, 0,1,3,4}}, // abji,abjk->abik
@@ -1615,7 +1616,8 @@ namespace OperatorHelper
 
     bool EinSumHelper::IsMatMulOperatorType() const noexcept
     {
-        return m_recognizedOperatorType == RecognizedOperatorType::MatMul ||
+        return m_recognizedOperatorType == RecognizedOperatorType::OuterProduct ||
+            m_recognizedOperatorType == RecognizedOperatorType::MatMul ||
             m_recognizedOperatorType == RecognizedOperatorType::MatMulTransposeA ||
             m_recognizedOperatorType == RecognizedOperatorType::MatMulTransposeB ||
             m_recognizedOperatorType == RecognizedOperatorType::MatMulNhcw ||

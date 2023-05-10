@@ -101,7 +101,7 @@ std::shared_ptr<KernelRegistry> MIGraphXExecutionProvider::GetKernelRegistry() c
 }
 
 MIGraphXExecutionProvider::MIGraphXExecutionProvider(const MIGraphXExecutionProviderInfo& info)
-    : IExecutionProvider{onnxruntime::kMIGraphXExecutionProvider, true}, device_id_(info.device_id) {
+    : IExecutionProvider{onnxruntime::kMIGraphXExecutionProvider, OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, info.device_id), true}, device_id_(info.device_id) {
   InitProviderOrtApi();
   // Set GPU device to be used
   HIP_CALL_THROW(hipSetDevice(device_id_));
@@ -451,15 +451,6 @@ static bool IsUnsupportedOpMode(const onnxruntime::GraphViewer& graph_viewer, co
       }
     }
 
-    const auto& args = node->InputDefs();
-    if (args.size() > 1) {
-      std::vector<std::size_t> indices(args.size() - 1);
-      std::iota(indices.begin(), indices.end(), 1);
-      if (canEvalNodeArgument(graph_viewer, node, indices, input_nodes)) {
-        return false;
-      }
-      return true;
-    }
   } else if (optype == "ReduceSum") {
     const auto& args = node->InputDefs();
     if (args.size() == 2) {
@@ -811,18 +802,18 @@ GetUnsupportedNodeIndices(const GraphViewer& graph_viewer,
                                                     "BatchNormalization", "Cast", "Ceil", "Celu", "Clip", "Concat", "Constant", "ConstantFill",
                                                     "ConstantOfShape", "Conv", "ConvInteger", "ConvTranspose", "Cos", "Cosh", "CumSum",
                                                     "DepthToSpace", "DequantizeLinear", "Div", "Dropout", "Elu", "Equal", "Erf", "Exp",
-                                                    "Expand", "EyeLike", "Flatten", "Floor", "GRU", "Gather", "GatherElements", "Gemm", "GlobalAveragePool",
+                                                    "Expand", "EyeLike", "Flatten", "Floor", "GRU", "Gather", "GatherElements", "GatherND", "Gemm", "GlobalAveragePool",
                                                     "GlobalMaxPool", "Greater", "GreaterOrEqual", "HardSigmoid", "HardSwish", "Identity",
-                                                    "If", "ImageScaler", "InstanceNormalization", "LeakyRelu", "Less", "LessOrEqual",
+                                                    "If", "ImageScaler", "InstanceNormalization", "IsNan", "LeakyRelu", "Less", "LessOrEqual",
                                                     "Log", "LogSoftmax", "Loop", "LpNormalization", "LRN", "LSTM", "MatMul", "MatMulInteger", "Max", "MaxPool",
                                                     "Mean", "Min", "Mod", "Mul", "Multinomial", "Neg", "NonMaxSuppression", "NonZero", "Not",
                                                     "OneHot", "Or", "Pad", "Pow", "PRelu", "QuantizeLinear", "RandomNormal", "RandomNormalLike",
                                                     "RandomUniform", "RandomUniformLike", "Range", "Reciprocal", "ReduceL1", "ReduceL2",
                                                     "ReduceLogSum", "ReduceLogSumExp", "ReduceMax", "ReduceMean", "ReduceMin", "ReduceProd",
-                                                    "ReduceSum", "ReduceSumSquare", "Relu", "Reshape", "Resize", "RNN", "Roialign", "Round",
+                                                    "ReduceSum", "ReduceSumSquare", "Relu", "Reshape", "Resize", "ReverseSequence", "RNN", "Roialign", "Round",
                                                     "Scatter", "ScatterElements", "ScatterND", "Selu", "Shape", "Sigmoid", "Sign", "Sin", "Sinh", "Slice", "Softmax", "Softplus",
                                                     "Softsign", "SpaceToDepth", "Split", "Sqrt", "Squeeze", "Sub", "Sum", "Tan", "Tanh",
-                                                    "ThresholdedRelu", "Tile", "TopK", "Transpose", "Unsqueeze", "Upsample", "Where", "Xor"};
+                                                    "ThresholdedRelu", "Tile", "TopK", "Transpose", "Trilu", "Unsqueeze", "Upsample", "Where", "Xor"};
   std::vector<NodeIndex> unsupported_nodes_idx;
   for (const auto& node_idx : graph_viewer.GetNodesInTopologicalOrder()) {
     if (IsNodeSupported(mgx_supported_ops, graph_viewer, node_idx, logger)) {
@@ -952,8 +943,15 @@ bool get_input_output_names(const GraphViewer& graph,
     if (sptr == nullptr)
       return true;
 
-    auto dim_size = sptr->dim_size();
-    return (dim_size == 0);
+    if (sptr->dim_size() == 0)
+      return true;
+
+    for (int i = 0; i < sptr->dim_size(); i++) {
+      if (sptr->dim(i).has_dim_param())
+        return true;
+    }
+
+    return false;
   });
 
   const auto& out_args = graph.GetOutputs();
@@ -1002,7 +1000,7 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
     }
 
     std::vector<std::string> input_names, output_names;
-    no_input_shape = no_input_shape or get_input_output_names(graph_body_viewer, input_names, output_names);
+    no_input_shape = get_input_output_names(graph_body_viewer, input_names, output_names);
 
     // by parsing the model_proto, create a program corresponding to
     // the input fused_node
@@ -1208,6 +1206,12 @@ void MIGraphXExecutionProvider::RegisterStreamHandlers(IStreamCommandHandleRegis
   RegisterRocmStreamHandles(stream_handle_registry, OrtDevice::GPU, allocator, true, stream_, false /*TODO:external_stream_*/, external_miopen_handle_, external_rocblas_handle_);
 }
 
+OrtDevice MIGraphXExecutionProvider::GetOrtDeviceByMemType(OrtMemType mem_type) const {
+  if (mem_type == OrtMemTypeCPUInput || mem_type == OrtMemTypeCPUOutput) {
+    return OrtDevice(OrtDevice::CPU, OrtDevice::MemType::HIP_PINNED, 0 /*CPU device id always be 0*/);
+  }
+  return default_device_;
+}
 #ifdef MIGRAPHX_STREAM_SYNC
 
 Status MIGraphXExecutionProvider::Sync() const {

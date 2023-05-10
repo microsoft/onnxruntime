@@ -85,6 +85,8 @@ class CANNExecutionProvider : public IExecutionProvider {
 
   void RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry) const override;
 
+  OrtDevice GetOrtDeviceByMemType(OrtMemType mem_type) const override;
+
  private:
   CANNExecutionProviderInfo info_;
   const char* soc_name_ = nullptr;

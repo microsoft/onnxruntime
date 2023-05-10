@@ -29,6 +29,7 @@ using namespace onnxruntime;
 
 namespace {
 void usage() {
+  auto version_string = ToUTF8String(OrtGetApiBase()->GetVersionString());
   printf(
       "onnx_test_runner [options...] <data_root>\n"
       "Options:\n"
@@ -64,7 +65,7 @@ void usage() {
       "\t-h: help\n"
       "\n"
       "onnxruntime version: %s\n",
-      OrtGetApiBase()->GetVersionString());
+      version_string.c_str());
 }
 
 static TestTolerances LoadTestTolerances(bool enable_cuda, bool enable_openvino, bool useCustom, double atol, double rtol) {
@@ -799,6 +800,7 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
     {"bernoulli_expanded", "By design. Test data is for informational purpose because the generator is non deterministic."},
     {"test_roialign_aligned_true", "Opset 16 not supported yet."},
     {"test_roialign_aligned_false", "Opset 16 not supported yet."},
+    {"test_roialign_mode_max", "Onnx roialign mode expected output is incorrect."},
     {"test_scatternd_add", "Opset 16 not supported yet."},
     {"test_scatternd_multiply", "Opset 16 not supported yet."},
     {"test_scatter_elements_with_duplicate_indices", "Opset 16 not supported yet."},

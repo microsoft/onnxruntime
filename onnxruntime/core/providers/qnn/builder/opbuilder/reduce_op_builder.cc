@@ -9,7 +9,6 @@
 #include "core/providers/common.h"
 #include "core/providers/shared/utils/utils.h"
 #include "core/framework/endian_utils.h"
-#include "core/framework/tensorprotoutils.h"
 #include "core/providers/qnn/builder/qnn_model_wrapper.h"
 #include "core/providers/qnn/builder/op_builder_factory.h"
 #include "core/common/safeint.h"
@@ -143,7 +142,7 @@ Status ReduceOpBuilder::GetAxesSet(QnnModelWrapper& qnn_model_wrapper, const Nod
       const auto& axes_tensor = qnn_model_wrapper.GetInitializerTensors().at(axes_input_name);
       std::vector<uint8_t> axes_bytes;
 
-      ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackInitializerData(*axes_tensor, axes_bytes));
+      ORT_RETURN_IF_ERROR(qnn_model_wrapper.UnpackInitializerData(*axes_tensor, axes_bytes));
       ORT_ENFORCE(input_rank * sizeof(AxesOnnxIntType) >= axes_bytes.size(),
                   "Expect QNN Reduce* operator to have at most rank(input[0]) axes elements.");
       reduce_axes.resize(axes_bytes.size() / sizeof(AxesOnnxIntType));

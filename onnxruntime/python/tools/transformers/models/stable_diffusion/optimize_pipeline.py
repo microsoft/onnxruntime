@@ -10,16 +10,14 @@
 # For example, the float32 ONNX pipeline is saved to ./sd-v1-5 directory, you can optimize and convert it to float16 like the following:
 #    python optimize_pipeline.py -i ./sd-v1-5 -o ./sd-v1-5-fp16 --float16
 #
-# Note that the optimized models are for CUDA Execution Provider. It might not run in other execution provider.
+# Note that the optimizations are carried out for CUDA Execution Provider at first, other EPs may not have the support for the fused opeartors.
+# In this case, the users should disable the operator fusion manually to workaround.
 #
 # Stable diffusion 2.1 model will get black images using float16 Attention. A walkaround is to force Attention to run in float32 like the following:
 #    python optimize_pipeline.py -i ./sd-v2-1 -o ./sd-v2-1-fp16 --float16 --force_fp32_ops unet:Attention
 #
 # If you are using nightly package (or built from source), you can force MultiHeadAttention to run in float32:
 #    python optimize_pipeline.py -i ./sd-v2-1 -o ./sd-v2-1-fp16 --float16 --force_fp32_ops unet:MultiHeadAttention
-#
-# ROCm EP doesn't support MultiHeadAttention, add --disable_attention to disable attention fusion:
-#    python optimize_pipeline.py -i ./sd-v1-5 -o ./sd-v1-5-fp16 --float16 --disable_attention
 
 import argparse
 import logging
@@ -133,9 +131,9 @@ def optimize_sd_pipeline(
         if model_type in ["unet"]:
             # Some optimizations are not available in v1.14 or older version: packed QKV and BiasAdd
             has_all_optimizations = version.parse(onnxruntime.__version__) >= version.parse("1.15.0")
-            fusion_options.enable_packed_kv = float16
-            fusion_options.enable_packed_qkv = float16 and has_all_optimizations
-            fusion_options.enable_bias_add = has_all_optimizations
+            fusion_options.enable_packed_kv = float16 and fusion_options.enable_packed_kv
+            fusion_options.enable_packed_qkv = float16 and has_all_optimizations and fusion_options.enable_packed_qkv
+            fusion_options.enable_bias_add = has_all_optimizations and fusion_options.enable_bias_add
 
         m = optimize_model(
             str(onnx_model_path),

@@ -60,11 +60,19 @@ enum class DataLayout {
 class IExecutionProvider {
  protected:
   IExecutionProvider(const std::string& type, bool use_metadef_id_creator = false)
-      : type_{type} {
+      : IExecutionProvider(type, OrtDevice(), use_metadef_id_creator) {}
+
+  IExecutionProvider(const std::string& type, OrtDevice device, bool use_metadef_id_creator = false)
+      : default_device_(device), type_{type} {
     if (use_metadef_id_creator) {
       metadef_id_generator_ = std::make_unique<ModelMetadefIdGenerator>();
     }
   }
+
+  /*
+     default device for this ExecutionProvider
+  */
+  const OrtDevice default_device_;
 
  public:
   virtual ~IExecutionProvider() = default;
@@ -322,6 +330,16 @@ class IExecutionProvider {
   virtual ITuningContext* GetTuningContext() const {
     return nullptr;
   }
+
+  /**
+   * Return the appropriate OrtDevice object given OrtMemType.
+   */
+  virtual OrtDevice GetOrtDeviceByMemType(OrtMemType mem_type) const {
+    if (mem_type == OrtMemTypeCPUInput || mem_type == OrtMemTypeCPUOutput) {
+      return OrtDevice();  // default return CPU device.
+    }
+    return default_device_;
+  };
 
  private:
   const std::string type_;

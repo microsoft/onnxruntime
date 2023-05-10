@@ -118,41 +118,6 @@ jobs:
       Contents: "${{ parameters.BuildConfig }}/dist/*.whl"
       TargetFolder: '$(Build.ArtifactStagingDirectory)'
 
-  - task: CmdLine@2
-    displayName: 'Build Python Documentation'
-    condition: and(succeeded(), ne('${{ parameters.PythonVersion }}', '3.9'), eq('${{ parameters.BuildConfig }}', 'Release'))  # tensorflow not available on python 3.9
-    inputs:
-      script: |
-        mkdir -p $HOME/.onnx
-        docker run --rm \
-          --device=/dev/kfd \
-          --device=/dev/dri \
-          --group-add $(video) \
-          --group-add $(render) \
-          --privileged \
-          --ipc=host \
-          --network=host \
-          --cap-add=SYS_PTRACE \
-          --security-opt seccomp=unconfined \
-          --volume $(Build.SourcesDirectory):/onnxruntime_src \
-          --volume $(Build.BinariesDirectory):/build \
-          --entrypoint /bin/bash \
-          -e HIP_VISIBLE_DEVICES \
-          -e NIGHTLY_BUILD \
-          -e BUILD_BUILDNUMBER \
-          -e PythonManylinuxDir=$(PythonManylinuxdir) \
-          onnxruntimetrainingrocmbuild-rocm${{ parameters.RocmVersion }} \
-            /onnxruntime_src/tools/ci_build/github/pai/wrap_rocm_python_doc_publisher.sh
-      workingDirectory: $(Build.SourcesDirectory)
-
-  - task: CopyFiles@2
-    displayName: 'Copy Python Documentation to: $(Build.ArtifactStagingDirectory)'
-    condition: and(succeeded(), ne('${{ parameters.PythonVersion }}', '3.9'), eq('${{ parameters.BuildConfig }}', 'Release'))  # tensorflow not available on python 3.9
-    inputs:
-      SourceFolder: '$(Build.BinariesDirectory)/docs/training/html'
-      Contents: '**'
-      TargetFolder: '$(Build.ArtifactStagingDirectory)/training_html_doc'
-
   - task: PublishBuildArtifacts@1
     displayName: 'Upload Rocm wheel as build artifact'
     inputs:

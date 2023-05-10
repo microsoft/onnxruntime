@@ -60,14 +60,11 @@ struct OrtStatus {
 #elif OPENVINO_CONFIG_GPU_FP16
 #define BACKEND_OPENVINO "-OPENVINO_GPU_FP16"
 
-#elif OPENVINO_CONFIG_MYRIAD
-#define BACKEND_OPENVINO "-OPENVINO_MYRIAD"
+#elif OPENVINO_CONFIG_VPUX_FP16
+#define BACKEND_OPENVINO "-OPENVINO_VPUX_FP16"
 
-#elif OPENVINO_CONFIG_VAD_M
-#define BACKEND_OPENVINO "-OPENVINO_VAD_M"
-
-#elif OPENVINO_CONFIG_VAD_F
-#define BACKEND_OPENVINO "-OPENVINO_VAD_F"
+#elif OPENVINO_CONFIG_VPUX_U8
+#define BACKEND_OPENVINO "-OPENVINO_VPUX_U8"
 
 #elif OPENVINO_CONFIG_MULTI
 #define BACKEND_OPENVINO "-OPENVINO_MULTI"
@@ -151,9 +148,6 @@ extern std::string openvino_device_type;
 #endif
 #ifdef USE_TVM
 #include "core/providers/tvm/tvm_ep_options.h"
-#endif
-#ifdef USE_VITISAI
-#include "core/providers/vitisai/vitisai_provider_factory.h"
 #endif
 #ifdef USE_ACL
 #include "core/providers/acl/acl_provider_factory.h"
@@ -405,13 +399,11 @@ void addIoBindingMethods(pybind11::module& m);
 
 void addSparseTensorMethods(pybind11::module& m);
 
-#ifdef onnxruntime_PYBIND_EXPORT_OPSCHEMA
 void addGlobalSchemaFunctions(pybind11::module& m);
 
 void addOpKernelSubmodule(pybind11::module& m);
 
 void addOpSchemaSubmodule(pybind11::module& m);
-#endif
 
 const char* GetDeviceName(const OrtDevice& device);
 

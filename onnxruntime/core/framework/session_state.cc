@@ -723,7 +723,7 @@ Status SessionState::GeneratePatternGroupCache(gsl::span<const OrtValue> tensor_
       if (!ml_type->IsTensorType())
         continue;
 
-      if (exe_plan->allocation_plan[ml_value_idx].location.mem_type != OrtMemType::OrtMemTypeDefault)
+      if (exe_plan->allocation_plan[ml_value_idx].location.MemType() != OrtDevice::MemType::DEFAULT)  // TODO(leca): review
         continue;
 
       const auto* ml_data_type = static_cast<const TensorTypeBase*>(ml_type)->GetElementType();
@@ -1228,7 +1228,7 @@ static Status OuterScopeNodeArgLocationAccumulator(const SequentialExecutionPlan
                                                    const OrtValueNameIdxMap& ort_value_name_to_idx_map,
                                                    const Node& parent_node,
                                                    const GraphViewer& subgraph,
-                                                   /*out*/ InlinedHashMap<OrtValueName, OrtMemoryInfo>& outer_scope_arg_to_location_map) {
+                                                   /*out*/ InlinedHashMap<OrtValueName, OrtDevice>& outer_scope_arg_to_location_map) {
   // Process implicit inputs to the node
   outer_scope_arg_to_location_map.reserve(parent_node.ImplicitInputDefs().size() + parent_node.InputDefs().size());
   auto process_implicit_input = [&plan, &ort_value_name_to_idx_map,
@@ -1324,7 +1324,7 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
                                               const SessionOptions& session_options,
                                               bool remove_initializers,
                                               InlinedHashMap<std::string, size_t>& constant_initializers_use_count,
-                                              const InlinedHashMap<OrtValueName, OrtMemoryInfo>& outer_scope_node_arg_to_location_map,
+                                              const InlinedHashMap<OrtValueName, OrtDevice>& outer_scope_node_arg_to_location_map,
                                               bool graph_info_already_created) {
   if (!graph_info_already_created) {
     CreateGraphInfo();
@@ -1539,7 +1539,7 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
       // is used in OuterScopeNodeArgLocationAccumulator()
       subgraph_session_state.CreateGraphInfo();
 
-      InlinedHashMap<OrtValueName, OrtMemoryInfo> subgraph_outer_scope_node_arg_to_location_map;
+      InlinedHashMap<OrtValueName, OrtDevice> subgraph_outer_scope_node_arg_to_location_map;
       ORT_RETURN_IF_ERROR(OuterScopeNodeArgLocationAccumulator(*p_seq_exec_plan_, GetOrtValueNameIdxMap(),
                                                                node,
                                                                subgraph_session_state.GetGraphViewer(),

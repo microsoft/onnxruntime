@@ -92,6 +92,11 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 var ex = Assert.Throws<OnnxRuntimeException>(() => { opt.AddSessionConfigEntry("", "invalid key"); });
                 Assert.Contains("[ErrorCode:InvalidArgument] Config key is empty", ex.Message);
 
+                // SessionOptions.RegisterOrtExtensions can be manually tested by referencing the
+                // Microsoft.ML.OnnxRuntime.Extensions nuget package. After that is done, this should not throw.                
+                ex = Assert.Throws<OnnxRuntimeException>(() => { opt.RegisterOrtExtensions(); });
+                Assert.Contains("Microsoft.ML.OnnxRuntime.Extensions NuGet package must be referenced", ex.Message);
+
 #if USE_CUDA
                 opt.AppendExecutionProvider_CUDA(0);
 #endif
@@ -103,7 +108,19 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 
                 var directml_dll_path = AppDomain.CurrentDomain.BaseDirectory;
                 SetDllDirectory(directml_dll_path);
-                opt.AppendExecutionProvider_DML(0);
+                
+                try
+                {
+                    opt.AppendExecutionProvider_DML(0);
+                }
+                catch (OnnxRuntimeException ortException)
+                {
+                    // if we run on a CI machine with the incorrect hardware we might get an error due to that.
+                    // allow that as the call made it through to the DML EP so the C# layer is working correctly. 
+                    // any other exception type or error message is considered a failure.
+                    Assert.Contains("The specified device interface or feature level is not supported on this system.",
+                                    ortException.Message);
+                }
 
                 // Restore the default dll search order
                 SetDllDirectory(null);
@@ -147,6 +164,12 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 #else
                 ex = Assert.Throws<OnnxRuntimeException>(() => { opt.AppendExecutionProvider("SNPE"); });
                 Assert.Contains("SNPE execution provider is not supported in this build", ex.Message);
+#endif
+#if USE_QNN
+                opt.AppendExecutionProvider("QNN");
+#else
+                ex = Assert.Throws<OnnxRuntimeException>(() => { opt.AppendExecutionProvider("QNN"); });
+                Assert.Contains("QNN execution provider is not supported in this build", ex.Message);
 #endif
 
                 opt.AppendExecutionProvider_CPU(1);

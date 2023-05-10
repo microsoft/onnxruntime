@@ -924,11 +924,7 @@ TEST(ReductionOpTest, ReduceMax_default_axes_do_not_keep_dims) {
                         55.0f, 1.0f,
                         60.0f, 2.0f});
   test.AddOutput<float>("reduced", {}, {60.0f});
-#if defined(OPENVINO_CONFIG_MYRIAD)
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});  // OpenVINO: Disabled as incorrect dimensions in the output data
-#else
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});                          // TensorRT: full reduce without keepDimensions is not supported with explicit batch                         //TensorRT: axis must be 0
-#endif
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: full reduce without keepDimensions is not supported with explicit batch                         //TensorRT: axis must be 0
 }
 
 TEST(ReductionOpTest, ReduceMax_do_not_keepdims) {
@@ -955,11 +951,7 @@ TEST(ReductionOpTest, ReduceMax_do_not_keepdims_2) {
   test.AddInput<float>("data", {3},
                        {5.0f, 1.0f, 20.0f});
   test.AddOutput<float>("reduced", {}, {20.0f});
-#if defined(OPENVINO_CONFIG_MYRIAD)
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});  // OpenVINO: Disabled as incorrect dimensions in the output data
-#else
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});                          // TensorRT: full reduce without keepDimensions is not supported with explicit batch
-#endif
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: full reduce without keepDimensions is not supported with explicit batch
 }
 
 TEST(ReductionOpTest, ReduceMax_keepdims) {
@@ -1012,7 +1004,7 @@ TEST(ReductionOpTest, ReduceMaxAxesInitializerOpset18) {
   test.AddOutput<float>("reduced", {3, 1, 1}, {4.0f, 8.0f, 12.0f});
   // TODO: DNNL, TensorRT, and OpenVINO dont support "axes" input in opset 18
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kDnnlExecutionProvider, kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
+           {kDnnlExecutionProvider, kTensorrtExecutionProvider, kOpenVINOExecutionProvider, kDmlExecutionProvider});
 }
 
 #if defined(USE_DNNL)
@@ -1091,7 +1083,7 @@ TEST(ReductionOpTest, ReduceMax_int32) {
                           11, 12});
   test.AddOutput<int32_t>("reduced", {3, 1, 1}, {4, 8, 12});
 
-#if defined(OPENVINO_CONFIG_GPU_FP32) || defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_MYRIAD)
+#if defined(OPENVINO_CONFIG_GPU_FP32) || defined(OPENVINO_CONFIG_GPU_FP16)
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});  // OpenVINO: Disabled temporarily
 #else
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});                          // TensorRT: axis must be 0
@@ -1112,7 +1104,7 @@ TEST(ReductionOpTest, ReduceMax_int64) {
                           9, 10,
                           11, 12});
   test.AddOutput<int64_t>("reduced", {3, 1, 1}, {4, 8, 12});
-#if defined(OPENVINO_CONFIG_GPU_FP32) || defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_MYRIAD)
+#if defined(OPENVINO_CONFIG_GPU_FP32) || defined(OPENVINO_CONFIG_GPU_FP16)
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});  // OpenVINO: Disabled temporarily
 #else
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});                          // TensorRT: axis must be 0
@@ -1133,11 +1125,7 @@ TEST(ReductionOpTest, ReduceMax_int8) {
                          9, 10,
                          11, 12});
   test.AddOutput<int8_t>("reduced", {3, 1, 1}, {4, 8, 12});
-#if defined(OPENVINO_CONFIG_MYRIAD)
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});  // OpenVINO: Disabled temporarily
-#else
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});                          // TensorRT: axis must be 0
-#endif
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: axis must be 0
 }
 
 TEST(ReductionOpTest, ReduceMax_uint8) {
@@ -1154,11 +1142,7 @@ TEST(ReductionOpTest, ReduceMax_uint8) {
                           9, 10,
                           11, 12});
   test.AddOutput<uint8_t>("reduced", {3, 1, 1}, {4, 8, 12});
-#if defined(OPENVINO_CONFIG_MYRIAD)
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});  // OpenVINO: Disabled temporarily
-#else
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});                          // TensorRT: axis must be 0
-#endif
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: axis must be 0
 }
 
 TEST(ReductionOpTest, ReduceMax0DTensor) {
@@ -1499,7 +1483,7 @@ TEST(ReductionOpTest, ReduceMeanAxesInitializerOpset18) {
 
   // TODO: DNNL, TensorRT, and OpenVINO dont support "axes" input in opset 18, re-enable after
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kDnnlExecutionProvider, kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
+           {kDnnlExecutionProvider, kTensorrtExecutionProvider, kOpenVINOExecutionProvider, kDmlExecutionProvider});
 }
 
 #ifdef USE_DNNL
@@ -1748,7 +1732,7 @@ TEST(ReductionOpTest, ReduceMinAxesInitializerOpset18) {
   test.AddOutput<float>("reduced", {1, 2, 1}, {1.0f, 3.0f});
   // TODO: DNNL, TensorRT, and OpenVINO dont support "axes" input in opset 18, re-enable after
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kDnnlExecutionProvider, kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
+           {kDnnlExecutionProvider, kTensorrtExecutionProvider, kOpenVINOExecutionProvider, kDmlExecutionProvider});
 }
 
 #if defined(USE_DNNL)
@@ -1924,7 +1908,7 @@ TEST(ReductionOpTest, ReduceSumAxesInitializerOpset13) {
   test.AddInput<int64_t>("axes", {2}, {0, 2}, true);
   test.AddOutput<float>("reduced", {1, 2, 1}, {33.0f, 45.0f});
   // TODO: TensorRT and OpenVINO dont support "axes" input in opset 13, re-enable after
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider, kDmlExecutionProvider});
 }
 
 TEST(ReductionOpTest, ReduceSum_double) {
@@ -2242,13 +2226,8 @@ TEST(ReductionOpTest, ReduceSum_batch_by_seq_by_30528) {
 #endif
 
 TEST(ReductionOpTest, ReduceSum_bert_selected_batch_size) {
-#if defined(OPENVINO_CONFIG_MYRIAD) || defined(OPENVINO_CONFIG_VAD_M)
-  test_apex_reduce_sum(85 * 128, 768, true);
-  test_apex_reduce_sum(86 * 128, 768, true);
-#else
   test_apex_reduce_sum(85 * 128, 768);
   test_apex_reduce_sum(86 * 128, 768);
-#endif
 }
 
 TEST(ReductionOpTest, ReduceSum_apex_more) {
@@ -2718,7 +2697,7 @@ TEST(ReductionOpTest, ReduceProdAxesInitializerOpset18) {
   test.AddOutput<float>("reduced", {1, 2, 1}, {5400.f, 88704.f});
   // TODO: DNNL, TensorRT, and OpenVINO dont support "axes" input in opset 18, re-enable after
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kDnnlExecutionProvider, kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
+           {kDnnlExecutionProvider, kTensorrtExecutionProvider, kOpenVINOExecutionProvider, kDmlExecutionProvider});
 }
 
 #if defined(USE_DNNL)

@@ -13,7 +13,7 @@ import onnxruntime.training.onnxblock as onnxblock
 
 
 class LossType(Enum):
-    """Enum to represent the loss functions supported by ORT
+    """Loss type to be added to the training model.
 
     To be used with the `loss` parameter of `generate_artifacts` function.
     """
@@ -25,7 +25,7 @@ class LossType(Enum):
 
 
 class OptimType(Enum):
-    """Enum to represent the optimizers supported by ORT
+    """Optimizer type to be to be used while generating the optimizer model for training.
 
     To be used with the `optimizer` parameter of `generate_artifacts` function.
     """
@@ -47,7 +47,7 @@ def generate_artifacts(
     This function generates the following artifacts:
         1. Training model (onnx.ModelProto): Contains the base model graph, loss sub graph and the gradient graph.
         2. Eval model (onnx.ModelProto):  Contains the base model graph and the loss sub graph
-        3. Checkpoint: Contains the model parameters.
+        3. Checkpoint (directory): Contains the model parameters.
         4. Optimizer model (onnx.ModelProto): Model containing the optimizer graph.
 
     Args:
@@ -57,12 +57,11 @@ def generate_artifacts(
         loss: The loss function enum to be used for training. If None, no loss node is added to the graph.
         optimizer: The optimizer enum to be used for training. If None, no optimizer model is generated.
         artifact_directory: The directory to save the generated artifacts.
-                                          If None, the current working directory is used.
-        **extra_options: Additional keyword arguments for artifact generation.
-            prefix: The prefix to be used for the generated artifacts. If not specified, no prefix is used.
+            If None, the current working directory is used.
+        prefix: The prefix to be used for the generated artifacts. If not specified, no prefix is used.
 
     Raises:
-        RuntimeError: If the loss provided is not one of the supported losses or an instance of onnxblock.Block.
+        RuntimeError: If the loss provided is neither one of the supported losses nor an instance of `onnxblock.Block`
         RuntimeError: If the optimizer provided is not one of the supported optimizers.
     """
 
@@ -149,7 +148,7 @@ def generate_artifacts(
     checkpoint_path = artifact_directory / f"{prefix}checkpoint"
     if os.path.exists(checkpoint_path):
         logging.info("Checkpoint path %s already exists. Overwriting.", checkpoint_path)
-    onnxblock.save_checkpoint(training_block.parameters(), str(checkpoint_path))
+    onnxblock.save_checkpoint(training_block.parameters(), checkpoint_path)
     logging.info("Saved checkpoint to %s", checkpoint_path)
 
     # If optimizer is not specified, skip creating the optimizer model
