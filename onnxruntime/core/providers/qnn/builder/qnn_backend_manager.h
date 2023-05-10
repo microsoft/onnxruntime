@@ -174,11 +174,10 @@ class QnnBackendManager {
   bool IsDevicePropertySupported();
 
   template <typename T>
-   std::vector<std::add_pointer_t<std::add_const_t<T>>> ObtainNullTermPtrVector(
-            const std::vector<T>& vec) {
+  std::vector<std::add_pointer_t<std::add_const_t<T>>> ObtainNullTermPtrVector(const std::vector<T>& vec) {
     std::vector<std::add_pointer_t<std::add_const_t<T>>> ret;
     for (auto& elem : vec) {
-      ret.push_back(&elem);      
+      ret.push_back(&elem);
     }
     ret.push_back(nullptr);
     return ret;
