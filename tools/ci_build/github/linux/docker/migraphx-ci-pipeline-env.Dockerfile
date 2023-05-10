@@ -1,4 +1,4 @@
-FROM rocm/pytorch:rocm5.5_ubuntu20.04_py3.8_pytorch_1.12.1
+FROM rocm/pytorch:rocm5.5_ubuntu20.04_py3.8_pytorch_1.13.1
 
 # MIGraphX version should be the same as ROCm version
 ARG MIGRAPHX_VERSION=rocm-5.5.0
