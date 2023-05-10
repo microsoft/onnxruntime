@@ -363,6 +363,7 @@ std::ostream& operator<<(std::ostream& out, const QnnOpConfigWrapper& op_conf_wr
   return out;
 }
 
+// Returns a JSON array from a gsl::span.
 template <typename T>
 static inline nlohmann::json JSONFromSpan(gsl::span<const T> elems) {
   nlohmann::json json_array = nlohmann::json::array();
@@ -424,42 +425,49 @@ static uint32_t AppendQnnElemsToJSONArray(nlohmann::json* json_array, const void
 static nlohmann::json GetQnnClientBufJSON(const Qnn_ClientBuffer_t& buf, Qnn_DataType_t data_type,
                                           gsl::span<const uint32_t> dims) {
   using json = nlohmann::json;
-
-  json root = json::array();
-
-  //
-  // BFS traversal to create n-dimensional json array.
-  //
-  std::vector<json*> frontier;
-  frontier.push_back(&root);
-
-  const uint32_t last_dim_index = gsl::narrow_cast<uint32_t>(dims.size()) - 1;
-  uint32_t dim_index = 0;
   const char* data_ptr = reinterpret_cast<const char*>(buf.data);
 
-  while (!frontier.empty()) {
-    const uint32_t dim = dims[dim_index];
-    std::vector<json*> next_frontier;
-    next_frontier.reserve(dim);
-
-    for (auto n : frontier) {
-      if (dim_index == last_dim_index) {
-        // Append actual data.
-        data_ptr += AppendQnnElemsToJSONArray(n, data_ptr, dim, data_type);
-      } else {
-        // Append child arrays.
-        for (uint32_t i = 0; i < dim; ++i) {
-          n->push_back(json::array());
-          next_frontier.push_back(&n->back());
-        }
-      }
-    }
-
-    dim_index += 1;
-    frontier = std::move(next_frontier);  // Replace frontier array to avoid having to shift elements in a FIFO.
+  // Calculate number of elements.
+  uint32_t num_elems = 1;
+  for (auto d : dims) {
+    num_elems *= d;
   }
 
-  return root;
+  if (num_elems == 0) {
+    return json::array();
+  }
+
+  const uint32_t last_dim = dims.back();
+  const uint32_t num_dims = gsl::narrow_cast<uint32_t>(dims.size());
+  std::vector<json> curr;
+  curr.reserve(num_elems / last_dim);
+
+  // Group raw data into individual JSON arrays of size last_dim each.
+  for (uint32_t j = num_elems; j > 0; j -= last_dim) {
+    curr.push_back(json::array());
+    data_ptr += AppendQnnElemsToJSONArray(&curr.back(), data_ptr, last_dim, data_type);
+  }
+
+  // Iterate through dimension values backwards (starting at second-to-last).
+  // In each iteration, we collect the JSON arrays in the `curr` vector into groups (i.e., new JSON arrays) of
+  // size `dim_val`. This new/smaller collection of JSON arrays becomes the input for the next iteration.
+  for (uint32_t i = num_dims - 1; i-- > 0;) {
+    const uint32_t dim_val = dims[i];
+    std::vector<json> next;
+
+    for (uint32_t j = 0; j < curr.size(); ++j) {
+      if (j % dim_val == 0) {
+        next.push_back(json::array());
+      }
+
+      next.back().emplace_back(std::move(curr[j]));
+    }
+
+    curr = std::move(next);
+  }
+
+  assert(curr.size() == 1);
+  return curr[0];
 }
 
 // Returns a JSON representation of a QNN tensor.
