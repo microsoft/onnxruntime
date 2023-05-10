@@ -57,7 +57,7 @@ if (WIN32)
 
   ExternalProject_Add(triton
                       GIT_REPOSITORY https://github.com/triton-inference-server/client.git
-                      GIT_TAG main
+                      GIT_TAG r23.05
                       PREFIX triton
                       SOURCE_DIR ${CMAKE_CURRENT_BINARY_DIR}/_deps/triton-src
                       BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR}/_deps/triton-build
@@ -83,7 +83,7 @@ else()
 
   ExternalProject_Add(triton
                       GIT_REPOSITORY https://github.com/triton-inference-server/client.git
-                      GIT_TAG main
+                      GIT_TAG r23.05
                       PREFIX triton
                       SOURCE_DIR ${CMAKE_CURRENT_BINARY_DIR}/_deps/triton-src
                       BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR}/_deps/triton-build
