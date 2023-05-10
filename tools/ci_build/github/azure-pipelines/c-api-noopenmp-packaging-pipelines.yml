@@ -28,9 +28,9 @@ parameters:
   displayName: Suffix added to pre-release package version. Only used if IsReleaseBuild is true. Denotes the type of pre-release package.
   type: string
   values:
-  - -alpha
-  - -beta
-  - -rc
+  - alpha
+  - beta
+  - rc
   - none
   default: none
 
@@ -67,30 +67,32 @@ variables:
   value: ''
 
 stages:
-- stage: Set_release_version_suffix
+- stage: Setup
   jobs:
-  - job:
+  - job: Set_Variables
     steps:
     - checkout: none
     - bash: |
         if [[ "${{ parameters.IsReleaseBuild }}" = True && "${{ parameters.PreReleaseVersionSuffixString }}" != "none"  ]]; then
-          echo "##vso[task.setvariable variable=ReleaseVersionSuffix; isoutput=true]${{ parameters.PreReleaseVersionSuffixString }}.${{ parameters.PreReleaseVersionSuffixNumber }}"
+          if [[ "${{ parameters.PreReleaseVersionSuffixNumber }}" -eq 0 ]]; then
+            echo "##vso[task.setvariable variable=ReleaseVersionSuffix;isOutput=true]-${{ parameters.PreReleaseVersionSuffixString }}"
+          else
+            echo "##vso[task.setvariable variable=ReleaseVersionSuffix;isOutput=true]-${{ parameters.PreReleaseVersionSuffixString }}.${{ parameters.PreReleaseVersionSuffixNumber }}"
+          fi
         else
-          echo "##vso[task.setvariable variable=ReleaseVersionSuffix; isoutput=true]''"
+          echo "##vso[task.setvariable variable=ReleaseVersionSuffix;isOutput=true]"
         fi
-    - bash: |
-        echo "IsReleaseBuild is: ${{ parameters.IsReleaseBuild }}"
-        echo "Pre-release version suffix is: ${{ parameters.PreReleaseVersionSuffixString }}"
-        echo "Pre-release version number is: ${{ parameters.PreReleaseVersionSuffixNumber }}"
-        echo "Release version suffix is: $(ReleaseVersionSuffix)"
+      name: Set_Release_Version_Suffix
 
 - stage: Debug
+  dependsOn: Setup
   jobs:
-  - job:
+  - job: D1
+    variables:
+      MyVar: $[stageDependencies.Setup.Set_Variables.outputs['Set_Release_Version_Suffix.ReleaseVersionSuffix']]
     steps:
     - checkout: none
-    - bash: |
-        echo "Release version suffix is: $(ReleaseVersionSuffix)"
+    - bash: echo $(MyVar)
 
 - template: templates/c-api-cpu.yml
   parameters:
@@ -98,7 +100,6 @@ stages:
     DoCompliance: ${{ parameters.DoCompliance }}
     DoEsrp: ${{ parameters.DoEsrp }}
     IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
-    ReleaseVersionSuffix: $(ReleaseVersionSuffix)
     OrtNugetPackageId: 'Microsoft.ML.OnnxRuntime'
     AdditionalBuildFlags: ''
     AdditionalWinBuildFlags: '--enable_onnx_tests --enable_wcos'
@@ -546,6 +547,7 @@ stages:
 
 - stage: NuGet_Packaging_GPU
   dependsOn:
+  - Setup
   - Windows_Packaging_gpu
   - Windows_Packaging_tensorrt
   - Linux_C_API_Packaging_GPU_x64
@@ -560,6 +562,7 @@ stages:
     pool: 'Azure-Pipelines-EO-Windows2022-aiinfra'
     variables:
       breakCodesignValidationInjection: ${{ parameters.DoEsrp }}
+      ReleaseVersionSuffix: $[stageDependencies.Setup.Set_Variables.outputs['Set_Release_Version_Suffix.ReleaseVersionSuffix']]
 
     steps:
     - checkout: self
