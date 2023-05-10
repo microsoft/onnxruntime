@@ -200,7 +200,8 @@ pip install onnxruntime-training
   <tr>
     <td>Windows</td>
     <td>C, C++, C#</td>
-    <td><a href="https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Training">Microsoft.ML.OnnxRuntime.Training</a></td>
+    <!-- TODO (baijumeswani) - Update to Training link once published -->
+    <td><a href="https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime">Microsoft.ML.OnnxRuntime.Training</a></td>
     <td>
       <pre lang="bash">dotnet add package Microsoft.ML.OnnxRuntime.Training</pre>
     </td>
