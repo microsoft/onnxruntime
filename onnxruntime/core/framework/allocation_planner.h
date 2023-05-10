@@ -96,7 +96,6 @@ class IGraphPartitioner {
                                 const ExecutionProviders& execution_providers,
                                 std::vector<InlinedVector<NodeIndex>>& stream_nodes,
                                 ExecutionOrder execution_order) = 0;
-  virtual void SaveKeyValue(const InlinedVector<std::string>& key, const InlinedVector<std::string>& value) = 0;
   virtual const char* Type() const = 0;
   // return total number of streams
   virtual size_t Streams() const = 0;
@@ -107,9 +106,6 @@ class IGraphPartitioner {
                                                      config_file_(config_file) {}
   const logging::Logger& logger_;
   PathString config_file_;
-};
-#else
-class IGraphPartitioner {
 };
 #endif
 
