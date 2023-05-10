@@ -204,24 +204,14 @@ Status BeamSearchGpt<T>::Execute(const FeedsFetchesManager* init_run_feeds_fetch
   // Initialize resources
   onnxruntime::OrtStlAllocator<HypothesisScore> hypothesis_score_allocator(this->cpu_allocator_);
   onnxruntime::OrtStlAllocator<BeamHypotheses> beam_hyps_allocator(this->cpu_allocator_);
-  this->beam_scorer_ = std::make_unique<BeamSearchScorer>(static_cast<size_t>(parameters->batch_size),
-                                                          static_cast<size_t>(parameters->num_beams),
-                                                          static_cast<size_t>(parameters->max_length),
-                                                          parameters->length_penalty,
-                                                          parameters->early_stopping,
-                                                          static_cast<size_t>(parameters->num_return_sequences),
-                                                          parameters->pad_token_id,
-                                                          parameters->eos_token_id,
+  this->beam_scorer_ = std::make_unique<BeamSearchScorer>(*parameters,
                                                           hypothesis_score_allocator,
-                                                          beam_hyps_allocator);
-  this->beam_scorer_->Initialize(this->cpu_allocator_, parameters->sequence_length);
+                                                          beam_hyps_allocator,
+                                                          this->cpu_allocator_);
 
-  BeamSearchCpuState cpu_state;
-  cpu_state.Init(this->cpu_allocator_,
-                 static_cast<size_t>(parameters->BatchBeamSize()),
-                 parameters->max_length,
-                 parameters->sequence_length,
-                 this->IsCuda());
+  BeamSearchCpuState cpu_state{*parameters,
+                               this->cpu_allocator_,
+                               this->IsCuda()};
 
   // buffer in GPU for input_ids, position_ids and attention_mask
   IAllocatorUniquePtr<char> buffer;
@@ -243,19 +233,11 @@ Status BeamSearchGpt<T>::Execute(const FeedsFetchesManager* init_run_feeds_fetch
     }
   }
 
-  BeamSearchState<T> beam_state;
   constexpr bool use_position = true;
-  beam_state.Init(this->temp_space_allocator_,
-                  parameters->batch_size,
-                  parameters->num_beams,
-                  parameters->vocab_size,
-                  parameters->sequence_length,
-                  parameters->max_length,
-                  parameters->num_heads,
-                  parameters->head_size,
-                  gpt_subgraph_.has_decoder_masked_attention_,
-                  parameters->output_scores,
-                  use_position);
+  BeamSearchState<T> beam_state{*parameters,
+                                this->temp_space_allocator_,
+                                gpt_subgraph_.has_decoder_masked_attention_,
+                                use_position};
 
   init_beam_state_func_(&beam_state,
                         cpu_state.sequence_lengths,
