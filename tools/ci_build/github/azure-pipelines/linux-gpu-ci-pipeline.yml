@@ -137,6 +137,7 @@ jobs:
           --volume $(Build.BinariesDirectory)/Release:/build/Release \
           --volume /data/models:/build/models:ro \
           --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
+          --volume /data/onnx:/data/onnx \
           onnxruntimecuda11build \
           /bin/bash -c "
             set -ex; \
