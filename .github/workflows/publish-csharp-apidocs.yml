@@ -22,7 +22,7 @@ jobs:
   build:
     runs-on: windows-latest
     env:
-      DOCFXVERSION: 2.62.2
+      DOCFXVERSION: 2.67.0
     steps:
     - uses: actions/checkout@v3
     - name: Setup .NET
@@ -34,7 +34,7 @@ jobs:
     - name: Download DocFX
       run: |
         mkdir build\docfx
-        curl https://github.com/dotnet/docfx/releases/download/v${DOCFXVERSION}/docfx-linux-x64-v${DOCFXVERSION}.zip > build/docfx/docfx.zip
+        curl -OL https://github.com/dotnet/docfx/releases/download/v${DOCFXVERSION}/docfx-win-x64-v${DOCFXVERSION}.zip > build\docfx\docfx.zip
         unzip build\docfx\docfx.zip -d build\docfx
     - name: Install NuGet
       uses: nuget/setup-nuget@v1
