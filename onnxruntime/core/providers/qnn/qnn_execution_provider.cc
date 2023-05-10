@@ -49,12 +49,12 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
     LOGS_DEFAULT(INFO) << "rpc_control_latency: " << rpc_control_latency_;
   }
 
-  static const std::string DEBUG_JSON_GRAPH_PATH = "debug_json_graph_path";
-  auto debug_json_graph_path_pos = runtime_options_.find(DEBUG_JSON_GRAPH_PATH);
+  static const std::string DEBUG_JSON_GRAPHS_DIR = "debug_json_graphs_dir";
+  auto debug_json_graphs_dir_pos = runtime_options_.find(DEBUG_JSON_GRAPHS_DIR);
 
-  if (debug_json_graph_path_pos != runtime_options_.end()) {
-    debug_json_graph_path_ = debug_json_graph_path_pos->second;
-    LOGS_DEFAULT(INFO) << "Debug JSON graph path: " << debug_json_graph_path_;
+  if (debug_json_graphs_dir_pos != runtime_options_.end()) {
+    debug_json_graphs_dir_ = debug_json_graphs_dir_pos->second;
+    LOGS_DEFAULT(INFO) << "Debug JSON graph path: " << debug_json_graphs_dir_;
   }
 
   AllocatorCreationInfo device_info(
@@ -275,7 +275,7 @@ Status QNNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused
                                                                                cpu_allocator_,
                                                                                is_npu_backend);
 
-    ORT_RETURN_IF_ERROR(qnn_model->ComposeGraph(graph_viewer, fused_node, debug_json_graph_path_));
+    ORT_RETURN_IF_ERROR(qnn_model->ComposeGraph(graph_viewer, fused_node, debug_json_graphs_dir_));
     ORT_RETURN_IF_ERROR(qnn_model->FinalizeGraphs());
     ORT_RETURN_IF_ERROR(qnn_model->SetupQnnInputOutput());
 
