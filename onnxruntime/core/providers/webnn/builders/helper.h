@@ -65,7 +65,7 @@ inline bool CheckSingleOp(const std::string& op_type, const emscripten::val& wnn
   return op_map.find(op_type) != op_map.end() && wnn_builder_[op_map.find(op_type)->second].as<bool>();
 }
 
-const InlinedVector<int32_t> supported_data_types{
+constexpr std::array<ONNX_NAMESPACE::TensorProto_DataType, 2> supported_data_types = {
     ONNX_NAMESPACE::TensorProto_DataType_FLOAT16,
     ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
 };
