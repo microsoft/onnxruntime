@@ -408,7 +408,6 @@ static uint32_t AppendQnnElemsToJSONArray(nlohmann::json* json_array, const void
       return FillJSONArrayFromRawData<uint32_t>(json_array, data, num_elems);
     case QNN_DATATYPE_UINT_64:
       return FillJSONArrayFromRawData<uint64_t>(json_array, data, num_elems);
-    case QNN_DATATYPE_FLOAT_16:  // Handle float16 as float32 in JSON
     case QNN_DATATYPE_FLOAT_32:
       return FillJSONArrayFromRawData<float>(json_array, data, num_elems);
     default:
@@ -420,7 +419,7 @@ static uint32_t AppendQnnElemsToJSONArray(nlohmann::json* json_array, const void
 // according to the provided dimensions/shape.
 //
 // Example:
-// For, buf = [0, 1, 2, 3, 4, 5] and dims = [1, 2, 3]
+// If buf = [0, 1, 2, 3, 4, 5] and dims = [1, 2, 3]
 //   => returns JSON array [[[0, 1, 2], [3, 4, 5]]]
 static nlohmann::json GetQnnClientBufJSON(const Qnn_ClientBuffer_t& buf, Qnn_DataType_t data_type,
                                           gsl::span<const uint32_t> dims) {
@@ -442,7 +441,8 @@ static nlohmann::json GetQnnClientBufJSON(const Qnn_ClientBuffer_t& buf, Qnn_Dat
   std::vector<json> curr;
   curr.reserve(num_elems / last_dim);
 
-  // Group raw data into individual JSON arrays of size last_dim each.
+  // Group raw data into individual JSON arrays of size `last_dim` each.
+  // Store these JSON arrays in the `curr` vector.
   for (uint32_t j = num_elems; j > 0; j -= last_dim) {
     curr.push_back(json::array());
     data_ptr += AppendQnnElemsToJSONArray(&curr.back(), data_ptr, last_dim, data_type);
@@ -471,6 +471,18 @@ static nlohmann::json GetQnnClientBufJSON(const Qnn_ClientBuffer_t& buf, Qnn_Dat
 }
 
 // Returns a JSON representation of a QNN tensor.
+// Example:
+//
+// {
+//     "id" : 1652639423,
+//     "type" : 3
+//     "dataFormat" : 0,
+//     "data_type" : 562,
+//     "dims" : [ 1, 224, 224, 3 ],
+//     "quant_params" : { ... },
+//     "axis_format" : "NOT_YET_DEFINED",
+//     "src_axis_format" : "NOT_YET_DEFINED",
+// }
 static nlohmann::json GetQnnTensorJSON(const Qnn_Tensor_t& tensor, bool include_static_data = false) {
   using json = nlohmann::json;
   json tensor_json = json::object();
@@ -508,7 +520,8 @@ static nlohmann::json GetQnnTensorJSON(const Qnn_Tensor_t& tensor, bool include_
   return tensor_json;
 }
 
-// Returns a JSON representation of a QNN scalar parameter.
+// Returns a JSON object representation of a QNN scalar parameter. Example: { "306": 1 }
+// Note that the key is the stringified data type.
 static nlohmann::json GetQnnScalarParamJSON(const Qnn_Scalar_t& param) {
   nlohmann::json param_json = nlohmann::json::object();
   std::stringstream ss;
@@ -557,6 +570,16 @@ static nlohmann::json GetQnnTensorNamesJSON(gsl::span<const Qnn_Tensor_t> tensor
 }
 
 // Returns a JSON representation of a QNN operator.
+// Example:
+// {
+//     "package": "qti.aisw",
+//     "type": "Conv2d",
+//     "input_names": [ "Transpose_token_2012_out0", "weight_quantized", "beta_quantized" ],
+//     "output_names": [ "resnetv17_relu0_fwd_QuantizeLinear" ],
+//     "scalar_params": { "group": {...} },
+//     "tensor_params": { "stride": {...} },
+//     "macs_per_inference": ""
+// }
 static nlohmann::json GetQnnOpJSON(const Qnn_OpConfig_t& node) {
   using json = nlohmann::json;
   json op_json = json::object();
@@ -579,7 +602,7 @@ static nlohmann::json GetQnnOpJSON(const Qnn_OpConfig_t& node) {
   op_json["scalar_params"] = std::move(scalar_params_json);
   op_json["input_names"] = GetQnnTensorNamesJSON(gsl::span<const Qnn_Tensor_t>{node.v1.inputTensors, node.v1.numOfInputs});
   op_json["output_names"] = GetQnnTensorNamesJSON(gsl::span<const Qnn_Tensor_t>{node.v1.outputTensors, node.v1.numOfOutputs});
-  op_json["macs_per_inference"] = "";  // Don't know what this is.
+  op_json["macs_per_inference"] = "";  // Metadata set by QNN converter tools. Not needed.
 
   return op_json;
 }

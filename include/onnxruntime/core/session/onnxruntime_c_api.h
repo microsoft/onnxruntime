@@ -3545,7 +3545,8 @@ struct OrtApi {
    *   "backend_path": file path to QNN backend library.
    *   "profiling_level": QNN profiling level, options: "basic", "detailed".
    *   "rpc_control_latency": QNN RPC control latency.
-   *   "enable_json_graphs_dump": Set to "1" to enable dumping of QNN graphs as JSON files.
+   *   "enable_json_graphs_dump": Set to "1" to enable dumping of QNN graphs as JSON files. Each graph partition
+   *                              assigned to QNN EP is dumped to a separate file.
    *   "json_graphs_dir": Directory in which to dump QNN JSON graphs. If not specified, QNN graphs are dumped in the
    *                      program's current working directory. Ignored if "enable_json_graphs_dump" is not set.
    *
