@@ -10,24 +10,6 @@ import shutil
 
 import triton
 
-"""
-These files are based on onnxruntime/onnxruntime root dir.
-and should implement get_function_table() with function table format:
-
-function_table = [
-        {'name': xx,
-         'group': yy,
-         'func': func,
-         'sig': sig,
-         'kwargs': kwargs
-        }
-]
-
-"""
-_TRITON_SCRIPT_FILES = [
-    "core/providers/rocm/math/softmax.py",
-]
-
 
 def compile(function_table, out_dir):
     def compile_one(func, sig, **kwargs):
@@ -42,7 +24,7 @@ def compile(function_table, out_dir):
         func = func_desc["func"]
         kwargs = func_desc["kwargs"]
 
-        print("compile func: ", func_desc)
+        #print("compile func: ", func_desc)
 
         ret = compile_one(func, sig, **kwargs)
 
@@ -55,9 +37,18 @@ def compile(function_table, out_dir):
         if "constants" in kwargs:
             compile_res["constants"] = kwargs["constants"]
 
-        # move tmp hsaco file into current dir
-        lib_name = f"{name}.hsaco"
-        shutil.copyfile(ret.asm["hsaco_path"], f"{out_dir}/{lib_name}")
+        # move tmp kernel file into current dir
+        if "hsaco_path" in ret.asm and os.path.exists(ret.asm["hsaco_path"]):
+            # is rocm
+            lib_name = f"{name}.hsaco"
+            shutil.copyfile(ret.asm["hsaco_path"], f"{out_dir}/{lib_name}")
+        elif "cubin" in ret.asm and os.path.exists(ret.asm["cubin"]):
+            # is cuda
+            lib_name = f"{name}.cubin"
+            shutil.copyfile(ret.asm["cubin"], f"{out_dir}/{lib_name}")
+        else:
+            raise Exception("not find rocm or cuda compiled kernel")
+
         compile_res["lib_file"] = lib_name
         metadata.append(compile_res)
 
@@ -146,20 +137,21 @@ def main(args):
         os.mkdir(out_dir)
 
     metadata = []
-    for i, f in enumerate(_TRITON_SCRIPT_FILES):
+    print("[triton kernel] start compile triton kernel.")
+    for i, f in enumerate(args.script_files):
         # import module in f, and call function
-        spec = importlib.util.spec_from_file_location(f"module_{i}", f"{args.ort_root}/{f}")
+        spec = importlib.util.spec_from_file_location(f"module_{i}", f)
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
         func_tb = module.get_funcion_table()
         m = compile(func_tb, out_dir)
         metadata.extend(m)
 
-    print("compile done.")
+    print("[triton kernel] compile triton kernel done.")
 
     # save metadata into header file
     convert_and_save(metadata, args.header, out_dir, out_obj_file)
-    print("save into file done.")
+    print("[triton kernel] save into file done.")
 
 
 def get_arges():
@@ -168,6 +160,7 @@ def get_arges():
         "--header", type=str, default="triton_kernel_infos.h", help="the header file that should be generated."
     )
     parser.add_argument("--ort_root", type=str, default="onnxruntime", help="the root dir of onnxruntime.")
+    parser.add_argument("--script_files", type=str, nargs='+', help="the root dir of onnxruntime.")
     parser.add_argument("--obj_file", type=str, default="triton_kernel_infos.a", help="output target object files.")
 
     args = parser.parse_args()

@@ -33,7 +33,21 @@ name_pattern = 'softmax_{}_{}'
 sig_pattern = '*{},*{},i32,i32,i32'
 group_pattern = 'softmax_{}'
 
-# this function returns a description table that contains function name and metadata for launching kernels
+"""
+SHOULD implement a function that returns a metadata list with format:
+
+function_table = [
+        {'name': xx,
+         'group': yy,
+         'func': func,
+         'sig': sig,
+         'kwargs': kwargs
+        }
+]
+
+The kwargs is a dict of {string: int} which is used for kernel constants. For example, BLOCK_SIZE of softmax.
+"""
+
 def get_funcion_table():
     ......
     ......
