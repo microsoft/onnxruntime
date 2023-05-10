@@ -123,12 +123,7 @@ Status InsertGatherBeforeSceLoss::ApplyImpl(Graph& graph, bool& modified, int /*
     if (labels_producer && graph_utils::IsSupportedOptypeVersionAndDomain(
                                *labels_producer, "Reshape", {1, 5, 13, 14}, kOnnxDomain)) {
       label_input_arg = labels_producer->InputDefs()[0];
-    } else {
-      LOG_DEBUG_INFO(logger, "Skip node " + node.Name() + "(" + node.OpType() +
-                                 ") due to label input pattern not matched.");
-      continue;
     }
-
     // Then check if the label input is graph input and in the sparse label input list.
     if (!graph.IsInputsIncludingInitializers(label_input_arg) ||
         std::find(sparse_label_input_names_.begin(), sparse_label_input_names_.end(),
