@@ -290,7 +290,7 @@ TEST_F(QnnHTPBackendTests, TestMaxPool_Large_Kernel2_HTP_u8) {
 }
 
 
-TEST_F(QnnCPUBackendTests, TestMaxPool_Floor_HTP_u8) {
+TEST_F(QnnHTPBackendTests, TestMaxPool_Floor_HTP_u8) {
   RunQDQMaxPoolOpTest<uint8_t>({1, 2, 3, 3},  // shape
                        {3, 3},        // kernel_shape
                        {3, 3},        // strides
@@ -302,7 +302,7 @@ TEST_F(QnnCPUBackendTests, TestMaxPool_Floor_HTP_u8) {
                        ExpectedEPNodeAssignment::All, "TestMaxPool_Floor_HTP_u8");
 }
 
-TEST_F(QnnCPUBackendTests, TestMaxPool_Large_Kernel2_Floor_HTP_u8) {
+TEST_F(QnnHTPBackendTests, TestMaxPool_Large_Kernel2_Floor_HTP_u8) {
   RunQDQMaxPoolOpTest<uint8_t>({1, 128, 16, 113},  // shape
                        {2, 2},        // kernel_shape
                        {2, 2},        // strides
