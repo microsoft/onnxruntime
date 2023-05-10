@@ -67,10 +67,10 @@ class BeamHypotheses {
 
 class BeamSearchScorer : public IBeamScorer {
  public:
-  BeamSearchScorer(const IGenerationParameters &parameters,
+  BeamSearchScorer(const IGenerationParameters& parameters,
                    onnxruntime::OrtStlAllocator<HypothesisScore>& hypothesis_score_allocator,
                    onnxruntime::OrtStlAllocator<BeamHypotheses>& beam_hyps_allocator,
-                   AllocatorPtr &allocator);
+                   AllocatorPtr& allocator);
 
   void Process(ISequences* sequences,
                gsl::span<const float>& next_scores,

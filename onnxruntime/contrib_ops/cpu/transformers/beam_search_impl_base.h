@@ -14,11 +14,10 @@ namespace transformers {
 
 template <typename T>
 struct BeamSearchState : IBeamSearchState<T> {
-
-  BeamSearchState(const IGenerationParameters& parameters, 
-            AllocatorPtr allocator,
-            int has_decoder_masked_attention,
-            bool use_position) {
+  BeamSearchState(const IGenerationParameters& parameters,
+                  AllocatorPtr allocator,
+                  int has_decoder_masked_attention,
+                  bool use_position) {
     size_t batch_beam_size = SafeInt<size_t>(parameters.batch_size) * parameters.num_beams;
 
     size_t next_token_size = SafeInt<size_t>(batch_beam_size) * parameters.vocab_size;
