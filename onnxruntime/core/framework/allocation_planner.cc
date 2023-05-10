@@ -1713,9 +1713,9 @@ class PlannerImpl {
   }
 
 #ifndef ORT_ENABLE_STREAM
-  std::unique_ptr<IGraphPartitioner> PartitionIntoStreams(const logging::Logger& /*logger*/,
-                                                          const ExecutionProviders& /*execution_providers*/,
-                                                          const PathString& /*partition_config_file*/) {
+  void PartitionIntoStreams(const logging::Logger& /*logger*/,
+                            const ExecutionProviders& /*execution_providers*/,
+                            const PathString& /*partition_config_file*/) {
     stream_nodes_.push_back({});
     node_stream_map_.resize(SafeInt<size_t>(graph_viewer_.MaxNodeIndex()) + 1);
     for (auto node_index : graph_viewer_.GetNodesInTopologicalOrder()) {
@@ -1723,7 +1723,6 @@ class PlannerImpl {
       node_stream_map_[node_index] = 0;
     }
     num_logic_streams_ = 1;
-    return {};
   }
 
   Status BuildExecutionPlan(const ExecutionProviders& execution_providers) {
@@ -1745,10 +1744,9 @@ class PlannerImpl {
     return Status::OK();
   }
 
-  void SaveBuildPlan(const std::unique_ptr<IGraphPartitioner>&) {}
 #else
 
-  std::unique_ptr<IGraphPartitioner>
+  void
   PartitionIntoStreams(const logging::Logger& logger, const ExecutionProviders& execution_providers,
                        const PathString& partition_config_file) {
     auto partitioner = IGraphPartitioner::CreateGraphPartitioner(logger, partition_config_file);
@@ -1761,23 +1759,9 @@ class PlannerImpl {
       }
     }
     num_logic_streams_ = stream_nodes_.size();
-    return partitioner;
   }
 
-  void SaveBuildPlan(const std::unique_ptr<IGraphPartitioner>& partitoner) {
-    if (partitoner) {
-      for (size_t i = 0; i < plan_.execution_plan.size(); ++i) {
-        InlinedVector<std::string> keys = {"execution_plan", std::to_string(i)};
-        InlinedVector<std::string> steps;
-        for (const auto& step : plan_.execution_plan[i]->steps_) {
-          steps.push_back(step->ToString());
-        }
-        partitoner->SaveKeyValue(keys, steps);
-      }
-    }
-  }
   // build each logic streams
-
   Status BuildExecutionPlan(const ExecutionProviders& execution_providers,
                             const IStreamCommandHandleRegistry& stream_handle_registry) {
     // 1. create logic stream instance
@@ -2128,7 +2112,7 @@ Status PlannerImpl::CreatePlan(
     const PathString& partition_config_file,
     const logging::Logger& logger) {
   // 1. partition graph into streams
-  auto partitioner = PartitionIntoStreams(logger, execution_providers_, this->parent_node_ ? PathString{}: partition_config_file); // config file is not for subgraphs
+  PartitionIntoStreams(logger, execution_providers_, this->parent_node_ ? PathString{}: partition_config_file);
 
   // 2. initialize the plan based on stream partition result
   int num_ml_values = ort_value_name_idx_map_.MaxIdx() + 1;
@@ -2145,8 +2129,6 @@ Status PlannerImpl::CreatePlan(
 #else
   ORT_RETURN_IF_ERROR(BuildExecutionPlan(execution_providers_));
 #endif
-
-  SaveBuildPlan(partitioner);
 
   // determine sharing/reuse among ml-values
   ORT_RETURN_IF_ERROR(ComputeReusePlan());
@@ -2248,7 +2230,6 @@ class DeviceBasedPartitioner : public IGraphPartitioner {
 
   const char* Type() const override { return "DeviceBasedPartitioner"; }
   size_t Streams() const override { return node_names_by_stream_.size(); }
-  void SaveKeyValue(const InlinedVector<std::string>& key, const InlinedVector<std::string>& value) override;
 
  private:
   void Initialize();
@@ -2407,7 +2388,7 @@ void DeviceBasedPartitioner::SaveConfig() const {
               tail = &json_it.value();
             }
           }
-        } // for
+        }
         auto json_it = tail->find(kv_it.first.back());
         if (json_it == tail->end()) {
           (*tail)[kv_it.first.back()] = json::array();
@@ -2435,11 +2416,6 @@ void DeviceBasedPartitioner::SaveConfig() const {
   ORT_CATCH(const std::exception& ex) {
     LOGS(logger_, WARNING) << "Caught exception during saving DeviceBasedPartitioner config: " << ex.what();
   }
-}
-
-void DeviceBasedPartitioner::SaveKeyValue(const InlinedVector<std::string>& key,
-                                            const InlinedVector<std::string>& value) {
-  key_val_map_[key] = value;
 }
 
 std::unique_ptr<IGraphPartitioner> IGraphPartitioner::CreateGraphPartitioner(const logging::Logger& logger,
