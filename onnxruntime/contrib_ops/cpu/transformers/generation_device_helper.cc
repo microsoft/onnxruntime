@@ -938,7 +938,7 @@ Status CreateWhisperEncoderInputs(
     TensorShape decoder_input_ids_shape(&dims[0], 2);
     Tensor::InitOrtValue(element_type, decoder_input_ids_shape, allocator, decoder_input_ids);
     int32_t* data = decoder_input_ids.GetMutable<Tensor>()->MutableData<int32_t>();
-    for (int i = 0; i < batch_size; i++, data++) {
+    for (int i = 0; i < batch_size; i++) {
       for (int64_t j = 0; j < dims[1]; j++) {
         data[i * dims[1] + j] = hacked_ids[j];
       }
