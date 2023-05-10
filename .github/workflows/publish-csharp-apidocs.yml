@@ -35,7 +35,7 @@ jobs:
       run: |
         mkdir build\docfx
         curl -o build\docfx\docfx.zip -L https://github.com/dotnet/docfx/releases/download/v${DOCFXVERSION}/docfx-win-x64-v${DOCFXVERSION}.zip
-        unzip build\docfx\docfx -d build\docfx
+        unzip build\docfx\docfx.zip -d build\docfx
     - name: Install NuGet
       uses: nuget/setup-nuget@v1
     - name: Build Documentation
