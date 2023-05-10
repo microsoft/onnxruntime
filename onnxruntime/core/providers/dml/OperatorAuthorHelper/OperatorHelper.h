@@ -746,6 +746,7 @@ public:
         None,
         Identity,
         Multiply,
+        OuterProduct,
         MatMul,
         MatMulTransposeA,
         MatMulTransposeB,
@@ -1449,6 +1450,7 @@ using ShapeInferenceHelper_LpPool = PoolingHelper;
 using ShapeInferenceHelper_GlobalLpPool = GlobalPoolingHelper;
 using ShapeInferenceHelper_MaxRoiPool = RoiPoolingHelper;
 using ShapeInferenceHelper_RoiAlign10 = VersionedOpsetHelper<RoiAlignHelper, 10>;
+using ShapeInferenceHelper_RoiAlign16 = VersionedOpsetHelper<RoiAlignHelper, 16>;
 using ShapeInferenceHelper_InstanceNormalization = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_BatchNormalization = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_BatchNormalization15 = BatchNormalizationHelper;
