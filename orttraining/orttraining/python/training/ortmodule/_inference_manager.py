@@ -98,7 +98,7 @@ class InferenceManager(GraphExecutionManager):
                 if build_graph:
                     graph_transformer_config = self._get_graph_transformer_config()
                     # Set the config according to input inspection.
-                    self._enable_conditional_optimizations(graph_transformer_config, input, kwargs)
+                    self._enable_conditional_optimizations(graph_transformer_config, inputs, kwargs)
 
                     # Build the gradient graph
                     self._build_graph(graph_transformer_config)

@@ -5672,3 +5672,72 @@ def test_gradient_correctness_bce_with_logits():
 
         _test_helpers.assert_values_are_close(ort_prediction, pt_prediction)
         _test_helpers.assert_values_are_close(ort_input.grad, pt_input.grad)
+
+
+@pytest.mark.parametrize("embed_is_sparse", [False, True])
+@pytest.mark.parametrize("label_is_sparse", [False, True])
+@pytest.mark.parametrize("rank", [1, 2])
+def test_runtime_inspector_label_and_embed_sparsity_detection(embed_is_sparse, label_is_sparse, rank):
+    class NeuralNetCrossEntropyLoss(torch.nn.Module):
+        def __init__(self, num_embeddings, embedding_dim):
+            super().__init__()
+            self.embedding = torch.nn.Embedding(num_embeddings, embedding_dim, padding_idx=1)
+            self.num_class = 3
+            self.fc1 = torch.nn.Linear(embedding_dim, self.num_class, bias=False)
+            with torch.no_grad():
+                self.fc1.weight.fill_(1.0)
+            self.loss_fct = torch.nn.CrossEntropyLoss()
+
+        def forward(self, input, labels):
+            output = self.embedding(input)
+            output = self.fc1(output)
+            if rank == 1:
+                return self.loss_fct(output, labels)
+            else:
+                return self.loss_fct(output.view(-1, self.num_class), labels.view(-1))
+
+    device = "cuda"
+    num_embeddings, embedding_dim = 16, 128
+    pt_model = NeuralNetCrossEntropyLoss(num_embeddings, embedding_dim).to(device)
+    ort_model = ORTModule(pt_model)
+
+    def run_step(model, input, positions):
+        with amp.autocast(True):
+            loss = model(input, positions)
+        loss.backward()
+        return loss
+
+    # batch_size = 3
+    # sequence = 4
+
+    if embed_is_sparse:
+        input = torch.tensor([[0, 2, 3, 4], [2, 3, 1, 1], [1, 1, 1, 1]], device=device)
+    else:
+        input = torch.tensor([[0, 2, 3, 4], [2, 3, 5, 6], [8, 7, 7, 7]], device=device)
+
+    if label_is_sparse:
+        label = torch.tensor([[1, 2, -100, 2], [-100, -100, 2, 1], [-100, 1, 2, -100]], device=device)
+    else:
+        label = torch.tensor([[1, 2, 0, 2], [0, 0, 2, 1], [0, 1, 2, 0]], device=device)
+
+    if rank == 1:
+        input = input.view(-1)
+        label = label.view(-1)
+
+    with pytest.warns(UserWarning) as warning_record:
+        _ = run_step(ort_model, input, label)
+
+    found_embed_is_sparse = False
+    found_label_is_sparse = False
+    for record in warning_record:
+        if "Label sparsity based optimization is on for" in record.message.args[0]:
+            found_label_is_sparse = True
+
+        if "Embedding sparsity based optimization is on for" in record.message.args[0]:
+            found_embed_is_sparse = True
+
+    if label_is_sparse:
+        assert found_label_is_sparse
+
+    if embed_is_sparse:
+        assert found_embed_is_sparse

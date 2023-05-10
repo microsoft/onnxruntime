@@ -19,7 +19,7 @@ class RuntimeInspector:
 class InputDensityObserver:
     """Configurable input data observer for ORTModule."""
 
-    def __init__(self, log_steps=10):
+    def __init__(self, log_steps=1):
         self._embedding_graph_input_to_padding_idx_map = {}
         self._loss_label_graph_input_to_ignore_idx_map = {}
         self._stats = []
@@ -66,7 +66,18 @@ class InputDensityObserver:
             if not found or helper.get_attribute_value(found[0]).decode() != "embedding":
                 continue
 
-            tensor = self._try_get_initializer(model, node.input[2])
+            tensor = None
+            padding_const_node = self._try_get_node_from_its_output(node.input[2])
+            if padding_const_node is None:
+                padding_initializer_name = node.input[2]
+                tensor = self._try_get_initializer(model, padding_initializer_name)
+
+            elif padding_const_node.op_type == "Constant":
+                found = [attr for attr in padding_const_node.attribute if attr.name == "value"]
+                tensor = found[0].t
+            else:
+                continue
+
             if tensor is None or tensor.data_type not in [onnx_proto.TensorProto.INT32, onnx_proto.TensorProto.INT64]:
                 continue
 
@@ -222,7 +233,9 @@ class InputDensityObserver:
         ):
             for padding_idx in self._embedding_graph_input_to_padding_idx_map[name]:
                 valid_token = torch.count_nonzero(data - padding_idx)
-                valid_token_per_batch = torch.count_nonzero(data - padding_idx, dim=1)
+                valid_token_per_batch = "N/A"
+                if data.dim() > 1:
+                    valid_token_per_batch = str(torch.count_nonzero(data - padding_idx, dim=1).tolist())
                 total_token = data.numel()
                 embed_density = float(valid_token) / float(total_token) * 100
                 embedding_is_sparse = embedding_is_sparse or (embed_density < 90)
@@ -235,7 +248,7 @@ class InputDensityObserver:
                         embed_density,
                         valid_token,
                         total_token,
-                        str(valid_token_per_batch.tolist()),
+                        valid_token_per_batch,
                     ]
                 )
                 found = True
