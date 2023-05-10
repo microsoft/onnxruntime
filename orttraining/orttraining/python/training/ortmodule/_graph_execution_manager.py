@@ -185,9 +185,8 @@ class GraphExecutionManager(GraphExecutionInterface):
         self._enable_compute_optimizer = (
             ortmodule._defined_from_envvar("ORTMODULE_ENABLE_COMPUTE_OPTIMIZER", 1, warn=True) == 1
         )
-        self._enable_label_sparsity_optimization = (
-            self._enable_compute_optimizer
-            and ortmodule._defined_from_envvar("ORTMODULE_ENABLE_LABEL_SPARSITY_OPT", 0, warn=True) == 1
+        self._enable_input_density_inspector = (
+            ortmodule._defined_from_envvar("ORTMODULE_ENABLE_INPUT_DENSITY_INSPECTOR", 0, warn=True) == 1
         )
 
         # Flag to re-export the model due to attribute change on the original module.
@@ -254,11 +253,11 @@ class GraphExecutionManager(GraphExecutionInterface):
         All other methods are internal"""
         pass
 
-    def _build_graph(self):
+    def _build_graph(self, config):
         if self._use_static_shape:
-            self._graph_builder.build(self._input_info.shape)
+            self._graph_builder.build(config, self._input_info.shape)
         else:
-            self._graph_builder.build()
+            self._graph_builder.build(config)
 
         self._graph_info = self._graph_builder.get_graph_info()
 
@@ -463,7 +462,6 @@ class GraphExecutionManager(GraphExecutionInterface):
         graph_transformer_config.propagate_cast_ops_config.allow = self._propagate_cast_ops_allow
         graph_transformer_config.propagate_cast_ops_config.strategy = self._propagate_cast_ops_strategy
         graph_transformer_config.enable_compute_optimizer = self._enable_compute_optimizer
-        graph_transformer_config.enable_label_sparsity_optimization = self._enable_label_sparsity_optimization
         return graph_transformer_config
 
     def _initialize_graph_builder(self):
@@ -489,7 +487,6 @@ class GraphExecutionManager(GraphExecutionInterface):
         grad_builder_config.initializer_names_to_train = initializer_names_to_train
         grad_builder_config.input_names_require_grad = self._input_info.require_grad_names
         grad_builder_config.build_gradient_graph = self._export_mode == torch.onnx.TrainingMode.TRAINING
-        grad_builder_config.graph_transformer_config = self._get_graph_transformer_config()
         grad_builder_config.enable_caching = self._enable_grad_acc_optimization
         grad_builder_config.loglevel = _logger.ortmodule_loglevel_to_onnxruntime_c_loglevel(
             self._debug_options.logging.log_level
@@ -537,3 +534,35 @@ class GraphExecutionManager(GraphExecutionInterface):
         self.__dict__.update(state)
 
         _utils.reinitialize_graph_execution_manager(self)
+
+    def _enable_conditional_optimizations(self, graph_transformer_config, inputs, kwargs):
+        """Enable conditional optimizations according to inputs."""
+
+        # Set up data sparsity inspection.
+        self._rt_inspector.input_density_ob.initialize(
+            self._onnx_models.exported_model, self._graph_builder.get_graph_info().user_input_names
+        )
+
+        # Enable sparsity-based optimization when applicable.
+        if self._enable_compute_optimizer:
+            detected_device = _utils.get_device_from_module(self._original_module) or _utils.get_device_from_inputs(
+                inputs, kwargs
+            )
+            _, embed_sparsity_results, label_sparsity_results = _io._combine_input_buffers_initializers(
+                self._graph_initializers,
+                self._graph_builder.get_graph_info().user_input_names,
+                self._input_info,
+                self._flattened_module.named_buffers(),
+                inputs,
+                kwargs,
+                detected_device,
+                self._rt_inspector.input_density_ob,
+            )
+
+            if len(label_sparsity_results) > 0:
+                graph_transformer_config.sparse_label_input_names = label_sparsity_results
+                warnings.warn(f"Label sparsity based optimization is on for {label_sparsity_results}", UserWarning)
+
+            if len(embed_sparsity_results) > 0:
+                graph_transformer_config.sparse_embedding_input_names = embed_sparsity_results
+                warnings.warn(f"Embedding sparsity based optimization is on for {embed_sparsity_results}", UserWarning)

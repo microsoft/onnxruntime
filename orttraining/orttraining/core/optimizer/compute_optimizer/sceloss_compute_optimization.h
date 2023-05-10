@@ -16,6 +16,7 @@ namespace onnxruntime {
  * operators for its two inputs.
  *
  *   logits (float) [token_count, classes]       labels (int64), [token_count]
+ *                    \                               /
  *                     \                             /
  *                       SCE Node(ignore_index=-100)
  *                     /                       \
@@ -23,14 +24,15 @@ namespace onnxruntime {
  *
  * Be noted in Transformer-based models:
  * > `token_count` usually equals with `batch size` x `sequence length`.
- * > `classes` usually equals with `vocabulary`.
+ * > `classes` is usually equal to `vocabulary`.
  *
  * Only insert ShrunkGather if all following conditions are met for SCE nodes`:
  * 1. Its reduction attribute value is 'sum' or 'mean', to make sure loss is a scalar.
  *   Otherwise, the loss is in shape [token_count], changing on `token_count` will affect subsequent computations.
- * 2. Its 2nd output (log_prob) MUST NOT be graph output and not consumed by other other nodes.
+ * 2. Its 2nd output (log_prob) MUST NOT be graph output and not consumed by other nodes.
  * 3. Its ignore_index exists and is a constant scalar value.
  * 4. Its 2nd input label's input node is not `ShrunkGather` node (to avoid this transformer duplicated applied).
+ * 5. Its 2nd input label is a Reshape node's output or a graph input.
  *
  *
  * After the transformation:
@@ -65,14 +67,19 @@ namespace onnxruntime {
  */
 class InsertGatherBeforeSceLoss : public GraphTransformer {
  public:
-  InsertGatherBeforeSceLoss(const InlinedHashSet<std::string_view>& compatible_execution_providers = {}) noexcept
-      : GraphTransformer("InsertGatherBeforeSceLoss", compatible_execution_providers) {
+  InsertGatherBeforeSceLoss(const InlinedHashSet<std::string_view>& compatible_execution_providers = {},
+                            const std::vector<std::string>& sparse_label_input_names = {}) noexcept
+      : GraphTransformer("InsertGatherBeforeSceLoss", compatible_execution_providers),
+        sparse_label_input_names_{sparse_label_input_names} {
   }
 
   /**
    * @brief
    */
   Status ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const override;
+
+ private:
+  std::vector<std::string> sparse_label_input_names_;
 };
 
 }  // namespace onnxruntime

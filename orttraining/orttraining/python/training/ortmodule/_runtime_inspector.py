@@ -10,8 +10,6 @@ import torch
 from onnx import helper
 from onnx import onnx_pb as onnx_proto
 
-from onnxruntime.training import ortmodule
-
 
 class RuntimeInspector:
     def __init__(self):
@@ -22,7 +20,6 @@ class InputDensityObserver:
     """Configurable input data observer for ORTModule."""
 
     def __init__(self, log_steps=10):
-        self._enabled = ortmodule._defined_from_envvar("ORTMODULE_ENABLE_INPUT_DENSITY_INSPECTOR", 0, warn=True) == 1
         self._embedding_graph_input_to_padding_idx_map = {}
         self._loss_label_graph_input_to_ignore_idx_map = {}
         self._stats = []
@@ -36,8 +33,6 @@ class InputDensityObserver:
 
     def initialize(self, model, user_input_names):
         """Initialize data observer."""
-        if not self._enabled:
-            return
 
         self._tensor_to_node_map.clear()
         for node in model.graph.node:
@@ -102,8 +97,6 @@ class InputDensityObserver:
         _loss_label_graph_input_to_ignore_idx_map, which is later used for collecting data/compute sparsity information
         for labels.
         """
-        if not self._enabled:
-            return
 
         def _default_label_preprocess(labels):
             return labels
@@ -117,7 +110,18 @@ class InputDensityObserver:
             ):
                 continue
 
-            tensor = self._try_get_initializer(model, node.input[3])
+            tensor = None
+            padding_const_node = self._try_get_node_from_its_output(node.input[3])
+            if padding_const_node is None:
+                padding_initializer_name = node.input[3]
+                tensor = self._try_get_initializer(model, padding_initializer_name)
+
+            elif padding_const_node.op_type == "Constant":
+                found = [attr for attr in padding_const_node.attribute if attr.name == "value"]
+                tensor = found[0].t
+            else:
+                continue
+
             if tensor is None or tensor.data_type not in [onnx_proto.TensorProto.INT32, onnx_proto.TensorProto.INT64]:
                 continue
 
@@ -135,6 +139,8 @@ class InputDensityObserver:
 
             label_preprocess_func = _default_label_preprocess
             reshape_node = self._try_get_node_from_its_output(node.input[1])
+            # The label input comes from graph input or a Reshape node consuming a graph input, which is aligned with
+            # orttraining/orttraining/core/optimizer/compute_optimizer/sceloss_compute_optimization.cc.
             if reshape_node is None:
                 if node.input[1] not in user_input_names:
                     continue
@@ -186,20 +192,29 @@ class InputDensityObserver:
             )
 
     def inspect_from_input_data(self, name, inp):
-        if not self._enabled or not self._is_initialized:
+        if not self._is_initialized:
             return
 
-        data = inp.clone()
-        found = self._inspect_embed_label_input(name, data)
-        if found:
-            self._current_step += 1
+        try:
+            data = inp.clone()
+            found, embedding_is_sparse, label_is_sparse = self._inspect_embed_label_input(name, data)
+            if found:
+                self._current_step += 1
 
-            if self._current_step - self._last_step >= self._log_steps:
-                self._last_step = self._current_step
-                self._print_embed_label_stats()
+                if self._current_step - self._last_step >= self._log_steps:
+                    self._last_step = self._current_step
+                    self._print_embed_label_stats()
+
+            return found, embedding_is_sparse, label_is_sparse
+        except Exception as e:
+            warnings.warn(f"Failed to inspect input {name} due to {e}", UserWarning)
+            return False, False, False
 
     def _inspect_embed_label_input(self, name, data):
         found = False
+        embedding_is_sparse = False
+        label_is_sparse = False
+
         if (
             len(self._embedding_graph_input_to_padding_idx_map) > 0
             and name in self._embedding_graph_input_to_padding_idx_map
@@ -209,13 +224,15 @@ class InputDensityObserver:
                 valid_token = torch.count_nonzero(data - padding_idx)
                 valid_token_per_batch = torch.count_nonzero(data - padding_idx, dim=1)
                 total_token = data.numel()
+                embed_density = float(valid_token) / float(total_token) * 100
+                embedding_is_sparse = embedding_is_sparse or (embed_density < 90)
                 self._stats.append(
                     [
                         self._current_step,
                         "EMBED",
                         name,
                         padding_idx,
-                        float(valid_token) / float(total_token) * 100,
+                        embed_density,
                         valid_token,
                         total_token,
                         str(valid_token_per_batch.tolist()),
@@ -232,13 +249,15 @@ class InputDensityObserver:
                 data_preprocessed = preprocess_func(data)
                 valid_token = torch.count_nonzero(data_preprocessed - ignore_index)
                 total_token = data_preprocessed.numel()
+                label_density = float(valid_token) / float(total_token) * 100
+                label_is_sparse = label_is_sparse or (label_density < 90)
                 self._stats.append(
                     [
                         self._current_step,
                         "LABEL",
                         name,
                         ignore_index,
-                        float(valid_token) / float(total_token) * 100,
+                        label_density,
                         valid_token,
                         total_token,
                         "N/A",
@@ -246,7 +265,7 @@ class InputDensityObserver:
                 )
                 found = True
 
-        return found
+        return found, embedding_is_sparse, label_is_sparse
 
     def _print_embed_label_stats(self):
         if len(self._stats) > 0:
