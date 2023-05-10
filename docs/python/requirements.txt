@@ -7,6 +7,7 @@ sphinx-gallery
 sphinxcontrib.imagesvg
 sphinxcontrib.googleanalytics
 sphinx_rtd_theme
+furo
 pyquickhelper
 pandas
 pydot
@@ -17,3 +18,8 @@ packaging
 protobuf
 sympy
 onnx
+sphinx_exec_code
+sphinx_tabs
+furo
+-f https://download.pytorch.org/whl/torch/
+torch
