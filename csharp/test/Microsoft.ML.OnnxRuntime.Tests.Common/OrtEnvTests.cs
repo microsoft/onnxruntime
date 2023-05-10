@@ -148,7 +148,6 @@ namespace Microsoft.ML.OnnxRuntime.Tests
     [Collection("Ort Inference Tests")]
     public class OrtEnvWithCustomLogger : CustomLoggingFunctionTestBase
     {
-
         [Fact(DisplayName = "TesEnvWithCustomLogger")]
         public void TesEnvWithCustomLogger()
         {
@@ -172,7 +171,8 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             // Trigger some logging
             // Empty stmt intentional
             using (var session = new InferenceSession(model))
-                ;
+            { }
+
             Assert.True(LoggingInvokes > 0);
         }
     }
@@ -205,8 +205,9 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 var model = TestDataLoader.LoadModelFromEmbeddedResource("squeezenet.onnx");
                 // Trigger some logging
                 // Empty stmt intentional
-                using (var session = new InferenceSession(model)) 
-                    ;
+                using (var session = new InferenceSession(model))
+                { }
+
                 Assert.True(LoggingInvokes > 0);
             }
         }
