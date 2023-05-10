@@ -63,8 +63,7 @@ class WhisperEncoderInputs:
             size=(batch_size, feature_size, sequence_length),
             device=device,
         )
-        #attention_mask = torch.ones([batch_size, feature_size, sequence_length], dtype=dtype, device=device)
-        return WhisperEncoderInputs(input_features)#, attention_mask)
+        return WhisperEncoderInputs(input_features)
 
     def to_list(self) -> List:
         if self.input_features is None:
@@ -134,7 +133,6 @@ class WhisperEncoderHelper:
         """Run inference of ONNX model."""
         ort_inputs = {
             "input_ids": numpy.ascontiguousarray(inputs.input_ids.cpu().numpy()),
-            #"attention_mask": numpy.ascontiguousarray(inputs.attention_mask.cpu().numpy()),
         }
 
         return ort_session.run(None, ort_inputs)

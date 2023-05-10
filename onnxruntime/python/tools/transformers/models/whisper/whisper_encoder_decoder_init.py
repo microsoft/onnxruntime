@@ -60,7 +60,6 @@ class WhisperEncoderDecoderInit(torch.nn.Module):
 class WhisperEncoderDecoderInitInputs:
     def __init__(self, encoder_input_ids, decoder_input_ids=None):
         self.encoder_input_ids: torch.LongTensor = encoder_input_ids
-       # self.encoder_attention_mask: torch.LongTensor = encoder_attention_mask
         self.decoder_input_ids: torch.LongTensor = decoder_input_ids
 
     @staticmethod
@@ -125,18 +124,14 @@ class WhisperEncoderDecoderInitHelper:
         )
         input_list = inputs.to_list()
 
-        #out = model(inputs.encoder_input_ids, inputs.encoder_attention_mask, inputs.decoder_input_ids)
         out = model(inputs.encoder_input_ids, inputs.decoder_input_ids)
         present = out[2]
-        # pdb.set_trace()
         present_names = PastKeyValuesHelper.get_input_names(present, encoder=True)
-        # present_names = PastKeyValuesHelper.get_past_names(model.config.num_layers, present=True)
 
         output_names = ["logits", "encoder_hidden_states", *present_names]
 
         # Shape of input tensors (sequence_length==1):
         #    input_ids: (batch_size, sequence_length)
-        #    encoder_attention_mask: (batch_size, encode_sequence_length)
         #    encoder_hidden_states: (batch_size, encode_sequence_length, hidden_size)
         #    past_self_*: (batch_size, num_heads, past_decode_sequence_length, head_size)
         #    past_cross_*: (batch_size, num_heads, encode_sequence_length, head_size)
@@ -236,7 +231,6 @@ class WhisperEncoderDecoderInitHelper:
 
         ort_inputs = {
             "encoder_input_ids": numpy.ascontiguousarray(inputs.encoder_input_ids.cpu().numpy()),
-            #"encoder_attention_mask": numpy.ascontiguousarray(inputs.encoder_attention_mask.cpu().numpy()),
         }
         if inputs.decoder_input_ids is not None:
             ort_inputs["decoder_input_ids"] = numpy.ascontiguousarray(inputs.decoder_input_ids.cpu().numpy())

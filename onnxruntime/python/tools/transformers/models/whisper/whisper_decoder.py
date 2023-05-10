@@ -249,7 +249,6 @@ class WhisperDecoderHelper:
 
         # Shape of input tensors (sequence_length==1):
         #    input_ids: (batch_size, sequence_length)
-        #    encoder_attention_mask: (batch_size, encode_sequence_length)
         #    past_self_*: (batch_size, num_heads, past_decode_sequence_length, head_size)
         #    past_cross_*: (batch_size, num_heads, encode_sequence_length, head_size)
 
