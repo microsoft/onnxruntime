@@ -1947,7 +1947,7 @@ TEST_F(PlannerTest, TestMultiStreamMismatchDevice) {
 }
 #endif
 
-#ifdef USE_CUDA
+#if defined(USE_CUDA) && defined(ORT_ENABLE_STREAM)
 TEST_F(PlannerTest, TestCpuIf) {
   SessionOptions sess_opt;
   sess_opt.graph_optimization_level = TransformerLevel::Default;
