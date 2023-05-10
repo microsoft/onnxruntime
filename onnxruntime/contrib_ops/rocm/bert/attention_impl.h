@@ -11,6 +11,7 @@
 namespace onnxruntime {
 namespace contrib {
 namespace rocm {
+
 size_t GetAttentionScratchSize(
     size_t element_size,
     int batch_size,
@@ -28,7 +29,7 @@ size_t GetAttentionWorkspaceSize(
 
 Status LaunchDecoderAttentionKernel(
     const hipDeviceProp_t& prop,      // Device Properties
-    RocmTuningContext* tuning_ctx, // context for tuning
+    RocmTuningContext* tuning_ctx,    // context for tuning
     hipStream_t stream,               // Hip stream
     rocblas_handle& rocblas,          // Rocblas handle
     const size_t element_size,        // Element size of input tensor

@@ -43,7 +43,7 @@ ENV WORKDIR_PATH=/home/openvino
 WORKDIR $WORKDIR_PATH
 ENV DEBIAN_FRONTEND noninteractive
 
-ARG DEVICE=CPU_FP32 
+ARG DEVICE=CPU_FP32
 ARG ONNXRUNTIME_REPO=https://github.com/microsoft/onnxruntime.git
 ARG ONNXRUNTIME_BRANCH=main
 
@@ -55,7 +55,7 @@ RUN apt update; apt install -y --no-install-recommends git protobuf-compiler lib
     unattended-upgrade && \
     rm -rf /var/lib/apt/lists/*
 
-RUN git clone --recursive -b ${ONNXRUNTIME_BRANCH} ${ONNXRUNTIME_REPO} 
+RUN git clone --recursive -b ${ONNXRUNTIME_BRANCH} ${ONNXRUNTIME_REPO}
 RUN /bin/sh onnxruntime/dockerfiles/scripts/install_common_deps.sh
 RUN ln -s cmake-* cmake-dir
 RUN python3 -m pip install wheel
@@ -65,7 +65,7 @@ RUN ln -s /usr/bin/python3 /usr/bin/python
 RUN apt install locales && \
     locale-gen en_US en_US.UTF-8 && \
     dpkg-reconfigure locales
-RUN cd onnxruntime && ./build.sh --config Release --update --build --parallel --use_openvino ${DEVICE} --build_nuget --build_shared_lib
+RUN cd onnxruntime && ./build.sh --allow_running_as_root --config Release --update --build --parallel --use_openvino ${DEVICE} --build_nuget --build_shared_lib
 RUN cp /home/openvino/onnxruntime/build/Linux/Release/Microsoft.ML.OnnxRuntime.Managed* /home/openvino/onnxruntime/build/Linux/Release/nuget-artifacts
 
 # Deploy stage
@@ -88,4 +88,3 @@ USER ${BUILD_USER}
 ENV PATH=${WORKDIR_PATH}/miniconda/bin:${WORKDIR_PATH}/cmake-dir/bin:$PATH
 ENV IE_PLUGINS_PATH=${INTEL_OPENVINO_DIR}/runtime/lib/intel64
 ENV LD_LIBRARY_PATH=/opt/intel/opencl:${INTEL_OPENVINO_DIR}/runtime/3rdparty/tbb/lib:${IE_PLUGINS_PATH}:${LD_LIBRARY_PATH}
-

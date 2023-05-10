@@ -5,7 +5,6 @@ from orttraining_test_data_loader import BatchArgsOption, create_ort_test_datalo
 
 from onnxruntime.capi.ort_trainer import IODescription, ORTTrainer
 from onnxruntime.training import amp, optim, orttrainer
-from onnxruntime.training import orttrainer_options as orttrainer_options
 from onnxruntime.training.optim import _LRScheduler
 
 
@@ -213,9 +212,9 @@ def run_test(
 
             if batch_args_option == BatchArgsOption.List:
                 if not use_internal_get_lr_this_step:
-                    batch = [*batch, learning_rate]
+                    batch = [*batch, learning_rate]  # noqa: PLW2901
                 if not use_internal_loss_scaler and fp16:
-                    batch = [*batch, loss_scale]
+                    batch = [*batch, loss_scale]  # noqa: PLW2901
                 outputs = model.train_step(*batch)
             elif batch_args_option == BatchArgsOption.Dict:
                 args, kwargs = split_batch(batch, model_desc.inputs_, 0)

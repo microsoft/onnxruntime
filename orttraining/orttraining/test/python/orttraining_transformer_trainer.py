@@ -19,7 +19,6 @@ from transformers.training_args import TrainingArguments
 
 import onnxruntime
 from onnxruntime.training import amp, optim, orttrainer
-from onnxruntime.training import orttrainer_options as orttrainer_options
 
 try:
     from torch.utils.tensorboard import SummaryWriter

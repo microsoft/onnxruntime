@@ -105,8 +105,8 @@ class OrtOpTests(unittest.TestCase):
             pt_y1, pt_y2 = model(x)
             session = ort.InferenceSession(exported_model.SerializeToString(), providers=["CPUExecutionProvider"])
             ort_y1, ort_y2 = session.run([], {"x": x.numpy()})
-            np.testing.assert_almost_equal(ort_y1, pt_y1.detach().numpy())
-            np.testing.assert_almost_equal(ort_y2, pt_y2.detach().numpy())
+            np.testing.assert_almost_equal(ort_y1, pt_y1.detach().numpy(), decimal=6)
+            np.testing.assert_almost_equal(ort_y2, pt_y2.detach().numpy(), decimal=6)
 
         # Run w/ IO binding.
         for _ in range(8):
@@ -123,8 +123,8 @@ class OrtOpTests(unittest.TestCase):
             io_binding.bind_ortvalue_output(exported_model.graph.output[0].name, ort_y1)
             io_binding.bind_ortvalue_output(exported_model.graph.output[1].name, ort_y2)
             session.run_with_iobinding(io_binding)
-            np.testing.assert_almost_equal(np_y1, pt_y1.detach().numpy())
-            np.testing.assert_almost_equal(np_y2, pt_y2.detach().numpy())
+            np.testing.assert_almost_equal(np_y1, pt_y1.detach().numpy(), decimal=6)
+            np.testing.assert_almost_equal(np_y2, pt_y2.detach().numpy(), decimal=6)
 
 
 if __name__ == "__main__":

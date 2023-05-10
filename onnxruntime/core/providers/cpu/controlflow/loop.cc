@@ -313,28 +313,27 @@ common::Status Loop::SetupSubgraphExecutionInfo(const SessionState& session_stat
   ORT_RETURN_IF_ERROR(utils::InitializeFeedFetchCopyInfo(subgraph_session_state, *ffm));
 
   // setup the locations where we want the subgraph output to end up on
-  std::vector<const OrtMemoryInfo*> fetch_locations;
+  std::vector<const OrtDevice*> fetch_locations;
   fetch_locations.reserve(info_->num_subgraph_outputs);
 
   // 'cond' is first output and we need it to be on CPU so we can read the latest value
   const auto& cpu_allocator_info = session_state.GetExecutionProviders()
                                        .Get(onnxruntime::kCpuExecutionProvider)
-                                       ->GetAllocator(OrtMemTypeDefault)
-                                       ->Info();
+                                       ->GetOrtDeviceByMemType(OrtMemTypeDefault);
   fetch_locations.push_back(&cpu_allocator_info);
 
   // Loop state variables need to be where we can feed them in to the next iteration, so set the fetch location
   // to match the feed location.
   for (ptrdiff_t i = 0; i < info_->num_loop_carried_vars; ++i) {
     // +2 for both to skip the iter_num and cond input values
-    const auto& alloc_info = utils::FindMemoryInfoForValue(session_state, loop_inputs[i + 2]->Name());
+    const auto& alloc_info = utils::FindDeviceForValue(session_state, loop_inputs[i + 2]->Name());
     fetch_locations.push_back(&alloc_info);
   }
 
   // remaining outputs we want where the matching Loop output will be allocated
   const auto& loop_outputs = node.OutputDefs();
   for (size_t i = info_->num_loop_carried_vars, end = loop_outputs.size(); i < end; ++i) {
-    const auto& alloc_info = utils::FindMemoryInfoForValue(session_state, loop_outputs[i]->Name());
+    const auto& alloc_info = utils::FindDeviceForValue(session_state, loop_outputs[i]->Name());
     fetch_locations.push_back(&alloc_info);
   }
 

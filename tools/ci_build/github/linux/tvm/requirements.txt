@@ -11,3 +11,4 @@ psutil
 xgboost
 cloudpickle
 pytest
+attrs

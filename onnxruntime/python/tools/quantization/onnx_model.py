@@ -255,7 +255,9 @@ class ONNXModel:
                     else:
                         kv = attribute_to_kwarg(attr)
                     kwargs.update(kv)
-                node = onnx_helper.make_node(node.op_type, node.input, node.output, name=node.name, **kwargs)
+                node = onnx_helper.make_node(  # noqa: PLW2901
+                    node.op_type, node.input, node.output, name=node.name, **kwargs
+                )
 
             if node.op_type == "Gemm":
                 alpha = 1.0
@@ -292,7 +294,7 @@ class ONNXModel:
                                 "Transpose",
                                 inputs=[node.input[1]],
                                 outputs=[inputB],
-                                name=node.name + "_Transpose" if node.name != "" else "",
+                                name=node.name + "_Transpose" if node.name else "",
                             )
                             new_nodes.append(transpose_node)
 
@@ -300,7 +302,7 @@ class ONNXModel:
                         "MatMul",
                         inputs=[node.input[0], inputB],
                         outputs=[node.output[0] + ("_MatMul" if len(node.input) > 2 else "")],
-                        name=node.name + "_MatMul" if node.name != "" else "",
+                        name=node.name + "_MatMul" if node.name else "",
                     )
                     new_nodes.append(matmul_node)
 
@@ -309,7 +311,7 @@ class ONNXModel:
                             "Add",
                             inputs=[node.output[0] + "_MatMul", node.input[2]],
                             outputs=node.output,
-                            name=node.name + "_Add" if node.name != "" else "",
+                            name=node.name + "_Add" if node.name else "",
                         )
                         new_nodes.append(add_node)
 

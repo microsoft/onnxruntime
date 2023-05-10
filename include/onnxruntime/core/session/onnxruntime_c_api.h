@@ -3,8 +3,15 @@
 
 // See docs\c_cxx\README.md on generating the Doxygen documentation from this file
 
-/** \mainpage C & C++ APIs
+/** \mainpage ONNX Runtime
  *
+ * ONNX Runtime is a high-performance inference and training graph execution engine for deeplearning models.
+ *
+ * ONNX Runtime's C, C++ APIs offer an easy to use interface to onboard and execute onnx models.
+ * - \subpage c_cpp_api "Core C, C++ APIs"
+ * - \subpage training_c_cpp_api "Training C, C++ APIs for learning on the edge"
+ *
+ * \page c_cpp_api Core C, C++ APIs
  * <h1>C</h1>
  *
  * ::OrtApi - Click here to go to the structure with all C API functions.
@@ -30,7 +37,7 @@
  *
  * This value is used by some API functions to behave as this version of the header expects.
  */
-#define ORT_API_VERSION 15
+#define ORT_API_VERSION 16
 
 #ifdef __cplusplus
 extern "C" {
@@ -91,8 +98,11 @@ extern "C" {
 #ifndef ORT_TSTR
 #ifdef _WIN32
 #define ORT_TSTR(X) L##X
+// When X is a macro, L##X is not defined. In this case, we need to use ORT_TSTR_ON_MACRO.
+#define ORT_TSTR_ON_MACRO(X) L"" X
 #else
 #define ORT_TSTR(X) X
+#define ORT_TSTR_ON_MACRO(X) X
 #endif
 #endif
 
@@ -263,10 +273,11 @@ ORT_RUNTIME_CLASS(Value);
 ORT_RUNTIME_CLASS(RunOptions);
 ORT_RUNTIME_CLASS(TypeInfo);
 ORT_RUNTIME_CLASS(TensorTypeAndShapeInfo);
-ORT_RUNTIME_CLASS(SessionOptions);
-ORT_RUNTIME_CLASS(CustomOpDomain);
 ORT_RUNTIME_CLASS(MapTypeInfo);
 ORT_RUNTIME_CLASS(SequenceTypeInfo);
+ORT_RUNTIME_CLASS(OptionalTypeInfo);
+ORT_RUNTIME_CLASS(SessionOptions);
+ORT_RUNTIME_CLASS(CustomOpDomain);
 ORT_RUNTIME_CLASS(ModelMetadata);
 ORT_RUNTIME_CLASS(ThreadPoolParams);
 ORT_RUNTIME_CLASS(ThreadingOptions);
@@ -387,7 +398,8 @@ typedef struct OrtCUDAProviderOptions {
         has_user_compute_stream{},
         user_compute_stream{},
         default_memory_arena_cfg{},
-        tunable_op_enabled{false} {}
+        tunable_op_enable{false},
+        tunable_op_tuning_enable{false} {}
 #endif
 
   /** \brief CUDA device Id
@@ -438,11 +450,17 @@ typedef struct OrtCUDAProviderOptions {
    */
   OrtArenaCfg* default_memory_arena_cfg;
 
-  /** \brief Enable TunableOp.
-   *   Set it to 1 to enable TunableOp. Otherwise, it is disabled by default.
-   *   This option can be superseded by environment variable ORT_CUDA_TUNABLE_OP_ENABLED.
+  /** \brief Enable TunableOp for using.
+   *   Set it to 1/0 to enable/disable TunableOp. Otherwise, it is disabled by default.
+   *   This option can be overriden by environment variable ORT_CUDA_TUNABLE_OP_ENABLE.
    */
-  int tunable_op_enabled;
+  int tunable_op_enable;
+
+  /** \brief Enable TunableOp for tuning.
+   *   Set it to 1/0 to enable/disable TunableOp tuning. Otherwise, it is disabled by default.
+   *   This option can be overriden by environment variable ORT_CUDA_TUNABLE_OP_TUNING_ENABLE.
+   */
+  int tunable_op_tuning_enable;
 
 } OrtCUDAProviderOptions;
 
@@ -461,7 +479,8 @@ typedef struct OrtROCMProviderOptions {
         has_user_compute_stream{},
         user_compute_stream{},
         default_memory_arena_cfg{},
-        tunable_op_enabled{false} {}
+        tunable_op_enable{false},
+        tunable_op_tuning_enable{false} {}
 #endif
 
   /** \brief ROCM device Id
@@ -511,11 +530,17 @@ typedef struct OrtROCMProviderOptions {
    */
   OrtArenaCfg* default_memory_arena_cfg;
 
-  /** \brief Enable TunableOp.
-   *   Set it to 1 to enable TunableOp. Otherwise, it is disabled by default.
-   *   This option can be superseded by environment variable ORT_ROCM_TUNABLE_OP_ENABLED.
+  /** \brief Enable TunableOp for using.
+   *   Set it to 1/0 to enable/disable TunableOp. Otherwise, it is disabled by default.
+   *   This option can be overriden by environment variable ORT_ROCM_TUNABLE_OP_ENABLE.
    */
-  int tunable_op_enabled;
+  int tunable_op_enable;
+
+  /** \brief Enable TunableOp for tuning.
+   *   Set it to 1/0 to enable/disable TunableOp tuning. Otherwise, it is disabled by default.
+   *   This option can be overriden by environment variable ORT_ROCM_TUNABLE_OP_TUNING_ENABLE.
+   */
+  int tunable_op_tuning_enable;
 
 } OrtROCMProviderOptions;
 
@@ -563,19 +588,24 @@ typedef struct OrtMIGraphXProviderOptions {
  */
 typedef struct OrtOpenVINOProviderOptions {
 #ifdef __cplusplus
-  OrtOpenVINOProviderOptions() : device_type{}, enable_vpu_fast_compile{}, device_id{},
-                                 num_of_threads{}, cache_dir{},
-                                 context{}, enable_opencl_throttling{}, enable_dynamic_shapes{} {}
+  OrtOpenVINOProviderOptions() : device_type{},
+                                 enable_vpu_fast_compile{},
+                                 device_id{},
+                                 num_of_threads{},
+                                 cache_dir{},
+                                 context{},
+                                 enable_opencl_throttling{},
+                                 enable_dynamic_shapes{} {}
 #endif
   /** \brief Device type string
    *
-   * Valid settings are one of: "CPU_FP32", "CPU_FP16", "GPU_FP32", "GPU_FP16", "MYRIAD_FP16", "VAD-M_FP16" or "VAD-F_FP32"
+   * Valid settings are one of: "CPU_FP32", "CPU_FP16", "GPU_FP32", "GPU_FP16"
    */
   const char* device_type;
   unsigned char enable_vpu_fast_compile;  ///< 0 = disabled, nonzero = enabled
   const char* device_id;
-  size_t num_of_threads;               ///< 0 = Use default number of threads
-  const char* cache_dir;          // path is set to empty by default
+  size_t num_of_threads;  ///< 0 = Use default number of threads
+  const char* cache_dir;  // path is set to empty by default
   void* context;
   unsigned char enable_opencl_throttling;  ///< 0 = disabled, nonzero = enabled
   unsigned char enable_dynamic_shapes;     ///< 0 = disabled, nonzero = enabled
@@ -599,7 +629,8 @@ struct OrtApiBase {
    *   older than the version created with this header file.
    */
   const OrtApi*(ORT_API_CALL* GetApi)(uint32_t version)NO_EXCEPTION;
-  const char*(ORT_API_CALL* GetVersionString)(void)NO_EXCEPTION;  ///< Returns a null terminated string of the version of the Onnxruntime library (eg: "1.8.1")
+  const ORTCHAR_T*(ORT_API_CALL* GetVersionString)(void)NO_EXCEPTION;    ///< Returns a null terminated string of the version of the Onnxruntime library (eg: "1.8.1")
+  const ORTCHAR_T*(ORT_API_CALL* GetBuildInfoString)(void)NO_EXCEPTION;  ///< Returns a null terminated string of the build info including git info and cxx flags
 };
 typedef struct OrtApiBase OrtApiBase;
 
@@ -1325,6 +1356,7 @@ struct OrtApi {
    *
    * \param[in] type_info
    * \param[out] out Do not free this value, it will be valid until type_info is freed.
+   *             If type_info does not represent tensor, this value will be set to nullptr.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    */
@@ -1835,7 +1867,8 @@ struct OrtApi {
    * This is used by WinML to support model reflection APIs.
    *
    * \param[out] type_info
-   * \param[out] out A pointer to the ::OrtMapTypeInfo. Do not free this value
+   * \param[out] out A pointer to the ::OrtMapTypeInfo. Do not free this value. If type_info
+   *             does not contain a map, this value will be set to nullptr.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    */
@@ -1850,7 +1883,8 @@ struct OrtApi {
    * This is used by WinML to support model reflection APIs.
    *
    * \param[in] type_info
-   * \param[out] out A pointer to the OrtSequenceTypeInfo. Do not free this value
+   * \param[out] out A pointer to the OrtSequenceTypeInfo. Do not free this value. If type_info
+   *             doesn not contain a sequence, this value will be set to nullptr.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    */
@@ -2849,7 +2883,7 @@ struct OrtApi {
    *
    * For example, "trt_max_workspace_size=2147483648;trt_max_partition_iterations=10;trt_int8_enable=1;......"
    *
-   * \param tensorrt_options - OrTensorRTProviderOptionsV2 instance
+   * \param tensorrt_options - OrtTensorRTProviderOptionsV2 instance
    * \param allocator - a ptr to an instance of OrtAllocator obtained with OrtApi::CreateAllocator or OrtApi::GetAllocatorWithDefaultOptions
    *                      the specified allocator will be used to allocate continuous buffers for output strings and lengths.
    * \param ptr - is a UTF-8 null terminated string allocated using 'allocator'. The caller is responsible for using the same allocator to free it.
@@ -3452,16 +3486,16 @@ struct OrtApi {
    */
   ORT_API2_STATUS(CreateOp,
                   _In_ const OrtKernelInfo* info,
-                  _In_ const char* op_name,
-                  _In_ const char* domain,
-                  _In_ int version,
-                  _In_opt_ const char** type_constraint_names,
-                  _In_opt_ const ONNXTensorElementDataType* type_constraint_values,
-                  _In_opt_ int type_constraint_count,
-                  _In_opt_ const OrtOpAttr* const* attr_values,
-                  _In_opt_ int attr_count,
-                  _In_ int input_count,
-                  _In_ int output_count,
+                  _In_z_ const char* op_name,
+                  _In_z_ const char* domain,
+                  int version,
+                  _In_reads_(type_constraint_count) const char** type_constraint_names,
+                  _In_reads_(type_constraint_count) const ONNXTensorElementDataType* type_constraint_values,
+                  int type_constraint_count,
+                  _In_reads_(attr_count) const OrtOpAttr* const* attr_values,
+                  int attr_count,
+                  int input_count,
+                  int output_count,
                   _Outptr_ OrtOp** ort_op);
 
   /** \brief: Invoke the operator created by OrtApi::CreateOp
@@ -3557,18 +3591,25 @@ struct OrtApi {
    */
   ORT_CLASS_RELEASE(KernelInfo);
 
-  /* \brief: Get the training C Api
+  /// \name Ort Training
+  /// @{
+  /** \brief Gets the Training C Api struct
+   *
+   * Call this function to access the ::OrtTrainingApi structure that holds pointers to functions that enable
+   * training with onnxruntime.
+   * \note A NULL pointer will be returned and no error message will be printed if the training api
+   * is not supported with this build. A NULL pointer will be returned and an error message will be
+   * printed if the provided version is unsupported, for example when using a runtime older than the
+   * version created with this header file.
    *
    * \param[in] version Must be ::ORT_API_VERSION
-   * \return The ::OrtTrainingApi for the version requested.
-   *         nullptr will be returned and no error message will be printed if the training api is not supported with
-   *         this build.
-   *         nullptr will be returned and an error message will be printed if the provided version is unsupported, for
-   *         example when using a runtime older than the version created with this header file.
+   * \return The ::OrtTrainingApi struct for the version requested.
    *
    * \since Version 1.13
    */
   const OrtTrainingApi*(ORT_API_CALL* GetTrainingApi)(uint32_t version)NO_EXCEPTION;
+
+  /// @}
 
   /** \brief Append CANN provider to session options
    *
@@ -3917,7 +3958,7 @@ struct OrtApi {
   ORT_API2_STATUS(SessionOptionsAppendExecutionProvider_Dnnl,
                   _In_ OrtSessionOptions* options, _In_ const OrtDnnlProviderOptions* dnnl_options);
 
-   /** \brief Create an OrtDnnlProviderOptions
+  /** \brief Create an OrtDnnlProviderOptions
    *
    * \param[out] out Newly created ::OrtDnnlProviderOptions. Must be released with OrtApi::ReleaseDnnlProviderOptions
    *
@@ -3970,7 +4011,6 @@ struct OrtApi {
    */
   void(ORT_API_CALL* ReleaseDnnlProviderOptions)(_Frees_ptr_opt_ OrtDnnlProviderOptions* input);
 
-  /// @}
   /// \name OrtKernelInfo
   /// Custom operator APIs.
   /// @{
@@ -4022,7 +4062,7 @@ struct OrtApi {
    * Used in the KernelCompute callback of an OrtCustomOp to get a logger that can be used to log
    * messages during inference.
    *
-   * \param[in] info An instance of ::OrtKernelContext.
+   * \param[in] context An instance of ::OrtKernelContext.
    * \param[out] logger Pointer set to the kernel context's ::OrtLogger. Owned by ONNX Runtime, so do not free.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
@@ -4079,13 +4119,79 @@ struct OrtApi {
    * \param[in] info ::OrtKernelInfo instance.
    * \param[in] index The node index.
    * \param[out] is_constant Is it a constant node input or not.
-   * \param[out] out The OrtValue tensor value. 
+   * \param[out] out The OrtValue tensor value.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
    * \since Version 1.15.
    */
-  ORT_API2_STATUS(KernelInfoGetConstantInput_tensor, _In_ const OrtKernelInfo* info, size_t index, _Out_ int* is_constant, _Outptr_ const OrtValue** out); 
+  ORT_API2_STATUS(KernelInfoGetConstantInput_tensor, _In_ const OrtKernelInfo* info, size_t index, _Out_ int* is_constant, _Outptr_ const OrtValue** out);
+
+  /** \brief Get Optional Type information from an ::OrtTypeInfo
+   *
+   * This augments ::OrtTypeInfo to return an ::OrtOptionalTypeInfo when the type is optional.
+   * The OrtOptionalTypeInfo also has a nested ::OrtTypeInfo that describes the type of the optional value.
+   * ::OrtOptionalTypeInfo type can only appear within model metadata to describe inputs/outputs.
+   * The actual OrtValues that are supplied in place of optional type inputs should contain
+   * specific type that is described by ::OrtOptionalTypeInfo.
+   *
+   * So the picture: ::OrtTypeInfo -> ::OrtOptionalTypeInfo -> ::OrtTypeInfo (describes the type that can be supplied
+   * in place of the optional type when creating the actual ::OrtValue).
+   *
+   * \param[in] type_info
+   * \param[out] out A pointer to the ::OrtOptionalTypeInfo. Do not free this value,
+   *                 it is owned by OrtTypeInfo instance. When the type_info does not represent
+   *                 optional type, nullptr is returned in out.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.15.
+   */
+  ORT_API2_STATUS(CastTypeInfoToOptionalTypeInfo, _In_ const OrtTypeInfo* type_info,
+                  _Outptr_result_maybenull_ const OrtOptionalTypeInfo** out);
+
+  /** \brief Get OrtTypeInfo for the allowed contained type from an ::OrtOptionalTypeInfo.
+   *
+   * This augments ::OrtOptionalTypeInfo to return an ::OrtTypeInfo for the contained type.
+   * The OrtOptionalTypeInfo has a nested ::OrtTypeInfo that describes the type of the optional value.
+   * ::OrtOptionalTypeInfo type can only appear within model metadata to describe inputs/outputs.
+   * The actual OrtValues that are supplied in place of optional type inputs should contain
+   * specific type that is described by the returned ::OrtTypeInfo.
+   *
+   * \param[in] optional_type_info
+   * \param[out] out A pointer to the ::OrtTypeInfo for what the optional value could be.
+   * it is owned by OrtOptionalTypeInfo instance.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.15.
+   */
+  ORT_API2_STATUS(GetOptionalContainedTypeInfo, _In_ const OrtOptionalTypeInfo* optional_type_info,
+                  _Outptr_ OrtTypeInfo** out);
+
+  /** \brief Set a single string in a string tensor
+   *  Do not zero terminate the string data.
+   *
+   * \param[in] value A string tensor
+   * \param[in] index - flat index of the element
+   * \param[in] length_in_bytes length of the buffer in utf-8 bytes (without the null terminator)
+   * \param[inout] buffer - address of return value
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   */
+  ORT_API2_STATUS(GetResizedStringTensorElementBuffer, _Inout_ OrtValue* value, _In_ size_t index, _In_ size_t length_in_bytes, _Inout_ char** buffer);
+
+  /** \brief Get Allocator from KernelContext for a specific memoryInfo.
+   *
+   * \param[in] context OrtKernelContext instance
+   * \param[in] mem_info OrtMemoryInfo instance
+   * \param[out] out A pointer to OrtAllocator.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.15.
+   */
+  ORT_API2_STATUS(KernelContext_GetAllocator, _In_ const OrtKernelContext* context, _In_ const OrtMemoryInfo* mem_info, _Outptr_ OrtAllocator** out);
 };
 
 /*
@@ -4197,5 +4303,4 @@ ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_Dnnl, _In_ OrtSessionOpt
 #ifdef __cplusplus
 }
 #endif
-
-//! @}
+/// @}

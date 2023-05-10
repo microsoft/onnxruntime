@@ -3,10 +3,7 @@ parameters:
 - name: QnnSdk
   displayName: QNN SDK version
   type: string
-  default: qnn-v2.8.0.230223123141_52150
-  values:
-  - qnn-v2.6.0.221227110525_42395
-  - qnn-v2.8.0.230223123141_52150
+  default: qnn-v2.10.0.230425122932_54038
 
 jobs:
 - job: Build_QNN_EP
@@ -39,6 +36,8 @@ jobs:
     displayName: set Android ENVs
 
   - script: |
+      set -e -x
+      tools/ci_build/github/linux/docker/inference/x64/python/cpu/scripts/install_protobuf.sh -p $(Build.BinariesDirectory)/installed -d cmake/deps.txt
       python3 tools/ci_build/build.py \
         --config Release \
         --android \
@@ -51,7 +50,7 @@ jobs:
         --use_qnn \
         --qnn_home $(QNN_SDK_ROOT) \
         --cmake_generator=Ninja \
-        --skip_tests
+        --skip_tests --path_to_protoc_exe $(Build.BinariesDirectory)/installed/bin/protoc
     displayName: Build QNN EP
 
   - script: |

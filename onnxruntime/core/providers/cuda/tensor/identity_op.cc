@@ -45,7 +45,7 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     Identity,
     kOnnxDomain,
     13, 13,
-     kCudaExecutionProvider,
+    kCudaExecutionProvider,
     (*KernelDefBuilder::Create())
         .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
         .Alias(0, 0),

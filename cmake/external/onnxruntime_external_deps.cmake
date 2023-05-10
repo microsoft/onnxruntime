@@ -100,6 +100,44 @@ FetchContent_Declare(
     FIND_PACKAGE_ARGS 1.12.0...<2.0.0 NAMES Flatbuffers
 )
 
+# Download a protoc binary from Internet if needed
+if(CMAKE_CROSSCOMPILING AND NOT ONNX_CUSTOM_PROTOC_EXECUTABLE AND NOT CMAKE_OSX_ARCHITECTURES)
+  # This part of code is only for users' convenience. The code couldn't handle all cases. Users always can manually
+  # download protoc from Protobuf's Github release page and pass the local path to the ONNX_CUSTOM_PROTOC_EXECUTABLE
+  # variable.
+  message("CMAKE_HOST_SYSTEM_NAME: ${CMAKE_HOST_SYSTEM_NAME}")
+  if(CMAKE_HOST_SYSTEM_NAME STREQUAL "Windows")
+    if(CMAKE_HOST_SYSTEM_PROCESSOR STREQUAL "AMD64")
+      FetchContent_Declare(protoc_binary URL ${DEP_URL_protoc_win64} URL_HASH SHA1=${DEP_SHA1_protoc_win64})
+      FetchContent_Populate(protoc_binary)
+    elseif(CMAKE_HOST_SYSTEM_PROCESSOR STREQUAL "x86")
+      FetchContent_Declare(protoc_binary URL ${DEP_URL_protoc_win32} URL_HASH SHA1=${DEP_SHA1_protoc_win32})
+      FetchContent_Populate(protoc_binary)
+    endif() 
+    if(protoc_binary_SOURCE_DIR)
+      message("Use prebuilt protoc")
+      set(ONNX_CUSTOM_PROTOC_EXECUTABLE ${protoc_binary_SOURCE_DIR}/bin/protoc.exe)
+	  set(PROTOC_EXECUTABLE ${ONNX_CUSTOM_PROTOC_EXECUTABLE})
+    endif()
+  elseif(CMAKE_HOST_SYSTEM_NAME STREQUAL "Linux")
+    if(CMAKE_HOST_SYSTEM_PROCESSOR MATCHES "^(x86_64|amd64)$")
+      FetchContent_Declare(protoc_binary URL ${DEP_URL_protoc_linux_x64} URL_HASH SHA1=${DEP_SHA1_protoc_linux_x64})
+      FetchContent_Populate(protoc_binary)
+    elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^(i.86|x86?)$")
+      FetchContent_Declare(protoc_binary URL ${DEP_URL_protoc_linux_x86} URL_HASH SHA1=${DEP_SHA1_protoc_linux_x86})
+      FetchContent_Populate(protoc_binary)
+    elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^aarch64.*")
+      FetchContent_Declare(protoc_binary URL ${DEP_URL_protoc_linux_aarch64} URL_HASH SHA1=${DEP_SHA1_protoc_linux_aarch64})
+      FetchContent_Populate(protoc_binary)
+    endif()
+    if(protoc_binary_SOURCE_DIR)
+      message("Use prebuilt protoc")
+      set(ONNX_CUSTOM_PROTOC_EXECUTABLE ${protoc_binary_SOURCE_DIR}/bin/protoc)
+	  set(PROTOC_EXECUTABLE ${ONNX_CUSTOM_PROTOC_EXECUTABLE})
+    endif()
+  endif()
+endif()
+
 #Here we support two build mode:
 #1. if ONNX_CUSTOM_PROTOC_EXECUTABLE is set, build Protobuf from source, except protoc.exe. This mode is mainly
 #   for cross-compiling
@@ -113,9 +151,8 @@ FetchContent_Declare(
   Protobuf
   URL ${DEP_URL_protobuf}
   URL_HASH SHA1=${DEP_SHA1_protobuf}
-  SOURCE_SUBDIR  cmake
   PATCH_COMMAND ${ONNXRUNTIME_PROTOBUF_PATCH_COMMAND}
-  FIND_PACKAGE_ARGS 3.20.2 NAMES Protobuf
+  FIND_PACKAGE_ARGS 3.21.12 NAMES Protobuf
 )
 set(protobuf_BUILD_TESTS OFF CACHE BOOL "Build protobuf tests" FORCE)
 if (CMAKE_SYSTEM_NAME STREQUAL "Android")
@@ -237,7 +274,10 @@ if (NOT WIN32)
   #nsync tests failed on Mac Build
   set(NSYNC_ENABLE_TESTS OFF CACHE BOOL "" FORCE)
   onnxruntime_fetchcontent_makeavailable(google_nsync)
-  set(nsync_SOURCE_DIR ${google_nsync_SOURCE_DIR})
+  if (google_nsync_SOURCE_DIR)
+    add_library(nsync::nsync_cpp ALIAS nsync_cpp)
+    target_include_directories(nsync_cpp PUBLIC ${google_nsync_SOURCE_DIR}/public)
+  endif()
 endif()
 
 if(onnxruntime_USE_CUDA)
@@ -361,6 +401,12 @@ FetchContent_Declare(
 
 if (CPUINFO_SUPPORTED)
   onnxruntime_fetchcontent_makeavailable(pytorch_cpuinfo)
+  if (pytorch_cpuinfo_SOURCE_DIR)
+    # shouldn't need to define these aliases after we use a version of cpuinfo with this commit:
+    # https://github.com/pytorch/cpuinfo/commit/082deffc80ce517f81dc2f3aebe6ba671fcd09c9
+    add_library(cpuinfo::cpuinfo ALIAS cpuinfo)
+    add_library(cpuinfo::clog ALIAS clog)
+  endif()
 endif()
 
 

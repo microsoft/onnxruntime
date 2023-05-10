@@ -179,7 +179,7 @@ class ONNXQuantizer:
         ]
         if len(graph_attrs) == 0:
             return node
-        node_name = node.name if node.name != "" else f"{node.op_type}_node_count_{len(self.new_nodes)}"
+        node_name = node.name if node.name else f"{node.op_type}_node_count_{len(self.new_nodes)}"
         kwargs = {}
         for attr in node.attribute:
             if attr.type == onnx.AttributeProto.GRAPH:
@@ -261,7 +261,7 @@ class ONNXQuantizer:
         for node in self.model.nodes():
             # quantize subgraphes if have
             if self.enable_subgraph_quantization:
-                node = self.quantize_node_with_sub_graph(node)
+                node = self.quantize_node_with_sub_graph(node)  # noqa: PLW2901
 
             number_of_existing_new_nodes = len(self.new_nodes)
             op_quantizer = CreateOpQuantizer(self, node)
@@ -802,7 +802,12 @@ class ONNXQuantizer:
                 zero_point_names.append(quantized_value.zp_name)
                 quantized_input_names.append(quantized_value.q_name)
                 continue
-
+            # adding this for case embed_layernorm.py has optional segment_embedding
+            if not node_input:
+                quantized_input_names.append("")
+                scale_names.append("")
+                zero_point_names.append("")
+                continue
             # Quantize the input
             initializer = find_by_name(node_input, self.model.initializer())
             if initializer is not None:

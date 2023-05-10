@@ -6,8 +6,7 @@ OpenVINO™ Execution Provider for ONNX Runtime
 OpenVINO™ Execution Provider for ONNX Runtime accelerates inference across many  `AI models <https://github.com/onnx/models>`_ on a variety of Intel® hardware such as:
  - Intel® CPUs
  - Intel® integrated GPUs
- - Intel® Movidius™ Vision Processing Units - referred to as VPU.
-
+ - Intel® discrete GPUs
 
 Installation
 ------------
@@ -21,9 +20,6 @@ Requirements
 This package supports:
  - Intel® CPUs
  - Intel® integrated GPUs
- - Intel® Movidius™ Vision Processing Units (VPUs).
-
-Please Note for VAD-M use Docker installation / Build from Source for Linux.
 
 ``pip3 install onnxruntime-openvino==1.13.1``
 
@@ -40,7 +36,7 @@ For more details on build and installation please refer to `Build <https://onnxr
 Usage
 ^^^^^
 
-By default, Intel® CPU is used to run inference. However, you can change the default option to either Intel® integrated GPU or Intel® VPU for AI inferencing.
+By default, Intel® CPU is used to run inference. However, you can change the default option to either Intel® integrated or discrete GPU. 
 Invoke `the provider config device type argument <https://onnxruntime.ai/docs/execution-providers/OpenVINO-ExecutionProvider.html#summary-of-options>`_ to change the hardware on which inferencing is done.
 
 For more API calls and environment variables, see  `Usage <https://onnxruntime.ai/docs/execution-providers/OpenVINO-ExecutionProvider.html#configuration-options>`_.

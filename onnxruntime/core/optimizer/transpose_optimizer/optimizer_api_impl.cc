@@ -172,6 +172,10 @@ std::optional<std::vector<int64_t>> ApiValueInfo::Shape() const {
 
 api::DataType ApiValueInfo::DType() const {
   const auto* type = node_arg_.TypeAsProto();
+  if (!type) {
+    return api::DataType::UNDEFINED;
+  }
+
   if (!utils::HasTensorType(*type)) {
     return api::DataType::UNDEFINED;
   }
@@ -873,7 +877,7 @@ const std::unordered_set<std::string_view>& GetORTLayoutSensitiveOps() {
     { "FusedConv",
       "QLinearAveragePool",
       "QLinearGlobalAveragePool"
-#if defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_QNN)
+#if defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_QNN) || defined(USE_WEBNN)
       // The CUDA/ROCM Resize kernel is layout sensitive as it only handles NCHW input.
       // The CPU kernel and ONNX spec are not limited to handling NCHW input so are not layout sensitive, and
       // onnx_layout_transformation::HandleResize is used.
@@ -894,9 +898,11 @@ static CostCheckResult
 PostLayoutTransformCostCheck(const api::GraphRef& graph, const api::NodeRef& node,
                              const std::vector<int64_t>& perm,
                              const std::unordered_set<std::string>& outputs_leading_to_transpose) {
-  // we aggressively push the layout transpose nodes
-  if (perm == ChannelFirstToLastPerm(perm.size()) ||
-      perm == ChannelLastToFirstPerm(perm.size())) {
+  // we aggressively push the layout transpose nodes.
+  // Exception: pushing through a Concat can result in Transpose nodes being added to multiple other inputs which
+  // can potentially be worse for performance. Use the cost check in that case.
+  if (node.OpType() != "Concat" &&
+      (perm == ChannelFirstToLastPerm(perm.size()) || perm == ChannelLastToFirstPerm(perm.size()))) {
     return CostCheckResult::kPushTranspose;
   }
 
@@ -904,7 +910,8 @@ PostLayoutTransformCostCheck(const api::GraphRef& graph, const api::NodeRef& nod
   return OrtEPCostCheck(graph, node, perm, outputs_leading_to_transpose);
 }
 
-Status TransformLayoutForEP(Graph& graph, bool& modified, const IExecutionProvider& execution_provider) {
+Status TransformLayoutForEP(Graph& graph, bool& modified, const IExecutionProvider& execution_provider,
+                            const DebugGraphFn& debug_graph_fn) {
   // sub graph recurse will be added later
   auto api_graph = MakeApiGraph(graph, execution_provider.GetAllocator(OrtMemTypeDefault), nullptr);
   const auto& layout_sensitive_ops = GetORTLayoutSensitiveOps();
@@ -977,6 +984,11 @@ Status TransformLayoutForEP(Graph& graph, bool& modified, const IExecutionProvid
   }
 
   if (modified) {
+    // debug the changes made inserting Transpose nodes around layout sensitive ops.
+    if (debug_graph_fn) {
+      debug_graph_fn(graph);
+    }
+
     OptimizeResult result =
         onnx_layout_transformation::Optimize(*api_graph, /*allow_extended_ops*/ true, execution_provider.Type(),
                                              onnx_layout_transformation::OptimizerMode::OPTIMIZE_LAYOUT_TRANSFORM,
@@ -985,6 +997,11 @@ Status TransformLayoutForEP(Graph& graph, bool& modified, const IExecutionProvid
     if (result.error_msg) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Optimization after layout transformation failed: ",
                              result.error_msg.value());
+    }
+
+    // debug optimization of the new Tranpose nodes using PostLayoutTransformCostCheck
+    if (debug_graph_fn) {
+      debug_graph_fn(graph);
     }
   }
 

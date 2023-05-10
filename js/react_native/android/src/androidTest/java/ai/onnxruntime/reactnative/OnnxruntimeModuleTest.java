@@ -15,6 +15,7 @@ import com.facebook.react.bridge.JavaOnlyMap;
 import com.facebook.react.bridge.ReactApplicationContext;
 import com.facebook.react.bridge.ReadableArray;
 import com.facebook.react.bridge.ReadableMap;
+import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
@@ -46,18 +47,31 @@ public class OnnxruntimeModuleTest {
       when(Arguments.createArray()).thenAnswer(i -> new JavaOnlyArray());
 
       OnnxruntimeModule ortModule = new OnnxruntimeModule(reactContext);
+      String sessionKey = "";
 
       // test loadModel()
       {
         InputStream modelStream =
             reactContext.getResources().openRawResource(ai.onnxruntime.reactnative.test.R.raw.test_types_float);
+        ByteArrayOutputStream byteBuffer = new ByteArrayOutputStream();
+
+        int bufferSize = 1024;
+        byte[] buffer = new byte[bufferSize];
+
+        int len;
+        while ((len = modelStream.read(buffer)) != -1) {
+          byteBuffer.write(buffer, 0, len);
+        }
+
+        byte[] modelBuffer = byteBuffer.toByteArray();
+
         JavaOnlyMap options = new JavaOnlyMap();
         try {
-          ReadableMap resultMap = ortModule.loadModel("test", modelStream, options);
+          ReadableMap resultMap = ortModule.loadModel(modelBuffer, options);
+          sessionKey = resultMap.getString("key");
           ReadableArray inputNames = resultMap.getArray("inputNames");
           ReadableArray outputNames = resultMap.getArray("outputNames");
 
-          Assert.assertEquals(resultMap.getString("key"), "test");
           Assert.assertEquals(inputNames.size(), 1);
           Assert.assertEquals(inputNames.getString(0), "input");
           Assert.assertEquals(outputNames.size(), 1);
@@ -103,7 +117,7 @@ public class OnnxruntimeModuleTest {
         options.putBoolean("encodeTensorData", true);
 
         try {
-          ReadableMap resultMap = ortModule.run("test", inputDataMap, outputNames, options);
+          ReadableMap resultMap = ortModule.run(sessionKey, inputDataMap, outputNames, options);
 
           ReadableMap outputMap = resultMap.getMap("output");
           for (int i = 0; i < 2; ++i) {

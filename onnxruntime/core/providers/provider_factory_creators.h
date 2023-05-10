@@ -46,6 +46,10 @@
 #include "core/providers/nnapi/nnapi_provider_factory_creator.h"
 #endif
 
+#if defined(USE_JSEP)
+#include "core/providers/js/js_provider_factory_creator.h"
+#endif
+
 #if defined(USE_OPENVINO)
 #include "core/providers/openvino/openvino_provider_factory_creator.h"
 #endif
@@ -80,6 +84,10 @@
 
 #if defined(USE_XNNPACK)
 #include "core/providers/xnnpack/xnnpack_provider_factory_creator.h"
+#endif
+
+#if defined(USE_WEBNN)
+#include "core/providers/webnn/webnn_provider_factory_creator.h"
 #endif
 
 #if defined(USE_CANN)

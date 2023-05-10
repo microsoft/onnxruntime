@@ -69,7 +69,7 @@ class CombineZeroCheckpoint:
         elif name_split[0].endswith("_fp16"):
             mp_suffix = "_fp16"
         param_name = name_split[0]
-        if optimizer_key != "":
+        if optimizer_key != "":  # noqa: PLC1901
             param_name = param_name.split(optimizer_key)[1]
         param_name = param_name.split("_fp16")[0]
         return param_name, optimizer_key, view_num, mp_suffix

@@ -125,7 +125,14 @@ inline const OrtApi& GetApi() noexcept { return *Global<void>::api_; }
 /// This function returns the onnxruntime version string
 /// </summary>
 /// <returns>version string major.minor.rev</returns>
-std::string GetVersionString();
+std::basic_string<ORTCHAR_T> GetVersionString();
+
+/// <summary>
+/// This function returns the onnxruntime build information: including git branch,
+/// git commit id, build type(Debug/Release/RelWithDebInfo) and cmake cpp flags.
+/// </summary>
+/// <returns>string</returns>
+std::basic_string<ORTCHAR_T> GetBuildInfoString();
 
 /// <summary>
 /// This is a C++ wrapper for OrtApi::GetAvailableProviders() and
@@ -356,10 +363,10 @@ using AllocatedStringPtr = std::unique_ptr<char, detail::AllocatedFree>;
  *  constructors to construct an instance of a Status object from exceptions.
  */
 struct Status : detail::Base<OrtStatus> {
-  explicit Status(std::nullptr_t) noexcept {}       ///< Create an empty object, must be assigned a valid one to be used
-  explicit Status(OrtStatus* status) noexcept;  ///< Takes ownership of OrtStatus instance returned from the C API.
-  explicit Status(const Exception&) noexcept;       ///< Creates status instance out of exception
-  explicit Status(const std::exception&) noexcept;  ///< Creates status instance out of exception
+  explicit Status(std::nullptr_t) noexcept {}               ///< Create an empty object, must be assigned a valid one to be used
+  explicit Status(OrtStatus* status) noexcept;              ///< Takes ownership of OrtStatus instance returned from the C API.
+  explicit Status(const Exception&) noexcept;               ///< Creates status instance out of exception
+  explicit Status(const std::exception&) noexcept;          ///< Creates status instance out of exception
   Status(const char* message, OrtErrorCode code) noexcept;  ///< Creates status instance out of null-terminated string message.
   std::string GetErrorMessage() const;
   OrtErrorCode GetErrorCode() const;
@@ -473,7 +480,6 @@ struct RunOptions : detail::Base<OrtRunOptions> {
   RunOptions& UnsetTerminate();
 };
 
-
 namespace detail {
 // Utility function that returns a SessionOption config entry key for a specific custom operator.
 // Ex: custom_op.[custom_op_name].[config]
@@ -514,7 +520,7 @@ struct CustomOpConfigs {
    * {"my_op.key", "value"}.
    *
    * \return An unordered map of flattened configurations.
-  */
+   */
   const std::unordered_map<std::string, std::string>& GetFlattenedConfigs() const;
 
  private:
@@ -574,7 +580,7 @@ struct SessionOptionsImpl : ConstSessionOptionsImpl<T> {
 
   SessionOptionsImpl& DisablePerSessionThreads();  ///< Wraps OrtApi::DisablePerSessionThreads
 
-  SessionOptionsImpl& AddConfigEntry(const char* config_key, const char* config_value);                        ///< Wraps OrtApi::AddSessionConfigEntry
+  SessionOptionsImpl& AddConfigEntry(const char* config_key, const char* config_value);  ///< Wraps OrtApi::AddSessionConfigEntry
 
   SessionOptionsImpl& AddInitializer(const char* name, const OrtValue* ort_val);                                             ///< Wraps OrtApi::AddInitializer
   SessionOptionsImpl& AddExternalInitializers(const std::vector<std::string>& names, const std::vector<Value>& ort_values);  ///< Wraps OrtApi::AddExternalInitializers
@@ -892,6 +898,19 @@ struct SequenceTypeInfo : detail::SequenceTypeInfoImpl<OrtSequenceTypeInfo> {
 
 namespace detail {
 template <typename T>
+struct OptionalTypeInfoImpl : Base<T> {
+  using B = Base<T>;
+  using B::B;
+  TypeInfo GetOptionalElementType() const;  ///< Wraps OrtApi::CastOptionalTypeToContainedTypeInfo
+};
+
+}  // namespace detail
+
+// This is always owned by the TypeInfo and can only be obtained from it.
+using ConstOptionalTypeInfo = detail::OptionalTypeInfoImpl<detail::Unowned<const OrtOptionalTypeInfo>>;
+
+namespace detail {
+template <typename T>
 struct MapTypeInfoImpl : detail::Base<T> {
   using B = Base<T>;
   using B::B;
@@ -921,6 +940,7 @@ struct TypeInfoImpl : detail::Base<T> {
   ConstTensorTypeAndShapeInfo GetTensorTypeAndShapeInfo() const;  ///< Wraps OrtApi::CastTypeInfoToTensorInfo
   ConstSequenceTypeInfo GetSequenceTypeInfo() const;              ///< Wraps OrtApi::CastTypeInfoToSequenceTypeInfo
   ConstMapTypeInfo GetMapTypeInfo() const;                        ///< Wraps OrtApi::CastTypeInfoToMapTypeInfo
+  ConstOptionalTypeInfo GetOptionalTypeInfo() const;              ///< wraps OrtApi::CastTypeInfoToOptionalTypeInfo
 
   ONNXType GetONNXType() const;
 };
@@ -1057,6 +1077,14 @@ struct ConstValueImpl : Base<T> {
   void GetStringTensorElement(size_t buffer_length, size_t element_index, void* buffer) const;
 
   /// <summary>
+  /// Returns string tensor UTF-8 encoded string element.
+  /// Use of this API is recommended over GetStringTensorElement() that takes void* buffer pointer.
+  /// </summary>
+  /// <param name="element_index"></param>
+  /// <returns>std::string</returns>
+  std::string GetStringTensorElement(size_t element_index) const;
+
+  /// <summary>
   /// The API returns a byte length of UTF-8 encoded string element
   /// contained in either a tensor or a spare tensor values.
   /// </summary>
@@ -1163,6 +1191,20 @@ struct ValueImpl : ConstValueImpl<T> {
   /// <param name="s">[in] A null terminated UTF-8 encoded string</param>
   /// <param name="index">[in] Index of the string in the tensor to set</param>
   void FillStringTensorElement(const char* s, size_t index);
+
+  /// <summary>
+  /// Allocate if necessary and obtain a pointer to a UTF-8
+  /// encoded string element buffer indexed by the flat element index,
+  /// of the specified length.
+  ///
+  /// This API is for advanced usage. It avoids a need to construct
+  /// an auxiliary array of string pointers, and allows to write data directly
+  /// (do not zero terminate).
+  /// </summary>
+  /// <param name="index"></param>
+  /// <param name="buffer_length"></param>
+  /// <returns>a pointer to a writable buffer</returns>
+  char* GetResizedStringTensorElementBuffer(size_t index, size_t buffer_length);
 
 #if !defined(DISABLE_SPARSE_TENSORS)
   /// <summary>
@@ -1640,7 +1682,7 @@ struct Logger {
    * \param func_name The name of the function in which the message is logged. Usually the value of __FUNCTION__.
    * \param format A null-terminated UTF-8 format string forwarded to a printf-like function.
    *               Refer to https://en.cppreference.com/w/cpp/io/c/fprintf for information on valid formats.
-   * \param args... Zero or more variadic arguments referenced by the format string.
+   * \param args Zero or more variadic arguments referenced by the format string.
    * \return A Ort::Status value to indicate error or success.
    */
   template <typename... Args>
@@ -1667,6 +1709,7 @@ struct KernelContext {
   UnownedValue GetOutput(size_t index, const std::vector<int64_t>& dims) const;
   void* GetGPUComputeStream() const;
   Logger GetLogger() const;
+  OrtAllocator* GetAllocator(const OrtMemoryInfo& memory_info) const;
 
  private:
   OrtKernelContext* ctx_;
@@ -1898,16 +1941,16 @@ struct CustomOpApi {
    * This interface is not exception safe.
    */
   [[deprecated("use Ort::Op")]] OrtOp* CreateOp(_In_ const OrtKernelInfo* info,
-                                                _In_ const char* op_name,
-                                                _In_ const char* domain,
-                                                _In_ int version,
-                                                _In_opt_ const char** type_constraint_names,
-                                                _In_opt_ const ONNXTensorElementDataType* type_constraint_values,
-                                                _In_opt_ int type_constraint_count,
-                                                _In_opt_ const OrtOpAttr* const* attr_values,
-                                                _In_opt_ int attr_count,
-                                                _In_ int input_count,
-                                                _In_ int output_count);
+                                                _In_z_ const char* op_name,
+                                                _In_z_ const char* domain,
+                                                int version,
+                                                _In_reads_(type_constraint_count) const char** type_constraint_names,
+                                                _In_reads_(type_constraint_count) const ONNXTensorElementDataType* type_constraint_values,
+                                                int type_constraint_count,
+                                                _In_reads_(attr_count) const OrtOpAttr* const* attr_values,
+                                                int attr_count,
+                                                int input_count,
+                                                int output_count);
 
   /** \deprecated use Ort::Op::Invoke
    * [[deprecated]]

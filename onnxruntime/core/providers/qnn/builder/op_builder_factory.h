@@ -50,6 +50,8 @@ const IOpBuilder* GetOpBuilder(const std::string& onnx_op_type);
 
 void CreateSimpleOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 
+void CreateCastOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
+
 void CreateConvOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 
 void CreatePoolOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
@@ -79,6 +81,10 @@ void CreateTileOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_
 void CreateInstanceNormOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 
 void CreateReduceOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
+
+void CreateBatchNormOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
+
+void CreateLRNOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 
 }  // namespace qnn
 }  // namespace onnxruntime

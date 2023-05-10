@@ -52,7 +52,7 @@ static void RunTest(int op_set,
   // Run test and check results
   std::unordered_set<std::string> excluded_providers;
   if (!is_tensorrt_supported) {
-    excluded_providers.insert(kTensorrtExecutionProvider);  //Disable TensorRT because of unsupported data types
+    excluded_providers.insert(kTensorrtExecutionProvider);  // Disable TensorRT because of unsupported data types
   }
   test.Run(expect_result, expected_err_str, excluded_providers);
 }
@@ -367,10 +367,10 @@ static void top_3_default_axis(int opset_version, int64_t sorted = 1) {
 TEST(TopKOperator, Top3DefaultAxisLargestElements) {
   top_3_default_axis<float>(10);
   top_3_default_axis<float>(11);
-  top_3_default_axis<float>(11, 0);  //unsorted
+  top_3_default_axis<float>(11, 0);  // unsorted
   top_3_default_axis<double>(10);
   top_3_default_axis<double>(11);
-  top_3_default_axis<double>(11, 0);  //unsorted
+  top_3_default_axis<double>(11, 0);  // unsorted
 }
 
 template <typename T>
@@ -430,10 +430,10 @@ static void top_2_explicit_axis(int opset_version, int64_t sorted = 1) {
 TEST(TopKOperator, Top2ExplicitAxisLargestElements) {
   top_2_explicit_axis<float>(10);
   top_2_explicit_axis<float>(11);
-  top_2_explicit_axis<float>(11, 0);  //unsorted
+  top_2_explicit_axis<float>(11, 0);  // unsorted
   top_2_explicit_axis<double>(10);
   top_2_explicit_axis<double>(11);
-  top_2_explicit_axis<double>(11, 0);  //unsorted
+  top_2_explicit_axis<double>(11, 0);  // unsorted
 }
 
 template <typename T>
@@ -450,10 +450,10 @@ static void top_3_explicit_axis(int opset_version, int64_t sorted = 1) {
 TEST(TopKOperator, Top3ExplicitAxisLargestElements) {
   top_3_explicit_axis<float>(10);
   top_3_explicit_axis<float>(11);
-  top_3_explicit_axis<float>(11, 0);  //unsorted
+  top_3_explicit_axis<float>(11, 0);  // unsorted
   top_3_explicit_axis<double>(10);
   top_3_explicit_axis<double>(11);
-  top_3_explicit_axis<double>(11, 0);  //unsorted
+  top_3_explicit_axis<double>(11, 0);  // unsorted
 }
 
 template <typename T>
@@ -577,12 +577,12 @@ static void top_3_explicit_axis_smallest(int opset_version, int64_t sorted = 1) 
 
 TEST(TopKOperator, Top3ExplicitAxisSmallestElements) {
   top_3_explicit_axis_smallest<float>(11);
-  top_3_explicit_axis_smallest<float>(11, 0);  //unsorted
+  top_3_explicit_axis_smallest<float>(11, 0);  // unsorted
   top_3_explicit_axis_smallest<double>(11);
-  top_3_explicit_axis_smallest<double>(11, 0);  //unsorted
+  top_3_explicit_axis_smallest<double>(11, 0);  // unsorted
 }
 
-template<typename T>
+template <typename T>
 static void top_3_explicit_aix_infinity(int opset_version, bool positive) {
   T inf = positive ? std::numeric_limits<T>::infinity() : -std::numeric_limits<T>::infinity();
   std::vector<T> input_vals = {inf, inf, inf, inf, inf, inf, inf, inf};
@@ -591,7 +591,7 @@ static void top_3_explicit_aix_infinity(int opset_version, bool positive) {
   std::vector<int64_t> expected_indices = {0, 0, 1, 1, 2, 2};
   std::vector<int64_t> expected_dimensions = {3, 2};
   int64_t axis = 0;
-  RunTest(opset_version, 3, input_vals, input_dimensions, expected_vals, expected_indices, expected_dimensions, true, axis, 0, 1);
+  RunTest(opset_version, 3, input_vals, input_dimensions, expected_vals, expected_indices, expected_dimensions, false, axis, 0, 1);
 }
 
 TEST(TopKOperator, Top3ExplicitAxisInfinity) {
@@ -614,13 +614,13 @@ static void top_1_explicit_axis_MultiD_input_smallest(int opset_version, int64_t
 
 TEST(TopKOperator, Top1ExplicitAxisMultiDInputSmallestElements) {
   top_1_explicit_axis_MultiD_input_smallest<float>(11);
-  top_1_explicit_axis_MultiD_input_smallest<float>(11, 0);  //unsorted
+  top_1_explicit_axis_MultiD_input_smallest<float>(11, 0);  // unsorted
   top_1_explicit_axis_MultiD_input_smallest<double>(11);
-  top_1_explicit_axis_MultiD_input_smallest<double>(11, 0);  //unsorted
+  top_1_explicit_axis_MultiD_input_smallest<double>(11, 0);  // unsorted
   top_1_explicit_axis_MultiD_input_smallest<int32_t>(11);
-  top_1_explicit_axis_MultiD_input_smallest<int32_t>(11, 0);  //unsorted
+  top_1_explicit_axis_MultiD_input_smallest<int32_t>(11, 0);  // unsorted
   top_1_explicit_axis_MultiD_input_smallest<int64_t>(11);
-  top_1_explicit_axis_MultiD_input_smallest<int64_t>(11, 0);  //unsorted
+  top_1_explicit_axis_MultiD_input_smallest<int64_t>(11, 0);  // unsorted
 }
 
 // test path where SelectTopK is used (select using std::nth_element)

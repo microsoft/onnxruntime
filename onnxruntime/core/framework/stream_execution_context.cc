@@ -27,8 +27,8 @@ StreamExecutionContext::StreamExecutionContext(const SessionState& sess_state,
              fetch_mlvalue_idxs,
              fetches,
              fetch_allocators,
-             sess_state,
-             device_stream_map ? device_stream_map->GetStreams() : gsl::span<Stream*>({})),
+             device_stream_map,
+             sess_state),
       logger_(&sess_logger),
       single_thread_mode_(single_thread_mode),
       device_stream_map_(device_stream_map),
@@ -95,8 +95,7 @@ StreamExecutionContext::StreamExecutionContext(const SessionState& sess_state,
              fetch_mlvalue_idxs,
              fetches,
              fetch_allocators,
-             sess_state,
-             {}),
+             sess_state),
       logger_(&sess_logger),
       single_thread_mode_(single_thread_mode) {
 #ifdef _WIN32
@@ -180,6 +179,19 @@ void RunSince(size_t stream_idx, StreamExecutionContext& ctx, SessionScope& sess
     ctx.CompleteTask();
     return;
   }
+
+#ifdef USE_CANN
+  // For CANN EP, it is necessary to explicitly create a corresponding Context for each thread in the thread pool,
+  // which is different from CUDA Runtime API, but similar to CUDA Driver API.
+  auto& execution_providers = ctx.GetSessionState().GetExecutionProviders();
+  for (auto& xp : execution_providers) {
+    auto status = xp->OnRunStart();
+    if (!status.IsOK()) {
+      ctx.SetStatus(status);
+      return;
+    }
+  }
+#endif
 
   // get logic stream
   auto& execution_plan = ctx.GetSessionState().GetExecutionPlan()->execution_plan;

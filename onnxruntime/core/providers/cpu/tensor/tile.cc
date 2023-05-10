@@ -212,7 +212,7 @@ Status Tile::Compute(OpKernelContext* ctx) const {
   // Repeat tensor has all 1s in it
   if (output_shape == input_shape) {
     if (input_tensor.IsDataType<std::string>())
-      std::copy(input_tensor.Data<std::string>(), input_tensor.Data<std::string>()+input_shape.Size(), output_tensor.MutableData<std::string>());
+      std::copy(input_tensor.Data<std::string>(), input_tensor.Data<std::string>() + input_shape.Size(), output_tensor.MutableData<std::string>());
     else
       memcpy(output_tensor.MutableDataRaw(), input_tensor.DataRaw(), input_tensor.SizeInBytes());
     return Status::OK();
@@ -228,8 +228,8 @@ Status Tile::Compute(OpKernelContext* ctx) const {
                            is_batched_memcpy,
                            num_of_elements_per_batch,
                            num_of_copies_per_batch,
-                           num_of_batch_copies) && !input_tensor.IsDataType<std::string>()) {
-
+                           num_of_batch_copies) &&
+      !input_tensor.IsDataType<std::string>()) {
     int8_t* output_data_casted = reinterpret_cast<int8_t*>(output_tensor.MutableDataRaw());
     const int8_t* input_data_casted = reinterpret_cast<const int8_t*>(input_tensor.DataRaw());
     const void* input_data_raw = input_tensor.DataRaw();

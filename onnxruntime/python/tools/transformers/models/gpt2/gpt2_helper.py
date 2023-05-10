@@ -68,7 +68,7 @@ class MyGPT2Model(GPT2Model):
 
     @staticmethod
     def post_process(result, num_layer):
-        if isinstance(result[1][0], tuple) or isinstance(result[1][0], list):
+        if isinstance(result[1][0], (tuple, list)):
             assert len(result[1]) == num_layer and len(result[1][0]) == 2
             # assert len(result[1][0][0].shape) == 4 and result[1][0][0].shape == result[1][0][1].shape
             present = []
@@ -522,11 +522,6 @@ class Gpt2Helper:
 
         optimization_options = FusionOptions("gpt2")
 
-        # TODO(hasesh): Investigate parity issue for GPT-2 fp16 when SkipLayerNormalization
-        # is enabled
-        if is_float16:
-            optimization_options.enable_skip_layer_norm = False
-
         m = optimize_model(
             onnx_model_path,
             model_type="gpt2",
@@ -878,7 +873,7 @@ class Gpt2Helper:
                 logger.info(
                     f"test_case={i} batch_size={batch_size} past_sequence_length={past_sequence_length} sequence_length={sequence_length} MaxDiff={max_abs_diff}"
                 )
-                for i, message in enumerate(messages):
+                for i, message in enumerate(messages):  # noqa: PLW2901
                     logger.info(f"\t{i}: Name={ort_session.get_outputs()[i].name}, {message}")
 
             # Collect data for debugging

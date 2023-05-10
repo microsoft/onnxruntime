@@ -2,6 +2,10 @@
 
 #include "DmlDFT.h"
 
+// NOTE: When this operator's implementation is moved into DML, the associated FP16 fallback
+//       should be removed from IsCustomOpShader(...) in
+//       onnxruntime\core\providers\dml\DmlExecutionProvider\src\ExecutionProvider.cpp
+
 enum DmlSTFTKernelInputIndex : uint32_t
 {
     Signal,
@@ -94,13 +98,6 @@ struct DmlSTFTParameters
         }
 
         ML_CHECK_VALID_ARGUMENT(this->frameSize > 0, "Either the window or frame_length must be set.");
-
-        // This limitation is a result of GpuDFTOperator in DmlDFT.h only implementing the stockham path.
-        // Remove this check if GpuDFTOperator is updated to support BluesteinZChirp.
-        ML_CHECK_VALID_ARGUMENT(
-            DFTHelpers::IsPowerOfTwo(this->frameSize),
-            "DML STFT only supports power-of-two window/frame sizes."
-        );
 
         this->frameCount = (this->signalSize - this->frameSize) / this->frameStep + 1;
         this->frameDftElementCount = this->isOnesided ? this->frameSize / 2 + 1 : this->frameSize;
@@ -378,8 +375,7 @@ public:
             ORT_THROW_IF_FAILED(executionObject.As(&commandList));
 
             ComPtr<ID3D12Resource> framingOutputResource;
-            ORT_THROW_IF_FAILED(context->AllocateTemporaryData(m_framingOperator.outputBufferSizeInBytes, &framingOutputResource));
-
+            ORT_THROW_IF_FAILED(context->AllocateTemporaryData(onnxruntime::narrow<size_t>(m_framingOperator.outputBufferSizeInBytes), &framingOutputResource));
             DispatchFramingOperator(commandList.Get(), context, framingOutputResource.Get());
 
             ComPtr<ID3D12Resource> outputResource = DmlSTFTHelpers::GetOutputResourceFromKernelContext(context, 0);
@@ -450,7 +446,7 @@ public:
         auto tempBufferSize = bindingProps.TemporaryResourceSize;
         if (tempBufferSize > 0)
         {
-            ORT_THROW_IF_FAILED(context->AllocateTemporaryData(tempBufferSize, &tempBuffer));
+            ORT_THROW_IF_FAILED(context->AllocateTemporaryData(onnxruntime::narrow<size_t>(tempBufferSize), &tempBuffer));
 
             DML_BUFFER_BINDING bufferBinding = { tempBuffer.Get(), 0, tempBufferSize };
             DML_BINDING_DESC bindingDesc = { DML_BINDING_TYPE_BUFFER, &bufferBinding };

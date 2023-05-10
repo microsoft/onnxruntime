@@ -109,6 +109,6 @@ bool MatchDQNode(const Node& node) {
   return graph_utils::IsSupportedOptypeVersionAndDomain(node, DQOpName, {10, 13});
 }
 
-#endif // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
 }  // namespace onnxruntime::QDQ

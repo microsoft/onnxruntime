@@ -26,7 +26,7 @@ for c in args.config:
     file_name = os.path.join(args.src_root, "core", "providers", c, "symbols.txt")
     with open(file_name) as file:
         for line in file:
-            line = line.strip()
+            line = line.strip()  # noqa: PLW2901
             if line in symbols:
                 print("dup symbol: %s", line)
                 exit(-1)
@@ -67,7 +67,7 @@ with open(args.output_source, "w") as file:
 
         # external symbols are removed, xnnpack ep will be created via the standard ORT API.
         # https://github.com/microsoft/onnxruntime/pull/11798
-        if c not in ("winml", "cuda", "migraphx", "qnn", "snpe", "xnnpack", "cann", "dnnl"):
+        if c not in ("vitisai", "winml", "cuda", "migraphx", "qnn", "snpe", "xnnpack", "cann", "dnnl"):
             file.write(f"#include <core/providers/{c}/{c}_provider_factory.h>\n")
     file.write("void* GetFunctionEntryByName(const char* name){\n")
     for symbol in symbols:

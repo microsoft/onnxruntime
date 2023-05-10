@@ -5,28 +5,40 @@ parameters:
   type: string
   default: ''
 
-- name: BaseImage  
+- name: BaseImage
   type: string
 
-- name: OnnxruntimeArch  
+- name: OnnxruntimeArch
   type: string
 
-- name: OnnxruntimeCFlags  
+- name: OnnxruntimeCFlags
   type: string
 
-- name: OnnxruntimeCXXFlags  
+- name: OnnxruntimeCXXFlags
   type: string
 
-- name: OnnxruntimeNodejsBindingArch  
+- name: OnnxruntimeNodejsBindingArch
   type: string
 
 - name: PoolName
   type: string
-  default: 'Linux-CPU'
-  
+  default: 'aiinfra-Linux-CPU'
+
+- name: ArtifactNamePrefix
+  type: string
+  default: "onnxruntime"
+
+- name: PackageJava
+  type: boolean
+  default: true
+
+- name: PackageNodejs
+  type: boolean
+  default: true
+
 jobs:
 - job: Linux_C_API_Packaging_CPU_${{parameters.OnnxruntimeArch}}
-  
+
   workspace:
     clean: all
   variables:
@@ -66,8 +78,9 @@ jobs:
        ls -al $(Build.ArtifactStagingDirectory)
       displayName: 'Create Artifacts'
 
-    - template: java-api-artifacts-package-and-publish-steps-posix.yml
-      parameters:
+    - ${{ if eq(parameters.PackageJava, 'true') }}:
+      - template: java-api-artifacts-package-and-publish-steps-posix.yml
+        parameters:
           arch: 'linux-${{parameters.OnnxruntimeArch}}'
           buildConfig: 'Release'
           artifactName: 'onnxruntime-java-linux-${{parameters.OnnxruntimeArch}}'
@@ -78,15 +91,17 @@ jobs:
     - template: c-api-artifacts-package-and-publish-steps-posix.yml
       parameters:
           buildConfig: 'Release'
-          artifactName: 'onnxruntime-linux-${{parameters.OnnxruntimeArch}}-$(OnnxRuntimeVersion)'
-          artifactNameNoVersionString: 'onnxruntime-linux-${{parameters.OnnxruntimeArch}}'
+          artifactName: '${{parameters.ArtifactNamePrefix}}-linux-${{parameters.OnnxruntimeArch}}-$(OnnxRuntimeVersion)'
+          artifactNameNoVersionString: '${{parameters.ArtifactNamePrefix}}-linux-${{parameters.OnnxruntimeArch}}'
           libraryName: 'libonnxruntime.so.$(OnnxRuntimeVersion)'
 
-    - template: nodejs-artifacts-package-and-publish-steps-posix.yml
-      parameters:
+    - ${{ if eq(parameters.PackageNodejs, 'true') }}:
+      - template: nodejs-artifacts-package-and-publish-steps-posix.yml
+        parameters:
           arch: '${{parameters.OnnxruntimeNodejsBindingArch}}'
           os: 'linux'
           artifactName: 'drop-onnxruntime-nodejs-linux-${{parameters.OnnxruntimeArch}}'
+
     - ${{ if not(eq(parameters.OnnxruntimeNodejsBindingArch, 'arm64')) }}:
       - template: component-governance-component-detection-steps.yml
         parameters:

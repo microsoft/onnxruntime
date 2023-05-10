@@ -44,7 +44,7 @@ static const char* const kOrtSessionOptionsConfigSetDenormalAsZero = "session.se
 // It controls to run quantization model in QDQ (QuantizelinearDeQuantizelinear) format or not.
 // "0": enable. ORT does fusion logic for QDQ format.
 // "1": disable. ORT doesn't do fusion logic for QDQ format.
-// Its default value is "0"
+// Its default value is "0" unless the DirectML execution provider is registered, in which case it defaults to "1".
 static const char* const kOrtSessionOptionsDisableQuantQDQ = "session.disable_quant_qdq";
 
 // It controls whether to enable Double QDQ remover and Identical Children Consolidation
@@ -184,3 +184,16 @@ static const char* const kNodePartitionConfigFile = "session.node_partition_conf
 //    an id of 64 will be inferred as the last processor of the 1st group, while 65 will be interpreted as the 1st processor of the second group.
 //    Hence 64-65 is an invalid configuration, because a windows thread cannot be attached to processors across group boundary.
 static const char* const kOrtSessionOptionsConfigIntraOpThreadAffinities = "session.intra_op_thread_affinities";
+
+// This option will dump out the model to assist debugging any issues with layout transformation,
+// and is primarily intended for developer usage. It is only relevant if an execution provider that requests
+// NHWC layout is enabled such as NNAPI, XNNPACK or QNN.
+//
+// Default is off. Set to "1" to enable.
+//
+// If modified by layout transformation the model will be dumped after these steps:
+//   1) insertion of the layout transformation Transpose nodes
+//   2) after those are optimized using the transpose optimizer,
+//   3) after the L1 transformers are applied to the updated graph.
+// The model will be saved to filename post_layout_transform_step_<step_number>.onnx.
+static const char* const kDebugLayoutTransformation = "session.debug_layout_transformation";

@@ -31,7 +31,11 @@ void BeamSearchParameters::ParseFromInputs(OpKernelContext* context) {
   ORT_ENFORCE(context != nullptr);
   const Tensor* input_ids = context->Input<Tensor>(0);
   const auto& dims = input_ids->Shape().GetDims();
-  ORT_ENFORCE(dims.size() == 2, "input_ids shall have 2 dimensions. Got ", dims.size());
+  if (this->model_type == IGenerationParameters::kModelTypeWhisper) {
+    ORT_ENFORCE(dims.size() == 3, "input_features shall have 3 dimensions. Got ", dims.size());
+  } else {
+    ORT_ENFORCE(dims.size() == 2, "input_ids shall have 2 dimensions. Got ", dims.size());
+  }
   batch_size = static_cast<int>(dims[0]);
 
   // For T5, output sequence starts with decoder_start_token_id, so its sequence length is 1
@@ -61,10 +65,26 @@ void BeamSearchParameters::ParseFromInputs(OpKernelContext* context) {
               "num_return_sequences (", num_return_sequences, ") shall be be no more than num_beams (", num_beams, ")");
 
   auto* length_penalty_tensor = context->Input<Tensor>(5);
-  length_penalty = length_penalty_tensor ? static_cast<float>(*length_penalty_tensor->Data<float>()) : 1;
+  if (length_penalty_tensor) {
+    if (length_penalty_tensor->DataType() == DataTypeImpl::GetType<float>()) {
+      length_penalty = static_cast<float>(*length_penalty_tensor->Data<float>());
+    } else {
+      length_penalty = static_cast<MLFloat16>(*length_penalty_tensor->Data<MLFloat16>());
+    }
+  } else {
+    length_penalty = 1.0f;
+  }
 
   auto* repetition_penalty_tensor = context->Input<Tensor>(6);
-  repetition_penalty = repetition_penalty_tensor ? static_cast<float>(*repetition_penalty_tensor->Data<float>()) : 1.0f;
+  if (repetition_penalty_tensor) {
+    if (repetition_penalty_tensor->DataType() == DataTypeImpl::GetType<float>()) {
+      repetition_penalty = static_cast<float>(*repetition_penalty_tensor->Data<float>());
+    } else {
+      repetition_penalty = static_cast<MLFloat16>(*repetition_penalty_tensor->Data<MLFloat16>());
+    }
+  } else {
+    repetition_penalty = 1.0f;
+  }
   ORT_ENFORCE(repetition_penalty > 0.0f, "repetition_penalty shall be greater than 0, got ", repetition_penalty);
 }
 

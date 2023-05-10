@@ -11,6 +11,7 @@ namespace AttrName
     static constexpr const char* Activations = "activations";
     static constexpr const char* AllowZero = "allowzero";
     static constexpr const char* Alpha = "alpha";
+    static constexpr const char* AlignCorners = "align_corners";
     static constexpr const char* AutoPad = "auto_pad";
     static constexpr const char* Axes = "axes";
     static constexpr const char* Axis = "axis";
@@ -64,6 +65,7 @@ namespace AttrName
     static constexpr const char* NoopWithEmptyAxes = "noop_with_empty_axes";
     static constexpr const char* NormalizeVariance = "normalize_variance";
     static constexpr const char* P = "p";
+    static constexpr const char* PaddingMode = "padding_mode";
     static constexpr const char* OutputHeight = "output_height";
     static constexpr const char* OutputShape = "output_shape";
     static constexpr const char* OutputPadding = "output_padding";
@@ -111,6 +113,11 @@ namespace AttrName
     static constexpr const char* FusedBeta = "fused_beta";
     static constexpr const char* FusedGamma = "fused_gamma";
     static constexpr const char* FusedRatio = "fused_ratio";
+    static constexpr const char* Activation = "activation";
+    static constexpr const char* Groups = "groups";
+
+    static constexpr const char* GraphFusedActivation = "activation";
+    static constexpr const char* GraphFusedAxis = "activation_axis";
 
 } // namespace AttrName
 

@@ -83,8 +83,9 @@ bool QNNExecutionProvider::IsNodeSupported(qnn::QnnModelWrapper& qnn_model_wrapp
     // Is NPU backend, is single node, case by case
     // Q/DQ nodes -- supported
     // Transpose nodes -- supported
+    // Cast nodes -- need to call CastOpBuilder::IsOpSupported
     if (is_npu_backend && NodeUnit::Type::SingleNode == node_unit.UnitType()) {
-      if (IsQdqNode(node_unit)) { // Qnn has Quantize & Dequantize Op 
+      if (IsQdqNode(node_unit)) {  // Qnn has Quantize & Dequantize Op
         LOGS(logger, VERBOSE) << "Single Q/DQ node is supported for NPU backend. Node name: " << node_unit.Name();
         return true;
       }
@@ -95,9 +96,13 @@ bool QNNExecutionProvider::IsNodeSupported(qnn::QnnModelWrapper& qnn_model_wrapp
         return true;
       }
 
-      LOGS(logger, VERBOSE) << "Non-QDQ single node is not supported for NPU backend. Node name: " << node_unit.Name()
-                            << " Op type: " << node_unit.OpType();
-      return false;
+      // For Cast, need to call IsOpSupported (below) to validate input and output types.
+      // For other single non-qdq nodes, immediately return not supported.
+      if (node_unit.OpType() != "Cast") {
+        LOGS(logger, VERBOSE) << "Non-QDQ single node is not supported for NPU backend. Node name: " << node_unit.Name()
+                              << " Op type: " << node_unit.OpType();
+        return false;
+      }
     }
 
     // Non-NPU backend, quantized model not supported, but a QDQ node encountered
@@ -199,9 +204,17 @@ QNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer
   std::tie(node_unit_holder, node_unit_map) = GetAllNodeUnits(graph_viewer);
 
   const auto supported_nodes = GetSupportedNodes(graph_viewer, node_unit_map, node_unit_holder.size(), logger);
+
   if (supported_nodes.empty()) {
     LOGS(logger, INFO) << "Number of partitions supported by QNN EP: 0";
     return result;
+  } else if (supported_nodes.size() == 1) {
+    const auto* node = *supported_nodes.begin();
+    if (node->OpType() == "QuantizeLinear" || node->OpType() == "DequantizeLinear") {
+      LOGS(logger, INFO) << "It doesn't make sense just run a Q/DQ node on HTP.";
+      LOGS(logger, INFO) << "Number of partitions supported by QNN EP: 0";
+      return result;
+    }
   }
 
   const auto gen_metadef_name = [&]() {

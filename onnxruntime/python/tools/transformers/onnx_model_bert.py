@@ -6,7 +6,9 @@
 from logging import getLogger
 from typing import List, Optional
 
+from convert_to_packing_mode import PackingMode
 from fusion_attention import AttentionMask, FusionAttention
+from fusion_bart_attention import FusionBartAttention
 from fusion_biasgelu import FusionBiasGelu
 from fusion_embedlayer import FusionEmbedLayerNormalization
 from fusion_fastgelu import FusionFastGelu
@@ -386,7 +388,7 @@ class BertOnnxModel(OnnxModel):
 
         if options is not None:
             self.attention_mask.set_mask_format(options.attention_mask_format)
-            if options.use_multi_head_attention:
+            if options.use_multi_head_attention and not isinstance(self.attention_fusion, FusionBartAttention):
                 self.attention_fusion = FusionAttention(
                     self, self.hidden_size, self.num_heads, self.attention_mask, options.use_multi_head_attention
                 )
@@ -482,3 +484,7 @@ class BertOnnxModel(OnnxModel):
             logger.warning("Attention not fused")
 
         return is_perfect
+
+    def convert_to_packing_mode(self, use_symbolic_shape_infer: bool = False):
+        packing_mode = PackingMode(self)
+        packing_mode.convert(use_symbolic_shape_infer)

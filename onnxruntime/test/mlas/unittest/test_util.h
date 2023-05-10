@@ -22,12 +22,11 @@
 #include "core/platform/threadpool.h"
 #endif
 
-
 #if !defined(UNUSED_VARIABLE)
 #if defined(__GNUC__)
-# define UNUSED_VARIABLE __attribute__((unused))
+#define UNUSED_VARIABLE __attribute__((unused))
 #else
-# define UNUSED_VARIABLE
+#define UNUSED_VARIABLE
 #endif
 #endif
 
@@ -50,7 +49,7 @@ class MatrixGuardBuffer {
     ReleaseBuffer();
   }
 
-  T* GetFilledBuffer(size_t Elements, std::function<void(T*, size_t)> const & fillFunc) {
+  T* GetFilledBuffer(size_t Elements, std::function<void(T*, size_t)> const& fillFunc) {
     //
     // Check if the internal buffer needs to be reallocated.
     //
@@ -245,8 +244,7 @@ class MlasDirectShortExecuteTests : public MlasTestFixture<TMlasTester> {
   }
 };
 
-inline
-void ReorderInputNchw(const int64_t* input_shape, const float* S, float* D) {
+inline void ReorderInputNchw(const int64_t* input_shape, const float* S, float* D) {
   const int64_t nchwc_block_size = static_cast<int64_t>(MlasNchwcGetBlockSize());
   int64_t batch_count = input_shape[0];
   int64_t channel_count = input_shape[1];

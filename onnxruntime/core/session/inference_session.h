@@ -19,6 +19,7 @@
 #include "core/framework/prepacked_weights_container.h"
 #include "core/framework/session_state.h"
 #include "core/framework/tuning_results.h"
+#include "core/framework/framework_provider_common.h"
 #include "core/graph/basic_types.h"
 #include "core/optimizer/graph_transformer_level.h"
 #include "core/optimizer/graph_transformer_mgr.h"
@@ -35,11 +36,6 @@
 namespace ONNX_NAMESPACE {
 class ModelProto;
 }  // namespace ONNX_NAMESPACE
-
-struct OrtCustomOpDomain {
-  std::string domain_;
-  std::vector<const OrtCustomOp*> custom_ops_;
-};
 
 namespace onnxruntime {  // forward declarations
 class CustomRegistry;
@@ -458,9 +454,12 @@ class InferenceSession {
    * Set the TuningResults back to each execution provider. Mainly for offline tuning.
    * @param trs is the list of TuningResults to be loaded.
    * @param error_on_invalid otherwise, validation faliure is not an error, only a warning log will be produced.
+   * @param auto_enable if true, automatically enable tunable op usage (but not tuning) if the TuningResults is
+                        correctly loaded
    * @return OK if success.
    */
-  Status SetTuningResults(const std::vector<TuningResults>& trs, bool error_on_invalid = false);
+  Status SetTuningResults(const std::vector<TuningResults>& trs, bool error_on_invalid = false,
+                          bool auto_enable = false);
 #endif
 
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
@@ -654,19 +653,11 @@ class InferenceSession {
       MinimalBuildOptimizationHandling minimal_build_optimization_handling,
       RecordRuntimeOptimizationProducedNodeOpSchemaFn record_runtime_optimization_produced_op_schema_fn) const;
 
-  [[nodiscard]] common::Status TransformGraph(onnxruntime::Graph& graph,
-                                              const onnxruntime::GraphTransformerManager& graph_transformer_mgr,
-                                              const ExecutionProviders& providers, KernelRegistryManager& kernel_registry_manager,
-                                              const InsertCastTransformer& insert_cast_transformer,
-                                              SessionState& session_state,
-                                              bool saving_model_in_ort_format);
+  common::Status TransformGraph(onnxruntime::Graph& graph, bool saving_model_in_ort_format);
 
-  onnxruntime::GraphTransformerManager graph_transformation_mgr_;
+  onnxruntime::GraphTransformerManager graph_transformer_mgr_;
 
-  InsertCastTransformer insert_cast_transformer_;
-
-  // assuming that OpSchema* elements are not null. our version of gsl::not_null doesn't specialize std::hash.
-  InlinedHashSet<const ONNX_NAMESPACE::OpSchema*> saved_runtime_optimization_produced_node_op_schemas_;
+  InlinedHashSet<gsl::not_null<const ONNX_NAMESPACE::OpSchema*>> saved_runtime_optimization_produced_node_op_schemas_;
 #endif
   // Any GraphTransformer/RewriteRule name in this set will not be enabled.
   InlinedHashSet<std::string> optimizers_to_disable_;
