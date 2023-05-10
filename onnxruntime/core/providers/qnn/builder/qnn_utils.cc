@@ -486,30 +486,27 @@ static nlohmann::json GetQnnClientBufJSON(const Qnn_ClientBuffer_t& buf, Qnn_Dat
 static nlohmann::json GetQnnTensorJSON(const Qnn_Tensor_t& tensor, bool include_static_data = false) {
   using json = nlohmann::json;
   json tensor_json = json::object();
+  const Qnn_TensorType_t tensor_type = GetQnnTensorType(tensor);
 
-  if (tensor.version != QNN_TENSOR_VERSION_1) {
-    ORT_THROW("QNN tensor version not supported, QNN tensor version: ", tensor.version);
-  }
-
-  tensor_json["id"] = tensor.v1.id;
-  tensor_json["type"] = tensor.v1.type;
-  tensor_json["dataFormat"] = tensor.v1.dataFormat;
-  tensor_json["data_type"] = tensor.v1.dataType;
+  tensor_json["id"] = GetQnnTensorID(tensor);
+  tensor_json["type"] = tensor_type;
+  tensor_json["dataFormat"] = GetQnnTensorDataFormat(tensor);
+  tensor_json["data_type"] = GetQnnTensorDataType(tensor);
   tensor_json["src_axis_format"] = "NOT_YET_DEFINED";
   tensor_json["axis_format"] = "NOT_YET_DEFINED";
 
-  const Qnn_QuantizeParams_t& quant_params = tensor.v1.quantizeParams;
+  const Qnn_QuantizeParams_t& quant_params = GetQnnTensorQParams(tensor);
   tensor_json["quant_params"] = {
       {"definition", quant_params.encodingDefinition},
       {"encoding", quant_params.quantizationEncoding},
       {"scale_offset", {{"scale", quant_params.scaleOffsetEncoding.scale}, {"offset", quant_params.scaleOffsetEncoding.offset}}}};
 
-  gsl::span<const uint32_t> dims{tensor.v1.dimensions, tensor.v1.rank};
+  gsl::span<const uint32_t> dims{GetQnnTensorDims(tensor), GetQnnTensorRank(tensor)};
   tensor_json["dims"] = JSONFromSpan(dims);
 
-  if (tensor.v1.type == Qnn_TensorType_t::QNN_TENSOR_TYPE_STATIC) {
+  if (tensor_type == Qnn_TensorType_t::QNN_TENSOR_TYPE_STATIC) {
     if (include_static_data) {
-      tensor_json["data"] = GetQnnClientBufJSON(tensor.v1.clientBuf, tensor.v1.dataType, dims);
+      tensor_json["data"] = GetQnnClientBufJSON(GetQnnTensorClientBuf(tensor), GetQnnTensorDataType(tensor), dims);
     } else {
       std::stringstream ss;
       ss << CalcQnnTensorNumElems(tensor);
@@ -563,7 +560,7 @@ static nlohmann::json GetQnnTensorNamesJSON(gsl::span<const Qnn_Tensor_t> tensor
   nlohmann::json names_json = nlohmann::json::array();
 
   for (const auto& tensor : tensors) {
-    names_json.push_back(tensor.v1.name);
+    names_json.push_back(GetQnnTensorName(tensor));
   }
 
   return names_json;
@@ -580,28 +577,30 @@ static nlohmann::json GetQnnTensorNamesJSON(gsl::span<const Qnn_Tensor_t> tensor
 //     "tensor_params": { "stride": {...} },
 //     "macs_per_inference": ""
 // }
-static nlohmann::json GetQnnOpJSON(const Qnn_OpConfig_t& node) {
+static nlohmann::json GetQnnOpJSON(const QnnOpConfigWrapper& op_config) {
   using json = nlohmann::json;
   json op_json = json::object();
-  op_json["package"] = node.v1.packageName;
-  op_json["type"] = node.v1.typeName;
+  op_json["package"] = op_config.GetPackageName();
+  op_json["type"] = op_config.GetTypeName();
 
   json tensor_params_json = json::object();
   json scalar_params_json = json::object();
 
-  gsl::span<const Qnn_Param_t> params{node.v1.params, node.v1.numOfParams};
+  gsl::span<const Qnn_Param_t> params{op_config.GetParams(), op_config.GetParamsNum()};
   for (const auto& param : params) {
     if (param.paramType == QNN_PARAMTYPE_SCALAR) {
       scalar_params_json[param.name] = GetQnnScalarParamJSON(param.scalarParam);
     } else if (param.paramType == QNN_PARAMTYPE_TENSOR) {
-      tensor_params_json[param.name][param.tensorParam.v1.name] = GetQnnTensorJSON(param.tensorParam, true);
+      tensor_params_json[param.name][GetQnnTensorName(param.tensorParam)] = GetQnnTensorJSON(param.tensorParam, true);
     }
   }
 
   op_json["tensor_params"] = std::move(tensor_params_json);
   op_json["scalar_params"] = std::move(scalar_params_json);
-  op_json["input_names"] = GetQnnTensorNamesJSON(gsl::span<const Qnn_Tensor_t>{node.v1.inputTensors, node.v1.numOfInputs});
-  op_json["output_names"] = GetQnnTensorNamesJSON(gsl::span<const Qnn_Tensor_t>{node.v1.outputTensors, node.v1.numOfOutputs});
+  op_json["input_names"] = GetQnnTensorNamesJSON(gsl::span<const Qnn_Tensor_t>{op_config.GetInputTensors(),
+                                                                               op_config.GetInputsNum()});
+  op_json["output_names"] = GetQnnTensorNamesJSON(gsl::span<const Qnn_Tensor_t>{op_config.GetOutputTensors(),
+                                                                                op_config.GetOutputsNum()});
   op_json["macs_per_inference"] = "";  // Metadata set by QNN converter tools. Not needed.
 
   return op_json;
@@ -612,9 +611,9 @@ QnnJSONGraph::QnnJSONGraph() {
 
   json_ = {
       {"model.cpp", ""},
-      {"model.bin", ""},
+      {"model.bin", "model.bin"},  // Use dummy model.bin file when loading JSON with QNN Netron.
       {"converter_command", ""},
-      {"copyright_str", ""},
+      {"copyright_str", "Copyright (c) Microsoft Corporation. All rights reserved."},
       {"op_types", json::array()},
       {"Total parameters", ""},
       {"Total MACs per inference", ""},
@@ -633,7 +632,7 @@ void QnnJSONGraph::AddOp(const QnnOpConfigWrapper& op_conf_wrapper) {
   }
 
   // Serialize op
-  json_["graph"]["nodes"][op_conf_wrapper.GetOpName()] = GetQnnOpJSON(op_conf_wrapper.GetQnnOpConfig());
+  json_["graph"]["nodes"][op_conf_wrapper.GetOpName()] = GetQnnOpJSON(op_conf_wrapper);
 }
 
 void QnnJSONGraph::AddOpTensors(gsl::span<const Qnn_Tensor_t> tensors) {

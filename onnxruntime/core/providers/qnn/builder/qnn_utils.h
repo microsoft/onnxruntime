@@ -35,7 +35,7 @@ class QnnJSONGraph {
   QnnJSONGraph();
 
   /**
-   * Add QNN operator to JSON graph represenation.
+   * Add QNN operator to JSON graph.
    *
    * /param op_conf_wrapper QNN operator to add.
    */
