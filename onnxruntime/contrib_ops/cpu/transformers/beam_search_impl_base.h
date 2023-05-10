@@ -98,7 +98,7 @@ struct BeamSearchCpuState : IBeamSearchCpuState {
 
   // Copy expanded input_ids to sequences_space
   void SetExpandedSequence(gsl::span<const int32_t> input_ids_in_cpu) {
-    for (size_t i = 0; i < batch_beam_size_; i++) {
+    for (int i = 0; i < batch_beam_size_; i++) {
       for (int j = 0; j < parameters_.sequence_length; j++) {
         const size_t index = SafeInt<gsl::index>(i) * parameters_.max_length + j;
         sequences_space[index] = input_ids_in_cpu[SafeInt<gsl::index>(i) * parameters_.sequence_length + j];
@@ -108,7 +108,7 @@ struct BeamSearchCpuState : IBeamSearchCpuState {
 
   // Copy unexpanded input_ids to sequences_space (only difference from SetExpandedSequence is i is divided by parameters_.num_beams
   void SetUnexpandedSequence(gsl::span<const int32_t> input_ids_in_cpu) {
-    for (size_t i = 0; i < batch_beam_size_; i++) {
+    for (int i = 0; i < batch_beam_size_; i++) {
       for (int j = 0; j < parameters_.sequence_length; j++) {
         const size_t index = SafeInt<gsl::index>(i) * parameters_.max_length + j;
         sequences_space[index] = input_ids_in_cpu[SafeInt<gsl::index>(i / parameters_.num_beams) * parameters_.sequence_length + j];
