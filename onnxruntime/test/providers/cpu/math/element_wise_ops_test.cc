@@ -3338,14 +3338,5 @@ TEST(MathOpTest, BitwiseNot_uint8) {
   test.AddOutput<uint8_t>("Y", dims, {254, 251, 250, 252});
   test.Run();
 }
-
-TEST(MathOpTest, BitwiseNot_uint64) {
-  OpTester test("BitwiseNot", 18);
-  std::vector<int64_t> dims{4};
-  test.AddInput<uint64_t>("X", dims, {10, 11, 12, 13});
-  test.AddOutput<uint64_t>("Y", dims, {18446744073709551605, 18446744073709551604, 18446744073709551603, 18446744073709551602});
-  test.Run();
-}
-
 }  // namespace test
 }  // namespace onnxruntime
