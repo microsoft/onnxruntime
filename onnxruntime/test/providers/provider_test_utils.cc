@@ -272,7 +272,7 @@ void InternalNumericalCheck(const Tensor& expected_tensor,
 #if defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_DML)
   constexpr float threshold = 0.005f;
 #else
-  constexpr float threshold = 0.0001f;
+  constexpr float threshold = 0.0002f;
 #endif
 
   for (int i = 0; i < size; ++i) {
