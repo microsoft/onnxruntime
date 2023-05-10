@@ -68,7 +68,8 @@ class QNNExecutionProvider : public IExecutionProvider {
   std::unordered_map<std::string, std::unique_ptr<qnn::QnnModel>> qnn_models_;
   AllocatorPtr cpu_allocator_;
   uint32_t rpc_control_latency_;
-  std::string debug_json_graphs_dir_;
+  bool enable_json_graphs_dump_;
+  std::string json_graphs_dir_;
 };
 
 }  // namespace onnxruntime

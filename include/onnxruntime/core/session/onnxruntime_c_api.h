@@ -3545,6 +3545,9 @@ struct OrtApi {
    *   "backend_path": file path to QNN backend library.
    *   "profiling_level": QNN profiling level, options: "basic", "detailed".
    *   "rpc_control_latency": QNN RPC control latency.
+   *   "enable_json_graphs_dump": Set to "1" to enable dumping of QNN graphs as JSON files.
+   *   "json_graphs_dir": Directory in which to dump QNN JSON graphs. If not specified, QNN graphs are dumped in the
+   *                      program's current working directory. Ignored if "enable_json_graphs_dump" is not set.
    *
    * SNPE supported keys:
    *   "runtime": SNPE runtime engine, options: "CPU", "CPU_FLOAT32", "GPU", "GPU_FLOAT32_16_HYBRID", "GPU_FLOAT16",

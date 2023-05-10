@@ -3,6 +3,8 @@
 
 #include "qnn_execution_provider.h"
 
+#include <filesystem>
+
 #include "core/providers/common.h"
 #include "core/framework/allocatormgr.h"
 #include "core/framework/compute_capability.h"
@@ -49,12 +51,26 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
     LOGS_DEFAULT(INFO) << "rpc_control_latency: " << rpc_control_latency_;
   }
 
-  static const std::string DEBUG_JSON_GRAPHS_DIR = "debug_json_graphs_dir";
-  auto debug_json_graphs_dir_pos = runtime_options_.find(DEBUG_JSON_GRAPHS_DIR);
+  static const std::string ENABLE_JSON_GRAPHS_DUMP = "enable_json_graphs_dump";
+  auto enable_json_graphs_dump_pos = runtime_options_.find(ENABLE_JSON_GRAPHS_DUMP);
 
-  if (debug_json_graphs_dir_pos != runtime_options_.end()) {
-    debug_json_graphs_dir_ = debug_json_graphs_dir_pos->second;
-    LOGS_DEFAULT(INFO) << "Debug JSON graph path: " << debug_json_graphs_dir_;
+  if (enable_json_graphs_dump_pos != runtime_options_.end()) {
+    enable_json_graphs_dump_ = enable_json_graphs_dump_pos->second == "1";
+    if (enable_json_graphs_dump_) {
+      LOGS_DEFAULT(INFO) << "Enabled JSON graphs dump.";
+    }
+  }
+
+  static const std::string JSON_GRAPHS_DIR = "json_graphs_dir";
+  auto json_graphs_dir_pos = runtime_options_.find(JSON_GRAPHS_DIR);
+
+  if (json_graphs_dir_pos != runtime_options_.end()) {
+    json_graphs_dir_ = json_graphs_dir_pos->second;
+    if (enable_json_graphs_dump_) {
+      LOGS_DEFAULT(INFO) << "JSON graphs directory: " << json_graphs_dir_;
+    } else {
+      LOGS_DEFAULT(WARNING) << "Provided a JSON graphs directory, but did not enable dumping of JSON graphs.";
+    }
   }
 
   AllocatorCreationInfo device_info(
@@ -275,7 +291,15 @@ Status QNNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused
                                                                                cpu_allocator_,
                                                                                is_npu_backend);
 
-    ORT_RETURN_IF_ERROR(qnn_model->ComposeGraph(graph_viewer, fused_node, debug_json_graphs_dir_));
+    std::string json_graph_filepath;
+
+    if (enable_json_graphs_dump_) {
+      namespace fs = std::filesystem;
+      fs::path path = fs::path(json_graphs_dir_) / fs::path(fused_node.Name() + ".json");
+      json_graph_filepath = path.string();
+    }
+
+    ORT_RETURN_IF_ERROR(qnn_model->ComposeGraph(graph_viewer, fused_node, json_graph_filepath));
     ORT_RETURN_IF_ERROR(qnn_model->FinalizeGraphs());
     ORT_RETURN_IF_ERROR(qnn_model->SetupQnnInputOutput());
 
