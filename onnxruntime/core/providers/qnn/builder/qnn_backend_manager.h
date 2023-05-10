@@ -205,8 +205,7 @@ class QnnBackendManager {
   bool is_npu_backend_ = false;
   Qnn_ProfileHandle_t profile_backend_handle_ = nullptr;
   std::vector<std::string> op_package_paths_;
-  uint32_t rpc_control_latency_;
-  bool load_from_cached_context_ = false;
+  uint32_t rpc_control_latency_ = 0;
   HtpPerformanceMode htp_performance_mode_;
 #ifdef _WIN32
   std::set<HMODULE> mod_handles_;

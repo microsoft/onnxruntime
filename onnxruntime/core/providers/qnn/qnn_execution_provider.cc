@@ -68,10 +68,7 @@ void QNNExecutionProvider::ParseHtpPerformanceMode(std::string htp_performance_m
 
 QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_options_map)
     : IExecutionProvider{onnxruntime::kQnnExecutionProvider, true},
-      runtime_options_(provider_options_map),
-      profiling_level_(qnn::ProfilingLevel::OFF),
-      htp_performance_mode_(qnn::HtpPerformanceMode::kHtpDefault),
-      context_cache_path_("") {
+      runtime_options_(provider_options_map) {
   static const std::string CONTEXT_CACHE_ENABLED = "qnn_context_cache_enable";
   auto context_cache_enabled_pos = runtime_options_.find(CONTEXT_CACHE_ENABLED);
   if (context_cache_enabled_pos != runtime_options_.end()) {

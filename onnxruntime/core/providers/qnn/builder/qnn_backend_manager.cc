@@ -379,7 +379,7 @@ Status QnnBackendManager::LoadCachedQnnContext(const onnxruntime::PathString& co
   sys_ctx_handle = nullptr;
 
   ORT_RETURN_IF_ERROR(ExtractBackendProfilingInfo());
-  load_from_cached_context_ = true;
+  context_created_ = true;
 
   LOGS(*logger_, VERBOSE) << "Load from cached QNN Context completed.";
   return Status::OK();
@@ -598,12 +598,9 @@ void QnnBackendManager::ReleaseResources() {
     ORT_THROW("Failed to ReleaseProfilehandle.");
   }
 
-  // TODO: Failed to release device if load from cached context, need further investigation
-  if (!load_from_cached_context_) {
-    result = ReleaseDevice();
-    if (Status::OK() != result) {
-      ORT_THROW("Failed to ReleaseDevice.");
-    }
+  result = ReleaseDevice();
+  if (Status::OK() != result) {
+    ORT_THROW("Failed to ReleaseDevice.");
   }
 
   result = ShutdownBackend();
