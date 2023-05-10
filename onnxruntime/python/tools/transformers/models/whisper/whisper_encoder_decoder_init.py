@@ -167,7 +167,7 @@ class WhisperEncoderDecoderInitHelper:
             },
             "logits": {
                 0: "batch_size",
-                1: sequence_length,
+                1: "decode_sequence_length",
             },
         }
 
@@ -175,7 +175,7 @@ class WhisperEncoderDecoderInitHelper:
             input_names.append("decoder_input_ids")
             dynamic_axes["decoder_input_ids"] = {
                 0: "batch_size",
-                1: sequence_length,
+                1: "decode_sequence_length",
             }
 
         for name in present_names:
@@ -191,7 +191,7 @@ class WhisperEncoderDecoderInitHelper:
                 dynamic_axes[name] = {
                     0: "batch_size",
                     1: num_heads,
-                    2: sequence_length,
+                    2: "decode_sequence_length",
                     3: head_size,
                 }
 

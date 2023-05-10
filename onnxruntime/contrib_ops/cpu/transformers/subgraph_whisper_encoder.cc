@@ -14,12 +14,12 @@ namespace onnxruntime {
 namespace contrib {
 namespace transformers {
 
-/* Whisper Encoder Subgraph (It also contains decoder initialization where decoder_input_ids are filled with start token ID).
+/* Whisper Encoder Subgraph (It also contains decoder initialization for decoder_input_ids).
 
    Inputs:
-      encoder_input_features: float (B, encode_sequence_length)
+      encoder_input_features: float (B, feature_size, encode_sequence_length)
       encoder_attention_mask: int32 (B, encode_sequence_length)
-      decoder_input_ids: int32 (B, 1)
+      decoder_input_ids: int32 (B, initial_decode_sequence_length)
 
     Outputs:
       logits: (B, 1, vocab_size)
@@ -74,7 +74,8 @@ Status WhisperEncoderSubgraph::Validate(const std::vector<const NodeArg*>& subgr
   constexpr auto float32_type = ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT;
   constexpr auto float16_type = ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16;
 
-  ORT_RETURN_IF(subgraph_inputs[0]->TypeAsProto()->tensor_type().elem_type() != float32_type && subgraph_inputs[0]->TypeAsProto()->tensor_type().elem_type() != float16_type,
+  ORT_RETURN_IF(subgraph_inputs[0]->TypeAsProto()->tensor_type().elem_type() != float32_type && \
+                subgraph_inputs[0]->TypeAsProto()->tensor_type().elem_type() != float16_type,
                 "encoder subgraph input 0 (encoder_input_features) shall have float32 or float16 type");
   ORT_RETURN_IF(subgraph_inputs[1]->TypeAsProto()->tensor_type().elem_type() != int32_type,
                 "encoder subgraph input 1 (encoder_attention_mask) shall have int32 type");
@@ -94,6 +95,59 @@ Status WhisperEncoderSubgraph::Validate(const std::vector<const NodeArg*>& subgr
 
   return Status::OK();
 }
+
+// Create inputs for first inference of subgraph.
+Status WhisperEncoderSubgraph::CreateInitialFeeds(
+    const Tensor& original_encoder_input_ids,
+    const OrtValue* attn_mask_value,
+    const Tensor& original_decoder_input_ids,
+    const std::vector<const OrtValue*>& implicit_inputs,
+    int pad_token_id,
+    std::vector<OrtValue>& feeds,
+    const GenerationDeviceHelper::CreateWhisperEncoderInputsFunc& create_encoder_inputs_func,
+    const GenerationDeviceHelper::AddToFeedsFunc& add_to_feeds_func,
+    IAllocatorUniquePtr<char>& buffer,
+    OrtValue& decoder_input_ids,
+    Stream* ort_stream) {
+  ORT_ENFORCE(session_state_ != nullptr, "Setup must be called before CreateInitialFeeds");
+
+  // The ordering is the same as used in Setup.
+  feeds.reserve(static_cast<size_t>(num_subgraph_inputs) + static_cast<size_t>(num_implicit_inputs));
+
+  // Allocate subgraph inputs to be same device as encoder_input_ids.
+  AllocatorPtr cpu_allocator = session_state_->GetAllocator(original_encoder_input_ids.Location());
+  if (cpu_allocator == nullptr) {
+    const IExecutionProvider* provider = GetProvider();
+    cpu_allocator = provider->GetAllocator(OrtMemTypeDefault);
+  }
+  ORT_RETURN_IF(cpu_allocator == nullptr, "cpu_allocator shouldn't be nullptr");
+
+  OrtValue encoder_input_ids;
+  OrtValue encoder_attention_mask;
+  ORT_RETURN_IF_ERROR(create_encoder_inputs_func(&original_encoder_input_ids,
+                                                 &original_decoder_input_ids,
+                                                 attn_mask_value,
+                                                 pad_token_id,
+                                                 cpu_allocator,
+                                                 encoder_input_ids,
+                                                 encoder_attention_mask,
+                                                 decoder_input_ids));
+
+  const IExecutionProvider* provider = GetProvider();
+  ORT_RETURN_IF_ERROR(add_to_feeds_func(
+      provider,
+      ort_stream,
+      {encoder_input_ids, encoder_attention_mask, decoder_input_ids},
+      feeds,
+      buffer));
+
+  for (const auto* entry : implicit_inputs) {
+    feeds.push_back(*entry);
+  }
+
+  return Status::OK();
+}
+
 }  // namespace transformers
 }  // namespace contrib
 }  // namespace onnxruntime

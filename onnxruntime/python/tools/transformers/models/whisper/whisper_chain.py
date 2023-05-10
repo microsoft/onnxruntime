@@ -40,6 +40,7 @@ def chain_model(args):
         "",
         "",
         "attention_mask",
+        "decoder_input_ids",
     ]
     beam_outputs = ["sequences"]
 
@@ -69,6 +70,9 @@ def chain_model(args):
     attention_mask = helper.make_tensor_value_info(
         "attention_mask", TensorProto.INT32, ["batch_size", "feature_size", "sequence_length"]
     )
+    decoder_input_ids = helper.make_tensor_value_info(
+        "decoder_input_ids", TensorProto.INT32, ["batch_size", "initial_sequence_length"]
+    )
 
     graph_inputs = [
         input_features,
@@ -79,6 +83,7 @@ def chain_model(args):
         length_penalty,
         repetition_penalty,
         attention_mask,
+        decoder_input_ids,
     ]
 
     # graph outputs
