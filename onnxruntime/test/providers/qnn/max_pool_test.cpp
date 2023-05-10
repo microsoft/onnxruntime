@@ -198,14 +198,62 @@ TEST_F(QnnCPUBackendTests, TestMaxPool_Global) {
                        ExpectedEPNodeAssignment::All, "TestMaxPool_Global");
 }
 
+TEST_F(QnnCPUBackendTests, TestMaxPool_Large_Kernel) {
+  RunMaxPoolOpTest({1, 125, 8, 56},  // shape
+                       {2, 2},        // kernel_shape
+                       {2, 2},        // strides
+                       {0, 0, 0, 0},  // pads
+					   {1, 1},        // dialations
+					   0,             // ceil_mode
+					   0,             // storage_order
+                       "NOTSET",      // auto_pad
+                       ExpectedEPNodeAssignment::All, "TestMaxPool_Large_Kernel");
+}
+
+TEST_F(QnnCPUBackendTests, TestMaxPool_Large_Kernel2) {
+  RunMaxPoolOpTest({1, 128, 16, 113},  // shape
+                       {2, 2},        // kernel_shape
+                       {2, 2},        // strides
+                       {0, 0, 0, 0},  // pads
+					   {1, 1},        // dialations
+					   0,             // ceil_mode
+					   0,             // storage_order
+                       "NOTSET",      // auto_pad
+                       ExpectedEPNodeAssignment::All, "TestMaxPool_Large_Kernel2");
+}
+
+TEST_F(QnnCPUBackendTests, TestMaxPool_Floor) {
+  RunMaxPoolOpTest({1, 2, 3, 3},  // shape
+                       {3, 3},        // kernel_shape
+                       {3, 3},        // strides
+                       {0, 0, 0, 0},  // pads
+					   {1, 1},        // dialations
+					   1,             // ceil_mode
+					   0,             // storage_order
+                       "NOTSET",      // auto_pad
+                       ExpectedEPNodeAssignment::All, "TestMaxPool_Floor");
+}
+
+TEST_F(QnnCPUBackendTests, TestMaxPool_Large_Kernel2_Floor) {
+  RunMaxPoolOpTest({1, 128, 16, 113},  // shape
+                       {2, 2},        // kernel_shape
+                       {2, 2},        // strides
+                       {0, 0, 0, 0},  // pads
+					   {1, 1},        // dialations
+					   1,             // ceil_mode
+					   0,             // storage_order
+                       "NOTSET",      // auto_pad
+                       ExpectedEPNodeAssignment::All, "TestMaxPool_Large_Kernel2_Floor");
+}
+
+
 
 #if defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 //
 // HTP tests:
 //
-
 // QDQ MaxPool with kernel size equal to the spatial dimension of input tensor.
-TEST_F(QnnCPUBackendTests, TestMaxPool_Global_HTP_u8) {
+TEST_F(QnnHTPBackendTests, TestMaxPool_Global_HTP_u8) {
   RunQDQMaxPoolOpTest<uint8_t>({1, 2, 3, 3},  // shape
                        {3, 3},        // kernel_shape
                        {3, 3},        // strides
@@ -215,6 +263,55 @@ TEST_F(QnnCPUBackendTests, TestMaxPool_Global_HTP_u8) {
 					   0,             // storage_order
                        "NOTSET",      // auto_pad
                        ExpectedEPNodeAssignment::All, "TestMaxPool_Global_HTP_u8");
+}
+
+TEST_F(QnnHTPBackendTests, TestMaxPool_Large_Kernel_HTP_u8) {
+  RunQDQMaxPoolOpTest<uint8_t>({1, 125, 8, 56},  // shape
+                       {2, 2},        // kernel_shape
+                       {2, 2},        // strides
+                       {0, 0, 0, 0},  // pads
+					   {1, 1},        // dialations
+					   0,             // ceil_mode
+					   0,             // storage_order
+                       "NOTSET",      // auto_pad
+                       ExpectedEPNodeAssignment::All, "TestMaxPool_Large_Kernel_HTP_u8");
+}
+
+TEST_F(QnnHTPBackendTests, TestMaxPool_Large_Kernel2_HTP_u8) {
+  RunQDQMaxPoolOpTest<uint8_t>({1, 128, 16, 113},  // shape
+                       {2, 2},        // kernel_shape
+                       {2, 2},        // strides
+                       {0, 0, 0, 0},  // pads
+					   {1, 1},        // dialations
+					   0,             // ceil_mode
+					   0,             // storage_order
+                       "NOTSET",      // auto_pad
+                       ExpectedEPNodeAssignment::All, "TestMaxPool_Large_Kernel2_HTP_u8");
+}
+
+
+TEST_F(QnnCPUBackendTests, TestMaxPool_Floor_HTP_u8) {
+  RunQDQMaxPoolOpTest<uint8_t>({1, 2, 3, 3},  // shape
+                       {3, 3},        // kernel_shape
+                       {3, 3},        // strides
+                       {0, 0, 0, 0},  // pads
+					   {1, 1},        // dialations
+					   1,             // ceil_mode
+					   0,             // storage_order
+                       "NOTSET",      // auto_pad
+                       ExpectedEPNodeAssignment::All, "TestMaxPool_Floor_HTP_u8");
+}
+
+TEST_F(QnnCPUBackendTests, TestMaxPool_Large_Kernel2_Floor_HTP_u8) {
+  RunQDQMaxPoolOpTest<uint8_t>({1, 128, 16, 113},  // shape
+                       {2, 2},        // kernel_shape
+                       {2, 2},        // strides
+                       {0, 0, 0, 0},  // pads
+					   {1, 1},        // dialations
+					   1,             // ceil_mode
+					   0,             // storage_order
+                       "NOTSET",      // auto_pad
+                       ExpectedEPNodeAssignment::All, "TestMaxPool_Large_Kernel2_Floor_HTP_u8");
 }
 
 
