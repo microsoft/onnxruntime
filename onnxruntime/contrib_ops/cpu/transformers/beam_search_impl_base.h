@@ -79,56 +79,47 @@ struct BeamSearchState : IBeamSearchState<T> {
 struct BeamSearchCpuState : IBeamSearchCpuState {
   Sequences sequences;
 
-  BeamSearchCpuState(const IGenerationParameters& parameters, AllocatorPtr allocator, bool is_cuda) {
+  BeamSearchCpuState(const IGenerationParameters& parameters, AllocatorPtr allocator, bool is_cuda)
+      : parameters_{parameters} {
+    sequence_lengths = AllocateBuffer<int32_t>(allocator, sequence_lengths_buffer_, batch_beam_size_);
 
-    const auto batch_beam_size = parameters.batch_size * parameters.num_beams;
-
-    sequence_lengths = AllocateBuffer<int32_t>(allocator, sequence_lengths_buffer_, batch_beam_size);
-
-    size_t sequences_bytes = SafeInt<size_t>(2) * batch_beam_size * parameters.max_length;
-    sequences_space = AllocateBuffer<int32_t>(allocator, sequences_space_buffer_, sequences_bytes);
-    memset(sequences_space.data(), 0, sequences_space.size_bytes());
-    sequences.Init(sequences_space, batch_beam_size, parameters.sequence_length, parameters.max_length);
+    size_t sequences_bytes = SafeInt<size_t>(2) * batch_beam_size_ * parameters.max_length;
+    sequences_space = AllocateBuffer<int32_t>(allocator, sequences_space_buffer_, sequences_bytes, true /* fill */);
+    sequences.Init(sequences_space, batch_beam_size_, parameters.sequence_length, parameters.max_length);
 
     if (is_cuda) {
       // buffers used by CUDA operator but not by CPU operator.
-      topk_scores = AllocateBuffer<float>(allocator, topk_scores_buffer_, 2 * batch_beam_size);
-      topk_tokens = AllocateBuffer<int32_t>(allocator, topk_tokens_buffer_, 2 * batch_beam_size);
-      topk_indices = AllocateBuffer<int32_t>(allocator, topk_indices_buffer_, 2 * batch_beam_size);
-      final_beam_scores = AllocateBuffer<float>(allocator, final_beam_scores_buffer_, batch_beam_size);
+      topk_scores = AllocateBuffer<float>(allocator, topk_scores_buffer_, 2 * batch_beam_size_);
+      topk_tokens = AllocateBuffer<int32_t>(allocator, topk_tokens_buffer_, 2 * batch_beam_size_);
+      topk_indices = AllocateBuffer<int32_t>(allocator, topk_indices_buffer_, 2 * batch_beam_size_);
+      final_beam_scores = AllocateBuffer<float>(allocator, final_beam_scores_buffer_, batch_beam_size_);
     }
   }
 
-  // Copy expanded input_ids to sequences[0]
-  void SetSequence(gsl::span<const int32_t> input_ids_in_cpu,
-                   size_t batch_beam_size,
-                   int max_length,
-                   int sequence_length) {
-    gsl::span<int32_t> sequences_0 = sequences_space;
-    for (size_t i = 0; i < batch_beam_size; i++) {
-      for (int j = 0; j < sequence_length; j++) {
-        const size_t index = SafeInt<gsl::index>(i) * max_length + j;
-        sequences_0[index] = input_ids_in_cpu[SafeInt<gsl::index>(i) * sequence_length + j];
+  // Copy expanded input_ids to sequences_space
+  void SetExpandedSequence(gsl::span<const int32_t> input_ids_in_cpu) {
+    for (size_t i = 0; i < batch_beam_size_; i++) {
+      for (int j = 0; j < parameters_.sequence_length; j++) {
+        const size_t index = SafeInt<gsl::index>(i) * parameters_.max_length + j;
+        sequences_space[index] = input_ids_in_cpu[SafeInt<gsl::index>(i) * parameters_.sequence_length + j];
       }
     }
   }
 
-  // Copy unexpanded input_ids to sequences[0]
-  void SetSequence(gsl::span<const int32_t> input_ids_in_cpu,
-                   size_t batch_beam_size,
-                   int beam_size,
-                   int max_length,
-                   int sequence_length) {
-    gsl::span<int32_t> sequences_0 = sequences_space;
-    for (size_t i = 0; i < batch_beam_size; i++) {
-      for (int j = 0; j < sequence_length; j++) {
-        const size_t index = SafeInt<gsl::index>(i) * max_length + j;
-        sequences_0[index] = input_ids_in_cpu[SafeInt<gsl::index>(i / beam_size) * sequence_length + j];
+  // Copy unexpanded input_ids to sequences_space (only difference from SetExpandedSequence is i is divided by parameters_.num_beams
+  void SetUnexpandedSequence(gsl::span<const int32_t> input_ids_in_cpu) {
+    for (size_t i = 0; i < batch_beam_size_; i++) {
+      for (int j = 0; j < parameters_.sequence_length; j++) {
+        const size_t index = SafeInt<gsl::index>(i) * parameters_.max_length + j;
+        sequences_space[index] = input_ids_in_cpu[SafeInt<gsl::index>(i / parameters_.num_beams) * parameters_.sequence_length + j];
       }
     }
   }
 
  private:
+  const IGenerationParameters& parameters_;
+  const int batch_beam_size_{parameters_.batch_size * parameters_.num_beams};
+
   BufferUniquePtr final_beam_scores_buffer_;
   BufferUniquePtr sequence_lengths_buffer_;
   BufferUniquePtr topk_scores_buffer_;

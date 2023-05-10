@@ -181,11 +181,7 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
   // ------------------------------------
 
   // Copy decoder_input_ids (in CPU) to sequence. It contains decoder_start_token_id for each beam.
-  cpu_state.SetSequence(decoder_input_ids.Get<Tensor>().DataAsSpan<int32_t>(),
-                        static_cast<size_t>(parameters->BatchBeamSize()),
-                        parameters->num_beams,
-                        parameters->max_length,
-                        parameters->sequence_length);
+  cpu_state.SetUnexpandedSequence(decoder_input_ids.Get<Tensor>().DataAsSpan<int32_t>());
 
   onnxruntime::OrtStlAllocator<HypothesisScore> hypothesis_score_allocator(this->cpu_allocator_);
   onnxruntime::OrtStlAllocator<BeamHypotheses> beam_hyps_allocator(this->cpu_allocator_);
@@ -368,14 +364,13 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
     }
   }
 
-  gsl::span<const float> final_beam_scores(beam_state.beam_scores.data(), beam_state.beam_scores.size());
+  gsl::span<const float> final_beam_scores = beam_state.beam_scores;
   if (this->IsCuda()) {
     ORT_RETURN_IF_ERROR(this->device_copy_func_(cpu_state.final_beam_scores,
                                                 final_beam_scores,
                                                 nullptr,
                                                 DeviceCopyDirection::deviceToHost));
-    final_beam_scores = gsl::make_span<const float>(cpu_state.final_beam_scores.data(),
-                                                    cpu_state.final_beam_scores.size());
+    final_beam_scores = cpu_state.final_beam_scores;
   }
 
   this->beam_scorer_->Finalize(&(cpu_state.sequences),
@@ -386,7 +381,7 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
   // Output per token scores
   if (output_scores != nullptr) {
     gsl::span<float> target = output_scores->MutableDataAsSpan<float>();
-    gsl::span<const float> source = gsl::span<const float>(beam_state.scores.data(), beam_state.scores.size());
+    gsl::span<const float> source = beam_state.scores;
     assert(target.size() == source.size());
     ORT_RETURN_IF_ERROR(this->device_copy_func_(target, source, nullptr, DeviceCopyDirection::deviceToDevice));
   }
