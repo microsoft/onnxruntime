@@ -189,9 +189,7 @@ class WhisperDecoderInputs:
         return WhisperDecoderInputs(decoder_input_ids, past)
 
     def to_list(self) -> List:
-        input_list = [
-            self.decoder_input_ids
-        ]
+        input_list = [self.decoder_input_ids]
         if self.past_key_values:
             input_list.extend(self.past_key_values)
         return input_list
