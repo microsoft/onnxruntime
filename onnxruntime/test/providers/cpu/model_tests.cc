@@ -702,7 +702,7 @@ TEST_P(ModelTest, Run) {
           OrtTensorRTProviderOptionsV2 params{0, 0, nullptr, 1000, 1, 1 << 30,
                                               1,  // enable fp16
                                               0, nullptr, 0, 0, 0, 0, 0, nullptr, 0, nullptr, 0, 0, 0, 0, 0, 0, 0, 0,
-                                              2, -1, nullptr, nullptr, nullptr, nullptr, nullptr};
+                                              3, -1, nullptr, nullptr, nullptr, nullptr, nullptr};
 
           ortso.AppendExecutionProvider_TensorRT_V2(params);
         } else {

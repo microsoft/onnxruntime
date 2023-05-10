@@ -1960,7 +1960,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
     }
 #if NV_TENSORRT_MINOR > 5 && NV_TENSORRT_MAJOR >= 8
     // switch optimizaion level
-    if (builder_optimization_level_ != 2) {
+    if (builder_optimization_level_ != 3) {
       trt_config->setBuilderOptimizationLevel(builder_optimization_level_);
       LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Builder optimization level is set to " << builder_optimization_level_;
     }
@@ -1971,7 +1971,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
       LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Auxiliary streams are se to " << auxiliary_streams_;
     }
 #else
-    if (builder_optimization_level_ != 2) {
+    if (builder_optimization_level_ != 3) {
       LOGS_DEFAULT(WARNING) << "[TensorRT EP] Builder optimization level can only be used on TRT 8.6 onwards!";
     }
     if (auxiliary_streams_ >= 0) {
