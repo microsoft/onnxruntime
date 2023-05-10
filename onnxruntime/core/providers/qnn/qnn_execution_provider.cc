@@ -20,9 +20,57 @@ namespace onnxruntime {
 
 constexpr const char* QNN = "QNN";
 
+void QNNExecutionProvider::ParseProfilingLevel(std::string profiling_level_string) {
+  std::transform(profiling_level_string.begin(),
+                 profiling_level_string.end(),
+                 profiling_level_string.begin(),
+                 [](unsigned char c) { return static_cast<unsigned char>(std::tolower(c)); });
+  LOGS_DEFAULT(VERBOSE) << "profiling_level: " << profiling_level_string;
+  if (profiling_level_string == "off") {
+    profiling_level_ = qnn::ProfilingLevel::OFF;
+  } else if (profiling_level_string == "basic") {
+    profiling_level_ = qnn::ProfilingLevel::BASIC;
+  } else if (profiling_level_string == "detailed") {
+    profiling_level_ = qnn::ProfilingLevel::DETAILED;
+  } else {
+    LOGS_DEFAULT(WARNING) << "Profiling level not valid.";
+  }
+}
+
+void QNNExecutionProvider::ParseHtpPerformanceMode(std::string htp_performance_mode_string) {
+  std::transform(htp_performance_mode_string.begin(),
+                 htp_performance_mode_string.end(),
+                 htp_performance_mode_string.begin(),
+                 [](unsigned char c) { return static_cast<unsigned char>(std::tolower(c)); });
+  LOGS_DEFAULT(VERBOSE) << "Htp performance mode: " << htp_performance_mode_string;
+  if (htp_performance_mode_string == "burst") {
+    htp_performance_mode_ = qnn::HtpPerformanceMode::kHtpBurst;
+  } else if (htp_performance_mode_string == "balanced") {
+    htp_performance_mode_ = qnn::HtpPerformanceMode::kHtpBalanced;
+  } else if (htp_performance_mode_string == "default") {
+    htp_performance_mode_ = qnn::HtpPerformanceMode::kHtpDefault;
+  } else if (htp_performance_mode_string == "high_performance") {
+    htp_performance_mode_ = qnn::HtpPerformanceMode::kHtpHighPerformance;
+  } else if (htp_performance_mode_string == "high_power_saver") {
+    htp_performance_mode_ = qnn::HtpPerformanceMode::kHtpHighPowerSaver;
+  } else if (htp_performance_mode_string == "low_balanced") {
+    htp_performance_mode_ = qnn::HtpPerformanceMode::kHtpLowBalanced;
+  } else if (htp_performance_mode_string == "low_power_saver") {
+    htp_performance_mode_ = qnn::HtpPerformanceMode::kHtpLowPowerSaver;
+  } else if (htp_performance_mode_string == "power_saver") {
+    htp_performance_mode_ = qnn::HtpPerformanceMode::kHtpPowerSaver;
+  } else if (htp_performance_mode_string == "sustained_high_performance") {
+    htp_performance_mode_ = qnn::HtpPerformanceMode::kHtpSustainedHighPerformance;
+  } else {
+    LOGS_DEFAULT(WARNING) << "Htp performance mode not valid.";
+  }
+}
+
 QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_options_map)
     : IExecutionProvider{onnxruntime::kQnnExecutionProvider, true},
       runtime_options_(provider_options_map),
+      profiling_level_(qnn::ProfilingLevel::OFF),
+      htp_performance_mode_(qnn::HtpPerformanceMode::kHtpDefault),
       context_cache_path_("") {
   static const std::string CONTEXT_CACHE_ENABLED = "qnn_context_cache_enable";
   auto context_cache_enabled_pos = runtime_options_.find(CONTEXT_CACHE_ENABLED);
@@ -50,20 +98,24 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
     LOGS_DEFAULT(ERROR) << "No backend path provided.";
   }
 
-  profiling_level_ = qnn::ProfilingLevel::OFF;
   static const std::string PROFILING_LEVEL = "profiling_level";
   auto profiling_level_pos = runtime_options_.find(PROFILING_LEVEL);
   if (profiling_level_pos != runtime_options_.end()) {
     ParseProfilingLevel(profiling_level_pos->second);
-    LOGS_DEFAULT(VERBOSE) << "profiling_level: " << static_cast<uint8_t>(profiling_level_);
   }
 
-  rpc_control_latency_ = 10;
   static const std::string RPC_CONTROL_LANTENCY = "rpc_control_latency";
   auto latency_pos = runtime_options_.find(RPC_CONTROL_LANTENCY);
   if (latency_pos != runtime_options_.end()) {
     rpc_control_latency_ = static_cast<uint32_t>(std::stoul(latency_pos->second));
     LOGS_DEFAULT(VERBOSE) << "rpc_control_latency: " << rpc_control_latency_;
+  }
+
+  htp_performance_mode_ = qnn::HtpPerformanceMode::kHtpDefault;
+  static const std::string HTP_PERFORMANCE_MODE = "htp_performance_mode";
+  auto htp_performance_mode_pos = runtime_options_.find(HTP_PERFORMANCE_MODE);
+  if (htp_performance_mode_pos != runtime_options_.end()) {
+    ParseHtpPerformanceMode(htp_performance_mode_pos->second);
   }
 
   AllocatorCreationInfo device_info(
@@ -76,7 +128,8 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
 
   qnn_backend_manager_ = std::make_unique<qnn::QnnBackendManager>(backend_path_,
                                                                   profiling_level_,
-                                                                  rpc_control_latency_);
+                                                                  rpc_control_latency_,
+                                                                  htp_performance_mode_);
 }
 
 bool QNNExecutionProvider::IsNodeSupported(qnn::QnnModelWrapper& qnn_model_wrapper, const NodeUnit& node_unit,

@@ -35,6 +35,27 @@ enum class ProfilingLevel : uint8_t {
   INVALID
 };
 
+// Defines performance modes available for HTP backend.
+enum class HtpPerformanceMode : uint8_t {
+  kHtpDefault = 0,
+  kHtpSustainedHighPerformance,
+  kHtpBurst,
+  kHtpHighPerformance,
+  kHtpPowerSaver,
+  kHtpLowPowerSaver,
+  kHtpHighPowerSaver,
+  kHtpLowBalanced,
+  kHtpBalanced,
+};
+
+// constexpr config values
+constexpr const int kSleepMinLatency = 40;
+constexpr const int kSleepLowLatency = 100;
+constexpr const int kSleepMediumLatency = 1000;
+constexpr const int kSleepHighLatency = 2000;
+constexpr const int kDcvsDisable = 0;
+constexpr const int kDcvsEnable = 1;
+
 struct OnnxTensorInfo {
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(OnnxTensorInfo);
   OnnxTensorInfo(size_t index, int32_t data_type, std::vector<int64_t>&& shape) : index_(index), data_type_(data_type), shape_(std::move(shape)) {}

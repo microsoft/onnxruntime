@@ -7,9 +7,7 @@
 #include <fstream>
 #include <filesystem>
 #include "QnnOpDef.h"
-#include "DSP/QnnDspPerfInfrastructure.h"
-#include "DSP/QnnDspBackend.h"
-#include "DSP/QnnDspDevice.h"
+#include "HTP/QnnHtpPerfInfrastructure.h"
 #include "DSP/QnnDspCommon.h"
 #include "HTP/QnnHtpCommon.h"
 
@@ -420,13 +418,10 @@ Status QnnBackendManager::SetupBackend(const logging::Logger& logger, bool load_
     LOGS(logger, VERBOSE) << "CreateContext succeed.";
   }
 
-  // TODO: failed to createPowerConfigId with Qnn v2, need future investigation
-  // Disable it for now since it doen't impact any existing feature
-  // Also should enable EP options to control the enablement
-  // if (set_power_config && profiling_level_ == qnn::ProfilingLevel::OFF) {
-  //  ORT_RETURN_IF_ERROR(SetDspPowerConfig());
-  //  LOGS(*logger, VERBOSE) << "SetDspPowerConfig succeed.";
-  //}
+  if (htp_performance_mode_ != HtpPerformanceMode::kHtpDefault) {
+    ORT_RETURN_IF_ERROR(SetHtpPowerConfig());
+    LOGS(logger, VERBOSE) << "SetHtpPowerConfig succeed.";    
+  }
 
   LOGS(logger, VERBOSE) << "QNN SetupBackend succeed";
 
@@ -435,58 +430,141 @@ Status QnnBackendManager::SetupBackend(const logging::Logger& logger, bool load_
   return Status::OK();
 }
 
-Status QnnBackendManager::SetDspPowerConfig() {
-  QnnDspPerfInfrastructure_PowerConfig_t dcvs_enable;
-  dcvs_enable.config = QNN_DSP_PERF_INFRASTRUCTURE_POWER_CONFIGOPTION_DCVS_ENABLE;
-  dcvs_enable.dcvsEnableConfig = 0;  // FALSE
-  QnnDspPerfInfrastructure_PowerConfig_t sleep_disable;
-  sleep_disable.config = QNN_DSP_PERF_INFRASTRUCTURE_POWER_CONFIGOPTION_SLEEP_DISABLE;
-  sleep_disable.sleepDisableConfig = 1;
-  QnnDspPerfInfrastructure_PowerConfig_t dcvs_power_mode;
-  dcvs_power_mode.config = QNN_DSP_PERF_INFRASTRUCTURE_POWER_CONFIGOPTION_DCVS_POWER_MODE;
-  dcvs_power_mode.dcvsPowerModeConfig = QNN_DSP_PERF_INFRASTRUCTURE_POWERMODE_PERFORMANCE_MODE;
-  QnnDspPerfInfrastructure_PowerConfig_t bus_VCorner_min;
-  bus_VCorner_min.config = QNN_DSP_PERF_INFRASTRUCTURE_POWER_CONFIGOPTION_BUS_VOLTAGE_CORNER;
-  bus_VCorner_min.busVoltageCornerMinConfig = DCVS_VOLTAGE_VCORNER_TURBO_PLUS;
-  QnnDspPerfInfrastructure_PowerConfig_t bus_VCorner_target;
-  bus_VCorner_target.config = QNN_DSP_PERF_INFRASTRUCTURE_POWER_CONFIGOPTION_BUS_VOLTAGE_CORNER;
-  bus_VCorner_target.busVoltageCornerTargetConfig = DCVS_VOLTAGE_VCORNER_TURBO_PLUS;
-  QnnDspPerfInfrastructure_PowerConfig_t bus_VCorner_max;
-  bus_VCorner_max.config = QNN_DSP_PERF_INFRASTRUCTURE_POWER_CONFIGOPTION_BUS_VOLTAGE_CORNER;
-  bus_VCorner_max.busVoltageCornerMaxConfig = DCVS_VOLTAGE_VCORNER_TURBO_PLUS;
-  QnnDspPerfInfrastructure_PowerConfig_t core_VCorner_min;
-  core_VCorner_min.config = QNN_DSP_PERF_INFRASTRUCTURE_POWER_CONFIGOPTION_CORE_VOLTAGE_CORNER;
-  core_VCorner_min.coreVoltageCornerMinConfig = DCVS_VOLTAGE_VCORNER_TURBO_PLUS;
-  QnnDspPerfInfrastructure_PowerConfig_t core_VCorner_target;
-  core_VCorner_target.config = QNN_DSP_PERF_INFRASTRUCTURE_POWER_CONFIGOPTION_CORE_VOLTAGE_CORNER;
-  core_VCorner_target.coreVoltageCornerTargetConfig = DCVS_VOLTAGE_VCORNER_TURBO_PLUS;
-  QnnDspPerfInfrastructure_PowerConfig_t core_VCorner_max;
-  core_VCorner_max.config = QNN_DSP_PERF_INFRASTRUCTURE_POWER_CONFIGOPTION_CORE_VOLTAGE_CORNER;
-  core_VCorner_max.coreVoltageCornerMaxConfig = DCVS_VOLTAGE_VCORNER_TURBO_PLUS;
-  QnnDspPerfInfrastructure_PowerConfig_t rpc_control_latency;
-  rpc_control_latency.config = QNN_DSP_PERF_INFRASTRUCTURE_POWER_CONFIGOPTION_RPC_CONTROL_LATENCY;
-  rpc_control_latency.rpcControlLatencyConfig = rpc_control_latency_;
-
-  const QnnDspPerfInfrastructure_PowerConfig_t* power_configs[] = {&dcvs_enable, &sleep_disable,
-                                                                   &dcvs_power_mode, &bus_VCorner_min,
-                                                                   &bus_VCorner_target, &bus_VCorner_max,
-                                                                   &core_VCorner_min, &core_VCorner_target,
-                                                                   &core_VCorner_max, &rpc_control_latency,
-                                                                   nullptr};
-
+Status QnnBackendManager::SetHtpPowerConfig() {
   QnnDevice_Infrastructure_t qnn_device_infra = nullptr;
   auto status = qnn_interface_.deviceGetInfrastructure(&qnn_device_infra);
   ORT_RETURN_IF(QNN_SUCCESS != status, "backendGetPerfInfrastructure failed.");
 
-  QnnDspDevice_Infrastructure_t* dsp_device_infra = static_cast<QnnDspDevice_Infrastructure_t*>(qnn_device_infra);
-
-  uint32_t powerconfig_client_id{0};
-  // TODO: failed to createPowerConfigId with Qnn v2, need future investigation
-  status = dsp_device_infra->createPowerConfigId(&powerconfig_client_id);
+  auto* htp_infra = static_cast<QnnHtpDevice_Infrastructure_t*>(qnn_device_infra);
+  ORT_RETURN_IF(QNN_HTP_DEVICE_INFRASTRUCTURE_TYPE_PERF != htp_infra->infraType,
+                "HTP infra type = ", htp_infra->infraType, ", which is not perf infra type.");
+  QnnHtpDevice_PerfInfrastructure_t& htp_perf_infra = htp_infra->perfInfra;
+  // Get power client id
+  uint32_t powerconfig_client_id = 0;
+  status = htp_perf_infra.createPowerConfigId(/*device_id=*/0, /*core_id=*/0, &powerconfig_client_id);
   ORT_RETURN_IF(QNN_SUCCESS != status, "createPowerConfigId failed.");
 
-  status = dsp_device_infra->setPowerConfig(powerconfig_client_id, power_configs);
-  ORT_RETURN_IF(QNN_SUCCESS != status, "setPowerConfig failed.");
+  constexpr const int kNumConfigs = 1;
+  std::vector<QnnHtpPerfInfrastructure_PowerConfig_t> power_configs(
+      kNumConfigs);
+  QnnHtpPerfInfrastructure_PowerConfig_t& dcvs_config = power_configs[0];
+  dcvs_config.option = QNN_HTP_PERF_INFRASTRUCTURE_POWER_CONFIGOPTION_DCVS_V3;
+  QnnHtpPerfInfrastructure_DcvsV3_t& dcvs_v3 = dcvs_config.dcvsV3Config;
+  dcvs_v3.contextId = powerconfig_client_id;
+  dcvs_v3.setSleepDisable = 0;
+  dcvs_v3.sleepDisable = 0;
+  dcvs_v3.setDcvsEnable = 1;
+  dcvs_v3.dcvsEnable = kDcvsDisable;
+  dcvs_v3.powerMode = QNN_HTP_PERF_INFRASTRUCTURE_POWERMODE_PERFORMANCE_MODE;
+  // choose performance mode
+  switch (htp_performance_mode_) {
+    case HtpPerformanceMode::kHtpBurst:
+      dcvs_v3.setSleepLatency = 1;  // true
+      dcvs_v3.sleepLatency = kSleepMinLatency;
+      dcvs_v3.setBusParams = 1;
+      dcvs_v3.busVoltageCornerMin = DCVS_VOLTAGE_VCORNER_MAX_VOLTAGE_CORNER;
+      dcvs_v3.busVoltageCornerTarget = DCVS_VOLTAGE_VCORNER_MAX_VOLTAGE_CORNER;
+      dcvs_v3.busVoltageCornerMax = DCVS_VOLTAGE_VCORNER_MAX_VOLTAGE_CORNER;
+      dcvs_v3.setCoreParams = 1;
+      dcvs_v3.coreVoltageCornerMin = DCVS_VOLTAGE_VCORNER_MAX_VOLTAGE_CORNER;
+      dcvs_v3.coreVoltageCornerTarget = DCVS_VOLTAGE_VCORNER_MAX_VOLTAGE_CORNER;
+      dcvs_v3.coreVoltageCornerMax = DCVS_VOLTAGE_VCORNER_MAX_VOLTAGE_CORNER;
+      break;
+    case HtpPerformanceMode::kHtpSustainedHighPerformance:
+    case HtpPerformanceMode::kHtpHighPerformance:
+      dcvs_v3.setSleepLatency = 1;  // true
+      dcvs_v3.sleepLatency = kSleepLowLatency;
+      dcvs_v3.setBusParams = 1;
+      dcvs_v3.busVoltageCornerMin = DCVS_VOLTAGE_VCORNER_TURBO;
+      dcvs_v3.busVoltageCornerTarget = DCVS_VOLTAGE_VCORNER_TURBO;
+      dcvs_v3.busVoltageCornerMax = DCVS_VOLTAGE_VCORNER_TURBO;
+      dcvs_v3.setCoreParams = 1;
+      dcvs_v3.coreVoltageCornerMin = DCVS_VOLTAGE_VCORNER_TURBO;
+      dcvs_v3.coreVoltageCornerTarget = DCVS_VOLTAGE_VCORNER_TURBO;
+      dcvs_v3.coreVoltageCornerMax = DCVS_VOLTAGE_VCORNER_TURBO;
+      break;
+    case HtpPerformanceMode::kHtpPowerSaver:
+      dcvs_v3.setSleepLatency = 1;  // true
+      dcvs_v3.sleepLatency = kSleepMediumLatency;
+      dcvs_v3.setBusParams = 1;
+      dcvs_v3.busVoltageCornerMin = DCVS_VOLTAGE_VCORNER_SVS;
+      dcvs_v3.busVoltageCornerTarget = DCVS_VOLTAGE_VCORNER_SVS;
+      dcvs_v3.busVoltageCornerMax = DCVS_VOLTAGE_VCORNER_SVS;
+      dcvs_v3.setCoreParams = 1;
+      dcvs_v3.coreVoltageCornerMin = DCVS_VOLTAGE_VCORNER_SVS;
+      dcvs_v3.coreVoltageCornerTarget = DCVS_VOLTAGE_VCORNER_SVS;
+      dcvs_v3.coreVoltageCornerMax = DCVS_VOLTAGE_VCORNER_SVS;
+      break;
+    case HtpPerformanceMode::kHtpLowPowerSaver:
+      dcvs_v3.setSleepLatency = 1;  // true
+      dcvs_v3.sleepLatency = kSleepMediumLatency;
+      dcvs_v3.setBusParams = 1;
+      dcvs_v3.busVoltageCornerMin = DCVS_VOLTAGE_VCORNER_SVS2;
+      dcvs_v3.busVoltageCornerTarget = DCVS_VOLTAGE_VCORNER_SVS2;
+      dcvs_v3.busVoltageCornerMax = DCVS_VOLTAGE_VCORNER_SVS2;
+      dcvs_v3.setCoreParams = 1;
+      dcvs_v3.coreVoltageCornerMin = DCVS_VOLTAGE_VCORNER_SVS2;
+      dcvs_v3.coreVoltageCornerTarget = DCVS_VOLTAGE_VCORNER_SVS2;
+      dcvs_v3.coreVoltageCornerMax = DCVS_VOLTAGE_VCORNER_SVS2;
+      break;
+    case HtpPerformanceMode::kHtpHighPowerSaver:
+      dcvs_v3.setSleepLatency = 1;  // true
+      dcvs_v3.sleepLatency = kSleepMediumLatency;
+      dcvs_v3.setBusParams = 1;
+      dcvs_v3.busVoltageCornerMin = DCVS_VOLTAGE_VCORNER_SVS_PLUS;
+      dcvs_v3.busVoltageCornerTarget = DCVS_VOLTAGE_VCORNER_SVS_PLUS;
+      dcvs_v3.busVoltageCornerMax = DCVS_VOLTAGE_VCORNER_SVS_PLUS;
+      dcvs_v3.setCoreParams = 1;
+      dcvs_v3.coreVoltageCornerMin = DCVS_VOLTAGE_VCORNER_SVS_PLUS;
+      dcvs_v3.coreVoltageCornerTarget = DCVS_VOLTAGE_VCORNER_SVS_PLUS;
+      dcvs_v3.coreVoltageCornerMax = DCVS_VOLTAGE_VCORNER_SVS_PLUS;
+      break;
+    case HtpPerformanceMode::kHtpLowBalanced:
+      dcvs_v3.setSleepLatency = 1;  // true
+      dcvs_v3.sleepLatency = kSleepMediumLatency;
+      dcvs_v3.setBusParams = 1;
+      dcvs_v3.busVoltageCornerMin = DCVS_VOLTAGE_VCORNER_NOM;
+      dcvs_v3.busVoltageCornerTarget = DCVS_VOLTAGE_VCORNER_NOM;
+      dcvs_v3.busVoltageCornerMax = DCVS_VOLTAGE_VCORNER_NOM;
+      dcvs_v3.setCoreParams = 1;
+      dcvs_v3.coreVoltageCornerMin = DCVS_VOLTAGE_VCORNER_NOM;
+      dcvs_v3.coreVoltageCornerTarget = DCVS_VOLTAGE_VCORNER_NOM;
+      dcvs_v3.coreVoltageCornerMax = DCVS_VOLTAGE_VCORNER_NOM;
+      break;
+    case HtpPerformanceMode::kHtpBalanced:
+      dcvs_v3.setSleepLatency = 1;  // true
+      dcvs_v3.sleepLatency = kSleepMediumLatency;
+      dcvs_v3.setBusParams = 1;
+      dcvs_v3.busVoltageCornerMin = DCVS_VOLTAGE_VCORNER_NOM_PLUS;
+      dcvs_v3.busVoltageCornerTarget = DCVS_VOLTAGE_VCORNER_NOM_PLUS;
+      dcvs_v3.busVoltageCornerMax = DCVS_VOLTAGE_VCORNER_NOM_PLUS;
+      dcvs_v3.setCoreParams = 1;
+      dcvs_v3.coreVoltageCornerMin = DCVS_VOLTAGE_VCORNER_NOM_PLUS;
+      dcvs_v3.coreVoltageCornerTarget = DCVS_VOLTAGE_VCORNER_NOM_PLUS;
+      dcvs_v3.coreVoltageCornerMax = DCVS_VOLTAGE_VCORNER_NOM_PLUS;
+      break;
+    default:
+      ORT_THROW("Invalid performance profile %d", static_cast<int>(htp_performance_mode_));
+      break;
+  }
+  std::vector<const QnnHtpPerfInfrastructure_PowerConfig_t*> perf_power_configs_ptr_ = ObtainNullTermPtrVector(power_configs);
+  status = htp_perf_infra.setPowerConfig(powerconfig_client_id, perf_power_configs_ptr_.data());
+  ORT_RETURN_IF(QNN_SUCCESS != status, "setPowerConfig failed for HTP performance mode.");
+
+  // Set rpc control latency here, but note that v68 doesn't support rpc polling mode.
+  if (rpc_control_latency_ != 0) {
+    constexpr int kNumRpcPollingPowerConfigs = 1;
+    std::vector<QnnHtpPerfInfrastructure_PowerConfig_t> rpc_power_configs(kNumRpcPollingPowerConfigs);
+    QnnHtpPerfInfrastructure_PowerConfig_t& rpc_control_latency = rpc_power_configs[0];
+    // v68 doesn't support this.
+    QnnHtpPerfInfrastructure_PowerConfig_t& rpc_polling_time = rpc_power_configs[1];
+    rpc_control_latency.option = QNN_HTP_PERF_INFRASTRUCTURE_POWER_CONFIGOPTION_RPC_CONTROL_LATENCY;
+    rpc_polling_time.option = QNN_HTP_PERF_INFRASTRUCTURE_POWER_CONFIGOPTION_RPC_POLLING_TIME;
+    rpc_control_latency.rpcControlLatencyConfig = rpc_control_latency_;
+    perf_power_configs_ptr_ = ObtainNullTermPtrVector(rpc_power_configs);
+    status = htp_perf_infra.setPowerConfig(powerconfig_client_id, perf_power_configs_ptr_.data());
+    ORT_RETURN_IF(QNN_SUCCESS != status, "setPowerConfig failed for RPC control latency.");
+  }
 
   return Status::OK();
 }

@@ -10,6 +10,7 @@
 #include <dlfcn.h>
 #endif
 
+#include "HTP/QnnHtpDevice.h"
 #include "QnnLog.h"
 #include "System/QnnSystemInterface.h"
 #include "core/common/status.h"
@@ -26,10 +27,12 @@ class QnnBackendManager {
  public:
   QnnBackendManager(std::string backend_path,
                     ProfilingLevel profiling_level,
-                    uint32_t rpc_control_latency)
+                    uint32_t rpc_control_latency,
+                    HtpPerformanceMode htp_performance_mode)
       : backend_path_(backend_path),
         profiling_level_(profiling_level),
-        rpc_control_latency_(rpc_control_latency) {
+        rpc_control_latency_(rpc_control_latency),
+        htp_performance_mode_(htp_performance_mode) {
   }
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(QnnBackendManager);
 
@@ -72,7 +75,7 @@ class QnnBackendManager {
 
   Status SetupBackend(const logging::Logger& logger, bool load_from_cached_context);
 
-  Status SetDspPowerConfig();
+  Status SetHtpPowerConfig();
 
   const QNN_INTERFACE_VER_TYPE& GetQnnInterface() { return qnn_interface_; }
 
@@ -170,6 +173,17 @@ class QnnBackendManager {
 
   bool IsDevicePropertySupported();
 
+  template <typename T>
+   std::vector<std::add_pointer_t<std::add_const_t<T>>> ObtainNullTermPtrVector(
+            const std::vector<T>& vec) {
+    std::vector<std::add_pointer_t<std::add_const_t<T>>> ret;
+    for (auto& elem : vec) {
+      ret.push_back(&elem);      
+    }
+    ret.push_back(nullptr);
+    return ret;
+  }
+
  private:
   const std::string backend_path_;
   const logging::Logger* logger_ = nullptr;
@@ -194,6 +208,7 @@ class QnnBackendManager {
   std::vector<std::string> op_package_paths_;
   uint32_t rpc_control_latency_;
   bool load_from_cached_context_ = false;
+  HtpPerformanceMode htp_performance_mode_;
 #ifdef _WIN32
   std::set<HMODULE> mod_handles_;
 #endif
