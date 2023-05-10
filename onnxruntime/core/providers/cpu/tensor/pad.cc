@@ -469,40 +469,40 @@ static Status PadImpl(OpKernelContext* ctx,
               PadInnermostAxis(output, output - 2, -1 /* inputDelta */, onnxruntime::narrow<size_t>(postPad));
             } else {
               PadInnermostAxis(axisStart - prePad, output - prePad, 1 /* inputDelta */, onnxruntime::narrow<size_t>(prePad));
-              PadInnermostAxis(output, axisStart, 1 /* inputDelta */, onnxruntime::narrow<size_t>(postPad));            
+              PadInnermostAxis(output, axisStart, 1 /* inputDelta */, onnxruntime::narrow<size_t>(postPad));
             }
           } else {
             // When inner_most axis(es) do not need pad, Above PadInnermostAxis() do not fit for Reflect mode.
             if (mode == Mode::Reflect) {
               PadAxis(
-                axisStart - prePad,
-                axisStart + prePad,
-                1,
-                -ptrdiff_t(inner_no_pad_size * 2),
-                inner_no_pad_size,
-                onnxruntime::narrow<size_t>(pads[inner_axis]));
+                  axisStart - prePad,
+                  axisStart + prePad,
+                  1,
+                  -ptrdiff_t(inner_no_pad_size * 2),
+                  inner_no_pad_size,
+                  onnxruntime::narrow<size_t>(pads[inner_axis]));
               PadAxis(
-                output,
-                output - 2 * inner_no_pad_size,
-                1,
-                -ptrdiff_t(inner_no_pad_size * 2),
-                inner_no_pad_size,
-                onnxruntime::narrow<size_t>(pads[inner_axis + data_rank]));
+                  output,
+                  output - 2 * inner_no_pad_size,
+                  1,
+                  -ptrdiff_t(inner_no_pad_size * 2),
+                  inner_no_pad_size,
+                  onnxruntime::narrow<size_t>(pads[inner_axis + data_rank]));
             } else {
               PadAxis(
-                axisStart - prePad,
-                output - pads[inner_axis] * inner_no_pad_size,
-                1,
-                0,
-                inner_no_pad_size,
-                onnxruntime::narrow<size_t>(pads[inner_axis]));
+                  axisStart - prePad,
+                  output - pads[inner_axis] * inner_no_pad_size,
+                  1,
+                  0,
+                  inner_no_pad_size,
+                  onnxruntime::narrow<size_t>(pads[inner_axis]));
               PadAxis(
-                output,
-                axisStart,
-                1,
-                0,
-                inner_no_pad_size,
-                onnxruntime::narrow<size_t>(pads[inner_axis + data_rank]));
+                  output,
+                  axisStart,
+                  1,
+                  0,
+                  inner_no_pad_size,
+                  onnxruntime::narrow<size_t>(pads[inner_axis + data_rank]));
             }
           }
           output += postPad;
@@ -516,34 +516,34 @@ static Status PadImpl(OpKernelContext* ctx,
           int64_t postPad = reshaped_pad[input_counters.Axis() + new_dims_count];
           if (mode == Mode::Reflect) {
             PadAxis(
-              axisStart - prePad * inner_pitch,
-              axisStart + prePad * inner_pitch,
-              1,
-              -inner_pitch * 2,
-              inner_pitch,
-              onnxruntime::narrow<size_t>(prePad));
+                axisStart - prePad * inner_pitch,
+                axisStart + prePad * inner_pitch,
+                1,
+                -inner_pitch * 2,
+                inner_pitch,
+                onnxruntime::narrow<size_t>(prePad));
             PadAxis(
-              output,
-              output - 2 * inner_pitch,
-              1,
-              -inner_pitch * 2,
-              inner_pitch,
-              onnxruntime::narrow<size_t>(postPad));
+                output,
+                output - 2 * inner_pitch,
+                1,
+                -inner_pitch * 2,
+                inner_pitch,
+                onnxruntime::narrow<size_t>(postPad));
           } else {
             PadAxis(
-              axisStart - prePad * inner_pitch,
-              output - prePad * inner_pitch,
-              1,
-              0,
-              inner_pitch,
-              onnxruntime::narrow<size_t>(prePad));
+                axisStart - prePad * inner_pitch,
+                output - prePad * inner_pitch,
+                1,
+                0,
+                inner_pitch,
+                onnxruntime::narrow<size_t>(prePad));
             PadAxis(
-              output,
-              axisStart,
-              1,
-              0,
-              inner_pitch,
-              onnxruntime::narrow<size_t>(postPad));
+                output,
+                axisStart,
+                1,
+                0,
+                inner_pitch,
+                onnxruntime::narrow<size_t>(postPad));
           }
           output += inner_pitch * postPad;
           alignSkip += inner_pitch * SafeInt<size_t>(prePad);
