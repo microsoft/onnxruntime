@@ -112,7 +112,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "9b7bca2a723ff94edcd007d93b5d0cf1838591dc",
+          "commitHash": "a0d77f18516d2da7468a96b0de3b737266f23176",
           "repositoryUrl": "https://github.com/onnx/onnx.git"
         },
         "comments": "git submodule at cmake/external/onnx"
@@ -286,16 +286,6 @@
           "repositoryUrl": "https://github.com/boostorg/mp11.git"
         },
         "comments": "mp11"
-      }
-    },
-    {
-      "component": {
-        "type": "git",
-        "git": {
-          "commitHash": "3b58938e025c41d2fcd89fa22028eefaa81a18ad",
-          "repositoryUrl": "https://github.com/onnx/onnx.git"
-        },
-        "comments": "onnx"
       }
     },
     {
