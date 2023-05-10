@@ -3,11 +3,11 @@
 
 #include "core/providers/cuda/triton_kernel.h"
 #include "core/framework/tunable.h"
-#include <dlfcn.h>
 #include <fstream>
 #include <thread>
 
 #ifdef USE_TRITON_KERNEL
+#include <dlfcn.h>
 #include "triton_kernel_infos.h"
 #endif
 
