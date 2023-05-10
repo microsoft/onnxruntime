@@ -156,7 +156,7 @@ struct TypeMapper : public V_vec_m_<T, size> {};
 // The following operator overriding is not common so we put it in anonymous namespace
 #if defined(__CUDA_ARCH__) && __CUDA_ARCH__ > 530
 inline __device__ half2 operator*(const float a, const half2 b) {
-  return __hmul2_rn(__float2half2_rn(a), b);
+  return __hmul2(__float2half2_rn(a), b);
 }
 #else
 inline __device__ half2 operator*(const float a, const half2 b) {
