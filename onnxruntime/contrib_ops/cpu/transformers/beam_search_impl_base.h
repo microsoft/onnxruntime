@@ -88,9 +88,9 @@ struct BeamSearchCpuState : IBeamSearchCpuState {
 
     if (is_cuda) {
       // buffers used by CUDA operator but not by CPU operator.
-      topk_scores = AllocateBuffer<float>(allocator, topk_scores_buffer_, 2 * batch_beam_size_);
-      topk_tokens = AllocateBuffer<int32_t>(allocator, topk_tokens_buffer_, 2 * batch_beam_size_);
-      topk_indices = AllocateBuffer<int32_t>(allocator, topk_indices_buffer_, 2 * batch_beam_size_);
+      topk_scores = AllocateBuffer<float>(allocator, topk_scores_buffer_, 2 * static_cast<size_t>(batch_beam_size_));
+      topk_tokens = AllocateBuffer<int32_t>(allocator, topk_tokens_buffer_, 2 * static_cast<size_t>(batch_beam_size_));
+      topk_indices = AllocateBuffer<int32_t>(allocator, topk_indices_buffer_, 2 * static_cast<size_t>(batch_beam_size_));
       final_beam_scores = AllocateBuffer<float>(allocator, final_beam_scores_buffer_, batch_beam_size_);
     }
   }
