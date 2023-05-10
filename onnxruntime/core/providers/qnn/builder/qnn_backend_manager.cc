@@ -420,7 +420,7 @@ Status QnnBackendManager::SetupBackend(const logging::Logger& logger, bool load_
 
   if (htp_performance_mode_ != HtpPerformanceMode::kHtpDefault) {
     ORT_RETURN_IF_ERROR(SetHtpPowerConfig());
-    LOGS(logger, VERBOSE) << "SetHtpPowerConfig succeed.";    
+    LOGS(logger, VERBOSE) << "SetHtpPowerConfig succeed.";
   }
 
   LOGS(logger, VERBOSE) << "QNN SetupBackend succeed";
