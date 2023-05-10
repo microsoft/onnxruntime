@@ -1,5 +1,4 @@
 import argparse
-import logging
 import os
 import subprocess
 import sys
@@ -8,8 +7,6 @@ from pathlib import Path
 import numpy as np
 from perf_single_generative import parse_perf_single_generative_model
 from transformers import GPT2Tokenizer
-
-import onnxruntime
 
 general_gpt2_exporting_args = [
     "-b",  # no block operator

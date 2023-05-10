@@ -49,6 +49,13 @@ def perf_gpt_model(args: argparse.Namespace):
     sess_options = onnxruntime.SessionOptions()
     sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_ALL
     execution_providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]  # onnxruntime.get_available_providers()
+    if hasattr(args, 'use_sln_strict_mode') and args.use_sln_strict_mode:
+        cuda_provider_options = {"enable_skip_layer_norm_strict_mode": True}
+        provider_options = {"CUDAExecutionProvider": cuda_provider_options}
+        execution_providers = [
+            (name, provider_options[name]) if name in provider_options else name for name in execution_providers
+        ]
+
     logger.info(f"Using providers {execution_providers}......")
     ort_session = onnxruntime.InferenceSession(args.onnx_model, sess_options, providers=execution_providers)
 
@@ -107,22 +114,19 @@ def perf_gpt_model(args: argparse.Namespace):
     logger.debug("ORT inputs", inputs)
 
     logger.info("Warmup ort session......")
-    result = ort_session.run(None, inputs)
+    _ = ort_session.run(None, inputs)
 
     # Test performance
     logger.info("Testing ort session......")
-    try:
-        latency = []
-        for _ in range(args.total_runs):
-            start = time.time()
-            _ = ort_session.run(None, inputs)
-            latency.append(time.time() - start)
-        output = get_latency_result(latency, batch_size)
+    latency = []
+    for _ in range(args.total_runs):
+        start = time.time()
+        _ = ort_session.run(None, inputs)
+        latency.append(time.time() - start)
+    output = get_latency_result(latency, batch_size)
 
-        print("      --> ORT perf result:", output)
-        return output
-    except:
-        return None
+    print("      --> ORT perf result:", output)
+    return output
 
 
 def parse_arguments(argv) -> argparse.Namespace:
@@ -229,6 +233,14 @@ def parse_arguments(argv) -> argparse.Namespace:
         required=False,
         default=-1,
         help="custom eos_token_id for generating model with existing onnx encoder/decoder. Default from tokenizer",
+    )
+
+    parser.add_argument(
+        "--use_sln_strict_mode",
+        default=False,
+        required=False,
+        action="store_true",
+        help="Whether or not using strict skip layernorm in fp16. If yes, computation internally use fp32",
     )
 
     parser.add_argument(
