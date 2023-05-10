@@ -50,6 +50,7 @@ static const InlinedHashMap<std::string, std::string> op_map = {
     {"ConvTranspose", "convTranspose2d"},
     {"Concat", "concat"},
     {"Gemm", "gemm"},
+    {"MatMul", "matmul"},
     {"GlobalAveragePool", "averagePool2d"},
     {"GlobalMaxPool", "maxPool2d"},
     {"AveragePool", "averagePool2d"},

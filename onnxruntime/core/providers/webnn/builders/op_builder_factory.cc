@@ -49,8 +49,9 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
     CreateConcatOpBuilder("Concat", op_registrations);
   }
 
-  {  // Gemm
+  {  // Gemm/MatMul
     CreateGemmOpBuilder("Gemm", op_registrations);
+    CreateGemmOpBuilder("MatMul", op_registrations);
   }
 
   {  // Pool
