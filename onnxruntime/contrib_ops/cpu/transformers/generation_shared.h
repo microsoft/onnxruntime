@@ -111,8 +111,6 @@ class IBeamScorer {
  public:
   virtual ~IBeamScorer() {}
 
-  virtual void Initialize(AllocatorPtr& allocator, int sequence_length) = 0;
-
   virtual void Process(ISequences* sequences,
                        gsl::span<const float>& next_scores,
                        gsl::span<const int32_t>& next_tokens,
