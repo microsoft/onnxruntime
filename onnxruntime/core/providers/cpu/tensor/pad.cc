@@ -147,9 +147,9 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
         BuildKernelDefConstraintsFromTypeList<EnabledPad13Types>()),
     Pad);
 
-ONNX_CPU_OPERATOR_KERNEL(
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     Pad,
-    18,
+    18, 18,
     KernelDefBuilder()
         .TypeConstraint(
             "T",
