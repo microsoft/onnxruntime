@@ -960,7 +960,7 @@ TEST(PoolTest, AveragePool_19_dilation_2d) {
       13, 15, 14, 16};
   std::vector<int64_t> x_dims = {1, 1, 4, 4};
   std::vector<int64_t> expected_dims = {1, 1, 2, 2};
-  std::vector<float> expected_vals = {6.0f, 7.0f, 10.0f, 11.0f};
+  std::vector<float> expected_vals = {5.5f, 7.5f, 9.5f, 11.5f};
 
   test.AddInput<float>("X", x_dims, x_vals);
   test.AddOutput<float>("Y", expected_dims, expected_vals);
