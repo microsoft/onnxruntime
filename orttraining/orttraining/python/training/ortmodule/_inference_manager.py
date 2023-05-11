@@ -135,7 +135,7 @@ class InferenceManager(GraphExecutionManager):
                 inputs,
                 kwargs,
                 self._device,
-                self._rt_inspector.input_density_ob if self._enable_input_density_inspector else None,
+                self._rt_inspector.input_density_ob if self._print_input_density else None,
             )
 
             user_outputs, _ = InferenceManager.execution_session_run_forward(

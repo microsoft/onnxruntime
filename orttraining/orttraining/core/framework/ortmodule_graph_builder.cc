@@ -83,7 +83,7 @@ Status OrtModuleGraphBuilder::Build(const TrainingGraphTransformerConfiguration&
     return Status::OK();
   }
 
-  // Optimize the inference graph and build the gradient graph.
+  // Optimize the forward graph and then build the gradient graph.
   std::unordered_set<std::string> x_node_arg_names;
   ORT_RETURN_IF_ERROR(OptimizeForwardGraph(pre_grad_graph_transformer_config, x_node_arg_names));
   ORT_RETURN_IF_ERROR(BuildGradientGraph(x_node_arg_names));

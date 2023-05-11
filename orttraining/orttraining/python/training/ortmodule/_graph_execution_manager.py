@@ -185,9 +185,8 @@ class GraphExecutionManager(GraphExecutionInterface):
         self._enable_compute_optimizer = (
             ortmodule._defined_from_envvar("ORTMODULE_ENABLE_COMPUTE_OPTIMIZER", 1, warn=True) == 1
         )
-        self._enable_input_density_inspector = (
-            ortmodule._defined_from_envvar("ORTMODULE_ENABLE_INPUT_DENSITY_INSPECTOR", 0, warn=True) == 1
-        )
+
+        self._print_input_density = ortmodule._defined_from_envvar("ORTMODULE_PRINT_INPUT_DENSITY", 0, warn=True) == 1
 
         # Flag to re-export the model due to attribute change on the original module.
         # Re-export will be avoided if _skip_check is enabled.
@@ -536,33 +535,49 @@ class GraphExecutionManager(GraphExecutionInterface):
         _utils.reinitialize_graph_execution_manager(self)
 
     def _enable_conditional_optimizations(self, graph_transformer_config, inputs, kwargs):
-        """Enable conditional optimizations according to inputs."""
+        """
+        Based on runtime inspection, enable conditional optimizations if applicable.
 
-        # Set up data sparsity inspection.
-        self._rt_inspector.input_density_ob.initialize(
-            self._onnx_models.exported_model, self._graph_builder.get_graph_info().user_input_names
-        )
+        Input sparsity-based optimization workflows:
+        1. Input density observer is initialized when input density observer is available.
+        2. If compute optimizer is enabled, input density observer inspects input tensors and returns sparsity results.
+        3. If label or embedding input sparsity is found, graph transformer config is updated to enable sparsity-based
+           optimization.
 
-        # Enable sparsity-based optimization when applicable.
-        if self._enable_compute_optimizer:
-            detected_device = _utils.get_device_from_module(self._original_module) or _utils.get_device_from_inputs(
-                inputs, kwargs
-            )
-            _, embed_sparsity_results, label_sparsity_results = _io._combine_input_buffers_initializers(
-                self._graph_initializers,
-                self._graph_builder.get_graph_info().user_input_names,
-                self._input_info,
-                self._flattened_module.named_buffers(),
-                inputs,
-                kwargs,
-                detected_device,
-                self._rt_inspector.input_density_ob,
+        """
+
+        # Set up data sparsity inspection if input density observer is available.
+        if self._rt_inspector.input_density_ob is not None:
+            self._rt_inspector.input_density_ob.initialize(
+                self._onnx_models.exported_model, self._graph_builder.get_graph_info().user_input_names
             )
 
-            if len(label_sparsity_results) > 0:
-                graph_transformer_config.sparse_label_input_names = label_sparsity_results
-                warnings.warn(f"Label sparsity based optimization is on for {label_sparsity_results}", UserWarning)
+            # Enable sparsity-based optimization when applicable.
+            # Be noted: this optimization is enabled when input density observer is available and compute_optimizer is
+            # enabled.
+            if self._enable_compute_optimizer:
+                detected_device = _utils.get_device_from_module(self._original_module) or _utils.get_device_from_inputs(
+                    inputs, kwargs
+                )
 
-            if len(embed_sparsity_results) > 0:
-                graph_transformer_config.sparse_embedding_input_names = embed_sparsity_results
-                warnings.warn(f"Embedding sparsity based optimization is on for {embed_sparsity_results}", UserWarning)
+                with _logger.suppress_os_stream_output(log_level=self._debug_options.logging.log_level):
+                    _, embed_sparsity_results, label_sparsity_results = _io._combine_input_buffers_initializers(
+                        self._graph_initializers,
+                        self._graph_builder.get_graph_info().user_input_names,
+                        self._input_info,
+                        self._flattened_module.named_buffers(),
+                        inputs,
+                        kwargs,
+                        detected_device,
+                        self._rt_inspector.input_density_ob,
+                    )
+
+                if len(label_sparsity_results) > 0:
+                    graph_transformer_config.sparse_label_input_names = label_sparsity_results
+                    warnings.warn(f"Label sparsity based optimization is on for {label_sparsity_results}", UserWarning)
+
+                if len(embed_sparsity_results) > 0:
+                    graph_transformer_config.sparse_embedding_input_names = embed_sparsity_results
+                    warnings.warn(
+                        f"Embedding sparsity based optimization is on for {embed_sparsity_results}", UserWarning
+                    )

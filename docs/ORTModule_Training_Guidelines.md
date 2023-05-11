@@ -137,13 +137,24 @@ debugging). Disable it with following command:
 
 #### ORTMODULE_ENABLE_INPUT_DENSITY_INSPECTOR
 
-- **Feature Area**: *ORTMODULE/Runtime inspector*
-- **Description**: By default, this is disabled. This env var can be used for enabling the input data sparsity
+- **Feature Area**: *ORTMODULE/RuntimeInspector*
+- **Description**: By default, this is enabled. This env var can be used for enabling the input data sparsity
 inspection. Training users or our dev could leverage this info for improving perf accordingly. Enable it with following
 command:
 
 	```bash
 	export ORTMODULE_ENABLE_INPUT_DENSITY_INSPECTOR=1
+	```
+
+#### ORTMODULE_PRINT_INPUT_DENSITY
+
+- **Feature Area**: *ORTMODULE/RuntimeInspector*
+- **Description**: By default, this is disabled. This env var can be used for print the input data sparsity
+inspection results to standard outputs.
+command:
+
+	```bash
+	export ORTMODULE_PRINT_INPUT_DENSITY=1
 	```
 
 ### 2.2 Memory Optimization

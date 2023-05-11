@@ -10,14 +10,34 @@ import torch
 from onnx import helper
 from onnx import onnx_pb as onnx_proto
 
+from onnxruntime.training import ortmodule
+
 
 class RuntimeInspector:
+    """
+    Runtime inspector for ORTModule.
+
+    Currently only wraps only input density inspector.
+    """
+
     def __init__(self):
-        self.input_density_ob = InputDensityObserver()
+        # By default, input density inspector is enabled always.
+        is_input_density_observer_enabled = (
+            ortmodule._defined_from_envvar("ORTMODULE_ENABLE_INPUT_DENSITY_INSPECTOR", 1, warn=True) == 1
+        )
+        self.input_density_ob = InputDensityObserver() if is_input_density_observer_enabled is True else None
 
 
 class InputDensityObserver:
-    """Configurable input data observer for ORTModule."""
+    """
+    Training input data observer for ORTModule.
+
+    Data observer is used to collect data/compute sparsity information for embedding and label inputs. It needs to be
+    firstly initialized with the ONNX model and user input names. Then, it can be used to inspect the input data
+    through `inspect_from_input_data()` method given user input name and input tensor. Inspection results will be
+    printed per `log_steps`.
+
+    """
 
     def __init__(self, log_steps=1):
         self._embedding_graph_input_to_padding_idx_map = {}
@@ -32,18 +52,33 @@ class InputDensityObserver:
         self._tensor_to_node_map = {}
 
     def initialize(self, model, user_input_names):
-        """Initialize data observer."""
+        """
+        Initialize data observer from the given ONNX model and user input names.
 
-        self._tensor_to_node_map.clear()
-        for node in model.graph.node:
-            for output_name in node.output:
-                if output_name != "":  # noqa: PLC1901
-                    self._tensor_to_node_map[output_name] = node
+        For embedding input (e.g. ATen embedding), try to parse the padding_idx from the ONNX model, if padding_idx is
+        valid, register it in _embedding_graph_input_to_padding_idx_map.
+        For label input (e.g. SoftmaxCrossEntropyLossInternal), try to parse the ignore_index from the ONNX model, if
+        ignore_index is valid, register it in _loss_label_graph_input_to_ignore_idx_map.
 
-        self._initialize_embedding_padding_inspector(model, user_input_names)
-        self._initialize_loss_label_padding_inspector(model, user_input_names)
+        Args:
+            model: ONNX model.
+            user_input_names: User input names in the ONNX model.
 
-        self._is_initialized = True
+        """
+        try:
+            self._tensor_to_node_map.clear()
+            for node in model.graph.node:
+                for output_name in node.output:
+                    if output_name != "":  # noqa: PLC1901
+                        self._tensor_to_node_map[output_name] = node
+
+            self._initialize_embedding_padding_inspector(model, user_input_names)
+            self._initialize_loss_label_padding_inspector(model, user_input_names)
+
+            self._is_initialized = True
+        except Exception as e:
+            self._is_initialized = False
+            warnings.warn(f"Failed to initialize InputDensityObserver due to {e}", UserWarning)
 
     def _initialize_embedding_padding_inspector(self, model, user_input_names):
         """Register embedding input padding inspector.
@@ -59,7 +94,12 @@ class InputDensityObserver:
         self._embedding_graph_input_to_padding_idx_map.clear()
 
         for node in model.graph.node:
-            if not (node.domain == "org.pytorch.aten" and node.op_type == "ATen" and node.input[1] in user_input_names):
+            if not (
+                node.domain == "org.pytorch.aten"
+                and node.op_type == "ATen"
+                and node.input[1] in user_input_names
+                and len(node.input) >= 3
+            ):
                 continue
 
             found = [attr for attr in node.attribute if attr.name == "operator"]
@@ -203,6 +243,19 @@ class InputDensityObserver:
             )
 
     def inspect_from_input_data(self, name, inp):
+        """
+        Inspect input data and print statistics.
+
+        Args:
+            name: User input name.
+            inp: User input tensor.
+            silent: Whether to print statistics.
+        Returns:
+            found: Whether the input name is found in `_embedding_graph_input_to_padding_idx_map` and
+                `_loss_label_graph_input_to_ignore_idx_map`.
+            embedding_is_sparse: Whether the input is sparse.
+            label_is_sparse: Whether the input is sparse.
+        """
         if not self._is_initialized:
             return
 

@@ -78,7 +78,8 @@ class OrtModuleGraphBuilder {
 
   /**
    * Optimize the inference graph and build the gradient graph.
-   * @param pre_grad_graph_transformer_config The configuration to control the graph transformers before build gradients.
+   * @param pre_grad_graph_transformer_config The configuration to control the graph transformers before gradient
+   *  graph is built.
    * @param input_shapes_ptr The pointer to vector of concrete shapes of the user inputs.
    * @return The status of the optimizing and building the gradient graph.
    */
