@@ -133,7 +133,6 @@ class CurlHandler {
   }
 
  private:
-
   std::unique_ptr<CURL, decltype(curl_easy_cleanup)*> curl_;
   std::unique_ptr<curl_slist, decltype(curl_slist_free_all)*> headers_;
   curl_httppost* from_{};
