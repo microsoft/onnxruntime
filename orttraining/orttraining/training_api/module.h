@@ -137,18 +137,22 @@ struct Module {
  private:
   std::unique_ptr<onnxruntime::InferenceSession> train_sess_{nullptr};
   std::unique_ptr<onnxruntime::InferenceSession> eval_sess_{nullptr};
-  std::vector<std::string> train_input_names_;
-  std::vector<std::string> train_output_names_;
-  std::vector<std::string> eval_input_names_;
-  std::vector<std::string> eval_output_names_;
-  std::vector<std::string> weight_names_;
-  std::vector<OrtValue> weights_;
-  std::vector<OrtValue> gradients_;
-  bool accumulate_gradient_ = false;
+
+  InlinedVector<std::string> train_input_names_;
+  InlinedVector<std::string> train_output_names_;
+  InlinedVector<std::string> eval_input_names_;
+  InlinedVector<std::string> eval_output_names_;
+  InlinedVector<std::string> weight_names_;
+
+  InlinedVector<OrtValue> weights_;
+  InlinedVector<OrtValue> gradients_;
+
   CheckpointState* state_;  // Non owning pointer to the state.
+
+  bool accumulate_gradient_ = false;
   std::string eval_model_path_;
-  size_t train_user_input_count_ = 0U;
-  size_t eval_user_input_count_ = 0U;
+  size_t train_user_input_count_{0U};
+  size_t eval_user_input_count_{0U};
 };
 
 }  // namespace api
