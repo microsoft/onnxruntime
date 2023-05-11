@@ -18,6 +18,7 @@
 #include "core/framework/onnxruntime_optional_type_info.h"
 #include "core/framework/TensorSeq.h"
 
+using onnxruntime::DataTypeImpl;
 #if !defined(DISABLE_SPARSE_TENSORS)
 using onnxruntime::SparseTensor;
 #endif
