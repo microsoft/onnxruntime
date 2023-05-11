@@ -115,7 +115,7 @@ class CurlHandler {
   ~CurlHandler() = default;
 
   void AddHeader(const char* data) {
-    headers_.reset(curl_slist_append(headers_.get(), data));
+    headers_.reset(curl_slist_append(headers_.release(), data));
   }
   template <typename... Args>
   void AddForm(Args... args) {
