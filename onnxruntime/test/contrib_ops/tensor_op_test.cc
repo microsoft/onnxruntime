@@ -65,6 +65,38 @@ TEST(CropContribOpTest, CropBorderAndScale) {
   test.Run();
 }
 
+TEST(ImageScalerContribOpTest, ImageScalerTest) {
+  // Won't fix for DML as the op is experimental and deprecated.
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: AbiCustomRegistry.cpp(507): The parameter is incorrect.";
+  }
+
+  constexpr int64_t N = 1, C = 2, H = 2, W = 2;
+  std::vector<float> X = {
+      1.0f, 3.0f,
+      3.0f, 5.0f,
+
+      3.0f, 5.0f,
+      7.0f, 9.0f};
+
+  float scale = 2.0f;
+  std::vector<float> bias = {1.0f, 2.0f};
+
+  std::vector<float> result = {
+      3.0f, 7.0f,
+      7.0f, 11.0f,
+
+      8.0f, 12.0f,
+      16.0f, 20.0f};
+
+  OpTester test("ImageScaler");
+  test.AddAttribute("scale", scale);
+  test.AddAttribute("bias", bias);
+  test.AddInput<float>("input", {N, C, H, W}, X);
+  test.AddOutput<float>("output", {N, C, H, W}, result);
+  test.Run();
+}
+
 void MeanVarianceNormalizationAcrossChannels(bool across_channels, bool normalize_variance) {
   constexpr int64_t N = 2, C = 2, H = 2, W = 3;
   constexpr int64_t one = 1;
