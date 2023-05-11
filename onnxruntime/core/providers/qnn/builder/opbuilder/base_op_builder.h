@@ -109,6 +109,7 @@ class BaseOpBuilder : public IOpBuilder {
         {"Exp", "ElementWiseExp"},
         {"Floor", "ElementWiseFloor"},
         {"Gather", "Gather"},
+        {"GatherElements", "GatherElements"},
         {"Greater", "ElementWiseGreater"},
         {"GreaterOrEqual", "ElementWiseGreaterEqual"},
         {"Less", "ElementWiseLess"},

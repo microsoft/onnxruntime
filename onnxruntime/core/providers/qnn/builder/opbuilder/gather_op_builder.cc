@@ -133,6 +133,11 @@ Status GatherOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_w
   param_tensor_names.push_back(axis_param.GetParamTensorName());
   qnn_model_wrapper.AddParamWrapper(std::move(axis_param));
 
+  if (node_unit.OpType() == "GatherElements") {
+    return ProcessOutputs(qnn_model_wrapper, node_unit, std::move(input_names), std::move(param_tensor_names),
+                          logger, is_quantized_model, do_op_validation);
+  }
+
   // if indicies is scalar shape, then need to add Reshape node
   const auto& input_tensor_wrapper = qnn_model_wrapper.GetQnnTensorWrapper(input_names[0]);
   const auto& indices_input_tensor_wrapper = qnn_model_wrapper.GetQnnTensorWrapper(input_names[1]);
