@@ -105,6 +105,7 @@
         "^test_col2im_pads*",           // remove this when using ONNX with this: https://github.com/onnx/onnx/pull/4769
         // Following tests are for opset 16 ops and are not yet implemented in ORT
         "^test_roialign_aligned_*",
+        "^test_roialign_mode_max", // TODO: Remove once onnx test is fixed
         //GPU failures
         "^test_batchnorm_epsilon_training_mode_cuda",
         "^test_batchnorm_example_training_mode_cuda",
