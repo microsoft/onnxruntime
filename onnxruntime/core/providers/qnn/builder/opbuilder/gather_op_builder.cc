@@ -35,6 +35,25 @@ class GatherOpBuilder : public BaseOpBuilder {
                                      bool do_op_validation) const override ORT_MUST_USE_RESULT;
 };
 
+// Copies static ONNX gather indices into `qnn_bytes` destination.
+// Ensures that indices are positive and of the correct type.
+template <typename OnnxIndexType, typename QnnIndexType>
+static Status NormalizeIndices(const std::vector<uint8_t>& onnx_bytes, std::vector<uint8_t>& qnn_bytes,
+                               OnnxIndexType index_max) {
+  gsl::span<const OnnxIndexType> onnx_indices{reinterpret_cast<const OnnxIndexType*>(onnx_bytes.data()),
+                                              onnx_bytes.size() / sizeof(OnnxIndexType)};
+
+  qnn_bytes.resize(onnx_indices.size() * sizeof(QnnIndexType));
+  QnnIndexType* qnn_indices_ptr = reinterpret_cast<QnnIndexType*>(qnn_bytes.data());
+
+  std::transform(onnx_indices.begin(), onnx_indices.end(), qnn_indices_ptr,
+                 [index_max](OnnxIndexType index) {
+                   return SafeInt<QnnIndexType>(index < 0 ? index + index_max : index);
+                 });
+
+  return Status::OK();
+}
+
 Status GatherOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
                                       const NodeUnit& node_unit,
                                       const logging::Logger& logger,
@@ -69,16 +88,21 @@ Status GatherOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
   if (is_initializer_input) {
     const auto& input_tensor = qnn_model_wrapper.GetInitializerTensors().at(input_name);
     ORT_RETURN_IF_ERROR(qnn_model_wrapper.UnpackInitializerData(*input_tensor, unpacked_tensor));
+
+    std::vector<uint32_t> data_input_shape;
+    ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(inputs[0].node_arg, data_input_shape), "Cannot get shape");
+
+    int32_t onnx_axis = 0;
+    ORT_RETURN_IF_ERROR(GetAxisValue(qnn_model_wrapper, node_unit, onnx_axis));
+    const int32_t index_max = data_input_shape[onnx_axis];  // Add this value to negative indices to normalize.
+
+    // Note: QNN backends do not support negative indices.
+    // For now, we'll just always make indices positive (normalize) if they're static.
     if (qnn_data_type == QNN_DATATYPE_INT_64) {
-      // Convert initializer from int64 to int32
-      size_t size = unpacked_tensor.size() / sizeof(int64_t);
-      const int64_t* gather_indices_int64 = reinterpret_cast<const int64_t*>(unpacked_tensor.data());
-      gather_indices.resize(size * sizeof(int32_t));
-      int32_t* gather_indices_int32 = reinterpret_cast<int32_t*>(gather_indices.data());
-      std::transform(gather_indices_int64, gather_indices_int64 + size, gather_indices_int32,
-                     [](int64_t item) { return SafeInt<uint32_t>(item); });
+      // Convert from int64 to int32
+      ORT_RETURN_IF_ERROR((NormalizeIndices<int64_t, int32_t>(unpacked_tensor, gather_indices, static_cast<int64_t>(index_max))));
     } else {
-      gather_indices = std::move(unpacked_tensor);
+      ORT_RETURN_IF_ERROR((NormalizeIndices<int32_t, int32_t>(unpacked_tensor, gather_indices, index_max)));
     }
     qnn_data_type = QNN_DATATYPE_INT_32;
   }

@@ -287,26 +287,15 @@ Status BaseOpBuilder::ProcessAxisAttribute(const QnnModelWrapper& qnn_model_wrap
                                            const NodeUnit& node_unit,
                                            Qnn_Scalar_t& axis_qnn_scalar,
                                            int32_t& default_axis_value) const {
-  const auto& inputs = node_unit.Inputs();
-  std::vector<uint32_t> input_shape;
-  ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(inputs[0].node_arg, input_shape), "Cannot get shape");
-
-  auto rank = static_cast<int32_t>(input_shape.size());
-  NodeAttrHelper node_helper(node_unit);
-  int32_t onnx_axis = node_helper.Get("axis", default_axis_value);
-  if (onnx_axis < 0) {
-    onnx_axis += rank;
-  }
-  ORT_ENFORCE((onnx_axis >= 0 && onnx_axis < static_cast<int32_t>(input_shape.size())), "QNN requires axis range [0, rank-1].");
-  default_axis_value = onnx_axis;
+  ORT_RETURN_IF_ERROR(GetAxisValue(qnn_model_wrapper, node_unit, default_axis_value));
 
   bool is_gather_op = (node_unit.OpType() == "Gather");
   if (is_gather_op) {
     axis_qnn_scalar.dataType = QNN_DATATYPE_INT_32;
-    axis_qnn_scalar.int32Value = onnx_axis;
+    axis_qnn_scalar.int32Value = default_axis_value;
   } else {
     axis_qnn_scalar.dataType = QNN_DATATYPE_UINT_32;
-    axis_qnn_scalar.uint32Value = static_cast<uint32_t>(onnx_axis);
+    axis_qnn_scalar.uint32Value = static_cast<uint32_t>(default_axis_value);
   }
 
   return Status::OK();
