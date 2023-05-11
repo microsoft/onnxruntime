@@ -23,7 +23,7 @@ redirect_from: /docs/how-to/build/training
     cd onnxruntime
     ```
 
-2. Build onnxruntime for `On-Device Training`
+2. Build ONNX Runtime for `On-Device Training`
 
    a. For Windows
 
@@ -84,9 +84,6 @@ The default NVIDIA GPU build requires CUDA runtime libraries installed on the sy
 
 * [CUDA](https://developer.nvidia.com/cuda-toolkit)
 * [cuDNN](https://developer.nvidia.com/cudnn)
-* [NCCL](https://developer.nvidia.com/nccl)
-* [OpenMPI](https://www.open-mpi.org/) (optional)
-  * See [install_openmpi.sh](https://github.com/microsoft/onnxruntime/blob/main/tools/ci_build/github/linux/docker/scripts/install_openmpi.sh)
 
 ### Build instructions
 {: .no_toc }
@@ -98,20 +95,17 @@ The default NVIDIA GPU build requires CUDA runtime libraries installed on the sy
     cd onnxruntime
     ```
 
-2. Set the environment variables: *adjust the path for location your build machine*
+2. Set the environment variables: *adjust the paths for locations on your build machine*
     ```bash
     export CUDA_HOME=<location for CUDA libs> # e.g. /usr/local/cuda
     export CUDNN_HOME=<location for cuDNN libs> # e.g. /usr/local/cuda
     export CUDACXX=<location for NVCC> #e.g. /usr/local/cuda/bin/nvcc
-    export PATH=<location for openmpi/bin/>:$PATH
-    export LD_LIBRARY_PATH=<location for openmpi/lib/>:$LD_LIBRARY_PATH
-    export MPI_CXX_INCLUDE_PATH=<location for openmpi/include/>
     ```
 
 3. Create the ONNX Runtime Python wheel
 
    ```bash
-   ./build.sh --config=RelWithDebInfo --enable_training --build_wheel --use_cuda --cuda_home {location of cuda libs eg. /usr/local/cuda/} --cudnn_home {location of cudnn libs eg./usr/local/cuda/} --cuda_version={version for eg. 11.8} --mpi_home <location for openmpi eg. /usr/local/include/>
+   ./build.sh --config=RelWithDebInfo --enable_training --build_wheel --use_cuda --cuda_home {location of cuda libs eg. /usr/local/cuda/} --cudnn_home {location of cudnn libs eg./usr/local/cuda/} --cuda_version={version for eg. 11.8}
    ```
 
 4. Install the .whl file in `./build/Linux/RelWithDebInfo/dist` for ONNX Runtime Training.
@@ -129,8 +123,6 @@ That's it! Once the build is complete, you should be able to use the ONNX Runtim
 The default AMD GPU build requires ROCm software toolkit installed on the system:
 
 * [ROCm](https://docs.amd.com/bundle/ROCm-Installation-Guide-v5.4/page/How_to_Install_ROCm.html#_How_to_Install) 5.4
-* [OpenMPI](https://www.open-mpi.org/) 4.0.4
-  * See [install_openmpi.sh](https://github.com/microsoft/onnxruntime/blob/main/tools/ci_build/github/linux/docker/scripts/install_openmpi.sh)
 
 ### Build instructions
 {: .no_toc }
@@ -145,7 +137,7 @@ The default AMD GPU build requires ROCm software toolkit installed on the system
 2. Create the ONNX Runtime Python wheel
 
    ```bash
-   ./build.sh --config Release --enable_training --build_wheel --parallel --skip_tests --use_rocm --rocm_home /opt/rocm --nccl_home /opt/rocm --mpi_home {location for openmpi}
+   ./build.sh --config Release --enable_training --build_wheel --parallel --skip_tests --use_rocm --rocm_home /opt/rocm
    ```
 
 3. Install the .whl file in `./build/Linux/RelWithDebInfo/dist` for ONNX Runtime Training.
