@@ -77,6 +77,20 @@ bool CudaTuningContext::IsTuningEnabled() const {
   return info_->tuning_enable;
 }
 
+void CudaTuningContext::EnableTuningEarlyStop() {
+  LOGS_DEFAULT(INFO) << "Enable TunableOp tuning early stop for CUDA Execution Provider";
+  info_->tuning_early_stop_enable = true;
+}
+
+void CudaTuningContext::DisableTuningEarlyStop() {
+  LOGS_DEFAULT(INFO) << "Disable TunableOp tuning early stop for CUDA Execution Provider";
+  info_->tuning_early_stop_enable = false;
+}
+
+bool CudaTuningContext::IsTuningEarlyStopEnabled() const {
+  return info_->tuning_early_stop_enable;
+}
+
 TuningResultsManager& CudaTuningContext::GetTuningResultsManager() {
   return manager_;
 }

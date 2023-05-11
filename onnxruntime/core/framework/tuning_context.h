@@ -28,6 +28,10 @@ class ITuningContext {
   virtual void DisableTuning() = 0;
   virtual bool IsTuningEnabled() const = 0;
 
+  virtual void EnableTuningEarlyStop() = 0;
+  virtual void DisableTuningEarlyStop() = 0;
+  virtual bool IsTuningEarlyStopEnabled() const = 0;
+
   virtual void EnableTunableOpAndTuning() final {
     EnableTunableOp();
     EnableTuning();

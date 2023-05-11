@@ -401,7 +401,8 @@ typedef struct OrtCUDAProviderOptions {
         user_compute_stream{},
         default_memory_arena_cfg{},
         tunable_op_enable{false},
-        tunable_op_tuning_enable{false} {}
+        tunable_op_tuning_enable{false},
+        tunable_op_tuning_early_stop_enable{false} {}
 #endif
 
   /** \brief CUDA device Id
@@ -464,6 +465,12 @@ typedef struct OrtCUDAProviderOptions {
    */
   int tunable_op_tuning_enable;
 
+  /** \brief Enable TunableOp tuning early stop for reducing tuning time.
+   *   Set it to 1/0 to enable/disable TunableOp tuning early stop. Otherwise, it is disabled by default.
+   *   This option can be overriden by environment variable ORT_CUDA_TUNABLE_OP_TUNING_EARLY_STOP_ENABLE.
+   */
+  int tunable_op_tuning_early_stop_enable;
+
 } OrtCUDAProviderOptions;
 
 /** \brief ROCM Provider Options
@@ -482,7 +489,8 @@ typedef struct OrtROCMProviderOptions {
         user_compute_stream{},
         default_memory_arena_cfg{},
         tunable_op_enable{false},
-        tunable_op_tuning_enable{false} {}
+        tunable_op_tuning_enable{false},
+        tunable_op_tuning_early_stop_enable{false} {}
 #endif
 
   /** \brief ROCM device Id
@@ -543,6 +551,12 @@ typedef struct OrtROCMProviderOptions {
    *   This option can be overriden by environment variable ORT_ROCM_TUNABLE_OP_TUNING_ENABLE.
    */
   int tunable_op_tuning_enable;
+
+  /** \brief Enable TunableOp tuning stop early for reducing tuning time.
+   *   Set it to 1/0 to enable/disable TunableOp tuning early stop. Otherwise, it is disabled by default.
+   *   This option can be overriden by environment variable ORT_ROCM_TUNABLE_OP_TUNING_EARLY_STOP_ENABLE.
+   */
+  int tunable_op_tuning_early_stop_enable;
 
 } OrtROCMProviderOptions;
 

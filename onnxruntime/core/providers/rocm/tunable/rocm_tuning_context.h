@@ -41,6 +41,10 @@ class RocmTuningContext : public ITuningContext {
   void DisableTuning() override;
   bool IsTuningEnabled() const override;
 
+  void EnableTuningEarlyStop() override;
+  void DisableTuningEarlyStop() override;
+  bool IsTuningEarlyStopEnabled() const override;
+
   TuningResultsManager& GetTuningResultsManager() override;
   const TuningResultsManager& GetTuningResultsManager() const override;
 

@@ -114,6 +114,20 @@ bool RocmTuningContext::IsTuningEnabled() const {
   return info_->tuning_enable;
 }
 
+void RocmTuningContext::EnableTuningEarlyStop() {
+  LOGS_DEFAULT(INFO) << "Enable TunableOp tuning early stop for ROCm Execution Provider";
+  info_->tuning_early_stop_enable = true;
+}
+
+void RocmTuningContext::DisableTuningEarlyStop() {
+  LOGS_DEFAULT(INFO) << "Disable TunableOp tuning early stop for ROCm Execution Provider";
+  info_->tuning_early_stop_enable = false;
+}
+
+bool RocmTuningContext::IsTuningEarlyStopEnabled() const {
+  return info_->tuning_early_stop_enable;
+}
+
 TuningResultsManager& RocmTuningContext::GetTuningResultsManager() {
   return manager_;
 }

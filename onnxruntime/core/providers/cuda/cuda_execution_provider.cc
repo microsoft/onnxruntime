@@ -230,6 +230,15 @@ void OverrideTunableOpInfoByEnv(CUDAExecutionProviderInfo& info) {
     info.tunable_op.tuning_enable = *env_tunable_op_tuning_enable;
   }
 
+  if (auto env_tunable_op_tuning_early_stop_enable = onnxruntime::ParseTestOnlyEnvironmentVariable<bool>(
+          "ORT_CUDA_TUNABLE_OP_TUNING_EARLY_STOP_ENABLE", {"0", "1"},
+          "Use provider_options \"tunable_op_tuning_early_stop_enable\" instead.");
+      env_tunable_op_tuning_early_stop_enable.has_value() &&
+      env_tunable_op_tuning_early_stop_enable != info.tunable_op.tuning_early_stop_enable) {
+    LOGS_DEFAULT(INFO) << "ORT_CUDA_TUNABLE_OP_TUNING_EARLY_STOP_ENABLE is set to " << *env_tunable_op_tuning_early_stop_enable;
+    info.tunable_op.tuning_early_stop_enable = *env_tunable_op_tuning_early_stop_enable;
+  }
+
   if (info.tunable_op.tuning_enable && !info.tunable_op.enable) {
     LOGS_DEFAULT(WARNING) << "TunableOp is enabled for tuning but is not enabled for using. This will have no effect.";
   }

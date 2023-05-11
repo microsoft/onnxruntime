@@ -23,6 +23,7 @@ constexpr const char* kGpuExternalEmptyCache = "gpu_external_empty_cache";
 constexpr const char* kMiopenConvUseMaxWorkspace = "miopen_conv_use_max_workspace";
 constexpr const char* kTunableOpEnable = "tunable_op_enable";
 constexpr const char* kTunableOpTuningEnable = "tunable_op_tuning_enable";
+constexpr const char* kTunableOpTuningEarlyStopEnable = "tunable_op_tuning_early_stop_enable";
 }  // namespace provider_option_names
 }  // namespace rocm
 
@@ -95,6 +96,12 @@ ROCMExecutionProviderInfo ROCMExecutionProviderInfo::FromProviderOptions(const P
                 ORT_RETURN_IF_ERROR(ParseStringWithClassicLocale(value_str, info.tunable_op.tuning_enable));
                 return Status::OK();
               })
+          .AddValueParser(
+              rocm::provider_option_names::kTunableOpTuningEarlyStopEnable,
+              [&info](const std::string& value_str) -> Status {
+                ORT_RETURN_IF_ERROR(ParseStringWithClassicLocale(value_str, info.tunable_op.tuning_early_stop_enable));
+                return Status::OK();
+              })
           .Parse(options));
 
   ROCMExecutionProviderExternalAllocatorInfo alloc_info{alloc, free, empty_cache};
@@ -116,6 +123,7 @@ ProviderOptions ROCMExecutionProviderInfo::ToProviderOptions(const ROCMExecution
       {rocm::provider_option_names::kMiopenConvUseMaxWorkspace, MakeStringWithClassicLocale(info.miopen_conv_use_max_workspace)},
       {rocm::provider_option_names::kTunableOpEnable, MakeStringWithClassicLocale(info.tunable_op.enable)},
       {rocm::provider_option_names::kTunableOpTuningEnable, MakeStringWithClassicLocale(info.tunable_op.tuning_enable)},
+      {rocm::provider_option_names::kTunableOpTuningEarlyStopEnable, MakeStringWithClassicLocale(info.tunable_op.tuning_early_stop_enable)},
   };
 
   return options;

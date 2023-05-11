@@ -57,6 +57,10 @@ class TestTuningContext : public ITuningContext {
   void DisableTuning() override { tuning_enabled_ = false; }
   bool IsTuningEnabled() const override { return tuning_enabled_; }
 
+  void EnableTuningEarlyStop() override { tuning_early_stop_enabled_ = true; }
+  void DisableTuningEarlyStop() override { tuning_early_stop_enabled_ = false; }
+  bool IsTuningEarlyStopEnabled() const override { return tuning_early_stop_enabled_; }
+
   TuningResultsManager& GetTuningResultsManager() override { return manager_; }
   const TuningResultsManager& GetTuningResultsManager() const override { return manager_; }
 
@@ -67,6 +71,7 @@ class TestTuningContext : public ITuningContext {
  private:
   bool op_enabled_{false};
   bool tuning_enabled_{false};
+  bool tuning_early_stop_enabled_{false};
   TuningResultsManager manager_{};
   TestTuningResultsValidator validator_{};
 };
@@ -402,6 +407,13 @@ TEST(TunableOp, SelectFastIfTuning) {
   status = op(&params);
   ASSERT_TRUE(status.IsOK());
   ASSERT_EQ(last_run, "FastFull");
+
+  // Also enable tuning early stop, fast should be selected
+  params.TuningContext()->EnableTuningEarlyStop();
+  status = op(&params);
+  ASSERT_TRUE(status.IsOK());
+  ASSERT_EQ(last_run, "FastFull");
+
 #endif
 }
 

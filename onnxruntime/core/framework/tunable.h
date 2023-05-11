@@ -215,23 +215,8 @@ class TunableOp {
     }
   }
 
-  static double Profile(Op<ParamsT>& op, const ParamsT* param, double min_time, bool early_stop) {
-    constexpr const int num_iter = 100;
-    constexpr const int early_stop_num_iter = 10;
-    constexpr const double early_stop_factor = 1.2;
+  static double Profile(Op<ParamsT>& op, const ParamsT* param, int num_iter) {
     TimerT timer{param->Stream()};
-
-    if (early_stop) {
-      timer.Start();
-      for (int i = 0; i < early_stop_num_iter; i++) {
-        ORT_THROW_IF_ERROR(op(param));
-      }
-      timer.End();
-      double cur_time = timer.Duration() / early_stop_num_iter;
-      if (cur_time > min_time * early_stop_factor) {
-        return cur_time;
-      }
-    }
 
     timer.Start();
     for (int i = 0; i < num_iter; i++) {
@@ -257,12 +242,15 @@ class TunableOp {
   }
 
   int FindFastestImpl(const ParamsT* params, const std::vector<Op<ParamsT>>& candidates) {
+    ITuningContext* ctx = params->TuningContext();
     auto op_sig = Signature();
     auto param_sig = params->Signature();
     LOGS_DEFAULT(VERBOSE) << "FindFastestImpl for " << op_sig << '(' << param_sig << ')';
     auto min_time = std::numeric_limits<double>::infinity();
     int id = -1;
-    bool profile_early_stop = true;
+    constexpr const int num_iter = 100;
+    constexpr const int early_stop_num_iter = num_iter / 10;
+    constexpr const double early_stop_factor = 1.2;
 
     for (size_t i = 0; i < candidates.size(); i++) {
       auto& candidate = const_cast<Op<ParamsT>&>(candidates[i]);
@@ -272,7 +260,14 @@ class TunableOp {
       }
 
       WarmUp(candidate, params);
-      auto time = Profile(candidate, params, min_time, profile_early_stop);
+
+      if (ctx->IsTuningEarlyStopEnabled()) {
+        auto cur_time = Profile(candidate, params, early_stop_num_iter);
+        if (cur_time > min_time * early_stop_factor)
+          continue;
+      }
+
+      auto time = Profile(candidate, params, num_iter);
       if (time < min_time) {
         min_time = time;
         id = static_cast<int>(i);
