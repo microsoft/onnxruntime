@@ -86,6 +86,13 @@ void BeamSearchParameters::ParseFromInputs(OpKernelContext* context) {
     repetition_penalty = 1.0f;
   }
   ORT_ENFORCE(repetition_penalty > 0.0f, "repetition_penalty shall be greater than 0, got ", repetition_penalty);
+
+  auto* timestamp_enable_tensor = context->Input<Tensor>(10);//slx
+  if (timestamp_enable_tensor) {
+    timestamp_enable = static_cast<bool>(*timestamp_enable_tensor->Data<bool>());
+  } else {
+    timestamp_enable = false;
+  }
 }
 
 void BeamSearchParameters::SetSubgraphParameters(int vocabulary_size, int heads, int hidden_size_per_head, int layers) {
