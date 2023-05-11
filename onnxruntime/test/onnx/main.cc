@@ -637,17 +637,6 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
             ORT_TSTR("bernoulli_double"),
             ORT_TSTR("bernoulli_seed")};
 
-    // bfloat16 is not a standard type.
-    // rounding when casting to string is not constant accross platforms.
-    static const ORTCHAR_T* blfoat16_or_string_cast_tests[] = {
-        ORT_TSTR("cast_BFLOAT16_to_FLOAT"),
-        ORT_TSTR("cast_FLOAT_to_BFLOAT16"),
-        ORT_TSTR("cast_FLOAT_to_STRING"),
-        ORT_TSTR("castlike_BFLOAT16_to_FLOAT"),
-        ORT_TSTR("castlike_BFLOAT16_to_FLOAT_expanded"),
-        ORT_TSTR("castlike_FLOAT_to_STRING"),
-        ORT_TSTR("castlike_FLOAT_to_STRING_expanded")};
-
     // float 8 types are not supported by any language.
     static const ORTCHAR_T* float8_tests[] = {
         ORT_TSTR("cast_FLOAT16_to_FLOAT8E4M3FN"),
@@ -746,7 +735,6 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
         ORT_TSTR("sce_none_weights_expanded")};
 
     std::unordered_set<std::basic_string<ORTCHAR_T>> all_disabled_tests(std::begin(immutable_broken_tests), std::end(immutable_broken_tests));
-    all_disabled_tests.insert(std::begin(blfoat16_or_string_cast_tests), std::end(blfoat16_or_string_cast_tests));
     all_disabled_tests.insert(std::begin(float8_tests), std::end(float8_tests));
 
     if (enable_cuda) {
@@ -848,6 +836,14 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
     {"sequence_insert_at_back", "onnx currently not supporting loading segment", {}},
     {"sequence_insert_at_front", "onnx currently not supporting loading segment", {}},
     {"loop13_seq", "ORT api does not currently support creating empty sequences (needed for this test)", {}},
+    {"cast_FLOAT_to_BFLOAT16", "onnx generate bfloat tensor as uint16 type", {}},
+    {"cast_BFLOAT16_to_FLOAT", "onnx generate bfloat tensor as uint16 type", {}},
+    {"castlike_FLOAT_to_BFLOAT16", "Depends on cast.", {}},
+    {"castlike_BFLOAT16_to_FLOAT", "Depends on cast", {}},
+    {"castlike_FLOAT_to_BFLOAT16_expanded", "Depends on cast.", {}},
+    {"castlike_BFLOAT16_to_FLOAT_expanded", "Depends on cast", {}},
+    {"castlike_FLOAT_to_STRING", "Numpy float to string has unexpected rounding for some results.", {}},
+    {"castlike_FLOAT_to_STRING_expanded", "Numpy float to string has unexpected rounding for some results.", {}},
     {"bernoulli", "By design. Test data is for informational purpose because the generator is non deterministic."},
     {"bernoulli_double", "By design. Test data is for informational purpose because the generator is non deterministic."},
     {"bernoulli_double_expanded", "By design. Test data is for informational purpose because the generator is non deterministic."},

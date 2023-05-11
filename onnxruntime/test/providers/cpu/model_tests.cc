@@ -135,15 +135,19 @@ TEST_P(ModelTest, Run) {
   std::set<BrokenTest> broken_tests = {
       {"slice_neg_steps",
        "Type parameter (Tind) bound to different types (tensor(int64) and tensor(int32) in node ()."},
+      {"cast_BFLOAT16_to_FLOAT", "Unexpected input data type"},
       {"loop13_seq", "Creation of empty sequences is currently not supported in the test runner"},
       {"sequence_insert_at_front", "shape mismatch, expect {4} got {3}"},
+      {"cast_FLOAT_to_BFLOAT16", "expect uint16 got bfloat16"},
       {"mnist", "Input data isn't in valid range"},
       {"BERT_Squad", "test data bug"},
       {"constantofshape_float_ones", "test data bug", {"opset9", "opset10"}},
       {"constantofshape_int_zeros", "test data bug", {"opset9", "opset10"}},
+      {"cast_STRING_to_FLOAT", "Linux CI has old ONNX python package with bad test data", {"opset9", "opset10"}},
       // Numpy float to string has unexpected rounding for some results given numpy default precision is meant to be 8.
       // "e.g. 0.296140194 -> '0.2961402' not '0.29614019'. ORT produces the latter with precision set to 8,
       // which doesn't match the expected output that was generated with numpy.
+      {"cast_FLOAT_to_STRING", "Numpy float to string has unexpected rounding for some results."},
       {"tf_nasnet_large", "disable temporarily"},
       {"tf_nasnet_mobile", "disable temporarily"},
       {"tf_pnasnet_large", "disable temporarily"},
@@ -179,6 +183,12 @@ TEST_P(ModelTest, Run) {
       {"bernoulli_expanded", "type error", {}},
       {"bernoulli_seed", "type error", {}},
       {"bernoulli_seed_expanded", "type error", {}},
+      {"castlike_BFLOAT16_to_FLOAT", "type error", {}},
+      {"castlike_BFLOAT16_to_FLOAT_expanded", "type error", {}},
+      {"castlike_FLOAT_to_BFLOAT16", "type error", {}},
+      {"castlike_FLOAT_to_BFLOAT16_expanded", "type error", {}},
+      {"castlike_FLOAT_to_STRING", "type error", {}},
+      {"castlike_FLOAT_to_STRING_expanded", "type error", {}},
       {"convtranspose_autopad_same", "Test data has been corrected in ONNX 1.10.", {"opset13", "opset14"}},
       {"gru_batchwise", "type error", {}},
       {"lstm_batchwise", "type error", {}},
@@ -247,20 +257,6 @@ TEST_P(ModelTest, Run) {
       {"softmax_cross_entropy_mean_no_weight_ignore_index_4d", "type error", {"opset12"}},
 #endif
       {"mask_rcnn_keras", "this model currently has an invalid contrib op version set to 10", {}}};
-
-  std::set<BrokenTest> bfloat16_string_tests = {
-      {"cast_BFLOAT16_to_FLOAT", "Unexpected input data type"},
-      {"cast_FLOAT_to_BFLOAT16", "expect uint16 got bfloat16"},
-      {"cast_FLOAT_to_STRING", "Numpy float to string has unexpected rounding for some results."},
-      {"cast_STRING_to_FLOAT", "Linux CI has old ONNX python package with bad test data", {"opset9", "opset10"}},
-      {"castlike_BFLOAT16_to_FLOAT", "Unexpected input data type"},
-      {"castlike_BFLOAT16_to_FLOAT_expanded", "Unexpected input data type"},
-      {"castlike_FLOAT_to_BFLOAT16", "Unexpected input data type"},
-      {"castlike_FLOAT_to_BFLOAT16_expanded", "Unexpected input data type"},
-      {"castlike_FLOAT_to_STRING", "Unexpected input data type"},
-      {"castlike_FLOAT_to_STRING_expanded", "Unexpected input data type"},
-  };
-  broken_tests.insert(bfloat16_string_tests.begin(), bfloat16_string_tests.end());
 
   std::set<BrokenTest> float8_tests = {
       {"cast_FLOAT16_to_FLOAT8E4M3FN", "Unexpected input data type"},
