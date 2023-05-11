@@ -217,7 +217,6 @@ class TunableOp {
 
   static double Profile(Op<ParamsT>& op, const ParamsT* param, int num_iter) {
     TimerT timer{param->Stream()};
-
     timer.Start();
     for (int i = 0; i < num_iter; i++) {
       ORT_THROW_IF_ERROR(op(param));
@@ -263,8 +262,10 @@ class TunableOp {
 
       if (ctx->IsTuningEarlyStopEnabled()) {
         auto cur_time = Profile(candidate, params, early_stop_num_iter);
-        if (cur_time > min_time * early_stop_factor)
+        if (cur_time > min_time * early_stop_factor) {
+          LOGS_DEFAULT(VERBOSE) << "FindFastestImpl found early stop instance " << op_sig << '(' << param_sig << ") id=" << i;
           continue;
+        }
       }
 
       auto time = Profile(candidate, params, num_iter);
