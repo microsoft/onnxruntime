@@ -89,55 +89,42 @@ void BeamHypotheses::Output(
   }
 }
 
-BeamSearchScorer::BeamSearchScorer(size_t batch_size,
-                                   size_t num_beams,
-                                   size_t max_length,
-                                   float length_penalty,
-                                   bool early_stopping,
-                                   size_t num_return_sequences,
-                                   int pad_token_id,
-                                   int eos_token_id,
+BeamSearchScorer::BeamSearchScorer(const IGenerationParameters& parameters,
                                    onnxruntime::OrtStlAllocator<HypothesisScore>& hypothesis_score_allocator,
-                                   onnxruntime::OrtStlAllocator<BeamHypotheses>& beam_hyps_allocator)
-    : batch_size_(batch_size),
-      num_beams_(num_beams),
-      max_length_(max_length),
-      num_beam_hyps_to_keep_(num_return_sequences),
-      pad_token_id_(pad_token_id),
-      eos_token_id_(eos_token_id),
-      hypothesis_buffer_length_(0),
-      hypothesis_buffer_offset_(0),
+                                   onnxruntime::OrtStlAllocator<BeamHypotheses>& beam_hyps_allocator,
+                                   AllocatorPtr& allocator)
+    : batch_size_{static_cast<size_t>(parameters.batch_size)},
+      num_beams_{static_cast<size_t>(parameters.num_beams)},
+      max_length_{static_cast<size_t>(parameters.max_length)},
+      num_beam_hyps_to_keep_{static_cast<size_t>(parameters.num_return_sequences)},
+      pad_token_id_{parameters.pad_token_id},
+      eos_token_id_{parameters.eos_token_id},
       beam_hyps_(beam_hyps_allocator) {
-  for (size_t i = 0; i < batch_size; i++) {
-    beam_hyps_.push_back(BeamHypotheses(num_beams, length_penalty, early_stopping, hypothesis_score_allocator));
+  for (size_t i = 0; i < batch_size_; i++) {
+    beam_hyps_.push_back(BeamHypotheses(num_beams_, parameters.length_penalty, parameters.early_stopping, hypothesis_score_allocator));
   }
-}
-
-bool BeamSearchScorer::IsDone() {
-  for (size_t batch = 0; batch < batch_size_; batch++) {
-    if (!done_[batch])
-      return false;
-  }
-  return true;
-}
-
-void BeamSearchScorer::Initialize(AllocatorPtr& allocator, int sequence_length) {
-  ORT_ENFORCE(next_beam_scores_.empty());  // Make sure this is called only once.
 
   size_t batch_beam_size = batch_size_ * num_beams_;
+
+  done_ = Allocate<bool>(allocator, batch_size_, done_ptr_, true /* fill allocated array */, false /* fill with false */);
+
   constexpr bool no_fill = false;  // Do not fill values after allocation
-
-  done_ = Allocate<bool>(allocator, batch_size_, done_ptr_, no_fill);
-  std::fill_n(done_.data(), done_.size(), false);
-
   next_beam_scores_ = Allocate<float>(allocator, batch_beam_size, next_beam_scores_ptr_, no_fill);
   next_beam_tokens_ = Allocate<int32_t>(allocator, batch_beam_size, next_beam_tokens_ptr_, no_fill);
   next_beam_indices_ = Allocate<int32_t>(allocator, batch_beam_size, next_beam_indices_ptr_, no_fill);
 
   // Space to store intermediate sequence with length sequence_length, sequence_length + 1, ..., max_sequence_length.
-  size_t per_beam = (SafeInt<size_t>(max_length_) * (max_length_ + 1) - (sequence_length - 1) * sequence_length) / 2;
+  size_t per_beam = (SafeInt<size_t>(max_length_) * (max_length_ + 1) - (parameters.sequence_length - 1) * parameters.sequence_length) / 2;
   hypothesis_buffer_length_ = batch_beam_size * per_beam;
   hypothesis_buffer_ = Allocate<int32_t>(allocator, hypothesis_buffer_length_, hypothesis_buffer_ptr_, no_fill);
+}
+
+bool BeamSearchScorer::IsDone() {
+  for (auto done : done_) {
+    if (!done)
+      return false;
+  }
+  return true;
 }
 
 void BeamSearchScorer::Process(ISequences* sequences,
@@ -248,7 +235,7 @@ void BeamSearchScorer::Finalize(ISequences* sequences,
 
   // Score of each sequence, with shape (batch_size * num_return_sequences).
   gsl::span<float> sequence_scores;
-  if (output_sequence_scores != nullptr) {
+  if (output_sequence_scores) {
     sequence_scores = output_sequence_scores->MutableDataAsSpan<float>();
   }
 
@@ -263,7 +250,7 @@ void BeamSearchScorer::Finalize(ISequences* sequences,
     auto batch_output = output.subspan(batch_index * num_return_sequences * max_length_,
                                        num_return_sequences * max_length_);
 
-    if (output_sequence_scores != nullptr) {
+    if (output_sequence_scores) {
       batch_sequence_score = sequence_scores.subspan(batch_index * num_return_sequences, num_return_sequences);
     }
 
