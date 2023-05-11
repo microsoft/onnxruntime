@@ -187,6 +187,7 @@ onnxruntime::Status OpenAIInvoker::Send(const CloudEndPointConfig& run_options,
   auto* output_string = output_tensor->MutableData<std::string>();
   *output_string = string_buffer.ss_.str();
   auto tensor_type = DataTypeImpl::GetType<Tensor>();
+  ort_outputs.clear();
   ort_outputs.emplace_back(output_tensor.release(), tensor_type, tensor_type->GetDeleteFunc());
   return Status::OK();
 }
