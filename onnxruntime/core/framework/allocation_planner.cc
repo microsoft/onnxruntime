@@ -212,8 +212,9 @@ class PlannerImpl {
     // deallocate_point is an index into the execution-plan; thus, ml_value becomes free after
     // this step in the execution-plan is completed.
     size_t deallocate_point;
-    FreeBufferInfo(OrtValueIndex ort_value, size_t dealloc_point)
-        : ml_value(ort_value), deallocate_point(dealloc_point) {}
+    ProviderType provider_type;
+    FreeBufferInfo(OrtValueIndex ort_value, size_t dealloc_point, ProviderType type)
+        : ml_value(ort_value), deallocate_point(dealloc_point), provider_type(type) {}
   };
   // freelist_ : a list of ml-values whose buffers are free to be reused, sorted by when
   // they became free (more recently freed earlier in the list).
@@ -481,7 +482,7 @@ class PlannerImpl {
   }
 
   // Find if freelist contains a buffer of the same size as output_arg
-  bool FindReusableTensor(const onnxruntime::NodeArg& output_arg, OrtValueIndex* reusable_tensor) {
+  bool FindReusableTensor(const onnxruntime::NodeArg& output_arg, ProviderType provider_type, OrtValueIndex* reusable_tensor) {
     if (!context_->GetEnableMemoryReuse()) {
       return false;
     }
@@ -507,7 +508,7 @@ class PlannerImpl {
 #endif
 
       auto& available_memory_info = AllocPlan(p_node_arg->Name()).location;
-      if (!(available_memory_info == required_memory_info)) continue;
+      if (available_memory_info != required_memory_info || provider_type != it->provider_type) continue;
       auto p_available_buffer_shape = context_->GetShape(*p_node_arg);
       if (nullptr != p_available_buffer_shape) {
         if (SameSize(*p_available_buffer_shape, *p_node_arg,
@@ -1425,7 +1426,7 @@ class PlannerImpl {
         } else if (IsNonTensor(*node_output)) {
           AllocPlan(current).alloc_kind = AllocKind::kAllocate;
         } else if (!context_->IsParallelExecutionEnabled() &&
-                   FindReusableTensor(*node_output, &reused)) {
+                   FindReusableTensor(*node_output, pnode->GetExecutionProviderType(), &reused)) {
           // Reuse an available (dead) buffer for this output, this is only for sequential execution.
           Reuse(reused, current, AllocKind::kReuse);
         } else {
@@ -1442,7 +1443,7 @@ class PlannerImpl {
           // The index will be -1 if it's an initializer that was removed as part of a temporary workaround.
           // See comments in the OrtValueInfo definition.
           if ((original != -1) && (0 == DecrementUseCount(original))) {
-            freelist_.push_front(FreeBufferInfo(original, program_counter));
+            freelist_.push_front(FreeBufferInfo(original, program_counter, pnode->GetExecutionProviderType()));
           }
         }
       }
@@ -1454,7 +1455,7 @@ class PlannerImpl {
           // The index will be -1 if it's an initializer that was removed as part of a temporary workaround.
           // See comments in the OrtValueInfo definition.
           if ((original != -1) && (0 == DecrementUseCount(original))) {
-            freelist_.push_front(FreeBufferInfo(original, program_counter));
+            freelist_.push_front(FreeBufferInfo(original, program_counter, pnode->GetExecutionProviderType()));
           }
         }
       }
@@ -1467,7 +1468,7 @@ class PlannerImpl {
           // The index will be -1 if it's an initializer that was removed as part of a temporary workaround.
           // See comments in the OrtValueInfo definition.
           if (0 == DecrementUseCount(original)) {
-            freelist_.push_front(FreeBufferInfo(original, program_counter));
+            freelist_.push_front(FreeBufferInfo(original, program_counter, pnode->GetExecutionProviderType()));
           }
         }
       }
