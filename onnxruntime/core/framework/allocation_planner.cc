@@ -1713,7 +1713,8 @@ class PlannerImpl {
   }
 
 #ifndef ORT_ENABLE_STREAM
-  void PartitionIntoStreams(const logging::Logger& /*logger*/, const ExecutionProviders& /*execution_providers*/,
+  void PartitionIntoStreams(const logging::Logger& /*logger*/,
+                            const ExecutionProviders& /*execution_providers*/,
                             const PathString& /*partition_config_file*/) {
     stream_nodes_.push_back({});
     node_stream_map_.resize(SafeInt<size_t>(graph_viewer_.MaxNodeIndex()) + 1);
@@ -1745,8 +1746,9 @@ class PlannerImpl {
 
 #else
 
-  void PartitionIntoStreams(const logging::Logger& logger, const ExecutionProviders& execution_providers,
-                            const PathString& partition_config_file) {
+  void
+  PartitionIntoStreams(const logging::Logger& logger, const ExecutionProviders& execution_providers,
+                       const PathString& partition_config_file) {
     auto partitioner = IGraphPartitioner::CreateGraphPartitioner(logger, partition_config_file);
     auto status = partitioner->PartitionGraph(graph_viewer_, execution_providers, stream_nodes_, context_->GetExecutionOrder());
     ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
@@ -1759,7 +1761,7 @@ class PlannerImpl {
     num_logic_streams_ = stream_nodes_.size();
   }
 
-  // Build each logic streams
+  // build each logic streams
   Status BuildExecutionPlan(const ExecutionProviders& execution_providers,
                             const IStreamCommandHandleRegistry& stream_handle_registry) {
     // 1. create logic stream instance
@@ -1832,13 +1834,16 @@ class PlannerImpl {
     for (size_t i = 0; i < num_logic_streams_; ++i) {
       for (auto node_index : stream_nodes_[i]) {
         auto* node = graph_viewer_.GetNode(node_index);
+        auto stream_device = execution_plan[i]->device_.Type();
         // Neither trigger ActivateNotification/WaitOnEPStep for Shape op (whose output is ready for all the EPs), nor
         // upstream is on CPU device (As currently we never invoke RegisterWaitFn(CPU, ...) for all kinds of EP, thus no wait_handle can be retrieved for this case)
-        if (node->OpType() != "Shape" && execution_plan[i]->device_.Type() != OrtDevice::CPU) {
+        if (node->OpType() != "Shape" && stream_device != OrtDevice::CPU) {
           for (auto it = node->OutputNodesBegin(); it != node->OutputNodesEnd(); ++it) {
+            bool output_consumed_in_subgraph = true;
             for (auto* output : node->OutputDefs()) {
               if (output->Exists()) {
                 if (std::find(it->InputDefs().begin(), it->InputDefs().end(), output) != it->InputDefs().end()) {
+                  output_consumed_in_subgraph = false;  // output direclty consumed in current graph
                   OrtValueIndex output_arg_idx;
                   ORT_THROW_IF_ERROR(ort_value_name_idx_map_.GetIdx(output->Name(), output_arg_idx));
                   // there are two cases we need notification:
@@ -1847,16 +1852,29 @@ class PlannerImpl {
                   //    for example, a resize cuda kernel consumer a tensor from MemCpyToHost cuda kernel on the same stream.
                   //    in this case, the FIFO can't guarantee the cpu tensor is ready when resize kernel is launching
                   OrtDevice::DeviceType output_arg_device = plan_.allocation_plan[output_arg_idx].location.Type();
-                  WaitNotificationFn wait_handle = stream_handle_registry.GetWaitHandle(execution_plan[i]->device_.Type(), output_arg_device);
+                  WaitNotificationFn wait_handle = stream_handle_registry.GetWaitHandle(stream_device, output_arg_device);
                   if ((node_stream_map_[it->Index()] != i || output_arg_device == OrtDevice::CPU) && wait_handle != nullptr) {
                     if (node_to_notification.find(node_index) == node_to_notification.end()) {
                       node_to_notification[node_index] = plan_.notification_owners.size();
                       plan_.notification_owners.push_back(i);
                     }
-
                     // if node_index is already in the map, it will NOT be overwritten by insert()
                     node_to_wait[it->Index()].insert({node_index, wait_handle});
                   }
+                }
+              }  // output->Exists
+            }    // for each output
+            if (output_consumed_in_subgraph) {
+              const auto downstream = node_stream_map_[it->Index()];
+              if (downstream != i) {
+                auto downstream_device = execution_plan[downstream]->device_.Type();
+                WaitNotificationFn wait_handle = stream_handle_registry.GetWaitHandle(stream_device, downstream_device);
+                if (wait_handle) {
+                  if (node_to_notification.find(node_index) == node_to_notification.end()) {
+                    node_to_notification[node_index] = plan_.notification_owners.size();
+                    plan_.notification_owners.push_back(i);
+                  }
+                  node_to_wait[it->Index()].insert({node_index, wait_handle});
                 }
               }
             }
@@ -2094,7 +2112,7 @@ Status PlannerImpl::CreatePlan(
     const PathString& partition_config_file,
     const logging::Logger& logger) {
   // 1. partition graph into streams
-  PartitionIntoStreams(logger, execution_providers_, partition_config_file);
+  PartitionIntoStreams(logger, execution_providers_, this->parent_node_ ? PathString{} : partition_config_file);
 
   // 2. initialize the plan based on stream partition result
   int num_ml_values = ort_value_name_idx_map_.MaxIdx() + 1;
@@ -2219,6 +2237,11 @@ class DeviceBasedPartitioner : public IGraphPartitioner {
   std::vector<OrtDevice::DeviceType> device_types_;
   std::vector<InlinedVector<std::string>> node_names_by_stream_;
   bool need_save_ = false;
+
+  using KEY = InlinedVector<std::string>;
+  using VAL = InlinedVector<std::string>;
+  using MAP = InlinedHashMap<KEY, VAL>;
+  MAP key_val_map_;
 };
 
 #define EXIT_ON_ERR(warning)         \
@@ -2320,9 +2343,10 @@ void DeviceBasedPartitioner::Initialize() {
 }
 
 void DeviceBasedPartitioner::SaveConfig() const {
-  try {
+  ORT_TRY {
     json json_config;
     json_config["type"] = "DeviceBasedPartitioner";
+    // first, save partition info
     if (!node_names_by_stream_.empty()) {
       json_config["streams"] = json::array();
       for (const auto& node_stream : node_names_by_stream_) {
@@ -2331,6 +2355,50 @@ void DeviceBasedPartitioner::SaveConfig() const {
           node_array.insert(node_array.end(), node_name);
         }
         json_config["streams"].insert(json_config["streams"].end(), node_array);
+      }
+    }
+    // next, save k-v pairs set by external caller
+    for (const auto& kv_it : key_val_map_) {
+      const auto& keys = kv_it.first;
+      json* tail = {};
+      if (keys.size() == 1) {
+        auto json_it = json_config.find(keys.front());
+        if (json_it == json_config.end()) {
+          json_config[keys.front()] = json::array();
+          tail = &json_config[keys.front()];
+        } else {
+          tail = &json_it.value();
+        }
+      } else if (keys.size() > 1) {
+        for (auto k_it = kv_it.first.begin(); k_it != std::prev(kv_it.first.end()); k_it = std::next(k_it)) {
+          if (tail) {
+            auto json_it = tail->find(*k_it);
+            if (json_it == tail->end()) {
+              (*tail)[*k_it] = json::object();
+              tail = &(*tail)[*k_it];
+            } else {
+              tail = &json_it.value();
+            }
+          } else {
+            auto json_it = json_config.find(*k_it);
+            if (json_it == json_config.end()) {
+              json_config[*k_it] = json::object();
+              tail = &json_config[*k_it];
+            } else {
+              tail = &json_it.value();
+            }
+          }
+        }
+        auto json_it = tail->find(kv_it.first.back());
+        if (json_it == tail->end()) {
+          (*tail)[kv_it.first.back()] = json::array();
+        }
+        tail = &(*tail)[kv_it.first.back()];
+      }
+      if (tail) {
+        for (const auto& v : kv_it.second) {
+          tail->insert(tail->end(), v);
+        }
       }
     }
     if (!device_types_.empty()) {
@@ -2344,7 +2412,8 @@ void DeviceBasedPartitioner::SaveConfig() const {
       of_stream << json_config.dump();
       of_stream.close();
     }
-  } catch (const std::exception& ex) {
+  }
+  ORT_CATCH(const std::exception& ex) {
     LOGS(logger_, WARNING) << "Caught exception during saving DeviceBasedPartitioner config: " << ex.what();
   }
 }
