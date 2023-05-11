@@ -414,12 +414,13 @@ struct AveragePool1DTask final {
           total_elements++;
         }
       }
-      if (total_elements > 0)
+      if (total_elements > 0) {
         if (count_include_pad) {
           y_d[ph] /= (1 + (hend - hstart - 1) / dilation_h);
         } else {
           y_d[ph] /= total_elements;
         }
+      }
     }
   }
 };
@@ -477,12 +478,13 @@ struct AveragePool2DTask final {
             }
           }
         }
-        if (total_elements > 0)
+        if (total_elements > 0) {
           if (count_include_pad) {
             y_d[pool_index] /= ((1 + (hend - hstart - 1) / dilation_h) * (1 + (wend - wstart - 1) / dilation_w));
           } else {
             y_d[pool_index] /= total_elements;
           }
+        }
       }
     }
   }
@@ -554,12 +556,13 @@ struct AveragePool3DTask {
               }
             }
           }
-          if (total_elements > 0)
+          if (total_elements > 0) {
             if (count_include_pad) {
               y_d[pool_index] /= ((1 + (hend - hstart - 1) / dilation_h) * (1 + (wend - wstart - 1) / dilation_w) * (1 + (dend - dstart - 1) / dilation_d));
             } else {
               y_d[pool_index] /= total_elements;
             }
+          }
         }
       }
     }
