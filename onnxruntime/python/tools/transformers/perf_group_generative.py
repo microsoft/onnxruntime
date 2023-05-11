@@ -21,7 +21,7 @@ custom_gpt2_exporting_args = {
     "greedy": [
         "--top_p=0",
         "--past_present_share_buffer",
-        "--use_decoder_masked_self_attention",
+        "--use_decoder_masked_attention",
     ],
     "topp": [
         "--top_p=0.6",
@@ -30,7 +30,7 @@ custom_gpt2_exporting_args = {
     "beam": [
         "--top_p=0",
         "--past_present_share_buffer",
-        "--use_decoder_masked_self_attention",
+        "--use_decoder_masked_attention",
     ],
 }
 
