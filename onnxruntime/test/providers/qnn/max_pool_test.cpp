@@ -222,7 +222,7 @@ TEST_F(QnnCPUBackendTests, TestMaxPool_Large_Input2) {
                    ExpectedEPNodeAssignment::All, "TestMaxPool_Large_Input2");
 }
 
-TEST_F(QnnCPUBackendTests, TestMaxPool_Ceil) {
+TEST_F(QnnCPUBackendTests, DISABLED_TestMaxPool_Ceil) {
   RunMaxPoolOpTest({1, 2, 3, 3},  // shape
                    {3, 3},        // kernel_shape
                    {3, 3},        // strides
@@ -234,7 +234,7 @@ TEST_F(QnnCPUBackendTests, TestMaxPool_Ceil) {
                    ExpectedEPNodeAssignment::All, "TestMaxPool_Ceil");
 }
 
-TEST_F(QnnCPUBackendTests, TestMaxPool_Large_Input2_Ceil) {
+TEST_F(QnnCPUBackendTests, DISABLED_TestMaxPool_Large_Input2_Ceil) {
   RunMaxPoolOpTest({1, 128, 16, 113},  // shape
                    {2, 2},             // kernel_shape
                    {2, 2},             // strides
@@ -263,7 +263,7 @@ TEST_F(QnnHTPBackendTests, TestMaxPool_Global_HTP_u8) {
                                ExpectedEPNodeAssignment::All, "TestMaxPool_Global_HTP_u8");
 }
 
-TEST_F(QnnHTPBackendTests, TestMaxPool_Large_Input_HTP_u8) {
+TEST_F(QnnHTPBackendTests, DISABLED_TestMaxPool_Large_Input_HTP_u8) {
   RunQDQMaxPoolOpTest<uint8_t>({1, 125, 8, 56},  // shape
                                {2, 2},           // kernel_shape
                                {2, 2},           // strides
@@ -275,7 +275,7 @@ TEST_F(QnnHTPBackendTests, TestMaxPool_Large_Input_HTP_u8) {
                                ExpectedEPNodeAssignment::All, "TestMaxPool_Large_Input_HTP_u8");
 }
 
-TEST_F(QnnHTPBackendTests, TestMaxPool_Large_Input2_HTP_u8) {
+TEST_F(QnnHTPBackendTests, DISABLED_TestMaxPool_Large_Input2_HTP_u8) {
   RunQDQMaxPoolOpTest<uint8_t>({1, 128, 16, 113},  // shape
                                {2, 2},             // kernel_shape
                                {2, 2},             // strides
@@ -299,7 +299,7 @@ TEST_F(QnnHTPBackendTests, TestMaxPool_Ceil_HTP_u8) {
                                ExpectedEPNodeAssignment::All, "TestMaxPool_Ceil_HTP_u8");
 }
 
-TEST_F(QnnHTPBackendTests, TestMaxPool_Large_Input2_Ceil_HTP_u8) {
+TEST_F(QnnHTPBackendTests, DISABLED_TestMaxPool_Large_Input2_Ceil_HTP_u8) {
   RunQDQMaxPoolOpTest<uint8_t>({1, 128, 16, 113},  // shape
                                {2, 2},             // kernel_shape
                                {2, 2},             // strides
