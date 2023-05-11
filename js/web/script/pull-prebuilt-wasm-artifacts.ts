@@ -8,7 +8,7 @@
 // WebAssembly side, so there is no need to rebuild WebAssembly.
 //
 // It performs the following operations:
-// 1. query build ID for latest successful build on main branch or the sprcified one from command line argument
+// 1. query build ID for latest successful build on main branch or the specified one from command line argument
 // 2. query download URL of build artifacts
 // 3. download and unzip the files to folders
 //
