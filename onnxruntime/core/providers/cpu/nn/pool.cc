@@ -289,7 +289,7 @@ Status AveragePoolV19<T>::Compute(OpKernelContext* context) const {
 
       RunLoop<AveragePool1DTask<T>>(tp, onnxruntime::narrow<size_t>(total_channels),
                                     {X_data, Y_data, x_step, y_step, dilation_h, pooled_height, stride_h(),
-                                     height, kernel_shape, pads, p_});
+                                     height, kernel_shape, pads, pool_attrs_.count_include_pad, p_});
       break;
     }
 
@@ -301,7 +301,7 @@ Status AveragePoolV19<T>::Compute(OpKernelContext* context) const {
       RunLoop<AveragePool2DTask<T>>(
           tp, onnxruntime::narrow<size_t>(total_channels),
           {X_data, Y_data, x_step, y_step, dilation_h, dilation_w, pooled_height, pooled_width, stride_h(),
-           stride_w(), height, width, kernel_shape, pads, p_});
+           stride_w(), height, width, kernel_shape, pads, pool_attrs_.count_include_pad, p_});
       break;
     }
     case 3: {
@@ -314,7 +314,7 @@ Status AveragePoolV19<T>::Compute(OpKernelContext* context) const {
                                     {X_data, Y_data, x_step, y_step,
                                      dilation_h, dilation_w, dilation_d, pooled_height, pooled_width,
                                      pooled_depth, stride_h(), stride_w(), stride_d(), height,
-                                     width, depth, kernel_shape, pads, p_});
+                                     width, depth, kernel_shape, pads, pool_attrs_.count_include_pad, p_});
       break;
     }
     default:

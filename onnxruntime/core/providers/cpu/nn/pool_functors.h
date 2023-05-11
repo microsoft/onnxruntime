@@ -388,6 +388,7 @@ struct AveragePool1DTask final {
   int64_t height;
   gsl::span<const int64_t> kernel_shape;
   gsl::span<const int64_t> pads;
+  bool count_include_pad;
   int64_t p;
   TensorOpCost Cost() {
     double loop_count = static_cast<double>(pooled_height * kernel_shape[0]);
@@ -414,7 +415,11 @@ struct AveragePool1DTask final {
         }
       }
       if (total_elements > 0)
-        y_d[ph] /= total_elements;
+        if (count_include_pad) {
+          y_d[ph] /= (1 + (hend - hstart - 1) / dilation_h);
+        } else {
+          y_d[ph] /= total_elements;
+        }
     }
   }
 };
@@ -435,6 +440,7 @@ struct AveragePool2DTask final {
   int64_t width;
   gsl::span<const int64_t> kernel_shape;
   gsl::span<const int64_t> pads;
+  bool count_include_pad;
   int64_t p;
 
   TensorOpCost Cost() {
@@ -472,7 +478,11 @@ struct AveragePool2DTask final {
           }
         }
         if (total_elements > 0)
-          y_d[pool_index] /= total_elements;
+          if (count_include_pad) {
+            y_d[pool_index] /= ((1 + (hend - hstart - 1) / dilation_h) * (1 + (wend - wstart - 1) / dilation_w));
+          } else {
+            y_d[pool_index] /= total_elements;
+          }
       }
     }
   }
@@ -498,6 +508,7 @@ struct AveragePool3DTask {
   int64_t depth;
   gsl::span<const int64_t> kernel_shape;
   gsl::span<const int64_t> pads;
+  bool count_include_pad;
   int64_t p;
 
   void operator()(std::ptrdiff_t begin, std::ptrdiff_t end) const {
@@ -544,7 +555,11 @@ struct AveragePool3DTask {
             }
           }
           if (total_elements > 0)
-            y_d[pool_index] /= total_elements;
+            if (count_include_pad) {
+              y_d[pool_index] /= ((1 + (hend - hstart - 1) / dilation_h) * (1 + (wend - wstart - 1) / dilation_w) * (1 + (dend - dstart - 1) / dilation_d));
+            } else {
+              y_d[pool_index] /= total_elements;
+            }
         }
       }
     }
