@@ -86,46 +86,36 @@ struct StringBuffer {
 
 // apply the callback only when response is for sure to be a '/0' terminated string
 static size_t WriteStringCallback(void* contents, size_t size, size_t nmemb, void* userp) {
-  size_t realsize = size * nmemb;
-  auto buffer = reinterpret_cast<struct StringBuffer*>(userp);
-  buffer->ss_.write(reinterpret_cast<const char*>(contents), realsize);
-  return realsize;
+  try {
+    size_t realsize = size * nmemb;
+    auto buffer = reinterpret_cast<struct StringBuffer*>(userp);
+    buffer->ss_.write(reinterpret_cast<const char*>(contents), realsize);
+    return realsize;
+  } catch (...) {
+    // exception caught, abort write
+    return CURLcode::CURLE_WRITE_ERROR;
+  }
 }
 
 using CurlWriteCallBack = size_t (*)(void*, size_t, size_t, void*);
 
 class CurlHandler {
  public:
-  CurlHandler(CurlWriteCallBack call_back) {
-    curl_ = curl_easy_init();
-    curl_easy_setopt(curl_, CURLOPT_BUFFERSIZE, 102400L);
-    curl_easy_setopt(curl_, CURLOPT_NOPROGRESS, 1L);
-    curl_easy_setopt(curl_, CURLOPT_USERAGENT, "curl/7.83.1");
-    curl_easy_setopt(curl_, CURLOPT_MAXREDIRS, 50L);
-    curl_easy_setopt(curl_, CURLOPT_FTP_SKIP_PASV_IP, 1L);
-    curl_easy_setopt(curl_, CURLOPT_TCP_KEEPALIVE, 1L);
-    curl_easy_setopt(curl_, CURLOPT_WRITEFUNCTION, call_back);
+  CurlHandler(CurlWriteCallBack call_back) : curl_(curl_easy_init(), curl_easy_cleanup),
+                                             headers_(nullptr, curl_slist_free_all),
+                                             from_holder_(from_, curl_formfree) {
+    curl_easy_setopt(curl_.get(), CURLOPT_BUFFERSIZE, 102400L);
+    curl_easy_setopt(curl_.get(), CURLOPT_NOPROGRESS, 1L);
+    curl_easy_setopt(curl_.get(), CURLOPT_USERAGENT, "curl/7.83.1");
+    curl_easy_setopt(curl_.get(), CURLOPT_MAXREDIRS, 50L);
+    curl_easy_setopt(curl_.get(), CURLOPT_FTP_SKIP_PASV_IP, 1L);
+    curl_easy_setopt(curl_.get(), CURLOPT_TCP_KEEPALIVE, 1L);
+    curl_easy_setopt(curl_.get(), CURLOPT_WRITEFUNCTION, call_back);
   }
-  ~CurlHandler() {
-    if (curl_) {
-      curl_easy_cleanup(curl_);
-      curl_ = {};
-    }
-    if (mime1_) {
-      curl_mime_free(mime1_);
-      mime1_ = {};
-    }
-    if (headers_) {
-      curl_slist_free_all(headers_);
-      headers_ = {};
-    }
-    if (from_) {
-      curl_formfree(from_);
-      from_ = {};
-    }
-  }
+  ~CurlHandler() = default;
+
   void AddHeader(const char* data) {
-    headers_ = curl_slist_append(headers_, data);
+    headers_.reset(curl_slist_append(headers_.get(), data));
   }
   template <typename... Args>
   void AddForm(Args... args) {
@@ -133,21 +123,22 @@ class CurlHandler {
   }
   template <typename T>
   void SetOption(CURLoption opt, T val) {
-    curl_easy_setopt(curl_, opt, val);
+    curl_easy_setopt(curl_.get(), opt, val);
   }
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(CurlHandler);
   CURLcode Perform() {
-    SetOption(CURLOPT_HTTPHEADER, headers_);
+    SetOption(CURLOPT_HTTPHEADER, headers_.get());
     SetOption(CURLOPT_HTTPPOST, from_);
-    return curl_easy_perform(curl_);
+    return curl_easy_perform(curl_.get());
   }
 
  private:
-  CURL* curl_{};
-  curl_mime* mime1_{};
-  struct curl_slist* headers_{};
-  struct curl_httppost* from_{};
-  struct curl_httppost* last_{};
+
+  std::unique_ptr<CURL, decltype(curl_easy_cleanup)*> curl_;
+  std::unique_ptr<curl_slist, decltype(curl_slist_free_all)*> headers_;
+  curl_httppost* from_{};
+  curl_httppost* last_{};
+  std::unique_ptr<curl_httppost, decltype(curl_formfree)*> from_holder_;
 };
 
 onnxruntime::Status OpenAIInvoker::Send(const CloudEndPointConfig& run_options,
@@ -196,10 +187,8 @@ onnxruntime::Status OpenAIInvoker::Send(const CloudEndPointConfig& run_options,
 
   auto* output_string = output_tensor->MutableData<std::string>();
   *output_string = string_buffer.ss_.str();
-
-  ort_outputs.resize(1);
   auto tensor_type = DataTypeImpl::GetType<Tensor>();
-  ort_outputs[0].Init(output_tensor.release(), tensor_type, tensor_type->GetDeleteFunc());
+  ort_outputs.emplace_back(output_tensor.release(), tensor_type, tensor_type->GetDeleteFunc());
   return Status::OK();
 }
 
