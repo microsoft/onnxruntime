@@ -245,10 +245,10 @@ TimestampLogitsProcessor<T>::TimestampLogitsProcessor(int eos_token_id, int max_
 template <typename T>
 void TimestampLogitsProcessor<T>::Process(const ISequences* sequences,
                                           NextTokenScores<T>& next_token_scores) {
-  const int beg_token_id_ = eos_token_id_ + 107;//50364
-  const int not_token_id_ = eos_token_id_ + 106;//50363
-  const int solm_token_id_ = eos_token_id_ + 105;//50362
-  const int sot_token_id_ = eos_token_id_ + 1;//50258
+  const int beg_token_id_ = eos_token_id_ + 107;
+  const int not_token_id_ = eos_token_id_ + 106;
+  const int solm_token_id_ = eos_token_id_ + 105;
+  const int sot_token_id_ = eos_token_id_ + 1;
   const int translate_token_id_ = 50358;
   const int transcribe_token_id_ = 50359;
 
@@ -257,11 +257,11 @@ void TimestampLogitsProcessor<T>::Process(const ISequences* sequences,
   for (int i = 0; i < batch_beam_size; i++) {
     gsl::span<T> beam_token_scores = next_token_scores.GetScores(i);
     gsl::span<const int32_t> sequence = sequences->GetSequence(i);
-    const int seq_length = sequence.size();
+    const size_t seq_length = sequence.size();
 
     // Find first timestamp
-    int sample_begin = 0;
-    for (int j = 0; j < seq_length; j++) {
+    size_t sample_begin = 0;
+    for (size_t j = 0; j < seq_length; j++) {
       sample_begin++;
       if (sequence[j] >= beg_token_id_) {
         break;
@@ -308,12 +308,12 @@ void TimestampLogitsProcessor<T>::Process(const ISequences* sequences,
       }
     }
 
-    // Timestamps should not decrease; forbid timestamp tokens smaller than the last
-    const int timestamps_len = timestamps.size();
+    // Timestamps will not decrease
+    const size_t timestamps_len = timestamps.size();
     if (timestamps_len > 0) {
       int timestamp_last = 0;
       if (last_was_timestamp && !penultimate_was_timestamp) {
-        // For single timestamp at the end, next timestamp must be the same or greater
+        // For single timestamp at the end, next timestamp must not be smaller
         timestamp_last = timestamps.back();
       } else {
         // For paired timestamp at the end, next timestamp must be greater
@@ -330,6 +330,28 @@ void TimestampLogitsProcessor<T>::Process(const ISequences* sequences,
       for (int j = last_allowed + 1; j < vocab_size; j++) {
         beam_token_scores[j] = std::numeric_limits<T>::lowest();
       }
+    }
+
+    // Caculate logsumexp on timestamps
+    float timestamp_logprob = std::numeric_limits<T>::lowest();
+    {
+        float logsumexp = 0.0f;
+        const float logprob_max = *std::max_element(beam_token_scores.begin() + beg_token_id_, beam_token_scores.end());
+        for (int j = beg_token_id_; j < vocab_size; ++j) {
+            if (beam_token_scores[j] > std::numeric_limits<T>::lowest()) {
+                logsumexp += expf(beam_token_scores[j] - logprob_max);
+            }
+        }
+        if (logsumexp > 0.0f) {
+            timestamp_logprob = logf(logsumexp) + logprob_max;
+        }
+    }
+
+    const float max_text_token_logprob = *std::max_element(beam_token_scores.begin(), beam_token_scores.begin() + beg_token_id_);
+    if (timestamp_logprob > max_text_token_logprob) {
+        for (int j = 0; j < beg_token_id_; ++j) {
+            beam_token_scores[j] = std::numeric_limits<T>::lowest();
+        }
     }
   }
 

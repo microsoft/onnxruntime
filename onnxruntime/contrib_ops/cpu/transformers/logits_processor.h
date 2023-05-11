@@ -206,8 +206,8 @@ class LogitsProcessorList : public ILogitsProcessorList {
       processor_list_.push_back(presence_penalty_processor_.get());
     }
 
-    if (parameters.model_type == IGenerationParameters::kModelTypeWhisper) {
-      const int max_initial_timestamp_index = 50;
+    if (parameters.model_type == IGenerationParameters::kModelTypeWhisper && parameters.timestamp_enable) {
+      constexpr int max_initial_timestamp_index = 50;
       timestamp_processor_ = std::make_unique<TimestampLogitsProcessor<float>>(parameters.eos_token_id, max_initial_timestamp_index);
       processor_list_.push_back(timestamp_processor_.get());
     }

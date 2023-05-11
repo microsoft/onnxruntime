@@ -146,6 +146,7 @@ struct IGenerationParameters {
   int num_return_sequences;
   float length_penalty;
   float repetition_penalty;
+  bool timestamp_enable;
   int batch_size;       // deduce from first dimension of input_ids
   int sequence_length;  // deduce from second dimension of input_ids of GPT-2 or decoder_input_ids of T5
 
