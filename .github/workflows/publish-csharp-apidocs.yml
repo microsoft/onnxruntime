@@ -48,7 +48,7 @@ jobs:
     - name: Move C# docs into site
       run: |
         mkdir _site\docs\api
-        rmdir /S /Q _site\docs\api\csharp
+        Remove-Item -Recurse -Force _site\docs\api\csharp
         move csharp\ApiDocs\csharp _site\docs\api
     - name: Upload docs artifact
       uses: actions/upload-artifact@v3
