@@ -494,7 +494,7 @@ public final class OrtUtil {
    */
   static BufferTuple prepareBuffer(Buffer data, OnnxJavaType type) {
     if (type == OnnxJavaType.STRING || type == OnnxJavaType.UNKNOWN) {
-      throw new IllegalStateException("Cannot create a String tensor from a buffer, or an unknown tensor of any kind");
+      throw new IllegalStateException("Cannot create a " + type + " tensor from a buffer");
     }
     int bufferPos;
     long bufferSizeLong = data.remaining() * (long) type.size;
