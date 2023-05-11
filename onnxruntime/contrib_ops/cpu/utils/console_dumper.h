@@ -9,7 +9,7 @@ namespace onnxruntime {
 namespace contrib {
 namespace transformers {
 
-// #define DEBUG_GENERATION 1  // uncomment it for debugging generation (like beam search etc)
+#define DEBUG_GENERATION 1  // uncomment it for debugging generation (like beam search etc)
 #ifdef DEBUG_GENERATION
 #define DUMP_TENSOR_LEVEL 2
 #else

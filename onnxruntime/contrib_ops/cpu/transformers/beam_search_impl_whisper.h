@@ -305,13 +305,13 @@ Status BeamSearchWhisper<T>::Execute(const FeedsFetchesManager& encoder_feeds_fe
       dumper->Print("decoder_feeds", i, true);
       dumper->Print("", decoder_feeds[i]);
     }
-    auto offset = decoder_subgraph_.GetFirstPastInputIndex() + 4 * decoder_subgraph_.num_layers;
-    dumper->Print("past_sequence_length", offset, true);
-    dumper->Print("", decoder_feeds[offset]);
-    dumper->Print("beam_width", offset + 1, true);
-    dumper->Print("", decoder_feeds[offset + 1]);
-    dumper->Print("cache_redir", offset + 2, true);
-    dumper->Print("", decoder_feeds[offset + 2]);
+    // auto offset = decoder_subgraph_.GetFirstPastInputIndex() + 4 * decoder_subgraph_.num_layers;
+    // dumper->Print("past_sequence_length", offset, true);
+    // dumper->Print("", decoder_feeds[offset]);
+    // dumper->Print("beam_width", offset + 1, true);
+    // dumper->Print("", decoder_feeds[offset + 1]);
+    // dumper->Print("cache_redir", offset + 2, true);
+    // dumper->Print("", decoder_feeds[offset + 2]);
 #endif
 
 #ifdef DEBUG_NODE_INPUTS_OUTPUTS
