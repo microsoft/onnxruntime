@@ -249,8 +249,8 @@ void TimestampLogitsProcessor<T>::Process(const ISequences* sequences,
   const int not_token_id_ = eos_token_id_ + 106;
   const int solm_token_id_ = eos_token_id_ + 105;
   const int sot_token_id_ = eos_token_id_ + 1;
-  const int translate_token_id_ = 50358;
-  const int transcribe_token_id_ = 50359;
+  constexpr int translate_token_id_ = 50358;
+  constexpr int transcribe_token_id_ = 50359;
 
   const int batch_beam_size = next_token_scores.batch_beam_size;
   const int vocab_size = next_token_scores.vocab_size;
@@ -284,12 +284,12 @@ void TimestampLogitsProcessor<T>::Process(const ISequences* sequences,
     }
 
     // Timestamps should be in pair except the first one
-    const bool last_was_timestamp = seq_length > 0 && sequence.back() >= beg_token_id_;//0
+    const bool last_was_timestamp = seq_length > 0 && sequence.back() >= beg_token_id_;
     const bool penultimate_was_timestamp = seq_length <= sample_begin || sequence[seq_length - 2] >= beg_token_id_;
     if (last_was_timestamp) {
       if (penultimate_was_timestamp) {
         // If timestamps show up in pair, or it's the first timestamp, no more timestamp is generated
-        for (int j = beg_token_id_; j < vocab_size; j++) {//n_logits
+        for (int j = beg_token_id_; j < vocab_size; j++) {
           beam_token_scores[j] = std::numeric_limits<T>::lowest();
         }
       } else {
