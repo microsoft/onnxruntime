@@ -593,7 +593,7 @@ async function main() {
     if (webgpu) {
       switch (mode) {
         case 'debug':
-          return profile ? 'ChromeWebGpuProfileDebug':'ChromeDebug';
+          return profile ? 'ChromeWebGpuProfileDebug' : 'ChromeDebug';
         default:
           return profile ? 'ChromeWebGpuProfileTest' : 'ChromeTest';
       }
