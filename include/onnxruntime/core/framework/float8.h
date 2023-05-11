@@ -155,7 +155,6 @@ inline ORT_HOST_DEVICE bool operator<(const Float8E4M3FN& left, const Float8E4M3
 
 // User defined suffixes to make it easier to declare
 // initializers with MLFloat8E4M3FN and Float8E4M3FN from unsigned char
-// E.g 10_f16 or 10_b16
 #if !defined(__CUDACC__) && !defined(__HIPCC__)
 
 inline Float8E4M3FN operator"" _f8e4m3fn(unsigned long long int v) {
@@ -307,7 +306,6 @@ inline ORT_HOST_DEVICE bool operator<(const Float8E4M3FNUZ& left, const Float8E4
 
 // User defined suffixes to make it easier to declare
 // initializers with MLFloat8E4M3FN and Float8E4M3FN from unsigned char
-// E.g 10_f16 or 10_b16
 #if !defined(__CUDACC__) && !defined(__HIPCC__)
 
 inline Float8E4M3FNUZ operator"" _f8e4m3p8fnuz(unsigned long long int v) {
@@ -466,7 +464,6 @@ inline ORT_HOST_DEVICE bool operator<(const Float8E5M2& left, const Float8E5M2& 
 
 // User defined suffixes to make it easier to declare
 // initializers with MLFloat8E5M2 and Float8E5M2 from unsigned char
-// E.g 10_f16 or 10_b16
 #if !defined(__CUDACC__) && !defined(__HIPCC__)
 
 inline Float8E5M2 operator"" _f8e5m2fn(unsigned long long int v) {
@@ -611,7 +608,6 @@ inline ORT_HOST_DEVICE bool operator<(const Float8E5M2FNUZ& left, const Float8E5
 
 // User defined suffixes to make it easier to declare
 // initializers with MLFloat8E5M2 and Float8E5M2 from unsigned char
-// E.g 10_f16 or 10_b16
 #if !defined(__CUDACC__) && !defined(__HIPCC__)
 
 inline Float8E5M2FNUZ operator"" _f8e5m2fnuz(unsigned long long int v) {

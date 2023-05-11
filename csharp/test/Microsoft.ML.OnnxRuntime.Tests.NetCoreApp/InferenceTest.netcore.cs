@@ -241,7 +241,6 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 
         private static Dictionary<string, string> GetSkippedModels(DirectoryInfo modelsDirInfo)
         {
-            // This is used to disable tests in QNN EP.
             var skipModels = new Dictionary<string, string>() {
                 { "mxnet_arcface", "Model is an invalid ONNX model"},
                 { "tf_inception_v2", "TODO: Debug failing model, skipping for now" },

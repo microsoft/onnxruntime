@@ -119,14 +119,6 @@ CastToString(const SrcType& input, std::string& output) {
   CastToString(static_cast<float>(input), output);
 }
 
-/*
-template <typename SrcType>
-typename std::enable_if<IsOrtFloat8Type<SrcType>::value, void>::type
-CastToString(const SrcType& input, std::string& output) {
-  CastToString(input.ToFloat(), output);
-}
-*/
-
 template <typename DstType>
 typename std::enable_if<std::is_floating_point<DstType>::value, void>::type
 CastFromString(const std::string& input, DstType& output) {

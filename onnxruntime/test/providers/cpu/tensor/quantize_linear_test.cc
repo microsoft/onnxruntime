@@ -433,7 +433,7 @@ void DequantizeLinearOp19Test() {
 }
 
 TEST(DequantizeLinearOpTest, Float8) {
-  int min_cuda_architecture = 11080;
+  constexpr int min_cuda_architecture = 11080;
   bool enable_cuda = (nullptr != DefaultCpuExecutionProvider().get()) && HasCudaEnvironment(min_cuda_architecture);
   bool enable_cpu = (nullptr != DefaultCpuExecutionProvider().get());
 
@@ -467,7 +467,7 @@ void QuantizeLinearOp19Test(bool saturate) {
 }
 
 TEST(QuantizeLinearOpTest, Float8) {
-  int min_cuda_architecture = 11080;
+  constexpr int min_cuda_architecture = 11080;
   bool enable_cuda = (nullptr != DefaultCpuExecutionProvider().get()) && HasCudaEnvironment(min_cuda_architecture);
   bool enable_cpu = (nullptr != DefaultCpuExecutionProvider().get());
 

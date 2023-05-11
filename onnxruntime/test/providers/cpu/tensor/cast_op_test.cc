@@ -217,22 +217,22 @@ void CastOpTestFloat8(Saturate saturate) {
                                           std::numeric_limits<float>::infinity()};
 
   // float output precision is 8, so the expected output differs slightly from the input due to that
-  std::vector<Float8E4M3FN> output;
+  std::vector<F8> output;
   output.reserve(float_input.size());
   for (size_t i = 0; i < float_input.size(); ++i) {
-    output.emplace_back(Float8E4M3FN(float_input[i], saturate == Saturate::True));
+    output.emplace_back(F8(float_input[i], saturate == Saturate::True));
   }
-  TestCastOp<float, Float8E4M3FN>(gsl::make_span(float_input), gsl::make_span(output), shape, OpTester::ExpectResult::kExpectSuccess, "", 19, saturate);
+  TestCastOp<float, F8>(gsl::make_span(float_input), gsl::make_span(output), shape, OpTester::ExpectResult::kExpectSuccess, "", 19, saturate);
 
   const std::vector<MLFloat16> float16_input =
       CastedValues<float, MLFloat16>(gsl::make_span(float_input));
 
-  TestCastOp<MLFloat16, Float8E4M3FN>(gsl::make_span(float16_input), gsl::make_span(output), shape, OpTester::ExpectResult::kExpectSuccess, "", 19, saturate);
+  TestCastOp<MLFloat16, F8>(gsl::make_span(float16_input), gsl::make_span(output), shape, OpTester::ExpectResult::kExpectSuccess, "", 19, saturate);
 }
 
 TEST(CastOpTest, ToFloat8E4M3FN) {
-  int min_cuda_architecture = 11080;
-  bool enable_cuda = (nullptr != DefaultCpuExecutionProvider().get()) && HasCudaEnvironment(min_cuda_architecture);
+  constexpr int min_cuda_architecture = 11080;
+  bool enable_cuda = (nullptr != DefaultCudaExecutionProvider().get()) && HasCudaEnvironment(min_cuda_architecture);
   bool enable_cpu = (nullptr != DefaultCpuExecutionProvider().get());
 
   if (enable_cpu || enable_cuda) {
@@ -250,8 +250,8 @@ TEST(CastOpTest, ToFloat8E4M3FNUZ) {
 }
 
 TEST(CastOpTest, ToFloat8E5M2) {
-  int min_cuda_architecture = 11080;
-  bool enable_cuda = (nullptr != DefaultCpuExecutionProvider().get()) && HasCudaEnvironment(min_cuda_architecture);
+  constexpr int min_cuda_architecture = 11080;
+  bool enable_cuda = (nullptr != DefaultCudaExecutionProvider().get()) && HasCudaEnvironment(min_cuda_architecture);
   bool enable_cpu = (nullptr != DefaultCpuExecutionProvider().get());
 
   if (enable_cpu || enable_cuda) {
