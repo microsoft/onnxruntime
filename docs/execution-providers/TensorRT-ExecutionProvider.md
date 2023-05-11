@@ -160,11 +160,11 @@ Following environment variables can be set for TensorRT execution provider.
 
 * `ORT_TENSORRT_SPARSITY_ENABLE`: Control if sparsity can be used by TRT. Default 0 = false, 1 = true. Check `--sparsity` in `trtexec` command-line flags for [details](https://docs.nvidia.com/deeplearning/tensorrt/developer-guide/index.html#trtexec-flags).
 
-* `ORT_TENSORRT_BUILDER_OPTIMIZATION_LEVEL`: Set the builder optimization level. WARNING: levels below 2 do not guarantee good engine performance, but greatly improve build time.  Default 2, valid range [0-4]. Check `--builderOptimizationLevel` in `trtexec` command-line flags for [details](https://docs.nvidia.com/deeplearning/tensorrt/developer-guide/index.html#trtexec-flags).
+* `ORT_TENSORRT_BUILDER_OPTIMIZATION_LEVEL`: Set the builder optimization level. WARNING: levels below 3 do not guarantee good engine performance, but greatly improve build time.  Default 3, valid range [0-5]. Check `--builderOptimizationLevel` in `trtexec` command-line flags for [details](https://docs.nvidia.com/deeplearning/tensorrt/developer-guide/index.html#trtexec-flags).
 
 * `ORT_TENSORRT_AUXILIARY_STREAMS`: Set maximum number of auxiliary streams per inference stream. Setting this value to 0 will lead to optimal memory usage. Default -1 = heuristics. Check `--maxAuxStreams` in `trtexec` command-line flags for [details](https://docs.nvidia.com/deeplearning/tensorrt/developer-guide/index.html#trtexec-flags).
 
-* `ORT_TENSORRT_TACTIC_SOURCES`: Specify the tactics to be used by adding (+) or removing (-) tactics from the default tactic sources (default = all available tactics) e.g. "-CUDNN,+CUBLAS" available keys: "CUBLAS"|"CUBLAS_LT"|"CUDNN"|"EDGE_MASK_CONVOLUTIONS".
+* `ORT_TENSORRT_TACTIC_SOURCES`: Specify the tactics to be used by adding (+) or removing (-) tactics from the default tactic sources (default = all available tactics) e.g. "-CUDNN,+CUBLAS" available keys: "CUBLAS", "CUBLAS_LT", "CUDNN" or "EDGE_MASK_CONVOLUTIONS".
 
 * `ORT_TENSORRT_EXTRA_PLUGIN_LIB_PATHS`: Specify extra TensorRT plugin library paths. ORT TRT by default supports any TRT plugins registered in TRT registry in TRT plugin library (i.e., `libnvinfer_plugin.so`). Moreover, if users want to use other TRT plugins that are not in TRT plugin library, for example, FasterTransformer has many TRT plugin implementations for different models, user can specify like this `ORT_TENSORRT_EXTRA_PLUGIN_LIB_PATHS=libvit_plugin.so;libvit_int8_plugin.so`.  
 
@@ -390,7 +390,6 @@ args = {
     ),
 }
 sess.run(None, args)
-
 # you can find engine cache and profile cache are saved in the 'trt_engine_cache_path' directory, e.g.
 # TensorrtExecutionProvider_TRTKernel_graph_torch_jit_1843998305741310361_0_0_fp16.engine and TensorrtExecutionProvider_TRTKernel_graph_torch_jit_1843998305741310361_0_0_fp16.profile.
 
