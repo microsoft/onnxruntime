@@ -13,6 +13,13 @@
 #else
 #include <limits>
 #include <iconv.h>
+
+#if defined(__APPLE__)
+// Specify -liconv here so we don't need to add link flags for libiconv elsewhere, e.g., for iOS apps that statically
+// link to ORT.
+asm(".linker_option \"-liconv\"");
+#endif  // __APPLE__
+
 #endif  // _MSC_VER
 
 #include <locale>
