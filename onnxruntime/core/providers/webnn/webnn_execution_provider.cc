@@ -313,6 +313,7 @@ common::Status WebNNExecutionProvider::Compile(const std::vector<FusedNodeAndGra
           switch (output_type) {
             case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16:
             case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
+            case ONNX_NAMESPACE::TensorProto_DataType_INT64:
               output_buffer = output_tensor.GetTensorMutableRawData();
               break;
             default:

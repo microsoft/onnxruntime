@@ -32,6 +32,8 @@ std::vector<std::vector<NodeIndex>> GetSupportedNodes(const GraphViewer& graph_v
                                                       const emscripten::val& wnn_builder_,
                                                       const logging::Logger& logger);
 static const InlinedHashMap<std::string, std::string> op_map = {
+    {"ArgMax", "argMax"},
+    {"ArgMin", "argMin"},
     {"Add", "add"},
     {"Sub", "sub"},
     {"Mul", "mul"},
@@ -66,9 +68,10 @@ inline bool CheckSingleOp(const std::string& op_type, const emscripten::val& wnn
   return op_map.find(op_type) != op_map.end() && wnn_builder_[op_map.find(op_type)->second].as<bool>();
 }
 
-constexpr std::array<ONNX_NAMESPACE::TensorProto_DataType, 2> supported_data_types = {
+constexpr std::array<ONNX_NAMESPACE::TensorProto_DataType, 3> supported_data_types = {
     ONNX_NAMESPACE::TensorProto_DataType_FLOAT16,
     ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
+    ONNX_NAMESPACE::TensorProto_DataType_INT64,
 };
 
 bool IsSupportedDataType(int32_t data_type);

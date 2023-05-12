@@ -36,6 +36,11 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
     CreateActivationOpBuilder("Sigmoid", op_registrations);
   }
 
+  {   // ArgMax/ArgMin
+    CreateArgMaxMinOpBuilder("ArgMax", op_registrations);
+    CreateArgMaxMinOpBuilder("ArgMin", op_registrations);
+  }
+
   {  // Cast
     CreateCastOpBuilder("Cast", op_registrations);
   }

@@ -40,12 +40,16 @@ Status Model::Predict(const InlinedHashMap<std::string, OnnxTensorData>& inputs,
         view = emscripten::val{emscripten::typed_memory_view(num_elements,
                                                              static_cast<const float*>(tensor.buffer))};
         break;
+      case ONNX_NAMESPACE::TensorProto_DataType_INT64: {
+        view = emscripten::val{emscripten::typed_memory_view(num_elements,
+                                                             static_cast<const int64_t*>(tensor.buffer))};
+        break;
+      }
       default:
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                                "The input of graph has unsupported type, name: ",
                                name, " type: ", tensor.tensor_info.data_type);
     }
-
 #ifdef ENABLE_WEBASSEMBLY_THREADS
     // Copy the inputs from Wasm SharedArrayBuffer to the pre-allocated ArrayBuffers.
     wnn_inputs_[name].call<void>("set", view);
@@ -76,6 +80,11 @@ Status Model::Predict(const InlinedHashMap<std::string, OnnxTensorData>& inputs,
         view = emscripten::val{emscripten::typed_memory_view(num_elements,
                                                              static_cast<const float*>(tensor.buffer))};
         break;
+      case ONNX_NAMESPACE::TensorProto_DataType_INT64: {
+        view = emscripten::val{emscripten::typed_memory_view(num_elements,
+                                                             static_cast<const int64_t*>(tensor.buffer))};
+        break;
+      }
       default:
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                                "The output of graph has unsupported type, name: ",
@@ -89,7 +98,6 @@ Status Model::Predict(const InlinedHashMap<std::string, OnnxTensorData>& inputs,
 #endif
   }
   wnn_context_.call<emscripten::val>("computeSync", wnn_graph_, wnn_inputs_, wnn_outputs_);
-
 #ifdef ENABLE_WEBASSEMBLY_THREADS
   // Copy the outputs from pre-allocated ArrayBuffers back to the Wasm SharedArrayBuffer.
   for (const auto& output : outputs) {
@@ -131,6 +139,9 @@ void Model::AllocateInputOutputBuffers() {
       case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
         wnn_inputs_.set(input, emscripten::val::global("Float32Array").new_(num_elements));
         break;
+      case ONNX_NAMESPACE::TensorProto_DataType_INT64:
+        wnn_inputs_.set(input, emscripten::val::global("BigInt64Array").new_(num_elements));
+        break;
       default:
         break;
     }
@@ -146,6 +157,10 @@ void Model::AllocateInputOutputBuffers() {
         break;
       case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
         wnn_outputs_.set(output, emscripten::val::global("Float32Array").new_(num_elements));
+        break;
+      case ONNX_NAMESPACE::TensorProto_DataType_INT64:
+        wnn_outputs_.set(output, emscripten::val::global("BigInt64Array").new_(num_elements));
+        break;
       default:
         break;
     }

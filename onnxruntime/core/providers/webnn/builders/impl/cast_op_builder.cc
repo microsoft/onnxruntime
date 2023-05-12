@@ -38,8 +38,22 @@ Status CastOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   NodeAttrHelper helper(node);
   // We already checked the "to" type in IsOpSupportedImpl.
   const auto to_type = helper.Get("to", ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
-  std::string operand_type =
-      to_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT ? "float32" : "float16";
+  std::string operand_type;
+  switch(to_type) {
+    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16:
+      operand_type = "float16";
+      break;
+    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
+      operand_type = "float32";
+      break;
+    case ONNX_NAMESPACE::TensorProto_DataType_INT64:
+      operand_type = "int64";
+      break;
+    default:
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "The Cast node has unsupported 'to' type, name: ",
+                             node.Name(), " type: ", to_type);
+  }
 
   emscripten::val output =
       model_builder.GetBuilder().call<emscripten::val>("cast", input, emscripten::val(operand_type));
@@ -62,7 +76,7 @@ bool CastOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers, 
   const auto to_type = helper.Get("to", ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED);
   if (!IsSupportedDataType(to_type)) {
     LOGS(logger, VERBOSE) << "Invalid cast to type " << to_type
-                          << " . Current WebNN only support cast to float32 or float16.";
+                          << " . Current WebNN only support cast to float32, float16 or int64.";
     return false;
   }
 

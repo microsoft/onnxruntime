@@ -126,6 +126,11 @@ Status ModelBuilder::RegisterInitializers() {
           view = emscripten::val{emscripten::typed_memory_view(num_elements,
                                                                reinterpret_cast<float*>(unpacked_tensor.data()))};
           break;
+        case ONNX_NAMESPACE::TensorProto_DataType_INT64:
+          desc.set("type", emscripten::val("int64"));
+          view = emscripten::val{emscripten::typed_memory_view(num_elements,
+                                                               reinterpret_cast<int64_t*>(unpacked_tensor.data()))};
+          break;
         default:
           break;
       }
@@ -200,7 +205,7 @@ Status ModelBuilder::RegisterModelInputOutput(const NodeArg& node_arg, bool is_i
     const auto* type_proto = node_arg.TypeAsProto();
     if (!type_proto || !type_proto->tensor_type().has_elem_type()) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "The  ", input_output_type, " of graph doesn't have elem_type: ", name);
+                             "The ", input_output_type, " of graph doesn't have elem_type: ", name);
     }
 
     data_type = type_proto->tensor_type().elem_type();
@@ -211,10 +216,13 @@ Status ModelBuilder::RegisterModelInputOutput(const NodeArg& node_arg, bool is_i
       case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
         desc.set("type", emscripten::val("float32"));
         break;
+      case ONNX_NAMESPACE::TensorProto_DataType_INT64:
+        desc.set("type", emscripten::val("int64"));
+        break;
       default: {
         // TODO: support other type.
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                               "The  ", input_output_type, " of graph doesn't have valid type, name: ", name,
+                               "The ", input_output_type, " of graph doesn't have valid type, name: ", name,
                                " type: ", type_proto->tensor_type().elem_type());
       }
     }
@@ -277,6 +285,11 @@ Status ModelBuilder::AddOperandFromPersistMemoryBuffer(
       view = emscripten::val{emscripten::typed_memory_view(size / sizeof(float),
                                                            reinterpret_cast<const float*>(dest))};
       desc.set("type", emscripten::val("float32"));
+      break;
+    case ONNX_NAMESPACE::TensorProto_DataType_INT64:
+      view = emscripten::val{emscripten::typed_memory_view(size / sizeof(int64_t),
+                                                           reinterpret_cast<const int64_t*>(dest))};
+      desc.set("type", emscripten::val("int64"));
       break;
     default:
       break;
