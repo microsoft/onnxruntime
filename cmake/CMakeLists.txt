@@ -272,6 +272,9 @@ if (onnxruntime_USE_ROCM)
 
   file(GLOB rocm_cmake_components ${onnxruntime_ROCM_HOME}/lib/cmake/*)
   list(APPEND CMAKE_PREFIX_PATH ${rocm_cmake_components})
+  # Force cmake to accept the configured HIP compiler. Because the configured CMAKE_PREFIX_PATH does not work during
+  # enable_language(HIP), we might need to move configuring of CMAKE_PREFIX_PATH to build.py (in the future).
+  set(CMAKE_HIP_COMPILER_FORCED ON)
 
   enable_language(HIP)
   # NOTE: Flags -mllvm -amdgpu-early-inline-all=true are critical for gpu kernel code performance. -mllvm passes the
