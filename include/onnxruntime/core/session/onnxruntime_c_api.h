@@ -631,9 +631,8 @@ struct OrtApiBase {
    *   older than the version created with this header file.
    */
   const OrtApi*(ORT_API_CALL* GetApi)(uint32_t version)NO_EXCEPTION;
-  const char*(ORT_API_CALL* GetVersionString)(void)NO_EXCEPTION;         ///< Returns a null terminated string of the version of the Onnxruntime library (eg: "1.8.1")
-  const ORTCHAR_T*(ORT_API_CALL* GetBuildInfoString)(void)NO_EXCEPTION;  ///< Returns a null terminated string of the build info including git info and cxx flags
 };
+
 typedef struct OrtApiBase OrtApiBase;
 
 /** \brief The Onnxruntime library's entry point to access the C API
@@ -4194,6 +4193,22 @@ struct OrtApi {
    * \since Version 1.15.
    */
   ORT_API2_STATUS(KernelContext_GetAllocator, _In_ const OrtKernelContext* context, _In_ const OrtMemoryInfo* mem_info, _Outptr_ OrtAllocator** out);
+
+  /** \brief Returns a null terminated string of the version of the Onnxruntime library (eg: "1.8.1")
+   *
+   *  \return UTF-8 encoded version string. Do not deallocate the returned buffer.
+   *
+   *  \since Version 1.15.
+   */
+  const char*(ORT_API_CALL* GetVersionString)(void);
+
+  /** \brief Returns a null terminated string of the build info including git info and cxx flags
+   *
+   * \return UTF-8 encoded version string. Do not deallocate the returned buffer.
+   *
+   * \since Version 1.15.
+   */
+  const char*(ORT_API_CALL* GetBuildInfoString)(void);
 };
 
 /*

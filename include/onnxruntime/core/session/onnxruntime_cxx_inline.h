@@ -1988,13 +1988,11 @@ inline void CustomOpApi::ReleaseKernelInfo(_Frees_ptr_opt_ OrtKernelInfo* info_c
 }
 
 inline std::string GetVersionString() {
-  std::string result = OrtGetApiBase()->GetVersionString();
-  return result;
+  return GetApi().GetVersionString();
 }
 
-inline std::basic_string<ORTCHAR_T> GetBuildInfoString() {
-  std::basic_string<ORTCHAR_T> result = OrtGetApiBase()->GetBuildInfoString();
-  return result;
+inline std::string GetBuildInfoString() {
+  return GetApi().GetBuildInfoString();
 }
 
 inline std::vector<std::string> GetAvailableProviders() {

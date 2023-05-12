@@ -132,7 +132,7 @@ std::string GetVersionString();
 /// git commit id, build type(Debug/Release/RelWithDebInfo) and cmake cpp flags.
 /// </summary>
 /// <returns>string</returns>
-std::basic_string<ORTCHAR_T> GetBuildInfoString();
+std::string GetBuildInfoString();
 
 /// <summary>
 /// This is a C++ wrapper for OrtApi::GetAvailableProviders() and

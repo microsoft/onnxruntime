@@ -10,7 +10,6 @@ namespace Microsoft.ML.OnnxRuntime
     public struct OrtApiBase
     {
         public IntPtr GetApi;
-        public IntPtr GetVersionString;
     };
 
     // NOTE: The order of the APIs in this struct should match exactly that in
@@ -286,6 +285,9 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr CastTypeInfoToOptionalTypeInfo;
         public IntPtr GetOptionalContainedTypeInfo;
         public IntPtr GetResizedStringTensorElementBuffer;
+        public IntPtr KernelContext_GetAllocator;
+        public IntPtr GetVersionString;
+        public IntPtr GetBuildInfoString;
     }
 
     internal static class NativeMethods
@@ -295,18 +297,12 @@ namespace Microsoft.ML.OnnxRuntime
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
         public delegate ref OrtApi DOrtGetApi(UInt32 version);
 
-        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
-        public delegate IntPtr DOrtGetVersionString();
-
-        public static DOrtGetVersionString OrtGetVersionString;
-
         static NativeMethods()
         {
             DOrtGetApi OrtGetApi = (DOrtGetApi)Marshal.GetDelegateForFunctionPointer(OrtGetApiBase().GetApi, typeof(DOrtGetApi));
 
             // TODO: Make this save the pointer, and not copy the whole structure across
             api_ = (OrtApi)OrtGetApi(14 /*ORT_API_VERSION*/);
-            OrtGetVersionString = (DOrtGetVersionString)Marshal.GetDelegateForFunctionPointer(OrtGetApiBase().GetVersionString, typeof(DOrtGetVersionString));
 
             OrtCreateEnv = (DOrtCreateEnv)Marshal.GetDelegateForFunctionPointer(api_.CreateEnv, typeof(DOrtCreateEnv));
             OrtCreateEnvWithCustomLogger = (DOrtCreateEnvWithCustomLogger)Marshal.GetDelegateForFunctionPointer(api_.CreateEnvWithCustomLogger, typeof(DOrtCreateEnvWithCustomLogger));
@@ -465,6 +461,7 @@ namespace Microsoft.ML.OnnxRuntime
             OrtModelMetadataGetCustomMetadataMapKeys = (DOrtModelMetadataGetCustomMetadataMapKeys)Marshal.GetDelegateForFunctionPointer(api_.ModelMetadataGetCustomMetadataMapKeys, typeof(DOrtModelMetadataGetCustomMetadataMapKeys));
             OrtModelMetadataLookupCustomMetadataMap = (DOrtModelMetadataLookupCustomMetadataMap)Marshal.GetDelegateForFunctionPointer(api_.ModelMetadataLookupCustomMetadataMap, typeof(DOrtModelMetadataLookupCustomMetadataMap));
             OrtReleaseModelMetadata = (DOrtReleaseModelMetadata)Marshal.GetDelegateForFunctionPointer(api_.ReleaseModelMetadata, typeof(DOrtReleaseModelMetadata));
+            OrtGetVersionString = (DOrtGetVersionString)Marshal.GetDelegateForFunctionPointer(api_.GetVersionString, typeof(DOrtGetVersionString));
 
             OrtGetAvailableProviders = (DOrtGetAvailableProviders)Marshal.GetDelegateForFunctionPointer(api_.GetAvailableProviders, typeof(DOrtGetAvailableProviders));
             OrtReleaseAvailableProviders = (DOrtReleaseAvailableProviders)Marshal.GetDelegateForFunctionPointer(api_.ReleaseAvailableProviders, typeof(DOrtReleaseAvailableProviders));
@@ -1654,7 +1651,6 @@ namespace Microsoft.ML.OnnxRuntime
 
         public static DOrtModelMetadataLookupCustomMetadataMap OrtModelMetadataLookupCustomMetadataMap;
 
-
         /// <summary>
         /// Frees ModelMetadata instance
         /// </summary>
@@ -1663,6 +1659,11 @@ namespace Microsoft.ML.OnnxRuntime
         public delegate void DOrtReleaseModelMetadata(IntPtr /*(OrtModelMetadata*)*/ modelMetadata);
 
         public static DOrtReleaseModelMetadata OrtReleaseModelMetadata;
+
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr DOrtGetVersionString();
+
+        public static DOrtGetVersionString OrtGetVersionString;
 
         #endregion ModelMetadata API
 

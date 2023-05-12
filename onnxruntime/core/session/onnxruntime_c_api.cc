@@ -2379,10 +2379,7 @@ ORT_API(const OrtTrainingApi*, OrtApis::GetTrainingApi, uint32_t version) {
 }
 
 static constexpr OrtApiBase ort_api_base = {
-    &OrtApis::GetApi,
-    &OrtApis::GetVersionString,
-    &OrtApis::GetBuildInfoString,
-};
+    &OrtApis::GetApi};
 
 /* Rules on how to add a new Ort API version
 
@@ -2726,7 +2723,9 @@ static constexpr OrtApi ort_api_1_to_16 = {
     &OrtApis::CastTypeInfoToOptionalTypeInfo,
     &OrtApis::GetOptionalContainedTypeInfo,
     &OrtApis::GetResizedStringTensorElementBuffer,
-    &OrtApis::KernelContext_GetAllocator};
+    &OrtApis::KernelContext_GetAllocator,
+    &OrtApis::GetVersionString,
+    &OrtApis::GetBuildInfoString};
 // End of Version 15 - DO NOT MODIFY ABOVE (see above text for more information)
 
 // Asserts to do a some checks to ensure older Versions of the OrtApi never change (will detect an addition or deletion but not if they cancel out each other)
@@ -2747,7 +2746,7 @@ static_assert(offsetof(OrtApi, SessionOptionsAppendExecutionProvider_MIGraphX) /
 static_assert(offsetof(OrtApi, ReleaseKernelInfo) / sizeof(void*) == 218, "Size of version 12 API cannot change");
 static_assert(offsetof(OrtApi, ReleaseCANNProviderOptions) / sizeof(void*) == 224, "Size of version 13 API cannot change");
 static_assert(offsetof(OrtApi, GetSessionConfigEntry) / sizeof(void*) == 238, "Size of version 14 API cannot change");
-static_assert(offsetof(OrtApi, KernelContext_GetAllocator) / sizeof(void*) == 253, "Size of version 15 API cannot change");
+static_assert(offsetof(OrtApi, GetBuildInfoString) / sizeof(void*) == 255, "Size of version 15 API cannot change");
 
 // So that nobody forgets to finish an API version, this check will serve as a reminder:
 static_assert(std::string_view(ORT_VERSION) == "1.16.0",
@@ -2771,8 +2770,8 @@ ORT_API(const char*, OrtApis::GetVersionString) {
   return ORT_VERSION;
 }
 
-ORT_API(const ORTCHAR_T*, OrtApis::GetBuildInfoString) {
-  return ORT_TSTR_ON_MACRO(ORT_BUILD_INFO);
+ORT_API(const char*, OrtApis::GetBuildInfoString) {
+  return ORT_BUILD_INFO;
 }
 
 const OrtApiBase* ORT_API_CALL OrtGetApiBase(void) NO_EXCEPTION {

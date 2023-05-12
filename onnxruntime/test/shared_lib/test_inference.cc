@@ -2214,6 +2214,12 @@ TEST(CApiTest, get_version_string_cpp) {
   ASSERT_EQ(version_string, std::string(ORT_VERSION));
 }
 
+TEST(CApiTest, get_build_info_string) {
+  auto build_info_string = Ort::GetBuildInfoString();
+  ASSERT_FALSE(build_info_string.empty());
+  ASSERT_EQ(build_info_string, std::string(ORT_BUILD_INFO));
+}
+
 TEST(CApiTest, TestSharedAllocators) {
   OrtEnv* env_ptr = (OrtEnv*)(*ort_env);
 
