@@ -75,9 +75,6 @@ Status WhisperDecoderSubgraph::Validate(const std::vector<const NodeArg*>& subgr
 
   ORT_RETURN_IF(subgraph_inputs[0]->Name() != "input_ids",
                 "decoder subgraph input 0 shall be named as input_ids, got: ", subgraph_inputs[0]->Name());
-  // ORT_RETURN_IF(subgraph_inputs[1]->Name() != "encoder_attention_mask",
-  //               "decoder subgraph input 1 shall be named as encoder_attention_mask, got: ",
-  //               subgraph_inputs[1]->Name());
   if (first_past_input_index_ == 2) {
     ORT_RETURN_IF(subgraph_inputs[1]->Name() != "encoder_hidden_states",
                   "decoder subgraph input 1 shall be named as encoder_hidden_states, got: ",
@@ -108,8 +105,6 @@ Status WhisperDecoderSubgraph::Validate(const std::vector<const NodeArg*>& subgr
 
   ORT_RETURN_IF(subgraph_inputs[0]->TypeAsProto()->tensor_type().elem_type() != int32_type,
                 "decoder subgraph input 0 (input_ids) shall have int32 type");
-  // ORT_RETURN_IF(subgraph_inputs[1]->TypeAsProto()->tensor_type().elem_type() != int32_type,
-  //               "decoder subgraph input 1 (encoder_attention_mask) shall have int32 type");
 
   auto float_type = subgraph_inputs[2]->TypeAsProto()->tensor_type().elem_type();
   ORT_RETURN_IF(float_type != float32_type && float_type != float16_type,
@@ -131,12 +126,11 @@ Status WhisperDecoderSubgraph::Validate(const std::vector<const NodeArg*>& subgr
 }
 
 // Create inputs for decoder from the following data sources:
-// encoder feeds: encoder_input_ids, encoder_attention_mask, decoder_input_ids (with start tokens)
+// encoder feeds: encoder_input_ids, decoder_input_ids (with start tokens)
 // encoder fetches: logits,
 //                  encoder_hidden_states,
 //                  present_key_self_0, present_value_self_0, ..., present_key_cross_0, present_value_cross_0, ...
 // decoder_feeds: input_ids,
-//                encoder_attention_mask,
 //                encoder_hidden_states,
 //                present_key_self_0, present_value_self_0, ..., present_key_cross_0, present_value_cross_0, ...
 Status WhisperDecoderSubgraph::CreateInitialFeeds(
@@ -147,7 +141,6 @@ Status WhisperDecoderSubgraph::CreateInitialFeeds(
     const std::vector<OrtValue>& encoder_fetches,
     std::vector<OrtValue>& decoder_feeds,
     const GenerationDeviceHelper::DeviceCopyFunc<int32_t>& device_copy_int32_func,
-    // const GenerationDeviceHelper::ExpandBufferFunc<int32_t>& expand_buffer_int32_func,
     const GenerationDeviceHelper::ExpandBufferFunc<float>& expand_buffer_float_func,
     const GenerationDeviceHelper::ExpandBufferFunc<MLFloat16>& expand_buffer_float16_func,
     int num_beam,
@@ -201,18 +194,6 @@ Status WhisperDecoderSubgraph::CreateInitialFeeds(
   // The ordering is the same as used in Setup.
   decoder_feeds.reserve(static_cast<size_t>(num_subgraph_inputs) + static_cast<size_t>(num_implicit_inputs));
   decoder_feeds.push_back(input_ids);
-
-  // The encoder_attention_mask is copied from the second input of encoder.
-  // OrtValue expanded_decoder_attention_masks;
-  // ORT_RETURN_IF_ERROR(expand_buffer_int32_func(stream,
-  //                                              encoder_feeds[1],
-  //                                              num_beam,
-  //                                              allocator,
-  //                                              expanded_decoder_attention_masks,
-  //                                              false,
-  //                                              0 /*max_sequence_length*/));
-
-  // decoder_feeds.push_back(expanded_decoder_attention_masks);
 
   if (!past_present_share_buffer_) {
     past_present_share_buffer_max_seq_len = 0;

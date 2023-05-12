@@ -141,25 +141,7 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
 
   IAllocatorUniquePtr<char> buffer;
 
-  // const OrtValue* initial_decoder_input_ids_value = this->context_.GetInputOrtValue(10);
-
   OrtValue decoder_input_ids;  // Tensor in CPU, and it will be used to initialize sequence in cpu_state
-  // if (parameters->model_type == IGenerationParameters::kModelTypeWhisper) {
-  //   const Tensor& initial_decoder_input_ids = initial_decoder_input_ids_value->Get<Tensor>();
-  //   ORT_RETURN_IF_ERROR(this->encoder_subgraph_.CreateInitialFeeds(
-  //       encoder_input_ids,
-  //       encoder_attn_mask_value,
-  //       initial_decoder_input_ids,
-  //       this->implicit_inputs_,
-  //       parameters->pad_token_id,
-  //       parameters->decoder_start_token_id,
-  //       encoder_feeds,
-  //       this->create_encoder_inputs_func_,
-  //       this->add_to_feeds_func_,
-  //       buffer,
-  //       decoder_input_ids,
-  //       this->ort_stream_));
-  // } else {
   ORT_RETURN_IF_ERROR(this->encoder_subgraph_.CreateInitialFeeds(
       encoder_input_ids,
       encoder_attn_mask_value,
@@ -206,7 +188,6 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
 
   // Copy decoder_input_ids (in CPU) to sequence.
   // For T5, it contains decoder_start_token_id for each beam.
-  // For Whisper, it contains the initial decoder token ids for each beam.
   cpu_state.SetSequence(decoder_input_ids.Get<Tensor>().DataAsSpan<int32_t>(),
                         static_cast<size_t>(parameters->BatchBeamSize()),
                         parameters->num_beams,
@@ -269,24 +250,6 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
                                                 iteration_counter));
     ++current_length;  // Increase sequence length after a new token is generated.
 
-    // if (parameters->model_type == IGenerationParameters::kModelTypeWhisper) {
-    //   ORT_RETURN_IF_ERROR(decoder_subgraph_.CreateInitialFeeds(this->cpu_allocator_,
-    //                                                            ReinterpretAsSpan<const int32_t>(beam_next_tokens),
-    //                                                            this->implicit_inputs_,
-    //                                                            encoder_feeds,
-    //                                                            encoder_fetches,
-    //                                                            decoder_feeds,
-    //                                                            this->device_copy_int32_func_,
-    //                                                            this->expand_buffer_int32_func_,
-    //                                                            this->expand_buffer_float_func_,
-    //                                                            this->expand_buffer_float16_func_,
-    //                                                            parameters->num_beams,
-    //                                                            this->ort_stream_,
-    //                                                            current_length,
-    //                                                            cpu_state.sequences,
-    //                                                            parameters->max_length,
-    //                                                            decoder_subgraph_.has_decoder_masked_attention_));
-    // } else {
     ORT_RETURN_IF_ERROR(decoder_subgraph_.CreateInitialFeeds(this->cpu_allocator_,
                                                               ReinterpretAsSpan<const int32_t>(beam_next_tokens),
                                                               this->implicit_inputs_,
@@ -395,28 +358,6 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
     if (current_length < parameters->max_length) {
       gsl::span<const int32_t> place_holder;
       const int num_present_outputs = 2 * parameters->num_layers;  // number of outputs with name like present_*
-      // if (parameters->model_type == IGenerationParameters::kModelTypeWhisper) {
-      //   ORT_RETURN_IF_ERROR(this->update_decoder_feeds_func_(
-      //     this->temp_space_allocator_,
-      //     this->ort_stream_,
-      //     decoder_fetches,
-      //     decoder_feeds,
-      //     num_present_outputs,
-      //     ReinterpretAsSpan<const int32_t>(beam_next_tokens),
-      //     ReinterpretAsSpan<const int32_t>(beam_indices),
-      //     decoder_subgraph_.has_decoder_masked_attention_
-      //         ? ReinterpretAsSpan<const int32_t>(beam_state.chosen_indices)
-      //         : place_holder,
-      //     parameters->num_beams,
-      //     decoder_subgraph_.GetFirstPastInputIndex(),
-      //     decoder_subgraph_.GetFirstPresentOutputIndex(),
-      //     current_length,
-      //     parameters->sequence_length,
-      //     decoder_subgraph_.past_present_share_buffer_,
-      //     decoder_subgraph_.has_decoder_masked_attention_,
-      //     cpu_state.sequences,
-      //     this->GetConsoleDumper()));
-      // } else {
       ORT_RETURN_IF_ERROR(this->update_decoder_feeds_func_(
           this->temp_space_allocator_,
           this->ort_stream_,

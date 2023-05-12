@@ -30,7 +30,6 @@ class WhisperDecoderSubgraph : public T5DecoderSubgraph {
       const std::vector<OrtValue>& encoder_fetches,
       std::vector<OrtValue>& decoder_feeds,
       const GenerationDeviceHelper::DeviceCopyFunc<int32_t>& device_copy_int32_func,
-    //   const GenerationDeviceHelper::ExpandBufferFunc<int32_t>& expand_buffer_int32_func,
       const GenerationDeviceHelper::ExpandBufferFunc<float>& expand_buffer_float_func,
       const GenerationDeviceHelper::ExpandBufferFunc<MLFloat16>& expand_buffer_float16_func,
       int num_beam,

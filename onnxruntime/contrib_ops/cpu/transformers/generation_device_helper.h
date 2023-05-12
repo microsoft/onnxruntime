@@ -181,33 +181,9 @@ using UpdateDecoderFeedsFunc = std::function<Status(
 using CreateWhisperEncoderInputsFunc = std::function<Status(
     const Tensor* original_encoder_input_features,
     const Tensor* original_decoder_input_ids,
-    // const OrtValue* attn_mask_value,
-    // int pad_token_id,
     AllocatorPtr allocator,
     OrtValue& encoder_input_ids,
-    // OrtValue& encoder_attention_mask,
     OrtValue& decoder_input_ids)>;
-
-// // Update decoder inputs given decoder outputs of last iteration (for Whisper).
-// template <typename T>
-// using UpdateWhisperDecoderFeedsFunc = std::function<Status(
-//     AllocatorPtr allocator,
-//     Stream* stream,
-//     const std::vector<OrtValue>& last_outputs,
-//     std::vector<OrtValue>& next_inputs,
-//     int num_present_tensors,
-//     gsl::span<const int32_t> beam_next_tokens,
-//     gsl::span<const int32_t> beam_indices,
-//     gsl::span<const int32_t> beam_indices_gpu,
-//     int num_beams,
-//     int whisper_decoder_first_past_input_idx,
-//     int whisper_decoder_first_present_output_idx,
-//     int current_length,
-//     int input_sequence_len,
-//     bool past_present_share_buffer,
-//     bool need_cache_indir,
-//     transformers::Sequences& sequences,
-//     const transformers::IConsoleDumper* dumper)>;
 
 template <typename T>
 using ExpandBufferFunc = std::function<Status(
@@ -360,32 +336,9 @@ template <typename T>
 Status CreateWhisperEncoderInputs(
     const Tensor* original_encoder_input_features,
     const Tensor* original_decoder_input_ids,
-    // const OrtValue* attn_mask_value,
-    // int pad_token_id,
     AllocatorPtr allocator,
     OrtValue& encoder_input_ids,
-    // OrtValue& encoder_attention_mask,
     OrtValue& decoder_input_ids);
-
-// template <typename T>
-// Status UpdateWhisperDecoderFeeds(
-//     AllocatorPtr allocator,
-//     Stream* stream,
-//     const std::vector<OrtValue>& last_outputs,
-//     std::vector<OrtValue>& next_inputs,
-//     int num_present_tensors,
-//     gsl::span<const int32_t> beam_next_tokens,
-//     gsl::span<const int32_t> beam_indices,
-//     gsl::span<const int32_t> beam_indices_gpu,
-//     int num_beams,
-//     int whisper_decoder_first_past_input_idx,
-//     int whisper_decoder_first_present_output_idx,
-//     int current_length,
-//     int input_sequence_len,
-//     bool past_present_share_buffer,
-//     bool need_cache_indir,
-//     transformers::Sequences& sequences,
-//     const transformers::IConsoleDumper* dumper);
 
 // ---------------------------------------------------------------
 // Utility Functions

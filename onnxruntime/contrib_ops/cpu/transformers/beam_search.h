@@ -124,8 +124,6 @@ class BeamSearch : public IControlFlowKernel {
   // Device specific functions for Whisper
   //------------------------------------------------------------
   GenerationDeviceHelper::CreateWhisperEncoderInputsFunc create_whisper_encoder_inputs_func_;
-  // GenerationDeviceHelper::UpdateWhisperDecoderFeedsFunc<float> update_whisper_decoder_feeds_func_;
-  // GenerationDeviceHelper::UpdateWhisperDecoderFeedsFunc<MLFloat16> update_whisper_decoder_feeds_fp16_func_;
 
   GenerationDeviceHelper::ExpandBufferFunc<int32_t> expand_buffer_int32_func_;
   GenerationDeviceHelper::ExpandBufferFunc<float> expand_buffer_float_func_;

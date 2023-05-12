@@ -871,22 +871,17 @@ Status UpdateDecoderFeeds(
 }
 
 //------------------------------------------------
-//  Modified functions for Whisper Model
+//  Modified encoder function for Whisper Model
 //------------------------------------------------
 template <typename T>
 Status CreateWhisperEncoderInputs(
     const Tensor* original_encoder_input_features,
     const Tensor* original_decoder_input_ids,
-    // const OrtValue* attn_mask_value,
-    // int pad_token_id,
     AllocatorPtr allocator,
     OrtValue& encoder_input_features,
-    // OrtValue& encoder_attention_mask,
     OrtValue& decoder_input_ids) {
   const TensorShape& input_features_shape = original_encoder_input_features->Shape();
   ORT_ENFORCE(input_features_shape.NumDimensions() == 3);
-  // const int64_t& batch_size = input_features_shape[0];
-  // const int64_t& sequence_length = input_features_shape[1];
 
   // Allocate attention_mask based on shape of input_ids
   auto element_type = DataTypeImpl::GetType<int32_t>();
@@ -901,34 +896,6 @@ Status CreateWhisperEncoderInputs(
                        allocator->Info(),
                        encoder_input_features);
 
-  // if (attn_mask_value != nullptr) {
-  //   const Tensor& attention_mask = attn_mask_value->Get<Tensor>();
-  //   Tensor::InitOrtValue(element_type, input_features_shape, const_cast<Tensor*>(&attention_mask)->MutableData<int32_t>(),
-  //                        allocator->Info(), encoder_attention_mask);
-  // } else {
-  //   auto mask_type = DataTypeImpl::GetType<int32_t>();
-  //   Tensor::InitOrtValue(mask_type, input_features_shape, allocator, encoder_attention_mask);
-
-  //   // Set attention mask to be 0 for pad tokens, and 1 for all other tokens.
-  //   int32_t* mask_data = encoder_attention_mask.GetMutable<Tensor>()->MutableData<int32_t>();
-  //   const int32_t* word_id = original_encoder_input_features->Data<int32_t>();
-  //   int32_t* mask = mask_data;
-  //   for (int i = 0; i < batch_size; i++) {
-  //     int32_t abs_position = 0;
-  //     for (int j = 0; j < sequence_length; j++, word_id++, mask++) {
-  //       // T5Tokenizer might add one EOS pad token at the end.
-  //       // That EOS token shall have attention mask 1 even when EOS token is same as pad token.
-  //       // Here we only set attention mask to be 0 for left padding only, so as to be parity with huggingface.
-  //       if (*word_id == pad_token_id && abs_position == 0) {
-  //         *mask = 0;
-  //       } else {
-  //         *mask = 1;
-  //         abs_position++;
-  //       }
-  //     }
-  //   }
-  // }
-
   // decoder_input_ids is initially of the following format:
   // [ PREV, [prompt tokens], decoder start token (i.e. start of transcript), language token, task token, timestamp token, [prefix tokens] ]
   const TensorShape& original_decoder_input_ids_shape = original_decoder_input_ids->Shape();
@@ -941,76 +908,6 @@ Status CreateWhisperEncoderInputs(
   
   return Status::OK();
 }
-
-// // Update decoder inputs given decoder outputs of last iteration.
-// template <typename T>
-// Status UpdateWhisperDecoderFeeds(
-//     AllocatorPtr allocator,
-//     Stream* stream,
-//     const std::vector<OrtValue>& last_outputs,
-//     std::vector<OrtValue>& next_inputs,
-//     int num_present_tensors,
-//     gsl::span<const int32_t> beam_next_tokens,
-//     gsl::span<const int32_t> beam_indices,
-//     gsl::span<const int32_t> beam_indices_gpu,
-//     int num_beams,
-//     int whisper_decoder_first_past_input_idx,
-//     int whisper_decoder_first_present_output_idx,
-//     int current_length,
-//     int input_sequence_len,
-//     bool past_present_share_buffer,
-//     bool need_cache_indir,
-//     transformers::Sequences& sequences,
-//     const transformers::IConsoleDumper* dumper) {
-//   ORT_UNUSED_PARAMETER(stream);
-//   ORT_UNUSED_PARAMETER(beam_indices_gpu);
-//   ORT_UNUSED_PARAMETER(input_sequence_len);
-//   ORT_UNUSED_PARAMETER(past_present_share_buffer);
-//   ORT_UNUSED_PARAMETER(need_cache_indir);
-//   // last_outputs: logits, present_key_self_0, present_value_self_0, ...
-//   // next_inputs: input_ids,
-//   //              encoder_attention_mask, encoder_hidden_states(optional),
-//   //              past_key_self_0, past_value_self_0, ...
-//   //              past_key_cross_0, past_value_cross_0, ...
-//   // Only need copy beam next tokens to input_ids, and copy present_*_self_* to past_*_self_*,
-
-//   // Update input_ids with next tokens.
-//   int batch_beam_size = static_cast<int>(beam_next_tokens.size());
-//   OrtValue input_ids;
-//   TensorShape input_ids_shape(batch_beam_size, current_length); // 2 or current length??
-//   Tensor::InitOrtValue(DataTypeImpl::GetType<int32_t>(), input_ids_shape, allocator, input_ids);
-
-//   int32_t* input_ids_data = input_ids.GetMutable<Tensor>()->MutableData<int32_t>();
-//   for (int i = 0; i < batch_beam_size; i++) {
-//     gsl::span<const int32_t> sequence = sequences.GetSequence(i);
-//     const int32_t* sequence_data = sequence.data();
-//     for (int j = 0; j < current_length; j++) {
-//       input_ids_data[i * current_length + j] = sequence_data[j];
-//     }
-//   }
-
-//   next_inputs[0] = input_ids;
-
-// #ifdef DEBUG_GENERATION
-//   dumper->Print("input_ids", input_ids);
-// #else
-//   ORT_UNUSED_PARAMETER(dumper);
-// #endif
-
-//   // Update past state
-//   ORT_ENFORCE(last_outputs.size() >= static_cast<size_t>(1) + num_present_tensors);
-//   if (num_beams == 1) {
-//     // feed present_* output to past_* inputs one by one
-//     for (ptrdiff_t i = 0; i < num_present_tensors; ++i) {
-//       next_inputs[whisper_decoder_first_past_input_idx + i] =
-//           last_outputs[whisper_decoder_first_present_output_idx + i];
-//     }
-//   } else {
-//     PickT5PastState<T>(last_outputs, next_inputs, num_present_tensors, beam_indices,
-//                        whisper_decoder_first_past_input_idx, whisper_decoder_first_present_output_idx, allocator);
-//   }
-//   return Status::OK();
-// }
 
 //------------------------------------------------
 // Explicit template instantiations of functions
@@ -1159,60 +1056,16 @@ template Status ExpandBuffer<MLFloat16>(
 template Status CreateWhisperEncoderInputs<float>(
     const Tensor* original_encoder_input_features,
     const Tensor* original_decoder_input_ids,
-    // const OrtValue* attn_mask_value,
-    // int pad_token_id,
     AllocatorPtr allocator,
     OrtValue& encoder_input_features,
-    // OrtValue& encoder_attention_mask,
     OrtValue& decoder_input_ids);
 
 template Status CreateWhisperEncoderInputs<MLFloat16>(
     const Tensor* original_encoder_input_features,
     const Tensor* original_decoder_input_ids,
-    // const OrtValue* attn_mask_value,
-    // int pad_token_id,
     AllocatorPtr allocator,
     OrtValue& encoder_input_features,
-    // OrtValue& encoder_attention_mask,
     OrtValue& decoder_input_ids);
-
-// template Status UpdateWhisperDecoderFeeds<float>(
-//     AllocatorPtr allocator,
-//     Stream* stream,
-//     const std::vector<OrtValue>& last_outputs,
-//     std::vector<OrtValue>& next_inputs,
-//     int num_present_tensors,
-//     gsl::span<const int32_t> beam_next_tokens,
-//     gsl::span<const int32_t> beam_indices,
-//     gsl::span<const int32_t> beam_indices_gpu,
-//     int num_beams,
-//     int whisper_decoder_first_past_input_idx,
-//     int whisper_decoder_first_present_output_idx,
-//     int current_length,
-//     int input_sequence_len,
-//     bool past_present_share_buffer,
-//     bool need_cache_indir,
-//     transformers::Sequences& sequences,
-//     const transformers::IConsoleDumper* dumper);
-
-// template Status UpdateWhisperDecoderFeeds<MLFloat16>(
-//     AllocatorPtr allocator,
-//     Stream* stream,
-//     const std::vector<OrtValue>& last_outputs,
-//     std::vector<OrtValue>& next_inputs,
-//     int num_present_tensors,
-//     gsl::span<const int32_t> beam_next_tokens,
-//     gsl::span<const int32_t> beam_indices,
-//     gsl::span<const int32_t> beam_indices_gpu,
-//     int num_beams,
-//     int whisper_decoder_first_past_input_idx,
-//     int whisper_decoder_first_present_output_idx,
-//     int current_length,
-//     int input_sequence_len,
-//     bool past_present_share_buffer,
-//     bool need_cache_indir,
-//     transformers::Sequences& sequences,
-//     const transformers::IConsoleDumper* dumper);
 
 }  // namespace GenerationCpuDeviceHelper
 }  // namespace contrib
