@@ -1,6 +1,12 @@
 {
     "blogs": [
         {
+            "title": "Accelerating Stable Diffusion Inference with ONNX Runtime",
+            "date": "May 10th, 2023",
+            "blurb": "This blog shows how to accelerate the Stable Diffusion models from Hugging Face on NVIDIA and AMD GPUs with ONNX Runtime. It includes benchmark results obtained on A100 and RTX3060 and MI250X.",
+            "link": "https://medium.com/microsoftazure/accelerating-stable-diffusion-inference-with-onnx-runtime-203bd7728540"
+        },
+        {
             "title": "Azure Container for PyTorch is now Generally Available in Azure Machine Learning!",
             "date": "March 22nd, 2023",
             "blurb": "ACPT provides a ready-to-use distributed training environment for users to run on the latest multi-node GPU infrastructure offered in Azure. With Nebula, a new fast checkpointing capability in ACPT, you can save your checkpoints 1000 times faster with a simple API that works asynchronously with your training process.",
