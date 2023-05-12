@@ -428,7 +428,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Size of the vocabulary. If not provided, it will be inferred from the decoder subgraph's output shape</dd>
 </dl>
 
-#### Inputs (5 - 10)
+#### Inputs (5 - 11)
 
 <dl>
 <dt><tt>input_ids</tt> : F</dt>
@@ -451,6 +451,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Mask of vocabulary for first step. Words that masked with 0 are not allowed to be generated, and 1 is allowed. Shape is (batch_size, vocab_size)</dd>
 <dt><tt>attention_mask</tt> (optional) : I</dt>
 <dd>Custom attention mask. Shape is (batch_size, sequence_length)</dd>
+<dt><tt>timestamp_enable</tt> (optional) : tensor(bool)</dt>
+<dd>Enable timestamp processing. True means enabled. Shape is (1). Default  is ``False``</dd>
 </dl>
 
 #### Outputs (1 - 3)
