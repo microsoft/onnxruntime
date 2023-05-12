@@ -26,7 +26,7 @@ constexpr const char* kEnableCudaGraph = "enable_cuda_graph";
 constexpr const char* kCudnnConv1dPadToNc1d = "cudnn_conv1d_pad_to_nc1d";
 constexpr const char* kTunableOpEnable = "tunable_op_enable";
 constexpr const char* kTunableOpTuningEnable = "tunable_op_tuning_enable";
-constexpr const char* kTunableOpTuningEarlyStopEnable = "tuning_op_tuning_early_stop_enable";
+constexpr const char* kTunableOpTuningEarlyStopEnable = "tunable_op_tuning_early_stop_enable";
 constexpr const char* kEnableSkipLayerNormStrictMode = "enable_skip_layer_norm_strict_mode";
 }  // namespace provider_option_names
 }  // namespace cuda

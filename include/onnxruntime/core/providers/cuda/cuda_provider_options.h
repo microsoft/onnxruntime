@@ -29,6 +29,7 @@ struct OrtCUDAProviderOptionsV2 {
   int cudnn_conv1d_pad_to_nc1d = 0;                                                                            // flag specifying if pad Conv1D's input [N,C,D] to [N,C,1,D] or [N,C,D,1].
   int tunable_op_enable = 0;                                                                                   // flag specifying if TunableOp is enabled.
   int tunable_op_tuning_enable = 0;                                                                            // flag specifying if TunableOp is enabled for tuning, this relies on TunableOp is enabled.
+  int tunable_op_tuning_early_stop_enable = 0;                                                                 // flag specifying if TunableOp early stop is enabled for tuning.
   int enable_skip_layer_norm_strict_mode = 0;                                                                  // flag specifying if SkipLayerNorm is in strict mode. If true, use LayerNormalization kernel.
                                                                                                                // The strict mode has better accuracy but lower performance.
 };
