@@ -29,7 +29,7 @@ void BeamHypotheses::Add(gsl::span<const int32_t>& hypothesis, float sum_logprob
   auto length = hypothesis.size();
   float score = sum_logprobs / pow(static_cast<float>(length), length_penalty_);
 
-  int index = beams_used_;
+  size_t index = beams_used_;
   // If the array is full, don't add unless it's better than the worst element
   if (index == beams_.size()) {
     if (score <= beams_[--index].score)
