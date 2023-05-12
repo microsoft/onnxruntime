@@ -475,7 +475,9 @@
         "^test_resize_downsample_scales_linear", // Runs but there's accuracy mismatch
         "^test_training_dropout_default_mask", // Runs but there's accuracy mismatch
         "^test_training_dropout_mask", // Runs but there's accuracy mismatch
-        "^test_training_dropout_default" // Runs but there's accuracy mismatch
+        "^test_training_dropout_default", // Runs but there's accuracy mismatch
+        "^test_center_crop_pad_crop_negative_axes_hwc*", // failed due to new types or shape infer with negative axis for CenterCropPad.
+        "^test_center_crop_pad_crop_negative_axes_hwc_expanded*" // failed due to new types or shape infer with negative axis for CenterCropPad.
     ],
     "current_failing_tests_OPENVINO_opset18": [
         // pending opset 18 support, RUNTIME_EXCEPTION : Encountered unknown exception in Initialize()

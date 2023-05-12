@@ -260,7 +260,7 @@ Status OrtSaveOptimizerStatesInternal(OptimizerCheckpointState& optimizer_state,
     // Firstly indexed by momentum names; Secondly indexed by parameter names.
     InlinedHashMap<std::string, std::unordered_map<std::string, OrtValue>> optimizer_state_ort_values;
     for (const auto& [param_name, param_optimizer_state] : group_optimizer_state_ptr->param_named_optimizer_states) {
-      for (const auto& [momentum_name, m_state_val] : param_optimizer_state.momentum_named_states) {
+      for (const auto& [momentum_name, m_state_val] : param_optimizer_state) {
         if (optimizer_state_ort_values.find(momentum_name) == optimizer_state_ort_values.end()) {
           std::unordered_map<std::string, OrtValue> param_name_to_ortvalue{{param_name, m_state_val}};
           optimizer_state_ort_values.insert({momentum_name, param_name_to_ortvalue});
@@ -421,7 +421,7 @@ Status OrtLoadOptimizerStatesInternal(const PathString& optimizer_folder_path,
     }
 
     auto& group_optimizer_state = grouped_optimizer_states[group_name];
-    std::unordered_map<std::string, ParameterOptimizerState>&
+    InlinedHashMap<std::string, ParameterOptimizerState>&
         param_optimizer_states = group_optimizer_state->param_named_optimizer_states;
 
     const PathString& tensor_file_path = GetTensorProtoFilePath(optimizer_folder_path,
@@ -437,7 +437,7 @@ Status OrtLoadOptimizerStatesInternal(const PathString& optimizer_folder_path,
         ParameterOptimizerState param_state;
         param_optimizer_states.insert({param_name, param_state});
       }
-      param_optimizer_states[param_name].momentum_named_states.insert({momentum_name, std::move(pair.second)});
+      param_optimizer_states[param_name].insert({momentum_name, std::move(pair.second)});
     }
   }
 

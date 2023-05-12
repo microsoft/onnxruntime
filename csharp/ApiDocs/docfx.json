@@ -11,7 +11,12 @@
       ],
       "dest": "api",
       "disableGitFeatures": false,
-      "disableDefaultFilter": false
+      "disableDefaultFilter": false,
+      "properties": {
+        "AllowUnsafeBlocks": true,
+        "TargetFramework" : "net6.0",
+        "Nullable" : "enable"
+      }
     }
   ],
   "build": {

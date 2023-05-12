@@ -507,22 +507,6 @@ stages:
           ${{ if contains(parameters.build_py_parameters, '--use_azure') }}:
             device: '-d AZURE'
 
-  - ${{ if and(eq(parameters.enable_ubuntu_cpu, true), contains(parameters.build_py_parameters, '--use_azure'))}}:
-      - template: py-linux-ubuntu.yml
-        parameters:
-          arch: 'aarch64'
-          machine_pool: 'aiinfra-linux-ARM64-CPU-2019'
-          base_image: 'arm64v8/ubuntu:18.04'
-          device: '-d AZURE'
-
-  - ${{ if and(eq(parameters.enable_ubuntu_cpu, true), contains(parameters.build_py_parameters, '--use_azure'))}}:
-      - template: py-linux-ubuntu.yml
-        parameters:
-          arch: 'x86_64'
-          machine_pool: 'Linux-CPU'
-          base_image: 'ubuntu:18.04'
-          ${{ if contains(parameters.build_py_parameters, '--use_azure') }}:
-            device: '-d AZURE'
 
   - ${{ if eq(parameters.enable_linux_gpu, true) }}:
       - template: py-linux-gpu.yml
