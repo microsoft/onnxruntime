@@ -19,8 +19,9 @@ def softmax_kernel(output_ptr, input_ptr, input_row_stride, output_row_stride, n
     input_ptrs = row_start_ptr + col_offsets
     # Load the row into SRAM, using a mask since BLOCK_SIZE may be > than n_cols
     row = tl.load(input_ptrs, mask=col_offsets < n_cols, other=-float("inf"))
+    row_f32 = row.to(tl.float32)
     # Subtract maximum for numerical stability
-    row_minus_max = row - tl.max(row, axis=0)
+    row_minus_max = row_f32 - tl.max(row_f32, axis=0)
     # Note that exponentials in Triton are fast but approximate (i.e., think __expf in CUDA)
     numerator = tl.exp(row_minus_max)
     denominator = tl.sum(numerator, axis=0)
@@ -28,7 +29,7 @@ def softmax_kernel(output_ptr, input_ptr, input_row_stride, output_row_stride, n
     # Write back output to DRAM
     output_row_start_ptr = output_ptr + row_idx * output_row_stride
     output_ptrs = output_row_start_ptr + col_offsets
-    tl.store(output_ptrs, softmax_output, mask=col_offsets < n_cols)
+    tl.store(output_ptrs, softmax_output.to(row.dtype), mask=col_offsets < n_cols)
 
 
 # function_table = {'name': name, 'func': func, 'sig'=sig, kwargs={}},

@@ -20,7 +20,7 @@
 #endif
 
 #ifdef USE_TRITON_KERNEL
-#include "core/providers/rocm/triton_kernel.h"
+#include "core/providers/cuda/triton_kernel.h"
 #endif
 
 #include "core/providers/cuda/cuda_stream_handle.h"
@@ -273,7 +273,7 @@ CUDAExecutionProvider::CUDAExecutionProvider(const CUDAExecutionProviderInfo& in
   OverrideTunableOpInfoByEnv(info_);
 
 #ifdef USE_TRITON_KERNEL
-  onnxruntime::rocm::LoadOrtTritonKernel();
+  onnxruntime::cuda::LoadOrtTritonKernel();
 #endif
 }
 

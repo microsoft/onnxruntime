@@ -24,7 +24,7 @@ def compile(function_table, out_dir):
         func = func_desc["func"]
         kwargs = func_desc["kwargs"]
 
-        #print("compile func: ", func_desc)
+        # print("compile func: ", func_desc)
 
         ret = compile_one(func, sig, **kwargs)
 
@@ -42,10 +42,12 @@ def compile(function_table, out_dir):
             # is rocm
             lib_name = f"{name}.hsaco"
             shutil.copyfile(ret.asm["hsaco_path"], f"{out_dir}/{lib_name}")
-        elif "cubin" in ret.asm and os.path.exists(ret.asm["cubin"]):
+        elif "cubin" in ret.asm:
             # is cuda
             lib_name = f"{name}.cubin"
-            shutil.copyfile(ret.asm["cubin"], f"{out_dir}/{lib_name}")
+            # need to write cubin into file
+            with open(f"{out_dir}/{lib_name}", "wb") as fp:
+                fp.write(ret.asm["cubin"])
         else:
             raise Exception("not find rocm or cuda compiled kernel")
 
@@ -160,7 +162,7 @@ def get_arges():
         "--header", type=str, default="triton_kernel_infos.h", help="the header file that should be generated."
     )
     parser.add_argument("--ort_root", type=str, default="onnxruntime", help="the root dir of onnxruntime.")
-    parser.add_argument("--script_files", type=str, nargs='+', help="the root dir of onnxruntime.")
+    parser.add_argument("--script_files", type=str, nargs="+", help="the root dir of onnxruntime.")
     parser.add_argument("--obj_file", type=str, default="triton_kernel_infos.a", help="output target object files.")
 
     args = parser.parse_args()

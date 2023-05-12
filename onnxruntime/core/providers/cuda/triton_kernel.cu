@@ -66,54 +66,41 @@ void TryToLoadKernel() {
   auto status = Status::OK();
 
 #ifdef USE_TRITON_KERNEL
-  ORT_TRY {
-    // get all kernel symbols from curret lib.so
-    size_t size = sizeof(kernel_infos) / sizeof(kernel_infos[0]);
+  // get all kernel symbols from curret lib.so
+  size_t size = sizeof(kernel_infos) / sizeof(kernel_infos[0]);
 
-    for (int i = 0; i < size; ++i) {
-      auto k_i = kernel_infos[i];
+  for (int i = 0; i < size; ++i) {
+    auto k_i = kernel_infos[i];
 
-      void *buff;
-      ORT_THROW_IF_ERROR(GetSymbolFromLibrary(k_i.name_start, &buff));
+    void *buff;
+    ORT_THROW_IF_ERROR(GetSymbolFromLibrary(k_i.name_start, &buff));
 
-      // try to load module and get function
-      CUmodule module;
-      ORT_TRITON_THROW(cuModuleLoadData(&module, buff), "load module data failed.");
+    // try to load module and get function
+    CUmodule module;
+    ORT_TRITON_THROW(cuModuleLoadData(&module, buff), "load module data failed.");
 
-      CUfunction function;
-      ORT_TRITON_THROW(cuModuleGetFunction(&function, module, k_i.func_name), "get funcion from module failed.");
+    CUfunction function;
+    ORT_TRITON_THROW(cuModuleGetFunction(&function, module, k_i.func_name), "get funcion from module failed.");
 
-      // setup kernel metadata
-      TritonKernelMetaData metadata;
-      metadata.num_warps = k_i.num_warps;
-      metadata.shared_mem_size = k_i.shared;
-      metadata.func = function;
-      std::string fname = k_i.name;  // name is not same as func_name
-      metadata.name = fname;
-      std::string group_name = k_i.group_name;
+    // setup kernel metadata
+    TritonKernelMetaData metadata;
+    metadata.num_warps = k_i.num_warps;
+    metadata.shared_mem_size = k_i.shared;
+    metadata.func = function;
+    std::string fname = k_i.name;  // name is not same as func_name
+    metadata.name = fname;
+    std::string group_name = k_i.group_name;
 
-      // pass constants
-      for (auto &kv : k_i.constants) {
-        metadata.constants[kv.first] = kv.second;
-      }
-
-      auto idx = ort_triton_kernel_metadata.size();
-      ort_triton_kernel_metadata.push_back(metadata);
-      ort_triton_kernel_map[fname] = idx;
-      ort_triton_kernel_group_map[group_name].push_back(idx);
-      LOGS_DEFAULT(VERBOSE) << "loaded ort triton kernel: " << fname << " idx: " << idx;
+    // pass constants
+    for (auto &kv : k_i.constants) {
+      metadata.constants[kv.first] = kv.second;
     }
-  }
-  ORT_CATCH(const std::exception& e) {
-    ORT_HANDLE_EXCEPTION([&]() {
-      std::ostringstream message_stream;
-      message_stream << "ort triton load metadata failed. Error message: " << e.what();
 
-      std::string message = message_stream.str();
-
-      LOGS_DEFAULT(ERROR) << message;
-      status = ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, message);
-    });
+    auto idx = ort_triton_kernel_metadata.size();
+    ort_triton_kernel_metadata.push_back(metadata);
+    ort_triton_kernel_map[fname] = idx;
+    ort_triton_kernel_group_map[group_name].push_back(idx);
+    LOGS_DEFAULT(VERBOSE) << "loaded ort triton kernel: " << fname << " idx: " << idx;
   }
 #endif
 
