@@ -72,8 +72,8 @@ Status ReductionOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, co
   } else if (helper.HasAttr("axes")) {
     axes = helper.Get("axes", std::vector<int64_t>{});
   }
-  auto keepdims = helper.Get("keepdims", 1);
-  auto noop_with_empty_axes = helper.Get("noop_with_empty_axes", 0);
+  const bool keepdims = helper.Get("keepdims", 1) != 0;
+  const bool noop_with_empty_axes = helper.Get("noop_with_empty_axes", 0) != 0;
 
   std::unique_ptr<COREML_SPEC::NeuralNetworkLayer> layer = CreateNNLayer(model_builder, node);
 
