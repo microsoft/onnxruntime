@@ -858,6 +858,10 @@ Status QkvToContext(
       query = data.query;
     }
 
+    DUMP_TENSOR_D("attention q(BSNH)", q, batch_size * sequence_length, num_heads * qk_head_size);
+    DUMP_TENSOR_D("attention k(BSNH)", k, batch_size * sequence_length, num_heads * qk_head_size);
+    DUMP_TENSOR_D("attention v(BSNH)", v, batch_size * sequence_length, num_heads * v_head_size);
+
     MemoryEfficientAttentionParams p;
     p.sm = device_prop.major * 10 + device_prop.minor;
     p.is_half = sizeof(T) == 2;
@@ -881,7 +885,7 @@ Status QkvToContext(
     p.workspace = MemoryEfficientAttentionParams::need_workspace(v_head_size, sizeof(T) == sizeof(float)) ? scratch1 : nullptr;
     p.stream = stream;
     run_memory_efficient_attention(p);
-    DUMP_TENSOR("cutlass output", data.output, batch_size * sequence_length, num_heads, v_head_size);
+    DUMP_TENSOR("attention cutlass output", data.output, batch_size * sequence_length, num_heads, v_head_size);
     return Status::OK();
   }
 #endif
