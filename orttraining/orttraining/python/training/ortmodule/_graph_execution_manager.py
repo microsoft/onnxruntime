@@ -6,11 +6,13 @@
 import copy
 import inspect
 import io
+import logging
 import os
 import warnings
 from abc import ABC, abstractmethod  # noqa: F401
 from enum import IntFlag
 from functools import reduce
+from typing import Dict, Tuple
 
 import onnx
 import torch
@@ -34,6 +36,8 @@ from ._gradient_accumulation_manager import GradientAccumulationManager
 from ._graph_execution_interface import GraphExecutionInterface
 from .debug_options import DebugOptions, LogLevel
 from .torch_cpp_extensions.cpu.aten_op_executor import load_aten_op_executor_cpp_extension
+
+logger = logging.getLogger(__name__)
 
 
 class _RunStateInfo:
@@ -77,6 +81,7 @@ class GraphExecutionManager(GraphExecutionInterface):
         # IMPORTANT: Debug and Fallback must the configured first
         self._debug_options = debug_options
         self._fallback_manager = fallback_manager
+        logger.setLevel(_logger.ortmodule_loglevel_to_python_loglevel(self._debug_options.logging.log_level))
 
         # Original and flattened (transformed) output module
         self._flattened_module = module
@@ -113,7 +118,7 @@ class GraphExecutionManager(GraphExecutionInterface):
         self._first_skip_check_warning = True
 
         # Inspect embedding input index sparsity.
-        self._rt_inspector = _runtime_inspector.RuntimeInspector()
+        self._rt_inspector = _runtime_inspector.RuntimeInspector(logger)
 
         # Graph transformer config
         # Specify cast propagation strategy. Currently, three strategies are available, NONE, INSERT-AND-REDUCE and FLOOD-FILL
@@ -163,9 +168,7 @@ class GraphExecutionManager(GraphExecutionInterface):
         for input_parameter in self._module_parameters:
             if input_parameter.kind == inspect.Parameter.VAR_KEYWORD:
                 if self._debug_options.logging.log_level <= LogLevel.WARNING:
-                    warnings.warn(
-                        "The model's forward method has **kwargs parameter which has EXPERIMENTAL support!", UserWarning
-                    )
+                    logger.warning("The model's forward method has **kwargs parameter which has EXPERIMENTAL support!")
 
         self.is_rocm_pytorch = bool(torch.version.hip is not None and ROCM_HOME is not None)
 
@@ -265,9 +268,7 @@ class GraphExecutionManager(GraphExecutionInterface):
 
         if _are_deterministic_algorithms_enabled():
             if self._debug_options.logging.log_level <= _logger.LogLevel.INFO:
-                warnings.warn(
-                    "ORTModule's determinism will be enabled because PyTorch's determinism is enabled.", UserWarning
-                )
+                logger.warning("ORTModule's determinism will be enabled because PyTorch's determinism is enabled.")
 
         providers = None
         provider_options = None
@@ -534,15 +535,17 @@ class GraphExecutionManager(GraphExecutionInterface):
 
         _utils.reinitialize_graph_execution_manager(self)
 
-    def _enable_conditional_optimizations(self, graph_transformer_config, inputs, kwargs):
+    def _enable_conditional_optimizations(
+        self, graph_transformer_config: C.TrainingGraphTransformerConfiguration, inputs: Tuple, kwargs: Dict
+    ):
         """
         Based on runtime inspection, enable conditional optimizations if applicable.
 
         Input sparsity-based optimization workflows:
         1. Input density observer is initialized when input density observer is available.
         2. If compute optimizer is enabled, input density observer inspects input tensors and returns sparsity results.
-        3. If label or embedding input sparsity is found, graph transformer config is updated to enable sparsity-based
-           optimization.
+        3. If label or embedding input sparsity is found in sparsity results, graph transformer config is updated to
+           enable sparsity-based optimization.
 
         """
 
@@ -560,24 +563,21 @@ class GraphExecutionManager(GraphExecutionInterface):
                     inputs, kwargs
                 )
 
-                with _logger.suppress_os_stream_output(log_level=self._debug_options.logging.log_level):
-                    _, embed_sparsity_results, label_sparsity_results = _io._combine_input_buffers_initializers(
-                        self._graph_initializers,
-                        self._graph_builder.get_graph_info().user_input_names,
-                        self._input_info,
-                        self._flattened_module.named_buffers(),
-                        inputs,
-                        kwargs,
-                        detected_device,
-                        self._rt_inspector.input_density_ob,
-                    )
+                _, embed_sparsity_results, label_sparsity_results = _io._combine_input_buffers_initializers(
+                    self._graph_initializers,
+                    self._graph_builder.get_graph_info().user_input_names,
+                    self._input_info,
+                    self._flattened_module.named_buffers(),
+                    inputs,
+                    kwargs,
+                    detected_device,
+                    self._rt_inspector.input_density_ob,
+                )
 
                 if len(label_sparsity_results) > 0:
                     graph_transformer_config.sparse_label_input_names = label_sparsity_results
-                    warnings.warn(f"Label sparsity based optimization is on for {label_sparsity_results}", UserWarning)
+                    logger.info(f"Label sparsity based optimization is on for {label_sparsity_results}")
 
                 if len(embed_sparsity_results) > 0:
                     graph_transformer_config.sparse_embedding_input_names = embed_sparsity_results
-                    warnings.warn(
-                        f"Embedding sparsity based optimization is on for {embed_sparsity_results}", UserWarning
-                    )
+                    logger.info(f"Embedding sparsity based optimization is on for {embed_sparsity_results}")

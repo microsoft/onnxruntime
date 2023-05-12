@@ -3,7 +3,7 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
-import warnings
+from logging import Logger
 
 import onnx
 import torch
@@ -20,12 +20,12 @@ class RuntimeInspector:
     Currently only wraps only input density inspector.
     """
 
-    def __init__(self):
+    def __init__(self, logger: Logger):
         # By default, input density inspector is enabled always.
         is_input_density_observer_enabled = (
             ortmodule._defined_from_envvar("ORTMODULE_ENABLE_INPUT_DENSITY_INSPECTOR", 1, warn=True) == 1
         )
-        self.input_density_ob = InputDensityObserver() if is_input_density_observer_enabled is True else None
+        self.input_density_ob = InputDensityObserver(logger) if is_input_density_observer_enabled is True else None
 
 
 class InputDensityObserver:
@@ -39,7 +39,8 @@ class InputDensityObserver:
 
     """
 
-    def __init__(self, log_steps=1):
+    def __init__(self, logger: Logger, log_steps=1):
+        self._logger: Logger = logger
         self._embedding_graph_input_to_padding_idx_map = {}
         self._loss_label_graph_input_to_ignore_idx_map = {}
         self._stats = []
@@ -78,7 +79,7 @@ class InputDensityObserver:
             self._is_initialized = True
         except Exception as e:
             self._is_initialized = False
-            warnings.warn(f"Failed to initialize InputDensityObserver due to {e}", UserWarning)
+            self._logger.warning(f"Failed to initialize InputDensityObserver due to {e}")
 
     def _initialize_embedding_padding_inspector(self, model, user_input_names):
         """Register embedding input padding inspector.
@@ -123,7 +124,7 @@ class InputDensityObserver:
 
             value = onnx.numpy_helper.to_array(tensor)
             if value.ndim != 0:
-                warnings.warn(f"Embedding padding_idx must be a scalar, but got a tensor of shape {value.shape}")
+                self._logger.warning(f"Embedding padding_idx must be a scalar, but got a tensor of shape {value.shape}")
                 continue
 
             padding_idx = value.item()
@@ -178,7 +179,7 @@ class InputDensityObserver:
 
             value = onnx.numpy_helper.to_array(tensor)
             if value.ndim != 0:
-                warnings.warn(
+                self._logger.warning(
                     f"SoftmaxCrossEntropyLossInternal ignore_index must be a scalar, but got a tensor of shape {value.shape}"
                 )
                 continue
@@ -249,7 +250,6 @@ class InputDensityObserver:
         Args:
             name: User input name.
             inp: User input tensor.
-            silent: Whether to print statistics.
         Returns:
             found: Whether the input name is found in `_embedding_graph_input_to_padding_idx_map` and
                 `_loss_label_graph_input_to_ignore_idx_map`.
@@ -271,7 +271,7 @@ class InputDensityObserver:
 
             return found, embedding_is_sparse, label_is_sparse
         except Exception as e:
-            warnings.warn(f"Failed to inspect input {name} due to {e}", UserWarning)
+            self._logger.warning(f"Failed to inspect input {name} due to {e}", UserWarning)
             return False, False, False
 
     def _inspect_embed_label_input(self, name, data):
@@ -360,7 +360,7 @@ class InputDensityObserver:
                     step, input_type, input_name, padding_idx, density, valid_token, total_token, valid_token_per_batch
                 )
             stat += "<<<\n"
-            print(stat)
+            self._logger.info(stat)
             self._stats.clear()
 
     def _try_get_node_from_its_output(self, name):

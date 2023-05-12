@@ -119,7 +119,7 @@ Status InsertGatherBeforeSceLoss::ApplyImpl(Graph& graph, bool& modified, int /*
       continue;
     }
 
-    // Label input can be graph input or from a Reshape node taking a graph input as its data input.
+    // Label input can be a graph input or from a Reshape node taking a graph input as its data input.
     if (labels_producer && graph_utils::IsSupportedOptypeVersionAndDomain(
                                *labels_producer, "Reshape", {1, 5, 13, 14}, kOnnxDomain)) {
       label_input_arg = labels_producer->InputDefs()[0];

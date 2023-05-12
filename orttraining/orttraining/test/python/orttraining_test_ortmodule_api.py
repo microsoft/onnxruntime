@@ -5677,7 +5677,7 @@ def test_gradient_correctness_bce_with_logits():
 @pytest.mark.parametrize("embed_is_sparse", [False, True])
 @pytest.mark.parametrize("label_is_sparse", [False, True])
 @pytest.mark.parametrize("rank", [1, 2])
-def test_runtime_inspector_label_and_embed_sparsity_detection(embed_is_sparse, label_is_sparse, rank):
+def test_runtime_inspector_label_and_embed_sparsity_detection(embed_is_sparse, label_is_sparse, rank, caplog):
     class NeuralNetCrossEntropyLoss(torch.nn.Module):
         def __init__(self, num_embeddings, embedding_dim):
             super().__init__()
@@ -5699,7 +5699,9 @@ def test_runtime_inspector_label_and_embed_sparsity_detection(embed_is_sparse, l
     device = "cuda"
     num_embeddings, embedding_dim = 16, 128
     pt_model = NeuralNetCrossEntropyLoss(num_embeddings, embedding_dim).to(device)
-    ort_model = ORTModule(pt_model)
+    from onnxruntime.training.ortmodule import DebugOptions, LogLevel
+
+    ort_model = ORTModule(pt_model, DebugOptions(log_level=LogLevel.INFO))
 
     def run_step(model, input, positions):
         with amp.autocast(True):
@@ -5724,16 +5726,15 @@ def test_runtime_inspector_label_and_embed_sparsity_detection(embed_is_sparse, l
         input = input.view(-1)
         label = label.view(-1)
 
-    with pytest.warns(UserWarning) as warning_record:
-        _ = run_step(ort_model, input, label)
+    _ = run_step(ort_model, input, label)
 
     found_embed_is_sparse = False
     found_label_is_sparse = False
-    for record in warning_record:
-        if "Label sparsity based optimization is on for" in record.message.args[0]:
+    for record in caplog.records:
+        if "Label sparsity based optimization is on for" in record.getMessage():
             found_label_is_sparse = True
 
-        if "Embedding sparsity based optimization is on for" in record.message.args[0]:
+        if "Embedding sparsity based optimization is on for" in record.getMessage():
             found_embed_is_sparse = True
 
     if label_is_sparse:
