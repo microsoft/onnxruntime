@@ -49,3 +49,4 @@ pthread;https://sourceforge.net/projects/pthreads4w/files/pthreads4w-code-v3.0.0
 triton;https://github.com/triton-inference-server/server/archive/refs/tags/v2.28.0.zip;4b305570aa1e889946e20e36050b6770e4108fee
 # above are deps introduced by triton client, might remove after 1.14 release
 extensions;https://github.com/microsoft/onnxruntime-extensions/archive/81e7799c69044c745239202085eb0a98f102937b.zip;d53487035174a046628359289ad27aa0ac0380c9
+curl;https://github.com/curl/curl/archive/refs/tags/curl-8_0_1.zip;b16d1fa8ee567b52c09a0f89940b07d8491b881d
