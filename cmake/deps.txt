@@ -23,7 +23,7 @@ microsoft_gsl;https://github.com/microsoft/GSL/archive/refs/tags/v4.0.0.zip;cf36
 microsoft_wil;https://github.com/microsoft/wil/archive/5f4caba4e7a9017816e47becdd918fcc872039ba.zip;fd119887d0d17c37adf1fc227b054befa28158ad
 mimalloc;https://github.com/microsoft/mimalloc/archive/refs/tags/v2.1.1.zip;d5ee7d34223d0567892db5179849939c8769dc41
 mp11;https://github.com/boostorg/mp11/archive/refs/tags/boost-1.79.0.zip;c8f04e378535ededbe5af52c8f969d2dedbe73d5
-onnx;https://github.com/onnx/onnx/archive/3b58938e025c41d2fcd89fa22028eefaa81a18ad.zip;e0e5dda9eea5cd5ecae3bd8be86e477016b6be02
+onnx;https://github.com/onnx/onnx/archive/refs/tags/v1.14.0.zip;3c6e43a36f94addc15afe939860127a1d74a9488
 #use the last commit of 8.6-EA branch (https://github.com/onnx/onnx-tensorrt/commit/ba6a4fb34fdeaa3613bf981610c657e7b663a699)
 onnx_tensorrt;https://github.com/onnx/onnx-tensorrt/archive/ba6a4fb34fdeaa3613bf981610c657e7b663a699.zip;5a474ed86e2c4ee4085d3daeff8222866e933dc0
 protobuf;https://github.com/protocolbuffers/protobuf/archive/refs/tags/v21.12.zip;7cf2733949036c7d52fda017badcab093fe73bfa
@@ -49,3 +49,5 @@ pthread;https://sourceforge.net/projects/pthreads4w/files/pthreads4w-code-v3.0.0
 triton;https://github.com/triton-inference-server/server/archive/refs/tags/v2.28.0.zip;4b305570aa1e889946e20e36050b6770e4108fee
 # above are deps introduced by triton client, might remove after 1.14 release
 extensions;https://github.com/microsoft/onnxruntime-extensions/archive/94142d8391c9791ec71c38336436319a2d4ac7a0.zip;4365ac5140338b4cb75a39944a4be276e3829b3c
+eigen;https://gitlab.com/libeigen/eigen/-/archive/3.4/eigen-3.4.zip;ee201b07085203ea7bd8eb97cbcb31b07cfa3efb
+curl;https://github.com/curl/curl/archive/refs/tags/curl-8_0_1.zip;b16d1fa8ee567b52c09a0f89940b07d8491b881d

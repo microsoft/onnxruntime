@@ -32,6 +32,8 @@ namespace test {
 
 #define MODEL_FOLDER ORT_TSTR("testdata/transform/")
 
+#ifndef DISABLE_CONTRIB_OPS
+
 TEST_F(GraphTransformationTests, LayerNormFusionTest) {
   constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/layer_norm.onnx";
   std::shared_ptr<Model> p_model;
@@ -922,6 +924,8 @@ TEST_F(GraphTransformationTests, EmbedLayerNormFusionMultiple) {
 TEST_F(GraphTransformationTests, EmbedLayerNormFusionMultiple_OpSet13) {
   EmbedLayerNormFusionFormatMultiple(MODEL_FOLDER "fusion/embed_layer_norm_multiple_opset13.onnx", logger_.get());
 }
+
+#endif
 
 }  // namespace test
 }  // namespace onnxruntime

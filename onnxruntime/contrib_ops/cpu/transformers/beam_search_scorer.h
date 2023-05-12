@@ -67,18 +67,10 @@ class BeamHypotheses {
 
 class BeamSearchScorer : public IBeamScorer {
  public:
-  BeamSearchScorer(size_t batch_size,
-                   size_t num_beams,
-                   size_t max_length,
-                   float length_penalty,
-                   bool early_stopping,
-                   size_t num_return_sequences,
-                   int pad_token_id,
-                   int eos_token_id,
+  BeamSearchScorer(const IGenerationParameters& parameters,
                    onnxruntime::OrtStlAllocator<HypothesisScore>& hypothesis_score_allocator,
-                   onnxruntime::OrtStlAllocator<BeamHypotheses>& beam_hyps_allocator);
-
-  void Initialize(AllocatorPtr& allocator, int sequence_length) override;
+                   onnxruntime::OrtStlAllocator<BeamHypotheses>& beam_hyps_allocator,
+                   AllocatorPtr& allocator);
 
   void Process(ISequences* sequences,
                gsl::span<const float>& next_scores,
@@ -118,8 +110,8 @@ class BeamSearchScorer : public IBeamScorer {
 
   IAllocatorUniquePtr<int32_t> hypothesis_buffer_ptr_;  // Allocated buffer to hold all hypotheses
   gsl::span<int32_t> hypothesis_buffer_;                // Span of the allocated buffer
-  size_t hypothesis_buffer_length_;                     // Total number of elements
-  size_t hypothesis_buffer_offset_;                     // Offset of available buffer, or length of used buffer.
+  size_t hypothesis_buffer_length_{};                   // Total number of elements
+  size_t hypothesis_buffer_offset_{};                   // Offset of available buffer, or length of used buffer.
 
   onnxruntime::FastAllocVector<BeamHypotheses> beam_hyps_;
 };
