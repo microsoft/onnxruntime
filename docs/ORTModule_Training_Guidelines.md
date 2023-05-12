@@ -136,6 +136,15 @@ debugging).
 	export ORTMODULE_ENABLE_COMPUTE_OPTIMIZER=0 # Disable
 	```
 
+#### ORTMODULE_ENABLE_LABEL_SPARSITY_OPT
+
+- **Feature Area**: *ORTMODULE/RuntimeInspector*
+- **Description**: By default, this is enabled. This env var can be used for enabling or disabling the input data sparsity
+based optimization. Training users or our dev could leverage this info for improving perf accordingly.
+
+	```bash
+	export ORTMODULE_ENABLE_LABEL_SPARSITY_OPT=1 # Enable
+	export ORTMODULE_ENABLE_LABEL_SPARSITY_OPT=0 # Disable
 
 #### ORTMODULE_PRINT_INPUT_DENSITY
 
