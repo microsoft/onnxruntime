@@ -62,7 +62,7 @@ impl TypedArrayViewMut {
 
 /// Trait for base-type-specific (f32, f64, etc.) helper functions
 /// to and from TypedArrayViewMut. Used internally by MutableOrtValue.
-pub trait TypedArrayViewMutConversions<T>
+pub trait TypedArrayViewMutConversions<T> : Clone
 where
     T: TypeToTensorElementDataType + 'static,
 {
@@ -327,11 +327,42 @@ impl MutableOrtValue {
         }
     }
 
+    /// Clone the MutableOrtValue of a known underlying element type T. 
+    /// The resulting MutableOrtValue contains an OrtValue that owns its 
+    /// copy of the data.
+    fn try_clone_typed<T>(session: &Session, view: &ArrayViewMut<'static, T, IxDyn>) -> OrtResult<MutableOrtValue>
+    where
+        T: TypeToTensorElementDataType + TypedArrayViewMutConversions<T> + 'static,
+    {
+        let shape = view.shape();
+        // Create OrtValue that owns its data
+        let ort_value = OrtValue::new_from_type_and_shape::<T>(session, shape)?;
+        // Create ArrayMutView of OrtValue's data
+        let mut new_view = unsafe { 
+            ArrayViewMut::<T, _>::from_shape_ptr(shape, ort_value.get_tensor_mutable_data()?) 
+        };
+        // Copy data from view
+        new_view.assign(view);
+        
+        Ok( Self { ort_value, typed_view: T::from_view(new_view) } )
+    }
+
     /// Clone the MutableOrtValue. The resulting MutableOrtValue contains
     /// an OrtValue that owns its copy of the data.
     pub fn try_clone(&self, session: &Session) -> OrtResult<MutableOrtValue> {
-        let ort_value = self.ort_value.clone(session)?;
-        Self::try_from(ort_value)
+        match &self.typed_view {
+            TypedArrayViewMut::Float(view) => Self::try_clone_typed(session, &view),
+            TypedArrayViewMut::Double(view) => Self::try_clone_typed(session, &view),
+            TypedArrayViewMut::Uint8(view) => Self::try_clone_typed(session, &view),
+            TypedArrayViewMut::Int8(view) => Self::try_clone_typed(session, &view),
+            TypedArrayViewMut::Uint16(view) => Self::try_clone_typed(session, &view),
+            TypedArrayViewMut::Int16(view) => Self::try_clone_typed(session, &view),
+            TypedArrayViewMut::Uint32(view) => Self::try_clone_typed(session, &view),
+            TypedArrayViewMut::Int32(view) => Self::try_clone_typed(session, &view),
+            TypedArrayViewMut::Uint64(view) => Self::try_clone_typed(session, &view),
+            TypedArrayViewMut::Int64(view) => Self::try_clone_typed(session, &view),
+            _ => unimplemented!(),
+        }
     }
 }
 

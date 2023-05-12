@@ -91,75 +91,7 @@ impl OrtValue {
         status_to_result(status).map_err(OrtError::GetTensorMutableData)?;
         Ok( data_ptr )
     }
-
-    /// Create a clone of this OrtValue. Result will contain a copy of the
-    /// data owned by the returned OrtValue. Data must be in CPU memory.
-    pub fn clone(&self, session: &Session) -> OrtResult<OrtValue> {
-        Self::array_view_mem_is_cpu(&self.memory_info()?)?;
-
-        let type_and_shape_info = self.type_and_shape_info()?;
-
-        let shape_ptr = type_and_shape_info.dimensions.as_ptr();
-        let shape_len = type_and_shape_info.dimensions.len();
     
-        // output is this sys::OrtValue
-        let mut tensor_ptr: *mut sys::OrtValue = std::ptr::null_mut();
-    
-        let status = unsafe {
-            ort_api().CreateTensorAsOrtValue.unwrap()(
-                session.allocator.ptr,
-                shape_ptr,
-                shape_len,
-                type_and_shape_info.element_data_type.into(),
-                &mut tensor_ptr,
-            )
-        };
-        status_to_result(status).map_err(OrtError::IsTensor)?;
-
-        let mut ort_value = OrtValue::new(tensor_ptr);
-
-        let elem_n: usize = type_and_shape_info.dimensions.iter().product::<i64>() as usize;
-        ort_value.copy_data_from_unsafe(&self, type_and_shape_info.element_data_type, elem_n)?;
-
-        Ok( ort_value )
-
-    }
-
-    fn copy_data_from_unsafe(&mut self, from_ort_value: &OrtValue, element_type: TensorElementDataType, elem_n: usize) -> OrtResult<()> {
-        // Copy contents from self to ort_value
-        match element_type {
-            TensorElementDataType::Bool
-            | TensorElementDataType::Int8
-            | TensorElementDataType::Uint8 => {
-                let from_data_ptr = self.get_tensor_mutable_data::<u8>()?;
-                let to_data_ptr = from_ort_value.get_tensor_mutable_data::<u8>()?;
-                unsafe { std::ptr::copy_nonoverlapping(from_data_ptr, to_data_ptr, elem_n); }
-            },
-            TensorElementDataType::Int16
-            | TensorElementDataType::Uint16 => {
-                let from_data_ptr = self.get_tensor_mutable_data::<u16>()?;
-                let to_data_ptr = from_ort_value.get_tensor_mutable_data::<u16>()?;
-                unsafe { std::ptr::copy_nonoverlapping(from_data_ptr, to_data_ptr, elem_n); }
-            },
-            TensorElementDataType::Float 
-            | TensorElementDataType::Int32
-            | TensorElementDataType::Uint32 => {
-                let from_data_ptr = self.get_tensor_mutable_data::<u32>()?;
-                let to_data_ptr = from_ort_value.get_tensor_mutable_data::<u32>()?;
-                unsafe { std::ptr::copy_nonoverlapping(from_data_ptr, to_data_ptr, elem_n); }
-            },
-            TensorElementDataType::Double 
-            | TensorElementDataType::Int64
-            | TensorElementDataType::Uint64 => {
-                let from_data_ptr = self.get_tensor_mutable_data::<u64>()?;
-                let to_data_ptr = from_ort_value.get_tensor_mutable_data::<u64>()?;
-                unsafe { std::ptr::copy_nonoverlapping(from_data_ptr, to_data_ptr, elem_n); }
-            },
-            _ => unimplemented!(),
-        }
-        Ok(())
-    }
-
     /// Create an OrtValue using data memory owned by array. Unsafe: the lifetime of this
     /// OrtValue must be guaranteed to outlive the lifetime of array.
     fn try_from_array<T, D>(session: &Session, array: &Array<T, D>) -> OrtResult<Self>

@@ -103,6 +103,42 @@ where
         Ok( Self { ort_value, view } )
     }
 
+    /// Clone the MutableOrtValueTyped. The result contains an OrtValue 
+    /// that owns its copy of the data.
+    pub fn try_clone(&self, session: &Session) -> OrtResult<Self> {
+        let shape = self.view.shape();
+        // Create OrtValue that owns its data
+        let ort_value = OrtValue::new_from_type_and_shape::<T>(session, shape)?;
+        // Create ArrayMutView of OrtValue's data
+        let mut view = unsafe { 
+            ArrayViewMut::<T, _>::from_shape_ptr(shape, ort_value.get_tensor_mutable_data()?) 
+        };
+        // Copy data from view
+        match T::tensor_element_data_type() {
+            TensorElementDataType::Float
+            | TensorElementDataType::Uint8
+            | TensorElementDataType::Int8
+            | TensorElementDataType::Uint16
+            | TensorElementDataType::Int16
+            | TensorElementDataType::Int32
+            | TensorElementDataType::Int64
+            | TensorElementDataType::Double
+            | TensorElementDataType::Uint32
+            | TensorElementDataType::Uint64 => unsafe { 
+                let elem_n: usize = shape.iter().product();
+                // Both views should be in standard layout
+                debug_assert!(self.view.is_standard_layout());
+                debug_assert!(view.is_standard_layout());
+
+                std::ptr::copy_nonoverlapping(self.view.as_ptr(), view.as_mut_ptr(), elem_n); 
+            }
+            _ => unimplemented!(),
+        }
+
+        Ok( Self { ort_value, view } )
+
+    }
+
 }
 
 impl<T> AsOrtValue for MutableOrtValueTyped<T>
