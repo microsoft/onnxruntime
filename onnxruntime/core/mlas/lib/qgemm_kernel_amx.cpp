@@ -74,7 +74,7 @@ Abstract:
    :: "r" ((void*) (base)), "r" ((long) (stride)) \
    : "memory")
 
-void _tile_loadconfig (const void *__config)
+void tile_loadconfig (const void *__config)
 {
   __asm__ volatile ("ldtilecfg\t%X0" :: "m" (*((const void **)__config)));
 }
@@ -252,7 +252,7 @@ MlasGemmQuantThreadInit<MLAS_GEMM_U8S8_KERNEL_AMX>()
             tc.rows[t] = 16;
             tc.colb[t] = 64;
         }
-        _tile_loadconfig(&tc);
+        tile_loadconfig(&tc);
         tile_configured = true;
     }
 }
