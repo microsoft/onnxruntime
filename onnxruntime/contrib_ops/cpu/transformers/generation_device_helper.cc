@@ -877,16 +877,16 @@ template <typename T>
 Status CreateWhisperEncoderInputs(
     const Tensor* original_encoder_input_features,
     const Tensor* original_decoder_input_ids,
-    const OrtValue* attn_mask_value,
-    int pad_token_id,
+    // const OrtValue* attn_mask_value,
+    // int pad_token_id,
     AllocatorPtr allocator,
     OrtValue& encoder_input_features,
-    OrtValue& encoder_attention_mask,
+    // OrtValue& encoder_attention_mask,
     OrtValue& decoder_input_ids) {
   const TensorShape& input_features_shape = original_encoder_input_features->Shape();
   ORT_ENFORCE(input_features_shape.NumDimensions() == 3);
-  const int64_t& batch_size = input_features_shape[0];
-  const int64_t& sequence_length = input_features_shape[1];
+  // const int64_t& batch_size = input_features_shape[0];
+  // const int64_t& sequence_length = input_features_shape[1];
 
   // Allocate attention_mask based on shape of input_ids
   auto element_type = DataTypeImpl::GetType<int32_t>();
@@ -901,64 +901,43 @@ Status CreateWhisperEncoderInputs(
                        allocator->Info(),
                        encoder_input_features);
 
-  if (attn_mask_value != nullptr) {
-    const Tensor& attention_mask = attn_mask_value->Get<Tensor>();
-    Tensor::InitOrtValue(element_type, input_features_shape, const_cast<Tensor*>(&attention_mask)->MutableData<int32_t>(),
-                         allocator->Info(), encoder_attention_mask);
-  } else {
-    auto mask_type = DataTypeImpl::GetType<int32_t>();
-    Tensor::InitOrtValue(mask_type, input_features_shape, allocator, encoder_attention_mask);
+  // if (attn_mask_value != nullptr) {
+  //   const Tensor& attention_mask = attn_mask_value->Get<Tensor>();
+  //   Tensor::InitOrtValue(element_type, input_features_shape, const_cast<Tensor*>(&attention_mask)->MutableData<int32_t>(),
+  //                        allocator->Info(), encoder_attention_mask);
+  // } else {
+  //   auto mask_type = DataTypeImpl::GetType<int32_t>();
+  //   Tensor::InitOrtValue(mask_type, input_features_shape, allocator, encoder_attention_mask);
 
-    // Set attention mask to be 0 for pad tokens, and 1 for all other tokens.
-    int32_t* mask_data = encoder_attention_mask.GetMutable<Tensor>()->MutableData<int32_t>();
-    const int32_t* word_id = original_encoder_input_features->Data<int32_t>();
-    int32_t* mask = mask_data;
-    for (int i = 0; i < batch_size; i++) {
-      int32_t abs_position = 0;
-      for (int j = 0; j < sequence_length; j++, word_id++, mask++) {
-        // T5Tokenizer might add one EOS pad token at the end.
-        // That EOS token shall have attention mask 1 even when EOS token is same as pad token.
-        // Here we only set attention mask to be 0 for left padding only, so as to be parity with huggingface.
-        if (*word_id == pad_token_id && abs_position == 0) {
-          *mask = 0;
-        } else {
-          *mask = 1;
-          abs_position++;
-        }
-      }
-    }
-  }
+  //   // Set attention mask to be 0 for pad tokens, and 1 for all other tokens.
+  //   int32_t* mask_data = encoder_attention_mask.GetMutable<Tensor>()->MutableData<int32_t>();
+  //   const int32_t* word_id = original_encoder_input_features->Data<int32_t>();
+  //   int32_t* mask = mask_data;
+  //   for (int i = 0; i < batch_size; i++) {
+  //     int32_t abs_position = 0;
+  //     for (int j = 0; j < sequence_length; j++, word_id++, mask++) {
+  //       // T5Tokenizer might add one EOS pad token at the end.
+  //       // That EOS token shall have attention mask 1 even when EOS token is same as pad token.
+  //       // Here we only set attention mask to be 0 for left padding only, so as to be parity with huggingface.
+  //       if (*word_id == pad_token_id && abs_position == 0) {
+  //         *mask = 0;
+  //       } else {
+  //         *mask = 1;
+  //         abs_position++;
+  //       }
+  //     }
+  //   }
+  // }
 
   // decoder_input_ids is initially of the following format:
   // [ PREV, [prompt tokens], decoder start token (i.e. start of transcript), language token, task token, timestamp token, [prefix tokens] ]
   const TensorShape& original_decoder_input_ids_shape = original_decoder_input_ids->Shape();
   ORT_ENFORCE(original_decoder_input_ids_shape.NumDimensions() == 2);
-  // const int initial_decode_sequence_length = static_cast<int>(original_decoder_input_ids_shape[1]);
-  // int64_t dims[] = {batch_size, initial_decode_sequence_length};
-  // TensorShape decoder_input_ids_shape(&dims[0], 2);
   Tensor::InitOrtValue(element_type,
                        original_decoder_input_ids_shape,
                        const_cast<Tensor*>(original_decoder_input_ids)->MutableData<int32_t>(),
                        allocator->Info(),
                        decoder_input_ids);
-
-  // const int32_t* orig_data = original_decoder_input_ids->Data<int32_t>();
-  // int32_t* new_data = decoder_input_ids.GetMutable<Tensor>()->MutableData<int32_t>();
-  // // IF decoder_input_ids is stored as row-major:
-  // for (int i = 0; i < batch_size; i++; ) {
-  //   memcpy(new_data, orig_data, initial_decode_sequence_length * sizeof(int32_t));
-  //   orig_data += initial_decode_sequence_length;
-  //   new_data += initial_decode_sequence_length;
-  // }
-
-  // // IF decoder_input_ids is stored as column-major:
-  // // Add empty entry after each col in decoder_input_ids
-  // for (int i = 0; i < batch_size * initial_decode_sequence_length; i++, new_data++) {
-  //   if (i > 0 && i % initial_decode_sequence_length == 0) {
-  //     orig_data++;
-  //   }
-  //   *new_data = *orig_data;
-  // }
   
   return Status::OK();
 }
@@ -1180,21 +1159,21 @@ template Status ExpandBuffer<MLFloat16>(
 template Status CreateWhisperEncoderInputs<float>(
     const Tensor* original_encoder_input_features,
     const Tensor* original_decoder_input_ids,
-    const OrtValue* attn_mask_value,
-    int pad_token_id,
+    // const OrtValue* attn_mask_value,
+    // int pad_token_id,
     AllocatorPtr allocator,
     OrtValue& encoder_input_features,
-    OrtValue& encoder_attention_mask,
+    // OrtValue& encoder_attention_mask,
     OrtValue& decoder_input_ids);
 
 template Status CreateWhisperEncoderInputs<MLFloat16>(
     const Tensor* original_encoder_input_features,
     const Tensor* original_decoder_input_ids,
-    const OrtValue* attn_mask_value,
-    int pad_token_id,
+    // const OrtValue* attn_mask_value,
+    // int pad_token_id,
     AllocatorPtr allocator,
     OrtValue& encoder_input_features,
-    OrtValue& encoder_attention_mask,
+    // OrtValue& encoder_attention_mask,
     OrtValue& decoder_input_ids);
 
 // template Status UpdateWhisperDecoderFeeds<float>(

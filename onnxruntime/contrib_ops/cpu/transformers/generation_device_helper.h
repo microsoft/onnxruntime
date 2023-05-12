@@ -181,11 +181,11 @@ using UpdateDecoderFeedsFunc = std::function<Status(
 using CreateWhisperEncoderInputsFunc = std::function<Status(
     const Tensor* original_encoder_input_features,
     const Tensor* original_decoder_input_ids,
-    const OrtValue* attn_mask_value,
-    int pad_token_id,
+    // const OrtValue* attn_mask_value,
+    // int pad_token_id,
     AllocatorPtr allocator,
     OrtValue& encoder_input_ids,
-    OrtValue& encoder_attention_mask,
+    // OrtValue& encoder_attention_mask,
     OrtValue& decoder_input_ids)>;
 
 // // Update decoder inputs given decoder outputs of last iteration (for Whisper).
@@ -360,11 +360,11 @@ template <typename T>
 Status CreateWhisperEncoderInputs(
     const Tensor* original_encoder_input_features,
     const Tensor* original_decoder_input_ids,
-    const OrtValue* attn_mask_value,
-    int pad_token_id,
+    // const OrtValue* attn_mask_value,
+    // int pad_token_id,
     AllocatorPtr allocator,
     OrtValue& encoder_input_ids,
-    OrtValue& encoder_attention_mask,
+    // OrtValue& encoder_attention_mask,
     OrtValue& decoder_input_ids);
 
 // template <typename T>

@@ -17,7 +17,9 @@ class WhisperDecoderSubgraph : public T5DecoderSubgraph {
   WhisperDecoderSubgraph(
       const onnxruntime::Node& node_in,
       const std::string& attribute_name,
-      const GraphViewer& subgraph_in) : T5DecoderSubgraph(node_in, attribute_name, subgraph_in) {}
+      const GraphViewer& subgraph_in) : T5DecoderSubgraph(node_in, attribute_name, subgraph_in) {
+        first_past_input_index_ = 1;
+      }
 
   // Create inputs for first inference of decoder subgraph.
   Status CreateInitialFeeds(
@@ -28,7 +30,7 @@ class WhisperDecoderSubgraph : public T5DecoderSubgraph {
       const std::vector<OrtValue>& encoder_fetches,
       std::vector<OrtValue>& decoder_feeds,
       const GenerationDeviceHelper::DeviceCopyFunc<int32_t>& device_copy_int32_func,
-      const GenerationDeviceHelper::ExpandBufferFunc<int32_t>& expand_buffer_int32_func,
+    //   const GenerationDeviceHelper::ExpandBufferFunc<int32_t>& expand_buffer_int32_func,
       const GenerationDeviceHelper::ExpandBufferFunc<float>& expand_buffer_float_func,
       const GenerationDeviceHelper::ExpandBufferFunc<MLFloat16>& expand_buffer_float16_func,
       int num_beam,
@@ -41,6 +43,15 @@ class WhisperDecoderSubgraph : public T5DecoderSubgraph {
 
   Status Validate(const std::vector<const NodeArg*>& subgraph_inputs,
                   const std::vector<const NodeArg*>& subgraph_outputs) override;
+
+  void SetPastInputIndex(bool has_hidden_state) {
+    has_hidden_state_ = has_hidden_state;
+    if (!has_hidden_state_) {
+      first_past_input_index_ = 1;
+    } else {
+      first_past_input_index_ = 2;
+    }
+  }
 
 };
 

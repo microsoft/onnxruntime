@@ -151,28 +151,34 @@ Status BeamSearch::SetupSubgraphExecutionInfo(const SessionState& session_state,
     }
   } else if (parameters_.model_type == IGenerationParameters::kModelTypeWhisper) {
     if (attribute_name == "encoder") {
+      // std::cout << "Creating encoder subgraph" << std::endl;
       ORT_ENFORCE(whisper_encoder_subgraph_ == nullptr,
                   "SetupSubgraphExecutionInfo should only be called once for each subgraph.");
       whisper_encoder_subgraph_ = std::make_unique<WhisperEncoderSubgraph>(node,
                                                                            attribute_name,
                                                                            subgraph_session_state.GetGraphViewer());
+      // std::cout << "Setting up encoder subgraph" << std::endl;
       ORT_RETURN_IF_ERROR(whisper_encoder_subgraph_->Setup(session_state, subgraph_session_state));
       encoder_feeds_fetches_manager_ = whisper_encoder_subgraph_->GetFeedsFetchesManager();
 
-      ORT_RETURN_IF(whisper_encoder_subgraph_->num_subgraph_inputs != 3,
-                    "Encoder subgraph shall have 3 inputs (encoder_input_ids, encoder_attention_mask, decoder_input_ids)");
+      ORT_RETURN_IF(whisper_encoder_subgraph_->num_subgraph_inputs != 2,
+                    "Encoder subgraph shall have 3 inputs (encoder_input_ids, decoder_input_ids)");
+      // std::cout << "Encoder subgraph is fine" << std::endl;
     } else if (attribute_name == "decoder") {
+      // std::cout << "Creating decoder subgraph" << std::endl;
       ORT_ENFORCE(whisper_decoder_subgraph_ == nullptr,
                   "SetupSubgraphExecutionInfo should only be called once for each subgraph.");
       whisper_decoder_subgraph_ = std::make_unique<WhisperDecoderSubgraph>(node,
                                                                            attribute_name,
                                                                            subgraph_session_state.GetGraphViewer());
+      // std::cout << "Setting up decoder subgraph" << std::endl;
       ORT_RETURN_IF_ERROR(whisper_decoder_subgraph_->Setup(session_state, subgraph_session_state));
       decoder_feeds_fetches_manager_ = whisper_decoder_subgraph_->GetFeedsFetchesManager();
       parameters_.SetSubgraphParameters(whisper_decoder_subgraph_->vocab_size,
                                         whisper_decoder_subgraph_->num_heads,
                                         whisper_decoder_subgraph_->head_size,
                                         whisper_decoder_subgraph_->num_layers);
+      // std::cout << "Decoder subgraph is fine" << std::endl;
     }
   }
 
@@ -318,7 +324,7 @@ Status BeamSearch::Compute(OpKernelContext* ctx) const {
           device_copy_int32_func_ ? device_copy_int32_func_ : GenerationCpuDeviceHelper::DeviceCopy<int32_t>,
           create_whisper_encoder_inputs_func_ ? create_whisper_encoder_inputs_func_ : GenerationCpuDeviceHelper::CreateWhisperEncoderInputs<float>,
           update_decoder_feeds_func_ ? update_decoder_feeds_func_ : GenerationCpuDeviceHelper::UpdateDecoderFeeds<float>,
-          expand_buffer_int32_func_ ? expand_buffer_int32_func_ : GenerationCpuDeviceHelper::ExpandBuffer<int32_t>,
+          // expand_buffer_int32_func_ ? expand_buffer_int32_func_ : GenerationCpuDeviceHelper::ExpandBuffer<int32_t>,
           expand_buffer_float_func_ ? expand_buffer_float_func_ : GenerationCpuDeviceHelper::ExpandBuffer<float>,
           expand_buffer_float16_func_ ? expand_buffer_float16_func_ : GenerationCpuDeviceHelper::ExpandBuffer<MLFloat16>,
           cuda_device_prop_,
@@ -340,7 +346,7 @@ Status BeamSearch::Compute(OpKernelContext* ctx) const {
           device_copy_int32_func_,
           create_whisper_encoder_inputs_func_ ? create_whisper_encoder_inputs_func_ : GenerationCpuDeviceHelper::CreateWhisperEncoderInputs<MLFloat16>,
           update_decoder_feeds_fp16_func_ ? update_decoder_feeds_fp16_func_ : GenerationCpuDeviceHelper::UpdateDecoderFeeds<MLFloat16>,
-          expand_buffer_int32_func_,
+          // expand_buffer_int32_func_,
           expand_buffer_float_func_,
           expand_buffer_float16_func_,
           cuda_device_prop_,

@@ -36,7 +36,7 @@ class BeamSearchWhisper : public BeamSearchBase<T> {
                     const GenerationDeviceHelper::DeviceCopyFunc<int32_t>& device_copy_int32_func,
                     const GenerationDeviceHelper::CreateWhisperEncoderInputsFunc& create_encoder_inputs_func,
                     const GenerationDeviceHelper::UpdateDecoderFeedsFunc<T>& update_decoder_feeds_func,
-                    const GenerationDeviceHelper::ExpandBufferFunc<int32_t>& expand_buffer_int32_func,
+                    // const GenerationDeviceHelper::ExpandBufferFunc<int32_t>& expand_buffer_int32_func,
                     const GenerationDeviceHelper::ExpandBufferFunc<float>& expand_buffer_float_func,
                     const GenerationDeviceHelper::ExpandBufferFunc<MLFloat16>& expand_buffer_float16_func,
                     const void* cuda_device_prop,
@@ -53,7 +53,7 @@ class BeamSearchWhisper : public BeamSearchBase<T> {
         init_cache_indir_func_(init_cache_indir_func),
         create_encoder_inputs_func_(create_encoder_inputs_func),
         update_decoder_feeds_func_(update_decoder_feeds_func),
-        expand_buffer_int32_func_(expand_buffer_int32_func),
+        // expand_buffer_int32_func_(expand_buffer_int32_func),
         expand_buffer_float_func_(expand_buffer_float_func),
         expand_buffer_float16_func_(expand_buffer_float16_func),
         cuda_device_prop_(cuda_device_prop),
@@ -84,7 +84,7 @@ class BeamSearchWhisper : public BeamSearchBase<T> {
   GenerationDeviceHelper::InitCacheIndirFunc init_cache_indir_func_;
   GenerationDeviceHelper::CreateWhisperEncoderInputsFunc create_encoder_inputs_func_;
   GenerationDeviceHelper::UpdateDecoderFeedsFunc<T> update_decoder_feeds_func_;
-  GenerationDeviceHelper::ExpandBufferFunc<int32_t> expand_buffer_int32_func_;
+  // GenerationDeviceHelper::ExpandBufferFunc<int32_t> expand_buffer_int32_func_;
   GenerationDeviceHelper::ExpandBufferFunc<float> expand_buffer_float_func_;
   GenerationDeviceHelper::ExpandBufferFunc<MLFloat16> expand_buffer_float16_func_;
 
@@ -127,7 +127,7 @@ Status BeamSearchWhisper<T>::Execute(const FeedsFetchesManager& encoder_feeds_fe
   const OrtValue* encoder_input_ids_value = this->context_.GetInputOrtValue(0);
   const Tensor& encoder_input_ids = encoder_input_ids_value->Get<Tensor>();
 
-  const OrtValue* encoder_attn_mask_value = this->context_.GetInputOrtValue(9);
+  // const OrtValue* encoder_attn_mask_value = this->context_.GetInputOrtValue(9);
 
   BeamSearchCpuState cpu_state;
   cpu_state.Init(this->cpu_allocator_,
@@ -144,10 +144,10 @@ Status BeamSearchWhisper<T>::Execute(const FeedsFetchesManager& encoder_feeds_fe
   const Tensor& initial_decoder_input_ids = initial_decoder_input_ids_value->Get<Tensor>();
   ORT_RETURN_IF_ERROR(this->encoder_subgraph_.CreateInitialFeeds(
                       encoder_input_ids,
-                      encoder_attn_mask_value,
+                      // encoder_attn_mask_value,
                       initial_decoder_input_ids,
                       this->implicit_inputs_,
-                      parameters->pad_token_id,
+                      // parameters->pad_token_id,
                       encoder_feeds,
                       this->create_encoder_inputs_func_,
                       this->add_to_feeds_func_,
@@ -256,7 +256,7 @@ Status BeamSearchWhisper<T>::Execute(const FeedsFetchesManager& encoder_feeds_fe
                                                              encoder_fetches,
                                                              decoder_feeds,
                                                              this->device_copy_int32_func_,
-                                                             this->expand_buffer_int32_func_,
+                                                            //  this->expand_buffer_int32_func_,
                                                              this->expand_buffer_float_func_,
                                                              this->expand_buffer_float16_func_,
                                                              parameters->num_beams,
@@ -305,13 +305,13 @@ Status BeamSearchWhisper<T>::Execute(const FeedsFetchesManager& encoder_feeds_fe
       dumper->Print("decoder_feeds", i, true);
       dumper->Print("", decoder_feeds[i]);
     }
-    // auto offset = decoder_subgraph_.GetFirstPastInputIndex() + 4 * decoder_subgraph_.num_layers;
-    // dumper->Print("past_sequence_length", offset, true);
-    // dumper->Print("", decoder_feeds[offset]);
-    // dumper->Print("beam_width", offset + 1, true);
-    // dumper->Print("", decoder_feeds[offset + 1]);
-    // dumper->Print("cache_redir", offset + 2, true);
-    // dumper->Print("", decoder_feeds[offset + 2]);
+    auto offset = decoder_subgraph_.GetFirstPastInputIndex() + 4 * decoder_subgraph_.num_layers;
+    dumper->Print("past_sequence_length", offset, true);
+    dumper->Print("", decoder_feeds[offset]);
+    dumper->Print("beam_width", offset + 1, true);
+    dumper->Print("", decoder_feeds[offset + 1]);
+    dumper->Print("cache_redir", offset + 2, true);
+    dumper->Print("", decoder_feeds[offset + 2]);
 #endif
 
 #ifdef DEBUG_NODE_INPUTS_OUTPUTS

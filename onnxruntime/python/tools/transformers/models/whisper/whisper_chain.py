@@ -21,11 +21,11 @@ def chain_model(args):
     # Load encoder/decoder and insert necessary (but unused) graph inputs expected by BeamSearch op
     encoder_model = onnx.load_model(args.encoder_path, load_external_data=True)
     encoder_model.graph.name = "encoderdecoderinit subgraph"
-    add_attention_mask(encoder_model)
+    # add_attention_mask(encoder_model)
 
     decoder_model = onnx.load_model(args.decoder_path, load_external_data=True)
     decoder_model.graph.name = "decoder subgraph"
-    add_attention_mask(decoder_model)
+    # add_attention_mask(decoder_model)
 
     config = WhisperConfig.from_pretrained(args.model_name_or_path)
 
@@ -39,7 +39,7 @@ def chain_model(args):
         "repetition_penalty",
         "",
         "",
-        "attention_mask",
+        "", # "attention_mask",
         "decoder_input_ids",
     ]
     beam_outputs = ["sequences"]
@@ -67,9 +67,9 @@ def chain_model(args):
     num_return_sequences = helper.make_tensor_value_info("num_return_sequences", TensorProto.INT32, [1])
     length_penalty = helper.make_tensor_value_info("length_penalty", TensorProto.FLOAT, [1])
     repetition_penalty = helper.make_tensor_value_info("repetition_penalty", TensorProto.FLOAT, [1])
-    attention_mask = helper.make_tensor_value_info(
-        "attention_mask", TensorProto.INT32, ["batch_size", "feature_size", "sequence_length"]
-    )
+    # attention_mask = helper.make_tensor_value_info(
+    #     "attention_mask", TensorProto.INT32, ["batch_size", "feature_size", "sequence_length"]
+    # )
     decoder_input_ids = helper.make_tensor_value_info(
         "decoder_input_ids", TensorProto.INT32, ["batch_size", "initial_sequence_length"]
     )
@@ -82,7 +82,7 @@ def chain_model(args):
         num_return_sequences,
         length_penalty,
         repetition_penalty,
-        attention_mask,
+        # attention_mask,
         decoder_input_ids,
     ]
 

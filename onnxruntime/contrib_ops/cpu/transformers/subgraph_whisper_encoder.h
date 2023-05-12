@@ -21,10 +21,10 @@ class WhisperEncoderSubgraph : public T5EncoderSubgraph {
   // Create inputs for first inference of subgraph.
   Status CreateInitialFeeds(
       const Tensor& encoder_input_ids,
-      const OrtValue* attn_mask_value,
+      // const OrtValue* attn_mask_value,
       const Tensor& original_decoder_input_ids,
       const std::vector<const OrtValue*>& implicit_inputs,
-      int pad_token_id,
+      // int pad_token_id,
       std::vector<OrtValue>& feeds,
       const GenerationDeviceHelper::CreateWhisperEncoderInputsFunc& create_encoder_inputs_func,
       const GenerationDeviceHelper::AddToFeedsFunc& add_to_feeds_func,

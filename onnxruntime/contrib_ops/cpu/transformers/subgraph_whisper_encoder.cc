@@ -41,7 +41,7 @@ namespace transformers {
 
 Status WhisperEncoderSubgraph::Validate(const std::vector<const NodeArg*>& subgraph_inputs,
                                         const std::vector<const NodeArg*>& subgraph_outputs) {
-  ORT_RETURN_IF(num_subgraph_inputs != 3, "expect 3 inputs, got:", num_subgraph_inputs);
+  ORT_RETURN_IF(num_subgraph_inputs != 2, "expect 2 inputs, got:", num_subgraph_inputs);
 
   ORT_RETURN_IF(num_subgraph_outputs < 6, "expect >=6 outputs, got:", num_subgraph_outputs);
   ORT_RETURN_IF((static_cast<int>(subgraph_outputs.size()) - first_present_output_index_) % 4 != 0,
@@ -49,9 +49,9 @@ Status WhisperEncoderSubgraph::Validate(const std::vector<const NodeArg*>& subgr
 
   ORT_RETURN_IF(subgraph_inputs[0]->Name() != "encoder_input_ids",
                 "encoder subgraph input 0 shall be named as encoder_input_ids, got: ", subgraph_inputs[0]->Name());
-  ORT_RETURN_IF(subgraph_inputs[1]->Name() != "encoder_attention_mask",
-                "encoder subgraph input 1 shall be named as encoder_attention_mask, got: ", subgraph_inputs[1]->Name());
-  ORT_RETURN_IF(subgraph_inputs[2]->Name() != "decoder_input_ids",
+  // ORT_RETURN_IF(subgraph_inputs[1]->Name() != "encoder_attention_mask",
+  //               "encoder subgraph input 1 shall be named as encoder_attention_mask, got: ", subgraph_inputs[1]->Name());
+  ORT_RETURN_IF(subgraph_inputs[1]->Name() != "decoder_input_ids",
                 "encoder subgraph input 2 shall be named as decoder_input_ids, got: ", subgraph_inputs[2]->Name());
 
   ORT_RETURN_IF(subgraph_outputs[0]->Name() != "logits",
@@ -77,10 +77,10 @@ Status WhisperEncoderSubgraph::Validate(const std::vector<const NodeArg*>& subgr
   ORT_RETURN_IF(subgraph_inputs[0]->TypeAsProto()->tensor_type().elem_type() != float32_type && \
                 subgraph_inputs[0]->TypeAsProto()->tensor_type().elem_type() != float16_type,
                 "encoder subgraph input 0 (encoder_input_features) shall have float32 or float16 type");
+  // ORT_RETURN_IF(subgraph_inputs[1]->TypeAsProto()->tensor_type().elem_type() != int32_type,
+  //               "encoder subgraph input 1 (encoder_attention_mask) shall have int32 type");
   ORT_RETURN_IF(subgraph_inputs[1]->TypeAsProto()->tensor_type().elem_type() != int32_type,
-                "encoder subgraph input 1 (encoder_attention_mask) shall have int32 type");
-  ORT_RETURN_IF(subgraph_inputs[2]->TypeAsProto()->tensor_type().elem_type() != int32_type,
-                "encoder subgraph input 2 (decoder_input_ids) shall have int32 type");
+                "encoder subgraph input 1 (decoder_input_ids) shall have int32 type");
 
   auto output_type = subgraph_outputs[0]->TypeAsProto()->tensor_type().elem_type();
   ORT_RETURN_IF(output_type != float32_type && output_type != float16_type,
@@ -99,10 +99,10 @@ Status WhisperEncoderSubgraph::Validate(const std::vector<const NodeArg*>& subgr
 // Create inputs for first inference of subgraph.
 Status WhisperEncoderSubgraph::CreateInitialFeeds(
     const Tensor& original_encoder_input_ids,
-    const OrtValue* attn_mask_value,
+    // const OrtValue* attn_mask_value,
     const Tensor& original_decoder_input_ids,
     const std::vector<const OrtValue*>& implicit_inputs,
-    int pad_token_id,
+    // int pad_token_id,
     std::vector<OrtValue>& feeds,
     const GenerationDeviceHelper::CreateWhisperEncoderInputsFunc& create_encoder_inputs_func,
     const GenerationDeviceHelper::AddToFeedsFunc& add_to_feeds_func,
@@ -123,21 +123,21 @@ Status WhisperEncoderSubgraph::CreateInitialFeeds(
   ORT_RETURN_IF(cpu_allocator == nullptr, "cpu_allocator shouldn't be nullptr");
 
   OrtValue encoder_input_ids;
-  OrtValue encoder_attention_mask;
+  // OrtValue encoder_attention_mask;
   ORT_RETURN_IF_ERROR(create_encoder_inputs_func(&original_encoder_input_ids,
                                                  &original_decoder_input_ids,
-                                                 attn_mask_value,
-                                                 pad_token_id,
+                                                //  attn_mask_value,
+                                                //  pad_token_id,
                                                  cpu_allocator,
                                                  encoder_input_ids,
-                                                 encoder_attention_mask,
+                                                //  encoder_attention_mask,
                                                  decoder_input_ids));
 
   const IExecutionProvider* provider = GetProvider();
   ORT_RETURN_IF_ERROR(add_to_feeds_func(
       provider,
       ort_stream,
-      {encoder_input_ids, encoder_attention_mask, decoder_input_ids},
+      {encoder_input_ids, decoder_input_ids},
       feeds,
       buffer));
 

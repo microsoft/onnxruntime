@@ -75,7 +75,9 @@ Status Subgraph::Setup(const SessionState& session_state,
 
   for (auto& entry : node.ImplicitInputDefs()) {
     feed_names.push_back(entry->Name());
+    // std::cout << "Feed names: " << entry->Name();
   }
+  // std::cout << std::endl;
 
   InlinedVector<OrtDevice> feed_locations;
   feed_locations.reserve(feed_names.size());
@@ -117,8 +119,9 @@ Status Subgraph::Setup(const SessionState& session_state,
   // Check subgraph only need once so put in Setup function.
   auto& inputs = subgraph.GetInputs();
   auto& outputs = subgraph.GetOutputs();
+  // std::cout << "Validating subgraph" << std::endl;
   ORT_RETURN_IF_ERROR(Validate(inputs, outputs));
-
+  // std::cout << "Subgraph validated" << std::endl;
   return Status::OK();
 }
 

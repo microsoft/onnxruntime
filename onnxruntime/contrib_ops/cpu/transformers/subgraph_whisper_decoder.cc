@@ -21,7 +21,6 @@ namespace transformers {
 
    Inputs:
       input_ids: int32 (B, 1)
-      encoder_attention_mask: int32 (B, encode_sequence_length)
       encoder_hidden_states: (B, encode_sequence_length, encoder_hidden_size)
 
       past_key_self_0: (B, num_heads, past_decode_sequence_length, head_size)
@@ -50,11 +49,11 @@ namespace transformers {
 
 Status WhisperDecoderSubgraph::Validate(const std::vector<const NodeArg*>& subgraph_inputs,
                                         const std::vector<const NodeArg*>& subgraph_outputs) {
-  bool has_hidden_state = subgraph_inputs[2]->Name() == "encoder_hidden_states" ? true : false;
+  bool has_hidden_state = subgraph_inputs[1]->Name() == "encoder_hidden_states" ? true : false;
   SetPastInputIndex(has_hidden_state);
 
-  ORT_RETURN_IF(first_past_input_index_ != 2 && first_past_input_index_ != 3,
-                "kFirstPastInputIndex currently only supports 2 or 3");
+  ORT_RETURN_IF(first_past_input_index_ != 1 && first_past_input_index_ != 2,
+                "kFirstPastInputIndex currently only supports 1 or 2");
 
   if (!past_present_share_buffer_) {
     ORT_RETURN_IF(has_decoder_masked_attention_, "decoder_masked_attention shall use with past_present_share_buffer");
@@ -76,13 +75,13 @@ Status WhisperDecoderSubgraph::Validate(const std::vector<const NodeArg*>& subgr
 
   ORT_RETURN_IF(subgraph_inputs[0]->Name() != "input_ids",
                 "decoder subgraph input 0 shall be named as input_ids, got: ", subgraph_inputs[0]->Name());
-  ORT_RETURN_IF(subgraph_inputs[1]->Name() != "encoder_attention_mask",
-                "decoder subgraph input 1 shall be named as encoder_attention_mask, got: ",
-                subgraph_inputs[1]->Name());
-  if (first_past_input_index_ == 3) {
-    ORT_RETURN_IF(subgraph_inputs[2]->Name() != "encoder_hidden_states",
-                  "decoder subgraph input 2 shall be named as encoder_hidden_states, got: ",
-                  subgraph_inputs[2]->Name());
+  // ORT_RETURN_IF(subgraph_inputs[1]->Name() != "encoder_attention_mask",
+  //               "decoder subgraph input 1 shall be named as encoder_attention_mask, got: ",
+  //               subgraph_inputs[1]->Name());
+  if (first_past_input_index_ == 2) {
+    ORT_RETURN_IF(subgraph_inputs[1]->Name() != "encoder_hidden_states",
+                  "decoder subgraph input 1 shall be named as encoder_hidden_states, got: ",
+                  subgraph_inputs[1]->Name());
   }
 
   // check subgraph outputs
@@ -109,8 +108,8 @@ Status WhisperDecoderSubgraph::Validate(const std::vector<const NodeArg*>& subgr
 
   ORT_RETURN_IF(subgraph_inputs[0]->TypeAsProto()->tensor_type().elem_type() != int32_type,
                 "decoder subgraph input 0 (input_ids) shall have int32 type");
-  ORT_RETURN_IF(subgraph_inputs[1]->TypeAsProto()->tensor_type().elem_type() != int32_type,
-                "decoder subgraph input 1 (encoder_attention_mask) shall have int32 type");
+  // ORT_RETURN_IF(subgraph_inputs[1]->TypeAsProto()->tensor_type().elem_type() != int32_type,
+  //               "decoder subgraph input 1 (encoder_attention_mask) shall have int32 type");
 
   auto float_type = subgraph_inputs[2]->TypeAsProto()->tensor_type().elem_type();
   ORT_RETURN_IF(float_type != float32_type && float_type != float16_type,
@@ -148,7 +147,7 @@ Status WhisperDecoderSubgraph::CreateInitialFeeds(
     const std::vector<OrtValue>& encoder_fetches,
     std::vector<OrtValue>& decoder_feeds,
     const GenerationDeviceHelper::DeviceCopyFunc<int32_t>& device_copy_int32_func,
-    const GenerationDeviceHelper::ExpandBufferFunc<int32_t>& expand_buffer_int32_func,
+    // const GenerationDeviceHelper::ExpandBufferFunc<int32_t>& expand_buffer_int32_func,
     const GenerationDeviceHelper::ExpandBufferFunc<float>& expand_buffer_float_func,
     const GenerationDeviceHelper::ExpandBufferFunc<MLFloat16>& expand_buffer_float16_func,
     int num_beam,
@@ -204,25 +203,25 @@ Status WhisperDecoderSubgraph::CreateInitialFeeds(
   decoder_feeds.push_back(input_ids);
 
   // The encoder_attention_mask is copied from the second input of encoder.
-  OrtValue expanded_decoder_attention_masks;
-  ORT_RETURN_IF_ERROR(expand_buffer_int32_func(stream,
-                                               encoder_feeds[1],
-                                               num_beam,
-                                               allocator,
-                                               expanded_decoder_attention_masks,
-                                               false,
-                                               0 /*max_sequence_length*/));
+  // OrtValue expanded_decoder_attention_masks;
+  // ORT_RETURN_IF_ERROR(expand_buffer_int32_func(stream,
+  //                                              encoder_feeds[1],
+  //                                              num_beam,
+  //                                              allocator,
+  //                                              expanded_decoder_attention_masks,
+  //                                              false,
+  //                                              0 /*max_sequence_length*/));
 
-  decoder_feeds.push_back(expanded_decoder_attention_masks);
+  // decoder_feeds.push_back(expanded_decoder_attention_masks);
 
   if (!past_present_share_buffer_) {
     past_present_share_buffer_max_seq_len = 0;
   }
 
-  // When first_past_input_index_ == 3, the encoder_hidden_states and past states are copied from the second output
+  // When first_past_input_index_ == 2, the encoder_hidden_states and past states are copied from the second output
   // of encoder.
-  // When first_past_input_index_ == 2, the past states are copied from the second output of encoder.
-  for (size_t j = static_cast<size_t>(4) - first_past_input_index_; j < encoder_fetches.size(); j++) {
+  // When first_past_input_index_ == 1, the past states are copied from the second output of encoder.
+  for (size_t j = static_cast<size_t>(3) - first_past_input_index_; j < encoder_fetches.size(); j++) {
     if (j == 1) {
       ORT_RETURN_IF(has_hidden_state_ == false, "Invalid hidden_states expension: has_hidden_state_ == false");
       OrtValue expanded_hidden_states;
