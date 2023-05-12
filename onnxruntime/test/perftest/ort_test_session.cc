@@ -126,7 +126,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
     bool trt_detailed_build_log = false;
     bool trt_build_heuristics_enable = false;
     bool trt_sparsity_enable = false;
-    int trt_builder_optimization_level = 2;
+    int trt_builder_optimization_level = 3;
     int trt_auxiliary_streams = -1;
     std::string trt_tactic_sources = "";
     std::string trt_extra_plugin_lib_paths = "";
