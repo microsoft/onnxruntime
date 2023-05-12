@@ -78,7 +78,7 @@ static void CopySequenceTensor(AllocatorPtr alloc,
     auto& tensor = in_tensor->Get<Tensor>();
     Tensor tmp(tensor.DataType(), tensor.Shape(), alloc);
     // Using DataTransferManager here allows other non-CPU EPs to use this implementation of the sequence ops
-    (void) data_transfer_mgr.CopyTensor(tensor, tmp);
+    (void)data_transfer_mgr.CopyTensor(tensor, tmp);
 
     tgt->Add(std::move(tmp));
   }
