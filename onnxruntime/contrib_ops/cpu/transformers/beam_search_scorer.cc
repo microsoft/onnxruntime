@@ -19,10 +19,10 @@ namespace transformers {
 using ::onnxruntime::rnn::detail::Allocate;
 
 void BeamHypotheses::Init(const IGenerationParameters& parameters, gsl::span<HypothesisScore> beams) {
-    length_penalty_ = parameters.length_penalty;
-    early_stopping_ = parameters.early_stopping;
-    beams_ = beams;
-    beams_used_ = 0;
+  length_penalty_ = parameters.length_penalty;
+  early_stopping_ = parameters.early_stopping;
+  beams_ = beams;
+  beams_used_ = 0;
 }
 
 void BeamHypotheses::Add(gsl::span<const int32_t>& hypothesis, float sum_logprobs) {
@@ -48,7 +48,7 @@ bool BeamHypotheses::IsDone(float best_sum_logprobs, int current_length) const {
   // If there are enough hypotheses and that none of the hypotheses being generated can become better
   // than the worst one in the heap, then we are done with this sentence.
 
-  if (beams_used_ < beams_.size())
+  if (static_cast<size_t>(beams_used_) < beams_.size())
     return false;
 
   if (early_stopping_)
@@ -86,9 +86,7 @@ BeamSearchScorer::BeamSearchScorer(const IGenerationParameters& parameters,
       max_length_{static_cast<size_t>(parameters.max_length)},
       num_beam_hyps_to_keep_{static_cast<size_t>(parameters.num_return_sequences)},
       pad_token_id_{parameters.pad_token_id},
-      eos_token_id_{parameters.eos_token_id}
-      {
-
+      eos_token_id_{parameters.eos_token_id} {
   size_t batch_beam_size = batch_size_ * num_beams_;
 
   auto beams = Allocate<HypothesisScore>(allocator, batch_beam_size, hypothesis_scores_ptr_);

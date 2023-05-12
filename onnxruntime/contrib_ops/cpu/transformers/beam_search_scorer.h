@@ -25,7 +25,6 @@ struct HypothesisScore {
 };
 
 struct BeamHypotheses {
-
   void Init(const IGenerationParameters& parameters, gsl::span<HypothesisScore> beams);
 
   // Number of hypotheses
@@ -45,8 +44,8 @@ struct BeamHypotheses {
  private:
   float length_penalty_;
   bool early_stopping_;
-  gsl::span<HypothesisScore> beams_; // Beam width sized array of hypotheses, sorted by highest scoring
-  int beams_used_; // Number of elements used in beams_
+  gsl::span<HypothesisScore> beams_;  // Beam width sized array of hypotheses, sorted by highest scoring
+  int beams_used_;                    // Number of elements used in beams_
 };
 
 class BeamSearchScorer : public IBeamScorer {
@@ -95,9 +94,9 @@ class BeamSearchScorer : public IBeamScorer {
   size_t hypothesis_buffer_length_{};                   // Total number of elements
   size_t hypothesis_buffer_offset_{};                   // Offset of available buffer, or length of used buffer.
 
-  IAllocatorUniquePtr<HypothesisScore> hypothesis_scores_ptr_; // num_beams_ * batch_size_, divided into num_beams_ chunks per BeamHypothesis in beam_hyps_
+  IAllocatorUniquePtr<HypothesisScore> hypothesis_scores_ptr_;  // num_beams_ * batch_size_, divided into num_beams_ chunks per BeamHypothesis in beam_hyps_
   IAllocatorUniquePtr<BeamHypotheses> beam_hyps_ptr_;
-  gsl::span<BeamHypotheses> beam_hyps_; // batch_size_ count
+  gsl::span<BeamHypotheses> beam_hyps_;  // batch_size_ count
 };
 
 }  // namespace transformers
