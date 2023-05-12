@@ -13,6 +13,7 @@ import torch
 
 from ._fallback import ORTModuleIOError, ORTModuleONNXModelException, wrap_exception
 from ._logger import suppress_os_stream_output
+from ._runtime_inspector import RuntimeInspector
 from ._utils import warn_of_constant_inputs
 
 
@@ -163,7 +164,7 @@ class _InputInfo:
 
 
 def _combine_input_buffers_initializers(
-    params, onnx_input_names, input_info, buffer_names, inputs, kwargs, device, input_density_ob
+    params, onnx_input_names, input_info, buffer_names, inputs, kwargs, device, rt_inspector: RuntimeInspector
 ):
     """Creates forward `*inputs` list from user input and PyTorch initializers
 
@@ -237,13 +238,12 @@ def _combine_input_buffers_initializers(
             if _PrimitiveType.is_primitive_type(inp):
                 inp = _PrimitiveType.get_tensor(inp, device)
 
-            if input_density_ob is not None:
-                found, embedding_is_sparse, label_is_sparse = input_density_ob.inspect_from_input_data(name, inp)
-                if found:
-                    if embedding_is_sparse is True:
-                        embed_sparsity_results.append(name)
-                    if label_is_sparse is True:
-                        label_sparsity_results.append(name)
+            found, embedding_is_sparse, label_is_sparse = rt_inspector.inspect_input(name, inp)
+            if found:
+                if embedding_is_sparse is True:
+                    embed_sparsity_results.append(name)
+                if label_is_sparse is True:
+                    label_sparsity_results.append(name)
             result.append(inp)
         else:
             raise wrap_exception(

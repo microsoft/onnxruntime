@@ -264,7 +264,7 @@ class TrainingManager(GraphExecutionManager):
                 inputs,
                 kwargs,
                 self._device,
-                self._rt_inspector.input_density_ob if self._print_input_density else None,
+                self._rt_inspector,
             )
 
             return _io.unflatten_user_output(

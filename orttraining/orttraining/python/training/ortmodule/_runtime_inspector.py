@@ -4,13 +4,12 @@
 # --------------------------------------------------------------------------
 
 from logging import Logger
+from typing import List, Tuple, Union
 
 import onnx
 import torch
-from onnx import helper
+from onnx import ModelProto, helper
 from onnx import onnx_pb as onnx_proto
-
-from onnxruntime.training import ortmodule
 
 
 class RuntimeInspector:
@@ -21,11 +20,48 @@ class RuntimeInspector:
     """
 
     def __init__(self, logger: Logger):
-        # By default, input density inspector is enabled always.
-        is_input_density_observer_enabled = (
-            ortmodule._defined_from_envvar("ORTMODULE_ENABLE_INPUT_DENSITY_INSPECTOR", 1, warn=True) == 1
-        )
-        self.input_density_ob = InputDensityObserver(logger) if is_input_density_observer_enabled is True else None
+        self._logger = logger
+
+        self.input_density_ob: Union[InputDensityObserver, None] = None
+
+    def enable_input_inspector(self, model: ModelProto, user_input_names: List[str]) -> None:
+        """
+        Initialize input inspector from the given ONNX model and user input names.
+
+        Args:
+            model: ONNX model.
+            user_input_names: User input names in the ONNX model.
+
+        """
+        if self.input_density_ob is None:
+            self.input_density_ob = InputDensityObserver(self._logger)
+        else:
+            raise RuntimeError("Input density observer is already enabled.")
+
+        return self.input_density_ob.initialize(model, user_input_names)
+
+    def inspect_input(self, input_name, input_data) -> Tuple[bool, bool, bool]:
+        """
+        Inspect input data and print statistics.
+
+        Args:
+            input_name: User input name.
+            input_data: User input tensor.
+
+        Returns:
+            found: Whether the input name is found in `_embedding_graph_input_to_padding_idx_map` and
+                `_loss_label_graph_input_to_ignore_idx_map`.
+            embedding_is_sparse: Whether the input is sparse.
+            label_is_sparse: Whether the input is sparse.
+        """
+        if self.input_density_ob is not None:
+            return self.input_density_ob.inspect_from_input_data(input_name, input_data)
+
+        return (False, False, False)
+
+    def disable_input_inspector(self) -> None:
+        """Disable input density inspector."""
+        self.input_density_ob = None
 
 
 class InputDensityObserver:
@@ -52,7 +88,7 @@ class InputDensityObserver:
 
         self._tensor_to_node_map = {}
 
-    def initialize(self, model, user_input_names):
+    def initialize(self, model: ModelProto, user_input_names: List[str]) -> None:
         """
         Initialize data observer from the given ONNX model and user input names.
 
@@ -66,6 +102,9 @@ class InputDensityObserver:
             user_input_names: User input names in the ONNX model.
 
         """
+        if self._is_initialized:
+            return
+
         try:
             self._tensor_to_node_map.clear()
             for node in model.graph.node:
@@ -243,7 +282,7 @@ class InputDensityObserver:
                 [ignore_index, label_preprocess_func]
             )
 
-    def inspect_from_input_data(self, name, inp):
+    def inspect_from_input_data(self, name: str, inp) -> Tuple[bool, bool, bool]:
         """
         Inspect input data and print statistics.
 
@@ -269,10 +308,10 @@ class InputDensityObserver:
                     self._last_step = self._current_step
                     self._print_embed_label_stats()
 
-            return found, embedding_is_sparse, label_is_sparse
+            return (found, embedding_is_sparse, label_is_sparse)
         except Exception as e:
             self._logger.warning(f"Failed to inspect input {name} due to {e}", UserWarning)
-            return False, False, False
+            return (False, False, False)
 
     def _inspect_embed_label_input(self, name, data):
         found = False

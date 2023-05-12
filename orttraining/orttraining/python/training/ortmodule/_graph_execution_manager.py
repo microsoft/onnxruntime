@@ -542,16 +542,16 @@ class GraphExecutionManager(GraphExecutionInterface):
         Based on runtime inspection, enable conditional optimizations if applicable.
 
         Input sparsity-based optimization workflows:
-        1. Input density observer is initialized when input density observer is available.
+        1. Input density observer is enabled when needed.
         2. If compute optimizer is enabled, input density observer inspects input tensors and returns sparsity results.
         3. If label or embedding input sparsity is found in sparsity results, graph transformer config is updated to
            enable sparsity-based optimization.
 
         """
 
-        # Set up data sparsity inspection if input density observer is available.
-        if self._rt_inspector.input_density_ob is not None:
-            self._rt_inspector.input_density_ob.initialize(
+        # Enable data sparsity inspection if compute optimization is enabled or user wants to print input density.
+        if self._enable_compute_optimizer or self._print_input_density:
+            self._rt_inspector.enable_input_inspector(
                 self._onnx_models.exported_model, self._graph_builder.get_graph_info().user_input_names
             )
 
@@ -571,7 +571,7 @@ class GraphExecutionManager(GraphExecutionInterface):
                     inputs,
                     kwargs,
                     detected_device,
-                    self._rt_inspector.input_density_ob,
+                    self._rt_inspector,
                 )
 
                 if len(label_sparsity_results) > 0:
@@ -581,3 +581,8 @@ class GraphExecutionManager(GraphExecutionInterface):
                 if len(embed_sparsity_results) > 0:
                     graph_transformer_config.sparse_embedding_input_names = embed_sparsity_results
                     logger.info(f"Embedding sparsity based optimization is on for {embed_sparsity_results}")
+
+            # If user don't want to print input density, disable the input density observer to avoid overhead
+            # when looping through inputs during training.
+            if not self._print_input_density:
+                self._rt_inspector.disable_input_inspector()
