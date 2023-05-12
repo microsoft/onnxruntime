@@ -8,6 +8,7 @@ namespace onnxruntime {
 namespace ml {
 template <typename T>
 class TreeEnsembleRegressor final : public OpKernel {
+  // It does not handle rule `x in set` but catboost does.
   typedef T InputType;       // input type
   typedef float OutputType;  // output type
  public:
