@@ -335,23 +335,23 @@ void TimestampLogitsProcessor<T>::Process(const ISequences* sequences,
     // Caculate logsumexp on timestamps
     float timestamp_logprob = std::numeric_limits<T>::lowest();
     {
-        float logsumexp = 0.0f;
-        const float logprob_max = *std::max_element(beam_token_scores.begin() + beg_token_id_, beam_token_scores.end());
-        for (int j = beg_token_id_; j < vocab_size; ++j) {
-            if (beam_token_scores[j] > std::numeric_limits<T>::lowest()) {
-                logsumexp += expf(beam_token_scores[j] - logprob_max);
-            }
+      float logsumexp = 0.0f;
+      const float logprob_max = *std::max_element(beam_token_scores.begin() + beg_token_id_, beam_token_scores.end());
+      for (int j = beg_token_id_; j < vocab_size; ++j) {
+        if (beam_token_scores[j] > std::numeric_limits<T>::lowest()) {
+          logsumexp += expf(beam_token_scores[j] - logprob_max);
         }
-        if (logsumexp > 0.0f) {
-            timestamp_logprob = logf(logsumexp) + logprob_max;
-        }
+      }
+      if (logsumexp > 0.0f) {
+        timestamp_logprob = logf(logsumexp) + logprob_max;
+      }
     }
 
     const float max_text_token_logprob = *std::max_element(beam_token_scores.begin(), beam_token_scores.begin() + beg_token_id_);
     if (timestamp_logprob > max_text_token_logprob) {
-        for (int j = 0; j < beg_token_id_; ++j) {
-            beam_token_scores[j] = std::numeric_limits<T>::lowest();
-        }
+      for (int j = 0; j < beg_token_id_; ++j) {
+        beam_token_scores[j] = std::numeric_limits<T>::lowest();
+      }
     }
   }
 
