@@ -546,8 +546,7 @@ class GraphExecutionManager(GraphExecutionInterface):
         Based on runtime inspection, enable conditional optimizations if applicable.
 
         Input sparsity-based optimization workflows:
-        1. Input density observer is enabled when label sparsity optimization is enabled or user wants to print
-           input density.
+        1. Input density observer is enabled when label sparsity optimization is enabled.
         2. Input density observer inspects input tensors and returns sparsity results.
         3. If label or embedding input sparsity is found in sparsity results, graph transformer config is updated to
            enable sparsity-based optimization.
@@ -560,9 +559,6 @@ class GraphExecutionManager(GraphExecutionInterface):
                 self._onnx_models.exported_model, self._graph_builder.get_graph_info().user_input_names
             )
 
-            # Enable sparsity-based optimization when applicable.
-            # Be noted: this optimization is enabled when input density observer is available and compute_optimizer is
-            # enabled.
             if self._enable_label_sparsity_optimizer:
                 detected_device = _utils.get_device_from_module(self._original_module) or _utils.get_device_from_inputs(
                     inputs, kwargs
@@ -579,6 +575,7 @@ class GraphExecutionManager(GraphExecutionInterface):
                     self._rt_inspector,
                 )
 
+                # Enable sparsity-based optimization when applicable.
                 if len(label_sparsity_results) > 0:
                     graph_transformer_config.sparse_label_input_names = label_sparsity_results
                     logger.info(f"Label sparsity based optimization is on for {label_sparsity_results}")
@@ -587,7 +584,7 @@ class GraphExecutionManager(GraphExecutionInterface):
                     graph_transformer_config.sparse_embedding_input_names = embed_sparsity_results
                     logger.info(f"Embedding sparsity based optimization is on for {embed_sparsity_results}")
 
-            # If user don't want to print input density, disable the input density observer to avoid overhead
+            # If users don't want to print input density, disable the input density observer to avoid overhead
             # when looping through inputs during training.
             if not self._print_input_density:
                 self._rt_inspector.disable_input_inspector()

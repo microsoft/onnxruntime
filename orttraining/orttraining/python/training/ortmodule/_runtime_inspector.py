@@ -16,7 +16,7 @@ class RuntimeInspector:
     """
     Runtime inspector for ORTModule.
 
-    Currently only wraps only input density inspector.
+    Currently, it only wraps input density inspector.
     """
 
     def __init__(self, logger: Logger):
@@ -296,7 +296,7 @@ class InputDensityObserver:
             label_is_sparse: Whether the input is sparse.
         """
         if not self._is_initialized:
-            return
+            return (False, False, False)
 
         try:
             data = inp.clone()
