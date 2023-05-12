@@ -79,6 +79,7 @@ CMake creates a target to this project
       <CurrentTime>$([System.DateTime]::UtcNow.ToString(hhmm))</CurrentTime>
       <PackageVersion>@(MajorVersionNumber)</PackageVersion>
       <PackageVersion>$(PackageVersion)$(ReleaseVersionSuffix)</PackageVersion>
+      <Version>$(PackageVersion)</Version>
       <PackageVersion Condition="'$(IsReleaseBuild)'!='True'">$(PackageVersion)-dev-$(CurrentDate)-$(CurrentTime)-$(GitCommitHashShort)</PackageVersion>
     </PropertyGroup>
     <Message Importance="High" Text="PackageVersion=$(PackageVersion)" />
