@@ -896,8 +896,8 @@ Status CreateWhisperEncoderInputs(
                        allocator->Info(),
                        encoder_input_features);
 
-  // decoder_input_ids is initially of the following format:
-  // [ PREV, [prompt tokens], decoder start token (i.e. start of transcript), language token, task token, timestamp token, [prefix tokens] ]
+  // decoder_input_ids is of shape (batch_size, initial_sequence_length):
+  // Example: [[ decoder start token (i.e. start of transcript), language token, task token, timestamp token ]]
   const TensorShape& original_decoder_input_ids_shape = original_decoder_input_ids->Shape();
   ORT_ENFORCE(original_decoder_input_ids_shape.NumDimensions() == 2);
   Tensor::InitOrtValue(element_type,
