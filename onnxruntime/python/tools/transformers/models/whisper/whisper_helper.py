@@ -71,7 +71,11 @@ class WhisperHelper:
 
     @staticmethod
     def load_model(
-        model_name_or_path: str, cache_dir: str, device: torch.device, merge_encoder_and_decoder_init: bool = True
+        model_name_or_path: str,
+        cache_dir: str,
+        device: torch.device,
+        merge_encoder_and_decoder_init: bool = True,
+        state_dict_path: str = "",
     ) -> Dict[str, torch.nn.Module]:
         """Load model given a pretrained name or path, then build models for ONNX conversion.
 
@@ -84,6 +88,8 @@ class WhisperHelper:
             Dict[str, torch.nn.Module]: mapping from name to modules for ONNX conversion.
         """
         model = WhisperForConditionalGeneration.from_pretrained(model_name_or_path, cache_dir=cache_dir)
+        if state_dict_path:
+            model.load_state_dict(torch.load(state_dict_path), strict=False)
 
         decoder = WhisperDecoder(model, None, model.config)
         decoder.eval().to(device)

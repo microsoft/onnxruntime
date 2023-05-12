@@ -127,7 +127,6 @@ class WhisperEncoderDecoderInitHelper:
         out = model(inputs.encoder_input_ids, inputs.decoder_input_ids)
         present = out[2]
         present_names = PastKeyValuesHelper.get_input_names(present, encoder=True)
-        # present_names = PastKeyValuesHelper.get_past_names(model.config.num_layers, present=True)
 
         output_names = ["logits", "encoder_hidden_states", *present_names]
 

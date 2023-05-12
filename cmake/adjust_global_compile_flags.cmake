@@ -51,10 +51,8 @@ if (onnxruntime_BUILD_WEBASSEMBLY)
 
   # Build WebAssembly with multi-threads support.
   if (onnxruntime_ENABLE_WEBASSEMBLY_THREADS)
-    string(APPEND CMAKE_C_FLAGS " -pthread")
-    string(APPEND CMAKE_CXX_FLAGS " -pthread")
-    string(APPEND CMAKE_C_FLAGS " -s USE_PTHREADS=1 -Wno-pthreads-mem-growth")
-    string(APPEND CMAKE_CXX_FLAGS " -s USE_PTHREADS=1 -Wno-pthreads-mem-growth")
+    string(APPEND CMAKE_C_FLAGS " -pthread -Wno-pthreads-mem-growth")
+    string(APPEND CMAKE_CXX_FLAGS " -pthread -Wno-pthreads-mem-growth")
   endif()
 endif()
 

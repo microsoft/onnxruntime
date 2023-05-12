@@ -27,6 +27,12 @@ macro(get_mobile_api_headers _HEADERS)
     "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_cxx_inline.h"
   )
 
+  if (onnxruntime_ENABLE_TRAINING_APIS)
+    list(APPEND ${_HEADERS} "${REPO_ROOT/orttraining/orttraining/training_api/include/onnxruntime_training_c_api.h}")
+    list(APPEND ${_HEADERS} "${REPO_ROOT/orttraining/orttraining/training_api/include/onnxruntime_training_cxx_api.h}")
+    list(APPEND ${_HEADERS} "${REPO_ROOT/orttraining/orttraining/training_api/include/onnxruntime_training_cxx_inline_api.h}")
+  endif()
+
   # need to add header files for enabled EPs
   foreach(f ${ONNXRUNTIME_PROVIDER_NAMES})
     file(GLOB _provider_headers CONFIGURE_DEPENDS
@@ -185,6 +191,7 @@ set(onnxruntime_INTERNAL_LIBRARIES
   ${PROVIDERS_ROCM}
   ${PROVIDERS_VITISAI}
   ${PROVIDERS_XNNPACK}
+  ${PROVIDERS_WEBNN}
   ${PROVIDERS_AZURE}
   ${PROVIDERS_INTERNAL_TESTING}
   ${onnxruntime_winml}

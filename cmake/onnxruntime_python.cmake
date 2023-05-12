@@ -20,10 +20,6 @@ file(GLOB onnxruntime_pybind_srcs CONFIGURE_DEPENDS
   ${onnxruntime_pybind_srcs_pattern}
   )
 
-if(NOT onnxruntime_PYBIND_EXPORT_OPSCHEMA)
-  list(REMOVE_ITEM onnxruntime_pybind_srcs  ${ONNXRUNTIME_ROOT}/python/onnxruntime_pybind_schema.cc)
-endif()
-
 if(onnxruntime_ENABLE_TRAINING)
   list(REMOVE_ITEM onnxruntime_pybind_srcs  ${ONNXRUNTIME_ROOT}/python/onnxruntime_pybind_module.cc)
 endif()
@@ -286,7 +282,13 @@ if (WIN32)
     endif()
     get_filename_component(CUDNN_DLL_NAME ${CUDNN_DLL_PATH} NAME_WE)
     string(REPLACE "cudnn64_" "" CUDNN_VERSION "${CUDNN_DLL_NAME}")
-
+    if(NOT onnxruntime_CUDA_VERSION)
+      message("Reading json file ${onnxruntime_CUDA_HOME}/version.json")
+      set(CUDA_SDK_JSON_FILE_PATH "${onnxruntime_CUDA_HOME}/version.json")
+      file(READ ${CUDA_SDK_JSON_FILE_PATH} CUDA_SDK_JSON_CONTENT)
+      string(JSON onnxruntime_CUDA_VERSION GET ${CUDA_SDK_JSON_CONTENT} "cuda" "version")
+      message("onnxruntime_CUDA_VERSION=${onnxruntime_CUDA_VERSION}")
+    endif()
     file(APPEND "${VERSION_INFO_FILE}"
       "cuda_version = \"${onnxruntime_CUDA_VERSION}\"\n"
       "cudnn_version = \"${CUDNN_VERSION}\"\n"
@@ -648,7 +650,7 @@ if (NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_EXTENDED_MINIMAL_BUILD
                                   AND NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin|iOS"
                                   AND NOT (CMAKE_SYSTEM_NAME STREQUAL "Android")
                                   AND NOT onnxruntime_USE_ROCM
-				  AND NOT onnxruntime_BUILD_WEBASSEMBLY)
+                                  AND NOT onnxruntime_BUILD_WEBASSEMBLY)
   add_custom_command(
     TARGET onnxruntime_pybind11_state POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy

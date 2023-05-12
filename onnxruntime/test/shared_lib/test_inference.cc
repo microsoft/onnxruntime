@@ -2828,6 +2828,8 @@ TEST(CApiTest, TestMultiStreamInferenceSimpleSSD) {
 }
 #endif
 
+#if !defined(REDUCED_OPS_BUILD) && !defined(DISABLE_OPTIONAL_TYPE)
+
 TEST(LiteCustomOpTest, CustomFunc) {
   Ort::SessionOptions session_options;
   session_options.SetIntraOpNumThreads(1);
@@ -2904,7 +2906,7 @@ TEST(LiteCustomOpTest, CustomStruct) {
   const auto& ortApi = Ort::GetApi();
 
   Ort::CustomOpDomain v2_domain{"v2"};
-  std::unique_ptr<OrtCustomOp> mrg_op_ptr{Ort::Custom::CreateCustomOp<Merge>("Merge", "CPUExecutionProvider")};
+  std::unique_ptr<Ort::Custom::OrtLiteCustomOp> mrg_op_ptr{Ort::Custom::CreateLiteCustomOp<Merge>("Merge", "CPUExecutionProvider")};
   v2_domain.Add(mrg_op_ptr.get());
 
   Ort::SessionOptions session_options;
@@ -3019,7 +3021,6 @@ TEST(LiteCustomOpTest, HasOptional) {
   ASSERT_TRUE(output_tensors.size() == 2);
 }
 
-#if !defined(ORT_MINIMAL_BUILD)
 TEST(MultiKernelSingleSchemaTest, valid) {
   Ort::SessionOptions session_options;
   session_options.SetIntraOpNumThreads(1);

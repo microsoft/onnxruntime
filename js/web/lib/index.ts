@@ -22,4 +22,5 @@ if (!BUILD_DEFS.DISABLE_WASM) {
   registerBackend('cpu', wasmBackend, 10);
   registerBackend('wasm', wasmBackend, 10);
   registerBackend('xnnpack', wasmBackend, 9);
+  registerBackend('webnn', wasmBackend, 9);
 }

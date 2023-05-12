@@ -295,7 +295,7 @@ std::unique_ptr<KernelRegistry> RegisterKernels() {
 using namespace js;
 
 JsExecutionProvider::JsExecutionProvider(const JsExecutionProviderInfo& info)
-    : IExecutionProvider{kJsExecutionProvider, true} {
+    : IExecutionProvider{kJsExecutionProvider, OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, 0), true} {
 }
 
 // implement RegisterAllocator to test/validate sharing the CPU EP's allocator
@@ -315,10 +315,9 @@ void JsExecutionProvider::RegisterAllocator(AllocatorManager& allocator_manager)
     InsertAllocator(cpu_alloc);
   }
 
-  OrtDevice custom_device{OrtDevice::GPU, OrtDevice::MemType::DEFAULT, 0};
   auto custom_alloc = GetAllocator(OrtMemTypeDefault);
   if (!custom_alloc) {
-    custom_alloc = allocator_manager.GetAllocator(OrtMemTypeDefault, custom_device);
+    custom_alloc = allocator_manager.GetAllocator(OrtMemTypeDefault, default_device_);
     if (!custom_alloc) {
       AllocatorCreationInfo customAllocatorCreationInfo([&](int) {
         return std::make_unique<js::JsCustomAllocator>();

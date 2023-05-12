@@ -15,7 +15,6 @@ import numpy
 import onnx
 import torch
 from transformers import WhisperConfig, file_utils
-from whisper_encoder import WhisperEncoderInputs
 
 from onnxruntime import InferenceSession
 
@@ -153,14 +152,6 @@ class WhisperDecoderInputs:
             device=device,
         )
 
-        encoder_inputs = WhisperEncoderInputs.create_dummy(
-            batch_size,
-            encode_sequence_length,
-            vocab_size,
-            device,
-            use_int32_inputs=use_int32_inputs,
-        )
-
         float_type = torch.float16 if float16 else torch.float32
 
         if past_decode_sequence_length > 0:
@@ -189,9 +180,7 @@ class WhisperDecoderInputs:
         return WhisperDecoderInputs(decoder_input_ids, past)
 
     def to_list(self) -> List:
-        input_list = [
-            self.decoder_input_ids,
-        ]
+        input_list = [self.decoder_input_ids]
         if self.past_key_values:
             input_list.extend(self.past_key_values)
         return input_list

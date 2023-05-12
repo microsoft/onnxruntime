@@ -37,7 +37,7 @@
  *
  * This value is used by some API functions to behave as this version of the header expects.
  */
-#define ORT_API_VERSION 15
+#define ORT_API_VERSION 16
 
 #ifdef __cplusplus
 extern "C" {
@@ -3558,6 +3558,7 @@ struct OrtApi {
    *   "buffer_type": ITensor or user buffers, options: "ITENSOR", user buffer with different types - "TF8", "TF16", "UINT8", "FLOAT".
    *   "ITENSOR" -- default, ITensor which is float only.
    *   "TF8" -- quantized model required, "FLOAT" -- for both quantized or non-quantized model
+   *   "enable_init_cache": enable SNPE init caching feature, set to 1 to enabled it. Disabled by default.
    *   If SNPE is not available (due to a non Snpe enabled build or its dependencies not being installed), this function will fail.
    *
    * XNNPACK supported keys:
