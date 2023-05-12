@@ -20,6 +20,7 @@ using namespace Microsoft::WRL;
 #include "core/framework/TensorSeq.h"
 #include "core/providers/cpu/sequence/sequence_ops.h"
 #include "core/providers/cpu/tensor/concatbase.h"
+#include "core/providers/cpu/optional/optional_ops.h"
 
 namespace onnxruntime {
 
@@ -30,6 +31,10 @@ class ONNX_OPERATOR_KERNEL_CLASS_NAME(kDmlExecutionProvider, kOnnxDomain, 11, Se
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kDmlExecutionProvider, kOnnxDomain, 11, ConcatFromSequence);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kDmlExecutionProvider, kOnnxDomain, 11, SequenceErase);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kDmlExecutionProvider, kOnnxDomain, 11, SequenceInsert);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kDmlExecutionProvider, kOnnxDomain, 15, OptionalHasElement);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kDmlExecutionProvider, kOnnxDomain, 15, OptionalGetElement);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kDmlExecutionProvider, kOnnxDomain, 18, OptionalHasElement);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kDmlExecutionProvider, kOnnxDomain, 18, OptionalGetElement);
 
 }
 
@@ -105,6 +110,53 @@ ONNX_OPERATOR_KERNEL_EX(
                                  DataTypeImpl::GetTensorType<int64_t>()}),
     SequenceInsert);
 
+ONNX_OPERATOR_KERNEL_EX(
+    OptionalHasElement,
+    kOnnxDomain,
+    15,
+    kDmlExecutionProvider,
+    (*KernelDefBuilder::Create())
+        .TypeConstraint("O", DataTypeImpl::AllOptionalTypes())
+        .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>()),
+    OptionalHasElement);
+
+ONNX_OPERATOR_KERNEL_EX(
+    OptionalGetElement,
+    kOnnxDomain,
+    15,
+    kDmlExecutionProvider,
+    (*KernelDefBuilder::Create())
+        .TypeConstraint("O", DataTypeImpl::AllOptionalTypes())
+        .TypeConstraint("V", DataTypeImpl::AllTensorAndSequenceTensorTypes())
+        // We may be able to re-use the input for the output as is unless the output
+        // is a graph output. We provide this hint to the allocation planner
+        // to make the re-use call.
+        .Alias(0, 0),
+    OptionalGetElement);
+
+ONNX_OPERATOR_KERNEL_EX(
+    OptionalHasElement,
+    kOnnxDomain,
+    18,
+    kDmlExecutionProvider,
+    (*KernelDefBuilder::Create())
+        .TypeConstraint("O", DataTypeImpl::AllTensorAndSequenceTensorAndOptionalTypes())
+        .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>()),
+    OptionalHasElement);
+
+ONNX_OPERATOR_KERNEL_EX(
+    OptionalGetElement,
+    kOnnxDomain,
+    18,
+    kDmlExecutionProvider,
+    (*KernelDefBuilder::Create())
+        .TypeConstraint("O", DataTypeImpl::AllTensorAndSequenceTensorAndOptionalTypes())
+        .TypeConstraint("V", DataTypeImpl::AllTensorAndSequenceTensorTypes())
+        // We may be able to re-use the input for the output as is unless the output
+        // is a graph output. We provide this hint to the allocation planner
+        // to make the re-use call.
+        .Alias(0, 0),
+    OptionalGetElement);
 }
 
 namespace Dml
@@ -924,6 +976,10 @@ void RegisterCpuOperatorsAsDml(onnxruntime::KernelRegistry* registry)
         BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kDmlExecutionProvider, kOnnxDomain, 11, SequenceLength)>,
         BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kDmlExecutionProvider, kOnnxDomain, 11, SequenceErase)>,
         BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kDmlExecutionProvider, kOnnxDomain, 11, SequenceInsert)>,
+        BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kDmlExecutionProvider, kOnnxDomain, 15, OptionalHasElement)>,
+        BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kDmlExecutionProvider, kOnnxDomain, 15, OptionalGetElement)>,
+        BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kDmlExecutionProvider, kOnnxDomain, 18, OptionalHasElement)>,
+        BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kDmlExecutionProvider, kOnnxDomain, 18, OptionalGetElement)>,
     };
 
     for (auto& function_table_entry : function_table) {

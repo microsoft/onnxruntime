@@ -624,18 +624,20 @@ namespace Dml
 
     bool IsCpuOnDmlOperator(const onnxruntime::Node& node)
     {
-        auto sequence_ops = std::array<char*, 6>{
+        auto cpu_on_dml_ops = std::array<char*, 8>{
             "SequenceAt",
             "SequenceConstruct",
             "SequenceEmpty",
             "SequenceLength",
             "SequenceErase",
-            "SequenceInsert"
+            "SequenceInsert",
+            "OptionalGetElement",
+            "OptionalHasElement"
         };
 
-        for (auto& sequence_op : sequence_ops)
+        for (auto& cpu_on_dml_op : cpu_on_dml_ops)
         {
-            if (strcmp(sequence_op, node.OpType().c_str()) == 0)
+            if (strcmp(cpu_on_dml_op, node.OpType().c_str()) == 0)
             {
                 return true;
             }
