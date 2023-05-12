@@ -383,13 +383,6 @@ export function parseTestRunnerCliArgs(cmdlineArgs: string[]): TestRunnerCliArgs
     globalEnvFlags.wasm.proxy = true;
   }
 
-  const globalEnvFlags = parseGlobalEnvFlags(args);
-
-  if (backend.includes('webnn') && !globalEnvFlags.wasm.proxy) {
-    // Backend webnn is restricted in the dedicated worker.
-    globalEnvFlags.wasm.proxy = true;
-  }
-
   // Options:
   // --log-verbose=<...>
   // --log-info=<...>
