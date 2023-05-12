@@ -125,7 +125,7 @@ inline const OrtApi& GetApi() noexcept { return *Global<void>::api_; }
 /// This function returns the onnxruntime version string
 /// </summary>
 /// <returns>version string major.minor.rev</returns>
-std::basic_string<ORTCHAR_T> GetVersionString();
+std::string GetVersionString();
 
 /// <summary>
 /// This function returns the onnxruntime build information: including git branch,

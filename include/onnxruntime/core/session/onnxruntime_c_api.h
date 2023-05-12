@@ -95,6 +95,8 @@ extern "C" {
 #define ORTCHAR_T char
 #endif
 
+/// ORTCHAR_T, ORT_TSTR are reserved specifically for path handling.
+/// All other strings are UTF-8 encoded, use char and std::string
 #ifndef ORT_TSTR
 #ifdef _WIN32
 #define ORT_TSTR(X) L##X
@@ -629,7 +631,7 @@ struct OrtApiBase {
    *   older than the version created with this header file.
    */
   const OrtApi*(ORT_API_CALL* GetApi)(uint32_t version)NO_EXCEPTION;
-  const ORTCHAR_T*(ORT_API_CALL* GetVersionString)(void)NO_EXCEPTION;    ///< Returns a null terminated string of the version of the Onnxruntime library (eg: "1.8.1")
+  const char*(ORT_API_CALL* GetVersionString)(void)NO_EXCEPTION;    ///< Returns a null terminated string of the version of the Onnxruntime library (eg: "1.8.1")
   const ORTCHAR_T*(ORT_API_CALL* GetBuildInfoString)(void)NO_EXCEPTION;  ///< Returns a null terminated string of the build info including git info and cxx flags
 };
 typedef struct OrtApiBase OrtApiBase;

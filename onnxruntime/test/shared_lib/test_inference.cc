@@ -2209,9 +2209,9 @@ TEST(CApiTest, get_available_providers_cpp) {
 }
 
 TEST(CApiTest, get_version_string_cpp) {
-  std::basic_string<ORTCHAR_T> version_string = Ort::GetVersionString();
+  auto version_string = Ort::GetVersionString();
   ASSERT_FALSE(version_string.empty());
-  ASSERT_EQ(version_string, std::basic_string<ORTCHAR_T>(ORT_TSTR_ON_MACRO(ORT_VERSION)));
+  ASSERT_EQ(version_string, std::string(ORT_VERSION));
 }
 
 TEST(CApiTest, TestSharedAllocators) {

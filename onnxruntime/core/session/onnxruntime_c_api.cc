@@ -2767,8 +2767,8 @@ ORT_API(const OrtApi*, OrtApis::GetApi, uint32_t version) {
   return nullptr;  // Unsupported version
 }
 
-ORT_API(const ORTCHAR_T*, OrtApis::GetVersionString) {
-  return ORT_TSTR_ON_MACRO(ORT_VERSION);
+ORT_API(const char*, OrtApis::GetVersionString) {
+  return ORT_VERSION;
 }
 
 ORT_API(const ORTCHAR_T*, OrtApis::GetBuildInfoString) {
