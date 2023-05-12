@@ -724,7 +724,7 @@ TEST(SplitOperatorTest, Split18_InvalidNumOutputs) {
   {
     kTensorrtExecutionProvider,
     kQnnExecutionProvider,
-    kDmlExecutionProvider // Error message differs from expected CPU EP error message.
+    kDmlExecutionProvider, // Error message differs from expected CPU EP error message.
   };
   RunTest<float>(axis, {}, input, outputs, excluded_providers, true, true, num_outputs, false,
                  "Attribute `num_outputs` value cannot be lower than 1");
