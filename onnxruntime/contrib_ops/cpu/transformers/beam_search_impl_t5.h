@@ -151,7 +151,6 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
       buffer,
       decoder_input_ids,
       this->ort_stream_));
-  // }
 
 #ifdef DEBUG_NODE_INPUTS_OUTPUTS
   const_cast<SessionState&>(this->encoder_session_state_).IncrementGraphExecutionCounter();
@@ -228,23 +227,22 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
     ++current_length;  // Increase sequence length after a new token is generated.
 
     ORT_RETURN_IF_ERROR(decoder_subgraph_.CreateInitialFeeds(this->cpu_allocator_,
-                                                              ReinterpretAsSpan<const int32_t>(beam_next_tokens),
-                                                              this->implicit_inputs_,
-                                                              encoder_feeds,
-                                                              encoder_fetches,
-                                                              decoder_feeds,
-                                                              this->device_copy_int32_func_,
-                                                              this->expand_buffer_int32_func_,
-                                                              this->expand_buffer_float_func_,
-                                                              this->expand_buffer_float16_func_,
-                                                              parameters->num_beams,
-                                                              this->ort_stream_,
-                                                              decoder_subgraph_.UseSequenceAsInputIds(),
-                                                              current_length,
-                                                              cpu_state.sequences,
-                                                              parameters->max_length,
-                                                              decoder_subgraph_.has_decoder_masked_attention_));
-    // }
+                                                             ReinterpretAsSpan<const int32_t>(beam_next_tokens),
+                                                             this->implicit_inputs_,
+                                                             encoder_feeds,
+                                                             encoder_fetches,
+                                                             decoder_feeds,
+                                                             this->device_copy_int32_func_,
+                                                             this->expand_buffer_int32_func_,
+                                                             this->expand_buffer_float_func_,
+                                                             this->expand_buffer_float16_func_,
+                                                             parameters->num_beams,
+                                                             this->ort_stream_,
+                                                             decoder_subgraph_.UseSequenceAsInputIds(),
+                                                             current_length,
+                                                             cpu_state.sequences,
+                                                             parameters->max_length,
+                                                             decoder_subgraph_.has_decoder_masked_attention_));
 
     if (decoder_subgraph_.past_present_share_buffer_) {
       decoder_fetches.reserve(static_cast<int64_t>(decoder_subgraph_.GetFirstPresentOutputIndex()) + 2 * static_cast<int64_t>(decoder_subgraph_.num_layers));
@@ -356,7 +354,6 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
           decoder_subgraph_.has_decoder_masked_attention_,
           cpu_state.sequences,
           this->GetConsoleDumper()));
-      // }
     }
 
     if (decoder_subgraph_.past_present_share_buffer_) {
