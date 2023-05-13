@@ -428,11 +428,11 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Size of the vocabulary. If not provided, it will be inferred from the decoder subgraph's output shape</dd>
 </dl>
 
-#### Inputs (5 - 10)
+#### Inputs (5 - 11)
 
 <dl>
 <dt><tt>input_ids</tt> : F</dt>
-<dd>The sequence used as a prompt for the generation. Shape is (batch_size, sequence_length)</dd>
+<dd>The sequence used as a prompt for the generation in the encoder subgraph. Shape is (batch_size, sequence_length)</dd>
 <dt><tt>max_length</tt> : I</dt>
 <dd>The maximum length of the sequence to be generated. Shape is (1)</dd>
 <dt><tt>min_length</tt> (optional) : I</dt>
@@ -451,6 +451,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Mask of vocabulary for first step. Words that masked with 0 are not allowed to be generated, and 1 is allowed. Shape is (batch_size, vocab_size)</dd>
 <dt><tt>attention_mask</tt> (optional) : I</dt>
 <dd>Custom attention mask. Shape is (batch_size, sequence_length)</dd>
+<dt><tt>decoder_input_ids</tt> (optional) : I</dt>
+<dd>The forced input id sequence for the decoder subgraph. Shape is (batch_size, initial_sequence_length)</dd>
 </dl>
 
 #### Outputs (1 - 3)
