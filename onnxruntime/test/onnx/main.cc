@@ -29,7 +29,7 @@ using namespace onnxruntime;
 
 namespace {
 void usage() {
-  auto version_string = ToUTF8String(OrtGetApiBase()->GetVersionString());
+  auto version_string = Ort::GetVersionString();
   printf(
       "onnx_test_runner [options...] <data_root>\n"
       "Options:\n"
