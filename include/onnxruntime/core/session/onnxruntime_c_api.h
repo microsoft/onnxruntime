@@ -629,8 +629,17 @@ struct OrtApiBase {
    * \param[in] version Must be ::ORT_API_VERSION
    * \return The ::OrtApi for the version requested, nullptr will be returned if this version is unsupported, for example when using a runtime
    *   older than the version created with this header file.
+   *
+   * One can call GetVersionString() to get the version of the Onnxruntime library for logging
+   * and error reporting purposes.
    */
   const OrtApi*(ORT_API_CALL* GetApi)(uint32_t version)NO_EXCEPTION;
+
+  /** \brief Returns a null terminated string of the version of the Onnxruntime library (eg: "1.8.1")
+   *
+   *  \return UTF-8 encoded version string. Do not deallocate the returned buffer.
+   */
+  const char*(ORT_API_CALL* GetVersionString)(void)NO_EXCEPTION;
 };
 
 typedef struct OrtApiBase OrtApiBase;
@@ -4193,14 +4202,6 @@ struct OrtApi {
    * \since Version 1.15.
    */
   ORT_API2_STATUS(KernelContext_GetAllocator, _In_ const OrtKernelContext* context, _In_ const OrtMemoryInfo* mem_info, _Outptr_ OrtAllocator** out);
-
-  /** \brief Returns a null terminated string of the version of the Onnxruntime library (eg: "1.8.1")
-   *
-   *  \return UTF-8 encoded version string. Do not deallocate the returned buffer.
-   *
-   *  \since Version 1.15.
-   */
-  const char*(ORT_API_CALL* GetVersionString)(void);
 
   /** \brief Returns a null terminated string of the build info including git info and cxx flags
    *

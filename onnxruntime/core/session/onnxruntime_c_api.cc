@@ -2379,7 +2379,8 @@ ORT_API(const OrtTrainingApi*, OrtApis::GetTrainingApi, uint32_t version) {
 }
 
 static constexpr OrtApiBase ort_api_base = {
-    &OrtApis::GetApi};
+    &OrtApis::GetApi,
+    &OrtApis::GetVersionString};
 
 /* Rules on how to add a new Ort API version
 
@@ -2724,7 +2725,6 @@ static constexpr OrtApi ort_api_1_to_16 = {
     &OrtApis::GetOptionalContainedTypeInfo,
     &OrtApis::GetResizedStringTensorElementBuffer,
     &OrtApis::KernelContext_GetAllocator,
-    &OrtApis::GetVersionString,
     &OrtApis::GetBuildInfoString};
 // End of Version 15 - DO NOT MODIFY ABOVE (see above text for more information)
 
@@ -2746,7 +2746,7 @@ static_assert(offsetof(OrtApi, SessionOptionsAppendExecutionProvider_MIGraphX) /
 static_assert(offsetof(OrtApi, ReleaseKernelInfo) / sizeof(void*) == 218, "Size of version 12 API cannot change");
 static_assert(offsetof(OrtApi, ReleaseCANNProviderOptions) / sizeof(void*) == 224, "Size of version 13 API cannot change");
 static_assert(offsetof(OrtApi, GetSessionConfigEntry) / sizeof(void*) == 238, "Size of version 14 API cannot change");
-static_assert(offsetof(OrtApi, GetBuildInfoString) / sizeof(void*) == 255, "Size of version 15 API cannot change");
+static_assert(offsetof(OrtApi, GetBuildInfoString) / sizeof(void*) == 254, "Size of version 15 API cannot change");
 
 // So that nobody forgets to finish an API version, this check will serve as a reminder:
 static_assert(std::string_view(ORT_VERSION) == "1.16.0",
@@ -2760,8 +2760,10 @@ ORT_API(const OrtApi*, OrtApis::GetApi, uint32_t version) {
   if (version >= 1 && version <= ORT_API_VERSION)
     return &ort_api_1_to_16;
 
-  fprintf(stderr, "The given version [%u] is not supported, only version 1 to %u is supported in this build.\n",
-          version, ORT_API_VERSION);
+  fprintf(stderr,
+          "The requested API version [%u] is not available, only API versions [1, %u] are supported in this build."
+          " Current ORT Version is: %s\n",
+          version, ORT_API_VERSION, ORT_VERSION);
 
   return nullptr;  // Unsupported version
 }
