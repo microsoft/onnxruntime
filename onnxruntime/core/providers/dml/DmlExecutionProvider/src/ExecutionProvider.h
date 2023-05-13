@@ -299,11 +299,6 @@ namespace Dml
             return m_impl.Get();
         }
 
-        void MetacommandsEnabled()
-        {
-            m_impl->MetacommandsEnabled();
-        }
-
     private:
         ComPtr<ExecutionProviderImpl> m_impl;
     };

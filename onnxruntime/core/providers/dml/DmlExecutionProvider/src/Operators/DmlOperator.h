@@ -71,6 +71,7 @@ namespace Dml
 
         bool AllowHalfPrecisionComputation() const;
         DML_EXECUTION_FLAGS GetExecutionFlags() const;
+        virtual bool MetacommandsAllowed() const;
 
         void SetDmlOperatorDesc(
             const DML_OPERATOR_DESC& operatorDesc,

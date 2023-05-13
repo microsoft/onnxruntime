@@ -76,6 +76,11 @@ public:
         DML_OPERATOR_DESC opDesc = { DML_OPERATOR_GEMM, &gemmDesc };
         SetDmlOperatorDesc(opDesc, kernelInfo);
     }
+
+    bool MetacommandsAllowed() const final
+    {
+        return true;
+    }
 };
 
 DML_OP_DEFINE_CREATION_FUNCTION(FusedMatMul, DmlOperatorFusedMatMul);

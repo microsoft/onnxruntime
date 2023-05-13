@@ -513,12 +513,17 @@ namespace Dml
             flags |= DML_EXECUTION_FLAG_ALLOW_HALF_PRECISION_COMPUTATION;
         }
 
-        if (!m_executionProvider->MetacommandsEnabled())
+        if (!m_executionProvider->MetacommandsEnabled() || !MetacommandsAllowed())
         {
             flags |= DML_EXECUTION_FLAG_DISABLE_META_COMMANDS;
         }
 
         return flags;
+    }
+
+    bool DmlOperator::MetacommandsAllowed() const
+    {
+        return true;
     }
 
     std::vector<IMLOperatorTensor*> DmlOperator::GetInputTensors(const MLOperatorKernelContext& kernelContext)
