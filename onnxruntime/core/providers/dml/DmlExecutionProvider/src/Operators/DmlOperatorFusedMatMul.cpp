@@ -79,7 +79,7 @@ public:
 
     bool MetacommandsAllowed() const final
     {
-        return true;
+        return false;
     }
 };
 
