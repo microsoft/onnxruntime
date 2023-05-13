@@ -183,18 +183,12 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
   // Copy decoder_input_ids (in CPU) to sequence. It contains decoder_start_token_id for each beam.
   cpu_state.SetUnexpandedSequence(decoder_input_ids.Get<Tensor>().DataAsSpan<int32_t>());
 
-  onnxruntime::OrtStlAllocator<HypothesisScore> hypothesis_score_allocator(this->cpu_allocator_);
-  onnxruntime::OrtStlAllocator<BeamHypotheses> beam_hyps_allocator(this->cpu_allocator_);
-  this->beam_scorer_ = std::make_unique<BeamSearchScorer>(*parameters,
-                                                          hypothesis_score_allocator,
-                                                          beam_hyps_allocator,
-                                                          this->cpu_allocator_);
+  this->beam_scorer_ = std::make_unique<BeamSearchScorer>(*parameters, this->cpu_allocator_);
 
-  constexpr bool use_position = false;
   BeamSearchState<T> beam_state{*parameters,
                                 this->temp_space_allocator_,
                                 decoder_subgraph_.has_decoder_masked_attention_,
-                                use_position};
+                                false /* use_position */};
 
   init_beam_state_func_(&beam_state,
                         cpu_state.sequence_lengths,
@@ -373,7 +367,7 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
     final_beam_scores = cpu_state.final_beam_scores;
   }
 
-  this->beam_scorer_->Finalize(&(cpu_state.sequences),
+  this->beam_scorer_->Finalize(cpu_state.sequences,
                                final_beam_scores,
                                output_sequences,
                                output_sequences_scores);
