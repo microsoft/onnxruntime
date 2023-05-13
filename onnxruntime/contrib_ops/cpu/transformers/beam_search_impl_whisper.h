@@ -135,15 +135,15 @@ Status BeamSearchWhisper<T>::Execute(const FeedsFetchesManager& encoder_feeds_fe
   OrtValue decoder_input_ids;  // Tensor in CPU, and it will be used to initialize sequence in cpu_state
   const Tensor& initial_decoder_input_ids = initial_decoder_input_ids_value->Get<Tensor>();
   ORT_RETURN_IF_ERROR(this->encoder_subgraph_.CreateInitialFeeds(
-                      encoder_input_ids,
-                      initial_decoder_input_ids,
-                      this->implicit_inputs_,
-                      encoder_feeds,
-                      this->create_encoder_inputs_func_,
-                      this->add_to_feeds_func_,
-                      buffer,
-                      decoder_input_ids,
-                      this->ort_stream_));
+      encoder_input_ids,
+      initial_decoder_input_ids,
+      this->implicit_inputs_,
+      encoder_feeds,
+      this->create_encoder_inputs_func_,
+      this->add_to_feeds_func_,
+      buffer,
+      decoder_input_ids,
+      this->ort_stream_));
 
 #ifdef DEBUG_NODE_INPUTS_OUTPUTS
   const_cast<SessionState&>(this->encoder_session_state_).IncrementGraphExecutionCounter();
@@ -326,26 +326,26 @@ Status BeamSearchWhisper<T>::Execute(const FeedsFetchesManager& encoder_feeds_fe
       gsl::span<const int32_t> place_holder;
       const int num_present_outputs = 2 * parameters->num_layers;  // number of outputs with name like present_*
       ORT_RETURN_IF_ERROR(this->update_decoder_feeds_func_(
-                          this->temp_space_allocator_,
-                          this->ort_stream_,
-                          decoder_fetches,
-                          decoder_feeds,
-                          num_present_outputs,
-                          ReinterpretAsSpan<const int32_t>(beam_next_tokens),
-                          ReinterpretAsSpan<const int32_t>(beam_indices),
-                          decoder_subgraph_.has_decoder_masked_attention_
-                              ? ReinterpretAsSpan<const int32_t>(beam_state.chosen_indices)
-                              : place_holder,
-                          parameters->num_beams,
-                          decoder_subgraph_.GetFirstPastInputIndex(),
-                          decoder_subgraph_.GetFirstPresentOutputIndex(),
-                          decoder_subgraph_.UseSequenceAsInputIds(),
-                          current_length,
-                          parameters->sequence_length,
-                          decoder_subgraph_.past_present_share_buffer_,
-                          decoder_subgraph_.has_decoder_masked_attention_,
-                          cpu_state.sequences,
-                          this->GetConsoleDumper()));
+          this->temp_space_allocator_,
+          this->ort_stream_,
+          decoder_fetches,
+          decoder_feeds,
+          num_present_outputs,
+          ReinterpretAsSpan<const int32_t>(beam_next_tokens),
+          ReinterpretAsSpan<const int32_t>(beam_indices),
+          decoder_subgraph_.has_decoder_masked_attention_
+              ? ReinterpretAsSpan<const int32_t>(beam_state.chosen_indices)
+              : place_holder,
+          parameters->num_beams,
+          decoder_subgraph_.GetFirstPastInputIndex(),
+          decoder_subgraph_.GetFirstPresentOutputIndex(),
+          decoder_subgraph_.UseSequenceAsInputIds(),
+          current_length,
+          parameters->sequence_length,
+          decoder_subgraph_.past_present_share_buffer_,
+          decoder_subgraph_.has_decoder_masked_attention_,
+          cpu_state.sequences,
+          this->GetConsoleDumper()));
     }
 
     if (decoder_subgraph_.past_present_share_buffer_) {

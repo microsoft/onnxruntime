@@ -905,7 +905,7 @@ Status CreateWhisperEncoderInputs(
                        const_cast<Tensor*>(original_decoder_input_ids)->MutableData<int32_t>(),
                        allocator->Info(),
                        decoder_input_ids);
-  
+
   return Status::OK();
 }
 

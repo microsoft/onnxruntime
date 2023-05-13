@@ -32,7 +32,6 @@ class WhisperEncoderSubgraph : public T5EncoderSubgraph {
 
   Status Validate(const std::vector<const NodeArg*>& subgraph_inputs,
                   const std::vector<const NodeArg*>& subgraph_outputs) override;
-
 };
 
 }  // namespace transformers

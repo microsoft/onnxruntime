@@ -209,11 +209,11 @@ Status GreedySearchBase<T, ParametersT>::CheckInputs(const OpKernelContextIntern
   //   vocab_mask         : (vocab_size) or nullptr
   //   decoder_input_ids  : (batch_size, initial_decode_sequence_length)
   ORT_RETURN_IF_ERROR(this->CheckInputsImpl(parameters_,
-                                            context.Input<Tensor>(0),    // input_ids
-                                            context.Input<Tensor>(4),    // vocab_mask
-                                            context.Input<Tensor>(5),    // prefix_vocab_mask
-                                            context.Input<Tensor>(6),    // attention_mask
-                                            context.Input<Tensor>(7),   // presence_mask
+                                            context.Input<Tensor>(0),     // input_ids
+                                            context.Input<Tensor>(4),     // vocab_mask
+                                            context.Input<Tensor>(5),     // prefix_vocab_mask
+                                            context.Input<Tensor>(6),     // attention_mask
+                                            context.Input<Tensor>(7),     // presence_mask
                                             context.Input<Tensor>(10)));  // decoder_input_ids
 
   return Status::OK();

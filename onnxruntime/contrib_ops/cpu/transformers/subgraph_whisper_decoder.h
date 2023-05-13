@@ -18,8 +18,8 @@ class WhisperDecoderSubgraph : public T5DecoderSubgraph {
       const onnxruntime::Node& node_in,
       const std::string& attribute_name,
       const GraphViewer& subgraph_in) : T5DecoderSubgraph(node_in, attribute_name, subgraph_in) {
-        first_past_input_index_ = 1;
-      }
+    first_past_input_index_ = 1;
+  }
 
   // Create inputs for first inference of decoder subgraph.
   Status CreateInitialFeeds(
@@ -51,7 +51,6 @@ class WhisperDecoderSubgraph : public T5DecoderSubgraph {
       first_past_input_index_ = 2;
     }
   }
-
 };
 
 }  // namespace transformers

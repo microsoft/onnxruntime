@@ -194,12 +194,12 @@ Status BeamSearchBase<T>::CheckInputs(const OpKernelContextInternal& context) {
   //   vocab_mask         : (vocab_size) or nullptr
   //   decoder_input_ids  : (batch_size, initial_decode_sequence_length)
   ORT_RETURN_IF_ERROR(this->CheckInputsImpl(parameters_,
-                                            context.Input<Tensor>(0),   // input_ids
-                                            context.Input<Tensor>(7),   // vocab_mask
-                                            context.Input<Tensor>(8),   // prefix_vocab_mask
-                                            context.Input<Tensor>(9),   // attention_mask
-                                            nullptr,                    // presence_mask
-                                            context.Input<Tensor>(10))); // decoder_input_ids
+                                            context.Input<Tensor>(0),     // input_ids
+                                            context.Input<Tensor>(7),     // vocab_mask
+                                            context.Input<Tensor>(8),     // prefix_vocab_mask
+                                            context.Input<Tensor>(9),     // attention_mask
+                                            nullptr,                      // presence_mask
+                                            context.Input<Tensor>(10)));  // decoder_input_ids
 
   return Status::OK();
 }
