@@ -429,7 +429,7 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
 #endif
 
   beam_scorer->Process(
-      sequences,
+      *sequences,
       next_scores,
       next_tokens,
       next_indices);
