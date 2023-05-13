@@ -188,9 +188,9 @@ class GraphExecutionManager(GraphExecutionInterface):
         self._enable_compute_optimizer = (
             ortmodule._defined_from_envvar("ORTMODULE_ENABLE_COMPUTE_OPTIMIZER", 1, warn=True) == 1
         )
-        self._enable_label_sparsity_optimizer = (
+        self._enable_sparse_optimizer = (
             self._enable_compute_optimizer
-            and ortmodule._defined_from_envvar("ORTMODULE_ENABLE_LABEL_SPARSITY_OPT", 1, warn=True) == 1
+            and ortmodule._defined_from_envvar("ORTMODULE_ENABLE_SPARSE_OPTIMIZER", 1, warn=True) == 1
         )
 
         self._print_input_density = ortmodule._defined_from_envvar("ORTMODULE_PRINT_INPUT_DENSITY", 0, warn=True) == 1
@@ -554,12 +554,12 @@ class GraphExecutionManager(GraphExecutionInterface):
         """
 
         # Enable data sparsity inspection if label sparsity optimization is enabled or user wants to print input density.
-        if self._enable_label_sparsity_optimizer or self._print_input_density:
+        if self._enable_sparse_optimizer or self._print_input_density:
             self._rt_inspector.enable_input_inspector(
                 self._onnx_models.exported_model, self._graph_builder.get_graph_info().user_input_names
             )
 
-            if self._enable_label_sparsity_optimizer:
+            if self._enable_sparse_optimizer:
                 detected_device = _utils.get_device_from_module(self._original_module) or _utils.get_device_from_inputs(
                     inputs, kwargs
                 )
