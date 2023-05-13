@@ -126,7 +126,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
     bool trt_detailed_build_log = false;
     bool trt_build_heuristics_enable = false;
     bool trt_sparsity_enable = false;
-    int trt_builder_optimization_level = 2;
+    int trt_builder_optimization_level = 3;
     int trt_auxiliary_streams = -1;
     std::string trt_tactic_sources = "";
     std::string trt_extra_plugin_lib_paths = "";
@@ -597,8 +597,12 @@ select from 'CPU', 'GPU_FP32', 'GPU', 'GPU_FLOAT16', 'DSP', 'AIP_FIXED_TF'. \n)"
           ORT_THROW(R"(Wrong configuration value for the key 'buffer_type'.
 select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
         }
+      } else if (key == "enable_init_cache") {
+        if (value != "1") {
+          ORT_THROW("Set to 1 to enable_init_cache.");
+        }
       } else {
-        ORT_THROW("Wrong key type entered. Choose from options: ['runtime', 'priority', 'buffer_type'] \n");
+        ORT_THROW("Wrong key type entered. Choose from options: ['runtime', 'priority', 'buffer_type', 'enable_init_cache'] \n");
       }
 
       snpe_options[key] = value;
