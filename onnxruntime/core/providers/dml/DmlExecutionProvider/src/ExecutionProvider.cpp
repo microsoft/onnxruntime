@@ -624,7 +624,7 @@ namespace Dml
 
     bool IsCpuOnDmlOperator(const onnxruntime::Node& node)
     {
-        auto cpu_on_dml_ops = std::array<char*, 8>{
+        auto cpuOnDmlOperators = std::array<char*, 8>{
             "SequenceAt",
             "SequenceConstruct",
             "SequenceEmpty",
@@ -635,9 +635,9 @@ namespace Dml
             "OptionalHasElement"
         };
 
-        for (auto& cpu_on_dml_op : cpu_on_dml_ops)
+        for (auto& cpuOnDmlOperator : cpuOnDmlOperators)
         {
-            if (strcmp(cpu_on_dml_op, node.OpType().c_str()) == 0)
+            if (strcmp(cpuOnDmlOperator, node.OpType().c_str()) == 0)
             {
                 return true;
             }
