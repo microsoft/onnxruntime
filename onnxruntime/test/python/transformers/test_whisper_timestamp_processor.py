@@ -1,13 +1,11 @@
-0~# -------------------------------------------------------------------------
+# -------------------------------------------------------------------------
 # Copyright (c) Microsoft Corporation.  All rights reserved.
 # Licensed under the MIT License.  See License.txt in the project root for
 # license information.
 # --------------------------------------------------------------------------
 
-import os
 import unittest
 import pytest
-import onnx
 import numpy as np
 import torch
 from onnxruntime import InferenceSession, SessionOptions
@@ -32,11 +30,6 @@ class TestTimestampProcessor(unittest.TestCase):
     def run_timestamp(self, provider: str):
         generate_model(f"-m openai/whisper-tiny --optimize_onnx --precision fp32 --use_external_data_format")
         [input_features, processor] = generate_dataset()
-        min_length = 0
-        max_length = 128
-        beam_size = 1
-        NUM_RETURN_SEQUENCES = 1
-        repetition_penalty = 1.0
         model_path = "./onnx_models/openai/whisper-tiny_beamsearch.onnx"
         sess_options = SessionOptions()
         sess_options.log_severity_level = 4
@@ -49,7 +42,7 @@ class TestTimestampProcessor(unittest.TestCase):
             "num_beams": np.array([1], dtype=np.int32),
             "num_return_sequences": np.array([1], dtype=np.int32),
             "length_penalty": np.array([1.0], dtype=np.float32),
-            "repetition_penalty": np.array([repetition_penalty], dtype=np.float32),
+            "repetition_penalty": np.array([1.0], dtype=np.float32),
             "attention_mask": np.zeros(input_data.shape).astype(np.int32),
             "timestamp_enable": np.array([True], dtype=bool),
         }
