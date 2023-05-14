@@ -22,7 +22,7 @@ from benchmark_helper import Precision, create_onnxruntime_session, prepare_envi
 logger = logging.getLogger("")
 
 
-def parse_arguments():
+def parse_arguments(argv=None):
     parser = argparse.ArgumentParser()
 
     pretrained_models = PRETRAINED_WHISPER_MODELS
@@ -166,7 +166,7 @@ def parse_arguments():
         help="filepath to load pre-trained model with custom state dictionary (e.g. pytorch_model.bin)",
     )
 
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     return args
 
@@ -288,8 +288,8 @@ def export_onnx_models(
     return output_paths
 
 
-def main():
-    args = parse_arguments()
+def main(argv=None):
+    args = parse_arguments(argv)
 
     setup_logger(args.verbose)
 
