@@ -19,9 +19,7 @@ namespace api {
  *   For Adam optimizer, it looks like:
  *     { "moment_0": OrtValue, "moment_1": OrtValue,}.
  */
-struct ParameterOptimizerState {
-  std::unordered_map<std::string, OrtValue> momentum_named_states;
-};
+typedef InlinedHashMap<std::string, OrtValue> ParameterOptimizerState;
 
 /**
  * @brief States belong to one specific group of trainable Parameters.
@@ -33,7 +31,7 @@ struct GroupOptimizerState {
   // Adaptive learning rate as training proceeds. Be noted, learning_rate can be
   // restored by lr scheduler from given step and initial_lr, though, we still save/load this in checkpoint.
   float learning_rate{initial_lr};
-  std::unordered_map<std::string, ParameterOptimizerState> param_named_optimizer_states;
+  InlinedHashMap<std::string, ParameterOptimizerState> param_named_optimizer_states;
 };
 
 /**
@@ -43,16 +41,16 @@ struct GroupOptimizerState {
  */
 struct OptimizerCheckpointState {
  public:
-  std::unordered_map<std::string, std::shared_ptr<GroupOptimizerState>> group_named_optimizer_states;
+  InlinedHashMap<std::string, std::shared_ptr<GroupOptimizerState>> group_named_optimizer_states;
   const DataTransferManager* optimizer_session_data_transfer_mgr;
 };
 
 struct OptimizerAlgorithmBase {
-  OptimizerAlgorithmBase(const std::vector<std::string>& momentum_keys,
-                         const std::vector<std::string>& optimizer_states_inputs)
+  OptimizerAlgorithmBase(const InlinedVector<std::string>& momentum_keys,
+                         const InlinedVector<std::string>& optimizer_states_inputs)
       : momentum_keys(momentum_keys), optimizer_states_inputs(optimizer_states_inputs) {}
-  std::vector<std::string> momentum_keys;
-  std::vector<std::string> optimizer_states_inputs;
+  InlinedVector<std::string> momentum_keys;
+  InlinedVector<std::string> optimizer_states_inputs;
 };
 
 struct AdamWOptimizerAlgorithm : public OptimizerAlgorithmBase {
@@ -106,15 +104,6 @@ struct Optimizer {
 
   Status Step();
 
-  /**
-   * @brief Get the current optimizer state.
-   *
-   * Be noted the returned optimizer_checkpoint_states will hold new references to
-   * original momentum states.
-   * @return Status
-   */
-  Status GetStateDict(OptimizerCheckpointState& optimizer_checkpoint_states);
-
   Status SetLearningRate(float lr) {
     optimizer_state_->learning_rate = lr;
     return Status::OK();
@@ -159,11 +148,13 @@ struct Optimizer {
 
   std::unique_ptr<OptimizerAlgorithmBase> optimizer_algo_ptr_;
   std::unique_ptr<onnxruntime::InferenceSession> optim_sess_;
-  CheckpointState* state_;  // Non owning pointer to the state.
+
+  CheckpointState* state_;  // Non owning pointer to the state
   std::shared_ptr<GroupOptimizerState> optimizer_state_;
-  std::vector<std::string> input_names_;
-  std::vector<std::string> output_names_;
-  std::vector<OrtValue> inputs_;
+
+  InlinedVector<std::string> input_names_;
+  InlinedVector<std::string> output_names_;
+  InlinedVector<OrtValue> inputs_;
 
   int32_t group_count_{0};
 };
