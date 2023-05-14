@@ -344,8 +344,8 @@ if (onnxruntime_USE_DML)
   target_add_dml(winml_adapter)
 endif()
 
-#Please remove this after updating to a newer windows SDK
-target_link_options(winml_adapter PRIVATE /ignore:5038)
+#Please remove /ignore:4244 this after updating to a newer windows SDK
+target_link_options(winml_adapter PRIVATE /ignore:5038 /ignore:4244)
 
 # add it to the onnxruntime shared library
 set(onnxruntime_winml winml_adapter)
