@@ -5,31 +5,33 @@
 # --------------------------------------------------------------------------
 
 import unittest
-import pytest
+
 import numpy as np
+import pytest
 import torch
+
 from onnxruntime import InferenceSession, SessionOptions
+
 
 class TestTimestampProcessor(unittest.TestCase):
     def generate_model(self, arguments: str):
         from onnxruntime.transformers.models.whisper.convert_to_onnx import main as whisper_to_onnx
+
         whisper_to_onnx(arguments.split())
 
     def generate_dataset(self):
-        from transformers import AutoProcessor
         from datasets import load_dataset
+        from transformers import AutoProcessor
+
         processor = AutoProcessor.from_pretrained("openai/whisper-tiny")
         ds = load_dataset("hf-internal-testing/librispeech_asr_dummy", "clean", split="validation")
-        print("ds: ", ds)
         inputs = processor(ds[0]["audio"]["array"], return_tensors="pt")
         input_features = inputs.input_features
-        print("input_features shape: ", input_features.shape)
-        print("input_features: ", input_features)
         return [input_features, processor]
 
     def run_timestamp(self, provider: str):
-        generate_model(f"-m openai/whisper-tiny --optimize_onnx --precision fp32 --use_external_data_format")
-        [input_features, processor] = generate_dataset()
+        self.generate_model("-m openai/whisper-tiny --optimize_onnx --precision fp32 --use_external_data_format")
+        [input_features, processor] = self.generate_dataset()
         model_path = "./onnx_models/openai/whisper-tiny_beamsearch.onnx"
         sess_options = SessionOptions()
         sess_options.log_severity_level = 4
@@ -48,16 +50,26 @@ class TestTimestampProcessor(unittest.TestCase):
         }
         ort_out = sess.run(None, ort_inputs)
         ort_out_tensor = torch.from_numpy(ort_out[0])
-        print("ort_out_tensor: ", ort_out_tensor)
-        ort_transcription = processor.batch_decode(ort_out_tensor[0][0].view(1, -1), skip_special_tokens=True, output_offsets=True)##[0]
-        print("whisper: ort_transcription: ", ort_transcription)
-        expected_transcription = [{'text': ' Mr. Quilter is the apostle of the middle classes and we are glad to welcome his gospel.', 'offsets': [{'text': ' Mr. Quilter is the apostle of the middle classes and we are glad to welcome his gospel.', 'timestamp': (0.0, 5.44)}]}]
+        ort_transcription = processor.batch_decode(
+            ort_out_tensor[0][0].view(1, -1), skip_special_tokens=True, output_offsets=True
+        )
+        expected_transcription = [
+            {
+                "text": " Mr. Quilter is the apostle of the middle classes and we are glad to welcome his gospel.",
+                "offsets": [
+                    {
+                        "text": " Mr. Quilter is the apostle of the middle classes and we are glad to welcome his gospel.",
+                        "timestamp": (0.0, 5.44),
+                    }
+                ],
+            }
+        ]
         self.assertEqual(ort_transcription, expected_transcription)
 
     @pytest.mark.slow
     def test_timestamp_cpu(self):
         provider = "CPUExecutionProvider"
-        run_timestamp(provider)
+        self.run_timestamp(provider)
 
 
 if __name__ == "__main__":
