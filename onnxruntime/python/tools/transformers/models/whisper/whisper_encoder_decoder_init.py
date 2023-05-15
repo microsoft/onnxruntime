@@ -81,7 +81,7 @@ class WhisperEncoderDecoderInitInputs:
         decoder_input_ids = None
         if use_decoder_input_ids:
             dtype = torch.int32 if use_int32_inputs else torch.int64
-            decoder_input_ids = torch.ones((batch_size, 1), dtype=dtype, device=device) * config.decoder_start_token_id
+            decoder_input_ids = torch.ones((batch_size, 2), dtype=dtype, device=device) * config.decoder_start_token_id
 
         return WhisperEncoderDecoderInitInputs(encoder_inputs.input_ids, decoder_input_ids)
 
@@ -158,7 +158,7 @@ class WhisperEncoderDecoderInitHelper:
             },
             "logits": {
                 0: "batch_size",
-                1: sequence_length,
+                1: "decode_sequence_length",
             },
         }
 
@@ -166,7 +166,7 @@ class WhisperEncoderDecoderInitHelper:
             input_names.append("decoder_input_ids")
             dynamic_axes["decoder_input_ids"] = {
                 0: "batch_size",
-                1: sequence_length,
+                1: "decode_sequence_length",
             }
 
         for name in present_names:
@@ -182,7 +182,7 @@ class WhisperEncoderDecoderInitHelper:
                 dynamic_axes[name] = {
                     0: "batch_size",
                     1: num_heads,
-                    2: sequence_length,
+                    2: "decode_sequence_length",
                     3: head_size,
                 }
 
