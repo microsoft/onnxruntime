@@ -273,6 +273,14 @@ def parse_arguments():
         "Currently only Windows and Linux platforms are supported.",
     )
 
+    parser.add_argument(
+        "--msbuild_extra_options",
+        nargs="+",
+        action="append",
+        help="Extra properties to pass to msbuild during build. "
+        "These are just msbuild /p: options without the leading /p:.",
+    )
+
     # Java bindings
     parser.add_argument("--build_java", action="store_true", help="Build Java bindings.")
 
@@ -396,7 +404,7 @@ def parse_arguments():
     # WebAssembly build
     parser.add_argument("--build_wasm", action="store_true", help="Build for WebAssembly")
     parser.add_argument("--build_wasm_static_lib", action="store_true", help="Build for WebAssembly static library")
-    parser.add_argument("--emsdk_version", default="3.1.19", help="Specify version of emsdk")
+    parser.add_argument("--emsdk_version", default="3.1.37", help="Specify version of emsdk")
 
     parser.add_argument("--enable_wasm_simd", action="store_true", help="Enable WebAssembly SIMD")
     parser.add_argument("--enable_wasm_threads", action="store_true", help="Enable WebAssembly multi-threads support")
@@ -477,6 +485,7 @@ def parse_arguments():
         help="Build with OpenVINO for specific hardware.",
     )
     parser.add_argument("--use_coreml", action="store_true", help="Build with CoreML support.")
+    parser.add_argument("--use_webnn", action="store_true", help="Build with WebNN support.")
     parser.add_argument("--use_snpe", action="store_true", help="Build with SNPE support.")
     parser.add_argument("--snpe_root", help="Path to SNPE SDK root.")
     parser.add_argument("--use_nnapi", action="store_true", help="Build with NNAPI support.")
@@ -979,6 +988,7 @@ def generate_build_tree(
         "-Donnxruntime_ENABLE_CUDA_PROFILING=" + ("ON" if args.enable_cuda_profiling else "OFF"),
         "-Donnxruntime_ENABLE_ROCM_PROFILING=" + ("ON" if args.enable_rocm_profiling else "OFF"),
         "-Donnxruntime_USE_XNNPACK=" + ("ON" if args.use_xnnpack else "OFF"),
+        "-Donnxruntime_USE_WEBNN=" + ("ON" if args.use_webnn else "OFF"),
         "-Donnxruntime_USE_CANN=" + ("ON" if args.use_cann else "OFF"),
     ]
 
@@ -1194,6 +1204,15 @@ def generate_build_tree(
     if args.use_coreml:
         cmake_args += ["-Donnxruntime_USE_COREML=ON"]
 
+    if args.use_webnn:
+        if not args.build_wasm:
+            raise BuildError("WebNN is only available for WebAssembly build.")
+        if args.disable_rtti:
+            # Avoid unboundTypeError for WebNN EP since unbound type names are illegal with RTTI disabled
+            # in Embind API, relevant issue: https://github.com/emscripten-core/emscripten/issues/16911
+            raise BuildError("WebNN is not supported with RTTI disabled.")
+        cmake_args += ["-Donnxruntime_USE_WEBNN=ON"]
+
     if args.use_snpe:
         cmake_args += ["-Donnxruntime_USE_SNPE=ON"]
 
@@ -1244,6 +1263,9 @@ def generate_build_tree(
         if args.wasm_malloc is not None:
             add_default_definition(emscripten_settings, "MALLOC", args.wasm_malloc)
         add_default_definition(emscripten_settings, "MALLOC", "dlmalloc")
+
+        # set -s STACK_SIZE=5242880
+        add_default_definition(emscripten_settings, "STACK_SIZE", "5242880")
 
         if emscripten_settings:
             cmake_args += [f"-Donnxruntime_EMSCRIPTEN_SETTINGS={';'.join(emscripten_settings)}"]
@@ -1947,10 +1969,12 @@ def derive_linux_build_property():
 
 
 def build_nuget_package(
+    cmake_path,
     source_dir,
     build_dir,
     configs,
     use_cuda,
+    use_rocm,
     use_openvino,
     use_tensorrt,
     use_dnnl,
@@ -1959,6 +1983,7 @@ def build_nuget_package(
     use_snpe,
     use_qnn,
     enable_training_apis,
+    msbuild_extra_options,
 ):
     if not (is_windows() or is_linux()):
         raise BuildError(
@@ -1998,6 +2023,8 @@ def build_nuget_package(
         package_name = '/p:OrtPackageId="Microsoft.ML.OnnxRuntime.DNNL"'
     elif use_cuda:
         package_name = '/p:OrtPackageId="Microsoft.ML.OnnxRuntime.Gpu"'
+    elif use_rocm:
+        package_name = '/p:OrtPackageId="Microsoft.ML.OnnxRuntime.ROCm"'
     elif use_tvm:
         execution_provider = '/p:ExecutionProvider="tvm"'
         package_name = '/p:OrtPackageId="Microsoft.ML.OnnxRuntime.Tvm"'
@@ -2007,6 +2034,8 @@ def build_nuget_package(
     elif use_qnn:
         execution_provider = '/p:ExecutionProvider="qnn"'
         package_name = '/p:OrtPackageId="Microsoft.ML.OnnxRuntime.QNN"'
+    elif any(map(lambda x: "OrtPackageId=" in x, msbuild_extra_options)):
+        pass
     else:
         # use the solution file that includes Xamarin mobile targets
         sln = "OnnxRuntime.CSharp.sln"
@@ -2023,7 +2052,7 @@ def build_nuget_package(
     for config in configs:
         if is_linux():
             native_build_dir = os.path.join(native_dir, config)
-            cmd_args = ["make", "install", "DESTDIR=.//nuget-staging"]
+            cmd_args = [cmake_path, "-DCMAKE_INSTALL_PREFIX=./nuget-staging/usr/local", "-Pcmake_install.cmake"]
             run_subprocess(cmd_args, cwd=native_build_dir)
 
         configuration = '/p:Configuration="' + config + '"'
@@ -2080,6 +2109,7 @@ def build_nuget_package(
             ort_build_dir,
             nuget_exe_arg,
         ]
+        cmd_args.extend(msbuild_extra_options)
         run_subprocess(cmd_args, cwd=csharp_build_dir)
 
 
@@ -2537,10 +2567,12 @@ def main():
             )
         if args.build_nuget:
             build_nuget_package(
+                cmake_path,
                 source_dir,
                 build_dir,
                 configs,
                 args.use_cuda,
+                args.use_rocm,
                 args.use_openvino,
                 args.use_tensorrt,
                 args.use_dnnl,
@@ -2549,6 +2581,7 @@ def main():
                 args.use_snpe,
                 args.use_qnn,
                 args.enable_training_apis,
+                normalize_arg_list(args.msbuild_extra_options),
             )
 
     if args.test and args.build_nuget:

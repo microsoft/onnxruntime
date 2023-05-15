@@ -47,21 +47,19 @@ class WhisperEncoderDecoderInit(torch.nn.Module):
     def forward(
         self,
         encoder_input_ids: torch.Tensor,
-        encoder_attention_mask: torch.Tensor,
         decoder_input_ids: torch.Tensor = None,
     ):
-        encoder_hidden_states: torch.FloatTensor = self.whisper_encoder(encoder_input_ids, None)
+        encoder_hidden_states: torch.FloatTensor = self.whisper_encoder(encoder_input_ids)
         # Decoder out: (logits, past_key_values, encoder_hidden_state)
-        decinit_out = self.whisper_decoder_init(decoder_input_ids, encoder_attention_mask, encoder_hidden_states)
+        decinit_out = self.whisper_decoder_init(decoder_input_ids, encoder_hidden_states)
         present_self, present_cross = PastKeyValuesHelper.group_by_self_and_cross(decinit_out[1])
         present = present_self + present_cross
         return decinit_out[0], encoder_hidden_states, present
 
 
 class WhisperEncoderDecoderInitInputs:
-    def __init__(self, encoder_input_ids, encoder_attention_mask, decoder_input_ids=None):
+    def __init__(self, encoder_input_ids, decoder_input_ids=None):
         self.encoder_input_ids: torch.LongTensor = encoder_input_ids
-        self.encoder_attention_mask: torch.LongTensor = encoder_attention_mask
         self.decoder_input_ids: torch.LongTensor = decoder_input_ids
 
     @staticmethod
@@ -81,17 +79,14 @@ class WhisperEncoderDecoderInitInputs:
             use_int32_inputs=use_int32_inputs,
         )
         decoder_input_ids = None
-        encoder_attention_mask = torch.zeros(
-            (encoder_inputs.input_ids.shape[0], 1, encoder_inputs.input_ids.shape[1], encoder_inputs.input_ids.shape[1])
-        ).type(torch.int8)
         if use_decoder_input_ids:
             dtype = torch.int32 if use_int32_inputs else torch.int64
-            decoder_input_ids = torch.ones((batch_size, 1), dtype=dtype, device=device) * config.decoder_start_token_id
+            decoder_input_ids = torch.ones((batch_size, 2), dtype=dtype, device=device) * config.decoder_start_token_id
 
-        return WhisperEncoderDecoderInitInputs(encoder_inputs.input_ids, encoder_attention_mask, decoder_input_ids)
+        return WhisperEncoderDecoderInitInputs(encoder_inputs.input_ids, decoder_input_ids)
 
     def to_list(self) -> List:
-        input_list = [self.encoder_input_ids, self.encoder_attention_mask]
+        input_list = [self.encoder_input_ids]
         if self.decoder_input_ids is not None:
             input_list.append(self.decoder_input_ids)
         return input_list
@@ -129,17 +124,14 @@ class WhisperEncoderDecoderInitHelper:
         )
         input_list = inputs.to_list()
 
-        out = model(inputs.encoder_input_ids, inputs.encoder_attention_mask, inputs.decoder_input_ids)
+        out = model(inputs.encoder_input_ids, inputs.decoder_input_ids)
         present = out[2]
-        # pdb.set_trace()
         present_names = PastKeyValuesHelper.get_input_names(present, encoder=True)
-        # present_names = PastKeyValuesHelper.get_past_names(model.config.num_layers, present=True)
 
         output_names = ["logits", "encoder_hidden_states", *present_names]
 
         # Shape of input tensors (sequence_length==1):
         #    input_ids: (batch_size, sequence_length)
-        #    encoder_attention_mask: (batch_size, encode_sequence_length)
         #    encoder_hidden_states: (batch_size, encode_sequence_length, hidden_size)
         #    past_self_*: (batch_size, num_heads, past_decode_sequence_length, head_size)
         #    past_cross_*: (batch_size, num_heads, encode_sequence_length, head_size)
@@ -149,7 +141,7 @@ class WhisperEncoderDecoderInitHelper:
         #    past_self_*: (batch_size, num_heads, past_decode_sequence_length + sequence_length, head_size)
         #    past_cross_*: (batch_size, num_heads, encode_sequence_length, head_size)
 
-        input_names = ["encoder_input_ids", "encoder_attention_mask"]
+        input_names = ["encoder_input_ids"]
 
         # ONNX exporter might mark dimension like 'Transposepresent_value_self_1_dim_2' in shape inference.
         # We use a workaround here: first use dim_param "1" for sequence_length, and later change to dim_value.
@@ -159,7 +151,6 @@ class WhisperEncoderDecoderInitHelper:
         head_size = str(model.config.d_model // model.config.encoder_attention_heads)
         dynamic_axes = {
             "encoder_input_ids": {0: "batch_size", 1: "encode_sequence_length"},
-            "encoder_attention_mask": {0: "batch_size", 1: "encode_sequence_length"},
             "encoder_hidden_states": {
                 0: "batch_size",
                 1: "encode_sequence_length",
@@ -167,7 +158,7 @@ class WhisperEncoderDecoderInitHelper:
             },
             "logits": {
                 0: "batch_size",
-                1: sequence_length,
+                1: "decode_sequence_length",
             },
         }
 
@@ -175,7 +166,7 @@ class WhisperEncoderDecoderInitHelper:
             input_names.append("decoder_input_ids")
             dynamic_axes["decoder_input_ids"] = {
                 0: "batch_size",
-                1: sequence_length,
+                1: "decode_sequence_length",
             }
 
         for name in present_names:
@@ -191,7 +182,7 @@ class WhisperEncoderDecoderInitHelper:
                 dynamic_axes[name] = {
                     0: "batch_size",
                     1: num_heads,
-                    2: sequence_length,
+                    2: "decode_sequence_length",
                     3: head_size,
                 }
 
@@ -240,7 +231,6 @@ class WhisperEncoderDecoderInitHelper:
 
         ort_inputs = {
             "encoder_input_ids": numpy.ascontiguousarray(inputs.encoder_input_ids.cpu().numpy()),
-            "encoder_attention_mask": numpy.ascontiguousarray(inputs.encoder_attention_mask.cpu().numpy()),
         }
         if inputs.decoder_input_ids is not None:
             ort_inputs["decoder_input_ids"] = numpy.ascontiguousarray(inputs.decoder_input_ids.cpu().numpy())

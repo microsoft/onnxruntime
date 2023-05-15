@@ -1,7 +1,6 @@
-# Install the following package in python 3.10
+-r requirements.txt
 onnxruntime-gpu>=1.14
 py3nvml==0.2.7
-xformers==0.0.16
-#For Windows, need install PyTorch 1.13.1+cu117 since torch in pypi is CPU version
+#To export onnx of stable diffusion, please install PyTorch 1.13.1+cu117
 #--extra-index-url https://download.pytorch.org/whl/cu117
 #torch==1.13.1+cu117
