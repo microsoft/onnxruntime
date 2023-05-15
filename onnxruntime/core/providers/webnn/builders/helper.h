@@ -25,6 +25,20 @@ namespace webnn {
 
 bool GetShape(const NodeArg& node_arg, std::vector<int64_t>& shape, const logging::Logger& logger);
 
+template <typename T>
+std::string GetShapeString(std::vector<T>& shape) {
+  std::stringstream shape_info;
+  shape_info << "[";
+  for (size_t i = 0; i < shape.size(); i++) {
+    if (i != 0) {
+      shape_info << ", ";
+    }
+    shape_info << shape[i];
+  }
+  shape_info << "]";
+  return shape_info.str();
+}
+
 bool IsInputSupported(const NodeArg& node_arg, const std::string& parent_name, const logging::Logger& logger);
 
 // Get a list of groups of supported nodes, each group represents a subgraph supported by WebNN EP.
@@ -53,6 +67,7 @@ static const InlinedHashMap<std::string, std::string> op_map = {
     {"Conv", "conv2d"},
     {"ConvTranspose", "convTranspose2d"},
     {"Concat", "concat"},
+    {"Expand", "expand"},
     {"Gemm", "gemm"},
     {"MatMul", "matmul"},
     {"GlobalAveragePool", "averagePool2d"},
@@ -77,5 +92,8 @@ constexpr std::array<ONNX_NAMESPACE::TensorProto_DataType, 3> supported_data_typ
 
 bool IsSupportedDataType(int32_t data_type);
 
+bool IsValidMultidirectionalBroadcast(std::vector<int64_t>& shape_a,
+                                      std::vector<int64_t>& shape_b,
+                                      const logging::Logger& logger);
 }  // namespace webnn
 }  // namespace onnxruntime
