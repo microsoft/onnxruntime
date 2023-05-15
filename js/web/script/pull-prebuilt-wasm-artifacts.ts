@@ -70,7 +70,10 @@ function extractFile(zip: jszip, folder: string, file: string, artifactName: str
       });
 }
 
-console.log('=== Start to pull WebAssembly artifacts from CI ===');
+const config = process.argv.indexOf('debug') ? 'debug' : 'release';
+const folderName = config === 'release' ? 'Release_wasm' : 'Debug_wasm';
+
+console.log(`=== Start to pull ${config} WebAssembly artifacts from CI ===`);
 
 // API reference: https://docs.microsoft.com/en-us/rest/api/azure/devops/build/builds/list
 downloadJson(
@@ -93,7 +96,7 @@ downloadJson(
           data => {
             let zipLink;
             for (const v of data.value) {
-              if (v.name === 'Release_wasm') {
+              if (v.name === folderName) {
                 zipLink = v.resource.downloadUrl;
               }
             }
@@ -108,18 +111,18 @@ downloadJson(
 
             downloadZip(zipLink, buffer => {
               void jszip.loadAsync(buffer).then(zip => {
-                extractFile(zip, WASM_FOLDER, 'ort-wasm.wasm', 'Release_wasm');
-                extractFile(zip, WASM_FOLDER, 'ort-wasm-threaded.wasm', 'Release_wasm');
-                extractFile(zip, WASM_FOLDER, 'ort-wasm-simd.wasm', 'Release_wasm');
-                extractFile(zip, WASM_FOLDER, 'ort-wasm-simd-threaded.wasm', 'Release_wasm');
-                extractFile(zip, WASM_FOLDER, 'ort-wasm-simd.jsep.wasm', 'Release_wasm');
-                extractFile(zip, WASM_FOLDER, 'ort-wasm-simd-threaded.jsep.wasm', 'Release_wasm');
+                extractFile(zip, WASM_FOLDER, 'ort-wasm.wasm', folderName);
+                extractFile(zip, WASM_FOLDER, 'ort-wasm-threaded.wasm', folderName);
+                extractFile(zip, WASM_FOLDER, 'ort-wasm-simd.wasm', folderName);
+                extractFile(zip, WASM_FOLDER, 'ort-wasm-simd-threaded.wasm', folderName);
+                extractFile(zip, WASM_FOLDER, 'ort-wasm-simd.jsep.wasm', folderName);
+                extractFile(zip, WASM_FOLDER, 'ort-wasm-simd-threaded.jsep.wasm', folderName);
 
-                extractFile(zip, JS_FOLDER, 'ort-wasm.js', 'Release_wasm');
-                extractFile(zip, JS_FOLDER, 'ort-wasm-threaded.js', 'Release_wasm');
-                extractFile(zip, JS_FOLDER, 'ort-wasm-threaded.worker.js', 'Release_wasm');
-                extractFile(zip, JS_FOLDER, 'ort-wasm-simd.jsep.js', 'Release_wasm');
-                extractFile(zip, JS_FOLDER, 'ort-wasm-simd-threaded.jsep.js', 'Release_wasm');
+                extractFile(zip, JS_FOLDER, 'ort-wasm.js', folderName);
+                extractFile(zip, JS_FOLDER, 'ort-wasm-threaded.js', folderName);
+                extractFile(zip, JS_FOLDER, 'ort-wasm-threaded.worker.js', folderName);
+                extractFile(zip, JS_FOLDER, 'ort-wasm-simd.jsep.js', folderName);
+                extractFile(zip, JS_FOLDER, 'ort-wasm-simd-threaded.jsep.js', folderName);
               });
             });
           });

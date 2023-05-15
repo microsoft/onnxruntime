@@ -37,6 +37,7 @@ Options:
                                    webgpu
                                    wasm
                                    xnnpack
+                                   webnn
  -e=<...>, --env=<...>         Specify the environment to run the test. Should be one of the following:
                                  chrome     (default)
                                  edge       (Windows only)
@@ -104,7 +105,7 @@ Examples:
 
 export declare namespace TestRunnerCliArgs {
   type Mode = 'suite0'|'suite1'|'model'|'unittest'|'op';
-  type Backend = 'cpu'|'webgl'|'webgpu'|'wasm'|'onnxruntime'|'xnnpack';
+  type Backend = 'cpu'|'webgl'|'webgpu'|'wasm'|'onnxruntime'|'xnnpack'|'webnn';
   type Environment = 'chrome'|'edge'|'firefox'|'electron'|'safari'|'node'|'bs';
   type BundleMode = 'prod'|'dev'|'perf';
 }
@@ -359,12 +360,16 @@ export function parseTestRunnerCliArgs(cmdlineArgs: string[]): TestRunnerCliArgs
   }
 
   // Option: -b=<...>, --backend=<...>
-  const browserBackends = ['webgl', 'webgpu', 'wasm', 'xnnpack'];
+  const browserBackends = ['webgl', 'webgpu', 'wasm', 'xnnpack', 'webnn'];
 
-  // TODO: remove this when Chrome support WebGPU.
-  //       we need this for now because Chrome does not support webgpu yet,
+  // TODO: remove this when Chrome support WebNN.
+  //       we need this for now because Chrome does not support webnn yet,
   //       and ChromeCanary is not in CI.
-  const defaultBrowserBackends = ['webgl', /* 'webgpu', */ 'wasm', 'xnnpack'];
+
+  // TODO: web CI is still using chrome v112, where WebGPU is not available yet.
+  // re-enable webgpu after CI upgraded chrome to v113.
+  // const defaultBrowserBackends = ['webgl', 'webgpu', 'wasm', 'xnnpack' /*, 'webnn'*/];
+  const defaultBrowserBackends = ['webgl' /*, 'webgpu' */, 'wasm', 'xnnpack' /*, 'webnn'*/];
   const nodejsBackends = ['cpu', 'wasm'];
   const backendArgs = args.backend || args.b;
   const backend = (typeof backendArgs !== 'string') ? (env === 'node' ? nodejsBackends : defaultBrowserBackends) :
@@ -376,6 +381,11 @@ export function parseTestRunnerCliArgs(cmdlineArgs: string[]): TestRunnerCliArgs
   }
 
   const globalEnvFlags = parseGlobalEnvFlags(args);
+
+  if (backend.includes('webnn') && !globalEnvFlags.wasm.proxy) {
+    // Backend webnn is restricted in the dedicated worker.
+    globalEnvFlags.wasm.proxy = true;
+  }
 
   // Options:
   // --log-verbose=<...>

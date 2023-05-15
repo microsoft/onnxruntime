@@ -125,14 +125,14 @@ inline const OrtApi& GetApi() noexcept { return *Global<void>::api_; }
 /// This function returns the onnxruntime version string
 /// </summary>
 /// <returns>version string major.minor.rev</returns>
-std::basic_string<ORTCHAR_T> GetVersionString();
+std::string GetVersionString();
 
 /// <summary>
 /// This function returns the onnxruntime build information: including git branch,
 /// git commit id, build type(Debug/Release/RelWithDebInfo) and cmake cpp flags.
 /// </summary>
 /// <returns>string</returns>
-std::basic_string<ORTCHAR_T> GetBuildInfoString();
+std::string GetBuildInfoString();
 
 /// <summary>
 /// This is a C++ wrapper for OrtApi::GetAvailableProviders() and
