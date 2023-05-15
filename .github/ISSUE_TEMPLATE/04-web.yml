@@ -55,10 +55,10 @@ body:
     attributes:
       label: Execution Provider
       options:
-        - \'webgl\' (WebGL)
-        - \'wasm\'/\'cpu\' (WebAssembly CPU)
-        - \'xnnpack\' (WebAssembly XNNPACK)
-        - \'webgpu\' (WebGPU)
+        - "'webgl' (WebGL)"
+        - "'wasm'/'cpu' (WebAssembly CPU)"
+        - "'xnnpack' (WebAssembly XNNPACK)"
+        - "'webgpu' (WebGPU)"
         - Other / Unknown
       multiple: yes
     validations:
