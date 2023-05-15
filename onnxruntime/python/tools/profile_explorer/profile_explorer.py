@@ -1,6 +1,7 @@
 #!/usr/bin/python
 
 import argparse
+from collections import defaultdict
 import fnmatch
 import json
 import subprocess as sp
@@ -49,6 +50,28 @@ def _get_args():
     parser.add_argument("--csv", help="save data to csv")
     parser.add_argument("-c", "--count", type=int, default=40, help="list top N items")
     parser.add_argument("-v", "--verbose", action="store_true", help="verbose")
+
+    parser.add_argument(
+        "--start",
+        "-s",
+        type=int,
+        default=1,
+        help="index of the first model run to process",
+    )
+    parser.add_argument(
+        "--end",
+        "-e",
+        type=int,
+        default=-1,
+        help="index of the last model run to process (inclusive)",
+    )
+    parser.add_argument(
+        "--mapping",
+        "-m",
+        action="store_true",
+        help="whether dump op-kernel correlation",
+    )
+
     args = parser.parse_args()
     return args
 
@@ -185,6 +208,64 @@ def _print_top_hitters(frame, args, target="cpu"):
         frame1.to_csv(f"{args.csv}_{target}_kernel_times.csv", index=False)
 
 
+def _print_op_kernel_mapping_info(cpu_df, gpu_df, num_runs, csv=None):
+    # Count op occurrences in the selected runs
+    op_counts = defaultdict(int)
+    for op in cpu_df.T.to_dict().values():
+        identifiers = tuple([op["name"], op["input_type_shape"]])
+        op_counts[identifiers] += 1
+
+    # Collect kernel stats: count/duration
+    stat_dict = defaultdict(lambda: defaultdict(float))
+    for kernel in gpu_df.T.to_dict().values():
+        op_name = kernel["op_name"]
+        if op_name is None:  # Only interested in op related kernels
+            continue
+        input_type_shape = kernel["input_type_shape"]
+        kernel_name = kernel["name"]
+        dimensions = kernel["dimensions"]
+        identifiers = tuple([op_name, input_type_shape, kernel_name, dimensions])
+        stat_dict[identifiers]["count"] += 1
+        stat_dict[identifiers]["duration"] += kernel["duration"]
+
+    # Create the DataFrame for kernel entries with op correlation info
+    kernel_list = []
+    for identifiers, stat in stat_dict.items():
+        op_name, input_type_shape, kernel_name, dimensions = identifiers
+        op_count = op_counts.get(tuple([op_name, input_type_shape]))
+        if op_count is None:
+            continue
+        kernel_list.append(
+            {
+                "op_name": op_name,
+                "input_type_shape": input_type_shape,
+                "op_count": op_count / num_runs,  # Average op count per run
+                "kernel_name": kernel_name,
+                "kernel_dimensions": dimensions,
+                "kernel_count": stat["count"]
+                / num_runs,  # Average kernel count per run
+                "kernel_avg_dur (us)": stat["duration"] / stat["count"],
+                "kernel_total_dur (us)": stat["duration"] / num_runs,
+            }
+        )
+
+    df = pd.DataFrame(kernel_list)
+    df["op_dur (us)"] = df.groupby(["op_name", "input_type_shape"])[
+        "kernel_total_dur (us)"
+    ].transform("sum")
+    df["op_avg_dur (us)"] = df["op_dur (us)"] / df["op_count"]
+    df = df.sort_values(
+        by=["op_dur (us)", "op_name", "input_type_shape", "kernel_total_dur (us)"],
+        ascending=False,
+    ).reset_index(drop=True)
+    df["kernel_pct (%)"] = df["kernel_total_dur (us)"] / df["op_dur (us)"] * 100
+    df["op_pct (%)"] = df["op_dur (us)"] / df["kernel_total_dur (us)"].sum() * 100
+    # Move kernel_name to the end since it tends to be long
+    df.insert(len(df.columns) - 1, "kernel_name", df.pop("kernel_name"))
+    if csv is not None:
+        df.to_csv(f"{csv}_op_kernel_mapping.csv", index=False)
+
+
 def _construct_filter_matcher(args):
     if args.filter is None or len(args.filter) == 0:
         return lambda x: True
@@ -205,6 +286,34 @@ def _construct_filter_matcher(args):
     return _match_item
 
 
+def _split_data_across_runs(data, start=1, end=-1):
+    """
+    Splits the traces according to model runs they belong to.
+    By default, we skip the first model run (index 0) and consider all subsequent runs.
+    """
+    # Here we assume that the traces are properly ordered, so we can simplify the splitting logic.
+    model_run_splits = [
+        i for i, item in enumerate(data) if item.get("name") == "model_run"
+    ]
+    if not model_run_splits:
+        print(
+            'WARNING: Could not find "model_run" event in trace. Using entire traces.'
+        )
+        return data
+    print(f"Found {len(model_run_splits)} model_run events in trace.")
+
+    if start < 0:
+        start += len(model_run_splits)
+    if end < 0:
+        end += len(model_run_splits)
+    num_runs = end - start + 1
+    print(f"Analyzing model runs {start}-{end}.")
+
+    # Add index 0 in case user wants to include the first model run.
+    model_run_splits = [0, *model_run_splits]
+    return data[model_run_splits[start] : model_run_splits[end + 1]], num_runs
+
+
 def _load_json(profile_path):
     with open(profile_path, encoding="utf-8") as file_obj:
         data = json.load(file_obj)
@@ -218,11 +327,14 @@ def main():
     filter_matcher = _construct_filter_matcher(args)
 
     data = _load_json(args.input)
+    data, num_runs = _split_data_across_runs(data, args.start, args.end)
     cpu_df, gpu_df = _json_to_df(data, filter_matcher)
 
     pd.set_option("display.max_colwidth", 120)
     _print_top_hitters(cpu_df, args, target="cpu")
     _print_top_hitters(gpu_df, args, target="gpu")
+    if args.mapping:
+        _print_op_kernel_mapping_info(cpu_df, gpu_df, num_runs, args.csv)
 
 
 if __name__ == "__main__":
