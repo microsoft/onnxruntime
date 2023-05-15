@@ -30,8 +30,9 @@ def chain_model(args):
         "",
         "",
         "",
-        "decoder_input_ids",
     ]
+    if args.use_forced_decoder_ids:
+        beam_inputs.append("decoder_input_ids")
     beam_outputs = ["sequences"]
 
     node = helper.make_node("BeamSearch", inputs=beam_inputs, outputs=beam_outputs, name="BeamSearch_zcode")
@@ -57,9 +58,6 @@ def chain_model(args):
     num_return_sequences = helper.make_tensor_value_info("num_return_sequences", TensorProto.INT32, [1])
     length_penalty = helper.make_tensor_value_info("length_penalty", TensorProto.FLOAT, [1])
     repetition_penalty = helper.make_tensor_value_info("repetition_penalty", TensorProto.FLOAT, [1])
-    decoder_input_ids = helper.make_tensor_value_info(
-        "decoder_input_ids", TensorProto.INT32, ["batch_size", "initial_sequence_length"]
-    )
 
     graph_inputs = [
         input_features,
@@ -69,8 +67,12 @@ def chain_model(args):
         num_return_sequences,
         length_penalty,
         repetition_penalty,
-        decoder_input_ids,
     ]
+    if args.use_forced_decoder_ids:
+        decoder_input_ids = helper.make_tensor_value_info(
+            "decoder_input_ids", TensorProto.INT32, ["batch_size", "initial_sequence_length"]
+        )
+        graph_inputs.append(decoder_input_ids)
 
     # graph outputs
     sequences = helper.make_tensor_value_info(

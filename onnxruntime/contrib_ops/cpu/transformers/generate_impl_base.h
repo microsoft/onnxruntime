@@ -130,13 +130,13 @@ class GenerateBase {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                                "Input 'input_features' is expected to have 3 dimensions, got ", dims.size());
       }
-      ORT_ENFORCE(decoder_input_ids != nullptr);
-      const auto& decoder_dims = decoder_input_ids->Shape().GetDims();
-      if (decoder_dims.size() != 2) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                               "Input 'decoder_input_ids' is expected to have 2 dimensions, got ", decoder_dims.size());
+      if (decoder_input_ids != nullptr) {
+        const auto& decoder_dims = decoder_input_ids->Shape().GetDims();
+        if (decoder_dims.size() != 2) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                                 "Input 'decoder_input_ids' is expected to have 2 dimensions, got ", decoder_dims.size());
+        }
       }
-
     } else if (dims.size() != 2) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "Input 'input_ids' is expected to have 2 dimensions, got ", dims.size());

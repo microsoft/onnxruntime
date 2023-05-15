@@ -35,9 +35,13 @@ void BeamSearchParameters::ParseFromInputs(OpKernelContext* context) {
   if (this->model_type == IGenerationParameters::kModelTypeWhisper) {
     ORT_ENFORCE(dims.size() == 3, "input_features shall have 3 dimensions. Got ", dims.size());
     const Tensor* decoder_input_ids = context->Input<Tensor>(10);
-    const auto& decoder_dims = decoder_input_ids->Shape().GetDims();
-    initial_decode_sequence_length = static_cast<int>(decoder_dims[1]);
-    ORT_ENFORCE(decoder_dims.size() == 2, "decoder_input_ids shall have 2 dimensions. Got ", decoder_dims.size());
+    if (decoder_input_ids == nullptr) {
+      initial_decode_sequence_length = 1;
+    } else {
+      const auto& decoder_dims = decoder_input_ids->Shape().GetDims();
+      initial_decode_sequence_length = static_cast<int>(decoder_dims[1]);
+      ORT_ENFORCE(decoder_dims.size() == 2, "decoder_input_ids shall have 2 dimensions. Got ", decoder_dims.size());
+    }
   } else {
     ORT_ENFORCE(dims.size() == 2, "input_ids shall have 2 dimensions. Got ", dims.size());
   }

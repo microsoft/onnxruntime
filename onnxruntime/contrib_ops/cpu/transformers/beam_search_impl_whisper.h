@@ -133,10 +133,10 @@ Status BeamSearchWhisper<T>::Execute(const FeedsFetchesManager& encoder_feeds_fe
   const OrtValue* initial_decoder_input_ids_value = this->context_.GetInputOrtValue(10);
 
   OrtValue decoder_input_ids;  // Tensor in CPU, and it will be used to initialize sequence in cpu_state
-  const Tensor& initial_decoder_input_ids = initial_decoder_input_ids_value->Get<Tensor>();
   ORT_RETURN_IF_ERROR(this->encoder_subgraph_.CreateInitialFeeds(
       encoder_input_ids,
-      initial_decoder_input_ids,
+      initial_decoder_input_ids_value,
+      parameters->decoder_start_token_id,
       this->implicit_inputs_,
       encoder_feeds,
       this->create_encoder_inputs_func_,
@@ -277,10 +277,6 @@ Status BeamSearchWhisper<T>::Execute(const FeedsFetchesManager& encoder_feeds_fe
     auto offset = decoder_subgraph_.GetFirstPastInputIndex() + 4 * decoder_subgraph_.num_layers;
     dumper->Print("past_sequence_length", offset, true);
     dumper->Print("", decoder_feeds[offset]);
-    dumper->Print("beam_width", offset + 1, true);
-    dumper->Print("", decoder_feeds[offset + 1]);
-    dumper->Print("cache_redir", offset + 2, true);
-    dumper->Print("", decoder_feeds[offset + 2]);
 #endif
 
 #ifdef DEBUG_NODE_INPUTS_OUTPUTS

@@ -94,7 +94,8 @@ Status WhisperEncoderSubgraph::Validate(const std::vector<const NodeArg*>& subgr
 // Create inputs for first inference of subgraph.
 Status WhisperEncoderSubgraph::CreateInitialFeeds(
     const Tensor& original_encoder_input_ids,
-    const Tensor& original_decoder_input_ids,
+    const OrtValue* original_decoder_input_ids_value,
+    int start_token_id,
     const std::vector<const OrtValue*>& implicit_inputs,
     std::vector<OrtValue>& feeds,
     const GenerationDeviceHelper::CreateWhisperEncoderInputsFunc& create_encoder_inputs_func,
@@ -117,7 +118,8 @@ Status WhisperEncoderSubgraph::CreateInitialFeeds(
 
   OrtValue encoder_input_ids;
   ORT_RETURN_IF_ERROR(create_encoder_inputs_func(&original_encoder_input_ids,
-                                                 &original_decoder_input_ids,
+                                                 original_decoder_input_ids_value,
+                                                 start_token_id,
                                                  cpu_allocator,
                                                  encoder_input_ids,
                                                  decoder_input_ids));

@@ -160,7 +160,7 @@ Status BeamSearch::SetupSubgraphExecutionInfo(const SessionState& session_state,
       encoder_feeds_fetches_manager_ = whisper_encoder_subgraph_->GetFeedsFetchesManager();
 
       ORT_RETURN_IF(whisper_encoder_subgraph_->num_subgraph_inputs != 2,
-                    "Encoder subgraph shall have 3 inputs (encoder_input_ids, decoder_input_ids)");
+                    "Encoder subgraph shall have 2 inputs (encoder_input_ids, decoder_input_ids)");
     } else if (attribute_name == "decoder") {
       ORT_ENFORCE(whisper_decoder_subgraph_ == nullptr,
                   "SetupSubgraphExecutionInfo should only be called once for each subgraph.");
