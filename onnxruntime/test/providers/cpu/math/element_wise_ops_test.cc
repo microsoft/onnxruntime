@@ -1973,7 +1973,7 @@ TEST(MathOpTest, Less_broadcastBA) {
   test.Run();
 }
 
-TEST(MathOpTest, Less_multidiretional_broadcastAB) {
+TEST(MathOpTest, Less_multidirectional_broadcastAB) {
   OpTester test("Less", 9);
   test.AddInput<int32_t>("A", {4, 1}, {10, 11, 12, 13});
   test.AddInput<int32_t>("B", {2}, {15, 7});
@@ -1981,7 +1981,7 @@ TEST(MathOpTest, Less_multidiretional_broadcastAB) {
   test.Run();
 }
 
-TEST(MathOpTest, Less_multidiretional_broadcastBA) {
+TEST(MathOpTest, Less_multidirectional_broadcastBA) {
   OpTester test("Less", 9);
   test.AddInput<int32_t>("A", {2}, {15, 7});
   test.AddInput<int32_t>("B", {4, 1}, {10, 11, 12, 13});
@@ -2043,7 +2043,7 @@ TEST(MathOpTest, LessOrEqual_broadcastBA) {
            {kTensorrtExecutionProvider, kNnapiExecutionProvider, kOpenVINOExecutionProvider});
 }
 
-TEST(MathOpTest, LessOrEqual_multidiretional_broadcastAB) {
+TEST(MathOpTest, LessOrEqual_multidirectional_broadcastAB) {
   OpTester test("LessOrEqual", 12);
   test.AddInput<int32_t>("A", {4, 1}, {10, 11, 12, 13});
   test.AddInput<int32_t>("B", {2}, {15, 7});
@@ -2052,7 +2052,7 @@ TEST(MathOpTest, LessOrEqual_multidiretional_broadcastAB) {
            {kTensorrtExecutionProvider, kNnapiExecutionProvider, kOpenVINOExecutionProvider});
 }
 
-TEST(MathOpTest, LessOrEqual_multidiretional_broadcastBA) {
+TEST(MathOpTest, LessOrEqual_multidirectional_broadcastBA) {
   OpTester test("LessOrEqual", 12);
   test.AddInput<int32_t>("A", {2}, {15, 7});
   test.AddInput<int32_t>("B", {4, 1}, {10, 11, 12, 13});
@@ -2182,7 +2182,7 @@ TEST(MathOpTest, LessOrEqual_bfloat16_broadcastBA) {
            {kTensorrtExecutionProvider, kNnapiExecutionProvider, kOpenVINOExecutionProvider}, nullptr, &execution_providers);
 }
 
-TEST(MathOpTest, LessOrEqual_multidiretional_bfloat16_broadcastAB) {
+TEST(MathOpTest, LessOrEqual_multidirectional_bfloat16_broadcastAB) {
 #ifdef USE_DNNL
 #ifdef DNNL_GPU_RUNTIME
   LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
@@ -2206,7 +2206,7 @@ TEST(MathOpTest, LessOrEqual_multidiretional_bfloat16_broadcastAB) {
            {kTensorrtExecutionProvider, kNnapiExecutionProvider, kOpenVINOExecutionProvider}, nullptr, &execution_providers);
 }
 
-TEST(MathOpTest, LessOrEqual_multidiretional_bfloat16_broadcastBA) {
+TEST(MathOpTest, LessOrEqual_multidirectional_bfloat16_broadcastBA) {
 #ifdef USE_DNNL
 #ifdef DNNL_GPU_RUNTIME
   LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
@@ -2317,7 +2317,7 @@ TEST(MathOpTest, Greater_broadcastBA) {
   test.Run();
 }
 
-TEST(MathOpTest, Greater_multidiretional_broadcastAB) {
+TEST(MathOpTest, Greater_multidirectional_broadcastAB) {
   OpTester test("Greater", 9);
   test.AddInput<int32_t>("A", {4, 1}, {10, 11, 12, 13});
   test.AddInput<int32_t>("B", {2}, {15, 7});
@@ -2325,7 +2325,7 @@ TEST(MathOpTest, Greater_multidiretional_broadcastAB) {
   test.Run();
 }
 
-TEST(MathOpTest, Greater_multidiretional_broadcastBA) {
+TEST(MathOpTest, Greater_multidirectional_broadcastBA) {
   OpTester test("Greater", 9);
   test.AddInput<int32_t>("A", {2}, {15, 7});
   test.AddInput<int32_t>("B", {4, 1}, {10, 11, 12, 13});
@@ -2418,7 +2418,7 @@ TEST(MathOpTest, GreaterOrEqual_broadcastBA) {
            {kTensorrtExecutionProvider, kNnapiExecutionProvider, kOpenVINOExecutionProvider});
 }
 
-TEST(MathOpTest, GreaterOrEqual_multidiretional_broadcastAB) {
+TEST(MathOpTest, GreaterOrEqual_multidirectional_broadcastAB) {
   OpTester test("GreaterOrEqual", 12);
   test.AddInput<int32_t>("A", {4, 1}, {10, 11, 12, 13});
   test.AddInput<int32_t>("B", {2}, {15, 7});
@@ -2427,7 +2427,7 @@ TEST(MathOpTest, GreaterOrEqual_multidiretional_broadcastAB) {
            {kTensorrtExecutionProvider, kNnapiExecutionProvider, kOpenVINOExecutionProvider});
 }
 
-TEST(MathOpTest, GreaterOrEqual_multidiretional_broadcastBA) {
+TEST(MathOpTest, GreaterOrEqual_multidirectional_broadcastBA) {
   OpTester test("GreaterOrEqual", 12);
   test.AddInput<int32_t>("A", {2}, {15, 7});
   test.AddInput<int32_t>("B", {4, 1}, {10, 11, 12, 13});
@@ -2539,7 +2539,7 @@ TEST(MathOpTest, Equal_broadcastBA) {
   test.Run();
 }
 
-TEST(MathOpTest, Equal_multidiretional_broadcastAB) {
+TEST(MathOpTest, Equal_multidirectional_broadcastAB) {
   OpTester test("Equal");
   test.AddInput<int32_t>("A", {4, 1}, {1, 0, -1, -1});
   test.AddInput<int32_t>("B", {2}, {1, 1});
@@ -2547,7 +2547,7 @@ TEST(MathOpTest, Equal_multidiretional_broadcastAB) {
   test.Run();
 }
 
-TEST(MathOpTest, Equal_multidiretional_broadcastBA) {
+TEST(MathOpTest, Equal_multidirectional_broadcastBA) {
   OpTester test("Equal");
   test.AddInput<int32_t>("A", {2}, {1, 1});
   test.AddInput<int32_t>("B", {4, 1}, {1, 0, -1, -1});
@@ -2555,7 +2555,7 @@ TEST(MathOpTest, Equal_multidiretional_broadcastBA) {
   test.Run();
 }
 
-TEST(MathOpTest, Equal_multidiretional_broadcastAB_bool) {
+TEST(MathOpTest, Equal_multidirectional_broadcastAB_bool) {
   OpTester test("Equal");
   test.AddInput<bool>("A", {4, 1}, {true, false, false, false});
   test.AddInput<bool>("B", {2}, {true, true});
@@ -3137,7 +3137,7 @@ TEST(MathOpTest, BitwiseAnd_broadcastBA) {
   test.Run();
 }
 
-TEST(MathOpTest, BitwiseAnd_multidiretional_broadcastAB) {
+TEST(MathOpTest, BitwiseAnd_multidirectional_broadcastAB) {
   OpTester test("BitwiseAnd", 18);
   test.AddInput<int32_t>("A", {4, 1}, {10, 11, 12, 13});
   test.AddInput<int32_t>("B", {2}, {15, 7});
@@ -3145,7 +3145,7 @@ TEST(MathOpTest, BitwiseAnd_multidiretional_broadcastAB) {
   test.Run();
 }
 
-TEST(MathOpTest, BitwiseAnd_multidiretional_broadcastBA) {
+TEST(MathOpTest, BitwiseAnd_multidirectional_broadcastBA) {
   OpTester test("BitwiseAnd", 18);
   test.AddInput<int32_t>("A", {2}, {15, 7});
   test.AddInput<int32_t>("B", {4, 1}, {10, 11, 12, 13});
@@ -3214,7 +3214,7 @@ TEST(MathOpTest, BitwiseOr_broadcastBA) {
   test.Run();
 }
 
-TEST(MathOpTest, BitwiseOr_multidiretional_broadcastAB) {
+TEST(MathOpTest, BitwiseOr_multidirectional_broadcastAB) {
   OpTester test("BitwiseOr", 18);
   test.AddInput<int32_t>("A", {4, 1}, {10, 11, 12, 13});
   test.AddInput<int32_t>("B", {2}, {15, 7});
@@ -3222,7 +3222,7 @@ TEST(MathOpTest, BitwiseOr_multidiretional_broadcastAB) {
   test.Run();
 }
 
-TEST(MathOpTest, BitwiseOr_multidiretional_broadcastBA) {
+TEST(MathOpTest, BitwiseOr_multidirectional_broadcastBA) {
   OpTester test("BitwiseOr", 18);
   test.AddInput<int32_t>("A", {2}, {15, 7});
   test.AddInput<int32_t>("B", {4, 1}, {10, 11, 12, 13});
@@ -3291,7 +3291,7 @@ TEST(MathOpTest, BitwiseXor_broadcastBA) {
   test.Run();
 }
 
-TEST(MathOpTest, BitwiseXor_multidiretional_broadcastAB) {
+TEST(MathOpTest, BitwiseXor_multidirectional_broadcastAB) {
   OpTester test("BitwiseXor", 18);
   test.AddInput<int32_t>("A", {4, 1}, {10, 11, 12, 13});
   test.AddInput<int32_t>("B", {2}, {15, 7});
@@ -3299,7 +3299,7 @@ TEST(MathOpTest, BitwiseXor_multidiretional_broadcastAB) {
   test.Run();
 }
 
-TEST(MathOpTest, BitwiseXor_multidiretional_broadcastBA) {
+TEST(MathOpTest, BitwiseXor_multidirectional_broadcastBA) {
   OpTester test("BitwiseXor", 18);
   test.AddInput<int32_t>("A", {2}, {15, 7});
   test.AddInput<int32_t>("B", {4, 1}, {10, 11, 12, 13});
