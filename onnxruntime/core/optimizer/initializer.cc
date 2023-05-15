@@ -100,46 +100,6 @@ struct ToBFloat16<float> {
   }
 };
 
-template <typename T>
-struct ToFloat8E4M3FN;
-
-template <>
-struct ToFloat8E4M3FN<float> {
-  uint8_t operator()(float f, bool saturate) const {
-    return Float8E4M3FN(f, saturate).val;
-  }
-};
-
-template <typename T>
-struct ToFloat8E4M3FNUZ;
-
-template <>
-struct ToFloat8E4M3FNUZ<float> {
-  uint8_t operator()(float f, bool saturate) const {
-    return Float8E4M3FNUZ(f, saturate).val;
-  }
-};
-
-template <typename T>
-struct ToFloat8E5M2;
-
-template <>
-struct ToFloat8E5M2<float> {
-  uint8_t operator()(float f, bool saturate) const {
-    return Float8E5M2(f, saturate).val;
-  }
-};
-
-template <typename T>
-struct ToFloat8E5M2FNUZ;
-
-template <>
-struct ToFloat8E5M2FNUZ<float> {
-  uint8_t operator()(float f, bool saturate) const {
-    return Float8E5M2FNUZ(f, saturate).val;
-  }
-};
-
 template <>
 struct ToBFloat16<double> {
   uint16_t operator()(double d) const {
