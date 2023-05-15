@@ -274,6 +274,20 @@ Status PackedAttention<T>::ComputeInternal(OpKernelContext* context) const {
 
   MHARunner* fused_runner = TryGettingFusedRunner(parameters);
 
+  bool use_memory_efficient_attention = false;
+  auto& device_prop = GetDeviceProp();
+#if USE_FLASH_ATTENTION
+  if (nullptr == fused_runner) {
+    int sm = device_prop.major * 10 + device_prop.minor;
+    bool is_good_for_rpb = !parameters.has_relative_position_bias || parameters.sequence_length % (4 * sizeof(T)) == 0;
+    use_memory_efficient_attention = is_good_for_rpb &&
+                                     sizeof(T) == 2 &&  // only enable for fp16
+                                     (parameters.head_size & 7) == 0 &&
+                                     (parameters.v_head_size & 7) == 0 &&
+                                     has_memory_efficient_attention(sm, sizeof(T) == 2);
+  }
+#endif
+
   typedef typename ToCudaType<T>::MappedType CudaT;
   CudaT one = ToCudaType<T>::FromFloat(1.0f);
   CudaT zero = ToCudaType<T>::FromFloat(0.0f);
@@ -284,7 +298,6 @@ Status PackedAttention<T>::ComputeInternal(OpKernelContext* context) const {
   int k = parameters.input_hidden_size;
   gemm_buffer = GetScratchBuffer<T>(static_cast<size_t>(m) * n, context->GetComputeStream());
 
-  auto& device_prop = GetDeviceProp();
   cublasHandle_t cublas = GetCublasHandle(context);
 
   // Gemm, note that CUDA assumes col-major, so result(N, M) = 1 * weights x input + 1 x bias
@@ -302,7 +315,8 @@ Status PackedAttention<T>::ComputeInternal(OpKernelContext* context) const {
                                                    parameters.head_size,
                                                    parameters.v_head_size,
                                                    parameters.sequence_length,
-                                                   fused_runner);
+                                                   fused_runner,
+                                                   use_memory_efficient_attention);
   auto work_space = GetScratchBuffer<void>(workSpaceSize, context->GetComputeStream());
 
   typedef typename ToCudaType<T>::MappedType CudaT;
@@ -315,6 +329,7 @@ Status PackedAttention<T>::ComputeInternal(OpKernelContext* context) const {
   data.cumulative_sequence_length = cumulative_sequence_length->Data<int32_t>();
   data.output = reinterpret_cast<CudaT*>(output->MutableData<T>());
   data.fused_runner = reinterpret_cast<void*>(fused_runner);
+  data.use_memory_efficient_attention = use_memory_efficient_attention;
 
   return QkvToContext<CudaT>(device_prop, cublas, Stream(context), parameters, data);
 }
