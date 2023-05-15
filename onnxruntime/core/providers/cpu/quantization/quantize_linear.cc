@@ -222,29 +222,20 @@ REGISTER_QUANTIZELINEAR_VERSIONED(int8_t)
 REGISTER_QUANTIZELINEAR_VERSIONED(uint8_t)
 
 template <typename OutputType>
-typename std::enable_if<!boost::mp11::mp_contains<element_type_lists::AllFloat8, OutputType>::value, void>::type
-ParQuantizeLinear(const float* Input,
-                  OutputType* Output,
-                  size_t N,
-                  float Scale,
-                  size_t bd,
-                  const OutputType* ZeroPoint,
-                  bool /* saturate */,
-                  concurrency::ThreadPool* thread_pool) {
-  ParQuantizeLinearStd(Input, Output, N, Scale, ZeroPoint != nullptr ? ZeroPoint[bd] : (OutputType)0, thread_pool);
-}
-
-template <typename OutputType>
-typename std::enable_if<boost::mp11::mp_contains<element_type_lists::AllFloat8, OutputType>::value, void>::type
-ParQuantizeLinear(const float* Input,
-                  OutputType* Output,
-                  size_t N,
-                  float Scale,
-                  size_t bd,
-                  const OutputType* ZeroPoint,
-                  bool saturate,
-                  concurrency::ThreadPool* thread_pool) {
-  ParQuantizeLinearSat(Input, Output, N, Scale, ZeroPoint != nullptr ? ZeroPoint[bd] : OutputType(static_cast<float>(0), true), saturate, thread_pool);
+void ParQuantizeLinear(const float* Input,
+                       OutputType* Output,
+                       size_t N,
+                       float Scale,
+                       size_t bd,
+                       const OutputType* ZeroPoint,
+                       bool saturate,
+                       concurrency::ThreadPool* thread_pool) {
+  if constexpr (!boost::mp11::mp_contains<element_type_lists::AllFloat8, OutputType>::value) {
+    ORT_UNUSED_PARAMETER(saturate);
+    ParQuantizeLinearStd(Input, Output, N, Scale, ZeroPoint != nullptr ? ZeroPoint[bd] : (OutputType)0, thread_pool);
+  } else {
+    ParQuantizeLinearSat(Input, Output, N, Scale, ZeroPoint != nullptr ? ZeroPoint[bd] : OutputType(static_cast<float>(0), true), saturate, thread_pool);
+  }
 }
 
 // formula is Y = X / Scale + ZeroPoint
