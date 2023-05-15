@@ -7,6 +7,7 @@
 #include <hipblaslt/hipblaslt.h>
 #endif
 
+#include "contrib_ops/rocm/bert/gemm_fast_gelu_common.h"
 #include "core/common/common.h"
 #include "core/providers/rocm/tunable/gemm_common.h"
 #include "core/providers/rocm/tunable/rocm_tunable.h"
@@ -16,6 +17,8 @@ namespace rocm {
 namespace tunable {
 namespace blas {
 namespace internal {
+
+using onnxruntime::contrib::rocm::blas::GemmFastGeluParams;
 
 #ifdef USE_HIPBLASLT
 
@@ -202,6 +205,13 @@ template <typename T>
 Status HipBlasLtStridedBatchedGemmOp(const StridedBatchedGemmParams<T>* params) {
   TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF((std::is_same_v<T, double>), "hipBLASLt does not support double inputs");
   return HipBlasLtMatMul<T, StridedBatchedGemmParams<T>>(params, params->batch);
+};
+
+template <typename T>
+Status HipBlasLtGemmGeluOp(const GemmFastGeluParams<T>* params) {
+  TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF((std::is_same_v<T, double>), "hipBLASLt does not support double inputs");
+  TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF((nullptr != params->bias), "hipBLASLt does not support bias gelu");
+  return HipBlasLtMatMul<T, GemmFastGeluParams<T>>(params, /*batch=*/1, ActivationType::GELU);
 };
 
 #endif  // USE_HIPBLASLT

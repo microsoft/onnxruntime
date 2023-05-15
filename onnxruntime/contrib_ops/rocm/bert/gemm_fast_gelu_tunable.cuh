@@ -10,22 +10,25 @@
 #include "contrib_ops/rocm/bert/gemm_fast_gelu_ck.cuh"
 #include "contrib_ops/rocm/bert/gemm_fast_gelu_common.h"
 #include "core/providers/rocm/tunable/gemm.h"
+#include "core/providers/rocm/tunable/gemm_hipblaslt.h"
 #include "core/providers/rocm/tunable/rocm_tunable.h"
 
 namespace onnxruntime {
-namespace contrib{
+namespace contrib {
 namespace rocm {
 namespace blas {
 namespace internal {
+
+using namespace onnxruntime::rocm::tunable::blas::internal;
 
 template <typename T>
 Status GemmFastGeluUnfused(const GemmFastGeluParams<T>* params) {
   namespace column_major = onnxruntime::rocm::tunable::blas::column_major;
   ORT_RETURN_IF_ERROR(column_major::Gemm(params->tuning_ctx, params->stream, params->handle,
-                         params->opb, params->opa,
-                         params->n, params->m, params->k,
-                         params->alpha, params->b, params->ldb, params->a, params->lda,
-                         params->beta, params->c, params->ldc));
+                                         params->opb, params->opa,
+                                         params->n, params->m, params->k,
+                                         params->alpha, params->b, params->ldb, params->a, params->lda,
+                                         params->beta, params->c, params->ldc));
 
   int64_t fast_gelu_input_length = params->m * params->n;
   int64_t bias_length = (params->bias != nullptr) ? params->n : 0;
@@ -64,6 +67,10 @@ class GemmFastGeluTunableOp : public TunableOp<GemmFastGeluParams<T>> {
       ORT_UNUSED_PARAMETER(_);
       this->RegisterOp(std::move(op));
     }
+#endif
+
+#ifdef USE_HIPBLASLT
+    this->RegisterOp(HipBlasLtGemmGeluOp<T>);
 #endif
   }
 };
