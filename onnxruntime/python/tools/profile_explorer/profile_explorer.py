@@ -1,10 +1,10 @@
 #!/usr/bin/python
 
 import argparse
-from collections import defaultdict
 import fnmatch
 import json
 import subprocess as sp
+from collections import defaultdict
 
 import pandas as pd
 
@@ -111,11 +111,7 @@ def _json_to_df(data, filter_matcher):
 
         name = item["name"]
 
-        if (
-            not filter_matcher(name)
-            and op_name is not None
-            and not filter_matcher(op_name)
-        ):
+        if not filter_matcher(name) and op_name is not None and not filter_matcher(op_name):
             continue
 
         if cat != "Kernel" and not name.endswith("kernel_time"):
@@ -138,31 +134,22 @@ def _json_to_df(data, filter_matcher):
                     "dimensions": f"b{block_x}x{block_y}x{block_z},g{grid_x}x{grid_y}x{grid_z}",
                     "op_name": op_name,
                     "input_type_shape": (
-                        _shape_to_string(
-                            most_recent_kernel_launch_event["args"]["input_type_shape"]
-                        )
+                        _shape_to_string(most_recent_kernel_launch_event["args"]["input_type_shape"])
                         if most_recent_kernel_launch_event is not None
                         else "unknown"
                     ),
                 }
             )
             total_kernel_events += 1
-            if (
-                gpu_entries[-1]["input_type_shape"] == "unknown"
-                and "hipMem" not in gpu_entries[-1]["name"]
-            ):
+            if (gpu_entries[-1]["input_type_shape"] == "unknown" and "hipMem" not in gpu_entries[-1]["name"]):
                 num_missing_kernel_launch_events += 1
         else:
             cpu_entries.append(
                 {
                     "name": item["args"]["op_name"],
                     "duration": dur,
-                    "input_type_shape": _shape_to_string(
-                        item["args"]["input_type_shape"]
-                    ),
-                    "output_type_shape": _shape_to_string(
-                        item["args"]["output_type_shape"]
-                    ),
+                    "input_type_shape": _shape_to_string(item["args"]["input_type_shape"]),
+                    "output_type_shape": _shape_to_string(item["args"]["output_type_shape"]),
                 }
             )
 
@@ -242,17 +229,14 @@ def _print_op_kernel_mapping_info(cpu_df, gpu_df, num_runs, csv=None):
                 "op_count": op_count / num_runs,  # Average op count per run
                 "kernel_name": kernel_name,
                 "kernel_dimensions": dimensions,
-                "kernel_count": stat["count"]
-                / num_runs,  # Average kernel count per run
+                "kernel_count": stat["count"] / num_runs,  # Average kernel count per run
                 "kernel_avg_dur (us)": stat["duration"] / stat["count"],
                 "kernel_total_dur (us)": stat["duration"] / num_runs,
             }
         )
 
     df = pd.DataFrame(kernel_list)
-    df["op_dur (us)"] = df.groupby(["op_name", "input_type_shape"])[
-        "kernel_total_dur (us)"
-    ].transform("sum")
+    df["op_dur (us)"] = df.groupby(["op_name", "input_type_shape"])["kernel_total_dur (us)"].transform("sum")
     df["op_avg_dur (us)"] = df["op_dur (us)"] / df["op_count"]
     df = df.sort_values(
         by=["op_dur (us)", "op_name", "input_type_shape", "kernel_total_dur (us)"],
@@ -292,13 +276,9 @@ def _split_data_across_runs(data, start=1, end=-1):
     By default, we skip the first model run (index 0) and consider all subsequent runs.
     """
     # Here we assume that the traces are properly ordered, so we can simplify the splitting logic.
-    model_run_splits = [
-        i for i, item in enumerate(data) if item.get("name") == "model_run"
-    ]
+    model_run_splits = [i for i, item in enumerate(data) if item.get("name") == "model_run"]
     if not model_run_splits:
-        print(
-            'WARNING: Could not find "model_run" event in trace. Using entire traces.'
-        )
+        print('WARNING: Could not find "model_run" event in trace. Using entire traces.')
         return data
     print(f"Found {len(model_run_splits)} model_run events in trace.")
 
