@@ -1324,6 +1324,7 @@ class PlannerImpl {
 #endif
       ORT_RETURN_IF_ERROR(ComputeSingleStreamReusePlan(i));
       ClearUseCount();
+      freelist_.clear();  // DONOT share freelist across streams
     }
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
     CalculateLifetime(ort_value_usecount);
@@ -2237,11 +2238,6 @@ class DeviceBasedPartitioner : public IGraphPartitioner {
   std::vector<OrtDevice::DeviceType> device_types_;
   std::vector<InlinedVector<std::string>> node_names_by_stream_;
   bool need_save_ = false;
-
-  using KEY = InlinedVector<std::string>;
-  using VAL = InlinedVector<std::string>;
-  using MAP = InlinedHashMap<KEY, VAL>;
-  MAP key_val_map_;
 };
 
 #define EXIT_ON_ERR(warning)         \
@@ -2346,7 +2342,6 @@ void DeviceBasedPartitioner::SaveConfig() const {
   ORT_TRY {
     json json_config;
     json_config["type"] = "DeviceBasedPartitioner";
-    // first, save partition info
     if (!node_names_by_stream_.empty()) {
       json_config["streams"] = json::array();
       for (const auto& node_stream : node_names_by_stream_) {
@@ -2355,50 +2350,6 @@ void DeviceBasedPartitioner::SaveConfig() const {
           node_array.insert(node_array.end(), node_name);
         }
         json_config["streams"].insert(json_config["streams"].end(), node_array);
-      }
-    }
-    // next, save k-v pairs set by external caller
-    for (const auto& kv_it : key_val_map_) {
-      const auto& keys = kv_it.first;
-      json* tail = {};
-      if (keys.size() == 1) {
-        auto json_it = json_config.find(keys.front());
-        if (json_it == json_config.end()) {
-          json_config[keys.front()] = json::array();
-          tail = &json_config[keys.front()];
-        } else {
-          tail = &json_it.value();
-        }
-      } else if (keys.size() > 1) {
-        for (auto k_it = kv_it.first.begin(); k_it != std::prev(kv_it.first.end()); k_it = std::next(k_it)) {
-          if (tail) {
-            auto json_it = tail->find(*k_it);
-            if (json_it == tail->end()) {
-              (*tail)[*k_it] = json::object();
-              tail = &(*tail)[*k_it];
-            } else {
-              tail = &json_it.value();
-            }
-          } else {
-            auto json_it = json_config.find(*k_it);
-            if (json_it == json_config.end()) {
-              json_config[*k_it] = json::object();
-              tail = &json_config[*k_it];
-            } else {
-              tail = &json_it.value();
-            }
-          }
-        }
-        auto json_it = tail->find(kv_it.first.back());
-        if (json_it == tail->end()) {
-          (*tail)[kv_it.first.back()] = json::array();
-        }
-        tail = &(*tail)[kv_it.first.back()];
-      }
-      if (tail) {
-        for (const auto& v : kv_it.second) {
-          tail->insert(tail->end(), v);
-        }
       }
     }
     if (!device_types_.empty()) {
