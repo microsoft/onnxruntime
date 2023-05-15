@@ -20,36 +20,38 @@ permissions:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
-    env:
-      DOCFXVERSION: 2.62.2
+    runs-on: windows-latest
     steps:
     - uses: actions/checkout@v3
     - name: Setup .NET
       uses: actions/setup-dotnet@v2
       with:
-        dotnet-version: 5.0.x
+        dotnet-version: 6.0.x
     - name: Restore dependencies
       run: dotnet restore csharp/ApiDocs/ApiDocs.csproj
     - name: Download DocFX
       run: |
-        mkdir -p build/docfx
-        wget https://github.com/dotnet/docfx/releases/download/v${DOCFXVERSION}/docfx-linux-x64-v${DOCFXVERSION}.zip -O build/docfx/docfx.zip
-        unzip build/docfx/docfx.zip -d build/docfx
+        mkdir -p build\docfx
+        Invoke-WebRequest -Uri "https://github.com/dotnet/docfx/releases/download/v${env:DOCFXVERSION}/docfx-win-x64-v${env:DOCFXVERSION}.zip" -OutFile "build/docfx/docfx.zip"
+        [System.IO.Compression.ZipFile]::ExtractToDirectory("build/docfx/docfx.zip", "build/docfx" )
+      env:
+        DOCFXVERSION: 2.67.0
     - name: Install NuGet
       uses: nuget/setup-nuget@v1
     - name: Build Documentation
       run: |
-        build/docfx/docfx metadata csharp/ApiDocs/docfx.json
-        dotnet build csharp/ApiDocs/ApiDocs.csproj --no-restore
-        build/docfx/docfx build csharp/ApiDocs/docfx.json
+        build\docfx\docfx metadata csharp\ApiDocs\docfx.json
+        dotnet build csharp\ApiDocs\ApiDocs.csproj --no-restore
+        build\docfx\docfx build csharp\ApiDocs\docfx.json
     - name: Log source commit
       run: git rev-parse --short HEAD > csharp/ApiDocs/csharp/source-version.txt
     - name: Move C# docs into site
       run: |
-        mkdir -p _site/docs/api
-        rm -rf _site/docs/api/csharp
-        mv csharp/ApiDocs/csharp _site/docs/api/csharp
+        mkdir _site\docs\api
+        if (Test-Path _site\docs\api\csharp) {
+          Remove-Item -Recurse -Force _site\docs\api\csharp
+        }
+        move csharp\ApiDocs\csharp _site\docs\api
     - name: Upload docs artifact
       uses: actions/upload-artifact@v3
       with:

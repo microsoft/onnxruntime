@@ -1,9 +1,6 @@
 [submodule "cmake/external/onnx"]
 	path = cmake/external/onnx
 	url = https://github.com/onnx/onnx.git
-[submodule "cmake/external/eigen"]
-	path = cmake/external/eigen
-	url = https://gitlab.com/libeigen/eigen.git
 [submodule "cmake/external/libprotobuf-mutator"]
 	path = cmake/external/libprotobuf-mutator
 	url = https://github.com/google/libprotobuf-mutator.git
