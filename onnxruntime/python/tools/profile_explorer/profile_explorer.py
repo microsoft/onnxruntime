@@ -141,7 +141,7 @@ def _json_to_df(data, filter_matcher):
                 }
             )
             total_kernel_events += 1
-            if (gpu_entries[-1]["input_type_shape"] == "unknown" and "hipMem" not in gpu_entries[-1]["name"]):
+            if gpu_entries[-1]["input_type_shape"] == "unknown" and "hipMem" not in gpu_entries[-1]["name"]:
                 num_missing_kernel_launch_events += 1
         else:
             cpu_entries.append(
