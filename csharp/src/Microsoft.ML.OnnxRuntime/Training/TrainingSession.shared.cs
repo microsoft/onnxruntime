@@ -33,7 +33,7 @@ namespace Microsoft.ML.OnnxRuntime
     }
 
     /// <summary>
-    /// Trainer class that provides training, evaluation and optimizer methods for training an ONNX models.
+    /// Trainer class that provides training, evaluation and optimizer methods for training an ONNX model.
     ///
     /// The training session requires four training artifacts
     /// - The training onnx model
@@ -43,8 +43,8 @@ namespace Microsoft.ML.OnnxRuntime
     ///
     /// These artifacts can be generated using the `onnxruntime-training` python [utility](https://github.com/microsoft/onnxruntime/blob/main/orttraining/orttraining/python/training/onnxblock/README.md).
     ///
-    /// This is a IDisposable class and it must be disposed of
-    /// using either a explicit call to Dispose() method or
+    /// This is an IDisposable class and it must be disposed of
+    /// using either an explicit call to Dispose() method or
     /// a pattern of using() block. If this is a member of another
     /// class that class must also become IDisposable and it must
     /// dispose of TrainingSession in its Dispose() method.
@@ -52,7 +52,7 @@ namespace Microsoft.ML.OnnxRuntime
     public class TrainingSession : IDisposable
     {
         /// <summary>
-        /// A pointer to a underlying native instance of OrtTrainingSession
+        /// A pointer to an underlying native instance of OrtTrainingSession
         /// </summary>
         private IntPtr _nativeHandle;
 
@@ -401,7 +401,7 @@ namespace Microsoft.ML.OnnxRuntime
         }
 
         /// <summary>
-        /// Update the learning rate based on the registered learing rate scheduler.
+        /// Update the learning rate based on the registered learning rate scheduler.
         ///
         /// Takes a scheduler step that updates the learning rate that is being used by the training session.
         /// This function should typically be called before invoking the optimizer step for each round,

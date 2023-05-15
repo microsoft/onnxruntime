@@ -9,13 +9,13 @@ namespace Microsoft.ML.OnnxRuntime
     /// <summary>
     ///  Holds the state of the training session.
     /// This class holds the entire training session state that includes model parameters, their gradients,
-    ///optimizer parameters, and user properties. The TrainingSession leverages the CheckpointState
+    /// optimizer parameters, and user properties. The TrainingSession leverages the CheckpointState
     /// by accessing and updating the contained training state.
     /// <note type="note">
     /// Note that the training session created with a checkpoint state uses this state to store the entire
     /// training state (including model parameters, its gradients, the optimizer states and the properties).
     /// The TrainingSession does not hold a copy of the CheckpointState and as a result, it is required
-    /// that the checkpoint state outlive the lifetime of the training session.
+    /// that the checkpoint state outlives the lifetime of the training session.
     /// </note>
     /// </summary>
     public class CheckpointState : SafeHandle
@@ -64,7 +64,7 @@ namespace Microsoft.ML.OnnxRuntime
         public override bool IsInvalid { get { return handle == IntPtr.Zero; } }
 
         /// <summary>
-        /// Load a checkpoint state from directory on disk into checkpoint_state.
+        /// Load a checkpoint state from a directory on disk into checkpoint_state.
         ///
         /// This function will parse a checkpoint directory, pull relevant files and load the training
         /// state into the checkpoint_state. This checkpoint state can then be used to create the
