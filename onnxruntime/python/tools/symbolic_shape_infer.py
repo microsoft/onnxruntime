@@ -2444,7 +2444,6 @@ class SymbolicShapeInference:
                     raise Exception("Invalid model with cyclic graph")
 
         for node in sorted_nodes:
-            # print(node.name)
             assert all([i in self.known_vi_ for i in node.input if i])
             self._onnx_infer_single_node(node)
             known_aten_op = False
