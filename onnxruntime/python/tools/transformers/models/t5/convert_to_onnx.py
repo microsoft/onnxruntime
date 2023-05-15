@@ -158,7 +158,9 @@ def export_onnx_models(
 ):
     device = torch.device("cuda:0" if use_gpu else "cpu")
 
-    models = T5Helper.load_model(model_name_or_path, cache_dir, device, merge_encoder_and_decoder_init, model_type, state_dict_path)
+    models = T5Helper.load_model(
+        model_name_or_path, cache_dir, device, merge_encoder_and_decoder_init, model_type, state_dict_path
+    )
     config = models["decoder"].config
 
     if (not use_external_data_format) and (config.num_layers > 24):

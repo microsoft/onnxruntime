@@ -85,7 +85,7 @@ class T5Helper:
             model = MT5ForConditionalGeneration.from_pretrained(model_name_or_path, cache_dir=cache_dir)
         else:
             raise ValueError("only support mode_type=t5 or mt5")
-        
+
         if state_dict_path:
             model.load_state_dict(torch.load(state_dict_path))
 
