@@ -84,8 +84,8 @@ def _shape_to_string(shape):
         key = list(dict_obj.keys())[0]
         value = list(dict_obj.values())[0]
         if len(res) != 0:
-            res += "__"
-        res += f'{key}_{"x".join(str(v) for v in value)}'
+            res += ","
+        res += f'{key}({"x".join(str(v) for v in value)})'
     return res
 
 
@@ -135,7 +135,7 @@ def _json_to_df(data, filter_matcher):
                 {
                     "name": name,
                     "duration": dur,
-                    "dimensions": f"{block_x}_{block_y}_{block_z}_{grid_x}_{grid_y}_{grid_z}",
+                    "dimensions": f"b{block_x}x{block_y}x{block_z},g{grid_x}x{grid_y}x{grid_z}",
                     "op_name": op_name,
                     "input_type_shape": (
                         _shape_to_string(
