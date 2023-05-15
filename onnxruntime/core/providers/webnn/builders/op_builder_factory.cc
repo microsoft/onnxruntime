@@ -17,6 +17,7 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
 
   {  // Unary
     CreateUnaryOpBuilder("Cos", op_registrations);
+    CreateUnaryOpBuilder("Erf", op_registrations);
     CreateUnaryOpBuilder("Floor", op_registrations);
     CreateUnaryOpBuilder("Sin", op_registrations);
     CreateUnaryOpBuilder("Sqrt", op_registrations);
@@ -36,7 +37,7 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
     CreateActivationOpBuilder("Sigmoid", op_registrations);
   }
 
-  {   // ArgMax/ArgMin
+  {  // ArgMax/ArgMin
     CreateArgMaxMinOpBuilder("ArgMax", op_registrations);
     CreateArgMaxMinOpBuilder("ArgMin", op_registrations);
   }
