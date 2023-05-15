@@ -59,9 +59,9 @@ __device__ __forceinline__ void SetBitmask(const CUDA_LONG id, const CUDA_LONG m
   fdm_bits_per_element.divmod(id, bitmask_idx, bitmask_shift);
   BitmaskElementType bitmask = (thread_bitmask << bitmask_shift);
 #if defined(USE_CUDA) && __CUDA_ARCH__ >= 800
-  // All thread which intend to write to the same output index will have the same thread mask.
+  // All threads which intend to write to the same output index will have the same thread mask.
   BitmaskElementType thread_mask = __match_any_sync(0xFFFFFFFF, bitmask_idx);
-  // All threads with the same thread mask (threads which intend to write to the same output index) collaborate
+  // All threads with the same thread mask (threads that intend to write to the same output index) collaborate
   // on a bitwise-or reduction.
   bitmask = __reduce_or_sync(thread_mask, bitmask);
 #else
