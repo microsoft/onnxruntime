@@ -45,8 +45,7 @@ class TestTimestampProcessor(unittest.TestCase):
             "num_return_sequences": np.array([1], dtype=np.int32),
             "length_penalty": np.array([1.0], dtype=np.float32),
             "repetition_penalty": np.array([1.0], dtype=np.float32),
-            "attention_mask": np.zeros(input_data.shape).astype(np.int32),
-            "timestamp_enable": np.array([True], dtype=bool),
+            "logits_processor": np.array([1], dtype=np.int32),
         }
         ort_out = sess.run(None, ort_inputs)
         ort_out_tensor = torch.from_numpy(ort_out[0])

@@ -1,172 +1,123 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#pragma once
-
-#include <utility>
-#include <random>
-#include "core/common/gsl.h"
-#include "core/framework/allocator.h"
-#include "contrib_ops/cpu/utils/console_dumper.h"
+#include "contrib_ops/cpu/transformers/beam_search_parameters.h"
 
 namespace onnxruntime {
-
-namespace concurrency {
-class ThreadPool;
-}
-
 namespace contrib {
 namespace transformers {
 
-template <typename T>
-struct IBeamSearchState {
-  gsl::span<T> next_token_logits;      // shape (batch_size * num_beams, vocab_size)
-  gsl::span<float> next_token_scores;  // shape (batch_size, num_beams * vocab_size)
-  gsl::span<int32_t> next_tokens;      // shape (batch_size, 2 * num_beams)
-  gsl::span<int32_t> next_indices;     // shape (batch_size, 2 * num_beams)
-  gsl::span<float> next_scores;        // shape (batch_size, 2 * num_beams)
-  gsl::span<int32_t> next_positions;   // shape (batch_size, num_beams), empty for T5. Next position for position_ids.
-  gsl::span<float> beam_scores;        // shape (batch_size, num_beams)
-  gsl::span<float> scores;             // shape (max_length - sequence_length + 1, batch_size, num_beams * vocab_size)
-  gsl::span<float> remaining_scores;   // portion of scores that is available for appending next token scores.
-  gsl::span<float> topk_buffer;        // temp buffer for topk computation, including:
-                                       // 1st stage needs:
-                                       //   temp score: (batch_size * num_beams * parts_vocab, 2 * num_beams)
-                                       //   temp token: (batch_size * num_beams * parts_vocab, 2 * num_beams)
-                                       // 2nd stage needs:
-                                       //   temp score: (batch_size * num_beams, 2 * num_beams)
-                                       //   temp token: (batch_size * num_beams, 2 * num_beams)
-                                       // in total, it will be:
-                                       // 2 * (batch_size * num_beams * (parts_vocab + 1), 2 * num_beams)
+constexpr int kMaxSequenceLength = 4096;
+constexpr int kMaxNumBeams = 128;
 
-  // The final chosen indices after BeamScorer has finished processing
-  gsl::span<int32_t> chosen_indices;  // shape (batch_size, num_beams)
+Status BeamSearchParameters::Validate() const {
+  ORT_RETURN_IF(eos_token_id < 0, "eos_token_id is invalid");
+  ORT_RETURN_IF(pad_token_id < 0, "pad_token_id is invalid");
+  ORT_RETURN_IF(min_length >= max_length, "min_length shall be smaller than max_length");
+  return Status::OK();
+}
 
-  Tensor staging_for_past_state_reorder;  // Tensor of shape (batch_size * num_beams, num_heads, max_length, head_size)
-};
+void BeamSearchParameters::ParseFromAttributes(const OpKernelInfo& info) {
+  model_type = static_cast<int>(info.GetAttrOrDefault<int64_t>("model_type", IGenerationParameters::kModelTypeGpt));
+  early_stopping = info.GetAttrOrDefault<int64_t>("early_stopping", 0) == 1;
+  eos_token_id = static_cast<int>(info.GetAttrOrDefault<int64_t>("eos_token_id", -1));
+  pad_token_id = static_cast<int>(info.GetAttrOrDefault<int64_t>("pad_token_id", -1));
+  decoder_start_token_id = static_cast<int>(info.GetAttrOrDefault<int64_t>("decoder_start_token_id", -1));
+  no_repeat_ngram_size = static_cast<int>(info.GetAttrOrDefault<int64_t>("no_repeat_ngram_size", 0));
+  vocab_size = static_cast<int>(info.GetAttrOrDefault<int64_t>("vocab_size", -1));
+}
 
-struct IBeamSearchCpuState {
-  gsl::span<int32_t> sequence_lengths;  // shape (batch_size, num_beams), initial sequence length
-  gsl::span<int32_t> sequences_space;   // shape (2, batch_size, num_beams, max_seq_length)
+void BeamSearchParameters::ParseFromInputs(OpKernelContext* context) {
+  ORT_ENFORCE(context != nullptr);
+  const Tensor* input_ids = context->Input<Tensor>(0);
+  const auto& dims = input_ids->Shape().GetDims();
+  int initial_decode_sequence_length = 0;
+  if (this->model_type == IGenerationParameters::kModelTypeWhisper) {
+    ORT_ENFORCE(dims.size() == 3, "input_features shall have 3 dimensions. Got ", dims.size());
+    const Tensor* decoder_input_ids = context->Input<Tensor>(10);
+    if (decoder_input_ids == nullptr) {
+      initial_decode_sequence_length = 1;
+    } else {
+      const auto& decoder_dims = decoder_input_ids->Shape().GetDims();
+      initial_decode_sequence_length = static_cast<int>(decoder_dims[1]);
+      ORT_ENFORCE(decoder_dims.size() == 2, "decoder_input_ids shall have 2 dimensions. Got ", decoder_dims.size());
+    }
+  } else {
+    ORT_ENFORCE(dims.size() == 2, "input_ids shall have 2 dimensions. Got ", dims.size());
+  }
+  batch_size = static_cast<int>(dims[0]);
 
-  // The following are used only by CUDA operator for data copied from device.
-  gsl::span<float> topk_scores;        // shape (batch_size, 2*num_beams), scores of topk candidates (K=2*num_beams).
-  gsl::span<int32_t> topk_tokens;      // shape (batch_size, 2*num_beams), tokens of topk candidates.
-  gsl::span<int32_t> topk_indices;     // shape (batch_size, 2*num_beams), beam indices of topk candidates.
-  gsl::span<float> final_beam_scores;  // shape (batch_size, num_beams)
-};
+  if (this->model_type == IGenerationParameters::kModelTypeGpt) {
+    sequence_length = static_cast<int>(dims[1]);
+  } else if (this->model_type == IGenerationParameters::kModelTypeWhisper) {
+    sequence_length = initial_decode_sequence_length;
+  } else {
+    // For T5, output sequence starts with decoder_start_token_id, so its sequence length is 1
+    sequence_length = 1;
+  }
 
-template <typename T>
-struct IGreedySearchState {
-  gsl::span<int32_t> sequences_space;          // shape (2, batch_size, max_length)
-  gsl::span<int32_t> sequence_lengths;         // shape (batch_size)
-  gsl::span<int32_t> next_positions;           // shape (batch_size, num_beams). Next position value for position_ids.
-  gsl::span<bool> eos_meet;                    // shape (batch_size)
-  gsl::span<T> next_token_scores;              // shape (batch_size, vocab_size)
-  gsl::span<int32_t> next_tokens;              // shape (batch_size)
-  gsl::span<T> temp_topk_scores_buffer;        // shape (batch_size, parts_of_vocab), temp buffer for topk stage 1 (GPU only)
-  gsl::span<int32_t> temp_topk_tokens_buffer;  // shape (batch_size, parts_of_vocab), temp buffer for topk stage 1(GPU only)
-  gsl::span<T> topk_scores_buffer;             // shape (batch_size), output buffer for topk stage 2 (GPU only)
-  gsl::span<int32_t> topk_tokens_buffer;       // shape (batch_size), output buffer for topk stage 2 (GPU only)
-  Tensor staging_for_past_state_reorder;       // Tensor of shape (batch_size * num_beams(1), num_heads, max_length, head_size)
-};
+  auto* max_length_tensor = context->Input<Tensor>(1);
+  max_length = max_length_tensor ? static_cast<int>(*max_length_tensor->Data<int32_t>()) : kMaxSequenceLength;
+  ORT_ENFORCE(max_length > sequence_length,
+              "max_length (", max_length, ") shall be greater than input sequence length (", sequence_length, ")");
+  ORT_ENFORCE(max_length <= kMaxSequenceLength,
+              "max_length (", max_length, ") shall be no more than ", kMaxSequenceLength);
 
-template <typename T>
-struct ISamplingState {
-  gsl::span<int> d_index_in;
-  gsl::span<int> d_index_out;
-  gsl::span<int> d_offset;
-  gsl::span<T> d_sorted_score;
-  gsl::span<float> d_sorted_softmaxed_score;
-  gsl::span<float> d_softmaxed_score;
-  gsl::span<float> h_softmaxed_score;
-  gsl::span<float> d_sampled;
-  gsl::span<float> h_sampled_all;
-  gsl::span<int32_t> d_indices;
-  gsl::span<int> d_presence_mask;
+  auto* min_length_tensor = context->Input<Tensor>(2);
+  min_length = min_length_tensor ? static_cast<int>(*min_length_tensor->Data<int32_t>()) : 0;
 
-  BufferUniquePtr storage_buffer;
-  size_t temp_storage_bytes;
-  std::default_random_engine generator;
+  auto* num_beams_tensor = context->Input<Tensor>(3);
+  num_beams = num_beams_tensor ? static_cast<int>(*num_beams_tensor->Data<int32_t>()) : 1;
+  // TODO(tianleiwu): limit num_beams > 1 when we can have another operator for greedy search.
+  ORT_ENFORCE(num_beams >= 1 && num_beams <= kMaxNumBeams,
+              "num_beams shall be a positive integer no more than ", kMaxNumBeams, ", got ", num_beams);
 
-  gsl::span<T> sorted_scores;
-  gsl::span<T> cumulative_probs;
-};
+  auto* num_return_sequences_tensor = context->Input<Tensor>(4);
+  num_return_sequences = num_return_sequences_tensor ? *num_return_sequences_tensor->Data<int32_t>() : 1;
+  ORT_ENFORCE(num_return_sequences >= 1,
+              "num_return_sequences shall be a positive integer, got ", num_return_sequences);
+  ORT_ENFORCE(num_beams >= num_return_sequences,
+              "num_return_sequences (", num_return_sequences, ") shall be be no more than num_beams (", num_beams, ")");
 
-struct ISequences {
-  virtual ~ISequences() {}
-  virtual gsl::span<const int32_t> GetSequence(int beam_index) const = 0;
-  virtual int GetSequenceLength() const = 0;
-};
+  auto* length_penalty_tensor = context->Input<Tensor>(5);
+  if (length_penalty_tensor) {
+    if (length_penalty_tensor->DataType() == DataTypeImpl::GetType<float>()) {
+      length_penalty = static_cast<float>(*length_penalty_tensor->Data<float>());
+    } else {
+      length_penalty = static_cast<MLFloat16>(*length_penalty_tensor->Data<MLFloat16>());
+    }
+  } else {
+    length_penalty = 1.0f;
+  }
 
-struct ILogitsProcessorList {
-  virtual ~ILogitsProcessorList() {}
-  virtual void Process(const ISequences* sequences, gsl::span<float>& next_token_scores, int step) = 0;
-};
+  auto* repetition_penalty_tensor = context->Input<Tensor>(6);
+  if (repetition_penalty_tensor) {
+    if (repetition_penalty_tensor->DataType() == DataTypeImpl::GetType<float>()) {
+      repetition_penalty = static_cast<float>(*repetition_penalty_tensor->Data<float>());
+    } else {
+      repetition_penalty = static_cast<MLFloat16>(*repetition_penalty_tensor->Data<MLFloat16>());
+    }
+  } else {
+    repetition_penalty = 1.0f;
+  }
+  ORT_ENFORCE(repetition_penalty > 0.0f, "repetition_penalty shall be greater than 0, got ", repetition_penalty);
 
-// Interface for all scorers for beam search or beam sample.
-struct IBeamScorer {
-  virtual ~IBeamScorer() {}
+  auto* logits_processor_tensor = context->Input<Tensor>(11);
+  logits_processor = logits_processor_tensor ? static_cast<int>(*logits_processor_tensor->Data<int32_t>()) : 0;
+  ORT_ENFORCE(logits_processor >= 0,
+              "logits_processor shall be a non-negative integer, got ", logits_processor);
+}
 
-  virtual void Process(ISequences& sequences,
-                       gsl::span<const float>& next_scores,
-                       gsl::span<const int32_t>& next_tokens,
-                       gsl::span<const int32_t>& next_indices) = 0;
-
-  virtual void Finalize(ISequences& sequences,
-                        gsl::span<const float>& final_beam_scores,
-                        Tensor* output_sequences,
-                        Tensor* output_sequence_scores) = 0;
-
-  virtual gsl::span<int32_t>& GetNextIndices() = 0;
-};
-
-struct IGenerationParameters {
-  static constexpr int kModelTypeGpt = 0;
-  static constexpr int kModelTypeT5 = 1;
-  static constexpr int kModelTypeWhisper = 2;
-
-  // Parameters from node attributes
-  int model_type;  // 0 for GPT-2; 1 for encoder-decoder like T5; 2 for float inputs like Whisper
-  int eos_token_id;
-  int pad_token_id;
-  int decoder_start_token_id;
-  int no_repeat_ngram_size;
-  bool early_stopping;
-
-  // Parameters from inputs
-  int min_length;
-  int max_length;
-  int num_beams;
-  int num_return_sequences;
-  float length_penalty;
-  float repetition_penalty;
-  bool timestamp_enable;
-  int batch_size;       // deduce from first dimension of input_ids
-  int sequence_length;  // deduce from second dimension of input_ids of GPT-2 or decoder_input_ids of T5
-
-  gsl::span<const int32_t> vocab_mask;
-  gsl::span<const int32_t> prefix_vocab_mask;
-  gsl::span<const int32_t> presence_mask;
-
-  // Parameters from outputs.
-  bool output_scores;  // whether scores existed in output
-
-  // Parameters from subgraph.
-  int vocab_size;
-  int num_heads;
-  int head_size;
-  int num_layers;
-
-  // Parameters for TopK/TopP sampling.
-  float presence_penalty;
-  float filter_value;
-  float temperature = 1.0f;
-  float top_p = 0.0f;
-  int seed = 0;
-  int min_tokens_to_keep = 1;
-  bool custom_sampling = false;
-};
+void BeamSearchParameters::SetSubgraphParameters(int vocabulary_size, int heads, int hidden_size_per_head, int layers) {
+  // Override vocab_size using the inferred shape from the decoder subgraph ONLY IF
+  // the vocab_size hasn't been explicitly specified by the user (as an attribute of BeamSearch)
+  if (vocab_size == -1 || vocab_size == 0) {
+    vocab_size = vocabulary_size;
+  }
+  num_heads = heads;
+  head_size = hidden_size_per_head;
+  num_layers = layers;
+}
 
 }  // namespace transformers
 }  // namespace contrib
