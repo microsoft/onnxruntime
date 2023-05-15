@@ -6,41 +6,40 @@
 #include "core/common/span_utils.h"
 #include "contrib_ops/cpu/transformers/generation_shared.h"  // for DEBUG_GENERATION
 #include "contrib_ops/cpu/transformers/beam_search_impl_base.h"
-#include "contrib_ops/cpu/transformers/subgraph_t5_encoder.h"
-#include "contrib_ops/cpu/transformers/subgraph_t5_decoder.h"
+#include "contrib_ops/cpu/transformers/subgraph_whisper_encoder.h"
+#include "contrib_ops/cpu/transformers/subgraph_whisper_decoder.h"
 
 namespace onnxruntime {
 namespace contrib {
 namespace transformers {
 
-// Beam search implementation for T5 model.
+// Beam search implementation for Whisper model.
 template <typename T>
-class BeamSearchT5 : public BeamSearchBase<T> {
+class BeamSearchWhisper : public BeamSearchBase<T> {
  public:
-  BeamSearchT5(OpKernelContextInternal& context,
-               const SessionState& encoder_session_state,
-               const SessionState& decoder_session_state,
-               T5EncoderSubgraph& encoder_subgraph,
-               T5DecoderSubgraph& decoder_subgraph,
-               concurrency::ThreadPool* thread_pool,
-               Stream* ort_stream,
-               IConsoleDumper* cuda_dumper,
-               BeamSearchParameters& params,
-               const GenerationDeviceHelper::AddToFeedsFunc& add_to_feeds_func,
-               const GenerationDeviceHelper::ReorderPastStateFunc& reorder_past_state_func,
-               const GenerationDeviceHelper::InitCacheIndirFunc& init_cache_indir_func,
-               const GenerationDeviceHelper::TopkFunc& topk_func,
-               const GenerationDeviceHelper::ProcessLogitsFunc<T>& process_logits_func,
-               const GenerationDeviceHelper::InitBeamStateFunc<T>& init_beam_state_func,
-               const GenerationDeviceHelper::DeviceCopyFunc<float>& device_copy_func,
-               const GenerationDeviceHelper::DeviceCopyFunc<int32_t>& device_copy_int32_func,
-               const GenerationDeviceHelper::CreateEncoderInputsFunc& create_encoder_inputs_func,
-               const GenerationDeviceHelper::UpdateDecoderFeedsFunc<T>& update_decoder_feeds_func,
-               const GenerationDeviceHelper::ExpandBufferFunc<int32_t>& expand_buffer_int32_func,
-               const GenerationDeviceHelper::ExpandBufferFunc<float>& expand_buffer_float_func,
-               const GenerationDeviceHelper::ExpandBufferFunc<MLFloat16>& expand_buffer_float16_func,
-               const void* cuda_device_prop,
-               int cuda_device_arch)
+  BeamSearchWhisper(OpKernelContextInternal& context,
+                    const SessionState& encoder_session_state,
+                    const SessionState& decoder_session_state,
+                    WhisperEncoderSubgraph& encoder_subgraph,
+                    WhisperDecoderSubgraph& decoder_subgraph,
+                    concurrency::ThreadPool* thread_pool,
+                    Stream* ort_stream,
+                    IConsoleDumper* cuda_dumper,
+                    BeamSearchParameters& params,
+                    const GenerationDeviceHelper::AddToFeedsFunc& add_to_feeds_func,
+                    const GenerationDeviceHelper::ReorderPastStateFunc& reorder_past_state_func,
+                    const GenerationDeviceHelper::InitCacheIndirFunc& init_cache_indir_func,
+                    const GenerationDeviceHelper::TopkFunc& topk_func,
+                    const GenerationDeviceHelper::ProcessLogitsFunc<T>& process_logits_func,
+                    const GenerationDeviceHelper::InitBeamStateFunc<T>& init_beam_state_func,
+                    const GenerationDeviceHelper::DeviceCopyFunc<float>& device_copy_func,
+                    const GenerationDeviceHelper::DeviceCopyFunc<int32_t>& device_copy_int32_func,
+                    const GenerationDeviceHelper::CreateWhisperEncoderInputsFunc& create_encoder_inputs_func,
+                    const GenerationDeviceHelper::UpdateDecoderFeedsFunc<T>& update_decoder_feeds_func,
+                    const GenerationDeviceHelper::ExpandBufferFunc<float>& expand_buffer_float_func,
+                    const GenerationDeviceHelper::ExpandBufferFunc<MLFloat16>& expand_buffer_float16_func,
+                    const void* cuda_device_prop,
+                    int cuda_device_arch)
       : BeamSearchBase<T>(context, decoder_session_state, thread_pool,
                           ort_stream, cuda_dumper, params,
                           topk_func, process_logits_func, device_copy_func, device_copy_int32_func),
@@ -53,7 +52,6 @@ class BeamSearchT5 : public BeamSearchBase<T> {
         init_cache_indir_func_(init_cache_indir_func),
         create_encoder_inputs_func_(create_encoder_inputs_func),
         update_decoder_feeds_func_(update_decoder_feeds_func),
-        expand_buffer_int32_func_(expand_buffer_int32_func),
         expand_buffer_float_func_(expand_buffer_float_func),
         expand_buffer_float16_func_(expand_buffer_float16_func),
         cuda_device_prop_(cuda_device_prop),
@@ -74,17 +72,16 @@ class BeamSearchT5 : public BeamSearchBase<T> {
  private:
   const SessionState& encoder_session_state_;
 
-  T5EncoderSubgraph& encoder_subgraph_;
-  T5DecoderSubgraph& decoder_subgraph_;
+  WhisperEncoderSubgraph& encoder_subgraph_;
+  WhisperDecoderSubgraph& decoder_subgraph_;
 
   // Device specific functions
   GenerationDeviceHelper::AddToFeedsFunc add_to_feeds_func_;
   GenerationDeviceHelper::InitBeamStateFunc<T> init_beam_state_func_;
   GenerationDeviceHelper::ReorderPastStateFunc reorder_past_state_func_;
   GenerationDeviceHelper::InitCacheIndirFunc init_cache_indir_func_;
-  GenerationDeviceHelper::CreateEncoderInputsFunc create_encoder_inputs_func_;
+  GenerationDeviceHelper::CreateWhisperEncoderInputsFunc create_encoder_inputs_func_;
   GenerationDeviceHelper::UpdateDecoderFeedsFunc<T> update_decoder_feeds_func_;
-  GenerationDeviceHelper::ExpandBufferFunc<int32_t> expand_buffer_int32_func_;
   GenerationDeviceHelper::ExpandBufferFunc<float> expand_buffer_float_func_;
   GenerationDeviceHelper::ExpandBufferFunc<MLFloat16> expand_buffer_float16_func_;
 
@@ -93,14 +90,11 @@ class BeamSearchT5 : public BeamSearchBase<T> {
 };
 
 template <typename T>
-Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches_manager,
-                                const FeedsFetchesManager& decoder_feeds_fetches_manager) {
+Status BeamSearchWhisper<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches_manager,
+                                     const FeedsFetchesManager& decoder_feeds_fetches_manager) {
   auto status = Status::OK();
 
   const BeamSearchParameters* parameters = this->parameters_;
-  if (parameters->model_type == IGenerationParameters::kModelTypeT5) {
-    ORT_ENFORCE(parameters->sequence_length == 1);
-  }
 
   // Allocate output tensors.
   int64_t sequences_dims[] = {parameters->batch_size, parameters->num_return_sequences, parameters->max_length};
@@ -130,21 +124,20 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
   const OrtValue* encoder_input_ids_value = this->context_.GetInputOrtValue(0);
   const Tensor& encoder_input_ids = encoder_input_ids_value->Get<Tensor>();
 
-  const OrtValue* encoder_attn_mask_value = this->context_.GetInputOrtValue(9);
-
   BeamSearchCpuState cpu_state{*parameters,
                                this->cpu_allocator_,
                                this->IsCuda()};
 
   IAllocatorUniquePtr<char> buffer;
 
+  const OrtValue* initial_decoder_input_ids_value = this->context_.GetInputOrtValue(10);
+
   OrtValue decoder_input_ids;  // Tensor in CPU, and it will be used to initialize sequence in cpu_state
   ORT_RETURN_IF_ERROR(this->encoder_subgraph_.CreateInitialFeeds(
       encoder_input_ids,
-      encoder_attn_mask_value,
-      this->implicit_inputs_,
-      parameters->pad_token_id,
+      initial_decoder_input_ids_value,
       parameters->decoder_start_token_id,
+      this->implicit_inputs_,
       encoder_feeds,
       this->create_encoder_inputs_func_,
       this->add_to_feeds_func_,
@@ -182,11 +175,10 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
   // Initialize resources
   // ------------------------------------
 
-  // Copy decoder_input_ids (in CPU) to sequence. It contains decoder_start_token_id for each beam.
+  // Copy decoder_input_ids (in CPU) to sequence. It contains the initial decoder token ids for each beam.
   cpu_state.SetUnexpandedSequence(decoder_input_ids.Get<Tensor>().DataAsSpan<int32_t>());
 
   this->beam_scorer_ = std::make_unique<BeamSearchScorer>(*parameters, this->cpu_allocator_);
-
   BeamSearchState<T> beam_state{*parameters,
                                 this->temp_space_allocator_,
                                 decoder_subgraph_.has_decoder_masked_attention_,
@@ -227,7 +219,6 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
                                                              encoder_fetches,
                                                              decoder_feeds,
                                                              this->device_copy_int32_func_,
-                                                             this->expand_buffer_int32_func_,
                                                              this->expand_buffer_float_func_,
                                                              this->expand_buffer_float16_func_,
                                                              parameters->num_beams,
@@ -279,10 +270,6 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
     auto offset = decoder_subgraph_.GetFirstPastInputIndex() + 4 * decoder_subgraph_.num_layers;
     dumper->Print("past_sequence_length", offset, true);
     dumper->Print("", decoder_feeds[offset]);
-    dumper->Print("beam_width", offset + 1, true);
-    dumper->Print("", decoder_feeds[offset + 1]);
-    dumper->Print("cache_redir", offset + 2, true);
-    dumper->Print("", decoder_feeds[offset + 2]);
 #endif
 
 #ifdef DEBUG_NODE_INPUTS_OUTPUTS
