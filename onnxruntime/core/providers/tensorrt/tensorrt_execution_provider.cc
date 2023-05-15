@@ -2158,7 +2158,6 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
       OrtMemoryInfo mem_info("", OrtAllocatorType::OrtDeviceAllocator, OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, 0));
       OrtAllocator* alloc;
       Ort::ThrowOnError(api->KernelContext_GetAllocator(context, &mem_info, &alloc));
-      auto context_memory = &(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, *max_context_mem_size_ptr));
       int num_inputs = static_cast<int>(input_indexes.size());
       int num_outputs = static_cast<int>(output_indexes.size());
       bool engine_update = false;
@@ -2733,9 +2732,8 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
         size_t mem_size = trt_engine->getDeviceMemorySize();
         if (mem_size > *max_context_mem_size_ptr) {
           *max_context_mem_size_ptr = mem_size;
-          *context_memory = IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, *max_context_mem_size_ptr);
         }
-        trt_context->setDeviceMemory((*context_memory).get());
+        trt_context->setDeviceMemory(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, *max_context_mem_size_ptr).get());
       }
 
       // Run TRT inference

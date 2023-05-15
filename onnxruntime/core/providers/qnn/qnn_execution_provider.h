@@ -66,7 +66,6 @@ class QNNExecutionProvider : public IExecutionProvider {
   qnn::ProfilingLevel profiling_level_;
   std::unique_ptr<qnn::QnnBackendManager> qnn_backend_manager_;
   std::unordered_map<std::string, std::unique_ptr<qnn::QnnModel>> qnn_models_;
-  AllocatorPtr cpu_allocator_;
   uint32_t rpc_control_latency_;
 };
 

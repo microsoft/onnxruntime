@@ -525,7 +525,7 @@ Status ReduceComputeCore(const AllocatorPtr& gpu_allocator, const Tensor& input,
   if ((ReduceTensorIndices == MIOPEN_REDUCE_TENSOR_FLATTENED_INDICES && std::is_same<T, MLFloat16>::value) ||
       (ReduceTensorIndices == MIOPEN_REDUCE_TENSOR_NO_INDICES && std::is_same<T, BFloat16>::value)) {
     // ArgMax/ArgMin with FP16 are not supported by miopen, so convert input to fp32 then call miopen
-    temp_X = IAllocator::MakeUniquePtr<float>(gpu_allocator, input_count, false, stream, WaitRocmNotificationOnDevice);
+    temp_X = IAllocator::MakeUniquePtr<float>(gpu_allocator, input_count, false, ort_stream, WaitRocmNotificationOnDevice);
     Impl_Cast<HipT, float>(stream, reinterpret_cast<const HipT*>(input.Data<T>()), temp_X.get(), input_shape.Size());
   } else {
     miopen_type_X = MiopenTensor::GetDataType<HipT>();

@@ -117,7 +117,6 @@ Status GemmOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
         ORT_RETURN_IF_ERROR(TwoDimensionTranspose(qnn_model_wrapper,
                                                   input_shape,
                                                   *input_tensor,
-                                                  qnn_model_wrapper.GetAllocator(),
                                                   unpacked_tensor));
       } else {
         ORT_RETURN_IF_ERROR(qnn_model_wrapper.UnpackInitializerData(*input_tensor, unpacked_tensor));

@@ -18,10 +18,8 @@ class QnnModel {
  public:
   QnnModel(const logging::Logger& logger,
            QnnBackendManager* qnn_backend_manager,
-           const onnxruntime::AllocatorPtr& cpu_allocator,
            bool is_quantized_model = true)
-      : cpu_allocator_(cpu_allocator),
-        logger_(logger),
+      : logger_(logger),
         qnn_backend_manager_(qnn_backend_manager),
         is_quantized_model_(is_quantized_model) {
   }
@@ -76,13 +74,6 @@ class QnnModel {
                               const std::unordered_map<const Node*, const NodeUnit*>& node_unit_map) const;
   bool GetGraphInfoFromModel(QnnModelWrapper& model_wrapper);
 
-  onnxruntime::AllocatorPtr GetAllocator() {
-    if (cpu_allocator_ == nullptr) {
-      LOGS_DEFAULT(ERROR) << "cpu_allocator is null!";
-    }
-    return cpu_allocator_;
-  }
-
   Status GetQnnTensorDataLength(const std::vector<uint32_t>& dims,
                                 Qnn_DataType_t data_type,
                                 size_t& data_length) const;
@@ -96,7 +87,6 @@ class QnnModel {
     return it->second.index_;
   }
 
-  onnxruntime::AllocatorPtr cpu_allocator_;
   const logging::Logger& logger_;
   std::unique_ptr<GraphInfo> graph_info_;
   QnnBackendManager* qnn_backend_manager_ = nullptr;

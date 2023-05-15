@@ -1434,85 +1434,38 @@ Status CANNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fuse
   return Status::OK();
 }
 
-void CANNExecutionProvider::RegisterAllocator(AllocatorManager& allocator_manager) {
-  OrtDevice cann_device{OrtDevice::NPU, OrtDevice::MemType::DEFAULT, info_.device_id};
-  OrtDevice pinned_device{OrtDevice::CPU, OrtDevice::MemType::CANN_PINNED, DEFAULT_CPU_ALLOCATOR_DEVICE_ID};
-  OrtDevice cpu_device{OrtDevice::CPU, OrtDevice::MemType::DEFAULT, DEFAULT_CPU_ALLOCATOR_DEVICE_ID};
+std::vector<AllocatorPtr> CANNExecutionProvider::CreatePreferredAllocators() {
+  AllocatorCreationInfo default_memory_info(
+      [](OrtDevice::DeviceId id) {
+        return std::make_unique<CANNAllocator>(id, CANN);
+      },
+      cann_device.Id(),
+      true,
+      {info_.default_memory_arena_cfg ? *info_.default_memory_arena_cfg
+                                      : OrtArenaCfg(info_.npu_mem_limit,
+                                                    static_cast<int>(info_.arena_extend_strategy),
+                                                    -1,
+                                                    -1,
+                                                    -1)},
+      true,
+      false);
 
-  auto cann_alloc = IExecutionProvider::GetAllocator(OrtMemTypeDefault);
-  if (!cann_alloc) {
-    cann_alloc = allocator_manager.GetAllocator(OrtMemTypeDefault, cann_device);
+  AllocatorCreationInfo pinned_memory_info(
+      [](OrtDevice::DeviceId device_id) {
+        return std::make_unique<CANNPinnedAllocator>(device_id, CANN_PINNED);
+      },
+      pinned_device.Id());
 
-    if (!cann_alloc) {
-      AllocatorCreationInfo default_memory_info(
-          [](OrtDevice::DeviceId id) {
-            return std::make_unique<CANNAllocator>(id, CANN);
-          },
-          cann_device.Id(),
-          true,
-          {info_.default_memory_arena_cfg ? *info_.default_memory_arena_cfg
-                                          : OrtArenaCfg(info_.npu_mem_limit,
-                                                        static_cast<int>(info_.arena_extend_strategy),
-                                                        -1,
-                                                        -1,
-                                                        -1)},
-          true,
-          false);
-
-      cann_alloc = CreateAllocator(default_memory_info);
-      allocator_manager.InsertAllocator(cann_alloc);
-    }
-
-    InsertAllocator(cann_alloc);
-  }
-
-  auto cann_pinned_alloc = IExecutionProvider::GetAllocator(OrtMemTypeCPUOutput);
-  if (!cann_pinned_alloc) {
-    cann_pinned_alloc = allocator_manager.GetAllocator(OrtMemTypeCPUOutput, pinned_device);
-
-    if (!cann_pinned_alloc) {
-      AllocatorCreationInfo pinned_memory_info(
-          [](OrtDevice::DeviceId device_id) {
-            return std::make_unique<CANNPinnedAllocator>(device_id, CANN_PINNED);
-          },
-          pinned_device.Id());
-
-      cann_pinned_alloc = CreateAllocator(pinned_memory_info);
-      allocator_manager.InsertAllocator(cann_pinned_alloc);
-    }
-
-    InsertAllocator(cann_pinned_alloc);
-  }
-
-  auto cann_cpu_alloc = IExecutionProvider::GetAllocator(OrtMemTypeCPUInput);
-  if (!cann_cpu_alloc) {
-    cann_cpu_alloc = allocator_manager.GetAllocator(OrtMemTypeCPUInput, cpu_device);
-
-    if (!cann_cpu_alloc) {
-      AllocatorCreationInfo cpu_memory_info(
-          [](int device_id) {
-            return std::make_unique<CPUAllocator>(
-                OrtMemoryInfo("CANN_CPU", OrtAllocatorType::OrtDeviceAllocator, OrtDevice(), device_id,
-                              OrtMemTypeCPUInput));
-          },
-          cpu_device.Id());
-
-      cann_cpu_alloc = CreateAllocator(cpu_memory_info);
-      allocator_manager.InsertAllocator(cann_cpu_alloc);
-    }
-
-    InsertAllocator(cann_cpu_alloc);
-  }
+  return std::vector<AllocatorPtr> { CreateAllocator(default_memory_info), CreateAllocator(pinned_memory_info) };
 }
 
-void CANNExecutionProvider::RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry) const {
+void CANNExecutionProvider::RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry, std::map<OrtDevice, AllocatorPtr>&) const {
   RegisterCannStreamHandles(stream_handle_registry, OrtDevice::NPU);
 }
 
 OrtDevice CANNExecutionProvider::GetOrtDeviceByMemType(OrtMemType mem_type) const {
-  if (mem_type == OrtMemTypeCPUInput || mem_type == OrtMemTypeCPUOutput) {
-    return OrtDevice(OrtDevice::CPU, OrtDevice::MemType::CANN_PINNED, default_device_.Id());
-  }
+  if (mem_type == OrtMemTypeCPUInput) return OrtDevice(OrtDevice::CPU, OrtDevice::MemType::DEFAULT, 0);
+  if (mem_type == OrtMemTypeCPUOutput) return OrtDevice(OrtDevice::CPU, OrtDevice::MemType::CANN_PINNED, 0);
   return default_device_;
 }
 

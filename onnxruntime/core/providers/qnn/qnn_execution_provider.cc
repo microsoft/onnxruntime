@@ -4,7 +4,6 @@
 #include "qnn_execution_provider.h"
 
 #include "core/providers/common.h"
-#include "core/framework/allocatormgr.h"
 #include "core/framework/compute_capability.h"
 #include "core/graph/graph_viewer.h"
 #include "core/session/onnxruntime_cxx_api.h"
@@ -48,14 +47,6 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
     rpc_control_latency_ = static_cast<uint32_t>(std::stoul(latency_pos->second));
     LOGS_DEFAULT(INFO) << "rpc_control_latency: " << rpc_control_latency_;
   }
-
-  AllocatorCreationInfo device_info(
-      [](int) {
-        return std::make_unique<CPUAllocator>(OrtMemoryInfo(QNN, OrtAllocatorType::OrtDeviceAllocator));
-      });
-
-  cpu_allocator_ = CreateAllocator(device_info);
-  InsertAllocator(cpu_allocator_);
 
   qnn_backend_manager_ = std::make_unique<qnn::QnnBackendManager>(backend_path_,
                                                                   profiling_level_,
@@ -156,7 +147,7 @@ QNNExecutionProvider::GetSupportedNodes(const GraphViewer& graph_viewer,
                                                 qnn_backend_manager_->GetQnnBackendHandle(),
                                                 model_input_index_map,
                                                 model_output_index_map,
-                                                initializer_input_lookup, cpu_allocator_);
+                                                initializer_input_lookup);
 
   for (const auto& node : graph_viewer.Nodes()) {
     const NodeUnit* node_unit = node_unit_map.at(&node);
@@ -264,7 +255,6 @@ Status QNNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused
 
     std::unique_ptr<qnn::QnnModel> qnn_model = std::make_unique<qnn::QnnModel>(logger,
                                                                                qnn_backend_manager_.get(),
-                                                                               cpu_allocator_,
                                                                                is_npu_backend);
 
     ORT_RETURN_IF_ERROR(qnn_model->ComposeGraph(graph_viewer, fused_node));
