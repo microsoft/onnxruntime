@@ -81,7 +81,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="state">Training states that the training session uses as a starting point for training.</param>
         /// <param name="trainModelPath">Model to be used to perform training.</param>
         /// <param name="evalModelPath">Model to be used to perform evaluation.</param>
-        /// <param name="optimizerModelPath">Model to be used to perform gradient descent.</param>
+        /// <param name="optimizerModelPath">Model to be used to perform weight update.</param>
         public TrainingSession(CheckpointState state, string trainModelPath, string evalModelPath, string optimizerModelPath)
         {
             Init(null, state, NativeOnnxValueHelper.GetPlatformSerializedString(trainModelPath), NativeOnnxValueHelper.GetPlatformSerializedString(evalModelPath), NativeOnnxValueHelper.GetPlatformSerializedString(optimizerModelPath));
@@ -97,7 +97,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// </summary>
         /// <param name="state">Training states that the training session uses as a starting point for training.</param>
         /// <param name="trainModelPath">Model to be used to perform training.</param>
-        /// <param name="optimizerModelPath">Model to be used to perform gradient descent.</param>
+        /// <param name="optimizerModelPath">Model to be used to perform weight update.</param>
         public TrainingSession(CheckpointState state, string trainModelPath, string optimizerModelPath)
         {
             Init(null, state, NativeOnnxValueHelper.GetPlatformSerializedString(trainModelPath), null, NativeOnnxValueHelper.GetPlatformSerializedString(optimizerModelPath));
@@ -111,27 +111,11 @@ namespace Microsoft.ML.OnnxRuntime
         /// The checkpoint state represents the parameters of the training session which will be moved
         /// to the device specified by the user through the session options (if necessary).
         /// </summary>
-        /// <param name="state">Training states that the training session uses as a starting point for training.</param>
-        /// <param name="trainModelPath">Model to be used to perform training.</param>
-        public TrainingSession(CheckpointState state, string trainModelPath)
-        {
-            Init(null, state, NativeOnnxValueHelper.GetPlatformSerializedString(trainModelPath), null, null);
-        }
-
-
-        /// <summary>
-        /// Create a training session that can be used to begin or resume training.
-        ///
-        /// This constructor instantiates the training session based on the env and session options provided that can
-        /// begin or resume training from a given checkpoint state for the given onnx models.
-        /// The checkpoint state represents the parameters of the training session which will be moved
-        /// to the device specified by the user through the session options (if necessary).
-        /// </summary>
         /// <param name="options">SessionOptions that the user can customize for this training session.</param>
         /// <param name="state">Training states that the training session uses as a starting point for training.</param>
         /// <param name="trainModelPath">Model to be used to perform training.</param>
         /// <param name="evalModelPath">Model to be used to perform evaluation.</param>
-        /// <param name="optimizerModelPath">Model to be used to perform gradient descent.</param>
+        /// <param name="optimizerModelPath">Model to be used to perform weight update.</param>
         public TrainingSession(SessionOptions options, CheckpointState state, string trainModelPath, string evalModelPath, string optimizerModelPath)
         {
             Init(options, state, NativeOnnxValueHelper.GetPlatformSerializedString(trainModelPath), NativeOnnxValueHelper.GetPlatformSerializedString(evalModelPath), NativeOnnxValueHelper.GetPlatformSerializedString(optimizerModelPath));

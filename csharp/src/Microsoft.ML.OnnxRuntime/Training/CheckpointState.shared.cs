@@ -69,7 +69,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// This function will parse a checkpoint directory, pull relevant files and load the training
         /// state into the checkpoint_state. This checkpoint state can then be used to create the
         /// training session by instantiating the TrainingSession. By doing so, the training
-        /// session will resume training from the given checkpoint state.
+        /// session will begin or resume training from the given checkpoint state.
         /// </summary>
         /// <param name="checkpointPath"> Absolute path to the checkpoint directory.</param>
         /// <returns>CheckpointState object which holds the state of the training session parameters.</returns>
@@ -91,7 +91,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// Save the given state to a checkpoint directory on disk.
         ///
         /// This function serializes the provided checkpoint state to a directory on disk.
-        /// This checkpoint can later be loaded by invoking CheckpointState.LoadCheckpoint to resume
+        /// This checkpoint can later be loaded by invoking CheckpointState.LoadCheckpoint to begin or resume
         /// training from this snapshot of the state.
         /// </summary>
         /// <param name="state"> The checkpoint state to save.</param>
