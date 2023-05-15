@@ -96,7 +96,7 @@ static Status MatchAndProcess(
     // TODO: for now this just needs to support ONNX and Micrsoft Domain ops.
     // If we ever had a transformer that was going to target non-ONNX ops,
     // we'd need to rework a few things to include the op domain in the matches
-    if (node.Domain() != kOnnxDomain || node.Domain() != kMSDomain) {
+    if (node.Domain() != kOnnxDomain && node.Domain() != kMSDomain) {
       break;
     }
 
