@@ -1324,6 +1324,7 @@ class PlannerImpl {
 #endif
       ORT_RETURN_IF_ERROR(ComputeSingleStreamReusePlan(i));
       ClearUseCount();
+      freelist_.clear();  // DONOT share freelist across streams
     }
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
     CalculateLifetime(ort_value_usecount);
