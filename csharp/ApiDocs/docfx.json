@@ -18,7 +18,8 @@
         "Nullable" : "enable",
         "LangVersion": "8.0",
         "EnableTrainingApis": "true"
-      }
+      },
+      "filter": "filterConfig.yml"
     }
   ],
   "build": {
