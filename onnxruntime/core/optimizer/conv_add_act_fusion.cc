@@ -175,26 +175,26 @@ class ConvAddActivationSelector : public NodeSelector {
       // Check if this is a single use convolution that hasn't already
       // been fused with another Add/Sum node. The Add/Sum can also only be
       // fused if the convolution isn't itself fused with an activation.
-        if ((inputs_node[n]->OpType() == "Conv") && (pre_input_defs_count < 4) &&
-            (producer_input_args_count.size() < 4) &&
-            (graph_utils::GetNodeAttribute(*inputs_node[n], "activation") == nullptr) &&
-            (inputs_node[n]->GetOutputEdgesCount() == 1)) {
-            if (pre_input_defs_count < 3) {// The optional bias parameter is empty so set to an empty string.
-                // TODO, add a new null arguments for bias
-                continue;
-            }
-            return inputs_node[n];
+      if ((inputs_node[n]->OpType() == "Conv") && (pre_input_defs_count < 4) &&
+          (producer_input_args_count.size() < 4) &&
+          (graph_utils::GetNodeAttribute(*inputs_node[n], "activation") == nullptr) &&
+          (inputs_node[n]->GetOutputEdgesCount() == 1)) {
+        if (pre_input_defs_count < 3) {  // The optional bias parameter is empty so set to an empty string.
+          // TODO, add a new null arguments for bias
+          continue;
         }
-        if (inputs_node[n]->OpType() == "NhwcFusedConv" && (pre_input_defs_count < 4) &&
-            (producer_input_args_count.size() < 5) &&
-            (graph_utils::GetNodeAttribute(*inputs_node[n], "activation") == nullptr) &&
-            (inputs_node[n]->GetOutputEdgesCount() == 1)) {
-            if (pre_input_defs_count < 3) {// The optional bias parameter is empty so set to an empty string.
-                // TODO, add a new null arguments for bias
-                continue;
-            }
-            return inputs_node[n];
+        return inputs_node[n];
+      }
+      if (inputs_node[n]->OpType() == "NhwcFusedConv" && (pre_input_defs_count < 4) &&
+          (producer_input_args_count.size() < 5) &&
+          (graph_utils::GetNodeAttribute(*inputs_node[n], "activation") == nullptr) &&
+          (inputs_node[n]->GetOutputEdgesCount() == 1)) {
+        if (pre_input_defs_count < 3) {  // The optional bias parameter is empty so set to an empty string.
+          // TODO, add a new null arguments for bias
+          continue;
         }
+        return inputs_node[n];
+      }
     }
     return nullptr;
   }
