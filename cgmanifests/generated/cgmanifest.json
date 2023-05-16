@@ -448,5 +448,15 @@
         "comments": "triton"
       }
     }
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "b16d1fa8ee567b52c09a0f89940b07d8491b881d",
+          "repositoryUrl": "https://github.com/curl/curl.git"
+        },
+        "comments": "curl"
+      }
+    }
   ]
 }
