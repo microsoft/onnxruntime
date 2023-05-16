@@ -33,6 +33,7 @@ from onnx_model_clip import ClipOnnxModel
 from onnx_model_gpt2 import Gpt2OnnxModel
 from onnx_model_t5 import T5OnnxModel
 from onnx_model_tnlr import TnlrOnnxModel
+from onnx_model_tulr import TulrOnnxModel
 from onnx_model_unet import UnetOnnxModel
 from onnx_model_vae import VaeOnnxModel
 
@@ -51,6 +52,7 @@ MODEL_TYPES = {
         0,
     ),  # might add a class for GPT2OnnxModel for TF later.
     "tnlr": (TnlrOnnxModel, "pytorch", 1),
+    "tulr": (TulrOnnxModel, "pytorch", 1),
     "t5": (T5OnnxModel, "pytorch", 2),
     # Stable Diffusion models
     "unet": (UnetOnnxModel, "pytorch", 1),
