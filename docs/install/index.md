@@ -206,14 +206,14 @@ pip install onnxruntime-training
       <pre lang="bash">dotnet add package Microsoft.ML.OnnxRuntime.Training</pre>
     </td>
   </tr>
-  <tr>
+  <!-- <tr>
     <td></td>
     <td>Python</td>
     <td><a href="https://pypi.org/project/onnxruntime-training/">onnxruntime-training</a></td>
     <td>
       <pre lang="bash">pip install onnxruntime-training</pre>
     </td>
-  </tr>
+  </tr> -->
   <tr>
     <td>Linux</td>
     <td>C, C++</td>
@@ -280,7 +280,7 @@ pip install torch-ort
 python -m torch_ort.configure
 ```
 
-**Note**: This installs the default version of the `torch-ort` and `onnxruntime-training` packages that are mapped to specific versions of the CUDA libraries. Refer to the install options in [ONNXRUNTIME.ai](https://onnxruntime.ai).
+**Note**: This installs the default version of the `torch-ort` and `onnxruntime-training` packages that are mapped to specific versions of the CUDA libraries. Refer to the install options in [onnxruntime.ai](https://onnxruntime.ai).
 
 ## Inference install table for all languages
 
@@ -318,14 +318,5 @@ In addition to general [requirements](#requirements), please note additional req
 
 
 ## Training install table for all languages
-
-ONNX Runtime Training packages are available for different versions of PyTorch, CUDA and ROCm versions.
-
-The install command is:
-
-```bash
-python -m pip install torch-ort
-python -m torch_ort.configure
-```
 
 Refer to the getting started with [Optimized Training](../../index.html#getStartedTable) page for more fine-grained installation instructions.

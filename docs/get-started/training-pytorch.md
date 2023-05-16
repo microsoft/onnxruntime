@@ -7,7 +7,7 @@ nav_order: 12
 # Get started with Large Model Training with ORTModule
 {: .no_toc }
 
-`ONNX Runtime Training`'s `ORTModule` offers a high performance training engine for models defined using the `PyTorch` frontend. `ORTModule` is designed to accelerate the training of large models without needing to change either the model definition or the training code.
+`ONNX Runtime Training`'s `ORTModule` offers a high performance training engine for models defined using the `PyTorch` frontend. `ORTModule` is designed to accelerate the training of large models without needing to change the model definition and with just a single line of code change (the `ORTModule` wrap) to the entire training script.
 
 Using the ORTModule class wrapper, ONNX Runtime runs the forward and backward pass of the training script using an optimized automatically-exported ONNX computation graph.
 
