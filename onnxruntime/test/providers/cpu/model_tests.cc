@@ -258,55 +258,6 @@ TEST_P(ModelTest, Run) {
 #endif
       {"mask_rcnn_keras", "this model currently has an invalid contrib op version set to 10", {}}};
 
-  std::set<BrokenTest> float8_tests = {
-      {"cast_FLOAT16_to_FLOAT8E4M3FN", "Unexpected input data type"},
-      {"cast_FLOAT16_to_FLOAT8E4M3FNUZ", "Unexpected input data type"},
-      {"cast_FLOAT16_to_FLOAT8E5M2", "Unexpected input data type"},
-      {"cast_FLOAT16_to_FLOAT8E5M2FNUZ", "Unexpected input data type"},
-      {"cast_FLOAT8E2M2_to_FLOAT", "Unexpected input data type"},
-      {"cast_FLOAT8E4M3FNUZ_to_FLOAT", "Unexpected input data type"},
-      {"cast_FLOAT8E4M3FNUZ_to_FLOAT16", "Unexpected input data type"},
-      {"cast_FLOAT8E4M3FN_to_FLOAT", "Unexpected input data type"},
-      {"cast_FLOAT8E4M3FN_to_FLOAT16", "Unexpected input data type"},
-      {"cast_FLOAT8E5M2FNUZ_to_FLOAT", "Unexpected input data type"},
-      {"cast_FLOAT8E5M2FNUZ_to_FLOAT16", "Unexpected input data type"},
-      {"cast_FLOAT8E5M2_to_FLOAT", "Unexpected input data type"},
-      {"cast_FLOAT8E5M2_to_FLOAT16", "Unexpected input data type"},
-      {"cast_FLOAT_to_FLOAT8E4M3FN", "Unexpected input data type"},
-      {"cast_FLOAT_to_FLOAT8E4M3FNUZ", "Unexpected input data type"},
-      {"cast_FLOAT_to_FLOAT8E5M2", "Unexpected input data type"},
-      {"cast_FLOAT_to_FLOAT8E5M2FNUZ", "Unexpected input data type"},
-      {"cast_no_saturate_FLOAT16_to_FLOAT8E4M3FN", "Unexpected input data type"},
-      {"cast_no_saturate_FLOAT16_to_FLOAT8E4M3FNUZ", "Unexpected input data type"},
-      {"cast_no_saturate_FLOAT16_to_FLOAT8E5M2", "Unexpected input data type"},
-      {"cast_no_saturate_FLOAT16_to_FLOAT8E5M2FNUZ", "Unexpected input data type"},
-      {"cast_no_saturate_FLOAT_to_FLOAT8E4M3FN", "Unexpected input data type"},
-      {"cast_no_saturate_FLOAT_to_FLOAT8E4M3FNUZ", "Unexpected input data type"},
-      {"cast_no_saturate_FLOAT_to_FLOAT8E5M2", "Unexpected input data type"},
-      {"cast_no_saturate_FLOAT_to_FLOAT8E5M2FNUZ", "Unexpected input data type"},
-      {"castlike_FLOAT8E4M3FNUZ_to_FLOAT", "Unexpected input data type"},
-      {"castlike_FLOAT8E4M3FNUZ_to_FLOAT_expanded", "Unexpected input data type"},
-      {"castlike_FLOAT8E4M3FN_to_FLOAT", "Unexpected input data type"},
-      {"castlike_FLOAT8E4M3FN_to_FLOAT_expanded", "Unexpected input data type"},
-      {"castlike_FLOAT8E5M2FNUZ_to_FLOAT", "Unexpected input data type"},
-      {"castlike_FLOAT8E5M2FNUZ_to_FLOAT_expanded", "Unexpected input data type"},
-      {"castlike_FLOAT8E5M2_to_FLOAT", "Unexpected input data type"},
-      {"castlike_FLOAT8E5M2_to_FLOAT_expanded", "Unexpected input data type"},
-      {"castlike_FLOAT_to_FLOAT8E4M3FN", "Unexpected input data type"},
-      {"castlike_FLOAT_to_FLOAT8E4M3FNUZ", "Unexpected input data type"},
-      {"castlike_FLOAT_to_FLOAT8E4M3FNUZ_expanded", "Unexpected input data type"},
-      {"castlike_FLOAT_to_FLOAT8E4M3FN_expanded", "Unexpected input data type"},
-      {"castlike_FLOAT_to_FLOAT8E5M2", "Unexpected input data type"},
-      {"castlike_FLOAT_to_FLOAT8E5M2FNUZ", "Unexpected input data type"},
-      {"castlike_FLOAT_to_FLOAT8E5M2FNUZ_expanded", "Unexpected input data type"},
-      {"castlike_FLOAT_to_FLOAT8E5M2_expanded", "Unexpected input data type"},
-      {"dequantizelinear_e4m3fn", "Unexpected input data type"},
-      {"dequantizelinear_e5m2", "Unexpected input data type"},
-      {"quantizelinear_e4m3fn", "Unexpected input data type"},
-      {"quantizelinear_e5m2", "Unexpected input data type"},
-  };
-  broken_tests.insert(float8_tests.begin(), float8_tests.end());
-
   // Some EPs may fail to pass some specific testcases.
   // For example TenosrRT EP may fail on FLOAT16 related testcases if GPU doesn't support float16.
   // Instead of list all these testcases, we can use following keyword set to filter out testcases wchich contain
