@@ -36,6 +36,7 @@ class TestInferenceSession(unittest.TestCase):
     `float8e5m2_to_float32
     <https://onnx.ai/onnx/api/numpy_helper.html#onnx.numpy_helper.float8e5m2_to_float32>`_.
     """
+
     dtypes = {"FLOAT": np.float32, "FLOAT16": np.float16}
     x = np.array(
         [0.4068359375, 352, 416, 336, 304, 272, -248, -100, 1e-4, 1e-2, 416, 432, 1e5, np.inf, -np.inf, np.nan],
