@@ -5,11 +5,11 @@
 
 /** \mainpage ONNX Runtime
  *
- * ONNX Runtime is a high-performance inference and training graph execution engine for deeplearning models.
+ * ONNX Runtime is a high-performance inference and training graph execution engine for deep learning models.
  *
  * ONNX Runtime's C, C++ APIs offer an easy to use interface to onboard and execute onnx models.
  * - \subpage c_cpp_api "Core C, C++ APIs"
- * - \subpage training_c_cpp_api "Training C, C++ APIs for learning on the edge"
+ * - \subpage training_c_cpp_api "Training C, C++ APIs for on-device training"
  *
  * \page c_cpp_api Core C, C++ APIs
  * <h1>C</h1>
@@ -95,6 +95,8 @@ extern "C" {
 #define ORTCHAR_T char
 #endif
 
+/// ORTCHAR_T, ORT_TSTR are reserved specifically for path handling.
+/// All other strings are UTF-8 encoded, use char and std::string
 #ifndef ORT_TSTR
 #ifdef _WIN32
 #define ORT_TSTR(X) L##X
@@ -627,11 +629,19 @@ struct OrtApiBase {
    * \param[in] version Must be ::ORT_API_VERSION
    * \return The ::OrtApi for the version requested, nullptr will be returned if this version is unsupported, for example when using a runtime
    *   older than the version created with this header file.
+   *
+   * One can call GetVersionString() to get the version of the Onnxruntime library for logging
+   * and error reporting purposes.
    */
   const OrtApi*(ORT_API_CALL* GetApi)(uint32_t version)NO_EXCEPTION;
-  const ORTCHAR_T*(ORT_API_CALL* GetVersionString)(void)NO_EXCEPTION;    ///< Returns a null terminated string of the version of the Onnxruntime library (eg: "1.8.1")
-  const ORTCHAR_T*(ORT_API_CALL* GetBuildInfoString)(void)NO_EXCEPTION;  ///< Returns a null terminated string of the build info including git info and cxx flags
+
+  /** \brief Returns a null terminated string of the version of the Onnxruntime library (eg: "1.8.1")
+   *
+   *  \return UTF-8 encoded version string. Do not deallocate the returned buffer.
+   */
+  const char*(ORT_API_CALL* GetVersionString)(void)NO_EXCEPTION;
 };
+
 typedef struct OrtApiBase OrtApiBase;
 
 /** \brief The Onnxruntime library's entry point to access the C API
@@ -3558,6 +3568,7 @@ struct OrtApi {
    *   "buffer_type": ITensor or user buffers, options: "ITENSOR", user buffer with different types - "TF8", "TF16", "UINT8", "FLOAT".
    *   "ITENSOR" -- default, ITensor which is float only.
    *   "TF8" -- quantized model required, "FLOAT" -- for both quantized or non-quantized model
+   *   "enable_init_cache": enable SNPE init caching feature, set to 1 to enabled it. Disabled by default.
    *   If SNPE is not available (due to a non Snpe enabled build or its dependencies not being installed), this function will fail.
    *
    * XNNPACK supported keys:
@@ -4192,6 +4203,14 @@ struct OrtApi {
    * \since Version 1.15.
    */
   ORT_API2_STATUS(KernelContext_GetAllocator, _In_ const OrtKernelContext* context, _In_ const OrtMemoryInfo* mem_info, _Outptr_ OrtAllocator** out);
+
+  /** \brief Returns a null terminated string of the build info including git info and cxx flags
+   *
+   * \return UTF-8 encoded version string. Do not deallocate the returned buffer.
+   *
+   * \since Version 1.15.
+   */
+  const char*(ORT_API_CALL* GetBuildInfoString)(void);
 };
 
 /*
@@ -4279,6 +4298,16 @@ struct OrtCustomOp {
  * \param device_id CUDA device id, starts from zero.
  */
 ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_CUDA, _In_ OrtSessionOptions* options, int device_id);
+
+/*
+ * This is the old way to add the ROCm provider to the session, please use
+ * SessionOptionsAppendExecutionProvider_ROCM above to access the latest functionality
+ * This function always exists, but will only succeed if Onnxruntime was built with
+ * HIP support and the ROCm provider shared library exists
+ *
+ * \param device_id HIP device id, starts from zero.
+ */
+ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_ROCM, _In_ OrtSessionOptions* options, int device_id);
 
 /*
  * This is the old way to add the MIGraphX provider to the session, please use

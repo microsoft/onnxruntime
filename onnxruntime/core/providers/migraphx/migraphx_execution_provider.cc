@@ -1207,9 +1207,8 @@ void MIGraphXExecutionProvider::RegisterStreamHandlers(IStreamCommandHandleRegis
 }
 
 OrtDevice MIGraphXExecutionProvider::GetOrtDeviceByMemType(OrtMemType mem_type) const {
-  if (mem_type == OrtMemTypeCPUInput || mem_type == OrtMemTypeCPUOutput) {
-    return OrtDevice(OrtDevice::CPU, OrtDevice::MemType::HIP_PINNED, 0 /*CPU device id always be 0*/);
-  }
+  if (mem_type == OrtMemTypeCPUInput) return OrtDevice();
+  if (mem_type == OrtMemTypeCPUOutput) return OrtDevice(OrtDevice::CPU, OrtDevice::MemType::HIP_PINNED, 0 /*CPU device id always be 0*/);
   return default_device_;
 }
 #ifdef MIGRAPHX_STREAM_SYNC
