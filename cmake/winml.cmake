@@ -344,8 +344,6 @@ if (onnxruntime_USE_DML)
   target_add_dml(winml_adapter)
 endif()
 
-#Please remove /wd5038;/wd4244 this after updating to a newer windows SDK
-target_link_options(winml_adapter PRIVATE "/wd5038;/wd4244")
 # add it to the onnxruntime shared library
 set(onnxruntime_winml winml_adapter)
 list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES winml_adapter)
