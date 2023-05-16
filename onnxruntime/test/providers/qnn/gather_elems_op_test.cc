@@ -27,7 +27,8 @@ static GetTestModelFn BuildGatherElemsTestCase(const std::vector<int64_t>& data_
   return [data_shape, data, indices_shape, indices,
           indices_are_static, axis](ModelTestBuilder& builder) {
     auto* data_input = builder.MakeInput<DataType>(data_shape, data);
-    auto* indices_input = indices_are_static ? builder.MakeInitializer<IndexType>(indices_shape, indices) : builder.MakeInput<IndexType>(indices_shape, indices);
+    auto* indices_input = (indices_are_static ? builder.MakeInitializer<IndexType>(indices_shape, indices)
+                                              : builder.MakeInput<IndexType>(indices_shape, indices));
     auto* output = builder.MakeOutput();
 
     Node& gather_elems_node = builder.AddNode("GatherElements", {data_input, indices_input}, {output});
@@ -46,10 +47,11 @@ static GetTestModelFn BuildQDQGatherElemsTestCase(const std::vector<int64_t>& da
   return [data_shape, data, indices_shape, indices,
           indices_are_static, axis](ModelTestBuilder& builder) {
     constexpr float qdq_scale = 0.05f;
-    const DataQType zero_point = std::numeric_limits<DataQType>::max() / 2;
+    const DataQType zero_point = (std::numeric_limits<DataQType>::max() - std::numeric_limits<DataQType>::min()) / 2;
 
     auto* data_input = builder.MakeInput<DataType>(data_shape, data);
-    auto* indices_input = indices_are_static ? builder.MakeInitializer<IndexType>(indices_shape, indices) : builder.MakeInput<IndexType>(indices_shape, indices);
+    auto* indices_input = (indices_are_static ? builder.MakeInitializer<IndexType>(indices_shape, indices)
+                                              : builder.MakeInput<IndexType>(indices_shape, indices));
     auto* output = builder.MakeOutput();
 
     // data_input -> Q -> DQ -> GatherElements
