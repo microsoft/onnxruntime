@@ -375,5 +375,6 @@ TEST(BeamSearchTest, GptBeamSearchFp16_VocabPadded) {
     ASSERT_TRUE(std::equal(expected_output.cbegin(), expected_output.cend(), result_span.begin(), result_span.end()));
   }
 }
+
 }  // namespace test
 }  // namespace onnxruntime

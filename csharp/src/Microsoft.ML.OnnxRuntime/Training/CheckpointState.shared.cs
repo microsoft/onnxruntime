@@ -7,7 +7,16 @@ namespace Microsoft.ML.OnnxRuntime
 {
 #if __ENABLE_TRAINING_APIS__
     /// <summary>
-    ///  Holds the Checkpoint State as generated/consumed by on-device training APIs
+    ///  Holds the state of the training session.
+    /// This class holds the entire training session state that includes model parameters, their gradients,
+    /// optimizer parameters, and user properties. The TrainingSession leverages the CheckpointState
+    /// by accessing and updating the contained training state.
+    /// <note type="note">
+    /// Note that the training session created with a checkpoint state uses this state to store the entire
+    /// training state (including model parameters, its gradients, the optimizer states and the properties).
+    /// The TrainingSession does not hold a copy of the CheckpointState and as a result, it is required
+    /// that the checkpoint state outlives the lifetime of the training session.
+    /// </note>
     /// </summary>
     public class CheckpointState : SafeHandle
     {
@@ -55,9 +64,15 @@ namespace Microsoft.ML.OnnxRuntime
         public override bool IsInvalid { get { return handle == IntPtr.Zero; } }
 
         /// <summary>
-        /// Loads Checkpoint state from path
+        /// Load a checkpoint state from a directory on disk into checkpoint_state.
+        ///
+        /// This function will parse a checkpoint directory, pull relevant files and load the training
+        /// state into the checkpoint_state. This checkpoint state can then be used to create the
+        /// training session by instantiating the TrainingSession. By doing so, the training
+        /// session will begin or resume training from the given checkpoint state.
         /// </summary>
-        /// <param name="checkpointPath"> absolute path to checkpoint</param>
+        /// <param name="checkpointPath"> Absolute path to the checkpoint directory.</param>
+        /// <returns>CheckpointState object which holds the state of the training session parameters.</returns>
         public static CheckpointState LoadCheckpoint(string checkpointPath)
         {
             if (!NativeTrainingMethods.TrainingEnabled())
@@ -73,10 +88,15 @@ namespace Microsoft.ML.OnnxRuntime
         }
 
         /// <summary>
-        /// Saves the checkpoint
-        /// <param name="checkpointPath"> absolute path to the checkpoint file.</param>
-        /// <param name="includeOptimizerState"> absolute path to the checkpoint file.</param>
+        /// Save the given state to a checkpoint directory on disk.
+        ///
+        /// This function serializes the provided checkpoint state to a directory on disk.
+        /// This checkpoint can later be loaded by invoking CheckpointState.LoadCheckpoint to begin or resume
+        /// training from this snapshot of the state.
         /// </summary>
+        /// <param name="state"> The checkpoint state to save.</param>
+        /// <param name="checkpointPath"> Absolute path to the checkpoint directory.</param>
+        /// <param name="includeOptimizerState"> Flag to indicate whether to save the optimizer state or not.</param>
         public static void SaveCheckpoint(CheckpointState state, string checkpointPath, bool includeOptimizerState = false)
         {
             NativeApiStatus.VerifySuccess(NativeTrainingMethods.OrtSaveCheckpoint(state.Handle, NativeOnnxValueHelper.GetPlatformSerializedString(checkpointPath), includeOptimizerState));
@@ -84,9 +104,13 @@ namespace Microsoft.ML.OnnxRuntime
 
         /// <summary>
         /// Adds the given int property to the checkpoint state.
+        ///
+        /// Runtime properties that are ints such as epoch, training step, and others can be added to the checkpoint
+        /// state by the user if they desire by calling this function with the appropriate property name and
+        /// value. The given property name must be unique to be able to successfully add the property.
+        /// </summary>
         /// <param name="propertyName">Unique name of the property being added.</param>
         /// <param name="propertyValue">Property value associated with the given name.</param>
-        /// </summary>
         public void AddProperty(string propertyName, long propertyValue)
         {
             AddPropertyImpl(propertyName, PropertyType.Int, propertyValue);
@@ -94,9 +118,13 @@ namespace Microsoft.ML.OnnxRuntime
 
         /// <summary>
         /// Adds the given float property to the checkpoint state.
+        ///
+        /// Runtime properties that are floats such as loss, best score, and others can be added to the checkpoint
+        /// state by the user if they desire by calling this function with the appropriate property name and
+        /// value. The given property name must be unique to be able to successfully add the property.
+        /// </summary>
         /// <param name="propertyName">Unique name of the property being added.</param>
         /// <param name="propertyValue">Property value associated with the given name.</param>
-        /// </summary>
         public void AddProperty(string propertyName, float propertyValue)
         {
             AddPropertyImpl(propertyName, PropertyType.Float, propertyValue);
@@ -104,9 +132,13 @@ namespace Microsoft.ML.OnnxRuntime
 
         /// <summary>
         /// Adds the given string property to the checkpoint state.
+        ///
+        /// Runtime properties that are strings such as parameter names, custom strings, and others can be added
+        /// to the checkpoint state by the user if they desire by calling this function with the appropriate property
+        /// name and value. The given property name must be unique to be able to successfully add the property.
+        /// </summary>
         /// <param name="propertyName">Unique name of the property being added.</param>
         /// <param name="propertyValue">Property value associated with the given name.</param>
-        /// </summary>
         public void AddProperty(string propertyName, string propertyValue)
         {
             var propertyNameUtf8 = NativeOnnxValueHelper.StringToZeroTerminatedUtf8(propertyName);
@@ -126,8 +158,12 @@ namespace Microsoft.ML.OnnxRuntime
 
         /// <summary>
         /// Gets the property value associated with the given name from the checkpoint state.
-        /// <param name="propertyName">Unique name of the property being retrieved.</param>
+        ///
+        /// Gets the property value from an existing entry in the checkpoint state. The property must
+        /// exist in the checkpoint state to be able to retrieve it successfully.
         /// </summary>
+        /// <param name="propertyName">Unique name of the property being retrieved.</param>
+        /// <returns>Property value associated with the given property name.</returns>
         public object GetProperty(string propertyName)
         {
             var propertyNameUtf8 = NativeOnnxValueHelper.StringToZeroTerminatedUtf8(propertyName);

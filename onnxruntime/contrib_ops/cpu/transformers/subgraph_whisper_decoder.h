@@ -5,21 +5,20 @@
 
 #include "contrib_ops/cpu/transformers/subgraph_base.h"
 #include "contrib_ops/cpu/transformers/sequences.h"
+#include "contrib_ops/cpu/transformers/subgraph_t5_decoder.h"
 
 namespace onnxruntime {
 namespace contrib {
 namespace transformers {
 
-// A class for T5 decoder subgraph inputs and outputs preparation.
-class T5DecoderSubgraph : public Subgraph {
+// A class for Whisper decoder subgraph inputs and outputs preparation.
+class WhisperDecoderSubgraph : public T5DecoderSubgraph {
  public:
-  T5DecoderSubgraph(
+  WhisperDecoderSubgraph(
       const onnxruntime::Node& node_in,
       const std::string& attribute_name,
-      const GraphViewer& subgraph_in) : Subgraph(node_in, attribute_name, subgraph_in),
-                                        has_hidden_state_(false),
-                                        use_sequence_as_input_ids_(true) {
-    first_present_output_index_ = 1;
+      const GraphViewer& subgraph_in) : T5DecoderSubgraph(node_in, attribute_name, subgraph_in) {
+    first_past_input_index_ = 1;
   }
 
   // Create inputs for first inference of decoder subgraph.
@@ -31,7 +30,6 @@ class T5DecoderSubgraph : public Subgraph {
       const std::vector<OrtValue>& encoder_fetches,
       std::vector<OrtValue>& decoder_feeds,
       const GenerationDeviceHelper::DeviceCopyFunc<int32_t>& device_copy_int32_func,
-      const GenerationDeviceHelper::ExpandBufferFunc<int32_t>& expand_buffer_int32_func,
       const GenerationDeviceHelper::ExpandBufferFunc<float>& expand_buffer_float_func,
       const GenerationDeviceHelper::ExpandBufferFunc<MLFloat16>& expand_buffer_float16_func,
       int num_beam,
@@ -48,29 +46,11 @@ class T5DecoderSubgraph : public Subgraph {
   void SetPastInputIndex(bool has_hidden_state) {
     has_hidden_state_ = has_hidden_state;
     if (!has_hidden_state_) {
-      first_past_input_index_ = 2;
+      first_past_input_index_ = 1;
     } else {
-      first_past_input_index_ = 3;
+      first_past_input_index_ = 2;
     }
   }
-
-  int GetFirstPastInputIndex() const {
-    return first_past_input_index_;
-  }
-
-  int GetFirstPresentOutputIndex() const {
-    return first_present_output_index_;
-  }
-
-  bool UseSequenceAsInputIds() const {
-    return use_sequence_as_input_ids_;
-  }
-
- protected:
-  int first_past_input_index_;
-  int first_present_output_index_;
-  bool has_hidden_state_;
-  bool use_sequence_as_input_ids_;
 };
 
 }  // namespace transformers

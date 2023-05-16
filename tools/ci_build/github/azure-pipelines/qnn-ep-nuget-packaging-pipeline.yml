@@ -2,13 +2,13 @@ parameters:
 - name: qnn_sdk_path_win
   displayName: QNN Windows SDK path
   type: string
-  default: C:\data\qnnsdk\qnn-v2.9.0.230327191003_53330_win
+  default: C:\data\qnnsdk\qnn-v2.10.0.230425122932_54038_win
 
 - name: qnn_sdk_info
   displayName: QNN SDK Version Information
   type: string
-  default: qnn-v2.9.0.230327191003_53330_win
-  
+  default: qnn-v2.10.0.230425122932_54038
+
 - name: ort_package_version
   displayName: OnnxRuntime Nuget package version
   type: string

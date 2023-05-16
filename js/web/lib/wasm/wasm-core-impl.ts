@@ -1,13 +1,14 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {InferenceSession, Tensor} from 'onnxruntime-common';
+import {Env, InferenceSession, Tensor} from 'onnxruntime-common';
 
+import {init as initJsep} from './jsep/init';
 import {SerializableModeldata, SerializableSessionMetadata, SerializableTensor} from './proxy-messages';
 import {setRunOptions} from './run-options';
 import {setSessionOptions} from './session-options';
 import {allocWasmString} from './string-utils';
-import {tensorDataTypeEnumToString, tensorDataTypeStringToEnum, tensorTypeToTypedArrayConstructor} from './wasm-common';
+import {logLevelStringToEnum, tensorDataTypeEnumToString, tensorDataTypeStringToEnum, tensorTypeToTypedArrayConstructor} from './wasm-common';
 import {getInstance} from './wasm-factory';
 
 /**
@@ -15,11 +16,23 @@ import {getInstance} from './wasm-factory';
  * @param numThreads SetGlobalIntraOpNumThreads(numThreads)
  * @param loggingLevel CreateEnv(static_cast<OrtLoggingLevel>(logging_level))
  */
-export const initOrt = (numThreads: number, loggingLevel: number): void => {
+const initOrt = async(numThreads: number, loggingLevel: number): Promise<void> => {
   const errorCode = getInstance()._OrtInit(numThreads, loggingLevel);
   if (errorCode !== 0) {
     throw new Error(`Can't initialize onnxruntime. error code = ${errorCode}`);
   }
+};
+
+/**
+ * intialize runtime environment.
+ * @param env passed in the environment config object.
+ */
+export const initRuntime = async(env: Env): Promise<void> => {
+  // init ORT
+  await initOrt(env.wasm.numThreads!, logLevelStringToEnum(env.logLevel));
+
+  // init JSEP if available
+  await initJsep(getInstance(), env);
 };
 
 /**
