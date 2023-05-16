@@ -22,7 +22,7 @@ using onnxruntime::contrib::rocm::blas::GemmFastGeluParams;
 
 #ifdef USE_HIPBLASLT
 
-// For large K and small M/N, K dim will be splited to multiple workgroups and buffers,
+// For large K and small M/N, K dim will be split to multiple workgroups and buffers,
 // which will require additional workspace. Here we set the max workspace size to 32MB.
 constexpr const size_t kHipBlasLtMaxWorkSpaceSizeInBytes = 32 * 1024 * 1024;
 // We only keep one heuristic result here. Note that for tuned input sizes, the first result
@@ -210,8 +210,9 @@ Status HipBlasLtStridedBatchedGemmOp(const StridedBatchedGemmParams<T>* params) 
 template <typename T>
 Status HipBlasLtGemmGeluOp(const GemmFastGeluParams<T>* params) {
   TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF((std::is_same_v<T, double>), "hipBLASLt does not support double inputs");
-  TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF((nullptr != params->bias), "hipBLASLt does not support bias gelu");
-  return HipBlasLtMatMul<T, GemmFastGeluParams<T>>(params, /*batch=*/1, ActivationType::GELU);
+  bool enable_bias = nullptr != params->bias;
+  return HipBlasLtMatMul<T, GemmFastGeluParams<T>>(params, /*batch=*/1, ActivationType::GELU,
+                                                   enable_bias, enable_bias ? params->bias : nullptr);
 };
 
 #endif  // USE_HIPBLASLT
