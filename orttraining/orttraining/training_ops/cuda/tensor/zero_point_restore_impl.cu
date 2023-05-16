@@ -8,16 +8,14 @@
 namespace onnxruntime {
 namespace cuda {
 
-template <typename T>
-
 void GetZeroPointRestoreTempStorageBytesImpl(cudaStream_t stream,
                                              size_t& temp_storage_bytes,
                                              int total_element_count) {
   cub::DeviceScan::InclusiveSum(
       static_cast<void*>(nullptr),  // input, when NULL, the required allocation size is written to temp_storage_bytes and no work is done.
       temp_storage_bytes,           // input or output
-      static_cast<T*>(nullptr),     // input
-      static_cast<T*>(nullptr),     // output
+      static_cast<int*>(nullptr),   // input
+      static_cast<int*>(nullptr),   // output
       total_element_count,          // input
       stream);
 }

@@ -4598,7 +4598,7 @@ Return true if all elements are true and false otherwise.
           "Constrain the input tensor type to float tensors.")
       .TypeConstraint(
           "T_MASK",
-          {"tensor(uint32_t)"},
+          {"tensor(uint32)"},
           "Constrain clip mask output data type to be uint32.")
       .TypeConstraint(
           "T_INT",
@@ -4645,7 +4645,7 @@ Return true if all elements are true and false otherwise.
           "Constrain the input tensor type to float tensors.")
       .TypeConstraint(
           "T_MASK",
-          {"tensor(uint32_t)"},
+          {"tensor(uint32)"},
           "Constrain clip mask output data type to be uint32.")
       .TypeConstraint(
           "T_INT",

@@ -157,17 +157,29 @@ void SetMaskOutputImpl(const cudaDeviceProp& prop,
   }
 }
 
-#define SPECIALIZED_ZERO_POINT_CLIP_IMPL(T)                                                                           \
+#define SPECIALIZED_ZERO_POINT_ERASE_IMPL(T)                                                                          \
+  template void GetTempStorageBytesImpl<T>(cudaStream_t stream,                                                       \
+                                           size_t & temp_storage_bytes,                                               \
+                                           float zero_point_value,                                                    \
+                                           int total_element_count);                                                  \
+  template void CopyOnConditionImpl<T>(cudaStream_t stream,                                                           \
+                                       void* d_temp_storage,                                                          \
+                                       size_t& temp_storage_bytes,                                                    \
+                                       const T* input_data,                                                           \
+                                       T* output_buffer,                                                              \
+                                       int& d_num_selected_out,                                                       \
+                                       float zero_point_value,                                                        \
+                                       int total_element_count);                                                      \
   template void SetMaskOutputImpl<T>(const cudaDeviceProp& prop, cudaStream_t stream, const int64_t N,                \
                                      const int64_t mask_element_count, const float zero_point_value, const T* X_data, \
                                      void* mask_data);
 
-SPECIALIZED_ZERO_POINT_CLIP_IMPL(float)
-SPECIALIZED_ZERO_POINT_CLIP_IMPL(double)
-SPECIALIZED_ZERO_POINT_CLIP_IMPL(half)
-SPECIALIZED_ZERO_POINT_CLIP_IMPL(BFloat16)
+SPECIALIZED_ZERO_POINT_ERASE_IMPL(float)
+SPECIALIZED_ZERO_POINT_ERASE_IMPL(double)
+SPECIALIZED_ZERO_POINT_ERASE_IMPL(half)
+SPECIALIZED_ZERO_POINT_ERASE_IMPL(BFloat16)
 
-#undef SPECIALIZED_ZERO_POINT_CLIP_IMPL
+#undef SPECIALIZED_ZERO_POINT_ERASE_IMPL
 
 }  // namespace cuda
 }  // namespace onnxruntime

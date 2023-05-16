@@ -44,7 +44,7 @@ void RunZeroPointEraseTest(const std::vector<T>& input_data,
   test.AddAttribute("zero_point", zero_point_value);
 
   test.AddInput<T>("input", input_shape, input_data);
-  test.AddOutput<T>("output", input_shape, expected_output);
+  test.AddOutput<T>("output", std::vector<int64_t>{static_cast<int64_t>(expected_output.size())}, expected_output);
   test.AddOutput<BitmaskElementType>("mask",
                                      std::vector<int64_t>{static_cast<int64_t>(expected_bitmask_data.size())},
                                      expected_bitmask_data);
