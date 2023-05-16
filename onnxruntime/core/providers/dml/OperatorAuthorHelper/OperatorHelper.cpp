@@ -8,6 +8,12 @@
 
 namespace OperatorHelper
 {
+    template <typename T = uint32_t>
+    T DivideRoundUp(T x, T y) {
+        assert(y != 0);
+        return (x + y - 1) / y;
+    }
+
     bool ContainsEmptyDimensions(gsl::span<const DimensionType> dimensions)
     {
         return std::find(dimensions.begin(), dimensions.end(), 0u) != dimensions.end();
@@ -931,8 +937,8 @@ namespace OperatorHelper
             {
                 ML_CHECK_VALID_ARGUMENT(m_split.size() == 0);
                 auto splitDimSize = inputDimensions.at(m_axis);
-                auto evenParts = static_cast<int>(ceil((double)splitDimSize / numOutputs));
-                m_split = std::vector<int>(numOutputs, evenParts);
+                auto evenParts = DivideRoundUp(splitDimSize, numOutputs);
+                m_split.resize(numOutputs, evenParts);
                 m_split.back() = static_cast<int>(splitDimSize - (numOutputs-1) * evenParts);
             }
             else
