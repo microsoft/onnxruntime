@@ -2045,7 +2045,7 @@ def build_nuget_package(
     ort_build_dir = '/p:OnnxRuntimeBuildDirectory="' + native_dir + '"'
 
     # dotnet restore
-    cmd_args = ["dotnet", "restore", sln, "--configfile", "Nuget.CSharp.config"]
+    cmd_args = ["dotnet", "restore", sln, "--configfile", "NuGet.CSharp.config"]
     run_subprocess(cmd_args, cwd=csharp_build_dir)
 
     # build csharp bindings and create nuget package for each config
