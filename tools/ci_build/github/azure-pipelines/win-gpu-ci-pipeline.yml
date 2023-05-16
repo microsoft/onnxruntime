@@ -31,7 +31,7 @@ stages:
 - stage: cuda
   dependsOn: []
   jobs:
-    - template: templates/win-ci-vs-2019.yml
+    - template: templates/jobs/win-ci-vs-2022-job.yml
       parameters:
         BuildConfig: 'RelWithDebInfo'
         EnvSetupScript: setup_env_cuda_11.bat
@@ -44,12 +44,12 @@ stages:
         RunStaticCodeAnalysis: false
         ORT_EP_NAME: CUDA
         WITH_CACHE: true
-        MachinePool: onnxruntime-Win2019-GPU-T4
+        MachinePool: onnxruntime-Win2022-GPU-T4
 
 - stage: training
   dependsOn: []
   jobs:
-    - template: templates/win-ci-vs-2019.yml
+    - template: templates/jobs/win-ci-vs-2022-job.yml
       parameters:
         BuildConfig: 'RelWithDebInfo'
         EnvSetupScript: setup_env_cuda_11.bat
@@ -62,7 +62,7 @@ stages:
         RunStaticCodeAnalysis: false
         ORT_EP_NAME: CUDA
         WITH_CACHE: true
-        MachinePool: onnxruntime-Win2019-GPU-training-T4
+        MachinePool: onnxruntime-Win2022-GPU-T4
         isTraining: true
 
 - stage: dml
@@ -87,7 +87,7 @@ stages:
 - stage: kernelDocumentation
   dependsOn: []
   jobs:
-    - template: templates/win-ci-vs-2019.yml
+    - template: templates/jobs/win-ci-vs-2022-job.yml
       parameters:
         BuildConfig: 'RelWithDebInfo'
         EnvSetupScript: setup_env_cuda_11.bat
@@ -102,4 +102,4 @@ stages:
         GenerateDocumentation: true
         ORT_EP_NAME: CUDA # It doesn't really matter which EP is selected here since this stage is for documentation.
         WITH_CACHE: true
-        MachinePool: onnxruntime-Win2019-GPU-T4
+        MachinePool: onnxruntime-Win2022-GPU-T4
