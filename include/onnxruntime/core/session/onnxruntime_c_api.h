@@ -5,11 +5,11 @@
 
 /** \mainpage ONNX Runtime
  *
- * ONNX Runtime is a high-performance inference and training graph execution engine for deeplearning models.
+ * ONNX Runtime is a high-performance inference and training graph execution engine for deep learning models.
  *
  * ONNX Runtime's C, C++ APIs offer an easy to use interface to onboard and execute onnx models.
  * - \subpage c_cpp_api "Core C, C++ APIs"
- * - \subpage training_c_cpp_api "Training C, C++ APIs for learning on the edge"
+ * - \subpage training_c_cpp_api "Training C, C++ APIs for on-device training"
  *
  * \page c_cpp_api Core C, C++ APIs
  * <h1>C</h1>
