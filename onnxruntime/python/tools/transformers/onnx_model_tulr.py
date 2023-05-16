@@ -26,7 +26,12 @@ class FusionTulrAttention(Fusion):
         super().__init__(model, "MultiHeadAttention", "MultiHeadAttention")
 
     def update_attention_node(
-        self, mha: NodeProto, q_matmul: NodeProto, k_matmul: NodeProto, v_matmul: NodeProto, num_heads=64
+        self,
+        mha: NodeProto,
+        q_matmul: NodeProto,
+        k_matmul: NodeProto,
+        v_matmul: NodeProto,
+        num_heads=16,  # TODO: parse from attribute
     ) -> Union[NodeProto, None]:
         """Create an Attention node.
 
@@ -100,6 +105,15 @@ class FusionTulrAttention(Fusion):
         )
         self.node_name_to_graph_name[matmul_node.name] = self.this_graph_name
 
+        add_node_name = self.model.create_node_name("Add", name_prefix="AddBias_QKV")
+        add_node = helper.make_node(
+            "Add",
+            inputs=[matmul_node_name + "_out", mha.input[3]],
+            outputs=[add_node_name + "_out"],
+            name=add_node_name,
+        )
+        self.node_name_to_graph_name[add_node.name] = self.this_graph_name
+
         shape_tensor = helper.make_tensor(
             name=matmul_node_name + "_reshape_shape",
             data_type=TensorProto.INT64,
@@ -110,18 +124,18 @@ class FusionTulrAttention(Fusion):
 
         reshape_node = helper.make_node(
             "Reshape",
-            inputs=[matmul_node_name + "_out", matmul_node_name + "_reshape_shape"],
+            inputs=[add_node_name + "_out", matmul_node_name + "_reshape_shape"],
             outputs=[attention_node_name + "_input"],
             name=matmul_node_name + "_reshape",
         )
         self.node_name_to_graph_name[reshape_node.name] = self.this_graph_name
-        self.nodes_to_add.extend([matmul_node, reshape_node])
+        self.nodes_to_add.extend([matmul_node, add_node, reshape_node])
         # self.nodes_to_remove.extend([q_matmul, k_matmul, v_matmul])
 
         mha.input[0] = attention_node_name + "_input"
-        mha.input[1] = ""
-        mha.input[2] = ""
-
+        mha.input[1] = ""  # QKV has been packed so remove key
+        mha.input[2] = ""  # QKV has been packed so remove value
+        mha.input[3] = ""  # bias is Moved to Add
         counter_name = "MultiHeadAttention ({})".format("self attention with packed qkv")
         self.increase_counter(counter_name)
         return mha
