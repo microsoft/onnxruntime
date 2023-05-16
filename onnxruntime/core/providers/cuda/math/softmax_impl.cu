@@ -69,7 +69,7 @@ Status dispatch_warpwise_softmax_forward(cudaStream_t stream, output_t* dst, con
 
 #define CASE_LOG2_ELEMENTS(log2_elements_value)                                                                          \
   case log2_elements_value: {                                                                                            \
-    if (log2_elements_value <= 10) {                                                                                     \
+    if constexpr (log2_elements_value <= 10) {                                                                                     \
       LAUNCH_KERNEL(softmax_warp_forward, log2_elements_value)                                                           \
     } else {                                                                                                             \
       LAUNCH_KERNEL(softmax_warp_forward_resource_efficient, log2_elements_value)                                        \
