@@ -99,6 +99,15 @@ def parse_arguments(argv=None):
     parser.set_defaults(use_forced_decoder_ids=False)
 
     parser.add_argument(
+        "-l",
+        "--use_logits_processor",
+        required=False,
+        action="store_true",
+        help="Use logits_processor as an extra graph input to enable specific logits processing",
+    )
+    parser.set_defaults(use_specific_logits_processor=False)
+
+    parser.add_argument(
         "-w",
         "--overwrite",
         required=False,
