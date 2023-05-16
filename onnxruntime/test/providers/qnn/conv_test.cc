@@ -170,6 +170,16 @@ TEST_F(QnnHTPBackendTests, TestQDQConvU8U8S32_bias_initializer) {
   RunHTPConvOpTest<uint8_t, uint8_t, int32_t, uint8_t>({1, 1, 5, 5}, {1, 1, 3, 3}, true, ExpectedEPNodeAssignment::All,
                                                        "TestQDQConvU8U8S32_bias_initializer");
 }
+
+TEST_F(QnnHTPBackendTests, TestQDQConvU8U8S32_large_input1_bias_initializer) {
+  RunHTPConvOpTest<uint8_t, uint8_t, int32_t, uint8_t>({1, 3, 60, 452}, {16, 3, 3, 3}, true, ExpectedEPNodeAssignment::All,
+                                                       "TestQDQConvU8U8S32_large_input1_bias_initializer");
+}
+
+TEST_F(QnnHTPBackendTests, TestQDQConvU8U8S32_large_input2_bias_initializer) {
+  RunHTPConvOpTest<uint8_t, uint8_t, int32_t, uint8_t>({1, 128, 8, 56}, {32, 128, 1, 1}, true, ExpectedEPNodeAssignment::All,
+                                                       "TestQDQConvU8U8S32_large_input2_bias_initializer");
+}
 #endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 
 }  // namespace test
