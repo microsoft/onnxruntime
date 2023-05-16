@@ -17,6 +17,7 @@ Keep in sync with doco generated from /docs/execution-providers/CoreML-Execution
 |ai.onnx:Gemm|Input B should be constant.|
 |ai.onnx:GlobalAveragePool|Only 2D Pool is supported.|
 |ai.onnx:GlobalMaxPool|Only 2D Pool is supported.|
+|ai.onnx:LeakyRelu||
 |ai.onnx:LRN||
 |ai.onnx:MatMul|Input B should be constant.|
 |ai.onnx:MaxPool|Only 2D Pool is supported.|

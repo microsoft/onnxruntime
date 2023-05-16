@@ -286,6 +286,7 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr CastTypeInfoToOptionalTypeInfo;
         public IntPtr GetOptionalContainedTypeInfo;
         public IntPtr GetResizedStringTensorElementBuffer;
+        public IntPtr KernelContext_GetAllocator;
     }
 
     internal static class NativeMethods
@@ -1653,7 +1654,6 @@ namespace Microsoft.ML.OnnxRuntime
             IntPtr /* (OrtAllocator*) */ allocator, IntPtr /* (const char*) */ key, out IntPtr /* (char**) */ value);
 
         public static DOrtModelMetadataLookupCustomMetadataMap OrtModelMetadataLookupCustomMetadataMap;
-
 
         /// <summary>
         /// Frees ModelMetadata instance
