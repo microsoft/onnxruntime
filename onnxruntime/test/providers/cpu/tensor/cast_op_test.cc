@@ -42,7 +42,6 @@ int GetMinRequiredCudaComputeCapability<Float8E5M2>() {
   return 800;
 }
 
-// typedef: Onnxruntime-SCA fails without it
 typedef enum { True,
                False,
                None } Saturate;
