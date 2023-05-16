@@ -428,11 +428,11 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Size of the vocabulary. If not provided, it will be inferred from the decoder subgraph's output shape</dd>
 </dl>
 
-#### Inputs (5 - 10)
+#### Inputs (5 - 11)
 
 <dl>
 <dt><tt>input_ids</tt> : F</dt>
-<dd>The sequence used as a prompt for the generation. Shape is (batch_size, sequence_length)</dd>
+<dd>The sequence used as a prompt for the generation in the encoder subgraph. Shape is (batch_size, sequence_length)</dd>
 <dt><tt>max_length</tt> : I</dt>
 <dd>The maximum length of the sequence to be generated. Shape is (1)</dd>
 <dt><tt>min_length</tt> (optional) : I</dt>
@@ -451,6 +451,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Mask of vocabulary for first step. Words that masked with 0 are not allowed to be generated, and 1 is allowed. Shape is (batch_size, vocab_size)</dd>
 <dt><tt>attention_mask</tt> (optional) : I</dt>
 <dd>Custom attention mask. Shape is (batch_size, sequence_length)</dd>
+<dt><tt>decoder_input_ids</tt> (optional) : I</dt>
+<dd>The forced input id sequence for the decoder subgraph. Shape is (batch_size, initial_sequence_length)</dd>
 </dl>
 
 #### Outputs (1 - 3)
@@ -1130,14 +1132,14 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Custom scale will be used if specified. Default value is 1/sqrt(head_size)</dd>
 </dl>
 
-#### Inputs (3 - 10)
+#### Inputs (1 - 10)
 
 <dl>
 <dt><tt>query</tt> : T</dt>
-<dd>Query with shape (batch_size, 1, hidden_size)</dd>
-<dt><tt>key</tt> : T</dt>
+<dd>Query with shape (batch_size, 1, hidden_size) or packed QKV with shape (batch_size, 1, 2 * hidden_size + v_hidden_size)</dd>
+<dt><tt>key</tt> (optional) : T</dt>
 <dd>Key with shape (batch_size, 1, hidden_size) for self attention or past_key with shape (batch_size, num_heads, kv_sequence_length, head_size) for cross attention</dd>
-<dt><tt>value</tt> : T</dt>
+<dt><tt>value</tt> (optional) : T</dt>
 <dd>Value with shape (batch_size, 1, v_hidden_size) for self attention or past_value with shape (batch_size, num_heads, kv_sequence_length, head_size) for cross attention</dd>
 <dt><tt>mask_index</tt> (optional) : M</dt>
 <dd>Mask values of shape (batch_size, total_sequence_length) or (batch_size, kv_sequence_length)</dd>
@@ -1527,6 +1529,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dl>
 <dt><tt>epsilon</tt> : float</dt>
 <dd>The epsilon value to use to avoid division by zero.</dd>
+<dt><tt>mask_index_type</tt> : int</dt>
+<dd>The mask index tensor type for shape inference (0: None, 1: 1D mask_index)</dd>
 </dl>
 
 #### Inputs (7 - 9)
@@ -1552,12 +1556,12 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>2D position ids with shape (batch_size, sequence_length) or (1, sequence_length)</dd>
 </dl>
 
-#### Outputs (2 - 3)
+#### Outputs (1 - 3)
 
 <dl>
 <dt><tt>output</tt> : T</dt>
 <dd>3D output tensor with shape (batch_size, sequence_length, hidden_size)</dd>
-<dt><tt>mask_index</tt> : T1</dt>
+<dt><tt>mask_index</tt> (optional) : T1</dt>
 <dd>1D mask_index tensor with shape (batch_size)</dd>
 <dt><tt>embedding_sum</tt> (optional) : T</dt>
 <dd>sum of word_embedding and position_embedding without layer normalization</dd>

@@ -68,7 +68,7 @@ namespace Dml
         IDMLDevice* dmlDevice,
         ID3D12CommandQueue* commandQueue,
         bool enableMetacommands) :
-            IExecutionProvider(onnxruntime::kDmlExecutionProvider)
+            IExecutionProvider(onnxruntime::kDmlExecutionProvider, OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, 0))
     {
         D3D12_COMMAND_LIST_TYPE queueType = commandQueue->GetDesc().Type;
         if (queueType != D3D12_COMMAND_LIST_TYPE_DIRECT && queueType != D3D12_COMMAND_LIST_TYPE_COMPUTE)
@@ -624,18 +624,20 @@ namespace Dml
 
     bool IsCpuOnDmlOperator(const onnxruntime::Node& node)
     {
-        auto sequence_ops = std::array<char*, 6>{
+        auto cpuOnDmlOperators = std::array<char*, 8>{
             "SequenceAt",
             "SequenceConstruct",
             "SequenceEmpty",
             "SequenceLength",
             "SequenceErase",
-            "SequenceInsert"
+            "SequenceInsert",
+            "OptionalGetElement",
+            "OptionalHasElement"
         };
 
-        for (auto& sequence_op : sequence_ops)
+        for (auto& cpuOnDmlOperator : cpuOnDmlOperators)
         {
-            if (strcmp(sequence_op, node.OpType().c_str()) == 0)
+            if (strcmp(cpuOnDmlOperator, node.OpType().c_str()) == 0)
             {
                 return true;
             }
@@ -661,9 +663,10 @@ namespace Dml
 
     bool IsCustomOpShader(const onnxruntime::Node& node)
     {
-        auto custom_ops = std::array<char*, 2>{
+        auto custom_ops = std::array<char*, 3>{
             "DFT",
-            "STFT"
+            "STFT",
+            "GridSample"
         };
 
         for (auto& custom_op : custom_ops)

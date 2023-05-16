@@ -94,6 +94,7 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
                                                                       mask_filter_value_,
                                                                       scale_,
                                                                       false,  // past_present_share_buffer
+                                                                      false,  // dmmha_packing
                                                                       device_prop.maxThreadsPerBlock));
   int sequence_length = parameters.sequence_length;
 

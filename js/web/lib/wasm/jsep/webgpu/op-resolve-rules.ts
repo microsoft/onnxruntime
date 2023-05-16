@@ -34,6 +34,7 @@ export const WEBGPU_OP_RESOLVE_RULES: Map<string, OperatorImplementation> = new 
   ['Div', [binaryOps.div]],
   ['Elu', [unaryOps.elu, unaryOps.parseAlphaAttributes]],
   ['Erf', [unaryOps.erf]],
+  ['Exp', [unaryOps.exp]],
   ['Floor', [unaryOps.floor]],
   ['Gemm', [gemm, parseGemmAttributes]],
   ['GlobalAveragePool', [pool.globalAveragePool, pool.parseGlobalAveragePoolAttributes]],

@@ -8,25 +8,36 @@ This converts GPT2 or T5 model to onnx with beam search operator.
 Example 1: convert gpt2 model with beam search:
     python convert_generation.py -m gpt2 --output gpt2_beam_search.onnx
 
-Example 2: convert T5 model with beam search in two steps:
+Example 2: convert gpt2 model with beam search containing specific cuda optimizations:
+    python convert_generation.py -m gpt2 --output gpt2_beam_search.onnx --use_gpu               \
+        --past_present_share_buffer --use_decoder_masked_attention
+
+Example 3: convert gpt2 model with beam search with mixed precision and enable SkipLayerNorm strict mode:
+    python convert_generation.py -m gpt2 --output gpt2_beam_search.onnx --use_gpu -p fp16 --use_sln_strict_mode
+
+Example 4: convert T5 model with beam search in two steps:
     cd ./models/t5
     python convert_to_onnx.py -m t5-small
     cd ../..
-    python convert_generation.py -m t5-small --model_type t5                                   \
+    python convert_generation.py -m t5-small --model_type t5                                    \
         --decoder_onnx ./models/t5/onnx_models/t5-small_decoder.onnx                            \
         --encoder_decoder_init_onnx ./models/t5/onnx_models/t5-small_encoder_decoder_init.onnx  \
         --output ./models/t5/onnx_models/t5_small_beam_search.onnx
 
-Example 3: convert T5 model with beam search. All in one step:
+Example 5: convert T5 model with beam search. All in one step:
     python convert_generation.py -m t5-small --model_type t5 --output ./models/t5/onnx_models/t5_small_beam_search.onnx
 
-Example 4: convert MT5 model with external data file like mt5-base-beamsearch.onnx.data in below example.
+Example 6: convert T5 model with beam search containing specific cuda optimizations. All in one step:
+    python convert_generation.py -m t5-small --model_type t5 --output ./models/t5/onnx_models/t5_small_beam_search.onnx   \
+        --use_gpu --past_present_share_buffer --use_decoder_masked_attention
+
+Example 7: convert MT5 model with external data file like mt5-base-beamsearch.onnx.data in below example.
     python convert_generation.py -m google/mt5-base --model_type mt5 --output mt5-base-beamsearch.onnx -e
 
-Example 5: convert gpt2 model with greedy search:
+Example 8: convert gpt2 model with greedy search:
     python convert_generation.py -m gpt2 --output gpt2_greedy_search.onnx --num_beams 1 --num_return_sequences 1
 
-Example 6: convert gpt2 model with sampling:
+Example 9: convert gpt2 model with sampling:
     python convert_generation.py -m gpt2 --output gpt2_sampling.onnx --num_beams 1 --num_return_sequences 1 --top_p 0.6
 """
 
@@ -413,6 +424,14 @@ def parse_arguments(argv: Optional[List[str]] = None) -> argparse.Namespace:
     test_group = parser.add_argument_group("Other options for testing parity and performance")
 
     test_group.add_argument(
+        "--use_sln_strict_mode",
+        required=False,
+        action="store_true",
+        help="Enable strict mode for SLN in CUDA provider. This ensures a better accuracy but will be slower.",
+    )
+    test_group.set_defaults(use_sln_strict_mode=False)
+
+    test_group.add_argument(
         "--use_gpu", required=False, action="store_true", help="use GPU for inference. Required for fp16."
     )
     test_group.set_defaults(use_gpu=False)
@@ -632,12 +651,13 @@ def pad_weights_of_logits_matmul(onnx_path: str, use_external_data_format: bool 
     return True
 
 
-def create_ort_session(model_path: str, use_gpu: bool) -> InferenceSession:
+def create_ort_session(model_path: str, use_gpu: bool, use_sln_strict_mode: bool) -> InferenceSession:
     """Create OnnxRuntime session.
 
     Args:
         model_path (str): onnx model path
         use_gpu (bool): use GPU or not
+        use_sln_strict_mode (bool): use strict mode for skip layer normalization or not
 
     Raises:
         RuntimeError: CUDAExecutionProvider is not available when --use_gpu is specified.
@@ -653,6 +673,12 @@ def create_ort_session(model_path: str, use_gpu: bool) -> InferenceSession:
             raise RuntimeError("CUDAExecutionProvider is not available for --use_gpu!")
         else:
             logger.info("use CUDAExecutionProvider")
+        if use_sln_strict_mode:
+            cuda_provider_options = {"enable_skip_layer_norm_strict_mode": True}
+            provider_options = {"CUDAExecutionProvider": cuda_provider_options}
+            execution_providers = [
+                (name, provider_options[name]) if name in provider_options else name for name in execution_providers
+            ]
 
     ort_session = InferenceSession(model_path, sess_options, providers=execution_providers)
     return ort_session
@@ -1304,6 +1330,65 @@ def update_decoder_subgraph_share_buffer_and_use_decoder_masked_mha(subg: GraphP
     return True
 
 
+def pack_qkv_for_decoder_masked_mha(model_proto: ModelProto):
+    onnx_model = OnnxModel(model_proto)
+    output_name_to_node = onnx_model.output_name_to_node()
+
+    nodes_to_add = []
+    nodes_to_remove = []
+    for node in onnx_model.nodes():
+        if node.op_type == "DecoderMaskedMultiHeadAttention":
+            if "past_key_cross" in node.input[1] and "past_value_cross" in node.input[2]:
+                continue
+            q_matmul = output_name_to_node[node.input[0]]
+            k_matmul = output_name_to_node[node.input[1]]
+            v_matmul = output_name_to_node[node.input[2]]
+
+            q_weight = onnx_model.get_initializer(q_matmul.input[1])
+            k_weight = onnx_model.get_initializer(k_matmul.input[1])
+            v_weight = onnx_model.get_initializer(v_matmul.input[1])
+            if not (q_weight and k_weight and v_weight):
+                return False
+
+            qw = NumpyHelper.to_array(q_weight)
+            kw = NumpyHelper.to_array(k_weight)
+            vw = NumpyHelper.to_array(v_weight)
+
+            qkv_weight = np.concatenate([qw, kw, vw], axis=1)
+
+            matmul_node_name = onnx_model.create_node_name("MatMul", name_prefix="MatMul_QKV")
+            weight = onnx.helper.make_tensor(
+                name=matmul_node_name + "_weight",
+                data_type=TensorProto.FLOAT if q_weight.data_type == 1 else TensorProto.FLOAT16,
+                dims=[qkv_weight.shape[0], qkv_weight.shape[1]],
+                vals=qkv_weight.flatten().tolist(),
+            )
+
+            model_proto.graph.initializer.extend([weight])
+
+            matmul_node = onnx.helper.make_node(
+                "MatMul",
+                inputs=[q_matmul.input[0], matmul_node_name + "_weight"],
+                outputs=[matmul_node_name + "_out"],
+                name=matmul_node_name,
+            )
+
+            node.input[0] = matmul_node.output[0]
+            node.input[1] = ""
+            node.input[2] = ""
+
+            nodes_to_add.extend([matmul_node])
+            nodes_to_remove.extend([q_matmul, k_matmul, v_matmul])
+
+    onnx_model.add_nodes(nodes_to_add)
+    onnx_model.remove_nodes(nodes_to_remove)
+    onnx_model.update_graph()
+
+    onnx_model.topological_sort()
+
+    return True
+
+
 def update_input_shapes_for_gpt2_decoder_model(decoder_onnx_path: str, use_external_data_format: bool = True):
     """Update the input shapes for the inputs "input_ids" and "position_ids" and make the sequence length dim value 1 for each of them.
        The decoder model will be over-written.
@@ -1929,21 +2014,6 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
         encoder_model.graph.name = f"{args.model_type} encoder and decoder init"
         verify_t5_encoder_decoder_init_subgraph(encoder_model.graph, args.precision)
 
-        if not args.disable_shared_initializers:
-            # Unique shared initializers from the decoder and decoder_init could reduce memory usage in inference.
-            initializers = get_shared_initializers(encoder_model, decoder_model)
-            logger.info(
-                f"{len(initializers)} shared initializers ({[i.name for i in initializers]}) in encoder and decoder subgraphs are moved to the main graph"
-            )
-
-            # TODO(tianleiwu): investigate the following which causes error in inference
-            # Move initializer from subgraph to main graph could reduce memory usage in inference.
-            # moved_initializers = move_initializers(encoder_model.graph)
-            # logger.info(
-            #     f"{len(moved_initializers)} initializers ({[i.name for i in moved_initializers]}) from the encoder are moved to the main graph"
-            # )
-            # initializers.extend(moved_initializers)
-
         make_dim_proto_numeric_t5(encoder_model, config)
         make_dim_proto_numeric_t5(decoder_model, config)
 
@@ -1959,6 +2029,26 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
                 logger.info("*****update t5 decoder subgraph successfully!!!*****")
             else:
                 logger.info("*****DecoderMaskedMultiHeadAttention is not applied to T5 decoder*****")
+
+            if pack_qkv_for_decoder_masked_mha(decoder_model):
+                logger.info("*****pack qkv for decoder masked mha successfully!!!*****")
+            else:
+                logger.info("*****pack qkv for decoder masked mha failed!!!*****")
+
+        if not args.disable_shared_initializers:
+            # Unique shared initializers from the decoder and decoder_init could reduce memory usage in inference.
+            initializers = get_shared_initializers(encoder_model, decoder_model)
+            logger.info(
+                f"{len(initializers)} shared initializers ({[i.name for i in initializers]}) in encoder and decoder subgraphs are moved to the main graph"
+            )
+
+            # TODO(tianleiwu): investigate the following which causes error in inference
+            # Move initializer from subgraph to main graph could reduce memory usage in inference.
+            # moved_initializers = move_initializers(encoder_model.graph)
+            # logger.info(
+            #     f"{len(moved_initializers)} initializers ({[i.name for i in moved_initializers]}) from the encoder are moved to the main graph"
+            # )
+            # initializers.extend(moved_initializers)
 
         node.attribute.extend(
             [
@@ -2346,7 +2436,7 @@ def test_gpt_model(args: argparse.Namespace, sentences: Optional[List[str]] = No
         return
 
     logger.debug("Creating ort session......")
-    ort_session = create_ort_session(args.output, args.use_gpu)
+    ort_session = create_ort_session(args.output, args.use_gpu, args.use_sln_strict_mode)
 
     logger.debug("Run ort session......")
     result = ort_session.run(None, inputs)
@@ -2548,7 +2638,7 @@ def test_t5_model(args: argparse.Namespace, sentences: Optional[List[str]] = Non
 
     logger.debug("ORT inputs", inputs)  # noqa: PLE1205
 
-    ort_session = create_ort_session(args.output, args.use_gpu)
+    ort_session = create_ort_session(args.output, args.use_gpu, args.use_sln_strict_mode)
 
     # Test performance
     latency = []
