@@ -1305,7 +1305,7 @@ OrtTensorRTProviderOptionsV2 OrtTensorRTProviderOptionsToOrtTensorRTProviderOpti
   trt_options_converted.trt_layer_norm_fp32_fallback = 0;
   trt_options_converted.trt_build_heuristics_enable = 0;
   trt_options_converted.trt_sparsity_enable = 0;
-  trt_options_converted.trt_builder_optimization_level = 2;
+  trt_options_converted.trt_builder_optimization_level = 3;
   trt_options_converted.trt_auxiliary_streams = -1;
   trt_options_converted.trt_tactic_sources = "";
   trt_options_converted.trt_extra_plugin_lib_paths = "";
