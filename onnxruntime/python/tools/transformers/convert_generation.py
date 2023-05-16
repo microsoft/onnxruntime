@@ -1330,6 +1330,65 @@ def update_decoder_subgraph_share_buffer_and_use_decoder_masked_mha(subg: GraphP
     return True
 
 
+def pack_qkv_for_decoder_masked_mha(model_proto: ModelProto):
+    onnx_model = OnnxModel(model_proto)
+    output_name_to_node = onnx_model.output_name_to_node()
+
+    nodes_to_add = []
+    nodes_to_remove = []
+    for node in onnx_model.nodes():
+        if node.op_type == "DecoderMaskedMultiHeadAttention":
+            if "past_key_cross" in node.input[1] and "past_value_cross" in node.input[2]:
+                continue
+            q_matmul = output_name_to_node[node.input[0]]
+            k_matmul = output_name_to_node[node.input[1]]
+            v_matmul = output_name_to_node[node.input[2]]
+
+            q_weight = onnx_model.get_initializer(q_matmul.input[1])
+            k_weight = onnx_model.get_initializer(k_matmul.input[1])
+            v_weight = onnx_model.get_initializer(v_matmul.input[1])
+            if not (q_weight and k_weight and v_weight):
+                return False
+
+            qw = NumpyHelper.to_array(q_weight)
+            kw = NumpyHelper.to_array(k_weight)
+            vw = NumpyHelper.to_array(v_weight)
+
+            qkv_weight = np.concatenate([qw, kw, vw], axis=1)
+
+            matmul_node_name = onnx_model.create_node_name("MatMul", name_prefix="MatMul_QKV")
+            weight = onnx.helper.make_tensor(
+                name=matmul_node_name + "_weight",
+                data_type=TensorProto.FLOAT if q_weight.data_type == 1 else TensorProto.FLOAT16,
+                dims=[qkv_weight.shape[0], qkv_weight.shape[1]],
+                vals=qkv_weight.flatten().tolist(),
+            )
+
+            model_proto.graph.initializer.extend([weight])
+
+            matmul_node = onnx.helper.make_node(
+                "MatMul",
+                inputs=[q_matmul.input[0], matmul_node_name + "_weight"],
+                outputs=[matmul_node_name + "_out"],
+                name=matmul_node_name,
+            )
+
+            node.input[0] = matmul_node.output[0]
+            node.input[1] = ""
+            node.input[2] = ""
+
+            nodes_to_add.extend([matmul_node])
+            nodes_to_remove.extend([q_matmul, k_matmul, v_matmul])
+
+    onnx_model.add_nodes(nodes_to_add)
+    onnx_model.remove_nodes(nodes_to_remove)
+    onnx_model.update_graph()
+
+    onnx_model.topological_sort()
+
+    return True
+
+
 def update_input_shapes_for_gpt2_decoder_model(decoder_onnx_path: str, use_external_data_format: bool = True):
     """Update the input shapes for the inputs "input_ids" and "position_ids" and make the sequence length dim value 1 for each of them.
        The decoder model will be over-written.
@@ -1955,21 +2014,6 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
         encoder_model.graph.name = f"{args.model_type} encoder and decoder init"
         verify_t5_encoder_decoder_init_subgraph(encoder_model.graph, args.precision)
 
-        if not args.disable_shared_initializers:
-            # Unique shared initializers from the decoder and decoder_init could reduce memory usage in inference.
-            initializers = get_shared_initializers(encoder_model, decoder_model)
-            logger.info(
-                f"{len(initializers)} shared initializers ({[i.name for i in initializers]}) in encoder and decoder subgraphs are moved to the main graph"
-            )
-
-            # TODO(tianleiwu): investigate the following which causes error in inference
-            # Move initializer from subgraph to main graph could reduce memory usage in inference.
-            # moved_initializers = move_initializers(encoder_model.graph)
-            # logger.info(
-            #     f"{len(moved_initializers)} initializers ({[i.name for i in moved_initializers]}) from the encoder are moved to the main graph"
-            # )
-            # initializers.extend(moved_initializers)
-
         make_dim_proto_numeric_t5(encoder_model, config)
         make_dim_proto_numeric_t5(decoder_model, config)
 
@@ -1985,6 +2029,26 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
                 logger.info("*****update t5 decoder subgraph successfully!!!*****")
             else:
                 logger.info("*****DecoderMaskedMultiHeadAttention is not applied to T5 decoder*****")
+
+            if pack_qkv_for_decoder_masked_mha(decoder_model):
+                logger.info("*****pack qkv for decoder masked mha successfully!!!*****")
+            else:
+                logger.info("*****pack qkv for decoder masked mha failed!!!*****")
+
+        if not args.disable_shared_initializers:
+            # Unique shared initializers from the decoder and decoder_init could reduce memory usage in inference.
+            initializers = get_shared_initializers(encoder_model, decoder_model)
+            logger.info(
+                f"{len(initializers)} shared initializers ({[i.name for i in initializers]}) in encoder and decoder subgraphs are moved to the main graph"
+            )
+
+            # TODO(tianleiwu): investigate the following which causes error in inference
+            # Move initializer from subgraph to main graph could reduce memory usage in inference.
+            # moved_initializers = move_initializers(encoder_model.graph)
+            # logger.info(
+            #     f"{len(moved_initializers)} initializers ({[i.name for i in moved_initializers]}) from the encoder are moved to the main graph"
+            # )
+            # initializers.extend(moved_initializers)
 
         node.attribute.extend(
             [

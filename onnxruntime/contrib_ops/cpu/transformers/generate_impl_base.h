@@ -122,14 +122,21 @@ class GenerateBase {
                          const Tensor* vocab_mask,
                          const Tensor* prefix_vocab_mask,
                          const Tensor* attention_mask,
-                         const Tensor* presence_mask) const {
+                         const Tensor* presence_mask,
+                         const Tensor* decoder_input_ids) const {
     const auto& dims = input_ids->Shape().GetDims();
     if (parameters->model_type == IGenerationParameters::kModelTypeWhisper) {
       if (dims.size() != 3) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                                "Input 'input_features' is expected to have 3 dimensions, got ", dims.size());
       }
-
+      if (decoder_input_ids != nullptr) {
+        const auto& decoder_dims = decoder_input_ids->Shape().GetDims();
+        if (decoder_dims.size() != 2) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                                 "Input 'decoder_input_ids' is expected to have 2 dimensions, got ", decoder_dims.size());
+        }
+      }
     } else if (dims.size() != 2) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "Input 'input_ids' is expected to have 2 dimensions, got ", dims.size());
@@ -189,7 +196,7 @@ class GenerateBase {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                                "Input 'attention_mask' is expected to have 2 dimensions, got ", dims_attn.size());
       }
-      if (!SpanEq(dims_attn, dims)) {
+      if (parameters->model_type != IGenerationParameters::kModelTypeWhisper && !SpanEq(dims_attn, dims)) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                                "Input 'attention_mask' is expected to have same shape as input_ids");
       }
