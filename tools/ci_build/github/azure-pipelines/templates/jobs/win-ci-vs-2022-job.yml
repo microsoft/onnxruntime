@@ -116,16 +116,14 @@ jobs:
       modifyEnvironment: true
       workingFolder: '$(Build.BinariesDirectory)'
 
-# TODO: enable this once we have doxygen installed to generate the API documentation
-#  - script: |
-#     set ORT_DOXY_SRC=$(Build.SourcesDirectory)
-#     set ORT_DOXY_OUT=$(Build.BinariesDirectory)\${{ parameters.BuildConfig }}\${{ parameters.BuildConfig }}
-#     mkdir %ORT_DOXY_SRC%
-#     mkdir %ORT_DOXY_OUT%
-#     "C:\Program Files\doxygen\bin\doxygen.exe" $(Build.SourcesDirectory)\tools\ci_build\github\Doxyfile_csharp.cfg
-#
-#    workingDirectory: '$(Build.SourcesDirectory)'
-#    displayName: 'API Documentation Check and generate'
+  - script: |
+     set ORT_DOXY_SRC=$(Build.SourcesDirectory)
+     set ORT_DOXY_OUT=$(Build.BinariesDirectory)\${{ parameters.BuildConfig }}\${{ parameters.BuildConfig }}
+     mkdir %ORT_DOXY_SRC%
+     mkdir %ORT_DOXY_OUT%
+     "C:\Program Files\doxygen\bin\doxygen.exe" $(Build.SourcesDirectory)\tools\ci_build\github\Doxyfile_csharp.cfg
+    workingDirectory: '$(Build.SourcesDirectory)'
+    displayName: 'API Documentation Check and generate'
 
   - script: |
      python -m pip install -q setuptools wheel numpy
