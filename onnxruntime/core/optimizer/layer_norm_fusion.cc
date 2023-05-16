@@ -44,6 +44,7 @@ static bool IsFP16OutputDataType(const Node& node, int first_n_outputs = -1) {
     }
     ++output_index;
   }
+  return true;
 }
 
 static bool CheckAxesOnReduceMean(std::vector<int64_t>& axes_values, int64_t rank) {
