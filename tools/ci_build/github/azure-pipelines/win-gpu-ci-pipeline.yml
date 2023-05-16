@@ -31,7 +31,7 @@ stages:
 - stage: cuda
   dependsOn: []
   jobs:
-    - template: templates/win-ci-vs-2022.yml
+    - template: templates/win-ci-vs-2022-job.yml
       parameters:
         BuildConfig: 'RelWithDebInfo'
         EnvSetupScript: setup_env_cuda_11.bat
@@ -49,7 +49,7 @@ stages:
 - stage: training
   dependsOn: []
   jobs:
-    - template: templates/win-ci-vs-2022.yml
+    - template: templates/win-ci-vs-2022-job.yml
       parameters:
         BuildConfig: 'RelWithDebInfo'
         EnvSetupScript: setup_env_cuda_11.bat
@@ -87,7 +87,7 @@ stages:
 - stage: kernelDocumentation
   dependsOn: []
   jobs:
-    - template: templates/win-ci-vs-2022.yml
+    - template: templates/win-ci-vs-2022-job.yml
       parameters:
         BuildConfig: 'RelWithDebInfo'
         EnvSetupScript: setup_env_cuda_11.bat
