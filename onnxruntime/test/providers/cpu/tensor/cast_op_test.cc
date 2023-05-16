@@ -42,9 +42,9 @@ int GetMinRequiredCudaComputeCapability<Float8E5M2>() {
   return 800;
 }
 
-typedef enum { True,
-               False,
-               None } Saturate;
+enum Saturate { True,
+                False,
+                None };
 
 template <typename SrcType,
           typename DstType>

@@ -273,7 +273,22 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 
                 { "test_mul_uint8", "Could not find an implementation for Mul(14) node with name" },
 
+                /*
                 { "test_cast_BFLOAT16_to_FLOAT", "Output mismatch"},
+                { "test_cast_STRING_to_FLOAT", "Output mismatch"},
+                { "test_cast_FLOAT_to_STRING", "Output strings can not be compared exactly"},
+                { "test_castlike_BFLOAT16_to_FLOAT", "Length is expected to be equal to Count (metadata and expected data mismatch) "},
+                { "test_castlike_BFLOAT16_to_FLOAT_expanded", "Length is expected to be equal to Count metadata and expected data mismatch"},
+                { "test_castlike_FLOAT_to_BFLOAT16", "Length is expected to be equal to Count. Testdata dims length do not match that of model metadata"},
+                { "test_castlike_FLOAT_to_BFLOAT16_expanded", "Length is expected to be equal to Count"},
+                { "test_castlike_FLOAT_to_STRING", "string comparison does not match due to float rounding"},
+                { "test_castlike_FLOAT_to_STRING_expanded", "string comparison does not match due to float rounding"},
+                { "test_castlike_STRING_to_FLOAT", "Output mismatch"},
+                { "test_castlike_STRING_to_FLOAT_expanded", "Output mismatch"},
+                */
+
+                // float 8 types
+                /*
                 { "test_cast_FLOAT16_to_FLOAT8E4M3FN", "Output mismatch"},
                 { "test_cast_FLOAT16_to_FLOAT8E4M3FNUZ", "Output mismatch"},
                 { "test_cast_FLOAT16_to_FLOAT8E5M2", "Output mismatch"},
@@ -290,8 +305,6 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 { "test_cast_FLOAT_to_FLOAT8E4M3FNUZ", "Output mismatch"},
                 { "test_cast_FLOAT_to_FLOAT8E5M2", "Output mismatch"},
                 { "test_cast_FLOAT_to_FLOAT8E5M2FNUZ", "Output mismatch"},
-                { "test_cast_FLOAT_to_STRING", "Output strings can not be compared exactly"},
-                { "test_cast_STRING_to_FLOAT", "Output mismatch"},
                 { "test_cast_no_saturate_FLOAT16_to_FLOAT8E4M3FN", "Output mismatch"},
                 { "test_cast_no_saturate_FLOAT16_to_FLOAT8E4M3FNUZ", "Output mismatch"},
                 { "test_cast_no_saturate_FLOAT16_to_FLOAT8E5M2", "Output mismatch"},
@@ -300,8 +313,6 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 { "test_cast_no_saturate_FLOAT_to_FLOAT8E4M3FNUZ", "Output mismatch"},
                 { "test_cast_no_saturate_FLOAT_to_FLOAT8E5M2", "Output mismatch"},
                 { "test_cast_no_saturate_FLOAT_to_FLOAT8E5M2FNUZ", "Output mismatch"},
-                { "test_castlike_BFLOAT16_to_FLOAT", "Length is expected to be equal to Count (metadata and expected data mismatch) "},
-                { "test_castlike_BFLOAT16_to_FLOAT_expanded", "Length is expected to be equal to Count metadata and expected data mismatch"},
                 { "test_castlike_FLOAT8E4M3FNUZ_to_FLOAT", "Output mismatch"},
                 { "test_castlike_FLOAT8E4M3FNUZ_to_FLOAT_expanded", "Output mismatch"},
                 { "test_castlike_FLOAT8E4M3FN_to_FLOAT", "Output mismatch"},
@@ -310,8 +321,6 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 { "test_castlike_FLOAT8E5M2FNUZ_to_FLOAT_expanded", "Output mismatch"},
                 { "test_castlike_FLOAT8E5M2_to_FLOAT", "Output mismatch"},
                 { "test_castlike_FLOAT8E5M2_to_FLOAT_expanded", "Output mismatch"},
-                { "test_castlike_FLOAT_to_BFLOAT16", "Length is expected to be equal to Count. Testdata dims length do not match that of model metadata"},
-                { "test_castlike_FLOAT_to_BFLOAT16_expanded", "Length is expected to be equal to Count"},
                 { "test_castlike_FLOAT_to_FLOAT8E4M3FN", "Output mismatch"},
                 { "test_castlike_FLOAT_to_FLOAT8E4M3FNUZ", "Output mismatch"},
                 { "test_castlike_FLOAT_to_FLOAT8E4M3FNUZ_expanded", "Output mismatch"},
@@ -320,14 +329,11 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 { "test_castlike_FLOAT_to_FLOAT8E5M2FNUZ", "Output mismatch"},
                 { "test_castlike_FLOAT_to_FLOAT8E5M2FNUZ_expanded", "Output mismatch"},
                 { "test_castlike_FLOAT_to_FLOAT8E5M2_expanded", "Output mismatch"},
-                { "test_castlike_FLOAT_to_STRING", "string comparison does not match due to float rounding"},
-                { "test_castlike_FLOAT_to_STRING_expanded", "string comparison does not match due to float rounding"},
-                { "test_castlike_STRING_to_FLOAT", "Output mismatch"},
-                { "test_castlike_STRING_to_FLOAT_expanded", "Output mismatch"},
                 { "test_dequantizelinear_e4m3fn", "Output mismatch"},
                 { "test_dequantizelinear_e5m2", "Output mismatch"},
                 { "test_quantizelinear_e4m3fn", "Output mismatch"},
                 { "test_quantizelinear_e5m2", "Output mismatch"},
+                */
 
                 { "test_bitshift_right_uint16", "Could not find an implementation for BitShift(11) nodeMeta with name ''"},
                 { "test_bitshift_left_uint16", "Could not find an implementation for BitShift(11)"},

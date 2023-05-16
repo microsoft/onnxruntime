@@ -26,121 +26,34 @@
 using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;
 
-// Provide template specializations for onnxruntime-specific types.
+#define TO_TENSOR_ORT_TYPE(TYPE, DATATYPE)                                                \
+  template <>                                                                             \
+  TensorProto ToTensor<onnxruntime::TYPE>(const onnxruntime::TYPE& value) {               \
+    TensorProto t;                                                                        \
+    t.set_data_type(DATATYPE);                                                            \
+    t.add_int32_data(value.val);                                                          \
+    return t;                                                                             \
+  }                                                                                       \
+  template <>                                                                             \
+  TensorProto ToTensor<onnxruntime::TYPE>(const std::vector<onnxruntime::TYPE>& values) { \
+    TensorProto t;                                                                        \
+    t.clear_int32_data();                                                                 \
+    t.set_data_type(DATATYPE);                                                            \
+    for (const onnxruntime::TYPE& val : values) {                                         \
+      t.add_int32_data(val.val);                                                          \
+    }                                                                                     \
+    return t;                                                                             \
+  }
+
 namespace ONNX_NAMESPACE {
-template <>
-TensorProto ToTensor<onnxruntime::MLFloat16>(const onnxruntime::MLFloat16& value) {
-  TensorProto t;
-  t.set_data_type(TensorProto_DataType_FLOAT16);
-  t.add_int32_data(value.val);
-  return t;
-}
 
-template <>
-TensorProto ToTensor<onnxruntime::MLFloat16>(const std::vector<onnxruntime::MLFloat16>& values) {
-  TensorProto t;
-  t.clear_int32_data();
-  t.set_data_type(TensorProto_DataType_FLOAT16);
-  for (const onnxruntime::MLFloat16& val : values) {
-    t.add_int32_data(val.val);
-  }
-  return t;
-}
-
-template <>
-TensorProto ToTensor<onnxruntime::BFloat16>(const onnxruntime::BFloat16& value) {
-  TensorProto t;
-  t.set_data_type(TensorProto_DataType_BFLOAT16);
-  t.add_int32_data(value.val);
-  return t;
-}
-
-template <>
-TensorProto ToTensor<onnxruntime::BFloat16>(const std::vector<onnxruntime::BFloat16>& values) {
-  TensorProto t;
-  t.clear_int32_data();
-  t.set_data_type(TensorProto_DataType_BFLOAT16);
-  for (const onnxruntime::BFloat16& val : values) {
-    t.add_int32_data(val.val);
-  }
-  return t;
-}
-
-template <>
-TensorProto ToTensor<onnxruntime::Float8E4M3FN>(const onnxruntime::Float8E4M3FN& value) {
-  TensorProto t;
-  t.set_data_type(TensorProto_DataType_FLOAT8E4M3FN);
-  t.add_int32_data(value.val);
-  return t;
-}
-
-template <>
-TensorProto ToTensor<onnxruntime::Float8E4M3FNUZ>(const onnxruntime::Float8E4M3FNUZ& value) {
-  TensorProto t;
-  t.set_data_type(TensorProto_DataType_FLOAT8E4M3FNUZ);
-  t.add_int32_data(value.val);
-  return t;
-}
-
-template <>
-TensorProto ToTensor<onnxruntime::Float8E5M2>(const onnxruntime::Float8E5M2& value) {
-  TensorProto t;
-  t.set_data_type(TensorProto_DataType_FLOAT8E5M2);
-  t.add_int32_data(value.val);
-  return t;
-}
-
-template <>
-TensorProto ToTensor<onnxruntime::Float8E5M2FNUZ>(const onnxruntime::Float8E5M2FNUZ& value) {
-  TensorProto t;
-  t.set_data_type(TensorProto_DataType_FLOAT8E5M2FNUZ);
-  t.add_int32_data(value.val);
-  return t;
-}
-
-template <>
-TensorProto ToTensor<onnxruntime::Float8E4M3FN>(const std::vector<onnxruntime::Float8E4M3FN>& values) {
-  TensorProto t;
-  t.clear_int32_data();
-  t.set_data_type(TensorProto_DataType_FLOAT8E4M3FN);
-  for (const onnxruntime::Float8E4M3FN& val : values) {
-    t.add_int32_data(val.val);
-  }
-  return t;
-}
-
-template <>
-TensorProto ToTensor<onnxruntime::Float8E4M3FNUZ>(const std::vector<onnxruntime::Float8E4M3FNUZ>& values) {
-  TensorProto t;
-  t.clear_int32_data();
-  t.set_data_type(TensorProto_DataType_FLOAT8E4M3FNUZ);
-  for (const onnxruntime::Float8E4M3FNUZ& val : values) {
-    t.add_int32_data(val.val);
-  }
-  return t;
-}
-
-template <>
-TensorProto ToTensor<onnxruntime::Float8E5M2>(const std::vector<onnxruntime::Float8E5M2>& values) {
-  TensorProto t;
-  t.clear_int32_data();
-  t.set_data_type(TensorProto_DataType_FLOAT8E5M2);
-  for (const onnxruntime::Float8E5M2& val : values) {
-    t.add_int32_data(val.val);
-  }
-  return t;
-}
-
-template <>
-TensorProto ToTensor<onnxruntime::Float8E5M2FNUZ>(const std::vector<onnxruntime::Float8E5M2FNUZ>& values) {
-  TensorProto t;
-  t.clear_int32_data();
-  t.set_data_type(TensorProto_DataType_FLOAT8E5M2FNUZ);
-  for (const onnxruntime::Float8E5M2FNUZ& val : values) {
-    t.add_int32_data(val.val);
-  }
-  return t;
-}
+// Provide template specializations for onnxruntime-specific types.
+TO_TENSOR_ORT_TYPE(MLFloat16, TensorProto_DataType_FLOAT16)
+TO_TENSOR_ORT_TYPE(BFloat16, TensorProto_DataType_BFLOAT16)
+TO_TENSOR_ORT_TYPE(Float8E4M3FN, TensorProto_DataType_FLOAT8E4M3FN)
+TO_TENSOR_ORT_TYPE(Float8E4M3FNUZ, TensorProto_DataType_FLOAT8E4M3FNUZ)
+TO_TENSOR_ORT_TYPE(Float8E5M2, TensorProto_DataType_FLOAT8E5M2)
+TO_TENSOR_ORT_TYPE(Float8E5M2FNUZ, TensorProto_DataType_FLOAT8E5M2FNUZ)
 
 bool operator==(const ONNX_NAMESPACE::TensorShapeProto_Dimension& l,
                 const ONNX_NAMESPACE::TensorShapeProto_Dimension& r) {
