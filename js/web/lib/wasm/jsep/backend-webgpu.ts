@@ -1,9 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {env} from 'onnxruntime-common';
+import {Env} from 'onnxruntime-common';
 
-import {LOG_DEBUG} from './log';
+import {configureLogger, LOG_DEBUG} from './log';
 import {TensorView} from './tensor';
 import {createGpuDataManager, GpuDataManager} from './webgpu/gpu-data-manager';
 import {RunFunction, WEBGPU_OP_RESOLVE_RULES} from './webgpu/op-resolve-rules';
@@ -94,7 +94,7 @@ export class WebGpuBackend {
   profilingQuerySet: GPUQuerySet;
   profilingTimeBase?: bigint;
 
-  async initialize(): Promise<void> {
+  async initialize(env: Env): Promise<void> {
     if (!navigator.gpu) {
       // WebGPU is not available.
       throw new Error('WebGpuBackend: WebGPU is not available.');
@@ -126,6 +126,10 @@ export class WebGpuBackend {
     this.kernels = new Map();
     this.kernelPersistentData = new Map();
     this.kernelCustomData = new Map();
+
+    // set up flags for logger
+    configureLogger(env.logLevel!, !!env.debug);
+
     // TODO: set up flags
 
     this.device.onuncapturederror = ev => {

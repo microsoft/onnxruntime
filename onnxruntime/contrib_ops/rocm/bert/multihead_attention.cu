@@ -71,7 +71,7 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
           past_key, past_value, /*past_seq_len=*/nullptr,
           &attn,
           num_heads_, mask_filter_value_, scale_,
-          false, device_prop.maxThreadsPerBlock));
+          false, false, device_prop.maxThreadsPerBlock));
   // TODO: support more qkv formats
   ORT_ENFORCE(attn.qkv_format == Q_KV_BSNH_BSN2H || attn.qkv_format == QKV_BSN3H, "Got ", attn.qkv_format);
 

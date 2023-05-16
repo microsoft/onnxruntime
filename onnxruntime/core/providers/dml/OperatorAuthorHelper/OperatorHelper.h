@@ -1484,6 +1484,7 @@ using ShapeInferenceHelper_Flatten13 = FlattenHelper;
 using ShapeInferenceHelper_Split7 = VersionedOpsetHelper<SplitHelper, 7>;
 using ShapeInferenceHelper_Split11 = VersionedOpsetHelper<SplitHelper, 11>;
 using ShapeInferenceHelper_Split13 = VersionedOpsetHelper<SplitHelper, 13>;
+using ShapeInferenceHelper_Split18 = VersionedOpsetHelper<SplitHelper, 18>;
 using ShapeInferenceHelper_Transpose = TransposeHelper;
 using ShapeInferenceHelper_Concat = ConcatHelper;
 using ShapeInferenceHelper_Slice7 = VersionedOpsetHelper<SliceHelper, 7>;
