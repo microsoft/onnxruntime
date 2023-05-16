@@ -80,9 +80,7 @@ def chain_model(args):
         graph_inputs.append(decoder_input_ids)
 
     if args.use_logits_processor:
-        logits_processor = helper.make_tensor_value_info(
-            "logits_processor", TensorProto.INT32, [1]
-        )
+        logits_processor = helper.make_tensor_value_info("logits_processor", TensorProto.INT32, [1])
         graph_inputs.append(logits_processor)
 
     # graph outputs
