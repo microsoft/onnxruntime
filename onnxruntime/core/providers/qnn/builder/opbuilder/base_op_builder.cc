@@ -45,7 +45,7 @@ Status BaseOpBuilder::AddToModelBuilder(QnnModelWrapper& qnn_model_wrapper,
   return Status::OK();
 }
 
-bool BaseOpBuilder::OnnxDataTypeToQnnDataType(const int32_t onnx_data_type, Qnn_DataType_t& qnn_data_type, bool is_quantized) const {
+bool OnnxDataTypeToQnnDataType(const int32_t onnx_data_type, Qnn_DataType_t& qnn_data_type, bool is_quantized) {
   const std::unordered_map<int32_t, Qnn_DataType_t> onnx_to_qnn_data_type = {
       {ONNX_NAMESPACE::TensorProto_DataType_INT8, QNN_DATATYPE_INT_8},
       {ONNX_NAMESPACE::TensorProto_DataType_INT16, QNN_DATATYPE_INT_16},
@@ -287,21 +287,32 @@ Status BaseOpBuilder::ProcessAxisAttribute(const QnnModelWrapper& qnn_model_wrap
                                            const NodeUnit& node_unit,
                                            Qnn_Scalar_t& axis_qnn_scalar,
                                            int32_t& default_axis_value) const {
-  ORT_RETURN_IF_ERROR(GetAxisValue(qnn_model_wrapper, node_unit, default_axis_value));
+  const auto& inputs = node_unit.Inputs();
+  std::vector<uint32_t> input_shape;
+  ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(inputs[0].node_arg, input_shape), "Cannot get shape");
+
+  auto rank = static_cast<int32_t>(input_shape.size());
+  NodeAttrHelper node_helper(node_unit);
+  int32_t onnx_axis = node_helper.Get("axis", default_axis_value);
+  if (onnx_axis < 0) {
+    onnx_axis += rank;
+  }
+  ORT_ENFORCE((onnx_axis >= 0 && onnx_axis < static_cast<int32_t>(input_shape.size())), "QNN requires axis range [0, rank-1].");
+  default_axis_value = onnx_axis;
 
   bool is_gather_op = (node_unit.OpType() == "Gather");
   if (is_gather_op) {
     axis_qnn_scalar.dataType = QNN_DATATYPE_INT_32;
-    axis_qnn_scalar.int32Value = default_axis_value;
+    axis_qnn_scalar.int32Value = onnx_axis;
   } else {
     axis_qnn_scalar.dataType = QNN_DATATYPE_UINT_32;
-    axis_qnn_scalar.uint32Value = static_cast<uint32_t>(default_axis_value);
+    axis_qnn_scalar.uint32Value = static_cast<uint32_t>(onnx_axis);
   }
 
   return Status::OK();
 }
 
-Qnn_TensorType_t BaseOpBuilder::GetInputTensorType(const QnnModelWrapper& qnn_model_wrapper, const std::string& input_name) const {
+Qnn_TensorType_t GetInputTensorType(const QnnModelWrapper& qnn_model_wrapper, const std::string& input_name) {
   if (qnn_model_wrapper.IsInitializerInput(input_name)) {
     return QNN_TENSOR_TYPE_STATIC;
   } else if (qnn_model_wrapper.IsGraphInput(input_name)) {

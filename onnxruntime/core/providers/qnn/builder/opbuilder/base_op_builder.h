@@ -68,21 +68,6 @@ class BaseOpBuilder : public IOpBuilder {
                       bool is_quantized_model,
                       std::vector<std::string>& input_names) const ORT_MUST_USE_RESULT;
 
-  bool OnnxDataTypeToQnnDataType(const int32_t data_type, Qnn_DataType_t& qnn_data_type, bool is_quantized = false) const;
-
-  Status GetQnnDataType(const bool is_quantized_node, const ONNX_NAMESPACE::TypeProto* type_proto,
-                        Qnn_DataType_t& tensor_data_type) const {
-    if (!type_proto || !type_proto->tensor_type().has_elem_type()) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "The tensor doesn't have elem_type.");
-    }
-
-    int32_t onnx_data_type = type_proto->tensor_type().elem_type();
-    ORT_RETURN_IF_NOT(OnnxDataTypeToQnnDataType(onnx_data_type, tensor_data_type, is_quantized_node),
-                      "Failed to map Onnx data type to Qnn data type!");
-
-    return Status::OK();
-  }
-
   const std::string& GetNodeName(const NodeUnit& node_unit) const {
     const std::string& node_name(node_unit.Name());
     if (node_name.empty()) {
@@ -93,89 +78,88 @@ class BaseOpBuilder : public IOpBuilder {
   }
 
   static const std::string& GetQnnOpType(const std::string& onnx_op_type) {
-    // TODO: Use QNN operator names defined in "QnnOpDef.h"
     static const std::unordered_map<std::string, std::string> onnx_op_type_to_qnn_op_type = {
-        {"Add", "ElementWiseAdd"},
-        {"Mul", "ElementWiseMultiply"},
-        {"Abs", "ElementWiseAbs"},
-        {"And", "ElementWiseAnd"},
-        {"Atan", "ElementWiseAtan"},
-        {"Ceil", "ElementWiseCeil"},
-        {"Cast", "Cast"},
-        {"Clip", "ReluMinMax"},
-        {"Cos", "ElementWiseCos"},
-        {"Div", "ElementWiseDivide"},
-        {"Equal", "ElementWiseEqual"},
-        {"Exp", "ElementWiseExp"},
-        {"Floor", "ElementWiseFloor"},
-        {"Gather", "Gather"},
-        {"GatherElements", "GatherElements"},
-        {"Greater", "ElementWiseGreater"},
-        {"GreaterOrEqual", "ElementWiseGreaterEqual"},
-        {"Less", "ElementWiseLess"},
-        {"LessOrEqual", "ElementWiseLessEqual"},
-        {"Log", "ElementWiseLog"},
-        {"Max", "ElementWiseMaximum"},
-        {"Min", "ElementWiseMinimum"},
-        {"Neg", "ElementWiseNeg"},
-        {"Not", "ElementWiseNot"},
-        {"Or", "ElementWiseOr"},
-        {"Pow", "ElementWisePower"},
-        {"PRelu", "Prelu"},
-        {"LeakyRelu", "Prelu"},
-        {"ReduceMax", "ReduceMax"},
-        {"ReduceMean", "ReduceMean"},
-        {"ReduceMin", "ReduceMin"},
-        {"ReduceProd", "ReduceProd"},
-        {"ReduceSum", "ReduceSum"},
-        {"Round", "ElementWiseRound"},
-        {"Where", "ElementWiseSelect"},
-        {"Sigmoid", "Sigmoid"},
-        {"Sin", "ElementWiseSin"},
-        {"Slice", "StridedSlice"},
-        {"Split", "Split"},
-        {"Softmax", "Softmax"},
-        {"Sqrt", "ElementWiseSquareRoot"},
-        {"Sub", "ElementWiseSubtract"},
-        {"Tanh", "Tanh"},
-        {"Transpose", "Transpose"},
+        {"Add", QNN_OP_ELEMENT_WISE_ADD},
+        {"Mul", QNN_OP_ELEMENT_WISE_MULTIPLY},
+        {"Abs", QNN_OP_ELEMENT_WISE_ABS},
+        {"And", QNN_OP_ELEMENT_WISE_AND},
+        {"Atan", QNN_OP_ELEMENT_WISE_ATAN},
+        {"Ceil", QNN_OP_ELEMENT_WISE_CEIL},
+        {"Cast", QNN_OP_CAST},
+        {"Clip", QNN_OP_RELU_MIN_MAX},
+        {"Cos", QNN_OP_ELEMENT_WISE_COS},
+        {"Div", QNN_OP_ELEMENT_WISE_DIVIDE},
+        {"Equal", QNN_OP_ELEMENT_WISE_EQUAL},
+        {"Exp", QNN_OP_ELEMENT_WISE_EXP},
+        {"Floor", QNN_OP_ELEMENT_WISE_FLOOR},
+        {"Gather", QNN_OP_GATHER},
+        {"GatherElements", QNN_OP_GATHER_ELEMENTS},
+        {"GatherND", QNN_OP_GATHER_ND},
+        {"Greater", QNN_OP_ELEMENT_WISE_GREATER},
+        {"GreaterOrEqual", QNN_OP_ELEMENT_WISE_GREATER_EQUAL},
+        {"Less", QNN_OP_ELEMENT_WISE_LESS},
+        {"LessOrEqual", QNN_OP_ELEMENT_WISE_LESS_EQUAL},
+        {"Log", QNN_OP_ELEMENT_WISE_LOG},
+        {"Max", QNN_OP_ELEMENT_WISE_MAXIMUM},
+        {"Min", QNN_OP_ELEMENT_WISE_MINIMUM},
+        {"Neg", QNN_OP_ELEMENT_WISE_NEG},
+        {"Not", QNN_OP_ELEMENT_WISE_NOT},
+        {"Or", QNN_OP_ELEMENT_WISE_OR},
+        {"Pow", QNN_OP_ELEMENT_WISE_POWER},
+        {"PRelu", QNN_OP_PRELU},
+        {"LeakyRelu", QNN_OP_PRELU},
+        {"ReduceMax", QNN_OP_REDUCE_MAX},
+        {"ReduceMean", QNN_OP_REDUCE_MEAN},
+        {"ReduceMin", QNN_OP_REDUCE_MIN},
+        {"ReduceProd", QNN_OP_REDUCE_PROD},
+        {"ReduceSum", QNN_OP_REDUCE_SUM},
+        {"Round", QNN_OP_ELEMENT_WISE_ROUND},
+        {"Where", QNN_OP_ELEMENT_WISE_SELECT},
+        {"Sin", QNN_OP_ELEMENT_WISE_SIN},
+        {"Slice", QNN_OP_STRIDED_SLICE},
+        {"Split", QNN_OP_SPLIT},
+        {"Softmax", QNN_OP_SOFTMAX},
+        {"Sqrt", QNN_OP_ELEMENT_WISE_SQUARE_ROOT},
+        {"Sub", QNN_OP_ELEMENT_WISE_SUBTRACT},
+        {"Tanh", QNN_OP_TANH},
+        {"Transpose", QNN_OP_TRANSPOSE},
 
-        {"DequantizeLinear", "Dequantize"},
-        {"QuantizeLinear", "Quantize"},
+        {"DequantizeLinear", QNN_OP_DEQUANTIZE},
+        {"QuantizeLinear", QNN_OP_QUANTIZE},
 
-        {"MatMul", "MatMul"},
+        {"MatMul", QNN_OP_MAT_MUL},
 
-        {"Elu", "Elu"},
-        {"Relu", "Relu"},
-        {"Gelu", "Gelu"},
-        {"Sigmoid", "Sigmoid"},
+        {"Elu", QNN_OP_ELU},
+        {"Relu", QNN_OP_RELU},
+        {"Gelu", QNN_OP_GELU},
+        {"Sigmoid", QNN_OP_SIGMOID},
 
-        {"HardSwish", "HardSwish"},
+        {"HardSwish", QNN_OP_HARD_SWISH},
 
-        {"Conv", "Conv2d"},
+        {"Conv", QNN_OP_CONV_2D},
 
-        {"GlobalAveragePool", "PoolAvg2d"},
-        {"AveragePool", "PoolAvg2d"},
-        {"MaxPool", "PoolMax2d"},
+        {"GlobalAveragePool", QNN_OP_POOL_AVG_2D},
+        {"AveragePool", QNN_OP_POOL_AVG_2D},
+        {"MaxPool", QNN_OP_POOL_MAX_2D},
 
-        {"Reshape", "Reshape"},
-        {"Resize", "Resize"},
-        {"Flatten", "Reshape"},
-        {"Squeeze", "Reshape"},
-        {"Unsqueeze", "Reshape"},
+        {"Reshape", QNN_OP_RESHAPE},
+        {"Resize", QNN_OP_RESIZE},
+        {"Flatten", QNN_OP_RESHAPE},
+        {"Squeeze", QNN_OP_RESHAPE},
+        {"Unsqueeze", QNN_OP_RESHAPE},
 
-        {"LogSoftmax", "LogSoftmax"},
-        {"Concat", "Concat"},
+        {"LogSoftmax", QNN_OP_LOG_SOFTMAX},
+        {"Concat", QNN_OP_CONCAT},
 
-        {"Gemm", "FullyConnected"},
+        {"Gemm", QNN_OP_FULLY_CONNECTED},
 
-        {"ArgMax", "Argmax"},
-        {"ArgMin", "Argmin"},
-        {"ConvTranspose", "TransposeConv2d"},
-        {"Tile", "Tile"},
-        {"TopK", "TopK"},
-        {"InstanceNormalization", "InstanceNorm"},
-        {"BatchNormalization", "Batchnorm"},
+        {"ArgMax", QNN_OP_ARGMAX},
+        {"ArgMin", QNN_OP_ARGMIN},
+        {"ConvTranspose", QNN_OP_TRANSPOSE_CONV_2D},
+        {"Tile", QNN_OP_TILE},
+        {"TopK", QNN_OP_TOP_K},
+        {"InstanceNormalization", QNN_OP_INSTANCE_NORM},
+        {"BatchNormalization", QNN_OP_BATCHNORM},
 
         {"LRN", QNN_OP_LRN}};
     auto it = onnx_op_type_to_qnn_op_type.find(onnx_op_type);
@@ -265,32 +249,10 @@ class BaseOpBuilder : public IOpBuilder {
     }
   }
 
-  // Gets axis attribute value from node and normalizes it so that it is positive.
-  Status GetAxisValue(const QnnModelWrapper& qnn_model_wrapper,
-                      const NodeUnit& node_unit,
-                      int32_t& default_axis_value) const {
-    const auto& inputs = node_unit.Inputs();
-    std::vector<uint32_t> input_shape;
-    ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(inputs[0].node_arg, input_shape), "Cannot get shape");
-
-    const auto rank = static_cast<int32_t>(input_shape.size());
-    NodeAttrHelper node_helper(node_unit);
-    int32_t onnx_axis = node_helper.Get("axis", default_axis_value);
-    if (onnx_axis < 0) {
-      onnx_axis += rank;
-    }
-    ORT_ENFORCE((onnx_axis >= 0 && onnx_axis < static_cast<int32_t>(input_shape.size())),
-                "QNN requires axis range [0, rank-1].");
-    default_axis_value = onnx_axis;
-
-    return Status::OK();
-  }
-
   Status ProcessAxisAttribute(const QnnModelWrapper& qnn_model_wrapper,
                               const NodeUnit& node_unit,
                               Qnn_Scalar_t& axis_qnn_scalar,
                               int32_t& default_axis_value) const;
-  Qnn_TensorType_t GetInputTensorType(const QnnModelWrapper& qnn_model_wrapper, const std::string& input_name) const;
 
   size_t GetInputCountQnnRequired(const NodeUnit& node_unit) const {
     auto input_output_cout = GetInputOutputCountQnnRequired(node_unit.OpType());
@@ -325,6 +287,23 @@ class BaseOpBuilder : public IOpBuilder {
   const std::vector<size_t> nchw2hwcn_perm{2, 3, 1, 0};
   const std::vector<size_t> cnhw2hwcn_perm{2, 3, 0, 1};
 };
+
+Qnn_TensorType_t GetInputTensorType(const QnnModelWrapper& qnn_model_wrapper, const std::string& input_name);
+
+bool OnnxDataTypeToQnnDataType(const int32_t data_type, Qnn_DataType_t& qnn_data_type, bool is_quantized = false);
+
+inline Status GetQnnDataType(const bool is_quantized_node, const ONNX_NAMESPACE::TypeProto* type_proto,
+                             Qnn_DataType_t& tensor_data_type) {
+  if (!type_proto || !type_proto->tensor_type().has_elem_type()) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "The tensor doesn't have elem_type.");
+  }
+
+  int32_t onnx_data_type = type_proto->tensor_type().elem_type();
+  ORT_RETURN_IF_NOT(OnnxDataTypeToQnnDataType(onnx_data_type, tensor_data_type, is_quantized_node),
+                    "Failed to map Onnx data type to Qnn data type!");
+
+  return Status::OK();
+}
 
 // Type that holds information about an ONNX attribute.
 template <typename ValType>

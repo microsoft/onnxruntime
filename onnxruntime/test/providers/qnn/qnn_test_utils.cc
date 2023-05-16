@@ -15,10 +15,10 @@ namespace onnxruntime {
 namespace test {
 
 void RunQnnModelTest(const GetTestModelFn& build_test_case, const ProviderOptions& provider_options,
-                     int opset_version, ExpectedEPNodeAssignment expected_ep_assignment, int num_nodes_in_ep,
+                     int opset_version, ExpectedEPNodeAssignment expected_ep_assignment, int num_nodes_in_graph,
                      const char* test_description, float fp32_abs_err) {
-  std::function<void(const Graph&)> graph_verify = [num_nodes_in_ep, test_description](const Graph& graph) -> void {
-    ASSERT_EQ(graph.NumberOfNodes(), num_nodes_in_ep) << test_description;
+  std::function<void(const Graph&)> graph_verify = [num_nodes_in_graph, test_description](const Graph& graph) -> void {
+    ASSERT_EQ(graph.NumberOfNodes(), num_nodes_in_graph) << test_description;
   };
 
   EPVerificationParams verification_params;

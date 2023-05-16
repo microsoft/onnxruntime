@@ -13,7 +13,6 @@
 namespace onnxruntime {
 namespace qnn {
 
-// Operator which only need to hanle node inputs & outputs, no attributes or no need to handle attributes
 class GatherOpBuilder : public BaseOpBuilder {
  public:
   GatherOpBuilder() : BaseOpBuilder("GatherOpBuilder") {}
@@ -35,38 +34,71 @@ class GatherOpBuilder : public BaseOpBuilder {
                                      bool do_op_validation) const override ORT_MUST_USE_RESULT;
 };
 
-// Copies static ONNX gather indices into `qnn_bytes` destination.
-// Ensures that indices are positive and of the correct type.
-template <typename OnnxIndexType, typename QnnIndexType>
-static Status NormalizeIndices(const std::vector<uint8_t>& onnx_bytes, std::vector<uint8_t>& qnn_bytes,
-                               OnnxIndexType index_max) {
-  gsl::span<const OnnxIndexType> onnx_indices{reinterpret_cast<const OnnxIndexType*>(onnx_bytes.data()),
-                                              onnx_bytes.size() / sizeof(OnnxIndexType)};
+class GatherElementsOpBuilder : public BaseOpBuilder {
+ public:
+  GatherElementsOpBuilder() : BaseOpBuilder("GatherElementsOpBuilder") {}
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(GatherElementsOpBuilder);
 
-  qnn_bytes.resize(onnx_indices.size() * sizeof(QnnIndexType));
-  QnnIndexType* qnn_indices_ptr = reinterpret_cast<QnnIndexType*>(qnn_bytes.data());
+ protected:
+  Status ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
+                       const NodeUnit& node_unit,
+                       const logging::Logger& logger,
+                       bool is_quantized_model,
+                       std::vector<std::string>& input_names,
+                       bool do_op_validation) const override ORT_MUST_USE_RESULT;
+
+  Status ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrapper,
+                                     const NodeUnit& node_unit,
+                                     std::vector<std::string>&& input_names,
+                                     const logging::Logger& logger,
+                                     bool is_quantized_model,
+                                     bool do_op_validation) const override ORT_MUST_USE_RESULT;
+};
+
+class GatherNDOpBuilder : public BaseOpBuilder {
+ public:
+  GatherNDOpBuilder() : BaseOpBuilder("GatherNDOpBuilder") {}
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(GatherNDOpBuilder);
+
+ protected:
+  Status ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
+                       const NodeUnit& node_unit,
+                       const logging::Logger& logger,
+                       bool is_quantized_model,
+                       std::vector<std::string>& input_names,
+                       bool do_op_validation) const override ORT_MUST_USE_RESULT;
+
+  Status ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrapper,
+                                     const NodeUnit& node_unit,
+                                     std::vector<std::string>&& input_names,
+                                     const logging::Logger& logger,
+                                     bool is_quantized_model,
+                                     bool do_op_validation) const override ORT_MUST_USE_RESULT;
+};
+
+template <typename T>
+static void ConvertInt64Indices(const std::vector<uint8_t>& onnx_bytes, std::vector<uint8_t>& qnn_bytes) {
+  const size_t num_elems = onnx_bytes.size() / sizeof(uint64_t);
+  gsl::span<const uint64_t> onnx_indices{reinterpret_cast<const uint64_t*>(onnx_bytes.data()), num_elems};
+
+  qnn_bytes.resize(num_elems * sizeof(T));
+  T* qnn_indices_ptr = reinterpret_cast<T*>(qnn_bytes.data());
 
   std::transform(onnx_indices.begin(), onnx_indices.end(), qnn_indices_ptr,
-                 [index_max](OnnxIndexType index) {
-                   return SafeInt<QnnIndexType>(index < 0 ? index + index_max : index);
-                 });
-
-  return Status::OK();
+                 [](int64_t index) { return SafeInt<T>(index); });
 }
 
-Status GatherOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
-                                      const NodeUnit& node_unit,
-                                      const logging::Logger& logger,
-                                      bool is_quantized_model,
-                                      std::vector<std::string>& input_names,
-                                      bool do_op_validation) const {
-  ORT_UNUSED_PARAMETER(do_op_validation);
-  const auto& inputs = node_unit.Inputs();
-  ORT_RETURN_IF(inputs.size() != 2, "Gather should has 2 inputs at least!");
-  ORT_RETURN_IF_ERROR(ProcessInput(qnn_model_wrapper, inputs[0], logger, is_quantized_model, input_names));
+static Status ConvertIndicesToInt32(QnnModelWrapper& qnn_model_wrapper,
+                                    const NodeUnitIODef& indices_input,
+                                    bool int32_type_is_signed,
+                                    const logging::Logger& logger,
+                                    bool is_quantized_model,
+                                    std::vector<std::string>& input_names,
+                                    bool do_op_validation) {
+  Qnn_DataType_t desired_data_type = int32_type_is_signed ? QNN_DATATYPE_INT_32 : QNN_DATATYPE_UINT_32;
 
   // Process indices
-  const auto& input_name = inputs[1].node_arg.Name();
+  const auto& input_name = indices_input.node_arg.Name();
   if (qnn_model_wrapper.IsQnnTensorWrapperExist(input_name)) {
     LOGS(logger, VERBOSE) << "Tensor already added, skip it: " << input_name;
     input_names.push_back(input_name);
@@ -74,11 +106,10 @@ Status GatherOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
   }
 
   std::string indices_input_name(input_name);
-  Qnn_DataType_t qnn_data_type = QNN_DATATYPE_INT_32;
-  const auto* type_proto = inputs[1].node_arg.TypeAsProto();
+  Qnn_DataType_t qnn_data_type = desired_data_type;
+  const auto* type_proto = indices_input.node_arg.TypeAsProto();
   ORT_RETURN_IF_ERROR(GetQnnDataType(false, type_proto, qnn_data_type));
 
-  std::vector<uint8_t> unpacked_tensor;
   std::vector<uint8_t> gather_indices;
   bool is_initializer_input = qnn_model_wrapper.IsInitializerInput(input_name);
 
@@ -87,24 +118,20 @@ Status GatherOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
 
   if (is_initializer_input) {
     const auto& input_tensor = qnn_model_wrapper.GetInitializerTensors().at(input_name);
+    std::vector<uint8_t> unpacked_tensor;
+
     ORT_RETURN_IF_ERROR(qnn_model_wrapper.UnpackInitializerData(*input_tensor, unpacked_tensor));
 
-    std::vector<uint32_t> data_input_shape;
-    ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(inputs[0].node_arg, data_input_shape), "Cannot get shape");
-
-    int32_t onnx_axis = 0;
-    ORT_RETURN_IF_ERROR(GetAxisValue(qnn_model_wrapper, node_unit, onnx_axis));
-    const int32_t index_max = data_input_shape[onnx_axis];  // Add this value to negative indices to normalize.
-
-    // Note: QNN backends do not support negative indices.
-    // For now, we'll just always make indices positive (normalize) if they're static.
     if (qnn_data_type == QNN_DATATYPE_INT_64) {
-      // Convert from int64 to int32
-      ORT_RETURN_IF_ERROR((NormalizeIndices<int64_t, int32_t>(unpacked_tensor, gather_indices, static_cast<int64_t>(index_max))));
+      if (desired_data_type == QNN_DATATYPE_INT_32) {
+        ConvertInt64Indices<int32_t>(unpacked_tensor, gather_indices);
+      } else {
+        ConvertInt64Indices<uint32_t>(unpacked_tensor, gather_indices);
+      }
     } else {
-      ORT_RETURN_IF_ERROR((NormalizeIndices<int32_t, int32_t>(unpacked_tensor, gather_indices, index_max)));
+      gather_indices = std::move(unpacked_tensor);
     }
-    qnn_data_type = QNN_DATATYPE_INT_32;
+    qnn_data_type = desired_data_type;
   }
 
   // Even for Quantized model, Gather indices use int32 without quantization
@@ -112,7 +139,7 @@ Status GatherOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
 
   Qnn_TensorType_t tensor_type = GetInputTensorType(qnn_model_wrapper, input_name);
   std::vector<uint32_t> input_shape;
-  ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(inputs[1].node_arg, input_shape), "Cannot get shape");
+  ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(indices_input.node_arg, input_shape), "Cannot get shape");
   std::vector<uint32_t> cast_output_shape(input_shape);
   QnnTensorWrapper input_tensorwrapper(input_name, tensor_type, qnn_data_type, quantize_param,
                                        std::move(input_shape), std::move(gather_indices));
@@ -123,7 +150,7 @@ Status GatherOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
     if (qnn_data_type == QNN_DATATYPE_INT_64) {
       // Add Cast node for indices
       indices_input_name = input_name + "_cast";
-      QnnTensorWrapper cast_output(indices_input_name, QNN_TENSOR_TYPE_NATIVE, QNN_DATATYPE_INT_32, quantize_param,
+      QnnTensorWrapper cast_output(indices_input_name, QNN_TENSOR_TYPE_NATIVE, desired_data_type, quantize_param,
                                    std::move(cast_output_shape));
       ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(cast_output)), "Failed to add tensor.");
       ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(indices_input_name,
@@ -142,6 +169,45 @@ Status GatherOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
   return Status::OK();
 }
 
+Status GatherOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
+                                      const NodeUnit& node_unit,
+                                      const logging::Logger& logger,
+                                      bool is_quantized_model,
+                                      std::vector<std::string>& input_names,
+                                      bool do_op_validation) const {
+  const auto& inputs = node_unit.Inputs();
+  ORT_RETURN_IF(inputs.size() != 2, "QNN EP: Gather operator must have two inputs");
+  ORT_RETURN_IF_ERROR(ProcessInput(qnn_model_wrapper, inputs[0], logger, is_quantized_model, input_names));
+
+  return ConvertIndicesToInt32(qnn_model_wrapper, inputs[1], true, logger, is_quantized_model, input_names, do_op_validation);
+}
+
+Status GatherElementsOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
+                                              const NodeUnit& node_unit,
+                                              const logging::Logger& logger,
+                                              bool is_quantized_model,
+                                              std::vector<std::string>& input_names,
+                                              bool do_op_validation) const {
+  const auto& inputs = node_unit.Inputs();
+  ORT_RETURN_IF(inputs.size() != 2, "QNN EP: GatherElements operator must have two inputs");
+  ORT_RETURN_IF_ERROR(ProcessInput(qnn_model_wrapper, inputs[0], logger, is_quantized_model, input_names));
+
+  return ConvertIndicesToInt32(qnn_model_wrapper, inputs[1], false, logger, is_quantized_model, input_names, do_op_validation);
+}
+
+Status GatherNDOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
+                                        const NodeUnit& node_unit,
+                                        const logging::Logger& logger,
+                                        bool is_quantized_model,
+                                        std::vector<std::string>& input_names,
+                                        bool do_op_validation) const {
+  const auto& inputs = node_unit.Inputs();
+  ORT_RETURN_IF(inputs.size() != 2, "QNN EP: GatherND operator must have two inputs");
+  ORT_RETURN_IF_ERROR(ProcessInput(qnn_model_wrapper, inputs[0], logger, is_quantized_model, input_names));
+
+  return ConvertIndicesToInt32(qnn_model_wrapper, inputs[1], false, logger, is_quantized_model, input_names, do_op_validation);
+}
+
 Status GatherOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrapper,
                                                     const NodeUnit& node_unit,
                                                     std::vector<std::string>&& input_names,
@@ -156,11 +222,6 @@ Status GatherOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_w
   QnnParamWrapper axis_param(node_unit.Index(), node_unit.Name(), qnn_def::axis, axis_qnn_scalar);
   param_tensor_names.push_back(axis_param.GetParamTensorName());
   qnn_model_wrapper.AddParamWrapper(std::move(axis_param));
-
-  if (node_unit.OpType() == "GatherElements") {
-    return ProcessOutputs(qnn_model_wrapper, node_unit, std::move(input_names), std::move(param_tensor_names),
-                          logger, is_quantized_model, do_op_validation);
-  }
 
   // if indicies is scalar shape, then need to add Reshape node
   const auto& input_tensor_wrapper = qnn_model_wrapper.GetQnnTensorWrapper(input_names[0]);
@@ -241,8 +302,56 @@ Status GatherOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_w
   return Status::OK();
 }
 
+Status GatherElementsOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrapper,
+                                                            const NodeUnit& node_unit,
+                                                            std::vector<std::string>&& input_names,
+                                                            const logging::Logger& logger,
+                                                            bool is_quantized_model,
+                                                            bool do_op_validation) const {
+  std::vector<std::string> param_tensor_names;
+  int32_t axis_value = 0;
+  Qnn_Scalar_t axis_qnn_scalar = QNN_SCALAR_INIT;
+  ORT_RETURN_IF_ERROR(ProcessAxisAttribute(qnn_model_wrapper, node_unit, axis_qnn_scalar, axis_value));
+  QnnParamWrapper axis_param(node_unit.Index(), node_unit.Name(), qnn_def::axis, axis_qnn_scalar);
+  param_tensor_names.push_back(axis_param.GetParamTensorName());
+  qnn_model_wrapper.AddParamWrapper(std::move(axis_param));
+
+  return ProcessOutputs(qnn_model_wrapper, node_unit, std::move(input_names), std::move(param_tensor_names),
+                        logger, is_quantized_model, do_op_validation);
+}
+
+Status GatherNDOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrapper,
+                                                      const NodeUnit& node_unit,
+                                                      std::vector<std::string>&& input_names,
+                                                      const logging::Logger& logger,
+                                                      bool is_quantized_model,
+                                                      bool do_op_validation) const {
+  std::vector<std::string> param_tensor_names;
+  NodeAttrHelper node_attr_helper(node_unit);
+  int32_t onnx_batch_dims = node_attr_helper.Get("batch_dims", 0);
+
+  Qnn_Scalar_t qnn_batch_dims_scalar = QNN_SCALAR_INIT;
+  qnn_batch_dims_scalar.dataType = QNN_DATATYPE_UINT_32;
+  qnn_batch_dims_scalar.uint32Value = SafeInt<uint32_t>(onnx_batch_dims);
+
+  QnnParamWrapper batch_dims_param(node_unit.Index(), node_unit.Name(), QNN_OP_GATHER_ND_PARAM_BATCH_DIMS,
+                                   qnn_batch_dims_scalar);
+
+  param_tensor_names.push_back(batch_dims_param.GetParamTensorName());
+  qnn_model_wrapper.AddParamWrapper(std::move(batch_dims_param));
+
+  return ProcessOutputs(qnn_model_wrapper, node_unit, std::move(input_names), std::move(param_tensor_names),
+                        logger, is_quantized_model, do_op_validation);
+}
+
 void CreateGatherOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {
-  op_registrations.AddOpBuilder(op_type, std::make_unique<GatherOpBuilder>());
+  if (op_type == "Gather") {
+    op_registrations.AddOpBuilder(op_type, std::make_unique<GatherOpBuilder>());
+  } else if (op_type == "GatherElements") {
+    op_registrations.AddOpBuilder(op_type, std::make_unique<GatherElementsOpBuilder>());
+  } else if (op_type == "GatherND") {
+    op_registrations.AddOpBuilder(op_type, std::make_unique<GatherNDOpBuilder>());
+  }
 }
 
 }  // namespace qnn
