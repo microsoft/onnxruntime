@@ -161,9 +161,32 @@ namespace Microsoft.ML.OnnxRuntime
         /// <returns>A SessionsOptions() object configured for execution on deviceId</returns>
         public static SessionOptions MakeSessionOptionWithRocmProvider(int deviceId = 0)
         {
+            CheckRocmExecutionProviderDLLs();
             SessionOptions options = new SessionOptions();
-            options.AppendExecutionProvider_ROCM(deviceId);
+            options.AppendExecutionProvider_ROCm(deviceId);
             return options;
+        }
+
+        /// <summary>
+        /// A helper method to construct a SessionOptions object for ROCm execution provider.
+        /// Use only if ROCm is installed and you have the onnxruntime package specific to this Execution Provider.
+        /// </summary>
+        /// <param name="rocmProviderOptions">ROCm EP provider options</param>
+        /// <returns>A SessionsOptions() object configured for execution on provider options</returns>
+        public static SessionOptions MakeSessionOptionWithRocmProvider(OrtROCMProviderOptions rocmProviderOptions)
+        {
+            CheckRocmExecutionProviderDLLs();
+            SessionOptions options = new SessionOptions();
+            try
+            {
+                options.AppendExecutionProvider_ROCm(rocmProviderOptions);
+                return options;
+            }
+            catch (Exception)
+            {
+                options.Dispose();
+                throw;
+            }
         }
         #endregion
 
@@ -272,17 +295,36 @@ namespace Microsoft.ML.OnnxRuntime
 #endif
         }
 
+        [Obsolete("AppendExecutionProvider_ROCM is deprecated, use AppendExecutionProvider_ROCm instead.")]
+        public void AppendExecutionProvider_ROCM(int deviceId = 0) {
+            AppendExecutionProvider_ROCm(deviceId);
+        }
+
         /// <summary>
         /// Use only if you have the onnxruntime package specific to this Execution Provider.
         /// </summary>
         /// <param name="deviceId">Device Id</param>
-        public void AppendExecutionProvider_ROCM(int deviceId = 0)
+        public void AppendExecutionProvider_ROCm(int deviceId = 0)
         {
 #if __MOBILE__
             throw new NotSupportedException("The ROCM Execution Provider is not supported in this build");
 #else
             NativeApiStatus.VerifySuccess(
                 NativeMethods.OrtSessionOptionsAppendExecutionProvider_ROCM(handle, deviceId));
+#endif
+        }
+
+        /// <summary>
+        /// Append a ROCm EP instance (based on specified configuration) to the SessionOptions instance.
+        /// Use only if you have the onnxruntime package specific to this Execution Provider.
+        /// </summary>
+        /// <param name="rocmProviderOptions">ROCm EP provider options</param>
+        public void AppendExecutionProvider_ROCm(OrtROCMProviderOptions rocmProviderOptions)
+        {
+#if __MOBILE__
+            throw new NotSupportedException("The ROCm Execution Provider is not supported in this build");
+#else
+            NativeApiStatus.VerifySuccess(NativeMethods.SessionOptionsAppendExecutionProvider_ROCM(handle, rocmProviderOptions.Handle));
 #endif
         }
 
@@ -833,6 +875,16 @@ namespace Microsoft.ML.OnnxRuntime
             }
             return true;
         }
+
+        private static bool CheckRocmExecutionProviderDLLs()
+        {
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            {
+                throw new NotSupportedException("ROCm Execution Provider is not currently supported on Windows.");
+            }
+            return true;
+        }
+
         #endregion
 
         #region SafeHandle

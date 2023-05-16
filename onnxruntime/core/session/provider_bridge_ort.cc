@@ -1466,6 +1466,14 @@ ProviderOptions GetProviderInfo_Cuda(const OrtCUDAProviderOptionsV2* provider_op
   return s_library_cuda.Get().GetProviderOptions(reinterpret_cast<const void*>(provider_options));
 }
 
+void UpdateProviderInfo_Rocm(OrtROCMProviderOptions* provider_options, const ProviderOptions& options) {
+  return s_library_rocm.Get().UpdateProviderOptions(reinterpret_cast<void*>(provider_options), options);
+}
+
+ProviderOptions GetProviderInfo_Rocm(const OrtROCMProviderOptions* provider_options) {
+  return s_library_rocm.Get().GetProviderOptions(reinterpret_cast<const void*>(provider_options));
+}
+
 }  // namespace onnxruntime
 
 ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_Dnnl, _In_ OrtSessionOptions* options, int use_arena) {
@@ -2087,6 +2095,120 @@ ORT_API_STATUS_IMPL(OrtApis::GetDnnlProviderOptionsAsString,
 ORT_API(void, OrtApis::ReleaseDnnlProviderOptions, _Frees_ptr_opt_ OrtDnnlProviderOptions* ptr) {
 #ifdef USE_DNNL
   delete ptr;
+#else
+  ORT_UNUSED_PARAMETER(ptr);
+#endif
+}
+
+ORT_API_STATUS_IMPL(OrtApis::CreateROCMProviderOptions, _Outptr_ OrtROCMProviderOptions** out) {
+  API_IMPL_BEGIN
+#ifdef USE_ROCM
+
+// Need to use 'new' here, so disable C26409
+#ifdef _WIN32
+#pragma warning(push)
+#pragma warning(disable : 26409)
+#endif
+  *out = new OrtROCMProviderOptions();
+#ifdef _WIN32
+#pragma warning(pop)
+#endif
+  (*out)->device_id = 0;
+  (*out)->miopen_conv_exhaustive_search = 0;
+  (*out)->gpu_mem_limit = std::numeric_limits<size_t>::max();
+  (*out)->arena_extend_strategy = 0;
+  (*out)->do_copy_in_default_stream = 1;
+  (*out)->has_user_compute_stream = 0;
+  (*out)->user_compute_stream = nullptr;
+  (*out)->default_memory_arena_cfg = nullptr;
+  (*out)->tunable_op_enable = 0;
+  (*out)->tunable_op_tuning_enable = 0;
+  return nullptr;
+#else
+  ORT_UNUSED_PARAMETER(out);
+  return CreateStatus(ORT_FAIL, "ROCm execution provider is not enabled in this build.");
+#endif
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::UpdateROCMProviderOptions,
+                    _Inout_ OrtROCMProviderOptions* rocm_options,
+                    _In_reads_(num_keys) const char* const* provider_options_keys,
+                    _In_reads_(num_keys) const char* const* provider_options_values,
+                    size_t num_keys) {
+  API_IMPL_BEGIN
+#ifdef USE_ROCM
+  onnxruntime::ProviderOptions provider_options_map;
+  for (size_t i = 0; i != num_keys; ++i) {
+    if (provider_options_keys[i] == nullptr || provider_options_keys[i][0] == '\0' ||
+        provider_options_values[i] == nullptr || provider_options_values[i][0] == '\0') {
+      return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "key/value cannot be empty");
+    }
+
+    provider_options_map[provider_options_keys[i]] = provider_options_values[i];
+  }
+
+  onnxruntime::UpdateProviderInfo_Rocm(rocm_options,
+                                       reinterpret_cast<const onnxruntime::ProviderOptions&>(provider_options_map));
+  return nullptr;
+#else
+  ORT_UNUSED_PARAMETER(rocm_options);
+  ORT_UNUSED_PARAMETER(provider_options_keys);
+  ORT_UNUSED_PARAMETER(provider_options_values);
+  ORT_UNUSED_PARAMETER(num_keys);
+  return CreateStatus(ORT_FAIL, "CUDA execution provider is not enabled in this build.");
+#endif
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::GetROCMProviderOptionsAsString, _In_ const OrtROCMProviderOptions* rocm_options,
+                    _Inout_ OrtAllocator* allocator, _Outptr_ char** ptr) {
+  API_IMPL_BEGIN
+#ifdef USE_ROCM
+  onnxruntime::ProviderOptions options = onnxruntime::GetProviderInfo_Rocm(rocm_options);
+  onnxruntime::ProviderOptions::iterator it = options.begin();
+  std::string options_str = "";
+
+  while (it != options.end()) {
+    if (options_str == "") {
+      options_str += it->first;
+      options_str += "=";
+      options_str += it->second;
+    } else {
+      options_str += ";";
+      options_str += it->first;
+      options_str += "=";
+      options_str += it->second;
+    }
+    it++;
+  }
+
+  *ptr = onnxruntime::StrDup(options_str, allocator);
+  return nullptr;
+#else
+  ORT_UNUSED_PARAMETER(rocm_options);
+  ORT_UNUSED_PARAMETER(allocator);
+  ORT_UNUSED_PARAMETER(ptr);
+  return CreateStatus(ORT_FAIL, "ROCm execution provider is not enabled in this build.");
+#endif
+  API_IMPL_END
+}
+
+ORT_API(void, OrtApis::ReleaseROCMProviderOptions, _Frees_ptr_opt_ OrtROCMProviderOptions* ptr) {
+#ifdef USE_ROCM
+
+// Need to use 'delete' here, so disable C26409
+#ifdef _WIN32
+#pragma warning(push)
+#pragma warning(disable : 26409)
+#endif
+
+  delete ptr;
+
+#ifdef _WIN32
+#pragma warning(pop)
+#endif
+
 #else
   ORT_UNUSED_PARAMETER(ptr);
 #endif
