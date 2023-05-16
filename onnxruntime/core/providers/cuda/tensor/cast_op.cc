@@ -1,8 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#define COMPILED_IN_CAST
-
 #include "cast_op.h"
 #include "core/providers/cuda/math/unary_elementwise_ops_impl.h"
 

@@ -47,15 +47,10 @@ Status QuantizeLinear<T, U>::ComputeInternal(OpKernelContext* ctx) const {
 
   const auto& x_shape = x.Shape();
 
-  if (!x.IsDataType<U>()) {
-    ORT_THROW("Unexpected data type U=", typeid(U).name(), " GetElementType()=", x.GetElementType(), ".");
-  }
   const CudaU* input = reinterpret_cast<const CudaU*>(x.Data<U>());
   T* output = y.MutableData<T>();
 
   if (IsScalarOr1ElementVector(&y_scale)) {
-    ORT_ENFORCE(IsScalarOr1ElementVector(&y_scale),
-                "y_scale must be a scalar or 1D tensor of size 1.");
     ORT_ENFORCE(y_zero_point == nullptr || IsScalarOr1ElementVector(y_zero_point),
                 "y_zero_point must be a scalar or 1D tensor of size 1.");
 

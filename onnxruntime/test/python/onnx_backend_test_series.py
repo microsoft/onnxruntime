@@ -92,12 +92,7 @@ def load_jsonc(basename: str):
         basename,
     )
     if not os.path.exists(filename):
-        filename = os.path.join(
-            os.path.dirname(os.path.realpath(__file__)),
-            "..",
-            "testdata",
-            basename,
-        )
+        raise FileNotFoundError(f"File not found {filename!r}.")
 
     with open(filename, encoding="utf-8") as f:  # pylint: disable=invalid-name
         lines = f.readlines()

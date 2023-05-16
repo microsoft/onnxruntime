@@ -25,6 +25,17 @@ available_providers = [provider for provider in onnxruntime.get_available_provid
 
 
 class TestInferenceSession(unittest.TestCase):
+    """
+    All float 8 values were computed by using the python functions implemented in onnx:
+    `float32_to_float8e4m3
+    <https://onnx.ai/onnx/api/helper.html#onnx.helper.float32_to_float8e4m3>`_,
+    `float32_to_float8e5m2
+    <https://onnx.ai/onnx/api/helper.html#onnx.helper.float32_to_float8e5m2>`_,
+    `float8e4m3_to_float32
+    <https://onnx.ai/onnx/api/numpy_helper.html#onnx.numpy_helper.float8e4m3_to_float32>`_,
+    `float8e5m2_to_float32
+    <https://onnx.ai/onnx/api/numpy_helper.html#onnx.numpy_helper.float8e5m2_to_float32>`_.
+    """
     dtypes = {"FLOAT": np.float32, "FLOAT16": np.float16}
     x = np.array(
         [0.4068359375, 352, 416, 336, 304, 272, -248, -100, 1e-4, 1e-2, 416, 432, 1e5, np.inf, -np.inf, np.nan],
