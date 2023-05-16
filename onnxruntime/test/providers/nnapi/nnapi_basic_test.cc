@@ -312,7 +312,7 @@ static void RunQDQModelTest(
 #endif
 }
 
-TEST(NnapiExecutionProviderTest, DISABLED_TestQDQConv) {
+TEST(NnapiExecutionProviderTest, TestQDQConv) {
   RunQDQModelTest(BuildQDQConvTestCase<uint8_t /* InputType */,
                                        uint8_t /* WeightType */,
                                        int32_t /* BiasType */,
@@ -323,7 +323,7 @@ TEST(NnapiExecutionProviderTest, DISABLED_TestQDQConv) {
                   {ExpectedEPNodeAssignment::All});
 }
 
-TEST(NnapiExecutionProviderTest, DISABLED_TestQDQResizeNCHW) {
+TEST(NnapiExecutionProviderTest, TestQDQResizeNCHW) {
   // NNAPI EP does not support the default setting of Resize Op
   // Use bi-linear and asymmetric for NNAPI EP only
   auto Mode = ExpectedEPNodeAssignment::None;
@@ -340,7 +340,7 @@ TEST(NnapiExecutionProviderTest, DISABLED_TestQDQResizeNCHW) {
                   {Mode});
 }
 
-TEST(NnapiExecutionProviderTest, DISABLED_TestQDQResizeNHWC) {
+TEST(NnapiExecutionProviderTest, TestQDQResizeNHWC) {
   // NNAPI EP does not support the default setting of Resize Op
   // Use bi-linear and asymmetric for NNAPI EP only
   RunQDQModelTest(BuildQDQResizeTestCase({1, 64, 64, 3} /* input_shape */,
@@ -351,21 +351,21 @@ TEST(NnapiExecutionProviderTest, DISABLED_TestQDQResizeNHWC) {
                   {ExpectedEPNodeAssignment::All});
 }
 
-TEST(NnapiExecutionProviderTest, DISABLED_TestQDQResize_UnsupportedDefaultSettingNCHW) {
+TEST(NnapiExecutionProviderTest, TestQDQResize_UnsupportedDefaultSettingNCHW) {
   RunQDQModelTest(BuildQDQResizeTestCase({1, 3, 64, 64} /* input_shape */,
                                          {1, 3, 32, 32} /* sizes_data */),
                   "nnapi_qdq_test_graph_resize_unsupported",
                   {ExpectedEPNodeAssignment::None});
 }
 
-TEST(NnapiExecutionProviderTest, DISABLED_TestQDQResize_UnsupportedDefaultSettingNHWC) {
+TEST(NnapiExecutionProviderTest, TestQDQResize_UnsupportedDefaultSettingNHWC) {
   RunQDQModelTest(BuildQDQResizeTestCase({1, 64, 64, 3} /* input_shape */,
                                          {1, 32, 32, 3} /* sizes_data */),
                   "nnapi_qdq_test_graph_resize_unsupported",
                   {ExpectedEPNodeAssignment::None});
 }
 
-TEST(NnapiExecutionProviderTest, DISABLED_TestQDQAveragePool) {
+TEST(NnapiExecutionProviderTest, TestQDQAveragePool) {
   // NNAPI use different rounding, which may cause ~1% difference in the result
   RunQDQModelTest(BuildQDQAveragePoolTestCase<uint8_t /* InputType */,
                                               uint8_t /* OutputType */>(
@@ -377,7 +377,7 @@ TEST(NnapiExecutionProviderTest, DISABLED_TestQDQAveragePool) {
                   });
 }
 
-TEST(NnapiExecutionProviderTest, DISABLED_TestQDQAdd) {
+TEST(NnapiExecutionProviderTest, TestQDQAdd) {
   RunQDQModelTest(BuildBinaryOpTestCase<uint8_t /* Input1Type */,
                                         uint8_t /* Input2Type */,
                                         uint8_t /* OutputType */>(
@@ -387,7 +387,7 @@ TEST(NnapiExecutionProviderTest, DISABLED_TestQDQAdd) {
                   {ExpectedEPNodeAssignment::All});
 }
 
-TEST(NnapiExecutionProviderTest, DISABLED_TestQDQMul) {
+TEST(NnapiExecutionProviderTest, TestQDQMul) {
   // NNAPI use different rounding, which may cause ~1% difference in the result
   RunQDQModelTest(BuildBinaryOpTestCase<uint8_t /* Input1Type */,
                                         uint8_t /* Input2Type */,
@@ -410,7 +410,7 @@ TEST(NnapiExecutionProviderTest, TestQDQTranspose) {
                   {ExpectedEPNodeAssignment::All});
 }
 
-TEST(NnapiExecutionProviderTest, DISABLED_TestQDQReshape) {
+TEST(NnapiExecutionProviderTest, TestQDQReshape) {
   RunQDQModelTest(BuildQDQReshapeTestCase({1, 3, 64, 64} /* input_shape */,
                                           {1, 64, 64, 3} /* reshape_shape */),
                   "nnapi_qdq_test_graph_reshape",
@@ -439,7 +439,7 @@ TEST(NnapiExecutionProviderTest, TestQDQSoftMax_UnsupportedOutputScaleAndZp) {
                   {ExpectedEPNodeAssignment::None});
 }
 
-TEST(NnapiExecutionProviderTest, DISABLED_TestQDQConcat) {
+TEST(NnapiExecutionProviderTest, TestQDQConcat) {
   RunQDQModelTest(BuildQDQConcatTestCase(
                       {
                           {1, 6, 36},
@@ -452,7 +452,7 @@ TEST(NnapiExecutionProviderTest, DISABLED_TestQDQConcat) {
 }
 
 #if defined(__ANDROID__)
-TEST(NnapiExecutionProviderTest, DISABLED_TestQDQConcat_UnsupportedInputScalesAndZp) {
+TEST(NnapiExecutionProviderTest, TestQDQConcat_UnsupportedInputScalesAndZp) {
   // This is to verify all the inputs have the same scale and zp as input 0 for API 28-
   // Currently, this test can only be run locally with a android emulator with API < 29
   // See https://developer.android.com/studio/run/emulator-commandline for some info on
@@ -468,7 +468,7 @@ TEST(NnapiExecutionProviderTest, DISABLED_TestQDQConcat_UnsupportedInputScalesAn
 }
 #endif
 
-TEST(NnapiExecutionProviderTest, DISABLED_TestQDQGemm) {
+TEST(NnapiExecutionProviderTest, TestQDQGemm) {
   RunQDQModelTest(BuildQDQGemmTestCase<uint8_t, uint8_t, uint8_t>(
                       {2, 2} /* input_shape1 */,
                       {2, 2} /* input_shape2 */,
@@ -478,7 +478,7 @@ TEST(NnapiExecutionProviderTest, DISABLED_TestQDQGemm) {
                   {ExpectedEPNodeAssignment::All});
 }
 
-TEST(NnapiExecutionProviderTest, DISABLED_TestQDQGemm_NoTransB) {
+TEST(NnapiExecutionProviderTest, TestQDQGemm_NoTransB) {
   RunQDQModelTest(BuildQDQGemmTestCase<uint8_t, uint8_t, uint8_t>(
                       {2, 2} /* input_shape1 */,
                       {2, 2} /* input_shape2 */,
@@ -488,7 +488,7 @@ TEST(NnapiExecutionProviderTest, DISABLED_TestQDQGemm_NoTransB) {
                   {ExpectedEPNodeAssignment::All});
 }
 
-TEST(NnapiExecutionProviderTest, DISABLED_TestQDQGemm_NoBias) {
+TEST(NnapiExecutionProviderTest, TestQDQGemm_NoBias) {
   RunQDQModelTest(BuildQDQGemmTestCase<uint8_t, uint8_t, uint8_t>(
                       {2, 2} /* input_shape1 */,
                       {2, 2} /* input_shape2 */,
@@ -498,7 +498,7 @@ TEST(NnapiExecutionProviderTest, DISABLED_TestQDQGemm_NoBias) {
                   {ExpectedEPNodeAssignment::All});
 }
 
-TEST(NnapiExecutionProviderTest, DISABLED_TestQDQMatMul) {
+TEST(NnapiExecutionProviderTest, TestQDQMatMul) {
   RunQDQModelTest(BuildQDQMatMulTestCase(
                       {2, 2} /* input_shape1 */,
                       {2, 2} /* input_shape2 */),
@@ -507,7 +507,7 @@ TEST(NnapiExecutionProviderTest, DISABLED_TestQDQMatMul) {
 }
 
 // zero inputs test
-TEST(NnapiExecutionProviderTest, DISABLED_TestCast) {
+TEST(NnapiExecutionProviderTest, TestCast) {
   std::vector<int64_t> input1_shape{1, 2, 3, 4};
   auto build_func = [input1_shape](ModelTestBuilder& builder) {
     auto* input_arg = builder.MakeInitializer<float>(input1_shape, -100.f, 100.f);
