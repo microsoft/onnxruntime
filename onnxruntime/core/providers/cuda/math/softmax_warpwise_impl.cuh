@@ -164,8 +164,10 @@ __global__ void softmax_warp_forward(output_t* dst, const input_t* src, int batc
 }
 
 
-// softmax_warp_forward use register to store data and the dtype is fp32, which will result resource oversubscription and thus hurt kernel performance.
-// softmax_warp_forward_resource_efficient is implemneted to solve the issues.
+// softmax_warp_forward uses register to store data in fp32 even when data is fp16, which will cause register resource oversubscription when data is large,
+// and will lead to low CUDA warp occupancy and thus a poor kernel performance.
+// softmax_warp_forward_resource_efficient is implemneted to solve the issue, it cache data in original dtype, and cast it into fp32 when needed,
+// the idea is like we use recomputation to save resource usage.
 template <typename input_t, typename output_t, typename acc_t, int log2_elements, bool is_log_softmax>
 __global__ void softmax_warp_forward_resource_efficient(output_t* dst, const input_t* src, int batch_size, int stride, int element_count) {
   // 1 cuda block only processes one row and contains 1 cuda warp only.

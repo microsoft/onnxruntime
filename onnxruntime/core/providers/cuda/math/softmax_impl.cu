@@ -49,8 +49,8 @@ Status dispatch_warpwise_softmax_forward(cudaStream_t stream, output_t* dst, con
       threads_per_block = 128;
       shared_memory_size = 0;
     } else{
-      // 1 warp(32 threads) per block, so the index offset calculations in cuda kernel will be easier
-      // under this setting, the cuda block number will be equal to batch size and contains one warp only
+      // setting the number of threads per block to 32 will make index offset calculations easier,
+      // under this setting, the cuda block number will be equal to batch size.
       threads_per_block = 32;
       // use shared memory to contain one row of elements
       // TODO: one more optimization can be done here: we actually not need to save next_power_of_two elements, we can just save the valid elements
