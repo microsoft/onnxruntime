@@ -259,7 +259,7 @@ class VecAddMoveOnlyFunctor {
  public:
   VecAddMoveOnlyFunctor(VecAddMoveOnlyFunctor&&) = default;
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(VecAddMoveOnlyFunctor);
-
+  VecAddMoveOnlyFunctor() = default;
   Status operator()(const VecAddParams* params) {
     TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(params->c == nullptr, "output buffer cannot be nullptr");
     LaunchVecAddKernel(params->a, params->b, params->c, params->num_elem, params->beta);
@@ -284,7 +284,7 @@ class VecAddWithIsSupportedMethod {
  public:
   VecAddWithIsSupportedMethod(VecAddWithIsSupportedMethod&&) = default;
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(VecAddWithIsSupportedMethod);
-
+  VecAddWithIsSupportedMethod() = default;
   Status operator()(const VecAddParams* params) {
     LaunchVecAddKernel(params->a, params->b, params->c, params->num_elem, params->beta);
     return Status::OK();
