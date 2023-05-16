@@ -413,6 +413,7 @@ Status QNNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused
   bool is_npu_backend = qnn_backend_manager_->IsNpuBackend();
 
   if (context_cache_enabled_) {
+    ORT_ENFORCE(fused_nodes_and_graphs.size() == 1, "Only support singel partition for context cache feature.");
     Node& fused_node = fused_nodes_and_graphs[0].fused_node;
     const onnxruntime::GraphViewer& graph_viewer(fused_nodes_and_graphs[0].filtered_graph);
     onnxruntime::PathString context_cache_pathstring;
