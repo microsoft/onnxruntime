@@ -273,6 +273,14 @@ def parse_arguments():
         "Currently only Windows and Linux platforms are supported.",
     )
 
+    parser.add_argument(
+        "--msbuild_extra_options",
+        nargs="+",
+        action="append",
+        help="Extra properties to pass to msbuild during build. "
+        "These are just msbuild /p: options without the leading /p:.",
+    )
+
     # Java bindings
     parser.add_argument("--build_java", action="store_true", help="Build Java bindings.")
 
@@ -1964,10 +1972,12 @@ def derive_linux_build_property():
 
 
 def build_nuget_package(
+    cmake_path,
     source_dir,
     build_dir,
     configs,
     use_cuda,
+    use_rocm,
     use_openvino,
     use_tensorrt,
     use_dnnl,
@@ -1976,6 +1986,7 @@ def build_nuget_package(
     use_snpe,
     use_qnn,
     enable_training_apis,
+    msbuild_extra_options,
 ):
     if not (is_windows() or is_linux()):
         raise BuildError(
@@ -2015,6 +2026,8 @@ def build_nuget_package(
         package_name = '/p:OrtPackageId="Microsoft.ML.OnnxRuntime.DNNL"'
     elif use_cuda:
         package_name = '/p:OrtPackageId="Microsoft.ML.OnnxRuntime.Gpu"'
+    elif use_rocm:
+        package_name = '/p:OrtPackageId="Microsoft.ML.OnnxRuntime.ROCm"'
     elif use_tvm:
         execution_provider = '/p:ExecutionProvider="tvm"'
         package_name = '/p:OrtPackageId="Microsoft.ML.OnnxRuntime.Tvm"'
@@ -2024,6 +2037,8 @@ def build_nuget_package(
     elif use_qnn:
         execution_provider = '/p:ExecutionProvider="qnn"'
         package_name = '/p:OrtPackageId="Microsoft.ML.OnnxRuntime.QNN"'
+    elif any(map(lambda x: "OrtPackageId=" in x, msbuild_extra_options)):
+        pass
     else:
         # use the solution file that includes Xamarin mobile targets
         sln = "OnnxRuntime.CSharp.sln"
@@ -2040,7 +2055,7 @@ def build_nuget_package(
     for config in configs:
         if is_linux():
             native_build_dir = os.path.join(native_dir, config)
-            cmd_args = ["make", "install", "DESTDIR=.//nuget-staging"]
+            cmd_args = [cmake_path, "-DCMAKE_INSTALL_PREFIX=./nuget-staging/usr/local", "-Pcmake_install.cmake"]
             run_subprocess(cmd_args, cwd=native_build_dir)
 
         configuration = '/p:Configuration="' + config + '"'
@@ -2097,6 +2112,7 @@ def build_nuget_package(
             ort_build_dir,
             nuget_exe_arg,
         ]
+        cmd_args.extend(msbuild_extra_options)
         run_subprocess(cmd_args, cwd=csharp_build_dir)
 
 
@@ -2554,10 +2570,12 @@ def main():
             )
         if args.build_nuget:
             build_nuget_package(
+                cmake_path,
                 source_dir,
                 build_dir,
                 configs,
                 args.use_cuda,
+                args.use_rocm,
                 args.use_openvino,
                 args.use_tensorrt,
                 args.use_dnnl,
@@ -2566,6 +2584,7 @@ def main():
                 args.use_snpe,
                 args.use_qnn,
                 args.enable_training_apis,
+                normalize_arg_list(args.msbuild_extra_options),
             )
 
     if args.test and args.build_nuget:

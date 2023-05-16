@@ -1602,7 +1602,6 @@ if (onnxruntime_USE_ROCM)
     PUBLIC
       ${onnxruntime_ROCM_HOME}/include
       ${onnxruntime_ROCM_HOME}/include/roctracer)
-  install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/rocm  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers)
 
   set_target_properties(onnxruntime_providers_rocm PROPERTIES LINKER_LANGUAGE CXX)
   set_target_properties(onnxruntime_providers_rocm PROPERTIES FOLDER "ONNXRuntime")

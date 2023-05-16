@@ -16,6 +16,7 @@ struct DecoderMaskedMultiHeadAttentionParams : AttentionParameters {
   // Weather to use multihead attention(excludes matmul and bias)
   bool is_mha = false;
   bool is_cross_attention = false;
+  bool is_packed_qkv = false;
 
   void* q = nullptr;
   void* q_bias = nullptr;

@@ -593,9 +593,9 @@ async function main() {
     if (webgpu) {
       switch (mode) {
         case 'debug':
-          return profile ? 'ChromeCanaryProfileDebug' : 'ChromeCanaryDebug';
+          return profile ? 'ChromeWebGpuProfileDebug' : 'ChromeDebug';
         default:
-          return profile ? 'ChromeCanaryProfileTest' : 'ChromeCanaryDebug';
+          return profile ? 'ChromeWebGpuProfileTest' : 'ChromeTest';
       }
     } else if (webnn) {
       switch (mode) {
@@ -609,9 +609,9 @@ async function main() {
         case 'debug':
           return 'ChromeDebug';
         case 'perf':
-          return 'ChromePerf';
-        default:
           return 'ChromeTest';
+        default:
+          return 'ChromeTestHeadless';
       }
     }
   }
