@@ -198,7 +198,7 @@ namespace Dml
         mutable uint64_t m_partitionKernelPrefixVal = 0;
         bool m_closed = false;
         mutable std::chrono::time_point<std::chrono::steady_clock> m_lastUploadFlushTime;
-        static constexpr uint32_t kBatchFlushTimeInMicroSeconds = 10000;
+        static constexpr std::chrono::milliseconds m_batchFlushInterval = std::chrono::milliseconds(10);
     };
 
     class DataTransfer : public onnxruntime::IDataTransfer

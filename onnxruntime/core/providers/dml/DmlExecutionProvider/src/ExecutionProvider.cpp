@@ -579,10 +579,7 @@ namespace Dml
     void ExecutionProviderImpl::FlushUploadsIfReady() const
     {
         // Periodically flush uploads to make sure the GPU is not idle for too long
-        std::chrono::duration<double> elapsed = std::chrono::steady_clock::now() - m_lastUploadFlushTime;
-        auto elapsedMicroSeconds = elapsed.count() * 1e6;
-
-        if (elapsedMicroSeconds > kBatchFlushTimeInMicroSeconds)
+        if (std::chrono::steady_clock::now() - m_lastUploadFlushTime > m_batchFlushInterval)
         {
             Flush();
             m_lastUploadFlushTime = std::chrono::steady_clock::now();
