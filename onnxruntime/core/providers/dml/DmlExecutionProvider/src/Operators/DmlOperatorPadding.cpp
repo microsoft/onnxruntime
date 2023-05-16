@@ -68,12 +68,12 @@ public:
         paddingDesc.EndPadding = m_endPadding.data();
         // PaddingValueDataType will always be equal to inputDataTensorDataType
         // Assigning paddingValueDataType to inputDataTensorDataType because this field
-        // has to be assigned even if program does not go through below conditional 
+        // has to be assigned even if program does not go through below conditional
         // logic for some corner test case (like opsetVersion >= 11, but no validInput at index 2)
         // Same applies to paddingValue.
         paddingDesc.PaddingValueDataType = this->m_inputTensorDescs[0].GetDmlDataType();
         CastToClampedScalarUnion<float>(paddingDesc.PaddingValueDataType, 0.0f, /*out*/&paddingDesc.PaddingValue);
-        
+
         // Read the constant value which can come from an attribute or tensor.
         if (opsetVersion >= 11)
         {
@@ -107,7 +107,7 @@ void CALLBACK QueryPad(IMLOperatorSupportQueryContextPrivate* context, /*out*/ b
     *isSupported = true;
 
     MLOperatorAttributes attributes(context);
-    
+
     std::vector<int32_t> padding = attributes.GetOptionalAttributeVectorInt32(AttrName::Pads);
     *isSupported = std::none_of(padding.begin(), padding.end(), [](int32_t padCount) {return padCount < 0; });
 }
