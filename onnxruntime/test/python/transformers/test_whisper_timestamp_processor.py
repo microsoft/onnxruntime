@@ -30,7 +30,7 @@ class TestTimestampProcessor(unittest.TestCase):
         return [input_features, processor]
 
     def run_timestamp(self, provider: str):
-        self.generate_model("-m openai/whisper-tiny --optimize_onnx --precision fp32 --use_external_data_format")
+        self.generate_model("-m openai/whisper-tiny --optimize_onnx --precision fp32 -l -e")
         [input_features, processor] = self.generate_dataset()
         model_path = "./onnx_models/openai/whisper-tiny_beamsearch.onnx"
         sess_options = SessionOptions()
