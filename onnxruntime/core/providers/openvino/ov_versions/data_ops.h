@@ -17,7 +17,8 @@ enum versionNum {
   V_2021_4,
   V_2022_1,
   V_2022_2,
-  V_2022_3
+  V_2022_3,
+  V_2023_0
 };
 
 using VersionNum = enum versionNum;
@@ -71,9 +72,9 @@ class DataOps {
   virtual bool IsOpSupportedOnlyInModel(std::string name);
   virtual bool SpecialConditionForClusterSizeOne(std::unordered_set<std::string>& ng_required_initializers, const Node* node);
   virtual bool DoNotOmitSubGraph(const std::string& name);
-  virtual bool InsertNode(const Node* node, const std::string& name);
+  virtual bool InsertNode(const std::string& name);
   VersionNum GetVersion() const { return version_id_; }
 };
 
-}  //namespace openvino_ep
-}  //namespace onnxruntime
+}  // namespace openvino_ep
+}  // namespace onnxruntime

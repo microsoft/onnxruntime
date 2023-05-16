@@ -11,6 +11,7 @@
 #include "core/providers/coreml/builders/helper.h"
 #include "core/providers/coreml/builders/impl/base_op_builder.h"
 #include "core/providers/coreml/builders/op_builder_factory.h"
+#include "core/providers/shared/utils/utils.h"
 #include "core/optimizer/initializer.h"
 
 namespace onnxruntime {
@@ -24,7 +25,7 @@ class ActivationOpBuilder : public BaseOpBuilder {
 
  private:
   [[nodiscard]] Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
-                               const logging::Logger& logger) const override;
+                                             const logging::Logger& logger) const override;
 #endif
 
   // Operator support related
@@ -95,6 +96,12 @@ Status ActivationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   } else if (op_type == "PRelu") {
     auto* prelu = layer->mutable_activation()->mutable_prelu();
     ORT_RETURN_IF_ERROR(AddPReluWeight(model_builder, node, logger, *prelu));
+  } else if (op_type == "LeakyRelu") {
+    NodeAttrHelper helper(node);
+    const auto alpha = helper.Get("alpha", 0.01f);
+
+    auto* leaky_relu = layer->mutable_activation()->mutable_leakyrelu();
+    leaky_relu->set_alpha(alpha);
   } else {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "ActivationOpBuilder::AddToModelBuilderImpl, unknown op: ", op_type);
@@ -187,6 +194,7 @@ void CreateActivationOpBuilder(const std::string& op_type, OpBuilderRegistration
           "Tanh",
           "Relu",
           "PRelu",
+          "LeakyRelu",
       };
 
   op_registrations.builders.push_back(std::make_unique<ActivationOpBuilder>());

@@ -8,6 +8,13 @@
 
 namespace OperatorHelper
 {
+    template <typename T = uint32_t>
+    T DivideRoundUp(T x, T y)
+    {
+        assert(y != 0);
+        return (x + y - 1) / y;
+    }
+
     bool ContainsEmptyDimensions(gsl::span<const DimensionType> dimensions)
     {
         return std::find(dimensions.begin(), dimensions.end(), 0u) != dimensions.end();
@@ -292,11 +299,12 @@ namespace OperatorHelper
     // are ordered such that they are at the end (e.g. NCHW or NCDHW).
     std::vector<DimensionType> InitializeKernelOutputDimensions(
         gsl::span<const DimensionType> inputDimensions,
-        const KernelArgs& args
+        const KernelArgs& args,
+        bool isNhwc
     )
     {
         ML_CHECK_VALID_ARGUMENT(gsl::narrow_cast<uint32_t>(inputDimensions.size()) >= args.spatialDimensionCount);
-        int dimOffset = gsl::narrow_cast<int>(inputDimensions.size()) - args.spatialDimensionCount;
+        int dimOffset = isNhwc ? 1 : gsl::narrow_cast<int>(inputDimensions.size()) - args.spatialDimensionCount;
 
         std::vector<DimensionType> outputDimensions(inputDimensions.begin(), inputDimensions.end());
 
@@ -439,7 +447,7 @@ namespace OperatorHelper
             // if pads are not specified, assume all pad values are 0
             if (pads.empty())
             {
-                pads.resize(2 * spatialDimensionCount);
+                pads.resize(2 * static_cast<uint64_t>(spatialDimensionCount));
             }
 
             ML_CHECK_VALID_ARGUMENT(pads.size() >= 2 * spatialDimensionCount);
@@ -478,7 +486,8 @@ namespace OperatorHelper
 
     void ResolveAutoPadding(
         KernelArgs& args,
-        gsl::span<const DimensionType> inputDimensions
+        gsl::span<const DimensionType> inputDimensions,
+        bool isNhwc
     )
     {
         if (!args.autoPad)
@@ -490,7 +499,9 @@ namespace OperatorHelper
         uint32_t spatialDimensionCount = gsl::narrow_cast<uint32_t>(inputDimensions.size()) - NonspatialDimensionCount;
         ML_CHECK_VALID_ARGUMENT(spatialDimensionCount <= NcdhwSpatialDimensionCount); // Support up to 3D convolution (in 5D tensor).
 
-        const int dimOffset = gsl::narrow_cast<int>(inputDimensions.size()) - spatialDimensionCount;
+        ML_CHECK_VALID_ARGUMENT(!isNhwc || inputDimensions.size() == 4);
+
+        const int dimOffset = isNhwc ? 1 : gsl::narrow_cast<int>(inputDimensions.size()) - spatialDimensionCount;
 
         for (size_t dim = 0; dim < spatialDimensionCount; ++dim)
         {
@@ -763,8 +774,16 @@ namespace OperatorHelper
         ResolvingPadding(inputDimensions);
 
         m_outputShapes.resize(1);
-        m_outputShapes[0] = InitializeKernelOutputDimensions(inputDimensions, m_kernel);
-        m_outputShapes[0].GetShape()[C] = filterDims[K];
+        m_outputShapes[0] = InitializeKernelOutputDimensions(inputDimensions, m_kernel, m_isNhwc);
+
+        if (m_isNhwc)
+        {
+            m_outputShapes[0].GetShape()[static_cast<uint32_t>(NhwcInputDims::C)] = filterDims[K];
+        }
+        else
+        {
+            m_outputShapes[0].GetShape()[C] = filterDims[K];
+        }
     }
 
     void ConvolutionHelperBase::InitializeKernelAndShapesTransposed(
@@ -868,7 +887,7 @@ namespace OperatorHelper
 
     void ConvolutionHelperBase::ResolvingPadding(gsl::span<const DimensionType> inputDimensions)
     {
-        ResolveAutoPadding(m_kernel, inputDimensions);
+        ResolveAutoPadding(m_kernel, inputDimensions, m_isNhwc);
     }
 
     std::vector<EdgeShapes> GemmHelper::GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const
@@ -911,6 +930,25 @@ namespace OperatorHelper
         const uint32_t inputDimCount = gsl::narrow_cast<int32_t>(inputDimensions.size());
         const uint32_t axis = operatorAttributes.GetOptionalAttribute<int32_t>(AttrName::Axis, 0);
         m_axis = static_cast<int>(HandleNegativeAxis(axis, inputDimCount));
+
+        if (opsetVersion >= 18) // num_outputs attribute is only defined in opset18.
+        {
+            const uint32_t numOutputs = operatorAttributes.GetOptionalAttribute<int32_t>(AttrName::NumOutputs, 0);
+            if (numOutputs > 0)
+            {
+                ML_CHECK_VALID_ARGUMENT(m_split.size() == 0);
+                auto inputSizeAlongAxis = inputDimensions.at(m_axis);
+                auto outputSizeAlongAxis = DivideRoundUp(inputSizeAlongAxis, numOutputs);
+                m_split.resize(numOutputs, outputSizeAlongAxis);
+                // Every output has the same size except potentially the last one, which may be smaller.
+                m_split.back() = static_cast<int>(inputSizeAlongAxis - (numOutputs - 1) * outputSizeAlongAxis);
+            }
+            else
+            {
+                // There is no num_outputs attribute set, so splits must be set.
+                ML_CHECK_VALID_ARGUMENT(m_split.size() > 0);
+            }
+        }
     }
 
     std::vector<EdgeShapes> SplitHelper::GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const
@@ -1513,6 +1551,7 @@ namespace OperatorHelper
             {RecognizedOperatorType::MatMul,               {2,2,2},{0,1, 1,2, 0,2}}, // ij,jk->ik
             {RecognizedOperatorType::MatMul,               {3,3,3},{0,1,2, 0,2,3, 0,1,3}}, // bij,bjk->bik
             {RecognizedOperatorType::MatMul,               {4,4,4},{0,1,2,3, 0,1,3,4, 0,1,2,4}}, // abij,abjk->abik
+            {RecognizedOperatorType::OuterProduct,         {1,1,2},{0, 1, 0,1}}, // i,j->ij
             {RecognizedOperatorType::MatMulTransposeA,     {2,2,2},{0,1, 0,2, 1,2}}, // ji,jk->ik
             {RecognizedOperatorType::MatMulTransposeA,     {3,3,3},{0,1,2, 0,1,3, 0,2,3}}, // bji,bjk->bik
             {RecognizedOperatorType::MatMulTransposeA,     {4,4,4},{0,1,2,3, 0,1,2,4, 0,1,3,4}}, // abji,abjk->abik
@@ -1603,7 +1642,8 @@ namespace OperatorHelper
 
     bool EinSumHelper::IsMatMulOperatorType() const noexcept
     {
-        return m_recognizedOperatorType == RecognizedOperatorType::MatMul ||
+        return m_recognizedOperatorType == RecognizedOperatorType::OuterProduct ||
+            m_recognizedOperatorType == RecognizedOperatorType::MatMul ||
             m_recognizedOperatorType == RecognizedOperatorType::MatMulTransposeA ||
             m_recognizedOperatorType == RecognizedOperatorType::MatMulTransposeB ||
             m_recognizedOperatorType == RecognizedOperatorType::MatMulNhcw ||
@@ -2539,6 +2579,18 @@ namespace OperatorHelper
         }
 
         return outputShapes;
+    }
+
+    std::vector<EdgeShapes> BiasSplitGeluHelper::GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const
+    {
+        ML_CHECK_VALID_ARGUMENT(shapeInfo.GetInputCount() == 2);
+        ML_CHECK_VALID_ARGUMENT(shapeInfo.GetOutputCount() == 1);
+        auto outputShape = shapeInfo.GetInputTensorShape(0);
+        ML_CHECK_VALID_ARGUMENT(outputShape.size() >= 1);
+        ML_CHECK_VALID_ARGUMENT(outputShape.back() % 2 == 0);
+        outputShape.back() /= 2;
+
+        return { EdgeShapes(std::move(outputShape)) };
     }
 
 } // namespace OperatorHelper

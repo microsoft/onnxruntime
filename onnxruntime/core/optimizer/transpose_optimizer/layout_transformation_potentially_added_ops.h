@@ -27,6 +27,7 @@ inline constexpr std::array kLayoutTransformationPotentiallyAddedOps = {
     OpIdentifierWithStringViews{kOnnxDomain, "Identity", 13},
     OpIdentifierWithStringViews{kOnnxDomain, "Identity", 14},
     OpIdentifierWithStringViews{kOnnxDomain, "Identity", 16},
+    OpIdentifierWithStringViews{kOnnxDomain, "Identity", 19},
     OpIdentifierWithStringViews{kOnnxDomain, "Squeeze", 1},
     OpIdentifierWithStringViews{kOnnxDomain, "Squeeze", 11},
     OpIdentifierWithStringViews{kOnnxDomain, "Squeeze", 13},

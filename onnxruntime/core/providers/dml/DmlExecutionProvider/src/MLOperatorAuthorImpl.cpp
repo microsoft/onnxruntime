@@ -1053,7 +1053,10 @@ namespace Windows::AI::MachineLearning::Adapter
     }
 
     template <class NodeInfoImpl_t, class Base1_t, class Base2_t>
-    HRESULT STDMETHODCALLTYPE OpNodeInfoWrapper<NodeInfoImpl_t, Base1_t, Base2_t>::GetSequenceInputCount(uint32_t inputIndex, uint32_t* inputCount) const noexcept
+    HRESULT STDMETHODCALLTYPE OpNodeInfoWrapper<NodeInfoImpl_t, Base1_t, Base2_t>::GetSequenceInputInfo(
+        uint32_t inputIndex,
+        uint32_t* inputCount,
+        MLOperatorTensorDataType* dataType) const noexcept
     {
         ORT_TRY
         {
@@ -1068,7 +1071,7 @@ namespace Windows::AI::MachineLearning::Adapter
             auto inputTensorSeq = m_kernelContext->Input<onnxruntime::TensorSeq>(gsl::narrow_cast<int>(inputIndex));
             ML_CHECK_BOOL(inputTensorSeq != nullptr);
             *inputCount = static_cast<uint32_t>(inputTensorSeq->Size());
-
+            *dataType = ToMLTensorDataType(inputTensorSeq->DataType());
             return S_OK;
         }
         ORT_CATCH_RETURN
@@ -1975,6 +1978,28 @@ namespace Windows::AI::MachineLearning::Adapter
         ORT_CATCH_RETURN
     }
 
+    HRESULT STDMETHODCALLTYPE OpKernelContextWrapper::PrepareSequenceOutput(
+        uint32_t outputIndex,
+        MLOperatorTensorDataType dataType) const noexcept
+    {
+        ORT_TRY
+        {
+            VerifyNotClosed();
+
+            auto opKernelContextWrapper = const_cast<OpKernelContextWrapper*>(this);
+
+            ML_CHECK_BOOL(outputIndex < m_outputTensors.size());
+            auto outputTensorSeq = m_impl->Output<onnxruntime::TensorSeq>(gsl::narrow_cast<int>(outputIndex));
+            ML_CHECK_BOOL(outputTensorSeq != nullptr);
+
+            auto mlDataType = ToMLDataType(MLOperatorEdgeType::Primitive, dataType);
+            outputTensorSeq->SetType(mlDataType);
+
+            return S_OK;
+        }
+        ORT_CATCH_RETURN
+    }
+
     HRESULT STDMETHODCALLTYPE OpKernelContextWrapper::GetSequenceOutputTensor(
         uint32_t outputIndex,
         uint32_t sequenceIndex,
@@ -2054,7 +2079,7 @@ namespace Windows::AI::MachineLearning::Adapter
         ORT_CATCH_RETURN
     }
 
-    HRESULT STDMETHODCALLTYPE OpKernelContextWrapper::GetSequenceInputCount(uint32_t inputIndex, uint32_t* inputCount) const noexcept
+    HRESULT STDMETHODCALLTYPE OpKernelContextWrapper::GetSequenceInputInfo(uint32_t inputIndex, uint32_t* inputCount, MLOperatorTensorDataType* dataType) const noexcept
     {
         ORT_TRY
         {
@@ -2067,6 +2092,7 @@ namespace Windows::AI::MachineLearning::Adapter
             auto inputTensorSeq = m_impl->Input<onnxruntime::TensorSeq>(gsl::narrow_cast<int>(inputIndex));
             ML_CHECK_BOOL(inputTensorSeq != nullptr);
             *inputCount = static_cast<uint32_t>(inputTensorSeq->Size());
+            *dataType = ToMLTensorDataType(inputTensorSeq->DataType());
             return S_OK;
         }
         ORT_CATCH_RETURN
@@ -3001,7 +3027,7 @@ namespace Windows::AI::MachineLearning::Adapter
         CASE_PROTO(UINT8, uint8_t, int32_data_size);
         CASE_PROTO(UINT16, uint16_t, int32_data_size);
         CASE_PROTO(UINT32, uint32_t, uint64_data_size);
-        CASE_PROTO(UINT64, uint64_t, int64_data_size);
+        CASE_PROTO(UINT64, uint64_t, uint64_data_size);
         CASE_PROTO(FLOAT16, onnxruntime::MLFloat16, int32_data_size);
         default: ORT_THROW_HR(E_INVALIDARG);
         }

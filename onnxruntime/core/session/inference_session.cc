@@ -40,6 +40,7 @@
 #include "core/optimizer/graph_transformer_utils.h"
 #include "core/optimizer/graph_transformer.h"
 #include "core/optimizer/insert_cast_transformer.h"
+#include "core/optimizer/qdq_transformer/ensure_unique_dq_for_node_unit.h"
 #include "core/optimizer/rule_based_graph_transformer.h"
 #include "core/optimizer/selectors_actions/selector_action_transformer_apply_contexts.h"
 #include "core/optimizer/transformer_memcpy.h"
@@ -368,7 +369,6 @@ InferenceSession::InferenceSession(const SessionOptions& session_options, const 
     :
 #if !defined(ORT_MINIMAL_BUILD)
       graph_transformer_mgr_(session_options.max_num_graph_transformation_steps),
-      insert_cast_transformer_("CastFloat16Transformer"),
 #endif
       logging_manager_(session_env.GetLoggingManager()),
       environment_(session_env) {
@@ -383,7 +383,6 @@ InferenceSession::InferenceSession(const SessionOptions& session_options,
     :
 #if !defined(ORT_MINIMAL_BUILD)
       graph_transformer_mgr_(session_options.max_num_graph_transformation_steps),
-      insert_cast_transformer_("CastFloat16Transformer"),
 #endif
       logging_manager_(session_env.GetLoggingManager()),
       external_intra_op_thread_pool_(external_intra_op_thread_pool),
@@ -398,7 +397,6 @@ InferenceSession::InferenceSession(const SessionOptions& session_options, const 
                                    const PathString& model_uri)
     : model_location_(model_uri),
       graph_transformer_mgr_(session_options.max_num_graph_transformation_steps),
-      insert_cast_transformer_("CastFloat16Transformer"),
       logging_manager_(session_env.GetLoggingManager()),
       environment_(session_env) {
   auto status = Model::Load(model_location_, model_proto_);
@@ -420,7 +418,6 @@ InferenceSession::InferenceSession(const SessionOptions& session_options,
 InferenceSession::InferenceSession(const SessionOptions& session_options, const Environment& session_env,
                                    std::istream& model_istream)
     : graph_transformer_mgr_(session_options.max_num_graph_transformation_steps),
-      insert_cast_transformer_("CastFloat16Transformer"),
       logging_manager_(session_env.GetLoggingManager()),
       environment_(session_env) {
   Status st = Model::Load(model_istream, &model_proto_);
@@ -433,7 +430,6 @@ InferenceSession::InferenceSession(const SessionOptions& session_options, const 
 InferenceSession::InferenceSession(const SessionOptions& session_options, const Environment& session_env,
                                    const void* model_data, int model_data_len)
     : graph_transformer_mgr_(session_options.max_num_graph_transformation_steps),
-      insert_cast_transformer_("CastFloat16Transformer"),
       logging_manager_(session_env.GetLoggingManager()),
       environment_(session_env) {
   const bool result = model_proto_.ParseFromArray(model_data, model_data_len);
@@ -496,21 +492,53 @@ common::Status InferenceSession::RegisterExecutionProvider(const std::shared_ptr
   if (provider_type == onnxruntime::kDmlExecutionProvider) {
     // DML's memory is not byte addressable and hence mem pattern doesn't work.
     if (session_options_.enable_mem_pattern) {
-      LOGS(*session_logger_, WARNING)
+      LOGS(*session_logger_, INFO)
           << "Having memory pattern enabled is not supported while using the DML Execution Provider. "
           << "So disabling it for this session since it uses the DML Execution Provider.";
       session_options_.enable_mem_pattern = false;
     }
 
+    // Default this option to true when the DML EP is registered.
+    // This should be removed if QDQ is supported for DML through QDQSelectorActionTransformer and the DML EP does not
+    // rely on the constant folding pass for DequantizeLinear.
+    optional<std::string> disable_quant_qdq = session_options_.config_options.GetConfigEntry(kOrtSessionOptionsDisableQuantQDQ);
+
+    if (disable_quant_qdq == std::nullopt) {
+      LOGS(*session_logger_, INFO)
+          << "QDQ quantization is not supported while using the DML Execution Provider. "
+          << "So disabling it for this session since it uses the DML Execution Provider.";
+
+      auto st = session_options_.config_options.AddConfigEntry(kOrtSessionOptionsDisableQuantQDQ, "1");
+      if (!st.IsOK()) {
+        return st;
+      }
+    } else if (*disable_quant_qdq != "1") {
+      LOGS(*session_logger_, WARNING)
+          << "QDQ quantization is not supported while using the DML Execution Provider. "
+          << "It is enabled within session options which may result in lower performance.";
+    }
+
     // Parallel execution mode does not support DML EP
     if (session_options_.execution_mode != ExecutionMode::ORT_SEQUENTIAL) {
-      LOGS(*session_logger_, WARNING)
+      LOGS(*session_logger_, INFO)
           << "Parallel execution mode does not support the DML Execution Provider. "
           << "So making the execution mode sequential for this session since it uses the DML Execution Provider.";
 
       session_options_.execution_mode = ExecutionMode::ORT_SEQUENTIAL;
     }
   }
+
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
+  // Create Custom Op if EP requests it
+  std::vector<OrtCustomOpDomain*> custom_op_domains;
+  p_exec_provider->GetCustomOpDomainList(custom_op_domains);
+
+  if (!custom_op_domains.empty()) {
+    if (AddCustomOpDomains(custom_op_domains) != Status::OK()) {
+      LOGS(*session_logger_, WARNING) << "Can't register custom op domains with ORT for " << provider_type;
+    }
+  }
+#endif
 
   // if any EPs do not support concurrent calls to Run we add locking around graph execution
   if (p_exec_provider->ConcurrentRunSupported() == false) {
@@ -597,7 +625,7 @@ common::Status InferenceSession::SaveToOrtFormat(const PathString& filepath) con
   ORT_RETURN_IF_ERROR(kernel_type_str_resolver.RegisterGraphNodeOpSchemas(model_->MainGraph()));
   ORT_RETURN_IF_ERROR(standalone::RegisterCustomOpNodeSchemas(kernel_type_str_resolver, model_->MainGraph()));
 
-  for (const auto* op_schema : saved_runtime_optimization_produced_node_op_schemas_) {
+  for (const auto op_schema : saved_runtime_optimization_produced_node_op_schemas_) {
     ORT_RETURN_IF_ERROR(kernel_type_str_resolver.RegisterOpSchema(*op_schema));
   }
 
@@ -869,15 +897,31 @@ common::Status InferenceSession::Load() {
 
 common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool saving_model_in_ort_format) {
   // The transformer order:
-  // 1. run level 1 optimizations. these only use ONNX operators.
-  // 2. partition nodes based on EP capabilities. EPs may fuse nodes during this process.
-  // 3. run all optimizations. level 2 and 3 optimizations use contrib ops.
-  // 4. insert cast nodes
-  // 5. insert copy nodes
+  // 1. ensure potential QDQ node units have unique DQ nodes (required transformer).
+  //    - This is a required transformer as the ORT code has a hard requirement there are no overlapping QDQ node units.
+  //    - We run it here in case optimizers are disabled.
+  // 2. run level 1 optimizations. these only use ONNX operators.
+  // 3. partition nodes based on EP capabilities. EPs may fuse nodes during this process.
+  // 4. run level 2+ optimizations. level 2 and 3 optimizations use contrib ops.
+  // 5. insert cast nodes (required transformer).
+  // 6. insert copy nodes (required transformer).
 
-  // first apply execution provider independent level 1 graph optimizations.
-  ORT_RETURN_IF_ERROR_SESSIONID_(
-      graph_transformer_mgr_.ApplyTransformers(graph, TransformerLevel::Level1, *session_logger_));
+  auto apply_transformer_once = [](const GraphTransformer& transformer, const logging::Logger& logger,
+                                   Graph& graph) {
+    bool modified = false;
+    return transformer.Apply(graph, modified, logger);
+  };
+
+  // ensure potential QDQ node units have unique DQ nodes
+  if (const bool disable_quant_qdq =
+          session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsDisableQuantQDQ, "0") == "1";
+      !disable_quant_qdq) {
+    EnsureUniqueDQForNodeUnit ensure_unique_dq_for_node_unit{};
+    ORT_RETURN_IF_ERROR_SESSIONID_(apply_transformer_once(ensure_unique_dq_for_node_unit, *session_logger_, graph));
+  }
+
+  // apply execution provider independent level 1 graph optimizations.
+  ORT_RETURN_IF_ERROR_SESSIONID_(graph_transformer_mgr_.ApplyTransformers(graph, TransformerLevel::Level1, *session_logger_));
 
   // if saving model to ORT format we only assign nodes a custom EP can handle and don't compile them.
   // we do this to preserve the original nodes in the model but prevent optimizers from changing them.
@@ -950,20 +994,30 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
         graph_transformer_mgr_.ApplyTransformers(graph, static_cast<TransformerLevel>(i), *session_logger_));
   }
 
-  bool modified = false;
   // Insert cast node/s.
-  ORT_RETURN_IF_ERROR_SESSIONID_(insert_cast_transformer_.Apply(graph, modified, *session_logger_));
-
-  std::vector<std::string> provider_types;
-  for (auto& provider_ptr : execution_providers_) {
-    provider_types.push_back(provider_ptr->Type());
+  {
+    const InlinedVector<gsl::not_null<const KernelRegistry*>> kernel_regs =
+        kernel_registry_manager_.GetKernelRegistriesByProviderType(kCpuExecutionProvider);
+    const KernelRegistry* cpu_regs = nullptr;
+    if (!kernel_regs.empty()) {
+      cpu_regs = kernel_regs[0];
+    }
+    InsertCastTransformer insert_cast_transformer{"CastFloat16Transformer", cpu_regs};
+    ORT_RETURN_IF_ERROR_SESSIONID_(apply_transformer_once(insert_cast_transformer, *session_logger_, graph));
   }
 
   // Insert copy node/s.
-  MemcpyTransformer copy_transformer{provider_types, kernel_registry_manager_};
-  ORT_RETURN_IF_ERROR_SESSIONID_(copy_transformer.Apply(graph, modified, *session_logger_));
+  {
+    std::vector<std::string> provider_types;
+    for (auto& provider_ptr : execution_providers_) {
+      provider_types.push_back(provider_ptr->Type());
+    }
 
-  return common::Status::OK();
+    MemcpyTransformer copy_transformer{provider_types, kernel_registry_manager_};
+    ORT_RETURN_IF_ERROR_SESSIONID_(apply_transformer_once(copy_transformer, *session_logger_, graph));
+  }
+
+  return Status::OK();
 }
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
@@ -1552,7 +1606,7 @@ common::Status InferenceSession::Initialize() {
     ORT_RETURN_IF_ERROR_SESSIONID_(inference_session_utils::ParseTuningResultsFromModelMetadata(
         model_metadata_, tuning_results, found_tuning_results));
     if (found_tuning_results) {
-      ORT_RETURN_IF_ERROR_SESSIONID_(SetTuningResults(tuning_results));
+      ORT_RETURN_IF_ERROR_SESSIONID_(SetTuningResults(tuning_results, /*error_on_invalid*/ false, /*auto_enable*/ true));
     }
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
@@ -2252,7 +2306,10 @@ std::vector<TuningResults> InferenceSession::GetTuningResults() const {
   return ret;
 }
 
-Status InferenceSession::SetTuningResults(const std::vector<TuningResults>& trs, bool error_on_invalid) {
+Status InferenceSession::SetTuningResults(
+    const std::vector<TuningResults>& trs,
+    bool error_on_invalid,
+    bool auto_enable) {
   std::string msg;
 
   for (size_t i = 0; i < trs.size(); i++) {
@@ -2278,6 +2335,12 @@ Status InferenceSession::SetTuningResults(const std::vector<TuningResults>& trs,
       msg = MakeString("Failed to load TuningResults (index=", i, "). Reason: ", status.ErrorMessage());
       ORT_RETURN_IF(error_on_invalid, msg);
       LOGS(*session_logger_, WARNING) << msg;
+      continue;
+    }
+
+    if (auto_enable) {
+      LOGS(*session_logger_, INFO) << "Correctly set TuningResults for " << tr.ep << ", enable TunableOp for using";
+      tuning_ctx->EnableTunableOp();
     }
   }
   return Status::OK();

@@ -7,7 +7,7 @@ objc: true
 umbrella_header: ../include/onnxruntime.h
 framework_root: ..
 
-readme: ./docs.readme.md
+readme: ./main_page.md
 
 hide_documentation_coverage: true
 undocumented_text: ""

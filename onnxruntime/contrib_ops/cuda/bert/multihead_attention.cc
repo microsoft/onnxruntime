@@ -88,12 +88,14 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
                                                                       relative_position_bias,
                                                                       past_key,
                                                                       past_value,
+                                                                      nullptr,  // past_seq_len
                                                                       &parameters,
                                                                       num_heads_,
                                                                       mask_filter_value_,
                                                                       scale_,
+                                                                      false,  // past_present_share_buffer
+                                                                      false,  // dmmha_packing
                                                                       device_prop.maxThreadsPerBlock));
-
   int sequence_length = parameters.sequence_length;
 
   TensorShapeVector output_shape(3);
@@ -189,10 +191,10 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
                           nullptr == bias;
 
   size_t workspace_bytes;
+  constexpr size_t element_size = sizeof(T);
   if (no_qkv_workspace) {
     workspace_bytes = (parameters.batch_size > kCumulatedSequenceLengthCacheMaxBatchSize) ? 2 * GetSequenceOffsetSize(parameters.batch_size, true) : 0;
   } else {
-    constexpr size_t element_size = sizeof(T);
     workspace_bytes = GetAttentionWorkspaceSize(element_size,
                                                 parameters.batch_size,
                                                 parameters.num_heads,
@@ -208,6 +210,11 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
 
   auto work_space = GetScratchBuffer<void>(workspace_bytes, context->GetComputeStream());
 
+  const size_t past_k_bytes = element_size * parameters.batch_size * parameters.kv_sequence_length * parameters.num_heads * parameters.head_size;
+  const size_t past_v_bytes = element_size * parameters.batch_size * parameters.kv_sequence_length * parameters.num_heads * parameters.v_head_size;
+  auto temp_k_work_space = (parameters.pass_past_in_kv || use_memory_efficient_attention) ? GetScratchBuffer<void>(past_k_bytes, context->GetComputeStream()) : nullptr;
+  auto temp_v_work_space = (parameters.pass_past_in_kv || use_memory_efficient_attention) ? GetScratchBuffer<void>(past_v_bytes, context->GetComputeStream()) : nullptr;
+
   typedef typename ToCudaType<T>::MappedType CudaT;
   AttentionData<CudaT> data;
   data.gemm_buffer = nullptr;
@@ -218,15 +225,18 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
   data.mask_index = (nullptr == key_padding_mask) ? nullptr : key_padding_mask->Data<int>();
   data.mask_index_dims = (nullptr == key_padding_mask) ? gsl::span<const int64_t>() : key_padding_mask->Shape().GetDims();
   data.past = nullptr;
-  data.past_key = (parameters.pass_past_in_kv) ? reinterpret_cast<const CudaT*>(key->Data<T>())
-                  : (nullptr == past_key)      ? nullptr
-                                               : reinterpret_cast<const CudaT*>(past_key->Data<T>());
-  data.past_value = (parameters.pass_past_in_kv) ? reinterpret_cast<const CudaT*>(value->Data<T>())
-                    : (nullptr == past_value)    ? nullptr
-                                                 : reinterpret_cast<const CudaT*>(past_value->Data<T>());
+  const bool pass_key_value_as_past = (parameters.pass_past_in_kv && nullptr != key && nullptr != value);
+  data.past_key = pass_key_value_as_past  ? reinterpret_cast<const CudaT*>(key->Data<T>())
+                  : (nullptr == past_key) ? nullptr
+                                          : reinterpret_cast<const CudaT*>(past_key->Data<T>());
+  data.past_value = pass_key_value_as_past    ? reinterpret_cast<const CudaT*>(value->Data<T>())
+                    : (nullptr == past_value) ? nullptr
+                                              : reinterpret_cast<const CudaT*>(past_value->Data<T>());
   data.relative_position_bias = (nullptr == relative_position_bias) ? nullptr : reinterpret_cast<const CudaT*>(relative_position_bias->Data<T>());
   data.has_qkv_workspace = !no_qkv_workspace;
   data.workspace = reinterpret_cast<CudaT*>(work_space.get());
+  data.temp_k_workspace = (parameters.pass_past_in_kv || use_memory_efficient_attention) ? reinterpret_cast<CudaT*>(temp_k_work_space.get()) : nullptr;
+  data.temp_v_workspace = (parameters.pass_past_in_kv || use_memory_efficient_attention) ? reinterpret_cast<CudaT*>(temp_v_work_space.get()) : nullptr;
   data.output = reinterpret_cast<CudaT*>(output->MutableData<T>());
   data.present = nullptr;
   data.present_key = (nullptr == present_key) ? nullptr : reinterpret_cast<CudaT*>(present_key->MutableData<T>());
@@ -238,6 +248,7 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
   data.cumulated_sequence_length_kv_cache = &(this->cumulated_sequence_length_kv_cache_);
 
   cublasHandle_t cublas = GetCublasHandle(context);
+
   return QkvToContext<CudaT>(
       device_prop, cublas, Stream(context), parameters, data);
 }

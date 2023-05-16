@@ -71,7 +71,7 @@ namespace Microsoft.ML.OnnxRuntime.Tensors
         /// </summary>
         /// <param name="f">instance of Float16</param>
         /// <returns>value member</returns>
-        public static implicit operator ushort (Float16 f) { return f.value; }
+        public static implicit operator ushort(Float16 f) { return f.value; }
         /// <summary>
         /// Converts a 16-bit unsigned integer to a Float16.
         /// </summary>
@@ -191,7 +191,7 @@ namespace Microsoft.ML.OnnxRuntime.Tensors
         /// represent the same type and value.
         /// </summary>
         /// <param name="obj">An System.Object.</param>
-       /// <returns>true if obj is BFloat16 its value is equal to this instance; otherwise, false.</returns>
+        /// <returns>true if obj is BFloat16 its value is equal to this instance; otherwise, false.</returns>
         public override bool Equals(object obj)
         {
             bool result = false;
@@ -286,7 +286,8 @@ namespace Microsoft.ML.OnnxRuntime.Tensors
 
         private static readonly Dictionary<TensorElementType, TensorElementTypeInfo> tensorElementTypeInfoMap;
 
-        static TensorBase () {
+        static TensorBase()
+        {
             typeInfoMap = new Dictionary<Type, TensorTypeInfo>()
             {
                 { typeof(float), new TensorTypeInfo( TensorElementType.Float, sizeof(float)) },
@@ -306,11 +307,11 @@ namespace Microsoft.ML.OnnxRuntime.Tensors
             };
 
             tensorElementTypeInfoMap = new Dictionary<TensorElementType, TensorElementTypeInfo>();
-            foreach(var info in typeInfoMap)
+            foreach (var info in typeInfoMap)
             {
                 tensorElementTypeInfoMap.Add(info.Value.ElementType, new TensorElementTypeInfo(info.Key, info.Value.TypeSize));
             }
-         }
+        }
 
         private readonly Type _primitiveType;
         /// <summary>
@@ -559,7 +560,10 @@ namespace Microsoft.ML.OnnxRuntime.Tensors
                 {
                     return (T)(object)(ushort)(0);
                 }
-
+                else if (typeof(T) == typeof(string))
+                {
+                    return (T)(object)("0");
+                }
                 throw new NotSupportedException();
             }
         }
@@ -619,14 +623,18 @@ namespace Microsoft.ML.OnnxRuntime.Tensors
                 else if (typeof(T) == typeof(ushort))
                 {
                     return (T)(object)(ushort)(1);
-                } 
-                else if(typeof(T) == typeof(Float16))
+                }
+                else if (typeof(T) == typeof(Float16))
                 {
                     return (T)(object)(ushort)(15360);
                 }
                 else if (typeof(T) == typeof(BFloat16))
                 {
                     return (T)(object)(ushort)(16256);
+                }
+                else if (typeof(T) == typeof(string))
+                {
+                    return (T)(object)("1");
                 }
 
                 throw new NotSupportedException();
@@ -652,17 +660,21 @@ namespace Microsoft.ML.OnnxRuntime.Tensors
         }
 
         /// <summary>
-        /// Initialize an n-dimensional tensor with the specified dimensions and layout.  ReverseStride=true gives a stride of 1-element width to the first dimension (0).  ReverseStride=false gives a stride of 1-element width to the last dimension (n-1).
+        /// Initialize an n-dimensional tensor with the specified dimensions and layout.  
+        /// ReverseStride=true gives a stride of 1-element width to the first dimension (0).  
+        /// ReverseStride=false gives a stride of 1-element width to the last dimension (n-1).
         /// </summary>
-        /// <param name="dimensions">An span of integers that represent the size of each dimension of the Tensor to create.</param>
-        /// <param name="reverseStride">False (default) to indicate that the first dimension is most major (farthest apart) and the last dimension is most minor (closest together): akin to row-major in a rank-2 tensor.  True to indicate that the last dimension is most major (farthest apart) and the first dimension is most minor (closest together): akin to column-major in a rank-2 tensor.</param>
+        /// <param name="dimensions">
+        /// An span of integers that represent the size of each dimension of the Tensor to create.</param>
+        /// <param name="reverseStride">
+        /// False (default) to indicate that the first dimension is most major (farthest apart) and the last dimension 
+        /// is most minor (closest together): akin to row-major in a rank-2 tensor.  
+        /// True to indicate that the last dimension is most major (farthest apart) and the first dimension is most 
+        /// minor (closest together): akin to column-major in a rank-2 tensor.</param>
+        /// <remarks>If you pass `null` for dimensions it will implicitly convert to an empty ReadOnlySpan, which is 
+        /// equivalent to the dimensions for a scalar value.</remarks>
         protected Tensor(ReadOnlySpan<int> dimensions, bool reverseStride) : base(typeof(T))
         {
-            if (dimensions == null)
-            {
-                throw new ArgumentNullException(nameof(dimensions));
-            }
-
             this.dimensions = new int[dimensions.Length];
             long size = 1;
             for (int i = 0; i < dimensions.Length; i++)

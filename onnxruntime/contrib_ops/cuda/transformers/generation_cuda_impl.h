@@ -109,7 +109,7 @@ void TorchMultinomialKernelLauncher(float* d_input,
                                     int* d_presence_mask,
                                     cudaStream_t stream);
 
-void UpdateDecoderMaskedSelfAttentionCacheIndirection(int32_t* tgt_indir_cache,
+void UpdateDecoderMaskedMultiHeadAttentionCacheIndirection(int32_t* tgt_indir_cache,
                                                            const int32_t* src_indir_cache,
                                                            const int32_t* beam_ids,
                                                            int batch_size,
@@ -118,6 +118,25 @@ void UpdateDecoderMaskedSelfAttentionCacheIndirection(int32_t* tgt_indir_cache,
                                                            int max_seq_length,
                                                            int current_length,
                                                            cudaStream_t stream);
+
+template <typename T>
+void KeyCacheExpansionKernelLauncher(const T* key_cache,
+                                     T* key_cache_expanded,
+                                     int batch_size,
+                                     int beam_width,
+                                     int num_heads,
+                                     int sequence_length,
+                                     int max_seq_length,
+                                     int head_size,
+                                     cudaStream_t stream);
+
+template <typename T>
+void BufferExpansionKernelLauncher(const T* input,
+                                   T* output,
+                                   int batch_size,
+                                   int beam_width,
+                                   int chunk_size,
+                                   cudaStream_t stream);
 
 }  // namespace cuda
 }  // namespace contrib

@@ -29,7 +29,7 @@ interface MessageInitWasm extends MessageError {
 
 interface MessageInitOrt extends MessageError {
   type: 'init-ort';
-  in ?: {numThreads: number; loggingLevel: number};
+  in ?: Env;
 }
 
 interface MessageCreateSessionAllocate extends MessageError {

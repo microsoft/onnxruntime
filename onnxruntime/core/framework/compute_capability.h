@@ -17,9 +17,9 @@ struct ComputeCapability {
   // auto-generates. An execution provider can further set some advanced
   // fields on kernel definition, such as  memory placement / in-place
   // annotation.
-  ComputeCapability() : sub_graph(nullptr){}
+  ComputeCapability() : sub_graph(nullptr) {}
 
   ComputeCapability(std::unique_ptr<IndexedSubGraph> t_sub_graph)
-      : sub_graph(std::move(t_sub_graph)){}
+      : sub_graph(std::move(t_sub_graph)) {}
 };
 }  // namespace onnxruntime

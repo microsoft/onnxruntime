@@ -1,17 +1,19 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>netstandard2.0</TargetFramework>
+    <!-- netstandard2.0 is required by xamarin and used by most platforms.
+         net6.0 is required for linux. -->
+    <TargetFrameworks>netstandard2.0;net6.0</TargetFrameworks>
     <IsPackable>false</IsPackable>
     <OnnxRuntimeCsharpRoot>$(ProjectDir)..\..</OnnxRuntimeCsharpRoot>
-    <Platforms>AnyCPU;x86</Platforms>
+    <Platforms>AnyCPU</Platforms>
     <OutputPath>bin\$(Configuration)\</OutputPath>
-    <IsLinuxBuild Condition="'$([System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform($([System.Runtime.InteropServices.OSPlatform]::Linux)))' == 'true'">true</IsLinuxBuild> 
-    <IsWindowsBuild Condition="'$([System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform($([System.Runtime.InteropServices.OSPlatform]::Windows)))' == 'true'">true</IsWindowsBuild> 
-    <IsMacOSBuild Condition="'$([System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform($([System.Runtime.InteropServices.OSPlatform]::OSX)))' == 'true'">true</IsMacOSBuild> 
-    <ProtoSrc>$(OnnxRuntimeCsharpRoot)\..\cmake\external\onnx\onnx</ProtoSrc>
+    <IsLinuxBuild Condition="'$([System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform($([System.Runtime.InteropServices.OSPlatform]::Linux)))' == 'true'">true</IsLinuxBuild>
+    <IsWindowsBuild Condition="'$([System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform($([System.Runtime.InteropServices.OSPlatform]::Windows)))' == 'true'">true</IsWindowsBuild>
+    <IsMacOSBuild Condition="'$([System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform($([System.Runtime.InteropServices.OSPlatform]::OSX)))' == 'true'">true</IsMacOSBuild>
+    <ProtoSrc>$(OnnxRuntimeCsharpRoot)\..\cmake\external\onnx</ProtoSrc>
 
-    <!-- following attributes were necessary for the migrated Tensor tests -->  
+    <!-- following attributes were necessary for the migrated Tensor tests -->
     <LangVersion>7.2</LangVersion>
     <AllowUnsafeBlocks>True</AllowUnsafeBlocks>
     <SignAssembly>true</SignAssembly> <!-- need signing for friend access to the internals of the Tensors assembly -->
@@ -48,6 +50,7 @@
 
   <ItemGroup>
     <Compile Remove="InferenceTest.cs" />
+    <Compile Remove="OrtEnvTests.cs" />
     <Compile Remove="OrtIoBindingAllocationTest.cs" />
     <Compile Remove="Tensors\TensorTests.cs" />
     <Compile Remove="TrainingTest.cs" />
@@ -75,7 +78,9 @@
 
   <ItemGroup>
     <!-- include common files for visibility, however they're compiled directly by the target specific test projects -->
-    <None Include="InferenceTest.cs"/>
+    <None Include="InferenceTest.cs" />
+    <None Include="OrtEnvTests.cs" />
+    <None Include="OnnxData.cs" />
     <None Include="OrtIoBindingAllocationTest.cs" Condition=" '$(EnableDefaultCompileItems)' == 'true' " />
     <None Include="Tensors\TensorTests.cs" Condition=" '$(EnableDefaultCompileItems)' == 'true' " />
     <None Include="Tensors\ArrayTensorExtensionTests.cs" Condition=" '$(EnableDefaultCompileItems)' == 'true' " />
@@ -90,9 +95,27 @@
       <Generator>TextTemplatingFileGenerator</Generator>
       <LastGenOutput>TensorOperations.cs</LastGenOutput>
     </None>
-  </ItemGroup> 
+  </ItemGroup>
 
   <ItemGroup>
+    <None Condition="'$(IsWindowsBuild)'=='true'" Include="$(NativeBuildOutputDir)\onnxruntime.dll;$(NativeBuildOutputDir)\onnxruntime.pdb">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Visible>false</Visible>
+    </None>
+
+    <None Condition="'$(IsLinuxBuild)'=='true'" Include="$(NativeBuildOutputDir)\libonnxruntime.so">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Visible>false</Visible>
+    </None>
+
+    <None Condition="'$(IsMacOSBuild)'=='true'" Include="$(NativeBuildOutputDir)\libonnxruntime.dylib">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Visible>false</Visible>
+    </None>
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.5.0" />
     <PackageReference Include="Google.Protobuf" Version="3.16.0" />
     <PackageReference Include="Newtonsoft.Json" Version="13.0.2" />
     <PackageReference Include="xunit" Version="2.4.1" />
@@ -104,7 +127,11 @@
 
   <!-- generate OnnxMl.cs from ONNX protobuf definition -->
   <Target Name="ProtoGen" BeforeTargets="BeforeBuild" Condition="Exists('$(ProtocExe)')">
-    <Exec Command="$(ProtocExe) -I=$(ProtoSrc) --csharp_out=. $(ProtoSrc)\onnx-ml.proto3" ContinueOnError="false"></Exec>
+    <Exec Command="$(ProtocExe) -I=$(ProtoSrc) --csharp_out=. $(ProtoSrc)\onnx\onnx-ml.proto3" ContinueOnError="false"></Exec>
+  </Target>
+
+  <Target Name="ProtoDataGen" BeforeTargets="BeforeBuild" Condition="Exists('$(ProtocExe)')">
+    <Exec Command="$(ProtocExe) -I=$(ProtoSrc) --csharp_out=. $(ProtoSrc)\onnx\onnx-data.proto3" ContinueOnError="false"></Exec>
   </Target>
 
   <ItemGroup>

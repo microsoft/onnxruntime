@@ -66,6 +66,20 @@ class RandomValueGenerator {
   }
 
   // Random values generated are in the range [min, max).
+  template <typename TFloat16>
+  typename std::enable_if<
+      std::is_same_v<TFloat16, MLFloat16>,
+      std::vector<TFloat16>>::type
+  Uniform(gsl::span<const int64_t> dims, float min, float max) {
+    std::vector<TFloat16> val(detail::SizeFromDims(dims));
+    std::uniform_real_distribution<float> distribution(min, max);
+    for (size_t i = 0; i < val.size(); ++i) {
+      val[i] = TFloat16(math::floatToHalf(distribution(generator_)));
+    }
+    return val;
+  }
+
+  // Random values generated are in the range [min, max).
   template <typename TInt>
   typename std::enable_if<
       std::is_integral<TInt>::value && !utils::IsByteType<TInt>::value,
@@ -150,6 +164,72 @@ class RandomValueGenerator {
   const RandomSeedType random_seed_;
   RandomEngine generator_;
   // while this instance is in scope, output some context information on test failure like the random seed value
+  const ::testing::ScopedTrace output_trace_;
+};
+
+// This class provides similar functionality as `RandomValueGenerator` but generates `fixed` patterns
+// for given tensor element type and shape. It should be used in unstable tests because
+// `purely random` patterns can easily trigger numerical errors.
+class FixedPatternValueGenerator {
+ public:
+  explicit FixedPatternValueGenerator();
+
+  template <typename TValue>
+  std::vector<TValue>
+  Discrete(gsl::span<const int64_t> dims, const std::vector<TValue>& value_candidates) {
+    std::vector<TValue> values(detail::SizeFromDims(dims));
+    std::uniform_int_distribution<size_t> distribution(0, value_candidates.size() - 1);
+    // Tier 2 RNG. Use it if `RandomValueGenerator::Uniform` method causes large numerical errors
+    // (e.g., when elementwise relative error > 1e-3).
+    //
+    // The generated tensor is more numerically stable than other `RandomValueGenerator::Uniform` methods.
+    // If a test constantly fails, it's better to use `Discrete` method. For example,
+    // we call `Discrete` method to generate a tensor with shape [2, 3] and value candidates
+    // [-1, 0, 1] to eliminate the error propagation caused by * and / in matrix multiplication.
+    // To trigger mild error propagation in * and /, try value candidates [-1.5, -1, 0, 1, 1.5].
+    //
+    // Suggested value_candidates to alleviate numerical error (listed
+    // from smallest error to largest error):
+    //  [0]
+    //  [1]
+    //  [0, 1]
+    //  [-1, 0, 1]
+    //  [-2, -1, 0, 1, 2]
+    //  [-1.5, -1, 0, 1, 1.5]
+    //  [-2, -1.5, -1, 0, 1, 1.5, 2]
+    for (size_t i = 0; i < values.size(); ++i) {
+      // To maximize stability, use constant_generator_ since
+      // it's always initialized with 0.
+      auto index = distribution(generator_);
+      values[i] = value_candidates[index];
+    }
+    return values;
+  }
+
+  template <typename TValue>
+  std::vector<TValue>
+  Circular(gsl::span<const int64_t> dims, const std::vector<TValue>& value_candidates) {
+    // Tier 3 RNG. Use it if `Discrete` method causes large numerical errors
+    // (e.g., when elementwise relative error > 1e-3).
+    // Suggested value_candidates to alleviate numerical error (listed
+    // from smallest error to largest error):
+    //  [0]
+    //  [1]
+    //  [0, 1]
+    //  [-1, 0, 1]
+    //  [-2, -1, 0, 1, 2]
+    //  [-1.5, -1, 0, 1, 1.5]
+    //  [-2, -1.5, -1, 0, 1, 1.5, 2]
+    std::vector<TValue> values(detail::SizeFromDims(dims));
+    for (size_t i = 0; i < values.size(); ++i) {
+      auto index = i % value_candidates.size();
+      values[i] = value_candidates[index];
+    }
+    return values;
+  }
+
+ private:
+  std::default_random_engine generator_;
   const ::testing::ScopedTrace output_trace_;
 };
 

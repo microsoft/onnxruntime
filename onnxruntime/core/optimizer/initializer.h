@@ -88,7 +88,6 @@ class Initializer final {
   void scale_by_axis(const Initializer& other, int axis);
 #endif  // ORT_EXTENDED_MINIMAL_BUILD
  private:
-
   std::string name_;
   Tensor data_;
 };

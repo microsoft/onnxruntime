@@ -404,7 +404,6 @@ inline cublasStatus_t cublasGemmStridedBatchedHelper(cublasHandle_t handle,
   }
 }
 
-
 inline cublasStatus_t cublasGemmStridedBatchedHelper(cublasHandle_t handle,
                                                      cublasOperation_t transa,
                                                      cublasOperation_t transb,

@@ -7,7 +7,6 @@
 #include <cuda_runtime_api.h>
 #include <driver_types.h>
 
-
 namespace onnxruntime {
 
 CUDAGraph::CUDAGraph(cudaStream_t stream) : stream_(stream) {
@@ -86,4 +85,4 @@ CUDAGraph::~CUDAGraph() {
   Reset();
 }
 
-} // namespace onnxruntime
+}  // namespace onnxruntime

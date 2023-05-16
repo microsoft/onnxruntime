@@ -29,13 +29,13 @@ ONNX_OPERATOR_KERNEL_EX(
                                                       DataTypeImpl::GetTensorType<int32_t>()}),
     EyeLike);
 
-#define TYPED_FUNCTION_CALL(T)                                                              \
-  EyeLikeImpl<typename ToCudaType<T>::MappedType>(                                          \
-      Stream(context),                                                                      \
-      offset,                                                                               \
-      dim1 + 1,                                                                             \
+#define TYPED_FUNCTION_CALL(T)                                                     \
+  EyeLikeImpl<typename ToCudaType<T>::MappedType>(                                 \
+      Stream(context),                                                             \
+      offset,                                                                      \
+      dim1 + 1,                                                                    \
       reinterpret_cast<typename ToCudaType<T>::MappedType*>(T2->MutableData<T>()), \
-      diag_count);                                                                          \
+      diag_count);                                                                 \
   break;
 
 Status EyeLike::ComputeInternal(OpKernelContext* context) const {

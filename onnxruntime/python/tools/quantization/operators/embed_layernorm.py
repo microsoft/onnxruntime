@@ -49,7 +49,7 @@ class EmbedLayerNormalizationQuant(QuantOperatorBase):
         if quantized_input_names is None:
             return super().quantize()
 
-        qembed_layer_norm_name = "" if node.name == "" else node.name + "_quant"
+        qembed_layer_norm_name = "" if not node.name else node.name + "_quant"
 
         """
         Quantized Input Tensor List

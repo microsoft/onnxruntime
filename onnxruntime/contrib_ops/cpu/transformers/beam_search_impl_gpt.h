@@ -49,7 +49,7 @@ class BeamSearchGpt : public BeamSearchBase<T> {
         update_feeds_func_(update_feeds_func),
         cuda_device_prop_(cuda_device_prop),
         cuda_device_arch_(cuda_device_arch) {
-    if (gpt_subgraph_.has_decoder_masked_self_attention_) {
+    if (gpt_subgraph_.has_decoder_masked_attention_) {
       ORT_ENFORCE(cuda_device_arch_ >= 530,
                   "Decoder masked self attention can only be used on "
                   "GPU cards of compute capability 5.3 or higher. "
@@ -69,7 +69,7 @@ class BeamSearchGpt : public BeamSearchBase<T> {
                             OrtValue& expanded_input_ids,
                             std::vector<OrtValue>& feeds,
                             IAllocatorUniquePtr<char>& buffer,
-                            bool add_beam_search_specific_inputs_for_decoder_masked_self_attention);
+                            bool need_cache_indir);
 
   // Update the input for next iteration.
   Status UpdateFeeds(
@@ -83,7 +83,7 @@ class BeamSearchGpt : public BeamSearchBase<T> {
       gsl::span<const int32_t> beam_indices_gpu,
       int past_sequence_length,
       int input_sequence_len,
-      bool has_beam_search_specific_inputs_for_decoder_masked_self_attention);
+      bool need_cache_indir);
 
   const SessionState* init_run_decoder_session_state_ = nullptr;
   GptSubgraph* init_run_gpt_subgraph_ = nullptr;
@@ -105,7 +105,7 @@ Status BeamSearchGpt<T>::CreateInitialFeeds(gsl::span<int32_t>& sequence_lengths
                                             OrtValue& expanded_input_ids,
                                             std::vector<OrtValue>& feeds,
                                             IAllocatorUniquePtr<char>& buffer,
-                                            bool add_beam_search_specific_inputs_for_decoder_masked_self_attention) {
+                                            bool need_cache_indir) {
   const OrtValue* input_ids_value = this->context_.GetInputOrtValue(0);
   const Tensor& input_ids = input_ids_value->Get<Tensor>();
   const OrtValue* attn_mask_value = this->context_.GetInputOrtValue(9);
@@ -124,7 +124,7 @@ Status BeamSearchGpt<T>::CreateInitialFeeds(gsl::span<int32_t>& sequence_lengths
                                                       buffer,
                                                       this->ort_stream_,
                                                       this->parameters_->max_length,
-                                                      add_beam_search_specific_inputs_for_decoder_masked_self_attention);
+                                                      need_cache_indir);
   }
 
   return gpt_subgraph_.CreateInitialFeeds(input_ids,
@@ -140,7 +140,7 @@ Status BeamSearchGpt<T>::CreateInitialFeeds(gsl::span<int32_t>& sequence_lengths
                                           buffer,
                                           this->ort_stream_,
                                           this->parameters_->max_length,
-                                          add_beam_search_specific_inputs_for_decoder_masked_self_attention);
+                                          need_cache_indir);
 }
 
 template <typename T>
@@ -155,7 +155,7 @@ Status BeamSearchGpt<T>::UpdateFeeds(
     gsl::span<const int32_t> beam_indices_gpu,
     int past_sequence_length,
     int input_sequence_len,
-    bool has_beam_search_specific_inputs_for_decoder_masked_self_attention) {
+    bool need_cache_indir) {
   return update_feeds_func_(this->temp_space_allocator_,
                             this->ort_stream_,
                             last_outputs,
@@ -172,7 +172,7 @@ Status BeamSearchGpt<T>::UpdateFeeds(
                             gpt_subgraph_.past_present_share_buffer_,
                             past_sequence_length,
                             input_sequence_len,
-                            has_beam_search_specific_inputs_for_decoder_masked_self_attention);
+                            need_cache_indir);
 }
 
 template <typename T>
@@ -202,32 +202,17 @@ Status BeamSearchGpt<T>::Execute(const FeedsFetchesManager* init_run_feeds_fetch
   std::vector<OrtValue> fetches;
 
   // Initialize resources
-  onnxruntime::OrtStlAllocator<HypothesisScore> hypothesis_score_allocator(this->cpu_allocator_);
-  onnxruntime::OrtStlAllocator<BeamHypotheses> beam_hyps_allocator(this->cpu_allocator_);
-  this->beam_scorer_ = std::make_unique<BeamSearchScorer>(static_cast<size_t>(parameters->batch_size),
-                                                          static_cast<size_t>(parameters->num_beams),
-                                                          static_cast<size_t>(parameters->max_length),
-                                                          parameters->length_penalty,
-                                                          parameters->early_stopping,
-                                                          static_cast<size_t>(parameters->num_return_sequences),
-                                                          parameters->pad_token_id,
-                                                          parameters->eos_token_id,
-                                                          hypothesis_score_allocator,
-                                                          beam_hyps_allocator);
-  this->beam_scorer_->Initialize(this->cpu_allocator_, parameters->sequence_length);
+  this->beam_scorer_ = std::make_unique<BeamSearchScorer>(*parameters, this->cpu_allocator_);
 
-  BeamSearchCpuState cpu_state;
-  cpu_state.Init(this->cpu_allocator_,
-                 static_cast<size_t>(parameters->BatchBeamSize()),
-                 parameters->max_length,
-                 parameters->sequence_length,
-                 this->IsCuda());
+  BeamSearchCpuState cpu_state{*parameters,
+                               this->cpu_allocator_,
+                               this->IsCuda()};
 
   // buffer in GPU for input_ids, position_ids and attention_mask
   IAllocatorUniquePtr<char> buffer;
   OrtValue expanded_input_ids_in_cpu;
   ORT_RETURN_IF_ERROR(CreateInitialFeeds(cpu_state.sequence_lengths, expanded_input_ids_in_cpu, feeds, buffer,
-                                         gpt_subgraph_.has_decoder_masked_self_attention_));
+                                         gpt_subgraph_.has_decoder_masked_attention_));
 
   if (gpt_subgraph_.past_present_share_buffer_) {  // Reuse past and present
     fetches.reserve(static_cast<int64_t>(gpt_subgraph_.GetFirstPresentOutputIndex()) + gpt_subgraph_.num_layers);
@@ -243,19 +228,10 @@ Status BeamSearchGpt<T>::Execute(const FeedsFetchesManager* init_run_feeds_fetch
     }
   }
 
-  BeamSearchState<T> beam_state;
-  constexpr bool use_position = true;
-  beam_state.Init(this->temp_space_allocator_,
-                  parameters->batch_size,
-                  parameters->num_beams,
-                  parameters->vocab_size,
-                  parameters->sequence_length,
-                  parameters->max_length,
-                  parameters->num_heads,
-                  parameters->head_size,
-                  gpt_subgraph_.has_decoder_masked_self_attention_,
-                  parameters->output_scores,
-                  use_position);
+  BeamSearchState<T> beam_state{*parameters,
+                                this->temp_space_allocator_,
+                                gpt_subgraph_.has_decoder_masked_attention_,
+                                true /* use_position */};
 
   init_beam_state_func_(&beam_state,
                         cpu_state.sequence_lengths,
@@ -263,11 +239,7 @@ Status BeamSearchGpt<T>::Execute(const FeedsFetchesManager* init_run_feeds_fetch
                         parameters->num_beams,
                         this->ort_stream_);
 
-  gsl::span<const int32_t> input_ids = expanded_input_ids_in_cpu.Get<Tensor>().DataAsSpan<int32_t>();
-  cpu_state.SetSequence(input_ids,
-                        static_cast<size_t>(parameters->BatchBeamSize()),
-                        parameters->max_length,
-                        parameters->sequence_length);
+  cpu_state.SetExpandedSequence(expanded_input_ids_in_cpu.Get<Tensor>().DataAsSpan<int32_t>());
 
 #ifdef DEBUG_GENERATION
   const IConsoleDumper* dumper = this->GetConsoleDumper();
@@ -351,7 +323,7 @@ Status BeamSearchGpt<T>::Execute(const FeedsFetchesManager* init_run_feeds_fetch
 
     // Reorder past state after first run if the GPT subgraph (the one used after the first iteration)
     // contains DecoderMaskedSelfAttention nodes
-    if (iteration_counter == 1 && gpt_subgraph_.has_decoder_masked_self_attention_) {
+    if (iteration_counter == 1 && gpt_subgraph_.has_decoder_masked_attention_) {
       size_t offset = static_cast<size_t>(gpt_subgraph_.GetFirstPresentOutputIndex());
       // We will use the same staging buffer while transposing all the layers' past state
       // and this is okay because we use the same stream to do the staging copy and the transpose
@@ -376,12 +348,12 @@ Status BeamSearchGpt<T>::Execute(const FeedsFetchesManager* init_run_feeds_fetch
                                       position_ids, increase_position,
                                       ReinterpretAsSpan<const int32_t>(beam_next_tokens),
                                       ReinterpretAsSpan<const int32_t>(beam_indices),
-                                      gpt_subgraph_.has_decoder_masked_self_attention_
+                                      gpt_subgraph_.has_decoder_masked_attention_
                                           ? ReinterpretAsSpan<const int32_t>(beam_state.chosen_indices)
                                           : place_holder,
                                       current_length - 1,
                                       parameters->sequence_length,
-                                      gpt_subgraph_.has_decoder_masked_self_attention_));
+                                      gpt_subgraph_.has_decoder_masked_attention_));
     }
 
     if (gpt_subgraph_.past_present_share_buffer_) {
@@ -394,25 +366,24 @@ Status BeamSearchGpt<T>::Execute(const FeedsFetchesManager* init_run_feeds_fetch
     }
   }
 
-  gsl::span<const float> final_beam_scores(beam_state.beam_scores.data(), beam_state.beam_scores.size());
+  gsl::span<const float> final_beam_scores = beam_state.beam_scores;
   if (this->IsCuda()) {
     ORT_RETURN_IF_ERROR(this->device_copy_func_(cpu_state.final_beam_scores,
                                                 final_beam_scores,
                                                 nullptr,
                                                 DeviceCopyDirection::deviceToHost));
-    final_beam_scores = gsl::make_span<const float>(cpu_state.final_beam_scores.data(),
-                                                    cpu_state.final_beam_scores.size());
+    final_beam_scores = cpu_state.final_beam_scores;
   }
 
-  this->beam_scorer_->Finalize(&(cpu_state.sequences),
+  this->beam_scorer_->Finalize(cpu_state.sequences,
                                final_beam_scores,
                                output_sequences,
                                output_sequences_scores);
 
   // Output per token scores
-  if (output_scores != nullptr) {
+  if (output_scores) {
     gsl::span<float> target = output_scores->MutableDataAsSpan<float>();
-    gsl::span<const float> source = gsl::span<const float>(beam_state.scores.data(), beam_state.scores.size());
+    gsl::span<const float> source = beam_state.scores;
     assert(target.size() == source.size());
     ORT_RETURN_IF_ERROR(this->device_copy_func_(target, source, nullptr, DeviceCopyDirection::deviceToDevice));
   }

@@ -260,7 +260,7 @@ Status OrtSaveOptimizerStatesInternal(OptimizerCheckpointState& optimizer_state,
     // Firstly indexed by momentum names; Secondly indexed by parameter names.
     InlinedHashMap<std::string, std::unordered_map<std::string, OrtValue>> optimizer_state_ort_values;
     for (const auto& [param_name, param_optimizer_state] : group_optimizer_state_ptr->param_named_optimizer_states) {
-      for (const auto& [momentum_name, m_state_val] : param_optimizer_state.momentum_named_states) {
+      for (const auto& [momentum_name, m_state_val] : param_optimizer_state) {
         if (optimizer_state_ort_values.find(momentum_name) == optimizer_state_ort_values.end()) {
           std::unordered_map<std::string, OrtValue> param_name_to_ortvalue{{param_name, m_state_val}};
           optimizer_state_ort_values.insert({momentum_name, param_name_to_ortvalue});
@@ -306,7 +306,7 @@ Status OrtSaveOptimizerStatesInternal(OptimizerCheckpointState& optimizer_state,
 }
 
 Status OrtSaveInternal(
-    CheckpointState& state, const PathString& checkpoint_path) {
+    CheckpointState& state, const PathString& checkpoint_path, const bool include_optimizer_state) {
   LOGS_DEFAULT(INFO) << "Saving model checkpoint files to " << ToUTF8String(checkpoint_path);
   LOGS_DEFAULT_IF(Env::Default().FolderExists(checkpoint_path), WARNING)
       << "Checkpoint directory exists - data may be overwritten.";
@@ -316,7 +316,9 @@ Status OrtSaveInternal(
   ORT_RETURN_IF_ERROR(OrtSaveModuleStatesInternal(state.module_checkpoint_state, checkpoint_path));
 
   // Write optimizer state tensors files.
-  ORT_RETURN_IF_ERROR(OrtSaveOptimizerStatesInternal(state.optimizer_checkpoint_state, checkpoint_path));
+  if (include_optimizer_state) {
+    ORT_RETURN_IF_ERROR(OrtSaveOptimizerStatesInternal(state.optimizer_checkpoint_state, checkpoint_path));
+  }
 
   // Write properties file
   const PropertyBag& property_bag = state.property_bag;
@@ -419,7 +421,7 @@ Status OrtLoadOptimizerStatesInternal(const PathString& optimizer_folder_path,
     }
 
     auto& group_optimizer_state = grouped_optimizer_states[group_name];
-    std::unordered_map<std::string, ParameterOptimizerState>&
+    InlinedHashMap<std::string, ParameterOptimizerState>&
         param_optimizer_states = group_optimizer_state->param_named_optimizer_states;
 
     const PathString& tensor_file_path = GetTensorProtoFilePath(optimizer_folder_path,
@@ -435,7 +437,7 @@ Status OrtLoadOptimizerStatesInternal(const PathString& optimizer_folder_path,
         ParameterOptimizerState param_state;
         param_optimizer_states.insert({param_name, param_state});
       }
-      param_optimizer_states[param_name].momentum_named_states.insert({momentum_name, std::move(pair.second)});
+      param_optimizer_states[param_name].insert({momentum_name, std::move(pair.second)});
     }
   }
 
@@ -535,8 +537,9 @@ Status OrtLoadInternal(const PathString& checkpoint_path,
   for (auto& init : *(model_proto.mutable_graph()->mutable_initializer())) {
     ORT_ENFORCE(init.has_name(), "An initializer should have a name.");
     auto it = param_tensor_protos.find(init.name());
-    ORT_ENFORCE(it != param_tensor_protos.end(),
-                "The initializer name was not found in the checkpoint file loaded.");
+    if (it == param_tensor_protos.end()) {
+      continue;
+    }
     init = it->second;
   }
 
@@ -544,7 +547,7 @@ Status OrtLoadInternal(const PathString& checkpoint_path,
 }
 
 Status OrtLoadInternal(const PathString& checkpoint_path, CheckpointState& state) {
-  ORT_ENFORCE(Env::Default().FolderExists(checkpoint_path), "Checkpoint folder not exit");
+  ORT_ENFORCE(Env::Default().FolderExists(checkpoint_path), "Checkpoint folder does not exist.");
   ORT_RETURN_IF_ERROR(OrtLoadModuleStatesInternal(checkpoint_path, state.module_checkpoint_state));
   ORT_RETURN_IF_ERROR(OrtLoadOptimizerStatesInternal(checkpoint_path, state.optimizer_checkpoint_state));
   ORT_RETURN_IF_ERROR(OrtLoadCustomPropertyInternal(checkpoint_path, state.property_bag));
@@ -559,8 +562,9 @@ Status SaveCheckpoint(const std::vector<ONNX_NAMESPACE::TensorProto>& trainable_
   return OrtSaveInternal(trainable_tensor_protos, non_trainable_tensor_protos, checkpoint_path);
 }
 
-Status SaveCheckpoint(CheckpointState& states, const PathString& checkpoint_path) {
-  return OrtSaveInternal(states, checkpoint_path);
+Status SaveCheckpoint(CheckpointState& states, const PathString& checkpoint_path,
+                      const bool include_optimizer_state) {
+  return OrtSaveInternal(states, checkpoint_path, include_optimizer_state);
 }
 
 Status LoadCheckpoint(const PathString& checkpoint_path, CheckpointState& checkpoint_states) {

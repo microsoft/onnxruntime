@@ -100,7 +100,7 @@ class QLinearGemm(QOpMatMul):
             )
 
         qgemm_output = node.output[0] + TENSOR_NAME_QUANT_SUFFIX
-        qgemm_name = qgemm_name = node.name + "_quant" if node.name != "" else ""
+        qgemm_name = node.name + "_quant" if node.name else ""
 
         kwargs = {}
         for attribute in node.attribute:

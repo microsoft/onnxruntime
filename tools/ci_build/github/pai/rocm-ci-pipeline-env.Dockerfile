@@ -1,4 +1,4 @@
-FROM rocm/pytorch:rocm5.4_ubuntu20.04_py3.7_pytorch_1.12.1
+FROM rocm/pytorch:rocm5.5_ubuntu20.04_py3.8_pytorch_1.13.1
 
 WORKDIR /stage
 
@@ -10,7 +10,7 @@ RUN cd /opt/mpi_install/ucx/build &&\
       make install
 
 # CMake
-ENV CMAKE_VERSION=3.24.2
+ENV CMAKE_VERSION=3.26.3
 RUN cd /usr/local && \
     wget -q -O - https://github.com/Kitware/CMake/releases/download/v${CMAKE_VERSION}/cmake-${CMAKE_VERSION}-Linux-x86_64.tar.gz | tar zxf -
 ENV PATH=/usr/local/cmake-${CMAKE_VERSION}-linux-x86_64/bin:${PATH}
@@ -29,7 +29,7 @@ RUN git clone https://github.com/microsoft/huggingface-transformers.git &&\
       pip install -e .
 
 RUN pip install \
-      numpy \
+      numpy==1.24.1 \
       onnx \
       cerberus \
       sympy \
@@ -38,7 +38,7 @@ RUN pip install \
       requests \
       sacrebleu==1.5.1 \
       sacremoses \
-      scipy \
+      scipy==1.10.0 \
       scikit-learn \
       tokenizers \
       sentencepiece \

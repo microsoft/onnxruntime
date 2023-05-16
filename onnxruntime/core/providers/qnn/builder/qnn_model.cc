@@ -89,7 +89,7 @@ const NodeUnit& QnnModel::GetNodeUnit(const Node* node,
 
 Status QnnModel::ComposeGraph(const GraphViewer& graph_viewer,
                               const onnxruntime::Node& fused_node) {
-  LOGS_DEFAULT(VERBOSE) << "ComposeGraph Graph name: " << graph_viewer.Name();
+  LOGS(logger_, VERBOSE) << "ComposeGraph Graph name: " << graph_viewer.Name();
   const onnxruntime::AllocatorPtr& cpu_allocator = GetAllocator();
 
   // Holder for the NodeUnits in the graph, this will guarantee the NodeUnits is
@@ -122,11 +122,11 @@ Status QnnModel::ComposeGraph(const GraphViewer& graph_viewer,
     const NodeUnit& node_unit = GetNodeUnit(node, node_unit_map);
     // Q, DQ nodes in the node unit only carry the quantization parameters
     // Add the QNN node when it is the target node (It's a normal node or a singel Q/DQ node)
-    LOGS_DEFAULT(VERBOSE) << " node name: [" << node->Name()
-                          << "] node optype: [" << node->OpType()
-                          << "] as part of the NodeUnit type: [" << node_unit.OpType()
-                          << "] name: [" << node_unit.Name()
-                          << "]";
+    LOGS(logger_, VERBOSE) << " node name: [" << node->Name()
+                           << "] node optype: [" << node->OpType()
+                           << "] as part of the NodeUnit type: [" << node_unit.OpType()
+                           << "] name: [" << node_unit.Name()
+                           << "]";
     if (node != &node_unit.GetNode()) {
       continue;
     }
@@ -228,12 +228,12 @@ Status QnnModel::ExecuteGraph(const Ort::KernelContext& context) {
   auto profile_backend_handle = qnn_backend_manager_->GetQnnProfileHandle();
   Qnn_ErrorHandle_t execute_status = QNN_GRAPH_NO_ERROR;
   execute_status = qnn_interface.graphExecute(graph_info_->Graph(),
-                                             qnn_inputs_.data(),
-                                             static_cast<uint32_t>(qnn_inputs_.size()),
-                                             qnn_outputs_.data(),
-                                             static_cast<uint32_t>(qnn_outputs_.size()),
-                                             profile_backend_handle,
-                                             nullptr);
+                                              qnn_inputs_.data(),
+                                              static_cast<uint32_t>(qnn_inputs_.size()),
+                                              qnn_outputs_.data(),
+                                              static_cast<uint32_t>(qnn_outputs_.size()),
+                                              profile_backend_handle,
+                                              nullptr);
 
   ORT_RETURN_IF_ERROR(qnn_backend_manager_->ExtractBackendProfilingInfo());
   if (QNN_GRAPH_NO_ERROR != execute_status) {

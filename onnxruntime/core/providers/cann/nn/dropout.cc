@@ -26,17 +26,17 @@ float GetRatioOrDefault(const Tensor* ratio) {
 }  // namespace
 
 template <typename T1, typename T2>
-Status Dropout<T1, T2>::ComputeInternal(OpKernelContext* context) const {
-  const Tensor* X = context->Input<Tensor>(0);
+Status Dropout<T1, T2>::ComputeInternal(OpKernelContext* ctx) const {
+  const Tensor* X = ctx->Input<Tensor>(0);
   const TensorShape& X_shape = X->Shape();
 
-  const Tensor* ratio = context->Input<Tensor>(1);
+  const Tensor* ratio = ctx->Input<Tensor>(1);
   const float ratio_value = GetRatioOrDefault<T2>(ratio);
 
-  const Tensor* training_mode = context->Input<Tensor>(2);
+  const Tensor* training_mode = ctx->Input<Tensor>(2);
 
-  auto Y = context->Output(0, X_shape);
-  auto mask = context->Output(1, X_shape);
+  auto Y = ctx->Output(0, X_shape);
+  auto mask = ctx->Output(1, X_shape);
 
   if (ratio_value == 0.f || !training_mode || !(*(training_mode->Data<bool>()))) {
     const void* X_data = X->DataRaw();
@@ -44,22 +44,22 @@ Status Dropout<T1, T2>::ComputeInternal(OpKernelContext* context) const {
 
     if (Y_data != X_data) {
       CANN_RETURN_IF_ERROR(aclrtMemcpyAsync(Y_data, Y->SizeInBytes(), X_data, Y->SizeInBytes(),
-                                            ACL_MEMCPY_DEVICE_TO_DEVICE, Stream()));
+                                            ACL_MEMCPY_DEVICE_TO_DEVICE, Stream(ctx)));
     }
 
     if (mask) {
       CANN_RETURN_IF_ERROR(aclrtMemsetAsync(mask->MutableData<bool>(), mask->SizeInBytes(), true,
-                                            mask->SizeInBytes(), Stream()));
+                                            mask->SizeInBytes(), Stream(ctx)));
     }
   } else {
     IAllocatorUniquePtr<void> pmask{};
-    IAllocatorUniquePtr<void> pseed = GetScratchBuffer<void>(sizeof(float));
+    IAllocatorUniquePtr<void> pseed = GetScratchBuffer<void>(sizeof(float), ctx->GetComputeStream());
 
     void* mask_data = nullptr;
     if (mask) {
       mask_data = mask->MutableDataRaw();
     } else {
-      pmask = GetScratchBuffer<void>(X_shape.Size() * sizeof(bool));
+      pmask = GetScratchBuffer<void>(X_shape.Size() * sizeof(bool), ctx->GetComputeStream());
       mask_data = pmask.get();
     }
 
@@ -107,7 +107,7 @@ Status Dropout<T1, T2>::ComputeInternal(OpKernelContext* context) const {
                                                 ACL_ENGINE_SYS,
                                                 ACL_COMPILE_SYS,
                                                 NULL,
-                                                Stream()));
+                                                Stream(ctx)));
   }
 
   return Status::OK();

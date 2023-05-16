@@ -7,14 +7,14 @@ set(MLAS_SRC_DIR ${ONNXRUNTIME_ROOT}/core/mlas/lib)
 set(MLAS_AMX_SUPPORTED FALSE)
 
 if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND CMAKE_C_COMPILER_VERSION VERSION_GREATER_EQUAL 11)
-  # match assembler version, AMX instructions are supported from 2.40
-  if (CMAKE_ASM-ATT_COMPILER_ID STREQUAL "GNU")
+  # match assembler version, AMX instructions are supported from 2.38
+  if (CMAKE_ASM_COMPILER_ID STREQUAL "GNU")
     execute_process(
-        COMMAND ${CMAKE_ASM-ATT_COMPILER} --version
-        OUTPUT_VARIABLE _gas_version
+        COMMAND as --version
+        OUTPUT_VARIABLE _as_version
     )
-    # 2.40 or later
-    if (_gas_version MATCHES "GNU.[Aa]ssembler.*(2\\.[4-9][0-9])")
+    # 2.38 or later
+    if (_as_version MATCHES "GNU.[Aa]ssembler.*(2\\.38|2\\.39|2\\.[4-9][0-9]|[3-9]\\.[0-9][0-9])")
         set(MLAS_AMX_SUPPORTED TRUE)
     endif()
   endif()
@@ -89,7 +89,6 @@ function(setup_mlas_source_for_windows)
         ${MLAS_SRC_DIR}/qgemm_kernel_neon.cpp
         ${MLAS_SRC_DIR}/qgemm_kernel_udot.cpp
         ${MLAS_SRC_DIR}/qgemm_kernel_sdot.cpp
-        ${MLAS_SRC_DIR}/dwconv.cpp
       )
 
       set(mlas_platform_preprocess_srcs
@@ -334,7 +333,6 @@ else()
           ${MLAS_SRC_DIR}/aarch64/DepthwiseQConvSymS8KernelNeon.S
           ${MLAS_SRC_DIR}/aarch64/DepthwiseQConvSymU8KernelNeon.S
           ${MLAS_SRC_DIR}/aarch64/DepthwiseQConvKernelSize9Neon.S
-          ${MLAS_SRC_DIR}/aarch64/HalfGemmKernelNeon.S
           ${MLAS_SRC_DIR}/aarch64/QgemmU8X8KernelNeon.S
           ${MLAS_SRC_DIR}/aarch64/QgemmS8S8KernelNeon.S
           ${MLAS_SRC_DIR}/aarch64/QgemmU8X8KernelUdot.S
@@ -344,18 +342,24 @@ else()
           ${MLAS_SRC_DIR}/aarch64/SymQgemmS8KernelNeon.S
           ${MLAS_SRC_DIR}/aarch64/SymQgemmS8KernelSdot.S
           ${MLAS_SRC_DIR}/aarch64/SymQgemmS8KernelSdotLd64.S
-          ${MLAS_SRC_DIR}/activate_fp16.cpp
-          ${MLAS_SRC_DIR}/dwconv.cpp
-          ${MLAS_SRC_DIR}/halfgemm_kernel_neon.cpp
-          ${MLAS_SRC_DIR}/pooling_fp16.cpp
           ${MLAS_SRC_DIR}/qgemm_kernel_neon.cpp
           ${MLAS_SRC_DIR}/qgemm_kernel_udot.cpp
           ${MLAS_SRC_DIR}/qgemm_kernel_sdot.cpp
         )
-        set_source_files_properties(${MLAS_SRC_DIR}/aarch64/HalfGemmKernelNeon.S PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+fp16 ")
-        set_source_files_properties(${MLAS_SRC_DIR}/activate_fp16.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+fp16 ")
-        set_source_files_properties(${MLAS_SRC_DIR}/dwconv.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+fp16 ")
-        set_source_files_properties(${MLAS_SRC_DIR}/pooling_fp16.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+fp16 ")
+        if (NOT APPLE)
+          set(mlas_platform_srcs
+            ${mlas_platform_srcs}
+            ${MLAS_SRC_DIR}/aarch64/HalfGemmKernelNeon.S
+            ${MLAS_SRC_DIR}/activate_fp16.cpp
+            ${MLAS_SRC_DIR}/dwconv.cpp
+            ${MLAS_SRC_DIR}/halfgemm_kernel_neon.cpp
+            ${MLAS_SRC_DIR}/pooling_fp16.cpp
+          )
+          set_source_files_properties(${MLAS_SRC_DIR}/aarch64/HalfGemmKernelNeon.S PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+fp16 ")
+          set_source_files_properties(${MLAS_SRC_DIR}/activate_fp16.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+fp16 ")
+          set_source_files_properties(${MLAS_SRC_DIR}/dwconv.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+fp16 ")
+          set_source_files_properties(${MLAS_SRC_DIR}/pooling_fp16.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+fp16 ")
+        endif()
 
         if(ONNXRUNTIME_MLAS_MULTI_ARCH)
             onnxruntime_add_static_library(onnxruntime_mlas_arm64 ${mlas_platform_srcs})
@@ -578,9 +582,9 @@ foreach(mlas_target ${ONNXRUNTIME_MLAS_LIBS})
 endforeach()
 set_target_properties(onnxruntime_mlas PROPERTIES FOLDER "ONNXRuntime")
 if (WIN32)
-  target_compile_options(onnxruntime_mlas PRIVATE "/wd6385" "/wd4127")
+  target_compile_options(onnxruntime_mlas PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:/wd6385>" "$<$<COMPILE_LANGUAGE:CXX>:/wd4127>")
   if (onnxruntime_ENABLE_STATIC_ANALYSIS)
-    target_compile_options(onnxruntime_mlas PRIVATE  "/analyze:stacksize 131072")
+    target_compile_options(onnxruntime_mlas PRIVATE  "$<$<COMPILE_LANGUAGE:CXX>:/analyze:stacksize 131072">)
   endif()
 endif()
 

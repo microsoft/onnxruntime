@@ -716,11 +716,11 @@ TEST(InferenceSessionTests, CheckRunProfilerWithSessionOptions2) {
       ASSERT_TRUE(lines[i].find(s) != string::npos);
 #ifdef USE_CUDA
       has_api_info = has_api_info || lines[i].find("Api") != string::npos &&
-                                               lines[i].find("cudaLaunch") != string::npos;
+                                         lines[i].find("cudaLaunch") != string::npos;
 #endif
 #ifdef USE_ROCM
       has_api_info = has_api_info || lines[i].find("Api") != string::npos &&
-                                               lines[i].find("hipLaunch") != string::npos;
+                                         lines[i].find("hipLaunch") != string::npos;
 #endif
     }
   }
@@ -731,7 +731,6 @@ TEST(InferenceSessionTests, CheckRunProfilerWithSessionOptions2) {
   ASSERT_TRUE(has_api_info || true);
 #endif
 }
-
 
 TEST(InferenceSessionTests, CheckRunProfilerWithStartProfile) {
   SessionOptions so;
@@ -877,12 +876,12 @@ TEST(InferenceSessionTests, ConfigureVerbosityLevel) {
 
   ASSERT_TRUE(have_log_entry_with_vlog_session_msg);
 
-  //bool have_log_entry_with_vlog_run_msg =
-  //    (std::find_if(msgs.begin(), msgs.end(),
-  //                  [&](std::string msg) { return msg.find("Size of execution plan vector") != string::npos; }) !=
-  //     msgs.end());
+  // bool have_log_entry_with_vlog_run_msg =
+  //     (std::find_if(msgs.begin(), msgs.end(),
+  //                   [&](std::string msg) { return msg.find("Size of execution plan vector") != string::npos; }) !=
+  //      msgs.end());
 
-  //ASSERT_TRUE(have_log_entry_with_vlog_run_msg);
+  // ASSERT_TRUE(have_log_entry_with_vlog_run_msg);
 
   bool has_num_streams_msg =
       (std::find_if(msgs.begin(), msgs.end(), [&](std::string msg) { return msg.find("Number of streams") != string::npos; }) != msgs.end());
@@ -1554,7 +1553,7 @@ TEST(InferenceSessionTests, Test3LayerNestedSubgraph) {
   so.session_logid = "InferenceSessionTests.Test3LayerNestedSubgraph";
   InferenceSession session_object{so, GetEnvironment()};
 
-#if USE_TENSORRT
+#if defined(_WIN32) && defined(USE_TENSORRT)
   ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultTensorrtExecutionProvider()));
 #elif USE_CUDA
   ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultCudaExecutionProvider()));
@@ -1592,7 +1591,7 @@ TEST(InferenceSessionTests, Test3LayerNestedSubgraph) {
   ASSERT_TRUE(status.IsOK());
   VerifyOutputs(fetches, expected_dims, expected_values);
 
-#if USE_TENSORRT
+#if defined(_WIN32) && defined(USE_TENSORRT)
   // previous run with graph being optimized, one of If node’s both subgraphs become empty, so TRT EP won’t assign this If node to TRT and later ORT assign it to CUDA.
   // we also want to test graph not being optimized and TRT EP should also be able to run it and make the whole graph run on TRT.
   so.graph_optimization_level = TransformerLevel::Default;
@@ -1706,7 +1705,7 @@ TEST(InferenceSessionTests, Test2LayerNestedSubgraph) {
   so.session_logid = "InferenceSessionTests.Test2LayerNestedSubgraph";
   InferenceSession session_object{so, GetEnvironment()};
 
-#if USE_TENSORRT
+#if defined(_WIN32) && defined(USE_TENSORRT)
   ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultTensorrtExecutionProvider()));
 #elif USE_CUDA
   ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultCudaExecutionProvider()));
@@ -2778,15 +2777,19 @@ TEST(InferenceSessionTests, InitializerSharing_EnsureSessionsUseUserAddedInitial
   ASSERT_EQ(so1_init_buffer, so2_init_buffer);
 
   int so3_idx;
-  ASSERT_STATUS_OK(sess3.GetSessionState().GetOrtValueNameIdxMap().GetIdx(init_name, so3_idx));
-  const auto* so3_init_buffer = sess3.GetSessionState().GetInitializedTensors().at(so3_idx).Get<Tensor>().Data<float>();
+  // If the original initializer name got changed by graph transformers, then we don't need check
+  // the data ptr reuse or not with other session.
+  if (sess3.GetSessionState().GetOrtValueNameIdxMap().GetIdx(init_name, so3_idx).IsOK()) {
+    const auto* so3_init_buffer =
+        sess3.GetSessionState().GetInitializedTensors().at(so3_idx).Get<Tensor>().Data<float>();
 
-  // Ensure session 3 doesn't share the same data ptr as any other session
-  ASSERT_NE(so3_init_buffer, so1_init_buffer);
-  ASSERT_NE(so3_init_buffer, so2_init_buffer);
+    // Ensure session 3 doesn't share the same data ptr as any other session
+    ASSERT_NE(so3_init_buffer, so1_init_buffer);
+    ASSERT_NE(so3_init_buffer, so2_init_buffer);
 
-  // Ensure session 3 doesn't share the same data ptr as the one supplied by the user for any of the other sessions
-  ASSERT_NE(so3_init_buffer, val_to_share.Get<Tensor>().Data<float>());
+    // Ensure session 3 doesn't share the same data ptr as the one supplied by the user for any of the other sessions
+    ASSERT_NE(so3_init_buffer, val_to_share.Get<Tensor>().Data<float>());
+  }
 }
 
 void RunModelWithDenormalAsZero(InferenceSession& session_object,

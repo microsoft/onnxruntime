@@ -22,20 +22,18 @@ OpKernelInfo::OpKernelInfo(const onnxruntime::Node& node,
       constant_initialized_tensors_(constant_initialized_tensors),
       ort_value_name_idx_map_(ort_value_name_idx_map),
       data_transfer_mgr_(data_transfer_mgr),
-      proto_helper_context_(node){}
+      proto_helper_context_(node) {}
 
 OpKernelInfo::OpKernelInfo(const OpKernelInfo& other)
     : OpKernelInfo(other.node_, other.kernel_def_, *other.execution_provider_, other.constant_initialized_tensors_,
                    other.ort_value_name_idx_map_, other.data_transfer_mgr_) {}
 
-const OrtMemoryInfo& OpKernelInfo::GetMemoryInfo(OrtMemType mem_type) const {
-  AllocatorPtr alloc = GetAllocator(mem_type);
-  if (alloc == nullptr) ORT_THROW("cannot find allocator");
-  return alloc->Info();
-}
-
 AllocatorPtr OpKernelInfo::GetAllocator(OrtMemType mem_type) const {
   return execution_provider_->GetAllocator(mem_type);
+}
+
+const OrtDevice OpKernelInfo::GetDevice(OrtMemType mem_type) const {
+  return execution_provider_->GetOrtDeviceByMemType(mem_type);
 }
 
 const KernelDef& OpKernelInfo::GetKernelDef() const {

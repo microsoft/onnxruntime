@@ -70,18 +70,26 @@ Status ExpandBuffer(Stream* stream,
                     int num_beams,
                     AllocatorPtr allocator,
                     OrtValue& expanded,
-                    bool only_copy_shape) {
+                    bool only_copy_shape,
+                    int max_sequence_length) {
   // Input shape (batch_size, xxx). The input is required with data type T.
   // Output shape (batch_size * num_beams, xxx)
+  // If max_sequence_length > 0, the output shape will be (batch_size * num_beams, num_heads,
+  // max_sequence_length, head_size)
   ORT_UNUSED_PARAMETER(stream);
 
   const TensorShape& input_shape = input.Get<Tensor>().Shape();
   const int64_t& batch_size = input_shape[0];
-  const int64_t& chunk_size = static_cast<int64_t>(input_shape.Size() / batch_size);
+  int64_t sequence_length = 0;
 
   int64_t dims[4] = {0};
   input_shape.CopyDims(dims, input_shape.NumDimensions());
   dims[0] = batch_size * num_beams;
+  bool is_kv_cache = input_shape.NumDimensions() == 4;
+  if (max_sequence_length > 0 && is_kv_cache) {
+    sequence_length = input_shape[2];
+    dims[2] = max_sequence_length;
+  }
   TensorShape expanded_shape(&dims[0], input_shape.NumDimensions());
 
   MLDataType element_type = input.Get<Tensor>().DataType();
@@ -95,10 +103,34 @@ Status ExpandBuffer(Stream* stream,
   const T* input_data = input.Get<Tensor>().Data<T>();
   T* expanded_data = expanded.GetMutable<Tensor>()->MutableData<T>();
   T* target = expanded_data;
+
+  if (max_sequence_length == 0) {
+    const int64_t& chunk_size = static_cast<int64_t>(input_shape.Size() / batch_size);
+
+    for (int i = 0; i < batch_size; i++) {
+      for (int j = 0; j < num_beams; j++) {
+        memcpy(target, input_data + i * chunk_size, sizeof(T) * SafeInt<size_t>(chunk_size));
+        target += chunk_size;
+      }
+    }
+    return Status::OK();
+  }
+
+  ORT_ENFORCE(is_kv_cache);
+
+  // Expand from [B, N, S, H] to [B*beam, N, S_max, H]
+  const int64_t& num_heads = input_shape[1];
+  const int64_t& head_size = input_shape[3];
+  const int64_t& input_offset = sequence_length * head_size;
+  const int64_t& output_offset = max_sequence_length * head_size;
+  const int64_t& NSH = input_offset * num_heads;
+
   for (int i = 0; i < batch_size; i++) {
     for (int j = 0; j < num_beams; j++) {
-      memcpy(target, input_data + i * chunk_size, sizeof(T) * SafeInt<size_t>(chunk_size));
-      target += chunk_size;
+      for (int k = 0; k < num_heads; k++) {
+        memcpy(target, input_data + i * NSH + k * input_offset, sizeof(T) * SafeInt<size_t>(input_offset));
+        target += output_offset;
+      }
     }
   }
 
@@ -397,7 +429,7 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
 #endif
 
   beam_scorer->Process(
-      sequences,
+      *sequences,
       next_scores,
       next_tokens,
       next_indices);
@@ -582,13 +614,13 @@ Status UpdateGptFeeds(
     bool past_present_share_buffer,
     int past_sequence_len,
     int input_sequence_len,
-    bool has_beam_search_specific_inputs_for_decoder_masked_self_attention) {
+    bool need_cache_indir) {
   // last_outputs: logits, present_0, present_1, ...
   // next_inputs: input_ids, position_id, attention_mask, past_0, past_1
   ORT_UNUSED_PARAMETER(stream);
   ORT_UNUSED_PARAMETER(beam_indices_gpu);
   ORT_UNUSED_PARAMETER(input_sequence_len);
-  ORT_UNUSED_PARAMETER(has_beam_search_specific_inputs_for_decoder_masked_self_attention);
+  ORT_UNUSED_PARAMETER(need_cache_indir);
 
   // The following updates inputs for subgraph
 
@@ -768,15 +800,22 @@ Status UpdateDecoderFeeds(
     int num_present_tensors,
     gsl::span<const int32_t> beam_next_tokens,
     gsl::span<const int32_t> beam_indices,
+    gsl::span<const int32_t> beam_indices_gpu,
     int num_beams,
     int t5_decoder_first_past_input_idx,
     int t5_decoder_first_present_output_idx,
     bool use_sequence_as_input_ids,
     int current_length,
+    int input_sequence_len,
+    bool past_present_share_buffer,
+    bool need_cache_indir,
     transformers::Sequences& sequences,
     const transformers::IConsoleDumper* dumper) {
   ORT_UNUSED_PARAMETER(stream);
-
+  ORT_UNUSED_PARAMETER(beam_indices_gpu);
+  ORT_UNUSED_PARAMETER(input_sequence_len);
+  ORT_UNUSED_PARAMETER(past_present_share_buffer);
+  ORT_UNUSED_PARAMETER(need_cache_indir);
   // last_outputs: logits, present_key_self_0, present_value_self_0, ...
   // next_inputs: input_ids,
   //              encoder_attention_mask, encoder_hidden_states(optional),
@@ -828,6 +867,61 @@ Status UpdateDecoderFeeds(
     PickT5PastState<T>(last_outputs, next_inputs, num_present_tensors, beam_indices,
                        t5_decoder_first_past_input_idx, t5_decoder_first_present_output_idx, allocator);
   }
+  return Status::OK();
+}
+
+//------------------------------------------------
+//  Modified encoder function for Whisper Model
+//------------------------------------------------
+template <typename T>
+Status CreateWhisperEncoderInputs(
+    const Tensor* original_encoder_input_features,
+    const OrtValue* original_decoder_input_ids_value,
+    int start_token_id,
+    AllocatorPtr allocator,
+    OrtValue& encoder_input_features,
+    OrtValue& decoder_input_ids) {
+  const TensorShape& input_features_shape = original_encoder_input_features->Shape();
+  ORT_ENFORCE(input_features_shape.NumDimensions() == 3);
+  const int64_t& batch_size = input_features_shape[0];
+
+  // Allocate attention_mask based on shape of input_ids
+  auto element_type = DataTypeImpl::GetType<int32_t>();
+
+  // Use original encoder_input_ids. This requires the input_ids for subgraph is also int32.
+  // Current shape is (batch_size, sequence_length)
+  // Note that we will expand it to (batch_size * num_beams, sequence_length) later.
+  // To avoid cloning input_ids, we use const_cast here since this function does not change its content.
+  Tensor::InitOrtValue(DataTypeImpl::GetType<T>(),
+                       input_features_shape,
+                       const_cast<Tensor*>(original_encoder_input_features)->MutableData<T>(),
+                       allocator->Info(),
+                       encoder_input_features);
+
+  // decoder_input_ids is optional.
+  if (original_decoder_input_ids_value == nullptr) {
+    // Filled decoder_input_ids with start token ID
+    ORT_ENFORCE(start_token_id >= 0);
+    int64_t dims[] = {batch_size, 1};
+    TensorShape decoder_input_ids_shape(&dims[0], 2);
+    Tensor::InitOrtValue(element_type, decoder_input_ids_shape, allocator, decoder_input_ids);
+    int32_t* data = decoder_input_ids.GetMutable<Tensor>()->MutableData<int32_t>();
+    for (int i = 0; i < batch_size; i++, data++) {
+      *data = start_token_id;
+    }
+  } else {
+    // decoder_input_ids is of shape (batch_size, initial_sequence_length)
+    // Example: [[ decoder start token (i.e. start of transcript), language token, task token, timestamp token ]]
+    const Tensor* original_decoder_input_ids = &(original_decoder_input_ids_value->Get<Tensor>());
+    const TensorShape& original_decoder_input_ids_shape = original_decoder_input_ids->Shape();
+    ORT_ENFORCE(original_decoder_input_ids_shape.NumDimensions() == 2);
+    Tensor::InitOrtValue(element_type,
+                         original_decoder_input_ids_shape,
+                         const_cast<Tensor*>(original_decoder_input_ids)->MutableData<int32_t>(),
+                         allocator->Info(),
+                         decoder_input_ids);
+  }
+
   return Status::OK();
 }
 
@@ -904,7 +998,7 @@ template Status UpdateGptFeeds<float>(
     bool past_present_share_buffer,
     int past_sequence_len,
     int input_sequence_len,
-    bool has_beam_search_specific_inputs_for_decoder_masked_self_attention);
+    bool need_cache_indir);
 
 template Status UpdateDecoderFeeds<float>(
     AllocatorPtr allocator,
@@ -914,11 +1008,35 @@ template Status UpdateDecoderFeeds<float>(
     int num_present_tensors,
     gsl::span<const int32_t> beam_next_tokens,
     gsl::span<const int32_t> beam_indices,
+    gsl::span<const int32_t> beam_indices_gpu,
     int num_beams,
     int t5_decoder_first_past_input_idx,
     int t5_decoder_first_present_output_idx,
     bool use_sequence_as_input_ids,
     int current_length,
+    int input_sequence_len,
+    bool past_present_share_buffer,
+    bool need_cache_indir,
+    transformers::Sequences& sequences,
+    const transformers::IConsoleDumper* dumper);
+
+template Status UpdateDecoderFeeds<MLFloat16>(
+    AllocatorPtr allocator,
+    Stream* stream,
+    const std::vector<OrtValue>& last_outputs,
+    std::vector<OrtValue>& next_inputs,
+    int num_present_tensors,
+    gsl::span<const int32_t> beam_next_tokens,
+    gsl::span<const int32_t> beam_indices,
+    gsl::span<const int32_t> beam_indices_gpu,
+    int num_beams,
+    int t5_decoder_first_past_input_idx,
+    int t5_decoder_first_present_output_idx,
+    bool use_sequence_as_input_ids,
+    int current_length,
+    int input_sequence_len,
+    bool past_present_share_buffer,
+    bool need_cache_indir,
     transformers::Sequences& sequences,
     const transformers::IConsoleDumper* dumper);
 
@@ -930,7 +1048,8 @@ template Status ExpandBuffer<int32_t>(
     int num_beams,
     AllocatorPtr allocator,
     OrtValue& expanded,
-    bool only_copy_shape);
+    bool only_copy_shape,
+    int max_sequence_length);
 
 template Status ExpandBuffer<float>(
     Stream* stream,
@@ -938,7 +1057,8 @@ template Status ExpandBuffer<float>(
     int num_beams,
     AllocatorPtr allocator,
     OrtValue& expanded,
-    bool only_copy_shape);
+    bool only_copy_shape,
+    int max_sequence_length);
 
 template Status ExpandBuffer<MLFloat16>(
     Stream* stream,
@@ -946,7 +1066,24 @@ template Status ExpandBuffer<MLFloat16>(
     int num_beams,
     AllocatorPtr allocator,
     OrtValue& expanded,
-    bool only_copy_shape);
+    bool only_copy_shape,
+    int max_sequence_length);
+
+template Status CreateWhisperEncoderInputs<float>(
+    const Tensor* original_encoder_input_features,
+    const OrtValue* original_decoder_input_ids_value,
+    int start_token_id,
+    AllocatorPtr allocator,
+    OrtValue& encoder_input_features,
+    OrtValue& decoder_input_ids);
+
+template Status CreateWhisperEncoderInputs<MLFloat16>(
+    const Tensor* original_encoder_input_features,
+    const OrtValue* original_decoder_input_ids_value,
+    int start_token_id,
+    AllocatorPtr allocator,
+    OrtValue& encoder_input_features,
+    OrtValue& decoder_input_ids);
 
 }  // namespace GenerationCpuDeviceHelper
 }  // namespace contrib

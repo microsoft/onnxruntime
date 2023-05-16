@@ -443,7 +443,7 @@ def check_shapes(graph: onnx.GraphProto, logger: logging.Logger = None):
 
     if logger:
         logger.info(
-            f"Num values with fixed shape={num_fixed_values}. " f"Num values with dynamic shape={num_dynamic_values}"
+            f"Num values with fixed shape={num_fixed_values}. Num values with dynamic shape={num_dynamic_values}"
         )
 
         if dynamic_inputs:

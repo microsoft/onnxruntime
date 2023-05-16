@@ -11,10 +11,6 @@
 #include "core/session/provider_bridge_ort.h"
 #include "onnxruntime_config.h"
 
-#ifdef ENABLE_EAGER_MODE
-#include "orttraining/python/orttraining_python_module_eager.h"
-#endif
-
 namespace onnxruntime {
 namespace python {
 namespace py = pybind11;
@@ -188,12 +184,12 @@ namespace {
 //
 // 1) we make this class a singleton that is a function local static. The function local statics
 //    are constructed when the function is called the very first time. This fact has several important
-//    properties. 
+//    properties.
 //    - First, it is constructed before it is first needed possibly by another static object
 //      and destroyed after that object is destroyed.
 //    - Second, it is constructed in a thread safe manner.
 //    - Last, this order of construction/destruction is enforced across the compilation units, as opposed
-//      to the static objects that are simply declared in order in a single unit, but their lifespan is 
+//      to the static objects that are simply declared in order in a single unit, but their lifespan is
 //      unconnected to that of in other compilation units. This is achieved automatically by run-time
 //      by execution atexit() to build a chain.
 // 2) This ORTTrainingPythonEnv is currently owned by a unique_ptr unlike the Environment singleton. This is
@@ -210,7 +206,6 @@ namespace {
 //    For all the related details and why it is needed see "Modern C++ design" by A. Alexandrescu Chapter 6.
 class TrainingEnvInitialzer {
  public:
-
   static ORTTrainingPythonEnv& Instance() {
     // Guard against attempts to resurrect the singleton
     if (TrainingEnvInitialzer::destroyed) {
@@ -223,7 +218,6 @@ class TrainingEnvInitialzer {
   }
 
  private:
-
   TrainingEnvInitialzer() {
     InitArray();
     Env::Default().GetTelemetryProvider().SetLanguageProjection(OrtLanguageProjection::ORT_PROJECTION_PYTHON);
@@ -250,36 +244,6 @@ bool TrainingEnvInitialzer::destroyed = false;
 ORTTrainingPythonEnv& GetTrainingEnv() {
   return TrainingEnvInitialzer::Instance();
 }
-
-// TODO: If this global has a conflicting lifespan with other globals
-// such as Environment, follow the global objects management pattern for
-// Environment and ORTTrainingPythonEnv
-#ifdef ENABLE_EAGER_MODE
-using namespace torch_ort::eager;
-static std::unique_ptr<ORTBackendsManager> ort_backends_manager_instance;
-
-void InitializeBackendsManager() {
-  auto initialize = [&]() {
-    static bool initialized = false;
-    if (initialized) {
-      return;
-    }
-    // Initialization of the module
-    auto& training_env = onnxruntime::python::GetTrainingEnv();
-    auto env = training_env.GetORTEnv();
-    ort_backends_manager_instance = std::make_unique<ORTBackendsManager>(env->GetLoggingManager()->DefaultLogger());
-    initialized = true;
-  };
-  initialize();
-}
-
-ORTBackendsManager& GetORTBackendsManager() {
-  if (!ort_backends_manager_instance) {
-    InitializeBackendsManager();
-  }
-  return *ort_backends_manager_instance;
-}
-#endif
 
 void ResolveExtraProviderOptions(const std::vector<std::string>& provider_types,
                                  const ProviderOptionsMap& original_provider_options_map,
@@ -377,9 +341,6 @@ PYBIND11_MODULE(onnxruntime_pybind11_state, m) {
 #endif
 
   addObjectMethodsForTraining(m, ORTTrainingRegisterExecutionProviders);
-#ifdef ENABLE_EAGER_MODE
-  addObjectMethodsForEager(m);
-#endif
 
 #ifdef ENABLE_LAZY_TENSOR
   addObjectMethodsForLazyTensor(m);
@@ -399,6 +360,8 @@ PYBIND11_MODULE(onnxruntime_pybind11_state, m) {
 
   m.def("get_version_string", []() -> std::string { return ORT_VERSION; });
 
+  m.def("get_build_info", []() -> std::string { return ORT_BUILD_INFO; });
+
   m.def(
       "clear_training_ep_instances", []() -> void {
         GetTrainingEnv().ClearExecutionProviderInstances();
@@ -410,11 +373,6 @@ PYBIND11_MODULE(onnxruntime_pybind11_state, m) {
   auto atexit = py::module_::import("atexit");
   atexit.attr("register")(py::cpp_function([]() {
     GetTrainingEnv().ClearExecutionProviderInstances();
-#ifdef ENABLE_EAGER_MODE
-    // This singleton should also be re-factored into a function local static
-    // so its lifetime is properly managed.
-    ort_backends_manager_instance = nullptr;
-#endif
   }));
 }
 

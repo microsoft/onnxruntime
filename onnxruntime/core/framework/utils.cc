@@ -235,9 +235,9 @@ static bool HaveCpuExecutionProvidersOnly(const ExecutionProviders& execution_pr
   return true;
 }
 
-static const OrtMemoryInfo& FindMemoryInfoForValue(const OrtValueNameIdxMap& map,
-                                                   const SequentialExecutionPlan& plan,
-                                                   std::string_view name) {
+static const OrtDevice& FindDeviceForValue(const OrtValueNameIdxMap& map,
+                                           const SequentialExecutionPlan& plan,
+                                           std::string_view name) {
   int idx = -1;
   auto status = map.GetIdx(name, idx);
   ORT_THROW_IF_ERROR(status);
@@ -246,12 +246,11 @@ static const OrtMemoryInfo& FindMemoryInfoForValue(const OrtValueNameIdxMap& map
   return location;
 }
 
-const OrtMemoryInfo& FindMemoryInfoForValue(const SessionState& session_state,
-                                            std::string_view name) {
+const OrtDevice& FindDeviceForValue(const SessionState& session_state, std::string_view name) {
   const auto* exec_plan_ptr = session_state.GetExecutionPlan();
   ORT_ENFORCE(exec_plan_ptr);
 
-  return FindMemoryInfoForValue(session_state.GetOrtValueNameIdxMap(), *exec_plan_ptr, name);
+  return FindDeviceForValue(session_state.GetOrtValueNameIdxMap(), *exec_plan_ptr, name);
 }
 
 // get the target device info for the node consuming each input provided in the feeds.
@@ -281,7 +280,7 @@ static common::Status CalculateStaticCopyInfoForFeed(const SessionState& session
     const auto& name_to_id = session_state.GetOrtValueNameIdxMap();
     int index;
     ORT_RETURN_IF_ERROR(name_to_id.GetIdx(input_name, index));
-    const auto& device = exec_plan->GetLocation(index).device;
+    const auto& device = exec_plan->GetLocation(index);
     copy_info.target_device = device;
   }
 #endif
@@ -307,22 +306,8 @@ static common::Status CalculateStaticCopyInfoForFetches(const SessionState& sess
   for (size_t idx = 0, end = fetch_names.size(); idx < end; ++idx) {
     const std::string& output_name = fetch_names[idx];
 
-    const auto& info = FindMemoryInfoForValue(session_state, output_name);
-    copy_info[idx].source_device = info.device;
-
-    // If for some reason using just the device from the allocation plan isn't enough, the following
-    // would use the NodeInfo from the node producing the output
-    //
-    // std::vector<SessionState::NodeInfo> node_info_vec;
-    // auto status = session_state.GetOutputNodeInfo(output_name, node_info_vec);
-    // if (status.IsOK()) {
-    //  const auto& node_info = node_info_vec.front();  // only one entry as only one node can produce a given output
-    //  copy_info[idx].source_device = *node_info.device;
-    //} else {
-    //  // edge case where an initializer directly provides output so no NodeInfo involved
-    //  const auto& info = FindMemoryInfoForValue(session_state, output_name);
-    //  copy_info[idx].source_device = info.device;
-    //}
+    const auto& info = FindDeviceForValue(session_state, output_name);
+    copy_info[idx].source_device = info;
   }
 
   return Status::OK();
@@ -364,17 +349,17 @@ static bool FinalizeCopyInfoForFeeds(gsl::span<const OrtDevice> feed_locations,
   return copy_needed;
 }
 
-static bool FinalizeCopyInfoForFetches(gsl::span<const OrtMemoryInfo* const>& fetch_alloc_info,
+static bool FinalizeCopyInfoForFetches(gsl::span<const OrtDevice* const>& fetch_alloc_info,
                                        std::vector<MLValueCopyInfo>& copy_info) {
   ORT_ENFORCE(fetch_alloc_info.size() == copy_info.size());
   bool copy_needed = false;
 
   auto num_outputs = fetch_alloc_info.size();
   for (size_t i = 0; i < num_outputs; ++i) {
-    const OrtMemoryInfo* alloc_info = fetch_alloc_info[i];
+    const OrtDevice* alloc_info = fetch_alloc_info[i];
 
     if (alloc_info != nullptr) {
-      copy_info[i].target_device = alloc_info->device;
+      copy_info[i].target_device = *alloc_info;
     }
 
     if (copy_info[i].source_device != copy_info[i].target_device) {
@@ -389,7 +374,7 @@ static bool FinalizeCopyInfoForFetches(gsl::span<const OrtMemoryInfo* const>& fe
 // This can be used by control flow nodes prior to the execution of the overall graph.
 void FinalizeFeedFetchCopyInfo(FeedsFetchesManager& feeds_fetches_manager,
                                gsl::span<const OrtDevice> feed_locations,
-                               gsl::span<const OrtMemoryInfo* const> fetch_alloc_info) {
+                               gsl::span<const OrtDevice* const> fetch_alloc_info) {
   if (feeds_fetches_manager.GetDeviceCopyChecks().status == DeviceCopyCheck::NoCopy)
     return;
 
@@ -413,7 +398,7 @@ static void FinalizeFeedFetchCopyInfo(FeedsFetchesManager& feeds_fetches_manager
   auto num_outputs = feeds_fetches_manager.GetFeedsFetchesInfo().output_names.size();
 
   std::vector<OrtDevice> feed_locations(num_inputs);
-  std::vector<const OrtMemoryInfo*> fetch_alloc_info(num_outputs, nullptr);
+  std::vector<const OrtDevice*> fetch_alloc_info(num_outputs, nullptr);
 
   for (size_t i = 0; i < num_inputs; ++i) {
     const auto& feed = feeds[i];
@@ -438,15 +423,15 @@ static void FinalizeFeedFetchCopyInfo(FeedsFetchesManager& feeds_fetches_manager
     const auto& fetch = fetches[i];
     if (fetch.IsAllocated()) {
       if (fetch.IsTensor()) {
-        fetch_alloc_info[i] = &fetch.Get<Tensor>().Location();
+        fetch_alloc_info[i] = &fetch.Get<Tensor>().Location().device;
       } else if (fetch.IsTensorSequence()) {
         const auto& tensor_seq = fetch.Get<TensorSeq>();
         if (tensor_seq.Size() != std::size_t{0}) {
-          fetch_alloc_info[i] = &tensor_seq.Get(0).Location();
+          fetch_alloc_info[i] = &tensor_seq.Get(0).Location().device;
         }
       } else if (fetch.IsSparseTensor()) {
 #if !defined(DISABLE_SPARSE_TENSORS)
-        fetch_alloc_info[i] = &fetch.Get<SparseTensor>().Location();
+        fetch_alloc_info[i] = &fetch.Get<SparseTensor>().Location().device;
 #endif
       }
     }
@@ -569,8 +554,9 @@ common::Status CopyOneInputAcrossDevices(const SessionState& session_state, cons
   DeviceStreamCollectionHolder device_stream_collection_holder(session_state);
   if (device_stream_collection_holder.p_ != nullptr) {
     DeviceStreamCollection* device_stream_collection = device_stream_collection_holder.p_.get();
-    gsl::span<Stream*> streams = device_stream_collection->GetStreams();
-    for (Stream* stream : streams) {
+    size_t num_streams = device_stream_collection->NumStreams();
+    for (size_t i = 0; i < num_streams; i++) {
+      Stream* stream = device_stream_collection->GetStream(i);
       if (stream && stream->GetDevice().Type() != OrtDevice::CPU) {
         device_stream = stream;
         break;
@@ -680,8 +666,9 @@ ExecuteGraphImpl(const SessionState& session_state,
         auto& device = copy_info.target_device;
         bool found = false;
         if (device_stream_collection) {
-          auto streams = device_stream_collection->GetStreams();
-          for (auto* stream : streams) {
+          size_t num_streams = device_stream_collection->NumStreams();
+          for (size_t i = 0; i < num_streams; i++) {
+            Stream* stream = device_stream_collection->GetStream(i);
             if (stream && stream->GetDevice().Type() == device.Type()) {
               feed_streams.push_back(stream);
               found = true;
@@ -865,9 +852,9 @@ common::Status ExecutePartialGraphImpl(const SessionState& session_state, FeedsF
         auto& device = copy_info.target_device;
         bool found = false;
         if (device_stream_collection) {
-          auto streams = device_stream_collection->GetStreams();
-
-          for (auto* stream : streams) {
+          size_t num_streams = device_stream_collection->NumStreams();
+          for (size_t i = 0; i < num_streams; i++) {
+            Stream* stream = device_stream_collection->GetStream(i);
             if (stream && stream->GetDevice().Type() == device.Type()) {
               feed_streams.push_back(stream);
               found = true;

@@ -57,8 +57,8 @@ struct CheckpointState {
  * @return Status
  * TODO: change state to const ref
  */
-Status SaveCheckpoint(CheckpointState& state,
-                      const PathString& checkpoint_path);
+Status SaveCheckpoint(CheckpointState& state, const PathString& checkpoint_path,
+                      const bool include_optimizer_state);
 
 /**
  * @brief Save ONNX initializers as ORT checkpoint.

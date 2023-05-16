@@ -13,14 +13,18 @@ parameters:
 
 - name: PoolName
   type: string
-  default: 'onnxruntime-Win-CPU-2019'
+  default: 'onnxruntime-Win-CPU-2022'
 
 - name: SkipPublish
   type: boolean
   default: false
 
 - name: TimeoutInMinutes
-  default: 150
+  default: 180
+
+- name: BuildJsep
+  type: boolean
+  default: false
 
 jobs:
 - job: build_WASM
@@ -29,7 +33,7 @@ jobs:
   variables:
     EnvSetupScript: setup_env.bat
     buildArch: x64
-    CommonBuildArgs: '--parallel --config ${{ parameters.BuildConfig }} --skip_submodule_sync --cmake_generator "Visual Studio 16 2019" --build_wasm --use_xnnpack --emsdk_version releases-29ad1037cd6b99e5d8a1bd75bc188c1e9a6fda8d-64bit ${{ parameters.ExtraBuildArgs }} --path_to_protoc_exe $(Build.BinariesDirectory)\${{ parameters.BuildConfig }}\installed\bin\protoc.exe'
+    CommonBuildArgs: '--parallel --config ${{ parameters.BuildConfig }} --skip_submodule_sync --cmake_generator "MinGW Makefiles" --build_wasm --use_xnnpack --emsdk_version releases-7c905cfc1ca6699f6ccb288ae174902cfbdcf0a2-64bit ${{ parameters.ExtraBuildArgs }}'
     runCodesignValidationInjection: false
   timeoutInMinutes: ${{ parameters.TimeoutInMinutes }}
   workspace:
@@ -62,23 +66,14 @@ jobs:
   - task: NodeTool@0
     inputs:
       versionSpec: '16.x'
-  - task: BatchScript@1
-    displayName: 'setup env'
+  - template: download-deps.yml
+
+  - task: PythonScript@0
+    displayName: 'Update deps.txt'
     inputs:
-      filename: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\$(EnvSetupScript)'
-      modifyEnvironment: true
-      workingFolder: '$(Build.BinariesDirectory)'
-  - script: |
-     python -m pip install -q setuptools wheel numpy ninja
-    workingDirectory: '$(Build.BinariesDirectory)'
-    displayName: 'Install python modules'
-    
-  - task: PowerShell@2
-    displayName: 'Install ONNX'
-    inputs:
-      filePath: '$(Build.SourcesDirectory)/tools/ci_build/github/windows/install_protoc.ps1'
-      workingDirectory: '$(Build.BinariesDirectory)'
-      arguments: -cpu_arch x64 -install_prefix $(Build.BinariesDirectory)\${{ parameters.BuildConfig }}\installed -build_config ${{ parameters.BuildConfig }}
+      scriptPath: $(Build.SourcesDirectory)/tools/ci_build/replace_urls_in_deps.py
+      arguments: --new_dir $(Build.BinariesDirectory)/deps
+      workingDirectory: $(Build.BinariesDirectory)
 
   - task: PythonScript@0
     displayName: 'Build and test (node)'
@@ -104,12 +99,35 @@ jobs:
       scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
       arguments: '$(CommonBuildArgs) --build_dir $(Build.BinariesDirectory)\wasm_simd --enable_wasm_simd'
       workingDirectory: '$(Build.BinariesDirectory)'
+  - ${{ if eq(parameters.BuildJsep, true) }}:
+    - task: PythonScript@0
+      displayName: 'Build (simd + JSEP)'
+      inputs:
+        scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
+        arguments: '$(CommonBuildArgs) --build_dir $(Build.BinariesDirectory)\wasm_simd_jsep --enable_wasm_simd --use_jsep --target onnxruntime_webassembly --skip_tests'
+        workingDirectory: '$(Build.BinariesDirectory)'
+  - ${{ if eq(parameters.BuildJsep, true) }}:
+    - task: PythonScript@0
+      displayName: 'Build (simd + threads + JSEP)'
+      inputs:
+        scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
+        arguments: '$(CommonBuildArgs) --build_dir $(Build.BinariesDirectory)\wasm_simd_threads_jsep --enable_wasm_simd --enable_wasm_threads --use_jsep --target onnxruntime_webassembly --skip_tests'
+        workingDirectory: '$(Build.BinariesDirectory)'
   - ${{ if eq(parameters.SkipPublish, false) }}:
     - script: |
         copy $(Build.BinariesDirectory)\wasm\${{ parameters.BuildConfig }}\ort-wasm*.* $(Build.ArtifactStagingDirectory)
         copy $(Build.BinariesDirectory)\wasm_threads\${{ parameters.BuildConfig }}\ort-wasm*.* $(Build.ArtifactStagingDirectory)
         copy $(Build.BinariesDirectory)\wasm_simd_threads\${{ parameters.BuildConfig }}\ort-wasm*.* $(Build.ArtifactStagingDirectory)
         copy $(Build.BinariesDirectory)\wasm_simd\${{ parameters.BuildConfig }}\ort-wasm*.* $(Build.ArtifactStagingDirectory)
+        if exist $(Build.BinariesDirectory)\wasm_simd_jsep (
+          copy $(Build.BinariesDirectory)\wasm_simd_jsep\${{ parameters.BuildConfig }}\ort-wasm-simd.wasm $(Build.ArtifactStagingDirectory)\ort-wasm-simd.jsep.wasm
+          copy $(Build.BinariesDirectory)\wasm_simd_jsep\${{ parameters.BuildConfig }}\ort-wasm-simd.js $(Build.ArtifactStagingDirectory)\ort-wasm-simd.jsep.js
+        )
+        if exist $(Build.BinariesDirectory)\wasm_simd_threads_jsep (
+          copy $(Build.BinariesDirectory)\wasm_simd_threads_jsep\${{ parameters.BuildConfig }}\ort-wasm-simd-threaded.wasm $(Build.ArtifactStagingDirectory)\ort-wasm-simd-threaded.jsep.wasm
+          copy $(Build.BinariesDirectory)\wasm_simd_threads_jsep\${{ parameters.BuildConfig }}\ort-wasm-simd-threaded.js $(Build.ArtifactStagingDirectory)\ort-wasm-simd-threaded.jsep.js
+          copy $(Build.BinariesDirectory)\wasm_simd_threads_jsep\${{ parameters.BuildConfig }}\ort-wasm-simd-threaded.worker.js $(Build.ArtifactStagingDirectory)\ort-wasm-simd-threaded.jsep.worker.js
+        )
       displayName: 'Create Artifacts'
   - ${{ if eq(parameters.SkipPublish, false) }}:
     - task: PublishPipelineArtifact@0

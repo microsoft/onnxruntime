@@ -82,7 +82,7 @@ TEST(UnpoolTest, MaxUnPool3D) {
 
   std::vector<float> expected_vals =
       {
-          //slice 1
+          // slice 1
           0, 1, 0, 2,
           0, 0, 0, 0,
           0, 0, 0, 0,
@@ -94,7 +94,7 @@ TEST(UnpoolTest, MaxUnPool3D) {
           3, 0, 0, 0,
           0, 0, 4, 0,
 
-          //slice 3
+          // slice 3
           5, 0, 0, 0,
           0, 0, 6, 0,
           0, 0, 0, 0,
@@ -179,7 +179,7 @@ TEST(UnpoolTest, MaxUnPool3D_Without_OutputShape) {
 
   std::vector<float> expected_vals =
       {
-          //slice 1
+          // slice 1
           0, 1, 0, 2,
           0, 0, 0, 0,
           0, 0, 0, 0,
@@ -191,7 +191,7 @@ TEST(UnpoolTest, MaxUnPool3D_Without_OutputShape) {
           3, 0, 0, 0,
           0, 0, 4, 0,
 
-          //slice 3
+          // slice 3
           5, 0, 0, 0,
           0, 0, 6, 0,
           0, 0, 0, 0,

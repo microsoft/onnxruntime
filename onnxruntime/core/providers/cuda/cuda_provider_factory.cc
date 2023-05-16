@@ -53,7 +53,6 @@ std::unique_ptr<IExecutionProvider> CUDAProviderFactory::CreateProvider() {
 }
 
 struct ProviderInfo_CUDA_Impl final : ProviderInfo_CUDA {
-
   OrtStatus* SetCurrentGpuDeviceId(_In_ int device_id) override {
     int num_devices;
     auto cuda_err = ::cudaGetDeviceCount(&num_devices);
@@ -251,7 +250,9 @@ struct CUDA_Provider : Provider {
     info.cudnn_conv_use_max_workspace = params->cudnn_conv_use_max_workspace != 0;
     info.enable_cuda_graph = params->enable_cuda_graph != 0;
     info.cudnn_conv1d_pad_to_nc1d = params->cudnn_conv1d_pad_to_nc1d != 0;
-    info.tunable_op.enabled = params->tunable_op_enabled;
+    info.tunable_op.enable = params->tunable_op_enable;
+    info.tunable_op.tuning_enable = params->tunable_op_tuning_enable;
+    info.enable_skip_layer_norm_strict_mode = params->enable_skip_layer_norm_strict_mode != 0;
 
     return std::make_shared<CUDAProviderFactory>(info);
   }
@@ -271,6 +272,7 @@ struct CUDA_Provider : Provider {
     cuda_options.cudnn_conv_use_max_workspace = internal_options.cudnn_conv_use_max_workspace;
     cuda_options.enable_cuda_graph = internal_options.enable_cuda_graph;
     cuda_options.cudnn_conv1d_pad_to_nc1d = internal_options.cudnn_conv1d_pad_to_nc1d;
+    cuda_options.enable_skip_layer_norm_strict_mode = internal_options.enable_skip_layer_norm_strict_mode;
   }
 
   ProviderOptions GetProviderOptions(const void* provider_options) override {

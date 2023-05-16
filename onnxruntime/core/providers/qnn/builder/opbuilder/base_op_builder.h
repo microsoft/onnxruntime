@@ -3,9 +3,12 @@
 
 #pragma once
 
+#include "core/providers/shared/utils/utils.h"
 #include "core/providers/qnn/builder/qnn_model_wrapper.h"
 #include "core/providers/qnn/builder/op_builder.h"
 #include "core/framework/allocator.h"
+
+#include "QnnOpDef.h"
 
 namespace onnxruntime {
 namespace qnn {
@@ -90,11 +93,13 @@ class BaseOpBuilder : public IOpBuilder {
   }
 
   static const std::string& GetQnnOpType(const std::string& onnx_op_type) {
+    // TODO: Use QNN operator names defined in "QnnOpDef.h"
     static const std::unordered_map<std::string, std::string> onnx_op_type_to_qnn_op_type = {
         {"Add", "ElementWiseAdd"},
         {"Mul", "ElementWiseMultiply"},
         {"Abs", "ElementWiseAbs"},
         {"And", "ElementWiseAnd"},
+        {"Atan", "ElementWiseAtan"},
         {"Ceil", "ElementWiseCeil"},
         {"Cast", "Cast"},
         {"Clip", "ReluMinMax"},
@@ -134,17 +139,26 @@ class BaseOpBuilder : public IOpBuilder {
         {"Tanh", "Tanh"},
         {"Transpose", "Transpose"},
 
+        {"DequantizeLinear", "Dequantize"},
+        {"QuantizeLinear", "Quantize"},
+
         {"MatMul", "MatMul"},
 
+        {"Elu", "Elu"},
         {"Relu", "Relu"},
+        {"Gelu", "Gelu"},
         {"Sigmoid", "Sigmoid"},
+
+        {"HardSwish", "HardSwish"},
 
         {"Conv", "Conv2d"},
 
         {"GlobalAveragePool", "PoolAvg2d"},
+        {"AveragePool", "PoolAvg2d"},
         {"MaxPool", "PoolMax2d"},
 
         {"Reshape", "Reshape"},
+        {"Resize", "Resize"},
         {"Flatten", "Reshape"},
         {"Squeeze", "Reshape"},
         {"Unsqueeze", "Reshape"},
@@ -159,7 +173,10 @@ class BaseOpBuilder : public IOpBuilder {
         {"ConvTranspose", "TransposeConv2d"},
         {"Tile", "Tile"},
         {"TopK", "TopK"},
-        {"InstanceNormalization", "InstanceNorm"}};
+        {"InstanceNormalization", "InstanceNorm"},
+        {"BatchNormalization", "Batchnorm"},
+
+        {"LRN", QNN_OP_LRN}};
     auto it = onnx_op_type_to_qnn_op_type.find(onnx_op_type);
     ORT_ENFORCE(it != onnx_op_type_to_qnn_op_type.end());
     return it->second;
@@ -197,24 +214,28 @@ class BaseOpBuilder : public IOpBuilder {
 
     return Status::OK();
   }
-  Status TransposeInitializer(const onnx::TensorProto& initializer,
+  Status TransposeInitializer(const QnnModelWrapper& qnn_model_wrapper,
+                              const onnx::TensorProto& initializer,
                               const std::vector<size_t>& perm,
                               const AllocatorPtr& cpu_allocator,
                               std::vector<uint8_t>& transposed_data) const;
 
-  Status TransposeFromNchwToHwcn(const onnx::TensorProto& initializer,
+  Status TransposeFromNchwToHwcn(const QnnModelWrapper& qnn_model_wrapper,
+                                 const onnx::TensorProto& initializer,
                                  const AllocatorPtr& cpu_allocator,
                                  std::vector<uint8_t>& transposed_data) const {
-    return TransposeInitializer(initializer, nchw2hwcn_perm, cpu_allocator, transposed_data);
+    return TransposeInitializer(qnn_model_wrapper, initializer, nchw2hwcn_perm, cpu_allocator, transposed_data);
   }
 
-  Status TransposeFromCnhwToHwcn(const onnx::TensorProto& initializer,
+  Status TransposeFromCnhwToHwcn(const QnnModelWrapper& qnn_model_wrapper,
+                                 const onnx::TensorProto& initializer,
                                  const AllocatorPtr& cpu_allocator,
                                  std::vector<uint8_t>& transposed_data) const {
-    return TransposeInitializer(initializer, cnhw2hwcn_perm, cpu_allocator, transposed_data);
+    return TransposeInitializer(qnn_model_wrapper, initializer, cnhw2hwcn_perm, cpu_allocator, transposed_data);
   }
 
-  Status TwoDimensionTranspose(std::vector<uint32_t>& data_shape,
+  Status TwoDimensionTranspose(const QnnModelWrapper& qnn_model_wrapper,
+                               std::vector<uint32_t>& data_shape,
                                const onnx::TensorProto& initializer,
                                const AllocatorPtr& cpu_allocator,
                                std::vector<uint8_t>& transposed_data) const {
@@ -222,7 +243,7 @@ class BaseOpBuilder : public IOpBuilder {
     data_shape[0] = data_shape[1];
     data_shape[1] = tmp;
     std::vector<size_t> two_dim_trans_perm{1, 0};
-    return TransposeInitializer(initializer, two_dim_trans_perm, cpu_allocator, transposed_data);
+    return TransposeInitializer(qnn_model_wrapper, initializer, two_dim_trans_perm, cpu_allocator, transposed_data);
   }
 
   void InitializeQuantizeParam(Qnn_QuantizeParams_t& quantize_param, bool is_quantized_model, float scale = 0.0f, int32_t offset = 0) const {
@@ -249,7 +270,32 @@ class BaseOpBuilder : public IOpBuilder {
                               int32_t& default_axis_value) const;
   Qnn_TensorType_t GetInputTensorType(const QnnModelWrapper& qnn_model_wrapper, const std::string& input_name) const;
 
-  mutable size_t output_count_ = std::numeric_limits<uint32_t>::max();
+  size_t GetInputCountQnnRequired(const NodeUnit& node_unit) const {
+    auto input_output_cout = GetInputOutputCountQnnRequired(node_unit.OpType());
+
+    return 0 == input_output_cout.first ? node_unit.Inputs().size() : input_output_cout.first;
+  }
+
+  size_t GetOutputCountQnnRequired(const NodeUnit& node_unit) const {
+    auto input_output_cout = GetInputOutputCountQnnRequired(node_unit.OpType());
+
+    return 0 == input_output_cout.second ? node_unit.Outputs().size() : input_output_cout.second;
+  }
+
+ private:
+  static const std::pair<size_t, size_t> GetInputOutputCountQnnRequired(std::string onnx_op_type) {
+    static const std::unordered_map<std::string, std::pair<size_t, size_t>> input_output_count_qnn_required = {
+        {"GlobalAveragePool", {0, 1}},
+        {"MaxPool", {0, 1}},
+        {"BatchNormalization", {3, 1}}};
+
+    auto pos = input_output_count_qnn_required.find(onnx_op_type);
+    if (pos == input_output_count_qnn_required.end()) {
+      return std::make_pair<size_t, size_t>(0, 0);
+    } else {
+      return pos->second;
+    }
+  }
 
  private:
   std::string op_builder_type_;
@@ -257,6 +303,18 @@ class BaseOpBuilder : public IOpBuilder {
   const std::vector<size_t> nchw2hwcn_perm{2, 3, 1, 0};
   const std::vector<size_t> cnhw2hwcn_perm{2, 3, 0, 1};
 };
+
+// Type that holds information about an ONNX attribute.
+template <typename ValType>
+struct OnnxAttrInfo {
+  std::string name;     // Attribute's name.
+  ValType default_val;  // Attribute's default value.
+};
+
+template <typename ValType>
+inline ValType GetOnnxAttr(const NodeAttrHelper& node_helper, const OnnxAttrInfo<ValType>& attr_info) {
+  return node_helper.Get(attr_info.name, attr_info.default_val);
+}
 
 }  // namespace qnn
 }  // namespace onnxruntime

@@ -7,7 +7,11 @@
 
 #include "core/framework/ortdevice.h"
 #include "core/framework/provider_options.h"
+#include "core/framework/framework_provider_common.h"
 #include "core/session/onnxruntime_c_api.h"
+#include "core/framework/library_handles.h"
+
+#define TRT_DEFAULT_OPTIMIZER_LEVEL 3
 
 namespace onnxruntime {
 // Information needed to construct trt execution providers.
@@ -36,9 +40,20 @@ struct TensorrtExecutionProviderInfo {
   bool timing_cache_enable{false};
   bool force_timing_cache{false};
   bool detailed_build_log{false};
+  bool build_heuristics_enable{false};
+  bool sparsity_enable{false};
+  int builder_optimization_level{3};
+  int auxiliary_streams{-1};
+  std::string tactic_sources{""};
+  std::string extra_plugin_lib_paths{""};
+  std::string profile_min_shapes{""};
+  std::string profile_max_shapes{""};
+  std::string profile_opt_shapes{""};
 
   static TensorrtExecutionProviderInfo FromProviderOptions(const ProviderOptions& options);
   static ProviderOptions ToProviderOptions(const TensorrtExecutionProviderInfo& info);
-  static ProviderOptions ToProviderOptions(const OrtTensorRTProviderOptions& info);
+  static ProviderOptions ToProviderOptions(const OrtTensorRTProviderOptionsV2& info);
+
+  std::vector<OrtCustomOpDomain*> custom_op_domain_list;
 };
 }  // namespace onnxruntime
