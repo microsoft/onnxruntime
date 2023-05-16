@@ -912,7 +912,7 @@ namespace OperatorHelper
         )
     {
         auto& operatorAttributes = kernelInformation.GetAttributes();
-        if (opsetVersion >= 13) // Axes are a dynamic input parameter.
+        if (opsetVersion >= 13) // Split lengths are a dynamic input parameter.
         {
             // The tensor is optional, which if empty, means to default to equal splits.
             if (kernelInformation.IsInputValid(1))
@@ -920,7 +920,7 @@ namespace OperatorHelper
                 ReadCpuLocalTensorIntoInt32(kernelInformation.GetConstantInputTensor(1), /*out*/ m_split);
             }
         }
-        else // Axes were a constant attribute parameter.
+        else // Split lengths were a constant attribute parameter.
         {
             m_split = operatorAttributes.GetOptionalAttributeVectorInt32(AttrName::Split);
         }
