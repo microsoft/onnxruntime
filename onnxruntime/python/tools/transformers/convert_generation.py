@@ -1268,7 +1268,11 @@ def find_past_seq_len_usage(subg: GraphProto):
 
 
 def update_decoder_subgraph_share_buffer_and_use_decoder_masked_mha(subg: GraphProto):
-    input_self_past_0 = 2
+    input_self_past_0 = 1
+    # w/wo attention mask, w/wo hidden_state
+    graph_input_names = [gi.name for gi in subg.input]
+    while input_self_past_0 < 3 and not graph_input_names[input_self_past_0].startswith("past"):
+        input_self_past_0 += 1
     output_self_past_0 = 1
 
     num_layers = int((len(subg.input) - input_self_past_0) / 4)

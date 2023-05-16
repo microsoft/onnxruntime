@@ -202,6 +202,7 @@ Status WhisperDecoderSubgraph::CreateInitialFeeds(
   // When first_past_input_index_ == 2, the encoder_hidden_states and past states are copied from the second output
   // of encoder.
   // When first_past_input_index_ == 1, the past states are copied from the second output of encoder.
+  // TODO: MAKE IT MORE READABLE
   for (size_t j = static_cast<size_t>(3) - first_past_input_index_; j < encoder_fetches.size(); j++) {
     if (j == 1) {
       ORT_RETURN_IF(has_hidden_state_ == false, "Invalid hidden_states expension: has_hidden_state_ == false");
@@ -226,7 +227,7 @@ Status WhisperDecoderSubgraph::CreateInitialFeeds(
       decoder_feeds.push_back(expanded_hidden_states);
     } else {
       // past key/value for cross attention does not need to be initialized with max_seq_len since they are static.
-      bool use_max_seq_len = (j - first_past_input_index_) < 2 * static_cast<size_t>(num_layers);
+      bool use_max_seq_len = (j - first_past_input_index_) <= 2 * static_cast<size_t>(num_layers);
 
       OrtValue expanded_cache;
       if (is_output_float16_) {
