@@ -88,13 +88,14 @@ def chain_model(args):
     )
     graph_outputs = [sequences]
 
+    if hasattr(args, "use_gpu") and args.use_gpu:
+        if update_decoder_subgraph_share_buffer_and_use_decoder_masked_mha(decoder_model.graph):
+            print("*****update t5 decoder subgraph successfully!!!*****")
+        else:
+            print("*****DecoderMaskedMultiHeadAttention is not applied to T5 decoder*****")
+
     # Initializers/opsets
     # Delete shared data between decoder/encoder and move to larger graph initializers
-    if update_decoder_subgraph_share_buffer_and_use_decoder_masked_mha(decoder_model.graph):
-        print("*****update t5 decoder subgraph successfully!!!*****")
-    else:
-        print("*****DecoderMaskedMultiHeadAttention is not applied to T5 decoder*****")
-
     initializers = get_shared_initializers(encoder_model, decoder_model)
     node.attribute.extend(
         [
