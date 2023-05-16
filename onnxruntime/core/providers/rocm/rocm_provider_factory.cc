@@ -192,7 +192,7 @@ struct ROCM_Provider : Provider {
     rocm_options.user_compute_stream = info.user_compute_stream;
     rocm_options.default_memory_arena_cfg = info.default_memory_arena_cfg;
     rocm_options.tunable_op_enable = info.tunable_op.enable;
-    rocm_options.tunable_op_tuning_enable = info. tunable_op.tuning_enable;
+    rocm_options.tunable_op_tuning_enable = info.tunable_op.tuning_enable;
   }
 
   ProviderOptions GetProviderOptions(const void* provider_options) override {
