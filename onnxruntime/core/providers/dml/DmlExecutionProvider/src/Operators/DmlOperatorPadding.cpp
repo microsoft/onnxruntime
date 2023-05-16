@@ -15,7 +15,7 @@ public:
     {
         const uint32_t inputCount = kernelInfo.GetInputCount();
         ML_CHECK_VALID_ARGUMENT((opsetVersion >= 2 && opsetVersion < 11 && inputCount == 1)
-                             || (opsetVersion >= 11 && inputCount >= 2 && inputCount <= 3));
+                             || (opsetVersion >= 11 && inputCount >= 2 && inputCount <= 4));
         ML_CHECK_VALID_ARGUMENT(kernelInfo.GetOutputCount() == 1);
 
         std::vector<std::optional<uint32_t>> kernelInputIndices = { 0 }; // Only bind GPU to first 'data' tensor.
@@ -115,5 +115,6 @@ void CALLBACK QueryPad(IMLOperatorSupportQueryContextPrivate* context, /*out*/ b
 DML_OP_DEFINE_CREATION_FUNCTION(Pad7, VersionedKernel<DmlOperatorPadding, 7>);
 DML_OP_DEFINE_CREATION_FUNCTION(Pad11, VersionedKernel<DmlOperatorPadding, 11>);
 DML_OP_DEFINE_CREATION_FUNCTION(Pad13, VersionedKernel<DmlOperatorPadding, 13>);
+DML_OP_DEFINE_CREATION_FUNCTION(Pad18, VersionedKernel<DmlOperatorPadding, 18>);
 
 } // namespace Dml

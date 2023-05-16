@@ -1111,37 +1111,31 @@ namespace OperatorHelper
         }
 
         ML_CHECK_VALID_ARGUMENT(padding.size() % 2 == 0, "Padding must be even count, including begin/end pairs.");
-        uint32_t dimCount = gsl::narrow_cast<uint32_t>(padding.size() / 2);
+        std::vector<uint32_t> inputShape = shapeInformation.GetInputTensorShape(0);
+        uint32_t dimCount = gsl::narrow_cast<uint32_t>(inputShape.size());//(padding.size() / 2);
         m_startPadding.resize(dimCount, 0);
         m_endPadding.resize(dimCount, 0);
+        std::vector<int32_t> axes;
 
         // Handle possible axes input
         if (opsetVersion >= 18)
         {
-            std::vector<int32_t> axes = kernelInformation.GetConstantInputTensor(3);
-            std::vector<uint32_t> inputShape = shapeInformation.GetInputTensorShape(0);
+            ReadCpuLocalTensorIntoInt32(kernelInformation.GetConstantInputTensor(3), /*out*/ axes);
             HandleEmptyAxes(axes, inputShape, false);
             ML_CHECK_VALID_ARGUMENT(axes.size() * 2 == padding.size(), "The number of elements in padding should be 2 times the number of axes.");
-            // should now be something like [1,3] or []
-            HandleNegativeAxes(axes, dimCount);
-
-            // new paddings = zero vector of input rank * 2
-            // iterate through axes values: i
-            // xi_begin = paddings[i]
-            // xi_end = paddings[i + 1]
-            // append xi_begin to startPadding, xi_end to endPadding
-            for(int32_t i = 0; i < axes.size(); i ++)
+            HandleNegativeAxes(axes, dimCount); 
+        }
+        else {
+            HandleEmptyAxes(axes, inputShape, false);
+        }
+        
+        uint32_t numAxes = gsl::narrow_cast<uint32_t>(axes.size());
+        for(int32_t i = 0; i < axes.size(); i++)
             {
                 auto xi_begin = padding[i];
-                auto xi_end = padding[i+1];
+                auto xi_end = padding[i+axes.size()];
                 m_startPadding[axes[i]] = xi_begin;
                 m_endPadding[axes[i]] = xi_end;
-            }
-        }
-        else
-        {
-            std::copy(padding.begin(), padding.begin() + dimCount, m_startPadding.begin());
-            std::copy(padding.begin() + dimCount, padding.begin() + dimCount * 2, m_endPadding.begin());
         }
     }
 
