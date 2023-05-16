@@ -76,8 +76,10 @@ class GatherNDOpBuilder : public BaseOpBuilder {
                                      bool do_op_validation) const override ORT_MUST_USE_RESULT;
 };
 
+// Converts int64 indices to another integer type (typically int32 or uint32).
+// The input and output are both represented as byte arrays.
 template <typename T>
-static void ConvertInt64Indices(const std::vector<uint8_t>& onnx_bytes, std::vector<uint8_t>& qnn_bytes) {
+static void ConvertInt64IndicesBytes(const std::vector<uint8_t>& onnx_bytes, std::vector<uint8_t>& qnn_bytes) {
   const size_t num_elems = onnx_bytes.size() / sizeof(uint64_t);
   gsl::span<const uint64_t> onnx_indices{reinterpret_cast<const uint64_t*>(onnx_bytes.data()), num_elems};
 
@@ -88,16 +90,22 @@ static void ConvertInt64Indices(const std::vector<uint8_t>& onnx_bytes, std::vec
                  [](int64_t index) { return SafeInt<T>(index); });
 }
 
-static Status ConvertIndicesToInt32(QnnModelWrapper& qnn_model_wrapper,
-                                    const NodeUnitIODef& indices_input,
-                                    bool int32_type_is_signed,
-                                    const logging::Logger& logger,
-                                    bool is_quantized_model,
-                                    std::vector<std::string>& input_names,
-                                    bool do_op_validation) {
+// Processes the indices input to Gather operators.
+//
+// Gather ops on the QNN CPU backend require int32 indices, so this function will either add a Cast operator
+// to dynamic indices or transform static indices to int32/uint32.
+//
+// The HTP backend does not support int64, so this function returns an error status if dynamic indices are of
+// type int64. If the indices are static, then this function will convert them to int32/uint32.
+static Status ProcessIndicesInput(QnnModelWrapper& qnn_model_wrapper,
+                                  const NodeUnitIODef& indices_input,
+                                  bool int32_type_is_signed,
+                                  const logging::Logger& logger,
+                                  bool is_quantized_model,
+                                  std::vector<std::string>& input_names,
+                                  bool do_op_validation) {
   Qnn_DataType_t desired_data_type = int32_type_is_signed ? QNN_DATATYPE_INT_32 : QNN_DATATYPE_UINT_32;
 
-  // Process indices
   const auto& input_name = indices_input.node_arg.Name();
   if (qnn_model_wrapper.IsQnnTensorWrapperExist(input_name)) {
     LOGS(logger, VERBOSE) << "Tensor already added, skip it: " << input_name;
@@ -124,9 +132,9 @@ static Status ConvertIndicesToInt32(QnnModelWrapper& qnn_model_wrapper,
 
     if (qnn_data_type == QNN_DATATYPE_INT_64) {
       if (desired_data_type == QNN_DATATYPE_INT_32) {
-        ConvertInt64Indices<int32_t>(unpacked_tensor, gather_indices);
+        ConvertInt64IndicesBytes<int32_t>(unpacked_tensor, gather_indices);
       } else {
-        ConvertInt64Indices<uint32_t>(unpacked_tensor, gather_indices);
+        ConvertInt64IndicesBytes<uint32_t>(unpacked_tensor, gather_indices);
       }
     } else {
       gather_indices = std::move(unpacked_tensor);
@@ -146,7 +154,7 @@ static Status ConvertIndicesToInt32(QnnModelWrapper& qnn_model_wrapper,
   ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(input_tensorwrapper)), "Failed to add tensor.");
 
   if (!is_initializer_input && qnn_data_type == QNN_DATATYPE_INT_64) {
-    // Insert cast node int64 -> int32
+    // Insert cast node int64 -> int32/uint32
     if (qnn_data_type == QNN_DATATYPE_INT_64) {
       // Add Cast node for indices
       indices_input_name = input_name + "_cast";
@@ -179,7 +187,7 @@ Status GatherOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
   ORT_RETURN_IF(inputs.size() != 2, "QNN EP: Gather operator must have two inputs");
   ORT_RETURN_IF_ERROR(ProcessInput(qnn_model_wrapper, inputs[0], logger, is_quantized_model, input_names));
 
-  return ConvertIndicesToInt32(qnn_model_wrapper, inputs[1], true, logger, is_quantized_model, input_names, do_op_validation);
+  return ProcessIndicesInput(qnn_model_wrapper, inputs[1], true, logger, is_quantized_model, input_names, do_op_validation);
 }
 
 Status GatherElementsOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
@@ -192,7 +200,7 @@ Status GatherElementsOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper
   ORT_RETURN_IF(inputs.size() != 2, "QNN EP: GatherElements operator must have two inputs");
   ORT_RETURN_IF_ERROR(ProcessInput(qnn_model_wrapper, inputs[0], logger, is_quantized_model, input_names));
 
-  return ConvertIndicesToInt32(qnn_model_wrapper, inputs[1], false, logger, is_quantized_model, input_names, do_op_validation);
+  return ProcessIndicesInput(qnn_model_wrapper, inputs[1], false, logger, is_quantized_model, input_names, do_op_validation);
 }
 
 Status GatherNDOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
@@ -205,7 +213,7 @@ Status GatherNDOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
   ORT_RETURN_IF(inputs.size() != 2, "QNN EP: GatherND operator must have two inputs");
   ORT_RETURN_IF_ERROR(ProcessInput(qnn_model_wrapper, inputs[0], logger, is_quantized_model, input_names));
 
-  return ConvertIndicesToInt32(qnn_model_wrapper, inputs[1], false, logger, is_quantized_model, input_names, do_op_validation);
+  return ProcessIndicesInput(qnn_model_wrapper, inputs[1], false, logger, is_quantized_model, input_names, do_op_validation);
 }
 
 Status GatherOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrapper,

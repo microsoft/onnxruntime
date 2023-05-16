@@ -27,7 +27,8 @@ static GetTestModelFn BuildGatherNDTestCase(const std::vector<int64_t>& data_sha
   return [data_shape, data, indices_shape, indices,
           indices_are_static, batch_dims](ModelTestBuilder& builder) {
     auto* data_input = builder.MakeInput<DataType>(data_shape, data);
-    auto* indices_input = indices_are_static ? builder.MakeInitializer<int64_t>(indices_shape, indices) : builder.MakeInput<int64_t>(indices_shape, indices);
+    auto* indices_input = (indices_are_static ? builder.MakeInitializer<int64_t>(indices_shape, indices)
+                                              : builder.MakeInput<int64_t>(indices_shape, indices));
     auto* output = builder.MakeOutput();
 
     Node& gather_nd_node = builder.AddNode("GatherND", {data_input, indices_input}, {output});
@@ -46,11 +47,11 @@ static GetTestModelFn BuildQDQGatherNDTestCase(const std::vector<int64_t>& data_
   return [data_shape, data, indices_shape, indices,
           indices_are_static, batch_dims](ModelTestBuilder& builder) {
     constexpr float qdq_scale = 0.0038f;
-    const DataQType zero_point = 0;
-    // std::numeric_limits<DataQType>::max() / 2;
+    const DataQType zero_point = (std::numeric_limits<DataQType>::max() - std::numeric_limits<DataQType>::min()) / 2;
 
     auto* data_input = builder.MakeInput<DataType>(data_shape, data);
-    auto* indices_input = indices_are_static ? builder.MakeInitializer<int64_t>(indices_shape, indices) : builder.MakeInput<int64_t>(indices_shape, indices);
+    auto* indices_input = (indices_are_static ? builder.MakeInitializer<int64_t>(indices_shape, indices)
+                                              : builder.MakeInput<int64_t>(indices_shape, indices));
     auto* output = builder.MakeOutput();
 
     // data_input -> Q -> DQ -> GatherND
