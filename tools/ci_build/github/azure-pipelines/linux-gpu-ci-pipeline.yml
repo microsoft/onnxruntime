@@ -90,6 +90,7 @@ jobs:
       script: |
         rm -rf $(Build.BinariesDirectory)/Release/onnxruntime $(Build.BinariesDirectory)/Release/pybind11
         rm -f $(Build.BinariesDirectory)/Release/models
+        find $(Build.BinariesDirectory)/Release/_deps -mindepth 1 ! -regex '^$(Build.BinariesDirectory)/Release/_deps/onnx-src\(/.*\)?' -delete
         cd $(Build.BinariesDirectory)/Release
         find -executable -type f > $(Build.BinariesDirectory)/Release/perms.txt
 
