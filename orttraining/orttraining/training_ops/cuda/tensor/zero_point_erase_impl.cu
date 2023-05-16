@@ -12,10 +12,11 @@ template <typename T>
 struct NotEqualCubOp {
   float zero_point_value_;
   __host__ __device__ __forceinline__ NotEqualCubOp(float zero_point_value)
-      : zero_point_value_(zero_point_value) {}
+      : zero_point_value_(zero_point_value) {
+  }
 
   __host__ __device__ __forceinline__ bool operator()(const T& val) const {
-    return (val != static_cast<T>(zero_point_value_));
+    return static_cast<float>(val) != zero_point_value_;
   }
 };
 
@@ -79,7 +80,7 @@ __global__ void SetMaskOutputKernel(const CUDA_LONG N,
     for (int i = 0; i < kNumUnroll; ++i) {
       CUDA_LONG li = id + i;
       if (li < N) {
-        thread_bitmask |= (X_data[li] != static_cast<T>(zero_point_value));
+        thread_bitmask |= ((X_data[li] != static_cast<T>(zero_point_value)) << i);
       }
     }
 
@@ -117,7 +118,7 @@ __global__ void SetMaskOutputVectorizedKernel(const CUDA_LONG N,
 // actual computation
 #pragma unroll
       for (int ii = 0; ii < kNumUnroll; ++ii) {
-        thread_bitmask |= (src[ii] != static_cast<T>(zero_point_value));
+        thread_bitmask |= ((src[ii] != static_cast<T>(zero_point_value)) << ii);
       }
     }
 

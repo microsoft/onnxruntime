@@ -23,14 +23,20 @@ void GetZeroPointEraseExpectedOutput(std::vector<float>& expected_output,
                                      std::vector<BitmaskElementType>& expected_bitmask_data,
                                      const std::vector<float>& input,
                                      const float zero_point) {
-  for (size_t i = 0; i < input.size(); ++i) {
-    float value = input[i];
+  for (size_t i = 0; i < input.size(); i += 4) {
     size_t bitmask_idx = i / onnxruntime::cuda::kNumBitsPerBitmaskElement;
     size_t bitmask_shift = i % onnxruntime::cuda::kNumBitsPerBitmaskElement;
-    if (value != zero_point) {
-      expected_output.push_back(value);
-      expected_bitmask_data[bitmask_idx] |= (1 << bitmask_shift);
+    BitmaskElementType thread_bitmask = 0;
+    for (int j = 0; j < 4; ++j) {
+      if (i + j < input.size()) {
+        if (input[i + j] != zero_point) {
+          expected_output.push_back(input[i + j]);
+          thread_bitmask |= (1 << j);
+        }
+      }
     }
+
+    expected_bitmask_data[bitmask_idx] |= (thread_bitmask << bitmask_shift);
   }
 }
 
@@ -65,6 +71,7 @@ TEST(ZeroPointEraseAndRestoreTest, EraseFloat) {
   size_t bitmask_elem_count = (input_data.size() + onnxruntime::cuda::kNumBitsPerBitmaskElement - 1) /
                               onnxruntime::cuda::kNumBitsPerBitmaskElement;
   expected_bitmask_data.resize(bitmask_elem_count);
+
   GetZeroPointEraseExpectedOutput(expected_output, expected_bitmask_data, input_data, zero_point_value);
 
   RunZeroPointEraseTest(input_data, input_shape, zero_point_value, expected_output, expected_bitmask_data);
@@ -109,19 +116,22 @@ void GetZeroPointRestoreExpectedOutput(size_t total_element_count,
                                        const float zero_point,
                                        std::vector<float>& expected_output) {
   expected_output.resize(total_element_count);
-  for (size_t i = 0; i < total_element_count; ++i) {
+  size_t input_index = 0;
+  for (size_t i = 0; i < total_element_count; i += 4) {
     size_t bitmask_idx = i / onnxruntime::cuda::kNumBitsPerBitmaskElement;
     size_t bitmask_shift = i % onnxruntime::cuda::kNumBitsPerBitmaskElement;
     float value_to_set;
-    size_t offset_within_four = i % 4;  // 4 is the kUnroll in ZeroPointEraseImpl.cu
-    int mask_value = (1 << offset_within_four) & bitmask_data[bitmask_idx] >> bitmask_shift;
-    if (mask_value == 0) {
-      value_to_set = zero_point;
-    } else {
-      value_to_set = input[i];
-    }
+    for (int j = 0; j < 4; ++j) {
+      int mask_value = (1 << j) & bitmask_data[bitmask_idx] >> bitmask_shift;
+      if (mask_value == 0) {
+        value_to_set = zero_point;
+      } else {
+        value_to_set = input[input_index];
+        input_index += 1;
+      }
 
-    expected_output[i] = value_to_set;
+      expected_output[i + j] = value_to_set;
+    }
   }
 }
 
@@ -163,6 +173,48 @@ TEST(ZeroPointEraseAndRestoreTest, RestoreFloat) {
                                     expected_output);
 
   RunZeroPointRestoreTest(input_data, bitmask_input_data, output_shape, zero_point_value, expected_output);
+}
+
+TEST(ZeroPointEraseAndRestoreTest, RestoreFloat16) {
+  std::vector<int64_t> output_shape{3, 4};
+  std::vector<float> expected_output;
+  size_t total_element_count = 12;
+  expected_output.reserve(total_element_count);
+  float zero_point_value = 0.0f;
+  // 12 elements will use one single bitmask element.
+  // 32 bits: 0000,0000,0000,0000,0000,0001,1001,1111
+  // The last 1111 means, element 0, 1, 2, 3 are not zero point.
+  // The second last 1001 means, element 4, 7 are zero point, element 5, 6 are non zero point.
+  constexpr std::bitset<32> bitmask_vector{0B00000000000000000000000110011111};
+  std::vector<BitmaskElementType> bitmask_input_data{static_cast<BitmaskElementType>(bitmask_vector.to_ulong())};
+
+  std::vector<float> input_data{1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f};
+  GetZeroPointRestoreExpectedOutput(total_element_count, bitmask_input_data, input_data, zero_point_value,
+                                    expected_output);
+
+  RunZeroPointRestoreTest(ToFloat16(input_data), bitmask_input_data, output_shape, zero_point_value,
+                          ToFloat16(expected_output));
+}
+
+TEST(ZeroPointEraseAndRestoreTest, RestoreFloatNonDefaultZeroPointValue) {
+  std::vector<int64_t> output_shape{3, 4};
+  std::vector<float> expected_output;
+  size_t total_element_count = 12;
+  expected_output.reserve(total_element_count);
+  float zero_point_value = 23.0f;
+  // 12 elements will use one single bitmask element.
+  // 32 bits: 0000,0000,0000,0000,0000,0001,1001,1111
+  // The last 1111 means, element 0, 1, 2, 3 are not zero point.
+  // The second last 1001 means, element 4, 7 are zero point, element 5, 6 are non zero point.
+  constexpr std::bitset<32> bitmask_vector{0B00000000000000000000000110011111};
+  std::vector<BitmaskElementType> bitmask_input_data{static_cast<BitmaskElementType>(bitmask_vector.to_ulong())};
+
+  std::vector<float> input_data{1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f};
+  GetZeroPointRestoreExpectedOutput(total_element_count, bitmask_input_data, input_data, zero_point_value,
+                                    expected_output);
+
+  RunZeroPointRestoreTest(input_data, bitmask_input_data, output_shape, zero_point_value,
+                          expected_output);
 }
 
 }  // namespace test

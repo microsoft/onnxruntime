@@ -40,26 +40,42 @@ struct GetTempStorageBytesFunctor {
 
 template <typename T>
 struct CopyOnConditionFunctor {
-  void operator()(Stream* stream,
+  void operator()(const CudaKernel* cuda_kernel,
+                  OpKernelContext* context,
                   void* d_temp_storage,
                   const int64_t total_element_count,
                   const float zero_point_value,
                   const Tensor& input_tensor,
-                  size_t temp_storage_bytes,
-                  int& d_num_selected_out,
-                  Tensor& output_tensor) const {
+                  size_t temp_storage_bytes) const {
     typedef typename ToCudaType<T>::MappedType CudaT;
     const CudaT* input_data = reinterpret_cast<const CudaT*>(input_tensor.Data<T>());
-    CudaT* output_data = reinterpret_cast<CudaT*>(output_tensor.MutableData<T>());
+    IAllocatorUniquePtr<CudaT> temp_buffer = cuda_kernel->GetScratchBuffer<CudaT>(total_element_count,
+                                                                                  context->GetComputeStream());
+    std::cout << "total_element_count: " << total_element_count << ", temp_storage_bytes: " << temp_storage_bytes
+              << std::endl;
+    IAllocatorUniquePtr<int> d_num_selected_out = cuda_kernel->GetScratchBuffer<int>(1,
+                                                                                     context->GetComputeStream());
 
-    CopyOnConditionImpl<CudaT>(static_cast<cudaStream_t>(stream->GetHandle()),
+    CopyOnConditionImpl<CudaT>(cuda_kernel->Stream(context),
                                d_temp_storage,
                                temp_storage_bytes,
                                input_data,
-                               output_data,
-                               d_num_selected_out,
+                               temp_buffer.get(),
+                               *d_num_selected_out.get(),
                                zero_point_value,
                                static_cast<int>(total_element_count));
+    // cudaStreamSynchronize is needed since the value of d_num_selected_out will be used by host after this function.
+    // CUDA_CALL_THROW(cudaStreamSynchronize(cuda_kernel->Stream(context)));
+    int d_num_selected_host = 0;
+    CUDA_CALL_THROW(cudaMemcpyAsync(&d_num_selected_host, d_num_selected_out.get(),
+                                    sizeof(int), cudaMemcpyDeviceToHost, cuda_kernel->Stream(context)));
+
+    Tensor* output_tensor = context->Output(0, {d_num_selected_host});
+    CUDA_CALL_THROW(cudaMemcpyAsync(output_tensor->MutableDataRaw(),
+                                    temp_buffer.get(),
+                                    d_num_selected_host * sizeof(CudaT),
+                                    cudaMemcpyDeviceToDevice,
+                                    cuda_kernel->Stream(context)));
   }
 };
 
@@ -96,7 +112,6 @@ Status ZeroPointErase::ComputeInternal(OpKernelContext* context) const {
   int64_t mask_element_count = (total_element_count + kNumBitsPerBitmaskElement - 1) / kNumBitsPerBitmaskElement;
 
   size_t temp_storage_bytes = 0;
-  int d_num_selected_out;
   utils::MLTypeCallDispatcher<float, MLFloat16, double, BFloat16> t_disp(input_tensor->GetElementType());
   t_disp.Invoke<GetTempStorageBytesFunctor>(context->GetComputeStream(),
                                             total_element_count,
@@ -104,16 +119,13 @@ Status ZeroPointErase::ComputeInternal(OpKernelContext* context) const {
                                             temp_storage_bytes);
 
   IAllocatorUniquePtr<void> workspace = GetScratchBuffer<void>(temp_storage_bytes, context->GetComputeStream());
-  Tensor* output_tensor = context->Output(0, {d_num_selected_out});
-
-  t_disp.Invoke<CopyOnConditionFunctor>(context->GetComputeStream(),
+  t_disp.Invoke<CopyOnConditionFunctor>(this,
+                                        context,
                                         workspace.get(),
                                         total_element_count,
                                         default_zero_point_value_,
                                         *input_tensor,
-                                        temp_storage_bytes,
-                                        d_num_selected_out,
-                                        *output_tensor);
+                                        temp_storage_bytes);
 
   Tensor* mask_output_tensor = context->Output(1, {mask_element_count});
   t_disp.Invoke<SetMaskOutputFunctor>(GetDeviceProp(), Stream(context), total_element_count, mask_element_count,

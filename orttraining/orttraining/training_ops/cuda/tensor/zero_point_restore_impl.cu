@@ -51,7 +51,7 @@ __global__ void FillOutputFromMaskKernel(const CUDA_LONG N,
     BitmaskElementType shifted_mask = mask_data[bitmask_idx] >> bitmask_shift;
 #pragma unroll
     for (int i = 0; i < kNumUnroll; i++) {
-      masks[i] = static_cast<int>((shifted_mask & (1 << i)) == 1);
+      masks[i] = (shifted_mask & (1 << i)) != 0;
     }
   }
 
@@ -93,12 +93,12 @@ __global__ void RestoreFromMaskKernel(const CUDA_LONG N,
       if (id == 0) {
         maps[0] = 0;
       } else {
-        maps[0] = output_idx_to_input_idx_map_buffer[id];
+        maps[0] = output_idx_to_input_idx_map_buffer[id - 1];
       }
 
 #pragma unroll
-      for (int i = 1; i < kNumUnroll + 1; ++i) {
-        maps[i] = output_idx_to_input_idx_map_buffer[id + i];
+      for (int i = 0; i < kNumUnroll; ++i) {
+        maps[i + 1] = output_idx_to_input_idx_map_buffer[id + i];
       }
     }
 
@@ -106,8 +106,8 @@ __global__ void RestoreFromMaskKernel(const CUDA_LONG N,
     for (int i = 0; i < kNumUnroll; ++i) {
       CUDA_LONG li = id + i;
       if (li < N) {
-        int map_value = maps[i] - maps[i - 1];
-        output_data[li] = map_value == 1 ? input_data[map_value] : static_cast<T>(zero_point_value);
+        int map_value = maps[i + 1] - maps[i];
+        output_data[li] = map_value == 1 ? input_data[maps[i]] : static_cast<T>(zero_point_value);
       }
     }
   }
