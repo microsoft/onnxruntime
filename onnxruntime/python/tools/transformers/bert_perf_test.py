@@ -44,6 +44,7 @@ class TestSetting:
     seed: int
     verbose: bool
     log_severity: int
+    mask_type: int
 
 
 @dataclass
@@ -366,6 +367,7 @@ def run_performance(model_setting, test_setting, perf_results):
         segment_ids,
         input_mask,
         random_mask_length=False,
+        mask_type=test_setting.mask_type,
     )
 
     run_perf_tests(model_setting, test_setting, perf_results, all_inputs)
@@ -501,6 +503,14 @@ def parse_arguments():
         help="tuning results (json) to be saved after benchmark",
     )
 
+    parser.add_argument(
+        "--mask_type",
+        required=False,
+        type=int,
+        default=2,
+        help="mask type: (0: mask index or sequence length, 1: mask index end and start, 2: raw 2D mask, 3: no mask, 4: key len, cumulated lengths of query and key )",
+    )
+
     args = parser.parse_args()
     return args
 
@@ -515,7 +525,7 @@ def main():
     perf_results = manager.dict()
 
     batch_size_set = set(args.batch_size)
-    if not min(batch_size_set) >= 1 and max(batch_size_set) <= 128:
+    if not (min(batch_size_set) >= 1 and max(batch_size_set) <= 128):
         raise Exception("batch_size not in range [1, 128]")
 
     model_setting = ModelSetting(
@@ -541,6 +551,7 @@ def main():
             args.seed,
             args.verbose,
             args.log_severity,
+            args.mask_type,
         )
 
         print("test setting", test_setting)

@@ -18,6 +18,7 @@ class AttentionMaskFormat:
     # No attention mask
     NoMask = 3
 
+    MASK_KEY_LEN_START = 4
 
 class FusionOptions:
     """Options of fusion in graph optimization"""

@@ -79,14 +79,16 @@ def fake_input_mask_data(
     batch_size: int,
     sequence_length: int,
     random_mask_length: bool,
+    mask_type: int,
 ) -> np.ndarray:
-    """Create input tensor based on the graph input of segment_ids.
+    """Create input tensor based on the graph input of input_mask.
 
     Args:
         input_mask (TensorProto): graph input of the attention mask input tensor
         batch_size (int): batch size
         sequence_length (int): sequence length
         random_mask_length (bool): whether mask according to random padding length
+        mask_type (int): mask_type
 
     Returns:
         np.ndarray: the input tensor created
@@ -98,13 +100,38 @@ def fake_input_mask_data(
         TensorProto.INT64,
     ]
 
-    if random_mask_length:
+    if mask_type == 0:
+        data = np.zeros((batch_size), dtype=np.int32)
+        # TODO: differnt lengths of each sequence using a parameter of average padding ratio
         actual_seq_len = random.randint(int(sequence_length * 2 / 3), sequence_length)
-        data = np.zeros((batch_size, sequence_length), dtype=np.int32)
-        temp = np.ones((batch_size, actual_seq_len), dtype=np.int32)
-        data[: temp.shape[0], : temp.shape[1]] = temp
+        for i in range(batch_size):
+            data[i] = actual_seq_len if random_mask_length else sequence_length
+    elif mask_type == 2:  # 2D raw attention mask
+        if random_mask_length:
+            actual_seq_len = random.randint(int(sequence_length * 2 / 3), sequence_length)
+            data = np.zeros((batch_size, sequence_length), dtype=np.int32)
+            temp = np.ones((batch_size, actual_seq_len), dtype=np.int32)
+            data[: temp.shape[0], : temp.shape[1]] = temp
+        else:
+            data = np.ones((batch_size, sequence_length), dtype=np.int32)
     else:
-        data = np.ones((batch_size, sequence_length), dtype=np.int32)
+        assert mask_type == 4
+        data = np.zeros((batch_size * 3 + 2), dtype=np.int32)
+        if random_mask_length:
+            for i in range(batch_size):
+                actual_seq_len = random.randint(int(sequence_length * 2 / 3), sequence_length)
+                data[i] = actual_seq_len
+
+            for i in range(batch_size + 1):
+                data[batch_size + i] = data[batch_size + i - 1] + data[i - 1] if i > 0 else 0
+                data[2 * batch_size + 1 + i] = data[batch_size + i - 1] + data[i - 1] if i > 0 else 0
+
+        else:
+            for i in range(batch_size):
+                data[i] = sequence_length
+            for i in range(batch_size + 1):
+                data[batch_size + i] = i * sequence_length
+                data[2 * batch_size + 1 + i] = i * sequence_length
 
     if input_mask.type.tensor_type.elem_type == TensorProto.FLOAT:
         data = np.float32(data)
@@ -150,6 +177,7 @@ def fake_test_data(
     segment_ids: TensorProto,
     input_mask: TensorProto,
     random_mask_length: bool,
+    mask_type: int,
 ):
     """Create given number of input data for testing
 
@@ -164,6 +192,7 @@ def fake_test_data(
         segment_ids (TensorProto): graph input of token type IDs
         input_mask (TensorProto): graph input of attention mask
         random_mask_length (bool): whether mask random number of words at the end
+        mask_type (int): mask_type
 
     Returns:
         List[Dict[str,numpy.ndarray]]: list of test cases, where each test case is a dictionary
@@ -183,7 +212,9 @@ def fake_test_data(
             inputs[segment_ids.name] = fake_segment_ids_data(segment_ids, batch_size, sequence_length)
 
         if input_mask:
-            inputs[input_mask.name] = fake_input_mask_data(input_mask, batch_size, sequence_length, random_mask_length)
+            inputs[input_mask.name] = fake_input_mask_data(
+                input_mask, batch_size, sequence_length, random_mask_length, mask_type
+            )
 
         if verbose and len(all_inputs) == 0:
             print("Example inputs", inputs)
@@ -201,6 +232,7 @@ def generate_test_data(
     segment_ids: TensorProto,
     input_mask: TensorProto,
     random_mask_length: bool,
+    mask_type: int,
 ):
     """Create given number of input data for testing
 
@@ -213,7 +245,8 @@ def generate_test_data(
         input_ids (TensorProto): graph input of input IDs
         segment_ids (TensorProto): graph input of token type IDs
         input_mask (TensorProto): graph input of attention mask
-        random_mask_length (bool): whether mask random number of words at the end
+        random_mask_length (bool): whether mask random number of words at the end,
+        mask_type (int): type of mask
 
     Returns:
         List[Dict[str,numpy.ndarray]]: list of test cases, where each test case is a dictionary
@@ -231,6 +264,7 @@ def generate_test_data(
         segment_ids,
         input_mask,
         random_mask_length,
+        mask_type,
     )
     if len(all_inputs) != test_cases:
         print("Failed to create test data for test.")
@@ -416,6 +450,14 @@ def parse_arguments():
     )
 
     parser.add_argument(
+        "--mask_type",
+        required=False,
+        type=int,
+        default=2,
+        help="mask type: (0: mask index or sequence length, 1: mask index end and start, 2: raw 2D mask, 3: no mask, 4: key len, cumulated lengths of query and key )",
+    )
+
+    parser.add_argument(
         "--samples",
         required=False,
         type=int,
@@ -457,6 +499,7 @@ def create_and_save_test_data(
     segment_ids_name: Optional[str],
     input_mask_name: Optional[str],
     only_input_tensors: bool,
+    mask_type: int,
 ):
     """Create test data for a model, and save test data to a directory.
 
@@ -485,6 +528,7 @@ def create_and_save_test_data(
         segment_ids,
         input_mask,
         random_mask_length=False,
+        mask_type=mask_type,
     )
 
     for i, inputs in enumerate(all_inputs):
@@ -536,6 +580,7 @@ def main():
         args.segment_ids_name,
         args.input_mask_name,
         args.only_input_tensors,
+        args.mask_type,
     )
 
     print("Test data is saved to directory:", output_dir)
