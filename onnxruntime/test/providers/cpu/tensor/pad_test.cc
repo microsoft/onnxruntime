@@ -814,7 +814,7 @@ TEST(PadOpTest, ConstantPadAxes) {
                            0, 1, 1, 0,
                            0, 1, 1, 0,
                            0, 1, 1, 0});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kDmlExecutionProvider});
 }
 
 // CoreML EP only supports padding on last two dimensions and requires axes to be an initializer if provided,
