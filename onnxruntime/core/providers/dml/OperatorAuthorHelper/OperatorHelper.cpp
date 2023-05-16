@@ -9,7 +9,8 @@
 namespace OperatorHelper
 {
     template <typename T = uint32_t>
-    T DivideRoundUp(T x, T y) {
+    T DivideRoundUp(T x, T y)
+    {
         assert(y != 0);
         return (x + y - 1) / y;
     }
@@ -936,10 +937,11 @@ namespace OperatorHelper
             if (numOutputs > 0)
             {
                 ML_CHECK_VALID_ARGUMENT(m_split.size() == 0);
-                auto splitDimSize = inputDimensions.at(m_axis);
-                auto evenParts = DivideRoundUp(splitDimSize, numOutputs);
-                m_split.resize(numOutputs, evenParts);
-                m_split.back() = static_cast<int>(splitDimSize - (numOutputs-1) * evenParts);
+                auto inputSizeAlongAxis = inputDimensions.at(m_axis);
+                auto outputSizeAlongAxis = DivideRoundUp(inputSizeAlongAxis, numOutputs);
+                m_split.resize(numOutputs, outputSizeAlongAxis);
+                // Every output has the same size except potentially the last one, which may be smaller.
+                m_split.back() = static_cast<int>(inputSizeAlongAxis - (numOutputs - 1) * outputSizeAlongAxis);
             }
             else
             {
