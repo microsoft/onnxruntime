@@ -84,9 +84,19 @@ def parse_arguments():
         "--use_decoder_start_token",
         required=False,
         action="store_true",
-        help="Use config.decoder_start_token_id. Otherwise, add an extra graph input for decoder_input_ids.",
+        help="Use config.decoder_start_token_id. Otherwise, add an extra graph input to \
+              the encoder-decoder-init subgraph for decoder_input_ids.",
     )
     parser.set_defaults(use_decoder_start_token=False)
+
+    parser.add_argument(
+        "-f",
+        "--use_forced_decoder_ids",
+        required=False,
+        action="store_true",
+        help="Use decoder_input_ids as an extra graph input to the beam search op",
+    )
+    parser.set_defaults(use_forced_decoder_ids=False)
 
     parser.add_argument(
         "-w",
