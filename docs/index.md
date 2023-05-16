@@ -67,4 +67,4 @@ ONNX Runtime applies a number of graph optimizations on the model graph then par
 ## ONNX Runtime for Training
 
 - [Large Model Training](./get-started/training-pytorch.md)
-- [On-Device Training](./get-started/on-device-training.md)
+- [On-Device Training](./get-started/training-on-device.md)
