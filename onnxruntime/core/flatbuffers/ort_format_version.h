@@ -26,6 +26,7 @@ inline bool IsOrtModelVersionSupported(const int ort_model_version) {
   // The ort model versions we will support in this build
   // This may contain more versions than the kOrtModelVersion, based on the compatibilities
   constexpr std::array kSupportedOrtModelVersions{
+      kOrtModelVersion - 1,
       kOrtModelVersion,
   };
 
