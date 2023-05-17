@@ -145,7 +145,7 @@ Status HipBlasLtMatMul(const ParamsT* params, int64_t batch, ActivationType acti
   HIPBLASLT_RETURN_IF_ERROR(hipblasLtMatmulPreferenceSetAttribute(
       pref, HIPBLASLT_MATMUL_PREF_MAX_WORKSPACE_BYTES, &max_workspace_size, sizeof(max_workspace_size)));
 
-  hipblasLtMatmulHeuristicResult_t heuristic_result[kHeuristicResultCount] = {0};
+  hipblasLtMatmulHeuristicResult_t heuristic_result[kHeuristicResultCount] = {};
   int ret_algo_count = 0;
   HIPBLASLT_RETURN_IF_ERROR(hipblasLtMatmulAlgoGetHeuristic(handle,
                                                             matmul,
@@ -208,7 +208,7 @@ Status HipBlasLtStridedBatchedGemmOp(const StridedBatchedGemmParams<T>* params) 
 };
 
 template <typename T>
-Status HipBlasLtGemmGeluOp(const GemmFastGeluParams<T>* params) {
+Status HipBlasLtGemmFastGeluOp(const GemmFastGeluParams<T>* params) {
   TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF((std::is_same_v<T, double>), "hipBLASLt does not support double inputs");
   bool enable_bias = nullptr != params->bias;
   return HipBlasLtMatMul<T, GemmFastGeluParams<T>>(params, /*batch=*/1, ActivationType::GELU,

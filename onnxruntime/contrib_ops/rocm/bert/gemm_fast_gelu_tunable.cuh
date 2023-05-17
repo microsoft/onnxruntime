@@ -70,7 +70,7 @@ class GemmFastGeluTunableOp : public TunableOp<GemmFastGeluParams<T>> {
 #endif
 
 #ifdef USE_HIPBLASLT
-    this->RegisterOp(HipBlasLtGemmGeluOp<T>);
+    this->RegisterOp(HipBlasLtGemmFastGeluOp<T>);
 #endif
   }
 };
