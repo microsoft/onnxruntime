@@ -88,12 +88,16 @@ class BeamSearch : public IControlFlowKernel {
       const GenerationDeviceHelper::UpdateDecoderFeedsFunc<MLFloat16>& update_decoder_feeds_fp16_func,
       const GenerationDeviceHelper::ExpandBufferFunc<int32_t>& expand_buffer_int32_func,
       const GenerationDeviceHelper::ExpandBufferFunc<float>& expand_buffer_float_func,
-      const GenerationDeviceHelper::ExpandBufferFunc<MLFloat16>& expand_buffer_float16_func) {
+      const GenerationDeviceHelper::ExpandBufferFunc<MLFloat16>& expand_buffer_float16_func,
+      const GenerationDeviceHelper::UpdateDecoderCrossQKFunc& update_decoder_cross_qk_func,
+      const GenerationDeviceHelper::FinalizeDecoderCrossQKFunc& finalize_decoder_cross_qk_func) {
     update_decoder_feeds_func_ = update_decoder_feeds_func;
     update_decoder_feeds_fp16_func_ = update_decoder_feeds_fp16_func;
     expand_buffer_int32_func_ = expand_buffer_int32_func;
     expand_buffer_float_func_ = expand_buffer_float_func;
     expand_buffer_float16_func_ = expand_buffer_float16_func;
+    update_decoder_cross_qk_func_ = update_decoder_cross_qk_func;
+    finalize_decoder_cross_qk_func_ = finalize_decoder_cross_qk_func;
   }
 
 #ifdef USE_CUDA
@@ -175,6 +179,10 @@ class BeamSearch : public IControlFlowKernel {
   BeamSearchParameters parameters_;
 
   bool has_init_decoder_ = false;
+
+  GenerationDeviceHelper::UpdateDecoderCrossQKFunc update_decoder_cross_qk_func_;
+
+  GenerationDeviceHelper::FinalizeDecoderCrossQKFunc finalize_decoder_cross_qk_func_;
 };
 
 }  // namespace transformers
