@@ -52,7 +52,7 @@ stages:
   jobs:
   - ${{ if eq(parameters.enable_windows_cpu, true) }}:
     - job: Windows_py_Wheels
-      pool: 'Win-CPU-2021'
+      pool: 'onnxruntime-Win-CPU-2022'
       strategy:
         matrix:
           Python38_x64:
