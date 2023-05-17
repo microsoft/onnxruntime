@@ -77,7 +77,7 @@ jobs:
   pool:
     name: ${{ parameters.MachinePool }}
     demands:
-    - ImageOverride -equals Windows-2022-scus-beta
+    - ImageVersionOverride -equals 1.0.310057
   
   timeoutInMinutes:  300
   steps:
