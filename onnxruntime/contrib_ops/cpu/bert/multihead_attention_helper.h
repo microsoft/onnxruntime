@@ -103,7 +103,8 @@ Status CheckInputs(const T* query,
     }
     if (past_key_dims[2] != past_value_dims[2]) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input 'past_key' and 'past_value' shall have same dim 2 (past_sequence_length)");
+                             "Input 'past_key' and 'past_value' shall have same dim 2 (past_sequence_length). ",
+                             past_key_dims[2], " vs ", past_value_dims[2]);
     }
     if (past_key_dims[3] != head_size) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,

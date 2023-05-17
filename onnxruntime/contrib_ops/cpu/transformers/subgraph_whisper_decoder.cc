@@ -150,6 +150,7 @@ Status WhisperDecoderSubgraph::CreateInitialFeeds(
     transformers::Sequences& sequences,
     int past_present_share_buffer_max_seq_len,
     bool need_cache_indir) {
+  std::cout << "CreateInitialFeeds" << "........................................" << std::endl;
   ORT_ENFORCE(session_state_ != nullptr, "Setup must be called before CreateInitialFeeds");
 
   // Allocate subgraph inputs from same device as inputs of encoder subgraph.
