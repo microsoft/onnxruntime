@@ -92,6 +92,10 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
     CreateSoftmaxOpBuilder("Softmax", op_registrations);
   }
 
+  {  // Split
+    CreateSplitOpBuilder("Split", op_registrations);
+  }
+
   {  // Transpose
     CreateTransposeOpBuilder("Transpose", op_registrations);
   }
