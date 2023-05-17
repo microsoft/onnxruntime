@@ -46,7 +46,7 @@ TensorProto ToTensorGeneric(TensorProto_DataType datatype, int32_t value) {
   }                                                                                       \
   template <>                                                                             \
   TensorProto ToTensor<onnxruntime::TYPE>(const std::vector<onnxruntime::TYPE>& values) { \
-    TensorProto t = ToTensorInitialize(datatype);                                         \
+    TensorProto t = ToTensorInitialize(DATATYPE);                                         \
     for (const onnxruntime::TYPE& val : values) {                                         \
       t.add_int32_data(val.val);                                                          \
     }                                                                                     \
