@@ -449,7 +449,11 @@ class RunQueue {
   // PushBack adds w at the end of the queue.
   // If queue is full returns w, otherwise returns default-constructed Work.
   Work PushBack(Work w) {
+#ifdef USE_LOCK_FREE_QUEUE
     std::lock_guard<OrtSpinLock> mtx(spin_lock_);
+#else
+    std::lock_guard<OrtMutex> lock(mutex_);
+#endif
     unsigned back = back_.load(std::memory_order_relaxed);
     Elem& e = array_[(back - 1) & kMask];
     ElemState s = e.state.load(std::memory_order_relaxed);
@@ -469,7 +473,11 @@ class RunQueue {
   // with w_idx.  Typically the tag will be a per-thread ID to distinguish work
   // submitted from different threads.
   PushResult PushBackWithTag(Work w, Tag tag, unsigned& w_idx) {
+#ifdef USE_LOCK_FREE_QUEUE
     std::lock_guard<OrtSpinLock> mtx(spin_lock_);
+#else
+    std::lock_guard<OrtMutex> lock(mutex_);
+#endif
     unsigned back = back_.load(std::memory_order_relaxed);
     w_idx = (back - 1) & kMask;
     Elem& e = array_[w_idx];
@@ -490,7 +498,11 @@ class RunQueue {
   Work PopBack() {
     if (Empty())
       return Work();
+#ifdef USE_LOCK_FREE_QUEUE
     std::lock_guard<OrtSpinLock> mtx(spin_lock_);
+#else
+    std::lock_guard<OrtMutex> lock(mutex_);
+#endif
     unsigned back;
     Elem* e;
     ElemState s;
@@ -532,7 +544,11 @@ class RunQueue {
 
   bool RevokeWithTag(Tag tag, unsigned w_idx) {
     bool revoked = false;
+#ifdef USE_LOCK_FREE_QUEUE
     std::lock_guard<OrtSpinLock> mtx(spin_lock_);
+#else
+    std::lock_guard<OrtMutex> lock(mutex_);
+#endif
     Elem& e = array_[w_idx];
     ElemState s = e.state.load(std::memory_order_relaxed);
 
@@ -604,7 +620,11 @@ class RunQueue {
     Work w;
   };
 
+#ifdef USE_LOCK_FREE_QUEUE
   OrtSpinLock spin_lock_;
+#else
+  OrtMutex mutex_;
+#endif
 
   // Low log(kSize) + 1 bits in front_ and back_ contain rolling index of
   // front/back, respectively. The remaining bits contain modification counters
