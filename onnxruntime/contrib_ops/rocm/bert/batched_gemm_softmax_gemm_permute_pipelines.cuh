@@ -11,7 +11,7 @@ T: total sequence length
 N: num of heads
 H: head dimension
 
-The following use qkv_format == Q_K_V_BNSH as a example:
+The following use qkv_format == Q_K_V_BNSH (mode == BSNH_BNLH_BNLH_NONE_NONE_NONE_NONE) as a example:
 
 BN: B*N, which is the batch size of GEMMs. NOTE: To be disambiguated with batch size of Attention Op
 
@@ -57,6 +57,46 @@ non-biased,     masked, convert the mask to [B,1,1_or_S,T] and perform broadcast
 Broadcast add is not actually perform the broadcasting, just broadcast the load operation from memory. The impl details
 are in composable kernels. The scale and add logic is performed via Acc0ElementOp
 
+# Classified modes:
+
+| Q    | K    | V    | past(K)| pastV | present(K)| presentV | Op, desc
+| ---- | ---- | ---- | ------ | ----- | --------- | -------- | ---------
+| QFMT | KFMT | VFMT | -      | -     | -         | -        | A, basic, qkv is impl dependent by qkv_format
+| QFMT | KFMT | VFMT | 2BNPH  | -     | 2BNTH *^  | -        | A, past_present_share_buffer = false, qkv is impl dependent by qkv_format
+| QFMT | KFMT | VFMT | 2BNMH  | -     | 2BNMH *^  | -        | A, past_present_share_buffer = true,  qkv is impl dependent by qkv_format
+| BSNH | BLNH*| BLNH^| -      | -     | -         | -        | MHA basic
+| BSNH | BNLH*| BNLH^| -      | -     | -         | -        | MHA cross, pass_past_in_kv = true
+| BSNH | -    | -    | -      | -     | BNLH *    | BNLH ^   | MHA cross, pass_past_in_kv = false
+| BSNH | BLNH | BLNH | BNPH   | BNPH  | BNTH *    | BNTH ^   | MHA self, past_present_share_buffer = false
+| BSNH | BNLH | BNLH | BNPH   | BNPH  | BNTH *    | BNTH ^   | MHA self, past_present_share_buffer = false
+| BSNH | BLNH | BLNH | BNMH   | BNMH  | BNMH *    | BNMH ^   | MHA self, past_present_share_buffer = true
+| BSNH | BNLH | BNLH | BNMH   | BNMH  | BNMH *    | BNMH ^   | MHA self, past_present_share_buffer = true
+| BLN3H*^| -  | -    | -      | -     | -         | -        | MHA basic, qkv_packed
+| BSNH | BLN2H*^| -  | -      | -     | -         | -        | MHA basic, kv_packed
+
+Q, K, V, past(K), pastV, present(K), presentV is the Input of the contrib OpKernel
+
+About k_buffer and v_buffer, we always explicitly concat past to present and use present_k for k_buffer and present_b for v_buffer
+
+- Marked with `*` indicate the Tensor is used for k_buffer passing.
+- Marked with `^` indicate the Tensor is used for v_buffer passing.
+
+# Supportted Op
+
+- A: Attention
+- MHA: MultiHeadAttention
+
+# Dim Value
+
+- B: batch_size
+- N: num_heads
+- H: head_size
+
+- S: sequence_length
+- L: kv_sequence_length
+- P: past_sequence_length
+- T: total_sequence_length = P + L
+- M: max_sequence_length
 */
 
 #include "core/framework/tensor_shape.h"
@@ -90,7 +130,7 @@ inline int3 Get2DMaskStrides(int total_sequence_length) {
 
 template <typename HipT, typename T>
 std::tuple<const HipT*, const HipT*, const HipT*> GetQkvBuffers(
-    const AttentionParameters* attn,
+    const RocmAttentionParameters* attn,
     const T* query,
     const T* key,
     const T* value) {
@@ -113,7 +153,7 @@ std::tuple<const HipT*, const HipT*, const HipT*> GetQkvBuffers(
   }
 }
 
-inline std::tuple<int4, int4, int4> GetQkvStrides(const AttentionParameters* attn) {
+inline std::tuple<int4, int4, int4> GetQkvStrides(const RocmAttentionParameters* attn) {
   // G0 not used, because it is the slowest dimension
   const int& G1 = attn->num_heads;
   const int& M = attn->sequence_length;
@@ -147,7 +187,7 @@ inline std::tuple<int4, int4, int4> GetQkvStrides(const AttentionParameters* att
 }
 
 inline std::tuple<const int*, int3, int3> GetRawMaskBufferAddrSizesAndStrides(
-    const int* buffer, const AttentionParameters* attn) {
+    const int* buffer, const RocmAttentionParameters* attn) {
   const int* offseted_buffer{buffer};  // how to view the mask buffer
   int3 sizes{0, 0, 0};                 // the logical shape of the view
   int3 strides{-1, -1, -1};            // the physical memory layout
@@ -187,7 +227,7 @@ struct GemmSoftmaxGemmPermuteParams : onnxruntime::rocm::tunable::OpParams {
         "_H", attention->head_size,
         bias_buffer != nullptr ? "_B" : "_NB",
         "_M", mask_index_dims.size(),
-        "_QKV", attention->qkv_format);
+        "_MODE", attention->mode);
   }
 
   std::tuple<int, int, int, int, int> GetGemmsMNKOBatch() const {
@@ -201,7 +241,7 @@ struct GemmSoftmaxGemmPermuteParams : onnxruntime::rocm::tunable::OpParams {
   }
 
   rocblas_handle handle;
-  const AttentionParameters* attention;
+  const RocmAttentionParameters* attention;
   const hipDeviceProp_t* device_prop;
 
   float scale;
@@ -240,7 +280,7 @@ struct GemmSoftmaxGemmPermuteGenericPipeline {
     return {gemm1_out, softmax_out, gemm2_out};
   }
 
-  inline static size_t GetWorkspaceNumBytes(const AttentionParameters* attn) {
+  inline static size_t GetWorkspaceNumBytes(const RocmAttentionParameters* attn) {
     return GetAttentionWorkspaceSize(
         sizeof(T),
         attn->batch_size,
@@ -355,8 +395,8 @@ class GemmSoftmaxGemmPermuteTunableOp : public tunable::TunableOp<GemmSoftmaxGem
  public:
   GemmSoftmaxGemmPermuteTunableOp();
 
-  inline static bool IsSupportedQkvFormat(const AttentionParameters* attn) {
-    switch (attn->qkv_format) {
+  inline static bool IsSupportedMode(const RocmAttentionParameters* attn) {
+    switch (attn->mode) {
       case Q_K_V_BNSH:
       case Q_K_V_BSNH:
       case Q_KV_BSNH_BSN2H:
@@ -367,7 +407,7 @@ class GemmSoftmaxGemmPermuteTunableOp : public tunable::TunableOp<GemmSoftmaxGem
     }
   }
 
-  inline static bool IsSupportedMaskType(const AttentionParameters* attn) {
+  inline static bool IsSupportedMaskType(const RocmAttentionParameters* attn) {
     switch (attn->mask_type) {
       case MASK_NONE:
       case MASK_2D_DUMMY:
@@ -380,7 +420,7 @@ class GemmSoftmaxGemmPermuteTunableOp : public tunable::TunableOp<GemmSoftmaxGem
     }
   }
 
-  inline static size_t GetWorkspaceNumBytes(const AttentionParameters* attn) {
+  inline static size_t GetWorkspaceNumBytes(const RocmAttentionParameters* attn) {
     if (!IsSupportedMaskType(attn)) {
       return 0;
     }
@@ -477,8 +517,8 @@ auto GetCKGemmSoftmaxGemmPermuteTypeStringAndOps() {
     auto op = [impl = std::move(impl), invoker = std::move(invoker)](
                   const GemmSoftmaxGemmPermuteParams<T>* params) -> Status {
       TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(
-          !GemmSoftmaxGemmPermuteTunableOp<T>::IsSupportedQkvFormat(params->attention),
-          "qkv format is not supported, got ", params->attention->qkv_format);
+          !GemmSoftmaxGemmPermuteTunableOp<T>::IsSupportedMode(params->attention),
+          "attention mode is not supported, got ", params->attention->mode);
       if constexpr (USE_BIAS) {
         TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(
             params->bias_buffer == nullptr, "biased version only support input with bias");
