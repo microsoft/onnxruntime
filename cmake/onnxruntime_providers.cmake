@@ -500,6 +500,18 @@ if (onnxruntime_USE_CUDA)
     target_link_directories(onnxruntime_providers_cuda PRIVATE ${onnxruntime_CUDNN_HOME}/lib)
   endif()
 
+  if (onnxruntime_USE_TRITON_KERNEL)
+    # compile triton kernel, generate .a and .h files
+    include(onnxruntime_compile_triton_kernel.cmake)
+    compile_triton_kernel(triton_kernel_obj_file triton_kernel_header_dir)
+    add_dependencies(onnxruntime_providers_cuda onnxruntime_triton_kernel)
+    target_compile_definitions(onnxruntime_providers_cuda PRIVATE USE_TRITON_KERNEL)
+    target_include_directories(onnxruntime_providers_cuda PRIVATE ${triton_kernel_header_dir})
+    target_link_libraries(onnxruntime_providers_cuda PUBLIC -Wl,--whole-archive ${triton_kernel_obj_file} -Wl,--no-whole-archive)
+    # lib cuda needed by cuLaunchKernel
+    target_link_libraries(onnxruntime_providers_cuda PRIVATE cuda)
+  endif()
+
   if (onnxruntime_USE_FLASH_ATTENTION)
     include(cutlass)
     target_include_directories(onnxruntime_providers_cuda PRIVATE ${cutlass_SOURCE_DIR}/include ${cutlass_SOURCE_DIR}/examples)
@@ -1617,6 +1629,16 @@ if (onnxruntime_USE_ROCM)
     find_package(hipblaslt REQUIRED)
     target_link_libraries(onnxruntime_providers_rocm PRIVATE roc::hipblaslt)
     target_compile_definitions(onnxruntime_providers_rocm PRIVATE USE_HIPBLASLT)
+  endif()
+
+  if (onnxruntime_USE_TRITON_KERNEL)
+    # compile triton kernel, generate .a and .h files
+    include(onnxruntime_compile_triton_kernel.cmake)
+    compile_triton_kernel(triton_kernel_obj_file triton_kernel_header_dir)
+    add_dependencies(onnxruntime_providers_rocm onnxruntime_triton_kernel)
+    target_compile_definitions(onnxruntime_providers_rocm PRIVATE USE_TRITON_KERNEL)
+    target_include_directories(onnxruntime_providers_rocm PRIVATE ${triton_kernel_header_dir})
+    target_link_libraries(onnxruntime_providers_rocm PUBLIC -Wl,--whole-archive ${triton_kernel_obj_file} -Wl,--no-whole-archive)
   endif()
 
   if (onnxruntime_USE_COMPOSABLE_KERNEL)
