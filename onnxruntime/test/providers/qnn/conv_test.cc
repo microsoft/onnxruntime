@@ -16,8 +16,12 @@ namespace test {
 // Creates a graph with a single Conv operator. Used for testing CPU backend.
 static GetTestModelFn BuildConvTestCase(const std::vector<int64_t>& input_shape,
                                         const std::vector<int64_t>& weights_shape,
-                                        bool is_bias_initializer) {
-  return [input_shape, weights_shape, is_bias_initializer](ModelTestBuilder& builder) {
+                                        bool is_bias_initializer,
+                                        const std::vector<int64_t>& strides,
+                                        const std::vector<int64_t>& pads,
+                                        const std::vector<int64_t>& dilations,
+                                        const std::string& auto_pad = "NOTSET") {
+  return [input_shape, weights_shape, is_bias_initializer, strides, pads, dilations, auto_pad](ModelTestBuilder& builder) {
     auto* input = builder.MakeInput<float>(input_shape, 0.0f, 10.0f);
     auto* output = builder.MakeOutput();
     auto* weights = builder.MakeInitializer<float>(weights_shape, 0.0f, 1.0f);
@@ -30,7 +34,18 @@ static GetTestModelFn BuildConvTestCase(const std::vector<int64_t>& input_shape,
       bias = builder.MakeInput<float>({weights_shape[0]}, -1.0f, 1.0f);
     }
 
-    builder.AddNode("Conv", {input, weights, bias}, {output});
+    Node& convNode = builder.AddNode("Conv", {input, weights, bias}, {output});
+    convNode.AddAttribute("auto_pad", auto_pad);
+
+    if (!pads.empty() && auto_pad == "NOTSET") {
+      convNode.AddAttribute("pads", pads);
+    }
+    if (!strides.empty()) {
+      convNode.AddAttribute("strides", strides);
+    }
+    if (!dilations.empty()) {
+      convNode.AddAttribute("dilations", dilations);
+    }
   };
 }
 
@@ -39,6 +54,10 @@ static GetTestModelFn BuildConvTestCase(const std::vector<int64_t>& input_shape,
 static void RunCPUConvOpTest(const std::vector<int64_t>& input_shape,
                              const std::vector<int64_t>& weights_shape,
                              bool is_bias_initializer,
+                             const std::vector<int64_t>& strides,
+                             const std::vector<int64_t>& pads,
+                             const std::vector<int64_t>& dilations,
+                             const std::string& auto_pad,
                              ExpectedEPNodeAssignment expected_ep_assignment, const char* test_description,
                              int opset = 13) {
   ProviderOptions provider_options;
@@ -50,7 +69,7 @@ static void RunCPUConvOpTest(const std::vector<int64_t>& input_shape,
 #endif
 
   constexpr int expected_nodes_in_partition = 1;
-  RunQnnModelTest(BuildConvTestCase(input_shape, weights_shape, is_bias_initializer),
+  RunQnnModelTest(BuildConvTestCase(input_shape, weights_shape, is_bias_initializer, strides, pads, dilations, auto_pad),
                   provider_options,
                   opset,
                   expected_ep_assignment,
@@ -146,13 +165,22 @@ static void RunHTPConvOpTest(const std::vector<int64_t>& input_shape,
 // TODO: Enable this test when QNN CPU backend (QNN sdk 2.10.0) fixes bug that causes graph finalization to
 // throw a segfault when the bias is a non-static input.
 TEST_F(QnnCPUBackendTests, DISABLED_TestCPUConvf32_bias_input) {
-  RunCPUConvOpTest({1, 1, 3, 3}, {2, 1, 2, 2}, false, ExpectedEPNodeAssignment::All, "TestCPUConvf32_bias_input");
+  RunCPUConvOpTest({1, 1, 3, 3}, {2, 1, 2, 2}, false, {1, 1}, {0, 0, 0, 0}, {1, 1}, "NOTSET", ExpectedEPNodeAssignment::All, "TestCPUConvf32_bias_input");
 }
 
 // Check that QNN compiles DQ -> Conv -> Q as a single unit.
 // Tests bias as an initializer.
 TEST_F(QnnCPUBackendTests, TestCPUConvf32_bias_initializer) {
-  RunCPUConvOpTest({1, 1, 3, 3}, {2, 1, 2, 2}, true, ExpectedEPNodeAssignment::All, "TestCPUConvf32_bias_initializer");
+  RunCPUConvOpTest({1, 1, 3, 3}, {2, 1, 2, 2}, true, {1, 1}, {0, 0, 0, 0}, {1, 1}, "NOTSET", ExpectedEPNodeAssignment::All, "TestCPUConvf32_bias_initializer");
+}
+
+// large input,output, pads
+TEST_F(QnnCPUBackendTests, TestCPUConvf32_large_input1_pad_bias_initializer) {
+  RunCPUConvOpTest({1, 3, 60, 452}, {16, 3, 3, 3}, true, {1, 1}, {1, 1, 1, 1}, {1, 1}, "NOTSET", ExpectedEPNodeAssignment::All, "TestCPUConvf32_large_input1_pad_bias_initializer");
+}
+
+TEST_F(QnnCPUBackendTests, TestCPUConvf32_large_input2_nopad_bias_initializer) {
+  RunCPUConvOpTest({1, 32, 16, 113}, {16, 32, 1, 1}, true, {1, 1}, {0, 0, 0, 0}, {1, 1}, "NOTSET", ExpectedEPNodeAssignment::All, "TestCPUConvf32_large_input2_nopad_bias_initializer");
 }
 
 #if defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
