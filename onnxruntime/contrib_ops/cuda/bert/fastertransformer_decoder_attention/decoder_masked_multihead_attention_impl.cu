@@ -137,9 +137,9 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiHeadAttentio
 
   float qk = 0.0F;
 
-  int qkv_base_offset = params.is_mha
-                        ? bi * params.hidden_size + hi * head_size
-                        : bi * (3 * params.hidden_size) + hi * head_size;
+  int qkv_base_offset = params.is_mha && !params.is_packed_qkv
+                            ? bi * params.hidden_size + hi * head_size
+                            : bi * (3 * params.hidden_size) + hi * head_size;
 
   const size_t bi_total_seq_length = bi * params.total_sequence_length;
 
@@ -230,7 +230,7 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiHeadAttentio
       qk = dot<Qk_vec_acum, Qk_vec_k>(q, k);
 
       if (QK_VECS_PER_WARP <= WARP_SIZE) {
-  #pragma unroll
+#pragma unroll
         for (int mask = QK_VECS_PER_WARP / 2; mask >= 1; mask /= 2) {
           qk += __shfl_xor_sync(shfl_mask(QK_VECS_PER_WARP), qk, mask);
         }
@@ -248,9 +248,7 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiHeadAttentio
       qk *= inv_sqrt_dh;
       if (params.relative_attention_bias != nullptr) {
         qk = add_vec(qk,
-                     reinterpret_cast<T*>(params.relative_attention_bias)[hi * params.sequence_length
-                                                                             * params.total_sequence_length
-                                                                          + tlength]);
+                     reinterpret_cast<T*>(params.relative_attention_bias)[hi * params.sequence_length * params.total_sequence_length + tlength]);
       }
       qk_max = qk;
       qk_smem[tlength] = qk;
@@ -351,9 +349,7 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiHeadAttentio
     if (ti < tlength && tidx % THREADS_PER_KEY == 0) {
       if (params.relative_attention_bias != nullptr) {
         qk = add_vec(qk,
-                     reinterpret_cast<T*>(params.relative_attention_bias)[hi * params.sequence_length
-                                                                             * params.total_sequence_length
-                                                                          + ti]);
+                     reinterpret_cast<T*>(params.relative_attention_bias)[hi * params.sequence_length * params.total_sequence_length + ti]);
       }
       qk_max = fmaxf(qk_max, qk);
       qk_smem[ti] = qk;

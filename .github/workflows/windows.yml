@@ -8,7 +8,7 @@ on:
 
 jobs:
   Onnxruntime-TVM:
-    runs-on: windows-2019
+    runs-on: windows-latest
     steps:
       - uses: actions/checkout@v3
         with:

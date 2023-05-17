@@ -5,11 +5,11 @@
 
 /** \mainpage ONNX Runtime
  *
- * ONNX Runtime is a high-performance inference and training graph execution engine for deeplearning models.
+ * ONNX Runtime is a high-performance inference and training graph execution engine for deep learning models.
  *
  * ONNX Runtime's C, C++ APIs offer an easy to use interface to onboard and execute onnx models.
  * - \subpage c_cpp_api "Core C, C++ APIs"
- * - \subpage training_c_cpp_api "Training C, C++ APIs for learning on the edge"
+ * - \subpage training_c_cpp_api "Training C, C++ APIs for on-device training"
  *
  * \page c_cpp_api Core C, C++ APIs
  * <h1>C</h1>
@@ -4298,6 +4298,16 @@ struct OrtCustomOp {
  * \param device_id CUDA device id, starts from zero.
  */
 ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_CUDA, _In_ OrtSessionOptions* options, int device_id);
+
+/*
+ * This is the old way to add the ROCm provider to the session, please use
+ * SessionOptionsAppendExecutionProvider_ROCM above to access the latest functionality
+ * This function always exists, but will only succeed if Onnxruntime was built with
+ * HIP support and the ROCm provider shared library exists
+ *
+ * \param device_id HIP device id, starts from zero.
+ */
+ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_ROCM, _In_ OrtSessionOptions* options, int device_id);
 
 /*
  * This is the old way to add the MIGraphX provider to the session, please use
