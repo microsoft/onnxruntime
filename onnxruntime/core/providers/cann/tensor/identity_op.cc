@@ -69,7 +69,7 @@ ONNX_OPERATOR_KERNEL_EX(
     19,
     kCannExecutionProvider,
     (*KernelDefBuilder::Create())
-        .TypeConstraint("V", DataTypeImpl::AllFixedSizeTensorAndSequenceTensorTypesIR9())
+        .TypeConstraint("V", DataTypeImpl::AllFixedSizeTensorAndSequenceTensorTypesIRv9())
         .Alias(0, 0),
     IdentityOp<false>);
 

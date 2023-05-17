@@ -1138,64 +1138,64 @@ const std::vector<MLDataType>& DataTypeImpl::AllIEEEFloatTensorTypes() {
 }
 
 const std::vector<MLDataType>& DataTypeImpl::AllFixedSizeTensorTypes() {
-  return AllFixedSizeTensorTypesIR4();
+  return AllFixedSizeTensorTypesIRv4();
 }
 
-const std::vector<MLDataType>& DataTypeImpl::AllFixedSizeTensorTypesIR4() {
+const std::vector<MLDataType>& DataTypeImpl::AllFixedSizeTensorTypesIRv4() {
   static std::vector<MLDataType> all_fixed_size_tensor_types_ir4 =
       GetTensorTypesFromTypeList<element_type_lists::AllFixedSizeIR4>();
   return all_fixed_size_tensor_types_ir4;
 }
 
-const std::vector<MLDataType>& DataTypeImpl::AllFixedSizeTensorTypesIR9() {
+const std::vector<MLDataType>& DataTypeImpl::AllFixedSizeTensorTypesIRv9() {
   static std::vector<MLDataType> all_fixed_size_tensor_types_ir9 =
       GetTensorTypesFromTypeList<element_type_lists::AllFixedSizeIR9>();
   return all_fixed_size_tensor_types_ir9;
 }
 
 const std::vector<MLDataType>& DataTypeImpl::AllTensorTypes() {
-  return AllTensorTypesIR4();
+  return AllTensorTypesIRv4();
 }
 
-const std::vector<MLDataType>& DataTypeImpl::AllTensorTypesIR4() {
+const std::vector<MLDataType>& DataTypeImpl::AllTensorTypesIRv4() {
   static std::vector<MLDataType> all_tensor_types =
       GetTensorTypesFromTypeList<element_type_lists::AllIR4>();
   return all_tensor_types;
 }
 
-const std::vector<MLDataType>& DataTypeImpl::AllTensorTypesIR9() {
+const std::vector<MLDataType>& DataTypeImpl::AllTensorTypesIRv9() {
   static std::vector<MLDataType> all_tensor_types =
       GetTensorTypesFromTypeList<element_type_lists::AllIR9>();
   return all_tensor_types;
 }
 
 const std::vector<MLDataType>& DataTypeImpl::AllFixedSizeSequenceTensorTypes() {
-  return AllFixedSizeSequenceTensorTypesIR4();
+  return AllFixedSizeSequenceTensorTypesIRv4();
 }
 
-const std::vector<MLDataType>& DataTypeImpl::AllFixedSizeSequenceTensorTypesIR4() {
+const std::vector<MLDataType>& DataTypeImpl::AllFixedSizeSequenceTensorTypesIRv4() {
   static std::vector<MLDataType> all_fixed_size_sequence_tensor_types =
       GetSequenceTensorTypesFromTypeList<element_type_lists::AllFixedSizeIR4>();
   return all_fixed_size_sequence_tensor_types;
 }
 
-const std::vector<MLDataType>& DataTypeImpl::AllFixedSizeSequenceTensorTypesIR9() {
+const std::vector<MLDataType>& DataTypeImpl::AllFixedSizeSequenceTensorTypesIRv9() {
   static std::vector<MLDataType> all_fixed_size_sequence_tensor_types =
       GetSequenceTensorTypesFromTypeList<element_type_lists::AllFixedSizeIR9>();
   return all_fixed_size_sequence_tensor_types;
 }
 
 const std::vector<MLDataType>& DataTypeImpl::AllSequenceTensorTypes() {
-  return AllSequenceTensorTypesIR4();
+  return AllSequenceTensorTypesIRv4();
 }
 
-const std::vector<MLDataType>& DataTypeImpl::AllSequenceTensorTypesIR4() {
+const std::vector<MLDataType>& DataTypeImpl::AllSequenceTensorTypesIRv4() {
   static std::vector<MLDataType> all_sequence_tensor_types =
       GetSequenceTensorTypesFromTypeList<element_type_lists::AllIR4>();
   return all_sequence_tensor_types;
 }
 
-const std::vector<MLDataType>& DataTypeImpl::AllSequenceTensorTypesIR9() {
+const std::vector<MLDataType>& DataTypeImpl::AllSequenceTensorTypesIRv9() {
   static std::vector<MLDataType> all_sequence_tensor_types =
       GetSequenceTensorTypesFromTypeList<element_type_lists::AllIR9>();
   return all_sequence_tensor_types;
@@ -1208,14 +1208,14 @@ const std::vector<MLDataType>& DataTypeImpl::AllNumericTensorTypes() {
 }
 
 const std::vector<MLDataType>& DataTypeImpl::AllFixedSizeTensorAndSequenceTensorTypes() {
-  return AllFixedSizeTensorAndSequenceTensorTypesIR4();
+  return AllFixedSizeTensorAndSequenceTensorTypesIRv4();
 }
 
-const std::vector<MLDataType>& DataTypeImpl::AllFixedSizeTensorAndSequenceTensorTypesIR4() {
+const std::vector<MLDataType>& DataTypeImpl::AllFixedSizeTensorAndSequenceTensorTypesIRv4() {
   static std::vector<MLDataType> all_fixed_size_tensor_and_sequence_tensor_types =
       []() {
-        auto temp = AllFixedSizeTensorTypesIR4();
-        const auto& seq = AllFixedSizeSequenceTensorTypesIR4();
+        auto temp = AllFixedSizeTensorTypesIRv4();
+        const auto& seq = AllFixedSizeSequenceTensorTypesIRv4();
         temp.insert(temp.end(), seq.begin(), seq.end());
         return temp;
       }();
@@ -1223,11 +1223,11 @@ const std::vector<MLDataType>& DataTypeImpl::AllFixedSizeTensorAndSequenceTensor
   return all_fixed_size_tensor_and_sequence_tensor_types;
 }
 
-const std::vector<MLDataType>& DataTypeImpl::AllFixedSizeTensorAndSequenceTensorTypesIR9() {
+const std::vector<MLDataType>& DataTypeImpl::AllFixedSizeTensorAndSequenceTensorTypesIRv9() {
   static std::vector<MLDataType> all_fixed_size_tensor_and_sequence_tensor_types =
       []() {
-        auto temp = AllFixedSizeTensorTypesIR9();
-        const auto& seq = AllFixedSizeSequenceTensorTypesIR9();
+        auto temp = AllFixedSizeTensorTypesIRv9();
+        const auto& seq = AllFixedSizeSequenceTensorTypesIRv9();
         temp.insert(temp.end(), seq.begin(), seq.end());
         return temp;
       }();
@@ -1236,25 +1236,25 @@ const std::vector<MLDataType>& DataTypeImpl::AllFixedSizeTensorAndSequenceTensor
 }
 
 const std::vector<MLDataType>& DataTypeImpl::AllTensorAndSequenceTensorTypes() {
-  return AllTensorAndSequenceTensorTypesIR4();
+  return AllTensorAndSequenceTensorTypesIRv4();
 }
 
-const std::vector<MLDataType>& DataTypeImpl::AllTensorAndSequenceTensorTypesIR4() {
+const std::vector<MLDataType>& DataTypeImpl::AllTensorAndSequenceTensorTypesIRv4() {
   static std::vector<MLDataType> all_tensor_and_sequence_types_with_float8 =
       []() {
-        auto temp = AllTensorTypesIR4();
-        const auto& seq = AllSequenceTensorTypesIR4();
+        auto temp = AllTensorTypesIRv4();
+        const auto& seq = AllSequenceTensorTypesIRv4();
         temp.insert(temp.end(), seq.begin(), seq.end());
         return temp;
       }();
   return all_tensor_and_sequence_types_with_float8;
 }
 
-const std::vector<MLDataType>& DataTypeImpl::AllTensorAndSequenceTensorTypesIR9() {
+const std::vector<MLDataType>& DataTypeImpl::AllTensorAndSequenceTensorTypesIRv9() {
   static std::vector<MLDataType> all_tensor_and_sequence_types_with_float8 =
       []() {
-        auto temp = AllTensorTypesIR9();
-        const auto& seq = AllSequenceTensorTypesIR9();
+        auto temp = AllTensorTypesIRv9();
+        const auto& seq = AllSequenceTensorTypesIRv9();
         temp.insert(temp.end(), seq.begin(), seq.end());
         return temp;
       }();
@@ -1262,16 +1262,16 @@ const std::vector<MLDataType>& DataTypeImpl::AllTensorAndSequenceTensorTypesIR9(
 }
 
 const std::vector<MLDataType>& DataTypeImpl::AllOptionalAndTensorAndSequenceTensorTypes() {
-  return AllOptionalAndTensorAndSequenceTensorTypesIR4();
+  return AllOptionalAndTensorAndSequenceTensorTypesIRv4();
 }
 
-const std::vector<MLDataType>& DataTypeImpl::AllOptionalAndTensorAndSequenceTensorTypesIR4() {
+const std::vector<MLDataType>& DataTypeImpl::AllOptionalAndTensorAndSequenceTensorTypesIRv4() {
   static std::vector<MLDataType> all_optional_and_tensor_and_sequence_types =
       []() {
-        auto temp = AllOptionalTypesIR4();
-        const auto tensor = AllTensorTypesIR4();
+        auto temp = AllOptionalTypesIRv4();
+        const auto tensor = AllTensorTypesIRv4();
         temp.insert(temp.end(), tensor.begin(), tensor.end());
-        const auto& seq = AllSequenceTensorTypesIR4();
+        const auto& seq = AllSequenceTensorTypesIRv4();
         temp.insert(temp.end(), seq.begin(), seq.end());
         return temp;
       }();
@@ -1279,13 +1279,13 @@ const std::vector<MLDataType>& DataTypeImpl::AllOptionalAndTensorAndSequenceTens
   return all_optional_and_tensor_and_sequence_types;
 }
 
-const std::vector<MLDataType>& DataTypeImpl::AllOptionalAndTensorAndSequenceTensorTypesIR9() {
+const std::vector<MLDataType>& DataTypeImpl::AllOptionalAndTensorAndSequenceTensorTypesIRv9() {
   static std::vector<MLDataType> all_optional_and_tensor_and_sequence_types =
       []() {
-        auto temp = AllOptionalTypesIR9();
-        const auto tensor = AllTensorTypesIR9();
+        auto temp = AllOptionalTypesIRv9();
+        const auto tensor = AllTensorTypesIRv9();
         temp.insert(temp.end(), tensor.begin(), tensor.end());
-        const auto& seq = AllSequenceTensorTypesIR9();
+        const auto& seq = AllSequenceTensorTypesIRv9();
         temp.insert(temp.end(), seq.begin(), seq.end());
         return temp;
       }();
@@ -1294,10 +1294,10 @@ const std::vector<MLDataType>& DataTypeImpl::AllOptionalAndTensorAndSequenceTens
 }
 
 const std::vector<MLDataType>& DataTypeImpl::AllOptionalTypes() {
-  return AllOptionalTypesIR4();
+  return AllOptionalTypesIRv4();
 }
 
-const std::vector<MLDataType>& DataTypeImpl::AllOptionalTypesIR4() {
+const std::vector<MLDataType>& DataTypeImpl::AllOptionalTypesIRv4() {
   static std::vector<MLDataType> all_optional_types =
       []() {
         auto temp = GetOptionalTensorTypesFromTypeList<element_type_lists::AllIR4>();
@@ -1309,7 +1309,7 @@ const std::vector<MLDataType>& DataTypeImpl::AllOptionalTypesIR4() {
   return all_optional_types;
 }
 
-const std::vector<MLDataType>& DataTypeImpl::AllOptionalTypesIR9() {
+const std::vector<MLDataType>& DataTypeImpl::AllOptionalTypesIRv9() {
   static std::vector<MLDataType> all_optional_types =
       []() {
         auto temp = GetOptionalTensorTypesFromTypeList<element_type_lists::AllIR9>();
@@ -1322,14 +1322,14 @@ const std::vector<MLDataType>& DataTypeImpl::AllOptionalTypesIR9() {
 }
 
 const std::vector<MLDataType>& DataTypeImpl::AllTensorAndSequenceTensorAndOptionalTypes() {
-  return AllTensorAndSequenceTensorAndOptionalTypesIR4();
+  return AllTensorAndSequenceTensorAndOptionalTypesIRv4();
 }
 
-const std::vector<MLDataType>& DataTypeImpl::AllTensorAndSequenceTensorAndOptionalTypesIR4() {
+const std::vector<MLDataType>& DataTypeImpl::AllTensorAndSequenceTensorAndOptionalTypesIRv4() {
   static std::vector<MLDataType> all_tensor_and_sequence_types_and_optional_types =
       []() {
-        auto temp = AllTensorTypesIR4();
-        const auto& seq = AllSequenceTensorTypesIR4();
+        auto temp = AllTensorTypesIRv4();
+        const auto& seq = AllSequenceTensorTypesIRv4();
         const auto& opt = AllOptionalTypes();
         temp.insert(temp.end(), seq.begin(), seq.end());
         temp.insert(temp.end(), opt.begin(), opt.end());
@@ -1339,11 +1339,11 @@ const std::vector<MLDataType>& DataTypeImpl::AllTensorAndSequenceTensorAndOption
   return all_tensor_and_sequence_types_and_optional_types;
 }
 
-const std::vector<MLDataType>& DataTypeImpl::AllTensorAndSequenceTensorAndOptionalTypesIR9() {
+const std::vector<MLDataType>& DataTypeImpl::AllTensorAndSequenceTensorAndOptionalTypesIRv9() {
   static std::vector<MLDataType> all_tensor_and_sequence_types_and_optional_types =
       []() {
-        auto temp = AllTensorTypesIR9();
-        const auto& seq = AllSequenceTensorTypesIR9();
+        auto temp = AllTensorTypesIRv9();
+        const auto& seq = AllSequenceTensorTypesIRv9();
         const auto& opt = AllOptionalTypes();
         temp.insert(temp.end(), seq.begin(), seq.end());
         temp.insert(temp.end(), opt.begin(), opt.end());

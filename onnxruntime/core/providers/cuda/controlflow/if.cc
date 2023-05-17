@@ -53,7 +53,7 @@ ONNX_OPERATOR_KERNEL_EX(If,
                         (*KernelDefBuilder::Create())
                             .InputMemoryType(OrtMemTypeCPUInput, 0)  // 'cond' needs to be on CPU
                             .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>())
-                            .TypeConstraint("V", DataTypeImpl::AllTensorAndSequenceTensorTypesIR9()),
+                            .TypeConstraint("V", DataTypeImpl::AllTensorAndSequenceTensorTypesIRv9()),
                         If);
 
 Status If::Compute(OpKernelContext* ctx) const {

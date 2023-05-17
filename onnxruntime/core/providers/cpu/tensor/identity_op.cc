@@ -55,7 +55,7 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
 ONNX_CPU_OPERATOR_KERNEL(
     Identity,
     19,
-    KernelDefBuilder().TypeConstraint("V", DataTypeImpl::AllTensorAndSequenceTensorAndOptionalTypesIR9()).Alias(0, 0),
+    KernelDefBuilder().TypeConstraint("V", DataTypeImpl::AllTensorAndSequenceTensorAndOptionalTypesIRv9()).Alias(0, 0),
     IdentityOp<false>);
 
 }  // namespace onnxruntime

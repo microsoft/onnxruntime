@@ -136,7 +136,7 @@ ONNX_CPU_OPERATOR_KERNEL(Loop,
                          KernelDefBuilder()
                              .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
                              .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>())
-                             .TypeConstraint("V", DataTypeImpl::AllTensorAndSequenceTensorAndOptionalTypesIR9()),
+                             .TypeConstraint("V", DataTypeImpl::AllTensorAndSequenceTensorAndOptionalTypesIRv9()),
                          Loop);
 
 Loop::Info::Info(const onnxruntime::Node& node, const GraphViewer& subgraph_in)

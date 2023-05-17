@@ -692,34 +692,34 @@ struct ProviderHostImpl : ProviderHost {
   DeleteFunc DataTypeImpl__GetDeleteFunc(const DataTypeImpl* p) override { return p->GetDeleteFunc(); }
 
   const std::vector<MLDataType>& DataTypeImpl__AllFixedSizeTensorTypes() override { return DataTypeImpl::AllFixedSizeTensorTypes(); }
-  const std::vector<MLDataType>& DataTypeImpl__AllFixedSizeTensorTypesIR4() override { return DataTypeImpl::AllFixedSizeTensorTypesIR4(); }
-  const std::vector<MLDataType>& DataTypeImpl__AllFixedSizeTensorTypesIR9() override { return DataTypeImpl::AllFixedSizeTensorTypesIR9(); }
+  const std::vector<MLDataType>& DataTypeImpl__AllFixedSizeTensorTypesIRv4() override { return DataTypeImpl::AllFixedSizeTensorTypesIRv4(); }
+  const std::vector<MLDataType>& DataTypeImpl__AllFixedSizeTensorTypesIRv9() override { return DataTypeImpl::AllFixedSizeTensorTypesIRv9(); }
 
   const std::vector<MLDataType>& DataTypeImpl__AllTensorTypes() override { return DataTypeImpl::AllTensorTypes(); }
-  const std::vector<MLDataType>& DataTypeImpl__AllTensorTypesIR4() override { return DataTypeImpl::AllTensorTypesIR4(); }
-  const std::vector<MLDataType>& DataTypeImpl__AllTensorTypesIR9() override { return DataTypeImpl::AllTensorTypesIR9(); }
+  const std::vector<MLDataType>& DataTypeImpl__AllTensorTypesIRv4() override { return DataTypeImpl::AllTensorTypesIRv4(); }
+  const std::vector<MLDataType>& DataTypeImpl__AllTensorTypesIRv9() override { return DataTypeImpl::AllTensorTypesIRv9(); }
 
   const std::vector<MLDataType>& DataTypeImpl__AllIEEEFloatTensorTypes() override { return DataTypeImpl::AllIEEEFloatTensorTypes(); }
 
   const std::vector<MLDataType>& DataTypeImpl__AllTensorAndSequenceTensorTypes() override { return DataTypeImpl::AllTensorAndSequenceTensorTypes(); }
-  const std::vector<MLDataType>& DataTypeImpl__AllTensorAndSequenceTensorTypesIR4() override { return DataTypeImpl::AllTensorAndSequenceTensorTypesIR4(); }
-  const std::vector<MLDataType>& DataTypeImpl__AllTensorAndSequenceTensorTypesIR9() override { return DataTypeImpl::AllTensorAndSequenceTensorTypesIR9(); }
+  const std::vector<MLDataType>& DataTypeImpl__AllTensorAndSequenceTensorTypesIRv4() override { return DataTypeImpl::AllTensorAndSequenceTensorTypesIRv4(); }
+  const std::vector<MLDataType>& DataTypeImpl__AllTensorAndSequenceTensorTypesIRv9() override { return DataTypeImpl::AllTensorAndSequenceTensorTypesIRv9(); }
 
   const std::vector<MLDataType>& DataTypeImpl__AllOptionalAndTensorAndSequenceTensorTypes() override { return DataTypeImpl::AllOptionalAndTensorAndSequenceTensorTypes(); }
-  const std::vector<MLDataType>& DataTypeImpl__AllOptionalAndTensorAndSequenceTensorTypesIR4() override { return DataTypeImpl::AllOptionalAndTensorAndSequenceTensorTypesIR4(); }
-  const std::vector<MLDataType>& DataTypeImpl__AllOptionalAndTensorAndSequenceTensorTypesIR9() override { return DataTypeImpl::AllOptionalAndTensorAndSequenceTensorTypesIR9(); }
+  const std::vector<MLDataType>& DataTypeImpl__AllOptionalAndTensorAndSequenceTensorTypesIRv4() override { return DataTypeImpl::AllOptionalAndTensorAndSequenceTensorTypesIRv4(); }
+  const std::vector<MLDataType>& DataTypeImpl__AllOptionalAndTensorAndSequenceTensorTypesIRv9() override { return DataTypeImpl::AllOptionalAndTensorAndSequenceTensorTypesIRv9(); }
 
   const std::vector<MLDataType>& DataTypeImpl__AllFixedSizeTensorAndSequenceTensorTypes() override { return DataTypeImpl::AllFixedSizeTensorAndSequenceTensorTypes(); }
-  const std::vector<MLDataType>& DataTypeImpl__AllFixedSizeTensorAndSequenceTensorTypesIR4() override { return DataTypeImpl::AllFixedSizeTensorAndSequenceTensorTypesIR4(); }
-  const std::vector<MLDataType>& DataTypeImpl__AllFixedSizeTensorAndSequenceTensorTypesIR9() override { return DataTypeImpl::AllFixedSizeTensorAndSequenceTensorTypesIR9(); }
+  const std::vector<MLDataType>& DataTypeImpl__AllFixedSizeTensorAndSequenceTensorTypesIRv4() override { return DataTypeImpl::AllFixedSizeTensorAndSequenceTensorTypesIRv4(); }
+  const std::vector<MLDataType>& DataTypeImpl__AllFixedSizeTensorAndSequenceTensorTypesIRv9() override { return DataTypeImpl::AllFixedSizeTensorAndSequenceTensorTypesIRv9(); }
 
   const std::vector<MLDataType>& DataTypeImpl__AllSequenceTensorTypes() override { return DataTypeImpl::AllSequenceTensorTypes(); }
-  const std::vector<MLDataType>& DataTypeImpl__AllSequenceTensorTypesIR4() override { return DataTypeImpl::AllSequenceTensorTypesIR4(); }
-  const std::vector<MLDataType>& DataTypeImpl__AllSequenceTensorTypesIR9() override { return DataTypeImpl::AllSequenceTensorTypesIR9(); }
+  const std::vector<MLDataType>& DataTypeImpl__AllSequenceTensorTypesIRv4() override { return DataTypeImpl::AllSequenceTensorTypesIRv4(); }
+  const std::vector<MLDataType>& DataTypeImpl__AllSequenceTensorTypesIRv9() override { return DataTypeImpl::AllSequenceTensorTypesIRv9(); }
 
   const std::vector<MLDataType>& DataTypeImpl__AllFixedSizeSequenceTensorTypes() override { return DataTypeImpl::AllFixedSizeSequenceTensorTypes(); }
-  const std::vector<MLDataType>& DataTypeImpl__AllFixedSizeSequenceTensorTypesIR4() override { return DataTypeImpl::AllFixedSizeSequenceTensorTypesIR4(); }
-  const std::vector<MLDataType>& DataTypeImpl__AllFixedSizeSequenceTensorTypesIR9() override { return DataTypeImpl::AllFixedSizeSequenceTensorTypesIR9(); }
+  const std::vector<MLDataType>& DataTypeImpl__AllFixedSizeSequenceTensorTypesIRv4() override { return DataTypeImpl::AllFixedSizeSequenceTensorTypesIRv4(); }
+  const std::vector<MLDataType>& DataTypeImpl__AllFixedSizeSequenceTensorTypesIRv9() override { return DataTypeImpl::AllFixedSizeSequenceTensorTypesIRv9(); }
 
   size_t DataTypeImpl__Size(const DataTypeImpl* p) override { return p->Size(); }
   const PrimitiveDataTypeBase* DataTypeImpl__AsPrimitiveDataType(const DataTypeImpl* p) override { return p->AsPrimitiveDataType(); }

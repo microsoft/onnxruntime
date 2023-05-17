@@ -33,7 +33,7 @@ TensorProto ToTensorInitialize(TensorProto_DataType datatype) {
   return t;
 }
 
-TensorProto ToTensorGeneric(TensorProto_DataType datatype, int32_t value) {
+TensorProto ToScalarTensor(TensorProto_DataType datatype, int32_t value) {
   TensorProto t = ToTensorInitialize(datatype);
   t.add_int32_data(value);
   return t;
@@ -42,7 +42,7 @@ TensorProto ToTensorGeneric(TensorProto_DataType datatype, int32_t value) {
 #define TO_TENSOR_ORT_TYPE(TYPE, DATATYPE)                                                \
   template <>                                                                             \
   TensorProto ToTensor<onnxruntime::TYPE>(const onnxruntime::TYPE& value) {               \
-    return ToTensorGeneric(DATATYPE, value.val);                                          \
+    return ToScalarTensor(DATATYPE, value.val);                                           \
   }                                                                                       \
   template <>                                                                             \
   TensorProto ToTensor<onnxruntime::TYPE>(const std::vector<onnxruntime::TYPE>& values) { \

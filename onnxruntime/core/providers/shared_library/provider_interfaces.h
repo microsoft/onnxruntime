@@ -586,34 +586,34 @@ struct ProviderHost {
   virtual DeleteFunc DataTypeImpl__GetDeleteFunc(const DataTypeImpl* p) = 0;
 
   virtual const std::vector<MLDataType>& DataTypeImpl__AllFixedSizeTensorTypes() = 0;
-  virtual const std::vector<MLDataType>& DataTypeImpl__AllFixedSizeTensorTypesIR4() = 0;
-  virtual const std::vector<MLDataType>& DataTypeImpl__AllFixedSizeTensorTypesIR9() = 0;
+  virtual const std::vector<MLDataType>& DataTypeImpl__AllFixedSizeTensorTypesIRv4() = 0;
+  virtual const std::vector<MLDataType>& DataTypeImpl__AllFixedSizeTensorTypesIRv9() = 0;
 
   virtual const std::vector<MLDataType>& DataTypeImpl__AllTensorTypes() = 0;
-  virtual const std::vector<MLDataType>& DataTypeImpl__AllTensorTypesIR4() = 0;
-  virtual const std::vector<MLDataType>& DataTypeImpl__AllTensorTypesIR9() = 0;
+  virtual const std::vector<MLDataType>& DataTypeImpl__AllTensorTypesIRv4() = 0;
+  virtual const std::vector<MLDataType>& DataTypeImpl__AllTensorTypesIRv9() = 0;
 
   virtual const std::vector<MLDataType>& DataTypeImpl__AllIEEEFloatTensorTypes() = 0;
 
   virtual const std::vector<MLDataType>& DataTypeImpl__AllTensorAndSequenceTensorTypes() = 0;
-  virtual const std::vector<MLDataType>& DataTypeImpl__AllTensorAndSequenceTensorTypesIR4() = 0;
-  virtual const std::vector<MLDataType>& DataTypeImpl__AllTensorAndSequenceTensorTypesIR9() = 0;
+  virtual const std::vector<MLDataType>& DataTypeImpl__AllTensorAndSequenceTensorTypesIRv4() = 0;
+  virtual const std::vector<MLDataType>& DataTypeImpl__AllTensorAndSequenceTensorTypesIRv9() = 0;
 
   virtual const std::vector<MLDataType>& DataTypeImpl__AllOptionalAndTensorAndSequenceTensorTypes() = 0;
-  virtual const std::vector<MLDataType>& DataTypeImpl__AllOptionalAndTensorAndSequenceTensorTypesIR4() = 0;
-  virtual const std::vector<MLDataType>& DataTypeImpl__AllOptionalAndTensorAndSequenceTensorTypesIR9() = 0;
+  virtual const std::vector<MLDataType>& DataTypeImpl__AllOptionalAndTensorAndSequenceTensorTypesIRv4() = 0;
+  virtual const std::vector<MLDataType>& DataTypeImpl__AllOptionalAndTensorAndSequenceTensorTypesIRv9() = 0;
 
   virtual const std::vector<MLDataType>& DataTypeImpl__AllFixedSizeTensorAndSequenceTensorTypes() = 0;
-  virtual const std::vector<MLDataType>& DataTypeImpl__AllFixedSizeTensorAndSequenceTensorTypesIR4() = 0;
-  virtual const std::vector<MLDataType>& DataTypeImpl__AllFixedSizeTensorAndSequenceTensorTypesIR9() = 0;
+  virtual const std::vector<MLDataType>& DataTypeImpl__AllFixedSizeTensorAndSequenceTensorTypesIRv4() = 0;
+  virtual const std::vector<MLDataType>& DataTypeImpl__AllFixedSizeTensorAndSequenceTensorTypesIRv9() = 0;
 
   virtual const std::vector<MLDataType>& DataTypeImpl__AllSequenceTensorTypes() = 0;
-  virtual const std::vector<MLDataType>& DataTypeImpl__AllSequenceTensorTypesIR4() = 0;
-  virtual const std::vector<MLDataType>& DataTypeImpl__AllSequenceTensorTypesIR9() = 0;
+  virtual const std::vector<MLDataType>& DataTypeImpl__AllSequenceTensorTypesIRv4() = 0;
+  virtual const std::vector<MLDataType>& DataTypeImpl__AllSequenceTensorTypesIRv9() = 0;
 
   virtual const std::vector<MLDataType>& DataTypeImpl__AllFixedSizeSequenceTensorTypes() = 0;
-  virtual const std::vector<MLDataType>& DataTypeImpl__AllFixedSizeSequenceTensorTypesIR4() = 0;
-  virtual const std::vector<MLDataType>& DataTypeImpl__AllFixedSizeSequenceTensorTypesIR9() = 0;
+  virtual const std::vector<MLDataType>& DataTypeImpl__AllFixedSizeSequenceTensorTypesIRv4() = 0;
+  virtual const std::vector<MLDataType>& DataTypeImpl__AllFixedSizeSequenceTensorTypesIRv9() = 0;
 
   virtual size_t DataTypeImpl__Size(const DataTypeImpl* p) = 0;
   virtual const PrimitiveDataTypeBase* DataTypeImpl__AsPrimitiveDataType(const DataTypeImpl* p) = 0;
