@@ -1,12 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {env, InferenceSession} from 'onnxruntime-common';
+import {Env, env, InferenceSession} from 'onnxruntime-common';
 
-import {init as initJsep} from './jsep/init';
 import {OrtWasmMessage, SerializableModeldata, SerializableSessionMetadata, SerializableTensor} from './proxy-messages';
 import * as core from './wasm-core-impl';
-import {getInstance, initializeWebAssembly} from './wasm-factory';
+import {initializeWebAssembly} from './wasm-factory';
 
 const isProxy = (): boolean => !!env.wasm.proxy && typeof document !== 'undefined';
 let proxyWorker: Worker|undefined;
@@ -99,7 +98,7 @@ const onProxyWorkerMessage = (ev: MessageEvent<OrtWasmMessage>): void => {
 
 const scriptSrc = typeof document !== 'undefined' ? (document?.currentScript as HTMLScriptElement)?.src : undefined;
 
-export const initWasm = async(): Promise<void> => {
+export const initializeWebAssemblyInstance = async(): Promise<void> => {
   if (!BUILD_DEFS.DISABLE_WASM_PROXY && isProxy()) {
     if (initialized) {
       return;
@@ -135,21 +134,16 @@ export const initWasm = async(): Promise<void> => {
   }
 };
 
-export const initOrt = async(numThreads: number, loggingLevel: number): Promise<void> => {
+export const initializeRuntime = async(env: Env): Promise<void> => {
   if (!BUILD_DEFS.DISABLE_WASM_PROXY && isProxy()) {
     ensureWorker();
     return new Promise<void>((resolve, reject) => {
       initOrtCallbacks = [resolve, reject];
-      const message: OrtWasmMessage = {type: 'init-ort', in : {numThreads, loggingLevel}};
+      const message: OrtWasmMessage = {type: 'init-ort', in : env};
       proxyWorker!.postMessage(message);
-
-      // TODO: support JSEP in worker
     });
   } else {
-    core.initOrt(numThreads, loggingLevel);
-
-    // init JSEP if available
-    await initJsep(getInstance());
+    await core.initRuntime(env);
   }
 };
 
