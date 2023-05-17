@@ -300,6 +300,23 @@ using BuildKernelCreateInfoFn = KernelCreateInfo (*)();
         static_cast<KernelCreatePtrFn>([](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status { out = std::make_unique<__VA_ARGS__>(info); return Status::OK(); })); \
   }
 
+#define ONNX_OPERATOR_FIVE_TYPED_KERNEL_CLASS_NAME(provider, domain, ver, type1, type2, type3, type4, type5, name) \
+  provider##_##name##_##domain##_ver##ver##_##type1##_##type2##_##type3##_##type4##_##type5
+
+#define ONNX_OPERATOR_FIVE_TYPED_KERNEL_EX(name, domain, ver, type1, type2, type3, type4, type5, provider, builder, ...)                \
+  class ONNX_OPERATOR_FIVE_TYPED_KERNEL_CLASS_NAME(provider, domain, ver, type1, type2, type3, type4, type5, name);                     \
+  template <>                                                                                                                           \
+  KernelCreateInfo                                                                                                                      \
+  BuildKernelCreateInfo<ONNX_OPERATOR_FIVE_TYPED_KERNEL_CLASS_NAME(provider, domain, ver, type1, type2, type3, type4, type5, name)>() { \
+    return KernelCreateInfo(                                                                                                            \
+        builder.SetName(#name)                                                                                                          \
+            .SetDomain(domain)                                                                                                          \
+            .SinceVersion(ver)                                                                                                          \
+            .Provider(provider)                                                                                                         \
+            .Build(),                                                                                                                   \
+        static_cast<KernelCreatePtrFn>([](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status { out = std::make_unique<__VA_ARGS__>(info); return Status::OK(); }));      \
+  }
+
 #define ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(provider, domain, startver, endver, type, name) \
   provider##_##name##_##domain##_ver##startver##_##endver##_##type
 
