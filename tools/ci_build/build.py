@@ -686,6 +686,8 @@ def parse_arguments():
 
     parser.add_argument("--use_cache", action="store_true", help="Use compiler cache in CI")
 
+    parser.add_argument("--use_triton_kernel", action="store_true", help="Use triton compiled kernels")
+
     if not is_windows():
         parser.add_argument(
             "--allow_running_as_root",
@@ -707,7 +709,7 @@ def parse_arguments():
         args.enable_wasm_exception_throwing_override = True
 
     if args.cmake_generator is None and is_windows():
-        args.cmake_generator = "Ninja" if args.build_wasm else "Visual Studio 16 2019"
+        args.cmake_generator = "Ninja" if args.build_wasm else "Visual Studio 17 2022"
 
     return args
 
@@ -990,6 +992,7 @@ def generate_build_tree(
         "-Donnxruntime_USE_XNNPACK=" + ("ON" if args.use_xnnpack else "OFF"),
         "-Donnxruntime_USE_WEBNN=" + ("ON" if args.use_webnn else "OFF"),
         "-Donnxruntime_USE_CANN=" + ("ON" if args.use_cann else "OFF"),
+        "-Donnxruntime_USE_TRITON_KERNEL=" + ("ON" if args.use_triton_kernel else "OFF"),
     ]
 
     # By default on Windows we currently support only cross compiling for ARM/ARM64
@@ -1303,7 +1306,7 @@ def generate_build_tree(
         if not (
             args.build_shared_lib
             and is_windows()
-            and args.cmake_generator == "Visual Studio 16 2019"
+            and args.cmake_generator == "Visual Studio 17 2022"
             and args.use_full_protobuf
         ):
             raise BuildError("Fuzz test has only be tested with build shared libs option using MSVC on windows")

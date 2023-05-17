@@ -19,6 +19,10 @@
 #include "orttraining/training_ops/rocm/rocm_training_kernels.h"
 #endif
 
+#ifdef USE_TRITON_KERNEL
+#include "core/providers/rocm/triton_kernel.h"
+#endif
+
 using namespace onnxruntime::common;
 
 namespace onnxruntime {
@@ -208,6 +212,10 @@ ROCMExecutionProvider::ROCMExecutionProvider(const ROCMExecutionProviderInfo& in
   HIP_CALL_THROW(hipMemGetInfo(&free, &total));
 
   OverrideTunableOpInfoByEnv(info_);
+
+#ifdef USE_TRITON_KERNEL
+  onnxruntime::rocm::LoadOrtTritonKernel();
+#endif
 }
 
 ROCMExecutionProvider::~ROCMExecutionProvider() {
