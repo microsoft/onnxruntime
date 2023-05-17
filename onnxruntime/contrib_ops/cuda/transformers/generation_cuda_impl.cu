@@ -1315,6 +1315,86 @@ template void BufferExpansionKernelLauncher(const int32_t* input,
                                             int chunk_size,
                                             cudaStream_t stream);
 
+template <typename T>
+__global__ void CopyCrossQKSingleDecodeStepKernel(
+    T* target, // shape [batchxbeam, layer_head_pair_count, max_length, frame]
+    T** qk_layer_pointers,
+    int token_index,
+    int num_layers,
+    int num_heads,
+    const int* cross_qk_layer_head_pairs,
+    int frames,
+    int max_length
+) {
+  const int pair = blockIdx.x;
+  const int layer_head_pair_count = gridDim.x;
+  const int bbm = blockIdx.y;
+  cross_qk_layer_head_pairs += (pair * 2);
+  const int layer = *cross_qk_layer_head_pairs;
+  const int head = *(cross_qk_layer_head_pairs + 1);
+
+  target += ((int64_t)bbm * layer_head_pair_count + pair) * max_length * frames + ((int64_t)token_index * frames);
+  T* src = qk_layer_pointers[layer] + ((int64_t)bbm * num_heads + head) * frames;
+
+  for (int tid = threadIdx.x; tid < frames; tid += blockDim.x) {
+    target[tid] = src[tid]; // use vectorized read write in future if needed
+  }
+}
+
+template <typename T>
+void LaunchCopyCrossQKSingleDecodeStep(
+    cudaStream_t stream,
+    T* cross_qk_buffer_data,
+    T** qk_layer_pointers,
+    int token_index,
+    int batchxbeam,
+    int num_layers,
+    int num_heads,
+    int cross_qk_layer_head_pair_count,
+    const int* cross_qk_layer_head_pairs,
+    int frames,
+    int max_length
+) {
+  dim3 block(512);
+  dim3 grid(cross_qk_layer_head_pair_count, batchxbeam);
+  CopyCrossQKSingleDecodeStepKernel<<<grid, block, 0, stream>>>(
+      cross_qk_buffer_data,
+      qk_layer_pointers,
+      token_index,
+      num_layers,
+      num_heads,
+      cross_qk_layer_head_pairs,
+      frames,
+      max_length
+  );
+}
+
+template void LaunchCopyCrossQKSingleDecodeStep<float>(
+    cudaStream_t stream,
+    float* cross_qk_buffer_data,
+    float** qk_layer_pointers,
+    int token_index,
+    int batchxbeam,
+    int num_layers,
+    int num_heads,
+    int cross_qk_layer_head_pair_count,
+    const int* cross_qk_layer_head_pairs,
+    int frames,
+    int max_length);
+
+template void LaunchCopyCrossQKSingleDecodeStep<MLFloat16>(
+    cudaStream_t stream,
+    MLFloat16* cross_qk_buffer_data,
+    MLFloat16** qk_layer_pointers,
+    int token_index,
+    int batchxbeam,
+    int num_layers,
+    int num_heads,
+    int cross_qk_layer_head_pair_count,
+    const int* cross_qk_layer_head_pairs,
+    int frames,
+    int max_length);
+
 }  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime

@@ -1,11 +1,19 @@
 import logging
 import os
-
+import sys
 import onnx
 from benchmark_helper import Precision
 from convert_generation import get_shared_initializers, update_decoder_subgraph_share_buffer_and_use_decoder_masked_mha
 from onnx import TensorProto, helper
 from transformers import WhisperConfig
+
+sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
+from benchmark_helper import Precision  # noqa: E402
+from convert_generation import (  # noqa: E402
+    get_shared_initializers,
+    update_decoder_subgraph_share_buffer_and_use_decoder_masked_mha,
+    update_decoder_subgraph_output_cross_attention,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +51,18 @@ def chain_model(args):
         "decoder_input_ids" if args.use_forced_decoder_ids else "",
         "logits_processor" if args.use_logits_processor else "",
     ]
+    if args.use_forced_decoder_ids:
+        beam_inputs.append("decoder_input_ids")
+    else:
+        beam_inputs.append("")
+
+    if args.use_logits_processor:
+        beam_inputs.append("logits_processor")
+    if args.output_cross_qk:
+        beam_inputs.append("cross_qk_layer_head")
     beam_outputs = ["sequences"]
+    if args.output_cross_qk:
+        beam_outputs.extend(["", "", "cross_qk"])
 
     input_features_cast_node, len_pen_cast_node, rep_pen_cast_node = None, None, None
     if args.precision == Precision.FLOAT16:
@@ -81,6 +100,8 @@ def chain_model(args):
             helper.make_attribute("model_type", 2),
         ]
     )
+    if args.output_cross_qk:
+        node.attribute.extend([helper.make_attribute("decoder_output_cross_qk", 1)])
 
     input_features = helper.make_tensor_value_info(
         "input_features", TensorProto.FLOAT, ["batch_size", "feature_size", "sequence_length"]
@@ -120,18 +141,32 @@ def chain_model(args):
     if args.use_logits_processor:
         logits_processor = helper.make_tensor_value_info("logits_processor", TensorProto.INT32, [1])
         graph_inputs.append(logits_processor)
+    if args.output_cross_qk:
+        cross_qk_layer_head = helper.make_tensor_value_info(
+            "cross_qk_layer_head", TensorProto.INT32, ["num_layer_head_cross_qk", 2]
+        )
+        graph_inputs.append(cross_qk_layer_head)
 
     # graph outputs
     sequences = helper.make_tensor_value_info(
         "sequences", TensorProto.INT32, ["batch_size", "num_return_sequences", "max_length"]
     )
     graph_outputs = [sequences]
+    if args.output_cross_qk:
+        cross_qk = helper.make_tensor_value_info(
+            "cross_qk",
+            float_data_type,
+            ["batch_size", "num_return_sequences", "num_layer_head_cross_qk", "max_length", "frames"],
+        )
+        graph_outputs.extend([cross_qk])
 
     if hasattr(args, "use_gpu") and args.use_gpu:
         if update_decoder_subgraph_share_buffer_and_use_decoder_masked_mha(decoder_model.graph):
             logger.info("Updated whisper decoder subgraph to use DecoderMaskedMultiHeadAttention successfully!")
         else:
             logger.warning("DecoderMaskedMultiHeadAttention could not be applied to whisper decoder subgraph")
+        if hasattr(args, "output_cross_qk") and args.output_cross_qk:
+            update_decoder_subgraph_output_cross_attention(decoder_model.graph)
 
     # Initializers/opsets
     # Delete shared data between decoder/encoder and move to larger graph initializers
