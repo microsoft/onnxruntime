@@ -686,6 +686,8 @@ def parse_arguments():
 
     parser.add_argument("--use_cache", action="store_true", help="Use compiler cache in CI")
 
+    parser.add_argument("--use_triton_kernel", action="store_true", help="Use triton compiled kernels")
+
     if not is_windows():
         parser.add_argument(
             "--allow_running_as_root",
@@ -990,6 +992,7 @@ def generate_build_tree(
         "-Donnxruntime_USE_XNNPACK=" + ("ON" if args.use_xnnpack else "OFF"),
         "-Donnxruntime_USE_WEBNN=" + ("ON" if args.use_webnn else "OFF"),
         "-Donnxruntime_USE_CANN=" + ("ON" if args.use_cann else "OFF"),
+        "-Donnxruntime_USE_TRITON_KERNEL=" + ("ON" if args.use_triton_kernel else "OFF"),
     ]
 
     # By default on Windows we currently support only cross compiling for ARM/ARM64
