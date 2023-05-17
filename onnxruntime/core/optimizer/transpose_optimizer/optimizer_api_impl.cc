@@ -914,9 +914,9 @@ Status TransformLayoutForEP(Graph& graph, bool& modified, const IExecutionProvid
                             const DebugGraphFn& debug_graph_fn) {
   // sub graph recurse will be added later
   auto cpu_allocator = execution_provider.GetAllocator(OrtMemTypeDefault);
-  if (cpu_allocator->Info().device.device_type != OrtDevice::CPU) {
+  if (cpu_allocator->Info().device.Type() != OrtDevice::CPU) {
     cpu_allocator = execution_provider.GetAllocator(OrtMemTypeCPU);
-    if (!cpu_allocator || cpu_allocator->Info().device.device_type != OrtDevice::CPU) {
+    if (!cpu_allocator || cpu_allocator->Info().device.Type() != OrtDevice::CPU) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to get CPU allocator from EP: ",
                              execution_provider.Type());
     }
