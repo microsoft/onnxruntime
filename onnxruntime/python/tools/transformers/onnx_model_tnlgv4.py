@@ -3,7 +3,7 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 import logging
-from typing import Union
+from typing import Union, List
 
 from fusion_attention import AttentionMask
 from onnx import TensorProto, GraphProto, helper
@@ -56,6 +56,20 @@ class FusionTNLGV4Attention(Fusion):
         self.nodes_to_add.extend([attention_node])
         self.node_name_to_graph_name[attention_node.name] = self.this_graph_name
 
+        return attention_node
+
+    def create_transpose_node(self, input_name: str, perm: List[int], output_name=None):
+        """Append a Transpose node after an input"""
+        node_name = self.model.create_node_name("Transpose")
+
+        if output_name is None:
+            output_name = node_name + "_out" + "-" + input_name
+
+        transpose_node = helper.make_node("Transpose", inputs=[input_name], outputs=[output_name], name=node_name)
+        transpose_node.attribute.extend([helper.make_attribute("perm", perm)])
+
+        return transpose_node
+
     def fuse(self, node, input_name_to_nodes, output_name_to_node):
         # note: this is not an exact match. experiment purpose only.
         stem_nodes = self.model.match_parent_path(
@@ -107,7 +121,15 @@ class FusionTNLGV4Attention(Fusion):
         output = node.input[0]
         present = concat_node_2.output[0]
 
-        self.create_attention_node(fc_weights, fc_bias, input, output, attn_mask, past, present)
+        new_attn_node = self.create_attention_node(fc_weights, fc_bias, input, output, attn_mask, past, present)
+
+        # Add a transpose node before/after the attention node
+        transpose_before = self.create_transpose_node(new_attn_node.input[0], [1, 0, 2])
+        new_attn_node.input[0] = transpose_before.output[0]
+        self.model.add_node(transpose_before, self.this_graph_name)
+        transpose_after = self.create_transpose_node(new_attn_node.output[0], [1, 0, 2])
+        node.input[0] = transpose_after.output[0]
+        self.model.add_node(transpose_after, self.this_graph_name)
 
         self.nodes_to_remove.extend(stem_nodes)
         self.nodes_to_remove.extend(qkv_matmul_nodes)
@@ -135,7 +157,7 @@ def change_io_shape(graph: GraphProto):
             vi = helper.make_tensor_value_info(
                 vi.name,
                 elem_type=vi.type.tensor_type.elem_type,
-                shape=[shape[0], shape[2], shape[1], shape[3], shape[4]],
+                shape=[shape[0], shape[2], shape[3], shape[1], shape[4]],
             )
         new_inputs.extend([vi])
 
@@ -155,7 +177,7 @@ def change_io_shape(graph: GraphProto):
             vi = helper.make_tensor_value_info(
                 vi.name,
                 elem_type=vi.type.tensor_type.elem_type,
-                shape=[shape[0], shape[2], shape[1], shape[3], shape[4]],
+                shape=[shape[0], shape[2], shape[3], shape[1], shape[4]],
             )
         new_outputs.extend([vi])
 
