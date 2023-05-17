@@ -1706,6 +1706,20 @@ ORT_API_STATUS_IMPL(OrtApis::UpdateTensorRTProviderOptions,
   API_IMPL_END
 }
 
+static std::string BuildOptionsString(const onnxruntime::ProviderOptions::iterator& begin,
+                                      const onnxruntime::ProviderOptions::iterator& end) {
+  std::ostringstream options;
+  auto it = begin;
+  if (it != end) {
+    options << it->first << "=" << it->second;
+    it++;
+  }
+  for (; it != end; it++) {
+    options << ";" << it->first << "=" << it->second;
+  }
+  return options.str();
+}
+
 ORT_API_STATUS_IMPL(OrtApis::GetTensorRTProviderOptionsAsString, _In_ const OrtTensorRTProviderOptionsV2* tensorrt_options, _Inout_ OrtAllocator* allocator,
                     _Outptr_ char** ptr) {
   API_IMPL_BEGIN
@@ -1818,20 +1832,6 @@ ORT_API_STATUS_IMPL(OrtApis::UpdateCUDAProviderOptions,
   return CreateStatus(ORT_FAIL, "CUDA execution provider is not enabled in this build.");
 #endif
   API_IMPL_END
-}
-
-static std::string BuildOptionsString(const onnxruntime::ProviderOptions::iterator& begin,
-                                      const onnxruntime::ProviderOptions::iterator& end) {
-  std::ostringstream options;
-  auto it = begin;
-  if (it != end) {
-    options << it->first << "=" << it->second;
-    it++;
-  }
-  for (; it != end; it++) {
-    options << ";" << it->first << "=" << it->second;
-  }
-  return options.str();
 }
 
 ORT_API_STATUS_IMPL(OrtApis::GetCUDAProviderOptionsAsString, _In_ const OrtCUDAProviderOptionsV2* cuda_options, _Inout_ OrtAllocator* allocator,
