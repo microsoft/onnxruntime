@@ -62,7 +62,7 @@ stages:
         RunStaticCodeAnalysis: false
         ORT_EP_NAME: CUDA
         WITH_CACHE: true
-        MachinePool: onnxruntime-Win2019-GPU-training-T4
+        MachinePool: onnxruntime-Win2022-GPU-T4
         isTraining: true
 
 - stage: dml
