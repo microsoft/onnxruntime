@@ -63,6 +63,10 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
     CreateExpandOpBuilder("Expand", op_registrations);
   }
 
+  {  // Gather
+    CreateGatherOpBuilder("Gather", op_registrations);
+  }
+
   {  // Gemm/MatMul
     CreateGemmOpBuilder("Gemm", op_registrations);
     CreateGemmOpBuilder("MatMul", op_registrations);

@@ -27,6 +27,7 @@ void CreateClipOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_
 void CreateConvOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 void CreateConcatOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 void CreateExpandOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
+void CreateGatherOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 void CreateGemmOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 void CreatePoolOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 void CreateReductionOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);

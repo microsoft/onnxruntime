@@ -99,6 +99,7 @@ static const InlinedHashMap<std::string, std::string> op_map = {
     {"ConvTranspose", "convTranspose2d"},
     {"Concat", "concat"},
     {"Expand", "expand"},
+    {"Gather", "gather"},
     {"Gemm", "gemm"},
     {"MatMul", "matmul"},
     {"GlobalAveragePool", "averagePool2d"},
