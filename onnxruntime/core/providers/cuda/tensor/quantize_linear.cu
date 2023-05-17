@@ -38,30 +38,31 @@ struct RoundStd<float, uint8_t> {
 
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 11080
 
+// Conversion from float 8 to float or float16 does not need zero_point argument as defined by onnx standard.
 template <>
 struct RoundSat<float, Float8E4M3FN> {
-  __device__ __forceinline__ Float8E4M3FN operator()(float v, float scale, Float8E4M3FN zero_point, bool saturate) const {
+  __device__ __forceinline__ Float8E4M3FN operator()(float v, float scale, Float8E4M3FN ORT_UNUSED_PARAMETER(zero_point), bool saturate) const {
     return Float8E4M3FN(static_cast<unsigned char>(__nv_cvt_float_to_fp8(v / scale, saturate ? __NV_SATFINITE : __NV_NOSAT, __NV_E4M3)), Float8E4M3FN::FromBits());
   }
 };
 
 template <>
 struct RoundSat<half, Float8E4M3FN> {
-  __device__ __forceinline__ Float8E4M3FN operator()(half v, half scale, Float8E4M3FN zero_point, bool saturate) const {
+  __device__ __forceinline__ Float8E4M3FN operator()(half v, half scale, Float8E4M3FN ORT_UNUSED_PARAMETER(zero_point), bool saturate) const {
     return Float8E4M3FN(static_cast<unsigned char>(__nv_cvt_halfraw_to_fp8(v / scale, saturate ? __NV_SATFINITE : __NV_NOSAT, __NV_E4M3)), Float8E4M3FN::FromBits());
   }
 };
 
 template <>
 struct RoundSat<float, Float8E5M2> {
-  __device__ __forceinline__ Float8E5M2 operator()(float v, float scale, Float8E5M2 zero_point, bool saturate) const {
+  __device__ __forceinline__ Float8E5M2 operator()(float v, float scale, Float8E5M2 ORT_UNUSED_PARAMETER(zero_point), bool saturate) const {
     return Float8E5M2(static_cast<unsigned char>(__nv_cvt_float_to_fp8(v / scale, saturate ? __NV_SATFINITE : __NV_NOSAT, __NV_E5M2)), Float8E5M2::FromBits());
   }
 };
 
 template <>
 struct RoundSat<half, Float8E5M2> {
-  __device__ __forceinline__ Float8E5M2 operator()(half v, half scale, Float8E5M2 zero_point, bool saturate) const {
+  __device__ __forceinline__ Float8E5M2 operator()(half v, half scale, Float8E5M2 ORT_UNUSED_PARAMETER(zero_point), bool saturate) const {
     return Float8E5M2(static_cast<unsigned char>(__nv_cvt_halfraw_to_fp8(v / scale, saturate ? __NV_SATFINITE : __NV_NOSAT, __NV_E5M2)), Float8E5M2::FromBits());
   }
 };
@@ -70,28 +71,28 @@ struct RoundSat<half, Float8E5M2> {
 
 template <>
 struct RoundSat<float, Float8E4M3FN> {
-  __device__ __forceinline__ Float8E4M3FN operator()(float v, float scale, Float8E4M3FN zero_point, bool saturate) const {
+  __device__ __forceinline__ Float8E4M3FN operator()(float v, float scale, Float8E4M3FN ORT_UNUSED_PARAMETER(zero_point), bool saturate) const {
     return Float8E4M3FN(v / scale, saturate);
   }
 };
 
 template <>
 struct RoundSat<half, Float8E4M3FN> {
-  __device__ __forceinline__ Float8E4M3FN operator()(half v, half scale, Float8E4M3FN zero_point, bool saturate) const {
+  __device__ __forceinline__ Float8E4M3FN operator()(half v, half scale, Float8E4M3FN ORT_UNUSED_PARAMETER(zero_point), bool saturate) const {
     return Float8E4M3FN(__half2float(v / scale), true);
   }
 };
 
 template <>
 struct RoundSat<float, Float8E5M2> {
-  __device__ __forceinline__ Float8E5M2 operator()(float v, float scale, Float8E5M2 zero_point, bool saturate) const {
+  __device__ __forceinline__ Float8E5M2 operator()(float v, float scale, Float8E5M2 ORT_UNUSED_PARAMETER(zero_point), bool saturate) const {
     return Float8E5M2(v / scale, saturate);
   }
 };
 
 template <>
 struct RoundSat<half, Float8E5M2> {
-  __device__ __forceinline__ Float8E5M2 operator()(half v, half scale, Float8E5M2 zero_point, bool saturate) const {
+  __device__ __forceinline__ Float8E5M2 operator()(half v, half scale, Float8E5M2 ORT_UNUSED_PARAMETER(zero_point), bool saturate) const {
     return Float8E5M2(__half2float(v / scale), saturate);
   }
 };

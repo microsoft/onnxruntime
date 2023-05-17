@@ -132,7 +132,7 @@ Status Cast<SrcT>::ComputeInternal(OpKernelContext* context) const {
   return Status::OK();
 }
 
-#define COMPUTE_INTERNEL_FL16_32(FLOAT_TYPE)                                                            \
+#define COMPUTE_INTERNAL_FL16_32(FLOAT_TYPE)                                                            \
   template <>                                                                                           \
   Status Cast<FLOAT_TYPE>::ComputeInternal(OpKernelContext* context) const {                            \
     typedef typename ToCudaType<FLOAT_TYPE>::MappedType CudaSrcT;                                       \
@@ -167,10 +167,10 @@ Status Cast<SrcT>::ComputeInternal(OpKernelContext* context) const {
     return Status::OK();                                                                                \
   }
 
-COMPUTE_INTERNEL_FL16_32(float)
-COMPUTE_INTERNEL_FL16_32(MLFloat16)
+COMPUTE_INTERNAL_FL16_32(float)
+COMPUTE_INTERNAL_FL16_32(MLFloat16)
 
-#define COMPUTE_INTERNEL_FL8(FLOAT_TYPE)                                                    \
+#define COMPUTE_INTERNAL_FL8(FLOAT_TYPE)                                                    \
   template <>                                                                               \
   Status Cast<FLOAT_TYPE>::ComputeInternal(OpKernelContext* context) const {                \
     typedef typename ToCudaType<FLOAT_TYPE>::MappedType CudaSrcT;                           \
@@ -204,8 +204,8 @@ COMPUTE_INTERNEL_FL16_32(MLFloat16)
     return Status::OK();                                                                    \
   }
 
-COMPUTE_INTERNEL_FL8(Float8E4M3FN)
-COMPUTE_INTERNEL_FL8(Float8E5M2)
+COMPUTE_INTERNAL_FL8(Float8E4M3FN)
+COMPUTE_INTERNAL_FL8(Float8E5M2)
 
 #define SPECIALIZE_IMPL(T) \
   REGISTER_KERNEL_TYPED(T) \

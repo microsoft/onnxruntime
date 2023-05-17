@@ -26,19 +26,27 @@
 using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;
 
+TensorProto ToTensorInitialize(TensorProto_DataType datatype) {
+  TensorProto t;
+  t.clear_int32_data();
+  t.set_data_type(datatype);
+  return t;
+}
+
+TensorProto ToTensorGeneric(TensorProto_DataType datatype, int32_t value) {
+  TensorProto t = ToTensorInitialize(datatype);
+  t.add_int32_data(value);
+  return t;
+}
+
 #define TO_TENSOR_ORT_TYPE(TYPE, DATATYPE)                                                \
   template <>                                                                             \
   TensorProto ToTensor<onnxruntime::TYPE>(const onnxruntime::TYPE& value) {               \
-    TensorProto t;                                                                        \
-    t.set_data_type(DATATYPE);                                                            \
-    t.add_int32_data(value.val);                                                          \
-    return t;                                                                             \
+    return ToTensorGeneric(DATATYPE, value.val);                                          \
   }                                                                                       \
   template <>                                                                             \
   TensorProto ToTensor<onnxruntime::TYPE>(const std::vector<onnxruntime::TYPE>& values) { \
-    TensorProto t;                                                                        \
-    t.clear_int32_data();                                                                 \
-    t.set_data_type(DATATYPE);                                                            \
+    TensorProto t = ToTensorInitialize(datatype);                                         \
     for (const onnxruntime::TYPE& val : values) {                                         \
       t.add_int32_data(val.val);                                                          \
     }                                                                                     \

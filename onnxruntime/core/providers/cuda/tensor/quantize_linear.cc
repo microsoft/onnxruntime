@@ -33,8 +33,6 @@ CudaQuantizeLinearAxis(cudaStream_t stream, const U* input, T* output, const U* 
   return CudaQuantizeLinearAxisStd(stream, input, output, scale, zero_point, num_of_element, batch_size, n_scales);
 }
 
-#define _(T) typeid(T).name()
-
 template <class T, class U>
 Status QuantizeLinear<T, U>::ComputeInternal(OpKernelContext* ctx) const {
   typedef typename ToCudaType<U>::MappedType CudaU;
@@ -62,10 +60,11 @@ Status QuantizeLinear<T, U>::ComputeInternal(OpKernelContext* ctx) const {
     return Status::OK();
   } else {
     ORT_ENFORCE(y_scale.Shape().NumDimensions() == 1);
-    ORT_ENFORCE(y_zero_point == nullptr || (y_scale.Shape().Size() == y_zero_point->Shape().Size()), "scale and zero_point must have the same shape.");
+    ORT_ENFORCE(y_zero_point == nullptr || (y_scale.Shape().Size() == y_zero_point->Shape().Size() &&
+                                            y_zero_point->Shape().NumDimensions() == 1),
+                "scale and zero_point must have the same shape.");
     ORT_ENFORCE(x_shape.NumDimensions() > 1);
-    int64_t axis = axis_ >= static_cast<int64_t>(0) ? axis_ : axis_ + x_shape.NumDimensions();
-    ORT_ENFORCE(axis >= static_cast<int64_t>(0) && axis < static_cast<int64_t>(x_shape.Size()));
+    int64_t axis = HandleNegativeAxis(axis_, x_shape.NumDimensions());
     ORT_ENFORCE(y_scale.Shape().Size() == x_shape[axis], "scale must have ", x_shape[axis], " elements (axis=", axis, ").");
 
     const T* zero_point = y_zero_point != nullptr ? y_zero_point->Data<T>() : nullptr;
@@ -117,9 +116,6 @@ Status DequantizeLinear<T, U>::ComputeInternal(OpKernelContext* ctx) const {
   auto& y = *ctx->Output(0, x_shape);
 
   const T* input = x.Data<T>();
-  if (!y.IsDataType<U>()) {
-    ORT_THROW("Unexpected data type U=", typeid(U).name(), " GetElementType()=", y.GetElementType(), ".");
-  }
   CudaU* output = reinterpret_cast<CudaU*>(y.MutableData<U>());
 
   if (IsScalarOr1ElementVector(&y_scale)) {
@@ -134,10 +130,9 @@ Status DequantizeLinear<T, U>::ComputeInternal(OpKernelContext* ctx) const {
     return Status::OK();
   } else {
     ORT_ENFORCE(y_scale.Shape().NumDimensions() == 1);
-    ORT_ENFORCE(y_zero_point == nullptr || (y_scale.Shape().Size() == y_zero_point->Shape().Size()), "scale and zero_point must have the same shape.");
+    ORT_ENFORCE(y_zero_point == nullptr || (y_scale.Shape().Size() == y_zero_point->Shape().Size() && y_zero_point->Shape().NumDimensions() == 1), "scale and zero_point must have the same shape.");
     ORT_ENFORCE(x_shape.NumDimensions() > 1);
-    int64_t axis = axis_ >= static_cast<int64_t>(0) ? axis_ : axis_ + x_shape.NumDimensions();
-    ORT_ENFORCE(axis >= static_cast<int64_t>(0) && axis < static_cast<int64_t>(x_shape.Size()));
+    int64_t axis = HandleNegativeAxis(axis_, x_shape.NumDimensions());
     ORT_ENFORCE(y_scale.Shape().Size() == x_shape[axis], "scale must have ", x_shape[axis], " elements (axis=", axis, ").");
 
     const T* zero_point = y_zero_point != nullptr ? y_zero_point->Data<T>() : nullptr;

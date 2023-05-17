@@ -134,7 +134,7 @@ ParQuantizeLinearSat(const float* Input,
                      OutputFloat8Type* Output,
                      size_t N,
                      float Scale,
-                     const OutputFloat8Type& /* ZeroPoint */,
+                     const OutputFloat8Type& /* ORT_UNUSED_PARAMETER(ZeroPoint) */,
                      bool saturate,
                      concurrency::ThreadPool* thread_pool) {
   constexpr std::ptrdiff_t block_size = 128;

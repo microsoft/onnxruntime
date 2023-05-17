@@ -211,9 +211,7 @@ class CUDAExecutionProvider : public IExecutionProvider {
     std::unique_ptr<cuda::IConstantBuffer<half>> constant_ones_half_;
     std::unique_ptr<cuda::IConstantBuffer<BFloat16>> constant_ones_bfloat16_;
     std::unique_ptr<cuda::IConstantBuffer<Float8E4M3FN>> constant_ones_float8e4m3fn_;
-    std::unique_ptr<cuda::IConstantBuffer<Float8E4M3FNUZ>> constant_ones_float8e4m3fnuz_;
     std::unique_ptr<cuda::IConstantBuffer<Float8E5M2>> constant_ones_float8e5m2_;
-    std::unique_ptr<cuda::IConstantBuffer<Float8E5M2FNUZ>> constant_ones_float8e5m2fnuz_;
 
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 10000
     // Cuda graph with multi threads will be supported in the future, so cuda_graph_
