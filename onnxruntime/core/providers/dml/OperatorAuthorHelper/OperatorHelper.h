@@ -1571,6 +1571,10 @@ using ShapeInferenceHelper_Mod = GetBroadcastedOutputShapeHelper;
 using ShapeInferenceHelper_BitShift= GetBroadcastedOutputShapeHelper;
 using ShapeInferenceHelper_Round = GetBroadcastedOutputShapeHelper;
 using ShapeInferenceHelper_QuickGelu = GetOutputShapeAsInputShapeHelper;
+using ShapeInferenceHelper_BitwiseAnd = GetBroadcastedOutputShapeHelper;
+using ShapeInferenceHelper_BitwiseOr = GetBroadcastedOutputShapeHelper;
+using ShapeInferenceHelper_BitwiseXor = GetBroadcastedOutputShapeHelper;
+using ShapeInferenceHelper_BitwiseNot = GetBroadcastedOutputShapeHelper;
 
 using ShapeInferenceHelper_ReduceSum = ReduceHelper;
 using ShapeInferenceHelper_ReduceMean = ReduceHelper;

@@ -400,6 +400,10 @@ namespace OperatorHelper
         static const int sc_sinceVer_ReduceMin = 18;
         static const int sc_sinceVer_ReduceProd = 18;
         static const int sc_sinceVer_ReduceSumSquare = 18;
+        static const int sc_sinceVer_BitwiseAnd = 18;
+        static const int sc_sinceVer_BitwiseOr = 18;
+        static const int sc_sinceVer_BitwiseXor = 18;
+        static const int sc_sinceVer_BitwiseNot = 18;
         static const int sc_sinceVer_Split = 18;
     }
 
