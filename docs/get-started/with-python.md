@@ -251,10 +251,6 @@ If using pip, run pip install `--upgrade pip` prior to downloading.
 
 For Python compiler version notes, see [this page](https://github.com/microsoft/onnxruntime/tree/main/docs/Python_Dev_Notes.md)
 
-
-## Supported Versions
-Python 3.6 - 3.9
-
 ## Learn More
 - [Python Tutorials](../tutorials/api-basics)
 * [TensorFlow with ONNX Runtime](../tutorials/tf-get-started.md)
