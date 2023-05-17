@@ -1466,14 +1466,6 @@ ProviderOptions GetProviderInfo_Cuda(const OrtCUDAProviderOptionsV2* provider_op
   return s_library_cuda.Get().GetProviderOptions(reinterpret_cast<const void*>(provider_options));
 }
 
-void UpdateProviderInfo_Rocm(OrtROCMProviderOptions* provider_options, const ProviderOptions& options) {
-  return s_library_rocm.Get().UpdateProviderOptions(reinterpret_cast<void*>(provider_options), options);
-}
-
-ProviderOptions GetProviderInfo_Rocm(const OrtROCMProviderOptions* provider_options) {
-  return s_library_rocm.Get().GetProviderOptions(reinterpret_cast<const void*>(provider_options));
-}
-
 }  // namespace onnxruntime
 
 ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_Dnnl, _In_ OrtSessionOptions* options, int use_arena) {
@@ -2103,17 +2095,19 @@ ORT_API(void, OrtApis::ReleaseDnnlProviderOptions, _Frees_ptr_opt_ OrtDnnlProvid
 ORT_API_STATUS_IMPL(OrtApis::CreateROCMProviderOptions, _Outptr_ OrtROCMProviderOptions** out) {
   API_IMPL_BEGIN
 #ifdef USE_ROCM
-  *out = std::make_unique<OrtROCMProviderOptions>().release();
-  (*out)->device_id = 0;
-  (*out)->miopen_conv_exhaustive_search = 0;
-  (*out)->gpu_mem_limit = std::numeric_limits<size_t>::max();
-  (*out)->arena_extend_strategy = 0;
-  (*out)->do_copy_in_default_stream = 1;
-  (*out)->has_user_compute_stream = 0;
-  (*out)->user_compute_stream = nullptr;
-  (*out)->default_memory_arena_cfg = nullptr;
-  (*out)->tunable_op_enable = 0;
-  (*out)->tunable_op_tuning_enable = 0;
+  auto options = std::make_unique<OrtROCMProviderOptions>();
+  options->device_id = 0;
+  options->miopen_conv_exhaustive_search = 0;
+  options->gpu_mem_limit = std::numeric_limits<size_t>::max();
+  options->arena_extend_strategy = 0;
+  options->do_copy_in_default_stream = 1;
+  options->has_user_compute_stream = 0;
+  options->user_compute_stream = nullptr;
+  options->default_memory_arena_cfg = nullptr;
+  options->tunable_op_enable = 0;
+  options->tunable_op_tuning_enable = 0;
+
+  *out = options.release();
   return nullptr;
 #else
   ORT_UNUSED_PARAMETER(out);
@@ -2139,15 +2133,14 @@ ORT_API_STATUS_IMPL(OrtApis::UpdateROCMProviderOptions,
     provider_options_map[provider_options_keys[i]] = provider_options_values[i];
   }
 
-  onnxruntime::UpdateProviderInfo_Rocm(rocm_options,
-                                       reinterpret_cast<const onnxruntime::ProviderOptions&>(provider_options_map));
+  onnxruntime::s_library_rocm.Get().UpdateProviderOptions(rocm_options, provider_options_map);
   return nullptr;
 #else
   ORT_UNUSED_PARAMETER(rocm_options);
   ORT_UNUSED_PARAMETER(provider_options_keys);
   ORT_UNUSED_PARAMETER(provider_options_values);
   ORT_UNUSED_PARAMETER(num_keys);
-  return CreateStatus(ORT_FAIL, "CUDA execution provider is not enabled in this build.");
+  return CreateStatus(ORT_FAIL, "ROCm execution provider is not enabled in this build.");
 #endif
   API_IMPL_END
 }
@@ -2156,9 +2149,9 @@ ORT_API_STATUS_IMPL(OrtApis::GetROCMProviderOptionsAsString, _In_ const OrtROCMP
                     _Inout_ OrtAllocator* allocator, _Outptr_ char** ptr) {
   API_IMPL_BEGIN
 #ifdef USE_ROCM
-  onnxruntime::ProviderOptions options = onnxruntime::GetProviderInfo_Rocm(rocm_options);
+  onnxruntime::ProviderOptions options = onnxruntime::s_library_rocm.Get().GetProviderOptions(rocm_options);
   onnxruntime::ProviderOptions::iterator it = options.begin();
-  std::string options_str = "";
+  std::string options_str;
 
   while (it != options.end()) {
     if (options_str == "") {

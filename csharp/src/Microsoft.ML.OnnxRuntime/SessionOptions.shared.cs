@@ -163,8 +163,16 @@ namespace Microsoft.ML.OnnxRuntime
         {
             CheckRocmExecutionProviderDLLs();
             SessionOptions options = new SessionOptions();
-            options.AppendExecutionProvider_ROCm(deviceId);
-            return options;
+            try
+            {
+                options.AppendExecutionProvider_ROCm(deviceId);
+                return options;
+            }
+            catch (Exception)
+            {
+                options.Dispose();
+                throw;
+            }
         }
 
         /// <summary>
@@ -434,10 +442,10 @@ namespace Microsoft.ML.OnnxRuntime
         /// Loads a DLL named 'libraryPath' and looks for this entry point:
         ///   OrtStatus* RegisterCustomOps(OrtSessionOptions* options, const OrtApiBase* api);
         /// It then passes in the provided session options to this function along with the api base.
-        /// 
-        /// Prior to v1.15 this leaked the library handle and RegisterCustomOpLibraryV2 
-        /// was added to resolve that. 
-        /// 
+        ///
+        /// Prior to v1.15 this leaked the library handle and RegisterCustomOpLibraryV2
+        /// was added to resolve that.
+        ///
         /// From v1.15 on ONNX Runtime will manage the lifetime of the handle.
         /// </summary>
         /// <param name="libraryPath">path to the custom op library</param>
@@ -472,13 +480,13 @@ namespace Microsoft.ML.OnnxRuntime
             //   SessionOptions.RegisterCustomOpLibrary calls NativeMethods.OrtRegisterCustomOpsLibrary_V2
             //   SessionOptions.RegisterCustomOpLibraryV2 calls NativeMethods.OrtRegisterCustomOpsLibrary
             var utf8Path = NativeOnnxValueHelper.StringToZeroTerminatedUtf8(libraryPath);
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtRegisterCustomOpsLibrary(handle, utf8Path, 
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtRegisterCustomOpsLibrary(handle, utf8Path,
                                                                                     out libraryHandle));
         }
 
         /// <summary>
         /// Register the custom operators from the Microsoft.ML.OnnxRuntime.Extensions NuGet package.
-        /// A reference to Microsoft.ML.OnnxRuntime.Extensions must be manually added to your project. 
+        /// A reference to Microsoft.ML.OnnxRuntime.Extensions must be manually added to your project.
         /// </summary>
         /// <exception cref="OnnxRuntimeException">Throws if the extensions library is not found.</exception>
         public void RegisterOrtExtensions()
