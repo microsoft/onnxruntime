@@ -195,6 +195,7 @@ TEST_F(QnnCPUBackendTests, TestCPUConvf32_bias_initializer) {
 }
 
 // large input,output, pads
+// TODO: re-enable tests once Padding issues are resolved
 TEST_F(QnnCPUBackendTests, DISABLED_TestCPUConvf32_large_input1_pad_bias_initializer) {
   RunCPUConvOpTest({1, 3, 60, 452}, {16, 3, 3, 3}, true, {1, 1}, {1, 1, 1, 1}, {1, 1}, "NOTSET", ExpectedEPNodeAssignment::All, "TestCPUConvf32_large_input1_pad_bias_initializer");
 }
@@ -219,6 +220,7 @@ TEST_F(QnnHTPBackendTests, TestQDQConvU8U8S32_bias_initializer) {
                                                        "TestQDQConvU8U8S32_bias_initializer");
 }
 
+// TODO: re-enable tests once HTP issues are resolved
 TEST_F(QnnHTPBackendTests, DISABLED_TestQDQConvU8U8S32_large_input1_padding_bias_initializer) {
   RunHTPConvOpTest<uint8_t, uint8_t, int32_t, uint8_t>({1, 3, 60, 452}, {16, 3, 3, 3}, true, {1, 1}, {1, 1, 1, 1}, {1, 1}, "NOTSET", ExpectedEPNodeAssignment::All,
                                                        "TestQDQConvU8U8S32_large_input1_padding_bias_initializer");
