@@ -26,6 +26,7 @@ ONNX_OPERATOR_KERNEL_EX(
         .InputMemoryType(OrtMemTypeCPUInput, 6)    // 'repetition_penalty' needs to be on CPU
         .InputMemoryType(OrtMemTypeCPUInput, 9)    // 'attention_mask' needs to be on CPU
         .InputMemoryType(OrtMemTypeCPUInput, 10)   // 'decoder_input_ids' needs to be on CPU
+        .InputMemoryType(OrtMemTypeCPUInput, 11)   // 'logits_processor' needs to be on CPU
         .OutputMemoryType(OrtMemTypeCPUOutput, 0)  // 'sequences' output on CPU
         .InputMemoryType(OrtMemTypeCPUInput, 11)   // 'logits_processor' needs to be on CPU
         .OutputMemoryType(OrtMemTypeCPUOutput, 1)  // 'sequences_scores' output on CPU
@@ -55,7 +56,9 @@ BeamSearch::BeamSearch(const OpKernelInfo& info)
                                   GenerationCudaDeviceHelper::UpdateDecoderFeeds<MLFloat16>,
                                   GenerationCudaDeviceHelper::ExpandBuffer<int32_t>,
                                   GenerationCudaDeviceHelper::ExpandBuffer<float>,
-                                  GenerationCudaDeviceHelper::ExpandBuffer<MLFloat16>);
+                                  GenerationCudaDeviceHelper::ExpandBuffer<MLFloat16>,
+                                  GenerationCudaDeviceHelper::UpdateDecoderCrossQK,
+                                  GenerationCudaDeviceHelper::FinalizeDecoderCrossQK);
 
   SetConsoleDumper(&g_cuda_dumper);
 
