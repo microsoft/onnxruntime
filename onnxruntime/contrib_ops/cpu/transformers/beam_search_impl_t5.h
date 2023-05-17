@@ -11,7 +11,6 @@
 
 namespace onnxruntime {
 namespace contrib {
-
 namespace transformers {
 
 // Beam search implementation for T5 model.
@@ -99,7 +98,9 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
   auto status = Status::OK();
 
   const BeamSearchParameters* parameters = this->parameters_;
-  ORT_ENFORCE(parameters->sequence_length == 1);
+  if (parameters->model_type == IGenerationParameters::kModelTypeT5) {
+    ORT_ENFORCE(parameters->sequence_length == 1);
+  }
 
   // Allocate output tensors.
   int64_t sequences_dims[] = {parameters->batch_size, parameters->num_return_sequences, parameters->max_length};
@@ -136,6 +137,7 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
                                this->IsCuda()};
 
   IAllocatorUniquePtr<char> buffer;
+
   OrtValue decoder_input_ids;  // Tensor in CPU, and it will be used to initialize sequence in cpu_state
   ORT_RETURN_IF_ERROR(this->encoder_subgraph_.CreateInitialFeeds(
       encoder_input_ids,

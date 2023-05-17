@@ -19,6 +19,10 @@
 #include "orttraining/training_ops/cuda/cuda_training_kernels.h"
 #endif
 
+#ifdef USE_TRITON_KERNEL
+#include "core/providers/cuda/triton_kernel.h"
+#endif
+
 #include "core/providers/cuda/cuda_stream_handle.h"
 
 using namespace onnxruntime::common;
@@ -267,6 +271,10 @@ CUDAExecutionProvider::CUDAExecutionProvider(const CUDAExecutionProviderInfo& in
   CUDA_CALL_THROW(cudaMemGetInfo(&free, &total));
 
   OverrideTunableOpInfoByEnv(info_);
+
+#ifdef USE_TRITON_KERNEL
+  onnxruntime::cuda::LoadOrtTritonKernel();
+#endif
 }
 
 CUDAExecutionProvider::~CUDAExecutionProvider() {
@@ -2532,9 +2540,8 @@ void CUDAExecutionProvider::RegisterStreamHandlers(IStreamCommandHandleRegistry&
 }
 
 OrtDevice CUDAExecutionProvider::GetOrtDeviceByMemType(OrtMemType mem_type) const {
-  if (mem_type == OrtMemTypeCPUInput || mem_type == OrtMemTypeCPUOutput) {
-    return OrtDevice(OrtDevice::CPU, OrtDevice::MemType::CUDA_PINNED, 0 /*CPU device id always be 0*/);
-  }
+  if (mem_type == OrtMemTypeCPUInput) return OrtDevice();
+  if (mem_type == OrtMemTypeCPUOutput) return OrtDevice(OrtDevice::CPU, OrtDevice::MemType::CUDA_PINNED, 0 /*CPU device id always be 0*/);
   return default_device_;
 }
 

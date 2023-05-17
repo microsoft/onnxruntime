@@ -64,6 +64,7 @@ namespace AttrName
     static constexpr const char* NewAxis = "new_axis";
     static constexpr const char* NoopWithEmptyAxes = "noop_with_empty_axes";
     static constexpr const char* NormalizeVariance = "normalize_variance";
+    static constexpr const char* NumOutputs = "num_outputs";
     static constexpr const char* P = "p";
     static constexpr const char* PaddingMode = "padding_mode";
     static constexpr const char* OutputHeight = "output_height";
