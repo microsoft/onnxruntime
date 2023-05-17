@@ -10,6 +10,7 @@ from benchmark_helper import Precision  # noqa: E402
 from convert_generation import (  # noqa: E402
     get_shared_initializers,
     update_decoder_subgraph_share_buffer_and_use_decoder_masked_mha,
+    update_decoder_subgraph_output_cross_attention
 )
 
 
@@ -42,7 +43,11 @@ def chain_model(args):
 
     if args.use_logits_processor:
         beam_inputs.append("logits_processor")
+    if args.output_cross_qk:
+        beam_inputs.append("cross_qk_layer_head")
     beam_outputs = ["sequences"]
+    if args.output_cross_qk:
+        beam_outputs.extend(["", "", "cross_qk"])
 
     node = helper.make_node("BeamSearch", inputs=beam_inputs, outputs=beam_outputs, name="BeamSearch_zcode")
     node.domain = "com.microsoft"
@@ -56,6 +61,8 @@ def chain_model(args):
             helper.make_attribute("model_type", 2),
         ]
     )
+    if args.output_cross_qk:
+        node.attribute.extend([helper.make_attribute("decoder_output_cross_qk", 1)])
 
     # beam graph inputs
     float_data_type = TensorProto.FLOAT
@@ -90,18 +97,30 @@ def chain_model(args):
     if args.use_logits_processor:
         logits_processor = helper.make_tensor_value_info("logits_processor", TensorProto.INT32, [1])
         graph_inputs.append(logits_processor)
+    if args.output_cross_qk:
+        cross_qk_layer_head = helper.make_tensor_value_info(
+            "cross_qk_layer_head", TensorProto.INT32, ["num_layer_head_cross_qk", 2]
+        )
+        graph_inputs.append(cross_qk_layer_head)
 
     # graph outputs
     sequences = helper.make_tensor_value_info(
         "sequences", TensorProto.INT32, ["batch_size", "num_return_sequences", "max_length"]
     )
     graph_outputs = [sequences]
+    if args.output_cross_qk:
+        cross_qk = helper.make_tensor_value_info(
+            "cross_qk", float_data_type, ["batch_size", "num_return_sequences", "num_layer_head_cross_qk", "max_length", "frames"]
+        )
+        graph_outputs.extend([cross_qk])
 
     if hasattr(args, "use_gpu") and args.use_gpu:
         if update_decoder_subgraph_share_buffer_and_use_decoder_masked_mha(decoder_model.graph):
             print("*****update whisper decoder subgraph successfully!!!*****")
         else:
             print("*****DecoderMaskedMultiHeadAttention is not applied to whisper decoder*****")
+        if hasattr(args, "output_cross_qk") and args.output_cross_qk:
+            update_decoder_subgraph_output_cross_attention(decoder_model.graph)
 
     # Initializers/opsets
     # Delete shared data between decoder/encoder and move to larger graph initializers
