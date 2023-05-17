@@ -8,7 +8,7 @@ x) BUILD_EXTR_PAR=${OPTARG};;
 esac
 done
 
-if [ $BUILD_EXTR_PAR = "-d AZURE" ]; then
+if [ $BUILD_EXTR_PAR == "-d AZURE" ]; then
     ADDITIONAL_DOCKER_PARAMETER="${ADDITIONAL_DOCKER_PARAMETER} -u root"
 fi
 
