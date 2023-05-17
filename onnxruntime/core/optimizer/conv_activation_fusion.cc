@@ -18,7 +18,7 @@
 namespace onnxruntime {
 
 namespace {
-// #define MLAS_F16VEC_INTRINSICS_SUPPORTED
+
 #if !defined(ORT_MINIMAL_BUILD)
 namespace selectors {
 const Node* GetLoneConsumerNode(const GraphViewer& graph_viewer, const Node& node) {
@@ -67,7 +67,6 @@ bool ConvFusionDataTypeCheck(const Node& conv_node, bool support_fp16) {
     if (!HasElementDataType(*conv_node.InputDefs()[0], ONNX_NAMESPACE::TensorProto_DataType_FLOAT)) {
       return false;
     }
-#endif  // MLAS_F16VEC_INTRINSICS_SUPPORTED
   }
 
   return true;
@@ -180,7 +179,7 @@ class ConvAddRelu : public NodeSelector {
 namespace actions {
 using NTO = NodesToOptimize;
 
-class FuseConvActivation : public ReplaceWithNew {
+class FuseConvActivationAction : public ReplaceWithNew {
  private:
   std::string OpType(const RuntimeState&) const override { return "FusedConv"; }
 
@@ -266,9 +265,9 @@ class FuseConvAddRelu : public ReplaceWithNew {
 
 void RegisterConvActivationFusionRules(SelectorActionRegistry& registry, bool support_fp16 = false) {
   const auto name = "ConvAct";
-  auto action = std::make_unique<actions::FuseConvActivation>();
+  auto action = std::make_unique<actions::FuseConvActivationAction>();
 #if !defined(ORT_MINIMAL_BUILD)
-  auto selector = std::make_unique<selectors::ConvActivation>(support_fp16);
+  auto selector = std::make_unique<selectors::ConvActivationSelector>(support_fp16);
   registry.RegisterSelectorAndAction(name, {{"Conv", {1, 11}}},
                                      std::move(selector), std::move(action));
 #else

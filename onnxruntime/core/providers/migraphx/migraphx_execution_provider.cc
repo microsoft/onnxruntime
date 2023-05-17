@@ -451,15 +451,6 @@ static bool IsUnsupportedOpMode(const onnxruntime::GraphViewer& graph_viewer, co
       }
     }
 
-    const auto& args = node->InputDefs();
-    if (args.size() > 1) {
-      std::vector<std::size_t> indices(args.size() - 1);
-      std::iota(indices.begin(), indices.end(), 1);
-      if (canEvalNodeArgument(graph_viewer, node, indices, input_nodes)) {
-        return false;
-      }
-      return true;
-    }
   } else if (optype == "ReduceSum") {
     const auto& args = node->InputDefs();
     if (args.size() == 2) {
@@ -952,8 +943,15 @@ bool get_input_output_names(const GraphViewer& graph,
     if (sptr == nullptr)
       return true;
 
-    auto dim_size = sptr->dim_size();
-    return (dim_size == 0);
+    if (sptr->dim_size() == 0)
+      return true;
+
+    for (int i = 0; i < sptr->dim_size(); i++) {
+      if (sptr->dim(i).has_dim_param())
+        return true;
+    }
+
+    return false;
   });
 
   const auto& out_args = graph.GetOutputs();
@@ -1002,7 +1000,7 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
     }
 
     std::vector<std::string> input_names, output_names;
-    no_input_shape = no_input_shape or get_input_output_names(graph_body_viewer, input_names, output_names);
+    no_input_shape = get_input_output_names(graph_body_viewer, input_names, output_names);
 
     // by parsing the model_proto, create a program corresponding to
     // the input fused_node
@@ -1209,9 +1207,8 @@ void MIGraphXExecutionProvider::RegisterStreamHandlers(IStreamCommandHandleRegis
 }
 
 OrtDevice MIGraphXExecutionProvider::GetOrtDeviceByMemType(OrtMemType mem_type) const {
-  if (mem_type == OrtMemTypeCPUInput || mem_type == OrtMemTypeCPUOutput) {
-    return OrtDevice(OrtDevice::CPU, OrtDevice::MemType::HIP_PINNED, default_device_.Id());
-  }
+  if (mem_type == OrtMemTypeCPUInput) return OrtDevice();
+  if (mem_type == OrtMemTypeCPUOutput) return OrtDevice(OrtDevice::CPU, OrtDevice::MemType::HIP_PINNED, 0 /*CPU device id always be 0*/);
   return default_device_;
 }
 #ifdef MIGRAPHX_STREAM_SYNC

@@ -147,6 +147,9 @@ endif()
 if (onnxruntime_USE_XNNPACK)
   set(PROVIDERS_XNNPACK onnxruntime_providers_xnnpack)
 endif()
+if(onnxruntime_USE_WEBNN)
+  set(PROVIDERS_WEBNN onnxruntime_providers_webnn)
+endif()
 if(onnxruntime_USE_SNPE)
     include(onnxruntime_snpe_provider.cmake)
 endif()
@@ -495,6 +498,18 @@ if (onnxruntime_USE_CUDA)
   if(onnxruntime_CUDNN_HOME)
     target_include_directories(onnxruntime_providers_cuda PRIVATE ${onnxruntime_CUDNN_HOME}/include)
     target_link_directories(onnxruntime_providers_cuda PRIVATE ${onnxruntime_CUDNN_HOME}/lib)
+  endif()
+
+  if (onnxruntime_USE_TRITON_KERNEL)
+    # compile triton kernel, generate .a and .h files
+    include(onnxruntime_compile_triton_kernel.cmake)
+    compile_triton_kernel(triton_kernel_obj_file triton_kernel_header_dir)
+    add_dependencies(onnxruntime_providers_cuda onnxruntime_triton_kernel)
+    target_compile_definitions(onnxruntime_providers_cuda PRIVATE USE_TRITON_KERNEL)
+    target_include_directories(onnxruntime_providers_cuda PRIVATE ${triton_kernel_header_dir})
+    target_link_libraries(onnxruntime_providers_cuda PUBLIC -Wl,--whole-archive ${triton_kernel_obj_file} -Wl,--no-whole-archive)
+    # lib cuda needed by cuLaunchKernel
+    target_link_libraries(onnxruntime_providers_cuda PRIVATE cuda)
   endif()
 
   if (onnxruntime_USE_FLASH_ATTENTION)
@@ -1005,6 +1020,31 @@ if (onnxruntime_USE_COREML)
             RUNTIME   DESTINATION ${CMAKE_INSTALL_BINDIR}
             FRAMEWORK DESTINATION ${CMAKE_INSTALL_BINDIR})
   endif()
+endif()
+
+if (onnxruntime_USE_WEBNN)
+  if (onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_EXTENDED_MINIMAL_BUILD)
+    message(FATAL_ERROR "WebNN EP can not be used in a basic minimal build. Please build with '--minimal_build extended'")
+  endif()
+
+  add_compile_definitions(USE_WEBNN=1)
+  if (onnxruntime_ENABLE_WEBASSEMBLY_THREADS)
+    add_definitions(-DENABLE_WEBASSEMBLY_THREADS=1)
+  endif()
+  file(GLOB_RECURSE onnxruntime_providers_webnn_cc_srcs CONFIGURE_DEPENDS
+    "${ONNXRUNTIME_ROOT}/core/providers/webnn/*.h"
+    "${ONNXRUNTIME_ROOT}/core/providers/webnn/*.cc"
+    "${ONNXRUNTIME_ROOT}/core/providers/shared/utils/utils.h"
+    "${ONNXRUNTIME_ROOT}/core/providers/shared/utils/utils.cc"
+  )
+
+  source_group(TREE ${REPO_ROOT} FILES ${onnxruntime_providers_webnn_cc_srcs})
+  onnxruntime_add_static_library(onnxruntime_providers_webnn ${onnxruntime_providers_webnn_cc_srcs})
+  onnxruntime_add_include_to_target(onnxruntime_providers_webnn onnxruntime_common onnx onnx_proto Boost::mp11)
+
+  add_dependencies(onnxruntime_providers_webnn onnx ${onnxruntime_EXTERNAL_DEPENDENCIES})
+  set_target_properties(onnxruntime_providers_webnn PROPERTIES FOLDER "ONNXRuntime")
+  set_target_properties(onnxruntime_providers_webnn PROPERTIES LINKER_LANGUAGE CXX)
 endif()
 
 if (onnxruntime_USE_NNAPI_BUILTIN)
@@ -1562,7 +1602,6 @@ if (onnxruntime_USE_ROCM)
     PUBLIC
       ${onnxruntime_ROCM_HOME}/include
       ${onnxruntime_ROCM_HOME}/include/roctracer)
-  install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/rocm  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers)
 
   set_target_properties(onnxruntime_providers_rocm PROPERTIES LINKER_LANGUAGE CXX)
   set_target_properties(onnxruntime_providers_rocm PROPERTIES FOLDER "ONNXRuntime")
@@ -1590,6 +1629,16 @@ if (onnxruntime_USE_ROCM)
     find_package(hipblaslt REQUIRED)
     target_link_libraries(onnxruntime_providers_rocm PRIVATE roc::hipblaslt)
     target_compile_definitions(onnxruntime_providers_rocm PRIVATE USE_HIPBLASLT)
+  endif()
+
+  if (onnxruntime_USE_TRITON_KERNEL)
+    # compile triton kernel, generate .a and .h files
+    include(onnxruntime_compile_triton_kernel.cmake)
+    compile_triton_kernel(triton_kernel_obj_file triton_kernel_header_dir)
+    add_dependencies(onnxruntime_providers_rocm onnxruntime_triton_kernel)
+    target_compile_definitions(onnxruntime_providers_rocm PRIVATE USE_TRITON_KERNEL)
+    target_include_directories(onnxruntime_providers_rocm PRIVATE ${triton_kernel_header_dir})
+    target_link_libraries(onnxruntime_providers_rocm PUBLIC -Wl,--whole-archive ${triton_kernel_obj_file} -Wl,--no-whole-archive)
   endif()
 
   if (onnxruntime_USE_COMPOSABLE_KERNEL)

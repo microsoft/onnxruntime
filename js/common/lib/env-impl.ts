@@ -4,15 +4,14 @@
 import {Env} from './env';
 
 type LogLevelType = Env['logLevel'];
-export class EnvImpl implements Env {
-  constructor() {
-    this.wasm = {};
-    this.webgl = {};
-    this.webgpu = {};
-    this.logLevelInternal = 'warning';
-  }
 
-  // TODO standadize the getter and setter convention in env for other fields.
+let logLevelValue: Required<LogLevelType> = 'warning';
+
+export const env: Env = {
+  wasm: {} as Env.WebAssemblyFlags,
+  webgl: {} as Env.WebGLFlags,
+  webgpu: {} as Env.WebGpuFlags,
+
   set logLevel(value: LogLevelType) {
     if (value === undefined) {
       return;
@@ -20,19 +19,12 @@ export class EnvImpl implements Env {
     if (typeof value !== 'string' || ['verbose', 'info', 'warning', 'error', 'fatal'].indexOf(value) === -1) {
       throw new Error(`Unsupported logging level: ${value}`);
     }
-    this.logLevelInternal = value;
-  }
-  get logLevel(): LogLevelType {
-    return this.logLevelInternal;
-  }
+    logLevelValue = value;
+  },
+  get logLevel(): Required<LogLevelType> {
+    return logLevelValue;
+  },
+};
 
-  debug?: boolean;
-
-  wasm: Env.WebAssemblyFlags;
-  webgl: Env.WebGLFlags;
-  webgpu: Env.WebGpuFlags;
-
-  [name: string]: unknown;
-
-  private logLevelInternal: Required<LogLevelType>;
-}
+// set property 'logLevel' so that they can be correctly transferred to worker by `postMessage()`.
+Object.defineProperty(env, 'logLevel', {enumerable: true});

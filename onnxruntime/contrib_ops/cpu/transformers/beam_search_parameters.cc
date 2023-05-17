@@ -31,15 +31,30 @@ void BeamSearchParameters::ParseFromInputs(OpKernelContext* context) {
   ORT_ENFORCE(context != nullptr);
   const Tensor* input_ids = context->Input<Tensor>(0);
   const auto& dims = input_ids->Shape().GetDims();
+  int initial_decode_sequence_length = 0;
   if (this->model_type == IGenerationParameters::kModelTypeWhisper) {
     ORT_ENFORCE(dims.size() == 3, "input_features shall have 3 dimensions. Got ", dims.size());
+    const Tensor* decoder_input_ids = context->Input<Tensor>(10);
+    if (decoder_input_ids == nullptr) {
+      initial_decode_sequence_length = 1;
+    } else {
+      const auto& decoder_dims = decoder_input_ids->Shape().GetDims();
+      initial_decode_sequence_length = static_cast<int>(decoder_dims[1]);
+      ORT_ENFORCE(decoder_dims.size() == 2, "decoder_input_ids shall have 2 dimensions. Got ", decoder_dims.size());
+    }
   } else {
     ORT_ENFORCE(dims.size() == 2, "input_ids shall have 2 dimensions. Got ", dims.size());
   }
   batch_size = static_cast<int>(dims[0]);
 
-  // For T5, output sequence starts with decoder_start_token_id, so its sequence length is 1
-  sequence_length = (this->model_type == IGenerationParameters::kModelTypeGpt) ? static_cast<int>(dims[1]) : 1;
+  if (this->model_type == IGenerationParameters::kModelTypeGpt) {
+    sequence_length = static_cast<int>(dims[1]);
+  } else if (this->model_type == IGenerationParameters::kModelTypeWhisper) {
+    sequence_length = initial_decode_sequence_length;
+  } else {
+    // For T5, output sequence starts with decoder_start_token_id, so its sequence length is 1
+    sequence_length = 1;
+  }
 
   auto* max_length_tensor = context->Input<Tensor>(1);
   max_length = max_length_tensor ? static_cast<int>(*max_length_tensor->Data<int32_t>()) : kMaxSequenceLength;
@@ -86,6 +101,11 @@ void BeamSearchParameters::ParseFromInputs(OpKernelContext* context) {
     repetition_penalty = 1.0f;
   }
   ORT_ENFORCE(repetition_penalty > 0.0f, "repetition_penalty shall be greater than 0, got ", repetition_penalty);
+
+  auto* logits_processor_tensor = context->Input<Tensor>(11);
+  logits_processor = logits_processor_tensor ? static_cast<int>(*logits_processor_tensor->Data<int32_t>()) : 0;
+  ORT_ENFORCE(logits_processor >= 0,
+              "logits_processor shall be a non-negative integer, got ", logits_processor);
 }
 
 void BeamSearchParameters::SetSubgraphParameters(int vocabulary_size, int heads, int hidden_size_per_head, int layers) {
