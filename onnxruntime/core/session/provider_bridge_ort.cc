@@ -1711,23 +1711,7 @@ ORT_API_STATUS_IMPL(OrtApis::GetTensorRTProviderOptionsAsString, _In_ const OrtT
   API_IMPL_BEGIN
 #ifdef USE_TENSORRT
   onnxruntime::ProviderOptions options = onnxruntime::GetProviderInfo_Tensorrt(tensorrt_options);
-  onnxruntime::ProviderOptions::iterator it = options.begin();
-  std::string options_str = "";
-
-  while (it != options.end()) {
-    if (options_str == "") {
-      options_str += it->first;
-      options_str += "=";
-      options_str += it->second;
-    } else {
-      options_str += ";";
-      options_str += it->first;
-      options_str += "=";
-      options_str += it->second;
-    }
-    it++;
-  }
-
+  std::string options_str = BuildOptionsString(options.begin(), options.end());
   *ptr = onnxruntime::StrDup(options_str, allocator);
   return nullptr;
 #else
@@ -1836,28 +1820,26 @@ ORT_API_STATUS_IMPL(OrtApis::UpdateCUDAProviderOptions,
   API_IMPL_END
 }
 
+static std::string BuildOptionsString(const onnxruntime::ProviderOptions::iterator& begin,
+                                      const onnxruntime::ProviderOptions::iterator& end) {
+  std::ostringstream options;
+  auto it = begin;
+  if (it != end) {
+    options << it->first << "=" << it->second;
+    it++;
+  }
+  for (; it != end; it++) {
+    options << ";" << it->first << "=" << it->second;
+  }
+  return options.str();
+}
+
 ORT_API_STATUS_IMPL(OrtApis::GetCUDAProviderOptionsAsString, _In_ const OrtCUDAProviderOptionsV2* cuda_options, _Inout_ OrtAllocator* allocator,
                     _Outptr_ char** ptr) {
   API_IMPL_BEGIN
 #ifdef USE_CUDA
   onnxruntime::ProviderOptions options = onnxruntime::GetProviderInfo_Cuda(cuda_options);
-  onnxruntime::ProviderOptions::iterator it = options.begin();
-  std::string options_str = "";
-
-  while (it != options.end()) {
-    if (options_str == "") {
-      options_str += it->first;
-      options_str += "=";
-      options_str += it->second;
-    } else {
-      options_str += ";";
-      options_str += it->first;
-      options_str += "=";
-      options_str += it->second;
-    }
-    it++;
-  }
-
+  std::string options_str = BuildOptionsString(options.begin(), options.end());
   *ptr = onnxruntime::StrDup(options_str, allocator);
   return nullptr;
 #else
@@ -1956,23 +1938,7 @@ ORT_API_STATUS_IMPL(OrtApis::GetCANNProviderOptionsAsString,
 #ifdef USE_CANN
   onnxruntime::ProviderOptions options =
       onnxruntime::s_library_cann.Get().GetProviderOptions(reinterpret_cast<const void*>(cann_options));
-  onnxruntime::ProviderOptions::iterator it = options.begin();
-  std::string options_str = "";
-
-  while (it != options.end()) {
-    if (options_str == "") {
-      options_str += it->first;
-      options_str += "=";
-      options_str += it->second;
-    } else {
-      options_str += ";";
-      options_str += it->first;
-      options_str += "=";
-      options_str += it->second;
-    }
-    it++;
-  }
-
+  std::string options_str = BuildOptionsString(options.begin(), options.end());
   *ptr = onnxruntime::StrDup(options_str, allocator);
   return nullptr;
 #else
@@ -2056,23 +2022,7 @@ ORT_API_STATUS_IMPL(OrtApis::GetDnnlProviderOptionsAsString,
 #ifdef USE_DNNL
   onnxruntime::ProviderOptions options =
       onnxruntime::s_library_dnnl.Get().GetProviderOptions(reinterpret_cast<const void*>(dnnl_options));
-  onnxruntime::ProviderOptions::iterator it = options.begin();
-  std::string options_str = "";
-
-  while (it != options.end()) {
-    if (options_str == "") {
-      options_str += it->first;
-      options_str += "=";
-      options_str += it->second;
-    } else {
-      options_str += ";";
-      options_str += it->first;
-      options_str += "=";
-      options_str += it->second;
-    }
-    it++;
-  }
-
+  std::string options_str = BuildOptionsString(options.begin(), options.end());
   *ptr = onnxruntime::StrDup(options_str, allocator);
   return nullptr;
 #else
@@ -2150,23 +2100,7 @@ ORT_API_STATUS_IMPL(OrtApis::GetROCMProviderOptionsAsString, _In_ const OrtROCMP
   API_IMPL_BEGIN
 #ifdef USE_ROCM
   onnxruntime::ProviderOptions options = onnxruntime::s_library_rocm.Get().GetProviderOptions(rocm_options);
-  onnxruntime::ProviderOptions::iterator it = options.begin();
-  std::string options_str;
-
-  while (it != options.end()) {
-    if (options_str == "") {
-      options_str += it->first;
-      options_str += "=";
-      options_str += it->second;
-    } else {
-      options_str += ";";
-      options_str += it->first;
-      options_str += "=";
-      options_str += it->second;
-    }
-    it++;
-  }
-
+  std::string options_str = BuildOptionsString(options.begin(), options.end());
   *ptr = onnxruntime::StrDup(options_str, allocator);
   return nullptr;
 #else
