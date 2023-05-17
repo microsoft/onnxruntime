@@ -180,6 +180,8 @@ class GraphExecutionManager(GraphExecutionInterface):
         # Memory-aware gradient builder.
         self._use_memory_efficient_gradient = False
 
+        self._compress_sparse_gradient = True
+
         # Enable compute optimizer by default. Allowed to be disabled via an environment variable for
         # convergence parity investigation.
         self._enable_compute_optimizer = (
@@ -495,6 +497,7 @@ class GraphExecutionManager(GraphExecutionInterface):
             self._debug_options.logging.log_level
         )
         grad_builder_config.use_memory_efficient_gradient = self._use_memory_efficient_gradient
+        grad_builder_config.compress_sparse_gradient = self._compress_sparse_gradient
         self._graph_builder = C.OrtModuleGraphBuilder()
 
         # It is assumed here that the order and names of the inputs and outputs are not modified by the backend in any way

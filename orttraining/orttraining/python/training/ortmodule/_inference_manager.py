@@ -138,6 +138,9 @@ class InferenceManager(GraphExecutionManager):
                 ),
             )
 
+            self._rt_inspector.memory_ob.inspect_memory("fw_ends")
+            self._rt_inspector.memory_ob.increase_step()
+
             return _io.unflatten_user_output(self._module_output_schema, user_outputs)
         except ORTModuleFallbackException as e:
             # Exceptions subject to fallback are handled here

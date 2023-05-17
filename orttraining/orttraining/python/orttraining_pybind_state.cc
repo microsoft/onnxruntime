@@ -756,6 +756,8 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
       .def_readwrite("input_names_require_grad", &OrtModuleGraphBuilderConfiguration::input_names_require_grad)
       .def_readwrite("use_memory_efficient_gradient",
                      &OrtModuleGraphBuilderConfiguration::use_memory_efficient_gradient)
+      .def_readwrite("compress_sparse_gradient",
+                     &OrtModuleGraphBuilderConfiguration::compress_sparse_gradient)
       .def_readwrite("build_gradient_graph", &OrtModuleGraphBuilderConfiguration::build_gradient_graph)
       .def_readwrite("graph_transformer_config", &OrtModuleGraphBuilderConfiguration::graph_transformer_config)
       .def_readwrite("enable_caching", &OrtModuleGraphBuilderConfiguration::enable_caching)

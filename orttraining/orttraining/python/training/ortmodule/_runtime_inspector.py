@@ -17,6 +17,8 @@ class RuntimeInspector:
     def __init__(self):
         self.input_density_ob = InputDensityObserver()
 
+        self.memory_ob = MemoryObserver()
+
 
 class InputDensityObserver:
     """Configurable input data observer for ORTModule."""
@@ -297,3 +299,58 @@ class InputDensityObserver:
             return None
         value = onnx.numpy_helper.to_array(tensor)
         return value
+
+
+class MemoryObserver:
+    """Configurable memory observer for ORTModule."""
+
+    def __init__(self):
+        self._step = 1
+        self._rank = 0
+        self._world_size = 1
+        if torch.distributed.is_initialized():
+            self._rank = torch.distributed.get_rank()
+            self._world_size = torch.distributed.get_world_size()
+
+        self._rank_info = f"[{self._rank}/{self._world_size}]"
+
+        self._fw_start_cur_step = 0
+        self._fw_end_cur_step = 0
+        self._bw_end_cur_step = 0
+
+    def inspect_memory(self, milestone_name):
+        if not torch.cuda.is_available():
+            return
+
+        if self._step == 1 and milestone_name == 'fw_starts':
+            torch.cuda.empty_cache()
+            torch.cuda.reset_peak_memory_stats()
+
+
+        if milestone_name == 'fw_starts':
+            self._fw_start_cur_step = torch.cuda.memory_allocated()
+
+        activation_peak_memory = None
+        estimated_max_bsz = None
+        if milestone_name == 'fw_ends':
+            self._fw_end_cur_step = torch.cuda.memory_allocated()
+            activation_peak_memory = torch.cuda.max_memory_allocated() - self._fw_start_cur_step
+            global_free_memory, total_gpu_memory = torch.cuda.mem_get_info()
+            estimated_max_bsz = float(total_gpu_memory - self._fw_start_cur_step) / float(activation_peak_memory)
+
+        mega_bytes = 1024.0 * 1024.0
+        string = self._rank_info + ' step ' + str(self._step) + ' ' + milestone_name + ' memory (MB)'
+        string += ' | allocated: {}'.format(
+            torch.cuda.memory_allocated() / mega_bytes)
+        string += ' | max allocated: {}'.format(
+            torch.cuda.max_memory_allocated() / mega_bytes)
+        string += ' | cached: {}'.format(torch.cuda.memory_reserved() / mega_bytes)
+        string += ' | max cached: {}'.format(
+            torch.cuda.max_memory_reserved() / mega_bytes)
+        string += ' | activation peak: {}'.format(activation_peak_memory / mega_bytes if activation_peak_memory else 'N/A')
+        string += ' | estimated max bsz: {}'.format(estimated_max_bsz if estimated_max_bsz else 'N/A')
+        print(string)
+
+
+    def increase_step(self):
+        self._step += 1

@@ -17,6 +17,7 @@ ONNX_OPERATOR_KERNEL_EX(
         .TypeConstraint("T", BuildKernelDefConstraints<MLFloat16, float, double, BFloat16>())
         .TypeConstraint("T_MASK", DataTypeImpl::GetTensorType<BitmaskElementType>())
         .TypeConstraint("T_INT", DataTypeImpl::GetTensorType<int64_t>())
+        .TypeConstraint("T_CFW", BuildKernelDefConstraints<MLFloat16, float, double, BFloat16>())
         .InputMemoryType(OrtMemTypeCPUInput, 2),
     ZeroPointRestore);
 

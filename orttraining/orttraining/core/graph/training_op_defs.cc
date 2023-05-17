@@ -4635,6 +4635,7 @@ Return true if all elements are true and false otherwise.
       .Input(2, "shape",
              "Shape of the output tensor.",
              "T_INT")
+      .Input(3, "control_flow", "Used as a control flow input.", "T_CFW", OpSchema::Optional)
       .Output(0, "output", "Tensor to be restored.", "T")
       .Attr(
           "zero_point", "The outlier value to clip out from the input tensor.",
@@ -4651,8 +4652,16 @@ Return true if all elements are true and false otherwise.
           "T_INT",
           {"tensor(int32)", "tensor(int64)"},
           "Constrain shape data type.")
+      .TypeConstraint(
+          "T_CFW",
+          {"tensor(float)", "tensor(float16)"},
+          "Constrain the control flow input tensor type to float tensors.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         propagateElemTypeFromInputToOutput(ctx, 0, 0);
+
+        if (hasInputShape(ctx, 3)) {
+          propagateShapeFromInputToOutput(ctx, 3, 0);
+        }
       });
 }
 }  // namespace training

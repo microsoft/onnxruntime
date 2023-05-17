@@ -26,6 +26,7 @@ struct OrtModuleGraphBuilderConfiguration {
 
   // Graph configuration.
   bool use_memory_efficient_gradient = false;
+  bool compress_sparse_gradient = false;
   bool build_gradient_graph = true;
   bool enable_caching = false;
 

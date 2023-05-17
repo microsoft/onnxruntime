@@ -110,6 +110,7 @@ class TrainingManager(GraphExecutionManager):
                 for idx in self._graph_info.output_grad_indices_non_differentiable:
                     ctx.mark_non_differentiable(user_outputs[idx])
 
+                self._rt_inspector.memory_ob.inspect_memory("fw_ends")
                 return user_outputs
 
             @staticmethod
@@ -164,6 +165,8 @@ class TrainingManager(GraphExecutionManager):
                 # Fast version: all backward_outputs are converted first.
                 # This version only works if backward_outputs is an OrtValueVector.
                 transfered_backward_outputs = _utils._ortvalues_to_torch_tensor(backward_outputs, self._device)
+                self._rt_inspector.memory_ob.inspect_memory("bw_ends")
+                self._rt_inspector.memory_ob.increase_step()
                 return tuple(transfered_backward_outputs[idx] if idx != -1 else None for idx in self._gradient_map)
 
         return _ORTModuleFunction
@@ -250,7 +253,7 @@ class TrainingManager(GraphExecutionManager):
                 )
 
             self._gradient_accumulation_manager.maybe_update_cache_before_run()
-
+            self._rt_inspector.memory_ob.inspect_memory("fw_starts")
             return _io.unflatten_user_output(
                 self._module_output_schema,
                 self._forward_class.apply(
