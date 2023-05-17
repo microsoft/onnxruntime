@@ -42,9 +42,15 @@ void GetData(const std::vector<int64_t>& input_dims, const std::vector<int64_t>&
   output_data.resize(output_size);
   std::srand(static_cast<unsigned>(std::time(0)));
   for (size_t i = 0; i < indices_size; ++i) {
+#if defined(USE_QNN)
+    // Negative index not possible.
+    indices_data[i] =
+        static_cast<TIndex>(static_cast<int64_t>(std::rand()) % input_dims[axis]);
+#else
     // Negative index possible.
     indices_data[i] =
         static_cast<TIndex>((static_cast<int64_t>(std::rand()) % (input_dims[axis] * 2)) - input_dims[axis]);
+#endif
   }
   for (size_t i = 0; i < output_size; ++i) {
     int64_t input_offset = 0;

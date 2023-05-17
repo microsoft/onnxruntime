@@ -151,6 +151,18 @@ TEST_F(QnnCPUBackendTests, GatherElems_f32_IndicesInt32) {
 }
 
 // Test GatherElements op on CPU backend:
+// positive, dynamic, int32 indices.
+//
+// TODO: Enable when fix QNN GatherElements bug.
+// Expected output: [[ [3], [3] ]], actual (incorrect) output: [[ [2], [2] ]]
+TEST_F(QnnCPUBackendTests, DISABLED_GatherElems_f32_IndicesInt32_3D) {
+  RunCPUGatherElemsOpTest<float, int32_t>(
+      {2, 2, 2}, {1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f, 8.f},
+      {1, 2, 1}, {1, 1}, false, 1,
+      ExpectedEPNodeAssignment::All, "GatherElems_f32_IndicesInt32_3D");
+}
+
+// Test GatherElements op on CPU backend:
 // positive, static, int64 indices.
 TEST_F(QnnCPUBackendTests, GatherElems_f32_StaticIndicesInt64) {
   RunCPUGatherElemsOpTest<float, int64_t>(
