@@ -51,7 +51,7 @@ parameters:
 
 - name: ort_build_pool_name
   type: string
-  default: 'Win-CPU-2021'
+  default: 'onnxruntime-Win-CPU-2022'
 
 #'onnxruntime' or 'onnxruntime_gpu'
 - name: java_artifact_id
