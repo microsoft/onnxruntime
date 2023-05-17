@@ -46,6 +46,11 @@ bool IsNodeSupported(const Node& node, const GraphViewer& graph_viewer, const lo
 }
 
 bool IsInputSupported(const NodeArg& input, const std::string& parent_name, const logging::Logger& logger) {
+  if (!input.Exists()) {
+    // optional input that is not provided
+    return true;
+  }
+
   const auto& input_name = input.Name();
   const auto* shape_proto = input.Shape();
   // We do not support input with no shape
