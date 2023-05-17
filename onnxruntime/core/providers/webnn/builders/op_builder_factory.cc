@@ -15,17 +15,35 @@ namespace webnn {
 static OpBuilderRegistrations CreateOpBuilderRegistrations() {
   OpBuilderRegistrations op_registrations;
 
+  {  // Unary
+    CreateUnaryOpBuilder("Cos", op_registrations);
+    CreateUnaryOpBuilder("Erf", op_registrations);
+    CreateUnaryOpBuilder("Floor", op_registrations);
+    CreateUnaryOpBuilder("Sin", op_registrations);
+    CreateUnaryOpBuilder("Sqrt", op_registrations);
+  }
+
   {  // Binary
     CreateBinaryOpBuilder("Add", op_registrations);
     CreateBinaryOpBuilder("Sub", op_registrations);
     CreateBinaryOpBuilder("Mul", op_registrations);
     CreateBinaryOpBuilder("Div", op_registrations);
+    CreateBinaryOpBuilder("Pow", op_registrations);
   }
 
   {  // Activations
     CreateActivationOpBuilder("Relu", op_registrations);
     CreateActivationOpBuilder("LeakyRelu", op_registrations);
     CreateActivationOpBuilder("Sigmoid", op_registrations);
+  }
+
+  {  // ArgMax/ArgMin
+    CreateArgMaxMinOpBuilder("ArgMax", op_registrations);
+    CreateArgMaxMinOpBuilder("ArgMin", op_registrations);
+  }
+
+  {  // Cast
+    CreateCastOpBuilder("Cast", op_registrations);
   }
 
   {  // Clip
@@ -41,8 +59,17 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
     CreateConcatOpBuilder("Concat", op_registrations);
   }
 
-  {  // Gemm
+  {  // Expand
+    CreateExpandOpBuilder("Expand", op_registrations);
+  }
+
+  {  // Gather
+    CreateGatherOpBuilder("Gather", op_registrations);
+  }
+
+  {  // Gemm/MatMul
     CreateGemmOpBuilder("Gemm", op_registrations);
+    CreateGemmOpBuilder("MatMul", op_registrations);
   }
 
   {  // Pool
@@ -52,12 +79,25 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
     CreatePoolOpBuilder("MaxPool", op_registrations);
   }
 
+  {  // Reduction
+    CreateReductionOpBuilder("ReduceMax", op_registrations);
+    CreateReductionOpBuilder("ReduceMean", op_registrations);
+  }
+
   {  // Reshape
     CreateReshapeOpBuilder("Reshape", op_registrations);
   }
 
   {  // Resize
     CreateResizeOpBuilder("Resize", op_registrations);
+  }
+
+  {  // Softmax
+    CreateSoftmaxOpBuilder("Softmax", op_registrations);
+  }
+
+  {  // Split
+    CreateSplitOpBuilder("Split", op_registrations);
   }
 
   {  // Transpose

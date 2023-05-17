@@ -83,7 +83,7 @@ bool BaseOpBuilder::HasSupportedInputsImpl(const Node& node, const logging::Logg
   if (!GetType(input, input_type, logger))
     return false;
 
-  if (input_type != ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
+  if (!IsSupportedDataType(input_type)) {
     LOGS(logger, VERBOSE) << "[" << node.OpType()
                           << "] Input type: [" << input_type
                           << "] is not supported for now";
@@ -97,7 +97,8 @@ bool BaseOpBuilder::HasSupportedOpSet(const Node& node,
                                       const logging::Logger& logger) const {
   auto since_version = node.SinceVersion();
   if (since_version < GetMinSupportedOpSet(node) || since_version > GetMaxSupportedOpSet(node)) {
-    LOGS(logger, VERBOSE) << node.OpType() << "is only supported for opset ["
+    LOGS(logger, VERBOSE) << "Current opset is " << since_version << ", "
+                          << node.OpType() << " is only supported for opset ["
                           << GetMinSupportedOpSet(node) << ", "
                           << GetMaxSupportedOpSet(node) << "]";
     return false;

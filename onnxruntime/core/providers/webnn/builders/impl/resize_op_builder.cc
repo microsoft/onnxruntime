@@ -134,7 +134,12 @@ Status ResizeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
     options.set("sizes", emscripten::val::array(sizes_hw));
   }
 
-  std::vector<int32_t> axes = {1, 2};
+  std::vector<int32_t> axes;
+  if (model_builder.GetPreferredLayout() == DataLayout::NHWC) {
+    axes = {1, 2};
+  } else {
+    axes = {2, 3};
+  }
   options.set("axes", emscripten::val::array(axes));
   emscripten::val input = model_builder.GetOperand(input_defs[0]->Name());
   emscripten::val output = model_builder.GetBuilder().call<emscripten::val>("resample2d", input, options);

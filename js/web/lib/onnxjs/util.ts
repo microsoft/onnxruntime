@@ -426,6 +426,8 @@ export class ProtoUtil {
         return onnx.TensorProto.DataType.INT32;
       case 'uint32':
         return onnx.TensorProto.DataType.UINT32;
+      case 'float16':
+        return onnx.TensorProto.DataType.FLOAT16;
       case 'float32':
         return onnx.TensorProto.DataType.FLOAT;
       case 'float64':
