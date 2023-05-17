@@ -6,7 +6,7 @@ import logging
 from typing import Union
 
 from fusion_attention import AttentionMask
-from onnx import NodeProto, TensorProto, helper, numpy_helper
+from onnx import TensorProto, GraphProto, helper
 from onnx_model import OnnxModel
 from onnx_model_bert import BertOnnxModel
 from fusion_base import Fusion
@@ -118,6 +118,50 @@ class FusionTNLGV4Attention(Fusion):
         # todo_1: append transpose before and after the attention node
         self.prune_graph = True
 
+def shape_of(vi):
+    return tuple([d.dim_param if (d.dim_param) else d.dim_value for d in vi.type.tensor_type.shape.dim])
+
+def change_io_shape(graph: GraphProto):
+    new_inputs = []
+    for i, vi in enumerate(graph.input):
+        if vi.name == "attention_mask":
+            vi = helper.make_tensor_value_info(
+                vi.name,
+                elem_type=TensorProto.INT32,
+                shape=["batch_size", "seq_len"],
+            )
+        if "past" in vi.name:
+            shape = shape_of(vi)
+            vi = helper.make_tensor_value_info(
+                vi.name,
+                elem_type=vi.type.tensor_type.elem_type,
+                shape=[shape[0], shape[2], shape[1], shape[3], shape[4]],
+            )
+        new_inputs.extend([vi])
+
+    graph.ClearField("input")
+    graph.input.extend(new_inputs)
+
+    new_outputs = []
+    for i, vi in enumerate(graph.output):
+        if vi.name == "logits":
+            vi = helper.make_tensor_value_info(
+                vi.name,
+                elem_type=TensorProto.FLOAT16,
+                shape=shape_of(vi),
+            )
+        if "present" in vi.name:
+            shape = shape_of(vi)
+            vi = helper.make_tensor_value_info(
+                vi.name,
+                elem_type=vi.type.tensor_type.elem_type,
+                shape=[shape[0], shape[2], shape[1], shape[3], shape[4]],
+            )
+        new_outputs.extend([vi])
+
+    graph.ClearField("output")
+    graph.output.extend(new_outputs)
+
 
 class Tnlgv4OnnxModel(BertOnnxModel):
     def __init__(self, model, num_heads, hidden_size):
@@ -130,3 +174,8 @@ class Tnlgv4OnnxModel(BertOnnxModel):
 
     def preprocess(self):
         self.utils.remove_useless_cast_nodes_in_fp16_model()
+
+    def postprocess(self):
+        self.clean_graph()
+        self.prune_graph()
+        change_io_shape(self.model.graph)
