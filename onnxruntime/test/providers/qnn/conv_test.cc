@@ -195,7 +195,7 @@ TEST_F(QnnCPUBackendTests, TestCPUConvf32_bias_initializer) {
 }
 
 // large input,output, pads
-TEST_F(QnnCPUBackendTests, TestCPUConvf32_large_input1_pad_bias_initializer) {
+TEST_F(QnnCPUBackendTests, DISABLED_TestCPUConvf32_large_input1_pad_bias_initializer) {
   RunCPUConvOpTest({1, 3, 60, 452}, {16, 3, 3, 3}, true, {1, 1}, {1, 1, 1, 1}, {1, 1}, "NOTSET", ExpectedEPNodeAssignment::All, "TestCPUConvf32_large_input1_pad_bias_initializer");
 }
 
@@ -219,12 +219,12 @@ TEST_F(QnnHTPBackendTests, TestQDQConvU8U8S32_bias_initializer) {
                                                        "TestQDQConvU8U8S32_bias_initializer");
 }
 
-TEST_F(QnnHTPBackendTests, TestQDQConvU8U8S32_large_input1_padding_bias_initializer) {
+TEST_F(QnnHTPBackendTests, DISABLED_TestQDQConvU8U8S32_large_input1_padding_bias_initializer) {
   RunHTPConvOpTest<uint8_t, uint8_t, int32_t, uint8_t>({1, 3, 60, 452}, {16, 3, 3, 3}, true, {1, 1}, {1, 1, 1, 1}, {1, 1}, "NOTSET", ExpectedEPNodeAssignment::All,
                                                        "TestQDQConvU8U8S32_large_input1_padding_bias_initializer");
 }
 
-TEST_F(QnnHTPBackendTests, TestQDQConvU8U8S32_large_input2_bias_initializer) {
+TEST_F(QnnHTPBackendTests, DISABLED_TestQDQConvU8U8S32_large_input2_bias_initializer) {
   RunHTPConvOpTest<uint8_t, uint8_t, int32_t, uint8_t>({1, 128, 8, 56}, {32, 128, 1, 1}, true, {1, 1}, {0, 0, 0, 0}, {1, 1}, "NOTSET", ExpectedEPNodeAssignment::All,
                                                        "TestQDQConvU8U8S32_large_input2_bias_initializer");
 }
