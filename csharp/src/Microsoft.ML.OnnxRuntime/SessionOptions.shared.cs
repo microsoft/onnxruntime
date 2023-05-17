@@ -66,8 +66,16 @@ namespace Microsoft.ML.OnnxRuntime
         {
             CheckCudaExecutionProviderDLLs();
             SessionOptions options = new SessionOptions();
-            options.AppendExecutionProvider_CUDA(deviceId);
-            return options;
+            try
+            {
+                options.AppendExecutionProvider_CUDA(deviceId);
+                return options;
+            }
+            catch (Exception)
+            {
+                options.Dispose();
+                throw;
+            }
         }
 
         /// <summary>
@@ -148,9 +156,16 @@ namespace Microsoft.ML.OnnxRuntime
         public static SessionOptions MakeSessionOptionWithTvmProvider(String settings = "")
         {
             SessionOptions options = new SessionOptions();
-            options.AppendExecutionProvider_Tvm(settings);
-
-            return options;
+            try
+            {
+                options.AppendExecutionProvider_Tvm(deviceId);
+                return options;
+            }
+            catch (Exception)
+            {
+                options.Dispose();
+                throw;
+            }
         }
 
         /// <summary>
