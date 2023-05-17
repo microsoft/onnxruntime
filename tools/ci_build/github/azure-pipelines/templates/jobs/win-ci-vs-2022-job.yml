@@ -74,7 +74,11 @@ jobs:
       MSBUILD_CACHE_ARG: '/p:CLToolExe=cl.exe /p:CLToolPath=C:\ProgramData\chocolatey\bin /p:TrackFileAccess=false /p:UseMultiToolTask=true /p:DebugInformationFormat=OldStyle'
   workspace:
     clean: all
-  pool: ${{ parameters.MachinePool }}
+  pool:
+    name: ${{ parameters.MachinePool }}
+    demands:
+    - ImageOverride -equals 1.0.310057
+  
   timeoutInMinutes:  300
   steps:
   - checkout: self
