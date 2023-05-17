@@ -407,6 +407,9 @@ void BeamSearchShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) {
     ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 5, 1);
     if (ctx.getNumOutputs() > 2) {
       ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 5, 2);
+      if (ctx.getNumOutputs() > 3) {
+        ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 3);
+      }
     }
   }
 
@@ -415,6 +418,7 @@ void BeamSearchShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) {
   // output 0 (sequences) shape: (batch_size, num_return_sequences, max_length)
   // output 1 (sequences_scores) shape: (batch_size, num_return_sequences)
   // output 2 (scores) shape: (max_length - sequence_length, batch_size, num_beams, vocab_size)
+  // output 3 (cross_attention): shape: (batch_size, num_return_sequences, Layers, Heads, max_length, Frames)
   if (!hasInputShape(ctx, 0)) {
     return;
   }
@@ -489,6 +493,17 @@ void BeamSearchShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) {
         scores_shape.add_dim();
       }
       updateOutputShape(ctx, 2, scores_shape);
+    }
+
+    if (ctx.getNumOutputs() > 3) {
+      ONNX_NAMESPACE::TensorShapeProto cross_attn_shape;
+      cross_attn_shape.add_dim()->set_dim_value(batch_size);
+      cross_attn_shape.add_dim()->set_dim_value(num_return_sequences_value);
+      cross_attn_shape.add_dim(); // num of layer is unknown, no need to calc it from subgraph here
+      cross_attn_shape.add_dim(); // num of head is unknown, no need to calc it from subgraph here
+      cross_attn_shape.add_dim()->set_dim_value(max_length_value);
+      cross_attn_shape.add_dim()->set_dim_value(sequence_length);
+      updateOutputShape(ctx, 3, cross_attn_shape);
     }
   }
 }
@@ -1068,7 +1083,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(BeamSearch, 1,
                                 .Attr("decoder_start_token_id", "The id of the token that indicates decoding starts.", AttributeProto::INT, static_cast<int64_t>(-1))
                                 .Attr("no_repeat_ngram_size", "no repeat ngrams size", AttributeProto::INT, static_cast<int64_t>(0))
                                 .Attr("early_stopping", "early stop or not", AttributeProto::INT, static_cast<int64_t>(0))
-                                .Attr("model_type", "model type: 0 for GPT-2; 1 for encoder decoder like T5", AttributeProto::INT, static_cast<int64_t>(0))
+                                .Attr("model_type", "model type: 0 for GPT-2; 1 for encoder decoder like T5; 2 for whisper", AttributeProto::INT, static_cast<int64_t>(0))
                                 .Attr("encoder", "The subgraph for initialization of encoder and decoder. It will be called once before decoder subgraph.", AttributeProto::GRAPH, OPTIONAL_VALUE)
                                 .Attr("init_decoder",
                                       "The subgraph for the first decoding run. It will be called once before `decoder` subgraph. "
@@ -1079,6 +1094,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(BeamSearch, 1,
                                       "Size of the vocabulary. "
                                       "If not provided, it will be inferred from the decoder subgraph's output shape",
                                       AttributeProto::INT, static_cast<int64_t>(-1))
+                                .Attr("decoder_output_cross_qk", "If nozero, decoder subgraph contains output Q*K from cross attentions. Default 0.", AttributeProto::INT, OPTIONAL_VALUE)
                                 .Input(0, "input_ids", "The sequence used as a prompt for the generation in the encoder subgraph. Shape is (batch_size, sequence_length)", "F")
                                 .Input(1, "max_length", "The maximum length of the sequence to be generated. Shape is (1)", "I")
                                 .Input(2, "min_length", "The minimum length below which the score of eos_token_id is set to -Inf. Shape is (1)", "I", OpSchema::Optional)
@@ -1095,12 +1111,22 @@ ONNX_MS_OPERATOR_SET_SCHEMA(BeamSearch, 1,
                                 .Input(9, "attention_mask", "Custom attention mask. Shape is (batch_size, sequence_length)", "I", OpSchema::Optional)
                                 .Input(10, "decoder_input_ids", "The forced input id sequence for the decoder subgraph. Shape is (batch_size, initial_sequence_length)", "I", OpSchema::Optional)
                                 .Input(11, "logits_processor", "Specific logits processor for different types of beamsearch models. Default value 0 means no specific logit processor. Accepts value >= 0. Shape is (1)", "I", OpSchema::Optional)
+                                .Input(12, "cross_qk_layer_head",
+                                       "Only keep this list of (layer, head) of QK in the final cross_qk output when use_cross_qk is set. Default collect all"
+                                       "its shape is (number of (layer, head) to keep, 2), i.e., [[layer_id1, head_id1], [layer_id2, head_id2]......]",
+                                       "I", OpSchema::Optional)
                                 .Output(0, "sequences", "Word IDs of generated sequences. Shape is (batch_size, num_return_sequences, max_sequence_length)", "I")
                                 .Output(1, "sequences_scores", "Final beam score of the generated sequences. Shape is (batch_size, num_return_sequences)", "T", OpSchema::Optional)
                                 .Output(2, "scores",
                                         "Processed beam scores for each vocabulary token at each generation step."
                                         "Beam scores consisting of log softmax scores for each vocabulary token and sum of log softmax of previously generated tokens in this beam."
                                         "Shape is (max_length - sequence_length, batch_size, num_beams, vocab_size)",
+                                        "T", OpSchema::Optional)
+                                .Output(3, "cross_qk",
+                                        "Output the accumulated stacked Q*K in cross attentions. Let H = number of Head of cross attention, "
+                                        "F = the frames or kv-seq-len of the cross attention input, T = max_token_length to be decoded, L = number of layers,"
+                                        "B = batch size, R = num_return_sequences. It then should return tensor of shape [B, R, L*H, T, F]."
+                                        "If cross_qk_layer_head is given, shape is [B, R, cross_qk_layer_head.shape[0], T, F]",
                                         "T", OpSchema::Optional)
                                 .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain to float tensors.")
                                 .TypeConstraint("F", {"tensor(float)", "tensor(int32)", "tensor(float16)"}, "Constrain input type to float or int tensors.")

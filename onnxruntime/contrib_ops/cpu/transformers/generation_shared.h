@@ -175,6 +175,8 @@ struct IGenerationParameters {
   int seed = 0;
   int min_tokens_to_keep = 1;
   bool custom_sampling = false;
+
+  bool decoder_output_cross_qk = false;
 };
 
 }  // namespace transformers

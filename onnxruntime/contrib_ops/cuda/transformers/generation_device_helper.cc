@@ -1196,7 +1196,7 @@ Status UpdateDecoderFeeds(
 
   if (past_present_share_buffer) {
     // Update past sequence length input
-    const ptrdiff_t past_sequence_length_idx = 2 * (static_cast<ptrdiff_t>(last_outputs.size()) - t5_decoder_first_present_output_idx) + t5_decoder_first_past_input_idx;
+    const ptrdiff_t past_sequence_length_idx = 2 * num_present_tensors + t5_decoder_first_past_input_idx;
     *(next_inputs[past_sequence_length_idx].GetMutable<Tensor>()->MutableData<int32_t>()) = current_length - 1;
 
     // Update beam search specific input for DecoderMaskedSelfAttention (cache indirection) if present
@@ -1528,6 +1528,130 @@ template Status ExpandBuffer<MLFloat16>(
     OrtValue& expanded,
     bool only_copy_shape,
     int max_sequence_length);
+
+template <typename T>
+Status UpdateDecoderCrossQK(
+    int iteration_number,
+    Stream* stream,
+    OrtValue* cross_qks,
+    IAllocatorUniquePtr<T*>& qk_layer_pointers,
+    int num_layers,
+    int cross_qk_layer_head_pair_count,
+    const int* cross_qk_layer_head_pairs,
+    T* cross_qk_buffer_data,
+    int max_length,
+    AllocatorPtr allocator) {
+  cudaStream_t cuda_stream = stream ? static_cast<cudaStream_t>(stream->GetHandle()) : nullptr;
+
+  std::cout << "  =======[" << iteration_number << "]==== UpdateDecoderCrossQK GPU ======== Implementing in progress ====" << std::endl;
+  if (qk_layer_pointers.get() == nullptr) {
+    // Put all the qk pointers into gpu, as they did not change in following decoding steps
+    // also this help to use single kernel to process each step
+    qk_layer_pointers = IAllocator::MakeUniquePtr<T*>(allocator, static_cast<size_t>(num_layers), false, stream);
+    std::vector<T*> qk_layer_data(num_layers, nullptr);
+    for (int layer = 0; layer < num_layers; layer++) {
+      qk_layer_data[layer] = cross_qks[layer].GetMutable<Tensor>()->MutableData<T>();
+    }
+    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync((void*)qk_layer_pointers.get(), qk_layer_data.data(), sizeof(qk_layer_data[0]) * num_layers,
+                                         cudaMemcpyHostToDevice, cuda_stream));
+  }
+
+  auto cross_qk_layer_shape = cross_qks[0].GetMutable<Tensor>()->Shape();
+  int64_t batchxbeam = cross_qk_layer_shape[0];
+  int64_t num_heads = cross_qk_layer_shape[1];
+  int64_t frames = cross_qk_layer_shape[3];
+
+  cuda::LaunchCopyCrossQKSingleDecodeStep(
+      cuda_stream,
+      cross_qk_buffer_data,
+      qk_layer_pointers.get(),
+      iteration_number - 1,
+      batchxbeam,
+      num_layers,
+      num_heads,
+      cross_qk_layer_head_pair_count,
+      cross_qk_layer_head_pairs,
+      frames,
+      max_length);
+
+  CUDA_RETURN_IF_ERROR(cudaGetLastError());
+
+  return Status::OK();
+}
+
+template Status UpdateDecoderCrossQK<MLFloat16>(
+    int iteration_number,
+    Stream* stream,
+    OrtValue* cross_qks,
+    IAllocatorUniquePtr<MLFloat16*>& qk_layer_pointers,
+    int num_layers,
+    int cross_qk_layer_head_pair_count,
+    const int* cross_qk_layer_head_pairs,
+    MLFloat16* cross_qk_buffer_data,
+    int max_length,
+    AllocatorPtr allocator);
+
+template Status UpdateDecoderCrossQK<float>(
+    int iteration_number,
+    Stream* stream,
+    OrtValue* cross_qks,
+    IAllocatorUniquePtr<float*>& qk_layer_pointers,
+    int num_layers,
+    int cross_qk_layer_head_pair_count,
+    const int* cross_qk_layer_head_pairs,
+    float* cross_qk_buffer_data,
+    int max_length,
+    AllocatorPtr allocator);
+
+template <typename T>
+Status FinalizeDecoderCrossQK(
+    [[maybe_unused]] Stream* stream,
+    [[maybe_unused]] int iteration_number,
+    [[maybe_unused]] int context_decoding_len,
+    [[maybe_unused]] int batch_size,
+    [[maybe_unused]] int num_beams,
+    [[maybe_unused]] int max_length,
+    [[maybe_unused]] int cross_qk_layer_head_pair_count,
+    [[maybe_unused]] const int* cross_qk_layer_head_pairs,
+    [[maybe_unused]] int frames_of_k,
+    [[maybe_unused]] const T* cross_qk_buffer_data,
+    [[maybe_unused]] T* cross_qk_output,
+    [[maybe_unused]] int num_return_sequences,
+    [[maybe_unused]] const int* cache_indir_data) {
+  std::cout << "  ================== FinalizeDecoderCrossQK GPU ======== Implementing in progress ====" << std::endl;
+  return Status::OK();
+}
+
+template Status FinalizeDecoderCrossQK(
+    Stream* stream,
+    int iteration_number,
+    int context_decoding_len,
+    int batch_size,
+    int num_beams,
+    int max_length,
+    int cross_qk_layer_head_pair_count,
+    const int* cross_qk_layer_head_pairs,
+    int frames_of_k,
+    const float* cross_qk_buffer_data,
+    float* cross_qk_output,
+    int num_return_sequences,
+    const int* cache_indir_data);
+
+template Status FinalizeDecoderCrossQK(
+    Stream* stream,
+    int iteration_number,
+    int context_decoding_len,
+    int batch_size,
+    int num_beams,
+    int max_length,
+    int cross_qk_layer_head_pair_count,
+    const int* cross_qk_layer_head_pairs,
+    int frames_of_k,
+    const MLFloat16* cross_qk_buffer_data,
+    MLFloat16* cross_qk_output,
+    int num_return_sequences,
+    const int* cache_indir_data);
+
 }  // namespace GenerationCudaDeviceHelper
 }  // namespace contrib
 }  // namespace onnxruntime

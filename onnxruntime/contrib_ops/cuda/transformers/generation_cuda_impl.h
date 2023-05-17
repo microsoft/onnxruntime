@@ -213,6 +213,20 @@ void BufferExpansionKernelLauncher(const T* input,
                                    int chunk_size,
                                    cudaStream_t stream);
 
+template <typename T>
+void LaunchCopyCrossQKSingleDecodeStep(
+    cudaStream_t stream,
+    T* cross_qk_buffer_data,
+    T** qk_layer_pointers,
+    int token_index,
+    int batchxbeam,
+    int num_layers,
+    int num_heads,
+    int cross_qk_layer_head_pair_count,
+    const int* cross_qk_layer_head_pairs,
+    int frames,
+    int max_length);
+
 }  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime
