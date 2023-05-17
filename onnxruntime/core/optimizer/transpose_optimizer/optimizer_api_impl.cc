@@ -913,7 +913,15 @@ PostLayoutTransformCostCheck(const api::GraphRef& graph, const api::NodeRef& nod
 Status TransformLayoutForEP(Graph& graph, bool& modified, const IExecutionProvider& execution_provider,
                             const DebugGraphFn& debug_graph_fn) {
   // sub graph recurse will be added later
-  auto api_graph = MakeApiGraph(graph, execution_provider.GetAllocator(OrtMemTypeCPU), nullptr);
+  auto cpu_allocator = execution_provider.GetAllocator(OrtMemTypeDefault);
+  if (cpu_allocator->Info().device.device_type != OrtDevice::CPU) {
+    cpu_allocator = execution_provider.GetAllocator(OrtMemTypeCPU);
+    if (!cpu_allocator || cpu_allocator->Info().device.device_type != OrtDevice::CPU) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to get CPU allocator from EP: ",
+                             execution_provider.Type());
+    }
+  }
+  auto api_graph = MakeApiGraph(graph, cpu_allocator, nullptr);
   const auto& layout_sensitive_ops = GetORTLayoutSensitiveOps();
 
   for (auto& node : api_graph->Nodes()) {
