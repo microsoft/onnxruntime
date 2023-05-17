@@ -9,7 +9,7 @@ esac
 done
 
 if [ $BUILD_EXTR_PAR == "-d AZURE" ]; then
-    ADDITIONAL_DOCKER_PARAMETER="${ADDITIONAL_DOCKER_PARAMETER} -u root"
+    export ADDITIONAL_DOCKER_PARAMETER="${ADDITIONAL_DOCKER_PARAMETER} -u root"
 fi
 
 mkdir -p $HOME/.onnx
