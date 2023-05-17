@@ -280,6 +280,7 @@ DML_OP_EXTERN_CREATION_FUNCTION(Flatten);
 DML_OP_EXTERN_CREATION_FUNCTION(Split7);
 DML_OP_EXTERN_CREATION_FUNCTION(Split11);
 DML_OP_EXTERN_CREATION_FUNCTION(Split13);
+DML_OP_EXTERN_CREATION_FUNCTION(Split18);
 DML_OP_EXTERN_CREATION_FUNCTION(Transpose);
 DML_OP_EXTERN_CREATION_FUNCTION(Tile);
 DML_OP_EXTERN_CREATION_FUNCTION(Concat);
@@ -629,6 +630,7 @@ constexpr static OperatorRegistrationInformation operatorRegistrationInformation
     {REG_INFO_VER(  7,  Split,                              typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported)},
     {REG_INFO_VER( 11,  Split,                              typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported)},  // Adds negative axis.
     {REG_INFO_VER( 13,  Split,                              typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported,      requiredConstantCpuInputs(1))},  // Moves splits from constant parameter to dynamic input.
+    {REG_INFO_VER( 18,  Split,                              typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported,      requiredConstantCpuInputs(1))},
     {REG_INFO(      7,  Transpose,                          typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported)},
     {REG_INFO(     13,  Transpose,                          typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported)},
     {REG_INFO(      7,  Concat,                             typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported)},
