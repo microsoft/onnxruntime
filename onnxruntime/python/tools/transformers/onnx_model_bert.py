@@ -369,6 +369,7 @@ class BertOnnxModel(OnnxModel):
 
         self.utils.remove_identity_nodes()
 
+        self.preprocess()
         # Remove cast nodes that having same data type of input and output based on symbolic shape inference.
         self.utils.remove_useless_cast_nodes()
 
@@ -377,8 +378,6 @@ class BertOnnxModel(OnnxModel):
 
         if (options is None) or options.enable_gelu:
             self.fuse_gelu()
-
-        self.preprocess()
 
         self.fuse_reshape()
 
@@ -417,9 +416,9 @@ class BertOnnxModel(OnnxModel):
             self.fuse_bias_gelu(is_fastgelu=True)
             self.fuse_bias_gelu(is_fastgelu=False)
 
-        if (options is None) or options.enable_bias_skip_layer_norm:
-            # Fuse SkipLayerNormalization and Add Bias before it.
-            self.fuse_add_bias_skip_layer_norm()
+        # if (options is None) or options.enable_bias_skip_layer_norm:
+        #     # Fuse SkipLayerNormalization and Add Bias before it.
+        #     self.fuse_add_bias_skip_layer_norm()
 
         if options is not None and options.enable_gelu_approximation:
             self.gelu_approximation()

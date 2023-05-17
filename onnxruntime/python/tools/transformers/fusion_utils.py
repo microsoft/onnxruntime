@@ -232,6 +232,9 @@ class FusionUtils:
     def remove_useless_cast_nodes(self):
         self.model.remove_useless_cast_nodes()
 
+    def remove_useless_cast_nodes_in_fp16_model(self):
+        self.model.remove_useless_cast_nodes(True)
+
     def remove_useless_reshape_nodes(self):
         """Remove reshape node that is not needed based on symbolic shape inference: input and output has same shape"""
         shape_infer = self.model.infer_runtime_shape(update=True)
