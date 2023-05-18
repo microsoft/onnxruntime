@@ -1033,10 +1033,16 @@ var validCombos = {
     "ios,C#,ARM64,CoreML":
         "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>.",
  
-    "windows,Python,X86,VitisAI":
+    "windows,Python,X64,VitisAI":
         "Follow build instructions from <a href='https://aka.ms/build-ort-vitisai' target='_blank'>here</a>",
     
-    "linux,Python,X86,VitisAI":
+    "windows,C++,X64,VitisAI":
+        "Follow build instructions from <a href='https://aka.ms/build-ort-vitisai' target='_blank'>here</a>",
+
+    "linux,C++,ARM64,VitisAI":
+        "Follow build instructions from <a href='https://aka.ms/build-ort-vitisai' target='_blank'>here</a>",
+
+    "linux,Python,ARM64,VitisAI":
         "Follow build instructions from <a href='https://aka.ms/build-ort-vitisai' target='_blank'>here</a>",
     
     "linux,Python,X64,MIGraphX":
