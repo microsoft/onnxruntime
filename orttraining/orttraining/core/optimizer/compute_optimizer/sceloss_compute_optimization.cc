@@ -82,7 +82,7 @@ Status InsertGatherBeforeSceLoss::ApplyImpl(Graph& graph, bool& modified, int /*
   LOG_DEBUG_INFO(logger, "Enter InsertGatherBeforeSceLoss");
 
   GraphViewer graph_viewer(graph);
-  size_t handled_sce_node_count = 0;  // For summary
+  [[maybe_unused]] size_t handled_sce_node_count = 0;  // For summary
   const auto& order = graph_viewer.GetNodesInTopologicalOrder();
   for (const auto index : order) {
     auto* node_ptr = graph.GetNode(index);

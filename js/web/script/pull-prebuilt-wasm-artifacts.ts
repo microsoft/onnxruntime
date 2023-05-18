@@ -8,7 +8,7 @@
 // WebAssembly side, so there is no need to rebuild WebAssembly.
 //
 // It performs the following operations:
-// 1. query build ID for latest successful build on main branch
+// 1. query build ID for latest successful build on main branch or the specified one from command line argument
 // 2. query download URL of build artifacts
 // 3. download and unzip the files to folders
 //
@@ -17,6 +17,35 @@ import fs from 'fs';
 import https from 'https';
 import jszip from 'jszip';
 import path from 'path';
+
+const HELP_MESSAGE = `
+pull-prebuilt-wasm-artifacts
+
+Usage:
+  npm run pull:wasm [config] [buildID] [help|h]
+
+  node ./pull-prebuilt-wasm-artifacts [config] [buildID] [help|h]
+
+
+  config       optional, "release"(default) or "debug"
+  buildID      optional, if not specified, use latest main branch, otherwise a number for a specified build ID
+  help|h       print this message and exit
+`;
+
+const argv = process.argv.slice(2);
+
+if (argv.indexOf('--help') !== -1 || argv.indexOf('-h') !== -1 || argv.indexOf('help') !== -1 ||
+    argv.indexOf('h') !== -1) {
+  console.log(HELP_MESSAGE);
+  process.exit();
+}
+
+const arg0isConfig = argv[0] === 'debug' || argv[0] === 'release';
+const arg0isInteger = !arg0isConfig && !isNaN(parseInt(argv[0], 10));
+const config = arg0isConfig ? argv[0] : 'release';
+const buildId = arg0isInteger ? argv[0] : (argv[1] ?? '');
+
+const folderName = config === 'release' ? 'Release_wasm' : 'Debug_wasm';
 
 function downloadJson(url: string, onSuccess: (data: any) => void) {
   https.get(url, res => {
@@ -70,18 +99,20 @@ function extractFile(zip: jszip, folder: string, file: string, artifactName: str
       });
 }
 
-console.log('=== Start to pull WebAssembly artifacts from CI ===');
+console.log(`=== Start to pull ${config} WebAssembly artifacts from CI for ${
+    buildId ? `build "${buildId}"` : 'latest "main" branch'} ===`);
 
-// API reference: https://docs.microsoft.com/en-us/rest/api/azure/devops/build/builds/list
-downloadJson(
-    'https://dev.azure.com/onnxruntime/onnxruntime/_apis/build/builds?api-version=6.1-preview.6' +
-        '&definitions=161' +
+const filter = buildId ? `&buildIds=${buildId}` :
+                         '&definitions=161' +
         '&resultFilter=succeeded%2CpartiallySucceeded' +
         '&$top=1' +
         '&repositoryId=Microsoft/onnxruntime' +
         '&repositoryType=GitHub' +
-        '&branchName=refs/heads/main',
-    data => {
+        '&branchName=refs/heads/main';
+
+// API reference: https://docs.microsoft.com/en-us/rest/api/azure/devops/build/builds/list
+downloadJson(
+    `https://dev.azure.com/onnxruntime/onnxruntime/_apis/build/builds?api-version=6.1-preview.6${filter}`, data => {
       const buildId = data.value[0].id;
 
       console.log(`=== Found latest build on main branch: ${buildId} ===`);
@@ -93,7 +124,7 @@ downloadJson(
           data => {
             let zipLink;
             for (const v of data.value) {
-              if (v.name === 'Release_wasm') {
+              if (v.name === folderName) {
                 zipLink = v.resource.downloadUrl;
               }
             }
@@ -108,18 +139,18 @@ downloadJson(
 
             downloadZip(zipLink, buffer => {
               void jszip.loadAsync(buffer).then(zip => {
-                extractFile(zip, WASM_FOLDER, 'ort-wasm.wasm', 'Release_wasm');
-                extractFile(zip, WASM_FOLDER, 'ort-wasm-threaded.wasm', 'Release_wasm');
-                extractFile(zip, WASM_FOLDER, 'ort-wasm-simd.wasm', 'Release_wasm');
-                extractFile(zip, WASM_FOLDER, 'ort-wasm-simd-threaded.wasm', 'Release_wasm');
-                extractFile(zip, WASM_FOLDER, 'ort-wasm-simd.jsep.wasm', 'Release_wasm');
-                extractFile(zip, WASM_FOLDER, 'ort-wasm-simd-threaded.jsep.wasm', 'Release_wasm');
+                extractFile(zip, WASM_FOLDER, 'ort-wasm.wasm', folderName);
+                extractFile(zip, WASM_FOLDER, 'ort-wasm-threaded.wasm', folderName);
+                extractFile(zip, WASM_FOLDER, 'ort-wasm-simd.wasm', folderName);
+                extractFile(zip, WASM_FOLDER, 'ort-wasm-simd-threaded.wasm', folderName);
+                extractFile(zip, WASM_FOLDER, 'ort-wasm-simd.jsep.wasm', folderName);
+                extractFile(zip, WASM_FOLDER, 'ort-wasm-simd-threaded.jsep.wasm', folderName);
 
-                extractFile(zip, JS_FOLDER, 'ort-wasm.js', 'Release_wasm');
-                extractFile(zip, JS_FOLDER, 'ort-wasm-threaded.js', 'Release_wasm');
-                extractFile(zip, JS_FOLDER, 'ort-wasm-threaded.worker.js', 'Release_wasm');
-                extractFile(zip, JS_FOLDER, 'ort-wasm-simd.jsep.js', 'Release_wasm');
-                extractFile(zip, JS_FOLDER, 'ort-wasm-simd-threaded.jsep.js', 'Release_wasm');
+                extractFile(zip, JS_FOLDER, 'ort-wasm.js', folderName);
+                extractFile(zip, JS_FOLDER, 'ort-wasm-threaded.js', folderName);
+                extractFile(zip, JS_FOLDER, 'ort-wasm-threaded.worker.js', folderName);
+                extractFile(zip, JS_FOLDER, 'ort-wasm-simd.jsep.js', folderName);
+                extractFile(zip, JS_FOLDER, 'ort-wasm-simd-threaded.jsep.js', folderName);
               });
             });
           });

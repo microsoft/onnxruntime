@@ -1,6 +1,6 @@
 jobs:
 - job: 'build'
-  pool: 'Win-CPU-2021'
+  pool: 'onnxruntime-Win-CPU-2022'
   strategy:
     maxParallel: 2
     matrix:
@@ -57,7 +57,7 @@ jobs:
     displayName: 'Generate cmake config'
     inputs:
       scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-      arguments: '--config $(BuildConfig) --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --update --cmake_generator "Visual Studio 16 2019" --use_full_protobuf --fuzz_testing'
+      arguments: '--config $(BuildConfig) --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --update --cmake_generator "Visual Studio 17 2022" --use_full_protobuf --fuzz_testing'
       workingDirectory: '$(Build.BinariesDirectory)'
 
   - task: VSBuild@1
