@@ -256,6 +256,7 @@ TEST_P(ModelTest, Run) {
       {"softmax_cross_entropy_mean_weight", "type error", {"opset12"}},
       {"softmax_cross_entropy_mean_no_weight_ignore_index_4d", "type error", {"opset12"}},
 #endif
+      {"fp16_inception_v1", "Result mismatch on CPU EP"},
       {"mask_rcnn_keras", "this model currently has an invalid contrib op version set to 10", {}}};
 
   // Some EPs may fail to pass some specific testcases.

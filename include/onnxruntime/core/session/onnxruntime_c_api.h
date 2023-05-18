@@ -61,6 +61,8 @@ extern "C" {
 #define _Check_return_
 #define _Outptr_result_maybenull_
 #define _In_reads_(X)
+#define _Inout_updates_(X)
+#define _Out_writes_(X)
 #define _Inout_updates_all_(X)
 #define _Out_writes_bytes_all_(X)
 #define _Out_writes_all_(X)

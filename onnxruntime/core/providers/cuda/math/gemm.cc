@@ -63,14 +63,12 @@ Status Gemm<T>::ComputeInternal(OpKernelContext* ctx) const {
   const auto* W = ctx->Input<Tensor>(1);
   const auto* B = ctx->Input<Tensor>(2);
   // Bias could be missing. Treat as scalar 0 if that is the case.
-  GemmHelper helper(X->Shape(), trans_A_, W->Shape(), trans_B_, B != nullptr ? B->Shape() : TensorShape({}));
+  std::unique_ptr<GemmHelper> helper;
+  ORT_RETURN_IF_ERROR(GemmHelper::Create(X->Shape(), trans_A_, W->Shape(), trans_B_, B != nullptr ? B->Shape() : TensorShape({}), helper));
 
-  if (!helper.State().IsOK())
-    return helper.State();
-
-  int M = gsl::narrow_cast<int>(helper.M());
-  int N = gsl::narrow_cast<int>(helper.N());
-  int K = gsl::narrow_cast<int>(helper.K());
+  int M = gsl::narrow_cast<int>(helper->M());
+  int N = gsl::narrow_cast<int>(helper->N());
+  int K = gsl::narrow_cast<int>(helper->K());
   auto* Y = ctx->Output(0, {M, N});
   CudaT* out_data = reinterpret_cast<CudaT*>(Y->MutableData<T>());
 

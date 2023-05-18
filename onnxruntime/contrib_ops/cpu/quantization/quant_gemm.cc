@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/common/safeint.h"
+#include "core/common/narrow.h"
 #include "core/providers/cpu/math/gemm_base.h"
 #include "core/providers/cpu/math/gemm_helper.h"
 #include "core/providers/cpu/quantization/matmul_integer_base.h"
@@ -22,15 +23,14 @@ class QGemm : protected GemmBase, public MatMulIntegerBase {
     const auto& b_shape = b ? b->Shape() : b_shape_;
 
     const auto* c = context->Input<Tensor>(IN_C);
-    GemmHelper helper(a->Shape(), trans_A_ != CblasNoTrans,
-                      b_shape, trans_B_ != CblasNoTrans,
-                      c != nullptr ? c->Shape() : TensorShape({}));
-    if (!helper.State().IsOK())
-      return helper.State();
+    std::unique_ptr<GemmHelper> helper;
+    ORT_RETURN_IF_ERROR(GemmHelper::Create(a->Shape(), trans_A_ != CblasNoTrans,
+                                           b_shape, trans_B_ != CblasNoTrans,
+                                           c != nullptr ? c->Shape() : TensorShape({}), helper));
 
-    size_t M = SafeInt<size_t>(helper.M());
-    size_t N = SafeInt<size_t>(helper.N());
-    size_t K = SafeInt<size_t>(helper.K());
+    ptrdiff_t M = helper->M();
+    ptrdiff_t N = helper->N();
+    ptrdiff_t K = helper->K();
 
     // validate scales and zero points
     const auto* a_zp = context->Input<Tensor>(IN_A_ZERO_POINT);
@@ -39,7 +39,7 @@ class QGemm : protected GemmBase, public MatMulIntegerBase {
     const auto* a_scale = context->Input<Tensor>(IN_A_SCALE);
     const auto* b_scale = context->Input<Tensor>(IN_B_SCALE);
     const auto* y_scale = context->Input<Tensor>(IN_Y_SCALE);
-    CheckInputs(a_zp, b_zp, y_zp, a_scale, b_scale, y_scale, helper);
+    ORT_RETURN_IF_ERROR(CheckInputs(a_zp, b_zp, y_zp, a_scale, b_scale, y_scale, *helper));
 
     AllocatorPtr allocator;
     ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&allocator));
@@ -66,7 +66,7 @@ class QGemm : protected GemmBase, public MatMulIntegerBase {
       }
     }
 
-    auto y = context->Output(OUT_Y, {SafeInt<int64_t>(M), SafeInt<int64_t>(N)});
+    auto y = context->Output(OUT_Y, {M, N});
     if (M == 0 || N == 0) return Status::OK();
 
     // prepare output buffer of GEMM
@@ -78,14 +78,15 @@ class QGemm : protected GemmBase, public MatMulIntegerBase {
       gemm_output_buffer = std::make_unique<Tensor>(DataTypeImpl::GetType<int32_t>(), outputshape, allocator);
       gemm_output_data = gemm_output_buffer->MutableData<int32_t>();
     } else {
+      // TODO: why it needs to bypass the type check?
       gemm_output_data = static_cast<int32_t*>(y->MutableDataRaw());
     }
 
     if (c != nullptr) {
-      GemmBroadcastBias(M, N, 1.f, c->Data<int32_t>(), &(c->Shape()), gemm_output_data);
+      GemmBroadcastBias<int32_t>(M, N, 1, c->Data<int32_t>(), &(c->Shape()), gemm_output_data);
     }
 
-    MLAS_GEMM_QUANT_SHAPE_PARAMS gemm_shape{M, N, K, a_is_signed, b_is_signed, c != nullptr};
+    MLAS_GEMM_QUANT_SHAPE_PARAMS gemm_shape{narrow<size_t>(M), narrow<size_t>(N), narrow<size_t>(K), a_is_signed, b_is_signed, c != nullptr};
     MLAS_GEMM_QUANT_DATA_PARAMS gemm_param;
 
     gemm_param.A = a_data;
@@ -137,29 +138,30 @@ class QGemm : protected GemmBase, public MatMulIntegerBase {
     OUT_Y = 0
   };
 
-  static void CheckInputs(const Tensor* a_zp, const Tensor* b_zp, const Tensor* y_zp,
-                          const Tensor* a_scale, const Tensor* b_scale, const Tensor* y_scale, const GemmHelper& helper) {
-    ORT_ENFORCE(IsScalarOr1ElementVector(a_scale),
-                "QGemm : scale of input a must be a scalar or 1D tensor of size 1");
-    ORT_ENFORCE(IsScalarOr1ElementVector(a_zp),
-                "QGemm : zero point of input a must be a scalar or 1D tensor of size 1");
+  static Status CheckInputs(const Tensor* a_zp, const Tensor* b_zp, const Tensor* y_zp,
+                            const Tensor* a_scale, const Tensor* b_scale, const Tensor* y_scale, const GemmHelper& helper) {
+    ORT_RETURN_IF_NOT(IsScalarOr1ElementVector(a_scale),
+                      "QGemm : scale of input a must be a scalar or 1D tensor of size 1");
+    ORT_RETURN_IF_NOT(IsScalarOr1ElementVector(a_zp),
+                      "QGemm : zero point of input a must be a scalar or 1D tensor of size 1");
 
     const auto& b_zp_shape = b_zp->Shape();
     const auto& b_scale_shape = b_scale->Shape();
-    ORT_ENFORCE(b_zp_shape.NumDimensions() == 0 ||
-                    (b_zp_shape.NumDimensions() == 1 && (b_zp_shape[0] == 1 || b_zp_shape[0] == helper.N())),
-                "QGemm : zero point of input b must be a scalar or 1D tensor of size 1 or N");
-    ORT_ENFORCE(b_scale_shape.NumDimensions() == 0 ||
-                    (b_scale_shape.NumDimensions() == 1 && (b_scale_shape[0] == 1 || b_scale_shape[0] == helper.N())),
-                "QGemm : scale of input b must be a scalar or 1D tensor of size 1 or N");
-    ORT_ENFORCE(b_scale_shape.NumDimensions() == b_zp_shape.NumDimensions() &&
-                    (b_scale_shape.NumDimensions() == 0 || (b_scale_shape[0] == b_zp_shape[0])),
-                "QGemm : zero point and scale of input b should have same shape size");
+    ORT_RETURN_IF_NOT(b_zp_shape.NumDimensions() == 0 ||
+                          (b_zp_shape.NumDimensions() == 1 && (b_zp_shape[0] == 1 || b_zp_shape[0] == helper.N())),
+                      "QGemm : zero point of input b must be a scalar or 1D tensor of size 1 or N");
+    ORT_RETURN_IF_NOT(b_scale_shape.NumDimensions() == 0 ||
+                          (b_scale_shape.NumDimensions() == 1 && (b_scale_shape[0] == 1 || b_scale_shape[0] == helper.N())),
+                      "QGemm : scale of input b must be a scalar or 1D tensor of size 1 or N");
+    ORT_RETURN_IF_NOT(b_scale_shape.NumDimensions() == b_zp_shape.NumDimensions() &&
+                          (b_scale_shape.NumDimensions() == 0 || (b_scale_shape[0] == b_zp_shape[0])),
+                      "QGemm : zero point and scale of input b should have same shape size");
 
-    ORT_ENFORCE(y_zp == nullptr || IsScalarOr1ElementVector(y_zp),
-                "QGemm : zero point of y must be null or a scalar or 1D tensor of size 1");
-    ORT_ENFORCE(y_scale == nullptr || IsScalarOr1ElementVector(y_scale),
-                "QGemm : scale of y must be null or a scalar or 1D tensor of size 1");
+    ORT_RETURN_IF_NOT(y_zp == nullptr || IsScalarOr1ElementVector(y_zp),
+                      "QGemm : zero point of y must be null or a scalar or 1D tensor of size 1");
+    ORT_RETURN_IF_NOT(y_scale == nullptr || IsScalarOr1ElementVector(y_scale),
+                      "QGemm : scale of y must be null or a scalar or 1D tensor of size 1");
+    return Status::OK();
   }
 
   std::vector<float> ComputeOutputScale(const Tensor* a_scale, const Tensor* b_scale, const Tensor* y_scale) const {

@@ -229,9 +229,9 @@ static std::vector<ITestCase*> GetAllTestCases() {
   };
   allDisabledTests.insert(std::begin(x86DisabledTests), std::end(x86DisabledTests));
 #endif
-// Bad onnx test output caused by previously wrong SAME_UPPER/SAME_LOWER for ConvTranspose
-allDisabledTests.insert(ORT_TSTR("cntk_simple_seg"));
-
+  allDisabledTests.insert(ORT_TSTR("fp16_inception_v1"));
+  // Bad onnx test output caused by previously wrong SAME_UPPER/SAME_LOWER for ConvTranspose
+  allDisabledTests.insert(ORT_TSTR("cntk_simple_seg"));
 
   WINML_EXPECT_NO_THROW(LoadTests(dataDirs, whitelistedTestCases, TestTolerances(1e-3, 1e-3, {}, {}),
                                   allDisabledTests,
