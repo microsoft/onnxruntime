@@ -207,8 +207,8 @@ QNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer
     LOGS(logger, ERROR) << "QNN SetupBackend failed " << rt.ErrorMessage();
 
     if (qnn_enforce_run_entire_model_) {
-      ORT_THROW("Entire model must run on QNN EP, but failed to setup backend with error: ",
-                rt.ErrorMessage().c_str());
+      ORT_THROW("Entire model must run on QNN EP, but failed to setup backend ", backend_path_.c_str(),
+                " with error: ", rt.ErrorMessage().c_str());
     }
 
     return result;
@@ -286,7 +286,7 @@ QNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer
   if (qnn_enforce_run_entire_model_ && num_of_supported_nodes != num_nodes_in_graph) {
     std::string unsupported_node_names = get_unsupported_node_names();
     ORT_THROW("Entire model must run on QNN EP, but some nodes were not assigned to QNN EP. ", summary_msg.c_str(),
-              " Unsupported nodes: ", unsupported_node_names.c_str());
+              ". Unsupported nodes: ", unsupported_node_names.c_str());
   }
 
   return result;
