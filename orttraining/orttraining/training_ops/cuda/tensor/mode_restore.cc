@@ -51,6 +51,7 @@ Status ModeRestore::ComputeInternal(OpKernelContext* context) const {
   const Tensor* output_shape_tensor = context->Input<Tensor>(2);  // Parse the 1-D shape tensor.
   TensorShape output_shape(output_shape_tensor->Data<int64_t>(), output_shape_tensor->Shape().Size());
   const int64_t total_element_count = output_shape.Size();
+
   IAllocatorUniquePtr<int> restored_output_mask = GetScratchBuffer<int>(total_element_count,
                                                                         context->GetComputeStream());
   FillOutputFromMaskImpl(Stream(context),
