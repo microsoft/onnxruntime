@@ -177,6 +177,216 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             }
         }
 
+        static DenseTensor<long> LoadTensorPbV2_long(Onnx.TensorProto tensor, IReadOnlyDictionary<string, NodeMetadata> nodeMetaDict)
+        {
+            Type tensorElemType = null;
+            int width = 0;
+            GetTypeAndWidth((Tensors.TensorElementType)tensor.DataType, out tensorElemType, out width);
+            var intDims = new int[tensor.Dims.Count];
+
+            for (int i = 0; i < tensor.Dims.Count; i++)
+            {
+                intDims[i] = (int)tensor.Dims[i];
+            }
+
+            NodeMetadata nodeMeta = null;
+            string nodeName = string.Empty;
+
+            if (nodeMetaDict.Count == 1)
+            {
+                nodeMeta = nodeMetaDict.Values.First();
+                nodeName = nodeMetaDict.Keys.First(); // valid for single node input
+            }
+            else if (nodeMetaDict.Count > 1)
+            {
+                if (tensor.Name.Length > 0)
+                {
+                    nodeMeta = nodeMetaDict[tensor.Name];
+                    nodeName = tensor.Name;
+                }
+                else
+                {
+                    bool matchfound = false;
+                    // try to find from matching type and shape
+                    foreach (var key in nodeMetaDict.Keys)
+                    {
+                        var meta = nodeMetaDict[key];
+                        if (tensorElemType == meta.ElementType && tensor.Dims.Count == meta.Dimensions.Length)
+                        {
+                            int i = 0;
+                            for (; i < meta.Dimensions.Length; i++)
+                            {
+                                if (meta.Dimensions[i] != -1 && meta.Dimensions[i] != intDims[i])
+                                {
+                                    break;
+                                }
+                            }
+                            if (i >= meta.Dimensions.Length)
+                            {
+                                matchfound = true;
+                                nodeMeta = meta;
+                                nodeName = key;
+                                break;
+                            }
+                        }
+                    }
+                    if (!matchfound)
+                    {
+                        // throw error
+                        throw new Exception($"No Matching Tensor found in InputOutputMetadata corresponding to the serialized tensor specified");
+                    }
+                }
+            }
+            else
+            {
+                // throw error
+                throw new Exception($"While reading the serliazed tensor specified, metaDataDict has 0 elements");
+            }
+
+            if (!nodeMeta.IsTensor)
+                throw new Exception("LoadTensorFromFile can load Tensor types only");
+
+            if (tensorElemType != nodeMeta.ElementType)
+                throw new Exception($"{nameof(tensorElemType)} is expected to be equal to {nameof(nodeMeta.ElementType)}");
+
+            if (nodeMeta.Dimensions.Length != tensor.Dims.Count)
+                throw new Exception($"{nameof(nodeMeta.Dimensions.Length)} is expected to be equal to {nameof(tensor.Dims.Count)}");
+
+            for (int i = 0; i < nodeMeta.Dimensions.Length; i++)
+            {
+                if ((nodeMeta.Dimensions[i] != -1) && (nodeMeta.Dimensions[i] != intDims[i]))
+                    throw new Exception($"{nameof(nodeMeta.Dimensions)}[{i}] is expected to either be -1 or {nameof(intDims)}[{i}]");
+            }
+
+            if (nodeMeta.ElementType == typeof(long))
+            {
+                return CreateDenseTensorFromRawData<long>(nodeName, tensor.RawData.ToArray(), sizeof(long), intDims);
+            }
+            else
+            {
+                //TODO: Add support for remaining types
+                throw new Exception($"Tensors of type {nameof(nodeMeta.ElementType)} not currently supporte in the LoadTensorFromEmbeddedResource");
+            }
+        }
+
+        static DenseTensor<bool> LoadTensorPbV2_bool(Onnx.TensorProto tensor, IReadOnlyDictionary<string, NodeMetadata> nodeMetaDict)
+        {
+            Type tensorElemType = null;
+            int width = 0;
+            GetTypeAndWidth((Tensors.TensorElementType)tensor.DataType, out tensorElemType, out width);
+            var intDims = new int[tensor.Dims.Count];
+
+            for (int i = 0; i < tensor.Dims.Count; i++)
+            {
+                intDims[i] = (int)tensor.Dims[i];
+            }
+
+            NodeMetadata nodeMeta = null;
+            string nodeName = string.Empty;
+
+            if (nodeMetaDict.Count == 1)
+            {
+                nodeMeta = nodeMetaDict.Values.First();
+                nodeName = nodeMetaDict.Keys.First(); // valid for single node input
+            }
+            else if (nodeMetaDict.Count > 1)
+            {
+                if (tensor.Name.Length > 0)
+                {
+                    nodeMeta = nodeMetaDict[tensor.Name];
+                    nodeName = tensor.Name;
+                }
+                else
+                {
+                    bool matchfound = false;
+                    // try to find from matching type and shape
+                    foreach (var key in nodeMetaDict.Keys)
+                    {
+                        var meta = nodeMetaDict[key];
+                        if (tensorElemType == meta.ElementType && tensor.Dims.Count == meta.Dimensions.Length)
+                        {
+                            int i = 0;
+                            for (; i < meta.Dimensions.Length; i++)
+                            {
+                                if (meta.Dimensions[i] != -1 && meta.Dimensions[i] != intDims[i])
+                                {
+                                    break;
+                                }
+                            }
+                            if (i >= meta.Dimensions.Length)
+                            {
+                                matchfound = true;
+                                nodeMeta = meta;
+                                nodeName = key;
+                                break;
+                            }
+                        }
+                    }
+                    if (!matchfound)
+                    {
+                        // throw error
+                        throw new Exception($"No Matching Tensor found in InputOutputMetadata corresponding to the serialized tensor specified");
+                    }
+                }
+            }
+            else
+            {
+                // throw error
+                throw new Exception($"While reading the serliazed tensor specified, metaDataDict has 0 elements");
+            }
+
+            if (!nodeMeta.IsTensor)
+                throw new Exception("LoadTensorFromFile can load Tensor types only");
+
+            if (tensorElemType != nodeMeta.ElementType)
+                throw new Exception($"{nameof(tensorElemType)} is expected to be equal to {nameof(nodeMeta.ElementType)}");
+
+            if (nodeMeta.Dimensions.Length != tensor.Dims.Count)
+                throw new Exception($"{nameof(nodeMeta.Dimensions.Length)} is expected to be equal to {nameof(tensor.Dims.Count)}");
+
+            for (int i = 0; i < nodeMeta.Dimensions.Length; i++)
+            {
+                if ((nodeMeta.Dimensions[i] != -1) && (nodeMeta.Dimensions[i] != intDims[i]))
+                    throw new Exception($"{nameof(nodeMeta.Dimensions)}[{i}] is expected to either be -1 or {nameof(intDims)}[{i}]");
+            }
+
+            if (nodeMeta.ElementType == typeof(bool))
+            {
+                return CreateDenseTensorFromRawData<bool>(nodeName, tensor.RawData.ToArray(), sizeof(bool), intDims);
+            }
+            else
+            {
+                //TODO: Add support for remaining types
+                throw new Exception($"Tensors of type {nameof(nodeMeta.ElementType)} not currently supporte in the LoadTensorFromEmbeddedResource");
+            }
+        }
+
+        internal static DenseTensor<bool> LoadTensorFromFilePbV2_bool(string filename, IReadOnlyDictionary<string, NodeMetadata> nodeMetaDict)
+        {
+            //Set buffer size to 4MB
+            int readBufferSize = 4194304;
+            Onnx.TensorProto tensor = null;
+            using (var file = new FileStream(filename, FileMode.Open, FileAccess.Read, FileShare.Read, readBufferSize))
+            {
+                tensor = Onnx.TensorProto.Parser.ParseFrom(file);
+            }
+
+            return LoadTensorPbV2_bool(tensor, nodeMetaDict);
+        }
+
+        internal static DenseTensor<long> LoadTensorFromFilePbV2_long(string filename, IReadOnlyDictionary<string, NodeMetadata> nodeMetaDict)
+        {
+            //Set buffer size to 4MB
+            int readBufferSize = 4194304;
+            Onnx.TensorProto tensor = null;
+            using (var file = new FileStream(filename, FileMode.Open, FileAccess.Read, FileShare.Read, readBufferSize))
+            {
+                tensor = Onnx.TensorProto.Parser.ParseFrom(file);
+            }
+
+            return LoadTensorPbV2_long(tensor, nodeMetaDict);
+        }
+
         private static void SequenceCheckMatchOnnxType(string nodeName, SequenceMetadata meta,
             OnnxValueType onnxType)
         {
