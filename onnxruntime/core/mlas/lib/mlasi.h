@@ -824,9 +824,7 @@ extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8X8DispatchSse;
 extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8S8DispatchSse41;
 extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8S8DispatchAvx2;
 extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8U8DispatchAvx2;
-#ifdef MLAS_AMX_SUPPORTED
 extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8S8DispatchAmx;
-#endif
 extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8X8DispatchNeon;
 extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmX8S8DispatchNeon;
 extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8X8DispatchUdot;
