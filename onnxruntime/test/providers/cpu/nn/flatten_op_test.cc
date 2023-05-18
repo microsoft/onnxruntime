@@ -47,11 +47,7 @@ TEST_F(FlattenOpTest, Flatten_axis3) {
   test_.AddAttribute<int64_t>("axis", 3L);
   test_.AddInput<float>("data", {2L, 3L, 4L, 5L}, data0_);
   test_.AddOutput<float>("output", {24L, 5L}, data0_);
-#if defined(OPENVINO_CONFIG_MYRIAD) || defined(OPENVINO_CONFIG_VAD_M)  // TBD temporarily disabling for openvino
-  test_.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
-#else
   test_.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
-#endif
 }
 
 TEST_F(FlattenOpTest, Flatten_axis4) {
@@ -65,11 +61,7 @@ TEST_F(FlattenOpTest, Flatten_neg_axis3) {
   test_.AddAttribute<int64_t>("axis", -1L);
   test_.AddInput<float>("data", {2L, 3L, 4L, 5L}, data0_);
   test_.AddOutput<float>("output", {24L, 5L}, data0_);
-#if defined(OPENVINO_CONFIG_MYRIAD) || defined(OPENVINO_CONFIG_VAD_M)  // TBD temporarily disabling for openvino
-  test_.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
-#else
   test_.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
-#endif
 }
 
 }  // namespace test

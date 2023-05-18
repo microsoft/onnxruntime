@@ -3,7 +3,6 @@
 
 #include "core/providers/common.h"
 #include "core/providers/shared/utils/utils.h"
-#include "core/framework/tensorprotoutils.h"
 #include "core/providers/qnn/builder/qnn_model_wrapper.h"
 #include "core/providers/qnn/builder/op_builder_factory.h"
 #include "core/common/safeint.h"
@@ -156,14 +155,14 @@ Status ConvOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
       const auto& input_tensor = qnn_model_wrapper.GetInitializerTensors().at(input_name);
       if (1 == input_i) {  // qnn Conv weight requires HWCN
         if (node_unit.OpType() == "Conv") {
-          ORT_RETURN_IF_ERROR(TransposeFromNchwToHwcn(*input_tensor, qnn_model_wrapper.GetAllocator(), unpacked_tensor));
+          ORT_RETURN_IF_ERROR(TransposeFromNchwToHwcn(qnn_model_wrapper, *input_tensor, qnn_model_wrapper.GetAllocator(), unpacked_tensor));
         } else if (node_unit.OpType() == "ConvTranspose") {
-          ORT_RETURN_IF_ERROR(TransposeFromCnhwToHwcn(*input_tensor, qnn_model_wrapper.GetAllocator(), unpacked_tensor));
+          ORT_RETURN_IF_ERROR(TransposeFromCnhwToHwcn(qnn_model_wrapper, *input_tensor, qnn_model_wrapper.GetAllocator(), unpacked_tensor));
         } else {
           ORT_THROW("Unexpected operator %s", node_unit.OpType());
         }
       } else {
-        ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackInitializerData(*input_tensor, unpacked_tensor));
+        ORT_RETURN_IF_ERROR(qnn_model_wrapper.UnpackInitializerData(*input_tensor, unpacked_tensor));
       }
     }
 

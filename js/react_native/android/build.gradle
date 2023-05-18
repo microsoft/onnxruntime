@@ -20,6 +20,24 @@ def getExtOrIntegerDefault(name) {
   return rootProject.ext.has(name) ? rootProject.ext.get(name) : (project.properties['OnnxruntimeModule_' + name]).toInteger()
 }
 
+def checkIfOrtExtensionsEnabled() {
+  // locate user's project dir
+  def reactnativeRootDir = project.rootDir.parentFile
+  // get package.json file in root directory
+  def packageJsonFile = new File(reactnativeRootDir, 'package.json')
+  // read field 'onnxruntimeExtensionsEnabled'
+  if (packageJsonFile.exists()) {
+    def packageJsonContents = packageJsonFile.getText()
+    def packageJson = new groovy.json.JsonSlurper().parseText(packageJsonContents)
+    return packageJson.onnxruntimeExtensionsEnabled == "true"
+  } else {
+    logger.warn("Could not find package.json file in the expected directory: ${reactnativeRootDir}. ONNX Runtime Extensions will not be enabled.")
+  }
+  return false
+}
+
+boolean ortExtensionsEnabled = checkIfOrtExtensionsEnabled()
+
 android {
   compileSdkVersion getExtOrIntegerDefault('compileSdkVersion')
   buildToolsVersion getExtOrDefault('buildToolsVersion')
@@ -42,6 +60,17 @@ android {
   compileOptions {
     sourceCompatibility JavaVersion.VERSION_1_8
     targetCompatibility JavaVersion.VERSION_1_8
+  }
+
+  sourceSets {
+    main {
+      java.srcDirs = ['src/main/java/']
+      if (ortExtensionsEnabled) {
+        java.exclude '**/OnnxruntimeExtensionsDisabled.java'
+      } else {
+        java.exclude '**/OnnxruntimeExtensionsEnabled.java'
+      }
+    }
   }
 }
 
@@ -136,4 +165,9 @@ dependencies {
   // Mobile build:
   // implementation "com.microsoft.onnxruntime:onnxruntime-mobile:latest.integration@aar"
   implementation "com.microsoft.onnxruntime:onnxruntime-android:latest.integration@aar"
+
+  // By default it will just include onnxruntime full aar package
+  if (ortExtensionsEnabled) {
+    implementation "com.microsoft.onnxruntime:onnxruntime-extensions-android:latest.integration@aar"
+  }
 }

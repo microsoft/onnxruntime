@@ -37,7 +37,7 @@ class MatMulIntegerBase : public OpKernel {
 
       const auto* b_data = static_cast<const uint8_t*>(tensor.DataRaw());
 
-      BufferUniquePtr b_trans_buffer;
+      std::unique_ptr<Tensor> b_trans_buffer;
       if (IsBTransposed()) {
         std::swap(K, N);
         b_data = quantization::TransPoseInputData(b_data, b_trans_buffer, alloc, N, K);

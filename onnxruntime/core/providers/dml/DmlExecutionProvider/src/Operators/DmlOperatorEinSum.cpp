@@ -13,7 +13,8 @@ public:
     :   DmlOperator(kernelCreationContext),
         EinSumHelper(kernelCreationContext, kernelCreationContext.GetTensorShapeDescription(), opsetVersion)
     {
-        ML_CHECK_VALID_ARGUMENT(kernelCreationContext.GetInputCount() + 1 == m_components.size(), "EinSum input tensor count is inconsistent with the equation component count.");
+        ML_CHECK_VALID_ARGUMENT(static_cast<uint64_t>(kernelCreationContext.GetInputCount()) + 1 == m_components.size(),
+            "EinSum input tensor count is inconsistent with the equation component count.");
         ML_CHECK_VALID_ARGUMENT(kernelCreationContext.GetOutputCount() == 1, "EinSum expects one output tensor.");
 
         std::vector<std::optional<uint32_t>> inputIndices = {0,1,2};

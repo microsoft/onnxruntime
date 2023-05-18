@@ -9,6 +9,7 @@
 #endif
 #include "core/providers/coreml/builders/helper.h"
 #include "core/providers/coreml/builders/op_builder_factory.h"
+#include "core/optimizer/initializer.h"
 
 #include "base_op_builder.h"
 
@@ -29,6 +30,7 @@ class ReductionOpBuilder : public BaseOpBuilder {
                          const logging::Logger& logger) const override;
 };
 
+#ifdef __APPLE__
 namespace {
 template <typename T>
 void AddReductionParams(T* params, const std::vector<int64_t>& axes, bool keepdims, bool noop_with_empty_axes) {
@@ -42,7 +44,6 @@ void AddReductionParams(T* params, const std::vector<int64_t>& axes, bool keepdi
 }
 } // namespace
 
-#ifdef __APPLE__
 void ReductionOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const {
   const auto& input_defs(node.InputDefs());
 
@@ -63,16 +64,16 @@ Status ReductionOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, co
   NodeAttrHelper helper(node);
   if (input_defs.size() > 1 && input_defs[1]->Exists()) {
     auto& axes_tensor = *initializers.at(input_defs[1]->Name());
-    const int64_t* raw_axes = axes_tensor.int64_data().empty()
-      ? reinterpret_cast<const int64_t*>(axes_tensor.raw_data().data())
-      : axes_tensor.int64_data().data();
-    const auto size = axes_tensor.dims()[0];
-    axes = std::vector<int64_t>(raw_axes, raw_axes + size);
+    Initializer axes_initializer(axes_tensor);
+    int64_t* data = axes_initializer.data<int64_t>();
+    int64_t size = axes_initializer.size();
+
+    axes = std::vector<int64_t>(data, data + size);
   } else if (helper.HasAttr("axes")) {
     axes = helper.Get("axes", std::vector<int64_t>{});
   }
-  auto keepdims = helper.Get("keepdims", 1);
-  auto noop_with_empty_axes = helper.Get("noop_with_empty_axes", 0);
+  const bool keepdims = helper.Get("keepdims", 1) != 0;
+  const bool noop_with_empty_axes = helper.Get("noop_with_empty_axes", 0) != 0;
 
   std::unique_ptr<COREML_SPEC::NeuralNetworkLayer> layer = CreateNNLayer(model_builder, node);
 
@@ -97,7 +98,7 @@ bool ReductionOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInpu
                                            const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
 
-  if (input_defs.size() > 1) {
+  if (input_defs.size() > 1 && input_defs[1]->Exists()) {
     const auto& axes_name = input_defs[1]->Name();
     const auto& initializers = input_params.graph_viewer.GetAllInitializedTensors();
     if (!Contains(initializers, axes_name)) {
