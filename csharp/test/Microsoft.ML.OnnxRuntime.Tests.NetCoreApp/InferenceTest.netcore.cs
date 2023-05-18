@@ -953,8 +953,10 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             }
         }
 
-        // TestGpu() will test the CUDA EP on CUDA enabled builds and
-        // the DML EP on DML enabled builds
+        // TestGpu() will test
+        //  - the CUDA EP on CUDA enabled builds
+        //  - the DML EP on DML enabled builds
+        //  - the ROCm EP on ROCm enabled builds
         [GpuFact(DisplayName = "TestGpu")]
         private void TestGpu()
         {
