@@ -22,7 +22,7 @@ jobs:
       BuildStep:
       - script: |
           set -e
-          sudo xcodeselect --switch /Applications/Xcode_14.3.app/Contents/Developer
+          sudo xcode-select --switch /Applications/Xcode_14.3.app/Contents/Developer
           python3 tools/ci_build/build.py \
           --build_dir build \
           --skip_submodule_sync \
