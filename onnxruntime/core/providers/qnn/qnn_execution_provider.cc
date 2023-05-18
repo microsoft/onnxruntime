@@ -339,10 +339,6 @@ QNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer
         return partition && partition->sub_graph ? partition->sub_graph->nodes.size() : 0;
       });
 
-  const auto summary_msg = MakeString("Number of partitions supported by QNN EP: ", num_of_partitions,
-                                      ", number of nodes in the graph: ", graph_viewer.NumberOfNodes(),
-                                      ", number of nodes supported by QNN: ", num_of_supported_nodes);
-
   if (load_from_cached_context && 1 == num_of_partitions) {
     rt = qnn_backend_manager_->ValidateWithContextFile(GetFileNameFromModelPath(graph_viewer.ModelPath()),
                                                        result[0]->sub_graph->GetMetaDef()->name);
@@ -355,6 +351,10 @@ QNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer
   if (num_of_partitions > 1) {
     ORT_ENFORCE(!context_cache_enabled_, "Only support singel partition for context cache feature.");
   }
+
+  const auto summary_msg = MakeString("Number of partitions supported by QNN EP: ", num_of_partitions,
+                                      ", number of nodes in the graph: ", graph_viewer.NumberOfNodes(),
+                                      ", number of nodes supported by QNN: ", num_of_supported_nodes);
   LOGS(logger, INFO) << summary_msg;
 
   return result;
