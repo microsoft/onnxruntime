@@ -911,16 +911,7 @@ PostLayoutTransformCostCheck(const api::GraphRef& graph, const api::NodeRef& nod
 }
 
 Status TransformLayoutForEP(Graph& graph, bool& modified, const IExecutionProvider& execution_provider,
-                            const DebugGraphFn& debug_graph_fn) {
-  // sub graph recurse will be added later
-  auto cpu_allocator = execution_provider.GetAllocator(OrtMemTypeDefault);
-  if (cpu_allocator->Info().device.Type() != OrtDevice::CPU) {
-    cpu_allocator = execution_provider.GetAllocator(OrtMemTypeCPU);
-    if (!cpu_allocator || cpu_allocator->Info().device.Type() != OrtDevice::CPU) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to get CPU allocator from EP: ",
-                             execution_provider.Type());
-    }
-  }
+                            AllocatorPtr cpu_allocator, const DebugGraphFn& debug_graph_fn) {
   auto api_graph = MakeApiGraph(graph, cpu_allocator, nullptr);
   const auto& layout_sensitive_ops = GetORTLayoutSensitiveOps();
 
