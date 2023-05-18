@@ -6,7 +6,6 @@
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
 #include "gemm_float8.h"
-#include "gemm_float8.cuh"
 
 namespace onnxruntime {
 namespace cuda {
@@ -50,14 +49,16 @@ REGISTER_KERNEL_FIVE_TYPED(Float8E5M2, Float8E4M3FN, float, float, BFloat16)
 
 template <typename AType, typename BType, typename CType, typename DType, typename BiasType>
 Status GemmFloat8<AType, BType, CType, DType, BiasType>::ComputeInternal(OpKernelContext* ctx) const {
-  typedef typename ToCudaType<DType>::MappedType CudaDType;
-
   // D = alpha*(A*B) + beta*(C)
   const auto* A = ctx->Input<Tensor>(0);  // X
   const auto* B = ctx->Input<Tensor>(1);  // W
   const auto* C = ctx->Input<Tensor>(2);  // B
   // Bias could be missing. Treat as scalar 0 if that is the case.
-  GemmHelper helper(A->Shape(), trans_A_, B->Shape(), trans_B_, C != nullptr ? C->Shape() : TensorShape({}));
+  GemmHelper helper(A->Shape(),
+                    params_.trans_A_,
+                    B->Shape(),
+                    params_.trans_B_,
+                    C != nullptr ? C->Shape() : TensorShape({}));
 
   if (!helper.State().IsOK())
     return helper.State();
@@ -65,27 +66,15 @@ Status GemmFloat8<AType, BType, CType, DType, BiasType>::ComputeInternal(OpKerne
   int M = gsl::narrow_cast<int>(helper.M());
   int N = gsl::narrow_cast<int>(helper.N());
   int K = gsl::narrow_cast<int>(helper.K());
-  auto* Y = ctx->Output(0, {M, N});
-  CudaDType* out_data = reinterpret_cast<CudaDType*>(Y->MutableData<T>());
 
-  int lda, ldb, ldd;
-  if (trans_A_ && !trans_B_) {  // TN
-    lda = k;
-    ldb = k;
-    ldd = m;
-  } else if (!trans_A_ && !trans_B_) {  // NN
-    lda = m;
-    ldb = k;
-    ldd = m;
-  } else if (!trans_A_ && trans_B_) {  // NT
-    lda = m;
-    ldb = n;
-    ldd = m;
-  } else {  // TT
-    ORT_THROW("trans_A == true && trans_B == true not allowed.");
-  }
+  auto* D = ctx->Output(0, {M, N});
 
-  GemmFloat8_Impl<AType, BType, CType, DType, BiasType>::CudaCompute();
+  cudaStream_t stream = Stream(ctx);
+  // cublasHandle_t cublas = GetCublasHandle(ctx);
+  cublasLtHandle_t cublasLt = CublasLtHandle();
+
+  this->params_.CudaCompute(stream, cublasLt, A, B, C, D, nullptr, M, N, K);
+  return helper.State();
 }
 
 }  // namespace cuda
