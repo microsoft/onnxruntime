@@ -481,7 +481,6 @@ Status QnnBackendManager::GetMetadataFromOrtContextFile(const onnxruntime::PathS
   return Status::OK();
 }
 
-
 /* \brief: Validate the model file name and graph name with Ort generated context cache metadata
  * \param[in] model_name - model file name
  * \param[in] graph_name - graph name, e.g Ort_QNN_[hash_id]_[id]. Since GetCapability is called twice,
