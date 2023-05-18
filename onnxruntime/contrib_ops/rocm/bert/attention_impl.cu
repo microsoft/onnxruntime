@@ -88,17 +88,28 @@ Status ClassifyAttentionMode(
   size_t num_past = std::count_if(past.cbegin(), past.cend(), [](auto it) { return it != nullptr; });
   size_t num_present = std::count_if(present.cbegin(), present.cend(), [](auto it) { return it != nullptr; });
 
+  auto hint = MakeString(num_qkv, " qkv inputs, ", num_past, " past inputs and ", num_present, " present inputs");
+  LOGS_DEFAULT(VERBOSE) << hint;
+
   if (op == "Attention") {
     ORT_ENFORCE(num_qkv == 0);
     if (num_past == 0 && num_present == 0) {
-      attn->mode = NONE_NONE_NONE_NONE_NONE_NONE_NONE;
+      attn->mode = QFMT_KFMT_VFMT_NONE_NONE_NONE_NONE;
       return Status::OK();
-    } else if (num_past == 1 && num_present == 1) {
+    } else if (num_past == 0 && num_present == 1) {
       if (attn->past_present_share_buffer == false) {
-        attn->mode = NONE_NONE_NONE_2BNPH_NONE_2BNTH_NONE;
+        attn->mode = QFMT_KFMT_VFMT_NONE_NONE_2BNTH_NONE;
         return Status::OK();
       } else {
-        attn->mode = NONE_NONE_NONE_2BNMH_NONE_2BNMH_NONE;
+        attn->mode = QFMT_KFMT_VFMT_NONE_NONE_2BNMH_NONE;
+        return Status::OK();
+      }
+    } else if (num_past == 1 && num_present == 1) {
+      if (attn->past_present_share_buffer == false) {
+        attn->mode = QFMT_KFMT_VFMT_2BNPH_NONE_2BNTH_NONE;
+        return Status::OK();
+      } else {
+        attn->mode = QFMT_KFMT_VFMT_2BNMH_NONE_2BNMH_NONE;
         return Status::OK();
       }
     }
@@ -139,7 +150,7 @@ Status ClassifyAttentionMode(
       }
     } else if (num_qkv == 2 && num_past == 0 && num_present == 0) {
       if (attn->qkv_format == Q_KV_BSNH_BSN2H) {
-        attn->mode = BLN3H_NONE_NONE_NONE_NONE_NONE_NONE;
+        attn->mode = BSNH_BLN2H_NONE_NONE_NONE_NONE_NONE;
         return Status::OK();
       }
     }
@@ -147,7 +158,7 @@ Status ClassifyAttentionMode(
   return ORT_MAKE_STATUS(
       ONNXRUNTIME, INVALID_ARGUMENT,
       "Unsupported AttentionMode for ", op, ". Got qkv format ", attn->qkv_format,
-      ". Got ", num_qkv, " qkv inputs, ", num_past, " past inputs and ", num_present, " present inputs");
+      ". Got ", hint);
 }
 
 template <typename T>
@@ -189,7 +200,7 @@ Status DecoderQkvToContext(
   const T* q = qkv_buffer;
   // transpose q and copy them to qkv_buffer
   ORT_RETURN_IF_ERROR(LaunchTransQkv(stream, 1, sequence_length, batch_size, head_size,
-                      num_heads, max_threads_per_block, true, gemm_query_buffer, qkv_buffer));
+                                     num_heads, max_threads_per_block, true, gemm_query_buffer, qkv_buffer));
 
   const T* k = qkv_buffer + k_buffer_offset;
   const T* v = qkv_buffer + v_buffer_offset;
@@ -197,31 +208,31 @@ Status DecoderQkvToContext(
     if (!static_kv) {
       // transpose kv and copy them to qkv_buffer
       ORT_RETURN_IF_ERROR(LaunchTransQkv(stream, 2, sequence_length, batch_size, head_size, num_heads,
-                          max_threads_per_block, true, gemm_kv_buffer, qkv_buffer + k_buffer_offset));
+                                         max_threads_per_block, true, gemm_kv_buffer, qkv_buffer + k_buffer_offset));
     } else {
       // transpose kv and copy them to qkv_buffer
       ORT_RETURN_IF_ERROR(LaunchTransQkv(stream, 2, kv_sequence_length, batch_size, head_size, num_heads,
-                          max_threads_per_block, true, gemm_kv_buffer, qkv_buffer + k_buffer_offset));
+                                         max_threads_per_block, true, gemm_kv_buffer, qkv_buffer + k_buffer_offset));
     }
   } else {
     if (!static_kv) {
       // transpose kv and copy them to temp_buffer
       ORT_RETURN_IF_ERROR(LaunchTransQkv(stream, 2, sequence_length, batch_size, head_size, num_heads,
-                          max_threads_per_block, true, gemm_kv_buffer, temp_qkv_buffer));
+                                         max_threads_per_block, true, gemm_kv_buffer, temp_qkv_buffer));
       // concat cache-k with k and copy to qkv_buffer
       if (nullptr != key_cache) {
         ORT_RETURN_IF_ERROR(LaunchConcatTensorToTensor(stream, kv_sequence_length, sequence_length,
-                                                              batch_size, head_size, num_heads,
-                                                              max_threads_per_block, 1, key_cache,
-                                                              temp_qkv_buffer, qkv_buffer + k_buffer_offset));
+                                                       batch_size, head_size, num_heads,
+                                                       max_threads_per_block, 1, key_cache,
+                                                       temp_qkv_buffer, qkv_buffer + k_buffer_offset));
       }
       // concat cache-v with v and copy to qkv_buffer
       if (nullptr != value_cache) {
         ORT_RETURN_IF_ERROR(LaunchConcatTensorToTensor(stream, kv_sequence_length, sequence_length,
-                                                                batch_size, head_size, num_heads,
-                                                                max_threads_per_block, 1, value_cache,
-                                                                temp_qkv_buffer + k_buffer_offset,
-                                                                qkv_buffer + v_buffer_offset));
+                                                       batch_size, head_size, num_heads,
+                                                       max_threads_per_block, 1, value_cache,
+                                                       temp_qkv_buffer + k_buffer_offset,
+                                                       qkv_buffer + v_buffer_offset));
       }
     }
   }
@@ -286,7 +297,7 @@ Status DecoderQkvToContext(
         false, 1.0f, false, nullptr, mask_filter_value));
   } else {
     ORT_RETURN_IF_ERROR(ComputeSoftmax<T>(stream, kv_sequence_length, sequence_length, batch_size,
-                           num_heads, nullptr, scratch1, scratch2, false));
+                                          num_heads, nullptr, scratch1, scratch2, false));
   }
 
   // compute P*V (as V*P), and store in scratch3: BxNxSxH

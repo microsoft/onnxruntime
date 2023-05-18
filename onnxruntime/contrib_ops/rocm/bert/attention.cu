@@ -86,9 +86,12 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   using AttentionGeneric = GemmSoftmaxGemmPermuteGenericPipeline<HipT>;
   using AttentionTunableOp = GemmSoftmaxGemmPermuteTunableOp<HipT>;
 
-  ORT_RETURN_IF_ERROR(ClassifyAttentionMode(Node().OpType(), &attn, /*qkv*/ {}, /*past*/ {past}, /**/ {present}));
-  // TODO: support QFMT_KFMT_VFMT_2BNMH_NONE_2BNMH_NONE
-  ORT_ENFORCE(attn.mode == QFMT_KFMT_VFMT_NONE_NONE_NONE_NONE || attn.mode == QFMT_KFMT_VFMT_2BNPH_NONE_2BNTH_NONE);
+  ORT_RETURN_IF_ERROR(ClassifyAttentionMode(
+      Node().OpType(), &attn, /*qkv=*/{}, /*past=*/{past}, /*present=*/{present}));
+  // TODO: support QFMT_KFMT_VFMT_NONE_NONE_2BNMH_NONE and QFMT_KFMT_VFMT_2BNMH_NONE_2BNMH_NONE
+  ORT_ENFORCE(attn.mode == QFMT_KFMT_VFMT_NONE_NONE_NONE_NONE ||
+              attn.mode == QFMT_KFMT_VFMT_NONE_NONE_2BNTH_NONE ||
+              attn.mode == QFMT_KFMT_VFMT_2BNPH_NONE_2BNTH_NONE);
 
   size_t qkv_project_output_bytes = QkvProjectGeneric::GetOutputNumBytes(&attn);
   size_t shared_workspace_bytes = std::max(QkvProjectGeneric::GetWorkspaceNumBytes(&attn),

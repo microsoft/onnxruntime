@@ -76,7 +76,7 @@ class IGemmSoftmaxGemmPermuteKernelExplorer : public IKernelExplorer {
     params_.device_prop = &device_prop;
     params_.scale = scale;
 
-    std::tie(params_.q_buffer, params_.k_buffer, params_.v_buffer) = GetQkvBuffers<T>(
+    std::tie(params_.q_buffer, params_.k_buffer, params_.v_buffer) = ConvertToOffsetedBufferViews<T>(
         &attn_, Q.ptr(), K.has_value() ? K->ptr() : nullptr, V.has_value() ? V->ptr() : nullptr);
 
     if (attn_bias.has_value()) {
@@ -114,7 +114,7 @@ class IGemmSoftmaxGemmPermuteKernelExplorer : public IKernelExplorer {
   using ParamsT = contrib::rocm::GemmSoftmaxGemmPermuteParams<T>;
   rocblas_handle rocblas_handle_;
   hipDeviceProp_t device_prop;
-  contrib::AttentionParameters attn_;
+  contrib::rocm::RocmAttentionParameters attn_;
   ParamsT params_;
   std::shared_ptr<void> workspace_;
 };
