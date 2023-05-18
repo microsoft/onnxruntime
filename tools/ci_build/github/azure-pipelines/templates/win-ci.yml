@@ -118,6 +118,10 @@ stages:
 
       - template: set-version-number-variables-step.yml
 
+      - ${{ if contains(parameters.buildparameter, 'use_cuda') }}:
+        - powershell: |
+           azcopy.exe cp --recursive "https://lotusscus.blob.core.windows.net/models/cuda_sdk/v11.8" $(Agent.TempDirectory)
+
       - task: PythonScript@0
         displayName: 'Generate cmake config'
         inputs:
