@@ -24,4 +24,5 @@ steps:
       definition: 'fd9dd5ad-b73e-4678-890e-edcf680dbc1a'
       version: 1.0.59
       downloadPath: $(Build.BinariesDirectory)/deps
+
 # You can add more ADO accounts at here.
