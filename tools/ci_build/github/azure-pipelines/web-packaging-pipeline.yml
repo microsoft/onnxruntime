@@ -28,4 +28,4 @@ stages:
   parameters:
     NpmPackagingMode: ${{ variables.NpmPackagingMode }}
     IsReleasePipeline: true
-    PoolName: 'Win-CPU-2021'
+    PoolName: 'onnxruntime-Win-CPU-2022'

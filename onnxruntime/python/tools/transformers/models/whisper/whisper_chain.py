@@ -33,6 +33,11 @@ def chain_model(args):
     ]
     if args.use_forced_decoder_ids:
         beam_inputs.append("decoder_input_ids")
+    else:
+        beam_inputs.append("")
+
+    if args.use_logits_processor:
+        beam_inputs.append("logits_processor")
     beam_outputs = ["sequences"]
 
     node = helper.make_node("BeamSearch", inputs=beam_inputs, outputs=beam_outputs, name="BeamSearch_zcode")
@@ -73,6 +78,10 @@ def chain_model(args):
             "decoder_input_ids", TensorProto.INT32, ["batch_size", "initial_sequence_length"]
         )
         graph_inputs.append(decoder_input_ids)
+
+    if args.use_logits_processor:
+        logits_processor = helper.make_tensor_value_info("logits_processor", TensorProto.INT32, [1])
+        graph_inputs.append(logits_processor)
 
     # graph outputs
     sequences = helper.make_tensor_value_info(
