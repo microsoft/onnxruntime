@@ -49,6 +49,17 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
     LOGS_DEFAULT(INFO) << "rpc_control_latency: " << rpc_control_latency_;
   }
 
+  qnn_enforce_run_entire_model_ = false;
+  static const std::string QNN_ENFORCE_RUN_ENTIRE_MODEL = "qnn_enforce_run_entire_model";
+  auto qnn_enforce_run_entire_model_pos = runtime_options_.find(QNN_ENFORCE_RUN_ENTIRE_MODEL);
+
+  if (qnn_enforce_run_entire_model_pos != runtime_options_.end()) {
+    qnn_enforce_run_entire_model_ = qnn_enforce_run_entire_model_pos->second == "1";
+    if (qnn_enforce_run_entire_model_) {
+      LOGS_DEFAULT(INFO) << "Enforce that entire model runs on QNN EP with backend " << backend_path_;
+    }
+  }
+
   AllocatorCreationInfo device_info(
       [](int) {
         return std::make_unique<CPUAllocator>(OrtMemoryInfo(QNN, OrtAllocatorType::OrtDeviceAllocator));
@@ -194,6 +205,12 @@ QNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer
   auto rt = qnn_backend_manager_->SetupBackend(logger);
   if (Status::OK() != rt) {
     LOGS(logger, ERROR) << "QNN SetupBackend failed " << rt.ErrorMessage();
+
+    if (qnn_enforce_run_entire_model_) {
+      ORT_THROW("Entire model must run on QNN EP, but failed to setup backend with error: ",
+                rt.ErrorMessage().c_str());
+    }
+
     return result;
   }
 
@@ -242,6 +259,11 @@ QNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer
   // we want to give users a summary message at warning level.
   if (num_of_partitions > 1) {
     LOGS(logger, WARNING) << summary_msg;
+
+    if (qnn_enforce_run_entire_model_) {
+      ORT_THROW("Entire model must run on QNN EP, but some nodes were not assigned to QNN EP. ", summary_msg.c_str());
+    }
+
   } else {
     LOGS(logger, INFO) << summary_msg;
   }

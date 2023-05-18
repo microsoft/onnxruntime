@@ -68,6 +68,8 @@ class QNNExecutionProvider : public IExecutionProvider {
   std::unordered_map<std::string, std::unique_ptr<qnn::QnnModel>> qnn_models_;
   AllocatorPtr cpu_allocator_;
   uint32_t rpc_control_latency_;
+  bool qnn_enforce_run_entire_model_;  // If true, GetCapability() will throw an exception if the desired backend
+                                       // can't be loaded or if the entire model cannot be assigned to QNN EP.
 };
 
 }  // namespace onnxruntime

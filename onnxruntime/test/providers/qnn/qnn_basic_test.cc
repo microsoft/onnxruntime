@@ -63,6 +63,63 @@ TEST(QnnEP, TestAddEpUsingPublicApi) {
   }
 }
 
+// Tests the `qnn_enforce_run_entire_model` option when the backend cannot be loaded.
+// When the option is enabled, Session creation should throw an exception
+// when the backend cannot be found.
+TEST(QnnEP, TestEnforceEntireModel_BackendNotFound) {
+  {
+    // C++ API test
+    Ort::SessionOptions so;
+    onnxruntime::ProviderOptions options;
+    options["qnn_enforce_run_entire_model"] = "1";  // Throw if can't run entire model on QNN EP.
+#if defined(_WIN32)
+    options["backend_path"] = "DoesNotExist.dll";  // Invalid backend path!
+#else
+    options["backend_path"] = "libDoesNotExist.so";  // Invalid backend path!
+#endif
+
+    so.AppendExecutionProvider("QNN", options);
+
+    const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "constant_floats.onnx";
+
+    try {
+      Ort::Session session(*ort_env, ort_model_path, so);
+      FAIL();  // Should not get here!
+    } catch (const Ort::Exception& excpt) {
+      ASSERT_THAT(excpt.what(), testing::HasSubstr("Entire model must run on QNN EP, but failed to setup backend"));
+    }
+  }
+}
+
+// Tests the `qnn_enforce_run_entire_model` option when the entire model cannot be assigned to QNN EP.
+// When the option is enabled, Session creation should throw an exception.
+TEST(QnnEP, TestEnforceEntireModel_ModelNotFullySupported) {
+  {
+    // C++ API test
+    Ort::SessionOptions so;
+    onnxruntime::ProviderOptions options;
+    options["qnn_enforce_run_entire_model"] = "1";  // Throw if can't run entire model on QNN EP.
+#if defined(_WIN32)
+    options["backend_path"] = "QnnCpu.dll";
+#else
+    options["backend_path"] = "libQnnCpu.so";
+#endif
+
+    so.AppendExecutionProvider("QNN", options);
+
+    // QNN EP doesn't support MatMulInteger.
+    const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "matmul_integer_to_float_int8.onnx";
+
+    try {
+      Ort::Session session(*ort_env, ort_model_path, so);
+      FAIL();  // Should not get here!
+    } catch (const Ort::Exception& excpt) {
+      ASSERT_THAT(excpt.what(),
+                  testing::HasSubstr("Entire model must run on QNN EP, but some nodes were not assigned to QNN EP"));
+    }
+  }
+}
+
 // Helper function that runs an ONNX model with a NHWC Resize operator to test that
 // type/shape inference succeeds during layout transformation.
 // Refer to onnxruntime/core/graph/contrib_ops/nhwc_inference_context.h.
