@@ -66,6 +66,7 @@ class T5Helper:
         device: torch.device,
         merge_encoder_and_decoder_init: bool = True,
         model_type: str = "t5",
+        state_dict_path: str = "",
     ) -> Dict[str, torch.nn.Module]:
         """Load model given a pretrained name or path, then build models for ONNX conversion.
 
@@ -84,6 +85,9 @@ class T5Helper:
             model = MT5ForConditionalGeneration.from_pretrained(model_name_or_path, cache_dir=cache_dir)
         else:
             raise ValueError("only support mode_type=t5 or mt5")
+
+        if state_dict_path:
+            model.load_state_dict(torch.load(state_dict_path))
 
         decoder = T5Decoder(model.decoder, model.lm_head, model.config)
         decoder.eval().to(device)

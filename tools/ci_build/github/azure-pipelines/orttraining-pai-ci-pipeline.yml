@@ -17,7 +17,7 @@ jobs:
     - name: onnxruntimeBuildSucceeded
       value: false
     - name: RocmVersion
-      value: 5.4
+      value: 5.5
     - name: CCACHE_DIR
       value: $(Pipeline.Workspace)/ccache
     - name: TODAY
