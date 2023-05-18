@@ -2454,7 +2454,7 @@ def main():
                     args.test = False
 
         if args.build_wasm:
-            if is_windows() and platform.architecture()[0] == '32bit':
+            if is_windows() and platform.architecture()[0] == "32bit":
                 raise BuildError("Please use a 64-bit python to run this script")
             if args.build_wheel or args.enable_pybind:
                 raise BuildError("WASM does not support pybind")
