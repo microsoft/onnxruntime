@@ -9,16 +9,16 @@
 namespace onnxruntime {
 namespace cuda {
 
-class ZeroPointRestore final : public CudaKernel {
+class ModeCompress final : public CudaKernel {
  public:
-  ZeroPointRestore(const OpKernelInfo& info) : CudaKernel(info) {
-    default_zero_point_value_ = info.GetAttrOrDefault<float>("zero_point", 0.f);
+  ModeCompress(const OpKernelInfo& info) : CudaKernel(info) {
+    mode_ = info.GetAttrOrDefault<float>("mode", 0.f);
   }
 
   Status ComputeInternal(OpKernelContext* context) const override;
 
  private:
-  float default_zero_point_value_ = 0.0f;
+  float mode_ = 0.0f;
 };
 
 }  // namespace cuda

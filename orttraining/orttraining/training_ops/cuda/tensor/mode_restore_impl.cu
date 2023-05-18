@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "orttraining/training_ops/cuda/tensor/zero_point_restore_impl.h"
+#include "orttraining/training_ops/cuda/tensor/mode_restore_impl.h"
 #include "core/providers/cuda/cu_inc/bitmask.cuh"
 #include <cub/cub.cuh>
 
@@ -43,23 +43,25 @@ __global__ void FillOutputFromMaskKernel(const CUDA_LONG N,
                                          const BitmaskElementType* mask_data,
                                          int* restored_output_mask) {
   CUDA_LONG idx = blockDim.x * blockIdx.x + threadIdx.x;
+  CUDA_LONG id = idx * kNumUnroll;
 
   int masks[kNumUnroll];
-  if (idx < N) {
+  if (id < N) {
     int bitmask_idx, bitmask_shift;
-    fdm_bits_per_element.divmod(idx, bitmask_idx, bitmask_shift);
+    fdm_bits_per_element.divmod(id, bitmask_idx, bitmask_shift);
     BitmaskElementType shifted_mask = mask_data[bitmask_idx] >> bitmask_shift;
 #pragma unroll
     for (int i = 0; i < kNumUnroll; i++) {
-      masks[i] = (shifted_mask & (1 << i)) != 0;
+      masks[i] = ((shifted_mask & (1 << i)) != 0);
     }
   }
 
 #pragma unroll
   for (int i = 0; i < kNumUnroll; ++i) {
-    CUDA_LONG li = idx + i;
+    CUDA_LONG li = id + i;
     if (li < N) {
       restored_output_mask[li] = masks[i];
+      // printf("restored_output_mask[%d] = %d \n", static_cast<int>(li), restored_output_mask[li]);
     }
   }
 }
@@ -98,7 +100,10 @@ __global__ void RestoreFromMaskKernel(const CUDA_LONG N,
 
 #pragma unroll
       for (int i = 0; i < kNumUnroll; ++i) {
-        maps[i + 1] = output_idx_to_input_idx_map_buffer[id + i];
+        CUDA_LONG li = id + i;
+        if (li < N) {
+          maps[i + 1] = output_idx_to_input_idx_map_buffer[li];
+        }
       }
     }
 
@@ -108,6 +113,7 @@ __global__ void RestoreFromMaskKernel(const CUDA_LONG N,
       if (li < N) {
         int map_value = maps[i + 1] - maps[i];
         output_data[li] = map_value == 1 ? input_data[maps[i]] : static_cast<T>(zero_point_value);
+        // printf("output_data[%d] = %f, map_value: %d, maps[i + 1]: %d \n", static_cast<int>(li), static_cast<float>(output_data[li]), map_value, maps[i + 1]);
       }
     }
   }
@@ -130,6 +136,7 @@ void RestoreFromMaskImpl(const cudaDeviceProp& prop,
   const int steps_per_thread = static_cast<int>(CeilDiv(total_element_count, step_size));
   fast_divmod fdm_bits_per_element(kNumBitsPerBitmaskElement);
 
+  // std::cout << "step_size: " << step_size << ", steps_per_thread: " << steps_per_thread << ", total_element_count: " << total_element_count << std::endl;
   RestoreFromMaskKernel<T><<<grid_size, kBlockSize, 0, stream>>>(
       static_cast<CUDA_LONG>(total_element_count),
       step_size,

@@ -1,15 +1,15 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "orttraining/training_ops/cuda/tensor/zero_point_restore.h"
-#include "orttraining/training_ops/cuda/tensor/zero_point_restore_impl.h"
+#include "orttraining/training_ops/cuda/tensor/mode_restore.h"
+#include "orttraining/training_ops/cuda/tensor/mode_restore_impl.h"
 #include "core/providers/cuda/shared_inc/cuda_utils.h"
 
 namespace onnxruntime {
 namespace cuda {
 
 ONNX_OPERATOR_KERNEL_EX(
-    ZeroPointRestore,
+    ModeRestore,
     kMSDomain,
     1,
     kCudaExecutionProvider,
@@ -19,7 +19,7 @@ ONNX_OPERATOR_KERNEL_EX(
         .TypeConstraint("T_INT", DataTypeImpl::GetTensorType<int64_t>())
         .TypeConstraint("T_CFW", BuildKernelDefConstraints<MLFloat16, float, double, BFloat16>())
         .InputMemoryType(OrtMemTypeCPUInput, 2),
-    ZeroPointRestore);
+    ModeRestore);
 
 // Put implementation in the anonymous namespace to avoid name collision in the global namespace.
 namespace {
@@ -45,7 +45,7 @@ struct RestoreFromMaskFunctor {
 
 }  // namespace
 
-Status ZeroPointRestore::ComputeInternal(OpKernelContext* context) const {
+Status ModeRestore::ComputeInternal(OpKernelContext* context) const {
   const Tensor* input_tensor = context->Input<Tensor>(0);
   const Tensor* mask_input_tensor = context->Input<Tensor>(1);
   const Tensor* output_shape_tensor = context->Input<Tensor>(2);  // Parse the 1-D shape tensor.
@@ -78,7 +78,7 @@ Status ZeroPointRestore::ComputeInternal(OpKernelContext* context) const {
   t_disp.Invoke<RestoreFromMaskFunctor>(GetDeviceProp(),
                                         Stream(context),
                                         total_element_count,
-                                        default_zero_point_value_,
+                                        mode_,
                                         *input_tensor,
                                         output_idx_to_input_idx_map_buffer.get(),
                                         *output_tensor);

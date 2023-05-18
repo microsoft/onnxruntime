@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "orttraining/training_ops/cuda/tensor/zero_point_erase_impl.h"
+#include "orttraining/training_ops/cuda/tensor/mode_compress_impl.h"
 #include "core/providers/cuda/cu_inc/bitmask.cuh"
 #include <cub/cub.cuh>
 
@@ -103,7 +103,6 @@ __global__ void SetMaskOutputVectorizedKernel(const CUDA_LONG N,
   CUDA_LONG idx = blockDim.x * blockIdx.x + threadIdx.x;
 
   using LoadT = aligned_vector<T, kNumUnroll>;
-  using MaskLoadT = aligned_vector<bool, kNumUnroll>;
 
   for (int i = 0; i < steps_per_thread; ++i) {
     CUDA_LONG id = idx * kNumUnroll + i * step_size;

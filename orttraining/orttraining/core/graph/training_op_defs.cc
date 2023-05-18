@@ -4572,26 +4572,24 @@ Return true if all elements are true and false otherwise.
         }
       });
 
-  ONNX_CONTRIB_OPERATOR_SCHEMA(ZeroPointErase)
+  ONNX_CONTRIB_OPERATOR_SCHEMA(ModeCompress)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
       .SetDoc(
-          "Remove the elements that equal with zero_point value, return others in "
-          "1-D output tensor and mask. Using the mask can restore the original input tensor.")
+          "The mode is the value that appears most often in a set of data values. "
+          "https://en.wikipedia.org/wiki/Mode_(statistics)"
+          "This operator compress the input representation by removing the elements that equal with mode value, "
+          "return others in 1-D output tensor and mask. Using the mask can restore the original input tensor.")
       .Input(0, "input", "Tensor to be clipped.", "T")
-      .Output(0, "output", "Output tensor after removing all elements that equal with zero_point value", "T")
+      .Output(0, "output", "Output tensor after removing all elements that equal with mode value", "T")
       .Output(1, "mask",
-              "Mask where values indicate if value equals with zero_point value. "
+              "Mask where values indicate if value equals with mode value. "
               "Input tensor contains total N elements, then output mask tensor contains (N + 31) / 32 32-bit integers."
-              "Each bit represents whether the corresponding element in input tensor equals with zero_point value or not."
-              "If the bit is 1, then the value does not equal to zero_point value in the input tensor.",
+              "Each bit represents whether the corresponding element in input tensor equals with mode value or not."
+              "If the bit is 1, then the value does not equal to mode value in the input tensor.",
               "T_MASK")
-      .Output(2, "shape",
-              "Shape of the input tensor.",
-              "T_INT")
-      .Attr(
-          "zero_point", "The outlier value to remove from the input tensor.",
-          AttributeProto::FLOAT, 0.0f)
+      .Output(2, "shape", "Shape of the input tensor.", "T_INT")
+      .Attr("mode", "The mode value.", AttributeProto::FLOAT, 0.0f)
       .TypeConstraint(
           "T",
           {"tensor(float)", "tensor(float16)"},
@@ -4607,39 +4605,49 @@ Return true if all elements are true and false otherwise.
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         propagateElemTypeFromInputToOutput(ctx, 0, 0);
         updateOutputElemType(ctx, 1, ONNX_NAMESPACE::TensorProto::UINT32);
+        updateOutputElemType(ctx, 2, ONNX_NAMESPACE::TensorProto::INT64);
 
-        static int32_t zero_point_erase_op_index = 0;
-        for (int i = 0; i < 2; ++i) {
+        bool is_shape_output_shape_set = false;
+        if (hasInputShape(ctx, 0)) {
+          const auto& x_shape = getInputShape(ctx, 0);
+          ONNX_NAMESPACE::TensorShapeProto dim_shape;
+          dim_shape.add_dim()->set_dim_value(x_shape.dim_size());  // 1-D tensor of the input shape.
+          updateOutputShape(ctx, 2, dim_shape);
+          is_shape_output_shape_set = true;
+        }
+
+        static int32_t mode_compress_op_index = 0;
+        for (int i = 0; i < 3; ++i) {
+          if (i == 2 && is_shape_output_shape_set) {
+            continue;
+          }
+
           ONNX_NAMESPACE::TensorShapeProto dim_shape;
           std::stringstream dim_ss;
-          dim_ss << "zeropointclip_" << zero_point_erase_op_index << "_dim" << i;
+          dim_ss << "modecompress_" << mode_compress_op_index << "_dim" << i;
           dim_shape.add_dim()->set_dim_param(dim_ss.str());
-          updateOutputShape(ctx, 0, dim_shape);
+          updateOutputShape(ctx, i, dim_shape);
         }
-        zero_point_erase_op_index++;
+        mode_compress_op_index++;
       });
 
-  ONNX_CONTRIB_OPERATOR_SCHEMA(ZeroPointRestore)
+  ONNX_CONTRIB_OPERATOR_SCHEMA(ModeRestore)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
       .SetDoc(
-          "Restore the clip-out-ed the elements that equals with zero_point value, "
+          "Restore the clip-out-ed the elements that equals with mode value, "
           "1-D output tensor and mask.")
-      .Input(0, "input", "1-D tensor after removing all elements that equal with zero_point value", "T")
+      .Input(0, "input", "1-D tensor after removing all elements that equal with mode value", "T")
       .Input(1, "mask",
-             "Mask where values indicate if value equals with zero_point value. "
+             "Mask where values indicate if value equals with mode value. "
              "Output tensor contains total N elements, then mask tensor contains (N + 31) / 32 32-bit integers."
-             "Each bit represents whether the corresponding element in output tensor equals with zero_point value or not."
-             "If the bit is 1, then the value does not equal to zero_point value in output tensor.",
+             "Each bit represents whether the corresponding element in output tensor equals with mode value or not."
+             "If the bit is 1, then the value does not equal to mode value in output tensor.",
              "T_MASK")
-      .Input(2, "shape",
-             "Shape of the output tensor.",
-             "T_INT")
+      .Input(2, "shape", "Shape of the output tensor.", "T_INT")
       .Input(3, "control_flow", "Used as a control flow input.", "T_CFW", OpSchema::Optional)
       .Output(0, "output", "Tensor to be restored.", "T")
-      .Attr(
-          "zero_point", "The outlier value to clip out from the input tensor.",
-          AttributeProto::FLOAT, 0.0f)
+      .Attr("mode", "The mode value.", AttributeProto::FLOAT, 0.0f)
       .TypeConstraint(
           "T",
           {"tensor(float)", "tensor(float16)"},

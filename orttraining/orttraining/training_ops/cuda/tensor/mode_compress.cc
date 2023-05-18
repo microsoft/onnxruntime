@@ -1,15 +1,15 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "orttraining/training_ops/cuda/tensor/zero_point_erase.h"
-#include "orttraining/training_ops/cuda/tensor/zero_point_erase_impl.h"
+#include "orttraining/training_ops/cuda/tensor/mode_compress.h"
+#include "orttraining/training_ops/cuda/tensor/mode_compress_impl.h"
 #include "core/providers/cuda/shared_inc/cuda_utils.h"
 
 namespace onnxruntime {
 namespace cuda {
 
 ONNX_OPERATOR_KERNEL_EX(
-    ZeroPointErase,
+    ModeCompress,
     kMSDomain,
     1,
     kCudaExecutionProvider,
@@ -18,7 +18,7 @@ ONNX_OPERATOR_KERNEL_EX(
         .TypeConstraint("T_MASK", DataTypeImpl::GetTensorType<BitmaskElementType>())
         .TypeConstraint("T_INT", DataTypeImpl::GetTensorType<int64_t>())
         .OutputMemoryType(OrtMemTypeCPUOutput, 2),
-    ZeroPointErase);
+    ModeCompress);
 
 // Put implementation in the anonymous namespace to avoid name collision in the global namespace.
 namespace {
@@ -51,8 +51,8 @@ struct CopyOnConditionFunctor {
     const CudaT* input_data = reinterpret_cast<const CudaT*>(input_tensor.Data<T>());
     IAllocatorUniquePtr<CudaT> temp_buffer = cuda_kernel->GetScratchBuffer<CudaT>(total_element_count,
                                                                                   context->GetComputeStream());
-    std::cout << "total_element_count: " << total_element_count << ", temp_storage_bytes: " << temp_storage_bytes
-              << std::endl;
+    // std::cout << "total_element_count: " << total_element_count << ", temp_storage_bytes: " << temp_storage_bytes
+    //           << std::endl;
     IAllocatorUniquePtr<int> d_num_selected_out = cuda_kernel->GetScratchBuffer<int>(1,
                                                                                      context->GetComputeStream());
 
@@ -98,7 +98,7 @@ struct SetMaskOutputFunctor {
 
 }  // namespace
 
-Status ZeroPointErase::ComputeInternal(OpKernelContext* context) const {
+Status ModeCompress::ComputeInternal(OpKernelContext* context) const {
   const Tensor* input_tensor = context->Input<Tensor>(0);
   ORT_RETURN_IF_NOT(input_tensor, "input_tensor is not available.");
   const TensorShape& input_shape = input_tensor->Shape();
@@ -115,7 +115,7 @@ Status ZeroPointErase::ComputeInternal(OpKernelContext* context) const {
   utils::MLTypeCallDispatcher<float, MLFloat16, double, BFloat16> t_disp(input_tensor->GetElementType());
   t_disp.Invoke<GetTempStorageBytesFunctor>(context->GetComputeStream(),
                                             total_element_count,
-                                            default_zero_point_value_,
+                                            mode_,
                                             temp_storage_bytes);
 
   IAllocatorUniquePtr<void> workspace = GetScratchBuffer<void>(temp_storage_bytes, context->GetComputeStream());
@@ -123,13 +123,13 @@ Status ZeroPointErase::ComputeInternal(OpKernelContext* context) const {
                                         context,
                                         workspace.get(),
                                         total_element_count,
-                                        default_zero_point_value_,
+                                        mode_,
                                         *input_tensor,
                                         temp_storage_bytes);
 
   Tensor* mask_output_tensor = context->Output(1, {mask_element_count});
   t_disp.Invoke<SetMaskOutputFunctor>(GetDeviceProp(), Stream(context), total_element_count, mask_element_count,
-                                      default_zero_point_value_, *input_tensor,
+                                      mode_, *input_tensor,
                                       mask_output_tensor->MutableDataRaw());
 
   return Status::OK();
