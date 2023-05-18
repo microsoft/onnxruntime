@@ -33,6 +33,7 @@
 #sed -i 's/protobuf_generate/onnxruntime_protobuf_generate/g' protobuf-config.cmake.orig
 #replace 'protobuf::protoc' with ${PROTOC_EXECUTABLE} and ${PROTOC_DEPS}
 #remove OUTDIR
+#add compile options to generated C++ source files to work around warnings
 
 function(onnxruntime_protobuf_generate)
   include(CMakeParseArguments)
@@ -166,6 +167,34 @@ function(onnxruntime_protobuf_generate)
   endforeach()
 
   set_source_files_properties(${_generated_srcs_all} PROPERTIES GENERATED TRUE)
+
+  if(onnxruntime_protobuf_generate_LANGUAGE STREQUAL cpp)
+    # work around warnings from protobuf generated C++ code
+    # TODO remove these if possible when upgrading protobuf. hopefully we don't need to add to them.
+
+    set(_warning_options)
+
+    if(MSVC)
+      list(APPEND _warning_options
+           # TODO which ones do we actually need to disable?
+           #"/wd4146" "/wd4125" "/wd4456" "/wd4267" "/wd4309"
+           #"/wd4100" "/wd4125" "/wd4127" "/wd4267" "/wd4456" "/wd4800" "/wd6011" "/wd6387" "/wd28182"
+           )
+    else()
+      # protobuf generated code has warnings like:
+      #  google/protobuf/parse_context.h:328:47: error: implicit conversion loses integer precision: 'long' to 'int' [-Werror,-Wshorten-64-to-32]
+      #  int chunk_size = buffer_end_ + kSlopBytes - ptr;
+      # TODO remove when we upgrade to a protobuf version where this is fixed (looks like it is addressed in version 22.0+)
+      if(HAS_SHORTEN_64_TO_32)
+        list(APPEND _warning_options "-Wno-error=shorten-64-to-32")
+      endif()
+    endif()
+
+    if(_warning_options)
+      set_source_files_properties(${_generated_srcs_all} PROPERTIES COMPILE_OPTIONS ${_warning_options})
+    endif()
+  endif()
+
   if(onnxruntime_protobuf_generate_OUT_VAR)
     set(${onnxruntime_protobuf_generate_OUT_VAR} ${_generated_srcs_all} PARENT_SCOPE)
   endif()
