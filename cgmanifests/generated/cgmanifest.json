@@ -447,7 +447,7 @@
         },
         "comments": "triton"
       }
-    }
+    },
     {
       "component": {
         "type": "git",
