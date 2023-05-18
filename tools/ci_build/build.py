@@ -2454,6 +2454,8 @@ def main():
                     args.test = False
 
         if args.build_wasm:
+            if is_windows() and platform.architecture()[0] == '32bit':
+                raise BuildError("Please use a 64-bit python to run this script")
             emsdk_version = args.emsdk_version
             emsdk_dir = os.path.join(source_dir, "cmake", "external", "emsdk")
             emsdk_file = os.path.join(emsdk_dir, "emsdk.bat") if is_windows() else os.path.join(emsdk_dir, "emsdk")
