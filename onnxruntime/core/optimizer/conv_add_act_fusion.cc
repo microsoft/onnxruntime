@@ -43,25 +43,20 @@ const Node* GetLoneConsumerNode(const GraphViewer& graph_viewer, const Node& nod
 }
 
 class ConvAddActivationSelector : public NodeSelector {
+ private:
+  bool support_fp16_{false};
 
  public:
   ConvAddActivationSelector() = default;
-  // #define MLAS_F16VEC_INTRINSICS_SUPPORTED
-  std::optional<NodesToOptimizeIndices> Select(const GraphViewer& graph_viewer, const Node& node) const override {
+  explicit ConvAddActivationSelector(bool support_fp16) : support_fp16_(support_fp16) {}
+  [[nodiscard]] std::optional<NodesToOptimizeIndices> Select(const GraphViewer& graph_viewer, const Node& node) const override {
     const std::string_view node_ep = node.GetExecutionProviderType();
-    const std::string_view node_op = node.OpType();
-#ifdef MLAS_F16VEC_INTRINSICS_SUPPORTED
     if (node_ep != kCpuExecutionProvider ||
         (!HasElementDataType(*node.InputDefs()[0], ONNX_NAMESPACE::TensorProto_DataType_FLOAT) &&
-         (!support_fp16_ && !HasElementDataType(*node.InputDefs()[0], ONNX_NAMESPACE::TensorProto_DataType_FLOAT16)))) {
+         !HasElementDataType(*node.InputDefs()[0], ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) &&
+         support_fp16_)) {
       return std::nullopt;
     }
-#else
-    if (node_ep != kCpuExecutionProvider ||
-        !HasElementDataType(*node.InputDefs()[0], ONNX_NAMESPACE::TensorProto_DataType_FLOAT)) {
-      return std::nullopt;
-    }
-#endif  // MLAS_F16VEC_INTRINSICS_SUPPORTED
     // we can't assign `conv_node` as the producer-node, even it is, because we have to make sure
     // 1. Its type is 'conv', 2. it has to satisfy the other requirements,like shape, please refer to SelectConvProducer for more info
     const Node* conv_node = nullptr;
@@ -86,7 +81,7 @@ class ConvAddActivationSelector : public NodeSelector {
     // GetLoneConsumerNode will ensure outputedge_count is 1
     const auto* act_node = GetLoneConsumerNode(graph_viewer, *add_node);
     if (act_node == nullptr || !SelectActivation(graph_viewer, *act_node)) {
-        return builder.Build();
+      return builder.Build();
     }
     builder.output_nodes.push_back(act_node->Index());
     return builder.Build();
@@ -280,14 +275,14 @@ class FuseConvAddActivationAction : public ReplaceWithNew {
 };
 }  // namespace actions
 
-void RegisterConvAddActivationFusionRules(SelectorActionRegistry& registry,bool support_fp16 = false) {
+void RegisterConvAddActivationFusionRules(SelectorActionRegistry& registry, bool support_fp16 = false) {
   auto action = std::make_unique<actions::FuseConvAddActivationAction>();
-  auto selector = std::make_unique<selectors::ConvAddActivationSelector>();
+  auto selector = std::make_unique<selectors::ConvAddActivationSelector>(support_fp16);
   registry.RegisterSelectorAndAction("ConvAddAct", {{"Conv", {1, 11}}},
                                      std::move(selector), std::move(action));
   if (support_fp16) {
     auto action_fp16 = std::make_unique<actions::FuseConvAddActivationAction>();
-    auto selector_fp16 = std::make_unique<selectors::ConvAddActivationSelector>();
+    auto selector_fp16 = std::make_unique<selectors::ConvAddActivationSelector>(support_fp16);
     registry.RegisterSelectorAndAction("NhwcFusedConvAct", {{"NhwcFusedConv", {1}}},
                                        std::move(selector_fp16), std::move(action_fp16));
   }
@@ -301,19 +296,21 @@ SelectorActionRegistry CreateSelectorActionRegistry(bool support_fp16 = false) {
 
 }  // namespace
 ConvAddActivationFusion::ConvAddActivationFusion(
-    std::shared_ptr<KernelRegistry> cpu_kernel_registry,
+    const std::shared_ptr<KernelRegistry>& cpu_kernel_registry,
     const InlinedHashSet<std::string_view>& compatible_execution_providers,
     const SatApplyContextVariant& apply_context) noexcept
     : SelectorActionTransformer{
           "ConvAddActivationFusion",
-          CreateSelectorActionRegistry(), apply_context, compatible_execution_providers} {
+          CreateSelectorActionRegistry(),
+          apply_context,
+          compatible_execution_providers} {
   if (!cpu_kernel_registry) {
     return;
   }
   const KernelCreateInfo* kernel_create_info{};
   const auto status = cpu_kernel_registry->TryFindKernel(
       kCpuExecutionProvider,
-      "FusedConv",
+      "NhwcFusedConv",
       kMSDomain,
       1,
       {{"T", {DataTypeImpl::GetTensorType<MLFloat16>()}}},

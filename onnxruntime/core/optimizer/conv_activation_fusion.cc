@@ -58,13 +58,9 @@ bool ConvFusionDataTypeCheck(const Node& conv_node, bool support_fp16) {
     }
   }
   if (node_ep == kCpuExecutionProvider) {
-#ifdef MLAS_F16VEC_INTRINSICS_SUPPORTED
     if (!HasElementDataType(*conv_node.InputDefs()[0], ONNX_NAMESPACE::TensorProto_DataType_FLOAT) &&
-        (!HasElementDataType(*conv_node.InputDefs()[0], ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) && support_fp16_)) {
-      return false;
-    }
-#else
-    if (!HasElementDataType(*conv_node.InputDefs()[0], ONNX_NAMESPACE::TensorProto_DataType_FLOAT)) {
+        !HasElementDataType(*conv_node.InputDefs()[0], ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) &&
+        support_fp16) {
       return false;
     }
   }
@@ -72,14 +68,14 @@ bool ConvFusionDataTypeCheck(const Node& conv_node, bool support_fp16) {
   return true;
 }
 
-class ConvActivation : public NodeSelector {
+class ConvActivationSelector : public NodeSelector {
  private:
   bool support_fp16_{false};
 
  public:
-  ConvActivation() = default;
-  ConvActivation(bool support_fp16) : support_fp16_(support_fp16) {}
-  std::optional<NodesToOptimizeIndices> Select(const GraphViewer& graph_viewer, const Node& node) const override {
+  ConvActivationSelector() = default;
+  explicit ConvActivationSelector(bool support_fp16) : support_fp16_(support_fp16) {}
+  [[nodiscard]] std::optional<NodesToOptimizeIndices> Select(const GraphViewer& graph_viewer, const Node& node) const override {
     const std::string_view node_ep = node.GetExecutionProviderType();
     const auto* next_node = GetLoneConsumerNode(graph_viewer, node);
     if (!next_node ||
@@ -133,13 +129,13 @@ class ConvActivation : public NodeSelector {
   }
 };
 
-class ConvAddRelu : public NodeSelector {
+class ConvAddReluSelector : public NodeSelector {
  private:
   bool support_fp16_{false};
 
  public:
-  ConvAddRelu() = default;
-  ConvAddRelu(bool support_fp16) : support_fp16_(support_fp16) {}
+  ConvAddReluSelector() = default;
+  ConvAddReluSelector(bool support_fp16) : support_fp16_(support_fp16) {}
   std::optional<NodesToOptimizeIndices> Select(const GraphViewer& graph_viewer, const Node& node) const override {
     const std::string_view node_ep = node.GetExecutionProviderType();
     // only for CUDA EP
@@ -276,10 +272,10 @@ void RegisterConvActivationFusionRules(SelectorActionRegistry& registry, bool su
 }
 
 void RegisterConvAddReluFusionRules(SelectorActionRegistry& registry, bool support_fp16 = false) {
-  const auto name = "ConvAddRelu";
+  const auto name = "ConvAddReluSelector";
   auto action = std::make_unique<actions::FuseConvAddRelu>();
 #if !defined(ORT_MINIMAL_BUILD)
-  auto selector = std::make_unique<selectors::ConvAddRelu>(support_fp16);
+  auto selector = std::make_unique<selectors::ConvAddReluSelector>(support_fp16);
   registry.RegisterSelectorAndAction(name, {{"Conv", {1, 11}}},
                                      std::move(selector), std::move(action));
 #else
@@ -297,18 +293,21 @@ SelectorActionRegistry CreateSelectorActionRegistry(bool support_fp16 = false) {
 }  // namespace
 
 ConvActivationFusion::ConvActivationFusion(
-    std::shared_ptr<KernelRegistry> cpu_kernel_registry,
+    const std::shared_ptr<KernelRegistry>& cpu_kernel_registry,
     const InlinedHashSet<std::string_view>& compatible_execution_providers,
     const SatApplyContextVariant& apply_context) noexcept
     : SelectorActionTransformer{
-          "ConvActivationFusion", CreateSelectorActionRegistry(), apply_context, compatible_execution_providers} {
+          "ConvActivationFusion",
+          CreateSelectorActionRegistry(),
+          apply_context,
+          compatible_execution_providers} {
   if (!cpu_kernel_registry) {
     return;
   }
   const KernelCreateInfo* kernel_create_info{};
   const auto status = cpu_kernel_registry->TryFindKernel(
       kCpuExecutionProvider,
-      "FusedConv",
+      "NhwcFusedConv",
       kMSDomain,
       1,
       {{"T", {DataTypeImpl::GetTensorType<MLFloat16>()}}},
