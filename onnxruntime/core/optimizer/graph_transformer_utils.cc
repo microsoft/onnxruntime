@@ -281,8 +281,8 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       transformers.emplace_back(std::make_unique<GemmActivationFusion>(cpu_ep));
       transformers.emplace_back(std::make_unique<MatMulIntegerToFloatFusion>(cpu_ep));
       transformers.emplace_back(std::make_unique<DynamicQuantizeMatMulFusion>(cpu_ep));
-
-      transformers.emplace_back(std::make_unique<ConvActivationFusion>(cpu_execution_provider.GetKernelRegistry(), cpu_cuda_rocm_acl_armnn_eps));
+      auto cpu_registry = cpu_execution_provider.GetKernelRegistry();
+      transformers.emplace_back(std::make_unique<ConvActivationFusion>(std::move(cpu_registry), cpu_cuda_rocm_acl_armnn_eps));
 
       transformers.emplace_back(std::make_unique<GeluFusion>(cpu_cuda_dml_rocm_eps));
       transformers.emplace_back(std::make_unique<LayerNormFusion>(cpu_cuda_dml_rocm_eps));
