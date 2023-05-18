@@ -666,9 +666,6 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtTrainingSession_schedulerStep
  * Method:    exportModelForInference
  * Signature: (JJJJLjava/lang/String;[Ljava/lang/String;)V
  */
-#ifdef _MSC_VER
-#pragma warning(push)
-#endif  // _MSC_VER
 JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtTrainingSession_exportModelForInference
   (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong trainApiHandle, jlong nativeHandle, jstring outputPath, jlong numOutputs, jobjectArray outputNamesArr) {
   (void)jobj;  // Required JNI parameter not needed by functions which don't need to access their host object.
