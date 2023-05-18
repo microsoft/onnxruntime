@@ -7,7 +7,7 @@
 namespace onnxruntime {
 namespace test {
 
-#ifndef _MSC_VER
+#if !defined(_MSC_VER) || defined(USE_DML)
 void GetWeight_64_3_64(std::vector<float>& weight_data) {
   weight_data = {
       -0.004707f, -0.006775f, 0.0009236f, 0.003067f, -0.00806f, 0.00779f, 0.0004425f, 0.00846f, 0.00048f,
@@ -1903,21 +1903,22 @@ void GetCrossAttentionData_HeadSize40(AttentionTestData& data) {
   }
 }
 
-void GetCrossAttentionData_Batch2_HeadSize32_RightSidePadding(AttentionTestData& data, bool is_mask_1d) {
+void GetCrossAttentionData_Batch2_HeadSize32_RightSidePadding(AttentionTestData& data, AttentionMaskType mask_type) {
   data.hidden_size = 64;
   data.v_hidden_size = 64;
   data.num_heads = 2;
   data.batch_size = 2;
   data.sequence_length = 2;
   data.kv_sequence_length = 3;
+  data.mask_type = mask_type;
 
-  if (is_mask_1d) {
-    data.mask_type = AttentionMaskType::MASK_1D_KEY_SEQ_LEN;
+  if (mask_type == AttentionMaskType::MASK_1D_KEY_SEQ_LEN) {
     data.key_padding_mask_data = {1, 2};
-  } else {
-    data.mask_type = AttentionMaskType::MASK_2D_KEY_PADDING;
+  } else if (mask_type == AttentionMaskType::MASK_2D_KEY_PADDING) {
     data.key_padding_mask_data = {1, 0, 0,
                                   1, 1, 0};
+  } else if (mask_type == AttentionMaskType::MASK_1D_KEY_SEQ_LEN_START) {
+    data.key_padding_mask_data = {1, 2, 0, 2, 4, 0, 3, 5};
   }
 
   data.skip_kernel_types = {AttentionKernelType::AttentionKernel_TrtFusedCrossAttention,
@@ -2150,16 +2151,22 @@ void GetCrossAttentionData_Batch2_HeadSize32_RightSidePadding(AttentionTestData&
   }
 }
 
-void GetCrossAttentionData_Batch1_HeadSize32_LeftSidePadding(AttentionTestData& data) {
+void GetCrossAttentionData_Batch1_HeadSize32_LeftSidePadding(AttentionTestData& data, AttentionMaskType mask_type) {
   data.hidden_size = 32;
   data.v_hidden_size = 32;
   data.num_heads = 1;
   data.batch_size = 2;
   data.sequence_length = 2;
   data.kv_sequence_length = 3;
-  data.mask_type = AttentionMaskType::MASK_2D_KEY_PADDING;
-  data.key_padding_mask_data = {0, 1, 1,   // first key sequence has one padding on the left
-                                0, 0, 1};  // second key sequence has two paddings on the left
+  data.mask_type = mask_type;
+
+
+  if (mask_type == AttentionMaskType::MASK_2D_KEY_PADDING) {
+    data.key_padding_mask_data = {0, 1, 1,   // first key sequence has one padding on the left
+                                  0, 0, 1};  // second key sequence has two paddings on the left
+  } else if (mask_type == AttentionMaskType::MASK_1D_KEY_SEQ_LEN_START) {
+    data.key_padding_mask_data = {2, 1, 0, 2, 4, 1, 5, 6};
+  }
 
   data.skip_kernel_types = {
       AttentionKernelType::AttentionKernel_TrtFusedCrossAttention,
