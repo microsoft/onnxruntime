@@ -359,6 +359,7 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       // we will prefer NhwcTransformer once ort runs on x86-64 CPU, otherwise ConvAddActivationFusion is enabled.
       // PR #6351 implemented similar fusion-pattern for CUDA only, and can only fuse conv-add-relu,
       // while we can fuse more activation.
+      cpu_registry = cpu_execution_provider.GetKernelRegistry();
       transformers.emplace_back(std::make_unique<ConvAddActivationFusion>(std::move(cpu_registry), cpu_ep));
 #endif
 
