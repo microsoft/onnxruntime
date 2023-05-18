@@ -2,7 +2,9 @@
 // Licensed under the MIT License.
 
 #ifdef USE_AZURE
+#define CURL_STATICLIB
 #include "http_client.h"
+#include "curl/curl.h"
 #include "core/common/common.h"
 #include "core/framework/cloud_invoker.h"
 #include "core/framework/ort_value.h"
@@ -18,13 +20,14 @@ namespace onnxruntime {
 
 namespace tc = triton::client;
 
-const char* kAzureUri = "azure.uri";
-const char* kAzureModelName = "azure.model_name";
-const char* kAzureModelVer = "azure.model_version";
-const char* kAzureVerbose = "azure.verbose";
-const char* kAzureEndpointType = "azure.endpoint_type";
-const char* kAzureAuthKey = "azure.auth_key";
-const char* kAzureTriton = "triton";
+constexpr const char* kAzureUri = "azure.uri";
+constexpr const char* kAzureModelName = "azure.model_name";
+constexpr const char* kAzureModelVer = "azure.model_version";
+constexpr const char* kAzureVerbose = "azure.verbose";
+constexpr const char* kAzureEndpointType = "azure.endpoint_type";
+constexpr const char* kAzureAuthKey = "azure.auth_key";
+constexpr const char* kAzureTriton = "triton";
+constexpr const char* kAzureOpenAI = "openai";
 
 CloudEndPointInvoker::CloudEndPointInvoker(const CloudEndPointConfig& config,
                                            const AllocatorPtr& allocator) : config_(config), allocator_(allocator) {
@@ -33,6 +36,163 @@ CloudEndPointInvoker::CloudEndPointInvoker(const CloudEndPointConfig& config,
   }
 }
 
+class CurlGlobal {
+ public:
+  static void Init() {
+    static CurlGlobal curl_global;
+  }
+
+ private:
+  CurlGlobal() {
+    // Thread-safety is a must since curl might also be initialized in triton client.
+    const auto* info = curl_version_info(CURLVERSION_NOW);
+    ORT_ENFORCE(info->features & CURL_VERSION_THREADSAFE, "curl global init not thread-safe, need to upgrade curl version!");
+    ORT_ENFORCE(curl_global_init(CURL_GLOBAL_DEFAULT) == CURLE_OK, "Failed to initialize curl global env!");
+  }
+  ~CurlGlobal() {
+    curl_global_cleanup();
+  }
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(CurlGlobal);
+};
+
+// OpenAIInvoker
+class OpenAIInvoker : public CloudEndPointInvoker {
+ public:
+  OpenAIInvoker(const CloudEndPointConfig& config, const AllocatorPtr& allocator);
+  onnxruntime::Status Send(const CloudEndPointConfig& run_options,
+                           const InlinedVector<std::string>& input_names,
+                           gsl::span<const OrtValue> ort_inputs,
+                           const InlinedVector<std::string>& output_names,
+                           std::vector<OrtValue>& ort_outputs) const override;
+
+ private:
+  std::string uri_;
+  std::string model_name_;
+};
+
+OpenAIInvoker::OpenAIInvoker(const CloudEndPointConfig& config,
+                             const AllocatorPtr& allocator) : CloudEndPointInvoker(config, allocator) {
+  CurlGlobal::Init();
+  ReadConfig(kAzureUri, uri_);
+  ReadConfig(kAzureModelName, model_name_);
+}
+
+struct StringBuffer {
+  StringBuffer() = default;
+  ~StringBuffer() = default;
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(StringBuffer);
+  std::stringstream ss_;
+};
+
+// apply the callback only when response is for sure to be a '/0' terminated string
+static size_t WriteStringCallback(void* contents, size_t size, size_t nmemb, void* userp) {
+  try {
+    size_t realsize = size * nmemb;
+    auto buffer = reinterpret_cast<struct StringBuffer*>(userp);
+    buffer->ss_.write(reinterpret_cast<const char*>(contents), realsize);
+    return realsize;
+  } catch (...) {
+    // exception caught, abort write
+    return CURLcode::CURLE_WRITE_ERROR;
+  }
+}
+
+using CurlWriteCallBack = size_t (*)(void*, size_t, size_t, void*);
+
+class CurlHandler {
+ public:
+  CurlHandler(CurlWriteCallBack call_back) : curl_(curl_easy_init(), curl_easy_cleanup),
+                                             headers_(nullptr, curl_slist_free_all),
+                                             from_holder_(from_, curl_formfree) {
+    curl_easy_setopt(curl_.get(), CURLOPT_BUFFERSIZE, 102400L);
+    curl_easy_setopt(curl_.get(), CURLOPT_NOPROGRESS, 1L);
+    curl_easy_setopt(curl_.get(), CURLOPT_USERAGENT, "curl/7.83.1");
+    curl_easy_setopt(curl_.get(), CURLOPT_MAXREDIRS, 50L);
+    curl_easy_setopt(curl_.get(), CURLOPT_FTP_SKIP_PASV_IP, 1L);
+    curl_easy_setopt(curl_.get(), CURLOPT_TCP_KEEPALIVE, 1L);
+    curl_easy_setopt(curl_.get(), CURLOPT_WRITEFUNCTION, call_back);
+  }
+  ~CurlHandler() = default;
+
+  void AddHeader(const char* data) {
+    headers_.reset(curl_slist_append(headers_.release(), data));
+  }
+  template <typename... Args>
+  void AddForm(Args... args) {
+    curl_formadd(&from_, &last_, args...);
+  }
+  template <typename T>
+  void SetOption(CURLoption opt, T val) {
+    curl_easy_setopt(curl_.get(), opt, val);
+  }
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(CurlHandler);
+  CURLcode Perform() {
+    SetOption(CURLOPT_HTTPHEADER, headers_.get());
+    SetOption(CURLOPT_HTTPPOST, from_);
+    return curl_easy_perform(curl_.get());
+  }
+
+ private:
+  std::unique_ptr<CURL, decltype(curl_easy_cleanup)*> curl_;
+  std::unique_ptr<curl_slist, decltype(curl_slist_free_all)*> headers_;
+  curl_httppost* from_{};
+  curl_httppost* last_{};
+  std::unique_ptr<curl_httppost, decltype(curl_formfree)*> from_holder_;
+};
+
+onnxruntime::Status OpenAIInvoker::Send(const CloudEndPointConfig& run_options,
+                                        const InlinedVector<std::string>& /*input_names*/,
+                                        gsl::span<const OrtValue> ort_inputs,
+                                        const InlinedVector<std::string>& /*output_names*/,
+                                        std::vector<OrtValue>& ort_outputs) const {
+  const auto auth_key_iter = run_options.find(kAzureAuthKey);
+  if (run_options.end() == auth_key_iter || auth_key_iter->second.empty()) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "auth key must be specified for openai client");
+  }
+  long verbose = 0;
+  const auto verbose_iter = run_options.find(kAzureVerbose);
+  if (run_options.end() != verbose_iter) {
+    verbose = verbose_iter->second != "0" ? 1L : 0L;
+  }
+
+  CurlHandler curl_handler(WriteStringCallback);
+  StringBuffer string_buffer;
+
+  std::string full_auth = std::string{"Authorization: Bearer "} + auth_key_iter->second;
+  curl_handler.AddHeader(full_auth.c_str());
+  curl_handler.AddHeader("Content-Type: multipart/form-data");
+
+  const auto& tensor = ort_inputs[0].Get<Tensor>();
+  auto data_size = tensor.SizeInBytes();
+  curl_handler.AddForm(CURLFORM_COPYNAME, "model", CURLFORM_COPYCONTENTS, model_name_.c_str(), CURLFORM_END);
+  curl_handler.AddForm(CURLFORM_COPYNAME, "response_format", CURLFORM_COPYCONTENTS, "text", CURLFORM_END);
+  curl_handler.AddForm(CURLFORM_COPYNAME, "file", CURLFORM_BUFFER, "non_exist.wav", CURLFORM_BUFFERPTR, tensor.DataRaw(),
+                       CURLFORM_BUFFERLENGTH, data_size, CURLFORM_END);
+
+  curl_handler.SetOption(CURLOPT_URL, uri_.c_str());
+  curl_handler.SetOption(CURLOPT_VERBOSE, verbose);
+  curl_handler.SetOption(CURLOPT_WRITEDATA, (void*)&string_buffer);
+
+  auto curl_ret = curl_handler.Perform();
+  if (CURLE_OK != curl_ret) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, curl_easy_strerror(curl_ret));
+  }
+
+  auto output_tensor = std::make_unique<Tensor>(onnxruntime::DataTypeImpl::GetType<std::string>(), TensorShape{1}, allocator_);
+  if (!output_tensor) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to create output tensor");
+  }
+
+  auto* output_string = output_tensor->MutableData<std::string>();
+  *output_string = string_buffer.ss_.str();
+  auto tensor_type = DataTypeImpl::GetType<Tensor>();
+  ort_outputs.clear();
+  ort_outputs.emplace_back(output_tensor.release(), tensor_type, tensor_type->GetDeleteFunc());
+  return Status::OK();
+}
+
+// AzureTritonInvoker
 class AzureTritonInvoker : public CloudEndPointInvoker {
  public:
   AzureTritonInvoker(const CloudEndPointConfig& config, const AllocatorPtr& allocator);
@@ -286,6 +446,9 @@ Status CloudEndPointInvoker::CreateInvoker(const CloudEndPointConfig& config,
     if (config.end() != iter) {
       if (iter->second == kAzureTriton) {
         invoker = std::make_unique<AzureTritonInvoker>(config, allocator);
+        return status;
+      } else if (iter->second == kAzureOpenAI) {
+        invoker = std::make_unique<OpenAIInvoker>(config, allocator);
         return status;
       }  // else other endpoint types ...
     }

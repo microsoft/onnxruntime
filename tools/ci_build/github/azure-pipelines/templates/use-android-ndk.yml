@@ -17,6 +17,9 @@
         exit 1
       fi
 
+      # Do not output ##vso[] commands with `set -x` or they may be parsed again and include a trailing quote.
+      set +x
+
       set_var() {
         local VAR_NAME=${1:?}
         local VAR_VALUE=${2:?}

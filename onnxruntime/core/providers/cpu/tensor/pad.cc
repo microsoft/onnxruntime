@@ -79,12 +79,26 @@ ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES(
     uint8_t,
     bool);
 
+ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES(
+    kCpuExecutionProvider, kOnnxDomain, Pad, 19, Input, 0,
+    float,
+    double,
+    int32_t,
+    int64_t,
+    uint32_t,
+    uint64_t,
+    int8_t,
+    uint8_t,
+    bool);
+
 ORT_SPECIFY_OP_KERNEL_ARG_REQUIRED_TYPES(
     kCpuExecutionProvider, kOnnxDomain, Pad, 11, Input, 0, int32_t, int64_t);
 ORT_SPECIFY_OP_KERNEL_ARG_REQUIRED_TYPES(
     kCpuExecutionProvider, kOnnxDomain, Pad, 13, Input, 0, int32_t, int64_t);
 ORT_SPECIFY_OP_KERNEL_ARG_REQUIRED_TYPES(
     kCpuExecutionProvider, kOnnxDomain, Pad, 18, Input, 0, int32_t, int64_t);
+ORT_SPECIFY_OP_KERNEL_ARG_REQUIRED_TYPES(
+    kCpuExecutionProvider, kOnnxDomain, Pad, 19, Input, 0, int32_t, int64_t);
 }  // namespace op_kernel_type_control
 
 using EnabledPad2Types = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST(
@@ -95,6 +109,8 @@ using EnabledPad13Types = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST(
     kCpuExecutionProvider, kOnnxDomain, Pad, 13, Input, 0);
 using EnabledPad18Types = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST(
     kCpuExecutionProvider, kOnnxDomain, Pad, 18, Input, 0);
+using EnabledPad19Types = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST(
+    kCpuExecutionProvider, kOnnxDomain, Pad, 19, Input, 0);
 
 using AllEnabledPadTypes =
     utils::TypeSetUnion<
@@ -131,13 +147,22 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
         BuildKernelDefConstraintsFromTypeList<EnabledPad13Types>()),
     Pad);
 
-ONNX_CPU_OPERATOR_KERNEL(
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     Pad,
-    18,
+    18, 18,
     KernelDefBuilder()
         .TypeConstraint(
             "T",
             BuildKernelDefConstraintsFromTypeList<EnabledPad18Types>()),
+    Pad);
+
+ONNX_CPU_OPERATOR_KERNEL(
+    Pad,
+    19,
+    KernelDefBuilder()
+        .TypeConstraint(
+            "T",
+            BuildKernelDefConstraintsFromTypeList<EnabledPad19Types>()),
     Pad);
 
 using PadsVector = PadBase::PadsVector;
@@ -426,6 +451,7 @@ static Status PadImpl(OpKernelContext* ctx,
       break;
 
     case Mode::Reflect:
+    case Mode::Wrap:
       // Loop over the output tensor, writing out padding between the blocks of copied data
       // On loop entry, 'pad' is already set to the first continuous block of padding, and
       // after every pass through the inner loop it gets set to the next continuous pad size.
@@ -438,12 +464,46 @@ static Status PadImpl(OpKernelContext* ctx,
           int64_t prePad = reshaped_pad[inner_axis];
           int64_t postPad = reshaped_pad[inner_axis + new_dims_count];
           if (inner_no_pad_size == 1) {
-            PadInnermostAxis(axisStart - prePad, axisStart + prePad, -1 /* inputDelta */, onnxruntime::narrow<size_t>(prePad));
-            PadInnermostAxis(output, output - 2, -1 /* inputDelta */, onnxruntime::narrow<size_t>(postPad));
+            if (mode == Mode::Reflect) {
+              PadInnermostAxis(axisStart - prePad, axisStart + prePad, -1 /* inputDelta */, onnxruntime::narrow<size_t>(prePad));
+              PadInnermostAxis(output, output - 2, -1 /* inputDelta */, onnxruntime::narrow<size_t>(postPad));
+            } else {
+              PadInnermostAxis(axisStart - prePad, output - prePad, 1 /* inputDelta */, onnxruntime::narrow<size_t>(prePad));
+              PadInnermostAxis(output, axisStart, 1 /* inputDelta */, onnxruntime::narrow<size_t>(postPad));
+            }
           } else {
             // When inner_most axis(es) do not need pad, Above PadInnermostAxis() do not fit for Reflect mode.
-            PadAxis(axisStart - prePad, axisStart + prePad, 1, -ptrdiff_t(inner_no_pad_size * 2), inner_no_pad_size, onnxruntime::narrow<size_t>(pads[inner_axis]));
-            PadAxis(output, output - 2 * inner_no_pad_size, 1, -ptrdiff_t(inner_no_pad_size * 2), inner_no_pad_size, onnxruntime::narrow<size_t>(pads[inner_axis + data_rank]));
+            if (mode == Mode::Reflect) {
+              PadAxis(
+                  axisStart - prePad,
+                  axisStart + prePad,
+                  1,
+                  -ptrdiff_t(inner_no_pad_size * 2),
+                  inner_no_pad_size,
+                  onnxruntime::narrow<size_t>(pads[inner_axis]));
+              PadAxis(
+                  output,
+                  output - 2 * inner_no_pad_size,
+                  1,
+                  -ptrdiff_t(inner_no_pad_size * 2),
+                  inner_no_pad_size,
+                  onnxruntime::narrow<size_t>(pads[inner_axis + data_rank]));
+            } else {
+              PadAxis(
+                  axisStart - prePad,
+                  output - pads[inner_axis] * inner_no_pad_size,
+                  1,
+                  0,
+                  inner_no_pad_size,
+                  onnxruntime::narrow<size_t>(pads[inner_axis]));
+              PadAxis(
+                  output,
+                  axisStart,
+                  1,
+                  0,
+                  inner_no_pad_size,
+                  onnxruntime::narrow<size_t>(pads[inner_axis + data_rank]));
+            }
           }
           output += postPad;
           alignSkip = onnxruntime::narrow<size_t>(prePad);
@@ -454,9 +514,37 @@ static Status PadImpl(OpKernelContext* ctx,
           T* axisStart = output - inner_pitch * input_extents[input_counters.Axis()];
           int64_t prePad = reshaped_pad[input_counters.Axis()];
           int64_t postPad = reshaped_pad[input_counters.Axis() + new_dims_count];
-          PadAxis(axisStart - prePad * inner_pitch, axisStart + prePad * inner_pitch, 1, -inner_pitch * 2,
-                  inner_pitch, onnxruntime::narrow<size_t>(prePad));
-          PadAxis(output, output - 2 * inner_pitch, 1, -inner_pitch * 2, inner_pitch, onnxruntime::narrow<size_t>(postPad));
+          if (mode == Mode::Reflect) {
+            PadAxis(
+                axisStart - prePad * inner_pitch,
+                axisStart + prePad * inner_pitch,
+                1,
+                -inner_pitch * 2,
+                inner_pitch,
+                onnxruntime::narrow<size_t>(prePad));
+            PadAxis(
+                output,
+                output - 2 * inner_pitch,
+                1,
+                -inner_pitch * 2,
+                inner_pitch,
+                onnxruntime::narrow<size_t>(postPad));
+          } else {
+            PadAxis(
+                axisStart - prePad * inner_pitch,
+                output - prePad * inner_pitch,
+                1,
+                0,
+                inner_pitch,
+                onnxruntime::narrow<size_t>(prePad));
+            PadAxis(
+                output,
+                axisStart,
+                1,
+                0,
+                inner_pitch,
+                onnxruntime::narrow<size_t>(postPad));
+          }
           output += inner_pitch * postPad;
           alignSkip += inner_pitch * SafeInt<size_t>(prePad);
         }
