@@ -360,7 +360,7 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       // PR #6351 implemented similar fusion-pattern for CUDA only, and can only fuse conv-add-relu,
       // while we can fuse more activation.
       cpu_registry = cpu_execution_provider.GetKernelRegistry();
-      transformers.emplace_back(std::make_unique<ConvAddActivationFusion>(std::move(cpu_registry), cpu_ep));
+      transformers.emplace_back(std::make_unique<ConvAddActivationFusion>(std::move(cpu_registry), cpu_ep,SatApplyContextVariant()));
 #endif
 
     } break;
