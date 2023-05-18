@@ -312,7 +312,7 @@ Status QnnBackendManager::DumpQnnContext(const onnxruntime::PathString& context_
     LOGS(*logger_, ERROR) << "Failed to open cached context file.";
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to open context cache file.");
   }
- 
+
   // Reseve 255 bytes to add metadata into context binary file
   auto length_required = strlen(PROVIDER_KEY) + strlen(MODEL_NAME_KEY) + strlen(GRAPH_NAME_KEY) +
                          strlen(QNN_PROVIDER) + model_name.length() + graph_name.length() + 7;
