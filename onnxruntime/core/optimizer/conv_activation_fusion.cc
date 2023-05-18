@@ -293,7 +293,7 @@ SelectorActionRegistry CreateSelectorActionRegistry(bool support_fp16 = false) {
 }  // namespace
 
 ConvActivationFusion::ConvActivationFusion(
-    const std::shared_ptr<KernelRegistry>& cpu_kernel_registry,
+    std::shared_ptr<KernelRegistry> cpu_kernel_registry,
     const InlinedHashSet<std::string_view>& compatible_execution_providers,
     const SatApplyContextVariant& apply_context) noexcept
     : SelectorActionTransformer{
