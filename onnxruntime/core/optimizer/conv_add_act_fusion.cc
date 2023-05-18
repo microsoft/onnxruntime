@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include <deque>
+#include <string_view>
 #include "core/framework/kernel_registry.h"
 #include "core/graph/graph_utils.h"
 #include "core/optimizer/initializer.h"
@@ -41,16 +42,14 @@ const Node* GetLoneConsumerNode(const GraphViewer& graph_viewer, const Node& nod
   return &*node.OutputNodesBegin();
 }
 
-class ConvAddActivation : public NodeSelector {
- private:
-  [[maybe_unused]] bool support_fp16_{false};
+class ConvAddActivationSelector : public NodeSelector {
 
  public:
-  ConvAddActivation() = default;
-  ConvAddActivation(bool support_fp16) : support_fp16_(support_fp16) {}
+  ConvAddActivationSelector() = default;
   // #define MLAS_F16VEC_INTRINSICS_SUPPORTED
   std::optional<NodesToOptimizeIndices> Select(const GraphViewer& graph_viewer, const Node& node) const override {
     const std::string_view node_ep = node.GetExecutionProviderType();
+    const std::string_view node_op = node.OpType();
 #ifdef MLAS_F16VEC_INTRINSICS_SUPPORTED
     if (node_ep != kCpuExecutionProvider ||
         (!HasElementDataType(*node.InputDefs()[0], ONNX_NAMESPACE::TensorProto_DataType_FLOAT) &&
@@ -81,24 +80,15 @@ class ConvAddActivation : public NodeSelector {
     if (conv_node == nullptr) {
       return std::nullopt;
     }
-    // GetLoneConsumerNode will ensure outputedge_count is 1
-    const auto* act_node = GetLoneConsumerNode(graph_viewer, *add_node);
-    // even the next node is not a activation node, it's also fine.
-    if (act_node == nullptr) {
-      // we can't fuse add-activation when add_node has multiple consumer nodes
-      act_node = nullptr;
-    } else if (SelectActivation(graph_viewer, *act_node)) {
-      // this branch is deliberately empty as we want to keep 'act_node' as remains.
-    } else {
-      act_node = nullptr;
-    }
-
     NodesToOptimizeIndicesBuilder builder{};
     builder.target_node = conv_node->Index();
     builder.output_nodes = {add_node->Index()};
-    if (act_node != nullptr) {
-      builder.output_nodes.push_back(act_node->Index());
+    // GetLoneConsumerNode will ensure outputedge_count is 1
+    const auto* act_node = GetLoneConsumerNode(graph_viewer, *add_node);
+    if (act_node == nullptr || !SelectActivation(graph_viewer, *act_node)) {
+        return builder.Build();
     }
+    builder.output_nodes.push_back(act_node->Index());
     return builder.Build();
   }
 
@@ -290,15 +280,17 @@ class FuseConvAddActivationAction : public ReplaceWithNew {
 };
 }  // namespace actions
 
-void RegisterConvAddActivationFusionRules(SelectorActionRegistry& registry) {
+void RegisterConvAddActivationFusionRules(SelectorActionRegistry& registry,bool support_fp16 = false) {
   auto action = std::make_unique<actions::FuseConvAddActivationAction>();
   auto selector = std::make_unique<selectors::ConvAddActivationSelector>();
   registry.RegisterSelectorAndAction("ConvAddAct", {{"Conv", {1, 11}}},
                                      std::move(selector), std::move(action));
-  auto action_nhwc = std::make_unique<actions::FuseConvAddActivationAction>();
-  auto selector_nhwc = std::make_unique<selectors::ConvAddActivationSelector>();
-  registry.RegisterSelectorAndAction("NhwcFusedConvAct", {{"NhwcFusedConv", {1, 11}}},
-                                     std::move(selector_nhwc), std::move(action_nhwc));
+  if (support_fp16) {
+    auto action_fp16 = std::make_unique<actions::FuseConvAddActivationAction>();
+    auto selector_fp16 = std::make_unique<selectors::ConvAddActivationSelector>();
+    registry.RegisterSelectorAndAction("NhwcFusedConvAct", {{"NhwcFusedConv", {1}}},
+                                       std::move(selector_fp16), std::move(action_fp16));
+  }
 }
 
 SelectorActionRegistry CreateSelectorActionRegistry(bool support_fp16 = false) {
