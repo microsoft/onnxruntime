@@ -1,3 +1,5 @@
+# Copyright (c) Microsoft Corporation. All rights reserved.
+# Licensed under the MIT License.
 import onnx
 from onnx import OperatorSetIdProto, TensorProto, helper
 

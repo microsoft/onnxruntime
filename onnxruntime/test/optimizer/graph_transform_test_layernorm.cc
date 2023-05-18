@@ -72,7 +72,7 @@ TEST_F(GraphTransformationTests, LayerNormFusionTest) {
   }
 }
 
-TEST_F(GraphTransformationTests, 2LayerNormShareSameInput) {
+TEST_F(GraphTransformationTests, TwoLayerNormShareSameInput) {
   constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/layer_norm_shared_input.onnx";
   std::shared_ptr<Model> p_model;
   ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
