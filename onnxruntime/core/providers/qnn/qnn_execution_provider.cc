@@ -270,7 +270,7 @@ QNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer
       [](const auto& partition) -> size_t {
         return partition && partition->sub_graph ? partition->sub_graph->nodes.size() : 0;
       });
-  const int num_nodes_in_graph = graph_viewer.NumberOfNodes();
+  const size_t num_nodes_in_graph = static_cast<size_t>(graph_viewer.NumberOfNodes());
   const auto summary_msg = MakeString("Number of partitions supported by QNN EP: ", num_of_partitions,
                                       ", number of nodes in the graph: ", num_nodes_in_graph,
                                       ", number of nodes supported by QNN: ", num_of_supported_nodes);
