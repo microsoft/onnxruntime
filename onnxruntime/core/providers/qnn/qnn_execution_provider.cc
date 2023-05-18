@@ -222,6 +222,19 @@ QNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer
 
   const auto supported_nodes = GetSupportedNodes(graph_viewer, node_unit_map, node_unit_holder.size(), logger);
 
+  // Helper function that returns a string that lists all unsupported node names.
+  auto get_unsupported_node_names = [&node_unit_holder, &supported_nodes]() -> std::string {
+    std::stringstream ss;
+
+    for (const auto& node_unit : node_unit_holder) {
+      if (supported_nodes.find(&node_unit->GetNode()) == supported_nodes.end()) {
+        ss << node_unit->Name() << " ";
+      }
+    }
+
+    return ss.str();
+  };
+
   if (supported_nodes.empty()) {
     LOGS(logger, INFO) << "Number of partitions supported by QNN EP: 0";
     return result;
@@ -230,6 +243,13 @@ QNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer
     if (node->OpType() == "QuantizeLinear" || node->OpType() == "DequantizeLinear") {
       LOGS(logger, INFO) << "It doesn't make sense just run a Q/DQ node on HTP.";
       LOGS(logger, INFO) << "Number of partitions supported by QNN EP: 0";
+
+      if (qnn_enforce_run_entire_model_) {
+        std::string unsupported_node_names = get_unsupported_node_names();
+        ORT_THROW("Entire model must run on QNN EP, but some nodes were not assigned to QNN EP. ",
+                  "Unsupported nodes: ", unsupported_node_names.c_str());
+      }
+
       return result;
     }
   }
@@ -250,22 +270,23 @@ QNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer
       [](const auto& partition) -> size_t {
         return partition && partition->sub_graph ? partition->sub_graph->nodes.size() : 0;
       });
-
+  const int num_nodes_in_graph = graph_viewer.NumberOfNodes();
   const auto summary_msg = MakeString("Number of partitions supported by QNN EP: ", num_of_partitions,
-                                      ", number of nodes in the graph: ", graph_viewer.NumberOfNodes(),
+                                      ", number of nodes in the graph: ", num_nodes_in_graph,
                                       ", number of nodes supported by QNN: ", num_of_supported_nodes);
 
   // If the graph is partitioned in multiple subgraphs, and this may impact performance,
   // we want to give users a summary message at warning level.
   if (num_of_partitions > 1) {
     LOGS(logger, WARNING) << summary_msg;
-
-    if (qnn_enforce_run_entire_model_) {
-      ORT_THROW("Entire model must run on QNN EP, but some nodes were not assigned to QNN EP. ", summary_msg.c_str());
-    }
-
   } else {
     LOGS(logger, INFO) << summary_msg;
+  }
+
+  if (qnn_enforce_run_entire_model_ && num_of_supported_nodes != num_nodes_in_graph) {
+    std::string unsupported_node_names = get_unsupported_node_names();
+    ORT_THROW("Entire model must run on QNN EP, but some nodes were not assigned to QNN EP. ", summary_msg.c_str(),
+              " Unsupported nodes: ", unsupported_node_names.c_str());
   }
 
   return result;

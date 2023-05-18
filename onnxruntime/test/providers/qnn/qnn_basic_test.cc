@@ -107,7 +107,7 @@ TEST(QnnEP, TestEnforceEntireModel_ModelNotFullySupported) {
 
     so.AppendExecutionProvider("QNN", options);
 
-    // QNN EP doesn't support MatMulInteger.
+    // QNN EP doesn't support MatMulInteger or dynamic shapes (this model has both).
     const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "matmul_integer_to_float_int8.onnx";
 
     try {
