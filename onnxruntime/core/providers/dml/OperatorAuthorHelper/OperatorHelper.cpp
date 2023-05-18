@@ -1146,15 +1146,18 @@ namespace OperatorHelper
         // Handle possible axes input
         if (opsetVersion >= 18)
         {
-            ReadCpuLocalTensorIntoInt32(kernelInformation.GetConstantInputTensor(3), /*out*/ axes);
+            if(kernelInformation.IsInputValid(3))
+            {
+                ReadCpuLocalTensorIntoInt32(kernelInformation.GetConstantInputTensor(3), /*out*/ axes);
+            }
             HandleEmptyAxes(axes, inputShape, false);
             ML_CHECK_VALID_ARGUMENT(axes.size() * 2 == padding.size(), "The number of elements in padding should be 2 times the number of axes.");
-            HandleNegativeAxes(axes, dimCount); 
+            HandleNegativeAxes(axes, dimCount);
         }
         else {
             HandleEmptyAxes(axes, inputShape, false);
         }
-        
+
         uint32_t numAxes = gsl::narrow_cast<uint32_t>(axes.size());
         for(int32_t i = 0; i < axes.size(); i++)
             {

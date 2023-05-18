@@ -28,9 +28,9 @@ macro(get_mobile_api_headers _HEADERS)
   )
 
   if (onnxruntime_ENABLE_TRAINING_APIS)
-    list(APPEND ${_HEADERS} "${REPO_ROOT/orttraining/orttraining/training_api/include/onnxruntime_training_c_api.h}")
-    list(APPEND ${_HEADERS} "${REPO_ROOT/orttraining/orttraining/training_api/include/onnxruntime_training_cxx_api.h}")
-    list(APPEND ${_HEADERS} "${REPO_ROOT/orttraining/orttraining/training_api/include/onnxruntime_training_cxx_inline_api.h}")
+    list(APPEND ${_HEADERS} "${REPO_ROOT}/orttraining/orttraining/training_api/include/onnxruntime_training_c_api.h")
+    list(APPEND ${_HEADERS} "${REPO_ROOT}/orttraining/orttraining/training_api/include/onnxruntime_training_cxx_api.h")
+    list(APPEND ${_HEADERS} "${REPO_ROOT}/orttraining/orttraining/training_api/include/onnxruntime_training_cxx_inline.h")
   endif()
 
   # need to add header files for enabled EPs
