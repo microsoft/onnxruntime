@@ -9,10 +9,9 @@ namespace onnxruntime {
 
 class ConvActivationFusion : public SelectorActionTransformer {
  public:
-  explicit ConvActivationFusion(
-      std::shared_ptr<KernelRegistry> cpu_kernel_registry = {},
-      const InlinedHashSet<std::string_view>& compatible_execution_providers = {},
-      const SatApplyContextVariant& apply_context = {}) noexcept;
+  explicit ConvActivationFusion(const InlinedHashSet <std::string_view> &compatible_execution_providers = {},
+                                std::shared_ptr<KernelRegistry> cpu_kernel_registry = {},
+                                const SatApplyContextVariant &apply_context = {}) noexcept;
 };
 
 }  // namespace onnxruntime

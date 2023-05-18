@@ -295,10 +295,9 @@ SelectorActionRegistry CreateSelectorActionRegistry(bool support_fp16 = false) {
 }
 
 }  // namespace
-ConvAddActivationFusion::ConvAddActivationFusion(
-    std::shared_ptr<KernelRegistry> cpu_kernel_registry,
-    const InlinedHashSet<std::string_view>& compatible_execution_providers,
-    const SatApplyContextVariant& apply_context) noexcept
+ConvAddActivationFusion::ConvAddActivationFusion(const InlinedHashSet <std::string_view> &compatible_execution_providers,
+                                                 std::shared_ptr<KernelRegistry> cpu_kernel_registry,
+                                                 const SatApplyContextVariant &apply_context) noexcept
     : SelectorActionTransformer{
           "ConvAddActivationFusion",
           CreateSelectorActionRegistry(),
