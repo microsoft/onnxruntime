@@ -259,7 +259,7 @@ class FuseConvAddRelu : public ReplaceWithNew {
 };
 }  // namespace actions
 
-void RegisterConvActivationFusionRules(SelectorActionRegistry& registry, bool support_fp16 = false) {
+void RegisterConvActivationFusionRules(SelectorActionRegistry& registry, [[maybe_unused]] bool support_fp16 = false) {
   const auto name = "ConvAct";
   auto action = std::make_unique<actions::FuseConvActivationAction>();
 #if !defined(ORT_MINIMAL_BUILD)
@@ -271,7 +271,7 @@ void RegisterConvActivationFusionRules(SelectorActionRegistry& registry, bool su
 #endif
 }
 
-void RegisterConvAddReluFusionRules(SelectorActionRegistry& registry, bool support_fp16 = false) {
+void RegisterConvAddReluFusionRules(SelectorActionRegistry& registry, [[maybe_unused]] bool support_fp16 = false) {
   const auto name = "ConvAddReluSelector";
   auto action = std::make_unique<actions::FuseConvAddRelu>();
 #if !defined(ORT_MINIMAL_BUILD)
@@ -292,9 +292,9 @@ SelectorActionRegistry CreateSelectorActionRegistry(bool support_fp16 = false) {
 
 }  // namespace
 
-ConvActivationFusion::ConvActivationFusion(const InlinedHashSet <std::string_view> &compatible_execution_providers,
+ConvActivationFusion::ConvActivationFusion(const InlinedHashSet<std::string_view>& compatible_execution_providers,
                                            std::shared_ptr<KernelRegistry> cpu_kernel_registry,
-                                           const SatApplyContextVariant &apply_context) noexcept
+                                           const SatApplyContextVariant& apply_context) noexcept
     : SelectorActionTransformer{
           "ConvActivationFusion",
           CreateSelectorActionRegistry(),
