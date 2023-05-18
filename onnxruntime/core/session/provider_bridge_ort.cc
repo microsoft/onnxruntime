@@ -1712,9 +1712,9 @@ static std::string BuildOptionsString(const onnxruntime::ProviderOptions::iterat
   auto it = begin;
   if (it != end) {
     options << it->first << "=" << it->second;
-    it++;
+    ++it;
   }
-  for (; it != end; it++) {
+  for (; it != end; ++it) {
     options << ";" << it->first << "=" << it->second;
   }
   return options.str();
@@ -1740,17 +1740,9 @@ ORT_API_STATUS_IMPL(OrtApis::GetTensorRTProviderOptionsAsString, _In_ const OrtT
 ORT_API(void, OrtApis::ReleaseTensorRTProviderOptions, _Frees_ptr_opt_ OrtTensorRTProviderOptionsV2* ptr) {
 #ifdef USE_TENSORRT
   if (ptr != nullptr) {
-    if (ptr->trt_int8_calibration_table_name != nullptr) {
-      delete ptr->trt_int8_calibration_table_name;
-    }
-
-    if (ptr->trt_engine_cache_path != nullptr) {
-      delete ptr->trt_engine_cache_path;
-    }
-
-    if (ptr->trt_engine_decryption_lib_path != nullptr) {
-      delete ptr->trt_engine_decryption_lib_path;
-    }
+    delete ptr->trt_int8_calibration_table_name;
+    delete ptr->trt_engine_cache_path;
+    delete ptr->trt_engine_decryption_lib_path;
   }
 
   delete ptr;
