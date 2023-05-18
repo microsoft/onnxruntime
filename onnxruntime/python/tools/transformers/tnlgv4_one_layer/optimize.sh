@@ -1,0 +1,1 @@
+python /home/wy/DEV/onnxruntime-dev/wangye/tnlgv4/onnxruntime/python/tools/transformers/optimizer.py --input /home/wy/TNLGV4/tnlgv4_one_layer/tnlgv4_one_layer.onnx --output /home/wy/TNLGV4/tnlgv4_one_layer/opt/tnlgv4_one_layer_opt.onnx --model_type tnlgv4 --num_heads 32 --hidden_size 4096 --use_external_data_format #--float16
