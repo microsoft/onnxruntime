@@ -158,7 +158,7 @@ namespace Microsoft.ML.OnnxRuntime
             SessionOptions options = new SessionOptions();
             try
             {
-                options.AppendExecutionProvider_Tvm(deviceId);
+                options.AppendExecutionProvider_Tvm(settings);
                 return options;
             }
             catch (Exception)
