@@ -108,13 +108,9 @@ if (UNIX AND NOT APPLE AND NOT onnxruntime_MINIMAL_BUILD AND NOT CMAKE_SYSTEM_NA
 endif()
 
 if (onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS_ENABLE_DUMP_TO_SQLDB)
-  find_package (SQLite3)
-  if (SQLITE3_FOUND)
-    include_directories(${SQLite3_INCLUDE_DIR})
-    target_link_libraries (onnxruntime_framework ${SQLite3_LIBRARY})
-  else()
-    message( FATAL_ERROR "Could not locate SQLite3 package." )
-  endif (SQLITE3_FOUND)
+  find_package (SQLite3 REQUIRED)
+  include_directories(${SQLite3_INCLUDE_DIR})
+  target_link_libraries (onnxruntime_framework ${SQLite3_LIBRARY})
   target_compile_definitions(onnxruntime_framework PRIVATE DEBUG_NODE_INPUTS_OUTPUTS_ENABLE_DUMP_TO_SQLDB)
 endif()
 

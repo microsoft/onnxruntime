@@ -173,7 +173,7 @@ option(onnxruntime_ENABLE_CPU_FP16_OPS "Build with advanced instruction sets" ON
 option(onnxruntime_USE_NCCL "Build with NCCL support" OFF)
 option(onnxruntime_USE_MPI "Build with MPI support" OFF)
 
-# build WebAssembly
+# WebAssembly options
 option(onnxruntime_BUILD_WEBASSEMBLY_STATIC_LIB "Enable this option to create WebAssembly static library" OFF)
 option(onnxruntime_ENABLE_WEBASSEMBLY_THREADS "Enable this option to create WebAssembly byte codes with multi-threads support" OFF)
 option(onnxruntime_ENABLE_WEBASSEMBLY_EXCEPTION_CATCHING "Enable this option to turn on exception catching" OFF)
@@ -968,7 +968,7 @@ function(onnxruntime_add_shared_library_module target_name)
   endif()
 
   onnxruntime_configure_target(${target_name})
-  if (MSVC AND onnxruntime_target_platform STREQUAL "x86" AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+  if (MSVC AND onnxruntime_target_platform STREQUAL "x86")
     target_link_options(${target_name} PRIVATE /SAFESEH)
   endif()
 endfunction()
@@ -976,7 +976,7 @@ endfunction()
 function(onnxruntime_add_executable target_name)
   add_executable(${target_name} ${ARGN})
   onnxruntime_configure_target(${target_name})
-  if (MSVC AND onnxruntime_target_platform STREQUAL "x86" AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+  if (MSVC AND onnxruntime_target_platform STREQUAL "x86")
     target_link_options(${target_name} PRIVATE /SAFESEH)
   endif()
 endfunction()
