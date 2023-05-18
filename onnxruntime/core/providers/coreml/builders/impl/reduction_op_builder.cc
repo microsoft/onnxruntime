@@ -72,6 +72,7 @@ Status ReductionOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, co
   } else if (helper.HasAttr("axes")) {
     axes = helper.Get("axes", std::vector<int64_t>{});
   }
+
   const bool keepdims = helper.Get("keepdims", 1) != 0;
   const bool noop_with_empty_axes = helper.Get("noop_with_empty_axes", 0) != 0;
 
@@ -103,6 +104,13 @@ bool ReductionOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInpu
     const auto& initializers = input_params.graph_viewer.GetAllInitializedTensors();
     if (!Contains(initializers, axes_name)) {
       LOGS(logger, VERBOSE) << "Axes of reduction must be a constant initializer";
+      return false;
+    }
+
+    NodeAttrHelper helper(node);
+
+    if (initializers.at(axes_name)->int64_data_size() == 0 && helper.Get("noop_with_empty_axes", 0) != 0) {
+      LOGS(logger, VERBOSE) << "CoreML doesn't support noop on empty axes for reduction layers" << std::endl;
       return false;
     }
   }

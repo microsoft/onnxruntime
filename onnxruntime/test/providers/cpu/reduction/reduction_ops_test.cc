@@ -4838,7 +4838,9 @@ TEST(ReductionOpTest, ReduceSum_RK_parallel) {
     }
   }
   test.AddOutput<float>("reduced", {32}, expected);
-  test.Run();
+
+  // CoreML does not provide 1e-5 precision here (it's off by 1e-4)
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCoreMLExecutionProvider});
 }
 
 TEST(ReductionOpTest, ReduceSum_RK_keepdims) {
