@@ -712,10 +712,10 @@ IMPLEMENT_GRADIENT_BUILDER(GetQuickGeluGradient) {
 IMPLEMENT_GRADIENT_BUILDER(GetSoftmaxGradient) {
   if (GetGradientGraphConfiguration().compress_sparse_tensor) {
     return std::vector<NodeDef>{
-        NodeDef(OpDef{"ZeroPointErase", kMSDomain, 1},
+        NodeDef(OpDef{"ModeCompress", kMSDomain, 1},
                 {O(0)},
                 {IA("FlattenOut"), IA("FlattenMask"), IA("SShape")}),
-        NodeDef(OpDef{"ZeroPointRestore", kMSDomain, 1},
+        NodeDef(OpDef{"ModeRestore", kMSDomain, 1},
                 {IA("FlattenOut"), IA("FlattenMask"), IA("SShape"), GO(0)},
                 {IA("OriginOut")}),
         NodeDef(OpDef{SrcNodeOpsetVersion() < 13 ? "SoftmaxGrad" : "SoftmaxGrad_13", kMSDomain, 1},
