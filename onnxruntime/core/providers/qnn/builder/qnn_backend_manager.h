@@ -69,9 +69,15 @@ class QnnBackendManager {
     return CreateContext();
   }
 
-  Status DumpQnnContext(const onnxruntime::PathString& model_path);
+  Status DumpQnnContext(const onnxruntime::PathString& context_cache_pathstring,
+                        const std::string& model_name,
+                        const std::string& graph_name);
 
-  Status LoadCachedQnnContext(const onnxruntime::PathString& model_path, QnnModel& qnn_model);
+  Status LoadCachedQnnContext(const onnxruntime::PathString& context_cache_pathstring, QnnModel& qnn_model);
+
+  Status GetMetadataFromOrtContextFile(const onnxruntime::PathString& model_path);
+
+  Status ValidateWithContextFile(const std::string& model_name, const std::string& graph_name);
 
   Status SetupBackend(const logging::Logger& logger, bool load_from_cached_context);
 
@@ -207,6 +213,11 @@ class QnnBackendManager {
   std::vector<std::string> op_package_paths_;
   uint32_t rpc_control_latency_ = 0;
   HtpPerformanceMode htp_performance_mode_;
+  std::string model_name_from_ctx_cache_ = "";
+  std::string graph_name_from_ctx_cache_ = "";
+  bool ctx_metadata_tried_ = false;
+  bool ort_generated_ctx_cache_ = false;
+  bool get_capability_round_2_ = false;
 #ifdef _WIN32
   std::set<HMODULE> mod_handles_;
 #endif

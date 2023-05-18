@@ -20,6 +20,12 @@ namespace onnxruntime {
 
 constexpr const char* QNN = "QNN";
 
+std::string GetFileNameFromModelPath(onnxruntime::Path model_path) {
+  auto model_path_components = model_path.GetComponents();
+  ORT_ENFORCE(!model_path_components.empty(), "Model path not valid!");
+  return PathToUTF8String(model_path_components.back());
+}
+
 void QNNExecutionProvider::ParseProfilingLevel(std::string profiling_level_string) {
   std::transform(profiling_level_string.begin(),
                  profiling_level_string.end(),
@@ -272,6 +278,15 @@ QNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer
     onnxruntime::PathString context_cache_pathstring;
     load_from_cached_context = IsContextCacheFileExists(graph_viewer.ModelPath().ToPathString(),
                                                         context_cache_pathstring);
+
+    // Get metadata from cached context binary file
+    if (load_from_cached_context) {
+      auto rt = qnn_backend_manager_->GetMetadataFromOrtContextFile(context_cache_pathstring);
+      if (Status::OK() != rt) {
+        LOGS(logger, ERROR) << "Failed to get metadata from cached context binary file. " << rt.ErrorMessage();
+        return result;
+      }
+    }
   }
 
   // Load from cached context will load the QnnSystem lib and skip the Qnn context creation
@@ -328,14 +343,19 @@ QNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer
                                       ", number of nodes in the graph: ", graph_viewer.NumberOfNodes(),
                                       ", number of nodes supported by QNN: ", num_of_supported_nodes);
 
-  // If the graph is partitioned in multiple subgraphs, and this may impact performance,
-  // we want to give users a summary message at warning level.
-  if (num_of_partitions > 1) {
-    LOGS(logger, WARNING) << summary_msg;
-    ORT_ENFORCE(!context_cache_enabled_, "Only support singel partition for context cache feature.");
-  } else {
-    LOGS(logger, INFO) << summary_msg;
+  if (load_from_cached_context && 1 == num_of_partitions) {
+    rt = qnn_backend_manager_->ValidateWithContextFile(GetFileNameFromModelPath(graph_viewer.ModelPath()),
+                                                       result[0]->sub_graph->GetMetaDef()->name);
+    if (Status::OK() != rt) {
+      LOGS(logger, ERROR) << "QNN failed to validate context cache metadata: " << rt.ErrorMessage();
+      return result;
+    }
   }
+
+  if (num_of_partitions > 1) {
+    ORT_ENFORCE(!context_cache_enabled_, "Only support singel partition for context cache feature.");
+  }
+  LOGS(logger, INFO) << summary_msg;
 
   return result;
 }
@@ -429,6 +449,8 @@ Status QNNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused
       ORT_RETURN_IF_ERROR(qnn_model->SetGraphInputOutputInfo(graph_viewer, fused_node));
       ORT_RETURN_IF_ERROR(qnn_model->SetupQnnInputOutput());
 
+      // fused node name is QNNExecutionProvider_QNN_[hash_id]_[id]
+      // the name here should be same with context->node_name in compute_info
       LOGS(logger, VERBOSE) << "fused node name: " << fused_node.Name();
       qnn_models_.emplace(fused_node.Name(), std::move(qnn_model));
 
@@ -437,7 +459,11 @@ Status QNNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused
     } else {
       // Load and execute from Onnx model if not exit and dump the context
       ORT_RETURN_IF_ERROR(CompileFromOrtGraph(fused_nodes_and_graphs, node_compute_funcs, logger));
-      ORT_RETURN_IF_ERROR(qnn_backend_manager_->DumpQnnContext(context_cache_pathstring));
+      // fused_node.OpType() is generated in GetCapability, e.g QNN_[hash_id]_[id]
+      // dump fused_node.OpType() as metadata in context cache binary file, so that we can validate it in GetCapability
+      ORT_RETURN_IF_ERROR(qnn_backend_manager_->DumpQnnContext(context_cache_pathstring,
+                                                               GetFileNameFromModelPath(graph_viewer.ModelPath()),
+                                                               fused_node.OpType()));
     }
     return Status::OK();
   }
