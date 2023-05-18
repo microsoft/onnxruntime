@@ -51,7 +51,7 @@ parameters:
 
 - name: ort_build_pool_name
   type: string
-  default: 'Win-CPU-2021'
+  default: 'onnxruntime-Win-CPU-2022'
 
 #'onnxruntime' or 'onnxruntime_gpu'
 - name: java_artifact_id
@@ -117,6 +117,10 @@ stages:
           arguments: -cpu_arch ${{ parameters.buildArch }} -install_prefix $(Build.BinariesDirectory)\RelWithDebInfo\installed -build_config RelWithDebInfo
 
       - template: set-version-number-variables-step.yml
+
+      - ${{ if contains(parameters.buildparameter, 'use_cuda') }}:
+        - powershell: |
+           azcopy.exe cp --recursive "https://lotusscus.blob.core.windows.net/models/cuda_sdk/v11.8" $(Agent.TempDirectory)
 
       - task: PythonScript@0
         displayName: 'Generate cmake config'

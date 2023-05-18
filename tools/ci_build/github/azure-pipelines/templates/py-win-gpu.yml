@@ -60,6 +60,9 @@ jobs:
 
       - template: download-deps.yml
 
+      - ${{ if contains(parameters.EP_BUILD_FLAGS, 'use_cuda') }}:
+        - powershell: |
+           azcopy.exe cp --recursive "https://lotusscus.blob.core.windows.net/models/cuda_sdk/v11.8" $(Agent.TempDirectory)
       - task: PythonScript@0
         displayName: 'Update deps.txt'
         inputs:
