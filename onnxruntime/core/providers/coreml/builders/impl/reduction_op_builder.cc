@@ -123,5 +123,5 @@ void CreateReductionOpBuilder(const std::string& op_type, OpBuilderRegistrations
   op_registrations.op_builder_map.emplace(op_type, op_registrations.builders.back().get());
 }
 
-} // coreml
-} // onnxruntime
+}  // coreml
+}  // onnxruntime

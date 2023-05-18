@@ -54,5 +54,5 @@ void CreateUnaryOpBuilder(const std::string& op_type, OpBuilderRegistrations& op
   op_registrations.op_builder_map.emplace(op_type, op_registrations.builders.back().get());
 }
 
-} // namespace coreml
-} // namespace onnxruntime
+}  // namespace coreml
+}  // namespace onnxruntime

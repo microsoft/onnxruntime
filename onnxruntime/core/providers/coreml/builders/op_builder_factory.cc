@@ -104,7 +104,7 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
     CreateUnaryOpBuilder("Reciprocal", op_registrations);
   }
 
-  { // Reduction
+  {  // Reduction
     CreateReductionOpBuilder("ReduceSum", op_registrations);
     CreateReductionOpBuilder("ReduceMean", op_registrations);
   }
