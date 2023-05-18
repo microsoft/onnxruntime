@@ -140,6 +140,15 @@ def parse_arguments():
     parser.set_defaults(chain_model=True)
 
     parser.add_argument(
+        "--output_cross_qk",
+        required=False,
+        action="store_true",
+        help="Beam search model collect and output stacked cross QK.",
+    )
+    parser.set_defaults(chain_model=True)
+
+
+    parser.add_argument(
         "--beam_output_model",
         type=str,
         default="whisper_beamsearch.onnx",

@@ -10,6 +10,7 @@ from benchmark_helper import Precision  # noqa: E402
 from convert_generation import (  # noqa: E402
     get_shared_initializers,
     update_decoder_subgraph_share_buffer_and_use_decoder_masked_mha,
+    update_decoder_subgraph_output_cross_attention
 )
 
 
@@ -93,6 +94,8 @@ def chain_model(args):
             print("*****update whisper decoder subgraph successfully!!!*****")
         else:
             print("*****DecoderMaskedMultiHeadAttention is not applied to whisper decoder*****")
+        if hasattr(args, "output_cross_qk") and args.output_cross_qk:
+            update_decoder_subgraph_output_cross_attention(decoder_model.graph)
 
     # Initializers/opsets
     # Delete shared data between decoder/encoder and move to larger graph initializers

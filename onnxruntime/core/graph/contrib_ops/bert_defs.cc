@@ -613,6 +613,10 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               "The value to be filled in the attention mask. Default value is -10000.0f",
               AttributeProto::FLOAT,
               OPTIONAL_VALUE)
+        .Attr("output_cross_qk",
+              "Need output the cross attention MatMul(Q, K)",
+              AttributeProto::INT,
+              OPTIONAL_VALUE)
         .Input(0,
                "query",
                "Query with shape (batch_size, 1, hidden_size) or packed QKV with shape "
@@ -699,6 +703,11 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                 "If past_present_share_buffer is set, "
                 "its shape is (batch_size, num_heads, max_sequence_length, head_size), "
                 "while effective_seq_length = (past_sequence_length + kv_sequence_length).",
+                "T",
+                OpSchema::Optional)
+        .Output(3,
+                "cross_qk",
+                "Q * K (batch_size, num_heads, 1, head_size). "
                 "T",
                 OpSchema::Optional)
         .TypeConstraint("T",
