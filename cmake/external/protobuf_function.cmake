@@ -175,16 +175,12 @@ function(onnxruntime_protobuf_generate)
     set(_warning_options)
 
     if(MSVC)
-      list(APPEND _warning_options
-           # TODO which ones do we actually need to disable?
-           #"/wd4146" "/wd4125" "/wd4456" "/wd4267" "/wd4309"
-           #"/wd4100" "/wd4125" "/wd4127" "/wd4267" "/wd4456" "/wd4800" "/wd6011" "/wd6387" "/wd28182"
-           )
+      # google\protobuf\has_bits.h(74,0): Warning C4267: 'argument': conversion from 'size_t' to 'int', possible loss of data
+      list(APPEND _warning_options "/wd4267")
     else()
-      # protobuf generated code has warnings like:
-      #  google/protobuf/parse_context.h:328:47: error: implicit conversion loses integer precision: 'long' to 'int' [-Werror,-Wshorten-64-to-32]
-      #  int chunk_size = buffer_end_ + kSlopBytes - ptr;
       # TODO remove when we upgrade to a protobuf version where this is fixed (looks like it is addressed in version 22.0+)
+      # google/protobuf/parse_context.h:328:47: error: implicit conversion loses integer precision: 'long' to 'int' [-Werror,-Wshorten-64-to-32]
+      # int chunk_size = buffer_end_ + kSlopBytes - ptr;
       if(HAS_SHORTEN_64_TO_32)
         list(APPEND _warning_options "-Wno-error=shorten-64-to-32")
       endif()
