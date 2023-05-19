@@ -69,20 +69,6 @@ if (WIN32)
 
 else()
 
-  ExternalProject_Add(rapidjson
-                      GIT_REPOSITORY https://github.com/Tencent/rapidjson.git
-                      GIT_TAG v1.1.0
-                      PREFIX rapidjson
-                      SOURCE_DIR ${CMAKE_CURRENT_BINARY_DIR}/_deps/rapidjson-src
-                      BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR}/_deps/rapidjson-build
-                      CMAKE_ARGS -DRAPIDJSON_BUILD_TESTS=OFF -DRAPIDJSON_BUILD_DOC=OFF -DRAPIDJSON_BUILD_EXAMPLES=OFF
-                      INSTALL_COMMAND ""
-                      UPDATE_COMMAND "")
-
-  ExternalProject_Get_Property(rapidjson source_dir)
-  set(RAPIDJSON_INCLUDE_DIR ${source_dir}/include)
-  include_directories(${RAPIDJSON_INCLUDE_DIR})
-
   ExternalProject_Add(triton
                       GIT_REPOSITORY https://github.com/triton-inference-server/client.git
                       GIT_TAG r23.05
@@ -92,8 +78,6 @@ else()
                       CMAKE_ARGS -DCMAKE_INSTALL_PREFIX=binary -DTRITON_ENABLE_CC_HTTP=ON -DTRITON_ENABLE_ZLIB=OFF
                       INSTALL_COMMAND ""
                       UPDATE_COMMAND "")
-
-  add_dependencies(triton rapidjson)
 
 endif() #if (WIN32)
 
