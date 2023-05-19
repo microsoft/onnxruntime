@@ -10,6 +10,8 @@
 #include "HTP/QnnHtpPerfInfrastructure.h"
 #include "DSP/QnnDspCommon.h"
 #include "HTP/QnnHtpCommon.h"
+#include "core/common/gsl.h"
+#include "core/framework/endian_utils.h"
 
 // Flag to determine if Backend should do node validation for each opNode added
 #define DO_GRAPH_NODE_VALIDATIONS 1
@@ -265,6 +267,14 @@ Status QnnBackendManager::ReleaseContext() {
   return Status::OK();
 }
 
+Status WriteInt16ToBinaryFile(std::ofstream& of_stream, uint16_t value) {
+  const std::vector<uint16_t> data{value};
+  std::vector<unsigned char> data_bytes(sizeof(uint16_t) / sizeof(unsigned char));
+  ORT_RETURN_IF_ERROR(onnxruntime::utils::WriteLittleEndian(gsl::make_span(data), gsl::make_span(data_bytes)));
+  of_stream.write(reinterpret_cast<char*>(data_bytes.data()), data_bytes.size());
+  return Status::OK();
+}
+
 Status QnnBackendManager::DumpQnnContext(const onnxruntime::PathString& context_cache_pathstring,
                                          const std::string& model_name,
                                          const std::string& graph_name) {
@@ -315,10 +325,13 @@ Status QnnBackendManager::DumpQnnContext(const onnxruntime::PathString& context_
   uint16_t header_length = 3 * sizeof(uint16_t) + model_name_length + graph_name_length;
   uint16_t totale_length = header_length + static_cast<uint16_t>(strlen(QNN_PROVIDER));
   of_stream.write(QNN_PROVIDER, strlen(QNN_PROVIDER));
-  of_stream.write(reinterpret_cast<char*>(&header_length), sizeof(uint16_t));
-  of_stream.write(reinterpret_cast<char*>(&model_name_length), sizeof(uint16_t));
+
+  ORT_RETURN_IF_ERROR(WriteInt16ToBinaryFile(of_stream, header_length));
+
+  ORT_RETURN_IF_ERROR(WriteInt16ToBinaryFile(of_stream, model_name_length));
   of_stream.write(model_name.c_str(), model_name_length);
-  of_stream.write(reinterpret_cast<char*>(&graph_name_length), sizeof(uint16_t));
+
+  ORT_RETURN_IF_ERROR(WriteInt16ToBinaryFile(of_stream, graph_name_length));
   of_stream.write(graph_name.c_str(), graph_name_length);
   LOGS(*logger_, VERBOSE) << "Dump metadata with length: " << totale_length;
 
@@ -427,12 +440,16 @@ Status ReadStringFromBinaryFile(std::ifstream& binary_file, std::string& result_
  * \param[in] binary_file - file stream of the binary file
  * \param[out] value - uint16_t value
  */
-Status ReadIntFromBinaryFile(std::ifstream& binary_file, uint16_t& value) {
+Status ReadInt16FromBinaryFile(std::ifstream& binary_file, uint16_t& value) {
   std::unique_ptr<char[]> buffer = std::make_unique<char[]>(sizeof(uint16_t));
   ORT_RETURN_IF(nullptr == buffer, "Failed to allocate memory for buffer.");
   const auto& read_result = binary_file.read(buffer.get(), sizeof(uint16_t));
   ORT_RETURN_IF(!read_result, "Failed to read contents from cached context binary file.");
-  value = *(reinterpret_cast<uint16_t*>(buffer.get()));
+
+  auto src = gsl::make_span<const unsigned char>(reinterpret_cast<unsigned char*>(buffer.get()), sizeof(uint16_t));
+  std::vector<uint16_t> dst(1);
+  ORT_RETURN_IF_ERROR(onnxruntime::utils::ReadLittleEndian(src, gsl::make_span(dst)));
+  value = dst[0];
 
   return Status::OK();
 }
@@ -470,15 +487,15 @@ Status QnnBackendManager::GetMetadataFromOrtContextFile(const onnxruntime::PathS
   ort_generated_ctx_cache_ = true;
 
   uint16_t header_length = 0;
-  ORT_RETURN_IF_ERROR(ReadIntFromBinaryFile(cache_file, header_length));
+  ORT_RETURN_IF_ERROR(ReadInt16FromBinaryFile(cache_file, header_length));
   ort_ctx_metadata_length_ = header_length + static_cast<uint16_t>(ort_flag_length);
 
   uint16_t model_name_length = 0;
-  ORT_RETURN_IF_ERROR(ReadIntFromBinaryFile(cache_file, model_name_length));
+  ORT_RETURN_IF_ERROR(ReadInt16FromBinaryFile(cache_file, model_name_length));
   ORT_RETURN_IF_ERROR(ReadStringFromBinaryFile(cache_file, model_name_from_ctx_cache_, static_cast<size_t>(model_name_length)));
 
   uint16_t graph_name_length = 0;
-  ORT_RETURN_IF_ERROR(ReadIntFromBinaryFile(cache_file, graph_name_length));
+  ORT_RETURN_IF_ERROR(ReadInt16FromBinaryFile(cache_file, graph_name_length));
   ORT_RETURN_IF_ERROR(ReadStringFromBinaryFile(cache_file, graph_name_from_ctx_cache_, static_cast<size_t>(graph_name_length)));
 
   return Status::OK();
