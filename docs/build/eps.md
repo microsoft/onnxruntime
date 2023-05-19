@@ -608,23 +608,34 @@ set(CMAKE_C_COMPILER aarch64-linux-gnu-gcc)
 
 ---
 
-## Vitis-AI
-See more information on the Xilinx Vitis-AI execution provider [here](../execution-providers/community-maintained/Vitis-AI-ExecutionProvider.md).
+## AMD Vitis AI
+See more information on the Vitis AI Execution Provider [here](../execution-providers/community-maintained/Vitis-AI-ExecutionProvider.md).
 
-For instructions to setup the hardware environment: [Hardware setup](../execution-providers/community-maintained/Vitis-AI-ExecutionProvider.md#hardware-setup)
+### Windows
+{: .no_toc }
 
+From the Visual Studio Developer Command Prompt or Developer PowerShell, execute the following command:
+
+```
+.\build.bat --use_vitisai --build_shared_lib --parallel --config Release
+```
+
+If you wish to leverage the Python APIs, please include the `--build_wheel` flag:
+
+```
+.\build.bat --use_vitisai --build_shared_lib --parallel --config Release --build_wheel
+```
+
+You can override also override the installation location by specifying CMAKE_INSTALL_PREFIX via the cmake_extra_defines parameter.
+e.g.
+
+```
+.\build.bat --use_vitisai --build_shared_lib --parallel --config Release --cmake_extra_defines CMAKE_INSTALL_PREFIX=D:\onnxruntime
+```
 ### Linux
 {: .no_toc }
 
-
-```bash
-./build.sh --use_vitisai
-```
-
-### Notes
-{: .no_toc }
-
-The Vitis-AI execution provider is only supported on Linux.
+Currently Linux support is only enabled for AMD Adapable SoCs.  Please refer to the guidance [here](../execution-providers/community-maintained/Vitis-AI-ExecutionProvider.md#amd-adaptable-soc-installation) for SoC targets.
 
 ---
 
