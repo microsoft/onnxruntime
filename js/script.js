@@ -626,10 +626,10 @@ var ot_validCombos = {
     "Follow build instructions from&nbsp;<a href='https://onnxruntime.ai/docs/build/training.html' target='_blank'>here</a>",
 
     "ot_android,ot_on_device,ot_c,ot_X64,ot_CPU":
-    "Follow build instructions from&nbsp;<a href='https://onnxruntime.ai/docs/install/#install-for-on-device-training' target='_blank'>here</a>",
+    "Follow installation instructions from&nbsp;<a href='https://onnxruntime.ai/docs/install/#install-for-on-device-training' target='_blank'>here</a>",
 
     "ot_android,ot_on_device,ot_cplusplus,ot_X64,ot_CPU":
-    "Follow build instructions from&nbsp;<a href='https://onnxruntime.ai/docs/install/#install-for-on-device-training' target='_blank'>here</a>",
+    "Follow installation instructions from&nbsp;<a href='https://onnxruntime.ai/docs/install/#install-for-on-device-training' target='_blank'>here</a>",
     
     "ot_android,ot_on_device,ot_java,ot_X64,ot_CPU":
     "Add a dependency on <a href='https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-training-android' target='_blank'>com.microsoft.onnxruntime:onnxruntime-training-android</a> using Maven/Gradle and refer to the instructions <a href='https://onnxruntime.ai/docs/install/#install-for-on-device-training' target='_blank'>here.</a>",
