@@ -47,29 +47,30 @@ def _get_args():
         action="extend",
         help="Restrict analysis to the specified identifiers, i.e., specify a filter list. Also supports UNIX-style wildcards.",
     )
-    parser.add_argument("--csv", help="save data to csv")
-    parser.add_argument("-c", "--count", type=int, default=40, help="list top N items")
-    parser.add_argument("-v", "--verbose", action="store_true", help="verbose")
+    parser.add_argument("--csv", help="Save data to csv")
+    parser.add_argument("-c", "--count", type=int, default=40, help="List top N items")
 
     parser.add_argument(
         "--start",
         "-s",
         type=int,
         default=1,
-        help="index of the first model run to process",
+        help="Index of the first model run to process (starting from 0, supports negative indices). "
+        "Defaults to 1 to skip the first run (run 0), which is often a warmup step.",
     )
     parser.add_argument(
         "--end",
         "-e",
         type=int,
-        default=-1,
-        help="index of the last model run to process (inclusive)",
+        default=None,
+        help="Index of the last model run to process (exclusive, supports negative indices). "
+        "Defaults to None, which means all runs starting from --start will be included.",
     )
     parser.add_argument(
         "--mapping",
         "-m",
         action="store_true",
-        help="whether dump op-kernel correlation",
+        help="Whether dump op-kernel correlation",
     )
 
     args = parser.parse_args()
@@ -270,28 +271,35 @@ def _construct_filter_matcher(args):
     return _match_item
 
 
-def _split_data_across_runs(data, start=1, end=-1):
+def _split_data_across_runs(data, start=1, end=None):
     """
     Splits the traces according to model runs they belong to.
-    By default, we skip the first model run (index 0) and consider all subsequent runs.
+    By default, we skip the first model run (run 0) and consider all subsequent runs.
     """
     # Here we assume that the traces are properly ordered, so we can simplify the splitting logic.
     model_run_splits = [i for i, item in enumerate(data) if item.get("name") == "model_run"]
     if not model_run_splits:
         print('WARNING: Could not find "model_run" event in trace. Using entire traces.')
         return data
-    print(f"Found {len(model_run_splits)} model_run events in trace.")
+    total_num_runs = len(model_run_splits)
+    print(f"Found {total_num_runs} model_run events in trace.")
 
+    assert -total_num_runs <= start < total_num_runs, f"Invalid start index {start}."
     if start < 0:
-        start += len(model_run_splits)
-    if end < 0:
-        end += len(model_run_splits)
-    num_runs = end - start + 1
-    print(f"Analyzing model runs {start}-{end}.")
+        start += total_num_runs
+    if end is None:
+        end = total_num_runs
+    else:
+        assert -total_num_runs <= end < total_num_runs, f"Invalid end index {end}."
+        if end < 0:
+            end += total_num_runs
+    num_runs = end - start
+    assert num_runs > 0, "No valid model runs are included in the split."
+    print(f"Analyzing {num_runs} model run(s): {start}-{end - 1}.")
 
     # Add index 0 in case user wants to include the first model run.
     model_run_splits = [0, *model_run_splits]
-    return data[model_run_splits[start] : model_run_splits[end + 1]], num_runs
+    return data[model_run_splits[start] : model_run_splits[end]], num_runs
 
 
 def _load_json(profile_path):
