@@ -33,7 +33,13 @@ namespace test {
 TEST(QnnEP, TestAddEpUsingPublicApi) {
   {
     Ort::SessionOptions so;
+
+    // Can only enforce that model runs on QNN in linux CI machines
+    // because they support the CPU backend and emulate the HPT backend.
+    // TODO: Remove #ifdef when Windows Arm64 machines support the CPU backend.
+#if defined(__linux__)
     so.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1");  // Disable fallback to the CPU EP.
+#endif
 
     onnxruntime::ProviderOptions options;
 
