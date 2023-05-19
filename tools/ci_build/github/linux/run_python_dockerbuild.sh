@@ -8,10 +8,6 @@ x) BUILD_EXTR_PAR=${OPTARG};;
 esac
 done
 
-if [ "$BUILD_EXTR_PAR" = "-d AZURE" ]; then
-    export ADDITIONAL_DOCKER_PARAMETER="${ADDITIONAL_DOCKER_PARAMETER} -u root"
-fi
-
 mkdir -p $HOME/.onnx
 docker run --rm \
     --volume /data/onnx:/data/onnx:ro \
