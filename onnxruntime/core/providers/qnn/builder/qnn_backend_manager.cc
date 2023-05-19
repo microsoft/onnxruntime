@@ -19,8 +19,6 @@
 namespace onnxruntime {
 namespace qnn {
 
-static std::mutex qnn_log_mutex_;
-
 typedef Qnn_ErrorHandle_t (*QnnInterfaceGetProvidersFn_t)(const QnnInterface_t*** providerList,
                                                           uint32_t* numProviders);
 typedef Qnn_ErrorHandle_t (*QnnSystemInterfaceGetProvidersFn_t)(const QnnSystemInterface_t*** providerList,
@@ -137,8 +135,6 @@ void QnnLogging(const char* format,
   ORT_UNUSED_PARAMETER(level);
   ORT_UNUSED_PARAMETER(timestamp);
 
-  std::lock_guard<std::mutex> lock(qnn_log_mutex_);
-
   // Always output Qnn log as Ort verbose log
   size_t ini_size = 20;
   std::vector<char> buffer(ini_size);
@@ -149,19 +145,24 @@ void QnnLogging(const char* format,
 }
 
 void QnnBackendManager::InitializeQnnLog() {
-  const std::map<logging::Severity, QnnLog_Level_t> ort_log_level_to_qnn_log_level = {
-      {logging::Severity::kVERBOSE, QNN_LOG_LEVEL_DEBUG},
-      {logging::Severity::kINFO, QNN_LOG_LEVEL_INFO},
-      {logging::Severity::kWARNING, QNN_LOG_LEVEL_WARN},
-      {logging::Severity::kERROR, QNN_LOG_LEVEL_ERROR},
-      {logging::Severity::kFATAL, QNN_LOG_LEVEL_ERROR}};
-
   // Set Qnn log level align with Ort log level
   QnnLog_Level_t qnn_log_level = QNN_LOG_LEVEL_WARN;
   auto ort_log_level = logger_->GetSeverity();
-  auto pos = ort_log_level_to_qnn_log_level.find(ort_log_level);
-  if (pos != ort_log_level_to_qnn_log_level.end()) {
-    qnn_log_level = pos->second;
+  switch (ort_log_level) {
+    case logging::Severity::kVERBOSE:
+      qnn_log_level = QNN_LOG_LEVEL_DEBUG;
+      break;
+    case logging::Severity::kINFO:
+      qnn_log_level = QNN_LOG_LEVEL_INFO;
+      break;
+    case logging::Severity::kWARNING:
+      qnn_log_level = QNN_LOG_LEVEL_WARN;
+      break;
+    case logging::Severity::kERROR:
+      qnn_log_level = QNN_LOG_LEVEL_ERROR;
+      break;
+    default:
+      break;
   }
 
   if (QNN_SUCCESS != qnn_interface_.logCreate(QnnLogging, qnn_log_level, &log_handle_)) {
