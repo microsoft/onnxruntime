@@ -36,7 +36,7 @@ The following table lists AMD targets that are supported by the Vitis AI ONNX Ru
 AMD Adaptable SoC developers can also leverage the Vitis AI ONNX Runtime Execution Provider to support custom (chip-down) designs.
 
 ## Ryzen AI Demo
-A [demonstration](https://github.com/amd/ms-build-demo) is available that showcases one potential application of AMD's XDNA technology.  New users are encouraged to test it out.
+A [demonstration](https://github.com/amd/RyzenAI-cloud-to-client-demo) is available that showcases one potential application of AMD's XDNA technology.  New users are encouraged to test it out.
 
 ## Install
 
