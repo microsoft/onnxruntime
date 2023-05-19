@@ -135,7 +135,7 @@ class ConvAddReluSelector : public NodeSelector {
 
  public:
   ConvAddReluSelector() = default;
-  ConvAddReluSelector(bool support_fp16) : support_fp16_(support_fp16) {}
+  explicit ConvAddReluSelector(bool support_fp16) : support_fp16_(support_fp16) {}
   std::optional<NodesToOptimizeIndices> Select(const GraphViewer& graph_viewer, const Node& node) const override {
     const std::string_view node_ep = node.GetExecutionProviderType();
     // only for CUDA EP
