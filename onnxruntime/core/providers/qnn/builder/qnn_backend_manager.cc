@@ -427,11 +427,9 @@ Status QnnBackendManager::LoadCachedQnnContext(const onnxruntime::PathString& co
  * \param[out] length - length to read
  */
 Status ReadStringFromBinaryFile(std::ifstream& binary_file, std::string& result_str, size_t length) {
-  std::unique_ptr<char[]> buffer = std::make_unique<char[]>(length);
-  ORT_RETURN_IF(nullptr == buffer, "Failed to allocate memory for buffer.");
-  const auto& read_result = binary_file.read(buffer.get(), length);
+  result_str.resize(length);
+  const auto& read_result = binary_file.read(result_str.data(), length);
   ORT_RETURN_IF(!read_result, "Failed to read contents from cached context binary file.");
-  result_str.assign(buffer.get(), length);
 
   return Status::OK();
 }
