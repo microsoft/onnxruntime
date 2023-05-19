@@ -59,7 +59,7 @@ static void RunMultiHeadAttentionTest(
     bool disable_dml = false) {
   kv_sequence_length = (kv_sequence_length == 0 ? sequence_length : kv_sequence_length);
 
-  int min_cuda_architecture = use_float16 ? 700 : 0;
+  int min_cuda_architecture = use_float16 ? 750 : 0;
   bool enable_cuda = HasCudaEnvironment(min_cuda_architecture) && !disable_cuda;
   // rocm mha is required to work with TunableOp Enabled
   bool enable_rocm = (nullptr != DefaultRocmExecutionProvider(/*test_tunable_op=*/true).get()) && !disable_rocm;
