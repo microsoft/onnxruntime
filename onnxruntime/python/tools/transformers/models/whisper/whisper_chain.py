@@ -38,7 +38,11 @@ def chain_model(args):
     ]
     if args.use_forced_decoder_ids:
         beam_inputs.append("decoder_input_ids")
+    if args.output_cross_qk:
+        beam_inputs.append("cross_qk_layer_head")
     beam_outputs = ["sequences"]
+    if args.output_cross_qk:
+        beam_outputs.extend(["", "", "cross_qk"])
 
     node = helper.make_node("BeamSearch", inputs=beam_inputs, outputs=beam_outputs, name="BeamSearch_zcode")
     node.domain = "com.microsoft"
@@ -52,6 +56,8 @@ def chain_model(args):
             helper.make_attribute("model_type", 2),
         ]
     )
+    if args.output_cross_qk:
+        node.attribute.extend([helper.make_attribute("decoder_output_cross_qk", 1)])
 
     # beam graph inputs
     float_data_type = TensorProto.FLOAT
@@ -83,11 +89,22 @@ def chain_model(args):
         )
         graph_inputs.append(decoder_input_ids)
 
+    if args.output_cross_qk:
+        cross_qk_layer_head = helper.make_tensor_value_info(
+            "cross_qk_layer_head", TensorProto.INT32, ["num_layer_head_cross_qk", 2]
+        )
+        graph_inputs.append(cross_qk_layer_head)
+
     # graph outputs
     sequences = helper.make_tensor_value_info(
         "sequences", TensorProto.INT32, ["batch_size", "num_return_sequences", "max_length"]
     )
     graph_outputs = [sequences]
+    if args.output_cross_qk:
+        cross_qk = helper.make_tensor_value_info(
+            "cross_qk", float_data_type, ["batch_size", "num_return_sequences", "num_layer_head_cross_qk", "max_length", "frames"]
+        )
+        graph_outputs.extend([cross_qk])
 
     if hasattr(args, "use_gpu") and args.use_gpu:
         if update_decoder_subgraph_share_buffer_and_use_decoder_masked_mha(decoder_model.graph):

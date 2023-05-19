@@ -145,8 +145,16 @@ def parse_arguments():
         action="store_true",
         help="Beam search model collect and output stacked cross QK.",
     )
-    parser.set_defaults(chain_model=True)
+    parser.set_defaults(output_cross_qk=False)
 
+    # parser.add_argument(
+    #     "--cross_qk_layer_head",
+    #     required=False,
+    #     type=int,
+    #     nargs='*',
+    #     default=[],
+    #     help="list of layer_id, head_id. So its size must be multply of 2.",
+    # )
 
     parser.add_argument(
         "--beam_output_model",

@@ -115,6 +115,24 @@ Status BeamSearchWhisper<T>::Execute(const FeedsFetchesManager& encoder_feeds_fe
   // Update the flag to indicate whether scores exists in output
   this->parameters_->output_scores = (output_scores != nullptr);
 
+  int64_t layer_head_pair_count = parameters->num_layers * parameters->num_heads;
+  const auto* input_cross_qk_layer_head = this->context_.template Input<Tensor>(11);
+  if (input_cross_qk_layer_head) {
+    layer_head_pair_count = input_cross_qk_layer_head->Shape()[0];
+  }
+
+  // TODO: depends on the encoder fetches
+  int64_t frames_of_k = this->context_.template Input<Tensor>(0)->Shape()[2] / 2;
+  std::cout << "Frames:" << frames_of_k << ", parameters->sequence_length" << parameters->sequence_length << std::endl;
+  int64_t cross_qk_dims[] = {
+      static_cast<int64_t>(parameters->batch_size),
+      static_cast<int64_t>(parameters->num_return_sequences),
+      this->decoder_subgraph_.OutputCrossQK() ? layer_head_pair_count : 0LL,
+      static_cast<int64_t>(parameters->max_length),
+      frames_of_k};
+  TensorShape cross_qk_shape(&cross_qk_dims[0], sizeof(cross_qk_dims) / sizeof(cross_qk_dims[0]));
+  [[maybe_unused]] Tensor* cross_qk = this->context_.Output(3, cross_qk_shape);
+
   // ------------------------------------
   // Call encoder subgraph.
   // ------------------------------------
