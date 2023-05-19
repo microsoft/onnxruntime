@@ -3555,9 +3555,6 @@ struct OrtApi {
    *   "backend_path": file path to QNN backend library.
    *   "profiling_level": QNN profiling level, options: "basic", "detailed".
    *   "rpc_control_latency": QNN RPC control latency.
-   *   "qnn_enforce_run_entire_model": Set to "1" to enforce that the entire model runs on the QNN EP with the
-   *                                   specified backend. Session creation will return an error status if the model
-   *                                   cannot run on QNN EP. The C++ API will convert the error status into an exception.
    *
    * SNPE supported keys:
    *   "runtime": SNPE runtime engine, options: "CPU", "CPU_FLOAT32", "GPU", "GPU_FLOAT32_16_HYBRID", "GPU_FLOAT16",

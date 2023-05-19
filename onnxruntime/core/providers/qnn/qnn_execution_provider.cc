@@ -7,6 +7,7 @@
 #include "core/framework/allocatormgr.h"
 #include "core/framework/compute_capability.h"
 #include "core/graph/graph_viewer.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/framework/kernel_registry.h"
 #include "core/providers/partitioning_utils.h"
@@ -21,8 +22,14 @@ namespace onnxruntime {
 
 constexpr const char* QNN = "QNN";
 
-QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_options_map)
+QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_options_map,
+                                           const SessionOptions* session_options)
     : IExecutionProvider{onnxruntime::kQnnExecutionProvider, true}, runtime_options_(provider_options_map) {
+  if (session_options) {
+    disable_cpu_ep_fallback_ = session_options->config_options.GetConfigOrDefault(
+                                   kOrtSessionOptionsDisableCPUEPFallback, "0") == "1";
+  }
+
   static const std::string BACKEND_PATH = "backend_path";
   auto backend_path_pos = runtime_options_.find(BACKEND_PATH);
 
@@ -47,17 +54,6 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
   if (latency_pos != runtime_options_.end()) {
     rpc_control_latency_ = static_cast<uint32_t>(std::stoul(latency_pos->second));
     LOGS_DEFAULT(INFO) << "rpc_control_latency: " << rpc_control_latency_;
-  }
-
-  qnn_enforce_run_entire_model_ = false;
-  static const std::string QNN_ENFORCE_RUN_ENTIRE_MODEL = "qnn_enforce_run_entire_model";
-  auto qnn_enforce_run_entire_model_pos = runtime_options_.find(QNN_ENFORCE_RUN_ENTIRE_MODEL);
-
-  if (qnn_enforce_run_entire_model_pos != runtime_options_.end()) {
-    qnn_enforce_run_entire_model_ = qnn_enforce_run_entire_model_pos->second == "1";
-    if (qnn_enforce_run_entire_model_) {
-      LOGS_DEFAULT(INFO) << "Enforce that entire model runs on QNN EP with backend " << backend_path_;
-    }
   }
 
   AllocatorCreationInfo device_info(
@@ -205,12 +201,6 @@ QNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer
   auto rt = qnn_backend_manager_->SetupBackend(logger);
   if (Status::OK() != rt) {
     LOGS(logger, ERROR) << "QNN SetupBackend failed " << rt.ErrorMessage();
-
-    if (qnn_enforce_run_entire_model_) {
-      ORT_THROW("Entire model must run on QNN EP, but failed to setup backend ", backend_path_.c_str(),
-                " with error: ", rt.ErrorMessage().c_str());
-    }
-
     return result;
   }
 
@@ -222,13 +212,20 @@ QNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer
 
   const auto supported_nodes = GetSupportedNodes(graph_viewer, node_unit_map, node_unit_holder.size(), logger);
 
-  // Helper function that returns a string that lists all unsupported node names.
+  // Helper function that returns a string that lists all unsupported nodes.
+  // Ex: { name: mul_123, type: Mul }, {}, ...
   auto get_unsupported_node_names = [&node_unit_holder, &supported_nodes]() -> std::string {
     std::stringstream ss;
+    const size_t num_node_units = node_unit_holder.size();
 
-    for (const auto& node_unit : node_unit_holder) {
+    for (size_t i = 0; i < num_node_units; ++i) {
+      const auto& node_unit = node_unit_holder[i];
+
       if (supported_nodes.find(&node_unit->GetNode()) == supported_nodes.end()) {
-        ss << node_unit->Name() << " ";
+        ss << "{ name: " << node_unit->Name() << ", type: " << node_unit->OpType() << " }";
+        if (i == num_node_units - 1) {
+          ss << ", ";
+        }
       }
     }
 
@@ -241,15 +238,11 @@ QNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer
   } else if (supported_nodes.size() == 1) {
     const auto* node = *supported_nodes.begin();
     if (node->OpType() == "QuantizeLinear" || node->OpType() == "DequantizeLinear") {
-      LOGS(logger, INFO) << "It doesn't make sense just run a Q/DQ node on HTP.";
-      LOGS(logger, INFO) << "Number of partitions supported by QNN EP: 0";
-
-      if (qnn_enforce_run_entire_model_) {
-        std::string unsupported_node_names = get_unsupported_node_names();
-        ORT_THROW("Entire model must run on QNN EP, but some nodes were not assigned to QNN EP. ",
-                  "Unsupported nodes: ", unsupported_node_names.c_str());
+      LOGS(logger, WARNING) << "It doesn't make sense just run a Q/DQ node on HTP.";
+      LOGS(logger, WARNING) << "Number of partitions supported by QNN EP: 0";
+      if (disable_cpu_ep_fallback_) {
+        LOGS(logger, ERROR) << "Unsupported nodes in QNN EP: " << get_unsupported_node_names();
       }
-
       return result;
     }
   }
@@ -283,10 +276,10 @@ QNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer
     LOGS(logger, INFO) << summary_msg;
   }
 
-  if (qnn_enforce_run_entire_model_ && num_of_supported_nodes != num_nodes_in_graph) {
-    std::string unsupported_node_names = get_unsupported_node_names();
-    ORT_THROW("Entire model must run on QNN EP, but some nodes were not assigned to QNN EP. ", summary_msg.c_str(),
-              ". Unsupported nodes: ", unsupported_node_names.c_str());
+  // Print list of unsupported nodes to the ERROR logger if the CPU EP
+  // has been disabled for this inference session.
+  if (disable_cpu_ep_fallback_ && num_nodes_in_graph != num_of_supported_nodes) {
+    LOGS(logger, ERROR) << "Unsupported nodes in QNN EP: " << get_unsupported_node_names();
   }
 
   return result;

@@ -4,6 +4,7 @@
 #pragma once
 
 #include "core/framework/execution_provider.h"
+#include "core/framework/session_options.h"
 #include <string>
 #include "core/providers/qnn/builder/qnn_backend_manager.h"
 #include "core/providers/qnn/builder/qnn_model.h"
@@ -13,7 +14,7 @@ namespace onnxruntime {
 // Logical device representation.
 class QNNExecutionProvider : public IExecutionProvider {
  public:
-  explicit QNNExecutionProvider(const ProviderOptions& provider_options_map);
+  explicit QNNExecutionProvider(const ProviderOptions& provider_options_map, const SessionOptions* session_options);
   virtual ~QNNExecutionProvider() = default;
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(QNNExecutionProvider);
 
@@ -68,8 +69,7 @@ class QNNExecutionProvider : public IExecutionProvider {
   std::unordered_map<std::string, std::unique_ptr<qnn::QnnModel>> qnn_models_;
   AllocatorPtr cpu_allocator_;
   uint32_t rpc_control_latency_;
-  bool qnn_enforce_run_entire_model_;  // If true, GetCapability() will throw an exception if the desired backend
-                                       // can't be loaded or if the entire model cannot be assigned to QNN EP.
+  bool disable_cpu_ep_fallback_;  // True if CPU EP fallback has been disabled for this session.
 };
 
 }  // namespace onnxruntime

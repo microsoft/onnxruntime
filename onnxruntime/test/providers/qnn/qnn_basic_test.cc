@@ -68,10 +68,11 @@ TEST(QnnEP, TestAddEpUsingPublicApi) {
 // when the backend cannot be found.
 TEST(QnnEP, TestEnforceEntireModel_BackendNotFound) {
   {
-    // C++ API test
     Ort::SessionOptions so;
+    so.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1");  // Disable fallback to the CPU EP.
+    so.SetLogSeverityLevel(OrtLoggingLevel::ORT_LOGGING_LEVEL_WARNING);
+
     onnxruntime::ProviderOptions options;
-    options["qnn_enforce_run_entire_model"] = "1";  // Throw if can't run entire model on QNN EP.
 #if defined(_WIN32)
     options["backend_path"] = "DoesNotExist.dll";  // Invalid backend path!
 #else
@@ -86,7 +87,8 @@ TEST(QnnEP, TestEnforceEntireModel_BackendNotFound) {
       Ort::Session session(*ort_env, ort_model_path, so);
       FAIL();  // Should not get here!
     } catch (const Ort::Exception& excpt) {
-      ASSERT_THAT(excpt.what(), testing::HasSubstr("Entire model must run on QNN EP, but failed to setup backend"));
+      ASSERT_THAT(excpt.what(), testing::HasSubstr("This session contains graph nodes that are assigned to the "
+                                                   "default CPU EP, which has been explicitly disabled by the user."));
     }
   }
 }
@@ -95,10 +97,11 @@ TEST(QnnEP, TestEnforceEntireModel_BackendNotFound) {
 // When the option is enabled, Session creation should throw an exception.
 TEST(QnnEP, TestEnforceEntireModel_ModelNotFullySupported) {
   {
-    // C++ API test
     Ort::SessionOptions so;
+    so.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1");  // Disable fallback to the CPU EP.
+    so.SetLogSeverityLevel(OrtLoggingLevel::ORT_LOGGING_LEVEL_WARNING);
+
     onnxruntime::ProviderOptions options;
-    options["qnn_enforce_run_entire_model"] = "1";  // Throw if can't run entire model on QNN EP.
 #if defined(_WIN32)
     options["backend_path"] = "QnnCpu.dll";
 #else
@@ -107,15 +110,15 @@ TEST(QnnEP, TestEnforceEntireModel_ModelNotFullySupported) {
 
     so.AppendExecutionProvider("QNN", options);
 
-    // QNN EP doesn't support MatMulInteger or dynamic shapes (this model has both).
-    const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "matmul_integer_to_float_int8.onnx";
+    // QNN EP doesn't support MatMulInteger.
+    const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "qnn_ep_partial_support.onnx";
 
     try {
       Ort::Session session(*ort_env, ort_model_path, so);
       FAIL();  // Should not get here!
     } catch (const Ort::Exception& excpt) {
-      ASSERT_THAT(excpt.what(),
-                  testing::HasSubstr("Entire model must run on QNN EP, but some nodes were not assigned to QNN EP"));
+      ASSERT_THAT(excpt.what(), testing::HasSubstr("This session contains graph nodes that are assigned to the "
+                                                   "default CPU EP, which has been explicitly disabled by the user."));
     }
   }
 }
