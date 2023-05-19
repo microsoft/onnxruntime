@@ -131,9 +131,9 @@ Status QnnBackendManager::LoadQnnSystemLib() {
 }
 
 void QnnLogging(const char* format,
-                    QnnLog_Level_t level,
-                    uint64_t timestamp,
-                    va_list argument_parameter) {
+                QnnLog_Level_t level,
+                uint64_t timestamp,
+                va_list argument_parameter) {
   ORT_UNUSED_PARAMETER(level);
   ORT_UNUSED_PARAMETER(timestamp);
 
