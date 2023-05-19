@@ -31,8 +31,9 @@ namespace test {
 // Loads a simple ONNX model that adds floats.
 TEST(QnnEP, TestAddEpUsingPublicApi) {
   {
-    // C++ API test
     Ort::SessionOptions so;
+    so.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1");  // Disable fallback to the CPU EP.
+
     onnxruntime::ProviderOptions options;
 
 #if defined(_WIN32)
