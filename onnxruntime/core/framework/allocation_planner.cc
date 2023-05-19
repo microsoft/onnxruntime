@@ -1324,6 +1324,7 @@ class PlannerImpl {
 #endif
       ORT_RETURN_IF_ERROR(ComputeSingleStreamReusePlan(i));
       ClearUseCount();
+      freelist_.clear();  // DONOT share freelist across streams
     }
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
     CalculateLifetime(ort_value_usecount);
@@ -1745,9 +1746,8 @@ class PlannerImpl {
 
 #else
 
-  void
-  PartitionIntoStreams(const logging::Logger& logger, const ExecutionProviders& execution_providers,
-                       const PathString& partition_config_file) {
+  void PartitionIntoStreams(const logging::Logger& logger, const ExecutionProviders& execution_providers,
+                            const PathString& partition_config_file) {
     auto partitioner = IGraphPartitioner::CreateGraphPartitioner(logger, partition_config_file);
     auto status = partitioner->PartitionGraph(graph_viewer_, execution_providers, stream_nodes_, context_->GetExecutionOrder());
     ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
@@ -1760,7 +1760,7 @@ class PlannerImpl {
     num_logic_streams_ = stream_nodes_.size();
   }
 
-  // build each logic streams
+  // Build each logic streams
   Status BuildExecutionPlan(const ExecutionProviders& execution_providers,
                             const IStreamCommandHandleRegistry& stream_handle_registry) {
     // 1. create logic stream instance
@@ -1780,12 +1780,12 @@ class PlannerImpl {
         execution_plan.emplace_back(nullptr);
       }
     }
-    // 2. determing following things:
-    //    a. which node need to generate notification
-    //    b. which node need to trigger downstream
+    // 2. Determining following things:
+    //    a. which node needs to generate the notification
+    //    b. which node needs to trigger downstream
 #ifdef ENABLE_TRAINING
     // We will leverage the topological order for the training scenario.
-    // The nodes before yieldOp in topo order will be executed in RunForward() and nodes after will be executed in RunBackward()
+    // The nodes before yieldOp in topo-order will be executed in RunForward() and nodes after will be executed in RunBackward()
     // This partition may not be exactly the same as forward model/gradient model, for example, some nodes in gradient model are
     // before yieldOp thus will be executed in RunForward()
     // But the final result is still correct, as long as all the nodes will be executed in either RunForward() or RunBackward()
@@ -1820,7 +1820,7 @@ class PlannerImpl {
           if (node_stream_map_[it->Index()] != i
 #ifdef ENABLE_TRAINING
               // Do not insert Barrier/TriggerDownStream step if the producer and consumer are in different sides of yieldOp
-              // As in this case producer will surely be ready before consumer is running.
+              // As in this case producer will surely be ready before the consumer is running.
               && !AreNodesSeparatedByYield(node_index, it->Index())
 #endif
           ) {
@@ -2048,8 +2048,7 @@ class PlannerImpl {
   }
 #endif
 
-  static bool
-  IsNonTensor(const onnxruntime::NodeArg& nodearg) {
+  static bool IsNonTensor(const onnxruntime::NodeArg& nodearg) {
     // TODO: unclear why we should go through a string-representation of type
     auto ptype = nodearg.Type();
     auto& type_proto = ONNX_NAMESPACE::Utils::DataTypeUtils::ToTypeProto(ptype);
