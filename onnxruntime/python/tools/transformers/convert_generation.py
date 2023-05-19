@@ -1306,7 +1306,7 @@ def update_decoder_subgraph_output_cross_attention(subg: GraphProto):
             appended_names = [""] * (3 - len(node.output))
             appended_names.append(cross_attention_out_name)
             node.output.extend(appended_names)
-            node.attribute.extend([onnx.helper.make_attribute("output_cross_qk", 1)])
+            node.attribute.extend([onnx.helper.make_attribute("output_qk", 1)])
 
             cross_attention = onnx.helper.make_tensor_value_info(
                 cross_attention_out_name,

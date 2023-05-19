@@ -613,7 +613,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               "The value to be filled in the attention mask. Default value is -10000.0f",
               AttributeProto::FLOAT,
               OPTIONAL_VALUE)
-        .Attr("output_cross_qk",
+        .Attr("output_qk",
               "Need output the cross attention MatMul(Q, K)",
               AttributeProto::INT,
               OPTIONAL_VALUE)
@@ -706,8 +706,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                 "T",
                 OpSchema::Optional)
         .Output(3,
-                "cross_qk",
-                "Q * K (batch_size, num_heads, 1, head_size). "
+                "qk",
+                "normalized Q * K, of shape (batch_size, num_heads, 1, head_size). ",
                 "T",
                 OpSchema::Optional)
         .TypeConstraint("T",
