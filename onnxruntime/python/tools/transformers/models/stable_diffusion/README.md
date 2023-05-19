@@ -65,7 +65,7 @@ In below example, we run the scripts in source code directory. You can get sourc
 
 ```
 git clone https://github.com/microsoft/onnxruntime
-cd onnxruntime/python/tools/transformers/models/stable_diffusion
+cd onnxruntime/onnxruntime/python/tools/transformers/models/stable_diffusion
 ```
 
 ## Example of Stable Diffusion 1.5

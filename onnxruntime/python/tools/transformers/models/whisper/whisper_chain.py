@@ -6,7 +6,11 @@ from onnx import TensorProto, helper
 from transformers import WhisperConfig
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
-from convert_generation import get_shared_initializers  # noqa: E402
+from benchmark_helper import Precision  # noqa: E402
+from convert_generation import (  # noqa: E402
+    get_shared_initializers,
+    update_decoder_subgraph_share_buffer_and_use_decoder_masked_mha,
+)
 
 
 def chain_model(args):
@@ -33,6 +37,11 @@ def chain_model(args):
     ]
     if args.use_forced_decoder_ids:
         beam_inputs.append("decoder_input_ids")
+    else:
+        beam_inputs.append("")
+
+    if args.use_logits_processor:
+        beam_inputs.append("logits_processor")
     beam_outputs = ["sequences"]
 
     node = helper.make_node("BeamSearch", inputs=beam_inputs, outputs=beam_outputs, name="BeamSearch_zcode")
@@ -49,8 +58,12 @@ def chain_model(args):
     )
 
     # beam graph inputs
+    float_data_type = TensorProto.FLOAT
+    if args.precision != Precision.FLOAT32:
+        float_data_type = TensorProto.FLOAT16
+
     input_features = helper.make_tensor_value_info(
-        "input_features", TensorProto.FLOAT, ["batch_size", "feature_size", "sequence_length"]
+        "input_features", float_data_type, ["batch_size", "feature_size", "sequence_length"]
     )
     max_length = helper.make_tensor_value_info("max_length", TensorProto.INT32, [1])
     min_length = helper.make_tensor_value_info("min_length", TensorProto.INT32, [1])
@@ -74,11 +87,21 @@ def chain_model(args):
         )
         graph_inputs.append(decoder_input_ids)
 
+    if args.use_logits_processor:
+        logits_processor = helper.make_tensor_value_info("logits_processor", TensorProto.INT32, [1])
+        graph_inputs.append(logits_processor)
+
     # graph outputs
     sequences = helper.make_tensor_value_info(
         "sequences", TensorProto.INT32, ["batch_size", "num_return_sequences", "max_length"]
     )
     graph_outputs = [sequences]
+
+    if hasattr(args, "use_gpu") and args.use_gpu:
+        if update_decoder_subgraph_share_buffer_and_use_decoder_masked_mha(decoder_model.graph):
+            print("*****update whisper decoder subgraph successfully!!!*****")
+        else:
+            print("*****DecoderMaskedMultiHeadAttention is not applied to whisper decoder*****")
 
     # Initializers/opsets
     # Delete shared data between decoder/encoder and move to larger graph initializers
@@ -89,6 +112,7 @@ def chain_model(args):
             helper.make_attribute("encoder", encoder_model.graph),
         ]
     )
+
     opset_import = [helper.make_opsetid(domain="com.microsoft", version=1), helper.make_opsetid(domain="", version=17)]
 
     beam_graph = helper.make_graph([node], "beam-search-test", graph_inputs, graph_outputs, initializers)

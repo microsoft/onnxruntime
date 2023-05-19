@@ -942,7 +942,7 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
                                  const layout_transformer::DebugGraphFn& debug_graph_fn) -> Status {
       ORT_RETURN_IF_ERROR_SESSIONID_(
           layout_transformer::TransformLayoutForEP(graph_to_transform, modified, execution_provider,
-                                                   debug_graph_fn));
+                                                   execution_providers_.GetDefaultCpuAllocator(), debug_graph_fn));
 
       if (modified) {
         ORT_RETURN_IF_ERROR_SESSIONID_(
@@ -1266,13 +1266,19 @@ Status PartitionOrtFormatModel(onnxruntime::Graph& graph,
                                const ExecutionProviders& providers,
                                KernelRegistryManager& kernel_registry_manager,
                                SessionState& session_state) {
+  layout_transformer::TransformLayoutFunction transform_layout_fn = nullptr;
+
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   // only provide NCWH to NHWC layout transformer if supported
-  layout_transformer::TransformLayoutFunction transform_layout_fn = layout_transformer::IsSupportedOpset(graph)
-                                                                        ? layout_transformer::TransformLayoutForEP
-                                                                        : nullptr;
-#else   // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
-  layout_transformer::TransformLayoutFunction transform_layout_fn{};
+  if (layout_transformer::IsSupportedOpset(graph)) {
+    transform_layout_fn =
+        [&providers](Graph& graph_to_transform, bool& modified,
+                     const IExecutionProvider& execution_provider,
+                     const layout_transformer::DebugGraphFn& debug_graph_fn) -> Status {
+      return layout_transformer::TransformLayoutForEP(graph_to_transform, modified, execution_provider,
+                                                      providers.GetDefaultCpuAllocator(), debug_graph_fn);
+    };
+  }
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
   GraphPartitioner partitioner(kernel_registry_manager, providers);

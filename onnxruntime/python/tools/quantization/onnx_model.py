@@ -414,6 +414,8 @@ class ONNXModel:
                 continue
 
             for input_name in node.input:
+                if not input_name:
+                    continue
                 if input_name not in deps_to_nodes:
                     deps_to_nodes[input_name] = [node_idx]
                 else:

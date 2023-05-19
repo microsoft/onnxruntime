@@ -222,6 +222,7 @@ option(onnxruntime_ENABLE_ATEN "Enable ATen fallback" OFF)
 # composable kernel is managed automatically, unless user want to explicitly disable it, it should not be manually set
 option(onnxruntime_USE_COMPOSABLE_KERNEL "Enable composable kernel for ROCm EP" ON)
 option(onnxruntime_USE_ROCBLAS_EXTENSION_API "Enable rocblas tuning for ROCm EP" OFF)
+option(onnxruntime_USE_TRITON_KERNEL "Enable triton compiled kernel" OFF)
 option(onnxruntime_BUILD_KERNEL_EXPLORER "Build Kernel Explorer for testing and profiling GPU kernels" OFF)
 
 option(onnxruntime_BUILD_CACHE "onnxruntime build with cache" OFF)
@@ -229,6 +230,7 @@ option(onnxruntime_BUILD_CACHE "onnxruntime build with cache" OFF)
 cmake_dependent_option(MSVC_Z7_OVERRIDE "replacing /Zi and /ZI with /Z7 when using MSVC with CCache" ON "onnxruntime_BUILD_CACHE; MSVC" OFF)
 
 option(onnxruntime_USE_AZURE "Build with azure inferencing support" OFF)
+option(onnxruntime_USE_LOCK_FREE_QUEUE "Build with lock-free task queue for threadpool." OFF)
 
 # ENABLE_TRAINING includes all training functionality
 # The following 2 entry points
@@ -751,7 +753,9 @@ if (onnxruntime_USE_AZURE)
     list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_AZURE=1)
     list(APPEND ONNXRUNTIME_PROVIDER_NAMES azure)
 endif()
-
+if (onnxruntime_USE_LOCK_FREE_QUEUE)
+    add_compile_definitions(USE_LOCK_FREE_QUEUE)
+endif()
 
 if (onnxruntime_ENABLE_LAZY_TENSOR)
   # To support LazyTensor, ORT needs to call Python function from C/C++.
