@@ -45,6 +45,7 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
   }
 #endif
   try {
+    std::string dev_prec = global_context.device_type + "_" + global_context_.precision_str;
     if (global_context.is_wholly_supported_graph) {
 #if defined(IO_BUFFER_ENABLED)
       if ((global_context.device_type.find("GPU") != std::string::npos) &&
@@ -109,10 +110,6 @@ bool BasicBackend::ValidateSubgraph(std::map<std::string, std::shared_ptr<ngraph
 }
 
   void BasicBackend::PopulateConfigValue(ov::AnyMap & device_config) {
-    // Set inference precision if device_type != AUTO
-    // if (global_context_.device_type.find("GPU_FP16")!= std::string::npos){
-    //   device_config.emplace(ov::hint::inference_precision(global_context_.precision_str));
-    // }
     device_config = {};
     // Set inference precision based on device precision for OV backend
     if (global_context_.precision_str.find("FP16")!= std::string::npos && global_context_.device_type == "GPU"){
