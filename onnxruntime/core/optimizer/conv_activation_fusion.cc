@@ -134,7 +134,6 @@ class ConvAddReluSelector : public NodeSelector {
   bool support_fp16_{false};
 
  public:
-  ConvAddReluSelector() = default;
   explicit ConvAddReluSelector(bool support_fp16) : support_fp16_(support_fp16) {}
   std::optional<NodesToOptimizeIndices> Select(const GraphViewer& graph_viewer, const Node& node) const override {
     const std::string_view node_ep = node.GetExecutionProviderType();
@@ -260,11 +259,10 @@ class FuseConvAddRelu : public ReplaceWithNew {
 }  // namespace actions
 
 void RegisterConvActivationFusionRules(SelectorActionRegistry& registry, [[maybe_unused]] bool support_fp16 = false) {
-  const auto name = "ConvAct";
   auto action = std::make_unique<actions::FuseConvActivationAction>();
 #if !defined(ORT_MINIMAL_BUILD)
   auto selector = std::make_unique<selectors::ConvActivationSelector>(support_fp16);
-  registry.RegisterSelectorAndAction(name, {{"Conv", {1, 11}}},
+  registry.RegisterSelectorAndAction("ConvAct", {{"Conv", {1, 11}}},
                                      std::move(selector), std::move(action));
 #else
   registry.RegisterAction(name, std::move(action));
@@ -272,11 +270,10 @@ void RegisterConvActivationFusionRules(SelectorActionRegistry& registry, [[maybe
 }
 
 void RegisterConvAddReluFusionRules(SelectorActionRegistry& registry, [[maybe_unused]] bool support_fp16 = false) {
-  const auto name = "ConvAddReluSelector";
   auto action = std::make_unique<actions::FuseConvAddRelu>();
 #if !defined(ORT_MINIMAL_BUILD)
   auto selector = std::make_unique<selectors::ConvAddReluSelector>(support_fp16);
-  registry.RegisterSelectorAndAction(name, {{"Conv", {1, 11}}},
+  registry.RegisterSelectorAndAction("ConvAddReluSelector", {{"Conv", {1, 11}}},
                                      std::move(selector), std::move(action));
 #else
   registry.RegisterAction(name, std::move(action));

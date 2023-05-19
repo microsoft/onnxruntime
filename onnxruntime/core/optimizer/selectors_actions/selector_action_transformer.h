@@ -25,7 +25,7 @@ class Node;
 struct NodeSelector {
   // Select one or more nodes for an Action to process if the constraints are satisfied,
   // otherwise returns std::nullopt
-  virtual std::optional<NodesToOptimizeIndices> Select(const GraphViewer& graph_viewer, const Node& node) const = 0;
+  [[nodiscard]] virtual std::optional<NodesToOptimizeIndices> Select(const GraphViewer& graph_viewer, const Node& node) const = 0;
 
   virtual ~NodeSelector() = default;
 

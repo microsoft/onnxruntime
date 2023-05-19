@@ -49,7 +49,7 @@ class ConvAddActivationSelector : public NodeSelector {
  public:
   ConvAddActivationSelector() = default;
   explicit ConvAddActivationSelector(bool support_fp16) : support_fp16_(support_fp16) {}
-  [[nodiscard]] std::optional<NodesToOptimizeIndices> Select(const GraphViewer& graph_viewer, const Node& node) const override {
+  std::optional<NodesToOptimizeIndices> Select(const GraphViewer& graph_viewer, const Node& node) const override {
     const std::string_view node_ep = node.GetExecutionProviderType();
     if (node_ep != kCpuExecutionProvider ||
         (!HasElementDataType(*node.InputDefs()[0], ONNX_NAMESPACE::TensorProto_DataType_FLOAT) &&
