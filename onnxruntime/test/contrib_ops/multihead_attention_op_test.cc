@@ -465,33 +465,21 @@ TEST(MultiHeadAttentionTest, CrossAttention_Batch2_HeadSize40) {
 TEST(MultiHeadAttentionTest, CrossAttention_Batch2_HeadSize32_RightSidePadding_Mask1D) {
   ROCM_GTEST_SKIP("ROCm MHA does not support mask");
   AttentionTestData data;
-  GetCrossAttentionData_Batch2_HeadSize32_RightSidePadding(data, AttentionMaskType::MASK_1D_KEY_SEQ_LEN);
+  GetCrossAttentionData_Batch2_HeadSize32_RightSidePadding(data, true);
   RunMultiHeadAttentionTests(data, true);
 }
 
 TEST(MultiHeadAttentionTest, CrossAttention_Batch2_HeadSize32_RightSidePadding_Mask2D) {
   ROCM_GTEST_SKIP("ROCm MHA does not support mask");
   AttentionTestData data;
-  GetCrossAttentionData_Batch2_HeadSize32_RightSidePadding(data, AttentionMaskType::MASK_2D_KEY_PADDING);
-  RunMultiHeadAttentionTests(data, true);
-}
-
-TEST(MultiHeadAttentionTest, CrossAttention_Batch2_HeadSize32_RightSidePadding_KeySeqLenStartMask) {
-  AttentionTestData data;
-  GetCrossAttentionData_Batch2_HeadSize32_RightSidePadding(data, AttentionMaskType::MASK_1D_KEY_SEQ_LEN_START);
+  GetCrossAttentionData_Batch2_HeadSize32_RightSidePadding(data, false);
   RunMultiHeadAttentionTests(data, true);
 }
 
 TEST(MultiHeadAttentionTest, CrossAttention_Batch1_HeadSize32_LeftSidePadding_Mask2D) {
   ROCM_GTEST_SKIP("ROCm MHA does not support mask");
   AttentionTestData data;
-  GetCrossAttentionData_Batch1_HeadSize32_LeftSidePadding(data, AttentionMaskType::MASK_2D_KEY_PADDING);
-  RunMultiHeadAttentionTests(data, true);
-}
-
-TEST(MultiHeadAttentionTest, CrossAttention_Batch1_HeadSize32_LeftSidePadding_KeySeqLenStartMask) {
-  AttentionTestData data;
-  GetCrossAttentionData_Batch1_HeadSize32_LeftSidePadding(data, AttentionMaskType::MASK_1D_KEY_SEQ_LEN_START);
+  GetCrossAttentionData_Batch1_HeadSize32_LeftSidePadding(data);
   RunMultiHeadAttentionTests(data, true);
 }
 
