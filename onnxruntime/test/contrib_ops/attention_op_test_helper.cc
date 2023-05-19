@@ -2160,7 +2160,6 @@ void GetCrossAttentionData_Batch1_HeadSize32_LeftSidePadding(AttentionTestData& 
   data.kv_sequence_length = 3;
   data.mask_type = mask_type;
 
-
   if (mask_type == AttentionMaskType::MASK_2D_KEY_PADDING) {
     data.key_padding_mask_data = {0, 1, 1,   // first key sequence has one padding on the left
                                   0, 0, 1};  // second key sequence has two paddings on the left

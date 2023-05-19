@@ -1786,8 +1786,8 @@ TEST(AttentionTest, AttentionWithNeoXRotaryEmbedding) {
   const std::vector<float>* present_data = nullptr;
 
   // TODO: Unskip when fixed #41968513
-    // DML doesn't support do_rotary for Attention yet
-    const bool disable_dml = true;
+  // DML doesn't support do_rotary for Attention yet
+  const bool disable_dml = true;
 
   RunAttentionTest(input_data, weight_data, bias_data, mask_index_data, output_data,
                    batch_size, sequence_length, hidden_size, number_of_heads,
