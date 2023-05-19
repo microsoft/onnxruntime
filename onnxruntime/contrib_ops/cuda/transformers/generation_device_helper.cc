@@ -1095,7 +1095,7 @@ Status UpdateDecoderFeeds(
 
   if (past_present_share_buffer) {
     // Update past sequence length input
-    const ptrdiff_t past_sequence_length_idx = 2 * (static_cast<ptrdiff_t>(last_outputs.size()) - t5_decoder_first_present_output_idx) + t5_decoder_first_past_input_idx;
+    const ptrdiff_t past_sequence_length_idx = 2 * num_present_tensors  + t5_decoder_first_past_input_idx;
     *(next_inputs[past_sequence_length_idx].GetMutable<Tensor>()->MutableData<int32_t>()) = current_length - 1;
 
     // Update beam search specific input for DecoderMaskedSelfAttention (cache indirection) if present

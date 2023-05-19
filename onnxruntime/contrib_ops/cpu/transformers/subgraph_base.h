@@ -45,6 +45,7 @@ class Subgraph {
   int num_layers;
   bool past_present_share_buffer_;
   bool has_decoder_masked_attention_;
+  bool output_cross_qk_ = false;
 
   // Setup execution
   Status Setup(const SessionState& session_state,

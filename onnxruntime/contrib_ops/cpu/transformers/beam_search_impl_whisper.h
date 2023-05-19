@@ -127,7 +127,7 @@ Status BeamSearchWhisper<T>::Execute(const FeedsFetchesManager& encoder_feeds_fe
   int64_t cross_qk_dims[] = {
       static_cast<int64_t>(parameters->batch_size),
       static_cast<int64_t>(parameters->num_return_sequences),
-      this->decoder_subgraph_.OutputCrossQK() ? layer_head_pair_count : 0LL,
+      this->decoder_subgraph_.output_cross_qk_ ? layer_head_pair_count : 0LL,
       static_cast<int64_t>(parameters->max_length),
       frames_of_k};
   TensorShape cross_qk_shape(&cross_qk_dims[0], sizeof(cross_qk_dims) / sizeof(cross_qk_dims[0]));
@@ -258,6 +258,9 @@ Status BeamSearchWhisper<T>::Execute(const FeedsFetchesManager& encoder_feeds_fe
         Tensor::InitOrtValue(past_tensor->DataType(), past_tensor->Shape(), past_tensor->MutableData<T>(),
                              past_tensor->Location(), present_tensor_value);
         decoder_fetches.push_back(present_tensor_value);
+      }
+      if (decoder_subgraph_.output_cross_qk_) {
+        decoder_fetches.resize(decoder_fetches.size() + decoder_subgraph_.num_layers, OrtValue());
       }
     }
 

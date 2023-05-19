@@ -1292,8 +1292,8 @@ def update_decoder_subgraph_output_cross_attention(subg: GraphProto):
     input_past_key_cross_0_shape = shape_of(subg.input[input_cross_past_0])
     print(f"past_key_cross_0_shape is {input_past_key_cross_0_shape}")
     batch_size_dim = input_past_key_cross_0_shape[0]
-    num_heads = input_past_key_cross_0_shape[1]
-    head_size = input_past_key_cross_0_shape[3]
+    num_heads_dim = input_past_key_cross_0_shape[1]
+    cross_seq_len_dim = input_past_key_cross_0_shape[2]
     atten_data_type = data_type_of(subg.input[input_cross_past_0])
 
     num_layer_output_qk = 0
@@ -1311,7 +1311,7 @@ def update_decoder_subgraph_output_cross_attention(subg: GraphProto):
             cross_attention = onnx.helper.make_tensor_value_info(
                 cross_attention_out_name,
                 atten_data_type,
-                [batch_size_dim, num_heads, 1, head_size]
+                [batch_size_dim, num_heads_dim, 1, cross_seq_len_dim]
             )
             subg.output.extend([cross_attention])
     if num_layer_output_qk != num_layers:

@@ -74,16 +74,11 @@ class T5DecoderSubgraph : public Subgraph {
     return use_sequence_as_input_ids_;
   }
 
-  inline bool OutputCrossQK() const {
-    return output_cross_qk_;
-  }
-
  protected:
   int first_past_input_index_;
   int first_present_output_index_;
   bool has_hidden_state_;
   bool use_sequence_as_input_ids_;
-  bool output_cross_qk_ = false;
 };
 
 }  // namespace transformers
