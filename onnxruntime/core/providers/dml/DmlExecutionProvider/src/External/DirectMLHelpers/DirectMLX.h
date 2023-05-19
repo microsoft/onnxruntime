@@ -202,7 +202,7 @@ namespace dml
         };
     }
 
-#if DMLX_USE_ABSEIL 
+#if DMLX_USE_ABSEIL
     template <typename T>
     using Optional = absl::optional<T>;
 
@@ -231,7 +231,7 @@ namespace dml
     #elif DMLX_USE_GSL
         template <typename T>
         using Span = gsl::span<T>;
-    #else 
+    #else
         template <typename T>
         using Span = dml::detail::span<T>;
     #endif
@@ -245,11 +245,11 @@ namespace dml
         #define DMLX_THROW(_hr) THROW_HR(_hr)
     #else
         #define DMLX_THROW_IF_FAILED(_hr) if (FAILED(_hr)) { throw std::runtime_error(#_hr); }
-        #define DMLX_THROW(_hr) throw std::runtime_error(#_hr); 
+        #define DMLX_THROW(_hr) throw std::runtime_error(#_hr);
     #endif
 #else
     #define DMLX_THROW_IF_FAILED(_hr) if (FAILED(_hr)) { std::abort(); }
-    #define DMLX_THROW(_hr) { std::abort(); } 
+    #define DMLX_THROW(_hr) { std::abort(); }
 #endif
 
     class Graph;
@@ -307,7 +307,7 @@ namespace dml
         // (0, 2, ..., n, 1). This is often referred to as "NHWC" or "interleaved channel" layout. This is useful,
         // for example, when applied to 2D Convolution to produce outputs in an NHWC layout (as opposed to NCHW, which
         // is the DirectML default for 2D Convolution).
-        // 
+        //
         // Examples of the transposes produced by this policy:
         //   NCW -> NWC
         //   NCHW -> NHWC
@@ -713,7 +713,7 @@ namespace dml
 
     // Represents an activation to be fused with an existing operator. The meaning of param1 and param2 depend on the
     // activation to be fused.
-    // 
+    //
     // For HARD_SIGMOID, LINEAR, PARAMETRIC_SOFTPLUS, and SCALED_TANH: param1 = Alpha and param2 = Beta
     // For ELU, LEAKY_RELU, THRESHOLDED_RELU, and CELU: param1 = Alpha. param2 is unused.
     // For SCALED_ELU, param1 = Alpha and param2 = Gamma.
@@ -1858,13 +1858,13 @@ namespace dml
     }
 
     // Helper for setting parameters for the Convolution operator. Sample usage:
-    // 
+    //
     //   auto conv = dml::ConvolutionBuilder(...)
     //        .StartPadding(...)
     //        .EndPadding(...)
     //        .Strides(...)
     //        .Build();
-    // 
+    //
     // Parameters left unspecified will be defaulted with the same values as dml::Convolution().
     class ConvolutionBuilder
     {
@@ -2114,9 +2114,9 @@ namespace dml
         return output;
     }
 
-    // 
+    //
     // TODO: LpPooling
-    // 
+    //
 
     // ---------------------------------------------------------------------------------------------------------------
 
@@ -2203,13 +2203,13 @@ namespace dml
     }
 
     // Helper for setting parameters for the MaxPooling operator. Sample usage:
-    // 
+    //
     //   auto [out, outIndices] = dml::MaxPoolingBuilder(...)
     //        .StartPadding(...)
     //        .EndPadding(...)
     //        .OutputIndices(...)
     //        .Build();
-    // 
+    //
     // Parameters left unspecified will be defaulted with the same values as dml::MaxPooling().
     class MaxPoolingBuilder
     {
@@ -2251,13 +2251,13 @@ namespace dml
 
     // ---------------------------------------------------------------------------------------------------------------
 
-    // 
+    //
     // TODO: MaxUnpooling
-    // 
+    //
 
-    // 
+    //
     // TODO: ROIPooling
-    // 
+    //
 
     inline Expression Slice(
         Expression input,
@@ -2683,7 +2683,7 @@ namespace dml
     {
         detail::GraphBuilder* builder = input.Impl()->GetGraphBuilder();
         TensorDesc inputTensor = input.Impl()->GetOutputDesc();
-        
+
         assert(inputTensor.sizes.size() == 4);
 
         dml::TensorDesc::Dimensions outputSizes = {
@@ -2691,7 +2691,7 @@ namespace dml
             inputTensor.sizes[1] * blockSize * blockSize,
             inputTensor.sizes[2] / blockSize,
             inputTensor.sizes[3] / blockSize
-        };    
+        };
 
         TensorDesc outputTensor(inputTensor.dataType, outputSizes, builder->GetTensorPolicy());
 
@@ -2715,7 +2715,7 @@ namespace dml
     {
         detail::GraphBuilder* builder = input.Impl()->GetGraphBuilder();
         TensorDesc inputTensor = input.Impl()->GetOutputDesc();
-        
+
         assert(inputTensor.sizes.size() == 4);
 
         dml::TensorDesc::Dimensions outputSizes = {
@@ -2771,7 +2771,7 @@ namespace dml
     struct TopKOutputs
     {
         Expression value;
-        Expression index; 
+        Expression index;
     };
 
     inline TopKOutputs TopK(Expression input, uint32_t axis, uint32_t k, DML_AXIS_DIRECTION axisDirection)
@@ -2909,14 +2909,14 @@ namespace dml
         desc.VarianceTensor = varianceTensor.AsPtr<DML_TENSOR_DESC>();
         desc.ScaleTensor = scaleTensor.AsPtr<DML_TENSOR_DESC>();
         desc.Epsilon = epsilon;
-        
+
         desc.OutputGradientTensor = outputGradientTensor.AsPtr<DML_TENSOR_DESC>();
         desc.OutputScaleGradientTensor = outputScaleGradientTensor.AsPtr<DML_TENSOR_DESC>();
         desc.OutputBiasGradientTensor = outputBiasGradientTensor.AsPtr<DML_TENSOR_DESC>();
-        
+
         dml::detail::NodeOutput* const inputs[] = { input.Impl(), inputGradient.Impl(), mean.Impl(), variance.Impl(), scale.Impl() };
         dml::detail::NodeID node = builder->CreateOperatorNode(DML_OPERATOR_BATCH_NORMALIZATION_GRAD, &desc, inputs);
-        
+
         BatchNormalizationGradOutputs outputValues;
         outputValues.gradient = builder->CreateNodeOutput(node, 0, *desc.OutputGradientTensor);
         outputValues.scaleGradient = builder->CreateNodeOutput(node, 1, *desc.OutputScaleGradientTensor);
@@ -2932,7 +2932,7 @@ namespace dml
     {
         Expression output;
         Expression mean;
-        Expression variance; 
+        Expression variance;
     };
 
     inline BatchNormalizationTrainingOutputs BatchNormalizationTraining(
@@ -3005,14 +3005,14 @@ namespace dml
         desc.VarianceTensor = varianceTensor.AsPtr<DML_TENSOR_DESC>();
         desc.ScaleTensor = scaleTensor.AsPtr<DML_TENSOR_DESC>();
         desc.Epsilon = epsilon;
-        
+
         desc.OutputGradientTensor = outputGradientTensor.AsPtr<DML_TENSOR_DESC>();
         desc.OutputScaleGradientTensor = outputScaleGradientTensor.AsPtr<DML_TENSOR_DESC>();
         desc.OutputBiasGradientTensor = outputBiasGradientTensor.AsPtr<DML_TENSOR_DESC>();
-        
+
         dml::detail::NodeOutput* const inputs[] = { input.Impl(), inputGradient.Impl(), mean.Impl(), variance.Impl(), scale.Impl() };
         dml::detail::NodeID node = builder->CreateOperatorNode(DML_OPERATOR_BATCH_NORMALIZATION_TRAINING_GRAD, &desc, inputs);
-        
+
         BatchNormalizationGradOutputs outputValues;
         outputValues.gradient = builder->CreateNodeOutput(node, 0, *desc.OutputGradientTensor);
         outputValues.scaleGradient = builder->CreateNodeOutput(node, 1, *desc.OutputScaleGradientTensor);
@@ -3099,17 +3099,17 @@ namespace dml
         return output;
     }
 
-    // 
+    //
     // TODO: LpNormalization
-    // 
+    //
 
-    // 
+    //
     // TODO: RNN
-    // 
+    //
 
-    // 
+    //
     // TODO: LSTM
-    // 
+    //
 
     enum class GRUOutputOptions
     {
@@ -3121,7 +3121,7 @@ namespace dml
     struct GRUOutputs
     {
         Expression sequence;
-        Expression single; 
+        Expression single;
     };
 
     inline GRUOutputs GRU(
@@ -3230,7 +3230,7 @@ namespace dml
         return { outputSequenceExpr, outputSingleExpr };
     }
 
-    // 
+    //
     // TODO: DiagonalMatrix
     //
 
@@ -3442,33 +3442,33 @@ namespace dml
         return output;
     }
 
-    // 
+    //
     // TODO: MatrixMultiplyInteger
-    // 
+    //
 
-    // 
+    //
     // TODO: QuantizedLinearMatrixMultiply
-    // 
+    //
 
-    // 
+    //
     // TODO: ConvolutionInteger
-    // 
+    //
 
-    // 
+    //
     // TODO: QuantizedLinearConvolution
-    // 
+    //
 
-    // 
+    //
     // TODO: ReluGrad
-    // 
+    //
 
-    // 
+    //
     // TODO: AveragePoolingGrad
-    // 
+    //
 
-    // 
+    //
     // TODO: MaxPoolingGrad
-    // 
+    //
 
     struct RandomGeneratorOutputs
     {
@@ -3496,7 +3496,7 @@ namespace dml
             // Input and output state have the same TensorDesc.
             desc.OutputStateTensor = inputStateTensor.AsPtr<DML_TENSOR_DESC>();
         }
-        
+
         RandomGeneratorOutputs out;
 
         detail::NodeOutput* const inputs[] = { inputState.Impl() };
@@ -3537,7 +3537,7 @@ namespace dml
         desc.InputTensor = inputTensor.AsPtr<DML_TENSOR_DESC>();
         desc.OutputCountTensor = outputCountTensor.AsPtr<DML_TENSOR_DESC>();
         desc.OutputCoordinatesTensor = outputCoordinatesTensor.AsPtr<DML_TENSOR_DESC>();
-        
+
         NonZeroCoordinatesOutputs output;
 
         detail::NodeOutput* const inputs[] = { input.Impl() };
@@ -3640,17 +3640,17 @@ namespace dml
         return output;
     }
 
-    // 
+    //
     // TODO: AdamOptimizer
-    // 
+    //
 
-    // 
+    //
     // TODO: Argmin
-    // 
+    //
 
-    // 
+    //
     // TODO: Argmax
-    // 
+    //
 
 #if DML_TARGET_VERSION >= 0x4000
 
@@ -3694,7 +3694,7 @@ namespace dml
         desc.ROITensor = roiTensor.AsPtr<DML_TENSOR_DESC>();
         desc.BatchIndicesTensor = batchIndicesTensor.AsPtr<DML_TENSOR_DESC>();
         desc.OutputTensor = outputTensor.AsPtr<DML_TENSOR_DESC>();
-        desc.ReductionFunction = reductionFunction; 
+        desc.ReductionFunction = reductionFunction;
         desc.InterpolationMode = interpolationMode;
         desc.SpatialScaleX = spatialScaleX;
         desc.SpatialScaleY = spatialScaleY;
@@ -3763,7 +3763,7 @@ namespace dml
 
             outputGradientTensor = TensorDesc(inputGradientTensor.dataType, outputGradientSizes, builder->GetTensorPolicy());
         }
-        
+
         TensorDesc outputROIGradientTensor = computeOutputROIGradient ? TensorDesc(roiTensor.dataType, roiTensor.sizes, builder->GetTensorPolicy()) : TensorDesc();
         assert(!computeOutputROIGradient || outputROIGradientTensor.sizes == roiTensor.sizes);
 
@@ -3774,7 +3774,7 @@ namespace dml
         desc.BatchIndicesTensor = batchIndicesTensor.AsPtr<DML_TENSOR_DESC>();
         desc.OutputGradientTensor = computeOutputGradient ? outputGradientTensor.AsPtr<DML_TENSOR_DESC>() : nullptr;
         desc.OutputROIGradientTensor = computeOutputROIGradient ? outputROIGradientTensor.AsPtr<DML_TENSOR_DESC>() : nullptr;
-        desc.ReductionFunction = reductionFunction; 
+        desc.ReductionFunction = reductionFunction;
         desc.InterpolationMode = interpolationMode;
         desc.SpatialScaleX = spatialScaleX;
         desc.SpatialScaleY = spatialScaleY;
