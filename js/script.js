@@ -485,8 +485,6 @@ function ot_selectedOption(option, selection, category) {
         if(ot_opts['scenario']!="" && ot_opts['os']!="" && ot_opts['architecture']!="" && ot_opts['hardwareAcceleration']!="" && ot_opts['language']!="" && isSupported==true){
             // console.log(opts);
             // ot_resetOptions();
-            // TODO: figure out what is happening here!!
-    
         }
 }
 
@@ -584,7 +582,7 @@ var ot_validCombos = {
     "Follow build instructions from&nbsp;<a href='https://onnxruntime.ai/docs/build/training.html' target='_blank'>here</a>",
 
     "ot_windows,ot_on_device,ot_python,ot_X64,ot_CPU":
-    "pip install onnxruntime-training -f https://downloads.onnxruntime.ai/onnxruntime_stable_<b>&lt;cu_version*</b>&gt;.html<br/><br/>*</b><a href='https://download.onnxruntime.ai/' target='blank'>Available versions</a>",
+    "Follow build instructions from&nbsp;<a href='https://onnxruntime.ai/docs/build/training.html' target='_blank'>here</a>",
 
     "ot_windows,ot_on_device,ot_python,ot_X64,ot_CUDA":
     "Follow build instructions from&nbsp;<a href='https://onnxruntime.ai/docs/build/training.html' target='_blank'>here</a>",
