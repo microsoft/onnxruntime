@@ -122,9 +122,6 @@ Status ClassifyAttentionMode(
         attn->mode = BSNH_BNLH_BNLH_NONE_NONE_NONE_NONE;
         return Status::OK();
       }
-    } else if (num_qkv == 1 && num_past == 0 && num_present == 2) {
-      attn->mode = BSNH_NONE_NONE_NONE_NONE_BNLH_BNLH;
-      return Status::OK();
     } else if (num_qkv == 3 && num_past == 2 && num_present == 2) {
       if (attn->past_present_share_buffer == false) {
         if (attn->qkv_format == Q_K_V_BSNH) {
