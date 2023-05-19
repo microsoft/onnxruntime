@@ -1577,7 +1577,7 @@ common::Status InferenceSession::Initialize() {
               "session, but also disabled fallback to the CPU EP via session configuration options.";
 
           LOGS(*session_logger_, ERROR) << err_msg;
-          ORT_RETURN_IF_ERROR_SESSIONID_(ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, err_msg));
+          ORT_RETURN_IF_ERROR_SESSIONID_(ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, err_msg));
         } else if (AreAnyNodesInMainGraphAssignedToCPUEP(graph)) {
           const char* err_msg =
               "This session contains graph nodes that are assigned to the default CPU EP, "
