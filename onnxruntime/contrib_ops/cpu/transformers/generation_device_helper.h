@@ -175,6 +175,17 @@ using UpdateDecoderFeedsFunc = std::function<Status(
     transformers::Sequences& sequences,
     const transformers::IConsoleDumper* dumper)>;
 
+//------------------------------------------------
+//  Modified functions for Whisper Model
+//------------------------------------------------
+using CreateWhisperEncoderInputsFunc = std::function<Status(
+    const Tensor* original_encoder_input_features,
+    const OrtValue* original_decoder_input_ids_value,
+    int start_token_id,
+    AllocatorPtr allocator,
+    OrtValue& encoder_input_ids,
+    OrtValue& decoder_input_ids)>;
+
 template <typename T>
 using ExpandBufferFunc = std::function<Status(
     Stream* stream,
@@ -325,12 +336,10 @@ Status UpdateDecoderFeeds(
 template <typename T>
 Status CreateWhisperEncoderInputs(
     const Tensor* original_encoder_input_features,
-    const OrtValue* attn_mask_value,
-    int pad_token_id,
+    const OrtValue* original_decoder_input_ids_value,
     int start_token_id,
     AllocatorPtr allocator,
     OrtValue& encoder_input_ids,
-    OrtValue& encoder_attention_mask,
     OrtValue& decoder_input_ids);
 
 // ---------------------------------------------------------------

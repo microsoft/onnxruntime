@@ -108,7 +108,7 @@ ORT_API_STATUS_IMPL(OrtApis::KernelContext_GetGPUComputeStream, _In_ const OrtKe
 
 ORT_API_STATUS_IMPL(OrtApis::KernelContext_GetAllocator, _In_ const OrtKernelContext* context, _In_ const OrtMemoryInfo* mem_info, _Outptr_ OrtAllocator** out) {
   API_IMPL_BEGIN
-  onnxruntime::AllocatorPtr allocator = reinterpret_cast<const onnxruntime::OpKernelContext*>(context)->GetAllocator(*mem_info);
+  onnxruntime::AllocatorPtr allocator = reinterpret_cast<const onnxruntime::OpKernelContext*>(context)->GetAllocator(mem_info->device);
   if (!allocator) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "No requested allocator available");
   }
@@ -571,20 +571,20 @@ Status IsCompatible(const ONNX_NAMESPACE::OpSchema& schema, const OrtCustomOp* o
                         "custom op schemas mismatch, expecting ", i + 1,
                         i == 0 ? "st" : (i == 1 ? "nd" : "th"),
                         " input to be of variadic type");
+      ORT_RETURN_IF_NOT(formal_parameter.GetIsHomogeneous() == (op->GetVariadicInputHomogeneity(op) != 0),
+                        "custom op schemas mismatch, expecting ", i + 1,
+                        i == 0 ? "st" : (i == 1 ? "nd" : "th"),
+                        " input to keep same homogeneity");
+      ORT_RETURN_IF_NOT(formal_parameter.GetMinArity() == op->GetVariadicInputMinArity(op),
+                        "custom op schemas mismatch, expecting ", i + 1,
+                        i == 0 ? "st" : (i == 1 ? "nd" : "th"),
+                        " input to keep same arity");
     } else {
       ORT_RETURN_IF_NOT(formal_parameter.GetOption() == onnx::OpSchema::FormalParameterOption::Single,
                         "custom op schemas mismatch, expecting ", i + 1,
                         i == 0 ? "st" : (i == 1 ? "nd" : "th"),
                         " input to be of single type");
     }
-    ORT_RETURN_IF_NOT(formal_parameter.GetIsHomogeneous() == (op->GetVariadicOutputHomogeneity(op) != 0),
-                      "custom op schemas mismatch, expecting ", i + 1,
-                      i == 0 ? "st" : (i == 1 ? "nd" : "th"),
-                      " input to keep same homogeneity");
-    ORT_RETURN_IF_NOT(formal_parameter.GetMinArity() == op->GetVariadicInputMinArity(op),
-                      "custom op schemas mismatch, expecting ", i + 1,
-                      i == 0 ? "st" : (i == 1 ? "nd" : "th"),
-                      " input to keep same arity");
   }
   // check outputs
   const auto& output_parameters = schema.outputs();
@@ -602,20 +602,20 @@ Status IsCompatible(const ONNX_NAMESPACE::OpSchema& schema, const OrtCustomOp* o
                         "custom op schemas mismatch, expecting ", i + 1,
                         i == 0 ? "st" : (i == 1 ? "nd" : "th"),
                         " output to be of variadic type");
+      ORT_RETURN_IF_NOT(formal_parameter.GetIsHomogeneous() == (op->GetVariadicOutputHomogeneity(op) != 0),
+                        "custom op schemas mismatch, expecting ", i + 1,
+                        i == 0 ? "st" : (i == 1 ? "nd" : "th"),
+                        " output to keep same homogeneity");
+      ORT_RETURN_IF_NOT(formal_parameter.GetMinArity() == op->GetVariadicInputMinArity(op),
+                        "custom op schemas mismatch, expecting ", i + 1,
+                        i == 0 ? "st" : (i == 1 ? "nd" : "th"),
+                        " output to keep same arity");
     } else {
       ORT_RETURN_IF_NOT(formal_parameter.GetOption() == onnx::OpSchema::FormalParameterOption::Single,
                         "custom op schemas mismatch, expecting ", i + 1,
                         i == 0 ? "st" : (i == 1 ? "nd" : "th"),
                         " output to be of single type");
     }
-    ORT_RETURN_IF_NOT(formal_parameter.GetIsHomogeneous() == (op->GetVariadicOutputHomogeneity(op) != 0),
-                      "custom op schemas mismatch, expecting ", i + 1,
-                      i == 0 ? "st" : (i == 1 ? "nd" : "th"),
-                      " output to keep same homogeneity");
-    ORT_RETURN_IF_NOT(formal_parameter.GetMinArity() == op->GetVariadicInputMinArity(op),
-                      "custom op schemas mismatch, expecting ", i + 1,
-                      i == 0 ? "st" : (i == 1 ? "nd" : "th"),
-                      " output to keep same arity");
   }
   return Status::OK();
 }

@@ -138,6 +138,19 @@ class PresencePenaltyLogitsProcessor : public ILogitsProcessor<T> {
   float presence_penalty_;
 };
 
+template <typename T>
+class TimestampLogitsProcessor : public ILogitsProcessor<T> {
+ public:
+  TimestampLogitsProcessor(int eos_token_id, int max_initial_timestamp_index);
+
+  void Process(const ISequences* sequences,
+               NextTokenScores<T>& next_token_scores) override;
+
+ private:
+  int eos_token_id_;
+  int max_initial_timestamp_index_;
+};
+
 class LogitsProcessorList : public ILogitsProcessorList {
  public:
   LogitsProcessorList() = default;
@@ -193,6 +206,13 @@ class LogitsProcessorList : public ILogitsProcessorList {
       processor_list_.push_back(presence_penalty_processor_.get());
     }
 
+    // Add timestamp processor for whisper model
+    if (parameters.model_type == IGenerationParameters::kModelTypeWhisper && parameters.logits_processor == IGenerationParameters::kLogitsProcessorTypeWhisper) {
+      constexpr int max_initial_timestamp_index = 50;
+      timestamp_processor_ = std::make_unique<TimestampLogitsProcessor<float>>(parameters.eos_token_id, max_initial_timestamp_index);
+      processor_list_.push_back(timestamp_processor_.get());
+    }
+
     batch_beam_size_ = parameters.BatchBeamSize();
     vocab_size_ = parameters.vocab_size;
   }
@@ -208,6 +228,7 @@ class LogitsProcessorList : public ILogitsProcessorList {
   std::unique_ptr<MinLengthLogitsProcessor<float>> min_length_processor_;
   std::unique_ptr<TemperatureLogitsProcessor<float>> temperature_processor_;
   std::unique_ptr<PresencePenaltyLogitsProcessor<float>> presence_penalty_processor_;
+  std::unique_ptr<TimestampLogitsProcessor<float>> timestamp_processor_;
 };
 
 }  // namespace transformers

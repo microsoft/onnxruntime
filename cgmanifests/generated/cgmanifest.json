@@ -82,17 +82,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "d10b27fe37736d2944630ecd7557cefa95cf87c9",
-          "repositoryUrl": "https://gitlab.com/libeigen/eigen.git"
-        },
-        "comments": "git submodule at cmake/external/eigen"
-      }
-    },
-    {
-      "component": {
-        "type": "git",
-        "git": {
-          "commitHash": "0ab19024f08c6673a713e454ef8bd95e174c807f",
+          "commitHash": "b113f24842c6e97fe3e352084db09a6e278593ae",
           "repositoryUrl": "https://github.com/emscripten-core/emsdk.git"
         },
         "comments": "git submodule at cmake/external/emsdk"
@@ -112,7 +102,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "9b7bca2a723ff94edcd007d93b5d0cf1838591dc",
+          "commitHash": "a0d77f18516d2da7468a96b0de3b737266f23176",
           "repositoryUrl": "https://github.com/onnx/onnx.git"
         },
         "comments": "git submodule at cmake/external/onnx"
@@ -292,16 +282,6 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "3b58938e025c41d2fcd89fa22028eefaa81a18ad",
-          "repositoryUrl": "https://github.com/onnx/onnx.git"
-        },
-        "comments": "onnx"
-      }
-    },
-    {
-      "component": {
-        "type": "git",
-        "git": {
           "commitHash": "ba6a4fb34fdeaa3613bf981610c657e7b663a699",
           "repositoryUrl": "https://github.com/onnx/onnx-tensorrt.git"
         },
@@ -446,6 +426,26 @@
           "repositoryUrl": "https://github.com/triton-inference-server/server.git"
         },
         "comments": "triton"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "94142d8391c9791ec71c38336436319a2d4ac7a0",
+          "repositoryUrl": "https://github.com/microsoft/onnxruntime-extensions.git"
+        },
+        "comments": "extensions"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "b16d1fa8ee567b52c09a0f89940b07d8491b881d",
+          "repositoryUrl": "https://github.com/curl/curl.git"
+        },
+        "comments": "curl"
       }
     }
   ]

@@ -6,6 +6,7 @@
 #include "cub/util_type.cuh"
 #include <cub/cub.cuh>
 #include <cub/device/device_segmented_radix_sort.cuh>
+#include "contrib_ops/cuda/bert/utils.cuh"
 #include "contrib_ops/cuda/transformers/generation_cuda_impl.h"
 
 namespace onnxruntime {
@@ -805,6 +806,206 @@ void UpdateDecoderMaskedMultiHeadAttentionCacheIndirection(int32_t* tgt_indir_ca
                                                                                           max_seq_length,
                                                                                           current_length);
 }
+
+#ifndef USE_ROCM
+namespace {
+template <typename T, size_t size>
+struct TypeMapper : public V_vec_m_<T, size> {};
+
+template <>
+struct TypeMapper<int32_t, 2> {
+  using Type = uint2;
+};
+
+template <>
+struct TypeMapper<int32_t, 4> {
+  using Type = uint4;
+};
+}  // namespace
+#endif
+
+template <typename T>
+__global__ void KeyCacheExpansionKernel(const T* input,
+                                        T* output,
+                                        int beam_width,
+                                        int max_seq_length,
+                                        int head_size) {
+  const int num_heads = gridDim.y;
+  const int sequence_length = gridDim.z;
+
+  const int bbid = blockIdx.x;
+  const int batch_id = bbid / beam_width;
+  const int head_id = blockIdx.y;
+  const int s = blockIdx.z;
+  const int tidx = threadIdx.x;
+
+  const int input_offset = ((batch_id * num_heads + head_id) * sequence_length + s) * head_size + tidx;
+  const int output_offset = ((bbid * num_heads + head_id) * max_seq_length + s) * head_size + tidx;
+
+  if (tidx < head_size) {
+    output[output_offset] = input[input_offset];
+  }
+}
+
+template <typename T>
+void KeyCacheExpansionKernelLauncher(const T* key_cache,
+                                     T* key_cache_expanded,
+                                     int batch_size,
+                                     int beam_width,
+                                     int num_heads,
+                                     int sequence_length,
+                                     int max_seq_length,
+                                     int head_size,
+                                     cudaStream_t stream) {
+  const dim3 grid(batch_size * beam_width, num_heads, sequence_length);
+
+  int equiv_head_size = (head_size & 1) == 0 ? (head_size >> 1) : head_size;
+  equiv_head_size = (equiv_head_size & 1) == 0 ? (equiv_head_size >> 1) : equiv_head_size;
+
+  // Here we know head_size is smaller than max_thread_num_per_block
+  int tpb = std::max(32, equiv_head_size);
+
+  // round up tpb to power of 2
+  --tpb;
+  tpb |= (tpb >> 1);
+  tpb |= (tpb >> 2);
+  tpb |= (tpb >> 4);
+  tpb |= (tpb >> 8);
+  tpb |= (tpb >> 16);
+  tpb++;
+
+#ifndef USE_ROCM
+  if ((head_size % 4) == 0) {
+    using vec_type = typename TypeMapper<T, 4>::Type;
+    const dim3 block(tpb);
+    KeyCacheExpansionKernel<<<grid, block, 0, stream>>>(reinterpret_cast<const vec_type*>(key_cache),
+                                                        reinterpret_cast<vec_type*>(key_cache_expanded),
+                                                        beam_width,
+                                                        max_seq_length,
+                                                        equiv_head_size);
+  } else if ((head_size & 1) == 0) {
+    using vec_type = typename TypeMapper<T, 2>::Type;
+    const dim3 block(tpb);
+    KeyCacheExpansionKernel<<<grid, block, 0, stream>>>(reinterpret_cast<const vec_type*>(key_cache),
+                                                        reinterpret_cast<vec_type*>(key_cache_expanded),
+                                                        beam_width,
+                                                        max_seq_length,
+                                                        equiv_head_size);
+  } else {
+#endif
+    const dim3 block(tpb);
+    KeyCacheExpansionKernel<<<grid, block, 0, stream>>>(key_cache,
+                                                        key_cache_expanded,
+                                                        beam_width,
+                                                        max_seq_length,
+                                                        head_size);
+#ifndef USE_ROCM
+  }
+#endif
+}
+
+template void KeyCacheExpansionKernelLauncher(const float* key_cache,
+                                              float* key_cache_expanded,
+                                              int batch_size,
+                                              int beam_width,
+                                              int num_heads,
+                                              int sequence_length,
+                                              int max_seq_length,
+                                              int head_size,
+                                              cudaStream_t stream);
+
+template void KeyCacheExpansionKernelLauncher(const half* key_cache,
+                                              half* key_cache_expanded,
+                                              int batch_size,
+                                              int beam_width,
+                                              int num_heads,
+                                              int sequence_length,
+                                              int max_seq_length,
+                                              int head_size,
+                                              cudaStream_t stream);
+
+template void KeyCacheExpansionKernelLauncher(const int32_t* key_cache,
+                                              int32_t* key_cache_expanded,
+                                              int batch_size,
+                                              int beam_width,
+                                              int num_heads,
+                                              int sequence_length,
+                                              int max_seq_length,
+                                              int head_size,
+                                              cudaStream_t stream);
+
+template <typename T>
+__global__ void BufferExpansionKernel(const T* input,
+                                      T* output,
+                                      int chunk_size) {
+  const int batch_id = blockIdx.x;
+  const int beam_id = blockIdx.y;
+  const int tidx = threadIdx.x;
+  const int beam_size = gridDim.y;
+  const int idx = blockIdx.z * blockDim.x + tidx;
+
+  const int input_offset = batch_id * chunk_size + idx;
+  const int output_offset = batch_id * beam_size * chunk_size + beam_id * chunk_size + idx;
+
+  if (idx < chunk_size) {
+    output[output_offset] = input[input_offset];
+  }
+}
+
+template <typename T>
+void BufferExpansionKernelLauncher(const T* input,
+                                   T* output,
+                                   int batch_size,
+                                   int beam_width,
+                                   int chunk_size,
+                                   cudaStream_t stream) {
+  const dim3 block(128);
+
+#ifndef USE_ROCM
+  if ((chunk_size % 4) == 0) {
+    using vec_type = typename TypeMapper<T, 4>::Type;
+    const dim3 grid(batch_size, beam_width, (chunk_size / 4 + block.x - 1) / block.x);
+    BufferExpansionKernel<<<grid, block, 0, stream>>>(reinterpret_cast<const vec_type*>(input),
+                                                      reinterpret_cast<vec_type*>(output),
+                                                      chunk_size / 4);
+  } else if ((chunk_size & 1) == 0) {
+    using vec_type = typename TypeMapper<T, 2>::Type;
+    const dim3 grid(batch_size, beam_width, (chunk_size / 2 + block.x - 1) / block.x);
+    BufferExpansionKernel<<<grid, block, 0, stream>>>(reinterpret_cast<const vec_type*>(input),
+                                                      reinterpret_cast<vec_type*>(output),
+                                                      chunk_size / 2);
+  } else {
+#endif
+    const dim3 grid(batch_size, beam_width, (chunk_size + block.x - 1) / block.x);
+    BufferExpansionKernel<<<grid, block, 0, stream>>>(input,
+                                                      output,
+                                                      chunk_size);
+#ifndef USE_ROCM
+  }
+#endif
+}
+
+template void BufferExpansionKernelLauncher(const float* input,
+                                            float* output,
+                                            int batch_size,
+                                            int beam_width,
+                                            int chunk_size,
+                                            cudaStream_t stream);
+
+template void BufferExpansionKernelLauncher(const half* input,
+                                            half* output,
+                                            int batch_size,
+                                            int beam_width,
+                                            int chunk_size,
+                                            cudaStream_t stream);
+
+template void BufferExpansionKernelLauncher(const int32_t* input,
+                                            int32_t* output,
+                                            int batch_size,
+                                            int beam_width,
+                                            int chunk_size,
+                                            cudaStream_t stream);
+
 }  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime

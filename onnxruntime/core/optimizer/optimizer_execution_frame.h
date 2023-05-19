@@ -92,7 +92,7 @@ class OptimizerExecutionFrame final : public IExecutionFrame {
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(OptimizerExecutionFrame);
 
-  AllocatorPtr GetAllocatorImpl(const OrtMemoryInfo& info) const override;
+  AllocatorPtr GetAllocatorImpl(const OrtDevice& info) const override;
 
   Status CreateNodeOutputMLValueImpl(OrtValue& ort_value, int ort_value_idx, const TensorShape* shape) override;
 

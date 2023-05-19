@@ -8,6 +8,8 @@
 #include <vector>
 
 #ifdef USE_COMPOSABLE_KERNEL
+#include "core/providers/rocm/composable_kernel_common.h"
+
 #include "ck/ck.hpp"
 #include "ck/library/tensor_operation_instance/gpu/softmax.hpp"
 #include "ck/tensor_operation/gpu/device/device_softmax.hpp"
@@ -22,30 +24,15 @@ namespace rocm {
 
 #ifdef USE_COMPOSABLE_KERNEL
 
-template <typename T>
-struct DataTypeAdaptor {
-  using type = T;
-};
-
-template <>
-struct DataTypeAdaptor<half> {
-  using type = ck::half_t;
-};
-
-template <>
-struct DataTypeAdaptor<BFloat16> {
-  using type = ck::bhalf16_t;
-};
-
 using Nop = ck::tensor_operation::element_wise::PassThrough;
 constexpr int Rank = 4;
 constexpr int NumReduceDim = 1;
 
 template <typename InputT, typename OutputT, typename AccT>
 auto GetCKSoftmaxTypeStringAndOps() {
-  using InDataType = typename DataTypeAdaptor<InputT>::type;
-  using OutDataType = typename DataTypeAdaptor<OutputT>::type;
-  using AccDataType = typename DataTypeAdaptor<AccT>::type;
+  using InDataType = typename CKDataTypeAdaptor<InputT>::type;
+  using OutDataType = typename CKDataTypeAdaptor<OutputT>::type;
+  using AccDataType = typename CKDataTypeAdaptor<AccT>::type;
   using DeviceSoftmax = ck::tensor_operation::device::
       DeviceSoftmax<InDataType, AccDataType, OutDataType, Nop, Nop, Rank>;
   using InstanceFactory = ck::tensor_operation::device::instance::DeviceOperationInstanceFactory<DeviceSoftmax>;

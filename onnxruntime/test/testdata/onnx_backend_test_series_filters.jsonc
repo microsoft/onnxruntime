@@ -105,6 +105,7 @@
         "^test_col2im_pads*",           // remove this when using ONNX with this: https://github.com/onnx/onnx/pull/4769
         // Following tests are for opset 16 ops and are not yet implemented in ORT
         "^test_roialign_aligned_*",
+        "^test_roialign_mode_max", // TODO: Remove once onnx test is fixed
         //GPU failures
         "^test_batchnorm_epsilon_training_mode_cuda",
         "^test_batchnorm_example_training_mode_cuda",
@@ -474,7 +475,9 @@
         "^test_resize_downsample_scales_linear", // Runs but there's accuracy mismatch
         "^test_training_dropout_default_mask", // Runs but there's accuracy mismatch
         "^test_training_dropout_mask", // Runs but there's accuracy mismatch
-        "^test_training_dropout_default" // Runs but there's accuracy mismatch
+        "^test_training_dropout_default", // Runs but there's accuracy mismatch
+        "^test_center_crop_pad_crop_negative_axes_hwc*", // failed due to new types or shape infer with negative axis for CenterCropPad.
+        "^test_center_crop_pad_crop_negative_axes_hwc_expanded*" // failed due to new types or shape infer with negative axis for CenterCropPad.
     ],
     "current_failing_tests_OPENVINO_opset18": [
         // pending opset 18 support, RUNTIME_EXCEPTION : Encountered unknown exception in Initialize()

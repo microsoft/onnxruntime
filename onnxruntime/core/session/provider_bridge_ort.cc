@@ -1239,6 +1239,7 @@ OrtCUDAProviderOptionsV2 OrtCUDAProviderOptionsToOrtCUDAProviderOptionsV2(const 
   cuda_options_converted.cudnn_conv_use_max_workspace = 1;
   cuda_options_converted.enable_cuda_graph = 0;
   cuda_options_converted.cudnn_conv1d_pad_to_nc1d = 0;
+  cuda_options_converted.enable_skip_layer_norm_strict_mode = 0;
 
   return cuda_options_converted;
 }
@@ -1304,10 +1305,14 @@ OrtTensorRTProviderOptionsV2 OrtTensorRTProviderOptionsToOrtTensorRTProviderOpti
   trt_options_converted.trt_layer_norm_fp32_fallback = 0;
   trt_options_converted.trt_build_heuristics_enable = 0;
   trt_options_converted.trt_sparsity_enable = 0;
-  trt_options_converted.trt_builder_optimization_level = 2;
+  trt_options_converted.trt_builder_optimization_level = 3;
   trt_options_converted.trt_auxiliary_streams = -1;
   trt_options_converted.trt_tactic_sources = "";
   trt_options_converted.trt_extra_plugin_lib_paths = "";
+  trt_options_converted.trt_profile_min_shapes = "";
+  trt_options_converted.trt_profile_max_shapes = "";
+  trt_options_converted.trt_profile_opt_shapes = "";
+
   return trt_options_converted;
 }
 
@@ -1660,6 +1665,9 @@ ORT_API_STATUS_IMPL(OrtApis::CreateTensorRTProviderOptions, _Outptr_ OrtTensorRT
   (*out)->trt_force_timing_cache = false;
   (*out)->trt_detailed_build_log = false;
   (*out)->trt_extra_plugin_lib_paths = nullptr;
+  (*out)->trt_profile_min_shapes = nullptr;
+  (*out)->trt_profile_max_shapes = nullptr;
+  (*out)->trt_profile_opt_shapes = nullptr;
   return nullptr;
 #else
   ORT_UNUSED_PARAMETER(out);
@@ -1789,6 +1797,7 @@ ORT_API_STATUS_IMPL(OrtApis::CreateCUDAProviderOptions, _Outptr_ OrtCUDAProvider
   (*out)->cudnn_conv_use_max_workspace = 1;
   (*out)->enable_cuda_graph = 0;
   (*out)->cudnn_conv1d_pad_to_nc1d = 0;
+  (*out)->enable_skip_layer_norm_strict_mode = 0;
   return nullptr;
 #else
   ORT_UNUSED_PARAMETER(out);
@@ -2078,6 +2087,100 @@ ORT_API_STATUS_IMPL(OrtApis::GetDnnlProviderOptionsAsString,
 ORT_API(void, OrtApis::ReleaseDnnlProviderOptions, _Frees_ptr_opt_ OrtDnnlProviderOptions* ptr) {
 #ifdef USE_DNNL
   delete ptr;
+#else
+  ORT_UNUSED_PARAMETER(ptr);
+#endif
+}
+
+ORT_API_STATUS_IMPL(OrtApis::CreateROCMProviderOptions, _Outptr_ OrtROCMProviderOptions** out) {
+  API_IMPL_BEGIN
+#ifdef USE_ROCM
+  auto options = std::make_unique<OrtROCMProviderOptions>();
+  options->device_id = 0;
+  options->miopen_conv_exhaustive_search = 0;
+  options->gpu_mem_limit = std::numeric_limits<size_t>::max();
+  options->arena_extend_strategy = 0;
+  options->do_copy_in_default_stream = 1;
+  options->has_user_compute_stream = 0;
+  options->user_compute_stream = nullptr;
+  options->default_memory_arena_cfg = nullptr;
+  options->tunable_op_enable = 0;
+  options->tunable_op_tuning_enable = 0;
+
+  *out = options.release();
+  return nullptr;
+#else
+  ORT_UNUSED_PARAMETER(out);
+  return CreateStatus(ORT_FAIL, "ROCm execution provider is not enabled in this build.");
+#endif
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::UpdateROCMProviderOptions,
+                    _Inout_ OrtROCMProviderOptions* rocm_options,
+                    _In_reads_(num_keys) const char* const* provider_options_keys,
+                    _In_reads_(num_keys) const char* const* provider_options_values,
+                    size_t num_keys) {
+  API_IMPL_BEGIN
+#ifdef USE_ROCM
+  onnxruntime::ProviderOptions provider_options_map;
+  for (size_t i = 0; i != num_keys; ++i) {
+    if (provider_options_keys[i] == nullptr || provider_options_keys[i][0] == '\0' ||
+        provider_options_values[i] == nullptr || provider_options_values[i][0] == '\0') {
+      return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "key/value cannot be empty");
+    }
+
+    provider_options_map[provider_options_keys[i]] = provider_options_values[i];
+  }
+
+  onnxruntime::s_library_rocm.Get().UpdateProviderOptions(rocm_options, provider_options_map);
+  return nullptr;
+#else
+  ORT_UNUSED_PARAMETER(rocm_options);
+  ORT_UNUSED_PARAMETER(provider_options_keys);
+  ORT_UNUSED_PARAMETER(provider_options_values);
+  ORT_UNUSED_PARAMETER(num_keys);
+  return CreateStatus(ORT_FAIL, "ROCm execution provider is not enabled in this build.");
+#endif
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::GetROCMProviderOptionsAsString, _In_ const OrtROCMProviderOptions* rocm_options,
+                    _Inout_ OrtAllocator* allocator, _Outptr_ char** ptr) {
+  API_IMPL_BEGIN
+#ifdef USE_ROCM
+  onnxruntime::ProviderOptions options = onnxruntime::s_library_rocm.Get().GetProviderOptions(rocm_options);
+  onnxruntime::ProviderOptions::iterator it = options.begin();
+  std::string options_str;
+
+  while (it != options.end()) {
+    if (options_str == "") {
+      options_str += it->first;
+      options_str += "=";
+      options_str += it->second;
+    } else {
+      options_str += ";";
+      options_str += it->first;
+      options_str += "=";
+      options_str += it->second;
+    }
+    it++;
+  }
+
+  *ptr = onnxruntime::StrDup(options_str, allocator);
+  return nullptr;
+#else
+  ORT_UNUSED_PARAMETER(rocm_options);
+  ORT_UNUSED_PARAMETER(allocator);
+  ORT_UNUSED_PARAMETER(ptr);
+  return CreateStatus(ORT_FAIL, "ROCm execution provider is not enabled in this build.");
+#endif
+  API_IMPL_END
+}
+
+ORT_API(void, OrtApis::ReleaseROCMProviderOptions, _Frees_ptr_opt_ OrtROCMProviderOptions* ptr) {
+#ifdef USE_ROCM
+  std::unique_ptr<OrtROCMProviderOptions> p(ptr);
 #else
   ORT_UNUSED_PARAMETER(ptr);
 #endif

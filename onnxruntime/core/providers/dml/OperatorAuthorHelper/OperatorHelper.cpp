@@ -8,6 +8,13 @@
 
 namespace OperatorHelper
 {
+    template <typename T = uint32_t>
+    T DivideRoundUp(T x, T y)
+    {
+        assert(y != 0);
+        return (x + y - 1) / y;
+    }
+
     bool ContainsEmptyDimensions(gsl::span<const DimensionType> dimensions)
     {
         return std::find(dimensions.begin(), dimensions.end(), 0u) != dimensions.end();
@@ -923,6 +930,25 @@ namespace OperatorHelper
         const uint32_t inputDimCount = gsl::narrow_cast<int32_t>(inputDimensions.size());
         const uint32_t axis = operatorAttributes.GetOptionalAttribute<int32_t>(AttrName::Axis, 0);
         m_axis = static_cast<int>(HandleNegativeAxis(axis, inputDimCount));
+
+        if (opsetVersion >= 18) // num_outputs attribute is only defined in opset18.
+        {
+            const uint32_t numOutputs = operatorAttributes.GetOptionalAttribute<int32_t>(AttrName::NumOutputs, 0);
+            if (numOutputs > 0)
+            {
+                ML_CHECK_VALID_ARGUMENT(m_split.size() == 0);
+                auto inputSizeAlongAxis = inputDimensions.at(m_axis);
+                auto outputSizeAlongAxis = DivideRoundUp(inputSizeAlongAxis, numOutputs);
+                m_split.resize(numOutputs, outputSizeAlongAxis);
+                // Every output has the same size except potentially the last one, which may be smaller.
+                m_split.back() = static_cast<int>(inputSizeAlongAxis - (numOutputs - 1) * outputSizeAlongAxis);
+            }
+            else
+            {
+                // There is no num_outputs attribute set, so splits must be set.
+                ML_CHECK_VALID_ARGUMENT(m_split.size() > 0);
+            }
+        }
     }
 
     std::vector<EdgeShapes> SplitHelper::GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const
@@ -1525,6 +1551,7 @@ namespace OperatorHelper
             {RecognizedOperatorType::MatMul,               {2,2,2},{0,1, 1,2, 0,2}}, // ij,jk->ik
             {RecognizedOperatorType::MatMul,               {3,3,3},{0,1,2, 0,2,3, 0,1,3}}, // bij,bjk->bik
             {RecognizedOperatorType::MatMul,               {4,4,4},{0,1,2,3, 0,1,3,4, 0,1,2,4}}, // abij,abjk->abik
+            {RecognizedOperatorType::OuterProduct,         {1,1,2},{0, 1, 0,1}}, // i,j->ij
             {RecognizedOperatorType::MatMulTransposeA,     {2,2,2},{0,1, 0,2, 1,2}}, // ji,jk->ik
             {RecognizedOperatorType::MatMulTransposeA,     {3,3,3},{0,1,2, 0,1,3, 0,2,3}}, // bji,bjk->bik
             {RecognizedOperatorType::MatMulTransposeA,     {4,4,4},{0,1,2,3, 0,1,2,4, 0,1,3,4}}, // abji,abjk->abik
@@ -1615,7 +1642,8 @@ namespace OperatorHelper
 
     bool EinSumHelper::IsMatMulOperatorType() const noexcept
     {
-        return m_recognizedOperatorType == RecognizedOperatorType::MatMul ||
+        return m_recognizedOperatorType == RecognizedOperatorType::OuterProduct ||
+            m_recognizedOperatorType == RecognizedOperatorType::MatMul ||
             m_recognizedOperatorType == RecognizedOperatorType::MatMulTransposeA ||
             m_recognizedOperatorType == RecognizedOperatorType::MatMulTransposeB ||
             m_recognizedOperatorType == RecognizedOperatorType::MatMulNhcw ||

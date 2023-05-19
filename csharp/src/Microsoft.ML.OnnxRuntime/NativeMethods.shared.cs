@@ -286,6 +286,12 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr CastTypeInfoToOptionalTypeInfo;
         public IntPtr GetOptionalContainedTypeInfo;
         public IntPtr GetResizedStringTensorElementBuffer;
+        public IntPtr KernelContext_GetAllocator;
+        public IntPtr GetBuildInfoString;
+        public IntPtr CreateROCMProviderOptions;
+        public IntPtr UpdateROCMProviderOptions;
+        public IntPtr GetROCMProviderOptionsAsString;
+        public IntPtr ReleaseROCMProviderOptions;
     }
 
     internal static class NativeMethods
@@ -305,7 +311,7 @@ namespace Microsoft.ML.OnnxRuntime
             DOrtGetApi OrtGetApi = (DOrtGetApi)Marshal.GetDelegateForFunctionPointer(OrtGetApiBase().GetApi, typeof(DOrtGetApi));
 
             // TODO: Make this save the pointer, and not copy the whole structure across
-            api_ = (OrtApi)OrtGetApi(4 /*ORT_API_VERSION*/);
+            api_ = (OrtApi)OrtGetApi(14 /*ORT_API_VERSION*/);
             OrtGetVersionString = (DOrtGetVersionString)Marshal.GetDelegateForFunctionPointer(OrtGetApiBase().GetVersionString, typeof(DOrtGetVersionString));
 
             OrtCreateEnv = (DOrtCreateEnv)Marshal.GetDelegateForFunctionPointer(api_.CreateEnv, typeof(DOrtCreateEnv));
@@ -361,6 +367,7 @@ namespace Microsoft.ML.OnnxRuntime
             OrtSetIntraOpNumThreads = (DOrtSetIntraOpNumThreads)Marshal.GetDelegateForFunctionPointer(api_.SetIntraOpNumThreads, typeof(DOrtSetIntraOpNumThreads));
             OrtSetSessionGraphOptimizationLevel = (DOrtSetSessionGraphOptimizationLevel)Marshal.GetDelegateForFunctionPointer(api_.SetSessionGraphOptimizationLevel, typeof(DOrtSetSessionGraphOptimizationLevel));
             OrtRegisterCustomOpsLibrary = (DOrtRegisterCustomOpsLibrary)Marshal.GetDelegateForFunctionPointer(api_.RegisterCustomOpsLibrary, typeof(DOrtRegisterCustomOpsLibrary));
+            OrtRegisterCustomOpsLibrary_V2 = (DOrtRegisterCustomOpsLibrary_V2)Marshal.GetDelegateForFunctionPointer(api_.RegisterCustomOpsLibrary_V2, typeof(DOrtRegisterCustomOpsLibrary_V2));
             OrtAddSessionConfigEntry = (DOrtAddSessionConfigEntry)Marshal.GetDelegateForFunctionPointer(api_.AddSessionConfigEntry, typeof(DOrtAddSessionConfigEntry));
             OrtAddInitializer = (DOrtAddInitializer)Marshal.GetDelegateForFunctionPointer(api_.AddInitializer, typeof(DOrtAddInitializer));
             SessionOptionsAppendExecutionProvider_TensorRT = (DSessionOptionsAppendExecutionProvider_TensorRT)Marshal.GetDelegateForFunctionPointer(
@@ -491,22 +498,26 @@ namespace Microsoft.ML.OnnxRuntime
                     api_.SessionOptionsAppendExecutionProvider,
                     typeof(DSessionOptionsAppendExecutionProvider));
             OrtUpdateEnvWithCustomLogLevel = (DOrtUpdateEnvWithCustomLogLevel)Marshal.GetDelegateForFunctionPointer(api_.UpdateEnvWithCustomLogLevel, typeof(DOrtUpdateEnvWithCustomLogLevel));
+            SessionOptionsAppendExecutionProvider_ROCM = (DSessionOptionsAppendExecutionProvider_ROCM)Marshal.GetDelegateForFunctionPointer(
+                                                 api_.SessionOptionsAppendExecutionProvider_ROCM, typeof(DSessionOptionsAppendExecutionProvider_ROCM));
+            OrtCreateROCMProviderOptions = (DOrtCreateROCMProviderOptions)Marshal.GetDelegateForFunctionPointer(api_.CreateROCMProviderOptions, typeof(DOrtCreateROCMProviderOptions));
+            OrtUpdateROCMProviderOptions = (DOrtUpdateROCMProviderOptions)Marshal.GetDelegateForFunctionPointer(api_.UpdateROCMProviderOptions, typeof(DOrtUpdateROCMProviderOptions));
+            OrtGetROCMProviderOptionsAsString = (DOrtGetROCMProviderOptionsAsString)Marshal.GetDelegateForFunctionPointer(api_.GetROCMProviderOptionsAsString, typeof(DOrtGetROCMProviderOptionsAsString));
+            OrtReleaseROCMProviderOptions = (DOrtReleaseROCMProviderOptions)Marshal.GetDelegateForFunctionPointer(api_.ReleaseROCMProviderOptions, typeof(DOrtReleaseROCMProviderOptions));
         }
 
         internal class NativeLib
         {
 #if __ANDROID__
-        // define the library name required for android
-        internal const string DllName = "libonnxruntime.so";
+            // define the library name required for android
+            internal const string DllName = "libonnxruntime.so";
 #elif __IOS__
-        // define the library name required for iOS
-        internal const string DllName = "__Internal";
+            // define the library name required for iOS
+            internal const string DllName = "__Internal";
 #else
             internal const string DllName = "onnxruntime";
 #endif
-            // TODO: Does macos need special handling or will 'onnxruntime' -> libonnxruntime.dylib?
         }
-
 
         [DllImport(NativeLib.DllName, CharSet = CharSet.Ansi)]
         public static extern ref OrtApiBase OrtGetApiBase();
@@ -659,6 +670,51 @@ namespace Microsoft.ML.OnnxRuntime
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
         public delegate void DOrtReleaseCUDAProviderOptions(IntPtr /*(OrtCUDAProviderOptions*)*/ cudaProviderOptionsInstance);
         public static DOrtReleaseCUDAProviderOptions OrtReleaseCUDAProviderOptions;
+
+        /// <summary>
+        /// Creates native OrtROCMProviderOptions instance
+        /// </summary>
+        /// <param name="rocmProviderOptionsInstance">(output) native instance of OrtROCMProviderOptions</param>
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr /* OrtStatus* */DOrtCreateROCMProviderOptions(
+            out IntPtr /*(OrtROCMProviderOptions**)*/ rocmProviderOptionsInstance);
+        public static DOrtCreateROCMProviderOptions OrtCreateROCMProviderOptions;
+
+        /// <summary>
+        /// Updates native OrtROCMProviderOptions instance using given key/value pairs
+        /// </summary>
+        /// <param name="rocmProviderOptionsInstance">native instance of OrtROCMProviderOptions</param>
+        /// <param name="providerOptionsKeys">configuration keys of OrtROCMProviderOptions</param>
+        /// <param name="providerOptionsValues">configuration values of OrtROCMProviderOptions</param>
+        /// <param name="numKeys">number of configuration keys</param>
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr /* OrtStatus* */DOrtUpdateROCMProviderOptions(
+            IntPtr /*(OrtROCMProviderOptions*)*/ rocmProviderOptionsInstance,
+            IntPtr[] /*(const char* const *)*/ providerOptionsKeys,
+            IntPtr[] /*(const char* const *)*/ providerOptionsValues,
+            UIntPtr /*(size_t)*/ numKeys);
+        public static DOrtUpdateROCMProviderOptions OrtUpdateROCMProviderOptions;
+
+        /// <summary>
+        /// Get native OrtROCMProviderOptions in serialized string
+        /// </summary>
+        /// <param name="allocator">instance of OrtAllocator</param>
+        /// <param name="ptr">is a UTF-8 null terminated string allocated using 'allocator'</param>
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr /* OrtStatus* */DOrtGetROCMProviderOptionsAsString(
+            IntPtr /*(OrtROCMProviderOptions**)*/ rocmProviderOptionsInstance,
+            IntPtr /*(OrtAllocator*)*/ allocator,
+            out IntPtr /*(char**)*/ptr);
+        public static DOrtGetROCMProviderOptionsAsString OrtGetROCMProviderOptionsAsString;
+
+        /// <summary>
+        /// Releases native OrtROCMProviderOptions instance
+        /// </summary>
+        /// <param name="rocmProviderOptionsInstance">native instance of OrtROCMProviderOptions to be released</param>
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate void DOrtReleaseROCMProviderOptions(IntPtr /*(OrtROCMProviderOptions*)*/ rocmProviderOptionsInstance);
+        public static DOrtReleaseROCMProviderOptions OrtReleaseROCMProviderOptions;
+
         #endregion
 
         #region Status API
@@ -1041,6 +1097,18 @@ namespace Microsoft.ML.OnnxRuntime
         public static DSessionOptionsAppendExecutionProvider_CUDA_V2 SessionOptionsAppendExecutionProvider_CUDA_V2;
 
         /// <summary>
+        /// Append a ROCm EP instance (configured based on given provider options) to the native OrtSessionOptions instance
+        /// </summary>
+        /// <param name="options">Native OrtSessionOptions instance</param>
+        /// <param name="rocmProviderOptions">Native OrtROCMProviderOptions instance</param>
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr /*(OrtStatus*)*/DSessionOptionsAppendExecutionProvider_ROCM(
+                                               IntPtr /*(OrtSessionOptions*)*/ options,
+                                               IntPtr /*(const OrtROCMProviderOptions*)*/ rocmProviderOptions);
+
+        public static DSessionOptionsAppendExecutionProvider_ROCM SessionOptionsAppendExecutionProvider_ROCM;
+
+        /// <summary>
         /// Free Dimension override (by denotation)
         /// </summary>
         /// <param name="options">Native SessionOptions instance</param>
@@ -1078,6 +1146,17 @@ namespace Microsoft.ML.OnnxRuntime
                                                                             out IntPtr /*(void**)*/ libraryHandle);
 
         public static DOrtRegisterCustomOpsLibrary OrtRegisterCustomOpsLibrary;
+
+        /// <summary>
+        /// Register custom op library. ORT will manage freeing the library.
+        /// </summary>
+        /// <param name="options">Native SessionOptions instance</param>
+        /// <param name="libraryPath">Library path</param>
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr /*(OrtStatus*)*/DOrtRegisterCustomOpsLibrary_V2(IntPtr /*(OrtSessionOptions*) */ options,
+                                                                               byte[] /*(const ORTCHAR_T*)*/ libraryPath);
+
+        public static DOrtRegisterCustomOpsLibrary_V2 OrtRegisterCustomOpsLibrary_V2;
 
         /// <summary>
         /// Add initializer that is shared across Sessions using this SessionOptions (by denotation)
@@ -1644,7 +1723,6 @@ namespace Microsoft.ML.OnnxRuntime
 
         public static DOrtModelMetadataLookupCustomMetadataMap OrtModelMetadataLookupCustomMetadataMap;
 
-
         /// <summary>
         /// Frees ModelMetadata instance
         /// </summary>
@@ -1907,4 +1985,27 @@ namespace Microsoft.ML.OnnxRuntime
 
         #endregion
     } //class NativeMethods
+
+    // onnxruntime-extensions helpers to make usage simpler.
+    // The onnxruntime-extensions nuget package containing the native library can be optionally added to the app.
+    // If added, SessionOptions.RegisterOrtExtensions can be called to add the custom ops to the session options.
+    // We handle the DllImport and platform specific aspects so the user code doesn't require that.
+    // adjust the library name based on platform.
+    internal static class OrtExtensionsNativeMethods
+    {
+#if __ANDROID__
+        internal const string ExtensionsDllName = "libortextensions.so";
+#elif __IOS__
+        internal const string ExtensionsDllName = "__Internal";
+#else
+        internal const string ExtensionsDllName = "ortextensions";
+#endif
+
+        [DllImport(ExtensionsDllName, CharSet = CharSet.Ansi,
+                   CallingConvention = CallingConvention.Winapi)]
+        public static extern IntPtr /* OrtStatus* */ RegisterCustomOps(IntPtr /* OrtSessionOptions* */ sessionOptions,
+                                                                       ref OrtApiBase /* OrtApiBase* */ ortApiBase);
+
+
+    }
 } //namespace

@@ -19,6 +19,10 @@
 #include "orttraining/training_ops/cuda/cuda_training_kernels.h"
 #endif
 
+#ifdef USE_TRITON_KERNEL
+#include "core/providers/cuda/triton_kernel.h"
+#endif
+
 #include "core/providers/cuda/cuda_stream_handle.h"
 
 using namespace onnxruntime::common;
@@ -232,7 +236,7 @@ void OverrideTunableOpInfoByEnv(CUDAExecutionProviderInfo& info) {
 }
 
 CUDAExecutionProvider::CUDAExecutionProvider(const CUDAExecutionProviderInfo& info)
-    : IExecutionProvider{onnxruntime::kCudaExecutionProvider},
+    : IExecutionProvider{onnxruntime::kCudaExecutionProvider, OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, info.device_id)},
       info_{info},
       tuning_context_(this, &info_.tunable_op) {
   CUDA_CALL_THROW(cudaSetDevice(info_.device_id));
@@ -267,6 +271,10 @@ CUDAExecutionProvider::CUDAExecutionProvider(const CUDAExecutionProviderInfo& in
   CUDA_CALL_THROW(cudaMemGetInfo(&free, &total));
 
   OverrideTunableOpInfoByEnv(info_);
+
+#ifdef USE_TRITON_KERNEL
+  onnxruntime::cuda::LoadOrtTritonKernel();
+#endif
 }
 
 CUDAExecutionProvider::~CUDAExecutionProvider() {
@@ -2529,6 +2537,12 @@ void CUDAExecutionProvider::RegisterStreamHandlers(IStreamCommandHandleRegistry&
                             use_ep_level_unified_stream_,
                             GetPerThreadContext().CudnnHandle(),
                             GetPerThreadContext().CublasHandle());
+}
+
+OrtDevice CUDAExecutionProvider::GetOrtDeviceByMemType(OrtMemType mem_type) const {
+  if (mem_type == OrtMemTypeCPUInput) return OrtDevice();
+  if (mem_type == OrtMemTypeCPUOutput) return OrtDevice(OrtDevice::CPU, OrtDevice::MemType::CUDA_PINNED, 0 /*CPU device id always be 0*/);
+  return default_device_;
 }
 
 }  // namespace onnxruntime
