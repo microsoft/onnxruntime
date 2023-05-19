@@ -19,6 +19,8 @@
 namespace onnxruntime {
 namespace qnn {
 
+static std::mutex qnn_log_mutex_;
+
 typedef Qnn_ErrorHandle_t (*QnnInterfaceGetProvidersFn_t)(const QnnInterface_t*** providerList,
                                                           uint32_t* numProviders);
 typedef Qnn_ErrorHandle_t (*QnnSystemInterfaceGetProvidersFn_t)(const QnnSystemInterface_t*** providerList,
@@ -126,6 +128,45 @@ Status QnnBackendManager::LoadQnnSystemLib() {
   ORT_RETURN_IF_NOT(found_valid_interface, "Unable to find a valid system interface.");
 
   return Status::OK();
+}
+
+void QnnLogging(const char* format,
+                    QnnLog_Level_t level,
+                    uint64_t timestamp,
+                    va_list argument_parameter) {
+  ORT_UNUSED_PARAMETER(level);
+  ORT_UNUSED_PARAMETER(timestamp);
+
+  std::lock_guard<std::mutex> lock(qnn_log_mutex_);
+
+  // Always output Qnn log as Ort verbose log
+  size_t ini_size = 20;
+  std::vector<char> buffer(ini_size);
+  auto length = vsnprintf(buffer.data(), ini_size, format, argument_parameter);
+  buffer.resize(length);
+  vsnprintf(buffer.data(), length, format, argument_parameter);
+  LOGS_DEFAULT(VERBOSE) << buffer.data();
+}
+
+void QnnBackendManager::InitializeQnnLog() {
+  const std::map<logging::Severity, QnnLog_Level_t> ort_log_level_to_qnn_log_level = {
+      {logging::Severity::kVERBOSE, QNN_LOG_LEVEL_DEBUG},
+      {logging::Severity::kINFO, QNN_LOG_LEVEL_INFO},
+      {logging::Severity::kWARNING, QNN_LOG_LEVEL_WARN},
+      {logging::Severity::kERROR, QNN_LOG_LEVEL_ERROR},
+      {logging::Severity::kFATAL, QNN_LOG_LEVEL_ERROR}};
+
+  // Set Qnn log level align with Ort log level
+  QnnLog_Level_t qnn_log_level = QNN_LOG_LEVEL_WARN;
+  auto ort_log_level = logger_->GetSeverity();
+  auto pos = ort_log_level_to_qnn_log_level.find(ort_log_level);
+  if (pos != ort_log_level_to_qnn_log_level.end()) {
+    qnn_log_level = pos->second;
+  }
+
+  if (QNN_SUCCESS != qnn_interface_.logCreate(QnnLogging, qnn_log_level, &log_handle_)) {
+    LOGS(*logger_, WARNING) << "Unable to initialize logging in the QNN backend.";
+  }
 }
 
 Status QnnBackendManager::InitializeBackend() {
