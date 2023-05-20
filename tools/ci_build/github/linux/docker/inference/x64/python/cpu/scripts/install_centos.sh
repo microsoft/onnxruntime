@@ -9,4 +9,4 @@ yum install -y which gdb redhat-lsb-core expat-devel tar unzip zlib-devel make l
 echo "installing rapidjson for AzureEP"
 wget https://github.com/Tencent/rapidjson/archive/refs/tags/v1.1.0.tar.gz
 tar zxvf v1.1.0.tar.gz
-ln -s `pwd`/rapidjson-1.1.0/include/rapidjson /usr/local/include/rapidjson
+ln -s `pwd`/rapidjson-1.1.0/include/rapidjson /usr/include/rapidjson
