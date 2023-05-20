@@ -106,22 +106,16 @@ namespace Microsoft.ML.OnnxRuntime
         /// <exception cref="OnnxRuntimeException"></exception>
         private OrtValue CreateSequenceProjection(NamedOnnxValue namedOnnxValue, NodeMetadata metadata, DisposableList<IDisposable> disposables)
         {
-            OrtValue result = null;
             var elementMeta = metadata.AsSequenceMetadata().ElementMeta;
             var elementOnnxValue = elementMeta.OnnxValueType;
-            var seqContainer = namedOnnxValue.AsEnumerable<NamedOnnxValue>();
-
-            if (seqContainer is null)
-            {
+            var seqContainer = namedOnnxValue.AsEnumerable<NamedOnnxValue>() ??
                 throw new OnnxRuntimeException(ErrorCode.InvalidArgument,
                                                $"NamedOnnxValue: {namedOnnxValue.Name} sequence does not contain NamedOnnxValue elements");
-            }
-
             int capacity = 0;
 
-            if (seqContainer is ICollection<NamedOnnxValue>)
+            if (seqContainer is ICollection<NamedOnnxValue> collection)
             {
-                capacity = ((ICollection<NamedOnnxValue>)seqContainer).Count;
+                capacity = collection.Count;
             }
 
             // Record all the ortValues belonging to the sequence locally
@@ -137,15 +131,7 @@ namespace Microsoft.ML.OnnxRuntime
                 sequenceOrtValues.Add(CreateDispatchProjection(element, elementMeta, disposables));
             }
 
-            IntPtr[] ortValHandles = new IntPtr[sequenceOrtValues.Count];
-            for (int i = 0; i < sequenceOrtValues.Count; i++)
-            {
-                ortValHandles[i] = sequenceOrtValues[i].Handle;
-            }
-
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateValue(ortValHandles,
-                (UIntPtr)sequenceOrtValues.Count, (IntPtr)OnnxValueType.ONNX_TYPE_SEQUENCE, out IntPtr sequenceHandle));
-            result = new OrtValue(sequenceHandle);
+            OrtValue result = OrtValue.CreateSequence(sequenceOrtValues);
             disposables.Add(result);
 
             return result;
@@ -162,7 +148,6 @@ namespace Microsoft.ML.OnnxRuntime
         /// <exception cref="OnnxRuntimeException"></exception>
         private OrtValue CreateMapProjection(NamedOnnxValue node, NodeMetadata elementMeta, DisposableList<IDisposable> disposables)
         {
-            OrtValue result = null;
             var mapMeta = elementMeta.AsMapMetadata();
             Debug.Assert(mapMeta != null);
             // Maps currently support only primitive types expressed as two parallel tensors and not nested Sequences or Maps
@@ -208,10 +193,7 @@ namespace Microsoft.ML.OnnxRuntime
             }
 
             // Create Map OrtValue
-            IntPtr[] ortValHandles = { ortValueKeys.Handle, ortValueValues.Handle };
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateValue(ortValHandles, (UIntPtr)2,
-                (IntPtr)OnnxValueType.ONNX_TYPE_MAP, out IntPtr ortValueMap));
-            result = new OrtValue(ortValueMap);
+            OrtValue result = OrtValue.CreateMap(ortValueKeys, ortValueValues);
             disposables.Add(result);
             return result;
         }
@@ -227,7 +209,13 @@ namespace Microsoft.ML.OnnxRuntime
         /// <exception cref="OnnxRuntimeException"></exception>
         private OrtValue CreateTensorProjection(NamedOnnxValue node, NodeMetadata elementMeta, DisposableList<IDisposable> disposables)
         {
-            var ortValue = OrtValue.CreateFromTensorObject(node.Value,
+            if (!(node.Value is TensorBase))
+            {
+                throw new OnnxRuntimeException(ErrorCode.InvalidArgument,
+                    $"NamedOnnxValue contains: {node.Value.GetType()}, expecting a Tensor<T>");
+            }
+
+            var ortValue = OrtValue.CreateFromTensorObject(node.Value as TensorBase,
                 out MemoryHandle? memoryHandle, out TensorElementType elementType);
             disposables.Add(ortValue);
 

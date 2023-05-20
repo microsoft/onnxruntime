@@ -38,27 +38,20 @@ namespace Microsoft.ML.OnnxRuntime
         /// must match the required size and can be obtained in advance with
         /// System.Text.Encoding.UTF8.GetByteCount(s).
         /// 
-        /// The function is helpful when we populate native string tensor buffers directly where
-        /// the elements stored do not have zero terminator.
         /// </summary>
-        /// <param name="s">managed string</param>
-        /// <param name="ptr">natively allocated buffer</param>
-        /// <param name="totalBytesToWrite">pre-allocated buffer size</param>
-        internal static void StringToUtf8NativeMemory(string s, IntPtr ptr, int totalBytesToWrite)
+        /// <param name="strPtr">fixed char* ptr</param>
+        /// <param name="strLength">string length</param>
+        /// <param name="ptr">Native buffer to write</param>
+        /// <param name="nativeBufferSize"></param>
+        /// <exception cref="OnnxRuntimeException"></exception>
+        internal unsafe static void StringToUtf8NativeMemory(char* strPtr, int strLength, IntPtr ptr, int nativeBufferSize)
         {
-            // We throw here, because we are expecting the caller to properly calculate and allocate the right size buffer
-            unsafe
+            // total bytes to write is size of native memory buffer
+            var bytesWritten = Encoding.UTF8.GetBytes(strPtr, strLength, (byte*)ptr, nativeBufferSize);
+            if (bytesWritten != nativeBufferSize)
             {
-                fixed (char* c = s) // create char pointer to start of managed string.
-                {
-                    var nativeBytes = (byte*)ptr; // get managed byte* from native intptr
-                    var bytesWritten = Encoding.UTF8.GetBytes(c, s.Length, nativeBytes, totalBytesToWrite); // total bytes to write is size of native memory buffer
-                    if (bytesWritten != totalBytesToWrite)
-                    {
-                        throw new OnnxRuntimeException(ErrorCode.RuntimeException,
-                            $"Failed to convert to UTF8. Expected bytes: {totalBytesToWrite}, written: {bytesWritten}");
-                    }
-                }
+                throw new OnnxRuntimeException(ErrorCode.RuntimeException,
+                    $"Failed to convert to UTF8. Expected bytes: {nativeBufferSize}, written: {bytesWritten}");
             }
         }
 
@@ -156,27 +149,6 @@ namespace Microsoft.ML.OnnxRuntime
                 return System.Text.Encoding.Unicode.GetBytes(str + Char.MinValue);
             else
                 return StringToZeroTerminatedUtf8(str);
-        }
-    }
-
-    internal static class TensorElementTypeConverter
-    {
-        public static bool GetTypeAndWidth(TensorElementType elemType, out Type type, out int width)
-        {
-            bool result = true;
-            TensorElementTypeInfo typeInfo = TensorBase.GetElementTypeInfo(elemType);
-            if (typeInfo != null)
-            {
-                type = typeInfo.TensorType;
-                width = typeInfo.TypeSize;
-            }
-            else
-            {
-                type = null;
-                width = 0;
-                result = false;
-            }
-            return result;
         }
     }
 

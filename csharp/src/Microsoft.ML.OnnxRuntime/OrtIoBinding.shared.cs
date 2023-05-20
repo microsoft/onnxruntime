@@ -1,7 +1,6 @@
 ﻿// Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-using Microsoft.ML.OnnxRuntime.Tensors;
 using System;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -23,6 +22,14 @@ namespace Microsoft.ML.OnnxRuntime
     /// your further input modifications would not be seen by onnxruntime unless you rebind it, even if it is
     /// the same buffer. If you require the scenario where data is copied, OrtIOBinding may not be the best match
     /// for your use case.
+    /// 
+    /// Making OrtValue first class citizen in ORT C# API practically obsoletes all of the existing overloads
+    /// because OrtValue can be created on top of the all other types of memory. No need to designate it as external
+    /// or Ort allocation or wrap it in FixedBufferOnnxValue. The latter does not support rebinding or memory other than
+    /// CPU anyway.
+    /// 
+    /// In fact, one can now create OrtValues over arbitrary pieces of memory, managed, native, stack and device(gpu)
+    /// and feed them to the model and achieve the same effect without using IOBinding class.
     ///
     /// The fact that data copy is not made during runtime also has performance implications.
     /// </summary>
@@ -52,6 +59,21 @@ namespace Microsoft.ML.OnnxRuntime
         /// <value>returns true if handle is equal to Zero</value>
         public override bool IsInvalid { get { return handle == IntPtr.Zero; } }
 
+
+        /// <summary>
+        /// This is the preferable and universal way to bind input to OrtValue.
+        /// This way you retain control over the original value, can modify the data
+        /// using OrtValue interfaces between the runs.
+        /// 
+        /// You can also create OrtValue on all kinds of memory, managed, native, stack and device(gpu).
+        /// </summary>
+        /// <param name="name">input name</param>
+        /// <param name="ortValue"></param>
+        public void BindInput(string name, OrtValue ortValue)
+        {
+            BindInputOrOutput(name, ortValue.Handle, true);
+        }
+
         /// <summary>
         /// Bind a piece of pre-allocated native memory as a OrtValue Tensor with a given shape
         /// to an input with a given name. The model will read the specified input from that memory
@@ -75,6 +97,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// </summary>
         /// <param name="name">name</param>
         /// <param name="allocation">non ort allocated memory</param>
+        [Obsolete("This BindOutput overload is deprecated. Create OrtValue over an arbitrary piece of memory.")]
         public void BindInput(string name, OrtExternalAllocation allocation)
         {
             BindExternalAllocation(name, allocation, true);
@@ -86,6 +109,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// </summary>
         /// <param name="name">name of input</param>
         /// <param name="fixedValue"></param>
+        [Obsolete("This BindInput overload is deprecated. Use of OrtValue based overload is recommended.")]
         public void BindInput(string name, FixedBufferOnnxValue fixedValue)
         {
             if (fixedValue.OnnxValueType != OnnxValueType.ONNX_TYPE_TENSOR)
@@ -102,6 +126,19 @@ namespace Microsoft.ML.OnnxRuntime
         public void SynchronizeBoundInputs()
         {
             NativeApiStatus.VerifySuccess(NativeMethods.OrtSynchronizeBoundInputs(handle));
+        }
+
+        /// <summary>
+        /// This is the preferable and universal way to bind output via OrtValue.
+        /// This way you retain control over the original value, can modify the data
+        /// using OrtValue interfaces between the runs, rebind output to input if you
+        /// are feeding data circular.
+        /// </summary>
+        /// <param name="name">output name</param>
+        /// <param name="ortValue">OrtValue to bind</param>
+        public void BindOutput(string name, OrtValue ortValue)
+        {
+            BindInputOrOutput(name, ortValue.Handle, false);
         }
 
         /// <summary>
@@ -125,6 +162,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// </summary>
         /// <param name="name">name</param>
         /// <param name="allocation">non ort allocated memory</param>
+        [Obsolete("This BindOutput overload is deprecated. Create OrtValue over an arbitrary piece of memory.")]
         public void BindOutput(string name, OrtExternalAllocation allocation)
         {
             BindExternalAllocation(name, allocation, false);
@@ -136,6 +174,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// </summary>
         /// <param name="name">of the output</param>
         /// <param name="fixedValue"></param>
+        [Obsolete("This BindOutput overload is deprecated. Use of OrtValue based overload is recommended.")]
         public void BindOutput(string name, FixedBufferOnnxValue fixedValue)
         {
             if (fixedValue.OnnxValueType != OnnxValueType.ONNX_TYPE_TENSOR)
@@ -192,6 +231,9 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="name">name </param>
         /// <param name="allocation">non ort allocated memory</param>
         /// <param name="isInput">whether this is an input or output</param>
+
+        // Disable obsolete warning for this method until we remove the code
+#pragma warning disable 0618
         private void BindExternalAllocation(string name, OrtExternalAllocation allocation, bool isInput)
         {
             using (var ortValue = OrtValue.CreateTensorValueWithData(allocation.Info,
@@ -201,7 +243,7 @@ namespace Microsoft.ML.OnnxRuntime
                                                         allocation.Size))
                 BindInputOrOutput(name, ortValue.Handle, isInput);
         }
-
+#pragma warning restore 0618
 
         /// <summary>
         /// Internal helper
@@ -232,34 +274,28 @@ namespace Microsoft.ML.OnnxRuntime
             NativeApiStatus.VerifySuccess(NativeMethods.OrtGetBoundOutputNames(handle,
                 allocator.Pointer, out IntPtr buffer, out IntPtr lengths, out UIntPtr count));
 
-            if (count.Equals(UIntPtr.Zero))
+            if ((ulong)count == 0)
             {
-                return new string[0];
+                return Array.Empty<string>();
             }
 
             try
             {
                 int outputCount = (int)count;
-                var lens = new int[outputCount];
-                int totalLength = 0;
-                for (int i = 0; i < outputCount; ++i)
-                {
-                    var len = (int)Marshal.ReadIntPtr(lengths, IntPtr.Size * i);
-                    lens[i] = len;
-                    totalLength += len;
-                }
+                var result = new string[outputCount];
 
-                var stringData = new byte[totalLength];
-                Marshal.Copy(buffer, stringData, 0, stringData.Length);
-
-                string[] result = new string[outputCount];
                 int readOffset = 0;
                 for (int i = 0; i < outputCount; ++i)
                 {
-                    var strLen = lens[i];
-                    result[i] = Encoding.UTF8.GetString(stringData, readOffset, strLen);
+                    var strLen = (int)Marshal.ReadIntPtr(lengths, IntPtr.Size * i);
+                    unsafe
+                    {
+                        var strStart = new IntPtr(buffer.ToInt64() + readOffset);
+                        result[i] = Encoding.UTF8.GetString((byte*)strStart.ToPointer(), strLen);
+                    }
                     readOffset += strLen;
                 }
+
                 return result;
             }
             finally
@@ -279,7 +315,7 @@ namespace Microsoft.ML.OnnxRuntime
             NativeApiStatus.VerifySuccess(NativeMethods.OrtGetBoundOutputValues(handle, allocator.Pointer,
                 out IntPtr ortValues, out UIntPtr count));
 
-            if (count.Equals(UIntPtr.Zero))
+            if ((ulong)count == 0)
             {
                 return new DisposableList<OrtValue>();
             }

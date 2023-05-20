@@ -18,13 +18,13 @@ namespace Microsoft.ML.OnnxRuntime
     /// </summary>
     internal class MapHelper
     {
-        internal MapHelper(object keys, object values)
+        internal MapHelper(TensorBase keys, TensorBase values)
         {
             Keys = keys;
             Values = values;
         }
-        internal Object Keys { get; }   // DenseTensor<K>
-        internal Object Values { get; } // DenseTensor<V>
+        internal TensorBase Keys { get; }   // DenseTensor<K>
+        internal TensorBase Values { get; } // DenseTensor<V>
     }
 
     /// <summary>
@@ -273,7 +273,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// </summary>
         /// <typeparam name="K"></typeparam>
         /// <returns>DenseTensor<K>"</returns>
-        internal Object GetDictionaryKeys()
+        internal TensorBase GetDictionaryKeys()
         {
             if (ValueType != OnnxValueType.ONNX_TYPE_MAP)
             {
@@ -289,7 +289,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// </summary>
         /// <typeparam name="V"></typeparam>
         /// <returns>DenseTensor<V>"</returns>
-        internal Object GetDictionaryValues()
+        internal TensorBase GetDictionaryValues()
         {
             if (ValueType != OnnxValueType.ONNX_TYPE_MAP)
             {

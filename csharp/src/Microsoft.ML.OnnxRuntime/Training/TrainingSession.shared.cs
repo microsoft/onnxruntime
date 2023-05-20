@@ -497,13 +497,12 @@ namespace Microsoft.ML.OnnxRuntime
             }
 
             // Here buffer size represents the number of elements in the buffer
-            IntPtr bufferSize = IntPtr.Zero;
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtGetTensorShapeElementCount(typeAndShapeInfo, out bufferSize));
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtGetTensorShapeElementCount(typeAndShapeInfo, out UIntPtr bufferSize));
 
             // OrtGetParametersSize returns the total number of elements in the model's parameters.
             UIntPtr numElementsTrainingOnly = UIntPtr.Zero;
             NativeApiStatus.VerifySuccess(NativeTrainingMethods.OrtGetParametersSize(_nativeHandle, out numElementsTrainingOnly, true));
-            if (bufferSize.ToInt64() == (long)numElementsTrainingOnly.ToUInt64())
+            if ((ulong)bufferSize == (ulong)numElementsTrainingOnly)
             {
                 NativeApiStatus.VerifySuccess(NativeTrainingMethods.OrtCopyBufferToParameters(_nativeHandle, buffer.Value.Handle, true));
                 return;
@@ -511,7 +510,7 @@ namespace Microsoft.ML.OnnxRuntime
 
             UIntPtr numElements = UIntPtr.Zero;
             NativeApiStatus.VerifySuccess(NativeTrainingMethods.OrtGetParametersSize(_nativeHandle, out numElements, false));
-            if (bufferSize.ToInt64() != (long)numElements.ToUInt64())
+            if ((ulong)bufferSize != (ulong)numElements)
             {
                 string errorMessage = "Incorrect buffer size received. Expected size to be one of " + numElementsTrainingOnly.ToString() + " (training only) or " + numElements.ToString() + " (all parameters). Actual size: " + bufferSize.ToString();
                 throw new ArgumentException(errorMessage);
