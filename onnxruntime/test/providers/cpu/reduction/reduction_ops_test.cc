@@ -1551,14 +1551,14 @@ TEST(ReductionOpTest, ReduceMean_axes_input) {
   OpTester test("ReduceMean", 18, onnxruntime::kOnnxDomain);
   test.AddAttribute("keepdims", (int64_t)1);
   test.AddInput<float>("data", {3, 2, 2},
-                         {1, 2,
-                          3, 4,
+                       {1, 2,
+                        3, 4,
 
-                          5, 6,
-                          7, 8,
+                        5, 6,
+                        7, 8,
 
-                          9, 10,
-                          11, 12});
+                        9, 10,
+                        11, 12});
   test.AddInput<int64_t>("axes", {2}, std::vector<int64_t>{0, 2}, true);
   test.AddOutput<float>("reduced", {1, 2, 1}, {5.5, 7.5});
 

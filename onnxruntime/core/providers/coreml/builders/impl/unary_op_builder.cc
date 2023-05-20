@@ -12,7 +12,7 @@
 #include "base_op_builder.h"
 
 namespace onnxruntime {
-namespace coreml{
+namespace coreml {
 
 class UnaryOpBuilder : public BaseOpBuilder {
  private:

@@ -42,7 +42,7 @@ void AddReductionParams(T* params, const std::vector<int64_t>& axes, bool keepdi
   if (axes.size() == 0 && !noop_with_empty_axes)
     params->set_reduceall(true);
 }
-} // namespace
+}  // namespace
 
 void ReductionOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const {
   const auto& input_defs(node.InputDefs());
@@ -123,5 +123,5 @@ void CreateReductionOpBuilder(const std::string& op_type, OpBuilderRegistrations
   op_registrations.op_builder_map.emplace(op_type, op_registrations.builders.back().get());
 }
 
-}  // coreml
-}  // onnxruntime
+}  // namespace coreml
+}  // namespace onnxruntime
