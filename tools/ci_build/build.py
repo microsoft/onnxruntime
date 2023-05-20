@@ -677,6 +677,8 @@ def parse_arguments():
 
     parser.add_argument("--use_cache", action="store_true", help="Use compiler cache in CI")
 
+    parser.add_argument("--use_lock_free_queue", action="store_true", help="Use lock-free task queue for threadpool.")
+
     if not is_windows():
         parser.add_argument(
             "--allow_running_as_root",
@@ -1306,6 +1308,9 @@ def generate_build_tree(
 
     if args.use_azure:
         add_default_definition(cmake_extra_defines, "onnxruntime_USE_AZURE", "ON")
+
+    if args.use_lock_free_queue:
+        add_default_definition(cmake_extra_defines, "onnxruntime_USE_LOCK_FREE_QUEUE", "ON")
 
     cmake_args += [f"-D{define}" for define in cmake_extra_defines]
 
