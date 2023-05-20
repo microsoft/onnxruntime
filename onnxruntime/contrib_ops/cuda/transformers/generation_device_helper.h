@@ -147,6 +147,16 @@ Status ExpandBuffer(
     bool only_copy_shape,
     int max_sequence_length = 0);
 
+template <typename T>
+Status UpdateDecoderCrossQK(
+    int iteration_number,
+    Stream* tream,
+    const OrtValue* cross_qks,
+    int num_layers,
+    int cross_qk_layer_head_pair_count,
+    const int* cross_qk_layer_head_pairs,
+    T* cross_qk_buffer_data);
+
 }  // namespace GenerationCudaDeviceHelper
 }  // namespace contrib
 }  // namespace onnxruntime

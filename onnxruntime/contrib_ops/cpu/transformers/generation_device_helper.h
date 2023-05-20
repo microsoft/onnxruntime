@@ -195,6 +195,17 @@ using ExpandBufferFunc = std::function<Status(
     OrtValue& expanded,
     bool only_copy_shape,
     int max_sequence_length)>;
+
+template <typename T>
+using UpdateDecoderCrossQKFunc = std::function<Status(
+    int iteration_number,
+    Stream* stream,
+    const OrtValue* cross_qks,
+    int num_layers,
+    int cross_qk_layer_head_pair_count,
+    const int* cross_qk_layer_head_pairs,
+    T* cross_qk_buffer_data)>;
+
 }  // namespace GenerationDeviceHelper
 
 // These are CPU specific device helper implementations
@@ -357,6 +368,17 @@ Status ExpandBuffer(
     OrtValue& expanded,
     bool only_copy_shape,
     int max_sequence_length);
+
+template <typename T>
+Status UpdateDecoderCrossQK(
+    int iteration_number,
+    Stream* stream,
+    const OrtValue* cross_qks,
+    int num_layers,
+    int cross_qk_layer_head_pair_count,
+    const int* cross_qk_layer_head_pairs,
+    T* cross_qk_buffer_data
+);
 
 }  // namespace GenerationCpuDeviceHelper
 }  // namespace contrib

@@ -1429,6 +1429,40 @@ template Status ExpandBuffer<MLFloat16>(
     OrtValue& expanded,
     bool only_copy_shape,
     int max_sequence_length);
+
+
+template <typename T>
+Status UpdateDecoderCrossQK(
+    [[maybe_unused]] int iteration_number,
+    [[maybe_unused]] Stream* tream,
+    [[maybe_unused]] const OrtValue* cross_qks,
+    [[maybe_unused]] int num_layers,
+    [[maybe_unused]] int cross_qk_layer_head_pair_count,
+    [[maybe_unused]] const int* cross_qk_layer_head_pairs,
+    [[maybe_unused]] T* cross_qk_buffer_data
+) {
+  std::cout << "  ================== UpdateDecoderCrossQK GPU ======== Not Implemented Yet ====" << std::endl;
+  return Status::OK();
+}
+
+template Status UpdateDecoderCrossQK<MLFloat16>(
+    int iteration_number,
+    Stream* tream,
+    const OrtValue* cross_qks,
+    int num_layers,
+    int cross_qk_layer_head_pair_count,
+    const int* cross_qk_layer_head_pairs,
+    MLFloat16* cross_qk_buffer_data);
+
+template Status UpdateDecoderCrossQK<float>(
+    int iteration_number,
+    Stream* tream,
+    const OrtValue* cross_qks,
+    int num_layers,
+    int cross_qk_layer_head_pair_count,
+    const int* cross_qk_layer_head_pairs,
+    float* cross_qk_buffer_data);
+
 }  // namespace GenerationCudaDeviceHelper
 }  // namespace contrib
 }  // namespace onnxruntime

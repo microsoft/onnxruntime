@@ -320,6 +320,7 @@ Status BeamSearch::Compute(OpKernelContext* ctx) const {
           update_decoder_feeds_func_ ? update_decoder_feeds_func_ : GenerationCpuDeviceHelper::UpdateDecoderFeeds<float>,
           expand_buffer_float_func_ ? expand_buffer_float_func_ : GenerationCpuDeviceHelper::ExpandBuffer<float>,
           expand_buffer_float16_func_ ? expand_buffer_float16_func_ : GenerationCpuDeviceHelper::ExpandBuffer<MLFloat16>,
+          update_decoder_cross_qk_func_ ? update_decoder_cross_qk_func_ : GenerationCpuDeviceHelper::UpdateDecoderCrossQK<float>,
           cuda_device_prop_,
           cuda_device_arch_};
       ORT_RETURN_IF_ERROR(impl.Initialize());
@@ -341,6 +342,7 @@ Status BeamSearch::Compute(OpKernelContext* ctx) const {
           update_decoder_feeds_fp16_func_ ? update_decoder_feeds_fp16_func_ : GenerationCpuDeviceHelper::UpdateDecoderFeeds<MLFloat16>,
           expand_buffer_float_func_,
           expand_buffer_float16_func_,
+          update_decoder_cross_qk_fp16_func_ ? update_decoder_cross_qk_fp16_func_ : GenerationCpuDeviceHelper::UpdateDecoderCrossQK<MLFloat16>,
           cuda_device_prop_,
           cuda_device_arch_};
 

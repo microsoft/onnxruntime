@@ -1085,6 +1085,38 @@ template Status CreateWhisperEncoderInputs<MLFloat16>(
     OrtValue& encoder_input_features,
     OrtValue& decoder_input_ids);
 
+
+template <typename T>
+Status UpdateDecoderCrossQK(
+    [[maybe_unused]] int iteration_number,
+    [[maybe_unused]] Stream* tream,
+    [[maybe_unused]] const OrtValue* cross_qks,
+    [[maybe_unused]] int num_layers,
+    [[maybe_unused]] int cross_qk_layer_head_pair_count,
+    [[maybe_unused]] const int* cross_qk_layer_head_pairs,
+    [[maybe_unused]] T* cross_qk_buffer_data
+) {
+  throw std::runtime_error("CPU beam search current not support output cross QK.");
+}
+
+template Status UpdateDecoderCrossQK<MLFloat16>(
+    int iteration_number,
+    Stream* tream,
+    const OrtValue* cross_qks,
+    int num_layers,
+    int cross_qk_layer_head_pair_count,
+    const int* cross_qk_layer_head_pairs,
+    MLFloat16* cross_qk_buffer_data);
+
+template Status UpdateDecoderCrossQK<float>(
+    int iteration_number,
+    Stream* tream,
+    const OrtValue* cross_qks,
+    int num_layers,
+    int cross_qk_layer_head_pair_count,
+    const int* cross_qk_layer_head_pairs,
+    float* cross_qk_buffer_data);
+
 }  // namespace GenerationCpuDeviceHelper
 }  // namespace contrib
 }  // namespace onnxruntime
