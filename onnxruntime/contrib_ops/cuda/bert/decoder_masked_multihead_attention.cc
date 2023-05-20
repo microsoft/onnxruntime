@@ -22,6 +22,7 @@ static constexpr int kBeamWidthInputIndex = 8;
 static constexpr int kCacheIndirectionInputIndex = 9;
 static constexpr int kPastInputIndex = 5;
 static constexpr int kPresentOutputIndex = 1;
+static constexpr int kBiasIndex = 10;
 
 #define REGISTER_KERNEL_TYPED(T1, T2)                                         \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                              \
@@ -63,6 +64,7 @@ Status DecoderMaskedMultiHeadAttention<T1, T2>::ComputeInternal(OpKernelContext*
   const Tensor* past_seq_len = context->Input<Tensor>(kPastSequenceLengthInputIndex);
   const Tensor* beam_width = context->Input<Tensor>(kBeamWidthInputIndex);
   const Tensor* cache_indir = context->Input<Tensor>(kCacheIndirectionInputIndex);
+  const Tensor* bias = context->Input<Tensor>(kBiasIndex);
 
   auto& device_prop = GetDeviceProp();
   DecoderMaskedMultiHeadAttentionParams parameters;
@@ -70,7 +72,7 @@ Status DecoderMaskedMultiHeadAttention<T1, T2>::ComputeInternal(OpKernelContext*
   ORT_RETURN_IF_ERROR(multihead_attention_helper::CheckInputs<Tensor>(query,
                                                                       key,
                                                                       value,
-                                                                      nullptr,  // bias
+                                                                      bias,
                                                                       mask_index,
                                                                       relative_position_bias,
                                                                       past_key,
@@ -83,6 +85,13 @@ Status DecoderMaskedMultiHeadAttention<T1, T2>::ComputeInternal(OpKernelContext*
                                                                       past_present_share_buffer_,
                                                                       is_dmmha_packing,  // dmmha_packing
                                                                       device_prop.maxThreadsPerBlock));
+
+  if (bias) {
+    const T1* bias_data = bias->Data<T1>();
+    parameters.q_bias = const_cast<T1*>(bias_data);
+    parameters.k_bias = const_cast<T1*>(bias_data + parameters.hidden_size);
+    parameters.v_bias = const_cast<T1*>(bias_data + 2LL * parameters.hidden_size);
+  }
 
   int batch_size = parameters.batch_size;
   int sequence_length = parameters.sequence_length;
@@ -142,6 +151,9 @@ Status DecoderMaskedMultiHeadAttention<T1, T2>::ComputeInternal(OpKernelContext*
     // parameters.k and paraneters.v are nullptr
     parameters.k_cache = const_cast<T1*>(key->Data<T1>());
     parameters.v_cache = const_cast<T1*>(value->Data<T1>());
+    parameters.k_bias = nullptr;
+    parameters.v_bias = nullptr;
+
   } else {
     // Sanity check
     ORT_ENFORCE(past_present_share_buffer_);

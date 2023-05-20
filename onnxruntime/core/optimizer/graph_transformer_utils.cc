@@ -182,6 +182,7 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
 #ifndef DISABLE_CONTRIB_OPS
   const InlinedHashSet<std::string_view> cpu_ep = {onnxruntime::kCpuExecutionProvider};
 #endif
+  const InlinedHashSet<std::string_view> dml_ep = {onnxruntime::kDmlExecutionProvider};
   switch (level) {
     case TransformerLevel::Level1: {
       // RewriteRule optimizations are the simplest (they generally remove unnecessary nodes and are cheap to run)
@@ -308,6 +309,7 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       transformers.emplace_back(std::make_unique<QuickGeluFusion>(cpu_cuda_dml_rocm_eps));
 
       transformers.emplace_back(std::make_unique<MatMulScaleFusion>(cpu_cuda_dml_rocm_eps));
+      transformers.emplace_back(std::make_unique<MatMulActivationFusion>(dml_ep));
 
       // GeluApproximation has side effects which may change results. It needs to be manually enabled,
       // or alternatively the model can be updated offline using a model conversion script
