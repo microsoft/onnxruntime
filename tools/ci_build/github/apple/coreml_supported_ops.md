@@ -26,7 +26,6 @@ Keep in sync with doco generated from /docs/execution-providers/CoreML-Execution
 |ai.onnx:Pow|Only supports cases when both inputs are fp32.|
 |ai.onnx:PRelu|Input slope should be constant.<br/>Input slope should either have shape [C, 1, 1] or have 1 element.|
 |ai.onnx:Reciprocal||
-|ai.onnx.ReduceMean||     
 |ai.onnx.ReduceSum||
 |ai.onnx:Relu||
 |ai.onnx:Reshape||
