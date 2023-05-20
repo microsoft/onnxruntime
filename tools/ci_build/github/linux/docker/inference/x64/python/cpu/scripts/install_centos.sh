@@ -12,8 +12,6 @@ tar zxvf v1.1.0.tar.gz
 cd rapidjson-1.1.0
 mkdir build
 cd build
-echo "prepare to install rapidjson"
 cmake ..
 cmake --install .
 cd ../..
-echo "rapidjson installed"
