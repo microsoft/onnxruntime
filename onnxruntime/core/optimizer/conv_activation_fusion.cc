@@ -265,7 +265,7 @@ void RegisterConvActivationFusionRules(SelectorActionRegistry& registry, [[maybe
   registry.RegisterSelectorAndAction("ConvAct", {{"Conv", {1, 11}}},
                                      std::move(selector), std::move(action));
 #else
-  registry.RegisterAction(name, std::move(action));
+  registry.RegisterAction("ConvAct", std::move(action));
 #endif
 }
 
@@ -273,10 +273,10 @@ void RegisterConvAddReluFusionRules(SelectorActionRegistry& registry, [[maybe_un
   auto action = std::make_unique<actions::FuseConvAddRelu>();
 #if !defined(ORT_MINIMAL_BUILD)
   auto selector = std::make_unique<selectors::ConvAddReluSelector>(support_fp16);
-  registry.RegisterSelectorAndAction("ConvAddReluSelector", {{"Conv", {1, 11}}},
+  registry.RegisterSelectorAndAction("ConvAddRelu", {{"Conv", {1, 11}}},
                                      std::move(selector), std::move(action));
 #else
-  registry.RegisterAction(name, std::move(action));
+  registry.RegisterAction("ConvAddRelu", std::move(action));
 #endif
 }
 
