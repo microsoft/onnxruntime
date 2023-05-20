@@ -12,7 +12,6 @@
 #include "qnn_def.h"
 #include "core/common/logging/logging.h"
 #include "core/graph/graph_viewer.h"
-#include "core/framework/allocator.h"
 #include "core/providers/shared/node_unit/node_unit.h"
 #include "core/providers/shared/utils/utils.h"
 

@@ -4,7 +4,6 @@
 #pragma once
 
 #include "core/common/status.h"
-#include "core/framework/allocator.h"
 #include "core/graph/graph_viewer.h"
 #include "core/providers/qnn/builder/qnn_def.h"
 #include "core/providers/qnn/builder/qnn_model_wrapper.h"

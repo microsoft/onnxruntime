@@ -79,7 +79,10 @@ void MyCustomKernelSecondInputOnCpu::Compute(OrtKernelContext* context) {
   // check if the second input is on CPU
   cudaPointerAttributes attributes;
   cudaPointerGetAttributes(&attributes, Y);
-  ASSERT_EQ(attributes.type, cudaMemoryType::cudaMemoryTypeHost); // TODO(leca): REVIEW
+  auto y_mem_type = attributes.device;
+  // TODO: check why the below ORT API does not work as expected:
+  // `auto y_mem_type = input_Y.GetTensorMemoryInfo().GetMemoryType();`
+  ASSERT_EQ(y_mem_type, OrtMemType::OrtMemTypeCPUInput);
 
   // copy the second input to GPU
   const int64_t y_size = input_Y.GetTensorTypeAndShapeInfo().GetElementCount();
