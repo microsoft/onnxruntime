@@ -1561,7 +1561,10 @@ TEST(ReductionOpTest, ReduceMean_axes_input) {
                           11, 12});
   test.AddInput<int64_t>("axes", {2}, std::vector<int64_t>{0, 2}, true);
   test.AddOutput<float>("reduced", {1, 2, 1}, {5.5, 7.5});
-  test.Run();
+
+  // TODO: DNNL, TensorRT, and OpenVINO dont support "axes" input in opset 18, re-enable after
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kDnnlExecutionProvider, kTensorrtExecutionProvider, kOpenVINOExecutionProvider, kDmlExecutionProvider});
 }
 
 TEST(ReductionOpTest, ReduceMean_do_not_keepdims_axes_input_initializer) {
@@ -1572,7 +1575,10 @@ TEST(ReductionOpTest, ReduceMean_do_not_keepdims_axes_input_initializer) {
                         3.0f, 4.0f});
   test.AddInput<int64_t>("axes", {1}, std::vector<int64_t>{1}, true);
   test.AddOutput<float>("reduced", {1, 2}, {2.0f, 3.0f});
-  test.Run();
+
+  // TODO: DNNL, TensorRT, and OpenVINO dont support "axes" input in opset 18, re-enable after
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kDnnlExecutionProvider, kTensorrtExecutionProvider, kOpenVINOExecutionProvider, kDmlExecutionProvider});
 }
 
 TEST(ReductionOpTest, ReduceMean0DTensor) {
