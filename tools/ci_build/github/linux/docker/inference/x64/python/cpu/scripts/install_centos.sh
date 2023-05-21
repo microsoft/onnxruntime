@@ -15,3 +15,4 @@ cd build
 cmake ..
 cmake --install .
 cd ../..
+echo "rapidjson installed"
