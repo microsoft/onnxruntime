@@ -4,8 +4,8 @@
 namespace OrtApis {
 
 ORT_API(const OrtApi*, GetApi, uint32_t version);
-ORT_API(const ORTCHAR_T*, GetVersionString);
-ORT_API(const ORTCHAR_T*, GetBuildInfoString);
+
+ORT_API(const char*, GetVersionString);
 
 ORT_API(void, ReleaseEnv, OrtEnv*);
 ORT_API(void, ReleaseStatus, _Frees_ptr_opt_ OrtStatus*);
@@ -465,4 +465,14 @@ ORT_API_STATUS_IMPL(GetResizedStringTensorElementBuffer, _Inout_ OrtValue* value
                     _In_ size_t index, _In_ size_t length_in_bytes, _Inout_ char**);
 
 ORT_API_STATUS_IMPL(KernelContext_GetAllocator, _In_ const OrtKernelContext* context, _In_ const OrtMemoryInfo* mem_info, _Outptr_ OrtAllocator** out);
+
+ORT_API(const char*, GetBuildInfoString);
+
+ORT_API_STATUS_IMPL(CreateROCMProviderOptions, _Outptr_ OrtROCMProviderOptions** out);
+ORT_API_STATUS_IMPL(UpdateROCMProviderOptions, _Inout_ OrtROCMProviderOptions* rocm_options,
+                    _In_reads_(num_keys) const char* const* provider_options_keys,
+                    _In_reads_(num_keys) const char* const* provider_options_values,
+                    size_t num_keys);
+ORT_API_STATUS_IMPL(GetROCMProviderOptionsAsString, _In_ const OrtROCMProviderOptions* rocm_options, _Inout_ OrtAllocator* allocator, _Outptr_ char** ptr);
+ORT_API(void, ReleaseROCMProviderOptions, _Frees_ptr_opt_ OrtROCMProviderOptions*);
 }  // namespace OrtApis

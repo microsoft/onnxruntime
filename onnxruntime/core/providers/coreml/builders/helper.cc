@@ -46,6 +46,11 @@ bool IsNodeSupported(const Node& node, const GraphViewer& graph_viewer, const lo
 }
 
 bool IsInputSupported(const NodeArg& input, const std::string& parent_name, const logging::Logger& logger) {
+  if (!input.Exists()) {
+    // optional input that is not provided
+    return true;
+  }
+
   const auto& input_name = input.Name();
   const auto* shape_proto = input.Shape();
   // We do not support input with no shape
@@ -85,12 +90,6 @@ std::unordered_set<const Node*> GetSupportedNodes(const GraphViewer& graph_viewe
     return supported_nodes;
   }
 #endif
-
-  const auto& graph_inputs = graph_viewer.GetInputs();
-  if (std::any_of(graph_inputs.begin(), graph_inputs.end(),
-                  [&](const NodeArg* input) { return !IsInputSupported(*input, "graph", logger); })) {
-    return supported_nodes;
-  }
 
   for (const auto& node : graph_viewer.Nodes()) {
     const bool supported = IsNodeSupported(node, graph_viewer, logger);
