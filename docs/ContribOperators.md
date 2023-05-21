@@ -1134,7 +1134,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Custom scale will be used if specified. Default value is 1/sqrt(head_size)</dd>
 </dl>
 
-#### Inputs (1 - 10)
+#### Inputs (1 - 11)
 
 <dl>
 <dt><tt>query</tt> : T</dt>
@@ -1157,6 +1157,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>The beam width that is being used while decoding.If not provided, the beam width will be assumed to be 1.</dd>
 <dt><tt>cache_indirection</tt> (optional) : M</dt>
 <dd>A buffer of shape [batch_size, beam_width, max_output_length] where an [i, j, k] entry specifieswhich beam the 'k' th token came from for the 'j' th beam for batch 'i' in the current iteration</dd>
+<dt><tt>bias</tt> (optional) : T</dt>
+<dd>Bias tensor with shape (hidden_size + hidden_size + v_hidden_size) from input projection</dd>
 </dl>
 
 #### Outputs (1 - 3)

@@ -3553,8 +3553,13 @@ struct OrtApi {
    *
    * QNN supported keys:
    *   "backend_path": file path to QNN backend library.
-   *   "profiling_level": QNN profiling level, options: "basic", "detailed".
+   *   "qnn_context_cache_enable": 1 to enable QNN graph creation from cached QNN context file. If it's enabled: QNN EP will
+   *    load from cached QNN context binary if it exist. It will generate a context binary file if it's not exist
+   *   "qnn_context_cache_path": explicitly provide the QNN context cache file. Default to model_file.onnx.bin if not provided.
+   *   "profiling_level": QNN profiling level, options: "off", "basic", "detailed". Default to off.
    *   "rpc_control_latency": QNN RPC control latency.
+   *   "htp_performance_mode": QNN performance mode, options: "burst", "balanced", "default", "high_performance",
+   *   "high_power_saver", "low_balanced", "low_power_saver", "power_saver", "sustained_high_performance". Default to "default".
    *
    * SNPE supported keys:
    *   "runtime": SNPE runtime engine, options: "CPU", "CPU_FLOAT32", "GPU", "GPU_FLOAT32_16_HYBRID", "GPU_FLOAT16",
@@ -4211,6 +4216,67 @@ struct OrtApi {
    * \since Version 1.15.
    */
   const char*(ORT_API_CALL* GetBuildInfoString)(void);
+
+  /// \name OrtROCMProviderOptions
+  /// @{
+
+  /** \brief Create an OrtROCMProviderOptions
+   *
+   * \param[out] out Newly created ::OrtROCMProviderOptions. Must be released with OrtApi::ReleaseROCMProviderOptions
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.16.
+   */
+  ORT_API2_STATUS(CreateROCMProviderOptions, _Outptr_ OrtROCMProviderOptions** out);
+
+  /** \brief Set options in a ROCm Execution Provider.
+   *
+   * Please refer to https://onnxruntime.ai/docs/execution-providers/ROCm-ExecutionProvider.html
+   * to know the available keys and values. Key should be in null terminated string format of the member of
+   * ::OrtROCMProviderOptions and value should be its related range.
+   *
+   * For example, key="device_id" and value="0"
+   *
+   * \param[in] rocm_options
+   * \param[in] provider_options_keys Array of UTF-8 null-terminated string for provider options keys
+   * \param[in] provider_options_values Array of UTF-8 null-terminated string for provider options values
+   * \param[in] num_keys Number of elements in the `provider_option_keys` and `provider_options_values` arrays
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.16.
+   */
+  ORT_API2_STATUS(UpdateROCMProviderOptions, _Inout_ OrtROCMProviderOptions* rocm_options,
+                  _In_reads_(num_keys) const char* const* provider_options_keys,
+                  _In_reads_(num_keys) const char* const* provider_options_values,
+                  _In_ size_t num_keys);
+
+  /**
+   * Get serialized ROCm provider options string.
+   *
+   * For example, "device_id=0;arena_extend_strategy=0;......"
+   *
+   * \param rocm_options - OrtROCMProviderOptions instance
+   * \param allocator - a ptr to an instance of OrtAllocator obtained with CreateAllocator() or GetAllocatorWithDefaultOptions()
+   *                      the specified allocator will be used to allocate continuous buffers for output strings and lengths.
+   * \param ptr - is a UTF-8 null terminated string allocated using 'allocator'. The caller is responsible for using the same allocator to free it.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.16.
+   */
+  ORT_API2_STATUS(GetROCMProviderOptionsAsString, _In_ const OrtROCMProviderOptions* rocm_options, _Inout_ OrtAllocator* allocator, _Outptr_ char** ptr);
+
+  /** \brief Release an ::OrtROCMProviderOptions
+   *
+   * \note This is an exception in the naming convention of other Release* functions, as the name of the method does not have the V2 suffix, but the type does
+   *
+   * \since Version 1.16.
+   */
+  void(ORT_API_CALL* ReleaseROCMProviderOptions)(_Frees_ptr_opt_ OrtROCMProviderOptions* input);
+
+  /// @}
 };
 
 /*
