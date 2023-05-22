@@ -49,6 +49,8 @@ elif [ "$BUILD_DEVICE" == "AZURE" ]; then
     if [ -f /etc/lsb-release ]; then
         # for ubuntu
         apt-get install -y libipc-system-simple-perl python3 libssl-dev
+    else
+        export PATH=/opt/python/cp38-cp38/bin:$PATH
     fi
 fi
 
