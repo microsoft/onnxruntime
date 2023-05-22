@@ -11,7 +11,7 @@ import warnings
 from abc import ABC, abstractmethod  # noqa: F401
 from enum import IntFlag
 from functools import reduce
-from typing import List, Optional, Set, Tuple, Union
+from typing import List, Optional, Tuple
 
 import onnx
 import torch
@@ -24,7 +24,6 @@ from onnxruntime.training import ortmodule
 
 from . import _are_deterministic_algorithms_enabled, _io, _logger, _onnx_models, _runtime_inspector, _utils
 from ._custom_autograd_function_exporter import _post_process_after_export
-from ._execution_agent import InferenceAgent, TrainingAgent
 from ._fallback import (
     ORTModuleDeviceException,
     ORTModuleONNXModelException,
