@@ -344,10 +344,12 @@ TEST(FunctionTest, AttrWithDefault) {
   Check(code, "x", {1.0, 2.0, 3.0}, "y", {5.0, 7.0, 9.0});
 }
 
+// Attribute 'saturate' was introduced in opset 19, ir_version=9.
+// The test checks the parser gets it right and returns the expected results.
 TEST(FunctionTest, AttrSaturate) {
   const char* code = R"(
         <
-        ir_version: 8,
+        ir_version: 9,
         opset_import: [ "" : 19, "local" : 1 ]
         >
         agraph (float[N] x) => (float[N] y)
@@ -370,7 +372,7 @@ TEST(FunctionTest, AttrSaturate) {
         }
         )";
 
-  Check(code, "x", {1.0, 2.0, 3.0}, "y", {5.0, 7.0, 9.0});
+  Check(code, "x", {1.0, 2.0, 1e6}, "y", {5.0, 7.0, 9.0});
 }
 
 // Test use of constants inside sub-graphs, which are promoted to initializers by ORT.
