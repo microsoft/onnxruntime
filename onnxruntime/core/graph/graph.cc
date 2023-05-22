@@ -4015,9 +4015,8 @@ Status Graph::InlineFunction(Node& callnode) {
   // create a uniq_identifier to append to every node name and intermediate input\outputs
   // to make sure there are no unintended duplicates
   std::stringstream ss;
-  ss << "_" << static_cast<const void*>(&callnode) << "_" << callnode.Name() << "_";
-  auto uniq_identifier = ss.str();
-
+  ss << "_" << callnode.Name() << "_" << callnode.OpType();
+  auto uniq_identifier = GenerateNodeName(ss.str());
   // Replace a (function-call) node by an inlined graph.
   if (!callnode.GetFunctionBody()) {
     // This is the normal use-case: inlining a FunctionProto (representing
