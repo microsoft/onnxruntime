@@ -703,6 +703,7 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
     profile_min_shapes = info.profile_min_shapes;
     profile_max_shapes = info.profile_max_shapes;
     profile_opt_shapes = info.profile_opt_shapes;
+    cuda_graph_enable_ = info.cuda_graph_enable;
   } else {
     try {
       const std::string max_partition_iterations_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kMaxPartitionIterations);
@@ -842,6 +843,11 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
       profile_min_shapes = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kProfilesMinShapes);
       profile_max_shapes = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kProfilesMaxShapes);
       profile_opt_shapes = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kProfilesOptShapes);
+
+      const std::string cuda_graph_enable_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kCudaGraphEnable);
+      if (!cuda_graph_enable_env.empty()) {
+        cuda_graph_enable_ = (std::stoi(cuda_graph_enable_env) == 0 ? false : true);
+      }
     } catch (const std::invalid_argument& ex) {
       LOGS_DEFAULT(WARNING) << "[TensorRT EP] Invalid Argument (from environment variables): " << ex.what();
     } catch (const std::out_of_range& ex) {
@@ -894,6 +900,13 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
   if (int8_enable_) {
     int8_calibration_cache_available_ = !int8_calibration_cache_name_.empty();
   }
+
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 10000
+  if (cuda_graph_enable_) {
+    cuda_graph_ = std::make_unique<CUDAGraph>();
+    cuda_graph_->SetStream(stream_);
+  }
+#endif
 
   /*
    * Parse explicit min/max/opt profile shapes from provider options.
@@ -968,7 +981,8 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
                         << ", trt_tactic_sources: " << tactic_sources_
                         << ", trt_profile_min_shapes: " << profile_min_shapes
                         << ", trt_profile_max_shapes: " << profile_max_shapes
-                        << ", trt_profile_opt_shapes: " << profile_opt_shapes;
+                        << ", trt_profile_opt_shapes: " << profile_opt_shapes
+                        << ", trt_cuda_graph_enable: " << cuda_graph_enable_;
 }
 
 TensorrtExecutionProvider::~TensorrtExecutionProvider() {
@@ -981,6 +995,45 @@ TensorrtExecutionProvider::~TensorrtExecutionProvider() {
   }
   ReleaseTensorRTCustomOpDomainList(info_.custom_op_domain_list);
 }
+
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 10000
+bool TensorrtExecutionProvider::IsGraphCaptureEnabled() const {
+  return cuda_graph_enable_;
+}
+
+bool TensorrtExecutionProvider::IsGraphCaptureAllowed() const {
+  return regular_run_count_before_graph_capture_ >= min_num_runs_before_cuda_graph_capture_;
+}
+
+void TensorrtExecutionProvider::CaptureBegin()  {
+  cuda_graph_->Reset();
+  cuda_graph_->CaptureBegin();
+}
+
+void TensorrtExecutionProvider::CaptureEnd() {
+  cuda_graph_->CaptureEnd();
+  is_graph_captured_ = true;
+}
+
+bool TensorrtExecutionProvider::IsGraphCaptured() const {
+  return is_graph_captured_;
+}
+
+Status TensorrtExecutionProvider::ReplayGraph() {
+  ORT_ENFORCE(IsGraphCaptured());
+  // Please note that CUDAGraph::Replay() is not thread safe.
+  // ORT TRT calls ReplayGraph() in compute_func() where synchromization is enforced due to lock_guard(),
+  // therefore calling CUDAGraph::Replay() is guaranteed to be thread safe.
+  return cuda_graph_->Replay();
+}
+
+void TensorrtExecutionProvider::IncrementRegularRunCountBeforeGraphCapture() {
+  // Please note that this function is not thread safe.
+  // ORT TRT calls this function in compute_func() where synchronization is enforced due to lock_guard(),
+  // therefore following increment is guaranteed to be thread safe.
+  ++regular_run_count_before_graph_capture_;
+}
+#endif
 
 AllocatorPtr TensorrtExecutionProvider::GetAllocator(OrtMemType mem_type) const {
   if (mem_type == OrtMemTypeDefault) {
@@ -1063,7 +1116,17 @@ std::unique_ptr<IDataTransfer> TensorrtExecutionProvider::GetDataTransfer() cons
   return onnxruntime::CreateGPUDataTransfer();
 }
 
+Status TensorrtExecutionProvider::OnRunStart() {
+  std::cout << "OnRunStart() ..." << std::endl;
+  if (cuda_graph_enable_ && IsGraphCaptureAllowed() && !IsGraphCaptured()) {
+    LOGS_DEFAULT(INFO) << "Capturing the cuda graph for this model";
+    CaptureBegin();
+  }
+  return Status::OK();
+}
+
 Status TensorrtExecutionProvider::OnRunEnd(bool sync_stream) {
+  std::cout << "OnRunEnd() ..." << std::endl;
   if (sync_stream && external_stream_) {
     CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream_));
   }
@@ -2178,6 +2241,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
     input_shape_ranges_[fused_node.Name()] = input_implicit_shape_ranges;
     profiles_.emplace(fused_node.Name(), std::move(trt_profiles));
 
+
     // Create function state
     // TODO: remove default capture
     NodeComputeInfo compute_info;
@@ -2208,6 +2272,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
 
     // Create compute function
     compute_info.compute_func = [this](FunctionState state, const OrtApi* api, OrtKernelContext* context) {
+      std::cout << "In compute_func()" << std::endl;
       Ort::KernelContext ctx(context);
 
       TensorrtFuncState* trt_state = reinterpret_cast<TensorrtFuncState*>(state);
@@ -2829,6 +2894,22 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
           }
         }
       }
+
+      // End CUDA graph capture.
+      // The reason we don't put following CaptureEnd() in OnRunEnd() is because OnRunEnd() is not synchronized with OnRunStart() and ExecuteGraph(),
+      // which might end up with many cuda graphs are captured by multiple threads if run with multithreading.
+      // OnRunStart() and ExecuteGraph() are synchronized inside Run(), therefore it's safe to end CUDA graph capture here.
+      if (cuda_graph_enable_ && !IsGraphCaptured()) {
+        if (IsGraphCaptureAllowed()) {
+          CaptureEnd();
+          // CUDA work issued to a capturing stream doesn’t actually run on the GPU,
+          // so run the captured graph here to actually execute the work.
+          ORT_RETURN_IF_ERROR(ReplayGraph());
+        } else {
+          IncrementRegularRunCountBeforeGraphCapture();
+        }
+      }
+
       return Status::OK();
     };
 
