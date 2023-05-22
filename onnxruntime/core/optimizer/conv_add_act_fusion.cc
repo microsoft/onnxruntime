@@ -7,7 +7,6 @@
 #include "core/framework/kernel_registry.h"
 #include "core/graph/graph_utils.h"
 #include "core/graph/node_attr_utils.h"
-#include "core/mlas/inc/mlas.h"
 #include "core/optimizer/initializer.h"
 #include "core/optimizer/conv_add_act_fusion.h"
 #include "core/optimizer/graph_transformer_utils.h"
