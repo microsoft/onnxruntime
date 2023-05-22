@@ -403,7 +403,7 @@ TEST(FunctionTest, AttrSaturateNan) {
         }
         )";
 
-  Check(code, "x", {1.0, 2.0, 1e6}, "y", {5.0, 7.0, std::nan});
+  Check(code, "x", {1.0, 2.0, 1e6}, "y", {5.0, 7.0, -55});
 }
 
 // Test use of constants inside sub-graphs, which are promoted to initializers by ORT.
