@@ -687,6 +687,7 @@ def parse_arguments():
     parser.add_argument("--use_cache", action="store_true", help="Use compiler cache in CI")
 
     parser.add_argument("--use_triton_kernel", action="store_true", help="Use triton compiled kernels")
+    parser.add_argument("--use_lock_free_queue", action="store_true", help="Use lock-free task queue for threadpool.")
 
     if not is_windows():
         parser.add_argument(
@@ -972,7 +973,6 @@ def generate_build_tree(
         "-Donnxruntime_USE_MPI=" + ("ON" if args.use_mpi else "OFF"),
         "-Donnxruntime_ENABLE_MEMORY_PROFILE=" + ("ON" if args.enable_memory_profile else "OFF"),
         "-Donnxruntime_ENABLE_CUDA_LINE_NUMBER_INFO=" + ("ON" if args.enable_cuda_line_info else "OFF"),
-        "-Donnxruntime_BUILD_WEBASSEMBLY=" + ("ON" if args.build_wasm else "OFF"),
         "-Donnxruntime_BUILD_WEBASSEMBLY_STATIC_LIB=" + ("ON" if args.build_wasm_static_lib else "OFF"),
         "-Donnxruntime_ENABLE_WEBASSEMBLY_EXCEPTION_CATCHING="
         + ("OFF" if args.disable_wasm_exception_catching else "ON"),
@@ -1324,6 +1324,9 @@ def generate_build_tree(
 
     if args.use_azure:
         add_default_definition(cmake_extra_defines, "onnxruntime_USE_AZURE", "ON")
+
+    if args.use_lock_free_queue:
+        add_default_definition(cmake_extra_defines, "onnxruntime_USE_LOCK_FREE_QUEUE", "ON")
 
     cmake_args += [f"-D{define}" for define in cmake_extra_defines]
 
@@ -2454,6 +2457,10 @@ def main():
                     args.test = False
 
         if args.build_wasm:
+            if is_windows() and platform.architecture()[0] == "32bit":
+                raise BuildError("Please use a 64-bit python to run this script")
+            if args.build_wheel or args.enable_pybind:
+                raise BuildError("WASM does not support pybind")
             emsdk_version = args.emsdk_version
             emsdk_dir = os.path.join(source_dir, "cmake", "external", "emsdk")
             emsdk_file = os.path.join(emsdk_dir, "emsdk.bat") if is_windows() else os.path.join(emsdk_dir, "emsdk")

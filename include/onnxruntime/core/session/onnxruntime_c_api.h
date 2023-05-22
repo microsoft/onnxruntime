@@ -3558,8 +3558,13 @@ struct OrtApi {
    *
    * QNN supported keys:
    *   "backend_path": file path to QNN backend library.
-   *   "profiling_level": QNN profiling level, options: "basic", "detailed".
+   *   "qnn_context_cache_enable": 1 to enable QNN graph creation from cached QNN context file. If it's enabled: QNN EP will
+   *    load from cached QNN context binary if it exist. It will generate a context binary file if it's not exist
+   *   "qnn_context_cache_path": explicitly provide the QNN context cache file. Default to model_file.onnx.bin if not provided.
+   *   "profiling_level": QNN profiling level, options: "off", "basic", "detailed". Default to off.
    *   "rpc_control_latency": QNN RPC control latency.
+   *   "htp_performance_mode": QNN performance mode, options: "burst", "balanced", "default", "high_performance",
+   *   "high_power_saver", "low_balanced", "low_power_saver", "power_saver", "sustained_high_performance". Default to "default".
    *
    * SNPE supported keys:
    *   "runtime": SNPE runtime engine, options: "CPU", "CPU_FLOAT32", "GPU", "GPU_FLOAT32_16_HYBRID", "GPU_FLOAT16",

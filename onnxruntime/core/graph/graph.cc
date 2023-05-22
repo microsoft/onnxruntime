@@ -1301,7 +1301,9 @@ Graph::Graph(const Model& owning_model,
 
   for (auto& node_arg : graph_proto_->value_info()) {
     if (utils::HasName(node_arg) && utils::HasType(node_arg)) {
-      name_to_type_map[node_arg.name()] = node_arg.type();
+      if (node_arg.name().size() > 0) {
+        name_to_type_map[node_arg.name()] = node_arg.type();
+      }
     }
   }
 
