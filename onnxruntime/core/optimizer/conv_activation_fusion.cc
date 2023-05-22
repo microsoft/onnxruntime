@@ -8,10 +8,10 @@
 #include "core/common/inlined_containers.h"
 #include "core/framework/kernel_registry.h"
 #include "core/framework/tensorprotoutils.h"
-#include "core/mlas/inc/mlas.h"
 #include "core/graph/graph_utils.h"
 #include "core/graph/node_attr_utils.h"
 #include "core/optimizer/graph_transformer.h"
+#include "core/optimizer/graph_transformer_utils.h"
 #include "core/optimizer/utils.h"
 #include "core/optimizer/selectors_actions/actions.h"
 
@@ -279,9 +279,9 @@ void RegisterConvAddReluFusionRules(SelectorActionRegistry& registry, [[maybe_un
   registry.RegisterAction("ConvAddRelu", std::move(action));
 #endif
 }
-
-SelectorActionRegistry CreateSelectorActionRegistry(bool support_fp16 = false) {
+SelectorActionRegistry CreateSelectorActionRegistry(KernelRegistry* kernelRegistry) {
   SelectorActionRegistry registry{};
+  bool const support_fp16 = optimizer_utils::IsFp16Supported(kernelRegistry);
   RegisterConvActivationFusionRules(registry, support_fp16);
   RegisterConvAddReluFusionRules(registry, support_fp16);
   return registry;
@@ -290,28 +290,13 @@ SelectorActionRegistry CreateSelectorActionRegistry(bool support_fp16 = false) {
 }  // namespace
 
 ConvActivationFusion::ConvActivationFusion(const InlinedHashSet<std::string_view>& compatible_execution_providers,
-                                           std::shared_ptr<KernelRegistry> cpu_kernel_registry,
+                                           KernelRegistry* cpu_kernel_registry,
                                            const SatApplyContextVariant& apply_context) noexcept
     : SelectorActionTransformer{
           "ConvActivationFusion",
-          CreateSelectorActionRegistry(),
+          CreateSelectorActionRegistry(cpu_kernel_registry),
           apply_context,
           compatible_execution_providers} {
-  if (!cpu_kernel_registry) {
-    return;
-  }
-  const KernelCreateInfo* kernel_create_info{};
-  const auto status = cpu_kernel_registry->TryFindKernel(
-      kCpuExecutionProvider,
-      "NhwcFusedConv",
-      kMSDomain,
-      1,
-      {{"T", {DataTypeImpl::GetTensorType<MLFloat16>()}}},
-      &kernel_create_info);
-  if (status.IsOK() && kernel_create_info != nullptr) {
-    kernel_create_info = nullptr;
-    UpdateSelectorActionRegistry(CreateSelectorActionRegistry(true));
-  }
 }
 
 }  // namespace onnxruntime

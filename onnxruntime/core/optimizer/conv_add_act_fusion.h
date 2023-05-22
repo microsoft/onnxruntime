@@ -19,7 +19,7 @@ is that we assume the graph would be executed by sequential executor. then the o
 class ConvAddActivationFusion : public SelectorActionTransformer {
  public:
   explicit ConvAddActivationFusion(const InlinedHashSet<std::string_view>& compatible_execution_providers = {},
-                                   std::shared_ptr<KernelRegistry> cpu_kernel_registry = {},
+                                   KernelRegistry* cpu_kernel_registry = {},
                                    const SatApplyContextVariant& apply_context = {}) noexcept;
 };
 

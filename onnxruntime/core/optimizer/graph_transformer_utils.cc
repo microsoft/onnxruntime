@@ -284,7 +284,7 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       transformers.emplace_back(std::make_unique<DynamicQuantizeMatMulFusion>(cpu_ep));
       transformers.emplace_back(std::make_unique<ConvActivationFusion>(
           cpu_cuda_rocm_acl_armnn_eps,
-          cpu_execution_provider.GetKernelRegistry()));
+          cpu_execution_provider.GetKernelRegistry().get()));
       transformers.emplace_back(std::make_unique<GeluFusion>(cpu_cuda_dml_rocm_eps));
       transformers.emplace_back(std::make_unique<LayerNormFusion>(cpu_cuda_dml_rocm_eps));
       transformers.emplace_back(std::make_unique<SimplifiedLayerNormFusion>(cpu_cuda_rocm_eps));
@@ -363,7 +363,7 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       // while we can fuse more activation.
       transformers.emplace_back(std::make_unique<ConvAddActivationFusion>(
           cpu_ep,
-          cpu_execution_provider.GetKernelRegistry()));
+          cpu_execution_provider.GetKernelRegistry().get()));
 #endif
 
     } break;
@@ -409,7 +409,7 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformersForMinimalB
       }
       transformers.emplace_back(std::make_unique<ConvActivationFusion>(
           cpu_ep,
-          cpu_execution_provider.GetKernelRegistry(),
+          cpu_execution_provider.GetKernelRegistry().get(),
           apply_context));
 #else   // !defined(DISABLE_CONTRIB_OPS)
       ORT_UNUSED_PARAMETER(apply_context);
@@ -448,7 +448,24 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformersForMinimalB
 
   return transformers;
 }
-
+bool IsFp16Supported(KernelRegistry* kernelRegistry) {
+  if (kernelRegistry == nullptr) {
+    return false;
+  }
+  const KernelCreateInfo* kernel_create_info{};
+  const auto status = kernelRegistry->TryFindKernel(
+      kCpuExecutionProvider,
+      "NhwcFusedConv",
+      kMSDomain,
+      1,
+      {{"T", {DataTypeImpl::GetTensorType<MLFloat16>()}}},
+      &kernel_create_info);
+  if (status.IsOK() && kernel_create_info != nullptr) {
+    kernel_create_info = nullptr;
+    return true;
+  }
+  return false;
+}
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
 }  // namespace onnxruntime::optimizer_utils

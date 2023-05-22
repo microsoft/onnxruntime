@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "core/common/inlined_containers.h"
+#include "core/framework/kernel_registry.h"
 #include "core/framework/session_options.h"
 #include "core/optimizer/graph_transformer.h"
 
@@ -80,6 +81,7 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformersForMinimalB
     const IExecutionProvider& cpu_execution_provider,
     const InlinedHashSet<std::string>& rules_and_transformers_to_disable = {});
 
+bool IsFp16Supported(KernelRegistry* kernelRegistry);
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
 }  // namespace optimizer_utils
