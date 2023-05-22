@@ -137,11 +137,16 @@ void QnnLogging(const char* format,
   ORT_UNUSED_PARAMETER(timestamp);
 
   // Always output Qnn log as Ort verbose log
-  ::onnxruntime::logging::Capture(::onnxruntime::logging::LoggingManager::DefaultLogger(),
-                                  ::onnxruntime::logging::Severity::kVERBOSE,
-                                  ::onnxruntime::logging::Category::onnxruntime,
-                                  ::onnxruntime::logging::DataType::SYSTEM,
-                                  ORT_WHERE).ProcessPrintf(format, argument_parameter);
+  const auto& logger = ::onnxruntime::logging::LoggingManager::DefaultLogger();
+  const auto severity = ::onnxruntime::logging::Severity::kVERBOSE;
+  const auto data_type = ::onnxruntime::logging::DataType::SYSTEM;
+  if (logger.OutputIsEnabled(severity, data_type)) {
+    ::onnxruntime::logging::Capture(logger,
+                                    severity,
+                                    ::onnxruntime::logging::Category::onnxruntime,
+                                    data_type,
+                                    ORT_WHERE).ProcessPrintf(format, argument_parameter);
+  }
 }
 
 void QnnBackendManager::InitializeQnnLog() {
