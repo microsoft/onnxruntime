@@ -149,8 +149,8 @@ struct Strides {
 
   // Create the strides for BSNH physically indexed memory buffer
   static Strides BSNHMemory(int batch_dim,
-                            int num_head_dim,
                             int seqlen_dim,
+                            int num_head_dim,
                             int head_size_dim) {
     ORT_UNUSED_PARAMETER(batch_dim);
     return Strides{longlong4{
@@ -248,22 +248,22 @@ inline std::tuple<Strides, Strides, Strides> GetQkvStrides(const RocmAttentionPa
         };
       } else if (attn->qkv_format == Q_K_V_BSNH) {
         return {
-            Strides::BSNHMemory(B, N, S, H),
-            Strides::BSNHMemory(B, N, L, H),
-            Strides::BSNHMemory(B, N, L, Hv),
+            Strides::BSNHMemory(B, S, N, H),
+            Strides::BSNHMemory(B, L, N, H),
+            Strides::BSNHMemory(B, L, N, Hv),
         };
       }
     case BSNH_BLN2H_NONE_NONE_NONE_NONE_NONE:
       return {
-          Strides::BSNHMemory(B, N, S, H),
-          Strides::BSNHMemory(B, N, L, 2 * H),
-          Strides::BSNHMemory(B, N, L, 2 * Hv),
+          Strides::BSNHMemory(B, S, N, H),
+          Strides::BSNHMemory(B, L, N, 2 * H),
+          Strides::BSNHMemory(B, L, N, 2 * Hv),
       };
     case BLN3H_NONE_NONE_NONE_NONE_NONE_NONE:
       return {
-          Strides::BSNHMemory(B, N, L, 3 * H),
-          Strides::BSNHMemory(B, N, L, 3 * H),
-          Strides::BSNHMemory(B, N, L, 3 * Hv),
+          Strides::BSNHMemory(B, L, N, 3 * H),
+          Strides::BSNHMemory(B, L, N, 3 * H),
+          Strides::BSNHMemory(B, L, N, 3 * Hv),
       };
     default:
       ORT_ENFORCE("unreachable");
