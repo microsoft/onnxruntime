@@ -39,7 +39,10 @@ class IGemmSoftmaxGemmPermuteKernelExplorer : public IKernelExplorer {
 
     attn_.batch_size = batch;
     attn_.sequence_length = seqlen;
-    attn_.kv_sequence_length = seqlen;  // NOTE: not used
+    // NOTE: This test wrapper does not support past present concat, then past_sequence_length = 0 always holds.
+    // Thus, total_sequence_length = past_sequence_length + kv_sequence_length further implies
+    // total_sequence_length == kv_sequence_length
+    attn_.kv_sequence_length = total_seqlen;
     attn_.past_sequence_length = 0;
     attn_.original_past_sequence_length = 0;  // NOTE: not used
     attn_.total_sequence_length = total_seqlen;
@@ -66,7 +69,20 @@ class IGemmSoftmaxGemmPermuteKernelExplorer : public IKernelExplorer {
       ORT_ENFORCE(false, "mask type not supported");
     }
     attn_.qkv_format = qkv_format;
-    attn_.mode = contrib::rocm::QFMT_KFMT_VFMT_NONE_NONE_NONE_NONE;
+    switch (qkv_format) {
+      case contrib::Q_K_V_BNSH:
+      case contrib::Q_K_V_BSNH:
+        attn_.mode = contrib::rocm::QFMT_KFMT_VFMT_NONE_NONE_NONE_NONE;
+        break;
+      case contrib::Q_KV_BSNH_BSN2H:
+        attn_.mode = contrib::rocm::BSNH_BLN2H_NONE_NONE_NONE_NONE_NONE;
+        break;
+      case contrib::QKV_BSN3H:
+        attn_.mode = contrib::rocm::BLN3H_NONE_NONE_NONE_NONE_NONE_NONE;
+        break;
+      default:
+        ORT_NOT_IMPLEMENTED("qkv_format ", qkv_format, " is not implemented");
+    }
 
     device_prop = GetEp()->GetDeviceProp();
 
