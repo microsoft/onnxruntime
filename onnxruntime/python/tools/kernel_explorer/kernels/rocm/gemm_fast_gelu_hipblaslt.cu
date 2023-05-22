@@ -86,6 +86,6 @@ KE_REGISTER(m) {
   REGISTER_OP(float)
   REGISTER_OP(half)
 }
-#endif
+#endif  // USE_HIPBLASLT
 
 }  // namespace onnxruntime

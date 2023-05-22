@@ -212,7 +212,7 @@ Status HipBlasLtGemmFastGeluOp(const GemmFastGeluParams<T>* params) {
   TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF((std::is_same_v<T, double>), "hipBLASLt does not support double inputs");
   bool enable_bias = nullptr != params->bias;
   return HipBlasLtMatMul<T, GemmFastGeluParams<T>>(params, /*batch=*/1, ActivationType::GELU,
-                                                   enable_bias, enable_bias ? params->bias : nullptr);
+                                                   enable_bias, params->bias);
 };
 
 #endif  // USE_HIPBLASLT
