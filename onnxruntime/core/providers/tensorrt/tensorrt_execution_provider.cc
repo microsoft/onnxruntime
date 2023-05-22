@@ -1117,7 +1117,6 @@ std::unique_ptr<IDataTransfer> TensorrtExecutionProvider::GetDataTransfer() cons
 }
 
 Status TensorrtExecutionProvider::OnRunStart() {
-  std::cout << "OnRunStart() ..." << std::endl;
   if (cuda_graph_enable_ && IsGraphCaptureAllowed() && !IsGraphCaptured()) {
     LOGS_DEFAULT(INFO) << "Capturing the cuda graph for this model";
     CaptureBegin();
@@ -1126,7 +1125,6 @@ Status TensorrtExecutionProvider::OnRunStart() {
 }
 
 Status TensorrtExecutionProvider::OnRunEnd(bool sync_stream) {
-  std::cout << "OnRunEnd() ..." << std::endl;
   if (sync_stream && external_stream_) {
     CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream_));
   }
@@ -2241,7 +2239,6 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
     input_shape_ranges_[fused_node.Name()] = input_implicit_shape_ranges;
     profiles_.emplace(fused_node.Name(), std::move(trt_profiles));
 
-
     // Create function state
     // TODO: remove default capture
     NodeComputeInfo compute_info;
@@ -2272,7 +2269,6 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
 
     // Create compute function
     compute_info.compute_func = [this](FunctionState state, const OrtApi* api, OrtKernelContext* context) {
-      std::cout << "In compute_func()" << std::endl;
       Ort::KernelContext ctx(context);
 
       TensorrtFuncState* trt_state = reinterpret_cast<TensorrtFuncState*>(state);
@@ -2895,10 +2891,10 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
         }
       }
 
-      // End CUDA graph capture.
-      // The reason we don't put following CaptureEnd() in OnRunEnd() is because OnRunEnd() is not synchronized with OnRunStart() and ExecuteGraph(),
+      // End CUDA graph capture if CUDA graph is enabled.
+      // The reason we don't put following CaptureEnd() in OnRunEnd() is because OnRunEnd() is not synchronized with OnRunStart() and ExecuteGraph() per inference_session.cc,
       // which might end up with many cuda graphs are captured by multiple threads if run with multithreading.
-      // OnRunStart() and ExecuteGraph() are synchronized inside Run(), therefore it's safe to end CUDA graph capture here.
+      // OnRunStart() and ExecuteGraph() are synchronized inside Run(), therefore it's safe to start/end CUDA graph capture in OnRunStart()/compute_func() here.
       if (cuda_graph_enable_ && !IsGraphCaptured()) {
         if (IsGraphCaptureAllowed()) {
           CaptureEnd();
