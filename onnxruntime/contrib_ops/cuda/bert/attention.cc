@@ -102,7 +102,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   // Check whether we can use fused kernel
   int sm = device_prop.major * 10 + device_prop.minor;
   bool is_mask_1d_seq_len = parameters.mask_type == AttentionMaskType::MASK_1D_KEY_SEQ_LEN;
-  bool is_mask_1d_key_seq_len_start = parameters.mask_type == AttentionMaskType::MASK_1D_KEY_SEQ_LEN_START;
+  // bool is_mask_1d_key_seq_len_start = parameters.mask_type == AttentionMaskType::MASK_1D_KEY_SEQ_LEN_START;
 
   if (is_unidirectional_ && enable_fused_causal_attention_) {  // GPT
     // GPT fused kernels requires left side padding. mask can be:
@@ -164,7 +164,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
                                         has_memory_efficient_attention(sm, sizeof(T) == 2);
 #else
   constexpr bool use_memory_efficient_attention = false;
-  ORT_UNUSED_VARIABLE(is_mask_1d_key_seq_len_start);
+  // ORT_UNUSED_VARIABLE(is_mask_1d_key_seq_len_start);
 #endif
 
   cublasHandle_t cublas = GetCublasHandle(context);
