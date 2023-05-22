@@ -206,9 +206,9 @@ struct RocmAttentionParameters : AttentionParameters {
 
 Status ClassifyAttentionMode(const std::string& op,
                              RocmAttentionParameters* attn,
-                             const std::vector<const Tensor*> qkv,
-                             const std::vector<const Tensor*> past,
-                             const std::vector<Tensor*> present);
+                             const std::vector<const Tensor*>& qkv,
+                             const std::vector<const Tensor*>& past,
+                             const std::vector<Tensor*>& present);
 
 }  // namespace rocm
 }  // namespace contrib

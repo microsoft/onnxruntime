@@ -81,7 +81,7 @@ About k_buffer and v_buffer, we always explicitly concat past to present and use
 - Marked with `*` indicate the Tensor is used for k_buffer passing.
 - Marked with `^` indicate the Tensor is used for v_buffer passing.
 
-# Supportted Op
+# Supported Op
 
 - A: Attention
 - MHA: MultiHeadAttention
@@ -198,11 +198,8 @@ std::tuple<const HipT*, const HipT*, const HipT*> ConvertToOffsetedBufferViews(
     const T* query = nullptr,    // q or packed_qkv
     const T* key = nullptr,      // k or packed kv
     const T* value = nullptr,    //
-    const T* past = nullptr,     // past or past_k
-    const T* past_v = nullptr,   //
     const T* present = nullptr,  // present or present_k
     const T* present_v = nullptr) {
-  ORT_UNUSED_PARAMETER(past_v);
   ORT_UNUSED_PARAMETER(present_v);
   switch (attn->mode) {
     case QFMT_KFMT_VFMT_NONE_NONE_NONE_NONE: {
@@ -211,7 +208,7 @@ std::tuple<const HipT*, const HipT*, const HipT*> ConvertToOffsetedBufferViews(
               reinterpret_cast<const HipT*>(value)};
     }
     case QFMT_KFMT_VFMT_2BNPH_NONE_2BNTH_NONE: {
-      auto offset = static_cast<int64_t>(attn->batch_size) * attn->num_head * attn->total_sequence_length *
+      auto offset = static_cast<int64_t>(attn->batch_size) * attn->num_heads * attn->total_sequence_length *
                     attn->head_size;
       return {reinterpret_cast<const HipT*>(query),
               reinterpret_cast<const HipT*>(present),
@@ -488,8 +485,11 @@ class GemmSoftmaxGemmPermuteTunableOp : public tunable::TunableOp<GemmSoftmaxGem
     switch (attn->mode) {
       case QFMT_KFMT_VFMT_NONE_NONE_NONE_NONE:
       case QFMT_KFMT_VFMT_2BNPH_NONE_2BNTH_NONE:
+        // depends on qkv format
         if (attn->qkv_format == Q_K_V_BNSH || attn->qkv_format == Q_K_V_BSNH) {
           return true;
+        } else {
+          return false;
         }
       case BSNH_BLN2H_NONE_NONE_NONE_NONE_NONE:
       case BLN3H_NONE_NONE_NONE_NONE_NONE_NONE:

@@ -81,9 +81,9 @@ inline int3 Get2DMaskStrides(int total_sequence_length) {
 Status ClassifyAttentionMode(
     const std::string& op,
     RocmAttentionParameters* attn,
-    const std::vector<const Tensor*> qkv,
-    const std::vector<const Tensor*> past,
-    const std::vector<Tensor*> present) {
+    const std::vector<const Tensor*>& qkv,
+    const std::vector<const Tensor*>& past,
+    const std::vector<Tensor*>& present) {
   size_t num_qkv = std::count_if(qkv.cbegin(), qkv.cend(), [](auto it) { return it != nullptr; });
   size_t num_past = std::count_if(past.cbegin(), past.cend(), [](auto it) { return it != nullptr; });
   size_t num_present = std::count_if(present.cbegin(), present.cend(), [](auto it) { return it != nullptr; });
