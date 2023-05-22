@@ -30,10 +30,6 @@ class TrainingManager(GraphExecutionManager):
     def __init__(self, model: _FlattenedModule, debug_options: DebugOptions, fallback_manager: _FallbackManager):
         super().__init__(model, debug_options, fallback_manager)
 
-        # WIP feature to enable caching in Gradient accumulation scenario.
-        self._enable_grad_acc_optimization = False
-        self._gradient_accumulation_manager = GradientAccumulationManager()
-
         self._export_mode = torch.onnx.TrainingMode.TRAINING
         self._forward_class = self._create_autofunction_class()
 

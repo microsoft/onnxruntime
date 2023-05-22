@@ -31,6 +31,7 @@ from ._fallback import (
     _FallbackManager,
     wrap_exception,
 )
+from ._gradient_accumulation_manager import GradientAccumulationManager
 from ._graph_execution_interface import GraphExecutionInterface
 from ._io import _FlattenedModule, _InputInfo, _ModelInputOutputSchemaType
 from .debug_options import DebugOptions, LogLevel
@@ -177,6 +178,10 @@ class GraphExecutionManager(GraphExecutionInterface):
         self._use_external_gpu_allocator = True
         # assign self._torch_alloc and self._torch_free if self._use_external_gpu_allocator is True
         self._get_torch_gpu_allocator_function_addresses()
+
+        # WIP feature to enable caching in Gradient accumulation scenario.
+        self._enable_grad_acc_optimization = False
+        self._gradient_accumulation_manager = GradientAccumulationManager()
 
         # Memory-aware gradient builder.
         self._use_memory_efficient_gradient = False
