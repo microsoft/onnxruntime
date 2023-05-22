@@ -318,8 +318,5 @@ Status SelectorActionTransformer::ApplyImpl(Graph& graph, bool& modified, int gr
                          "Running both selectors and actions is not enabled in this build.");
 #endif
 }
-void SelectorActionTransformer::UpdateSelectorActionRegistry(SelectorActionRegistry&& selector_action_registry) {
-  selector_action_registry_ = std::move(selector_action_registry);
-}
 
 }  // namespace onnxruntime

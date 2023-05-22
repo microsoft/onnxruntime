@@ -120,9 +120,7 @@ class SelectorActionTransformer : public GraphTransformer {
   // can't copy/assign selector_action_registry_
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(SelectorActionTransformer);
 
-  void UpdateSelectorActionRegistry(SelectorActionRegistry&& selector_action_registry);
-
- private:
+private:
   Status ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const override;
 
 #if !defined(ORT_MINIMAL_BUILD)
