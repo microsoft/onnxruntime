@@ -372,7 +372,38 @@ TEST(FunctionTest, AttrSaturate) {
         }
         )";
 
-  Check(code, "x", {1.0, 2.0, 1e6}, "y", {5.0, 7.0, 9.0});
+  Check(code, "x", {1.0, 2.0, 1e6}, "y", {5.0, 7.0, 2000003.0});
+}
+
+// Attribute 'saturate' was introduced in opset 19, ir_version=9.
+// The test checks the model does not saturate a value out of float 8 boundary.
+TEST(FunctionTest, AttrSaturateNan) {
+  const char* code = R"(
+        <
+        ir_version: 9,
+        opset_import: [ "" : 19, "local" : 1 ]
+        >
+        agraph (float[N] x) => (float[N] y)
+        {
+            y0 = local.myfun <a = 1e6> (x)
+            y1 = local.myfun (x)
+            y = Add (y0, y1)
+        }
+
+        <
+        opset_import: [ "" : 19 ],
+        domain: "local"
+        >
+        myfun <a: float=1.0> (x) => (y) {
+            x2 = Constant <value_float: float=@a>()
+            x2_ = Cast<to=17>(x2)
+            x3 = CastLike<saturate=0>(x2, x2_)
+            x3_ = Cast<to=1>(x3)
+            y = Add (x, x3_)
+        }
+        )";
+
+  Check(code, "x", {1.0, 2.0, 1e6}, "y", {5.0, 7.0, std::nan});
 }
 
 // Test use of constants inside sub-graphs, which are promoted to initializers by ORT.
