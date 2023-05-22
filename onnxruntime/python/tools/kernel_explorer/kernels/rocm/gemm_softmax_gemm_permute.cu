@@ -66,6 +66,7 @@ class IGemmSoftmaxGemmPermuteKernelExplorer : public IKernelExplorer {
       ORT_ENFORCE(false, "mask type not supported");
     }
     attn_.qkv_format = qkv_format;
+    attn_.mode = contrib::rocm::QFMT_KFMT_VFMT_NONE_NONE_NONE_NONE;
 
     device_prop = GetEp()->GetDeviceProp();
 
