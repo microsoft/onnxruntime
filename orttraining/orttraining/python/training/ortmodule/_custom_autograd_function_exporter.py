@@ -6,6 +6,7 @@
 import sys
 import warnings
 
+import onnx
 import torch
 import torch.utils.checkpoint
 from packaging import version
@@ -238,7 +239,9 @@ except ImportError:
     _export = _export_pt_1_10
 
 
-def _post_process_after_export(exported_model, enable_custom_autograd_function, log_level):
+def _post_process_after_export(
+    exported_model: onnx.ModelProto, enable_custom_autograd_function: bool, log_level: _logger.LogLevel
+) -> onnx.ModelProto:
     if enable_custom_autograd_function:
         return _post_process_enabling_autograd_fallback(exported_model)
 
