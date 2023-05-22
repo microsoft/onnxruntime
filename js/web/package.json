@@ -20,9 +20,8 @@
   },
   "scripts": {
     "prepare": "tsc",
-    "build:doc": "node ./script/generate-operator-md",
+    "build:doc": "node ./script/generate-webgl-operator-md && node ./script/generate-webgpu-operator-md",
     "pull:wasm": "node ./script/pull-prebuilt-wasm-artifacts",
-    "pull:wasm:debug": "node ./script/pull-prebuilt-wasm-artifacts debug",
     "test:e2e": "node ./test/e2e/run",
     "build": "node ./script/build",
     "test": "tsc --build ../scripts && node ../scripts/prepare-onnx-node-tests && node ./script/test-runner-cli",

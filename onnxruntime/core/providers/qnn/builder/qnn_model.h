@@ -38,9 +38,6 @@ class QnnModel {
 
   Status ExecuteGraph(const Ort::KernelContext& context);
 
-  const std::unordered_map<std::string, size_t>& GetInputs() const { return model_input_index_map_; }
-
-  const std::unordered_map<std::string, size_t>& GetOutputs() const { return model_output_index_map_; }
   const OnnxTensorInfo* GetOutputInfo(const std::string& name) const {
     auto it = outputs_info_.find(name);
     if (it == outputs_info_.end()) {
@@ -55,7 +52,6 @@ class QnnModel {
   Status ParseGraphInputOrOutput(ConstPointerContainer<std::vector<NodeArg*>>& input_output_defs,
                                  std::unordered_map<std::string, OnnxTensorInfo>& input_output_info_table,
                                  std::unordered_map<std::string, size_t>& input_output_index,
-                                 std::unordered_map<std::string, size_t>& input_output_index_without_initializers,
                                  bool is_input = false);
 
   const std::unordered_set<std::string>& GetInitializerInputs() const { return initializer_inputs_; }
@@ -63,13 +59,23 @@ class QnnModel {
     return initializer_inputs_.find(input_name) != initializer_inputs_.end();
   }
 
-  size_t GetInputIndex(const std::string& name) const {
+  // Return the input index within Ort graph which has initializers included
+  size_t GetOrtInputIndex(const std::string& name) const {
     return GetInputOutputIndex(name, inputs_info_);
+  }
+
+  // Return the pure input index which doesn't cover initializers
+  size_t GetGraphInputIndex(const std::string& name) const {
+    auto it = model_input_index_map_.find(name);
+    ORT_ENFORCE(it != model_input_index_map_.end(), "Input name not found.");
+    return it->second;
   }
 
   size_t GetOutputIndex(const std::string& name) const {
     return GetInputOutputIndex(name, outputs_info_);
   }
+
+  Status DeserializeGraphInfoFromBinaryInfo(const QnnSystemContext_GraphInfo_t& qnn_sys_ctx_graph_info);
 
  private:
   const NodeUnit& GetNodeUnit(const Node* node,
@@ -102,7 +108,6 @@ class QnnModel {
   QnnBackendManager* qnn_backend_manager_ = nullptr;
   // <input_name, input_index>, initializer inputs are excluded, keep the input index here
   std::unordered_map<std::string, size_t> model_input_index_map_;
-  std::unordered_map<std::string, size_t> model_input_index_map_without_initializers_;
   std::unordered_map<std::string, size_t> model_output_index_map_;
   // TODO: remove initializer_inputs_, use QnnModelWrapper
   std::unordered_set<std::string> initializer_inputs_;
