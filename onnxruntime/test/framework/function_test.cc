@@ -396,14 +396,14 @@ TEST(FunctionTest, AttrSaturateNan) {
         >
         myfun <a: float=1.0> (x) => (y) {
             x2 = Constant <value_float: float=@a>()
-            x2_ = Cast<to=17>(x2)
+            x2_ = Cast<to=18>(x2)
             x3 = CastLike<saturate=0>(x2, x2_)
             x3_ = Cast<to=1>(x3)
             y = Add (x, x3_)
         }
         )";
 
-  Check(code, "x", {1.0, 2.0, 1e6}, "y", {5.0, 7.0, -55});
+  Check(code, "x", {1.0, 2.0, 1e6}, "y", {243.0, 245.0, 2000241}); // std::numeric_limits<float>::quiet_NaN()});
 }
 
 // Test use of constants inside sub-graphs, which are promoted to initializers by ORT.
