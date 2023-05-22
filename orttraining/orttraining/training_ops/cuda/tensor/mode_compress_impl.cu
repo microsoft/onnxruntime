@@ -10,20 +10,20 @@ namespace cuda {
 
 template <typename T>
 struct NotEqualCubOp {
-  float zero_point_value_;
-  __host__ __device__ __forceinline__ NotEqualCubOp(float zero_point_value)
+  T zero_point_value_;
+  __host__ __device__ __forceinline__ NotEqualCubOp(T zero_point_value)
       : zero_point_value_(zero_point_value) {
   }
 
   __host__ __device__ __forceinline__ bool operator()(const T& val) const {
-    return static_cast<float>(val) != zero_point_value_;
+    return val != zero_point_value_;
   }
 };
 
 template <typename T>
 void GetTempStorageBytesImpl(cudaStream_t stream,
                              size_t& temp_storage_bytes,
-                             float zero_point_value,
+                             T zero_point_value,
                              int total_element_count) {
   NotEqualCubOp<T> select_op(zero_point_value);
   cub::DeviceSelect::If(
@@ -44,7 +44,7 @@ void CopyOnConditionImpl(cudaStream_t stream,
                          const T* input_data,
                          T* output_buffer,
                          int& d_num_selected_out,
-                         float zero_point_value,
+                         T zero_point_value,
                          int total_element_count) {
   NotEqualCubOp<T> select_op(zero_point_value);
   cub::DeviceSelect::If(
@@ -125,7 +125,7 @@ void SetMaskOutputImpl(const cudaDeviceProp& prop,
                        cudaStream_t stream,
                        const int64_t total_element_count,
                        const int64_t mask_element_count,
-                       const float zero_point_value,
+                       const T zero_point_value,
                        const T* X_data,
                        void* mask_data) {
   // const int blocks_per_sm = prop.maxThreadsPerMultiProcessor / kBlockSize;
@@ -162,21 +162,21 @@ void SetMaskOutputImpl(const cudaDeviceProp& prop,
   }
 }
 
-#define SPECIALIZED_ZERO_POINT_ERASE_IMPL(T)                                                                          \
-  template void GetTempStorageBytesImpl<T>(cudaStream_t stream,                                                       \
-                                           size_t & temp_storage_bytes,                                               \
-                                           float zero_point_value,                                                    \
-                                           int total_element_count);                                                  \
-  template void CopyOnConditionImpl<T>(cudaStream_t stream,                                                           \
-                                       void* d_temp_storage,                                                          \
-                                       size_t& temp_storage_bytes,                                                    \
-                                       const T* input_data,                                                           \
-                                       T* output_buffer,                                                              \
-                                       int& d_num_selected_out,                                                       \
-                                       float zero_point_value,                                                        \
-                                       int total_element_count);                                                      \
-  template void SetMaskOutputImpl<T>(const cudaDeviceProp& prop, cudaStream_t stream, const int64_t N,                \
-                                     const int64_t mask_element_count, const float zero_point_value, const T* X_data, \
+#define SPECIALIZED_ZERO_POINT_ERASE_IMPL(T)                                                                      \
+  template void GetTempStorageBytesImpl<T>(cudaStream_t stream,                                                   \
+                                           size_t & temp_storage_bytes,                                           \
+                                           T zero_point_value,                                                    \
+                                           int total_element_count);                                              \
+  template void CopyOnConditionImpl<T>(cudaStream_t stream,                                                       \
+                                       void* d_temp_storage,                                                      \
+                                       size_t& temp_storage_bytes,                                                \
+                                       const T* input_data,                                                       \
+                                       T* output_buffer,                                                          \
+                                       int& d_num_selected_out,                                                   \
+                                       T zero_point_value,                                                        \
+                                       int total_element_count);                                                  \
+  template void SetMaskOutputImpl<T>(const cudaDeviceProp& prop, cudaStream_t stream, const int64_t N,            \
+                                     const int64_t mask_element_count, const T zero_point_value, const T* X_data, \
                                      void* mask_data);
 
 SPECIALIZED_ZERO_POINT_ERASE_IMPL(float)

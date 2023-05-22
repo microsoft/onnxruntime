@@ -33,7 +33,7 @@ struct GetTempStorageBytesFunctor {
     GetTempStorageBytesImpl<CudaT>(
         static_cast<cudaStream_t>(stream->GetHandle()),
         temp_storage_bytes,
-        zero_point_value,
+        ToCudaType<T>::FromFloat(zero_point_value),
         static_cast<int>(total_element_count));
   }
 };
@@ -62,13 +62,16 @@ struct CopyOnConditionFunctor {
                                input_data,
                                temp_buffer.get(),
                                *d_num_selected_out.get(),
-                               zero_point_value,
+                               ToCudaType<T>::FromFloat(zero_point_value),
                                static_cast<int>(total_element_count));
     // cudaStreamSynchronize is needed since the value of d_num_selected_out will be used by host after this function.
     // CUDA_CALL_THROW(cudaStreamSynchronize(cuda_kernel->Stream(context)));
     int d_num_selected_host = 0;
     CUDA_CALL_THROW(cudaMemcpyAsync(&d_num_selected_host, d_num_selected_out.get(),
                                     sizeof(int), cudaMemcpyDeviceToHost, cuda_kernel->Stream(context)));
+
+    std::cout << "total_element_count: " << total_element_count << ", d_num_selected_host: " << d_num_selected_host
+              << std::endl;
 
     Tensor* output_tensor = context->Output(0, {d_num_selected_host});
     CUDA_CALL_THROW(cudaMemcpyAsync(output_tensor->MutableDataRaw(),
@@ -91,7 +94,7 @@ struct SetMaskOutputFunctor {
     typedef typename ToCudaType<T>::MappedType CudaT;
     const CudaT* X_data = reinterpret_cast<const CudaT*>(X.Data<T>());
     SetMaskOutputImpl<CudaT>(prop, stream, total_element_count,
-                             mask_element_count, zero_point_value,
+                             mask_element_count, ToCudaType<T>::FromFloat(zero_point_value),
                              X_data, mask_data);
   }
 };
