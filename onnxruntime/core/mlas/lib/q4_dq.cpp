@@ -6,7 +6,7 @@ Licensed under the MIT License.
 
 Module Name:
 
-    mlas_q4.h
+    q4_dq.cpp
 
 Abstract:
 
@@ -18,151 +18,7 @@ Abstract:
 
 --*/
 
-#include "mlas_q4.h"
-
-#include <cstring>
-#include <math.h>
-#include <algorithm>
-
-//
-// Functions for locating data from a quantized blob
-//
-template<typename T> 
-float&
-MlasQ4BlkScale(uint8_t* BlkPtr);
-
-template <typename T>
-float
-MlasQ4BlkScale(const uint8_t* BlkPtr);
-
-template <typename T>
-uint8_t&
-MlasQ4BlkZeroPoint(uint8_t* BlkPtr);
-
-template <typename T>
-uint8_t
-MlasQ4BlkZeroPoint(const uint8_t* BlkPtr);
-
-template <typename T>
-uint8_t*
-MlasQ4BlkData(uint8_t* BlkPtr);
-
-template <typename T>
-const uint8_t*
-MlasQ4BlkData(const uint8_t* BlkPtr);
-
-
-/**
- * @brief Representing int4 quantize type, block quant type 0:
- *
- * Block size 32, use 32 fp32 numbers to find quantization parameter:
- * scale (fp 32) and no zero point, then quantize the numbers
- * into int4. The resulting blob takes 16 + 4 = 20 bytes.
- */
-struct MLAS_Q4TYPE_BLK0 {
-    static constexpr size_t BlkLen = 32;
-    static constexpr size_t BlobSize = BlkLen / 2 + sizeof(float);
-};
-
-template <>
-inline float&
-MlasQ4BlkScale<MLAS_Q4TYPE_BLK0>(uint8_t* BlkPtr)
-{
-    return *reinterpret_cast<float*>(BlkPtr);
-}
-
-template <>
-inline float
-MlasQ4BlkScale<MLAS_Q4TYPE_BLK0>(const uint8_t* BlkPtr)
-{
-    return *reinterpret_cast<const float*>(BlkPtr);
-}
-
-template <>
-inline uint8_t*
-MlasQ4BlkData<MLAS_Q4TYPE_BLK0>(uint8_t* BlkPtr)
-{
-    return BlkPtr + sizeof(float);
-}
-
-template <>
-inline const uint8_t*
-MlasQ4BlkData<MLAS_Q4TYPE_BLK0>(const uint8_t* BlkPtr)
-{
-    return BlkPtr + sizeof(float);
-}
-
-
-/**
- * @brief Representing int4 quantize type, block quant type 1:
- *
- * Block size 32, use 32 fp32 numbers to find quantization parameter:
- * scale (fp 32) and zero point (int8), and then quantize the numbers
- * into int4. The resulting blob takes 16 + 5 = 21 bytes.
- */
-struct MLAS_Q4TYPE_BLK1 {
-    static constexpr size_t BlkLen = 32;
-    static constexpr size_t BlobSize = BlkLen / 2 + sizeof(float) + sizeof(uint8_t);
-};
-
-template<>
-inline float&
-MlasQ4BlkScale<MLAS_Q4TYPE_BLK1>(uint8_t* BlkPtr)
-{
-    return *reinterpret_cast<float*>(BlkPtr);
-}
-
-template<>
-inline float
-MlasQ4BlkScale<MLAS_Q4TYPE_BLK1>(const uint8_t* BlkPtr)
-{
-    return *reinterpret_cast<const float*>(BlkPtr);
-}
-
-template<>
-inline uint8_t&
-MlasQ4BlkZeroPoint<MLAS_Q4TYPE_BLK1>(uint8_t* BlkPtr)
-{
-    return *(BlkPtr + sizeof(float));
-}
-
-template<>
-inline uint8_t
-MlasQ4BlkZeroPoint<MLAS_Q4TYPE_BLK1>(const uint8_t* BlkPtr)
-{
-    return *(BlkPtr + sizeof(float));
-}
-
-template<>
-inline uint8_t*
-MlasQ4BlkData<MLAS_Q4TYPE_BLK1>(uint8_t* BlkPtr)
-{
-    return BlkPtr + sizeof(float) + sizeof(uint8_t);
-}
-
-template<>
-inline const uint8_t*
-MlasQ4BlkData<MLAS_Q4TYPE_BLK1>(const uint8_t* BlkPtr)
-{
-    return BlkPtr + sizeof(float) + sizeof(uint8_t);
-}
-
-
-//
-// Quantization and Packing
-//
-// Since block quantization is used for compress large language model weights,
-// it is usually used as the right hand side in matrix multiplications. So
-// we can just perform quantize and packing together to help accelerate
-// matrix multiplication.
-//
-// We take a tiles of 32 row and 4 column, transpose it, and quantize it
-// into 4 blocks. So numbers in quantized block are from the same column.
-// This is different from other int4 block quantization, where the numbers
-// in a block are from the same row.
-//
-
-constexpr size_t MLAS_Q4_N_STRIDE = 4;
+#include "q4common.h"
 
 template<typename T>
 inline size_t
@@ -224,14 +80,15 @@ MlasQ4GemmPackBImpl<MLAS_Q4TYPE_BLK0>(
                 MlasQ4BlkScale<MLAS_Q4TYPE_BLK0>(dst_ptr) = scale;
                 uint8_t* data = MlasQ4BlkData<MLAS_Q4TYPE_BLK0>(dst_ptr);
 
-                for (size_t l = 0; l < MLAS_Q4TYPE_BLK0::BlkLen; l += 2) {
+                for (size_t l = 0; l < MLAS_Q4TYPE_BLK0::BlkLen / 2; l++) {
                     const float v0 = l < klen ? src[ldb * l] * reciprocal_scale : 0;
-
                     const uint8_t vi0 = (uint8_t)std::min(15.0f, std::max(0.0f, v0 + 8.5f));
-                    const float v1 = (l + 1 < klen) ? src[ldb * (l + 1)] * reciprocal_scale : 0;
+
+                    const size_t l1 = l + MLAS_Q4TYPE_BLK0::BlkLen / 2;
+                    const float v1 = (l1 < klen) ? src[ldb * l1] * reciprocal_scale : 0;
                     const uint8_t vi1 = (uint8_t)std::min(15.0f, std::max(0.0f, v1 + 8.5f));
 
-                    data[l / 2] = vi0 | (vi1 << 4);
+                    data[l] = vi0 | (vi1 << 4);
                 }
                 dst_ptr += MLAS_Q4TYPE_BLK0::BlobSize;
                 src++;  // mov to next column
@@ -291,15 +148,17 @@ MlasQ4GemmPackBImpl<MLAS_Q4TYPE_BLK1>(
                 MlasQ4BlkScale<MLAS_Q4TYPE_BLK1>(dst_ptr) = scale;
                 uint8_t* data = MlasQ4BlkData<MLAS_Q4TYPE_BLK1>(dst_ptr);
 
-                for (size_t l = 0; l < MLAS_Q4TYPE_BLK1::BlkLen; l += 2) {
+                for (size_t l = 0; l < MLAS_Q4TYPE_BLK1::BlkLen / 2; l++) {
                     const float v0 = l < klen ? src[ldb * l] : 0;
                     const uint8_t vi0 = (uint8_t)std::min(
                         15.0f, std::max(0.0f, roundf(v0 * reciprocal_scale + zp)));
-                    const float v1 = (l + 1 < klen) ? src[ldb * (l + 1)] : 0;
+
+                    const size_t l1 = l + MLAS_Q4TYPE_BLK1::BlkLen / 2;
+                    const float v1 = (l1 < klen) ? src[ldb * l1] : 0;
                     const uint8_t vi1 = (uint8_t)std::min(
                         15.0f, std::max(0.0f, roundf(v1 * reciprocal_scale + zp)));
 
-                    data[l / 2] = vi0 | (vi1 << 4);
+                    data[l] = vi0 | (vi1 << 4);
                 }
                 dst_ptr += MLAS_Q4TYPE_BLK1::BlobSize;
                 src++;  // mov to next column
@@ -352,18 +211,20 @@ MlasQ4GemmUnPackBImpl<MLAS_Q4TYPE_BLK0>(
                 const float s = MlasQ4BlkScale<MLAS_Q4TYPE_BLK0>(src);
                 const uint8_t* pp = MlasQ4BlkData<MLAS_Q4TYPE_BLK0>(src);
 
-                for (size_t l = 0; l < CountK; l += 2) {
-                    const uint8_t vi = pp[l / 2];
+                for (size_t l = 0; l < MLAS_Q4TYPE_BLK0::BlkLen / 2; l++) {
+                    const uint8_t vi = pp[l];
 
-                    const int vi0 = (vi & 0x0F) - 8;
-                    const int vi1 = (vi >> 4) - 8;
+                    if (l < CountK) {
+                        const int vi0 = (vi & 0x0F) - 8;
+                        const float v0 = vi0 * s;
+                        dest[ldb * l] = v0;
+                    }
 
-                    const float v0 = vi0 * s;
-                    const float v1 = vi1 * s;
-
-                    dest[ldb * l] = v0;
-                    if (l + 1 < CountK) {
-                        dest[ldb * (l + 1)] = v1;
+                    const size_t l1 = l + MLAS_Q4TYPE_BLK0::BlkLen / 2;
+                    if (l1 < CountK) {
+                        const int vi1 = (vi >> 4) - 8;
+                        const float v1 = vi1 * s;
+                        dest[ldb * l1] = v1;
                     }
                 }
                 src += MLAS_Q4TYPE_BLK0::BlobSize;
@@ -392,18 +253,20 @@ MlasQ4GemmUnPackBImpl<MLAS_Q4TYPE_BLK1>(
                 const uint8_t z = MlasQ4BlkZeroPoint<MLAS_Q4TYPE_BLK1>(src);
                 const uint8_t* pp = MlasQ4BlkData<MLAS_Q4TYPE_BLK1>(src);
 
-                for (size_t l = 0; l < CountK; l += 2) {
-                    const uint8_t vi = pp[l / 2];
+                for (size_t l = 0; l < MLAS_Q4TYPE_BLK1::BlkLen / 2; l++) {
+                    const uint8_t vi = pp[l];
 
-                    const int8_t vi0 = vi & 0x0F;
-                    const int8_t vi1 = vi >> 4;
+                    if (l < CountK) {
+                        const int8_t vi0 = vi & 0x0F;
+                        const float v0 = (vi0 - z) * s;
+                        dest[ldb * l] = v0;
+                    }
 
-                    const float v0 = (vi0 - z) * s;
-                    const float v1 = (vi1 - z) * s;
-
-                    dest[ldb * l] = v0;
-                    if (l + 1 < CountK) {
-                        dest[ldb * (l + 1)] = v1;
+                    size_t l1 = l + MLAS_Q4TYPE_BLK1::BlkLen / 2;
+                    if (l1 < CountK) {
+                        const int8_t vi1 = vi >> 4;
+                        const float v1 = (vi1 - z) * s;
+                        dest[ldb * l1] = v1;
                     }
                 }
                 src += MLAS_Q4TYPE_BLK1::BlobSize;

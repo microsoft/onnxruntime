@@ -6,15 +6,12 @@ Licensed under the MIT License.
 
 Module Name:
 
-    q4gemm.cpp
+    q4_dq_cli.cpp
 
 Abstract:
 
-    This module implements the fp32 matrix multiplication with compressed
-    weight tensor (right hand side). The assumption is the right hand side
-    tensor can be pre-packed and compressed using int-4 quantization to save
-    memory. Quantized weights are expanded to fp32 before matrix
-    multiplication.
+    This module implements a command line tool that quantize fp32 into int4,
+    or reverse this process..
 
 --*/
 
