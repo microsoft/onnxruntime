@@ -47,7 +47,7 @@ The QNN Execution Provider supports a number of configuration options. The `prov
 
 |`provider_options_values` for `provider_options_keys = "rpc_control_latency"`|Description|
 |---|---|
-|||
+|microseconds (string)|allows client to set up RPC control latency in microseconds|
 
 |`provider_options_values` for `provider_options_keys = "htp_performance_mode"`|Description|
 |---|---|
@@ -93,4 +93,4 @@ sess = ort.InferenceSession(model_path, providers=['QNNExecutionProvider'], prov
 
 ### Inference example
 
-[Image classification with SqueezeNet in CPP using SNPE Execution Provider](https://github.com/microsoft/onnxruntime-inference-examples/tree/main/c_cxx/QNN_EP)
+[Image classification with SqueezeNet in CPP using QNN Execution Provider with QNN CPU Backend](https://github.com/microsoft/onnxruntime-inference-examples/tree/main/c_cxx/QNN_EP)
