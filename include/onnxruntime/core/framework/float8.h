@@ -37,8 +37,8 @@ struct Float8E4M3FN {
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 11080
     val = __nv_cvt_float_to_fp8(v, saturate ? __NV_SATFINITE : __NV_NOSAT, __NV_E4M3);
 #else
-    uint32_t* pv = reinterpret_cast<uint32_t*>(&v);
-    uint32_t b = *pv;
+    uint32_t b;
+    std::memcpy(&b, &v, sizeof(b));
 
     val = static_cast<uint8_t>((b & 0x80000000) >> 24);  // sign
     if ((b & 0x7fc00000) == 0x7fc00000) {
