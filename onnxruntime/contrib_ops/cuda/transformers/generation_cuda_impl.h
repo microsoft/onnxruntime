@@ -227,6 +227,22 @@ void LaunchCopyCrossQKSingleDecodeStep(
     int frames,
     int max_length);
 
+template <typename T>
+void LaunchFinalizeCrossQK(
+    cudaStream_t stream,
+    int iteration_number,
+    int context_decoding_len,
+    int batch_size,
+    int num_beams,
+    int max_length,
+    int cross_qk_layer_head_pair_count,
+    const int* cross_qk_layer_head_pairs,
+    int frames_of_k,
+    const T* cross_qk_buffer_data,
+    T* cross_qk_output,
+    int num_return_sequences,
+    const int* cache_indir_data);
+
 }  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime

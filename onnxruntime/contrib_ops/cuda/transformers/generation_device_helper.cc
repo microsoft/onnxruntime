@@ -1565,7 +1565,7 @@ Status UpdateDecoderCrossQK(
       cuda_stream,
       cross_qk_buffer_data,
       qk_layer_pointers.get(),
-      iteration_number - 1,
+      iteration_number - 2,
       batchxbeam,
       num_layers,
       num_heads,
@@ -1605,20 +1605,39 @@ template Status UpdateDecoderCrossQK<float>(
 
 template <typename T>
 Status FinalizeDecoderCrossQK(
-    [[maybe_unused]] Stream* stream,
-    [[maybe_unused]] int iteration_number,
-    [[maybe_unused]] int context_decoding_len,
-    [[maybe_unused]] int batch_size,
-    [[maybe_unused]] int num_beams,
-    [[maybe_unused]] int max_length,
-    [[maybe_unused]] int cross_qk_layer_head_pair_count,
-    [[maybe_unused]] const int* cross_qk_layer_head_pairs,
-    [[maybe_unused]] int frames_of_k,
-    [[maybe_unused]] const T* cross_qk_buffer_data,
-    [[maybe_unused]] T* cross_qk_output,
-    [[maybe_unused]] int num_return_sequences,
-    [[maybe_unused]] const int* cache_indir_data) {
-  std::cout << "  ================== FinalizeDecoderCrossQK GPU ======== Implementing in progress ====" << std::endl;
+    Stream* stream,
+    int iteration_number,
+    int context_decoding_len,
+    int batch_size,
+    int num_beams,
+    int max_length,
+    int cross_qk_layer_head_pair_count,
+    const int* cross_qk_layer_head_pairs,
+    int frames_of_k,
+    const T* cross_qk_buffer_data,
+    T* cross_qk_output,
+    int num_return_sequences,
+    const int* cache_indir_data) {
+  std::cout << "  ======[iteration number:" << iteration_number << "]===== FinalizeDecoderCrossQK GPU====" << std::endl;
+  cudaStream_t cuda_stream = stream ? static_cast<cudaStream_t>(stream->GetHandle()) : nullptr;
+
+  cuda::LaunchFinalizeCrossQK(
+    cuda_stream,
+    iteration_number,
+    context_decoding_len,
+    batch_size,
+    num_beams,
+    max_length,
+    cross_qk_layer_head_pair_count,
+    cross_qk_layer_head_pairs,
+    frames_of_k,
+    cross_qk_buffer_data,
+    cross_qk_output,
+    num_return_sequences,
+    cache_indir_data);
+
+  CUDA_RETURN_IF_ERROR(cudaGetLastError());
+
   return Status::OK();
 }
 
