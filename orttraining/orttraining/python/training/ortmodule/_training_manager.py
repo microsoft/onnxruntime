@@ -4,7 +4,7 @@
 # --------------------------------------------------------------------------
 
 import warnings
-from typing import List, Tuple
+from typing import Tuple
 
 import onnx
 import torch
@@ -81,9 +81,7 @@ class TrainingManager(GraphExecutionManager):
             forward_outputs, device
         )
 
-        output_info = [
-            (output.shape, output.device, output.dtype) for output in user_outputs
-        ]
+        output_info = [(output.shape, output.device, output.dtype) for output in user_outputs]
         run_info = _RunStateInfo(state, output_info)
         # Return user outputs and forward run information
         return user_outputs, run_info
