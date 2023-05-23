@@ -63,13 +63,14 @@ parameters:
   type: boolean
   default: false
 
+variables:
+${{if eq(parameters.ort_build_pool_name, 'onnxruntime-Win-CPU-2019')}}:
+  VSGenerator: 'Visual Studio 16 2019'
+${{else}}:
+  VSGenerator: 'Visual Studio 17 2022'
+
 stages:
 - stage: Windows_Packaging_${{ parameters.stage_name_suffix }}
-  variables:
-  ${{if eq(parameters.ort_build_pool_name, 'onnxruntime-Win-CPU-2019')}}:
-    VSGenerator: 'Visual Studio 16 2019'
-  ${{else}}:
-    VSGenerator: 'Visual Studio 17 2022'
   dependsOn: []
   jobs:
   - job:
