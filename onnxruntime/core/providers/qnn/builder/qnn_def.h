@@ -437,12 +437,6 @@ typedef struct GraphConfigInfo {
   const QnnGraph_Config_t** graphConfigs;
 } GraphConfigInfo_t;
 
-void QnnLogStdoutCallback(const char* format,
-                          QnnLog_Level_t level,
-                          uint64_t timestamp,
-                          va_list argument_parameter);
-static std::mutex qnn_log_mutex_;
-
 namespace qnn_def {
 const std::string package_name = "qti.aisw";
 const std::string dilation = "dilation";
