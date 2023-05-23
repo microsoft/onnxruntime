@@ -141,7 +141,8 @@ void QnnLogging(const char* format,
                                   ::onnxruntime::logging::Severity::kVERBOSE,
                                   ::onnxruntime::logging::Category::onnxruntime,
                                   ::onnxruntime::logging::DataType::SYSTEM,
-                                  ORT_WHERE).ProcessPrintf(format, argument_parameter);
+                                  ORT_WHERE)
+      .ProcessPrintf(format, argument_parameter);
 }
 
 void QnnBackendManager::InitializeQnnLog() {
