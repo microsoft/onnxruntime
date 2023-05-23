@@ -466,7 +466,7 @@ inline rocblas_status rocblasTransposeHelper(hipStream_t /*stream*/, rocblas_han
   return rocblas_dgeam(handle, transa, transb, m, n, alpha, A, lda, beta, B, ldb, C, ldc);
 }
 
-inline bool CanUse_rocblasTransposeHelper_MLFloat16(int m, int n) { return true; }  // CUDA has a limited grid size of 65536, ROCm has higher limits.
+inline bool CanUse_rocblasTransposeHelper_MLFloat16(int /*m*/, int /*n*/) { return true; }  // CUDA has a limited grid size of 65536, ROCm has higher limits.
 rocblas_status rocblasTransposeHelper(hipStream_t stream, rocblas_handle, rocblas_operation, rocblas_operation, int m, int n, const half*, const half* A, int, const half*, const half*, int, half* C, int);
 
 // copy
