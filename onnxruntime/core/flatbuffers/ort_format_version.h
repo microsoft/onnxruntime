@@ -19,6 +19,7 @@ namespace onnxruntime {
 // Version 3 - add `graph_doc_string` to Model
 // Version 4 - update kernel def hashing to not depend on ordering of type constraint types (NOT BACKWARDS COMPATIBLE)
 // Version 5 - deprecate kernel def hashes and add KernelTypeStrResolver info to replace them (NOT BACKWARDS COMPATIBLE)
+// Version 6 - add float 8 types
 constexpr const int kOrtModelVersion = 6;
 
 // Check if the given ort model version is supported in this build
