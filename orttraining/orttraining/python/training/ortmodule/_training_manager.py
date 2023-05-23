@@ -322,7 +322,7 @@ class TrainingManager(GraphExecutionManager):
         if self._fallback_manager.is_pending():
             return self._fallback_manager.fallback(self._debug_options.logging.log_level, *inputs, **kwargs)
 
-    def _build_graph(self, graph_transformer_config) -> None:
+    def _build_graph(self, graph_transformer_config):
         """Build an optimized gradient graph using the module_graph_builder"""
 
         super()._build_graph(graph_transformer_config)

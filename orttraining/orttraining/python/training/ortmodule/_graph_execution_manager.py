@@ -244,7 +244,7 @@ class GraphExecutionManager(GraphExecutionInterface):
         All other methods are internal"""
         pass
 
-    def _build_graph(self, config) -> None:
+    def _build_graph(self, config):
         if self._use_static_shape:
             self._graph_builder.build(config, self._input_info.shape)
         else:
@@ -454,7 +454,7 @@ class GraphExecutionManager(GraphExecutionInterface):
         graph_transformer_config.enable_compute_optimizer = self._enable_compute_optimizer
         return graph_transformer_config
 
-    def _initialize_graph_builder(self) -> None:
+    def _initialize_graph_builder(self):
         """Creates a new OrtModuleGraphBuilder, initializes it and saves it to self._graph_builder"""
 
         # All initializer names along with user inputs are a part of the onnx graph inputs

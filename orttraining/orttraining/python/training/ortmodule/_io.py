@@ -146,7 +146,7 @@ class _PrimitiveType:
         return type(value) in _PrimitiveType._primitive_types
 
     @staticmethod
-    def get_tensor(value, device):
+    def get_tensor(value, device) -> torch.Tensor:
         return torch.tensor(value, device=device)
 
     @staticmethod
@@ -245,7 +245,7 @@ def _combine_input_buffers_initializers(
     inputs: Sequence[_ModelInputOutputType],
     kwargs: Mapping[str, _ModelInputOutputType],
     device: torch.device,
-    input_density_ob: RuntimeInspector,
+    rt_inspector: RuntimeInspector,
 ):
     """Creates forward `*inputs` list from user input and PyTorch initializers
 

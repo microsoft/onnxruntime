@@ -27,7 +27,7 @@ class GradientAccumulationManager:
         self._enabled = False
         self._update_cache = False
 
-    def initialize(self, enabled, module, graph_info: C.GraphInfo) -> None:
+    def initialize(self, enabled, module, graph_info: C.GraphInfo):
         """Initializes Gradient Accumulation optimization.
 
         Args:

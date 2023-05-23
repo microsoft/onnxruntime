@@ -13,7 +13,7 @@ class Enabler:
         self._already_enabled = False
 
     @property
-    def state(self) -> bool:
+    def state(self):
         return self._state
 
     @property

@@ -4,6 +4,7 @@
 # --------------------------------------------------------------------------
 
 import warnings
+from typing import Tuple
 
 import onnx
 import torch
@@ -33,7 +34,7 @@ class InferenceManager(GraphExecutionManager):
         onnx_model: onnx.ModelProto,
         device: torch.device,
         *inputs,
-    ):
+    ) -> Tuple[Tuple[torch.Tensor, ...], _RunStateInfo]:
         """Runs the forward pass on `execution_session` with given `onnx_model`, `device` and `inputs`
 
         Args:
@@ -44,8 +45,8 @@ class InferenceManager(GraphExecutionManager):
 
         Returns:
             Returns a tuple (user_outputs, run_info):
-            user_outputs: The model output (either torch.Tensor or a container of torch.Tensor)
-            run_info: A _RunStateInfo which contains extra information about the execution of the graph
+                user_outputs: The model output (either torch.Tensor or a container of torch.Tensor)
+                run_info: A _RunStateInfo which contains extra information about the execution of the graph
         """
         # TODO: Try to reuse the output buffers as some of the output tensors are same sizes,
         #   especially the backward graph outputs.
