@@ -65,7 +65,7 @@ __global__ void CopyVectorBFloat16(const onnxruntime::BFloat16* x, int incx, onn
 }  // namespace
 
 dim3 cublasTransposeHelperDimGrid(int m, int n) {
-  return {(n + TRANS_TILE_DIM - 1) / TRANS_TILE_DIM, (m + TRANS_TILE_DIM - 1) / TRANS_TILE_DIM, 1};
+  return dim3((n + TRANS_TILE_DIM - 1) / TRANS_TILE_DIM, (m + TRANS_TILE_DIM - 1) / TRANS_TILE_DIM, 1);
 }
 
 // cublasTransposeHelper can only be used if it won't overflow the 65536 grid dimension size
