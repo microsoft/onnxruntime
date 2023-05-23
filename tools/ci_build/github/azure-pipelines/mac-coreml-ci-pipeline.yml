@@ -3,7 +3,7 @@ jobs:
   workspace:
     clean: all
   pool:
-    vmImage: 'macOS-12'
+    vmImage: 'macOS-13'
   variables:
     MACOSX_DEPLOYMENT_TARGET: '10.14'
     TODAY: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
@@ -21,6 +21,8 @@ jobs:
       CacheDir: $(CCACHE_DIR)
       BuildStep:
       - script: |
+          set -e
+          sudo xcode-select --switch /Applications/Xcode_14.3.app/Contents/Developer
           python3 tools/ci_build/build.py \
           --build_dir build \
           --skip_submodule_sync \

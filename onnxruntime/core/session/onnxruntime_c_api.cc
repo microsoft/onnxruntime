@@ -2725,8 +2725,15 @@ static constexpr OrtApi ort_api_1_to_16 = {
     &OrtApis::GetOptionalContainedTypeInfo,
     &OrtApis::GetResizedStringTensorElementBuffer,
     &OrtApis::KernelContext_GetAllocator,
-    &OrtApis::GetBuildInfoString};
-// End of Version 15 - DO NOT MODIFY ABOVE (see above text for more information)
+    &OrtApis::GetBuildInfoString,
+    // End of Version 15 - DO NOT MODIFY ABOVE (see above text for more information)
+
+    // Start of Version 16 API in progress, safe to modify/rename/rearrange until we ship
+    &OrtApis::CreateROCMProviderOptions,
+    &OrtApis::UpdateROCMProviderOptions,
+    &OrtApis::GetROCMProviderOptionsAsString,
+    &OrtApis::ReleaseROCMProviderOptions,
+};
 
 // OrtApiBase can never change as there is no way to know what version of OrtApiBase is returned by OrtGetApiBase.
 static_assert(sizeof(OrtApiBase) == sizeof(void*) * 2, "New methods can't be added to OrtApiBase as it is not versioned");

@@ -75,7 +75,7 @@ Status AddPReluWeight(ModelBuilder& model_builder, const Node& node,
 
     auto& weight_values = *prelu.mutable_alpha()->mutable_floatvalue();
     weight_values.Clear();
-    weight_values.Resize(num_channels, value);
+    weight_values.Resize(narrow<int>(num_channels), value);
   }
   return Status::OK();
 }

@@ -720,7 +720,13 @@ TEST(SplitOperatorTest, Split18_InvalidNumOutputs) {
                       3.f, 4.f}});
 
   int64_t num_outputs = 0;
-  RunTest<float>(axis, {}, input, outputs, {kTensorrtExecutionProvider, kQnnExecutionProvider}, true, true, num_outputs, false,
+  const std::unordered_set<std::string> excluded_providers =
+      {
+          kTensorrtExecutionProvider,
+          kQnnExecutionProvider,
+          kDmlExecutionProvider,  // Error message differs from expected CPU EP error message.
+      };
+  RunTest<float>(axis, {}, input, outputs, excluded_providers, true, true, num_outputs, false,
                  "Attribute `num_outputs` value cannot be lower than 1");
 
   outputs.clear();
@@ -730,7 +736,7 @@ TEST(SplitOperatorTest, Split18_InvalidNumOutputs) {
                      {0.f, 0.f}});
 
   num_outputs = 3;
-  RunTest<float>(axis, {}, input, outputs, {kTensorrtExecutionProvider, kQnnExecutionProvider}, true, true, num_outputs, false,
+  RunTest<float>(axis, {}, input, outputs, excluded_providers, true, true, num_outputs, false,
                  "Invalid num_outputs value of 3. Size of dimension being split is 2");
 }
 

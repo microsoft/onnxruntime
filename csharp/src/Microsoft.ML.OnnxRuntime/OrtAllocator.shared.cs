@@ -163,6 +163,16 @@ namespace Microsoft.ML.OnnxRuntime
         /// </summary>
         public static readonly byte[] allocatorCUDA_PINNED = Encoding.UTF8.GetBytes("CudaPinned" + Char.MinValue);
         /// <summary>
+        /// Predefined utf8 encoded allocator names. Use them to construct an instance of
+        /// OrtMemoryInfo to avoid UTF-16 to UTF-8 conversion costs.
+        /// </summary>
+        public static readonly byte[] allocatorHIP = Encoding.UTF8.GetBytes("Hip" + Char.MinValue);
+        /// <summary>
+        /// Predefined utf8 encoded allocator names. Use them to construct an instance of
+        /// OrtMemoryInfo to avoid UTF-16 to UTF-8 conversion costs.
+        /// </summary>
+        public static readonly byte[] allocatorHIP_PINNED = Encoding.UTF8.GetBytes("HipPinned" + Char.MinValue);
+        /// <summary>
         /// Create an instance of OrtMemoryInfo according to the specification
         /// Memory info instances are usually used to get a handle of a native allocator
         /// that is present within the current inference session object. That, in turn, depends

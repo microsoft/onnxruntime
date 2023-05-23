@@ -686,6 +686,8 @@ def parse_arguments():
 
     parser.add_argument("--use_cache", action="store_true", help="Use compiler cache in CI")
 
+    parser.add_argument("--use_triton_kernel", action="store_true", help="Use triton compiled kernels")
+
     if not is_windows():
         parser.add_argument(
             "--allow_running_as_root",
@@ -990,6 +992,7 @@ def generate_build_tree(
         "-Donnxruntime_USE_XNNPACK=" + ("ON" if args.use_xnnpack else "OFF"),
         "-Donnxruntime_USE_WEBNN=" + ("ON" if args.use_webnn else "OFF"),
         "-Donnxruntime_USE_CANN=" + ("ON" if args.use_cann else "OFF"),
+        "-Donnxruntime_USE_TRITON_KERNEL=" + ("ON" if args.use_triton_kernel else "OFF"),
     ]
 
     # By default on Windows we currently support only cross compiling for ARM/ARM64
@@ -1745,8 +1748,8 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                 executables.append("onnxruntime_api_tests_without_env")
                 executables.append("onnxruntime_customopregistration_test")
             for exe in executables:
-                run_subprocess([os.path.join(cwd, exe)], cwd=cwd, dll_path=dll_path)
-
+                test_output = f"--gtest_output=xml:{cwd}/{exe}.{config}.results.xml"
+                run_subprocess([os.path.join(cwd, exe), test_output], cwd=cwd, dll_path=dll_path)
         else:
             ctest_cmd = [ctest_path, "--build-config", config, "--verbose", "--timeout", args.test_all_timeout]
             run_subprocess(ctest_cmd, cwd=cwd, dll_path=dll_path)
@@ -2045,7 +2048,7 @@ def build_nuget_package(
     ort_build_dir = '/p:OnnxRuntimeBuildDirectory="' + native_dir + '"'
 
     # dotnet restore
-    cmd_args = ["dotnet", "restore", sln, "--configfile", "Nuget.CSharp.config"]
+    cmd_args = ["dotnet", "restore", sln, "--configfile", "NuGet.CSharp.config"]
     run_subprocess(cmd_args, cwd=csharp_build_dir)
 
     # build csharp bindings and create nuget package for each config

@@ -92,7 +92,7 @@ set(FLATBUFFERS_INSTALL OFF CACHE BOOL "FLATBUFFERS_INSTALL" FORCE)
 set(FLATBUFFERS_BUILD_FLATHASH OFF CACHE BOOL "FLATBUFFERS_BUILD_FLATHASH" FORCE)
 set(FLATBUFFERS_BUILD_FLATLIB ON CACHE BOOL "FLATBUFFERS_BUILD_FLATLIB" FORCE)
 if(Patch_FOUND)
-  set(ONNXRUNTIME_FLATBUFFERS_PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/flatbuffers/flatbuffers_cmake.patch)
+  set(ONNXRUNTIME_FLATBUFFERS_PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/flatbuffers/flatbuffers.patch)
 else()
  set(ONNXRUNTIME_FLATBUFFERS_PATCH_COMMAND "")
 endif()
@@ -333,18 +333,6 @@ namespace std { using ::getenv; }
     if(TARGET flatc)
       target_compile_options(flatc PRIVATE /FI${CMAKE_BINARY_DIR}/gdk_cstdlib_wrapper.h)
     endif()
-  endif()
-endif()
-
-# allow warning from flatbuffers 1.12.0 flatc code
-# idl_gen_rust.cpp:409:12: error: variable 'i' set but not used [-Werror,-Wunused-but-set-variable]
-#    size_t i = 0;
-#           ^
-# https://github.com/google/flatbuffers/blob/6df40a2471737b27271bdd9b900ab5f3aec746c7/src/idl_gen_rust.cpp#L409
-# TODO remove when we update our flatbuffers version
-if(TARGET flatc)
-  if(HAS_UNUSED_BUT_SET_VARIABLE)
-    target_compile_options(flatc PRIVATE -Wno-error=unused-but-set-variable)
   endif()
 endif()
 
