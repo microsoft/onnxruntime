@@ -16,6 +16,15 @@ namespace cuda {
 template <typename T>
 cudaDataType ToCudaDataType();
 
+struct GemmFloat8_Impl;
+
+template <typename AType, typename BType, typename CType, typename DType, typename BiasType>
+struct GemmFloat8_Impl_Compute {
+  onnxruntime::Status Compute(const GemmFloat8_Impl& params, cudaStream_t stream, cublasLtHandle_t handle,
+               const Tensor* A, const Tensor* B, const Tensor* C, Tensor* D, BiasType* relu_bias,
+               int M, int N, int K, int lda, int ldb, int ldd) const;
+};
+
 struct GemmFloat8_Impl {
   // see https://docs.nvidia.com/cuda/cublas/index.html?highlight=cublasLtMatmulDescAttributes_t#cublasltmatmuldescattributes-t
   bool fast_accumulation_mode_;
@@ -27,12 +36,16 @@ struct GemmFloat8_Impl {
   float alpha_;
   float beta_;
 
-  template <typename AType, typename BType, typename CType, typename DType, typename BiasType>
-  void CudaCompute(cudaStream_t stream, cublasLtHandle_t handle,
-                   const Tensor* A, const Tensor* B, const Tensor* C, Tensor* D, BiasType* relu_bias,
-                   int M, int N, int K) const;
-
   void set(int M, int N, int K, int& lda, int& ldb, int& ldd) const;
+
+  template <typename AType, typename BType, typename CType, typename DType, typename BiasType>
+  onnxruntime::Status CudaCompute(cudaStream_t stream, cublasLtHandle_t handle,
+                   const Tensor* A, const Tensor* B, const Tensor* C, Tensor* D, BiasType* relu_bias,
+                   int M, int N, int K) const {
+    int lda, ldb, ldd;
+    set(M, N, K, lda, ldb, ldd);
+    return GemmFloat8_Impl_Compute<AType, BType, CType, DType, BiasType>().Compute(*this, stream, handle, A, B, C, D, relu_bias, M, N, K, lda, ldb, ldd);
+  }
 };
 
 }  // namespace cuda

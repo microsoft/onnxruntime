@@ -89,13 +89,12 @@ Status GemmFloatByte::ComputeInternal(OpKernelContext* ctx) const {
       dtypes[2] == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16 &&
       dtypes[3] == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16 &&
       dtypes[4] == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
-    this->params_.CudaCompute<Float8E4M3FN, Float8E4M3FN, MLFloat16, MLFloat16, MLFloat16>(
-      stream, cublasLt, A, B, C, Y, nullptr, M, N, K);
+    return this->params_.CudaCompute<Float8E4M3FN, Float8E4M3FN, MLFloat16, MLFloat16, MLFloat16>(
+        stream, cublasLt, A, B, C, Y, nullptr, M, N, K);
   } else {
     ORT_THROW("Unable to find an implementation for GemmFloatByte and types ",
               dtypes[0], ",", dtypes[1], ",", dtypes[2], ",", dtypes[3], ",", dtypes[4], ".");
   }
-  return helper.State();
 }
 
 }  // namespace cuda

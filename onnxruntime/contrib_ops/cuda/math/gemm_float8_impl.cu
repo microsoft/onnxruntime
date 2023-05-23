@@ -45,25 +45,23 @@ void GemmFloat8_Impl::set(int M, int N, int K, int& lda, int& ldb, int& ldd) con
 }
 
 template <typename AType, typename BType, typename CType, typename DType, typename BiasType>
-void GemmFloat8_Impl::CudaCompute<AType, BType, CType, DType, BiasType>(cudaStream_t stream, cublasLtHandle_t handle,
-                                                                        const Tensor* A, const Tensor* B, const Tensor* C,
-                                                                        Tensor* D, BiasType* relu_bias,
-                                                                        int M, int N, int K) const {
+onnxruntime::Status GemmFloat8_Impl_Compute<AType, BType, CType, DType, BiasType>::Compute(
+    const GemmFloat8_Impl& params,
+    cudaStream_t stream, cublasLtHandle_t handle,
+    const Tensor* A, const Tensor* B, const Tensor* C,
+    Tensor* D, BiasType* relu_bias,
+    int M, int N, int K, int lda, int ldb, int ldd) const {
   typedef typename onnxruntime::cuda::ToCudaType<AType>::MappedType CudaAType;
   typedef typename onnxruntime::cuda::ToCudaType<BType>::MappedType CudaBType;
   typedef typename onnxruntime::cuda::ToCudaType<CType>::MappedType CudaCType;
   typedef typename onnxruntime::cuda::ToCudaType<DType>::MappedType CudaDType;
   typedef typename onnxruntime::cuda::ToCudaType<BiasType>::MappedType CudaBiasType;
 
-  int lda, ldb, ldd;
-  DType alpha_cast, beta_cast;
-
-  set(M, N, K, lda, ldb, ldd);
-  alpha_cast = onnxruntime::cuda::ToCudaType<DType>::FromFloat(alpha_);
-  beta_cast = onnxruntime::cuda::ToCudaType<DType>::FromFloat(beta_);
+  auto alpha_cast = onnxruntime::cuda::ToCudaType<DType>::FromFloat(params.alpha_);
+  auto beta_cast = onnxruntime::cuda::ToCudaType<DType>::FromFloat(params.beta_);
 
   // broadcast bias if needed and is present
-  if (beta_ != 0 && C != nullptr) {
+  if (params.beta_ != 0 && C != nullptr) {
     auto& a_shape = A->Shape();
     auto& b_shape = B->Shape();
     auto& c_shape = C->Shape();
@@ -90,11 +88,11 @@ void GemmFloat8_Impl::CudaCompute<AType, BType, CType, DType, BiasType>(cudaStre
 
   // Gemm, note that CUDA assumes col-major, so Y(N,M) = alpha * op(B) x op(A) + beta * C
 
-  constexpr auto A_type = ToCudaDataType<AType>();
-  constexpr auto B_type = ToCudaDataType<BType>();
-  constexpr auto C_type = ToCudaDataType<CType>();
-  constexpr auto D_type = ToCudaDataType<DType>();
-  constexpr auto bias_type = ToCudaDataType<BiasType>();
+  auto A_type = ToCudaDataType<AType>();
+  auto B_type = ToCudaDataType<BType>();
+  auto C_type = ToCudaDataType<CType>();
+  auto D_type = ToCudaDataType<DType>();
+  auto bias_type = ToCudaDataType<BiasType>();
 
   cublasLtMatmulDesc_t operationDesc = nullptr;
   cublasLtMatrixLayout_t Adesc = nullptr, Bdesc = nullptr, Cdesc = nullptr, Ddesc = nullptr;
@@ -103,17 +101,17 @@ void GemmFloat8_Impl::CudaCompute<AType, BType, CType, DType, BiasType>(cudaStre
   cublasLtEpilogue_t epilogue = CUBLASLT_EPILOGUE_DEFAULT;
 
   // Create matrix descriptors. Not setting any extra attributes.
-  CUBLAS_RETURN_IF_ERROR(cublasLtMatrixLayoutCreate(&Adesc, A_type, trans_A_ ? M : K, trans_A_ ? K : M, lda));
-  CUBLAS_RETURN_IF_ERROR(cublasLtMatrixLayoutCreate(&Bdesc, B_type, trans_B_ ? K : N, trans_B_ ? N : K, ldb));
+  CUBLAS_RETURN_IF_ERROR(cublasLtMatrixLayoutCreate(&Adesc, A_type, params.trans_A_ ? M : K, params.trans_A_ ? K : M, lda));
+  CUBLAS_RETURN_IF_ERROR(cublasLtMatrixLayoutCreate(&Bdesc, B_type, params.trans_B_ ? K : N, params.trans_B_ ? N : K, ldb));
   CUBLAS_RETURN_IF_ERROR(cublasLtMatrixLayoutCreate(&Ddesc, D_type, M, N, ldd));
 
   // CUDA_R_32F is the scale type for the time being since it is not used.
-  cublasLtMatmulDescCreate(&operationDesc, compute_type_, CUDA_R_32F);
-  cublasOperation_t transa = trans_A_ ? CUBLAS_OP_T : CUBLAS_OP_N;
-  cublasOperation_t transb = trans_B_ ? CUBLAS_OP_T : CUBLAS_OP_N;
+  cublasLtMatmulDescCreate(&operationDesc, params.compute_type_, CUDA_R_32F);
+  cublasOperation_t transa = params.trans_A_ ? CUBLAS_OP_T : CUBLAS_OP_N;
+  cublasOperation_t transb = params.trans_B_ ? CUBLAS_OP_T : CUBLAS_OP_N;
   cublasLtMatmulDescSetAttribute(operationDesc, CUBLASLT_MATMUL_DESC_TRANSA, &transa, sizeof(transa));
   cublasLtMatmulDescSetAttribute(operationDesc, CUBLASLT_MATMUL_DESC_TRANSB, &transb, sizeof(transb));
-  const int8_t ifast_accumulation_mode = fast_accumulation_mode_ ? 0 : 1;
+  const int8_t ifast_accumulation_mode = params.fast_accumulation_mode_ ? 0 : 1;
   cublasLtMatmulDescSetAttribute(operationDesc, CUBLASLT_MATMUL_DESC_FAST_ACCUM, &ifast_accumulation_mode, sizeof(ifast_accumulation_mode));
 
   /*
@@ -126,8 +124,8 @@ void GemmFloat8_Impl::CudaCompute<AType, BType, CType, DType, BiasType>(cudaStre
   CUBLASLT_MATMUL_DESC_AMAX_D_POINTER
   */
 
-  if (sm_count_ != 0) {
-    int math_sm_count = sm_count_;
+  if (params.sm_count_ != 0) {
+    int math_sm_count = params.sm_count_;
     cublasLtMatmulDescSetAttribute(
         operationDesc, CUBLASLT_MATMUL_DESC_SM_COUNT_TARGET,
         &math_sm_count, sizeof(math_sm_count));
@@ -141,7 +139,7 @@ void GemmFloat8_Impl::CudaCompute<AType, BType, CType, DType, BiasType>(cudaStre
     epilogue = CUBLASLT_EPILOGUE_BIAS;
     CUBLAS_RETURN_IF_ERROR(cublasLtMatmulDescSetAttribute(operationDesc,
                                                           CUBLASLT_MATMUL_DESC_BIAS_POINTER,
-                                                          &relu_bias, sizeof(*relu_bias)));
+                                                          relu_bias, sizeof(*relu_bias)));
   }
 
   cublasLtMatmulDescSetAttribute(operationDesc,
@@ -191,7 +189,10 @@ void GemmFloat8_Impl::CudaCompute<AType, BType, CType, DType, BiasType>(cudaStre
   cublasLtMatrixLayoutDestroy(Bdesc);
   cublasLtMatrixLayoutDestroy(Adesc);
   cublasLtMatmulDescDestroy(operationDesc);
+  return onnxruntime::Status::OK();
 }
+
+template struct GemmFloat8_Impl_Compute<Float8E4M3FN, Float8E4M3FN, MLFloat16, MLFloat16, MLFloat16>;
 
 }  // namespace cuda
 }  // namespace contrib
