@@ -125,19 +125,6 @@ bool AreAllNodesInMainGraphAssignedToOneEp(const Graph& graph, ProviderType prov
   return true;
 }
 
-// Returns true if any graph nodes have been assigned to the CPU EP.
-bool AreAnyNodesInMainGraphAssignedToCPUEP(const Graph& graph) {
-  for (const auto& node : graph.Nodes()) {
-    const auto& node_provider = node.GetExecutionProviderType();
-
-    if (node_provider.empty() || node_provider == onnxruntime::kCpuExecutionProvider) {
-      return true;
-    }
-  }
-
-  return false;
-}
-
 bool HasControlflowNodes(const Graph& graph) {
   for (const auto& node : graph.Nodes()) {
     if (node.ContainsSubgraph()) {
@@ -1577,6 +1564,19 @@ common::Status InferenceSession::Initialize() {
       // If the user disabled fallback, but also explicitly added the CPU EP to the session, return an error status.
       // If the user disabled fallback and any graph node is assigned to the CPU EP, return an error status.
       if (disable_cpu_ep_fallback) {
+        // Returns true if any graph nodes have been assigned to the CPU EP.
+        auto are_nodes_assigned_to_cpu_ep = [](const Graph& graph) -> bool {
+          for (const auto& node : graph.Nodes()) {
+            const auto& node_provider = node.GetExecutionProviderType();
+
+            if (node_provider.empty() || node_provider == onnxruntime::kCpuExecutionProvider) {
+              return true;
+            }
+          }
+
+          return false;
+        };
+
         if (!execution_providers_.GetCpuProviderWasImplicitlyAdded()) {
           const char* err_msg =
               "Conflicting session configuration: explicitly added the CPU EP to the "
@@ -1584,7 +1584,7 @@ common::Status InferenceSession::Initialize() {
 
           LOGS(*session_logger_, ERROR) << err_msg;
           ORT_RETURN_IF_ERROR_SESSIONID_(ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, err_msg));
-        } else if (AreAnyNodesInMainGraphAssignedToCPUEP(graph)) {
+        } else if (are_nodes_assigned_to_cpu_ep(graph)) {
           const char* err_msg =
               "This session contains graph nodes that are assigned to the default CPU EP, "
               "but fallback to CPU EP has been explicitly disabled by the user.";
