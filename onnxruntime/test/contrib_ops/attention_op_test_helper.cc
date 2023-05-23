@@ -7,6 +7,7 @@
 namespace onnxruntime {
 namespace test {
 
+// Disable some tests in Windows since prefast build might crash with large test data.
 #if !defined(_MSC_VER)
 void GetWeight_64_3_64(std::vector<float>& weight_data) {
   weight_data = {
