@@ -46,7 +46,7 @@ namespace Microsoft.ML.OnnxRuntime
         {
             var allocator = OrtAllocator.DefaultInstance;
             // Process provider options string
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtGetTensorRTProviderOptionsAsString(handle, 
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtGetTensorRTProviderOptionsAsString(handle,
                 allocator.Pointer, out IntPtr providerOptions));
             return NativeOnnxValueHelper.StringFromNativeUtf8(providerOptions, allocator);
         }
@@ -151,7 +151,7 @@ namespace Microsoft.ML.OnnxRuntime
         {
             var allocator = OrtAllocator.DefaultInstance;
             // Process provider options string
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtGetCUDAProviderOptionsAsString(handle, 
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtGetCUDAProviderOptionsAsString(handle,
                 allocator.Pointer, out IntPtr providerOptions));
             return NativeOnnxValueHelper.StringFromNativeUtf8(providerOptions, allocator);
         }
@@ -198,6 +198,92 @@ namespace Microsoft.ML.OnnxRuntime
         protected override bool ReleaseHandle()
         {
             NativeMethods.OrtReleaseCUDAProviderOptions(handle);
+            handle = IntPtr.Zero;
+            return true;
+        }
+
+        #endregion
+    }
+
+
+    /// <summary>
+    /// Holds the options for configuring a ROCm Execution Provider instance
+    /// </summary>
+    public class OrtROCMProviderOptions : SafeHandle
+    {
+        internal IntPtr Handle
+        {
+            get
+            {
+                return handle;
+            }
+        }
+
+
+        #region Constructor
+
+        /// <summary>
+        /// Constructs an empty OrtROCMroviderOptions instance
+        /// </summary>
+        public OrtROCMProviderOptions() : base(IntPtr.Zero, true)
+        {
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateROCMProviderOptions(out handle));
+        }
+
+        #endregion
+
+        #region Public Methods
+
+        /// <summary>
+        /// Get ROCm EP provider options
+        /// </summary>
+        /// <returns> return C# UTF-16 encoded string </returns>
+        public string GetOptions()
+        {
+            var allocator = OrtAllocator.DefaultInstance;
+            // Process provider options string
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtGetROCMProviderOptionsAsString(handle,
+                allocator.Pointer, out IntPtr providerOptions));
+            return NativeOnnxValueHelper.StringFromNativeUtf8(providerOptions, allocator);
+        }
+
+        private static IntPtr UpdateROCMProviderOptions(IntPtr handle, IntPtr[] keys, IntPtr[] values, UIntPtr count)
+        {
+            return NativeMethods.OrtUpdateROCMProviderOptions(handle, keys, values, count);
+        }
+
+        /// <summary>
+        /// Updates  the configuration knobs of OrtROCMProviderOptions that will eventually be used to configure a ROCm EP
+        /// Please refer to the following on different key/value pairs to configure a ROCm EP and their meaning:
+        /// https://onnxruntime.ai/docs/execution-providers/ROCm-ExecutionProvider.html
+        /// </summary>
+        /// <param name="providerOptions">key/value pairs used to configure a ROCm Execution Provider</param>
+        public void UpdateOptions(Dictionary<string, string> providerOptions)
+        {
+            ProviderOptionsUpdater.Update(providerOptions, handle, UpdateROCMProviderOptions);
+        }
+
+        #endregion
+
+        #region Public Properties
+
+        /// <summary>
+        /// Overrides SafeHandle.IsInvalid
+        /// </summary>
+        /// <value>returns true if handle is equal to Zero</value>
+        public override bool IsInvalid { get { return handle == IntPtr.Zero; } }
+
+        #endregion
+
+        #region SafeHandle
+        /// <summary>
+        /// Overrides SafeHandle.ReleaseHandle() to properly dispose of
+        /// the native instance of OrtROCMProviderOptions
+        /// </summary>
+        /// <returns>always returns true</returns>
+        protected override bool ReleaseHandle()
+        {
+            NativeMethods.OrtReleaseROCMProviderOptions(handle);
             handle = IntPtr.Zero;
             return true;
         }
