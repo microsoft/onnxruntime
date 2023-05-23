@@ -154,7 +154,7 @@ Status DequantizeLinear<T>::Compute(OpKernelContext* ctx) const {
     ORT_ENFORCE(zero_point == nullptr ||
                     std::all_of(zero_point,
                                 zero_point + x_zero_point->Shape().Size(),
-                                [](T zp) { return IsNull(zp); }),
+                                [](T zp) { return zp == T{0.0f}; }),
                 "DequantizeLinear with type int32 or float8 should have no zero point or all zero points should be 0");
   }
 
