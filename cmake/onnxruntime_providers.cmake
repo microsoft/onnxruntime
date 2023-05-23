@@ -1669,6 +1669,24 @@ if (onnxruntime_USE_ROCM)
     target_compile_definitions(onnxruntime_providers_rocm PRIVATE ENABLE_ATEN)
   endif()
 
+  onnxruntime_add_shared_library(rocm_custom_op_library ${REPO_ROOT}/onnxruntime/core/providers/rocm/customop/custom_op_library.cc)
+  target_include_directories(rocm_custom_op_library PRIVATE ${REPO_ROOT}/include)
+  target_link_libraries(rocm_custom_op_library PRIVATE ${GSL_TARGET})
+  if(UNIX)
+    if (APPLE)
+      set(ONNXRUNTIME_CUSTOM_OP_LIB_LINK_FLAG "-Xlinker -dead_strip")
+    else()
+      set(ONNXRUNTIME_CUSTOM_OP_LIB_LINK_FLAG "-Xlinker --version-script=${REPO_ROOT}/onnxruntime/core/providers/rocm/customop/custom_op_library.lds -Xlinker --no-undefined -Xlinker --gc-sections -z noexecstack")
+    endif()
+  else()
+    set(ONNXRUNTIME_CUSTOM_OP_LIB_LINK_FLAG "-DEF:${REPO_ROOT}/onnxruntime/core/providers/rocm/customop/custom_op_library.def")
+    if (NOT onnxruntime_USE_CUDA)
+      target_compile_options(custom_op_library PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler /wd26409>"
+                    "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/wd26409>")
+    endif()
+  endif()
+  set_property(TARGET rocm_custom_op_library APPEND_STRING PROPERTY LINK_FLAGS ${ONNXRUNTIME_CUSTOM_OP_LIB_LINK_FLAG})
+
   install(TARGETS onnxruntime_providers_rocm
           ARCHIVE  DESTINATION ${CMAKE_INSTALL_LIBDIR}
           LIBRARY  DESTINATION ${CMAKE_INSTALL_LIBDIR}
