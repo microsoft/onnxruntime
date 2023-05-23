@@ -2564,6 +2564,114 @@ namespace OperatorHelper
         return outputShapes;
     }
 
+    std::vector<EdgeShapes> MultiHeadAttentionHelper::GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const
+    {
+        ML_CHECK_VALID_ARGUMENT(shapeInfo.GetInputCount() >= 1);
+
+        auto queryShape = shapeInfo.GetInputTensorShape(0);
+        ML_CHECK_VALID_ARGUMENT(queryShape.size() == 3 || queryShape.size() == 5);
+
+        const uint32_t batchSize = queryShape[0];
+        const uint32_t sequenceLength = queryShape[1];
+        uint32_t kvSequenceLength = 0;
+        uint32_t vHiddenSize = 0;
+        uint32_t headSize = 0;
+
+        if (shapeInfo.IsInputValid(2))
+        {
+            auto valueShape = shapeInfo.GetInputTensorShape(2);
+            ML_CHECK_VALID_ARGUMENT(queryShape.size() == 3);
+            headSize = queryShape[2] / m_numHeads;
+
+            if (valueShape.size() == 3)
+            {
+                kvSequenceLength = valueShape[1];
+                vHiddenSize = valueShape[2];
+            }
+            else
+            {
+                ML_CHECK_VALID_ARGUMENT(valueShape.size() == 4);
+                const uint32_t vHeadSize = valueShape[3];
+                kvSequenceLength = valueShape[2];
+                vHiddenSize = vHeadSize * m_numHeads;
+            }
+        }
+        else if (shapeInfo.IsInputValid(1))
+        {
+            auto keyShape = shapeInfo.GetInputTensorShape(1);
+            ML_CHECK_VALID_ARGUMENT(keyShape.size() == 5);
+            kvSequenceLength = keyShape[1];
+            vHiddenSize = queryShape[2];
+            headSize = keyShape[4];
+        }
+        else
+        {
+            ML_CHECK_VALID_ARGUMENT(queryShape.size() == 5);
+            kvSequenceLength = queryShape[1];
+            headSize = queryShape[4];
+            vHiddenSize = headSize * m_numHeads;
+        }
+
+        std::vector<EdgeShapes> outputShapes(3);
+        outputShapes[0] = EdgeShapes({batchSize, sequenceLength, vHiddenSize});
+
+        uint32_t totalSequenceLength = kvSequenceLength;
+        if (shapeInfo.IsInputValid(6))
+        {
+            ML_CHECK_VALID_ARGUMENT(shapeInfo.GetInputTensorDimensionCount(6) == 4);
+            const uint32_t pastSequenceLength = shapeInfo.GetInputTensorShape(6)[2];
+            totalSequenceLength += pastSequenceLength;
+        }
+
+        if (shapeInfo.IsOutputValid(1))
+        {
+            outputShapes[1] = EdgeShapes({batchSize, m_numHeads, totalSequenceLength, headSize});
+        }
+
+        if (shapeInfo.IsOutputValid(2))
+        {
+            outputShapes[2] = EdgeShapes({batchSize, m_numHeads, totalSequenceLength, headSize});
+        }
+
+        return outputShapes;
+    }
+
+    void MultiHeadAttentionHelper::Initialize(const IKernelInformationAdapter& kernelInformation)
+    {
+        m_numHeads = gsl::narrow_cast<uint32_t>(kernelInformation.GetAttributes().GetAttribute<int64_t>(AttrName::NumHeads));
+    }
+
+    std::vector<EdgeShapes> AttentionHelper::GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const
+    {
+        ML_CHECK_VALID_ARGUMENT(shapeInfo.GetInputCount() >= 2);
+
+        auto queryShape = shapeInfo.GetInputTensorShape(0);
+        ML_CHECK_VALID_ARGUMENT(queryShape.size() == 3);
+
+        auto weightShape = shapeInfo.GetInputTensorShape(1);
+        ML_CHECK_VALID_ARGUMENT(weightShape.size() == 2);
+
+        if (m_qkvHiddenSizes.empty())
+        {
+            ML_CHECK_VALID_ARGUMENT(weightShape[1] % 3 == 0);
+        }
+        else
+        {
+            ML_CHECK_VALID_ARGUMENT(m_qkvHiddenSizes.size() == 3);
+        }
+
+        const uint32_t batchSize = queryShape[0];
+        const uint32_t sequenceLength = queryShape[1];
+        const uint32_t vHiddenSize = m_qkvHiddenSizes.empty() ? weightShape[1] / 3 : m_qkvHiddenSizes[2];
+
+        return { EdgeShapes({batchSize, sequenceLength, vHiddenSize}) };
+    }
+
+    void AttentionHelper::Initialize(const IKernelInformationAdapter& kernelInformation)
+    {
+        m_qkvHiddenSizes = kernelInformation.GetAttributes().GetOptionalAttributeVectorInt32(AttrName::QkvHiddenSizes);
+    }
+
     std::vector<EdgeShapes> SkipLayerNormHelper::GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const
     {
         ML_CHECK_VALID_ARGUMENT(shapeInfo.GetInputCount() >= 3);

@@ -52,7 +52,7 @@ if (onnxruntime_USE_AZURE)
 
     find_package(ZLIB REQUIRED)
     find_package(OpenSSL REQUIRED)
-    target_link_libraries(onnxruntime_framework PRIVATE httpclient_static curl OpenSSL::Crypto OpenSSL::SSL)
+    target_link_libraries(onnxruntime_framework PRIVATE httpclient_static curl ZLIB::ZLIB OpenSSL::Crypto OpenSSL::SSL)
 
   endif() #if (WIN32)
 
@@ -91,7 +91,7 @@ if (onnxruntime_USE_MIMALLOC)
     target_link_libraries(onnxruntime_framework mimalloc-static)
 endif()
 
-if (onnxruntime_BUILD_WEBASSEMBLY)
+if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
   target_link_libraries(onnxruntime_framework ${ABSEIL_LIBS})
 endif()
 
@@ -103,18 +103,14 @@ add_dependencies(onnxruntime_framework ${onnxruntime_EXTERNAL_DEPENDENCIES})
 # For the shared onnxruntime library, this is set in onnxruntime.cmake through CMAKE_SHARED_LINKER_FLAGS
 # But our test files don't use the shared library so this must be set for them.
 # For Win32 it generates an absolute path for shared providers based on the location of the executable/onnxruntime.dll
-if (UNIX AND NOT APPLE AND NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_BUILD_WEBASSEMBLY)
+if (UNIX AND NOT APPLE AND NOT onnxruntime_MINIMAL_BUILD AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
   set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,-rpath='$ORIGIN'")
 endif()
 
 if (onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS_ENABLE_DUMP_TO_SQLDB)
-  find_package (SQLite3)
-  if (SQLITE3_FOUND)
-    include_directories(${SQLite3_INCLUDE_DIR})
-    target_link_libraries (onnxruntime_framework ${SQLite3_LIBRARY})
-  else()
-    message( FATAL_ERROR "Could not locate SQLite3 package." )
-  endif (SQLITE3_FOUND)
+  find_package (SQLite3 REQUIRED)
+  include_directories(${SQLite3_INCLUDE_DIR})
+  target_link_libraries (onnxruntime_framework ${SQLite3_LIBRARY})
   target_compile_definitions(onnxruntime_framework PRIVATE DEBUG_NODE_INPUTS_OUTPUTS_ENABLE_DUMP_TO_SQLDB)
 endif()
 
