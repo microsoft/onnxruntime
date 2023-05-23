@@ -7,7 +7,7 @@
 namespace onnxruntime {
 namespace test {
 
-#ifndef _MSC_VER
+#if !defined(_MSC_VER) || defined(USE_DML)
 void GetWeight_64_3_64(std::vector<float>& weight_data) {
   weight_data = {
       -0.004707f, -0.006775f, 0.0009236f, 0.003067f, -0.00806f, 0.00779f, 0.0004425f, 0.00846f, 0.00048f,

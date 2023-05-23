@@ -223,7 +223,12 @@ class TrainingManager(GraphExecutionManager):
 
                 # Build the gradient graph
                 if build_gradient_graph:
-                    self._build_graph()
+                    graph_transformer_config = self._get_graph_transformer_config()
+                    # Set the config according to input inspection.
+                    self._enable_conditional_optimizations(graph_transformer_config, inputs, kwargs)
+
+                    # Build the gradient graph
+                    self._build_graph(graph_transformer_config)
 
             # If creating the execution agent for the first time, this skip check will not take effect.
             # It will only take effect on subsequent forward calls.
@@ -251,20 +256,20 @@ class TrainingManager(GraphExecutionManager):
 
             self._gradient_accumulation_manager.maybe_update_cache_before_run()
 
+            prepared_input_list, _, _ = _io._combine_input_buffers_initializers(
+                self._graph_initializers,
+                self._graph_info.user_input_names,
+                self._input_info,
+                self._flattened_module.named_buffers(),
+                inputs,
+                kwargs,
+                self._device,
+                self._rt_inspector,
+            )
+
             return _io.unflatten_user_output(
                 self._module_output_schema,
-                self._forward_class.apply(
-                    *_io._combine_input_buffers_initializers(
-                        self._graph_initializers,
-                        self._graph_info.user_input_names,
-                        self._input_info,
-                        self._flattened_module.named_buffers(),
-                        inputs,
-                        kwargs,
-                        self._device,
-                        self._rt_inspector.input_density_ob,
-                    )
-                ),
+                self._forward_class.apply(*prepared_input_list),
             )
         except ORTModuleFallbackException as e:
             # Exceptions subject to fallback are handled here
@@ -282,10 +287,10 @@ class TrainingManager(GraphExecutionManager):
         if self._fallback_manager.is_pending():
             return self._fallback_manager.fallback(self._debug_options.logging.log_level, *inputs, **kwargs)
 
-    def _build_graph(self):
+    def _build_graph(self, graph_transformer_config):
         """Build an optimized gradient graph using the module_graph_builder"""
 
-        super()._build_graph()
+        super()._build_graph(graph_transformer_config)
         self._onnx_models.optimized_model = onnx.load_model_from_string(self._graph_builder.get_gradient_model())
         self._onnx_models.optimized_pre_grad_model = onnx.load_model_from_string(
             self._graph_builder.get_forward_model()
@@ -316,11 +321,6 @@ class TrainingManager(GraphExecutionManager):
                 initializer_index += 1
             else:
                 self._gradient_map.append(-1)
-
-        # Set up data sparsity inspection.
-        self._rt_inspector.input_density_ob.initialize(
-            self._onnx_models.optimized_pre_grad_model, self._graph_info.user_input_names
-        )
 
     def _create_execution_agent(self):
         """Creates a TrainingAgent that can run the forward and backward graph on the training model"""

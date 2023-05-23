@@ -10,7 +10,7 @@ parameters:
 - name: PoolName
   displayName: 'Agent pool name'
   type: string
-  default: 'onnxruntime-Win-CPU-2019'
+  default: 'onnxruntime-Win-CPU-2022'
 - name: PackageName
   displayName: 'Package name'
   type: string

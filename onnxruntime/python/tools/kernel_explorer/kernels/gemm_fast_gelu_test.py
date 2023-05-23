@@ -94,6 +94,14 @@ def test_gemmfastgelu_ck_bert_cases(dtype, size, transab):
     _test_gemmfastgelu(getattr(ke, wrapper_name), dtype, *size, *transab)
 
 
+@pytest.mark.skipif(not ke.is_hipblaslt_available(), reason="hipblaslt is not available")
+@pytest.mark.parametrize("dtype", dtypes)
+@pytest.mark.parametrize("size", get_gemm_basic_sizes(full=False) + get_gemm_bert_sizes(full=False))
+@pytest.mark.parametrize("transab", all_transabs)
+def test_gemmfastgelu_hipblaslt_bert_cases(dtype, size, transab):
+    _test_gemmfastgelu(getattr(ke, "GemmFastGeluHipBlasLt_" + dtype_to_suffix(dtype)), dtype, *size, *transab)
+
+
 @dataclass
 class GemmFastGeluMetric(ke.ComputeMetric):
     transa: bool
@@ -156,6 +164,7 @@ def profile_with_args(transa, transb, dtype, m, n, k, sort):
         profile_gemmfastgelu_func(
             getattr(ke, "GemmFastGeluTunable" + dtype_suffix + transab_suffix), dtype, m, n, k, transa, transb
         )
+        profile_gemmfastgelu_func(getattr(ke, "GemmFastGeluHipBlasLt" + dtype_suffix), dtype, m, n, k, transa, transb)
 
 
 def profile():

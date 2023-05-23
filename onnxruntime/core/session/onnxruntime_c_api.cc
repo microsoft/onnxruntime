@@ -2725,8 +2725,22 @@ static constexpr OrtApi ort_api_1_to_16 = {
     &OrtApis::GetOptionalContainedTypeInfo,
     &OrtApis::GetResizedStringTensorElementBuffer,
     &OrtApis::KernelContext_GetAllocator,
-    &OrtApis::GetBuildInfoString};
-// End of Version 15 - DO NOT MODIFY ABOVE (see above text for more information)
+    &OrtApis::GetBuildInfoString,
+    // End of Version 15 - DO NOT MODIFY ABOVE (see above text for more information)
+
+    // Start of Version 16 API in progress, safe to modify/rename/rearrange until we ship
+    &OrtApis::CreateROCMProviderOptions,
+    &OrtApis::UpdateROCMProviderOptions,
+    &OrtApis::GetROCMProviderOptionsAsString,
+    &OrtApis::ReleaseROCMProviderOptions,
+};
+
+// OrtApiBase can never change as there is no way to know what version of OrtApiBase is returned by OrtGetApiBase.
+static_assert(sizeof(OrtApiBase) == sizeof(void*) * 2, "New methods can't be added to OrtApiBase as it is not versioned");
+static_assert(offsetof(OrtApiBase, GetApi) / sizeof(void*) == 0, "These functions cannot be reordered");
+static_assert(offsetof(OrtApiBase, GetVersionString) / sizeof(void*) == 1, "These functions cannot be reordered");
+static_assert(std::is_same_v<decltype(OrtApiBase::GetApi), const OrtApi*(ORT_API_CALL*)(uint32_t)NO_EXCEPTION>, "This function's signature can never change");
+static_assert(std::is_same_v<decltype(OrtApiBase::GetVersionString), const char*(ORT_API_CALL*)(void)NO_EXCEPTION>, "This function's signature can never change");
 
 // Asserts to do a some checks to ensure older Versions of the OrtApi never change (will detect an addition or deletion but not if they cancel out each other)
 // If any of these asserts hit, read the above 'Rules on how to add a new Ort API version'
