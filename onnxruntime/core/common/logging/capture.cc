@@ -20,7 +20,7 @@ void Capture::CapturePrintf(msvc_printf_check const char* format, ...) {
 // from https://github.com/KjellKod/g3log/blob/master/src/logcapture.cpp LogCapture::capturef
 // License: https://github.com/KjellKod/g3log/blob/master/LICENSE
 // Modifications Copyright (c) Microsoft.
-void Capture::ProcessPrintfStream(std::ostringstream& stream, msvc_printf_check const char* format, va_list args) {
+void Capture::ProcessPrintf(msvc_printf_check const char* format, va_list args) {
   static constexpr auto kTruncatedWarningText = "[...truncated...]";
   static constexpr int kMaxMessageSize = 2048;
   char message_buffer[kMaxMessageSize];
@@ -47,17 +47,13 @@ void Capture::ProcessPrintfStream(std::ostringstream& stream, msvc_printf_check 
 #endif
 
   if (error) {
-    stream << "\n\tERROR LOG MSG NOTIFICATION: Failure to successfully parse the message";
-    stream << '"' << format << '"' << std::endl;
+    stream_ << "\n\tERROR LOG MSG NOTIFICATION: Failure to successfully parse the message";
+    stream_ << '"' << format << '"' << std::endl;
   } else if (truncated) {
-    stream << message.data() << kTruncatedWarningText;
+    stream_ << message.data() << kTruncatedWarningText;
   } else {
-    stream << message.data();
+    stream_ << message.data();
   }
-}
-
-void Capture::ProcessPrintf(msvc_printf_check const char* format, va_list args) {
-  return ProcessPrintfStream(stream_, format, args);
 }
 
 Capture::~Capture() {

@@ -71,8 +71,6 @@ class Capture {
   */
   void ProcessPrintf(msvc_printf_check const char* format, va_list args);
 
-  static void ProcessPrintfStream(std::ostringstream& stream, msvc_printf_check const char* format, va_list args);
-
   logging::Severity Severity() const noexcept {
     return severity_;
   }

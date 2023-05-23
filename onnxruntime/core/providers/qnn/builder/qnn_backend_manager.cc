@@ -136,10 +136,12 @@ void QnnLogging(const char* format,
   ORT_UNUSED_PARAMETER(level);
   ORT_UNUSED_PARAMETER(timestamp);
 
-  std::ostringstream stream;
-  ::onnxruntime::logging::Capture::ProcessPrintfStream(stream, format, argument_parameter);
   // Always output Qnn log as Ort verbose log
-  LOGS_DEFAULT(VERBOSE) << stream.str();
+  ::onnxruntime::logging::Capture(::onnxruntime::logging::LoggingManager::DefaultLogger(),
+                                  ::onnxruntime::logging::Severity::kVERBOSE,
+                                  ::onnxruntime::logging::Category::onnxruntime,
+                                  ::onnxruntime::logging::DataType::SYSTEM,
+                                  ORT_WHERE).ProcessPrintf(format, argument_parameter);
 }
 
 void QnnBackendManager::InitializeQnnLog() {
