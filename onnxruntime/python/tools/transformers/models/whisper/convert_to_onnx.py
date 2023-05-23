@@ -21,6 +21,11 @@ from benchmark_helper import Precision, create_onnxruntime_session, prepare_envi
 
 logger = logging.getLogger("")
 
+PROVIDERS = {
+    "cuda": "CUDAExecutionProvider",
+    "rocm": "ROCMExecutionProvider",
+}
+
 
 def parse_arguments(argv=None):
     parser = argparse.ArgumentParser()
@@ -203,6 +208,16 @@ def parse_arguments(argv=None):
         help="filepath to load pre-trained model with custom state dictionary (e.g. pytorch_model.bin)",
     )
 
+    parser.add_argument(
+        "-r",
+        "--provider",
+        required=False,
+        type=str,
+        default="cuda",
+        choices=list(PROVIDERS.keys()),
+        help="Provider to benchmark. Default is CUDAExecutionProvider.",
+    )
+
     args = parser.parse_args(argv)
 
     return args
@@ -226,6 +241,7 @@ def export_onnx_models(
     quantize_per_channel: bool = False,
     quantize_reduce_range: bool = False,
     state_dict_path: str = "",
+    provider: str = "cuda",
 ):
     device = torch.device("cuda:0" if use_gpu else "cpu")
 
@@ -288,6 +304,7 @@ def export_onnx_models(
                         use_external_data_format,
                         auto_mixed_precision=not disable_auto_mixed_precision,
                         use_gpu=use_gpu,
+                        provider=provider,
                     )
                     onnx_path = output_path
 
@@ -312,7 +329,7 @@ def export_onnx_models(
         ort_session = create_onnxruntime_session(
             output_path,
             use_gpu=use_gpu,
-            provider=["CUDAExecutionProvider", "CPUExecutionProvider"] if use_gpu else ["CPUExecutionProvider"],
+            provider=[PROVIDERS[provider], "CPUExecutionProvider"] if use_gpu else ["CPUExecutionProvider"],
         )
 
         with torch.no_grad():
@@ -360,6 +377,8 @@ def main(argv=None):
         args.quantize_embedding_layer,
         args.quantize_per_channel,
         args.quantize_reduce_range,
+        args.state_dict_path,
+        args.provider,
     )
 
     if args.chain_model:
