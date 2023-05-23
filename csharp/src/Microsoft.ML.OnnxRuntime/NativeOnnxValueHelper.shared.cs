@@ -49,16 +49,6 @@ namespace Microsoft.ML.OnnxRuntime
             // We throw here, because we are expecting the caller to properly calculate and allocate the right size buffer
             unsafe
             {
-#if NETSTANDARD1_1
-                var utf8Bytes = (s.Length != 0) ? Encoding.UTF8.GetBytes(s) : ArrayUtilities.GetEmpty<byte>();
-                if (totalBytesToWrite != utf8Bytes.Length)
-                {
-                    throw new OnnxRuntimeException(ErrorCode.RuntimeException,
-                        $"Failed to convert to UTF8. Expected bytes: {totalBytesToWrite}, converted to UTF-8: {utf8Bytes.Length}");
-                }
-                Span<byte> destination = new Span<byte>((ptr).ToPointer(), utf8Bytes.Length);
-                utf8Bytes.AsSpan(0, utf8Bytes.Length).CopyTo(destination);
-#else
                 fixed (char* c = s) // create char pointer to start of managed string.
                 {
                     var nativeBytes = (byte*)ptr; // get managed byte* from native intptr
@@ -69,7 +59,6 @@ namespace Microsoft.ML.OnnxRuntime
                             $"Failed to convert to UTF8. Expected bytes: {totalBytesToWrite}, written: {bytesWritten}");
                     }
                 }
-#endif
             }
         }
 
@@ -93,15 +82,8 @@ namespace Microsoft.ML.OnnxRuntime
                     {
                         return string.Empty;
                     }
-#if NETSTANDARD1_1
-                    var src = new Span<byte>((nativeUtf8).ToPointer(), len);
-                    byte[] buffer = new byte[len];
-                    src.CopyTo(buffer);
-                    return Encoding.UTF8.GetString(buffer, 0, buffer.Length);
-#else
                     var nativeBytes = (byte*)nativeUtf8;
                     return Encoding.UTF8.GetString(nativeBytes, len);
-#endif
                 }
             }
             finally
@@ -146,16 +128,8 @@ namespace Microsoft.ML.OnnxRuntime
                         var dest = new Span<byte>((utf8).ToPointer(), len + 1);
                         src.CopyTo(dest);
                         dest[len] = 0;
-#if NETSTANDARD1_1
-                        // For .NET Standard 1.1, we need to copy the bytes to a managed buffer
-                        // before conversion
-                        byte[] buffer = new byte[len];
-                        src.CopyTo(buffer);
-                        str = Encoding.UTF8.GetString(buffer, 0, len);
-#else
                         var nativeBytes = (byte*)nativeUtf8;
                         str = Encoding.UTF8.GetString(nativeBytes, len);
-#endif
                     }
                     catch (Exception)
                     {
