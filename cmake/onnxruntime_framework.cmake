@@ -52,7 +52,7 @@ if (onnxruntime_USE_AZURE)
 
     find_package(ZLIB REQUIRED)
     find_package(OpenSSL REQUIRED)
-    target_link_libraries(onnxruntime_framework PRIVATE httpclient_static curl OpenSSL::Crypto OpenSSL::SSL)
+    target_link_libraries(onnxruntime_framework PRIVATE httpclient_static curl ZLIB::ZLIB OpenSSL::Crypto OpenSSL::SSL)
 
   endif() #if (WIN32)
 
