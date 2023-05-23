@@ -106,7 +106,7 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
 
   {  // Reduction
      // ReduceMean is used in layer normalization which seems to be problematic in Python tests.
-     // CreateReductionOpBuilder("ReduceMean", op_registrations)
+    CreateReductionOpBuilder("ReduceMean", op_registrations);
     CreateReductionOpBuilder("ReduceSum", op_registrations);
   }
 
