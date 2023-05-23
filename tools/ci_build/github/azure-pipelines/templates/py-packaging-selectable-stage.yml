@@ -395,6 +395,10 @@ stages:
         EpBuildFlags: --use_tensorrt --use_tensorrt_builtin_parser --tensorrt_home="C:\local\TensorRT-8.6.0.12.Windows10.x86_64.cuda-11.8" --cuda_version=$(CUDA_VERSION) --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v$(CUDA_VERSION)" --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=37;50;52;60;61;70;75;80"
         EnvSetupScript: setup_env_gpu.bat
         EP_NAME: gpu
+        ${{if eq(variables.pool, 'onnxruntime-gpu-winbuild-t4')}}:
+          VSGenerator: 'Visual Studio 16 2019'
+        ${{else}}:
+          VSGenerator: 'Visual Studio 17 2022'
       strategy:
         matrix:
           ${{ each PythonVersion in parameters.python_version }}:
@@ -444,7 +448,7 @@ stages:
             --config RelWithDebInfo
             --build_dir $(Build.BinariesDirectory)
             --skip_submodule_sync
-            --cmake_generator "Visual Studio 17 2022"
+            --cmake_generator "$(VSGenerator)"
             --enable_pybind
             --enable_onnx_tests
             ${{ parameters.gpu_build_py_parameters }}
