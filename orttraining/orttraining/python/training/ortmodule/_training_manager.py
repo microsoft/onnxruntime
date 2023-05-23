@@ -81,7 +81,7 @@ class TrainingManager(GraphExecutionManager):
             forward_outputs, device
         )
 
-        output_info: List[Tuple[torch.Size, torch.device, torch.dtype]] = [
+        output_info = [
             (output.shape, output.device, output.dtype) for output in user_outputs
         ]
         run_info = _RunStateInfo(state, output_info)
