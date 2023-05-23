@@ -133,9 +133,9 @@ stages:
         inputs:
           scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
           ${{ if eq(parameters['UseIncreasedTimeoutForTests'], 'true') }}:
-            arguments: '--config RelWithDebInfo --enable_lto --disable_rtti --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --update --cmake_generator $(VSGenerator) --enable_onnx_tests $(TelemetryOption) ${{ parameters.buildparameter }} --test_all_timeout 72000'
+            arguments: '--config RelWithDebInfo --enable_lto --disable_rtti --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --update --cmake_generator "$(VSGenerator)" --enable_onnx_tests $(TelemetryOption) ${{ parameters.buildparameter }} --test_all_timeout 72000'
           ${{ else }}:
-            arguments: '--config RelWithDebInfo --enable_lto --disable_rtti --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --update --cmake_generator $(VSGenerator) --enable_onnx_tests $(TelemetryOption) ${{ parameters.buildparameter }} '
+            arguments: '--config RelWithDebInfo --enable_lto --disable_rtti --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --update --cmake_generator "$(VSGenerator)" --enable_onnx_tests $(TelemetryOption) ${{ parameters.buildparameter }} '
           workingDirectory: '$(Build.BinariesDirectory)'
 
       - task: VSBuild@1
@@ -155,7 +155,7 @@ stages:
         condition: and(succeeded(), eq('${{ parameters.runTests}}', true))
         inputs:
           scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-          arguments: '--config RelWithDebInfo --enable_lto --disable_rtti --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --test --cmake_generator $(VSGenerator) --enable_onnx_tests  $(TelemetryOption) ${{ parameters.buildparameter }}'
+          arguments: '--config RelWithDebInfo --enable_lto --disable_rtti --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --test --cmake_generator "$(VSGenerator)" --enable_onnx_tests  $(TelemetryOption) ${{ parameters.buildparameter }}'
           workingDirectory: '$(Build.BinariesDirectory)'
 
       - script: |
@@ -291,7 +291,7 @@ stages:
           condition: and (succeeded(), eq(variables['msbuildPlatform'], 'x64'))
           inputs:
             msBuildArchitecture: amd64
-            setupCommandlines: 'python $(Build.SourcesDirectory)\tools\ci_build\build.py --config Debug --disable_rtti --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --update --cmake_generator $(VSGenerator) --enable_onnx_tests  $(TelemetryOption) ${{ parameters.buildparameter }} --cmake_extra_defines onnxruntime_ENABLE_STATIC_ANALYSIS=ON'
+            setupCommandlines: 'python $(Build.SourcesDirectory)\tools\ci_build\build.py --config Debug --disable_rtti --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --update --cmake_generator "$(VSGenerator)" --enable_onnx_tests  $(TelemetryOption) ${{ parameters.buildparameter }} --cmake_extra_defines onnxruntime_ENABLE_STATIC_ANALYSIS=ON'
             ${{if eq(parameters.ort_build_pool_name, 'onnxruntime-Win-CPU-2019')}}:
               msBuildCommandline: '"C:\Program Files\Microsoft Visual Studio\2019\Enterprise\MSBuild\Current\Bin\amd64\msbuild.exe" "$(Build.BinariesDirectory)\Debug\onnxruntime.sln" /p:platform="$(MsbuildPlatform)" /p:configuration=Debug /p:VisualStudioVersion="16.0" /m /p:PreferredToolArchitecture=x64'
             ${{else}}:
