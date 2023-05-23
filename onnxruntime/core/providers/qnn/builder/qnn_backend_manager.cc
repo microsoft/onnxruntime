@@ -12,6 +12,7 @@
 #include "HTP/QnnHtpCommon.h"
 #include "core/common/gsl.h"
 #include "core/framework/endian_utils.h"
+#include "core/common/logging/capture.h"
 
 // Flag to determine if Backend should do node validation for each opNode added
 #define DO_GRAPH_NODE_VALIDATIONS 1
@@ -135,13 +136,10 @@ void QnnLogging(const char* format,
   ORT_UNUSED_PARAMETER(level);
   ORT_UNUSED_PARAMETER(timestamp);
 
+  std::ostringstream stream;
+  ::onnxruntime::logging::Capture::ProcessPrintfStream(stream, format, argument_parameter);
   // Always output Qnn log as Ort verbose log
-  size_t ini_size = 20;
-  std::vector<char> buffer(ini_size);
-  auto length = vsnprintf(buffer.data(), ini_size, format, argument_parameter);
-  buffer.resize(length);
-  vsnprintf(buffer.data(), length, format, argument_parameter);
-  LOGS_DEFAULT(VERBOSE) << buffer.data();
+  LOGS_DEFAULT(VERBOSE) << stream.str();
 }
 
 void QnnBackendManager::InitializeQnnLog() {
