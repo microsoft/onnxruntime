@@ -9,6 +9,9 @@
 
 #include "common.h"
 #include "session_options_helper.h"
+#ifdef _WIN32
+#include <dml_provider_factory.h>
+#endif
 
 const std::unordered_map<std::string, GraphOptimizationLevel> GRAPH_OPT_LEVEL_NAME_TO_ID_MAP = {
     {"disabled", ORT_DISABLE_ALL},
@@ -23,6 +26,7 @@ void ParseExecutionProviders(const Napi::Array epList, Ort::SessionOptions &sess
   for (uint32_t i = 0; i < epList.Length(); i++) {
     Napi::Value epValue = epList[i];
     std::string name;
+    int deviceId = 0;
     if (epValue.IsString()) {
       name = epValue.As<Napi::String>().Utf8Value();
     } else if (!epValue.IsObject() || epValue.IsNull() || !epValue.As<Napi::Object>().Has("name") ||
@@ -30,14 +34,24 @@ void ParseExecutionProviders(const Napi::Array epList, Ort::SessionOptions &sess
       ORT_NAPI_THROW_TYPEERROR(epList.Env(), "Invalid argument: sessionOptions.executionProviders[", i,
                                "] must be either a string or an object with property 'name'.");
     } else {
-      name = epValue.As<Napi::Object>().Get("name").As<Napi::String>().Utf8Value();
+      auto obj = epValue.As<Napi::Object>();
+      name = obj.Get("name").As<Napi::String>().Utf8Value();
+      if (obj.Has("deviceId")) {
+        deviceId = obj.Get("deviceId").As<Napi::Number>();
+      }
     }
 
     // CPU execution provider
     if (name == "cpu") {
       // TODO: handling CPU EP options
     } else if (name == "cuda") {
-      // TODO: handling Cuda EP options
+      Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CUDA(sessionOptions, deviceId));
+    } else if (name == "dml") {
+#ifdef _WIN32
+      Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_DML(sessionOptions, deviceId));
+#else
+      ORT_NAPI_THROW_ERROR(epList.Env(), "DirectML EP is supported only on Windows");
+#endif
     } else {
       ORT_NAPI_THROW_ERROR(epList.Env(), "Invalid argument: sessionOptions.executionProviders[", i,
                            "] is unsupported: '", name, "'.");

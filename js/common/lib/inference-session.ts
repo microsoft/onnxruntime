@@ -170,6 +170,7 @@ export declare namespace InferenceSession {
   interface ExecutionProviderOptionMap {
     cpu: CpuExecutionProviderOption;
     cuda: CudaExecutionProviderOption;
+    dml: DmlExecutionProviderOption;
     wasm: WebAssemblyExecutionProviderOption;
     webgl: WebGLExecutionProviderOption;
     xnnpack: XnnpackExecutionProviderOption;
@@ -189,6 +190,10 @@ export declare namespace InferenceSession {
   }
   export interface CudaExecutionProviderOption extends ExecutionProviderOption {
     readonly name: 'cuda';
+    deviceId?: number;
+  }
+  export interface DmlExecutionProviderOption extends ExecutionProviderOption {
+    readonly name: 'dml';
     deviceId?: number;
   }
   export interface WebAssemblyExecutionProviderOption extends ExecutionProviderOption {

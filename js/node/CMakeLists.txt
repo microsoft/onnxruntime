@@ -76,6 +76,9 @@ if (WIN32)
     COMMAND ${CMAKE_COMMAND} -E copy
       ${ONNXRUNTIME_BUILD_DIR}/${CMAKE_BUILD_TYPE}/onnxruntime.dll
       ${dist_folder}
+    COMMAND ${CMAKE_COMMAND} -E copy
+      ${ONNXRUNTIME_BUILD_DIR}/${CMAKE_BUILD_TYPE}/DirectML.dll
+      ${dist_folder}
   )
   if (CMAKE_BUILD_TYPE STREQUAL "Debug")
     add_custom_command(

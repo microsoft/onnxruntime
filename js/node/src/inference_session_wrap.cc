@@ -151,6 +151,7 @@ Napi::Value InferenceSessionWrap::Run(const Napi::CallbackInfo &info) {
   std::vector<bool> reuseOutput;
   size_t inputIndex = 0;
   size_t outputIndex = 0;
+  OrtMemoryInfo* memory_info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault).release();
 
   try {
     for (auto &name : inputNames_) {
@@ -158,7 +159,7 @@ Napi::Value InferenceSessionWrap::Run(const Napi::CallbackInfo &info) {
         inputIndex++;
         inputNames_cstr.push_back(name.c_str());
         auto value = feed.Get(name);
-        inputValues.push_back(NapiValueToOrtValue(env, value));
+        inputValues.push_back(NapiValueToOrtValue(env, value, memory_info));
       }
     }
     for (auto &name : outputNames_) {
@@ -167,7 +168,7 @@ Napi::Value InferenceSessionWrap::Run(const Napi::CallbackInfo &info) {
         outputNames_cstr.push_back(name.c_str());
         auto value = fetch.Get(name);
         reuseOutput.push_back(!value.IsNull());
-        outputValues.emplace_back(value.IsNull() ? Ort::Value{nullptr} : NapiValueToOrtValue(env, value));
+        outputValues.emplace_back(value.IsNull() ? Ort::Value{nullptr} : NapiValueToOrtValue(env, value, memory_info));
       }
     }
 
