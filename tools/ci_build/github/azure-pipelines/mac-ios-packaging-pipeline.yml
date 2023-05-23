@@ -49,6 +49,8 @@ jobs:
     displayName: "Install Python requirements"
 
   - bash: |
+      set -e
+
       BUILD_TYPE="${{ parameters.BuildType }}"
       BASE_VERSION="$(cat ./VERSION_NUMBER)"
       SHORT_COMMIT_HASH="$(git rev-parse --short HEAD)"
@@ -64,6 +66,9 @@ jobs:
         (*)
           echo "Invalid build type: ${BUILD_TYPE}"; exit 1 ;;
       esac
+
+      # Do not output ##vso[] commands with `set -x` or they may be parsed again and include a trailing quote.
+      set +x
 
       set_var() {
         local VAR_NAME=${1:?}

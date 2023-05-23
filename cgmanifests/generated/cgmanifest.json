@@ -82,16 +82,6 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "d10b27fe37736d2944630ecd7557cefa95cf87c9",
-          "repositoryUrl": "https://gitlab.com/libeigen/eigen.git"
-        },
-        "comments": "git submodule at cmake/external/eigen"
-      }
-    },
-    {
-      "component": {
-        "type": "git",
-        "git": {
           "commitHash": "b113f24842c6e97fe3e352084db09a6e278593ae",
           "repositoryUrl": "https://github.com/emscripten-core/emsdk.git"
         },
@@ -447,7 +437,7 @@
         },
         "comments": "extensions"
       }
-    }
+    },
     {
       "component": {
         "type": "git",

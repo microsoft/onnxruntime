@@ -20,11 +20,13 @@
 #include "core/framework/callback.h"
 #include "core/framework/data_types.h"
 #include "core/platform/path_lib.h"
+#include "core/framework/to_tensor_proto_element_type.h"
 #include "core/session/ort_apis.h"
 #include "onnx/defs/tensor_proto_util.h"
 
 using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;
+using namespace ::onnxruntime::utils;
 
 TensorProto ToTensorInitialize(TensorProto_DataType datatype) {
   TensorProto t;
@@ -39,14 +41,14 @@ TensorProto ToScalarTensor(TensorProto_DataType datatype, int32_t value) {
   return t;
 }
 
-#define TO_TENSOR_ORT_TYPE(TYPE, DATATYPE)                                                \
+#define TO_TENSOR_ORT_TYPE(TYPE)                                                          \
   template <>                                                                             \
   TensorProto ToTensor<onnxruntime::TYPE>(const onnxruntime::TYPE& value) {               \
-    return ToScalarTensor(DATATYPE, value.val);                                           \
+    return ToScalarTensor(ToTensorProtoElementType<onnxruntime::TYPE>(), value.val);      \
   }                                                                                       \
   template <>                                                                             \
   TensorProto ToTensor<onnxruntime::TYPE>(const std::vector<onnxruntime::TYPE>& values) { \
-    TensorProto t = ToTensorInitialize(DATATYPE);                                         \
+    TensorProto t = ToTensorInitialize(ToTensorProtoElementType<onnxruntime::TYPE>());    \
     for (const onnxruntime::TYPE& val : values) {                                         \
       t.add_int32_data(val.val);                                                          \
     }                                                                                     \
@@ -56,12 +58,12 @@ TensorProto ToScalarTensor(TensorProto_DataType datatype, int32_t value) {
 namespace ONNX_NAMESPACE {
 
 // Provide template specializations for onnxruntime-specific types.
-TO_TENSOR_ORT_TYPE(MLFloat16, TensorProto_DataType_FLOAT16)
-TO_TENSOR_ORT_TYPE(BFloat16, TensorProto_DataType_BFLOAT16)
-TO_TENSOR_ORT_TYPE(Float8E4M3FN, TensorProto_DataType_FLOAT8E4M3FN)
-TO_TENSOR_ORT_TYPE(Float8E4M3FNUZ, TensorProto_DataType_FLOAT8E4M3FNUZ)
-TO_TENSOR_ORT_TYPE(Float8E5M2, TensorProto_DataType_FLOAT8E5M2)
-TO_TENSOR_ORT_TYPE(Float8E5M2FNUZ, TensorProto_DataType_FLOAT8E5M2FNUZ)
+TO_TENSOR_ORT_TYPE(MLFloat16)
+TO_TENSOR_ORT_TYPE(BFloat16)
+TO_TENSOR_ORT_TYPE(Float8E4M3FN)
+TO_TENSOR_ORT_TYPE(Float8E4M3FNUZ)
+TO_TENSOR_ORT_TYPE(Float8E5M2)
+TO_TENSOR_ORT_TYPE(Float8E5M2FNUZ)
 
 bool operator==(const ONNX_NAMESPACE::TensorShapeProto_Dimension& l,
                 const ONNX_NAMESPACE::TensorShapeProto_Dimension& r) {

@@ -22,7 +22,7 @@ stages:
     variables:
     - name: GDN_CODESIGN_TARGETDIRECTORY
       value: '$(Build.BinariesDirectory)/nuget-artifact/final-package'
-    pool: 'Win-CPU-2021'
+    pool: 'onnxruntime-Win-CPU-2022'
 
     steps:
     - checkout: self

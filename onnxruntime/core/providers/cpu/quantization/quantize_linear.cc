@@ -84,18 +84,6 @@ REGISTER_DEQUANTIZELINEAR_VERSIONED(int8_t)
 REGISTER_DEQUANTIZELINEAR_VERSIONED(uint8_t)
 REGISTER_DEQUANTIZELINEAR_VERSIONED(int32_t)
 
-template <typename OutputType>
-typename std::enable_if<!boost::mp11::mp_contains<element_type_lists::AllFloat8, OutputType>::value, bool>::type
-IsNull(const OutputType& value) {
-  return value == 0;
-}
-
-template <typename OutputType>
-typename std::enable_if<boost::mp11::mp_contains<element_type_lists::AllFloat8, OutputType>::value, bool>::type
-IsNull(const OutputType& value) {
-  return value == OutputType(static_cast<float>(0), true);
-}
-
 template <typename T, typename OutT>
 struct DequantizeLinearApply {
   void op(int64_t N, int64_t broadcast_dim, int64_t block_size, const T* input, const OutT* scale, OutT* output, const T* zero_point) {
@@ -154,7 +142,7 @@ Status DequantizeLinear<T>::Compute(OpKernelContext* ctx) const {
     ORT_ENFORCE(zero_point == nullptr ||
                     std::all_of(zero_point,
                                 zero_point + x_zero_point->Shape().Size(),
-                                [](T zp) { return IsNull(zp); }),
+                                [](T zp) { return zp == T{0}; }),
                 "DequantizeLinear with type int32 or float8 should have no zero point or all zero points should be 0");
   }
 

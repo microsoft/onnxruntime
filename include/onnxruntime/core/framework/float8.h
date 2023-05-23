@@ -1,5 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
+
 #pragma once
 
 #include "endian.h"
@@ -33,12 +34,12 @@ struct Float8E4M3FN {
   static constexpr ORT_HOST_DEVICE FromBitsT FromBits() { return FromBitsT(); }
   constexpr ORT_HOST_DEVICE Float8E4M3FN(unsigned char bits, FromBitsT) : val(bits) {}
 
-  inline ORT_HOST_DEVICE Float8E4M3FN(float v, bool saturate) {
+  inline ORT_HOST_DEVICE Float8E4M3FN(float v, bool saturate = true) {
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 11080
     val = __nv_cvt_float_to_fp8(v, saturate ? __NV_SATFINITE : __NV_NOSAT, __NV_E4M3);
 #else
-    uint32_t* pv = reinterpret_cast<uint32_t*>(&v);
-    uint32_t b = *pv;
+    uint32_t b;
+    std::memcpy(&b, &v, sizeof(b));
 
     val = static_cast<uint8_t>((b & 0x80000000) >> 24);  // sign
     if ((b & 0x7fc00000) == 0x7fc00000) {
@@ -196,7 +197,7 @@ struct Float8E4M3FNUZ {
   static constexpr ORT_HOST_DEVICE FromBitsT FromBits() { return FromBitsT(); }
   constexpr ORT_HOST_DEVICE Float8E4M3FNUZ(unsigned char bits, FromBitsT) : val(bits) {}
 
-  inline ORT_HOST_DEVICE Float8E4M3FNUZ(float v, bool saturate) {
+  inline ORT_HOST_DEVICE Float8E4M3FNUZ(float v, bool saturate = true) {
     // This type does not exist on CUDA.
     uint32_t* pv = reinterpret_cast<uint32_t*>(&v);
     uint32_t b = *pv;
@@ -347,7 +348,7 @@ struct Float8E5M2 {
   static constexpr ORT_HOST_DEVICE FromBitsT FromBits() { return FromBitsT(); }
   constexpr ORT_HOST_DEVICE Float8E5M2(unsigned char bits, FromBitsT) : val(bits) {}
 
-  inline ORT_HOST_DEVICE Float8E5M2(float v, bool saturate) {
+  inline ORT_HOST_DEVICE Float8E5M2(float v, bool saturate = true) {
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 11080
     val = __nv_cvt_float_to_fp8(v, saturate ? __NV_SATFINITE : __NV_NOSAT, __NV_E5M2);
 #else
@@ -505,7 +506,7 @@ struct Float8E5M2FNUZ {
   static constexpr ORT_HOST_DEVICE FromBitsT FromBits() { return FromBitsT(); }
   constexpr ORT_HOST_DEVICE Float8E5M2FNUZ(unsigned char bits, FromBitsT) : val(bits) {}
 
-  inline ORT_HOST_DEVICE Float8E5M2FNUZ(float v, bool saturate) {
+  inline ORT_HOST_DEVICE Float8E5M2FNUZ(float v, bool saturate = true) {
     // This type does not exist on CUDA.
     uint32_t* pv = reinterpret_cast<uint32_t*>(&v);
     uint32_t b = *pv;

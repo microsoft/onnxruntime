@@ -84,7 +84,7 @@ DECL_IMPL_CAST_FROM(Float8E4M3FN)
 DECL_IMPL_CAST_FROM(Float8E5M2)
 
 #define DECL_IMPL_CASTSAT(InT, OutT) \
-  void _Explicit_Impl_CastSat(cudaStream_t stream, const InT* input_data, OutT* output_data, size_t count, bool saturate);
+  void Explicit_Impl_CastSat(cudaStream_t stream, const InT* input_data, OutT* output_data, size_t count, bool saturate);
 
 DECL_IMPL_CASTSAT(half, Float8E4M3FN)
 DECL_IMPL_CASTSAT(float, Float8E4M3FN)
@@ -103,7 +103,7 @@ void Impl_CastSat(
     OutT* output_data,
     size_t count,
     bool saturate) {
-  _Explicit_Impl_CastSat(stream, input_data, output_data, count, saturate);
+  Explicit_Impl_CastSat(stream, input_data, output_data, count, saturate);
 }
 
 }  // namespace cuda
