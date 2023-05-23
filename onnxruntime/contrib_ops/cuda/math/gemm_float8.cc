@@ -7,24 +7,26 @@
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
 #include "gemm_float8.h"
 
+using namespace ONNX_NAMESPACE;
+
 namespace onnxruntime {
+namespace contrib {
 namespace cuda {
 
-#define REGISTER_KERNEL_FIVE_TYPED(T1, T2, T3, T4, T5)              \
-  ONNX_OPERATOR_FIVE_TYPED_KERNEL_EX(                               \
-      GemmFloat8,                                                   \
-      kMSDomain,                                                    \
-      1,                                                            \
-      T1, T2, T3, T4, T5,                                           \
-      kCudaExecutionProvider,                                       \
-      (*KernelDefBuilder::Create())                                 \
-          .TypeConstraint("T1", DataTypeImpl::GetTensorType<T1>())  \
-          .TypeConstraint("T2", DataTypeImpl::GetTensorType<T2>())  \
-          .TypeConstraint("T3", DataTypeImpl::GetTensorType<T3>())  \
-          .TypeConstraint("T4", DataTypeImpl::GetTensorType<T4>())  \
-          .TypeConstraint("T5", DataTypeImpl::GetTensorType<T5>()), \
-      GemmFloat8<T1, T2, T3, T4, T5>);
+#define REGISTER_KERNEL()                                                 \
+  ONNX_OPERATOR_KERNEL_EX(                                                \
+      GemmFloatByte,                                                      \
+      kMSDomain,                                                          \
+      1,                                                                  \
+      kCudaExecutionProvider,                                             \
+      (*KernelDefBuilder::Create())                                       \
+          .TypeConstraint("T", BuildKernelDefConstraints<Float8E4M3FN>()) \
+          .TypeConstraint("T2", BuildKernelDefConstraints<MLFloat16>()),  \
+      GemmFloatByte);
 
+REGISTER_KERNEL()
+
+/*
 REGISTER_KERNEL_FIVE_TYPED(Float8E4M3FN, Float8E4M3FN, BFloat16, BFloat16, BFloat16)
 REGISTER_KERNEL_FIVE_TYPED(Float8E4M3FN, Float8E4M3FN, BFloat16, Float8E4M3FN, BFloat16)
 REGISTER_KERNEL_FIVE_TYPED(Float8E4M3FN, Float8E4M3FN, half, half, half)
@@ -46,13 +48,22 @@ REGISTER_KERNEL_FIVE_TYPED(Float8E5M2, Float8E4M3FN, half, half, half)
 REGISTER_KERNEL_FIVE_TYPED(Float8E5M2, Float8E4M3FN, half, Float8E4M3FN, half)
 REGISTER_KERNEL_FIVE_TYPED(Float8E5M2, Float8E4M3FN, half, Float8E5M2, half)
 REGISTER_KERNEL_FIVE_TYPED(Float8E5M2, Float8E4M3FN, float, float, BFloat16)
+*/
 
-template <typename AType, typename BType, typename CType, typename DType, typename BiasType>
-Status GemmFloat8<AType, BType, CType, DType, BiasType>::ComputeInternal(OpKernelContext* ctx) const {
+Status GemmFloatByte::ComputeInternal(OpKernelContext* ctx) const {
   // D = alpha*(A*B) + beta*(C)
   const auto* A = ctx->Input<Tensor>(0);  // X
   const auto* B = ctx->Input<Tensor>(1);  // W
   const auto* C = ctx->Input<Tensor>(2);  // B
+  const auto* D = ctx->Input<Tensor>(3);  // result type
+  const auto* E = ctx->Input<Tensor>(4);  // bias type
+
+  int32_t dtypes[5] = {A->GetElementType(),
+                       B->GetElementType(),
+                       C->GetElementType(),
+                       D->GetElementType(),
+                       E->GetElementType()};
+
   // Bias could be missing. Treat as scalar 0 if that is the case.
   GemmHelper helper(A->Shape(),
                     params_.trans_A_,
@@ -67,15 +78,26 @@ Status GemmFloat8<AType, BType, CType, DType, BiasType>::ComputeInternal(OpKerne
   int N = gsl::narrow_cast<int>(helper.N());
   int K = gsl::narrow_cast<int>(helper.K());
 
-  auto* D = ctx->Output(0, {M, N});
+  auto* Y = ctx->Output(0, {M, N});
 
   cudaStream_t stream = Stream(ctx);
   // cublasHandle_t cublas = GetCublasHandle(ctx);
   cublasLtHandle_t cublasLt = CublasLtHandle();
 
-  this->params_.CudaCompute(stream, cublasLt, A, B, C, D, nullptr, M, N, K);
+  if (dtypes[0] == ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E4M3FN &&
+      dtypes[1] == ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E4M3FN &&
+      dtypes[2] == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16 &&
+      dtypes[3] == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16 &&
+      dtypes[4] == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
+    this->params_.CudaCompute<Float8E4M3FN, Float8E4M3FN, MLFloat16, MLFloat16, MLFloat16>(
+      stream, cublasLt, A, B, C, Y, nullptr, M, N, K);
+  } else {
+    ORT_THROW("Unable to find an implementation for GemmFloatByte and types ",
+              dtypes[0], ",", dtypes[1], ",", dtypes[2], ",", dtypes[3], ",", dtypes[4], ".");
+  }
   return helper.State();
 }
 
 }  // namespace cuda
+}  // namespace contrib
 }  // namespace onnxruntime

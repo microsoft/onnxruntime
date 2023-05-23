@@ -8,10 +8,25 @@
 #include <cuda_runtime.h>
 
 namespace onnxruntime {
+namespace contrib {
 namespace cuda {
 
-template <typename AType, typename BType, typename CType, typename DType, typename BiasType>
-void GemmFloat8_Impl<AType, BType, CType, DType, BiasType>::set(int M, int N, int K, int& lda, int& ldb, int& ldd) const {
+template <>
+cudaDataType ToCudaDataType<float>() { return CUDA_R_32F; }
+
+template <>
+cudaDataType ToCudaDataType<MLFloat16>() { return CUDA_R_16F; }
+
+template <>
+cudaDataType ToCudaDataType<BFloat16>() { return CUDA_R_16BF; }
+
+template <>
+cudaDataType ToCudaDataType<Float8E4M3FN>() { return CUDA_R_8F_E4M3; }
+
+template <>
+cudaDataType ToCudaDataType<Float8E5M2>() { return CUDA_R_8F_E5M2; }
+
+void GemmFloat8_Impl::set(int M, int N, int K, int& lda, int& ldb, int& ldd) const {
   if (trans_A_ && !trans_B_) {  // TN
     lda = K;
     ldb = K;
@@ -30,20 +45,22 @@ void GemmFloat8_Impl<AType, BType, CType, DType, BiasType>::set(int M, int N, in
 }
 
 template <typename AType, typename BType, typename CType, typename DType, typename BiasType>
-void GemmFloat8_Impl<AType, BType, CType, DType, BiasType>::CudaCompute(cudaStream_t stream, cublasLtHandle_t handle,
-                                                                        const Tensor* A, const Tensor* B, const Tensor* C, Tensor* D, BiasType* relu_bias, int M, int N, int K) const {
-  typedef typename ToCudaType<AType>::MappedType CudaAType;
-  typedef typename ToCudaType<BType>::MappedType CudaBType;
-  typedef typename ToCudaType<CType>::MappedType CudaCType;
-  typedef typename ToCudaType<DType>::MappedType CudaDType;
-  typedef typename ToCudaType<BiasType>::MappedType CudaBiasType;
+void GemmFloat8_Impl::CudaCompute<AType, BType, CType, DType, BiasType>(cudaStream_t stream, cublasLtHandle_t handle,
+                                                                        const Tensor* A, const Tensor* B, const Tensor* C,
+                                                                        Tensor* D, BiasType* relu_bias,
+                                                                        int M, int N, int K) const {
+  typedef typename onnxruntime::cuda::ToCudaType<AType>::MappedType CudaAType;
+  typedef typename onnxruntime::cuda::ToCudaType<BType>::MappedType CudaBType;
+  typedef typename onnxruntime::cuda::ToCudaType<CType>::MappedType CudaCType;
+  typedef typename onnxruntime::cuda::ToCudaType<DType>::MappedType CudaDType;
+  typedef typename onnxruntime::cuda::ToCudaType<BiasType>::MappedType CudaBiasType;
 
   int lda, ldb, ldd;
   DType alpha_cast, beta_cast;
 
   set(M, N, K, lda, ldb, ldd);
-  CastTo(alpha_, alpha_cast);
-  CastTo(beta_, beta_cast);
+  alpha_cast = onnxruntime::cuda::ToCudaType<DType>::FromFloat(alpha_);
+  beta_cast = onnxruntime::cuda::ToCudaType<DType>::FromFloat(beta_);
 
   // broadcast bias if needed and is present
   if (beta_ != 0 && C != nullptr) {
@@ -53,13 +70,13 @@ void GemmFloat8_Impl<AType, BType, CType, DType, BiasType>::CudaCompute(cudaStre
     const CudaCType* b_data = reinterpret_cast<const CudaCType*>(C->Data<CudaCType>());
     if (c_shape.Size() == 1) {
       // if C is (), (1,) or (1, 1), broadcast the scalar
-      ORT_THROW("Broadcasting is not implemented in GemmFloat8.");
+      ORT_THROW("Broadcasting is not implemented in GemmFloatByte.");
     } else if (c_shape.NumDimensions() == 1 || c_shape[0] == 1) {
       // C is (N,) or (1, N), broadcast using Y(N,M) = 1 * C(N,1) x ones(1,M) + 0 * C
-      ORT_THROW("Broadcasting is not implemented in GemmFloat8.");
+      ORT_THROW("Broadcasting is not implemented in GemmFloatByte.");
     } else if (b_shape.NumDimensions() == 2 && b_shape[1] == 1) {
       // B is (M, 1), broadcast using Y(N,M) = 1 * ones(N,1) x B(1,M) + 0 * C
-      ORT_THROW("Broadcasting is not implemented in GemmFloat8.");
+      ORT_THROW("Broadcasting is not implemented in GemmFloatByte.");
     } else {
       // C is (M, N), no broadcast needed.
       /*
@@ -177,4 +194,5 @@ void GemmFloat8_Impl<AType, BType, CType, DType, BiasType>::CudaCompute(cudaStre
 }
 
 }  // namespace cuda
+}  // namespace contrib
 }  // namespace onnxruntime

@@ -9,13 +9,13 @@
 // D = alpha*(A*B) + beta*(C)
 
 namespace onnxruntime {
+namespace contrib {
 namespace cuda {
 
 // It probably exists some where already.
 template <typename T>
 cudaDataType ToCudaDataType();
 
-template <typename AType, typename BType, typename CType, typename DType, typename BiasType>
 struct GemmFloat8_Impl {
   // see https://docs.nvidia.com/cuda/cublas/index.html?highlight=cublasLtMatmulDescAttributes_t#cublasltmatmuldescattributes-t
   bool fast_accumulation_mode_;
@@ -27,11 +27,14 @@ struct GemmFloat8_Impl {
   float alpha_;
   float beta_;
 
-  void CudaCompute(cudaStream_t stream, cublasLtHandle_t handle, const Tensor* A, const Tensor* B, const Tensor* C, Tensor* D, BiasType* relu_bias, int M, int N, int K) const;
+  template <typename AType, typename BType, typename CType, typename DType, typename BiasType>
+  void CudaCompute(cudaStream_t stream, cublasLtHandle_t handle,
+                   const Tensor* A, const Tensor* B, const Tensor* C, Tensor* D, BiasType* relu_bias,
+                   int M, int N, int K) const;
 
   void set(int M, int N, int K, int& lda, int& ldb, int& ldd) const;
-  void CastTo(float value, DType& dest) const;
 };
 
 }  // namespace cuda
+}  // namespace contrib
 }  // namespace onnxruntime

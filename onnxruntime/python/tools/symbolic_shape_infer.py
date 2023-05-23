@@ -200,6 +200,7 @@ class SymbolicShapeInference:
             "FastGelu": self._infer_FastGelu,
             "Gelu": self._infer_Gelu,
             "GemmFastGelu": self._infer_GemmFastGelu,
+            "GemmFloatByte": self._infer_GemmFloatByte,
             "LayerNormalization": self._infer_LayerNormalization,
             "LongformerAttention": self._infer_LongformerAttention,
             "PythonOp": self._infer_PythonOp,

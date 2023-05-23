@@ -10,14 +10,14 @@
 // D = alpha*(A*B) + beta*(C)
 
 namespace onnxruntime {
+namespace contrib {
 namespace cuda {
 
-template <typename AType, typename BType, typename CType, typename DType, typename BiasType>
-class GemmFloat8 final : public CudaKernel {
+class GemmFloatByte final : public CudaKernel {
   using Base = CudaKernel;
 
  public:
-  GemmFloat8(const OpKernelInfo& info) : CudaKernel(info) {
+  GemmFloatByte(const OpKernelInfo& info) : CudaKernel(info) {
     int64_t temp;
 
     ORT_ENFORCE(info.GetAttr<int64_t>("transA", &temp).IsOK());
@@ -52,7 +52,9 @@ class GemmFloat8 final : public CudaKernel {
   Status ComputeInternal(OpKernelContext* context) const override;
 
  private:
-  GemmFloat8_Impl<AType, BType, CType, DType, BiasType> params_;
+  GemmFloat8_Impl params_;
 };
+
 }  // namespace cuda
+}  // namespace contrib
 }  // namespace onnxruntime

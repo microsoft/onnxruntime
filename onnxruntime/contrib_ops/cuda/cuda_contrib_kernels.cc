@@ -135,26 +135,7 @@ class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kMSDomain, 1
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kMSDomain, 1, MLFloat16, DecoderMaskedSelfAttention);
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kMSDomain, 1, float, DecoderMaskedMultiHeadAttention);
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kMSDomain, 1, MLFloat16, DecoderMaskedMultiHeadAttention);
-
-class ONNX_OPERATOR_FIVE_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kMSDomain, 1, Float8E4M3FN, Float8E4M3FN, BFloat16, BFloat16, BFloat16, GemmFloat8);
-class ONNX_OPERATOR_FIVE_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kMSDomain, 1, Float8E4M3FN, Float8E4M3FN, BFloat16, Float8E4M3FN, BFloat16, GemmFloat8);
-class ONNX_OPERATOR_FIVE_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kMSDomain, 1, Float8E4M3FN, Float8E4M3FN, half, half, half, GemmFloat8);
-class ONNX_OPERATOR_FIVE_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kMSDomain, 1, Float8E4M3FN, Float8E4M3FN, half, Float8E4M3FN, half, GemmFloat8);
-class ONNX_OPERATOR_FIVE_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kMSDomain, 1, Float8E4M3FN, Float8E4M3FN, float, float, BFloat16, GemmFloat8);
-class ONNX_OPERATOR_FIVE_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kMSDomain, 1, Float8E4M3FN, Float8E5M2, BFloat16, BFloat16, BFloat16, GemmFloat8);
-class ONNX_OPERATOR_FIVE_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kMSDomain, 1, Float8E4M3FN, Float8E5M2, BFloat16, Float8E4M3FN, BFloat16, GemmFloat8);
-class ONNX_OPERATOR_FIVE_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kMSDomain, 1, Float8E4M3FN, Float8E5M2, BFloat16, Float8E5M2, BFloat16, GemmFloat8);
-class ONNX_OPERATOR_FIVE_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kMSDomain, 1, Float8E4M3FN, Float8E5M2, half, half, half, GemmFloat8);
-class ONNX_OPERATOR_FIVE_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kMSDomain, 1, Float8E4M3FN, Float8E5M2, half, Float8E4M3FN, half, GemmFloat8);
-class ONNX_OPERATOR_FIVE_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kMSDomain, 1, Float8E4M3FN, Float8E5M2, half, Float8E5M2, half, GemmFloat8);
-class ONNX_OPERATOR_FIVE_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kMSDomain, 1, Float8E4M3FN, Float8E5M2, float, float, BFloat16, GemmFloat8);
-class ONNX_OPERATOR_FIVE_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kMSDomain, 1, Float8E5M2, Float8E4M3FN, BFloat16, BFloat16, BFloat16, GemmFloat8);
-class ONNX_OPERATOR_FIVE_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kMSDomain, 1, Float8E5M2, Float8E4M3FN, BFloat16, Float8E4M3FN, BFloat16, GemmFloat8);
-class ONNX_OPERATOR_FIVE_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kMSDomain, 1, Float8E5M2, Float8E4M3FN, BFloat16, Float8E5M2, BFloat16, GemmFloat8);
-class ONNX_OPERATOR_FIVE_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kMSDomain, 1, Float8E5M2, Float8E4M3FN, half, half, half, GemmFloat8);
-class ONNX_OPERATOR_FIVE_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kMSDomain, 1, Float8E5M2, Float8E4M3FN, half, Float8E4M3FN, half, GemmFloat8);
-class ONNX_OPERATOR_FIVE_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kMSDomain, 1, Float8E5M2, Float8E4M3FN, half, Float8E5M2, half, GemmFloat8);
-class ONNX_OPERATOR_FIVE_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kMSDomain, 1, Float8E5M2, Float8E4M3FN, float, float, BFloat16, GemmFloat8);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kCudaExecutionProvider, kMSDomain, 1, GemmFloatByte);
 
 #ifdef ENABLE_ATEN
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kCudaExecutionProvider, kPytorchAtenDomain, 1, ATen);
@@ -309,28 +290,7 @@ Status RegisterCudaContribKernels(KernelRegistry& kernel_registry) {
     BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kMSDomain, 1, MLFloat16, DecoderMaskedSelfAttention)>,
     BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kMSDomain, 1, float, DecoderMaskedMultiHeadAttention)>,
     BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kMSDomain, 1, MLFloat16, DecoderMaskedMultiHeadAttention)>,
-
-    BuildKernelCreateInfo<ONNX_OPERATOR_FIVE_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kMSDomain, 1, Float8E4M3FN, Float8E4M3FN, BFloat16, BFloat16, BFloat16, GemmFloat8)>,
-    BuildKernelCreateInfo<ONNX_OPERATOR_FIVE_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kMSDomain, 1, Float8E4M3FN, Float8E4M3FN, BFloat16, Float8E4M3FN, BFloat16, GemmFloat8)>,
-    BuildKernelCreateInfo<ONNX_OPERATOR_FIVE_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kMSDomain, 1, Float8E4M3FN, Float8E4M3FN, half, half, half, GemmFloat8)>,
-    BuildKernelCreateInfo<ONNX_OPERATOR_FIVE_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kMSDomain, 1, Float8E4M3FN, Float8E4M3FN, half, Float8E4M3FN, half, GemmFloat8)>,
-    BuildKernelCreateInfo<ONNX_OPERATOR_FIVE_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kMSDomain, 1, Float8E4M3FN, Float8E4M3FN, float, float, BFloat16, GemmFloat8)>,
-
-    BuildKernelCreateInfo<ONNX_OPERATOR_FIVE_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kMSDomain, 1, Float8E4M3FN, Float8E5M2, BFloat16, BFloat16, BFloat16, GemmFloat8)>,
-    BuildKernelCreateInfo<ONNX_OPERATOR_FIVE_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kMSDomain, 1, Float8E4M3FN, Float8E5M2, BFloat16, Float8E4M3FN, BFloat16, GemmFloat8)>,
-    BuildKernelCreateInfo<ONNX_OPERATOR_FIVE_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kMSDomain, 1, Float8E4M3FN, Float8E5M2, BFloat16, Float8E5M2, BFloat16, GemmFloat8)>,
-    BuildKernelCreateInfo<ONNX_OPERATOR_FIVE_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kMSDomain, 1, Float8E4M3FN, Float8E5M2, half, half, half, GemmFloat8)>,
-    BuildKernelCreateInfo<ONNX_OPERATOR_FIVE_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kMSDomain, 1, Float8E4M3FN, Float8E5M2, half, Float8E4M3FN, half, GemmFloat8)>,
-    BuildKernelCreateInfo<ONNX_OPERATOR_FIVE_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kMSDomain, 1, Float8E4M3FN, Float8E5M2, half, Float8E5M2, half, GemmFloat8)>,
-    BuildKernelCreateInfo<ONNX_OPERATOR_FIVE_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kMSDomain, 1, Float8E4M3FN, Float8E5M2, float, float, BFloat16, GemmFloat8)>,
-
-    BuildKernelCreateInfo<ONNX_OPERATOR_FIVE_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kMSDomain, 1, Float8E5M2, Float8E4M3FN, BFloat16, BFloat16, BFloat16, GemmFloat8)>,
-    BuildKernelCreateInfo<ONNX_OPERATOR_FIVE_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kMSDomain, 1, Float8E5M2, Float8E4M3FN, BFloat16, Float8E4M3FN, BFloat16, GemmFloat8)>,
-    BuildKernelCreateInfo<ONNX_OPERATOR_FIVE_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kMSDomain, 1, Float8E5M2, Float8E4M3FN, BFloat16, Float8E5M2, BFloat16, GemmFloat8)>,
-    BuildKernelCreateInfo<ONNX_OPERATOR_FIVE_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kMSDomain, 1, Float8E5M2, Float8E4M3FN, half, half, half, GemmFloat8)>,
-    BuildKernelCreateInfo<ONNX_OPERATOR_FIVE_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kMSDomain, 1, Float8E5M2, Float8E4M3FN, half, Float8E4M3FN, half, GemmFloat8)>,
-    BuildKernelCreateInfo<ONNX_OPERATOR_FIVE_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kMSDomain, 1, Float8E5M2, Float8E4M3FN, half, Float8E5M2, half, GemmFloat8)>,
-    BuildKernelCreateInfo<ONNX_OPERATOR_FIVE_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kMSDomain, 1, Float8E5M2, Float8E4M3FN, float, float, BFloat16, GemmFloat8)>,
+    BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kCudaExecutionProvider, kMSDomain, 1, GemmFloatByte)>,
 
 #ifdef ENABLE_ATEN
     BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kCudaExecutionProvider, kPytorchAtenDomain, 1, ATen)>,

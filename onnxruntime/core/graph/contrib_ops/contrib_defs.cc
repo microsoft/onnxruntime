@@ -2252,6 +2252,96 @@ ONNX_MS_OPERATOR_SET_SCHEMA(CropAndResize, 1,
         a fixed size = [crop_height, crop_width]. The result is a 4-D tensor [num_boxes, crop_height, crop_width, depth].
         The resizing is corner aligned.)DOC"));
 
+ONNX_MS_OPERATOR_SET_SCHEMA(GemmFloatByte, 1,
+                            OpSchema()
+                                .SetDoc(R"DOC(Gemm for float 8)DOC")
+                                .Input(
+                                    0,
+                                    "A",
+                                    "Input tensor A. "
+                                    "The shape of A should be (M, K) if transA is 0, "
+                                    "or (K, M) if transA is non-zero.",
+                                    "T")
+                                .Input(
+                                    1,
+                                    "B",
+                                    "Input tensor B. "
+                                    "The shape of B should be (K, N) if transB is 0, "
+                                    "or (N, K) if transB is non-zero.",
+                                    "T")
+                                .Input(
+                                    2,
+                                    "C",
+                                    "Bias, the shape of C should be unidirectional broadcastable to (M, N).",
+                                    "T2")
+                                .Input(
+                                    3,
+                                    "scale",
+                                    "Unused",
+                                    "T2")
+                                .Input(
+                                    4,
+                                    "result_type",
+                                    "unused but defines the result type",
+                                    "T2")
+                                .Output(0, "Y", "Output tensor of shape (M, N).", "T2")
+                                .TypeConstraint(
+                                    "T",
+                                    {"tensor(float8e4m3fn)"},
+                                    "Constrain input types to float tensors.")
+                                .TypeConstraint(
+                                    "T2",
+                                    {"tensor(float16)"},
+                                    "Constrain output types to float tensors.")
+                                .Attr(
+                                    "transA",
+                                    "Whether A should be transposed",
+                                    AttributeProto::INT,
+                                    static_cast<int64_t>(0))
+                                .Attr(
+                                    "transB",
+                                    "Whether B should be transposed",
+                                    AttributeProto::INT,
+                                    static_cast<int64_t>(0))
+                                .Attr(
+                                    "alpha",
+                                    "Scalar multiplier for the product of input tensors A * B.",
+                                    AttributeProto::FLOAT,
+                                    1.0f)
+                                .Attr(
+                                    "beta",
+                                    "Scalar multiplier for input tensor C.",
+                                    AttributeProto::FLOAT,
+                                    1.0f)
+                                .Attr(
+                                    "sm_count",
+                                    "",
+                                    AttributeProto::INT,
+                                    static_cast<int64_t>(0))
+                                .Attr(
+                                    "fastAccumulationMode",
+                                    "",
+                                    AttributeProto::INT,
+                                    static_cast<int64_t>(1))
+                                .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+                                  propagateElemTypeFromInputToOutput(ctx, 0, 0);
+                                  if (hasNInputShapes(ctx, 2)) {
+                                    auto transAAttr = ctx.getAttribute("transA");
+                                    bool transA = transAAttr ? static_cast<int>(transAAttr->i()) != 0 : false;
+                                    auto transBAttr = ctx.getAttribute("transB");
+                                    bool transB = transBAttr ? static_cast<int>(transBAttr->i()) != 0 : false;
+                                    auto& first_input_shape = getInputShape(ctx, 0);
+                                    auto& second_input_shape = getInputShape(ctx, 1);
+                                    if (first_input_shape.dim_size() != 2) {
+                                      fail_shape_inference("First input does not have rank 2");
+                                    }
+                                    if (second_input_shape.dim_size() != 2) {
+                                      fail_shape_inference("Second input does not have rank 2");
+                                    }
+                                    updateOutputShape(ctx, 0, {first_input_shape.dim(transA ? 1 : 0), second_input_shape.dim(transB ? 0 : 1)});
+                                  }
+                                }));
+
 void RegisterContribSchemas() {
   ONNX_CONTRIB_OPERATOR_SCHEMA_ELSEWHERE(AttnLSTM, RegisterAttnLSTMContribOpSchema);
   ONNX_CONTRIB_OPERATOR_SCHEMA_ELSEWHERE(Range, RegisterRangeOpSchema);
