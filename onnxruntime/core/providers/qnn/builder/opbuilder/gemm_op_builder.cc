@@ -160,7 +160,7 @@ Status GemmOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
                                                   bool is_quantized_model,
                                                   bool do_op_validation) const {
   ORT_RETURN_IF_ERROR(ProcessOutputs(qnn_model_wrapper, node_unit, std::move(input_names), {},
-                                     logger, is_quantized_model, do_op_validation));
+                                     logger, is_quantized_model, do_op_validation, GetQnnOpType(node_unit.OpType())));
   return Status::OK();
 }
 
