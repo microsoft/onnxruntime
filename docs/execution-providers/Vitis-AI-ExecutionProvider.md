@@ -109,7 +109,7 @@ pip install voe-[version]-cp39-cp39-win_amd64.whl
 
 
 ## Build
-To build the Ryzen AI Vitis AI ONNX Runtime Execution Provider from source, please refer to the [Build Instructions](../../build/eps.md#amd-vitis-ai).  
+To build the Ryzen AI Vitis AI ONNX Runtime Execution Provider from source, please refer to the [Build Instructions](../build/eps.md#amd-vitis-ai).  
 
 
 ## Quantization
