@@ -259,9 +259,9 @@ TEST_F(QnnHTPBackendTests, TestQDQU8Resize2xNearestHalfPixelRoundPreferFloor) {
 }
 
 TEST_F(QnnHTPBackendTests, TestQDQU8Resize2xNearestAsymmetricFloor) {
-    RunQDQResizeOpTest<uint8_t>({1, 3, 4, 4}, {1, 3, 8, 8}, "nearest", "asymmetric", "floor",
-                                ExpectedEPNodeAssignment::All, 1e-5f,
-                                "TestQDQU8Resize2xNearestAsymmetricFloor");
+  RunQDQResizeOpTest<uint8_t>({1, 3, 4, 4}, {1, 3, 8, 8}, "nearest", "asymmetric", "floor",
+                              ExpectedEPNodeAssignment::All, 1e-5f,
+                              "TestQDQU8Resize2xNearestAsymmetricFloor");
 }
 
 // TODO: Investigate with Qualcomm. The qnn-onnx-converter tool translates ONNX Resize [nearest, asymmetric, ceil] to
@@ -274,21 +274,21 @@ TEST_F(QnnHTPBackendTests, TestQDQU8Resize2xNearestAsymmetricFloor) {
 // Actual : 16 - byte object<C0 - 00 00 - 00 00 - 00 00 - 00 40 - 04 E9 - 1B BB - 01 00 - 00>,
 // where the value pair(0.15, 0.501) at index #1 don't match, which is 0.351 from 0.15
 TEST_F(QnnHTPBackendTests, DISABLED_TestQDQU8Resize2xNearestAsymmetricCeil) {
-    RunQDQResizeOpTest<uint8_t>({1, 3, 4, 4}, {1, 3, 8, 8}, "nearest", "asymmetric", "ceil",
-                                ExpectedEPNodeAssignment::All, 1e-5f,
-                                "TestQDQU8Resize2xNearestAsymmetricFloor");
+  RunQDQResizeOpTest<uint8_t>({1, 3, 4, 4}, {1, 3, 8, 8}, "nearest", "asymmetric", "ceil",
+                              ExpectedEPNodeAssignment::All, 1e-5f,
+                              "TestQDQU8Resize2xNearestAsymmetricFloor");
 }
 
 TEST_F(QnnHTPBackendTests, TestQDQU8Resize3xNearestAsymmetricFloor) {
-    RunQDQResizeOpTest<uint8_t>({1, 3, 4, 4}, {1, 3, 12, 12}, "nearest", "asymmetric", "floor",
-                                ExpectedEPNodeAssignment::All, 1e-5f,
-                                "TestQDQU8Resize2xNearestAsymmetricFloor");
+  RunQDQResizeOpTest<uint8_t>({1, 3, 4, 4}, {1, 3, 12, 12}, "nearest", "asymmetric", "floor",
+                              ExpectedEPNodeAssignment::All, 1e-5f,
+                              "TestQDQU8Resize2xNearestAsymmetricFloor");
 }
 
 TEST_F(QnnHTPBackendTests, TestQDQU8ResizeHalfNearestAsymmetricFloor) {
-    RunQDQResizeOpTest<uint8_t>({1, 3, 4, 4}, {1, 3, 2, 2}, "nearest", "asymmetric", "floor",
-                                ExpectedEPNodeAssignment::All, 1e-5f,
-                                "TestQDQU8Resize2xNearestAsymmetricFloor");
+  RunQDQResizeOpTest<uint8_t>({1, 3, 4, 4}, {1, 3, 2, 2}, "nearest", "asymmetric", "floor",
+                              ExpectedEPNodeAssignment::All, 1e-5f,
+                              "TestQDQU8Resize2xNearestAsymmetricFloor");
 }
 
 #endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)

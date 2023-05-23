@@ -279,8 +279,8 @@ Status ResizeOpBuilder::ValidateQDQOp(QnnModelWrapper& qnn_model_wrapper, const 
     // other rounding modes with Qualcomm. Ideally, we would use QNN's Resize operator, but it doesn't support
     // the "asymmetric" coordinate transformation mode on HTP.
     ORT_RETURN_IF(transformation_mode == "asymmetric" && nearest_mode != "floor",
-                  "QNN EP: Resize with transformation mode 'asymmetric' and nearest mode 'floor' is not ",
-                  "currently supported on the HTP backend.");
+                  "QNN EP: Resize with coordinate_transformation_mode 'asymmetric' and nearest_mode '", nearest_mode,
+                  "' is not currently supported on the HTP backend.");
   }
 
   // Check that input shape has at least a rank of 3.
