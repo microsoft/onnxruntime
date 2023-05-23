@@ -12,6 +12,7 @@
 #include "HTP/QnnHtpCommon.h"
 #include "core/common/gsl.h"
 #include "core/framework/endian_utils.h"
+#include "core/common/logging/capture.h"
 
 // Flag to determine if Backend should do node validation for each opNode added
 #define DO_GRAPH_NODE_VALIDATIONS 1
@@ -126,6 +127,53 @@ Status QnnBackendManager::LoadQnnSystemLib() {
   ORT_RETURN_IF_NOT(found_valid_interface, "Unable to find a valid system interface.");
 
   return Status::OK();
+}
+
+void QnnLogging(const char* format,
+                QnnLog_Level_t level,
+                uint64_t timestamp,
+                va_list argument_parameter) {
+  ORT_UNUSED_PARAMETER(level);
+  ORT_UNUSED_PARAMETER(timestamp);
+
+  // Always output Qnn log as Ort verbose log
+  const auto& logger = ::onnxruntime::logging::LoggingManager::DefaultLogger();
+  const auto severity = ::onnxruntime::logging::Severity::kVERBOSE;
+  const auto data_type = ::onnxruntime::logging::DataType::SYSTEM;
+  if (logger.OutputIsEnabled(severity, data_type)) {
+    ::onnxruntime::logging::Capture(logger,
+                                    severity,
+                                    ::onnxruntime::logging::Category::onnxruntime,
+                                    data_type,
+                                    ORT_WHERE)
+        .ProcessPrintf(format, argument_parameter);
+  }
+}
+
+void QnnBackendManager::InitializeQnnLog() {
+  // Set Qnn log level align with Ort log level
+  QnnLog_Level_t qnn_log_level = QNN_LOG_LEVEL_WARN;
+  auto ort_log_level = logger_->GetSeverity();
+  switch (ort_log_level) {
+    case logging::Severity::kVERBOSE:
+      qnn_log_level = QNN_LOG_LEVEL_DEBUG;
+      break;
+    case logging::Severity::kINFO:
+      qnn_log_level = QNN_LOG_LEVEL_INFO;
+      break;
+    case logging::Severity::kWARNING:
+      qnn_log_level = QNN_LOG_LEVEL_WARN;
+      break;
+    case logging::Severity::kERROR:
+      qnn_log_level = QNN_LOG_LEVEL_ERROR;
+      break;
+    default:
+      break;
+  }
+
+  if (QNN_SUCCESS != qnn_interface_.logCreate(QnnLogging, qnn_log_level, &log_handle_)) {
+    LOGS(*logger_, WARNING) << "Unable to initialize logging in the QNN backend.";
+  }
 }
 
 Status QnnBackendManager::InitializeBackend() {
