@@ -53,7 +53,10 @@ int TEST_MAIN(int argc, char** argv) {
   int status = 0;
 
   ORT_TRY {
-    ::testing::InitGoogleTest(&argc, argv);
+//    ::testing::InitGoogleTest(&argc, argv);
+  int argc_override=2;
+  char* argv_override[] = { argv[0], "--gtest_filter=BeamSearchTest.GptBeamSearchFp32" };
+  ::testing::InitGoogleTest(&argc_override, argv_override);
 
     ortenv_setup();
     status = RUN_ALL_TESTS();

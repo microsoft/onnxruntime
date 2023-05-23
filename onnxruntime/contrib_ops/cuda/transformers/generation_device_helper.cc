@@ -351,6 +351,8 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
   ORT_UNUSED_PARAMETER(dumper);
 #endif
 
+  bool beam_scorer_cpu = false; // TODO: Remove once this way is superior
+
   int batch_size = parameters->batch_size;
   int num_beams = parameters->num_beams;
   int vocab_size = parameters->vocab_size;
@@ -431,11 +433,9 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
   BufferUniquePtr sequences_buffer;
   int current_sequence_length = sequences->GetSequenceLength();
   bool run_ngram = parameters->no_repeat_ngram_size > 0 && current_sequence_length >= parameters->no_repeat_ngram_size;
-  if (parameters->repetition_penalty != 1.0f || run_ngram) {
+  if (parameters->repetition_penalty != 1.0f || run_ngram || !beam_scorer_cpu) {
     size_t bytes = SafeInt<size_t>(sizeof(int32_t)) * batch_beam_size * parameters->max_length;
-    void* data = allocator->Alloc(bytes);
-    BufferUniquePtr temp_buffer(data, BufferDeleter(allocator));
-    sequences_buffer = std::move(temp_buffer);
+    sequences_buffer = BufferUniquePtr(allocator->Alloc(bytes), BufferDeleter(allocator));
     CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(sequences_buffer.get(), sequences->GetSequence(0).data(), bytes,
                                          cudaMemcpyHostToDevice, cuda_stream));
   }
@@ -512,7 +512,8 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
 #endif
 
     // TODO: Remove these kinds of cross-device copies once BeamScorer runs on CUDA
-    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(cpu_state->topk_scores.data(),
+    if (beam_scorer_cpu)
+      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(cpu_state->topk_scores.data(),
                                          beam_state->next_scores.data(),
                                          beam_state->next_scores.size_bytes(),
                                          cudaMemcpyDeviceToHost,
@@ -560,7 +561,8 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
 #endif
 
     // TODO: Remove these kinds of cross-device copies once BeamScorer runs on CUDA
-    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(cpu_state->topk_scores.data(),
+    if (beam_scorer_cpu)
+      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(cpu_state->topk_scores.data(),
                                          data,
                                          topk_scores->SizeInBytes(),
                                          cudaMemcpyDeviceToHost,
@@ -568,45 +570,58 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
   }
 
   // TODO: Remove these kinds of cross-device copies once BeamScorer runs on CUDA
-  CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(cpu_state->topk_tokens.data(),
-                                       beam_state->next_tokens.data(),
-                                       beam_state->next_tokens.size_bytes(),
-                                       cudaMemcpyDeviceToHost,
-                                       cuda_stream));
-  CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(cpu_state->topk_indices.data(),
-                                       beam_state->next_indices.data(),
-                                       beam_state->next_indices.size_bytes(),
-                                       cudaMemcpyDeviceToHost,
-                                       cuda_stream));
-  CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(cuda_stream));
-
-  gsl::span<const float> next_scores(cpu_state->topk_scores.data(), beam_state->next_scores.size());
-  gsl::span<const int32_t> next_tokens(cpu_state->topk_tokens.data(), beam_state->next_tokens.size());
-  gsl::span<const int32_t> next_indices(cpu_state->topk_indices.data(), beam_state->next_indices.size());
-
-  // TODO: Implement BeamScorer on CUDA
-  beam_scorer->Process(
-      *sequences,
-      next_scores,
-      next_tokens,
-      next_indices);
-
-  // TODO: This is a temporary work-around as BeamScorer currently only runs on CPU.
-  // We can remove these kinds of work-arounds once BeamScorer runs on CUDA eventually.
-  auto chosen_indices = beam_scorer->GetNextIndices();
-  auto beam_state_chosen_indices = beam_state->chosen_indices;
-
-  if (!beam_state_chosen_indices.empty()) {
-    // If we have allocated `chosen_indices` in beam_state, it means that we
-    // will be needing the chosen indices from BeamScorer as we are using
-    // DecoderMaskedSelfAttention, so copy it over.
-    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(beam_state_chosen_indices.data(),
-                                         chosen_indices.data(),
-                                         chosen_indices.size_bytes(),
-                                         cudaMemcpyHostToDevice,
+  if (beam_scorer_cpu) {
+    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(cpu_state->topk_tokens.data(),
+                                         beam_state->next_tokens.data(),
+                                         beam_state->next_tokens.size_bytes(),
+                                         cudaMemcpyDeviceToHost,
                                          cuda_stream));
-
+    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(cpu_state->topk_indices.data(),
+                                         beam_state->next_indices.data(),
+                                         beam_state->next_indices.size_bytes(),
+                                         cudaMemcpyDeviceToHost,
+                                         cuda_stream));
     CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(cuda_stream));
+
+    gsl::span<const float> next_scores(cpu_state->topk_scores.data(), beam_state->next_scores.size());
+    gsl::span<const int32_t> next_tokens(cpu_state->topk_tokens.data(), beam_state->next_tokens.size());
+    gsl::span<const int32_t> next_indices(cpu_state->topk_indices.data(), beam_state->next_indices.size());
+
+    // TODO: Implement BeamScorer on CUDA
+    beam_scorer->Process(
+        *sequences,
+        next_scores,
+        next_tokens,
+        next_indices);
+
+    // TODO: This is a temporary work-around as BeamScorer currently only runs on CPU.
+    // We can remove these kinds of work-arounds once BeamScorer runs on CUDA eventually.
+    auto chosen_indices = beam_scorer->GetNextIndices();
+    auto beam_state_chosen_indices = beam_state->chosen_indices;
+
+    if (!beam_state_chosen_indices.empty()) {
+      // If we have allocated `chosen_indices` in beam_state, it means that we
+      // will be needing the chosen indices from BeamScorer as we are using
+      // DecoderMaskedSelfAttention, so copy it over.
+      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(beam_state_chosen_indices.data(),
+                                           chosen_indices.data(),
+                                           chosen_indices.size_bytes(),
+                                           cudaMemcpyHostToDevice,
+                                           cuda_stream));
+
+      CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(cuda_stream));
+    }
+  } else {
+    // gsl::span doesn't convert from non const to const, so all we're doing here is making each const.
+    gsl::span<const float> next_scores(beam_state->next_scores.data(), beam_state->next_scores.size());
+    gsl::span<const int32_t> next_tokens(beam_state->next_tokens.data(), beam_state->next_tokens.size());
+    gsl::span<const int32_t> next_indices(beam_state->next_indices.data(), beam_state->next_indices.size());
+
+    beam_scorer->Process(
+        *sequences,
+        next_scores,
+        next_tokens,
+        next_indices);
   }
 
 #ifdef ENABLE_NVTX_PROFILE
@@ -614,6 +629,172 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
 #endif
 
   return Status::OK();
+}
+
+
+struct CudaBeamSearchScorer : transformers::IBeamScorer {
+  CudaBeamSearchScorer(const transformers::IGenerationParameters& parameters,
+                       AllocatorPtr& allocator,
+                       Stream* stream);
+
+  void Process(transformers::ISequences& sequences,
+               gsl::span<const float>& next_scores,
+               gsl::span<const int32_t>& next_tokens,
+               gsl::span<const int32_t>& next_indices) override;
+
+  void Finalize(transformers::ISequences& sequences,
+                gsl::span<const float>& final_beam_scores,
+                Tensor* output_sequences,
+                Tensor* output_sequence_scores) override;
+
+  bool IsDone() const override { return state_cpu_.not_done_count_ == 0; }
+
+  gsl::span<float>& GetNextScores() override { return next_beam_scores_; }
+  gsl::span<int32_t>& GetNextTokens() override { return next_beam_tokens_; }
+  gsl::span<int32_t>& GetNextIndices() override { return next_beam_indices_; }
+
+ private:
+
+  cuda::BeamScorerState state_cpu_;
+  IAllocatorUniquePtr<cuda::BeamScorerState> state_gpu_;
+  cudaStream_t stream_;
+
+  IAllocatorUniquePtr<float> next_beam_scores_ptr_;
+  gsl::span<float> next_beam_scores_;
+
+  IAllocatorUniquePtr<int32_t> next_beam_tokens_ptr_;
+  gsl::span<int32_t> next_beam_tokens_;
+
+  IAllocatorUniquePtr<int32_t> next_beam_indices_ptr_;
+  gsl::span<int32_t> next_beam_indices_;
+
+  IAllocatorUniquePtr<int32_t> hypothesis_buffer_ptr_;  // Allocated buffer to hold all hypotheses
+  gsl::span<int32_t> hypothesis_buffer_;                // Span of the allocated buffer
+  size_t hypothesis_buffer_used_{};                     // Offset of available buffer, or length of used buffer.
+
+  IAllocatorUniquePtr<cuda::HypothesisScore> hypothesis_scores_ptr_;  // num_beams_ * batch_size_, divided into num_beams_ chunks per BeamHypothesis in beam_hyps_
+  IAllocatorUniquePtr<cuda::BeamHypotheses> beam_hyps_ptr_;
+  gsl::span<cuda::BeamHypotheses> beam_hyps_;  // Shape is batch_size_
+};
+
+template <typename TAlloc>
+gsl::span<TAlloc> Allocate(std::shared_ptr<IAllocator> allocator,
+                           size_t size,
+                           IAllocatorUniquePtr<TAlloc>& unique_ptr,
+                           bool fill = false, TAlloc fill_value = TAlloc{}) {
+  unique_ptr = IAllocator::MakeUniquePtr<TAlloc>(std::move(allocator), size);
+  return gsl::make_span(unique_ptr.get(), size);
+}
+
+  CudaBeamSearchScorer::CudaBeamSearchScorer(const transformers::IGenerationParameters& parameters,
+                                           AllocatorPtr& allocator, Stream* stream)
+    : stream_{stream ? reinterpret_cast<cudaStream_t>(stream->GetHandle()) : nullptr} {
+
+  cuda::BeamScorerState state_cpu_;
+  state_cpu_.batch_size_ = static_cast<size_t>(parameters.batch_size);
+  state_cpu_.num_beams_ = static_cast<size_t>(parameters.num_beams);
+  state_cpu_.max_length_ = static_cast<size_t>(parameters.max_length);
+  state_cpu_.num_return_sequences_ = static_cast<size_t>(parameters.num_return_sequences);
+  state_cpu_.pad_token_id_ = parameters.pad_token_id;
+  state_cpu_.eos_token_id_ = parameters.eos_token_id;
+  state_cpu_.early_stopping_ = parameters.early_stopping;
+  state_cpu_.not_done_count_ = parameters.batch_size;
+  state_gpu_ = IAllocator::MakeUniquePtr<cuda::BeamScorerState>(allocator, 1);
+  cudaMemcpyAsync(state_gpu_.get(), &state_cpu_, sizeof(state_cpu_), ::cudaMemcpyHostToDevice, stream_);
+
+  size_t batch_beam_size = state_cpu_.batch_size_ * state_cpu_.num_beams_;
+
+  auto beams = Allocate<cuda::HypothesisScore>(allocator, batch_beam_size, hypothesis_scores_ptr_);
+  beam_hyps_ = Allocate<cuda::BeamHypotheses>(allocator, state_cpu_.batch_size_, beam_hyps_ptr_);
+
+  cuda::LaunchInitializeBeamHypotheses(beam_hyps_, parameters.length_penalty, beams, parameters.num_beams, stream_);
+
+  next_beam_scores_ = Allocate<float>(allocator, batch_beam_size, next_beam_scores_ptr_);
+  next_beam_tokens_ = Allocate<int32_t>(allocator, batch_beam_size, next_beam_tokens_ptr_);
+  next_beam_indices_ = Allocate<int32_t>(allocator, batch_beam_size, next_beam_indices_ptr_);
+
+  // Space to store intermediate sequence with length sequence_length, sequence_length + 1, ..., max_sequence_length.
+  size_t per_beam = (SafeInt<size_t>(state_cpu_.max_length_) * (state_cpu_.max_length_ + 1) - (parameters.sequence_length - 1) * parameters.sequence_length) / 2;
+  hypothesis_buffer_ = Allocate<int32_t>(allocator, batch_beam_size * per_beam, hypothesis_buffer_ptr_);
+}
+
+void CudaBeamSearchScorer::Process(transformers::ISequences& sequences,
+                                   gsl::span<const float>& next_scores,
+                                   gsl::span<const int32_t>& next_tokens,
+                                   gsl::span<const int32_t>& next_indices) {
+  cuda::LaunchBeamSearchScorer_Process(*state_gpu_,
+                                       sequences.GetCurrentDeviceSequences(),
+                                       sequences.GetNextDeviceSequences(),
+                                       sequences.GetSequenceLength(),
+                                       beam_hyps_,
+                                       next_beam_scores_,
+                                       next_beam_tokens_,
+                                       next_beam_indices_,
+                                       hypothesis_buffer_,
+                                       next_scores,
+                                       next_tokens,
+                                       next_indices,
+                                       stream_);
+}
+
+void CudaBeamSearchScorer::Finalize(transformers::ISequences& sequences,
+                                    gsl::span<const float>& final_beam_scores,
+                                    Tensor* output_sequences,
+                                    Tensor* output_sequence_scores) {
+}
+
+#if 0
+void CudaBeamSearchScorer::Finalize(transformers::ISequences& sequences,
+                                gsl::span<const float>& final_beam_scores,
+                                Tensor* output_sequences,
+                                Tensor* output_sequence_scores) {
+  ORT_ENFORCE(output_sequences != nullptr);
+
+  // Finalize all open beam hypotheses and add to generated hypotheses.
+  for (size_t batch_index = 0; batch_index < batch_size_; batch_index++) {
+    cuda::BeamHypotheses& beam_hyp = beam_hyps_[batch_index];
+    if (beam_hyp.done_) {
+      continue;
+    }
+
+    for (size_t beam_index = 0; beam_index < num_beams_; beam_index++) {
+      size_t batch_beam_index = batch_index * num_beams_ + beam_index;
+      float final_score = final_beam_scores[batch_beam_index];
+      auto final_tokens = sequences.GetSequence(batch_beam_index);
+      beam_hyp.Add(final_tokens, final_score);
+    }
+  }
+
+  // Word IDs of each sequence, with shape (batch_size * num_return_sequences, max_sequence_length).
+  gsl::span<int32_t> output{ output_sequences->MutableData<int32_t>(), static_cast<size_t>(output_sequences->Shape().Size()) };
+
+  // Fill output sequences with pad token ID so that we do not need append it later.
+  std::fill_n(output.data(), output.size(), pad_token_id_);
+
+  // Score of each sequence, with shape (batch_size * num_return_sequences).
+  gsl::span<float> sequence_scores;
+  if (output_sequence_scores) {
+    sequence_scores = gsl::span<float>{output_sequence_scores->MutableData<float>(), static_cast<size_t>(output_sequence_scores->Shape().Size()) };
+  }
+
+  // Select the best hypotheses according to number of sequences to return.
+  for (size_t batch_index = 0; batch_index < batch_size_; batch_index++) {
+    cuda::BeamHypotheses& beam_hyp = beam_hyps_[batch_index];
+
+    auto batch_output = output.subspan(batch_index * num_return_sequences_ * max_length_,
+                                       num_return_sequences_ * max_length_);
+    beam_hyp.Output(
+        num_return_sequences_,
+        max_length_,
+        batch_output,
+        sequence_scores.empty() ? sequence_scores : sequence_scores.subspan(batch_index * num_return_sequences_, num_return_sequences_));
+  }
+}
+#endif
+
+std::unique_ptr<transformers::IBeamScorer> CreateBeamScorer(const transformers::IGenerationParameters& parameters,
+                                                            AllocatorPtr& allocator, Stream* stream) {
+  return std::make_unique<CudaBeamSearchScorer>(parameters, allocator, stream);
 }
 
 template <typename T>

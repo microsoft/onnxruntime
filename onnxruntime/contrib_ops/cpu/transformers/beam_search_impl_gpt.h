@@ -34,6 +34,7 @@ class BeamSearchGpt : public BeamSearchBase<T> {
                 const GenerationDeviceHelper::DeviceCopyFunc<float>& device_copy_func,
                 const GenerationDeviceHelper::DeviceCopyFunc<int32_t>& device_copy_int32_func,
                 const GenerationDeviceHelper::UpdateGptFeedsFunc<T>& update_feeds_func,
+                const GenerationDeviceHelper::CreateBeamScorer& create_beam_scorer_func,
                 const void* cuda_device_prop,
                 int cuda_device_arch)
       : BeamSearchBase<T>(context, decoder_session_state, thread_pool,
@@ -47,6 +48,7 @@ class BeamSearchGpt : public BeamSearchBase<T> {
         init_beam_state_func_(init_beam_state_func),
         reorder_past_state_func_(reorder_past_state_func),
         update_feeds_func_(update_feeds_func),
+        create_beam_scorer_func_(create_beam_scorer_func),
         cuda_device_prop_(cuda_device_prop),
         cuda_device_arch_(cuda_device_arch) {
     if (gpt_subgraph_.has_decoder_masked_attention_) {
@@ -95,6 +97,7 @@ class BeamSearchGpt : public BeamSearchBase<T> {
   GenerationDeviceHelper::InitBeamStateFunc<T> init_beam_state_func_;
   GenerationDeviceHelper::ReorderPastStateFunc reorder_past_state_func_;
   GenerationDeviceHelper::UpdateGptFeedsFunc<T> update_feeds_func_;
+  GenerationDeviceHelper::CreateBeamScorer create_beam_scorer_func_;
 
   const void* cuda_device_prop_ = nullptr;
   int cuda_device_arch_ = 0;
@@ -180,18 +183,15 @@ Status BeamSearchGpt<T>::Execute(const FeedsFetchesManager* init_run_feeds_fetch
                                  const FeedsFetchesManager& feeds_fetches_manager) {
   auto status = Status::OK();
   const BeamSearchParameters* parameters = this->parameters_;
-  int64_t sequences_dims[] = {parameters->batch_size, parameters->num_return_sequences, parameters->max_length};
-  TensorShape sequences_shape(&sequences_dims[0], sizeof(sequences_dims) / sizeof(sequences_dims[0]));
+  TensorShape sequences_shape{parameters->batch_size, parameters->num_return_sequences, parameters->max_length};
   Tensor* output_sequences = this->context_.Output(0, sequences_shape);
 
-  int64_t sequences_scores_dims[] = {parameters->batch_size, parameters->num_return_sequences};
-  TensorShape sequences_scores_shape(&sequences_scores_dims[0], 2);
+  TensorShape sequences_scores_shape{parameters->batch_size, parameters->num_return_sequences};
   Tensor* output_sequences_scores = this->context_.Output(1, sequences_scores_shape);
 
-  int64_t scores_dims[] = {
+  TensorShape scores_shape{
       static_cast<int64_t>(parameters->max_length) - static_cast<int64_t>(parameters->sequence_length),
       parameters->batch_size, parameters->num_beams, parameters->vocab_size};
-  TensorShape scores_shape(&scores_dims[0], sizeof(scores_dims) / sizeof(scores_dims[0]));
   Tensor* output_scores = this->context_.Output(2, scores_shape);
 
   // Update the flag to indicate whether scores exists in output
@@ -202,7 +202,7 @@ Status BeamSearchGpt<T>::Execute(const FeedsFetchesManager* init_run_feeds_fetch
   std::vector<OrtValue> fetches;
 
   // Initialize resources
-  this->beam_scorer_ = std::make_unique<BeamSearchScorer>(*parameters, this->cpu_allocator_);
+  this->beam_scorer_ = create_beam_scorer_func_ ? create_beam_scorer_func_(*parameters, this->temp_space_allocator_, this->ort_stream_) : std::make_unique<BeamSearchScorer>(*parameters, this->cpu_allocator_);
 
   BeamSearchCpuState cpu_state{*parameters,
                                this->cpu_allocator_,
@@ -233,6 +233,9 @@ Status BeamSearchGpt<T>::Execute(const FeedsFetchesManager* init_run_feeds_fetch
                                 gpt_subgraph_.has_decoder_masked_attention_,
                                 true /* use_position */};
 
+  if (this->IsCuda())
+    cpu_state.sequences.InitDevice(beam_state.sequences_device);
+
   init_beam_state_func_(&beam_state,
                         cpu_state.sequence_lengths,
                         parameters->batch_size,
@@ -246,8 +249,7 @@ Status BeamSearchGpt<T>::Execute(const FeedsFetchesManager* init_run_feeds_fetch
 #endif
   // Position ids for all iterations except the first. It uses memory buffer owned by next_positions.
   OrtValue position_ids;
-  int64_t dims[] = {parameters->BatchBeamSize(), 1};
-  TensorShape shape(&dims[0], 2);
+  TensorShape shape{parameters->BatchBeamSize(), 1};
   Tensor::InitOrtValue(DataTypeImpl::GetType<int32_t>(),
                        shape,
                        beam_state.next_positions.data(),
