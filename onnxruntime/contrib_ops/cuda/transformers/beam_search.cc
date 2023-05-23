@@ -56,7 +56,9 @@ BeamSearch::BeamSearch(const OpKernelInfo& info)
                                   GenerationCudaDeviceHelper::ExpandBuffer<float>,
                                   GenerationCudaDeviceHelper::ExpandBuffer<MLFloat16>,
                                   GenerationCudaDeviceHelper::UpdateDecoderCrossQK<float>,
-                                  GenerationCudaDeviceHelper::UpdateDecoderCrossQK<MLFloat16>);
+                                  GenerationCudaDeviceHelper::UpdateDecoderCrossQK<MLFloat16>,
+                                  GenerationCudaDeviceHelper::FinalizeDecoderCrossQK<float>,
+                                  GenerationCudaDeviceHelper::FinalizeDecoderCrossQK<MLFloat16>);
 
   SetConsoleDumper(&g_cuda_dumper);
 

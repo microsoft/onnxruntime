@@ -150,12 +150,30 @@ Status ExpandBuffer(
 template <typename T>
 Status UpdateDecoderCrossQK(
     int iteration_number,
-    Stream* tream,
-    const OrtValue* cross_qks,
+    Stream* stream,
+    OrtValue* cross_qks,
+    IAllocatorUniquePtr<T*>& qk_layers_pointer,
     int num_layers,
     int cross_qk_layer_head_pair_count,
     const int* cross_qk_layer_head_pairs,
-    T* cross_qk_buffer_data);
+    T* cross_qk_buffer_data,
+    AllocatorPtr allocator);
+
+template <typename T>
+Status FinalizeDecoderCrossQK(
+    Stream* stream,
+    int iteration_number,
+    int context_decoding_len,
+    int batch_size,
+    int num_beams,
+    int max_length,
+    int cross_qk_layer_head_pair_count,
+    const int* cross_qk_layer_head_pairs,
+    int frames_of_k,
+    const T* cross_qk_buffer_data,
+    T* cross_qk_output,
+    int num_return_sequences,
+    const int* cache_indir_data);
 
 }  // namespace GenerationCudaDeviceHelper
 }  // namespace contrib

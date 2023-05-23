@@ -1434,34 +1434,107 @@ template Status ExpandBuffer<MLFloat16>(
 template <typename T>
 Status UpdateDecoderCrossQK(
     [[maybe_unused]] int iteration_number,
-    [[maybe_unused]] Stream* tream,
-    [[maybe_unused]] const OrtValue* cross_qks,
+    [[maybe_unused]] Stream* stream,
+    [[maybe_unused]] OrtValue* cross_qks,
+    [[maybe_unused]] IAllocatorUniquePtr<T*>& qk_layers_pointer,
     [[maybe_unused]] int num_layers,
     [[maybe_unused]] int cross_qk_layer_head_pair_count,
     [[maybe_unused]] const int* cross_qk_layer_head_pairs,
-    [[maybe_unused]] T* cross_qk_buffer_data
+    [[maybe_unused]] T* cross_qk_buffer_data,
+    [[maybe_unused]] AllocatorPtr allocator
 ) {
-  std::cout << "  ================== UpdateDecoderCrossQK GPU ======== Not Implemented Yet ====" << std::endl;
+  std::cout << "  ================== UpdateDecoderCrossQK GPU ======== Implementing in progress ====" << std::endl;
+  if (qk_layers_pointer.get() == nullptr) {
+    std::cout << "  ================== UpdateDecoderCrossQK GPU ======== Create GPU tensor pointer array ====" << std::endl;
+    cudaStream_t cuda_stream = stream ? static_cast<cudaStream_t>(stream->GetHandle()) : nullptr;
+    // Put all the qk pointers into gpu, as they did not change in following decoding steps
+    // also this help to use single kernel to process each step
+    qk_layers_pointer = IAllocator::MakeUniquePtr<T*>(allocator, static_cast<size_t>(num_layers), false, stream);
+    std::vector<T*> qk_layer_data(num_layers, nullptr);
+    for (int layer = 0; layer < num_layers; layer++) {
+      qk_layer_data[layer] = cross_qks[layer].GetMutable<Tensor>()->MutableData<T>();
+    }
+    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(qk_layers_pointer.get(), qk_layer_data.data(), sizeof(qk_layer_data[0]) * num_layers,
+                                         cudaMemcpyHostToDevice, cuda_stream));
+  }
+
+
   return Status::OK();
 }
 
 template Status UpdateDecoderCrossQK<MLFloat16>(
     int iteration_number,
-    Stream* tream,
-    const OrtValue* cross_qks,
+    Stream* stream,
+    OrtValue* cross_qks,
+    IAllocatorUniquePtr<MLFloat16*>& qk_layers_pointer,
     int num_layers,
     int cross_qk_layer_head_pair_count,
     const int* cross_qk_layer_head_pairs,
-    MLFloat16* cross_qk_buffer_data);
+    MLFloat16* cross_qk_buffer_data,
+    AllocatorPtr allocator);
 
 template Status UpdateDecoderCrossQK<float>(
     int iteration_number,
-    Stream* tream,
-    const OrtValue* cross_qks,
+    Stream* stream,
+    OrtValue* cross_qks,
+    IAllocatorUniquePtr<float*>& qk_layers_pointer,
     int num_layers,
     int cross_qk_layer_head_pair_count,
     const int* cross_qk_layer_head_pairs,
-    float* cross_qk_buffer_data);
+    float* cross_qk_buffer_data,
+    AllocatorPtr allocator);
+
+
+template <typename T>
+Status FinalizeDecoderCrossQK(
+    [[maybe_unused]] Stream* stream,
+    [[maybe_unused]] int iteration_number,
+    [[maybe_unused]] int context_decoding_len,
+    [[maybe_unused]] int batch_size,
+    [[maybe_unused]] int num_beams,
+    [[maybe_unused]] int max_length,
+    [[maybe_unused]] int cross_qk_layer_head_pair_count,
+    [[maybe_unused]] const int* cross_qk_layer_head_pairs,
+    [[maybe_unused]] int frames_of_k,
+    [[maybe_unused]] const T* cross_qk_buffer_data,
+    [[maybe_unused]] T* cross_qk_output,
+    [[maybe_unused]] int num_return_sequences,
+    [[maybe_unused]] const int* cache_indir_data
+) {
+  std::cout << "  ================== FinalizeDecoderCrossQK GPU ======== Implementing in progress ====" << std::endl;
+  return Status::OK();
+}
+
+template Status FinalizeDecoderCrossQK(
+    Stream* stream,
+    int iteration_number,
+    int context_decoding_len,
+    int batch_size,
+    int num_beams,
+    int max_length,
+    int cross_qk_layer_head_pair_count,
+    const int* cross_qk_layer_head_pairs,
+    int frames_of_k,
+    const float* cross_qk_buffer_data,
+    float* cross_qk_output,
+    int num_return_sequences,
+    const int* cache_indir_data);
+
+template Status FinalizeDecoderCrossQK(
+    Stream* stream,
+    int iteration_number,
+    int context_decoding_len,
+    int batch_size,
+    int num_beams,
+    int max_length,
+    int cross_qk_layer_head_pair_count,
+    const int* cross_qk_layer_head_pairs,
+    int frames_of_k,
+    const MLFloat16* cross_qk_buffer_data,
+    MLFloat16* cross_qk_output,
+    int num_return_sequences,
+    const int* cache_indir_data);
+
 
 }  // namespace GenerationCudaDeviceHelper
 }  // namespace contrib
