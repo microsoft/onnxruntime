@@ -42,7 +42,7 @@ TensorProto ToScalarTensor(TensorProto_DataType datatype, int32_t value) {
 #define TO_TENSOR_ORT_TYPE(TYPE, DATATYPE)                                                \
   template <>                                                                             \
   TensorProto ToTensor<onnxruntime::TYPE>(const onnxruntime::TYPE& value) {               \
-    return ToScalarTensor(DATATYPE, value.val);                                           \
+    return ToScalarTensor(utils::ToTensorProtoElementType<onnxruntime::TYPE>(), value.val);                                           \
   }                                                                                       \
   template <>                                                                             \
   TensorProto ToTensor<onnxruntime::TYPE>(const std::vector<onnxruntime::TYPE>& values) { \
