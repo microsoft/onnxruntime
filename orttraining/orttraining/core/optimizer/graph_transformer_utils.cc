@@ -176,10 +176,9 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
 #ifdef ENABLE_TRAINING
       if (config.enable_compute_optimizer) {
         transformers.emplace_back(std::make_unique<UpStreamGatherGraphTransformer>(compatible_eps));
-        if (config.enable_label_sparsity_optimization) {
-          transformers.emplace_back(std::make_unique<UpStreamReshapeGraphTransformer>(compatible_eps));
-          transformers.emplace_back(std::make_unique<InsertGatherBeforeSceLoss>(compatible_eps));
-        }
+        transformers.emplace_back(std::make_unique<UpStreamReshapeGraphTransformer>(compatible_eps));
+        transformers.emplace_back(std::make_unique<InsertGatherBeforeSceLoss>(compatible_eps,
+                                                                              config.sparse_label_input_names));
       }
 #endif
 
