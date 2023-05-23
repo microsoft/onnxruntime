@@ -1091,11 +1091,12 @@ Status UpdateDecoderCrossQK(
     [[maybe_unused]] int iteration_number,
     [[maybe_unused]] Stream* tream,
     [[maybe_unused]] OrtValue* cross_qks,
-    [[maybe_unused]] IAllocatorUniquePtr<T*>& qk_layers_pointer,
+    [[maybe_unused]] IAllocatorUniquePtr<T*>& qk_layer_pointers,
     [[maybe_unused]] int num_layers,
     [[maybe_unused]] int cross_qk_layer_head_pair_count,
     [[maybe_unused]] const int* cross_qk_layer_head_pairs,
     [[maybe_unused]] T* cross_qk_buffer_data,
+    [[maybe_unused]] int max_length,
     [[maybe_unused]] AllocatorPtr allocator
 ) {
   throw std::runtime_error("CPU beam search current not support output cross QK.");
@@ -1106,22 +1107,24 @@ template Status UpdateDecoderCrossQK<MLFloat16>(
     int iteration_number,
     Stream* stream,
     OrtValue* cross_qks,
-    IAllocatorUniquePtr<MLFloat16*>& qk_layers_pointer,
+    IAllocatorUniquePtr<MLFloat16*>& qk_layer_pointers,
     int num_layers,
     int cross_qk_layer_head_pair_count,
     const int* cross_qk_layer_head_pairs,
     MLFloat16* cross_qk_buffer_data,
+    int max_length,
     AllocatorPtr allocator);
 
 template Status UpdateDecoderCrossQK<float>(
     int iteration_number,
     Stream* tream,
     OrtValue* cross_qks,
-    IAllocatorUniquePtr<float*>& qk_layers_pointer,
+    IAllocatorUniquePtr<float*>& qk_layer_pointers,
     int num_layers,
     int cross_qk_layer_head_pair_count,
     const int* cross_qk_layer_head_pairs,
     float* cross_qk_buffer_data,
+    int max_length,
     AllocatorPtr allocator);
 
 template <typename T>

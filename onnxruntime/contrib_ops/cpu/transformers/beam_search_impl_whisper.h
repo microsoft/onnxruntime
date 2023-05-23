@@ -378,6 +378,7 @@ Status BeamSearchWhisper<T>::Execute(const FeedsFetchesManager& encoder_feeds_fe
         cross_qk_layer_head_pair_count,
         cross_qk_layer_head_pairs,
         cross_qk_buffer_data,
+        parameters->max_length,
         this->temp_space_allocator_));
     }
 

@@ -152,11 +152,12 @@ Status UpdateDecoderCrossQK(
     int iteration_number,
     Stream* stream,
     OrtValue* cross_qks,
-    IAllocatorUniquePtr<T*>& qk_layers_pointer,
+    IAllocatorUniquePtr<T*>& qk_layer_pointers,
     int num_layers,
     int cross_qk_layer_head_pair_count,
     const int* cross_qk_layer_head_pairs,
     T* cross_qk_buffer_data,
+    int max_length,
     AllocatorPtr allocator);
 
 template <typename T>
