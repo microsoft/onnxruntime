@@ -294,7 +294,7 @@ Status BeamSearchWhisper<T>::Execute(const FeedsFetchesManager& encoder_feeds_fe
       ORT_ENFORCE(decoder_subgraph_.has_decoder_masked_attention_, "decoder subgraph: output_cross_qk could only work with has_decoder_masked_attention");
 
       cross_qk_layer_head_pair_count = parameters->num_layers * parameters->num_heads;
-      const auto* input_tensor_cross_qk_layer_head = this->context_.template Input<Tensor>(11);
+      const auto* input_tensor_cross_qk_layer_head = this->context_.template Input<Tensor>(12);
       ORT_ENFORCE(input_tensor_cross_qk_layer_head != nullptr, "Must specify input cross_qk_layer_head");
       cross_qk_layer_head_pair_count = input_tensor_cross_qk_layer_head->Shape()[0];
       cross_qk_layer_head_pairs = input_tensor_cross_qk_layer_head->template Data<int32_t>(); // it is on GPU
