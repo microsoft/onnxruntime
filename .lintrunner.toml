@@ -1,0 +1,182 @@
+# Configuration for lintrunner https://github.com/suo/lintrunner
+# You can install the dependencies and initialize with
+#
+# ```sh
+# pip install lintrunner lintrunner-adapters
+# lintrunner init
+# ```
+#
+# This will install lintrunner on your system and download all the necessary
+# dependencies to run linters locally.
+# If you want to see what lintrunner init will install, run
+# `lintrunner init --dry-run`.
+#
+# To lint local changes:
+#
+# ```bash
+# lintrunner
+# ```
+#
+# To lint all files:
+#
+# ```bash
+# lintrunner --all-files
+# ```
+#
+# To format files:
+#
+# ```bash
+# lintrunner f --all-files
+# ```
+#
+# To read more about lintrunner, see [wiki](https://github.com/pytorch/pytorch/wiki/lintrunner).
+# To update an existing linting rule or create a new one, modify this file or create a
+# new adapter following examples in https://github.com/justinchuby/lintrunner-adapters.
+
+merge_base_with = 'origin/main'
+
+[[linter]]
+code = 'RUFF'
+include_patterns = [
+    '**/*.py',
+    '**/*.pyi',
+]
+exclude_patterns = [
+    'cmake/external/**',
+    # ignore generated flatbuffers code
+    'onnxruntime/core/flatbuffers/ort_flatbuffers_py/**',
+]
+command = [
+    'python',
+    '-m',
+    'lintrunner_adapters',
+    'run',
+    'ruff_linter',
+    '--config=pyproject.toml',
+    '@{{PATHSFILE}}'
+]
+init_command = [
+    'python',
+    '-m',
+    'lintrunner_adapters',
+    'run',
+    'pip_init',
+    '--dry-run={{DRYRUN}}',
+    '--requirement=requirements-lintrunner.txt',
+]
+is_formatter = true
+
+
+[[linter]]
+code = 'BLACK-ISORT'
+include_patterns = [
+    '**/*.py',
+]
+exclude_patterns = [
+    'cmake/**',
+    'orttraining/*',
+    'onnxruntime/core/flatbuffers/**',
+]
+command = [
+    'python',
+    '-m',
+    'lintrunner_adapters',
+    'run',
+    'black_isort_linter',
+    '--',
+    '@{{PATHSFILE}}'
+]
+init_command = [
+    'python',
+    '-m',
+    'lintrunner_adapters',
+    'run',
+    'pip_init',
+    '--dry-run={{DRYRUN}}',
+    '--requirement=requirements-lintrunner.txt',
+]
+is_formatter = true
+
+[[linter]]
+code = 'PYLINT'
+include_patterns = [
+    # TODO: Opt in to pylint by adding paths here
+]
+exclude_patterns = [
+]
+command = [
+    'python',
+    '-m',
+    'lintrunner_adapters',
+    'run',
+    'pylint_linter',
+    '--rcfile=pyproject.toml',
+    '--',
+    '@{{PATHSFILE}}'
+]
+init_command = [
+    'python',
+    '-m',
+    'lintrunner_adapters',
+    'run',
+    'pip_init',
+    '--dry-run={{DRYRUN}}',
+    '--requirement=requirements-lintrunner.txt',
+]
+
+[[linter]]
+code = 'RUSTFMT'
+include_patterns = ['**/*.rs']
+command = [
+    'python',
+    '-m',
+    'lintrunner_adapters',
+    'run',
+    'rustfmt_linter',
+    '--binary=rustfmt',
+    '--config-path=rust/rustfmt.toml',
+    '--',
+    '@{{PATHSFILE}}'
+]
+is_formatter = true
+
+[[linter]]
+code = 'CLANGFORMAT'
+include_patterns = [
+    '**/*.h',
+    '**/*.cc',
+    '**/*.hpp',
+    '**/*.cpp',
+    '**/*.m',
+    '**/*.mm',
+]
+exclude_patterns = [
+    'java/**', # FIXME: Enable clang-format for java
+    'js/**',
+    'onnxruntime/contrib_ops/cuda/bert/tensorrt_fused_multihead_attention/**', # Contains data chunks
+    'onnxruntime/core/flatbuffers/schema/ort.fbs.h', # Generated code
+    'onnxruntime/core/graph/contrib_ops/quantization_defs.cc',
+    'onnxruntime/core/mlas/**', # Contains assembly code
+    'winml/**', # FIXME: Enable clang-format for winml
+]
+command = [
+    'python',
+    '-m',
+    'lintrunner_adapters',
+    'run',
+    'clangformat_linter',
+    '--binary=clang-format',
+    '--fallback',
+    '--',
+    '@{{PATHSFILE}}'
+]
+init_command = [
+    'python',
+    '-m',
+    'lintrunner_adapters',
+    'run',
+    'pip_init',
+    '--dry-run={{DRYRUN}}',
+    '--requirement=requirements-lintrunner.txt',
+]
+is_formatter = true

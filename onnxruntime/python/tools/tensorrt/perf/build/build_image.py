@@ -14,10 +14,9 @@ import sys
 from typing import List, Optional
 
 TRT_DOCKER_FILES = {
-    "8.0": "tools/ci_build/github/linux/docker/Dockerfile.ubuntu_cuda11_4_tensorrt8_0",
-    "8.2": "tools/ci_build/github/linux/docker/Dockerfile.ubuntu_cuda11_4_tensorrt8_2",
     "8.4": "tools/ci_build/github/linux/docker/Dockerfile.ubuntu_cuda11_6_tensorrt8_4",
     "8.5": "tools/ci_build/github/linux/docker/Dockerfile.ubuntu_cuda11_8_tensorrt8_5",
+    "8.6": "tools/ci_build/github/linux/docker/Dockerfile.ubuntu_cuda11_8_tensorrt8_6",
     "BIN": "tools/ci_build/github/linux/docker/Dockerfile.ubuntu_tensorrt_bin",
 }
 
@@ -82,11 +81,7 @@ def is_valid_ver_str(version: str, min_comps: int = 0, max_comps: int = 0) -> bo
     if num_comps > max_comps > 0:
         return False
 
-    for num in ver_nums:
-        if not num.isdecimal():
-            return False
-
-    return True
+    return all(num.isdecimal() for num in ver_nums)
 
 
 def docker_build_trt(args: argparse.Namespace):

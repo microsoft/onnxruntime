@@ -3,10 +3,38 @@
 
 set(MLAS_SRC_DIR ${ONNXRUNTIME_ROOT}/core/mlas/lib)
 
+
+set(MLAS_AMX_SUPPORTED FALSE)
+
+if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND CMAKE_C_COMPILER_VERSION VERSION_GREATER_EQUAL 11)
+  # match assembler version, AMX instructions are supported from 2.38
+  if (CMAKE_ASM_COMPILER_ID STREQUAL "GNU")
+    execute_process(
+        COMMAND as --version
+        OUTPUT_VARIABLE _as_version
+    )
+    # 2.38 or later
+    if (_as_version MATCHES "GNU.[Aa]ssembler.*(2\\.38|2\\.39|2\\.[4-9][0-9]|[3-9]\\.[0-9][0-9])")
+        set(MLAS_AMX_SUPPORTED TRUE)
+    endif()
+  endif()
+endif()
+
+if(CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
+  set(MLAS_AMX_SUPPORTED TRUE)
+endif()
+
+
+#
+# All hardware agnostic source files here
+# hardware specific files would cause trouble in
+# multi-target build
+#
 onnxruntime_add_static_library(onnxruntime_mlas
   ${MLAS_SRC_DIR}/platform.cpp
   ${MLAS_SRC_DIR}/threading.cpp
   ${MLAS_SRC_DIR}/sgemm.cpp
+  ${MLAS_SRC_DIR}/halfgemm.cpp
   ${MLAS_SRC_DIR}/qgemm.cpp
   ${MLAS_SRC_DIR}/qdwconv.cpp
   ${MLAS_SRC_DIR}/convolve.cpp
@@ -29,10 +57,26 @@ onnxruntime_add_static_library(onnxruntime_mlas
   ${MLAS_SRC_DIR}/qdwconv_kernelsize.cpp
 )
 
+if(MLAS_AMX_SUPPORTED)
+  target_compile_definitions(onnxruntime_mlas PRIVATE MLAS_AMX_SUPPORTED)
+else()
+  message(WARNING "AMX instructions NOT supported due to lack of compiler tool chain!")
+endif()
+
 set(ONNXRUNTIME_MLAS_LIBS onnxruntime_mlas)
 
 #TODO: set MASM flags properly
 function(setup_mlas_source_for_windows)
+
+  #
+  # Sources common for all platforms.
+  #
+  target_sources(onnxruntime_mlas PRIVATE
+    ${MLAS_SRC_DIR}/activate_fp16.cpp
+    ${MLAS_SRC_DIR}/dwconv.cpp
+    ${MLAS_SRC_DIR}/pooling_fp16.cpp
+  )
+
   #The onnxruntime_target_platform variable was added by Windows AI team in onnxruntime_common.cmake
   #Don't use it for other platforms.
   if((onnxruntime_target_platform STREQUAL "ARM64") OR (onnxruntime_target_platform STREQUAL "ARM64EC"))
@@ -41,6 +85,7 @@ function(setup_mlas_source_for_windows)
 
     if(onnxruntime_target_platform STREQUAL "ARM64")
       target_sources(onnxruntime_mlas PRIVATE
+        ${MLAS_SRC_DIR}/halfgemm_kernel_neon.cpp
         ${MLAS_SRC_DIR}/qgemm_kernel_neon.cpp
         ${MLAS_SRC_DIR}/qgemm_kernel_udot.cpp
         ${MLAS_SRC_DIR}/qgemm_kernel_sdot.cpp
@@ -55,6 +100,7 @@ function(setup_mlas_source_for_windows)
         ${MLAS_SRC_DIR}/arm64/DepthwiseQConvSymS8KernelNeon.asm
         ${MLAS_SRC_DIR}/arm64/DepthwiseQConvSymU8KernelNeon.asm
         ${MLAS_SRC_DIR}/arm64/DepthwiseQConvKernelSize9Neon.asm
+        ${MLAS_SRC_DIR}/arm64/HalfGemmKernelNeon.asm
         ${MLAS_SRC_DIR}/arm64/QgemmU8X8KernelNeon.asm
         ${MLAS_SRC_DIR}/arm64/QgemmS8S8KernelNeon.asm
         ${MLAS_SRC_DIR}/arm64/QgemmU8X8KernelUdot.asm
@@ -123,10 +169,12 @@ function(setup_mlas_source_for_windows)
       ${MLAS_SRC_DIR}/dgemm.cpp
       ${mlas_platform_srcs_avx}
       ${mlas_platform_srcs_avx2}
+      ${MLAS_SRC_DIR}/qgemm_kernel_amx.cpp
       ${MLAS_SRC_DIR}/qgemm_kernel_avx2.cpp
       ${MLAS_SRC_DIR}/qgemm_kernel_sse.cpp
       ${MLAS_SRC_DIR}/qgemm_kernel_sse41.cpp
       ${MLAS_SRC_DIR}/intrinsics/avx512/quantize_avx512f.cpp
+      ${MLAS_SRC_DIR}/amd64/QgemmU8S8KernelAmx.asm
       ${MLAS_SRC_DIR}/amd64/QgemmU8S8KernelAvx2.asm
       ${MLAS_SRC_DIR}/amd64/QgemmU8U8KernelAvx2.asm
       ${MLAS_SRC_DIR}/amd64/QgemmU8X8KernelAvx2.asm
@@ -172,7 +220,7 @@ function(setup_mlas_source_for_windows)
   endif()
 endfunction()
 
-if (onnxruntime_BUILD_WEBASSEMBLY)
+if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
   if (onnxruntime_ENABLE_WEBASSEMBLY_SIMD)
     file(GLOB_RECURSE mlas_platform_srcs
       "${MLAS_SRC_DIR}/wasm_simd/*.cpp"
@@ -298,6 +346,21 @@ else()
           ${MLAS_SRC_DIR}/qgemm_kernel_udot.cpp
           ${MLAS_SRC_DIR}/qgemm_kernel_sdot.cpp
         )
+        if (NOT APPLE)
+          set(mlas_platform_srcs
+            ${mlas_platform_srcs}
+            ${MLAS_SRC_DIR}/aarch64/HalfGemmKernelNeon.S
+            ${MLAS_SRC_DIR}/activate_fp16.cpp
+            ${MLAS_SRC_DIR}/dwconv.cpp
+            ${MLAS_SRC_DIR}/halfgemm_kernel_neon.cpp
+            ${MLAS_SRC_DIR}/pooling_fp16.cpp
+          )
+          set_source_files_properties(${MLAS_SRC_DIR}/aarch64/HalfGemmKernelNeon.S PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+fp16 ")
+          set_source_files_properties(${MLAS_SRC_DIR}/activate_fp16.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+fp16 ")
+          set_source_files_properties(${MLAS_SRC_DIR}/dwconv.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+fp16 ")
+          set_source_files_properties(${MLAS_SRC_DIR}/pooling_fp16.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+fp16 ")
+        endif()
+
         if(ONNXRUNTIME_MLAS_MULTI_ARCH)
             onnxruntime_add_static_library(onnxruntime_mlas_arm64 ${mlas_platform_srcs})
             set_target_properties(onnxruntime_mlas_arm64 PROPERTIES OSX_ARCHITECTURES "arm64")
@@ -475,7 +538,10 @@ else()
         set_source_files_properties(${mlas_platform_srcs_avx512core} PROPERTIES COMPILE_FLAGS "-mavx512bw -mavx512dq -mavx512vl")
 
         set(mlas_platform_srcs
+          ${MLAS_SRC_DIR}/activate_fp16.cpp
+          ${MLAS_SRC_DIR}/dwconv.cpp
           ${MLAS_SRC_DIR}/dgemm.cpp
+          ${MLAS_SRC_DIR}/pooling_fp16.cpp
           ${MLAS_SRC_DIR}/qgemm_kernel_avx2.cpp
           ${mlas_platform_srcs_sse2}
           ${mlas_platform_srcs_avx}
@@ -483,6 +549,16 @@ else()
           ${mlas_platform_srcs_avx512f}
           ${mlas_platform_srcs_avx512core}
         )
+
+        if(MLAS_AMX_SUPPORTED)
+          set(mlas_platform_srcs
+            ${mlas_platform_srcs}
+            ${MLAS_SRC_DIR}/qgemm_kernel_amx.cpp
+            ${MLAS_SRC_DIR}/x86_64/QgemmU8S8KernelAmx.S
+          )
+          set_source_files_properties(${MLAS_SRC_DIR}/qgemm_kernel_amx.cpp PROPERTIES COMPILE_FLAGS "-mamx-tile -mamx-int8 -mavx2 -mavx512bw -mavx512dq -mavx512vl")
+          set_source_files_properties(${MLAS_SRC_DIR}/x86_64/QgemmU8S8KernelAmx.S PROPERTIES COMPILE_FLAGS "-mamx-tile -mamx-int8 -mavx2 -mavx512bw -mavx512dq -mavx512vl")
+        endif()
 
         if(ONNXRUNTIME_MLAS_MULTI_ARCH)
           onnxruntime_add_static_library(onnxruntime_mlas_x86_64 ${mlas_platform_srcs})
@@ -506,9 +582,9 @@ foreach(mlas_target ${ONNXRUNTIME_MLAS_LIBS})
 endforeach()
 set_target_properties(onnxruntime_mlas PROPERTIES FOLDER "ONNXRuntime")
 if (WIN32)
-  target_compile_options(onnxruntime_mlas PRIVATE "/wd6385" "/wd4127")
+  target_compile_options(onnxruntime_mlas PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:/wd6385>" "$<$<COMPILE_LANGUAGE:CXX>:/wd4127>")
   if (onnxruntime_ENABLE_STATIC_ANALYSIS)
-    target_compile_options(onnxruntime_mlas PRIVATE  "/analyze:stacksize 131072")
+    target_compile_options(onnxruntime_mlas PRIVATE  "$<$<COMPILE_LANGUAGE:CXX>:/analyze:stacksize 131072">)
   endif()
 endif()
 

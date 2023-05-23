@@ -3,6 +3,12 @@
 
 #pragma once
 
+// The following three lines were copied from ABSL
+// cutlass needs them, because cutlass uses "and"/"or" keywords
+#ifdef __cplusplus
+#include <ciso646>
+#endif
+
 #include "core/providers/shared_library/provider_api.h"
 #include "core/common/status.h"
 #include "core/framework/float16.h"
@@ -82,7 +88,7 @@ class CublasMathModeSetter {
 
  private:
   cublasHandle_t handle_;
-  cublasMath_t mode_;
+  cublasMath_t mode_ = CUBLAS_DEFAULT_MATH;
   bool enable_;
 };
 

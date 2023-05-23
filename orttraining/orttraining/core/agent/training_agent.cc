@@ -25,8 +25,7 @@ TrainingAgent::TrainingAgent(InferenceSession& session,
   std::vector<std::string> bw_feed_names;
 
   size_t break_point = 0;
-  auto* plan = session_state.GetExecutionPlan();
-  auto& training_node_execution_order = plan->node_execution_order_in_training;
+  auto& training_node_execution_order = session_state.GetGraphViewer().GetNodesInTopologicalOrder(session.GetSessionOptions().execution_order);
   for (auto node_index : training_node_execution_order) {
     if (session_state.GetKernel(node_index)->KernelDef().OpName() == "YieldOp") {
       auto& node = *(session_state.GetGraphViewer().GetGraph().GetNode(node_index));

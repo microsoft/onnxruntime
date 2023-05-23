@@ -949,6 +949,19 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Attr("num_heads", "Number of attention heads", AttributeProto::INT)
         .Attr("unidirectional", "Whether every token can only attend to previous tokens. Default value is 0.",
               AttributeProto::INT, static_cast<int64_t>(0))
+        .Attr("do_rotary", "Whether to use rotary position embedding. Default value is 0.",
+              AttributeProto::INT, OPTIONAL_VALUE)
+        .Attr("past_present_share_buffer", "Corresponding past and present are same tensor, its shape is "
+              "(2, batch_size, num_heads, max_sequence_length, head_size)",
+              AttributeProto::INT, OPTIONAL_VALUE)
+        .Attr("mask_filter_value",
+              "The value to be filled in the attention mask. Default value is -10000.0f",
+              AttributeProto::FLOAT,
+              OPTIONAL_VALUE)
+        .Attr("scale",
+              "Custom scale will be used if specified. Default value is 1/sqrt(head_size)",
+              AttributeProto::FLOAT,
+              OPTIONAL_VALUE)
         .Input(0, "input", "3D input tensor with shape (batch_size, sequence_length, input_hidden_size)", "T1")
         .Input(1, "weight",
                "2D input tensor with shape (input_hidden_size, 3 * hidden_size), hidden_size = num_heads * head_size",
@@ -1129,7 +1142,7 @@ where value of each element is the end position, or valid length of actual seque
 left-side padding, mask_index has shape (2 * batch_size), where the values are the exclusive end positions followed by
 the inclusive start positions. When unidirectional is 1, and each token only attend to previous tokens. For GPT-2, both past
 and present state are optional. Present state could appear in output even when past state is not in input.
-Current version does not support past/present, extra_add and qkv_hidden_sizes.
+Current version does not support past/present, relative_position_bias and qkv_hidden_sizes.
 TODO: Support them if needed in the future.
 )DOC";
 
@@ -1191,7 +1204,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Input(18, "past",
                "past state for key and value with shape (2, batch_size, num_heads, past_sequence_length, head_size).",
                "Q", OpSchema::Optional)
-        .Input(19, "extra_add",
+        .Input(19, "relative_position_bias",
                "additional add to QxK' with shape (batch_size, num_heads, sequence_length, sequence_length).", "S",
                OpSchema::Optional)
         .Output(0, "output", "3D output tensor with shape (batch_size, sequence_length, hidden_size)", "Q")

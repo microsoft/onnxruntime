@@ -93,11 +93,7 @@ Status EmbedLayerNorm<T>::Compute(OpKernelContext* context) const {
             failed.store(true, std::memory_order_release);
             return;
           }
-          int position_col_index = (position_ids_data == nullptr) ?
-                                    index % sequence_length :
-                                    (broadcast_position_ids ?
-                                    position_ids_data[index % sequence_length] :
-                                    position_ids_data[index]);
+          int position_col_index = (position_ids_data == nullptr) ? index % sequence_length : (broadcast_position_ids ? position_ids_data[index % sequence_length] : position_ids_data[index]);
           if (position_col_index >= position_embedding_length) {
             failed.store(true, std::memory_order_release);
             return;
@@ -153,7 +149,7 @@ Status EmbedLayerNorm<T>::Compute(OpKernelContext* context) const {
   }
 
   // Calculate mask
-  if (nullptr != mask) {
+  if (nullptr != mask && nullptr != mask_index) {
     const int32_t* mask_data = mask->Data<int32_t>();
     int32_t* mask_index_data = mask_index->MutableData<int32_t>();
     for (int b = 0; b < batch_size; b++) {
@@ -166,7 +162,7 @@ Status EmbedLayerNorm<T>::Compute(OpKernelContext* context) const {
       }
       mask_index_data[b] = cur_sum;
     }
-  } else {
+  } else if (mask_index != nullptr) {
     memset(mask_index->MutableData<int32_t>(), 0, batch_size * sizeof(int32_t));
   }
 

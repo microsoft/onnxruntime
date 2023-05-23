@@ -161,9 +161,11 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
     }
 
     OrtCallback ext_data_deleter;
+    std::optional<ScopedOrtCallbackInvoker> scoped_ort_callback_invoker;
     if (utils::HasExternalData(tensor_proto)) {
       ORT_RETURN_IF_ERROR(ExtDataTensorProtoToTensor(env, proto_path, tensor_proto, *p_deserialize_tensor,
                                                      ext_data_deleter));
+      scoped_ort_callback_invoker = ScopedOrtCallbackInvoker(ext_data_deleter);
     } else {
       ORT_RETURN_IF_ERROR(utils::TensorProtoToTensor(env, proto_path.c_str(), tensor_proto, *p_deserialize_tensor));
     }
@@ -215,7 +217,7 @@ common::Status SaveInitializedTensors(
       } else {
         const auto& planned_mem_info = exec_plan.GetLocation(ort_value_index);
         const auto& user_mem_info = it->second->Get<Tensor>().Location();
-        retval = user_mem_info.device == planned_mem_info.device;
+        retval = user_mem_info.device == planned_mem_info;
         if (!retval) {
           LOGS(logger, WARNING) << "Cannot use user supplied initializer with name: ("
                                 << name << ") because the ORT planned memory location device "
@@ -252,7 +254,7 @@ common::Status SaveInitializedTensors(
   auto initialized_tensors_to_allocate = id_to_initialized_tensor;
   for (int ort_value_index : initializer_allocation_order) {
     const auto entry = initialized_tensors_to_allocate.find(ort_value_index);
-    if (!(utils::HasExternalData(*entry->second) && exec_plan.GetLocation(ort_value_index).device.Type() == OrtDevice::CPU)) {
+    if (!(utils::HasExternalData(*entry->second) && exec_plan.GetLocation(ort_value_index).Type() == OrtDevice::CPU)) {
       // can not trace string tensor
       ORT_ENFORCE(entry != initialized_tensors_to_allocate.end() &&
                   entry->second->data_type() != ONNX_NAMESPACE::TensorProto_DataType_STRING);
@@ -275,7 +277,7 @@ common::Status SaveInitializedTensors(
   // 2. allocate weight buffer on different locations
   //  planned_initializers_memory_size_in_byte is not actual physical size.
   //  It's the virtual size computed by planner.
-  InlinedHashMap<std::string, size_t> planned_initializers_memory_sizes_in_byte;
+  InlinedHashMap<OrtDevice, size_t> planned_initializers_memory_sizes_in_byte;
   ORT_RETURN_IF_ERROR(
       planner.FinalizePlan(planned_initializers_memory_sizes_in_byte));
 
@@ -284,7 +286,7 @@ common::Status SaveInitializedTensors(
 
   for (auto i : planned_initializers_memory_sizes_in_byte) {
     LOGS(logger, INFO) << "[Memory] SessionStateInitializer statically allocates "
-                       << i.second << " bytes for " << i.first << std::endl;
+                       << i.second << " bytes for " << i.first.ToString() << std::endl;
   }
 
   OrtCallback deleter{nullptr, nullptr};
@@ -375,7 +377,7 @@ common::Status SaveInputOutputNamesToNodeMapping(const onnxruntime::GraphViewer&
 
               int arg_index;
               ORT_RETURN_IF_ERROR(name_to_id.GetIdx(arg.Name(), arg_index));
-              const auto& device = exec_plan->GetLocation(arg_index).device;
+              const auto& device = exec_plan->GetLocation(arg_index);
 
               SessionState::NodeInfo node_info(index, &node, &kci, device);
 
@@ -415,7 +417,7 @@ common::Status SaveInputOutputNamesToNodeMapping(const onnxruntime::GraphViewer&
       for (const auto& input_def : node_implicit_inputs) {
         int arg_index;
         ORT_RETURN_IF_ERROR(name_to_id.GetIdx(input_def->Name(), arg_index));
-        auto& device = exec_plan->GetLocation(arg_index).device;
+        auto& device = exec_plan->GetLocation(arg_index);
         SessionState::NodeInfo node_info(std::numeric_limits<size_t>::max(), &node, &kci, device);
         ORT_RETURN_IF_ERROR(session_state.AddInputNameToNodeInfoMapping(input_def->Name(), node_info));
       }
@@ -431,7 +433,7 @@ common::Status SaveInputOutputNamesToNodeMapping(const onnxruntime::GraphViewer&
 
               int arg_index;
               ORT_RETURN_IF_ERROR(name_to_id.GetIdx(arg.Name(), arg_index));
-              const auto& device = exec_plan->GetLocation(arg_index).device;
+              const auto& device = exec_plan->GetLocation(arg_index);
 
               SessionState::NodeInfo node_info(index, &node, &kci, device);
 
@@ -463,7 +465,7 @@ common::Status SaveInputOutputNamesToNodeMapping(const onnxruntime::GraphViewer&
                                          << name << " is not used by any node.";
       int arg_index;
       ORT_RETURN_IF_ERROR(name_to_id.GetIdx(name, arg_index));
-      auto& device = exec_plan->GetLocation(arg_index).device;
+      auto& device = exec_plan->GetLocation(arg_index);
       SessionState::NodeInfo empty_node_info(std::numeric_limits<size_t>::max(), nullptr, nullptr, device);
       ORT_RETURN_IF_ERROR(session_state.AddInputNameToNodeInfoMapping(name, empty_node_info));
     }

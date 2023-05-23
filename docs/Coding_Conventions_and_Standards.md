@@ -112,15 +112,15 @@ void foo(gsl::span<const std::string> names) {
 * The following C++ warnings should never be disabled in onnxruntime VC++ projects(Required by [Binskim](https://github.com/microsoft/binskim/blob/d9afb65c89a621411efded74c27999281d87867e/src/BinSkim.Rules/PERules/BA2007.EnableCriticalCompilerWarnings.cs)).
   1. [4018](https://docs.microsoft.com/en-us/cpp/error-messages/compiler-warnings/compiler-warning-level-3-c4018) 'token' : signed/unsigned mismatch
   2. [4146](https://docs.microsoft.com/en-us/cpp/error-messages/compiler-warnings/compiler-warning-level-2-c4146?view=msvc-160) unary minus operator applied to unsigned type, result still unsigned
-  3. [4244](https://docs.microsoft.com/en-us/cpp/error-messages/compiler-warnings/compiler-warning-level-2-c4244?view=msvc-160) 'argument' : conversion from 'type1' to 'type2', possible loss of data. For example, casting a int64_t to size_t. 
+  3. [4244](https://docs.microsoft.com/en-us/cpp/error-messages/compiler-warnings/compiler-warning-level-2-c4244?view=msvc-160) 'argument' : conversion from 'type1' to 'type2', possible loss of data. For example, casting a int64_t to size_t.
   4. [4267](https://docs.microsoft.com/en-us/cpp/error-messages/compiler-warnings/compiler-warning-level-3-c4267?view=msvc-160) 'var' : conversion from 'size_t' to 'type', possible loss of data.
   5. [4302](https://docs.microsoft.com/en-us/cpp/error-messages/compiler-warnings/compiler-warning-level-2-c4302?view=msvc-160) 'conversion' : truncation from 'type 1' to 'type 2'
-  6. [4308](https://docs.microsoft.com/en-us/cpp/error-messages/compiler-warnings/compiler-warning-level-2-c4308?view=msvc-160) negative integral constant converted to unsigned type 
+  6. [4308](https://docs.microsoft.com/en-us/cpp/error-messages/compiler-warnings/compiler-warning-level-2-c4308?view=msvc-160) negative integral constant converted to unsigned type
   7. [4532](https://docs.microsoft.com/en-us/cpp/error-messages/compiler-warnings/compiler-warning-level-1-c4532?view=msvc-160) 'continue' : jump out of \_\_finally/finally block has undefined behavior during termination handling
   8. [4533](https://docs.microsoft.com/en-us/cpp/error-messages/compiler-warnings/compiler-warning-level-1-c4533?view=msvc-160) initialization of 'variable' is skipped by 'instruction'
   9. [4700](https://docs.microsoft.com/en-us/cpp/error-messages/compiler-warnings/compiler-warning-level-1-and-level-4-c4700?view=msvc-160) uninitialized local variable 'name' used
   10. [4789](https://docs.microsoft.com/en-us/cpp/error-messages/compiler-warnings/compiler-warning-level-1-c4789?view=msvc-160) buffer 'identifier' of size N bytes will be overrun; M bytes will be written starting at offset L
-  11. [4995](https://docs.microsoft.com/en-us/cpp/error-messages/compiler-warnings/compiler-warning-level-3-c4995?view=msvc-160) 'function': name was marked as #pragma deprecated 
+  11. [4995](https://docs.microsoft.com/en-us/cpp/error-messages/compiler-warnings/compiler-warning-level-3-c4995?view=msvc-160) 'function': name was marked as #pragma deprecated
   12. [4996](https://docs.microsoft.com/en-us/cpp/error-messages/compiler-warnings/compiler-warning-level-3-c4996?view=msvc-160) Your code uses a function, class member, variable, or typedef that's marked deprecated
 
 #### Clang-format
@@ -150,21 +150,60 @@ There is a configuration file in `onnxruntime/VSCodeCoverage.runsettings` that c
 
 Using `Show Code Coverage Coloring` will allow you to visually inspect which lines were hit by the tests. See <https://docs.microsoft.com/en-us/visualstudio/test/using-code-coverage-to-determine-how-much-code-is-being-tested?view=vs-2017>.
 
+## Linting
+
+This project uses [lintrunner](https://github.com/suo/lintrunner) for linting. It provides a consistent linting experience locally and in CI. You can install the dependencies and initialize with
+
+```sh
+pip install lintrunner lintrunner-adapters
+lintrunner init
+```
+
+This will install lintrunner on your system and download all the necessary
+dependencies to run linters locally.
+If you want to see what lintrunner init will install, run
+`lintrunner init --dry-run`.
+
+To lint local changes:
+
+```bash
+lintrunner
+```
+
+To format files and apply suggestions:
+
+```bash
+lintrunner -a
+```
+
+To lint all files:
+
+```bash
+lintrunner --all-files
+```
+
+To show help text:
+
+```bash
+lintrunner -h
+```
+
+To read more about lintrunner, see [wiki](https://github.com/pytorch/pytorch/wiki/lintrunner).
+To update an existing linting rule or create a new one, modify `.lintrunner.toml` or create a
+new adapter following examples in https://github.com/justinchuby/lintrunner-adapters.
+
 ## Python Code Style
 
 Follow the [Black formatter](https://black.readthedocs.io)'s coding style when possible. A maximum line length of 120 characters is allowed for consistency with the C++ code.
 
 Please adhere to the [PEP8 Style Guide](https://www.python.org/dev/peps/pep-0008/). We use [Google's python style guide](https://google.github.io/styleguide/pyguide.html) as the style guide which is an extension to PEP8.
 
-Code can be validated with [flake8](https://pypi.org/project/flake8/) using the configuration file in the root directory called [.flake8](https://github.com/microsoft/onnxruntime/blob/main/.flake8).
-
 Use `pyright`, which is provided as a component of the `pylance` extension in VS Code for static type checking.
 
-Auto-formatting is done with `black` and `isort`. The tools are configured in `pyproject.toml`. From anywhere in the repository, you can run
+Auto-formatting is done with `black` and `isort`. The tools are configured in `pyproject.toml`. From the root of the repository, you can run
 
 ```sh
-black .
-isort .
+lintrunner f --all-files
 ```
 
 to format Python files.

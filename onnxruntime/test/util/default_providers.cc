@@ -110,12 +110,33 @@ std::unique_ptr<IExecutionProvider> DefaultCudaExecutionProvider() {
   return nullptr;
 }
 
-std::unique_ptr<IExecutionProvider> DefaultDnnlExecutionProvider(bool enable_arena) {
-#ifdef USE_DNNL
-  if (auto factory = DnnlProviderFactoryCreator::Create(enable_arena ? 1 : 0))
+std::unique_ptr<IExecutionProvider> CudaExecutionProviderWithOptions(const OrtCUDAProviderOptionsV2* provider_options) {
+#ifdef USE_CUDA
+  if (auto factory = CudaProviderFactoryCreator::Create(provider_options))
     return factory->CreateProvider();
 #else
-  ORT_UNUSED_PARAMETER(enable_arena);
+  ORT_UNUSED_PARAMETER(provider_options);
+#endif
+  return nullptr;
+}
+
+std::unique_ptr<IExecutionProvider> DefaultDnnlExecutionProvider() {
+#ifdef USE_DNNL
+  OrtDnnlProviderOptions dnnl_options;
+  dnnl_options.use_arena = 1;
+  dnnl_options.threadpool_args = nullptr;
+  if (auto factory = DnnlProviderFactoryCreator::Create(&dnnl_options))
+    return factory->CreateProvider();
+#endif
+  return nullptr;
+}
+
+std::unique_ptr<IExecutionProvider> DnnlExecutionProviderWithOptions(const OrtDnnlProviderOptions* provider_options) {
+#ifdef USE_DNNL
+  if (auto factory = DnnlProviderFactoryCreator::Create(provider_options))
+    return factory->CreateProvider();
+#else
+  ORT_UNUSED_PARAMETER(provider_options);
 #endif
   return nullptr;
 }
@@ -168,7 +189,8 @@ std::unique_ptr<IExecutionProvider> DefaultRocmExecutionProvider(bool test_tunab
 #ifdef USE_ROCM
   OrtROCMProviderOptions provider_options{};
   provider_options.do_copy_in_default_stream = true;
-  provider_options.tunable_op_enabled = test_tunable_op ? 1 : 0;
+  provider_options.tunable_op_enable = test_tunable_op ? 1 : 0;
+  provider_options.tunable_op_tuning_enable = test_tunable_op ? 1 : 0;
   if (auto factory = RocmProviderFactoryCreator::Create(&provider_options))
     return factory->CreateProvider();
 #endif
@@ -194,6 +216,30 @@ std::unique_ptr<IExecutionProvider> DefaultSnpeExecutionProvider() {
   ProviderOptions provider_options_map;
   return SNPEProviderFactoryCreator::Create(provider_options_map)->CreateProvider();
 #else
+  return nullptr;
+#endif
+}
+
+std::unique_ptr<IExecutionProvider> DefaultQnnExecutionProvider() {
+#ifdef USE_QNN
+  ProviderOptions provider_options_map;
+  // Limit to CPU backend for now. TODO: Enable HTP emulator
+  std::string backend_path = "./libQnnCpu.so";
+#if defined(_WIN32) || defined(_WIN64)
+  backend_path = "./QnnCpu.dll";
+#endif
+  provider_options_map["backend_path"] = backend_path;
+  return QNNProviderFactoryCreator::Create(provider_options_map)->CreateProvider();
+#else
+  return nullptr;
+#endif
+}
+
+std::unique_ptr<IExecutionProvider> QnnExecutionProviderWithOptions(const ProviderOptions& options) {
+#ifdef USE_QNN
+  return QNNProviderFactoryCreator::Create(options)->CreateProvider();
+#else
+  ORT_UNUSED_PARAMETER(options);
   return nullptr;
 #endif
 }

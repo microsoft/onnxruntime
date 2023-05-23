@@ -3,12 +3,12 @@ parameters:
   displayName: BuildArch
   type: string
   default: 'x64'
-  
+
 - name: Runtime
   displayName: MSVC Runtime, should be 'dynamic' or 'static'.
   type: string
   default: 'dynamic'
-  
+
 - name: PythonPackageName
   displayName: PythonPackageName on nuget.org to use
   type: string
@@ -17,13 +17,17 @@ parameters:
 jobs:
 - job: Windows_Packaging_${{ parameters.BuildArch }}_${{ parameters.Runtime }}
   pool:
-    type: windows  
-    
+    type: windows
+
   variables:
     ob_outputDirectory: '$(Build.ArtifactStagingDirectory)'
     ob_sdl_binskim_break: true
     ob_sdl_binskim_scanOutputDirectoryOnly: true
   steps:
+    - task: UseDotNet@2
+      inputs:
+        version: '5.x'
+
     - template: ../tools/ci_build/github/azure-pipelines/templates/telemetry-steps.yml@self
 
     - task: NuGetCommand@2
@@ -40,7 +44,7 @@ jobs:
           restoreSolution: $(Build.SourcesDirectory)\.pipelines\nuget_config\x64\packages.config
         ${{ if eq(parameters.BuildArch, 'arm64') }}:
           restoreSolution: $(Build.SourcesDirectory)\.pipelines\nuget_config\x64\packages.config
-    
+
     - script: |
         @echo off
         set vswherepath="%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe"
@@ -50,10 +54,10 @@ jobs:
             set vsdevcmd="%%i\Common7\Tools\vsdevcmd.bat"
           )
         )
-        
+
         @echo vslatest %vslatest%
         @echo vsdevcmd %vsdevcmd%
-        
+
         @echo ##vso[task.setvariable variable=vslatest]%vslatest%
         @echo ##vso[task.setvariable variable=vsdevcmd]%vsdevcmd% -arch=${{ parameters.BuildArch }}
       displayName: 'locate vsdevcmd via vswhere'
@@ -76,11 +80,11 @@ jobs:
 
     # must call vsdevcmd first to add cmake to PATH
     - script: |
-        curl -O -L https://github.com/Kitware/CMake/releases/download/v3.24.3/cmake-3.24.3-windows-x86_64.zip
-        7z x cmake-3.24.3-windows-x86_64.zip
-        set PYTHONHOME=$(Build.BinariesDirectory)\${{ parameters.PythonPackageName }}.3.7.9\tools
-        set PYTHONPATH=$(Build.BinariesDirectory)\${{ parameters.PythonPackageName }}.3.7.9\tools
-        $(Build.BinariesDirectory)\${{ parameters.PythonPackageName }}.3.7.9\tools\python.exe "$(Build.SourcesDirectory)\tools\ci_build\build.py" --build_dir $(Build.BinariesDirectory) --build_shared_lib --enable_onnx_tests --ms_experimental --use_dml --use_winml --cmake_generator "Visual Studio 16 2019" --update --config RelWithDebInfo --enable_lto --use_telemetry --disable_rtti --enable_wcos $(BuildFlags) --cmake_extra_defines CMAKE_SYSTEM_VERSION=10.0.19041.0 --cmake_path $(Build.BinariesDirectory)\cmake-3.24.3-windows-x86_64\bin\cmake.exe --ctest_path $(Build.BinariesDirectory)\cmake-3.24.3-windows-x86_64\bin\ctest.exe
+        curl -O -L https://github.com/Kitware/CMake/releases/download/v3.26.3/cmake-3.26.3-windows-x86_64.zip
+        7z x cmake-3.26.3-windows-x86_64.zip
+        set PYTHONHOME=$(Build.BinariesDirectory)\${{ parameters.PythonPackageName }}.3.9.7\tools
+        set PYTHONPATH=$(Build.BinariesDirectory)\${{ parameters.PythonPackageName }}.3.9.7\tools
+        $(Build.BinariesDirectory)\${{ parameters.PythonPackageName }}.3.9.7\tools\python.exe "$(Build.SourcesDirectory)\tools\ci_build\build.py" --build_dir $(Build.BinariesDirectory) --build_shared_lib --enable_onnx_tests --ms_experimental --use_dml --use_winml --cmake_generator "Visual Studio 16 2019" --update --config RelWithDebInfo --enable_lto --use_telemetry --disable_rtti --enable_wcos $(BuildFlags) --cmake_extra_defines CMAKE_SYSTEM_VERSION=10.0.19041.0 --cmake_path $(Build.BinariesDirectory)\cmake-3.26.3-windows-x86_64\bin\cmake.exe --ctest_path $(Build.BinariesDirectory)\cmake-3.26.3-windows-x86_64\bin\ctest.exe
       workingDirectory: '$(Build.BinariesDirectory)'
       displayName: 'Generate cmake config'
 
@@ -97,7 +101,7 @@ jobs:
         maximumCpuCount: true
         logProjectEvents: true
         workingFolder: '$(Build.BinariesDirectory)\RelWithDebInfo'
-        createLogFile: true 
+        createLogFile: true
 
     - ${{ if eq(parameters.Runtime, 'dynamic') }}:
       - script: |
@@ -114,8 +118,8 @@ jobs:
          copy $(Build.SourcesDirectory)\onnxruntime\test\testdata\sequence_length.onnx $(Build.ArtifactStagingDirectory)\test_artifact\
          copy $(Build.SourcesDirectory)\onnxruntime\test\testdata\sequence_construct.onnx $(Build.ArtifactStagingDirectory)\test_artifact\
         displayName: 'Copy WinML test collateral to artifact directory'
-        
-        
+
+
     - ${{ if eq(parameters.BuildArch, 'x64') }}:
       - script: |
           call $(vsdevcmd)
@@ -129,8 +133,8 @@ jobs:
         signing_profile: 'external_distribution'
         files_to_sign: '**/*.exe;**/*.dll'
         search_root: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo'
-      displayName: 'Sign runtime DLLs'        
-        
+      displayName: 'Sign runtime DLLs'
+
     - ${{ if eq(parameters.BuildArch, 'x64') }}:
       - script: |
          call $(vsdevcmd)

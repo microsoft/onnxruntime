@@ -72,6 +72,7 @@ namespace Dml
             ) const noexcept final;
 
         STDMETHOD(CopyTensor)(IMLOperatorTensor* dst, IMLOperatorTensor* src) const noexcept final;
+        STDMETHOD(CopyTensors)(gsl::span<IMLOperatorTensor*> dst, gsl::span<IMLOperatorTensor*> src) const noexcept final;
 
         STDMETHOD(FillTensorWithPattern)(
             IMLOperatorTensor* dst,
@@ -179,10 +180,13 @@ namespace Dml
             uint32_t supportedDeviceDataTypeMask // Each bit corresponds to each DML_TENSOR_DATA_TYPE.
         ) const;
 
+        void FlushUploadsIfReady() const;
+
         ComPtr<ID3D12Device> m_d3d12Device;
         ComPtr<IDMLDevice> m_dmlDevice;
         bool m_isMcdmDevice = false;
         bool m_areMetacommandsEnabled = true;
+        bool m_native16BitShaderOpsSupported = false;
         std::shared_ptr<ExecutionContext> m_context;
         std::unique_ptr<PooledUploadHeap> m_uploadHeap;
         std::unique_ptr<ReadbackHeap> m_readbackHeap;
@@ -193,6 +197,8 @@ namespace Dml
         std::shared_ptr<const Windows::AI::MachineLearning::Adapter::InternalRegistrationInfoMap> m_internalRegInfoMap;
         mutable uint64_t m_partitionKernelPrefixVal = 0;
         bool m_closed = false;
+        mutable std::chrono::time_point<std::chrono::steady_clock> m_lastUploadFlushTime;
+        static constexpr std::chrono::milliseconds m_batchFlushInterval = std::chrono::milliseconds(10);
     };
 
     class DataTransfer : public onnxruntime::IDataTransfer

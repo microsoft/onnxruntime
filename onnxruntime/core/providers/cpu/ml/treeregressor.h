@@ -8,11 +8,12 @@ namespace onnxruntime {
 namespace ml {
 template <typename T>
 class TreeEnsembleRegressor final : public OpKernel {
-  typedef T InputType;          // input type
-  typedef float OutputType;     // output type
+  typedef T InputType;       // input type
+  typedef float OutputType;  // output type
  public:
   explicit TreeEnsembleRegressor(const OpKernelInfo& info);
   common::Status Compute(OpKernelContext* context) const override;
+  Status GetRemovableAttributes(InlinedVector<std::string>& removable_attributes) const override;
 
  private:
   // Following pointer holds a pointer on one instance of

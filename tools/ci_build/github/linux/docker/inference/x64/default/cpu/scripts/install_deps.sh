@@ -39,8 +39,8 @@ mkdir -p /tmp/src
 cd /tmp/src
 
 echo "Installing cmake"
-GetFile https://github.com/Kitware/CMake/releases/download/v3.24.3/cmake-3.24.3-linux-`uname -m`.tar.gz /tmp/src/cmake-3.24.3-linux-`uname -m`.tar.gz
-tar -zxf /tmp/src/cmake-3.24.3-linux-`uname -m`.tar.gz --strip=1 -C /usr
+GetFile https://github.com/Kitware/CMake/releases/download/v3.26.3/cmake-3.26.3-linux-`uname -m`.tar.gz /tmp/src/cmake-3.26.3-linux-`uname -m`.tar.gz
+tar -zxf /tmp/src/cmake-3.26.3-linux-`uname -m`.tar.gz --strip=1 -C /usr
 
 echo "Installing Ninja"
 GetFile https://github.com/ninja-build/ninja/archive/v1.10.0.tar.gz /tmp/src/ninja-linux.tar.gz
@@ -61,11 +61,6 @@ else
 fi
 GetFile https://nodejs.org/dist/v16.14.2/node-v16.14.2-linux-${NODEJS_ARCH}.tar.gz /tmp/src/node-v16.14.2-linux-${NODEJS_ARCH}.tar.gz
 tar --strip 1 -xf /tmp/src/node-v16.14.2-linux-${NODEJS_ARCH}.tar.gz -C /usr
-
-cd /tmp/src
-GetFile https://downloads.gradle-dn.com/distributions/gradle-6.3-bin.zip /tmp/src/gradle-6.3-bin.zip
-unzip /tmp/src/gradle-6.3-bin.zip
-mv /tmp/src/gradle-6.3 /usr/local/gradle
 
 cd /
 rm -rf /tmp/src

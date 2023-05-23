@@ -11,7 +11,7 @@
 #include "core/util/math_cpuonly.h"
 
 namespace onnxruntime {
-namespace contrib{
+namespace contrib {
 
 template <typename T>
 class ImageScaler final : public OpKernel {
@@ -55,5 +55,5 @@ class ImageScaler final : public OpKernel {
   float scale_;
   std::vector<float> bias_;
 };
-}
-}  //namespace onnxruntime
+}  // namespace contrib
+}  // namespace onnxruntime

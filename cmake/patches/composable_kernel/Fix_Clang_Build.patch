@@ -1,5 +1,5 @@
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index 5655ba17..1252d1ea 100644
+index f861e3020..f0b6bceae 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
 @@ -1,7 +1,7 @@
@@ -48,7 +48,7 @@ index 5655ba17..1252d1ea 100644
  
  ## tidy
  include(EnableCompilerWarnings)
-@@ -263,9 +240,6 @@ rocm_package_setup_component(tests
+@@ -273,9 +250,6 @@ rocm_package_setup_component(profiler
  )
  
  add_subdirectory(library)
@@ -58,7 +58,7 @@ index 5655ba17..1252d1ea 100644
  
  #Create an interface target for the include only files and call it "composablekernels"
  include(CMakePackageConfigHelpers)
-@@ -291,11 +265,3 @@ rocm_install(FILES
+@@ -301,11 +275,3 @@ rocm_install(FILES
  
  set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_CURRENT_SOURCE_DIR}/LICENSE")
  set(CPACK_RPM_PACKAGE_LICENSE "MIT")
@@ -70,29 +70,19 @@ index 5655ba17..1252d1ea 100644
 -    LDCONFIG
 -    HEADER_ONLY
 -)
-diff --git a/include/ck/ck.hpp b/include/ck/ck.hpp
-index 92018aac..2ada620c 100644
---- a/include/ck/ck.hpp
-+++ b/include/ck/ck.hpp
-@@ -126,7 +126,9 @@
- #define CK_EXPERIMENTAL_USE_MEMCPY_FOR_BIT_CAST 1
- 
- // experimental feature: optimize for inter-wave scheduling policy
-+#ifndef CK_EXPERIMENTAL_INTER_WAVE_SCHEDULING
- #define CK_EXPERIMENTAL_INTER_WAVE_SCHEDULING 0
-+#endif
- #define CK_EXPERIMENTAL_INTER_WAVE_SCHEDULING_MAC_CLUSTERS 1
- 
- // hack: have underlying assumption that need to be satsified, otherwise it's a bug
 diff --git a/library/src/tensor_operation_instance/gpu/CMakeLists.txt b/library/src/tensor_operation_instance/gpu/CMakeLists.txt
-index c206c4dc..e45fac9d 100644
+index c206c4dc0..b283eeb64 100644
 --- a/library/src/tensor_operation_instance/gpu/CMakeLists.txt
 +++ b/library/src/tensor_operation_instance/gpu/CMakeLists.txt
-@@ -1,7 +1,9 @@
+@@ -1,7 +1,13 @@
  function(add_instance_library INSTANCE_NAME)
      message("adding instance ${INSTANCE_NAME}")
 +    set_source_files_properties(${ARGN} PROPERTIES LANGUAGE HIP)
      add_library(${INSTANCE_NAME} OBJECT ${ARGN})
++    # Always disable debug symbol and C debug assert due to
++    # - Linker error: ... relocation truncated to fit ..., caused by object files to be linked are too huge.
++    # - https://github.com/ROCmSoftwarePlatform/composable_kernel/issues/622
++    target_compile_options(${INSTANCE_NAME} PRIVATE -g0 -DNDEBUG)
      target_compile_features(${INSTANCE_NAME} PUBLIC)
 +    target_compile_definitions(${INSTANCE_NAME} PRIVATE "__HIP_PLATFORM_AMD__=1" "__HIP_PLATFORM_HCC__=1")
      set_target_properties(${INSTANCE_NAME} PROPERTIES POSITION_INDEPENDENT_CODE ON)

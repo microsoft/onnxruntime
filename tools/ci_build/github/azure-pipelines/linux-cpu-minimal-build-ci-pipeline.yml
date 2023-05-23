@@ -27,19 +27,24 @@ resources:
     type: Github
     endpoint: Microsoft
     name: pypa/manylinux
-    ref: 1a61614cabfd6b91c6afd6d9e172cc5b838c65fe
+    ref: aead4d751c2101e23336aa73f2380df83e7a13f3
 
 jobs:
 - job: Linux_CPU_Minimal_Build_E2E
   timeoutInMinutes: 120
   workspace:
     clean: all
-  pool: Linux-CPU-2019
-
+  pool: onnxruntime-Linux-CPU-For-Android-CI
   variables:
+    ORT_CACHE_DIR: $(Pipeline.Workspace)/ort_ccache
+    TODAY: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
     test_data_directory: $(Build.SourcesDirectory)/.test_data
 
   steps:
+  - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
+    displayName: 'Clean Agent Directories'
+    condition: always()
+
   - checkout: self
     clean: true
     submodules: none
@@ -61,21 +66,35 @@ jobs:
         touch $(test_data_directory)/include_no_operators.config
       workingDirectory: $(Build.SourcesDirectory)
 
-  - task: CmdLine@2
-    displayName: 1. Build full onnxruntime and generate ORT format test files
-    inputs:
-      script: |
-        docker run --rm \
-          --volume $(Build.SourcesDirectory):/onnxruntime_src \
-          --volume $(Build.BinariesDirectory):/build \
-          --volume $(test_data_directory):/home/onnxruntimedev/.test_data \
-          -e ALLOW_RELEASED_ONNX_OPSET_ONLY=1 \
-          -e NIGHTLY_BUILD \
-          -e BUILD_BUILDNUMBER \
-          onnxruntimecpubuild \
-            /bin/bash /onnxruntime_src/tools/ci_build/github/linux/ort_minimal/build_full_ort_and_create_ort_files.sh \
-              /build/1
-      workingDirectory: $(Build.SourcesDirectory)
+  - template: templates/linux-build-step-with-cache.yml
+    parameters:
+      WithCache: true
+      Today: $(TODAY)
+      AdditionalKey: onnxruntime__full
+      CacheDir: $(ORT_CACHE_DIR)
+      ChangeEveryCommit: true
+      BuildStep:
+        - task: CmdLine@2
+          displayName: 1. Build full onnxruntime and generate ORT format test files
+          inputs:
+            script: |
+              docker run --rm \
+                --volume $(Build.SourcesDirectory):/onnxruntime_src \
+                --volume $(Build.BinariesDirectory):/build \
+                --volume $(test_data_directory):/home/onnxruntimedev/.test_data \
+                --volume $(ORT_CACHE_DIR):/cache \
+                -e ALLOW_RELEASED_ONNX_OPSET_ONLY=1 \
+                -e NIGHTLY_BUILD \
+                -e BUILD_BUILDNUMBER \
+                -e CCACHE_DIR=/cache \
+                -e ORT_BUILD_WITH_CACHE=1 \
+                onnxruntimecpubuild \
+                  /bin/bash -c "
+                    set -e -x;
+                    /onnxruntime_src/tools/ci_build/github/linux/ort_minimal/build_full_ort_and_create_ort_files.sh /build/1; \
+                    ccache -sv; \
+                    ccache -z;"
+            workingDirectory: $(Build.SourcesDirectory)
 
   - task: CmdLine@2
     displayName: 2. Build minimal onnxruntime [exceptions DISABLED, type reduction DISABLED, training ops ENABLED]
@@ -90,7 +109,7 @@ jobs:
           -e NIGHTLY_BUILD \
           -e BUILD_BUILDNUMBER \
           onnxruntimecpubuild \
-            /opt/python/cp37-cp37m/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
+            /opt/python/cp38-cp38/bin/python3.8 /onnxruntime_src/tools/ci_build/build.py \
               --build_dir /build/2 --cmake_generator Ninja \
               --config Debug \
               --skip_submodule_sync \
@@ -172,7 +191,7 @@ jobs:
           -e NIGHTLY_BUILD \
           -e BUILD_BUILDNUMBER \
           onnxruntimecpubuild \
-            /opt/python/cp37-cp37m/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
+            /opt/python/cp38-cp38/bin/python3.8 /onnxruntime_src/tools/ci_build/build.py \
               --build_dir /build/5 --cmake_generator Ninja \
               --config Debug \
               --skip_submodule_sync \
@@ -193,7 +212,7 @@ jobs:
           -e NIGHTLY_BUILD \
           -e BUILD_BUILDNUMBER \
           onnxruntimecpubuild \
-            /opt/python/cp37-cp37m/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
+            /opt/python/cp38-cp38/bin/python3.8 /onnxruntime_src/tools/ci_build/build.py \
               --build_dir /build/6a \
               --cmake_generator Ninja \
               --config MinSizeRel \
@@ -221,7 +240,7 @@ jobs:
           -e NIGHTLY_BUILD \
           -e BUILD_BUILDNUMBER \
           onnxruntimecpubuild \
-            /opt/python/cp37-cp37m/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
+            /opt/python/cp38-cp38/bin/python3.8 /onnxruntime_src/tools/ci_build/build.py \
               --build_dir /build/6b \
               --cmake_generator Ninja \
               --config MinSizeRel \
@@ -251,7 +270,7 @@ jobs:
           -e NIGHTLY_BUILD \
           -e BUILD_BUILDNUMBER \
           onnxruntimecpubuild \
-            /opt/python/cp37-cp37m/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
+            /opt/python/cp38-cp38/bin/python3.8 /onnxruntime_src/tools/ci_build/build.py \
               --build_dir /build/6c \
               --cmake_generator Ninja \
               --config MinSizeRel \
@@ -282,7 +301,7 @@ jobs:
           -e ALLOW_RELEASED_ONNX_OPSET_ONLY=1 \
           -e NIGHTLY_BUILD \
           onnxruntimecpubuild \
-            /opt/python/cp37-cp37m/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
+            /opt/python/cp38-cp38/bin/python3.8 /onnxruntime_src/tools/ci_build/build.py \
               --build_dir /build/7 \
               --cmake_generator Ninja \
               --config MinSizeRel \
@@ -301,4 +320,4 @@ jobs:
               --skip_tests --path_to_protoc_exe /usr/bin/protoc
       workingDirectory: $(Build.SourcesDirectory)
 
-  - template: templates/clean-agent-build-directory-step.yml
+  - template: templates/explicitly-defined-final-tasks.yml

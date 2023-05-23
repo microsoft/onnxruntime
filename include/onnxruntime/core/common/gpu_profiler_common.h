@@ -219,11 +219,27 @@ class GPUTracerManager {
   }
 
  protected:
-  GPUTracerManager() = default;
+  GPUTracerManager() {
+    auto this_as_derived = static_cast<TDerived*>(this);
+    uint64_t gpu_ts1, gpu_ts2, cpu_ts;
+
+    // Get the CPU and GPU timestamps to warm up
+    gpu_ts1 = this_as_derived->GetGPUTimestampInNanoseconds();
+    cpu_ts = this->GetCPUTimestampInNanoseconds();
+
+    // Estimate the skew/offset between the CPU and GPU timestamps.
+    gpu_ts1 = this_as_derived->GetGPUTimestampInNanoseconds();
+    cpu_ts = this->GetCPUTimestampInNanoseconds();
+    gpu_ts2 = this_as_derived->GetGPUTimestampInNanoseconds();
+
+    auto gpu_ts = (gpu_ts1 + gpu_ts2) / 2;
+    offset_to_add_to_gpu_timestamps_ = cpu_ts - gpu_ts;
+  }
 
 #if 0
   // Functional API to be implemented by subclasses
   // Included here only for documentation purposes
+protected:
   bool OnStartLogging();
   void OnStopLogging();
   void ProcessActivityBuffers(const std::vector<ProfilerActivityBuffer>& buffers,
@@ -231,6 +247,7 @@ class GPUTracerManager {
   bool PushUniqueCorrelation(uint64_t unique_cid);
   void PopUniqueCorrelation(uint64_t& popped_unique_cid);
   void FlushActivities();
+  uint64_t GetGPUTimestampInNanoseconds();
 #endif
 
   void EnqueueActivityBuffer(ProfilerActivityBuffer&& buffer) {
@@ -263,6 +280,10 @@ class GPUTracerManager {
     // Map the pending events to the right client
     MapEventsToClient(unique_correlation_id, std::move(pending_it->second));
     events_pending_client_mapping_.erase(pending_it);
+  }
+
+  uint64_t NormalizeGPUTimestampToCPUEpoch(uint64_t gpu_timestamp_in_nanoseconds) {
+    return gpu_timestamp_in_nanoseconds + this->offset_to_add_to_gpu_timestamps_;
   }
 
  private:
@@ -313,6 +334,12 @@ class GPUTracerManager {
     events_pending_client_mapping_[tracer_correlation_id].emplace_back(std::move(event));
   }
 
+  uint64_t GetCPUTimestampInNanoseconds() {
+    return std::chrono::duration_cast<std::chrono::nanoseconds>(
+               std::chrono::high_resolution_clock::now().time_since_epoch())
+        .count();
+  }
+
   std::mutex manager_instance_mutex_;
   uint64_t next_client_id_ = 1;
   uint64_t num_active_clients_ = 0;
@@ -336,6 +363,10 @@ class GPUTracerManager {
   // Keyed on tracer correlation_id, keeps track of activity records
   // for which we haven't established the external_correlation_id yet.
   InlinedHashMap<uint64_t, std::vector<EventRecord>> events_pending_client_mapping_;
+
+  // An offset to add to (the possibly skewed) GPU timestamps
+  // to normalize GPU timestamps with CPU timestamps
+  int64_t offset_to_add_to_gpu_timestamps_;
 }; /* class GPUTracerManager */
 
 // Base class for a GPU profiler
@@ -368,35 +399,19 @@ class GPUProfilerBase : public EpProfiler {
         ++event_iter;
       }
 
-      int64_t origin_ts;
       bool copy_op_names = false;
       std::string op_name;
       std::string parent_name;
 
-      // Tracers may not use Jan 1 1970 as an epoch for timestamps.
-      // So, we need to adjust the timestamp to something sensible.
       if (event_iter != event_end && event_iter->ts == ts) {
-        // In this particular case we have located a parent event -- in the main event stream --
-        // for the GPU events. We use the timestamps from that event to adjust timestamps
-        origin_ts = event_iter->ts + 1;
+        // We've located a parent event, copy the op_name and set
+        // this event's parent_name property to the name of the parent.
         copy_op_names = true;
         op_name = event_iter->args["op_name"];
         parent_name = event_iter->name;
         merged_events.emplace_back(*event_iter);
         ++event_iter;
-      } else {
-        // No parent event, let's just set the timestamp based on the
-        // timestamp of the call to EpProfiler->Start()
-        origin_ts = ts;
       }
-
-      // calculate the offset from the origin to the
-      // first kernel event. Subsequent kernel event
-      // timestamps will have this offset subtracted from
-      // them to maintain relative timing between
-      // kernel events, while still roughly reconciling
-      // with the Jan 1 1970 epoch.
-      auto offset_from_origin = origin_ts - map_iter.second[0].ts;
 
       for (auto& evt : map_iter.second) {
         if (copy_op_names) {
@@ -405,8 +420,6 @@ class GPUProfilerBase : public EpProfiler {
           evt.args["op_name"] = op_name;
           evt.args["parent_name"] = parent_name;
         }
-
-        evt.ts += offset_from_origin;
       }
 
       merged_events.insert(merged_events.end(),

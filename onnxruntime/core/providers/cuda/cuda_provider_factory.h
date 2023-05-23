@@ -20,8 +20,6 @@ class NvtxRangeCreator;
 }
 
 struct ProviderInfo_CUDA {
-  virtual ~ProviderInfo_CUDA() {} // This is declared due to a TSA warning, the only instantiation of this class is a global variable of automatic storage.
-
   virtual OrtStatus* SetCurrentGpuDeviceId(_In_ int device_id) = 0;
   virtual OrtStatus* GetCurrentGpuDeviceId(_In_ int* device_id) = 0;
 
@@ -34,8 +32,8 @@ struct ProviderInfo_CUDA {
   virtual void cuda__Impl_Cast(void* stream, const double* input_data, float* output_data, size_t count) = 0;
   virtual void cuda__Impl_Cast(void* stream, const float* input_data, double* output_data, size_t count) = 0;
 
-  virtual Status CudaCall_false(int retCode, const char* exprString, const char* libName, int successCode, const char* msg) = 0;
-  virtual void CudaCall_true(int retCode, const char* exprString, const char* libName, int successCode, const char* msg) = 0;
+  virtual Status CudaCall_false(int retCode, const char* exprString, const char* libName, int successCode, const char* msg, const char* file, const int line) = 0;
+  virtual void CudaCall_true(int retCode, const char* exprString, const char* libName, int successCode, const char* msg, const char* file, const int line) = 0;
 
   virtual void CopyGpuToCpu(void* dst_ptr, const void* src_ptr, const size_t size, const OrtMemoryInfo& dst_location, const OrtMemoryInfo& src_location) = 0;
   virtual void cudaMemcpy_HostToDevice(void* dst, const void* src, size_t count) = 0;
@@ -43,7 +41,7 @@ struct ProviderInfo_CUDA {
   virtual int cudaGetDeviceCount() = 0;
   virtual void CUDAExecutionProviderInfo__FromProviderOptions(const onnxruntime::ProviderOptions& options, onnxruntime::CUDAExecutionProviderInfo& info) = 0;
 
-#if defined(USE_CUDA) && defined(ORT_USE_NCCL) && defined(USE_NCCL_P2P)
+#if defined(USE_CUDA) && defined(ORT_USE_NCCL) && defined(USE_NCCL_P2P) && defined(ENABLE_TRAINING)
   virtual onnxruntime::cuda::INcclService& GetINcclService() = 0;
 #endif
 
@@ -60,6 +58,9 @@ struct ProviderInfo_CUDA {
   // tests and is only called from onnxruntime_test_all. Release builds don't need this function.
   virtual bool TestAll() = 0;
 #endif
+
+ protected:
+  ~ProviderInfo_CUDA() = default;  // Can only be destroyed through a subclass instance
 };
 
 }  // namespace onnxruntime

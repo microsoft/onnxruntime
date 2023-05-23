@@ -102,12 +102,12 @@ TEST(CUDAFenceTests, DISABLED_PartOnCPU) {
 
   ASSERT_TRUE(graph.Resolve().IsOK());
 
-  auto cpu_allocator = TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault);
+  auto cpu_allocator = TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault);
   auto element_type = DataTypeImpl::GetType<float>();
   TensorShape shape({2, 2});
   float data[4] = {-1, 2, 3, -4};
 
-  //create fake ml value with owned buffer.
+  // create fake ml value with owned buffer.
   OrtValue value;
   Tensor::InitOrtValue(element_type, shape, cpu_allocator, value);
   memcpy(value.GetMutable<Tensor>()->MutableData<float>(), data, sizeof(data));
@@ -148,19 +148,18 @@ TEST(CUDAFenceTests, TileWithInitializer) {
   ASSERT_TRUE(graph.Resolve().IsOK());
   ASSERT_TRUE(0 == CountCopyNodes(graph));
 
-  auto cpu_allocator = TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault);
+  auto cpu_allocator = TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault);
   auto element_type = DataTypeImpl::GetType<float>();
   TensorShape shape({2, 2});
   float data[4] = {-1, 2, 3, -4};
 
-  //create fake ml value with owned buffer.
+  // create fake ml value with owned buffer.
   OrtValue value;
   Tensor::InitOrtValue(element_type,
                        shape,
                        cpu_allocator,
                        value);
   memcpy(value.GetMutable<Tensor>()->MutableData<float>(), data, sizeof(data));
-
 
   SessionOptions so;
   FenceCudaTestInferenceSession session(so, GetEnvironment());
@@ -209,12 +208,12 @@ TEST(CUDAFenceTests, TileWithComputedInput) {
   ASSERT_TRUE(graph.Resolve().IsOK());
   ASSERT_TRUE(0 == CountCopyNodes(graph));
 
-  auto cpu_allocator = TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault);
+  auto cpu_allocator = TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault);
   auto element_type = DataTypeImpl::GetType<float>();
   TensorShape shape({2, 2});
   float data[4] = {-1, 2, 3, -4};
 
-  //create fake ml value with owned buffer.
+  // create fake ml value with owned buffer.
   OrtValue value;
   Tensor::InitOrtValue(element_type,
                        shape,

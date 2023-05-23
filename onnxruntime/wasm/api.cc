@@ -68,9 +68,14 @@ OrtSessionOptions* OrtCreateSessionOptions(size_t graph_optimization_level,
                                            const char* /*profile_file_prefix*/,
                                            const char* log_id,
                                            size_t log_severity_level,
-                                           size_t log_verbosity_level) {
+                                           size_t log_verbosity_level,
+                                           const char* optimized_model_filepath) {
   OrtSessionOptions* session_options = nullptr;
   RETURN_NULLPTR_IF_ERROR(CreateSessionOptions, &session_options);
+
+  if (optimized_model_filepath) {
+    RETURN_NULLPTR_IF_ERROR(SetOptimizedModelFilePath, session_options, optimized_model_filepath);
+  }
 
   // assume that a graph optimization level is checked and properly set at JavaScript
   RETURN_NULLPTR_IF_ERROR(SetSessionGraphOptimizationLevel,
@@ -249,7 +254,7 @@ int OrtGetTensorData(OrtValue* tensor, int* data_type, void** data, size_t** dim
 
   ONNXType tensor_type;
   RETURN_ERROR_CODE_IF_ERROR(GetValueType, tensor, &tensor_type);
-  if ( tensor_type != ONNX_TYPE_TENSOR ) {
+  if (tensor_type != ONNX_TYPE_TENSOR) {
     return ORT_FAIL;
   }
 
@@ -358,7 +363,14 @@ int OrtRun(OrtSession* session,
            const char** input_names, const ort_tensor_handle_t* inputs, size_t input_count,
            const char** output_names, size_t output_count, ort_tensor_handle_t* outputs,
            OrtRunOptions* run_options) {
-  return CHECK_STATUS(Run, session, run_options, input_names, inputs, input_count, output_names, output_count, outputs);
+#if defined(USE_JSEP)
+  EM_ASM({ Module["jsepRunPromise"] = new Promise(function(r) { Module.jsepRunPromiseResolve = r; }); });
+#endif
+  auto status_code = CHECK_STATUS(Run, session, run_options, input_names, inputs, input_count, output_names, output_count, outputs);
+#if defined(USE_JSEP)
+  EM_ASM({ Module.jsepRunPromiseResolve($0); }, status_code);
+#endif
+  return status_code;
 }
 
 char* OrtEndProfiling(ort_session_handle_t session) {

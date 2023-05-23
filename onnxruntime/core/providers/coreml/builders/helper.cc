@@ -46,6 +46,11 @@ bool IsNodeSupported(const Node& node, const GraphViewer& graph_viewer, const lo
 }
 
 bool IsInputSupported(const NodeArg& input, const std::string& parent_name, const logging::Logger& logger) {
+  if (!input.Exists()) {
+    // optional input that is not provided
+    return true;
+  }
+
   const auto& input_name = input.Name();
   const auto* shape_proto = input.Shape();
   // We do not support input with no shape
@@ -78,19 +83,13 @@ bool IsInputSupported(const NodeArg& input, const std::string& parent_name, cons
 std::unordered_set<const Node*> GetSupportedNodes(const GraphViewer& graph_viewer,
                                                   const logging::Logger& logger) {
   std::unordered_set<const Node*> supported_nodes{};
-  
-  #ifdef __APPLE__
-    if (!util::HasRequiredBaseOS()) {
-      LOGS(logger, WARNING) << "All ops will fallback to CPU EP, because we do not have supported OS";
-      return supported_nodes;
-    }
-  #endif
 
-  const auto& graph_inputs = graph_viewer.GetInputs();
-  if (std::any_of(graph_inputs.begin(), graph_inputs.end(),
-                  [&](const NodeArg* input) { return !IsInputSupported(*input, "graph", logger); })) {
+#ifdef __APPLE__
+  if (!util::HasRequiredBaseOS()) {
+    LOGS(logger, WARNING) << "All ops will fallback to CPU EP, because we do not have supported OS";
     return supported_nodes;
   }
+#endif
 
   for (const auto& node : graph_viewer.Nodes()) {
     const bool supported = IsNodeSupported(node, graph_viewer, logger);
@@ -146,4 +145,3 @@ bool HasNeuralEngine(const logging::Logger& logger) {
 
 }  // namespace coreml
 }  // namespace onnxruntime
-

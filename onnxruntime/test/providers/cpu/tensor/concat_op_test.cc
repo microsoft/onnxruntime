@@ -63,8 +63,9 @@ TEST(ConcatOpTest, Concat1D_2) {
   test.AddInput<float>("input3", {0}, {});
   test.AddOutput<float>("concat_result", {3}, {1.0f, 2.0f, 3.0f});
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kTensorrtExecutionProvider,  //TensorRT: no support for dynamic shape tensor
-            kNnapiExecutionProvider});   // NNAPI: concat does not support 0 size input
+           {kTensorrtExecutionProvider,  // TensorRT: no support for dynamic shape tensor
+            kNnapiExecutionProvider,     // NNAPI: concat does not support 0 size input
+            kQnnExecutionProvider});     // QNN: not support dynamic shape tensor
 }
 
 TEST(ConcatOpTest, Concat2D_1) {
@@ -107,8 +108,9 @@ TEST(ConcatOpTest, Concat2D_3) {
   test.AddInput<float>("input3", {1, 0}, {});
   test.AddOutput<float>("concat_result", {1, 0}, {});
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kTensorrtExecutionProvider,  //TensorRT: no support for dynamic shape tensor
-            kNnapiExecutionProvider});   // NNAPI: concat does not support 0 size input
+           {kTensorrtExecutionProvider,  // TensorRT: no support for dynamic shape tensor
+            kNnapiExecutionProvider,     // NNAPI: concat does not support 0 size input
+            kQnnExecutionProvider});     // QNN: not support dynamic shape tensor
 }
 
 // Test Concat of tensors when one of them has dynamic shape
@@ -128,7 +130,7 @@ TEST(ConcatOpTest, Concat2D_4) {
                          31.0f, 32.0f, 33.0f, 34.0f,
                          41.0f, 42.0f, 43.0f, 44.0f});
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kTensorrtExecutionProvider});  //TensorRT: no support for dynamic shape tensor
+           {kTensorrtExecutionProvider});  // TensorRT: no support for dynamic shape tensor
 }
 
 TEST(ConcatOpTest, Concat2D_5) {

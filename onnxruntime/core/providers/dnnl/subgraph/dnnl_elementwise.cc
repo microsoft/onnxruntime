@@ -35,17 +35,25 @@ void DnnlElementwise::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node)
       }
       break;
     }
+    case dnnl::algorithm::eltwise_soft_relu: {
+      if (node.OpType() == "Softplus") {
+        requires_alpha = true;
+        alpha = 1.0f;
+      }
+      break;
+    }
     default:
       alpha = 0.0;
   }
 
+  // Generate a dst_md from the src data
+  auto dst_md = dnnl::memory::desc(src_md.get_dims(), src_md.get_data_type(), dnnl::memory::format_tag::any);
+
   dnnl::eltwise_forward::primitive_desc elementwise_pd;
   if (requires_alpha) {
-    auto elementwise_desc = dnnl::eltwise_forward::desc(dnnl::prop_kind::forward_inference, algo, src_md, alpha);
-    elementwise_pd = dnnl::eltwise_forward::primitive_desc(elementwise_desc, dnnl_engine);
+    elementwise_pd = dnnl::eltwise_forward::primitive_desc(dnnl_engine, dnnl::prop_kind::forward_inference, algo, src_md, dst_md, alpha);
   } else {
-    auto elementwise_desc = dnnl::eltwise_forward::desc(dnnl::prop_kind::forward_inference, algo, src_md);
-    elementwise_pd = dnnl::eltwise_forward::primitive_desc(elementwise_desc, dnnl_engine);
+    elementwise_pd = dnnl::eltwise_forward::primitive_desc(dnnl_engine, dnnl::prop_kind::forward_inference, algo, src_md, dst_md);
   }
 
   // If using GPU this will move the memory from the CPU to the GPU.

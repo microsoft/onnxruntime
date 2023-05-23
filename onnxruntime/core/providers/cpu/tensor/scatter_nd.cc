@@ -38,9 +38,18 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
                         BuildKernelDefConstraintsFromTypeList<EnabledScatterNDDataTypes>()),
     ScatterND);
 
-ONNX_CPU_OPERATOR_KERNEL(
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     ScatterND,
     16,
+    17,
+    KernelDefBuilder()
+        .TypeConstraint("T",
+                        BuildKernelDefConstraintsFromTypeList<EnabledScatterNDDataTypes>()),
+    ScatterND);
+
+ONNX_CPU_OPERATOR_KERNEL(
+    ScatterND,
+    18,
     KernelDefBuilder()
         .TypeConstraint("T",
                         BuildKernelDefConstraintsFromTypeList<EnabledScatterNDDataTypes>()),
@@ -263,6 +272,84 @@ struct Func_Mul_ND<BFloat16> {
   }
 };
 
+template <class T>
+struct Func_Min_ND {
+  void operator()(T* a, const T* b, uint64_t element_to_copy) const {
+    while (element_to_copy-- > 0) {
+      (*a) = (*a) < (*b) ? (*a) : (*b);
+      a++;
+      b++;
+    }
+  }
+};
+
+template <>
+struct Func_Min_ND<bool> {
+  void operator()(bool*, const bool*, uint64_t) const {
+    ORT_NOT_IMPLEMENTED("CPU execution provider: bool data type is not supported with ScatterND opset 18 when reduction is 'min'.");
+  }
+};
+
+template <>
+struct Func_Min_ND<std::string> {
+  void operator()(std::string*, const std::string*, uint64_t) const {
+    ORT_NOT_IMPLEMENTED("CPU execution provider: string data type is not supported with ScatterND opset 18 when reduction is 'min'.");
+  }
+};
+
+template <>
+struct Func_Min_ND<MLFloat16> {
+  void operator()(MLFloat16*, const MLFloat16*, uint64_t) const {
+    ORT_NOT_IMPLEMENTED("CPU execution provider: MLFloat16 data type is not supported with ScatterND opset 18 when reduction is 'min'.");
+  }
+};
+
+template <>
+struct Func_Min_ND<BFloat16> {
+  void operator()(BFloat16*, const BFloat16*, uint64_t) const {
+    ORT_NOT_IMPLEMENTED("CPU execution provider: BFloat16 data type is not supported with ScatterND opset 18 when reduction is 'min'.");
+  }
+};
+
+template <class T>
+struct Func_Max_ND {
+  void operator()(T* a, const T* b, uint64_t element_to_copy) const {
+    while (element_to_copy-- > 0) {
+      (*a) = (*a) > (*b) ? (*a) : (*b);
+      a++;
+      b++;
+    }
+  }
+};
+
+template <>
+struct Func_Max_ND<bool> {
+  void operator()(bool*, const bool*, uint64_t) const {
+    ORT_NOT_IMPLEMENTED("CPU execution provider: bool data type is not supported with ScatterND opset 18 when reduction is 'max'.");
+  }
+};
+
+template <>
+struct Func_Max_ND<std::string> {
+  void operator()(std::string*, const std::string*, uint64_t) const {
+    ORT_NOT_IMPLEMENTED("CPU execution provider: string data type is not supported with ScatterND opset 18 when reduction is 'max'.");
+  }
+};
+
+template <>
+struct Func_Max_ND<MLFloat16> {
+  void operator()(MLFloat16*, const MLFloat16*, uint64_t) const {
+    ORT_NOT_IMPLEMENTED("CPU execution provider: MLFloat16 data type is not supported with ScatterND opset 18 when reduction is 'max'.");
+  }
+};
+
+template <>
+struct Func_Max_ND<BFloat16> {
+  void operator()(BFloat16*, const BFloat16*, uint64_t) const {
+    ORT_NOT_IMPLEMENTED("CPU execution provider: BFloat16 data type is not supported with ScatterND opset 18 when reduction is 'max'.");
+  }
+};
+
 template <typename TData>
 struct ScatterNDDispatchTarget {
   Status operator()(OpKernelContext* context, concurrency::ThreadPool* tp, ScatterND::Reduction reduction) const {
@@ -280,6 +367,20 @@ struct ScatterNDDispatchTarget {
         } break;
         case ScatterND::Reduction::Mul: {
           auto func = Func_Mul_ND<TData>();
+          func(
+              prepare.output_base + prepare.element_offsets[onnxruntime::narrow<size_t>(i)],
+              prepare.input_base + i * prepare.element_to_copy,
+              prepare.element_to_copy);
+        } break;
+        case ScatterND::Reduction::Min: {
+          auto func = Func_Min_ND<TData>();
+          func(
+              prepare.output_base + prepare.element_offsets[onnxruntime::narrow<size_t>(i)],
+              prepare.input_base + i * prepare.element_to_copy,
+              prepare.element_to_copy);
+        } break;
+        case ScatterND::Reduction::Max: {
+          auto func = Func_Max_ND<TData>();
           func(
               prepare.output_base + prepare.element_offsets[onnxruntime::narrow<size_t>(i)],
               prepare.input_base + i * prepare.element_to_copy,

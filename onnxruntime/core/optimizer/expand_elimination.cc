@@ -67,7 +67,6 @@ bool ExpandElimination::SatisfyCondition(const Graph& graph, const Node& node, c
     --j;
   }
 
-  
   return true;
 }
 

@@ -50,14 +50,14 @@ class OpKernel {
   const onnxruntime::Node& Node() const;
   const onnxruntime::KernelDef& KernelDef() const;
 
-  virtual Status Compute(_Inout_ OpKernelContext* context) const ORT_MUST_USE_RESULT = 0;
+  [[nodiscard]] virtual Status Compute(_Inout_ OpKernelContext* context) const = 0;
 
   [[nodiscard]] virtual bool IsAsync() const {
     // by default all kernels are sync version.
     return false;
   }
 
-  virtual Status ComputeAsync(_Inout_ OpKernelContext*, DoneCallback) const ORT_MUST_USE_RESULT {
+  [[nodiscard]] virtual Status ComputeAsync(_Inout_ OpKernelContext*, DoneCallback) const {
     ORT_NOT_IMPLEMENTED(__FUNCTION__, " is not implemented");
   }
 
@@ -98,6 +98,17 @@ class OpKernel {
     return Status::OK();
   }
 
+  // Override this function to return a list of attributes the session can safely remove
+  // after it is intialized and saved. This option is useful to reduce memory usage
+  // when the kernel does not reuse the operator attributes but copies them.
+  // All attributes returned by this method will be removed by method
+  // PruneRemovableAttributes of they exists.
+  // @param removable_attributes set of attributes the session can safely remove.
+  virtual Status GetRemovableAttributes(InlinedVector<std::string>& removable_attributes) const {
+    removable_attributes.clear();
+    return Status::OK();
+  }
+
   // Override this function to use provided pre-packed weight.
   // Status UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers,
   //                                 int input_idx,
@@ -121,7 +132,7 @@ class OpKernel {
     return Status::OK();
   }
 
-  const OrtMemoryInfo& Allocator(int id, OrtMemType mem_type) const;
+  const OrtDevice GetDevice(OrtMemType mem_type) const;
   const OpKernelInfo& Info() const {
     return *op_kernel_info_;
   }
@@ -142,7 +153,9 @@ struct KernelCreateInfo {
   KernelCreateInfo(std::unique_ptr<KernelDef> definition,
                    KernelCreateFn create_func)
       : kernel_def(std::move(definition)),
-        kernel_create_func(create_func) {}
+        kernel_create_func(create_func) {
+    assert(kernel_def != nullptr);
+  }
 
   KernelCreateInfo(KernelCreateInfo&& other) noexcept
       : kernel_def(std::move(other.kernel_def)),

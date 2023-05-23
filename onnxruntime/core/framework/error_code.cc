@@ -28,7 +28,7 @@ inline OrtStatus* NewStatus(size_t clen) {
 }
 }  // namespace
 
-//Even we say it may not return NULL, indeed it may.
+// Even we say it may not return NULL, indeed it may.
 _Check_return_ _Ret_notnull_ OrtStatus* ORT_API_CALL OrtApis::CreateStatus(OrtErrorCode code,
                                                                            _In_z_ const char* msg) NO_EXCEPTION {
   assert(!(code == 0 && msg != nullptr));
@@ -54,6 +54,14 @@ _Ret_notnull_ OrtStatus* ToOrtStatus(const Status& st) {
   memcpy(p->msg, st.ErrorMessage().c_str(), clen);
   p->msg[clen] = '\0';
   return p;
+}
+
+Status ToStatus(const OrtStatus* ort_status, common::StatusCategory category) {
+  if (ort_status == nullptr) {
+    return Status::OK();
+  }
+
+  return Status(category, static_cast<common::StatusCode>(ort_status->code), &ort_status->msg[0]);
 }
 }  // namespace onnxruntime
 #ifdef _MSC_VER

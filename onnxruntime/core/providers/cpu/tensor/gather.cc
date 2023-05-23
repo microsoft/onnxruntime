@@ -141,7 +141,7 @@ Status Gather::Compute(OpKernelContext* context) const {
 
   const size_t element_bytes = p.input_tensor->DataType()->Size();
   const int64_t block = input_data_shape.SizeFromDimension(SafeInt<size_t>(p.axis) + 1);
-  const int64_t block_size = SafeInt<int64_t>(element_bytes) * block ;
+  const int64_t block_size = SafeInt<int64_t>(element_bytes) * block;
   const int64_t M = input_data_shape.SizeToDimension(narrow<size_t>(p.axis));
   const int64_t N = p.indices_tensor->Shape().Size();
   const int64_t data_batch_bytes = input_data_shape.SizeFromDimension(narrow<size_t>(p.axis)) * element_bytes;

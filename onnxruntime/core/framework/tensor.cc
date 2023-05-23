@@ -105,6 +105,12 @@ void Tensor::InitOrtValue(MLDataType p_type, const TensorShape& shape,
   ort_value.Init(p_tensor.release(), ml_tensor, ml_tensor->GetDeleteFunc());
 }
 
+void Tensor::InitOrtValue(Tensor&& tensor, OrtValue& ort_value) {
+  auto ml_tensor = DataTypeImpl::GetType<Tensor>();
+  auto p_tensor = std::make_unique<Tensor>(std::move(tensor));
+  ort_value.Init(p_tensor.release(), ml_tensor, ml_tensor->GetDeleteFunc());
+}
+
 size_t Tensor::SizeInBytes() const {
 #ifdef ENABLE_STRIDED_TENSORS
   int64_t size = IsContiguous() ? shape_.Size() : GetSizeFromStrides(shape_, strides_);

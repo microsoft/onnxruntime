@@ -229,28 +229,16 @@ TEST(FusedMatMulOpTest, DoubleTypeNoTranspose) {
 #endif
 
 TEST(FusedMatMulOpTest, FloatTypeTransposeA) {
-  // TODO: Unskip when fixed #41968513
-  if (DefaultDmlExecutionProvider().get() != nullptr) {
-    GTEST_SKIP() << "Skipping because of the following error: Assertion failed: vector subscript out of range";
-  }
   RunFusedMatMulTest<float>("FusedMatMul", 1, true, false);
 }
 
 TEST(FusedMatMulOpTest, FloatTypeTransposeB) {
-  // TODO: Unskip when fixed #41968513
-  if (DefaultDmlExecutionProvider().get() != nullptr) {
-    GTEST_SKIP() << "Skipping because of the following error: Assertion failed: vector subscript out of range";
-  }
   RunFusedMatMulTest<float>("FusedMatMul", 1, false, true);
   // b is constant. This tests weight packing logic
   RunFusedMatMulTest<float>("FusedMatMul", 1, false, true, false, false, 1.0f, true);
 }
 
 TEST(FusedMatMulOpTest, FloatTypeTransposeAB) {
-  // TODO: Unskip when fixed #41968513
-  if (DefaultDmlExecutionProvider().get() != nullptr) {
-    GTEST_SKIP() << "Skipping because of the following error: Assertion failed: vector subscript out of range";
-  }
   RunFusedMatMulTest<float>("FusedMatMul", 1, true, true);
 
   // b is constant. This tests weight packing logic
@@ -258,10 +246,6 @@ TEST(FusedMatMulOpTest, FloatTypeTransposeAB) {
 }
 
 TEST(FusedMatMulOpTest, FloatTypeScale) {
-  // TODO: Unskip when fixed #41968513
-  if (DefaultDmlExecutionProvider().get() != nullptr) {
-    GTEST_SKIP() << "Skipping because of the following error: Assertion failed: vector subscript out of range";
-  }
   RunFusedMatMulTest<float>("FusedMatMul", 1, false, false, false, false, 0.5f);
   RunFusedMatMulTest<float>("FusedMatMul", 1, true, false, false, false, 2.0f);
   RunFusedMatMulTest<float>("FusedMatMul", 1, true, true, false, false, 4.0f);
@@ -273,11 +257,6 @@ TEST(FusedMatMulOpTest, FloatTypeScale) {
 }
 
 TEST(FusedMatMulOpTest, FloatTypeTransposeBatch) {
-  // TODO: Unskip when fixed #41968513
-  if (DefaultDmlExecutionProvider().get() != nullptr) {
-    GTEST_SKIP() << "Skipping because of the following error: DmlCommandRecorder.cpp(338): The parameter is incorrect";
-  }
-
   RunFusedMatMulTest<float>("FusedMatMul", 1, false, false, true, false);
   RunFusedMatMulTest<float>("FusedMatMul", 1, false, false, false, true);
   RunFusedMatMulTest<float>("FusedMatMul", 1, false, false, true, true, 0.5f);
@@ -292,7 +271,7 @@ TEST(FusedMatMulOpTest, FloatTypeTransposeBatch) {
   RunFusedMatMulTest<float>("FusedMatMul", 1, true, true, true, true);
 }
 
-#if defined(USE_CUDA) || defined(USE_ROCM)
+#if defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_DML)
 TEST(FusedMatMulOpTest, Float16_NoTranspose) {
 #ifdef USE_CUDA
   int min_cuda_architecture = 530;
@@ -347,7 +326,7 @@ TEST(FusedMatMulOpTest, BFloat16_NoTranspose) {
   }
 #endif
 #ifdef USE_DNNL
-   if (!DnnlHasBF16Support()) {
+  if (!DnnlHasBF16Support()) {
     LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
     return;
   }
@@ -355,7 +334,7 @@ TEST(FusedMatMulOpTest, BFloat16_NoTranspose) {
 
   std::vector<float> common_input_vals{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15};
   for (auto t : GenerateSimpleTestCases<float>()) {
-    #if defined(USE_DNNL)
+#if defined(USE_DNNL)
     // disable scalar or 1D tensor input for oneDNN EP.
     if (t.name == "test left 1D" ||
         t.name == "test right 1D" ||
@@ -363,7 +342,7 @@ TEST(FusedMatMulOpTest, BFloat16_NoTranspose) {
         t.name == "test 2D with empty input") {
       continue;
     }
-    #endif //  USE_DNNL
+#endif  //  USE_DNNL
 
     OpTester test("FusedMatMul", 1, onnxruntime::kMSDomain);
 
@@ -401,7 +380,7 @@ TEST(FusedMatMulOpTest, BFloat16_NoTranspose) {
     test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
   }
 }
-#endif //  USE_CUDA USE_RCOM USE_DNNL
+#endif  //  USE_CUDA USE_RCOM USE_DNNL
 
 }  // namespace transpose_matmul
 }  // namespace test

@@ -1,12 +1,25 @@
 name: Update Java API Docs
+
+# Run when the Java API changes or every month so that the artifact does not expire
 on:
   push:
     branches:
       - main
+    paths:
+      - java/**
+  schedule:
+    - cron: '0 0 1 * *'
   workflow_dispatch:
 
+concurrency:
+  group: "apidocs-java"
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
 jobs:
-  publish:
+  build:
     name: Generate Java docs
     runs-on: ubuntu-latest
     steps:
@@ -16,33 +29,22 @@ jobs:
         with:
           java-version: '11'
           distribution: 'adopt'
-      - name: Install gradle wrapper
-        run: |
-          cd java
-          gradle wrapper
-      - name: Validate Gradle wrapper
-        uses: gradle/wrapper-validation-action@v1
       - name: Build with Gradle
         uses: gradle/gradle-build-action@v2
         with:
           build-root-directory: java
+          gradle-executable: java/gradlew
           arguments: javadoc
-      - name: Set commit ID
-        id: vars
-        run: echo "::set-output name=sha_short::$(git rev-parse --short HEAD)"
-      - uses: actions/checkout@v2
-        with:
-          ref: gh-pages
-          clean: false
-      - name: Move API docs into target area
+      - name: Log source commit
+        run: git rev-parse --short HEAD > java/build/docs/javadoc/source-version.txt
+      - name: Move Java docs into site
         run: |
-          rm -rf docs/api/java
-          mv java/build/docs/javadoc docs/api/java
-      - name: Create Pull Request
-        uses: peter-evans/create-pull-request@v3
+          rm -rf _site/docs/api/java
+          mkdir -p _site/docs/api
+          mv java/build/docs/javadoc _site/docs/api/java
+      - name: Upload new site
+        uses: actions/upload-artifact@v3
         with:
-          branch: gh-pages-pr
-          base: gh-pages
-          title: '[Automated]: Update Java API docs'
-          commit-message: 'Update Java API docs to commit ${{ steps.vars.outputs.sha_short }}'
-          add-paths: docs/api/java
+          name: onnxruntime-java-apidocs
+          path: _site
+          retention-days: 60

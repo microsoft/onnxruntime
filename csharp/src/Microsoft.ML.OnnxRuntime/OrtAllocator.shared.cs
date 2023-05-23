@@ -163,6 +163,16 @@ namespace Microsoft.ML.OnnxRuntime
         /// </summary>
         public static readonly byte[] allocatorCUDA_PINNED = Encoding.UTF8.GetBytes("CudaPinned" + Char.MinValue);
         /// <summary>
+        /// Predefined utf8 encoded allocator names. Use them to construct an instance of
+        /// OrtMemoryInfo to avoid UTF-16 to UTF-8 conversion costs.
+        /// </summary>
+        public static readonly byte[] allocatorHIP = Encoding.UTF8.GetBytes("Hip" + Char.MinValue);
+        /// <summary>
+        /// Predefined utf8 encoded allocator names. Use them to construct an instance of
+        /// OrtMemoryInfo to avoid UTF-16 to UTF-8 conversion costs.
+        /// </summary>
+        public static readonly byte[] allocatorHIP_PINNED = Encoding.UTF8.GetBytes("HipPinned" + Char.MinValue);
+        /// <summary>
         /// Create an instance of OrtMemoryInfo according to the specification
         /// Memory info instances are usually used to get a handle of a native allocator
         /// that is present within the current inference session object. That, in turn, depends
@@ -176,14 +186,11 @@ namespace Microsoft.ML.OnnxRuntime
         public OrtMemoryInfo(byte[] utf8AllocatorName, OrtAllocatorType allocatorType, int deviceId, OrtMemType memoryType)
             : base(IntPtr.Zero, true)
         {
-            using (var pinnedName = new PinnedGCHandle(GCHandle.Alloc(utf8AllocatorName, GCHandleType.Pinned)))
-            {
-                NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateMemoryInfo(pinnedName.Pointer,
-                                                                                allocatorType,
-                                                                                deviceId,
-                                                                                memoryType,
-                                                                                out handle));
-            }
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateMemoryInfo(utf8AllocatorName,
+                                                                            allocatorType,
+                                                                            deviceId,
+                                                                            memoryType,
+                                                                            out handle));
             _owned = true;
         }
 
@@ -206,8 +213,7 @@ namespace Microsoft.ML.OnnxRuntime
         {
             get
             {
-                IntPtr utf8Name = IntPtr.Zero;
-                NativeApiStatus.VerifySuccess(NativeMethods.OrtMemoryInfoGetName(handle, out utf8Name));
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtMemoryInfoGetName(handle, out IntPtr utf8Name));
                 return NativeOnnxValueHelper.StringFromNativeUtf8(utf8Name);
             }
         }
@@ -335,7 +341,7 @@ namespace Microsoft.ML.OnnxRuntime
             int width;
             if (!TensorElementTypeConverter.GetTypeAndWidth(elementType, out type, out width))
             {
-                throw new OnnxRuntimeException(ErrorCode.InvalidArgument, 
+                throw new OnnxRuntimeException(ErrorCode.InvalidArgument,
                     "Unable to query type information for data type: " + elementType.ToString());
             }
 

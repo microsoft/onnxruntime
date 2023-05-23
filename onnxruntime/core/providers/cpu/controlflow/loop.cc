@@ -313,28 +313,27 @@ common::Status Loop::SetupSubgraphExecutionInfo(const SessionState& session_stat
   ORT_RETURN_IF_ERROR(utils::InitializeFeedFetchCopyInfo(subgraph_session_state, *ffm));
 
   // setup the locations where we want the subgraph output to end up on
-  std::vector<const OrtMemoryInfo*> fetch_locations;
+  std::vector<const OrtDevice*> fetch_locations;
   fetch_locations.reserve(info_->num_subgraph_outputs);
 
   // 'cond' is first output and we need it to be on CPU so we can read the latest value
   const auto& cpu_allocator_info = session_state.GetExecutionProviders()
                                        .Get(onnxruntime::kCpuExecutionProvider)
-                                       ->GetAllocator(0, OrtMemTypeDefault)
-                                       ->Info();
+                                       ->GetOrtDeviceByMemType(OrtMemTypeDefault);
   fetch_locations.push_back(&cpu_allocator_info);
 
   // Loop state variables need to be where we can feed them in to the next iteration, so set the fetch location
   // to match the feed location.
   for (ptrdiff_t i = 0; i < info_->num_loop_carried_vars; ++i) {
     // +2 for both to skip the iter_num and cond input values
-    const auto& alloc_info = utils::FindMemoryInfoForValue(session_state, loop_inputs[i + 2]->Name());
+    const auto& alloc_info = utils::FindDeviceForValue(session_state, loop_inputs[i + 2]->Name());
     fetch_locations.push_back(&alloc_info);
   }
 
   // remaining outputs we want where the matching Loop output will be allocated
   const auto& loop_outputs = node.OutputDefs();
   for (size_t i = info_->num_loop_carried_vars, end = loop_outputs.size(); i < end; ++i) {
-    const auto& alloc_info = utils::FindMemoryInfoForValue(session_state, loop_outputs[i]->Name());
+    const auto& alloc_info = utils::FindDeviceForValue(session_state, loop_outputs[i]->Name());
     fetch_locations.push_back(&alloc_info);
   }
 
@@ -411,7 +410,7 @@ Status LoopImpl::Initialize() {
   // these need to be on CPU
   auto cpu_allocator = session_state_.GetExecutionProviders()
                            .Get(onnxruntime::kCpuExecutionProvider)
-                           ->GetAllocator(0, OrtMemTypeDefault);
+                           ->GetAllocator(OrtMemTypeDefault);
   iter_num_mlvalue_ = MakeScalarMLValue<int64_t>(cpu_allocator, 0, iter_num_rank != 0);
   condition_mlvalue_ = MakeScalarMLValue<bool>(cpu_allocator, condition_, condition_rank != 0);
 
@@ -543,29 +542,26 @@ Status LoopImpl::Execute(const FeedsFetchesManager& ffm) {
       } else {
         // We can't move the Loop's inputs directly into the Loop's outputs
         // as operator inputs are read-only. Hence, we need to make a copy.
-        std::vector<Tensor> tensors;
-
         auto& data = input.Get<TensorSeq>();
-
         output->SetType(data.DataType());
+        output->Reserve(data.Size());
 
         AllocatorPtr alloc;
         ORT_RETURN_IF_ERROR(context_.GetTempSpaceAllocator(&alloc));
         for (auto it = data.begin(), end = data.end(); it != end; ++it) {
-          Tensor tmp(it->DataType(), onnxruntime::TensorShape(it->Shape()), alloc);
+          Tensor tmp(it->Get<Tensor>().DataType(), it->Get<Tensor>().Shape(), alloc);
           // Safely use the IDataTransfer abstraction as we only allow using
           // Loop on CUDA if the copy stream is the same as the compute stream.
           // So there is no explicit sync required between the compute and copy streams
           // to avoid data races.
-          auto* data_transer = session_state_.GetDataTransferMgr().GetDataTransfer(it->Location().device, tmp.Location().device);
+          auto* data_transer = session_state_.GetDataTransferMgr().GetDataTransfer(it->Get<Tensor>().Location().device, tmp.Location().device);
           if (context_.GetComputeStream())
-            ORT_RETURN_IF_ERROR(data_transer->CopyTensorAsync(*it, tmp, *context_.GetComputeStream()));
+            ORT_RETURN_IF_ERROR(data_transer->CopyTensorAsync(it->Get<Tensor>(), tmp, *context_.GetComputeStream()));
           else
-            ORT_RETURN_IF_ERROR(data_transer->CopyTensor(*it, tmp));
-          tensors.push_back(std::move(tmp));
-        }
+            ORT_RETURN_IF_ERROR(data_transer->CopyTensor(it->Get<Tensor>(), tmp));
 
-        output->SetElements(std::move(tensors));
+          output->Add(std::move(tmp));
+        }
       }
     }
 

@@ -19,23 +19,23 @@ enum class BufferType : int {
   TF8,
   TF16,
   UINT8,
-  FLOAT};
+  FLOAT
+};
 
 class SnpeRuntimeOptions {
  public:
-  SnpeRuntimeOptions()
-      : runtime_target_()
-      , execution_priority_(zdl::DlSystem::ExecutionPriorityHint_t::NORMAL)
-      , runtime_options_()
-      , buffer_type_(BufferType::ITENSOR) {
+  SnpeRuntimeOptions() : runtime_target_(),
+                         execution_priority_(zdl::DlSystem::ExecutionPriorityHint_t::NORMAL),
+                         runtime_options_(),
+                         buffer_type_(BufferType::ITENSOR) {
   }
 
   explicit SnpeRuntimeOptions(const std::unordered_map<std::string, std::string>& options)
-      : runtime_target_()
-      , execution_priority_(zdl::DlSystem::ExecutionPriorityHint_t::NORMAL)
-      , runtime_options_(options)
-      , buffer_type_(BufferType::ITENSOR) {
-      ParseOptions();
+      : runtime_target_(),
+        execution_priority_(zdl::DlSystem::ExecutionPriorityHint_t::NORMAL),
+        runtime_options_(options),
+        buffer_type_(BufferType::ITENSOR) {
+    ParseOptions();
   }
 
   const SnpeRuntimeWrapper& GetRuntimeTarget() const {
@@ -50,6 +50,10 @@ class SnpeRuntimeOptions {
     return buffer_type_;
   }
 
+  bool GetInitCacheMode() const {
+    return enable_init_cache_;
+  }
+
  private:
   void ParseOptions();
 
@@ -58,6 +62,7 @@ class SnpeRuntimeOptions {
   zdl::DlSystem::ExecutionPriorityHint_t execution_priority_;
   std::unordered_map<std::string, std::string> runtime_options_;
   BufferType buffer_type_;
+  bool enable_init_cache_ = false;
 };
 
 }  // namespace snpe

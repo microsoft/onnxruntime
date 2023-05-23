@@ -1,6 +1,0 @@
-DeviceBasedPartitioner
-Devices:2
-CpuExecutionProvider:1
-GpuExecutionProvider:1
-conv_0,relu_0,add_0,transpose_0,transpose_1
-conv_1,relu_1,add_1,transpose_2,transpose_3

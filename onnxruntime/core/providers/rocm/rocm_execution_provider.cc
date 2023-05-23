@@ -19,6 +19,10 @@
 #include "orttraining/training_ops/rocm/rocm_training_kernels.h"
 #endif
 
+#ifdef USE_TRITON_KERNEL
+#include "core/providers/rocm/triton_kernel.h"
+#endif
+
 using namespace onnxruntime::common;
 
 namespace onnxruntime {
@@ -56,6 +60,7 @@ class Memcpy final : public OpKernel {
                       "Memcpy rocm: unable to get an allocator.");
       }
       auto X_size = X->Size();
+      Y->Reserve(X_size);
       for (size_t i = 0; i < X_size; ++i) {
         const Tensor& source_tensor = X->Get(i);
         std::unique_ptr<Tensor> target_tensor = Tensor::Create(source_tensor.DataType(), source_tensor.Shape(), alloc);
@@ -156,17 +161,30 @@ ROCMExecutionProvider::PerThreadContext::~PerThreadContext() {
 }
 
 void OverrideTunableOpInfoByEnv(ROCMExecutionProviderInfo& info) {
-  auto env_tunable_op_enabled = onnxruntime::ParseTestOnlyEnvironmentVariable<bool>(
-      "ORT_ROCM_TUNABLE_OP_ENABLED", {"0", "1"}, "Use provider_options \"tunable_op_enabled\" instead.");
-  if (env_tunable_op_enabled.has_value() && env_tunable_op_enabled != info.tunable_op.enabled) {
-    LOGS_DEFAULT(INFO) << "ORT_ROCM_TUNABLE_OP_ENABLED is set to " << *env_tunable_op_enabled;
-    info.tunable_op.enabled = *env_tunable_op_enabled;
+  if (auto env_tunable_op_enable = onnxruntime::ParseTestOnlyEnvironmentVariable<bool>(
+          "ORT_ROCM_TUNABLE_OP_ENABLE", {"0", "1"}, "Use provider_options \"tunable_op_enable\" instead.");
+      env_tunable_op_enable.has_value() && env_tunable_op_enable != info.tunable_op.enable) {
+    LOGS_DEFAULT(INFO) << "ORT_ROCM_TUNABLE_OP_ENABLE is set to " << *env_tunable_op_enable;
+    info.tunable_op.enable = *env_tunable_op_enable;
+  }
+
+  if (auto env_tunable_op_tuning_enable = onnxruntime::ParseTestOnlyEnvironmentVariable<bool>(
+          "ORT_ROCM_TUNABLE_OP_TUNING_ENABLE", {"0", "1"},
+          "Use provider_options \"tunable_op_tuning_enable\" instead.");
+      env_tunable_op_tuning_enable.has_value() && env_tunable_op_tuning_enable != info.tunable_op.tuning_enable) {
+    LOGS_DEFAULT(INFO) << "ORT_ROCM_TUNABLE_OP_TUNING_ENABLE is set to " << *env_tunable_op_tuning_enable;
+    info.tunable_op.tuning_enable = *env_tunable_op_tuning_enable;
+  }
+
+  if (info.tunable_op.tuning_enable && !info.tunable_op.enable) {
+    LOGS_DEFAULT(WARNING) << "TunableOp is enabled for tuning but is not enabled for using. This will have no effect.";
   }
 }
 
 ROCMExecutionProvider::ROCMExecutionProvider(const ROCMExecutionProviderInfo& info)
-    : IExecutionProvider{onnxruntime::kRocmExecutionProvider},
-      info_{info} {
+    : IExecutionProvider{onnxruntime::kRocmExecutionProvider, OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, info.device_id)},
+      info_{info},
+      tuning_context_(this, &info_.tunable_op) {
   HIP_CALL_THROW(hipSetDevice(info_.device_id));
 
   // must wait GPU idle, otherwise hipGetDeviceProperties might fail
@@ -194,6 +212,10 @@ ROCMExecutionProvider::ROCMExecutionProvider(const ROCMExecutionProviderInfo& in
   HIP_CALL_THROW(hipMemGetInfo(&free, &total));
 
   OverrideTunableOpInfoByEnv(info_);
+
+#ifdef USE_TRITON_KERNEL
+  onnxruntime::rocm::LoadOrtTritonKernel();
+#endif
 }
 
 ROCMExecutionProvider::~ROCMExecutionProvider() {
@@ -212,18 +234,8 @@ ROCMExecutionProvider::~ROCMExecutionProvider() {
   }
 }
 
-void ROCMExecutionProvider::EnableTunableOp() {
-  LOGS_DEFAULT(INFO) << "Enable TunableOp for ROCm Execution Provider";
-  info_.tunable_op.enabled = true;
-}
-
-void ROCMExecutionProvider::DisableTunableOp() {
-  LOGS_DEFAULT(INFO) << "Disable TunableOp for ROCm Execution Provider";
-  info_.tunable_op.enabled = false;
-}
-
-bool ROCMExecutionProvider::IsTunableOpEnabled() const {
-  return info_.tunable_op.enabled;
+ITuningContext* ROCMExecutionProvider::GetTuningContext() const {
+  return const_cast<rocm::tunable::RocmTuningContext*>(&tuning_context_);
 }
 
 std::unique_ptr<profiling::EpProfiler> ROCMExecutionProvider::GetProfiler() {
@@ -285,15 +297,15 @@ void ROCMExecutionProvider::ReleasePerThreadContext() const {
   per_thread_context_cache->erase(cached_context_it);
 }
 
-AllocatorPtr ROCMExecutionProvider::GetAllocator(int id, OrtMemType mem_type) const {
+AllocatorPtr ROCMExecutionProvider::GetAllocator(OrtMemType mem_type) const {
   if (mem_type == OrtMemTypeDefault) {
-    auto rocm_alloc = IExecutionProvider::GetAllocator(id, mem_type);
+    auto rocm_alloc = IExecutionProvider::GetAllocator(mem_type);
     if (!rocm_alloc) {
       return CreateRocmAllocator(info_.device_id, info_.gpu_mem_limit, info_.arena_extend_strategy,
                                  info_.external_allocator_info, info_.default_memory_arena_cfg);
     }
   }
-  return IExecutionProvider::GetAllocator(id, mem_type);
+  return IExecutionProvider::GetAllocator(mem_type);
 }
 
 Status ROCMExecutionProvider::Sync() const {
@@ -993,7 +1005,7 @@ class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain,
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 13, float, LogSoftmax);
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 13, double, LogSoftmax);
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 13, MLFloat16, LogSoftmax);
-class ONNX_OPERATOR_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 13, Split);
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 13, 17, Split);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 13, Squeeze);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 13, Unsqueeze);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 13, Concat);
@@ -1191,12 +1203,13 @@ class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain,
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 16, MLFloat16, LessOrEqual);
 
 // Opset 17
-// TODO: Enable LayerNormalization. It uses the same implementation as the old contrib op.
-// See https://github.com/microsoft/onnxruntime/pull/13066
-// class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 17, float, LayerNormalization);
-// class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 17, double, LayerNormalization);
-// class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 17, BFloat16, LayerNormalization);
-// class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 17, MLFloat16, LayerNormalization);
+class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 17, float, LayerNormalization);
+class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 17, double, LayerNormalization);
+class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 17, BFloat16, LayerNormalization);
+class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 17, MLFloat16, LayerNormalization);
+
+// Opset 18
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 18, Split);
 
 template <>
 KernelCreateInfo BuildKernelCreateInfo<void>() {
@@ -1916,7 +1929,7 @@ static Status RegisterRocmKernels(KernelRegistry& kernel_registry) {
       BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 13, float, LogSoftmax)>,
       // BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 13, double, LogSoftmax)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 13, MLFloat16, LogSoftmax)>,
-      BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 13, Split)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 13, 17, Split)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 13, Squeeze)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 13, Unsqueeze)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 13, Concat)>,
@@ -2121,10 +2134,13 @@ static Status RegisterRocmKernels(KernelRegistry& kernel_registry) {
       BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 16, MLFloat16, LessOrEqual)>,
 
       // Opset 17
-      // BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 17, float, LayerNormalization)>,
-      // BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 17, double, LayerNormalization)>,
-      // BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 17, BFloat16, LayerNormalization)>,
-      // BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 17, MLFloat16, LayerNormalization)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 17, float, LayerNormalization)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 17, double, LayerNormalization)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 17, BFloat16, LayerNormalization)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 17, MLFloat16, LayerNormalization)>,
+
+      // Opset 18
+      BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 18, Split)>,
   };
 
   for (auto& function_table_entry : function_table) {
@@ -2252,7 +2268,7 @@ void ROCMExecutionProvider::RegisterAllocator(AllocatorManager& allocator_manage
   // setup ROCM allocator
   // NOTE: We call IExecutionProvider::GetAllocator as ROCMExecutionProvider::GetAllocator will return
   //       a per-thread allocator for OrtMemTypeDefault.
-  auto rocm_alloc = IExecutionProvider::GetAllocator(gpu_device.Id(), OrtMemTypeDefault);
+  auto rocm_alloc = IExecutionProvider::GetAllocator(OrtMemTypeDefault);
   if (!rocm_alloc) {
     // use shared allocator if available
     rocm_alloc = allocator_manager.GetAllocator(OrtMemTypeDefault, gpu_device);
@@ -2271,7 +2287,7 @@ void ROCMExecutionProvider::RegisterAllocator(AllocatorManager& allocator_manage
   // OrtMemTypeCPUOutput -- allocated by hipHostMalloc, used to copy ROCM device memory to CPU
   // Use pinned memory instead of pageable memory make the data transfer faster
   // Used by node MemcpyToHost only
-  auto rocm_pinned_alloc = IExecutionProvider::GetAllocator(pinned_device.Id(), OrtMemTypeCPUOutput);
+  auto rocm_pinned_alloc = IExecutionProvider::GetAllocator(OrtMemTypeCPUOutput);
   if (!rocm_pinned_alloc) {
     rocm_pinned_alloc = allocator_manager.GetAllocator(OrtMemTypeCPUOutput, pinned_device);
 
@@ -2289,7 +2305,7 @@ void ROCMExecutionProvider::RegisterAllocator(AllocatorManager& allocator_manage
   }
 
   // OrtMemTypeCPUInput -- ROCM op place the input on CPU and will not be accessed by ROCM kernel, no sync issue
-  auto rocm_cpu_alloc = IExecutionProvider::GetAllocator(cpu_device.Id(), OrtMemTypeCPUInput);
+  auto rocm_cpu_alloc = IExecutionProvider::GetAllocator(OrtMemTypeCPUInput);
   if (!rocm_cpu_alloc) {
     rocm_cpu_alloc = allocator_manager.GetAllocator(OrtMemTypeCPUInput, cpu_device);
 
@@ -2317,24 +2333,20 @@ void ROCMExecutionProvider::RegisterAllocator(AllocatorManager& allocator_manage
 void ROCMExecutionProvider::RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry) const {
   // This allocator must be the same to the allocator
   // used in AllocateBufferOnCPUPinned.
-  auto allocator = GetAllocator(DEFAULT_CPU_ALLOCATOR_DEVICE_ID, OrtMemTypeCPU);
-  if (use_ep_level_unified_stream_)
-    RegisterRocmStreamHandles(stream_handle_registry,
-                              OrtDevice::GPU,
-                              allocator,
-                              !IsGraphCaptureEnabled(),
-                              stream_,
-                              use_ep_level_unified_stream_,
-                              GetPerThreadContext().MiopenHandle(),
-                              GetPerThreadContext().RocblasHandle());
-  else
-    RegisterRocmStreamHandles(stream_handle_registry,
-                              OrtDevice::GPU,
-                              allocator,
-                              !IsGraphCaptureEnabled(),
-                              stream_,
-                              use_ep_level_unified_stream_,
-                              GetPerThreadContext().MiopenHandle(),
-                              GetPerThreadContext().RocblasHandle());
+  auto allocator = GetAllocator(OrtMemTypeCPU);
+  RegisterRocmStreamHandles(stream_handle_registry,
+                            OrtDevice::GPU,
+                            allocator,
+                            !IsGraphCaptureEnabled(),
+                            stream_,
+                            use_ep_level_unified_stream_,
+                            GetPerThreadContext().MiopenHandle(),
+                            GetPerThreadContext().RocblasHandle());
+}
+
+OrtDevice ROCMExecutionProvider::GetOrtDeviceByMemType(OrtMemType mem_type) const {
+  if (mem_type == OrtMemTypeCPUInput) return OrtDevice();
+  if (mem_type == OrtMemTypeCPUOutput) return OrtDevice(OrtDevice::CPU, OrtDevice::MemType::HIP_PINNED, 0 /*CPU device id always be 0*/);
+  return default_device_;
 }
 }  // namespace onnxruntime

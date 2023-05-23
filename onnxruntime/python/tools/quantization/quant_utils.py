@@ -56,7 +56,7 @@ class QuantizationMode(Enum):
         try:
             return QuantizationMode[mode]
         except KeyError:
-            raise ValueError()
+            raise ValueError()  # noqa: B904
 
 
 class QuantizedValueType(Enum):
@@ -71,7 +71,7 @@ class QuantizedValueType(Enum):
         try:
             return QuantizedValueType[v]
         except KeyError:
-            raise ValueError()
+            raise ValueError()  # noqa: B904
 
 
 class QuantType(Enum):
@@ -86,7 +86,7 @@ class QuantType(Enum):
         try:
             return QuantType[t]
         except KeyError:
-            raise ValueError()
+            raise ValueError()  # noqa: B904
 
 
 class QuantFormat(Enum):
@@ -101,7 +101,7 @@ class QuantFormat(Enum):
         try:
             return QuantFormat[format]
         except KeyError:
-            raise ValueError()
+            raise ValueError()  # noqa: B904
 
 
 ONNX_TYPE_TO_NP_TYPE = {
@@ -111,9 +111,7 @@ ONNX_TYPE_TO_NP_TYPE = {
 
 
 def quantize_nparray(qType, arr, scale, zero_point, low=None, high=None):
-    assert (
-        qType in ONNX_TYPE_TO_NP_TYPE
-    ), "Unexpected data type {} requested. Only INT8 and UINT8 are supported.".format(qType)
+    assert qType in ONNX_TYPE_TO_NP_TYPE, f"Unexpected data type {qType} requested. Only INT8 and UINT8 are supported."
     dtype = ONNX_TYPE_TO_NP_TYPE[qType]
     cliplow = max(0 if dtype == numpy.uint8 else -127, -127 if low is None else low)
     cliphigh = min(255 if dtype == numpy.uint8 else 127, 255 if high is None else high)
@@ -204,7 +202,7 @@ def quantize_data(data, qType, symmetric, reduce_range=False):
     return rmin, rmax, zero_point, scale, quantized_data
 
 
-def get_qmin_qmax_for_qType(qType, reduce_range=False, symmetric=False):
+def get_qmin_qmax_for_qType(qType, reduce_range=False, symmetric=False):  # noqa: N802
     """
     Return qmin and qmax, the minimum and maximum value representable by the given qType
     :parameter qType: onnx.onnx_pb.TensorProto.UINT8 or onnx.onnx_pb.TensorProto.UINT8
@@ -218,11 +216,11 @@ def get_qmin_qmax_for_qType(qType, reduce_range=False, symmetric=False):
         else:
             (qmin, qmax) = (-64, 64) if reduce_range else (-128, 127)
     else:
-        raise ValueError("Unexpected data type {} requested. Only INT8 and UINT8 are supported.".format(qType))
+        raise ValueError(f"Unexpected data type {qType} requested. Only INT8 and UINT8 are supported.")
     return qmin, qmax
 
 
-def get_qrange_for_qType(qType, reduce_range=False, symmetric=False):
+def get_qrange_for_qType(qType, reduce_range=False, symmetric=False):  # noqa: N802
     """
     Helper function to get the quantization range for a type.
         parameter qType: quantization type.
@@ -245,8 +243,8 @@ class QuantizedInitializer:
         rmaxs,
         zero_points,
         scales,
-        data=[],
-        quantized_data=[],
+        data=[],  # noqa: B006
+        quantized_data=[],  # noqa: B006
         axis=None,
     ):
         self.name = name
@@ -265,7 +263,7 @@ class QuantizedInitializer:
 
 class QuantizedValue:
     """
-    Represents a linearly quantized value (input\output\intializer)
+    Represents a linearly quantized value (input\\output\\intializer)
     """
 
     def __init__(
@@ -303,7 +301,7 @@ def attribute_to_kwarg(attribute):
         :return: attribute in {key: value} format.
     """
     if attribute.type == 0:
-        raise ValueError("attribute {} does not have type specified.".format(attribute.name))
+        raise ValueError(f"attribute {attribute.name} does not have type specified.")
 
     # Based on attribute type definitions from AttributeProto
     # definition in https://github.com/onnx/onnx/blob/main/onnx/onnx.proto
@@ -328,7 +326,7 @@ def attribute_to_kwarg(attribute):
     elif attribute.type == 10:
         value = attribute.graphs
     else:
-        raise ValueError("attribute {} has unsupported type {}.".format(attribute.name, attribute.type))
+        raise ValueError(f"attribute {attribute.name} has unsupported type {attribute.type}.")
 
     return {attribute.name: value}
 
@@ -403,7 +401,7 @@ def write_calibration_table(calibration_cache):
     import onnxruntime.quantization.CalTableFlatBuffers.KeyValue as KeyValue
     import onnxruntime.quantization.CalTableFlatBuffers.TrtTable as TrtTable
 
-    logging.info("calibration cache: {}".format(calibration_cache))
+    logging.info(f"calibration cache: {calibration_cache}")
 
     with open("calibration.json", "w") as file:
         file.write(json.dumps(calibration_cache))  # use `json.loads` to do the reverse
@@ -507,7 +505,10 @@ def optimize_model(model_path: Path, opt_model_path: Path):
     sess_option = SessionOptions()
     sess_option.optimized_model_filepath = opt_model_path.as_posix()
     sess_option.graph_optimization_level = GraphOptimizationLevel.ORT_ENABLE_BASIC
-    _ = InferenceSession(model_path.as_posix(), sess_option, providers=["CPUExecutionProvider"])
+    kwargs = {}
+    # This will rename constant initializer names, disable it to make test pass.
+    kwargs["disabled_optimizers"] = ["ConstantSharing"]
+    _ = InferenceSession(model_path.as_posix(), sess_option, providers=["CPUExecutionProvider"], **kwargs)
 
 
 def add_pre_process_metadata(model):

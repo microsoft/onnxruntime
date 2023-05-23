@@ -22,6 +22,7 @@ def numpy_type(torch_type):
         torch.float32: numpy.float32,
         torch.float16: numpy.float16,
         torch.int32: numpy.int32,
+        torch.int64: numpy.int64,
     }
     return type_map[torch_type]
 
@@ -75,7 +76,7 @@ def get_default_provider():
 
 class Benchmark:
     def __init__(self, model, inputs, outputs, args):
-        self.provider = get_default_provider() if args.provider == None else provider_name(args.provider)
+        self.provider = get_default_provider() if args.provider is None else provider_name(args.provider)
         logger.info(f"Execution provider: {self.provider}")
         self.profiling = args.profiling
         self.model = model
@@ -125,13 +126,13 @@ class Benchmark:
         io_binding = self.create_io_binding(sess, input_tensors, output_tensors)
 
         # warm up
-        for iter in range(10):
+        for _iter in range(10):
             sess.run_with_iobinding(io_binding)
 
         # measure
         max_iters = 100
         start_time = time.time()
-        for iter in range(max_iters):
+        for _iter in range(max_iters):
             sess.run_with_iobinding(io_binding)
 
         # time is in milliseconds

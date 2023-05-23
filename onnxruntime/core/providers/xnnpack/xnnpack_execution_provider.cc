@@ -123,7 +123,8 @@ std::unique_ptr<KernelRegistry> RegisterKernels() {
 using namespace xnnpack;
 
 XnnpackExecutionProvider::XnnpackExecutionProvider(const XnnpackExecutionProviderInfo& info)
-    : IExecutionProvider{kXnnpackExecutionProvider, true} {
+    : IExecutionProvider{kXnnpackExecutionProvider, true},
+      enable_cpu_mem_arena_(info.session_options ? info.session_options->enable_cpu_mem_arena : true) {
   int xnn_thread_pool_size = info.xnn_thread_pool_size;
   int ort_thread_pool_size = info.session_options ? info.session_options->intra_op_param.thread_pool_size : 1;
   bool allow_intra_op_spinning = (info.session_options == nullptr) ||
@@ -158,7 +159,7 @@ void XnnpackExecutionProvider::RegisterAllocator(AllocatorManager& allocator_man
   // by all following xnnpack EP sessions. A static allocator is used to extend its life cycle.
   const auto& [stored_allocator, xnn_allocator] = GetStoredAllocator();
   // if EP is used in multiple inference sessions we may already have an allocator. if so use that.
-  auto cpu_alloc = GetAllocator(cpu_device.Id(), OrtMemTypeDefault);
+  auto cpu_alloc = GetAllocator(OrtMemTypeDefault);
   if (!cpu_alloc) {
     // use shared allocator if available
     cpu_alloc = allocator_manager.GetAllocator(OrtMemTypeDefault, cpu_device);
@@ -170,7 +171,8 @@ void XnnpackExecutionProvider::RegisterAllocator(AllocatorManager& allocator_man
             // lazy create the allocator
             return std::make_unique<CPUAllocator>(OrtMemoryInfo(kXnnpackExecutionProvider,
                                                                 OrtAllocatorType::OrtDeviceAllocator));
-          });
+          },
+          cpu_device.Id(), enable_cpu_mem_arena_);
       // only the first time we create the allocator do we pass in the xnn_allocator
       cpu_alloc = stored_allocator ? stored_allocator : CreateAllocator(allocator_info);
       // enable sharing of our allocator

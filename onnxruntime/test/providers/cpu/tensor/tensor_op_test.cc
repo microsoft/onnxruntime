@@ -40,8 +40,8 @@ TEST(TensorOpTest, ReshapeWithEmptyInput) {
   test.AddInput<float>("data", {0, 10}, std::vector<float>());
   test.AddInput<int64_t>("shape", {3}, {0, 10, 1}, false);
   test.AddOutput<float>("reshaped", {0, 10, 1}, std::vector<float>());
-  // TensorRT doesn't support empty dimension
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  // TensorRT, QNN don't support empty dimension
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kQnnExecutionProvider});
 }
 
 TEST(TensorOpTest, ReshapeWithEmptyInputAndDynamicShape) {
@@ -55,10 +55,10 @@ TEST(TensorOpTest, ReshapeWithEmptyInputAndDynamicShape) {
     test.AddInput<float>("data", {1, 0}, std::vector<float>());
     test.AddInput<int64_t>("shape", {3}, {1, 0, -1}, false);
     test.AddOutput<float>("reshaped", {1, 0, 1}, {});
-    // TensorRT doesn't support empty dimension
+    // TensorRT, QNN don't support empty dimension
     test.Run(OpTester::ExpectResult::kExpectFailure,
              "The input tensor cannot be reshaped to the requested shape",
-             {kTensorrtExecutionProvider});
+             {kTensorrtExecutionProvider, kQnnExecutionProvider});
   }
 
   {
@@ -66,8 +66,8 @@ TEST(TensorOpTest, ReshapeWithEmptyInputAndDynamicShape) {
     test.AddInput<float>("data", {1, 0}, std::vector<float>());
     test.AddInput<int64_t>("shape", {3}, {1, 1, -1}, false);
     test.AddOutput<float>("reshaped", {1, 1, 0}, {});
-    // TensorRT doesn't support empty dimension
-    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+    // TensorRT, QNN don't support empty dimension
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kQnnExecutionProvider});
   }
 }
 
@@ -120,10 +120,10 @@ TEST(TensorOpTest, Reshape_EmptyInputWithoutAllowZero) {
   test.AddInput<float>("data", {0, 3, 4}, std::vector<float>());
   test.AddInput<int64_t>("shape", {3}, {3, 4, 0});
   test.AddOutput<float>("reshaped", {3, 4, 0}, std::vector<float>());
-  // TensorRT doesn't support dynamic shape tensor for now
+  // TensorRT, QNN don't support dynamic shape tensor for now
   test.Run(OpTester::ExpectResult::kExpectFailure,
            "The input tensor cannot be reshaped to the requested shape",
-           {kTensorrtExecutionProvider});
+           {kTensorrtExecutionProvider, kQnnExecutionProvider});
 }
 
 TEST(TensorOpTest, Reshape_EmptyInputWithAllowZero) {
@@ -165,7 +165,7 @@ TEST(TensorOpTest, Reshape_UnknownDimWithAllowZero) {
 #if defined(USE_DNNL)
 TEST(TensorOpTest, Reshape_bfloat16) {
 #ifdef USE_DNNL
-   if (!DnnlHasBF16Support()) {
+  if (!DnnlHasBF16Support()) {
     LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
     return;
   }
@@ -186,7 +186,7 @@ TEST(TensorOpTest, Reshape_bfloat16) {
 
 TEST(TensorOpTest, ReshapeWithEmptyDim_bfloat16) {
 #ifdef USE_DNNL
-   if (!DnnlHasBF16Support()) {
+  if (!DnnlHasBF16Support()) {
     LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
     return;
   }
@@ -207,7 +207,7 @@ TEST(TensorOpTest, ReshapeWithEmptyDim_bfloat16) {
 
 TEST(TensorOpTest, ReshapeWithEmptyInput_bfloat16) {
 #ifdef USE_DNNL
-   if (!DnnlHasBF16Support()) {
+  if (!DnnlHasBF16Support()) {
     LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
     return;
   }
@@ -226,7 +226,7 @@ TEST(TensorOpTest, ReshapeWithEmptyInput_bfloat16) {
 
 TEST(TensorOpTest, Reshape_WithOutAllowZero_bfloat16) {
 #ifdef USE_DNNL
-   if (!DnnlHasBF16Support()) {
+  if (!DnnlHasBF16Support()) {
     LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
     return;
   }
@@ -248,7 +248,7 @@ TEST(TensorOpTest, Reshape_WithOutAllowZero_bfloat16) {
 
 TEST(TensorOpTest, Reshape_WithAllowZero_bfloat16) {
 #ifdef USE_DNNL
-   if (!DnnlHasBF16Support()) {
+  if (!DnnlHasBF16Support()) {
     LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
     return;
   }
@@ -261,7 +261,7 @@ TEST(TensorOpTest, Reshape_WithAllowZero_bfloat16) {
   test.AddOutput<BFloat16>("reshaped", {2, 3}, MakeBFloat16({1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f}));
   // TensorRT doesn't support dynamic shape tensor for now
   // Nuphar only supports reshape shape from initializer
-    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
 #if defined(USE_DNNL)
   execution_providers.push_back(DefaultDnnlExecutionProvider());
 #endif  //  USE_DNNL
@@ -271,7 +271,7 @@ TEST(TensorOpTest, Reshape_WithAllowZero_bfloat16) {
 
 TEST(TensorOpTest, ReshapeWithInitializer_bfloat16) {
 #ifdef USE_DNNL
-   if (!DnnlHasBF16Support()) {
+  if (!DnnlHasBF16Support()) {
     LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
     return;
   }
@@ -290,7 +290,7 @@ TEST(TensorOpTest, ReshapeWithInitializer_bfloat16) {
 
 TEST(TensorOpTest, ReshapeWithEmptyInputAndDynamicShape_bfloat16) {
 #ifdef USE_DNNL
-   if (!DnnlHasBF16Support()) {
+  if (!DnnlHasBF16Support()) {
     LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
     return;
   }
@@ -325,7 +325,7 @@ TEST(TensorOpTest, ReshapeWithEmptyInputAndDynamicShape_bfloat16) {
 
 TEST(TensorOpTest, Reshape_EmptyInputWithoutAllowZero_bfloat16) {
 #ifdef USE_DNNL
-   if (!DnnlHasBF16Support()) {
+  if (!DnnlHasBF16Support()) {
     LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
     return;
   }
@@ -347,7 +347,7 @@ TEST(TensorOpTest, Reshape_EmptyInputWithoutAllowZero_bfloat16) {
 
 TEST(TensorOpTest, Reshape_EmptyInputWithAllowZero_bfloat16) {
 #ifdef USE_DNNL
-   if (!DnnlHasBF16Support()) {
+  if (!DnnlHasBF16Support()) {
     LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
     return;
   }
@@ -370,7 +370,7 @@ TEST(TensorOpTest, Reshape_EmptyInputWithAllowZero_bfloat16) {
 
 TEST(TensorOpTest, Reshape_UnknownDimWithoutAllowZero_bfloat16) {
 #ifdef USE_DNNL
-   if (!DnnlHasBF16Support()) {
+  if (!DnnlHasBF16Support()) {
     LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
     return;
   }
@@ -389,7 +389,7 @@ TEST(TensorOpTest, Reshape_UnknownDimWithoutAllowZero_bfloat16) {
 
 TEST(TensorOpTest, Reshape_UnknownDimWithAllowZero_bfloat16) {
 #ifdef USE_DNNL
-   if (!DnnlHasBF16Support()) {
+  if (!DnnlHasBF16Support()) {
     LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
     return;
   }
@@ -486,11 +486,7 @@ void MeanVarianceNormalizationFunctionDefaultPerChannel() {
   OpTester test("MeanVarianceNormalization", 9);
   test.AddInput<float>("input", {N, C, H, W}, X);
   test.AddOutput<float>("output", {N, C, H, W}, result);
-#if defined(OPENVINO_CONFIG_MYRIAD)
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});  // OpenVINO: Unsupported combination of indices in layer "output"
-#else
   test.Run();
-#endif
 }
 
 void MeanVarianceNormalizationFunctionAcrossChannels(std::vector<int64_t> axes) {
@@ -513,11 +509,7 @@ void MeanVarianceNormalizationFunctionAcrossChannels(std::vector<int64_t> axes) 
   test.AddAttribute("axes", axes);
   test.AddInput<float>("input", {N, C, H, W}, X);
   test.AddOutput<float>("output", {N, C, H, W}, result);
-#if defined(OPENVINO_CONFIG_MYRIAD)
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});  // OpenVINO: Unsupported combination of indices in layer "output"
-#else
   test.Run();
-#endif
 }
 
 TEST(TensorOpTest, MeanVarianceNormalizationCPUTest) {

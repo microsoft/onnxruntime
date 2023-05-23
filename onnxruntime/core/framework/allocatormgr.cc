@@ -58,6 +58,7 @@ AllocatorPtr CreateAllocator(const AllocatorCreationInfo& info) {
     }
 
     if (info.use_stream_aware_arena) {
+#ifdef ORT_ENABLE_STREAM
       return AllocatorPtr(
           std::make_unique<StreamAwareArena>(std::move(device_allocator),
                                              max_mem,
@@ -66,6 +67,9 @@ AllocatorPtr CreateAllocator(const AllocatorCreationInfo& info) {
                                              initial_chunk_size_bytes,
                                              max_dead_bytes_per_chunk,
                                              initial_growth_chunk_size_bytes));
+#else
+      ORT_THROW("StreamAwareArena should be transparent to minimal build.");
+#endif
     } else {
       return AllocatorPtr(
           std::make_unique<BFCArena>(std::move(device_allocator),

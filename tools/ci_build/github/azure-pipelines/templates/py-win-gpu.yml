@@ -47,13 +47,22 @@ jobs:
           modifyEnvironment: true
           workingFolder: '$(Build.BinariesDirectory)'
 
-      - script: |
-          python -m pip install -q setuptools wheel numpy==1.21.6
-        workingDirectory: '$(Build.BinariesDirectory)'
-        displayName: 'Install python modules'
+      - task: PythonScript@0
+        inputs:
+          scriptSource: inline
+          script: |
+            import sys
+            np_version = 'numpy==1.21.6' if sys.version_info < (3, 11) else 'numpy==1.24.2'
+            import subprocess
+            subprocess.call(['pip', 'install', '-q', 'setuptools', 'wheel', np_version])
+          workingDirectory: '$(Build.BinariesDirectory)'
+          displayName: 'Install python modules'
 
       - template: download-deps.yml
 
+      - ${{ if contains(parameters.EP_BUILD_FLAGS, 'use_cuda') }}:
+        - powershell: |
+           azcopy.exe cp --recursive "https://lotusscus.blob.core.windows.net/models/cuda_sdk/v11.8" $(Agent.TempDirectory)
       - task: PythonScript@0
         displayName: 'Update deps.txt'
         inputs:
@@ -79,7 +88,7 @@ jobs:
             --config RelWithDebInfo
             --build_dir $(Build.BinariesDirectory)
             --skip_submodule_sync
-            --cmake_generator "Visual Studio 16 2019"
+            --cmake_generator "Visual Studio 17 2022"
             --enable_pybind
             --enable_onnx_tests            
             --parallel --update
@@ -150,10 +159,10 @@ jobs:
         workingDirectory: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo'
         displayName: 'Run Python Tests'
 
-      - ${{ if eq(parameters.PYTHON_VERSION, '3.7') }}:
+      - ${{ if eq(parameters.PYTHON_VERSION, '3.8') }}:
           - task: DeleteFiles@1
             displayName: 'Delete files from $(Build.BinariesDirectory)\RelWithDebInfo'
-            condition: and (succeeded(), eq(variables['$'], '3.7'))
+            condition: and (succeeded(), eq(variables['$'], '3.8'))
             inputs:
               SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo'
               Contents: |
@@ -166,8 +175,8 @@ jobs:
             displayName: 'Run the PREfast SDL Native Rules for MSBuild'
             inputs:
               msBuildArchitecture: amd64
-              setupCommandlines: 'python $(Build.SourcesDirectory)\tools\ci_build\build.py --config RelWithDebInfo --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_generator "Visual Studio 16 2019" --enable_pybind --enable_onnx_tests --parallel $(TelemetryOption) ${{ parameters.BUILD_PY_PARAMETERS }} ${{ parameters.EP_BUILD_FLAGS }} --update --cmake_extra_defines onnxruntime_ENABLE_STATIC_ANALYSIS=ON'
-              msBuildCommandline: '"C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\MSBuild\Current\Bin\amd64\msbuild.exe" "$(Build.BinariesDirectory)\RelWithDebInfo\onnxruntime.sln" /p:platform=x64 /p:configuration="RelWithDebInfo" /p:VisualStudioVersion="16.0" /m /p:PreferredToolArchitecture=x64'
+              setupCommandlines: 'python $(Build.SourcesDirectory)\tools\ci_build\build.py --config RelWithDebInfo --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_generator "Visual Studio 17 2022" --enable_pybind --enable_onnx_tests --parallel $(TelemetryOption) ${{ parameters.BUILD_PY_PARAMETERS }} ${{ parameters.EP_BUILD_FLAGS }} --update --cmake_extra_defines onnxruntime_ENABLE_STATIC_ANALYSIS=ON'
+              msBuildCommandline: '"C:\Program Files\Microsoft Visual Studio\2022\Enterprise\MSBuild\Current\Bin\amd64\msbuild.exe" "$(Build.BinariesDirectory)\RelWithDebInfo\onnxruntime.sln" /p:platform=x64 /p:configuration="RelWithDebInfo" /p:VisualStudioVersion="17.0" /m /p:PreferredToolArchitecture=x64'
               excludedPaths: '$(Build.BinariesDirectory)#$(Build.SourcesDirectory)\cmake#C:\program files (x86)'
 
           - task: TSAUpload@2

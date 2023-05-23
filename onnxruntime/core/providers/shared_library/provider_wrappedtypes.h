@@ -550,6 +550,7 @@ class DataTypeImpl final {
   static const std::vector<MLDataType>& AllTensorTypes() { return g_host->DataTypeImpl__AllTensorTypes(); }
   static const std::vector<MLDataType>& AllIEEEFloatTensorTypes() { return g_host->DataTypeImpl__AllIEEEFloatTensorTypes(); }
   static const std::vector<MLDataType>& AllTensorAndSequenceTensorTypes() { return g_host->DataTypeImpl__AllTensorAndSequenceTensorTypes(); }
+  static const std::vector<MLDataType>& AllOptionalAndTensorAndSequenceTensorTypes() { return g_host->DataTypeImpl__AllOptionalAndTensorAndSequenceTensorTypes(); }
   static const std::vector<MLDataType>& AllFixedSizeTensorAndSequenceTensorTypes() { return g_host->DataTypeImpl__AllFixedSizeTensorAndSequenceTensorTypes(); }
   static const std::vector<MLDataType>& AllSequenceTensorTypes() { return g_host->DataTypeImpl__AllSequenceTensorTypes(); }
   static const std::vector<MLDataType>& AllFixedSizeSequenceTensorTypes() { return g_host->DataTypeImpl__AllFixedSizeSequenceTensorTypes(); }
@@ -699,6 +700,7 @@ struct Graph final {
   const Node* ParentNode() const { return g_host->Graph__ParentNode(this); }
   const Graph* ParentGraph() const { return g_host->Graph__ParentGraph(this); }
   const std::string& Name() const noexcept { return g_host->Graph__Name(this); }
+  const Path& ModelPath() const { return g_host->Graph__ModelPath(this); }
   const std::vector<const NodeArg*>& GetInputsIncludingInitializers() const noexcept { return g_host->Graph__GetInputsIncludingInitializers(this); }
   bool IsSubgraph() const { return g_host->Graph__IsSubgraph(this); }
 
@@ -745,6 +747,8 @@ struct GraphViewer final {
 
 struct Path final {
   PathString ToPathString() const noexcept { return g_host->Path__ToPathString(this); }
+  const std::vector<PathString>& GetComponents() const noexcept { return g_host->Path__GetComponents(this); }
+  bool IsEmpty() const noexcept { return g_host->Path__IsEmpty(this); }
 
   PROVIDER_DISALLOW_ALL(Path)
 };
@@ -817,7 +821,7 @@ inline const Tensor& OpKernelContext::RequiredInput(int index) const {
 struct OpKernelInfo final {
   static void operator delete(void* p) { g_host->OpKernelInfo__operator_delete(reinterpret_cast<OpKernelInfo*>(p)); }
 
-  AllocatorPtr GetAllocator(int device_id, OrtMemType mem_type) const { return g_host->OpKernelInfo__GetAllocator(this, device_id, mem_type); }
+  AllocatorPtr GetAllocator(OrtMemType mem_type) const { return g_host->OpKernelInfo__GetAllocator(this, mem_type); }
 
   const IExecutionProvider* GetExecutionProvider() const noexcept { return g_host->OpKernelInfo__GetExecutionProvider(this); }
 
@@ -1057,11 +1061,15 @@ struct SparseTensor final {
 #endif
 
 // TensorSeq
-struct TensorSeq final {
+class TensorSeq final {
+ public:
   MLDataType DataType() const noexcept { return g_host->TensorSeq__DataType(this); }
   void SetType(MLDataType elem_type) { g_host->TensorSeq__SetType(this, elem_type); }
   size_t Size() const noexcept { return g_host->TensorSeq__Size(this); }
   const Tensor& Get(size_t i) const { return g_host->TensorSeq__Get(this, i); }
+  const OrtValue& GetAt(size_t i) const { return g_host->TensorSeq__GetAt(this, i); }
+  void Add(const OrtValue& tensor) { g_host->TensorSeq__Add(this, tensor); }
+  void Add(OrtValue&& tensor) { g_host->TensorSeq__Add(this, std::move(tensor)); }
   void Add(Tensor&& tensor) { g_host->TensorSeq__Add(this, std::move(tensor)); }
   void Reserve(size_t capacity) { g_host->TensorSeq__Reserve(this, capacity); }
 };

@@ -39,12 +39,18 @@ Status SkipLayerNorm<T>::Compute(OpKernelContext* p_ctx) const {
   const Tensor* beta = p_ctx->Input<Tensor>(3);
   const Tensor* bias = p_ctx->Input<Tensor>(4);
   Tensor* output = p_ctx->Output(0, input->Shape());
+  // For inferencing, we support one more optional output which is the sum
+  // of the input and skip tensors
+  Tensor* skip_input_bias_add_output = p_ctx->Output(3, input->Shape());
 
   const auto& input_dims = input->Shape().GetDims();
-  if (input_dims.size() != 3) {
+  size_t input_dims_size = input_dims.size();
+  if (input_dims_size != 3 && input_dims_size != 2) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "input is expected to have 3 dimensions, got ", input_dims.size());
+                           "input is expected to have 3 or 2 dimensions, got ", input_dims_size);
   }
+
+  int hidden_size = static_cast<int>(input_dims[input_dims_size - 1]);
 
   if (input->Shape() != skip->Shape()) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
@@ -56,7 +62,7 @@ Status SkipLayerNorm<T>::Compute(OpKernelContext* p_ctx) const {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "gamma is expected to have 1 dimension, got ", gamma_dims.size());
   }
-  if (gamma_dims[0] != input_dims[2]) {
+  if (gamma_dims[0] != hidden_size) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "Last dimension of gamma and input does not match");
   }
@@ -67,7 +73,7 @@ Status SkipLayerNorm<T>::Compute(OpKernelContext* p_ctx) const {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "beta is expected to have 1 dimension, got ", beta_dims.size());
     }
-    if (beta_dims[0] != input_dims[2]) {
+    if (beta_dims[0] != hidden_size) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "Last dimension of beta and input does not match");
     }
@@ -79,16 +85,13 @@ Status SkipLayerNorm<T>::Compute(OpKernelContext* p_ctx) const {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "bias is expected to have 1 dimension, got ", bias_dims.size());
     }
-    if (bias_dims[0] != input_dims[2]) {
+    if (bias_dims[0] != hidden_size) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "Last dimension of bias and input does not match");
     }
   }
 
-  int64_t batch_size = input_dims[0];
-  int64_t sequence_length = input_dims[1];
-  int64_t hidden_size = input_dims[2];
-  int64_t task_count = batch_size * sequence_length;
+  int64_t task_count = input->Shape().SizeToDimension(input_dims_size - 1);
 
   const T* input_data = input->Data<T>();
   const T* skip_data = skip->Data<T>();
@@ -98,21 +101,34 @@ Status SkipLayerNorm<T>::Compute(OpKernelContext* p_ctx) const {
 
   T* output_data = output->MutableData<T>();
 
+  // For inferencing, we support one more optional output which is the sum
+  // of the input and skip tensors
+  T* skip_input_bias_add_output_data = skip_input_bias_add_output != nullptr ? skip_input_bias_add_output->MutableData<T>() : nullptr;
+
   concurrency::ThreadPool::TryBatchParallelFor(
       p_ctx->GetOperatorThreadPool(), static_cast<int32_t>(task_count),
       [&](ptrdiff_t task_idx) {
-        const T* p_input = input_data + task_idx * hidden_size;
-        const T* p_skip = skip_data + task_idx * hidden_size;
-        T* p_output = output_data + task_idx * hidden_size;
+        auto offset = task_idx * hidden_size;
+
+        const T* p_input = input_data + offset;
+        const T* p_skip = skip_data + offset;
+        T* p_output = output_data + offset;
+        T* p_skip_input_bias_add_output_data = skip_input_bias_add_output_data != nullptr ? skip_input_bias_add_output_data + offset : nullptr;
 
         T mean = 0;
         T mean_square = 0;
 
         for (int64_t h = 0; h < hidden_size; h++) {
           T value = p_input[h] + p_skip[h];
+
           if (nullptr != bias_data) {
             value += bias_data[h];
           }
+
+          if (nullptr != p_skip_input_bias_add_output_data) {
+            p_skip_input_bias_add_output_data[h] = value;
+          }
+
           p_output[h] = value;
           mean += value;
           mean_square += value * value;

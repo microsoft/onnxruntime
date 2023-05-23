@@ -20,8 +20,8 @@ def dump_tensorproto_pb_file(filename):
     """Dump the data from a pb file containing a TensorProto."""
 
     name, data = read_tensorproto_pb_file(filename)
-    print("Name: {}".format(name))
-    print("Shape: {}".format(data.shape))
+    print(f"Name: {name}")
+    print(f"Shape: {data.shape}")
     print(data)
 
 
@@ -142,7 +142,7 @@ def get_arg_parser():
     image_to_pb_group.add_argument(
         "--add_batch_dim",
         action="store_true",
-        help="Prepend a batch dimension with value of 1 to the shape. " "i.e. convert from CHW to NCHW",
+        help="Prepend a batch dimension with value of 1 to the shape. i.e. convert from CHW to NCHW",
     )
 
     random_to_pb_group = parser.add_argument_group("random_to_pb", "random_to_pb specific options")

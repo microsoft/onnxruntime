@@ -112,16 +112,20 @@ void CPUAllocator::Free(void* p) {
   AllocatorDefaultFree(p);
 }
 
-void* AllocateBufferWithOptions(std::shared_ptr<IAllocator>& alloc, size_t size, bool use_reserve, Stream* stream, WaitNotificationFn wait_fn) {
+void* AllocateBufferWithOptions(IAllocator& alloc, size_t size, bool use_reserve, Stream* stream, WaitNotificationFn wait_fn) {
   if (use_reserve)
-    return alloc->Reserve(size);
-  if (stream && alloc->Info().alloc_type == OrtArenaAllocator) {
-    auto* stream_aware_alloc = StreamAwareArena::FromBFCArena(*static_cast<BFCArena*>(alloc.get()));
+    return alloc.Reserve(size);
+  if (stream && alloc.Info().alloc_type == OrtArenaAllocator) {
+#ifdef ORT_ENABLE_STREAM
+    auto* stream_aware_alloc = StreamAwareArena::FromBFCArena(static_cast<BFCArena&>(alloc));
     if (stream_aware_alloc) {
       return stream_aware_alloc->AllocOnStream(size, stream, wait_fn);
     }
+#else
+    ORT_UNUSED_PARAMETER(wait_fn);
+#endif  // ORT_ENABLE_STREAM
   }
-  return alloc->Alloc(size);
+  return alloc.Alloc(size);
 }
 }  // namespace onnxruntime
 
@@ -149,6 +153,14 @@ ORT_API_STATUS_IMPL(OrtApis::CreateMemoryInfo, _In_ const char* name1, enum OrtA
   } else if (strcmp(name1, onnxruntime::DML) == 0) {
     *out = new OrtMemoryInfo(
         onnxruntime::DML, type, OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, static_cast<OrtDevice::DeviceId>(id1)),
+        id1, mem_type1);
+  } else if (strcmp(name1, onnxruntime::HIP) == 0) {
+    *out = new OrtMemoryInfo(
+        onnxruntime::HIP, type, OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, static_cast<OrtDevice::DeviceId>(id1)), id1,
+        mem_type1);
+  } else if (strcmp(name1, onnxruntime::HIP_PINNED) == 0) {
+    *out = new OrtMemoryInfo(
+        onnxruntime::HIP_PINNED, type, OrtDevice(OrtDevice::CPU, OrtDevice::MemType::HIP_PINNED, static_cast<OrtDevice::DeviceId>(id1)),
         id1, mem_type1);
   } else {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Specified device is not supported.");

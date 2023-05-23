@@ -111,6 +111,16 @@ TEST(CudaKernelTest, LayerNorm_LargeSizeTensor) {
   TestLayerNorm(X_dims, LAYER_NORM_OP, k_epsilon_default);
 }
 
+TEST(CudaKernelTest, LayerNorm_4KTensor) {
+  std::vector<int64_t> X_dims{3, 10, 4096};
+  TestLayerNorm(X_dims, LAYER_NORM_OP, k_epsilon_default);
+}
+
+TEST(CudaKernelTest, LayerNorm_8KTensor) {
+  std::vector<int64_t> X_dims{3, 10, 8192};
+  TestLayerNorm(X_dims, LAYER_NORM_OP, k_epsilon_default);
+}
+
 TEST(CudaKernelTest, LayerNorm_MidSizeTensor_NoBias) {
   std::vector<int64_t> X_dims{8, 80, 768};
   constexpr int64_t axis = -1;
@@ -140,14 +150,11 @@ TEST(CudaKernelTest, SimplifiedLayerNorm_LargeSizeTensor) {
   TestLayerNorm(X_dims, SIMPLIFIED_LAYER_NORM_OP, k_epsilon_default);
 }
 
-// TODO: Generate the ROCM implementation of ONNX LayerNorm
-#if defined(USE_CUDA) || defined(USE_DML)
 // LayerNormalization is an ONNX operator in opset 17. It uses the same implementation so this is just a sanity check.
 TEST(CudaKernelTest, LayerNorm_SmallSizeTensor_Opset17) {
   const std::vector<int64_t> X_dims{4, 20, 128};
   TestLayerNorm(X_dims, LAYER_NORM_OP, k_epsilon_default, -1, 1, false, 17);
 }
-#endif
 
 #endif
 }  // namespace test

@@ -43,6 +43,13 @@ void LaunchTrtSequenceOffset(int* trt_mha_padding_offset,
                              const int batch_size,
                              const int sequence_length,
                              cudaStream_t stream);
+
+void LaunchTrtSequenceOffset2d(int* trt_mha_padding_offset,
+                               const int* mask_index,
+                               const int batch_size,
+                               const int sequence_length,
+                               cudaStream_t stream);
+
 }  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime

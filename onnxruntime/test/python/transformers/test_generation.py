@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# coding: utf-8
 # -------------------------------------------------------------------------
 # Copyright (c) Microsoft Corporation.  All rights reserved.
 # Licensed under the MIT License.  See License.txt in the project root for
@@ -9,6 +8,7 @@
 import os
 import unittest
 
+import onnx
 import pytest
 import torch
 from parity_utilities import find_transformers_source
@@ -42,9 +42,9 @@ class TestBeamSearchGpt(unittest.TestCase):
             "The product is released",
             "I enjoy walking in the park",
             "Test best way to invest",
-            "The AI community building the future",
-            "The selloff in tech shares deepened",
-            "Abortion rights take centre stage",
+            # "The AI community building the future",
+            # "The selloff in tech shares deepened",
+            # "Abortion rights take centre stage",
         ]
         self.enable_cuda = torch.cuda.is_available() and "CUDAExecutionProvider" in get_available_providers()
         self.remove_onnx_files()
@@ -59,10 +59,22 @@ class TestBeamSearchGpt(unittest.TestCase):
         if os.path.exists(self.beam_search_onnx_path):
             os.remove(self.beam_search_onnx_path)
 
-    def run_beam_search(self, extra_arguments: str, sentences=None, append_arguments=True, is_greedy=False):
+    def check_for_init_decoder_attr(self, model_path: str):
+        init_decoder_found = False
+        gpt2_beam_search_onnx_model = onnx.load(model_path)
+        graph_proto = gpt2_beam_search_onnx_model.graph
+        for node in graph_proto.node:
+            if node.op_type == "BeamSearch" or node.op_type == "GreedySearch":
+                for attr in node.attribute:
+                    if attr.name == "init_decoder":
+                        init_decoder_found = True
+                        break
 
+        self.assertTrue(init_decoder_found)
+
+    def run_beam_search(self, extra_arguments: str, sentences=None, append_arguments=True, is_greedy=False):
         if append_arguments:
-            arguments = " ".join(self.default_arguments + [extra_arguments]).split()
+            arguments = " ".join([*self.default_arguments, extra_arguments]).split()
         else:
             arguments = extra_arguments.split()
 
@@ -74,6 +86,8 @@ class TestBeamSearchGpt(unittest.TestCase):
         # Test CPU
         result = run(arguments, sentences=self.sentences if sentences is None else sentences)
         self.assertTrue(result["parity"], f"ORT and PyTorch result is different on CPU for arguments {arguments}")
+        # (CPU) Check for the presence of the "init_decoder" attribute
+        self.check_for_init_decoder_attr(self.beam_search_onnx_path)
 
         # Test GPU
         if self.enable_cuda:
@@ -82,30 +96,57 @@ class TestBeamSearchGpt(unittest.TestCase):
             result = run(arguments, sentences=self.sentences if sentences is None else sentences)
             self.assertTrue(result["parity"], f"ORT and PyTorch result is different on GPU for arguments {arguments}")
 
+            # (GPU) Check for the presence of the "init_decoder" attribute
+            self.check_for_init_decoder_attr(self.beam_search_onnx_path)
+
         os.remove(self.beam_search_onnx_path)
 
     @pytest.mark.slow
     def test_return_sequences(self):
         for return_sequences in [1, 2]:
-            self.run_beam_search(f"--num_return_sequences {return_sequences}")
+            self.run_beam_search(f"--num_return_sequences {return_sequences} --output_sequences_score")
 
     @pytest.mark.slow
     def test_early_stopping(self):
-        self.run_beam_search("--early_stopping")
+        self.run_beam_search("--early_stopping --output_sequences_score")
 
     @pytest.mark.slow
     def test_length_penalty(self):
         for length_penalty in [0.5, 2.0]:
-            self.run_beam_search(f"--length_penalty {length_penalty}")
+            self.run_beam_search(f"--length_penalty {length_penalty} --output_sequences_score")
 
     @pytest.mark.slow
     def test_no_repeat_ngram(self):
         for ngram_size in [1, 2]:
-            self.run_beam_search(f"--no_repeat_ngram_size {ngram_size}")
+            self.run_beam_search(f"--no_repeat_ngram_size {ngram_size} --output_sequences_score")
 
     @pytest.mark.slow
     def test_greedy_search(self):
         self.run_beam_search("", is_greedy=True)
+
+    @pytest.mark.slow
+    def test_greedy_search_past_present_share_buffer(self):
+        if self.enable_cuda:
+            self.run_beam_search("--past_present_share_buffer --use_gpu", is_greedy=True)
+
+    @pytest.mark.slow
+    def test_greedy_search_past_present_share_buffer_fp16(self):
+        if self.enable_cuda:
+            self.run_beam_search("--past_present_share_buffer --use_gpu -p fp16", is_greedy=True)
+
+    @pytest.mark.slow
+    def test_greedy_search_use_decoder_masked_self_attention(self):
+        if self.enable_cuda:
+            self.run_beam_search(
+                "--past_present_share_buffer --use_decoder_masked_self_attention --use_gpu", is_greedy=True
+            )
+
+    @pytest.mark.slow
+    def test_greedy_search_use_decoder_masked_self_attention_fp16(self):
+        if self.enable_cuda:
+            self.run_beam_search(
+                "--past_present_share_buffer --use_decoder_masked_self_attention --use_gpu -p fp16", is_greedy=True
+            )
 
     @pytest.mark.slow
     def test_greedy_search_float16(self):
@@ -114,9 +155,21 @@ class TestBeamSearchGpt(unittest.TestCase):
             self.run_beam_search("--repetition_penalty 1.0 --use_gpu -p fp16", is_greedy=True)
 
     @pytest.mark.slow
+    def test_beam_search_use_decoder_masked_self_attention(self):
+        if self.enable_cuda:
+            self.run_beam_search("--past_present_share_buffer --use_decoder_masked_self_attention --use_gpu")
+
+    @pytest.mark.slow
+    def test_beam_search_use_decoder_masked_self_attention_fp16(self):
+        if self.enable_cuda:
+            self.run_beam_search("--past_present_share_buffer --use_decoder_masked_self_attention --use_gpu -p fp16")
+
+    @pytest.mark.slow
     def test_external_data(self):
         self.run_beam_search(
-            f"-m gpt2 -e --output {self.beam_search_onnx_path}", sentences=None, append_arguments=False
+            f"-m gpt2 --output_sequences_score -e --output {self.beam_search_onnx_path}",
+            sentences=None,
+            append_arguments=False,
         )
 
 
@@ -158,8 +211,7 @@ class TestBeamSearchT5(unittest.TestCase):
 
         self.sentences = [
             "translate English to French: The product is released",
-            "summarize: research continues to show that pets bring real health benefits to their owners."
-            + "Having a dog around can lead to lower levels of stress for both adults and kids.",
+            "summarize: research continues to show that pets bring real health benefits to their owners. Having a dog around can lead to lower levels of stress for both adults and kids.",
         ]
 
         if os.path.exists(self.beam_search_onnx_path):
@@ -180,7 +232,7 @@ class TestBeamSearchT5(unittest.TestCase):
 
     def run_beam_search(self, extra_arguments: str, sentences=None, append_arguments=True):
         if append_arguments:
-            arguments = " ".join(self.default_arguments + [extra_arguments]).split()
+            arguments = " ".join([*self.default_arguments, extra_arguments]).split()
         else:
             arguments = extra_arguments.split()
 

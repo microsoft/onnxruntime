@@ -13,8 +13,8 @@ class Node;
 
 namespace onnxruntime {
 
-/** 
-@class Function 
+/**
+@class Function
 Class representing a Function.
 */
 class Function {

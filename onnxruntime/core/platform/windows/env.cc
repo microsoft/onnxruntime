@@ -95,7 +95,7 @@ class WindowsThread : public EnvThread {
     }
 
     if (custom_create_thread_fn) {
-      custom_thread_handle = custom_create_thread_fn(custom_thread_creation_options, (OrtThreadWorkerFn)CustomThreadMain, local_param.get());
+      custom_thread_handle = custom_create_thread_fn(custom_thread_creation_options, CustomThreadMain, local_param.get());
       if (!custom_thread_handle) {
         ORT_THROW("custom_create_thread_fn returned invalid handle.");
       }
@@ -136,25 +136,14 @@ class WindowsThread : public EnvThread {
 #pragma warning(disable : 6387)
   static unsigned __stdcall ThreadMain(void* param) {
     std::unique_ptr<Param> p(static_cast<Param*>(param));
-#if WINVER >= _WIN32_WINNT_WIN10
-    constexpr SetThreadDescriptionFunc pSetThrDesc = SetThreadDescription;
-#elif WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)
-    HMODULE kernelModule = GetModuleHandle(TEXT("kernel32.dll"));
-    // kernel32.dll is always loaded
-    assert(kernelModule != nullptr);
-    auto pSetThrDesc =
-        (SetThreadDescriptionFunc)GetProcAddress(kernelModule, "SetThreadDescription");
-#else
-    constexpr SetThreadDescriptionFunc pSetThrDesc = nullptr;
-#endif
-    if (pSetThrDesc != nullptr) {
-      const ORTCHAR_T* name_prefix =
-          (p->name_prefix == nullptr || wcslen(p->name_prefix) == 0) ? L"onnxruntime" : p->name_prefix;
-      std::wostringstream oss;
-      oss << name_prefix << "-" << p->index;
-      // Ignore the error
-      (void)pSetThrDesc(GetCurrentThread(), oss.str().c_str());
-    }
+
+    const ORTCHAR_T* name_prefix =
+        (p->name_prefix == nullptr || wcslen(p->name_prefix) == 0) ? L"onnxruntime" : p->name_prefix;
+    std::wostringstream oss;
+    oss << name_prefix << "-" << p->index;
+    // Ignore the error
+    (void)SetThreadDescription(GetCurrentThread(), oss.str().c_str());
+
     unsigned ret = 0;
     ORT_TRY {
       if (p->affinity.has_value() && !p->affinity->empty()) {
@@ -186,7 +175,7 @@ class WindowsThread : public EnvThread {
             mask = 0;
             break;
           }
-        }  //for
+        }  // for
         if (group_id > -1 && mask) {
           GROUP_AFFINITY thread_affinity = {};
           thread_affinity.Group = static_cast<WORD>(group_id);
@@ -217,7 +206,7 @@ class WindowsThread : public EnvThread {
   }
 #pragma warning(pop)
 
-  static void __stdcall CustomThreadMain(void* param) {
+  static void CustomThreadMain(void* param) {
     std::unique_ptr<Param> p(static_cast<Param*>(param));
     ORT_TRY {
       p->start_address(p->index, p->param);
@@ -273,13 +262,8 @@ PIDType WindowsEnv::GetSelfPid() const {
 }
 
 Status WindowsEnv::GetFileLength(_In_z_ const ORTCHAR_T* file_path, size_t& length) const {
-#if WINVER >= _WIN32_WINNT_WIN8
   wil::unique_hfile file_handle{
       CreateFile2(file_path, FILE_READ_ATTRIBUTES, FILE_SHARE_READ, OPEN_EXISTING, NULL)};
-#else
-  wil::unique_hfile file_handle{
-      CreateFileW(file_path, FILE_READ_ATTRIBUTES, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL)};
-#endif
   if (file_handle.get() == INVALID_HANDLE_VALUE) {
     const auto error_code = GetLastError();
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "open file ", ToUTF8String(Basename(file_path)), " fail, errcode = ", error_code, " - ", std::system_category().message(error_code));
@@ -325,13 +309,8 @@ Status WindowsEnv::ReadFileIntoBuffer(_In_z_ const ORTCHAR_T* const file_path, c
   ORT_RETURN_IF_NOT(file_path, "file_path == nullptr");
   ORT_RETURN_IF_NOT(offset >= 0, "offset < 0");
   ORT_RETURN_IF_NOT(length <= buffer.size(), "length > buffer.size()");
-#if WINVER >= _WIN32_WINNT_WIN8
   wil::unique_hfile file_handle{
       CreateFile2(file_path, GENERIC_READ, FILE_SHARE_READ, OPEN_EXISTING, NULL)};
-#else
-  wil::unique_hfile file_handle{
-      CreateFileW(file_path, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL)};
-#endif
   if (file_handle.get() == INVALID_HANDLE_VALUE) {
     const auto error_code = GetLastError();
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "open file ", ToUTF8String(Basename(file_path)), " fail, errcode = ", error_code, " - ", std::system_category().message(error_code));
@@ -383,13 +362,8 @@ Status WindowsEnv::MapFileIntoMemory(_In_z_ const ORTCHAR_T* file_path,
     return Status::OK();
   }
 
-#if WINVER >= _WIN32_WINNT_WIN8
   wil::unique_hfile file_handle{
       CreateFile2(file_path, GENERIC_READ, FILE_SHARE_READ, OPEN_EXISTING, NULL)};
-#else
-  wil::unique_hfile file_handle{
-      CreateFileW(file_path, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL)};
-#endif
   if (file_handle.get() == INVALID_HANDLE_VALUE) {
     const auto error_code = GetLastError();
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
@@ -588,27 +562,21 @@ common::Status WindowsEnv::GetCanonicalPath(
     PathString& canonical_path) const {
   // adapted from MSVC STL std::filesystem::canonical() implementation
   // https://github.com/microsoft/STL/blob/ed3cbf36416a385828e7a5987ca52cb42882d84b/stl/inc/filesystem#L2986
-#if WINVER >= _WIN32_WINNT_WIN8
+  CREATEFILE2_EXTENDED_PARAMETERS param;
+  memset(&param, 0, sizeof(param));
+  param.dwSize = sizeof(CREATEFILE2_EXTENDED_PARAMETERS);
+  param.dwFileFlags = FILE_FLAG_BACKUP_SEMANTICS;
   wil::unique_hfile file_handle{CreateFile2(
       path.c_str(),
       FILE_READ_ATTRIBUTES,
       FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
       OPEN_EXISTING,
-      NULL)};
-#else
-  wil::unique_hfile file_handle{CreateFileW(
-      path.c_str(),
-      FILE_READ_ATTRIBUTES,
-      FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
-      nullptr,
-      OPEN_EXISTING,
-      FILE_FLAG_BACKUP_SEMANTICS,
-      nullptr)};
-#endif
+      &param)};
 
   if (file_handle.get() == INVALID_HANDLE_VALUE) {
     const auto error_code = GetLastError();
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "open file ", ToUTF8String(Basename(path)), " fail, errcode = ", error_code, " - ", std::system_category().message(error_code));
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "open file ", ToUTF8String(Basename(path)), " fail, errcode = ",
+                           error_code, " - ", std::system_category().message(error_code));
   }
 
   constexpr DWORD initial_buffer_size = MAX_PATH;
@@ -653,22 +621,26 @@ common::Status WindowsEnv::GetCanonicalPath(
 
 // Return the path of the executable/shared library for the current running code. This is to make it
 // possible to load other shared libraries installed next to our core runtime code.
-std::string WindowsEnv::GetRuntimePath() const {
-  char buffer[MAX_PATH];
-  if (!GetModuleFileNameA(reinterpret_cast<HINSTANCE>(&__ImageBase), buffer, _countof(buffer)))
-    return "";
+PathString WindowsEnv::GetRuntimePath() const {
+  wchar_t buffer[MAX_PATH];
+  if (!GetModuleFileNameW(reinterpret_cast<HINSTANCE>(&__ImageBase), buffer, _countof(buffer))) {
+    return PathString();
+  }
 
   // Remove the filename at the end, but keep the trailing slash
-  std::string path(buffer);
-  auto slash_index = path.find_last_of('\\');
-  if (slash_index == std::string::npos)
-    return "";
-
+  PathString path(buffer);
+  auto slash_index = path.find_last_of(ORT_TSTR('\\'));
+  if (slash_index == std::string::npos) {
+    // Windows supports forward slashes
+    slash_index = path.find_last_of(ORT_TSTR('/'));
+    if (slash_index == std::string::npos) {
+      return PathString();
+    }
+  }
   return path.substr(0, slash_index + 1);
 }
 
-Status WindowsEnv::LoadDynamicLibrary(const std::string& library_filename, bool /*global_symbols*/, void** handle) const {
-  const std::wstring& wlibrary_filename = ToWideString(library_filename);
+Status WindowsEnv::LoadDynamicLibrary(const PathString& wlibrary_filename, bool /*global_symbols*/, void** handle) const {
 #if WINAPI_FAMILY == WINAPI_FAMILY_PC_APP
   *handle = ::LoadPackagedLibrary(wlibrary_filename.c_str(), 0);
 #else
@@ -705,28 +677,85 @@ Status WindowsEnv::UnloadDynamicLibrary(void* handle) const {
   return Status::OK();
 }
 
+namespace dlfcn_win32 {
+// adapted from https://github.com/dlfcn-win32 version 1.3.1.
+// Simplified to only support finding symbols in libraries that were linked against.
+// If ORT dynamically loads a custom ops library using RegisterCustomOpsLibrary[_V2] the handle from the library load
+// is explicitly provided in the call to GetSymbolFromLibrary.
+//
+/* Load Psapi.dll at runtime, this avoids linking caveat */
+bool MyEnumProcessModules(HANDLE hProcess, HMODULE* lphModule, DWORD cb, LPDWORD lpcbNeeded) {
+  using EnumProcessModulesFn = BOOL(WINAPI*)(HANDLE, HMODULE*, DWORD, LPDWORD);
+  static EnumProcessModulesFn EnumProcessModulesPtr = []() {
+    EnumProcessModulesFn fn = nullptr;
+    // Windows 7 and newer versions have K32EnumProcessModules in Kernel32.dll which is always pre-loaded
+    HMODULE psapi = GetModuleHandleA("Kernel32.dll");
+    if (psapi) {
+      fn = (EnumProcessModulesFn)(LPVOID)GetProcAddress(psapi, "K32EnumProcessModules");
+    }
+
+    return fn;
+  }();
+
+  if (EnumProcessModulesPtr == nullptr) {
+    return false;
+  }
+
+  return EnumProcessModulesPtr(hProcess, lphModule, cb, lpcbNeeded);
+}
+
+void* SearchModulesForSymbol(const char* name) {
+  HANDLE current_proc = GetCurrentProcess();
+  DWORD size = 0;
+  void* symbol = nullptr;
+
+  // GetModuleHandle(NULL) only returns the current program file. So if we want to get ALL loaded module including
+  // those in linked DLLs, we have to use EnumProcessModules().
+  if (MyEnumProcessModules(current_proc, nullptr, 0, &size) != false) {
+    size_t num_handles = size / sizeof(HMODULE);
+    std::unique_ptr<HMODULE[]> modules = std::make_unique<HMODULE[]>(num_handles);
+    HMODULE* modules_ptr = modules.get();
+    DWORD cb_needed = 0;
+    if (MyEnumProcessModules(current_proc, modules_ptr, size, &cb_needed) != 0 && size == cb_needed) {
+      for (size_t i = 0; i < num_handles; i++) {
+        symbol = GetProcAddress(modules[i], name);
+        if (symbol != nullptr) {
+          break;
+        }
+      }
+    }
+  }
+
+  return symbol;
+}
+}  // namespace dlfcn_win32
+
 Status WindowsEnv::GetSymbolFromLibrary(void* handle, const std::string& symbol_name, void** symbol) const {
-  *symbol = ::GetProcAddress(reinterpret_cast<HMODULE>(handle), symbol_name.c_str());
+  Status status = Status::OK();
+
+  // global search to replicate dlsym RTLD_DEFAULT if handle is nullptr
+  if (handle == nullptr) {
+    *symbol = dlfcn_win32::SearchModulesForSymbol(symbol_name.c_str());
+  } else {
+    *symbol = ::GetProcAddress(reinterpret_cast<HMODULE>(handle), symbol_name.c_str());
+  }
+
   if (!*symbol) {
     const auto error_code = GetLastError();
     static constexpr DWORD bufferLength = 64 * 1024;
     std::wstring s(bufferLength, '\0');
-    FormatMessageW(
-        FORMAT_MESSAGE_FROM_SYSTEM |
-            FORMAT_MESSAGE_IGNORE_INSERTS,
-        NULL,
-        error_code,
-        MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
-        (LPWSTR)s.data(),
-        0, NULL);
+    FormatMessageW(FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS, NULL, error_code,
+                   MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
+                   (LPWSTR)s.data(), 0, NULL);
     std::wostringstream oss;
-    oss << L"Failed to find symbol " << ToWideString(symbol_name) << L" in library, error code: " << error_code << L" \"" << s.c_str() << L"\"";
+    oss << L"Failed to find symbol " << ToWideString(symbol_name) << L" in library, error code: "
+        << error_code << L" \"" << s.c_str() << L"\"";
     std::wstring errmsg = oss.str();
     // TODO: trim the ending '\r' and/or '\n'
-    common::Status status(common::ONNXRUNTIME, common::FAIL, ToUTF8String(errmsg));
-    return status;
+    status = Status(common::ONNXRUNTIME, common::FAIL, ToUTF8String(errmsg));
   }
-  return Status::OK();
+
+  return status;
 }
 
 std::string WindowsEnv::FormatLibraryFileName(const std::string& name, const std::string& version) const {
@@ -828,7 +857,7 @@ void WindowsEnv::InitializeCpuInfo() {
     auto processor_info = reinterpret_cast<const SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX*>(iter);
     auto size = processor_info->Size;
 
-    //Discoverred a phyical core and it belongs exclusively to a single group
+    // Discoverred a phyical core and it belongs exclusively to a single group
     if (processor_info->Relationship == RelationProcessorCore &&
         processor_info->Processor.GroupCount == 1) {
       log_stream << std::endl
@@ -842,10 +871,10 @@ void WindowsEnv::InitializeCpuInfo() {
           log_stream << global_processor_id + 1 << " ";
           core_global_proc_ids.push_back(global_processor_id);
           /*
-          * Build up a map between global processor id and local processor id.
-          * The map helps to bridge between ort API and windows affinity API -
-          * we need local processor id to build an affinity mask for a particular group.
-          */
+           * Build up a map between global processor id and local processor id.
+           * The map helps to bridge between ort API and windows affinity API -
+           * we need local processor id to build an affinity mask for a particular group.
+           */
           global_processor_info_map_.insert_or_assign(global_processor_id,
                                                       ProcessorInfo{static_cast<int>(group_mask.Group),
                                                                     logical_proessor_id});

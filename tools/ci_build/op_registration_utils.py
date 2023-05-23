@@ -29,8 +29,10 @@ def map_ort_constant_to_domain(ort_constant_name: str, allow_unknown_constant: b
         "kOnnxDomain": "ai.onnx",
         "kMLDomain": "ai.onnx.ml",
         "kMSDomain": "com.microsoft",
+        "kPytorchAtenDomain": "org.pytorch.aten",
         "kMSExperimentalDomain": "com.microsoft.experimental",
         "kMSNchwcDomain": "com.microsoft.nchwc",
+        "kMSInternalNHWCDomain": "com.ms.internal.nhwc",
         "kMSDmlDomain": "com.microsoft.dml",
         "kNGraphDomain": "com.intel.ai",
         "kVitisAIDomain": "com.xilinx",
@@ -39,7 +41,7 @@ def map_ort_constant_to_domain(ort_constant_name: str, allow_unknown_constant: b
     if ort_constant_name in constant_to_domain_map:
         return constant_to_domain_map[ort_constant_name]
 
-    unknown_constant_message = "Unknown domain for ONNX Runtime constant of {}.".format(ort_constant_name)
+    unknown_constant_message = f"Unknown domain for ONNX Runtime constant of {ort_constant_name}."
     if not allow_unknown_constant:
         raise ValueError(unknown_constant_message)
 
@@ -167,7 +169,7 @@ def _process_lines(lines: typing.List[str], offset: int, registration_processor:
         # e.g. BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(
         #          kCpuExecutionProvider, kOnnxDomain, 7, Cos)>,
         trim_at = code_line.index(onnx_op) + onnx_op_len + 1
-        *_, domain, start_version, op_type = [arg.strip() for arg in code_line[trim_at : -len(end_mark)].split(",")]
+        *_, domain, start_version, op_type = (arg.strip() for arg in code_line[trim_at : -len(end_mark)].split(","))
 
         registration_processor.process_registration(lines_to_process, domain, op_type, int(start_version), None, None)
 
@@ -175,18 +177,18 @@ def _process_lines(lines: typing.List[str], offset: int, registration_processor:
         # e.g. BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(
         #          kCpuExecutionProvider, kOnnxDomain, 7, double, Sin)>,
         trim_at = code_line.index(onnx_typed_op) + onnx_typed_op_len + 1
-        *_, domain, start_version, type, op_type = [
+        *_, domain, start_version, type, op_type = (
             arg.strip() for arg in code_line[trim_at : -len(end_mark)].split(",")
-        ]
+        )
         registration_processor.process_registration(lines_to_process, domain, op_type, int(start_version), None, type)
 
     elif onnx_versioned_op in code_line:
         # e.g. BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(
         #          kCpuExecutionProvider, kOnnxDomain, 1, 10, Hardmax)>,
         trim_at = code_line.index(onnx_versioned_op) + onnx_versioned_op_len + 1
-        *_, domain, start_version, end_version, op_type = [
+        *_, domain, start_version, end_version, op_type = (
             arg.strip() for arg in code_line[trim_at : -len(end_mark)].split(",")
-        ]
+        )
         registration_processor.process_registration(
             lines_to_process, domain, op_type, int(start_version), int(end_version), None
         )
@@ -195,15 +197,15 @@ def _process_lines(lines: typing.List[str], offset: int, registration_processor:
         # e.g. BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(
         #          kCpuExecutionProvider, kOnnxDomain, 1, 10, float, LogSoftmax)>,
         trim_at = code_line.index(onnx_versioned_typed_op) + onnx_versioned_typed_op_len + 1
-        *_, domain, start_version, end_version, type, op_type = [
+        *_, domain, start_version, end_version, type, op_type = (
             arg.strip() for arg in code_line[trim_at : -len(end_mark)].split(",")
-        ]
+        )
         registration_processor.process_registration(
             lines_to_process, domain, op_type, int(start_version), int(end_version), type
         )
 
     else:
-        log.warning("Ignoring unhandled kernel registration variant: {}".format(code_line))
+        log.warning(f"Ignoring unhandled kernel registration variant: {code_line}")
         for line in lines_to_process:
             registration_processor.process_other_line(line)
 
@@ -221,16 +223,15 @@ def process_kernel_registration_file(
     """
 
     if not os.path.isfile(filename):
-        log.error("File not found: {}".format(filename))
+        log.error(f"File not found: {filename}")
         return False
 
     lines = []
-    with open(filename, "r") as file_to_read:
+    with open(filename) as file_to_read:
         lines = file_to_read.readlines()
 
     offset = 0
     while offset < len(lines):
-
         line = lines[offset]
         stripped = line.strip()
 

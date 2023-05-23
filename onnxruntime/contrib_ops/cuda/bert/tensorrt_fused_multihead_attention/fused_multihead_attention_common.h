@@ -38,6 +38,9 @@ constexpr int32_t kSM_70 = 70;
 constexpr int32_t kSM_75 = 75;
 constexpr int32_t kSM_80 = 80;
 constexpr int32_t kSM_86 = 86;
+constexpr int32_t kSM_89 = 89;
+
+void set_alpha_fp16(uint32_t& alpha, float norm);
 
 }  // namespace cuda
 }  // namespace contrib

@@ -1,7 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>netcoreapp3.1</TargetFramework>
+    <TargetFramework>net6.0</TargetFramework>
     <IsPackable>false</IsPackable>
     <OnnxRuntimeCsharpRoot>$(ProjectDir)..\..</OnnxRuntimeCsharpRoot>
     <Platforms>AnyCPU;x86</Platforms>
@@ -19,7 +19,9 @@
     <!-- end -->
 
     <!-- Training build property.
-    Should be set to true when training is enabled in onnxruntime native binary -->
+    Should be set to true when training is enabled in onnxruntime native binary
+    Note: This property should be set when building the csharp solution independently.
+    When building using the build.py script, setting the necessary properties is handled by the script. -->
     <TrainingEnabledNativeBuild Condition="'$(TrainingEnabledNativeBuild)' == ''">false</TrainingEnabledNativeBuild>
   </PropertyGroup>
 
@@ -51,13 +53,39 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.NETCore.Targets" Version="5.0.0" />
-    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="16.11.0" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.5.0" />
     <PackageReference Include="xunit" Version="2.4.1" />
     <PackageReference Include="xunit.runner.visualstudio" Version="2.4.3" />
   </ItemGroup>
 
+  <!--
+    Copy the required libraries for testing to the output directory.
+    NOTE: We use a wildcard for custom_op_library even though that isn't necessary, so it doesn't fail
+          if the custom op library isn't present, which it may not be depending on the ORT build settings.
+  -->
   <ItemGroup>
-    <None Include="$(NativeBuildOutputDir)\*.dll;$(NativeBuildOutputDir)\*.pdb;$(NativeBuildOutputDir)\*.dylib;$(NativeBuildOutputDir)\libcustom*.so;$(NativeBuildOutputDir)\libcustom*.dylib">
+    <None Condition="'$(IsWindowsBuild)'=='true'"
+          Include="$(NativeBuildOutputDir)\onnxruntime.dll;
+                   $(NativeBuildOutputDir)\onnxruntime.pdb;
+                   $(NativeBuildOutputDir)\onnxruntime_providers_*.dll;
+                   $(NativeBuildOutputDir)\onnxruntime_providers_*.pdb;
+                   $(NativeBuildOutputDir)\custom_op_library*.dll">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Visible>false</Visible>
+    </None>
+
+    <None Condition="'$(IsLinuxBuild)'=='true'"
+          Include="$(NativeBuildOutputDir)\libonnxruntime.so;
+                   $(NativeBuildOutputDir)\libonnxruntime_providers_*.so;
+                   $(NativeBuildOutputDir)\libcustom_op_library*.so">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Visible>false</Visible>
+    </None>
+
+    <None Condition="'$(IsMacOSBuild)'=='true'"
+          Include="$(NativeBuildOutputDir)\libonnxruntime.dylib;
+                   $(NativeBuildOutputDir)\libonnxruntime_providers_*.dylib;
+                   $(NativeBuildOutputDir)\libcustom_op_library*.dylib">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <Visible>false</Visible>
     </None>
@@ -91,6 +119,9 @@
 
   <!-- NOTE: The xUnit framework doesn't pickup the tests defined within the referenced Microsoft.ML.OnnxRuntime.Tests.Common project -->
   <ItemGroup>
+    <Compile Include="..\Microsoft.ML.OnnxRuntime.Tests.Common\OrtEnvTests.cs">
+      <Link>OrtEnvTests.cs</Link>
+    </Compile>
     <Compile Include="..\Microsoft.ML.OnnxRuntime.Tests.Common\InferenceTest.cs">
       <Link>InferenceTest.cs</Link>
     </Compile>

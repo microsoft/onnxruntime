@@ -3,9 +3,11 @@
 
 import os
 
+import numpy
+
 # -*- coding: UTF-8 -*-
 import onnx
-from onnx import AttributeProto, GraphProto, TensorProto, helper
+from onnx import AttributeProto, GraphProto, TensorProto, helper, numpy_helper  # noqa: F401
 
 if os.path.exists(
     os.path.join(
@@ -39,7 +41,6 @@ skipped_models = ["SSD-MobilenetV1", "SSD-int8", "Inception-1-int8"]
 
 class TestSymbolicShapeInference(unittest.TestCase):
     def test_symbolic_shape_infer(self):
-
         cwd = os.getcwd()
         test_model_dir = os.path.join(cwd, "..", "models")
         for filename in Path(test_model_dir).rglob("*.onnx"):
@@ -107,7 +108,7 @@ class TestSymbolicShapeInference(unittest.TestCase):
 
 class TestSymbolicShapeInferenceForOperators(unittest.TestCase):
     def _check_shapes(self, graph, inferred_graph, vis):  # type: (GraphProto, GraphProto, List[ValueInfoProto]) -> None
-        names_in_vis = set(x.name for x in vis)
+        names_in_vis = {x.name for x in vis}
         vis = list(x for x in graph.value_info if x.name not in names_in_vis) + vis
         inferred_vis = list(inferred_graph.value_info)
         vis = list(sorted(vis, key=lambda x: x.name))
@@ -115,12 +116,12 @@ class TestSymbolicShapeInferenceForOperators(unittest.TestCase):
         if vis == inferred_vis:
             return
         # otherwise some custom logic to give a nicer diff
-        vis_names = set(x.name for x in vis)
-        inferred_vis_names = set(x.name for x in inferred_vis)
+        vis_names = {x.name for x in vis}
+        inferred_vis_names = {x.name for x in inferred_vis}
         assert vis_names == inferred_vis_names, (vis_names, inferred_vis_names)
         for vi, inferred_vi in zip(vis, inferred_vis):
-            assert vi == inferred_vi, "\n%s\n%s\n" % (vi, inferred_vi)
-        assert False
+            assert vi == inferred_vi, f"\n{vi}\n{inferred_vi}\n"
+        raise AssertionError()
 
     def test_unsqueeze_opset_11(self):
         graph = helper.make_graph(
@@ -341,6 +342,56 @@ class TestSymbolicShapeInferenceForOperators(unittest.TestCase):
     def test_einsum_transpose(self):
         self._test_einsum_one_input_impl(["a", "b"], ["b", "a"], "ij -> ji")
 
+    def test_mul_precision(self):
+        graph_input = onnx.helper.make_tensor_value_info("input", TensorProto.FLOAT, [1024])
+        graph_output = onnx.helper.make_tensor_value_info("output", TensorProto.FLOAT, None)
+
+        # initializers
+        value = numpy.array([0.5], dtype=numpy.float32)
+        constant = numpy_helper.from_array(value, name="constant")
+
+        nodes = [
+            # Get the shape of the input tensor: `input_tensor_shape = [1024]`.
+            onnx.helper.make_node("Shape", ["input"], ["input_shape"]),
+            # mul(1024, 0.5) => 512
+            onnx.helper.make_node("Mul", ["input_shape", "constant"], ["output_shape"]),
+            # Resize input
+            onnx.helper.make_node(
+                "Resize", inputs=["input", "", "", "output_shape"], outputs=["output"], mode="nearest"
+            ),
+        ]
+
+        graph_def = onnx.helper.make_graph(nodes, "TestMulPrecision", [graph_input], [graph_output], [constant])
+        model = SymbolicShapeInference.infer_shapes(onnx.helper.make_model(graph_def))
+        output_dims = unique_element(model.graph.output).type.tensor_type.shape.dim
+        self.assertEqual(len(output_dims), 1)
+        self.assertEqual(output_dims[0].dim_value, 512)
+
+    def test_div_precision(self):
+        graph_input = onnx.helper.make_tensor_value_info("input", TensorProto.FLOAT, [768])
+        graph_output = onnx.helper.make_tensor_value_info("output", TensorProto.FLOAT, None)
+
+        # initializers
+        value = numpy.array([1.5], dtype=numpy.float32)
+        constant = numpy_helper.from_array(value, name="constant")
+
+        nodes = [
+            # Get the shape of the input tensor: `input_tensor_shape = [768]`.
+            onnx.helper.make_node("Shape", ["input"], ["input_shape"]),
+            # div(768, 1.5) => 512
+            onnx.helper.make_node("Div", ["input_shape", "constant"], ["output_shape"]),
+            # Resize input
+            onnx.helper.make_node(
+                "Resize", inputs=["input", "", "", "output_shape"], outputs=["output"], mode="nearest"
+            ),
+        ]
+
+        graph_def = onnx.helper.make_graph(nodes, "TestDivPrecision", [graph_input], [graph_output], [constant])
+        model = SymbolicShapeInference.infer_shapes(onnx.helper.make_model(graph_def))
+        output_dims = unique_element(model.graph.output).type.tensor_type.shape.dim
+        self.assertEqual(len(output_dims), 1)
+        self.assertEqual(output_dims[0].dim_value, 512)
+
 
 class TestSymbolicShapeInferenceForSlice(unittest.TestCase):
     def check_slice_of_concat(self, input_dims, start, end, step, expected_output_dim):
@@ -426,6 +477,42 @@ class TestSymbolicShapeInferenceForSlice(unittest.TestCase):
 
     def test_flip_of_concat(self):
         self.check_slice_of_concat(["N", "N", "N"], "-one", "-intmax", "-one", "3*N")
+
+    def test_slice_of_min(self):
+        graph_input = onnx.helper.make_tensor_value_info("input", TensorProto.FLOAT, ["N"])
+        graph_output = onnx.helper.make_tensor_value_info("output", TensorProto.FLOAT, None)
+        const_size = 42
+        half_const_size = const_size // 2
+        initializers = [
+            onnx.helper.make_tensor("const_tensor", TensorProto.FLOAT, [const_size], [42.0] * const_size),
+            onnx.helper.make_tensor("half_const_size", TensorProto.INT64, [], [half_const_size]),
+            onnx.helper.make_tensor("zeros", TensorProto.INT64, [1], [0]),
+            onnx.helper.make_tensor("ones", TensorProto.INT64, [1], [1]),
+        ]
+
+        nodes = [
+            # Get the shape of the input tensor: `input_tensor_shape = [N]`.
+            onnx.helper.make_node("Shape", ["input"], ["input_tensor_shape"]),
+            # The starts of the const tensor slice: `starts = [21 - N + 1]`.
+            onnx.helper.make_node("Sub", ["half_const_size", "input_tensor_shape"], ["starts_aux"]),
+            onnx.helper.make_node("Add", ["ones", "starts_aux"], ["starts"]),
+            # The ends of the const tensor slice: `ends = [21 + N]`.
+            onnx.helper.make_node("Add", ["half_const_size", "input_tensor_shape"], ["ends"]),
+            # Slice the const tensor: `slice_out = const_tensor[starts:ends]`.
+            onnx.helper.make_node("Slice", ["const_tensor", "starts", "ends", "zeros", "ones"], ["slice_out"]),
+            # Crop the const tensor slice using the shape of the input tensor: `slice_out_cropped = slice_out[0:input_tensor_shape]`.
+            onnx.helper.make_node(
+                "Slice", ["slice_out", "zeros", "input_tensor_shape", "zeros", "ones"], ["slice_out_cropped"]
+            ),
+            # Add the const tensor slice to the input tensor: `output = input + slice_out_cropped`.
+            onnx.helper.make_node("Add", ["slice_out_cropped", "input"], ["output"]),
+        ]
+
+        graph_def = onnx.helper.make_graph(nodes, "SliceOfMin", [graph_input], [graph_output], initializer=initializers)
+        model = SymbolicShapeInference.infer_shapes(onnx.helper.make_model(graph_def))
+        output_dims = unique_element(model.graph.output).type.tensor_type.shape.dim
+        self.assertEqual(len(output_dims), 1)
+        self.assertEqual(output_dims[0].dim_param, "N")
 
 
 if __name__ == "__main__":

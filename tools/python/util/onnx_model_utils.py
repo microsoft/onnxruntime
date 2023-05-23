@@ -254,8 +254,8 @@ def _create_producer_consumer_link(
 
 
 def _map_node_dependencies(graph: onnx.GraphProto, node_to_producers: dict, node_to_consumers: dict):
-    graph_inputs = set([i.name for i in graph.input])
-    initializers = set([i.name for i in graph.initializer])
+    graph_inputs = {i.name for i in graph.input}
+    initializers = {i.name for i in graph.initializer}
 
     # map of value name to node that creates it. copy parent values but override if values get shadowed
     producers = {}
@@ -319,7 +319,7 @@ def get_producer_consumer_maps(graph: onnx.GraphProto):
     # top level graph should have no implicit inputs
     if implicit_inputs:
         raise ValueError(
-            "This appears to be an invalid model with missing inputs of " f'{",".join(sorted(implicit_inputs))}'
+            f'This appears to be an invalid model with missing inputs of {",".join(sorted(implicit_inputs))}'
         )
 
     return node_to_producers, node_to_consumers

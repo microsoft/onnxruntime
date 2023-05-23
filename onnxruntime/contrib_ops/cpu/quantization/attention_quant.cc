@@ -53,7 +53,7 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(
     QAttention<float>);
 
 template <typename T>
-QAttention<T>::QAttention(const OpKernelInfo& info) : OpKernel(info), AttentionCPUBase(info, true, true) {
+QAttention<T>::QAttention(const OpKernelInfo& info) : OpKernel(info), AttentionCPUBase(info, true) {
 }
 
 template <typename T>
@@ -156,13 +156,11 @@ Status QAttention<T>::Compute(OpKernelContext* context) const {
 
   const TensorShape& weights_shape = (packed_weights_ ? weight_shape_ : weights->Shape());
   ORT_RETURN_IF_ERROR(AttentionBase::CheckInputs(input->Shape(),
-                                                 &weights_shape,
+                                                 weights_shape,
                                                  bias->Shape(),
                                                  mask_index,
                                                  past_tensor,
-                                                 nullptr,  // extra_add_qk
-                                                 nullptr,  // key
-                                                 nullptr,  // value
+                                                 nullptr,  // relative_position_bias
                                                  nullptr   // parameters
                                                  ));
 
@@ -290,9 +288,10 @@ Status QAttention<T>::Compute(OpKernelContext* context) const {
   }
 
   // Compute the attention score and apply the score to V
-  return ApplyAttention(Q, K, V, mask_index, past_tensor, output,
-                        batch_size, sequence_length,
-                        head_size, head_size, hidden_size, nullptr, context);
+  return ApplyAttention(Q, K, V, mask_index, past_tensor, nullptr /* past_key */, nullptr /* past_value*/,
+                        output, nullptr /* present_key */, nullptr /* present_value */,
+                        batch_size, sequence_length, sequence_length,
+                        head_size, head_size, hidden_size, nullptr /* rel_pos_bias */, context);
 }
 
 }  // namespace contrib

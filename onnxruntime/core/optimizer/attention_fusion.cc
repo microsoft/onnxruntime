@@ -268,6 +268,7 @@ static bool FuseSubGraphQKImpl(Node& layer_norm,
                                int64_t hidden_size,
                                int64_t num_heads,
                                int64_t head_size,
+                               const float mask_filter_value,
                                const logging::Logger& logger) {
   InlinedVector<std::reference_wrapper<const Node>> pivot_nodes;
   if (edges.size() == 2) {
@@ -386,6 +387,7 @@ static bool FuseSubGraphQKImpl(Node& layer_norm,
       nullptr,
       kMSDomain);
   attention_node.AddAttribute("num_heads", num_heads);
+  attention_node.AddAttribute("mask_filter_value", mask_filter_value);
 
   // Assign provider to this new node.
   attention_node.SetExecutionProviderType(layer_norm.GetExecutionProviderType());
@@ -437,7 +439,7 @@ static bool FuseSubGraphQK(Node& layer_norm,
 
   std::vector<NodeIndex> nodes_to_remove;
   if (!FuseSubGraphQKImpl(layer_norm, graph, parent_path_nodes, mask_input, mask_int32_map, edges, nodes_to_remove, hidden_size,
-                          num_heads, head_size, logger)) {
+                          num_heads, head_size, mask_nodes.mask_filter_value, logger)) {
     return false;
   }
 
@@ -528,7 +530,7 @@ static bool FuseSubGraphQKDistilBert(Node& layer_norm,
 
   std::vector<NodeIndex> nodes_to_remove;
   if (!FuseSubGraphQKImpl(layer_norm, graph, parent_path_nodes, mask_input, mask_int32_map, edges, nodes_to_remove, hidden_size,
-                          num_heads, head_size, logger)) {
+                          num_heads, head_size, mask_nodes.mask_filter_value, logger)) {
     return false;
   }
 
@@ -580,7 +582,7 @@ static bool FuseSubGraphQKDistilBert(Node& layer_norm,
           |      qk_MatMul            |                          |
           |           |    [B=2]      |              ([A=1.0] mask_Cast(to=1))
           |           |   /           |                   \     /
-          |        qk_Div             |                 mask_Sub   [B=-10000.0]
+          |        qk_Div             |                 mask_Sub   [B=-10000.0 or value of mask_filter_value]
           |            \              |                        \   /
           |       mask_Add <-------- /---------------------mask_Mul
           |             |           /

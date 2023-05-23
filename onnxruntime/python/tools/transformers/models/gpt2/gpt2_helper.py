@@ -22,11 +22,11 @@ from transformers import GPT2Config, GPT2LMHeadModel, GPT2Model, TFGPT2Model
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 
-from benchmark_helper import Precision
-from float16 import float_to_float16_max_diff
-from io_binding_helper import IOBindingHelper
-from onnx_model import OnnxModel
-from torch_onnx_export_helper import torch_onnx_export
+from benchmark_helper import Precision  # noqa: E402
+from float16 import float_to_float16_max_diff  # noqa: E402
+from io_binding_helper import IOBindingHelper  # noqa: E402
+from onnx_model import OnnxModel  # noqa: E402
+from torch_onnx_export_helper import torch_onnx_export  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -68,7 +68,7 @@ class MyGPT2Model(GPT2Model):
 
     @staticmethod
     def post_process(result, num_layer):
-        if isinstance(result[1][0], tuple) or isinstance(result[1][0], list):
+        if isinstance(result[1][0], (tuple, list)):
             assert len(result[1]) == num_layer and len(result[1][0]) == 2
             # assert len(result[1][0][0].shape) == 4 and result[1][0][0].shape == result[1][0][1].shape
             present = []
@@ -114,7 +114,7 @@ class MyGPT2LMHeadModel(GPT2LMHeadModel):
         return MyGPT2Model.post_process(result, self.config.n_layer)
 
 
-class MyGPT2LMHeadModel_NoPadding(GPT2LMHeadModel):
+class MyGPT2LMHeadModel_NoPadding(GPT2LMHeadModel):  # noqa: N801
     """Here we wrap a class for Onnx model conversion for GPT2LMHeadModel with past state and no padding.
     When you always use batch_size=1 in inference, there is no padding in inputs. In such case, position_ids
     and attention_mask need no be in inputs.
@@ -187,6 +187,7 @@ class Gpt2Helper:
         input_ids_dtype: torch.dtype = torch.int32,
         position_ids_dtype: torch.dtype = torch.int32,
         attention_mask_dtype: torch.dtype = torch.int32,
+        left_side_padding: bool = True,
     ) -> Gpt2Inputs:
         """Create random inputs for GPT2 model.
         Returns torch tensors of input_ids, position_ids, attention_mask and a list of past state tensors.
@@ -217,9 +218,14 @@ class Gpt2Helper:
                 dtype=attention_mask_dtype,
                 device=device,
             )
+
             if total_sequence_length >= 2:
-                padding_position = random.randint(0, total_sequence_length - 1)  # test input with padding.
-                attention_mask[:, padding_position] = 0
+                for i in range(batch_size):
+                    padding_length = random.randint(0, total_sequence_length - 1)
+                    if left_side_padding:
+                        attention_mask[i, :padding_length] = 0
+                    else:  # right side padding
+                        attention_mask[i, total_sequence_length - padding_length :] = 0
 
         # Deduce position_ids from attention mask
         position_ids = None
@@ -420,7 +426,7 @@ class Gpt2Helper:
 
         # GPT2Model outputs last_state; GPT2LMHeadModel outputs logits (prediction_scores)
         assert outputs[0].shape[2] == config.vocab_size or outputs[0].shape[2] == config.hidden_size
-        output_names = ["logits" if outputs[0].shape[2] == config.vocab_size else "last_state"] + present_names
+        output_names = ["logits" if outputs[0].shape[2] == config.vocab_size else "last_state", *present_names]
 
         # Shape of input tensors:
         #    input_ids: (batch_size, seq_len)
@@ -507,6 +513,7 @@ class Gpt2Helper:
         hidden_size,
         use_external_data_format=False,
         auto_mixed_precision=False,
+        stage=0,
         **kwargs,
     ):
         """Optimize ONNX model with an option to convert it to use mixed precision."""
@@ -514,9 +521,7 @@ class Gpt2Helper:
         from optimizer import optimize_model
 
         optimization_options = FusionOptions("gpt2")
-        # optimization_options.enable_gelu = False
-        # optimization_options.enable_layer_norm = False
-        # optimization_options.enable_attention = False
+
         m = optimize_model(
             onnx_model_path,
             model_type="gpt2",
@@ -536,21 +541,29 @@ class Gpt2Helper:
                 m.convert_float_to_float16(use_symbolic_shape_infer=True, **kwargs)
 
         m.save_model_to_file(optimized_model_path, use_external_data_format)
+        return m
 
     @staticmethod
     def auto_mixed_precision(
         onnx_model: OnnxModel,
-        op_block_list: List[str] = ["Add", "LayerNormalization", "FastGelu"],
+        op_block_list: List[str] = [  # noqa: B006
+            "Add",
+            "LayerNormalization",
+            "SkipLayerNormalization",
+            "FastGelu",
+            "EmbedLayerNormalization",
+        ],
     ):
         """Convert GPT-2 model to mixed precision.
-           It detects whether original model has fp16 precision weights, and set parameters for float16 conversion automatically.
+           It detects whether original model has fp16 weights, and set parameters for float16 conversion automatically.
         Args:
             onnx_model (OnnxModel): optimized ONNX model
-            op_block_list (List[str], optional): . Defaults to ['Add', 'LayerNormalization', 'FastGelu']
+            op_block_list (List[str], optional): operators to compute in fp32. Defaults to ["Add", "LayerNormalization",
+                                                 "SkipLayerNormalization", "FastGelu", "EmbedLayerNormalization"]
         Returns:
             parameters(dict): a dictionary of parameters used in float16 conversion
         """
-        op_full_set = set([node.op_type for node in onnx_model.nodes()])
+        op_full_set = {node.op_type for node in onnx_model.nodes()}
         fp32_op_set = set(op_block_list)
         fp16_op_set = op_full_set.difference(fp32_op_set)
         logger.info(f"fp32 op: {fp32_op_set} fp16 op: {fp16_op_set}")
@@ -629,7 +642,7 @@ class Gpt2Helper:
     @staticmethod
     def onnxruntime_inference(ort_session, inputs: Gpt2Inputs, total_runs: int = 0):
         """Run inference of ONNX model, and returns average latency in ms when total_runs > 0 besides outputs."""
-        logger.debug(f"start onnxruntime_inference")
+        logger.debug("start onnxruntime_inference")
 
         ort_inputs = {"input_ids": numpy.ascontiguousarray(inputs.input_ids.cpu().numpy())}
 
@@ -697,7 +710,7 @@ class Gpt2Helper:
         include_copy_output_latency: bool = False,
     ):
         """Inference with IO binding. Returns outputs, and optional latency when total_runs > 0."""
-        logger.debug(f"start onnxruntime_inference_with_binded_io")
+        logger.debug("start onnxruntime_inference_with_binded_io")
 
         # Bind inputs and outputs to onnxruntime session
         io_binding = Gpt2Helper.prepare_io_binding(
@@ -770,6 +783,7 @@ class Gpt2Helper:
         input_ids_dtype=torch.int32,
         position_ids_dtype=torch.int32,
         attention_mask_dtype=torch.int32,
+        stage=0,
         verbose=False,
         enable_pickle_output=False,
     ):
@@ -801,7 +815,7 @@ class Gpt2Helper:
         for i in range(total_test_cases):
             run_id = int(i / test_cases_per_run)
             sequence_length = random.randint(1, max_seq_len)
-            past_sequence_length = random.randint(0, max_past_seq_len)
+            past_sequence_length = 0 if (stage == 1) else random.randint(0, max_past_seq_len)
             batch_size = random.randint(1, max_batch_size)
 
             logger.debug(
@@ -822,6 +836,7 @@ class Gpt2Helper:
                 input_ids_dtype=input_ids_dtype,
                 position_ids_dtype=position_ids_dtype,
                 attention_mask_dtype=attention_mask_dtype,
+                left_side_padding=True,
             )
             outputs = Gpt2Helper.pytorch_inference(model, dummy_inputs)
             if use_io_binding:
@@ -849,6 +864,7 @@ class Gpt2Helper:
                 max_abs_diff_list.append(max_abs_diff)
             if is_all_close:
                 passed_test_cases += 1
+
             if is_top1_matched:
                 top1_matched_cases += 1
                 top1_matched_cases_per_run[run_id] += 1
@@ -857,7 +873,7 @@ class Gpt2Helper:
                 logger.info(
                     f"test_case={i} batch_size={batch_size} past_sequence_length={past_sequence_length} sequence_length={sequence_length} MaxDiff={max_abs_diff}"
                 )
-                for i, message in enumerate(messages):
+                for i, message in enumerate(messages):  # noqa: PLW2901
                     logger.info(f"\t{i}: Name={ort_session.get_outputs()[i].name}, {message}")
 
             # Collect data for debugging
@@ -867,8 +883,7 @@ class Gpt2Helper:
 
         if max_abs_diff_list:
             result = {
-                f"max_diff_percentile_{p}": "{:.5f}".format(numpy.percentile(max_abs_diff_list, p))
-                for p in [50, 90, 95, 99]
+                f"max_diff_percentile_{p}": f"{numpy.percentile(max_abs_diff_list, p):.5f}" for p in [50, 90, 95, 99]
             }
         else:
             result = {f"max_diff_percentile_{p}": "nan" for p in [50, 90, 95, 99]}
@@ -967,7 +982,7 @@ class Gpt2Helper:
         model_class: str = "GPT2LMHeadModel",
         has_past=True,
         new_folder=False,
-        remove_existing=["raw", "fp32", "fp16", "int8"],
+        remove_existing=["raw", "fp32", "fp16", "int8"],  # noqa: B006
     ):
         """Build a  path name for given model based on given attributes."""
         model_name = model_name_or_path

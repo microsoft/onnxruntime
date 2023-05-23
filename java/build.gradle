@@ -3,7 +3,7 @@ plugins {
 	id 'maven-publish'
 	id 'signing'
 	id 'jacoco'
-	id 'com.diffplug.spotless' version '5.17.0'
+	id "com.diffplug.spotless" version "6.13.0"
 }
 
 allprojects {
@@ -19,6 +19,7 @@ version = rootProject.file('../VERSION_NUMBER').text.trim()
 def cmakeBuildDir = System.properties['cmakeBuildDir']
 def useCUDA = System.properties['USE_CUDA']
 def useROCM = System.properties['USE_ROCM']
+boolean enableTrainingApis = (System.properties['ENABLE_TRAINING_APIS'] ?: "0") == "1"
 def cmakeJavaDir = "${cmakeBuildDir}/java"
 def cmakeNativeLibDir = "${cmakeJavaDir}/native-lib"
 def cmakeNativeJniDir = "${cmakeJavaDir}/native-jni"
@@ -28,7 +29,13 @@ def cmakeBuildOutputDir = "${cmakeJavaDir}/build"
 def mavenUser = System.properties['mavenUser']
 def mavenPwd = System.properties['mavenPwd']
 
-def mavenArtifactId = (useCUDA != null || useROCM != null) ? project.name + "_gpu" : project.name
+def tmpArtifactId = enableTrainingApis ? project.name + "-training" : project.name
+def mavenArtifactId = (useCUDA == null && useROCM == null) ? tmpArtifactId : tmpArtifactId + "_gpu"
+
+def defaultDescription = 'ONNX Runtime is a performance-focused inference engine for ONNX (Open Neural Network Exchange) models.'
+def trainingDescription = 'ONNX Runtime Training is a training and inference package for ONNX ' +
+	'(Open Neural Network Exchange) models. This package is targeted for Learning on The Edge aka On-Device Training ' +
+	'See https://github.com/microsoft/onnxruntime-training-examples/tree/master/on_device_training for more details.'
 
 java {
 	sourceCompatibility = JavaVersion.VERSION_1_8
@@ -42,7 +49,7 @@ jar {
 
 // Add explicit sources jar with pom file.
 task sourcesJar(type: Jar, dependsOn: classes) {
-	classifier = "sources"
+	archiveClassifier = "sources"
 	from sourceSets.main.allSource
 	into("META-INF/maven/$project.group/$mavenArtifactId") {
 		from { generatePomFileForMavenPublication }
@@ -52,7 +59,7 @@ task sourcesJar(type: Jar, dependsOn: classes) {
 
 // Add explicit javadoc jar with pom file
 task javadocJar(type: Jar, dependsOn: javadoc) {
-	classifier = "javadoc"
+	archiveClassifier = "javadoc"
 	from javadoc.destinationDir
 	into("META-INF/maven/$project.group/$mavenArtifactId") {
 		from { generatePomFileForMavenPublication }
@@ -60,14 +67,11 @@ task javadocJar(type: Jar, dependsOn: javadoc) {
 	}
 }
 
-wrapper {
-	gradleVersion = '6.1.1'
-}
-
 spotless {
 	java {
 		removeUnusedImports()
 		googleJavaFormat()
+		targetExclude "src/test/java/ai/onnxruntime/OnnxMl.java"
 	}
 	format 'gradle', {
 		target '**/*.gradle'
@@ -103,6 +107,7 @@ sourceSets.test {
 	resources.srcDirs += [
 		"${rootProject.projectDir}/../csharp/testdata",
 		"${rootProject.projectDir}/../onnxruntime/test/testdata",
+		"${rootProject.projectDir}/../onnxruntime/test/testdata/training_api",
 		"${rootProject.projectDir}/../java/testdata"
 	]
 	if (cmakeBuildDir != null) {
@@ -154,8 +159,8 @@ if (cmakeBuildDir != null) {
 }
 
 dependencies {
-	testImplementation 'org.junit.jupiter:junit-jupiter-api:5.7.0'
-	testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.7.0'
+	testImplementation 'org.junit.jupiter:junit-jupiter-api:5.9.2'
+	testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.9.2'
 	testImplementation 'com.google.protobuf:protobuf-java:3.21.7'
 }
 
@@ -176,7 +181,7 @@ test {
 	if (cmakeBuildDir != null) {
 		workingDir cmakeBuildDir
 	}
-	systemProperties System.getProperties().subMap(['USE_CUDA', 'USE_ROCM', 'USE_TENSORRT', 'USE_DNNL', 'USE_OPENVINO', 'JAVA_FULL_TEST'])
+	systemProperties System.getProperties().subMap(['USE_CUDA', 'USE_ROCM', 'USE_TENSORRT', 'USE_DNNL', 'USE_OPENVINO', 'JAVA_FULL_TEST', 'ENABLE_TRAINING_APIS'])
 	testLogging {
 		events "passed", "skipped", "failed"
 		showStandardStreams = true
@@ -187,8 +192,8 @@ test {
 
 jacocoTestReport {
 	reports {
-		xml.enabled true
-		csv.enabled true
+		xml.required = true
+		csv.required = true
 		html.destination file("${buildDir}/jacocoHtml")
 	}
 }
@@ -201,8 +206,8 @@ publishing {
 
 			from components.java
 			pom {
-				name = 'onnx-runtime'
-				description = 'ONNX Runtime is a performance-focused inference engine for ONNX (Open Neural Network Exchange) models.'
+				name = enableTrainingApis ? 'onnxruntime-training' : 'onnx-runtime'
+				description = enableTrainingApis ? trainingDescription : defaultDescription
 				url = 'https://microsoft.github.io/onnxruntime/'
 				licenses {
 					license {
@@ -212,12 +217,12 @@ publishing {
 				}
 				organization {
 					name = 'Microsoft'
-					url = 'http://www.microsoft.com'
+					url = 'https://www.microsoft.com'
 				}
 				scm {
 					connection = 'scm:git:git://github.com:microsoft/onnxruntime.git'
 					developerConnection = 'scm:git:ssh://github.com/microsoft/onnxruntime.git'
-					url = 'http://github.com/microsoft/onnxruntime'
+					url = 'https://github.com/microsoft/onnxruntime'
 				}
 				developers {
 					developer {

@@ -4,7 +4,9 @@
 #include "core/optimizer/layer_norm_fusion.h"
 #include "core/graph/graph_utils.h"
 #include "core/optimizer/utils.h"
+#include "core/optimizer/transpose_optimizer/optimizer_api.h"
 #include "float.h"
+#include <algorithm>
 #include <deque>
 
 using namespace ONNX_NAMESPACE;
@@ -16,15 +18,66 @@ static constexpr std::array<std::string_view, 3> supported_data_types{"tensor(fl
 // Default epsilon
 static constexpr float DEFAULT_LAYERNORM_EPSILON = 1e-5f;
 
-static bool IsSupportedDataType(const Node& node) {
+static bool IsSupportedDataType(const Node& node, int first_n_inputs = -1) {
+  int input_index = 0;
   for (const auto& input_arg : node.InputDefs()) {
+    if (first_n_inputs != -1 && input_index >= first_n_inputs) {
+      return true;
+    }
     if (std::find(supported_data_types.begin(), supported_data_types.end(),
                   *(input_arg->Type())) == supported_data_types.end()) {
       return false;
     }
+    ++input_index;
   }
   return true;
 }
+
+static bool CheckAxesOnReduceMean(std::vector<int64_t>& axes_values, int64_t rank) {
+  // axes has be to be consecutive and constains the last dim.
+  std::sort(axes_values.begin(), axes_values.end());
+  if (axes_values.back() > 0) {
+    // if reduce_mean node has input shape [N, C1, C2, C3] and  axes_values = [1, 2], it's invalid.
+    // handle axes_values with both positive and negative values.
+    if (rank == -1) {
+      return false;
+    }
+    std::transform(axes_values.begin(), axes_values.end(), axes_values.begin(),
+                   [rank](int64_t v) { return v >= 0 ? v - rank : v; });
+    std::sort(axes_values.begin(), axes_values.end());
+  }
+  // check if axes are consecutive
+  for (size_t i = 1; i < axes_values.size(); i++) {
+    if (axes_values[i] != axes_values[i - 1] + 1) {
+      axes_values.clear();
+      break;
+    }
+  }
+
+  if (axes_values.empty() || axes_values.back() != -1) {
+    // axes_values should contain the last dim.
+    return false;
+  }
+  return true;
+}
+
+static std::vector<int64_t> GetAxesFromReduceMeanNode(Node& reduce_mean_node, const Graph& graph) {
+  const onnxruntime::NodeAttributes& attributes = reduce_mean_node.GetAttributes();
+  std::vector<int64_t> axes_values;
+  // TODO: modify this codes when opset >= 18 (axes is an input).
+  if (attributes.find("axes") != attributes.end()) {
+    axes_values = RetrieveValues<int64_t>(attributes.at("axes"));
+  } else if (reduce_mean_node.InputDefs().size() == 2) {
+    const auto* axes = reduce_mean_node.InputDefs()[1];
+    const auto* axes_const = graph.GetConstantInitializer(axes->Name(), true);
+    if (axes_const != nullptr) {
+      Initializer initializer{*axes_const, graph.ModelPath()};
+      auto span_axes = initializer.DataAsSpan<int64_t>();
+      axes_values.insert(axes_values.end(), span_axes.begin(), span_axes.end());
+    }
+  }
+  return axes_values;
+};
 
 /**
 Layer Normalization will fuse LayerNormalization into one node :
@@ -52,9 +105,9 @@ due to restriction in older opsets. Therefore, Layer Normalization will also han
 |                     |
 |                     v
 X --> ReduceMean --> Sub --> Cast --> Pow --> ReduceMean --> Add --> Sqrt --> Div --> Mul --> Add
-                      |                                                        ^
-                      |                                                        |
-                      +--------------------------------------------------------+
+                              |                                                ^
+                              |                                                |
+                              +------------------------------------------------+
 +---------------------+       Cast
 |                     |        |
 |                     v        v
@@ -99,11 +152,11 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
     Node& reduce_mean_node = *p_reduce_mean;
     ORT_RETURN_IF_ERROR(Recurse(reduce_mean_node, modified, graph_level, logger));
 
-    if (!graph_utils::IsSupportedOptypeVersionAndDomain(reduce_mean_node, "ReduceMean", {1, 11, 13}) ||
+    if (!graph_utils::IsSupportedOptypeVersionAndDomain(reduce_mean_node, "ReduceMean", {1, 11, 13, 18}) ||
         !graph_utils::IsSupportedProvider(reduce_mean_node, GetCompatibleExecutionProviders()) ||
         (reduce_mean_node.GetOutputEdgesCount() != 1 && reduce_mean_node.GetOutputEdgesCount() != 2) ||
         graph.NodeProducesGraphOutput(reduce_mean_node) ||
-        !IsSupportedDataType(reduce_mean_node)) {
+        !IsSupportedDataType(reduce_mean_node, 1)) {
       continue;
     }
     nodes_to_remove.push_back(reduce_mean_node);
@@ -134,7 +187,6 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
     Node& sub_node = *graph.GetNode(p_sub_node->Index());
     if (!graph_utils::IsSupportedOptypeVersionAndDomain(sub_node, "Sub", {7, 13, 14}) ||
         sub_node.GetExecutionProviderType() != reduce_mean_node.GetExecutionProviderType() ||
-        !optimizer_utils::CheckOutputEdges(graph, sub_node, subCnt == 1 ? 2u : 1u) ||
         !IsSupportedDataType(sub_node)) {
       continue;
     }
@@ -184,9 +236,24 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
     }
     // Apex O2 pattern specific match ends...
 
-    // Find the "Div" node after "Sub".
+    // Find the "Div" node after "Sub". It's possible that there is "Cast" node after "Sub" node.
+    const Node* p_cast1 = nullptr;
+    if (!p_sub_node_dup && sub_node.GetOutputEdgesCount() == 1) {
+      Node& cast_node = *graph.GetNode(sub_node.OutputNodesBegin()->Index());
+      if (graph_utils::IsSupportedOptypeVersionAndDomain(cast_node, "Cast", {9, 13}) &&
+          cast_node.GetExecutionProviderType() == reduce_mean_node.GetExecutionProviderType() &&
+          optimizer_utils::CheckOutputEdges(graph, cast_node, 2u) && IsSupportedDataType(cast_node)) {
+        p_cast1 = &cast_node;
+        nodes_to_remove.push_back(cast_node);
+      }
+    }
+
+    if (!optimizer_utils::CheckOutputEdges(graph, sub_node, subCnt == 1 && !p_cast1 ? 2u : 1u)) {
+      continue;
+    }
+
     const Node* p_div = nullptr;
-    p_div = graph_utils::FirstChildByType(sub_node, "Div");
+    p_div = graph_utils::FirstChildByType(p_cast1 ? *p_cast1 : sub_node, "Div");
 
     // Find the sub_dup node if exist
     if (p_sub_node_dup != nullptr) {
@@ -249,10 +316,10 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
       continue;
     }
     Node& reduce_mean2_node = *graph.GetNode(p_reduce_mean2->Index());
-    if (!graph_utils::IsSupportedOptypeVersionAndDomain(reduce_mean2_node, "ReduceMean", {1, 11, 13}) ||
+    if (!graph_utils::IsSupportedOptypeVersionAndDomain(reduce_mean2_node, "ReduceMean", {1, 11, 13, 18}) ||
         reduce_mean2_node.GetExecutionProviderType() != reduce_mean_node.GetExecutionProviderType() ||
         !optimizer_utils::CheckOutputEdges(graph, reduce_mean2_node, 1) ||
-        !IsSupportedDataType(reduce_mean2_node) ||
+        !IsSupportedDataType(reduce_mean2_node, 1) ||
         reduce_mean2_node.GetInputEdgesCount() == 0) {
       continue;
     }
@@ -269,23 +336,19 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
     nodes_to_remove.push_back(pow_node);
 
     // check if Cast node exists: either between sub and pow, or as second input to pow
-    const Node* p_cast_node = graph_utils::FirstParentByType(pow_node, "Cast");
-    if (p_cast_node != nullptr) {
-      Node& cast_node = *graph.GetNode(p_cast_node->Index());
+    const Node* p_cast2 = graph_utils::FirstParentByType(pow_node, "Cast");
+    if (p_cast2 != nullptr && p_cast2 != p_cast1) {
+      Node& cast_node = *graph.GetNode(p_cast2->Index());
       if (!graph_utils::IsSupportedOptypeVersionAndDomain(cast_node, "Cast", {9, 13}) ||
           cast_node.GetExecutionProviderType() != reduce_mean_node.GetExecutionProviderType() ||
           !optimizer_utils::CheckOutputEdges(graph, cast_node, 1)) {
         continue;
       }
       nodes_to_remove.push_back(cast_node);
-
-      // Traceback from the last node in vector to find sub --> pow  or  sub --> cast
-      const Node* p_sub2_node = graph_utils::FirstParentByType(nodes_to_remove.back(), "Sub");
-      if (p_sub2_node != nullptr) {
-        // Cast is between Sub and Pow
-        if ((p_sub2_node != p_sub_node && p_sub2_node != p_sub_node_dup) || !IsSupportedDataType(cast_node)) {
-          continue;
-        }
+    } else if (!p_cast2) {
+      const Node* p_sub2_node = graph_utils::FirstParentByType(pow_node, "Sub");
+      if (!p_sub2_node || (p_sub2_node != p_sub_node && p_sub2_node != p_sub_node_dup)) {
+        continue;
       }
     }
 
@@ -321,11 +384,30 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
     nodes_to_remove.push_back(last_add_node);
 
     // get axes attributes
-    const onnxruntime::NodeAttributes& attributes = reduce_mean_node.GetAttributes();
-    std::vector<int64_t> axes_values;
-    if (attributes.find("axes") != attributes.end()) {
-      axes_values = RetrieveValues<int64_t>(attributes.at("axes"));
+
+    auto axes_values = GetAxesFromReduceMeanNode(reduce_mean_node, graph);
+    auto axes2_values = GetAxesFromReduceMeanNode(reduce_mean2_node, graph);
+
+    // empty axes means reduce over all axes, which is not supported on layer-norm
+    if (axes_values.empty() || axes2_values.empty()) {
+      continue;
     }
+
+    auto input_shape = reduce_mean_node.MutableInputDefs()[0]->Shape();
+    auto rank = input_shape ? input_shape->dim().size() : -1;
+    if (!CheckAxesOnReduceMean(axes_values, rank) ||
+        !CheckAxesOnReduceMean(axes2_values, rank) ||
+        axes_values != axes2_values) {
+      continue;
+    }
+
+#ifdef ENABLE_TRAINING_CORE
+#else
+    // scale as 1D
+    if (axes_values.size() != 1) {
+      continue;
+    }
+#endif
 
     // Get the inputs for the new LayerNormalization node.
     // scale and bias could be multi-dims; we only support it for training at the moment
@@ -335,34 +417,18 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
     for (size_t i = 0; i < mul_node.MutableInputDefs().size(); i++) {
       if (graph_utils::NodeArgIsConstant(graph, *(mul_node.MutableInputDefs()[i])) ||
           graph_utils::IsGraphInput(graph, mul_node.MutableInputDefs()[i])) {
-#ifdef ENABLE_TRAINING
-        if (axes_values.empty() ||
-            mul_node.MutableInputDefs()[i]->Shape()->dim_size() == static_cast<int>(axes_values.size())) {
+        if (mul_node.MutableInputDefs()[i]->Shape()->dim_size() == static_cast<int>(axes_values.size())) {
           scale = mul_node.MutableInputDefs()[i];
         }
-#else
-        // Scale must be 1d.
-        if (mul_node.MutableInputDefs()[i]->Shape()->dim_size() == 1) {
-          scale = mul_node.MutableInputDefs()[i];
-        }
-#endif
       }
     }
 
     for (size_t i = 0; i < last_add_node.MutableInputDefs().size(); i++) {
       if (graph_utils::NodeArgIsConstant(graph, *(last_add_node.MutableInputDefs()[i])) ||
           graph_utils::IsGraphInput(graph, last_add_node.MutableInputDefs()[i])) {
-#ifdef ENABLE_TRAINING
-        if (axes_values.empty() ||
-            last_add_node.MutableInputDefs()[i]->Shape()->dim_size() == static_cast<int>(axes_values.size())) {
+        if (last_add_node.MutableInputDefs()[i]->Shape()->dim_size() == static_cast<int>(axes_values.size())) {
           bias = last_add_node.MutableInputDefs()[i];
         }
-#else
-        // Bias must be 1d.
-        if (last_add_node.MutableInputDefs()[i]->Shape()->dim_size() == 1) {
-          bias = last_add_node.MutableInputDefs()[i];
-        }
-#endif
       }
     }
     if (scale == nullptr || bias == nullptr) {
@@ -399,6 +465,9 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
       layer_norm_node.AddAttribute("epsilon", DEFAULT_LAYERNORM_EPSILON);
     }
 
+    // The axis definition of layer_norm is ranging from axis to the last dim
+    layer_norm_node.AddAttribute("axis", static_cast<int64_t>(axes_values[0]));
+
     // Set stash_type to double if any input is double, default value if float.
     if (x_input->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType_DOUBLE ||
         scale->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType_DOUBLE) {
@@ -413,7 +482,7 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
     // remove all the other nodes.
     graph_utils::FinalizeNodeFusion(graph, nodes_to_remove, layer_norm_node);
 
-#ifdef ENABLE_TRAINING
+#ifdef ENABLE_TRAINING_CORE
     // add two extra output defs, so we have 3 output defs that match what gradient builder expected
     layer_norm_node.MutableOutputDefs().push_back(&graph.GetOrCreateNodeArg(graph.GenerateNodeArgName("saved_mean"), nullptr));
     layer_norm_node.MutableOutputDefs().push_back(&graph.GetOrCreateNodeArg(graph.GenerateNodeArgName("saved_inv_std_var"), nullptr));
@@ -475,9 +544,9 @@ Status SimplifiedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int gr
       continue;
     }
     Node& reduce_mean_node = *graph.GetNode(p_reduce_mean->Index());
-    if (!graph_utils::IsSupportedOptypeVersionAndDomain(reduce_mean_node, "ReduceMean", {1, 11, 13}) ||
+    if (!graph_utils::IsSupportedOptypeVersionAndDomain(reduce_mean_node, "ReduceMean", {1, 11, 13, 18}) ||
         reduce_mean_node.GetExecutionProviderType() != pow_node.GetExecutionProviderType() ||
-        !optimizer_utils::CheckOutputEdges(graph, reduce_mean_node, 1) || !IsSupportedDataType(reduce_mean_node) ||
+        !optimizer_utils::CheckOutputEdges(graph, reduce_mean_node, 1) || !IsSupportedDataType(reduce_mean_node, 1) ||
         reduce_mean_node.GetInputEdgesCount() == 0) {
       continue;
     }
@@ -534,15 +603,18 @@ Status SimplifiedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int gr
     // 3. x->Cast(to:fp16)->y : SimplifiedLayerNorm(T:float,V:fp16)
     // 4. x->y : SimplifiedLayerNorm(T:float,V:float)
     // They all work for GPU EP.
-    // For CPU EP, we have only SimplifiedlayerNorm(T:float,V:float) implementation, so only #4 works. But for #1 and
-    // #2, if we treat the entry Cast as a normal node, meaning has_leading_cast is false, then for #2, we can still
-    // fuse it to "Cast(to:float)->SimplifiedlayerNorm(T:float,V:float)" (same as applying #4 to the x->y after
-    // Cast), so the condition for CPU EP to fuse or not is always setting has_leading_cast to false and checking if
-    // there is a Cast between x and y. Having Cast between means cannot fuse.
+    // For CPU EP, we have only SimplifiedlayerNorm(T:float,V:float) implementation, so only #4 works. We made an
+    // exception here, since pre-training optimization happens without device assignment. skip_device_check_ is the
+    // flag to disable device check intent only for pre-training optimization.
+    // For #1 and #2, if we treat the entry Cast as a normal node, meaning has_leading_cast is false, then for #2,
+    // we can still fuse it to "Cast(to:float)->SimplifiedlayerNorm(T:float,V:float)" (same as applying #4 to the x->y
+    // after Cast), so the condition for CPU EP to fuse or not is always setting has_leading_cast to false and checking
+    // if there is a Cast between x and y. Having Cast between means cannot fuse.
     const Node* p_pow_input_node = graph_utils::GetInputNode(pow_node, 0);
     bool has_leading_cast = false;
-    bool is_gpu_ep = pow_node.GetExecutionProviderType() == kCudaExecutionProvider ||
-                     pow_node.GetExecutionProviderType() == kRocmExecutionProvider;
+    bool is_gpu_ep = (pow_node.GetExecutionProviderType() == kCudaExecutionProvider ||
+                      pow_node.GetExecutionProviderType() == kRocmExecutionProvider) ||
+                     skip_device_check_;
     if (is_gpu_ep && p_pow_input_node) {
       Node& pow_input_node = *graph.GetNode(p_pow_input_node->Index());
       // If input to Pow is a Cast, and the Cast has 2 consumers only (Pow, Div)
@@ -571,11 +643,25 @@ Status SimplifiedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int gr
     nodes_to_remove.push_back(mul_node);
 
     // get axes attributes
-    const onnxruntime::NodeAttributes& attributes = reduce_mean_node.GetAttributes();
-    std::vector<int64_t> axes_values;
-    if (attributes.find("axes") != attributes.end()) {
-      axes_values = RetrieveValues<int64_t>(attributes.at("axes"));
+    std::vector<int64_t> axes_values = GetAxesFromReduceMeanNode(reduce_mean_node, graph);
+
+    if (axes_values.empty()) {
+      continue;
     }
+
+    auto rmean_input_shape = reduce_mean_node.MutableInputDefs()[0]->Shape();
+    auto rank = rmean_input_shape ? rmean_input_shape->dim().size() : -1;
+    if (!CheckAxesOnReduceMean(axes_values, rank)) {
+      continue;
+    }
+
+#ifdef ENABLE_TRAINING_CORE
+#else
+    // scale as 1D
+    if (axes_values.size() != 1) {
+      continue;
+    }
+#endif
 
     // Get the inputs for the new LayerNormalization node.
     // scale and bias could be multi-dims; we only support it for training at the moment
@@ -584,7 +670,7 @@ Status SimplifiedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int gr
     for (size_t i = 0; i < mul_node.MutableInputDefs().size(); i++) {
       if (graph_utils::NodeArgIsConstant(graph, *(mul_node.MutableInputDefs()[i])) ||
           graph_utils::IsGraphInput(graph, mul_node.MutableInputDefs()[i])) {
-#ifdef ENABLE_TRAINING
+#ifdef ENABLE_TRAINING_CORE
         if (axes_values.empty() ||
             mul_node.MutableInputDefs()[i]->Shape()->dim_size() == static_cast<int>(axes_values.size())) {
           scale = mul_node.MutableInputDefs()[i];
@@ -625,6 +711,8 @@ Status SimplifiedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int gr
       layer_norm_node.AddAttribute("stash_type", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_DOUBLE));
     }
 
+    layer_norm_node.AddAttribute("axis", static_cast<int64_t>(axes_values[0]));
+
     // Assign provider to this new node. Provider should be same as the provider for old node.
     layer_norm_node.SetExecutionProviderType(reduce_mean_node.GetExecutionProviderType());
 
@@ -633,7 +721,7 @@ Status SimplifiedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int gr
     // remove all the other nodes.
     graph_utils::FinalizeNodeFusion(graph, nodes_to_remove, layer_norm_node);
 
-#ifdef ENABLE_TRAINING
+#ifdef ENABLE_TRAINING_CORE
     // add one extra output def, so we have 2 output defs that match what gradient builder expected
     layer_norm_node.MutableOutputDefs().push_back(
         &graph.GetOrCreateNodeArg(graph.GenerateNodeArgName("saved_inv_std_var"), nullptr));

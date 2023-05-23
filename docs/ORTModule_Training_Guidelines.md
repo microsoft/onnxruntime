@@ -11,7 +11,7 @@ export CUDA_HOME=/usr/local/cuda
 export CUDNN_HOME=/usr/local/cuda
 export CUDACXX=$CUDA_HOME/bin/nvcc
 
-./build.sh --config RelWithDebInfo --use_cuda --enable_training --build_wheel --skip_tests --cuda_version=11.6 --parallel 8 --use_mpi --enable_training_torch_interop
+./build.sh --config RelWithDebInfo --use_cuda --enable_training --build_wheel --skip_tests --cuda_version=11.8 --parallel 8 --use_mpi
 ```
 
 Install the Python wheel.
@@ -122,6 +122,40 @@ Before full qualified name can be got from exporter, this environment variables 
 
 	```bash
 	export ORTMODULE_SKIPPED_AUTOGRAD_FUNCTIONS="megatron.fp16.fp16.fused_kernels.GELUFunction"
+	```
+
+#### ORTMODULE_ENABLE_COMPUTE_OPTIMIZER
+
+- **Feature Area**: *ORTMODULE/Optimizations*
+- **Description**: By default, this is enabled then some computation can be saved. This env var can be used for disabling
+the optimization to guarantee exactly same compute with baseline (for example PyTorch, when doing convergence parity
+debugging).
+
+	```bash
+	export ORTMODULE_ENABLE_COMPUTE_OPTIMIZER=1 # Enable
+	export ORTMODULE_ENABLE_COMPUTE_OPTIMIZER=0 # Disable
+	```
+
+#### ORTMODULE_ENABLE_SPARSE_OPTIMIZER
+
+- **Feature Area**: *ORTMODULE/Optimizations*
+- **Description**: By default, this is enabled. This env var can be used for enabling or disabling the input data sparsity
+based performance optimizations.
+
+	```bash
+	export ORTMODULE_ENABLE_SPARSE_OPTIMIZER=1 # Enable
+	export ORTMODULE_ENABLE_SPARSE_OPTIMIZER=0 # Disable
+	```
+
+#### ORTMODULE_PRINT_INPUT_DENSITY
+
+- **Feature Area**: *ORTMODULE/RuntimeInspector*
+- **Description**: By default, this is disabled. This env var can be used for print the input data sparsity
+inspection results to standard outputs.
+
+	```bash
+	export ORTMODULE_PRINT_INPUT_DENSITY=1 # Enable
+	export ORTMODULE_PRINT_INPUT_DENSITY=0 # Disable
 	```
 
 ### 2.2 Memory Optimization

@@ -21,8 +21,8 @@ SCRIPT_DIR = Path(__file__).parent.resolve()
 ORT_ROOT = SCRIPT_DIR.parents[1]
 sys.path.append(str(ORT_ROOT / "tools" / "python"))
 
-from util import parse_config  # noqa
-from util.ort_format_model.operator_type_usage_processors import OpTypeImplFilterInterface  # noqa
+from util import parse_config  # noqa: E402
+from util.ort_format_model.operator_type_usage_processors import OpTypeImplFilterInterface  # noqa: E402
 
 log = get_logger("reduce_op_kernels")
 
@@ -40,7 +40,6 @@ def _adapt_filters_for_extended_minimal_build(
     extended_minimal_build_required_op_ids = set()  # set of (domain, optype, opset)
     with open(
         ORT_ROOT / "onnxruntime/core/optimizer/transpose_optimizer/layout_transformation_potentially_added_ops.h",
-        mode="r",
     ) as f:
         region_boundary_pattern = re.compile(r"@@region_(begin|end)\(extended_minimal_build_required_kernels\)@@")
         op_id_pattern = re.compile(
@@ -97,7 +96,7 @@ def _adapt_filters_for_extended_minimal_build(
 
         adapted_op_type_impl_filter = _AdaptedFilter(
             base_op_type_impl_filter,
-            set([(domain, optype) for (domain, optype, opset) in extended_minimal_build_required_op_ids]),
+            {(domain, optype) for (domain, optype, opset) in extended_minimal_build_required_op_ids},
         )
 
     return (adapted_required_ops, adapted_op_type_impl_filter)
@@ -143,11 +142,11 @@ class _ExcludingRegistrationProcessor(op_registration_utils.RegistrationProcesso
         type: typing.Optional[str] = None,
     ):
         registration_identifier = "{}:{}({}){}".format(
-            constant_for_domain, operator, start_version, "<{}>".format(type) if type else ""
+            constant_for_domain, operator, start_version, f"<{type}>" if type else ""
         )
 
         # convert from the ORT constant name to the domain string used in the config
-        domain = op_registration_utils.map_ort_constant_to_domain(constant_for_domain)
+        domain = op_registration_utils.map_ort_constant_to_domain(constant_for_domain, allow_unknown_constant=False)
 
         exclude = False
         reason = ""
@@ -162,12 +161,10 @@ class _ExcludingRegistrationProcessor(op_registration_utils.RegistrationProcesso
                     exclude = True
                     reason = "Specific typed registration is not required."
         else:
-            log.warning(
-                "Keeping {} registration from unknown domain: {}".format(registration_identifier, constant_for_domain)
-            )
+            log.warning(f"Keeping {registration_identifier} registration from unknown domain: {constant_for_domain}")
 
         if exclude:
-            log.info("Disabling {} registration: {}".format(registration_identifier, reason))
+            log.info(f"Disabling {registration_identifier} registration: {reason}")
             for line in lines:
                 self._output_file.write("// " + line)
 
@@ -217,7 +214,7 @@ def _generate_provider_registrations(
         if not kernel_registration_file.is_file():
             raise ValueError(f"Kernel registration file does not exist: {kernel_registration_file}")
 
-        log.info("Processing {}".format(kernel_registration_file))
+        log.info(f"Processing {kernel_registration_file}")
 
         reduced_path = _get_op_reduction_file_path(ort_root, build_dir, kernel_registration_file)
 
@@ -257,13 +254,13 @@ def _generate_type_control_overrides(ort_root: Path, build_dir: Path, cpp_lines:
     if cpp_lines:
         # find the insertion block and replace any existing content in it
         inserted = False
-        with open(src, "r") as input, open(target, "w") as output:
+        with open(src) as input, open(target, "w") as output:
             inside_insertion_block = False
             for line in input.readlines():
                 if "@@insertion_point_begin(allowed_types)@@" in line:
                     inside_insertion_block = True
                     output.write(line)
-                    [output.write("{}\n".format(code_line)) for code_line in cpp_lines]
+                    [output.write(f"{code_line}\n") for code_line in cpp_lines]
                     inserted = True
                     continue
                 elif inside_insertion_block:
@@ -276,7 +273,7 @@ def _generate_type_control_overrides(ort_root: Path, build_dir: Path, cpp_lines:
                 output.write(line)
 
         if not inserted:
-            raise RuntimeError("Insertion point was not found in {}".format(target))
+            raise RuntimeError(f"Insertion point was not found in {target}")
 
 
 def reduce_ops(
@@ -325,7 +322,7 @@ if __name__ == "__main__":
         type=str,
         help="Path to configuration file. "
         "Create with <ORT root>/tools/python/create_reduced_build_config.py and edit if needed. "
-        "See https://onnxruntime.ai/docs/reference/reduced-operator-config-file.html for more "
+        "See https://onnxruntime.ai/docs/reference/operators/reduced-operator-config-file.html for more "
         "information.",
     )
 
@@ -333,7 +330,7 @@ if __name__ == "__main__":
         "--cmake_build_dir",
         type=str,
         required=True,
-        help="Path to the build directory. " "The op reduction files will be generated under the build directory.",
+        help="Path to the build directory. The op reduction files will be generated under the build directory.",
     )
 
     parser.add_argument(

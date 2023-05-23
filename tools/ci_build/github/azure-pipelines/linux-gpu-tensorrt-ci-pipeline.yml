@@ -4,7 +4,7 @@ resources:
     type: Github
     endpoint: Microsoft
     name: pypa/manylinux
-    ref: 1a61614cabfd6b91c6afd6d9e172cc5b838c65fe
+    ref: aead4d751c2101e23336aa73f2380df83e7a13f3
 
 jobs:
 - job: Linux_Build
@@ -22,10 +22,10 @@ jobs:
 
   - template: templates/get-docker-image-steps.yml
     parameters:
-      Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_cuda11_6_tensorrt8_5
+      Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_cuda11_8_tensorrt8_6
       Context: tools/ci_build/github/linux/docker
       DockerBuildArgs: "--network=host --build-arg POLICY=manylinux2014 --build-arg PLATFORM=x86_64  --build-arg DEVTOOLSET_ROOTPATH=/opt/rh/devtoolset-11/root --build-arg PREPEND_PATH=/opt/rh/devtoolset-11/root/usr/bin: --build-arg LD_LIBRARY_PATH_ARG=/opt/rh/devtoolset-11/root/usr/lib64:/opt/rh/devtoolset-11/root/usr/lib:/opt/rh/devtoolset-11/root/usr/lib64/dyninst:/opt/rh/devtoolset-11/root/usr/lib/dyninst:/usr/local/lib64 --build-arg BUILD_UID=$( id -u )"
-      Repository: onnxruntimetensorrt85gpubuild
+      Repository: onnxruntimetensorrt86gpubuild
 
   - task: CmdLine@2
     inputs:
@@ -39,7 +39,7 @@ jobs:
             -e ALLOW_RELEASED_ONNX_OPSET_ONLY=0 \
             -e NIGHTLY_BUILD \
             -e BUILD_BUILDNUMBER \
-            onnxruntimetensorrt85gpubuild \
+            onnxruntimetensorrt86gpubuild \
             /opt/python/cp38-cp38/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
               --build_dir /build --cmake_generator Ninja \
               --config Release \
@@ -47,9 +47,9 @@ jobs:
               --build_shared_lib \
               --parallel \
               --build_wheel \
-              --enable_onnx_tests --use_cuda --cuda_version=11.6 --cuda_home=/usr/local/cuda-11.6 --cudnn_home=/usr/local/cuda-11.6 \
+              --enable_onnx_tests --use_cuda --cuda_version=11.8 --cuda_home=/usr/local/cuda-11.8 --cudnn_home=/usr/local/cuda-11.8 \
               --enable_pybind --build_java \
-              --use_tensorrt --tensorrt_placeholder_builder --tensorrt_home /usr \
+              --use_tensorrt --tensorrt_home /usr \
               --cmake_extra_defines CMAKE_CUDA_HOST_COMPILER=/opt/rh/devtoolset-11/root/usr/bin/cc CMAKE_CUDA_ARCHITECTURES=75
       workingDirectory: $(Build.SourcesDirectory)
 

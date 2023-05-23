@@ -8,6 +8,7 @@ def publishDir = System.properties['publishDir']
 def minSdkVer = System.properties['minSdkVer']
 def targetSdkVer = System.properties['targetSdkVer']
 def buildVariant = System.properties['buildVariant'] ?: "Full"
+boolean enableTrainingApis = (System.properties['ENABLE_TRAINING_APIS'] ?: "0") == "1"
 boolean isMobileBuild = (buildVariant == "Mobile")
 
 // Since Android requires a higher numbers indicating more recent versions
@@ -26,17 +27,22 @@ project.buildDir = buildDir
 project.version = rootProject.file('../VERSION_NUMBER').text.trim()
 project.group = "com.microsoft.onnxruntime"
 
-def mavenArtifactId = isMobileBuild ? project.name + '-mobile' : project.name + '-android'
+def tmpArtifactId = enableTrainingApis ? project.name + "-training" : project.name
+def mavenArtifactId = isMobileBuild ? tmpArtifactId + '-mobile' : tmpArtifactId + '-android'
 def mobileDescription = 'The ONNX Runtime Mobile package is a size optimized inference library for executing ONNX ' +
 	'(Open Neural Network Exchange) models on Android. This package is built from the open source inference engine ' +
 	'but with reduced disk footprint targeting mobile platforms. To minimize binary size this library supports a ' +
 	'reduced set of operators and types aligned to typical mobile applications. The ONNX model must be converted to ' +
 	'ORT format in order to use it with this package. ' +
-	'See https://onnxruntime.ai/docs/reference/ort-model-format.html for more details.'
+	'See https://onnxruntime.ai/docs/reference/ort-format-models.html for more details.'
 def defaultDescription = 'ONNX Runtime is a performance-focused inference engine for ONNX (Open Neural Network ' +
 	'Exchange) models. This package contains the Android (aar) build of ONNX Runtime. It includes support for all ' +
 	'types and operators, for ONNX format models. All standard ONNX models can be executed with this package. ' +
 	'As such the binary size and memory usage will be larger than the onnxruntime-mobile package.'
+def trainingDescription = 'The onnxruntime-training android package is designed to efficiently train and infer a ' +
+	'wide range of ONNX models on edge devices, such as mobile phones, tablets, and other portable devices with ' +
+	'a focus on minimizing resource usage and maximizing accuracy.' +
+	'See https://github.com/microsoft/onnxruntime-training-examples/tree/master/on_device_training for more details.'
 
 buildscript {
 	repositories {
@@ -44,7 +50,7 @@ buildscript {
 		mavenCentral()
 	}
 	dependencies {
-		classpath 'com.android.tools.build:gradle:4.0.1'
+		classpath 'com.android.tools.build:gradle:7.4.2'
 
 		// NOTE: Do not place your application dependencies here; they belong
 		// in the individual module build.gradle files
@@ -59,8 +65,7 @@ allprojects {
 }
 
 android {
-	compileSdkVersion 29
-	buildToolsVersion "29.0.2"
+	compileSdkVersion 32
 
 	defaultConfig {
 		minSdkVersion minSdkVer
@@ -96,10 +101,11 @@ android {
 		}
 	}
 
+	namespace 'ai.onnxruntime'
 }
 
 task sourcesJar(type: Jar) {
-	classifier "sources"
+	archiveClassifier = "sources"
 	from android.sourceSets.main.java.srcDirs
 }
 
@@ -109,7 +115,7 @@ task javadoc(type: Javadoc) {
 }
 
 task javadocJar(type: Jar, dependsOn: javadoc) {
-	classifier = 'javadoc'
+	archiveClassifier = 'javadoc'
 	from javadoc.destinationDir
 }
 
@@ -137,8 +143,8 @@ publishing {
 			artifact sourcesJar
 
 			pom {
-				name = 'onnx-runtime'
-				description = isMobileBuild ? mobileDescription : defaultDescription
+				name = enableTrainingApis ? 'onnxruntime-training' : 'onnx-runtime'
+				description = isMobileBuild ? mobileDescription : enableTrainingApis ? trainingDescription : defaultDescription
 				url = 'https://microsoft.github.io/onnxruntime/'
 				licenses {
 					license {

@@ -59,9 +59,6 @@ class DropQDQNodeGroupSelector : public NodeGroupSelector {
 
 // Single DQ -> node.
 class DropDQNodeGroupSelector : public NodeGroupSelector {
-  // base check that we have the expected number of DQ inputs.
-  bool CheckDQNodes(const Node& node, const std::vector<const Node*>& dq_nodes) const;
-
   bool Check(const GraphViewer& graph_viewer, const Node& node,
              const std::vector<const Node*>& dq_nodes,
              const std::vector<const Node*>& q_nodes) const override;
@@ -104,14 +101,13 @@ class ConvNodeGroupSelector : public NodeGroupSelector {
 };
 
 class WhereNodeGroupSelector : public NodeGroupSelector {
-public:
-  WhereNodeGroupSelector()= default;
+ public:
+  WhereNodeGroupSelector() = default;
 
-private:
+ private:
   bool Check(const GraphViewer& graph_viewer, const Node& node,
              const std::vector<const Node*>& dq_nodes,
              const std::vector<const Node*>& q_nodes) const override;
-
 };
 
 // 2 DQ nodes for input -> node -> optional Q if QLinearMatMul, MatMulIntegerToFloat if not
@@ -139,6 +135,29 @@ class GemmNodeGroupSelector : public NodeGroupSelector {
   bool Check(const GraphViewer& graph_viewer, const Node& node,
              const std::vector<const Node*>& dq_nodes,
              const std::vector<const Node*>& q_nodes) const override;
+};
+
+// Input: DQ nodes for input, scale, and B
+// Output: Q node for output
+class InstanceNormalizationNodeGroupSelector : public NodeGroupSelector {
+ private:
+  bool Check(const GraphViewer& graph_viewer, const Node& node,
+             const std::vector<const Node*>& dq_nodes,
+             const std::vector<const Node*>& q_nodes) const override;
+};
+
+// DQ nodes for X, W and optionally B, not used for mean, var -> node -> Q
+class BatchNormalizationNodeGroupSelector : public NodeGroupSelector {
+ public:
+  // default to 'true'
+  BatchNormalizationNodeGroupSelector(bool int8_allowed = true) : int8_allowed_(int8_allowed) {}
+
+ private:
+  bool Check(const GraphViewer& graph_viewer, const Node& node,
+             const std::vector<const Node*>& dq_nodes,
+             const std::vector<const Node*>& q_nodes) const override;
+
+  bool int8_allowed_;
 };
 
 /*
@@ -212,7 +231,7 @@ class ConvSelector : public BaseSelector {
   void UpdateBuilder(NodesToOptimizeIndicesBuilder&) const override;
 };
 class WhereSelector : public BaseSelector {
-public:
+ public:
   WhereSelector() : BaseSelector(std::make_unique<WhereNodeGroupSelector>()) {}
 };
 // 2 DQ nodes for input -> node -> optional Q if QLinearMatMul, MatMulIntegerToFloat if not
@@ -230,6 +249,21 @@ class GemmSelector : public BaseSelector {
       : BaseSelector(std::make_unique<GemmNodeGroupSelector>()) {}
 
   void UpdateBuilder(NodesToOptimizeIndicesBuilder&) const override;
+};
+
+// Input: DQ nodes for input, scale, and B (bias)
+// Output: Q node for output
+class InstanceNormalizationSelector : public BaseSelector {
+ public:
+  InstanceNormalizationSelector()
+      : BaseSelector(std::make_unique<InstanceNormalizationNodeGroupSelector>()) {}
+};
+
+// DQ nodes for X, W and optionally B, (mean, var not required) -> node -> Q
+class BatchNormalizationSelector : public BaseSelector {
+ public:
+  BatchNormalizationSelector(bool int8_allowed = false)
+      : BaseSelector(std::make_unique<BatchNormalizationNodeGroupSelector>(int8_allowed)) {}
 };
 
 }  // namespace QDQ

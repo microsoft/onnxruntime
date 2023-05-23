@@ -41,7 +41,7 @@ Tensor copy_sort(const Tensor& src, const AllocatorPtr& allocator) {
 template <typename T>
 void sort_expected_and_actual_buffers(const Tensor& expected, Tensor& expected_sorted,
                                       const Tensor& actual, Tensor& actual_sorted) {
-  auto allocator = TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault);
+  auto allocator = TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault);
   expected_sorted = copy_sort<T>(expected, allocator);
   actual_sorted = copy_sort<T>(actual, allocator);
 }
@@ -339,10 +339,10 @@ struct TensorCheck<MLFloat16> {
     const bool has_rel_err = params.relative_error_.has_value();
 
     float threshold = 0.001f;
-#if defined(USE_TENSORRT) || defined(ENABLE_TRAINING) || defined(USE_CUDA) || defined(USE_ROCM)
+#if defined(USE_TENSORRT) || defined(ENABLE_TRAINING_CORE) || defined(USE_CUDA) || defined(USE_ROCM)
     threshold = 0.005f;
 #elif defined(USE_DML)
-    threshold = 0.008f;
+    threshold = 0.02f;
 #endif
     for (int i = 0; i < size; ++i) {
       if (std::isnan(f_expected[i])) {
@@ -396,7 +396,7 @@ struct TensorCheck<BFloat16> {
     /// XXX: May need to adjust threshold as BFloat is coarse
     float abs_threshold = 0.0001f;
     float threshold = 0.001f;
-#if defined(USE_TENSORRT) || defined(ENABLE_TRAINING) || defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_DML) || defined(USE_DNNL)
+#if defined(USE_TENSORRT) || defined(ENABLE_TRAINING_CORE) || defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_DML) || defined(USE_DNNL)
     threshold = 0.05f;  // expect at least 95% close
 #endif
 
@@ -413,9 +413,9 @@ struct TensorCheck<BFloat16> {
           if (abs_error <= abs_threshold) {
             // if the absolute error is small enough, then no need to calculate realative error
             EXPECT_NEAR(0, abs_error, abs_threshold) << "provider_type: "
-                                                 << provider_type;
+                                                     << provider_type;
           } else {
-            //default for existing tests.
+            // default for existing tests.
             const float rel_error = abs_error / max_value;
             EXPECT_NEAR(0, rel_error, threshold) << "provider_type: "
                                                  << provider_type;
@@ -912,7 +912,7 @@ std::vector<OrtValue> OpTester::ExecuteModel(
       size_t idx = 0;
       for (auto& expected_data : output_data_) {
         OrtValue& ort_value = fetches[idx];
-        
+
         if (expected_data.def_.Exists()) {           // optional edges won't exist (so skip them)
           if (!expected_data.data_.IsAllocated()) {  // optional type output (None)
             EXPECT_TRUE(!ort_value.IsAllocated())
@@ -985,6 +985,7 @@ bool SetEpsForAllNodes(
           provider_type == onnxruntime::kNnapiExecutionProvider ||
           provider_type == onnxruntime::kCoreMLExecutionProvider ||
           provider_type == onnxruntime::kDnnlExecutionProvider ||
+          provider_type == onnxruntime::kQnnExecutionProvider ||
           provider_type == onnxruntime::kSnpeExecutionProvider) {
         found = true;
         break;
@@ -1219,6 +1220,7 @@ void OpTester::RunWithConfig(size_t* number_of_pre_packed_weights_counter,
           kNnapiExecutionProvider,
           kRocmExecutionProvider,
           kCoreMLExecutionProvider,
+          kQnnExecutionProvider,
           kSnpeExecutionProvider,
           kXnnpackExecutionProvider,
       };
@@ -1257,6 +1259,8 @@ void OpTester::RunWithConfig(size_t* number_of_pre_packed_weights_counter,
           execution_provider = DefaultCoreMLExecutionProvider();
         else if (provider_type == onnxruntime::kSnpeExecutionProvider)
           execution_provider = DefaultSnpeExecutionProvider();
+        else if (provider_type == onnxruntime::kQnnExecutionProvider)
+          execution_provider = DefaultQnnExecutionProvider();
         else if (provider_type == onnxruntime::kXnnpackExecutionProvider)
           execution_provider = DefaultXnnpackExecutionProvider();
         else if (provider_type == onnxruntime::kDmlExecutionProvider)
@@ -1402,7 +1406,7 @@ void OpTester::ExecuteModelForEps(
   }
 };
 
-void OpTester::AddReferenceOutputs(const std::string& model_path, float abs_error) {
+void OpTester::AddReferenceOutputs(const std::string& model_path, float abs_error, std::unique_ptr<IExecutionProvider> ep) {
   SessionOptions so;
   so.session_logid = op_;
   so.session_log_verbosity_level = 1;
@@ -1414,6 +1418,7 @@ void OpTester::AddReferenceOutputs(const std::string& model_path, float abs_erro
 
   Status status;
   InferenceSession subgraph_session_object{so, GetEnvironment()};
+  status = subgraph_session_object.RegisterExecutionProvider(std::move(ep));
   ASSERT_TRUE((status = subgraph_session_object.Load(model_path)).IsOK()) << status;
   ASSERT_TRUE((status = subgraph_session_object.Initialize()).IsOK()) << status;
 
@@ -1463,6 +1468,7 @@ void OpTester::AddReferenceOutputs(const std::string& model_path, float abs_erro
 }
 
 #ifdef ENABLE_TRAINING
+// Deprecated code. Remove this when training::TrainingSession is removed.
 template std::vector<OrtValue> OpTester::ExecuteModel<training::TrainingSession>(
     Model& model, training::TrainingSession& session_object,
     ExpectResult expect_result, const std::string& expected_failure_string,

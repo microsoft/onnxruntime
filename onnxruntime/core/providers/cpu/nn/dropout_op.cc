@@ -6,16 +6,16 @@
 namespace onnxruntime {
 
 // Dropout
-#define REGISTER_KERNEL_VERSIONED_TYPED(OpName, START_VER, END_VER, T1, T2)            \
-  ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(                                            \
-      OpName,                                                                          \
-      START_VER,                                                                       \
-      END_VER,                                                                         \
-      T1##_##T2,                                                                       \
-      KernelDefBuilder()                                                               \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<T1>())                      \
-          .TypeConstraint("T1", DataTypeImpl::GetTensorType<T2>())                     \
-          .TypeConstraint("T2", DataTypeImpl::GetTensorType<bool>()),                  \
+#define REGISTER_KERNEL_VERSIONED_TYPED(OpName, START_VER, END_VER, T1, T2) \
+  ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(                                 \
+      OpName,                                                               \
+      START_VER,                                                            \
+      END_VER,                                                              \
+      T1##_##T2,                                                            \
+      KernelDefBuilder()                                                    \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T1>())           \
+          .TypeConstraint("T1", DataTypeImpl::GetTensorType<T2>())          \
+          .TypeConstraint("T2", DataTypeImpl::GetTensorType<bool>()),       \
       Dropout<T1, T2>);
 
 #define REGISTER_KERNEL_TYPED(OpName, VER, T1, T2)                    \

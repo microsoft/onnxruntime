@@ -430,13 +430,14 @@ HRESULT STDMETHODCALLTYPE AbiCustomRegistry::RegisterOperatorKernel(
 
         for (uint32_t j = 0; j < opKernel->typeConstraints[i].allowedTypeCount; ++j)
         {
+            auto edgeType = opKernel->typeConstraints[i].allowedTypes[j].edgeType;
             // TODO - handle non-tensor types
-            if (opKernel->typeConstraints[i].allowedTypes[j].edgeType != MLOperatorEdgeType::Tensor)
+            if (edgeType == MLOperatorEdgeType::Undefined)
             {
                 ORT_THROW_IF_FAILED(E_NOTIMPL);
             }
 
-            types.push_back(ToTensorDataType(opKernel->typeConstraints[i].allowedTypes[j].tensorDataType));
+            types.push_back(ToMLDataType(edgeType, opKernel->typeConstraints[i].allowedTypes[j].tensorDataType));
         }
 
         builder.TypeConstraint(opKernel->typeConstraints[i].typeLabel, types);

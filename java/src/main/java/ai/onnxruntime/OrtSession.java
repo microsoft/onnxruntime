@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019, 2022, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2019, 2023, Oracle and/or its affiliates. All rights reserved.
  * Licensed under the MIT License.
  */
 package ai.onnxruntime;
@@ -19,6 +19,7 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.logging.Logger;
@@ -70,7 +71,8 @@ public class OrtSession implements AutoCloseable {
   OrtSession(OrtEnvironment env, String modelPath, OrtAllocator allocator, SessionOptions options)
       throws OrtException {
     this(
-        createSession(OnnxRuntime.ortApiHandle, env.nativeHandle, modelPath, options.nativeHandle),
+        createSession(
+            OnnxRuntime.ortApiHandle, env.getNativeHandle(), modelPath, options.getNativeHandle()),
         allocator);
   }
 
@@ -86,7 +88,8 @@ public class OrtSession implements AutoCloseable {
   OrtSession(OrtEnvironment env, byte[] modelArray, OrtAllocator allocator, SessionOptions options)
       throws OrtException {
     this(
-        createSession(OnnxRuntime.ortApiHandle, env.nativeHandle, modelArray, options.nativeHandle),
+        createSession(
+            OnnxRuntime.ortApiHandle, env.getNativeHandle(), modelArray, options.getNativeHandle()),
         allocator);
   }
 
@@ -292,7 +295,7 @@ public class OrtSession implements AutoCloseable {
               "Unknown output name " + s + ", expected one of " + outputNames.toString());
         }
       }
-      long runOptionsHandle = runOptions == null ? 0 : runOptions.nativeHandle;
+      long runOptionsHandle = runOptions == null ? 0 : runOptions.getNativeHandle();
 
       OnnxValue[] outputValues =
           run(
@@ -555,6 +558,15 @@ public class OrtSession implements AutoCloseable {
     }
 
     /**
+     * Package accessor for the native pointer.
+     *
+     * @return The native pointer.
+     */
+    long getNativeHandle() {
+      return nativeHandle;
+    }
+
+    /**
      * Sets the execution mode of this options object, overriding the old setting.
      *
      * @param mode The execution mode to use.
@@ -697,8 +709,31 @@ public class OrtSession implements AutoCloseable {
      */
     public void registerCustomOpLibrary(String path) throws OrtException {
       checkClosed();
+      Objects.requireNonNull(path, "path must not be null");
       long customHandle = registerCustomOpLibrary(OnnxRuntime.ortApiHandle, nativeHandle, path);
       customLibraryHandles.add(customHandle);
+    }
+
+    /**
+     * Registers custom ops for use with {@link OrtSession}s using this SessionOptions by calling
+     * the specified native function name. The custom ops library must either be linked against, or
+     * have previously been loaded by the user.
+     *
+     * <p>The registration function must have the signature:
+     *
+     * <p>&emsp;OrtStatus* (*fn)(OrtSessionOptions* options, const OrtApiBase* api);
+     *
+     * <p>See https://onnxruntime.ai/docs/reference/operators/add-custom-op.html for more
+     * information on custom ops. See
+     * https://github.com/microsoft/onnxruntime/blob/342a5bf2b756d1a1fc6fdc582cfeac15182632fe/onnxruntime/test/testdata/custom_op_library/custom_op_library.cc#L115
+     * for an example of a custom op library registration function.
+     *
+     * @param registrationFuncName The name of the registration function to call.
+     * @throws OrtException If there was an error finding or calling the registration function.
+     */
+    public void registerCustomOpsUsingFunction(String registrationFuncName) throws OrtException {
+      checkClosed();
+      registerCustomOpsUsingFunction(OnnxRuntime.ortApiHandle, nativeHandle, registrationFuncName);
     }
 
     /**
@@ -979,8 +1014,11 @@ public class OrtSession implements AutoCloseable {
     }
 
     /**
-     * Adds Xnnpack as an execution backend. Needs to list all options here if a new option
-     * supported. current supported options: {}
+     * Adds Xnnpack as an execution backend. Needs to list all options hereif a new option
+     * supported. current supported options: {} The maximum number of provider options is set to 128
+     * (see addExecutionProvider's comment). This number is controlled by
+     * ORT_JAVA_MAX_ARGUMENT_ARRAY_LENGTH in ai_onnxruntime_OrtSession_SessionOptions.c. If 128 is
+     * not enough, please increase it or implementing an incremental way to add more options.
      *
      * @param providerOptions options pass to XNNPACK EP for initialization.
      * @throws OrtException If there was an error in native code.
@@ -1038,6 +1076,9 @@ public class OrtSession implements AutoCloseable {
 
     private native long registerCustomOpLibrary(long apiHandle, long nativeHandle, String path)
         throws OrtException;
+
+    private native void registerCustomOpsUsingFunction(
+        long apiHandle, long nativeHandle, String registrationFuncName) throws OrtException;
 
     private native void closeCustomLibraries(long[] nativeHandle);
 
@@ -1107,6 +1148,10 @@ public class OrtSession implements AutoCloseable {
     private native void addCoreML(long apiHandle, long nativeHandle, int coreMLFlags)
         throws OrtException;
 
+    /*
+     * The max length of providerOptionKey and providerOptionVal is 128, as specified by
+     * ORT_JAVA_MAX_ARGUMENT_ARRAY_LENGTH (search ONNXRuntime PR #14067 for its location).
+     */
     private native void addExecutionProvider(
         long apiHandle,
         long nativeHandle,
@@ -1130,6 +1175,15 @@ public class OrtSession implements AutoCloseable {
      */
     public RunOptions() throws OrtException {
       this.nativeHandle = createRunOptions(OnnxRuntime.ortApiHandle);
+    }
+
+    /**
+     * Package accessor for native pointer.
+     *
+     * @return The native pointer.
+     */
+    long getNativeHandle() {
+      return nativeHandle;
     }
 
     /**
@@ -1211,6 +1265,20 @@ public class OrtSession implements AutoCloseable {
       setTerminate(OnnxRuntime.ortApiHandle, nativeHandle, terminate);
     }
 
+    /**
+     * Adds a configuration entry to this {@code RunOptions}.
+     *
+     * <p>Setting the same key will overwrite the value.
+     *
+     * @param key The configuration key.
+     * @param value The configuration value.
+     * @throws OrtException If the native library call failed.
+     */
+    public void addRunConfigEntry(String key, String value) throws OrtException {
+      checkClosed();
+      addRunConfigEntry(OnnxRuntime.ortApiHandle, nativeHandle, key, value);
+    }
+
     /** Checks if the RunOptions is closed, if so throws {@link IllegalStateException}. */
     private void checkClosed() {
       if (closed) {
@@ -1247,6 +1315,9 @@ public class OrtSession implements AutoCloseable {
 
     private native void setTerminate(long apiHandle, long nativeHandle, boolean terminate)
         throws OrtException;
+
+    private native void addRunConfigEntry(
+        long apiHandle, long nativeHandle, String key, String value) throws OrtException;
 
     private static native void close(long apiHandle, long nativeHandle);
   }

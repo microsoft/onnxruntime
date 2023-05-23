@@ -35,7 +35,7 @@ OptimizerExecutionFrame::Info::Info(const std::vector<const Node*>& nodes,
                                     const std::function<bool(const std::string&)>& is_sparse_initializer_func)
     : execution_provider_(execution_provider),
       is_sparse_initializer_func_(is_sparse_initializer_func) {
-  allocator_ptr_ = execution_provider_.GetAllocator(device_id_, mem_type_);
+  allocator_ptr_ = execution_provider_.GetAllocator(mem_type_);
   ORT_ENFORCE(allocator_ptr_, "Failed to get allocator for optimizer");
 
   ORT_THROW_IF_ERROR(data_transfer_mgr_.RegisterDataTransfer(std::make_unique<CPUDataTransfer>()));
@@ -89,7 +89,7 @@ OptimizerExecutionFrame::Info::Info(const std::vector<const Node*>& nodes,
                                     const std::function<bool(const std::string&)>& is_sparse_initializer_func)
     : execution_provider_(execution_provider),
       is_sparse_initializer_func_(is_sparse_initializer_func) {
-  allocator_ptr_ = execution_provider_.GetAllocator(device_id_, mem_type_);
+  allocator_ptr_ = execution_provider_.GetAllocator(mem_type_);
   ORT_ENFORCE(allocator_ptr_, "Failed to get allocator for optimizer");
 
   ORT_THROW_IF_ERROR(data_transfer_mgr_.RegisterDataTransfer(std::make_unique<CPUDataTransfer>()));
@@ -175,8 +175,8 @@ OptimizerExecutionFrame::OptimizerExecutionFrame(const Info& info,
   Init(gsl::span<const int>(), gsl::span<const OrtValue>(), info.GetInitializers(), info.GetSparseInitializerLookupFunc(), fetches);
 }
 
-AllocatorPtr OptimizerExecutionFrame::GetAllocatorImpl(const OrtMemoryInfo& info) const {
-  return info_.GetAllocator(info);
+AllocatorPtr OptimizerExecutionFrame::GetAllocatorImpl(const OrtDevice&) const {
+  return info_.GetAllocator();
 }
 
 Status OptimizerExecutionFrame::CopyTensor(const Tensor& src, Tensor& dest) const {

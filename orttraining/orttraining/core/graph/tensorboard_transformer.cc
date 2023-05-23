@@ -43,7 +43,7 @@ Status TransformGraphForTensorboard(Graph& graph,
 
   // SummaryScalar nodes for norms.
   for (const std::string& norm_input : norm_nodes) {
-    const auto &node_arg = graph.GetNodeArg(norm_input);
+    const auto& node_arg = graph.GetNodeArg(norm_input);
     if (node_arg == nullptr) {
       continue;
     }
@@ -77,7 +77,7 @@ Status TransformGraphForTensorboard(Graph& graph,
   if (dump_convergence_metrics) {
     auto initializer_set = graph.GetAllInitializedTensors();
     std::vector<ArgDef> squared_grad_sum_arg_defs;
-    for (const auto& pair: initializer_set) {
+    for (const auto& pair : initializer_set) {
       auto name = pair.first;
       auto grad_node = graph.GetNodeArg(name + "_grad");
 
@@ -96,28 +96,28 @@ Status TransformGraphForTensorboard(Graph& graph,
       std::string squared_sum_name = graph.GenerateNodeArgName(summary_name + grad_node->Name() + "/squared_sum");
       std::string squared_sum_node_name = graph.GenerateNodeName(squared_sum_name);
       squared_grad_sum_arg_defs.push_back(ArgDef(squared_sum_name)),
-      new_nodes.emplace_back(NodeDef("ReduceSumSquare",
-                                    {ArgDef(grad_node->Name())},
-                                    {ArgDef(squared_sum_name)},
-                                    attribute_protos,
-                                    squared_sum_node_name));
+          new_nodes.emplace_back(NodeDef("ReduceSumSquare",
+                                         {ArgDef(grad_node->Name())},
+                                         {ArgDef(squared_sum_name)},
+                                         attribute_protos,
+                                         squared_sum_node_name));
     }
 
     std::string total_squared_gradient_sum = graph.GenerateNodeArgName(summary_name + "/total_squared_gradient_sum");
     std::string sum_node_name = graph.GenerateNodeName(total_squared_gradient_sum);
     new_nodes.emplace_back(NodeDef("Sum",
-                                  squared_grad_sum_arg_defs,
-                                  {ArgDef(total_squared_gradient_sum)},
-                                  NodeAttributes(),
-                                  sum_node_name));
+                                   squared_grad_sum_arg_defs,
+                                   {ArgDef(total_squared_gradient_sum)},
+                                   NodeAttributes(),
+                                   sum_node_name));
 
     std::string total_gradient_norm = graph.GenerateNodeArgName(summary_name + "/total_gradient_norm");
     std::string sqrt_node_name = graph.GenerateNodeName(total_gradient_norm);
     new_nodes.emplace_back(NodeDef("Sqrt",
-                                  {ArgDef(total_squared_gradient_sum)},
-                                  {ArgDef(total_gradient_norm)},
-                                  NodeAttributes(),
-                                  sqrt_node_name));
+                                   {ArgDef(total_squared_gradient_sum)},
+                                   {ArgDef(total_gradient_norm)},
+                                   NodeAttributes(),
+                                   sqrt_node_name));
 
     std::string total_gradient_norm_scalar_output = graph.GenerateNodeArgName(summary_name + "/tb_total_gradient_norm");
     std::string summary_scalar_node_name = graph.GenerateNodeName(total_gradient_norm_scalar_output);
@@ -132,10 +132,10 @@ Status TransformGraphForTensorboard(Graph& graph,
   // SummaryMerge (if any tensorboard nodes exist).
   if (summary_args.size() > 0) {
     new_nodes.emplace_back(NodeDef(OpDef("SummaryMerge", kMSDomain, 1),
-                                    summary_args,             // Inputs
-                                    {ArgDef(summary_name)}, // Outputs
-                                    NodeAttributes(),
-                                    summary_name));
+                                   summary_args,            // Inputs
+                                   {ArgDef(summary_name)},  // Outputs
+                                   NodeAttributes(),
+                                   summary_name));
 
     // Modify graph.
     GraphAugmenter::GraphDefs graph_defs;

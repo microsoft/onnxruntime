@@ -43,7 +43,7 @@ class TrainingManager(GraphExecutionManager):
         for input in inputs:
             # TODO: Non-contiguous tensor input in execution_session_run_forward, need tensor copy.
             if not input.is_contiguous():
-                input = input.contiguous()
+                input = input.contiguous()  # noqa: PLW2901
             if input.device.type == "ort":
                 forward_inputs.push_back(C.aten_ort_tensor_to_ort_value(input))
             else:
@@ -141,11 +141,11 @@ class TrainingManager(GraphExecutionManager):
                     if grad_output is None:
                         shape, device, dtype = ctx.run_info.output_info[idx]
                         if idx in self._graph_info.output_grad_indices_require_full_shape:
-                            grad_output = torch.zeros(shape, device=device, dtype=dtype)
+                            grad_output = torch.zeros(shape, device=device, dtype=dtype)  # noqa: PLW2901
                         else:
-                            grad_output = torch.tensor(0.0, device=device, dtype=dtype)
+                            grad_output = torch.tensor(0.0, device=device, dtype=dtype)  # noqa: PLW2901
                     elif not grad_output.is_contiguous():
-                        grad_output = grad_output.contiguous()
+                        grad_output = grad_output.contiguous()  # noqa: PLW2901
                     if grad_output.device.type == "ort":
                         backward_inputs.push_back(C.aten_ort_tensor_to_ort_value(grad_output))
                     else:
@@ -223,7 +223,12 @@ class TrainingManager(GraphExecutionManager):
 
                 # Build the gradient graph
                 if build_gradient_graph:
-                    self._build_graph()
+                    graph_transformer_config = self._get_graph_transformer_config()
+                    # Set the config according to input inspection.
+                    self._enable_conditional_optimizations(graph_transformer_config, inputs, kwargs)
+
+                    # Build the gradient graph
+                    self._build_graph(graph_transformer_config)
 
             # If creating the execution agent for the first time, this skip check will not take effect.
             # It will only take effect on subsequent forward calls.
@@ -251,19 +256,20 @@ class TrainingManager(GraphExecutionManager):
 
             self._gradient_accumulation_manager.maybe_update_cache_before_run()
 
+            prepared_input_list, _, _ = _io._combine_input_buffers_initializers(
+                self._graph_initializers,
+                self._graph_info.user_input_names,
+                self._input_info,
+                self._flattened_module.named_buffers(),
+                inputs,
+                kwargs,
+                self._device,
+                self._rt_inspector,
+            )
+
             return _io.unflatten_user_output(
                 self._module_output_schema,
-                self._forward_class.apply(
-                    *_io._combine_input_buffers_initializers(
-                        self._graph_initializers,
-                        self._graph_info.user_input_names,
-                        self._input_info,
-                        self._flattened_module.named_buffers(),
-                        inputs,
-                        kwargs,
-                        self._device,
-                    )
-                ),
+                self._forward_class.apply(*prepared_input_list),
             )
         except ORTModuleFallbackException as e:
             # Exceptions subject to fallback are handled here
@@ -281,10 +287,10 @@ class TrainingManager(GraphExecutionManager):
         if self._fallback_manager.is_pending():
             return self._fallback_manager.fallback(self._debug_options.logging.log_level, *inputs, **kwargs)
 
-    def _build_graph(self):
+    def _build_graph(self, graph_transformer_config):
         """Build an optimized gradient graph using the module_graph_builder"""
 
-        super()._build_graph()
+        super()._build_graph(graph_transformer_config)
         self._onnx_models.optimized_model = onnx.load_model_from_string(self._graph_builder.get_gradient_model())
         self._onnx_models.optimized_pre_grad_model = onnx.load_model_from_string(
             self._graph_builder.get_forward_model()
@@ -384,7 +390,7 @@ class TrainingManager(GraphExecutionManager):
         return False
 
     def __getstate__(self):
-        state = super(TrainingManager, self).__getstate__()
+        state = super().__getstate__()
 
         # Only top level classes are pickleable. So, _ORTModuleFunction is
         # not pickleable. So, let's not pickle it, and redefine it when
@@ -393,6 +399,6 @@ class TrainingManager(GraphExecutionManager):
         return state
 
     def __setstate__(self, state):
-        super(TrainingManager, self).__setstate__(state)
+        super().__setstate__(state)
 
         _utils.reinitialize_training_manager(self)

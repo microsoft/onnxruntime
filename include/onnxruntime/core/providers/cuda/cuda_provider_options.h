@@ -27,5 +27,8 @@ struct OrtCUDAProviderOptionsV2 {
   int cudnn_conv_use_max_workspace;                        // flag specifying if maximum workspace can be used in cudnn conv algo search.
   int enable_cuda_graph;                                   // flag specifying if the CUDA graph is to be captured for the model.
   int cudnn_conv1d_pad_to_nc1d;                            // flag specifying if pad Conv1D's input [N,C,D] to [N,C,1,D] or [N,C,D,1].
-  int tunable_op_enabled;                                  // flag specifying if TunableOp is enabled.
+  int tunable_op_enable;                                   // flag specifying if TunableOp is enabled.
+  int tunable_op_tuning_enable;                            // flag specifying if TunableOp is enabled for tuning, this relies on TunableOp is enabled.
+  int enable_skip_layer_norm_strict_mode;                  // flag specifying if SkipLayerNorm is in strict mode. If true, use LayerNormalization kernel.
+                                                           // The strict mode has better accuracy but lower performance.
 };

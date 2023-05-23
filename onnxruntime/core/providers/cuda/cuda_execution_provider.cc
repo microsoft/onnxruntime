@@ -19,6 +19,10 @@
 #include "orttraining/training_ops/cuda/cuda_training_kernels.h"
 #endif
 
+#ifdef USE_TRITON_KERNEL
+#include "core/providers/cuda/triton_kernel.h"
+#endif
+
 #include "core/providers/cuda/cuda_stream_handle.h"
 
 using namespace onnxruntime::common;
@@ -81,6 +85,7 @@ class Memcpy final : public OpKernel {
           }
         }
         auto X_size = X->Size();
+        Y->Reserve(X_size);
         for (size_t i = 0; i < X_size; ++i) {
           const Tensor& source_tensor = X->Get(i);
           std::unique_ptr<Tensor> target_tensor = Tensor::Create(source_tensor.DataType(), source_tensor.Shape(), alloc);
@@ -210,17 +215,30 @@ void CUDAExecutionProvider::PerThreadContext::IncrementRegularRunCountBeforeGrap
 #endif
 
 void OverrideTunableOpInfoByEnv(CUDAExecutionProviderInfo& info) {
-  auto env_tunable_op_enabled = onnxruntime::ParseTestOnlyEnvironmentVariable<bool>(
-      "ORT_CUDA_TUNABLE_OP_ENABLED", {"0", "1"}, "Use provider_options \"tunable_op_enabled\" instead.");
-  if (env_tunable_op_enabled.has_value() && env_tunable_op_enabled != info.tunable_op.enabled) {
-    LOGS_DEFAULT(INFO) << "ORT_CUDA_TUNABLE_OP_ENABLED is set to " << *env_tunable_op_enabled;
-    info.tunable_op.enabled = *env_tunable_op_enabled;
+  if (auto env_tunable_op_enable = onnxruntime::ParseTestOnlyEnvironmentVariable<bool>(
+          "ORT_CUDA_TUNABLE_OP_ENABLE", {"0", "1"}, "Use provider_options \"tunable_op_enable\" instead.");
+      env_tunable_op_enable.has_value() && env_tunable_op_enable != info.tunable_op.enable) {
+    LOGS_DEFAULT(INFO) << "ORT_CUDA_TUNABLE_OP_ENABLE is set to " << *env_tunable_op_enable;
+    info.tunable_op.enable = *env_tunable_op_enable;
+  }
+
+  if (auto env_tunable_op_tuning_enable = onnxruntime::ParseTestOnlyEnvironmentVariable<bool>(
+          "ORT_CUDA_TUNABLE_OP_TUNING_ENABLE", {"0", "1"},
+          "Use provider_options \"tunable_op_tuning_enable\" instead.");
+      env_tunable_op_tuning_enable.has_value() && env_tunable_op_tuning_enable != info.tunable_op.tuning_enable) {
+    LOGS_DEFAULT(INFO) << "ORT_CUDA_TUNABLE_OP_TUNING_ENABLE is set to " << *env_tunable_op_tuning_enable;
+    info.tunable_op.tuning_enable = *env_tunable_op_tuning_enable;
+  }
+
+  if (info.tunable_op.tuning_enable && !info.tunable_op.enable) {
+    LOGS_DEFAULT(WARNING) << "TunableOp is enabled for tuning but is not enabled for using. This will have no effect.";
   }
 }
 
 CUDAExecutionProvider::CUDAExecutionProvider(const CUDAExecutionProviderInfo& info)
-    : IExecutionProvider{onnxruntime::kCudaExecutionProvider},
-      info_{info} {
+    : IExecutionProvider{onnxruntime::kCudaExecutionProvider, OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, info.device_id)},
+      info_{info},
+      tuning_context_(this, &info_.tunable_op) {
   CUDA_CALL_THROW(cudaSetDevice(info_.device_id));
 
   // must wait GPU idle, otherwise cudaGetDeviceProperties might fail
@@ -253,6 +271,10 @@ CUDAExecutionProvider::CUDAExecutionProvider(const CUDAExecutionProviderInfo& in
   CUDA_CALL_THROW(cudaMemGetInfo(&free, &total));
 
   OverrideTunableOpInfoByEnv(info_);
+
+#ifdef USE_TRITON_KERNEL
+  onnxruntime::cuda::LoadOrtTritonKernel();
+#endif
 }
 
 CUDAExecutionProvider::~CUDAExecutionProvider() {
@@ -271,18 +293,8 @@ CUDAExecutionProvider::~CUDAExecutionProvider() {
   }
 }
 
-void CUDAExecutionProvider::EnableTunableOp() {
-  LOGS_DEFAULT(INFO) << "Enable TunableOp for CUDA Execution Provider";
-  info_.tunable_op.enabled = true;
-}
-
-void CUDAExecutionProvider::DisableTunableOp() {
-  LOGS_DEFAULT(INFO) << "Disable TunableOp for CUDA Execution Provider";
-  info_.tunable_op.enabled = false;
-}
-
-bool CUDAExecutionProvider::IsTunableOpEnabled() const {
-  return info_.tunable_op.enabled;
+ITuningContext* CUDAExecutionProvider::GetTuningContext() const {
+  return const_cast<cuda::tunable::CudaTuningContext*>(&tuning_context_);
 }
 
 std::unique_ptr<profiling::EpProfiler> CUDAExecutionProvider::GetProfiler() {
@@ -358,9 +370,9 @@ void CUDAExecutionProvider::ReleasePerThreadContext() const {
   per_thread_context_cache->erase(cached_context_it);
 }
 
-AllocatorPtr CUDAExecutionProvider::GetAllocator(int id, OrtMemType mem_type) const {
+AllocatorPtr CUDAExecutionProvider::GetAllocator(OrtMemType mem_type) const {
   if (mem_type == OrtMemTypeDefault) {
-    auto cuda_alloc = IExecutionProvider::GetAllocator(id, mem_type);
+    auto cuda_alloc = IExecutionProvider::GetAllocator(mem_type);
     if (!cuda_alloc) {
       // this means the program invoke GetAllocator before RegsiterAllocators,
       // which only happnens in some UTs.
@@ -371,7 +383,7 @@ AllocatorPtr CUDAExecutionProvider::GetAllocator(int id, OrtMemType mem_type) co
     }
   }
 
-  return IExecutionProvider::GetAllocator(id, mem_type);
+  return IExecutionProvider::GetAllocator(mem_type);
 }
 
 Status CUDAExecutionProvider::Sync() const {
@@ -823,12 +835,12 @@ class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDom
 class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 10, 12, Mod);
 
 // opset 11
-class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 11, float, ArgMax);
-class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 11, double, ArgMax);
-class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 11, MLFloat16, ArgMax);
-class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 11, float, ArgMin);
-class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 11, double, ArgMin);
-class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 11, MLFloat16, ArgMin);
+class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 11, 11, float, ArgMax);
+class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 11, 11, double, ArgMax);
+class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 11, 11, MLFloat16, ArgMax);
+class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 11, 11, float, ArgMin);
+class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 11, 11, double, ArgMin);
+class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 11, 11, MLFloat16, ArgMin);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 11, Compress);
 class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 11, 12, Concat);
 class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 11, 12, Flatten);
@@ -1106,7 +1118,7 @@ class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain,
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 13, float, LogSoftmax);
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 13, double, LogSoftmax);
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 13, MLFloat16, LogSoftmax);
-class ONNX_OPERATOR_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 13, Split);
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 13, 17, Split);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 13, Squeeze);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 13, Unsqueeze);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 13, Concat);
@@ -1309,6 +1321,9 @@ class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain,
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 17, double, LayerNormalization);
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 17, BFloat16, LayerNormalization);
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 17, MLFloat16, LayerNormalization);
+
+// Opset 18
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 18, Split);
 
 template <>
 KernelCreateInfo BuildKernelCreateInfo<void>() {
@@ -1707,12 +1722,12 @@ static Status RegisterCudaKernels(KernelRegistry& kernel_registry) {
       BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 10, 12, Mod)>,
 
       // opset 11
-      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 11, float, ArgMax)>,
-      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 11, double, ArgMax)>,
-      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 11, MLFloat16, ArgMax)>,
-      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 11, float, ArgMin)>,
-      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 11, double, ArgMin)>,
-      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 11, MLFloat16, ArgMin)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 11, 11, float, ArgMax)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 11, 11, double, ArgMax)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 11, 11, MLFloat16, ArgMax)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 11, 11, float, ArgMin)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 11, 11, double, ArgMin)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 11, 11, MLFloat16, ArgMin)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 11, Compress)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 11, 12, Concat)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 11, 12, Flatten)>,
@@ -1986,7 +2001,7 @@ static Status RegisterCudaKernels(KernelRegistry& kernel_registry) {
       BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 13, float, LogSoftmax)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 13, double, LogSoftmax)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 13, MLFloat16, LogSoftmax)>,
-      BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 13, Split)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 13, 17, Split)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 13, Squeeze)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 13, Unsqueeze)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 13, Concat)>,
@@ -2189,6 +2204,9 @@ static Status RegisterCudaKernels(KernelRegistry& kernel_registry) {
       BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 17, double, LayerNormalization)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 17, BFloat16, LayerNormalization)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 17, MLFloat16, LayerNormalization)>,
+
+      // Opset 18
+      BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 18, Split)>,
   };
 
   for (auto& function_table_entry : function_table) {
@@ -2440,7 +2458,7 @@ void CUDAExecutionProvider::RegisterAllocator(AllocatorManager& allocator_manage
   // if EP is used in multiple inference sessions we may already have an allocator. if so use that.
   // NOTE: We call IExecutionProvider::GetAllocator as CUDAExecutionProvider::GetAllocator will return
   //       a per-thread allocator for OrtMemTypeDefault.
-  auto cuda_alloc = IExecutionProvider::GetAllocator(cuda_device.Id(), OrtMemTypeDefault);
+  auto cuda_alloc = IExecutionProvider::GetAllocator(OrtMemTypeDefault);
   if (!cuda_alloc) {
     // use shared allocator if available
     cuda_alloc = allocator_manager.GetAllocator(OrtMemTypeDefault, cuda_device);
@@ -2458,7 +2476,7 @@ void CUDAExecutionProvider::RegisterAllocator(AllocatorManager& allocator_manage
   // OrtMemTypeCPUOutput -- allocated by cudaMallocHost, used to copy CUDA device memory to CPU
   // Use pinned memory instead of pageable memory make the data transfer faster
   // Used by node MemcpyToHost only
-  auto cuda_pinned_alloc = IExecutionProvider::GetAllocator(pinned_device.Id(), OrtMemTypeCPUOutput);
+  auto cuda_pinned_alloc = IExecutionProvider::GetAllocator(OrtMemTypeCPUOutput);
   if (!cuda_pinned_alloc) {
     cuda_pinned_alloc = allocator_manager.GetAllocator(OrtMemTypeCPUOutput, pinned_device);
 
@@ -2482,7 +2500,7 @@ void CUDAExecutionProvider::RegisterAllocator(AllocatorManager& allocator_manage
   }
 
   // OrtMemTypeCPUInput -- op place the input on CPU and will not be accessed by CUDA kernel, no sync issue
-  auto cuda_cpu_alloc = IExecutionProvider::GetAllocator(cpu_device.Id(), OrtMemTypeCPUInput);
+  auto cuda_cpu_alloc = IExecutionProvider::GetAllocator(OrtMemTypeCPUInput);
   if (!cuda_cpu_alloc) {
     cuda_cpu_alloc = allocator_manager.GetAllocator(OrtMemTypeCPUInput, cpu_device);
 
@@ -2510,25 +2528,21 @@ void CUDAExecutionProvider::RegisterAllocator(AllocatorManager& allocator_manage
 void CUDAExecutionProvider::RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry) const {
   // This allocator must be the same to the allocator
   // used in AllocateBufferOnCPUPinned.
-  auto allocator = GetAllocator(DEFAULT_CPU_ALLOCATOR_DEVICE_ID, OrtMemTypeCPU);
-  if (use_ep_level_unified_stream_)
-    RegisterCudaStreamHandles(stream_handle_registry,
-                              OrtDevice::GPU,
-                              allocator,
-                              !IsGraphCaptureEnabled(),
-                              stream_,
-                              use_ep_level_unified_stream_,
-                              GetPerThreadContext().CudnnHandle(),
-                              GetPerThreadContext().CublasHandle());
-  else
-    RegisterCudaStreamHandles(stream_handle_registry,
-                              OrtDevice::GPU,
-                              allocator,
-                              !IsGraphCaptureEnabled(),
-                              stream_,
-                              use_ep_level_unified_stream_,
-                              GetPerThreadContext().CudnnHandle(),
-                              GetPerThreadContext().CublasHandle());
+  auto allocator = GetAllocator(OrtMemTypeCPU);
+  RegisterCudaStreamHandles(stream_handle_registry,
+                            OrtDevice::GPU,
+                            allocator,
+                            !IsGraphCaptureEnabled(),
+                            stream_,
+                            use_ep_level_unified_stream_,
+                            GetPerThreadContext().CudnnHandle(),
+                            GetPerThreadContext().CublasHandle());
+}
+
+OrtDevice CUDAExecutionProvider::GetOrtDeviceByMemType(OrtMemType mem_type) const {
+  if (mem_type == OrtMemTypeCPUInput) return OrtDevice();
+  if (mem_type == OrtMemTypeCPUOutput) return OrtDevice(OrtDevice::CPU, OrtDevice::MemType::CUDA_PINNED, 0 /*CPU device id always be 0*/);
+  return default_device_;
 }
 
 }  // namespace onnxruntime

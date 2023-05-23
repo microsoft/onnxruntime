@@ -119,16 +119,15 @@ class FusionReshape(Fusion):
             shape_nodes.extend([path2[-1], path3[-1]])
             shape.append(-1)
         elif len(concat_node.input) > 2:
-            concat_2 = self.model.get_initializer(concat_node.input[2])
-            if concat_2 is None:
+            concat_value = self.model.get_constant_value(concat_node.input[2])
+            if concat_value is None:
                 return
-            concat_value = numpy_helper.to_array(concat_2)
-            if isinstance(concat_value, list):
-                shape.extend(concat_value)
+            if isinstance(concat_value, np.ndarray):
+                shape.extend(concat_value.tolist())
             else:
                 shape.append(concat_value)
 
-        if len(concat_node.input) == 4 and self.model.get_initializer(concat_node.input[3]) is None:
+        if len(concat_node.input) == 4 and self.model.get_constant_value(concat_node.input[3]) is None:
             if -1 in shape:
                 return
 
@@ -155,8 +154,8 @@ class FusionReshape(Fusion):
                 return
 
             concat_value = numpy_helper.to_array(concat_3)
-            if isinstance(concat_value, list):
-                shape.extend(concat_value)
+            if isinstance(concat_value, np.ndarray):
+                shape.extend(concat_value.tolist())
             else:
                 shape.append(concat_value)
 

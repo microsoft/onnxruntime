@@ -1,0 +1,93 @@
+parameters:
+
+- name: QnnSdk
+  displayName: QNN SDK version
+  type: string
+  default: qnn-v2.10.0.230425122932_54038_win
+
+jobs:
+- job: 'build'
+  pool: 'onnxruntime-qnn-windows-vs-2022-arm64'
+  variables:
+    DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
+    buildArch: arm64
+    BuildConfig: 'RelWithDebInfo'
+    ALLOW_RELEASED_ONNX_OPSET_ONLY: '1'
+    QNN_SDK_ROOT: 'C:\data\qnnsdk\${{parameters.QnnSdk}}'
+  timeoutInMinutes: 240
+  workspace:
+    clean: all
+  steps:
+
+  - script: |
+      MKDIR $(Agent.ToolsDirectory)\Python\3.11.0\arm64
+      XCOPY /s /y /h /e /c /q "C:\Python\Python311\*.*" $(Agent.ToolsDirectory)\Python\3.11.0\arm64\
+      COPY NUL $(Agent.ToolsDirectory)\Python\3.11.0\arm64.complete
+      DIR $(Agent.ToolsDirectory)\Python
+      DIR $(Agent.ToolsDirectory)\Python\3.11.0
+      DIR $(Agent.ToolsDirectory)\Python\3.11.0\arm64
+    displayName: Copy python 3.11.0 version to agent tools directory
+
+  - script: |
+      DIR C:\data\qnnsdk
+    displayName: Check available QNN SDKs
+
+  - task: UsePythonVersion@0
+    inputs:
+      versionSpec: '3.x'
+      addToPath: true
+      architecture: $(buildArch)
+
+  - task: NuGetToolInstaller@1
+    inputs:
+      versionSpec: 6.4.x
+     
+  - task: PythonScript@0
+    displayName: 'Build'
+    inputs:
+      scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
+      arguments: '--config $(BuildConfig) --build_dir $(Build.BinariesDirectory) --skip_tests --cmake_generator "Visual Studio 17 2022" --use_qnn --qnn_home $(QNN_SDK_ROOT) --parallel'
+      workingDirectory: '$(Build.BinariesDirectory)'
+
+  - powershell: |
+     python $(Build.SourcesDirectory)\tools\ci_build\build.py --config $(BuildConfig) --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --test --cmake_generator "Visual Studio 17 2022" --enable_onnx_tests
+    workingDirectory: '$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)'
+    displayName: 'Run unit tests'
+
+  - script: |
+     .\$(BuildConfig)\onnx_test_runner -j 1 -c 1 -v -e qnn -i "backend_path|$(QNN_SDK_ROOT)\target\aarch64-windows-msvc\lib\QnnCpu.dll" $(Build.SourcesDirectory)\cmake\external\onnx\onnx\backend\test\data\node
+    workingDirectory: '$(Build.BinariesDirectory)\$(BuildConfig)'
+    displayName: 'Run ONNX Tests'
+
+  - script: |
+     .\$(BuildConfig)\onnx_test_runner -j 1 -c 1 -v -e qnn -i "backend_path|$(QNN_SDK_ROOT)\target\aarch64-windows-msvc\lib\QnnCpu.dll" C:\data\float32_models
+    workingDirectory: '$(Build.BinariesDirectory)\$(BuildConfig)'
+    displayName: 'Run float32 model tests'
+
+  - script: |
+     .\$(BuildConfig)\onnx_test_runner -j 1 -c 1 -v -e qnn -i "backend_path|$(QNN_SDK_ROOT)\target\aarch64-windows-msvc\lib\QnnHtp.dll" C:\data\qdq_models
+    workingDirectory: '$(Build.BinariesDirectory)\$(BuildConfig)'
+    displayName: 'Run QDQ model tests'
+    enabled: false
+
+  - task: CopyFiles@2
+    displayName: 'Create Artifact'
+    inputs:
+      SourceFolder: '$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)'
+      Contents: |
+         *.exe
+         *.dll
+         *.pdb
+         !Qnn*.dll
+      TargetFolder: '$(Build.ArtifactStagingDirectory)'
+      CleanTargetFolder: true
+      OverWrite: true
+    condition: and(succeeded(), ne(variables['Build.Reason'], 'PullRequest'))
+
+  - task: PublishBuildArtifacts@1
+    displayName: 'Publish Artifact'
+    inputs:
+      PathtoPublish: '$(Build.ArtifactStagingDirectory)'
+      ArtifactName: 'internal_release'
+      publishLocation: 'Container'
+    condition: and(succeeded(), ne(variables['Build.Reason'], 'PullRequest'))

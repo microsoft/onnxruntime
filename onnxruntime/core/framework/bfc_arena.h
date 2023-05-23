@@ -101,21 +101,21 @@ class BFCArena : public IAllocator {
 
   ArenaType GetArenaType() const { return arena_type_; }
 
+  virtual void SecureTheChunk(Stream* /*chunk_stream*/,
+                              Stream* /*target_stream*/,
+                              WaitNotificationFn /*wait_fn*/) const {}
+
  protected:
   void* AllocateRawInternal(size_t num_bytes,
                             bool dump_log_on_failure,
                             Stream* stream,
                             bool enable_cross_stream_reusing,
                             WaitNotificationFn wait_fn);
+#ifdef ORT_ENABLE_STREAM
   // for any chunk that associated with target stream, reset it to default (nullptr in stream, timestamp 0)
   // perform coalesce if coalesce_flag is true
   void ResetChunkOnTargetStream(Stream* target_stream, bool coalesce_flag);
-
-  // Secure the allocated chunk on the target stream
-  virtual void SecureTheChunk(Stream* /*chunk_stream*/,
-                              Stream* /*target_stream*/,
-                              WaitNotificationFn /*wait_fn*/) const {}
-
+#endif
   ArenaType arena_type_;
 
  private:
@@ -513,7 +513,7 @@ class BFCArena : public IAllocator {
 
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(BFCArena);
 };
-
+#ifdef ORT_ENABLE_STREAM
 class StreamAwareArena : public BFCArena {
  public:
   StreamAwareArena(std::unique_ptr<IAllocator> resource_allocator,
@@ -535,12 +535,12 @@ class StreamAwareArena : public BFCArena {
     return arena.GetArenaType() == ArenaType::StreamAwareArena ? reinterpret_cast<StreamAwareArena*>(&arena) : nullptr;
   }
 
- protected:
   virtual void SecureTheChunk(Stream* chunk_stream, Stream* target_stream, WaitNotificationFn wait_fn) const override;
 
  private:
   bool enable_cross_stream_reusing_;
 };
+#endif
 #ifdef __GNUC__
 #pragma GCC diagnostic pop
 #endif

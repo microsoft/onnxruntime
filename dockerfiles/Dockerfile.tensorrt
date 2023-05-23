@@ -5,7 +5,7 @@
 # Dockerfile to run ONNXRuntime with TensorRT integration
 
 # nVidia TensorRT Base Image
-ARG TRT_CONTAINER_VERSION=21.12
+ARG TRT_CONTAINER_VERSION=22.12
 FROM nvcr.io/nvidia/tensorrt:${TRT_CONTAINER_VERSION}-py3
 
 ARG ONNXRUNTIME_REPO=https://github.com/Microsoft/onnxruntime
@@ -17,7 +17,7 @@ RUN apt-get update &&\
 RUN unattended-upgrade
 
 WORKDIR /code
-ENV PATH /usr/local/nvidia/bin:/usr/local/cuda/bin:/code/cmake-3.24.3-linux-x86_64/bin:/opt/miniconda/bin:${PATH}
+ENV PATH /usr/local/nvidia/bin:/usr/local/cuda/bin:/code/cmake-3.26.3-linux-x86_64/bin:/opt/miniconda/bin:${PATH}
 
 # Prepare onnxruntime repository & build onnxruntime with TensorRT
 RUN git clone --single-branch --branch ${ONNXRUNTIME_BRANCH} --recursive ${ONNXRUNTIME_REPO} onnxruntime &&\
@@ -25,6 +25,6 @@ RUN git clone --single-branch --branch ${ONNXRUNTIME_BRANCH} --recursive ${ONNXR
     trt_version=${TRT_VERSION:0:3} &&\
     /bin/sh onnxruntime/dockerfiles/scripts/checkout_submodules.sh ${trt_version} &&\
     cd onnxruntime &&\
-    /bin/sh build.sh --parallel --build_shared_lib --cuda_home /usr/local/cuda --cudnn_home /usr/lib/x86_64-linux-gnu/ --use_tensorrt --tensorrt_home /usr/lib/x86_64-linux-gnu/ --config Release --build_wheel --skip_tests --skip_submodule_sync --cmake_extra_defines '"CMAKE_CUDA_ARCHITECTURES='${CMAKE_CUDA_ARCHITECTURES}'"' &&\
+    /bin/sh build.sh --allow_running_as_root --parallel --build_shared_lib --cuda_home /usr/local/cuda --cudnn_home /usr/lib/x86_64-linux-gnu/ --use_tensorrt --tensorrt_home /usr/lib/x86_64-linux-gnu/ --config Release --build_wheel --skip_tests --skip_submodule_sync --cmake_extra_defines '"CMAKE_CUDA_ARCHITECTURES='${CMAKE_CUDA_ARCHITECTURES}'"' &&\
     pip install /code/onnxruntime/build/Linux/Release/dist/*.whl &&\
     cd ..

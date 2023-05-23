@@ -20,6 +20,7 @@
 
 #include "core/providers/cuda/cuda_common.h"
 #include "contrib_ops/cuda/bert/bert_padding.h"
+#include <cub/cub.cuh>
 
 using namespace onnxruntime::cuda;
 
@@ -89,7 +90,7 @@ void LaunchGetTokenOffset(int* token_count_buffer,
                           const int sequence_length,
                           cudaStream_t stream) {
   getTokenOffset<<<1, 1, 0, stream>>>(
-    token_count_buffer, token_offset, cumulated_token_count, sequence_token_count, batch_size, sequence_length);
+      token_count_buffer, token_offset, cumulated_token_count, sequence_token_count, batch_size, sequence_length);
 }
 
 // -----------------------------------
@@ -212,7 +213,6 @@ __global__ void __launch_bounds__(kMAX_THREADS_PER_BLOCK)
   }
 }
 
-
 template <>
 void LaunchRestorePadding(
     float* output, const float* input, const int* token_offset, const int token_count, const int hidden_size,
@@ -258,25 +258,25 @@ void LaunchRestorePadding(
     const int4* input2 = reinterpret_cast<const int4*>(input);
     int4* output2 = reinterpret_cast<int4*>(output);
     restorePadding<int4><<<grid_size, kMAX_THREADS_PER_BLOCK, 0, stream>>>(
-      output2, input2, token_offset, width, token_count);
+        output2, input2, token_offset, width, token_count);
   } else if (hidden_size % 4 == 0) {
     const int width = hidden_size / 4;
     const int64_t* input2 = reinterpret_cast<const int64_t*>(input);
     int64_t* output2 = reinterpret_cast<int64_t*>(output);
     restorePadding<int64_t><<<grid_size, kMAX_THREADS_PER_BLOCK, 0, stream>>>(
-      output2, input2, token_offset, width, token_count);
+        output2, input2, token_offset, width, token_count);
   } else if (hidden_size % 2 == 0) {
     const int width = hidden_size / 2;
     const int32_t* input2 = reinterpret_cast<const int32_t*>(input);
     int32_t* output2 = reinterpret_cast<int32_t*>(output);
     restorePadding<int32_t><<<grid_size, kMAX_THREADS_PER_BLOCK, 0, stream>>>(
-      output2, input2, token_offset, width, token_count);
+        output2, input2, token_offset, width, token_count);
   } else {
     const int width = hidden_size;
     const int16_t* input2 = reinterpret_cast<const int16_t*>(input);
     int16_t* output2 = reinterpret_cast<int16_t*>(output);
     restorePadding<int16_t><<<grid_size, kMAX_THREADS_PER_BLOCK, 0, stream>>>(
-      output2, input2, token_offset, width, token_count);
+        output2, input2, token_offset, width, token_count);
   }
 }
 
@@ -327,14 +327,83 @@ __global__ void __launch_bounds__(kMAX_THREADS_PER_BLOCK)
   }
 }
 
+// When there is no attention mask, the sequence offset is like
+// 0, sequence_length, 2 * sequence_length, 3 * sequence_length, .... ,batch_size * sequence_length
+__global__ void __launch_bounds__(kMAX_THREADS_PER_BLOCK)
+    getTrtSequenceOffsetNoMask(int* trt_mha_padding_offset,
+                               const int batch_size,
+                               const int sequence_length) {
+  extern __shared__ int tmp_offset[];
+  if (threadIdx.x == 0) {
+    tmp_offset[0] = 0;
+    for (int i = 0; i < batch_size; i++) {
+      tmp_offset[i + 1] = sequence_length * (i + 1);
+    }
+  }
+  __syncthreads();
+
+  for (int i = threadIdx.x; i < batch_size + 1; i += blockDim.x) {
+    trt_mha_padding_offset[i] = tmp_offset[i];
+  }
+}
+
 // Get sequence offset for TensorRT fused attention when we keep the padding
 void LaunchTrtSequenceOffset(int* trt_mha_padding_offset,
                              const int* sequence_token_count,
                              const int batch_size,
                              const int sequence_length,
                              cudaStream_t stream) {
-  getTrtSequenceOffset<<<1, kMAX_THREADS_PER_BLOCK, sizeof(int) * (2 * batch_size + 1), stream>>>(
-      trt_mha_padding_offset, sequence_token_count, batch_size, sequence_length);
+  if (nullptr == sequence_token_count) {
+    getTrtSequenceOffsetNoMask<<<1, kMAX_THREADS_PER_BLOCK, sizeof(int) * (batch_size + 1), stream>>>(
+        trt_mha_padding_offset, batch_size, sequence_length);
+  } else {
+    getTrtSequenceOffset<<<1, kMAX_THREADS_PER_BLOCK, sizeof(int) * (2 * batch_size + 1), stream>>>(
+        trt_mha_padding_offset, sequence_token_count, batch_size, sequence_length);
+  }
+}
+
+__global__ void __launch_bounds__(kMAX_THREADS_PER_BLOCK)
+    getTrtSequenceOffset2d(int* trt_mha_padding_offset,
+                           const int* attention_masks,
+                           const int batch_size,
+                           const int sequence_length) {
+    typedef cub::BlockReduce<int, kMAX_THREADS_PER_BLOCK> BlockReduce;
+    __shared__ typename BlockReduce::TempStorage temp_storage;
+
+    const int batch_id = blockIdx.x;
+    const int* batch_mask = attention_masks + (batch_id * sequence_length);
+    const bool leftmost_non_zero = (batch_mask[0] != 0);
+    int biggest_position = 0;
+
+    for (int i = threadIdx.x; i < sequence_length; i += blockDim.x) {
+      if (leftmost_non_zero == (batch_mask[i] != 0)) {
+        biggest_position = i;
+      } else {
+        break;
+      }
+    }
+
+    int last_leading_position = BlockReduce(temp_storage).Reduce(biggest_position, cub::Max(), blockDim.x);
+
+    if (threadIdx.x == 0) {
+      int batch_offset = batch_id * sequence_length;
+      trt_mha_padding_offset[2 * batch_id] = batch_offset;
+      trt_mha_padding_offset[2 * batch_id + 1] = batch_offset + last_leading_position + 1;
+      if (batch_id == gridDim.x - 1) {
+        trt_mha_padding_offset[2 * batch_id + 2] = batch_offset + sequence_length;
+      }
+    }
+}
+
+// only support simple left padding with mask 0s on leading left,
+//           or simple right padding with mask 1s on leading left.
+void LaunchTrtSequenceOffset2d(int* trt_mha_padding_offset,
+                               const int* attention_masks,
+                               const int batch_size,
+                               const int sequence_length,
+                               cudaStream_t stream) {
+  getTrtSequenceOffset2d<<<batch_size, kMAX_THREADS_PER_BLOCK, 0, stream>>>(
+      trt_mha_padding_offset, attention_masks, batch_size, sequence_length);
 }
 
 }  // namespace cuda
