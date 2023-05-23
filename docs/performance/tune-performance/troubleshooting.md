@@ -63,8 +63,8 @@ Per our tests, by far the best configuration for dynamic_block_base is 4, which 
 
 ## I am seeing high CPU usage on windows
 
-It is observed that for machines has more than 64 logical cores, CPU usage could be notably lowered by letting the thread pool use a lock free task queue,
-which utilizes spinlock instead of mutex for synchronization. The lock free task queue could be enabled by building onnxruntime from source with following flag:
+It is observed that for machines have more than 64 logical cores, CPU usage could be notably lowered by letting the thread pool use a lock-free task queue,
+which utilizes spinlock instead of mutex for synchronization. The lock-free task queue could be enabled by building onnxruntime from source with following flag:
 
 ```
 --use_lock_free_queue
