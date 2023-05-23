@@ -96,7 +96,12 @@ class InferenceManager(GraphExecutionManager):
 
                 # Build the inference graph
                 if build_graph:
-                    self._build_graph()
+                    graph_transformer_config = self._get_graph_transformer_config()
+                    # Set the config according to input inspection.
+                    self._enable_conditional_optimizations(graph_transformer_config, inputs, kwargs)
+
+                    # Build the gradient graph
+                    self._build_graph(graph_transformer_config)
 
             # If creating the execution agent for the first time, this skip check will not take effect.
             # It will only take effect on subsequent forward calls.
@@ -122,20 +127,22 @@ class InferenceManager(GraphExecutionManager):
                 # Assert that the input and model device match
                 _utils._check_same_device(self._device, "Input argument to forward", *inputs)
 
+            prepared_input_list, _, _ = _io._combine_input_buffers_initializers(
+                self._graph_initializers,
+                self._graph_info.user_input_names,
+                self._input_info,
+                self._flattened_module.named_buffers(),
+                inputs,
+                kwargs,
+                self._device,
+                self._rt_inspector,
+            )
+
             user_outputs, _ = InferenceManager.execution_session_run_forward(
                 self._execution_agent,
                 self._onnx_models.optimized_model,
                 self._device,
-                *_io._combine_input_buffers_initializers(
-                    self._graph_initializers,
-                    self._graph_info.user_input_names,
-                    self._input_info,
-                    self._flattened_module.named_buffers(),
-                    inputs,
-                    kwargs,
-                    self._device,
-                    self._rt_inspector.input_density_ob,
-                ),
+                *prepared_input_list,
             )
 
             return _io.unflatten_user_output(self._module_output_schema, user_outputs)
@@ -154,10 +161,10 @@ class InferenceManager(GraphExecutionManager):
         if self._fallback_manager.is_pending():
             return self._fallback_manager.fallback(self._debug_options.logging.log_level, *inputs, **kwargs)
 
-    def _build_graph(self):
+    def _build_graph(self, graph_transformer_config):
         """Build an inference graph using the module_graph_builder"""
 
-        super()._build_graph()
+        super()._build_graph(graph_transformer_config)
         self._onnx_models.optimized_model = onnx.load_model_from_string(self._graph_builder.get_forward_model())
         if self._debug_options.save_onnx_models.save:
             self._onnx_models.save_optimized_model(
@@ -165,10 +172,6 @@ class InferenceManager(GraphExecutionManager):
                 self._debug_options.save_onnx_models.name_prefix,
                 self._export_mode,
             )
-
-        self._rt_inspector.input_density_ob.initialize(
-            self._onnx_models.optimized_model, self._graph_info.user_input_names
-        )
 
     def _create_execution_agent(self):
         """Creates an InferenceAgent that can run forward graph on an inference model"""
