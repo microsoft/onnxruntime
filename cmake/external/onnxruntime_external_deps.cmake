@@ -34,7 +34,7 @@ FetchContent_Declare(
 if (onnxruntime_BUILD_UNIT_TESTS)
   # WebAssembly threading support in Node.js is still an experimental feature and
   # not working properly with googletest suite.
-  if (onnxruntime_BUILD_WEBASSEMBLY)
+  if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
     set(gtest_disable_pthreads ON)
   endif()
   set(INSTALL_GTEST OFF CACHE BOOL "" FORCE)
@@ -84,7 +84,7 @@ FetchContent_Declare(
 
 # Flatbuffers
 # We do not need to build flatc for iOS or Android Cross Compile
-if (CMAKE_SYSTEM_NAME STREQUAL "iOS" OR CMAKE_SYSTEM_NAME STREQUAL "Android" OR onnxruntime_BUILD_WEBASSEMBLY)
+if (CMAKE_SYSTEM_NAME STREQUAL "iOS" OR CMAKE_SYSTEM_NAME STREQUAL "Android" OR CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
   set(FLATBUFFERS_BUILD_FLATC OFF CACHE BOOL "FLATBUFFERS_BUILD_FLATC" FORCE)
 endif()
 set(FLATBUFFERS_BUILD_TESTS OFF CACHE BOOL "FLATBUFFERS_BUILD_TESTS" FORCE)
@@ -218,7 +218,7 @@ if (onnxruntime_ENABLE_CPUINFO)
   else()
     # if xnnpack is enabled in a wasm build it needs clog from cpuinfo, but we won't internally use cpuinfo
     # so we don't set CPUINFO_SUPPORTED in the CXX flags below.
-    if (onnxruntime_BUILD_WEBASSEMBLY AND NOT onnxruntime_USE_XNNPACK)
+    if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten" AND NOT onnxruntime_USE_XNNPACK)
       set(CPUINFO_SUPPORTED FALSE)
     else()
       set(CPUINFO_SUPPORTED TRUE)
@@ -252,7 +252,7 @@ if (CPUINFO_SUPPORTED)
 
   # if this is a wasm build with xnnpack (only type of wasm build where cpuinfo is involved)
   # we do not use cpuinfo in ORT code, so don't define CPUINFO_SUPPORTED.
-  if (NOT onnxruntime_BUILD_WEBASSEMBLY)
+  if (NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
     string(APPEND CMAKE_CXX_FLAGS " -DCPUINFO_SUPPORTED")
   endif()
 
