@@ -82,13 +82,12 @@ class GenerateBase {
         implicit_inputs_(context_.GetImplicitInputs()),
         ort_stream_(ort_stream),
         cuda_dumper_(cuda_dumper),
-        cpu_allocator_(nullptr),
+        cpu_allocator_(decoder_session_state.GetExecutionProviders()
+                           .Get(onnxruntime::kCpuExecutionProvider)
+                           ->GetAllocator(OrtMemTypeDefault)),
         temp_space_allocator_(nullptr),
         topk_func_(topk_func),
         device_copy_func_(device_copy_func) {
-    cpu_allocator_ = decoder_session_state.GetExecutionProviders()
-                         .Get(onnxruntime::kCpuExecutionProvider)
-                         ->GetAllocator(OrtMemTypeDefault);
   }
 
   virtual ~GenerateBase() = default;

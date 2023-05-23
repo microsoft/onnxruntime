@@ -23,16 +23,18 @@ struct BeamSearchState : IBeamSearchState<T> {
     size_t next_token_size = SafeInt<size_t>(batch_beam_size) * parameters.vocab_size;
     this->next_token_logits = AllocateBuffer<T>(allocator, next_token_logits_buffer_, next_token_size);
     this->next_token_scores = AllocateBuffer<float>(allocator, next_token_scores_buffer_, next_token_size);
-
     this->next_tokens = AllocateBuffer<int32_t>(allocator, next_tokens_buffer_, SafeInt<size_t>(2) * batch_beam_size);
-
     this->next_indices = AllocateBuffer<int32_t>(allocator, next_indices_buffer_, SafeInt<size_t>(2) * batch_beam_size);
-
     this->next_scores = AllocateBuffer<float>(allocator, next_scores_buffer_, SafeInt<size_t>(2) * batch_beam_size);
 
     constexpr size_t max_parts_of_vocab = 128;
     size_t topk_buffer_size = SafeInt<size_t>(batch_beam_size) * (max_parts_of_vocab + 1) * parameters.num_beams * 2 * 2;
     this->topk_buffer = AllocateBuffer<float>(allocator, topk_temp_buffer_, topk_buffer_size);
+
+    if (allocator->Info().device.Type() == OrtDevice::GPU) {
+      size_t sequences_bytes = SafeInt<size_t>(2) * batch_beam_size * parameters.max_length;
+      this->sequences_device = AllocateBuffer<int32_t>(allocator, sequences_device_buffer_, sequences_bytes);
+    }
 
     if (use_position) {
       this->next_positions = AllocateBuffer<int32_t>(allocator, next_positions_buffer_, batch_beam_size);
@@ -73,6 +75,7 @@ struct BeamSearchState : IBeamSearchState<T> {
   BufferUniquePtr scores_buffer_;
   BufferUniquePtr topk_temp_buffer_;
   BufferUniquePtr chosen_indices_buffer_;
+  BufferUniquePtr sequences_device_buffer_;
 };
 
 struct BeamSearchCpuState : IBeamSearchCpuState {
@@ -180,7 +183,7 @@ class BeamSearchBase : public GenerateBase {
 
   BeamSearchParameters* parameters_;
 
-  std::unique_ptr<BeamSearchScorer> beam_scorer_;
+  std::unique_ptr<IBeamScorer> beam_scorer_;
 
   // Device specific functions
   GenerationDeviceHelper::ProcessLogitsFunc<T> process_logits_func_;
@@ -252,29 +255,36 @@ Status BeamSearchBase<T>::GenerateNextToken(
   // Process logits to get next token scores
   ORT_RETURN_IF_ERROR(ProcessLogits(logits, beam_state, cpu_state, temp_space_allocator_, counter));
 
-  gsl::span<float>& beam_scores = beam_scorer_->GetNextScores();
-  // It is optional to clone beam_scores. Change it to use same buffer also works for CPU:
-  //    beam_state.beam_scores = beam_scores
-  // Here we make a copy to reduce the coupling with little cost (the buffer size is small).
-  ORT_RETURN_IF_ERROR(device_copy_func_(beam_state.beam_scores,
-                                        beam_scores,
-                                        ort_stream_,
-                                        DeviceCopyDirection::hostToDevice));
+  if (this->IsCuda()) {
+    // the Cuda beam scorer does this update step
+    cpu_state.sequences.AfterDeviceAppendedNextToken();
+  }
+  else {
+    gsl::span<float>& beam_scores = beam_scorer_->GetNextScores();
+    // It is optional to clone beam_scores. Change it to use same buffer also works for CPU:
+    //    beam_state.beam_scores = beam_scores
+    // Here we make a copy to reduce the coupling with little cost (the buffer size is small).
+    ORT_RETURN_IF_ERROR(device_copy_func_(beam_state.beam_scores,
+                                          beam_scores,
+                                          ort_stream_,
+                                          DeviceCopyDirection::hostToDevice));
 
-  beam_next_tokens = beam_scorer_->GetNextTokens();
-  beam_indices = beam_scorer_->GetNextIndices();
+    beam_next_tokens = beam_scorer_->GetNextTokens();
+    beam_indices = beam_scorer_->GetNextIndices();
 
-#ifdef DEBUG_GENERATION
-  cpu_dumper_.Print("beam_scores from scorer", beam_scores.data(), parameters_->batch_size, parameters_->num_beams);
-  cpu_dumper_.Print("beam_next_tokens", beam_next_tokens.data(), parameters_->batch_size, parameters_->num_beams);
-  cpu_dumper_.Print("beam_indices", beam_indices.data(), parameters_->batch_size, parameters_->num_beams);
-#endif
+  #ifdef DEBUG_GENERATION
+    cpu_dumper_.Print("beam_scores from scorer", beam_scores.data(), parameters_->batch_size, parameters_->num_beams);
+    cpu_dumper_.Print("beam_next_tokens", beam_next_tokens.data(), parameters_->batch_size, parameters_->num_beams);
+    cpu_dumper_.Print("beam_indices", beam_indices.data(), parameters_->batch_size, parameters_->num_beams);
+  #endif
 
-  cpu_state.sequences.AppendNextTokenToSequences(beam_indices, beam_next_tokens);
+    cpu_state.sequences.AppendNextTokenToSequences(beam_indices, beam_next_tokens);
 
-#ifdef DEBUG_GENERATION
-  cpu_state.sequences.PrintSequences(&cpu_dumper_);
-#endif
+  #ifdef DEBUG_GENERATION
+    cpu_state.sequences.PrintSequences(&cpu_dumper_);
+  #endif
+  }
+
   return Status::OK();
 }
 

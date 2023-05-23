@@ -53,7 +53,8 @@ class BeamSearch : public IControlFlowKernel {
       const GenerationDeviceHelper::ProcessLogitsFunc<float>& process_logits_func,
       const GenerationDeviceHelper::ProcessLogitsFunc<MLFloat16>& process_logits_fp16_func,
       const GenerationDeviceHelper::InitBeamStateFunc<float>& init_beam_state_func,
-      const GenerationDeviceHelper::InitBeamStateFunc<MLFloat16>& init_beam_state_fp16_func) {
+      const GenerationDeviceHelper::InitBeamStateFunc<MLFloat16>& init_beam_state_fp16_func,
+      const GenerationDeviceHelper::CreateBeamScorer& create_beam_scorer_func) {
     reorder_past_state_func_ = reorder_past_state_func;
     init_cache_indir_func_ = init_cache_indir_func;
     add_to_feeds_func_ = add_to_feeds_func;
@@ -64,6 +65,7 @@ class BeamSearch : public IControlFlowKernel {
     process_logits_fp16_func_ = process_logits_fp16_func;
     init_beam_state_func_ = init_beam_state_func;
     init_beam_state_fp16_func_ = init_beam_state_fp16_func;
+    create_beam_scorer_func_ = create_beam_scorer_func;
   }
 
   void SetDeviceHelpers_Gpt(
@@ -104,6 +106,7 @@ class BeamSearch : public IControlFlowKernel {
 
   GenerationDeviceHelper::InitBeamStateFunc<float> init_beam_state_func_;
   GenerationDeviceHelper::InitBeamStateFunc<MLFloat16> init_beam_state_fp16_func_;
+  GenerationDeviceHelper::CreateBeamScorer create_beam_scorer_func_;
 
   //------------------------------------------------------------
   // Device specific functions for GPT

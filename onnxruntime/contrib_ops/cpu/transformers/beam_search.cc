@@ -222,6 +222,7 @@ Status BeamSearch::Compute(OpKernelContext* ctx) const {
           device_copy_func_ ? device_copy_func_ : GenerationCpuDeviceHelper::DeviceCopy<float>,
           device_copy_int32_func_ ? device_copy_int32_func_ : GenerationCpuDeviceHelper::DeviceCopy<int32_t>,
           update_gpt_feeds_func_ ? update_gpt_feeds_func_ : GenerationCpuDeviceHelper::UpdateGptFeeds<float>,
+          create_beam_scorer_func_,
           cuda_device_prop_,
           cuda_device_arch_};
       ORT_RETURN_IF_ERROR(impl.Initialize());
@@ -244,6 +245,7 @@ Status BeamSearch::Compute(OpKernelContext* ctx) const {
           device_copy_func_,
           device_copy_int32_func_,
           update_gpt_feeds_fp16_func_,
+          create_beam_scorer_func_,
           cuda_device_prop_,
           cuda_device_arch_};
       ORT_RETURN_IF_ERROR(impl.Initialize());
