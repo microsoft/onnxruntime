@@ -377,6 +377,8 @@ TEST(FunctionTest, AttrSaturate) {
 
 // Attribute 'saturate' was introduced in opset 19, ir_version=9.
 // The test checks the model does not saturate a value out of float 8 boundary.
+// TODO: change the expected value when this PR is merged in onnx:
+// https://github.com/onnx/onnx/pull/5246
 TEST(FunctionTest, AttrSaturateNan) {
   const char* code = R"(
         <
@@ -403,7 +405,7 @@ TEST(FunctionTest, AttrSaturateNan) {
         }
         )";
 
-  Check(code, "x", {1.0, 2.0, 1e6}, "y", {243.0, 245.0, 2000241}); // std::numeric_limits<float>::quiet_NaN()});
+  Check(code, "x", {1.0, 2.0, 1e6}, "y", {243.0, 245.0, 2000241});  // std::numeric_limits<float>::quiet_NaN()});
 }
 
 // Test use of constants inside sub-graphs, which are promoted to initializers by ORT.

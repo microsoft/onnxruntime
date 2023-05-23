@@ -144,15 +144,7 @@ CastFromString(const std::string& input, DstType& output) {
 }
 
 template <typename DstType>
-typename std::enable_if<IsOrtFloat16Type<DstType>::value, void>::type
-CastFromString(const std::string& input, DstType& output) {
-  float intermediate;
-  CastFromString(input, intermediate);
-  output = static_cast<DstType>(intermediate);
-}
-
-template <typename DstType>
-typename std::enable_if<IsOrtFloat8Type<DstType>::value, void>::type
+typename std::enable_if<IsOrtFloat16Type<DstType>::value || IsOrtFloat8Type<DstType>::value, void>::type
 CastFromString(const std::string& input, DstType& output) {
   float intermediate;
   CastFromString(input, intermediate);
@@ -384,8 +376,6 @@ Status Cast::Compute(OpKernelContext* context) const {
              to_ == ONNX_NAMESPACE::TensorProto::FLOAT8E5M2FNUZ) {
     utils::MLTypeCallDispatcherFromTypeList<EnabledSrcTypes> dispatcher{from};
     dispatcher.Invoke<SrcDispatcherNoSat>(to_, *context, shape, *X, *Y);
-  } else {
-    ORT_THROW("Option saturate=0 is only available for float 8 types.");
   }
 
   return Status::OK();

@@ -237,7 +237,7 @@ OP_CAST(Float8E4M3FN, __NV_E4M3)
 OP_CAST(Float8E5M2, __NV_E5M2)
 
 #define EXPLICIT_IMPL_CASTSAT(InT, OutT) \
-  void _Explicit_Impl_CastSat(cudaStream_t stream, const InT* input_data, OutT* output_data, size_t count, bool saturate) { \
+  void Explicit_Impl_CastSat(cudaStream_t stream, const InT* input_data, OutT* output_data, size_t count, bool saturate) { \
     if (saturate) { \
       UnaryElementWiseImpl(stream, input_data, output_data, OP_CastSat<InT, OutT>(), count); \
     } else { \
