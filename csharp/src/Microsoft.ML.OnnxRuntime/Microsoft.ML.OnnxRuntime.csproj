@@ -21,7 +21,7 @@
   -->
   <PropertyGroup>
     <SelectedTargets>PreNet6</SelectedTargets>
-    <BaseTargets>netstandard1.1;netstandard2.0;netcoreapp3.1;net6.0</BaseTargets>
+    <BaseTargets>netstandard2.0;netcoreapp3.1;net6.0</BaseTargets>
   </PropertyGroup>
 
   <!-- only set the Xamarin mobile targets if we're building an ORT package,
@@ -305,7 +305,7 @@
           Visible="false"
     />
     <None Include="targets\netstandard\$(PackageId).targets"
-          PackagePath="build\netstandard1.1\$(PackageId).targets;build\netstandard2.0\$(PackageId).targets"
+          PackagePath="build\netstandard2.0\$(PackageId).targets"
           Pack="true"
           Visible="false"
     />
