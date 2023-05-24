@@ -1186,7 +1186,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
     OpSchema()
         .SetDoc(GatedRelativePositionBias_ver1_doc)
         .Attr("num_heads", "Number of attention heads", AttributeProto::INT)
-        .Input(0, "query_layer", "tensor with shape (batch_size, seq_len, num_heads x head_size)", "T")
+        .Input(0, "query_layer", "tensor with shape (batch_size, seq_len, num_heads x head_size or 3 x num_heads x head_size)", "T")
         .Input(1, "query_bias", "1-d tensor with shape (num_heads x head_size)", "T")
         .Input(2, "rel_pos", "tensor with shape (1, num_head, seq_len, seq_len)", "T")
         .Input(3, "weight", "gemm weight for the gated_ur_linear, shape (head_size, D), D is divisible by 2", "T")

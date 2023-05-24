@@ -107,10 +107,13 @@ Status GatedRelativePositionBias<T>::ComputeInternal(OpKernelContext* context) c
   ORT_ENFORCE(query_dims[2] % num_heads_ == 0);
   const auto batch_size = SafeInt<int>(query_dims[0]);
   const auto seq_len = SafeInt<int>(query_dims[1]);
-  const auto head_size = SafeInt<int>(query_dims[2] / num_heads_);
 
   ORT_ENFORCE(query_bias_tensor.Shape().NumDimensions() == 1);
-  ORT_ENFORCE(query_bias_tensor.Shape()[0] == query_dims[2]);
+  const auto hidden_size = SafeInt<int>(query_bias_tensor.Shape()[0]);
+  const auto head_size = SafeInt<int>(hidden_size / num_heads_);
+
+  ORT_ENFORCE(query_dims[2] == 3 * hidden_size || query_dims[2] == hidden_size)
+  const auto use_trt_format_tensor = (query_dims[2] == 3 * hidden_size);
 
   const auto& rel_pos_dims = rel_pos_tensor.Shape().GetDims();
   ORT_ENFORCE(rel_pos_dims.size() == 4);
@@ -149,8 +152,9 @@ Status GatedRelativePositionBias<T>::ComputeInternal(OpKernelContext* context) c
   size_t workspace_size = sizeof(T) * (elements_in_query + (reuse_output ? (size_t)0 : elements_after_gemm));
   auto workspace = GetScratchBuffer<void>(workspace_size, context->GetComputeStream());
 
-  // format 1: BxSx(NH * total_matrix) => matrix_to_transpose * (BxNxSxH)
-  constexpr int format = 1;
+  // format 1: BxSx(NH * total_matrix) => matrix_to_transpose * (BxNxSxH) or
+  // format 5: BxSxNxMxH => 1xBxNxSxH if using trt format(read q from packed qkv)
+  constexpr int format = use_trt_format_tensor ? 5 : 1;
   constexpr int total_maxtrix = 1;
   constexpr int num_matrix_to_transpose = 1;
   LaunchAddBiasTranspose(Stream(context), num_matrix_to_transpose, format, device_prop.maxThreadsPerBlock,

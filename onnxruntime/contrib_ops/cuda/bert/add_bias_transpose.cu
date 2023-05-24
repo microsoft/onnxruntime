@@ -215,6 +215,34 @@ __global__ void AddBiasTransposeQKV(int M, const T* input, const T* biases, T* o
   }
 }
 
+template <typename T>
+__global__ void AddBiasTransposeQFromQKV(int M, const T* input, const T* biases, T* output) {
+  //     Input:  BxSxNxMxH
+  //     Output: 1xBxNxSxH
+  // B is batch_size, S is sequence_length, M is number of matrices, N is num_heads, H is head_size
+  int n = threadIdx.y;
+  int s = blockIdx.x;
+  int b = blockIdx.y;
+  int m = blockIdx.z;  // matrix id
+
+  const int head_size = blockDim.x;
+  const int num_heads = blockDim.y;
+
+  const int sequence_length = gridDim.x;
+  const int batch_size = gridDim.y;
+  const int H = head_size;
+  const int NH = num_heads * head_size;
+  const int NHS = NH * sequence_length;
+
+  int in_offset = b * NHS * M + s * M * NH + n * M * H + m * H;
+  const int out_offset = s * head_size + n * sequence_length * H + b * NHS;
+
+  const int h = threadIdx.x;
+  if (h < head_size) {
+    output[out_offset + h] = input[in_offset + h] + biases[n * H + h];
+  }
+}
+
 #ifndef USE_ROCM
 template <typename T>
 __global__ void AddBiasTransposeQKV(int M, const T* input, const T* biases, T* output, T* qkv_add_bias,
@@ -689,6 +717,9 @@ void InvokeAddBiasTranspose(
       }
     } else if (format == 4) {  // format == 4
       AddBiasUnpack<T><<<grid, block, 0, stream>>>(total_matrix_count, input, biases, output);
+    } else if (format == 5) {  // format == 5
+      // TODO: ORT_ENFORCE();
+      AddBiasTransposeQFromQKV<T><<<grid, block, 0, stream>>>(input, biases, output, v_head_size);
     } else {  // format == 0
       AddBiasTranspose<T><<<grid, block, 0, stream>>>(input, biases, output);
     }
@@ -713,6 +744,8 @@ void InvokeAddBiasTranspose(
       }
     } else if (format == 4) {  // format == 4
       ORT_THROW("AddBiasTranspose (format 4) not implemented for hidden_size > max_threads_per_block");
+    } else if (format == 5) {  // format == 5
+      ORT_THROW("AddBiasTranspose (format 5) not implemented for hidden_size > max_threads_per_block");
     } else {  // format 0
       AddBiasTransposeLarge<T><<<grid, block, 0, stream>>>(qk_head_size, input, biases, output);
     }
