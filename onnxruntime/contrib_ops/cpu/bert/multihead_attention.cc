@@ -293,20 +293,6 @@ Status MultiHeadAttention<T>::Compute(OpKernelContext* context) const {
 
   AllocatorPtr allocator;
 
-  if (qkv_bias == nullptr) {
-    // We assume query, key/past_key, and value/past_value are already in the correct shape
-
-    // Check that key/value or past_key/past_value is valid
-    ORT_ENFORCE((key != nullptr && value != nullptr) || (past_key != nullptr && past_value != nullptr));
-    return ApplyAttention(query->Data<T>(),
-                          (key != nullptr) ? key->Data<T>() : past_key->Data<T>(),
-                          (value != nullptr) ? value->Data<T>() : past_value->Data<T>(),
-                          key_padding_mask, nullptr /* past */, nullptr /* past_k */, nullptr /* past_v */,
-                          output, present_k, present_v,
-                          batch_size, q_sequence_length, kv_sequence_length,
-                          qk_head_size, v_head_size, v_hidden_size, extra_add_qk, context);
-  }
-
   // For each of Q/K/V, there are multiple scenarios:
   // 1) Combined QKV bias is null
   //    a) Q/K/V is (B, S, D)
