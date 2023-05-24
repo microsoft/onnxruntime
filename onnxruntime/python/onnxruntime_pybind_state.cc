@@ -841,7 +841,7 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
 #ifdef USE_QNN
     auto cit = provider_options_map.find(type);
     return onnxruntime::QNNProviderFactoryCreator::Create(
-               cit == provider_options_map.end() ? ProviderOptions{} : cit->second)
+               cit == provider_options_map.end() ? ProviderOptions{} : cit->second, &session_options)
         ->CreateProvider();
 #endif
   } else {
