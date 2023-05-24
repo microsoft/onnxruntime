@@ -9,6 +9,9 @@ import { InferenceSession, Tensor } from 'onnxruntime-react-native';
 import MNIST, { MNISTInput, MNISTOutput, MNISTResult, } from './mnist-data-handler';
 import { Buffer } from 'buffer';
 
+import RNFS from 'react-native-fs';
+import { decode } from 'base64-arraybuffer';
+
 interface State {
   session:
   InferenceSession | null;
@@ -16,6 +19,13 @@ interface State {
   string | null;
   imagePath:
   string | null;
+}
+
+async function readModelIntoUint8Array(modelPath: string): Promise<Uint8Array> {
+  const modelBinary = await RNFS.readFile(modelPath, 'base64');
+  const bytes = new Uint8Array(decode(modelBinary));
+  console.log(bytes);
+  return bytes;
 }
 
 // eslint-disable-next-line @typescript-eslint/ban-types
@@ -39,7 +49,9 @@ export default class App extends React.PureComponent<{}, State> {
         this.setState({ imagePath });
 
         const modelPath = await MNIST.getLocalModelPath();
-        const session: InferenceSession = await InferenceSession.create(modelPath);
+        const modelBuffer = await readModelIntoUint8Array(modelPath);
+        //const session: InferenceSession = await InferenceSession.create(modelPath);
+        const session: InferenceSession = await InferenceSession.create(modelBuffer);
         this.setState({ session });
 
         void this.infer();
