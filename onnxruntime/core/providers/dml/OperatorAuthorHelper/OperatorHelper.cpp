@@ -1862,6 +1862,50 @@ namespace OperatorHelper
         return { std::move(outputShape) };
     }
 
+    void Col2ImHelper::Initialize(IKernelInformationAdapter const& kernelInformation)
+    {
+        std::vector<int> tensor;
+        ReadCpuLocalTensorIntoInt32(kernelInformation.GetConstantInputTensor(1), /*out*/ tensor);
+        std::transform(tensor.begin(), tensor.end(), m_imageShape.begin(), [](auto& x){ return (uint32_t)x; });
+        ReadCpuLocalTensorIntoInt32(kernelInformation.GetConstantInputTensor(2), /*out*/ tensor);
+        std::transform(tensor.begin(), tensor.end(), m_blockShape.begin(), [](auto& x){ return (uint32_t)x; });
+
+        const auto dimCount = m_blockShape[0];
+        m_dilations = {dimCount, 1};
+        m_pads = {dimCount, 0};
+        m_strides = {dimCount, 1};
+
+        if (kernelInformation.HasAttribute(AttrName::Dilations, MLOperatorAttributeType::IntArray))
+        {
+            tensor = kernelInformation.GetAttributes().GetOptionalAttributeVectorInt32(AttrName::Dilations);
+            m_dilations.resize(tensor.size());
+            std::transform(tensor.begin(), tensor.end(), m_dilations.begin(), [](auto& x){ return (uint32_t)x; });
+            ML_CHECK_VALID_ARGUMENT(m_dilations.size() == dimCount);
+        }
+
+        if (kernelInformation.HasAttribute(AttrName::Pads, MLOperatorAttributeType::IntArray))
+        {
+            tensor = kernelInformation.GetAttributes().GetOptionalAttributeVectorInt32(AttrName::Pads);
+            m_pads.resize(tensor.size());
+            std::transform(tensor.begin(), tensor.end(), m_pads.begin(), [](auto& x){ return (uint32_t)x; });
+            ML_CHECK_VALID_ARGUMENT(m_pads.size() == dimCount);
+        }
+
+        if (kernelInformation.HasAttribute(AttrName::Strides, MLOperatorAttributeType::IntArray))
+        {
+            tensor = kernelInformation.GetAttributes().GetOptionalAttributeVectorInt32(AttrName::Strides);
+            m_strides.resize(tensor.size());
+            std::transform(tensor.begin(), tensor.end(), m_strides.begin(), [](auto& x){ return (uint32_t)x; });
+            ML_CHECK_VALID_ARGUMENT(m_strides.size() == dimCount);
+        }
+    }
+
+    std::vector<EdgeShapes> Col2ImHelper::GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const
+    {
+        EdgeShapes outputShape(m_imageShape);
+        return { std::move(outputShape) };
+    }
+
     void ConcatHelper::Initialize(
         const MLOperatorAttributes& operatorAttributes,
         gsl::span<const DimensionType> inputDimensions
