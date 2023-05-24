@@ -2332,7 +2332,7 @@ information on what attribute or type must be modified.)DOC")
                                     "computeType",
                                     "",
                                     AttributeProto::STRING,
-                                    static_cast<int64_t>(1))
+                                    "CUBLAS_COMPUTE_32F")
                                 .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
                                   propagateElemTypeFromInputToOutput(ctx, 0, 0);
                                   if (hasNInputShapes(ctx, 2)) {
