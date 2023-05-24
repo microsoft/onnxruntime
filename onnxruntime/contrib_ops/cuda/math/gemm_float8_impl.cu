@@ -104,7 +104,7 @@ onnxruntime::Status GemmFloat8_Impl::CudaCompute(
     const int32_t* dtypes, cudaStream_t stream, cublasLtHandle_t handle,
     const Tensor* A, const Tensor* B, const Tensor* C, Tensor* D,
     int M, int N, int K) const {
-// #if defined(CUDA_VERSION) && CUDA_VERSION >= 11080
+  // #if defined(CUDA_VERSION) && CUDA_VERSION >= 11080
   int lda, ldb, ldd;
   set(M, N, K, lda, ldb, ldd);
 
@@ -127,7 +127,7 @@ onnxruntime::Status GemmFloat8_Impl::CudaCompute(
     } else {
       // C is (M, N), no broadcast needed.
       /*
-      constexpr bool same_type = std::same_type<DType, BiasType>::value;
+      bool same_type = std::same_type<DType, BiasType>::value;
       if (same_type) {
         CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(out_data, b_data, static_cast<size_t>(M) * N * sizeof(T), cudaMemcpyDeviceToDevice, Stream(ctx)));
       }
@@ -228,20 +228,20 @@ onnxruntime::Status GemmFloat8_Impl::CudaCompute(
   // https://docs.nvidia.com/cuda/cublas/index.html?highlight=cublasLtMatmul#cublasltmatmul
   cublasLtMatmul(handle,
                  operationDesc,
-                 static_cast<const void*>(&alpha_),       /* alpha */
+                 static_cast<const void*>(&alpha_), /* alpha */
                  A->DataRaw(),                      /* A */
                  Adesc,
-                 B->DataRaw(),                      /* B */
+                 B->DataRaw(), /* B */
                  Bdesc,
-                 static_cast<const void*>(&beta_),        /* beta */
-                 has_C ? C->DataRaw() : nullptr,    /* C */
+                 static_cast<const void*>(&beta_), /* beta */
+                 has_C ? C->DataRaw() : nullptr,   /* C */
                  Cdesc,
-                 D->MutableDataRaw(),               /* D */
+                 D->MutableDataRaw(), /* D */
                  Ddesc,
-                 &heuristicResult.algo,                   /* algo */
-                 workspace,                               /* workspace */
+                 &heuristicResult.algo, /* algo */
+                 workspace,             /* workspace */
                  workspaceSize,
-                 stream);                                 /* stream */
+                 stream); /* stream */
   cudaFree(workspace);
 
   cublasLtMatmulPreferenceDestroy(preference);
@@ -251,9 +251,9 @@ onnxruntime::Status GemmFloat8_Impl::CudaCompute(
   cublasLtMatrixLayoutDestroy(Adesc);
   cublasLtMatmulDescDestroy(operationDesc);
   return onnxruntime::Status::OK();
-// #else
-// ORT_ENFORCE(false, "Compiling with CUDA_VERSION >= 11.8 is needed!");
-// #endif
+  // #else
+  // ORT_ENFORCE(false, "Compiling with CUDA_VERSION >= 11.8 is needed!");
+  // #endif
 }
 
 }  // namespace cuda

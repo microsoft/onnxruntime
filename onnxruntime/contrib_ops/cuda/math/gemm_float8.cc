@@ -13,15 +13,18 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-#define REGISTER_KERNEL()                                                                     \
-  ONNX_OPERATOR_KERNEL_EX(                                                                    \
-      GemmFloat8,                                                                             \
-      kMSDomain,                                                                              \
-      1,                                                                                      \
-      kCudaExecutionProvider,                                                                 \
-      (*KernelDefBuilder::Create())                                                           \
-          .TypeConstraint("T", BuildKernelDefConstraints<Float8E4M3FN, MLFloat16, float>())   \
-          .TypeConstraint("T2", BuildKernelDefConstraints<Float8E4M3FN, MLFloat16, float>()), \
+#define REGISTER_KERNEL()                                                                                 \
+  ONNX_OPERATOR_KERNEL_EX(                                                                                \
+      GemmFloat8,                                                                                         \
+      kMSDomain,                                                                                          \
+      1,                                                                                                  \
+      kCudaExecutionProvider,                                                                             \
+      (*KernelDefBuilder::Create())                                                                       \
+          .TypeConstraint("TA", BuildKernelDefConstraints<Float8E4M3FN, Float8E5M2, MLFloat16, float>())  \
+          .TypeConstraint("TB", BuildKernelDefConstraints<Float8E4M3FN, Float8E5M2, MLFloat16, float>())  \
+          .TypeConstraint("TC", BuildKernelDefConstraints<Float8E4M3FN, Float8E5M2, MLFloat16, float>())  \
+          .TypeConstraint("TS", BuildKernelDefConstraints<Float8E4M3FN, Float8E5M2, MLFloat16, float>())  \
+          .TypeConstraint("TR", BuildKernelDefConstraints<Float8E4M3FN, Float8E5M2, MLFloat16, float>()), \
       GemmFloat8);
 
 REGISTER_KERNEL()

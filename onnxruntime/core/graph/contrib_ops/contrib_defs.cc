@@ -2266,38 +2266,50 @@ information on what attribute or type must be modified.)DOC")
                                     "Input tensor A. "
                                     "The shape of A should be (M, K) if transA is 0, "
                                     "or (K, M) if transA is non-zero.",
-                                    "T")
+                                    "TA")
                                 .Input(
                                     1,
                                     "B",
                                     "Input tensor B. "
                                     "The shape of B should be (K, N) if transB is 0, "
                                     "or (N, K) if transB is non-zero.",
-                                    "T")
+                                    "TB")
                                 .Input(
                                     2,
                                     "C",
                                     "Bias, the shape of C should be unidirectional broadcastable to (M, N).",
-                                    "T2")
+                                    "TC")
                                 .Input(
                                     3,
                                     "scale",
                                     "Unused",
-                                    "T2")
+                                    "TS")
                                 .Input(
                                     4,
                                     "result_type",
                                     "unused but defines the result type",
-                                    "T2")
-                                .Output(0, "Y", "Output tensor of shape (M, N).", "T2")
+                                    "TR")
+                                .Output(0, "Y", "Output tensor of shape (M, N).", "TR")
                                 .TypeConstraint(
-                                    "T",
-                                    {"tensor(float8e4m3fn)", "tensor(float16)", "tensor(float)"},
-                                    "Constrain input types to float tensors.")
+                                    "TA",
+                                    {"tensor(float8e4m3fn)", "tensor(float8e5m2)", "tensor(float16)", "tensor(float)"},
+                                    "Constrain input type to float tensors.")
                                 .TypeConstraint(
-                                    "T2",
-                                    {"tensor(float8e4m3fn)", "tensor(float16)", "tensor(float)"},
-                                    "Constrain output types to float tensors.")
+                                    "TB",
+                                    {"tensor(float8e4m3fn)", "tensor(float8e5m2)", "tensor(float16)", "tensor(float)"},
+                                    "Constrain input type to float tensors.")
+                                .TypeConstraint(
+                                    "TC",
+                                    {"tensor(float8e4m3fn)", "tensor(float8e5m2)", "tensor(float16)", "tensor(float)"},
+                                    "Constrain input type to float tensors.")
+                                .TypeConstraint(
+                                    "TS",
+                                    {"tensor(float8e4m3fn)", "tensor(float8e5m2)", "tensor(float16)", "tensor(float)"},
+                                    "Constrain input type to float tensors.")
+                                .TypeConstraint(
+                                    "TR",
+                                    {"tensor(float8e4m3fn)", "tensor(float8e5m2)", "tensor(float16)", "tensor(float)"},
+                                    "Constrain output type to float tensors.")
                                 .Attr(
                                     "transA",
                                     "Whether A should be transposed",

@@ -2,33 +2,25 @@
 # Licensed under the MIT License.
 # pylint: disable=C0116,W0212,R1720,C0103,C0114
 
-import os
-import platform
-import sys
 import unittest
 
 import numpy as np
-import parameterized
 from numpy.testing import assert_allclose
 from onnx import TensorProto
 from onnx.checker import check_model
 from onnx.helper import make_graph, make_model, make_node, make_opsetid, make_tensor, make_tensor_value_info
 from onnx.numpy_helper import from_array
 
-# handle change from python 3.8 and on where loading a dll from the current directory needs to be explicitly allowed.
-if platform.system() == "Windows" and sys.version_info[:2] >= (3, 8):
-    os.add_dll_directory(os.getcwd())
-
 
 class TestFloat8Gemm8(unittest.TestCase):
-
     @classmethod
     def setUpClass(cls):
         from onnxruntime import InferenceSession
+
         cls.InferenceSession = InferenceSession
         # cls.available_providers = [provider for provider in onnxruntime.get_available_providers()]
 
-    def get_model_gemm(self, float_name, alpha=1.0, beta=0.0, transA=0, transB=0, add_bias=False):
+    def get_model_gemm(self, float_name, alpha=1.0, beta=0.0, transA=1, transB=0, add_bias=False):
         proto_type = getattr(TensorProto, float_name)
 
         a = make_tensor_value_info("A", TensorProto.FLOAT, [None, None])
@@ -116,7 +108,9 @@ class TestFloat8Gemm8(unittest.TestCase):
 
         onnx_model = self.get_model_gemm("FLOAT")
         if float_type == "FLOAT8E4M3FN":
-            float_types = ["FLOAT8E4M3FN", "FLOAT8E4M3FN", "FLOAT16", "FLOAT16", "FLOAT16"]
+            float_types = ["FLOAT8E4M3FN", "FLOAT8E4M3FN", "FLOAT8E4M3FN", "FLOAT8E4M3FN", "FLOAT16"]
+        elif float_type == "FLOAT8E5M2":
+            float_types = ["FLOAT8E5M2", "FLOAT8E4M3FN", "FLOAT8E4M3FN", "FLOAT8E4M3FN", "FLOAT16"]
         elif float_type == "FLOAT16":
             float_types = ["FLOAT16", "FLOAT16", "FLOAT16", "FLOAT16", "FLOAT16"]
         elif float_type == "FLOAT":
@@ -157,6 +151,9 @@ class TestFloat8Gemm8(unittest.TestCase):
 
     def test_model_gemm_e4m3(self):
         self.common_test_model_gemm("FLOAT8E4M3FN", "CUBLAS_COMPUTE_32F")
+
+    def test_model_gemm_e5m2(self):
+        self.common_test_model_gemm("FLOAT8E5M2", "CUBLAS_COMPUTE_32F")
 
 
 if __name__ == "__main__":
