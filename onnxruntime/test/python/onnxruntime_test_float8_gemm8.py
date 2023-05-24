@@ -70,13 +70,14 @@ class TestFloat8Gemm8(unittest.TestCase):
         zero = from_array(np.array([0], dtype=np.float32), name="zero")
 
         nodes = [
-            make_node("Cast", ["zero"], ["zerof"], to=proto_type[4]),
+            make_node("Cast", ["zero"], ["zeros"], to=proto_type[3]),
+            make_node("Cast", ["zerof"], ["zerof"], to=proto_type[4]),
             make_node("Cast", ["A"], ["Af"], to=proto_type[0]),
             make_node("Cast", ["B"], ["Bf"], to=proto_type[1]),
             make_node("Cast", ["zero" if c is None else "C"], ["Cf"], to=proto_type[2]),
             make_node(
                 "GemmFloat8",
-                ["Af", "Bf", "Cf", "zerof", "zerof"],
+                ["Af", "Bf", "Cf", "zeros", "zerof"],
                 ["Df"],
                 domain="com.microsoft",
                 transA=transA,
@@ -100,8 +101,6 @@ class TestFloat8Gemm8(unittest.TestCase):
 
     def common_test_model_gemm(self, float_type, compute_type="CUBLAS_COMPUTE_16F"):
         a = np.arange(9).reshape((3, 3)).astype(np.float32)
-        a[:, :] *= 0
-        a[0, 1] = 1
         b = (2 ** np.arange(9).reshape((3, 3))).astype(np.float32)
         expected = a.T @ b
         feeds = {"A": a, "B": b}
@@ -113,6 +112,8 @@ class TestFloat8Gemm8(unittest.TestCase):
             float_types = ["FLOAT8E5M2", "FLOAT8E4M3FN", "FLOAT8E4M3FN", "FLOAT", "FLOAT8E4M3FN"]
         elif float_type == "FLOAT16":
             float_types = ["FLOAT16", "FLOAT16", "FLOAT16", "FLOAT16", "FLOAT16"]
+        elif float_type == "BFLOAT16":
+            float_types = ["BFLOAT16", "BFLOAT16", "BFLOAT16", "FLOAT", "BFLOAT16"]
         elif float_type == "FLOAT":
             float_types = ["FLOAT", "FLOAT", "FLOAT", "FLOAT", "FLOAT"]
         else:
@@ -145,6 +146,9 @@ class TestFloat8Gemm8(unittest.TestCase):
 
     def test_model_gemm_float16_ct32(self):
         self.common_test_model_gemm("FLOAT16", "CUBLAS_COMPUTE_32F")
+
+    def test_model_gemm_bfloat16_ct32(self):
+        self.common_test_model_gemm("BFLOAT16", "CUBLAS_COMPUTE_32F")
 
     def test_model_gemm_float_ct16(self):
         self.common_test_model_gemm("FLOAT", "CUBLAS_COMPUTE_32F_FAST_16F")
