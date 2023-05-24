@@ -24,7 +24,7 @@ interface State {
 async function readModelIntoUint8Array(modelPath: string): Promise<Uint8Array> {
   const modelBinary = await RNFS.readFile(modelPath, 'base64');
   const bytes = new Uint8Array(decode(modelBinary));
-  console.log(bytes);
+  //console.log(bytes);
   return bytes;
 }
 
