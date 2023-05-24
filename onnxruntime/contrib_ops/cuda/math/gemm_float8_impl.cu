@@ -148,7 +148,7 @@ onnxruntime::Status GemmFloat8_Impl::CudaCompute(
   cudaDataType a_type = ToCudaDataType(dtypes[0]);
   cudaDataType b_type = ToCudaDataType(dtypes[1]);
   cudaDataType c_type = ToCudaDataType(dtypes[2]);
-  cudaDataType biad_type;
+  cudaDataType bias_type;
   bool gemm_float8;
   if (a_type == CUDA_R_8F_E4M3 || b_type == CUDA_R_8F_E4M3 || a_type == CUDA_R_8F_E5M2 || b_type == CUDA_R_8F_E5M2) {
     bias_type = c_type == CUDA_R_16F ? CUDA_R_16F : CUDA_R_16BF;
