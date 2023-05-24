@@ -156,6 +156,7 @@ Status DecoderMaskedMultiHeadAttention<T1, T2>::ComputeInternal(OpKernelContext*
     parameters.v_cache = const_cast<T1*>(value->Data<T1>());
     parameters.k_bias = nullptr;
     parameters.v_bias = nullptr;
+
   } else {
     // Sanity check
     ORT_ENFORCE(past_present_share_buffer_);
@@ -194,8 +195,7 @@ Status DecoderMaskedMultiHeadAttention<T1, T2>::ComputeInternal(OpKernelContext*
   }
 
   if (output_qk_) {
-    int64_t k_length = parameters.is_cross_attention ? parameters.kv_sequence_length : parameters.past_sequence_length;
-    int64_t qk_dims[] = {parameters.batch_size, parameters.num_heads,  1, k_length};
+    int64_t qk_dims[] = {parameters.batch_size, parameters.num_heads,  1, parameters.total_sequence_length};
     TensorShape qk_shape(&qk_dims[0], sizeof(qk_dims) / sizeof(qk_dims[0]));
     cross_qk = context->Output(kQKOutputIndex, qk_shape);
     parameters.out_qk = cross_qk->MutableData<T1>();
