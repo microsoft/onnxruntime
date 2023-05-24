@@ -199,8 +199,8 @@ struct Float8E4M3FNUZ {
 
   inline ORT_HOST_DEVICE Float8E4M3FNUZ(float v, bool saturate = true) {
     // This type does not exist on CUDA.
-    uint32_t* pv = reinterpret_cast<uint32_t*>(&v);
-    uint32_t b = *pv;
+    uint32_t b;
+    std::memcpy(&b, &v, sizeof(b));
 
     val = static_cast<uint8_t>((b & 0x80000000) >> 24);  // sign
     if ((b & 0x7fc00000) == 0x7fc00000) {
