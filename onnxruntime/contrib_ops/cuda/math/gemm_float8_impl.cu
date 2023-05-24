@@ -247,14 +247,14 @@ onnxruntime::Status GemmFloat8_Impl::CudaCompute(
   cublasLtMatmul(handle,
                  operationDesc,
                  static_cast<const void*>(&alpha_),       /* alpha */
-                 A->Data<uint8_t>(),                      /* A */
+                 A->DataRaw(),                      /* A */
                  Adesc,
-                 B->Data<uint8_t>(),                      /* B */
+                 B->DataRaw(),                      /* B */
                  Bdesc,
                  static_cast<const void*>(&beta_),        /* beta */
-                 has_C ? C->Data<uint8_t>() : nullptr,    /* C */
+                 has_C ? C->DataRaw() : nullptr,    /* C */
                  Cdesc,
-                 D->MutableData<uint8_t>(),               /* D */
+                 D->MutableDataRaw(),               /* D */
                  Ddesc,
                  &heuristicResult.algo,                   /* algo */
                  workspace,                               /* workspace */
