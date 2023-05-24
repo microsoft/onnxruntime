@@ -177,6 +177,15 @@ def parse_arguments(argv=None):
     )
     parser.set_defaults(output_cross_qk=False)
 
+    parser.add_argument(
+        "--cross_qk_onnx_model",
+        required=False,
+        type=str,
+        default=None,
+        help="the model which consume cross_qk.",
+    )
+    parser.set_defaults(output_cross_qk=False)
+
     # parser.add_argument(
     #     "--cross_qk_layer_head",
     #     required=False,
