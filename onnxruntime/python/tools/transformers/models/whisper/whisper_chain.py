@@ -58,8 +58,14 @@ def chain_model(args):
 
     if args.use_logits_processor:
         beam_inputs.append("logits_processor")
+    else:
+        beam_inputs.append("")
+
     if args.output_cross_qk:
         beam_inputs.append("cross_qk_layer_head")
+    else:
+        beam_inputs.append("")
+
     beam_outputs = ["sequences"]
     if args.output_cross_qk:
         beam_outputs.extend(["", "", "cross_qk"])
@@ -103,6 +109,11 @@ def chain_model(args):
     if args.output_cross_qk:
         node.attribute.extend([helper.make_attribute("decoder_output_cross_qk", 1)])
 
+    # beam graph inputs
+    float_data_type = TensorProto.FLOAT
+    if args.precision == Precision.FLOAT16:
+        float_data_type = TensorProto.FLOAT16
+
     input_features = helper.make_tensor_value_info(
         "input_features", TensorProto.FLOAT, ["batch_size", "feature_size", "sequence_length"]
     )
@@ -110,8 +121,8 @@ def chain_model(args):
     min_length = helper.make_tensor_value_info("min_length", TensorProto.INT32, [1])
     num_beams = helper.make_tensor_value_info("num_beams", TensorProto.INT32, [1])
     num_return_sequences = helper.make_tensor_value_info("num_return_sequences", TensorProto.INT32, [1])
-    length_penalty = helper.make_tensor_value_info("length_penalty", TensorProto.FLOAT, [1])
-    repetition_penalty = helper.make_tensor_value_info("repetition_penalty", TensorProto.FLOAT, [1])
+    length_penalty = helper.make_tensor_value_info("length_penalty", float_data_type, [1])
+    repetition_penalty = helper.make_tensor_value_info("repetition_penalty", float_data_type, [1])
 
     graph_inputs = [
         input_features,
@@ -143,7 +154,7 @@ def chain_model(args):
         graph_inputs.append(logits_processor)
     if args.output_cross_qk:
         cross_qk_layer_head = helper.make_tensor_value_info(
-            "cross_qk_layer_head", TensorProto.INT32, ["num_layer_head_cross_qk", 2]
+            "cross_qk_layer_head", TensorProto.INT32, ["num_layer_head", 2]
         )
         graph_inputs.append(cross_qk_layer_head)
 
@@ -186,6 +197,13 @@ def chain_model(args):
         else [node]
     )
     beam_graph = helper.make_graph(graph_nodes, "beam-search-test", graph_inputs, graph_outputs, initializers)
+    if args.cross_qk_onnx_model:
+        post_qk_model = onnx.load_model(args.cross_qk_onnx_model, load_external_data=True)
+        post_qk_graph = post_qk_model.graph
+        beam_graph.initializer.extend(post_qk_graph.initializer)
+        beam_graph.node.extend(post_qk_graph.node)
+        beam_graph.input.extend(post_qk_graph.input[1:])
+        beam_graph.output.extend(post_qk_graph.output)
 
     # Verify graph's inputs match beam search's inputs
     verify_inputs(beam_inputs, graph_inputs)

@@ -1124,7 +1124,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(BeamSearch, 1,
                                         "T", OpSchema::Optional)
                                 .Output(3, "cross_qk",
                                         "Output the accumulated stacked Q*K in cross attentions. Let H = number of Head of cross attention, "
-                                        "F = the frames or kv-seq-len of the cross attention input, T = max_token_length to be decoded, L = number of layers,"
+                                        "F = the frames or kv-seq-len of the cross attention input, T = real decoded token length, L = number of layers,"
                                         "B = batch size, R = num_return_sequences. It then should return tensor of shape [B, R, L*H, T, F]."
                                         "If cross_qk_layer_head is given, shape is [B, R, cross_qk_layer_head.shape[0], T, F]",
                                         "T", OpSchema::Optional)

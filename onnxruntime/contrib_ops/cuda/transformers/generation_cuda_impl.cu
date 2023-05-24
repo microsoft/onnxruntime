@@ -1406,7 +1406,7 @@ __global__ void CopyDecoderCrossQKAllStepsKernel(
     int max_length,
     int frames_of_k,
     const T* cross_qk_buffer_data, // [batch, num_beams, layer_head_pair_count, max_length, frames]
-    T* cross_qk_output, // [batch, num_return_sequences, layer_head_pair_count, max_length, frames]
+    T* cross_qk_output, // [batch, num_return_sequences, layer_head_pair_count, total_decoding_length, frames]
     const int* cache_indir_data // [batch, num_beams, max_length]
 ) {
   const int pair = blockIdx.y;
@@ -1421,17 +1421,11 @@ __global__ void CopyDecoderCrossQKAllStepsKernel(
   int bi_src = cache_indir_data[offset_in_cache];
 
   T* target =  cross_qk_output +
-          ((int64_t)br * layer_head_pair_count * max_length + (int64_t)pair * max_length + token_decoding_index) * frames_of_k;
-  if (token_decoding_index < total_decoding_length) {
-    const T* src = cross_qk_buffer_data +
-            ((int64_t)bi_src * layer_head_pair_count * max_length + (int64_t)pair * max_length + token_decoding_index) * frames_of_k;
-    for (int tid = threadIdx.x; tid < frames_of_k; tid += blockDim.x) {
-      target[tid] = src[tid]; // use vectorized read write in future if needed
-    }
-  } else {
-    for (int tid = threadIdx.x; tid < frames_of_k; tid += blockDim.x) {
-      target[tid] = (T)0;
-    }
+          (((int64_t)br * layer_head_pair_count + (int64_t)pair) * total_decoding_length + token_decoding_index) * frames_of_k;
+  const T* src = cross_qk_buffer_data +
+          ((int64_t)bi_src * layer_head_pair_count * max_length + (int64_t)pair * max_length + token_decoding_index) * frames_of_k;
+  for (int tid = threadIdx.x; tid < frames_of_k; tid += blockDim.x) {
+    target[tid] = src[tid]; // use vectorized read write in future if needed
   }
 }
 

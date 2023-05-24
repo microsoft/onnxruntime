@@ -98,7 +98,7 @@ Status WhisperDecoderSubgraph::Validate(const std::vector<const NodeArg*>& subgr
 
   // Save parameters related to the subgraph.
   ORT_RETURN_IF_ERROR(GetParameters(past_shape, logits_shape, false));
-  // HACKING HACKING
+
   num_layers = (static_cast<int>(subgraph_outputs.size()) - first_present_output_index_) / (output_cross_qk_ ? 3 : 2);
 
   // If input_ids's shape is ['batch_size', 1] then use next token as input_ids.

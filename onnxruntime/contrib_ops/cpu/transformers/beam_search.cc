@@ -345,7 +345,7 @@ Status BeamSearch::Compute(OpKernelContext* ctx) const {
           update_decoder_feeds_fp16_func_ ? update_decoder_feeds_fp16_func_ : GenerationCpuDeviceHelper::UpdateDecoderFeeds<MLFloat16>,
           expand_buffer_float_func_,
           expand_buffer_float16_func_,
-          create_beam_scorer_func_
+          create_beam_scorer_func_,
           update_decoder_cross_qk_fp16_func_ ? update_decoder_cross_qk_fp16_func_ : GenerationCpuDeviceHelper::UpdateDecoderCrossQK<MLFloat16>,
           finalize_decoder_cross_qk_fp16_func_ ? finalize_decoder_cross_qk_fp16_func_ : GenerationCpuDeviceHelper::FinalizeDecoderCrossQK<MLFloat16>,
           cuda_device_prop_,
