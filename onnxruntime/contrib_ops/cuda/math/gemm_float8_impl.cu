@@ -145,10 +145,22 @@ onnxruntime::Status GemmFloat8_Impl::CudaCompute(
   cublasLtEpilogue_t epilogue = CUBLASLT_EPILOGUE_DEFAULT;
 
   // Create matrix descriptors. Not setting any extra attributes.
-  cudaDataType atype = ToCudaDataType(dtypes[0]);
-  CUBLAS_RETURN_IF_ERROR(cublasLtMatrixLayoutCreate(&Adesc, atype, trans_A_ ? M : K, trans_A_ ? K : M, lda));
-  CUBLAS_RETURN_IF_ERROR(cublasLtMatrixLayoutCreate(&Bdesc, ToCudaDataType(dtypes[1]), trans_B_ ? K : N, trans_B_ ? N : K, ldb));
-  CUBLAS_RETURN_IF_ERROR(cublasLtMatrixLayoutCreate(&Cdesc, ToCudaDataType(dtypes[2]), M, N, ldd));
+  cudaDataType a_type = ToCudaDataType(dtypes[0]);
+  cudaDataType b_type = ToCudaDataType(dtypes[1]);
+  cudaDataType c_type = ToCudaDataType(dtypes[2]);
+  cudaDataType biad_type;
+  bool gemm_float8;
+  if (a_type == CUDA_R_8F_E4M3 || b_type == CUDA_R_8F_E4M3 || a_type == CUDA_R_8F_E5M2 || b_type == CUDA_R_8F_E5M2) {
+    bias_type = c_type == CUDA_R_16F ? CUDA_R_16F : CUDA_R_16BF;
+    gemm_float8 = true;
+  }
+  else {
+    bias_type = c_type;
+    gemm_float8 = false;
+  }
+  CUBLAS_RETURN_IF_ERROR(cublasLtMatrixLayoutCreate(&Adesc, a_type, trans_A_ ? M : K, trans_A_ ? K : M, lda));
+  CUBLAS_RETURN_IF_ERROR(cublasLtMatrixLayoutCreate(&Bdesc, b_type, trans_B_ ? K : N, trans_B_ ? N : K, ldb));
+  CUBLAS_RETURN_IF_ERROR(cublasLtMatrixLayoutCreate(&Cdesc, c_type, M, N, ldd));
   CUBLAS_RETURN_IF_ERROR(cublasLtMatrixLayoutCreate(&Ddesc, ToCudaDataType(dtypes[4]), M, N, ldd));
 
   CUBLAS_RETURN_IF_ERROR(cublasLtMatrixLayoutSetAttribute(Adesc, CUBLASLT_MATRIX_LAYOUT_ORDER, &matrixOrder, sizeof(matrixOrder)));
@@ -165,6 +177,9 @@ onnxruntime::Status GemmFloat8_Impl::CudaCompute(
   cublasLtMatmulDescSetAttribute(operationDesc, CUBLASLT_MATMUL_DESC_TRANSB, &transb, sizeof(transb));
   const int8_t ifast_accumulation_mode = fast_accumulation_mode_ ? 0 : 1;
   cublasLtMatmulDescSetAttribute(operationDesc, CUBLASLT_MATMUL_DESC_FAST_ACCUM, &ifast_accumulation_mode, sizeof(ifast_accumulation_mode));
+  if (gemm_float8) {
+    cublasLtMatmulDescSetAttribute(operationDesc, CUBLASLT_MATMUL_DESC_BIAS_DATA_TYPE, &bias_type, sizeof(bias_type));
+  }
 
   /*
   // TODO add inputs for the scales.
@@ -186,10 +201,6 @@ onnxruntime::Status GemmFloat8_Impl::CudaCompute(
   /*
   // No bias for the time being.
   if (relu_bias) {
-    cudaDataType bias_type = ToCudaDataType(dtypes[3]);
-    CUBLAS_RETURN_IF_ERROR(cublasLtMatmulDescSetAttribute(operationDesc,
-                                                          CUBLASLT_MATMUL_DESC_BIAS_DATA_TYPE,
-                                                          &bias_type, sizeof(bias_type)));
     CUBLAS_RETURN_IF_ERROR(cublasLtMatmulDescSetAttribute(operationDesc,
                                                           CUBLASLT_MATMUL_DESC_BIAS_POINTER,
                                                           relu_bias, sizeof(*relu_bias)));
@@ -218,7 +229,7 @@ onnxruntime::Status GemmFloat8_Impl::CudaCompute(
               ", preference=", preference, ", returnedResults=", returnedResults,
               ", A_type=", ToCudaDataType(dtypes[0]), ", B_type=", ToCudaDataType(dtypes[1]),
               ", C_type=", ToCudaDataType(dtypes[2]), ", result_type=", ToCudaDataType(dtypes[4]),
-              ", bias_type=", ToCudaDataType(dtypes[3]), ", scale_type=", scale_type_,
+              ", bias_type=", bias_type, ", scale_type=", scale_type_,
               ", computeType=", compute_type_,
               ", transA=", trans_A_, ", transB=", trans_B_,
               ", M=", M, ", N=", N, ", K=", K, ", lda=", lda, ", ldb=", ldb, ", ldd=", ldd,

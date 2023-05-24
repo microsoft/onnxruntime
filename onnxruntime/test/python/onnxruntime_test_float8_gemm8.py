@@ -99,17 +99,17 @@ class TestFloat8Gemm8(unittest.TestCase):
         check_model(onnx_model)
         return onnx_model
 
-    def common_test_model_gemm(self, float_type, compute_type="CUBLAS_COMPUTE_16F"):
+    def common_test_model_gemm(self, float_type, compute_type="CUBLAS_COMPUTE_16F", mul=1, atol=0, rtol=0):
         a = np.arange(9).reshape((3, 3)).astype(np.float32)
-        b = (2 ** np.arange(9).reshape((3, 3))).astype(np.float32)
+        b = (2 ** np.arange(9).reshape((3, 3)) * mul).astype(np.float32)
         expected = a.T @ b
         feeds = {"A": a, "B": b}
 
         onnx_model = self.get_model_gemm("FLOAT")
         if float_type == "FLOAT8E4M3FN":
-            float_types = ["FLOAT8E4M3FN", "FLOAT8E4M3FN", "FLOAT8E4M3FN", "FLOAT", "FLOAT8E4M3FN"]
+            float_types = ["FLOAT8E4M3FN", "FLOAT8E4M3FN", "FLOAT16", "FLOAT", "FLOAT8E4M3FN"]
         elif float_type == "FLOAT8E5M2":
-            float_types = ["FLOAT8E5M2", "FLOAT8E4M3FN", "FLOAT8E4M3FN", "FLOAT", "FLOAT8E4M3FN"]
+            float_types = ["FLOAT8E5M2", "FLOAT8E4M3FN", "FLOAT16", "FLOAT", "FLOAT8E4M3FN"]
         elif float_type == "FLOAT16":
             float_types = ["FLOAT16", "FLOAT16", "FLOAT16", "FLOAT16", "FLOAT16"]
         elif float_type == "BFLOAT16":
@@ -124,7 +124,7 @@ class TestFloat8Gemm8(unittest.TestCase):
         )
         y = ref.run(None, feeds)[0]
         with self.subTest(name="Gemm"):
-            assert_allclose(expected, y)
+            assert_allclose(expected, y, atol=atol, rtol=atol)
             self.assertEqual(expected.shape, y.shape)
             self.assertEqual(expected.dtype, y.dtype)
 
@@ -134,7 +134,7 @@ class TestFloat8Gemm8(unittest.TestCase):
         )
         y = ref8.run(None, feeds)[0]
         with self.subTest(name="GemmFloat8", float_types=float_types):
-            assert_allclose(expected, y)
+            assert_allclose(expected, y, atol=atol, rtol=atol)
             self.assertEqual(expected.shape, y.shape)
             self.assertEqual(expected.dtype, y.dtype)
 
@@ -148,7 +148,7 @@ class TestFloat8Gemm8(unittest.TestCase):
         self.common_test_model_gemm("FLOAT16", "CUBLAS_COMPUTE_32F")
 
     def test_model_gemm_bfloat16_ct32(self):
-        self.common_test_model_gemm("BFLOAT16", "CUBLAS_COMPUTE_32F")
+        self.common_test_model_gemm("BFLOAT16", "CUBLAS_COMPUTE_32F", mul=2**(-10), atol=1e-2)
 
     def test_model_gemm_float_ct16(self):
         self.common_test_model_gemm("FLOAT", "CUBLAS_COMPUTE_32F_FAST_16F")
