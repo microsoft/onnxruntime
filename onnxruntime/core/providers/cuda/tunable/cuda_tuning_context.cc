@@ -77,18 +77,16 @@ bool CudaTuningContext::IsTuningEnabled() const {
   return info_->tuning_enable;
 }
 
-void CudaTuningContext::EnableTuningEarlyStop() {
-  LOGS_DEFAULT(INFO) << "Enable TunableOp tuning early stop for CUDA Execution Provider";
-  info_->tuning_early_stop_enable = true;
+void CudaTuningContext::SetMaxTuningDurationMs(int max_duration_ms) {
+  info_->max_tuning_duration_ms = max_duration_ms;
 }
 
-void CudaTuningContext::DisableTuningEarlyStop() {
-  LOGS_DEFAULT(INFO) << "Disable TunableOp tuning early stop for CUDA Execution Provider";
-  info_->tuning_early_stop_enable = false;
+int CudaTuningContext::GetMaxTuningDurationMs() const {
+  return info_->max_tuning_duration_ms;
 }
 
-bool CudaTuningContext::IsTuningEarlyStopEnabled() const {
-  return info_->tuning_early_stop_enable;
+bool CudaTuningContext::IsMaxTuningDurationMsValid() const {
+  return info_->max_tuning_duration_ms > 0;
 }
 
 TuningResultsManager& CudaTuningContext::GetTuningResultsManager() {

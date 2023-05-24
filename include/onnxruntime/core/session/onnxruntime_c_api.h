@@ -32,6 +32,7 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <string.h>
+#include <limits>
 
 /** \brief The API version defined in this header
  *
@@ -402,7 +403,7 @@ typedef struct OrtCUDAProviderOptions {
         default_memory_arena_cfg{},
         tunable_op_enable{false},
         tunable_op_tuning_enable{false},
-        tunable_op_tuning_early_stop_enable{false} {}
+        tunable_op_max_tuning_duration_ms{} {}
 #endif
 
   /** \brief CUDA device Id
@@ -465,11 +466,10 @@ typedef struct OrtCUDAProviderOptions {
    */
   int tunable_op_tuning_enable;
 
-  /** \brief Enable TunableOp tuning early stop for reducing tuning time.
-   *   Set it to 1/0 to enable/disable TunableOp tuning early stop. Otherwise, it is disabled by default.
-   *   This option can be overriden by environment variable ORT_CUDA_TUNABLE_OP_TUNING_EARLY_STOP_ENABLE.
+  /** \brief Max tuning duration time limit for each instance of TunableOp.
+   *   Defaults to 0 to disable the limit.
    */
-  int tunable_op_tuning_early_stop_enable;
+  int tunable_op_max_tuning_duration_ms;
 
 } OrtCUDAProviderOptions;
 
@@ -490,7 +490,7 @@ typedef struct OrtROCMProviderOptions {
         default_memory_arena_cfg{},
         tunable_op_enable{false},
         tunable_op_tuning_enable{false},
-        tunable_op_tuning_early_stop_enable{false} {}
+        tunable_op_max_tuning_duration_ms{} {}
 #endif
 
   /** \brief ROCM device Id
@@ -552,11 +552,10 @@ typedef struct OrtROCMProviderOptions {
    */
   int tunable_op_tuning_enable;
 
-  /** \brief Enable TunableOp tuning stop early for reducing tuning time.
-   *   Set it to 1/0 to enable/disable TunableOp tuning early stop. Otherwise, it is disabled by default.
-   *   This option can be overriden by environment variable ORT_ROCM_TUNABLE_OP_TUNING_EARLY_STOP_ENABLE.
+  /** \brief Max tuning duration time limit for each instance of TunableOp.
+   *   Defaults to 0 to disable the limit.
    */
-  int tunable_op_tuning_early_stop_enable;
+  int tunable_op_max_tuning_duration_ms;
 
 } OrtROCMProviderOptions;
 

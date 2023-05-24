@@ -259,7 +259,7 @@ class TestInferenceSession(unittest.TestCase):
 
                 test_get_and_set_option_with_values("tunable_op_tuning_enable", ["1", "0"])
 
-                test_get_and_set_option_with_values("tunable_op_tuning_early_stop_enable", ["1", "0"])
+                test_get_and_set_option_with_values("tunable_op_max_tuning_duration_ms", ["-1", "1"])
 
                 option["gpu_external_alloc"] = "0"
                 option["gpu_external_free"] = "0"
@@ -397,7 +397,7 @@ class TestInferenceSession(unittest.TestCase):
 
                 test_get_and_set_option_with_values("tunable_op_tuning_enable", ["1", "0"])
 
-                test_get_and_set_option_with_values("tunable_op_tuning_early_stop_enable", ["1", "0"])
+                test_get_and_set_option_with_values("tunable_op_max_tuning_duration_ms", ["-1", "1"])
 
             runRocmOptionsTest()
 

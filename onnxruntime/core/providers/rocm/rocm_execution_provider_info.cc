@@ -23,7 +23,7 @@ constexpr const char* kGpuExternalEmptyCache = "gpu_external_empty_cache";
 constexpr const char* kMiopenConvUseMaxWorkspace = "miopen_conv_use_max_workspace";
 constexpr const char* kTunableOpEnable = "tunable_op_enable";
 constexpr const char* kTunableOpTuningEnable = "tunable_op_tuning_enable";
-constexpr const char* kTunableOpTuningEarlyStopEnable = "tunable_op_tuning_early_stop_enable";
+constexpr const char* kTunableOpMaxTuningDurationMs = "tunable_op_max_tuning_duration_ms";
 }  // namespace provider_option_names
 }  // namespace rocm
 
@@ -97,9 +97,9 @@ ROCMExecutionProviderInfo ROCMExecutionProviderInfo::FromProviderOptions(const P
                 return Status::OK();
               })
           .AddValueParser(
-              rocm::provider_option_names::kTunableOpTuningEarlyStopEnable,
+              rocm::provider_option_names::kTunableOpMaxTuningDurationMs,
               [&info](const std::string& value_str) -> Status {
-                ORT_RETURN_IF_ERROR(ParseStringWithClassicLocale(value_str, info.tunable_op.tuning_early_stop_enable));
+                ORT_RETURN_IF_ERROR(ParseStringWithClassicLocale(value_str, info.tunable_op.max_tuning_duration_ms));
                 return Status::OK();
               })
           .Parse(options));
@@ -123,7 +123,7 @@ ProviderOptions ROCMExecutionProviderInfo::ToProviderOptions(const ROCMExecution
       {rocm::provider_option_names::kMiopenConvUseMaxWorkspace, MakeStringWithClassicLocale(info.miopen_conv_use_max_workspace)},
       {rocm::provider_option_names::kTunableOpEnable, MakeStringWithClassicLocale(info.tunable_op.enable)},
       {rocm::provider_option_names::kTunableOpTuningEnable, MakeStringWithClassicLocale(info.tunable_op.tuning_enable)},
-      {rocm::provider_option_names::kTunableOpTuningEarlyStopEnable, MakeStringWithClassicLocale(info.tunable_op.tuning_early_stop_enable)},
+      {rocm::provider_option_names::kTunableOpMaxTuningDurationMs, MakeStringWithClassicLocale(info.tunable_op.max_tuning_duration_ms)},
   };
 
   return options;

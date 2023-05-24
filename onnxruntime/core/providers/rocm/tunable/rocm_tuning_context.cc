@@ -114,18 +114,16 @@ bool RocmTuningContext::IsTuningEnabled() const {
   return info_->tuning_enable;
 }
 
-void RocmTuningContext::EnableTuningEarlyStop() {
-  LOGS_DEFAULT(INFO) << "Enable TunableOp tuning early stop for ROCm Execution Provider";
-  info_->tuning_early_stop_enable = true;
+void RocmTuningContext::SetMaxTuningDurationMs(int max_duration_ms) {
+  info_->max_tuning_duration_ms = max_duration_ms;
 }
 
-void RocmTuningContext::DisableTuningEarlyStop() {
-  LOGS_DEFAULT(INFO) << "Disable TunableOp tuning early stop for ROCm Execution Provider";
-  info_->tuning_early_stop_enable = false;
+int RocmTuningContext::GetMaxTuningDurationMs() const {
+  return info_->max_tuning_duration_ms;
 }
 
-bool RocmTuningContext::IsTuningEarlyStopEnabled() const {
-  return info_->tuning_early_stop_enable;
+bool RocmTuningContext::IsMaxTuningDurationMsValid() const {
+  return info_->max_tuning_duration_ms > 0;
 }
 
 TuningResultsManager& RocmTuningContext::GetTuningResultsManager() {

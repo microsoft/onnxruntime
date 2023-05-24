@@ -181,13 +181,11 @@ void OverrideTunableOpInfoByEnv(ROCMExecutionProviderInfo& info) {
     info.tunable_op.tuning_enable = *env_tunable_op_tuning_enable;
   }
 
-  if (auto env_tunable_op_tuning_early_stop_enable = onnxruntime::ParseTestOnlyEnvironmentVariable<bool>(
-          "ORT_ROCM_TUNABLE_OP_TUNING_EARLY_STOP_ENABLE", {"0", "1"},
-          "Use provider_options \"tunable_op_tuning_early_stop_enable\" instead.");
-      env_tunable_op_tuning_early_stop_enable.has_value() &&
-      env_tunable_op_tuning_early_stop_enable != info.tunable_op.tuning_early_stop_enable) {
-    LOGS_DEFAULT(INFO) << "ORT_ROCM_TUNABLE_OP_TUNING_EARLY_STOP_ENABLE is set to " << *env_tunable_op_tuning_early_stop_enable;
-    info.tunable_op.tuning_early_stop_enable = *env_tunable_op_tuning_early_stop_enable;
+  if (auto env_tunable_op_max_tuning_duration_ms = onnxruntime::ParseEnvironmentVariableWithDefault<int>(
+          "ORT_ROCM_TUNABLE_OP_MAX_TUNING_DURATION_MS", 0);
+      env_tunable_op_max_tuning_duration_ms != info.tunable_op.max_tuning_duration_ms) {
+    LOGS_DEFAULT(INFO) << "ORT_ROCM_TUNABLE_OP_MAX_TUNING_DURATION_MS is set to " << env_tunable_op_max_tuning_duration_ms;
+    info.tunable_op.max_tuning_duration_ms = env_tunable_op_max_tuning_duration_ms;
   }
 
   if (info.tunable_op.tuning_enable && !info.tunable_op.enable) {
