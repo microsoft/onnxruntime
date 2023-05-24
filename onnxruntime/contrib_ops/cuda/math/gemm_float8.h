@@ -28,7 +28,7 @@ class GemmFloat8 final : public CudaKernel {
 
     params_.fast_accumulation_mode_ = info.GetAttrOrDefault<int64_t>("fastAccumulationMode", 1) != 0;
 
-    std::string stemp = info.GetAttrOrDefault<std::string>("computeType", "CUBLAS_COMPUTE_16F");
+    std::string stemp = info.GetAttrOrDefault<std::string>("computeType", "CUBLAS_COMPUTE_32F");
     if (stemp == "CUBLAS_COMPUTE_16F") {
       params_.compute_type_ = CUBLAS_COMPUTE_16F;
       params_.scale_type_ = CUDA_R_16F;

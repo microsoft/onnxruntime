@@ -2346,7 +2346,7 @@ information on what attribute or type must be modified.)DOC")
                                     AttributeProto::STRING,
                                     "CUBLAS_COMPUTE_32F")
                                 .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-                                  propagateElemTypeFromInputToOutput(ctx, 0, 0);
+                                  propagateElemTypeFromInputToOutput(ctx, 4, 0);
                                   if (hasNInputShapes(ctx, 2)) {
                                     auto transAAttr = ctx.getAttribute("transA");
                                     bool transA = transAAttr ? static_cast<int>(transAAttr->i()) != 0 : false;
