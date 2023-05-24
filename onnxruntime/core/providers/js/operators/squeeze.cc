@@ -9,7 +9,7 @@ namespace js {
 ONNX_OPERATOR_KERNEL_EX(
     Squeeze,
     kOnnxDomain,
-    14,
+    13,
     kJsExecutionProvider,
     (*KernelDefBuilder::Create())
         .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
@@ -21,25 +21,21 @@ ONNX_OPERATOR_KERNEL_EX(
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     Squeeze,
     kOnnxDomain,
-    13, 13,
+    11, 12,
     kJsExecutionProvider,
     (*KernelDefBuilder::Create())
         .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
-        .TypeConstraint("axes", DataTypeImpl::GetTensorType<int64_t>())
-        .Alias(0, 0)
-        .InputMemoryType(OrtMemTypeCPU, 1),
+        .Alias(0, 0),
     Squeeze);
 
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     Squeeze,
     kOnnxDomain,
-    5, 12,
+    1, 10,
     kJsExecutionProvider,
     (*KernelDefBuilder::Create())
         .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
-        .TypeConstraint("axes", DataTypeImpl::GetTensorType<int64_t>())
-        .Alias(0, 0)
-        .InputMemoryType(OrtMemTypeCPU, 1),
+        .Alias(0, 0),
     Squeeze);
 
 }  // namespace js
