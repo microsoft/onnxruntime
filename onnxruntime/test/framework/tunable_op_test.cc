@@ -58,8 +58,9 @@ class TestTuningContext : public ITuningContext {
   bool IsTuningEnabled() const override { return tuning_enabled_; }
 
   void SetMaxTuningDurationMs(int max_duration_ms) override { max_tuning_duration_ms_ = max_duration_ms; }
-  int GetMaxTuningDurationMs() const override { return max_tuning_duration_ms_; }
-  bool IsMaxTuningDurationMsValid() const override { return max_tuning_duration_ms_ > 0; }
+  int GetMaxTuningDurationMs() const override {
+    return max_tuning_duration_ms_ > 0 ? max_tuning_duration_ms_ : std::numeric_limits<int>::max();
+  }
 
   TuningResultsManager& GetTuningResultsManager() override { return manager_; }
   const TuningResultsManager& GetTuningResultsManager() const override { return manager_; }

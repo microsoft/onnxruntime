@@ -82,11 +82,7 @@ void CudaTuningContext::SetMaxTuningDurationMs(int max_duration_ms) {
 }
 
 int CudaTuningContext::GetMaxTuningDurationMs() const {
-  return info_->max_tuning_duration_ms;
-}
-
-bool CudaTuningContext::IsMaxTuningDurationMsValid() const {
-  return info_->max_tuning_duration_ms > 0;
+  return info_->max_tuning_duration_ms > 0 ? info_->max_tuning_duration_ms : std::numeric_limits<int>::max();
 }
 
 TuningResultsManager& CudaTuningContext::GetTuningResultsManager() {
