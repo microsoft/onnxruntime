@@ -12,40 +12,6 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-// It must exist somewhere already.
-inline cudaDataType ToCudaDataType(int32_t element_type) {
-  switch (element_type) {
-    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
-      return CUDA_R_32F;
-    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16:
-      return CUDA_R_16F;
-    case ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16:
-      return CUDA_R_16BF;
-    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E4M3FN:
-      return CUDA_R_8F_E4M3;
-    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E5M2:
-      return CUDA_R_8F_E5M2;
-    default:
-      ORT_THROW("Unexpected element_type=", element_type, ".");
-  }
-}
-
-// It must exist somewhere already.
-inline int32_t TypeSize(int32_t element_type) {
-  switch (element_type) {
-    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
-      return 4;
-    case ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16:
-    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16:
-      return 2;
-    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E4M3FN:
-    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E5M2:
-      return 1;
-    default:
-      ORT_THROW("Unexpected element_type=", element_type, ".");
-  }
-}
-
 struct GemmFloat8_Impl {
   // see https://docs.nvidia.com/cuda/cublas/index.html?highlight=cublasLtMatmulDescAttributes_t#cublasltmatmuldescattributes-t
   bool fast_accumulation_mode_;
