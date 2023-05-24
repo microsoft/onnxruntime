@@ -447,12 +447,10 @@ Return Value:
 
 #if defined(_WIN32)
     HasDotProductInstructions = (IsProcessorFeaturePresent(PF_ARM_V82_DP_INSTRUCTIONS_AVAILABLE) != 0);
-#elif defined(__linux__)
+#else
     uint64_t isar0_el1;
     asm("mrs %[reg], ID_AA64ISAR0_EL1\n" : [reg] "=r"(isar0_el1) : :);
     HasDotProductInstructions = ((isar0_el1 >> 44) & 0xfu) == 0x1u;
-#else
-    HasDotProductInstructions = false;
 #endif
 
     if (HasDotProductInstructions) {
