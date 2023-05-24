@@ -2728,6 +2728,10 @@ struct OrtApi {
    *  crossing which the current chunk is chunked into 2.
    * "initial_growth_chunk_size_bytes": (Possible) Size of the second allocation in the arena.
    *  Only relevant if arena strategy is `kNextPowerOfTwo`. Use -1 to allow ORT to choose the default.
+   * "max_power_of_two_extend_bytes": The maximum enxtend size if arena strategy is `kNextPowerOfTwo`.
+   *  It is not an allocation limit, it is only a limit for extention when requested byte is less than the limit.
+   *  When requested bytes is more than the limit, allocator will still return as requested.
+   *  Use -1 to allow ORT to choose the default 1GB for max_power_of_two_extend_bytes.
    *  Ultimately, the allocation size is determined by the allocation memory request.
    *  Further allocation sizes are governed by the arena extend strategy.
    *

@@ -18,7 +18,7 @@ struct AllocatorCreationInfo {
   AllocatorCreationInfo(AllocatorFactory device_alloc_factory,
                         OrtDevice::DeviceId device_id = 0,
                         bool use_arena = true,
-                        OrtArenaCfg arena_cfg = {0, -1, -1, -1, -1},
+                        OrtArenaCfg arena_cfg = {0, -1, -1, -1, -1, -1L},
                         bool stream_aware_arena = false,
                         bool cross_stream_reusing = false)
       : device_alloc_factory(device_alloc_factory),
