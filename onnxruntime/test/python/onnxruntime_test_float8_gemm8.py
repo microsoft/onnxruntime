@@ -108,8 +108,10 @@ class TestFloat8Gemm8(unittest.TestCase):
 
     def common_test_model_gemm(self, float_type, compute_type="CUBLAS_COMPUTE_16F"):
         a = np.arange(9).reshape((3, 3)).astype(np.float32)
+        a[:, :] *= 0
+        a[0, 1] = 1
         b = (2 ** np.arange(9).reshape((3, 3))).astype(np.float32)
-        expected = a @ b
+        expected = a.T @ b
         feeds = {"A": a, "B": b}
 
         onnx_model = self.get_model_gemm("FLOAT")
@@ -127,17 +129,19 @@ class TestFloat8Gemm8(unittest.TestCase):
             onnx_model.SerializeToString(), providers=["CUDAExecutionProvider", "CPUExecutionProvider"]
         )
         y = ref.run(None, feeds)[0]
-        assert_allclose(expected, y)
-        self.assertEqual(expected.shape, y.shape)
-        self.assertEqual(expected.dtype, y.dtype)
+        with self.subTest(name="Gemm"):
+            assert_allclose(expected, y)
+            self.assertEqual(expected.shape, y.shape)
+            self.assertEqual(expected.dtype, y.dtype)
 
         ref8 = self.InferenceSession(
             onnx_model_f8.SerializeToString(), providers=["CUDAExecutionProvider", "CPUExecutionProvider"]
         )
         y = ref8.run(None, feeds)[0]
-        assert_allclose(expected, y)
-        self.assertEqual(expected.shape, y.shape)
-        self.assertEqual(expected.dtype, y.dtype)
+        with self.subTest(name="GemmFloat8"):
+            assert_allclose(expected, y)
+            self.assertEqual(expected.shape, y.shape)
+            self.assertEqual(expected.dtype, y.dtype)
 
     def test_model_gemm_float(self):
         self.common_test_model_gemm("FLOAT", "CUBLAS_COMPUTE_32F")
@@ -151,7 +155,7 @@ class TestFloat8Gemm8(unittest.TestCase):
     def test_model_gemm_float_ct16(self):
         self.common_test_model_gemm("FLOAT", "CUBLAS_COMPUTE_32F_FAST_16F")
 
-    def _test_model_gemm_e4m3(self):
+    def test_model_gemm_e4m3(self):
         self.common_test_model_gemm("FLOAT8E4M3FN", "CUBLAS_COMPUTE_32F")
 
 

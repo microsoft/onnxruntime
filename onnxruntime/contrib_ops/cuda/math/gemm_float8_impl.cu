@@ -136,8 +136,6 @@ onnxruntime::Status GemmFloat8_Impl::CudaCompute(
   }
 
   // Gemm, note that CUDA assumes col-major, so Y(N,M) = alpha * op(B) x op(A) + beta * C
-  std::cout << "GemmF8-1\n";
-
   cublasLtMatmulDesc_t operationDesc = nullptr;
   cublasLtMatrixLayout_t Adesc = nullptr, Bdesc = nullptr, Cdesc = nullptr, Ddesc = nullptr;
   cublasLtMatmulPreference_t preference = nullptr;
@@ -145,8 +143,6 @@ onnxruntime::Status GemmFloat8_Impl::CudaCompute(
 
   cublasLtOrder_t matrixOrder = CUBLASLT_ORDER_ROW;
   cublasLtEpilogue_t epilogue = CUBLASLT_EPILOGUE_DEFAULT;
-
-  std::cout << "GemmF8-2\n";
 
   // Create matrix descriptors. Not setting any extra attributes.
   cudaDataType atype = ToCudaDataType(dtypes[0]);
@@ -170,7 +166,6 @@ onnxruntime::Status GemmFloat8_Impl::CudaCompute(
   const int8_t ifast_accumulation_mode = fast_accumulation_mode_ ? 0 : 1;
   cublasLtMatmulDescSetAttribute(operationDesc, CUBLASLT_MATMUL_DESC_FAST_ACCUM, &ifast_accumulation_mode, sizeof(ifast_accumulation_mode));
 
-  std::cout << "GemmF8-3\n";
   /*
   // TODO add inputs for the scales.
   // No scale for the time being so no need to set.
@@ -188,11 +183,9 @@ onnxruntime::Status GemmFloat8_Impl::CudaCompute(
         &math_sm_count, sizeof(math_sm_count));
   }
 
-  std::cout << "GemmF8-4\n";
   /*
   // No bias for the time being.
   if (relu_bias) {
-    std::cout << "GemmF8-6\n";
     cudaDataType bias_type = ToCudaDataType(dtypes[4]);
     CUBLAS_RETURN_IF_ERROR(cublasLtMatmulDescSetAttribute(operationDesc,
                                                           CUBLASLT_MATMUL_DESC_BIAS_DATA_TYPE,
@@ -204,7 +197,6 @@ onnxruntime::Status GemmFloat8_Impl::CudaCompute(
   }
   */
 
-  std::cout << "GemmF8-7\n";
   cublasLtMatmulDescSetAttribute(operationDesc, CUBLASLT_MATMUL_DESC_EPILOGUE, &epilogue, sizeof(epilogue));
 
   cublasLtMatmulPreferenceCreate(&preference);
@@ -216,20 +208,11 @@ onnxruntime::Status GemmFloat8_Impl::CudaCompute(
   size_t workspaceSize = std::max(K * M, K * N) * type_size;  // suggested fixed value 24Mb
   cublasLtMatmulPreferenceSetAttribute(preference, CUBLASLT_MATMUL_PREF_MAX_WORKSPACE_BYTES, &workspaceSize, sizeof(workspaceSize));
 
-  std::cout << "GemmF8-8\n";
-  std::cout << "<< A_type="<< ToCudaDataType(dtypes[0]) << "<< B_type="<< ToCudaDataType(dtypes[1])<<
-              "<< C_type="<< ToCudaDataType(dtypes[2])<< "<< D_type="<< ToCudaDataType(dtypes[3])<<
-              "<< bias_type="<< ToCudaDataType(dtypes[4])<< "<< computeType="<< compute_type_<<
-              "<< transA="<< trans_A_<< "<< transB="<< trans_B_<<
-              "<< M="<< M<< "<< N="<< N<< "<< K="<< K<< "<< lda="<< lda<< "<< ldb="<< ldb<< "<< ldd="<< ldd<<
-              "<< workspaceSize="<< workspaceSize<< "\n";
-
   // https://docs.nvidia.com/cuda/cublas/index.html?highlight=cublasLtMatmulAlgoGetHeuristic#cublasltmatmulalgogetheuristic
   int returnedResults = 0;
   cublasStatus_t cuda_status = cublasLtMatmulAlgoGetHeuristic(handle, operationDesc,
                                                               Adesc, Bdesc, Cdesc, Ddesc,
                                                               preference, 1, &heuristicResult, &returnedResults);
-  std::cout << "GemmF8-8b\n";
   ORT_ENFORCE(returnedResults > 0 && cuda_status == CUBLAS_STATUS_SUCCESS,
               "Unable to find any suitable algorithm due to ", cublasGetErrorEnum(cuda_status),
               ", preference=", preference, ", returnedResults=", returnedResults,
@@ -240,7 +223,6 @@ onnxruntime::Status GemmFloat8_Impl::CudaCompute(
               ", M=", M, ", N=", N, ", K=", K, ", lda=", lda, ", ldb=", ldb, ", ldd=", ldd,
               ", workspaceSize=", workspaceSize, ". Check NVDIDIA documentation to see what combination is valid: ",
               "https://docs.nvidia.com/cuda/cublas/index.html?highlight=cublasLtMatmulAlgoGetHeuristic#cublasltmatmulalgogetheuristic.");
-  std::cout << "GemmF8-9\n";
   void* workspace = nullptr;
   CUDA_CALL_THROW(cudaMalloc((void**)&workspace, workspaceSize));
   // https://docs.nvidia.com/cuda/cublas/index.html?highlight=cublasLtMatmul#cublasltmatmul
@@ -260,17 +242,14 @@ onnxruntime::Status GemmFloat8_Impl::CudaCompute(
                  workspace,                               /* workspace */
                  workspaceSize,
                  stream);                                 /* stream */
-  std::cout << "GemmF8-10\n";
   cudaFree(workspace);
 
-  std::cout << "GemmF8-11\n";
   cublasLtMatmulPreferenceDestroy(preference);
   cublasLtMatrixLayoutDestroy(Ddesc);
   cublasLtMatrixLayoutDestroy(Cdesc);
   cublasLtMatrixLayoutDestroy(Bdesc);
   cublasLtMatrixLayoutDestroy(Adesc);
   cublasLtMatmulDescDestroy(operationDesc);
-  std::cout << "GemmF8-12\n";
   return onnxruntime::Status::OK();
 // #else
 // ORT_ENFORCE(false, "Compiling with CUDA_VERSION >= 11.8 is needed!");
