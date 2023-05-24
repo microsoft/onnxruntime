@@ -418,8 +418,8 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiHeadAttentio
   __syncthreads();
 
   if (params.out_qk != nullptr) {
-    // store cross qk before softmax, out_qk has shape [B, #Head, 1, total_sequence_length]
-    T* target = ((T*)params.out_qk) + ((int64_t)bi * params.num_heads * tlength + hi * tlength);
+    // store cross qk before softmax, out_qk has shape [B(batchxbeam), #Head, 1, total_sequence_length]
+    T* target = ((T*)params.out_qk) + ((int64_t)bhi * tlength);
     for (int ti = threadIdx.x; ti < params.total_sequence_length; ti += blockDim.x) {
       target[ti] = (T)(qk_smem[ti]);
     }

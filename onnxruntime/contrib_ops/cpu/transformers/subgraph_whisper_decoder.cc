@@ -100,7 +100,6 @@ Status WhisperDecoderSubgraph::Validate(const std::vector<const NodeArg*>& subgr
   ORT_RETURN_IF_ERROR(GetParameters(past_shape, logits_shape, false));
   // HACKING HACKING
   num_layers = (static_cast<int>(subgraph_outputs.size()) - first_present_output_index_) / (output_cross_qk_ ? 3 : 2);
-  std::cout << "+++ Number of layers = " << num_layers << std::endl;
 
   // If input_ids's shape is ['batch_size', 1] then use next token as input_ids.
   // Otherwise in the case of shape ['batch_size', 'sequence'], use sequence as input_ids.
