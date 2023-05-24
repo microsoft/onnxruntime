@@ -48,6 +48,5 @@ class Squeeze final : public JsKernel, public SqueezeBase {
   }
 };
 
-
 }  // namespace js
 }  // namespace onnxruntime
