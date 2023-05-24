@@ -1543,7 +1543,6 @@ Status UpdateDecoderCrossQK(
     AllocatorPtr allocator) {
   cudaStream_t cuda_stream = stream ? static_cast<cudaStream_t>(stream->GetHandle()) : nullptr;
 
-  std::cout << "  =======[" << iteration_number << "]==== UpdateDecoderCrossQK GPU ======== Implementing in progress ====" << std::endl;
   if (qk_layer_pointers.get() == nullptr) {
     // Put all the qk pointers into gpu, as they did not change in following decoding steps
     // also this help to use single kernel to process each step
@@ -1618,7 +1617,6 @@ Status FinalizeDecoderCrossQK(
     T* cross_qk_output,
     int num_return_sequences,
     const int* cache_indir_data) {
-  std::cout << "  ======[iteration number:" << iteration_number << "]===== FinalizeDecoderCrossQK GPU====" << std::endl;
   cudaStream_t cuda_stream = stream ? static_cast<cudaStream_t>(stream->GetHandle()) : nullptr;
 
   cuda::LaunchFinalizeCrossQK(
