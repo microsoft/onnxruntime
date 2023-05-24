@@ -4,4 +4,4 @@
 #include "softmax.h"
 
 namespace onnxruntime {
-} // onnxruntime
+}  // namespace onnxruntime

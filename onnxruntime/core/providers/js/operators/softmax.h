@@ -5,9 +5,7 @@
 
 namespace onnxruntime {
 
-    class softmax {
+class softmax {
+};
 
-    };
-
-} // onnxruntime
-
+}  // namespace onnxruntime
