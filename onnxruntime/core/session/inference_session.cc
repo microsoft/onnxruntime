@@ -942,7 +942,7 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
                                  const layout_transformer::DebugGraphFn& debug_graph_fn) -> Status {
       ORT_RETURN_IF_ERROR_SESSIONID_(
           layout_transformer::TransformLayoutForEP(graph_to_transform, modified, execution_provider,
-                                                   execution_providers_.GetDefaultCpuAllocator(), debug_graph_fn));
+                                                   std::make_shared<CPUAllocator>(), debug_graph_fn));
 
       if (modified) {
         ORT_RETURN_IF_ERROR_SESSIONID_(
@@ -1276,7 +1276,7 @@ Status PartitionOrtFormatModel(onnxruntime::Graph& graph,
                      const IExecutionProvider& execution_provider,
                      const layout_transformer::DebugGraphFn& debug_graph_fn) -> Status {
       return layout_transformer::TransformLayoutForEP(graph_to_transform, modified, execution_provider,
-                                                      providers.GetDefaultCpuAllocator(), debug_graph_fn);
+                                                      std::make_shared<CPUAllocator>(), debug_graph_fn);
     };
   }
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
