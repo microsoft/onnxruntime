@@ -112,8 +112,9 @@ Status TopKOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
   std::string k_param_name = k_param.GetParamTensorName();
   qnn_model_wrapper.AddParamWrapper(std::move(k_param));
   std::vector<std::string> param_tensor_names{k_param_name};
-  ORT_RETURN_IF_ERROR(ProcessOutputs(qnn_model_wrapper, node_unit, std::move(input_names), std::move(param_tensor_names),
-                                     logger, is_quantized_model, do_op_validation));
+  ORT_RETURN_IF_ERROR(ProcessOutputs(qnn_model_wrapper, node_unit, std::move(input_names),
+                                     std::move(param_tensor_names), logger, is_quantized_model, do_op_validation,
+                                     GetQnnOpType(node_unit.OpType())));
   return Status::OK();
 }
 

@@ -8,6 +8,7 @@
 #include "core/framework/allocatormgr.h"
 #include "core/framework/compute_capability.h"
 #include "core/graph/graph_viewer.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/framework/kernel_registry.h"
 #include "core/providers/partitioning_utils.h"
@@ -72,9 +73,15 @@ void QNNExecutionProvider::ParseHtpPerformanceMode(std::string htp_performance_m
   }
 }
 
-QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_options_map)
+QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_options_map,
+                                           const SessionOptions* session_options)
     : IExecutionProvider{onnxruntime::kQnnExecutionProvider, true},
       runtime_options_(provider_options_map) {
+  if (session_options) {
+    disable_cpu_ep_fallback_ = session_options->config_options.GetConfigOrDefault(
+                                   kOrtSessionOptionsDisableCPUEPFallback, "0") == "1";
+  }
+
   static const std::string CONTEXT_CACHE_ENABLED = "qnn_context_cache_enable";
   auto context_cache_enabled_pos = runtime_options_.find(CONTEXT_CACHE_ENABLED);
   if (context_cache_enabled_pos != runtime_options_.end()) {
@@ -310,14 +317,37 @@ QNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer
   const auto supported_nodes = GetSupportedNodes(graph_viewer, node_unit_map, node_unit_holder.size(),
                                                  load_from_cached_context, logger);
 
+  // Helper function that returns a string that lists all unsupported nodes.
+  // Ex: { name: mul_123, type: Mul }, {}, ...
+  auto get_unsupported_node_names = [&node_unit_holder, &supported_nodes]() -> std::string {
+    std::stringstream ss;
+    const size_t num_node_units = node_unit_holder.size();
+
+    for (size_t i = 0; i < num_node_units; ++i) {
+      const auto& node_unit = node_unit_holder[i];
+
+      if (supported_nodes.find(&node_unit->GetNode()) == supported_nodes.end()) {
+        ss << "{ name: " << node_unit->Name() << ", type: " << node_unit->OpType() << " }";
+        if (i == num_node_units - 1) {
+          ss << ", ";
+        }
+      }
+    }
+
+    return ss.str();
+  };
+
   if (supported_nodes.empty()) {
     LOGS(logger, INFO) << "Number of partitions supported by QNN EP: 0";
     return result;
   } else if (supported_nodes.size() == 1) {
     const auto* node = *supported_nodes.begin();
     if (node->OpType() == "QuantizeLinear" || node->OpType() == "DequantizeLinear") {
-      LOGS(logger, INFO) << "It doesn't make sense just run a Q/DQ node on HTP.";
-      LOGS(logger, INFO) << "Number of partitions supported by QNN EP: 0";
+      LOGS(logger, WARNING) << "It doesn't make sense just run a Q/DQ node on HTP.";
+      LOGS(logger, WARNING) << "Number of partitions supported by QNN EP: 0";
+      if (disable_cpu_ep_fallback_) {
+        LOGS(logger, ERROR) << "Unsupported nodes in QNN EP: " << get_unsupported_node_names();
+      }
       return result;
     }
   }
@@ -338,6 +368,7 @@ QNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer
       [](const auto& partition) -> size_t {
         return partition && partition->sub_graph ? partition->sub_graph->nodes.size() : 0;
       });
+  const size_t num_nodes_in_graph = static_cast<size_t>(graph_viewer.NumberOfNodes());
 
   if (load_from_cached_context && 1 == num_of_partitions) {
     rt = qnn_backend_manager_->ValidateWithContextFile(GetFileNameFromModelPath(graph_viewer.ModelPath()),
@@ -349,13 +380,19 @@ QNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer
   }
 
   if (num_of_partitions > 1) {
-    ORT_ENFORCE(!context_cache_enabled_, "Only support singel partition for context cache feature.");
+    ORT_ENFORCE(!context_cache_enabled_, "Only support single partition for context cache feature.");
   }
 
   const auto summary_msg = MakeString("Number of partitions supported by QNN EP: ", num_of_partitions,
-                                      ", number of nodes in the graph: ", graph_viewer.NumberOfNodes(),
+                                      ", number of nodes in the graph: ", num_nodes_in_graph,
                                       ", number of nodes supported by QNN: ", num_of_supported_nodes);
   LOGS(logger, INFO) << summary_msg;
+
+  // Print list of unsupported nodes to the ERROR logger if the CPU EP
+  // has been disabled for this inference session.
+  if (disable_cpu_ep_fallback_ && num_nodes_in_graph != num_of_supported_nodes) {
+    LOGS(logger, ERROR) << "Unsupported nodes in QNN EP: " << get_unsupported_node_names();
+  }
 
   return result;
 }
