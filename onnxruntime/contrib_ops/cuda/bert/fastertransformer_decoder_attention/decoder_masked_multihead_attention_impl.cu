@@ -417,6 +417,14 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiHeadAttentio
   // Make sure the products are in shared memory.
   __syncthreads();
 
+  if (params.out_qk != nullptr) {
+    // store cross qk before softmax, out_qk has shape [B, #Head, 1, total_sequence_length]
+    T* target = ((T*)params.out_qk) + ((int64_t)bi * params.num_heads * tlength + hi * tlength);
+    for (int ti = threadIdx.x; ti < params.total_sequence_length; ti += blockDim.x) {
+      target[ti] = (T)(qk_smem[ti]);
+    }
+  }
+
   // The warps finalize the reduction.
   qk_max = lane < WARPS_PER_BLOCK ? red_smem[lane] : -FLT_MAX;
 #pragma unroll
