@@ -1242,27 +1242,27 @@ var validCombos = {
     "linux,Python,Power,DefaultCPU":
         "pip install onnxruntime-powerpc64le",
 
-     //SNPE
-    "windows,C-API,ARM64,SNPE":
-    "View installation instructions <a href='./winarm.html' target='_blank'>here</a>",
+     //QNN
+    "windows,C-API,ARM64,QNN":
+    "View installation instructions <a href='https://aka.ms/build-ort-qnn' target='_blank'>here</a>",
 
-    "windows,C++,ARM64,SNPE":
-    "View installation instructions <a href='./winarm.html' target='_blank'>here</a>",
+    "windows,C++,ARM64,QNN":
+    "View installation instructions <a href='https://aka.ms/build-ort-qnn' target='_blank'>here</a>",
     
-    "windows,C#,ARM64,SNPE":
-    "View installation instructions <a href='./winarm.html' target='_blank'>here</a>",
+    "windows,C#,ARM64,QNN":
+    "View installation instructions <a href='https://aka.ms/build-ort-qnn' target='_blank'>here</a>",
 
-    "linux,C-API,ARM64,SNPE":
-    "Follow build instructions from <a href='https://aka.ms/build-ort-snpe' target='_blank'>here</a>",
+    "linux,C-API,ARM64,QNN":
+    "Follow build instructions from <a href='https://aka.ms/build-ort-qnn' target='_blank'>here</a>",
 
-    "linux,C++,ARM64,SNPE":
-    "Follow build instructions from <a href='https://aka.ms/build-ort-snpe' target='_blank'>here</a>",
+    "linux,C++,ARM64,QNN":
+    "Follow build instructions from <a href='https://aka.ms/build-ort-qnn' target='_blank'>here</a>",
 
-    "android,C-API,ARM64,SNPE":
-    "Follow build instructions from <a href='https://aka.ms/build-ort-snpe' target='_blank'>here</a>",
+    "android,C-API,ARM64,QNN":
+    "Follow build instructions from <a href='https://aka.ms/build-ort-qnn' target='_blank'>here</a>",
 
-    "android,C++,ARM64,SNPE":
-        "Follow build instructions from <a href='https://aka.ms/build-ort-snpe' target='_blank'>here</a>",
+    "android,C++,ARM64,QNN":
+        "Follow build instructions from <a href='https://aka.ms/build-ort-qnn' target='_blank'>here</a>",
 
     //Xnnpack
     "ios,C-API,ARM64,XNNPACK":
