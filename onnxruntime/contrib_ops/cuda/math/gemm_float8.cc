@@ -81,7 +81,6 @@ Status GemmFloat8::ComputeInternal(OpKernelContext* ctx) const {
   auto* Y = ctx->Output(0, {M, N});
 
   cudaStream_t stream = Stream(ctx);
-  // cublasHandle_t cublas = GetCublasHandle(ctx);
   cublasLtHandle_t cublasLt = CublasLtHandle();
 
   return this->params_.CudaCompute(dtypes, stream, cublasLt, A, B, C, Y, M, N, K);
