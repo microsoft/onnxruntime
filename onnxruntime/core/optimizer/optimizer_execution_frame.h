@@ -64,7 +64,6 @@ class OptimizerExecutionFrame final : public IExecutionFrame {
     }
 
    private:
-    const OrtMemType mem_type_{OrtMemTypeDefault};
     AllocatorPtr allocator_ptr_;
     DataTransferManager data_transfer_mgr_;
     // MLValues for optimizer
