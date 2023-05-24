@@ -1515,47 +1515,44 @@ common::Status InferenceSession::Initialize() {
       // now that all the transforms are done, call Resolve on the main graph. this will recurse into the subgraphs.
       ORT_RETURN_IF_ERROR_SESSIONID_(graph.Resolve());
 
-      // Currently only CUDA EP and TRT EP are considered.
+      // Currently CUDA graph is only considered by CUDA EP and TRT EP.
       // If the CUDA EP is part of the providers list for this session AND
       // The CUDA EP is configured to do a graph capture AND
       // All the graph nodes have been assigned to the CUDA EP,
       // Then the CUDA EP is cached for triggering a ReplayGraph() in Run().
       // Same logic is applied to TRT EP.
-      IExecutionProvider* target_ep = nullptr;
-      auto* trt_ep = execution_providers_.Get(onnxruntime::kTensorrtExecutionProvider);
-      auto* cuda_ep = execution_providers_.Get(onnxruntime::kCudaExecutionProvider);
+      std::vector<const char*> cuda_graph_support_ep_list = {onnxruntime::kTensorrtExecutionProvider, onnxruntime::kCudaExecutionProvider};
 
-      if (trt_ep) {
-        target_ep = trt_ep;
-      } else if (cuda_ep) {
-        target_ep = cuda_ep;
-      }
+      for (auto& it : cuda_graph_support_ep_list) {
+        auto* target_ep = execution_providers_.Get(it);
 
-      if (target_ep && target_ep->IsGraphCaptureEnabled()) {
-        if (HasControlflowNodes(graph)) {
-          LOGS(*session_logger_, ERROR) << "This session cannot use the CUDA Graph feature as requested by the user "
-                                        << "as the model has control flow nodes which can't be supported by CUDA Graphs.";
+        if (target_ep && target_ep->IsGraphCaptureEnabled()) {
+          if (HasControlflowNodes(graph)) {
+            LOGS(*session_logger_, ERROR) << "This session cannot use the CUDA Graph feature as requested by the user "
+                                          << "as the model has control flow nodes which can't be supported by CUDA Graphs.";
 
-          // Return error status as we don't want the session initialization to complete successfully
-          // if the user has requested usage of CUDA Graph feature and we cannot honor that.
-          ORT_RETURN_IF_ERROR_SESSIONID_(
-              ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                              "This session cannot use the CUDA Graph feature as requested by the user "
-                              " as the model has control flow nodes which can't be supported by CUDA Graphs."));
-        } else if (!AreAllNodesInMainGraphAssignedToOneEp(graph, target_ep->Type())) {
-          LOGS(*session_logger_, ERROR) << "This session cannot use the CUDA Graph feature as requested by the user "
-                                        << "as all the graph nodes have not been assigned to "
-                                        << target_ep->Type();
+            // Return error status as we don't want the session initialization to complete successfully
+            // if the user has requested usage of CUDA Graph feature and we cannot honor that.
+            ORT_RETURN_IF_ERROR_SESSIONID_(
+                ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                                "This session cannot use the CUDA Graph feature as requested by the user "
+                                " as the model has control flow nodes which can't be supported by CUDA Graphs."));
+          } else if (!AreAllNodesInMainGraphAssignedToOneEp(graph, target_ep->Type())) {
+            LOGS(*session_logger_, ERROR) << "This session cannot use the CUDA Graph feature as requested by the user "
+                                          << "as all the graph nodes have not been assigned to "
+                                          << target_ep->Type();
 
-          // Return error status as we don't want the session initialization to complete successfully
-          // if the user has requested usage of CUDA Graph feature and we cannot honor that.
-          ORT_RETURN_IF_ERROR_SESSIONID_(
-              ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                              "This session cannot use the CUDA Graph feature as requested by the user "
-                              "as all the graph nodes have not been assigned to " + target_ep->Type()));
-        } else {
-          LOGS(*session_logger_, INFO) << "This session will use the CUDA Graph feature as requested by the user.";
-          cached_execution_provider_for_graph_replay_.SetExecutionProvider(target_ep);
+            // Return error status as we don't want the session initialization to complete successfully
+            // if the user has requested usage of CUDA Graph feature and we cannot honor that.
+            ORT_RETURN_IF_ERROR_SESSIONID_(
+                ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                                "This session cannot use the CUDA Graph feature as requested by the user "
+                                "as all the graph nodes have not been assigned to " + target_ep->Type()));
+          } else {
+            LOGS(*session_logger_, INFO) << "This session will use the CUDA Graph feature as requested by the user.";
+            cached_execution_provider_for_graph_replay_.SetExecutionProvider(target_ep);
+            break; // Make sure only one ep can run CUDA graph.
+          }
         }
       }
 

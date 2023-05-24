@@ -902,7 +902,9 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
   }
 
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 10000
-  cuda_graph_ = std::make_unique<CUDAGraph>();
+  if (cuda_graph_enable_) {
+    cuda_graph_ = std::make_unique<CUDAGraph>();
+  }
 #endif
 
   /*
@@ -1020,7 +1022,7 @@ Status TensorrtExecutionProvider::ReplayGraph() {
   ORT_ENFORCE(IsGraphCaptured());
   // Please note that CUDAGraph::Replay() is not thread safe.
   // ORT TRT calls ReplayGraph() in compute_func() where synchromization is enforced due to lock_guard(),
-  // therefore calling CUDAGraph::Replay() is guaranteed to be thread safe.
+  // therefore calling CUDAGraph::Replay() here is guaranteed to be thread safe.
   return cuda_graph_->Replay();
 }
 
@@ -2262,7 +2264,6 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
 
     // Create compute function
     compute_info.compute_func = [this](FunctionState state, const OrtApi* api, OrtKernelContext* context) {
-      std::cout << "In compute_func" << std::endl;
       Ort::KernelContext ctx(context);
 
       TensorrtFuncState* trt_state = reinterpret_cast<TensorrtFuncState*>(state);
@@ -2897,10 +2898,10 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
       }
 
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 10000
-      // End CUDA graph capture. 
-      // Note: One reason we don't put end of graph capture in OnRunEnd() like CUDA EP does is because of cuda stream mentioned in graph capture,
-      // another reason is because OnRunEnd() is not synchronized with OnRunStart() and ExecuteGraph() per inference_session.cc,
-      // which might end up with many cuda graphs are captured by multiple threads if run with multithreading.
+      // End CUDA graph capture.
+      // Note: One reason we don't put end of graph capture in OnRunEnd() like CUDA EP does is because of cuda stream mentioned in graph capture
+      // above, another reason is because OnRunEnd() is not synchronized with OnRunStart() and ExecuteGraph() per inference_session.cc,
+      // which might end up with many cuda graphs are captured by multiple threads if running with multithreading.
       // It's safe to start/end CUDA graph capture in compute_func() here since the whole fucntion is protected by the lock_guard().
       if (cuda_graph_enable_ && !IsGraphCaptured()) {
         if (IsGraphCaptureAllowed()) {
