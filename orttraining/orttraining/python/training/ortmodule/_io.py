@@ -12,7 +12,6 @@ from collections import abc
 import torch
 
 from ._fallback import ORTModuleIOError, ORTModuleONNXModelException, wrap_exception
-from ._logger import suppress_os_stream_output
 from ._runtime_inspector import RuntimeInspector
 from ._utils import warn_of_constant_inputs
 
@@ -582,12 +581,12 @@ def parse_inputs_for_onnx_export(all_input_parameters, onnx_graph, schema, input
     )
 
 
-def parse_outputs_for_onnx_export_and_extract_schema(module, inputs, kwargs, log_level):
+def parse_outputs_for_onnx_export_and_extract_schema(module, inputs, kwargs):
     # Perform a forward call to grab outputs
     output_names = None
     output_dynamic_axes = None
     is_deepcopy = False
-    with torch.no_grad(), suppress_os_stream_output(log_level=log_level):
+    with torch.no_grad():
         # Deepcopy inputs, since input values may change after model run.
         sample_inputs_copy, sample_kwargs_copy = deepcopy_model_input(*inputs, **kwargs)
         try:

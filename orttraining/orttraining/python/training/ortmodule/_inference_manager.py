@@ -3,7 +3,6 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
-import warnings
 
 import onnx
 import torch
@@ -73,12 +72,12 @@ class InferenceManager(GraphExecutionManager):
                 and self._debug_options.logging.log_level <= _logger.LogLevel.WARNING
             ):
                 self._first_skip_check_warning = False
-                warnings.warn(
-                    f"Fast path enabled - skipping checks."
-                    f"rebuild gradient graph: {self._skip_check.is_set(_SkipCheck.SKIP_CHECK_BUILD_GRADIENT)},"
-                    f"execution agent recreation: {self._skip_check.is_set(_SkipCheck.SKIP_CHECK_EXECUTION_AGENT)},"
-                    f"device check: {self._skip_check.is_set(_SkipCheck.SKIP_CHECK_DEVICE)}",
-                    UserWarning,
+                self._logger.info(
+                    "Fast path enabled - skipping checks. rebuild gradient graph: %s, execution agent recreation: %s, "
+                    "device check: %s",
+                    self._skip_check.is_set(_SkipCheck.SKIP_CHECK_BUILD_GRADIENT),
+                    self._skip_check.is_set(_SkipCheck.SKIP_CHECK_EXECUTION_AGENT),
+                    self._skip_check.is_set(_SkipCheck.SKIP_CHECK_DEVICE),
                 )
 
             # If exporting module to ONNX for the first time, this skip check will not take effect.
@@ -102,6 +101,8 @@ class InferenceManager(GraphExecutionManager):
 
                     # Build the gradient graph
                     self._build_graph(graph_transformer_config)
+
+                    self._log_feature_stats()
 
             # If creating the execution agent for the first time, this skip check will not take effect.
             # It will only take effect on subsequent forward calls.

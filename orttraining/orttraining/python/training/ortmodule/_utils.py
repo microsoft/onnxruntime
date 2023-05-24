@@ -7,11 +7,11 @@
 import copy
 import functools
 import inspect
+import logging
 import os
 import random
 import traceback
 import types
-import warnings
 from typing import List  # noqa: F401
 
 import numpy as np
@@ -22,14 +22,13 @@ from torch.utils.dlpack import to_dlpack
 
 from onnxruntime.capi import _pybind_state as C
 from onnxruntime.capi.onnxruntime_inference_collection import OrtValue
-from onnxruntime.tools import pytorch_export_contrib_ops
 
 from . import _onnx_models
-from ._custom_gradient_registry import CustomGradientRegistry
-from ._custom_op_symbolic_registry import CustomOpSymbolicRegistry
 from ._fallback_exceptions import ORTModuleDeviceException, ORTModuleIOError, wrap_exception
 from ._torch_module_pytorch import TorchModulePytorch
 from .torch_cpp_extensions.cpu.aten_op_executor import load_aten_op_executor_cpp_extension
+
+logger = logging.getLogger(__name__)
 
 
 def get_random_states():
@@ -246,7 +245,7 @@ def check_for_name_collisions_and_bind_methods_to_ortmodule(ortmodule: torch.nn.
                 # This is a user defined/overridden method. Check for collisions.
                 if attribute_name in ortmodule_attributes:
                     # This is a user defined method, issue a warning.
-                    warnings.warn(
+                    logger.warning(
                         f"User Module's attribute name {attribute_name} collides with ORTModule's attribute name. "
                         "User Module's method may not be called upon invocation through ORTModule."
                     )
@@ -260,7 +259,7 @@ def check_for_name_collisions_and_bind_methods_to_ortmodule(ortmodule: torch.nn.
             if attribute_name not in torch_module_attributes and attribute_name in ortmodule_attributes:
                 # This is a user defined attribute that collides with ORTModule
                 if attribute_name in ortmodule_attributes:
-                    warnings.warn(
+                    logger.warning(
                         f"User Module's attribute name {attribute_name} collides with ORTModule's attribute name. "
                         "User Module's attribute may not be returned when trying to retrieve the attribute through ORTModule."
                     )
@@ -337,7 +336,7 @@ def switch_backend_to_pytorch(ortmodule, pytorch_module):
 
 
 def warn_of_constant_inputs(data):
-    warnings.warn(
+    logger.info(
         f"Received input of type {type(data)} which may be treated as a constant by ORT by default."
         " Please consider moving constant arguments to the model constructor."
     )
@@ -380,19 +379,6 @@ def patch_ortmodule_forward_method(ortmodule):
     functools.update_wrapper(ortmodule.forward.__func__, ortmodule._torch_module.forward.__func__)
 
 
-def reinitialize_ortmodule(ortmodule):
-    # Re-register contrib OPs
-    pytorch_export_contrib_ops.register()
-    CustomOpSymbolicRegistry.register_all()
-    CustomGradientRegistry.register_all()
-
-    # Re-initialize the ORTModule forward method
-    patch_ortmodule_forward_method(ortmodule)
-
-    # Re-bind users custom methods to ORTModule
-    check_for_name_collisions_and_bind_methods_to_ortmodule(ortmodule, ortmodule.module)
-
-
 def reinitialize_torch_module_ort(torch_module):
     # Re-initialize the forward method
     patch_torch_module_ort_forward_method(torch_module)
@@ -418,3 +404,9 @@ def reinitialize_graph_execution_manager(graph_execution_manager):
 def reinitialize_training_manager(training_manager):
     # Redefine training managers forward_class
     training_manager._forward_class = training_manager._create_autofunction_class()
+
+
+def get_runtime_pytorch_version():
+    from packaging import version
+
+    return version.parse(torch.__version__.split("+")[0])

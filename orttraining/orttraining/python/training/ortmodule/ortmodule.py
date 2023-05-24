@@ -310,4 +310,13 @@ class ORTModule(torch.nn.Module):
     def __setstate__(self, state):
         self.__dict__.update(state)
 
-        _utils.reinitialize_ortmodule(self)
+        # Re-register contrib OPs
+        pytorch_export_contrib_ops.register()
+        CustomOpSymbolicRegistry.register_all()
+        CustomGradientRegistry.register_all()
+
+        # Re-initialize the ORTModule forward method
+        _utils.patch_ortmodule_forward_method(self)
+
+        # Re-bind users custom methods to ORTModule
+        _utils.check_for_name_collisions_and_bind_methods_to_ortmodule(self, self.module)
