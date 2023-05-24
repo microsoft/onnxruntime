@@ -26,6 +26,15 @@ interface ModelLoadInfo {
 }
 
 /**
+ * JSIBlob is a blob object that exchange ArrayBuffer by OnnxruntimeJSIHelper.
+ */
+export type JSIBlob = {
+  blobId: string;
+  offset: number;
+  size: number;
+}
+
+/**
  * Tensor type for react native, which doesn't allow ArrayBuffer, so data will be encoded as Base64 string.
  */
 interface EncodedTensor {
@@ -41,7 +50,7 @@ interface EncodedTensor {
    * the Base64 encoded string of the buffer data of the tensor.
    * if data is string array, it won't be encoded as Base64 string.
    */
-  readonly data: string|string[];
+  readonly data: string|string[]|JSIBlob;
 }
 
 /**
@@ -64,11 +73,24 @@ export declare namespace Binding {
 
   interface InferenceSession {
     loadModel(modelPath: string, options: SessionOptions): Promise<ModelLoadInfoType>;
-    loadModelFromBase64EncodedBuffer?(buffer: string, options: SessionOptions): Promise<ModelLoadInfoType>;
+    loadModelFromBlob?(buffer: string|JSIBlob, options: SessionOptions): Promise<ModelLoadInfoType>;
     run(key: string, feeds: FeedsType, fetches: FetchesType, options: RunOptions): Promise<ReturnType>;
   }
 }
 
 // export native binding
-const {Onnxruntime} = NativeModules;
+const {Onnxruntime, OnnxruntimeJSIHelper} = NativeModules;
 export const binding = Onnxruntime as Binding.InferenceSession;
+
+// install JSI helper global functions
+OnnxruntimeJSIHelper.install();
+
+declare global {
+  function jsiOnnxruntimeStoreArrayBuffer(buffer: ArrayBuffer): JSIBlob;
+  function jsiOnnxruntimeResolveArrayBuffer(blob: JSIBlob): ArrayBuffer;
+}
+
+export const jsiHelper = {
+  storeArrayBuffer: globalThis.jsiOnnxruntimeStoreArrayBuffer,
+  resolveArrayBuffer: globalThis.jsiOnnxruntimeResolveArrayBuffer
+}

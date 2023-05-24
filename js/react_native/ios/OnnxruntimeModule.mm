@@ -6,6 +6,8 @@
 
 #import <Foundation/Foundation.h>
 #import <React/RCTLog.h>
+#import <React/RCTBridge+Private.h>
+#import <React/RCTBlobManager.h>
 
 // Note: Using below syntax for including ort c api and ort extensions headers to resolve a compiling error happened
 // in an expo react native ios app when ort extensions enabled (a redefinition error of multiple object types defined
@@ -76,14 +78,19 @@ RCT_EXPORT_METHOD(loadModel
  * @param reject callback for returning an error back to react native js
  * @note when run() is called, the same modelPath must be passed into the first parameter.
  */
-RCT_EXPORT_METHOD(loadModelFromBase64EncodedBuffer
-                  : (NSString *)modelDataBase64EncodedString options
+RCT_EXPORT_METHOD(loadModelFromBlob
+                  : (NSDictionary *)modelDataBlob options
                   : (NSDictionary *)options resolver
                   : (RCTPromiseResolveBlock)resolve rejecter
                   : (RCTPromiseRejectBlock)reject) {
   @try {
-    NSData *modelDataDecoded = [[NSData alloc] initWithBase64EncodedString:modelDataBase64EncodedString options:0];
-    NSDictionary *resultMap = [self loadModelFromBuffer:modelDataDecoded options:options];
+    RCTBlobManager* blobManager = [[RCTBridge currentBridge] moduleForClass:RCTBlobManager.class];
+    NSString *blobId = [modelDataBlob objectForKey:@"blobId"];
+    long size = [[modelDataBlob objectForKey:@"size"] longValue];
+    long offset = [[modelDataBlob objectForKey:@"offset"] longValue];
+    auto modelData = [blobManager resolve:blobId offset:offset size:size];
+    NSDictionary *resultMap = [self loadModelFromBuffer:modelData options:options];
+    [blobManager remove:blobId];
     resolve(resultMap);
   } @catch (...) {
     reject(@"onnxruntime", @"failed to load model from buffer", nil);

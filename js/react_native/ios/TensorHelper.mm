@@ -3,6 +3,8 @@
 
 #import "TensorHelper.h"
 #import <Foundation/Foundation.h>
+#import <React/RCTBridge+Private.h>
+#import <React/RCTBlobManager.h>
 
 @implementation TensorHelper
 
@@ -48,13 +50,18 @@ NSString *const JsTensorTypeString = @"string";
     }
     return inputTensor;
   } else {
-    NSString *data = [input objectForKey:@"data"];
-    NSData *buffer = [[NSData alloc] initWithBase64EncodedString:data options:0];
+    NSDictionary *data = [input objectForKey:@"data"];
+    NSString *blobId = [data objectForKey:@"blobId"];
+    long size = [[data objectForKey:@"size"] longValue];
+    long offset = [[data objectForKey:@"offset"] longValue];
+    RCTBlobManager* blobManager = [[RCTBridge currentBridge] moduleForClass:RCTBlobManager.class];
+    auto buffer = [blobManager resolve:blobId offset:offset size:size];
     Ort::Value inputTensor = [self createInputTensor:tensorType
                                                 dims:dims
                                               buffer:buffer
                                         ortAllocator:ortAllocator
                                          allocations:allocatons];
+    [blobManager remove:blobId];
     return inputTensor;
   }
 }
@@ -109,8 +116,14 @@ NSString *const JsTensorTypeString = @"string";
       }
       outputTensor[@"data"] = buffer;
     } else {
-      NSString *data = [self createOutputTensor:value];
-      outputTensor[@"data"] = data;
+      NSData *data = [self createOutputTensor:value];
+      RCTBlobManager* blobManager = [[RCTBridge currentBridge] moduleForClass:RCTBlobManager.class];
+      NSString* blobId = [blobManager store:data];
+      outputTensor[@"data"] = @{
+        @"blobId": blobId,
+        @"offset": @0,
+        @"size": @(data.length),
+      };
     }
 
     outputTensorMap[[NSString stringWithUTF8String:outputName]] = outputTensor;
@@ -170,15 +183,14 @@ static Ort::Value createInputTensorT(OrtAllocator *ortAllocator, const std::vect
   }
 }
 
-template <typename T> static NSString *createOutputTensorT(const Ort::Value &tensor) {
+template <typename T> static NSData *createOutputTensorT(const Ort::Value &tensor) {
   const auto data = tensor.GetTensorData<T>();
-  NSData *buffer = [NSData dataWithBytesNoCopy:(void *)data
+  return [NSData dataWithBytesNoCopy:(void *)data
                                         length:tensor.GetTensorTypeAndShapeInfo().GetElementCount() * sizeof(T)
                                   freeWhenDone:false];
-  return [buffer base64EncodedStringWithOptions:0];
 }
 
-+ (NSString *)createOutputTensor:(const Ort::Value &)tensor {
++ (NSData *)createOutputTensor:(const Ort::Value &)tensor {
   ONNXTensorElementDataType tensorType = tensor.GetTensorTypeAndShapeInfo().GetElementType();
 
   switch (tensorType) {
