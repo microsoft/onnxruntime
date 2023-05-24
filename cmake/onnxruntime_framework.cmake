@@ -40,13 +40,13 @@ onnxruntime_add_static_library(onnxruntime_framework ${onnxruntime_framework_src
 if (onnxruntime_USE_AZURE)
 
   add_dependencies(onnxruntime_framework triton)
-  target_include_directories(onnxruntime_framework PRIVATE ${TRITON_BIN}/include)
+  target_include_directories(onnxruntime_framework PRIVATE ${TRITON_BIN}/include ${TRITON_THIRD_PARTY}/curl/include)
   link_directories(${TRITON_BIN}/lib ${TRITON_BIN}/lib64 ${TRITON_THIRD_PARTY}/curl/lib ${TRITON_THIRD_PARTY}/curl/lib64)
 
   if (WIN32)
 
     link_directories(${VCPKG_SRC}/installed/${onnxruntime_target_platform}-windows/lib)
-    target_link_libraries(onnxruntime_framework PRIVATE libcurl httpclient_static ws2_32 crypt32 Wldap32 zlib)
+    target_link_libraries(onnxruntime_framework PRIVATE libcurl httpclient_static ws2_32 crypt32 Wldap32)
 
   else()
 
@@ -91,7 +91,7 @@ if (onnxruntime_USE_MIMALLOC)
     target_link_libraries(onnxruntime_framework mimalloc-static)
 endif()
 
-if (onnxruntime_BUILD_WEBASSEMBLY)
+if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
   target_link_libraries(onnxruntime_framework ${ABSEIL_LIBS})
 endif()
 
@@ -103,18 +103,14 @@ add_dependencies(onnxruntime_framework ${onnxruntime_EXTERNAL_DEPENDENCIES})
 # For the shared onnxruntime library, this is set in onnxruntime.cmake through CMAKE_SHARED_LINKER_FLAGS
 # But our test files don't use the shared library so this must be set for them.
 # For Win32 it generates an absolute path for shared providers based on the location of the executable/onnxruntime.dll
-if (UNIX AND NOT APPLE AND NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_BUILD_WEBASSEMBLY)
+if (UNIX AND NOT APPLE AND NOT onnxruntime_MINIMAL_BUILD AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
   set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,-rpath='$ORIGIN'")
 endif()
 
 if (onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS_ENABLE_DUMP_TO_SQLDB)
-  find_package (SQLite3)
-  if (SQLITE3_FOUND)
-    include_directories(${SQLite3_INCLUDE_DIR})
-    target_link_libraries (onnxruntime_framework ${SQLite3_LIBRARY})
-  else()
-    message( FATAL_ERROR "Could not locate SQLite3 package." )
-  endif (SQLITE3_FOUND)
+  find_package (SQLite3 REQUIRED)
+  include_directories(${SQLite3_INCLUDE_DIR})
+  target_link_libraries (onnxruntime_framework ${SQLite3_LIBRARY})
   target_compile_definitions(onnxruntime_framework PRIVATE DEBUG_NODE_INPUTS_OUTPUTS_ENABLE_DUMP_TO_SQLDB)
 endif()
 

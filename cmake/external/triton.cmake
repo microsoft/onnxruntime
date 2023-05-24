@@ -44,13 +44,11 @@ if (WIN32)
   vcpkg_install(re2)
   vcpkg_install(boost-interprocess)
   vcpkg_install(boost-stacktrace)
-  vcpkg_install(zlib)
   vcpkg_install(pthread)
   vcpkg_install(b64)
 
   add_dependencies(getb64 getpthread)
-  add_dependencies(getpthread getzlib)
-  add_dependencies(getzlib getboost-stacktrace)
+  add_dependencies(getpthread getboost-stacktrace)
   add_dependencies(getboost-stacktrace getboost-interprocess)
   add_dependencies(getboost-interprocess getre2)
   add_dependencies(getre2 getrapidjson)
@@ -59,11 +57,11 @@ if (WIN32)
 
   ExternalProject_Add(triton
                       GIT_REPOSITORY https://github.com/triton-inference-server/client.git
-                      GIT_TAG r22.12
+                      GIT_TAG r23.05
                       PREFIX triton
                       SOURCE_DIR ${CMAKE_CURRENT_BINARY_DIR}/_deps/triton-src
                       BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR}/_deps/triton-build
-                      CMAKE_ARGS -DVCPKG_TARGET_TRIPLET=${onnxruntime_target_platform}-windows -DCMAKE_TOOLCHAIN_FILE=${VCPKG_SRC}/scripts/buildsystems/vcpkg.cmake -DCMAKE_INSTALL_PREFIX=binary -DTRITON_ENABLE_CC_HTTP=ON
+                      CMAKE_ARGS -DVCPKG_TARGET_TRIPLET=${onnxruntime_target_platform}-windows -DCMAKE_TOOLCHAIN_FILE=${VCPKG_SRC}/scripts/buildsystems/vcpkg.cmake -DCMAKE_INSTALL_PREFIX=binary -DTRITON_ENABLE_CC_HTTP=ON -DTRITON_ENABLE_ZLIB=OFF
                       INSTALL_COMMAND ""
                       UPDATE_COMMAND "")
 
@@ -77,7 +75,9 @@ else()
                       PREFIX rapidjson
                       SOURCE_DIR ${CMAKE_CURRENT_BINARY_DIR}/_deps/rapidjson-src
                       BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR}/_deps/rapidjson-build
-                      CMAKE_ARGS -DRAPIDJSON_BUILD_TESTS=OFF -DRAPIDJSON_BUILD_DOC=OFF -DRAPIDJSON_BUILD_EXAMPLES=OFF)
+                      CMAKE_ARGS -DRAPIDJSON_BUILD_TESTS=OFF -DRAPIDJSON_BUILD_DOC=OFF -DRAPIDJSON_BUILD_EXAMPLES=OFF
+                      INSTALL_COMMAND ""
+                      UPDATE_COMMAND "")
 
   ExternalProject_Get_Property(rapidjson source_dir)
   set(RAPIDJSON_INCLUDE_DIR ${source_dir}/include)
@@ -85,15 +85,13 @@ else()
 
   ExternalProject_Add(triton
                       GIT_REPOSITORY https://github.com/triton-inference-server/client.git
-                      GIT_TAG r22.12
+                      GIT_TAG r23.05
                       PREFIX triton
                       SOURCE_DIR ${CMAKE_CURRENT_BINARY_DIR}/_deps/triton-src
                       BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR}/_deps/triton-build
-                      CMAKE_ARGS -DCMAKE_INSTALL_PREFIX=binary -DTRITON_ENABLE_CC_HTTP=ON
+                      CMAKE_ARGS -DCMAKE_INSTALL_PREFIX=binary -DTRITON_ENABLE_CC_HTTP=ON -DTRITON_ENABLE_ZLIB=OFF
                       INSTALL_COMMAND ""
                       UPDATE_COMMAND "")
-
-  add_dependencies(triton rapidjson)
 
 endif() #if (WIN32)
 

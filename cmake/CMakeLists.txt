@@ -56,8 +56,8 @@ if (NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE "RelWithDebInfo" CACHE STRING "Choose build type: Debug Release RelWithDebInfo MinSizeRel." FORCE)
 endif()
 
-if("${CMAKE_C_COMPILER_ID}" STREQUAL "GNU" AND CMAKE_C_COMPILER_VERSION VERSION_LESS 7)
-  message(FATAL_ERROR  "GCC version must not less than 7")
+if("${CMAKE_C_COMPILER_ID}" STREQUAL "GNU" AND CMAKE_C_COMPILER_VERSION VERSION_LESS 9)
+  message(FATAL_ERROR  "GCC version must be greater than or equal to 9")
 endif()
 
 # Options
@@ -173,8 +173,7 @@ option(onnxruntime_ENABLE_CPU_FP16_OPS "Build with advanced instruction sets" ON
 option(onnxruntime_USE_NCCL "Build with NCCL support" OFF)
 option(onnxruntime_USE_MPI "Build with MPI support" OFF)
 
-# build WebAssembly
-option(onnxruntime_BUILD_WEBASSEMBLY "Enable this option to create WebAssembly byte codes" OFF)
+# WebAssembly options
 option(onnxruntime_BUILD_WEBASSEMBLY_STATIC_LIB "Enable this option to create WebAssembly static library" OFF)
 option(onnxruntime_ENABLE_WEBASSEMBLY_THREADS "Enable this option to create WebAssembly byte codes with multi-threads support" OFF)
 option(onnxruntime_ENABLE_WEBASSEMBLY_EXCEPTION_CATCHING "Enable this option to turn on exception catching" OFF)
@@ -222,6 +221,7 @@ option(onnxruntime_ENABLE_ATEN "Enable ATen fallback" OFF)
 # composable kernel is managed automatically, unless user want to explicitly disable it, it should not be manually set
 option(onnxruntime_USE_COMPOSABLE_KERNEL "Enable composable kernel for ROCm EP" ON)
 option(onnxruntime_USE_ROCBLAS_EXTENSION_API "Enable rocblas tuning for ROCm EP" OFF)
+option(onnxruntime_USE_TRITON_KERNEL "Enable triton compiled kernel" OFF)
 option(onnxruntime_BUILD_KERNEL_EXPLORER "Build Kernel Explorer for testing and profiling GPU kernels" OFF)
 
 option(onnxruntime_BUILD_CACHE "onnxruntime build with cache" OFF)
@@ -229,6 +229,7 @@ option(onnxruntime_BUILD_CACHE "onnxruntime build with cache" OFF)
 cmake_dependent_option(MSVC_Z7_OVERRIDE "replacing /Zi and /ZI with /Z7 when using MSVC with CCache" ON "onnxruntime_BUILD_CACHE; MSVC" OFF)
 
 option(onnxruntime_USE_AZURE "Build with azure inferencing support" OFF)
+option(onnxruntime_USE_LOCK_FREE_QUEUE "Build with lock-free task queue for threadpool." OFF)
 
 # ENABLE_TRAINING includes all training functionality
 # The following 2 entry points
@@ -751,7 +752,9 @@ if (onnxruntime_USE_AZURE)
     list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_AZURE=1)
     list(APPEND ONNXRUNTIME_PROVIDER_NAMES azure)
 endif()
-
+if (onnxruntime_USE_LOCK_FREE_QUEUE)
+    add_compile_definitions(USE_LOCK_FREE_QUEUE)
+endif()
 
 if (onnxruntime_ENABLE_LAZY_TENSOR)
   # To support LazyTensor, ORT needs to call Python function from C/C++.
@@ -968,7 +971,7 @@ function(onnxruntime_add_shared_library_module target_name)
   endif()
 
   onnxruntime_configure_target(${target_name})
-  if (MSVC AND onnxruntime_target_platform STREQUAL "x86" AND NOT onnxruntime_BUILD_WEBASSEMBLY)
+  if (MSVC AND onnxruntime_target_platform STREQUAL "x86")
     target_link_options(${target_name} PRIVATE /SAFESEH)
   endif()
 endfunction()
@@ -976,7 +979,7 @@ endfunction()
 function(onnxruntime_add_executable target_name)
   add_executable(${target_name} ${ARGN})
   onnxruntime_configure_target(${target_name})
-  if (MSVC AND onnxruntime_target_platform STREQUAL "x86" AND NOT onnxruntime_BUILD_WEBASSEMBLY)
+  if (MSVC AND onnxruntime_target_platform STREQUAL "x86")
     target_link_options(${target_name} PRIVATE /SAFESEH)
   endif()
 endfunction()
@@ -1589,7 +1592,7 @@ if (onnxruntime_BUILD_CSHARP)
   list(APPEND ONNXRUNTIME_CMAKE_FILES onnxruntime_csharp)
 endif()
 
-if (onnxruntime_BUILD_WEBASSEMBLY)
+if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
   message(STATUS "WebAssembly Build is enabled")
   list(APPEND ONNXRUNTIME_CMAKE_FILES onnxruntime_webassembly)
 

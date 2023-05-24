@@ -157,7 +157,11 @@ TEST_P(SessionStateTestP, TestInitializerProcessing) {
 
   GraphPartitioner partitioner(krm, execution_providers);
   status = partitioner.Partition(graph, session_state.GetMutableFuncMgr(),
-                                 layout_transformer::TransformLayoutForEP);
+                                 [&execution_providers](Graph& graph, bool& modified,
+                                                        const IExecutionProvider& execution_provider,
+                                                        const layout_transformer::DebugGraphFn& debug_graph_fn) -> Status {
+                                   return layout_transformer::TransformLayoutForEP(graph, modified, execution_provider, execution_providers.GetDefaultCpuAllocator(), debug_graph_fn);
+                                 });
   ASSERT_TRUE(status.IsOK()) << status;
 
   ASSERT_STATUS_OK(session_state.FinalizeSessionState(oss.str(), krm));
@@ -231,7 +235,11 @@ TEST(SessionStateTest, TestInitializerMemoryAllocatedUsingNonArenaMemory) {
     // Partition the graph
     GraphPartitioner partitioner(krm, execution_providers);
     status = partitioner.Partition(graph, session_state.GetMutableFuncMgr(),
-                                   layout_transformer::TransformLayoutForEP);
+                                   [&execution_providers](Graph& graph, bool& modified,
+                                                          const IExecutionProvider& execution_provider,
+                                                          const layout_transformer::DebugGraphFn& debug_graph_fn) -> Status {
+                                     return layout_transformer::TransformLayoutForEP(graph, modified, execution_provider, execution_providers.GetDefaultCpuAllocator(), debug_graph_fn);
+                                   });
     ASSERT_TRUE(status.IsOK()) << status;
     ASSERT_STATUS_OK(session_state.FinalizeSessionState(oss.str(), krm));
 
@@ -282,7 +290,11 @@ TEST(SessionStateTest, TestInitializerMemoryAllocatedUsingNonArenaMemory) {
     // Partition the graph
     GraphPartitioner partitioner(krm, execution_providers);
     status = partitioner.Partition(graph, session_state.GetMutableFuncMgr(),
-                                   layout_transformer::TransformLayoutForEP);
+                                   [&execution_providers](Graph& graph, bool& modified,
+                                                          const IExecutionProvider& execution_provider,
+                                                          const layout_transformer::DebugGraphFn& debug_graph_fn) -> Status {
+                                     return layout_transformer::TransformLayoutForEP(graph, modified, execution_provider, execution_providers.GetDefaultCpuAllocator(), debug_graph_fn);
+                                   });
     ASSERT_TRUE(status.IsOK()) << status;
 
     // Finalize the session state

@@ -41,6 +41,14 @@ KE_REGISTER(m) {
         return false;
 #endif
   });
+
+  m.def("is_hipblaslt_available", []() {
+#ifdef USE_HIPBLASLT
+    return true;
+#else
+        return false;
+#endif
+  });
 }
 
 }  // namespace onnxruntime

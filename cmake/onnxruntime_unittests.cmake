@@ -113,7 +113,7 @@ function(AddTest)
   set(TEST_ARGS ${_UT_TEST_ARGS})
   if (onnxruntime_GENERATE_TEST_REPORTS)
     # generate a report file next to the test program
-    if (onnxruntime_BUILD_WEBASSEMBLY)
+    if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
       # WebAssembly use a memory file system, so we do not use full path
       list(APPEND TEST_ARGS
         "--gtest_output=xml:$<TARGET_FILE_NAME:${_UT_TARGET}>.$<CONFIG>.results.xml")
@@ -162,7 +162,7 @@ function(AddTest)
 
     xctest_add_test(xctest.${_UT_TARGET} ${_UT_TARGET}_xc)
   else()
-    if (onnxruntime_BUILD_WEBASSEMBLY)
+    if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
       # We might have already executed the following "find_program" code when we build ORT nodejs binding.
       # Then the program is found the result is stored in the variable and the search will not be repeated.
       find_program(NPM_CLI
@@ -738,7 +738,7 @@ set_target_properties(onnx_test_runner_common PROPERTIES FOLDER "ONNXRuntimeTest
 
 set(all_tests ${onnxruntime_test_common_src} ${onnxruntime_test_ir_src} ${onnxruntime_test_optimizer_src}
         ${onnxruntime_test_framework_src} ${onnxruntime_test_providers_src} ${onnxruntime_test_quantiztion_src})
-if(NOT TARGET onnxruntime AND NOT onnxruntime_BUILD_WEBASSEMBLY)
+if(NOT TARGET onnxruntime AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
   list(APPEND all_tests ${onnxruntime_shared_lib_test_SRC})
 endif()
 
@@ -772,7 +772,7 @@ if(WIN32)
   list(APPEND onnxruntime_test_providers_libs Advapi32)
 endif()
 
-if (onnxruntime_BUILD_WEBASSEMBLY)
+if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
   if (NOT onnxruntime_ENABLE_WEBASSEMBLY_THREADS)
     list(REMOVE_ITEM all_tests
       "${TEST_SRC_DIR}/framework/execution_frame_test.cc"
@@ -846,7 +846,7 @@ endif()
 if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
   target_link_libraries(onnxruntime_test_all PRIVATE Python::Python)
 endif()
-if (onnxruntime_BUILD_WEBASSEMBLY)
+if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
   set_target_properties(onnxruntime_test_all PROPERTIES LINK_DEPENDS ${TEST_SRC_DIR}/wasm/onnxruntime_test_all_adapter.js)
   set_target_properties(onnxruntime_test_all PROPERTIES LINK_FLAGS "-s STACK_SIZE=5242880 -s ALLOW_MEMORY_GROWTH=1 --pre-js \"${TEST_SRC_DIR}/wasm/onnxruntime_test_all_adapter.js\" -s \"EXPORTED_RUNTIME_METHODS=['FS']\" --preload-file ${CMAKE_CURRENT_BINARY_DIR}/testdata@/testdata -s EXIT_RUNTIME=1 -s DEMANGLE_SUPPORT=1")
   if (onnxruntime_ENABLE_WEBASSEMBLY_THREADS)
@@ -1010,7 +1010,7 @@ if(${CMAKE_SYSTEM_NAME} STREQUAL "iOS")
     XCODE_ATTRIBUTE_CODE_SIGNING_ALLOWED "NO"
   )
 endif()
-if (onnxruntime_BUILD_WEBASSEMBLY)
+if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
   if (onnxruntime_ENABLE_WEBASSEMBLY_THREADS)
     set_target_properties(onnx_test_runner PROPERTIES LINK_FLAGS "-s NODERAWFS=1 -s ALLOW_MEMORY_GROWTH=1 -s PROXY_TO_PTHREAD=1 -s EXIT_RUNTIME=1")
   else()
@@ -1095,7 +1095,7 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
     else()
       target_link_libraries(onnxruntime_mlas_benchmark PRIVATE nsync::nsync_cpp ${CMAKE_DL_LIBS})
     endif()
-    if (CPUINFO_SUPPORTED AND NOT onnxruntime_BUILD_WEBASSEMBLY)
+    if (CPUINFO_SUPPORTED AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
       target_link_libraries(onnxruntime_mlas_benchmark PRIVATE cpuinfo)
     endif()
     set_target_properties(onnxruntime_mlas_benchmark PROPERTIES FOLDER "ONNXRuntimeTest")
@@ -1105,7 +1105,7 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
     target_compile_options(onnx_test_runner_common PRIVATE -D_CRT_SECURE_NO_WARNINGS)
   endif()
 
-  if (NOT onnxruntime_REDUCED_OPS_BUILD AND NOT onnxruntime_BUILD_WEBASSEMBLY)
+  if (NOT onnxruntime_REDUCED_OPS_BUILD AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
     add_test(NAME onnx_test_pytorch_converted
       COMMAND onnx_test_runner ${onnx_SOURCE_DIR}/onnx/backend/test/data/pytorch-converted)
     add_test(NAME onnx_test_pytorch_operator
@@ -1335,7 +1335,7 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
   target_include_directories(onnxruntime_mlas_test PRIVATE ${ONNXRUNTIME_ROOT}/core/mlas/inc ${ONNXRUNTIME_ROOT}
           ${CMAKE_CURRENT_BINARY_DIR})
   target_link_libraries(onnxruntime_mlas_test PRIVATE GTest::gtest GTest::gmock ${ONNXRUNTIME_MLAS_LIBS} onnxruntime_common)
-  if (CPUINFO_SUPPORTED AND NOT onnxruntime_BUILD_WEBASSEMBLY)
+  if (CPUINFO_SUPPORTED AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
     target_link_libraries(onnxruntime_mlas_test PRIVATE cpuinfo)
   endif()
   if(NOT WIN32)
@@ -1354,7 +1354,7 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
   target_link_libraries(onnxruntime_mlas_test PRIVATE Threads::Threads)
 
   set_target_properties(onnxruntime_mlas_test PROPERTIES FOLDER "ONNXRuntimeTest")
-  if (onnxruntime_BUILD_WEBASSEMBLY)
+  if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
     if (onnxruntime_ENABLE_WEBASSEMBLY_THREADS)
       set_target_properties(onnxruntime_mlas_test PROPERTIES LINK_FLAGS "-s ALLOW_MEMORY_GROWTH=1 -s PROXY_TO_PTHREAD=1 -s EXIT_RUNTIME=1")
     else()
@@ -1420,7 +1420,7 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
   endif()
 endif()
 
-if (NOT onnxruntime_BUILD_WEBASSEMBLY)
+if (NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
   if (onnxruntime_USE_CUDA)
     onnxruntime_add_shared_library(custom_op_library ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/cuda_ops.cu
                                                      ${TEST_SRC_DIR}/testdata/custom_op_library/custom_op_library.cc)
@@ -1514,7 +1514,7 @@ if (NOT onnxruntime_BUILD_WEBASSEMBLY)
 endif()
 
 # Build custom op library that returns an error OrtStatus when the exported RegisterCustomOps function is called.
-if (NOT onnxruntime_BUILD_WEBASSEMBLY AND (NOT onnxruntime_MINIMAL_BUILD OR onnxruntime_MINIMAL_BUILD_CUSTOM_OPS))
+if (NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" AND (NOT onnxruntime_MINIMAL_BUILD OR onnxruntime_MINIMAL_BUILD_CUSTOM_OPS))
   onnxruntime_add_shared_library_module(custom_op_invalid_library
                                         ${TEST_SRC_DIR}/testdata/custom_op_invalid_library/custom_op_library.h
                                         ${TEST_SRC_DIR}/testdata/custom_op_invalid_library/custom_op_library.cc)
@@ -1537,7 +1537,7 @@ if (NOT onnxruntime_BUILD_WEBASSEMBLY AND (NOT onnxruntime_MINIMAL_BUILD OR onnx
                ${ONNXRUNTIME_CUSTOM_OP_INVALID_LIB_LINK_FLAG})
 endif()
 
-if (NOT onnxruntime_BUILD_WEBASSEMBLY AND (NOT onnxruntime_MINIMAL_BUILD OR onnxruntime_MINIMAL_BUILD_CUSTOM_OPS))
+if (NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" AND (NOT onnxruntime_MINIMAL_BUILD OR onnxruntime_MINIMAL_BUILD_CUSTOM_OPS))
 
   file(GLOB_RECURSE custom_op_get_const_input_test_library_src
         "${TEST_SRC_DIR}/testdata/custom_op_get_const_input_test_library/custom_op_lib.cc"
@@ -1568,7 +1568,7 @@ if (NOT onnxruntime_BUILD_WEBASSEMBLY AND (NOT onnxruntime_MINIMAL_BUILD OR onnx
                ${ONNXRUNTIME_CUSTOM_OP_GET_CONST_INPUT_TEST_LIB_LINK_FLAG})
 endif()
 
-if (onnxruntime_BUILD_SHARED_LIB AND NOT onnxruntime_BUILD_WEBASSEMBLY AND NOT onnxruntime_MINIMAL_BUILD)
+if (onnxruntime_BUILD_SHARED_LIB AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" AND NOT onnxruntime_MINIMAL_BUILD)
   set (onnxruntime_logging_apis_test_SRC
        ${ONNXRUNTIME_LOGGING_APIS_TEST_SRC_DIR}/test_logging_apis.cc)
 
@@ -1586,7 +1586,7 @@ if (onnxruntime_BUILD_SHARED_LIB AND NOT onnxruntime_BUILD_WEBASSEMBLY AND NOT o
   )
 endif()
 
-if (NOT onnxruntime_BUILD_WEBASSEMBLY AND onnxruntime_USE_OPENVINO AND (NOT onnxruntime_MINIMAL_BUILD OR
+if (NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" AND onnxruntime_USE_OPENVINO AND (NOT onnxruntime_MINIMAL_BUILD OR
                                                                         onnxruntime_MINIMAL_BUILD_CUSTOM_OPS))
   onnxruntime_add_shared_library_module(custom_op_openvino_wrapper_library
                                         ${TEST_SRC_DIR}/testdata/custom_op_openvino_wrapper_library/custom_op_lib.cc
@@ -1614,8 +1614,8 @@ endif()
 # limit to only test on windows first, due to a runtime path issue on linux
 if (NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_EXTENDED_MINIMAL_BUILD
                                   AND NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin|iOS"
-                                  AND NOT (CMAKE_SYSTEM_NAME STREQUAL "Android")
-                                  AND NOT onnxruntime_BUILD_WEBASSEMBLY
+                                  AND NOT CMAKE_SYSTEM_NAME STREQUAL "Android"
+                                  AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten"
                                   AND NOT onnxruntime_USE_ROCM)
   file(GLOB_RECURSE test_execution_provider_srcs
     "${REPO_ROOT}/onnxruntime/test/testdata/custom_execution_provider_library/*.h"

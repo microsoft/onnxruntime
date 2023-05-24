@@ -10,7 +10,8 @@ namespace onnxruntime {
 enum class Mode : int {
   Constant = 0,
   Reflect,
-  Edge
+  Edge,
+  Wrap
 };
 
 class PadBase {
@@ -32,6 +33,8 @@ class PadBase {
         mode_ = Mode::Reflect;
       else if (mode == "edge")
         mode_ = Mode::Edge;
+      else if (mode == "wrap")
+        mode_ = Mode::Wrap;
       else
         ORT_THROW("Invalid 'mode' attribute value");
     }

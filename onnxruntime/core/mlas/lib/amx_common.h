@@ -33,6 +33,8 @@ Abstract:
 
 #define tile_stored(dst, base, stride) _tile_stored(dst, base, stride)
 
+#define tile_storeconfig(config) _tile_storeconfig(config)
+
 void
 tile_loadconfig(const void* __config)
 {
@@ -84,5 +86,10 @@ tile_loadconfig(const void* __config)
 void tile_loadconfig (const void *__config)
 {
   __asm__ volatile ("ldtilecfg\t%X0" :: "m" (*((const void **)__config)));
+}
+
+void tile_storeconfig (void *__config)
+{
+  __asm__ volatile ("sttilecfg\t%X0" : "=m" (*((void **)__config)));
 }
 #endif

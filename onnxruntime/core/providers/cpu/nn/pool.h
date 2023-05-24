@@ -25,6 +25,20 @@ class Pool : public OpKernel, public PoolBase {
   PoolProcessContext pool_context_;
 };
 
+// For averagepool v19 and beyond
+// version 19: Added dilations
+template <typename T>
+class AveragePoolV19 : public OpKernel, public PoolBase {
+ public:
+  AveragePoolV19(const OpKernelInfo& info) : OpKernel(info), PoolBase(info) {
+  }
+
+  Status Compute(OpKernelContext* context) const override;
+
+ private:
+  int64_t p_;
+};
+
 // For maxpool v8 and beyond
 // version 8: Added storage_order And Indices
 // version 10: Added ceil_mode

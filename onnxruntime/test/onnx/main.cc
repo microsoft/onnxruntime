@@ -29,7 +29,7 @@ using namespace onnxruntime;
 
 namespace {
 void usage() {
-  auto version_string = ToUTF8String(OrtGetApiBase()->GetVersionString());
+  auto version_string = Ort::GetVersionString();
   printf(
       "onnx_test_runner [options...] <data_root>\n"
       "Options:\n"
@@ -50,13 +50,18 @@ void usage() {
       "\t-a: Specify custom absolute tolerance values for output value comparison. default: 1e-5\n"
       "\t-i: Specify EP specific runtime options as key value pairs. Different runtime options available are: \n"
       "\t    [QNN only] [backend_path]: QNN backend path. e.g '/folderpath/libQnnHtp.so', '/folderpath/libQnnCpu.so'.\n"
+      "\t    [QNN only] [qnn_context_cache_enable]: 1 to enable cache QNN context. Default to false.\n"
+      "\t    [QNN only] [qnn_context_cache_path]: File path to the qnn context cache. Default to model_file.onnx.bin if not set.\n"
       "\t    [QNN only] [profiling_level]: QNN profiling level, options:  'basic', 'detailed', default 'off'.\n"
       "\t    [QNN only] [rpc_control_latency]: QNN rpc control latency. default to 10.\n"
+      "\t    [QNN only] [htp_performance_mode]: QNN performance mode, options: 'burst', 'balanced', 'default', 'high_performance', \n"
+      "\t    'high_power_saver', 'low_balanced', 'low_power_saver', 'power_saver', 'sustained_high_performance'. Default to 'default'. \n"
       "\t [Usage]: -e <provider_name> -i '<key1>|<value1> <key2>|<value2>' \n\n"
       "\t [Example] [For QNN EP] -e qnn -i \"profiling_level|detailed backend_path|/folderpath/libQnnCpu.so\" \n\n"
       "\t    [SNPE only] [runtime]: SNPE runtime, options: 'CPU', 'GPU', 'GPU_FLOAT16', 'DSP', 'AIP_FIXED_TF'. \n"
       "\t    [SNPE only] [priority]: execution priority, options: 'low', 'normal'. \n"
       "\t    [SNPE only] [buffer_type]: options: 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. default: ITENSOR'. \n"
+      "\t    [SNPE only] [enable_init_cache]: enable SNPE init caching feature, set to 1 to enabled it. Disabled by default. \n"
       "\t [Usage]: -e <provider_name> -i '<key1>|<value1> <key2>|<value2>' \n\n"
       "\t [Example] [For SNPE EP] -e snpe -i \"runtime|CPU priority|low\" \n\n"
       "\t-o [optimization level]: Default is 99. Valid values are 0 (disable), 1 (basic), 2 (extended), 99 (all).\n"
@@ -447,17 +452,37 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
         if (key == "backend_path") {
           if (value.empty()) {
             ORT_THROW("Please provide the QNN backend path.");
-          } else {
-            qnn_options[key] = value;
           }
+        } else if (key == "qnn_context_cache_enable") {
+          if (value != "1") {
+            ORT_THROW("Set to 1 to enable qnn_context_cache_enable.");
+          }
+        } else if (key == "qnn_context_cache_path") {
+          // no validation
         } else if (key == "profiling_level") {
-          qnn_options[key] = value;
+          std::set<std::string> supported_profiling_level = {"off", "basic", "detailed"};
+          if (supported_profiling_level.find(value) == supported_profiling_level.end()) {
+            ORT_THROW("Supported profiling_level: off, basic, detailed");
+          }
         } else if (key == "rpc_control_latency") {
-          qnn_options[key] = value;
+          // no validation
+        } else if (key == "htp_performance_mode") {
+          std::set<std::string> supported_htp_perf_mode = {"burst", "balanced", "default", "high_performance",
+                                                           "high_power_saver", "low_balanced", "low_power_saver",
+                                                           "power_saver", "sustained_high_performance"};
+          if (supported_htp_perf_mode.find(value) == supported_htp_perf_mode.end()) {
+            std::ostringstream str_stream;
+            std::copy(supported_htp_perf_mode.begin(), supported_htp_perf_mode.end(),
+                      std::ostream_iterator<std::string>(str_stream, ","));
+            std::string str = str_stream.str();
+            ORT_THROW("Wrong value for htp_performance_mode. select from: " + str);
+          }
         } else {
-          ORT_THROW(R"(Wrong key type entered. Choose from options:
-['backend_path', 'profiling_level', 'rpc_control_latency'])");
+          ORT_THROW(R"(Wrong key type entered. Choose from options: ['backend_path', 'qnn_context_cache_enable', 
+'qnn_context_cache_path', 'profiling_level', 'rpc_control_latency', 'htp_performance_mode'])");
         }
+
+        qnn_options[key] = value;
       }
       sf.AppendExecutionProvider("QNN", qnn_options);
 #else
@@ -519,8 +544,12 @@ select from 'CPU', 'GPU_FP32', 'GPU', 'GPU_FLOAT16', 'DSP', 'AIP_FIXED_TF'. \n)"
             ORT_THROW(R"(Wrong configuration value for the key 'buffer_type'.
 select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
           }
+        } else if (key == "enable_init_cache") {
+          if (value != "1") {
+            ORT_THROW("Set to 1 to enable_init_cache.");
+          }
         } else {
-          ORT_THROW("Wrong key type entered. Choose from options: ['runtime', 'priority', 'buffer_type'] \n");
+          ORT_THROW("Wrong key type entered. Choose from options: ['runtime', 'priority', 'buffer_type', 'enable_init_cache'] \n");
         }
 
         snpe_options[key] = value;
@@ -800,6 +829,7 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
     {"bernoulli_expanded", "By design. Test data is for informational purpose because the generator is non deterministic."},
     {"test_roialign_aligned_true", "Opset 16 not supported yet."},
     {"test_roialign_aligned_false", "Opset 16 not supported yet."},
+    {"test_roialign_mode_max", "Onnx roialign mode expected output is incorrect."},
     {"test_scatternd_add", "Opset 16 not supported yet."},
     {"test_scatternd_multiply", "Opset 16 not supported yet."},
     {"test_scatter_elements_with_duplicate_indices", "Opset 16 not supported yet."},
