@@ -108,9 +108,9 @@ class TestFloat8Gemm8(unittest.TestCase):
 
         onnx_model = self.get_model_gemm("FLOAT")
         if float_type == "FLOAT8E4M3FN":
-            float_types = ["FLOAT8E4M3FN", "FLOAT8E4M3FN", "FLOAT8E4M3FN", "FLOAT16", "FLOAT8E4M3FN"]
+            float_types = ["FLOAT8E4M3FN", "FLOAT8E4M3FN", "FLOAT8E4M3FN", "FLOAT", "FLOAT8E4M3FN"]
         elif float_type == "FLOAT8E5M2":
-            float_types = ["FLOAT8E5M2", "FLOAT8E4M3FN", "FLOAT8E4M3FN", "FLOAT16", "FLOAT8E4M3FN"]
+            float_types = ["FLOAT8E5M2", "FLOAT8E4M3FN", "FLOAT8E4M3FN", "FLOAT", "FLOAT8E4M3FN"]
         elif float_type == "FLOAT16":
             float_types = ["FLOAT16", "FLOAT16", "FLOAT16", "FLOAT16", "FLOAT16"]
         elif float_type == "FLOAT":
@@ -118,7 +118,6 @@ class TestFloat8Gemm8(unittest.TestCase):
         else:
             raise AssertionError(f"Unexpected float_type={float_type!r}.")
 
-        onnx_model_f8 = self.get_model_gemm_float8(float_types, compute_type=compute_type)
         ref = self.InferenceSession(
             onnx_model.SerializeToString(), providers=["CUDAExecutionProvider", "CPUExecutionProvider"]
         )
@@ -128,11 +127,12 @@ class TestFloat8Gemm8(unittest.TestCase):
             self.assertEqual(expected.shape, y.shape)
             self.assertEqual(expected.dtype, y.dtype)
 
+        onnx_model_f8 = self.get_model_gemm_float8(float_types, compute_type=compute_type)
         ref8 = self.InferenceSession(
             onnx_model_f8.SerializeToString(), providers=["CUDAExecutionProvider", "CPUExecutionProvider"]
         )
         y = ref8.run(None, feeds)[0]
-        with self.subTest(name="GemmFloat8"):
+        with self.subTest(name="GemmFloat8", float_types=float_types):
             assert_allclose(expected, y)
             self.assertEqual(expected.shape, y.shape)
             self.assertEqual(expected.dtype, y.dtype)

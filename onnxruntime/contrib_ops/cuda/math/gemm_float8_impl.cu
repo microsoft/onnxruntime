@@ -149,7 +149,7 @@ onnxruntime::Status GemmFloat8_Impl::CudaCompute(
   CUBLAS_RETURN_IF_ERROR(cublasLtMatrixLayoutCreate(&Adesc, atype, trans_A_ ? M : K, trans_A_ ? K : M, lda));
   CUBLAS_RETURN_IF_ERROR(cublasLtMatrixLayoutCreate(&Bdesc, ToCudaDataType(dtypes[1]), trans_B_ ? K : N, trans_B_ ? N : K, ldb));
   CUBLAS_RETURN_IF_ERROR(cublasLtMatrixLayoutCreate(&Cdesc, ToCudaDataType(dtypes[2]), M, N, ldd));
-  CUBLAS_RETURN_IF_ERROR(cublasLtMatrixLayoutCreate(&Ddesc, ToCudaDataType(dtypes[3]), M, N, ldd));
+  CUBLAS_RETURN_IF_ERROR(cublasLtMatrixLayoutCreate(&Ddesc, ToCudaDataType(dtypes[4]), M, N, ldd));
 
   CUBLAS_RETURN_IF_ERROR(cublasLtMatrixLayoutSetAttribute(Adesc, CUBLASLT_MATRIX_LAYOUT_ORDER, &matrixOrder, sizeof(matrixOrder)));
   CUBLAS_RETURN_IF_ERROR(cublasLtMatrixLayoutSetAttribute(Bdesc, CUBLASLT_MATRIX_LAYOUT_ORDER, &matrixOrder, sizeof(matrixOrder)));
@@ -186,7 +186,7 @@ onnxruntime::Status GemmFloat8_Impl::CudaCompute(
   /*
   // No bias for the time being.
   if (relu_bias) {
-    cudaDataType bias_type = ToCudaDataType(dtypes[4]);
+    cudaDataType bias_type = ToCudaDataType(dtypes[3]);
     CUBLAS_RETURN_IF_ERROR(cublasLtMatmulDescSetAttribute(operationDesc,
                                                           CUBLASLT_MATMUL_DESC_BIAS_DATA_TYPE,
                                                           &bias_type, sizeof(bias_type)));
@@ -217,8 +217,8 @@ onnxruntime::Status GemmFloat8_Impl::CudaCompute(
               "Unable to find any suitable algorithm due to ", cublasGetErrorEnum(cuda_status),
               ", preference=", preference, ", returnedResults=", returnedResults,
               ", A_type=", ToCudaDataType(dtypes[0]), ", B_type=", ToCudaDataType(dtypes[1]),
-              ", C_type=", ToCudaDataType(dtypes[2]), ", D_type=", ToCudaDataType(dtypes[3]),
-              ", bias_type=", ToCudaDataType(dtypes[4]), ", computeType=", compute_type_,
+              ", C_type=", ToCudaDataType(dtypes[2]), ", result_type=", ToCudaDataType(dtypes[4]),
+              ", bias_type=", ToCudaDataType(dtypes[3]), ", computeType=", compute_type_,
               ", transA=", trans_A_, ", transB=", trans_B_,
               ", M=", M, ", N=", N, ", K=", K, ", lda=", lda, ", ldb=", ldb, ", ldd=", ldd,
               ", workspaceSize=", workspaceSize, ". Check NVDIDIA documentation to see what combination is valid: ",
