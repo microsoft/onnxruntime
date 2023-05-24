@@ -485,6 +485,7 @@ inline cublasStatus_t cublasTransposeHelper(cudaStream_t, cublasHandle_t handle,
   return cublasDgeam(handle, transa, transb, m, n, alpha, A, lda, beta, B, ldb, C, ldc);
 }
 
+bool CanUse_cublasTransposeHelper_MLFloat16(int m, int n);
 cublasStatus_t cublasTransposeHelper(cudaStream_t, cublasHandle_t, cublasOperation_t, cublasOperation_t, int m, int n, const half*, const half* A, int, const half*, const half*, int, half* C, int);
 
 // copy
