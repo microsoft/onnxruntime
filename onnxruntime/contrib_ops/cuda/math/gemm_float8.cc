@@ -13,16 +13,16 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-#define REGISTER_KERNEL()                                                 \
-  ONNX_OPERATOR_KERNEL_EX(                                                \
-      GemmFloatByte,                                                      \
-      kMSDomain,                                                          \
-      1,                                                                  \
-      kCudaExecutionProvider,                                             \
-      (*KernelDefBuilder::Create())                                       \
-          .TypeConstraint("T", BuildKernelDefConstraints<Float8E4M3FN>()) \
-          .TypeConstraint("T2", BuildKernelDefConstraints<MLFloat16>()),  \
-      GemmFloatByte);
+#define REGISTER_KERNEL()                                                                     \
+  ONNX_OPERATOR_KERNEL_EX(                                                                    \
+      GemmFloat8,                                                                             \
+      kMSDomain,                                                                              \
+      1,                                                                                      \
+      kCudaExecutionProvider,                                                                 \
+      (*KernelDefBuilder::Create())                                                           \
+          .TypeConstraint("T", BuildKernelDefConstraints<Float8E4M3FN, MLFloat16, float>())   \
+          .TypeConstraint("T2", BuildKernelDefConstraints<Float8E4M3FN, MLFloat16, float>()), \
+      GemmFloat8);
 
 REGISTER_KERNEL()
 
@@ -50,7 +50,7 @@ REGISTER_KERNEL_FIVE_TYPED(Float8E5M2, Float8E4M3FN, half, Float8E5M2, half)
 REGISTER_KERNEL_FIVE_TYPED(Float8E5M2, Float8E4M3FN, float, float, BFloat16)
 */
 
-Status GemmFloatByte::ComputeInternal(OpKernelContext* ctx) const {
+Status GemmFloat8::ComputeInternal(OpKernelContext* ctx) const {
   // D = alpha*(A*B) + beta*(C)
   const auto* A = ctx->Input<Tensor>(0);  // X
   const auto* B = ctx->Input<Tensor>(1);  // W
@@ -84,17 +84,7 @@ Status GemmFloatByte::ComputeInternal(OpKernelContext* ctx) const {
   // cublasHandle_t cublas = GetCublasHandle(ctx);
   cublasLtHandle_t cublasLt = CublasLtHandle();
 
-  if (dtypes[0] == ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E4M3FN &&
-      dtypes[1] == ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E4M3FN &&
-      dtypes[2] == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16 &&
-      dtypes[3] == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16 &&
-      dtypes[4] == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
-    return this->params_.CudaCompute<Float8E4M3FN, Float8E4M3FN, MLFloat16, MLFloat16, MLFloat16>(
-        stream, cublasLt, A, B, C, Y, nullptr, M, N, K);
-  } else {
-    ORT_THROW("Unable to find an implementation for GemmFloatByte and types ",
-              dtypes[0], ",", dtypes[1], ",", dtypes[2], ",", dtypes[3], ",", dtypes[4], ".");
-  }
+  return this->params_.CudaCompute(dtypes, stream, cublasLt, A, B, C, Y, M, N, K);
 }
 
 }  // namespace cuda

@@ -15,16 +15,22 @@ from onnx.checker import check_model
 from onnx.helper import make_graph, make_model, make_node, make_opsetid, make_tensor, make_tensor_value_info
 from onnx.numpy_helper import from_array
 
-import onnxruntime
-
 # handle change from python 3.8 and on where loading a dll from the current directory needs to be explicitly allowed.
 if platform.system() == "Windows" and sys.version_info[:2] >= (3, 8):
     os.add_dll_directory(os.getcwd())
 
-available_providers = [provider for provider in onnxruntime.get_available_providers()]
+
+class TestFloat8Gemm8(unittest.TestCase):
+
+    @classmethod
+    def setUpClass(cls):
+        print("import")
+        from onnxruntime import InferenceSession
+        print("import")
+        cls.InferenceSession = InferenceSession
+        # cls.available_providers = [provider for provider in onnxruntime.get_available_providers()]
 
 
-class TestInferenceSessionFloat8Gemm8(unittest.TestCase):
     def get_model_gemm(self, float_name, alpha=1.0, beta=0.0, transA=0, transB=0, add_bias=False):
         proto_type = getattr(TensorProto, float_name)
 
@@ -59,10 +65,11 @@ class TestInferenceSessionFloat8Gemm8(unittest.TestCase):
         float_types,
         alpha=1.0,
         beta=0.0,
-        transA=0,
+        transA=1,
         transB=0,
         sm_count=0,
         fastAccumulationMode=1,
+        compute_type="CUBLAS_COMPUTE_16F",
         add_bias=False,
     ):
         proto_type = [getattr(TensorProto, float_name) for float_name in float_types]
@@ -79,7 +86,7 @@ class TestInferenceSessionFloat8Gemm8(unittest.TestCase):
             make_node("Cast", ["B"], ["Bf"], to=proto_type[1]),
             make_node("Cast", ["zero" if c is None else "C"], ["Cf"], to=proto_type[2]),
             make_node(
-                "GemmFloatByte",
+                "GemmFloat8",
                 ["Af", "Bf", "Cf", "zerof", "zerof"],
                 ["Df"],
                 domain="com.microsoft",
@@ -90,6 +97,7 @@ class TestInferenceSessionFloat8Gemm8(unittest.TestCase):
                 alpha=alpha,
                 beta=beta,
                 name="gemmf8",
+                computeType=compute_type,
             ),
             make_node("Cast", ["Df"], ["D"], to=TensorProto.FLOAT),
         ]
@@ -101,15 +109,24 @@ class TestInferenceSessionFloat8Gemm8(unittest.TestCase):
         check_model(onnx_model)
         return onnx_model
 
-    def test_model_gemm(self):
+    def common_test_model_gemm(self, float_type, compute_type="CUBLAS_COMPUTE_16F"):
         a = np.arange(9).reshape((3, 3)).astype(np.float32)
         b = (2 ** np.arange(9).reshape((3, 3))).astype(np.float32)
         expected = a @ b
         feeds = {"A": a, "B": b}
 
         onnx_model = self.get_model_gemm("FLOAT")
-        onnx_model_f8 = self.get_model_gemm_float8(["FLOAT8E4M3FN", "FLOAT8E4M3FN", "FLOAT16", "FLOAT16", "FLOAT16"])
-        ref = onnxruntime.InferenceSession(
+        if float_type == "FLOAT8E4M3FN":
+            float_types = ["FLOAT8E4M3FN", "FLOAT8E4M3FN", "FLOAT16", "FLOAT16", "FLOAT16"]
+        elif float_type == "FLOAT16":
+            float_types = ["FLOAT16", "FLOAT16", "FLOAT16", "FLOAT16", "FLOAT16"]
+        elif float_type == "FLOAT":
+            float_types = ["FLOAT", "FLOAT", "FLOAT", "FLOAT", "FLOAT"]
+        else:
+            raise AssertionError(f"Unexpected float_type={float_type!r}.")
+
+        onnx_model_f8 = self.get_model_gemm_float8(float_types, compute_type=compute_type)
+        ref = cls.InferenceSession(
             onnx_model.SerializeToString(), providers=["CUDAExecutionProvider", "CPUExecutionProvider"]
         )
         y = ref.run(None, feeds)[0]
@@ -117,16 +134,28 @@ class TestInferenceSessionFloat8Gemm8(unittest.TestCase):
         self.assertEqual(expected.shape, y.shape)
         self.assertEqual(expected.dtype, y.dtype)
 
-        print("C")
-        ref8 = onnxruntime.InferenceSession(
+        ref8 = cls.InferenceSession(
             onnx_model_f8.SerializeToString(), providers=["CUDAExecutionProvider", "CPUExecutionProvider"]
         )
-        print("D")
         y = ref8.run(None, feeds)[0]
-        print("E")
         assert_allclose(expected, y)
         self.assertEqual(expected.shape, y.shape)
         self.assertEqual(expected.dtype, y.dtype)
+
+    def test_model_gemm_e4m3(self):
+        self.common_test_model_gemm("FLOAT8E4M3FN", "CUBLAS_COMPUTE_32F")
+
+    def test_model_gemm_float16(self):
+        self.common_test_model_gemm("FLOAT16", "CUBLAS_COMPUTE_16F")
+
+    def test_model_gemm_float16_ct32(self):
+        self.common_test_model_gemm("FLOAT16", "CUBLAS_COMPUTE_32F")
+
+    def test_model_gemm_float(self):
+        self.common_test_model_gemm("FLOAT", "CUBLAS_COMPUTE_32F")
+
+    def test_model_gemm_float_ct16(self):
+        self.common_test_model_gemm("FLOAT", "CUBLAS_COMPUTE_32F_FAST_16F")
 
 
 if __name__ == "__main__":

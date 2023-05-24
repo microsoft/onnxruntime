@@ -2252,9 +2252,14 @@ ONNX_MS_OPERATOR_SET_SCHEMA(CropAndResize, 1,
         a fixed size = [crop_height, crop_width]. The result is a 4-D tensor [num_boxes, crop_height, crop_width, depth].
         The resizing is corner aligned.)DOC"));
 
-ONNX_MS_OPERATOR_SET_SCHEMA(GemmFloatByte, 1,
+ONNX_MS_OPERATOR_SET_SCHEMA(GemmFloat8, 1,
                             OpSchema()
-                                .SetDoc(R"DOC(Gemm for float 8)DOC")
+                                .SetDoc(R"DOC(
+Gemm for float and float 8. The operator calls function 'cublasLtMatmul'
+(https://docs.nvidia.com/cuda/cublas/index.html?highlight=cublasLtMatmul#cublasltmatmul).
+It lets the function checks what configuration is valid or not. If not, the error message
+shows the error message 'CUBLAS_STATUS_NOT_SUPPORTED'. NVIDIA documentation provides
+information on what attribute or type must be modified.)DOC")
                                 .Input(
                                     0,
                                     "A",
@@ -2287,11 +2292,11 @@ ONNX_MS_OPERATOR_SET_SCHEMA(GemmFloatByte, 1,
                                 .Output(0, "Y", "Output tensor of shape (M, N).", "T2")
                                 .TypeConstraint(
                                     "T",
-                                    {"tensor(float8e4m3fn)"},
+                                    {"tensor(float8e4m3fn)", "tensor(float16)", "tensor(float)"},
                                     "Constrain input types to float tensors.")
                                 .TypeConstraint(
                                     "T2",
-                                    {"tensor(float16)"},
+                                    {"tensor(float8e4m3fn)", "tensor(float16)", "tensor(float)"},
                                     "Constrain output types to float tensors.")
                                 .Attr(
                                     "transA",
@@ -2314,7 +2319,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(GemmFloatByte, 1,
                                     AttributeProto::FLOAT,
                                     1.0f)
                                 .Attr(
-                                    "sm_count",
+                                    "smCount",
                                     "",
                                     AttributeProto::INT,
                                     static_cast<int64_t>(0))
@@ -2322,6 +2327,11 @@ ONNX_MS_OPERATOR_SET_SCHEMA(GemmFloatByte, 1,
                                     "fastAccumulationMode",
                                     "",
                                     AttributeProto::INT,
+                                    static_cast<int64_t>(1))
+                                .Attr(
+                                    "computeType",
+                                    "",
+                                    AttributeProto::STRING,
                                     static_cast<int64_t>(1))
                                 .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
                                   propagateElemTypeFromInputToOutput(ctx, 0, 0);
