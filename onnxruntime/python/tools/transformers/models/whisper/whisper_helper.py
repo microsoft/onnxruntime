@@ -238,7 +238,7 @@ class WhisperHelper:
 
         optimization_options = FusionOptions("bart")
         optimization_options.use_multi_head_attention = True
-        optimization_options.disable_multi_head_attention_bias = True if provider == "rocm" else False
+        optimization_options.disable_multi_head_attention_bias = provider == "rocm"
 
         m = optimize_model(
             onnx_model_path,

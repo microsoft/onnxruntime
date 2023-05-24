@@ -520,7 +520,7 @@ class FusionAttention(Fusion):
 
         if self.disable_multi_head_attention_bias:
             add_bias_node_name = self.model.create_node_name("Add")
-            bias_name = self.create_combine_qkv_bias(q_add, k_add, v_add, add_bias_node_name)
+            bias_name = self.create_combined_qkv_bias(q_add, k_add, v_add, add_bias_node_name)
             qkv_add_bias_output = add_bias_node_name + "_bias_out"
             qkv_bias = helper.make_node(
                 "Add",
@@ -664,7 +664,7 @@ class FusionAttention(Fusion):
 
         # Add bias to inputs for MHA
         if not self.disable_multi_head_attention_bias:
-            bias_name = self.create_combine_qkv_bias(q_add, k_add, v_add, mha_node_name)
+            bias_name = self.create_combined_qkv_bias(q_add, k_add, v_add, mha_node_name)
             mha_inputs.append(bias_name)
 
         # Add optional inputs for MHA
