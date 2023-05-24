@@ -206,7 +206,9 @@ std::tuple<const HipT*, const HipT*, const HipT*> ConvertToOffsetedBufferViews(
     const T* present = nullptr,  // present or present_k
     const T* present_v = nullptr) {
   switch (attn->mode) {
-    case QFMT_KFMT_VFMT_NONE_NONE_NONE_NONE: {
+    case QFMT_KFMT_VFMT_NONE_NONE_NONE_NONE:
+    case BSNH_BNLH_BNLH_NONE_NONE_NONE_NONE:
+    case BSNH_BLNH_BLNH_NONE_NONE_NONE_NONE: {
       return {reinterpret_cast<const HipT*>(query),
               reinterpret_cast<const HipT*>(key),
               reinterpret_cast<const HipT*>(value)};
@@ -288,6 +290,13 @@ inline std::tuple<Strides, Strides, Strides> GetQkvStrides(const RocmAttentionPa
           Strides::BNSHMemory(B, N, M, H),
           Strides::BNSHMemory(B, N, M, Hv),
       };
+    case BSNH_BLNH_BLNH_NONE_NONE_NONE_NONE:
+      return {
+          Strides::BSNHMemory(B, S, N, H),
+          Strides::BSNHMemory(B, L, N, H),
+          Strides::BSNHMemory(B, L, N, Hv),
+      };
+    case BSNH_BNLH_BNLH_NONE_NONE_NONE_NONE:
 
     case BSNH_BLN2H_NONE_NONE_NONE_NONE_NONE:
       return {
@@ -531,6 +540,8 @@ class GemmSoftmaxGemmPermuteTunableOp : public tunable::TunableOp<GemmSoftmaxGem
       case BSNH_BNLH_BNLH_BNPH_BNPH_BNTH_BNTH:
       case BSNH_BLNH_BLNH_BNMH_BNMH_BNMH_BNMH:
       case BSNH_BNLH_BNLH_BNMH_BNMH_BNMH_BNMH:
+      case BSNH_BLNH_BLNH_NONE_NONE_NONE_NONE:
+      case BSNH_BNLH_BNLH_NONE_NONE_NONE_NONE:
       case BSNH_BLN2H_NONE_NONE_NONE_NONE_NONE:
       case BLN3H_NONE_NONE_NONE_NONE_NONE_NONE:
         return true;
