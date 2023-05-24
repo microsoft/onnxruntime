@@ -108,9 +108,9 @@ class TestFloat8Gemm8(unittest.TestCase):
 
         onnx_model = self.get_model_gemm("FLOAT")
         if float_type == "FLOAT8E4M3FN":
-            float_types = ["FLOAT8E4M3FN", "FLOAT8E4M3FN", "FLOAT8E4M3FN", "FLOAT8E4M3FN", "FLOAT16"]
+            float_types = ["FLOAT8E4M3FN", "FLOAT8E4M3FN", "FLOAT8E4M3FN", "FLOAT16", "FLOAT8E4M3FN"]
         elif float_type == "FLOAT8E5M2":
-            float_types = ["FLOAT8E5M2", "FLOAT8E4M3FN", "FLOAT8E4M3FN", "FLOAT8E4M3FN", "FLOAT16"]
+            float_types = ["FLOAT8E5M2", "FLOAT8E4M3FN", "FLOAT8E4M3FN", "FLOAT16", "FLOAT8E4M3FN"]
         elif float_type == "FLOAT16":
             float_types = ["FLOAT16", "FLOAT16", "FLOAT16", "FLOAT16", "FLOAT16"]
         elif float_type == "FLOAT":
