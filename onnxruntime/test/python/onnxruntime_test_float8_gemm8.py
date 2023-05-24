@@ -71,7 +71,7 @@ class TestFloat8Gemm8(unittest.TestCase):
 
         nodes = [
             make_node("Cast", ["zero"], ["zeros"], to=proto_type[3]),
-            make_node("Cast", ["zerof"], ["zerof"], to=proto_type[4]),
+            make_node("Cast", ["zero"], ["zerof"], to=proto_type[4]),
             make_node("Cast", ["A"], ["Af"], to=proto_type[0]),
             make_node("Cast", ["B"], ["Bf"], to=proto_type[1]),
             make_node("Cast", ["zero" if c is None else "C"], ["Cf"], to=proto_type[2]),

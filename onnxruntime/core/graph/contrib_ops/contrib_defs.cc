@@ -2292,23 +2292,23 @@ information on what attribute or type must be modified.)DOC")
                                 .Output(0, "Y", "Output tensor of shape (M, N).", "TR")
                                 .TypeConstraint(
                                     "TA",
-                                    {"tensor(float8e4m3fn)", "tensor(float8e5m2)", "tensor(float16)", "tensor(float)"},
+                                    {"tensor(float8e4m3fn)", "tensor(float8e5m2)", "tensor(float16)", "tensor(bfloat16)", "tensor(float)"},
                                     "Constrain input type to float tensors.")
                                 .TypeConstraint(
                                     "TB",
-                                    {"tensor(float8e4m3fn)", "tensor(float8e5m2)", "tensor(float16)", "tensor(float)"},
+                                    {"tensor(float8e4m3fn)", "tensor(float8e5m2)", "tensor(float16)", "tensor(bfloat16)", "tensor(float)"},
                                     "Constrain input type to float tensors.")
                                 .TypeConstraint(
                                     "TC",
-                                    {"tensor(float8e4m3fn)", "tensor(float8e5m2)", "tensor(float16)", "tensor(float)"},
+                                    {"tensor(float8e4m3fn)", "tensor(float8e5m2)", "tensor(float16)", "tensor(bfloat16)", "tensor(float)"},
                                     "Constrain input type to float tensors.")
                                 .TypeConstraint(
                                     "TS",
-                                    {"tensor(float8e4m3fn)", "tensor(float8e5m2)", "tensor(float16)", "tensor(float)"},
+                                    {"tensor(float8e4m3fn)", "tensor(float8e5m2)", "tensor(float16)", "tensor(bfloat16)", "tensor(float)"},
                                     "Constrain input type to float tensors.")
                                 .TypeConstraint(
                                     "TR",
-                                    {"tensor(float8e4m3fn)", "tensor(float8e5m2)", "tensor(float16)", "tensor(float)"},
+                                    {"tensor(float8e4m3fn)", "tensor(float8e5m2)", "tensor(float16)", "tensor(bfloat16)", "tensor(float)"},
                                     "Constrain output type to float tensors.")
                                 .Attr(
                                     "transA",
