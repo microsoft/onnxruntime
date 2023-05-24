@@ -276,14 +276,14 @@ stages:
       displayName: install jest junit reporter js/react_native/e2e
 
     - script: |
-      yarn add react-native-fs
-    workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e'
-    displayName: install react-native-fs js/react_native/e2e
+        yarn add react-native-fs
+      workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e'
+      displayName: install react-native-fs js/react_native/e2e
 
     - script: |
-      yarn add base64-arraybuffer
-    workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e'
-    displayName: install base64-arraybuffer js/react_native/e2e
+        yarn add base64-arraybuffer
+      workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e'
+      displayName: install base64-arraybuffer js/react_native/e2e
 
     - script: |
        keytool -genkey -v -keystore debug.keystore -alias androiddebugkey -storepass android \
