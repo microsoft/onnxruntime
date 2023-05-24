@@ -113,7 +113,7 @@ stages:
           addToPath: true
           architecture: $(buildArch)
 
-      - task: azurecdp.onebranch-pipeline-toolset-extension.onebranch.pipeline.tsaoptions-task.onebranch.pipeline.tsaoptions@1
+      - task: onebranch.pipeline.tsaoptions@1
         displayName: 'OneBranch TSAOptions'
         inputs:
           tsaConfigFilePath: '$(Build.SourcesDirectory)\.config\tsaoptions.json'
