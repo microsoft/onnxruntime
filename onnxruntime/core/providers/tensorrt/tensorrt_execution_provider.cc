@@ -902,10 +902,7 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
   }
 
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 10000
-  if (cuda_graph_enable_) {
-    cuda_graph_ = std::make_unique<CUDAGraph>();
-    cuda_graph_->SetStream(stream_);
-  }
+  cuda_graph_ = std::make_unique<CUDAGraph>();
 #endif
 
   /*
@@ -1117,10 +1114,6 @@ std::unique_ptr<IDataTransfer> TensorrtExecutionProvider::GetDataTransfer() cons
 }
 
 Status TensorrtExecutionProvider::OnRunStart() {
-  if (cuda_graph_enable_ && IsGraphCaptureAllowed() && !IsGraphCaptured()) {
-    LOGS_DEFAULT(INFO) << "Capturing the cuda graph for this model";
-    CaptureBegin();
-  }
   return Status::OK();
 }
 
@@ -2269,6 +2262,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
 
     // Create compute function
     compute_info.compute_func = [this](FunctionState state, const OrtApi* api, OrtKernelContext* context) {
+      std::cout << "In compute_func" << std::endl;
       Ort::KernelContext ctx(context);
 
       TensorrtFuncState* trt_state = reinterpret_cast<TensorrtFuncState*>(state);
@@ -2863,6 +2857,17 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
         trt_context->setDeviceMemory((*context_memory).get());
       }
 
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 10000
+      // Start CUDA graph capture.
+      // Note: The reason we don't put graph capture in OnRunStart() like CUDA EP does is because
+      // current ORT TRT doesn't get cuda stream until compute time and graph capture requires cuda stream.
+      if (cuda_graph_enable_ && IsGraphCaptureAllowed() && !IsGraphCaptured()) {
+        LOGS_DEFAULT(INFO) << "Capturing the cuda graph for this model";
+        cuda_graph_->SetStream(stream);
+        CaptureBegin();
+      }
+#endif
+
       // Run TRT inference
       if (!trt_context->enqueueV2(&buffers[0], stream, nullptr)) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "TensorRT EP execution context enqueue failed.");
@@ -2891,10 +2896,12 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
         }
       }
 
-      // End CUDA graph capture if CUDA graph is enabled.
-      // The reason we don't put following CaptureEnd() in OnRunEnd() is because OnRunEnd() is not synchronized with OnRunStart() and ExecuteGraph() per inference_session.cc,
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 10000
+      // End CUDA graph capture. 
+      // Note: One reason we don't put end of graph capture in OnRunEnd() like CUDA EP does is because of cuda stream mentioned in graph capture,
+      // another reason is because OnRunEnd() is not synchronized with OnRunStart() and ExecuteGraph() per inference_session.cc,
       // which might end up with many cuda graphs are captured by multiple threads if run with multithreading.
-      // OnRunStart() and ExecuteGraph() are synchronized inside Run(), therefore it's safe to start/end CUDA graph capture in OnRunStart()/compute_func() here.
+      // It's safe to start/end CUDA graph capture in compute_func() here since the whole fucntion is protected by the lock_guard().
       if (cuda_graph_enable_ && !IsGraphCaptured()) {
         if (IsGraphCaptureAllowed()) {
           CaptureEnd();
@@ -2905,6 +2912,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
           IncrementRegularRunCountBeforeGraphCapture();
         }
       }
+#endif
 
       return Status::OK();
     };
