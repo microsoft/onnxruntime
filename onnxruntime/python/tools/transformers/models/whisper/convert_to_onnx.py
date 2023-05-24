@@ -216,11 +216,12 @@ def export_onnx_models(
     )
     config = models["decoder"].config
 
-    if (not use_external_data_format) and (config.num_layers > 24):
+    if (not use_external_data_format) and (config.num_hidden_layers > 24):
         logger.info("Try use_external_data_format when model size > 2GB")
 
     output_paths = []
     for name, model in models.items():
+        print(f"========> Handling {name} model......")
         model.to(device)
         filename_suffix = "_" + name
 
