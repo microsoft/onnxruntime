@@ -48,7 +48,7 @@ jobs:
       architecture: "x64"
 
   - template: templates/use-xcode-version.yml
-    inputs:
+    parameters:
       xcodeVersion: ${{ variables.xcodeVersion }}
 
   - script: |
