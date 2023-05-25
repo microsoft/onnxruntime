@@ -20,6 +20,17 @@ def getExtOrIntegerDefault(name) {
   return rootProject.ext.has(name) ? rootProject.ext.get(name) : (project.properties['OnnxruntimeModule_' + name]).toInteger()
 }
 
+def reactNativeArchitectures() {
+  def value = project.getProperties().get("reactNativeArchitectures")
+  return value ? value.split(",") : ["armeabi-v7a", "x86", "x86_64", "arm64-v8a"]
+}
+
+def resolveBuildType() {
+  Gradle gradle = getGradle()
+  String tskReqStr = gradle.getStartParameter().getTaskRequests()['args'].toString()
+  return tskReqStr.contains('Release') ? 'release' : 'debug'
+}
+
 def checkIfOrtExtensionsEnabled() {
   // locate user's project dir
   def reactnativeRootDir = project.rootDir.parentFile
@@ -47,6 +58,39 @@ android {
     versionCode 1
     versionName "1.0"
     testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+    externalNativeBuild {
+      cmake {
+        cppFlags "-O2 -frtti -fexceptions -Wall -Wno-unused-variable -fstack-protector-all"
+        arguments "-DANDROID_STL=c++_shared"
+        abiFilters (*reactNativeArchitectures())
+      }
+    }
+  }
+
+  if (rootProject.hasProperty("ndkPath")) {
+    ndkPath rootProject.ext.ndkPath
+  }
+  if (rootProject.hasProperty("ndkVersion")) {
+    ndkVersion rootProject.ext.ndkVersion
+  }
+
+  buildFeatures {
+    prefab true
+  }
+
+  externalNativeBuild {
+    cmake {
+      path "CMakeLists.txt"
+    }
+  }
+
+  packagingOptions {
+    doNotStrip resolveBuildType() == 'debug' ? "**/**/*.so" : ''
+    excludes = [
+      "META-INF",
+      "META-INF/**",
+      "**/libjsi.so",
+    ]
   }
 
   buildTypes {
@@ -169,5 +213,20 @@ dependencies {
   // By default it will just include onnxruntime full aar package
   if (ortExtensionsEnabled) {
     implementation "com.microsoft.onnxruntime:onnxruntime-extensions-android:latest.integration@aar"
+  }
+}
+
+// Resolves "LOCAL_SRC_FILES points to a missing file, Check that libfb.so exists or that its path is correct".
+tasks.whenTaskAdded { task ->
+  if (task.name.contains("configureCMakeDebug")) {
+     rootProject.getTasksByName("packageReactNdkDebugLibs", true).forEach {
+       task.dependsOn(it)
+     }
+  }
+
+  if (task.name.contains("configureCMakeRel")) {
+     rootProject.getTasksByName("packageReactNdkReleaseLibs", true).forEach {
+       task.dependsOn(it)
+     }
   }
 }

@@ -21,6 +21,7 @@ public class OnnxruntimePackage implements ReactPackage {
   public List<NativeModule> createNativeModules(@NonNull ReactApplicationContext reactContext) {
     List<NativeModule> modules = new ArrayList<>();
     modules.add(new OnnxruntimeModule(reactContext));
+    modules.add(new OnnxruntimeJSIHelper(reactContext));
     return modules;
   }
 

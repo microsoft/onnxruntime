@@ -27,6 +27,7 @@ import com.facebook.react.bridge.ReadableMap;
 import com.facebook.react.bridge.ReadableType;
 import com.facebook.react.bridge.WritableArray;
 import com.facebook.react.bridge.WritableMap;
+import com.facebook.react.modules.blob.BlobModule;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
@@ -86,19 +87,22 @@ public class OnnxruntimeModule extends ReactContextBaseJavaModule {
   }
 
   /**
-   * React native binding API to load a model using the BASE64 encoded model data.
+   * React native binding API to load a model using blob map that data stored in BlobModule.
    *
-   * @param data the BASE64 encoded model data.
+   * @param data the blob map
    * @param options onnxruntime session options
    * @param promise output returning back to react native js
    * @note the value provided to `promise` includes a key representing the session.
    *       when run() is called, the key must be passed into the first parameter.
    */
   @ReactMethod
-  public void loadModelFromBlob(String data, ReadableMap options, Promise promise) {
+  public void loadModelFromBlob(ReadableMap data, ReadableMap options, Promise promise) {
     try {
-      byte[] modelData = Base64.decode(data, Base64.DEFAULT);
-      WritableMap resultMap = loadModel(modelData, options);
+      BlobModule blobModule = reactContext.getNativeModule(BlobModule.class);
+      String blobId = data.getString("blobId");
+      byte[] bytes = blobModule.resolve(blobId, data.getInt("offset"), data.getInt("size"));
+      blobModule.remove(blobId);
+      WritableMap resultMap = loadModel(bytes, options);
       promise.resolve(resultMap);
     } catch (Exception e) {
       promise.reject("Failed to load model from buffer: " + e.getMessage(), e);
@@ -210,6 +214,8 @@ public class OnnxruntimeModule extends ReactContextBaseJavaModule {
       throw new Exception("Model is not loaded.");
     }
 
+    BlobModule blobModule = reactContext.getNativeModule(BlobModule.class);
+
     RunOptions runOptions = parseRunOptions(options);
 
     long startTime = System.currentTimeMillis();
@@ -224,19 +230,7 @@ public class OnnxruntimeModule extends ReactContextBaseJavaModule {
           throw new Exception("Can't find input: " + inputName);
         }
 
-        if (inputMap.getType("data") != ReadableType.String) {
-          // NOTE:
-          //
-          // tensor data should always be a BASE64 encoded string.
-          // This is because the current React Native bridge supports limited data type as arguments.
-          // In order to pass data from JS to Java, we have to encode them into string.
-          //
-          // see also:
-          //   https://reactnative.dev/docs/native-modules-android#argument-types
-          throw new Exception("Non string type of a tensor data is not allowed");
-        }
-
-        OnnxTensor onnxTensor = TensorHelper.createInputTensor(inputMap, ortEnvironment);
+        OnnxTensor onnxTensor = TensorHelper.createInputTensor(blobModule, inputMap, ortEnvironment);
         feed.put(inputName, onnxTensor);
       }
 
@@ -262,7 +256,7 @@ public class OnnxruntimeModule extends ReactContextBaseJavaModule {
       Log.d("Duration", "inference: " + duration);
 
       startTime = System.currentTimeMillis();
-      WritableMap resultMap = TensorHelper.createOutputTensor(result);
+      WritableMap resultMap = TensorHelper.createOutputTensor(blobModule, result);
       duration = System.currentTimeMillis() - startTime;
       Log.d("Duration", "createOutputTensor: " + duration);
 

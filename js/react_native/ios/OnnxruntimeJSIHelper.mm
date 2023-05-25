@@ -15,15 +15,15 @@ RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(install)
   if (cxxBridge == nil) {
     return @false;
   }
-  
+
   using namespace facebook;
-  
+
   auto jsiRuntime = (jsi::Runtime*) cxxBridge.runtime;
   if (jsiRuntime == nil) {
     return @false;
   }
   auto& runtime = *jsiRuntime;
-  
+
   auto resolveArrayBuffer = jsi::Function::createFromHostFunction(runtime,
                                                                      jsi::PropNameID::forUtf8(runtime, "resolveArrayBuffer"),
                                                                      1,
@@ -35,12 +35,12 @@ RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(install)
     auto blobId = data.getProperty(runtime, "blobId").asString(runtime).utf8(runtime);
     auto size = data.getProperty(runtime, "size").asNumber();
     auto offset = data.getProperty(runtime, "offset").asNumber();
-    
+
     RCTBlobManager* blobManager = [[RCTBridge currentBridge] moduleForClass:RCTBlobManager.class];
 
     NSString* blobIdStr = [NSString stringWithUTF8String:blobId.c_str()];
     auto blob = [blobManager resolve:blobIdStr offset:(long)offset size:(long)size];
-    
+
     jsi::Function arrayBufferCtor = runtime.global().getPropertyAsFunction(runtime, "ArrayBuffer");
     jsi::Object o = arrayBufferCtor.callAsConstructor(runtime, (int)blob.length).getObject(runtime);
     jsi::ArrayBuffer buf = o.getArrayBuffer(runtime);
@@ -49,7 +49,7 @@ RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(install)
     return buf;
   });
   runtime.global().setProperty(runtime, "jsiOnnxruntimeResolveArrayBuffer", resolveArrayBuffer);
-  
+
   auto storeArrayBuffer = jsi::Function::createFromHostFunction(runtime,
                                                                      jsi::PropNameID::forUtf8(runtime, "storeArrayBuffer"),
                                                                      1,
