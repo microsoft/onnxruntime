@@ -991,6 +991,14 @@ void UntypedBroadcastTwo(OpKernelContext& context, const ProcessBroadcastSpanFun
 //
 // Operator usage is the same as the parallelization is opaque to the operator.
 // unit_cost must be a valid cost value.
+void UntypedBroadcastTwo(OpKernelContext& context, const ProcessBroadcastSpanFuncs& funcs,
+                         InputBroadcaster& input_broadcaster, Tensor& output_tensor,
+                         double unit_cost, void* user_data = nullptr);
+
+// Broadcast two inputs with parallelization.
+//
+// Operator usage is the same as the parallelization is opaque to the operator.
+// unit_cost must be a valid cost value.
 void UntypedBroadcastTwo(OpKernelContext& context, const ProcessBroadcastSpanFuncs& funcs, double unit_cost,
                          void* user_data = nullptr);
 

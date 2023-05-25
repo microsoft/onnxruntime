@@ -3,6 +3,7 @@
 
 #pragma once
 #include "core/common/common.h"
+#include "core/providers/cpu/math/element_wise_ops.h"
 #include "core/util/math_cpuonly.h"
 
 namespace onnxruntime {
@@ -72,6 +73,7 @@ class GemmHelper {
   Status status_;
 };
 
+// Broadcast bias with no parallelization
 template <typename T>
 void GemmBroadcastBias(int64_t M, int64_t N, float beta,
                        const T* c_data, const TensorShape* c_shape,
@@ -94,6 +96,24 @@ void GemmBroadcastBias(int64_t M, int64_t N, float beta,
       output_mat = ConstEigenMatrixMapRowMajor<T>(c_data, onnxruntime::narrow<size_t>(M), onnxruntime::narrow<size_t>(N));
     }
   }
+}
+
+// Broadcast bias with parallelization
+template <typename T>
+void GemmBroadcastBias(OpKernelContext& context, const Tensor& C, Tensor& Y) {
+    ProcessBroadcastSpanFuncs funcs{
+        [](BroadcastHelper& per_iter_bh) {
+          per_iter_bh.OutputEigen<T>().setConstant(per_iter_bh.ScalarInput0<T>());
+        },
+        [](BroadcastHelper& per_iter_bh) {
+          per_iter_bh.OutputEigen<T>() = per_iter_bh.EigenInput0<T>();
+        },
+        [](BroadcastHelper& per_iter_bh) {
+          per_iter_bh.OutputEigen<T>() = per_iter_bh.EigenInput0<T>();
+      }};
+
+    InputBroadcaster inputBroadcaster(C, Y);
+    UntypedBroadcastTwo(context, funcs, inputBroadcaster, Y, 1.);
 }
 
 }  // namespace onnxruntime

@@ -1934,14 +1934,9 @@ void UntypedBroadcastTwo(OpKernelContext& context, const ProcessBroadcastSpanFun
 // Variant of UntypedBroadcastTwo that will parallelize.
 // Operator usage is the same as the parallelization is opaque to the operator.
 // unit_cost must be a valid cost value.
-void UntypedBroadcastTwo(OpKernelContext& context, const ProcessBroadcastSpanFuncs& funcs, double unit_cost,
-                         void* user_data) {
-  const Tensor& input0_tensor = *context.Input<Tensor>(0);
-  const Tensor& input1_tensor = *context.Input<Tensor>(1);
-  InputBroadcaster input_broadcaster(input0_tensor, input1_tensor);
-
-  Tensor& output_tensor = *context.Output(0, input_broadcaster.GetOutputShape());
-
+void UntypedBroadcastTwo(OpKernelContext& context, const ProcessBroadcastSpanFuncs& funcs,
+                         InputBroadcaster& input_broadcaster, Tensor& output_tensor,
+                         double unit_cost, void* user_data) {
   size_t span_size = input_broadcaster.GetSpanSize();
   size_t output_size = static_cast<ptrdiff_t>(output_tensor.Shape().Size());
 
@@ -1981,6 +1976,19 @@ void UntypedBroadcastTwo(OpKernelContext& context, const ProcessBroadcastSpanFun
           BroadcastLooper(segment_helper, funcs);
         });
   }
+}
+
+// Variant of UntypedBroadcastTwo that will parallelize.
+// Operator usage is the same as the parallelization is opaque to the operator.
+// unit_cost must be a valid cost value.
+void UntypedBroadcastTwo(OpKernelContext& context, const ProcessBroadcastSpanFuncs& funcs, double unit_cost,
+                         void* user_data) {
+  const Tensor& input0_tensor = *context.Input<Tensor>(0);
+  const Tensor& input1_tensor = *context.Input<Tensor>(1);
+  InputBroadcaster input_broadcaster(input0_tensor, input1_tensor);
+  Tensor& output_tensor = *context.Output(0, input_broadcaster.GetOutputShape());
+
+  UntypedBroadcastTwo(context, funcs, input_broadcaster, output_tensor, unit_cost, user_data);
 }
 
 // allocate_tensor should allocate a tensor of the output type with the given shape
