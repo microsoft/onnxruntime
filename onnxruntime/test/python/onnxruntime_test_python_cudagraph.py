@@ -33,6 +33,7 @@ class TestInferenceSessionWithCudaGraph(unittest.TestCase):
 
             ortvalue_gpu.update_inplace(x1)
             np.testing.assert_allclose(x1, ortvalue_gpu.numpy())
+
     def testSelectEPtoRunCudaGraph(self):
         if "TensorrtExecutionProvider" in onnxrt.get_available_providers():
             providers = [("TensorrtExecutionProvider", {"trt_cuda_graph_enable": True})]

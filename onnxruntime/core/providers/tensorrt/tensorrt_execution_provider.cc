@@ -1004,7 +1004,7 @@ bool TensorrtExecutionProvider::IsGraphCaptureAllowed() const {
   return regular_run_count_before_graph_capture_ >= min_num_runs_before_cuda_graph_capture_;
 }
 
-void TensorrtExecutionProvider::CaptureBegin()  {
+void TensorrtExecutionProvider::CaptureBegin() {
   cuda_graph_->Reset();
   cuda_graph_->CaptureBegin();
 }

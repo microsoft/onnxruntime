@@ -1553,11 +1553,12 @@ common::Status InferenceSession::Initialize() {
             ORT_RETURN_IF_ERROR_SESSIONID_(
                 ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                                 "This session cannot use the CUDA Graph feature as requested by the user "
-                                "as all the graph nodes have not been assigned to " + target_ep->Type()));
+                                "as all the graph nodes have not been assigned to " +
+                                    target_ep->Type()));
           } else {
             LOGS(*session_logger_, INFO) << "This session will use the CUDA Graph feature as requested by the user.";
             cached_execution_provider_for_graph_replay_.SetExecutionProvider(target_ep);
-            break; // Make sure only one ep can run CUDA graph.
+            break;  // Make sure only one ep can run CUDA graph.
           }
         }
       }

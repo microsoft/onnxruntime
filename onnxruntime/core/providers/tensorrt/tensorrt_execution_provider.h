@@ -220,13 +220,13 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   bool timing_cache_enable_ = false;
   bool force_timing_cache_match_ = false;
   bool detailed_build_log_ = false;
-  bool cuda_graph_enable_ = false; 
+  bool cuda_graph_enable_ = false;
 
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 10000
-  std::unique_ptr<CUDAGraph> cuda_graph_; // ORT TRT only supports CUDA graph when whole model is supported by TRT, so simply maintaining a CUDAGraph pointer is enough (no need to maintain one CUDAGraph pointer per TRT subgraph)
+  std::unique_ptr<CUDAGraph> cuda_graph_;  // ORT TRT only supports CUDA graph when whole model is supported by TRT, so simply maintaining a CUDAGraph pointer is enough (no need to maintain one CUDAGraph pointer per TRT subgraph)
   bool is_graph_captured_ = false;
   int regular_run_count_before_graph_capture_ = 0;
-  const int min_num_runs_before_cuda_graph_capture_ = 1; // required min regular runs before graph capture for the necessary memory allocations.
+  const int min_num_runs_before_cuda_graph_capture_ = 1;  // required min regular runs before graph capture for the necessary memory allocations.
 #endif
 
   std::unordered_set<std::string> control_flow_op_set_ = {"If", "Loop", "Scan"};
