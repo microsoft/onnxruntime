@@ -101,19 +101,19 @@ void GemmBroadcastBias(int64_t M, int64_t N, float beta,
 // Broadcast bias with parallelization
 template <typename T>
 void GemmBroadcastBias(OpKernelContext& context, const Tensor& C, Tensor& Y) {
-    ProcessBroadcastSpanFuncs funcs{
-        [](BroadcastHelper& per_iter_bh) {
-          per_iter_bh.OutputEigen<T>().setConstant(per_iter_bh.ScalarInput0<T>());
-        },
-        [](BroadcastHelper& per_iter_bh) {
-          per_iter_bh.OutputEigen<T>() = per_iter_bh.EigenInput0<T>();
-        },
-        [](BroadcastHelper& per_iter_bh) {
-          per_iter_bh.OutputEigen<T>() = per_iter_bh.EigenInput0<T>();
+  ProcessBroadcastSpanFuncs funcs{
+      [](BroadcastHelper& per_iter_bh) {
+        per_iter_bh.OutputEigen<T>().setConstant(per_iter_bh.ScalarInput0<T>());
+      },
+      [](BroadcastHelper& per_iter_bh) {
+        per_iter_bh.OutputEigen<T>() = per_iter_bh.EigenInput0<T>();
+      },
+      [](BroadcastHelper& per_iter_bh) {
+        per_iter_bh.OutputEigen<T>() = per_iter_bh.EigenInput0<T>();
       }};
 
-    InputBroadcaster inputBroadcaster(C, Y);
-    UntypedBroadcastTwo(context, funcs, inputBroadcaster, Y, 1.);
+  InputBroadcaster inputBroadcaster(C, Y);
+  UntypedBroadcastTwo(context, funcs, inputBroadcaster, Y, 1.);
 }
 
 }  // namespace onnxruntime
