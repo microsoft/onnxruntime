@@ -139,6 +139,10 @@ ProviderOptions TensorrtExecutionProviderInfo::ToProviderOptions(const OrtTensor
   const std::string kCachePath_ = empty_if_null(info.trt_engine_cache_path);
   const std::string kTacticSources_ = empty_if_null(info.trt_tactic_sources);
   const std::string kDecryptionLibPath_ = empty_if_null(info.trt_engine_decryption_lib_path);
+  const std::string kExtraPluginLibPaths_ = empty_if_null(info.trt_extra_plugin_lib_paths);
+  const std::string kProfilesMinShapes_ = empty_if_null(info.trt_profile_min_shapes);
+  const std::string kProfilesMaxShapes_ = empty_if_null(info.trt_profile_max_shapes);
+  const std::string kProfilesOptShapes_ = empty_if_null(info.trt_profile_opt_shapes);
 
   const ProviderOptions options{
       {tensorrt::provider_option_names::kDeviceId, MakeStringWithClassicLocale(info.device_id)},
@@ -167,6 +171,10 @@ ProviderOptions TensorrtExecutionProviderInfo::ToProviderOptions(const OrtTensor
       {tensorrt::provider_option_names::kBuilderOptimizationLevel, MakeStringWithClassicLocale(info.trt_builder_optimization_level)},
       {tensorrt::provider_option_names::kAuxiliaryStreams, MakeStringWithClassicLocale(info.trt_auxiliary_streams)},
       {tensorrt::provider_option_names::kTacticSources, kTacticSources_},
+      {tensorrt::provider_option_names::kExtraPluginLibPaths, kExtraPluginLibPaths_},
+      {tensorrt::provider_option_names::kProfilesMinShapes, kProfilesMinShapes_},
+      {tensorrt::provider_option_names::kProfilesMaxShapes, kProfilesMaxShapes_},
+      {tensorrt::provider_option_names::kProfilesOptShapes, kProfilesOptShapes_},
   };
   return options;
 }
