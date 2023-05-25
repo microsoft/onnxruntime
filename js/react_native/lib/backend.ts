@@ -145,7 +145,7 @@ class OnnxruntimeSessionHandler implements SessionHandler {
         if (Array.isArray(results[key].data)) {
           tensorData = results[key].data as string[];
         } else {
-          const buffer = jsiHelper.resolveArrayBuffer(results[key].data as JSIBlob) as Uint8Array;
+          const buffer = jsiHelper.resolveArrayBuffer(results[key].data as JSIBlob) as SupportedTypedArray;
           const typedArray = tensorTypeToTypedArray(results[key].type as Tensor.Type);
           tensorData = new typedArray(buffer, buffer.byteOffset, buffer.byteLength / typedArray.BYTES_PER_ELEMENT);
         }
