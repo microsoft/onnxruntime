@@ -167,7 +167,7 @@ jobs:
       - ${{ if eq(parameters.PYTHON_VERSION, '3.8') }}:
           - task: DeleteFiles@1
             displayName: 'Delete files from $(Build.BinariesDirectory)\RelWithDebInfo'
-            condition: and (succeeded(), eq(variables['$'], '3.8'))
+            condition: succeeded()
             inputs:
               SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo'
               Contents: |
