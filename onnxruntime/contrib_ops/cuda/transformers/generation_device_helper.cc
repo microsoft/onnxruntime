@@ -13,6 +13,7 @@
 #include <cuda_runtime.h>
 #include "contrib_ops/cuda/transformers/generation_cuda_impl.h"
 #include "contrib_ops/cuda/transformers/dump_cuda_tensor.h"
+#include "contrib_ops/cpu/transformers/generation_shared.h"
 #include "contrib_ops/cpu/transformers/subgraph_t5_decoder.h"
 #include "contrib_ops/cpu/transformers/subgraph_gpt.h"
 #include "contrib_ops/cuda/transformers/beam_search_topk.h"
@@ -457,6 +458,9 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
       current_sequence_length,
       parameters->repetition_penalty,
       parameters->no_repeat_ngram_size,
+      parameters->model_type == onnxruntime::contrib::transformers::IGenerationParameters::kModelTypeWhisper &&
+          parameters->logits_processor == onnxruntime::contrib::transformers::IGenerationParameters::kLogitsProcessorTypeWhisper,
+      parameters->eos_token_id,
       cuda_stream);
 
 #ifdef DEBUG_GENERATION
@@ -748,6 +752,9 @@ Status GreedySearchProcessLogits(
       current_sequence_length,
       parameters->repetition_penalty,
       parameters->no_repeat_ngram_size,
+      parameters->model_type == onnxruntime::contrib::transformers::IGenerationParameters::kModelTypeWhisper &&
+          parameters->logits_processor == onnxruntime::contrib::transformers::IGenerationParameters::kLogitsProcessorTypeWhisper,
+      parameters->eos_token_id,
       cuda_stream);
 
 #ifdef DEBUG_GENERATION

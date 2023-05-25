@@ -43,6 +43,8 @@ void LaunchLogitsProcessKernel(
     int current_sequence_length,
     float repetition_penalty,
     int no_repeat_ngram_size,
+    bool gen_timestamp,
+    int eos_token_id,
     cudaStream_t stream);
 
 void LaunchNextTokenKernel(const int64_t* next_token_indices,

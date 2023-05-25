@@ -79,7 +79,9 @@ __global__ void LogitsProcessKernel(
     int max_sequence_length,
     int current_sequence_length,
     float repetition_penalty,
-    int no_repeat_ngram_size) {
+    int no_repeat_ngram_size,
+    bool gen_timestamp = false,
+    int eos_token_id = -1) {
   int index = blockIdx.x * blockDim.x + threadIdx.x;
   if (index < total_elements) {
     int batch_beam_index = index / padded_vocab_size;
@@ -159,6 +161,56 @@ __global__ void LogitsProcessKernel(
         float score = (float)(next_token_scores[index]);
         next_token_scores[index] = (T)(score / temperature);
       }
+
+      // TimestampLogitsProcessor
+      if (gen_timestamp) {
+        const int beg_token_id_ = eos_token_id + 107;
+        const int not_token_id_ = eos_token_id + 106;
+        const int solm_token_id_ = eos_token_id + 105;
+        const int sot_token_id_ = eos_token_id + 1;
+        constexpr int translate_token_id_ = 50358;
+        constexpr int transcribe_token_id_ = 50359;
+
+        int32_t* current_sequence = sequences + batch_beam_index * max_sequence_length;
+
+        // Find first timestamp
+        int sample_begin = 0;
+        for (int seq_idx = 0; seq_idx < current_sequence_length; seq_idx++) {
+          sample_begin++;
+          if (current_sequence[seq_idx] >= beg_token_id_) {
+            break;
+          }
+        }
+
+        // Suppress notimestamps and solm tokens
+        if (word_id == not_token_id_ || word_id == solm_token_id_) {
+          next_token_scores[index] = cub::FpLimits<T>::Lowest();
+        }
+
+        // Suppress sot, translate and transcribe tokens
+        if (current_sequence_length > sample_begin) {
+          if (word_id == sot_token_id_ || word_id == translate_token_id_ || word_id == transcribe_token_id_) {
+            next_token_scores[index] = cub::FpLimits<T>::Lowest();
+          }
+        }
+
+        // Timestamps should be in pair except the first one
+        const bool last_was_timestamp = current_sequence_length > 0 && current_sequence[current_sequence_length - 1] >= beg_token_id_;
+        const bool penultimate_was_timestamp = current_sequence_length <= sample_begin || current_sequence[current_sequence_length - 2] >= beg_token_id_;
+        if (last_was_timestamp) {
+          if (penultimate_was_timestamp) {
+            // If timestamps show up in pair, or it's the first timestamp, no more timestamp is generated
+            if (word_id >= beg_token_id_) {
+              next_token_scores[index] = cub::FpLimits<T>::Lowest();
+            }
+          } else {
+            // If timestamp doesn't show up in pair, generate timestamp
+            if (word_id < eos_token_id) {
+              next_token_scores[index] = std::numeric_limits<T>::lowest();
+            }
+          }
+        }
+      }
     }
   }
 }
@@ -181,6 +233,8 @@ void LaunchLogitsProcessKernel(
     int current_sequence_length,
     float repetition_penalty,
     int no_repeat_ngram_size,
+    bool gen_timestamp,
+    int eos_token_id,
     cudaStream_t stream) {
   int total_elements = batch_size * num_beams * padded_vocab_size;
   constexpr int blockSize = 256;
@@ -222,6 +276,8 @@ template void LaunchLogitsProcessKernel(
     int current_sequence_length,
     float repetition_penalty,
     int no_repeat_ngram_size,
+    bool gen_timestamp,
+    int eos_token_id,
     cudaStream_t stream);
 
 template void LaunchLogitsProcessKernel(
@@ -241,6 +297,8 @@ template void LaunchLogitsProcessKernel(
     int current_sequence_length,
     float repetition_penalty,
     int no_repeat_ngram_size,
+    bool gen_timestamp,
+    int eos_token_id,
     cudaStream_t stream);
 
 __global__ void AddProbsKernel(float* log_probs,

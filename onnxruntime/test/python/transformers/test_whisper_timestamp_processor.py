@@ -63,11 +63,13 @@ class TestTimestampProcessor(unittest.TestCase):
                 ],
             }
         ]
+        print(f"ort_transcription:{ort_transcription}")
         self.assertEqual(ort_transcription, expected_transcription)
 
     @pytest.mark.slow
     def test_timestamp_cpu(self):
-        provider = "CPUExecutionProvider"
+        _ = input("Type an input:")
+        provider = "CUDAExecutionProvider"
         self.run_timestamp(provider)
 
 
