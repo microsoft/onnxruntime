@@ -199,7 +199,7 @@ onnxruntime::Status GemmFloat8_Impl::CudaCompute(
   */
 
   if (sm_count_ != 0) {
-    int math_sm_count = sm_count_;
+    int math_sm_count = static_cast<int>(sm_count_);
     cublasLtMatmulDescSetAttribute(
         operationDesc, CUBLASLT_MATMUL_DESC_SM_COUNT_TARGET,
         &math_sm_count, sizeof(math_sm_count));
