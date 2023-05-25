@@ -8,8 +8,15 @@
 #include <vector>
 #include <cmath>
 #include <mutex>
+#include <iostream>
 
+#include <hip/hip_runtime.h>
+
+#include "core/common/gsl.h"
 #include "core/common/common.h"
+#include "core/common/logging/logging.h"
+#include "core/framework/data_types.h"
+#include "core/framework/float16.h"
 
 
 static const char* c_OpDomain = "com.custom";
@@ -24,9 +31,14 @@ void FuseMatMulGeluMatMul(
     const Ort::Custom::Tensor<T>& weight2,
     const Ort::Custom::Tensor<T>& bias2,
     Ort::Custom::Tensor<T>& output) {
+  ORT_UNUSED_PARAMETER(weight1);
+  ORT_UNUSED_PARAMETER(bias1);
+  ORT_UNUSED_PARAMETER(weight2);
+  ORT_UNUSED_PARAMETER(bias2);
   const auto &shape = data.Shape();
-  output.allocate(shape);
-  LOGS_DEFAULT(VERBOSE) << "Here run into FuseMatMulGeluMatMul";
+  output.Allocate(shape);
+  // LOGS_DEFAULT(VERBOSE) << "Here run into FuseMatMulGeluMatMul";
+  std::cout << "Here run into FuseMatMulGeluMatMul" << std::endl;
 }
 
 static void AddOrtCustomOpDomainToContainer(Ort::CustomOpDomain&& domain) {
@@ -41,18 +53,18 @@ OrtStatus* ORT_API_CALL RegisterCustomOps(OrtSessionOptions* options, const OrtA
 
   using LiteOp = Ort::Custom::OrtLiteCustomOp;
   static const std::unique_ptr<LiteOp> c_FuseMatGeluMat_rocm_f32{Ort::Custom::CreateLiteCustomOp("fuse_matmul_gelu_matmul", "ROCMExecutionProvider", FuseMatMulGeluMatMul<float>)};
-  static const std::unique_ptr<LiteOp> c_FuseMatGeluMat_rocm_f16{Ort::Custom::CreateLiteCustomOp("fuse_matmul_gelu_matmul", "ROCMExecutionProvider", FuseMatMulGeluMatMul<half>)};
+  //static const std::unique_ptr<LiteOp> c_FuseMatGeluMat_rocm_f16{Ort::Custom::CreateLiteCustomOp("fuse_matmul_gelu_matmul", "ROCMExecutionProvider", FuseMatMulGeluMatMul<half>)};
   static const std::unique_ptr<LiteOp> c_FuseMatGeluMat_cpu_f32{Ort::Custom::CreateLiteCustomOp("fuse_matmul_gelu_matmul", "CPUExecutionProvider", FuseMatMulGeluMatMul<float>)};
-  static const std::unique_ptr<LiteOp> c_FuseMatGeluMat_cpu_f16{Ort::Custom::CreateLiteCustomOp("fuse_matmul_gelu_matmul", "CPUExecutionProvider", FuseMatMulGeluMatMul<half>)};
+  //static const std::unique_ptr<LiteOp> c_FuseMatGeluMat_cpu_f16{Ort::Custom::CreateLiteCustomOp("fuse_matmul_gelu_matmul", "CPUExecutionProvider", FuseMatMulGeluMatMul<half>)};
 
   OrtStatus* result = nullptr;
 
   ORT_TRY {
     Ort::CustomOpDomain domain{c_OpDomain};
     domain.Add(c_FuseMatGeluMat_rocm_f32.get());
-    domain.Add(c_FuseMatGeluMat_rocm_f16.get());
+    //domain.Add(c_FuseMatGeluMat_rocm_f16.get());
     domain.Add(c_FuseMatGeluMat_cpu_f32.get());
-    domain.Add(c_FuseMatGeluMat_cpu_f16.get());
+    //domain.Add(c_FuseMatGeluMat_cpu_f16.get());
 
     Ort::UnownedSessionOptions session_options(options);
     session_options.Add(domain);

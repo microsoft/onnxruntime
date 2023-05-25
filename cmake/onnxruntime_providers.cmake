@@ -1686,6 +1686,11 @@ if (onnxruntime_USE_ROCM)
     endif()
   endif()
   set_property(TARGET rocm_custom_op_library APPEND_STRING PROPERTY LINK_FLAGS ${ONNXRUNTIME_CUSTOM_OP_LIB_LINK_FLAG})
+  onnxruntime_add_include_to_target(rocm_custom_op_library onnxruntime_common onnxruntime_framework onnx onnx_proto ${PROTOBUF_LIB} flatbuffers::flatbuffers Boost::mp11 safeint_interface)
+  target_include_directories(rocm_custom_op_library PUBLIC ${onnxruntime_ROCM_HOME}/include)
+  target_compile_options(rocm_custom_op_library PRIVATE -D__HIP_PLATFORM_AMD__=1 -D__HIP_PLATFORM_HCC__=1)
+  add_dependencies(rocm_custom_op_library ${onnxruntime_EXTERNAL_DEPENDENCIES})
+  set_target_properties(rocm_custom_op_library PROPERTIES LINKER_LANGUAGE CXX)
 
   install(TARGETS onnxruntime_providers_rocm
           ARCHIVE  DESTINATION ${CMAKE_INSTALL_LIBDIR}
