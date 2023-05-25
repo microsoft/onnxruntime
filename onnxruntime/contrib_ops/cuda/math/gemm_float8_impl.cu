@@ -245,7 +245,6 @@ onnxruntime::Status GemmFloat8_Impl::CudaCompute(
               ", fastAccumulationMode=", (fast_accumulation_mode_ ? 1 : 0),
               ", alignments=", is_aligned(A->DataRaw()), is_aligned(B->DataRaw()),
               has_C ? is_aligned(nullptr) : is_aligned(C->DataRaw()), is_aligned(D->MutableDataRaw()),
-              is_aligned(workspace),
               ", M=", M, ", N=", N, ", K=", K, ", lda=", lda, ", ldb=", ldb, ", ldd=", ldd,
               ", workspaceSize=", workspaceSize, ". Check NVDIDIA documentation to see what combination is valid: ",
               "https://docs.nvidia.com/cuda/cublas/index.html?highlight=cublasLtMatmulAlgoGetHeuristic#cublasltmatmulalgogetheuristic.");
