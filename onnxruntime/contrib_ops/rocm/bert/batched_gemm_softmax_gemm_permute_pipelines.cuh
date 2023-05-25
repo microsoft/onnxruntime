@@ -355,6 +355,7 @@ struct GemmSoftmaxGemmPermuteParams : onnxruntime::rocm::tunable::OpParams {
         "_T", attention->total_sequence_length,
         "_N", attention->num_heads,
         "_H", attention->head_size,
+        "_Hv", attention->v_head_size,
         bias_buffer != nullptr ? "_B" : "_NB",
         "_M", mask_index_dims.size(),
         "_MODE", attention->mode);
@@ -365,7 +366,7 @@ struct GemmSoftmaxGemmPermuteParams : onnxruntime::rocm::tunable::OpParams {
     auto m = attention->sequence_length;
     auto n = attention->total_sequence_length;
     auto k = attention->head_size;
-    auto o = attention->head_size;
+    auto o = attention->v_head_size;
     auto batch = attention->batch_size * attention->num_heads;
     return {m, n, k, o, batch};
   }
@@ -690,7 +691,6 @@ auto GetCKGemmSoftmaxGemmPermuteTypeStringAndOps() {
       {
         auto [m, n, k, o, batch] = params->GetGemmsMNKOBatch();
         ORT_ENFORCE(M == m && N == n && K == k && O == o && G0 * G1 == batch, "semantic mismatch");
-        ORT_ENFORCE(K == O, "inner product dimension mismatch");
       }
 
       auto [qs, ks, vs] = GetQkvStrides(attn);
