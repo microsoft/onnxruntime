@@ -1274,8 +1274,8 @@ Status PartitionOrtFormatModel(onnxruntime::Graph& graph,
   if (layout_transformer::IsSupportedOpset(graph)) {
     transform_layout_fn =
         [](Graph& graph_to_transform, bool& modified,
-                     const IExecutionProvider& execution_provider,
-                     const layout_transformer::DebugGraphFn& debug_graph_fn) -> Status {
+           const IExecutionProvider& execution_provider,
+           const layout_transformer::DebugGraphFn& debug_graph_fn) -> Status {
       AllocatorPtr cpu_allocator = std::make_shared<CPUAllocator>();
       return layout_transformer::TransformLayoutForEP(graph_to_transform, modified, execution_provider,
                                                       std::move(cpu_allocator), debug_graph_fn);
