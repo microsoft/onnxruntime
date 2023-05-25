@@ -20,6 +20,8 @@ Before looking into this further, we should clarify a few things (if possible):
 
 ### Add a few lines of code, run script to collect statistics:
 
+#### Use `GlobalSubscriberManager` to collect nn.Module forward() outputs
+
 <table>
 <tr>
 <th>Baseline</th>
@@ -29,12 +31,11 @@ Before looking into this further, we should clarify a few things (if possible):
 <td>
 <sub>
 
-```diff
-+ from onnxruntime.training.utils.hooks import SubscriberManager,
-+                                              StatisticsSubscriber
-+ sub_m = SubscriberManager()
-+ sub_m.subscribe(model, [StatisticsSubscriber(output_dir="pt_out",
-+                                              override_output_dir=True)])
+```python
+from onnxruntime.training.utils.hooks import GlobalSubscriberManager,
+                                             StatisticsSubscriber
+GlobalSubscriberManager.subscribe(model, [StatisticsSubscriber(output_dir="pt_out",
+                                          override_output_dir=True)])
 ```
 
 </sub>
@@ -42,13 +43,12 @@ Before looking into this further, we should clarify a few things (if possible):
 <td>
 <sub>
 
-```diff
+```python
 model = ORTModule(model)
-+ from onnxruntime.training.utils.hooks import SubscriberManager,
-+                                              StatisticsSubscriber
-+ sub_m = SubscriberManager()
-+ sub_m.subscribe(model, [StatisticsSubscriber(output_dir="ort_out",
-+                                              override_output_dir=True)])
+from onnxruntime.training.utils.hooks import GlobalSubscriberManager,
+                                             StatisticsSubscriber
+GlobalSubscriberManager.subscribe(model, [StatisticsSubscriber(output_dir="ort_out",
+                                          override_output_dir=True)])
 ```
 
 </sub>
@@ -80,8 +80,56 @@ Arguments:
 - start_step [optional]: the first step that runs subscriber actions.
 - end_step [optional]: the end step (exclusively) that runs subscriber actions.
 - override_output_dir: whether `output_dir` can be overridden if it already exists.
+- run_on_cpu: whether to run the subscriber actions on CPU, this should be the last restore when inserted
+    inspector node affects memory peak causing original recipe run failed with OOM.
+- bucket_size: the size of the bucket to split the statistic calculation.
 
-Check [StatisticsSubscriber implementation](../orttraining/orttraining/python/training/utils/hooks/_statistics_subscriber.py)  for more information.
+#### Use `_InspectActivation` to collect intermediate tensors in a nn.Module forward()
+
+The limitation of `GlobalSubscriberManager` is, only 'nn.Module's forward output tensors will be dumped, if you want to
+dump the intermediate tensors in a `nn.Module`'s forward function, refer to the following example:
+
+```diff
+class BloomForCausalLM(BloomPreTrainedModel):
+  def __init__(self, config: BloomConfig):
+    ...
+
+  def forward(self, input_ids, ...):
+    ...
+    transformer_outputs = self.transformer(...)
+    hidden_states = transformer_outputs[0]
+    lm_logits = self.lm_head(hidden_states)
++   lm_logits = _InspectActivation.apply("lm_logits", None, GlobalSubscriberManager._run_ctx, lm_logits)
+    # Shift so that tokens < n predict n
+    shift_logits = lm_logits[..., :-1, :].contiguous()
++   shift_logits = _InspectActivation.apply("shift_logits", None, GlobalSubscriberManager._run_ctx, shift_logits)
+    shift_labels = labels[..., 1:].contiguous()
+    batch_size, seq_length, vocab_size = shift_logits.shape
+    # Flatten the tokens
+    loss_fct = CrossEntropyLoss()
+    loss = loss_fct(
+        shift_logits.view(batch_size * seq_length, vocab_size), shift_labels.view(batch_size * seq_length)
+    )
+
+    return loss
+```
+
+Be noted, make sure the activation name (as the first argument of `_InspectActivation.apply`) are unique, otherwise
+will be overwritten by the last write. The dumpped data are stored in the `output_dir`.
+
+
+#### Collect on multiple ranks
+
+`GlobalSubscriberManager` did not explicitly handle the racing condition when multiple ranks write into same file path,
+here is the example if you want to collect statistics on multiple ranks:
+
+```python
+from onnxruntime.training.utils.hooks import GlobalSubscriberManager
+GlobalSubscriberManager.subscribe(model, [StatisticsSubscriber(output_dir="ort_out_" + str(torch.distributed.get_rank()),
+                                          override_output_dir=True)])
+```
+
+Check [StatisticsSubscriber implementation](../orttraining/orttraining/python/training/utils/hooks/_statistics_subscriber.py) for more information.
 
 ### Run command to generate per-step summary
 
