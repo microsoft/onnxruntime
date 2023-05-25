@@ -12,7 +12,7 @@ import random
 import traceback
 import types
 import warnings
-from typing import List  # noqa: F401
+from typing import List, Optional, Tuple, Union
 
 import numpy as np
 import torch
@@ -49,7 +49,8 @@ def set_random_states(states):
         torch.cuda.set_rng_state(torch_cuda_state)
 
 
-def _ortvalue_from_torch_tensor(torch_tensor):
+def _ortvalue_from_torch_tensor(torch_tensor: torch.Tensor) -> C.OrtValue:
+    """Converts a torch tensor to an OrtValue."""
     # TODO: Current DLPack doesn't support bool and PyTorch disables converting bool tensor to DLPack in recent commit.
     # https://github.com/pytorch/pytorch/blob/7e7be526c9d9179f35084e9cca5b5c5ad5172100/aten/src/ATen/DLConvertor.cpp#L41
     # We need to convert bool tensor to unit8 tensor to workaround this.
@@ -63,7 +64,9 @@ def _ortvalue_from_torch_tensor(torch_tensor):
     return C.OrtValue.from_dlpack(to_dlpack(torch_tensor), is_bool_tensor)
 
 
-def _ortvalues_to_torch_tensor(ortvalues, device=None):
+def _ortvalues_to_torch_tensor(
+    ortvalues: C.OrtValueVector, device: Optional[torch.device] = None
+) -> Tuple[torch.Tensor, ...]:
     if len(ortvalues) == 0:
         return tuple()
 
@@ -75,7 +78,7 @@ def _ortvalues_to_torch_tensor(ortvalues, device=None):
     if not isinstance(ortvalues, C.OrtValueVector):
         raise TypeError("ortvalues must be an instance of OrtValueVector not %r." % type(ortvalues))
 
-    res = ortvalues.to_dlpacks(_from_dlpack)
+    res: List[torch.Tensor] = ortvalues.to_dlpacks(_from_dlpack)
     bool_indices = ortvalues.bool_tensor_indices()
     if len(bool_indices):
         # DLPack structure does not know for sure if it stores boolean
@@ -97,7 +100,7 @@ def _ortvalues_to_torch_tensor(ortvalues, device=None):
     return tuple(res)
 
 
-def _torch_tensor_to_dlpack(tensor):
+def _torch_tensor_to_dlpack(tensor: torch.Tensor):
     # TODO: Current DLPack doesn't support bool and PyTorch disables converting bool tensor to DLPack in recent commit.
     # https://github.com/pytorch/pytorch/blob/7e7be526c9d9179f35084e9cca5b5c5ad5172100/aten/src/ATen/DLConvertor.cpp#L41
     # We need to convert bool tensor to unit8 tensor to workaround this.
@@ -110,7 +113,7 @@ def _torch_tensor_to_dlpack(tensor):
     return to_dlpack(tensor)
 
 
-def _check_same_device(device, argument_str, *args):
+def _check_same_device(device: torch.device, argument_str: str, *args):
     """Check that all tensor arguments in *args reside on the same device as the input device"""
 
     assert isinstance(device, torch.device), "`device` must be a valid `torch.device` object"
@@ -126,7 +129,7 @@ def _check_same_device(device, argument_str, *args):
                 )
 
 
-def get_device_index(device):
+def get_device_index(device: Union[str, int, torch.device]) -> int:
     if isinstance(device, str):
         # could be 'cuda:0', 'cuda:1', or 'cpu'. with cpu, set index=0
         device = torch.device(device)
@@ -135,7 +138,7 @@ def get_device_index(device):
     return 0 if device.index is None else device.index
 
 
-def get_device_str(device):
+def get_device_str(device: Union[str, int, torch.device]) -> str:
     if isinstance(device, str):
         # could be 'cuda:0', 'cuda:1', or 'cpu'. with cpu, set index=0
         if device.find(":") == -1:
@@ -152,11 +155,14 @@ def get_device_str(device):
     return device
 
 
-def get_device_from_module(module):
+def get_device_from_module(module) -> Optional[torch.device]:
     """Returns the first device found in the `module`'s parameters or None
 
     Args:
         module (torch.nn.Module): PyTorch model to extract device from
+
+    Returns:
+        torch.device: Device extracted from `module`'s parameters or None
 
     Raises:
         ORTModuleFallbackException: When more than one device is found at `module`
@@ -175,12 +181,15 @@ def get_device_from_module(module):
     return device
 
 
-def get_device_from_inputs(args, kwargs):
+def get_device_from_inputs(args, kwargs) -> Optional[torch.device]:
     """Returns device from first PyTorch Tensor within args or kwargs
 
     Args:
         args: List with inputs
         kwargs: Dictionary with inputs
+
+    Returns:
+        torch.device: Device extracted from `args` or `kwargs` or None
     """
 
     device = None
@@ -191,7 +200,7 @@ def get_device_from_inputs(args, kwargs):
     return device
 
 
-def _create_iobinding(io_binding, inputs, model, device):
+def _create_iobinding(io_binding, inputs, model, device: torch.device):
     """Creates IO binding for a `model` inputs and output"""
     for idx, value_info in enumerate(model.graph.input):
         io_binding.bind_ortvalue_input(
