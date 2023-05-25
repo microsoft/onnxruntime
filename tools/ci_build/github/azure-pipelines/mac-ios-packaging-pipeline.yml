@@ -52,6 +52,10 @@ jobs:
       xcodeVersion: ${{ variables.xcodeVersion }}
 
   - script: |
+      npm install -g appcenter-cli@2.13.7
+    displayName: "Install appcenter CLI"
+
+  - script: |
       pip install -r tools/ci_build/github/apple/ios_packaging.requirements.txt
     displayName: "Install Python requirements"
 

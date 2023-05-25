@@ -47,6 +47,10 @@ jobs:
   - template: use-android-ndk.yml
 
   - script: |
+      npm install -g appcenter-cli@2.13.7
+    displayName: "Install appcenter CLI"
+
+  - script: |
       python3 $(Build.SourcesDirectory)/tools/python/run_android_emulator.py \
         --android-sdk-root ${ANDROID_SDK_ROOT} \
         --create-avd --system-image "system-images;android-31;default;x86_64" \
