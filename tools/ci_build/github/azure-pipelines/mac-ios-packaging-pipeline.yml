@@ -128,8 +128,7 @@ jobs:
       signingIdentity: '$(APPLE_CERTIFICATE_SIGNING_IDENTITY)'
       provisioningProfileName: 'iOS Team Provisioning Profile'
       args: '-derivedDataPath $(Build.BinariesDirectory)/app_center_test_mobile/ios_package_test/DerivedData'
-      workingDirectory: $(Build.BinariesDirectory)/app_center_test_mobile/ios_package_test/
-      xcodeVer
+      workingDirectory: '$(Build.BinariesDirectory)/app_center_test_mobile/ios_package_test/'
     displayName: '[Mobile] Build iphone arm64 tests'
 
   - script: |
