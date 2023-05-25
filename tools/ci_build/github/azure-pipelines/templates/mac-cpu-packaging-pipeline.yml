@@ -51,7 +51,7 @@ stages:
       - MacOS_C_API_Packaging_CPU_arm64
       - MacOS_C_API_Packaging_CPU_universal2
       pool:
-        vmImage: 'macOS-12'
+        vmImage: 'macOS-13'
       steps:
       - task: DownloadPipelineArtifact@2
         inputs:
@@ -83,7 +83,7 @@ stages:
     - job: MacOS_C_API_Package_Publish_x86_64
       dependsOn: MacOS_C_API_Packaging_CPU_x86_64
       pool:
-        vmImage: 'macOS-12'
+        vmImage: 'macOS-13'
       steps:
       - task: DownloadPipelineArtifact@2
         inputs:

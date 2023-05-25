@@ -19,7 +19,7 @@ jobs:
   displayName: "iOS Packaging"
 
   pool:
-    vmImage: "macOS-12"
+    vmImage: "macOS-13"
 
   timeoutInMinutes: 300
 
