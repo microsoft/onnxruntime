@@ -1,3 +1,5 @@
+import java.nio.file.Paths
+
 buildscript {
   repositories {
     google()
@@ -31,6 +33,21 @@ def resolveBuildType() {
   return tskReqStr.contains('Release') ? 'release' : 'debug'
 }
 
+static def findNodeModules(baseDir) {
+  def basePath = baseDir.toPath().normalize()
+  while (basePath) {
+    def nodeModulesPath = Paths.get(basePath.toString(), "node_modules")
+    def reactNativePath = Paths.get(nodeModulesPath.toString(), "react-native")
+    if (nodeModulesPath.toFile().exists() && reactNativePath.toFile().exists()) {
+      return nodeModulesPath.toString()
+    }
+    basePath = basePath.getParent()
+  }
+  throw new GradleException("onnxruntime-react-native: Failed to find node_modules/ path!")
+}
+
+def nodeModules = findNodeModules(projectDir);
+
 def checkIfOrtExtensionsEnabled() {
   // locate user's project dir
   def reactnativeRootDir = project.rootDir.parentFile
@@ -61,7 +78,7 @@ android {
     externalNativeBuild {
       cmake {
         cppFlags "-O2 -frtti -fexceptions -Wall -Wno-unused-variable -fstack-protector-all"
-        arguments "-DANDROID_STL=c++_shared"
+        arguments "-DNODE_MODULES_DIR=${nodeModules}"
         abiFilters (*reactNativeArchitectures())
       }
     }
