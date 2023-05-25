@@ -1,12 +1,14 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <cmath>
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
+
+#include "core/session/environment.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/common/cuda_op_test_utils.h"
 #include "test/common/dnnl_op_test_utils.h"
-#include <cmath>
 
 namespace onnxruntime {
 namespace test {
@@ -120,11 +122,14 @@ TEST(SoftmaxOperator, LargeNumber) {
   std::vector<int64_t> dimensions = {2, 4};
 
   RunTest(x_vals, expected_vals, dimensions);
+
+  // test 4D
 }
 
 // np.random.seed(123)   # Use a seed so we can replicate the input and expected values here and in python
 // x = np.abs(np.random.randn(3, 4, 5).astype(np.float32))
 static std::vector<int64_t> three_dimensions = {3, 4, 5};
+static std::vector<int64_t> four_dimensions = {1, 3, 4, 5};
 static std::vector<float> x_vals_3dims = {
     1.0856307f, 0.99734545f, 0.2829785f, 1.5062947f, 0.5786002f,
     1.6514366f, 2.4266791f, 0.42891264f, 1.2659363f, 0.8667404f,
@@ -141,7 +146,7 @@ static std::vector<float> x_vals_3dims = {
     1.2940853f, 1.0387882f, 1.7437122f, 0.79806274f, 0.02968323f,
     1.0693159f, 0.8907064f, 1.7548862f, 1.4956441f, 1.0693927f};
 
-TEST(SoftmaxOperator, ThreeDimsAxis0) {
+TEST(SoftmaxOperator, ThreeAndFourDimsAxis0) {
   // x = <see x_vals_3dims>
   // node = onnx.helper.make_node('Softmax', inputs = ['x'], outputs = ['y'], axis = 0)
   // y = softmax_2d(x.reshape(1, 60)).reshape(3, 4, 5)
@@ -164,10 +169,16 @@ TEST(SoftmaxOperator, ThreeDimsAxis0) {
       0.017545262f, 0.0135920765f, 0.027506188f, 0.010684152f, 0.0049549243f,
       0.01401341f, 0.011721271f, 0.027815264f, 0.021463264f, 0.014014485f};
 
-  RunTest(x_vals_3dims, expected_vals, three_dimensions, /*opset*/ 7, /*axis*/ 0, {kTensorrtExecutionProvider, kOpenVINOExecutionProvider, kDnnlExecutionProvider});  // Axis=0 is not supported by TensorRT
+  RunTest(x_vals_3dims, expected_vals, three_dimensions, /*opset*/ 7, /*axis*/ 0,
+          // axis=0 is not supported by TensorRT
+          {kTensorrtExecutionProvider, kOpenVINOExecutionProvider, kDnnlExecutionProvider});
+
+  RunTest(x_vals_3dims, expected_vals, four_dimensions, /*opset*/ 7, /*axis*/ 0,
+          // axis=0 is not supported by TensorRT
+          {kTensorrtExecutionProvider, kOpenVINOExecutionProvider, kDnnlExecutionProvider});
 }
 
-TEST(SoftmaxOperator, ThreeDimsAxis1) {
+TEST(SoftmaxOperator, ThreeAndFourDimsSecondLastAxis) {
   // x = <see x_vals_3dims>
   // node = onnx.helper.make_node('Softmax', inputs = ['x'], outputs = ['y'], axis = 1)
   // y = softmax_2d(x.reshape(3, 20)).reshape(3, 4, 5)
@@ -190,10 +201,14 @@ TEST(SoftmaxOperator, ThreeDimsAxis1) {
       0.050680935f, 0.03926183f, 0.079453886f, 0.030862054f, 0.014312706f,
       0.040478885f, 0.033857856f, 0.080346674f, 0.06199841f, 0.040481992f};
 
-  RunTest(x_vals_3dims, expected_vals, three_dimensions, /*opset*/ 7, /*axis*/ 1, {kTensorrtExecutionProvider, kOpenVINOExecutionProvider, kDnnlExecutionProvider});
+  RunTest(x_vals_3dims, expected_vals, three_dimensions, /*opset*/ 7, /*axis*/ 1,
+          {kTensorrtExecutionProvider, kOpenVINOExecutionProvider, kDnnlExecutionProvider});
+
+  RunTest(x_vals_3dims, expected_vals, four_dimensions, /*opset*/ 7, /*axis*/ 2,
+          {kTensorrtExecutionProvider, kOpenVINOExecutionProvider, kDnnlExecutionProvider});
 }
 
-TEST(SoftmaxOperator, ThreeDimsAxis1_opset13) {
+TEST(SoftmaxOperator, ThreeAndFourDimsSecondLastAxis_opset13) {
   // For the same input, opset-13's behavior is different from an earlier opset
   // and we see different expected results for the same test input
 
@@ -215,9 +230,12 @@ TEST(SoftmaxOperator, ThreeDimsAxis1_opset13) {
 
   RunTest(x_vals_3dims, expected_vals, three_dimensions, /*opset*/ 13, /*axis*/ 1,
           {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});  // OpenVINO doesn't support opset-13 yet
+
+  RunTest(x_vals_3dims, expected_vals, four_dimensions, /*opset*/ 13, /*axis*/ 2,
+          {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});  // OpenVINO doesn't support opset-13 yet
 }
 
-TEST(SoftmaxOperator, ThreeDimsAxis2) {
+TEST(SoftmaxOperator, ThreeAndFourDimsLastAxis) {
   // x = <see x_vals_3dims>
   // node = onnx.helper.make_node('Softmax', inputs = ['x'], outputs = ['y'], axis = 2)
   // y = softmax_2d(x.reshape(12, 5)).reshape(3, 4, 5)
@@ -241,9 +259,10 @@ TEST(SoftmaxOperator, ThreeDimsAxis2) {
       0.15740506f, 0.13165872f, 0.31243387f, 0.24108529f, 0.15741715f};
 
   RunTest(x_vals_3dims, expected_vals, three_dimensions, /*opset*/ 7, /*axis*/ 2);
+  RunTest(x_vals_3dims, expected_vals, four_dimensions, /*opset*/ 7, /*axis*/ 3);
 }
 
-TEST(SoftmaxOperator, ThreeDimsAxis2_opset13) {
+TEST(SoftmaxOperator, ThreeAndFourDimsLastAxis_opset13) {
   std::vector<float> expected_vals = {
       0.22277209f, 0.20394778f, 0.09983283f, 0.33927578f, 0.13417149f,
       0.21729809f, 0.47177994f, 0.06399124f, 0.14778666f, 0.099144064f,
@@ -262,9 +281,12 @@ TEST(SoftmaxOperator, ThreeDimsAxis2_opset13) {
 
   RunTest(x_vals_3dims, expected_vals, three_dimensions, /*opset*/ 13, /*axis*/ 2,
           {kOpenVINOExecutionProvider});  // OpenVINO doesn't support opset-13 yet
+
+  RunTest(x_vals_3dims, expected_vals, four_dimensions, /*opset*/ 13, /*axis*/ 3,
+          {kOpenVINOExecutionProvider});  // OpenVINO doesn't support opset-13 yet
 }
 
-TEST(SoftmaxOperator, ThreeDimsDefaultAxis_opset13) {
+TEST(SoftmaxOperator, ThreeAndFourDimsDefaultAxis_opset13) {
   std::vector<float> expected_vals = {
       0.22277209f, 0.20394778f, 0.09983283f, 0.33927578f, 0.13417149f,
       0.21729809f, 0.47177994f, 0.06399124f, 0.14778666f, 0.099144064f,
@@ -283,8 +305,12 @@ TEST(SoftmaxOperator, ThreeDimsDefaultAxis_opset13) {
 
   RunTest(x_vals_3dims, expected_vals, three_dimensions, /*opset*/ 13, /*default axis*/ -1,
           {kOpenVINOExecutionProvider});  // OpenVINO doesn't support opset-13 yet
+
+  RunTest(x_vals_3dims, expected_vals, four_dimensions, /*opset*/ 13, /*default axis*/ -1,
+          {kOpenVINOExecutionProvider});  // OpenVINO doesn't support opset-13 yet
 }
-TEST(SoftmaxOperator, ThreeDimsNegativeAxis) {
+
+TEST(SoftmaxOperator, ThreeAndFourDimsNegativeAxis) {
   // x = <see x_vals_3dims>
   // node = onnx.helper.make_node('Softmax', inputs = ['x'], outputs = ['y'], axis = 2)
   // y = softmax_2d(x.reshape(12, 5)).reshape(3, 4, 5)
@@ -309,6 +335,7 @@ TEST(SoftmaxOperator, ThreeDimsNegativeAxis) {
 
   // -1 is last axis so same as axis == 2
   RunTest(x_vals_3dims, expected_vals, three_dimensions, /*opset*/ 12, /*axis*/ -1);
+  RunTest(x_vals_3dims, expected_vals, four_dimensions, /*opset*/ 12, /*axis*/ -1);
 }
 
 TEST(SoftmaxOperator, InvalidAxis) {
@@ -377,6 +404,30 @@ TEST(SoftmaxOperator, 2DInputReduceOnAxis1WithLargeDim) {
   std::vector<int64_t> dimensions = {1, 1025};
 
   RunTest(x_vals, expected_vals, dimensions);
+}
+
+// Regression test for NNAPI handling of a Softmax with opset < 13 where the input has been converted to NHWC.
+// The NNAPI handling of the axis is different so we need to manually coerce the input to 2D, which will negate the
+// layout change. Test model has a GloabalAveragePool -> Softmax which will trigger the layout change due to
+// GlobalAveragePool being layout sensitive.
+TEST(SoftmaxOperator, GH15949_regression_test) {
+  auto model_uri = ORT_TSTR("testdata/ort_github_issue_15949.onnx");
+
+  std::shared_ptr<Model> model;
+  auto status = Model::Load(model_uri, model, nullptr, GetEnvironment().GetLoggingManager()->DefaultLogger());
+
+  OpTester tester("Opset12NhwcSoftmax");
+  tester.SetModelCache(model);
+
+  tester.AddInput<float>("X", {1, 3, 2, 2},
+                         {0.f, 1.f, 2.f, 3.f,
+                          4.f, 5.f, 6.f, 7.f,
+                          8.f, 9.f, 10.f, 11.f});
+  tester.AddOutput<float>("Y", {1, 3, 1, 1},
+                          {0.00032932f, 0.01798029f, 0.9816904f});
+
+  // disable TRT as it does not support axis=0 as used by the model
+  tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kCoreMLExecutionProvider});
 }
 
 }  // namespace test

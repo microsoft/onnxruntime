@@ -63,16 +63,20 @@ Status SoftMaxOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, cons
   const auto& operand_indices(model_builder.GetOperandIndices());
   const auto& operand_types(model_builder.GetOperandTypes());
   const auto android_feature_level = model_builder.GetEffectiveFeatureLevel();
+
+  // TODO: Needs fix
+  // ??? Not sure why we need this test. At that feature level axis was 1 and input was 2D or 4D.
+  // Whether 4D input was NCHW of NHWC input shouldn't matter when axis is 1.
+  // Commenting out to get feedback in PR prior to potential removal.
+  // if (android_feature_level < ANEURALNETWORKS_FEATURE_LEVEL_3) {
+  //  ORT_ENFORCE(model_builder.UseNCHW(),
+  //              "For Android API Level < 29 input for softmax needs to be NCHW.");
+  //}
+
+  const auto& input = node_unit.Inputs()[0].node_arg.Name();
+  const auto& output = node_unit.Outputs()[0].node_arg.Name();
+
   NodeAttrHelper helper(node_unit);
-
-  auto input = node_unit.Inputs()[0].node_arg.Name();
-
-  // TODO: Needs fix.
-  if (android_feature_level < ANEURALNETWORKS_FEATURE_LEVEL_3) {
-    ORT_ENFORCE(model_builder.UseNCHW(),
-                "For Android API Level < 29 input for softmax needs to be NCHW.");
-  }
-
   int32_t axis = helper.Get("axis", 1);
 
   // Check if the quantization scale and ZP are correct
@@ -90,20 +94,65 @@ Status SoftMaxOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, cons
     y_scale = 1.f / 256;
   }
 
-  const auto& output = node_unit.Outputs()[0].node_arg.Name();
-  float beta = 1.f;
   InlinedVector<uint32_t> input_indices;
   input_indices.push_back(operand_indices.at(input));
+  const float beta = 1.f;
   ADD_SCALAR_OPERAND(model_builder, input_indices, beta);
 
-  if (android_feature_level > ANEURALNETWORKS_FEATURE_LEVEL_2) {
-    // you can only specify axis for android api level 29+
-    ADD_SCALAR_OPERAND(model_builder, input_indices, axis);
+  auto input_shape = shaper[input];
+  if (axis < 0) {
+    axis = static_cast<int32_t>(HandleNegativeAxis(axis, input_shape.size()));
   }
 
-  const OperandType output_operand_type(operand_types.at(input).type, shaper[output], y_scale, y_zero_point);
-  ORT_RETURN_IF_ERROR(model_builder.AddOperation(ANEURALNETWORKS_SOFTMAX, input_indices,
-                                                 {output}, {output_operand_type}));
+  // if opset < 13 we may need to manually coerce into 2D. we can skip this IFF it's already 2D and axis == 1.
+  // otherwise we need the coersion to create an input shape that works with axis == 1
+  // (if 2D and axis is 0 we coerce to shape {1 , dim0 + dim1})
+  if (node_unit.SinceVersion() < 13 && !(input_shape.size() == 2 && axis == 1)) {
+    // add Reshape to 2D
+    uint32_t dim0 = std::accumulate(input_shape.cbegin(), input_shape.cbegin() + axis, 1, std::multiplies());
+    uint32_t dim1 = std::accumulate(input_shape.cbegin() + axis, input_shape.cend(), 1, std::multiplies());
+    Shape input2d_shape{narrow<uint32_t>(dim0), narrow<uint32_t>(dim1)};
+
+    std::string shape2d_name = model_builder.GetUniqueName(node_unit.Name() + input + "_2D_shape");
+    std::string reshape2d_output_name = model_builder.GetUniqueName(node_unit.Name() + input + "_2D");
+
+    ORT_RETURN_IF_ERROR(op_builder_helpers::AddNnapiReshape(model_builder, input, shape2d_name,
+                                                            {narrow<int32_t>(dim0), narrow<int32_t>(dim1)},
+                                                            reshape2d_output_name));
+
+    input_indices[0] = operand_indices.at(reshape2d_output_name);  // replace input 1 with 2d output
+
+    std::string softmax2d_output_name = model_builder.GetUniqueName("softmax_" + reshape2d_output_name);
+    const OperandType output_operand_type(operand_types.at(input).type, input2d_shape, y_scale, y_zero_point);
+    shaper.AddShape(softmax2d_output_name, input2d_shape);
+
+    ORT_RETURN_IF_ERROR(model_builder.AddOperation(ANEURALNETWORKS_SOFTMAX, input_indices,
+                                                   {softmax2d_output_name}, {output_operand_type}));
+
+    // add Reshape back to original shape
+    const Shape& output_shape = shaper[output];
+
+    // convert from uint32_t to int32_t
+    std::vector<int32_t> reshape_output_shape;
+    reshape_output_shape.reserve(output_shape.size());
+    std::transform(output_shape.begin(), output_shape.end(), std::back_inserter(reshape_output_shape),
+                   [](uint32_t dim) { return narrow<int32_t>(dim); });
+
+    std::string reshape_output_name = model_builder.GetUniqueName(node_unit.Name() + output + "_shape");
+    ORT_RETURN_IF_ERROR(op_builder_helpers::AddNnapiReshape(model_builder, softmax2d_output_name,
+                                                            reshape_output_name, reshape_output_shape,
+                                                            output));
+
+  } else {
+    if (android_feature_level > ANEURALNETWORKS_FEATURE_LEVEL_2) {
+      // you can only specify axis for android api level 29+
+      ADD_SCALAR_OPERAND(model_builder, input_indices, axis);
+    }
+
+    const OperandType output_operand_type(operand_types.at(input).type, shaper[output], y_scale, y_zero_point);
+    ORT_RETURN_IF_ERROR(model_builder.AddOperation(ANEURALNETWORKS_SOFTMAX, input_indices,
+                                                   {output}, {output_operand_type}));
+  }
   return Status::OK();
 }
 
@@ -119,20 +168,36 @@ bool SoftMaxOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /* initiali
   if (!GetShape(node_unit.Inputs()[0].node_arg, input_shape))
     return false;
 
-  const auto input_size = input_shape.size();
-  if (input_size != 2 && input_size != 4) {
-    LOGS_DEFAULT(VERBOSE) << "SoftMax only support 2d/4d shape, input is "
-                          << input_size << "d shape";
-    return false;
-  }
-
-  if (params.android_feature_level < ANEURALNETWORKS_FEATURE_LEVEL_3) {
+  if (node_unit.SinceVersion() < 13) {
+    // if opset < 13 the ONNX spec coerces to 2D based on axis, so we will manually do that when adding to the model
+    // and use axis of 1. A 2D input with axis==1 works with all NNAPI versions.
+  } else {
+    const auto input_size = input_shape.size();
     NodeAttrHelper helper(node_unit);
     int32_t axis = helper.Get("axis", 1);
-    if (axis != 1) {
-      LOGS_DEFAULT(VERBOSE)
-          << "SoftMax only support axis 1 on Android API level: " << params.android_feature_level
-          << " input axis: " << axis;
+    if (axis < 0) {
+      axis = static_cast<int32_t>(HandleNegativeAxis(axis, input_shape.size()));
+    }
+
+    if (params.android_feature_level < ANEURALNETWORKS_FEATURE_LEVEL_3) {
+      if (input_size != 2 && input_size != 4) {
+        LOGS_DEFAULT(VERBOSE) << "Softmax only support 2d/4d shape, input has " << input_size << "d shape";
+        return false;
+      }
+
+      if (axis != 1) {
+        LOGS_DEFAULT(VERBOSE) << "Softmax only support axis 1 on Android API level: " << params.android_feature_level
+                              << " input axis: " << axis;
+        return false;
+      }
+    }
+
+    if (static_cast<uint32_t>(axis) != input_size - 1) {
+      // TODO: If we want to support axis != -1 for opset 13+ we need to add do something like the CPU implementation
+      // where we transpose to move the axis being softmaxed to the inner-most dimension, run the softmax, and
+      // transpose back. Assuming that is rare so skipping for now.
+      LOGS_DEFAULT(VERBOSE) << "Softmax currently only supports axis being the inner-most on opset 13+. axis="
+                            << axis << " rank=" << input_size;
       return false;
     }
   }
