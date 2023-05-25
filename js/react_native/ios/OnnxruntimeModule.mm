@@ -46,6 +46,18 @@ static int nextSessionId = 0;
 
 RCT_EXPORT_MODULE(Onnxruntime)
 
+RCTBlobManager *blobManager = nil;
+
+- (void)checkBlobManager {
+  if (blobManager == nil) {
+    blobManager = [[RCTBridge currentBridge] moduleForClass:RCTBlobManager.class];
+  }
+}
+
+- (void)setBlobManager:(RCTBlobManager *)manager {
+  blobManager = manager;
+}
+
 /**
  * React native binding API to load a model using given uri.
  *
@@ -84,7 +96,7 @@ RCT_EXPORT_METHOD(loadModelFromBlob
                   : (RCTPromiseResolveBlock)resolve rejecter
                   : (RCTPromiseRejectBlock)reject) {
   @try {
-    RCTBlobManager* blobManager = [[RCTBridge currentBridge] moduleForClass:RCTBlobManager.class];
+    [self checkBlobManager];
     NSString *blobId = [modelDataBlob objectForKey:@"blobId"];
     long size = [[modelDataBlob objectForKey:@"size"] longValue];
     long offset = [[modelDataBlob objectForKey:@"offset"] longValue];
@@ -224,6 +236,8 @@ RCT_EXPORT_METHOD(run
   }
   SessionInfo *sessionInfo = (SessionInfo *)[value pointerValue];
 
+  [self checkBlobManager];
+
   std::vector<Ort::Value> feeds;
   std::vector<Ort::MemoryAllocation> allocations;
   feeds.reserve(sessionInfo->inputNames.size());
@@ -234,7 +248,7 @@ RCT_EXPORT_METHOD(run
       @throw exception;
     }
 
-    Ort::Value value = [TensorHelper createInputTensor:inputTensor ortAllocator:ortAllocator allocations:allocations];
+    Ort::Value value = [TensorHelper createInputTensor:blobManager input:inputTensor ortAllocator:ortAllocator allocations:allocations];
     feeds.emplace_back(std::move(value));
   }
 
@@ -249,7 +263,7 @@ RCT_EXPORT_METHOD(run
       sessionInfo->session->Run(runOptions, sessionInfo->inputNames.data(), feeds.data(),
                                 sessionInfo->inputNames.size(), requestedOutputs.data(), requestedOutputs.size());
 
-  NSDictionary *resultMap = [TensorHelper createOutputTensor:requestedOutputs values:result];
+  NSDictionary *resultMap = [TensorHelper createOutputTensor:blobManager outputNames:requestedOutputs values:result];
 
   return resultMap;
 }

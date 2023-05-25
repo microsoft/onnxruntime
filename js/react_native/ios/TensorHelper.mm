@@ -3,8 +3,6 @@
 
 #import "TensorHelper.h"
 #import <Foundation/Foundation.h>
-#import <React/RCTBridge+Private.h>
-#import <React/RCTBlobManager.h>
 
 @implementation TensorHelper
 
@@ -25,7 +23,8 @@ NSString *const JsTensorTypeString = @"string";
  * It creates an input tensor from a map passed by react native js.
  * 'data' must be a string type as data is encoded as base64. It first decodes it and creates a tensor.
  */
-+ (Ort::Value)createInputTensor:(NSDictionary *)input
++ (Ort::Value)createInputTensor:(RCTBlobManager *)blobManager
+                          input:(NSDictionary *)input
                    ortAllocator:(OrtAllocator *)ortAllocator
                     allocations:(std::vector<Ort::MemoryAllocation> &)allocatons {
   // shape
@@ -54,7 +53,6 @@ NSString *const JsTensorTypeString = @"string";
     NSString *blobId = [data objectForKey:@"blobId"];
     long size = [[data objectForKey:@"size"] longValue];
     long offset = [[data objectForKey:@"offset"] longValue];
-    RCTBlobManager* blobManager = [[RCTBridge currentBridge] moduleForClass:RCTBlobManager.class];
     auto buffer = [blobManager resolve:blobId offset:offset size:size];
     Ort::Value inputTensor = [self createInputTensor:tensorType
                                                 dims:dims
@@ -70,7 +68,8 @@ NSString *const JsTensorTypeString = @"string";
  * It creates an output map from an output tensor.
  * a data array is encoded as base64 string.
  */
-+ (NSDictionary *)createOutputTensor:(const std::vector<const char *> &)outputNames
++ (NSDictionary *)createOutputTensor:(RCTBlobManager *)blobManager
+                         outputNames:(const std::vector<const char *> &)outputNames
                               values:(const std::vector<Ort::Value> &)values {
   if (outputNames.size() != values.size()) {
     NSException *exception = [NSException exceptionWithName:@"create output tensor"
@@ -117,7 +116,6 @@ NSString *const JsTensorTypeString = @"string";
       outputTensor[@"data"] = buffer;
     } else {
       NSData *data = [self createOutputTensor:value];
-      RCTBlobManager* blobManager = [[RCTBridge currentBridge] moduleForClass:RCTBlobManager.class];
       NSString* blobId = [blobManager store:data];
       outputTensor[@"data"] = @{
         @"blobId": blobId,
