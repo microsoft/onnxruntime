@@ -98,10 +98,10 @@ class BloomForCausalLM(BloomPreTrainedModel):
     transformer_outputs = self.transformer(...)
     hidden_states = transformer_outputs[0]
     lm_logits = self.lm_head(hidden_states)
-+   lm_logits = _InspectActivation.apply("lm_logits", None, GlobalSubscriberManager._run_ctx, lm_logits)
++   lm_logits = _InspectActivation.apply("lm_logits", None, GlobalSubscriberManager.get_run_context(), lm_logits)
     # Shift so that tokens < n predict n
     shift_logits = lm_logits[..., :-1, :].contiguous()
-+   shift_logits = _InspectActivation.apply("shift_logits", None, GlobalSubscriberManager._run_ctx, shift_logits)
++   shift_logits = _InspectActivation.apply("shift_logits", None, GlobalSubscriberManager.get_run_context(), shift_logits)
     shift_labels = labels[..., 1:].contiguous()
     batch_size, seq_length, vocab_size = shift_logits.shape
     # Flatten the tokens

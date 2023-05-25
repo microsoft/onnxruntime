@@ -52,8 +52,8 @@ class _RuntimeStates:
 class _InspectActivation(torch.autograd.Function):
     """
     This class is used to run the subscriber's forward and backward functions.
-    The function will be called by two callers:
-        1. SubscriberManager for each registered nn.Module.
+    The function will be called by two kinds of callers:
+        1. SubscriberManager call it for each registered nn.Module.
         2. Users who want to inspect the activation tensor at any place of model definition code.
     """
 
@@ -66,12 +66,12 @@ class _InspectActivation(torch.autograd.Function):
             ctx: context object to store intermediate information.
             activation_name: the name of the activation tensor.
             module_idx:
-                For call case 1 - the unique id of the module that the activation belongs to, is detected by the
+                For call case 1 - the unique id of the module that the activation belongs to, it is detected by the
                     SubscriberManager automatically.
                 For call case 2 - e.g, _InspectActivation is called by users (NOT by SubscriberManager), module_idx can
                     be None.
             run_ctx: runtime context.
-                For call case 2 - need retrieve the runtime state from SubscriberManager.
+                For call case 2 - need retrieve the runtime state from GlobalSubscriberManager.
             input_tensor: the activation tensor.
 
         Make sure there is a same number of `tensor` type inputs and outputs.
@@ -201,6 +201,9 @@ class SubscriberManager:
             self._run_ctx.global_states.subscribers.add(subscriber)
 
         self._initialize(module)
+
+    def get_run_context(self) -> _RuntimeStates:
+        return self._run_ctx
 
     def _reset_all_states(self):
         self._run_ctx = _RuntimeStates()

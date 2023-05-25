@@ -147,9 +147,9 @@ class NeuralNetUserAnnotateIntermediateTensor(torch.nn.Module):
     def forward(self, input1, input2):
         model_input = input1 + input2
         out = self.fc1(model_input)
-        out = _InspectActivation.apply("fc1_out", None, GlobalSubscriberManager._run_ctx, out)
+        out = _InspectActivation.apply("fc1_out", None, GlobalSubscriberManager.get_run_context(), out)
         out = self.relu(out)
-        out = _InspectActivation.apply("relu_out", None, GlobalSubscriberManager._run_ctx, out)
+        out = _InspectActivation.apply("relu_out", None, GlobalSubscriberManager.get_run_context(), out)
         out = self.fc2(out)
         return out
 
@@ -184,8 +184,8 @@ def test_statistic_subscriber_user_annotate_intermediate_tensors(device, backend
             "order.txt",
             "Linear_1_0th_output_forward",
             "Linear_1_0th_output_backward",
-            "NeuralNetSingleOutput_0_0th_output_forward",
-            "NeuralNetSingleOutput_0_0th_output_backward",
+            "NeuralNetUserAnnotateIntermediateTensor_0_0th_output_forward",
+            "NeuralNetUserAnnotateIntermediateTensor_0_0th_output_backward",
             "ReLU_2_0th_output_forward",
             "ReLU_2_0th_output_backward",
             "Linear_3_0th_output_forward",
