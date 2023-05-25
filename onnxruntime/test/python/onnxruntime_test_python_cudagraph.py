@@ -18,7 +18,7 @@ from onnxruntime.capi.onnxruntime_pybind11_state import Fail  # noqa: F401
 
 
 class TestInferenceSessionWithCudaGraph(unittest.TestCase):
-    def testOrtValueUpdateInPlace(self):  # noqa: N802
+    def test_ort_value_update_in_place(self):
         x0 = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
         ortvalue_cpu = onnxrt.OrtValue.ortvalue_from_numpy(x0)
         np.testing.assert_allclose(x0, ortvalue_cpu.numpy())
@@ -34,7 +34,7 @@ class TestInferenceSessionWithCudaGraph(unittest.TestCase):
             ortvalue_gpu.update_inplace(x1)
             np.testing.assert_allclose(x1, ortvalue_gpu.numpy())
 
-    def testSelectEPtoRunCudaGraph(self):
+    def test_select_ep_to_run_cuda_graph(self):
         if "TensorrtExecutionProvider" in onnxrt.get_available_providers():
             providers = [("TensorrtExecutionProvider", {"trt_cuda_graph_enable": True})]
             self.RunModelWithCudaGraph(providers)
@@ -42,7 +42,7 @@ class TestInferenceSessionWithCudaGraph(unittest.TestCase):
             providers = [("CUDAExecutionProvider", {"enable_cuda_graph": True})]
             self.RunModelWithCudaGraph(providers)
 
-    def RunModelWithCudaGraph(self, providers):  # noqa: N802
+    def run_model_with_cuda_graph(self, providers):
         INPUT_SIZE = 1280  # noqa: N806
         x = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]] * INPUT_SIZE, dtype=np.float32)
         y = np.array([[0.0], [0.0], [0.0]] * INPUT_SIZE, dtype=np.float32)
