@@ -1,7 +1,6 @@
 #import "OnnxruntimeJSIHelper.h"
 #import <React/RCTBlobManager.h>
 #import <React/RCTBridge+Private.h>
-#import <ReactCommon/RCTTurboModule.h>
 #import <jsi/jsi.h>
 
 @implementation OnnxruntimeJSIHelper
