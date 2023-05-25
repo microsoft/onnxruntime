@@ -71,18 +71,22 @@ class QGemm : protected GemmBase, public MatMulIntegerBase {
 
     // prepare output buffer of GEMM
     int32_t* gemm_output_data = nullptr;
-    std::unique_ptr<Tensor> gemm_output_buffer;
+    Tensor gemm_output_buffer;
     bool need_requant = y_scale != nullptr;
     if (need_requant) {
       TensorShape outputshape{static_cast<int64_t>(M), static_cast<int64_t>(N)};
-      gemm_output_buffer = std::make_unique<Tensor>(DataTypeImpl::GetType<int32_t>(), outputshape, allocator);
-      gemm_output_data = gemm_output_buffer->MutableData<int32_t>();
+      gemm_output_buffer = Tensor(DataTypeImpl::GetType<int32_t>(), outputshape, allocator);
+      gemm_output_data = gemm_output_buffer.MutableData<int32_t>();
     } else {
       gemm_output_data = static_cast<int32_t*>(y->MutableDataRaw());
     }
 
     if (c != nullptr) {
-      GemmBroadcastBias(M, N, 1.f, c->Data<int32_t>(), &(c->Shape()), gemm_output_data);
+      if (need_requant) {
+        GemmBroadcastBias<int32_t>(*context, *c, gemm_output_buffer);
+      } else {
+        GemmBroadcastBias<int32_t>(*context, *c, *y);
+      }
     }
 
     MLAS_GEMM_QUANT_SHAPE_PARAMS gemm_shape{M, N, K, a_is_signed, b_is_signed, c != nullptr};
