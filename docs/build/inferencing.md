@@ -114,7 +114,7 @@ Note: unit tests will be skipped due to the incompatible CPU instruction set whe
 * The build script runs all unit tests by default for native builds and skips tests by default for cross-compiled builds.
   To skip the tests, run with `--build` or `--update --build`.
 * If you need to install protobuf from source code, please note:
-   * First, please open [cmake/deps.txt](cmake/deps.txt) to check which protobuf version ONNX Runtime's offical packages use. 
+   * First, please open [cmake/deps.txt](https://github.com/microsoft/onnxruntime/blob/main/cmake/deps.txt) to check which protobuf version ONNX Runtime's offical packages use. 
    * As we statically link to protobuf, on Windows protobuf's CMake flag `protobuf_BUILD_SHARED_LIBS` should be turned OFF, on Linux if the option is OFF you also need to make sure [PIC](https://cmake.org/cmake/help/latest/prop_tgt/POSITION_INDEPENDENT_CODE.html) is enabled. After the installation, you should have the 'protoc' executable in your PATH. It is recommended to run `ldconfig` to make sure protobuf libraries are found.
    * If you installed your protobuf in a non standard location it would be helpful to set the following env var:`export CMAKE_ARGS="-DONNX_CUSTOM_PROTOC_EXECUTABLE=full path to protoc"` so the ONNX build can find it. Also run `ldconfig <protobuf lib folder path>` so the linker can find protobuf libraries.
 * If you'd like to install onnx from source code, install protobuf first and:
@@ -518,17 +518,17 @@ pip3 install numpy
 # Build the latest cmake
 mkdir /code
 cd /code
-wget https://cmake.org/files/v3.16/cmake-3.16.1.tar.gz;
-tar zxf cmake-3.16.1.tar.gz
+wget https://github.com/Kitware/CMake/releases/download/v3.26.4/cmake-3.26.4.tar.gz
+tar zxf cmake-3.26.4.tar.gz
 
-cd /code/cmake-3.16.1
+cd /code/cmake-3.26.4
 ./configure --system-curl
 make
 sudo make install
 
 # Prepare onnxruntime Repo
 cd /code
-git clone --recursive https://github.com/Microsoft/onnxruntime
+git clone --recursive https://github.com/Microsoft/onnxruntime.git
 
 # Start the basic build
 cd /code/onnxruntime
