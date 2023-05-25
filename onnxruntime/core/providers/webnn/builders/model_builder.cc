@@ -18,11 +18,13 @@ namespace onnxruntime {
 namespace webnn {
 
 ModelBuilder::ModelBuilder(const GraphViewer& graph_viewer, const logging::Logger& logger,
-                           const emscripten::val& context, const emscripten::val& builder)
+                           const emscripten::val& context, const emscripten::val& builder,
+                           const DataLayout preferred_layout)
     : graph_viewer_(graph_viewer),
       logger_(logger),
       wnn_context_(context),
-      wnn_builder_(builder) {}
+      wnn_builder_(builder),
+      preferred_layout_(preferred_layout) {}
 
 Status ModelBuilder::Initialize() {
   PreprocessInitializers();
