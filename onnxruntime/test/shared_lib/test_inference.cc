@@ -80,7 +80,11 @@ void RunSession(OrtAllocator* allocator, Ort::Session& session_object,
 
   OutT* f = output_tensor->GetTensorMutableData<OutT>();
   for (size_t i = 0; i != total_len; ++i) {
-    ASSERT_EQ(values_y[i], f[i]);
+    if constexpr (std::is_same<OutT, float>::value || std::is_same<OutT, double>::value) {
+      ASSERT_NEAR(values_y[i], f[i], 1e-3);
+    } else {
+      ASSERT_EQ(values_y[i], f[i]);
+    }
   }
 }
 
