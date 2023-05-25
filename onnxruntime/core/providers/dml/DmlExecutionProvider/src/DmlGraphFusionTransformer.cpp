@@ -137,38 +137,39 @@ namespace Dml
                 //  backed resource, avoiding an extra set of GPU resources in memory.
                 std::unordered_map<std::string, std::pair<const ONNX_NAMESPACE::TensorProto*, bool>> isInitializerTransferable;
 
-                if (partition->IsDmlGraphPartition())
+            
+            if (partition->IsDmlGraphPartition())
+            {
+                // populate transferredInitializerMap
+                for (const auto& input : partition->GetInputs())
                 {
-                    // populate isInitializerTransferable
-                    for (const auto& input : partition->GetInputs())
+                    const onnx::TensorProto* tensor = nullptr;
+                    if (graph.GetInitializedTensor(input, tensor))
                     {
-                        const onnx::TensorProto* tensor = nullptr;
-                        if (graph.GetInitializedTensor(input, tensor))
+                        // It's only safe to transfer tensors which are used by this partition alone.
+                        auto iter = initializerPartitionMap.find(tensor);
+                        assert(iter != initializerPartitionMap.end());
+                        if (iter->second.size() > 1)
                         {
-                            // It's only safe to transfer tensors which are used by this partition alone.
-                            auto iter = initializerPartitionMap.find(tensor);
-                            assert(iter != initializerPartitionMap.end());
-                            if (iter->second.size() > 1)
+                            // By including non-transferrable tensors in isInitializerTransferable, it causes DML to upload and preprocess them
+                            // to duplicate locations rather than treating them as being non-constant, which is helpful for optimization.
+                            // The size threshold for this should be no smaller than that used to combine initializers in the constant
+                            // sharing transform to prevent that transform from hurting performance.
+                            // If the kernel relies on this input to be initialized, it should also be small enough to copy cheaply.
+                            const uint64_t maximumElementsForDuplicationTensor = 64;
+                            static_assert(maximumElementsForDuplicationTensor >= onnxruntime::ConstantSharing::TENSOR_ELEM_COUNT_THRESHOLD);
+
+                            uint64_t totalElementCount = 1;
+                            for (int i = 0; i < tensor->dims().size(); ++i)
                             {
-                                // By including non-transferrable tensors in isInitializerTransferable, it causes DML to upload and preprocess them
-                                // to duplicate locations rather than treating them as being non-constant, which is helpful for optimization.
-                                // The size threshold for this should be no smaller than that used to combine initializers in the constant
-                                // sharing transform to prevent that transform from hurting performance.
-                                // If the kernel relies on this input to be initialized, it should also be small enough to copy cheaply.
-                                constexpr uint64_t maximumElementsForDuplicationTensor = 64;
-                                static_assert(maximumElementsForDuplicationTensor >= onnxruntime::ConstantSharing::TENSOR_ELEM_COUNT_THRESHOLD);
+                                totalElementCount *= tensor->dims()[i];
+                            }
 
-                                uint64_t totalElementCount = 1;
-                                for (int i = 0; i < tensor->dims().size(); ++i)
-                                {
-                                    totalElementCount *= tensor->dims()[i];
-                                }
-
-                                if (totalElementCount <=  maximumElementsForDuplicationTensor ||
-                                    requiredInitializerMap.find(input) != requiredInitializerMap.end())
-                                {
-                                    isInitializerTransferable[input] = {tensor, false};
-                                }
+                            if (totalElementCount <=  maximumElementsForDuplicationTensor ||
+                                requiredInitializerMap.find(input) != requiredInitializerMap.end())
+                            {
+                                isInitializerTransferable[input] = {tensor, false};
+                            }
 
                                 continue;
                             }
