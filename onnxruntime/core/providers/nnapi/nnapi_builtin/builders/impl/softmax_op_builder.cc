@@ -66,7 +66,7 @@ Status SoftMaxOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, cons
 
   // TODO: Needs fix
   // ??? Not sure why we need this test. At that feature level axis was 1 and input was 2D or 4D.
-  // Whether 4D input was NCHW of NHWC input shouldn't matter when axis is 1.
+  // Whether 4D input was NCHW or NHWC input shouldn't matter when axis is 1.
   // Commenting out to get feedback in PR prior to potential removal.
   // if (android_feature_level < ANEURALNETWORKS_FEATURE_LEVEL_3) {
   //  ORT_ENFORCE(model_builder.UseNCHW(),
@@ -105,8 +105,10 @@ Status SoftMaxOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, cons
   }
 
   // if opset < 13 we may need to manually coerce into 2D. we can skip this IFF it's already 2D and axis == 1.
-  // otherwise we need the coersion to create an input shape that works with axis == 1
-  // (if 2D and axis is 0 we coerce to shape {1 , dim0 + dim1})
+  // otherwise we need the coercion to create an input shape that works with axis == 1, which will work with any
+  // NNAPI version.
+  // e.g. if 2D and axis is 0 we coerce to shape {1 , dim0 + dim1}
+  //      if 4D and axis is 2 we coerce to shape {dim0 + dim1, dim2 + dim3}
   if (node_unit.SinceVersion() < 13 && !(input_shape.size() == 2 && axis == 1)) {
     // add Reshape to 2D
     uint32_t dim0 = std::accumulate(input_shape.cbegin(), input_shape.cbegin() + axis, 1, std::multiplies());
@@ -173,6 +175,12 @@ bool SoftMaxOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /* initiali
     // and use axis of 1. A 2D input with axis==1 works with all NNAPI versions.
   } else {
     const auto input_size = input_shape.size();
+
+    if (input_size > 4) {
+      LOGS_DEFAULT(VERBOSE) << "Softmax only supports maximum 4d input. input is " << input_size << "d";
+      return false;
+    }
+
     NodeAttrHelper helper(node_unit);
     int32_t axis = helper.Get("axis", 1);
     if (axis < 0) {
