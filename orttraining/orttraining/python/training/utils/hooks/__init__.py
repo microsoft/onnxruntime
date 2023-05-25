@@ -5,7 +5,7 @@
 
 __all__ = [
     "StatisticsSubscriber",
-    "SubscriberManager",
+    "GlobalSubscriberManager",
     "_InspectActivation",
 ]
 

@@ -50,7 +50,7 @@ class StatisticsSubscriber(SubscriberBase):
             start_step: the first step that runs subscriber actions.
             end_step: the end step (exclusively) that runs subscriber actions.
             override_output_dir: whether `output_dir` can be overridden if it already exists.
-            run_on_cpu: whether to run the subscriber actions on CPU, this should be the last restore when inserted
+            run_on_cpu: whether to run the subscriber actions on CPU, this should be the last resort when inserted
                 inspector node affects memory peak causing original recipe run failed with OOM.
             bucket_size: the size of the bucket to split the statistic calculation.
         """
