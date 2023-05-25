@@ -8,22 +8,19 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-using namespace onnxruntime::cuda;
-
 Status LaunchUnfoldTensor(
     cudaStream_t stream,
     const cudaDeviceProp& device_prop,
     size_t element_size,
     const void* input,
     void* output,
-    int64_t leading_dim,
-    int64_t tailing_dim,
+    int64_t leading_dims_size,
+    int64_t tailing_dims_size,
     int64_t dim_size,
     int64_t unfold_size,
-    int64_t step
+    int64_t step_size
 );
 
-}
 }  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime
