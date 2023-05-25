@@ -11,8 +11,52 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
+static const char* is_aligned(const void *ptr, size_t byte_count=16) {
+  if (ptr == nullptr) return "N";
+  return (uintptr_t)ptr % byte_count == 0 ? "A" : "-";
+}
+
+static const char* cublasGetErrorEnum(cublasStatus_t error) {
+  switch (error) {
+    case CUBLAS_STATUS_SUCCESS: return "CUBLAS_STATUS_SUCCESS";
+    case CUBLAS_STATUS_NOT_INITIALIZED: return "CUBLAS_STATUS_NOT_INITIALIZED";
+    case CUBLAS_STATUS_ALLOC_FAILED: return "CUBLAS_STATUS_ALLOC_FAILED";
+    case CUBLAS_STATUS_INVALID_VALUE: return "CUBLAS_STATUS_INVALID_VALUE";
+    case CUBLAS_STATUS_ARCH_MISMATCH: return "CUBLAS_STATUS_ARCH_MISMATCH";
+    case CUBLAS_STATUS_MAPPING_ERROR: return "CUBLAS_STATUS_MAPPING_ERROR";
+    case CUBLAS_STATUS_EXECUTION_FAILED: return "CUBLAS_STATUS_EXECUTION_FAILED";
+    case CUBLAS_STATUS_INTERNAL_ERROR: return "CUBLAS_STATUS_INTERNAL_ERROR";
+    case CUBLAS_STATUS_NOT_SUPPORTED: return "CUBLAS_STATUS_NOT_SUPPORTED";
+    case CUBLAS_STATUS_LICENSE_ERROR: return "CUBLAS_STATUS_LICENSE_ERROR";
+    default: return "<unknown>";
+  }
+}
+
+static const char* CudaDataTypeToString(cudaDataType_t dt) {
+  switch (dt) {
+    case CUDA_R_16F: return "CUDA_R_16F";
+    case CUDA_R_16BF: return "CUDA_R_16BF";
+    case CUDA_R_32F: return "CUDA_R_32F";
+    case CUDA_R_8F_E4M3: return "CUDA_R_8F_E4M3";
+    case CUDA_R_8F_E5M2: return "CUDA_R_8F_E5M2";
+    default: return "<unknown>";
+  }
+}
+
+static const char* CublasComputeTypeToString(cublasComputeType_t ct) {
+  switch (ct) {
+    case CUBLAS_COMPUTE_16F: return "CUBLAS_COMPUTE_16F";
+    case CUBLAS_COMPUTE_32F: return "CUBLAS_COMPUTE_32F";
+    case CUBLAS_COMPUTE_32F_FAST_16F: return "CUBLAS_COMPUTE_32F_FAST_16F";
+    case CUBLAS_COMPUTE_32F_FAST_16BF: return "CUBLAS_COMPUTE_32F_FAST_16BF";
+    case CUBLAS_COMPUTE_32F_FAST_TF32: return "CUBLAS_COMPUTE_32F_FAST_TF32";
+    case CUBLAS_COMPUTE_64F: return "CUBLAS_COMPUTE_64F";
+    default: return "<unknown>";
+  }
+}
+
 // It must exist somewhere already.
-cudaDataType ToCudaDataType(int32_t element_type) {
+cudaDataType_t ToCudaDataType(int32_t element_type) {
   switch (element_type) {
     case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
       return CUDA_R_32F;
@@ -42,43 +86,6 @@ int32_t TypeSize(int32_t element_type) {
       return 1;
     default:
       ORT_THROW("Unexpected element_type=", element_type, ".");
-  }
-}
-
-static const char* cublasGetErrorEnum(cublasStatus_t error) {
-  switch (error) {
-    case CUBLAS_STATUS_SUCCESS:
-      return "CUBLAS_STATUS_SUCCESS";
-
-    case CUBLAS_STATUS_NOT_INITIALIZED:
-      return "CUBLAS_STATUS_NOT_INITIALIZED";
-
-    case CUBLAS_STATUS_ALLOC_FAILED:
-      return "CUBLAS_STATUS_ALLOC_FAILED";
-
-    case CUBLAS_STATUS_INVALID_VALUE:
-      return "CUBLAS_STATUS_INVALID_VALUE";
-
-    case CUBLAS_STATUS_ARCH_MISMATCH:
-      return "CUBLAS_STATUS_ARCH_MISMATCH";
-
-    case CUBLAS_STATUS_MAPPING_ERROR:
-      return "CUBLAS_STATUS_MAPPING_ERROR";
-
-    case CUBLAS_STATUS_EXECUTION_FAILED:
-      return "CUBLAS_STATUS_EXECUTION_FAILED";
-
-    case CUBLAS_STATUS_INTERNAL_ERROR:
-      return "CUBLAS_STATUS_INTERNAL_ERROR";
-
-    case CUBLAS_STATUS_NOT_SUPPORTED:
-      return "CUBLAS_STATUS_NOT_SUPPORTED";
-
-    case CUBLAS_STATUS_LICENSE_ERROR:
-      return "CUBLAS_STATUS_LICENSE_ERROR";
-
-    default:
-      return "<unknown>";
   }
 }
 
@@ -145,10 +152,10 @@ onnxruntime::Status GemmFloat8_Impl::CudaCompute(
   cublasLtEpilogue_t epilogue = CUBLASLT_EPILOGUE_DEFAULT;
 
   // Create matrix descriptors. Not setting any extra attributes.
-  cudaDataType a_type = ToCudaDataType(dtypes[0]);
-  cudaDataType b_type = ToCudaDataType(dtypes[1]);
-  cudaDataType c_type = ToCudaDataType(dtypes[2]);
-  cudaDataType bias_type;
+  cudaDataType_t a_type = ToCudaDataType(dtypes[0]);
+  cudaDataType_t b_type = ToCudaDataType(dtypes[1]);
+  cudaDataType_t c_type = ToCudaDataType(dtypes[2]);
+  cudaDataType_t bias_type;
   bool gemm_float8;
   if (a_type == CUDA_R_8F_E4M3 || b_type == CUDA_R_8F_E4M3 || a_type == CUDA_R_8F_E5M2 || b_type == CUDA_R_8F_E5M2) {
     bias_type = c_type == CUDA_R_16F ? CUDA_R_16F : CUDA_R_16BF;
@@ -216,7 +223,7 @@ onnxruntime::Status GemmFloat8_Impl::CudaCompute(
   // The workspace should be allocated once from OpKernelContext assuming
   // only one cuda function is running at a time (which is not necessarily true with H100).
   size_t type_size = std::max(std::max(TypeSize(dtypes[0]), TypeSize(dtypes[1])), std::max(std::max(TypeSize(dtypes[2]), TypeSize(dtypes[3])), TypeSize(dtypes[4])));
-  size_t workspaceSize = std::min((size_t)(1 << 24), (size_t)std::max(K * M, K * N) * type_size);  // suggested fixed value 24Mb
+  size_t workspaceSize = (std::min((size_t)(1 << 24), (size_t)std::max(K * M, K * N) * type_size) + 16) % 16;  // suggested fixed value 24Mb
   cublasLtMatmulPreferenceSetAttribute(preference, CUBLASLT_MATMUL_PREF_MAX_WORKSPACE_BYTES, &workspaceSize, sizeof(workspaceSize));
 
   // https://docs.nvidia.com/cuda/cublas/index.html?highlight=cublasLtMatmulAlgoGetHeuristic#cublasltmatmulalgogetheuristic
@@ -227,11 +234,18 @@ onnxruntime::Status GemmFloat8_Impl::CudaCompute(
   ORT_ENFORCE(returnedResults > 0 && cuda_status == CUBLAS_STATUS_SUCCESS,
               "Unable to find any suitable algorithm due to ", cublasGetErrorEnum(cuda_status),
               ", preference=", preference, ", returnedResults=", returnedResults,
-              ", A_type=", ToCudaDataType(dtypes[0]), ", B_type=", ToCudaDataType(dtypes[1]),
-              ", C_type=", ToCudaDataType(dtypes[2]), ", result_type=", ToCudaDataType(dtypes[4]),
-              ", bias_type=", bias_type, ", scale_type=", scale_type_,
-              ", computeType=", compute_type_,
+              ", A_type=", CudaDataTypeToString(ToCudaDataType(dtypes[0])),
+              ", B_type=", CudaDataTypeToString(ToCudaDataType(dtypes[1])),
+              ", C_type=", CudaDataTypeToString(ToCudaDataType(dtypes[2])),
+              ", result_type=", CudaDataTypeToString(ToCudaDataType(dtypes[4])),
+              ", bias_type=", CudaDataTypeToString(bias_type),
+              ", scale_type=", CudaDataTypeToString(scale_type_),
+              ", computeType=", CublasComputeTypeToString(compute_type_),
               ", transA=", trans_A_, ", transB=", trans_B_,
+              ", fastAccumulationMode=", (fast_accumulation_mode_ ? 1 : 0),
+              ", alignments=", is_aligned(A->DataRaw()), is_aligned(B->DataRaw()),
+              has_C ? is_aligned(nullptr) : is_aligned(C->DataRaw()), is_aligned(D->MutableDataRaw()),
+              is_aligned(workspace),
               ", M=", M, ", N=", N, ", K=", K, ", lda=", lda, ", ldb=", ldb, ", ldd=", ldd,
               ", workspaceSize=", workspaceSize, ". Check NVDIDIA documentation to see what combination is valid: ",
               "https://docs.nvidia.com/cuda/cublas/index.html?highlight=cublasLtMatmulAlgoGetHeuristic#cublasltmatmulalgogetheuristic.");
