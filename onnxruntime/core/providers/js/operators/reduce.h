@@ -16,21 +16,24 @@ class ReduceMean : public JsKernel, public ReduceKernelBase<allow_multi_axes> {
   using ReduceKernelBase<allow_multi_axes>::noop_with_empty_axes_;
   using ReduceKernelBase<allow_multi_axes>::keepdims_;
   ReduceMean(const OpKernelInfo& info) : JsKernel(info), ReduceKernelBase<allow_multi_axes>(info) {
-    if (noop_with_empty_axes_ == true) {
+    if (axes_.empty() == true) {
       JSEP_INIT_KERNEL_ATTRIBUTE(ReduceMean, ({
-                                   "keepdims" : $1,
-                                   "noop_with_empty_axes" : $2
+                                   "keepDims" : $1,
+                                   "noopWithEmptyAxes" : $2,
+                                   "axes":[]
                                  }),
                                  static_cast<int32_t>(keepdims_),
                                  noop_with_empty_axes_);
     } else {
       JSEP_INIT_KERNEL_ATTRIBUTE(ReduceMean, ({
-                                   "axes" : ($1 ? Array.from(HEAP32.subarray($2, $2 + $1)) : []),
-                                   "keepdims" : $3
+                                   "keepDims" : $1,
+                                   "noopWithEmptyAxes" : $2,
+                                   "axes" : (Array.from(HEAP32.subarray($4, $4 + $3))),
                                  }),
-                                 gsl::narrow_cast<int32_t>(axes_.size() ? axes_.size() : 0),
-                                 reinterpret_cast<int32_t>(!axes_.empty() ? axes_.data() : nullptr) >> 2,
-                                 static_cast<int32_t>(keepdims_));
+                                 static_cast<int32_t>(keepdims_),
+                                 noop_with_empty_axes_,
+                                 gsl::narrow_cast<int32_t>(axes_.size() ),
+                                 reinterpret_cast<int32_t>(axes_.data()) >> 2);
     }
   }
 };
