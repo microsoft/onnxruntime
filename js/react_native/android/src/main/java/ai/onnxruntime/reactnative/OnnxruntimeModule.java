@@ -56,6 +56,8 @@ public class OnnxruntimeModule extends ReactContextBaseJavaModule {
     return key;
   }
 
+  protected BlobModule blobModule;
+
   public OnnxruntimeModule(ReactApplicationContext context) {
     super(context);
     reactContext = context;
@@ -65,6 +67,12 @@ public class OnnxruntimeModule extends ReactContextBaseJavaModule {
   @Override
   public String getName() {
     return "Onnxruntime";
+  }
+
+  public void checkBlobModule() {
+    if (blobModule == null) {
+      this.blobModule = reactContext.getNativeModule(BlobModule.class);
+    }
   }
 
   /**
@@ -98,7 +106,7 @@ public class OnnxruntimeModule extends ReactContextBaseJavaModule {
   @ReactMethod
   public void loadModelFromBlob(ReadableMap data, ReadableMap options, Promise promise) {
     try {
-      BlobModule blobModule = reactContext.getNativeModule(BlobModule.class);
+      checkBlobModule();
       String blobId = data.getString("blobId");
       byte[] bytes = blobModule.resolve(blobId, data.getInt("offset"), data.getInt("size"));
       blobModule.remove(blobId);
@@ -214,9 +222,9 @@ public class OnnxruntimeModule extends ReactContextBaseJavaModule {
       throw new Exception("Model is not loaded.");
     }
 
-    BlobModule blobModule = reactContext.getNativeModule(BlobModule.class);
-
     RunOptions runOptions = parseRunOptions(options);
+
+    checkBlobModule();
 
     long startTime = System.currentTimeMillis();
     Map<String, OnnxTensor> feed = new HashMap<>();

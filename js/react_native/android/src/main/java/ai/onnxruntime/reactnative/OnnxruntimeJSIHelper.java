@@ -16,14 +16,24 @@ import com.facebook.react.modules.blob.BlobModule;
 public class OnnxruntimeJSIHelper extends ReactContextBaseJavaModule {
   public static final String NAME = "OnnxruntimeJSIHelper";
 
-  public OnnxruntimeJSIHelper(ReactApplicationContext reactContext) {
-    super(reactContext);
+  private static ReactApplicationContext reactContext;
+  protected BlobModule blobModule;
+
+  public OnnxruntimeJSIHelper(ReactApplicationContext context) {
+    super(context);
+    reactContext = context;
   }
 
   @Override
   @NonNull
   public String getName() {
     return NAME;
+  }
+
+  public void checkBlobModule() {
+    if (blobModule == null) {
+      blobModule = reactContext.getNativeModule(BlobModule.class);
+    }
   }
 
   @ReactMethod(isBlockingSynchronousMethod = true)
@@ -39,8 +49,7 @@ public class OnnxruntimeJSIHelper extends ReactContextBaseJavaModule {
   }
 
   public byte[] getBlobBuffer(String blobId, int offset, int size) {
-    BlobModule blobModule = getReactApplicationContext().getNativeModule(BlobModule.class);
-    if (blobModule == null) throw new RuntimeException("React Native's BlobModule was not found!");
+    checkBlobModule();
     byte[] bytes = blobModule.resolve(blobId, offset, size);
     blobModule.remove(blobId);
     if (bytes == null) {
@@ -50,8 +59,7 @@ public class OnnxruntimeJSIHelper extends ReactContextBaseJavaModule {
   }
 
   public String createBlob(byte[] buffer) {
-    BlobModule blobModule = getReactApplicationContext().getNativeModule(BlobModule.class);
-    if (blobModule == null) throw new RuntimeException("React Native's BlobModule was not found!");
+    checkBlobModule();
     String blobId = blobModule.store(buffer);
     if (blobId == null) {
       throw new RuntimeException("Failed to create Blob!");
