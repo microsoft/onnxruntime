@@ -389,21 +389,37 @@ def apply_plot(hist, hist_edges):
     plt.show()
 
 
-def write_calibration_table(calibration_cache):
+def write_calibration_table(
+        calibration_cache,
+        json_path="calibration.json",
+        flatbuffers_path="calibration.flatbuffers",
+        cache_path="calibration.cache"):
     """
     Helper function to write calibration table to files.
+        parameter calibration_cache: Calibration table.
+        parameter json_path: The path to save json file.
+        parameter flatbuffers_path: The path to save flatbuffers file.
+        parameter cache_path: The path to save cache file.
     """
 
     import json
-
     import flatbuffers
-
     import onnxruntime.quantization.CalTableFlatBuffers.KeyValue as KeyValue
     import onnxruntime.quantization.CalTableFlatBuffers.TrtTable as TrtTable
 
-    logging.info(f"calibration cache: {calibration_cache}")
+    # Convert str to Path instance
+    json_path = Path(json_path)
+    flatbuffers_path = Path(flatbuffers_path)
+    cache_path = Path(cache_path)
 
-    with open("calibration.json", "w") as file:
+    # Creates a folder that does not exist in the path.
+    json_path.parent.mkdir(exist_ok=True, parents=True)
+    flatbuffers_path.parent.mkdir(exist_ok=True, parents=True)
+    cache_path.parent.mkdir(exist_ok=True, parents=True)
+
+    logging.info("calibration cache: {}".format(calibration_cache))
+
+    with open(json_path, "w") as file:
         file.write(json.dumps(calibration_cache))  # use `json.loads` to do the reverse
 
     # Serialize data using FlatBuffers
@@ -435,7 +451,7 @@ def write_calibration_table(calibration_cache):
     builder.Finish(cal_table)
     buf = builder.Output()
 
-    with open("calibration.flatbuffers", "wb") as file:
+    with open(flatbuffers_path, "wb") as file:
         file.write(buf)
 
     # Deserialize data (for validation)
@@ -448,7 +464,7 @@ def write_calibration_table(calibration_cache):
             logging.info(key_value.Value())
 
     # write plain text
-    with open("calibration.cache", "w") as file:
+    with open(cache_path, "w") as file:
         for key in sorted(calibration_cache.keys()):
             value = calibration_cache[key]
             s = key + " " + str(max(abs(value[0]), abs(value[1])))
