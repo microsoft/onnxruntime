@@ -1,10 +1,5 @@
-//
-//  FakeRCTBlobManager.m
-//  OnnxruntimeModuleTest
-//
-//  Created by Jhen-Jie Hong on 2023/5/25.
-//  Copyright © 2023 Facebook. All rights reserved.
-//
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
 
 #import <Foundation/Foundation.h>
 #import "FakeRCTBlobManager.h"
