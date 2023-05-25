@@ -18,9 +18,8 @@ Before looking into this further, we should clarify a few things (if possible):
 
 ## 2. Collect Activation Statistics
 
-### Add a few lines of code, run script to collect statistics:
 
-#### Use `GlobalSubscriberManager` to collect nn.Module forward() outputs
+### 2.1 Use `GlobalSubscriberManager` to collect `nn.Module` forward() outputs
 
 <table>
 <tr>
@@ -80,11 +79,11 @@ Arguments:
 - start_step [optional]: the first step that runs subscriber actions.
 - end_step [optional]: the end step (exclusively) that runs subscriber actions.
 - override_output_dir: whether `output_dir` can be overridden if it already exists.
-- run_on_cpu: whether to run the subscriber actions on CPU, this should be the last restore when inserted
+- run_on_cpu: whether to run the subscriber actions on CPU, this should be the last resort when inserted
     inspector node affects memory peak causing original recipe run failed with OOM.
 - bucket_size: the size of the bucket to split the statistic calculation.
 
-#### Use `_InspectActivation` to collect intermediate tensors in a nn.Module forward()
+### 2.2 Use `_InspectActivation` to collect intermediate tensors in a `nn.Module` forward()
 
 The limitation of `GlobalSubscriberManager` is, only 'nn.Module's forward output tensors will be dumped, if you want to
 dump the intermediate tensors in a `nn.Module`'s forward function, refer to the following example:
@@ -114,13 +113,13 @@ class BloomForCausalLM(BloomPreTrainedModel):
     return loss
 ```
 
-Be noted, make sure the activation name (as the first argument of `_InspectActivation.apply`) are unique, otherwise
-will be overwritten by the last write. The dumpped data are stored in the `output_dir`.
+Be noted, make sure the activation name (as the first argument of `_InspectActivation.apply`) is unique, otherwise
+stat file using the activation name will be overwritten by the last write. The dumped data are stored in the `output_dir`.
 
 
-#### Collect on multiple ranks
+### 2.3 Collect on multiple ranks
 
-`GlobalSubscriberManager` did not explicitly handle the racing condition when multiple ranks write into same file path,
+`GlobalSubscriberManager` did not explicitly handle the racing condition when multiple ranks write into the same file path,
 here is the example if you want to collect statistics on multiple ranks:
 
 ```python
@@ -131,10 +130,10 @@ GlobalSubscriberManager.subscribe(model, [StatisticsSubscriber(output_dir="ort_o
 
 Check [StatisticsSubscriber implementation](../orttraining/orttraining/python/training/utils/hooks/_statistics_subscriber.py) for more information.
 
-### Run command to generate per-step summary
+### 2.4 Run command to generate per-step summary
 
 ```bash
 python -m onnxruntime.training.utils.hooks.merge_activation_summary --pt_dir pt_out --ort_dir ort_out --output_dir /tmp/output
 ```
 
-### Manually compare the generated per-step summary to find the first big diff.
+### 2.5 Manually compare the generated per-step summary to find the first big diff.
