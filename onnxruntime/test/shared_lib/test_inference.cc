@@ -2503,8 +2503,8 @@ TEST(CApiTest, ConfigureCudaArenaAndDemonstrateMemoryArenaShrinkage) {
 
   Ort::SessionOptions session_options;
 
-  const char* keys[] = {"max_mem", "arena_extend_strategy", "initial_chunk_size_bytes", "max_dead_bytes_per_chunk", "initial_growth_chunk_size_bytes"};
-  const size_t values[] = {0 /*let ort pick default max memory*/, 0, 1024, 0, 256};
+  const char* keys[] = {"max_mem", "arena_extend_strategy", "initial_chunk_size_bytes", "max_dead_bytes_per_chunk", "initial_growth_chunk_size_bytes", "max_power_of_two_extend_bytes"};
+  const size_t values[] = {0 /*let ort pick default max memory*/, 0, 1024, 0, 256, 1L << 24};
 
   OrtArenaCfg* arena_cfg = nullptr;
   ASSERT_TRUE(api.CreateArenaCfgV2(keys, values, 5, &arena_cfg) == nullptr);
