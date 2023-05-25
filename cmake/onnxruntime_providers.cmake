@@ -318,8 +318,8 @@ set_target_properties(onnxruntime_providers PROPERTIES FOLDER "ONNXRuntime")
 
 if (NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_EXTENDED_MINIMAL_BUILD
                                   AND NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin|iOS"
-                                  AND NOT (CMAKE_SYSTEM_NAME STREQUAL "Android")
-                                  AND NOT onnxruntime_BUILD_WEBASSEMBLY)
+                                  AND NOT CMAKE_SYSTEM_NAME STREQUAL "Android"
+                                  AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
   file(GLOB onnxruntime_providers_shared_cc_srcs CONFIGURE_DEPENDS
   "${ONNXRUNTIME_ROOT}/core/providers/shared/*.h"
   "${ONNXRUNTIME_ROOT}/core/providers/shared/*.cc"
@@ -498,6 +498,18 @@ if (onnxruntime_USE_CUDA)
   if(onnxruntime_CUDNN_HOME)
     target_include_directories(onnxruntime_providers_cuda PRIVATE ${onnxruntime_CUDNN_HOME}/include)
     target_link_directories(onnxruntime_providers_cuda PRIVATE ${onnxruntime_CUDNN_HOME}/lib)
+  endif()
+
+  if (onnxruntime_USE_TRITON_KERNEL)
+    # compile triton kernel, generate .a and .h files
+    include(onnxruntime_compile_triton_kernel.cmake)
+    compile_triton_kernel(triton_kernel_obj_file triton_kernel_header_dir)
+    add_dependencies(onnxruntime_providers_cuda onnxruntime_triton_kernel)
+    target_compile_definitions(onnxruntime_providers_cuda PRIVATE USE_TRITON_KERNEL)
+    target_include_directories(onnxruntime_providers_cuda PRIVATE ${triton_kernel_header_dir})
+    target_link_libraries(onnxruntime_providers_cuda PUBLIC -Wl,--whole-archive ${triton_kernel_obj_file} -Wl,--no-whole-archive)
+    # lib cuda needed by cuLaunchKernel
+    target_link_libraries(onnxruntime_providers_cuda PRIVATE cuda)
   endif()
 
   if (onnxruntime_USE_FLASH_ATTENTION)
@@ -1590,7 +1602,6 @@ if (onnxruntime_USE_ROCM)
     PUBLIC
       ${onnxruntime_ROCM_HOME}/include
       ${onnxruntime_ROCM_HOME}/include/roctracer)
-  install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/rocm  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers)
 
   set_target_properties(onnxruntime_providers_rocm PROPERTIES LINKER_LANGUAGE CXX)
   set_target_properties(onnxruntime_providers_rocm PROPERTIES FOLDER "ONNXRuntime")
@@ -1618,6 +1629,16 @@ if (onnxruntime_USE_ROCM)
     find_package(hipblaslt REQUIRED)
     target_link_libraries(onnxruntime_providers_rocm PRIVATE roc::hipblaslt)
     target_compile_definitions(onnxruntime_providers_rocm PRIVATE USE_HIPBLASLT)
+  endif()
+
+  if (onnxruntime_USE_TRITON_KERNEL)
+    # compile triton kernel, generate .a and .h files
+    include(onnxruntime_compile_triton_kernel.cmake)
+    compile_triton_kernel(triton_kernel_obj_file triton_kernel_header_dir)
+    add_dependencies(onnxruntime_providers_rocm onnxruntime_triton_kernel)
+    target_compile_definitions(onnxruntime_providers_rocm PRIVATE USE_TRITON_KERNEL)
+    target_include_directories(onnxruntime_providers_rocm PRIVATE ${triton_kernel_header_dir})
+    target_link_libraries(onnxruntime_providers_rocm PUBLIC -Wl,--whole-archive ${triton_kernel_obj_file} -Wl,--no-whole-archive)
   endif()
 
   if (onnxruntime_USE_COMPOSABLE_KERNEL)

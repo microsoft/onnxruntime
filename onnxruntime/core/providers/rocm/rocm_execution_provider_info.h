@@ -66,6 +66,7 @@ struct ROCMExecutionProviderInfo {
 
   static ROCMExecutionProviderInfo FromProviderOptions(const ProviderOptions& options);
   static ProviderOptions ToProviderOptions(const ROCMExecutionProviderInfo& info);
+  static ProviderOptions ToProviderOptions(const OrtROCMProviderOptions& info);
 };
 }  // namespace onnxruntime
 

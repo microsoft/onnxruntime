@@ -131,6 +131,10 @@ jobs:
     workingDirectory: '$(Build.BinariesDirectory)'
     displayName: 'Install python modules'
 
+  - ${{ if contains(parameters.additionalBuildFlags, 'use_cuda') }}:
+    - powershell: |
+       azcopy.exe cp --recursive "https://lotusscus.blob.core.windows.net/models/cuda_sdk/v11.8" $(Agent.TempDirectory)
+
   - ${{ if eq(parameters.WITH_CACHE, true) }}:
     - powershell: |
         if ([string]::IsNullOrEmpty((Get-Command ccache -errorAction SilentlyContinue)))

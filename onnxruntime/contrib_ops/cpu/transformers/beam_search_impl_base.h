@@ -62,6 +62,14 @@ struct BeamSearchState : IBeamSearchState<T> {
     }
   }
 
+  void EnsurePastStateReorderStagingBuffer(AllocatorPtr allocator, int64_t sz) {
+    auto current_buffer_size = this->staging_for_past_state_reorder.Shape().Size();
+    if (sz > current_buffer_size) {
+      TensorShape buffer_shape = {sz};
+      this->staging_for_past_state_reorder = Tensor(DataTypeImpl::GetType<T>(), buffer_shape, allocator);
+    }
+  }
+
  private:
   BufferUniquePtr next_token_logits_buffer_;
   BufferUniquePtr next_token_scores_buffer_;
@@ -127,7 +135,7 @@ struct BeamSearchCpuState : IBeamSearchCpuState {
   BufferUniquePtr sequences_space_buffer_;
 };
 
-// Base class of beam search implementation that is common for both GPT-2 and T5.
+// Base class of beam search implementation that is common for GPT-2, T5, and Whisper.
 template <typename T>
 class BeamSearchBase : public GenerateBase {
  public:
@@ -190,14 +198,16 @@ class BeamSearchBase : public GenerateBase {
 template <typename T>
 Status BeamSearchBase<T>::CheckInputs(const OpKernelContextInternal& context) {
   // Input shapes:
-  //   input_ids  : (batch_size, sequence_length)
-  //   vocab_mask : (vocab_size) or nullptr
+  //   input_ids          : (batch_size, sequence_length)
+  //   vocab_mask         : (vocab_size) or nullptr
+  //   decoder_input_ids  : (batch_size, initial_decode_sequence_length)
   ORT_RETURN_IF_ERROR(this->CheckInputsImpl(parameters_,
-                                            context.Input<Tensor>(0),  // input_ids
-                                            context.Input<Tensor>(7),  // vocab_mask
-                                            context.Input<Tensor>(8),  // prefix_vocab_mask
-                                            context.Input<Tensor>(9),  // attention_mask
-                                            nullptr));                 // presence_mask
+                                            context.Input<Tensor>(0),     // input_ids
+                                            context.Input<Tensor>(7),     // vocab_mask
+                                            context.Input<Tensor>(8),     // prefix_vocab_mask
+                                            context.Input<Tensor>(9),     // attention_mask
+                                            nullptr,                      // presence_mask
+                                            context.Input<Tensor>(10)));  // decoder_input_ids
 
   return Status::OK();
 }

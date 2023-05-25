@@ -31,12 +31,12 @@ stages:
 - stage: cuda
   dependsOn: []
   jobs:
-    - template: templates/win-ci-vs-2019.yml
+    - template: templates/jobs/win-ci-vs-2022-job.yml
       parameters:
         BuildConfig: 'RelWithDebInfo'
         EnvSetupScript: setup_env_cuda_11.bat
         buildArch: x64
-        additionalBuildFlags: --enable_pybind --build_java --build_nodejs --use_cuda --cuda_version=11.8 --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.8" --enable_cuda_profiling --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=75
+        additionalBuildFlags: --enable_pybind --build_java --build_nodejs --use_cuda --cuda_home="$(Agent.TempDirectory)\v11.8" --enable_cuda_profiling --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=75
         msbuildPlatform: x64
         isX86: false
         job_name_suffix: x64_RelWithDebInfo
@@ -44,17 +44,17 @@ stages:
         RunStaticCodeAnalysis: false
         ORT_EP_NAME: CUDA
         WITH_CACHE: true
-        MachinePool: onnxruntime-Win2019-GPU-T4
+        MachinePool: onnxruntime-Win2022-GPU-T4
 
 - stage: training
   dependsOn: []
   jobs:
-    - template: templates/win-ci-vs-2019.yml
+    - template: templates/jobs/win-ci-vs-2022-job.yml
       parameters:
         BuildConfig: 'RelWithDebInfo'
         EnvSetupScript: setup_env_cuda_11.bat
         buildArch: x64
-        additionalBuildFlags: --enable_pybind --enable_training --use_cuda --cuda_version=11.8 --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.8" --skip_onnx_tests --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=75
+        additionalBuildFlags: --enable_pybind --enable_training --use_cuda --cuda_home="$(Agent.TempDirectory)\v11.8" --skip_onnx_tests --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=75
         msbuildPlatform: x64
         isX86: false
         job_name_suffix: x64_RelWithDebInfo
@@ -62,7 +62,7 @@ stages:
         RunStaticCodeAnalysis: false
         ORT_EP_NAME: CUDA
         WITH_CACHE: true
-        MachinePool: onnxruntime-Win2019-GPU-training-T4
+        MachinePool: onnxruntime-Win2022-GPU-T4
         isTraining: true
 
 - stage: dml
@@ -87,13 +87,13 @@ stages:
 - stage: kernelDocumentation
   dependsOn: []
   jobs:
-    - template: templates/win-ci-vs-2019.yml
+    - template: templates/jobs/win-ci-vs-2022-job.yml
       parameters:
         BuildConfig: 'RelWithDebInfo'
         EnvSetupScript: setup_env_cuda_11.bat
         buildArch: x64
         # note: need to specify `--gen_doc` when creating the build config so it has to be in additionalBuildFlags
-        additionalBuildFlags: --gen_doc validate --skip_tests --enable_pybind --use_dml --use_cuda --cuda_version=11.8 --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.8" --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=75 --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF
+        additionalBuildFlags: --gen_doc validate --skip_tests --enable_pybind --use_dml --use_cuda --cuda_home="$(Agent.TempDirectory)\v11.8" --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=75 --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF
         msbuildPlatform: x64
         isX86: false
         job_name_suffix: x64_RelWithDebInfo
@@ -102,4 +102,4 @@ stages:
         GenerateDocumentation: true
         ORT_EP_NAME: CUDA # It doesn't really matter which EP is selected here since this stage is for documentation.
         WITH_CACHE: true
-        MachinePool: onnxruntime-Win2019-GPU-T4
+        MachinePool: onnxruntime-Win2022-GPU-T4

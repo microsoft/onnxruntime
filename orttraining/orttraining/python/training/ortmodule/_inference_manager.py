@@ -4,6 +4,7 @@
 # --------------------------------------------------------------------------
 
 import warnings
+from typing import Tuple
 
 import onnx
 import torch
@@ -20,7 +21,7 @@ from .debug_options import DebugOptions
 class InferenceManager(GraphExecutionManager):
     """Concrete instance of GraphExecutionManager that is able to manage the inference model
 
-    InferenceManager is resposible for building and running the forward graph of the inference model
+    InferenceManager is responsible for building and running the forward graph of the inference model
     """
 
     def __init__(self, model, debug_options: DebugOptions, fallback_manager: _FallbackManager):
@@ -28,9 +29,25 @@ class InferenceManager(GraphExecutionManager):
         self._export_mode = torch.onnx.TrainingMode.EVAL
 
     @staticmethod
-    def execution_session_run_forward(execution_session, onnx_model, device, *inputs):
-        """Runs the forward graph on execution_session with given model inputs and device"""
+    def execution_session_run_forward(
+        execution_session,
+        onnx_model: onnx.ModelProto,
+        device: torch.device,
+        *inputs,
+    ) -> Tuple[Tuple[torch.Tensor, ...], _RunStateInfo]:
+        """Runs the forward pass on `execution_session` with given `onnx_model`, `device` and `inputs`
 
+        Args:
+            execution_session InferenceAgent: Agent which runs inference
+            onnx_model (onnx.ModelProto): ONNX model
+            device (torch.device): PyTorch device
+            inputs: (torch.Tensor or a container of): User inputs passed from ORTModule.forward().
+
+        Returns:
+            Returns a tuple (user_outputs, run_info):
+                user_outputs: The model output (either torch.Tensor or a container of torch.Tensor)
+                run_info: A _RunStateInfo which contains extra information about the execution of the graph
+        """
         # TODO: Try to reuse the output buffers as some of the output tensors are same sizes,
         #   especially the backward graph outputs.
         # REVIEW(codemzs): Consolidate Training Agent with InferenceAgent on C++ side to not
@@ -58,6 +75,14 @@ class InferenceManager(GraphExecutionManager):
         ONNX model is exported the first time this method is executed.
         Next, we build an optimized inference graph with module_graph_builder.
         Finally, we instantiate the ONNX Runtime InferenceSession through the InferenceAgent.
+
+        The call stack is as follows:
+            ORTModule.forward(*inputs, **kwargs) ->
+            ORTModule._torch_module.forward(*inputs, **kwargs) where _torch_module is a TorchModuleORT instance ->
+            ORTModule._torch_module._execution_manager(is_training()).forward(*inputs, **kwargs) where:
+                TorchModuleORT._execution_manager(true) is a TrainingManager instance;
+                and TorchModuleORT._execution_manager(false) is an InferenceManager instance.
+
         """
 
         # Fallback to PyTorch due to failures *external* to forward(),
@@ -96,7 +121,12 @@ class InferenceManager(GraphExecutionManager):
 
                 # Build the inference graph
                 if build_graph:
-                    self._build_graph()
+                    graph_transformer_config = self._get_graph_transformer_config()
+                    # Set the config according to input inspection.
+                    self._enable_conditional_optimizations(graph_transformer_config, inputs, kwargs)
+
+                    # Build the gradient graph
+                    self._build_graph(graph_transformer_config)
 
             # If creating the execution agent for the first time, this skip check will not take effect.
             # It will only take effect on subsequent forward calls.
@@ -122,20 +152,22 @@ class InferenceManager(GraphExecutionManager):
                 # Assert that the input and model device match
                 _utils._check_same_device(self._device, "Input argument to forward", *inputs)
 
+            prepared_input_list, _, _ = _io._combine_input_buffers_initializers(
+                self._graph_initializers,
+                self._graph_info.user_input_names,
+                self._input_info,
+                self._flattened_module.named_buffers(),
+                inputs,
+                kwargs,
+                self._device,
+                self._rt_inspector,
+            )
+
             user_outputs, _ = InferenceManager.execution_session_run_forward(
                 self._execution_agent,
                 self._onnx_models.optimized_model,
                 self._device,
-                *_io._combine_input_buffers_initializers(
-                    self._graph_initializers,
-                    self._graph_info.user_input_names,
-                    self._input_info,
-                    self._flattened_module.named_buffers(),
-                    inputs,
-                    kwargs,
-                    self._device,
-                    self._rt_inspector.input_density_ob,
-                ),
+                *prepared_input_list,
             )
 
             return _io.unflatten_user_output(self._module_output_schema, user_outputs)
@@ -154,10 +186,10 @@ class InferenceManager(GraphExecutionManager):
         if self._fallback_manager.is_pending():
             return self._fallback_manager.fallback(self._debug_options.logging.log_level, *inputs, **kwargs)
 
-    def _build_graph(self):
+    def _build_graph(self, graph_transformer_config):
         """Build an inference graph using the module_graph_builder"""
 
-        super()._build_graph()
+        super()._build_graph(graph_transformer_config)
         self._onnx_models.optimized_model = onnx.load_model_from_string(self._graph_builder.get_forward_model())
         if self._debug_options.save_onnx_models.save:
             self._onnx_models.save_optimized_model(
@@ -165,10 +197,6 @@ class InferenceManager(GraphExecutionManager):
                 self._debug_options.save_onnx_models.name_prefix,
                 self._export_mode,
             )
-
-        self._rt_inspector.input_density_ob.initialize(
-            self._onnx_models.optimized_model, self._graph_info.user_input_names
-        )
 
     def _create_execution_agent(self):
         """Creates an InferenceAgent that can run forward graph on an inference model"""

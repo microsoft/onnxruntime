@@ -173,6 +173,19 @@ TYPED_TEST(PadOpTest, Pad_Reflect_1D) {
                                   "reflect");
 }
 
+TYPED_TEST(PadOpTest, Pad_Wrap_1D) {
+  using T = TypeParam;
+  RunOnnxOpsetTypedTest<T, 19>({3, 2},
+                               {T(1), T(2), T(3), T(4), T(5), T(6)},
+                               {0, 1, 0, 1},
+                               false,
+                               T(0),
+                               false,
+                               {3, 4},
+                               {T(2), T(1), T(2), T(1), T(4), T(3), T(4), T(3), T(6), T(5), T(6), T(5)},
+                               "wrap");
+}
+
 TYPED_TEST(PadOpTest, Pad_Edge_1D) {
   using T = TypeParam;
   RunAllOpsetAllDomainPadTests<T>({3, 2},
@@ -363,6 +376,27 @@ TYPED_TEST(PadOpTest, Pad_Reflect_2D) {
                                   "reflect");
 }
 
+TYPED_TEST(PadOpTest, Pad_Wrap_2D) {
+  using T = TypeParam;
+  RunOnnxOpsetTypedTest<T, 19>({3, 3},
+                               {T(11), T(21), T(31),
+                                T(12), T(22), T(32),
+                                T(13), T(23), T(33)},
+                               {2, 2, 2, 2},
+                               false,
+                               T(0),
+                               false,
+                               {7, 7},
+                               {T(22), T(32), T(12), T(22), T(32), T(12), T(22),
+                                T(23), T(33), T(13), T(23), T(33), T(13), T(23),
+                                T(21), T(31), T(11), T(21), T(31), T(11), T(21),
+                                T(22), T(32), T(12), T(22), T(32), T(12), T(22),
+                                T(23), T(33), T(13), T(23), T(33), T(13), T(23),
+                                T(21), T(31), T(11), T(21), T(31), T(11), T(21),
+                                T(22), T(32), T(12), T(22), T(32), T(12), T(22)},
+                               "wrap");
+}
+
 TYPED_TEST(PadOpTest, Pad_Constant_3D_Inner_No_Padding) {
   using T = TypeParam;
   RunAllOpsetAllDomainPadTests<T>({3, 2, 5},
@@ -538,6 +572,99 @@ TYPED_TEST(PadOpTest, Pad_Reflect_3D_Inner_No_Padding) {
                                    T(16), T(17), T(18), T(19), T(20),
                                    T(11), T(12), T(13), T(14), T(15)},
                                   "reflect");
+}
+
+TYPED_TEST(PadOpTest, Pad_wrap_3D_Inner_No_Padding) {
+  using T = TypeParam;
+  RunOnnxOpsetTypedTest<T, 19>({3, 2, 5},
+                               {T(1), T(2), T(3), T(4), T(5),
+                                T(6), T(7), T(8), T(9), T(10),
+                                T(11), T(12), T(13), T(14), T(15),
+                                T(16), T(17), T(18), T(19), T(20),
+                                T(21), T(22), T(23), T(24), T(25),
+                                T(26), T(27), T(28), T(29), T(30)},
+                               {1, 1, 0, 1, 1, 0},
+                               false,
+                               T(0),
+                               false,
+                               {5, 4, 5},
+                               {T(26), T(27), T(28), T(29), T(30),
+                                T(21), T(22), T(23), T(24), T(25),
+                                T(26), T(27), T(28), T(29), T(30),
+                                T(21), T(22), T(23), T(24), T(25),
+
+                                T(6), T(7), T(8), T(9), T(10),
+                                T(1), T(2), T(3), T(4), T(5),
+                                T(6), T(7), T(8), T(9), T(10),
+                                T(1), T(2), T(3), T(4), T(5),
+
+                                T(16), T(17), T(18), T(19), T(20),
+                                T(11), T(12), T(13), T(14), T(15),
+                                T(16), T(17), T(18), T(19), T(20),
+                                T(11), T(12), T(13), T(14), T(15),
+
+                                T(26), T(27), T(28), T(29), T(30),
+                                T(21), T(22), T(23), T(24), T(25),
+                                T(26), T(27), T(28), T(29), T(30),
+                                T(21), T(22), T(23), T(24), T(25),
+
+                                T(6), T(7), T(8), T(9), T(10),
+                                T(1), T(2), T(3), T(4), T(5),
+                                T(6), T(7), T(8), T(9), T(10),
+                                T(1), T(2), T(3), T(4), T(5)},
+                               "wrap");
+}
+
+TYPED_TEST(PadOpTest, Pad_wrap_3D_Inner_No_Padding2) {
+  using T = TypeParam;
+
+  RunOnnxOpsetTypedTest<T, 19>({3, 2, 5},
+                               {T(1), T(2), T(3), T(4), T(5),
+                                T(6), T(7), T(8), T(9), T(10),
+                                T(11), T(12), T(13), T(14), T(15),
+                                T(16), T(17), T(18), T(19), T(20),
+                                T(21), T(22), T(23), T(24), T(25),
+                                T(26), T(27), T(28), T(29), T(30)},
+                               {1, 2, 0, 1, 2, 0},
+                               false,
+                               T(0),
+                               false,
+                               {5, 6, 5},
+                               {T(21), T(22), T(23), T(24), T(25),
+                                T(26), T(27), T(28), T(29), T(30),
+                                T(21), T(22), T(23), T(24), T(25),
+                                T(26), T(27), T(28), T(29), T(30),
+                                T(21), T(22), T(23), T(24), T(25),
+                                T(26), T(27), T(28), T(29), T(30),
+
+                                T(1), T(2), T(3), T(4), T(5),
+                                T(6), T(7), T(8), T(9), T(10),
+                                T(1), T(2), T(3), T(4), T(5),
+                                T(6), T(7), T(8), T(9), T(10),
+                                T(1), T(2), T(3), T(4), T(5),
+                                T(6), T(7), T(8), T(9), T(10),
+
+                                T(11), T(12), T(13), T(14), T(15),
+                                T(16), T(17), T(18), T(19), T(20),
+                                T(11), T(12), T(13), T(14), T(15),
+                                T(16), T(17), T(18), T(19), T(20),
+                                T(11), T(12), T(13), T(14), T(15),
+                                T(16), T(17), T(18), T(19), T(20),
+
+                                T(21), T(22), T(23), T(24), T(25),
+                                T(26), T(27), T(28), T(29), T(30),
+                                T(21), T(22), T(23), T(24), T(25),
+                                T(26), T(27), T(28), T(29), T(30),
+                                T(21), T(22), T(23), T(24), T(25),
+                                T(26), T(27), T(28), T(29), T(30),
+
+                                T(1), T(2), T(3), T(4), T(5),
+                                T(6), T(7), T(8), T(9), T(10),
+                                T(1), T(2), T(3), T(4), T(5),
+                                T(6), T(7), T(8), T(9), T(10),
+                                T(1), T(2), T(3), T(4), T(5),
+                                T(6), T(7), T(8), T(9), T(10)},
+                               "wrap");
 }
 
 TYPED_TEST(PadOpTest, Pad_Reflect_3D_Last_Pad_Slice_Inner_No_Padding) {
@@ -876,6 +1003,24 @@ TEST(PadOpTest, ConstantPadAxesTest3) {
   test.AddInput<int64_t>("pads", {8}, {0, 0, 0, 1, 0, 0, 0, 1}, true /* pads_is_initializer */);
   test.AddInput<float>("value", {1}, {0.0f}, true /* value_is_initializer */);
   test.AddInput<int64_t>("axes", {4}, {0, 1, 2, 3}, true /* axes_is_initializer */);
+  test.AddOutput<float>("output", {1, 2, 2, 4},
+                        {0.0f, 1.0f, 1.0f, 0.0f,
+                         0.0f, 1.0f, 1.0f, 0.0f,
+                         0.0f, 1.0f, 1.0f, 0.0f,
+                         0.0f, 1.0f, 1.0f, 0.0f});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kNnapiExecutionProvider});
+}
+
+TEST(PadOpTest, ConstantPadAxesTest4) {
+  OpTester test("Pad", 18);
+  test.AddAttribute("mode", "constant");
+  test.AddInput<float>("data", {1, 2, 2, 2},
+                       {1.0f, 1.0f,
+                        1.0f, 1.0f,
+                        1.0f, 1.0f,
+                        1.0f, 1.0f});
+  test.AddInput<int64_t>("pads", {8}, {0, 0, 0, 1, 0, 0, 0, 1}, true /* pads_is_initializer */);
+  test.AddInput<float>("value", {1}, {0.0f}, true /* value_is_initializer */);
   test.AddOutput<float>("output", {1, 2, 2, 4},
                         {0.0f, 1.0f, 1.0f, 0.0f,
                          0.0f, 1.0f, 1.0f, 0.0f,

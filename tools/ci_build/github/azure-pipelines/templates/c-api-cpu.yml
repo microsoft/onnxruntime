@@ -170,6 +170,7 @@ stages:
     runTests: false
     buildJava: false
     buildNodejs: false
+    ort_build_pool_name: onnxruntime-Win-CPU-2019
 
 - template: win-ci.yml
   parameters:
@@ -212,7 +213,7 @@ stages:
   - job:
     workspace:
       clean: all
-    pool: 'Win-CPU-2021'
+    pool: 'onnxruntime-Win-CPU-2022'
 
     steps:
     - checkout: self
@@ -533,7 +534,7 @@ stages:
   - job:
     workspace:
       clean: all
-    pool: 'Win-CPU-2021'
+    pool: 'onnxruntime-Win-CPU-2022'
     variables:
       ${{ if eq(parameters.IsReleaseBuild, true) }}:
         NpmPackagingMode: 'release'
@@ -772,7 +773,7 @@ stages:
 
 - template: ../nuget/templates/test_win.yml
   parameters:
-    AgentPool : 'Win-CPU-2021'
+    AgentPool : 'onnxruntime-Win-CPU-2022'
     Skipx86Tests : false
     NugetPackageName : 'Microsoft.ML.OnnxRuntime'
     ArtifactSuffix: 'CPU'
@@ -792,7 +793,7 @@ stages:
 
 - template: ../nodejs/templates/test_win.yml
   parameters:
-    AgentPool : 'Win-CPU-2021'
+    AgentPool : 'onnxruntime-Win-CPU-2022'
     StageSuffix : 'Win_CPU_x64'
 
 - template: ../nodejs/templates/test_linux.yml
@@ -810,7 +811,7 @@ stages:
   - job:
     workspace:
       clean: all
-    pool: 'Win-CPU-2021'
+    pool: 'onnxruntime-Win-CPU-2022'
     timeoutInMinutes: 60
     variables:
     - name: runCodesignValidationInjection

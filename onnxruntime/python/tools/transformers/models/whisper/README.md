@@ -20,6 +20,15 @@ $ python3 -m onnxruntime.transformers.models.whisper.convert_to_onnx -m openai/w
 
 Here are some additional examples for exporting Whisper with beam search.
 
+Export with Forced Decoder Input Ids
+```
+# From source:
+$ python3 convert_to_onnx.py -m openai/whisper-tiny --output whispertiny --use_external_data_format --use_forced_decoder_ids
+
+# From wheel:
+$ python3 -m onnxruntime.transformers.models.whisper.convert_to_onnx -m openai/whisper-tiny --output whispertiny --use_external_data_format --use_forced_decoder_ids
+```
+
 Export + Optimize for FP32
 ```
 # From source:

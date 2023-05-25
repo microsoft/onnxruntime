@@ -13,7 +13,7 @@ parameters:
 
 - name: PoolName
   type: string
-  default: 'onnxruntime-Win-CPU-2019'
+  default: 'onnxruntime-Win-CPU-2022'
 
 - name: PackageName
   displayName: 'Package name'
@@ -142,6 +142,7 @@ jobs:
      npm test -- --wasm-enable-proxy -b=wasm
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
     displayName: 'Run ort-web tests - WebAssembly: proxy'
+    condition: and(succeeded(), eq('${{ parameters.BuildConfig }}', 'Release'))
   - script: |
       npm run test:e2e
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
