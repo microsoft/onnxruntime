@@ -37,10 +37,10 @@ class TestInferenceSessionWithCudaGraph(unittest.TestCase):
     def test_select_ep_to_run_cuda_graph(self):
         if "TensorrtExecutionProvider" in onnxrt.get_available_providers():
             providers = [("TensorrtExecutionProvider", {"trt_cuda_graph_enable": True})]
-            self.RunModelWithCudaGraph(providers)
+            self.run_model_with_cuda_graph(providers)
         elif "CUDAExecutionProvider" in onnxrt.get_available_providers():
             providers = [("CUDAExecutionProvider", {"enable_cuda_graph": True})]
-            self.RunModelWithCudaGraph(providers)
+            self.run_model_with_cuda_graph(providers)
 
     def run_model_with_cuda_graph(self, providers):
         INPUT_SIZE = 1280  # noqa: N806
