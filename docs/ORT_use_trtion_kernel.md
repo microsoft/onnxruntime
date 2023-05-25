@@ -48,7 +48,7 @@ function_table = [
 The kwargs is a dict of {string: int} which is used for kernel constants. For example, BLOCK_SIZE of softmax.
 """
 
-def get_funcion_table():
+def get_function_table():
     ......
     ......
 ```

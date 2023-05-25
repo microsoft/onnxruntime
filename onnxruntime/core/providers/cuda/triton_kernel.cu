@@ -11,14 +11,14 @@
 #include "triton_kernel_infos.h"
 #endif
 
-#define ORT_TRITON_CHECK(status, msg)                \
-  if ((status) != CUDA_SUCCESS) {                      \
-      ORT_RETURN_IF(true, msg);                      \
+#define ORT_TRITON_CHECK(status, msg) \
+  if ((status) != CUDA_SUCCESS) {     \
+      ORT_RETURN_IF(true, msg);       \
   }
 
-#define ORT_TRITON_THROW(status, msg)          \
-  if ((status) != CUDA_SUCCESS) {                \
-      ORT_THROW(msg);                          \
+#define ORT_TRITON_THROW(status, msg) \
+  if ((status) != CUDA_SUCCESS) {     \
+      ORT_THROW(msg);                 \
   }
 
 namespace onnxruntime {
@@ -109,7 +109,7 @@ void TryToLoadKernel() {
 
 static std::once_flag load_ort_triton_kernel_flag;
 
-}  // end of namespace
+}  // namespace
 
 void LoadOrtTritonKernel() {
   // load kernel should be called only once
@@ -119,8 +119,8 @@ void LoadOrtTritonKernel() {
 Status LaunchTritonKernel(cudaStream_t stream, std::string fname, int grid0, int grid1, int grid2, void* args, size_t args_size) {
 #ifdef USE_TRITON_KERNEL
   if (ort_triton_kernel_map.count(fname) == 0) {
-    // return unsupported status when not found function name in registry
-    // this error status will be used by tunableOp
+    // Return unsupported status if function name not found in registry.
+    // This error status will be used by tunableOp
     std::ostringstream message_stream;
     message_stream << "can't find ort triton kernel name: " << fname;
     std::string message = message_stream.str();
@@ -147,8 +147,8 @@ Status LaunchTritonKernel(cudaStream_t stream, std::string fname, int grid0, int
 Status LaunchTritonKernel(cudaStream_t stream, size_t idx, int grid0, int grid1, int grid2, void* args, size_t args_size) {
 #ifdef USE_TRITON_KERNEL
   if (idx >= ort_triton_kernel_metadata.size()) {
-    // return unsupported status when not found function name in registry
-    // this error status will be used by tunableOp
+    // Return unsupported status when idx exceeds the size of ort_triton_kernel_metadata.
+    // This error status will be used by TunableOp
     std::ostringstream message_stream;
     message_stream << "can't find ort triton kernel idx: " << idx;
     std::string message = message_stream.str();

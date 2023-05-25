@@ -48,7 +48,7 @@ def _test_softmax(batch_count, softmax_elements, is_log_softmax, dtype, func):
 
         softmax_op.Run()
         y_d.UpdateHostNumpyArray()
-
+        print(f"Testing {func} with {impl}")
         np.testing.assert_allclose(y_ref, y, rtol=1e-02, err_msg=func)
 
 
@@ -95,6 +95,9 @@ def profile_softmax_func(batch_count, softmax_elements, is_log_softmax, dtype, f
         y_d, x_d, softmax_elements, softmax_elements, softmax_elements, batch_count, is_log_softmax
     )
 
+    # compare the output with ref
+    _test_softmax(batch_count, softmax_elements, is_log_softmax, dtype, func)
+
     for impl in softmax_op.ListOps():
         duration_ms = -1
         if softmax_op.SelectOp(impl):
@@ -121,6 +124,8 @@ def profile():
         for batch_count, softmax_elements in profile_size:
             profile_with_args(batch_count, softmax_elements, False, dtype, True)
             print()
+            break
+        break
 
 
 if __name__ == "__main__":

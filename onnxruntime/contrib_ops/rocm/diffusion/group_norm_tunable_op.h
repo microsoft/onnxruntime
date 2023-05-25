@@ -192,6 +192,12 @@ class GroupNormNHWCTunableOp : public TunableOp<GroupNormNHWCParams<T>> {
       this->RegisterOp(std::move(op));
     }
 #endif  // USE_COMPOSABLE_KERNEL
+
+#ifdef USE_TRITON_KERNEL
+    for (auto&& [_, op] : GetTritonGroupNormNHWCTypeStringAndOps<T>()) {
+      ORT_UNUSED_PARAMETER(_);
+      this->RegisterOp(std::move(op));
+    }
   }
 };
 
