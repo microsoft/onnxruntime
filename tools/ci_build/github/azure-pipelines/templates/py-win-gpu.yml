@@ -45,6 +45,12 @@ jobs:
           addToPath: true
           architecture: 'x64'
 
+      - task: onebranch.pipeline.tsaoptions@1
+        displayName: 'OneBranch TSAOptions'
+        inputs:
+          tsaConfigFilePath: '$(Build.SourcesDirectory)\.config\tsaoptions.json'
+          appendSourceBranchName: false
+
       - task: BatchScript@1
         displayName: 'setup env'
         inputs:
@@ -65,9 +71,9 @@ jobs:
 
       - template: download-deps.yml
 
-      - ${{ if contains(parameters.EP_BUILD_FLAGS, 'use_cuda') }}:
-        - powershell: |
-           azcopy.exe cp --recursive "https://lotusscus.blob.core.windows.net/models/cuda_sdk/v11.8" $(Agent.TempDirectory)
+      - powershell: |
+         azcopy.exe cp --recursive "https://lotusscus.blob.core.windows.net/models/cuda_sdk/v11.8" $(Agent.TempDirectory)
+
       - task: PythonScript@0
         displayName: 'Update deps.txt'
         inputs:
