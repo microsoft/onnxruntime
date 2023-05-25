@@ -32,7 +32,7 @@ public class OnnxruntimeJSIHelper extends ReactContextBaseJavaModule {
 
   public void checkBlobModule() {
     if (blobModule == null) {
-      blobModule = reactContext.getNativeModule(BlobModule.class);
+      blobModule = getReactApplicationContext().getNativeModule(BlobModule.class);
     }
   }
 
