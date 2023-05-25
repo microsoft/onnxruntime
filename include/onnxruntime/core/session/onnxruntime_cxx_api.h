@@ -1344,8 +1344,8 @@ struct Value : detail::ValueImpl<OrtValue> {
    */
   static Value CreateTensor(OrtAllocator* allocator, const int64_t* shape, size_t shape_len, ONNXTensorElementDataType type);
 
-  static Value CreateMap(Value& keys, Value& values);       ///< Wraps OrtApi::CreateValue
-  static Value CreateSequence(std::vector<Value>& values);  ///< Wraps OrtApi::CreateValue
+  static Value CreateMap(const Value& keys, const Value& values);       ///< Wraps OrtApi::CreateValue
+  static Value CreateSequence(const std::vector<Value>& values);  ///< Wraps OrtApi::CreateValue
 
   template <typename T>
   static Value CreateOpaque(const char* domain, const char* type_name, const T&);  ///< Wraps OrtApi::CreateOpaqueValue
