@@ -31,7 +31,7 @@ Basic CPU build
 
 * Install [Python 3.x](http://python.org/).
 
-* Install [cmake-3.24](https://cmake.org/download/) or higher.
+* Install [cmake-3.26](https://cmake.org/download/) or higher.
 
   On Windows, please run
   ```bat
@@ -46,7 +46,7 @@ Basic CPU build
   ```
   If the above commands failed, please manually get cmake from https://cmake.org/download/.
   
-  Otherwise, you can run
+  After the installation, you can run
   ```
     cmake --version
   ```
@@ -60,18 +60,23 @@ Basic CPU build
 
 Open Developer Command Prompt for Visual Studio version you are going to use. This will properly setup the environment including paths to your compiler, linker, utilities and header files.
 ```
-.\build.bat --config RelWithDebInfo --build_shared_lib --parallel
+.\build.bat --config RelWithDebInfo --build_shared_lib --parallel --compile_no_warning_as_error --skip_submodule_sync
 ```
-The default Windows CMake Generator is Visual Studio 2019. 
-For Visual Studio 2022 add `--cmake_generator "Visual Studio 17 2022"`. 
-For Visual Studio 2017 add `--cmake_generator "Visual Studio 15 2017"`. 
+The default Windows CMake Generator is Visual Studio 2022. 
+For Visual Studio 2019 add `--cmake_generator "Visual Studio 16 2019"`. 
 
 We recommend using Visual Studio 2022.
+
+If you want to build an ARM64 binary on a Windows ARM64 machine, you can use the same command above. Just be sure that your Visual Studio, CMake and Python are all ARM64 version.
+
+If you want to cross-compile an ARM32 or ARM64 or ARM64EC binary on a Windows x86 machine, you need to add "--arm" or "--arm64" or "--arm64ec" to the build command above. 
+
+When building on x86 Windows without  "--arm" or "--arm64" or "--arm64ec" args, the built binaries will be 64-bit if your python is 64-bit, or 32-bit if your python is 32-bit, 
 
 #### Linux
 
 ```
-./build.sh --config RelWithDebInfo --build_shared_lib --parallel
+./build.sh --config RelWithDebInfo --build_shared_lib --parallel --compile_no_warning_as_error --skip_submodule_sync
 ```
 
 #### macOS
@@ -87,16 +92,16 @@ Today, Mac computers are either Intel-Based or Apple silicon(aka. ARM) based. By
 
 Build for Intel CPUs:
 ```bash
-./build.sh --config RelWithDebInfo --build_shared_lib --parallel --cmake_extra_defines CMAKE_OSX_ARCHITECTURES=x86_64
+./build.sh --config RelWithDebInfo --build_shared_lib --parallel --compile_no_warning_as_error --skip_submodule_sync --cmake_extra_defines CMAKE_OSX_ARCHITECTURES=x86_64
 ```
 
 Build for Apple silicon CPUs:
 ```bash
-./build.sh --config RelWithDebInfo --build_shared_lib --parallel --cmake_extra_defines CMAKE_OSX_ARCHITECTURES=arm64
+./build.sh --config RelWithDebInfo --build_shared_lib --parallel --compile_no_warning_as_error --skip_submodule_sync --cmake_extra_defines CMAKE_OSX_ARCHITECTURES=arm64
 ```
 Build for both:
 ```bash
-./build.sh --config RelWithDebInfo --build_shared_lib --parallel --cmake_extra_defines CMAKE_OSX_ARCHITECTURES="x86_64;arm64"
+./build.sh --config RelWithDebInfo --build_shared_lib --parallel --compile_no_warning_as_error --skip_submodule_sync --cmake_extra_defines CMAKE_OSX_ARCHITECTURES="x86_64;arm64"
 ```
 The last command will generate a fat-binary for both CPU architectures.
 
@@ -108,16 +113,17 @@ Note: unit tests will be skipped due to the incompatible CPU instruction set whe
 * To build the version from each release (which include Windows, Linux, and Mac variants), see these [.yml files](https://github.com/microsoft/onnxruntime/tree/main/tools/ci_build/github/azure-pipelines/) for reference
 * The build script runs all unit tests by default for native builds and skips tests by default for cross-compiled builds.
   To skip the tests, run with `--build` or `--update --build`.
-* If you need to install protobuf from source code (cmake/external/protobuf), please note:
-   * CMake flag `protobuf_BUILD_SHARED_LIBS` must be turned OFF. After the installation, you should have the 'protoc' executable in your PATH. It is recommended to run `ldconfig` to make sure protobuf libraries are found.
+* If you need to install protobuf from source code, please note:
+   * First, please open [cmake/deps.txt](https://github.com/microsoft/onnxruntime/blob/main/cmake/deps.txt) to check which protobuf version ONNX Runtime's offical packages use. 
+   * As we statically link to protobuf, on Windows protobuf's CMake flag `protobuf_BUILD_SHARED_LIBS` should be turned OFF, on Linux if the option is OFF you also need to make sure [PIC](https://cmake.org/cmake/help/latest/prop_tgt/POSITION_INDEPENDENT_CODE.html) is enabled. After the installation, you should have the 'protoc' executable in your PATH. It is recommended to run `ldconfig` to make sure protobuf libraries are found.
    * If you installed your protobuf in a non standard location it would be helpful to set the following env var:`export CMAKE_ARGS="-DONNX_CUSTOM_PROTOC_EXECUTABLE=full path to protoc"` so the ONNX build can find it. Also run `ldconfig <protobuf lib folder path>` so the linker can find protobuf libraries.
-* If you'd like to install onnx from source code (cmake/external/onnx), install protobuf first and:
+* If you'd like to install onnx from source code, install protobuf first and:
     ```
     export ONNX_ML=1
     python3 setup.py bdist_wheel
     pip3 install --upgrade dist/*.whl
     ```
-   Then, it's better to uninstall protobuf before you start to build ONNX Runtime, especially if you have install a different version of protobuf other than what ONNX Runtime has in the (cmake/external/protobuf) folder.
+   Then, it's better to uninstall protobuf before you start to build ONNX Runtime, especially if you have install a different version of protobuf other than what ONNX Runtime has.
 ---
 
 ## Supported architectures and build environments
@@ -130,27 +136,44 @@ Note: unit tests will be skipped due to the incompatible CPU instruction set whe
 |Windows    | YES          | YES          |  YES         | YES          | NO      |
 |Linux      | YES          | YES          |  YES         | YES          | YES     |
 |macOS      | NO           | YES          |  NO          | NO           | NO      |
+|Android      | NO           | NO          |  YES          | YES           | NO      |
+|iOS      | NO           | NO          |  NO          | YES           | NO      |
 
-### Environments
+### Build Environments(Host)
 {: .no_toc }
 
 | OS          | Supports CPU | Supports GPU| Notes                              |
 |-------------|:------------:|:------------:|------------------------------------|
 |Windows 10   | YES          | YES         | VS2019 through the latest VS2015 are supported |
 |Windows 10 <br/> Subsystem for Linux | YES         | NO        |         |
-|Ubuntu 16.x  | YES          | YES         | Also supported on ARM32v7 (experimental) |
+|Ubuntu 20.x/22.x  | YES          | YES         | Also supported on ARM32v7 (experimental) |
+|CentOS 7/8/9  | YES          | YES         | Also supported on ARM32v7 (experimental) |
 |macOS        | YES          | NO         |    |
 
-GCC 4.x and below are not supported.
+GCC 8.x and below are not supported.    
+If you want to build a binary for a 32-bit architecture, you might have to do cross-compiling since a 32-bit compiler might not have enough memory to run the build.    
+Building the code on Android/iOS is not supported. You need to use a Windows, Linux or macOS device to do so.
 
-### OS/Compiler Matrix
-{: .no_toc }
 
 | OS/Compiler | Supports VC  | Supports GCC     |  Supports Clang  |
 |-------------|:------------:|:----------------:|:----------------:|
 |Windows 10   | YES          | Not tested       | Not tested       |
 |Linux        | NO           | YES(gcc>=8)      | Not tested       |
 |macOS        | NO           | Not tested       | YES (Minimum version required not ascertained)|
+
+### Target Environments
+You can build the code for
+ - Windows
+ - Linux
+ - MacOS
+ - Android
+ - iOS
+ - WebAssembly
+
+At runtime:
+- The minimum supported Windows version is Windows 10.
+- The minimum supported CentOS version is 7.
+- The minimum supported Ubuntu version is 16.04.
 
 ---
 
@@ -248,26 +271,11 @@ ORT_DEBUG_NODE_IO_DUMP_DATA_TO_FILES=1
 
 ---
 
-## Architectures
-### 64-bit x86
-
-Also known as [x86_64](https://en.wikipedia.org/wiki/X86-64) or AMD64. This is the default.
-
-### 32-bit x86
-#### Build Instructions
-##### Windows
-* add `--x86` argument when launching `.\build.bat`
-
-##### Linux
-(Not officially supported)
-
----
-
 ### ARM
 
 There are a few options for building for ARM.
 
-* [Cross compiling for ARM with simulation (Linux/Windows)](#cross-compiling-for-arm-with-simulation-linuxwindows) - **Recommended**;  Easy, slow
+* [Cross compiling for ARM with simulation (Linux/Windows)](#cross-compiling-for-arm-with-simulation-linuxwindows) - **Recommended**;  Easy, slow, ARM64 only(no support for ARM32)
 * [Cross compiling on Linux](#cross-compiling-on-linux) - Difficult, fast
 * [Native compiling on Linux ARM device](#native-compiling-on-linux-arm-device) - Easy, slower
 * [Cross compiling on Windows](#cross-compiling-on-windows)
@@ -510,17 +518,17 @@ pip3 install numpy
 # Build the latest cmake
 mkdir /code
 cd /code
-wget https://cmake.org/files/v3.16/cmake-3.16.1.tar.gz;
-tar zxf cmake-3.16.1.tar.gz
+wget https://github.com/Kitware/CMake/releases/download/v3.26.4/cmake-3.26.4.tar.gz
+tar zxf cmake-3.26.4.tar.gz
 
-cd /code/cmake-3.16.1
+cd /code/cmake-3.26.4
 ./configure --system-curl
 make
 sudo make install
 
 # Prepare onnxruntime Repo
 cd /code
-git clone --recursive https://github.com/Microsoft/onnxruntime
+git clone --recursive https://github.com/Microsoft/onnxruntime.git
 
 # Start the basic build
 cd /code/onnxruntime
