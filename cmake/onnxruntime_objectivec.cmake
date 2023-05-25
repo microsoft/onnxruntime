@@ -61,6 +61,13 @@ if(onnxruntime_USE_COREML)
             "${ONNXRUNTIME_INCLUDE_DIR}/core/providers/coreml")
 endif()
 
+if (onnxruntime_ENABLE_TRAINING_APIS)
+    target_include_directories(onnxruntime_objc
+        PRIVATE
+            "${ORTTRAINING_SOURCE_DIR}/training_api/include/")
+
+endif()
+
 find_library(FOUNDATION_LIB Foundation REQUIRED)
 
 target_link_libraries(onnxruntime_objc
@@ -124,6 +131,7 @@ if(onnxruntime_BUILD_UNIT_TESTS)
     add_custom_command(TARGET onnxruntime_objc_test POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_directory
             "${OBJC_ROOT}/test/testdata"
+            "${ONNXRUNTIME_ROOT}/test/testdata/training_api"
             "$<TARGET_BUNDLE_CONTENT_DIR:onnxruntime_objc_test>/Resources")
 
     xctest_add_test(XCTest.onnxruntime_objc_test onnxruntime_objc_test)
