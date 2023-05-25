@@ -64,9 +64,6 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
                            "User should fuse the qkv bias to qkv projection instead.");
   }
 
-  // TODO: Add support for key_padding_mask.
-  ORT_ENFORCE(key_padding_mask == nullptr, "key_padding_mask is not supported");
-
   auto& device_prop = GetDeviceProp();
   RocmAttentionParameters attn;
   ORT_RETURN_IF_ERROR(
@@ -196,6 +193,11 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
       nullptr == present_key ? nullptr : reinterpret_cast<const HipT*>(present_key->DataRaw()),
       nullptr == present_value ? nullptr : reinterpret_cast<const HipT*>(present_value->DataRaw()));
   params.out_buffer = reinterpret_cast<HipT*>(output->MutableDataRaw());
+
+  if (key_padding_mask != nullptr) {
+    params.mask_index_buffer = key_padding_mask->Data<int>();
+    params.mask_index_dims = key_padding_mask->Shape().AsShapeVector();
+  }
 
   if (relative_position_bias != nullptr) {
     params.bias_buffer = reinterpret_cast<const HipT*>(relative_position_bias->DataRaw());
