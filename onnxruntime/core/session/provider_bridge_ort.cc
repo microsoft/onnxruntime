@@ -1776,28 +1776,8 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_CUDA_V2, _In_
 ORT_API_STATUS_IMPL(OrtApis::CreateCUDAProviderOptions, _Outptr_ OrtCUDAProviderOptionsV2** out) {
   API_IMPL_BEGIN
 #ifdef USE_CUDA
-
-// Need to use 'new' here, so disable C26409
-#ifdef _WIN32
-#pragma warning(push)
-#pragma warning(disable : 26409)
-#endif
-  *out = new OrtCUDAProviderOptionsV2();
-#ifdef _WIN32
-#pragma warning(pop)
-#endif
-  (*out)->device_id = 0;
-  (*out)->cudnn_conv_algo_search = OrtCudnnConvAlgoSearch::OrtCudnnConvAlgoSearchExhaustive;
-  (*out)->gpu_mem_limit = std::numeric_limits<size_t>::max();
-  (*out)->arena_extend_strategy = static_cast<onnxruntime::ArenaExtendStrategy>(0);
-  (*out)->do_copy_in_default_stream = 1;
-  (*out)->has_user_compute_stream = 0;
-  (*out)->user_compute_stream = nullptr;
-  (*out)->default_memory_arena_cfg = nullptr;
-  (*out)->cudnn_conv_use_max_workspace = 1;
-  (*out)->enable_cuda_graph = 0;
-  (*out)->cudnn_conv1d_pad_to_nc1d = 0;
-  (*out)->enable_skip_layer_norm_strict_mode = 0;
+  auto options = std::make_unique<OrtCUDAProviderOptionsV2>();
+  *out = options.release();
   return nullptr;
 #else
   ORT_UNUSED_PARAMETER(out);
