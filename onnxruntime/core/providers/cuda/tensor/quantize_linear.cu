@@ -139,7 +139,6 @@ __global__ void QuantizeLinearKernelAxisStd(const InT* input, OutT* output, cons
   // The scale needs to change every n_same_scale.
   CUDA_LONG n_same_scale = N / (batch_size * n_scales);
   int scale_id;
-  // int origin = (id / n_same_scale + 1) * n_same_scale;
 
 #pragma unroll
   for (int i = 0; i < NumElementsPerThread; i++) {
@@ -147,12 +146,6 @@ __global__ void QuantizeLinearKernelAxisStd(const InT* input, OutT* output, cons
       scale_id = (id / n_same_scale) % n_scales;
       output[id] = round(input[id], scale_ptr[scale_id], zero_point_ptr == nullptr ? static_cast<OutT>(0) : zero_point_ptr[scale_id]);
       id += NumThreadsPerBlock;
-      /*
-      if (id > origin) {
-        origin = (id / n_same_scale + 1) * n_same_scale;
-        scale_id = (id / n_same_scale) % n_scales;
-      }
-      */
     }
   }
 }
