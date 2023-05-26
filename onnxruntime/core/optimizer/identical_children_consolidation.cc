@@ -60,7 +60,7 @@ std::vector<std::vector<NodeIndex>> IdenticalChildrenConsolidation::DivideIdenti
   return groups;
 }
 
-const std::string& IdenticalChildrenConsolidation::IdentityBuilder(const Graph& graph, const Node& node) const {
+ std::string_view IdenticalChildrenConsolidation::IdentityBuilder(const Graph& graph, const Node& node) const {
   std::string identity;
   for (const auto* input_def : node.InputDefs()) {
     if (input_def->Exists() && !input_def->Name().empty()) {
@@ -118,10 +118,11 @@ const std::string& IdenticalChildrenConsolidation::IdentityBuilder(const Graph& 
         identity.append(name);
       }
     } else {
-      return ignore_identity;
+      return  ignore_identity  ;
     }
     identity.append("####");
   }
-  return {identity};
+  string_view const identity_view{identity};
+  return identity_view;
 }
 }  // namespace onnxruntime
