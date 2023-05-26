@@ -164,13 +164,7 @@ impl<'a> SessionBuilder<'a> {
     /// Append a CUDA execution provider
     pub fn with_execution_provider_cuda(self) -> Result<SessionBuilder<'a>> {
         let mut cuda_options: *mut sys::OrtCUDAProviderOptionsV2 = null_mut();
-        let status = unsafe {
-            self.env
-                .env()
-                .api()
-                .CreateCUDAProviderOptions
-                .unwrap()(&mut cuda_options)
-        };
+        let status = unsafe { self.env.env().api().CreateCUDAProviderOptions.unwrap()(&mut cuda_options) };
         status_to_result(status).map_err(OrtError::CudaProviderOptions)?;
 
         let status = unsafe {
@@ -183,11 +177,7 @@ impl<'a> SessionBuilder<'a> {
         status_to_result(status).map_err(OrtError::AppendExecutionProviderCuda)?;
 
         unsafe {
-            self.env
-                .env()
-                .api()
-                .ReleaseCUDAProviderOptions
-                .unwrap()(cuda_options);
+            self.env.env().api().ReleaseCUDAProviderOptions.unwrap()(cuda_options);
         };
         Ok(self)
     }
