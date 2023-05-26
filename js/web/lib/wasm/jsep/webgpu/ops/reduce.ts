@@ -15,7 +15,7 @@ const validateInputs = (inputs: readonly TensorView[]): void => {
     throw new Error('Reduce op requires 1 input.');
   }
 
-  if (inputs[0].dataType != DataType.float) {
+  if (inputs[0].dataType !== DataType.float) {
     throw new Error('Invalid input type.');
   }
 };
@@ -39,10 +39,10 @@ const createReduceProgramInfo =
           const axes = ShapeUtil.normalizeAxes(attributes.axes, inputs[0].dims.length);
           const ops = reduceOp(inputs, axes);
           const inputIndicesHelper = createIndicesHelper('input', inputShape);
-          let initInputIdx = (ops[1] === '') ? ``:`let inputIdx = ${inputIndicesHelper.i2oExpression('inputIndices')};`
+          const initInputIdx = (ops[1] === '') ? '':`let inputIdx = ${inputIndicesHelper.i2oExpression('inputIndices')};`;
           let reduceOps = `
           let inputIdx = ${inputIndicesHelper.i2oExpression('inputIndices')};
-          ${ops[2]};`
+          ${ops[2]};`;
 
           for (let k = 0; k < inputs[0].dims.length; k++) {
             // if this axis is reduced
@@ -110,7 +110,7 @@ export const reduceSum = (context: ComputeContext, attributes: ReduceAttributes)
   const reduceOp: ReduceOp = (inputs: TensorView[], axes: number[]): string[] => {
     return ['value = 0.0;', '', 'value += _A[inputIdx];', ''];
   };
-  context.compute(createReduceProgramInfoLoader(context.inputs, 'ReduceSum', attributes, reduceOp))
+  context.compute(createReduceProgramInfoLoader(context.inputs, 'ReduceSum', attributes, reduceOp));
 };
 
 export const reduceMean = (context: ComputeContext, attributes: ReduceAttributes): void => {
@@ -125,7 +125,7 @@ export const reduceMean = (context: ComputeContext, attributes: ReduceAttributes
 
     return ['value = 0.0;', '', 'value += _A[inputIdx];', `value = value / ${size}.;`];  // ensure real number with `.`
   };
-  context.compute(createReduceProgramInfoLoader(context.inputs, 'ReduceMean', attributes, reduceOp))
+  context.compute(createReduceProgramInfoLoader(context.inputs, 'ReduceMean', attributes, reduceOp));
 };
 
 export const reduceMax = (context: ComputeContext, attributes: ReduceAttributes): void => {
@@ -140,7 +140,7 @@ export const reduceMax = (context: ComputeContext, attributes: ReduceAttributes)
 
     return [`${idxZero.join('\n')}`, 'value = _A[inputIdx];', 'value = max(value, _A[inputIdx]);', ''];
   };
-  context.compute(createReduceProgramInfoLoader(context.inputs, 'ReduceMax', attributes, reduceOp))
+  context.compute(createReduceProgramInfoLoader(context.inputs, 'ReduceMax', attributes, reduceOp));
 };
 
 export const reduceMin = (context: ComputeContext, attributes: ReduceAttributes): void => {
@@ -155,31 +155,25 @@ export const reduceMin = (context: ComputeContext, attributes: ReduceAttributes)
 
     return [`${idxZero.join('\n')}`, 'value = _A[inputIdx];', 'value = min(value, _A[inputIdx]);', ''];
   };
-  context.compute(createReduceProgramInfoLoader(context.inputs, 'ReduceMin', attributes, reduceOp))
+  context.compute(createReduceProgramInfoLoader(context.inputs, 'ReduceMin', attributes, reduceOp));
 };
 
 export const reduceProd = (context: ComputeContext, attributes: ReduceAttributes): void => {
   validateInputs(context.inputs);
-  const reduceOp: ReduceOp = (): string[] => {
-    return ['value = 1.0;', '', 'value *= _A[inputIdx];', ''];
-  };
-  context.compute(createReduceProgramInfoLoader(context.inputs, 'ReduceProd', attributes, reduceOp))
+  const reduceOp: ReduceOp = (): string[] => ['value = 1.0;', '', 'value *= _A[inputIdx];', ''];
+  context.compute(createReduceProgramInfoLoader(context.inputs, 'ReduceProd', attributes, reduceOp));
 };
 
 export const reduceLogSum = (context: ComputeContext, attributes: ReduceAttributes): void => {
   validateInputs(context.inputs);
-  const reduceOp: ReduceOp = (): string[] => {
-    return ['value = 0.0;', '', 'value += _A[inputIdx];', 'value = log(value);'];
-  };
-  context.compute(createReduceProgramInfoLoader(context.inputs, 'ReduceLogSum', attributes, reduceOp))
+  const reduceOp: ReduceOp = (): string[] => ['value = 0.0;', '', 'value += _A[inputIdx];', 'value = log(value);'];
+  context.compute(createReduceProgramInfoLoader(context.inputs, 'ReduceLogSum', attributes, reduceOp));
 };
 
-export const reduceLogSumSquare = (context: ComputeContext, attributes: ReduceAttributes): void => {
+export const reduceSumSquare = (context: ComputeContext, attributes: ReduceAttributes): void => {
   validateInputs(context.inputs);
-  const reduceOp: ReduceOp = (): string[] => {
-    return ['float t; value = 0.0;', '', 't = _A[inputIdx]; value += t * t;', ''];
-  };
-  context.compute(createReduceProgramInfoLoader(context.inputs, 'ReduceLogSumSquare', attributes, reduceOp))
+  const reduceOp: ReduceOp = (): string[] => ['float t; value = 0.0;', '', 't = _A[inputIdx]; value += t * t;', ''];
+  context.compute(createReduceProgramInfoLoader(context.inputs, 'ReduceSumSquare', attributes, reduceOp));
 };
 
 export const parseReduceAttributes = (attributes: Record<string, unknown>): ReduceAttributes =>

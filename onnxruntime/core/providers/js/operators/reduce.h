@@ -35,5 +35,6 @@ JSEP_DEFINE_REDUCE_KERNEL(ReduceProd);
 JSEP_DEFINE_REDUCE_KERNEL(ReduceSum);
 JSEP_DEFINE_REDUCE_KERNEL(ReduceLogSum);
 JSEP_DEFINE_REDUCE_KERNEL(ReduceLogSumExp);
+JSEP_DEFINE_REDUCE_KERNEL(ReduceSumSquares);
 }  // namespace js
 }  // namespace onnxruntime
