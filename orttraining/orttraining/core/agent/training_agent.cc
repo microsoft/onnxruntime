@@ -6,6 +6,7 @@
 #include "core/framework/feeds_fetches_manager.h"
 #include "core/framework/partial_graph_execution_state.h"
 #include "core/framework/stream_execution_context.h"
+#include "orttraining/core/framework/memory_insight.h"
 
 namespace onnxruntime {
 namespace training {
@@ -25,7 +26,8 @@ TrainingAgent::TrainingAgent(InferenceSession& session,
   std::vector<std::string> bw_feed_names;
 
   size_t break_point = 0;
-  auto& training_node_execution_order = session_state.GetGraphViewer().GetNodesInTopologicalOrder(session.GetSessionOptions().execution_order);
+  auto& training_node_execution_order = session_state.GetGraphViewer().GetNodesInTopologicalOrder(
+      session.GetSessionOptions().execution_order);
   for (auto node_index : training_node_execution_order) {
     if (session_state.GetKernel(node_index)->KernelDef().OpName() == "YieldOp") {
       auto& node = *(session_state.GetGraphViewer().GetGraph().GetNode(node_index));
@@ -98,6 +100,19 @@ void TrainingAgent::CreateAndInitializeFeedsFetchesManager(const SessionState& s
   }
 
   ORT_ENFORCE(utils::InitializeFeedFetchCopyInfo(session_state, *feeds_fetches_manager) == Status::OK());
+}
+
+common::Status TrainingAgent::SymbolizeMemoryPeak(
+    std::vector<std::vector<std::string>>& body) {
+  auto& session_state = inference_session_.GetSessionState();
+  const GraphViewer& graph = session_state.GetGraphViewer();
+  const OrtValueNameIdxMap& ortvalue_name_to_idx_map = session_state.GetOrtValueNameIdxMap();
+  const SequentialExecutionPlan& p_seq_exec_plan = *session_state.GetExecutionPlan();
+  return onnxruntime::training::SymbolizeMemoryPeak(graph,
+                                                    ortvalue_name_to_idx_map,
+                                                    p_seq_exec_plan,
+                                                    *inference_session_.GetLogger(),
+                                                    body);
 }
 
 }  // namespace training

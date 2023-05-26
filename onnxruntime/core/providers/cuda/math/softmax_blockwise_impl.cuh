@@ -135,7 +135,7 @@ __device__ __forceinline__ AccumT ilpReduce(int shift,
                                             AccumT defaultVal) {
   using LoadT = aligned_vector<T, ILP>;
   AccumT threadVal = defaultVal;
-  int offset = threadIdx.x;
+  uint64_t offset = threadIdx.x;
 
   // shift and do 1
   if (shift > 0) {
@@ -150,7 +150,7 @@ __device__ __forceinline__ AccumT ilpReduce(int shift,
 
   if (size <= 0) return threadVal;
 
-  int last = size % (ILP * blockDim.x);
+  uint64_t last = size % (ILP * blockDim.x);
 
   T v[ILP];
   LoadT* value = reinterpret_cast<LoadT*>(&v);
@@ -184,7 +184,7 @@ __device__ __forceinline__ void WriteFpropResultsVectorized(int size,
   using LoadT = aligned_vector<scalar_t, ILP>;
   using StoreT = aligned_vector<outscalar_t, ILP>;
 
-  int offset = threadIdx.x;
+  uint64_t offset = threadIdx.x;
 
   // if unaligned, do one value / thread and move on, guaranteeing aligned reads/writes later
   if (shift > 0) {
@@ -202,7 +202,7 @@ __device__ __forceinline__ void WriteFpropResultsVectorized(int size,
 
   if (size <= 0) return;
 
-  const int last = size % (ILP * blockDim.x);
+  const uint64_t last = size % (ILP * blockDim.x);
 
   scalar_t in_v[ILP];
   LoadT* in_value = reinterpret_cast<LoadT*>(&in_v);
@@ -236,9 +236,9 @@ __device__ __forceinline__ void WriteFpropResults(int classes,
                                                   scalar_t* input,
                                                   outscalar_t* output,
                                                   Epilogue<scalar_t, accum_t, outscalar_t> epilogue) {
-  int offset = threadIdx.x;
+  uint64_t offset = threadIdx.x;
 
-  int last = classes % (ILP * blockDim.x);
+  uint64_t last = classes % (ILP * blockDim.x);
 
   // Main bulk of loop with ILP
   for (; offset < classes - last; offset += blockDim.x * ILP) {

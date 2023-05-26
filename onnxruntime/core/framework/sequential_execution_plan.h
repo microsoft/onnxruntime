@@ -102,7 +102,7 @@ struct SequentialExecutionPlan : public ExecutionPlanBase {
 
   // A execution step in the execution step.
   // we explicitly encoding the cross-stream synchronization
-  // in the execution pan, so we wwill mainly have following
+  // in the execution pan, so we will mainly have following
   // types of steps:
   // 1. Kernel Launch
   // 2. Activate notification
@@ -207,4 +207,5 @@ struct SequentialExecutionPlan : public ExecutionPlanBase {
 
 // Output details of an execution plan:
 std::ostream& operator<<(std::ostream& out, std::pair<const SequentialExecutionPlan*, const SessionState*> planinfo);
+
 }  // namespace onnxruntime

@@ -39,6 +39,9 @@ class TrainingAgent {
                                        PartialGraphExecutionState& state, FeedsFetchesManager& feeds_fetches_manager,
                                        const OrtValueCachePtr& cache, int32_t partial_graph_index);
 
+  [[nodiscard]] common::Status SymbolizeMemoryPeak(
+      std::vector<std::vector<std::string>>& body);
+
   void CreateAndInitializeFeedsFetchesManager(const SessionState& session_state,
                                               const std::vector<std::string>& feed_names,
                                               const std::vector<std::string>& fetches_names,

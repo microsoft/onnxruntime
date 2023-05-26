@@ -189,7 +189,7 @@ Status SparseSoftmaxCrossEntropy<T, Tin>::ComputeInternal(OpKernelContext* ctx) 
           Stream(ctx),
           weight_data,
           normalize_factor_data.get(),
-          static_cast<int>(N),
+          N,
           reduction_buffer.get(),
           buffer_size));
     }
@@ -209,7 +209,7 @@ Status SparseSoftmaxCrossEntropy<T, Tin>::ComputeInternal(OpKernelContext* ctx) 
       Stream(ctx),
       tmp_loss_sample.get(),
       total_loss_data,
-      static_cast<int>(N),
+      N,
       reduction_buffer.get(),
       buffer_size);
 }
@@ -267,7 +267,7 @@ Status SparseSoftmaxCrossEntropyGrad<T, Tin>::ComputeInternal(OpKernelContext* c
           Stream(ctx),
           weight_data,
           normalize_factor_data.get(),
-          static_cast<int>(N),
+          N,
           reduction_buffer.get(),
           buffer_size));
     }

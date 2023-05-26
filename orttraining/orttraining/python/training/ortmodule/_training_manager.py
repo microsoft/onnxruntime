@@ -369,6 +369,11 @@ class TrainingManager(GraphExecutionManager):
             local_device_rank,
         )
 
+
+        self._memory_peak_symbols = self._execution_agent.symbolize_memory_peak()
+
+
+
     def _reinitialize_graph_builder(self, input_info):
         """Return true if the module graph builder was reinitialized"""
 

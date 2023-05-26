@@ -14,10 +14,10 @@ from onnxruntime.training import ortmodule
 
 
 class RuntimeInspector:
-    def __init__(self):
+    def __init__(self, m):
         self.input_density_ob = InputDensityObserver()
 
-        self.memory_ob = MemoryObserver()
+        self.memory_ob = MemoryObserver(m)
 
 
 class InputDensityObserver:
@@ -300,11 +300,11 @@ class InputDensityObserver:
         value = onnx.numpy_helper.to_array(tensor)
         return value
 
-
+from prettytable import PrettyTable
 class MemoryObserver:
     """Configurable memory observer for ORTModule."""
 
-    def __init__(self):
+    def __init__(self, m):
         self._step = 1
         self._rank = 0
         self._world_size = 1
@@ -317,6 +317,29 @@ class MemoryObserver:
         self._fw_start_cur_step = 0
         self._fw_end_cur_step = 0
         self._bw_end_cur_step = 0
+
+
+        table1 = PrettyTable(["Modules", "Trainble Parameters", "Precision"])
+        table2 = PrettyTable(["Modules", "Frozen Parameters", "Precision"])
+        total_trainable_params = 0
+        total_trainable_param_size = 0
+        untrainable_params = 0
+        for name, parameter in m.named_parameters():
+            params = parameter.numel()
+            precision = parameter.dtype
+            if not parameter.requires_grad:
+                table2.add_row([name, params, precision])
+                untrainable_params+=params
+            else:
+                table1.add_row([name, params, precision])
+                total_trainable_params+=params
+                total_trainable_param_size+=params*parameter.element_size()
+        print(table1)
+        print(table2)
+        print(f"Total Trainable Params: {total_trainable_params}, Frozen Params: {untrainable_params}")
+        print(f"Total Trainable Param Size: {total_trainable_param_size/1024/1024} MiB")
+
+
 
     def inspect_memory(self, milestone_name):
         if not torch.cuda.is_available():
@@ -334,7 +357,7 @@ class MemoryObserver:
         estimated_max_bsz = None
         if milestone_name == 'fw_ends':
             self._fw_end_cur_step = torch.cuda.memory_allocated()
-            activation_peak_memory = torch.cuda.max_memory_allocated() - self._fw_start_cur_step
+            activation_peak_memory = self._fw_end_cur_step - self._fw_start_cur_step
             global_free_memory, total_gpu_memory = torch.cuda.mem_get_info()
             estimated_max_bsz = float(total_gpu_memory - self._fw_start_cur_step) / float(activation_peak_memory)
 

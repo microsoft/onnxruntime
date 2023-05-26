@@ -141,7 +141,7 @@ Status SoftmaxCrossEntropyLoss<T, TLabel, TOut>::ComputeInternal(OpKernelContext
         Stream(ctx),
         reinterpret_cast<CudaT_OUT*>(weight_data_nd_data),
         normalize_factor_data.get(),
-        static_cast<int>(N_D),
+        N_D,
         reduction_buffer.get(),
         buffer_size));
   } else {
@@ -182,7 +182,7 @@ Status SoftmaxCrossEntropyLoss<T, TLabel, TOut>::ComputeInternal(OpKernelContext
         Stream(ctx),
         reinterpret_cast<CudaT_OUT*>(tmp_loss_sample_buffer),
         reinterpret_cast<CudaT_OUT*>(total_loss_data),
-        static_cast<int>(N_D),
+        N_D,
         reduction_buffer.get(),
         buffer_size));
   }
@@ -255,8 +255,8 @@ Status SoftmaxCrossEntropyLossGrad<T, TLabel, TOut>::ComputeInternal(OpKernelCon
   auto normalize_factor_data = GetScratchBuffer<TBuf>(1, ctx->GetComputeStream());
   if (reduction_ == ReductionType::MEAN) {
     // Compute buffer size in byte for reduction APIs.
-    const auto buffer_size =
-        compute_reduction_buffer_size<CudaT_IN>(static_cast<int>(N_D));
+    const int64_t buffer_size =
+        compute_reduction_buffer_size<CudaT_IN>(static_cast<int64_t>(N_D));
     // Allocate reduction buffer whose size is buffer_size bytes.
     IAllocatorUniquePtr<void> reduction_buffer = GetScratchBuffer<void>(
         buffer_size, ctx->GetComputeStream());
@@ -264,7 +264,7 @@ Status SoftmaxCrossEntropyLossGrad<T, TLabel, TOut>::ComputeInternal(OpKernelCon
         Stream(ctx),
         reinterpret_cast<const CudaT_IN*>(weight_data_nd_data),
         normalize_factor_data.get(),
-        static_cast<int>(N_D),
+        N_D,
         reduction_buffer.get(),
         buffer_size));
   } else {

@@ -21,7 +21,7 @@ namespace detail {
 constexpr auto MAX_NUM_ELEMENTS_PER_THREAD = 4;
 constexpr auto MAX_NUM_WARPS_PER_BLOCK = 8;
 constexpr auto MAX_NUM_BLOCKS_IN_GRID_ROW = 256;
-constexpr auto MAX_NUM_GRID_ROWS = 32768;
+constexpr uint64_t MAX_NUM_GRID_ROWS = 32768;
 
 dim3 compute_block_dim(int num_cols) {
   const int x = GPU_WARP_SIZE_HOST;
@@ -29,7 +29,7 @@ dim3 compute_block_dim(int num_cols) {
   return dim3(x, y);
 }
 
-std::pair<dim3, dim3> compute_grid_and_block_dims(int num_rows, int num_cols) {
+std::pair<dim3, dim3> compute_grid_and_block_dims(uint64_t num_rows, int num_cols) {
   const auto block_dim = compute_block_dim(num_cols);
   const auto grid_x =
       std::min<int>(
@@ -80,7 +80,7 @@ size_t compute_reduce_matrix_columns_intermediate_buffer_size(
 
 template <typename TBuf>
 Status get_reduction_buffers(
-    int num_rows, int num_cols, void* buffer, size_t buffer_size,
+    uint64_t num_rows, int num_cols, void* buffer, size_t buffer_size,
     TBuf*& block_reductions_buffer, int*& block_done_counts_buffer) {
   const auto grid_dim = compute_grid_and_block_dims(num_rows, num_cols).first;
 
@@ -107,7 +107,7 @@ Status get_reduction_buffers(
 
 template <typename TIn, typename TOut, typename TBuf, typename TOp, typename TFinalOp, bool DivideResultBySize>
 __device__ void reduce_all(
-    const int num_elements, const TIn* const input, TOut* const output,
+    const uint64_t num_elements, const TIn* const input, TOut* const output,
     TBuf* const block_reductions_buffer, int* const block_done_count_buffer) {
   extern __shared__ unsigned char shared_memory_bytes[];
   TBuf* shared_memory = reinterpret_cast<TBuf*>(shared_memory_bytes);
@@ -139,7 +139,7 @@ __device__ void reduce_all(
     // Compilation time if-else branch controlled by template argument can be
     // optimized out, so there will be no branch in real computation phase.
     if (DivideResultBySize) {
-      output[0] = TFinalOp()(result / TOut(num_elements));
+      output[0] = TFinalOp()(result / TOut(static_cast<unsigned long long>(num_elements)));
     } else {
       output[0] = TFinalOp()(result);
     }
@@ -154,7 +154,7 @@ __device__ void reduce_all(
 
 #pragma unroll
     for (int i = 0; i < MAX_NUM_ELEMENTS_PER_THREAD; i++) {
-      const int offset = id + i * num_threads_in_grid_row;
+      const uint64_t offset = id + i * num_threads_in_grid_row;
       if (offset < num_elements) {
         v[i] = input[offset];
       }
@@ -162,7 +162,7 @@ __device__ void reduce_all(
 
 #pragma unroll
     for (int i = 0; i < MAX_NUM_ELEMENTS_PER_THREAD; i++) {
-      const int offset = id + i * num_threads_in_grid_row;
+      const uint64_t offset = id + i * num_threads_in_grid_row;
       if (offset < num_elements) {
         value += TOp()(TBuf(v[i]));
       }
@@ -263,7 +263,7 @@ __device__ void reduce_all(
 
 template <typename TIn, typename TOut, typename TBuf, typename TOp, typename TFinalOp, bool DivideResultBySize>
 __global__ void reduce_matrix_columns_kernel(
-    const int num_rows, const int num_cols, const TIn* const input, TOut* const output,
+    const uint64_t num_rows, const uint64_t num_cols, const TIn* const input, TOut* const output,
     TBuf* const block_reductions_buffer, int* const block_done_counts_buffer) {
   const int num_blocks_in_grid_row = gridDim.x;
   const int row_id_in_grid = blockIdx.y;
@@ -271,7 +271,7 @@ __global__ void reduce_matrix_columns_kernel(
 
   // one row per iteration
   // row_id is int64_t to avoid int overflow in offset calculations
-  for (int64_t row_id = row_id_in_grid; row_id < num_rows; row_id += num_grid_rows) {
+  for (uint64_t row_id = row_id_in_grid; row_id < num_rows; row_id += num_grid_rows) {
     const TIn* const row_data = input + row_id * num_cols;
     TOut* const row_output = output + row_id;
     TBuf* const row_block_reductions_buffer = block_reductions_buffer + row_id * num_blocks_in_grid_row;
@@ -285,7 +285,7 @@ __global__ void reduce_matrix_columns_kernel(
 
 template <typename TIn, typename TOut, typename TOp, typename TFinalOp, bool DivideResultBySize>
 Status call_reduce_matrix_columns(
-    cudaStream_t stream, const TIn* input, TOut* output, const int num_rows, const int num_cols, void* buffer, size_t buffer_size) {
+    cudaStream_t stream, const TIn* input, TOut* output, const uint64_t num_rows, const uint64_t num_cols, void* buffer, size_t buffer_size) {
   ORT_ENFORCE(num_rows >= 0 && num_cols >= 0);
 
   using TBuf = AccumulationType_t<TIn>;
@@ -316,7 +316,7 @@ Status call_reduce_matrix_columns(
 
 template <typename TIn, typename TOut>
 Status reduce_sum(
-    cudaStream_t stream, const TIn* input, TOut* output, int size, void* buffer, size_t buffer_size) {
+    cudaStream_t stream, const TIn* input, TOut* output, uint64_t size, void* buffer, size_t buffer_size) {
   return detail::call_reduce_matrix_columns<TIn, TOut, Identity, Identity, false>(
     stream, input, output, 1, size, buffer, buffer_size);
 }
@@ -343,7 +343,7 @@ Status reduce_mean(
 }
 
 #define INSTANTIATE_REDUCE_SUM(TIn, TOut) \
-  template Status reduce_sum<TIn, TOut>(cudaStream_t stream, const TIn* input, TOut* output, int size, void* buffer, size_t buffer_size)
+  template Status reduce_sum<TIn, TOut>(cudaStream_t stream, const TIn* input, TOut* output, uint64_t size, void* buffer, size_t buffer_size)
 INSTANTIATE_REDUCE_SUM(half, half);
 INSTANTIATE_REDUCE_SUM(half, float);
 INSTANTIATE_REDUCE_SUM(float, float);

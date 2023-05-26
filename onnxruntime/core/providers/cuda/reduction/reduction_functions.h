@@ -43,7 +43,7 @@ size_t compute_reduction_buffer_size(int size) {
 
 /** Computes the sum of the given elements. */
 template <typename TIn, typename TOut>
-Status reduce_sum(cudaStream_t stream, const TIn* input, TOut* output, int size, void* buffer, size_t buffer_size);
+Status reduce_sum(cudaStream_t stream, const TIn* input, TOut* output, uint64_t size, void* buffer, size_t buffer_size);
 
 /** Computes the sum of the squares of the given elements. */
 template <typename TIn, typename TOut>

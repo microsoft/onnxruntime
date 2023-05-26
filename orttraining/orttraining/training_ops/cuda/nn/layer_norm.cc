@@ -65,8 +65,8 @@ Status LayerNormGrad<T, U, V, simplified>::ComputeInternal(OpKernelContext* p_op
 
   const TensorShape& x_shape = X->Shape();
   const int64_t axis = HandleNegativeAxis(axis_, x_shape.NumDimensions());
-  auto n1 = x_shape.SizeToDimension(axis);
-  auto n2 = x_shape.SizeFromDimension(axis);
+  int64_t n1 = x_shape.SizeToDimension(axis);
+  int64_t n2 = x_shape.SizeFromDimension(axis);
   ORT_ENFORCE(n2 != 1, "n2 should not be 1");
 
   // Outputs
@@ -89,10 +89,46 @@ Status LayerNormGrad<T, U, V, simplified>::ComputeInternal(OpKernelContext* p_op
   auto part_grad_gamma = GetScratchBuffer<CudaU>(part_size * n2, p_op_kernel_context->GetComputeStream());
   auto part_grad_beta = GetScratchBuffer<CudaU>(part_size * n2, p_op_kernel_context->GetComputeStream());
 
+  /*
+
+void HostLayerNormGradient(
+  const cudaDeviceProp& prop,
+  cudaStream_t stream,
+  const V* dout,
+  const T* input,
+  const V* output,
+  const V* gamma,
+  const V* beta,
+  const U* mean,
+  const U* invvar,
+  int64_t n1,
+  int64_t n2,
+  T* grad_input,
+  V* grad_gamma,
+  V* grad_beta,
+  U* part_grad_gamma,
+  U* part_grad_beta,
+  const int part_size)
+*/
+
   HostLayerNormGradient<CudaT, CudaU, CudaV, simplified>(
-      GetDeviceProp(), Stream(p_op_kernel_context), Y_grad_data, X_data, reinterpret_cast<const CudaV*>(NULL), scale_data,
-      reinterpret_cast<const CudaV*>(NULL), mean_data, inv_std_var_data, n1, n2, X_grad_data, scale_grad_data,
-      bias_grad_data, part_grad_gamma.get(), part_grad_beta.get(), part_size);
+      GetDeviceProp(),
+      Stream(p_op_kernel_context),
+      Y_grad_data, // dout
+      X_data, // input
+      reinterpret_cast<const CudaV*>(NULL), //output
+      scale_data, // gamma
+      reinterpret_cast<const CudaV*>(NULL), // beta
+      mean_data, // mean
+      inv_std_var_data, // invvar
+      n1,
+      n2,
+      X_grad_data,
+      scale_grad_data,
+      bias_grad_data,
+      part_grad_gamma.get(),
+      part_grad_beta.get(),
+      part_size);
   return Status::OK();
 }
 
@@ -122,8 +158,8 @@ Status InvertibleLayerNormGrad<T, U, V>::ComputeInternal(OpKernelContext* p_op_k
   const TensorShape& y_shape = Y->Shape();
   const TensorShape& x_shape = y_shape;
   const int64_t axis = HandleNegativeAxis(axis_, x_shape.NumDimensions());
-  auto n1 = x_shape.SizeToDimension(axis);
-  auto n2 = x_shape.SizeFromDimension(axis);
+  int64_t n1 = x_shape.SizeToDimension(axis);
+  int64_t n2 = x_shape.SizeFromDimension(axis);
   ORT_ENFORCE(n2 != 1, "n2 should not be 1");
 
   // Outputs

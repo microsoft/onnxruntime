@@ -113,7 +113,7 @@ class GraphExecutionManager(GraphExecutionInterface):
         self._first_skip_check_warning = True
 
         # Inspect embedding input index sparsity.
-        self._rt_inspector = _runtime_inspector.RuntimeInspector()
+        self._rt_inspector = _runtime_inspector.RuntimeInspector(module._original_module)
 
         # Graph transformer config
         # Specify cast propagation strategy. Currently, three strategies are available, NONE, INSERT-AND-REDUCE and FLOOD-FILL
@@ -129,7 +129,7 @@ class GraphExecutionManager(GraphExecutionInterface):
         #   whereas Level 2 predetermined "FP16 safe" opcodes include opcodes that perform computation using contrib ops, Dropout, LayerNormalization, etc.
         self._propagate_cast_ops_level = 1
         # List of opcodes to be considered safe to move before/after the cast operation if propagate_cast_ops_level is zero.
-        self._propagate_cast_ops_allow = []
+        self._propagate_cast_ops_allow = ["Softmax"]
 
         # Value can be either torch.onnx.TrainingMode.TRAINING or torch.onnx.TrainingMode.EVAL
         # To be instantiated in the concrete implementation of GraphExecutionManager
@@ -180,7 +180,7 @@ class GraphExecutionManager(GraphExecutionInterface):
         # Memory-aware gradient builder.
         self._use_memory_efficient_gradient = False
 
-        self._compress_sparse_gradient = True
+        self._compress_sparse_gradient = False
 
         # Enable compute optimizer by default. Allowed to be disabled via an environment variable for
         # convergence parity investigation.

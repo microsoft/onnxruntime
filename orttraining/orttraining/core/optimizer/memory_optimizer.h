@@ -37,7 +37,8 @@ class MemoryOptimizer : public GraphTransformer {
   enum class OptimizationType {
     None = 0,  // Disabled.
     Recompute = 1,
-    TypeMax = 2,
+    ModeCompression = 2,
+    TypeMax = 3,
   };
 
   /**
@@ -243,6 +244,7 @@ class MemoryOptimizer : public GraphTransformer {
    */
   void PrintSummary(const SubGraphStores& recompute_stores,
                     const SubGraphStores& recompute_with_compromise_stores,
+                    const SubGraphStores& mode_compression_subgraph_stores,
                     const logging::Logger& logger) const;
 
   /**************************************************
@@ -321,6 +323,53 @@ class MemoryOptimizer : public GraphTransformer {
 
   /**************************************************
    ** Recompute related function definition ends   **
+   *************************************************/
+
+  /**************************************************
+   ** Mode compression related function definition starts **
+   *************************************************/
+
+  /**
+   * @brief For the node producing stashed activation, check whether a recomputable subgraph can be found or not.
+   *
+   * @param node The entry node to start the subgraph matching (bottom-up), usually the last node of found subgraphs.
+   * @param fw_op_output_arg_used_map The activation usage (in fw and bw) mapping.
+   * @param node_index_to_its_order_in_topological_sort_map The mapping of node index to its order in topological sort.
+   *   Used to re-order the collected subgraph nodes.
+   * @param candidate_output_args_map A map from node to its candidate activations, which are consumed by both fw and
+   *  bw ops.
+   * @param subgraph_stores A store to maintain all found subgraphs.
+   * @param logger Logger.
+   * @param compromise_stashed_activation Whether to compromise stashed activation, e.g. if we cannot find a
+   * recomputable subgraph to save a stashed activation, we can compromise to find a recomputable subgraph to reduce the
+   * size of stashed activation.
+   * @param can_compromise_stashed_activation A bool return value, to indicate there is opportunaties for finding a
+   * compromised subgraph.
+   */
+  void CheckNodeForModeCompression(const Node& node,
+                                   const ActivationUsedMap& fw_op_output_arg_used_map,
+                                   const InlinedHashMap<NodeIndex, size_t>&
+                                       node_index_to_its_order_in_topological_sort_map,
+                                   const InlinedHashMap<const Node*, InlinedVector<size_t>>&
+                                       candidate_output_args_map,
+                                   SubGraphStores& subgraph_stores,
+                                   const logging::Logger& logger) const;
+
+  /**
+   * @brief Duplicate nodes to create a recompute subgraph.
+   *
+   * @param graph Graph to iterate.
+   * @param nodes_in_topological_order Subgraph nodes to recompute.
+   * @param recompute_subgraph_output_node The final node of the subgraph.
+   * @return Status
+   */
+  Status CreateModeCompressionGraph(Graph& graph,
+                                    const InlinedVector<const Node*>& nodes_in_topological_order,
+                                    Node*& recompute_subgraph_output_node,
+                                    Node*& new_compress_node_ptr) const;
+
+  /**************************************************
+   ** Mode compression related function definition ends   **
    *************************************************/
 
   // The op types that are supported predefined.

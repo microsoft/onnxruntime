@@ -5,7 +5,7 @@
 
 
 from collections import abc
-from typing import Callable, List, Union
+from typing import Callable, List, Optional, Union
 
 import torch
 
@@ -55,12 +55,14 @@ class _InspectActivation(torch.autograd.Function):
     """
 
     @staticmethod
-    def forward(ctx, activation_name: str, module_idx: int, run_ctx: _RuntimeStates, input_tensor):
+    def forward(ctx, activation_name: str, module_idx: Optional[int], run_ctx: _RuntimeStates, input_tensor):
         """
         Make sure there is a same number of `tensor` type inputs and outputs.
         This is enforced by ORT's PythonOp's schema check.
         """
-        depth = run_ctx.global_states.module_index_to_depth[module_idx]
+        depth = -1
+        if module_idx and module_idx in run_ctx.global_states.module_index_to_depth:
+            depth = run_ctx.global_states.module_index_to_depth[module_idx]
 
         input_tensor_copied = None
         if input_tensor is None or not isinstance(input_tensor, torch.Tensor):
@@ -162,12 +164,16 @@ class SubscriberManager:
 
     def __init__(self):
         self._run_ctx: _RuntimeStates = _RuntimeStates()
+        self._already_initialized = False
 
     def subscribe(self, module: Union[torch.nn.Module, ORTModule], subscribers: List[SubscriberBase]):
         """
         The API is called externally to register hooks that are implicitly defined by subscribers.
         Each time all global states will be cleaned up once called.
         """
+        if self._already_initialized:
+            raise RuntimeError("SubscriberManager is already initialized.")
+
         if not isinstance(module, torch.nn.Module):
             raise ValueError("module must be a torch.nn.Module instance")
 
@@ -182,6 +188,7 @@ class SubscriberManager:
             self._run_ctx.global_states.subscribers.add(subscriber)
 
         self._initialize(module)
+        self._already_initialized = True
 
     def _reset_all_states(self):
         self._run_ctx = _RuntimeStates()

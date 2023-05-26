@@ -70,8 +70,8 @@ struct CopyOnConditionFunctor {
     CUDA_CALL_THROW(cudaMemcpyAsync(&d_num_selected_host, d_num_selected_out.get(),
                                     sizeof(int), cudaMemcpyDeviceToHost, cuda_kernel->Stream(context)));
 
-    std::cout << "total_element_count: " << total_element_count << ", d_num_selected_host: " << d_num_selected_host
-              << std::endl;
+    // std::cout << "total_element_count: " << total_element_count << ", d_num_selected_host: " << d_num_selected_host
+    //           << std::endl;
 
     Tensor* output_tensor = context->Output(0, {d_num_selected_host});
     CUDA_CALL_THROW(cudaMemcpyAsync(output_tensor->MutableDataRaw(),

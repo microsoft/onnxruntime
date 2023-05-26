@@ -224,34 +224,73 @@ bool MemoryOptimizer::ModifyGraph(Graph& graph,
     Node* replacement_node_ptr = nullptr;
     LOGS(logger, WARNING) << "[Modify Graph] Node " << node->Name() << "(" << node->OpType() << ") is "
                           << UserConfigToString(user_config);
+
+    std::function<void(Node * node, size_t output_index, std::vector<graph_utils::GraphEdge> & output_edges)>
+     func_to_get_output_edges_to_remove;
     if (user_config.type == OptimizationType::Recompute) {
       ORT_ENFORCE(CreateRecomputeGraph(graph, sub_graph_instance_info.first, replacement_node_ptr).IsOK());
+      func_to_get_output_edges_to_remove =
+          [&node_index_to_its_order_in_topological_sort_map, &boundary_op_order_in_topological_sort](
+            Node* node, size_t output_index, std::vector<graph_utils::GraphEdge>& output_edges) -> void {
+        for (auto it = node->OutputEdgesBegin(), end = node->OutputEdgesEnd(); it != end; ++it) {
+          size_t src_output_idx = static_cast<size_t>(it->GetSrcArgIndex());
+          if (src_output_idx != output_index) {
+            continue;
+          }
+
+          auto tid = node_index_to_its_order_in_topological_sort_map.find(it->GetNode().Index());
+          // It is possible the consumer node is newly added as the recompute node, so we need a check here.
+          // For those kind of ops, we can treat them as backward ops.
+          if (tid == node_index_to_its_order_in_topological_sort_map.end() ||
+              !IsForwardPassOperator(node_index_to_its_order_in_topological_sort_map.at(tid->first),
+                                     boundary_op_order_in_topological_sort)) {
+            // Remove the edge only connecting to backward op.
+            output_edges.push_back(graph_utils::GraphEdge::CreateGraphEdge(*node, *it, false));
+          }
+        }
+      };
+    } else if (user_config.type == OptimizationType::ModeCompression) {
+      Node* compress_node = nullptr;
+      ORT_ENFORCE(CreateModeCompressionGraph(graph, sub_graph_instance_info.first, replacement_node_ptr, compress_node).IsOK());
+      func_to_get_output_edges_to_remove =
+          [compress_node, &node_index_to_its_order_in_topological_sort_map, &boundary_op_order_in_topological_sort](
+            Node* node, size_t output_index, std::vector<graph_utils::GraphEdge>& output_edges) -> void {
+        for (auto it = node->OutputEdgesBegin(), end = node->OutputEdgesEnd(); it != end; ++it) {
+          size_t src_output_idx = static_cast<size_t>(it->GetSrcArgIndex());
+          if (src_output_idx != output_index) {
+            std::cout << "src_output_idx: " << src_output_idx << ", output_index: " << output_index << std::endl;
+            continue;
+          }
+
+          if (&it->GetNode() == compress_node) {
+            std::cout << "Skip the ModeCompress consumer node. The node name: " << it->GetNode().Name() << it->GetNode().OpType() << compress_node->Name() << compress_node->OpType() << std::endl;
+            // Skip the ModeCompress consumer node.
+            continue;
+          }
+
+          auto tid = node_index_to_its_order_in_topological_sort_map.find(it->GetNode().Index());
+          // It is possible the consumer node is newly added as the recompute node, so we need a check here.
+          // For those kind of ops, we can treat them as backward ops.
+          if (tid == node_index_to_its_order_in_topological_sort_map.end() ||
+              !IsForwardPassOperator(node_index_to_its_order_in_topological_sort_map.at(tid->first),
+                                     boundary_op_order_in_topological_sort)) {
+            // Remove the edge only connecting to backward op.
+            output_edges.push_back(graph_utils::GraphEdge::CreateGraphEdge(*node, *it, false));
+          }
+        }
+      };
+
     } else {
       ORT_THROW("unsupported optimization type found: " + UserConfigToString(user_config));
     }
     ORT_ENFORCE(replacement_node_ptr);
-
+    //
     graph_is_modified = true;
 
     for (size_t output_index : candidate_output_args_map.at(node)) {
       // Collect output edges (connecting to backward ops), to remove.
       std::vector<graph_utils::GraphEdge> output_edges;
-      for (auto it = node->OutputEdgesBegin(), end = node->OutputEdgesEnd(); it != end; ++it) {
-        size_t src_output_idx = static_cast<size_t>(it->GetSrcArgIndex());
-        if (src_output_idx != output_index) {
-          continue;
-        }
-
-        auto tid = node_index_to_its_order_in_topological_sort_map.find(it->GetNode().Index());
-        // It is possible the consumer node is newly added as the recompute node, so we need a check here.
-        // For those kind of ops, we can treat them as backward ops.
-        if (tid == node_index_to_its_order_in_topological_sort_map.end() ||
-            !IsForwardPassOperator(node_index_to_its_order_in_topological_sort_map.at(tid->first),
-                                   boundary_op_order_in_topological_sort)) {
-          // Remove the edge only connecting to backward op.
-          output_edges.push_back(graph_utils::GraphEdge::CreateGraphEdge(*node, *it, false));
-        }
-      }
+      func_to_get_output_edges_to_remove(node, output_index, output_edges);
 
       if (!output_edges.empty()) {
         // Remove the output edges of the node first
@@ -259,7 +298,7 @@ bool MemoryOptimizer::ModifyGraph(Graph& graph,
 
         // Create connections between the replacement node and the outgoing nodes.
         for (const auto& output_edge : output_edges) {
-          graph.RemoveConsumerNode(node->MutableOutputDefs()[output_index]->Name(), node);
+          graph.RemoveConsumerNode(node->MutableOutputDefs()[output_index]->Name(), graph.GetNode(output_edge.dst_node));
 
           // Add new edge connecting the input with the output nodes directly.
           // This also updates the destination node's input node args
@@ -294,6 +333,7 @@ Status MemoryOptimizer::ApplyImpl(Graph& graph, bool& modified, int /*graph_leve
 
   SubGraphStores recompute_subgraph_stores;
   SubGraphStores recompute_with_compromise_subgraph_stores;
+  SubGraphStores mode_compression_subgraph_stores;
   GraphViewer graph_viewer(graph);
   const auto& node_ids = graph_viewer.GetNodesInTopologicalOrder();
 
@@ -325,6 +365,11 @@ Status MemoryOptimizer::ApplyImpl(Graph& graph, bool& modified, int /*graph_leve
                             recompute_with_compromise_subgraph_stores, logger, true,
                             can_compromise_stashed_activation);
     }
+
+    CheckNodeForModeCompression(*p_node, fw_op_output_arg_used_map,
+                                node_index_to_its_order_in_topological_sort_map,
+                                candidate_output_args_map,
+                                mode_compression_subgraph_stores, logger);
   }
 
   // The second pass - apply the transformation.
@@ -354,10 +399,17 @@ Status MemoryOptimizer::ApplyImpl(Graph& graph, bool& modified, int /*graph_leve
                                       recompute_with_compromise_subgraph_stores, p_node);
     }
 
+    if (!has_been_modified && mode_compression_subgraph_stores.ContainsSubGraphInstance(p_node)) {
+      has_been_modified = ModifyGraph(graph, node_index_to_its_order_in_topological_sort_map,
+                                      candidate_output_args_map, logger,
+                                      boundary_op_order_in_topological_sort,
+                                      mode_compression_subgraph_stores, p_node);
+    }
+
     modified = modified || has_been_modified;
   }
 
-  PrintSummary(recompute_subgraph_stores, recompute_with_compromise_subgraph_stores, logger);
+  PrintSummary(recompute_subgraph_stores, recompute_with_compromise_subgraph_stores, mode_compression_subgraph_stores, logger);
 
   return Status::OK();
 }
@@ -393,15 +445,20 @@ std::string MemoryOptimizer::UserConfigToString(const UserConfig& config) const 
     case OptimizationType::Recompute: {
       type_str = "Recomputed";
     } break;
+    case OptimizationType::ModeCompression: {
+      type_str = "ModeCompressed";
+    } break;
     default: {
       type_str = "Unknown";
     } break;
   }
   return type_str;
 }
+//
 
 void MemoryOptimizer::PrintSummary(const SubGraphStores& recompute_stores,
                                    const SubGraphStores& recompute_with_compromise_stores,
+                                   const SubGraphStores& mode_compression_subgraph_stores,
                                    const logging::Logger& logger) const {
   if (recompute_stores.SubGraphDescCount() == 0 && recompute_with_compromise_stores.SubGraphDescCount() == 0) {
     return;
@@ -437,6 +494,7 @@ void MemoryOptimizer::PrintSummary(const SubGraphStores& recompute_stores,
 
   print_info_from_stores("Recompute", recompute_stores);
   print_info_from_stores("RecomputeWithCompromise", recompute_with_compromise_stores);
+  print_info_from_stores("ModeCompression", mode_compression_subgraph_stores);
 
   LOGS(logger, INFO) << summary.str() << "\n";
 }
@@ -784,5 +842,201 @@ Status MemoryOptimizer::CreateRecomputeGraph(Graph& graph,
 /******************************************************
  ** Recompute related function implementation ends   **
  ******************************************************/
+
+void MemoryOptimizer::CheckNodeForModeCompression(const Node& node,
+                                                  const ActivationUsedMap& /*fw_op_output_arg_used_map*/,
+                                                  const InlinedHashMap<NodeIndex, size_t>&
+                                                  /*node_index_to_its_order_in_topological_sort_map*/,
+                                                  const InlinedHashMap<const Node*, InlinedVector<size_t>>&
+                                                      candidate_output_args_map,
+                                                  SubGraphStores& subgraph_stores,
+                                                  const logging::Logger& logger) const {
+  if (node.OpType() != "Softmax") {
+    return;
+  }
+
+  // if (recomputable_op_type_to_input_arg_index_map_.find(node.OpType()) ==
+  //     recomputable_op_type_to_input_arg_index_map_.end()) {
+  //   return;
+  // }
+
+  InlinedVector<const Node*> nodes_in_topological_order{&node};
+  // ORT_ENFORCE(SelectRecomputeSubgraph(node, candidate_output_args_map.at(&node),
+  //                                     fw_op_output_arg_used_map,
+  //                                     node_index_to_its_order_in_topological_sort_map,
+  //                                     nodes_in_topological_order, logger,
+  //                                     compromise_stashed_activation,
+  //                                     can_compromise_stashed_activation)
+  //                 .IsOK());
+  // if (nodes_in_topological_order.size() == 0) {
+  //   return;
+  // }
+
+  std::string subgraph_str_representation, log_info;
+  NodesInTopoOrderToString(nodes_in_topological_order, subgraph_str_representation, log_info);
+  LOGS(logger, VERBOSE) << "Node " << node.Name() << "(" << node.OpType() << ") can be compressed." << log_info;
+
+  // Update the subgraph optimization config map - key is the subgraph string representation, value is user config.
+  UserConfig user_config{OptimizationType::None, 0};
+  if (pattern_subgraph_to_user_optimizer_config_map_.find(subgraph_str_representation) !=
+      pattern_subgraph_to_user_optimizer_config_map_.end()) {
+    user_config = pattern_subgraph_to_user_optimizer_config_map_.at(subgraph_str_representation);
+  }
+
+  SubGraphDesc& subgraph_desc =
+      subgraph_stores.Contains(subgraph_str_representation)
+          ? subgraph_stores.GetSubGraphDesc(subgraph_str_representation)
+          : subgraph_stores.CreateSubGraphDesc(subgraph_str_representation, user_config);
+
+  subgraph_desc.total_frequency += 1;
+
+  // Update the subgraph frequency map - key is the subgraph string representation, value is number of appearances.
+  for (size_t output_index : candidate_output_args_map.at(&node)) {
+    auto shape_str = TensorShapeProtoToString(node.OutputDefs()[output_index]->Shape());
+    subgraph_desc.shape_str_frequency[shape_str]++;
+  }
+
+  subgraph_stores.AddSubGraphInstance(&node, nodes_in_topological_order, subgraph_desc);
+
+  return;
+}
+
+Status MemoryOptimizer::CreateModeCompressionGraph(Graph& graph,
+                                                   const InlinedVector<const Node*>& nodes_in_topological_order,
+                                                   Node*& new_output_node_ptr,
+                                                   Node*& new_compress_node_ptr) const {
+  InlinedHashMap<NodeArg*, NodeArg*> self_contained_outputs_map;
+  ORT_ENFORCE(nodes_in_topological_order.size() == 1, "Mode compression should only be applied to one node.");
+  for (size_t i = 0; i < nodes_in_topological_order.size(); ++i) {
+    // nodes_in_topological_order is assumed to contain one single node.
+    Node* node_to_duplicate = graph.GetNode(nodes_in_topological_order[i]->Index());
+
+    ONNX_NAMESPACE::TypeProto output_data;
+    output_data.mutable_tensor_type()->set_elem_type(node_to_duplicate->MutableOutputDefs()[0]->TypeAsProto()->tensor_type().elem_type());
+    output_data.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_param(MakeString("compress_data_", utils::GetRandomSeed()));
+    auto& data_out_arg = graph.GetOrCreateNodeArg(graph.GenerateNodeArgName(node_to_duplicate->Name() + "_compress_data"), &output_data);
+
+    ONNX_NAMESPACE::TypeProto output_uint32;
+    output_uint32.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_UINT32);
+    output_uint32.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_param(MakeString("compress_mask_", utils::GetRandomSeed()));
+    auto& mask_out_arg = graph.GetOrCreateNodeArg(graph.GenerateNodeArgName(node_to_duplicate->Name() + "_compress_mask"), &output_uint32);
+
+    ONNX_NAMESPACE::TypeProto output_int64;
+    output_int64.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+    output_int64.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(node_to_duplicate->MutableOutputDefs()[0]->Shape()->dim_size());
+    auto& shape_out_arg = graph.GetOrCreateNodeArg(graph.GenerateNodeArgName(node_to_duplicate->Name() + "_shape"), &output_int64);
+
+    Node& compress_node = graph.AddNode(node_to_duplicate->Name() + "_compress",
+                                        "ModeCompress",
+                                        "Compress of " + node_to_duplicate->Name(),
+                                        {node_to_duplicate->MutableOutputDefs()[0]},
+                                        {&data_out_arg, &mask_out_arg, &shape_out_arg},
+                                        nullptr,
+                                        kMSDomain);
+
+    compress_node.SetPriority(static_cast<int>(ExecutionPriority::LOCAL_HIGH));
+    compress_node.SetExecutionProviderType(node_to_duplicate->GetExecutionProviderType());
+    ORT_RETURN_IF_NOT(graph.SetOpSchemaFromRegistryForNode(compress_node),
+                      "Failed to set op schema for added compress node.");
+
+    auto& restored_data_out_arg = graph.GetOrCreateNodeArg(graph.GenerateNodeArgName("restore"),
+                                                           node_to_duplicate->MutableOutputDefs()[0]->TypeAsProto());
+    Node& restore_node = graph.AddNode(node_to_duplicate->Name() + "_restore",
+                                       "ModeRestore",
+                                       "Restore of " + node_to_duplicate->Name(),
+                                       {&data_out_arg, &mask_out_arg, &shape_out_arg},
+                                       {&restored_data_out_arg},
+                                       nullptr,
+                                       kMSDomain);
+
+    restore_node.SetPriority(static_cast<int>(ExecutionPriority::LOCAL_LOW));
+    restore_node.SetExecutionProviderType(node_to_duplicate->GetExecutionProviderType());
+    ORT_RETURN_IF_NOT(graph.SetOpSchemaFromRegistryForNode(restore_node),
+                      "Failed to set op schema for added compress node.");
+
+    // Node& src_node = *node_to_duplicate;
+    // int output_idx = 0;
+    // Node& replacement = restore_node;
+    // int replacement_output_idx = 0;
+    // {
+    //   // get the output edges from node for output_idx
+    //   std::vector<graph_utils::GraphEdge> output_edges = graph_utils::GraphEdge::GetNodeOutputEdges(src_node, output_idx);
+
+    //   std::vector<graph_utils::GraphEdge> filtered_output_edges;
+    //   for (const auto& output_edge : output_edges) {
+    //     Node& mutable_output_edge_node = *graph.GetNode(output_edge.dst_node);
+    //     if (&mutable_output_edge_node != &compress_node) {
+    //       filtered_output_edges.push_back(output_edge);
+    //     }
+    //   }
+
+    //   if (!filtered_output_edges.empty()) {
+    //     // const auto& replacement_name = replacement.MutableOutputDefs()[replacement_output_idx]->Name();
+
+    //     // Remove the output edges of the node first
+    //     graph_utils::GraphEdge::RemoveGraphEdges(graph, filtered_output_edges);
+
+    //     // Create connections between the replacement node and the outgoing nodes
+    //     for (const auto& output_edge : filtered_output_edges) {
+    //       // Take care of subgraph inputs.
+    //       // if (OutputEdgeProvidesImplicitInput(graph, output_edge)) {
+    //       //   Node& mutable_output_edge_node = *graph.GetNode(output_edge.dst_node);
+    //       //   UpdateImplicitInputNameInSubgraph(mutable_output_edge_node, output_edge.arg_name, replacement_name);
+    //       // }
+
+    //       // Add new edge connecting the input with the output nodes directly.
+    //       // This also updates the destination node's input node args
+    //       graph.AddEdge(replacement.Index(), output_edge.dst_node, replacement_output_idx, output_edge.dst_arg_index);
+    //     }
+    //   }
+    // }
+
+    // graph_utils::ReplaceDownstreamNodeInput(graph, *node_to_duplicate, 0, restore_node, 0);
+
+    // Then update edges.
+    new_compress_node_ptr = &compress_node;
+
+    for (size_t j = 0; j < compress_node.MutableOutputDefs().size(); ++j) {
+      graph.UpdateProducerNode(compress_node.MutableOutputDefs()[j]->Name(), compress_node.Index());
+    }
+
+    // Add the edges from the compress_node node to the original node.
+    for (size_t j = 0; j < compress_node.MutableInputDefs().size(); ++j) {
+      NodeArg* input_arg = compress_node.MutableInputDefs()[j];
+      const Node* producer_node = graph.GetProducerNode(input_arg->Name());
+      if (producer_node == nullptr) {
+        // Skip when it is graph input or initializer.
+        continue;
+      }
+      int producer_output_index = optimizer_utils::IndexOfNodeOutput(*producer_node, *input_arg);
+      graph.AddEdge(producer_node->Index(), compress_node.Index(), static_cast<int>(producer_output_index),
+                    static_cast<int>(j));
+
+      graph.AddConsumerNode(input_arg->Name(), &compress_node);
+    }
+
+    new_output_node_ptr = &restore_node;
+    for (size_t j = 0; j < restore_node.MutableOutputDefs().size(); ++j) {
+      graph.UpdateProducerNode(restore_node.MutableOutputDefs()[j]->Name(), restore_node.Index());
+    }
+
+    // Add the edges from the compress_node node to the original node.
+    for (size_t j = 0; j < restore_node.MutableInputDefs().size(); ++j) {
+      NodeArg* input_arg = restore_node.MutableInputDefs()[j];
+      const Node* producer_node = graph.GetProducerNode(input_arg->Name());
+      if (producer_node == nullptr) {
+        // Skip when it is graph input or initializer.
+        continue;
+      }
+      int producer_output_index = optimizer_utils::IndexOfNodeOutput(*producer_node, *input_arg);
+      graph.AddEdge(producer_node->Index(), restore_node.Index(), static_cast<int>(producer_output_index),
+                    static_cast<int>(j));
+
+      graph.AddConsumerNode(input_arg->Name(), &restore_node);
+    }
+  }
+
+  return Status::OK();
+}
 
 }  // namespace onnxruntime

@@ -161,3 +161,9 @@ class TrainingAgent:
         :param state: State of the graph that is used for executing partial graph runs.
         """
         self._training_agent.run_backward(feeds, fetches, state)
+
+    def symbolize_memory_peak(self):
+        """
+        Symbolize the memory peak of the training session.
+        """
+        return self._training_agent.symbolize_memory_peak()

@@ -10,3 +10,5 @@ __all__ = [
 
 from ._statistics_subscriber import StatisticsSubscriber
 from ._subscriber_manager import SubscriberManager
+
+GlobalSubscriberManager = SubscriberManager()
