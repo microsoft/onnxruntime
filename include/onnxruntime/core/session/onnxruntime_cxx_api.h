@@ -1351,7 +1351,7 @@ struct Value : detail::ValueImpl<OrtValue> {
    * \param allocator The allocator to use.
    * \param shape Pointer to the tensor shape dimensions.
    * \param shape_len The number of tensor shape dimensions.
-   * \tparam type The data type.
+   * \param type The data type.
    */
   static Value CreateTensor(OrtAllocator* allocator, const int64_t* shape, size_t shape_len, ONNXTensorElementDataType type);
 
