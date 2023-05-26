@@ -940,9 +940,10 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
     transform_layout_fn = [this](Graph& graph_to_transform, bool& modified,
                                  const IExecutionProvider& execution_provider,
                                  const layout_transformer::DebugGraphFn& debug_graph_fn) -> Status {
+      AllocatorPtr cpu_allocator = std::make_shared<CPUAllocator>();
       ORT_RETURN_IF_ERROR_SESSIONID_(
           layout_transformer::TransformLayoutForEP(graph_to_transform, modified, execution_provider,
-                                                   debug_graph_fn));
+                                                   std::move(cpu_allocator), debug_graph_fn));
 
       if (modified) {
         ORT_RETURN_IF_ERROR_SESSIONID_(
@@ -1266,13 +1267,20 @@ Status PartitionOrtFormatModel(onnxruntime::Graph& graph,
                                const ExecutionProviders& providers,
                                KernelRegistryManager& kernel_registry_manager,
                                SessionState& session_state) {
+  layout_transformer::TransformLayoutFunction transform_layout_fn = nullptr;
+
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   // only provide NCWH to NHWC layout transformer if supported
-  layout_transformer::TransformLayoutFunction transform_layout_fn = layout_transformer::IsSupportedOpset(graph)
-                                                                        ? layout_transformer::TransformLayoutForEP
-                                                                        : nullptr;
-#else   // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
-  layout_transformer::TransformLayoutFunction transform_layout_fn{};
+  if (layout_transformer::IsSupportedOpset(graph)) {
+    transform_layout_fn =
+        [](Graph& graph_to_transform, bool& modified,
+           const IExecutionProvider& execution_provider,
+           const layout_transformer::DebugGraphFn& debug_graph_fn) -> Status {
+      AllocatorPtr cpu_allocator = std::make_shared<CPUAllocator>();
+      return layout_transformer::TransformLayoutForEP(graph_to_transform, modified, execution_provider,
+                                                      std::move(cpu_allocator), debug_graph_fn);
+    };
+  }
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
   GraphPartitioner partitioner(kernel_registry_manager, providers);
@@ -1548,6 +1556,42 @@ common::Status InferenceSession::Initialize() {
             LOGS(*session_logger_, INFO) << "This session will use the CUDA Graph feature as requested by the user.";
             cached_execution_provider_for_graph_replay_.SetExecutionProvider(cuda_ep);
           }
+        }
+      }
+
+      const bool disable_cpu_ep_fallback = session_options_.config_options.GetConfigOrDefault(
+                                               kOrtSessionOptionsDisableCPUEPFallback, "0") == "1";
+
+      // Handle the option to disable the fallback of graph nodes to the CPU EP.
+      // If the user disabled fallback, but also explicitly added the CPU EP to the session, return an error status.
+      // If the user disabled fallback and any graph node is assigned to the CPU EP, return an error status.
+      if (disable_cpu_ep_fallback) {
+        // Returns true if any graph nodes have been assigned to the CPU EP.
+        auto are_nodes_assigned_to_cpu_ep = [](const Graph& graph) -> bool {
+          for (const auto& node : graph.Nodes()) {
+            const auto& node_provider = node.GetExecutionProviderType();
+
+            if (node_provider.empty() || node_provider == onnxruntime::kCpuExecutionProvider) {
+              return true;
+            }
+          }
+
+          return false;
+        };
+
+        if (!execution_providers_.GetCpuProviderWasImplicitlyAdded()) {
+          const char* err_msg =
+              "Conflicting session configuration: explicitly added the CPU EP to the "
+              "session, but also disabled fallback to the CPU EP via session configuration options.";
+
+          LOGS(*session_logger_, ERROR) << err_msg;
+          ORT_RETURN_IF_ERROR_SESSIONID_(ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, err_msg));
+        } else if (are_nodes_assigned_to_cpu_ep(graph)) {
+          const char* err_msg =
+              "This session contains graph nodes that are assigned to the default CPU EP, "
+              "but fallback to CPU EP has been explicitly disabled by the user.";
+          LOGS(*session_logger_, ERROR) << err_msg;
+          ORT_RETURN_IF_ERROR_SESSIONID_(ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, err_msg));
         }
       }
 

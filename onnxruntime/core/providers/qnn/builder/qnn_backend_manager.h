@@ -10,22 +10,29 @@
 #include <dlfcn.h>
 #endif
 
+#include "HTP/QnnHtpDevice.h"
 #include "QnnLog.h"
+#include "System/QnnSystemInterface.h"
 #include "core/common/status.h"
 #include "core/common/logging/logging.h"
+#include "core/common/path_string.h"
 #include "core/providers/qnn/builder/qnn_def.h"
 
 namespace onnxruntime {
 namespace qnn {
 
+class QnnModel;
+
 class QnnBackendManager {
  public:
   QnnBackendManager(std::string backend_path,
                     ProfilingLevel profiling_level,
-                    uint32_t rpc_control_latency)
+                    uint32_t rpc_control_latency,
+                    HtpPerformanceMode htp_performance_mode)
       : backend_path_(backend_path),
         profiling_level_(profiling_level),
-        rpc_control_latency_(rpc_control_latency) {
+        rpc_control_latency_(rpc_control_latency),
+        htp_performance_mode_(htp_performance_mode) {
   }
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(QnnBackendManager);
 
@@ -62,9 +69,19 @@ class QnnBackendManager {
     return CreateContext();
   }
 
-  Status SetupBackend(const logging::Logger& logger);
+  Status DumpQnnContext(const onnxruntime::PathString& context_cache_pathstring,
+                        const std::string& model_name,
+                        const std::string& graph_name);
 
-  Status SetDspPowerConfig();
+  Status LoadCachedQnnContext(const onnxruntime::PathString& context_cache_pathstring, QnnModel& qnn_model);
+
+  Status GetMetadataFromOrtContextFile(const onnxruntime::PathString& model_path);
+
+  Status ValidateWithContextFile(const std::string& model_name, const std::string& graph_name);
+
+  Status SetupBackend(const logging::Logger& logger, bool load_from_cached_context);
+
+  Status SetHtpPowerConfig();
 
   const QNN_INTERFACE_VER_TYPE& GetQnnInterface() { return qnn_interface_; }
 
@@ -89,25 +106,7 @@ class QnnBackendManager {
     }
   }
 
-  void InitializeQnnLog() {
-    const std::map<logging::Severity, QnnLog_Level_t> ort_log_level_to_qnn_log_level = {
-        {logging::Severity::kVERBOSE, QNN_LOG_LEVEL_DEBUG},
-        {logging::Severity::kINFO, QNN_LOG_LEVEL_INFO},
-        {logging::Severity::kWARNING, QNN_LOG_LEVEL_WARN},
-        {logging::Severity::kERROR, QNN_LOG_LEVEL_ERROR},
-        {logging::Severity::kFATAL, QNN_LOG_LEVEL_ERROR}};
-
-    QnnLog_Level_t qnn_log_level = QNN_LOG_LEVEL_WARN;
-    auto ort_log_level = logger_->GetSeverity();
-    auto pos = ort_log_level_to_qnn_log_level.find(ort_log_level);
-    if (pos != ort_log_level_to_qnn_log_level.end()) {
-      qnn_log_level = pos->second;
-    }
-
-    if (QNN_SUCCESS != qnn_interface_.logCreate(QnnLogStdoutCallback, qnn_log_level, &log_handle_)) {
-      LOGS(*logger_, WARNING) << "Unable to initialize logging in the QNN backend.";
-    }
-  }
+  void InitializeQnnLog();
 
   // Terminate logging in the backend
   Status TerminateQnnLog() {
@@ -137,6 +136,8 @@ class QnnBackendManager {
  private:
   void* LoadLib(const char* file_name, int flags, std::string& error_msg);
 
+  Status LoadQnnSystemLib();
+
   Status UnloadLib(void* handle);
 
   void* LibFunction(void* handle, const char* symbol, std::string& error_msg);
@@ -151,13 +152,32 @@ class QnnBackendManager {
     return ptr;
   }
 
+  template <typename F, class T>
+  Status GetQnnInterfaceProviders(const char* lib_path,
+                                  const char* interface_provider_name,
+                                  void** backend_lib_handle,
+                                  T*** interface_providers,
+                                  uint32_t& num_providers);
+
   bool IsDevicePropertySupported();
+
+  template <typename T>
+  std::vector<std::add_pointer_t<std::add_const_t<T>>> ObtainNullTermPtrVector(const std::vector<T>& vec) {
+    std::vector<std::add_pointer_t<std::add_const_t<T>>> ret;
+    for (auto& elem : vec) {
+      ret.push_back(&elem);
+    }
+    ret.push_back(nullptr);
+    return ret;
+  }
 
  private:
   const std::string backend_path_;
   const logging::Logger* logger_ = nullptr;
   QNN_INTERFACE_VER_TYPE qnn_interface_ = QNN_INTERFACE_VER_TYPE_INIT;
+  QNN_SYSTEM_INTERFACE_VER_TYPE qnn_sys_interface_ = QNN_SYSTEM_INTERFACE_VER_TYPE_INIT;
   void* backend_lib_handle_ = nullptr;
+  void* system_lib_handle_ = nullptr;
   Qnn_BackendHandle_t backend_handle_ = nullptr;
   QnnBackend_Config_t** backend_config_ = nullptr;
   Qnn_LogHandle_t log_handle_ = nullptr;
@@ -173,7 +193,14 @@ class QnnBackendManager {
   bool is_npu_backend_ = false;
   Qnn_ProfileHandle_t profile_backend_handle_ = nullptr;
   std::vector<std::string> op_package_paths_;
-  uint32_t rpc_control_latency_;
+  uint32_t rpc_control_latency_ = 0;
+  HtpPerformanceMode htp_performance_mode_;
+  std::string model_name_from_ctx_cache_ = "";
+  std::string graph_name_from_ctx_cache_ = "";
+  bool ctx_metadata_tried_ = false;
+  bool ort_generated_ctx_cache_ = false;
+  bool get_capability_round_2_ = false;
+  uint16_t ort_ctx_metadata_length_ = 0;
 #ifdef _WIN32
   std::set<HMODULE> mod_handles_;
 #endif

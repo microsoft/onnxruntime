@@ -1547,6 +1547,40 @@ TEST(ReductionOpTest, ReduceMean_int32) {
   test.Run();
 }
 
+TEST(ReductionOpTest, ReduceMean_axes_input) {
+  OpTester test("ReduceMean", 18, onnxruntime::kOnnxDomain);
+  test.AddAttribute("keepdims", (int64_t)1);
+  test.AddInput<float>("data", {3, 2, 2},
+                       {1, 2,
+                        3, 4,
+
+                        5, 6,
+                        7, 8,
+
+                        9, 10,
+                        11, 12});
+  test.AddInput<int64_t>("axes", {2}, std::vector<int64_t>{0, 2}, true);
+  test.AddOutput<float>("reduced", {1, 2, 1}, {5.5, 7.5});
+
+  // TODO: DNNL, TensorRT, and OpenVINO dont support "axes" input in opset 18, re-enable after
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kDnnlExecutionProvider, kTensorrtExecutionProvider, kOpenVINOExecutionProvider, kDmlExecutionProvider});
+}
+
+TEST(ReductionOpTest, ReduceMean_do_not_keepdims_axes_input_initializer) {
+  OpTester test("ReduceMean", 18, onnxruntime::kOnnxDomain);
+  test.AddAttribute("keepdims", (int64_t)0);
+  test.AddInput<float>("data", {1, 2, 2},
+                       {1.0f, 2.0f,
+                        3.0f, 4.0f});
+  test.AddInput<int64_t>("axes", {1}, std::vector<int64_t>{1}, true);
+  test.AddOutput<float>("reduced", {1, 2}, {2.0f, 3.0f});
+
+  // TODO: DNNL, TensorRT, and OpenVINO dont support "axes" input in opset 18, re-enable after
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kDnnlExecutionProvider, kTensorrtExecutionProvider, kOpenVINOExecutionProvider, kDmlExecutionProvider});
+}
+
 TEST(ReductionOpTest, ReduceMean0DTensor) {
   OpTester test("ReduceMean");
   test.AddInput<float>("data", {}, {2});
@@ -4838,7 +4872,9 @@ TEST(ReductionOpTest, ReduceSum_RK_parallel) {
     }
   }
   test.AddOutput<float>("reduced", {32}, expected);
-  test.Run();
+
+  // CoreML does not provide 1e-5 precision here (it's off by 1e-4)
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCoreMLExecutionProvider});
 }
 
 TEST(ReductionOpTest, ReduceSum_RK_keepdims) {

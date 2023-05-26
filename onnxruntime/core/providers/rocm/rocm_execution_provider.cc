@@ -19,6 +19,10 @@
 #include "orttraining/training_ops/rocm/rocm_training_kernels.h"
 #endif
 
+#ifdef USE_TRITON_KERNEL
+#include "core/providers/rocm/triton_kernel.h"
+#endif
+
 using namespace onnxruntime::common;
 
 namespace onnxruntime {
@@ -116,7 +120,12 @@ AllocatorPtr ROCMExecutionProvider::CreateRocmAllocator(OrtDevice::DeviceId devi
         device_id,
         true,
         {default_memory_arena_cfg ? *default_memory_arena_cfg
-                                  : OrtArenaCfg(gpu_mem_limit, static_cast<int>(arena_extend_strategy), -1, -1, -1)},
+                                  : OrtArenaCfg(gpu_mem_limit,
+                                                static_cast<int>(arena_extend_strategy),
+                                                -1,
+                                                -1,
+                                                -1,
+                                                -1)},
         // make it stream aware
         true,
         // enable cross stream sharing?
@@ -208,6 +217,10 @@ ROCMExecutionProvider::ROCMExecutionProvider(const ROCMExecutionProviderInfo& in
   HIP_CALL_THROW(hipMemGetInfo(&free, &total));
 
   OverrideTunableOpInfoByEnv(info_);
+
+#ifdef USE_TRITON_KERNEL
+  onnxruntime::rocm::LoadOrtTritonKernel();
+#endif
 }
 
 ROCMExecutionProvider::~ROCMExecutionProvider() {

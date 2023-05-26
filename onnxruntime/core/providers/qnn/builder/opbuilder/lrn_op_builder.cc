@@ -174,7 +174,7 @@ Status LRNOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrap
   }
 
   return ProcessOutputs(qnn_model_wrapper, node_unit, std::move(input_names), std::move(param_tensor_names),
-                        logger, is_quantized_model, do_op_validation);
+                        logger, is_quantized_model, do_op_validation, GetQnnOpType(node_unit.OpType()));
 }
 
 void CreateLRNOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {

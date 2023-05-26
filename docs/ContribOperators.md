@@ -428,7 +428,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Size of the vocabulary. If not provided, it will be inferred from the decoder subgraph's output shape</dd>
 </dl>
 
-#### Inputs (5 - 11)
+#### Inputs (5 - 12)
 
 <dl>
 <dt><tt>input_ids</tt> : F</dt>
@@ -453,6 +453,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Custom attention mask. Shape is (batch_size, sequence_length)</dd>
 <dt><tt>decoder_input_ids</tt> (optional) : I</dt>
 <dd>The forced input id sequence for the decoder subgraph. Shape is (batch_size, initial_sequence_length)</dd>
+<dt><tt>logits_processor</tt> (optional) : I</dt>
+<dd>Specific logits processor for different types of beamsearch models. Default value 0 means no specific logit processor. Accepts value >= 0. Shape is (1)</dd>
 </dl>
 
 #### Outputs (1 - 3)
@@ -1132,7 +1134,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Custom scale will be used if specified. Default value is 1/sqrt(head_size)</dd>
 </dl>
 
-#### Inputs (1 - 10)
+#### Inputs (1 - 11)
 
 <dl>
 <dt><tt>query</tt> : T</dt>
@@ -1155,6 +1157,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>The beam width that is being used while decoding.If not provided, the beam width will be assumed to be 1.</dd>
 <dt><tt>cache_indirection</tt> (optional) : M</dt>
 <dd>A buffer of shape [batch_size, beam_width, max_output_length] where an [i, j, k] entry specifieswhich beam the 'k' th token came from for the 'j' th beam for batch 'i' in the current iteration</dd>
+<dt><tt>bias</tt> (optional) : T</dt>
+<dd>Bias tensor with shape (hidden_size + hidden_size + v_hidden_size) from input projection</dd>
 </dl>
 
 #### Outputs (1 - 3)
