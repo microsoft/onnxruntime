@@ -288,7 +288,8 @@ struct IsTensorContainedType : public IsAnyOf<T, float, uint8_t, int8_t, uint16_
                                               int32_t, int64_t, std::string, bool, MLFloat16,
                                               double, uint32_t, uint64_t, BFloat16
 #if !defined(DISABLE_FLOAT8_TYPES)
-                                              , Float8E4M3FN, Float8E4M3FNUZ, Float8E5M2, Float8E5M2FNUZ
+                                              ,
+                                              Float8E4M3FN, Float8E4M3FNUZ, Float8E5M2, Float8E5M2FNUZ
 #endif
                                               > {
 };
@@ -302,7 +303,8 @@ struct IsSparseTensorContainedType : public IsAnyOf<T, float, uint8_t, int8_t, u
                                                     int32_t, int64_t, std::string, bool, MLFloat16,
                                                     double, uint32_t, uint64_t, BFloat16
 #if !defined(DISABLE_FLOAT8_TYPES)
-                                                    , Float8E4M3FN, Float8E4M3FNUZ, Float8E5M2, Float8E5M2FNUZ
+                                                    ,
+                                                    Float8E4M3FN, Float8E4M3FNUZ, Float8E5M2, Float8E5M2FNUZ
 #endif
                                                     > {
 };
@@ -653,7 +655,7 @@ class OptionalType :
 #if !defined(DISABLE_OPTIONAL_TYPE)
   OptionalType()
 #else
-  OptionalType() : DisabledTypeBase{DataTypeImpl::GeneralType::kOptional, 0}
+  OptionalType() : DisabledTypeBase { DataTypeImpl::GeneralType::kOptional, 0 }
 #endif
   {
     using namespace data_types_internal;

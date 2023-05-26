@@ -969,13 +969,13 @@ struct ProviderHostImpl : ProviderHost {
   double* Tensor__MutableData_double(Tensor* p) override { return p->MutableData<double>(); }
   BFloat16* Tensor__MutableData_BFloat16(Tensor* p) override { return p->MutableData<BFloat16>(); }
   MLFloat16* Tensor__MutableData_MLFloat16(Tensor* p) override { return p->MutableData<MLFloat16>(); }
-  
-  #if !defined(DISABLE_FLOAT8_TYPES)
+
+#if !defined(DISABLE_FLOAT8_TYPES)
   Float8E4M3FN* Tensor__MutableData_Float8E4M3FN(Tensor* p) override { return p->MutableData<Float8E4M3FN>(); }
   Float8E4M3FNUZ* Tensor__MutableData_Float8E4M3FNUZ(Tensor* p) override { return p->MutableData<Float8E4M3FNUZ>(); }
   Float8E5M2* Tensor__MutableData_Float8E5M2(Tensor* p) override { return p->MutableData<Float8E5M2>(); }
   Float8E5M2FNUZ* Tensor__MutableData_Float8E5M2FNUZ(Tensor* p) override { return p->MutableData<Float8E5M2FNUZ>(); }
-  #endif
+#endif
 
   const bool* Tensor__Data_bool(const Tensor* p) override { return p->Data<bool>(); }
   const int8_t* Tensor__Data_int8(const Tensor* p) override { return p->Data<int8_t>(); }

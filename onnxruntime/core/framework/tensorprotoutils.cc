@@ -1514,7 +1514,7 @@ Status UnpackInitializerData(const onnx::TensorProto& initializer,
     CASE_UNPACK(FLOAT8E4M3FNUZ, onnxruntime::Float8E4M3FNUZ, int32_data_size);
     CASE_UNPACK(FLOAT8E5M2, onnxruntime::Float8E5M2, int32_data_size);
     CASE_UNPACK(FLOAT8E5M2FNUZ, onnxruntime::Float8E5M2FNUZ, int32_data_size);
-  #endif
+#endif
     default:
       break;
   }
