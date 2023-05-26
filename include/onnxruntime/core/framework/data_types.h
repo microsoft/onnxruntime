@@ -655,7 +655,7 @@ class OptionalType :
 #if !defined(DISABLE_OPTIONAL_TYPE)
   OptionalType()
 #else
-  OptionalType() : DisabledTypeBase { DataTypeImpl::GeneralType::kOptional, 0 }
+  OptionalType() : DisabledTypeBase{DataTypeImpl::GeneralType::kOptional, 0}
 #endif
   {
     using namespace data_types_internal;
