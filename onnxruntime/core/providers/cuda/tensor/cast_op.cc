@@ -85,6 +85,18 @@ const std::vector<MLDataType>& CastOpTypeConstraints() {
     }                                                                                       \
     break;
 
+#define CASE_CHECKNOSAT(TP_TYPE, DstT)                                                      \
+  case TP_TYPE:                                                                             \
+    if (count > 0) {                                                                        \
+      ORT_ENFORCE(!saturate_, "saturate_=False is only supported for float and float16.");  \
+      Impl_Cast<CudaSrcT, typename ToCudaType<DstT>::MappedType>(                           \
+          Stream(context),                                                                  \
+          x_data,                                                                           \
+          reinterpret_cast<typename ToCudaType<DstT>::MappedType*>(Y->MutableData<DstT>()), \
+          count);                                                                           \
+    }                                                                                       \
+    break;
+
 #define CASE_SAT(TP_TYPE, DstT)                                                             \
   case TP_TYPE:                                                                             \
     if (count > 0) {                                                                        \
@@ -120,8 +132,9 @@ Status Cast<SrcT>::ComputeInternal(OpKernelContext* context) const {
     CASE(TensorProto_DataType_UINT32, uint32_t)
     CASE(TensorProto_DataType_UINT64, uint64_t)
     CASE(TensorProto_DataType_BOOL, bool)
-    CASE(TensorProto_DataType_FLOAT8E4M3FN, Float8E4M3FN)
-    CASE(TensorProto_DataType_FLOAT8E5M2, Float8E5M2)
+    // By default saturate is true. Case saturate False is only supported for float, float16 for the CUDA provider.
+    CASE_CHECKNOSAT(TensorProto_DataType_FLOAT8E4M3FN, Float8E4M3FN)
+    CASE_CHECKNOSAT(TensorProto_DataType_FLOAT8E5M2, Float8E5M2)
     case TensorProto_DataType_STRING:
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Casting to and from strings is not supported yet.");
     case TensorProto_DataType_UNDEFINED:
@@ -170,6 +183,13 @@ Status Cast<SrcT>::ComputeInternal(OpKernelContext* context) const {
 COMPUTE_INTERNAL_FL16_32(float)
 COMPUTE_INTERNAL_FL16_32(MLFloat16)
 
+// TODO: enable BFLOAT16 in another PR.
+/*
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
+COMPUTE_INTERNAL_FL16_32(BFloat16)
+#endif
+*/
+
 #define COMPUTE_INTERNAL_FL8(FLOAT_TYPE)                                                    \
   template <>                                                                               \
   Status Cast<FLOAT_TYPE>::ComputeInternal(OpKernelContext* context) const {                \
@@ -186,6 +206,15 @@ COMPUTE_INTERNAL_FL16_32(MLFloat16)
               Stream(context),                                                              \
               x_data,                                                                       \
               reinterpret_cast<half*>(Y->MutableData<MLFloat16>()),                         \
+              count);                                                                       \
+        }                                                                                   \
+        break;                                                                              \
+      case TensorProto_DataType_BFLOAT16:                                                   \
+        if (count > 0) {                                                                    \
+          Impl_Cast<FLOAT_TYPE, half>(                                                      \
+              Stream(context),                                                              \
+              x_data,                                                                       \
+              reinterpret_cast<half*>(Y->MutableData<BFloat16>()),                          \
               count);                                                                       \
         }                                                                                   \
         break;                                                                              \

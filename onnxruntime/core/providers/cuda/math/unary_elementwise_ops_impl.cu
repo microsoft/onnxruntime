@@ -191,6 +191,18 @@ struct OP_CastNoSat {
     } \
   }; \
   template <> \
+  struct OP_CastSat<__nv_bfloat16, T> { \
+    __device__ __inline__ T operator()(const __nv_bfloat16& v) const { \
+      return T(static_cast<unsigned char>(__nv_cvt_bfloat16raw_to_fp8(v, __NV_SATFINITE, NVT)), T::FromBits()); \
+    } \
+  }; \
+  template <> \
+  struct OP_CastNoSat<__nv_bfloat16, T> { \
+    __device__ __inline__ T operator()(const __nv_bfloat16& v) const { \
+      return T(static_cast<unsigned char>(__nv_cvt_bfloat16raw_to_fp8(v, __NV_NOSAT, NVT)), T::FromBits()); \
+    } \
+  }; \
+  template <> \
   struct OP_CastSat<float, T> { \
     __device__ __inline__ T operator()(const float& v) const { \
       return T(static_cast<unsigned char>(__nv_cvt_float_to_fp8(v, __NV_SATFINITE, NVT)), T::FromBits()); \
@@ -216,6 +228,18 @@ struct OP_CastNoSat {
   struct OP_CastNoSat<half, T> { \
     __device__ __inline__ T operator()(const half& v) const { \
       return T(__half2float(v), false); \
+    } \
+  }; \
+  template <> \
+  struct OP_CastSat<__nv_bfloat16, T> { \
+    __device__ __inline__ T operator()(const __nv_bfloat16& v) const { \
+      return T(__bfloat162float(v), true); \
+    } \
+  }; \
+  template <> \
+  struct OP_CastNoSat<__nv_bfloat16, T> { \
+    __device__ __inline__ T operator()(const __nv_bfloat16& v) const { \
+      return T(__bfloat162float(v), false); \
     } \
   }; \
   template <> \
@@ -247,11 +271,16 @@ OP_CAST(Float8E5M2, __NV_E5M2)
 
 EXPLICIT_IMPL_CASTSAT(float, Float8E4M3FN)
 EXPLICIT_IMPL_CASTSAT(half, Float8E4M3FN)
+EXPLICIT_IMPL_CASTSAT(__nv_bfloat16, Float8E4M3FN)
 EXPLICIT_IMPL_CASTSAT(float, Float8E5M2)
 EXPLICIT_IMPL_CASTSAT(half, Float8E5M2)
+EXPLICIT_IMPL_CASTSAT(__nv_bfloat16, Float8E5M2)
 
-
-
+// TODO: enable bfloat16 in another PR.
+/*
+EXPLICIT_IMPL_CASTSAT(__nv_bfloat16, Float8E4M3FN)
+EXPLICIT_IMPL_CASTSAT(__nv_bfloat16, Float8E5M2)
+*/
 
 }  // namespace cuda
 }  // namespace onnxruntime

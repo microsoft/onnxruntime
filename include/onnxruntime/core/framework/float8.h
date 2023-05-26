@@ -34,7 +34,7 @@ struct Float8E4M3FN {
   static constexpr ORT_HOST_DEVICE FromBitsT FromBits() { return FromBitsT(); }
   constexpr ORT_HOST_DEVICE Float8E4M3FN(unsigned char bits, FromBitsT) : val(bits) {}
 
-  inline ORT_HOST_DEVICE Float8E4M3FN(float v, bool saturate = true) {
+  inline explicit ORT_HOST_DEVICE Float8E4M3FN(float v, bool saturate = true) {
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 11080
     val = __nv_cvt_float_to_fp8(v, saturate ? __NV_SATFINITE : __NV_NOSAT, __NV_E4M3);
 #else
@@ -145,7 +145,7 @@ struct Float8E4M3FN {
   inline ORT_HOST_DEVICE operator float() const { return ToFloat(); }
 
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 11080
-  ORT_HOST_DEVICE Float8E4M3FN(const __nv_fp8_e4m3& value) { val = *reinterpret_cast<const unsigned char*>(&value); }
+  explicit ORT_HOST_DEVICE Float8E4M3FN(const __nv_fp8_e4m3& value) { val = *reinterpret_cast<const unsigned char*>(&value); }
   explicit ORT_HOST_DEVICE operator __nv_fp8_e4m3() const { return *reinterpret_cast<const __nv_fp8_e4m3*>(&val); }
 #endif
 };
@@ -197,7 +197,7 @@ struct Float8E4M3FNUZ {
   static constexpr ORT_HOST_DEVICE FromBitsT FromBits() { return FromBitsT(); }
   constexpr ORT_HOST_DEVICE Float8E4M3FNUZ(unsigned char bits, FromBitsT) : val(bits) {}
 
-  inline ORT_HOST_DEVICE Float8E4M3FNUZ(float v, bool saturate = true) {
+  inline explicit ORT_HOST_DEVICE Float8E4M3FNUZ(float v, bool saturate = true) {
     // This type does not exist on CUDA.
     uint32_t b;
     std::memcpy(&b, &v, sizeof(b));
@@ -348,7 +348,7 @@ struct Float8E5M2 {
   static constexpr ORT_HOST_DEVICE FromBitsT FromBits() { return FromBitsT(); }
   constexpr ORT_HOST_DEVICE Float8E5M2(unsigned char bits, FromBitsT) : val(bits) {}
 
-  inline ORT_HOST_DEVICE Float8E5M2(float v, bool saturate = true) {
+  inline explicit ORT_HOST_DEVICE Float8E5M2(float v, bool saturate = true) {
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 11080
     val = __nv_cvt_float_to_fp8(v, saturate ? __NV_SATFINITE : __NV_NOSAT, __NV_E5M2);
 #else
@@ -506,7 +506,7 @@ struct Float8E5M2FNUZ {
   static constexpr ORT_HOST_DEVICE FromBitsT FromBits() { return FromBitsT(); }
   constexpr ORT_HOST_DEVICE Float8E5M2FNUZ(unsigned char bits, FromBitsT) : val(bits) {}
 
-  inline ORT_HOST_DEVICE Float8E5M2FNUZ(float v, bool saturate = true) {
+  inline explicit ORT_HOST_DEVICE Float8E5M2FNUZ(float v, bool saturate = true) {
     // This type does not exist on CUDA.
     uint32_t b;
     std::memcpy(&b, &v, sizeof(b));
