@@ -4,6 +4,7 @@
 # --------------------------------------------------------------------------
 
 import warnings
+from typing import Tuple
 
 import onnx
 import torch
@@ -20,7 +21,7 @@ from .debug_options import DebugOptions
 class InferenceManager(GraphExecutionManager):
     """Concrete instance of GraphExecutionManager that is able to manage the inference model
 
-    InferenceManager is resposible for building and running the forward graph of the inference model
+    InferenceManager is responsible for building and running the forward graph of the inference model
     """
 
     def __init__(self, model, debug_options: DebugOptions, fallback_manager: _FallbackManager):
@@ -28,9 +29,25 @@ class InferenceManager(GraphExecutionManager):
         self._export_mode = torch.onnx.TrainingMode.EVAL
 
     @staticmethod
-    def execution_session_run_forward(execution_session, onnx_model, device, *inputs):
-        """Runs the forward graph on execution_session with given model inputs and device"""
+    def execution_session_run_forward(
+        execution_session,
+        onnx_model: onnx.ModelProto,
+        device: torch.device,
+        *inputs,
+    ) -> Tuple[Tuple[torch.Tensor, ...], _RunStateInfo]:
+        """Runs the forward pass on `execution_session` with given `onnx_model`, `device` and `inputs`
 
+        Args:
+            execution_session InferenceAgent: Agent which runs inference
+            onnx_model (onnx.ModelProto): ONNX model
+            device (torch.device): PyTorch device
+            inputs: (torch.Tensor or a container of): User inputs passed from ORTModule.forward().
+
+        Returns:
+            Returns a tuple (user_outputs, run_info):
+                user_outputs: The model output (either torch.Tensor or a container of torch.Tensor)
+                run_info: A _RunStateInfo which contains extra information about the execution of the graph
+        """
         # TODO: Try to reuse the output buffers as some of the output tensors are same sizes,
         #   especially the backward graph outputs.
         # REVIEW(codemzs): Consolidate Training Agent with InferenceAgent on C++ side to not
@@ -58,6 +75,14 @@ class InferenceManager(GraphExecutionManager):
         ONNX model is exported the first time this method is executed.
         Next, we build an optimized inference graph with module_graph_builder.
         Finally, we instantiate the ONNX Runtime InferenceSession through the InferenceAgent.
+
+        The call stack is as follows:
+            ORTModule.forward(*inputs, **kwargs) ->
+            ORTModule._torch_module.forward(*inputs, **kwargs) where _torch_module is a TorchModuleORT instance ->
+            ORTModule._torch_module._execution_manager(is_training()).forward(*inputs, **kwargs) where:
+                TorchModuleORT._execution_manager(true) is a TrainingManager instance;
+                and TorchModuleORT._execution_manager(false) is an InferenceManager instance.
+
         """
 
         # Fallback to PyTorch due to failures *external* to forward(),
