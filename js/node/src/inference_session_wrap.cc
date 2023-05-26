@@ -8,18 +8,14 @@
 #include "run_options_helper.h"
 #include "session_options_helper.h"
 #include "tensor_helper.h"
-#ifdef _WIN32
-#include "DirectML.h"
-#endif
+#include "directml_load_helper.h"
 
 Napi::FunctionReference InferenceSessionWrap::constructor;
 Ort::Env *InferenceSessionWrap::ortEnv;
 
 Napi::Object InferenceSessionWrap::Init(Napi::Env env, Napi::Object exports) {
 #ifdef _WIN32
-  // this will load and call DirectML.dll to enforce using version from the binding directory
-  const IID MY_IID = { 0x12345678, 0x1234, 0x1234, { 0x12, 0x34, 0x56, 0x78, 0x9A, 0xBC, 0xDE, 0xF0 } };
-  DMLCreateDevice1(nullptr, DML_CREATE_DEVICE_FLAG_NONE, DML_FEATURE_LEVEL_4_0, MY_IID, nullptr);
+  LoadDirectMLDll();
 #endif
   // create ONNX runtime env
   Ort::InitApi();
