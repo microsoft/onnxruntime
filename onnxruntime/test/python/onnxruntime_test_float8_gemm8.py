@@ -164,6 +164,42 @@ class TestFloat8Gemm8(unittest.TestCase):
     def test_model_gemm_e5m2(self):
         self.common_test_model_gemm("FLOAT8E5M2", compute_type="CUBLAS_COMPUTE_32F")
 
+    def get_model_gemm_options(self, dtypes, computeType, fastAccumulationMode,
+                               smCount, alpha=1.0, beta=0.0, transA=1, transB=0):
+        proto_type = getattr(TensorProto, float_name)
+
+        a = make_tensor_value_info("A", TensorProto.FLOAT, [None, None])
+        b = make_tensor_value_info("B", TensorProto.FLOAT, [None, None])
+        c = None if not add_bias else make_tensor_value_info("C", TensorProto.FLOAT, [None, None])
+        d = make_tensor_value_info("D", TensorProto.FLOAT, [None, None])
+
+        nodes = [
+            make_node("Cast", ["A"], ["Af"], to=proto_type),
+            make_node("Cast", ["B"], ["Bf"], to=proto_type),
+            None if c is None else make_node("Cast", ["C"], ["Cf"], to=proto_type),
+            make_node(
+                "Gemm",
+                ["Af", "Bf"] if c is None else ["Af", "Bf", "Cf"],
+                ["Df"],
+                transA=transA,
+                transB=transB,
+                alpha=alpha,
+                beta=beta,
+            ),
+            make_node("Cast", ["Df"], ["D"], to=TensorProto.FLOAT),
+        ]
+        nodes = [n for n in nodes if n is not None]
+        graph = make_graph(nodes, "gemm", [a, b] if c is None else [a, b, c], [d])
+        onnx_model = make_model(graph, opset_imports=[make_opsetid("", 19)], ir_version=9)
+        check_model(onnx_model)
+        return onnx_model
+
+    def test_gemm_float8_all_combinations(self):
+        types = [TensorProto.FLOAT, TensorProto.FLOAT16, TensorProto.BFLOAT16, TensorProto.FLOAT8E4M3FN, TensorProto.FLOAT8E5M2]
+        beta = [0.0, 1.0]
+        computeType = ["CUBLAS_COMPUTE_16F", "CUBLAS_COMPUTE_32F", "CUBLAS_COMPUTE_32F_FAST_16F", "CUBLAS_COMPUTE_32F_FAST_16BF", "CUBLAS_COMPUTE_32F_FAST_TF32"]
+        fastAccumulationMode = [0, 1]
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
