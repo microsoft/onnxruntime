@@ -4,4 +4,8 @@
 #include "softmax.h"
 
 namespace onnxruntime {
+namespace js {
+
+
+}  // namespace js
 }  // namespace onnxruntime
