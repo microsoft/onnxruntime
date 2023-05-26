@@ -30,6 +30,7 @@ ONNX Runtime QNN Execution Provider has been built and tested with QNN 2.10.x an
 
 ## Build
 For build instructions, please see the [BUILD page](../build/eps.md#qnn).
+[prebuilt NuGet package](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.QNN)
 
 ## Configuration Options
 The QNN Execution Provider supports a number of configuration options. The `provider_option_keys`, `provider_options_values` enable different options for the application. Each `provider_options_keys` accepts values as shown below:
@@ -93,4 +94,4 @@ sess = ort.InferenceSession(model_path, providers=['QNNExecutionProvider'], prov
 
 ### Inference example
 
-[Image classification with SqueezeNet in CPP using QNN Execution Provider with QNN CPU Backend](https://github.com/microsoft/onnxruntime-inference-examples/tree/main/c_cxx/QNN_EP)
+[Image classification with Mobilenetv2 in CPP using QNN Execution Provider with QNN CPU & HTP Backend](https://github.com/microsoft/onnxruntime-inference-examples/tree/main/c_cxx/QNN_EP)
