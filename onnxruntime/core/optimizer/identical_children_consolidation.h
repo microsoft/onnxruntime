@@ -44,7 +44,7 @@ class IdenticalChildrenConsolidation : public GraphTransformer {
   Status ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const override;
   bool IsSupportedParentNode(const Node* node) const;
   std::vector<std::vector<NodeIndex> > DivideIdenticalChildrenIntoGroups(const Graph& graph, Node* node, const string_view& op) const;
-  [[nodiscard]] std::string_view IdentityBuilder(const Graph& graph, const Node& node) const;
+  [[nodiscard]] string_view IdentityBuilder(const Graph& graph, const Node& node) const;
 
   unordered_map<string_view, unordered_set<string_view> > supported_ops = {
       {"DequantizeLinear", {"QuantizeLinear"}},
