@@ -1747,9 +1747,8 @@ class PlannerImpl {
 
 #else
 
-  void
-  PartitionIntoStreams(const logging::Logger& logger, const ExecutionProviders& execution_providers,
-                       const PathString& partition_config_file) {
+  void PartitionIntoStreams(const logging::Logger& logger, const ExecutionProviders& execution_providers,
+                            const PathString& partition_config_file) {
     auto partitioner = IGraphPartitioner::CreateGraphPartitioner(logger, partition_config_file);
     auto status = partitioner->PartitionGraph(graph_viewer_, execution_providers, stream_nodes_, context_->GetExecutionOrder());
     ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
