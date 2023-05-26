@@ -32,6 +32,8 @@ int GetMinRequiredCudaComputeCapability<BFloat16>() {
   return 800;
 }
 
+#if !defined(DISABLE_FLOAT8_TYPE)
+
 template <>
 int GetMinRequiredCudaComputeCapability<Float8E4M3FN>() {
   return 800;
@@ -41,6 +43,8 @@ template <>
 int GetMinRequiredCudaComputeCapability<Float8E5M2>() {
   return 800;
 }
+
+#endif
 
 enum Saturate { True,
                 False,
