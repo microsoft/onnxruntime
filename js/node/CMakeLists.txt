@@ -69,28 +69,11 @@ if (WIN32)
   else()
     message(FATAL_ERROR "Unsupported architecture")
   endif()
-
-  file(GLOB ONNXRUNTIME_LIBRARIES "${ONNXRUNTIME_BUILD_DIR}/${CMAKE_BUILD_TYPE}/onnxruntime_*.lib")
-  file(GLOB ONNX_LIBRARIES "${ONNXRUNTIME_BUILD_DIR}/_deps/onnx-build/${CMAKE_BUILD_TYPE}/*.lib")
-  file(GLOB ABSL_LIBRARIES "${ONNXRUNTIME_BUILD_DIR}/_deps/abseil_cpp-build/absl/hash/${CMAKE_BUILD_TYPE}/*.lib")
-  file(GLOB ABSL_CONTAINER_LIBRARIES "${ONNXRUNTIME_BUILD_DIR}/_deps/abseil_cpp-build/absl/container/${CMAKE_BUILD_TYPE}/*.lib")
-  file(GLOB ABSL_BASE_LIBRARIES "${ONNXRUNTIME_BUILD_DIR}/_deps/abseil_cpp-build/absl/base/${CMAKE_BUILD_TYPE}/*.lib")
-  file(GLOB PROTOBUF_LIBRARIES "${ONNXRUNTIME_BUILD_DIR}/_deps/protobuf-build/${CMAKE_BUILD_TYPE}/*.lib")
-  file(GLOB RE2_LIBRARIES "${ONNXRUNTIME_BUILD_DIR}/_deps/re2-build/${CMAKE_BUILD_TYPE}/*.lib")
+  file(GLOB DIRECTML_LIBRARIES "${ONNXRUNTIME_BUILD_DIR}/../../Windows/packages/Microsoft.AI.DirectML.*/bin/${ARCH}/DirectML.lib")
   target_link_libraries(onnxruntime_binding PRIVATE
-    ${ONNXRUNTIME_LIBRARIES}
-    ${ONNX_LIBRARIES}
-    ${ABSL_LIBRARIES}
-    ${ABSL_CONTAINER_LIBRARIES}
-    ${ABSL_BASE_LIBRARIES}
-    ${PROTOBUF_LIBRARIES}
-    ${RE2_LIBRARIES}
-    "${ONNXRUNTIME_BUILD_DIR}/../../Windows/packages/Microsoft.AI.DirectML.1.12.0/bin/${ARCH}/DirectML.lib"
-    "d3d12.lib"
-    "dxgi.lib"
-    "dxguid.lib"
+    onnxruntime.lib
+    ${DIRECTML_LIBRARIES}
   )
-  #target_link_libraries(onnxruntime_binding PRIVATE onnxruntime.lib)
 elseif (APPLE)
   target_link_libraries(onnxruntime_binding PRIVATE libonnxruntime.${ort_version}.dylib)
   set_target_properties(onnxruntime_binding PROPERTIES INSTALL_RPATH "@loader_path")
