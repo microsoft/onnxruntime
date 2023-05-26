@@ -28,6 +28,7 @@ endif()
 # include dirs
 include_directories(${CMAKE_JS_INC})
 include_directories(${CMAKE_SOURCE_DIR}/../../include/onnxruntime/core/session)
+include_directories(${CMAKE_SOURCE_DIR}/../../include/onnxruntime/core/providers/dml)
 include_directories(${CMAKE_SOURCE_DIR}/node_modules/node-addon-api)
 
 # source files
@@ -53,7 +54,43 @@ else()
 endif()
 
 if (WIN32)
-  target_link_libraries(onnxruntime_binding PRIVATE onnxruntime.lib)
+  if(${CMAKE_SYSTEM_PROCESSOR} MATCHES "^arm")
+    if(CMAKE_SIZEOF_VOID_P EQUAL 8)
+      set(ARCH "arm64-win")
+    else()
+      set(ARCH "arm-win")
+    endif()
+  elseif(${CMAKE_SYSTEM_PROCESSOR} MATCHES "(x86)|(X86)|(amd64)|(AMD64)")
+    if(CMAKE_SIZEOF_VOID_P EQUAL 8)
+      set(ARCH "x64-win")
+    else()
+      set(ARCH "x86-win")
+    endif()
+  else()
+    message(FATAL_ERROR "Unsupported architecture")
+  endif()
+
+  file(GLOB ONNXRUNTIME_LIBRARIES "${ONNXRUNTIME_BUILD_DIR}/${CMAKE_BUILD_TYPE}/onnxruntime_*.lib")
+  file(GLOB ONNX_LIBRARIES "${ONNXRUNTIME_BUILD_DIR}/_deps/onnx-build/${CMAKE_BUILD_TYPE}/*.lib")
+  file(GLOB ABSL_LIBRARIES "${ONNXRUNTIME_BUILD_DIR}/_deps/abseil_cpp-build/absl/hash/${CMAKE_BUILD_TYPE}/*.lib")
+  file(GLOB ABSL_CONTAINER_LIBRARIES "${ONNXRUNTIME_BUILD_DIR}/_deps/abseil_cpp-build/absl/container/${CMAKE_BUILD_TYPE}/*.lib")
+  file(GLOB ABSL_BASE_LIBRARIES "${ONNXRUNTIME_BUILD_DIR}/_deps/abseil_cpp-build/absl/base/${CMAKE_BUILD_TYPE}/*.lib")
+  file(GLOB PROTOBUF_LIBRARIES "${ONNXRUNTIME_BUILD_DIR}/_deps/protobuf-build/${CMAKE_BUILD_TYPE}/*.lib")
+  file(GLOB RE2_LIBRARIES "${ONNXRUNTIME_BUILD_DIR}/_deps/re2-build/${CMAKE_BUILD_TYPE}/*.lib")
+  target_link_libraries(onnxruntime_binding PRIVATE
+    ${ONNXRUNTIME_LIBRARIES}
+    ${ONNX_LIBRARIES}
+    ${ABSL_LIBRARIES}
+    ${ABSL_CONTAINER_LIBRARIES}
+    ${ABSL_BASE_LIBRARIES}
+    ${PROTOBUF_LIBRARIES}
+    ${RE2_LIBRARIES}
+    "${ONNXRUNTIME_BUILD_DIR}/../../Windows/packages/Microsoft.AI.DirectML.1.12.0/bin/${ARCH}/DirectML.lib"
+    "d3d12.lib"
+    "dxgi.lib"
+    "dxguid.lib"
+  )
+  #target_link_libraries(onnxruntime_binding PRIVATE onnxruntime.lib)
 elseif (APPLE)
   target_link_libraries(onnxruntime_binding PRIVATE libonnxruntime.${ort_version}.dylib)
   set_target_properties(onnxruntime_binding PROPERTIES INSTALL_RPATH "@loader_path")

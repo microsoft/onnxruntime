@@ -10,7 +10,7 @@
 #include "common.h"
 #include "session_options_helper.h"
 #ifdef _WIN32
-#include <dml_provider_factory.h>
+#include "dml_provider_factory.h"
 #endif
 
 const std::unordered_map<std::string, GraphOptimizationLevel> GRAPH_OPT_LEVEL_NAME_TO_ID_MAP = {
