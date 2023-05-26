@@ -127,10 +127,11 @@ TEST(SoftmaxOperator, LargeNumber) {
 }
 
 // np.random.seed(123)   # Use a seed so we can replicate the input and expected values here and in python
+// # create 60 input values
 // x = np.abs(np.random.randn(3, 4, 5).astype(np.float32))
-static std::vector<int64_t> three_dimensions = {3, 4, 5};
-static std::vector<int64_t> four_dimensions = {1, 3, 4, 5};
-static std::vector<float> x_vals_3dims = {
+static const std::vector<int64_t> three_dimensions = {3, 4, 5};
+static const std::vector<int64_t> four_dimensions = {1, 3, 4, 5};
+static const std::vector<float> input_vals_60 = {
     1.0856307f, 0.99734545f, 0.2829785f, 1.5062947f, 0.5786002f,
     1.6514366f, 2.4266791f, 0.42891264f, 1.2659363f, 0.8667404f,
     0.6788862f, 0.09470897f, 1.4913896f, 0.638902f, 0.44398195f,
@@ -147,7 +148,7 @@ static std::vector<float> x_vals_3dims = {
     1.0693159f, 0.8907064f, 1.7548862f, 1.4956441f, 1.0693927f};
 
 TEST(SoftmaxOperator, ThreeAndFourDimsAxis0) {
-  // x = <see x_vals_3dims>
+  // x = <see input_vals_60>
   // node = onnx.helper.make_node('Softmax', inputs = ['x'], outputs = ['y'], axis = 0)
   // y = softmax_2d(x.reshape(1, 60)).reshape(3, 4, 5)
   // expect(node, inputs = [x], outputs = [y],
@@ -169,17 +170,17 @@ TEST(SoftmaxOperator, ThreeAndFourDimsAxis0) {
       0.017545262f, 0.0135920765f, 0.027506188f, 0.010684152f, 0.0049549243f,
       0.01401341f, 0.011721271f, 0.027815264f, 0.021463264f, 0.014014485f};
 
-  RunTest(x_vals_3dims, expected_vals, three_dimensions, /*opset*/ 7, /*axis*/ 0,
+  RunTest(input_vals_60, expected_vals, three_dimensions, /*opset*/ 7, /*axis*/ 0,
           // axis=0 is not supported by TensorRT
           {kTensorrtExecutionProvider, kOpenVINOExecutionProvider, kDnnlExecutionProvider});
 
-  RunTest(x_vals_3dims, expected_vals, four_dimensions, /*opset*/ 7, /*axis*/ 0,
+  RunTest(input_vals_60, expected_vals, four_dimensions, /*opset*/ 7, /*axis*/ 0,
           // axis=0 is not supported by TensorRT
           {kTensorrtExecutionProvider, kOpenVINOExecutionProvider, kDnnlExecutionProvider});
 }
 
 TEST(SoftmaxOperator, ThreeAndFourDimsSecondLastAxis) {
-  // x = <see x_vals_3dims>
+  // x = <see input_vals_60>
   // node = onnx.helper.make_node('Softmax', inputs = ['x'], outputs = ['y'], axis = 1)
   // y = softmax_2d(x.reshape(3, 20)).reshape(3, 4, 5)
   // expect(node, inputs = [x], outputs = [y],
@@ -201,10 +202,10 @@ TEST(SoftmaxOperator, ThreeAndFourDimsSecondLastAxis) {
       0.050680935f, 0.03926183f, 0.079453886f, 0.030862054f, 0.014312706f,
       0.040478885f, 0.033857856f, 0.080346674f, 0.06199841f, 0.040481992f};
 
-  RunTest(x_vals_3dims, expected_vals, three_dimensions, /*opset*/ 7, /*axis*/ 1,
+  RunTest(input_vals_60, expected_vals, three_dimensions, /*opset*/ 7, /*axis*/ 1,
           {kTensorrtExecutionProvider, kOpenVINOExecutionProvider, kDnnlExecutionProvider});
 
-  RunTest(x_vals_3dims, expected_vals, four_dimensions, /*opset*/ 7, /*axis*/ 2,
+  RunTest(input_vals_60, expected_vals, four_dimensions, /*opset*/ 7, /*axis*/ 2,
           {kTensorrtExecutionProvider, kOpenVINOExecutionProvider, kDnnlExecutionProvider});
 }
 
@@ -228,15 +229,15 @@ TEST(SoftmaxOperator, ThreeAndFourDimsSecondLastAxis_opset13) {
       0.37181312f, 0.12944824f, 0.3946307f, 0.19975942f, 0.0699691f,
       0.29696727f, 0.11163106f, 0.39906505f, 0.4012943f, 0.1979003f};
 
-  RunTest(x_vals_3dims, expected_vals, three_dimensions, /*opset*/ 13, /*axis*/ 1,
+  RunTest(input_vals_60, expected_vals, three_dimensions, /*opset*/ 13, /*axis*/ 1,
           {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});  // OpenVINO doesn't support opset-13 yet
 
-  RunTest(x_vals_3dims, expected_vals, four_dimensions, /*opset*/ 13, /*axis*/ 2,
+  RunTest(input_vals_60, expected_vals, four_dimensions, /*opset*/ 13, /*axis*/ 2,
           {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});  // OpenVINO doesn't support opset-13 yet
 }
 
 TEST(SoftmaxOperator, ThreeAndFourDimsLastAxis) {
-  // x = <see x_vals_3dims>
+  // x = <see input_vals_60>
   // node = onnx.helper.make_node('Softmax', inputs = ['x'], outputs = ['y'], axis = 2)
   // y = softmax_2d(x.reshape(12, 5)).reshape(3, 4, 5)
   // expect(node, inputs = [x], outputs = [y],
@@ -258,8 +259,8 @@ TEST(SoftmaxOperator, ThreeAndFourDimsLastAxis) {
       0.23619612f, 0.1829779f, 0.37029108f, 0.14383113f, 0.0667037f,
       0.15740506f, 0.13165872f, 0.31243387f, 0.24108529f, 0.15741715f};
 
-  RunTest(x_vals_3dims, expected_vals, three_dimensions, /*opset*/ 7, /*axis*/ 2);
-  RunTest(x_vals_3dims, expected_vals, four_dimensions, /*opset*/ 7, /*axis*/ 3);
+  RunTest(input_vals_60, expected_vals, three_dimensions, /*opset*/ 7, /*axis*/ 2);
+  RunTest(input_vals_60, expected_vals, four_dimensions, /*opset*/ 7, /*axis*/ 3);
 }
 
 TEST(SoftmaxOperator, ThreeAndFourDimsLastAxis_opset13) {
@@ -279,10 +280,10 @@ TEST(SoftmaxOperator, ThreeAndFourDimsLastAxis_opset13) {
       0.23619612f, 0.1829779f, 0.37029108f, 0.14383113f, 0.0667037f,
       0.15740506f, 0.13165872f, 0.31243387f, 0.24108529f, 0.15741715f};
 
-  RunTest(x_vals_3dims, expected_vals, three_dimensions, /*opset*/ 13, /*axis*/ 2,
+  RunTest(input_vals_60, expected_vals, three_dimensions, /*opset*/ 13, /*axis*/ 2,
           {kOpenVINOExecutionProvider});  // OpenVINO doesn't support opset-13 yet
 
-  RunTest(x_vals_3dims, expected_vals, four_dimensions, /*opset*/ 13, /*axis*/ 3,
+  RunTest(input_vals_60, expected_vals, four_dimensions, /*opset*/ 13, /*axis*/ 3,
           {kOpenVINOExecutionProvider});  // OpenVINO doesn't support opset-13 yet
 }
 
@@ -303,15 +304,15 @@ TEST(SoftmaxOperator, ThreeAndFourDimsDefaultAxis_opset13) {
       0.23619612f, 0.1829779f, 0.37029108f, 0.14383113f, 0.0667037f,
       0.15740506f, 0.13165872f, 0.31243387f, 0.24108529f, 0.15741715f};
 
-  RunTest(x_vals_3dims, expected_vals, three_dimensions, /*opset*/ 13, /*default axis*/ -1,
+  RunTest(input_vals_60, expected_vals, three_dimensions, /*opset*/ 13, /*default axis*/ -1,
           {kOpenVINOExecutionProvider});  // OpenVINO doesn't support opset-13 yet
 
-  RunTest(x_vals_3dims, expected_vals, four_dimensions, /*opset*/ 13, /*default axis*/ -1,
+  RunTest(input_vals_60, expected_vals, four_dimensions, /*opset*/ 13, /*default axis*/ -1,
           {kOpenVINOExecutionProvider});  // OpenVINO doesn't support opset-13 yet
 }
 
 TEST(SoftmaxOperator, ThreeAndFourDimsNegativeAxis) {
-  // x = <see x_vals_3dims>
+  // x = <see input_vals_60>
   // node = onnx.helper.make_node('Softmax', inputs = ['x'], outputs = ['y'], axis = 2)
   // y = softmax_2d(x.reshape(12, 5)).reshape(3, 4, 5)
   // expect(node, inputs = [x], outputs = [y],
@@ -334,8 +335,8 @@ TEST(SoftmaxOperator, ThreeAndFourDimsNegativeAxis) {
       0.15740506f, 0.13165872f, 0.31243387f, 0.24108529f, 0.15741715f};
 
   // -1 is last axis so same as axis == 2
-  RunTest(x_vals_3dims, expected_vals, three_dimensions, /*opset*/ 12, /*axis*/ -1);
-  RunTest(x_vals_3dims, expected_vals, four_dimensions, /*opset*/ 12, /*axis*/ -1);
+  RunTest(input_vals_60, expected_vals, three_dimensions, /*opset*/ 12, /*axis*/ -1);
+  RunTest(input_vals_60, expected_vals, four_dimensions, /*opset*/ 12, /*axis*/ -1);
 }
 
 TEST(SoftmaxOperator, InvalidAxis) {
@@ -408,7 +409,7 @@ TEST(SoftmaxOperator, 2DInputReduceOnAxis1WithLargeDim) {
 
 // Regression test for NNAPI handling of a Softmax with opset < 13 where the input has been converted to NHWC.
 // The NNAPI handling of the axis is different so we need to manually coerce the input to 2D, which will negate the
-// layout change. Test model has a GloabalAveragePool -> Softmax which will trigger the layout change due to
+// layout change. Test model has a GlobalAveragePool -> Softmax which will trigger the layout change due to
 // GlobalAveragePool being layout sensitive.
 TEST(SoftmaxOperator, GH15949_regression_test) {
   auto model_uri = ORT_TSTR("testdata/ort_github_issue_15949.onnx");

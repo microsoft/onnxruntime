@@ -110,10 +110,11 @@ Status SoftMaxOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, cons
   // e.g. if 2D and axis is 0 we coerce to shape {1 , dim0 + dim1}
   //      if 4D and axis is 2 we coerce to shape {dim0 + dim1, dim2 + dim3}
   if (node_unit.SinceVersion() < 13 && !(input_shape.size() == 2 && axis == 1)) {
-    // add Reshape to 2D
-    uint32_t dim0 = std::accumulate(input_shape.cbegin(), input_shape.cbegin() + axis, 1, std::multiplies());
-    uint32_t dim1 = std::accumulate(input_shape.cbegin() + axis, input_shape.cend(), 1, std::multiplies());
-    Shape input2d_shape{narrow<uint32_t>(dim0), narrow<uint32_t>(dim1)};
+    // Reshape to 2D based on axis
+    const SafeInt<uint32_t> safe1(1);
+    uint32_t dim0 = std::accumulate(input_shape.cbegin(), input_shape.cbegin() + axis, safe1, std::multiplies());
+    uint32_t dim1 = std::accumulate(input_shape.cbegin() + axis, input_shape.cend(), safe1, std::multiplies());
+    Shape input2d_shape{dim0, dim1};
 
     std::string shape2d_name = model_builder.GetUniqueName(node_unit.Name() + input + "_2D_shape");
     std::string reshape2d_output_name = model_builder.GetUniqueName(node_unit.Name() + input + "_2D");
