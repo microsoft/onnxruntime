@@ -8,12 +8,83 @@ import gc
 import inspect
 import warnings
 from collections import abc
+from typing import Dict, Iterator, List, Mapping, Optional, Sequence, Tuple, Union
 
+import onnx
 import torch
 
 from ._fallback import ORTModuleIOError, ORTModuleONNXModelException, wrap_exception
-from ._logger import suppress_os_stream_output
+from ._logger import LogLevel, suppress_os_stream_output
+from ._runtime_inspector import RuntimeInspector
 from ._utils import warn_of_constant_inputs
+
+_ModelInputOutputType = Union[
+    None,
+    str,
+    int,
+    bool,
+    float,
+    torch.Tensor,
+    Sequence["_ModelInputOutputType"],
+    Mapping[str, "_ModelInputOutputType"],
+]
+
+
+class _TensorStub:
+    """Tensor stub class used to represent model's input or output"""
+
+    __slots__ = ["name", "dtype", "shape", "shape_dims"]
+
+    def __init__(
+        self, name: Optional[str] = None, dtype: Optional[str] = None, shape=None, shape_dims: Optional[int] = None
+    ):
+        self.name: Optional[str] = name
+        self.dtype: Optional[str] = dtype
+        self.shape = shape
+        self.shape_dims: Optional[int] = shape_dims  # r.g. rank.
+
+    def __repr__(self) -> str:
+        result = "_TensorStub("
+        if self.name is not None:
+            result += f"name={self.name}"
+        if self.dtype is not None:
+            if result[-1] != "(":
+                result += ", "
+            result += f"dtype={self.dtype}"
+        if self.shape is not None:
+            if result[-1] != "(":
+                result += ", "
+            result += f"shape={self.shape}"
+        if self.shape_dims is not None:
+            if result[-1] != "(":
+                result += ", "
+            result += f"shape_dims={self.shape_dims}"
+        result += ")"
+        return result
+
+    def __eq__(self, other):
+        if not other:
+            return False
+        elif not isinstance(other, _TensorStub):
+            raise NotImplementedError("_TensorStub must only be compared to another _TensorStub instance!")
+        elif self.name != other.name:
+            return False
+        elif self.dtype != other.dtype:
+            return False
+        elif self.shape != other.shape:
+            return False
+        elif self.shape_dims != other.shape_dims:
+            return False
+        return True
+
+
+_ModelInputOutputSchemaType = Union[
+    None,
+    str,
+    _TensorStub,
+    Sequence["_ModelInputOutputSchemaType"],
+    Mapping[str, "_ModelInputOutputSchemaType"],
+]
 
 
 class _OutputIdentityOp(torch.autograd.Function):
@@ -75,7 +146,7 @@ class _PrimitiveType:
         return type(value) in _PrimitiveType._primitive_types
 
     @staticmethod
-    def get_tensor(value, device):
+    def get_tensor(value, device) -> torch.Tensor:
         return torch.tensor(value, device=device)
 
     @staticmethod
@@ -114,18 +185,18 @@ def flatten_kwargs(kwargs, device):
 class _InputInfo:
     def __init__(
         self,
-        names,
-        shape,
-        require_grad_names=None,
-        dynamic_axes=None,
-        schema=None,
+        names: List[str],
+        shape: List[List[int]],
+        require_grad_names: Optional[List[str]] = None,
+        dynamic_axes: Optional[Dict[str, Dict[int, str]]] = None,
+        schema: Optional[_ModelInputOutputSchemaType] = None,
         num_positionals=0,
     ):
-        self.names = names
-        self.shape = shape
-        self.require_grad_names = require_grad_names if require_grad_names else []
-        self.dynamic_axes = dynamic_axes if dynamic_axes else {}
-        self.schema = schema if schema else []
+        self.names: List[str] = names
+        self.shape: List[List[int]] = shape
+        self.require_grad_names: List[str] = require_grad_names if require_grad_names else []
+        self.dynamic_axes: Dict[str, Dict[int, str]] = dynamic_axes if dynamic_axes else {}
+        self.schema: _ModelInputOutputSchemaType = schema if schema else []
         self.num_positionals = num_positionals
         self.kwargs = None
 
@@ -138,7 +209,9 @@ class _InputInfo:
             \tSchema:                           {self.schema}
             \t#Positionals (total):             {self.num_positionals}"""
 
-    def flatten(self, args, kwargs, device):
+    def flatten(
+        self, args: Sequence[_ModelInputOutputType], kwargs: Mapping[str, _ModelInputOutputType], device: torch.device
+    ) -> Sequence[_ModelInputOutputType]:
         """Flatten args and kwargs in a single tuple of tensors with strict ordering"""
 
         ret = [_PrimitiveType.get_tensor(arg, device) if _PrimitiveType.is_primitive_type(arg) else arg for arg in args]
@@ -153,7 +226,9 @@ class _InputInfo:
 
         return ret
 
-    def unflatten(self, flat_args):
+    def unflatten(
+        self, flat_args: Sequence[_ModelInputOutputType]
+    ) -> Tuple[Sequence[_ModelInputOutputType], Mapping[str, _ModelInputOutputType]]:
         """Unflatten tuple of tensors into args and kwargs"""
 
         args = tuple(flat_args[: self.num_positionals])
@@ -163,13 +238,20 @@ class _InputInfo:
 
 
 def _combine_input_buffers_initializers(
-    params, onnx_input_names, input_info, buffer_names, inputs, kwargs, device, input_density_ob
+    params: List[torch.nn.parameter.Parameter],
+    onnx_input_names: List[str],
+    input_info: Optional[_InputInfo],
+    named_buffer: Iterator[Tuple[str, torch.Tensor]],
+    inputs: Sequence[_ModelInputOutputType],
+    kwargs: Mapping[str, _ModelInputOutputType],
+    device: torch.device,
+    rt_inspector: RuntimeInspector,
 ):
     """Creates forward `*inputs` list from user input and PyTorch initializers
 
     ONNX Runtime forward requires an ordered list of:
         * User input: computed from forward InferenceSession
-        * Initializers: computed from original PyTorch model parameters
+        * Initializers: computed from original PyTorch model parameters.
     """
 
     def _expand_inputs(current_input, non_none_inputs, name=""):
@@ -201,8 +283,10 @@ def _combine_input_buffers_initializers(
     _expand_inputs(inputs, non_none_inputs)
     flattened_kwargs_inputs = {}
     _expand_inputs(kwargs, flattened_kwargs_inputs)
-    buffer_names_dict = {buffer_name: inp for buffer_name, inp in buffer_names}
+    buffer_names_dict = {buffer_name: inp for buffer_name, inp in named_buffer}
     result = []
+    embed_sparsity_results = []
+    label_sparsity_results = []
 
     for input_idx, name in enumerate(onnx_input_names):
         inp = None
@@ -235,7 +319,12 @@ def _combine_input_buffers_initializers(
             if _PrimitiveType.is_primitive_type(inp):
                 inp = _PrimitiveType.get_tensor(inp, device)
 
-            input_density_ob.inspect_from_input_data(name, inp)
+            found, embedding_is_sparse, label_is_sparse = rt_inspector.inspect_input(name, inp)
+            if found:
+                if embedding_is_sparse is True:
+                    embed_sparsity_results.append(name)
+                if label_is_sparse is True:
+                    label_sparsity_results.append(name)
             result.append(inp)
         else:
             raise wrap_exception(
@@ -245,10 +334,12 @@ def _combine_input_buffers_initializers(
     # params is a list of all initializers known to the onnx graph
     result.extend(params)
 
-    return result
+    return result, embed_sparsity_results, label_sparsity_results
 
 
-def deepcopy_model_input(*inputs, **kwargs):
+def deepcopy_model_input(
+    *args, **kwargs
+) -> Tuple[Sequence[_ModelInputOutputType], Mapping[str, _ModelInputOutputType]]:
     def extract_tensor(value):
         if isinstance(value, torch.Tensor):
             if value.requires_grad:
@@ -258,64 +349,18 @@ def deepcopy_model_input(*inputs, **kwargs):
         else:
             return value
 
-    sample_inputs_copy = [extract_tensor(value) for value in inputs]
-    sample_inputs_copy = copy.deepcopy(tuple(sample_inputs_copy))
+    sample_args_copy: Sequence[_ModelInputOutputType] = [extract_tensor(value) for value in args]
+    sample_args_copy = copy.deepcopy(tuple(sample_args_copy))
 
-    sample_kwargs_copy = {}
+    sample_kwargs_copy: Mapping[str, _ModelInputOutputType] = {}
     for name, value in kwargs.items():
         sample_kwargs_copy[name] = extract_tensor(value)
     sample_kwargs_copy = copy.deepcopy(sample_kwargs_copy)
 
-    return sample_inputs_copy, sample_kwargs_copy
+    return sample_args_copy, sample_kwargs_copy
 
 
-class _TensorStub:
-    """Tensor stub class used to represent model's input or output"""
-
-    __slots__ = ["name", "dtype", "shape", "shape_dims"]
-
-    def __init__(self, name=None, dtype=None, shape=None, shape_dims=None):
-        self.name = name
-        self.dtype = dtype
-        self.shape = shape
-        self.shape_dims = shape_dims
-
-    def __repr__(self) -> str:
-        result = "_TensorStub("
-        if self.name is not None:
-            result += f"name={self.name}"
-        if self.dtype is not None:
-            if result[-1] != "(":
-                result += ", "
-            result += f"dtype={self.dtype}"
-        if self.shape is not None:
-            if result[-1] != "(":
-                result += ", "
-            result += f"shape={self.shape}"
-        if self.shape_dims is not None:
-            if result[-1] != "(":
-                result += ", "
-            result += f"shape_dims={self.shape_dims}"
-        result += ")"
-        return result
-
-    def __eq__(self, other):
-        if not other:
-            return False
-        elif not isinstance(other, _TensorStub):
-            raise NotImplementedError("_TensorStub must only be compared to another _TensorStub instance!")
-        elif self.name != other.name:
-            return False
-        elif self.dtype != other.dtype:
-            return False
-        elif self.shape != other.shape:
-            return False
-        elif self.shape_dims != other.shape_dims:
-            return False
-        return True
-
-
-def unflatten_user_output(output_schema, outputs):
+def unflatten_user_output(output_schema: Optional[_ModelInputOutputSchemaType], outputs):
     """Follows the schema to generate an output that is expected by the user"""
 
     def _replace_stub_with_tensor_value(user_output, outputs, output_idx):
@@ -360,8 +405,49 @@ def unflatten_user_output(output_schema, outputs):
     return user_output
 
 
-def _extract_schema(data):
-    """Extract the data schema by replacing every torch.Tensor value with _TensorStub"""
+def _extract_schema(data: _ModelInputOutputType) -> _ModelInputOutputSchemaType:
+    """Extract the data schema by replacing every torch.Tensor value with _TensorStub.
+
+    Depth first traversal to iterate over the data:
+    > Replace every tensor with a stub
+    > Replace None/str typed data with itself
+    > Recreate tensor from data for other primitive types, and replace them with a stub.
+
+    TODO(pengwa): use a unified logger and log level control.
+    Examples:
+        Example 1, list:
+            data = [torch.tensor(1), torch.tensor(2)]
+            schema = [_TensorStub(shape=()), _TensorStub(shape=())]
+
+        Example 2, dict:
+            data = {"a": torch.tensor(1), "b": torch.tensor(2)}
+            schema = {"a": _TensorStub(shape=()), "b": _TensorStub(shape=())}
+
+        Example 3, dict of list:
+            data = {"a": [torch.tensor(1), torch.tensor(2)], "b": [torch.tensor(3), torch.tensor(4)]}
+            schema = {"a": [_TensorStub(shape=()), _TensorStub(shape=())],
+                        "b": [_TensorStub(shape=()), _TensorStub(shape=())]}
+
+        Example 4, nested dict:
+            data = {"a": {"b": torch.tensor(1), "c": torch.tensor(2)},
+                    "d": {"e": torch.tensor(3), "f": torch.tensor(4)}}
+            schema = {"a": {"b": _TensorStub(shape=()), "c": _TensorStub(shape=())},
+                        "d": {"e": _TensorStub(shape=()), "f": _TensorStub(shape=())}}
+
+        Example 5, dict of mixed list and dict:
+            data = {"a": [torch.tensor(1), torch.tensor(2)], "b": {"c": torch.tensor(3), "d": torch.tensor(4)}}
+            schema = {"a": [_TensorStub(shape=()), _TensorStub(shape=())],
+                        "b": {"c": _TensorStub(shape=()), "d": _TensorStub(shape=())}}
+
+    Args:
+        data: The data to extract the schema from, which can be in any kind of nested structure,
+            including Sequence and Mapping.
+
+
+    Returns:
+        The schema of the data, which has the same structure as the data.
+
+    """
 
     if data is None:
         return data
@@ -378,7 +464,7 @@ def _extract_schema(data):
 
     # Instead of replacing the tensor with a stub in the original user input, build the stubbed_schema
     # from scratch from the user input.
-    stubbed_schema = None
+    stubbed_schema: Optional[_ModelInputOutputSchemaType] = None
     if isinstance(data, abc.Sequence):
         sequence_type = type(data)
         stubbed_schema = [_extract_schema(val) for val in data]
@@ -399,10 +485,12 @@ def _extract_schema(data):
     return stubbed_schema
 
 
-def _parse_outputs_and_extract_names_and_dynamic_axes(module_output):
+def _parse_outputs_and_extract_names_and_dynamic_axes(module_output) -> Tuple[List[str], Dict[str, Dict[int, str]]]:
     """Parses through the module output and returns output names and dynamic axes"""
 
-    def _populate_output_names_and_dynamic_axes(output, output_names, output_dynamic_axes, output_idx):
+    def _populate_output_names_and_dynamic_axes(
+        output, output_names: List[str], output_dynamic_axes: Dict[str, Dict[int, str]], output_idx: List[int]
+    ):
         # Depth first traversal to traverse through the entire output collecting output names and dynamic axes
 
         if output is None:
@@ -430,9 +518,9 @@ def _parse_outputs_and_extract_names_and_dynamic_axes(module_output):
                 TypeError(f"ORTModule does not support the following model output type {type(output)}"),
             )
 
-    output_names = []
-    output_dynamic_axes = {}
-    output_idx = [0]
+    output_names: List[str] = []
+    output_dynamic_axes: Dict[str, Dict[int, str]] = {}
+    output_idx: List[int] = [0]
     _populate_output_names_and_dynamic_axes(module_output, output_names, output_dynamic_axes, output_idx)
 
     return output_names, output_dynamic_axes
@@ -466,21 +554,53 @@ def _transform_output_to_flat_tuple(data):
 
 
 class _FlattenedModule(torch.nn.Module):
-    def __init__(self, original_module):
+    def __init__(self, original_module: torch.nn.Module):
         super().__init__()
-        self._original_module = original_module
+        self._original_module: torch.nn.Module = original_module
 
         # Before `forward` is called, _ort_module must be assigned
         # Updated input info is needed to expand args into *args, **kwargs
-        self._input_info = None
+        self._input_info: Optional[_InputInfo] = None
 
     def forward(self, *args):
         new_args, new_kwargs = self._input_info.unflatten(args)
         return _transform_output_to_flat_tuple(self._original_module(*new_args, **new_kwargs))
 
 
-def parse_inputs_for_onnx_export(all_input_parameters, onnx_graph, schema, inputs, kwargs):
-    def _add_dynamic_shape(name, input):
+def parse_inputs_for_onnx_export(
+    all_input_parameters: List[inspect.Parameter],
+    onnx_graph: Optional[onnx.ModelProto],
+    schema: _ModelInputOutputSchemaType,
+    args: Sequence[_ModelInputOutputType],
+    kwargs: Mapping[str, _ModelInputOutputType],
+) -> _InputInfo:
+    """Parses through the model inputs and returns _InputInfo.
+
+    Loop through all input parameters, try to flatten them into a 1-D list of inputs. For nested data in the inputs,
+    construct the name in hierarchical order.
+
+    Example 1, arg is a list, kwarg is a dict:
+        args = [arg1, arg2], kwargs = {"a": 4, "b": 5},
+        input_names = ["arg1", "arg2",  "a", "b"].
+
+    Example 2, arg is a list, kwarg is a dict of mixed list and scalar:
+        args = [arg1, arg2], kwargs = {"a": [4, 5], "b": 6},
+        input_names = ["arg1", "arg2",  "a_0", "a_1", "b"].
+
+    Example 3, arg is a list, kwarg is a dict of mixed dict and scalar:
+        args = [arg1, arg2], kwargs = {"a": {"c": 4, "d": 5}, "b": 6},
+        input_names = ["arg1", "arg2",  "a_c", "a_d", "b"].
+
+    Args:
+        all_input_parameters: All inspected input parameters from the original model forward function signature.
+        onnx_graph: (optional) The onnx graph.
+        schema: The schema extracted from the positional arguments and keyword arguments of the model.
+        args: The positional arguments of the model.
+        kwargs: The keyword arguments of the model.
+
+    """
+
+    def _add_dynamic_shape(name, input) -> Dict[str, Dict[int, str]]:
         dynamic_axes[name] = {}
         for dim_idx in range(len(input.shape)):
             dynamic_axes[name].update({dim_idx: f"{name}_dim{dim_idx}"})
@@ -526,24 +646,43 @@ def parse_inputs_for_onnx_export(all_input_parameters, onnx_graph, schema, input
 
     # Ignore optional inputs explicitly specified as None
     # ONNX exporter may remove unused inputs
-    onnx_graph_input_names = []
+    onnx_graph_input_names: List[str] = []
     if onnx_graph is not None:
         onnx_graph_input_names = {inp.name for inp in onnx_graph.graph.input}
 
-    input_names = []
-    dynamic_axes = {}
-    input_names_require_grad = []
-    input_shape = []
+    input_names: List[str] = []
+    dynamic_axes: Dict[str, Dict[int, str]] = {}
+    input_names_require_grad: List[str] = []
+    input_shape: List[List[int]] = []
     var_positional_idx = 0
 
+    # Be noted, all_input_parameters is a list of inspect.Parameters parsed from the original module's forward method.
+    # While the execution manger's forward function will map all given model inputs to *args and **kwargs, so it is
+    # possible the input parameter list cannot represent the real model inputs given here (e.g., *args, **kwargs).
+    # But it is still fine to use all_input_parameters to make sure all model inputs are covered.
+    #
+    # Here is an example caused by the mismatch between all_input_parameters and real model inputs.
+    #   def foo(*args, named_kwargs, **kwargs):
+    #       ... print("foo")
+    # From inspection,
+    #   > ('args', <_ParameterKind.VAR_POSITIONAL: 2>)
+    #   > ('named_kwargs', <_ParameterKind.KEYWORD_ONLY: 3>)
+    #   > ('kwargs', <_ParameterKind.VAR_KEYWORD: 4>)
+    #
+    # At this point, 'named_kwargs' exists in **kwargs as a result of ORTModule's forward parse all original
+    # model inputs in to *args and **kwargs.
+    # When we loop `all_input_parameters``, for the `named_kwargs`, we will try to handle it in KEYWORD_ONLY branch.
+    # Additionally in VAR_KEYWORD branch, we will get the `named_kwargs` value again, because its name exists in the
+    # `kwargs`. So _add_input avoids handling the `named_kwargs` twice, check test case `test_named_kwargs_dict_input`
+    # for the details.
     for input_idx, input_parameter in enumerate(all_input_parameters):
         if input_parameter.kind == inspect.Parameter.VAR_POSITIONAL:
             # VAR_POSITIONAL parameter carries all *args parameters from original forward method
 
-            for args_i in range(input_idx, len(inputs)):
+            for args_i in range(input_idx, len(args)):
                 name = f"{input_parameter.name}_{var_positional_idx}"
                 var_positional_idx += 1
-                inp = inputs[args_i]
+                inp = args[args_i]
                 _add_input(name, inp, onnx_graph, onnx_graph_input_names)
         elif (
             input_parameter.kind == inspect.Parameter.POSITIONAL_ONLY
@@ -554,8 +693,8 @@ def parse_inputs_for_onnx_export(all_input_parameters, onnx_graph, schema, input
             name = input_parameter.name
             inp = None
             input_idx += var_positional_idx  # noqa: PLW2901
-            if input_idx < len(inputs) and inputs[input_idx] is not None:
-                inp = inputs[input_idx]
+            if input_idx < len(args) and args[input_idx] is not None:
+                inp = args[input_idx]
             elif name in kwargs and kwargs[name] is not None:
                 inp = kwargs[name]
             _add_input(name, inp, onnx_graph, onnx_graph_input_names)
@@ -570,18 +709,20 @@ def parse_inputs_for_onnx_export(all_input_parameters, onnx_graph, schema, input
         require_grad_names=input_names_require_grad,
         dynamic_axes=dynamic_axes,
         schema=schema,
-        num_positionals=len(inputs),
+        num_positionals=len(args),
     )
 
 
-def parse_outputs_for_onnx_export_and_extract_schema(module, inputs, kwargs, log_level):
+def parse_outputs_for_onnx_export_and_extract_schema(
+    module, args: Sequence[_ModelInputOutputType], kwargs: Mapping[str, _ModelInputOutputType], log_level: LogLevel
+):
     # Perform a forward call to grab outputs
     output_names = None
     output_dynamic_axes = None
     is_deepcopy = False
     with torch.no_grad(), suppress_os_stream_output(log_level=log_level):
         # Deepcopy inputs, since input values may change after model run.
-        sample_inputs_copy, sample_kwargs_copy = deepcopy_model_input(*inputs, **kwargs)
+        sample_args_copy, sample_kwargs_copy = deepcopy_model_input(*args, **kwargs)
         try:
             # Deepcopy model, in case model is stateful and changes after model run.
             model_copy = copy.deepcopy(module)
@@ -594,7 +735,7 @@ def parse_outputs_for_onnx_export_and_extract_schema(module, inputs, kwargs, log
                 " Compute will continue, but unexpected results may occur!"
             )
 
-        sample_outputs = model_copy(*sample_inputs_copy, **sample_kwargs_copy)
+        sample_outputs = model_copy(*sample_args_copy, **sample_kwargs_copy)
 
         # Parse the output and extract the output_names and output_dynamic_axes to be used for onnx export
         output_names, output_dynamic_axes = _parse_outputs_and_extract_names_and_dynamic_axes(sample_outputs)

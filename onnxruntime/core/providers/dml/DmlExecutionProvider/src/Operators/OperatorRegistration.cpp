@@ -292,6 +292,7 @@ DML_OP_EXTERN_CREATION_FUNCTION(Slice13);
 DML_OP_EXTERN_CREATION_FUNCTION(Pad7);
 DML_OP_EXTERN_CREATION_FUNCTION(Pad11);
 DML_OP_EXTERN_CREATION_FUNCTION(Pad13);
+DML_OP_EXTERN_CREATION_FUNCTION(Pad18);
 DML_OP_EXTERN_CREATION_FUNCTION(SpaceToDepth);
 DML_OP_EXTERN_CREATION_FUNCTION(DepthToSpace);
 DML_OP_EXTERN_CREATION_FUNCTION(Sqrt);
@@ -650,6 +651,7 @@ constexpr static OperatorRegistrationInformation operatorRegistrationInformation
     {REG_INFO_VER(  7,  Pad,                                typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported,      requiredConstantCpuInputs(), std::nullopt, QueryPad)},
     {REG_INFO_VER( 11,  Pad,                                typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported,      requiredConstantCpuInputs(1, 2) /*pads, value*/)}, // https://microsoft.visualstudio.com/OS/_workitems/edit/26007728
     {REG_INFO_VER( 13,  Pad,                                typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported,      requiredConstantCpuInputs(1, 2) /*pads, value*/)}, // https://microsoft.visualstudio.com/OS/_workitems/edit/26007728
+    {REG_INFO_VER( 18,  Pad,                                typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported,      requiredConstantCpuInputs(1, 2, 3) /*pads, value, axes*/)},
     {REG_INFO(      7,  SpaceToDepth,                       typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported)},
     {REG_INFO(     13,  SpaceToDepth,                       typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported)},
     {REG_INFO(      7,  DepthToSpace,                       typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported)},

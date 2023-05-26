@@ -35,7 +35,7 @@ set(XNNPACK_INCLUDE_DIR ${XNNPACK_DIR}/include)
 set(onnxruntime_EXTERNAL_LIBRARIES_XNNPACK XNNPACK pthreadpool)
 
 # the XNNPACK CMake setup doesn't include the WASM kernels so we have to manually set those up
-if(onnxruntime_BUILD_WEBASSEMBLY)
+if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
   file(READ "${XNNPACK_DIR}/BUILD.bazel" xnnpack_bazel_config)
 
   # Replace newlines with semicolon so that it is treated as a list by CMake

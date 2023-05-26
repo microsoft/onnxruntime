@@ -50,7 +50,10 @@ ONNX Runtime Web currently support all operators in [ai.onnx](https://github.com
 
 #### WebGL backend
 
-ONNX Runtime Web currently supports a subset of operators in [ai.onnx](https://github.com/onnx/onnx/blob/main/docs/Operators.md) operator set. See [operators.md](./docs/operators.md) for a complete, detailed list of which ONNX operators are supported by WebGL backend.
+ONNX Runtime Web currently supports a subset of operators in [ai.onnx](https://github.com/onnx/onnx/blob/main/docs/Operators.md) operator set. See [webgl-operators.md](./docs/webgl-operators.md) for a complete, detailed list of which ONNX operators are supported by WebGL backend.
+
+#### WebGPU backend
+WebGPU backend is still an experimental feature. See [webgpu-operators.md](./docs/webgpu-operators.md) for a detailed list of which ONNX operators are supported by WebGPU backend.
 
 ## License
 
