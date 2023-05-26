@@ -18,7 +18,7 @@ namespace onnxruntime {
 // Element type refers to the element type of a Tensor, Sequence, etc.
 namespace element_type_lists {
 
-using AllFixedSizeExceptHalfIR4 =
+using AllFixedSizeExceptHalfIRv4 =
     TypeList<
         float,
         double,
@@ -32,9 +32,9 @@ using AllFixedSizeExceptHalfIR4 =
         uint8_t,
         bool>;
 
-using AllFixedSizeExceptHalf = AllFixedSizeExceptHalfIR4;
+using AllFixedSizeExceptHalf = AllFixedSizeExceptHalfIRv4;
 
-using AllFixedSizeIR4 =
+using AllFixedSizeIRv4 =
     TypeList<
         float,
         double,
@@ -50,37 +50,48 @@ using AllFixedSizeIR4 =
         BFloat16,
         bool>;
 
-using AllFixedSizeIR9 =
+#if !defined(DISABLE_FLOAT8_TYPES)
+using AllFixedSizeIRv9 =
     boost::mp11::mp_push_back<
-        AllFixedSizeIR4,
+        AllFixedSizeIRv4,
         Float8E4M3FN,
         Float8E4M3FNUZ,
         Float8E5M2,
         Float8E5M2FNUZ>;
+#else
+using AllFixedSizeIRv9 = AllFixedSizeIRv4;
+#endif
 
-using AllFixedSize = AllFixedSizeIR4;
+using AllFixedSize = AllFixedSizeIRv4;
 
-using AllIR4 =
+using AllIRv4 =
     boost::mp11::mp_push_back<
-        AllFixedSizeIR4,
+        AllFixedSizeIRv4,
         std::string>;
 
-using AllIR9 =
+#if !defined(DISABLE_FLOAT8_TYPES)
+using AllIRv9 =
     boost::mp11::mp_push_back<
-        AllIR4,
+        AllIRv4,
         Float8E4M3FN,
         Float8E4M3FNUZ,
         Float8E5M2,
         Float8E5M2FNUZ>;
 
-using All = AllIR4;
+#else
+using AllIRv9 = AllIRv4;
+#endif
 
+using All = AllIRv4;
+
+#if !defined(DISABLE_FLOAT8_TYPES)
 using AllFloat8 =
     TypeList<
         Float8E4M3FN,
         Float8E4M3FNUZ,
         Float8E5M2,
         Float8E5M2FNUZ>;
+#endif
 
 using AllIeeeFloat =
     TypeList<
@@ -88,7 +99,7 @@ using AllIeeeFloat =
         double,
         MLFloat16>;
 
-using AllNumericIR4 =
+using AllNumericIRv4 =
     TypeList<
         float,
         double,
@@ -103,7 +114,7 @@ using AllNumericIR4 =
         MLFloat16,
         BFloat16>;
 
-using AllNumeric = AllNumericIR4;
+using AllNumeric = AllNumericIRv4;
 
 }  // namespace element_type_lists
 

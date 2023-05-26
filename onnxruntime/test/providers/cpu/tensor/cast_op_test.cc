@@ -208,6 +208,8 @@ TEST(CastOpTest, ToString) {
   TestCastOp(gsl::make_span(int_16_input), gsl::make_span(int_string_data), shape);
 }
 
+#if !defined(DISABLE_FLOAT8_TYPES)
+
 template <typename F8>
 void CastOpTestFloat8(Saturate saturate) {
   ASSERT_NE(saturate, Saturate::None);
@@ -267,6 +269,8 @@ TEST(CastOpTest, ToFloat8E5M2FNUZ) {
     CastOpTestFloat8<Float8E5M2FNUZ>(Saturate::False);
   }
 }
+
+#endif
 
 }  // namespace test
 }  // namespace onnxruntime

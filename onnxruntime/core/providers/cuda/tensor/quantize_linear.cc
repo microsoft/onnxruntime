@@ -13,6 +13,8 @@ CudaQuantizeLinear(cudaStream_t stream, const U* input, T* output, const U* scal
   return CudaQuantizeLinearStd(stream, input, output, scale, zero_point, num_of_element);
 }
 
+#if !defined(DISABLE_FLOAT8_TYPES)
+
 template <class T, class U>
 typename std::enable_if<boost::mp11::mp_set_contains<TypeList<Float8E4M3FN, Float8E5M2>, T>::value, Status>::type
 CudaQuantizeLinear(cudaStream_t stream, const U* input, T* output, const U* scale, const T* zero_point, size_t num_of_element, bool saturate) {
@@ -25,6 +27,8 @@ CudaQuantizeLinearAxis(cudaStream_t stream, const U* input, T* output, const U* 
                        size_t batch_size, size_t n_scales, bool saturate) {
   return CudaQuantizeLinearAxisSat(stream, input, output, scale, zero_point, num_of_element, batch_size, n_scales, saturate);
 }
+
+#endif
 
 template <class T, class U>
 typename std::enable_if<boost::mp11::mp_set_contains<TypeList<int8_t, uint8_t>, T>::value, Status>::type
@@ -83,11 +87,13 @@ CudaDequantizeLinear(cudaStream_t stream, const T* input, U* output, const U* sc
   return CudaDequantizeLinearStd(stream, input, output, scale, zero_point, num_of_element);
 }
 
+#if !defined(DISABLE_FLOAT8_TYPES)
 template <class T, class U>
 typename std::enable_if<boost::mp11::mp_set_contains<TypeList<Float8E4M3FN, Float8E5M2>, T>::value, Status>::type
 CudaDequantizeLinear(cudaStream_t stream, const T* input, U* output, const U* scale, const T* zero_point, size_t num_of_element) {
   return CudaDequantizeLinearSat(stream, input, output, scale, zero_point, num_of_element);
 }
+#endif
 
 template <class T, class U>
 typename std::enable_if<boost::mp11::mp_set_contains<TypeList<int8_t, uint8_t>, T>::value, Status>::type
@@ -96,12 +102,14 @@ CudaDequantizeLinearAxis(cudaStream_t stream, const T* input, U* output, const U
   return CudaDequantizeLinearAxisStd(stream, input, output, scale, zero_point, num_of_element, batch_size, n_scales);
 }
 
+#if !defined(DISABLE_FLOAT8_TYPES)
 template <class T, class U>
 typename std::enable_if<boost::mp11::mp_set_contains<TypeList<Float8E4M3FN, Float8E5M2>, T>::value, Status>::type
 CudaDequantizeLinearAxis(cudaStream_t stream, const T* input, U* output, const U* scale, const T* zero_point, size_t num_of_element,
                          size_t batch_size, size_t n_scales) {
   return CudaDequantizeLinearAxisSat(stream, input, output, scale, zero_point, num_of_element, batch_size, n_scales);
 }
+#endif
 
 template <class T, class U>
 Status DequantizeLinear<T, U>::ComputeInternal(OpKernelContext* ctx) const {
@@ -199,8 +207,10 @@ REGISTER_Q_KERNEL_TYPED_13_18(uint8_t)
 
 REGISTER_Q_KERNEL_TYPED_19(int8_t)
 REGISTER_Q_KERNEL_TYPED_19(uint8_t)
+#if !defined(DISABLE_FLOAT8_TYPES)
 REGISTER_Q_KERNEL_TYPED_19(Float8E4M3FN)
 REGISTER_Q_KERNEL_TYPED_19(Float8E5M2)
+#endif
 
 // register DequantizeLinear kernels
 #define REGISTER_DQ_KERNEL_TYPED_10_12(T)                         \
@@ -254,8 +264,10 @@ REGISTER_DQ_KERNEL_TYPED_13_18(uint8_t)
 
 REGISTER_DQ_KERNEL_TYPED_19(int8_t)
 REGISTER_DQ_KERNEL_TYPED_19(uint8_t)
+#if !defined(DISABLE_FLOAT8_TYPES)
 REGISTER_DQ_KERNEL_TYPED_19(Float8E4M3FN)
 REGISTER_DQ_KERNEL_TYPED_19(Float8E5M2)
+#endif
 
 // specialize QuantizeLinear::ComputeInternal and DequantizeLinear::ComputeInternal
 #define SPECIALIZED_QDQ_COMPUTE(T, U)                                                \
@@ -267,10 +279,12 @@ SPECIALIZED_QDQ_COMPUTE(uint8_t, float)
 SPECIALIZED_QDQ_COMPUTE(int8_t, MLFloat16)
 SPECIALIZED_QDQ_COMPUTE(uint8_t, MLFloat16)
 
+#if !defined(DISABLE_FLOAT8_TYPES)
 SPECIALIZED_QDQ_COMPUTE(Float8E4M3FN, float)
 SPECIALIZED_QDQ_COMPUTE(Float8E4M3FN, MLFloat16)
 SPECIALIZED_QDQ_COMPUTE(Float8E5M2, float)
 SPECIALIZED_QDQ_COMPUTE(Float8E5M2, MLFloat16)
+#endif
 
 }  // namespace cuda
 }  // namespace onnxruntime

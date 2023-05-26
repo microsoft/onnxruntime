@@ -3,6 +3,8 @@
 
 #pragma once
 
+#if !defined(DISABLE_FLOAT8_TYPES)
+
 #include "endian.h"
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 11080
 #include "cuda_fp8.h"
@@ -638,3 +640,5 @@ inline void FloatToFloat8E5M2FNUZ(const float* flt, Float8E5M2FNUZ* blf, size_t 
 }
 
 }  // namespace onnxruntime
+
+#endif  // DISABLE_FLOAT8_TYPES

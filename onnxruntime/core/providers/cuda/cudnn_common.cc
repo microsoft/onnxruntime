@@ -197,6 +197,8 @@ const uint8_t Consts<uint8_t>::Zero = 0;
 template <>
 const uint8_t Consts<uint8_t>::One = 1;
 
+#if !defined(DISABLE_FLOAT8_TYPES)
+
 template <>
 const Float8E4M3FN Consts<Float8E4M3FN>::Zero = Float8E4M3FN(0.0f, true);
 
@@ -208,6 +210,8 @@ const Float8E5M2 Consts<Float8E5M2>::Zero = Float8E5M2(0.0f, true);
 
 template <>
 const Float8E5M2 Consts<Float8E5M2>::One = Float8E5M2(1.0f, true);
+
+#endif
 
 }  // namespace cuda
 }  // namespace onnxruntime
