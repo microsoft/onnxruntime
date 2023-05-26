@@ -12,7 +12,7 @@ ONNX_OPERATOR_KERNEL_EX(
     19,
     kCudaExecutionProvider,
     (*KernelDefBuilder::Create())
-        .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
+        .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypesIRv9())
         .TypeConstraint("shape", DataTypeImpl::GetTensorType<int64_t>())
         .Alias(0, 0)
         .InputMemoryType(OrtMemTypeCPUInput, 1),
