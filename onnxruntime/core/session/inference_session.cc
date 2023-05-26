@@ -940,9 +940,10 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
     transform_layout_fn = [this](Graph& graph_to_transform, bool& modified,
                                  const IExecutionProvider& execution_provider,
                                  const layout_transformer::DebugGraphFn& debug_graph_fn) -> Status {
+      AllocatorPtr cpu_allocator = std::make_shared<CPUAllocator>();
       ORT_RETURN_IF_ERROR_SESSIONID_(
           layout_transformer::TransformLayoutForEP(graph_to_transform, modified, execution_provider,
-                                                   execution_providers_.GetDefaultCpuAllocator(), debug_graph_fn));
+                                                   std::move(cpu_allocator), debug_graph_fn));
 
       if (modified) {
         ORT_RETURN_IF_ERROR_SESSIONID_(
@@ -1272,11 +1273,12 @@ Status PartitionOrtFormatModel(onnxruntime::Graph& graph,
   // only provide NCWH to NHWC layout transformer if supported
   if (layout_transformer::IsSupportedOpset(graph)) {
     transform_layout_fn =
-        [&providers](Graph& graph_to_transform, bool& modified,
-                     const IExecutionProvider& execution_provider,
-                     const layout_transformer::DebugGraphFn& debug_graph_fn) -> Status {
+        [](Graph& graph_to_transform, bool& modified,
+           const IExecutionProvider& execution_provider,
+           const layout_transformer::DebugGraphFn& debug_graph_fn) -> Status {
+      AllocatorPtr cpu_allocator = std::make_shared<CPUAllocator>();
       return layout_transformer::TransformLayoutForEP(graph_to_transform, modified, execution_provider,
-                                                      providers.GetDefaultCpuAllocator(), debug_graph_fn);
+                                                      std::move(cpu_allocator), debug_graph_fn);
     };
   }
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
