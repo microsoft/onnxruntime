@@ -461,7 +461,6 @@ void JsExecutionProvider::RegisterAllocator(AllocatorManager& allocator_manager)
 std::vector<std::unique_ptr<ComputeCapability>> JsExecutionProvider::GetCapability(
     const onnxruntime::GraphViewer& graph,
     const IKernelLookup& kernel_lookup) const {
-  LOGS_DEFAULT(VERBOSE) << "GetCapability for " << Type();
   return IExecutionProvider::GetCapability(graph, kernel_lookup);
 }
 
