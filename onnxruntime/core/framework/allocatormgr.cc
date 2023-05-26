@@ -42,6 +42,9 @@ AllocatorPtr CreateAllocator(const AllocatorCreationInfo& info) {
     int initial_growth_chunk_size_bytes = info.arena_cfg.initial_growth_chunk_size_bytes == -1
                                               ? BFCArena::DEFAULT_INITIAL_GROWTH_CHUNK_SIZE_BYTES
                                               : info.arena_cfg.initial_growth_chunk_size_bytes;
+    int64_t max_power_of_two_extend_bytes = info.arena_cfg.max_power_of_two_extend_bytes == -1
+                                                ? BFCArena::DEFAULT_MAX_POWER_OF_TWO_EXTEND_BYTES
+                                                : info.arena_cfg.max_power_of_two_extend_bytes;
     ArenaExtendStrategy arena_extend_str;
     switch (info.arena_cfg.arena_extend_strategy) {
       case static_cast<int>(ArenaExtendStrategy::kSameAsRequested):
@@ -77,7 +80,8 @@ AllocatorPtr CreateAllocator(const AllocatorCreationInfo& info) {
                                      arena_extend_str,
                                      initial_chunk_size_bytes,
                                      max_dead_bytes_per_chunk,
-                                     initial_growth_chunk_size_bytes));
+                                     initial_growth_chunk_size_bytes,
+                                     max_power_of_two_extend_bytes));
     }
   } else {
     return device_allocator;
