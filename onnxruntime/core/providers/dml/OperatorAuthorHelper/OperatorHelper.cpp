@@ -2355,7 +2355,8 @@ namespace OperatorHelper
         auto& attributes = kernelInformation.GetAttributes();
         m_inputDimensions = shapeInformation.GetInputTensorShape(0);
         std::vector<int32_t> outputSizes;
-
+        std::vector<int32_t> axes;
+        
         if (opsetVersion >= 11)
         {
             if (kernelInformation.IsInputValid(1))
@@ -2372,6 +2373,49 @@ namespace OperatorHelper
             {
                 MLOperatorTensor outputSizesTensor = kernelInformation.GetConstantInputTensor(3);
                 ReadCpuLocalTensorIntoInt32(outputSizesTensor, /*out*/ outputSizes);
+            }
+            
+            axes = kernelInformation.GetOptionalAttributeVectorInt32(AttrName::Axes);
+            // Handle possible axes input
+            if (opsetVersion >= 18 && !axes.empty())
+            {
+                uint32_t dimCount = gsl::narrow_cast<uint32_t>(inputShape.size());
+                HandleEmptyAxes(axes, m_inputDimensions, false);
+                HandleNegativeAxes(axes, dimCount);
+                
+                // Taken from https://github.com/onnx/onnx/blob/3d69db8fd16873d68e7033479467f9478562a12d/onnx/reference/ops/op_resize.py#L303
+                if(!m_scales.empty())
+                {
+                    std::vector<float> newScales(dimCount, 1.f);
+                    // Fill in roi and scales/sizes
+                    uint32_t numAxes = gsl::narrow_cast<uint32_t>(axes.size());
+                    for (int32_t i = 0; i < axes.size(); i++)
+                    {
+                        newScales[axes[i]] = m_scales[i];
+                    }
+                    m_scales = newScales;
+                }
+                if(!outputSizes.empty())
+                {
+                    std::vector<float> newSizes = m_inputDimensions;
+                    // Fill in roi and scales/sizes
+                    uint32_t numAxes = gsl::narrow_cast<uint32_t>(axes.size());
+                    for (int32_t i = 0; i < axes.size(); i++)
+                    {
+                        newSizes[axes[i]] = outputSizes[i];
+                    }
+                    outputSizes = newSizes;
+                }
+                if(!m_regionOfInterest.empty())
+                {
+                    std::vector<float> newRois(dimCount, 0.f);
+                    newRois.resize(dimCount*2, 1.f);
+                    for (int32_t i = 0; i < axes.size(); i++)
+                    {
+                        newRois[axes[i]] = m_regionOfInterest[i];
+                    }
+                    m_regionOfInterest = newRois;
+                }
             }
         }
         else if (opsetVersion >= 9)
@@ -2390,6 +2434,7 @@ namespace OperatorHelper
         assert(m_outputDimensions.empty());
         ML_CHECK_VALID_ARGUMENT(m_scales.empty() || outputSizes.empty(), "scales and roi cannot both be present.");
 
+        
         const size_t rank = m_inputDimensions.size();
 
         if (outputSizes.empty())
