@@ -76,7 +76,7 @@ are in composable kernels. The scale and add logic is performed via Acc0ElementO
 
 Q, K, V, past(K), pastV, present(K), presentV is the Input of the contrib OpKernel
 
-About k_buffer and v_buffer, we always explicitly concat past to present and use present_k for k_buffer and present_b for v_buffer
+About k_buffer and v_buffer, we always explicitly concat past to present and use present_k for k_buffer and present_v for v_buffer
 
 - Marked with `*` indicate the Tensor is used for k_buffer passing.
 - Marked with `^` indicate the Tensor is used for v_buffer passing.
