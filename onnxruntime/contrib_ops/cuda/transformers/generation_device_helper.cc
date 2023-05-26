@@ -13,6 +13,8 @@
 #include <cuda_runtime.h>
 #include "contrib_ops/cuda/transformers/generation_cuda_impl.h"
 #include "contrib_ops/cuda/transformers/dump_cuda_tensor.h"
+#include "contrib_ops/cpu/transformers/logits_processor.h"
+#include "contrib_ops/cpu/transformers/generation_shared.h"
 #include "contrib_ops/cpu/transformers/subgraph_t5_decoder.h"
 #include "contrib_ops/cpu/transformers/subgraph_gpt.h"
 #include "contrib_ops/cuda/transformers/beam_search_topk.h"
@@ -444,6 +446,30 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
       parameters->repetition_penalty,
       parameters->no_repeat_ngram_size,
       cuda_stream);
+
+  // Whisper time stamp generation.
+  // TODO: implement it on GPU
+  bool gen_timestamp = parameters->model_type == onnxruntime::contrib::transformers::IGenerationParameters::kModelTypeWhisper &&
+                       parameters->logits_processor == onnxruntime::contrib::transformers::IGenerationParameters::kLogitsProcessorTypeWhisper;
+  if (gen_timestamp) {
+    // Append next token scores to the scores output.
+    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(cpu_state->next_token_scores.data(),
+                                         next_token_scores.data(),
+                                         next_token_scores.size_bytes(),
+                                         cudaMemcpyDeviceToHost,
+                                         cuda_stream));
+    constexpr int max_initial_timestamp_index = 50;
+    onnxruntime::contrib::transformers::TimestampLogitsProcessor::TimestampLogitsProcessor<float> time_logit_processor(parameters->eos_token_id, max_initial_timestamp_index);
+    onnxruntime::contrib::transformers::NextTokenScores<float> next_token_scores_timestamp({cpu_state->next_token_scores, batch_beam_size, vocab_size});
+
+    CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(cuda_stream));
+    time_logit_processor.Process(sequences, next_token_scores_timestamp);
+    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(next_token_scores.data(),
+                                         cpu_state->next_token_scores.data(),
+                                         next_token_scores.size_bytes(),
+                                         cudaMemcpyHostToDevice,
+                                         cuda_stream));
+  }
 
 #ifdef DEBUG_GENERATION
   dumper->Print("next_token_scores after logits process", next_token_scores.data(), batch_size, num_beams, vocab_size);
