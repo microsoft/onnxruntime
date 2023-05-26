@@ -40,6 +40,16 @@ file(GLOB onnxruntime_objc_srcs CONFIGURE_DEPENDS
     "${OBJC_ROOT}/*.m"
     "${OBJC_ROOT}/*.mm")
 
+if(NOT onnxruntime_ENABLE_TRAINING_APIS)
+    list(REMOVE_ITEM onnxruntime_objc_headers
+        "${OBJC_ROOT}/include/ort_checkpoint.h")
+
+    list(REMOVE_ITEM onnxruntime_objc_srcs
+        "${OBJC_ROOT}/ort_checkpoint_internal.h"
+        "${OBJC_ROOT}/ort_checkpoint.mm")
+endif()
+
+
 source_group(TREE "${OBJC_ROOT}" FILES
     ${onnxruntime_objc_headers}
     ${onnxruntime_objc_srcs})
@@ -111,6 +121,12 @@ if(onnxruntime_BUILD_UNIT_TESTS)
         "${OBJC_ROOT}/test/*.h"
         "${OBJC_ROOT}/test/*.m"
         "${OBJC_ROOT}/test/*.mm")
+
+    if(NOT onnxruntime_ENABLE_TRAINING_APIS)
+        list(REMOVE_ITEM onnxruntime_objc_test_srcs
+            "${OBJC_ROOT}/test/ort_checkpoint_test.mm")
+
+    endif()
 
     source_group(TREE "${OBJC_ROOT}" FILES ${onnxruntime_objc_test_srcs})
 
