@@ -14,21 +14,21 @@
 /// User can only get the instance of OrtCUDAProviderOptionsV2 via CreateCUDAProviderOptions.
 /// </summary>
 struct OrtCUDAProviderOptionsV2 {
-  int device_id;                                           // cuda device id.
-  int has_user_compute_stream;                             // indicator of user specified CUDA compute stream.
-  void* user_compute_stream;                               // user specified CUDA compute stream.
-  int do_copy_in_default_stream;                           // flag specifying if the default stream is to be used for copying.
-  OrtCudnnConvAlgoSearch cudnn_conv_algo_search;           // cudnn algo search enum.
-  size_t gpu_mem_limit;                                    // BFC Arena memory limit for CUDA.
-                                                           // (will be overridden by contents of `default_memory_arena_cfg` is it exists)
-  onnxruntime::ArenaExtendStrategy arena_extend_strategy;  // BFC Arena extension strategy.
-                                                           // (will be overridden by contents of `default_memory_arena_cfg` is it exists)
-  OrtArenaCfg* default_memory_arena_cfg;                   // BFC Arena config flags.
-  int cudnn_conv_use_max_workspace;                        // flag specifying if maximum workspace can be used in cudnn conv algo search.
-  int enable_cuda_graph;                                   // flag specifying if the CUDA graph is to be captured for the model.
-  int cudnn_conv1d_pad_to_nc1d;                            // flag specifying if pad Conv1D's input [N,C,D] to [N,C,1,D] or [N,C,D,1].
-  int tunable_op_enable;                                   // flag specifying if TunableOp is enabled.
-  int tunable_op_tuning_enable;                            // flag specifying if TunableOp is enabled for tuning, this relies on TunableOp is enabled.
-  int enable_skip_layer_norm_strict_mode;                  // flag specifying if SkipLayerNorm is in strict mode. If true, use LayerNormalization kernel.
-                                                           // The strict mode has better accuracy but lower performance.
+  int device_id = 0;                                                                                           // cuda device id.
+  int has_user_compute_stream = 0;                                                                             // indicator of user specified CUDA compute stream.
+  void* user_compute_stream = nullptr;                                                                         // user specified CUDA compute stream.
+  int do_copy_in_default_stream = 1;                                                                           // flag specifying if the default stream is to be used for copying.
+  OrtCudnnConvAlgoSearch cudnn_conv_algo_search = OrtCudnnConvAlgoSearchExhaustive;                            // cudnn algo search enum.
+  size_t gpu_mem_limit = std::numeric_limits<size_t>::max();                                                   // BFC Arena memory limit for CUDA.
+                                                                                                               // (will be overridden by contents of `default_memory_arena_cfg` is it exists)
+  onnxruntime::ArenaExtendStrategy arena_extend_strategy = onnxruntime::ArenaExtendStrategy::kNextPowerOfTwo;  // BFC Arena extension strategy.
+                                                                                                               // (will be overridden by contents of `default_memory_arena_cfg` is it exists)
+  OrtArenaCfg* default_memory_arena_cfg = nullptr;                                                             // BFC Arena config flags.
+  int cudnn_conv_use_max_workspace = 1;                                                                        // flag specifying if maximum workspace can be used in cudnn conv algo search.
+  int enable_cuda_graph = 0;                                                                                   // flag specifying if the CUDA graph is to be captured for the model.
+  int cudnn_conv1d_pad_to_nc1d = 0;                                                                            // flag specifying if pad Conv1D's input [N,C,D] to [N,C,1,D] or [N,C,D,1].
+  int tunable_op_enable = 0;                                                                                   // flag specifying if TunableOp is enabled.
+  int tunable_op_tuning_enable = 0;                                                                            // flag specifying if TunableOp is enabled for tuning, this relies on TunableOp is enabled.
+  int enable_skip_layer_norm_strict_mode = 0;                                                                  // flag specifying if SkipLayerNorm is in strict mode. If true, use LayerNormalization kernel.
+                                                                                                               // The strict mode has better accuracy but lower performance.
 };
